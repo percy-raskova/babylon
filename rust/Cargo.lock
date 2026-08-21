@@ -1848,6 +1848,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1b08cb4ecbb540b940016b0a0f35b7e48ab0cc372ab88150c351de4cc469959"
 
 [[package]]
+name = "bsl-lint"
+version = "0.1.0"
+dependencies = [
+ "babylon-bsl",
+ "regex",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

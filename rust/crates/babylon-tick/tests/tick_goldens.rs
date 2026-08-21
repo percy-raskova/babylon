@@ -380,7 +380,7 @@ fn consciousness_ternary_foundation_hashes_are_pinned() {
     );
     assert_eq!(
         hex(&report.after),
-        "52ffb5e332cca9bddcaf9b77fcdf3ed1efe8e30e9abf3176fe0569e7aa47ff91",
+        "a6329eadbfebcdfb134e2e693c032c57fb8a7d9cce9a8ef42e1ec84c6e2ce612",
         "post-tick hash moved — the ten-rule pack's combined tick-1 output \
          (p0's positioning, p1..p7's measured update law plus the new \
          p2-wages-push, p8's readout) — attribute-set change only, zero \
@@ -393,11 +393,19 @@ fn consciousness_ternary_foundation_hashes_are_pinned() {
          its module-header post-repair note for the exact numbers and the \
          ternary-routing consequence (the tick-2 FASCIST flip no longer \
          happens). report.before, above, is UNCHANGED — no new graph \
-         content, only rule text moved."
+         content, only rule text moved. RE-PINNED AGAIN 2026-08-21 in the \
+         worktree-sweep integration merge (bsl-hygiene-knockout × #491): \
+         W2's unconditional p1-inbox-reset guard (adjudication (d), the \
+         SIXTH re-pin on the hygiene train) composes with T1's value moves \
+         — the two never-positioned nodes gain explicit solidarity-inbox/ \
+         wages-inbox 0 writes on top of the #491 text. Measured on the \
+         merged tree; both parent pins (52ffb5e3…, 4d983944…) superseded."
     );
     assert_eq!(
-        report.fired, 63,
-        "p0:1 + p1:11 (inbox reset on every positioned class) + p2:1 + \
+        report.fired, 65,
+        "p0:1 + p1:13 (W2 repair, adjudication (d): unconditional \
+         `(when #t)`, every SOCIAL_CLASS subject — was 11, positioned-only, \
+         before the repair) + p2:1 + \
          p2-wages-push:13 (every active SOCIAL_CLASS subject — the mirrored \
          active gate does not discriminate on WAGES-edge presence, so the \
          for-each idiom fires on edgeless subjects too; only employer's \

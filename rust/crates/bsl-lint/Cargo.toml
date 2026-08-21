@@ -1,0 +1,18 @@
+[package]
+name = "bsl-lint"
+description = "Repo-relationship sentinels for BSL content — citation-drift and namespace-unique. Semantic-coherence checks belong in the loader (Task W2), not here (Director boundary ruling, 2026-08-18)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "bsl-lint"
+path = "src/main.rs"
+
+[dependencies]
+babylon-bsl = { path = "../babylon-bsl" }
+
+[dependencies.regex]
+version = "1"

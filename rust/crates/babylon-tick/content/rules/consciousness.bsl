@@ -197,13 +197,13 @@
     (update-node self social-class/agitation (set 0))))
 
 (rule consciousness/p1-inbox-reset
-  :material-basis "Per-tick accumulator reset (the production p0 idiom; D103/D104 collect-then-apply makes reset-then-accumulate safe): the solidarity inbox and the wages inbox are both machinery, not state — each carries this tick's pushed contributions only. Positioned classes only (the sum-guard): an unpositioned class has no organization to receive, and the reset must not fabricate either field onto it (L-ABS)."
+  :material-basis "Per-tick accumulator reset (the production p0 idiom; D103/D104 collect-then-apply makes reset-then-accumulate safe): the solidarity inbox and the wages inbox are both machinery, not state — each carries this tick's pushed contributions only. UNCONDITIONAL (W2 repair, adjudication (d)): the positioned-only sum-guard this rule carried until now was strictly WEAKER than p7-persist-baselines' anchored-only read guard on wages-inbox, so an anchored-but-inactive class (never positioned, so never reset) could accumulate un-reset WAGES-edge pushes indefinitely and later read them as garbage previous-wages on its first positioned tick — a real, reachable latent defect on wages-inbox (solidarity-inbox was already safe: p0 positions a class the same tick p1's old guard would first pass). Resetting BOTH inbox fields unconditionally, every tick, for every subject, discharges both at once and is the E-LOAD-059 unconditional-set shape refusal 2 checks for."
   :fuel 32
   (bindings
     (binding r :field social-class/revolutionary :optional :default 0.0p)
     (binding l :field social-class/liberal :optional :default 0.0p)
     (binding f :field social-class/fascist :optional :default 0.0p))
-  (when (> (+ r (+ l f)) 0))
+  (when #t)
   (effects
     (update-node self social-class/solidarity-inbox (set 0))
     (update-node self social-class/wages-inbox (set 0))))
@@ -245,7 +245,7 @@
         (add (field-of (edge-between EdgeType/SOLIDARITY self it) solidarity/strength))))))
 
 (rule consciousness/p4-wage-balance
-  :material-basis "The per-class wage-value balance (contradiction.py:67-100, called (v_produced, w_paid) at ideology.py:241-244, so balance = (w−v)/(v+w)): positive = wages dominate = the imperial bribe. Frozen reads the per-class pair when present (ideology.py:239-259), which is the ONLY path the port carries: data-absent classes are UNPOSITIONED, never the graph-attr fallback (that attr has no BSL surface). The frozen [-1,1] clamp is inert-by-construction under the non-negative anchored sentinel guard (|w−v| <= v+w). The frozen 1e-9 zero-guard (contradiction.py:98-100: total <= 1e-9 -> 0.0) is NARROWED, not inert — the port's guard is `(+ wages value) > 0`, so for 0 < v+w <= 1e-9 the frozen yields 0.0 where the port yields the quotient; content-inert on declared content, whose sums sit orders of magnitude above 1e-9 — a recorded narrowing. Stored verbatim-f64, signed (spike 4's lane)."
+  :material-basis "The per-class wage-value balance (formulas/contradiction.py:67-100, called (v_produced, w_paid) at ideology.py:241-244, so balance = (w−v)/(v+w)): positive = wages dominate = the imperial bribe. Frozen reads the per-class pair when present (ideology.py:239-259), which is the ONLY path the port carries: data-absent classes are UNPOSITIONED, never the graph-attr fallback (that attr has no BSL surface). The frozen [-1,1] clamp is inert-by-construction under the non-negative anchored sentinel guard (|w−v| <= v+w). The frozen 1e-9 zero-guard (formulas/contradiction.py:98-100: total <= 1e-9 -> 0.0) is NARROWED, not inert — the port's guard is `(+ wages value) > 0`, so for 0 < v+w <= 1e-9 the frozen yields 0.0 where the port yields the quotient; content-inert on declared content, whose sums sit orders of magnitude above 1e-9 — a recorded narrowing. Stored verbatim-f64, signed (spike 4's lane)."
   :fuel 64
   (bindings
     (binding wages :field social-class/wages-paid :optional :default -1)

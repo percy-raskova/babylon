@@ -23,3 +23,13 @@ path = "src/lib.rs"
 [[bin]]
 name = "babylon-tick"
 path = "src/main.rs"
+
+# Task W3 (BSL Hygiene Knock-out): the fuel-bound report mode. A separate
+# binary target, not a `babylon-tick` subcommand — `main.rs`'s own doc
+# scopes that binary to "argument parsing, calling [run_once], and
+# printing" for exactly one rule/scenario pair; this report iterates the
+# whole landed corpus and never runs a tick, a different enough shape to
+# earn its own entry point rather than widen that one's contract.
+[[bin]]
+name = "bsl-fuel-report"
+path = "src/bin/bsl_fuel_report.rs"

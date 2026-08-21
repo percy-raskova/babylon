@@ -547,11 +547,203 @@ fn run_prepared_tick<G: GraphSubstrate + CanonicalState>(
     })
 }
 
+/// One rule's declared-vs-computed fuel bound (Task W3, BSL Hygiene
+/// Knock-out: "the fuel-bound report mode" — "measure without the red-run
+/// ritual"). `declared` is [`LoadedRule::declared_fuel`] (the author's
+/// `:fuel`, §2.2); `computed` is [`LoadedRule::static_bound`], the load-time
+/// proof `bound_checker::check_rule` already computes on every successful
+/// load (`bound_checker.rs:757-769`) — this struct adds no new bound math,
+/// it only surfaces two fields `prepare_rules` already produces.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FuelBoundRow {
+    pub rule_id: String,
+    pub declared: u64,
+    pub computed: u64,
+}
+
+impl FuelBoundRow {
+    /// `declared − computed`: fuel budget unused by the load-time proof.
+    /// Saturating, matching `bound_checker`'s own "all arithmetic is
+    /// saturating" stance (its module doc) — defense in depth, since a row
+    /// this crate actually returns can never have `computed > declared` in
+    /// the first place (`check_rule`'s `E-LOAD-040` refuses that AT LOAD,
+    /// before `prepare_rules` ever builds a `LoadedRule` to read from).
+    #[must_use]
+    pub fn headroom(&self) -> u64 {
+        self.declared.saturating_sub(self.computed)
+    }
+}
+
+impl std::fmt::Display for FuelBoundRow {
+    /// The report line format the brief specifies verbatim: `rule-id
+    /// declared=<n> computed=<m> headroom=<n-m>`.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} declared={} computed={} headroom={}",
+            self.rule_id,
+            self.declared,
+            self.computed,
+            self.headroom()
+        )
+    }
+}
+
+/// Load one content set (scenario, optional declaration prelude, rule
+/// source) through the REAL production pipeline (`prepare_rules` — the same
+/// function `run_once`/`TickSession::new` use) and report its fuel bounds,
+/// one row per rule, in the SAME ascending rule-id byte order
+/// `prepare_rules` already sorts into (§4.2/D16).
+///
+/// This is a REPORT, not a gate: it runs no tick and changes no load
+/// behavior. The "same content the loader loads" guarantee is structural,
+/// not a separate claim to verify — this function calls the identical
+/// `prepare_rules` seam `run_once` calls, never a second reader/parser.
+///
+/// # Errors
+///
+/// The first-failing load stage's message, exactly as `run_once`/
+/// `run_once_with_prelude` report it — including, redundantly, an
+/// `E-LOAD-040` message if some rule's declared budget is under its
+/// computed bound. That refusal already prevents such content from
+/// loading at all, so a caller only ever reaching content that loads
+/// clean never observes this branch from here — see [`any_over_budget`]'s
+/// own doc for where this redundancy is exercised on the report side too.
+pub fn fuel_bound_report(
+    scenario_src: &str,
+    prelude_src: Option<&str>,
+    rule_src: &str,
+) -> Result<Vec<FuelBoundRow>, String> {
+    let mut graph = HypergraphStore::new();
+    let prepared = prepare_rules(scenario_src, prelude_src, rule_src, &mut graph)?;
+    Ok(prepared
+        .rules
+        .iter()
+        .map(|(id, loaded)| FuelBoundRow {
+            rule_id: id.clone(),
+            declared: loaded.declared_fuel,
+            computed: loaded.static_bound,
+        })
+        .collect())
+}
+
+/// Whether any row's computed bound exceeds its declared budget — a fuel
+/// report's non-zero-exit condition (Task W3: "non-zero exit ONLY on
+/// declared < computed").
+///
+/// **Documented redundancy:** [`fuel_bound_report`] can never actually
+/// return a row with `computed > declared` for content that loaded at all —
+/// `bound_checker::check_rule`'s `E-LOAD-040` already refuses that
+/// condition AT LOAD, so `prepare_rules` returns `Err` before any such row
+/// exists. This predicate exists anyway so the report path states its own
+/// exit contract explicitly rather than assuming the invariant silently,
+/// and so it degrades to a named contract violation (not a wrong/missing
+/// exit code) if that invariant is ever broken by a future change to
+/// either checker.
+#[must_use]
+pub fn any_over_budget(rows: &[FuelBoundRow]) -> bool {
+    rows.iter().any(|row| row.computed > row.declared)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{prepare_rules, run_once};
+    use super::{any_over_budget, fuel_bound_report, prepare_rules, run_once, FuelBoundRow};
     const SCENARIO: &str = include_str!("../content/scenarios/two-classes.bscn");
     const RULE: &str = include_str!("../content/rules/fundamental-theorem.bsl");
+
+    // Task W3 (BSL Hygiene Knock-out): the fuel-bound report's smallest
+    // possible fixture — one field binding, one comparison, one
+    // `update-node` effect, no query/fold — deliberately shaped so its
+    // computed bound is easy to hand-verify. `vitality/*` because
+    // `prepare_rules`'s hardcoded `systems` set (this file, above) already
+    // registers "vitality" — any other already-registered prefix would do
+    // just as well (E-LOAD-002 refuses an unregistered one).
+    //
+    // The golden numbers below (declared=64, computed=7) were MEASURED, not
+    // guessed: a throwaway probe test ran this exact fixture through
+    // `prepare_rules` and printed `LoadedRule::{declared_fuel,
+    // static_bound}` before this test was written (the same
+    // "measured-from-the-engine, never copied/guessed" discipline this
+    // repo's other conformance fixtures use) — 7 also matches
+    // `bound_checker.rs`'s own pinned `demo/hunger` fixture (`Ok(7)`),
+    // which has the identical AST shape (one field binding, one comparison,
+    // one update-node effect) — consistent with `check_rule` never
+    // consulting a cardinality ceiling for a rule with no query/fold.
+    const FUEL_REPORT_FIXTURE_SCENARIO: &str = r"
+(scenario probe/fuel-report
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (deffield social-class/wealth int extensive)
+  (node core NodeType/SOCIAL_CLASS (social-class/wealth 100)))
+";
+    const FUEL_REPORT_FIXTURE_RULE: &str = r#"(rule vitality/fuel-report-fixture
+  :material-basis "Task W3 fuel-bound report fixture — the simplest legal rule shape, so the report's smallest content set is trivial to hand-verify"
+  :fuel 64
+  (bindings (binding wealth :field social-class/wealth))
+  (when (> wealth 0))
+  (effects (update-node self social-class/wealth (add 1))))"#;
+
+    #[test]
+    fn fuel_bound_report_measures_declared_computed_and_headroom() {
+        let rows = fuel_bound_report(FUEL_REPORT_FIXTURE_SCENARIO, None, FUEL_REPORT_FIXTURE_RULE)
+            .expect("the fixture must load clean");
+        assert_eq!(
+            rows,
+            vec![FuelBoundRow {
+                rule_id: "vitality/fuel-report-fixture".to_owned(),
+                declared: 64,
+                computed: 7,
+            }]
+        );
+        assert_eq!(rows[0].headroom(), 57);
+    }
+
+    // Pins the report LINE format the brief specifies verbatim: `rule-id
+    // declared=<n> computed=<m> headroom=<n-m>`.
+    #[test]
+    fn fuel_bound_row_display_matches_the_specified_format() {
+        let row = FuelBoundRow {
+            rule_id: "vitality/fuel-report-fixture".to_owned(),
+            declared: 64,
+            computed: 7,
+        };
+        assert_eq!(
+            row.to_string(),
+            "vitality/fuel-report-fixture declared=64 computed=7 headroom=57"
+        );
+    }
+
+    // The exit-code contract: non-zero ONLY when a row's computed bound
+    // exceeds its declared budget. Tested directly against hand-built rows
+    // rather than through the load pipeline — E-LOAD-040 (`check_rule`)
+    // already refuses that condition AT LOAD, so `fuel_bound_report` itself
+    // can never return such a row for content that loaded at all; this is
+    // the documented redundancy the brief asks for, exercised in isolation.
+    #[test]
+    fn any_over_budget_is_false_when_every_row_fits_its_budget() {
+        let rows = vec![
+            FuelBoundRow {
+                rule_id: "a".to_owned(),
+                declared: 10,
+                computed: 10,
+            },
+            FuelBoundRow {
+                rule_id: "b".to_owned(),
+                declared: 10,
+                computed: 3,
+            },
+        ];
+        assert!(!any_over_budget(&rows));
+    }
+
+    #[test]
+    fn any_over_budget_is_true_when_one_row_exceeds_its_budget() {
+        let rows = vec![FuelBoundRow {
+            rule_id: "a".to_owned(),
+            declared: 5,
+            computed: 6,
+        }];
+        assert!(any_over_budget(&rows));
+    }
 
     #[test]
     fn run_once_is_deterministic() {

@@ -355,6 +355,12 @@ system backstop). Owner ruling 2026-07-14:
   run`) resolves `babylon` to whichever checkout's venv is active, not necessarily this worktree's —
   prefix with `PYTHONPATH="$PWD/src"` or use the `mise run check:vocabulary` task, which sets it
   correctly.
+- **The `end-of-file-fixer` pre-commit hook mutates staged text goldens MID-COMMIT** (bitten
+  2026-08-18, B3 T7): a byte-exact golden staged without a trailing newline gets one appended
+  AFTER the last green test run, so the committed golden no longer matches what the test
+  captured. Either compare with a trailing-newline tolerance (`strip_suffix('\n')` on BOTH
+  sides) or list the golden in the hook's exclude — never hand-tune the golden to survive the
+  hook.
 - **Workflow `args` arrives stringified or absent — FOUR times bitten (2026-07-22 ×2, 2026-07-29,
   2026-08-11).** The orchestration harness can deliver a Workflow script's `args` as a JSON *string*
   (so `args.field` is `undefined`, and prompts interpolate `"the PDF at undefined"` into every

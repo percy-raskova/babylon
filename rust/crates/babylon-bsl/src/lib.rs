@@ -21,6 +21,7 @@ pub mod mod_anchors;
 pub mod query;
 pub mod reader;
 pub mod rule_pipeline;
+pub mod same_tick_order;
 pub mod scenario;
 pub mod scope;
 pub mod score_class;
@@ -62,6 +63,17 @@ pub use reader::{
 pub use rule_pipeline::{
     bind_environment, load_rule, load_rule_form, resolve_expr_bindings, split_content, LoadContext,
     LoadError, LoadedRule,
+};
+// `diagnose` re-exported under a qualified name (W2 fix round 1, review
+// Minor 4): `babylon_bsl::diagnose` unqualified reads as "diagnose
+// anything" at the crate root, alongside dozens of other checkers this
+// crate could plausibly want the bare name for later. No caller outside
+// `same_tick_order`'s own module uses the unqualified re-export today
+// (checked: `rg -n 'babylon_bsl::diagnose\b'` across `rust/`, zero hits
+// besides this file), so the rename is free.
+pub use same_tick_order::{
+    diagnose as diagnose_same_tick_order, Diagnosis, SameTickOrderError, StaleDefaultRead,
+    UnresetFanIn, ENFORCE_SAME_TICK_ORDERING,
 };
 pub use scope::{
     check_element_names, check_foreign_field_scoping, declared_element_names, ElementNameError,

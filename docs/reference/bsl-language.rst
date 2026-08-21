@@ -3709,6 +3709,80 @@ would make the result implementation-dependent while every other clause of this
 chapter held. Currency's exact integer lane is immune; the bounded scalars are
 not, which is why the order is stated rather than left to the executor.
 
+**Task W2 (BSL Hygiene Knock-out, 2026-08-18) — same-tick ordering as LOAD
+REFUSALS.** Ascending rule-id byte order (above) and D116's recorded
+cross-rule same-tick visibility (a second rule at one anchor position
+observes the first rule's already-applied writes, not the tick's shared
+pre-state) together make a rule's read order *content-visible*: whether an
+``:optional :default`` binding's declared default is ever actually
+observed depends on where its field's writers happen to sort. Two load
+refusals make that dependency a checked property of the content set
+rather than a silent hazard, in the same family as ``E-LOAD-001``
+(content-set-wide, checked at load, over whatever set is actually
+loaded — never a hypothetical wider one).
+
+*Refusal 1 —* ``E-LOAD-058`` *, stale-default read.* For a binding
+``(binding b :field f :optional :default d)`` in rule ``R``, the *writer
+set* of ``f`` is every rule ``W`` in the loaded content set such that
+``W`` contains an ``(update-node <target> f …)`` effect, **excluding**
+``W`` **where** ``W.rule_id == R.rule_id``. The exclusion is on rule
+identity alone. It is independent of the write target — ``self``,
+``it``, a ``select-max`` result, or any ``NodeRef`` — and independent of
+whether the read and the write resolve to the same node (justification:
+this section's own two clauses above — "a rule can never observe its own
+effects" **and** "all firings of one rule observe the same pre-state";
+the second is the operative one when the read and write targets differ,
+which is exactly ``solidarity/p0-transmit``'s shape: it reads ``self``
+and writes a neighbour ``it``, one rule, still self-excluded). If any
+rule in the writer set does not sort strictly before ``R`` (ascending
+rule-id byte order), the load is refused, naming both rules and the
+field.
+
+*Refusal 2 —* ``E-LOAD-059`` *, unreset fan-in.* A field written by two or
+more distinct rules in the content set (via ``set``, or via fan-in
+``add``/``sub``/``scale``) requires an earlier **unconditional** ``set``
+— the rule has no ``(when …)`` at all, or its ``(when …)`` is the
+literal ``#t``; nothing finer, no guard-dominance analysis between a
+reset and its fan-in writers — or the D127 unconditional-recompute shape
+(a writer meeting the same unconditional test whose ``:material-basis``
+cites D127). Concretely: among the field's distinct writers sorted by
+ascending rule-id byte order, the byte-earliest must satisfy one of the
+two tests above, or the load is refused, naming the field and its writer
+rules.
+
+**Enforcement is gated, not implemented-but-inert.** Both refusals are
+computable from existing declarations — no new author-facing grammar —
+so this is loader hardening, ADR-recorded, under the same boundary
+ruling that put same-tick coherence in the language rather than an
+external lint. But ``consciousness.bsl`` ships 13 deliberate same-tick
+reads (mitigated by guard structure or a documented one-tick-lag idiom
+the loader does not yet verify) that refusal 1 as stated above would
+refuse outright. The Director's ruling (R-W2a, the 2026-08-18 evening
+sitting): mint a per-binding author declaration (working name
+``:prior-tick``) via constitutional amendment, narrowing refusal 1's
+final semantics to *every UNDECLARED exposed read*. **This section's two
+rows describe that POST-RATIFICATION enforcement.** Until a Director
+sitting ratifies the declaration, both refusals are implemented and
+load-bearing in ``babylon-bsl``'s own fixture tests but gated OFF for the
+landed corpus by ``babylon_bsl::same_tick_order::
+ENFORCE_SAME_TICK_ORDERING`` — see that constant's doc and
+``ai/_inbox/amendment-prior-tick-draft.md`` (Amendment AI, DRAFT).
+
+**Refusing a composed load is intended, not a regression.** No committed
+load path co-loads ``consciousness.bsl`` with ``solidarity.bsl`` today —
+each loads solo — but should a future content set compose them, refusal
+1 fires on ``solidarity/p0-transmit``'s write to
+``social-class/revolutionary``: every ``consciousness/*`` writer of that
+field sorts before ``solidarity/*`` in rule-id byte order, so the
+composed load's own byte order runs ``consciousness/p6-route``'s simplex
+closure strictly *before* ``solidarity/p0-transmit``'s write, reopening
+the off-simplex window ``solidarity.bsl``'s own header already files as
+a non-blocking Director-gate question (issue #646 names the same
+co-load-hazard class for ``territory.bsl``/``decomposition.bsl``).
+Refusal 1 refusing that composition is the check doing exactly its job —
+mechanizing what #646 was filed for — not a false positive to work
+around.
+
 4.3 Arithmetic
 ~~~~~~~~~~~~~~~~
 
@@ -3843,7 +3917,11 @@ two times at which an error can occur.
        does not resolve, and a non-``<enum-ref>`` value seeding an
        ``:enum-type``-declared field in a ``.bscn`` body; and, from Train B
        item 3 (#591), a hydration seeding one
-       ``(edge-type, source, target, field)`` edge-attribute key twice.
+       ``(edge-type, source, target, field)`` edge-attribute key twice; and,
+       from Task W2 (BSL Hygiene Knock-out), a same-tick-ordering violation
+       — an ``:optional :default`` binding a same-content-set writer can
+       observe as stale, or a multi-writer field with no rule-identifiable
+       reset — post-ratification enforcement (§4.2).
    * - Evaluation
      - ``E-EVAL-0xx``
      - During a tick — checked-arithmetic failure, range violation at a store,
@@ -3886,7 +3964,7 @@ defect D75 ruled against.
 
 Sequence continuation is meant literally, and is checkable by inspection: every
 decade block of every family is **contiguous**, with no reserved and no
-skipped number — ``E-LOAD`` 001–004, 010–013, 020–025, 030–033, 040–057;
+skipped number — ``E-LOAD`` 001–004, 010–013, 020–025, 030–033, 040–059;
 ``E-PARSE`` 010–015, 020–022, 030–033, 040–042; ``E-TYPE`` 010–017, 020, 030,
 040–044; ``E-EVAL`` 010–014, 020–021, 030–043; ``E-LEX`` 001–003,
 010–011, 020–027. ``E-TYPE-044`` (Territory port train, P27, #551 closure)
@@ -3934,6 +4012,23 @@ time.** ``E-LOAD-057`` — a hydration seeding one
 ``(edge-type, source, target, field)`` edge-attribute key twice (§3.9
 clause 7, D156) — is the next free number at the time of allocation, per
 the same rule.
+
+**Task W2 (BSL Hygiene Knock-out, 2026-08-18) continues the same**
+``E-LOAD`` **block a fifth time.** ``E-LOAD-058`` (stale-default read) and
+``E-LOAD-059`` (unreset fan-in) are the next two free numbers at the time
+of allocation, per the same rule; full normative text at §4.2's own end
+(same-tick evaluation order is that section's subject). **Both rows
+describe POST-RATIFICATION enforcement.** The check is computable from
+existing declarations (no new author-facing grammar), so it is loader
+hardening under the same boundary ruling §4.2 records for the check's own
+motivation — but landed content includes 13 deliberate same-tick reads in
+``consciousness.bsl`` that need a per-binding author declaration (working
+name ``:prior-tick``) an amendment mints, not yet ratified. Both refusals
+are therefore implemented and load-bearing in this crate's own tests, but
+gated OFF for the landed corpus by ``babylon_bsl::same_tick_order::
+ENFORCE_SAME_TICK_ORDERING`` until a Director sitting ratifies the
+declaration; see that constant's own doc and the amendment draft it cites
+for the ratification ceremony.
 
 **The #576 intrinsic-host train (Task 2) continues** ``E-EVAL``.
 ``E-EVAL-043`` — ``TranscendentalOutOfDomain``: a non-finite ``exp``/``log``
@@ -6238,6 +6333,40 @@ consequences are the ordinary kind of review item.
        train. Until then, ``lib.rs``/``session.rs``'s own doc comments
        state the in-place cross-rule order as a RECORDED GAP citing this
        row, never as "the frozen engine's semantics, inherited for free."
+
+       **Correction (Task W2, BSL Hygiene Knock-out, 2026-08-18): the
+       "Latent today" premise above is FALSE.** It generalized from
+       ``vitality.bsl``'s own one-rule-per-system-position design choice
+       to "every landed rule pack" — but a direct count
+       (``rg -c '^(rule ' content/rules/*.bsl``) finds
+       ``consciousness.bsl`` alone carries TEN rules at its single anchor
+       position (Consequences @17.0), and ``decomposition.bsl`` (six),
+       ``territory.bsl`` (five), ``production.bsl`` (five) and
+       ``control-ratio.bsl`` (four) are ALSO multi-rule packs at one
+       position. **Corrected (W2 fix round 1, review finding M1):** by
+       PACK count this is 5 of 13 (38%), not a majority — the rule-
+       weighted reading is what supports "the norm": 30 of the corpus's
+       38 rules sit in packs with siblings at one anchor position (79%),
+       against 8 rules in the 8 remaining single-rule packs (``vitality``,
+       ``lifecycle``, ``dispossession``, ``metabolism``, ``organization``,
+       ``solidarity``, ``worldview``, ``fundamental-theorem``) — this
+       row's premise assumed the single-rule shape was the corpus's
+       default, and by either count it is not the majority of the
+       corpus's actual rule content. The W2 pre-audit table (task report:
+       ``.superpowers/sdd/2026-08-18-bsl-hygiene-knockout/task-w2-
+       report.md``) found the gap this row calls latent is EXERCISED
+       throughout ``consciousness.bsl`` — 13 bindings whose
+       ``:optional :default`` is mechanically exposed to a same-tick
+       writer sorting on/after the reader (rows 3-9, 14-16, 18, 20, 22),
+       every one of them mitigated by guard structure or a documented
+       one-tick-lag idiom rather than by the gap being unreached — plus a
+       6-field multi-writer census with zero literal unconditional
+       resets pre-repair. §4.2's own end now carries two load refusals
+       (``E-LOAD-058``/``E-LOAD-059``) that check exactly this gap,
+       content-set-wide, at load. This row's history stands unedited
+       above (Immutability of History) — the premise it recorded was
+       accurate for the estate as it stood when D116 was written and is
+       false for the estate as it now stands.
    * - D117
      - §5.2
      - **Resolved (#528 fix round, PR #528's own adversarial-verifier

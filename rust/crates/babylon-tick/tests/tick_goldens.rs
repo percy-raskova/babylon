@@ -713,6 +713,82 @@ fn control_ratio_zero_enforcer_conformance_hashes_are_pinned() {
     );
 }
 
+const VITALITY_ATTRITION_SCENARIO: &str =
+    include_str!("../content/scenarios/vitality-attrition-conformance.bscn");
+const VITALITY_ATTRITION_RULE: &str = include_str!("../content/rules/vitality-attrition.bsl");
+
+/// The K=16 wealth-mass carrier's own golden (#491 T4, Phase 1 — "the
+/// carrier, inert"; ADR194 R1). `vitality_attrition_conformance.rs`'s own
+/// posture suite already pins every STRUCTURAL claim this hash summarizes
+/// (the exact-1.0 mass sums, the absence fence, cut monotonicity/
+/// positivity, η/τ's ruled values, the Currency-lane round-trip); this
+/// golden exists to catch ANY unintentional drift a structural assertion
+/// happens not to cover — the same class of blind spot
+/// `territory_conformance_hashes_are_pinned`'s own header names.
+///
+/// `before == after` here is not a bug, and **stays true post-T5** for a
+/// DIFFERENT reason than T4's own probe gave it: `vitality-attrition.bsl`
+/// no longer carries a never-firing probe (T5, Phase 3a, replaced it with
+/// `vitality/subsistence-clearing`, the dual measure `clearing`/
+/// `failing_certain`/`straddle_band`) — the rule fires for FOUR of the six
+/// classes now (`report.fired == 4`, updated below from T4's `0`), but its
+/// only effect is `emit`, which never touches graph state (III.11: no
+/// `update-node`/`update-edge`/`update-hyperedge`/`add-*`/`remove-*` verb
+/// appears in the rule at all — `vitality_attrition_conformance.rs`'s own
+/// T5 suite reads the emitted events, not post-tick graph state, for
+/// exactly this reason). So this tick still moves no STATE even though it
+/// is no longer a load-only smoke — T5.7's own framing, "a binding and a
+/// condition, no effect." What this pin actually guards is the substrate LOAD:
+/// six social classes, the Currency-lane re-seed of `wealth`/`s-bio`/
+/// `s-class` (T3, OQ-J — this is the FIRST conformance world in this crate
+/// to declare a `currency` node attribute, so `CanonicalState` section
+/// `0x06` (D189/D190) materializes for it; this pin is that section's
+/// first real-content byte measurement, not derived from any pre-existing
+/// pin above), the sixteen-mass carrier (five explicit 16-value vectors
+/// plus one class carrying none at all), the fifteen grid-cut defconsts,
+/// and η/τ. Measured, never derived: `run_once` against the committed
+/// content, `hex(&report.before)`/`hex(&report.after)` read back and
+/// pasted here verbatim (`tick_goldens.rs`'s own doctrine, lines 21-23
+/// above). New in this train, so this is a measurement, not a ceremony
+/// (III.13 baseline ceremonies apply to `tests/baselines/**`, not this
+/// crate's own goldens); the SIXTEEN pre-existing pins above (verified by
+/// direct count against this checkout's BASE, `ec3e1867` — sixteen
+/// `fn .*hashes_are_pinned` tests, eighteen `#[test]` functions total
+/// counting the two ordinal guards) stay byte-identical, proven by running
+/// this crate's full suite both before and after this pin's own addition.
+#[test]
+fn vitality_attrition_carrier_hashes_are_pinned() {
+    let report = run_once(VITALITY_ATTRITION_SCENARIO, VITALITY_ATTRITION_RULE)
+        .expect("vitality-attrition carrier tick");
+    assert_eq!(
+        hex(&report.before),
+        "d93402d63a499c47b4361e036ce6a9f7d846766fda0192bde9add403434aa7e0",
+        "pre-tick hash moved — this is the SUBSTRATE'S load of \
+         vitality-attrition-conformance.bscn (six social classes, the \
+         Currency-lane re-seed, the K=16 mass carrier, the fifteen cuts, \
+         η and τ) — the FIRST pin in this crate to exercise CanonicalState \
+         section 0x06 with real content"
+    );
+    assert_eq!(
+        hex(&report.after),
+        "d93402d63a499c47b4361e036ce6a9f7d846766fda0192bde9add403434aa7e0",
+        "post-tick hash moved — `vitality/subsistence-clearing` (T5) fires \
+         for four of six classes now, but its only effect is `emit`, which \
+         never touches graph state, so `after` still equals `before`; a \
+         divergence here means the tick mutated state through a channel \
+         other than emit, which is its own bug, exactly as \
+         `organization_foundation_hashes_are_pinned`'s own header explains"
+    );
+    assert_eq!(
+        report.fired, 4,
+        "T5's dual-measure rule fires for core, bourgeoisie, hermit, \
+         last-worker; remnant (mass-sum = 0, the absence fence) and \
+         dissolved (active = 0) do not — updated from T4's `0` now that \
+         this namespace has its first real consumer \
+         (`vitality_attrition_conformance.rs`'s T5 suite)"
+    );
+}
+
 const CARCERAL_ARC_SCENARIO: &str =
     include_str!("../content/scenarios/carceral-arc-conformance.bscn");
 

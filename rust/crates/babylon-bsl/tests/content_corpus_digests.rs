@@ -109,7 +109,7 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     ),
     (
         "solidarity.bsl",
-        "5270eb991d4ace5fd54bbedbf7bbc43a2f3aa974483760ce3bf4f9a567afb61a",
+        "0a097f3c88ba6f03cbb79b03a160eeaf1179139164403f188575bc57755bcc8f",
     ),
     (
         "territory.bsl",

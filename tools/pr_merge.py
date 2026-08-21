@@ -44,11 +44,36 @@ def _gh_json(*args: str) -> object:
     return json.loads(_gh(*args))
 
 
+def _entry_sort_key(entry: dict[str, object]) -> tuple[str, int]:
+    """Recency key for duplicate check names on one head SHA.
+
+    Re-runs (flake retry, close/reopen refire) leave several rollup entries
+    per name; branch protection evaluates the LATEST per context and so must
+    we — a superseded failure must not poison the verdict (bit PR #673 on
+    2026-08-21). Prefer ``startedAt``; fall back to the run id embedded in
+    ``detailsUrl`` (``.../actions/runs/<id>/job/...``).
+    """
+    started = str(entry.get("startedAt") or "")
+    if started:
+        return (started, 0)
+    url = str(entry.get("detailsUrl") or entry.get("targetUrl") or "")
+    run_id = 0
+    if "/actions/runs/" in url:
+        tail = url.split("/actions/runs/", 1)[1].split("/", 1)[0]
+        run_id = int(tail) if tail.isdigit() else 0
+    return ("", run_id)
+
+
 def _rollup_failures(rollup: list[dict[str, object]]) -> list[str]:
     """Names of rollup entries that are not green, plus missing criticals."""
+    latest: dict[str, dict[str, object]] = {}
+    for entry in rollup:
+        name = str(entry.get("name") or entry.get("context") or "?")
+        if name not in latest or _entry_sort_key(entry) >= _entry_sort_key(latest[name]):
+            latest[name] = entry
     failures: list[str] = []
     passed: set[str] = set()
-    for entry in rollup:
+    for entry in latest.values():
         name = str(entry.get("name") or entry.get("context") or "?")
         status = str(entry.get("status") or "")
         conclusion = str(entry.get("conclusion") or entry.get("state") or "")

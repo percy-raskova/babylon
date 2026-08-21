@@ -26,6 +26,7 @@
 use babylon_bsl::scenario::load_scenario;
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::substrate::{Direction, GraphError, GraphSubstrate, HyperedgeId, NodeId};
+use babylon_kernel::currency::Currency;
 
 // ---- Step 1: the pre-existing catch-all refusal, still live for a form
 // that really is unknown (a `hyperedge` tag no longer hits this arm, but a
@@ -382,6 +383,22 @@ impl GraphSubstrate for OrderSpyGraph {
 
     fn node_attribute(&self, id: NodeId, attribute: &str) -> Result<f64, GraphError> {
         self.inner.node_attribute(id, attribute)
+    }
+
+    // The Currency lane (T3, #491/OQ-J): pure delegation, un-spied — this
+    // double exists to watch hyperedge membership calls only, and the
+    // currency lane never participates in those.
+    fn update_node_currency(
+        &mut self,
+        id: NodeId,
+        attribute: &str,
+        value: Currency,
+    ) -> Result<(), GraphError> {
+        self.inner.update_node_currency(id, attribute, value)
+    }
+
+    fn node_attribute_currency(&self, id: NodeId, attribute: &str) -> Result<Currency, GraphError> {
+        self.inner.node_attribute_currency(id, attribute)
     }
 
     fn node_exists(&self, id: NodeId) -> bool {

@@ -14,9 +14,58 @@
 //!
 //! Scope (deliberately narrow, per the plan): the fold BODY here is a bare
 //! field reference, so its kind is always a declared `FieldKind`.
-//! Kind-NEUTRAL bodies (literals, `:const` bindings, arithmetic over them)
-//! arrive with the expression typechecker in later tasks, as does
-//! `E-TYPE-040` kind mixing.
+//!
+//! **The expression-kind arm (#491 T1, ADR202 R1(c)/OQ-I).** Kind-NEUTRAL
+//! bodies (literals, `:const` bindings) and `E-TYPE-040` kind mixing over
+//! `<arith>` and `if` are implemented below, by [`check_kind_mixing`] and
+//! its private `expr_kind` family — a SEPARATE walk from
+//! [`typecheck_aggregation`]'s fold-specific one, extending the crate's
+//! existing dispatch (the sequence of typecheck passes `rule_pipeline`
+//! composes) rather than restructuring the fold arm. §3.4's `*`/`/` bullet
+//! is split by this repair: extensive × extensive stays `E-TYPE-040` (an
+//! area-of-an-area), but extensive ÷ extensive is now LICENSED as
+//! **intensive** — `w̄ = wealth ÷ population` is the textbook definition of
+//! an intensive quantity (density = mass ÷ volume), the same unit-algebra
+//! standing D90 already took for the symmetric weighted-mean gap.
+//! Extensive × intensive is ALSO legal (result extensive) — found reading
+//! `lifecycle.bsl`'s real, committed `new-wealth-d-prime = wealth-d-prime
+//! × surviving-fraction` while gating this repair (not in the plan): a
+//! stock scaled by a fraction is the ordinary case, not an area-of-an-area,
+//! and a first draft that refused it broke committed content. `if` absorbs
+//! a kind-neutral branch the same way `+`, `-` and `*` do — found reading
+//! the SAME rule's `surviving-fraction` binding, whose two `if` branches
+//! are Intensive and Neutral respectively. **Intensive × intensive is ALSO
+//! legal (result intensive)** — controller adjudication, 2026-08-18,
+//! delegated Director provenance, the third instance of this defect class
+//! found reading `consciousness.bsl`'s real, committed `p6-route`:
+//! `delta-r = (* (* consumed eff-sol) routing-scale)` where `consumed`
+//! (`agitation × consumption-rate`) and `eff-sol` (a solidarity/chauvinist
+//! ratio) are both intensive, and the product feeds `r1 = r + delta-r`
+//! where `r` (`social-class/revolutionary`) is itself intensive — the
+//! standard dimensional rule: the product of two intensive quantities (a
+//! rate scaled by a dimensionless coefficient) is intensive, the same
+//! "scale by a dimensionless factor" logic already licensed for extensive
+//! × intensive, applied to the other pairing. **Intensive ÷ intensive is
+//! ALSO legal (result intensive)** — same sitting, same delegated
+//! provenance, the fourth straddle site: licensing `*` above exposed
+//! `p6-route`'s own next site, `r2`/`l2`/`f2`'s simplex renormalization
+//! (`(/ r1 total)` and siblings, `r1`/`l1`/`f1`/`total` all intensive). A
+//! ratio of two intensive quantities is a dimensionless share — simplex
+//! normalization is the canonical intensive operation this coarse
+//! two-kind algebra has a name for. A complete static sweep of every
+//! `<arith>`/`if` site across all 13 committed rule files (not just
+//! `p6-route`) found no other site either ruling's shape would still
+//! refuse. Every combination still unlicensed — extensive mixed with
+//! intensive under `/` specifically (division is not commutative, so
+//! `*`'s licensed mixed case does not carry over) — stays conservatively
+//! refused, matching the bullet's own "deliberately conservative,
+//! Phase-1 review item" framing for the one case it did name, extended
+//! (not invented) to the cases it never named. `:metric`
+//! bindings and `metric-of` reads decline to constrain (`None`, not a
+//! guess): §2.11's metric-kind registry is not threaded through `TypeEnv`
+//! yet, a disclosed Phase-1 gap, not a silent pass — matching this
+//! module's own established policy of naming gaps rather than hiding them
+//! (see `rule_pipeline`'s compound-fold-body doc for the same shape).
 //!
 //! **Why the refusal is principled, not stylistic (CT4P B4, issue #525).**
 //! Extensive quantities close under an associative combine with an honest
@@ -58,6 +107,15 @@ pub enum TypeCode {
     /// body is never evaluated (§3.4 row 6), so an enum-declared body
     /// there is inert rather than a content error.
     EnumFoldBody,
+    /// `E-TYPE-040` — an `<arith>` or `if` expression mixes intensive and
+    /// extensive kinds (§3.4): `+`/`-` never mixes kind; `*`/`/` never
+    /// mixes kind and additionally refuses extensive × extensive — the
+    /// licensed same-kind cases are extensive ÷ extensive → intensive
+    /// (D90/D181, the `w̄ = wealth ÷ population` shape, ADR202 R1(c),
+    /// #491 T1), intensive × intensive → intensive (D182), and
+    /// intensive ÷ intensive → intensive (D183); `if` never lets its
+    /// branches disagree in kind.
+    KindMixing,
 }
 
 impl TypeCode {
@@ -71,6 +129,7 @@ impl TypeCode {
             Self::UnweightedMeanOfIntensive => "E-TYPE-042",
             Self::NonExtensiveWeight => "E-TYPE-043",
             Self::EnumFoldBody => "E-TYPE-044",
+            Self::KindMixing => "E-TYPE-040",
         }
     }
 }
@@ -358,6 +417,370 @@ pub fn check_no_arithmetic_on_enum_field(expr: &SExpr, env: &TypeEnv) -> Result<
     Ok(())
 }
 
+// ---- §3.4's expression-kind arm: `<arith>` and `if` (#491 T1, E-TYPE-040) ----
+
+/// The coarse **kind** of an `<expr>` — §3.4's `extensive`/`intensive`
+/// axis, widened with the one state no *field* may declare:
+/// **kind-neutral** (a literal, a `:const` binding — "a coefficient has no
+/// extent"). [`crate::types::FieldKind`] stays field-scoped on purpose
+/// (every `deffield` picks intensive or extensive, never neutral); this
+/// enum is expression-scoped, where neutral is real.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExprKind {
+    /// A literal or a `:const` binding — no extent to mix with anything.
+    Neutral,
+    /// Carries a `deffield`'s (or `field-of`'s) declared extensive kind.
+    Extensive,
+    /// Carries a `deffield`'s (or `field-of`'s) declared intensive kind.
+    Intensive,
+}
+
+/// Build the `E-TYPE-040` error for one `<arith>` node.
+fn kind_mixing_error(op: &str, left: ExprKind, right: ExprKind) -> TypeError {
+    TypeError {
+        code: Some(TypeCode::KindMixing),
+        message: format!(
+            "E-TYPE-040: ({op} …) mixes {left:?}-kinded and {right:?}-kinded operands — \
+             §3.4 requires the same kind, or one kind-neutral (the licensed same-kind \
+             cases are extensive ÷ extensive, intensive × intensive, and intensive ÷ \
+             intensive — D90/D181/D182/D183's unit algebra: w̄ = wealth ÷ population \
+             is the definition of an intensive quantity)"
+        ),
+    }
+}
+
+/// `+`/`-` (§3.4): both operands share a kind, or one is kind-neutral — the
+/// result carries the non-neutral kind. Mixing intensive with extensive is
+/// `E-TYPE-040`. Same-kind is always legal here (unlike `*`/`/` below):
+/// addition never creates the "area of an area" concern multiplication
+/// does.
+fn add_sub_kind(op: &str, left: ExprKind, right: ExprKind) -> Result<ExprKind, TypeError> {
+    match (left, right) {
+        (ExprKind::Neutral, ExprKind::Neutral) => Ok(ExprKind::Neutral),
+        (ExprKind::Neutral, k) | (k, ExprKind::Neutral) => Ok(k),
+        (a, b) if a == b => Ok(a),
+        _ => Err(kind_mixing_error(op, left, right)),
+    }
+}
+
+/// `*`/`/` (§3.4, split by this repair): kind-neutral absorbs either way.
+/// Same-kind-squared is `E-TYPE-040` for `*` (an area-of-an-area) — the
+/// case that stays — but is LICENSED as intensive for `/` when both
+/// operands are extensive: `w̄ = wealth ÷ population`, D90's own
+/// "unit algebra, not new mathematics" standing extended to its symmetric
+/// gap.
+///
+/// **Extensive × intensive is legal, result extensive** (found reading
+/// real content while gating this repair, not in the plan): `lifecycle.bsl`
+/// computes `(binding new-wealth-d-prime :expr (* wealth-d-prime
+/// surviving-fraction))` — a Currency stock times a computed fraction, the
+/// same "total = rate × count" shape as `E-TYPE-030`'s own worked example
+/// (`base_subsistence × population`, §8/T4). Refusing it conservatively,
+/// as this module's first draft did, broke committed content that the
+/// task's own "expect a real find" framing anticipated finding SOMETHING,
+/// just not this: multiplying a stock by a dimensionless fraction/rate is
+/// not an area-of-an-area, it is the ordinary way an extensive quantity
+/// gets scaled. `*` is commutative for this axis (kind carries no operand
+/// order), so extensive ÷ intensive is unreachable — division is NOT
+/// commutative, and only `*`'s two operand positions are symmetric here.
+///
+/// **Intensive × intensive is legal, result intensive** (controller
+/// adjudication, 2026-08-18, delegated Director provenance — morning-
+/// reviewable — the third instance of this defect class, and the one the
+/// Director had already ruled repair-now on: this instance's own correct
+/// repair sits in the ARM, not the content). `consciousness.bsl`'s
+/// `p6-route` computes `delta-r = (* (* consumed eff-sol) routing-scale)`:
+/// `consumed` (`agitation × consumption-rate`) and `eff-sol` (a
+/// solidarity/chauvinist-derived ratio) are both intensive, and the
+/// product feeds `r1 = (+ r delta-r)`, where `r` — `social-class/
+/// revolutionary` — is itself declared intensive, so the consumer already
+/// expects an intensive result. This is the standard dimensional rule: a
+/// rate scaled by a dimensionless coefficient stays a rate. Value-
+/// preserving — no arithmetic changes anywhere this licenses, only the
+/// kind computed for an expression that was always going to evaluate the
+/// same way.
+///
+/// **Intensive ÷ intensive is ALSO legal, result intensive** — the fourth
+/// straddle site (controller adjudication, 2026-08-18, delegated Director
+/// provenance, same sitting, same narrow style: division only, nothing
+/// else). Licensing the `*` arm above exposed `p6-route`'s OWN next site:
+/// `r2`/`l2`/`f2`'s simplex renormalization (`(/ r1 total)` and siblings),
+/// where `r1`/`l1`/`f1`/`total` are all intensive (each `r`/`l`/`f` plus
+/// the now-licensed `delta-r`/`delta-l`/`delta-f`, summed). A ratio of two
+/// intensive quantities is a dimensionless share — simplex normalization
+/// (dividing a part by a whole built from parts of the SAME kind) is the
+/// canonical intensive operation this coarse two-kind algebra has a name
+/// for. Value-preserving, same reasoning as the product case, same
+/// defect class — confirmed by a complete static sweep of every
+/// `<arith>`/`if` site across all 13 committed rule files (not just
+/// `p6-route`) finding NO other site this arm's current shape would still
+/// refuse.
+///
+/// Every combination still unlicensed after this correction — extensive
+/// mixed with intensive under `/` specifically (leg (e): an intensive
+/// numerator over an extensive denominator must not silently become
+/// extensive) — stays conservatively refused, matching the bullet's own
+/// "deliberately conservative, Phase-1 review item" framing for the one
+/// case it did name, extended (not invented) to the cases it never named.
+fn mul_div_kind(op: &str, left: ExprKind, right: ExprKind) -> Result<ExprKind, TypeError> {
+    match (left, right) {
+        (ExprKind::Neutral, ExprKind::Neutral) => Ok(ExprKind::Neutral),
+        (ExprKind::Neutral, k) | (k, ExprKind::Neutral) => Ok(k),
+        (ExprKind::Extensive, ExprKind::Extensive) if op == "/" => Ok(ExprKind::Intensive),
+        (ExprKind::Extensive, ExprKind::Intensive) | (ExprKind::Intensive, ExprKind::Extensive)
+            if op == "*" =>
+        {
+            Ok(ExprKind::Extensive)
+        }
+        // `*` and `/` both land here now (2026-08-18: the product ruling,
+        // then the division ruling, same sitting) — no `op` guard needed,
+        // unlike the extensive-squared cell above, since both operators
+        // now agree on this pair's result.
+        (ExprKind::Intensive, ExprKind::Intensive) => Ok(ExprKind::Intensive),
+        _ => Err(kind_mixing_error(op, left, right)),
+    }
+}
+
+/// A field's declared kind, widened to [`ExprKind`] — `None` for an
+/// `:enum-type`-declared field (`FieldKind::NotApplicable`, D101): §2.13
+/// gives it no arithmetic at all (D118), so it carries no kind for this
+/// axis to speak of, and `None` here declines to constrain rather than
+/// invent one.
+fn field_kind(env: &TypeEnv, qname: &str) -> Option<ExprKind> {
+    match env.fields.get(qname)?.kind {
+        FieldKind::Extensive => Some(ExprKind::Extensive),
+        FieldKind::Intensive => Some(ExprKind::Intensive),
+        FieldKind::NotApplicable => None,
+    }
+}
+
+/// A bound symbol's kind, resolved through its declared source (§2.5).
+/// `None` for a source this pass cannot yet resolve a kind for —
+/// `:metric`/calendar reads — rather than guessing (see this module's
+/// header doc: a disclosed Phase-1 gap, not a silent pass).
+fn symbol_kind(
+    name: &str,
+    env: &TypeEnv,
+    bindings: &[crate::bindings::BindingDecl],
+) -> Result<Option<ExprKind>, TypeError> {
+    let Some(decl) = bindings.iter().find(|d| d.name == name) else {
+        return Ok(None);
+    };
+    match &decl.source {
+        crate::bindings::BindSource::Field(qname) => Ok(field_kind(env, qname)),
+        crate::bindings::BindSource::Const(_) => Ok(Some(ExprKind::Neutral)),
+        crate::bindings::BindSource::Metric(_)
+        | crate::bindings::BindSource::Tick
+        | crate::bindings::BindSource::Year
+        | crate::bindings::BindSource::TickOfYear
+        | crate::bindings::BindSource::TickInCycle(_) => Ok(None),
+        crate::bindings::BindSource::Expr(inner) => expr_kind(inner, env, bindings),
+    }
+}
+
+/// `(field-of <ref> <qname>)` (§2.10): carries the declaration's kind,
+/// identically to a `:field` binding (§3.4).
+fn field_of_kind(items: &[SExpr], env: &TypeEnv) -> Option<ExprKind> {
+    match items.get(2) {
+        Some(SExpr::Atom(Atom::QName(qname))) => field_kind(env, qname),
+        _ => None,
+    }
+}
+
+/// `if` (§3.4): both branches must share a kind. Only RAISES (its own
+/// `Err`) when BOTH branches resolve to a determined, differing kind.
+/// **Review finding F8 (#491 T1):** when only one branch is determined,
+/// this function RETURNS that branch's kind rather than `None` — it
+/// propagates partial information upward instead of declining, which
+/// could in principle manufacture a refusal at an *enclosing* node from
+/// information this node itself never confirmed. Unreachable today (only
+/// `:metric` bindings and calendar reads ever yield `None`, and the
+/// complete static sweep — #491 T1, D183 — found no site where that
+/// matters), and `list_kind`'s own `+`/`-`/`*`/`/` handling correctly
+/// declines on any undetermined operand regardless. Recorded here rather
+/// than fixed because fixing it would need a live counter-example to
+/// choose the right behavior, not a specification default.
+fn if_kind(
+    items: &[SExpr],
+    env: &TypeEnv,
+    bindings: &[crate::bindings::BindingDecl],
+) -> Result<Option<ExprKind>, TypeError> {
+    let (Some(then_expr), Some(else_expr)) = (items.get(2), items.get(3)) else {
+        return Ok(None); // malformed arity — E-PARSE's business, not this pass's
+    };
+    let then_kind = expr_kind(then_expr, env, bindings)?;
+    let else_kind = expr_kind(else_expr, env, bindings)?;
+    match (then_kind, else_kind) {
+        // Kind-neutral absorbs on EITHER branch, exactly as it does for
+        // `+`, `-` and `*` — the "a literal is kind-neutral" propagation
+        // rule is a cross-cutting principle (§3.4's own preamble states it
+        // before ANY operator-specific bullet), not a `+`/`-`-only carve
+        // out. Real content needs this: `lifecycle.bsl`'s
+        // `surviving-fraction` binding is `(if (and …) (- 1 (/ deaths
+        // pop-d-prime)) (- 1 0c))` — the then-branch resolves Intensive
+        // (`1 - (extensive ÷ extensive)`, D90/D181), the else-branch is a
+        // canonical-zero identity fallback, `(- 1 0c)`, both operands
+        // literal and so kind-neutral throughout. A strict "branches must
+        // match exactly" reading would have rejected this genuine,
+        // committed rule; nothing in §3.4's `if` bullet forces that
+        // reading, and the preamble's own neutral rule forbids it.
+        (Some(ExprKind::Neutral), Some(k)) | (Some(k), Some(ExprKind::Neutral)) => Ok(Some(k)),
+        (Some(a), Some(b)) if a == b => Ok(Some(a)),
+        (Some(a), Some(b)) => Err(TypeError {
+            code: Some(TypeCode::KindMixing),
+            message: format!(
+                "E-TYPE-040: (if …) branches disagree in kind — the then-branch is \
+                 {a:?}, the else-branch is {b:?}; §3.4 requires both branches to share \
+                 a kind, or one to be kind-neutral"
+            ),
+        }),
+        (Some(a), None) | (None, Some(a)) => Ok(Some(a)),
+        (None, None) => Ok(None),
+    }
+}
+
+/// A fold's own result kind (§3.4's per-operator table), computed
+/// independently of [`typecheck_aggregation`] — this function does not
+/// touch, call into or restructure that fold arm; it exists so an `<arith>`
+/// operand that is itself a `(fold …)` (T1 leg (e): a weighted intensive
+/// `mean` divided by an extensive field) propagates the RIGHT kind rather
+/// than being silently skipped. `sum` and `count` both always result
+/// extensive (row 1 and row 6: the only legal `sum` body kind IS extensive,
+/// and `count` is `Int`, extensive, regardless of body); `mean`/`min`/`max`
+/// carry the body's own kind unchanged (row 2's weighted-intensive case,
+/// D90, included — the body's kind IS intensive there, and the result is
+/// documented as intensive too, so "carries the body kind" already covers
+/// it without a special case).
+fn fold_kind(
+    items: &[SExpr],
+    env: &TypeEnv,
+    bindings: &[crate::bindings::BindingDecl],
+) -> Result<Option<ExprKind>, TypeError> {
+    let Some(SExpr::Atom(Atom::Symbol(op))) = items.get(1) else {
+        return Ok(None);
+    };
+    let Some(fold_op) = crate::grammar::FoldOp::parse(op) else {
+        return Ok(None);
+    };
+    match fold_op {
+        crate::grammar::FoldOp::Count | crate::grammar::FoldOp::Sum => {
+            Ok(Some(ExprKind::Extensive))
+        }
+        crate::grammar::FoldOp::Mean
+        | crate::grammar::FoldOp::Min
+        | crate::grammar::FoldOp::Max => {
+            // The body follows the query, optionally after `:as <symbol>` —
+            // mirrors `score_class::classify_fold`'s own body-location
+            // logic exactly (same grammar, same shape).
+            let body = match items.get(3) {
+                Some(SExpr::Atom(Atom::Keyword(kw))) if kw == "as" => items.get(5),
+                other => other,
+            };
+            match body {
+                Some(b) => expr_kind(b, env, bindings),
+                None => Ok(None),
+            }
+        }
+    }
+}
+
+/// Classify one `<arith>`/`if`/`field-of`/`fold` form's kind. Total over
+/// the constructs §3.4 names; every other form (comparisons, `and`/`or`,
+/// queries, `select-max`/`select-min`, …) is not kind-bearing and declines
+/// (`None`) rather than guesses.
+fn list_kind(
+    items: &[SExpr],
+    env: &TypeEnv,
+    bindings: &[crate::bindings::BindingDecl],
+) -> Result<Option<ExprKind>, TypeError> {
+    if let Some(SExpr::Atom(Atom::Operator(op))) = items.first() {
+        let rule: fn(&str, ExprKind, ExprKind) -> Result<ExprKind, TypeError> = match op.as_str() {
+            "+" | "-" => add_sub_kind,
+            "*" | "/" => mul_div_kind,
+            _ => return Ok(None), // the six comparisons: Bool, not kind-bearing
+        };
+        let (Some(lhs), Some(rhs)) = (items.get(1), items.get(2)) else {
+            return Ok(None); // malformed arity — E-PARSE-040's business, not this pass's
+        };
+        return match (
+            expr_kind(lhs, env, bindings)?,
+            expr_kind(rhs, env, bindings)?,
+        ) {
+            (Some(l), Some(r)) => rule(op, l, r).map(Some),
+            _ => Ok(None), // one side undetermined — decline rather than guess
+        };
+    }
+    match items.first() {
+        Some(SExpr::Atom(Atom::Symbol(head))) if head == "if" => if_kind(items, env, bindings),
+        Some(SExpr::Atom(Atom::Symbol(head))) if head == "field-of" => {
+            Ok(field_of_kind(items, env))
+        }
+        Some(SExpr::Atom(Atom::Symbol(head))) if head == "fold" => fold_kind(items, env, bindings),
+        _ => Ok(None),
+    }
+}
+
+/// Classify one expression's kind (§3.4). Total, fallible: `Ok(None)` when
+/// this pass declines to constrain (an undetermined source, or a
+/// non-kind-bearing construct); `Err` only for a PROVEN `E-TYPE-040`
+/// violation.
+fn expr_kind(
+    expr: &SExpr,
+    env: &TypeEnv,
+    bindings: &[crate::bindings::BindingDecl],
+) -> Result<Option<ExprKind>, TypeError> {
+    match expr {
+        SExpr::Atom(Atom::Int(_) | Atom::Currency(_) | Atom::Scaled(_) | Atom::Bool(_)) => {
+            Ok(Some(ExprKind::Neutral))
+        }
+        SExpr::Atom(Atom::Symbol(name)) => symbol_kind(name, env, bindings),
+        SExpr::Atom(_) => Ok(None),
+        SExpr::List(items) => list_kind(items, env, bindings),
+    }
+}
+
+/// Walk the whole rule tree and validate every `<arith>`/`if` node's kind
+/// (§3.4) — independently at each occurrence a node is visited, which is
+/// deliberately redundant with `expr_kind`'s own recursion into an
+/// enclosing arith/if's operands: this walker is what reaches an arith/if
+/// node that is NOT nested inside another kind-checked expression (a
+/// `guard` condition, an `update-node` operand, a `select-max` score, a
+/// compound fold body, …), since `expr_kind` alone only ever sees what its
+/// caller hands it.
+///
+/// Extends the crate's existing typecheck dispatch (the sequence
+/// `rule_pipeline` composes, alongside [`check_selection_scores`],
+/// [`check_reference_comparisons`] and [`check_no_arithmetic_on_enum_field`])
+/// — it does not touch, call into or restructure [`typecheck_aggregation`],
+/// the fold arm.
+///
+/// # Errors
+///
+/// [`TypeError`] carrying [`TypeCode::KindMixing`] (`E-TYPE-040`) for a
+/// proven violation.
+pub fn check_kind_mixing(
+    expr: &SExpr,
+    env: &TypeEnv,
+    bindings: &[crate::bindings::BindingDecl],
+) -> Result<(), TypeError> {
+    if let SExpr::List(items) = expr {
+        let is_kinded_form = matches!(
+            items.first(),
+            Some(SExpr::Atom(Atom::Operator(op))) if matches!(op.as_str(), "+" | "-" | "*" | "/")
+        ) || matches!(
+            items.first(),
+            Some(SExpr::Atom(Atom::Symbol(head))) if head == "if"
+        );
+        if is_kinded_form {
+            expr_kind(expr, env, bindings)?;
+        }
+        for child in items {
+            check_kind_mixing(child, env, bindings)?;
+        }
+    }
+    Ok(())
+}
+
 /// Which §2 rule the shared walker is applying. Both need the same thing —
 /// the classes of the element names in scope at each node — and computing
 /// that twice in two walkers is how the empty-map defect survived.
@@ -529,9 +952,10 @@ fn check_one_comparison(items: &[SExpr], env: &ClassEnv<'_>) -> Result<(), TypeE
 #[cfg(test)]
 mod tests {
     use super::{
-        check_reference_comparisons, check_selection_scores, typecheck_aggregation, TypeCode,
-        TypeEnv,
+        check_kind_mixing, check_reference_comparisons, check_selection_scores,
+        typecheck_aggregation, TypeCode, TypeEnv,
     };
+    use crate::bindings::{BindSource, BindingDecl};
     use crate::exemptions::IntensiveAggregationExemption;
     use crate::reader::read;
     use crate::types::{BslType, FieldDecl, FieldKind};
@@ -970,5 +1394,270 @@ mod tests {
         let (expr, _) =
             read("(guard #t (update-node self organization/kind (add 1)))").expect("must parse");
         assert!(super::check_no_arithmetic_on_enum_field(&expr, &org_env()).is_err());
+    }
+
+    // ---- §3.4's expression-kind arm: `<arith>` and `if` (#491 T1,
+    // `E-TYPE-040`, ADR202 R1(c)/OQ-I) ----
+    //
+    // **Mutation-verify (1.5), performed manually against this file at its
+    // FINAL design (post real-content fixes), not committed:**
+    //
+    // (1) Mutated `mul_div_kind`'s `(Extensive, Extensive)` arm's guard
+    // from `if op == "/"` to `if op == "MUTATED-NEVER"` (so NEITHER
+    // operator licenses same-extensive-squared). Ran
+    // `cargo test -p babylon-bsl --locked typecheck::tests`: 31 passed, 2
+    // failed —
+    // `extensive_divided_by_extensive_is_intensive_the_licensed_case`
+    // (leg a) AND
+    // `if_with_one_kind_neutral_branch_absorbs_matching_real_content` (which
+    // also exercises `/` on two extensive fields inside its `if` branch).
+    // Reverted; re-ran clean.
+    //
+    // (2) Mutated the same guard to `if op == "*" || op == "/"` (so `*`
+    // WRONGLY also licenses same-extensive-squared as intensive). Ran the
+    // same command: 32 passed, 1 failed —
+    // `extensive_times_extensive_is_e_type_040_the_case_that_stays` (leg
+    // b), which panicked calling `.unwrap_err()` on the now-`Ok(Intensive)`
+    // result. Reverted; re-ran clean (the full crate suite, 794 tests,
+    // confirmed green after revert — see the T1 report for the exact
+    // command and count).
+    //
+    // (3) Controller adjudication, 2026-08-18 (delegated Director
+    // provenance): mutated the NEW `(Intensive, Intensive) if op == "*"`
+    // arm's guard to `if op == "MUTATED-NEVER"` (so intensive × intensive
+    // stays refused even after this licensing). Ran `cargo test -p
+    // babylon-bsl --locked typecheck::tests`: 34 passed, 1 failed —
+    // `intensive_times_intensive_is_legal_result_intensive_matching_real_content`,
+    // which asserted `Ok(Some(Intensive))` and got the E-TYPE-040 refusal
+    // back instead — the SAME shape as the original (b)/(a) mutations
+    // above, confirming the arm is load-bearing for the new case too.
+    // Reverted; re-ran clean.
+    //
+    // (4) Controller adjudication, 2026-08-18, same sitting (delegated
+    // Director provenance): once the `(Intensive, Intensive)` arm dropped
+    // its `op` guard entirely (merging the `*`- and `/`-licensed cells),
+    // split it back into `if op == "*"` plus a `MUTATED-NEVER`-guarded
+    // second arm for `/` (so intensive ÷ intensive stays refused). Ran the
+    // same command: 35 passed, 1 failed —
+    // `intensive_divided_by_intensive_is_legal_result_intensive_matching_real_content`,
+    // the E-TYPE-040 refusal returned exactly as expected. Reverted; the
+    // arm's real (unguarded) shape re-ran clean.
+
+    fn kind_bindings() -> Vec<BindingDecl> {
+        let field = |name: &str, source: &str| BindingDecl {
+            name: name.to_owned(),
+            source: BindSource::Field(source.to_owned()),
+            optional: false,
+            default: None,
+        };
+        vec![
+            field("ws", "wealth-share"),    // Intensive, Coefficient
+            field("cons", "consciousness"), // Intensive, Intensity
+            field("pop", "population"),     // Extensive, Int
+            field("wealth-b", "wealth"),    // Extensive, Currency
+        ]
+    }
+
+    fn kind_of(source: &str) -> Result<Option<super::ExprKind>, super::TypeError> {
+        let (expr, _) = read(source).expect("test source should parse");
+        super::expr_kind(&expr, &env(), &kind_bindings())
+    }
+
+    #[test]
+    fn extensive_divided_by_extensive_is_intensive_the_licensed_case() {
+        // (a): w̄ = wealth ÷ population — D90/D181's unit algebra, the
+        // definition of an intensive quantity (density = mass ÷ volume).
+        assert_eq!(
+            kind_of("(/ wealth-b pop)"),
+            Ok(Some(super::ExprKind::Intensive))
+        );
+    }
+
+    #[test]
+    fn extensive_times_extensive_is_e_type_040_the_case_that_stays() {
+        // (b): an area-of-an-area — the one case the old combined bullet
+        // already named, and the only one this repair does NOT relicense.
+        let err = kind_of("(* wealth-b pop)").unwrap_err();
+        assert_eq!(err.code, Some(TypeCode::KindMixing));
+        assert!(err.message.contains("E-TYPE-040"), "{}", err.message);
+    }
+
+    #[test]
+    fn intensive_plus_or_minus_extensive_is_e_type_040_the_plus_minus_bullet_also_unwritten() {
+        // (c): the `+`/`-` bullet's own "mixing intensive with extensive is
+        // E-TYPE-040" clause — unimplemented before this repair, same as
+        // the `*`/`/` one.
+        for op in ["+", "-"] {
+            let source = format!("({op} ws pop)");
+            let err = kind_of(&source).unwrap_err();
+            assert_eq!(err.code, Some(TypeCode::KindMixing), "{op}: {err:?}");
+            assert!(err.message.contains("E-TYPE-040"), "{op}: {}", err.message);
+        }
+    }
+
+    #[test]
+    fn if_branches_disagreeing_in_kind_is_e_type_040() {
+        // (d): consciousness (intensive) vs. population (extensive).
+        let err = kind_of("(if #t cons pop)").unwrap_err();
+        assert_eq!(err.code, Some(TypeCode::KindMixing));
+        assert!(err.message.contains("E-TYPE-040"), "{}", err.message);
+    }
+
+    #[test]
+    fn if_with_one_kind_neutral_branch_absorbs_matching_real_content() {
+        // Regression, found reading `lifecycle.bsl:303-306`'s real,
+        // committed `surviving-fraction` binding while gating this repair:
+        // `(if (and …) (- 1 (/ deaths pop-d-prime)) (- 1 0c))`. The
+        // then-branch resolves Intensive (extensive ÷ extensive, D90/D181,
+        // then `1 -` absorbs neutral); the else-branch, `(- 1 0c)`, is a
+        // canonical-zero identity fallback over two literals — Neutral
+        // throughout. A strict "branches must match" `if` rule would have
+        // wrongly rejected this genuine content; kind-neutral absorbs on
+        // either branch instead, exactly as it does for `+`, `-` and `*`.
+        assert_eq!(
+            kind_of("(if #t (- 1 (/ wealth-b pop)) (- 1 0c))"),
+            Ok(Some(super::ExprKind::Intensive))
+        );
+        // The symmetric direction (neutral then-branch, non-neutral else).
+        assert_eq!(
+            kind_of("(if #t (- 1 0c) (- 1 (/ wealth-b pop)))"),
+            Ok(Some(super::ExprKind::Intensive))
+        );
+    }
+
+    #[test]
+    fn extensive_times_intensive_is_legal_result_extensive_matching_real_content() {
+        // Regression, found reading `lifecycle.bsl:307`'s real, committed
+        // `new-wealth-d-prime = wealth-d-prime × surviving-fraction`: a
+        // Currency stock (extensive) times a computed fraction (intensive)
+        // — the ordinary "scale a stock by a rate/fraction" shape, not an
+        // area-of-an-area. A first draft of this repair conservatively
+        // refused every mixed extensive/intensive `*`/`/` combination and
+        // broke this genuine content; extensive × intensive is licensed,
+        // legal in EITHER operand order (kind carries no operand-order
+        // information, unlike the value itself).
+        assert_eq!(
+            kind_of("(* wealth-b ws)"),
+            Ok(Some(super::ExprKind::Extensive))
+        );
+        assert_eq!(
+            kind_of("(* ws wealth-b)"),
+            Ok(Some(super::ExprKind::Extensive))
+        );
+    }
+
+    #[test]
+    fn intensive_times_intensive_is_legal_result_intensive_matching_real_content() {
+        // Controller adjudication, 2026-08-18 (delegated Director provenance):
+        // regression, found reading `consciousness.bsl`'s real, committed
+        // `p6-route`: `delta-r = (* (* consumed eff-sol) routing-scale)`,
+        // where `consumed` (`agitation × consumption-rate`) and `eff-sol`
+        // (a solidarity/chauvinist-derived ratio) are both intensive. The
+        // product feeds `r1 = (+ r delta-r)`, and `r` (`social-class/
+        // revolutionary`) is itself declared intensive — the consumer
+        // already expects an intensive result. Standard dimensional rule:
+        // a rate scaled by a dimensionless coefficient is still a rate.
+        // Legal in either operand order (kind carries no operand-order
+        // information).
+        assert_eq!(kind_of("(* ws cons)"), Ok(Some(super::ExprKind::Intensive)));
+        assert_eq!(kind_of("(* cons ws)"), Ok(Some(super::ExprKind::Intensive)));
+    }
+
+    #[test]
+    fn intensive_divided_by_intensive_is_legal_result_intensive_matching_real_content() {
+        // Controller adjudication, 2026-08-18 (delegated Director provenance,
+        // same sitting, same narrow style as the product ruling above): the
+        // fourth straddle site, found reading `consciousness.bsl`'s real,
+        // committed `p6-route` simplex renormalization — `r2 = (/ r1
+        // total)` and its `l2`/`f2` siblings, where `r1`/`l1`/`f1`/`total`
+        // are all intensive (each of `r`/`l`/`f` plus the now-licensed
+        // `delta-r`/`delta-l`/`delta-f`, summed). A ratio of two intensive
+        // quantities is a dimensionless share — simplex normalization is
+        // the canonical intensive operation. Legal in either operand
+        // order (kind carries no operand-order information).
+        assert_eq!(kind_of("(/ ws cons)"), Ok(Some(super::ExprKind::Intensive)));
+        assert_eq!(kind_of("(/ cons ws)"), Ok(Some(super::ExprKind::Intensive)));
+    }
+
+    #[test]
+    fn extensive_mixed_with_intensive_under_divide_stays_refused_narrow_licensing() {
+        // Both the product (2026-08-18) and division (2026-08-18, same
+        // sitting) rulings are narrow: same-kind pairs only (E÷E was
+        // already licensed by D181; I×I and I÷I by D182/D183). A MIXED
+        // extensive/intensive pair under `/`, in either operand position,
+        // is a different, still-undecided question — leg (e)'s own
+        // intensive-numerator-over-extensive-denominator refusal, and its
+        // mirror image, must both still refuse after this ruling.
+        for source in ["(/ ws wealth-b)", "(/ wealth-b ws)"] {
+            let err = kind_of(source).unwrap_err();
+            assert_eq!(err.code, Some(TypeCode::KindMixing), "{source}: {err:?}");
+            assert!(
+                err.message.contains("E-TYPE-040"),
+                "{source}: {}",
+                err.message
+            );
+        }
+    }
+
+    #[test]
+    fn weighted_mean_of_intensive_divided_by_extensive_does_not_silently_become_extensive() {
+        // (e): a weighted `mean` over an intensive body has result kind
+        // intensive (D90) — dividing that by another extensive field must
+        // not silently classify as extensive. This train's conservative
+        // mixed-kind refusal (§3.4, the case the old bullet never named)
+        // makes it a proven E-TYPE-040 instead — loud, not silent, and
+        // never mislabeled extensive.
+        let result =
+            kind_of("(/ (fold mean (nodes NodeType/SOCIAL_CLASS) ws :weight pop) wealth-b)");
+        assert_ne!(
+            result,
+            Ok(Some(super::ExprKind::Extensive)),
+            "must not silently become extensive: {result:?}"
+        );
+        let err = result.unwrap_err();
+        assert_eq!(err.code, Some(TypeCode::KindMixing));
+    }
+
+    #[test]
+    fn a_weighted_intensive_mean_alone_classifies_as_intensive_d90() {
+        // The fold-kind half of leg (e), isolated: the D90 result kind,
+        // computed by this module's OWN independent `fold_kind` (not by
+        // `typecheck_aggregation`, which this repair does not touch).
+        assert_eq!(
+            kind_of("(fold mean (nodes NodeType/SOCIAL_CLASS) ws :weight pop)"),
+            Ok(Some(super::ExprKind::Intensive))
+        );
+    }
+
+    #[test]
+    fn kind_neutral_absorbs_on_every_operator() {
+        // A literal is kind-neutral (§3.4): mixing it with any single kind
+        // is always legal and carries that kind through.
+        assert_eq!(
+            kind_of("(+ wealth-b 1$)"),
+            Ok(Some(super::ExprKind::Extensive))
+        );
+        assert_eq!(kind_of("(- ws 0.1c)"), Ok(Some(super::ExprKind::Intensive)));
+        assert_eq!(kind_of("(* pop 2)"), Ok(Some(super::ExprKind::Extensive)));
+        assert_eq!(kind_of("(/ cons 2)"), Ok(Some(super::ExprKind::Intensive)));
+    }
+
+    #[test]
+    fn check_kind_mixing_walks_a_whole_tree_and_finds_a_nested_violation() {
+        // The pipeline-facing entry point: a violation nested two levels
+        // deep (not itself an <arith>/if top-level form) must still be
+        // reached, mirroring `check_no_arithmetic_on_enum_field`'s own
+        // nested-guard coverage above. `check_kind_mixing` is a raw tree
+        // walker, agnostic of `guard`'s own effect grammar, so this proves
+        // the recursion without needing a full valid rule.
+        let (expr, _) = read("(guard #t (+ ws pop))").expect("must parse");
+        let err = check_kind_mixing(&expr, &env(), &kind_bindings()).unwrap_err();
+        assert_eq!(err.code, Some(TypeCode::KindMixing));
+    }
+
+    #[test]
+    fn check_kind_mixing_accepts_a_clean_tree() {
+        let (expr, _) = read("(guard #t (+ wealth-b 1$))").expect("must parse");
+        assert!(check_kind_mixing(&expr, &env(), &kind_bindings()).is_ok());
     }
 }

@@ -126,6 +126,25 @@
 //! doesn't snap. The FASCIST flip lands at tick 2 (the
 //! `tick_two_accumulation_witness` below).
 //!
+//! **Post-repair note (#491 T1, D183, controller adjudication 2026-08-18,
+//! C1's own ceremony):** the transcript above is the FROZEN-ADJACENT
+//! dual-implementation oracle's own output, transcribed verbatim and NOT
+//! regenerated for this repair (the same discipline
+//! `solidarity_conformance.rs` uses for its own oracle) — it still reads
+//! the pre-C1 formula (raw `Δwealth` as the rent term) and its
+//! `class-bribed` row (`l=0.372, f=0.528, agitation_out=0.81,
+//! dominant='FASCIST'`) is now STALE. C1 re-expresses the rent term as
+//! `Δwealth ÷ previous-wealth` (a proportional rate, licensed extensive ÷
+//! extensive → intensive, T1's own E-TYPE-040 arm) rather than the raw
+//! absolute figure; class-bribed's actual tick-2 output is now `l≈0.5976,
+//! f≈0.3024, agitation_out≈0.008526315789473686, dominant='LIBERAL'` — the
+//! flip this transcript's row and the ruling above describe no longer
+//! happens. Every OTHER row (all other classes, all `tv-*` fixtures, every
+//! fired count) is unaffected — verified in
+//! `measured_update_law_matches_the_dual_implementation_exactly` and
+//! `tick_two_accumulation_witness` below, both re-measured, not derived
+//! from this stale transcript.
+//!
 //! The four spelling-spike verdicts
 //! Task 1 was chartered to settle are recorded in the scenario file's own
 //! header; the store-side facts they rest on:
@@ -532,16 +551,26 @@ fn measured_update_law_matches_the_dual_implementation_exactly() {
         (
             CLASS_BRIBED,
             0.1,
-            0.48,
-            0.42,
-            0.9,
+            0.5987368421052631,
+            0.30126315789473684,
+            0.009473684210526316,
             0.0,
             0.09090909090909091,
             12.0,
             90.0,
-            // Ruling A: tick-1 dominant is LIBERAL — the witness is the
-            // ROUTING (Δf +0.12, Δr 0, eff_sol chauvinist-clamped to 0);
-            // the FASCIST flip lands at tick 2.
+            // Ruling A (pre-#491-T1-C1): tick-1 dominant was LIBERAL — the
+            // witness was the ROUTING (Δf +0.12, Δr 0, eff_sol
+            // chauvinist-clamped to 0); the FASCIST flip landed at tick 2.
+            // RE-MEASURED (#491 T1, D183, controller adjudication
+            // 2026-08-18, C1's own ceremony): the rent term now reads
+            // Δwealth ÷ previous-wealth (a proportional rate, 5/95 ≈
+            // 5.26%) instead of the frozen's raw Δwealth = 5 (an absolute
+            // Currency figure) — agitation drops ~95x (0.9 -> ~0.0095) and
+            // the fascist-routing pressure weakens correspondingly (Δf
+            // shrinks from +0.12 to ~+0.0013). Tick-1 stays LIBERAL, same
+            // ordinal as before; the MAGNITUDE is what moved. See
+            // `tick_two_accumulation_witness` below: the tick-2 FASCIST
+            // flip this comment used to describe no longer happens.
             LIBERAL,
         ),
         (
@@ -663,8 +692,21 @@ fn measured_update_law_matches_the_dual_implementation_exactly() {
 /// tick-2's wage/wealth increments are ZERO (the pushed wage flow
 /// unchanged, the persisted baselines now equal it — the zero increment IS
 /// the persist machinery's differential witness) and the tick-1 decayed
-/// agitation routes again: class-bribed's dominant flips LIBERAL -> FASCIST
-/// at tick 2. Hegemony erodes; it doesn't snap.
+/// agitation routes again.
+///
+/// **Re-measured (#491 T1, D183, controller adjudication 2026-08-18, C1's
+/// own ceremony): class-bribed's dominant NO LONGER FLIPS to FASCIST at
+/// tick 2.** Before C1, the rent term read the frozen's raw absolute
+/// `Δwealth` (5 out of 90) as an imperial-rent-decline proxy; after C1 it
+/// reads `Δwealth ÷ previous-wealth` (≈5.26%), the proportional rate —
+/// scale-invariant across classes of different wealth, matching how
+/// imperial rent Φ behaves as a ratio everywhere else in this engine. The
+/// SAME nominal $5 loss now barely registers for a $90-wealth class:
+/// agitation drops ~95× (0.9 → ~0.0095 at tick 1), the fascist-routing
+/// pressure weakens correspondingly, and class-bribed stays LIBERAL
+/// through both ticks instead of eroding to FASCIST. This is the intended
+/// material consequence of C1, not a regression: relative, not absolute,
+/// material loss now drives the routing.
 #[test]
 fn tick_two_accumulation_witness() {
     let mut session = babylon_tick::TickSession::new_with_prelude(
@@ -697,7 +739,8 @@ fn tick_two_accumulation_witness() {
 
     const REVOLUTIONARY: f64 = 0.0;
     const LIBERAL: f64 = 1.0;
-    const FASCIST: f64 = 2.0;
+    // FASCIST unused after the D183 re-measurement (below): class-bribed
+    // no longer flips at tick 2 — see the "non-flip, named" comment.
     // (node, r, l, f, agitation-out, dominant) — the generator's tick-2 repr
     // output, verbatim (module header). The tick-1 -> tick-2 agitation
     // ratio is exactly (1 - decay) = 0.9: the zero-increment witness.
@@ -710,7 +753,14 @@ fn tick_two_accumulation_witness() {
             0.12150000000000001,
             REVOLUTIONARY,
         ),
-        (CLASS_BRIBED, 0.1, 0.372, 0.528, 0.81, FASCIST),
+        (
+            CLASS_BRIBED,
+            0.1,
+            0.5976,
+            0.3024,
+            0.008526315789473686,
+            LIBERAL,
+        ),
         (
             CLASS_EMERGENT,
             0.0171,
@@ -741,16 +791,24 @@ fn tick_two_accumulation_witness() {
         );
     }
 
-    // The flip, named: the ADR016 fascist-routing vector's readout is
-    // FASCIST at tick 2 — two ticks of chauvinist-clamped routing (eff_sol
-    // 0 both ticks: inbox 0, positive balance 1/11) eroded l 0.6 -> 0.48 ->
-    // 0.372 under f 0.3 -> 0.42 -> 0.528.
+    // The non-flip, named (re-measured, #491 T1 D183, 2026-08-18): the
+    // ADR016 fascist-routing vector's readout stays LIBERAL at tick 2 —
+    // two ticks of chauvinist-clamped routing (eff_sol 0 both ticks: inbox
+    // 0, positive balance 1/11) still erode l (0.6 -> 0.5987 -> 0.5976
+    // under f 0.3 -> 0.3013 -> 0.3024), but the erosion is now two orders
+    // of magnitude gentler than the frozen absolute-currency reading
+    // produced, because C1's proportional rent term makes the SAME $5
+    // wealth decline barely register against a $90 class wealth. Under
+    // the pre-C1 formula this same test asserted FASCIST here — the flip
+    // no longer happens within these two ticks under the corrected,
+    // scale-invariant reading; hegemony still erodes, but far more slowly
+    // for a wealthy class than a poor one loses the same nominal amount.
     assert_eq!(
         graph
             .node_attribute(CLASS_BRIBED, "social-class/dominant-worldview")
             .expect("bribed dominant at tick 2"),
-        FASCIST,
-        "the flip: hegemony erodes, it doesn't snap"
+        LIBERAL,
+        "no flip: proportional material loss, not absolute, now drives routing"
     );
 
     // The solidarity pushes fire again at tick 2 (p3 gates on the source's

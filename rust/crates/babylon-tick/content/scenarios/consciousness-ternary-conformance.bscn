@@ -244,7 +244,7 @@
   (deffield social-class/wages-inbox real intensive)       ; [0,n) flow-sum — the push-over-pull accumulator (D136): reset by p1, pushed by p2-wages-push, read by p5, persisted by p7
   (deffield social-class/repression-faced intensity intensive) ; declared input only; nothing in Rust writes it yet
   (deffield social-class/previous-wages real intensive)    ; raw units (the persistent_data re-home, digest gap 4)
-  (deffield social-class/previous-wealth real intensive)
+  (deffield social-class/previous-wealth real extensive)    ; same-tick snapshot of social-class/wealth (extensive), written whole by p7-persist-baselines' (set wealth) — a snapshot carries its source's kind (#491 T1 real-content finding; controller adjudication 2026-08-18)
 
   ; ---- defines environment (transcribed; line cites = src/babylon/data/defines.yaml) ----
   (defconst consciousness/routing-scale 0.2c)                    ; :213

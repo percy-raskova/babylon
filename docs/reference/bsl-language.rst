@@ -2647,11 +2647,41 @@ which that is decidable. Kind propagates through expressions:
 - ``+``/``-`` require both operands to have the same kind, or one to be
   kind-neutral; the result carries the non-neutral kind. Mixing intensive with
   extensive is ``E-TYPE-040``;
-- ``*``/``/``: the result is extensive if exactly one operand is extensive,
-  intensive if exactly one is intensive, kind-neutral if both are neutral, and
-  ``E-TYPE-040`` if both are extensive (an area-of-an-area) — this is
-  deliberately conservative and a Phase-1 review item;
-- ``if`` requires both branches to have the same kind.
+- ``*``: kind-neutral absorbs either way; whichever operand is non-neutral,
+  its kind carries through unchanged. Extensive × intensive is legal too, result extensive — a
+  stock scaled by a fraction or a rate (``population × per-capita-rate``) is
+  the ordinary case, not an area-of-an-area, since multiplying by a
+  dimensionless factor does not create a new dimension the way multiplying an
+  extensive quantity by itself does. Intensive × intensive is
+  **[draft ruling — Phase 1 review, #491 T1, controller adjudication
+  2026-08-18]** now **licensed** too, result **intensive** — a rate scaled by
+  a dimensionless coefficient is still a rate (the same "scale by a
+  dimensionless factor" reasoning as extensive × intensive, applied to the
+  other pairing); see the Draft-Ruling Register. Extensive × extensive alone
+  stays ``E-TYPE-040`` (an area-of-an-area) — the one case this bullet has
+  always named, and the only same-kind-squared combination still refused;
+- ``/``: kind-neutral absorbs the same way. Extensive ÷ extensive is
+  **[draft ruling — Phase 1 review, #491 T1]** **licensed**, result
+  **intensive**: ``w̄ = wealth ÷ population`` is the textbook definition of an
+  intensive quantity (density = mass ÷ volume), the same unit-algebra
+  standing D90 (§2.12) already took for the symmetric weighted-mean gap —
+  see the Draft-Ruling Register. Intensive ÷ intensive is
+  **[controller adjudication, 2026-08-18]** now **licensed** too, result
+  **intensive** — a ratio of two intensive quantities is a dimensionless
+  share; simplex normalization (dividing a part by a whole built from parts
+  of the same kind) is the canonical intensive operation. An extensive
+  operand paired with an intensive one, in either position, is now
+  ``E-TYPE-040`` — the pre-split bullet named this pair TWICE,
+  contradictorily ("extensive if exactly one operand is extensive" and
+  "intensive if exactly one is intensive" both matched it, and it was
+  assigned neither), so this is a newly-minted prohibition resolving that
+  internal contradiction conservatively, not a continuation of a prior
+  refusal: deliberately conservative, a Phase-1 review item, and division
+  is not commutative, so ``*``'s licensed mixed case does not carry over
+  to it;
+- ``if`` requires both branches to have the same kind, or one to be
+  kind-neutral (the same absorption rule as ``+``/``-``/``*``/``/``) —
+  mismatched non-neutral kinds are ``E-TYPE-040``.
 
 The aggregation law, per fold operator:
 
@@ -8200,6 +8230,237 @@ consequences are the ordinary kind of review item.
        either dropped-gate path. The RESERVED branch's own comparison, threshold
        source, and role partition are UNCHANGED by this fix; only the surrounding
        ``when``'s completeness moved.
+   * - D181
+     - §3.4
+     - The ``*``/``/`` bullet is **split** (#491 T1, discharging ADR202 R1(c)'s
+       ``E-TYPE-040`` half and OQ-I): ``*`` keeps ``E-TYPE-040`` for
+       extensive × extensive (an area-of-an-area, the case that stays) and
+       gains a licensed extensive × intensive case (result extensive — a
+       stock scaled by a fraction or a rate, e.g. ``population ×
+       per-capita-rate``, found live in ``lifecycle.bsl``'s committed
+       ``new-wealth-d-prime`` binding while gating this repair); ``/`` gets
+       its own rule, **extensive ÷ extensive → intensive**, no error —
+       ``w̄ = wealth ÷ population`` is the textbook definition of an
+       intensive quantity (density = mass ÷ volume), the same unit-algebra
+       standing **D90** already took for the symmetric weighted-mean gap
+       (§2.12: that row's own text names *why* the derivation had to go
+       through the fold table instead of the ``*``/``/`` bullet — this row
+       is what removes that obstruction). Intensive × intensive — a
+       same-kind-squared combination the old bullet genuinely never named
+       — stays conservatively refused, ``E-TYPE-040``, the bullet's own
+       "deliberately conservative, Phase-1 review item" framing extended
+       rather than invented. Extensive mixed with intensive under ``/``
+       specifically, in either operand position, is **[review finding F5,
+       #491 T1]** more precisely a NEWLY-MINTED prohibition, not a
+       continuity: the pre-split bullet named that pair TWICE
+       ("extensive if exactly one operand is extensive" and "intensive if
+       exactly one is intensive" both matched it) and assigned it neither
+       kind nor ``E-TYPE-040`` — this split resolves that internal
+       contradiction conservatively, the same posture as the case the
+       bullet did clearly name, but a genuinely new prohibition rather
+       than an extension of one. ``if``
+       now carries the same kind-neutral absorption rule ``+``/``-``/``*``/
+       ``/`` already state explicitly — found live in the SAME ``lifecycle.bsl``
+       rule's ``surviving-fraction`` binding, whose two ``if`` branches are
+       Intensive and Neutral respectively; a strict "branches must match"
+       reading would have wrongly rejected this committed content, and
+       nothing in the bullet's prior wording forced that reading.
+       Implemented: ``TypeCode::KindMixing``, ``rust/crates/babylon-bsl/
+       src/typecheck.rs`` (``expr_kind``/``list_kind``/``add_sub_kind``/
+       ``mul_div_kind``/``if_kind``/``fold_kind``/``check_kind_mixing``) —
+       a SEPARATE walk from ``typecheck_aggregation``'s fold-specific one,
+       extending the crate's existing typecheck dispatch rather than
+       restructuring the fold arm; wired into ``rule_pipeline::load_rule``.
+       ``ai/bsl-architecture-standard.md``'s error-surface table is
+       repaired to stop grouping ``E-TYPE-040`` with the (already
+       implemented) aggregation-law codes ``041``/``042``/``043`` as though
+       all four shared one implementation. **Intensive × intensive's
+       "stays conservatively refused" disposition here is SUPERSEDED IN
+       PART by D182** — ``*`` only, ``/`` unaffected.
+   * - D182
+     - §3.4
+     - ``*``'s intensive × intensive combination — refused by D181 as one of
+       the "same-kind-squared" cases that bullet left conservative — is now
+       **licensed**, result **intensive**: a rate scaled by a dimensionless
+       coefficient is still a rate, the same "scale by a dimensionless
+       factor" reasoning D181 already used for extensive × intensive,
+       applied to the other pairing. Controller adjudication, 2026-08-18,
+       under the Director's overnight compass delegation (delegated
+       provenance, morning-reviewable) — the THIRD instance of the same
+       defect class the Director had already ruled repair-now on (#491 T1's
+       kind-straddle dossier, ``reports/kind-straddle-repair-options-
+       2026-08-18.md``), found live in ``consciousness.bsl``'s committed
+       ``p6-route``: ``delta-r = (* (* consumed eff-sol) routing-scale)``,
+       where ``consumed`` (``agitation × consumption-rate``) and
+       ``eff-sol`` (a solidarity/chauvinist-derived ratio) are both
+       intensive, and the product feeds ``r1 = (+ r delta-r)`` — ``r``
+       (``social-class/revolutionary``) is itself declared intensive, so
+       the consumer already expected an intensive result. Unlike
+       ``p5-agitation``/``solidarity``'s two straddles, this instance's
+       correct repair sits in the ARM, not the content — VALUE-PRESERVING,
+       no arithmetic changes, only the computed kind for an expression whose
+       runtime result was always the same number. Licensed for ``*`` only:
+       intensive ÷ intensive stays refused, undecided, not this ruling's
+       question (D181's own text stands there unchanged). Implemented:
+       ``mul_div_kind``'s ``(Intensive, Intensive) if op == "*"`` arm,
+       ``rust/crates/babylon-bsl/src/typecheck.rs``. **This row's "intensive
+       ÷ intensive stays refused, undecided" disposition is SUPERSEDED BY
+       D183**, same sitting.
+   * - D183
+     - §3.4
+     - ``/``'s intensive ÷ intensive combination — left refused,
+       "undecided," by D182 — is now **licensed** too, result **intensive**:
+       a ratio of two intensive quantities is a dimensionless share; simplex
+       normalization (dividing a part by a whole built from parts of the
+       same kind) is the canonical intensive operation this coarse two-kind
+       algebra has a name for. Controller adjudication, 2026-08-18, same
+       sitting as D182, same delegated Director provenance — the FOURTH
+       straddle site: licensing D182's ``*`` arm exposed ``p6-route``'s own
+       next site, found live in the SAME committed rule — ``r2``/``l2``/
+       ``f2``'s simplex renormalization, ``r2 = (if (> total (+ 1 eps)) (/
+       r1 total) r1)`` and siblings (``consciousness.bsl:344-347``), where
+       ``r1``/``l1``/``f1``/``total`` are all intensive (each of ``r``/
+       ``l``/``f`` plus the now-D182-licensed ``delta-r``/``delta-l``/
+       ``delta-f``, summed by same-kind ``+``). Value-preserving, same
+       reasoning and defect class as D182. Confirmed by a COMPLETE static
+       sweep of every ``<arith>``/``if`` site across all 13 committed rule
+       files (not just ``p6-route``) before landing — no other site the
+       arm's shape after D182 would still refuse (the sweep script and its
+       verdict: #491 T1's task report,
+       ``.superpowers/sdd/2026-08-17-491-rung-ladder/task-1-report.md``).
+       An extensive operand paired with an intensive one under ``/``, in
+       either position, is a DIFFERENT, still-undecided question and stays
+       refused (D181's own text). Implemented: ``mul_div_kind``'s
+       ``(Intensive, Intensive)`` arm widened to cover both operators (no
+       ``op`` guard needed — ``*`` and ``/`` now agree on this cell),
+       ``rust/crates/babylon-bsl/src/typecheck.rs``.
+   * - D184
+     - §3.4
+     - **S1 relocates a kind straddle rather than resolving it — recorded,
+       not fixed, per review finding F2 (#491 T1's task review,
+       ``.superpowers/sdd/2026-08-17-491-rung-ladder/task-1-review.md``
+       §"F2").** ``solidarity/p0-transmit``'s S1 restructure (the convex
+       combination ``(1 - strength) * target + strength * source``, D181's
+       extensive × intensive licensing applied twice, summed same-kind)
+       types **Extensive** end to end, and it is written whole into
+       ``social-class/revolutionary``, declared ``probability intensive``.
+       It loads today ONLY because this arm checks ``<arith>``/``if`` NODES
+       and has no STORE-BOUNDARY kind rule — nothing in §3.4 as written
+       compares a ``set`` expression's own computed kind against its target
+       field's declared kind. The root cause this relocates rather than
+       resolves is §2.9's language-mandated extensive implicit
+       ``<edge-type>/strength`` field, untouched by S1 (the dossier's own
+       §2.0 "Note on scope" already named this as out of a single rule's
+       reach). **Re-open trigger, stated explicitly:** the natural next
+       rung of this same arm — a store-boundary write-kind check, comparing
+       a ``(set <expr>)``'s computed kind against its target field's
+       declared kind — would immediately re-red ``p0-transmit``. Until such
+       a check lands (or §2.9's implicit-strength default is itself
+       revisited), S1 is arm-satisfying, not dimension-resolving; C1, by
+       contrast, is coherent at both the arithmetic AND the store boundary
+       (its own trace closes: every term of ``increment`` resolves
+       Intensive, and ``social-class/agitation`` is itself ``real
+       intensive``). No content or arm change lands with this row — it is
+       the disclosure the review asked for, filed so the next write-kind
+       rung inherits the context rather than rediscovering it.
+   * - D185
+     - N/A (game-content unit reconciliation, not a BSL grammar construct)
+     - **#491 T2 — the subsistence-unit reconciliation**
+       (``reports/subsistence-unit-reconciliation-2026-08-17.md``): three
+       previously uncommensurable quantities —
+       ``SurvivalDefines.default_subsistence`` (dimensionless ``[0,1]``,
+       ``src/babylon/config/defines/survival.py:23-28``),
+       ``EconomyDefines.base_subsistence`` (a per-member-per-tick rate,
+       ``src/babylon/config/defines/economy_basic.py:267-275``), and
+       ``s_bio + s_class`` (Currency per member per tick,
+       ``rust/crates/babylon-tick/content/rules/vitality.bsl:49-50,74``) —
+       are dimensionally reconciled: a STOCK (``wealth``, ``w̄ = wealth ÷
+       population``) vs. FLOW (``s_bio``/``s_class``) mismatch the frozen
+       engine's own ``coverage_ratio`` (``formulas/vitality.py:38-43``)
+       already diagnoses, without licensing a transcription of its value.
+       The declared unit system adds the mass rows: ``mass_k = (mass^hh_k
+       · η_k) / Σ_j (mass^hh_j · η_j)``, the household→person crossing,
+       whose whole content is ``η_k ≡ 1`` (rung-independent household
+       size) — unmeasurable in-repo (no B25010/B11016/B19019-family
+       table; ``fact_census_housing`` is tenure, not size; ``dim_county``
+       carries no population column). Also named: the ``population == 1``
+       fixture-default accident
+       (``src/babylon/engine/systems/survival.py:128``;
+       ``tests/unit/engine/systems/test_survival.py:45,134-138``) that
+       collapses ``wealth_per_capita`` to ``wealth`` and masks the
+       dimensional mismatch at the one
+       population value where the two are numerically indistinguishable.
+       **DP-7 = A** — the declared identity crossing (a content
+       ``defconst``, dual ``mass_household``/``mass_member`` artifact
+       columns with an empty ``person_equivalence``, and an Aleksandrov
+       row) — ruled 2026-08-18 (posted #491), Director-delegated to the
+       standing gameplay-and-pedagogy compass, controller-adjudicated.
+   * - D186
+     - N/A (game-content unit reconciliation, not a BSL grammar construct)
+     - **τ, the subsistence horizon** (§4 of the same record). The frozen
+       ``coverage_ratio ≥ 1 + inequality`` test cannot license τ:
+       ADR183/ADR210 R13 rule the frozen engine a structure contract, not
+       a threshold oracle, and κ's explicit frozen-magnitude licence (R14)
+       does not extend to τ. Read at R13's own level-set split — mortality
+       ``s_bio`` alone, acquiescence ``s_bio + s_class``
+       (``formulas/vitality.py:29``) — preserving the frozen death level
+       implies ``τ_bio = (s_bio + s_class)/s_bio``, class-varying and ≠ 1,
+       re-importing ``s_class`` into the level set R13 just separated; and
+       it contradicts H3's flow-derived ``L = reserve_army_stock ÷
+       absorption_flow`` (producer hardcoded to ``0``,
+       ``src/babylon/domain/economics/reserve_army/accumulation.py:133``).
+       **DP-5 = A now, C a named revisit** — τ ≡ 1 tick ships as a
+       definitional accounting identity (the tick is the reproduction
+       period; no frozen authority invoked), with the H3-symmetric
+       flow-derived horizon (option C) recorded as a named,
+       not-yet-executed revisit at the ReserveArmy port once the
+       absorption-flow producer exists. Ruled 2026-08-18 (posted #491),
+       same provenance as D185's DP-7 ruling. τ's home stays unaffected by
+       the disposition: a ``.bscn`` ``defconst``
+       (``(defconst vitality/subsistence-horizon …)``), never a
+       ``GameDefines`` field, for the identical ``defines_hash`` reason
+       ADR210 R14 gives for κ.
+   * - D187
+     - §3.2
+     - **The money-vs-money law** (§5 of the same record):
+       ``E-EVAL-013`` as LAW, not merely an evaluator error code. Never
+       compute ``S / w̄`` — ``Currency ÷ Currency → Coefficient`` must
+       land in ``[0,1]`` (``bsl-language.rst:2533-2534``;
+       ``rust/crates/babylon-bsl/src/evaluator.rs:1795-1817``) or the
+       expression raises ``E-EVAL-013``. A class below subsistence has
+       ``S · τ > w̄`` by construction, so the dimensionless spelling
+       fails at runtime for exactly the class the measure exists to
+       describe — invisible on every input where a class is doing fine,
+       the happy path a conformance suite naturally exercises first, and
+       only surfacing at the below-subsistence tail the whole project
+       cares about. Worse than an ordinary bug for exactly that reason.
+       The comparison is money-vs-money, always: ``cut_{k-1} · w̄ ≥ S ·
+       τ``, never ``w̄ / (S·τ)`` against a normalised threshold.
+   * - D188
+     - N/A (game-content unit reconciliation, not a BSL grammar construct)
+     - **The level-set assignment (ADR210 R13) and its owed divergence
+       D-row** (§8.2 of the same record). R13
+       (``ai/decisions/ADR210_checkpoint_a_campaign_rulings.yaml:153-159``)
+       assigns mortality ``s_bio`` alone and acquiescence ``s_bio +
+       s_class``, and explicitly owes a divergence D-row from the frozen
+       ``s_bio + s_class`` death threshold (ADR183: the frozen engine is a
+       structure contract, not a threshold oracle) — this row discharges
+       that obligation. The frozen engine's actual mortality computation
+       (``src/babylon/engine/systems/vitality.py:230-232``,
+       ``_calculate_deaths``) sets ``subsistence_needs = s_bio + s_class``
+       as its death threshold — the combined, acquiescence-side level
+       set, not the ``s_bio``-alone level set R13 assigns to mortality.
+       T5/T6, which build the Grinding-Attrition mortality rule proper
+       under the split level sets, form the landing that executes this
+       departure. (The currently-landed ``vitality.bsl``'s block-of-one
+       Reaper ``consumption-needs = s-bio + s-class`` term, line 74, stays
+       untouched — it guards the *starvation* branch, a different,
+       deliberately narrower mechanism the file's own header, lines
+       12-40, states does not yet transcribe Grinding Attrition.) Also
+       recorded: #546 item 6 (county-varying subsistence) stays open and
+       not foreclosed — ``s_bio``/``s_class`` are already per-class
+       intensive fields, so a per-``(class, county)`` ``S`` needs zero
+       redesign.
 
 Authoring idioms (non-normative)
 -----------------------------------

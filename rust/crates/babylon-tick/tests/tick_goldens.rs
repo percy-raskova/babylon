@@ -380,11 +380,20 @@ fn consciousness_ternary_foundation_hashes_are_pinned() {
     );
     assert_eq!(
         hex(&report.after),
-        "4346278b3e075b338b5d4b847de054da6738d74f05895f8945dad78b13f46da9",
+        "52ffb5e332cca9bddcaf9b77fcdf3ed1efe8e30e9abf3176fe0569e7aa47ff91",
         "post-tick hash moved — the ten-rule pack's combined tick-1 output \
          (p0's positioning, p1..p7's measured update law plus the new \
          p2-wages-push, p8's readout) — attribute-set change only, zero \
-         value drift (Train B item 3's re-pin)"
+         value drift (Train B item 3's re-pin). RE-PINNED (#491 T1, D183, \
+         controller adjudication 2026-08-18: C1/p5-agitation's proportional \
+         rent term, licensed by D181, plus D182/D183's product/division \
+         licensing that unblocked p6-route's load path): class-bribed's \
+         agitation/l/f VALUES moved (not the attribute set) — see \
+         consciousness_ternary_conformance.rs's re-measured assertions and \
+         its module-header post-repair note for the exact numbers and the \
+         ternary-routing consequence (the tick-2 FASCIST flip no longer \
+         happens). report.before, above, is UNCHANGED — no new graph \
+         content, only rule text moved."
     );
     assert_eq!(
         report.fired, 63,
@@ -466,10 +475,21 @@ fn solidarity_conformance_hashes_are_pinned() {
     );
     assert_eq!(
         hex(&report.after),
-        "978dbe30363c3b306bd7fa668e25d48de18c36b93930e9c4d195b5997ed67312",
+        "62212dab6bdc255f334eca1ff2260e2ad939776f15aee744ae771ab1be30b3d1",
         "post-tick hash moved — the one-rule pack's tick-1 output (fourteen \
          subjects fire, nine transmit-or-awaken events, one multi-inbound \
-         last-write-wins divergence from frozen)"
+         last-write-wins divergence from frozen). RE-PINNED (#491 T1 S1, \
+         Director sitting 2026-08-18: repair-now+ceremony): p0-transmit's \
+         write is now a kind-coherent convex combination, algebraically \
+         identical to `target + delta` but not bit-identical for the \
+         multi-inbound witness's non-power-of-2 strength (0.3) — a 1-ULP \
+         rounding-order drift on exactly two attribute bytes \
+         (multi-target's stored value and one CONSCIOUSNESS_TRANSMISSION \
+         payload field), predicted in \
+         reports/kind-straddle-repair-options-2026-08-18.md §2.1 and \
+         confirmed by solidarity_conformance.rs's own updated assertions. \
+         report.before is UNCHANGED (no new graph content, only the rule \
+         text moved)."
     );
     assert_eq!(
         report.fired, 14,

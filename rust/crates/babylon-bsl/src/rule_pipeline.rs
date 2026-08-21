@@ -9,11 +9,14 @@
 //! Stages, in order: read (§1/§2) → rule surface (`:material-basis`
 //! `E-PARSE-011`, `:fuel` range `E-PARSE-012`) → binding declarations
 //! (`E-PARSE-013/022/030/031`) → fold aggregation typecheck (§3.4,
-//! `E-TYPE-041/042/043`) → anchor placement (`E-LOAD-002`) → binding
-//! resolution (`E-LOAD-010/011`) → free variables (`E-LOAD-010`) → static
-//! fuel bound + member-list ceilings (`E-LOAD-040/042`). The `:default`
-//! allowlist lint runs LAST and is carried as findings, not an error —
-//! §3.5 item 4 makes it a sign-off gate, not a load rejection.
+//! `E-TYPE-041/042/043`) → selection-score / reference-comparison / no-
+//! enum-arithmetic typecheck (`E-TYPE-016/017`, D118) → expression-kind
+//! typecheck (§3.4, `E-TYPE-040` — #491 T1, ADR202 R1(c)/OQ-I) → anchor
+//! placement (`E-LOAD-002`) → binding resolution (`E-LOAD-010/011`) →
+//! free variables (`E-LOAD-010`) → static fuel bound + member-list
+//! ceilings (`E-LOAD-040/042`). The `:default` allowlist lint runs LAST
+//! and is carried as findings, not an error — §3.5 item 4 makes it a
+//! sign-off gate, not a load rejection.
 //!
 //! **Fold typecheck adapter (recorded gap):** the §3.4 checker (Task 10)
 //! takes the aggregation shape `(op field (:weight wfield)?)`; this
@@ -48,8 +51,8 @@ use crate::scope::{
 };
 use crate::structural_verbs::check_no_deferred_shape_verbs;
 use crate::typecheck::{
-    check_no_arithmetic_on_enum_field, check_reference_comparisons, check_selection_scores,
-    typecheck_aggregation, TypeEnv, TypeError,
+    check_kind_mixing, check_no_arithmetic_on_enum_field, check_reference_comparisons,
+    check_selection_scores, typecheck_aggregation, TypeEnv, TypeError,
 };
 use crate::types::EnumRegistry;
 use std::collections::{HashMap, HashSet};
@@ -310,6 +313,12 @@ pub fn load_rule_form(rule: SExpr, ctx: &LoadContext<'_>) -> Result<LoadedRule, 
     // left to the three eval-time guards alone (which stay, as defense
     // in depth).
     check_no_arithmetic_on_enum_field(&rule, ctx.types).map_err(LoadError::Type)?;
+    // §3.4's expression-kind arm (#491 T1, ADR202 R1(c)/OQ-I): `<arith>`
+    // and `if` never mix intensive with extensive kind, `E-TYPE-040` — a
+    // SEPARATE walk from `typecheck_rule_folds`/`typecheck_aggregation`
+    // above (the fold arm), extending this pipeline's existing dispatch
+    // rather than restructuring it.
+    check_kind_mixing(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
     let anchor = check_anchor(&rule, ctx.systems).map_err(LoadError::Anchor)?;
     resolve_bindings(&bindings, ctx.vocabulary).map_err(LoadError::Binding)?;
     check_free_variables(&rule, &bindings, &declared_element_names(&rule))
@@ -1276,5 +1285,89 @@ mod vocabulary_membership_tests {
         let ctx = load_ctx(None);
         load_rule(TYPO_RULE, &ctx)
             .expect("no declared vocabulary means membership is unchecked (backward compat)");
+    }
+}
+
+/// Review finding F1 (#491 T1): a load-path proof that
+/// [`crate::typecheck::check_kind_mixing`] is actually WIRED into
+/// [`load_rule`], not merely correct in isolation. Every unit test for the
+/// kind arm itself (`typecheck.rs`'s own test module, 36 functions) calls
+/// `check_kind_mixing`/`expr_kind` DIRECTLY — until every committed
+/// straddle was repaired, the content gate was the de facto wiring proof,
+/// but with all four straddles now fixed, no committed content violates
+/// the rule, so deleting the `check_kind_mixing(&rule, ctx.types,
+/// &bindings)` call at `rule_pipeline.rs:321` would leave every test in
+/// this crate green. Mirrors the sibling load-path coverage this crate
+/// already has for `E-TYPE-044` (`enum_fold_body_tests`, above) and
+/// `E-TYPE-041`/`042` (`r9_chapters.rs`/`conformance_corpus.rs`).
+#[cfg(test)]
+mod kind_mixing_wiring_tests {
+    use super::{load_rule, LoadContext, LoadError};
+    use crate::bindings::BindingVocabulary;
+    use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
+    use crate::typecheck::{TypeCode, TypeEnv};
+    use crate::types::{BslType, FieldDecl, FieldKind};
+    use std::collections::{HashMap, HashSet};
+
+    fn load_ctx() -> LoadContext<'static> {
+        let fields = HashMap::from([
+            (
+                "organization/budget".to_owned(),
+                FieldDecl {
+                    ty: BslType::Currency,
+                    kind: FieldKind::Extensive,
+                },
+            ),
+            (
+                "organization/share".to_owned(),
+                FieldDecl {
+                    ty: BslType::Coefficient,
+                    kind: FieldKind::Intensive,
+                },
+            ),
+        ]);
+        LoadContext {
+            vocabulary: Box::leak(Box::new(BindingVocabulary {
+                fields: HashSet::from([
+                    "organization/budget".to_owned(),
+                    "organization/share".to_owned(),
+                ]),
+                consts: HashSet::new(),
+                metrics: HashSet::new(),
+            })),
+            types: Box::leak(Box::new(TypeEnv {
+                fields,
+                exemptions: &[],
+            })),
+            ceilings: Box::leak(Box::new(CardinalityCeilings::new(
+                HashMap::new(),
+                HashMap::new(),
+            ))),
+            intrinsics: Box::leak(Box::new(IntrinsicCosts::default())),
+            systems: Box::leak(Box::new(HashSet::from(["organization".to_owned()]))),
+            vocabulary_registry: None,
+            rule_file: "x.bsl",
+        }
+    }
+
+    #[test]
+    fn a_rule_mixing_intensive_and_extensive_under_plus_refuses_at_load_e_type_040() {
+        let ctx = load_ctx();
+        let err = load_rule(
+            r#"(rule organization/kind-mixing-probe
+  :material-basis "x" :fuel 64
+  (bindings
+    (binding budget :field organization/budget)
+    (binding share :field organization/share))
+  (effects (emit EventType/RUPTURE (probe (+ budget share)))))"#,
+            &ctx,
+        )
+        .unwrap_err();
+        let LoadError::Type(type_err) = &err else {
+            panic!("expected LoadError::Type, got {err:?}");
+        };
+        assert_eq!(type_err.code, Some(TypeCode::KindMixing));
+        assert_eq!(err.spec_code(), Some("E-TYPE-040"));
+        assert!(err.to_string().contains("E-TYPE-040"), "{err}");
     }
 }

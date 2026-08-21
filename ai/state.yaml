@@ -4696,3 +4696,68 @@ program_20_means_of_production:
     creates-on-connect forged a stub reference DB that data_doctor's
     readlink -e check accepted while 30 tests failed. Doctor check 3b now
     fails loud on a non-symlink data/sqlite (commit c857e060).
+
+kind_straddle_estate_491_t1:
+  date: 2026-08-18
+  train: "#491 T1 (rung-ladder plan, feature/491-rung-ladder)"
+  adr: ADR216
+  d_rows: D181, D182, D183, D184
+  summary: >
+    The E-TYPE-040 kind-mixing arm (rust/crates/babylon-bsl/src/typecheck.rs,
+    check_kind_mixing) landed and found four real, pre-existing kind
+    straddles in committed content, resolved across a night of escalation
+    rather than one-layer-per-round-trip improvisation. E÷E→intensive
+    (w̄ = wealth ÷ population, D181, ADR202 R1(c)'s own OQ-I) plus E×I→
+    extensive (D181, restores the pre-split bullet's own literal text)
+    landed first, found via lifecycle.bsl's real content. previous-wealth's
+    deffield kind was fixed (an authoring defect: a same-tick wealth
+    snapshot mislabeled intensive). Director sitting 2026-08-18 (popup,
+    repair-now+ceremony): consciousness/p5-agitation's rent term
+    re-expressed as Δwealth ÷ previous-wealth (a proportional rate, shape
+    C1) and solidarity/p0-transmit's write re-expressed as a convex
+    combination (1-s)*target + s*source (shape S1) — both from the
+    kind-straddle-repair-options dossier (reports/kind-straddle-repair-
+    options-2026-08-18.md). Landing C1 exposed consciousness/p6-route's
+    own two further straddles (intensive x intensive, then intensive ÷
+    intensive), each licensed by a controller adjudication under the
+    Director's overnight compass delegation (delegated provenance,
+    morning-reviewable) — D182 (product) preceded by nothing but the
+    single site found, D183 (division) preceded by a COMPLETE static
+    sweep of every <arith>/if site across all 13 committed rule files
+    (a bespoke Python analyzer mirroring expr_kind/add_sub_kind/
+    mul_div_kind/if_kind/fold_kind, validated against a known-clean file
+    and the pre-repair commit's own known real finds) confirming no other
+    site remained. Ceremony completed: consciousness_ternary_conformance.rs
+    4/4, tick_goldens.rs's two affected pins re-pinned (solidarity's
+    report.after, consciousness's report.after — both report.before
+    literals and every fired count unchanged), 258/258 babylon-tick,
+    799/799 babylon-bsl (later 800+ after the review's F1 wiring test).
+  story_change: >
+    class-bribed's dominant-worldview no longer flips LIBERAL (tick 1) ->
+    FASCIST (tick 2) under C1's proportional rent reading — the same
+    nominal $5 wealth loss (~5.26% of a $90 class wealth) barely registers
+    where the frozen absolute-currency reading treated it as a full
+    fascist-routing trigger. Agitation drops ~95x; class-bribed stays
+    LIBERAL through both measured ticks. Intended consequence of C1
+    (relative, not absolute, material loss drives routing), not a
+    regression — a longer-run erosion trend is unmeasured, out of the
+    ceremony's two-tick scope.
+  review: >
+    Full-span review (.superpowers/sdd/2026-08-17-491-rung-ladder/
+    task-1-review.md): COMPLIANT + APPROVED, no blocking defect. Four
+    MEDIUM findings (F1 load-path wiring test, F2 S1's relocated-not-
+    resolved straddle disclosed as D184, F3 this ADR, F4 this entry) and
+    six LOW findings (F5-F10: register-row wording precision, ceremony-
+    trailer consistency, an if_kind doc-comment overclaim, p5-agitation's
+    post-C1 fuel re-measurement, vale residuals, the sweep script
+    committed under tools/) were the pre-merge worklist, closed same pass.
+  open_deferred: >
+    D184 names the re-open trigger explicitly: a future store-boundary
+    write-kind check (comparing a (set <expr>)'s computed kind against its
+    target field's declared kind) would immediately re-red
+    solidarity/p0-transmit, since S1's convex form types Extensive and
+    writes into probability-intensive social-class/revolutionary. Not a
+    defect in tonight's work — the dossier itself named this as out of a
+    single rule's reach (§2.9's language-mandated implicit edge-strength
+    kind is the root cause, untouched). Whoever lands a write-kind check
+    inherits this context via D184 rather than rediscovering it.

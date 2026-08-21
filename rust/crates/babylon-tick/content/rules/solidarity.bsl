@@ -167,9 +167,29 @@
 ; (`babylon-tick/src/lib.rs`'s `systems` HashSet) — this pack changes no
 ; further Rust source.
 
+; KIND-COHERENCE REPAIR, shape S1 (Director sitting 2026-08-18, popup:
+; repair-now+ceremony; #491 T1's kind-straddle dossier,
+; reports/kind-straddle-repair-options-2026-08-18.md §2.1). The frozen
+; `target + delta` write mixes kinds under §3.4: `solidarity/strength` is
+; the implicit `<edge-type>/strength` field, extensive by language default
+; (§2.9, not a content choice), so `strength * (source - target)` types
+; Extensive (T1's extensive-times-intensive licensing, E-TYPE-040/D181),
+; and adding that to the Intensive `revolutionary` level was the
+; rejection. Re-expressed below as the algebraically identical convex
+; combination `(1 - strength) * target + strength * source`: `(1 -
+; strength)` is Extensive (neutral-minus-extensive absorbs), both products
+; are Extensive (extensive x intensive, licensed), and their sum is
+; same-kind, legal — no further engine change needed. Aleksandrov test
+; unchanged: still measures the SAME relation, a source's consciousness
+; pulling a target's toward it, scaled by edge strength. Bit-identical to
+; the frozen form for every dyadic-fraction witness here; the
+; multi-inbound witness (strength 0.3, non-power-of-2 decimal) differs in
+; the last ULP (0.31 vs 0.31000000000000005) — an IEEE-754 rounding-order
+; artifact of the rearrangement, not a semantic change, re-pinned in the
+; ceremony landing this ruling.
 (rule solidarity/p0-transmit
-  :material-basis "SolidaritySystem.step (solidarity.py:97-203): skip inactive source/target (:126-130), strength <= 0 (:132-136, Fascist Bifurcation), source at/below activation_threshold (:142-144); delta = solidarity_strength * (source_consciousness - target_consciousness) (formulas/solidarity.py:36); skip |delta| < negligible_transmission (:159-161); write target (re-pointed to social-class/revolutionary, D-record 1) to max(0.0, min(1.0, target + delta)) (:164-169); emit CONSCIOUSNESS_TRANSMISSION with the raw delta and the clamped new value (:171-187); emit MASS_AWAKENING when old_consciousness < mass_awakening_threshold <= new_consciousness (:190-202, asymmetric <, <= arms, both against the clamped new value). Push form (plan §2.2). set not add: E-EVAL-020 forbids unclamped accumulation (plan §2.3). Multi-inbound last-write-wins diverges from frozen's sequential apply (D-record 2)."
-  :fuel 3502
+  :material-basis "SolidaritySystem.step (solidarity.py:97-203): skip inactive source/target (:126-130), strength <= 0 (:132-136, Fascist Bifurcation), source at/below activation_threshold (:142-144); delta = solidarity_strength * (source_consciousness - target_consciousness) (formulas/solidarity.py:36); skip |delta| < negligible_transmission (:159-161); write target (re-pointed to social-class/revolutionary, D-record 1) to max(0.0, min(1.0, target + delta)) (:164-169), the update RE-EXPRESSED as a convex combination for kind-coherence — see the preceding comment, #491 T1 S1; emit CONSCIOUSNESS_TRANSMISSION with the raw delta and the clamped new value (:171-187); emit MASS_AWAKENING when old_consciousness < mass_awakening_threshold <= new_consciousness (:190-202, asymmetric <, <= arms, both against the clamped new value). Push form (plan §2.2). set not add: E-EVAL-020 forbids unclamped accumulation (plan §2.3). Multi-inbound last-write-wins diverges from frozen's sequential apply (D-record 2)."
+  :fuel 4079
   (bindings
     (binding active :field social-class/active :optional :default 1)
     (binding r :field social-class/revolutionary :optional :default 0.0p)
@@ -189,7 +209,9 @@
             (if
               (>
                 (*
-                  (field-of (edge-between EdgeType/SOLIDARITY self it) solidarity/strength)
+                  (field-of
+                    (edge-between EdgeType/SOLIDARITY self it)
+                    solidarity/strength)
                   (- r (field-of it social-class/revolutionary)))
                 0)
               (*
@@ -198,7 +220,9 @@
               (-
                 0
                 (*
-                  (field-of (edge-between EdgeType/SOLIDARITY self it) solidarity/strength)
+                  (field-of
+                    (edge-between EdgeType/SOLIDARITY self it)
+                    solidarity/strength)
                   (- r (field-of it social-class/revolutionary)))))
             negligible)
           (update-node
@@ -210,37 +234,63 @@
                   (if
                     (>
                       (+
-                        (field-of it social-class/revolutionary)
+                        (*
+                          (-
+                            1
+                            (field-of
+                              (edge-between EdgeType/SOLIDARITY self it)
+                              solidarity/strength))
+                          (field-of it social-class/revolutionary))
                         (*
                           (field-of
                             (edge-between EdgeType/SOLIDARITY self it)
                             solidarity/strength)
-                          (- r (field-of it social-class/revolutionary))))
+                          r))
                       0)
                     (+
-                      (field-of it social-class/revolutionary)
+                      (*
+                        (-
+                          1
+                          (field-of
+                            (edge-between EdgeType/SOLIDARITY self it)
+                            solidarity/strength))
+                        (field-of it social-class/revolutionary))
                       (*
                         (field-of
                           (edge-between EdgeType/SOLIDARITY self it)
                           solidarity/strength)
-                        (- r (field-of it social-class/revolutionary))))
+                        r))
                     (- 0 0c))
                   1)
                 (if
                   (>
                     (+
-                      (field-of it social-class/revolutionary)
+                      (*
+                        (-
+                          1
+                          (field-of
+                            (edge-between EdgeType/SOLIDARITY self it)
+                            solidarity/strength))
+                        (field-of it social-class/revolutionary))
                       (*
                         (field-of
                           (edge-between EdgeType/SOLIDARITY self it)
                           solidarity/strength)
-                        (- r (field-of it social-class/revolutionary))))
+                        r))
                     0)
                   (+
-                    (field-of it social-class/revolutionary)
                     (*
-                      (field-of (edge-between EdgeType/SOLIDARITY self it) solidarity/strength)
-                      (- r (field-of it social-class/revolutionary))))
+                      (-
+                        1
+                        (field-of
+                          (edge-between EdgeType/SOLIDARITY self it)
+                          solidarity/strength))
+                      (field-of it social-class/revolutionary))
+                    (*
+                      (field-of
+                        (edge-between EdgeType/SOLIDARITY self it)
+                        solidarity/strength)
+                      r))
                   (- 0 0c))
                 (- 1 0c))))
           ; CONSCIOUSNESS_TRANSMISSION — every applied transmission
@@ -269,37 +319,63 @@
                   (if
                     (>
                       (+
-                        (field-of it social-class/revolutionary)
+                        (*
+                          (-
+                            1
+                            (field-of
+                              (edge-between EdgeType/SOLIDARITY self it)
+                              solidarity/strength))
+                          (field-of it social-class/revolutionary))
                         (*
                           (field-of
                             (edge-between EdgeType/SOLIDARITY self it)
                             solidarity/strength)
-                          (- r (field-of it social-class/revolutionary))))
+                          r))
                       0)
                     (+
-                      (field-of it social-class/revolutionary)
+                      (*
+                        (-
+                          1
+                          (field-of
+                            (edge-between EdgeType/SOLIDARITY self it)
+                            solidarity/strength))
+                        (field-of it social-class/revolutionary))
                       (*
                         (field-of
                           (edge-between EdgeType/SOLIDARITY self it)
                           solidarity/strength)
-                        (- r (field-of it social-class/revolutionary))))
+                        r))
                     (- 0 0c))
                   1)
                 (if
                   (>
                     (+
-                      (field-of it social-class/revolutionary)
+                      (*
+                        (-
+                          1
+                          (field-of
+                            (edge-between EdgeType/SOLIDARITY self it)
+                            solidarity/strength))
+                        (field-of it social-class/revolutionary))
                       (*
                         (field-of
                           (edge-between EdgeType/SOLIDARITY self it)
                           solidarity/strength)
-                        (- r (field-of it social-class/revolutionary))))
+                        r))
                     0)
                   (+
-                    (field-of it social-class/revolutionary)
                     (*
-                      (field-of (edge-between EdgeType/SOLIDARITY self it) solidarity/strength)
-                      (- r (field-of it social-class/revolutionary))))
+                      (-
+                        1
+                        (field-of
+                          (edge-between EdgeType/SOLIDARITY self it)
+                          solidarity/strength))
+                      (field-of it social-class/revolutionary))
+                    (*
+                      (field-of
+                        (edge-between EdgeType/SOLIDARITY self it)
+                        solidarity/strength)
+                      r))
                   (- 0 0c))
                 (- 1 0c))))
           ; MASS_AWAKENING — the frozen CHAINED comparison
@@ -321,39 +397,63 @@
                     (if
                       (>
                         (+
-                          (field-of it social-class/revolutionary)
+                          (*
+                            (-
+                              1
+                              (field-of
+                                (edge-between EdgeType/SOLIDARITY self it)
+                                solidarity/strength))
+                            (field-of it social-class/revolutionary))
                           (*
                             (field-of
                               (edge-between EdgeType/SOLIDARITY self it)
                               solidarity/strength)
-                            (- r (field-of it social-class/revolutionary))))
+                            r))
                         0)
                       (+
-                        (field-of it social-class/revolutionary)
+                        (*
+                          (-
+                            1
+                            (field-of
+                              (edge-between EdgeType/SOLIDARITY self it)
+                              solidarity/strength))
+                          (field-of it social-class/revolutionary))
                         (*
                           (field-of
                             (edge-between EdgeType/SOLIDARITY self it)
                             solidarity/strength)
-                          (- r (field-of it social-class/revolutionary))))
+                          r))
                       (- 0 0c))
                     1)
                   (if
                     (>
                       (+
-                        (field-of it social-class/revolutionary)
+                        (*
+                          (-
+                            1
+                            (field-of
+                              (edge-between EdgeType/SOLIDARITY self it)
+                              solidarity/strength))
+                          (field-of it social-class/revolutionary))
                         (*
                           (field-of
                             (edge-between EdgeType/SOLIDARITY self it)
                             solidarity/strength)
-                          (- r (field-of it social-class/revolutionary))))
+                          r))
                       0)
                     (+
-                      (field-of it social-class/revolutionary)
+                      (*
+                        (-
+                          1
+                          (field-of
+                            (edge-between EdgeType/SOLIDARITY self it)
+                            solidarity/strength))
+                        (field-of it social-class/revolutionary))
                       (*
                         (field-of
                           (edge-between EdgeType/SOLIDARITY self it)
                           solidarity/strength)
-                        (- r (field-of it social-class/revolutionary))))
+                        r))
                     (- 0 0c))
                   (- 1 0c))
                 awakening))
@@ -367,39 +467,63 @@
                     (if
                       (>
                         (+
-                          (field-of it social-class/revolutionary)
+                          (*
+                            (-
+                              1
+                              (field-of
+                                (edge-between EdgeType/SOLIDARITY self it)
+                                solidarity/strength))
+                            (field-of it social-class/revolutionary))
                           (*
                             (field-of
                               (edge-between EdgeType/SOLIDARITY self it)
                               solidarity/strength)
-                            (- r (field-of it social-class/revolutionary))))
+                            r))
                         0)
                       (+
-                        (field-of it social-class/revolutionary)
+                        (*
+                          (-
+                            1
+                            (field-of
+                              (edge-between EdgeType/SOLIDARITY self it)
+                              solidarity/strength))
+                          (field-of it social-class/revolutionary))
                         (*
                           (field-of
                             (edge-between EdgeType/SOLIDARITY self it)
                             solidarity/strength)
-                          (- r (field-of it social-class/revolutionary))))
+                          r))
                       (- 0 0c))
                     1)
                   (if
                     (>
                       (+
-                        (field-of it social-class/revolutionary)
+                        (*
+                          (-
+                            1
+                            (field-of
+                              (edge-between EdgeType/SOLIDARITY self it)
+                              solidarity/strength))
+                          (field-of it social-class/revolutionary))
                         (*
                           (field-of
                             (edge-between EdgeType/SOLIDARITY self it)
                             solidarity/strength)
-                          (- r (field-of it social-class/revolutionary))))
+                          r))
                       0)
                     (+
-                      (field-of it social-class/revolutionary)
+                      (*
+                        (-
+                          1
+                          (field-of
+                            (edge-between EdgeType/SOLIDARITY self it)
+                            solidarity/strength))
+                        (field-of it social-class/revolutionary))
                       (*
                         (field-of
                           (edge-between EdgeType/SOLIDARITY self it)
                           solidarity/strength)
-                        (- r (field-of it social-class/revolutionary))))
+                        r))
                     (- 0 0c))
                   (- 1 0c)))
               (triggering-source self))))))))

@@ -433,6 +433,71 @@ def eventtype_dict_keys(path: Path, name: str) -> set[str]:
     raise SentinelCheckError(f"no module-level `{name} = {{...}}` dict literal in {path}")
 
 
+def eventtype_dict_value_get_string_keys(path: Path, name: str) -> dict[str, tuple[str, ...]]:
+    """Statically extract the ``payload.get("...")`` keys each ``EventType``-keyed
+    value of the module-level dict ``name`` reads.
+
+    Built for the event-schema-registry sync check
+    (:mod:`babylon.sentinels.event_schema_registry`): each ``_BUILDERS`` entry
+    is a lambda whose body calls ``payload.get(<literal>, ...)`` once per
+    field the builder reads off the bus event's payload dict. This walks the
+    ENTIRE value subtree (a bare call, a parenthesised call, or a multi-line
+    one — the three shapes ``event_builders.py`` actually uses) rather than
+    assuming one fixed layout, and restricts to calls on a variable literally
+    named ``payload`` (the builder signature's third parameter, uniform
+    across every entry) so an unrelated ``.get()`` elsewhere in a lambda body
+    cannot be mistaken for a payload read.
+
+    :param path: Source file to parse.
+    :param name: The module-level assignment target holding the dict literal.
+    :returns: ``{EventType member name: (payload keys read, in source order,
+        deduplicated)}`` for every ``EventType.<MEMBER>``-keyed entry; an
+        entry whose value reads no string-literal ``payload.get()`` key maps
+        to ``()`` (not an error — some builders take no payload fields).
+    :raises SentinelCheckError: If the source is missing/unparseable, or no
+        module-level ``name = {...}`` dict literal exists.
+    """
+    tree = parse_module(path)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target: ast.expr | None = node.targets[0]
+        elif isinstance(node, ast.AnnAssign):
+            target = node.target
+        else:
+            continue
+        if not (
+            isinstance(target, ast.Name) and target.id == name and isinstance(node.value, ast.Dict)
+        ):
+            continue
+        result: dict[str, tuple[str, ...]] = {}
+        for key_node, value_node in zip(node.value.keys, node.value.values, strict=True):
+            if not (
+                isinstance(key_node, ast.Attribute)
+                and isinstance(key_node.value, ast.Name)
+                and key_node.value.id == "EventType"
+            ):
+                continue
+            fields: list[str] = []
+            for call in ast.walk(value_node):
+                if not (
+                    isinstance(call, ast.Call)
+                    and isinstance(call.func, ast.Attribute)
+                    and call.func.attr == "get"
+                    and isinstance(call.func.value, ast.Name)
+                    and call.func.value.id == "payload"
+                    and call.args
+                    and isinstance(call.args[0], ast.Constant)
+                    and isinstance(call.args[0].value, str)
+                ):
+                    continue
+                field = call.args[0].value
+                if field not in fields:
+                    fields.append(field)
+            result[key_node.attr] = tuple(fields)
+        return result
+    raise SentinelCheckError(f"no module-level `{name} = {{...}}` dict literal in {path}")
+
+
 def parse_module(path: Path) -> ast.Module:
     """Read and parse ``path`` with :mod:`ast`, failing loudly on either error.
 

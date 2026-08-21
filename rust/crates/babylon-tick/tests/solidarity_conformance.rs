@@ -68,8 +68,10 @@
 //! `strength = 0.3` is exactly that case: `multi-target`'s pinned value
 //! above (`id=15 = 0.31000000000000005`) and events 7-8's
 //! `new-target-consciousness` (`0.33999999999999997` / `0.31000000000000005`)
-//! are now stale by one ULP each — the port's actual output is
-//! `0.34`/`0.31` exactly. This oracle file (`solidarity_conformance.py`)
+//! are now stale by one ULP each — the port's actual outputs are
+//! bit-identical to the `f64` literals `0.34`/`0.31` (each the 1-ULP
+//! neighbor of the old form's value; "exact" here means literal bit
+//! equality, not decimal representability). This oracle file (`solidarity_conformance.py`)
 //! is NOT regenerated for this repair (it transcribes the OLD `target +
 //! delta` form on purpose, as the frozen-adjacent reference the repair is
 //! measured against); the live Rust assertions below are the ones updated,
@@ -325,7 +327,7 @@ fn negligible_delta_is_skipped() {
 /// win. The write itself is forward-computed via the convex-combination
 /// form `solidarity.bsl`'s `p0-transmit` now uses (#491 T1 S1, Director
 /// sitting 2026-08-18: repair-now+ceremony) — `(1 - strength) * target +
-/// strength * source` — which happens to land EXACTLY on `0.31` here
+/// strength * source` — which happens to land bit-identical to the `f64` literal `0.31` here
 /// (`0.7 * 0.1 + 0.3 * 0.8`), unlike the frozen `target + delta` form's
 /// `0.31000000000000005` (an IEEE-754 rounding-order artifact, not a
 /// semantic drift; predicted by

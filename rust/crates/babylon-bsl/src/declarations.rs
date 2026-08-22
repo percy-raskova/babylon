@@ -100,14 +100,6 @@ pub const RESERVED_FORM_TAGS: [&str; 49] = [
 /// without needing r21's golden-vector machinery. See `bsl-language.rst`
 /// §3.10 and Draft-Ruling Register D97 for the ratified name/domain.
 ///
-/// **Recorded discrepancy, not resolved here** (D70): `round-half-even` is
-/// *obliged* by §3.2 and §2.7 — the kernel must expose the same half-even
-/// algorithm to rules — and sits **outside** this enumeration. ADR188 Row 3
-/// affirms a housekeeping rider for it too, but its concrete landing
-/// (normative intrinsic-table row + this constant) is separate work this
-/// rider does not perform — the set below stays silent on it, and closing
-/// that gap is a future PR's, not the Director's alone this time.
-///
 /// `rng-draw` joins the set under a **fourth, separate** authority: ADR188
 /// Row 11 ("RNG draw — NOT A RIDER: §2.8's kernel-seeded per-(session,
 /// tick, salt) seam stands as specced") plus `bsl-language.rst` §3.10's
@@ -115,14 +107,38 @@ pub const RESERVED_FORM_TAGS: [&str; 49] = [
 /// (no libm crossing, R10 does not govern it) and not the mechanical
 /// `floor` rider either. Its signature is `(int) → real` (the draw slot,
 /// §3.5): `declarations::kernel_signature`'s own `"rng-draw"` arm is the
-/// checked shape. `sqrt` stays permanently outside this set — ADR188 Row 6
-/// eliminates it in favour of the ratified platform-fit branch
-/// (`r9_chapters.rs:2601-2608`'s own cap assertion, inside
-/// `exp_log_floor_and_rng_draw_are_declarable`, is the standing proof this
-/// four-name set never silently grows a fifth — review round 2, #576 M1:
-/// the pre-fix citation, `:2594`, named the doc prose ABOVE the test, not
-/// the assertion body itself).
-pub const DECLARABLE_INTRINSICS: [&str; 4] = ["exp", "log", "floor", "rng-draw"];
+/// checked shape.
+///
+/// **ADR219 (Director ruling 2026-08-22): the exact-arithmetic rider
+/// train** grows the set by six. `sqrt` takes ADR188 Row 6's fallback
+/// rider (the Director's measure-preferred disposition superseded by the
+/// same Director's explicit approval); `round-half-even` lands ADR188
+/// Row 3's ratified housekeeping rider, resolving D70's "recorded, not
+/// resolved" (§3.2/§2.7 oblige the kernel to expose the half-even
+/// algorithm to rules; this constant was the missing half); and
+/// `min`/`max`/`abs`/`clamp` supersede ADR188 Rows 4/5's "no rider"
+/// dispositions on #591 item 2's accumulated port evidence ("my top
+/// BSL-improvement candidate", Director directive 2026-08-15), approved
+/// by the same ruling. All six cross via IEEE-754 exactly-specified
+/// operations — correctly-rounded `sqrt`, `roundTiesToEven`,
+/// comparison/copysign arithmetic — so like `floor` they need no pinned
+/// soft-float libm and owe no §4.3 golden-vector family (that disposition
+/// recorded per-name in §3.10's normative paragraphs). The
+/// **transcendental** roster stays the R10 pair alone: `tanh`, `entropy`,
+/// `renormalize`, `trunc` remain outside, and `sigmoid` remains
+/// prohibited outright (below).
+pub const DECLARABLE_INTRINSICS: [&str; 10] = [
+    "exp",
+    "log",
+    "floor",
+    "rng-draw",
+    "sqrt",
+    "round-half-even",
+    "min",
+    "max",
+    "abs",
+    "clamp",
+];
 
 /// Intrinsic names that are **prohibited outright**, not merely undeclared
 /// (§3.10, D71). `sigmoid` would hand content the exact mechanism ADR172
@@ -754,12 +770,12 @@ pub fn check_intrinsic_cap(name: &str) -> Result<(), DeclError> {
     Err(malformed(format!(
         "'{name}' is outside the declarable intrinsic set {DECLARABLE_INTRINSICS:?} \
          (§3.10) — {{exp, log}} capped by R10/ADR176 r21, 'floor' added separately \
-         by ADR188 Row 2/D97, and 'rng-draw' added separately again by ADR188 \
-         Row 11 (§3.10's RNG carrier-key convention, D69). Adding a name is a \
-         Director ruling, not an authoring decision; round-half-even (ADR188 \
-         Row 3) is RATIFIED but its own landing — a normative intrinsic-table \
-         row and a row in this constant — is separate work not yet done, so it \
-         still refuses here too"
+         by ADR188 Row 2/D97, 'rng-draw' added separately again by ADR188 \
+         Row 11 (§3.10's RNG carrier-key convention, D69), and the six \
+         exact-arithmetic names ('sqrt', 'round-half-even', 'min', 'max', 'abs', \
+         'clamp') added by ADR219 (Director ruling 2026-08-22 — Row 6's fallback \
+         rider taken, Row 3 landed, Rows 4/5 superseded). Adding a name is a \
+         Director ruling, not an authoring decision"
     )))
 }
 
@@ -839,10 +855,15 @@ pub struct IntrinsicDecl {
 /// declaration whose signature disagrees with the kernel's registration is
 /// `E-LOAD-020`"). `floor`'s is `(real) → int` (ADR188 Row 2, D97); the
 /// transcendental pair's is the ordinary one-`Real`-argument mathematical
-/// signature — `exp`/`log` are declarable (R10) but not yet dispatchable
-/// (`intrinsic_host::KernelIntrinsicHost` has no arm for either), and a
-/// signature is a property of the DECLARATION, not of whether evaluation
-/// exists yet, so this checks both pairs the same way.
+/// signature — `exp`/`log` both dispatch through `intrinsic_host::
+/// KernelIntrinsicHost` since Task 2 of the #576 intrinsic-host train.
+///
+/// The ADR219 sextet (Director ruling 2026-08-22) is all-`real`-lane:
+/// `sqrt`/`round-half-even`/`abs` unary, `min`/`max` binary, `clamp`
+/// ternary, every one returning `real`. No `int` demotion anywhere in the
+/// six — the Real→Int crossing remains `floor`'s alone (ADR188 Row 2), and
+/// `round-half-even` specifically rounds WITHIN the binary64 lane (the
+/// D-row reading of §3.2's obligation, §3.10's normative paragraph).
 ///
 /// `None` for a name outside `DECLARABLE_INTRINSICS` is unreachable through
 /// [`parse_intrinsic_decl`] (the cap check runs first), and a name INSIDE
@@ -868,6 +889,23 @@ pub fn kernel_signature(name: &str) -> Option<(Vec<IntrinsicTypeName>, Intrinsic
         // intrinsic itself returns a bounded type.
         "rng-draw" => Some((
             vec![IntrinsicTypeName::Scalar(BslType::Int)],
+            IntrinsicTypeName::Real,
+        )),
+        // The ADR219 sextet — see this function's doc above. Unary first,
+        // then binary, then the one ternary.
+        "sqrt" | "round-half-even" | "abs" => {
+            Some((vec![IntrinsicTypeName::Real], IntrinsicTypeName::Real))
+        }
+        "min" | "max" => Some((
+            vec![IntrinsicTypeName::Real, IntrinsicTypeName::Real],
+            IntrinsicTypeName::Real,
+        )),
+        "clamp" => Some((
+            vec![
+                IntrinsicTypeName::Real,
+                IntrinsicTypeName::Real,
+                IntrinsicTypeName::Real,
+            ],
             IntrinsicTypeName::Real,
         )),
         _ => None,
@@ -1223,7 +1261,24 @@ mod tests {
     fn floor_is_declarable_under_adr188_row_2() {
         assert_eq!(check_intrinsic_name("floor"), Ok(()));
         assert_eq!(check_intrinsic_cap("floor"), Ok(()));
-        assert_eq!(DECLARABLE_INTRINSICS, ["exp", "log", "floor", "rng-draw"]);
+        // The array grew from four names to ten under ADR219 (Director
+        // ruling 2026-08-22) — the exact-arithmetic rider train; see the
+        // c13 family in r9_chapters.rs for the full authority chain.
+        assert_eq!(
+            DECLARABLE_INTRINSICS,
+            [
+                "exp",
+                "log",
+                "floor",
+                "rng-draw",
+                "sqrt",
+                "round-half-even",
+                "min",
+                "max",
+                "abs",
+                "clamp"
+            ]
+        );
     }
 
     /// ADR188 Row 11 (D69, plan §3.2, #576 Task 5): `rng-draw` joins the
@@ -1250,11 +1305,46 @@ mod tests {
         assert!(check_intrinsic_cap("trunc").is_err());
     }
 
-    /// D70 stands: `round-half-even`'s ADR188 Row 3 disposition is a
-    /// separate landing this rider does not perform.
+    /// ADR219 (Director ruling 2026-08-22): the exact-arithmetic rider
+    /// train. `sqrt` takes ADR188 Row 6's fallback rider; `round-half-even`
+    /// lands Row 3's ratified housekeeping rider (D70's "recorded, not
+    /// resolved" is resolved); `min`/`max`/`abs`/`clamp` supersede Rows
+    /// 4/5's "no rider" dispositions on #591 item 2's accumulated evidence.
+    /// All six cross via IEEE-754 exactly-specified operations — no
+    /// transcendental, no pinned soft-float libm, no §4.3 golden-vector
+    /// family (the D97 disposition, recorded per-name in §3.10). This test
+    /// supersedes `round_half_even_still_sits_outside_the_cap_after_the_
+    /// floor_rider`, whose premise ADR219 retires.
     #[test]
-    fn round_half_even_still_sits_outside_the_cap_after_the_floor_rider() {
-        assert!(check_intrinsic_cap("round-half-even").is_err());
+    fn the_adr219_six_are_declarable_with_their_kernel_signatures() {
+        for (name, params) in [
+            ("sqrt", vec![IntrinsicTypeName::Real]),
+            ("round-half-even", vec![IntrinsicTypeName::Real]),
+            ("abs", vec![IntrinsicTypeName::Real]),
+            (
+                "min",
+                vec![IntrinsicTypeName::Real, IntrinsicTypeName::Real],
+            ),
+            (
+                "max",
+                vec![IntrinsicTypeName::Real, IntrinsicTypeName::Real],
+            ),
+            (
+                "clamp",
+                vec![
+                    IntrinsicTypeName::Real,
+                    IntrinsicTypeName::Real,
+                    IntrinsicTypeName::Real,
+                ],
+            ),
+        ] {
+            assert_eq!(check_intrinsic_cap(name), Ok(()), "{name}");
+            assert_eq!(
+                kernel_signature(name),
+                Some((params, IntrinsicTypeName::Real)),
+                "{name}"
+            );
+        }
     }
 
     // ---- parse_intrinsic_decl (the declared-cost seam content needs) ----

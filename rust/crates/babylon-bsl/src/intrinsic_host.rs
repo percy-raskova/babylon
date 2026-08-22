@@ -6,9 +6,14 @@
 //! `babylon_kernel::transcendental`); `rng-draw` dispatches as of Task 5
 //! (ADR188 Row 11, D69, plan §3.2/§3.3) — the kernel-seeded, KEYED (never
 //! streamed) deterministic draw, via `babylon_kernel::KernelRng`.
-//! `round-half-even` remains future work — ADR188 Row 3 is ratified but not
-//! yet landed in `declarations::DECLARABLE_INTRINSICS`
-//! (`declarations.rs:742-746`).
+//! The ADR219 exact-arithmetic sextet (Director ruling 2026-08-22) —
+//! `sqrt`, `round-half-even`, `min`, `max`, `abs`, `clamp` — dispatches
+//! below: ADR188 Row 6's fallback rider taken, Row 3's ratified
+//! housekeeping rider landed (D70 resolved), Rows 4/5's "no rider"
+//! dispositions superseded on #591 item 2's accumulated evidence. Like
+//! `floor`, each crosses via an IEEE-754 exactly-specified operation — no
+//! pinned soft-float libm, no §4.3 golden-vector family (the per-name
+//! disposition is recorded in §3.10's normative paragraphs).
 //!
 //! `floor` (ADR188 Row 2, §3.10 / Draft-Ruling Register D97) lands early
 //! and separately from that gate: it is not a transcendental, needs no
@@ -174,13 +179,15 @@ impl IntrinsicHost for EmptyIntrinsicHost {
 /// The kernel's intrinsic table, as far as it is implemented today: `floor`
 /// (ADR188 Row 2), `{exp, log}` (R10/ADR176 r21, ADR188 cap, Task 2 of the
 /// #576 intrinsic-host train) — both cross via `babylon_kernel::
-/// transcendental`, pinned soft-float `libm 0.2.16` — and `rng-draw`
+/// transcendental`, pinned soft-float `libm 0.2.16` — `rng-draw`
 /// (ADR188 Row 11, D69, Task 5 of the same train) — the kernel-seeded,
-/// KEYED draw, via `babylon_kernel::KernelRng`. `round-half-even` remains
-/// undispatchable: it is declarable in principle (ADR188 Row 3, ratified)
-/// but not yet in `declarations::DECLARABLE_INTRINSICS`, so a call to it
-/// still fails loud exactly as [`EmptyIntrinsicHost`] would, rather than
-/// silently succeeding with a placeholder value.
+/// KEYED draw, via `babylon_kernel::KernelRng` — and the ADR219 sextet
+/// (Director ruling 2026-08-22): `sqrt`, `round-half-even`, `min`, `max`,
+/// `abs`, `clamp`, each crossing via an IEEE-754 exactly-specified
+/// operation (correctly-rounded `sqrt`, `roundTiesToEven`, comparison/
+/// copysign arithmetic), needing no pinned libm and owing no §4.3
+/// golden-vector family — the `floor` rider's D97 disposition, recorded
+/// per-name in §3.10's normative paragraphs.
 pub struct KernelIntrinsicHost;
 
 impl IntrinsicHost for KernelIntrinsicHost {
@@ -195,12 +202,18 @@ impl IntrinsicHost for KernelIntrinsicHost {
             "exp" => eval_exp(args),
             "log" => eval_log(args),
             "rng-draw" => eval_rng_draw(args, &ctx),
+            "sqrt" => eval_sqrt(args),
+            "round-half-even" => eval_round_half_even(args),
+            "min" => eval_min(args),
+            "max" => eval_max(args),
+            "abs" => eval_abs(args),
+            "clamp" => eval_clamp(args),
             other => Err(EvalError::plain(format!(
                 "no intrinsic registered: {other} ('floor' — ADR188 Row 2 —, the \
-                 {{exp, log}} transcendental pair — R10/ADR176 r21 — and 'rng-draw' \
-                 — ADR188 Row 11, D69 — are implemented today; round-half-even \
-                 remains Phase 2 work, ADR188 Row 3 ratified but not yet landed in \
-                 DECLARABLE_INTRINSICS)"
+                 {{exp, log}} transcendental pair — R10/ADR176 r21 —, 'rng-draw' \
+                 — ADR188 Row 11, D69 —, and the six exact-arithmetic names \
+                 'sqrt'/'round-half-even'/'min'/'max'/'abs'/'clamp' — ADR219 — \
+                 are implemented today; any other name is outside §3.10's cap)"
             ))),
         }
     }
@@ -412,6 +425,245 @@ fn eval_log(args: &[Value]) -> Result<Value, EvalError> {
         ));
     }
     Ok(Value::Real(result))
+}
+
+/// The one-argument gate shared by the ADR219 sextet's unary members: the
+/// `Real`-lane destructuring refuses a non-`Real` argument as a malformed
+/// call (uncoded — the no-coercions rule, §3.1/§3.3, the `eval_floor`
+/// precedent), and a non-finite argument is `E-EVAL-044`
+/// ([`EvalCode::IntrinsicOutOfDomain`]) — defense in depth under §4.3's
+/// unrepresentability law, refused at the INPUT so no arm can silently
+/// propagate NaN or fail downstream with the wrong code. Factored so the
+/// six arms cannot drift apart on either check.
+fn one_real_arg(args: &[Value], name: &str) -> Result<f64, EvalError> {
+    let [Value::Real(x)] = args else {
+        return Err(EvalError::plain(format!(
+            "{name} takes exactly one Real-lane argument, got {args:?}"
+        )));
+    };
+    if !x.is_finite() {
+        return Err(EvalError::coded(
+            EvalCode::IntrinsicOutOfDomain,
+            format!(
+                "{name} of a non-finite value ({x}): E-EVAL-044 — NaN/±inf are not \
+                 real numbers, so never a legal {name} argument (ADR219)"
+            ),
+        ));
+    }
+    Ok(*x)
+}
+
+/// The two-argument form of [`one_real_arg`], for `min`/`max`.
+fn two_real_args(args: &[Value], name: &str) -> Result<(f64, f64), EvalError> {
+    let [Value::Real(a), Value::Real(b)] = args else {
+        return Err(EvalError::plain(format!(
+            "{name} takes exactly two Real-lane arguments, got {args:?}"
+        )));
+    };
+    for (position, x) in [("first", a), ("second", b)] {
+        if !x.is_finite() {
+            return Err(EvalError::coded(
+                EvalCode::IntrinsicOutOfDomain,
+                format!(
+                    "{name}'s {position} argument is non-finite ({x}): E-EVAL-044 \
+                     (ADR219) — refused at the input, never silently propagated \
+                     nor silently dropped"
+                ),
+            ));
+        }
+    }
+    Ok((*a, *b))
+}
+
+/// The three-argument form of [`one_real_arg`], for `clamp`.
+fn three_real_args(args: &[Value], name: &str) -> Result<(f64, f64, f64), EvalError> {
+    let [Value::Real(x), Value::Real(lo), Value::Real(hi)] = args else {
+        return Err(EvalError::plain(format!(
+            "{name} takes exactly three Real-lane arguments (x, lo, hi), got {args:?}"
+        )));
+    };
+    for (position, v) in [("x", x), ("lo", lo), ("hi", hi)] {
+        if !v.is_finite() {
+            return Err(EvalError::coded(
+                EvalCode::IntrinsicOutOfDomain,
+                format!(
+                    "{name}'s {position} argument is non-finite ({v}): E-EVAL-044 \
+                     (ADR219)"
+                ),
+            ));
+        }
+    }
+    Ok((*x, *lo, *hi))
+}
+
+/// The `sqrt` intrinsic (ADR219 — ADR188 Row 6's fallback rider, taken by
+/// the Director ruling of 2026-08-22): `Real → Real` via `f64::sqrt`,
+/// IEEE-754's own `squareRoot`, **correctly rounded by the standard's
+/// mandate**. There is no platform-libm divergence to pin against, so the
+/// pinned soft-float crossing and §4.3's golden-vector clause are DECLINED
+/// for this rider — exactly as the `floor` landing declined them (ADR188
+/// Row 2, D97) — and this sentence is that disposition made explicit, not
+/// a silent omission.
+///
+/// **Domain: `[0, ∞)`.** A negative argument is refused, coded
+/// [`EvalCode::IntrinsicOutOfDomain`] (`E-EVAL-044`), never silently
+/// answered `NaN`. `-0.0` is IN-domain — `-0.0 < 0.0` is `false`, the
+/// `floor` negative-zero precedent — and IEEE's `squareRoot(-0)` is `-0`,
+/// so `sqrt(-0.0)` returns `-0.0` with the sign pinned by the standard.
+///
+/// **No result-side re-check**: `sqrt` of a finite in-domain argument is
+/// finite and exactly specified; unlike `exp`'s overflow lane
+/// (`E-EVAL-014`), a result guard would be dead code.
+///
+/// # Errors
+///
+/// [`EvalError`] coded [`EvalCode::IntrinsicOutOfDomain`] (`E-EVAL-044`)
+/// for a negative or non-finite argument; [`EvalError::plain`] for a
+/// malformed call (wrong arity or a non-`Real` argument).
+fn eval_sqrt(args: &[Value]) -> Result<Value, EvalError> {
+    let x = one_real_arg(args, "sqrt")?;
+    if x < 0.0 {
+        return Err(EvalError::coded(
+            EvalCode::IntrinsicOutOfDomain,
+            format!(
+                "sqrt of a negative value ({x}): E-EVAL-044 — sqrt's ratified \
+                 domain is [0, ∞) (ADR219); -0.0 is accepted (-0.0 < 0.0 is false)"
+            ),
+        ));
+    }
+    Ok(Value::Real(x.sqrt()))
+}
+
+/// The `round-half-even` intrinsic (ADR219, landing ADR188 Row 3's
+/// ratified housekeeping rider and resolving D70): `Real → Real` via
+/// `f64::round_ties_even`, IEEE-754's `roundTiesToEven` — exactly
+/// specified by the standard, so like `sqrt` it owes no pinned libm and
+/// no §4.3 golden-vector family (disposition recorded, not silent).
+///
+/// **The signature reading (Draft-Ruling Register, open to Director
+/// correction).** §3.2 defines the half-even ALGORITHM over exact
+/// rationals at a target granularity (micro-units, from exact integer
+/// arithmetic, "never by converting to binary64") and §2.7 obliges the
+/// kernel to expose "the same algorithm" to rules — without pinning a
+/// signature. This landing reads the obligation minimally: the binary64
+/// lane rounds WITHIN itself, `(round-half-even x)` = the nearest integer
+/// VALUE to `x` as a binary64, ties to the even neighbor. A binary64
+/// argument is already an exact rational, so "exactly midway" is decidable
+/// exactly and §3.2's exact-arithmetic law is satisfied by construction.
+/// The Real→Int demotion remains `floor`'s alone (ADR188 Row 2), and a
+/// granularity-general `(round-half-even x g)` form is declined as
+/// speculative until a call site needs it.
+///
+/// **Domain: total over finite reals** — at magnitudes ≥ 2^52 every
+/// binary64 is already integral, so the intrinsic is the identity there.
+/// A non-finite argument is refused at the shared input gate
+/// (`E-EVAL-044`). No result-side re-check (dead code — see `eval_sqrt`).
+///
+/// # Errors
+///
+/// [`EvalError`] coded [`EvalCode::IntrinsicOutOfDomain`] (`E-EVAL-044`)
+/// for a non-finite argument; [`EvalError::plain`] for a malformed call.
+fn eval_round_half_even(args: &[Value]) -> Result<Value, EvalError> {
+    let x = one_real_arg(args, "round-half-even")?;
+    Ok(Value::Real(x.round_ties_even()))
+}
+
+/// The comparison rule the ADR219 `min`/`max`/`clamp` share — deliberately
+/// NOT `f64::min`/`f64::max`, which are licensed to return EITHER zero on
+/// a ±0.0 tie and to propagate NaN: implementation-defined answers of
+/// exactly the kind this crate forbids. IEEE-754 comparisons are exactly
+/// specified, so the pinned rule is: the second argument wins only on a
+/// STRICT comparison; on an equal comparison (`+0.0` vs `-0.0` included —
+/// the two compare equal) the FIRST argument wins, bit-pinned by the
+/// conformance tests. Non-finite arguments never reach here (the shared
+/// gates above refuse them `E-EVAL-044`).
+fn pick_min(a: f64, b: f64) -> f64 {
+    if b < a {
+        b
+    } else {
+        a
+    }
+}
+
+/// The `max` half of [`pick_min`]'s pinned comparison rule.
+fn pick_max(a: f64, b: f64) -> f64 {
+    if a < b {
+        b
+    } else {
+        a
+    }
+}
+
+/// The `min` intrinsic (ADR219, superseding ADR188 Row 4's "no rider"
+/// disposition on #591 item 2's accumulated port evidence):
+/// `(real real) → real`, the lesser argument under [`pick_min`]'s pinned
+/// rule.
+///
+/// # Errors
+///
+/// [`EvalError`] coded [`EvalCode::IntrinsicOutOfDomain`] (`E-EVAL-044`)
+/// for a non-finite argument on either side; [`EvalError::plain`] for a
+/// malformed call.
+fn eval_min(args: &[Value]) -> Result<Value, EvalError> {
+    let (a, b) = two_real_args(args, "min")?;
+    Ok(Value::Real(pick_min(a, b)))
+}
+
+/// The `max` intrinsic (ADR219 — see [`eval_min`]): the greater argument
+/// under [`pick_max`]'s pinned rule.
+///
+/// # Errors
+///
+/// [`EvalError`] coded [`EvalCode::IntrinsicOutOfDomain`] (`E-EVAL-044`)
+/// for a non-finite argument on either side; [`EvalError::plain`] for a
+/// malformed call.
+fn eval_max(args: &[Value]) -> Result<Value, EvalError> {
+    let (a, b) = two_real_args(args, "max")?;
+    Ok(Value::Real(pick_max(a, b)))
+}
+
+/// The `abs` intrinsic (ADR219, superseding ADR188 Row 4): `(real) → real`
+/// via `f64::abs` — IEEE-754's sign-bit `abs`, an exact operation with
+/// nothing platform-variant to pin (the same D97-style disposition as
+/// `sqrt`). `abs(-0.0)` is `+0.0` — the canonical zero, pinned to the bit.
+///
+/// # Errors
+///
+/// [`EvalError`] coded [`EvalCode::IntrinsicOutOfDomain`] (`E-EVAL-044`)
+/// for a non-finite argument (`abs(±inf)` would be `+inf` and `abs(NaN)`
+/// would be NaN — neither escapes); [`EvalError::plain`] for a malformed
+/// call.
+fn eval_abs(args: &[Value]) -> Result<Value, EvalError> {
+    let x = one_real_arg(args, "abs")?;
+    Ok(Value::Real(x.abs()))
+}
+
+/// The `clamp` intrinsic (ADR219): `(clamp x lo hi) → real` — the LEGIBLE
+/// saturation that §3.3's silent-clamping prohibition points at: the
+/// author writes the bound explicitly, and an argument error is loud.
+/// `lo > hi` is `E-EVAL-044`, never a silent swap of the bounds; `lo ==
+/// hi` is legal (the result is that bound); an in-range `x` returns
+/// bit-identical (the identity, never a re-rounded copy); a crossed bound
+/// saturates to the bound. Composed on [`pick_max`]/[`pick_min`] so the
+/// signed-zero disposition is the same pinned first-argument-wins rule.
+///
+/// # Errors
+///
+/// [`EvalError`] coded [`EvalCode::IntrinsicOutOfDomain`] (`E-EVAL-044`)
+/// for `lo > hi` or a non-finite argument in any position;
+/// [`EvalError::plain`] for a malformed call.
+fn eval_clamp(args: &[Value]) -> Result<Value, EvalError> {
+    let (x, lo, hi) = three_real_args(args, "clamp")?;
+    if lo > hi {
+        return Err(EvalError::coded(
+            EvalCode::IntrinsicOutOfDomain,
+            format!(
+                "clamp's lo ({lo}) exceeds hi ({hi}): E-EVAL-044 — loud, never a \
+                 silent swap of the bounds (§3.3; ADR219)"
+            ),
+        ));
+    }
+    Ok(Value::Real(pick_min(pick_max(x, lo), hi)))
 }
 
 /// The `rng-draw` intrinsic (ADR188 Row 11, D69, plan §3.2/§3.3, Task 5 of
@@ -626,12 +878,13 @@ mod tests {
     #[test]
     fn an_undeclared_name_fails_loud_exactly_like_the_empty_host() {
         // `exp` is no longer undeclared as of this task — see the `exp`/`log`
-        // tests below. `round-half-even` stays failing: ADR188 Row 3 is
-        // ratified but not yet landed in `declarations::DECLARABLE_INTRINSICS`
-        // (`declarations.rs:742-746`).
+        // tests below. The probe name moved to `tanh` under ADR219:
+        // `round-half-even` (this test's former probe) DISPATCHES as of the
+        // exact-arithmetic rider train (ADR188 Row 3 landed), while `tanh`
+        // stays outside §3.10's cap (Row 8: elimination presented first).
         assert!(KernelIntrinsicHost
             .call(
-                "round-half-even",
+                "tanh",
                 &[Value::Real(1.0)],
                 IntrinsicCallCtx::context_free()
             )
@@ -744,6 +997,370 @@ mod tests {
         assert!(KernelIntrinsicHost
             .call("log", &[], IntrinsicCallCtx::context_free())
             .is_err());
+    }
+
+    // ---- ADR219 rider train (Director ruling 2026-08-22): the six
+    // exact-arithmetic intrinsics — `sqrt`, `round-half-even`, `min`, `max`,
+    // `abs`, `clamp`. None is a transcendental: each crosses via an IEEE-754
+    // exactly-specified operation (correctly-rounded `sqrt`;
+    // `roundTiesToEven`; comparison/copysign arithmetic), so the pinned
+    // soft-float libm and §4.3's golden-vector clause do not apply — the
+    // floor rider's disposition (§3.10, D97), recorded per-intrinsic in the
+    // spec's normative paragraphs. All six refuse a non-finite argument
+    // loudly (E-EVAL-044, `IntrinsicOutOfDomain`) rather than propagate
+    // NaN/±inf (§4.3: non-finite values are unrepresentable at any
+    // observable point, so the check is defense in depth), and refuse a
+    // non-`Real`-lane argument rather than coercing (§3.1/§3.3, the
+    // `eval_floor` rule). No result-side re-check exists on any of the six:
+    // every one of them maps finite inputs to a finite, exactly-specified
+    // result (unlike `exp`'s overflow lane, E-EVAL-014), so a result guard
+    // would be dead code — that omission is this comment's explicit
+    // disposition, not an oversight.
+
+    fn sqrt(x: f64) -> Result<Value, crate::evaluator::EvalError> {
+        KernelIntrinsicHost.call("sqrt", &[Value::Real(x)], IntrinsicCallCtx::context_free())
+    }
+
+    fn round_half_even(x: f64) -> Result<Value, crate::evaluator::EvalError> {
+        KernelIntrinsicHost.call(
+            "round-half-even",
+            &[Value::Real(x)],
+            IntrinsicCallCtx::context_free(),
+        )
+    }
+
+    fn min2(a: f64, b: f64) -> Result<Value, crate::evaluator::EvalError> {
+        KernelIntrinsicHost.call(
+            "min",
+            &[Value::Real(a), Value::Real(b)],
+            IntrinsicCallCtx::context_free(),
+        )
+    }
+
+    fn max2(a: f64, b: f64) -> Result<Value, crate::evaluator::EvalError> {
+        KernelIntrinsicHost.call(
+            "max",
+            &[Value::Real(a), Value::Real(b)],
+            IntrinsicCallCtx::context_free(),
+        )
+    }
+
+    fn abs1(x: f64) -> Result<Value, crate::evaluator::EvalError> {
+        KernelIntrinsicHost.call("abs", &[Value::Real(x)], IntrinsicCallCtx::context_free())
+    }
+
+    fn clamp3(x: f64, lo: f64, hi: f64) -> Result<Value, crate::evaluator::EvalError> {
+        KernelIntrinsicHost.call(
+            "clamp",
+            &[Value::Real(x), Value::Real(lo), Value::Real(hi)],
+            IntrinsicCallCtx::context_free(),
+        )
+    }
+
+    fn real_bits(r: Result<Value, crate::evaluator::EvalError>) -> u64 {
+        match r {
+            Ok(Value::Real(x)) => x.to_bits(),
+            other => panic!("expected Ok(Value::Real), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn sqrt_of_a_perfect_square_is_exact() {
+        assert_eq!(sqrt(4.0), Ok(Value::Real(2.0)));
+        assert_eq!(sqrt(2.25), Ok(Value::Real(1.5)));
+    }
+
+    /// The mutation-catching pin: `sqrt` crosses via IEEE-754's own
+    /// correctly-rounded square root, so the result for a non-square is
+    /// pinned to the bit. The oracle is `f64::consts::SQRT_2` — std's
+    /// compile-time constant, correctly rounded by definition, reached
+    /// through NO libm call — so an edit swapping the crossing for an
+    /// approximation (a Newton loop without the standard's final rounding)
+    /// flips this assertion.
+    #[test]
+    fn sqrt_of_two_is_the_correctly_rounded_value_to_the_bit() {
+        assert_eq!(real_bits(sqrt(2.0)), std::f64::consts::SQRT_2.to_bits());
+    }
+
+    /// The `-0.0` boundary, dispositioned exactly like `floor`'s: `-0.0 <
+    /// 0.0` is `false` in IEEE-754, so `-0.0` is in-domain — and IEEE's
+    /// own `squareRoot(-0)` is `-0`, so the sign is pinned, not accidental.
+    #[test]
+    fn sqrt_of_zero_and_negative_zero_preserve_the_ieee_signs() {
+        assert_eq!(real_bits(sqrt(0.0)), 0.0_f64.to_bits());
+        assert_eq!(real_bits(sqrt(-0.0)), (-0.0_f64).to_bits());
+    }
+
+    #[test]
+    fn sqrt_of_a_negative_is_e_eval_044_not_a_silent_nan() {
+        let err = sqrt(-1.0).unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::IntrinsicOutOfDomain));
+        assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-044");
+    }
+
+    /// The input guard is load-bearing the same way `log`'s is: `sqrt` of
+    /// `+inf` through the crossing would be `+inf` — non-finite, so the
+    /// call would fail anyway but with the wrong code; and `sqrt` of NaN
+    /// would be NaN — a silent propagation §4.3 forbids.
+    #[test]
+    fn sqrt_of_a_non_finite_argument_is_e_eval_044_at_the_input_guard() {
+        for x in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            let err = sqrt(x).unwrap_err();
+            assert_eq!(err.code, Some(EvalCode::IntrinsicOutOfDomain), "{x}");
+        }
+    }
+
+    #[test]
+    fn sqrt_rejects_a_non_real_argument_and_wrong_arity_rather_than_coercing() {
+        assert!(KernelIntrinsicHost
+            .call("sqrt", &[Value::Int(4)], IntrinsicCallCtx::context_free())
+            .is_err());
+        assert!(KernelIntrinsicHost
+            .call("sqrt", &[], IntrinsicCallCtx::context_free())
+            .is_err());
+        assert!(KernelIntrinsicHost
+            .call(
+                "sqrt",
+                &[Value::Real(1.0), Value::Real(2.0)],
+                IntrinsicCallCtx::context_free()
+            )
+            .is_err());
+    }
+
+    /// The ruled tie cases (§3.2's half-even algorithm exposed to rules,
+    /// ADR188 Row 3, landed by ADR219): exactly-midway values choose the
+    /// EVEN neighbor, in both signs — and `-0.5` ties to `-0.0` (zero is
+    /// even; the sign is pinned because `roundTiesToEven` specifies it).
+    #[test]
+    fn round_half_even_ties_choose_the_even_neighbor_in_both_signs() {
+        assert_eq!(real_bits(round_half_even(2.5)), 2.0_f64.to_bits());
+        assert_eq!(real_bits(round_half_even(3.5)), 4.0_f64.to_bits());
+        assert_eq!(real_bits(round_half_even(0.5)), 0.0_f64.to_bits());
+        assert_eq!(real_bits(round_half_even(-0.5)), (-0.0_f64).to_bits());
+        assert_eq!(real_bits(round_half_even(-2.5)), (-2.0_f64).to_bits());
+    }
+
+    #[test]
+    fn round_half_even_non_ties_round_to_nearest() {
+        assert_eq!(round_half_even(2.4), Ok(Value::Real(2.0)));
+        assert_eq!(round_half_even(2.6), Ok(Value::Real(3.0)));
+        assert_eq!(round_half_even(-2.6), Ok(Value::Real(-3.0)));
+    }
+
+    /// The return type is `Real`, never `Int` — the D-row reading of §3.2's
+    /// obligation (the binary64 lane rounds within itself; the Real→Int
+    /// demotion remains `floor`'s alone, ADR188 Row 2). A mutation that
+    /// demoted would flip this variant assertion.
+    #[test]
+    fn round_half_even_returns_real_never_a_demoted_int() {
+        assert_eq!(round_half_even(7.0), Ok(Value::Real(7.0)));
+    }
+
+    /// At `1e300` every binary64 value is already integral (the spacing
+    /// exceeds 1), so the intrinsic is the identity there — finite in,
+    /// finite out, unchanged.
+    #[test]
+    fn round_half_even_of_an_already_integral_magnitude_is_the_identity() {
+        assert_eq!(round_half_even(7.0), Ok(Value::Real(7.0)));
+        assert_eq!(round_half_even(1e300), Ok(Value::Real(1e300)));
+    }
+
+    #[test]
+    fn round_half_even_of_a_non_finite_argument_is_e_eval_044() {
+        for x in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            let err = round_half_even(x).unwrap_err();
+            assert_eq!(err.code, Some(EvalCode::IntrinsicOutOfDomain), "{x}");
+        }
+    }
+
+    #[test]
+    fn round_half_even_rejects_a_non_real_argument_rather_than_coercing() {
+        assert!(KernelIntrinsicHost
+            .call(
+                "round-half-even",
+                &[Value::Int(3)],
+                IntrinsicCallCtx::context_free()
+            )
+            .is_err());
+    }
+
+    #[test]
+    fn min_and_max_pick_the_extreme_in_both_argument_orders() {
+        assert_eq!(min2(1.5, 2.5), Ok(Value::Real(1.5)));
+        assert_eq!(min2(2.5, 1.5), Ok(Value::Real(1.5)));
+        assert_eq!(max2(1.5, 2.5), Ok(Value::Real(2.5)));
+        assert_eq!(max2(2.5, 1.5), Ok(Value::Real(2.5)));
+        assert_eq!(min2(2.0, 2.0), Ok(Value::Real(2.0)));
+    }
+
+    /// The signed-zero disposition (ADR219, D-row): `min`/`max` are
+    /// comparison-based, never `f64::min`/`f64::max`, because those are
+    /// licensed to return EITHER zero on a `±0.0` tie (and propagate NaN)
+    /// — an implementation-defined answer of exactly the kind this crate
+    /// forbids. IEEE comparisons are exactly specified, so the rule here is
+    /// pinned: on an equal comparison (including `+0.0` vs `-0.0`, which
+    /// compare equal) the FIRST argument wins.
+    #[test]
+    fn min_and_max_on_a_signed_zero_tie_return_the_first_argument_to_the_bit() {
+        assert_eq!(real_bits(min2(-0.0, 0.0)), (-0.0_f64).to_bits());
+        assert_eq!(real_bits(min2(0.0, -0.0)), 0.0_f64.to_bits());
+        assert_eq!(real_bits(max2(-0.0, 0.0)), (-0.0_f64).to_bits());
+        assert_eq!(real_bits(max2(0.0, -0.0)), 0.0_f64.to_bits());
+    }
+
+    #[test]
+    fn min_and_max_refuse_a_non_finite_argument_on_either_side() {
+        for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert_eq!(
+                min2(bad, 1.0).unwrap_err().code,
+                Some(EvalCode::IntrinsicOutOfDomain),
+                "min lhs {bad}"
+            );
+            assert_eq!(
+                max2(1.0, bad).unwrap_err().code,
+                Some(EvalCode::IntrinsicOutOfDomain),
+                "max rhs {bad}"
+            );
+        }
+    }
+
+    #[test]
+    fn min_and_max_reject_non_real_arguments_and_wrong_arity() {
+        assert!(KernelIntrinsicHost
+            .call("min", &[Value::Real(1.0)], IntrinsicCallCtx::context_free())
+            .is_err());
+        assert!(KernelIntrinsicHost
+            .call(
+                "max",
+                &[Value::Int(1), Value::Real(2.0)],
+                IntrinsicCallCtx::context_free()
+            )
+            .is_err());
+    }
+
+    #[test]
+    fn abs_drops_the_sign_and_canonicalizes_negative_zero() {
+        assert_eq!(abs1(-3.5), Ok(Value::Real(3.5)));
+        assert_eq!(abs1(3.5), Ok(Value::Real(3.5)));
+        // IEEE `abs(-0.0)` is `+0.0` — pinned to the bit, so the result is
+        // the canonical zero, never the signed one.
+        assert_eq!(real_bits(abs1(-0.0)), 0.0_f64.to_bits());
+    }
+
+    #[test]
+    fn abs_of_a_non_finite_argument_is_e_eval_044() {
+        for x in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert_eq!(
+                abs1(x).unwrap_err().code,
+                Some(EvalCode::IntrinsicOutOfDomain),
+                "{x}"
+            );
+        }
+    }
+
+    /// The in-range passthrough must be bit-exact — the identity on `x`,
+    /// never a re-rounded or re-scaled copy of it.
+    #[test]
+    fn clamp_of_an_in_range_value_is_the_identity_to_the_bit() {
+        assert_eq!(clamp3(0.5, 0.0, 1.0), Ok(Value::Real(0.5)));
+        assert_eq!(
+            real_bits(clamp3(0.1 + 0.2, 0.0, 1.0)),
+            (0.1_f64 + 0.2_f64).to_bits()
+        );
+    }
+
+    #[test]
+    fn clamp_saturates_to_the_crossed_bound_and_accepts_the_bounds_themselves() {
+        assert_eq!(clamp3(1.5, 0.0, 1.0), Ok(Value::Real(1.0)));
+        assert_eq!(clamp3(-0.5, 0.0, 1.0), Ok(Value::Real(0.0)));
+        assert_eq!(clamp3(1.0, 0.0, 1.0), Ok(Value::Real(1.0)));
+        assert_eq!(clamp3(0.0, 0.0, 1.0), Ok(Value::Real(0.0)));
+    }
+
+    /// `lo > hi` is a loud `E-EVAL-044`, never a silent swap of the bounds:
+    /// §3.3 frames silent clamping as forbidden quiet degradation — this
+    /// intrinsic is the LEGIBLE saturation (the author writes it), and its
+    /// argument error is loud for the same reason. `lo == hi` is not an
+    /// error: the result is that bound.
+    #[test]
+    fn clamp_with_lo_above_hi_is_e_eval_044_never_a_silent_swap() {
+        let err = clamp3(0.5, 1.0, 0.0).unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::IntrinsicOutOfDomain));
+        assert_eq!(clamp3(0.5, 1.0, 1.0), Ok(Value::Real(1.0)));
+    }
+
+    #[test]
+    fn clamp_refuses_a_non_finite_argument_in_any_position() {
+        for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert_eq!(
+                clamp3(bad, 0.0, 1.0).unwrap_err().code,
+                Some(EvalCode::IntrinsicOutOfDomain),
+                "x {bad}"
+            );
+            assert_eq!(
+                clamp3(0.5, bad, 1.0).unwrap_err().code,
+                Some(EvalCode::IntrinsicOutOfDomain),
+                "lo {bad}"
+            );
+            assert_eq!(
+                clamp3(0.5, 0.0, bad).unwrap_err().code,
+                Some(EvalCode::IntrinsicOutOfDomain),
+                "hi {bad}"
+            );
+        }
+    }
+
+    #[test]
+    fn clamp_rejects_non_real_arguments_and_wrong_arity() {
+        assert!(KernelIntrinsicHost
+            .call(
+                "clamp",
+                &[Value::Real(0.5), Value::Real(0.0)],
+                IntrinsicCallCtx::context_free()
+            )
+            .is_err());
+        assert!(KernelIntrinsicHost
+            .call(
+                "clamp",
+                &[Value::Real(0.5), Value::Int(0), Value::Real(1.0)],
+                IntrinsicCallCtx::context_free()
+            )
+            .is_err());
+    }
+
+    /// The lockstep invariant the retired e2e refusal test protected
+    /// (`floor_intrinsic_e2e.rs`'s pre-ADR219 `round-half-even` leg),
+    /// stated positively: EVERY member of `DECLARABLE_INTRINSICS` carries a
+    /// `kernel_signature` row AND a dispatch arm in this match — a cap
+    /// widening that forgot either half fails this test rather than
+    /// shipping unchecked (`declarations::kernel_signature`'s own doc names
+    /// the same invariant for the declaration side). Arguments are shaped
+    /// from the signature itself, so the loop needs no per-name table; a
+    /// successful call proves the arm, and an `Err` proves it too as long
+    /// as it is NOT the fallthrough's "no intrinsic registered" — that is
+    /// how `rng-draw` (no `DrawContext` here) proves its arm by failing
+    /// for the RIGHT reason.
+    #[test]
+    fn every_declarable_intrinsic_has_a_signature_row_and_a_dispatch_arm() {
+        use crate::declarations::{kernel_signature, IntrinsicTypeName, DECLARABLE_INTRINSICS};
+        for name in DECLARABLE_INTRINSICS {
+            let (params, _) = kernel_signature(name)
+                .unwrap_or_else(|| panic!("{name}: in the cap but no signature row"));
+            let args: Vec<Value> = params
+                .iter()
+                .map(|p| match p {
+                    IntrinsicTypeName::Real => Value::Real(0.5),
+                    IntrinsicTypeName::Scalar(_) => Value::Int(0),
+                })
+                .collect();
+            match KernelIntrinsicHost.call(name, &args, IntrinsicCallCtx::context_free()) {
+                Ok(_) => {}
+                Err(err) => assert!(
+                    !err.message.contains("no intrinsic registered"),
+                    "{name}: has a signature row but no dispatch arm — {err}"
+                ),
+            }
+        }
     }
 
     // ---- Task 4.1 (#576 intrinsic-host train, plan §3.5): the `DrawContext`

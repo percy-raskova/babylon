@@ -358,6 +358,22 @@ pub trait GraphSubstrate {
     /// same shape [`Self::nodes`] and [`Self::edges`] already have.
     fn hyperedges(&self, hyperedge_type: &str) -> Vec<HyperedgeId>;
 
+    /// The declared type of a live hyperedge — the runtime half of
+    /// `E-EVAL-032` (D24: a `members-of`/`hyperedges-of` whose referent is
+    /// not of the annotated `HyperedgeType` is a mismatch, never a silently
+    /// empty set). The static bound checker bounds a `members-of` fold by
+    /// the annotated type's census-fed max-members; without this accessor a
+    /// referent of a DIFFERENT type would iterate past that bound
+    /// unchecked (PR #684's review found the gap).
+    ///
+    /// READ-ONLY, mirroring [`Self::node_type_of`] exactly: it reports a
+    /// fact the substrate already stores to satisfy [`Self::hyperedges`].
+    ///
+    /// # Errors
+    /// Returns [`GraphError`] if `id` names no live hyperedge — a dangling
+    /// `HyperedgeRef` never reads as an untyped hyperedge (III.11).
+    fn hyperedge_type_of(&self, id: HyperedgeId) -> Result<&str, GraphError>;
+
     /// The declared type of a live node — `(neighbors … <NodeType>)`'s
     /// filter (§2.6, D24: this operand FILTERS) and §2.10 discipline 1's
     /// `E-EVAL-033` referent check both need it, and neither is expressible

@@ -248,12 +248,13 @@ fn defenum_ordinal_parity_with_the_frozen_order() {
     }
 }
 
-/// Cross-world constant-parity harness (Task 2 lands world 1 only; later
-/// tasks extend the `scenarios` array). Every constant a world does not
-/// deliberately vary must be byte-identical across worlds — a typo in one
-/// world's canonical block cannot pass.
+/// Canonical-table parity (Task 2 lands world 1 only, so this asserts
+/// world 1 against the canonical block; when later worlds land, this
+/// harness extends to a loop over a `scenarios` array — every constant a
+/// world does not deliberately vary must be byte-identical across worlds,
+/// so a typo in one world's canonical block cannot pass).
 #[test]
-fn the_constant_table_is_byte_identical_across_all_worlds() {
+fn world1_constants_match_the_canonical_table_bit_exactly() {
     let expected: [(&str, f64); 46] = [
         // Engine parameters — transition_engine.py:51-54.
         ("class-dynamics/wealth-threshold", 142_000.0),

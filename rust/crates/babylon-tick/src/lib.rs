@@ -397,8 +397,9 @@ fn registered_systems() -> HashSet<String> {
         "community".to_owned(),
         // The class-dynamics/* rule pack (Material Base @4.0's Feature-016
         // class-dynamics engine — NOT all of @4.0; TickDynamics port train,
-        // issue #669, plan `docs/superpowers/plans/2026-08-18-tickdynamics-
-        // port.md`). Genuinely NEW registration — the Task 0 surface-facts
+        // issue #669, plan docs/superpowers/plans/2026-08-18-tickdynamics-port.md
+        // — path deliberately unbackticked so the line break cannot render a
+        // split path). Genuinely NEW registration — the Task 0 surface-facts
         // dossier (`reports/class-dynamics-bsl-surface-facts-2026-08-18.md`)
         // confirmed zero prior hits in this HashSet for `class-dynamics`/
         // `tick-dynamics`/`tickdynamics` spellings. Hyphenated spelling

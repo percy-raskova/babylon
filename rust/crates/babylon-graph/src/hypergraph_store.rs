@@ -208,6 +208,7 @@ impl GraphSubstrate for HypergraphStore {
                 message: format!("hyperedge-half removal of {id:?}: {e}"),
             })?;
 
+        let mut dropped: Vec<HyperedgeId> = Vec::new();
         for (edge_key, hyperedge_type) in prior_memberships {
             if !self.inner.has_edge(&edge_key) {
                 if let Some(hid) = self.hyperedge_keys.remove(&edge_key) {
@@ -215,10 +216,15 @@ impl GraphSubstrate for HypergraphStore {
                     // The implicitly-dropped hyperedge's own-field rows die
                     // with it (PR #682 harvest — this path missed the sweep
                     // before): no corpse rows into section 0x07.
-                    self.hyperedge_attributes
-                        .retain(|(hyperedge, _), _| *hyperedge != hid);
+                    dropped.push(hid);
                 }
             }
+        }
+        // One sweep for the whole drop set (PR #683's own review): retain
+        // per dropped id would make the cascade O(dropped × rows).
+        if !dropped.is_empty() {
+            self.hyperedge_attributes
+                .retain(|(hyperedge, _), _| !dropped.contains(hyperedge));
         }
         Ok(())
     }

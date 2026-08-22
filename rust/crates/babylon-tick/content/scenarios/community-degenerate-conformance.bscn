@@ -41,6 +41,9 @@
   (deffield community/density-sum real extensive)
   ; c06a's cache — written per tick, read by c06b the same tick (D204).
   (deffield community/substrate-floor probability intensive)
+  ; DG-2 (PUBLISH, the 2026-08-18 sitting): c07/c08's readout fields.
+  (deffield community/contestation probability intensive)
+  (deffield community/dominant-tendency enum ConsciousnessTendency)
   (deffield social-class/org-r-weight real extensive)
   (deffield social-class/org-l-weight real extensive)
   (deffield social-class/org-f-weight real extensive)

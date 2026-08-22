@@ -106,6 +106,14 @@
 ; The pack's landed register rows are D203+ in docs/reference/
 ; bsl-language.rst.
 
+; The pack's one intrinsic declaration (DG-2 = PUBLISH, the 2026-08-18
+; sitting): `log` for c07's entropy divisor. First content pack to declare
+; it, so this sets its :cost (the spec's ":cost provenance" paragraph —
+; the first declarer sets the number, pinned by the conformance vector
+; thereafter); 40 follows the crate's own declaration test
+; (declarations.rs:1345).
+(intrinsic log :params (real) :returns real :cost 40)
+
 ; ============================================================ c00 — the reset
 (rule community/c00-census-reset
   :material-basis "The per-tick rebuild (community.py:392-397 mints a fresh community_agents map on every step, and community.py:460-462 writes back via model_copy): every accumulator this pack reads derives from THIS tick's writes, so the tick begins by zeroing them. The institution/community-carrier binding is a SUBJECT-TYPE ANCHOR ONLY (tick.rs::subject_type_of requires >=1 :field binding to derive INSTITUTION) — never read again, never gating anything (`when #t`), so the domain is declared EXPLICITLY: an unreferenced anchor plus a vacuous guard is E-LOAD-004-undeterminable at load (domain.rs's candidate set is reference-fed), and control-ratio.bsl's precedent passes only because its fold bodies feed that set — recorded in the pack header."
@@ -357,3 +365,44 @@
         (set (if (< (* (field-of it community/cohesion) (- 1.0c cohesion-alpha)) 0.0c) 0.0c (* (field-of it community/cohesion) (- 1.0c cohesion-alpha)))))
       (update-hyperedge it community/education-pressure
         (set (if (< (* (field-of it community/education-pressure) (- 1.0c edu-alpha)) 0.0c) 0.0c (* (field-of it community/education-pressure) (- 1.0c edu-alpha))))))))
+
+; ============================================================ c07 — the contestation readout (DG-2: PUBLISH)
+; DG-2 was answered at the 2026-08-18 sitting: PUBLISH contestation +
+; dominant-tendency (port fidelity — frozen publishes both,
+; community.py:106-107 — plus the events-as-affordances thesis, #502).
+(rule community/c07-contestation
+  :material-basis "The normalized Shannon entropy of the published simplex (entities/consciousness.py:274-291): entropy = 0 - t(r) - t(l) - t(f) with t(p) = p*log(p) guarded per component at p > 1e-10 (the (/ 1c 10000000000) quotient), divided by (log (* 1.0c 3)) — the divisor COMPUTED through the pack's declared `log` intrinsic (the pinned libm soft-float crossing), never pasted. DG-2's PUBLISH ruling is why this rule exists. NOTE the divisor divergence, recorded (D-row): libm::log(3) is 1.0986122886681096, ONE ulp below CPython's math.log(3) (1.0986122886681098) — the engine's pinned soft-float crossing is the law of THIS port (ADR176 r21 / ADR188), so the mirror divides by the libm value and the conformance pins are bit-exact against IT."
+  :fuel 900
+  (domain NodeType/INSTITUTION)
+  (bindings
+    (binding carrier :field institution/community-carrier))
+  (when #t)
+  (effects
+    (for-each (hyperedges HyperedgeType/COMMUNITY)
+      (guard (> (field-of it community/density-sum) 0.0c)
+        (update-hyperedge it community/contestation
+          (set
+            (/ (- (- (- 0.0c
+              (if (> (field-of it community/revolutionary) (/ 1.0c 10000000000)) (* (field-of it community/revolutionary) (log (field-of it community/revolutionary))) 0.0c))
+              (if (> (field-of it community/liberal) (/ 1.0c 10000000000)) (* (field-of it community/liberal) (log (field-of it community/liberal))) 0.0c))
+              (if (> (field-of it community/fascist) (/ 1.0c 10000000000)) (* (field-of it community/fascist) (log (field-of it community/fascist))) 0.0c))
+              (log (* 1.0c 3)))))))))
+
+; ============================================ c08 — the dominant-tendency readout (DG-2: PUBLISH)
+(rule community/c08-dominant-tendency
+  :material-basis "The argmax readout with the ruled tie order LIBERAL > REVOLUTIONARY > FASCIST at 1e-6 (entities/consciousness.py:167-191, epsilon :189) — the SAME shape consciousness/p8-dominant-worldview runs over the class surface (the 8a row-1 copies-agree test pins both to LIBERAL on the same seeded three-way tie). The skip gate is c05's (density-sum > 0): a no-org community keeps its prior tendency, never a fabricated readout."
+  :fuel 336
+  (domain NodeType/INSTITUTION)
+  (bindings
+    (binding carrier :field institution/community-carrier))
+  (when #t)
+  (effects
+    (for-each (hyperedges HyperedgeType/COMMUNITY)
+      (guard (> (field-of it community/density-sum) 0.0c)
+        (update-hyperedge it community/dominant-tendency
+          (set
+            (if (< (if (> (field-of it community/liberal) (if (>= (field-of it community/revolutionary) (field-of it community/liberal)) (if (>= (field-of it community/revolutionary) (field-of it community/fascist)) (field-of it community/revolutionary) (field-of it community/fascist)) (if (>= (field-of it community/liberal) (field-of it community/fascist)) (field-of it community/liberal) (field-of it community/fascist)))) (- (field-of it community/liberal) (if (>= (field-of it community/revolutionary) (field-of it community/liberal)) (if (>= (field-of it community/revolutionary) (field-of it community/fascist)) (field-of it community/revolutionary) (field-of it community/fascist)) (if (>= (field-of it community/liberal) (field-of it community/fascist)) (field-of it community/liberal) (field-of it community/fascist)))) (- (if (>= (field-of it community/revolutionary) (field-of it community/liberal)) (if (>= (field-of it community/revolutionary) (field-of it community/fascist)) (field-of it community/revolutionary) (field-of it community/fascist)) (if (>= (field-of it community/liberal) (field-of it community/fascist)) (field-of it community/liberal) (field-of it community/fascist))) (field-of it community/liberal))) 0.000001c)
+              ConsciousnessTendency/LIBERAL
+              (if (< (if (> (field-of it community/revolutionary) (if (>= (field-of it community/revolutionary) (field-of it community/liberal)) (if (>= (field-of it community/revolutionary) (field-of it community/fascist)) (field-of it community/revolutionary) (field-of it community/fascist)) (if (>= (field-of it community/liberal) (field-of it community/fascist)) (field-of it community/liberal) (field-of it community/fascist)))) (- (field-of it community/revolutionary) (if (>= (field-of it community/revolutionary) (field-of it community/liberal)) (if (>= (field-of it community/revolutionary) (field-of it community/fascist)) (field-of it community/revolutionary) (field-of it community/fascist)) (if (>= (field-of it community/liberal) (field-of it community/fascist)) (field-of it community/liberal) (field-of it community/fascist)))) (- (if (>= (field-of it community/revolutionary) (field-of it community/liberal)) (if (>= (field-of it community/revolutionary) (field-of it community/fascist)) (field-of it community/revolutionary) (field-of it community/fascist)) (if (>= (field-of it community/liberal) (field-of it community/fascist)) (field-of it community/liberal) (field-of it community/fascist))) (field-of it community/revolutionary))) 0.000001c)
+                ConsciousnessTendency/REVOLUTIONARY
+                ConsciousnessTendency/FASCIST))))))))

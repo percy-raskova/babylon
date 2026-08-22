@@ -378,7 +378,7 @@
     (update-node self social-class/previous-wealth (set wealth))))
 
 (rule consciousness/p8-dominant-worldview
-  :material-basis "The measured readout: dominant pole = argmax with the ruled tie order LIBERAL > REVOLUTIONARY > FASCIST at 1e-6 (frozen: models/entities/consciousness.py:177-192, transcribed verbatim). ONE DECLARED HOME for the hegemonic tie-break — the frozen estate smeared it across five sites (digest A.5c); here it lives exactly once. UNPOSITIONED classes (sum 0) are skipped: no reading, ever."
+  :material-basis "The measured readout: dominant pole = argmax with the ruled tie order LIBERAL > REVOLUTIONARY > FASCIST at 1e-6 (frozen: models/entities/consciousness.py:177-192, transcribed verbatim). TWO DECLARED HOMES for the hegemonic tie-break, parity-guarded (DG-2 = PUBLISH, the 2026-08-18 sitting): this rule over the class surface, and community/c08-dominant-tendency over the community surface — the 8a row-1 copies-agree test (tests/community_conformance.rs::dominant_tendency_ties_match_the_class_surface_rule) pins both to LIBERAL on the same three-way tie. (The frozen anchor above is corrected with this amendment: models/entities/consciousness.py:167-191, epsilon :189 — the earlier :177-192 pointed past the property.) UNPOSITIONED classes (sum 0) are skipped: no reading, ever."
   :fuel 96
   (bindings
     (binding active :field social-class/active)

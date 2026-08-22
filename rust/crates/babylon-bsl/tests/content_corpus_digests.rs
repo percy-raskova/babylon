@@ -69,11 +69,11 @@ fn corpus_files() -> Vec<PathBuf> {
 const PINNED_DIGESTS: &[(&str, &str)] = &[
     (
         "community.bsl",
-        "1ce0b5129eb9e34d8ac1e5a963ef4e09a0b8a08813186ceaefd9e785db16ccb8",
+        "8b955851e3dec97a89e73b951ba96609713e81a1db36315d0cbf9493b3175384",
     ),
     (
         "consciousness.bsl",
-        "20c55d1ecde62fd8a0e70d92558ec99882a91ebe0303b41d785afa44dbca78bf",
+        "baee6e7ba35c97993c6bb700c365a65ba8cecf8fd72efc51619d5e740c1e5ad1",
     ),
     (
         "control-ratio.bsl",
@@ -205,35 +205,39 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     ),
     (
         "community-carrier-collision-conformance.bscn",
-        "d2399cc98ab913622944c68209e663ba8e07695aaeab0f11e4e85b23f9d08e05",
+        "a54427a115c6f92388f5b99a7e57e2ae0e7e4ffd1291f89503156d82a06a1e61",
     ),
     (
         "community-conformance.bscn",
-        "0e13c145c0398b700952737aaaffeb6a4c575d1894cccfc96a31944fbc0ba984",
+        "aa2ce59f82c01c770116a8f719585a8cee55f5d5571afcd9f55968b1e3c196db",
     ),
     (
         "community-cost-modifier-conformance.bscn",
-        "03c9fccc01e7a783cf0bdc29f5bbd4cad75d27c7c5e791b89e7c3c004cf0a48b",
+        "c07992122b90bcb29e7efdd223f8f4f2db9e9000e5abc8d7c9b55a415a90c176",
     ),
     (
         "community-decay-arc-conformance.bscn",
-        "45e1650e120cfc507ec96d4c46015fd1b53e6ecf9b0085bbc7443fa1b77c4c4b",
+        "be92fbf179c713b2415e0dce50b604ee943e9cbb7b7bfeb17eeb1748f47c79ef",
     ),
     (
         "community-degenerate-conformance.bscn",
-        "b8ad8f7f0472ff8c7baeeee8d3e71653edc43635c19cee7c93048e1035b15ab0",
+        "1c5b4d74abd8c2fd92607fc5382da812e5f8efaaaf6801ca3238118cff705e4c",
     ),
     (
         "community-empty-conformance.bscn",
-        "ca82c8a242c7ef43145dfebb22e3bbc26222edddcbb084f3f1f127961b827af1",
+        "0f39317a106dabbee5ab0e25ec6a1d18fc3480e7ca83114ad3238ada3be1c741",
     ),
     (
         "community-floor-conformance.bscn",
-        "ffabae42ddf3da7667e195cb06dd4e9a5b57f7bdc4ae105358cb4a9f59e77843",
+        "e9bd0ca70a9a304121d47736764cc415fff06023fcee18c4892a55ed43921119",
     ),
     (
         "community-solidarity-seam-conformance.bscn",
-        "036bd9f4f3639ae31ba90749d024a467d0b8c1152ed8fe1ce8013e72173f28f2",
+        "338f0781f53b23575cf528687a93f3b8ff1be43f0b1edd59862118ea220224b9",
+    ),
+    (
+        "community-tie-conformance.bscn",
+        "5c5198de6147ac74541dc04f5c9aee4c900d6b35473ba464d5e9e5bf04819eff",
     ),
     (
         "consciousness-ternary-conformance.bscn",

@@ -2100,6 +2100,16 @@ This section states what the kind **is**. Its three language surfaces live in
 the sections that own them: the declaration in §2.9, the read in §2.10, the
 write in §2.8.
 
+**Implementation status (Community port train, Task 12):** the kind is
+ratified language, **unserved in the engine** — ``membership-field-of``,
+``update-membership``, ``deffield``'s ``:member`` operand and §6.2 family 23
+all refuse with the AG(i) lane's citation, blocked on the attributed-
+membership ceremony, **issue #653** (the evaluator's
+``UNSERVED_EXPRESSION_HEADS`` row and the refusal texts name it by number;
+the Community port's own un-need is D220 — its worlds carry no payload by
+design). The Community train's requirements against the ceremony are
+``reports/community-membership-shape-note-2026-08-18.md``.
+
 **[draft ruling — Phase 1 review, Amendment AG (i)]** *A membership is denoted
 by its key, and the language mints no fourth reference kind.* A membership is
 identified by the pair *(hyperedge, member)* exactly as a dyadic edge is
@@ -9200,6 +9210,224 @@ consequences are the ordinary kind of review item.
        the lanes-skipped pin. §8c guards 1 and 4 now iterate every world
        this pack loads into (the main suite covers worlds 1-4, the arc
        suite worlds 5-6).
+   * - D206
+     - §2.6
+     - **The ephemeral XGI rebuild collapses into the substrate (D-NF+1).**
+       Frozen rebuilds a throwaway ``xgi.Hypergraph`` every tick
+       (``community.py:346``); in Rust the hypergraph IS the substrate
+       (Amendment D), so communities are seeded once by the scenario and
+       persist — a structural reformulation, not an optimization. Landed
+       with Task 1's ``(hyperedge …)`` form (``scenario.rs``), which extends
+       the id-order law with an independent counter (D216).
+   * - D207
+     - §2.5
+     - **The ``community-register`` carrier is not a community node
+       (D-NF+2).** The world's singleton INSTITUTION registry gives
+       carrier-subject rules a subject; the ``community/`` namespace is
+       banned from ``:field`` bindings — the D29 mechanism (D202) is the
+       mechanical face of VIII.9. The singleton half is D223's.
+   * - D208
+     - §4.2
+     - **The D116 same-tick cross-rule reliance, recorded as the Q14
+       train's acceptance-criterion input for this pack (D-NF+4).** Five
+       reads (the plan's §8b table), two of them FATAL if
+       collect-across-rules ever lands (c05 reading pre-reset
+       accumulators; c06a/c06b's cache hand-off). The pack's rules run in
+       rule-id byte order (D16); this row exists so the Q14 repair train
+       has the correct criterion in hand before it changes that.
+   * - D209
+     - §3.7
+     - **The 500-org cap does not port (D-NF+5).** Frozen truncates
+       ``org_data`` at 500 in INSERTION order (``community.py:401,424-426``)
+       — non-deterministic under dict order and inexpressible here (no
+       early-break construct). The port's bound is fuel: an over-large org
+       census refuses loudly at load (E-LOAD-040/E-LOAD-045) instead of
+       truncating silently. Re-open trigger: none — a world with >500 orgs
+       fails at load with the reason named.
+   * - D210
+     - §2.7
+     - **Shannon entropy lands on the ``log`` intrinsic (D-NF+7) —
+       LANDED** at the DG-2 PUBLISH ruling (the 2026-08-18 sitting):
+       ``c07-contestation`` divides by ``(log (* 1.0c 3))`` — computed
+       through the pack's declared ``log`` intrinsic (the pinned libm
+       soft-float crossing), never pasted; the ``1e-10`` per-component
+       guard transcribes verbatim (``entities/consciousness.py:274-291``).
+       The pack's ``(intrinsic log :params (real) :returns real :cost 40)``
+       is the FIRST content declaration of ``log`` — per the spec's
+       "``:cost`` provenance" paragraph, this pack set the number (the
+       crate's own declaration test's value), pinned by the conformance
+       vectors thereafter. **The 1-ulp divisor divergence, recorded:**
+       libm's ``log(3)`` is ``1.0986122886681096``, one ulp BELOW CPython's
+       glibc ``math.log(3)`` (``1.0986122886681098``) — the engine's pinned
+       crossing is the law of this port (ADR176 r21/ADR188), the mirror
+       divides by the engine's value, and the conformance pins are
+       bit-exact against the PORT's arithmetic. On the landed vectors the
+       per-component ``p*log(p)`` terms' ulp differences happen to cancel —
+       a future world whose vector does not cancel re-opens with a written
+       tolerance policy (the transcendental contract's own rule).
+   * - D211
+     - §2.7
+     - **A second declared home for the hegemonic tie-break (D-NF+8) —
+       LANDED at DG-2 = PUBLISH.** ``consciousness.bsl``'s "ONE DECLARED
+       HOME" comment carries the one-line amendment (TWO DECLARED HOMES,
+       parity-guarded, with its own frozen-anchor correction ``:177-192`` →
+       ``:167-191``, epsilon ``:189``), and §8a row 1's copies-agree test
+       (``dominant_tendency_ties_match_the_class_surface_rule``) pins both
+       homes to LIBERAL on the same three-way tie — the class surface
+       through ``consciousness/p8``, the community surface through ``c08``,
+       in one co-loaded world (``community-tie-conformance.bscn``, the
+       ninth content world, added at this landing).
+   * - D212
+     - §3.6
+     - **Unread published state is not declared (D-NF+9).** Frozen
+       publishes ``visibility``, ``rent_access_modifier`` and ``category``
+       onto the hyperedge (``community.py:99,102,104``) and reads none of
+       them in ``step()``; declaring them — or transcribing
+       ``HyperedgeCategory`` for ``category``'s sake — would enter the tick
+       hash write-only, against declare-what-you-read. Re-open trigger:
+       the first reader of any of the three.
+   * - D213
+     - §5
+     - **The #653-gated half, itemized (D-NF+10).** Threat scoring
+       (``community.py:579-608``), solidarity amplification (:527-576) and
+       the infrastructure maintenance term (:655-661) each need
+       per-membership payload (AG(i), #653). Filed as issue #692 with the
+       plan §5 table as its body and "cannot open until #653 lands" as its
+       gate; the co-sponsored requirements note is
+       ``reports/community-membership-shape-note-2026-08-18.md``.
+   * - D214
+     - §5
+     - **The off-``step()`` estate is not ported (D-NF+11).** The four
+       repression helpers (``community.py:210-279``),
+       ``community_overlap_matrix``, ``communities_spanning_axis``, and
+       ``calculate_solidarity_potential`` are never called from ``step()``;
+       they await a verb layer, and ``solidarity_potential``'s two defines
+       (``community_overlap_bonus``, ``rent_differential_penalty``,
+       ``config/defines/organizations.py:42-51``) stay undeclared.
+   * - D215
+     - §3.7
+     - **``CanonicalState`` section ``0x07`` (D-NF+14, landed one section
+       LATER than the plan's ``0x06``).** The III.7 widening mirroring
+       ADR198 R1/ADR203 landed as the SEVENTH listing
+       (``all_hyperedge_attributes``) at section ``0x07`` because T3's
+       Currency lane took ``0x06`` first — the plan's ``0x06`` is
+       superseded by the landing, with the caller-side empty elision
+       keeping every landed pin byte-identical (the elision proof attached
+       at Task 5, #682). ``CANONICAL_LAYOUT_VERSION = 4``.
+   * - D216
+     - §3.6
+     - **Hyperedge scenario seeding, and why no rule mints one
+       (D-NF+15).** ``(hyperedge …)`` extends ``scenario.rs``'s id-order
+       law with an independent counter; ``DEFERRED_SHAPE_VERBS`` stays
+       intact because the port needs no minting verb — #536's rider 1 is
+       unspent. Re-open trigger: the first design that mints a community
+       mid-tick.
+   * - D217
+     - §2.6
+     - **One ``HyperedgeType`` member + a ``community/kind`` enum field
+       (D-NF+16).** Type-as-identity (14 members) would force 14
+       near-identical copies of every uniform law, since ``(hyperedges …)``
+       is type-scoped (``grammar.rs:202-212``). The kind dispatch is the
+       14-arm chain (D204's c06a) — ONE copy of each law, the table read
+       per community.
+   * - D218
+     - §5
+     - **``community-cost-modifier`` is a dead write, ported anyway
+       (D-NF+17).** Frozen declares and writes it with zero readers
+       anywhere in ``src/``; ported because it is frozen's observable
+       output. Re-open trigger: the reproduction-cost consumer (the
+       vitality/reproduction lane) reading it — at which point the field
+       becomes load-bearing and this row's note should be re-read first.
+   * - D219
+     - §2.11
+     - **The pack emits no events and reads no ``TickContext`` (D-NF+18).**
+       Frozen emits nothing (whole-file grep over ``community.py``) and
+       names its context parameter ``_context``; the absence is declared so
+       a later reader does not assume an emitter was dropped. The
+       conformance suites assert value-level state, never an event stream,
+       for this pack.
+   * - D220
+     - §3.6
+     - **Memberships are UNATTRIBUTED in this train (D-NF+19).** No
+       payload exists, so the worlds carry no role/strength/visibility
+       columns — deliberately absent, never defaulted, since a defaulted
+       role would fabricate the exact data #653 exists to carry. The
+       seeded ``(hyperedge …)`` form carries a bare member list, whole
+       (VIII.9), and Task 6's ``(hyperedge-attr …)`` writes the
+       hyperedge's OWN fields only — never a per-member payload.
+   * - D221
+     - §3.4
+     - **The duplication ledger (D-NF+20).** The §8a table's copied
+       expressions (the tie-break, the decay triplication, the
+       ``/ member-count`` divisor ×4, the degeneracy epsilons, and — added
+       at landing — c05's inlined total/unorganized expressions);
+       single-sourcing is unavailable in the language (no ``defexpr``, no
+       macro, no cross-rule binding), so each pair owes a copies-agree row
+       and a perturb-one-copy vector — the bit-exact mirror assertions are
+       that mechanism for the c05 inlines.
+   * - D222
+     - §2.6
+     - **The type-scoped hyperedge enumerator widens ``GraphSubstrate``,
+       not ``CanonicalState`` (D-NF+21) — a declared crate-boundary
+       crossing (§3.6).** ``(hyperedges …)`` had no accessor at all;
+       routing through ``CanonicalState::all_hyperedges`` was rejected on
+       that trait's own ruling (``state_hash.rs:294-299`` keeps its
+       listings a serialization capability, off the structural-verb
+       surface), so the substrate gained symmetric ``hyperedges`` /
+       ``hyperedges_of`` / ``hyperedge_type_of`` with conformance rows on
+       both backends (#681-#684).
+   * - D223
+     - §3.7
+     - **The singleton INSTITUTION carrier is an estate-wide invariant;
+       this pack mints no second one (D-NF+23).** ``subject_type_of``
+       makes every INSTITUTION-subject rule iterate every INSTITUTION node
+       and an unwritten bound field is a III.11 hard error, so a second
+       carrier double-applies this pack's hyperedge writes AND breaks the
+       landed carceral packs in any co-loaded world. World 5c executes the
+       co-load; §8c row 4 guards every world the pack loads into (the two
+       suites split the eight worlds between them). **Re-open trigger:** a
+       design needing two carriers needs a subject SELECTOR the language
+       does not have — an escalation, not a fixture change. **Related
+       latent gap found at #688's harvest:** ``resolve_domain`` (load) and
+       ``subject_type_of`` (tick) derive the subject independently and
+       nothing cross-checks them — an unreferenced anchor under a vacuous
+       guard is E-LOAD-004-undeterminable at load while the tick would
+       derive it fine; this pack declares ``(domain NodeType/INSTITUTION)``
+       explicitly on every vacuous-guard carrier rule, and the
+       cross-check is a named follow-up.
+   * - D224
+     - §2.3
+     - **The c06 split's companion note (D-NF+6's landing shape).** The
+       floor table is a ``defconst`` table plus exactly one 14-arm
+       dispatch — ADR214 R4's ruled entry path — and the dispatch lives in
+       ``c06a`` (not the plan's single ``c06``): the pre-state law forces
+       the split (D204), and c05's degenerate branch routes through it
+       bit-identically (``×1.0``/``÷1.0`` are exact in IEEE-754 — the §6.2
+       I5 argument, executed in world 3). The cross-world parity test
+       (``the_floor_table_is_byte_identical_across_all_three_worlds``,
+       extended to all eight at Task 10's guard extension) keeps the 14
+       ruled values from drifting.
+   * - D225
+     - §2.7, §2.10
+     - **The DG-2 readout landed (the 2026-08-18 sitting: PUBLISH).**
+       ``c07-contestation`` (the normalized Shannon entropy, the
+       per-component ``1e-10`` guard, the computed ``log(3)`` divisor) and
+       ``c08-dominant-tendency`` (the argmax with the ruled tie order
+       LIBERAL > REVOLUTIONARY > FASCIST at ``1e-6``) write
+       ``community/contestation`` (probability) and
+       ``community/dominant-tendency`` (enum ``ConsciousnessTendency``) on
+       every non-skip-gated community. Frozen's skip gate holds for the
+       readout too: a no-org community is written NOTHING (honest-null,
+       proven in world 3). The class-surface copies-agree pair is §8a row
+       1's test, landed. Fuel (per-world, max+1, over all nine worlds
+       including the tie world's co-load): c07 900, c08 336. World-1 fired
+       arithmetic: 32 = 30 + c07:1 + c08:1; the collision world's: 39 = 37
+       + the two readout rules on the shared carrier. The seam, collision
+       and empty worlds' golden pins did NOT move at this landing (their
+       communities are all skip-gated — c07/c08 write nothing there), and
+       the five moved pins (worlds 1-4 + the arc's tick-3 pair) were
+       re-measured with the pack's growth named in the commit — this
+       crate's own goldens, never a §6.5 ceremony.
 
 Authoring idioms (non-normative)
 -----------------------------------

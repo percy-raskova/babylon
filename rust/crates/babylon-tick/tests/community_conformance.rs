@@ -37,6 +37,60 @@
 //! community-conformance world 1 — mirror output (the oracle)
 //! h0 new-afrikan kind=NEW_AFRIKAN
 //!   member-count = 2.0
+//!   r-raw = 0.4
+//!   l-raw = 0.0625
+//!   f-raw = 0.0
+//!   density-sum  = 1.5
+//!   r = 0.8648648648648649
+//!   l = 0.13513513513513511
+//!   f = 0.0
+//!   contestation = 0.36048485321765583   (DG-2-gated)
+//!   dominant     = REVOLUTIONARY   (DG-2-gated)
+//!   decayed heat               = 0.475
+//!   decayed cohesion           = 0.7275
+//!   decayed education-pressure = 0.225
+//! h1 settler kind=SETTLER
+//!   member-count = 1.0
+//!   r-raw = 0.0
+//!   l-raw = 0.125
+//!   f-raw = 0.125
+//!   density-sum  = 2.0
+//!   r = 0.0
+//!   l = 0.5
+//!   f = 0.5
+//!   contestation = 0.6309297535714574   (DG-2-gated)
+//!   dominant     = LIBERAL   (DG-2-gated)
+//!   decayed heat               = 0.2375
+//!   decayed cohesion           = 0.485
+//!   decayed education-pressure = 0.1125
+//! h2 queer kind=QUEER
+//!   member-count = 1.0
+//!   r-raw = 0.4
+//!   l-raw = 0.125
+//!   f-raw = 0.0
+//!   density-sum  = 2.0
+//!   r = 0.7619047619047619
+//!   l = 0.23809523809523808
+//!   f = 0.0
+//!   contestation = 0.4996069952489026   (DG-2-gated)
+//!   dominant     = REVOLUTIONARY   (DG-2-gated)
+//!   decayed heat               = 0.7124999999999999
+//!   decayed cohesion           = 0.60625
+//!   decayed education-pressure = 0.45
+//! n1 na-worker: org-r-weight = 0.4, org-l-weight = 0.125, org-f-weight = 0.0, org-count = 2.0
+//! n1 na-worker: community-cost-modifier = 1.09375
+//! n2 na-organizer: org-r-weight = 0.4, org-l-weight = 0.0, org-f-weight = 0.0, org-count = 1.0
+//! n2 na-organizer: community-cost-modifier = 0.875
+//! n3 settler-la: org-r-weight = 0.0, org-l-weight = 0.125, org-f-weight = 0.125, org-count = 2.0
+//! n3 settler-la: community-cost-modifier = 1.0
+//! n4 unaffiliated: org-r-weight = 0.0, org-l-weight = 0.0, org-f-weight = 0.0, org-count = 0.0
+//! n4 unaffiliated: community-cost-modifier = 1.0
+//! n5 inactive-member: org-r-weight = 0.0, org-l-weight = 0.0, org-f-weight = 0.0, org-count = 0.0
+//! n5 inactive-member: community-cost-modifier = ABSENT (honest null)
+//! ```text
+//! community-conformance world 1 — mirror output (the oracle)
+//! h0 new-afrikan kind=NEW_AFRIKAN
+//!   member-count = 2.0
 //!   density-sum  = 1.5
 //!   r = 0.8648648648648649
 //!   l = 0.13513513513513511
@@ -72,6 +126,60 @@
 //! n2 na-organizer: community-cost-modifier = 0.875
 //! n3 settler-la: community-cost-modifier = 1.0
 //! n4 unaffiliated: community-cost-modifier = 1.0
+//! n5 inactive-member: community-cost-modifier = ABSENT (honest null)
+//! ```text
+//! community-conformance world 1 — mirror output (the oracle)
+//! h0 new-afrikan kind=NEW_AFRIKAN
+//!   member-count = 2.0
+//!   r-raw = 0.4
+//!   l-raw = 0.0625
+//!   f-raw = 0.0
+//!   density-sum  = 1.5
+//!   r = 0.8648648648648649
+//!   l = 0.13513513513513511
+//!   f = 0.0
+//!   contestation = 0.36048485321765583   (DG-2-gated)
+//!   dominant     = REVOLUTIONARY   (DG-2-gated)
+//!   decayed heat               = 0.475
+//!   decayed cohesion           = 0.7275
+//!   decayed education-pressure = 0.225
+//! h1 settler kind=SETTLER
+//!   member-count = 1.0
+//!   r-raw = 0.0
+//!   l-raw = 0.125
+//!   f-raw = 0.125
+//!   density-sum  = 2.0
+//!   r = 0.0
+//!   l = 0.5
+//!   f = 0.5
+//!   contestation = 0.6309297535714574   (DG-2-gated)
+//!   dominant     = LIBERAL   (DG-2-gated)
+//!   decayed heat               = 0.2375
+//!   decayed cohesion           = 0.485
+//!   decayed education-pressure = 0.1125
+//! h2 queer kind=QUEER
+//!   member-count = 1.0
+//!   r-raw = 0.4
+//!   l-raw = 0.125
+//!   f-raw = 0.0
+//!   density-sum  = 2.0
+//!   r = 0.7619047619047619
+//!   l = 0.23809523809523808
+//!   f = 0.0
+//!   contestation = 0.4996069952489026   (DG-2-gated)
+//!   dominant     = REVOLUTIONARY   (DG-2-gated)
+//!   decayed heat               = 0.7124999999999999
+//!   decayed cohesion           = 0.60625
+//!   decayed education-pressure = 0.45
+//! n1 na-worker: org-r-weight = 0.4, org-l-weight = 0.125, org-f-weight = 0.0, org-count = 2.0
+//! n1 na-worker: community-cost-modifier = 1.09375
+//! n2 na-organizer: org-r-weight = 0.4, org-l-weight = 0.0, org-f-weight = 0.0, org-count = 1.0
+//! n2 na-organizer: community-cost-modifier = 0.875
+//! n3 settler-la: org-r-weight = 0.0, org-l-weight = 0.125, org-f-weight = 0.125, org-count = 2.0
+//! n3 settler-la: community-cost-modifier = 1.0
+//! n4 unaffiliated: org-r-weight = 0.0, org-l-weight = 0.0, org-f-weight = 0.0, org-count = 0.0
+//! n4 unaffiliated: community-cost-modifier = 1.0
+//! n5 inactive-member: org-r-weight = 0.0, org-l-weight = 0.0, org-f-weight = 0.0, org-count = 0.0
 //! n5 inactive-member: community-cost-modifier = ABSENT (honest null)
 //! ```
 //!
@@ -130,10 +238,10 @@ use babylon_tick::run_once_into;
 /// packs load against exactly this text.
 const SCENARIO: &str = include_str!("../content/scenarios/community-conformance.bscn");
 
-/// The pack source this suite drives — EMPTY at Task 7 (the pack lands
-/// across Tasks 8-11); §8c guard 2 reads it, which is what gives the
-/// guard teeth the moment real content exists.
-const PACK: &str = "";
+/// The pack source this suite drives — the c00-c04 census/decomposition
+/// rules (Task 8); §8c guard 2 reads it, which is what gives the guard
+/// teeth (it was vacuous against the Task-7 empty string by design).
+const PACK: &str = include_str!("../content/rules/community.bsl");
 
 /// Step 1/7's load-smoke: the world hydrates and ticks clean under one
 /// minimal, never-firing probe rule (`active` is 0/1, never 2). The
@@ -322,4 +430,151 @@ fn exactly_one_institution_carrier() {
         .node_attribute(carrier[0], "institution/community-carrier")
         .expect("the carrier carries the anchor field");
     assert_eq!(anchor.to_bits(), (1.0_f64).to_bits());
+}
+
+// ---- Task 8: c00-c04 — the census and the org-weight decomposition ----
+// Every assertion is bit-exact against the mirror (`.to_bits()`, the
+// doc-comment transcript above) — no tolerance, per §9.
+
+/// Run the pack over world 1, returning the post-tick graph.
+fn tick_world_1() -> HypergraphStore {
+    let mut graph = HypergraphStore::new();
+    let mut sink = CollectingSink::default();
+    let report = run_once_into(SCENARIO, PACK, &mut graph, &mut sink)
+        .expect("world 1 + the c00-c04 pack ticks clean");
+    assert_eq!(
+        report.fired, 18,
+        "c00:1 (carrier) + c01:4 (active classes) + c02:5 (all classes) + \
+         c03f:1 (fash-org) + c03l:1 (lib-org) + c03r:2 (rev-org AND n9 — \
+         n9 is REVOLUTIONARY too; it FIRES with an empty for-each, frozen's \
+         :421 skip) + c04:4 (active classes)"
+    );
+    graph
+}
+
+fn he(graph: &HypergraphStore, hid: u64, field: &str) -> f64 {
+    graph
+        .hyperedge_attribute(HyperedgeId(hid), field)
+        .unwrap_or_else(|e| panic!("h{hid} {field}: {}", e.message))
+}
+
+fn node(graph: &HypergraphStore, nid: u64, field: &str) -> f64 {
+    graph
+        .node_attribute(NodeId(nid), field)
+        .unwrap_or_else(|e| panic!("n{nid} {field}: {}", e.message))
+}
+
+/// Task 8 Step 1: the census counts ACTIVE members only — n5's membership
+/// in h0 is real but inactive (frozen community.py:472-474).
+#[test]
+fn census_counts_only_active_members() {
+    let graph = tick_world_1();
+    assert_eq!(
+        he(&graph, 0, "community/member-count").to_bits(),
+        (2.0_f64).to_bits(),
+        "h0: n1+n2, n5 excluded"
+    );
+    assert_eq!(
+        he(&graph, 1, "community/member-count").to_bits(),
+        (1.0_f64).to_bits(),
+        "h1: n3"
+    );
+    assert_eq!(
+        he(&graph, 2, "community/member-count").to_bits(),
+        (1.0_f64).to_bits(),
+        "h2: n1"
+    );
+}
+
+/// Task 8 Step 1: n9 (`no-member-org`) has zero MEMBERSHIP edges, so its
+/// cadre x cohesion = 1.0 x 1.0 push lands NOWHERE (frozen's :421 skip).
+/// The strongest pin: the r-weight total across every class is exactly
+/// rev-org's two pushes — 0.8, not 1.8.
+#[test]
+fn orgs_with_no_members_contribute_nothing() {
+    let graph = tick_world_1();
+    let r_total: f64 = (1..=5u64) // the five social classes (n0 is the carrier)
+        .map(|nid| node(&graph, nid, "social-class/org-r-weight"))
+        .sum();
+    assert_eq!(
+        r_total.to_bits(),
+        (0.8_f64).to_bits(),
+        "n9's 1.0 push never landed"
+    );
+    let count_total: f64 = (1..=5u64)
+        .map(|nid| node(&graph, nid, "social-class/org-count"))
+        .sum();
+    assert_eq!(
+        count_total.to_bits(),
+        (5.0_f64).to_bits(),
+        "exactly the five real MEMBERSHIP edges"
+    );
+}
+
+/// Task 8 Step 1: the pushed weight is cadre x cohesion — n1's l-weight is
+/// lib-org's 0.25 x 0.5 = 0.125, never the 0.75 the `+` mutation yields.
+#[test]
+fn org_weight_is_cadre_times_cohesion() {
+    let graph = tick_world_1();
+    assert_eq!(
+        node(&graph, 1, "social-class/org-l-weight").to_bits(),
+        (0.125_f64).to_bits()
+    );
+    assert_eq!(
+        node(&graph, 1, "social-class/org-r-weight").to_bits(),
+        (0.4_f64).to_bits(),
+        "0.5 x 0.8"
+    );
+    assert_eq!(
+        node(&graph, 3, "social-class/org-f-weight").to_bits(),
+        (0.125_f64).to_bits(),
+        "0.5 x 0.25"
+    );
+}
+
+/// Task 8 Step 1: c04's divisor is the SAME-TICK census count (§8b row 1),
+/// not a literal and not a stale tick — h0's r-raw is (0.4 + 0.4)/2 = 0.4;
+/// h2's is 0.4/1 = 0.4.
+#[test]
+fn contribution_divides_by_the_census_count() {
+    let graph = tick_world_1();
+    assert_eq!(
+        he(&graph, 0, "community/r-raw").to_bits(),
+        (0.4_f64).to_bits()
+    );
+    assert_eq!(
+        he(&graph, 0, "community/l-raw").to_bits(),
+        (0.0625_f64).to_bits(),
+        "0.125/2, n1 only"
+    );
+    assert_eq!(
+        he(&graph, 2, "community/r-raw").to_bits(),
+        (0.4_f64).to_bits(),
+        "0.4/1"
+    );
+    assert_eq!(
+        he(&graph, 1, "community/f-raw").to_bits(),
+        (0.125_f64).to_bits(),
+        "0.125/1"
+    );
+}
+
+/// Task 8 Step 1: density-sum counts org MEMBERSHIPS (org-count per
+/// class), not orgs — h0 reads (2 + 1)/2 = 1.5, not 2/2 = 1.0.
+#[test]
+fn density_sum_counts_org_memberships_not_orgs() {
+    let graph = tick_world_1();
+    assert_eq!(
+        he(&graph, 0, "community/density-sum").to_bits(),
+        (1.5_f64).to_bits()
+    );
+    assert_eq!(
+        he(&graph, 1, "community/density-sum").to_bits(),
+        (2.0_f64).to_bits()
+    );
+    assert_eq!(
+        he(&graph, 2, "community/density-sum").to_bits(),
+        (2.0_f64).to_bits(),
+        "n1's 2 orgs over 1 member"
+    );
 }

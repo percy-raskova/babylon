@@ -9038,6 +9038,51 @@ consequences are the ordinary kind of review item.
        Mint-time ``<field-init>``s on ``add-hyperedge`` STAY refused, with
        the reason corrected: the storage exists; the init sugar is not
        routed to it in this train.
+   * - D203
+     - §4.2, §2.8
+     - **The Community pack's census decomposition (Community port train,
+       Task 8, 2026-08-22; the plan's D-NF+3/D-NF+25).** ``community.bsl``
+       c00-c04 port frozen ``CommunitySystem``'s census + org-landscape
+       weighting (``community.py:392-461``) as: per-class org accumulators
+       (``org-{r,l,f}-weight``, ``org-count``, reset per tick by c02) pushed
+       by three tendency-partitioned org rules (``c03f``/``c03l``/``c03r`` —
+       the tendency gate is a rule-level ``when`` because fold bodies are
+       bare accessors (D138); frozen's tendency-less org skip
+       (:405-407) is inexpressible as a guard, and no world may seed a
+       tendency-less org), then divided by the SAME-TICK census into the
+       hyperedge raw accumulators by c04. **c04's ``active`` gate is ruled
+       fidelity, not caution**: frozen builds ``community_agents`` from the
+       active-only membership set (``community.py:472-474`` → :392-397), so
+       an inactive class's org weights must never enter the sum — c03's
+       push onto an inactive class stays inert under the gate, and c02's
+       ungated reset clears it next tick. **c03 byte order**: rule-id byte
+       order runs ``c03f`` → ``c03l`` → ``c03r``, unobservable because the
+       three rules write disjoint weight fields and the shared count is
+       integer-exact additive — the mirror transcribes the true order and
+       is byte-identical either way (proven at Task 7). **Quantization
+       divergence recorded here too** (found by the Task 7 corroboration
+       artifact): frozen snaps every Probability to the 10⁻⁶
+       ROUND_HALF_UP grid at the Pydantic boundary
+       (``kernel/math.py:41``, ``_PRECISION = 6``); this pack's lane stores
+       the raw f64 chain, so the mirror — never frozen's stored prints —
+       is the oracle. Seven mutation vectors proven at landing: dropping
+       c01's active gate reds the census and every downstream divisor test;
+       c03r iterating all classes (no edge-driven skip) reds the four
+       weight-total tests; cadre+cohesion for cadre×cohesion reds exactly
+       the two l-weight readers; a literal c04 divisor reds exactly the
+       divisor test; deleting c02 fails the tick loudly (E-EVAL-031 — the
+       reset is what makes the accumulators exist; the compounding-across-
+       ticks half is Task 10's arc-world vector); collapsing c03l into
+       c03r fails at LOAD (E-LOAD-040: the merged rule's static bound 74
+       exceeds the split rules' declared 72 — the partition is load-bearing
+       before any value moves); deleting c00 fails the tick the same way
+       (c01's add reads a never-written field). World 1's fired arithmetic:
+       18 = c00:1 + c01:4 + c02:5 + c03f:1 + c03l:1 + c03r:2 (n9 FIRES with
+       an empty for-each — frozen's :421 skip is structural) + c04:4.
+       Per-rule fuel, measured by `bsl-fuel-report` over world 1 and
+       declared at bound+1 (D-NF+22 — per-world bounds, since
+       `:max-members` is census-derived): c00 81, c01 22, c02 21,
+       c03f/c03l/c03r 72 each, c04 115.
 
 Authoring idioms (non-normative)
 -----------------------------------

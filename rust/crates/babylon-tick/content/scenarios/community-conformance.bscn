@@ -106,6 +106,19 @@
   (deffield community/revolutionary probability intensive)
   (deffield community/liberal probability intensive)
   (deffield community/fascist probability intensive)
+  ; ---- the c00-c04 accumulators (Task 8) — written ONLY by the pack,
+  ; never seeded; member-count is the census, the raw weights and
+  ; density-sum are extensive sums (magnitudes NOT [0,1]-bounded — a
+  ; multi-membership density exceeds 1, world 1's h2 reads 2.0) ----
+  (deffield community/member-count int extensive)
+  (deffield community/r-raw real extensive)
+  (deffield community/l-raw real extensive)
+  (deffield community/f-raw real extensive)
+  (deffield community/density-sum real extensive)
+  (deffield social-class/org-r-weight real extensive)
+  (deffield social-class/org-l-weight real extensive)
+  (deffield social-class/org-f-weight real extensive)
+  (deffield social-class/org-count int extensive)
 
   ; ---- the 14-row ADR214 floor table (§6.1 verbatim values) ----
   (defconst community/floor-new-afrikan 0.136p)   ; measured, unrestricted_3218: 0.232693906 − 0.096223732 = 0.136470174 → 3dp 0.136 (erratum 9: the posted 0.137 was a double-rounding artifact)

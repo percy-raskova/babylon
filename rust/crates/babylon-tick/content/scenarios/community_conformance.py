@@ -227,7 +227,12 @@ def org_weights_and_contributions(
     # (neighbors self MEMBERSHIP :out SOCIAL_CLASS) — MEMBERSHIP_EDGES is
     # declaration-ordered, and each org's targets are ascending by
     # construction. Each push: weight += cadre × cohesion; count += 1.
-    for tendency in ("REVOLUTIONARY", "LIBERAL", "FASCIST"):
+    # Rule-id byte order is the execution order (D16), so the tick runs
+    # c03f → c03l → c03r — NOT the plan table's reading order. Transcribed
+    # in the TRUE order; the result is order-insensitive (disjoint weight
+    # fields; the shared org-count is integer-exact additive), which the
+    # unchanged output proves.
+    for tendency in ("FASCIST", "LIBERAL", "REVOLUTIONARY"):
         key = {
             "REVOLUTIONARY": "org-r-weight",
             "LIBERAL": "org-l-weight",
@@ -243,14 +248,16 @@ def org_weights_and_contributions(
                 class_weights[NAME_TO_NODE[tgt]][key] += push
                 class_weights[NAME_TO_NODE[tgt]]["org-count"] += 1.0
 
-    # ---- c04-community-contribution-push (social-class) ----
-    # For each class (ascending), for each of its hyperedges (ascending):
-    # r-raw += org-r-weight / member-count (l, f likewise), and
-    # density-sum += org-count / member-count. n5's zero weights make its
-    # pushes exact zeros — transcribed, since the plan's c04 row gates on
-    # nothing but the census divisor.
+    # ---- c04-community-contribution-push (social-class, ACTIVE ONLY) ----
+    # For each active class (ascending), for each of its hyperedges
+    # (ascending): r-raw += org-r-weight / member-count (l, f likewise),
+    # and density-sum += org-count / member-count. The active gate is
+    # FIDELITY: frozen's community_agents is built from the active-only
+    # membership set (community.py:472-474 -> :392-397), so an inactive
+    # class's org weights never enter the sum. (In world 1 the gate changes
+    # no output: n5's weights are exact zeros either way.)
     for nid, node in enumerate(NODES):
-        if node["type"] != "SOCIAL_CLASS":
+        if node["type"] != "SOCIAL_CLASS" or node.get("active") != 1:
             continue
         w = class_weights[nid]
         for hid, h in enumerate(HYPEREDGES):
@@ -383,7 +390,7 @@ def run() -> None:
         )
 
     census(comms)
-    org_weights_and_contributions(comms)
+    weights = org_weights_and_contributions(comms)
     readout(comms)
     cost_modifier = cost_and_decay(comms)
 
@@ -393,6 +400,9 @@ def run() -> None:
         c = comms[hid]
         print(f"h{hid} {h['name']} kind={h['kind']}")
         print(f"  member-count = {c['member-count']!r}")
+        print(f"  r-raw = {c['r-raw']!r}")
+        print(f"  l-raw = {c['l-raw']!r}")
+        print(f"  f-raw = {c['f-raw']!r}")
         print(f"  density-sum  = {c['density-sum']!r}")
         print(f"  r = {c['revolutionary']!r}")
         print(f"  l = {c['liberal']!r}")
@@ -410,6 +420,12 @@ def run() -> None:
     for nid, node in enumerate(NODES):
         if node["type"] != "SOCIAL_CLASS":
             continue
+        w = weights[nid]
+        print(
+            f"n{nid} {node['name']}: org-r-weight = {w['org-r-weight']!r}, "
+            f"org-l-weight = {w['org-l-weight']!r}, org-f-weight = {w['org-f-weight']!r}, "
+            f"org-count = {w['org-count']!r}"
+        )
         if nid in cost_modifier:
             print(f"n{nid} {node['name']}: community-cost-modifier = {cost_modifier[nid]!r}")
         else:

@@ -19,7 +19,7 @@
 ; never read again, never gating anything (the binding exists because
 ; tick.rs::subject_type_of requires >=1 :field binding to derive
 ; INSTITUTION; this sentence exists so no reader mistakes it for a gate —
-; control-ratio.bsl:277's pattern, verbatim in intent). A second
+; control-ratio.bsl's pattern, verbatim in intent). A second
 ; INSTITUTION node in any world loading this pack double-applies every
 ; hyperedge write (each carrier-subject rule iterates EVERY institution);
 ; §8c guard 4 (`exactly_one_institution_carrier`,
@@ -43,6 +43,21 @@
 ; attributed-membership ceremony — a Director act, never improvised. The
 ; four repression helpers (:210-279) await a verb layer (D-NF+11). c07/c08
 ; are DG-2-gated (Director question, unresolved at authoring).
+;
+; THE EXPLICIT-DOMAIN NOTE (PR #688 review, Copilot finding 1 — a REAL
+; latent engine gap, named here for the future pack reader): c00's carrier
+; binding is never referenced (its guard is `#t`), which makes the rule
+; E-LOAD-004-undeterminable at LOAD — domain.rs::resolve_domain's
+; None-branch candidate set is REFERENCE-fed, so an anchor that is bound
+; but never read contributes nothing there, while tick.rs's
+; subject_type_of counts every :field binding, referenced or not. The two
+; derivations can therefore disagree and NOTHING cross-checks them
+; (run_tick ignores the loaded domain entirely) — control-ratio.bsl's
+; (when #t) precedent passes only because its :expr fold bodies feed the
+; candidate set. This pack declares `(domain NodeType/INSTITUTION)`
+; explicitly on every carrier rule whose guard is vacuous, which keeps
+; both derivations honest by construction. Filed as a follow-up, not
+; silently absorbed.
 ;
 ; THE FLOOR TABLE: the 14 ADR214 defconst rows live in each WORLD's .bscn
 ; (the scenario's defconst registry IS the driver's defines env — §6.2's
@@ -79,11 +94,12 @@
 
 ; ============================================================ c00 — the reset
 (rule community/c00-census-reset
-  :material-basis "The per-tick rebuild (community.py:392-397 mints a fresh community_agents map on every step, and community.py:460-462 writes back via model_copy): every accumulator this pack reads derives from THIS tick's writes, so the tick begins by zeroing them. The institution/community-carrier binding is a SUBJECT-TYPE ANCHOR ONLY (tick.rs::subject_type_of requires >=1 :field binding to derive INSTITUTION) — never read again, never gating anything."
-  :fuel 81
+  :material-basis "The per-tick rebuild (community.py:392-397 mints a fresh community_agents map on every step, and community.py:460-462 writes back via model_copy): every accumulator this pack reads derives from THIS tick's writes, so the tick begins by zeroing them. The institution/community-carrier binding is a SUBJECT-TYPE ANCHOR ONLY (tick.rs::subject_type_of requires >=1 :field binding to derive INSTITUTION) — never read again, never gating anything (`when #t`), so the domain is declared EXPLICITLY: an unreferenced anchor plus a vacuous guard is E-LOAD-004-undeterminable at load (domain.rs's candidate set is reference-fed), and control-ratio.bsl's precedent passes only because its fold bodies feed that set — recorded in the pack header."
+  :fuel 79
   (bindings
     (binding carrier :field institution/community-carrier))
-  (when (= carrier 1))
+  (domain NodeType/INSTITUTION)
+  (when #t)
   (effects
     (for-each (hyperedges HyperedgeType/COMMUNITY)
       (update-hyperedge it community/member-count (set 0))

@@ -69,7 +69,7 @@ fn corpus_files() -> Vec<PathBuf> {
 const PINNED_DIGESTS: &[(&str, &str)] = &[
     (
         "community.bsl",
-        "d841d50bce7d9940947f5ece4e3145a85d63fe29bd0b50c59915d9d285873c6d",
+        "9c9599f79f8cd4d92c0dfae36c498d13654d14cc933d90e202beabd81add9557",
     ),
     (
         "consciousness.bsl",

@@ -1000,6 +1000,11 @@ decisions:
     status: accepted
     date: '2026-08-18'
     file: ADR217_b3_wave1_null_hypothesis_viewer_handoff.yaml
+  ADR218_community_port_handoff:
+    title: 'The Community @6.0 port train handoff (#667 Checkpoint A) — the BSL hyperedge lane live (#536 rider 3 taken): CanonicalState section 0x07 (the seventh listing) for hyperedge own-fields, the type-scoped enumerators, the query heads and own-field BSL surface, the Element cross-kind Ord ruling discharging rider 4''s A5 precondition, community.bsl c00-c11 with the ADR214 floor table (all 14 rows, DG-3) and the DG-2 PUBLISH readout (c07/c08, the first content log declaration, D210''s 1-ulp divisor note), nine conformance worlds. Eight DG questions adjudicated at the 2026-08-18 sitting (delegated provenance, morning-reviewable, not overridden), recorded verbatim-in-substance; DG-1 counts @6.0 as PORTED for Checkpoint A with the asterisk (the post-#653 half is #692); the deferred §6.5 ceremony recorded NOT FIRED with qa:regression/vault evidence (tests/baselines/** unmoved across the whole train) — that recording discharges ADR214 Ruling 4''s deferral. PRs #680-#691 + #693, each CI-green, Copilot harvested. Number note: filed AFTER ADR219 (the intrinsic rider train) landed same-day; ADR218 was this train''s earmarked number since Task 0, verified free at filing.'
+    status: accepted
+    date: '2026-08-22'
+    file: ADR218_community_port_handoff.yaml
   ADR219_exact_arithmetic_intrinsic_rider_train:
     title: 'The exact-arithmetic intrinsic rider train — sqrt/round-half-even/min/max/abs/clamp join the declarable set (Director ruling 2026-08-22): ADR188 Row 6''s sqrt fallback rider taken, Row 3 landed (D70 resolved), Rows 4/5 superseded on #591 item 2''s accumulated evidence; all six cross via IEEE-754 exactly-specified operations with the golden-vector clause declined per name (the D97 disposition shape); E-EVAL-044 (IntrinsicOutOfDomain) minted; DECLARABLE_INTRINSICS 4 -> 10 with kernel_signature rows and dispatch arms in lockstep (the lockstep invariant now a test, not a hope); spec §3.10/§2.7/§4.6/§6.2-family-22 + D226-D228. ADR218 earmark (the Community port Task-12 handoff) left undisturbed; verified next-free against origin/dev (tops at 217) and every open PR at filing time.'
     status: accepted

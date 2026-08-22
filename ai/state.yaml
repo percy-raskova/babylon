@@ -4872,3 +4872,49 @@ kind_straddle_estate_491_t1:
     single rule's reach (§2.9's language-mandated implicit edge-strength
     kind is the root cause, untouched). Whoever lands a write-kind check
     inherits this context via D184 rather than rediscovering it.
+
+community_port_train_667:
+  date: 2026-08-22
+  train: "#667 Checkpoint A (community-port plan rev 2, Tasks 1-12)"
+  adr: ADR218
+  d_rows: D198-D225 (complete; D226-D228 belong to ADR219)
+  prs: "#680-#691, #693 (each CI-green, Copilot harvested); #694 (ADR219, same day)"
+  summary: >
+    The BSL hyperedge lane is live as a named deliverable (#536 rider 3):
+    CanonicalState section 0x07 (seventh listing) stores hyperedge own-fields;
+    the type-scoped GraphSubstrate enumerators, the hyperedge query heads and
+    the own-field BSL surface are served; Element's cross-kind Ord (Node <
+    Edge < Hyperedge) discharged rider 4's A5 precondition. community.bsl
+    c00-c11 ports Community @6.0's production-live surface: census, org-weight
+    decomposition, normalization, the ADR214 floor table (all 14 rows, DG-3),
+    cost modifiers, decay, and the DG-2 PUBLISH readout (c07 contestation via
+    the first content log declaration — D210's 1-ulp divisor note — c08
+    dominant-tendency with the ruled tie order). Nine conformance worlds, the
+    frozen-mirror parity guard, eight golden pins. The closed algebra covered
+    the whole port as content — no amendment needed anywhere (DG-8's ADR path
+    for 0x07 was the recorded instance).
+  checkpoint_a_tally: >
+    DG-1 (2026-08-18 sitting, delegated provenance, morning-reviewable, not
+    overridden): Community @6.0 counts as PORTED for Checkpoint A WITH the
+    asterisk — ported to its production-live surface (the seam registry
+    records community_memberships as STRUCTURALLY_IMPOSSIBLE in production);
+    threat scoring, solidarity amplification and infrastructure maintenance
+    are chartered post-#653 as issue #692. Checkpoint A itself is NOT reached:
+    Substrate @2.5, TickDynamics @4.0 (#669's train) and ReserveArmy @5.0
+    remain. WS3 stays HELD.
+  same_day_landing: >
+    ADR219 (PR #694) — the exact-arithmetic intrinsic rider train: sqrt,
+    round-half-even, min, max, abs, clamp joined the declarable set (4 -> 10),
+    each an IEEE-754 exactly-specified crossing; E-EVAL-044 minted; the
+    clippy f64::sqrt ban row lifted (its recorded reason superseded).
+    Port-inventory snapshot for cutover planning: 8 of 34 systems fully
+    ported, 4 partial, 22 not started; the Action phase and most of
+    Consequences remain, plus engine-level prerequisites (services boundary,
+    graph-scoped aggregates, event system, observers/endgame, persistence).
+  open_deferred: >
+    #653 (the Amendment AG(i) membership-surfaces ceremony, a Director act)
+    gates #692 (Community's blocked half) and the Allegiance/Electoral first
+    consumer. D223's named follow-up (the resolve_domain vs subject_type_of
+    cross-check) is an engine check, unscheduled. The national-question pole
+    shape and county_extraction BoundOpposition registration stay ADR171-line
+    items owned by the post-#653 slice (DG-5/DG-6).

@@ -126,6 +126,32 @@ where
         "a hyperedge losing its last member is removed, not emptied: {}",
         err.message
     );
+    // Task 5 follow-up (PR #682's Copilot harvest — a REAL defect class):
+    // the same removal must sweep the dropped hyperedge's OWN attribute
+    // rows, or `all_hyperedge_attributes` reports corpses into section
+    // 0x07. Seeded before the removal, asserted absent after.
+    let mut graph = make();
+    let solo = graph.add_node("social_class").unwrap();
+    let lone = graph.add_hyperedge("economic_sector", &[solo]).unwrap();
+    graph
+        .update_hyperedge_attribute(lone, "community/heat", 0.5)
+        .unwrap();
+    graph.remove_node(solo).unwrap();
+    assert!(
+        !graph
+            .all_hyperedge_attributes()
+            .iter()
+            .any(|(id, _, _)| *id == lone),
+        "the implicitly-dropped hyperedge's attribute rows are swept, not orphaned"
+    );
+    let err = graph
+        .hyperedge_attribute(lone, "community/heat")
+        .unwrap_err();
+    assert!(
+        err.message.contains("no such hyperedge"),
+        "a read against the implicitly-dropped hyperedge is loud: {}",
+        err.message
+    );
 }
 
 /// §2.8: absence is never success. Adding what already exists and removing
@@ -1018,7 +1044,8 @@ where
 /// conformance row, mirroring
 /// `currency_attribute_round_trips_moves_the_hash_and_cascades_on_removal`'s
 /// shape exactly: a write round-trips, moves the state hash (section 0x07,
-/// layout version 4), reports in the sixth listing, and cascades on
+/// layout version 4), reports in the SEVENTH listing
+/// (`all_hyperedge_attributes`), and cascades on
 /// hyperedge removal (never orphaned).
 fn hyperedge_attribute_round_trips_moves_the_hash_and_cascades_on_removal<G, F>(make: &F)
 where

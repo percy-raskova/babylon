@@ -212,6 +212,11 @@ impl GraphSubstrate for HypergraphStore {
             if !self.inner.has_edge(&edge_key) {
                 if let Some(hid) = self.hyperedge_keys.remove(&edge_key) {
                     self.drop_from_type_index(&hyperedge_type, hid);
+                    // The implicitly-dropped hyperedge's own-field rows die
+                    // with it (PR #682 harvest — this path missed the sweep
+                    // before): no corpse rows into section 0x07.
+                    self.hyperedge_attributes
+                        .retain(|(hyperedge, _), _| *hyperedge != hid);
                 }
             }
         }

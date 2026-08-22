@@ -194,6 +194,11 @@ impl GraphSubstrate for MemoryGraph {
         // a state that cannot be created directly.
         self.hyperedges
             .retain(|_, (_, members)| !members.is_empty());
+        // And their own-field rows die with them (PR #682 harvest — the
+        // implicit-drop path missed this before): sweep by liveness, never
+        // by assumption about which hyperedges emptied.
+        self.hyperedge_attributes
+            .retain(|(hyperedge, _), _| self.hyperedges.contains_key(hyperedge));
         Ok(())
     }
 

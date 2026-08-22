@@ -200,6 +200,10 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
         "d1b4577f98813cfd17b5e8bd394918a56c5e822c051790bc045254cf6b2a13ad",
     ),
     (
+        "community-conformance.bscn",
+        "bac0328bb0aca30998c9a8e4e40aecb5ce28f76700518a90221dc7a89feebb26",
+    ),
+    (
         "consciousness-ternary-conformance.bscn",
         "aaf93f0493b4baa02972f0f35bc045d1096495ba05669b06e9344ea059c6913b",
     ),

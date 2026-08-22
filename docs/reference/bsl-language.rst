@@ -9081,10 +9081,10 @@ consequences are the ordinary kind of review item.
        an empty for-each — frozen's :421 skip is structural) + c04:4.
        Per-rule fuel, measured by `bsl-fuel-report` over world 1 and
        declared at bound+1 (D-NF+22 — per-world bounds, since
-       `:max-members` is census-derived): c00 81, c01 22, c02 21,
-       c03f/c03l/c03r 72 each, c04 115. (c00 was re-measured to **79** at
-       #688's harvest: the anchor's comparison guard dropped to `#t`, so
-       the computed bound fell to 78.)
+       `:max-members` is census-derived): c00 79, c01 22, c02 21,
+       c03f/c03l/c03r 72 each, c04 115. (c00 was 81 at first landing; the
+       #688 harvest dropped the anchor's comparison guard to `#t`, the
+       computed bound fell to 78, and 79 is the declared figure now.)
    * - D204
      - §4.2, §2.8, §6.2
      - **The c06 split and the ADR214 floor's landing (Community port

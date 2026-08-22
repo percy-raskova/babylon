@@ -869,13 +869,21 @@ fn the_floor_table_is_byte_identical_across_all_three_worlds() {
             );
         }
         for (name, value) in [
-            ("community/heat-decay-alpha", 0.05),
-            ("community/cohesion-decay-alpha", 0.03),
-            ("community/education-pressure-decay", 0.1),
+            ("community/heat-decay-alpha", 0.05_f64),
+            ("community/cohesion-decay-alpha", 0.03_f64),
+            ("community/education-pressure-decay", 0.1_f64),
         ] {
-            assert!(
-                loaded.consts.contains_key(name),
-                "{name} missing from a world (value {value})"
+            let actual = loaded
+                .consts
+                .get(name)
+                .unwrap_or_else(|| panic!("{name} missing from a world"));
+            let babylon_bsl::evaluator::Value::Real(bits) = actual else {
+                panic!("{name} must be a coefficient literal")
+            };
+            assert_eq!(
+                bits.to_bits(),
+                value.to_bits(),
+                "{name} diverges from the frozen defines value in a world"
             );
         }
     }

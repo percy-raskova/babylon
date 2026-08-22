@@ -9,35 +9,33 @@
 ; drain algebra in each downstream rule. The `:expr` bindings of R9 chapter
 ; C7 name the intermediates once instead.
 ;
-; WHAT THIS RULE DELIBERATELY DOES NOT DO — Grinding Attrition, the frozen
-; system's Phase 2. Two independent blockers, recorded in
-; docs/superpowers/plans/2026-08-10-vitality-bsl-rule-pack.md §6:
+; GRINDING ATTRITION, LANDED — this header's old "WHAT THIS RULE
+; DELIBERATELY DOES NOT DO" block, rewritten as the record of what the
+; engine now DOES (T6.5, #491 Phase 3b, 2026-08-21). The frozen system's
+; Phase 2 lives in `vitality-attrition.bsl` as `vitality/subsistence-mortality`:
+; `deaths = floor(population × failing-certain × κ)` — the mortality driver
+; is the measured certainly-failing mass of the K=16 rung ladder (H2',
+; DP-6 = B, D199), κ the derived-not-picked `1.0c` defconst (ADR210 R14;
+; the derivation and divergence surface are D198, exhibited by
+; `vitality_attrition_conformance.py`'s own sweep printer). The two
+; blockers this block once recorded are both discharged: blocker 1 (the
+; Real→Int demotion) by ADR188 Row 2's `floor` intrinsic, blocker 2 (the
+; rate as stipulated form + tuned knob, `deficit × (attrition_base_factor +
+; inequality)`) by the measure itself — `attrition_base_factor` is retired,
+; NOT transcribed (ADR191 R3), and `social-class/inequality`'s dispersion-
+; surrogate duty with it (§3.3b: entered the frozen form twice, threshold
+; and slope; explained there, superseded by the ladder, retired at this
+; port). What this file's rule still does not do: the drain and the reaper
+; below remain this pack's whole behavior — mortality lives in the carrier
+; pack, and the two packs are not co-loaded by any committed scenario
+; today (D197's collision-surface note covers the one shared intrinsic
+; declaration).
 ;
-;   1. RIDER (Territory port train, P27 PR B, Task 8): `deaths =
-;      floor(population × rate)` needing a Real→Int demotion is STALE as a
-;      blocker — `floor` landed under ADR188 Row 2
-;      (`declarations.rs::DECLARABLE_INTRINSICS`, "pinned libm crate r21",
-;      `f64::floor` exact IEEE-754) and clears content, load, and
-;      evaluation end to end through `run_once`/`run_once_into`
-;      (`floor_intrinsic_e2e.rs`; `territory/p2-eviction-pipeline`'s own
-;      `displaced` binding and `territory/p4-camp-decay`'s population
-;      decay are the first PRODUCTION consumers). This header predates
-;      that landing and was not updated alongside it — corrected here,
-;      not because Grinding Attrition itself is now unblocked (blocker 2
-;      below still stands on its own), but so a future reader does not
-;      re-derive "floor is missing" as a fact about the language from a
-;      stale comment in the same file the proof now lives beside.
-;   2. The rate itself — deficit × (attrition_base_factor + inequality),
-;      clamped — is a stipulated functional form with a tuned knob, and it
-;      is the same construct as ADR173's P(S|A): the mass of the
-;      within-class wealth distribution that fails to clear subsistence.
-;      ADR175 puts its emergent re-derivation behind a per-family Director
-;      review, which has not happened.
-;
-; So a world where the frozen engine's attrition would kill is a world this
-; rule under-kills. The conformance scenario shipped beside it is chosen so
-; the frozen engine kills nobody, and nothing wires this rule into an
-; always-on path.
+; HISTORY (immutable): the pre-T6 text of this block, and the two-blocker
+; analysis it stood on, are in git at the `p27-python-freeze` pin and in
+; the sweep's integration history (#678); docs/superpowers/plans/
+; 2026-08-10-vitality-bsl-rule-pack.md §6 remains the blockers' design
+; record.
 (rule vitality/subsistence-and-death
   :material-basis "a class reproduces itself out of its own wealth every tick, at a cost set by its numbers and by the standard of living its position in production requires; a block that cannot meet that cost ceases to exist as a class"
   :fuel 512

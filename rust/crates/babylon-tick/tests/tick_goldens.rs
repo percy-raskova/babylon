@@ -734,6 +734,12 @@ const VITALITY_ATTRITION_RULE: &str = include_str!("../content/rules/vitality-at
 /// happens not to cover — the same class of blind spot
 /// `territory_conformance_hashes_are_pinned`'s own header names.
 ///
+/// **POST-T6 (2026-08-21, #491 Phase 3b): the `before == after` narrative
+/// below is HISTORICAL — T6's `vitality/subsistence-mortality` writes state
+/// (the population decrement), so after ≠ before now and the pins/messages
+/// below were re-measured. The T4/T5-era reasoning is kept verbatim because
+/// it explains why the earlier pins had the values they did.**
+///
 /// `before == after` here is not a bug, and **stays true post-T5** for a
 /// DIFFERENT reason than T4's own probe gave it: `vitality-attrition.bsl`
 /// no longer carries a never-firing probe (T5, Phase 3a, replaced it with
@@ -770,30 +776,34 @@ fn vitality_attrition_carrier_hashes_are_pinned() {
         .expect("vitality-attrition carrier tick");
     assert_eq!(
         hex(&report.before),
-        "d93402d63a499c47b4361e036ce6a9f7d846766fda0192bde9add403434aa7e0",
+        "82c15036a47d5779d84a76b510596967e1b50acb26e68c9203c87567645bc2e5",
         "pre-tick hash moved — this is the SUBSTRATE'S load of \
-         vitality-attrition-conformance.bscn (six social classes, the \
-         Currency-lane re-seed, the K=16 mass carrier, the fifteen cuts, \
-         η and τ) — the FIRST pin in this crate to exercise CanonicalState \
-         section 0x06 with real content"
+         vitality-attrition-conformance.bscn. RE-MEASURED at T6 (2026-08-21, \
+         #491 Phase 3b): the world gained the `calibration` node and the \
+         `vitality/kappa` defconst (the T6.3 derivation, D198) — seven \
+         social classes now, the Currency-lane re-seed, the K=16 mass \
+         carrier, the fifteen cuts, η and τ; section 0x06's real-content \
+         byte measurement stands. Prior pin d93402d6…, superseded."
     );
     assert_eq!(
         hex(&report.after),
-        "d93402d63a499c47b4361e036ce6a9f7d846766fda0192bde9add403434aa7e0",
-        "post-tick hash moved — `vitality/subsistence-clearing` (T5) fires \
-         for four of six classes now, but its only effect is `emit`, which \
-         never touches graph state, so `after` still equals `before`; a \
-         divergence here means the tick mutated state through a channel \
-         other than emit, which is its own bug, exactly as \
-         `organization_foundation_hashes_are_pinned`'s own header explains"
+        "05d3e664adb5023f6159d1a99b953a7d1ca838fca6a75fef76ead2d767e0ea00",
+        "post-tick hash — T6 (2026-08-21): the pack now WRITES state by \
+         design (`vitality/subsistence-mortality`'s population decrement, \
+         the T6.6 re-measure, no ceremony — III.13 covers tests/baselines/**, \
+         not this crate's goldens), so `after` no longer equals `before`; \
+         the T5-only emit-only pin this replaces was \
+         d93402d6… (= before), superseded. The exact writes are pinned by \
+         `vitality_attrition_conformance.rs`'s T6 suite (deaths, remaining \
+         population, never wealth)."
     );
     assert_eq!(
-        report.fired, 4,
-        "T5's dual-measure rule fires for core, bourgeoisie, hermit, \
-         last-worker; remnant (mass-sum = 0, the absence fence) and \
-         dissolved (active = 0) do not — updated from T4's `0` now that \
-         this namespace has its first real consumer \
-         (`vitality_attrition_conformance.rs`'s T5 suite)"
+        report.fired, 11,
+        "5 (the measure: core, bourgeoisie, hermit, last-worker, \
+         calibration) + 6 (the mortality rule's guard is active × \
+         population only, so remnant fires too, its effects inner-guarded \
+         away; dissolved passes neither guard) — measured on the merged T6 \
+         world 2026-08-21"
     );
 }
 

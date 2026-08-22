@@ -117,7 +117,7 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     ),
     (
         "vitality-attrition.bsl",
-        "eca982cfffcde650e0900f47fef643b363bcc59ce1ac46abd19e148aca1c55a2",
+        "79a3f9d2ecb5b9036f4957944968961c594335d79cbe569d60a27dab740110dc",
     ),
     (
         "vitality.bsl",
@@ -345,7 +345,7 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     ),
     (
         "vitality-attrition-conformance.bscn",
-        "1f812b86b713632efb6910043c3579137b80b431201ccb2953b073676a3c52b3",
+        "5d54b8aa59ad350af6764541549e5e51bd719e3ecc28b43f7eeb5719baff48f8",
     ),
     (
         "vitality-conformance.bscn",

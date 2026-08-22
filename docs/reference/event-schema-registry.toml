@@ -39,7 +39,7 @@ bsl_content_glob = "rust/crates/babylon-tick/content/rules/*.bsl"
 
 [[tier1]]
 event_type = "ENTITY_DEATH"
-citations = ["rust/crates/babylon-tick/content/rules/vitality.bsl:96"]
+citations = ["rust/crates/babylon-tick/content/rules/vitality.bsl:94"]
 keys = [
   { name = "entity-id", required = true, source = "bsl" },
   { name = "wealth", required = true, source = "bsl" },
@@ -194,6 +194,17 @@ keys = [
   { name = "source-id", required = false, source = "builder-only", note = "the frozen Python ExtractionEvent builder (event_builders.py:129) reads source_id/target_id/mechanism from the payload; the BSL site provides the endpoints as `source`/`target` and no mechanism string (§2.8 admits no string in a payload) — the builder keys stay declared as the frozen reference surface, recoverable from the bsl keys at any future bridge" },
   { name = "target-id", required = false, source = "builder-only", note = "see source-id's note — one rename pair, one frozen builder" },
   { name = "mechanism", required = false, source = "builder-only", note = "see source-id's note — no BSL site provides a string payload field" },
+]
+
+[[tier1]]
+event_type = "POPULATION_ATTRITION"
+citations = ["rust/crates/babylon-tick/content/rules/vitality-attrition.bsl:579"]
+keys = [
+  { name = "entity-id", required = true, source = "bsl" },
+  { name = "deaths", required = true, source = "bsl" },
+  { name = "remaining-population", required = true, source = "bsl" },
+  { name = "failing-certain", required = true, source = "bsl" },
+  { name = "attrition-rate", required = true, source = "bsl" },
 ]
 
 # =============================================================================
@@ -677,15 +688,6 @@ event_type = "POPULAR_FRONT_CALLED"
 keys = [
   { name = "axis_progress", required = true, source = "builder" },
   { name = "trigger", required = true, source = "builder" },
-]
-
-[[tier2]]
-event_type = "POPULATION_ATTRITION"
-keys = [
-  { name = "entity_id", required = true, source = "builder" },
-  { name = "deaths", required = true, source = "builder" },
-  { name = "remaining_population", required = true, source = "builder" },
-  { name = "attrition_rate", required = true, source = "builder" },
 ]
 
 [[tier2]]

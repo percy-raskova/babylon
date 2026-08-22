@@ -118,22 +118,25 @@ const CUT_CONSTS: [&str; 15] = [
 
 /// Node ids follow scenario declaration order (`scenario.rs`: "declaration
 /// order is the id order") — core=0, bourgeoisie=1, hermit=2,
-/// last-worker=3, remnant=4, dissolved=5.
+/// last-worker=3, remnant=4, dissolved=5, calibration=6 (T6's fixture,
+/// declared last).
 const CORE: u64 = 0;
 const BOURGEOISIE: u64 = 1;
 const HERMIT: u64 = 2;
 const LAST_WORKER: u64 = 3;
 const REMNANT: u64 = 4;
 const DISSOLVED: u64 = 5;
+const CALIBRATION: u64 = 6;
 
-/// The five classes carrying an explicit 16-value mass vector (everyone
+/// The six classes carrying an explicit 16-value mass vector (everyone
 /// except `remnant`, the absence fence's own subject).
-const SEEDED_CLASSES: [(&str, u64); 5] = [
+const SEEDED_CLASSES: [(&str, u64); 6] = [
     ("core", CORE),
     ("bourgeoisie", BOURGEOISIE),
     ("hermit", HERMIT),
     ("last-worker", LAST_WORKER),
     ("dissolved", DISSOLVED),
+    ("calibration", CALIBRATION),
 ];
 
 fn load() -> HypergraphStore {
@@ -320,30 +323,41 @@ fn currency_lane_fields_round_trip_exactly() {
 }
 
 /// Byte-determinism, the same discipline every other pin in this crate
-/// carries: two runs, one post-state hash. `before == after` still holds
-/// post-T5 — NOT because the rule never fires (it fires for four of the
-/// six classes now), but because its only effect is `emit`, which never
-/// touches graph state (III.11: `update-node`/`update-edge`/
-/// `update-hyperedge`/`add-*`/`remove-*` never appear in
-/// `vitality/subsistence-clearing`). `fired == 4` is `core`,
-/// `bourgeoisie`, `hermit`, `last-worker` — `remnant` (mass-sum guard, all
-/// sixteen masses absent) and `dissolved` (`active = 0`) are excluded;
-/// see `the_unseeded_class_produces_no_reading_and_the_rule_does_not_fire`
-/// below for the absence-fence leg this number stands on.
+/// carries: two runs, one post-state hash. **POST-T6 (2026-08-21):**
+/// `before == after` no longer holds — the mortality rule's population
+/// decrement writes state by design (the pack is no longer emit-only), so
+/// the test below asserts `before != after` and pins the exact writes in
+/// the T6 suite. `fired == 11` = 5 measure (`core`, `bourgeoisie`,
+/// `hermit`, `last-worker`, `calibration` — `remnant`'s mass-sum guard and
+/// `dissolved`'s `active = 0` exclude them) + 6 mortality (its guard is
+/// active × population only, so `remnant` fires too, its effects
+/// inner-guarded away on deaths = 0). See
+/// `the_unseeded_class_produces_no_reading_and_the_rule_does_not_fire`
+/// below for the absence-fence leg the measure count stands on.
 #[test]
-fn the_carrier_tick_is_deterministic_and_the_measure_rule_fires_for_four_of_six_classes() {
+fn the_carrier_tick_is_deterministic_and_the_measure_rule_fires_for_five_of_seven_classes() {
     let a = run_once(SCENARIO, RULE).expect("first run");
     let b = run_once(SCENARIO, RULE).expect("second run");
     assert_eq!(a.after, b.after, "two runs, one post-state");
-    assert_eq!(
+    // T6: the pack now WRITES state (the mortality rule's population
+    // decrement) — the emit-only `before == after` premise of this test's
+    // first four months is retired by design (T6.6), not by accident; the
+    // exact post-state is pinned by `the_calibration_point_is_exact_and_
+    // last_worker_extincts` and the carrier-hashes golden.
+    assert_ne!(
         hex(&a.before),
         hex(&a.after),
-        "emit is the rule's only effect — it never mutates graph state"
+        "the mortality rule's writes must move the post-state — a tick that \
+         kills nobody here would mean the T6 rule did not fire"
     );
     assert_eq!(
-        a.fired, 4,
-        "core, bourgeoisie, hermit, last-worker pass the guard; remnant \
-         (mass-sum = 0) and dissolved (active = 0) do not"
+        a.fired, 11,
+        "5 (the measure: core, bourgeoisie, hermit, last-worker, \
+         calibration; remnant's mass-sum = 0 and dissolved's active = 0 \
+         fail ITS guard) + 6 (the mortality rule's guard is active × \
+         population only, so remnant fires too — its failing-certain = 0 \
+         and the effects' inner guard on deaths > 0 blocks any write or \
+         event; dissolved passes neither guard)"
     );
 }
 
@@ -438,17 +452,23 @@ fn measure_arithmetic_matches_the_independent_oracle_exactly() {
     let mut sink = CollectingSink::default();
     run_once_into(SCENARIO, RULE, &mut graph, &mut sink).expect("the measure rule must run");
 
+    // T6: the sink now also carries the mortality rule's two
+    // POPULATION_ATTRITION events (last-worker, calibration) — filter by
+    // type, never by absolute index. Rule-id byte order fires the measure
+    // first ("subsistence-clearing" < "subsistence-mortality").
+    let measure_events: Vec<&(String, Vec<(String, Value)>)> = sink
+        .events
+        .iter()
+        .filter(|(ty, _)| ty == "SUBSISTENCE_CLEARANCE_MEASURED")
+        .collect();
     assert_eq!(
-        sink.events.len(),
-        4,
-        "exactly the four guard-admitted classes"
+        measure_events.len(),
+        5,
+        "exactly the five guard-admitted classes (the calibration fixture          joined the world at T6)"
     );
-    for (event_type, _) in &sink.events {
-        assert_eq!(event_type, "SUBSISTENCE_CLEARANCE_MEASURED");
-    }
 
     // (node id, w_bar $, s_stock $, mass_sum, clearing, failing_certain, straddle_band)
-    let expected: [(u64, i128, i128, f64, f64, f64, f64); 4] = [
+    let expected: [(u64, i128, i128, f64, f64, f64, f64); 5] = [
         (CORE, 10 * 1_000_000, 2 * 1_000_000, 1.0, 1.0, 0.0, 0.0),
         (
             BOURGEOISIE,
@@ -461,11 +481,15 @@ fn measure_arithmetic_matches_the_independent_oracle_exactly() {
         ),
         (HERMIT, 100 * 1_000_000, 2 * 1_000_000, 1.0, 1.0, 0.0, 0.0),
         (LAST_WORKER, 1_000_000, 2 * 1_000_000, 1.0, 0.0, 1.0, 0.0),
+        // The T6 calibration fixture (id 6): w_bar = 1.0$ against
+        // s_stock = 1.0$ (s_class = 0) — rung 1 wholly failing, nothing
+        // straddling (cut-01 × 1.0 = 0.18 < 1.0 by a wide margin).
+        (CALIBRATION, 1_000_000, 1_000_000, 1.0, 0.0, 1.0, 0.0),
     ];
     for (i, (id, w_bar_micro, s_stock_micro, mass_sum, clearing, failing_certain, straddle_band)) in
         expected.into_iter().enumerate()
     {
-        let payload = &sink.events[i].1;
+        let payload = &measure_events[i].1;
         let expected_payload = vec![
             ("entity-id".to_owned(), Value::NodeRef(NodeId(id))),
             (
@@ -679,9 +703,13 @@ fn the_unseeded_class_produces_no_reading_and_the_rule_does_not_fire() {
     let mut sink = CollectingSink::default();
     run_once_into(SCENARIO, RULE, &mut graph, &mut sink).expect("the measure rule must run");
 
+    // T6: filter to the measure's own events — the mortality rule's two
+    // POPULATION_ATTRITION events (last-worker, calibration) share the sink
+    // and are the T6 suite's own business above.
     let fired_ids: Vec<NodeId> = sink
         .events
         .iter()
+        .filter(|(ty, _)| ty == "SUBSISTENCE_CLEARANCE_MEASURED")
         .map(|(_, payload)| match payload.first() {
             Some((label, Value::NodeRef(id))) if label == "entity-id" => *id,
             other => panic!("expected an entity-id NodeRef payload item first, found {other:?}"),
@@ -697,8 +725,8 @@ fn the_unseeded_class_produces_no_reading_and_the_rule_does_not_fire() {
     );
     assert_eq!(
         fired_ids.len(),
-        4,
-        "core, bourgeoisie, hermit, last-worker only"
+        5,
+        "core, bourgeoisie, hermit, last-worker, calibration (T6's fixture) only"
     );
 }
 
@@ -738,6 +766,9 @@ fn scratch_scenario(nodes: &[ScratchNode<'_>]) -> String {
         s.push_str(&format!("  (defconst {qname} {:?}r)\n", SYNTHETIC_CUTS[i]));
     }
     s.push_str("  (defconst vitality/subsistence-horizon 1.0r)\n");
+    // T6: the mortality rule's own derived defconst — same value the shipped
+    // scenario declares (the calibration derivation lives there, D198).
+    s.push_str("  (defconst vitality/kappa 1.0c)\n");
     for (name, active, population, wealth, s_bio, s_class, masses) in nodes {
         s.push_str(&format!(
             "  (node {name} NodeType/SOCIAL_CLASS\n    \
@@ -939,6 +970,183 @@ fn evaluator_reaches_an_exact_cut_boundary_and_a_genuine_straddle() {
         assert_eq!(
             payload, &expected_payload,
             "engineered class {i} (node {id})"
+        );
+    }
+}
+
+// ============================================================================
+// T6 (#491, Phase 3b) — Grinding Attrition: the population-write rule.
+//
+// `vitality/subsistence-mortality` (content/rules/vitality-attrition.bsl):
+// `deaths = floor(population × failing-certain × κ)` under DP-6 = B (the
+// driver is `failing-certain`, H2′'s dual — D199 records the departure from
+// OQ-H's `failing = 1 − clearing`). κ is the DERIVED-not-picked `.bscn`
+// defconst `vitality/kappa` (ADR210 R14), derived at the scenario's named
+// calibration fixture (design doc §3.5's three requirements; D198 carries
+// the derivation + the divergence-surface exhibit):
+//
+//   fixture `calibration`: the frozen engine's own canonical total-
+//   attrition conformance point — coverage_ratio 1.0, inequality 0.8
+//   (tests/unit/formulas/test_vitality.py's
+//   test_coverage_below_threshold_causes_attrition, rate clamped 1.0) — the
+//   one point where frozen and ported forms agree in SEMANTICS ("everyone
+//   certainly failing dies this tick"), not merely magnitude. s_class = 0$
+//   so the frozen and R13 level sets coincide at the reference; all mass in
+//   rung 1, failing WHOLLY (cut-01 × w-bar = 0.18 < s-stock = 1.0$), so
+//   failing-certain = 1.0 exactly by construction.
+//   κ = frozen-rate₀ / failing-certain₀ = 1.0 / 1.0 = 1.0c.
+//
+// Structure contract (transcribed, ADR183 — engine/systems/vitality.py:
+// 114-131): deaths reduce population and never wealth; the decrement is
+// floored; the two continue guards. The frozen loop's post-drain re-read
+// does NOT transcribe: BSL's C4 pre-state law reads tick-entry state and
+// W2's same-tick refusals forbid an in-tick read of the drain's writes —
+// recorded as a named divergence in D198, with the pack-internal note that
+// the drain rule (`vitality/subsistence-and-death`) is not co-loaded by
+// this scenario at all, and byte-order rule-id sorting would fire it first
+// in any co-load anyway.
+// ============================================================================
+
+/// T6.1's exact-deaths legs against the shipped scenario: the calibration
+/// fixture's exact fit (100 → 0, the frozen engine's 100 at the same
+/// point), last-worker's one-death extinction path (driver = 1, pop = 1),
+/// and the negative legs (core/bourgeoisie/hermit/dissolved/remnant emit
+/// nothing). Events are filtered by type, never by absolute sink index —
+/// the measure rule's own events share the sink.
+#[test]
+fn the_calibration_point_is_exact_and_last_worker_extincts() {
+    let mut graph = HypergraphStore::new();
+    let mut sink = CollectingSink::default();
+    run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
+        .expect("the carrier world must tick clean");
+
+    let attrition: Vec<&(String, Vec<(String, Value)>)> = sink
+        .events
+        .iter()
+        .filter(|(ty, _)| ty == "POPULATION_ATTRITION")
+        .collect();
+    assert_eq!(
+        attrition.len(),
+        2,
+        "exactly last-worker (driver 1, pop 1) and calibration (the exact \
+         fit) cross one whole member; every other class's driver is 0"
+    );
+
+    // Rule firing order within the pack is ascending rule-id byte order
+    // (§4.2/D16) and subject order is node-declaration order, so the
+    // last-worker event precedes calibration's.
+    let expected: [(u64, i64, f64); 2] = [(3, 1, 0.0), (6, 100, 0.0)];
+    for (i, (id, deaths, remaining)) in expected.into_iter().enumerate() {
+        let payload = &attrition[i].1;
+        let get = |key: &str| -> &Value {
+            payload
+                .iter()
+                .find(|(k, _)| k == key)
+                .map(|(_, v)| v)
+                .unwrap_or_else(|| panic!("payload missing {key}"))
+        };
+        assert_eq!(get("entity-id"), &Value::NodeRef(NodeId(id)));
+        assert_eq!(get("deaths"), &Value::Int(deaths));
+        assert_eq!(get("remaining-population"), &Value::Real(remaining));
+        assert_eq!(get("failing-certain"), &Value::Real(1.0));
+        assert_eq!(get("attrition-rate"), &Value::Real(1.0));
+        // The frozen structure contract: deaths reduce population and NEVER
+        // wealth (vitality.py:114-131 — the poor die with 0 wealth; wealth
+        // is not reduced when people die).
+        assert_eq!(
+            graph.node_attribute(NodeId(id), "social-class/population"),
+            Ok(remaining)
+        );
+    }
+    assert_eq!(
+        graph
+            .node_attribute_currency(NodeId(6), "social-class/wealth")
+            .expect("seeded currency reads back through its own lane"),
+        Currency::from_micro_units(100 * 1_000_000),
+        "calibration's wealth is untouched by its extinction"
+    );
+}
+
+/// T6.1's floor legs, through the real evaluator on scratch worlds: a
+/// fractional product below one member floors to zero (no write, no event),
+/// and a product landing exactly on one member is one death (the floor
+/// boundary is INCLUSIVE at the integer).
+#[test]
+fn the_deaths_floor_zero_and_boundary_legs() {
+    // failing = 0.5 by construction (mass split rung-1/rung-16 across the
+    // s-stock line at w-bar = 1.0, s-stock = 1.0$: rung 1's upper edge
+    // 0.18 < 1.0 fails, rung 16 is open above).
+    let fractional = scratch_scenario(&[("fractional", 1, 1, 1, 1, 0, {
+        let mut m = [0.0_f64; 16];
+        m[0] = 0.5;
+        m[15] = 0.5;
+        m
+    })]);
+    let boundary = scratch_scenario(&[("boundary", 1, 2, 2, 1, 0, {
+        let mut m = [0.0_f64; 16];
+        m[0] = 0.5;
+        m[15] = 0.5;
+        m
+    })]);
+
+    let mut graph = HypergraphStore::new();
+    let mut sink = CollectingSink::default();
+    run_once_into(&fractional, RULE, &mut graph, &mut sink)
+        .expect("the fractional scratch world must tick clean");
+    assert!(
+        sink.events
+            .iter()
+            .all(|(ty, _)| ty != "POPULATION_ATTRITION"),
+        "pop 1 × failing 0.5 × κ 1.0 = 0.5 floors to zero — no event"
+    );
+    assert_eq!(
+        graph.node_attribute(NodeId(0), "social-class/population"),
+        Ok(1.0),
+        "no write either"
+    );
+
+    let mut graph = HypergraphStore::new();
+    let mut sink = CollectingSink::default();
+    run_once_into(&boundary, RULE, &mut graph, &mut sink)
+        .expect("the boundary scratch world must tick clean");
+    let events: Vec<_> = sink
+        .events
+        .iter()
+        .filter(|(ty, _)| ty == "POPULATION_ATTRITION")
+        .collect();
+    assert_eq!(events.len(), 1, "pop 2 × failing 0.5 × κ 1.0 = exactly 1");
+    assert_eq!(
+        graph.node_attribute(NodeId(0), "social-class/population"),
+        Ok(1.0)
+    );
+}
+
+/// T6.1's guard legs under the mortality rule specifically: a never-seeded
+/// class (every mass read absent) and an inactive class produce no event
+/// and no write, matching the measure rule's own absence-fence behavior.
+#[test]
+fn the_two_continue_guards_and_the_absence_fence_hold_under_the_mortality_rule() {
+    let mut graph = HypergraphStore::new();
+    let mut sink = CollectingSink::default();
+    run_once_into(SCENARIO, RULE, &mut graph, &mut sink).expect("clean tick");
+    let emitters: Vec<u64> = sink
+        .events
+        .iter()
+        .filter(|(ty, _)| ty == "POPULATION_ATTRITION")
+        .filter_map(|(_, payload)| {
+            payload.iter().find_map(|(k, v)| {
+                (k == "entity-id").then_some(v).and_then(|v| match v {
+                    Value::NodeRef(NodeId(id)) => Some(*id),
+                    _ => None,
+                })
+            })
+        })
+        .collect();
+    for excluded in [0_u64, 1, 2, 4, 5] {
+        assert!(
+            !emitters.contains(&excluded),
+            "node {excluded} must not emit (core/bourgeoisie/hermit: driver 0; \
+             remnant: absence fence; dissolved: active = 0)"
         );
     }
 }

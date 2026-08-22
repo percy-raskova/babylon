@@ -178,6 +178,23 @@
   (defconst wealth-sketch/household-person-equivalence 1.0r)
   (defconst vitality/subsistence-horizon 1.0r)
 
+  ; kappa (T6.3, ADR210 R14) -- the stock->flow time-constant converting
+  ; the certainly-failing mass share into a per-tick death flow; a
+  ; Coefficient, NOT a shape parameter (shape lives entirely in the
+  ; measured K=16 distribution). DERIVED, not picked: fitted at the
+  ; `calibration` node below -- the frozen engine's own canonical
+  ; total-attrition conformance point (coverage_ratio 1.0, inequality 0.8,
+  ; population 100, s-class = 0$ so the frozen and R13 level sets coincide
+  ; at the reference; tests/unit/formulas/test_vitality.py's
+  ; test_coverage_below_threshold_causes_attrition) -- as
+  ; kappa = frozen-rate / failing-certain = 1.0 / 1.0 = 1.0c, fitted
+  ; against DP-6 = B's driver (failing-certain). Replaces
+  ; attrition_base_factor, which ADR191 R3 rules NOT transcribed. D198
+  ; publishes the derivation and the divergence surface (where the two
+  ; forms part) -- exact at the reference by construction, a scale, never
+  ; a curve-bend.
+  (defconst vitality/kappa 1.0c)
+
   ; core -- all mass in ONE rung (rung 8).
   (node core NodeType/SOCIAL_CLASS
     (social-class/active 1)
@@ -280,4 +297,38 @@
     (social-class/wealth-mass-09 0.0c) (social-class/wealth-mass-10 0.0c)
     (social-class/wealth-mass-11 0.25c) (social-class/wealth-mass-12 0.0c)
     (social-class/wealth-mass-13 0.0c) (social-class/wealth-mass-14 0.0c)
-    (social-class/wealth-mass-15 0.0c) (social-class/wealth-mass-16 0.25c)))
+    (social-class/wealth-mass-15 0.0c) (social-class/wealth-mass-16 0.25c))  ; ------------------------------------------------------------------
+  ; THE T6 CALIBRATION FIXTURE (design doc §3.5's three requirements,
+  ; all satisfied in-file): `calibration` -- the mortality driver's
+  ; reference class. (a) the frozen engine's own canonical
+  ; total-attrition conformance point -- coverage_ratio 1.0, inequality
+  ; 0.8 (tests/unit/formulas/test_vitality.py's
+  ; test_coverage_below_threshold_causes_attrition: rate clamps to 1.0)
+  ; -- the one point where the frozen form and the ported form agree in
+  ; SEMANTICS, not just magnitude ("everyone certainly failing dies this
+  ; tick"); (b) s-class = 0$ so the frozen level set (S = s-bio +
+  ; s-class) and the R13 measure's level set coincide at the reference
+  ; point and kappa absorbs no level-set contamination; (c) all mass in
+  ; rung 1, whose upper edge at the reference (cut-01 x w-bar = 0.18 x
+  ; 1.0 = 0.18 < s-stock = 1.0$) fails WHOLLY, so failing-certain = 1.0
+  ; exactly by construction -- no measurement noise enters the fit.
+  ; kappa = frozen-rate / failing-certain = 1.0 / 1.0 = 1.0c, derived at
+  ; this point (D198's divergence surface publishes everywhere the two
+  ; forms part). population 100, wealth 100$ (w-bar = 1.0 = coverage
+  ; 1.0 against s-bio 1$).
+  (node calibration NodeType/SOCIAL_CLASS
+    (social-class/active 1)
+    (social-class/population 100)
+    (social-class/wealth 100$)
+    (social-class/subsistence-multiplier 1)
+    (social-class/s-bio 1$)
+    (social-class/s-class 0$)
+    (social-class/wealth-mass-01 1.0c) (social-class/wealth-mass-02 0.0c)
+    (social-class/wealth-mass-03 0.0c) (social-class/wealth-mass-04 0.0c)
+    (social-class/wealth-mass-05 0.0c) (social-class/wealth-mass-06 0.0c)
+    (social-class/wealth-mass-07 0.0c) (social-class/wealth-mass-08 0.0c)
+    (social-class/wealth-mass-09 0.0c) (social-class/wealth-mass-10 0.0c)
+    (social-class/wealth-mass-11 0.0c) (social-class/wealth-mass-12 0.0c)
+    (social-class/wealth-mass-13 0.0c) (social-class/wealth-mass-14 0.0c)
+    (social-class/wealth-mass-15 0.0c) (social-class/wealth-mass-16 0.0c))
+)

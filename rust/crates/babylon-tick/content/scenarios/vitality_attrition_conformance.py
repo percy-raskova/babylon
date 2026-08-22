@@ -131,6 +131,20 @@ SUBJECTS: list[ClassFixture] = [
         # mass SPLIT across the threshold rung, rungs 1/2, 0.5 each.
         masses=[0.5, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
     ),
+    ClassFixture(
+        # T6's calibration fixture (design doc §3.5, declared in the
+        # scenario by name): the frozen engine's canonical total-attrition
+        # conformance point — coverage_ratio 1.0 (w_bar = 1.0 against
+        # s_bio 1.0), inequality 0.8, population 100; s_class = 0 so the
+        # frozen and R13 level sets coincide at the reference; all mass in
+        # rung 1, wholly failing (cut-01 × 1.0 = 0.18 < s_stock = 1.0).
+        "calibration",
+        wealth=100.0,
+        population=100,
+        s_bio=1.0,
+        s_class=0.0,
+        masses=[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    ),
 ]
 
 
@@ -169,7 +183,7 @@ def clearing_failing_straddle(
 
 
 def main() -> None:
-    """Print the four guard-admitted classes' measure vectors."""
+    """Print the five guard-admitted classes' measure vectors."""
     print("measure vectors (S = s_bio + s_class, ADR210 R13 acquiescence level set; tau=1.0):")
     for subj in SUBJECTS:
         w_bar = subj.wealth / subj.population
@@ -188,5 +202,89 @@ def main() -> None:
         )
 
 
+# ============================================================================
+# T6 (Phase 3b) — the mortality oracle: κ's derivation record and the
+# divergence surface (design doc §3.5; the D198 exhibit).
+# ============================================================================
+
+#: κ, derived at the ``calibration`` fixture: frozen-rate₀ / failing₀
+#: = 1.0 / 1.0 (the frozen engine's canonical total-attrition point clamps
+#: to 1.0; the fixture's rung-1 mass fails wholly, failing₀ = 1.0 exactly
+#: by construction). ADR210 R14's DERIVED-not-picked, recorded here rather
+#: than asserted. Replaces ``attrition_base_factor`` (0.5), which ADR191 R3
+#: rules NOT transcribed.
+KAPPA: float = 1.0
+
+#: The frozen attrition base factor, transcribed for the divergence surface
+#: ONLY (never consumed by the ported form): vitality.py's
+#: ``_DEFINES.vitality.attrition_base_factor`` default.
+FROZEN_BASE_FACTOR: float = 0.5
+
+
+def frozen_mortality_rate(coverage_ratio: float, inequality: float) -> float:
+    """The frozen engine's Phase 3 form, transcribed from
+    ``src/babylon/formulas/vitality.py:16-49`` (verified 2026-08-21):
+    ``clamp((1 + inequality − coverage_ratio) × (base + inequality))``.
+    """
+    threshold = 1.0 + inequality
+    if coverage_ratio >= threshold:
+        return 0.0
+    return max(0.0, min(1.0, (threshold - coverage_ratio) * (FROZEN_BASE_FACTOR + inequality)))
+
+
+def mortality_expectation(subj: ClassFixture) -> tuple[int, float]:
+    """The ported rule's deaths/attrition-rate for one class, from the
+    measure above: ``deaths = floor(population × failing_certain × κ)``,
+    exactly the BSL rule's own chain (T6.4, DP-6 = B)."""
+    w_bar = subj.wealth / subj.population
+    s_stock = (subj.s_bio + subj.s_class) * TAU
+    _, failing_certain, _ = clearing_failing_straddle(subj.masses, CUTS, w_bar, s_stock)
+    attrition_rate = failing_certain * KAPPA
+    deaths = int(subj.population * attrition_rate)
+    return deaths, attrition_rate
+
+
+def print_mortality_block() -> None:
+    """The T6 mortality expectations for the five guard-admitted classes
+    (deaths, attrition-rate) plus the κ derivation line."""
+    print("mortality vectors (deaths = floor(population × failing_certain × κ), κ = 1.0c):")
+    for subj in SUBJECTS:
+        deaths, rate = mortality_expectation(subj)
+        print(
+            f"  {subj.name:<12} deaths={deaths} attrition_rate={rate!r} "
+            f"remaining={subj.population - deaths}"
+        )
+    print(
+        "kappa derivation: κ = frozen-rate₀ / failing₀ = 1.0 / 1.0 = 1.0c at the "
+        "`calibration` fixture (c₀ = 1.0, g₀ = 0.8, pop 100, s_class = 0$)"
+    )
+
+
+def print_divergence_surface() -> None:
+    """The D198 exhibit: frozen vs ported deaths-per-tick rate over a
+    declared (coverage_ratio, inequality) sweep.
+
+    The ported column is computed over the UNIFORM reference distribution
+    (1/16 of mass per rung — maximum-entropy, no weighting toward an
+    answer) with s_class = 0, so failing(c) is the closed step form
+    ``#{k : cut_k × c < τ} / 16``; the ported form has no inequality input
+    at all (the retired dispersion surrogate), so its column is g-flat by
+    construction. Where the two forms part IS the evidence that κ is a
+    scale and the rest is shape substitution.
+    """
+    uniform = [1.0 / 16.0] * 16
+    coverages = [0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0]
+    inequalities = [0.0, 0.2, 0.5, 0.8, 0.95]
+    print("divergence surface (rate per tick; ported over the uniform reference distribution):")
+    print("  coverage  ported   " + "  ".join(f"g={g:<4}" for g in inequalities))
+    for c in coverages:
+        _, ported, _ = clearing_failing_straddle(uniform, CUTS, c * 1.0, 1.0 * TAU)
+        ported_rate = ported * KAPPA
+        frozen = [frozen_mortality_rate(c, g) for g in inequalities]
+        print(f"  c={c:<8} {ported_rate:<8} " + "  ".join(f"{f:<6}" for f in frozen))
+
+
 if __name__ == "__main__":
     main()
+    print_mortality_block()
+    print_divergence_surface()

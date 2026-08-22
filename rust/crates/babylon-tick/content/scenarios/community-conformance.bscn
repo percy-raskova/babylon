@@ -115,6 +115,12 @@
   (deffield community/l-raw real extensive)
   (deffield community/f-raw real extensive)
   (deffield community/density-sum real extensive)
+  ; c06a's cache (Task 9) — written per tick by the pack's only 14-arm
+  ; dispatch, read by c06b the same tick (the pre-state law forces the
+  ; split — D204; a write inside one rule's collect pass is invisible to a
+  ; later operand's field-of, so the floor cannot be computed and consumed
+  ; in one rule).
+  (deffield community/substrate-floor probability intensive)
   (deffield social-class/org-r-weight real extensive)
   (deffield social-class/org-l-weight real extensive)
   (deffield social-class/org-f-weight real extensive)

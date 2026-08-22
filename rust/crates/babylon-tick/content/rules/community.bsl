@@ -34,6 +34,20 @@
 ; the mirror transcribes the true order and its output is byte-identical
 ; either way (proven at Task 7). §8b's D116 ledger (the same-tick
 ; cross-rule reads this pack relies on) is reproduced in the plan, §8b.
+; Task 9 extends the map: … < c05-normalize < c06a-floor-dispatch <
+; c06b-floor-redistribute. THE c06 SPLIT (D204): the plan's c06 was ONE
+; rule — "the pack's ONLY 14-arm dispatch" driving the redistribution —
+; but the pre-state law (§4.2 C4) makes a write-then-read WITHIN one
+; rule's body impossible: the floor written by an `update-hyperedge` is
+; not visible to a later operand's `field-of` in the same collect pass.
+; The dispatch therefore lands as c06a (writes the per-community
+; `community/substrate-floor` cache through the pack's only 14-arm chain)
+; and c06b (reads the cache — a same-tick CROSS-RULE read, the §8b shape
+; spike (f) proved at Task 7). The math is unchanged; the pack's rule
+; count moves 14 -> 15 (DG-2's "12 if no-publish" becomes 13), recorded
+; in the D-row register. §8a gains a row: the c05 total/unorganized
+; expressions are inlined per write (no defexpr exists) — the bit-exact
+; mirror assertions are the copies-agree mechanism.
 ;
 ; §5 DISCLOSURE — what does NOT land (the #653-gated half, hard-sequenced):
 ; threat scoring (community.py:579-608), solidarity amplification
@@ -95,7 +109,7 @@
 ; ============================================================ c00 — the reset
 (rule community/c00-census-reset
   :material-basis "The per-tick rebuild (community.py:392-397 mints a fresh community_agents map on every step, and community.py:460-462 writes back via model_copy): every accumulator this pack reads derives from THIS tick's writes, so the tick begins by zeroing them. The institution/community-carrier binding is a SUBJECT-TYPE ANCHOR ONLY (tick.rs::subject_type_of requires >=1 :field binding to derive INSTITUTION) — never read again, never gating anything (`when #t`), so the domain is declared EXPLICITLY: an unreferenced anchor plus a vacuous guard is E-LOAD-004-undeterminable at load (domain.rs's candidate set is reference-fed), and control-ratio.bsl's precedent passes only because its fold bodies feed that set — recorded in the pack header."
-  :fuel 79
+  :fuel 104
   (bindings
     (binding carrier :field institution/community-carrier))
   (domain NodeType/INSTITUTION)
@@ -111,7 +125,7 @@
 ; ============================================================ c01 — the census
 (rule community/c01-member-census
   :material-basis "The member census (community.py:465-479's _collect_memberships + :392-397's community_agents): ACTIVE classes only (the :472-474 gate — an inactive member is excluded from the count AND from every downstream write), one +1 per (class, community) membership. The adds collect against the pre-state and combine at apply, so N active members land N exactly."
-  :fuel 22
+  :fuel 27
   (bindings
     (binding active :field social-class/active))
   (when (= active 1))
@@ -179,7 +193,7 @@
 ; ============================================================ c04 — the contribution push
 (rule community/c04-community-contribution-push
   :material-basis "The density decomposition (plan §1.3, D-NF+3): frozen's per-org weight (overlap/comm_size) x cadre x cohesion re-expressed as per-class sums divided by the census count — each active-in-census class pushes org-weight/member-count onto its communities' raw ternary accumulators and org-count/member-count onto density-sum. The divisor is c01's SAME-TICK census (§8b's D116 ledger row 1: fatal if apply-in-place is ever repaired to collect-across-rules — the Q14 train's acceptance input). The `active` gate is FIDELITY, not caution: frozen's community_agents is built from the active-only membership set (community.py:472-474 -> :392-397), so an inactive class's org weights (c03 pushes to members regardless of the target's active flag) must NEVER enter the sum — gated here, c03's push onto an inactive class stays inert (c02 resets it next tick)."
-  :fuel 115
+  :fuel 151
   (bindings
     (binding active :field social-class/active)
     (binding rw :field social-class/org-r-weight)
@@ -197,3 +211,108 @@
         (add (/ fw (field-of it community/member-count))))
       (update-hyperedge it community/density-sum
         (add (/ orgs (field-of it community/member-count)))))))
+
+; ============================================================ c05 — the normalization
+; (Task 9 Step 2; the §6.2 I5 routing: the degenerate branch emits
+; (0, 1, 0) and NOTHING else — the floor routes through c06a/c06b,
+; bit-identically to frozen's fused branch, formulas/consciousness.py:89-91,
+; because x1.0 and /1.0 are exact in IEEE-754.)
+(rule community/c05-normalize
+  :material-basis "Normalize the raw accumulators to the simplex (formulas/consciousness.py:78-95): unorganized = max(0, 1 - density-sum) folds into l (Jackson: passive acceptance is liberal hegemony); total = (r + (l+u)) + f, frozen's exact association; total < 1e-10 is the degenerate branch -> (0, 1, 0) and NOTHING else (the floor routes through c06a/c06b, bit-identically — 6.2 I5). The density-sum > 0 guard is frozen's community.py:452 skip gate (no org_landscape -> keep the prior ternary). Frozen never stores the unorganized-folded l-raw, so neither does this rule — only the normalized ternary is written. The total/unorganized expressions are inlined per write (no defexpr exists — 8a ledger); the epsilon is the landed (/ 1c 10000000000) quotient (consciousness.bsl's idiom), bit-identical to frozen's 1e-10 literal."
+  :fuel 596
+  (domain NodeType/INSTITUTION)
+  (bindings
+    (binding carrier :field institution/community-carrier))
+  (when #t)
+  (effects
+    (for-each (hyperedges HyperedgeType/COMMUNITY)
+      (guard (> (field-of it community/density-sum) 0.0c)
+        (update-hyperedge it community/revolutionary
+          (set
+            (if (< (+ (+ (field-of it community/r-raw) (+ (field-of it community/l-raw) (if (< (- 1.0c (field-of it community/density-sum)) 0.0c) 0.0c (- 1.0c (field-of it community/density-sum))))) (field-of it community/f-raw)) (/ 1.0c 10000000000))
+              0.0p
+              (/ (field-of it community/r-raw) (+ (+ (field-of it community/r-raw) (+ (field-of it community/l-raw) (if (< (- 1.0c (field-of it community/density-sum)) 0.0c) 0.0c (- 1.0c (field-of it community/density-sum))))) (field-of it community/f-raw))))))
+        (update-hyperedge it community/liberal
+          (set
+            (if (< (+ (+ (field-of it community/r-raw) (+ (field-of it community/l-raw) (if (< (- 1.0c (field-of it community/density-sum)) 0.0c) 0.0c (- 1.0c (field-of it community/density-sum))))) (field-of it community/f-raw)) (/ 1.0c 10000000000))
+              1.0p
+              (/ (+ (field-of it community/l-raw) (if (< (- 1.0c (field-of it community/density-sum)) 0.0c) 0.0c (- 1.0c (field-of it community/density-sum)))) (+ (+ (field-of it community/r-raw) (+ (field-of it community/l-raw) (if (< (- 1.0c (field-of it community/density-sum)) 0.0c) 0.0c (- 1.0c (field-of it community/density-sum))))) (field-of it community/f-raw))))))
+        (update-hyperedge it community/fascist
+          (set
+            (if (< (+ (+ (field-of it community/r-raw) (+ (field-of it community/l-raw) (if (< (- 1.0c (field-of it community/density-sum)) 0.0c) 0.0c (- 1.0c (field-of it community/density-sum))))) (field-of it community/f-raw)) (/ 1.0c 10000000000))
+              0.0p
+              (/ (field-of it community/f-raw) (+ (+ (field-of it community/r-raw) (+ (field-of it community/l-raw) (if (< (- 1.0c (field-of it community/density-sum)) 0.0c) 0.0c (- 1.0c (field-of it community/density-sum))))) (field-of it community/f-raw))))))))))
+
+; ============================================ c06a — the floor dispatch (Task 9 Step 3)
+; THE PACK'S ONLY 14-arm community/kind dispatch (6.2 — no map or lookup
+; construct exists). Writes the per-community floor to the
+; community/substrate-floor cache; c06b reads it the SAME TICK (the
+; pre-state law forces the split — a write inside one rule's collect pass
+; is invisible to a later operand's field-of, so dispatch-and-redistribute
+; cannot be one rule; D204).
+(rule community/c06a-floor-dispatch
+  :material-basis "The 14-row ADR214 floor table, dispatched on community/kind (6.2; the pack's ONLY 14-arm chain — spike shape (e) proved it at Task 7). Values and per-row provenance: the world's .bscn defconst block (ADR214 Ruling 1 + erratum 9 for the measured three; Ruling 2's demotions for the LOW five; INCARCERATED's named unreachability; SETTLER/PATRIARCHAL/YOUTH/ADULT structural zeros; ELDER estimated). The density-sum > 0 guard is the SAME skip gate as c05's — a skipped community's cache is never written, and c06b's guard never reads it (the honest-null discipline, 9 item 5)."
+  :fuel 252
+  (domain NodeType/INSTITUTION)
+  (bindings
+    (binding carrier :field institution/community-carrier)
+    (binding floor-settler :const community/floor-settler)
+    (binding floor-patriarchal :const community/floor-patriarchal)
+    (binding floor-new-afrikan :const community/floor-new-afrikan)
+    (binding floor-first-nations :const community/floor-first-nations)
+    (binding floor-chicano :const community/floor-chicano)
+    (binding floor-women :const community/floor-women)
+    (binding floor-trans :const community/floor-trans)
+    (binding floor-disabled :const community/floor-disabled)
+    (binding floor-queer :const community/floor-queer)
+    (binding floor-undocumented :const community/floor-undocumented)
+    (binding floor-incarcerated :const community/floor-incarcerated)
+    (binding floor-youth :const community/floor-youth)
+    (binding floor-adult :const community/floor-adult)
+    (binding floor-elder :const community/floor-elder))
+  (when #t)
+  (effects
+    (for-each (hyperedges HyperedgeType/COMMUNITY)
+      (guard (> (field-of it community/density-sum) 0.0c)
+        (update-hyperedge it community/substrate-floor
+          (set
+            (if (= (field-of it community/kind) CommunityType/SETTLER) floor-settler
+            (if (= (field-of it community/kind) CommunityType/PATRIARCHAL) floor-patriarchal
+            (if (= (field-of it community/kind) CommunityType/NEW_AFRIKAN) floor-new-afrikan
+            (if (= (field-of it community/kind) CommunityType/FIRST_NATIONS) floor-first-nations
+            (if (= (field-of it community/kind) CommunityType/CHICANO) floor-chicano
+            (if (= (field-of it community/kind) CommunityType/WOMEN) floor-women
+            (if (= (field-of it community/kind) CommunityType/TRANS) floor-trans
+            (if (= (field-of it community/kind) CommunityType/DISABLED) floor-disabled
+            (if (= (field-of it community/kind) CommunityType/QUEER) floor-queer
+            (if (= (field-of it community/kind) CommunityType/UNDOCUMENTED) floor-undocumented
+            (if (= (field-of it community/kind) CommunityType/INCARCERATED) floor-incarcerated
+            (if (= (field-of it community/kind) CommunityType/YOUTH) floor-youth
+            (if (= (field-of it community/kind) CommunityType/ADULT) floor-adult
+              floor-elder)))))))))))))))
+      ))))
+
+; ============================================================ c06b — the redistribution (Task 9 Step 3)
+(rule community/c06b-floor-redistribute
+  :material-basis "The substrate floor, applied post-normalization (formulas/consciousness.py:98-107): if r < floor, r = floor and the remaining (1 - floor) redistributes to l and f PROPORTIONALLY (l x remaining / lf, f x remaining / lf) when lf > 1e-10, else l = remaining and f = 0 (the two-arm split). Reads c06a's cache the SAME TICK (8b's ledger; spike (f) proved the shape). The SETTLER control: floor 0.0 makes r < floor identically false — the 0.0-floor community is untouched (6.2)."
+  :fuel 272
+  (domain NodeType/INSTITUTION)
+  (bindings
+    (binding carrier :field institution/community-carrier))
+  (when #t)
+  (effects
+    (for-each (hyperedges HyperedgeType/COMMUNITY)
+      (guard (> (field-of it community/density-sum) 0.0c)
+        (guard (< (field-of it community/revolutionary) (field-of it community/substrate-floor))
+          (update-hyperedge it community/liberal
+            (set
+              (if (> (+ (field-of it community/liberal) (field-of it community/fascist)) (/ 1.0c 10000000000))
+                (/ (* (field-of it community/liberal) (- 1.0c (field-of it community/substrate-floor))) (+ (field-of it community/liberal) (field-of it community/fascist)))
+                (- 1.0c (field-of it community/substrate-floor)))))
+          (update-hyperedge it community/fascist
+            (set
+              (if (> (+ (field-of it community/liberal) (field-of it community/fascist)) (/ 1.0c 10000000000))
+                (/ (* (field-of it community/fascist) (- 1.0c (field-of it community/substrate-floor))) (+ (field-of it community/liberal) (field-of it community/fascist)))
+                0.0p)))
+          (update-hyperedge it community/revolutionary
+            (set (field-of it community/substrate-floor))))))))

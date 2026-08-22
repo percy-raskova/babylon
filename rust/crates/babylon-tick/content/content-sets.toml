@@ -32,6 +32,21 @@ prelude   = []
 rules     = ["rules/community.bsl"]
 consumers = ["rust/crates/babylon-tick/tests/community_conformance.rs"]
 
+
+[[set]]
+id        = "community/degenerate"
+scenario  = "scenarios/community-degenerate-conformance.bscn"
+prelude   = []
+rules     = ["rules/community.bsl"]
+consumers = ["rust/crates/babylon-tick/tests/community_conformance.rs"]
+
+[[set]]
+id        = "community/floor"
+scenario  = "scenarios/community-floor-conformance.bscn"
+prelude   = []
+rules     = ["rules/community.bsl"]
+consumers = ["rust/crates/babylon-tick/tests/community_conformance.rs"]
+
 [[set]]
 id        = "consciousness/ternary-conformance"
 scenario  = "scenarios/consciousness-ternary-conformance.bscn"

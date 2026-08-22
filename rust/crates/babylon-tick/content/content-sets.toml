@@ -24,28 +24,88 @@ consumers = [
 ]
 
 [[set]]
+id        = "community/carrier-collision"
+scenario  = "scenarios/community-carrier-collision-conformance.bscn"
+prelude   = []
+rules     = ["rules/control-ratio.bsl", "rules/community.bsl"]
+consumers = [
+    "rust/crates/babylon-tick/tests/community_arc_conformance.rs",
+    "rust/crates/babylon-tick/tests/tick_goldens.rs",
+]
+
+[[set]]
 id        = "community/conformance"
 scenario  = "scenarios/community-conformance.bscn"
 prelude   = []
 # The pack lands across Tasks 8-11 of the Community port train (issue
 # #667); c00-c04 landed at Task 8.
 rules     = ["rules/community.bsl"]
-consumers = ["rust/crates/babylon-tick/tests/community_conformance.rs"]
+consumers = [
+    "rust/crates/babylon-tick/tests/community_conformance.rs",
+    "rust/crates/babylon-tick/tests/tick_goldens.rs",
+]
 
+
+[[set]]
+id        = "community/cost-modifier"
+scenario  = "scenarios/community-cost-modifier-conformance.bscn"
+prelude   = []
+rules     = ["rules/community.bsl"]
+consumers = [
+    "rust/crates/babylon-tick/tests/community_conformance.rs",
+    "rust/crates/babylon-tick/tests/tick_goldens.rs",
+]
+
+[[set]]
+id        = "community/decay-arc"
+scenario  = "scenarios/community-decay-arc-conformance.bscn"
+prelude   = []
+rules     = ["rules/community.bsl"]
+consumers = [
+    "rust/crates/babylon-tick/tests/community_arc_conformance.rs",
+    "rust/crates/babylon-tick/tests/tick_goldens.rs",
+]
 
 [[set]]
 id        = "community/degenerate"
 scenario  = "scenarios/community-degenerate-conformance.bscn"
 prelude   = []
 rules     = ["rules/community.bsl"]
-consumers = ["rust/crates/babylon-tick/tests/community_conformance.rs"]
+consumers = [
+    "rust/crates/babylon-tick/tests/community_conformance.rs",
+    "rust/crates/babylon-tick/tests/tick_goldens.rs",
+]
+
+[[set]]
+id        = "community/empty"
+scenario  = "scenarios/community-empty-conformance.bscn"
+prelude   = []
+rules     = ["rules/community.bsl"]
+consumers = [
+    "rust/crates/babylon-tick/tests/community_arc_conformance.rs",
+    "rust/crates/babylon-tick/tests/tick_goldens.rs",
+]
 
 [[set]]
 id        = "community/floor"
 scenario  = "scenarios/community-floor-conformance.bscn"
 prelude   = []
 rules     = ["rules/community.bsl"]
-consumers = ["rust/crates/babylon-tick/tests/community_conformance.rs"]
+consumers = [
+    "rust/crates/babylon-tick/tests/community_conformance.rs",
+    "rust/crates/babylon-tick/tests/tick_goldens.rs",
+]
+
+
+[[set]]
+id        = "community/solidarity-seam"
+scenario  = "scenarios/community-solidarity-seam-conformance.bscn"
+prelude   = []
+rules     = ["rules/solidarity.bsl", "rules/community.bsl"]
+consumers = [
+    "rust/crates/babylon-tick/tests/community_arc_conformance.rs",
+    "rust/crates/babylon-tick/tests/tick_goldens.rs",
+]
 
 [[set]]
 id        = "consciousness/ternary-conformance"

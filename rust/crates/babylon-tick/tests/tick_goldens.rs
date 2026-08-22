@@ -847,3 +847,188 @@ fn carceral_arc_conformance_hashes_are_pinned() {
          p06:0 (fire-tick never reaches tick 1 on the delay path)"
     );
 }
+
+// ---------------------------------------------------------------------
+// The Community port train's eight content-world pins (issue #667, Task
+// 10 Step 6) — one per world (1, 2, 3, 4, 5, 5b, 5c, 6), each pinning
+// `before` and `after` in one test as the landed pins do (the arc's
+// `after` is its tick-3 value). Every one carries the triad: what it
+// summarizes that the conformance suites already pin; that it is
+// MEASURED, never derived — new in this train, so this is a measurement,
+// not a ceremony (III.13 applies to tests/baselines/**, not this crate's
+// own goldens); and that it touches none of the sixteen prior pins.
+// ---------------------------------------------------------------------
+
+const COMMUNITY_W1: &str = include_str!("../content/scenarios/community-conformance.bscn");
+const COMMUNITY_W2: &str = include_str!("../content/scenarios/community-floor-conformance.bscn");
+const COMMUNITY_W3: &str =
+    include_str!("../content/scenarios/community-degenerate-conformance.bscn");
+const COMMUNITY_W4: &str =
+    include_str!("../content/scenarios/community-cost-modifier-conformance.bscn");
+const COMMUNITY_W5: &str =
+    include_str!("../content/scenarios/community-decay-arc-conformance.bscn");
+const COMMUNITY_W5B: &str =
+    include_str!("../content/scenarios/community-solidarity-seam-conformance.bscn");
+const COMMUNITY_W5C: &str =
+    include_str!("../content/scenarios/community-carrier-collision-conformance.bscn");
+const COMMUNITY_W6: &str = include_str!("../content/scenarios/community-empty-conformance.bscn");
+const COMMUNITY_PACK: &str = include_str!("../content/rules/community.bsl");
+const COMMUNITY_SOLIDARITY: &str = include_str!("../content/rules/solidarity.bsl");
+const COMMUNITY_CONTROL_RATIO: &str = include_str!("../content/rules/control-ratio.bsl");
+
+/// World 1 — summarizes `community_conformance.rs`'s census/weights/
+/// normalization/floor pins (already bit-exact against the mirror).
+/// Measured, never derived; touches none of the sixteen prior pins.
+#[test]
+fn community_world_1_hashes_are_pinned() {
+    let report = run_once(COMMUNITY_W1, COMMUNITY_PACK).expect("world 1 tick");
+    assert_eq!(
+        hex(&report.before),
+        "855f6f9b92a47b909f7d470aa84556c9ac48a319fff0905c142ee58199a392ba",
+        "pre-tick hash moved — the substrate's load of community-conformance.bscn"
+    );
+    assert_eq!(
+        hex(&report.after),
+        "d4fc962cc33ab551fa06494dddd61302ac2c9867f315714df401a231662136f5",
+        "post-tick hash moved — the full c00-c11 pack over world 1"
+    );
+}
+
+/// World 2 — summarizes the floor-binding pins (Ruling 3's ordering
+/// executed, the proportionality read). Measured, never derived; touches
+/// none of the sixteen prior pins.
+#[test]
+fn community_world_2_hashes_are_pinned() {
+    let report = run_once(COMMUNITY_W2, COMMUNITY_PACK).expect("world 2 tick");
+    assert_eq!(
+        hex(&report.before),
+        "74c94d50d41bbe816d3f0de17956162d9698aad36a39f2ecf006b169e17eeb6b",
+        "pre-tick hash moved — the substrate's load of community-floor-conformance.bscn"
+    );
+    assert_eq!(
+        hex(&report.after),
+        "9945301783754de8f54a10317fb4d227b5b931aa7e640f2db135cddba31fa09c",
+        "post-tick hash moved — the floor world after one tick"
+    );
+}
+
+/// World 3 — summarizes the degenerate + skip-gate pins. Measured, never
+/// derived; touches none of the sixteen prior pins.
+#[test]
+fn community_world_3_hashes_are_pinned() {
+    let report = run_once(COMMUNITY_W3, COMMUNITY_PACK).expect("world 3 tick");
+    assert_eq!(
+        hex(&report.before),
+        "cbc85aab2f12b2858ae215e896fe72e2343471b7e40f3e79b4360f321b40c83d",
+        "pre-tick hash moved — the substrate's load of community-degenerate-conformance.bscn"
+    );
+    assert_eq!(
+        hex(&report.after),
+        "bba7959911fe1a40c016e6caddf072944fd84beba3400b02e82bebd3b82aaec5",
+        "post-tick hash moved — the degenerate world after one tick"
+    );
+}
+
+/// World 4 — summarizes the cost-modifier pins (the product, the exact
+/// 1.0, the honest-null inactive). Measured, never derived; touches none
+/// of the sixteen prior pins.
+#[test]
+fn community_world_4_hashes_are_pinned() {
+    let report = run_once(COMMUNITY_W4, COMMUNITY_PACK).expect("world 4 tick");
+    assert_eq!(
+        hex(&report.before),
+        "3a021222a3c3d9a5606305feed76e5d20dd0e1a14dd712309ca0f0578e0107b7",
+        "pre-tick hash moved — the substrate's load of community-cost-modifier-conformance.bscn"
+    );
+    assert_eq!(
+        hex(&report.after),
+        "41f8dccba9366eba6fc870cf5630882a90f4eb494df29c015d60b310c0f46b05",
+        "post-tick hash moved — the cost-modifier world after one tick"
+    );
+}
+
+/// World 5 — the arc's tick-3 `after` (the three-tick decay chain the arc
+/// mirror oracles). Measured, never derived; touches none of the sixteen
+/// prior pins.
+#[test]
+fn community_world_5_arc_hashes_are_pinned() {
+    let mut session = babylon_tick::TickSession::new(
+        COMMUNITY_W5,
+        COMMUNITY_PACK,
+        HypergraphStore::new(),
+        babylon_kernel::SessionId::new("community-decay-arc").expect("literal"),
+    )
+    .expect("world 5 session");
+    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
+    let mut last = None;
+    for _ in 0..3 {
+        last = Some(session.advance(&mut sink).expect("tick"));
+    }
+    let report = last.expect("three ticks ran");
+    assert_eq!(
+        hex(&report.before),
+        "18fbf163dc93898cbb6276e4c1f28c3378d72400e286d540e57d6b9be1dbecea",
+        "tick-3 pre-hash moved — the arc world's state entering tick 3"
+    );
+    assert_eq!(
+        hex(&report.after),
+        "b8018b5daa3c6624a477abb16409f593219c345b9365aa642c5f1b81e1ea8325",
+        "tick-3 post-hash moved — the decay arc's third link"
+    );
+}
+
+/// World 5b — summarizes the seam pins (SOLIDARITY strengths byte-
+/// identical under the co-load; the community half actually ran).
+/// Measured, never derived; touches none of the sixteen prior pins.
+#[test]
+fn community_world_5b_seam_hashes_are_pinned() {
+    let rules = format!("{COMMUNITY_SOLIDARITY}\n{COMMUNITY_PACK}");
+    let report = run_once(COMMUNITY_W5B, &rules).expect("world 5b tick");
+    assert_eq!(
+        hex(&report.before),
+        "43c36eece2e8250410e7730467b2cb48b5e67d8c279391bf29ffd6c2d77acf3b",
+        "pre-tick hash moved — the seam world's load"
+    );
+    assert_eq!(
+        hex(&report.after),
+        "fa6297254a13c5c9ff9786e7599ce84e2e95ae09ed109f6d8ff7c98f9f147c52",
+        "post-tick hash moved — solidarity + community co-loaded, one tick"
+    );
+}
+
+/// World 5c — summarizes the carrier-collision pins (per-rule-id fired
+/// arithmetic, the decay-applied-once read). Measured, never derived;
+/// touches none of the sixteen prior pins.
+#[test]
+fn community_world_5c_collision_hashes_are_pinned() {
+    let rules = format!("{COMMUNITY_CONTROL_RATIO}\n{COMMUNITY_PACK}");
+    let report = run_once(COMMUNITY_W5C, &rules).expect("world 5c tick");
+    assert_eq!(
+        hex(&report.before),
+        "1ad177425e34ed4f972d8f530cec9cfe3122ab6bd3c14902ee282cfd71106d4f",
+        "pre-tick hash moved — the collision world's load"
+    );
+    assert_eq!(
+        hex(&report.after),
+        "d018323568b2d910d643fd1fb79a30315b19d8629401213b12c8a12e602c4b14",
+        "post-tick hash moved — control-ratio + community over ONE carrier"
+    );
+}
+
+/// World 6 — summarizes the all-inactive lanes-skipped pins (and the
+/// recorded decay divergence, D205). Measured, never derived; touches
+/// none of the sixteen prior pins.
+#[test]
+fn community_world_6_hashes_are_pinned() {
+    let report = run_once(COMMUNITY_W6, COMMUNITY_PACK).expect("world 6 tick");
+    assert_eq!(
+        hex(&report.before),
+        "0d10526ca3a6a14eb1e2bac27c63c0e4716d4f9189fc990c07bbd9226d70d946",
+        "pre-tick hash moved — the substrate's load of community-empty-conformance.bscn"
+    );
+    assert_eq!(
+        hex(&report.after),
+        "d808eb25330cc3f680d45ae9ee458c515c2abb207b08eb18b88427d821fe3c8e",
+        "post-tick hash moved — the all-inactive world after one tick"
+    );
+}

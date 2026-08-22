@@ -304,7 +304,59 @@ WORLD_3: dict[str, object] = {
     ],
 }
 
-WORLDS: list[dict[str, object]] = [WORLD_1, WORLD_2, WORLD_3]
+# World 4 (community-cost-modifier-conformance.bscn, Task 10 Step 4): the
+# cost-modifier world — two communities with DISTINCT modifiers (0.75,
+# 1.25) so the product is distinguishable from either factor, and an
+# inactive member so the C4 detector runs in two worlds (world 1's n5 is
+# the first).
+WORLD_4: dict[str, object] = {
+    "name": "world 4 (community-cost-modifier-conformance.bscn)",
+    "nodes": [
+        {"name": "cost-register", "type": "INSTITUTION", "community-carrier": 1},
+        {"name": "w4-both", "type": "SOCIAL_CLASS", "active": 1},
+        {"name": "w4-one", "type": "SOCIAL_CLASS", "active": 1},
+        {"name": "w4-none", "type": "SOCIAL_CLASS", "active": 1},
+        {"name": "w4-inactive", "type": "SOCIAL_CLASS", "active": 0},
+        {
+            "name": "w4-org",
+            "type": "ORGANIZATION",
+            "cadre-level": 0.5,
+            "cohesion": 0.5,
+            "tendency": "LIBERAL",
+        },
+    ],
+    "edges": [
+        ("w4-org", "w4-one"),
+    ],
+    "hyperedges": [
+        {
+            "name": "low-cost",
+            "kind": "QUEER",
+            "members": ["w4-both", "w4-one"],
+            "heat": 0.5,
+            "cohesion": 0.75,
+            "education-pressure": 0.25,
+            "reproduction-cost-modifier": 0.75,
+            "revolutionary": 0.25,
+            "liberal": 0.5,
+            "fascist": 0.25,
+        },
+        {
+            "name": "high-cost",
+            "kind": "NEW_AFRIKAN",
+            "members": ["w4-both", "w4-inactive"],
+            "heat": 0.75,
+            "cohesion": 0.625,
+            "education-pressure": 0.5,
+            "reproduction-cost-modifier": 1.25,
+            "revolutionary": 0.5,
+            "liberal": 0.25,
+            "fascist": 0.25,
+        },
+    ],
+}
+
+WORLDS: list[dict[str, object]] = [WORLD_1, WORLD_2, WORLD_3, WORLD_4]
 
 # The ADR214 floor table (§6.1 verbatim; 14 rows, frozen declaration order).
 FLOOR: dict[str, float] = {

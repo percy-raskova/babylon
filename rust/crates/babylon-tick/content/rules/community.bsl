@@ -316,3 +316,44 @@
                 0.0p)))
           (update-hyperedge it community/revolutionary
             (set (field-of it community/substrate-floor))))))))
+
+; ============================================ c09/c10 — the cost modifier (Task 10 Step 2)
+(rule community/c09-cost-modifier-reset
+  :material-basis "formulas/community.py:164-165's per-tick reset to 1, gated ACTIVE-ONLY by community.py:472-474 (1.4/C4): an INACTIVE class is written NOTHING — its social-class/community-cost-modifier reads the substrate's honest-null error, never 1.0. The reset is what makes c10's product per-tick rather than compounding across ticks (the Task-8-deferred vector, proven in Task 10's arc world)."
+  :fuel 8
+  (bindings
+    (binding active :field social-class/active))
+  (when (= active 1))
+  (effects
+    (update-node self social-class/community-cost-modifier (set 1))))
+
+(rule community/c10-cost-modifier-accumulate
+  :material-basis "formulas/community.py:166-174: the modifier is the PRODUCT of the member communities' reproduction-cost-modifier — one `scale` per membership, ascending HyperedgeId (D25; D-NF+13 records the float-product-order divergence: frozen iterates a dict, this pack's order is the substrate's). The active guard is community.py:472-474's (C4). Spike shape (d) verdict, cited: `scale` accumulates multiplicatively across a for-each because the combine reads the current value at APPLY (the operand is pre-computed per collected write)."
+  :fuel 35
+  (bindings
+    (binding active :field social-class/active))
+  (when (= active 1))
+  (effects
+    (for-each (hyperedges-of self HyperedgeType/COMMUNITY)
+      (update-node self social-class/community-cost-modifier
+        (scale (field-of it community/reproduction-cost-modifier))))))
+
+; ============================================================ c11 — the state decay (Task 10 Step 3)
+(rule community/c11-state-decay
+  :material-basis "community.py:648-675: per tick per community, heat/cohesion/education-pressure each decay max(0, x·(1−α)) (the three-arm triplication is 8a row 2 — decay_arms_are_independent carries the three mutation vectors). Frozen computes x·(1−α) then clamps at the model_copy (:668-674); the if-form here is max(0, ·) exactly. THE INFRASTRUCTURE ARM IS ABSENT — 5: its CORE_ORGANIZER maintenance term makes frozen's law NON-MONOTONE, and landing x·(1−α) alone would be a DIFFERENT law (monotone decay); port-as-is (ADR183) forbids it. The term waits on #653 (the AG(i) ceremony), DG-7's call. The decay has NO skip gate — frozen decays every community_state (:648's loop over the whole dict), including a no-org-skipped one."
+  :fuel 208
+  (domain NodeType/INSTITUTION)
+  (bindings
+    (binding carrier :field institution/community-carrier)
+    (binding heat-alpha :const community/heat-decay-alpha)
+    (binding cohesion-alpha :const community/cohesion-decay-alpha)
+    (binding edu-alpha :const community/education-pressure-decay))
+  (when #t)
+  (effects
+    (for-each (hyperedges HyperedgeType/COMMUNITY)
+      (update-hyperedge it community/heat
+        (set (if (< (* (field-of it community/heat) (- 1.0c heat-alpha)) 0.0c) 0.0c (* (field-of it community/heat) (- 1.0c heat-alpha)))))
+      (update-hyperedge it community/cohesion
+        (set (if (< (* (field-of it community/cohesion) (- 1.0c cohesion-alpha)) 0.0c) 0.0c (* (field-of it community/cohesion) (- 1.0c cohesion-alpha)))))
+      (update-hyperedge it community/education-pressure
+        (set (if (< (* (field-of it community/education-pressure) (- 1.0c edu-alpha)) 0.0c) 0.0c (* (field-of it community/education-pressure) (- 1.0c edu-alpha))))))))

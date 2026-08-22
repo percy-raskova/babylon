@@ -360,7 +360,7 @@ fn defenum_ordinal_parity_with_the_frozen_order() {
 /// pack loads into (plan §8c: the guards outlive the frozen linter).
 #[test]
 fn no_community_typed_node_exists() {
-    for scenario in [SCENARIO, SCENARIO_W2, SCENARIO_W3] {
+    for scenario in [SCENARIO, SCENARIO_W2, SCENARIO_W3, SCENARIO_W4] {
         let mut graph = HypergraphStore::new();
         let loaded = load_scenario(scenario, &mut graph).expect("world loads");
         for (member, count) in &loaded.node_types {
@@ -436,7 +436,7 @@ fn exactly_one_institution_carrier() {
     // Every world this pack loads into (§8c row 4's "never zero either" is
     // the loaded half — a carrier-free world runs the carrier rules over
     // an empty population, silent inertness dressed as a passing test).
-    for scenario in [SCENARIO, SCENARIO_W2, SCENARIO_W3] {
+    for scenario in [SCENARIO, SCENARIO_W2, SCENARIO_W3, SCENARIO_W4] {
         let mut graph = HypergraphStore::new();
         let loaded = load_scenario(scenario, &mut graph).expect("world loads");
         assert_eq!(
@@ -467,11 +467,12 @@ fn tick_world_1() -> HypergraphStore {
     let report = run_once_into(SCENARIO, PACK, &mut graph, &mut sink)
         .expect("world 1 + the c00-c04 pack ticks clean");
     assert_eq!(
-        report.fired, 21,
+        report.fired, 30,
         "c00:1 + c01:4 (active classes) + c02:5 (all classes) + c03f:1 + \
          c03l:1 + c03r:2 (rev-org AND n9 — n9 FIRES with an empty for-each, \
          frozen's :421 skip is structural) + c04:4 (active classes) + \
-         c05:1 + c06a:1 + c06b:1 (the carrier thrice more, Task 9)"
+         c05:1 + c06a:1 + c06b:1 (Task 9) + c09:4 + c10:4 (active classes) \
+         + c11:1 (the carrier — Task 10)"
     );
     graph
 }
@@ -887,4 +888,64 @@ fn the_floor_table_is_byte_identical_across_all_three_worlds() {
             );
         }
     }
+}
+
+// ---- Task 10: c09-c11 — cost modifiers and the state decay ----
+
+/// World 4 (the cost-modifier world), single-homed beside worlds 1-3.
+const SCENARIO_W4: &str =
+    include_str!("../content/scenarios/community-cost-modifier-conformance.bscn");
+
+/// Step 1: the modifier is the PRODUCT over the class's communities —
+/// w4-both reads 0.75 x 1.25 = 0.9375, in ascending HyperedgeId order
+/// (D25; D-NF+13's product-order note).
+#[test]
+fn cost_modifier_is_the_product_over_communities() {
+    let graph = tick(SCENARIO_W4, PACK);
+    assert_eq!(
+        node(&graph, 1, "social-class/community-cost-modifier").to_bits(),
+        (0.9375_f64).to_bits(),
+        "w4-both: 0.75 x 1.25"
+    );
+    assert_eq!(
+        node(&graph, 2, "social-class/community-cost-modifier").to_bits(),
+        (0.75_f64).to_bits(),
+        "w4-one: the single factor"
+    );
+}
+
+/// Step 1: no memberships → c09's reset writes 1 and c10's empty for-each
+/// leaves it — exactly 1.0, never a defaulted absence.
+#[test]
+fn cost_modifier_without_membership_is_exactly_one() {
+    let graph = tick(SCENARIO_W4, PACK);
+    assert_eq!(
+        node(&graph, 3, "social-class/community-cost-modifier").to_bits(),
+        (1.0_f64).to_bits(),
+        "w4-none: the reset's value, untouched"
+    );
+}
+
+/// Step 1 (C4's detector, the SECOND world): an inactive class is written
+/// NOTHING — the field reads the substrate's honest-null ERROR, never 1.0
+/// (the landed `.is_err()` shape of consciousness_ternary_conformance.rs:
+/// 244-245). Mutation vector: deleting c09's active guard reds this.
+#[test]
+fn inactive_class_receives_no_cost_modifier_write() {
+    // World 4's w4-inactive (n4) …
+    let graph = tick(SCENARIO_W4, PACK);
+    assert!(
+        graph
+            .node_attribute(NodeId(4), "social-class/community-cost-modifier")
+            .is_err(),
+        "w4-inactive: honest null, never 1.0"
+    );
+    // … and world 1's n5, the first home (one tick of the full pack).
+    let graph = tick(SCENARIO, PACK);
+    assert!(
+        graph
+            .node_attribute(NodeId(5), "social-class/community-cost-modifier")
+            .is_err(),
+        "world 1's n5: honest null, never 1.0"
+    );
 }

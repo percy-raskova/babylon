@@ -69,7 +69,7 @@ fn corpus_files() -> Vec<PathBuf> {
 const PINNED_DIGESTS: &[(&str, &str)] = &[
     (
         "community.bsl",
-        "14cb56074a85598b4e945c926f386e0e8cf56f3dbbcf9d71a97782928d27dd3c",
+        "1ce0b5129eb9e34d8ac1e5a963ef4e09a0b8a08813186ceaefd9e785db16ccb8",
     ),
     (
         "consciousness.bsl",
@@ -204,16 +204,36 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
         "d1b4577f98813cfd17b5e8bd394918a56c5e822c051790bc045254cf6b2a13ad",
     ),
     (
+        "community-carrier-collision-conformance.bscn",
+        "d2399cc98ab913622944c68209e663ba8e07695aaeab0f11e4e85b23f9d08e05",
+    ),
+    (
         "community-conformance.bscn",
         "0e13c145c0398b700952737aaaffeb6a4c575d1894cccfc96a31944fbc0ba984",
+    ),
+    (
+        "community-cost-modifier-conformance.bscn",
+        "03c9fccc01e7a783cf0bdc29f5bbd4cad75d27c7c5e791b89e7c3c004cf0a48b",
+    ),
+    (
+        "community-decay-arc-conformance.bscn",
+        "45e1650e120cfc507ec96d4c46015fd1b53e6ecf9b0085bbc7443fa1b77c4c4b",
     ),
     (
         "community-degenerate-conformance.bscn",
         "b8ad8f7f0472ff8c7baeeee8d3e71653edc43635c19cee7c93048e1035b15ab0",
     ),
     (
+        "community-empty-conformance.bscn",
+        "ca82c8a242c7ef43145dfebb22e3bbc26222edddcbb084f3f1f127961b827af1",
+    ),
+    (
         "community-floor-conformance.bscn",
         "ffabae42ddf3da7667e195cb06dd4e9a5b57f7bdc4ae105358cb4a9f59e77843",
+    ),
+    (
+        "community-solidarity-seam-conformance.bscn",
+        "036bd9f4f3639ae31ba90749d024a467d0b8c1152ed8fe1ce8013e72173f28f2",
     ),
     (
         "consciousness-ternary-conformance.bscn",

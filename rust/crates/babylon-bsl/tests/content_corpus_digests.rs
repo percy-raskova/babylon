@@ -68,6 +68,10 @@ fn corpus_files() -> Vec<PathBuf> {
 /// `read_all`'s parsed-tree shape moved. Either is a STOP.
 const PINNED_DIGESTS: &[(&str, &str)] = &[
     (
+        "class-dynamics.bsl",
+        "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    ),
+    (
         "community.bsl",
         "8b955851e3dec97a89e73b951ba96609713e81a1db36315d0cbf9493b3175384",
     ),
@@ -202,6 +206,10 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     (
         "carceral-arc-conformance.bscn",
         "d1b4577f98813cfd17b5e8bd394918a56c5e822c051790bc045254cf6b2a13ad",
+    ),
+    (
+        "class-dynamics-conformance.bscn",
+        "864fb0ade8cfd61c0fdaa32db4569b6443e6cd8ce225812cbed24d28f5481c28",
     ),
     (
         "community-carrier-collision-conformance.bscn",

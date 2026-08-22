@@ -184,6 +184,16 @@ const SOLO_PACKS: &[(&str, &str, Option<&str>, &str)] = &[
         None,
         include_str!("../../content/rules/community.bsl"),
     ),
+    (
+        // TickDynamics class-dynamics port train (issue #669, Feature-016
+        // @4.0). Task 2 lands the header-only pack; later tasks populate
+        // it with rules. The fuel report row is added now so the
+        // enumeration sentinel stays green as the file lands.
+        "class-dynamics",
+        include_str!("../../content/scenarios/class-dynamics-conformance.bscn"),
+        None,
+        include_str!("../../content/rules/class-dynamics.bsl"),
+    ),
 ];
 
 /// The two committed multi-file co-loads — see the module doc's fix-round

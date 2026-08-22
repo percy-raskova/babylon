@@ -554,6 +554,17 @@ impl GraphSubstrate for MemoryGraph {
                 message: format!("no such node: {id:?} — a dangling ref never reads as untyped"),
             })
     }
+
+    fn hyperedge_type_of(&self, id: HyperedgeId) -> Result<&str, GraphError> {
+        self.hyperedges
+            .get(&id)
+            .map(|(ty, _)| ty.as_str())
+            .ok_or_else(|| GraphError {
+                message: format!(
+                    "no such hyperedge: {id:?} — a dangling ref never reads as untyped"
+                ),
+            })
+    }
 }
 
 #[cfg(test)]

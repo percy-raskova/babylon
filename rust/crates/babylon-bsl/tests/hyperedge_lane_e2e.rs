@@ -472,6 +472,12 @@ impl GraphSubstrate for OrderSpyGraph {
         self.inner.node_type_of(id)
     }
 
+    // Task 3's review-driven addition (PR #684): pure delegation,
+    // un-spied, exactly as the own-field lane above.
+    fn hyperedge_type_of(&self, id: HyperedgeId) -> Result<&str, GraphError> {
+        self.inner.hyperedge_type_of(id)
+    }
+
     fn edge_attribute(
         &self,
         edge_type: &str,

@@ -631,6 +631,17 @@ impl GraphSubstrate for HypergraphStore {
                 message: format!("no such node: {id:?} — a dangling ref never reads as untyped"),
             })
     }
+
+    fn hyperedge_type_of(&self, id: HyperedgeId) -> Result<&str, GraphError> {
+        self.inner
+            .edge_attrs(&hyperedge_key(id))
+            .map(String::as_str)
+            .ok_or_else(|| GraphError {
+                message: format!(
+                    "no such hyperedge: {id:?} — a dangling ref never reads as untyped"
+                ),
+            })
+    }
 }
 
 impl CanonicalState for HypergraphStore {

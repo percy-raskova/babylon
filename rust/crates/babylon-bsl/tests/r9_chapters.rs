@@ -1217,7 +1217,7 @@ mod c5_element_selection {
     /// `edge_count_evaluates_for_real_on_an_empty_graph`
     /// (`conformance_corpus.rs`) for its own positive vector.
     #[test]
-    fn the_other_three_selection_heads_stay_pinned_named_by_their_slice() {
+    fn the_served_hyperedge_heads_refuse_empty_or_mistyped_results_honestly() {
         // `self` binds to a REAL node: were it a dangling id, a future
         // referent-validation pass could fire before the slice refusal
         // and this vector would pin the wrong error (Copilot harvest,

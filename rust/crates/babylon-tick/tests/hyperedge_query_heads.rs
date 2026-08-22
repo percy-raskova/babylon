@@ -4,10 +4,15 @@
 //! served by the query evaluator, plus the `Element::Hyperedge` cross-kind
 //! Ord ruling.
 //!
-//! RED (this commit): each head is pinned refusing through BOTH tables —
-//! `query::materialize`'s unserved-head refusal (query position) and
-//! `evaluator`'s expression-position classifier (bare `<expr>` position).
-//! The pins record the exact texts before they change meaning.
+//! RED→GREEN record: each head was first pinned refusing through BOTH
+//! tables — `query::materialize`'s unserved-head refusal (query position,
+//! "…is a §2.6 query head the query evaluator does not yet serve — it
+//! lands with slice 3, never as a default here") and `evaluator`'s
+//! expression-position classifier (bare `<expr>` position, "…is a
+//! query/selection/accessor form the evaluator does not yet serve
+//! (§2.6/§2.7/§2.10) — it lands with slice 3…"). Those pins ran green
+//! pre-landing and were then replaced by the served proofs below; the texts
+//! survive in this comment as the historical record (D201).
 //!
 //! NOTE on file placement (deviation, recorded): the plan's Task 3 names
 //! `tests/hyperedge_lane_e2e.rs` (babylon-bsl); that file's harness only
@@ -303,4 +308,41 @@ fn a_node_type_member_in_a_hyperedge_position_is_e_type_011() {
     let mut sink = CollectingSink::default();
     let err = run_once_into(SCENARIO, rule, &mut graph, &mut sink).unwrap_err();
     assert!(err.contains("E-TYPE-011"), "{err}");
+}
+
+/// PR #684 review (a REAL soundness gap): `members-of`'s annotated type
+/// must match the referent's actual type — the load-time bound checker
+/// bounds the fold by the ANNOTATED type's census-fed max-members, and a
+/// referent of a different type would iterate past that bound unchecked.
+/// Now refused with E-EVAL-032 (D24), driven content-level through the
+/// two-hop form: the outer fold binds a COMMUNITY referent, the inner
+/// annotates SECTOR.
+#[test]
+fn a_members_of_fold_with_a_mismatched_annotation_is_e_eval_032() {
+    let world = r"
+(scenario ft/type-mismatch
+  (defvocabulary HyperedgeType (COMMUNITY SECTOR))
+  (deffield social-class/active int extensive)
+  (node alpha NodeType/SOCIAL_CLASS (social-class/active 1))
+  (hyperedge cell HyperedgeType/COMMUNITY (members alpha))
+  (hyperedge sector HyperedgeType/SECTOR (members alpha)))
+";
+    let rule = r#"
+(rule community/probe-type-mismatch
+  :material-basis "E-EVAL-032 pin (PR #684 harvest)"
+  :fuel 2048
+  (domain NodeType/SOCIAL_CLASS)
+  (bindings
+    (binding active :field social-class/active))
+  (when (= active 1))
+  (effects
+    (emit EventType/ORGANIZATION_SEEDED
+      (probe (fold sum (hyperedges HyperedgeType/COMMUNITY) :as c (fold sum (members-of c HyperedgeType/SECTOR) (field-of it social-class/active)))))))
+"#;
+    let mut graph = HypergraphStore::new();
+    let mut sink = CollectingSink::default();
+    let err = run_once_into(world, rule, &mut graph, &mut sink).unwrap_err();
+    assert!(err.contains("E-EVAL-032"), "{err}");
+    assert!(err.contains("SECTOR"), "{err}");
+    assert!(err.contains("COMMUNITY"), "{err}");
 }

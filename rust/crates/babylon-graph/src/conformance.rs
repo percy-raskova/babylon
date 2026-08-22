@@ -46,6 +46,8 @@ where
     declared_order_never_leaks_through_any_ranged_accessor(&make);
     node_type_of_reports_the_declared_type(&make);
     node_type_of_a_dangling_id_is_loud_not_untyped(&make);
+    hyperedge_type_of_reports_the_declared_type(&make);
+    hyperedge_type_of_a_dangling_id_is_loud_not_untyped(&make);
     edge_attribute_reads_back_the_seeded_strength(&make);
     edge_attribute_on_a_missing_edge_is_loud_not_zero(&make);
     edge_attribute_of_an_unstored_qname_is_loud(&make);
@@ -671,6 +673,36 @@ where
     assert!(
         graph.node_type_of(NodeId(999_999)).is_err(),
         "a dangling NodeId must be a loud error, never an untyped read"
+    );
+}
+
+/// PR #684 (Community Task 3): `hyperedge_type_of` reports the declared
+/// type — the runtime half of E-EVAL-032's referent check needs it.
+fn hyperedge_type_of_reports_the_declared_type<G, F>(make: &F)
+where
+    G: GraphSubstrate + CanonicalState,
+    F: Fn() -> G,
+{
+    let mut graph = make();
+    let a = graph.add_node("social_class").unwrap();
+    let b = graph.add_node("social_class").unwrap();
+    let cell = graph.add_hyperedge("community", &[a, b]).unwrap();
+    let cell2 = graph.add_hyperedge("economic_sector", &[b]).unwrap();
+    assert_eq!(graph.hyperedge_type_of(cell).unwrap(), "community");
+    assert_eq!(graph.hyperedge_type_of(cell2).unwrap(), "economic_sector");
+}
+
+/// The dangling half, mirroring `node_type_of_a_dangling_id_is_loud_not_untyped`
+/// exactly (III.11, the same discipline).
+fn hyperedge_type_of_a_dangling_id_is_loud_not_untyped<G, F>(make: &F)
+where
+    G: GraphSubstrate + CanonicalState,
+    F: Fn() -> G,
+{
+    let graph = make();
+    assert!(
+        graph.hyperedge_type_of(HyperedgeId(999_999)).is_err(),
+        "a dangling HyperedgeId must be a loud error, never an untyped read"
     );
 }
 

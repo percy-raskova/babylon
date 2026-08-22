@@ -391,11 +391,27 @@ fn materialize_members_of(
     };
     let hyperedge_type = enum_member(type_ref)?;
     let graph = require_graph(env, "members-of")?;
-    // The type operand is not a filter — the HyperedgeRef carries its own
-    // type; a disagreement is the caller's bug, and the substrate's own
-    // hyperedges_of-type-vs-node asymmetry ruling (slice 3) leaves type
-    // validity to BSL's static check (E-TYPE-011), which the loader runs.
-    let _ = hyperedge_type;
+    // E-EVAL-032 (D24) — the annotated type must match the referent's
+    // ACTUAL type: the load-time bound checker bounds this fold by the
+    // annotated type's census-fed max-members, and a referent of a
+    // different type would iterate past that bound unchecked (PR #684's
+    // review found the gap). Never a silently empty set.
+    let actual_type = graph.hyperedge_type_of(hyperedge).map_err(|e| {
+        // D-row Q3's posture, same module: uncoded loud.
+        EvalError::plain(format!(
+            "(members-of …) over a dangling hyperedge operand: {}",
+            e.message
+        ))
+    })?;
+    if actual_type != hyperedge_type {
+        return Err(EvalError::coded(
+            crate::evaluator::EvalCode::HyperedgeTypeMismatch,
+            format!(
+                "(members-of …) annotated {hyperedge_type} but the referent is {actual_type} — \
+                 the annotated type bounds the fold's fuel (D24), never a silently empty set"
+            ),
+        ));
+    }
     Ok(graph
         .members_of(hyperedge)
         .map_err(|e| {
@@ -839,12 +855,16 @@ mod tests {
         let result = materialize_src("(hyperedges HyperedgeType/CELL)", &graph, &costs, &mut fuel)
             .expect("the type-wide head is served");
         assert_eq!(result, vec![Element::Hyperedge(cell)]);
+        // PR #684 review: independent assertions get independent fuel — a
+        // shared meter would couple the ordering pins to prior calls'
+        // consumption.
 
         // Iteration order is the ruled order — ascending HyperedgeId (D25),
         // pinned against a deliberately multi-hyperedge world; the Step-7
         // mutation (inverting the materializer's order) reds this.
         let cell2 = graph.add_hyperedge("CELL", &[beta]).unwrap();
         let cell0 = graph.add_hyperedge("CELL", &[alpha]).unwrap();
+        let mut fuel = 10_000;
         let result = materialize_src("(hyperedges HyperedgeType/CELL)", &graph, &costs, &mut fuel)
             .expect("the type-wide head is served");
         assert_eq!(
@@ -866,6 +886,7 @@ mod tests {
         .expect_err("a bare `self` outside a rule body has no referent — loud");
         assert!(result.message.contains("self"), "{result}");
 
+        let mut fuel = 10_000;
         let members = materialize_src(
             "(members-of it HyperedgeType/CELL)",
             &graph,
@@ -874,6 +895,33 @@ mod tests {
         )
         .expect_err("a bare `it` outside an iterating body has no referent — loud");
         assert!(members.message.contains("it"), "{members}");
+
+        // E-EVAL-032 (D24; PR #684 review): the annotated type must match
+        // the referent's ACTUAL type — the load-time bound is the annotated
+        // type's census-fed max-members, so a mismatch would iterate past
+        // the declared bound unchecked.
+        let mut env = env(&graph, &costs);
+        env.elements
+            .push((Some("c".to_owned()), Element::Hyperedge(cell)));
+        let mut fuel = 10_000;
+        let err = materialize(
+            &read("(members-of c HyperedgeType/OTHER)")
+                .expect("parses")
+                .0,
+            &env,
+            &EmptyIntrinsicHost,
+            &mut fuel,
+        )
+        .expect_err("a COMMUNITY referent annotated OTHER must refuse");
+        assert!(
+            err.message
+                .contains("annotated OTHER but the referent is CELL"),
+            "{err}"
+        );
+        assert_eq!(
+            err.code,
+            Some(crate::evaluator::EvalCode::HyperedgeTypeMismatch)
+        );
     }
 
     /// Compile-time trap (verifier fix round, MINOR-5 on issue #525): an

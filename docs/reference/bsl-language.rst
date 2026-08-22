@@ -8975,7 +8975,14 @@ consequences are the ordinary kind of review item.
        Mutation-proven at landing: inverting the materializer's order reds
        the ascending-id pin; re-declaring ``Hyperedge`` first reds both
        Ord companions; dropping the served-heads' bare-expr guard reds the
-       §2.7 position pin.
+       §2.7 position pin. **Added at PR review (#684):** ``members-of`` now
+       checks the annotated type against the referent's ACTUAL type at
+       materialize time — ``E-EVAL-032`` (``HyperedgeTypeMismatch``, D24's
+       pre-minted code) — via the new read-only
+       ``GraphSubstrate::hyperedge_type_of`` accessor (both backends, two
+       conformance rows); without it a referent of a different type would
+       iterate past the annotated type's census-fed max-members bound
+       unchecked. The check is a soundness obligation, not a filter.
 
 Authoring idioms (non-normative)
 -----------------------------------

@@ -8910,6 +8910,42 @@ consequences are the ordinary kind of review item.
        measured magnitudes national 5.04 % / county median 4.92 % / max
        35.68 %) is NOT shipped, and this row is the record that the choice
        was made knowingly.
+   * - D200
+     - §2.9
+     - **``:max-members`` is DERIVED FROM THE SEEDED POPULATION, never
+       stipulated** (Community port train, Task 4, 2026-08-21; the plan's
+       ``D-NF+22``). The driver's ``CardinalityCeilings`` now chains
+       ``LoadedScenario.hyperedge_types`` into the ceiling map as
+       ``HyperedgeType/<member>`` entries and feeds
+       ``max_members_seen`` — the longest member list of that hyperedge
+       type in the world being loaded — into the ``:max-members`` axis
+       (``lib.rs::build_shared_load_inputs``; the prefix lands at that
+       seam, the census maps stay member-keyed mirroring
+       ``node_types``/``edge_types``). Rationale, with provenance: (a)
+       symmetry with the landed law — ``node_types``/``edge_types``
+       already take ceilings from "the population the scenario ACTUALLY
+       built … rather than an invented one" (``scenario.rs``'s own
+       census-map doc), and a stipulated hyperedge cap would be the only
+       invented number in the map; (b) the Director's
+       gameplay-and-pedagogy compass — community membership is *content*
+       (which classes belong to NEW_AFRIKAN is the political claim the
+       pack teaches), and a modder's world must be bounded by the
+       modder's world, never by a constant no player can see; where it
+       does fail — a world larger than a rule's declared ``:fuel`` — it
+       fails loudly at LOAD with a number to raise (III.11); (c) the fuel
+       consequence stated plainly: a rule's static bound is per-world, so
+       a pack's declared ``:fuel`` is the maximum over every world that
+       loads it, re-measured whenever a world is added. **Rejected
+       alternative:** a content ``manifest`` form declaring
+       ``:max-members`` (``manifest.rs``'s route) — no landed content
+       declares a manifest at all today, and that route would put an
+       invented cap in fixtures. Re-open trigger: the first content set
+       that genuinely needs a cap larger than any world it ships with (an
+       unbounded runtime population). Mutation-proven at landing: the
+       empty-map restoration reds all three ``hyperedge_ceilings.rs``
+       proofs on E-LOAD-042, the dropped ``HyperedgeType/`` prefix reds
+       the type-wide-head proof, and a constant 99 in the axis moves the
+       measured E-LOAD-040 bound off its pinned 15.
 
 Authoring idioms (non-normative)
 -----------------------------------

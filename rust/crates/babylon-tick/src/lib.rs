@@ -373,6 +373,21 @@ fn registered_systems() -> HashSet<String> {
         // "decomposition"/"control-ratio" above. Hyphenated spelling
         // follows the same "control-ratio" precedent immediately above.
         "imperial-rent".to_owned(),
+        // The community/* rule pack (Material Base @6.0, the Community port
+        // train, issue #667, plan
+        // `docs/superpowers/plans/2026-08-18-community-port.md`).
+        // Registered AT TASK 4 (one task earlier than the plan's Task 7
+        // Step 2): the ceiling supply chain's RED tests must observe the
+        // two refusal codes specifically — E-LOAD-045 (MissingCeiling, the
+        // type axis) and E-LOAD-042 (MissingMaxMembers, the
+        // :max-members axis) — and a rule under an
+        // unregistered namespace fails E-LOAD-004 (undeterminable domain)
+        // one stage earlier — the registration is the precondition for the
+        // probe to reach the check it pins. Genuinely NEW registration —
+        // the Task 0 surface-facts dossier
+        // (`reports/community-bsl-surface-facts-2026-08-18.md`) confirmed
+        // zero prior hits in this HashSet.
+        "community".to_owned(),
     ])
 }
 
@@ -515,6 +530,15 @@ fn build_shared_load_inputs(scenario: &LoadedScenario) -> Result<SharedLoadInput
     // key disjoint namespaces (`NodeType/…` vs `EdgeType/…`), so merging
     // them into one flat map — which is what `CardinalityCeilings` already
     // is — cannot collide.
+    //
+    // Same again for `HyperedgeType/MEMBER` (Community port train, Task 4
+    // — plan `docs/superpowers/plans/2026-08-18-community-port.md`):
+    // `hyperedges`/`members-of`/`hyperedges-of` folds refuse load without
+    // the type's ceiling (E-LOAD-045) or its max-members axis (E-LOAD-042).
+    // Both are fed from the scenario's OWN census (`hyperedge_types`/
+    // `max_members_seen`, Task 1) — derived from the population the
+    // scenario actually built, never an invented constant (the D200
+    // record).
     let ceilings = CardinalityCeilings::new(
         scenario
             .node_types
@@ -526,8 +550,23 @@ fn build_shared_load_inputs(scenario: &LoadedScenario) -> Result<SharedLoadInput
                     .iter()
                     .map(|(member, count)| (format!("EdgeType/{member}"), *count)),
             )
+            .chain(
+                scenario
+                    .hyperedge_types
+                    .iter()
+                    .map(|(member, count)| (format!("HyperedgeType/{member}"), *count)),
+            )
             .collect(),
-        HashMap::new(),
+        // `max_members_seen` is member-keyed at the census
+        // (`scenario.rs`'s Task-1 maps mirror `node_types`' shape); the
+        // checker queries `HyperedgeType/<member>` (`enum_ref_key`) — the
+        // prefix lands at THIS seam, the same place the count map gets
+        // its own.
+        scenario
+            .max_members_seen
+            .iter()
+            .map(|(member, longest)| (format!("HyperedgeType/{member}"), *longest))
+            .collect(),
     );
     Ok(SharedLoadInputs {
         types,

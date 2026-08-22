@@ -163,6 +163,7 @@ fn run_one_tick() -> (MemoryGraph, usize, usize) {
         "economics/fundamental-theorem",
         Some(&loaded_scenario.node_content_ids),
         &fixture_session(),
+        None,
     )
     .expect("the tick must run");
 
@@ -276,6 +277,7 @@ fn a_changed_scenario_changes_the_hash() {
         "economics/fundamental-theorem",
         Some(&loaded_scenario.node_content_ids),
         &fixture_session(),
+        None,
     )
     .unwrap();
 
@@ -393,6 +395,7 @@ fn run_expr_tick(rule: &str) -> Result<(MemoryGraph, usize), String> {
         "economics/expr-fixture-rule",
         Some(&loaded_scenario.node_content_ids),
         &fixture_session(),
+        None,
     )
     .map_err(|e| format!("tick: {e}"))?;
     Ok((graph, outcome.fired))

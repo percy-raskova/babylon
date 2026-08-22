@@ -144,6 +144,25 @@ pub enum Write {
         /// The hyperedge that no longer exists.
         id: HyperedgeId,
     },
+    /// A field write on a hyperedge — from `update-hyperedge`, on either
+    /// dispatch site (Community port train, Task 6, E2b). An
+    /// `(hyperedge-attr …)` scenario seed does NOT produce one: hydration
+    /// writes the substrate directly and carries no write log (the same
+    /// convention as `(edge-attr …)`'s direct `update_edge`).
+    /// Mirrors [`Self::EdgeAttribute`]'s shape minus the endpoints — a
+    /// hyperedge's identity is its id alone.
+    HyperedgeAttribute {
+        /// The hyperedge written to.
+        id: HyperedgeId,
+        /// The fully-qualified field name.
+        field: String,
+        /// The value the field held before this write, or `None` where it
+        /// held nothing (the same discipline-3 probe, through
+        /// [`babylon_graph::substrate::GraphSubstrate::hyperedge_attribute`]).
+        previous: Option<f64>,
+        /// The value now stored.
+        value: f64,
+    },
 }
 
 /// A [`Write`] with its attribution: which rule performed it, and where in

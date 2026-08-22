@@ -8983,6 +8983,61 @@ consequences are the ordinary kind of review item.
        conformance rows); without it a referent of a different type would
        iterate past the annotated type's census-fed max-members bound
        unchecked. The check is a soundness obligation, not a filter.
+   * - D202
+     - §2.8, §2.10, §2.5
+     - **Task 6's read/write surface for hyperedge own-fields** (Community
+       port train, E2b, 2026-08-22; the plan's ``D-NF+25``).
+       ``update-hyperedge`` is **served in BOTH dispatch sites** — the
+       execute path and the collect path defer through
+       ``WriteTarget::Hyperedge`` with the same ``set``/``add``/``sub``/
+       ``scale`` parity and enum-``set`` inclusion as the other two update
+       verbs, applying in the APPLY phase against the Task-5 substrate lane
+       (the pre-state law holds for this element kind exactly as for the
+       other two), and recording ``Write::HyperedgeAttribute``. The §2.10
+       discipline-1 referent check is ONE function,
+       ``evaluator::check_hyperedge_referent_type``, shared by the write
+       side and by ``field-of``'s new ``HyperedgeRef`` arm — which serves a
+       hyperedge's OWN declared field (Task-5 storage), retiring the
+       Task-1-era "not meaningful" refusal; the surviving membership-payload
+       lane cites **#653**, never "slice 4". **The D29 mechanism** (§2.5's
+       node-scoped-binding law, the Community plan §8c guard 2's machinery):
+       ``tick::subject_type_of`` gains the owner-kind filter, threaded the
+       scenario's ``ClosedVocabulary`` through ``run_tick`` — a ``:field``
+       binding whose qname resolves to an EdgeType/HyperedgeType owner is
+       INVISIBLE to subject derivation, so a rule whose only field bindings
+       are hyperedge-owned refuses with the subject-type error instead of
+       iterating an empty population in silence. The filter acts on a
+       **positive** owner-kind answer only: a segment the (possibly
+       partial) vocabulary does not know passes through — unknown-owner is
+       E-LOAD-023's lane at load, never this filter's, and filtering it
+       would empty every subject population of every scenario declaring a
+       vocabulary for one kind only. ``(hyperedge-attr <name> <qname>
+       <literal>)`` seeds a declared own-field at hydration, mirroring
+       ``(edge-attr …)``: the local name resolves through the
+       name→``HyperedgeId`` table Task 1 grew for exactly this consumer,
+       the owner check reads the hyperedge's ACTUAL type back from the
+       substrate (``hyperedge_type_of``), the ``(hyperedge, field)`` pair
+       is a KEY (``E-LOAD-057``), and the value converts through
+       ``attribute_value``'s one per-type literal law (the int/fractional
+       contract and the enum-ordinal lane included; Currency refuses — no
+       hyperedge-scoped Currency lane, the edge lane's own ruling one kind
+       over). Hydration writes carry no write log, exactly as
+       ``(edge-attr …)``'s direct ``update_edge`` does not. **Typecheck
+       parity:** the wrong-scalar write refuses at ``numeric_write_value``'s
+       one funnel and the enum-field read in arithmetic position refuses at
+       ``apply_arith`` (``bind_field_value`` renders ``Value::Enum`` — the
+       D102 discharge one element kind over); the *static* enum-arithmetic
+       check stays ``update-node``-only, ``update-edge``'s own parity
+       level, deliberately not widened here. Mutation-proven at landing:
+       killing the execute arm reds both execute-side proofs
+       (``evaluator::tests::update_edge_and_update_hyperedge_are_both_served``,
+       ``structural_verbs::tests::update_hyperedge_writes_a_declared_hyperedge_field_on_both_dispatch_sites``
+       site 1); killing the collect arm reds the collect-side proofs (site
+       2 and the content-driver
+       ``hyperedge_surface.rs::update_hyperedge_writes_through_the_tick``).
+       Mint-time ``<field-init>``s on ``add-hyperedge`` STAY refused, with
+       the reason corrected: the storage exists; the init sugar is not
+       routed to it in this train.
 
 Authoring idioms (non-normative)
 -----------------------------------

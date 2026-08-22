@@ -490,8 +490,9 @@ pub(crate) fn require_graph<'a>(
 /// grammar error, not an unimplemented seam — §2.7's `<expr>` production has
 /// no production for any of them. (Whether the head is SERVED in effect
 /// position varies: most dispatch in [`crate::structural_verbs`]; `for-each`
-/// and `update-edge`/`update-hyperedge`/`update-membership` refuse there too,
-/// pending their own tasks/slices — the message below claims only the
+/// and `update-membership` refuses there too, pending the AG(i) lane (#653)
+/// — `for-each`, `update-edge` and (since Community port train Task 6)
+/// `update-hyperedge` all serve there today; the message below claims only the
 /// grammar, never service.) §2.8's `<verb>` production has ELEVEN
 /// alternatives: the ten structural verbs (`update-node`, `update-edge`,
 /// `update-hyperedge`, `update-membership`, `add-node`, `remove-node`,
@@ -1302,12 +1303,12 @@ fn eval_edge_between(
     }))
 }
 
-/// `(field-of <expr> <qname>)` (§2.10). Serves `NodeRef` referents (slice 1)
-/// and `EdgeRef` referents (slice 2, T2 issue #559); a `HyperedgeRef`
-/// referent is a genuine shape error (a hyperedge carries no attributes of
-/// its own — `structural_verbs`' own module doc says so — so `field-of`
-/// over one is never meaningful; a MEMBERSHIP's payload reads through
-/// `membership-field-of`, slice 4).
+/// `(field-of <expr> <qname>)` (§2.10). Serves `NodeRef` referents (slice 1),
+/// `EdgeRef` referents (slice 2, T2 issue #559), and `HyperedgeRef`
+/// referents (Community port train Task 6, E2b — a hyperedge's OWN field,
+/// the substrate storage Task 5 minted). A MEMBERSHIP's payload reads
+/// through `membership-field-of` (the AG(i) lane, #653), never through
+/// `field-of` over a hyperedge.
 fn eval_field_of(
     items: &[SExpr],
     env: &EvalEnv<'_>,
@@ -1324,12 +1325,7 @@ fn eval_field_of(
     match referent {
         Value::NodeRef(id) => field_of_node(id, qname, env),
         Value::EdgeRef(key) => field_of_edge(&key, qname, env),
-        Value::HyperedgeRef(_) => Err(EvalError::plain(
-            "(field-of …) over a HyperedgeRef is not meaningful — a \
-             hyperedge carries no attributes of its own (§2.8); a \
-             membership's payload reads through membership-field-of instead \
-             (slice 4)",
-        )),
+        Value::HyperedgeRef(id) => field_of_hyperedge(id, qname, env),
         other => Err(EvalError::plain(format!(
             "(field-of …)'s first operand must evaluate to a reference, got \
              {other:?} (§2.10)"
@@ -1485,6 +1481,49 @@ pub(crate) fn check_edge_referent_type(
     Ok(())
 }
 
+/// The `HyperedgeRef` half of §2.10 discipline 1 (Community port train,
+/// Task 6, E2b). Unlike an `EdgeKey`, a `HyperedgeId` does NOT carry its
+/// type inline, so — like `check_node_referent_type` — the check needs a
+/// substrate round-trip through `GraphSubstrate::hyperedge_type_of` (the
+/// read-only accessor PR #684 minted for exactly this). The rendering rule
+/// is the same one both sibling checks reuse: the stored type string is the
+/// verbatim `HyperedgeType` member (e.g. `COMMUNITY`), which
+/// `tick::namespace_to_node_type`'s uppercase + dash→underscore transform
+/// reproduces from the qname's owning segment. Shared by the read side
+/// (`field_of_hyperedge`) and the write side (`structural_verbs.rs`'s
+/// `update-hyperedge`), whose E-EVAL-033 obligation is the same law.
+///
+/// # Errors
+///
+/// `E-EVAL-033` if `id` names no live hyperedge, or if it does but is not
+/// of the qname's owning type.
+pub(crate) fn check_hyperedge_referent_type(
+    id: babylon_graph::substrate::HyperedgeId,
+    qname: &str,
+    form: &str,
+    graph: &dyn GraphSubstrate,
+) -> Result<(), EvalError> {
+    let owner_segment = qname.split('/').next().unwrap_or(qname);
+    let expected_type = crate::tick::namespace_to_node_type(owner_segment);
+    let actual_type = graph.hyperedge_type_of(id).map_err(|e| {
+        EvalError::coded(
+            EvalCode::AccessorTypeOrValueMismatch,
+            format!("{form} {qname}: {} (§2.10 discipline 1)", e.message),
+        )
+    })?;
+    if actual_type != expected_type {
+        return Err(EvalError::coded(
+            EvalCode::AccessorTypeOrValueMismatch,
+            format!(
+                "{form} {qname}: the referent is a {actual_type} hyperedge, not \
+                 {expected_type} — the qname's owning type does not match \
+                 the referent's declared type (§2.10 discipline 1)"
+            ),
+        ));
+    }
+    Ok(())
+}
+
 /// The `EdgeRef` half of `field-of`'s shared discipline (§2.10) — generic over any qname whose
 /// owning type is an `EdgeType` (T2 dossier §2 design: not hard-coded to `strength` alone). `qname`
 /// is passed to the substrate UNMODIFIED, exactly as `field_of_node` passes it to `node_attribute`
@@ -1517,6 +1556,47 @@ fn field_of_edge(key: &EdgeKey, qname: &str, env: &EvalEnv<'_>) -> Result<Value,
                 ),
             )
         })?;
+    let (Some(types), Some(enums)) = (env.types, env.enums) else {
+        return Err(EvalError::plain(format!(
+            "(field-of …) needs the declared field-type registry (§2.13) but this EvalEnv \
+             carries none for {qname} — a driver error, the same shape as require_graph's"
+        )));
+    };
+    crate::tick::bind_field_value(qname, value, types, enums)
+        .map_err(|e| EvalError::plain(e.to_string()))
+}
+
+/// The `HyperedgeRef` half of `field-of`'s shared discipline (§2.10) —
+/// Community port train Task 6 (E2b), reading the own-field storage Task 5
+/// (E2a) minted. Mirrors [`field_of_edge`] exactly: §2.10 discipline 1
+/// through [`check_hyperedge_referent_type`], then the substrate read, with
+/// the same "absence is not a value" mapping (E-EVAL-033) — a never-written
+/// hyperedge field is a mismatch, never a default `0.0`.
+///
+/// **`hyperedge_attribute`'s "no such hyperedge" failure mode is UNREACHABLE
+/// here**, for the same reason `field_of_edge`'s doc names: every
+/// `Value::HyperedgeRef` `eval_field_of` can hand this function was built by
+/// `query::materialize` from the substrate's own live census, and
+/// [`check_hyperedge_referent_type`] has already errorred on a dangling id
+/// before the read. The substrate error that can actually surface is the
+/// never-written one — hence always E-EVAL-033, never a laundered existence
+/// error.
+fn field_of_hyperedge(
+    id: babylon_graph::substrate::HyperedgeId,
+    qname: &str,
+    env: &EvalEnv<'_>,
+) -> Result<Value, EvalError> {
+    let graph = require_graph(env, "field-of")?;
+    check_hyperedge_referent_type(id, qname, "field-of", graph)?;
+    let value = graph.hyperedge_attribute(id, qname).map_err(|e| {
+        EvalError::coded(
+            EvalCode::AccessorTypeOrValueMismatch,
+            format!(
+                "field-of {qname}: {} (§2.10 discipline 2 — absence is not a value)",
+                e.message
+            ),
+        )
+    })?;
     let (Some(types), Some(enums)) = (env.types, env.enums) else {
         return Err(EvalError::plain(format!(
             "(field-of …) needs the declared field-type registry (§2.13) but this EvalEnv \
@@ -2603,12 +2683,12 @@ mod tests {
     /// the storage refusal ("Constitution III.7"); serving a
     /// previously-refused head flips the assertion (the T2 plan's own
     /// enumerate-and-flip discipline). What is pinned now: a well-formed
-    /// update-edge WRITES through the execute path, and `update-hyperedge`
-    /// — the retired refusal arm's other half — KEEPS refusing, with a
-    /// message that still names the constitutional reason but no longer
-    /// describes pre-T3 edge storage.
+    /// update-edge WRITES through the execute path, and — since Community
+    /// port train Task 6 (E2b) discharged the III.7 storage gap via
+    /// `GraphSubstrate::update_hyperedge_attribute` — `update-hyperedge`
+    /// writes too, through the SAME execute path.
     #[test]
-    fn update_edge_is_served_and_update_hyperedge_keeps_refusing() {
+    fn update_edge_and_update_hyperedge_are_both_served() {
         use crate::structural_verbs::{CollectingSink, EffectExecutor};
         use crate::typecheck::TypeEnv;
         use crate::types::EnumRegistry;
@@ -2621,14 +2701,26 @@ mod tests {
         graph
             .add_edge("SOLIDARITY", self_id, other_id, 0.5)
             .unwrap();
+        let cell = graph
+            .add_hyperedge("COMMUNITY", &[self_id, other_id])
+            .unwrap();
         let types = TypeEnv {
-            fields: HashMap::from([(
-                "solidarity/strength".to_owned(),
-                crate::types::FieldDecl {
-                    ty: crate::types::BslType::Coefficient,
-                    kind: crate::types::FieldKind::Extensive,
-                },
-            )]),
+            fields: HashMap::from([
+                (
+                    "solidarity/strength".to_owned(),
+                    crate::types::FieldDecl {
+                        ty: crate::types::BslType::Coefficient,
+                        kind: crate::types::FieldKind::Extensive,
+                    },
+                ),
+                (
+                    "community/heat".to_owned(),
+                    crate::types::FieldDecl {
+                        ty: crate::types::BslType::Coefficient,
+                        kind: crate::types::FieldKind::Intensive,
+                    },
+                ),
+            ]),
             exemptions: &[],
         };
         let enums = EnumRegistry::default();
@@ -2641,7 +2733,10 @@ mod tests {
         let mut sink = CollectingSink::default();
         let costs = costs();
         let effect_env = EvalEnv {
-            bindings: HashMap::from([("e".to_owned(), Value::EdgeRef(edge_key))]),
+            bindings: HashMap::from([
+                ("e".to_owned(), Value::EdgeRef(edge_key)),
+                ("h".to_owned(), Value::HyperedgeRef(cell)),
+            ]),
             intrinsic_costs: &costs,
             graph: None,
             types: None,
@@ -2673,13 +2768,16 @@ mod tests {
             "0.5 scaled by 0.5, stored: {stored}"
         );
 
+        // The hyperedge half — refused with a III.7 "no substrate storage"
+        // message before Task 6, a plain write now. `set` never reads the
+        // prior value, so the never-written field is no obstacle.
         let (form, _) =
-            read("(effects (update-hyperedge h sector/output (set 1)))").expect("must parse");
+            read("(effects (update-hyperedge h community/heat (set 0.5c)))").expect("must parse");
         let SExpr::List(items) = form else {
             unreachable!()
         };
         let mut fuel = 128;
-        let update_hyperedge_err = executor
+        executor
             .execute_effects(
                 &items[1..],
                 &effect_env,
@@ -2688,15 +2786,9 @@ mod tests {
                 &mut sink,
                 &mut fuel,
             )
-            .unwrap_err();
-        assert!(
-            update_hyperedge_err.message.contains("Constitution III.7"),
-            "{update_hyperedge_err}"
-        );
-        assert!(
-            !update_hyperedge_err.message.contains("one f64 strength"),
-            "the retained refusal must not describe pre-T3 edge storage: {update_hyperedge_err}"
-        );
+            .expect("update-hyperedge is served since Task 6 (E2b)");
+        let stored = graph.hyperedge_attribute(cell, "community/heat").unwrap();
+        assert!((stored - 0.5).abs() < 1e-12, "set to 0.5, stored: {stored}");
     }
 
     /// The sentinel Task 1 exists to install: a form the language HAS can

@@ -163,11 +163,42 @@ pub(crate) fn namespace_to_node_type(namespace: &str) -> String {
 }
 
 /// The subject type a rule's `:field` bindings agree on.
-fn subject_type_of(bindings: &[BindingDecl]) -> Result<String, TickError> {
+///
+/// **D29 filter (Community port train, Task 6, E2b):** a `:field` binding
+/// is node-scoped and stays node-scoped — an edge's or a hyperedge's field
+/// is read by the `field-of` accessor, never by a binding (§2.5's draft
+/// ruling, `bsl-language.rst` D29). When the closed vocabulary is in
+/// force, a binding whose qname owns off an `EdgeType`/`HyperedgeType`
+/// member is therefore INVISIBLE to this derivation — exactly the filter
+/// `domain.rs::self_scoped_segments` already applies at load, kept in
+/// agreement with it so the load-time domain and the tick-time population
+/// can never fork. A rule whose only `:field` bindings are hyperedge-owned
+/// then names no subject type at all — the same refusal a binding-free
+/// rule gets, which is the mechanism §8c of the Community port plan cites
+/// (`no_field_binding_uses_the_community_namespace` quotes this function).
+/// Without a vocabulary (`None` — the registry-free unit-test lane) the
+/// owner kind is unknowable and every namespace counts, exactly as before.
+fn subject_type_of(
+    bindings: &[BindingDecl],
+    vocabulary: Option<&crate::vocabulary::ClosedVocabulary>,
+) -> Result<String, TickError> {
     let mut namespaces: Vec<&str> = Vec::new();
     for binding in bindings {
         if let BindSource::Field(qname) = &binding.source {
             let namespace = qname.split('/').next().unwrap_or_default();
+            if let Some(vocabulary) = vocabulary {
+                // Filter ONLY on a POSITIVE owner-kind answer: a segment the
+                // vocabulary does not know (`Err(UnknownFieldOwner)`) is
+                // E-LOAD-023's lane at load, not this filter's — a scenario
+                // may declare a partial vocabulary (e.g. HyperedgeType
+                // members only), and treating its unknown node namespaces as
+                // filtered would empty every subject population.
+                if let Ok((kind, _)) = vocabulary.owner_of(namespace) {
+                    if kind != crate::vocabulary::EnumKind::NodeType {
+                        continue;
+                    }
+                }
+            }
             if !namespaces.contains(&namespace) {
                 namespaces.push(namespace);
             }
@@ -614,9 +645,15 @@ pub fn run_tick(
     rule_id: &str,
     node_content_ids: Option<&HashMap<NodeId, String>>,
     session: &SessionId,
+    // The scenario's closed vocabulary, when one was declared — the D29
+    // owner-kind filter `subject_type_of` applies (Community port train,
+    // Task 6). `None` is the registry-free unit-test lane, where the
+    // filter cannot run and every binding namespace counts, exactly as
+    // before this parameter existed.
+    vocabulary: Option<&crate::vocabulary::ClosedVocabulary>,
 ) -> Result<TickOutcome, TickError> {
     check_sources_servable(&loaded.bindings, defines)?;
-    let subject_type = subject_type_of(&loaded.bindings)?;
+    let subject_type = subject_type_of(&loaded.bindings, vocabulary)?;
     let (guard, effects) = guard_and_effects(&loaded.rule)?;
     let subjects = graph.nodes(&subject_type);
 
@@ -987,7 +1024,7 @@ mod tests {
             field("wages", "social-class/wages"),
             field("value-produced", "social-class/value-produced"),
         ];
-        assert_eq!(subject_type_of(&bindings).unwrap(), "SOCIAL_CLASS");
+        assert_eq!(subject_type_of(&bindings, None).unwrap(), "SOCIAL_CLASS");
     }
 
     #[test]
@@ -998,18 +1035,98 @@ mod tests {
             field("wages", "social-class/wages"),
             field("budget", "organization/budget"),
         ];
-        let err = subject_type_of(&bindings).unwrap_err();
+        let err = subject_type_of(&bindings, None).unwrap_err();
         assert!(err.message.contains("ambiguous"), "{}", err.message);
     }
 
     #[test]
     fn a_rule_with_no_field_binding_names_no_population() {
-        let err = subject_type_of(&[]).unwrap_err();
+        let err = subject_type_of(&[], None).unwrap_err();
         assert!(
             err.message.contains("names no subject type"),
             "{}",
             err.message
         );
+    }
+
+    // ---- Task 6 (Community port train, E2b): the D29 owner-kind filter.
+    // A `:field` binding is node-scoped and stays node-scoped — an edge's
+    // or a hyperedge's declared field reads through `field-of`, never a
+    // binding — so a non-node-owned binding is INVISIBLE to this
+    // derivation when the closed vocabulary is in force, and a rule with
+    // only such bindings names no subject type (the §8c guard's
+    // mechanism).
+
+    /// A small vocabulary with one member per kind — the filter's truth
+    /// table needs all three kinds present.
+    fn d29_vocabulary() -> crate::vocabulary::ClosedVocabulary {
+        crate::vocabulary::ClosedVocabulary::new([
+            (
+                crate::vocabulary::EnumKind::NodeType,
+                vec!["SOCIAL_CLASS".to_owned()],
+            ),
+            (
+                crate::vocabulary::EnumKind::EdgeType,
+                vec!["SOLIDARITY".to_owned()],
+            ),
+            (
+                crate::vocabulary::EnumKind::HyperedgeType,
+                vec!["COMMUNITY".to_owned()],
+            ),
+        ])
+        .expect("disjoint member sets build")
+    }
+
+    #[test]
+    fn a_hyperedge_owned_field_binding_names_no_subject_type() {
+        let vocabulary = d29_vocabulary();
+        let bindings = vec![field("heat", "community/heat")];
+        let err = subject_type_of(&bindings, Some(&vocabulary)).unwrap_err();
+        assert!(
+            err.message.contains("names no subject type"),
+            "a hyperedge-owned :field binding is invisible to subject \
+             derivation (D29) — the subject-type error, not silence: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn an_edge_owned_field_binding_names_no_subject_type() {
+        // D29 is stated for edge AND hyperedge fields alike; the filter
+        // keeps both kinds out of subject derivation.
+        let vocabulary = d29_vocabulary();
+        let bindings = vec![field("strength", "solidarity/strength")];
+        let err = subject_type_of(&bindings, Some(&vocabulary)).unwrap_err();
+        assert!(
+            err.message.contains("names no subject type"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn a_hyperedge_owned_binding_is_invisible_next_to_a_node_owned_one() {
+        let vocabulary = d29_vocabulary();
+        let bindings = vec![
+            field("active", "social-class/active"),
+            field("heat", "community/heat"),
+        ];
+        assert_eq!(
+            subject_type_of(&bindings, Some(&vocabulary)).unwrap(),
+            "SOCIAL_CLASS",
+            "the node-owned binding alone derives the subject type — the \
+             hyperedge-owned one must not make the derivation ambiguous"
+        );
+    }
+
+    #[test]
+    fn without_a_vocabulary_every_namespace_still_counts() {
+        // The registry-free lane cannot know an owner kind, so the legacy
+        // behavior is pinned: `community` renders to a (meaningless)
+        // subject type rather than being filtered. Content drivers always
+        // pass `Some`, so this lane is unit-test-only.
+        let bindings = vec![field("heat", "community/heat")];
+        assert_eq!(subject_type_of(&bindings, None).unwrap(), "COMMUNITY");
     }
 
     // ============================================= Task 12 — the pre-state
@@ -1156,6 +1273,7 @@ mod tests {
             "geography/spillover",
             None,
             &test_session(),
+            None,
         )
         .expect("the tick must run");
 
@@ -1263,6 +1381,7 @@ mod tests {
             "geography/pool-contribution",
             None,
             &test_session(),
+            None,
         )
         .expect("the tick must run");
         assert_eq!(outcome.fired, 3, "all three territories fired");
@@ -1362,6 +1481,7 @@ mod tests {
             "organization/kind-probe",
             None,
             &test_session(),
+            None,
         )
         .expect("the tick must run");
         assert_eq!(outcome.considered, 2, "both organizations are subjects");
@@ -1423,6 +1543,7 @@ mod tests {
             "organization/kind-ordering-probe",
             None,
             &test_session(),
+            None,
         )
         .unwrap_err();
         assert!(
@@ -1475,6 +1596,7 @@ mod tests {
             "organization/kind-integrity-probe",
             None,
             &test_session(),
+            None,
         )
         .unwrap_err();
         assert!(err.to_string().contains("organization/kind"), "{err}");
@@ -1592,6 +1714,7 @@ mod tests {
             "organization/field-of-probe",
             None,
             &test_session(),
+            None,
         )
         .expect("the tick must run — field-of over an enum field is no longer refused");
         assert_eq!(outcome.considered, 2, "both organizations are subjects");
@@ -1717,6 +1840,7 @@ mod tests {
             "organization/kind-probe",
             None,
             &test_session(),
+            None,
         )
         .expect("a never-hydrated (None) node_content_ids must still serve the Debug-rendering fallback");
         assert_eq!(outcome.fired, 1);
@@ -1770,6 +1894,7 @@ mod tests {
             "organization/kind-probe",
             Some(&non_empty_but_missing_subject),
             &test_session(),
+            None,
         )
         .unwrap_err();
         assert!(err.to_string().contains("hydration bug"), "{err}");
@@ -1827,6 +1952,7 @@ mod tests {
             "organization/kind-probe",
             Some(&hydrated_but_empty),
             &test_session(),
+            None,
         )
         .unwrap_err();
         assert!(

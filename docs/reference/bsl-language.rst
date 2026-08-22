@@ -8946,6 +8946,36 @@ consequences are the ordinary kind of review item.
        proofs on E-LOAD-042, the dropped ``HyperedgeType/`` prefix reds
        the type-wide-head proof, and a constant 99 in the axis moves the
        measured E-LOAD-040 bound off its pinned 15.
+   * - D201
+     - §2.6
+     - **Slice 3's cross-kind Ord ruling and the two-table move**
+       (Community port train, Task 3, 2026-08-22; the plan's ``D-NF+24``).
+       ``query::Element`` gains ``Hyperedge(HyperedgeId)`` declared
+       **THIRD**: ``Node`` sorts before ``Edge`` sorts before
+       ``Hyperedge``, by declaration order — arbitrary, deliberate, tested
+       (the companions ``edge_sorts_before_hyperedge_regardless_of_id``
+       and ``the_three_kind_order_holds_regardless_of_ids``, plus the
+       compile-time trap this enum already carries: an exhaustive match,
+       no wildcard, so a new variant breaks compilation at the pin
+       before a reviewer can notice). The three §2.6 hyperedge heads are
+       served by ``query::materialize`` — ``hyperedges``/``hyperedges-of``
+       yield ``Element::Hyperedge`` in ascending ``HyperedgeId`` order
+       (D25 — the substrate's own contract), ``members-of`` yields plain
+       ``Element::Node`` in ascending ``NodeId`` order. **The two-table
+       move:** ``query.rs``'s ``UNSERVED_QUERY_HEADS`` is DELETED with its
+       refusal arm (a zero-row table would be the plan's own M4 failure
+       mode — a duplicated table named once; the at-the-byte decision,
+       recorded here), and ``evaluator.rs``'s ``UNSERVED_EXPRESSION_HEADS``
+       drops the three heads (``metric-of`` stays; ``membership-field-of``'s
+       "slice 4" note is amended to cite #653 by number, per the plan's
+       own instruction). The query-operand-only law holds unchanged: a
+       served head in bare ``<expr>`` position still refuses with the
+       §2.7 text (pinned by
+       ``hyperedge_query_heads.rs::a_served_head_in_bare_expression_position_still_refuses_with_the_2_7_law``).
+       Mutation-proven at landing: inverting the materializer's order reds
+       the ascending-id pin; re-declaring ``Hyperedge`` first reds both
+       Ord companions; dropping the served-heads' bare-expr guard reds the
+       §2.7 position pin.
 
 Authoring idioms (non-normative)
 -----------------------------------

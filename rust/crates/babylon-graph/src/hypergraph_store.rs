@@ -90,6 +90,12 @@ pub struct HypergraphStore {
     /// strength never does. Strength is NOT here — it lives in `edges`
     /// above (section `0x03`'s datum; the double-storage ruling, D143).
     edge_attributes: HashMap<(String, NodeId, NodeId, String), f64>,
+    /// `(hyperedge, qname)` -> value — the seventh-section store (Community
+    /// port train, Task 5, E2a), adapter-native like the rest of the typed
+    /// half: hyperedge attributes never touch the library, exactly as edge
+    /// attributes never do. Swept by `remove_hyperedge` (ADR185 R2,
+    /// extended to the own-field lane).
+    hyperedge_attributes: HashMap<(HyperedgeId, String), f64>,
     /// Hyperedge half — the library key -> `HyperedgeId` reverse map, and the
     /// `(hyperedge_type -> ids)` index the library carries no type
     /// dimension for (delta §4: "the library has no type-keyed query, so
@@ -494,7 +500,53 @@ impl GraphSubstrate for HypergraphStore {
         if let Some(ty) = hyperedge_type {
             self.drop_from_type_index(&ty, id);
         }
+        // ADR185 R2, extended to the own-field lane (Task 5): the
+        // hyperedge's attribute rows die with it, never orphaned.
+        self.hyperedge_attributes
+            .retain(|(hyperedge, _), _| *hyperedge != id);
         Ok(())
+    }
+
+    fn update_hyperedge_attribute(
+        &mut self,
+        id: HyperedgeId,
+        attribute: &str,
+        value: f64,
+    ) -> Result<(), GraphError> {
+        self.check_not_frozen()?;
+        if !value.is_finite() {
+            return Err(GraphError {
+                message: format!("non-finite hyperedge attribute {attribute} on {id:?}"),
+            });
+        }
+        let key = hyperedge_key(id);
+        if self.inner.edge_attrs(&key).is_none() {
+            return Err(GraphError {
+                message: format!(
+                    "no such hyperedge: {id:?} — a write never mints state for an absent hyperedge"
+                ),
+            });
+        }
+        self.hyperedge_attributes
+            .insert((id, attribute.to_owned()), value);
+        Ok(())
+    }
+
+    fn hyperedge_attribute(&self, id: HyperedgeId, attribute: &str) -> Result<f64, GraphError> {
+        let key = hyperedge_key(id);
+        if self.inner.edge_attrs(&key).is_none() {
+            return Err(GraphError {
+                message: format!("no such hyperedge: {id:?}"),
+            });
+        }
+        self.hyperedge_attributes
+            .get(&(id, attribute.to_owned()))
+            .copied()
+            .ok_or_else(|| GraphError {
+                message: format!(
+                    "attribute {attribute} was never written on {id:?} — never a default 0.0"
+                ),
+            })
     }
 
     fn members_of(&self, id: HyperedgeId) -> Result<Vec<NodeId>, GraphError> {
@@ -601,6 +653,13 @@ impl CanonicalState for HypergraphStore {
 
     fn all_currency_attributes(&self) -> Vec<(NodeId, String, Currency)> {
         self.currency_attributes
+            .iter()
+            .map(|((id, name), value)| (*id, name.clone(), *value))
+            .collect()
+    }
+
+    fn all_hyperedge_attributes(&self) -> Vec<(HyperedgeId, String, f64)> {
+        self.hyperedge_attributes
             .iter()
             .map(|((id, name), value)| (*id, name.clone(), *value))
             .collect()

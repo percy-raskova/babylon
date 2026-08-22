@@ -401,6 +401,23 @@ impl GraphSubstrate for OrderSpyGraph {
         self.inner.node_attribute_currency(id, attribute)
     }
 
+    // The hyperedge own-field lane (Community Task 5, E2a): pure
+    // delegation, un-spied — the lane is this double's own watch target,
+    // but only its MEMBERSHIP calls (`add_hyperedge`/`remove_hyperedge`)
+    // are recorded; attribute reads/writes pass through.
+    fn update_hyperedge_attribute(
+        &mut self,
+        id: HyperedgeId,
+        attribute: &str,
+        value: f64,
+    ) -> Result<(), GraphError> {
+        self.inner.update_hyperedge_attribute(id, attribute, value)
+    }
+
+    fn hyperedge_attribute(&self, id: HyperedgeId, attribute: &str) -> Result<f64, GraphError> {
+        self.inner.hyperedge_attribute(id, attribute)
+    }
+
     fn node_exists(&self, id: NodeId) -> bool {
         self.inner.node_exists(id)
     }

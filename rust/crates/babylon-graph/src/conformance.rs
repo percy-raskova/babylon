@@ -55,6 +55,8 @@ where
     update_edge_against_strength_writes_the_existing_slot_never_a_fifth_section_row(&make);
     edge_removal_takes_the_edges_attributes_and_never_resurrects_them(&make);
     currency_attribute_round_trips_moves_the_hash_and_cascades_on_removal(&make);
+    hyperedge_attribute_round_trips_moves_the_hash_and_cascades_on_removal(&make);
+    hyperedge_attribute_honest_null_unknown_id_and_non_finite_are_loud(&make);
 }
 
 /// ADR185 R2: removing a node takes its incident dyadic edges, its
@@ -1009,6 +1011,89 @@ where
         graph.node_attribute_currency(survivor, "wages"),
         Ok(Currency::from_micro_units(2)),
         "the survivor's Currency attribute is untouched"
+    );
+}
+
+/// Community port train, Task 5 (E2a) — the hyperedge own-field lane's
+/// conformance row, mirroring
+/// `currency_attribute_round_trips_moves_the_hash_and_cascades_on_removal`'s
+/// shape exactly: a write round-trips, moves the state hash (section 0x07,
+/// layout version 4), reports in the sixth listing, and cascades on
+/// hyperedge removal (never orphaned).
+fn hyperedge_attribute_round_trips_moves_the_hash_and_cascades_on_removal<G, F>(make: &F)
+where
+    G: GraphSubstrate + CanonicalState,
+    F: Fn() -> G,
+{
+    let mut graph = make();
+    let a = graph.add_node("social_class").unwrap();
+    let b = graph.add_node("social_class").unwrap();
+    let doomed = graph.add_hyperedge("community", &[a, b]).unwrap();
+    let survivor = graph.add_hyperedge("community", &[b]).unwrap();
+    let before = graph.state_hash().unwrap();
+
+    graph
+        .update_hyperedge_attribute(doomed, "community/heat", 0.5)
+        .unwrap();
+    graph
+        .update_hyperedge_attribute(survivor, "community/heat", 0.75)
+        .unwrap();
+    let after = graph.state_hash().unwrap();
+    assert_ne!(before, after, "a hyperedge-attribute write moves the hash");
+
+    assert_eq!(
+        graph
+            .all_hyperedge_attributes()
+            .into_iter()
+            .find(|(id, name, _)| *id == survivor && name == "community/heat")
+            .map(|(_, _, value)| value),
+        Some(0.75),
+        "the seventh-section listing reports the written value"
+    );
+
+    graph.remove_hyperedge(doomed).unwrap();
+    assert!(
+        !graph
+            .all_hyperedge_attributes()
+            .iter()
+            .any(|(id, _, _)| *id == doomed),
+        "the removed hyperedge's attribute rows are gone, not orphaned"
+    );
+    assert_eq!(
+        graph.hyperedge_attribute(survivor, "community/heat"),
+        Ok(0.75),
+        "the survivor's attribute is untouched"
+    );
+}
+
+/// The honest-null discipline (III.11) on the hyperedge lane: an unwritten
+/// attribute on an EXISTING hyperedge errors (never a default 0.0), a read
+/// against an unknown `HyperedgeId` errors, and a non-finite write refuses.
+fn hyperedge_attribute_honest_null_unknown_id_and_non_finite_are_loud<G, F>(make: &F)
+where
+    G: GraphSubstrate + CanonicalState,
+    F: Fn() -> G,
+{
+    let mut graph = make();
+    let a = graph.add_node("social_class").unwrap();
+    let b = graph.add_node("social_class").unwrap();
+    let cell = graph.add_hyperedge("community", &[a, b]).unwrap();
+
+    assert!(
+        graph.hyperedge_attribute(cell, "community/heat").is_err(),
+        "an unwritten attribute on an existing hyperedge is loud, never 0.0"
+    );
+    assert!(
+        graph
+            .hyperedge_attribute(HyperedgeId(999), "community/heat")
+            .is_err(),
+        "a read against an unknown hyperedge is loud"
+    );
+    assert!(
+        graph
+            .update_hyperedge_attribute(cell, "community/heat", f64::NAN)
+            .is_err(),
+        "a non-finite write refuses"
     );
 }
 

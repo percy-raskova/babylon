@@ -59,6 +59,11 @@ pub struct MemoryGraph {
     /// A row exists only while its edge does — `remove_edge` and the
     /// `remove_node` cascade both sweep it (ADR185 R2, extended).
     edge_attributes: HashMap<(String, NodeId, NodeId, String), f64>,
+    /// `(hyperedge, qname)` -> value — the seventh-section store (Community
+    /// port train, Task 5, E2a): a hyperedge's own fields, keyed apart from
+    /// its member list. Swept by `remove_hyperedge` (a row exists only
+    /// while its hyperedge does — ADR185 R2's cascade discipline).
+    hyperedge_attributes: HashMap<(HyperedgeId, String), f64>,
     /// Hyperedge id -> (type, sorted member list). Stored as ONE record per
     /// hyperedge — the toy analogue of a first-class object. A production
     /// store may instead keep incidence edges (Levi); callers cannot tell.
@@ -135,6 +140,13 @@ impl CanonicalState for MemoryGraph {
 
     fn all_currency_attributes(&self) -> Vec<(NodeId, String, Currency)> {
         self.currency_attributes
+            .iter()
+            .map(|((id, name), value)| (*id, name.clone(), *value))
+            .collect()
+    }
+
+    fn all_hyperedge_attributes(&self) -> Vec<(HyperedgeId, String, f64)> {
+        self.hyperedge_attributes
             .iter()
             .map(|((id, name), value)| (*id, name.clone(), *value))
             .collect()
@@ -439,6 +451,50 @@ impl GraphSubstrate for MemoryGraph {
             .map(|_| ())
             .ok_or_else(|| GraphError {
                 message: format!("no such hyperedge: {id:?}"),
+            })?;
+        // ADR185 R2, extended to the own-field lane (Task 5): a hyperedge's
+        // attribute rows die with it, never orphaned.
+        self.hyperedge_attributes
+            .retain(|(hyperedge, _), _| *hyperedge != id);
+        Ok(())
+    }
+
+    fn update_hyperedge_attribute(
+        &mut self,
+        id: HyperedgeId,
+        attribute: &str,
+        value: f64,
+    ) -> Result<(), GraphError> {
+        if !value.is_finite() {
+            return Err(GraphError {
+                message: format!("non-finite hyperedge attribute {attribute} on {id:?}"),
+            });
+        }
+        if !self.hyperedges.contains_key(&id) {
+            return Err(GraphError {
+                message: format!(
+                    "no such hyperedge: {id:?} — a write never mints state for an absent hyperedge"
+                ),
+            });
+        }
+        self.hyperedge_attributes
+            .insert((id, attribute.to_owned()), value);
+        Ok(())
+    }
+
+    fn hyperedge_attribute(&self, id: HyperedgeId, attribute: &str) -> Result<f64, GraphError> {
+        if !self.hyperedges.contains_key(&id) {
+            return Err(GraphError {
+                message: format!("no such hyperedge: {id:?}"),
+            });
+        }
+        self.hyperedge_attributes
+            .get(&(id, attribute.to_owned()))
+            .copied()
+            .ok_or_else(|| GraphError {
+                message: format!(
+                    "attribute {attribute} was never written on {id:?} — never a default 0.0"
+                ),
             })
     }
 

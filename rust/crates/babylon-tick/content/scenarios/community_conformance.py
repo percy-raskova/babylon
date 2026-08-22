@@ -54,9 +54,10 @@ Per §9, this header states, for this pack specifically:
    SKIPPED community (world 3's h1): c05/c06 write it NOTHING, so its
    `substrate-floor` cache is absent too.
 
-c07/c08 are DG-2-GATED (the Director question is unresolved at authoring):
-transcribed and printed here because the mirror is the oracle and the
-values cost nothing — their .bsl RULES do not land while the gate holds.
+c07/c08 LANDED (DG-2 = PUBLISH, the 2026-08-18 sitting): the mirror's
+printed contestation divides by LOG3 (the engine's libm value — see the
+constant's own comment), so the conformance pins are bit-exact against the
+port's arithmetic, never frozen's glibc one.
 """
 
 from __future__ import annotations
@@ -380,6 +381,14 @@ HEAT_DECAY_ALPHA = 0.05  # organizations.py:22-27
 COHESION_DECAY_ALPHA = 0.03  # organizations.py:28-33
 EDUCATION_PRESSURE_DECAY = 0.1  # consciousness.py:138-143
 
+# c07's divisor, computed NOT pasted: the ENGINE's pinned soft-float
+# crossing (libm::log, ADR176 r21 / ADR188), whose value is
+# 1.0986122886681096 — ONE ulp below CPython's math.log(3)
+# (1.0986122886681098, the glibc value). The mirror is the PORT's oracle,
+# so it divides by the engine's value; frozen's own stored contestation
+# rides glibc's. Recorded in the D-row register at the c07/c08 landing.
+LOG3 = 1.0986122886681096
+
 
 def census(world: dict[str, object], comms: list[dict[str, float]]) -> None:
     """c00 → c01, in rule order (the reset and the member census)."""
@@ -527,9 +536,8 @@ def floor_and_gated_readout(
                 c["fascist"] = 0.0
             c["revolutionary"] = floor
 
-    # ---- c07-contestation + c08-dominant-tendency (DG-2-GATED — printed
-    # here as oracle values; the .bsl rules land only on the Director's
-    # ruling). Same skip gate. ----
+    # ---- c07-contestation + c08-dominant-tendency (LANDED — DG-2 ruled
+    # PUBLISH at the 2026-08-18 sitting). Same skip gate. ----
     for c in comms:
         if not c["density-sum"] > 0.0:
             c["contestation"] = float("nan")  # not recomputed — preserved
@@ -540,7 +548,7 @@ def floor_and_gated_readout(
         for p in (r, l_val, f):
             if p > 1e-10:
                 entropy -= p * math.log(p)
-        c["contestation"] = entropy / math.log(3)
+        c["contestation"] = entropy / LOG3
         # argmax, LIBERAL > REVOLUTIONARY > FASCIST at 1e-6
         # (entities/consciousness.py:167-191, epsilon :189).
         max_val = max(r, l_val, f)
@@ -639,8 +647,8 @@ def run_world(world: dict[str, object]) -> None:
             print("  contestation = PRESERVED (no-org skip gate)")
             print("  dominant     = PRESERVED (no-org skip gate)")
         else:
-            print(f"  contestation = {contestation!r}   (DG-2-gated)")
-            print(f"  dominant     = {c['dominant']}   (DG-2-gated)")
+            print(f"  contestation = {contestation!r}")
+            print(f"  dominant     = {c['dominant']}")
         print(f"  decayed heat               = {c['heat']!r}")
         print(f"  decayed cohesion           = {c['cohesion']!r}")
         print(f"  decayed education-pressure = {c['education-pressure']!r}")

@@ -235,14 +235,15 @@ fn co_loaded_packs_fire_once_each_on_one_carrier() {
     );
     // The fired arithmetic (breakdown in the failure message).
     assert_eq!(
-        report.fired, 37,
+        report.fired, 39,
         "control-ratio: c01:6 (every SOCIAL_CLASS subject) + c02:1 + c03:1 \
          + c04:1 = 9; community: c00:1 + c01:4 (the four ACTIVE carceral \
          classes — enforcer-inactive and prisoner-inactive are excluded) + \
          c02:6 (all six) + c03f:0 + c03l:1 (collision-org is LIBERAL) + \
          c03r:0 + c04:4 + c05:1 + c06a:1 + c06b:1 + c09:4 + c10:4 + c11:1 \
-         = 28 (per-rule-id, measured via per_rule_fired) — each pack's \
-         carrier rules fire ONCE on the shared carrier"
+         + c07:1 + c08:1 (the DG-2 readout) = 30 (per-rule-id, measured \
+         via per_rule_fired) — each pack's carrier rules fire ONCE on the \
+         shared carrier"
     );
 }
 

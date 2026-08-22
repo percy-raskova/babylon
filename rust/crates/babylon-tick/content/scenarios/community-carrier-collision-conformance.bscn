@@ -164,6 +164,9 @@
   (deffield community/f-raw real extensive)
   (deffield community/density-sum real extensive)
   (deffield community/substrate-floor probability intensive)
+  ; DG-2 (PUBLISH, the 2026-08-18 sitting): c07/c08's readout fields.
+  (deffield community/contestation probability intensive)
+  (deffield community/dominant-tendency enum ConsciousnessTendency)
   (deffield social-class/org-r-weight real extensive)
   (deffield social-class/org-l-weight real extensive)
   (deffield social-class/org-f-weight real extensive)

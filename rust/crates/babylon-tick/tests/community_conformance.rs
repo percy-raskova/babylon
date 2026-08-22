@@ -46,8 +46,8 @@
 //!   r = 0.8648648648648649
 //!   l = 0.13513513513513511
 //!   f = 0.0
-//!   contestation = 0.36048485321765583   (DG-2-gated)
-//!   dominant     = REVOLUTIONARY   (DG-2-gated)
+//!   contestation = 0.3604848532176559
+//!   dominant     = REVOLUTIONARY
 //!   decayed heat               = 0.475
 //!   decayed cohesion           = 0.7275
 //!   decayed education-pressure = 0.225
@@ -61,8 +61,8 @@
 //!   r = 0.0
 //!   l = 0.5
 //!   f = 0.5
-//!   contestation = 0.6309297535714574   (DG-2-gated)
-//!   dominant     = LIBERAL   (DG-2-gated)
+//!   contestation = 0.6309297535714575
+//!   dominant     = LIBERAL
 //!   decayed heat               = 0.2375
 //!   decayed cohesion           = 0.485
 //!   decayed education-pressure = 0.1125
@@ -76,8 +76,8 @@
 //!   r = 0.7619047619047619
 //!   l = 0.23809523809523808
 //!   f = 0.0
-//!   contestation = 0.4996069952489026   (DG-2-gated)
-//!   dominant     = REVOLUTIONARY   (DG-2-gated)
+//!   contestation = 0.49960699524890273
+//!   dominant     = REVOLUTIONARY
 //!   decayed heat               = 0.7124999999999999
 //!   decayed cohesion           = 0.60625
 //!   decayed education-pressure = 0.45
@@ -102,8 +102,8 @@
 //!   r = 0.136
 //!   l = 0.8131764705882352
 //!   f = 0.0508235294117647
-//!   contestation = 0.5378856272512799   (DG-2-gated)
-//!   dominant     = LIBERAL   (DG-2-gated)
+//!   contestation = 0.53788562725128
+//!   dominant     = LIBERAL
 //!   decayed heat               = 0.475
 //!   decayed cohesion           = 0.7275
 //!   decayed education-pressure = 0.225
@@ -117,8 +117,8 @@
 //!   r = 0.155
 //!   l = 0.845
 //!   f = 0.0
-//!   contestation = 0.3925724663663697   (DG-2-gated)
-//!   dominant     = LIBERAL   (DG-2-gated)
+//!   contestation = 0.3925724663663698
+//!   dominant     = LIBERAL
 //!   decayed heat               = 0.2375
 //!   decayed cohesion           = 0.485
 //!   decayed education-pressure = 0.1125
@@ -132,8 +132,8 @@
 //!   r = 0.0
 //!   l = 1.0
 //!   f = 0.0
-//!   contestation = 0.0   (DG-2-gated)
-//!   dominant     = LIBERAL   (DG-2-gated)
+//!   contestation = 0.0
+//!   dominant     = LIBERAL
 //!   decayed heat               = 0.7124999999999999
 //!   decayed cohesion           = 0.60625
 //!   decayed education-pressure = 0.45
@@ -147,8 +147,8 @@
 //!   r = 0.030303030303030304
 //!   l = 0.9696969696969697
 //!   f = 0.0
-//!   contestation = 0.12360498799464745   (DG-2-gated)
-//!   dominant     = LIBERAL   (DG-2-gated)
+//!   contestation = 0.12360498799464747
+//!   dominant     = LIBERAL
 //!   decayed heat               = 0.475
 //!   decayed cohesion           = 0.2425
 //!   decayed education-pressure = 0.3375
@@ -173,8 +173,8 @@
 //!   r = 0.113
 //!   l = 0.887
 //!   f = 0.0
-//!   contestation = 0.3210795653730473   (DG-2-gated)
-//!   dominant     = LIBERAL   (DG-2-gated)
+//!   contestation = 0.32107956537304744
+//!   dominant     = LIBERAL
 //!   decayed heat               = 0.475
 //!   decayed cohesion           = 0.7275
 //!   decayed education-pressure = 0.225
@@ -197,6 +197,45 @@
 //! n1 d-a: community-cost-modifier = 0.75
 //! n2 d-b: org-r-weight = 0.0, org-l-weight = 0.0, org-f-weight = 0.0, org-count = 0.0
 //! n2 d-b: community-cost-modifier = 1.125
+//! == world 4 (community-cost-modifier-conformance.bscn) ==
+//! h0 low-cost kind=QUEER
+//!   member-count = 2.0
+//!   r-raw = 0.0
+//!   l-raw = 0.125
+//!   f-raw = 0.0
+//!   density-sum  = 0.5
+//!   substrate-floor = 0.04
+//!   r = 0.04
+//!   l = 0.96
+//!   f = 0.0
+//!   contestation = 0.15286935115005695
+//!   dominant     = LIBERAL
+//!   decayed heat               = 0.475
+//!   decayed cohesion           = 0.7275
+//!   decayed education-pressure = 0.225
+//! h1 high-cost kind=NEW_AFRIKAN
+//!   member-count = 1.0
+//!   r-raw = 0.0
+//!   l-raw = 0.0
+//!   f-raw = 0.0
+//!   density-sum  = 0.0
+//!   substrate-floor = ABSENT (no-org skip gate)
+//!   r = 0.5
+//!   l = 0.25
+//!   f = 0.25
+//!   contestation = PRESERVED (no-org skip gate)
+//!   dominant     = PRESERVED (no-org skip gate)
+//!   decayed heat               = 0.7124999999999999
+//!   decayed cohesion           = 0.60625
+//!   decayed education-pressure = 0.45
+//! n1 w4-both: org-r-weight = 0.0, org-l-weight = 0.0, org-f-weight = 0.0, org-count = 0.0
+//! n1 w4-both: community-cost-modifier = 0.9375
+//! n2 w4-one: org-r-weight = 0.0, org-l-weight = 0.25, org-f-weight = 0.0, org-count = 1.0
+//! n2 w4-one: community-cost-modifier = 0.75
+//! n3 w4-none: org-r-weight = 0.0, org-l-weight = 0.0, org-f-weight = 0.0, org-count = 0.0
+//! n3 w4-none: community-cost-modifier = 1.0
+//! n4 w4-inactive: org-r-weight = 0.0, org-l-weight = 0.0, org-f-weight = 0.0, org-count = 0.0
+//! n4 w4-inactive: community-cost-modifier = ABSENT (honest null)
 //! ```
 //!
 //! # THE SPIKE (Task 7 Step 5) — the seven-shape verdicts
@@ -467,12 +506,12 @@ fn tick_world_1() -> HypergraphStore {
     let report = run_once_into(SCENARIO, PACK, &mut graph, &mut sink)
         .expect("world 1 + the c00-c04 pack ticks clean");
     assert_eq!(
-        report.fired, 30,
+        report.fired, 32,
         "c00:1 + c01:4 (active classes) + c02:5 (all classes) + c03f:1 + \
          c03l:1 + c03r:2 (rev-org AND n9 — n9 FIRES with an empty for-each, \
          frozen's :421 skip is structural) + c04:4 (active classes) + \
          c05:1 + c06a:1 + c06b:1 (Task 9) + c09:4 + c10:4 (active classes) \
-         + c11:1 (the carrier — Task 10)"
+         + c11:1 (the carrier — Task 10) + c07:1 + c08:1 (the DG-2 readout)"
     );
     graph
 }
@@ -947,5 +986,126 @@ fn inactive_class_receives_no_cost_modifier_write() {
             .node_attribute(NodeId(5), "social-class/community-cost-modifier")
             .is_err(),
         "world 1's n5: honest null, never 1.0"
+    );
+}
+
+// ---- c07/c08 — the DG-2 readout (PUBLISH, the 2026-08-18 sitting) ----
+
+/// The tie world (the §8a row-1 copies-agree home), single-homed here.
+const SCENARIO_TIE: &str = include_str!("../content/scenarios/community-tie-conformance.bscn");
+const CONSCIOUSNESS_PACK: &str = include_str!("../content/rules/consciousness.bsl");
+/// The tie world consumes the shared WorldView registry through the
+/// declarations prelude (the consciousness suite's own Train-B seam,
+/// #591/D157).
+const WORLDVIEW_PRELUDE: &str = include_str!("../content/declarations/worldview.bscn");
+
+/// Step 4 (DG-2 landed): c07's contestation is the normalized Shannon
+/// entropy, bit-exact against the mirror — the divisor is the ENGINE's
+/// pinned soft-float `log(3)` (libm, 1.0986122886681096), one ulp below
+/// CPython's glibc value; the mirror carries the engine's value, so these
+/// pins are bit-exact against the PORT's arithmetic (the 1-ulp note is
+/// D225's; a future world whose vector does NOT cancel the ulps re-opens
+/// with a written tolerance policy, per the transcendental contract).
+#[test]
+fn contestation_is_normalized_shannon_entropy() {
+    let graph = tick(SCENARIO, PACK);
+    // World 1: h0 (0.8648…, 0.1351…, 0), h1 the (0, 0.5, 0.5) split, h2.
+    assert_eq!(
+        he(&graph, 0, "community/contestation").to_bits(),
+        (0.3604848532176559_f64).to_bits(),
+        "h0: -(0.8648…ln + 0.1351…ln) / log(3), the libm divisor"
+    );
+    assert_eq!(
+        he(&graph, 1, "community/contestation").to_bits(),
+        (0.6309297535714575_f64).to_bits(),
+        "h1: the two-component split"
+    );
+    assert_eq!(
+        he(&graph, 2, "community/contestation").to_bits(),
+        (0.49960699524890273_f64).to_bits(),
+        "h2: (0.7619…, 0.238…, 0)"
+    );
+    // World 2's fn-comm: the (0.155, 0.845, 0) post-floor shape.
+    let graph = tick(SCENARIO_W2, PACK);
+    assert_eq!(
+        he(&graph, 1, "community/contestation").to_bits(),
+        (0.3925724663663698_f64).to_bits(),
+        "fn-comm: the post-floor two-component split"
+    );
+    // The skip gate: world 3's no-org community is written NOTHING.
+    let graph = tick(SCENARIO_W3, PACK);
+    assert!(
+        graph
+            .hyperedge_attribute(HyperedgeId(1), "community/contestation")
+            .is_err(),
+        "a skipped community's contestation is never written — honest null"
+    );
+}
+
+/// Step 5 (DG-2 landed): c08's dominant tendency with the ruled tie order
+/// — world 1's h1 is the (0.0, 0.5, 0.5) tie, and LIBERAL wins it.
+#[test]
+fn dominant_tendency_breaks_ties_liberal_first() {
+    let graph = tick(SCENARIO, PACK);
+    // ConsciousnessTendency frozen order: LIBERAL=0, FASCIST=1,
+    // REVOLUTIONARY=2 (ADR195).
+    assert_eq!(
+        he(&graph, 0, "community/dominant-tendency").to_bits(),
+        (2.0_f64).to_bits(),
+        "h0: REVOLUTIONARY outright (0.8648…)"
+    );
+    assert_eq!(
+        he(&graph, 1, "community/dominant-tendency").to_bits(),
+        (0.0_f64).to_bits(),
+        "h1: the (0, 0.5, 0.5) tie breaks LIBERAL-first"
+    );
+    assert_eq!(
+        he(&graph, 2, "community/dominant-tendency").to_bits(),
+        (2.0_f64).to_bits(),
+        "h2: REVOLUTIONARY (0.7619…)"
+    );
+}
+
+/// §8a row 1's copies-agree test: ONE world holding a class AND a
+/// community at a three-way tie — BOTH readouts pick LIBERAL. The class
+/// side is the landed `tv-tie-all-true` witness (NodeId(13) by this
+/// file's declaration order — (0.333333p, 0.333333p, 0.333333p) seeded,
+/// its pack-era writes move l by one ulp, and the ruled 1e-6 tie order
+/// still picks LIBERAL); the community side's tie is COMPUTED exact (three
+/// equal-weight orgs, one per tendency: 0.5/1.5 per arm, bit-identical
+/// components). The mutation (swap the tie order in ONE pack) reds exactly
+/// this.
+#[test]
+fn dominant_tendency_ties_match_the_class_surface_rule() {
+    let co_loaded = format!("{CONSCIOUSNESS_PACK}\n{PACK}");
+    let mut graph = HypergraphStore::new();
+    let mut sink = CollectingSink::default();
+    babylon_tick::run_once_into_with_prelude(
+        SCENARIO_TIE,
+        WORLDVIEW_PRELUDE,
+        &co_loaded,
+        &mut graph,
+        &mut sink,
+    )
+    .expect("the tie world ticks under both packs");
+    // The community's readout: ConsciousnessTendency/LIBERAL is ordinal 0.
+    let comm = graph
+        .hyperedge_attribute(HyperedgeId(0), "community/dominant-tendency")
+        .expect("c08 wrote the tied community's readout");
+    assert_eq!(
+        comm.to_bits(),
+        (0.0_f64).to_bits(),
+        "c08: LIBERAL (ordinal 0)"
+    );
+    // The class surface's readout on the landed tie witness
+    // (tv-tie-all-true, NodeId(13) by declaration order): WorldView/LIBERAL
+    // is ordinal 1 (REVOLUTIONARY, LIBERAL, FASCIST — the ruled order).
+    let worldview = graph
+        .node_attribute(NodeId(13), "social-class/dominant-worldview")
+        .expect("p8 wrote the tied class's readout");
+    assert_eq!(
+        worldview.to_bits(),
+        (1.0_f64).to_bits(),
+        "p8: LIBERAL (WorldView ordinal 1) — the two readouts agree"
     );
 }

@@ -873,6 +873,7 @@ const COMMUNITY_W5C: &str =
     include_str!("../content/scenarios/community-carrier-collision-conformance.bscn");
 const COMMUNITY_W6: &str = include_str!("../content/scenarios/community-empty-conformance.bscn");
 const COMMUNITY_PACK: &str = include_str!("../content/rules/community.bsl");
+const COMMUNITY_TIE: &str = include_str!("../content/scenarios/community-tie-conformance.bscn");
 const COMMUNITY_SOLIDARITY: &str = include_str!("../content/rules/solidarity.bsl");
 const COMMUNITY_CONTROL_RATIO: &str = include_str!("../content/rules/control-ratio.bsl");
 
@@ -889,7 +890,7 @@ fn community_world_1_hashes_are_pinned() {
     );
     assert_eq!(
         hex(&report.after),
-        "d4fc962cc33ab551fa06494dddd61302ac2c9867f315714df401a231662136f5",
+        "b40cb0de99238850396698f731b06c707d33c23b8df14e173e6c40ab12a7e17a",
         "post-tick hash moved — the full c00-c11 pack over world 1"
     );
 }
@@ -907,7 +908,7 @@ fn community_world_2_hashes_are_pinned() {
     );
     assert_eq!(
         hex(&report.after),
-        "9945301783754de8f54a10317fb4d227b5b931aa7e640f2db135cddba31fa09c",
+        "d5c93a6f1fb5622172d4c63ce896235f7c65f5ff9a5ab1d3ed64567089735cd0",
         "post-tick hash moved — the floor world after one tick"
     );
 }
@@ -924,7 +925,7 @@ fn community_world_3_hashes_are_pinned() {
     );
     assert_eq!(
         hex(&report.after),
-        "bba7959911fe1a40c016e6caddf072944fd84beba3400b02e82bebd3b82aaec5",
+        "cb370284f6763feac318e79bb3fc71568e47376862ff809f934e474094686461",
         "post-tick hash moved — the degenerate world after one tick"
     );
 }
@@ -942,7 +943,7 @@ fn community_world_4_hashes_are_pinned() {
     );
     assert_eq!(
         hex(&report.after),
-        "41f8dccba9366eba6fc870cf5630882a90f4eb494df29c015d60b310c0f46b05",
+        "e11bec9553aa50479ca03c408e8a58028bae2cfaad4033e3131960b862eb4f9d",
         "post-tick hash moved — the cost-modifier world after one tick"
     );
 }
@@ -967,12 +968,12 @@ fn community_world_5_arc_hashes_are_pinned() {
     let report = last.expect("three ticks ran");
     assert_eq!(
         hex(&report.before),
-        "18fbf163dc93898cbb6276e4c1f28c3378d72400e286d540e57d6b9be1dbecea",
+        "f0d645424b4c87e50df595577d4a16ac9fa34f9b223a85a65135af9f1e467ae3",
         "tick-3 pre-hash moved — the arc world's state entering tick 3"
     );
     assert_eq!(
         hex(&report.after),
-        "b8018b5daa3c6624a477abb16409f593219c345b9365aa642c5f1b81e1ea8325",
+        "df9462f954d9ccbbdc0d28c8631dcb95bab2f511f3255e36399b832968509a28",
         "tick-3 post-hash moved — the decay arc's third link"
     );
 }
@@ -1030,5 +1031,27 @@ fn community_world_6_hashes_are_pinned() {
         hex(&report.after),
         "d808eb25330cc3f680d45ae9ee458c515c2abb207b08eb18b88427d821fe3c8e",
         "post-tick hash moved — the all-inactive world after one tick"
+    );
+}
+
+/// The tie world (the §8a row-1 copies-agree home) — summarizes the
+/// DG-2 readout pins (the class-surface and community-surface tie-breaks
+/// agreeing on LIBERAL). Measured, never derived; touches none of the
+/// sixteen prior pins. Ninth content world — the plan's "8 pins" count
+/// predates this world's addition at the DG-2 landing.
+#[test]
+fn community_tie_world_hashes_are_pinned() {
+    let rules = format!("{CONSCIOUSNESS_TERNARY_RULES}\n{COMMUNITY_PACK}");
+    let report =
+        run_once_with_prelude(COMMUNITY_TIE, WORLDVIEW_PRELUDE, &rules).expect("tie world tick");
+    assert_eq!(
+        hex(&report.before),
+        "652479d6d29b82e4ce7256dbccbb1614b65c7fe2eaf38aba500edd134cbc6b14",
+        "pre-tick hash moved — the tie world's load"
+    );
+    assert_eq!(
+        hex(&report.after),
+        "747a28d0e62aa31ec28a7bd33cf80a3486d1d590fba1a0150ca7a30c6b573673",
+        "post-tick hash moved — both packs over the tie world"
     );
 }

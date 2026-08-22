@@ -107,6 +107,16 @@ consumers = [
     "rust/crates/babylon-tick/tests/tick_goldens.rs",
 ]
 
+
+[[set]]
+id        = "community/tie"
+scenario  = "scenarios/community-tie-conformance.bscn"
+prelude   = ["declarations/worldview.bscn"]
+rules     = ["rules/consciousness.bsl", "rules/community.bsl"]
+consumers = [
+    "rust/crates/babylon-tick/tests/community_conformance.rs",
+    "rust/crates/babylon-tick/tests/tick_goldens.rs",
+]
 [[set]]
 id        = "consciousness/ternary-conformance"
 scenario  = "scenarios/consciousness-ternary-conformance.bscn"

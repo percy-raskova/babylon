@@ -1,0 +1,83 @@
+[[asset]]
+id = "title-mark"
+category = "interface"
+source = "design/bevy-assets/sources/title-mark.svg"
+runtime = "rust/crates/babylon-client/src/visual_assets/embedded/title-mark.png"
+format = "png"
+width = 768
+height = 192
+columns = 1
+rows = 1
+sampler = "nearest"
+sha256 = "16e82da48969720970de26270420487bf43f7b2d517c49bffcbfb9c141291d1e"
+license = "AGPL-3.0-or-later"
+
+[[asset]]
+id = "interface-atlas"
+category = "interface"
+source = "design/bevy-assets/sources/interface-atlas.svg"
+runtime = "rust/crates/babylon-client/src/visual_assets/embedded/interface-atlas.png"
+format = "png"
+width = 512
+height = 512
+columns = 4
+rows = 4
+sampler = "nearest"
+sha256 = "39e634e8726651ffc0288a097b332959c51cfb563b45781af12e2cf7d2f1c989"
+license = "AGPL-3.0-or-later"
+
+[[asset]]
+id = "marker-atlas"
+category = "interface"
+source = "design/bevy-assets/sources/marker-atlas.svg"
+runtime = "rust/crates/babylon-client/src/visual_assets/embedded/marker-atlas.png"
+format = "png"
+width = 384
+height = 256
+columns = 3
+rows = 2
+sampler = "nearest"
+sha256 = "a791667c4399556fb013c4642bd21f3218a847e9d796dd6f830e9f9dd00e3bac"
+license = "AGPL-3.0-or-later"
+
+[[asset]]
+id = "provenance-atlas"
+category = "interface"
+source = "design/bevy-assets/sources/provenance-atlas.svg"
+runtime = "rust/crates/babylon-client/src/visual_assets/embedded/provenance-atlas.png"
+format = "png"
+width = 256
+height = 256
+columns = 2
+rows = 2
+sampler = "nearest"
+sha256 = "a4c258c9f45983d0d6424751e2d2628aa823df9b4508a6b345cc750589d6494d"
+license = "AGPL-3.0-or-later"
+
+[[asset]]
+id = "frame-atlas"
+category = "interface"
+source = "design/bevy-assets/sources/frame-atlas.svg"
+runtime = "rust/crates/babylon-client/src/visual_assets/embedded/frame-atlas.png"
+format = "png"
+width = 256
+height = 64
+columns = 4
+rows = 1
+sampler = "nearest"
+sha256 = "d0e94ff51c25f78fdbe20724a0616d175bb40b907b7fc7278444fdaca1e41323"
+license = "AGPL-3.0-or-later"
+
+[[asset]]
+id = "surface-atlas"
+category = "interface"
+source = "design/bevy-assets/sources/surface-atlas.svg"
+runtime = "rust/crates/babylon-client/src/visual_assets/embedded/surface-atlas.png"
+format = "png"
+width = 384
+height = 128
+columns = 3
+rows = 1
+sampler = "nearest"
+sha256 = "d3592cb05b45b87b0a105b39a4d0b64b6437e0febaa5bc7206a629a6ff2170dc"
+license = "AGPL-3.0-or-later"

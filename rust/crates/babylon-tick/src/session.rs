@@ -143,6 +143,7 @@ impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
                 id,
                 Some(&self.prepared.node_content_ids),
                 &self.session,
+                self.prepared.vocabulary.as_ref(),
             )
             .map_err(|e| format!("tick failed in rule {id}: {e}"))?;
             per_rule_fired.push((id.clone(), outcome.fired));

@@ -2821,6 +2821,7 @@ mod c14_rng_draw {
             "demo/rng-keyed-draw",
             Some(&loaded_scenario.node_content_ids),
             &SessionId::new(session).expect("literal is non-empty"),
+            None,
         )
         .expect("the tick must run");
         graph
@@ -3018,6 +3019,7 @@ mod c14_rng_draw {
             "demo/rng-fold-draw",
             Some(&loaded_scenario.node_content_ids),
             &SessionId::new("rng-c14-fold").expect("literal is non-empty"),
+            None,
         )
         .expect("the tick must run");
 
@@ -3176,6 +3178,7 @@ mod c14_rng_draw {
             "demo/rng-edge-type-draw",
             Some(&loaded_scenario.node_content_ids),
             &SessionId::new("rng-c14-edge-type").expect("literal is non-empty"),
+            None,
         )
         .expect("the tick must run");
         graph
@@ -3287,6 +3290,7 @@ mod c14_rng_draw {
             "demo/rng-expr-draw",
             Some(&loaded_scenario.node_content_ids),
             &SessionId::new("rng-c14-expr-position").expect("literal is non-empty"),
+            None,
         )
         .expect(
             "an :expr binding calling rng-draw must RUN clean (I3) — no longer a runtime EvalError",

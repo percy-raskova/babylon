@@ -96,7 +96,7 @@ use crate::evaluator::Value;
 use crate::reader::{read_all, Atom, ReadError, ReadErrorKind, SExpr, ScaledKind};
 use crate::types::{BslType, EnumRegistry, EnumTypeId, FieldDecl, FieldKind};
 use crate::vocabulary::{ClosedVocabulary, EnumKind, VocabularyError};
-use babylon_graph::substrate::{GraphError, GraphSubstrate, NodeId};
+use babylon_graph::substrate::{GraphError, GraphSubstrate, HyperedgeId, NodeId};
 use babylon_kernel::{Currency, Ratio};
 use std::collections::{HashMap, HashSet};
 
@@ -645,11 +645,16 @@ fn load_scenario_inner(
     let mut max_members_seen: HashMap<String, u64> = HashMap::new();
     // Fix round 1, review I3: the local-name table `load_hyperedge` checks
     // duplicates against — same purpose as `named` does for nodes
-    // (`load_node`'s own duplicate refusal), but a `HashSet` suffices today:
-    // no resolve-by-name consumer exists yet (Task 6's `hyperedge-attr` adds
-    // the first one, at which point this may grow into a name->HyperedgeId
-    // map without changing the duplicate check's own behaviour).
-    let mut seeded_hyperedge_names: HashSet<String> = HashSet::new();
+    // (`load_node`'s own duplicate refusal). Task 6's `(hyperedge-attr …)`
+    // landed the resolve-by-name consumer this comment's predecessor
+    // anticipated, so the table is now a name→HyperedgeId map — the
+    // duplicate check's own behaviour is unchanged (`contains_key` where
+    // the set's `insert` returned false).
+    let mut seeded_hyperedge_names: HashMap<String, HyperedgeId> = HashMap::new();
+    // Task 6's `(hyperedge-attr …)` KEY, mirroring `seeded_attrs` one element
+    // kind over: a second seeding of one (hyperedge, field) pair silently
+    // overwrites the first — E-LOAD-057's argument, one axis narrower.
+    let mut seeded_hyperedge_attrs: HashSet<(HyperedgeId, String)> = HashSet::new();
     let mut node_count = 0_usize;
     let mut edge_count = 0_usize;
     // §3.9 clause 5 (D73): hydration may not seed two dyadic edges sharing
@@ -670,7 +675,7 @@ fn load_scenario_inner(
             return Err(err(
                 "a scenario body holds only (defenum ...), (defvocabulary ...), \
                  (deffield ...), (defconst ...), (node ...), (edge ...), \
-                 (edge-attr ...) and (hyperedge ...) forms",
+                 (edge-attr ...), (hyperedge ...) and (hyperedge-attr ...) forms",
             ));
         };
         match parts.first() {
@@ -742,10 +747,21 @@ fn load_scenario_inner(
                     *longest = member_count;
                 }
             }
+            Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "hyperedge-attr" => {
+                load_hyperedge_attr(
+                    parts,
+                    graph,
+                    &seeded_hyperedge_names,
+                    &mut seeded_hyperedge_attrs,
+                    &fields,
+                    &enums,
+                )?;
+            }
             _ => {
                 return Err(err(
                     "a scenario body form must begin with `defenum`, `defvocabulary`, \
-                     `deffield`, `defconst`, `node`, `edge`, `edge-attr` or `hyperedge`",
+                     `deffield`, `defconst`, `node`, `edge`, `edge-attr`, `hyperedge` \
+                     or `hyperedge-attr`",
                 ))
             }
         }
@@ -2059,7 +2075,7 @@ fn load_hyperedge(
     parts: &[SExpr],
     graph: &mut dyn GraphSubstrate,
     named: &HashMap<String, NodeId>,
-    seeded_hyperedge_names: &mut HashSet<String>,
+    seeded_hyperedge_names: &mut HashMap<String, HyperedgeId>,
     enums: &EnumRegistry,
     vocabulary: Option<&ClosedVocabulary>,
 ) -> Result<(String, u64), ScenarioError> {
@@ -2075,7 +2091,7 @@ fn load_hyperedge(
     // local name denotes exactly one hyperedge, and silently rebinding it
     // would make a later `hyperedge-attr` form (Task 6) ambiguous about
     // which hyperedge it targets.
-    if !seeded_hyperedge_names.insert(local.clone()) {
+    if seeded_hyperedge_names.contains_key(local) {
         return Err(err(format!(
             "duplicate scenario name `{local}` — a local name denotes exactly one \
              hyperedge, and silently rebinding it would make later hyperedge-attr \
@@ -2135,8 +2151,100 @@ fn load_hyperedge(
     // Member canonicalization is the executor's already-landed law — see
     // this function's doc comment.
     members.sort_unstable();
-    graph.add_hyperedge(member, &members)?;
+    let id = graph.add_hyperedge(member, &members)?;
+    seeded_hyperedge_names.insert(local.clone(), id);
     Ok((member.clone(), member_count))
+}
+
+/// `(hyperedge-attr <local-name> <field-qname> <value>)` — Community port
+/// train Task 6 (E2b): seed one DECLARED own-field of a hyperedge the same
+/// scenario already minted, through the Task-5 substrate lane
+/// (`GraphSubstrate::update_hyperedge_attribute`). Mirrors
+/// [`load_edge_attr`]'s discipline one element kind over:
+///
+/// 1. The local name resolves through `seeded_hyperedge_names` — a
+///    hyperedge must have been seeded ABOVE this form (the top-to-bottom
+///    discipline every declared-registry lookup here shares), and the map
+///    (not a set) is what Task 6 grew it into for exactly this resolution.
+/// 2. §2.10 discipline 1 at hydration: the qname's OWNER segment must
+///    render to the hyperedge's own declared type — read back from the
+///    substrate (`hyperedge_type_of`), through the same
+///    `tick::namespace_to_node_type` rendering
+///    `evaluator.rs::check_hyperedge_referent_type` uses at evaluation.
+/// 3. An undeclared qname is a typo, not a new field — `load_node`'s
+///    registry contract verbatim.
+/// 4. The value converts through [`attribute_value`], the crate's ONE
+///    per-type literal law — the int/fractional contract and the enum
+///    lane (`community/kind` seeded as `<CommunityType>/<MEMBER>`,
+///    ordinal-stored) included; Currency refuses, there being no
+///    hyperedge-scoped Currency lane (the same ruling as the edge lane).
+///
+/// The `(hyperedge, field)` pair is a KEY — a second seeding is
+/// `E-LOAD-057`, the same silent-overwrite argument `load_edge_attr`'s
+/// quadruple makes, one axis narrower.
+fn load_hyperedge_attr(
+    parts: &[SExpr],
+    graph: &mut dyn GraphSubstrate,
+    seeded: &HashMap<String, HyperedgeId>,
+    seeded_attrs: &mut HashSet<(HyperedgeId, String)>,
+    declared: &HashMap<String, FieldDecl>,
+    enums: &EnumRegistry,
+) -> Result<(), ScenarioError> {
+    let [_, SExpr::Atom(Atom::Symbol(local)), SExpr::Atom(Atom::QName(field)), SExpr::Atom(value)] =
+        parts
+    else {
+        return Err(err(
+            "expected (hyperedge-attr <local-name> <field-qname> <value>)",
+        ));
+    };
+    let form = format!("hyperedge-attr `{local}`");
+    let id = seeded.get(local).copied().ok_or_else(|| {
+        err(format!(
+            "hyperedge-attr names unknown hyperedge `{local}` — a hyperedge must be \
+             declared before a hyperedge-attr referring to it, so a scenario reads \
+             top to bottom"
+        ))
+    })?;
+    // §2.10 discipline 1 at hydration — refusal 2, checked against the
+    // hyperedge's OWN seeded type (read back from the substrate, never
+    // re-derived from the form, which carries no type operand).
+    let actual_type = graph.hyperedge_type_of(id)?;
+    let owner_segment = field.split('/').next().unwrap_or(field);
+    let owner_type = crate::tick::namespace_to_node_type(owner_segment);
+    if owner_type != actual_type {
+        return Err(err(format!(
+            "{form}: field `{field}` is owned by {owner_type}, not {actual_type} — a \
+             hyperedge attribute's qname owner must name the hyperedge's own type \
+             (§2.10 discipline 1, checked at hydration exactly as \
+             `check_hyperedge_referent_type` checks it at evaluation)"
+        )));
+    }
+    // The registry contract, ENFORCED — load_node's undeclared-field refusal
+    // verbatim, one element kind over.
+    let Some(decl) = declared.get(field) else {
+        return Err(err(format!(
+            "{form}: field `{field}` was never declared — add a \
+             (deffield {field} <type> <intensive|extensive>) form ABOVE the \
+             hyperedge and hyperedge-attr forms that use it"
+        )));
+    };
+    // The ONE per-type literal law — Currency refusal included. `attribute_value`
+    // takes the element descriptor, so the noun is honest on this path too.
+    let converted = attribute_value(value, &format!("hyperedge `{local}`"), field, decl, enums)?;
+    // E-LOAD-057, one axis narrower than the edge lane's quadruple.
+    if !seeded_attrs.insert((id, field.clone())) {
+        return Err(coded_err(
+            "E-LOAD-057",
+            format!(
+                "hydration seeds hyperedge `{local}`'s attribute `{field}` twice; the \
+                 (hyperedge, field) pair is a KEY, exactly as the edge lane's quadruple \
+                 is — a second seeding silently overwrites the first, the file carrying \
+                 two values for one datum with only the later surviving"
+            ),
+        ));
+    }
+    graph.update_hyperedge_attribute(id, field, converted)?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -2154,7 +2262,7 @@ mod tests {
     use crate::typecheck::TypeEnv;
     use babylon_graph::memory::MemoryGraph;
     use babylon_graph::state_hash::{CanonicalState, StateEncoder};
-    use babylon_graph::substrate::{Direction, GraphSubstrate, NodeId};
+    use babylon_graph::substrate::{Direction, GraphSubstrate, HyperedgeId, NodeId};
     use babylon_kernel::{Currency, SessionId};
     use std::collections::{HashMap, HashSet};
 
@@ -2659,6 +2767,7 @@ mod tests {
                 "ft/mirror",
                 Some(&loaded_scenario.node_content_ids),
                 &SessionId::new("scenario-bit-equality-test").expect("literal is non-empty"),
+                None,
             )
             .unwrap_or_else(|e| panic!("{literal}: tick must run: {e}"));
 
@@ -2765,6 +2874,7 @@ mod tests {
                 "ft/currency-mirror",
                 Some(&loaded_scenario.node_content_ids),
                 &SessionId::new("scenario-currency-bit-equality-test").expect("non-empty"),
+                None,
             )
             .unwrap_or_else(|e| panic!("{literal}: tick must run: {e}"));
 
@@ -4388,6 +4498,158 @@ mod tests {
             .edge_attribute("SOLIDARITY", NodeId(0), NodeId(1), "solidarity/strength")
             .unwrap();
         assert_eq!(strength.to_bits(), (0.5_f64).to_bits());
+    }
+
+    // ---- Community port train Task 6 (E2b): the (hyperedge-attr ...) scenario form ----
+
+    #[test]
+    fn hyperedge_attr_seeds_a_declared_hyperedge_field() {
+        // The positive lane, mirroring `edge_attr_seeds_a_declared_edge_field`
+        // one element kind over: the seed lands in the substrate's Task-5
+        // hyperedge-attribute store and reads back bit-exact (0.25 = 2^-2 is
+        // dyadic-exact). The write travels NO write log — hydration has none
+        // (the write log is a tick-time construct; `load_edge_attr`'s own
+        // direct `update_edge` is the precedent), which is exactly why this
+        // test reads the substrate rather than a log.
+        let source = r"
+(scenario ft/hyperedge-attr
+  (deffield community/heat coefficient intensive)
+  (node a NodeType/SOCIAL_CLASS)
+  (node b NodeType/SOCIAL_CLASS)
+  (hyperedge cell HyperedgeType/COMMUNITY (members a b))
+  (hyperedge-attr cell community/heat 0.25c))
+";
+        let mut graph = MemoryGraph::new();
+        load_scenario(source, &mut graph).unwrap();
+        let value = graph
+            .hyperedge_attribute(HyperedgeId(0), "community/heat")
+            .unwrap();
+        assert_eq!(value.to_bits(), (0.25_f64).to_bits());
+    }
+
+    #[test]
+    fn hyperedge_attr_seeds_an_enum_typed_field_as_its_ordinal() {
+        // The enum lane (`community/kind`, Task 6 Step 4's named case):
+        // seeded ONLY as <EnumType>/<MEMBER> (`attribute_value_enum`'s law),
+        // stored as the ordinal — never a surface number.
+        let source = r"
+(scenario ft/hyperedge-attr-enum
+  (defenum CommunityType (REVOLUTIONARY LIBERAL))
+  (deffield community/kind enum CommunityType)
+  (node a NodeType/SOCIAL_CLASS)
+  (node b NodeType/SOCIAL_CLASS)
+  (hyperedge cell HyperedgeType/COMMUNITY (members a b))
+  (hyperedge-attr cell community/kind CommunityType/LIBERAL))
+";
+        let mut graph = MemoryGraph::new();
+        load_scenario(source, &mut graph).unwrap();
+        let value = graph
+            .hyperedge_attribute(HyperedgeId(0), "community/kind")
+            .unwrap();
+        assert_eq!(value.to_bits(), (1.0_f64).to_bits(), "LIBERAL is ordinal 1");
+    }
+
+    #[test]
+    fn hyperedge_attr_refuses_a_fractional_seed_on_an_int_declared_field() {
+        // The int/fractional conversion contract, verbatim — the same
+        // refusal `load_node`'s field-init path pins executably above.
+        let source = r"
+(scenario ft/hyperedge-attr-int
+  (deffield community/count int extensive)
+  (node a NodeType/SOCIAL_CLASS)
+  (node b NodeType/SOCIAL_CLASS)
+  (hyperedge cell HyperedgeType/COMMUNITY (members a b))
+  (hyperedge-attr cell community/count 0.5c))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert_eq!(
+            err.message,
+            "hyperedge `cell` field `community/count`: expected an integer \
+             literal, found Scaled(ScaledLit { kind: Coefficient, unscaled: 5, scale: 1 })"
+        );
+    }
+
+    #[test]
+    fn hyperedge_attr_refuses_unknown_name_undeclared_field_owner_mismatch_and_double_seed() {
+        // 1. A hyperedge-attr naming a hyperedge this scenario never
+        //    seeded — the top-to-bottom discipline, by name.
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(
+            r"
+(scenario ft/hyperedge-attr-unknown
+  (deffield community/heat coefficient intensive)
+  (node a NodeType/SOCIAL_CLASS)
+  (hyperedge-attr ghost community/heat 0.5c))
+",
+            &mut graph,
+        )
+        .unwrap_err();
+        assert!(
+            err.message
+                .contains("hyperedge-attr names unknown hyperedge `ghost`"),
+            "{}",
+            err.message
+        );
+
+        // 2. A field no deffield declared is a typo, not a new field.
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(
+            r"
+(scenario ft/hyperedge-attr-typo
+  (deffield community/heat coefficient intensive)
+  (node a NodeType/SOCIAL_CLASS)
+  (node b NodeType/SOCIAL_CLASS)
+  (hyperedge cell HyperedgeType/COMMUNITY (members a b))
+  (hyperedge-attr cell community/heta 0.5c))
+",
+            &mut graph,
+        )
+        .unwrap_err();
+        assert!(
+            err.message.contains("community/heta") && err.message.contains("never declared"),
+            "{}",
+            err.message
+        );
+
+        // 3. §2.10 discipline 1 at hydration: the qname's owner must name
+        //    the hyperedge's own type, read back from the substrate.
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(
+            r"
+(scenario ft/hyperedge-attr-owner
+  (deffield economic-sector/output coefficient intensive)
+  (node a NodeType/SOCIAL_CLASS)
+  (hyperedge cell HyperedgeType/COMMUNITY (members a))
+  (hyperedge-attr cell economic-sector/output 0.5c))
+",
+            &mut graph,
+        )
+        .unwrap_err();
+        assert!(
+            err.message
+                .contains("is owned by ECONOMIC_SECTOR, not COMMUNITY"),
+            "{}",
+            err.message
+        );
+
+        // 4. The (hyperedge, field) pair is a KEY — a second seeding of one
+        //    key is E-LOAD-057, the silent-overwrite refusal.
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(
+            r"
+(scenario ft/hyperedge-attr-double
+  (deffield community/heat coefficient intensive)
+  (node a NodeType/SOCIAL_CLASS)
+  (node b NodeType/SOCIAL_CLASS)
+  (hyperedge cell HyperedgeType/COMMUNITY (members a b))
+  (hyperedge-attr cell community/heat 0.25c)
+  (hyperedge-attr cell community/heat 0.5c))
+",
+            &mut graph,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some("E-LOAD-057"), "{}", err.message);
     }
 
     // ---- F1 (Task 3 fix round 1): the node-path refusal text, pinned EXECUTABLY ----

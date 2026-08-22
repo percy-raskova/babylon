@@ -188,6 +188,13 @@ pub(crate) struct PreparedRules {
     /// canonical-state weight — `state_hash` is computed over the substrate
     /// alone.
     pub node_content_ids: HashMap<NodeId, String>,
+    /// The scenario's closed vocabulary, when it declared one —
+    /// `run_tick`'s D29 owner-kind filter (`subject_type_of`, Community
+    /// port train Task 6) reads it so a hyperedge/edge-owned `:field`
+    /// binding can never masquerade as a subject type. `None` for a
+    /// scenario declaring no `defvocabulary` at all, exactly the
+    /// load-side `LoadContext::vocabulary_registry` convention.
+    pub vocabulary: Option<babylon_bsl::vocabulary::ClosedVocabulary>,
 }
 
 /// Why `prepare_rules` (or [`diagnose_content_set`]) refused a content set —
@@ -789,6 +796,7 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
         consts: scenario.consts,
         enums: scenario.enums,
         node_content_ids: scenario.node_content_ids,
+        vocabulary: scenario.vocabulary,
     })
 }
 
@@ -923,6 +931,7 @@ fn run_prepared_tick<G: GraphSubstrate + CanonicalState>(
             id,
             Some(&prepared.node_content_ids),
             session,
+            prepared.vocabulary.as_ref(),
         )
         .map_err(|e| format!("tick failed in rule {id}: {e}"))?;
         per_rule_fired.push((id.clone(), outcome.fired));

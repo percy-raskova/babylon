@@ -13,22 +13,30 @@
 //! replacement, `remove-hyperedge` then `add-hyperedge` in one effect list
 //! (§2.8 draft ruling, D26 — whose member-list half **stands**).
 //!
-//! **`update-edge` is served (T3, ADR198 R1-R3, issue #560); `update-hyperedge`
-//! remains refused loudly, with the reason named.** T3 PR A gave
+//! **`update-edge` is served (T3, ADR198 R1-R3, issue #560);
+//! `update-hyperedge` is served too (Community port train, Task 6 E2b —
+//! the charter T3's doc said did not exist).** T3 PR A gave
 //! `GraphSubstrate` full symmetric edge-attribute storage (deffield rows per
 //! edge type, the empty-elided fifth canonical section), and this module's
 //! collect-then-apply machinery widened to match: `update-edge` defers
 //! through the same [`PendingWrite`] batch as `update-node` (the target sum
 //! type [`WriteTarget`]), with `set`/`add`/`sub`/`scale` parity, enum set
 //! included, and the strength fork (D143) routing `<edge-type>/strength`
-//! writes to the edge's existing 0x03-slot strength. `update-hyperedge` has
-//! no such charter: hyperedge own-field storage is chartered by no Program
-//! 29 train (D65's runtime half; AG(i) membership payloads are #536's
-//! separate ceremony, ADR198 R4), and widening that state widens the
-//! canonical `state_hash` field set (Constitution III.7) — never a
-//! silently-dropped write. The grammar, the §3.7 cost rows, the §2.8 static
+//! writes to the edge's existing 0x03-slot strength. The Community port
+//! train then chartered the hyperedge half outright: Task 5 (E2a) minted
+//! `GraphSubstrate::update_hyperedge_attribute` (the seventh canonical
+//! section, `0x07`), and Task 6 wired the verb to it through BOTH dispatch
+//! sites — `update-hyperedge` defers through `WriteTarget::Hyperedge` with
+//! the same `set`/`add`/`sub`/`scale` parity, enum set included, the
+//! §2.10 discipline-1 referent check (`evaluator::check_hyperedge_referent_type`)
+//! shared with `field-of`'s new `HyperedgeRef` arm. What STAYS refused:
+//! per-membership payloads (Amendment AG(i)'s ceremony, #653) and
+//! mint-time `<field-init>`s on `add-hyperedge` (a distinct unserved lane —
+//! the storage exists; the init sugar is not routed to it in this train).
+//! The grammar, the §3.7 cost rows, the §2.8 static
 //! checks and the error codes landed with the R9 chapters; the storage and
-//! the apply path are what T3 adds.
+//! the apply path are what T3 added for edges and Task 5+6 added for
+//! hyperedges.
 //!
 //! **I.15 stays a declared Phase-2 gap, named here rather than silently
 //! absorbed** (the dossier's scope tension, recorded): nothing in this
@@ -207,6 +215,9 @@ pub enum WriteTarget {
     /// (issue #559), shared unmodified exactly as D36's "the two trains
     /// share the type" intends.
     Edge(EdgeKey),
+    /// A hyperedge's own field (`update-hyperedge`) — the Community port
+    /// train's Task 6 (E2b); the id alone is the identity (VIII.9).
+    Hyperedge(HyperedgeId),
 }
 
 fn plain(message: impl Into<String>) -> EvalError {
@@ -520,21 +531,7 @@ impl<'a> EffectExecutor<'a> {
             "emit" => Self::emit(items, env, host, sink, fuel),
             "for-each" => self.for_each(items, env, host, graph, sink, fuel),
             "update-edge" => self.update_edge(items, env, host, graph, fuel),
-            "update-hyperedge" => {
-                // The verb EXISTS (D65) — this is a storage gap, not an
-                // unknown head, and the message must not confuse the two.
-                // T3 (ADR198 R1-R3) served update-edge's storage; hyperedge
-                // own-field storage is chartered by no Program 29 train
-                // (AG(i) membership payloads are #536's separate ceremony,
-                // ADR198 R4).
-                Err(plain(
-                    "(update-hyperedge …) has no substrate storage: GraphSubstrate gives a \
-                     hyperedge no attributes at all. Widening that state widens the canonical \
-                     state_hash field set, which is a declared substrate decision (Constitution \
-                     III.7), never a silently-dropped write"
-                        .to_owned(),
-                ))
-            }
+            "update-hyperedge" => self.update_hyperedge(items, env, host, graph, fuel),
             other => Err(plain(format!(
                 "unknown effect head ({other} …) — the §2.8 verb set is closed"
             ))),
@@ -861,6 +858,97 @@ impl<'a> EffectExecutor<'a> {
         Ok(())
     }
 
+    /// `(update-hyperedge <expr> <qname> <update-op>)` — the hyperedge
+    /// own-field write (Community port train, Task 6, E2b), the execute
+    /// path. Mirrors [`Self::update_edge`]'s discipline exactly: the
+    /// referent's declared type is checked against the qname's owner
+    /// segment (E-EVAL-033's hyperedge half), `set` never reads the prior
+    /// value for the combine (only the log probe), `add`/`sub`/`scale`
+    /// read-combine through `hyperedge_attribute`, non-finite combines
+    /// refuse (E-EVAL-014), the write is range-checked at the store
+    /// boundary (E-EVAL-020) and canonical-zeroed, and the substrate
+    /// errors map to E-EVAL-031.
+    fn update_hyperedge(
+        &mut self,
+        items: &[SExpr],
+        env: &EvalEnv<'_>,
+        host: &dyn IntrinsicHost,
+        graph: &mut dyn GraphSubstrate,
+        fuel: &mut u64,
+    ) -> Result<(), EvalError> {
+        charge(fuel, cost::STRUCTURAL_VERB_BASE)?;
+        let [_, hyperedge, SExpr::Atom(Atom::QName(field)), op_form] = items else {
+            return Err(plain(
+                "(update-hyperedge <expr> <qname> <update-op>) — unrecognized shape",
+            ));
+        };
+        let id = self.resolve_hyperedge(hyperedge, env, host, fuel)?;
+        crate::evaluator::check_hyperedge_referent_type(id, field, "update-hyperedge", &*graph)?;
+        let SExpr::List(op_items) = op_form else {
+            return Err(plain(
+                "update-op must be a form: (add|sub|set|scale <expr>)",
+            ));
+        };
+        let [SExpr::Atom(Atom::Symbol(op)), operand] = op_items.as_slice() else {
+            return Err(plain("update-op must be (add|sub|set|scale <expr>)"));
+        };
+        charge(fuel, cost::UPDATE_OP_BASE)?;
+        let operand_value =
+            self.numeric_write_value(operand, env, host, fuel, field, "update-hyperedge")?;
+        let (new_value, previous) = match op.as_str() {
+            "set" => (
+                operand_value,
+                self.probe_previous_hyperedge(&*graph, id, field),
+            ),
+            "add" | "sub" | "scale" => {
+                self.refuse_arithmetic_on_enum_field(field, "update-hyperedge")?;
+                let current = graph.hyperedge_attribute(id, field).map_err(from_graph)?;
+                let combined = match op.as_str() {
+                    "add" => current + operand_value,
+                    "sub" => current - operand_value,
+                    _ => current * operand_value,
+                };
+                if !combined.is_finite() {
+                    return Err(EvalError::coded(
+                        EvalCode::NonFinite,
+                        format!("({op} …) on {field} produced a non-finite value"),
+                    ));
+                }
+                (combined, Some(current))
+            }
+            other => {
+                return Err(plain(format!(
+                    "unknown update-op ({other} …) — the set is add|sub|set|scale (§2.8)"
+                )))
+            }
+        };
+        let new_value = canonical_zero(new_value);
+        self.store_range_check(field, new_value)?;
+        graph
+            .update_hyperedge_attribute(id, field, new_value)
+            .map_err(from_graph)?;
+        self.record(Write::HyperedgeAttribute {
+            id,
+            field: field.clone(),
+            previous,
+            value: new_value,
+        });
+        Ok(())
+    }
+
+    /// The collect side's previous-value probe for the hyperedge lane —
+    /// `write_log` discipline 3, through `hyperedge_attribute` exactly as
+    /// [`Self::probe_previous_edge`] reads through `edge_attribute`.
+    fn probe_previous_hyperedge(
+        &self,
+        graph: &dyn GraphSubstrate,
+        id: HyperedgeId,
+        field: &str,
+    ) -> Option<f64> {
+        self.observer.as_ref()?;
+        graph.hyperedge_attribute(id, field).ok()
+    }
+
     // ---- Task 12: the pre-state law — collect-then-apply ----
 
     /// COLLECT phase (§2.8 chapter C6 + §4.2 chapter C4): evaluate
@@ -996,13 +1084,11 @@ impl<'a> EffectExecutor<'a> {
                 pending.push(write);
                 Ok(())
             }
-            "update-hyperedge" => Err(plain(
-                "(update-hyperedge …) has no substrate storage: GraphSubstrate gives a \
-                 hyperedge no attributes at all. Widening that state widens the canonical \
-                 state_hash field set, which is a declared substrate decision (Constitution \
-                 III.7), never a silently-dropped write"
-                    .to_owned(),
-            )),
+            "update-hyperedge" => {
+                let write = self.collect_update_hyperedge(items, env, host, fuel)?;
+                pending.push(write);
+                Ok(())
+            }
             other => Err(plain(format!(
                 "unknown effect head ({other} …) — the §2.8 verb set is closed"
             ))),
@@ -1153,6 +1239,68 @@ impl<'a> EffectExecutor<'a> {
         };
         Ok(PendingWrite {
             target: WriteTarget::Edge(key),
+            field: field.clone(),
+            op: update_op,
+            operand: WriteOperand::Real(operand_value),
+        })
+    }
+
+    /// `(update-hyperedge <expr> <qname> <update-op>)`, the collect half —
+    /// mirrors [`Self::collect_update_edge`] exactly; the write applies in
+    /// the APPLY phase against `WriteTarget::Hyperedge` (the pre-state law,
+    /// §4.2 chapter C4, holds for this lane exactly as for the other two).
+    fn collect_update_hyperedge(
+        &mut self,
+        items: &[SExpr],
+        env: &EvalEnv<'_>,
+        host: &dyn IntrinsicHost,
+        fuel: &mut u64,
+    ) -> Result<PendingWrite, EvalError> {
+        charge(fuel, cost::STRUCTURAL_VERB_BASE)?;
+        let [_, hyperedge, SExpr::Atom(Atom::QName(field)), op_form] = items else {
+            return Err(plain(
+                "(update-hyperedge <expr> <qname> <update-op>) — unrecognized shape",
+            ));
+        };
+        let id = self.resolve_hyperedge(hyperedge, env, host, fuel)?;
+        // The referent check reads the pre-state (collect holds an
+        // immutable reborrow) — the same law as every other collect_*.
+        crate::evaluator::check_hyperedge_referent_type(
+            id,
+            field,
+            "update-hyperedge",
+            env.graph
+                .expect("collect needs the pre-state graph (the driver always passes one)"),
+        )?;
+        let SExpr::List(op_items) = op_form else {
+            return Err(plain(
+                "update-op must be a form: (add|sub|set|scale <expr>)",
+            ));
+        };
+        let [SExpr::Atom(Atom::Symbol(op)), operand] = op_items.as_slice() else {
+            return Err(plain("update-op must be (add|sub|set|scale <expr>)"));
+        };
+        charge(fuel, cost::UPDATE_OP_BASE)?;
+        let operand_value =
+            self.numeric_write_value(operand, env, host, fuel, field, "update-hyperedge")?;
+        let update_op = match op.as_str() {
+            "set" => UpdateOp::Set,
+            "add" | "sub" | "scale" => {
+                self.refuse_arithmetic_on_enum_field(field, "update-hyperedge")?;
+                match op.as_str() {
+                    "add" => UpdateOp::Add,
+                    "sub" => UpdateOp::Sub,
+                    _ => UpdateOp::Scale,
+                }
+            }
+            other => {
+                return Err(plain(format!(
+                    "unknown update-op ({other} …) — the set is add|sub|set|scale (§2.8)"
+                )))
+            }
+        };
+        Ok(PendingWrite {
+            target: WriteTarget::Hyperedge(id),
             field: field.clone(),
             op: update_op,
             operand: WriteOperand::Real(operand_value),
@@ -1317,7 +1465,63 @@ impl<'a> EffectExecutor<'a> {
                 });
                 Ok(())
             }
+            WriteTarget::Hyperedge(id) => self.apply_pending_hyperedge_write(*id, write, graph),
         }
+    }
+
+    /// The hyperedge half of [`Self::apply_pending_write`] (Community port
+    /// train, Task 6, E2b), extracted so that function stays under the
+    /// ≤100-line bound (Power-of-10 rule 3) — the same reason
+    /// [`Self::apply_pending_currency_write`] gives for its own extraction.
+    /// Mirrors the Edge arm exactly: no hyperedge-scoped Currency lane
+    /// exists, so a Currency operand here is the same collect/apply
+    /// wiring-bug shape the edge arm names.
+    fn apply_pending_hyperedge_write(
+        &mut self,
+        id: HyperedgeId,
+        write: &PendingWrite,
+        graph: &mut dyn GraphSubstrate,
+    ) -> Result<(), EvalError> {
+        let WriteOperand::Real(operand) = write.operand else {
+            return Err(plain(format!(
+                "update-hyperedge {}: a Currency operand reached apply — there is no \
+                 hyperedge-scoped Currency lane; collect_update_hyperedge should never \
+                 have produced this (wiring bug, not content)",
+                write.field
+            )));
+        };
+        let (new_value, previous) = match write.op {
+            UpdateOp::Set => (
+                operand,
+                self.probe_previous_hyperedge(&*graph, id, &write.field),
+            ),
+            UpdateOp::Add | UpdateOp::Sub | UpdateOp::Scale => {
+                self.refuse_arithmetic_on_enum_field(&write.field, "update-hyperedge")?;
+                let current = graph
+                    .hyperedge_attribute(id, &write.field)
+                    .map_err(from_graph)?;
+                let combined = combine_and_check_finite(
+                    write.op,
+                    current,
+                    operand,
+                    &write.field,
+                    "update-hyperedge",
+                )?;
+                (combined, Some(current))
+            }
+        };
+        let new_value = canonical_zero(new_value);
+        self.store_range_check(&write.field, new_value)?;
+        graph
+            .update_hyperedge_attribute(id, &write.field, new_value)
+            .map_err(from_graph)?;
+        self.record(Write::HyperedgeAttribute {
+            id,
+            field: write.field.clone(),
+            previous,
+            value: new_value,
+        });
+        Ok(())
     }
 
     /// `(add-node <enum-ref> <expr> <field-init>*)`.
@@ -1529,11 +1733,15 @@ impl<'a> EffectExecutor<'a> {
         };
         if !field_inits.is_empty() {
             // §2.8's ruling already names the adjacent gap (per-membership
-            // payload, hyperedge field mutation); initial hyperedge fields
-            // have no trait storage either — loud, not dropped.
+            // payload, hyperedge field mutation); mint-time field-inits are
+            // a DISTINCT unserved lane — the own-field storage exists since
+            // Task 5 (E2a) and `update-hyperedge`/`(hyperedge-attr …)` are
+            // its two landed writers (Task 6), but the init sugar on THIS
+            // verb is not routed to it in this train. Loud, not dropped.
             return Err(plain(
-                "hyperedge <field-init> has no substrate storage in Phase 1 — \
-                 a declared Phase-2 gap (§2.8 draft ruling), never silently dropped",
+                "hyperedge <field-init> is not served at mint time — write the field \
+                 after minting through update-hyperedge (or seed it in the scenario \
+                 with (hyperedge-attr …)); never silently dropped",
             ));
         }
         let hyperedge_type = self.enum_member_checked(type_ref, "add-hyperedge")?;
@@ -2732,6 +2940,10 @@ mod tests {
 
     #[test]
     fn hyperedge_field_inits_are_a_loud_phase_2_gap() {
+        // The mint-time init lane STAYS refused after Task 6 — with the
+        // reason corrected: the own-field storage exists (Task 5) and
+        // `update-hyperedge`/`(hyperedge-attr …)` are its writers, but the
+        // init sugar on `add-hyperedge` itself is not routed to it.
         let mut fixture = Fixture::new();
         let mut fuel = 128;
         let err = fixture
@@ -2741,7 +2953,7 @@ mod tests {
                 &mut fuel,
             )
             .unwrap_err();
-        assert!(err.message.contains("Phase-2 gap"), "{err}");
+        assert!(err.message.contains("not served at mint time"), "{err}");
     }
 
     // ---- the ADR182 R1 write log ----
@@ -4834,19 +5046,46 @@ mod tests {
         );
     }
 
-    /// The retired refusal's other half STAYS refused — with a corrected
-    /// message that no longer claims an edge is one f64 strength (that
-    /// stopped being true at T3 PR A) and still names the constitutional
-    /// reason a hyperedge's own-field storage cannot be improvised here.
+    /// A COMMUNITY hyperedge over two classes, with its id returned for the
+    /// `h` binding — the hyperedge half of [`edge_fixture`]'s pattern.
+    fn hyperedge_fixture() -> (MemoryGraph, HyperedgeId) {
+        let mut graph = MemoryGraph::new();
+        let a = graph.add_node("SOCIAL_CLASS").unwrap();
+        let b = graph.add_node("SOCIAL_CLASS").unwrap();
+        let cell = graph.add_hyperedge("COMMUNITY", &[a, b]).unwrap();
+        (graph, cell)
+    }
+
+    fn hyperedge_types() -> TypeEnv {
+        TypeEnv {
+            fields: HashMap::from([(
+                "community/heat".to_owned(),
+                FieldDecl {
+                    ty: BslType::Coefficient,
+                    kind: FieldKind::Intensive,
+                },
+            )]),
+            exemptions: &[],
+        }
+    }
+
+    /// Task 6 (Community port train, E2b): `update-hyperedge` WRITES on
+    /// BOTH dispatch sites — the refusal this test's predecessor pinned
+    /// ("no substrate storage … III.7") was discharged by Task 5's
+    /// `GraphSubstrate::update_hyperedge_attribute`, so the pin inverts:
+    /// the execute path writes and records `Write::HyperedgeAttribute`,
+    /// and the collect-then-apply path lands the combined value through
+    /// the APPLY phase. (The M4 lesson: each site owes its own proof.)
     #[test]
-    fn update_hyperedge_still_refuses_with_a_hyperedge_only_message() {
-        let (mut graph, _a, _b) = edge_fixture();
-        let types = edge_types();
+    fn update_hyperedge_writes_a_declared_hyperedge_field_on_both_dispatch_sites() {
+        // Site 1 — the execute path, observed so the write log is visible.
+        let (mut graph, cell) = hyperedge_fixture();
+        let types = hyperedge_types();
         let enums = enums();
         let mut sink = CollectingSink::default();
-        let mut executor = EffectExecutor::new(&types, &enums, None);
+        let mut log = CollectingWriteLog::new();
         let env = EvalEnv {
-            bindings: HashMap::new(),
+            bindings: HashMap::from([("h".to_owned(), Value::HyperedgeRef(cell))]),
             intrinsic_costs: &IntrinsicCosts::default(),
             graph: None,
             types: None,
@@ -4854,40 +5093,58 @@ mod tests {
             elements: Vec::new(),
             draw_context: None,
         };
-        let (form, _) = read("(effects (update-hyperedge h sector/output (set 1)))")
+        let (form, _) = read("(effects (update-hyperedge h community/heat (set 0.5c)))")
             .expect("effects source must parse");
         let SExpr::List(items) = form else {
             unreachable!()
         };
         let mut fuel = 128;
-        let err = executor
-            .execute_effects(
-                &items[1..],
-                &env,
-                &EmptyIntrinsicHost,
-                &mut graph,
-                &mut sink,
-                &mut fuel,
-            )
-            .unwrap_err();
-        assert!(err.message.contains("Constitution III.7"), "{err}");
+        {
+            let mut executor =
+                EffectExecutor::observed(&types, &enums, None, "community/probe", &mut log);
+            executor
+                .execute_effects(
+                    &items[1..],
+                    &env,
+                    &EmptyIntrinsicHost,
+                    &mut graph,
+                    &mut sink,
+                    &mut fuel,
+                )
+                .expect("update-hyperedge must serve on the execute path");
+        }
+        let stored = graph.hyperedge_attribute(cell, "community/heat").unwrap();
+        assert!((stored - 0.5).abs() < 1e-12, "set to 0.5, stored: {stored}");
         assert!(
-            !err.message.contains("one f64 strength"),
-            "the retained refusal must stop describing pre-T3 edge storage: {err}"
+            log.writes().iter().any(|w| matches!(
+                w,
+                Write::HyperedgeAttribute {
+                    field,
+                    previous: None,
+                    value,
+                    ..
+                } if field == "community/heat" && (*value - 0.5).abs() < 1e-12
+            )),
+            "one HyperedgeAttribute record with no prior value, after the store accepted it"
         );
-        // The collect path's copy, likewise.
+
+        // Site 2 — collect-then-apply: `add` reads the pre-state (0.5 from
+        // site 1's write), combines, and lands 0.75 through the APPLY phase.
         let mut fuel = 128;
-        let err = collect_only(
-            &graph,
+        collect_then_apply(
+            &mut graph,
             &types,
             &enums,
-            HashMap::new(),
-            "(effects (update-hyperedge h sector/output (set 1)))",
+            HashMap::from([("h".to_owned(), Value::HyperedgeRef(cell))]),
+            "(effects (update-hyperedge h community/heat (add 0.25c)))",
             &mut fuel,
         )
-        .unwrap_err();
-        assert!(err.message.contains("Constitution III.7"), "{err}");
-        assert!(!err.message.contains("one f64 strength"), "{err}");
+        .expect("update-hyperedge must serve on the collect path");
+        let stored = graph.hyperedge_attribute(cell, "community/heat").unwrap();
+        assert!(
+            (stored - 0.75).abs() < 1e-12,
+            "0.5 + 0.25 through collect-then-apply, stored: {stored}"
+        );
     }
 
     /// `sub` — the fourth op — on a deffield-declared edge field, completing

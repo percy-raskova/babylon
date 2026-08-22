@@ -9082,7 +9082,63 @@ consequences are the ordinary kind of review item.
        Per-rule fuel, measured by `bsl-fuel-report` over world 1 and
        declared at bound+1 (D-NF+22 — per-world bounds, since
        `:max-members` is census-derived): c00 81, c01 22, c02 21,
-       c03f/c03l/c03r 72 each, c04 115.
+       c03f/c03l/c03r 72 each, c04 115. (c00 was re-measured to **79** at
+       #688's harvest: the anchor's comparison guard dropped to `#t`, so
+       the computed bound fell to 78.)
+   * - D204
+     - §4.2, §2.8, §6.2
+     - **The c06 split and the ADR214 floor's landing (Community port
+       train, Task 9, 2026-08-22).** The plan's c06 was ONE rule — "the
+       pack's ONLY 14-arm dispatch" driving the ``r < floor``
+       redistribution — but the pre-state law (§4.2 C4) makes a
+       write-then-read WITHIN one rule's body impossible: a floor written
+       by ``update-hyperedge`` is invisible to a later operand's
+       ``field-of`` in the same collect pass. The dispatch therefore lands
+       as TWO rules: ``c06a-floor-dispatch`` (the pack's only 14-arm
+       ``community/kind`` chain, writing the per-community
+       ``community/substrate-floor`` cache) and ``c06b-floor-redistribute``
+       (reading it the same tick — a cross-rule read, the §8b shape spike
+       (f) proved at Task 7). The math is frozen's
+       (``formulas/consciousness.py:98-107``) unchanged; the pack's rule
+       count moves 14 -> 15, and DG-2's "12 if no-publish" becomes 13.
+       §8a gains a row: c05's total/unorganized expressions are inlined
+       per write (no ``defexpr`` exists) — the bit-exact mirror assertions
+       are the copies-agree mechanism. §8b gains a row: c06b reads c06a's
+       cache (the skip gate keeps a skipped community's cache UNWRITTEN,
+       honest-null — §9 item 5's law one field over). **The landing
+       evidence:** world 2 (``community-floor-conformance.bscn``) binds
+       NEW_AFRIKAN (0.136) and FIRST_NATIONS (0.155) on one tick — ADR214
+       Ruling 3's ordering EXECUTED — with h0's nonzero f arm proving the
+       redistribution's proportionality, and SETTLER as the
+       identically-0.0 control; world 3
+       (``community-degenerate-conformance.bscn``) fires the degenerate
+       branch (zero-cadre org; c05 emits (0,1,0), c06 routes the floor
+       bit-identically to frozen's fused branch — §6.2 I5) and the no-org
+       skip gate (the prior ternary preserved byte-exactly). The
+       ``floor_redistribution_handles_zero_lf`` pin drives c06b's else arm
+       through a test-scoped rig rule (byte-ordered c05 < c05z < c06a):
+       the arm is unreachable from c05's normalized outputs BY
+       CONSTRUCTION (r < floor <= 0.18 forces l+f > 0.82), so the only
+       honest coverage is synthetic. **Fuel is per-world** (D-NF+22 —
+       ``:max-members`` is census-derived): measured by ``bsl-fuel-report``
+       over all three worlds, declared at max+1: c00 104, c01 27, c02 21,
+       c03f/c03l/c03r 72, c04 151, c05 596, c06a 252, c06b 272 (world 2's
+       wider census is the worst case for c00/c01/c04-c06b; world 1 for
+       c03\*). World-1 fired arithmetic after the extension: 21 = 18 +
+       c05:1 + c06a:1 + c06b:1. Mutation vectors (six, all proven): the
+       NEW_AFRIKAN arm swapped to floor-chicano reds both world-2 floor
+       pins; a one-world FN-table typo (0.155 -> 0.145) reds the
+       cross-world parity test AND the ordering pin; the CHICANO arm
+       swapped to floor-elder reds both world-3 pins; the converse —
+       replacing the chain's final else with a 0.99p literal — stays GREEN
+       on all twenty tests (no world seeds ELDER: the unexercised arms
+       provably cannot fire); dropping c06b's ``/ lf`` reds the
+       proportionality pin; gutting the epsilon quotient to ``(< T 0.0c)``
+       fails the degenerate world at the driver (0/0 NaN refused
+       non-finite) and every floor pin with it. c07/c08 are DG-2-GATED and
+       do not exist until the Director's ruling — §8a row 4's epsilon
+       independence (c05's total vs c07's per-component entropy) is stated
+       but only c05's half is testable this task.
 
 Authoring idioms (non-normative)
 -----------------------------------

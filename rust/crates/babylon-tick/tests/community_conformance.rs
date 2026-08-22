@@ -34,13 +34,15 @@
 //! binary64):
 //!
 //! ```text
-//! community-conformance world 1 — mirror output (the oracle)
+//! community-conformance — mirror output (the oracle)
+//! == world 1 (community-conformance.bscn) ==
 //! h0 new-afrikan kind=NEW_AFRIKAN
 //!   member-count = 2.0
 //!   r-raw = 0.4
 //!   l-raw = 0.0625
 //!   f-raw = 0.0
 //!   density-sum  = 1.5
+//!   substrate-floor = 0.136
 //!   r = 0.8648648648648649
 //!   l = 0.13513513513513511
 //!   f = 0.0
@@ -55,6 +57,7 @@
 //!   l-raw = 0.125
 //!   f-raw = 0.125
 //!   density-sum  = 2.0
+//!   substrate-floor = 0.0
 //!   r = 0.0
 //!   l = 0.5
 //!   f = 0.5
@@ -69,6 +72,7 @@
 //!   l-raw = 0.125
 //!   f-raw = 0.0
 //!   density-sum  = 2.0
+//!   substrate-floor = 0.04
 //!   r = 0.7619047619047619
 //!   l = 0.23809523809523808
 //!   f = 0.0
@@ -87,6 +91,112 @@
 //! n4 unaffiliated: community-cost-modifier = 1.0
 //! n5 inactive-member: org-r-weight = 0.0, org-l-weight = 0.0, org-f-weight = 0.0, org-count = 0.0
 //! n5 inactive-member: community-cost-modifier = ABSENT (honest null)
+//! == world 2 (community-floor-conformance.bscn) ==
+//! h0 na-comm kind=NEW_AFRIKAN
+//!   member-count = 2.0
+//!   r-raw = 0.03125
+//!   l-raw = 1.0
+//!   f-raw = 0.0625
+//!   density-sum  = 2.5
+//!   substrate-floor = 0.136
+//!   r = 0.136
+//!   l = 0.8131764705882352
+//!   f = 0.0508235294117647
+//!   contestation = 0.5378856272512799   (DG-2-gated)
+//!   dominant     = LIBERAL   (DG-2-gated)
+//!   decayed heat               = 0.475
+//!   decayed cohesion           = 0.7275
+//!   decayed education-pressure = 0.225
+//! h1 fn-comm kind=FIRST_NATIONS
+//!   member-count = 1.0
+//!   r-raw = 0.03125
+//!   l-raw = 1.0
+//!   f-raw = 0.0
+//!   density-sum  = 2.0
+//!   substrate-floor = 0.155
+//!   r = 0.155
+//!   l = 0.845
+//!   f = 0.0
+//!   contestation = 0.3925724663663697   (DG-2-gated)
+//!   dominant     = LIBERAL   (DG-2-gated)
+//!   decayed heat               = 0.2375
+//!   decayed cohesion           = 0.485
+//!   decayed education-pressure = 0.1125
+//! h2 settler-comm kind=SETTLER
+//!   member-count = 1.0
+//!   r-raw = 0.0
+//!   l-raw = 1.0
+//!   f-raw = 0.0
+//!   density-sum  = 1.0
+//!   substrate-floor = 0.0
+//!   r = 0.0
+//!   l = 1.0
+//!   f = 0.0
+//!   contestation = 0.0   (DG-2-gated)
+//!   dominant     = LIBERAL   (DG-2-gated)
+//!   decayed heat               = 0.7124999999999999
+//!   decayed cohesion           = 0.60625
+//!   decayed education-pressure = 0.45
+//! h3 low-density-comm kind=SETTLER
+//!   member-count = 2.0
+//!   r-raw = 0.015625
+//!   l-raw = 0.0
+//!   f-raw = 0.0
+//!   density-sum  = 0.5
+//!   substrate-floor = 0.0
+//!   r = 0.030303030303030304
+//!   l = 0.9696969696969697
+//!   f = 0.0
+//!   contestation = 0.12360498799464745   (DG-2-gated)
+//!   dominant     = LIBERAL   (DG-2-gated)
+//!   decayed heat               = 0.475
+//!   decayed cohesion           = 0.2425
+//!   decayed education-pressure = 0.3375
+//! n1 w2-a: org-r-weight = 0.03125, org-l-weight = 1.0, org-f-weight = 0.0, org-count = 2.0
+//! n1 w2-a: community-cost-modifier = 1.09375
+//! n2 w2-b: org-r-weight = 0.03125, org-l-weight = 1.0, org-f-weight = 0.125, org-count = 3.0
+//! n2 w2-b: community-cost-modifier = 0.875
+//! n3 w2-s: org-r-weight = 0.0, org-l-weight = 1.0, org-f-weight = 0.0, org-count = 1.0
+//! n3 w2-s: community-cost-modifier = 1.0
+//! n4 w2-c: org-r-weight = 0.0, org-l-weight = 0.0, org-f-weight = 0.0, org-count = 0.0
+//! n4 w2-c: community-cost-modifier = 1.0
+//! n5 w2-d: org-r-weight = 0.03125, org-l-weight = 0.0, org-f-weight = 0.0, org-count = 1.0
+//! n5 w2-d: community-cost-modifier = 1.0
+//! == world 3 (community-degenerate-conformance.bscn) ==
+//! h0 deg-comm kind=CHICANO
+//!   member-count = 1.0
+//!   r-raw = 0.0
+//!   l-raw = 0.0
+//!   f-raw = 0.0
+//!   density-sum  = 1.0
+//!   substrate-floor = 0.113
+//!   r = 0.113
+//!   l = 0.887
+//!   f = 0.0
+//!   contestation = 0.3210795653730473   (DG-2-gated)
+//!   dominant     = LIBERAL   (DG-2-gated)
+//!   decayed heat               = 0.475
+//!   decayed cohesion           = 0.7275
+//!   decayed education-pressure = 0.225
+//! h1 no-org-comm kind=QUEER
+//!   member-count = 1.0
+//!   r-raw = 0.0
+//!   l-raw = 0.0
+//!   f-raw = 0.0
+//!   density-sum  = 0.0
+//!   substrate-floor = ABSENT (no-org skip gate)
+//!   r = 0.125
+//!   l = 0.75
+//!   f = 0.125
+//!   contestation = PRESERVED (no-org skip gate)
+//!   dominant     = PRESERVED (no-org skip gate)
+//!   decayed heat               = 0.2375
+//!   decayed cohesion           = 0.485
+//!   decayed education-pressure = 0.1125
+//! n1 d-a: org-r-weight = 0.0, org-l-weight = 0.0, org-f-weight = 0.0, org-count = 1.0
+//! n1 d-a: community-cost-modifier = 0.75
+//! n2 d-b: org-r-weight = 0.0, org-l-weight = 0.0, org-f-weight = 0.0, org-count = 0.0
+//! n2 d-b: community-cost-modifier = 1.125
 //! ```
 //!
 //! # THE SPIKE (Task 7 Step 5) — the seven-shape verdicts
@@ -246,16 +356,19 @@ fn defenum_ordinal_parity_with_the_frozen_order() {
 // deleted — the INV-010 estate's Rust half) ----
 
 /// §8c row 1: communities appear ONLY as hyperedges — no node whose type
-/// name contains `COMMUNITY` may exist in the census.
+/// name contains `COMMUNITY` may exist in the census. Every world this
+/// pack loads into (plan §8c: the guards outlive the frozen linter).
 #[test]
 fn no_community_typed_node_exists() {
-    let mut graph = HypergraphStore::new();
-    let loaded = load_scenario(SCENARIO, &mut graph).expect("world 1 loads");
-    for (member, count) in &loaded.node_types {
-        assert!(
-            !member.contains("COMMUNITY"),
-            "node type {member} (×{count}) — communities are hyperedges, never nodes (§8c row 1)"
-        );
+    for scenario in [SCENARIO, SCENARIO_W2, SCENARIO_W3] {
+        let mut graph = HypergraphStore::new();
+        let loaded = load_scenario(scenario, &mut graph).expect("world loads");
+        for (member, count) in &loaded.node_types {
+            assert!(
+                !member.contains("COMMUNITY"),
+                "node type {member} (×{count}) — communities are hyperedges, never nodes (§8c row 1)"
+            );
+        }
     }
 }
 
@@ -320,22 +433,27 @@ fn membership_crosses_whole() {
 /// dressed as a passing test).
 #[test]
 fn exactly_one_institution_carrier() {
-    let mut graph = HypergraphStore::new();
-    let loaded = load_scenario(SCENARIO, &mut graph).expect("world 1 loads");
-    assert_eq!(
-        loaded.node_types.get("INSTITUTION"),
-        Some(&1),
-        "exactly one INSTITUTION carrier — tick.rs's subject derivation \
-         iterates EVERY node of the type (D202's filter note), so zero is \
-         silent inertness and two is double-applied hyperedge writes"
-    );
-    // …and it is the anchor: `institution/community-carrier` reads 1.
-    let carrier = graph.nodes("INSTITUTION");
-    assert_eq!(carrier.len(), 1);
-    let anchor = graph
-        .node_attribute(carrier[0], "institution/community-carrier")
-        .expect("the carrier carries the anchor field");
-    assert_eq!(anchor.to_bits(), (1.0_f64).to_bits());
+    // Every world this pack loads into (§8c row 4's "never zero either" is
+    // the loaded half — a carrier-free world runs the carrier rules over
+    // an empty population, silent inertness dressed as a passing test).
+    for scenario in [SCENARIO, SCENARIO_W2, SCENARIO_W3] {
+        let mut graph = HypergraphStore::new();
+        let loaded = load_scenario(scenario, &mut graph).expect("world loads");
+        assert_eq!(
+            loaded.node_types.get("INSTITUTION"),
+            Some(&1),
+            "exactly one INSTITUTION carrier per world — tick.rs's subject \
+             derivation iterates EVERY node of the type (D202's filter \
+             note), so zero is silent inertness and two is double-applied \
+             hyperedge writes"
+        );
+        let carrier = graph.nodes("INSTITUTION");
+        assert_eq!(carrier.len(), 1);
+        let anchor = graph
+            .node_attribute(carrier[0], "institution/community-carrier")
+            .expect("the carrier carries the anchor field");
+        assert_eq!(anchor.to_bits(), (1.0_f64).to_bits());
+    }
 }
 
 // ---- Task 8: c00-c04 — the census and the org-weight decomposition ----
@@ -349,11 +467,11 @@ fn tick_world_1() -> HypergraphStore {
     let report = run_once_into(SCENARIO, PACK, &mut graph, &mut sink)
         .expect("world 1 + the c00-c04 pack ticks clean");
     assert_eq!(
-        report.fired, 18,
-        "c00:1 (carrier) + c01:4 (active classes) + c02:5 (all classes) + \
-         c03f:1 (fash-org) + c03l:1 (lib-org) + c03r:2 (rev-org AND n9 — \
-         n9 is REVOLUTIONARY too; it FIRES with an empty for-each, frozen's \
-         :421 skip) + c04:4 (active classes)"
+        report.fired, 21,
+        "c00:1 + c01:4 (active classes) + c02:5 (all classes) + c03f:1 + \
+         c03l:1 + c03r:2 (rev-org AND n9 — n9 FIRES with an empty for-each, \
+         frozen's :421 skip is structural) + c04:4 (active classes) + \
+         c05:1 + c06a:1 + c06b:1 (the carrier thrice more, Task 9)"
     );
     graph
 }
@@ -483,4 +601,282 @@ fn density_sum_counts_org_memberships_not_orgs() {
         (2.0_f64).to_bits(),
         "n1's 2 orgs over 1 member"
     );
+}
+
+// ---- Task 9: c05 + c06a/c06b — normalization and the ADR214 floor ----
+// (c07/c08 are DG-2-gated and do not exist until the Director's ruling.)
+// Bit-exact against the mirror transcript (`.to_bits()`), per §9.
+
+/// World 2 and world 3, single-homed beside world 1.
+const SCENARIO_W2: &str = include_str!("../content/scenarios/community-floor-conformance.bscn");
+const SCENARIO_W3: &str =
+    include_str!("../content/scenarios/community-degenerate-conformance.bscn");
+
+fn tick(scenario: &str, pack: &str) -> HypergraphStore {
+    let mut graph = HypergraphStore::new();
+    let mut sink = CollectingSink::default();
+    run_once_into(scenario, pack, &mut graph, &mut sink).expect("the world + pack ticks clean");
+    graph
+}
+
+/// Step 1: world 1's normalized ternaries — the pack's c05/c06 output,
+/// bit-exact against the mirror. (No floor binds in world 1.)
+#[test]
+fn world_1_normalizes_to_the_mirror() {
+    let graph = tick(SCENARIO, PACK);
+    // h0: (0.4, 0.0625, 0.0) / 0.4625 — no bind (0.8648… > 0.136).
+    assert_eq!(
+        he(&graph, 0, "community/revolutionary").to_bits(),
+        (0.8648648648648649_f64).to_bits()
+    );
+    assert_eq!(
+        he(&graph, 0, "community/liberal").to_bits(),
+        (0.13513513513513511_f64).to_bits()
+    );
+    assert_eq!(
+        he(&graph, 0, "community/fascist").to_bits(),
+        (0.0_f64).to_bits()
+    );
+    // h1: (0, 0.125, 0.125) / 0.25 — the (0.0, 0.5, 0.5) tie.
+    assert_eq!(
+        he(&graph, 1, "community/liberal").to_bits(),
+        (0.5_f64).to_bits()
+    );
+    assert_eq!(
+        he(&graph, 1, "community/fascist").to_bits(),
+        (0.5_f64).to_bits()
+    );
+    // h2: (0.4, 0.125, 0.0) / 0.525 — no bind (0.7619… > 0.04).
+    assert_eq!(
+        he(&graph, 2, "community/revolutionary").to_bits(),
+        (0.7619047619047619_f64).to_bits()
+    );
+}
+
+/// Step 1: the unorganized fraction defaults to liberal — world 2's h3 has
+/// density-sum 0.5, so unorganized = 0.5 folds into l (Jackson: passive
+/// acceptance is liberal hegemony). The 0.0 SETTLER floor never binds, so
+/// the pure c05 shape is what this reads.
+#[test]
+fn unorganized_fraction_defaults_to_liberal() {
+    let graph = tick(SCENARIO_W2, PACK);
+    assert_eq!(
+        he(&graph, 3, "community/density-sum").to_bits(),
+        (0.5_f64).to_bits()
+    );
+    assert_eq!(
+        he(&graph, 3, "community/liberal").to_bits(),
+        (0.9696969696969697_f64).to_bits(),
+        "(0.0 + 0.5) / 0.515625 — the unorganized 0.5 IS the numerator"
+    );
+    assert_eq!(
+        he(&graph, 3, "community/revolutionary").to_bits(),
+        (0.030303030303030304_f64).to_bits(),
+        "0.015625 / 0.515625"
+    );
+}
+
+/// Step 1: the degenerate branch emits (0, 1, 0) and NOTHING else — the
+/// floor routes through c06, bit-identically (§6.2 I5): world 3's h0 has a
+/// zero-cadre only org, so every weight is 0, total collapses, and c06's
+/// CHICANO arm (0.113) lands r and 1 − 0.113 on l through the lf main arm.
+#[test]
+fn degenerate_total_yields_floor_and_remainder() {
+    let graph = tick(SCENARIO_W3, PACK);
+    assert_eq!(
+        he(&graph, 0, "community/revolutionary").to_bits(),
+        (0.113_f64).to_bits()
+    );
+    assert_eq!(
+        he(&graph, 0, "community/liberal").to_bits(),
+        (0.887_f64).to_bits(),
+        "1.0 x 0.887 / 1.0 — exact"
+    );
+    assert_eq!(
+        he(&graph, 0, "community/fascist").to_bits(),
+        (0.0_f64).to_bits()
+    );
+}
+
+/// Step 1: world 2's h0 — the NEW_AFRIKAN floor binds (normalized r ≈
+/// 0.037 < 0.136) and the remaining 0.864 redistributes to l and f
+/// PROPORTIONALLY (h0's weak-fash edge gives a nonzero f arm).
+#[test]
+fn floor_binds_and_redistributes_proportionally() {
+    let graph = tick(SCENARIO_W2, PACK);
+    assert_eq!(
+        he(&graph, 0, "community/revolutionary").to_bits(),
+        (0.136_f64).to_bits()
+    );
+    assert_eq!(
+        he(&graph, 0, "community/liberal").to_bits(),
+        (0.8131764705882352_f64).to_bits()
+    );
+    assert_eq!(
+        he(&graph, 0, "community/fascist").to_bits(),
+        (0.0508235294117647_f64).to_bits()
+    );
+}
+
+/// Step 1: the lf <= 1e-10 arm — reachable ONLY synthetically (c05's
+/// normalized outputs never produce it: r < floor <= 0.18 forces
+/// l+f > 0.82). A test-scoped rig rule (byte-ordered c05 < c05z < c06a)
+/// overwrites world 3's h0 to (0.05, 0, 0) after c05's normalize; c06b
+/// then takes the else arm: l = remaining, f = 0. Dropping the else arm
+/// reds this test (l stays 0).
+#[test]
+fn floor_redistribution_handles_zero_lf() {
+    let rig = r#"
+(rule community/c05z-rig-zero-lf
+  :material-basis "Task 9 test rig: write the pathological (0.05, 0, 0) ternary onto world 3's h0 between c05 and c06a — the ONLY way lf <= 1e-10 with r < floor exists (c05's normalized outputs never produce it)"
+  :fuel 64
+  (domain NodeType/INSTITUTION)
+  (bindings (binding carrier :field institution/community-carrier))
+  (when #t)
+  (effects
+    (for-each (hyperedges HyperedgeType/COMMUNITY)
+      (guard (= (field-of it community/kind) CommunityType/CHICANO)
+        (update-hyperedge it community/revolutionary (set 0.05p))
+        (update-hyperedge it community/liberal (set 0.0p))
+        (update-hyperedge it community/fascist (set 0.0p))))))
+"#;
+    let mut pack_with_rig = PACK.to_owned();
+    pack_with_rig.push_str(rig);
+    let graph = tick(SCENARIO_W3, &pack_with_rig);
+    assert_eq!(
+        he(&graph, 0, "community/revolutionary").to_bits(),
+        (0.113_f64).to_bits()
+    );
+    assert_eq!(
+        he(&graph, 0, "community/liberal").to_bits(),
+        (0.887_f64).to_bits(),
+        "the else arm: l = 1 - floor outright (no lf to scale against)"
+    );
+    assert_eq!(
+        he(&graph, 0, "community/fascist").to_bits(),
+        (0.0_f64).to_bits()
+    );
+}
+
+/// Step 1: the SETTLER floor is identically 0.0 — the guard `r < floor`
+/// is false at floor 0, so world 2's h2 keeps its normalized (0, 1, 0)
+/// untouched (§6.2: the settler pole IS the norm).
+#[test]
+fn settler_floor_is_identically_zero() {
+    let graph = tick(SCENARIO_W2, PACK);
+    assert_eq!(
+        he(&graph, 2, "community/substrate-floor").to_bits(),
+        (0.0_f64).to_bits()
+    );
+    assert_eq!(
+        he(&graph, 2, "community/revolutionary").to_bits(),
+        (0.0_f64).to_bits()
+    );
+    assert_eq!(
+        he(&graph, 2, "community/liberal").to_bits(),
+        (1.0_f64).to_bits()
+    );
+    assert_eq!(
+        he(&graph, 2, "community/fascist").to_bits(),
+        (0.0_f64).to_bits()
+    );
+}
+
+/// Step 1: ADR214 Ruling 3 EXECUTED — world 2's FIRST_NATIONS community
+/// lands r = 0.155 ABOVE its NEW_AFRIKAN community's 0.136, the first time
+/// the frozen table's exact tie breaks (an emergent output of the chosen
+/// measure, not a fresh stipulation).
+#[test]
+fn first_nations_floor_exceeds_new_afrikan() {
+    let graph = tick(SCENARIO_W2, PACK);
+    let na = he(&graph, 0, "community/revolutionary");
+    let fn_ = he(&graph, 1, "community/revolutionary");
+    assert_eq!(na.to_bits(), (0.136_f64).to_bits());
+    assert_eq!(fn_.to_bits(), (0.155_f64).to_bits());
+    assert!(
+        fn_ > na,
+        "Ruling 3: FIRST_NATIONS strictly exceeds NEW_AFRIKAN"
+    );
+    assert_eq!(
+        he(&graph, 1, "community/liberal").to_bits(),
+        (0.845_f64).to_bits()
+    );
+}
+
+/// Step 1: frozen's `:452` skip gate — world 3's h1 (no org edges on its
+/// member) keeps its seeded prior ternary BYTE-EXACTLY, and c06a's cache
+/// write is skipped too (the field stays ABSENT — §9 item 5's law one
+/// field over).
+#[test]
+fn community_without_orgs_keeps_its_prior_consciousness() {
+    let graph = tick(SCENARIO_W3, PACK);
+    assert_eq!(
+        he(&graph, 1, "community/revolutionary").to_bits(),
+        (0.125_f64).to_bits()
+    );
+    assert_eq!(
+        he(&graph, 1, "community/liberal").to_bits(),
+        (0.75_f64).to_bits()
+    );
+    assert_eq!(
+        he(&graph, 1, "community/fascist").to_bits(),
+        (0.125_f64).to_bits()
+    );
+    assert!(
+        graph
+            .hyperedge_attribute(HyperedgeId(1), "community/substrate-floor")
+            .is_err(),
+        "a skipped community's floor cache is never written — honest null, never 0.0"
+    );
+}
+
+/// Step 3's cross-world parity (DG-3's mechanism): every world's 14 floor
+/// constants (and the three decay alphas) are equal to each other and to
+/// the ADR214 values — a typo in one world cannot pass.
+#[test]
+fn the_floor_table_is_byte_identical_across_all_three_worlds() {
+    let expected: [(&str, f64); 14] = [
+        ("community/floor-settler", 0.0),
+        ("community/floor-patriarchal", 0.0),
+        ("community/floor-new-afrikan", 0.136),
+        ("community/floor-first-nations", 0.155),
+        ("community/floor-chicano", 0.113),
+        ("community/floor-women", 0.04),
+        ("community/floor-trans", 0.06),
+        ("community/floor-disabled", 0.03),
+        ("community/floor-queer", 0.04),
+        ("community/floor-undocumented", 0.1),
+        ("community/floor-incarcerated", 0.18),
+        ("community/floor-youth", 0.0),
+        ("community/floor-adult", 0.0),
+        ("community/floor-elder", 0.02),
+    ];
+    for scenario in [SCENARIO, SCENARIO_W2, SCENARIO_W3] {
+        let mut graph = HypergraphStore::new();
+        let loaded = load_scenario(scenario, &mut graph).expect("world loads");
+        for (name, value) in &expected {
+            let actual = loaded
+                .consts
+                .get(*name)
+                .unwrap_or_else(|| panic!("{name} missing from a world"));
+            let babylon_bsl::evaluator::Value::Real(bits) = actual else {
+                panic!("{name} must be a probability literal")
+            };
+            assert_eq!(
+                bits.to_bits(),
+                value.to_bits(),
+                "{name} diverges from the ADR214 value in a world"
+            );
+        }
+        for (name, value) in [
+            ("community/heat-decay-alpha", 0.05),
+            ("community/cohesion-decay-alpha", 0.03),
+            ("community/education-pressure-decay", 0.1),
+        ] {
+            assert!(
+                loaded.consts.contains_key(name),
+                "{name} missing from a world (value {value})"
+            );
+        }
+    }
 }

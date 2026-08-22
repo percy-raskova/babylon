@@ -69,7 +69,7 @@ fn corpus_files() -> Vec<PathBuf> {
 const PINNED_DIGESTS: &[(&str, &str)] = &[
     (
         "community.bsl",
-        "9c9599f79f8cd4d92c0dfae36c498d13654d14cc933d90e202beabd81add9557",
+        "14cb56074a85598b4e945c926f386e0e8cf56f3dbbcf9d71a97782928d27dd3c",
     ),
     (
         "consciousness.bsl",
@@ -205,7 +205,15 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     ),
     (
         "community-conformance.bscn",
-        "886a948a9e16e7c625a7a75f72e43d4a8c8f6c384b1cc1f126fea9120ec21b32",
+        "0e13c145c0398b700952737aaaffeb6a4c575d1894cccfc96a31944fbc0ba984",
+    ),
+    (
+        "community-degenerate-conformance.bscn",
+        "b8ad8f7f0472ff8c7baeeee8d3e71653edc43635c19cee7c93048e1035b15ab0",
+    ),
+    (
+        "community-floor-conformance.bscn",
+        "ffabae42ddf3da7667e195cb06dd4e9a5b57f7bdc4ae105358cb4a9f59e77843",
     ),
     (
         "consciousness-ternary-conformance.bscn",

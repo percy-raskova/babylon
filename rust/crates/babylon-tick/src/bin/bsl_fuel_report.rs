@@ -174,9 +174,11 @@ const SOLO_PACKS: &[(&str, &str, Option<&str>, &str)] = &[
         include_str!("../../content/rules/vitality-attrition.bsl"),
     ),
     (
-        // Community port train (issue #667), Task 8: the c00-c04 census
-        // pack over conformance world 1. Task 9's worlds join as their own
-        // rows when they land.
+        // Community port train (issue #667), Tasks 8-9: the pack over
+        // conformance world 1. The pack's per-world bounds (worlds 2/3 —
+        // D-NF+22) are measured by the declare-low/read-E-LOAD-040 cycle in
+        // tests/community_conformance.rs, which loads all three worlds at
+        // the declared fuel (a world whose bound exceeds it reds at load).
         "community",
         include_str!("../../content/scenarios/community-conformance.bscn"),
         None,

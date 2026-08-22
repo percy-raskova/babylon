@@ -16,13 +16,13 @@ plus one override:
 
 | payload | frozen type | this train's requested BSL shape | consumed by (the blocked half) |
 |---|---|---|---|
-| `role` | `MembershipRole` (5 members, frozen order CORE_ORGANIZER, ACTIVE, PARTICIPANT, PERIPHERAL, SYMPATHIZER — `models/enums/social.py:79-85`) | **int-ordinal**, with `ROLE_STRENGTH_WEIGHTS` (`entities/community.py:25-31`: 1.0/0.7/0.4/0.2/0.1) read through a `defconst` ladder | threat scoring (`community.py:579-608`, the role → weight lookup at `:601`) AND the infrastructure maintenance count (`:655-661`, `role == CORE_ORGANIZER`) |
-| `strength` | `Coefficient` [0,1] | a `coefficient`-typed payload field | solidarity amplification (`community.py:527-576`, per-endpoint `mem.strength` at `formulas/community.py:111-141`) |
+| `role` | `MembershipRole` (5 members, frozen order CORE_ORGANIZER, ACTIVE, PARTICIPANT, PERIPHERAL, SYMPATHIZER — `src/babylon/models/enums/social.py:79-85`) | **int-ordinal**, with `ROLE_STRENGTH_WEIGHTS` (`src/babylon/models/entities/community.py:25-31`: 1.0/0.7/0.4/0.2/0.1) read through a `defconst` ladder | threat scoring (`src/babylon/engine/systems/community.py:579-608`, the role → weight lookup at `:601`) AND the infrastructure maintenance count (`:655-661`, `role == CORE_ORGANIZER`) |
+| `strength` | `Coefficient` [0,1] | a `coefficient`-typed payload field | solidarity amplification (`src/babylon/engine/systems/community.py:527-576`, per-endpoint `mem.strength` at `src/babylon/formulas/community.py:111-141`) |
 | `visibility` | `Probability` [0,1] | a `probability`-typed payload field | threat scoring (the per-membership `effective_visibility`, `:601`) |
 | `overt` | `bool` | the same probability field, with `overt` expressed as `visibility = 1.0` — see the note below | threat scoring |
 
 **On `overt`:** the frozen `effective_visibility`
-(`entities/community.py:407-417`) is `1.0 if overt else visibility` — a one-bit override on a
+(`src/babylon/models/entities/community.py:407-417`) is `1.0 if overt else visibility` — a one-bit override on a
 [0,1] field. Community's need is the *value*, not the flag: a `visibility` payload seeded 1.0 where
 frozen would set `overt = true` carries the same information through the same type. If the ceremony
 wants the override's *provenance* (a deliberately-public member vs a legible one), that is a second

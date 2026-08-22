@@ -9139,6 +9139,67 @@ consequences are the ordinary kind of review item.
        do not exist until the Director's ruling — §8a row 4's epsilon
        independence (c05's total vs c07's per-component entropy) is stated
        but only c05's half is testable this task.
+   * - D205
+     - §4.2, §1.2
+     - **Cost modifiers, the decay, and the five Task-10 worlds (Community
+       port train, 2026-08-22).** ``c09-cost-modifier-reset`` and
+       ``c10-cost-modifier-accumulate`` BOTH carry the ``(= active 1)``
+       guard frozen's ``_collect_memberships`` imposes
+       (``community.py:472-474``, the C4 law — an inactive class is
+       written NOTHING, the honest-null read, never 1.0); c10's product
+       compounds in ascending ``HyperedgeId`` order (D25, D-NF+13).
+       ``c11-state-decay`` writes heat/cohesion/education-pressure as
+       ``max(0, x·(1−α))`` per community per tick with NO skip gate
+       (frozen's decay loop, ``community.py:648-675``, runs over the whole
+       dict); the infrastructure arm is ABSENT — §5's hard sequencing: its
+       CORE_ORGANIZER maintenance term makes frozen's law non-monotone and
+       waits on #653 (DG-7). **The world-6 divergence, recorded against
+       the plan's own phrasing:** the plan's §1.2 L2 analogue claimed the
+       all-inactive world is "a byte-exact no-op on every community
+       field" — its own c11 row (ungated) and c00's reset writes
+       contradict that. Frozen's early return (``community.py:337-338``)
+       is a GLOBAL control-flow shortcut no per-rule pack reproduces, so
+       the honest pins are the LANES: the census reads 0, the seeded
+       simplex is preserved byte-exactly, no cost modifier is written, AND
+       the decay applies (heat 0.5 → 0.475) — the test is named
+       ``all_inactive_members_skip_every_membership_lane``, not the plan's
+       name, which would assert the contradiction. **L1's analogue** (no
+       config) is a LOAD REFUSAL, not a no-op: a world with no COMMUNITY
+       hyperedge supplies no ceiling, and every carrier rule fails
+       ``E-LOAD-045`` at load — the estate's preferred direction (fail
+       loudly), pinned as a refusal test. **The seam world (5b)** co-loads
+       solidarity.bsl + community.bsl over the landed solidarity world
+       plus the community additions: every SOLIDARITY strength is
+       byte-identical against the solidarity-only run (the amplification
+       half that would move them is #653-blocked), and
+       ``seam_world_community_half_actually_ran`` proves the seam cannot
+       pass vacuously (heat decayed). **The carrier-collision world (5c)**
+       co-loads control-ratio.bsl + community.bsl over ONE INSTITUTION
+       node carrying both packs' anchors — per-rule-id fired arithmetic 37
+       (control-ratio 9 + community 28, measured via ``per_rule_fired``)
+       and the decay-applied-once read (0.475, never 0.45125).
+       **Fuel is per-world** (D-NF+22): measured by ``fuel_bound_report``
+       over ALL EIGHT worlds (the 5c co-load's ceilings included),
+       declared at max+1: c00 104, c01 27, c02 21, c03* 72, c04 151, c05
+       596, c06a 252, c06b 272, c09 8, c10 35, c11 208 (world 2's wider
+       census is the worst case for c00/c01/c04-c06b/c10/c11; world 1 for
+       c03*). **Golden pins: 8 new** (one per content world, before+after
+       in one test; the arc's after is its tick-3 value) — measured, never
+       derived, touching none of the sixteen prior pins. **Mutation
+       vectors (eleven, all proven):** deleting c09 compounds the arc's
+       cost modifier (tick 2 reads 0.765625) — the Task-8-deferred vector;
+       dropping c09's active guard reds the C4 detector; each decay α
+       independently reds the independence pin (heat's swap also reds the
+       worlds pinning heat); each max(0,·) clamp REMOVED stays GREEN (the
+       converse — the clamps are present-but-inert for non-negative
+       intermediates, present because frozen's law carries them); a second
+       INSTITUTION node in world 5c reds §8c guard 4 then the collision
+       arithmetic (37 → 42); removing world 5b's carrier reds guard 4, the
+       seam-ran pin, AND cascades E-EVAL-031 through c01 (the reset's
+       load-bearingness one more way); activating a world-6 member reds
+       the lanes-skipped pin. §8c guards 1 and 4 now iterate every world
+       this pack loads into (the main suite covers worlds 1-4, the arc
+       suite worlds 5-6).
 
 Authoring idioms (non-normative)
 -----------------------------------

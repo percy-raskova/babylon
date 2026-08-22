@@ -532,22 +532,25 @@ const EFFECT_POSITION_ONLY: [&str; 19] = [
 /// still ride slices 2-3); `the` (slice 2, the carrier-read lane —
 /// `edges`/`edge-between` served as of T2, issue #559);
 /// `hyperedges`/`members-of`/`hyperedges-of`/`metric-of`
-/// (slice 3, the hyperedge + metric lane); `membership-field-of` (slice 4,
-/// the CanonicalState-widening storage lane — Director-ruled deferred to
-/// first consumer). `nodes`/`neighbors` moved to [`SERVED_QUERY_HEADS`] at
+/// (slice 3, the hyperedge + metric lane); `membership-field-of` (the
+/// AG(i) membership-payload lane, #653 — Director-ruled deferred to
+/// first consumer). `hyperedges`/`members-of`/`hyperedges-of` LEFT this
+/// table at slice 3's landing (Community port train Task 3, 2026-08-21) —
+/// they are served, as query operands of iterating forms only, per the
+/// `SERVED_QUERY_HEADS` law below. `nodes`/`neighbors` moved to [`SERVED_QUERY_HEADS`] at
 /// Task 4 — they are served, but only as the query operand of an iterating
 /// form, never as a bare `<expr>` (§2.7 has no query production of its
 /// own). Together with [`EFFECT_POSITION_ONLY`] and [`SERVED_QUERY_HEADS`]
 /// this is exhaustive over the pre-Task-1 `GRAPH_SEAM_HEADS` set AND the
 /// grammar's §2.8/§2.10 heads: a head in none of the three tables is
 /// `eval_intrinsic`'s.
-const UNSERVED_EXPRESSION_HEADS: [(&str, &str); 6] = [
+const UNSERVED_EXPRESSION_HEADS: [(&str, &str); 3] = [
     ("the", "slice 2"),
-    ("hyperedges", "slice 3"),
-    ("members-of", "slice 3"),
-    ("hyperedges-of", "slice 3"),
     ("metric-of", "slice 3"),
-    ("membership-field-of", "slice 4"),
+    (
+        "membership-field-of",
+        "the AG(i) membership-payload lane — #653",
+    ),
 ];
 
 /// The §2.6 query heads Task 4 onward serves — but **only** as the query
@@ -558,13 +561,19 @@ const UNSERVED_EXPRESSION_HEADS: [(&str, &str); 6] = [
 /// (unlike `<fold>`/`<accessor>`/`<selection>`, a bare `<query>` is not one
 /// of `<expr>`'s productions), so reaching one of these heads HERE — through
 /// generic expression dispatch — means it was written somewhere the grammar
-/// does not admit a query: a shape error, not an unimplemented seam. Only
-/// `nodes`/`neighbors`/`edges` are here (`edges` joined at T2, issue #559);
-/// the other three §2.6 heads stay in
-/// [`UNSERVED_EXPRESSION_HEADS`] until their own slice serves them (at which
-/// point they join this table too, since serving a query head never means
-/// giving it a bare `<expr>` reading).
-const SERVED_QUERY_HEADS: [&str; 3] = ["nodes", "neighbors", "edges"];
+/// does not admit a query: a shape error, not an unimplemented seam.
+/// `nodes`/`neighbors`/`edges`/`hyperedges`/`members-of`/`hyperedges-of`
+/// are here (`edges` joined at T2, issue #559; the three hyperedge heads at
+/// slice 3's landing, Community port train Task 3, 2026-08-21). Serving a
+/// query head never means giving it a bare `<expr>` reading.
+const SERVED_QUERY_HEADS: [&str; 6] = [
+    "nodes",
+    "neighbors",
+    "edges",
+    "hyperedges",
+    "members-of",
+    "hyperedges-of",
+];
 
 fn eval_form(
     items: &[SExpr],
@@ -1660,6 +1669,15 @@ fn element_content_id(
     };
     match element {
         Element::Node(id) => content_id_of(id),
+        // Slice 3 (Community Task 3): hyperedges have no content-id
+        // hydration map at all today (no scenario-side hyperedge name table
+        // is fed to the tick — the `declared_hyperedges` names live and die
+        // with the executor). The `HyperedgeId` IS declaration-ordered and
+        // deterministic, so the raw handle rendering is deterministic too —
+        // the same shape the `None` arm above gives nodes when no scenario
+        // was hydrated. If a hyperedge content-id lane ever lands, this arm
+        // moves to it.
+        Element::Hyperedge(id) => Ok(format!("{id:?}")),
         Element::Edge(key) => {
             let source = content_id_of(&key.source)?;
             let target = content_id_of(&key.target)?;
@@ -2542,10 +2560,18 @@ mod tests {
         assert!(emit_err.message.contains("§2.8"), "{emit_err}");
         assert!(emit_err.message.contains("effect position"), "{emit_err}");
 
-        // `members-of` is unserved until slice 3.
+        // `members-of` is SERVED at slice 3 (Community Task 3, 2026-08-21)
+        // — in bare-expr position it now refuses with the
+        // query-operand-only law (§2.7: no bare `<query>` production),
+        // never a slice number: the served heads' refusal is grammatical,
+        // not a TODO.
         let members_of_err = eval("(members-of self HyperedgeType/CELL)").unwrap_err();
         assert!(
-            members_of_err.message.contains("slice 3"),
+            members_of_err.message.contains("query operand"),
+            "{members_of_err}"
+        );
+        assert!(
+            !members_of_err.message.contains("slice"),
             "{members_of_err}"
         );
 
@@ -2566,9 +2592,10 @@ mod tests {
         assert!(upd_mem_err.message.contains("§2.8"), "{upd_mem_err}");
         assert!(!upd_mem_err.message.contains("E-LOAD-021"), "{upd_mem_err}");
 
-        // `membership-field-of` (§2.10) is unserved until slice 4.
+        // `membership-field-of` (§2.10) stays unserved — its note now cites
+        // #653 by number, never a slice (Task 3 Step 4's own amendment).
         let mem_field_err = eval("(membership-field-of self self x/y)").unwrap_err();
-        assert!(mem_field_err.message.contains("slice 4"), "{mem_field_err}");
+        assert!(mem_field_err.message.contains("#653"), "{mem_field_err}");
     }
 
     /// The effect-position half of the flip (T3, ADR198 R1-R3, issue #560):

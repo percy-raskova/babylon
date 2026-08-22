@@ -1204,11 +1204,18 @@ mod c5_element_selection {
         assert_eq!(result2, Value::NodeRef(low));
     }
 
-    /// The other THREE §2.6 query heads a selection could in principle run over stay refused at
-    /// EVALUATION, each naming the slice that will serve it (Constraint 4) — never a silent skip
-    /// and never an `E-LOAD-021` misdiagnosis. `edges` is no longer among them (T2, issue #559) —
-    /// see `edge_count_evaluates_for_real_on_an_empty_graph` (`conformance_corpus.rs`) for its own
-    /// positive vector.
+    /// The three hyperedge §2.6 query heads are SERVED (slice 3, Community
+    /// Task 3, 2026-08-22) — this test's old "each names its slice"
+    /// refusal is retired; what is pinned now is each head's honest
+    /// behavior under a selection on an empty or wrongly-typed result:
+    /// `hyperedges`/`hyperedges-of` (a node's memberships — none seeded)
+    /// refuse the EMPTY query with the §4.4/D45 text; `members-of self`
+    /// refuses the operand kind (self is a `NodeRef`; the head wants a
+    /// `HyperedgeRef`, §3.1) — never a silent skip, never an
+    /// `E-LOAD-021` misdiagnosis, on any of the three. `edges` left this
+    /// set at T2 (issue #559) — see
+    /// `edge_count_evaluates_for_real_on_an_empty_graph`
+    /// (`conformance_corpus.rs`) for its own positive vector.
     #[test]
     fn the_other_three_selection_heads_stay_pinned_named_by_their_slice() {
         // `self` binds to a REAL node: were it a dangling id, a future
@@ -1217,12 +1224,18 @@ mod c5_element_selection {
         // #520).
         let mut graph = MemoryGraph::new();
         let subject = graph.add_node("SOCIAL_CLASS").unwrap();
-        for (query, slice) in [
-            ("(hyperedges HyperedgeType/ECONOMIC_SECTOR)", "slice 3"),
-            ("(members-of self HyperedgeType/ECONOMIC_SECTOR)", "slice 3"),
+        for (query, expected) in [
+            (
+                "(hyperedges HyperedgeType/ECONOMIC_SECTOR)",
+                "select-max over an empty query",
+            ),
+            (
+                "(members-of self HyperedgeType/ECONOMIC_SECTOR)",
+                "must evaluate to a HyperedgeRef",
+            ),
             (
                 "(hyperedges-of self HyperedgeType/ECONOMIC_SECTOR)",
-                "slice 3",
+                "select-max over an empty query",
             ),
         ] {
             let mut fuel = 1_000;
@@ -1233,7 +1246,7 @@ mod c5_element_selection {
                 &mut fuel,
             )
             .unwrap_err();
-            assert!(err.message.contains(slice), "{query}: {err}");
+            assert!(err.message.contains(expected), "{query}: {err}");
         }
     }
 

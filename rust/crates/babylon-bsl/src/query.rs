@@ -8,15 +8,16 @@
 //! actually produced one. Task 4 is the one that fills in [`materialize`]:
 //! `nodes` and typed `neighbors` — the two heads slice 1 serves; `edges`
 //! joined them at T2 (slice 2, issue #559). The remaining three §2.6 heads
-//! (`hyperedges`, `members-of`, `hyperedges-of`) are recognized here (so a
-//! fold/exists/forall/select-* over one of them refuses with the RIGHT
-//! slice number, never `eval_intrinsic`'s `E-LOAD-021` misdiagnosis) but
-//! are not materialized — that is slice 3's work.
+//! (`hyperedges`, `members-of`, `hyperedges-of`) are MATERIALIZED as of
+//! slice 3's landing (Community port train, Task 3, 2026-08-21) — the
+//! refusal arm they used to route through is deleted with the unserved
+//! table (Task 3 Step 4's at-the-byte decision, recorded there).
 //!
 //! [`Element::Node`] and [`Element::Edge`] exist ([`EdgeKey`] was minted at
-//! T2, slice 2). `Hyperedge(HyperedgeId)` (slice 3) is deliberately not
-//! added: minting it is slice 3's own scope, and a variant nothing can
-//! construct would be dead weight, not forward-compatibility.
+//! T2, slice 2). `Element::Hyperedge(HyperedgeId)` landed with slice 3
+//! (Community port train, Task 3, 2026-08-21): the variant is constructed
+//! by this module's own materialization of the three §2.6 hyperedge heads,
+//! served below — never a constructed-by-nothing placeholder.
 //!
 //! **Determinism (Constraint 2).** `nodes`/`neighbors` on `GraphSubstrate`
 //! already return a canonically sorted, deduplicated `Vec` (§2.6's total
@@ -29,7 +30,7 @@ use crate::evaluator::{charge, evaluate, require_graph, EvalEnv, EvalError, Valu
 use crate::fuel::cost;
 use crate::intrinsic_host::IntrinsicHost;
 use crate::reader::{Atom, SExpr};
-use babylon_graph::substrate::{Direction, NodeId};
+use babylon_graph::substrate::{Direction, HyperedgeId, NodeId};
 
 /// A materialized edge's identity — the `(source, target, edge_type)` triple IS the identity
 /// (§2.10's own "well-defined because the triple is a key" ruling, `bsl-language.rst:1896-1904`);
@@ -62,6 +63,14 @@ pub struct EdgeKey {
 /// happens to produce from declaration order. RULED: `Node` sorts before `Edge`, by declaration
 /// order below — arbitrary, deliberate, tested (`tests::node_sorts_before_edge_regardless_of_id`).
 ///
+/// **Slice-3 ruling (Community port train, Task 3, rider 4 clause 1, C5 /
+/// D-NF+24, 2026-08-21): `Node` sorts before `Edge` sorts before
+/// `Hyperedge`, by declaration order — arbitrary, deliberate, tested** (the
+/// companions `edge_sorts_before_hyperedge_regardless_of_id` and
+/// `the_three_kind_order_holds_regardless_of_ids`). Exactly the reasoning
+/// the T2 paragraph above gives: pinned, never left to whatever
+/// `#[derive(Ord)]` happens to produce.
+///
 /// **No longer `Copy` (T2, issue #559): `EdgeKey` owns a `String`.** Every call site that relied on
 /// `Copy` is fixed at this variant's landing (see evaluator.rs's own Task-3 call-site fixes) —
 /// `Clone` is unaffected and remains the currency for every place that needs an owned `Element`.
@@ -72,6 +81,9 @@ pub enum Element {
     /// A materialized dyadic edge (slice 2, T2). Declared SECOND: see this enum's own cross-kind
     /// Ord ruling above.
     Edge(EdgeKey),
+    /// A materialized hyperedge (slice 3, Community Task 3). Declared
+    /// THIRD: the cross-kind ruling above.
+    Hyperedge(HyperedgeId),
 }
 
 impl Element {
@@ -84,24 +96,18 @@ impl Element {
         match self {
             Self::Node(id) => Value::NodeRef(*id),
             Self::Edge(key) => Value::EdgeRef(key.clone()),
+            Self::Hyperedge(id) => Value::HyperedgeRef(*id),
         }
     }
 }
 
-/// The six §2.6 query heads, mapped to the slice that serves them — shared
-/// by [`materialize`]'s refusal for the three heads not yet served (`edges`
-/// joined the served set at T2, issue #559). Kept in sync with
-/// `evaluator::UNSERVED_EXPRESSION_HEADS`'s own rows for the same three
-/// heads; the two tables answer different questions (that module classifies
-/// every expression-position head, this one is the query-position
-/// dispatch), so one small duplication here is cheaper than a cross-module
-/// lookup for three stable rows.
-const UNSERVED_QUERY_HEADS: [(&str, &str); 3] = [
-    ("hyperedges", "slice 3"),
-    ("members-of", "slice 3"),
-    ("hyperedges-of", "slice 3"),
-];
-
+/// All six §2.6 query heads are served (`hyperedges`/`members-of`/
+/// `hyperedges-of` joined at slice 3's landing, Community port train Task
+/// 3, 2026-08-21). The unserved table this comment once introduced is
+/// DELETED with this module's refusal arm — a zero-row table would be the
+/// plan's own M4 failure mode (a duplicated table named once), recorded as
+/// Task 3 Step 4's at-the-byte decision. `metric-of` is not a §2.6 query
+/// head at all (it lives in `evaluator::UNSERVED_EXPRESSION_HEADS`).
 /// Materialize a `<query>` form in §2.6's total order, charging §3.7's
 /// `cost(query)` base (the querying form's own base — `fold`/`exists`/…
 /// charge their own separately) plus this query's operand expression(s).
@@ -133,17 +139,12 @@ pub fn materialize(
         "nodes" => materialize_nodes(items, env, fuel),
         "neighbors" => materialize_neighbors(items, env, host, fuel),
         "edges" => materialize_edges(items, env, fuel),
-        h => {
-            if let Some((_, slice)) = UNSERVED_QUERY_HEADS.iter().find(|(n, _)| *n == h) {
-                return Err(EvalError::plain(format!(
-                    "({h} …) is a §2.6 query head the query evaluator does not \
-                     yet serve — it lands with {slice}, never as a default here"
-                )));
-            }
-            Err(EvalError::plain(format!(
-                "{h} is not one of §2.6's six query heads"
-            )))
-        }
+        "hyperedges" => materialize_hyperedges(items, env, fuel),
+        "hyperedges-of" => materialize_hyperedges_of(items, env, host, fuel),
+        "members-of" => materialize_members_of(items, env, host, fuel),
+        h => Err(EvalError::plain(format!(
+            "{h} is not one of §2.6's six query heads"
+        ))),
     }
 }
 
@@ -293,6 +294,122 @@ fn materialize_edges(
         .collect())
 }
 
+/// `(hyperedges <enum-ref>)` — every hyperedge of the type, as
+/// `Element::Hyperedge` in ascending `HyperedgeId` order (the substrate's
+/// own contract — `hyperedges()` is ascending-and-typed by the conformance
+/// suite — §2.6's total order is the substrate's, not re-established here).
+/// No predicate variant exists for this head today (same deliberate
+/// loud-gap posture as `nodes`/`edges` above).
+fn materialize_hyperedges(
+    items: &[SExpr],
+    env: &EvalEnv<'_>,
+    fuel: &mut u64,
+) -> Result<Vec<Element>, EvalError> {
+    charge(fuel, cost::QUERY_BASE)?;
+    let [_, type_ref, extra @ ..] = items else {
+        return Err(EvalError::plain(
+            "(hyperedges <enum-ref>) — missing the HyperedgeType operand",
+        ));
+    };
+    if !extra.is_empty() {
+        return Err(EvalError::plain(
+            "(hyperedges <enum-ref>) takes exactly one operand — no predicate variant exists \
+             for this head today (the deliberate loud-gap posture `nodes`/`edges` set)",
+        ));
+    }
+    let hyperedge_type = enum_member(type_ref)?;
+    let graph = require_graph(env, "hyperedges")?;
+    Ok(graph
+        .hyperedges(hyperedge_type)
+        .into_iter()
+        .map(Element::Hyperedge)
+        .collect())
+}
+
+/// `(hyperedges-of <elem-expr> <enum-ref>)` — the hyperedges of the type a
+/// NODE belongs to, as `Element::Hyperedge` in ascending `HyperedgeId`
+/// order (the substrate's contract, same as above).
+fn materialize_hyperedges_of(
+    items: &[SExpr],
+    env: &EvalEnv<'_>,
+    host: &dyn IntrinsicHost,
+    fuel: &mut u64,
+) -> Result<Vec<Element>, EvalError> {
+    charge(fuel, cost::QUERY_BASE)?;
+    let [_, elem_expr, type_ref] = items else {
+        return Err(EvalError::plain(
+            "(hyperedges-of <elem-expr> <enum-ref>) — exactly two operands",
+        ));
+    };
+    let node = match evaluate(elem_expr, env, host, fuel)? {
+        Value::NodeRef(id) => id,
+        other => {
+            return Err(EvalError::plain(format!(
+                "(hyperedges-of …)'s first operand must evaluate to a NodeRef, got \
+                 {other:?} (§3.1)"
+            )))
+        }
+    };
+    let hyperedge_type = enum_member(type_ref)?;
+    let graph = require_graph(env, "hyperedges-of")?;
+    let ids = graph.hyperedges_of(node, hyperedge_type).map_err(|e| {
+        // Same posture as `neighbors`' own operand error (D-row Q3, this
+        // module): the reference codes no query-operand case, so this is
+        // uncoded loud, never a default.
+        EvalError::plain(format!(
+            "(hyperedges-of …) over a dangling node operand: {}",
+            e.message
+        ))
+    })?;
+    Ok(ids.into_iter().map(Element::Hyperedge).collect())
+}
+
+/// `(members-of <elem-expr> <enum-ref>)` — the members of the hyperedge the
+/// first operand names, as plain `Element::Node` in ascending `NodeId`
+/// order (D25 — `members_of` is already ascending by substrate contract;
+/// declared order is never observable).
+fn materialize_members_of(
+    items: &[SExpr],
+    env: &EvalEnv<'_>,
+    host: &dyn IntrinsicHost,
+    fuel: &mut u64,
+) -> Result<Vec<Element>, EvalError> {
+    charge(fuel, cost::QUERY_BASE)?;
+    let [_, elem_expr, type_ref] = items else {
+        return Err(EvalError::plain(
+            "(members-of <elem-expr> <enum-ref>) — exactly two operands",
+        ));
+    };
+    let hyperedge = match evaluate(elem_expr, env, host, fuel)? {
+        Value::HyperedgeRef(id) => id,
+        other => {
+            return Err(EvalError::plain(format!(
+                "(members-of …)'s first operand must evaluate to a HyperedgeRef, got \
+                 {other:?} (§3.1)"
+            )))
+        }
+    };
+    let hyperedge_type = enum_member(type_ref)?;
+    let graph = require_graph(env, "members-of")?;
+    // The type operand is not a filter — the HyperedgeRef carries its own
+    // type; a disagreement is the caller's bug, and the substrate's own
+    // hyperedges_of-type-vs-node asymmetry ruling (slice 3) leaves type
+    // validity to BSL's static check (E-TYPE-011), which the loader runs.
+    let _ = hyperedge_type;
+    Ok(graph
+        .members_of(hyperedge)
+        .map_err(|e| {
+            // D-row Q3's posture, same module: uncoded loud.
+            EvalError::plain(format!(
+                "(members-of …) over a dangling hyperedge operand: {}",
+                e.message
+            ))
+        })?
+        .into_iter()
+        .map(Element::Node)
+        .collect())
+}
+
 /// An enum-ref operand's member name — read directly, exactly as
 /// `structural_verbs::EffectExecutor::enum_member` reads one, and NOT
 /// through `evaluate()`: an enum-ref atom is a static type annotation here,
@@ -392,7 +509,9 @@ mod tests {
             .iter()
             .map(|element| match element {
                 Element::Node(id) => *id,
-                Element::Edge(_) => panic!("nodes must materialize only Node elements"),
+                Element::Edge(_) | Element::Hyperedge(_) => {
+                    panic!("nodes must materialize only Node elements")
+                }
             })
             .collect();
         assert_eq!(ids.len(), N);
@@ -546,7 +665,9 @@ mod tests {
             .iter()
             .map(|element| match element {
                 Element::Edge(key) => key.clone(),
-                Element::Node(_) => panic!("edges must materialize only Edge elements"),
+                Element::Node(_) | Element::Hyperedge(_) => {
+                    panic!("edges must materialize only Edge elements")
+                }
             })
             .collect();
         assert_eq!(
@@ -601,7 +722,9 @@ mod tests {
             .iter()
             .map(|element| match element {
                 Element::Edge(key) => (key.source, key.target),
-                Element::Node(_) => panic!("edges must materialize only Edge elements"),
+                Element::Node(_) | Element::Hyperedge(_) => {
+                    panic!("edges must materialize only Edge elements")
+                }
             })
             .collect();
         assert!(
@@ -656,7 +779,9 @@ mod tests {
             .iter()
             .map(|element| match element {
                 Element::Edge(key) => (key.source, key.target),
-                Element::Node(_) => panic!("edges must materialize only Edge elements"),
+                Element::Node(_) | Element::Hyperedge(_) => {
+                    panic!("edges must materialize only Edge elements")
+                }
             })
             .collect();
         assert_eq!(
@@ -697,19 +822,58 @@ mod tests {
         assert!(err.message.contains("element-predicate"), "{err}");
     }
 
+    /// RED→GREEN record (slice 3, Community port train Task 3, 2026-08-21):
+    /// this test pinned the three heads' "lands with slice 3" refusal text
+    /// while they were unserved; the heads are SERVED now (the
+    /// materializers above), so the test inverts — the refusal text it
+    /// pinned survives in this comment as the historical record.
     #[test]
-    fn hyperedges_and_members_of_name_their_slice() {
-        let graph = MemoryGraph::new();
+    fn hyperedges_and_members_of_are_served_in_query_position() {
+        let mut graph = MemoryGraph::new();
+        let alpha = graph.add_node("social_class").unwrap();
+        let beta = graph.add_node("social_class").unwrap();
+        let cell = graph.add_hyperedge("CELL", &[alpha, beta]).unwrap();
         let costs = costs();
-        for (source, slice) in [
-            ("(hyperedges HyperedgeType/CELL)", "slice 3"),
-            ("(members-of self HyperedgeType/CELL)", "slice 3"),
-            ("(hyperedges-of self HyperedgeType/CELL)", "slice 3"),
-        ] {
-            let mut fuel = 1_000;
-            let err = materialize_src(source, &graph, &costs, &mut fuel).unwrap_err();
-            assert!(err.message.contains(slice), "{source}: {err}");
-        }
+        let mut fuel = 10_000;
+
+        let result = materialize_src("(hyperedges HyperedgeType/CELL)", &graph, &costs, &mut fuel)
+            .expect("the type-wide head is served");
+        assert_eq!(result, vec![Element::Hyperedge(cell)]);
+
+        // Iteration order is the ruled order — ascending HyperedgeId (D25),
+        // pinned against a deliberately multi-hyperedge world; the Step-7
+        // mutation (inverting the materializer's order) reds this.
+        let cell2 = graph.add_hyperedge("CELL", &[beta]).unwrap();
+        let cell0 = graph.add_hyperedge("CELL", &[alpha]).unwrap();
+        let result = materialize_src("(hyperedges HyperedgeType/CELL)", &graph, &costs, &mut fuel)
+            .expect("the type-wide head is served");
+        assert_eq!(
+            result,
+            vec![
+                Element::Hyperedge(cell),
+                Element::Hyperedge(cell2),
+                Element::Hyperedge(cell0)
+            ],
+            "ascending HyperedgeId, never creation/insertion order"
+        );
+
+        let result = materialize_src(
+            "(members-of self HyperedgeType/CELL)",
+            &graph,
+            &costs,
+            &mut fuel,
+        )
+        .expect_err("a bare `self` outside a rule body has no referent — loud");
+        assert!(result.message.contains("self"), "{result}");
+
+        let members = materialize_src(
+            "(members-of it HyperedgeType/CELL)",
+            &graph,
+            &costs,
+            &mut fuel,
+        )
+        .expect_err("a bare `it` outside an iterating body has no referent — loud");
+        assert!(members.message.contains("it"), "{members}");
     }
 
     /// Compile-time trap (verifier fix round, MINOR-5 on issue #525): an
@@ -727,6 +891,7 @@ mod tests {
         match element {
             Element::Node(_) => "node",
             Element::Edge(_) => "edge",
+            Element::Hyperedge(_) => "hyperedge",
         }
     }
 
@@ -756,5 +921,33 @@ mod tests {
         assert_eq!(element_kind_name(&node), "node");
         assert_eq!(element_kind_name(&edge), "edge");
         assert!(node < edge, "T2's ruling: kind dominates value");
+    }
+
+    /// Slice 3's cross-kind Ord ruling, value-pinned: Edge < Hyperedge
+    /// regardless of id/key magnitude (the enum's own standing instruction,
+    /// extended — arbitrary, deliberate, tested).
+    #[test]
+    fn edge_sorts_before_hyperedge_regardless_of_id() {
+        let edge = Element::Edge(EdgeKey {
+            source: NodeId(u64::MAX),
+            target: NodeId(u64::MAX),
+            edge_type: String::from("z"),
+        });
+        let hyperedge = Element::Hyperedge(HyperedgeId(0));
+        assert!(edge < hyperedge, "slice-3 ruling: kind dominates value");
+    }
+
+    /// The three-kind chain: Node < Edge < Hyperedge, all by declaration
+    /// order, regardless of the carried ids' magnitudes.
+    #[test]
+    fn the_three_kind_order_holds_regardless_of_ids() {
+        let node = Element::Node(NodeId(u64::MAX));
+        let edge = Element::Edge(EdgeKey {
+            source: NodeId(u64::MAX),
+            target: NodeId(u64::MAX),
+            edge_type: String::from("z"),
+        });
+        let hyperedge = Element::Hyperedge(HyperedgeId(0));
+        assert!(node < edge && edge < hyperedge, "Node < Edge < Hyperedge");
     }
 }

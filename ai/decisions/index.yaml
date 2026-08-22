@@ -1,6 +1,6 @@
 meta:
-  version: 1.74.0
-  updated: '2026-08-12'
+  version: 1.75.0
+  updated: '2026-08-22'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
   # ADR NUMBER ALLOCATION (controller ruling 2026-07-21, v1.0.0 parallel lanes —
@@ -1015,3 +1015,8 @@ decisions:
     status: accepted
     date: '2026-08-22'
     file: ADR220_rust_owned_postgresql_persistence_boundary.yaml
+  ADR221_game_first_refoundation_v4:
+    title: 'Amendment AH — Game-First Refoundation: Constitution v4.0.0 makes emergent entertainment, expressive player agency, declared design liberties, decision-useful presentation, and behavioral historical benchmarks the governing product law while preserving the complete v3.1/v3.2 transition record'
+    status: accepted
+    date: '2026-08-22'
+    file: ADR221_game_first_refoundation_v4.yaml

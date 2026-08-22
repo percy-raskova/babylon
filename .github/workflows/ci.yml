@@ -179,6 +179,22 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Fetch pinned Constitution predecessors (bounded)
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -c protocol.version=2 fetch \
+            --depth=1 --no-tags --prune --no-recurse-submodules origin \
+            +3acd1089b6b4e68177c99b4f4cec245e7b74317c:refs/remotes/origin/constitution-v3.1 \
+            +cbfc67921283ccb6e00c4b0278288a232281440a:refs/remotes/origin/constitution-v3.2
+          test "$(git rev-parse 3acd1089b6b4e68177c99b4f4cec245e7b74317c:CONSTITUTION.md)" = \
+            "a265b85120ed2a90be40c72e63ee5bf27fc6e703"
+          test "$(git rev-parse cbfc67921283ccb6e00c4b0278288a232281440a:CONSTITUTION.md)" = \
+            "e905e90d66bddc6e4eca36a3896428f5ce63de5b"
 
       - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
         run: sh tools/ci_hypergraph_stub.sh

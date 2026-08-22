@@ -24,6 +24,15 @@ consumers = [
 ]
 
 [[set]]
+id        = "class-dynamics/conformance"
+scenario  = "scenarios/class-dynamics-conformance.bscn"
+prelude   = []
+rules     = ["rules/class-dynamics.bsl"]
+consumers = [
+    "rust/crates/babylon-tick/tests/class_dynamics_conformance.rs",
+]
+
+[[set]]
 id        = "community/carrier-collision"
 scenario  = "scenarios/community-carrier-collision-conformance.bscn"
 prelude   = []

@@ -201,6 +201,20 @@ pub enum EvalCode {
     /// [`Self::NonFinite`] (`E-EVAL-014`), which is the RESULT-side check
     /// (e.g. `exp` overflowing to `+inf`).
     TranscendentalOutOfDomain,
+    /// `E-EVAL-044` (§3.10, ADR219 — the exact-arithmetic rider train,
+    /// Director ruling 2026-08-22) — an argument outside one of the six
+    /// exact-arithmetic intrinsics' ratified domain: a negative argument to
+    /// `sqrt` (domain `[0, ∞)`, `-0.0` included per IEEE — `-0.0 < 0.0` is
+    /// `false`, the `floor` precedent), `clamp`'s `lo > hi` (never a silent
+    /// swap of the bounds — §3.3's silent-clamping prohibition), or a
+    /// non-finite argument to any of `sqrt`/`round-half-even`/`min`/`max`/
+    /// `abs`/`clamp` (`NaN`/`±inf` are not real numbers, and §4.3 makes
+    /// them unrepresentable at any observable point, so this half is
+    /// defense in depth). No result-side check exists: each of the six maps
+    /// finite inputs to a finite, IEEE-754 exactly-specified result, so a
+    /// result guard would be dead code — the disposition is recorded in
+    /// §3.10's normative paragraphs.
+    IntrinsicOutOfDomain,
 }
 
 impl EvalCode {
@@ -227,6 +241,7 @@ impl EvalCode {
             Self::DemotionOutOfDomain => "E-EVAL-039",
             Self::EnumWriteShapeViolation => "E-EVAL-042",
             Self::TranscendentalOutOfDomain => "E-EVAL-043",
+            Self::IntrinsicOutOfDomain => "E-EVAL-044",
         }
     }
 }

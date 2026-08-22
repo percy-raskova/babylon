@@ -143,35 +143,33 @@ fn a_duplicate_intrinsic_declaration_refuses_the_whole_load() {
     assert!(err.contains("E-LOAD-001"), "unexpected message: {err}");
 }
 
-/// Leg 1's own claim, retargeted after Task 2 (#576) closed its original
-/// gap: `exp`/`log` dispatch now (`KernelIntrinsicHost::call` has an arm
-/// for every member of `DECLARABLE_INTRINSICS` — `{exp, log, floor}`, all
-/// three in lockstep with `declarations::kernel_signature`), so there is no
-/// longer any name that clears the declaration-time cap check while
-/// staying undispatched at EVALUATION — that specific gap closes by
-/// construction as long as the cap and the dispatch table stay matched,
-/// which is exactly what this train's own Task 2 did for the last two
-/// members.
+/// ADR219 (Director ruling 2026-08-22) resolves this test's former
+/// premise: `round-half-even` is no longer "ratified but unlanded" —
+/// ADR188 Row 3's housekeeping rider LANDED (D70 resolved), so the name
+/// now clears the cap, matches its kernel signature, and DISPATCHES
+/// through the same `run_once`/`run_once_into` seam the CLI driver and
+/// `babylon-client`'s engine link both call. The property the retired
+/// test protected — load pipeline and dispatcher never silently admit or
+/// silently no-op an unsupported name — now stands POSITIVELY: every
+/// `DECLARABLE_INTRINSICS` member carries a `kernel_signature` row and a
+/// dispatch arm in lockstep (`declarations.rs`'s
+/// `the_adr219_six_are_declarable_with_their_kernel_signatures` and
+/// `intrinsic_host.rs`'s
+/// `every_declarable_intrinsic_has_a_signature_row_and_a_dispatch_arm`),
+/// and the negative probe lives in
+/// `declaring_an_uncapped_intrinsic_refuses_the_whole_load` above, over
+/// `tanh` (still outside the cap — ADR188 Row 8).
 ///
-/// `round-half-even` is the closest surviving analog, and the ONLY one
-/// available: ADR188 Row 3 RATIFIED it in principle, but its mechanical
-/// landing — admission to `DECLARABLE_INTRINSICS` itself (D70,
-/// `declarations.rs:103-109`) — is separate, not-yet-done work, so it
-/// still refuses the WHOLE LOAD through the exact same
-/// `run_once`/`run_once_into` seam the CLI driver and `babylon-client`'s
-/// engine link both call. This is one checkpoint earlier than the original
-/// test exercised (declaration/cap, not evaluation) — the only checkpoint
-/// left where an "approved but not yet wired" name is still catchable —
-/// but it proves the same underlying property the original test's own doc
-/// comment named: the load pipeline and `KernelIntrinsicHost` never
-/// silently admit or silently no-op a name the kernel does not fully
-/// support.
+/// The binding's `(round-half-even 0.5c)` ties to the even neighbor —
+/// `0.0` — so evaluation exercises the arm on a ruled tie case, and the
+/// rule completing proves the dispatch succeeded (the bit-level tie pins
+/// themselves are the host's own unit tests').
 #[test]
-fn round_half_even_is_ratified_but_still_refuses_the_whole_load() {
+fn round_half_even_now_loads_and_dispatches_through_run_once() {
     const ROUND_HALF_EVEN_RULE: &str = r#"
 (intrinsic round-half-even :params (real) :returns real :cost 6)
-(rule vitality/floor-e2e-undispatchable
-  :material-basis "round-half-even is ADR188 Row 3 ratified but not yet admitted to DECLARABLE_INTRINSICS"
+(rule vitality/floor-e2e-round-half-even
+  :material-basis "ADR219: round-half-even dispatches (ADR188 Row 3 landed, D70 resolved)"
   :fuel 64
   (bindings
     (binding population :field social-class/population)
@@ -181,9 +179,7 @@ fn round_half_even_is_ratified_but_still_refuses_the_whole_load() {
   (effects
     (update-node self social-class/deaths (set population))))
 "#;
-    let err = run_once(SCENARIO, ROUND_HALF_EVEN_RULE).unwrap_err();
-    assert!(
-        err.contains("round-half-even") && err.contains("RATIFIED"),
-        "unexpected message: {err}"
-    );
+    let report = run_once(SCENARIO, ROUND_HALF_EVEN_RULE)
+        .expect("round-half-even clears cap, signature, and dispatch under ADR219");
+    assert_eq!(report.fired, 1);
 }

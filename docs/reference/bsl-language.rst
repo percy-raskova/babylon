@@ -1223,8 +1223,11 @@ implementations. The names this document has used to illustrate that
 (``sigmoid``, ``exp``, ``log``, ``tanh``, ``sqrt``, ``entropy``) are
 **illustrative of the class, not a table of intrinsics that exist** — a
 reading the R9 gap analysis found this document inviting. What is declarable is
-governed by §3.10, which holds the set at ``{exp, log}`` and rules ``sigmoid``
-prohibited outright. BSL cannot define an intrinsic; ``intrinsic`` forms only
+governed by §3.10: the ``{exp, log}`` transcendental cap (R10), the separately
+authorized ``floor``/``rng-draw``, the ADR219 exact-arithmetic sextet
+(``sqrt``, ``round-half-even``, ``min``, ``max``, ``abs``, ``clamp``) — and
+``sigmoid`` ruled prohibited outright. BSL cannot define an intrinsic;
+``intrinsic`` forms only
 *declare* what the kernel provides, so that the typechecker and the fuel
 bound-checker are computable from content alone:
 
@@ -3361,12 +3364,20 @@ rendering of it. **R10 is operative** for R9 and R10 purposes and this document
 is written to it. The discrepancy is recorded rather than resolved, because
 resolving it is the Director's.
 
-Concretely, as of this revision: **``exp``, ``log`` and ``floor`` are the
-declarable intrinsics.** The first two are the transcendental pair R10 caps;
-``floor`` is not a transcendental and joins under a separate, later authority
-— ADR188 Row 2 (below) — without moving R10's ``{exp, log}`` enumeration.
-``round-half-even`` is *obliged* by §3.2 and §2.7 and still sits outside the
-enumeration — see row 3 of the slate, ratified but not yet landed here.
+Concretely, as of this revision: **ten names are declarable.** ``exp`` and
+``log`` are the transcendental pair R10 caps; ``floor`` is not a
+transcendental and joins under a separate, later authority — ADR188 Row 2
+(below) — without moving R10's ``{exp, log}`` enumeration; ``rng-draw``
+joins under ADR188 Row 11 (the RNG carrier-key convention below). The
+**ADR219 exact-arithmetic sextet** (Director ruling 2026-08-22) completes
+the set: ``sqrt`` takes Row 6's fallback rider; ``round-half-even`` lands
+Row 3's ratified housekeeping rider, resolving D70's "recorded, not
+resolved"; and ``min``/``max``/``abs``/``clamp`` supersede Rows 4/5's
+"no rider" dispositions on #591 item 2's accumulated port evidence. Like
+``floor``, each of the six crosses via an IEEE-754 exactly-specified
+operation — no pinned soft-float libm, no §4.3 golden-vector family; the
+normative paragraphs below record that disposition per name. The
+transcendental roster stays the R10 pair alone.
 
 **Cap-legality is not doctrine-legality, and this is the load-bearing
 sentence.** ``exp`` sits inside the cap. Three of the five ``exp`` call sites
@@ -3399,11 +3410,15 @@ disposed all twelve rows** — the Director's "i approve all", transcribed row b
 row. Row 2 (``floor``/``trunc``) is **RATIFIED and landed**: see the normative
 paragraph and Draft-Ruling Register D97 immediately after this table, and
 ``declarations::DECLARABLE_INTRINSICS`` in the Rust reference implementation.
-The other eleven rows' dispositions are recorded in ADR188 itself; landing
-each one's own normative text (a table row here, a §6.2 vector family, a
-canonical-name elimination) is separate work this revision does not perform,
-so the table below is left exactly as the R9 gap analysis wrote it — a
-non-normative proposal record — except where a footnote marks Row 2.
+**ADR219 (2026-08-22) then landed rows 3-6**: Row 3 (``round-half-even``) is
+landed (D70 resolved); Rows 4/5 (``abs``, ``min``/``max`` — and ``clamp``
+with them) are superseded by riders on #591 item 2's accumulated evidence;
+Row 6's (``sqrt``) fallback rider is taken. The remaining rows' dispositions
+are recorded in ADR188 itself; landing each one's own normative text (a table
+row here, a §6.2 vector family, a canonical-name elimination) is separate
+work, so the table below is left exactly as the R9 gap analysis wrote it — a
+non-normative proposal record — except where a mark records Rows 2, 3, 4, 5
+and 6.
 
 .. list-table::
    :header-rows: 1
@@ -3429,25 +3444,37 @@ non-normative proposal record — except where a footnote marks Row 2.
    * - 3
      - ``round-half-even``
      - No
-     - **Housekeeping rider.** §3.2 and §2.7 already oblige the kernel to
-       expose it to rules; the enumeration omits it. Affirming it is not a
-       widening.
+     - **RATIFIED AND LANDED** (ADR188 Row 3; landed by ADR219, 2026-08-22 —
+       D70 resolved). §3.2 and §2.7 already oblige the kernel to expose it to
+       rules; the enumeration omitted it. Affirming it was not a widening;
+       landing it was the owed work.
    * - 4
      - ``abs``
      - No
-     - **No rider.** ``(if (>= a b) (- a b) (- b a))`` expresses it.
+     - **SUPERSEDED — RIDER RATIFIED AND LANDED** (ADR219, 2026-08-22, on
+       #591 item 2's accumulated evidence: every pack reinventing ``abs`` as
+       nested ``if``). The original analysis stood on expressibility —
+       ``(if (>= a b) (- a b) (- b a))`` — which was never the point the
+       port record pressed: legibility, and the end of per-pack reinvention.
    * - 5
      - scalar ``min`` / ``max``
      - No
-     - **No rider.** Nested ``if`` expresses them, and §3.3 already frames
-       silent clamping as forbidden quiet degradation — an explicit ``if``
-       makes the saturation legible. The ergonomic cost is real and recorded.
+     - **SUPERSEDED — RIDERS RATIFIED AND LANDED** (ADR219, 2026-08-22:
+       ``min``/``max``, and ``clamp`` with them as the legible saturation
+       this row's own reasoning pointed at). Original: **No rider.** Nested
+       ``if`` expresses them, and §3.3 already frames silent clamping as
+       forbidden quiet degradation — an explicit ``if`` makes the saturation
+       legible. The ergonomic cost is real and recorded — and on the
+       accumulated evidence, no longer accepted.
    * - 6
      - ``sqrt``
      - No
-     - **Both presented.** Preferred: re-derive platform fit as a measure (the
-       share of a class's interest dimensions a platform satisfies), which
-       needs no norm. Fallback: a rider. A silent switch to squared magnitudes
+     - **FALLBACK TAKEN — RIDER RATIFIED AND LANDED** (ADR219, 2026-08-22).
+       Original: **Both presented.** Preferred: re-derive platform fit as a
+       measure (the share of a class's interest dimensions a platform
+       satisfies), which needs no norm — that branch still governs the
+       platform-fit CALL SITE. Fallback: a rider — taken by the Director's
+       ruling, governing the LANGUAGE. A silent switch to squared magnitudes
        changes the metric's scale and must never happen by default.
    * - 7
      - ``exp``
@@ -3556,6 +3583,85 @@ correction the same way every other Phase-1-review row in this register is.
 The ``real`` type-name-position widening this signature needed is a
 separate reading, recorded as D98.
 
+**The** ``sqrt`` **intrinsic (ADR219, ratified 2026-08-22).** Like
+``floor`` and unlike ``exp``/``log``, ``sqrt`` is not a transcendental: it
+crosses via ``f64::sqrt`` — IEEE-754's own ``squareRoot``, **correctly
+rounded by the standard's own mandate** — so there is no libm crossing to
+pin a golden vector against, and §4.3's golden-vector clause is DECLINED
+for this rider, exactly as ADR188 Row 2's landing declined it; this
+sentence is that disposition made explicit rather than a silent omission.
+Signature: one binary64-lane argument returning ``real`` —
+``(intrinsic sqrt :params (real) :returns real :cost N)``. **Domain:
+``[0, ∞)``.** A negative argument is ``E-EVAL-044``
+(``IntrinsicOutOfDomain``; the §4.6 register), never a silent ``NaN``;
+``-0.0`` is in-domain (``-0.0 < 0.0`` is ``false``, the D97 precedent),
+and IEEE's ``squareRoot(-0)`` is ``-0``, so the zero's sign is pinned by
+the standard. A non-finite argument is refused at the same input guard —
+load-bearing, not redundant: ``sqrt(+inf)`` through the crossing is
+``+inf`` (which would fail with the wrong code), and ``sqrt(NaN)`` would
+silently propagate. **No result-side re-check exists**: ``sqrt`` of a
+finite in-domain argument is finite and exactly specified, so a result
+guard would be dead code — unlike ``exp``'s overflow lane
+(``E-EVAL-014``). The no-coercions boundary is ``floor``'s: a bare
+``(sqrt 4)`` — an ``Int`` literal — is a malformed call, refused, never
+promoted.
+
+**The** ``round-half-even`` **intrinsic (ADR219, landing ADR188 Row 3).**
+§3.2's "Half-even, defined" paragraph closes with the obligation this
+lands: "the same algorithm is what the ``round-half-even`` intrinsic
+exposes to rules." The crossing is ``f64::round_ties_even`` — IEEE-754's
+``roundTiesToEven``, exactly specified — so the libm/golden-vector
+disposition is ``sqrt``'s. **The signature reading (register D227, open
+to Director correction):** ``(round-half-even x) : real → real`` — the
+nearest integer VALUE to ``x`` within the binary64 lane, ties to the even
+neighbor (``2.5 → 2``, ``3.5 → 4``, ``-2.5 → -2``, ``-0.5 → -0.0``; the
+sign is the standard's). §3.2's exact-integer-arithmetic law is satisfied
+by construction: a binary64 argument is already an exact rational, so
+"exactly midway" is decidable exactly and no rational-to-binary64
+conversion ever occurs. The Real→Int demotion remains ``floor``'s alone
+(ADR188 Row 2); a granularity-general ``(round-half-even x g)`` form is
+declined as speculative until a call site needs one. **Domain: total over
+finite reals** — at magnitudes ≥ 2^52 every binary64 is already integral,
+so the intrinsic is the identity there. A non-finite argument is
+``E-EVAL-044``; there is no result-side check (dead code — ``sqrt``'s
+disposition).
+
+**The** ``min``/``max`` **intrinsics (ADR219, superseding ADR188 Rows
+4/5).** Each ``(real real) → real``. **The comparison rule is pinned, and
+the library functions are deliberately not used:** Rust's
+``f64::min``/``f64::max`` are licensed to return *either* zero on a
+±0.0 tie and to propagate ``NaN`` — implementation-defined answers of
+exactly the kind this document exists to forbid. The landed rule is built
+from IEEE comparisons alone, which are exactly specified: ``min(a, b)``
+is ``b`` when ``b < a``, else ``a``; ``max(a, b)`` is ``b`` when ``a <
+b``, else ``a``. On an equal comparison — ``+0.0`` vs ``-0.0`` included,
+the two compare equal — **the first argument wins**, bit-pinned by the
+conformance tests (D228). A non-finite argument on either side is
+``E-EVAL-044`` — refused at the input, never silently propagated nor
+silently dropped.
+
+**The** ``abs`` **intrinsic (ADR219, superseding ADR188 Row 4).**
+``(real) → real`` via ``f64::abs`` — IEEE-754's sign-bit ``abs``, exact,
+with nothing platform-variant to pin (``sqrt``'s disposition).
+``abs(-0.0)`` is ``+0.0`` — the canonical zero, pinned to the bit. A
+non-finite argument is ``E-EVAL-044`` (``abs(±inf)`` would be ``+inf``
+and ``abs(NaN)`` would be ``NaN`` — neither escapes).
+
+**The** ``clamp`` **intrinsic (ADR219).** ``(clamp x lo hi) : (real real
+real) → real`` — the LEGIBLE saturation §3.3's silent-clamping
+prohibition points at: the author writes the bound, and an argument error
+is loud. ``lo > hi`` is ``E-EVAL-044``, never a silent swap of the
+bounds; ``lo == hi`` is legal (the result is that bound); an in-range
+``x`` returns bit-identical — the identity, never a re-rounded copy; a
+crossed bound saturates to the bound. It composes the pinned comparisons
+(``min(max(x, lo), hi)``), so the signed-zero disposition is the same
+first-argument-wins rule (D228). A non-finite argument in any of the
+three positions is ``E-EVAL-044``.
+
+**Costs.** Each new declaration's ``:cost`` is content-declared (§2.7),
+first-declarer-sets-the-number per the ``:cost`` provenance paragraph
+below — the sextet's arrival changes nothing about fuel accounting.
+
 **[draft ruling — Phase 1 review, R9 chapter C13]** *The RNG carrier-key
 convention.* §2.8 sanctions RNG as a kernel intrinsic with per-(session, tick,
 salt) seeding and stops there; the rst never showed the convention, and five
@@ -3594,15 +3700,18 @@ this note only gestures at.
 promised "the two ratified riders get normative intrinsic-table rows" (the
 ``floor`` prose above is that promise kept in long form); this table is the
 same promise kept as an at-a-glance reference, extended to the transcendental
-pair R10 caps and to ``rng-draw``'s already-ratified key convention (D69,
-above). It is normative for ``floor``/``exp``/``log``/``rng-draw`` alike —
+pair R10 caps, to ``rng-draw``'s already-ratified key convention (D69,
+above), and — under ADR219 (2026-08-22) — to the exact-arithmetic sextet.
+It is normative for all ten names alike —
 ``declarations::kernel_signature`` checks every one of their ``:params``/
-``:returns`` at load (``rng-draw``'s own arm landed with #576 Task 5). Every
-``:cost`` cell below except ``floor``'s stays "author-declared" for the same
-reason it always has: ``fuel.rs`` hard-codes no per-intrinsic cost, and no
-shipped content declares ``exp``/``log``/``rng-draw`` yet — the first pack to
-declare each one sets its number, pinned by its own conformance vector
-thereafter.
+``:returns`` at load (``rng-draw``'s own arm landed with #576 Task 5).
+Every ``:cost`` cell below except ``floor``'s and ``log``'s stays
+"author-declared" for the same reason it always has: ``fuel.rs`` hard-codes
+no per-intrinsic cost — the first pack to declare each one sets its number,
+pinned by its own conformance vector thereafter. ``log``'s first
+declaration landed with the Community port's c07 (``:cost 40``,
+``community.bsl``, D210's divisor note); ``exp``, ``rng-draw`` and the
+sextet await theirs.
 
 .. list-table::
    :header-rows: 1
@@ -3656,15 +3765,78 @@ thereafter.
        construction-ORDER accident rather than a meaning distinction, was
        corrected — see this document's own commit history and ADR213
        decision point 6 for the full record.)
+   * - ``sqrt``
+     - ``(real)``
+     - ``real``
+     - author-declared
+     - IEEE-754 correctly-rounded ``squareRoot`` (``f64::sqrt``); domain
+       ``[0, ∞)`` — ``-0.0`` in-domain, the D97 precedent; a negative or
+       non-finite argument is ``E-EVAL-044`` (``IntrinsicOutOfDomain``);
+       ADR219 / D226. No libm crossing, so no golden vector (consequence
+       declined, D97's shape); no result-side re-check (finite in-domain
+       input gives a finite, exactly-specified output).
+   * - ``round-half-even``
+     - ``(real)``
+     - ``real``
+     - author-declared
+     - IEEE-754 ``roundTiesToEven`` (``f64::round_ties_even``): the nearest
+       integer VALUE to the argument within the binary64 lane, ties to the
+       even neighbor (``2.5 → 2``, ``3.5 → 4``, ``-2.5 → -2``,
+       ``-0.5 → -0.0``); total over finite reals (identity at
+       already-integral magnitudes); a non-finite argument is
+       ``E-EVAL-044``; ADR219, landing ADR188 Row 3 / D227. No libm
+       crossing, no golden vector.
+   * - ``min``
+     - ``(real real)``
+     - ``real``
+     - author-declared
+     - Comparison-based, never ``f64::min`` (which may return either zero
+       on a ±0.0 tie and propagates ``NaN``): the second argument wins only
+       on the strict comparison ``b < a``; on an equal comparison —
+       ``+0.0`` vs ``-0.0`` included — the FIRST argument wins, bit-pinned
+       (D228). A non-finite argument on either side is ``E-EVAL-044``;
+       ADR219, superseding ADR188 Row 4.
+   * - ``max``
+     - ``(real real)``
+     - ``real``
+     - author-declared
+     - As ``min``, picking the greater (strict ``a < b``, first argument
+       wins on a tie, D228); a non-finite argument on either side is
+       ``E-EVAL-044``; ADR219, superseding ADR188 Row 5.
+   * - ``abs``
+     - ``(real)``
+     - ``real``
+     - author-declared
+     - IEEE-754 sign-bit ``abs`` (``f64::abs``), exact; ``abs(-0.0)`` is
+       ``+0.0``, the canonical zero, bit-pinned; a non-finite argument is
+       ``E-EVAL-044``; ADR219, superseding ADR188 Row 4 (the same row's
+       nested-``if`` evidence as ``min``).
+   * - ``clamp``
+     - ``(real real real)``
+     - ``real``
+     - author-declared
+     - ``(clamp x lo hi)`` — the LEGIBLE saturation §3.3's silent-clamping
+       prohibition points at. Composes the pinned comparisons
+       (``min(max(x, lo), hi)``, D228's first-argument-wins rule); ``lo >
+       hi`` is ``E-EVAL-044``, never a silent swap of the bounds; ``lo ==
+       hi`` is legal (the result is that bound); an in-range ``x`` returns
+       bit-identical; a non-finite argument in any position is
+       ``E-EVAL-044``; ADR219 / D228.
 
-**``:cost`` provenance.** The only intrinsic declaration in shipped content
-today is ``rust/crates/babylon-tick/content/rules/territory.bsl:67`` —
-``(intrinsic floor :params (real) :returns int :cost 5)`` — which is also the
-proof that the whole intrinsic path is production-wired end to end, not
-merely unit-tested. ``floor``'s row reads **5**, quoted from
+**``:cost`` provenance.** Shipped content declares two intrinsics today:
+``floor`` — ``(intrinsic floor :params (real) :returns int :cost 5)``,
+declared byte-identically in THREE packs (``territory.bsl``,
+``decomposition.bsl``, ``vitality-attrition.bsl``; the co-load refusal that
+triplication courts is #646, a loader matter this table does not govern) —
+and ``log`` — ``(intrinsic log :params (real) :returns real :cost 40)``,
+``community.bsl``'s first declaration (the Community port's c07, D210's
+divisor note). The ``floor`` declarations are also the proof that the whole
+intrinsic path is production-wired end to end, not merely
+unit-tested. ``floor``'s row reads **5** and ``log``'s **40**, quoted from
 content. ``fuel.rs`` hard-codes no per-intrinsic cost for any intrinsic, so
-``exp``/``log``/``rng-draw`` carry no kernel-fixed number to quote: the first
-content pack to declare each one sets its ``:cost``, and that number is then
+``exp``/``rng-draw`` and the ADR219 sextet carry no kernel-fixed number to
+quote: the first content pack to declare each one sets its ``:cost``, and
+that number is then
 pinned by its own conformance vector — never a kernel constant this table
 could state in advance.
 
@@ -4045,6 +4217,17 @@ for the ratification ceremony.
 argument, or a non-positive ``log`` argument (§3.10, R10/ADR176 r21, ADR188
 cap) — is the next free number at the time of allocation, per the same
 rule.
+
+**The ADR219 exact-arithmetic rider train (2026-08-22) continues**
+``E-EVAL`` **once more.** ``E-EVAL-044`` — ``IntrinsicOutOfDomain``: an
+argument outside one of the six exact-arithmetic intrinsics' ratified
+domain — a negative argument to ``sqrt`` (``-0.0`` excepted, the D97
+precedent), ``clamp``'s ``lo > hi``, or a non-finite argument to any of
+``sqrt``/``round-half-even``/``min``/``max``/``abs``/``clamp`` — is the
+next free number at the time of allocation, per the same rule. Reusing
+``E-EVAL-043`` was considered and rejected: these six are not
+transcendentals, and a code whose name says ``Transcendental`` would lie
+about half its referents.
 
 **Load-time errors** report the offending file, line, column, form, and code,
 and reject the whole content set — there is no partial load and no "skip the
@@ -4702,7 +4885,28 @@ At minimum, an implementation claiming conformance passes:
     argument whose floor reaches or exceeds ``2^63``, all three
     ``E-EVAL-039`` and none of them silently coerced or wrapped; and a bare
     non-``Real`` argument (an ``Int`` literal, not the result of
-    arithmetic), refused as a malformed call.
+    arithmetic), refused as a malformed call. **The ADR219 sextet**
+    (chapter C13's own host suite, D226-D228) — ``sqrt``: a perfect square
+    exact, a non-square pinned to the correctly-rounded bit, ``-0.0``
+    accepted with its sign pinned, a negative argument and each non-finite
+    argument ``E-EVAL-044``; ``round-half-even``: the tie cases ``2.5 →
+    2``, ``3.5 → 4``, ``-2.5 → -2``, ``-0.5 → -0.0`` bit-pinned, non-tie
+    nearest, the identity at already-integral magnitude, the ``Real``
+    (never ``Int``) return variant, a non-finite argument ``E-EVAL-044``;
+    ``min``/``max``: the extreme in both argument orders, the ±0.0 tie
+    returning the FIRST argument bit-pinned (never ``f64::min``/\
+    ``f64::max``'s implementation-defined pick), a non-finite argument on
+    either side ``E-EVAL-044``; ``abs``: the sign dropped, ``-0.0``
+    canonicalized to ``+0.0`` bit-pinned, non-finite ``E-EVAL-044``;
+    ``clamp``: the in-range identity bit-exact, saturation to each crossed
+    bound, the bounds themselves accepted, ``lo > hi`` loud
+    (``E-EVAL-044``, never a silent swap), ``lo == hi`` returning the
+    bound, non-finite in any position ``E-EVAL-044``; for every one of the
+    six, a non-``Real`` argument and a wrong arity refused as malformed
+    calls; and the lockstep vector — every ``DECLARABLE_INTRINSICS`` member
+    carrying a ``kernel_signature`` row and a dispatch arm, so a cap
+    widening that forgets either half fails the suite rather than shipping
+    unchecked.
 
 23. **Attributed membership** (Amendment AG (i)) — ``membership-field-of``
     reading a payload field of each declared scalar type, inside a fold over
@@ -9428,6 +9632,53 @@ consequences are the ordinary kind of review item.
        the five moved pins (worlds 1-4 + the arc's tick-3 pair) were
        re-measured with the pack's growth named in the commit — this
        crate's own goldens, never a §6.5 ceremony.
+   * - D226
+     - §3.10, §4.6
+     - **The** ``sqrt`` **rider landing (ADR219, Director ruling
+       2026-08-22).** ADR188 Row 6's fallback rider is taken: ``sqrt``
+       joins the declarable set with signature ``(real) → real``, domain
+       ``[0, ∞)`` — a negative argument is the newly minted
+       ``E-EVAL-044``, ``-0.0`` is accepted (``-0.0 < 0.0`` is ``false``,
+       the D97 precedent), and IEEE's ``squareRoot(-0)`` is ``-0``, so the
+       zero's sign is the standard's own. The crossing is ``f64::sqrt`` —
+       correctly rounded by IEEE-754's mandate — so the pinned soft-float
+       libm and §4.3's golden-vector clause are DECLINED, the D97
+       disposition shape, recorded in §3.10's normative paragraph rather
+       than silently omitted. No result-side re-check exists (finite
+       in-domain input ⇒ finite exactly-specified output; a guard would be
+       dead code) — recorded here for the same reason.
+   * - D227
+     - §2.7, §3.2, §3.10
+     - **The** ``round-half-even`` **signature reading (ADR219, landing
+       ADR188 Row 3, resolving D70).** §3.2 obliges the kernel to expose
+       "the same algorithm" to rules but does not pin a signature. The
+       landed reading: ``(round-half-even x) : real → real`` — the nearest
+       integer VALUE to ``x`` within the binary64 lane, ties to the even
+       neighbor, via ``f64::round_ties_even`` (IEEE's
+       ``roundTiesToEven``). §3.2's exact-integer-arithmetic law is
+       satisfied by construction: a binary64 argument is already an exact
+       rational, so "exactly midway" is decidable exactly. The Real→Int
+       demotion remains ``floor``'s alone (ADR188 Row 2); a
+       granularity-general ``(round-half-even x g)`` form is declined as
+       speculative. A workforce reading, open to Director correction, same
+       as every Phase-1-review row.
+   * - D228
+     - §3.10
+     - **The** ``min``/``max``/``abs``/``clamp`` **landing (ADR219,
+       superseding ADR188 Rows 4/5 on #591 item 2's accumulated
+       evidence).** The comparison rule is pinned and the library
+       functions deliberately unused: Rust's ``f64::min``/``f64::max``
+       may return either zero on a ±0.0 tie and propagate ``NaN`` — the
+       implementation-defined shape this register exists to exclude. The
+       landed rule: strict-comparison pick, **first argument wins on an
+       equal comparison** (``+0.0``/``-0.0`` included), bit-pinned by the
+       host's conformance tests. ``clamp`` composes the same two picks
+       (``min(max(x, lo), hi)``); ``lo > hi`` is ``E-EVAL-044``, never a
+       silent swap (§3.3's silent-clamping prohibition — this intrinsic
+       is the legible form); an in-range ``x`` returns bit-identical.
+       ``abs`` canonicalizes ``-0.0`` to ``+0.0``. Non-finite arguments
+       are ``E-EVAL-044`` everywhere in the sextet — refused at the
+       input, never propagated.
 
 Authoring idioms (non-normative)
 -----------------------------------

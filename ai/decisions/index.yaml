@@ -1000,3 +1000,8 @@ decisions:
     status: accepted
     date: '2026-08-18'
     file: ADR217_b3_wave1_null_hypothesis_viewer_handoff.yaml
+  ADR219_exact_arithmetic_intrinsic_rider_train:
+    title: 'The exact-arithmetic intrinsic rider train — sqrt/round-half-even/min/max/abs/clamp join the declarable set (Director ruling 2026-08-22): ADR188 Row 6''s sqrt fallback rider taken, Row 3 landed (D70 resolved), Rows 4/5 superseded on #591 item 2''s accumulated evidence; all six cross via IEEE-754 exactly-specified operations with the golden-vector clause declined per name (the D97 disposition shape); E-EVAL-044 (IntrinsicOutOfDomain) minted; DECLARABLE_INTRINSICS 4 -> 10 with kernel_signature rows and dispatch arms in lockstep (the lockstep invariant now a test, not a hope); spec §3.10/§2.7/§4.6/§6.2-family-22 + D226-D228. ADR218 earmark (the Community port Task-12 handoff) left undisturbed; verified next-free against origin/dev (tops at 217) and every open PR at filing time.'
+    status: accepted
+    date: '2026-08-22'
+    file: ADR219_exact_arithmetic_intrinsic_rider_train.yaml

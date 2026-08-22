@@ -2600,35 +2600,40 @@ mod c13_intrinsic_cap {
     };
 
     /// §3.10 gate 1, mechanical: the transcendental cap is `{exp, log}`,
-    /// and R10 is operative for R9/R10 purposes. `floor` joins the
-    /// declarable set under a separate authority (ADR188 Row 2, Director-
-    /// disposed 2026-08-10 — see Draft-Ruling Register D97); it is not a
-    /// transcendental and R10's `{exp, log}` enumeration is unchanged.
-    /// `rng-draw` joins under a THIRD, separate authority again (ADR188 Row
-    /// 11, D69, #576 Task 5) — renamed from `exp_log_and_floor_are_
-    /// declarable` now that the cap is a four-name set. `sqrt` stays
-    /// permanently OUTSIDE the roster (ADR188 Row 6 eliminates it) — this
-    /// row is the standing proof the set never silently grows a fifth name.
+    /// and R10 is operative for R9/R10 purposes. `floor` joins under ADR188
+    /// Row 2 (D97), `rng-draw` under ADR188 Row 11 (D69, #576 Task 5). The
+    /// ADR219 rider train (Director ruling 2026-08-22) grows the set by six:
+    /// `sqrt` (ADR188 Row 6's fallback rider, taken), `round-half-even`
+    /// (Row 3's ratified housekeeping rider, landed — D70's "recorded, not
+    /// resolved" is resolved), and `min`/`max`/`abs`/`clamp` (Rows 4/5's
+    /// "no rider" dispositions SUPERSEDED on #591 item 2's accumulated
+    /// evidence, Director-approved 2026-08-22). All six are exact-arithmetic
+    /// IEEE-754-specified crossings — the transcendental roster stays the
+    /// R10 pair alone. `tanh`/`entropy`/`renormalize`/`trunc` stay OUT —
+    /// this row remains the standing proof the set never silently grows.
     #[test]
-    fn exp_log_floor_and_rng_draw_are_declarable() {
-        assert_eq!(DECLARABLE_INTRINSICS, ["exp", "log", "floor", "rng-draw"]);
-        assert_eq!(check_intrinsic_cap("exp"), Ok(()));
-        assert_eq!(check_intrinsic_cap("log"), Ok(()));
-        assert_eq!(check_intrinsic_cap("floor"), Ok(()));
-        assert_eq!(check_intrinsic_cap("rng-draw"), Ok(()));
-        for outside in ["tanh", "sqrt", "entropy", "renormalize", "abs", "trunc"] {
+    fn the_ten_intrinsics_are_declarable_under_their_four_authorities() {
+        assert_eq!(
+            DECLARABLE_INTRINSICS,
+            [
+                "exp",
+                "log",
+                "floor",
+                "rng-draw",
+                "sqrt",
+                "round-half-even",
+                "min",
+                "max",
+                "abs",
+                "clamp"
+            ]
+        );
+        for name in DECLARABLE_INTRINSICS {
+            assert_eq!(check_intrinsic_cap(name), Ok(()), "{name}");
+        }
+        for outside in ["tanh", "entropy", "renormalize", "trunc"] {
             assert!(check_intrinsic_cap(outside).is_err(), "{outside}");
         }
-    }
-
-    /// **Recorded, not resolved** (D70): `round-half-even` is obliged by
-    /// §3.2 and §2.7 and sits outside the enumeration. ADR188 Row 3 affirms
-    /// a housekeeping rider for it too, but its landing is separate work
-    /// the floor rider (Row 2) does not perform — this crate still admits
-    /// nothing there.
-    #[test]
-    fn round_half_even_is_outside_the_cap_and_stays_outside() {
-        assert!(check_intrinsic_cap("round-half-even").is_err());
     }
 
     /// D71: `sigmoid` is prohibited **outright**, not merely undeclared —
@@ -2689,14 +2694,29 @@ mod c14_rng_draw {
     // ---------------------------------------------------- rows 1/2: the cap
 
     /// Row 1: `check_intrinsic_cap("rng-draw")` is `Ok(())`, and
-    /// `DECLARABLE_INTRINSICS` is the four-name set. `sqrt` stays in the
-    /// outside roster (ADR188 Row 6 — see `c13_intrinsic_cap`'s own
-    /// standing proof).
+    /// `DECLARABLE_INTRINSICS` is the ten-name set — the four this family
+    /// pinned plus the ADR219 sextet (`sqrt` among them, Row 6's fallback
+    /// rider taken — see `c13_intrinsic_cap`'s own standing proof, whose
+    /// outside roster keeps `tanh`/`entropy`/`renormalize`/`trunc`).
     #[test]
-    fn rng_draw_is_declarable_and_the_cap_is_the_four_name_set() {
-        assert_eq!(DECLARABLE_INTRINSICS, ["exp", "log", "floor", "rng-draw"]);
+    fn rng_draw_is_declarable_and_the_cap_is_the_ten_name_set() {
+        assert_eq!(
+            DECLARABLE_INTRINSICS,
+            [
+                "exp",
+                "log",
+                "floor",
+                "rng-draw",
+                "sqrt",
+                "round-half-even",
+                "min",
+                "max",
+                "abs",
+                "clamp"
+            ]
+        );
         assert_eq!(check_intrinsic_cap("rng-draw"), Ok(()));
-        assert!(check_intrinsic_cap("sqrt").is_err());
+        assert!(check_intrinsic_cap("tanh").is_err());
     }
 
     /// Row 2: `kernel_signature("rng-draw") == Some((vec![Scalar(Int)],

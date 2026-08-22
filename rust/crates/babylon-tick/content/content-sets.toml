@@ -28,9 +28,8 @@ id        = "community/conformance"
 scenario  = "scenarios/community-conformance.bscn"
 prelude   = []
 # The pack lands across Tasks 8-11 of the Community port train (issue
-# #667); Task 7's suite drives an in-test probe rule, so this row claims
-# the scenario only.
-rules     = []
+# #667); c00-c04 landed at Task 8.
+rules     = ["rules/community.bsl"]
 consumers = ["rust/crates/babylon-tick/tests/community_conformance.rs"]
 
 [[set]]

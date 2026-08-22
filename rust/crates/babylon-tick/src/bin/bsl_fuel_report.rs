@@ -173,6 +173,15 @@ const SOLO_PACKS: &[(&str, &str, Option<&str>, &str)] = &[
         None,
         include_str!("../../content/rules/vitality-attrition.bsl"),
     ),
+    (
+        // Community port train (issue #667), Task 8: the c00-c04 census
+        // pack over conformance world 1. Task 9's worlds join as their own
+        // rows when they land.
+        "community",
+        include_str!("../../content/scenarios/community-conformance.bscn"),
+        None,
+        include_str!("../../content/rules/community.bsl"),
+    ),
 ];
 
 /// The two committed multi-file co-loads — see the module doc's fix-round

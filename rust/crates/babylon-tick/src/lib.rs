@@ -377,8 +377,10 @@ fn registered_systems() -> HashSet<String> {
         // train, issue #667, plan
         // `docs/superpowers/plans/2026-08-18-community-port.md`).
         // Registered AT TASK 4 (one task earlier than the plan's Task 7
-        // Step 2): the ceiling supply chain's RED tests must observe
-        // MissingCeiling/E-LOAD-042 specifically, and a rule under an
+        // Step 2): the ceiling supply chain's RED tests must observe the
+        // two refusal codes specifically — E-LOAD-045 (MissingCeiling, the
+        // type axis) and E-LOAD-042 (MissingMaxMembers, the
+        // :max-members axis) — and a rule under an
         // unregistered namespace fails E-LOAD-004 (undeterminable domain)
         // one stage earlier — the registration is the precondition for the
         // probe to reach the check it pins. Genuinely NEW registration —

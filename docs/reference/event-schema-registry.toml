@@ -198,7 +198,7 @@ keys = [
 
 [[tier1]]
 event_type = "POPULATION_ATTRITION"
-citations = ["rust/crates/babylon-tick/content/rules/vitality-attrition.bsl:569"]
+citations = ["rust/crates/babylon-tick/content/rules/vitality-attrition.bsl:579"]
 keys = [
   { name = "entity-id", required = true, source = "bsl" },
   { name = "deaths", required = true, source = "bsl" },

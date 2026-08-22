@@ -95,6 +95,18 @@
 //! state hash and every other implementation (see the pinned byte vectors
 //! in this module's tests).
 //!
+//! - **Version 4** (Community port train, Task 5/E2a, hyperedge own-field
+//!   attributes): section `0x07` — `(hyperedge-id, qname, f64)` rows —
+//!   exists, and is **elided when empty**, exactly the rule
+//!   `0x05`/`0x06` set. Every version-3 state encodes byte-identically
+//!   under version 4: nothing in the tree declares a hyperedge field yet
+//!   (that surface is Task 6's), so this landing moves zero existing
+//!   goldens. Collision note, same class as version 3's: the Community
+//!   plan's literal text assumed section `0x06` for this lane; T3's
+//!   Currency widening claimed `0x06` before this train landed, so the
+//!   lane takes the next-free tag, `0x07` — a deviation from the plan's
+//!   literal number, not from its shape.
+//!
 //! **Section tags are not decoration.** Without them a graph with one node
 //! and no edges could serialize identically to one with no nodes and one
 //! edge under some count arrangement; the tag makes each section's identity
@@ -130,6 +142,7 @@ const TAG_EDGES: u8 = 0x03;
 const TAG_HYPEREDGES: u8 = 0x04;
 const TAG_EDGE_ATTRIBUTES: u8 = 0x05;
 const TAG_CURRENCY_ATTRIBUTES: u8 = 0x06;
+const TAG_HYPEREDGE_ATTRIBUTES: u8 = 0x07;
 
 /// The section tags are the whole basis for `TAG_NODES`/`TAG_EDGES`/… being
 /// distinguishable on the wire (module doc, "Section tags are not
@@ -147,6 +160,7 @@ fn tag_constants_are_pairwise_distinct() {
         TAG_HYPEREDGES,
         TAG_EDGE_ATTRIBUTES,
         TAG_CURRENCY_ATTRIBUTES,
+        TAG_HYPEREDGE_ATTRIBUTES,
     ];
     let mut seen = std::collections::HashSet::new();
     for tag in tags {
@@ -157,16 +171,18 @@ fn tag_constants_are_pairwise_distinct() {
     }
 }
 
-/// The canonical-layout version (module doc, "Layout versions"). **3** =
-/// version 2's five sections plus section `0x06` (Currency node
-/// attributes, T3 #491/OQ-J), the sixth **elided when empty** — a
-/// byte-compatible widening: every version-2 state (so every version-1
-/// state too, since `0x05` was already elidable) hashes identically under
-/// version 3. Never written into the encoding itself; this versions the
-/// CONTRACT for cross-language reimplementations, not the payload. Bumping
-/// it is a contract event — the module doc's "Layout versions" section
-/// says what each version means and what may never be one.
-pub const CANONICAL_LAYOUT_VERSION: u32 = 3;
+/// The canonical-layout version (module doc, "Layout versions"). **4** =
+/// version 3's six sections plus section `0x07` (hyperedge own-field
+/// attributes, Community port train Task 5/E2a — T3's Currency lane took
+/// `0x06` first, so this section is `0x07`), the seventh **elided when
+/// empty** — a byte-compatible widening: every version-3 state (so every
+/// earlier one, since `0x05`/`0x06` were already elidable) hashes
+/// identically under version 4. Never written into the encoding itself;
+/// this versions the CONTRACT for cross-language reimplementations, not the
+/// payload. Bumping it is a contract event — the module doc's "Layout
+/// versions" section says what each version means and what may never be
+/// one.
+pub const CANONICAL_LAYOUT_VERSION: u32 = 4;
 
 /// Accumulates the canonical encoding described in the module docs.
 ///
@@ -357,6 +373,30 @@ impl StateEncoder {
         Ok(())
     }
 
+    /// Section `0x07` (layout version 4 — the module doc's "Layout
+    /// versions"; Community port train, Task 5, E2a).
+    /// `hyperedge_attributes` must already be sorted ascending by
+    /// `(id, qname)` — the same key sections `0x02`/`0x06` sort by.
+    /// **The elision decision is the CALLER's**: this method writes what it
+    /// is given, unconditionally; [`CanonicalState::encode_state`] is the
+    /// one place that decides an empty seventh listing contributes zero
+    /// bytes (ADR198 R2's precedent, restated per section).
+    ///
+    /// # Errors
+    /// Returns [`GraphError`] on overflow or a non-finite value.
+    pub fn write_hyperedge_attributes(
+        &mut self,
+        hyperedge_attributes: &[(HyperedgeId, String, f64)],
+    ) -> Result<(), GraphError> {
+        self.push_count(TAG_HYPEREDGE_ATTRIBUTES, hyperedge_attributes.len())?;
+        for (id, qname, value) in hyperedge_attributes {
+            self.bytes.extend_from_slice(&id.0.to_be_bytes());
+            self.push_str(qname)?;
+            self.push_f64(*value, &format!("attribute {qname} on hyperedge {id:?}"))?;
+        }
+        Ok(())
+    }
+
     /// The canonical bytes, for a differential when two hashes disagree.
     ///
     /// A bare hash says only *that* two states differ; the bytes say where.
@@ -372,8 +412,9 @@ impl StateEncoder {
     }
 }
 
-/// A store's five-way listing of its own contents, plus the ONE canonical
-/// encoder built on top of them.
+/// A store's seven-way listing of its own contents, plus the ONE canonical
+/// encoder built on top of them. (N-way history: five before T3's Currency
+/// lane, six before the Community train's hyperedge own-field lane.)
 ///
 /// **Why this trait exists rather than widening [`crate::substrate::GraphSubstrate`].**
 /// The substrate trait offers only type-keyed ranges
@@ -425,9 +466,16 @@ pub trait CanonicalState {
     /// own disjointness from [`Self::all_edges`] (the double-storage
     /// ruling, D143, restated for the sixth section).
     fn all_currency_attributes(&self) -> Vec<(NodeId, String, Currency)>;
+    /// Every hyperedge-attribute row as `(id, qname, value)`, in any order
+    /// (Community port train, Task 5, E2a — section `0x07`, layout version
+    /// 4). **REQUIRED, never defaulted** — the fifth/sixth listings' own
+    /// argument, restated: a default-empty body would let a store silently
+    /// forget to report, which is exactly the "reporting different facts"
+    /// failure the one-encoder design exists to surface.
+    fn all_hyperedge_attributes(&self) -> Vec<(HyperedgeId, String, f64)>;
 
     /// The canonical encoding (module docs) — the ONLY place the sort and
-    /// the six `write_*` calls happen, for every store that ever implements
+    /// the `write_*` calls happen, for every store that ever implements
     /// this trait.
     ///
     /// Sorts: nodes by id; attributes by `(id, name)`; edges by
@@ -497,6 +545,15 @@ pub trait CanonicalState {
             encoder.write_currency_attributes(&currency_attributes)?;
         }
 
+        let mut hyperedge_attributes = self.all_hyperedge_attributes();
+        hyperedge_attributes.sort_unstable_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+        // Section 0x07 (layout version 4): the same empty-elision rule as
+        // 0x05/0x06 — no tag, no count, no bytes at all when empty (ADR198
+        // R2's precedent, restated per section).
+        if !hyperedge_attributes.is_empty() {
+            encoder.write_hyperedge_attributes(&hyperedge_attributes)?;
+        }
+
         Ok(encoder)
     }
 
@@ -527,6 +584,7 @@ mod tests {
         hyperedges: Vec<(HyperedgeId, String, Vec<NodeId>)>,
         edge_attributes: Vec<(String, NodeId, NodeId, String, f64)>,
         currency_attributes: Vec<(NodeId, String, Currency)>,
+        hyperedge_attributes: Vec<(HyperedgeId, String, f64)>,
     }
 
     impl CanonicalState for Facts {
@@ -548,6 +606,9 @@ mod tests {
         fn all_currency_attributes(&self) -> Vec<(NodeId, String, Currency)> {
             self.currency_attributes.clone()
         }
+        fn all_hyperedge_attributes(&self) -> Vec<(HyperedgeId, String, f64)> {
+            self.hyperedge_attributes.clone()
+        }
     }
 
     /// The provided `encode_state` reproduces the exact pinned byte array
@@ -568,6 +629,7 @@ mod tests {
             hyperedges: vec![(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])],
             edge_attributes: vec![],
             currency_attributes: vec![],
+            hyperedge_attributes: Vec::new(),
         };
 
         #[rustfmt::skip]
@@ -686,6 +748,7 @@ mod tests {
                     Currency::from_micro_units(1_000_000),
                 ),
             ],
+            hyperedge_attributes: Vec::new(),
         };
 
         let scrambled = Facts {
@@ -740,6 +803,7 @@ mod tests {
                     Currency::from_micro_units(500_000),
                 ),
             ],
+            hyperedge_attributes: Vec::new(),
         };
 
         assert_eq!(
@@ -1005,6 +1069,7 @@ mod tests {
             hyperedges: vec![(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])],
             edge_attributes: vec![],
             currency_attributes: vec![],
+            hyperedge_attributes: Vec::new(),
         };
         let mut manual = StateEncoder::new();
         manual.write_nodes(&[(NodeId(1), "c".to_owned())]).unwrap();
@@ -1037,6 +1102,7 @@ mod tests {
             hyperedges: vec![(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])],
             edge_attributes: vec![],
             currency_attributes: vec![],
+            hyperedge_attributes: Vec::new(),
         };
         let with_attribute = Facts {
             edge_attributes: vec![("E".to_owned(), NodeId(1), NodeId(2), "t".to_owned(), 0.25)],
@@ -1047,6 +1113,7 @@ mod tests {
                 hyperedges: bare.hyperedges.clone(),
                 edge_attributes: vec![],
                 currency_attributes: vec![],
+                hyperedge_attributes: Vec::new(),
             }
         };
 
@@ -1085,6 +1152,7 @@ mod tests {
             hyperedges: vec![(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])],
             edge_attributes: vec![("E".to_owned(), NodeId(1), NodeId(2), "t".to_owned(), 0.25)],
             currency_attributes: vec![],
+            hyperedge_attributes: Vec::new(),
         };
         let mut manual = StateEncoder::new();
         manual.write_nodes(&[(NodeId(1), "c".to_owned())]).unwrap();
@@ -1121,6 +1189,7 @@ mod tests {
             hyperedges: vec![(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])],
             edge_attributes: vec![("E".to_owned(), NodeId(1), NodeId(2), "t".to_owned(), 0.25)],
             currency_attributes: vec![],
+            hyperedge_attributes: Vec::new(),
         };
         let with_attribute = Facts {
             currency_attributes: vec![(NodeId(1), "m".to_owned(), Currency::from_micro_units(1))],
@@ -1131,6 +1200,7 @@ mod tests {
                 hyperedges: bare.hyperedges.clone(),
                 edge_attributes: bare.edge_attributes.clone(),
                 currency_attributes: vec![],
+                hyperedge_attributes: Vec::new(),
             }
         };
 
@@ -1155,6 +1225,171 @@ mod tests {
         );
     }
 
+    /// The `0x07` analogue of `an_empty_edge_attribute_listing_writes_no_
+    /// fifth_section_bytes` / its `0x06` sibling (Community port train,
+    /// Task 5, E2a): the provided `encode_state` over a store reporting NO
+    /// hyperedge attributes produces exactly the bytes a hand-driven
+    /// six-section encoder produces — no `0x07` tag, no zero count,
+    /// nothing. (If the elision branch is deleted, this flips red.) The
+    /// landed tick pins (19, `tick_goldens.rs`) staying byte-identical are
+    /// the third, decisive proof at the whole-estate level.
+    #[test]
+    fn an_empty_hyperedge_attribute_listing_writes_no_seventh_section_bytes() {
+        let facts = Facts {
+            nodes: vec![(NodeId(1), "c".to_owned())],
+            attributes: vec![(NodeId(1), "w".to_owned(), 1.0)],
+            edges: vec![("E".to_owned(), NodeId(1), NodeId(2), 0.5)],
+            hyperedges: vec![(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])],
+            edge_attributes: vec![("E".to_owned(), NodeId(1), NodeId(2), "t".to_owned(), 0.25)],
+            currency_attributes: vec![(NodeId(1), "m".to_owned(), Currency::from_micro_units(1))],
+            hyperedge_attributes: Vec::new(),
+        };
+        let mut manual = StateEncoder::new();
+        manual.write_nodes(&[(NodeId(1), "c".to_owned())]).unwrap();
+        manual
+            .write_attributes(&[(NodeId(1), "w".to_owned(), 1.0)])
+            .unwrap();
+        manual
+            .write_edges(&[("E".to_owned(), NodeId(1), NodeId(2), 0.5)])
+            .unwrap();
+        manual
+            .write_hyperedges(&[(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])])
+            .unwrap();
+        manual
+            .write_edge_attributes(&[("E".to_owned(), NodeId(1), NodeId(2), "t".to_owned(), 0.25)])
+            .unwrap();
+        manual
+            .write_currency_attributes(&[(
+                NodeId(1),
+                "m".to_owned(),
+                Currency::from_micro_units(1),
+            )])
+            .unwrap();
+        assert_eq!(
+            facts.encode_state().unwrap().as_bytes(),
+            manual.as_bytes(),
+            "an empty seventh listing must contribute ZERO bytes (the 0x05/0x06 elision \
+             precedent, extended to 0x07)"
+        );
+    }
+
+    /// The `0x07` analogue of `a_single_currency_attribute_moves_the_hash_
+    /// and_trails_the_five_sections` (Task 5): ONE stored hyperedge
+    /// attribute must be hash-visible, and the seventh section trails the
+    /// six prior sections rather than inserting among them.
+    #[test]
+    fn a_single_hyperedge_attribute_moves_the_hash_and_trails_the_six_sections() {
+        let bare = Facts {
+            nodes: vec![(NodeId(1), "c".to_owned())],
+            attributes: vec![(NodeId(1), "w".to_owned(), 1.0)],
+            edges: vec![("E".to_owned(), NodeId(1), NodeId(2), 0.5)],
+            hyperedges: vec![(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])],
+            edge_attributes: vec![("E".to_owned(), NodeId(1), NodeId(2), "t".to_owned(), 0.25)],
+            currency_attributes: vec![],
+            hyperedge_attributes: Vec::new(),
+        };
+        let with_attribute = Facts {
+            hyperedge_attributes: vec![(HyperedgeId(7), "community/heat".to_owned(), 0.5)],
+            ..Facts {
+                nodes: bare.nodes.clone(),
+                attributes: bare.attributes.clone(),
+                edges: bare.edges.clone(),
+                hyperedges: bare.hyperedges.clone(),
+                edge_attributes: bare.edge_attributes.clone(),
+                currency_attributes: vec![],
+                hyperedge_attributes: Vec::new(),
+            }
+        };
+
+        assert_ne!(
+            bare.state_hash().unwrap(),
+            with_attribute.state_hash().unwrap(),
+            "one stored hyperedge attribute must move the hash"
+        );
+        let bare_encoding = bare.encode_state().unwrap();
+        let with_encoding = with_attribute.encode_state().unwrap();
+        let bare_bytes = bare_encoding.as_bytes();
+        let with_bytes = with_encoding.as_bytes();
+        assert_eq!(
+            &with_bytes[..bare_bytes.len()],
+            bare_bytes,
+            "the six prior sections are an untouched PREFIX — 0x07 appends, never inserts"
+        );
+        assert_eq!(
+            with_bytes[bare_bytes.len()],
+            0x07,
+            "the seventh section's tag immediately follows the sixth's last byte"
+        );
+    }
+
+    /// The seventh section sorts by `(id, qname)` inside `encode_state`,
+    /// never trusting the listing's own order (Task 5) — two stores
+    /// reporting the same rows in different orders hash identically, and
+    /// the sort-key mutation (Step 6) reds this.
+    #[test]
+    fn the_seventh_section_sorts_by_id_then_qname_regardless_of_listing_order() {
+        let base = Facts {
+            nodes: vec![(NodeId(1), "c".to_owned())],
+            attributes: vec![],
+            edges: vec![],
+            hyperedges: vec![
+                (HyperedgeId(3), "H".to_owned(), vec![NodeId(1)]),
+                (HyperedgeId(7), "H".to_owned(), vec![NodeId(1)]),
+            ],
+            edge_attributes: vec![],
+            currency_attributes: vec![],
+            hyperedge_attributes: vec![
+                (HyperedgeId(7), "community/heat".to_owned(), 0.5),
+                (HyperedgeId(3), "community/zeta".to_owned(), 0.75),
+            ],
+        };
+        let reversed = Facts {
+            hyperedge_attributes: vec![
+                (HyperedgeId(3), "community/zeta".to_owned(), 0.75),
+                (HyperedgeId(7), "community/heat".to_owned(), 0.5),
+            ],
+            ..Facts {
+                nodes: base.nodes.clone(),
+                attributes: vec![],
+                edges: vec![],
+                hyperedges: base.hyperedges.clone(),
+                edge_attributes: vec![],
+                currency_attributes: vec![],
+                hyperedge_attributes: Vec::new(),
+            }
+        };
+        assert_eq!(
+            base.state_hash().unwrap(),
+            reversed.state_hash().unwrap(),
+            "listing order is never observable — the encoder sorts by (id, qname)"
+        );
+        // …and the order IS pinned against a hand-driven encoder, so a
+        // sort-KEY mutation (not just a dropped sort) is visible: correct
+        // is id-then-qname, (3, zeta) before (7, heat); a qname-only sort
+        // would write (7, heat) first ("heat" < "zeta") and red this.
+        let mut manual = StateEncoder::new();
+        manual.write_nodes(&[(NodeId(1), "c".to_owned())]).unwrap();
+        manual.write_attributes(&[]).unwrap();
+        manual.write_edges(&[]).unwrap();
+        manual
+            .write_hyperedges(&[
+                (HyperedgeId(3), "H".to_owned(), vec![NodeId(1)]),
+                (HyperedgeId(7), "H".to_owned(), vec![NodeId(1)]),
+            ])
+            .unwrap();
+        manual
+            .write_hyperedge_attributes(&[
+                (HyperedgeId(3), "community/zeta".to_owned(), 0.75),
+                (HyperedgeId(7), "community/heat".to_owned(), 0.5),
+            ])
+            .unwrap();
+        assert_eq!(
+            base.encode_state().unwrap().as_bytes(),
+            manual.as_bytes(),
+            "the seventh section writes id-then-qname order, pinned"
+        );
+    }
+
     /// The layout version constant is the minted versioning convention
     /// (ADR198 R2: the elision rule is "documented and versioned" — there
     /// was no version anchor before T3, so T3 minted one). Pinning the
@@ -1164,10 +1399,10 @@ mod tests {
     fn the_canonical_layout_version_is_pinned() {
         assert_eq!(
             super::CANONICAL_LAYOUT_VERSION,
-            3,
-            "layout version 3 = version 2 (sections 0x01-0x05) + section 0x06 (Currency node \
-             attributes, elided when empty, T3 #491/OQ-J) — bumping this is a contract event, \
-             see the module doc's 'Layout versions'"
+            4,
+            "layout version 4 = version 3 (sections 0x01-0x06) + section 0x07 (hyperedge \
+             own-field attributes, elided when empty, Community port train Task 5/E2a) — \
+             bumping this is a contract event, see the module doc's 'Layout versions'"
         );
     }
 

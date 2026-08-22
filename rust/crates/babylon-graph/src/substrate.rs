@@ -284,6 +284,33 @@ pub trait GraphSubstrate {
     /// Returns [`GraphError`] if `id` names no hyperedge in this substrate.
     fn remove_hyperedge(&mut self, id: HyperedgeId) -> Result<(), GraphError>;
 
+    /// Write one `f64` attribute on an existing hyperedge — the hyperedge
+    /// own-field lane (Community port train, Task 5, E2a; Amendment D's
+    /// first-class membership gains first-class state). Stored in a map
+    /// keyed `(HyperedgeId, qname)`, exactly as [`Self::update_edge`]'s
+    /// fifth-section store is keyed — never inside the member list.
+    ///
+    /// # Errors
+    /// Returns [`GraphError`] if `id` names no hyperedge in this substrate,
+    /// or `value` is non-finite — a write never mints state for an absent
+    /// hyperedge and never stores a NaN.
+    fn update_hyperedge_attribute(
+        &mut self,
+        id: HyperedgeId,
+        attribute: &str,
+        value: f64,
+    ) -> Result<(), GraphError>;
+
+    /// Read one hyperedge attribute — the read half of
+    /// [`Self::update_hyperedge_attribute`].
+    ///
+    /// # Errors
+    /// Returns [`GraphError`] if `id` names no hyperedge in this substrate,
+    /// or the attribute was never written — the same two-tier honest-null
+    /// discipline [`Self::edge_attribute`] holds (§3.5/III.11): absence is
+    /// never a default `0.0`.
+    fn hyperedge_attribute(&self, id: HyperedgeId, attribute: &str) -> Result<f64, GraphError>;
+
     /// Members of one hyperedge, in **ascending [`NodeId`] order** — declared
     /// member order is never observable (BSL §2.6 draft ruling D25).
     ///

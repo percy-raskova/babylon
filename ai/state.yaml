@@ -4918,3 +4918,33 @@ community_port_train_667:
     cross-check) is an engine check, unscheduled. The national-question pole
     shape and county_extraction BoundOpposition registration stay ADR171-line
     items owned by the post-#653 slice (DG-5/DG-6).
+
+rust_postgresql_persistence_boundary:
+  date: 2026-08-22
+  adr: ADR220
+  tracking: "Linear PER-48 / GitHub #697; implementation PER-20 and PER-21"
+  status: "ACCEPTED — implementation not yet landed"
+  decision: >
+    Rust owns authoritative game-managed PostgreSQL connections, migration
+    authority, committed-tick transactions, checkpoint hydration, H3 codecs,
+    and compatibility views after one-way cutover. Python retains data builds,
+    external APIs, AI/Ollama, document/wiki/vault work, and CLI periphery;
+    transition observers are read-only.
+  identity_contract: >
+    CampaignId(UUID) is durable ledger identity; deterministic Rust SessionId
+    remains a separate RNG namespace and is never derived from the UUID.
+    RNG seed, ContentDigest, and ref_digest are separate replay inputs.
+    ReplayIdentityHash, GraphStateHash, and TickContentHash remain distinct;
+    a complete TickContentHash is a writer-cutover gate.
+  migration_contract: >
+    Freeze both ordered legacy DDL sets — POSTGRES_SCHEMA_DDL and SQL migrations
+    0010-0044 — with their UTF-8-plus-NUL digests and shared advisory lock;
+    adopt them from Rust, then use one Rust-owned append-only version/checksum
+    ledger. There is no dual-writer or dual-migrator interval.
+  current_reality: >
+    Python remains the sole live runtime writer. No Rust persistence crate,
+    three-schema migration, H3 BIGINT backfill, or compatibility view has landed.
+  next: >
+    Land the contract-only babylon-persistence keel and cross-language H3
+    vectors, then the read-only legacy adopter, additive schema/backfill views,
+    atomic writer, hydration, and one-way cutover.

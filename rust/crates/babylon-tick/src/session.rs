@@ -9,10 +9,9 @@
 //! this type. D16's ascending rule-ID byte order breaks ties at one resolved
 //! position.
 
-use crate::{prepare_rules, PreparedRules, TickReport};
-use babylon_bsl::intrinsic_host::KernelIntrinsicHost;
+use crate::{prepare_rules, run_prepared_tick, PreparedRules, TickReport};
 use babylon_bsl::structural_verbs::CollectingSink;
-use babylon_bsl::tick::run_tick;
+use babylon_graph::allocator_state::AllocatorState;
 use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::GraphSubstrate;
 use babylon_kernel::SessionId;
@@ -32,7 +31,7 @@ pub struct TickSession<G> {
     session: SessionId,
 }
 
-impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
+impl<G: GraphSubstrate + CanonicalState + AllocatorState + Clone> TickSession<G> {
     /// Parse `rule_src` (one or more `(rule …)` forms) and load
     /// `scenario_src` into `graph` once. `prepare_rules` compiles the forms
     /// into governed phase order before this returns — the caller's own
@@ -100,10 +99,10 @@ impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
     /// Run one more tick against the held graph: every rule in the
     /// content set in the governed phase order compiled once at load time
     /// by `prepare_rules`. D16 orders same-position ties by rule-ID bytes.
-    /// Each rule runs to completion before the next starts against the SAME
-    /// graph, so a later rule sees an earlier rule's writes from this same
-    /// tick, matching the frozen engine's own in-place strict-order semantics
-    /// (inherited from calling `run_tick` sequentially against one `&mut G`).
+    /// Each rule runs to completion before the next starts against the same
+    /// disposable working graph, so a later rule sees an earlier rule's
+    /// writes from this tick. The working graph and its buffered events are
+    /// published together only after every rule and hash succeeds.
     ///
     /// **This is a RECORDED GAP, not a design feature.** §4.2 says "rules
     /// within one system position observe the same pre-state"
@@ -120,47 +119,24 @@ impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
     ///
     /// # Errors
     /// The tick itself (named to its own rule id), or a pre/post
-    /// state-hash failure. On any error the session's tick counter does
-    /// NOT advance — `tick()` counts COMPLETED ticks only (a failed tick
-    /// must not look consumed to retry/error-handling callers).
+    /// schedule/world/graph hash failure, event reservation failure, or a
+    /// checked tick-counter overflow. On any error the graph, caller's
+    /// existing events, and session counter stay unchanged — `tick()` counts
+    /// completed ticks only.
     pub fn advance(&mut self, sink: &mut CollectingSink) -> Result<TickReport, String> {
-        let next_tick = self.tick + 1;
-        let before = self
-            .graph
-            .state_hash()
-            .map_err(|e| format!("pre-tick state: {}", e.message))?;
-        let mut per_rule_fired = Vec::with_capacity(self.prepared.rules.len());
-        for (id, loaded) in &self.prepared.rules {
-            let outcome = run_tick(
-                loaded,
-                &self.prepared.types,
-                &self.prepared.enums,
-                &KernelIntrinsicHost,
-                &mut self.graph,
-                sink,
-                &self.prepared.intrinsics,
-                &self.prepared.consts,
-                next_tick,
-                id,
-                Some(&self.prepared.node_content_ids),
-                &self.session,
-                self.prepared.vocabulary.as_ref(),
-            )
-            .map_err(|e| format!("tick failed in rule {id}: {e}"))?;
-            per_rule_fired.push((id.clone(), outcome.fired));
-        }
-        let fired = per_rule_fired.iter().map(|(_, n)| n).sum();
-        let after = self
-            .graph
-            .state_hash()
-            .map_err(|e| format!("post-tick state: {}", e.message))?;
+        let next_tick = self
+            .tick
+            .checked_add(1)
+            .ok_or_else(|| "tick counter overflow before adjudication".to_owned())?;
+        let report = run_prepared_tick(
+            &self.prepared,
+            &mut self.graph,
+            sink,
+            &self.session,
+            next_tick,
+        )?;
         self.tick = next_tick;
-        Ok(TickReport {
-            before,
-            after,
-            fired,
-            per_rule_fired,
-        })
+        Ok(report)
     }
 
     /// The current tick number — 0 before the first `advance()` call.
@@ -181,13 +157,45 @@ impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
 mod tests {
     use crate::session::TickSession;
     use babylon_bsl::structural_verbs::CollectingSink;
+    use babylon_graph::allocator_state::AllocatorState;
     use babylon_graph::hypergraph_store::HypergraphStore;
+    use babylon_graph::state_hash::CanonicalState;
+    use babylon_graph::substrate::{GraphSubstrate, NodeId};
     use babylon_kernel::SessionId;
 
     const SCENARIO: &str =
         include_str!("../content/scenarios/vitality-lifecycle-combined-conformance.bscn");
     const VITALITY: &str = include_str!("../content/rules/vitality.bsl");
     const LIFECYCLE: &str = include_str!("../content/rules/lifecycle.bsl");
+
+    const ATOMICITY_SCENARIO: &str = r"
+(scenario tick/atomicity-probe
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (deffield social-class/probability probability intensive)
+  (node first NodeType/SOCIAL_CLASS (social-class/probability 0.1p))
+  (node second NodeType/SOCIAL_CLASS (social-class/probability 0.9p)))
+";
+    const ATOMICITY_RULE: &str = r#"(rule vitality/atomicity-probe
+  :material-basis "PER-18 E-EVAL-020 rollback probe: one legal write precedes one illegal write"
+  :fuel 64
+  (bindings (binding probability :field social-class/probability))
+  (when (> probability 0.0p))
+  (effects
+    (emit EventType/PROBE)
+    (update-node self social-class/probability (add 0.4i))))"#;
+
+    const CLOCK_SCENARIO: &str = r"
+(scenario tick/world-clock-probe
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (deffield social-class/active int intensive)
+  (node only NodeType/SOCIAL_CLASS (social-class/active 1)))
+";
+    const CLOCK_RULE: &str = r#"(rule vitality/world-clock-probe
+  :material-basis "PER-18 nominal world hash probe: elapsed committed time is world state"
+  :fuel 32
+  (bindings (binding active :field social-class/active))
+  (when (= active 1))
+  (effects (emit EventType/PROBE)))"#;
 
     fn rule_src() -> String {
         format!("{VITALITY}\n{LIFECYCLE}")
@@ -199,6 +207,99 @@ mod tests {
     /// wall-clock one anyway.
     fn test_session() -> SessionId {
         SessionId::new("tick-session-test").expect("literal is non-empty")
+    }
+
+    #[test]
+    fn a_failed_tick_leaves_graph_counter_and_prior_events_unchanged() {
+        let mut session = TickSession::new(
+            ATOMICITY_SCENARIO,
+            ATOMICITY_RULE,
+            HypergraphStore::new(),
+            test_session(),
+        )
+        .expect("the rollback probe loads");
+        let before_hash = session.graph().state_hash().expect("pre-state hashes");
+        let mut sink = CollectingSink {
+            events: vec![("EventType/PRIOR".to_owned(), Vec::new())],
+        };
+        let before_events = sink.events.clone();
+
+        let before_cursors = session.graph().allocator_cursors();
+
+        for _ in 0..2 {
+            let error = session
+                .advance(&mut sink)
+                .expect_err("the second write exceeds one");
+
+            assert!(error.contains("E-EVAL-020"), "{error}");
+            assert_eq!(session.tick(), 0, "a failed tick is not completed");
+            assert_eq!(
+                session
+                    .graph()
+                    .state_hash()
+                    .expect("post-failure state hashes"),
+                before_hash,
+                "the first subject's valid write must roll back with the failed tick"
+            );
+            assert_eq!(session.graph().allocator_cursors(), before_cursors);
+            assert_eq!(
+                sink.events, before_events,
+                "events emitted before the failing write must not escape the tick"
+            );
+        }
+
+        let mut future = session.graph().clone();
+        assert_eq!(future.add_node("SOCIAL_CLASS").unwrap(), NodeId(2));
+    }
+
+    #[test]
+    fn nominal_world_hash_moves_with_completed_time_when_graph_hash_does_not() {
+        let mut session = TickSession::new(
+            CLOCK_SCENARIO,
+            CLOCK_RULE,
+            HypergraphStore::new(),
+            test_session(),
+        )
+        .expect("the world-clock probe loads");
+        let mut sink = CollectingSink::default();
+
+        let first = session.advance(&mut sink).expect("tick one commits");
+        let second = session.advance(&mut sink).expect("tick two commits");
+
+        assert_eq!(
+            first.before, first.after,
+            "an emit-only rule does not move graph state"
+        );
+        assert_eq!(first.after, second.before);
+        assert_ne!(first.world_before, first.world_after);
+        assert_eq!(first.world_after, second.world_before);
+        assert_ne!(second.world_before, second.world_after);
+    }
+
+    #[test]
+    fn completed_tick_overflow_refuses_before_any_world_or_event_mutation() {
+        let mut session = TickSession::new(
+            CLOCK_SCENARIO,
+            CLOCK_RULE,
+            HypergraphStore::new(),
+            test_session(),
+        )
+        .expect("the world-clock probe loads");
+        session.tick = i64::MAX;
+        let before_hash = session.graph().state_hash().unwrap();
+        let before_cursors = session.graph().allocator_cursors();
+        let mut sink = CollectingSink {
+            events: vec![("EventType/PRIOR".to_owned(), Vec::new())],
+        };
+
+        let error = session.advance(&mut sink).unwrap_err();
+
+        assert_eq!(error, "tick counter overflow before adjudication");
+        assert_eq!(session.tick(), i64::MAX);
+        assert_eq!(session.graph().state_hash().unwrap(), before_hash);
+        assert_eq!(session.graph().allocator_cursors(), before_cursors);
+        assert_eq!(sink.events.len(), 1);
+        assert_eq!(sink.events[0].0, "EventType/PRIOR");
     }
 
     #[test]
@@ -268,6 +369,10 @@ mod tests {
             assert_eq!(
                 ra.after, rb.after,
                 "same content + same tick count must hash identically"
+            );
+            assert_eq!(
+                ra.world_after, rb.world_after,
+                "nominal world hashes must be byte-identical too"
             );
         }
     }

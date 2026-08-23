@@ -37,6 +37,7 @@ use babylon_bsl::tick::run_tick;
 use babylon_bsl::typecheck::TypeEnv;
 use babylon_bsl::types::{EnumRegistry, FieldDecl};
 use babylon_bsl::BindingVocabulary;
+use babylon_graph::allocator_state::AllocatorState;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
@@ -45,14 +46,21 @@ use std::collections::{HashMap, HashSet};
 
 mod phase_order;
 pub mod session;
+mod world_hash;
 pub use session::TickSession;
 
 /// The result of running one or more rules over one scenario for one tick:
-/// the pre-tick and post-tick state hashes, and how many subjects fired.
+/// graph and nominal-world hashes around the commit, plus firing counts.
 #[derive(Debug)]
 pub struct TickReport {
+    /// Canonical graph-state hash before adjudication.
     pub before: [u8; 32],
+    /// Canonical graph-state hash after successful adjudication.
     pub after: [u8; 32],
+    /// Nominal graph-plus-current-auxiliary world hash before adjudication.
+    pub world_before: [u8; 32],
+    /// Nominal graph-plus-current-auxiliary world hash after commit.
+    pub world_after: [u8; 32],
     /// The TOTAL fired-subject count across every rule this tick ran —
     /// unchanged in meaning and type for a single-rule content set (today
     /// every existing caller: `run_once`, the CLI, B0's engine-link probe,
@@ -779,24 +787,22 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
 /// **one** implementation of the flow: `run_once`'s signature and
 /// [`TickReport`] are the seam `babylon-client` consumes and neither moves.
 ///
-/// Generic over the substrate — the storage-swap plan's entire
-/// production-side change was this one signature (Phase A Task 3) plus one
-/// construction-site swap (Phase D Task 10): `run_once` now constructs
-/// `HypergraphStore` (ADR179 T3) rather than `MemoryGraph`; this function
-/// itself never moved.
+/// Generic over the substrate. Atomic adjudication requires [`Clone`] for a
+/// disposable working world; [`AllocatorState`] supplies the non-graph
+/// identity cursors covered by the nominal world hash.
 ///
 /// # Errors
 ///
 /// A description of the first failing stage — an intrinsic declaration, a
 /// scenario load, a rule load, a state hash, or the tick itself.
-pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
+pub fn run_once_into<G: GraphSubstrate + CanonicalState + AllocatorState + Clone>(
     scenario_src: &str,
     rule_src: &str,
     graph: &mut G,
     sink: &mut CollectingSink,
 ) -> Result<TickReport, String> {
     let prepared = prepare_rules(scenario_src, None, rule_src, graph).map_err(|e| e.to_string())?;
-    run_prepared_tick(&prepared, graph, sink, &run_once_session())
+    run_prepared_tick(&prepared, graph, sink, &run_once_session(), 1)
 }
 
 /// `run_once_into`, with the scenario load routed through a **declaration
@@ -815,7 +821,7 @@ pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
 /// A description of the first failing stage — the prelude, an intrinsic
 /// declaration, a scenario load, a rule load, a state hash, or the tick
 /// itself.
-pub fn run_once_into_with_prelude<G: GraphSubstrate + CanonicalState>(
+pub fn run_once_into_with_prelude<G: GraphSubstrate + CanonicalState + AllocatorState + Clone>(
     scenario_src: &str,
     prelude_src: &str,
     rule_src: &str,
@@ -824,7 +830,7 @@ pub fn run_once_into_with_prelude<G: GraphSubstrate + CanonicalState>(
 ) -> Result<TickReport, String> {
     let prepared = prepare_rules(scenario_src, Some(prelude_src), rule_src, graph)
         .map_err(|e| e.to_string())?;
-    run_prepared_tick(&prepared, graph, sink, &run_once_session())
+    run_prepared_tick(&prepared, graph, sink, &run_once_session(), 1)
 }
 
 /// The `rng-draw` seam's session id for every one-shot driver in this
@@ -841,30 +847,46 @@ fn run_once_session() -> SessionId {
 }
 
 /// `run_once_with_prelude` (this train) and `run_once_into` (above) share
-/// this from the point `prepare_rules` has already returned: run every
-/// prepared rule to completion, in order, against the SAME `graph`, and
-/// assemble the [`TickReport`]. Extracted so a prelude-bearing caller does
-/// not duplicate this loop — `prepare_rules`'s own `prelude_src` parameter
-/// is the only thing that differs between the two callers, and it is fully
+/// this from the point `prepare_rules` has already returned: clone the
+/// committed graph, run every prepared rule to completion against that one
+/// working copy, buffer its events, and publish both only after every rule
+/// and hash succeeds. Extracted so a prelude-bearing caller does not
+/// duplicate this loop — `prepare_rules`'s own `prelude_src` parameter is
+/// the only thing that differs between the two callers, and it is fully
 /// resolved before this function ever runs.
 ///
 /// # Errors
 ///
-/// The tick itself (named to its own rule id), or a pre/post state-hash
-/// failure.
-fn run_prepared_tick<G: GraphSubstrate + CanonicalState>(
+/// An invalid tick number, schedule/world/graph hashing, event reservation,
+/// or the tick itself (named to its own rule id). Every error leaves the
+/// caller's graph and existing events unchanged.
+pub(crate) fn run_prepared_tick<G: GraphSubstrate + CanonicalState + AllocatorState + Clone>(
     prepared: &PreparedRules,
     graph: &mut G,
     sink: &mut CollectingSink,
     session: &SessionId,
+    tick: i64,
 ) -> Result<TickReport, String> {
+    let completed_before = tick
+        .checked_sub(1)
+        .filter(|completed| *completed >= 0)
+        .ok_or_else(|| format!("tick to adjudicate must be positive, got {tick}"))?;
+    let schedule_digest = phase_order::schedule_digest().map_err(|e| e.to_string())?;
     let before = graph
         .state_hash()
         .map_err(|e| format!("pre-tick state: {}", e.message))?;
+    let world_before = world_hash::nominal_world_hash(
+        before,
+        completed_before,
+        graph.allocator_cursors(),
+        schedule_digest,
+    )?;
+    let mut working_graph = graph.clone();
+    let mut working_sink = CollectingSink::default();
 
     // Every rule in `prepared.rules` runs to COMPLETION (every matching
     // subject) before the next rule starts — never interleaved — against
-    // the SAME `graph`, so a later rule sees an EARLIER rule's writes from
+    // the SAME working graph, so a later rule sees an EARLIER rule's writes from
     // the SAME tick. This falls out of calling `run_tick` sequentially
     // against one `&mut G`, and it matches the frozen Python engine's own
     // in-place, strict-order mutation semantics — but it is NOT what §4.2
@@ -888,16 +910,15 @@ fn run_prepared_tick<G: GraphSubstrate + CanonicalState>(
             &prepared.types,
             &prepared.enums,
             &KernelIntrinsicHost,
-            graph,
-            sink,
+            &mut working_graph,
+            &mut working_sink,
             &prepared.intrinsics,
             &prepared.consts,
-            // `run_once` is one tick, and it is tick 1 — the same number the
-            // CLI has always printed. §2.5's `:tick`/`:tick-in-cycle`
-            // bindings read it; `:year`/`:tick-of-year` need an epoch
-            // slice 1 does not pin and are refused by name at `run_tick`
-            // entry.
-            1,
+            // One-shot callers pass tick 1; persistent sessions pass their
+            // checked next tick. §2.5's `:tick`/`:tick-in-cycle` bindings
+            // read it; `:year`/`:tick-of-year` need an epoch slice 1 does
+            // not pin and are refused by name at `run_tick` entry.
+            tick,
             id,
             Some(&prepared.node_content_ids),
             session,
@@ -908,13 +929,26 @@ fn run_prepared_tick<G: GraphSubstrate + CanonicalState>(
     }
     let fired = per_rule_fired.iter().map(|(_, n)| n).sum();
 
-    let after = graph
+    let after = working_graph
         .state_hash()
         .map_err(|e| format!("post-tick state: {}", e.message))?;
+    let world_after = world_hash::nominal_world_hash(
+        after,
+        tick,
+        working_graph.allocator_cursors(),
+        schedule_digest,
+    )?;
+    sink.events
+        .try_reserve(working_sink.events.len())
+        .map_err(|e| format!("event commit refused: {e}"))?;
+    *graph = working_graph;
+    sink.events.extend(working_sink.events);
 
     Ok(TickReport {
         before,
         after,
+        world_before,
+        world_after,
         fired,
         per_rule_fired,
     })

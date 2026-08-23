@@ -35,6 +35,7 @@
 //! identical — same fixture, same assertions, same pass/fail contract).
 
 use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_graph::allocator_state::AllocatorState;
 use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
 use babylon_tick::{run_once, run_once_into, TickReport};
@@ -94,7 +95,7 @@ pub fn attribute<G: GraphSubstrate>(graph: &G, id: impl IntoNodeId, field: &str)
 /// `metabolism_entropy_high_conformance.rs`,
 /// `metabolism_entropy_low_conformance.rs`) — the majority shape among the
 /// three `run_*` variants genuinely found (the other two below).
-pub fn run_conformance<G: GraphSubstrate + CanonicalState + Default>(
+pub fn run_conformance<G: GraphSubstrate + CanonicalState + AllocatorState + Clone + Default>(
     scenario: &str,
     rule: &str,
 ) -> G {
@@ -111,7 +112,9 @@ pub fn run_conformance<G: GraphSubstrate + CanonicalState + Default>(
 /// `dispossession_*_conformance.rs` files, `lifecycle_conformance.rs`,
 /// `lifecycle_crisis_conformance.rs`, `vitality_conformance.rs`, and
 /// `decomposition_conformance.rs`'s own `HypergraphStore` variant.
-pub fn run_conformance_with_sink<G: GraphSubstrate + CanonicalState + Default>(
+pub fn run_conformance_with_sink<
+    G: GraphSubstrate + CanonicalState + AllocatorState + Clone + Default,
+>(
     scenario: &str,
     rule: &str,
 ) -> (G, CollectingSink) {
@@ -126,7 +129,9 @@ pub fn run_conformance_with_sink<G: GraphSubstrate + CanonicalState + Default>(
 /// TickReport)` / `fn run_territory() -> (HypergraphStore, TickReport)`
 /// shape shared by `production_conformance.rs` and
 /// `territory_conformance.rs`, the third `run_*` variant genuinely found.
-pub fn run_conformance_with_report<G: GraphSubstrate + CanonicalState + Default>(
+pub fn run_conformance_with_report<
+    G: GraphSubstrate + CanonicalState + AllocatorState + Clone + Default,
+>(
     scenario: &str,
     rule: &str,
 ) -> (G, TickReport) {

@@ -391,8 +391,17 @@ fn gallery_cards_are_non_shrinking_and_require_scroll_at_1080p() {
 
     let mut labels =
         world.query_filtered::<Entity, With<babylon_client::visual_assets::GalleryAssetLabel>>();
-    let label_entities: Vec<_> = labels.iter(world).take(17).collect();
-    assert_eq!(label_entities.len(), 16);
+    let label_entities: [Entity; 16] = labels
+        .iter(world)
+        .take(17)
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap_or_else(|entities: Vec<Entity>| {
+            panic!(
+                "gallery must contain exactly 16 labeled cards, found {}",
+                entities.len()
+            )
+        });
 
     let mut minimum_preview_height = 0.0;
     for label_entity in label_entities {

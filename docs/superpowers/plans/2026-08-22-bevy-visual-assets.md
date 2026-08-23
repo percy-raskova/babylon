@@ -1,28 +1,23 @@
 # Bevy visual assets — `Implementation Plan`
 
-<!-- This approved plan contains literal commands, identifiers, and art-direction terms. -->
-<!-- vale ste.Ambiguity = NO -->
-<!-- vale ste.Dictionary = NO -->
-<!-- vale ste.Gerunds = NO -->
-<!-- vale ste.Modals = NO -->
-<!-- vale ste.NounClusters = NO -->
-<!-- vale ste.PassiveVoice = NO -->
-<!-- vale ste.ProcedureLength = NO -->
-<!-- vale ste.Semicolon = NO -->
-<!-- vale ste.SentenceLength = NO -->
-<!-- vale ste.ThisPronoun = NO -->
+<!-- This executable plan needs project API, command, and asset terms that the STE word list omits. -->
 <!-- vale ste.UnapprovedWords = NO -->
-<!-- vale strunk.ActiveVoice = NO -->
-<!-- vale write-good.TooWordy = NO -->
-<!-- vale Vale.Spelling = NO -->
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development
+> (recommended) or superpowers:executing-plans. Do this plan one task at a time. A checkbox
+> (`- [ ]`) shows the status of each step.
 
-**Goal:** Ship a licensed sixteen-image visual-development suite and a typed Bevy 0.18.1 loading, presentation, and gallery surface without changing simulation behavior.
+**Goal:** Ship a licensed sixteen-image visual-development suite and a typed Bevy 0.18.1 load,
+presentation, and gallery surface. Do not change simulation behavior.
 
-**Architecture:** AI-generated opaque illustrations ship as compact WebP files; authored transparent interface graphics ship as PNG files rasterized from SVG masters. `VisualAssetsPlugin` embeds every raster and exposes named handles plus typed atlas layouts, while separate presentation and gallery plugins keep loading, production use, and review concerns independent.
+**Architecture:** Opaque illustrations that AI generates ship as compact WebP files. Authors supply
+transparent graphics for the interface as PNG files exported from SVG masters. `VisualAssetsPlugin` embeds every
+raster and exposes named handles plus typed atlas layouts. Separate presentation and gallery plugins
+keep load, production use, and review concerns independent.
 
-**Tech Stack:** Bevy 0.18.1 (`embedded_asset!`, `ImageNode`, `TextureAtlasLayout`, WebP feature), Rust 1.91.1, SVG, Inkscape, ImageMagick/cwebp for deterministic export, Python 3.12 `tomllib` and Pillow for static contracts.
+**Tech Stack:** Bevy 0.18.1 (`embedded_asset!`, `ImageNode`, `TextureAtlasLayout`, WebP feature), Rust
+1.91.1, and SVG. Export tools are `inkscape`, `magick`, and `cwebp`. Static contracts use Python
+3.12, `tomllib`, and Pillow.
 
 **Spec:** `docs/superpowers/specs/2026-08-22-bevy-visual-assets-design.md`
 
@@ -31,11 +26,13 @@
 - All new visual assets are `AGPL-3.0-or-later` and have explicit provenance.
 - The runtime catalog contains exactly sixteen rasters: ten illustrations and six interface files.
 - Every tracked file stays below the repository's 1 MiB ordinary-blob limit.
-- AI-generated images contain no baked text, named faction emblem, canonical victory, or new ending.
-- Interface SVGs use only `#1a0000`, `#e8e8e8`, `#dc143c`, `#ffd700`, `#404040`, `#202020`, `#4169e1`, `#228b22`, plus `none` and opacity.
-- Illustration and texture never cover the live county map after the story card is dismissed.
-- No runtime SVG loader and no new crate dependency are introduced; the existing Bevy dependency gains only the `webp` feature.
-- All new loops use compile-time fixed bounds; all asset-load polling stops after 64 updates.
+- AI-generated images contain no baked text, named faction emblem, canonical victory, or new outcome.
+- Interface SVG files use only `#1a0000`, `#e8e8e8`, `#dc143c`, `#ffd700`, `#404040`, `#202020`,
+  `#4169e1`, `#228b22`, `none`, and opacity.
+- Illustration and texture never cover the live county map after the player dismisses the story card.
+- This work adds no runtime SVG loader or new crate dependency. The current Bevy dependency gains
+  only the `webp` feature.
+- All new loops use compile-time fixed bounds. All asset-load polls stop after 64 updates.
 - Engine state, rules, tick ordering, and deterministic hash bytes do not change.
 
 ---
@@ -62,9 +59,9 @@
 **Interfaces:**
 
 - Consumes: the eight RGB role colors in `rust/crates/babylon-client/src/palette.rs`.
-- Produces: six named interface assets in `manifest.toml`; the final manifest schema used by Task 2.
+- Produces: six named interface assets in `manifest.toml`. Task 2 uses the final manifest schema.
 
-- [ ] **Step 1: Write the failing static interface contract**
+- [ ] **Step 1: Write the red static interface contract**
 
 Create a test module with these fixed contracts:
 
@@ -128,7 +125,7 @@ def test_interface_svg_colors_are_palette_roles() -> None:
     assert colors <= _PALETTE
 ```
 
-- [ ] **Step 2: Run the contract and verify red**
+- [ ] **Step 2: Run the contract and confirm red**
 
 Run:
 
@@ -140,7 +137,7 @@ Expected: failure because `design/bevy-assets/manifest.toml` and the six masters
 
 - [ ] **Step 3: Author the six SVG masters**
 
-Use explicit `viewBox` and output dimensions matching the spec. Give every semantic cell a `<g
+Use explicit `viewBox` and output dimensions that match the spec. Give every semantic cell a `<g
 id="...">` name. The atlas cell IDs must be exactly:
 
 ```text
@@ -151,11 +148,11 @@ frame: neutral selected critical absent
 surface: concrete hatch paper
 ```
 
-Use only the palette literals in `_PALETTE`; use `fill="none"` for transparency. Keep symbol
+Use only the palette literals in `_PALETTE`. Use `fill="none"` for transparency. Keep symbol
 silhouettes distinct at one-quarter scale and keep frame borders within an 8-pixel inset so
 nine-slice corners remain intact.
 
-- [ ] **Step 4: Rasterize and optimize the PNG files**
+- [ ] **Step 4: Export and optimize the PNG files**
 
 Run these six bounded exports from the repository root:
 
@@ -172,13 +169,13 @@ optipng -quiet rust/crates/babylon-client/src/visual_assets/embedded/*.png
 - [ ] **Step 5: Populate the six manifest rows and make the test green**
 
 Each `[[asset]]` row declares `id`, `category`, `source`, `runtime`, `format`, `width`, `height`,
-`columns`, `rows`, `sampler`, `sha256`, and `license`. Obtain the digest from the real raster:
+`columns`, `rows`, `sampler`, `sha256`, and `license`. Get the digest from the real raster:
 
 ```bash
 sha256sum rust/crates/babylon-client/src/visual_assets/embedded/title-mark.png
 ```
 
-Copy the printed lowercase digest into the row. Repeat for the five remaining files; do not enter a
+Copy the printed lowercase digest into the row. Repeat for the five other files. Do not enter a
 synthetic or empty digest.
 
 Run:
@@ -187,7 +184,7 @@ Run:
 mise run test:q -- tests/unit/render/test_bevy_visual_assets.py
 ```
 
-Expected: all interface contract tests pass.
+Expected: all tests of the interface contract pass.
 
 - [ ] **Step 6: Commit the interface pack**
 
@@ -210,19 +207,20 @@ mise run commit -- $'feat(assets): add authored Bevy interface pack\n\nCo-Author
 - Create: `design/bevy-assets/prompts/banner-carceral.md`
 - Create: `design/bevy-assets/prompts/banner-topology.md`
 - Create: `design/bevy-assets/prompts/banner-collapse.md`
-- Create: ten matching `.webp` files under `rust/crates/babylon-client/src/visual_assets/embedded/`
+- Create: ten `.webp` files that match under `rust/crates/babylon-client/src/visual_assets/embedded/`
 - Create: `design/bevy-assets/PROVENANCE.md`
 - Create: `design/bevy-assets/README.md`
-- Modify: `design/bevy-assets/manifest.toml`
-- Modify: `tests/unit/render/test_bevy_visual_assets.py`
-- Modify: `LICENSING.md`
+- Change: `design/bevy-assets/manifest.toml`
+- Change: `tests/unit/render/test_bevy_visual_assets.py`
+- Change: `LICENSING.md`
 
 **Interfaces:**
 
 - Consumes: the manifest schema and runtime directory from Task 1.
-- Produces: ten image-generation prompt records, ten selected WebP outputs, a complete sixteen-row manifest, and licensing evidence used by all later tasks.
+- Produces: ten image-generation prompt records and ten selected WebP outputs.
+- Produces: a complete sixteen-row manifest and license evidence for all later tasks.
 
-- [ ] **Step 1: Extend the static contract and verify red**
+- [ ] **Step 1: Extend the static contract and confirm red**
 
 Add fixed category IDs and a complete-runtime assertion:
 
@@ -281,13 +279,14 @@ engraved diagram marks, cinematic depth without neon cyberpunk, no glossy UI, no
 pose, no named organization or national flag, no words, no letters, no logo, no watermark.
 ```
 
-Record the complete final prompt verbatim in its Markdown file. Curate against three checks: the
-subject reads at thumbnail size, the negative space supports a Bevy text overlay, and the image does
-not invent gameplay claims.
+Record the complete final prompt verbatim in its Markdown file. Apply three checks. The subject must
+read at thumbnail size. The negative space must support a Bevy text overlay. The image must not
+invent game-behavior claims.
 
 - [ ] **Step 3: Normalize the selected outputs to runtime WebP files**
 
-Use ImageMagick only for deterministic resize/crop and `cwebp` only for runtime encoding. Hero
+Use `magick` only for deterministic resize and crop operations. Use `cwebp` only to encode runtime
+files. Hero
 outputs become 1536 by 864, concept outputs become 1024 by 1024, and banner outputs become 1536 by
 384. Use center crop unless the prompt's recorded safe-zone note requires a named gravity.
 
@@ -297,18 +296,19 @@ cwebp -quiet -q 82 -m 6 /tmp/babylon-asset.png -o rust/crates/babylon-client/src
 ```
 
 Repeat with the exact declared dimensions for each of the ten fixed outputs. If any file exceeds
-1,048,575 bytes, lower WebP quality in increments of two until it passes; do not change dimensions.
+1,048,575 bytes, lower WebP quality in increments of two until it passes. Do not change dimensions.
 
 - [ ] **Step 4: Complete the manifest, provenance, and licensing records**
 
 Add ten manifest rows with `format = "webp"`, `sampler = "linear"`, `columns = 1`, `rows = 1`,
-their exact source prompt paths, dimensions, and SHA-256 digests. `PROVENANCE.md` records OpenAI image
-generation, 2026-08-22 creation date, human-directed curation, deterministic resize/encoding, and
+their exact source prompt paths, dimensions, and SHA-256 digests. `PROVENANCE.md` records image
+generation with OpenAI, the 2026-08-22 creation date, human-directed curation, deterministic resize
+and encode operations, and
 AGPL-3.0-or-later. `README.md` lists the asset families and exact export commands.
 
 In `LICENSING.md`, explicitly add `design/bevy-assets/**` and
 `rust/crates/babylon-client/src/visual_assets/embedded/**` to the AGPL section and state that this
-new estate does not change the existing CC0 audio classification.
+new estate does not change the current CC0 audio classification.
 
 - [ ] **Step 5: Run the complete static contract and Vale**
 
@@ -333,15 +333,15 @@ mise run commit -- $'feat(assets): add Babylon hero and concept art suite\n\nCo-
 - Create: `rust/crates/babylon-client/src/visual_assets/mod.rs`
 - Create: `rust/crates/babylon-client/src/visual_assets/catalog.rs`
 - Create: `rust/crates/babylon-client/tests/visual_assets.rs`
-- Modify: `rust/crates/babylon-client/src/lib.rs`
-- Modify: `rust/crates/babylon-client/Cargo.toml`
+- Change: `rust/crates/babylon-client/src/lib.rs`
+- Change: `rust/crates/babylon-client/Cargo.toml`
 
 **Interfaces:**
 
 - Consumes: the sixteen stable filenames and atlas layouts from Tasks 1 and 2.
 - Produces: `VisualAssetsPlugin`, `VisualAssets`, `VisualAssetId`, five typed atlas-index enums, and `VISUAL_ASSET_CATALOG`.
 
-- [ ] **Step 1: Write the failing Rust catalog test**
+- [ ] **Step 1: Write the red Rust catalog test**
 
 Create `tests/visual_assets.rs` with an app that installs `MinimalPlugins`, `AssetPlugin`,
 `ImagePlugin::default()`, and the not-yet-created plugin. Assert the catalog and typed atlas bounds:
@@ -358,7 +358,7 @@ fn typed_catalog_declares_all_sixteen_images_and_bounded_atlases() {
 }
 ```
 
-Run `cargo test -p babylon-client --test visual_assets --locked` from `rust/`; expect unresolved
+Run `cargo test -p babylon-client --test visual_assets --locked` from `rust/`. Expect unresolved
 `visual_assets` symbols.
 
 - [ ] **Step 2: Declare the typed catalog**
@@ -375,9 +375,9 @@ pub const fn index(self) -> usize {
 }
 ```
 
-The enum declaration itself fixes the valid domain; no string-to-index parsing is added.
+The enum declaration itself fixes the valid domain. Do not add text-to-index parsing.
 
-- [ ] **Step 3: Implement `VisualAssetsPlugin` and the named resource**
+- [ ] **Step 3: Add `VisualAssetsPlugin` and the named resource**
 
 In `mod.rs`, register every file explicitly with `embedded_asset!`, load every handle explicitly
 with `load_embedded_asset!`, create atlas layouts with `TextureAtlasLayout::from_grid`, and insert:
@@ -416,9 +416,9 @@ sixteen variants. Export the module from `lib.rs` and change the Bevy feature li
 - [ ] **Step 4: Prove all embedded images load with a fixed bound**
 
 Add a second test that installs the plugin, reads all sixteen handles from the typed catalog, and
-updates the app at most 64 times. The polling loop is exactly `for _ in 0..64`; after each update,
+updates the app at most 64 times. The polling loop is exactly `for _ in 0..64`. After each update,
 use `AssetServer::is_loaded_with_dependencies`. On timeout, collect the descriptor IDs whose handles
-are not loaded and fail with those IDs.
+did not load and fail with those IDs.
 
 Run:
 
@@ -441,26 +441,26 @@ mise run commit -- $'feat(client): embed a typed visual asset catalog\n\nCo-Auth
 **Files:**
 
 - Create: `rust/crates/babylon-client/src/visual_assets/presentation.rs`
-- Modify: `rust/crates/babylon-client/src/visual_assets/mod.rs`
-- Modify: `rust/crates/babylon-client/src/main.rs`
-- Modify: `rust/crates/babylon-client/tests/visual_assets.rs`
+- Change: `rust/crates/babylon-client/src/visual_assets/mod.rs`
+- Change: `rust/crates/babylon-client/src/main.rs`
+- Change: `rust/crates/babylon-client/tests/visual_assets.rs`
 
 **Interfaces:**
 
 - Consumes: `VisualAssets`, `SelectedStory`, and `StoryCardVisible`.
 - Produces: `VisualPresentationPlugin`, `TitleMark`, `ReadableTitle`, and `StoryBanner` components.
 
-- [ ] **Step 1: Write failing presentation tests**
+- [ ] **Step 1: Write red presentation tests**
 
 Build a headless app with the asset and presentation plugins plus explicit `SelectedStory` and
 `StoryCardVisible` resources. Assert one title-mark `ImageNode`, one readable `Text("BABYLON")`, and
 one story-banner `ImageNode`. Add a second test that starts with counties, changes
-`SelectedStory` to carceral, updates, and compares the banner handle against the matching named
-resource field. Set `StoryCardVisible(false)`, update, and assert `Visibility::Hidden`.
+`SelectedStory` to `carceral`, updates, and compares the banner handle against the named resource
+field. Set `StoryCardVisible(false)`, update, and assert `Visibility::Hidden`.
 
 Run the integration test and expect unresolved presentation symbols.
 
-- [ ] **Step 2: Implement the title lockup**
+- [ ] **Step 2: Add the title lockup**
 
 `spawn_title_lockup` creates exactly two entities:
 
@@ -493,7 +493,7 @@ commands.spawn((
 
 The readable text remains independent of the image.
 
-- [ ] **Step 3: Implement bounded story-banner selection**
+- [ ] **Step 3: Add bounded story-banner selection**
 
 Spawn a 480-by-120 image at `top: px(8)` and `right: px(24)`. Use one two-arm selector:
 
@@ -509,14 +509,14 @@ fn story_banner(assets: &VisualAssets, story: &crate::story::Story) -> Handle<Im
 ```
 
 `sync_story_banner` updates the handle when `SelectedStory` changes and makes visibility exactly
-match `StoryCardVisible`. Register it in `VisualPresentationPlugin`; no engine resource is read.
+match `StoryCardVisible`. Register it in `VisualPresentationPlugin`. It reads no engine resource.
 
-- [ ] **Step 4: Wire production and prove determinism is unchanged**
+- [ ] **Step 4: Wire production and prove it does not change determinism**
 
 In `main.rs`, import `visual_assets`, add `VisualAssetsPlugin` and `VisualPresentationPlugin` after
 `DefaultPlugins`, and delete the old local `spawn_title` system. Extend the test with two independent
 `EngineSession`s, add visual plugins only to one app, advance both sessions once, and assert equal
-`report.after` hashes. This is an engine-seam behavioral proof, not a screenshot assertion.
+`report.after` hashes. This proof uses the engine seam, not a screenshot assertion.
 
 Run:
 
@@ -539,26 +539,26 @@ mise run commit -- $'feat(client): present Babylon title and story banners\n\nCo
 
 - Create: `rust/crates/babylon-client/examples/visual_assets.rs`
 - Create: `rust/crates/babylon-client/src/visual_assets/gallery.rs`
-- Modify: `rust/crates/babylon-client/src/visual_assets/mod.rs`
-- Modify: `rust/crates/babylon-client/tests/visual_assets.rs`
-- Modify: `design/bevy-assets/README.md`
+- Change: `rust/crates/babylon-client/src/visual_assets/mod.rs`
+- Change: `rust/crates/babylon-client/tests/visual_assets.rs`
+- Change: `design/bevy-assets/README.md`
 
 **Interfaces:**
 
 - Consumes: `VISUAL_ASSET_CATALOG` and `VisualAssets::image`.
 - Produces: `VisualAssetGalleryPlugin` and `GalleryAssetLabel`, with one inspectable card per asset.
 
-- [ ] **Step 1: Write the failing gallery contract**
+- [ ] **Step 1: Write the red gallery contract**
 
 Add a test that installs the asset and gallery plugins, updates once, queries
 `With<GalleryAssetLabel>`, and asserts the exact fixed count `16`. Also collect label `Text` values
 and compare them with the sixteen descriptor labels in catalog order.
 
-- [ ] **Step 2: Implement the gallery plugin**
+- [ ] **Step 2: Add the gallery plugin**
 
-`spawn_gallery` creates a camera, a full-screen vertically scrollable root, and one card per entry in
+`spawn_gallery` creates a camera, a full-screen vertical scroll root, and one card per entry in
 the fixed catalog. Each card contains an `ImageNode` from `VisualAssets::image(entry.id)` and a
-readable `Text` label. Hero and banner nodes preserve their aspect ratios; square concepts and atlas
+readable `Text` label. Hero and banner nodes preserve their aspect ratios. Square concepts and atlas
 files use 256-pixel previews. The only explicit loop iterates the compile-time
 `VISUAL_ASSET_CATALOG: [VisualAssetDescriptor; 16]`.
 
@@ -600,7 +600,7 @@ mise run check
 ```
 
 Expected: all commands exit zero. If an unrelated pre-existing failure appears, preserve the full
-output and stop rather than weakening the gate.
+output and stop. Do not relax the gate.
 
 - [ ] **Step 5: Commit the gallery and verification record**
 
@@ -611,10 +611,13 @@ mise run commit -- $'feat(client): add visual asset review gallery\n\nCo-Authore
 
 ## Self-review
 
-- Spec coverage: Tasks 1–2 deliver and license all sixteen assets; Task 3 embeds and types them;
-  Task 4 provides the two production uses and determinism proof; Task 5 provides complete review and
-  verification.
-- Placeholder scan: every file, command, enum, dimension, and manifest field is named; generated
-  digests are taken from the real bytes before their rows are committed.
-- Type consistency: `VisualAssets`, `VisualAssetId`, `VISUAL_ASSET_CATALOG`,
-  `VisualPresentationPlugin`, and `VisualAssetGalleryPlugin` are introduced before their consumers.
+- Spec coverage: Tasks 1–2 deliver and license all sixteen assets.
+- Spec coverage: Task 3 embeds and types the assets.
+- Spec coverage: Task 4 provides the two production uses and the determinism proof.
+- Spec coverage: Task 5 provides complete review and verification.
+- Placeholder scan: the plan names every file, command, enum, dimension, and manifest field.
+- Placeholder scan: the implementation gets digests from real bytes before it commits the rows.
+- Type consistency: the plan adds `VisualAssets`, `VisualAssetId`, and `VISUAL_ASSET_CATALOG` before
+  their consumers.
+- Type consistency: the plan adds `VisualPresentationPlugin` and `VisualAssetGalleryPlugin` before
+  their consumers.

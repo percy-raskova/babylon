@@ -37,6 +37,7 @@
 use crate::allocator_state::{AllocatorCursors, AllocatorState};
 use crate::state_hash::CanonicalState;
 use crate::substrate::{Direction, GraphError, GraphSubstrate, HyperedgeId, NodeId};
+use crate::working_copy::DetachedCopy;
 use babylon_kernel::Currency;
 use hypergraph_rs::Hypergraph;
 use std::collections::HashMap;
@@ -139,6 +140,20 @@ impl AllocatorState for HypergraphStore {
     }
 }
 
+impl DetachedCopy for HypergraphStore {
+    fn detached_copy(&self) -> Self {
+        self.clone()
+    }
+}
+
+#[cfg(test)]
+impl crate::allocator_state::AllocatorTestControl for HypergraphStore {
+    fn set_allocator_cursors_for_test(&mut self, cursors: AllocatorCursors) {
+        self.next_id = cursors.next_node;
+        self.next_hyperedge_id = cursors.next_hyperedge;
+    }
+}
+
 impl HypergraphStore {
     /// An empty substrate.
     #[must_use]
@@ -179,14 +194,17 @@ impl HypergraphStore {
 impl GraphSubstrate for HypergraphStore {
     fn add_node(&mut self, node_type: &str) -> Result<NodeId, GraphError> {
         self.check_not_frozen()?;
+        let next_id = self.next_id.checked_add(1).ok_or_else(|| GraphError {
+            message: "node identity allocator exhausted".to_owned(),
+        })?;
         let id = NodeId(self.next_id);
-        self.next_id += 1;
         let key = node_key(id);
         self.nodes.insert(id, node_type.to_owned());
         self.node_keys.insert(key.clone(), id);
         // Covenant 4: mint through the library too, or the existence check
         // below proves nothing about the library's universe.
         self.inner.add_node(&key, ());
+        self.next_id = next_id;
         Ok(id)
     }
 
@@ -512,8 +530,13 @@ impl GraphSubstrate for HypergraphStore {
             });
         }
 
+        let next_id = self
+            .next_hyperedge_id
+            .checked_add(1)
+            .ok_or_else(|| GraphError {
+                message: "hyperedge identity allocator exhausted".to_owned(),
+            })?;
         let id = HyperedgeId(self.next_hyperedge_id);
-        self.next_hyperedge_id += 1;
         let key = hyperedge_key(id);
         let member_keys: Vec<String> = sorted.iter().map(|n| node_key(*n)).collect();
         self.inner
@@ -526,6 +549,7 @@ impl GraphSubstrate for HypergraphStore {
             .entry(hyperedge_type.to_owned())
             .or_default()
             .push(id);
+        self.next_hyperedge_id = next_id;
         Ok(id)
     }
 
@@ -758,10 +782,14 @@ impl CanonicalState for HypergraphStore {
 #[cfg(test)]
 mod tests {
     use super::HypergraphStore;
-    use crate::allocator_state::{AllocatorCursors, AllocatorState};
-    use crate::conformance::run_substrate_conformance;
+    use crate::allocator_state::{AllocatorCursors, AllocatorState, AllocatorTestControl};
+    use crate::conformance::{
+        run_allocator_exhaustion_conformance, run_detached_working_copy_conformance,
+        run_substrate_conformance,
+    };
     use crate::state_hash::CanonicalState;
     use crate::substrate::GraphSubstrate;
+    use crate::working_copy::DetachedCopy;
     use std::fmt::Write as _;
 
     #[test]
@@ -770,34 +798,36 @@ mod tests {
     }
 
     #[test]
-    fn clone_is_an_independent_world_with_the_same_allocator_position() {
-        let mut original = HypergraphStore::new();
-        let first = original.add_node("SOCIAL_CLASS").unwrap();
-        original.update_node(first, "wealth", 10.0).unwrap();
-        original.add_hyperedge("CLASS", &[first]).unwrap();
-        let before = original.state_hash().unwrap();
+    fn detached_working_copy_owns_every_mutable_lane() {
+        run_detached_working_copy_conformance(HypergraphStore::new);
+    }
 
-        let mut working = original.clone();
-        assert_eq!(working.state_hash().unwrap(), before);
-        assert_eq!(working.add_node("ORGANIZATION").unwrap().0, 1);
-        working.update_node(first, "wealth", 20.0).unwrap();
-        assert_eq!(working.add_hyperedge("CLASS", &[first]).unwrap().0, 1);
+    #[test]
+    fn exhausted_allocators_leave_hypergraph_store_unchanged() {
+        run_allocator_exhaustion_conformance(HypergraphStore::new);
+    }
 
-        assert_eq!(original.state_hash().unwrap(), before);
-        assert_eq!(
-            original.node_attribute(first, "wealth").unwrap().to_bits(),
-            10.0f64.to_bits()
-        );
-        assert_eq!(
-            original.add_node("ORGANIZATION").unwrap().0,
-            1,
-            "allocating in a clone must not consume the source world's next node identity"
-        );
-        assert_eq!(
-            original.add_hyperedge("CLASS", &[first]).unwrap().0,
-            1,
-            "allocating in a clone must not consume the source world's next hyperedge identity"
-        );
+    #[test]
+    fn failed_library_hyperedge_insert_does_not_advance_the_cursor() {
+        let mut graph = HypergraphStore::new();
+        let member = graph.add_node("SOCIAL_CLASS").unwrap();
+        graph.add_hyperedge("COALITION", &[member]).unwrap();
+        graph.set_allocator_cursors_for_test(AllocatorCursors {
+            next_node: 1,
+            next_hyperedge: 0,
+        });
+        let before = graph.encode_state().unwrap().as_bytes().to_vec();
+        let cursors = graph.allocator_cursors();
+
+        let error = graph
+            .add_hyperedge("COALITION", &[member])
+            .expect_err("the library must reject the duplicate internal edge key");
+
+        assert!(error.message.contains("hyperedge-half mint"));
+        assert_eq!(graph.encode_state().unwrap().as_bytes(), before);
+        assert_eq!(graph.allocator_cursors(), cursors);
+        let detached = graph.detached_copy();
+        assert_eq!(detached.allocator_cursors(), cursors);
     }
 
     #[test]

@@ -41,6 +41,7 @@ use babylon_graph::allocator_state::AllocatorState;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use babylon_graph::working_copy::DetachedCopy;
 use babylon_kernel::SessionId;
 use std::collections::{HashMap, HashSet};
 
@@ -787,15 +788,15 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
 /// **one** implementation of the flow: `run_once`'s signature and
 /// [`TickReport`] are the seam `babylon-client` consumes and neither moves.
 ///
-/// Generic over the substrate. Atomic adjudication requires [`Clone`] for a
-/// disposable working world; [`AllocatorState`] supplies the non-graph
-/// identity cursors covered by the nominal world hash.
+/// Generic over the substrate. Atomic adjudication requires
+/// [`DetachedCopy`] for a disposable working world; [`AllocatorState`]
+/// supplies the non-graph identity cursors covered by the nominal world hash.
 ///
 /// # Errors
 ///
 /// A description of the first failing stage — an intrinsic declaration, a
 /// scenario load, a rule load, a state hash, or the tick itself.
-pub fn run_once_into<G: GraphSubstrate + CanonicalState + AllocatorState + Clone>(
+pub fn run_once_into<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy>(
     scenario_src: &str,
     rule_src: &str,
     graph: &mut G,
@@ -821,7 +822,9 @@ pub fn run_once_into<G: GraphSubstrate + CanonicalState + AllocatorState + Clone
 /// A description of the first failing stage — the prelude, an intrinsic
 /// declaration, a scenario load, a rule load, a state hash, or the tick
 /// itself.
-pub fn run_once_into_with_prelude<G: GraphSubstrate + CanonicalState + AllocatorState + Clone>(
+pub fn run_once_into_with_prelude<
+    G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy,
+>(
     scenario_src: &str,
     prelude_src: &str,
     rule_src: &str,
@@ -860,7 +863,9 @@ fn run_once_session() -> SessionId {
 /// An invalid tick number, schedule/world/graph hashing, event reservation,
 /// or the tick itself (named to its own rule id). Every error leaves the
 /// caller's graph and existing events unchanged.
-pub(crate) fn run_prepared_tick<G: GraphSubstrate + CanonicalState + AllocatorState + Clone>(
+pub(crate) fn run_prepared_tick<
+    G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy,
+>(
     prepared: &PreparedRules,
     graph: &mut G,
     sink: &mut CollectingSink,
@@ -881,7 +886,7 @@ pub(crate) fn run_prepared_tick<G: GraphSubstrate + CanonicalState + AllocatorSt
         graph.allocator_cursors(),
         schedule_digest,
     )?;
-    let mut working_graph = graph.clone();
+    let mut working_graph = graph.detached_copy();
     let mut working_sink = CollectingSink::default();
 
     // Every rule in `prepared.rules` runs to COMPLETION (every matching

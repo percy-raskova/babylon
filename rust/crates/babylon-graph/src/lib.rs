@@ -45,3 +45,4 @@ pub mod induced;
 pub mod memory;
 pub mod state_hash;
 pub mod substrate;
+pub mod working_copy;

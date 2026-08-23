@@ -21,3 +21,11 @@ pub trait AllocatorState {
     /// Return both next-id cursors without advancing either allocator.
     fn allocator_cursors(&self) -> AllocatorCursors;
 }
+
+/// Narrow test-only control for proving allocator exhaustion behavior. No
+/// production caller may set monotonic identity cursors.
+#[cfg(test)]
+pub(crate) trait AllocatorTestControl {
+    /// Set both cursors to an otherwise unreachable boundary fixture.
+    fn set_allocator_cursors_for_test(&mut self, cursors: AllocatorCursors);
+}

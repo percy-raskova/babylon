@@ -14,6 +14,7 @@ use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::allocator_state::AllocatorState;
 use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::GraphSubstrate;
+use babylon_graph::working_copy::DetachedCopy;
 use babylon_kernel::SessionId;
 
 /// One content set, loaded once, advanced tick by tick against ONE held
@@ -31,7 +32,7 @@ pub struct TickSession<G> {
     session: SessionId,
 }
 
-impl<G: GraphSubstrate + CanonicalState + AllocatorState + Clone> TickSession<G> {
+impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> TickSession<G> {
     /// Parse `rule_src` (one or more `(rule …)` forms) and load
     /// `scenario_src` into `graph` once. `prepare_rules` compiles the forms
     /// into governed phase order before this returns — the caller's own

@@ -36,6 +36,7 @@
 use crate::allocator_state::{AllocatorCursors, AllocatorState};
 use crate::state_hash::CanonicalState;
 use crate::substrate::{Direction, GraphError, GraphSubstrate, HyperedgeId, NodeId};
+use crate::working_copy::DetachedCopy;
 use babylon_kernel::Currency;
 use std::collections::HashMap;
 
@@ -110,6 +111,20 @@ impl AllocatorState for MemoryGraph {
     }
 }
 
+impl DetachedCopy for MemoryGraph {
+    fn detached_copy(&self) -> Self {
+        self.clone()
+    }
+}
+
+#[cfg(test)]
+impl crate::allocator_state::AllocatorTestControl for MemoryGraph {
+    fn set_allocator_cursors_for_test(&mut self, cursors: AllocatorCursors) {
+        self.next_id = cursors.next_node;
+        self.next_hyperedge_id = cursors.next_hyperedge;
+    }
+}
+
 impl CanonicalState for MemoryGraph {
     /// The sort moved to [`CanonicalState::encode_state`] — this listing
     /// reports storage order, exactly as `HashMap` iteration gives it.
@@ -165,9 +180,12 @@ impl CanonicalState for MemoryGraph {
 
 impl GraphSubstrate for MemoryGraph {
     fn add_node(&mut self, node_type: &str) -> Result<NodeId, GraphError> {
+        let next_id = self.next_id.checked_add(1).ok_or_else(|| GraphError {
+            message: "node identity allocator exhausted".to_owned(),
+        })?;
         let id = NodeId(self.next_id);
-        self.next_id += 1;
         self.nodes.insert(id, node_type.to_owned());
+        self.next_id = next_id;
         Ok(id)
     }
 
@@ -453,10 +471,16 @@ impl GraphSubstrate for MemoryGraph {
                 message: format!("no such member node: {missing:?}"),
             });
         }
+        let next_id = self
+            .next_hyperedge_id
+            .checked_add(1)
+            .ok_or_else(|| GraphError {
+                message: "hyperedge identity allocator exhausted".to_owned(),
+            })?;
         let id = HyperedgeId(self.next_hyperedge_id);
-        self.next_hyperedge_id += 1;
         self.hyperedges
             .insert(id, (hyperedge_type.to_owned(), sorted));
+        self.next_hyperedge_id = next_id;
         Ok(id)
     }
 
@@ -581,6 +605,9 @@ impl GraphSubstrate for MemoryGraph {
 mod tests {
     use super::{CanonicalState, GraphSubstrate, MemoryGraph, NodeId};
     use crate::allocator_state::{AllocatorCursors, AllocatorState};
+    use crate::conformance::{
+        run_allocator_exhaustion_conformance, run_detached_working_copy_conformance,
+    };
     use crate::substrate::Direction;
 
     #[test]
@@ -626,27 +653,13 @@ mod tests {
     }
 
     #[test]
-    fn clone_is_an_independent_world_with_the_same_allocator_position() {
-        let mut original = MemoryGraph::new();
-        let first = original.add_node("social_class").unwrap();
-        original.update_node(first, "wealth", 10.0).unwrap();
-        let before = original.state_hash().unwrap();
+    fn detached_working_copy_owns_every_mutable_lane() {
+        run_detached_working_copy_conformance(MemoryGraph::new);
+    }
 
-        let mut working = original.clone();
-        assert_eq!(working.state_hash().unwrap(), before);
-        assert_eq!(working.add_node("organization").unwrap(), NodeId(1));
-        working.update_node(first, "wealth", 20.0).unwrap();
-
-        assert_eq!(original.state_hash().unwrap(), before);
-        assert_eq!(
-            original.node_attribute(first, "wealth").unwrap().to_bits(),
-            10.0f64.to_bits()
-        );
-        assert_eq!(
-            original.add_node("organization").unwrap(),
-            NodeId(1),
-            "allocating in a clone must not consume the source world's next identity"
-        );
+    #[test]
+    fn exhausted_allocators_leave_memory_graph_unchanged() {
+        run_allocator_exhaustion_conformance(MemoryGraph::new);
     }
 
     #[test]

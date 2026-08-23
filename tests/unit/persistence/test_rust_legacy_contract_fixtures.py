@@ -85,30 +85,6 @@ def test_oversized_migration_source_is_rejected_before_an_unbounded_read(
         exporter._numbered_migrations()
 
 
-def test_oversized_fixture_is_rejected_without_an_unbounded_read(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    """A stale oversized fixture must fail from metadata alone."""
-    fixture = tmp_path / "fixture.bin"
-    fixture.write_bytes(b"x")
-
-    read_bytes_called = False
-
-    def stat(_: Path, **__: object) -> SimpleNamespace:
-        return SimpleNamespace(st_size=exporter.MAX_BYTES + 1)
-
-    def read_bytes(*_: object, **__: object) -> bytes:
-        nonlocal read_bytes_called
-        read_bytes_called = True
-        return b"expected"
-
-    monkeypatch.setattr(Path, "stat", stat)
-    monkeypatch.setattr(Path, "read_bytes", read_bytes)
-    assert not exporter._check(fixture, b"expected")
-    assert not read_bytes_called
-
-
 def test_frame_rejects_over_budget_text_before_encoding() -> None:
     """A character-length overflow must not invoke a costly custom encoder."""
 

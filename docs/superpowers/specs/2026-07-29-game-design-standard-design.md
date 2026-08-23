@@ -1,7 +1,98 @@
+<!-- vale off -->
+
 # The Babylon Game Design Standard
 
 **Date:** 2026-07-29 · **Status:** RATIFIED IN FULL — §§1–7, 10 approved live in session; §§8–9 approved same evening (#383 closed) · **Authority:** a binding peer of `ai/bsl-architecture-standard.md` under Constitution v3.0.0 (Amendment AE) · **Dispositions:** the §11 queue was ruled in full the same evening — ADR176
 **Provenance:** Director brainstorming interview 2026-07-29 (16 rulings) + three ultracode research workflows (estate study, 11 readers; design-inputs deep dive, 15 agents / 2.17M tokens; Postgres deep dive, 13 agents) + the wiring-completeness study. Full evidence: `reports/design-inputs-dossier-2026-07-29.md`, `reports/postgres-brief-2026-07-29.md`, `reports/wiring-completeness-2026-07-29.md`.
+
+<!-- V4-GAME-DESIGN-ADDENDUM:START -->
+
+## v4 governing addendum — 2026-08-22
+
+This addendum controls live product and delivery claims under Constitution v4.
+The original July standard below remains an immutable decision record. When its
+v3 or Amendment AE language conflicts with this addendum, Articles I, III, IV,
+VII, and VIII of Constitution v4 govern.
+
+### Product and evidence law
+
+Babylon is an entertainment-first emergent political-economy game. Material
+relations and revolutionary theory constrain its causal model without deciding
+the player's history in advance. Historical cases test causal signatures,
+geographic and sector heterogeneity, hysteresis, direct-write discipline, and
+counterfactual responsiveness. They do not require one historical path or a
+particular terminal verdict.
+
+Every substantive value is `Observed`, `Derived`, `Calibrated`, or `Designed`.
+A Designed liberty is legitimate when it is declared, causally coherent, and in
+service of play. It must never masquerade as an empirical observation.
+
+### Current and superseded surfaces
+
+- Bevy client status: implemented_current
+- Ratatui/TUI status: retired
+- Article V vocabulary authority status: superseded
+- NarrationEnvelope status: superseded_proposal
+- CommittedTickEnvelope status: planned
+- DecisionSurfaceContract executable status: planned
+- Persistence writer status: accepted_cutover_law
+- PER-48 status: Done
+- PostgreSQL boundary ADR: ADR220_rust_owned_postgresql_persistence_boundary
+- Attributed membership identity status: implemented_current
+- Attributed membership payload status: planned_research_PER-44
+- Project #7 status: frozen_migration_input
+- Project #8 status: frozen_migration_input
+
+Bevy currently provides an unfogged administrative simulation viewer. It does
+not yet provide the player decision loop. The Ratatui glyph floor, the TUI
+skeleton, and Amendment AE's renderer obligation survive only as historical
+context below.
+
+The nine player verbs remain governed by ADR177 and the executable matrix and
+registry. A content-vocabulary addition follows the governed ceremony, schema,
+conformance, and ADR path. Only a new mathematical primitive requires a
+constitutional amendment.
+
+`DecisionSurfaceContract` is binding design law: every gameplay surface must
+state its decision question, visible signals and uncertainty, knowledge or fog
+requirements, available actions, expected feedback receipts, linked Archive
+subjects, and any explicit admin/debug exemption. Admin and debug surfaces
+cannot satisfy gameplay milestones. PER-24 owns the executable Rust contract
+and surface inventory at Gate 3; this addendum does not claim that code exists.
+
+The historical `NarrationEnvelope` proposal below is not an implemented v4
+boundary. Gate 3 plans `CommittedTickEnvelope`, durable state, and the Archive
+outbox. Durability begins after deterministic adjudication. PER-48 is Done;
+`ADR220_rust_owned_postgresql_persistence_boundary` records the accepted law.
+Python remains the sole live PostgreSQL writer before cutover. The one-way
+cutover disables Python migration and runtime-write entry points before Rust
+assumes game-managed PostgreSQL connections, migrations, the typed tick
+transaction, hydration, H3 codecs, and compatibility views. Surviving Python
+data-build, API, AI, document, and CLI roles remain. Transition observers may
+read versioned views but cannot write or run DDL. This is accepted boundary law,
+not a claim that PER-20 has implemented the cutover.
+
+The current Rust graph carries base membership identity. Its attributed
+membership payload is empty, absent from canonical hashing, unwritten, and
+unconsumed. Payload production and consumption remain planned Research under
+PER-44 until a named executable mechanic supplies the consumer and its tests.
+
+### Portfolio and acceptance law
+
+Linear is the current portfolio authority. The roadmap has nine acceptance
+gates: governance and portfolio; executable causality; the PostgreSQL, H3, and
+Archive slice; COVID E0; player agency; the productive and distributive
+circuit; full-circuit COVID; systemic credit and 2008; and the representative-
+world v1. Project #7 and Project #8 remain frozen migration inputs rather than
+live queues.
+
+Frozen Python systems are reference and port sources. Each eventually receives
+one disposition: `Port`, `Adapt`, `Replace`, or `Retire`. A playable causal
+slice pulls each disposition; completing all 34 systems is not a prerequisite
+for gameplay. Kimi-derived data stays in Research until a named mechanic names
+a field consumer.
+
+<!-- V4-GAME-DESIGN-ADDENDUM:END -->
 
 **Purpose.** The Director's end state, verbatim: *"Babylon becomes a playable game, a good game, a game with a sharp interface, you can play through the entire thing"* — built agentically, ideologically aligned, with playable output that agents can verify. This standard concentrates every scattered idea into one binding design, and re-cuts Program 27 so the engine port serves the game rather than the other way around.
 
@@ -230,3 +321,5 @@ Consolidated from all research lanes, ordered by leverage; each became a `direct
 - Wiring completeness: `reports/wiring-completeness-2026-07-29.md`.
 - Interface mockups of record: `.superpowers/brainstorm/2391209-1785361517/content/` (gitignored; Layout B selection logged in session).
 - Interview record: the sixteen rulings + Layout B + approach selection, Director live session 2026-07-29.
+
+<!-- vale on -->

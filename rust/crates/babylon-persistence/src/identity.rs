@@ -36,8 +36,12 @@ pub enum H3CellIdError {
     NegativeSqlValue { raw: i64 },
     /// A valid H3 cell exceeded `PostgreSQL`'s signed range.
     SqlValueOutOfRange { raw: u64 },
-    /// The input text was not canonical lowercase hexadecimal H3 text.
-    NonCanonicalText { text: Box<str> },
+    /// The input text length was not the canonical 15 bytes.
+    InvalidTextLength { actual_bytes: usize },
+    /// The input text contained at least one non-ASCII byte.
+    NonAsciiText,
+    /// The input text was not lowercase hexadecimal.
+    NonLowercaseHexText,
     /// The requested ancestor resolution exceeds H3's 0-15 range.
     ResolutionOutOfRange { requested: u8 },
     /// The requested ancestor resolution is finer than the current cell.
@@ -137,19 +141,25 @@ impl FromStr for H3CellId {
     type Err = H3CellIdError;
 
     fn from_str(text: &str) -> Result<Self, Self::Err> {
-        if text.is_empty()
-            || text
-                .bytes()
-                .any(|byte| !matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+        if text.len() != 15 {
+            return Err(H3CellIdError::InvalidTextLength {
+                actual_bytes: text.len(),
+            });
+        }
+        if !text.is_ascii() {
+            return Err(H3CellIdError::NonAsciiText);
+        }
+        if text
+            .bytes()
+            .any(|byte| !matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
         {
-            return Err(H3CellIdError::NonCanonicalText { text: text.into() });
+            return Err(H3CellIdError::NonLowercaseHexText);
         }
 
-        let raw = u64::from_str_radix(text, 16)
-            .map_err(|_| H3CellIdError::NonCanonicalText { text: text.into() })?;
+        let raw = u64::from_str_radix(text, 16).map_err(|_| H3CellIdError::NonLowercaseHexText)?;
         let cell = Self::try_from(raw)?;
         if cell.to_string() != text {
-            return Err(H3CellIdError::NonCanonicalText { text: text.into() });
+            return Err(H3CellIdError::NonLowercaseHexText);
         }
         Ok(cell)
     }

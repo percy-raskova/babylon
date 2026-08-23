@@ -13,7 +13,7 @@ struct ValidVector {
     sql_i64: i64,
     bytes_be: [u8; 8],
     immediate_parent: Option<String>,
-    ancestor_r0: String,
+    ancestor_chain_r0_to_self: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -97,9 +97,20 @@ fn h3_cell_id_round_trips_display_bytes_sql_and_semantic_parents_from_vectors() 
         assert_eq!(i64::try_from(from_raw).unwrap(), vector.sql_i64);
         assert_eq!(H3CellId::try_from(vector.sql_i64).unwrap(), from_raw);
         assert_eq!(
-            from_raw.ancestor_at(0).unwrap().to_string(),
-            vector.ancestor_r0
+            vector.ancestor_chain_r0_to_self.len(),
+            usize::from(vector.resolution) + 1
         );
+        for (requested_resolution, expected_ancestor) in
+            vector.ancestor_chain_r0_to_self.iter().enumerate()
+        {
+            assert_eq!(
+                from_raw
+                    .ancestor_at(u8::try_from(requested_resolution).unwrap())
+                    .unwrap()
+                    .to_string(),
+                *expected_ancestor
+            );
+        }
 
         if let Some(parent) = &vector.immediate_parent {
             assert_eq!(from_raw.immediate_parent().unwrap().to_string(), *parent);
@@ -148,12 +159,19 @@ fn h3_cell_id_validation_rejects_invalid_sql_and_text_vectors() {
     }
 
     for vector in &fixture.invalid_text {
+        let expected = match vector.label.as_str() {
+            "upper_case" => H3CellIdError::NonLowercaseHexText,
+            "prefixed" => H3CellIdError::InvalidTextLength { actual_bytes: 17 },
+            "leading_zero" => H3CellIdError::InvalidTextLength { actual_bytes: 16 },
+            "short" => H3CellIdError::InvalidTextLength { actual_bytes: 14 },
+            "long" => H3CellIdError::InvalidTextLength { actual_bytes: 16 },
+            "non_ascii" => H3CellIdError::NonAsciiText,
+            other => panic!("unexpected invalid text vector {other}"),
+        };
         assert_eq!(
             H3CellId::from_str(&vector.text),
-            Err(H3CellIdError::NonCanonicalText {
-                text: vector.text.clone().into_boxed_str(),
-            }),
-            "text vector {} should stay non-canonical",
+            Err(expected),
+            "text vector {} should stay rejected",
             vector.label
         );
     }
@@ -215,7 +233,7 @@ fn parse_valid(fields: &[&str]) -> ValidVector {
         sql_i64: fields[5].parse().unwrap(),
         bytes_be: parse_hex_bytes(fields[6]),
         immediate_parent: (!fields[7].is_empty()).then(|| fields[7].to_owned()),
-        ancestor_r0: fields[8].to_owned(),
+        ancestor_chain_r0_to_self: fields[8].split(',').map(str::to_owned).collect(),
     }
 }
 

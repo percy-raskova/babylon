@@ -166,6 +166,30 @@ def test_fixture_check_uses_one_descriptor_and_stops_before_read(
     assert open_calls == 1
 
 
+def test_write_reports_counts_derived_from_framed_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Write-mode diagnostics must describe the fixtures that were written."""
+    fixtures = tmp_path / "fixtures"
+    schema_fixture = fixtures / "schema.bin"
+    migration_fixture = fixtures / "migrations.bin"
+    schema = b"schema-a\0schema-b\0"
+    migrations = b"migration-a\0migration-b\0migration-c\0"
+
+    monkeypatch.setattr(exporter, "FIXTURES", fixtures)
+    monkeypatch.setattr(exporter, "SCHEMA_FIXTURE", schema_fixture)
+    monkeypatch.setattr(exporter, "MIGRATION_FIXTURE", migration_fixture)
+    monkeypatch.setattr(exporter, "_expected", lambda: (schema, migrations))
+    monkeypatch.setattr(sys, "argv", [str(_EXPORTER_PATH), "--write"])
+
+    assert exporter.main() == 0
+    assert schema_fixture.read_bytes() == schema
+    assert migration_fixture.read_bytes() == migrations
+    assert capsys.readouterr().out == "wrote POSTGRES_SCHEMA_DDL=2 migrations=3\n"
+
+
 def test_numbered_migrations_preserve_unique_missing_and_duplicate_results(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

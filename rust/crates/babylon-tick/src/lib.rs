@@ -551,9 +551,11 @@ fn build_shared_load_inputs(scenario: &LoadedScenario) -> Result<SharedLoadInput
 ///   INDEPENDENTLY — one rule's rejection never hides a sibling's, matching
 ///   `prepare_rules`'s own "no partial admission, but every unit gets its
 ///   own chance" discipline one radius wider;
+/// - an aggregate duplicate rule ID suppresses phase placement because one
+///   identity cannot own two potentially different anchors;
 /// - phase placement compiles over the independently admitted rule forms after
-///   per-rule loading, so a broken sibling cannot hide an unrelated causal
-///   composition failure.
+///   per-rule loading when their identities are unique, so a broken sibling
+///   cannot hide an unrelated causal composition failure.
 ///
 /// Ordering within the returned `Vec` is: split-stage failures in source
 /// order, an aggregate duplicate-id failure when present, one blocking
@@ -585,12 +587,16 @@ pub fn diagnose_content_set(
             }),
         }
     }
-    if let Err(error) = check_unique_rule_ids(&rule_forms) {
-        errors.push(PrepareError::Rule {
-            rule_id: None,
-            error,
-        });
-    }
+    let unique_rule_ids = match check_unique_rule_ids(&rule_forms) {
+        Ok(()) => true,
+        Err(error) => {
+            errors.push(PrepareError::Rule {
+                rule_id: None,
+                error,
+            });
+            false
+        }
+    };
 
     let declared = match parse_intrinsic_decls(&intrinsic_forms) {
         Ok(declared) => declared,
@@ -643,7 +649,7 @@ pub fn diagnose_content_set(
         }
     }
 
-    if !admitted_rule_forms.is_empty() {
+    if unique_rule_ids && !admitted_rule_forms.is_empty() {
         if let Err(error) = phase_order::compile(&admitted_rule_forms) {
             errors.push(prepare_error_from_schedule(error));
         }

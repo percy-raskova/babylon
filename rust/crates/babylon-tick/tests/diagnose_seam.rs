@@ -103,6 +103,14 @@ const ILLEGAL_PHASE_RULE: &str = r#"(rule mods/illegal-material-base-interleave
   (bindings)
   (effects (emit EventType/PROBE)))"#;
 
+const DUPLICATE_ID_WITH_ILLEGAL_PHASE: &str = r#"(rule economics/fundamental-theorem
+  :material-basis "duplicate identity makes phase placement undefined"
+  :fuel 64
+  (domain :graph)
+  (anchor :after vitality)
+  (bindings)
+  (effects (emit EventType/PROBE)))"#;
+
 #[test]
 fn a_clean_content_set_diagnoses_empty() {
     let errors = diagnose_content_set(SCENARIO, None, &[RULE]);
@@ -150,4 +158,17 @@ fn duplicate_rule_ids_across_sources_are_one_structured_e_load_001() {
     assert_eq!(errors.len(), 1, "{errors:?}");
     assert_eq!(errors[0].spec_code(), Some("E-LOAD-001"));
     assert!(errors[0].to_string().contains("fundamental-theorem"));
+}
+
+#[test]
+fn duplicate_rule_ids_suppress_phase_diagnostics_in_both_source_orders() {
+    for sources in [
+        [RULE, DUPLICATE_ID_WITH_ILLEGAL_PHASE],
+        [DUPLICATE_ID_WITH_ILLEGAL_PHASE, RULE],
+    ] {
+        let errors = diagnose_content_set(SCENARIO, None, &sources);
+
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert_eq!(errors[0].spec_code(), Some("E-LOAD-001"));
+    }
 }

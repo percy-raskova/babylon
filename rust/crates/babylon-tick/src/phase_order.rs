@@ -14,7 +14,7 @@ const MATERIAL_BASE_COUNT: usize = 15;
 const ACTION_COUNT: usize = 1;
 const CONSEQUENCE_COUNT: usize = 18;
 const SYSTEM_COUNT: usize = MATERIAL_BASE_COUNT + ACTION_COUNT + CONSEQUENCE_COUNT;
-const AFTER_MATERIAL_BASE_RANK: u16 = 30;
+const AFTER_MATERIAL_BASE_RANK: usize = MATERIAL_BASE_COUNT * 2;
 
 /// The three contiguous causal partitions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -424,7 +424,8 @@ fn system_index(name: &str) -> Option<usize> {
 }
 
 fn is_material_base_interior(key: ExecutionKey) -> bool {
-    key.0 > 0 && key.0 < AFTER_MATERIAL_BASE_RANK
+    let rank = usize::from(key.0);
+    rank > 0 && rank < AFTER_MATERIAL_BASE_RANK
 }
 
 fn validate_registry() -> Result<(), ScheduleError> {
@@ -647,6 +648,15 @@ mod tests {
 
     #[test]
     fn material_base_boundary_anchors_are_legal_but_interior_anchors_are_not() {
+        let post_base = execution_key(
+            "mods/after-base",
+            Some(&AnchorDecl {
+                position: AnchorPosition::After,
+                system: "metabolism".to_owned(),
+            }),
+        )
+        .expect("the post-base boundary has a rank");
+        assert_eq!(usize::from(post_base.0), AFTER_MATERIAL_BASE_RANK);
         compile(&[rule("mods/before-base", "(anchor :before vitality)")])
             .expect("the pre-base boundary is legal");
         compile(&[rule("mods/after-base", "(anchor :after metabolism)")])

@@ -1,3 +1,6 @@
+<!-- vale off -->
+<!-- Legal terms, license identifiers, and repository paths use required technical vocabulary. -->
+
 # Licensing
 
 Babylon splits its license by kind of content, not by directory tree shape:
@@ -27,6 +30,10 @@ Everything that is source, configuration, or docs-as-code, including:
   `license.workspace = true`. This includes `babylon-bsl`'s BSL rule
   content — BSL is executable rules-as-content (Constitution Amendment AE),
   not a creative asset, so it is code for licensing purposes.
+- `design/bevy-assets/**` — original SVG interface masters, OpenAI image-generation prompt records,
+  the asset manifest, and the authoritative provenance record.
+- `rust/crates/babylon-client/src/visual_assets/embedded/**` — the Bevy interface PNG files and
+  generated illustration WebP files listed in `design/bevy-assets/manifest.toml`.
 - `tests/`, `tools/`, `scripts/`, `docs/` (the reStructuredText/Markdown
   sources, not any rendered build output), `data-artifacts.yaml`,
   `data-catalog.yaml`, and project TOML/YAML configuration.
@@ -42,6 +49,9 @@ Everything that is source, configuration, or docs-as-code, including:
   "License: CC0-1.0" in `src/assets/README.md`.
 - `src/assets/music/` — the 13-track soundtrack (ADR153). Same
   `src/assets/LICENSE` and README statement as above.
+
+The new Bevy image estate described above does not change the CC0-1.0 classification of these
+audio estates.
 
 ## Third-party, not relicensed
 
@@ -84,3 +94,5 @@ absence of a rule means "AGPL by default":
 `assets/images/` (`fascist_flag.png`, `ff-template.zip`, `prolewiki.zip`,
 `templates.zip`) are excluded from this document because they are not
 tracked in git and are never shipped.
+
+<!-- vale on -->

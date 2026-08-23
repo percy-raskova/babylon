@@ -19,6 +19,18 @@ _INTERFACE_IDS = (
     "frame-atlas",
     "surface-atlas",
 )
+_ILLUSTRATION_IDS = (
+    "hero-red-apparatus",
+    "hero-empire-anatomized",
+    "concept-bunker-oracle",
+    "concept-living-map",
+    "concept-carceral-circuit",
+    "concept-metabolic-rift",
+    "banner-counties",
+    "banner-carceral",
+    "banner-topology",
+    "banner-collapse",
+)
 _PALETTE = {
     "#1a0000",
     "#e8e8e8",
@@ -63,3 +75,29 @@ def test_interface_svg_colors_are_palette_roles() -> None:
             value.lower() for value in _HEX_COLOR.findall(source.read_text(encoding="utf-8"))
         )
     assert colors <= _PALETTE
+
+
+def test_illustrations_decode_and_match_the_manifest() -> None:
+    manifest = _manifest_assets()
+    assert len(manifest) == 16
+    assets = manifest[6:16]
+    assert tuple(assets[index]["id"] for index in range(10)) == _ILLUSTRATION_IDS
+    for index in range(10):
+        asset = assets[index]
+        assert (_ROOT / str(asset["source"])).is_file()
+        runtime = _ROOT / str(asset["runtime"])
+        with Image.open(runtime) as image:
+            assert image.size == (asset["width"], asset["height"])
+            assert image.mode == "RGB"
+            assert image.format == "WEBP"
+        assert runtime.stat().st_size < 1_048_576
+        assert hashlib.sha256(runtime.read_bytes()).hexdigest() == asset["sha256"]
+        assert asset["license"] == "AGPL-3.0-or-later"
+
+
+def test_manifest_and_runtime_directory_have_exactly_the_same_files() -> None:
+    assets = _manifest_assets()
+    assert len(assets) == 16
+    declared = {Path(str(assets[index]["runtime"])).name for index in range(16)}
+    actual = {path.name for path in _RUNTIME.iterdir() if path.is_file()}
+    assert actual == declared

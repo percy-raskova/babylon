@@ -101,8 +101,8 @@ Use TDD: show RED, make it pass, then refactor. Keep game data typed and
 immutable. Python models use frozen Pydantic types.
 `model_copy(update=...)` skips validation. Pass dependencies explicitly.
 
-Use the repository documentation rules for public Python interfaces. Run Vale
-on changed prose and distinguish live facts from plans.
+Do not run Sphinx or full-documentation tasks unless the Director requests them.
+Run only targeted Vale and format checks on changed prose.
 
 ## Tests and behavior contracts
 

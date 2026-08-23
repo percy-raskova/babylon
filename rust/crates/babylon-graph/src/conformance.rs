@@ -1172,6 +1172,30 @@ where
     F: Fn() -> G,
 {
     let mut source = make();
+    let witness = seed_detached_copy_source(&mut source);
+    let mut working = source.detached_copy();
+    assert_detached_copy_matches_source(&source, &working, &witness);
+    exercise_every_mutable_lane(&mut working, witness.a, witness.b, witness.c, witness.cell);
+    assert_source_unchanged(&source, &witness);
+    assert_working_changed_independently(&working, &witness);
+    exercise_source_after_copy(&mut source, &working, &witness);
+}
+
+#[cfg(test)]
+struct DetachedCopyWitness {
+    a: NodeId,
+    b: NodeId,
+    c: NodeId,
+    cell: HyperedgeId,
+    source_bytes: Vec<u8>,
+    source_cursors: AllocatorCursors,
+}
+
+#[cfg(test)]
+fn seed_detached_copy_source<G>(source: &mut G) -> DetachedCopyWitness
+where
+    G: GraphSubstrate + CanonicalState + AllocatorState,
+{
     let a = source.add_node("SOCIAL_CLASS").unwrap();
     let b = source.add_node("TERRITORY").unwrap();
     let c = source.add_node("ORGANIZATION").unwrap();
@@ -1187,83 +1211,163 @@ where
     source
         .update_hyperedge_attribute(cell, "coalition/cohesion", 0.625)
         .unwrap();
+    DetachedCopyWitness {
+        a,
+        b,
+        c,
+        cell,
+        source_bytes: source.encode_state().unwrap().as_bytes().to_vec(),
+        source_cursors: source.allocator_cursors(),
+    }
+}
 
-    let source_bytes = source.encode_state().unwrap().as_bytes().to_vec();
-    let source_cursors = source.allocator_cursors();
-    let mut working = source.detached_copy();
-    assert_eq!(working.encode_state().unwrap().as_bytes(), source_bytes);
-    assert_eq!(working.allocator_cursors(), source_cursors);
-    assert_eq!(source.hyperedges("COALITION"), vec![cell]);
-    assert_eq!(source.hyperedges_of(a, "COALITION").unwrap(), vec![cell]);
-    assert_eq!(working.hyperedges("COALITION"), vec![cell]);
-    assert_eq!(working.hyperedges_of(a, "COALITION").unwrap(), vec![cell]);
-
-    exercise_every_mutable_lane(&mut working, a, b, c, cell);
-
-    assert_eq!(source.encode_state().unwrap().as_bytes(), source_bytes);
-    assert_eq!(source.allocator_cursors(), source_cursors);
+#[cfg(test)]
+fn assert_detached_copy_matches_source<G>(source: &G, working: &G, witness: &DetachedCopyWitness)
+where
+    G: GraphSubstrate + CanonicalState + AllocatorState,
+{
     assert_eq!(
-        source.node_attribute(a, "class/power").unwrap().to_bits(),
+        working.encode_state().unwrap().as_bytes(),
+        witness.source_bytes
+    );
+    assert_eq!(working.allocator_cursors(), witness.source_cursors);
+    assert_eq!(source.hyperedges("COALITION"), vec![witness.cell]);
+    assert_eq!(
+        source.hyperedges_of(witness.a, "COALITION").unwrap(),
+        vec![witness.cell]
+    );
+    assert_eq!(working.hyperedges("COALITION"), vec![witness.cell]);
+    assert_eq!(
+        working.hyperedges_of(witness.a, "COALITION").unwrap(),
+        vec![witness.cell]
+    );
+}
+
+#[cfg(test)]
+fn assert_source_unchanged<G>(source: &G, witness: &DetachedCopyWitness)
+where
+    G: GraphSubstrate + CanonicalState + AllocatorState,
+{
+    assert_eq!(
+        source.encode_state().unwrap().as_bytes(),
+        witness.source_bytes
+    );
+    assert_eq!(source.allocator_cursors(), witness.source_cursors);
+    assert_eq!(
+        source
+            .node_attribute(witness.a, "class/power")
+            .unwrap()
+            .to_bits(),
         0.25f64.to_bits()
     );
     assert_eq!(
-        source.node_attribute_currency(a, "class/cash").unwrap(),
+        source
+            .node_attribute_currency(witness.a, "class/cash")
+            .unwrap(),
         Currency::from_micro_units(12_345)
     );
     assert_eq!(
         source
-            .edge_attribute("PRESENCE", a, b, "presence/friction")
+            .edge_attribute("PRESENCE", witness.a, witness.b, "presence/friction")
             .unwrap()
             .to_bits(),
         0.125f64.to_bits()
     );
     assert_eq!(
         source
-            .hyperedge_attribute(cell, "coalition/cohesion")
+            .hyperedge_attribute(witness.cell, "coalition/cohesion")
             .unwrap()
             .to_bits(),
         0.625f64.to_bits()
     );
-    assert_ne!(working.encode_state().unwrap().as_bytes(), source_bytes);
-    assert_ne!(working.allocator_cursors(), source_cursors);
-    assert_eq!(source.hyperedges("COALITION"), vec![cell]);
-    assert_eq!(source.hyperedges_of(a, "COALITION").unwrap(), vec![cell]);
-    assert_eq!(source.members_of(cell).unwrap(), vec![a, b, c]);
+    assert_eq!(source.hyperedges("COALITION"), vec![witness.cell]);
+    assert_eq!(
+        source.hyperedges_of(witness.a, "COALITION").unwrap(),
+        vec![witness.cell]
+    );
+    assert_eq!(
+        source.members_of(witness.cell).unwrap(),
+        vec![witness.a, witness.b, witness.c]
+    );
+}
+
+#[cfg(test)]
+fn assert_working_changed_independently<G>(working: &G, witness: &DetachedCopyWitness)
+where
+    G: GraphSubstrate + CanonicalState + AllocatorState,
+{
+    assert_ne!(
+        working.encode_state().unwrap().as_bytes(),
+        witness.source_bytes
+    );
+    assert_ne!(working.allocator_cursors(), witness.source_cursors);
     assert_eq!(working.hyperedges("COALITION"), vec![HyperedgeId(1)]);
     assert_eq!(
-        working.hyperedges_of(a, "COALITION").unwrap(),
+        working.hyperedges_of(witness.a, "COALITION").unwrap(),
         vec![HyperedgeId(1)]
     );
-    assert_eq!(working.members_of(HyperedgeId(1)).unwrap(), vec![a, b]);
+    assert_eq!(
+        working.members_of(HyperedgeId(1)).unwrap(),
+        vec![witness.a, witness.b]
+    );
+}
 
+#[cfg(test)]
+fn exercise_source_after_copy<G>(source: &mut G, working: &G, witness: &DetachedCopyWitness)
+where
+    G: GraphSubstrate,
+{
     assert_eq!(source.add_node("BUSINESS").unwrap(), NodeId(3));
     assert_eq!(
-        source.add_hyperedge("COALITION", &[b, c]).unwrap(),
+        source
+            .add_hyperedge("COALITION", &[witness.b, witness.c])
+            .unwrap(),
         HyperedgeId(1)
     );
-    assert_eq!(source.hyperedges("COALITION"), vec![cell, HyperedgeId(1)]);
     assert_eq!(
-        source.hyperedges_of(b, "COALITION").unwrap(),
-        vec![cell, HyperedgeId(1)]
+        source.hyperedges("COALITION"),
+        vec![witness.cell, HyperedgeId(1)]
     );
-    assert_eq!(source.hyperedges_of(a, "COALITION").unwrap(), vec![cell]);
-    assert_eq!(source.members_of(HyperedgeId(1)).unwrap(), vec![b, c]);
+    assert_eq!(
+        source.hyperedges_of(witness.b, "COALITION").unwrap(),
+        vec![witness.cell, HyperedgeId(1)]
+    );
+    assert_eq!(
+        source.hyperedges_of(witness.a, "COALITION").unwrap(),
+        vec![witness.cell]
+    );
+    assert_eq!(
+        source.members_of(HyperedgeId(1)).unwrap(),
+        vec![witness.b, witness.c]
+    );
     assert_eq!(working.hyperedges("COALITION"), vec![HyperedgeId(1)]);
     assert_eq!(
-        working.hyperedges_of(a, "COALITION").unwrap(),
+        working.hyperedges_of(witness.a, "COALITION").unwrap(),
         vec![HyperedgeId(1)]
     );
-    assert_eq!(working.members_of(HyperedgeId(1)).unwrap(), vec![a, b]);
-
-    source.remove_hyperedge(cell).unwrap();
-    assert_eq!(source.hyperedges("COALITION"), vec![HyperedgeId(1)]);
-    assert!(source.hyperedges_of(a, "COALITION").unwrap().is_empty());
-    assert_eq!(source.members_of(HyperedgeId(1)).unwrap(), vec![b, c]);
     assert_eq!(
-        working.hyperedges_of(a, "COALITION").unwrap(),
+        working.members_of(HyperedgeId(1)).unwrap(),
+        vec![witness.a, witness.b]
+    );
+
+    source.remove_hyperedge(witness.cell).unwrap();
+    assert_eq!(source.hyperedges("COALITION"), vec![HyperedgeId(1)]);
+    assert!(source
+        .hyperedges_of(witness.a, "COALITION")
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        source.members_of(HyperedgeId(1)).unwrap(),
+        vec![witness.b, witness.c]
+    );
+    assert_eq!(
+        working.hyperedges_of(witness.a, "COALITION").unwrap(),
         vec![HyperedgeId(1)]
     );
-    assert_eq!(working.members_of(HyperedgeId(1)).unwrap(), vec![a, b]);
+    assert_eq!(
+        working.members_of(HyperedgeId(1)).unwrap(),
+        vec![witness.a, witness.b]
+    );
 }
 
 #[cfg(test)]

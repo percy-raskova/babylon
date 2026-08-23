@@ -377,7 +377,7 @@ mod tests {
     #[test]
     fn a_binding_classifies_through_its_declared_source() {
         let (rule, _) = read(
-            "(rule demo/c :material-basis \"the wage relation\" :fuel 8 \
+            "(rule demo/c :role mechanic :evidence derived :material-basis \"the wage relation\" :fuel 8 \
              (bindings (binding wealth :field social-class/wealth) \
                        (binding flag :field social-class/organised) \
                        (binding now :tick)) \

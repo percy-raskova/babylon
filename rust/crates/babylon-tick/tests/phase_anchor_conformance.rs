@@ -9,7 +9,7 @@ const SCENARIO: &str = include_str!("../content/scenarios/two-classes.bscn");
 
 const VITALITY_RULE: &str = r#"
 (rule vitality/z-default-home
-  :material-basis "biological reproduction is resolved in the vitality phase"
+  :role mechanic :evidence derived :material-basis "biological reproduction is resolved in the vitality phase"
   :fuel 16
   (bindings (binding wages :field social-class/wages))
   (effects (emit EventType/RUPTURE (probe 1))))
@@ -17,7 +17,7 @@ const VITALITY_RULE: &str = r#"
 
 const BEFORE_SURVIVAL_RULE: &str = r#"
 (rule mods/a-before-survival
-  :material-basis "a consequence-phase probe runs at its declared governed boundary"
+  :role mechanic :evidence derived :material-basis "a consequence-phase probe runs at its declared governed boundary"
   :fuel 16
   (anchor :before survival)
   (bindings (binding wages :field social-class/wages))
@@ -45,6 +45,20 @@ fn an_explicit_anchor_uses_the_governed_system_spine_not_global_rule_id_order() 
     assert_eq!(report_b.per_rule_fired, expected);
     assert_eq!(report_a.before, report_b.before);
     assert_eq!(report_a.after, report_b.after);
+    assert_eq!(report_a.audit_receipts, report_b.audit_receipts);
+    assert_eq!(
+        report_a
+            .audit_receipts
+            .iter()
+            .map(|receipt| receipt.rule_id.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "vitality/z-default-home",
+            "vitality/z-default-home",
+            "mods/a-before-survival",
+            "mods/a-before-survival",
+        ]
+    );
 }
 
 fn assert_rejected_before_hydration(rule_src: &str, code: Option<&str>, text: &str) {
@@ -73,7 +87,7 @@ fn rejection_before_hydration(rule_src: &str) -> String {
 fn an_anchor_that_cuts_through_material_base_is_e_load_003_before_hydration() {
     let rule = r#"
 (rule mods/illegal-interleave
-  :material-basis "a mod cannot splice incidental work into the material causal spine"
+  :role mechanic :evidence derived :material-basis "a mod cannot splice incidental work into the material causal spine"
   :fuel 16
   (domain :graph)
   (anchor :after vitality)
@@ -87,7 +101,7 @@ fn an_anchor_that_cuts_through_material_base_is_e_load_003_before_hydration() {
 fn diagnostic_loading_reports_the_same_phase_composition_refusal() {
     let rule = r#"
 (rule mods/illegal-diagnostic-interleave
-  :material-basis "diagnostics and execution share one causal-placement compiler"
+  :role mechanic :evidence derived :material-basis "diagnostics and execution share one causal-placement compiler"
   :fuel 16
   (domain :graph)
   (anchor :after vitality)
@@ -105,7 +119,7 @@ fn diagnostic_loading_reports_the_same_phase_composition_refusal() {
 fn rule_surface_failure_precedes_phase_composition_without_hydration() {
     let rule = r#"
 (rule mods/invalid-fuel-and-placement
-  :material-basis "surface validation remains earlier than causal composition"
+  :role mechanic :evidence derived :material-basis "surface validation remains earlier than causal composition"
   :fuel 0
   (domain :graph)
   (anchor :after vitality)
@@ -119,7 +133,7 @@ fn rule_surface_failure_precedes_phase_composition_without_hydration() {
 fn scenario_failure_precedes_phase_composition_without_hydration() {
     let rule = r#"
 (rule mods/invalid-placement-after-bad-scenario
-  :material-basis "scenario validation remains earlier than causal composition"
+  :role mechanic :evidence derived :material-basis "scenario validation remains earlier than causal composition"
   :fuel 16
   (domain :graph)
   (anchor :after vitality)
@@ -142,7 +156,7 @@ fn scenario_failure_precedes_phase_composition_without_hydration() {
 fn an_anchorless_rule_with_no_system_home_is_e_load_002_before_hydration() {
     let rule = r#"
 (rule nowhere/no-home
-  :material-basis "an unplaced rule has no causal meaning"
+  :role mechanic :evidence derived :material-basis "an unplaced rule has no causal meaning"
   :fuel 16
   (domain :graph)
   (bindings)
@@ -155,7 +169,7 @@ fn an_anchorless_rule_with_no_system_home_is_e_load_002_before_hydration() {
 fn duplicate_anchor_forms_fail_before_hydration() {
     let rule = r#"
 (rule mods/duplicate-anchor
-  :material-basis "one rule has one causal placement"
+  :role mechanic :evidence derived :material-basis "one rule has one causal placement"
   :fuel 16
   (domain :graph)
   (anchor :before survival)
@@ -170,7 +184,7 @@ fn duplicate_anchor_forms_fail_before_hydration() {
 fn invalid_rule_permutations_name_the_same_byte_least_identity() {
     let byte_least = r#"
 (rule aaa/no-home
-  :material-basis "an unplaced rule must fail deterministically"
+  :role mechanic :evidence derived :material-basis "an unplaced rule must fail deterministically"
   :fuel 16
   (domain :graph)
   (bindings)
@@ -178,7 +192,7 @@ fn invalid_rule_permutations_name_the_same_byte_least_identity() {
 "#;
     let byte_greater = r#"
 (rule zzz/no-home
-  :material-basis "another unplaced rule must not win by source order"
+  :role mechanic :evidence derived :material-basis "another unplaced rule must not win by source order"
   :fuel 16
   (domain :graph)
   (bindings)

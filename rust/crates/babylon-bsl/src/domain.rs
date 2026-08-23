@@ -327,7 +327,8 @@ mod tests {
         resolve_domain(&rule, &decls, &vocabulary())
     }
 
-    const PREAMBLE: &str = ":material-basis \"the wage relation\" :fuel 65536";
+    const PREAMBLE: &str =
+        ":role mechanic :evidence derived :material-basis \"the wage relation\" :fuel 65536";
 
     #[test]
     fn the_worked_example_infers_its_node_domain() {

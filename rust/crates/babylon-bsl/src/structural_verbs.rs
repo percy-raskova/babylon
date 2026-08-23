@@ -310,9 +310,11 @@ pub struct EffectExecutor<'a> {
     observer: Option<&'a mut dyn WriteObserver>,
     /// The rule id every record from this executor is attributed to.
     attribution: String,
-    /// Source-order position of the NEXT write. Counts writes performed,
-    /// not effect items considered.
-    ordinal: u32,
+    /// Source-order position of the NEXT write. The wider internal lane lets
+    /// the executor detect the public `u32` boundary before mutating the
+    /// substrate, rather than panicking in debug builds or wrapping in
+    /// release builds. Counts writes performed, not effect items considered.
+    next_write_ordinal: u64,
 }
 
 impl<'a> EffectExecutor<'a> {
@@ -338,7 +340,7 @@ impl<'a> EffectExecutor<'a> {
             declared_hyperedges: HashMap::new(),
             observer: None,
             attribution: String::new(),
-            ordinal: 0,
+            next_write_ordinal: 0,
         }
     }
 
@@ -366,22 +368,49 @@ impl<'a> EffectExecutor<'a> {
             declared_hyperedges: HashMap::new(),
             observer: Some(observer),
             attribution: rule.into(),
-            ordinal: 0,
+            next_write_ordinal: 0,
         }
+    }
+
+    /// Refuse a write whose observation ordinal cannot be represented.
+    /// Every mutation site calls this before touching the substrate; the
+    /// recorder repeats the check defensively before publishing the record.
+    fn ensure_record_capacity(&self) -> Result<(), EvalError> {
+        u32::try_from(self.next_write_ordinal)
+            .map(|_| ())
+            .map_err(|_| {
+                EvalError::coded(
+                    EvalCode::Overflow,
+                    "write observation ordinal exceeds the u32 domain",
+                )
+            })
     }
 
     /// Hand one completed mutation to the observer, if any. Call sites are
     /// AFTER the substrate accepted the write, never before: a write that
     /// failed leaves no record.
-    fn record(&mut self, write: Write) {
+    fn record(&mut self, write: Write) -> Result<(), EvalError> {
+        self.ensure_record_capacity()?;
+        let ordinal = u32::try_from(self.next_write_ordinal).map_err(|_| {
+            EvalError::coded(
+                EvalCode::Overflow,
+                "write observation ordinal exceeds the u32 domain",
+            )
+        })?;
         if let Some(observer) = self.observer.as_mut() {
             observer.record(WriteRecord {
                 rule: self.attribution.clone(),
-                ordinal: self.ordinal,
+                ordinal,
                 write,
             });
-            self.ordinal += 1;
         }
+        self.next_write_ordinal = self.next_write_ordinal.checked_add(1).ok_or_else(|| {
+            EvalError::coded(
+                EvalCode::Overflow,
+                "write observation ordinal counter exceeded u64",
+            )
+        })?;
+        Ok(())
     }
 
     /// The prior value of a field, for the log only — a failed probe means
@@ -511,8 +540,9 @@ impl<'a> EffectExecutor<'a> {
                     return Err(plain("(remove-node <expr>) takes exactly one operand"));
                 };
                 let id = self.resolve_node(node, env, host, fuel)?;
+                self.ensure_record_capacity()?;
                 graph.remove_node(id).map_err(from_graph)?;
-                self.record(Write::NodeRemoved { id });
+                self.record(Write::NodeRemoved { id })?;
                 Ok(())
             }
             "add-edge" => self.add_edge(items, env, host, graph, fuel),
@@ -524,8 +554,9 @@ impl<'a> EffectExecutor<'a> {
                     return Err(plain("(remove-hyperedge <expr>) takes exactly one operand"));
                 };
                 let id = self.resolve_hyperedge(h, env, host, fuel)?;
+                self.ensure_record_capacity()?;
                 graph.remove_hyperedge(id).map_err(from_graph)?;
-                self.record(Write::HyperedgeRemoved { id });
+                self.record(Write::HyperedgeRemoved { id })?;
                 Ok(())
             }
             "emit" => Self::emit(items, env, host, sink, fuel),
@@ -713,6 +744,7 @@ impl<'a> EffectExecutor<'a> {
         };
         let new_value = canonical_zero(new_value);
         self.store_range_check(field, new_value)?;
+        self.ensure_record_capacity()?;
         graph
             .update_node(id, field, new_value)
             .map_err(from_graph)?;
@@ -721,7 +753,7 @@ impl<'a> EffectExecutor<'a> {
             field: field.clone(),
             previous,
             value: new_value,
-        });
+        })?;
         Ok(())
     }
 
@@ -758,6 +790,7 @@ impl<'a> EffectExecutor<'a> {
         let currency = currency_write_value(value, field, "update-node")?;
         store_range_check_currency(field, currency)?;
         let previous = self.probe_previous_currency(&*graph, id, field);
+        self.ensure_record_capacity()?;
         graph
             .update_node_currency(id, field, currency)
             .map_err(from_graph)?;
@@ -766,7 +799,7 @@ impl<'a> EffectExecutor<'a> {
             field: field.to_owned(),
             previous,
             value: currency,
-        });
+        })?;
         Ok(())
     }
 
@@ -844,6 +877,7 @@ impl<'a> EffectExecutor<'a> {
         };
         let new_value = canonical_zero(new_value);
         self.store_range_check(field, new_value)?;
+        self.ensure_record_capacity()?;
         graph
             .update_edge(&key.edge_type, key.source, key.target, field, new_value)
             .map_err(from_graph)?;
@@ -854,7 +888,7 @@ impl<'a> EffectExecutor<'a> {
             field: field.clone(),
             previous,
             value: new_value,
-        });
+        })?;
         Ok(())
     }
 
@@ -924,6 +958,7 @@ impl<'a> EffectExecutor<'a> {
         };
         let new_value = canonical_zero(new_value);
         self.store_range_check(field, new_value)?;
+        self.ensure_record_capacity()?;
         graph
             .update_hyperedge_attribute(id, field, new_value)
             .map_err(from_graph)?;
@@ -932,7 +967,7 @@ impl<'a> EffectExecutor<'a> {
             field: field.clone(),
             previous,
             value: new_value,
-        });
+        })?;
         Ok(())
     }
 
@@ -1331,6 +1366,7 @@ impl<'a> EffectExecutor<'a> {
         }
         let previous = self.probe_previous_currency(&*graph, id, field);
         store_range_check_currency(field, currency)?;
+        self.ensure_record_capacity()?;
         graph
             .update_node_currency(id, field, currency)
             .map_err(from_graph)?;
@@ -1339,7 +1375,7 @@ impl<'a> EffectExecutor<'a> {
             field: field.to_owned(),
             previous,
             value: currency,
-        });
+        })?;
         Ok(())
     }
 
@@ -1400,6 +1436,7 @@ impl<'a> EffectExecutor<'a> {
                 };
                 let new_value = canonical_zero(new_value);
                 self.store_range_check(&write.field, new_value)?;
+                self.ensure_record_capacity()?;
                 graph
                     .update_node(*id, &write.field, new_value)
                     .map_err(from_graph)?;
@@ -1408,7 +1445,7 @@ impl<'a> EffectExecutor<'a> {
                     field: write.field.clone(),
                     previous,
                     value: new_value,
-                });
+                })?;
                 Ok(())
             }
             WriteTarget::Edge(key) => {
@@ -1446,6 +1483,7 @@ impl<'a> EffectExecutor<'a> {
                 };
                 let new_value = canonical_zero(new_value);
                 self.store_range_check(&write.field, new_value)?;
+                self.ensure_record_capacity()?;
                 graph
                     .update_edge(
                         &key.edge_type,
@@ -1462,7 +1500,7 @@ impl<'a> EffectExecutor<'a> {
                     field: write.field.clone(),
                     previous,
                     value: new_value,
-                });
+                })?;
                 Ok(())
             }
             WriteTarget::Hyperedge(id) => self.apply_pending_hyperedge_write(*id, write, graph),
@@ -1512,6 +1550,7 @@ impl<'a> EffectExecutor<'a> {
         };
         let new_value = canonical_zero(new_value);
         self.store_range_check(&write.field, new_value)?;
+        self.ensure_record_capacity()?;
         graph
             .update_hyperedge_attribute(id, &write.field, new_value)
             .map_err(from_graph)?;
@@ -1520,7 +1559,7 @@ impl<'a> EffectExecutor<'a> {
             field: write.field.clone(),
             previous,
             value: new_value,
-        });
+        })?;
         Ok(())
     }
 
@@ -1541,12 +1580,13 @@ impl<'a> EffectExecutor<'a> {
         };
         let node_type = self.enum_member_checked(type_ref, "add-node")?;
         let name = self.fresh_declared_name(id_expr, env)?;
+        self.ensure_record_capacity()?;
         let id = graph.add_node(node_type).map_err(from_graph)?;
         self.declared_nodes.insert(name, id);
         self.record(Write::NodeAdded {
             id,
             node_type: node_type.to_owned(),
-        });
+        })?;
         for init in field_inits {
             let SExpr::List(pair) = init else {
                 return Err(plain(format!(
@@ -1564,13 +1604,14 @@ impl<'a> EffectExecutor<'a> {
             // value; probing rather than assuming keeps a repeated init
             // honest.
             let previous = self.probe_previous(&*graph, id, field);
+            self.ensure_record_capacity()?;
             graph.update_node(id, field, value).map_err(from_graph)?;
             self.record(Write::NodeAttribute {
                 id,
                 field: field.clone(),
                 previous,
                 value,
-            });
+            })?;
         }
         Ok(())
     }
@@ -1628,6 +1669,7 @@ impl<'a> EffectExecutor<'a> {
                 format!("add-edge :strength must be finite, got {strength}"),
             ));
         }
+        self.ensure_record_capacity()?;
         graph
             .add_edge(edge_type, from_id, to_id, strength)
             .map_err(from_graph)?;
@@ -1636,7 +1678,7 @@ impl<'a> EffectExecutor<'a> {
             from: from_id,
             to: to_id,
             strength,
-        });
+        })?;
         for init in field_inits {
             let SExpr::List(pair) = init else {
                 return Err(plain(format!(
@@ -1671,6 +1713,7 @@ impl<'a> EffectExecutor<'a> {
                 },
                 field,
             );
+            self.ensure_record_capacity()?;
             graph
                 .update_edge(edge_type, from_id, to_id, field, value)
                 .map_err(from_graph)?;
@@ -1681,7 +1724,7 @@ impl<'a> EffectExecutor<'a> {
                 field: field.clone(),
                 previous,
                 value,
-            });
+            })?;
         }
         Ok(())
     }
@@ -1704,6 +1747,7 @@ impl<'a> EffectExecutor<'a> {
         let edge_type = Self::enum_member(type_ref)?;
         let from_id = self.resolve_node(from, env, host, fuel)?;
         let to_id = self.resolve_node(to, env, host, fuel)?;
+        self.ensure_record_capacity()?;
         graph
             .remove_edge(edge_type, from_id, to_id)
             .map_err(from_graph)?;
@@ -1711,7 +1755,7 @@ impl<'a> EffectExecutor<'a> {
             edge_type: edge_type.to_owned(),
             from: from_id,
             to: to_id,
-        });
+        })?;
         Ok(())
     }
 
@@ -1767,6 +1811,7 @@ impl<'a> EffectExecutor<'a> {
         // that leaks source order back. Duplicates stay the substrate's
         // error to raise — sorting does not mask them.
         members.sort_unstable();
+        self.ensure_record_capacity()?;
         let id = graph
             .add_hyperedge(hyperedge_type, &members)
             .map_err(from_graph)?;
@@ -1778,7 +1823,7 @@ impl<'a> EffectExecutor<'a> {
             id,
             hyperedge_type: hyperedge_type.to_owned(),
             members,
-        });
+        })?;
         Ok(())
     }
 
@@ -3006,6 +3051,63 @@ mod tests {
             plain_fuel, observed_fuel,
             "the log must not charge the §4.5 meter — fuel is a conformance quantity"
         );
+    }
+
+    #[test]
+    fn ordinal_overflow_is_refused_before_any_substrate_mutation() {
+        for observed in [false, true] {
+            let (form, _) = read("(effects (update-node self social-class/agitation (set 0.9i)))")
+                .expect("effects source must parse");
+            let SExpr::List(items) = form else {
+                unreachable!()
+            };
+            let mut fixture = Fixture::new();
+            let env = EvalEnv {
+                bindings: HashMap::from([("self".to_owned(), Value::NodeRef(fixture.self_id))]),
+                intrinsic_costs: &fixture.costs,
+                graph: None,
+                types: None,
+                enums: None,
+                elements: Vec::new(),
+                draw_context: None,
+            };
+            let types = types();
+            let enums = enums();
+            let mut log = CollectingWriteLog::new();
+            let mut sink = CollectingSink::default();
+            let mut fuel = 64;
+            let result = {
+                let mut executor = if observed {
+                    EffectExecutor::observed(&types, &enums, None, "hunger/agitate", &mut log)
+                } else {
+                    EffectExecutor::new(&types, &enums, None)
+                };
+                executor.next_write_ordinal = u64::from(u32::MAX) + 1;
+                executor.execute_effects(
+                    &items[1..],
+                    &env,
+                    &EmptyIntrinsicHost,
+                    &mut fixture.graph,
+                    &mut sink,
+                    &mut fuel,
+                )
+            };
+            let error = result.expect_err("an unrepresentable write ordinal must fail loudly");
+            assert_eq!(error.code, Some(EvalCode::Overflow), "observe={observed}");
+            assert_eq!(
+                fixture
+                    .graph
+                    .node_attribute(fixture.self_id, "social-class/agitation")
+                    .unwrap()
+                    .to_bits(),
+                0.10_f64.to_bits(),
+                "observe={observed}: the capacity check must precede mutation"
+            );
+            assert!(
+                log.records.is_empty(),
+                "observe={observed}: a refused write cannot publish a record"
+            );
+        }
     }
 
     #[test]

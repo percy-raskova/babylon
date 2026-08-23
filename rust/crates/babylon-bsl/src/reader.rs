@@ -1,8 +1,10 @@
 //! The BSL reader: lexer + s-expression parser for the normative lexical
 //! grammar (`docs/reference/bsl-language.rst` §1). Hand-written, with an
-//! ITERATIVE parser (explicit list stack, no recursion — hostile nesting
-//! cannot overflow the call stack); the grammar is small and a hand-rolled
-//! parser keeps the dependency graph minimal (no parser-combinator crate).
+//! ITERATIVE parser (explicit list stack, no recursion). It refuses nesting
+//! above a fixed safety ceiling before constructing a recursively owned tree,
+//! so parsing and destruction cannot turn hostile nesting into a call-stack
+//! overflow. The grammar is small and a hand-rolled parser keeps the
+//! dependency graph minimal (no parser-combinator crate).
 //!
 //! **Deviation from the Phase 1 plan's sketch, recorded:** the plan drafted
 //! `Atom(String)` with classification deferred. The language reference's §1
@@ -21,6 +23,13 @@
 //! because §1.5 names the *literal*, not the value, negative.
 
 use babylon_kernel::Currency;
+
+/// Maximum simultaneously open lists accepted by the reader.
+///
+/// Semantic walkers use a lower 256-level contract. This higher boundary is
+/// the construction and destruction safety ceiling for the recursively owned
+/// [`SExpr`] representation.
+pub const MAX_READER_NESTING_DEPTH: usize = 512;
 
 /// One s-expression: a classified atom or a parenthesised list.
 #[derive(Debug, Clone, PartialEq)]
@@ -220,6 +229,8 @@ pub enum ReadErrorKind {
     UnterminatedList,
     /// EOF inside a string literal.
     UnterminatedString,
+    /// More lists were opened than the reader can construct and drop safely.
+    NestingLimitExceeded,
 }
 
 /// A reader failure: loud, positioned, never a panic (III.11).
@@ -454,10 +465,11 @@ impl<'a> Scanner<'a> {
 }
 
 /// Iterative s-expression parser: an explicit list stack instead of
-/// recursion, so hostile nesting depth can never overflow the call stack
-/// (III.11 — a crash is not a loud error). Every iteration consumes at
-/// least one character or closes a list opened by a consumed character, so
-/// the loop is bounded by the input length.
+/// recursion. The explicit stack refuses [`MAX_READER_NESTING_DEPTH`] + 1
+/// before building a recursively droppable tree (III.11 — a crash is not a
+/// loud error). Every iteration consumes at least one character or closes a
+/// list opened by a consumed character, so the loop is bounded by the input
+/// length.
 ///
 /// `top_level_index` is this call's position among its caller's top-level
 /// forms (always 0 for [`read_spanned`], the loop counter for
@@ -501,6 +513,16 @@ fn parse_one(
         };
         let completed = match c {
             '(' => {
+                if stack.len() >= MAX_READER_NESTING_DEPTH {
+                    return Err(ReadError {
+                        kind: ReadErrorKind::NestingLimitExceeded,
+                        message: format!(
+                            "list nesting exceeds the reader safety limit of \
+                             {MAX_READER_NESTING_DEPTH} open lists"
+                        ),
+                        position,
+                    });
+                }
                 scanner.bump();
                 stack.push((position, Vec::new()));
                 path.push(0);
@@ -1146,7 +1168,7 @@ fn classify_ratio(
 mod tests {
     use super::{
         read, read_all, read_all_spanned, Atom, FormPath, LexCode, ReadErrorKind, SExpr,
-        ScaledKind, ScaledLit,
+        ScaledKind, ScaledLit, MAX_READER_NESTING_DEPTH,
     };
     use babylon_kernel::Currency;
 
@@ -1192,6 +1214,26 @@ mod tests {
         // (underscore is not in the symbol alphabet, §1.4); kebab-case here.
         let expr = one("(fold (node social-class) (sum wealth))");
         assert!(matches!(expr, SExpr::List(items) if items.len() == 3));
+    }
+
+    #[test]
+    fn reader_accepts_its_nesting_boundary_and_refuses_the_next_open_list() {
+        let accepted = format!(
+            "{}{}",
+            "(".repeat(MAX_READER_NESTING_DEPTH),
+            ")".repeat(MAX_READER_NESTING_DEPTH)
+        );
+        read(&accepted).expect("the exact reader safety boundary must parse");
+
+        let rejected = format!(
+            "{}{}",
+            "(".repeat(MAX_READER_NESTING_DEPTH + 1),
+            ")".repeat(MAX_READER_NESTING_DEPTH + 1)
+        );
+        let error = read(&rejected).expect_err("the next open list must refuse before tree build");
+        assert_eq!(error.kind, ReadErrorKind::NestingLimitExceeded);
+        assert_eq!(error.position, MAX_READER_NESTING_DEPTH);
+        assert!(error.message.contains("reader safety limit"));
     }
 
     #[test]

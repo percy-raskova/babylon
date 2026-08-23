@@ -35,7 +35,7 @@ below remains the Phase 1 handoff snapshot rather than rewriting its history.
 | 9 | The reader — full §1 lexical grammar, E-LEX vectors, iterative parse; **spec self-contradiction found and repaired** (the operator atom class, §1.4 draft note) | PR #425 |
 | 10 | §3.4 intensivity typechecker (E-TYPE-041/042/043) + the exemptions ledger | PR #426 |
 | 11 | `babylon-graph`: the ruled native-hyperedge `GraphSubstrate` trait + placeholder | PR #415 |
-| 12 | Canonical AST serialization — §5 binary CAS reproducing the spec's own 421-byte worked example byte-for-byte; `rules_hash` MANDATORY on `ContentDigest` | PR #428 |
+| 12 | Canonical AST serialization — §5 binary CAS reproduced the then-current 421-byte worked example byte-for-byte; `rules_hash` MANDATORY on `ContentDigest` | PR #428 |
 | 13 | Load-time fuel bound checker — §3.7 cost table (two documented tiers), `bound(rule)`, E-LOAD-040/042, per-query-head ceiling-axis dispatch | PR #429 |
 | 14 | Fuel-metered expression evaluator — §3.3 value lanes, §4.3 arithmetic codes, §4.5 per-node charging, `IntrinsicHost` seam | PR #431 |
 | 15 | Bindings + `:material-basis` load surface + the `:default` allowlist lint (findings, not errors) | PR #432 |

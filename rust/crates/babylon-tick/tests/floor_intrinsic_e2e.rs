@@ -33,7 +33,7 @@ const SCENARIO: &str = r#"
 const RULE: &str = r#"
 (intrinsic floor :params (real) :returns int :cost 5)
 (rule vitality/floor-e2e-count-deaths
-  :material-basis "prove the floor intrinsic clears content, load and evaluation"
+  :role mechanic :evidence derived :material-basis "prove the floor intrinsic clears content, load and evaluation"
   :fuel 64
   (bindings
     (binding population :field social-class/population)
@@ -49,7 +49,7 @@ const RULE: &str = r#"
 /// happening to work only because the intrinsic decl comes first.
 const RULE_INTRINSIC_LAST: &str = r#"
 (rule vitality/floor-e2e-count-deaths
-  :material-basis "prove the floor intrinsic clears content, load and evaluation"
+  :role mechanic :evidence derived :material-basis "prove the floor intrinsic clears content, load and evaluation"
   :fuel 64
   (bindings
     (binding population :field social-class/population)
@@ -106,7 +106,7 @@ fn declaring_an_uncapped_intrinsic_refuses_the_whole_load() {
     const TANH_RULE: &str = r#"
 (intrinsic tanh :params (real) :returns real :cost 40)
 (rule vitality/floor-e2e-count-deaths
-  :material-basis "x" :fuel 8 (when #t))
+  :role mechanic :evidence derived :material-basis "x" :fuel 8 (when #t))
 "#;
     let err = run_once(SCENARIO, TANH_RULE).unwrap_err();
     assert!(
@@ -123,7 +123,7 @@ fn a_mismatched_declared_signature_refuses_the_whole_load() {
     const WRONG_SIGNATURE_RULE: &str = r#"
 (intrinsic floor :params (int) :returns int :cost 5)
 (rule vitality/floor-e2e-count-deaths
-  :material-basis "x" :fuel 8 (when #t))
+  :role mechanic :evidence derived :material-basis "x" :fuel 8 (when #t))
 "#;
     let err = run_once(SCENARIO, WRONG_SIGNATURE_RULE).unwrap_err();
     assert!(err.contains("E-LOAD-020"), "unexpected message: {err}");
@@ -137,7 +137,7 @@ fn a_duplicate_intrinsic_declaration_refuses_the_whole_load() {
 (intrinsic floor :params (real) :returns int :cost 5)
 (intrinsic floor :params (real) :returns int :cost 9)
 (rule vitality/floor-e2e-count-deaths
-  :material-basis "x" :fuel 8 (when #t))
+  :role mechanic :evidence derived :material-basis "x" :fuel 8 (when #t))
 "#;
     let err = run_once(SCENARIO, DUPLICATE_RULE).unwrap_err();
     assert!(err.contains("E-LOAD-001"), "unexpected message: {err}");
@@ -169,7 +169,7 @@ fn round_half_even_now_loads_and_dispatches_through_run_once() {
     const ROUND_HALF_EVEN_RULE: &str = r#"
 (intrinsic round-half-even :params (real) :returns real :cost 6)
 (rule vitality/floor-e2e-round-half-even
-  :material-basis "ADR219: round-half-even dispatches (ADR188 Row 3 landed, D70 resolved)"
+  :role mechanic :evidence derived :material-basis "ADR219: round-half-even dispatches (ADR188 Row 3 landed, D70 resolved)"
   :fuel 64
   (bindings
     (binding population :field social-class/population)

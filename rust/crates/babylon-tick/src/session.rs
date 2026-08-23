@@ -105,18 +105,12 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> TickSes
     /// writes from this tick. The working graph and its buffered events are
     /// published together only after every rule and hash succeeds.
     ///
-    /// **This is a RECORDED GAP, not a design feature.** §4.2 says "rules
-    /// within one system position observe the same pre-state"
-    /// (bsl-language.rst §4.2), which covers rule-to-rule pre-state
-    /// sharing, not only subject-to-subject within one rule. Task 12
-    /// (D-row Q1) repaired the within-rule half (`run_tick`'s
-    /// collect-then-apply split); this cross-rule half is a separate,
-    /// still-open divergence — D-row Q14 (the query-evaluation plan's
-    /// draft-ruling register). It is live and observable in multi-rule packs
-    /// that exchange same-position writes. PER-17 preserves that behavior;
-    /// repairing it needs explicit content dispositions and behavioral
-    /// contracts. The first call runs tick 1 (matching `run_once`'s own
-    /// numbering), the second tick 2, and so on.
+    /// ADR224 makes this sequential rule-to-rule behavior explicit. The
+    /// post-phase-compile analyzer accepts reviewed compositions and refuses
+    /// unknown stale-default or unreset-fan-in shapes before this session is
+    /// constructed. Within one rule, subject effects still use the rule's
+    /// shared prestate and collect before apply. The first call runs tick 1
+    /// (matching `run_once`'s own numbering), the second tick 2, and so on.
     ///
     /// # Errors
     /// The tick itself (named to its own rule id), or a pre/post
@@ -183,7 +177,7 @@ mod tests {
   (node second NodeType/SOCIAL_CLASS (social-class/probability 0.9p)))
 ";
     const ATOMICITY_RULE: &str = r#"(rule vitality/atomicity-probe
-  :material-basis "PER-18 E-EVAL-020 rollback probe: one legal write precedes one illegal write"
+  :role mechanic :evidence derived :material-basis "PER-18 E-EVAL-020 rollback probe: one legal write precedes one illegal write"
   :fuel 64
   (bindings (binding probability :field social-class/probability))
   (when (> probability 0.0p))
@@ -198,7 +192,7 @@ mod tests {
   (node only NodeType/SOCIAL_CLASS (social-class/active 1)))
 ";
     const CLOCK_RULE: &str = r#"(rule vitality/world-clock-probe
-  :material-basis "PER-18 nominal world hash probe: elapsed committed time is world state"
+  :role mechanic :evidence derived :material-basis "PER-18 nominal world hash probe: elapsed committed time is world state"
   :fuel 32
   (bindings (binding active :field social-class/active))
   (when (= active 1))
@@ -220,7 +214,7 @@ mod tests {
     (social-class/action 0)))
 ";
     const MATERIAL_SUCCESS_RULE: &str = r#"(rule vitality/phase-success
-  :material-basis "PER-18 rollback matrix: representative Material Base work"
+  :role mechanic :evidence derived :material-basis "PER-18 rollback matrix: representative Material Base work"
   :fuel 64
   (bindings (binding value :field social-class/base))
   (when (>= value 0))
@@ -228,7 +222,7 @@ mod tests {
     (emit EventType/MATERIAL_WORK)
     (update-node self social-class/base (add 1))))"#;
     const ACTION_SUCCESS_RULE: &str = r#"(rule ooda/phase-success
-  :material-basis "PER-18 rollback matrix: representative Action work"
+  :role mechanic :evidence derived :material-basis "PER-18 rollback matrix: representative Action work"
   :fuel 64
   (bindings (binding value :field social-class/action))
   (when (>= value 0))
@@ -236,7 +230,7 @@ mod tests {
     (emit EventType/ACTION_WORK)
     (update-node self social-class/action (add 1))))"#;
     const MATERIAL_FAILURE_RULE: &str = r#"(rule metabolism/phase-failure
-  :material-basis "PER-18 rollback matrix: fail at the end of Material Base"
+  :role mechanic :evidence derived :material-basis "PER-18 rollback matrix: fail at the end of Material Base"
   :fuel 64
   (bindings (binding probability :field social-class/probability))
   (when (> probability 0.0p))
@@ -244,7 +238,7 @@ mod tests {
     (emit EventType/MATERIAL_FAILURE)
     (update-node self social-class/probability (add 0.4i))))"#;
     const ACTION_FAILURE_RULE: &str = r#"(rule ooda/phase-failure
-  :material-basis "PER-18 rollback matrix: fail after Material Base"
+  :role mechanic :evidence derived :material-basis "PER-18 rollback matrix: fail after Material Base"
   :fuel 64
   (bindings (binding probability :field social-class/probability))
   (when (> probability 0.0p))
@@ -252,7 +246,7 @@ mod tests {
     (emit EventType/ACTION_FAILURE)
     (update-node self social-class/probability (add 0.4i))))"#;
     const CONSEQUENCE_FAILURE_RULE: &str = r#"(rule epistemic-horizon/phase-failure
-  :material-basis "PER-18 rollback matrix: fail after Material Base and Action"
+  :role mechanic :evidence derived :material-basis "PER-18 rollback matrix: fail after Material Base and Action"
   :fuel 64
   (bindings (binding probability :field social-class/probability))
   (when (> probability 0.0p))
@@ -267,7 +261,7 @@ mod tests {
   (node only NodeType/SOCIAL_CLASS (social-class/count 1)))
 ";
     const HASH_FAILURE_RULE: &str = r#"(rule vitality/hash-failure
-  :material-basis "PER-18 hash-boundary rollback mutates before the post hash"
+  :role mechanic :evidence derived :material-basis "PER-18 hash-boundary rollback mutates before the post hash"
   :fuel 32
   (bindings (binding count :field social-class/count))
   (when (= count 1))
@@ -285,7 +279,7 @@ mod tests {
     (social-class/action 10)))
 ";
     const ENVELOPE_RULES: &str = r#"(rule ooda/envelope-action
-  :material-basis "PER-18 real envelope proof: Action rule"
+  :role mechanic :evidence derived :material-basis "PER-18 real envelope proof: Action rule"
   :fuel 32
   (bindings (binding action :field social-class/action))
   (when (= action 10))
@@ -294,7 +288,7 @@ mod tests {
     (update-node self social-class/action (add 2))))
 
 (rule vitality/envelope-material
-  :material-basis "PER-18 real envelope proof: Material Base rule"
+  :role mechanic :evidence derived :material-basis "PER-18 real envelope proof: Material Base rule"
   :fuel 32
   (bindings (binding material :field social-class/material))
   (when (= material 1))

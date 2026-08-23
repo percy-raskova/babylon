@@ -195,7 +195,7 @@ fn no_event_fires() {
 #[test]
 fn a_rule_reading_an_undeclared_coefficient_is_refused_at_load() {
     let rule = "(rule metabolism/typo \
-                :material-basis \"a territory has a biocapacity\" :fuel 32 \
+                :role mechanic :evidence derived :material-basis \"a territory has a biocapacity\" :fuel 32 \
                 (bindings \
                   (binding current :field territory/biocapacity) \
                   (binding rate :const metabolism/regeneration-rat)) \

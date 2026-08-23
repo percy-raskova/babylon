@@ -20,6 +20,9 @@ _ADR_INDEX: Final[Path] = _ROOT / "ai" / "decisions" / "index.yaml"
 _PER_18_ADR: Final[Path] = (
     _ROOT / "ai" / "decisions" / "ADR223_whole_tick_atomicity_world_hash.yaml"
 )
+_PER_19_ADR: Final[Path] = (
+    _ROOT / "ai" / "decisions" / "ADR224_bsl_causal_composition_contract.yaml"
+)
 _DETERMINISM_REFERENCE: Final[Path] = _ROOT / "docs" / "reference" / "determinism-contract.rst"
 
 _LINEAR_PROJECT: Final[dict[str, str]] = {
@@ -87,6 +90,7 @@ _CURRENT_EVIDENCE: Final[dict[str, tuple[str, ...]]] = {
     "rust_graph_hypergraph": ("rust/crates/babylon-graph/src/lib.rs",),
     "bsl_pipeline": (
         "rust/crates/babylon-bsl/src/lib.rs",
+        "rust/crates/babylon-bsl/src/causal_contract.rs",
         "rust/crates/babylon-tick/src/lib.rs",
     ),
     "rust_tick_session": ("rust/crates/babylon-tick/src/session.rs",),
@@ -120,7 +124,7 @@ _H3_EVIDENCE: Final[tuple[str, ...]] = (
 _GATE_2_STATUSES: Final[dict[str, str]] = {
     "PER-17": "implemented_current",
     "PER-18": "implemented_current",
-    "PER-19": "planned",
+    "PER-19": "implemented_current",
 }
 _GATE_2_COMPONENTS: Final[dict[str, str]] = {
     "PER-17": "executable_phase_anchor_total_order",
@@ -129,7 +133,7 @@ _GATE_2_COMPONENTS: Final[dict[str, str]] = {
         "auxiliary_register_combined_world_hashing"
     ),
     "PER-19": (
-        "bsl_causal_composition_provenance_direct_write_whitelist_and_"
+        "bsl_causal_composition_dual_attribution_provenance_direct_write_whitelist_and_"
         "negative_outcome_write_contracts"
     ),
 }
@@ -139,6 +143,14 @@ _PER_18_EVIDENCE: Final[tuple[str, ...]] = (
     "rust/crates/babylon-tick/src/session.rs",
     "rust/crates/babylon-tick/src/world_hash.rs",
     "ai/decisions/ADR223_whole_tick_atomicity_world_hash.yaml",
+)
+_PER_19_EVIDENCE: Final[tuple[str, ...]] = (
+    "rust/crates/babylon-bsl/src/causal_contract.rs",
+    "rust/crates/babylon-bsl/src/same_tick_order.rs",
+    "rust/crates/babylon-bsl/src/rule_pipeline.rs",
+    "rust/crates/babylon-tick/src/lib.rs",
+    "rust/crates/babylon-tick/tests/causal_contract_conformance.rs",
+    "ai/decisions/ADR224_bsl_causal_composition_contract.yaml",
 )
 _GATE_3_ISSUES: Final[tuple[str, ...]] = (
     "PER-20",
@@ -184,6 +196,13 @@ _PER_18_ADR_TITLE: Final[str] = (
     "Rust adjudicates each weekly tick on a detached world, publishes graph, "
     "events, allocator state, and completed time only after total success, and "
     "names current in-memory identity with a versioned nominal world hash"
+)
+_PER_19_ADR_KEY: Final[str] = "ADR224_bsl_causal_composition_contract"
+_PER_19_ADR_TITLE: Final[str] = (
+    "BSL rules declare causal role and evidence, production attribution is "
+    "independently governed, restricted effects and rank-aware composition "
+    "refusals are live, and successful ticks publish identity-free "
+    "event-then-write audit receipts"
 )
 
 
@@ -236,6 +255,8 @@ def test_architecture_records_current_components_and_gate_delivery_status() -> N
     assert {issue: gate_2[issue]["component"] for issue in _GATE_2_COMPONENTS} == _GATE_2_COMPONENTS
     assert tuple(gate_2["PER-18"]["evidence"]) == _PER_18_EVIDENCE
     assert all((_ROOT / evidence).is_file() for evidence in _PER_18_EVIDENCE)
+    assert tuple(gate_2["PER-19"]["evidence"]) == _PER_19_EVIDENCE
+    assert all((_ROOT / evidence).is_file() for evidence in _PER_19_EVIDENCE)
     assert all(gate_3[issue]["status"] == "planned" for issue in _GATE_3_ISSUES)
 
 
@@ -477,12 +498,31 @@ def test_state_is_one_historical_ledger_not_a_status_authority() -> None:
         "merge_commit": "5a0ef2a9",
     }
     assert snapshot["whole_tick_atomicity"] == {
-        "status": "implemented_on_PER-18_branch",
+        "status": "implemented_on_dev",
         "issue": "PER-18",
         "adr": _PER_18_ADR_KEY,
-        "branch": "codex/per-18-whole-tick-atomicity",
+        "merge_commit": "9182ec25",
         "scope": "in_memory_only",
-        "remaining_gate_2": ["PER-19"],
+    }
+    assert snapshot["bsl_causal_composition"] == {
+        "status": "implemented_on_PER-19_branch",
+        "issue": "PER-19",
+        "adr": _PER_19_ADR_KEY,
+        "branch": "codex/per-19-bsl-causal-composition",
+        "production_classification": {
+            "mechanic_derived": 58,
+            "recognizer_derived": 2,
+            "external_event": 0,
+            "intent": 0,
+        },
+        "attribution_governance": {
+            "manifest": "causal_contract::GOVERNED_RULE_ATTRIBUTIONS",
+            "known_id_drift": ("uncoded_typed_ContractError_GovernedAttributionMismatch"),
+            "production_corpus_completeness": "ci_sentinel",
+            "unknown_mod_and_fixture_ids": "self_declared",
+        },
+        "gate_2_status": "complete_in_checkout",
+        "durable_boundary": "planned_gate_3",
     }
     assert snapshot["attributed_membership_payload"] == {
         "status": "planned",
@@ -500,7 +540,7 @@ def test_per_18_adr_and_catalog_are_exact() -> None:
     """The accepted decision and catalog row cannot pass as an empty placeholder."""
     catalog = _yaml_document(_ADR_INDEX)
     assert catalog["meta"] == {
-        "version": "1.76.0",
+        "version": "1.77.0",
         "updated": "2026-08-23",
         "description": "Architecture Decision Records Index",
         "format": "See individual ADR files in this directory",
@@ -522,6 +562,27 @@ def test_per_18_adr_and_catalog_are_exact() -> None:
         _POSTGRESQL_ADR,
         "ADR221_game_first_refoundation_v4",
         "ADR222_executable_bsl_phase_order",
+    )
+
+
+def test_per_19_adr_and_catalog_are_exact() -> None:
+    """The causal-composition law and catalog row stay synchronized."""
+    catalog = _yaml_document(_ADR_INDEX)
+    assert catalog["decisions"][_PER_19_ADR_KEY] == {
+        "title": _PER_19_ADR_TITLE,
+        "status": "accepted",
+        "date": "2026-08-23",
+        "file": "ADR224_bsl_causal_composition_contract.yaml",
+    }
+    document = _yaml_document(_PER_19_ADR)
+    assert tuple(document) == (_PER_19_ADR_KEY,)
+    decision = document[_PER_19_ADR_KEY]
+    assert decision["status"] == "accepted"
+    assert decision["date"] == "2026-08-23"
+    assert decision["title"] == _PER_19_ADR_TITLE
+    assert tuple(decision["supersedes"]) == (
+        "ADR222_executable_bsl_phase_order",
+        "ADR223_whole_tick_atomicity_world_hash",
     )
 
 
@@ -615,7 +676,7 @@ def test_standard_addenda_classify_current_and_superseded_surfaces() -> None:
         "S-32 writer assignment status: superseded",
         "D5/D16 phase-ordering status: implemented_executable_PER-17",
         "PER-18 rollback and combined-world-hash status: implemented_current",
-        "PER-19 causal-composition and outcome-write-contract status: planned",
+        "PER-19 causal-composition and outcome-write-contract status: implemented_current",
         "Persistence writer status: accepted_cutover_law",
         "PER-48 status: Done",
         _POSTGRESQL_ADR,

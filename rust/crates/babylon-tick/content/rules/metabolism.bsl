@@ -345,6 +345,8 @@
 ; Lifecycle and Dispossession each made for their own anchors.
 
 (rule metabolism/biocapacity-update
+  :role mechanic
+  :evidence derived
   :material-basis "a territory's biocapacity regenerates toward its ceiling and is depleted by extraction at an entropic loss every tick, and extraction permanently damages the ceiling itself — the earth cannot recover its original capacity even if extraction stops"
   :fuel 4096
   (bindings

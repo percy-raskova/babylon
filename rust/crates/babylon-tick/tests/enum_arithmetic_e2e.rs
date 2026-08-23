@@ -48,7 +48,7 @@ fn enum_op_rule(op: &str) -> String {
     format!(
         r#"
 (rule vitality/enum-arithmetic-e2e-{op}
-  :material-basis "prove {op} on an enum field is a loud load-time refusal (D118)"
+  :role mechanic :evidence derived :material-basis "prove {op} on an enum field is a loud load-time refusal (D118)"
   :fuel 64
   (bindings
     (binding kind :field organization/kind))
@@ -102,7 +102,7 @@ fn scale_on_a_seeded_enum_field_is_a_loud_load_time_refusal() {
 fn set_on_a_seeded_enum_field_still_succeeds_through_run_once() {
     const SET_RULE: &str = r#"
 (rule vitality/enum-arithmetic-e2e-set
-  :material-basis "set remains the coherent op on an enum field"
+  :role mechanic :evidence derived :material-basis "set remains the coherent op on an enum field"
   :fuel 64
   (bindings
     (binding kind :field organization/kind))

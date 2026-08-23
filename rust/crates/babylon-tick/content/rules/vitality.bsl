@@ -37,6 +37,8 @@
 ; 2026-08-10-vitality-bsl-rule-pack.md §6 remains the blockers' design
 ; record.
 (rule vitality/subsistence-and-death
+  :role mechanic
+  :evidence derived
   :material-basis "a class reproduces itself out of its own wealth every tick, at a cost set by its numbers and by the standard of living its position in production requires; a block that cannot meet that cost ceases to exist as a class"
   :fuel 512
   (bindings

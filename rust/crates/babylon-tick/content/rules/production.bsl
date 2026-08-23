@@ -152,6 +152,8 @@
 ; query-evaluation train.
 
 (rule production/p0-production-total-reset
+  :role mechanic
+  :evidence derived
   :material-basis "Territory-side accumulator reset for the producer-side PUSH attribution (fix round, discharging D136): production-total must be zeroed before p1-p3 add to it this tick, the same zero-then-accumulate shape a carrier field needs whenever multiple subjects contribute to it in one tick (D103/D104's own collect-then-apply proof is what makes the add-after-reset ordering safe within one tick)."
   :fuel 32
   (bindings
@@ -161,6 +163,8 @@
     (update-node self territory/production-total (set (- 0 0c)))))
 
 (rule production/p1-direct-production
+  :role mechanic
+  :evidence derived
   :material-basis "Fundamental Theorem plumbing: the periphery proletariat produces value with its own labor-power on land it occupies (produced = weekly labor-power x population x biocapacity ratio, production.py:151-175) and, as the direct producer with no wage relation, keeps its own product (production.py:179-181). Fix round: also pushes its product onto the tiebreak-selected territory's production-total (production.py:200-204), discharging D136."
   :fuel 224
   (bindings
@@ -190,6 +194,8 @@
                  (add output))))
 
 (rule production/p2-employed-routing
+  :role mechanic
+  :evidence derived
   :material-basis "Amin/Wallerstein: the labor aristocracy's product is appropriated by the employing bourgeoisie through the WAGES relation (production.py:184-194). RESERVED LINE -- the routing structure is the Director's ideological line, transcribed exactly. Fix round: also pushes its product onto the tiebreak-selected territory's production-total (production.py:200-204), discharging D136."
   :fuel 256
   (bindings
@@ -222,6 +228,8 @@
                  (add output))))
 
 (rule production/p3-employed-fallback
+  :role mechanic
+  :evidence derived
   :material-basis "The frozen fallback: an employed-role producer with no employer keeps its own product (production.py:196-198). Fix round: also pushes its product onto the tiebreak-selected territory's production-total (production.py:200-204), discharging D136."
   :fuel 224
   (bindings
@@ -252,6 +260,8 @@
                  (add output))))
 
 (rule production/p4-extraction-intensity
+  :role mechanic
+  :evidence derived
   :material-basis "Metabolic coupling: extraction intensity = produced value against the territory's max biocapacity, clamped to [0,1] (production.py:246-268). Fix round: total is now a plain :field read of the producer-side-PUSHED production-total (p0 resets it, p1-p3 accumulate into it) -- matches the frozen engine's single-territory attribution exactly, discharging D136. Reads production-total written by p0-p3 THIS TICK -- the pack relies on D116 byte-order cross-rule visibility (see pack D-1)."
   :fuel 64
   (bindings

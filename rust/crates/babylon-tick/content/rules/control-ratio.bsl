@@ -252,6 +252,8 @@
 ;      scenarios, none of which co-load `decomposition/*` at all.)
 
 (rule control-ratio/c01-prisoner-census
+  :role mechanic
+  :evidence derived
   :material-basis "Per-node guard/prisoner census, reformulating the frozen engine's two graph-scope loops (_count_enforcer_population, _count_prisoner_population_and_org, control_ratio.py:53-85) as a per-node gated write (plan §2's fold-body compound-expression restriction: the role/active filter and the pop*org PRODUCT cannot live in c02's carrier-side fold, so both live here, D138/p01 precedent). Publishes THREE per-node fields: enforcer-census-population (role==CARCERAL_ENFORCER && active==1), prisoner-census-population and prisoner-census-org-weighted (pop*org PRE-MULTIPLIED per-node, :84 — the two-step sum-then-divide c04 needs, Task 7) for (role==INTERNAL_PROLETARIAT || role==LUMPENPROLETARIAT) && active==1. No when clause — a non-participant writes zero to all three (D127 hash-neutral idiom)."
   :fuel 43
   (bindings
@@ -275,6 +277,8 @@
     (update-node self social-class/prisoner-census-org-weighted (set prisoner-org-contribution))))
 
 (rule control-ratio/c02-publish-census
+  :role mechanic
+  :evidence derived
   :material-basis "Carrier-side aggregation, folding c01's three SAME-TICK per-node census-contribution fields (D116) onto the carrier UNCONDITIONALLY — D-record 2 above: the frozen engine gates its own census computation behind three early returns this port does not reproduce here (they belong to c03/c04, Task 6-7, not to the census itself). Bare-accessor fold bodies only (field_ref_for's compound-body refusal, D138): each of the three folds is `(fold sum (nodes NodeType/SOCIAL_CLASS) (field-of it <field>))`, matching decomposition.bsl's p03 shape exactly. The `institution/decomposition-fire-tick` binding is a SUBJECT-TYPE ANCHOR ONLY (tick.rs::subject_type_of requires >=1 :field binding to derive INSTITUTION) — never read again, never gating anything; D-record 2 states this explicitly so a future reader does not mistake it for a dropped readiness check."
   :fuel 64
   (bindings
@@ -292,6 +296,8 @@
     (update-node self institution/prisoner-org-weighted (set prisoner-org-weighted))))
 
 (rule control-ratio/c03-crisis
+  :role recognizer
+  :evidence derived
   :material-basis "The crisis gate (control_ratio.py:119-159), subject INSTITUTION. `when` conjoins all five frozen early returns (c03 has no unconditional aggregate of its own, unlike p03): the readiness gate (:128-134), prisoner-population > 0 (:141), the `<=` boundary as (> prisoner-population max-controllable) (:150, D-record 3), and the not-yet-emitted latch (:154). max-controllable = enforcer-population * control-capacity (:147). BLOCKER-4/D-record 4: actual-ratio's (if (= enforcer-population 0) ...) protector guards the BINDING itself (bindings evaluate unconditionally every tick); effects guard-split the emit on the same condition, omitting actual-ratio/control-ratio when enforcer-population == 0 (loud absence, not inf). control-ratio duplicates actual-ratio verbatim (:198-199, port-as-is). capacity-threshold casts control-capacity to Real via the c01 (- x 0c) idiom (float(control_capacity), :200). narrative_hint dropped (D-record 5). Emit first, then the two latch writes (:154-159)."
   :fuel 70
   (bindings
@@ -339,6 +345,8 @@
     (update-node self institution/control-crisis-tick (set tick))))
 
 (rule control-ratio/c04-terminal
+  :role recognizer
+  :evidence derived
   :material-basis "ADR070-RESERVED BRANCH (control_ratio.py:210-247, _emit_terminal_decision), transcribed VERBATIM under the P19 cutover (Constitution IX.5 / ADR070 / Program 19) -- same threshold, same >= comparison, same two outcomes. `when` flattens the frozen early-return gates: crisis fired, not yet emitted, delay elapsed (:124-125,:154-159,:166-168, `ready`); PLUS the two gates step() re-checks against the fresh census: prisoner-population > 0 (:141-142) and prisoner-population > max-controllable (enforcer-population * control-capacity, :150-151, D-record 3) (round-2, review I2/D174). avg-organization = prisoner-org-weighted / prisoner-population (:171), guarded by its own ternary against eager :expr eval (D-record 5). THE BRANCH, verbatim (:222,228): >= threshold -> REVOLUTION else GENOCIDE. D-record 5/BLOCKER-5: no Str payload, so outcome becomes numeric (outcome 1)=revolution/(outcome 0)=genocide, narrative_hint dropped; keys in :239-245 order. Then the one-time latch (:173)."
   :fuel 54
   (bindings

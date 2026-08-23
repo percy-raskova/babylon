@@ -143,7 +143,7 @@ const ORPHAN_CLASS: NodeId = NodeId(5);
 fn scenario_loads_with_a_class_dynamics_probe() {
     const PROBE_RULE: &str = r#"
 (rule class-dynamics/probe
-  :material-basis "Task 2 Step 2 green load-smoke: prove registration + scenario load"
+  :role mechanic :evidence derived :material-basis "Task 2 Step 2 green load-smoke: prove registration + scenario load"
   :fuel 8
   (bindings (binding phase :field territory/crisis-phase))
   (when (= phase CrisisPhase/ONSET))

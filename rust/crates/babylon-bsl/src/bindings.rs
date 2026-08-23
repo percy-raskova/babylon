@@ -677,7 +677,7 @@ mod tests {
     /// The §5.6 worked example — one `:field` binding named `wealth`.
     const DEMO_RULE: &str = r#"
         (rule demo/hunger
-          :material-basis "subsistence deficit at the point of reproduction"
+          :role mechanic :evidence derived :material-basis "subsistence deficit at the point of reproduction"
           :fuel 64
           (bindings
             (binding wealth :field social-class/wealth))
@@ -692,7 +692,7 @@ mod tests {
 
     fn rule_with_bindings(rows: &str) -> SExpr {
         parse(&format!(
-            "(rule demo/binds :material-basis \"wage relation\" :fuel 8 \
+            "(rule demo/binds :role mechanic :evidence derived :material-basis \"wage relation\" :fuel 8 \
              (bindings {rows}) \
              (effects (update-node self social-class/agitation (add 0.05i))))"
         ))
@@ -824,7 +824,7 @@ mod tests {
     #[test]
     fn an_undeclared_variable_in_the_body_is_a_load_error_not_an_eval_surprise() {
         let rule = parse(
-            "(rule demo/free :material-basis \"wage relation\" :fuel 8 \
+            "(rule demo/free :role mechanic :evidence derived :material-basis \"wage relation\" :fuel 8 \
              (bindings) \
              (when (< undeclared 5)) \
              (effects (update-node self social-class/agitation (add 0.05i))))",
@@ -839,7 +839,7 @@ mod tests {
         // `sum` is a fold-op, `nodes` a query head, `it` reserved — none
         // may be flagged; only genuinely free value-position symbols are.
         let rule = parse(
-            "(rule demo/fold :material-basis \"wage relation\" :fuel 512 \
+            "(rule demo/fold :role mechanic :evidence derived :material-basis \"wage relation\" :fuel 512 \
              (bindings) \
              (when (< (fold sum (nodes NodeType/SOCIAL_CLASS) it) 5)) \
              (effects (update-node self social-class/agitation (add 0.05i))))",

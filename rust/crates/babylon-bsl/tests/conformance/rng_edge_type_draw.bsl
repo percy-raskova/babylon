@@ -9,6 +9,8 @@
 ; though both edges join the SAME two endpoints — proving `edge_type`
 ; reaches `stable_key`, not just `source`/`target`.
 (rule demo/rng-edge-type-draw
+  :role mechanic
+  :evidence derived
   :material-basis "two parallel edges of different types between the same node pair must draw different values (#576 I1)"
   :fuel 8192
   (bindings

@@ -68,7 +68,7 @@ const SCENARIO: &str = r"
 
 const FUNDAMENTAL_THEOREM: &str = r#"
 (rule economics/fundamental-theorem
-  :material-basis "core wages above the value core labour produces is imperial rent; while the gap holds, revolution in the core is materially foreclosed"
+  :role mechanic :evidence derived :material-basis "core wages above the value core labour produces is imperial rent; while the gap holds, revolution in the core is materially foreclosed"
   :fuel 64
   (bindings
     (binding wages :field social-class/wages)
@@ -160,7 +160,6 @@ fn run_one_tick() -> (MemoryGraph, usize, usize) {
         &r.intrinsics,
         &DefinesEnv::new(),
         1,
-        "economics/fundamental-theorem",
         Some(&loaded_scenario.node_content_ids),
         &fixture_session(),
         None,
@@ -274,7 +273,6 @@ fn a_changed_scenario_changes_the_hash() {
         &r.intrinsics,
         &DefinesEnv::new(),
         1,
-        "economics/fundamental-theorem",
         Some(&loaded_scenario.node_content_ids),
         &fixture_session(),
         None,
@@ -315,7 +313,7 @@ const EXPR_SCENARIO: &str = r"
 /// then reads it in BOTH the guard and an effect.
 const EXPR_RULE: &str = r#"
 (rule economics/drained
-  :material-basis "the gap between a class's wealth and its subsistence cost is what its reproduction must close"
+  :role mechanic :evidence derived :material-basis "the gap between a class's wealth and its subsistence cost is what its reproduction must close"
   :fuel 256
   (bindings
     (binding wealth  :field social-class/wealth)
@@ -388,11 +386,6 @@ fn run_expr_tick(rule: &str) -> Result<(MemoryGraph, usize), String> {
         &r.intrinsics,
         &DefinesEnv::new(),
         1,
-        // This helper loads several distinct rule BODIES (`economics/
-        // drained`, `economics/clocked`, `economics/unservable`) through
-        // one shared driver — a fixture-scoped placeholder domain, since
-        // nothing reads it yet (Task 5 lands the first consumer).
-        "economics/expr-fixture-rule",
         Some(&loaded_scenario.node_content_ids),
         &fixture_session(),
         None,
@@ -445,7 +438,7 @@ fn a_expr_driven_tick_is_deterministic() {
 fn the_servable_calendar_sources_run() {
     let rule = r#"
 (rule economics/clocked
-  :material-basis "a reproduction cycle is counted in ticks, and the tick is the kernel's"
+  :role mechanic :evidence derived :material-basis "a reproduction cycle is counted in ticks, and the tick is the kernel's"
   :fuel 256
   (bindings
     (binding wealth :field social-class/wealth)
@@ -485,7 +478,7 @@ fn the_unservable_sources_are_refused_loudly_by_name() {
     for (decl, source) in cases {
         let rule = format!(
             r#"(rule economics/unservable
-  :material-basis "the wage relation"
+  :role mechanic :evidence derived :material-basis "the wage relation"
   :fuel 256
   (bindings (binding wealth :field social-class/wealth) {decl})
   (when (< wealth 1000))

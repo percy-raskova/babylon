@@ -2,7 +2,7 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.72.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  version: "2.73.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-08-23"
   role: historical_implementation_ledger
   history_policy: append_or_prepend_only
@@ -32,13 +32,28 @@ meta:
       adr: ADR222_executable_bsl_phase_order
       merge_commit: 5a0ef2a9
     whole_tick_atomicity:
-      status: implemented_on_PER-18_branch
+      status: implemented_on_dev
       issue: PER-18
       adr: ADR223_whole_tick_atomicity_world_hash
-      branch: codex/per-18-whole-tick-atomicity
+      merge_commit: 9182ec25
       scope: in_memory_only
-      remaining_gate_2:
-        - PER-19
+    bsl_causal_composition:
+      status: implemented_on_PER-19_branch
+      issue: PER-19
+      adr: ADR224_bsl_causal_composition_contract
+      branch: codex/per-19-bsl-causal-composition
+      production_classification:
+        mechanic_derived: 58
+        recognizer_derived: 2
+        external_event: 0
+        intent: 0
+      attribution_governance:
+        manifest: causal_contract::GOVERNED_RULE_ATTRIBUTIONS
+        known_id_drift: uncoded_typed_ContractError_GovernedAttributionMismatch
+        production_corpus_completeness: ci_sentinel
+        unknown_mod_and_fixture_ids: self_declared
+      gate_2_status: complete_in_checkout
+      durable_boundary: planned_gate_3
     attributed_membership_payload:
       status: planned
       horizon: Research
@@ -59,6 +74,35 @@ meta:
       work or override Linear status, priority, dependencies, Horizon,
       milestones, or schedule.
   truth_status: |
+    (2026-08-23 GATE 2 — PER-19 BSL CAUSAL COMPOSITION CONTRACT
+    IMPLEMENTED, REVIEW/PR PENDING) Every BSL rule now declares a closed causal
+    role and Article IV evidence class. Mechanics retain the typed effect
+    algebra; recognizers, external events, and intents are exact-allowlist and
+    default-deny over the complete nested effect tree, with E-LOAD-060 for an
+    unauthorized event or field and no graph-shape authority. The current 60
+    production rules classify as 58 Mechanic/Derived and two
+    Recognizer/Derived ControlRatio rules. Their declarations are independently
+    pinned by `GOVERNED_RULE_ATTRIBUTIONS`; a known-ID mismatch refuses load,
+    and a CI sentinel proves exact production-corpus coverage. Unknown mod and
+    fixture IDs remain self-declared. The recognizer allowance table
+    contains only their two announcement events and three latches. The same
+    sentinel proves each non-Mechanic production footprint exactly equals its
+    allowance rows and that allowance keys are unique, so dead permissions
+    fail CI. External event and intent tables remain empty. Same-rank rules have an explicit
+    deterministic sequential-composition contract. The complete
+    post-phase-compile content set enforces rank-aware E-LOAD-058 and
+    E-LOAD-059 through exact ADR224 dispositions, so a near-match or new writer
+    refuses. The public ranked analyzer also rejects invalid forms,
+    AST/supplied-ID mismatches, and duplicate IDs before it computes findings.
+    Successful rules reduce actual events and then actual writes into
+    identity-free AuditReceipts carrying rule, role, evidence, ordinal, and
+    effect. Receipts publish only with a successful detached tick and do not
+    change state or hashes. ADR224 records the scoped supersession of
+    ADR222/ADR223's future shared-prestate target and retires the unratified
+    Amendment AI vocabulary path. Gate 2 is complete in this checkout. Durable
+    envelopes, subject/H3 identities, shocks, and player intents remain Gates
+    3, 4, and 5.
+    PREVIOUS:
     (2026-08-23 GATE 2 — PER-18 WHOLE-TICK ATOMICITY AND NOMINAL WORLD HASH
     IMPLEMENTED, REVIEW/PR PENDING) `babylon-graph` now exposes an explicit
     detached-copy contract for both stores and rejects node, hyperedge, and

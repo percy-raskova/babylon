@@ -823,11 +823,11 @@ mod tests {
     use std::collections::HashMap;
 
     /// The §5.6 worked example, verbatim — the same source `canonical_ast`
-    /// pins to 421 bytes; here it pins `bound = 7`.
+    /// pins to 500 bytes; here it pins `bound = 7`.
     const DEMO_RULE: &str = r#"
         ; a rule is data; this comment is not part of the hash
         (rule demo/hunger
-          :material-basis "subsistence deficit at the point of reproduction"
+          :role mechanic :evidence derived :material-basis "subsistence deficit at the point of reproduction"
           :fuel 64
           (bindings
             (binding wealth :field social-class/wealth))
@@ -1106,7 +1106,7 @@ mod tests {
     fn an_unconditional_rule_bounds_over_effects_alone() {
         let rule = e(r#"
             (rule demo/always
-              :material-basis "unconditional per §2.3"
+              :role mechanic :evidence derived :material-basis "unconditional per §2.3"
               :fuel 8
               (bindings)
               (effects
@@ -1119,7 +1119,7 @@ mod tests {
     fn an_over_long_member_list_is_rejected_statically_as_e_load_042() {
         let rule = e(r#"
             (rule demo/roster
-              :material-basis "membership is whole-hyperedge replacement"
+              :role mechanic :evidence derived :material-basis "membership is whole-hyperedge replacement"
               :fuel 64
               (bindings)
               (effects
@@ -1142,7 +1142,7 @@ mod tests {
     fn a_missing_fuel_declaration_is_a_loud_error() {
         let rule = e(r#"
             (rule demo/no-fuel
-              :material-basis "fuel is mandatory on every rule"
+              :role mechanic :evidence derived :material-basis "fuel is mandatory on every rule"
               (bindings)
               (effects (update-node self social-class/agitation (add 0.05i))))
         "#);

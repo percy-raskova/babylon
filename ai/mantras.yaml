@@ -3,7 +3,7 @@
 
 meta:
   version: "2.0.0"
-  updated: "2026-08-22"
+  updated: "2026-08-23"
   purpose: "Capture recurring insights as memorable principles"
   authority: "CONSTITUTION.md v4.0.0"
   product: "entertainment-first emergent political-economy game"
@@ -16,9 +16,9 @@ meta:
     - "counterfactual behavior"
   current_client: "Bevy admin/viewer; no player action"
   next_gates:
-    - "Executable causality and whole-tick atomicity"
     - "PostgreSQL/H3/Archive decision-loop slice"
     - "COVID E0 emergence proof"
+    - "Player agency"
 
 # =============================================================================
 # CORE MANTRAS

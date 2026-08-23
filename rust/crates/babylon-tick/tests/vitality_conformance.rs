@@ -241,7 +241,7 @@ fn the_vitality_tick_is_deterministic() {
 #[test]
 fn a_rule_reading_an_undeclared_coefficient_is_refused_at_load() {
     let rule = "(rule vitality/typo \
-                :material-basis \"subsistence is paid out of wealth\" :fuel 32 \
+                :role mechanic :evidence derived :material-basis \"subsistence is paid out of wealth\" :fuel 32 \
                 (bindings \
                   (binding wealth :field social-class/wealth) \
                   (binding base :const economy/base-subsistance)) \

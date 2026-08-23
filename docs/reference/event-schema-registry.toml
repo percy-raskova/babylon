@@ -23,7 +23,7 @@
 ### (`_` <-> `-`) when COMPARING the two; this file never does.
 
 schema_version = 1
-measured_at = "2026-08-18"
+measured_at = "2026-08-23"
 # The fresh AST count of `babylon.models.enums.events.EventType` members —
 # tier1 + tier2 + tier3 must sum to exactly this (CLAUDE.md's "100",
 # AST-verified, corrects the BSL-refactor-program survey's stale "98").
@@ -39,7 +39,7 @@ bsl_content_glob = "rust/crates/babylon-tick/content/rules/*.bsl"
 
 [[tier1]]
 event_type = "ENTITY_DEATH"
-citations = ["rust/crates/babylon-tick/content/rules/vitality.bsl:94"]
+citations = ["rust/crates/babylon-tick/content/rules/vitality.bsl:96"]
 keys = [
   { name = "entity-id", required = true, source = "bsl" },
   { name = "wealth", required = true, source = "bsl" },
@@ -51,7 +51,7 @@ keys = [
 
 [[tier1]]
 event_type = "CONSCIOUSNESS_TRANSMISSION"
-citations = ["rust/crates/babylon-tick/content/rules/solidarity.bsl:304"]
+citations = ["rust/crates/babylon-tick/content/rules/solidarity.bsl:306"]
 keys = [
   { name = "source-id", required = true, source = "bsl" },
   { name = "target-id", required = true, source = "bsl" },
@@ -64,7 +64,7 @@ keys = [
 
 [[tier1]]
 event_type = "MASS_AWAKENING"
-citations = ["rust/crates/babylon-tick/content/rules/solidarity.bsl:460"]
+citations = ["rust/crates/babylon-tick/content/rules/solidarity.bsl:462"]
 keys = [
   { name = "target-id", required = true, source = "bsl" },
   { name = "old-consciousness", required = true, source = "bsl" },
@@ -74,7 +74,7 @@ keys = [
 
 [[tier1]]
 event_type = "LIFECYCLE_TRANSITION"
-citations = ["rust/crates/babylon-tick/content/rules/lifecycle.bsl:405"]
+citations = ["rust/crates/babylon-tick/content/rules/lifecycle.bsl:407"]
 keys = [
   { name = "territory-id", required = true, source = "bsl" },
   { name = "pop-d", required = true, source = "bsl" },
@@ -85,7 +85,7 @@ keys = [
 
 [[tier1]]
 event_type = "LEGITIMATION_CRISIS"
-citations = ["rust/crates/babylon-tick/content/rules/lifecycle.bsl:418"]
+citations = ["rust/crates/babylon-tick/content/rules/lifecycle.bsl:420"]
 keys = [
   { name = "territory-id", required = true, source = "bsl" },
   { name = "legitimation-index", required = true, source = "bsl" },
@@ -93,7 +93,7 @@ keys = [
 
 [[tier1]]
 event_type = "LEGITIMATION_RECOVERY"
-citations = ["rust/crates/babylon-tick/content/rules/lifecycle.bsl:422"]
+citations = ["rust/crates/babylon-tick/content/rules/lifecycle.bsl:424"]
 keys = [
   { name = "territory-id", required = true, source = "bsl" },
   { name = "legitimation-index", required = true, source = "bsl" },
@@ -101,7 +101,7 @@ keys = [
 
 [[tier1]]
 event_type = "VALUE_TRANSFER"
-citations = ["rust/crates/babylon-tick/content/rules/dispossession.bsl:401"]
+citations = ["rust/crates/babylon-tick/content/rules/dispossession.bsl:403"]
 keys = [
   { name = "territory", required = true, source = "bsl" },
   { name = "total-transferred", required = true, source = "bsl" },
@@ -111,7 +111,7 @@ keys = [
 
 [[tier1]]
 event_type = "DISPOSSESSION_EVENT"
-citations = ["rust/crates/babylon-tick/content/rules/dispossession.bsl:412"]
+citations = ["rust/crates/babylon-tick/content/rules/dispossession.bsl:414"]
 keys = [
   { name = "territory", required = true, source = "bsl" },
   { name = "intensity", required = true, source = "bsl" },
@@ -123,8 +123,8 @@ keys = [
 [[tier1]]
 event_type = "CONTROL_RATIO_CRISIS"
 citations = [
-  "rust/crates/babylon-tick/content/rules/control-ratio.bsl:321",
-  "rust/crates/babylon-tick/content/rules/control-ratio.bsl:331",
+  "rust/crates/babylon-tick/content/rules/control-ratio.bsl:327",
+  "rust/crates/babylon-tick/content/rules/control-ratio.bsl:337",
 ]
 # Two-shape payload, D-recorded (control_ratio.py:210-247's frozen origin;
 # ADR183 port-AS-IS): the enforcer-population > 0 branch (:321) emits all 8
@@ -138,15 +138,15 @@ keys = [
   { name = "max-controllable", required = true, source = "bsl" },
   { name = "over-capacity-by", required = true, source = "bsl" },
   { name = "capacity-threshold", required = true, source = "bsl" },
-  { name = "actual-ratio", required = false, source = "bsl", note = "present only in the enforcer-population > 0 branch (control-ratio.bsl:326); the = 0 branch omits it (deliberate, D-recorded — both are the frozen engine's real shapes, not a defect)." },
-  { name = "control-ratio", required = false, source = "bsl", note = "present only in the enforcer-population > 0 branch (control-ratio.bsl:328); the = 0 branch omits it (same D-record as actual-ratio)." },
+  { name = "actual-ratio", required = false, source = "bsl", note = "present only in the enforcer-population > 0 branch (control-ratio.bsl:332); the = 0 branch omits it (deliberate, D-recorded — both are the frozen engine's real shapes, not a defect)." },
+  { name = "control-ratio", required = false, source = "bsl", note = "present only in the enforcer-population > 0 branch (control-ratio.bsl:334); the = 0 branch omits it (same D-record as actual-ratio)." },
 ]
 
 [[tier1]]
 event_type = "TERMINAL_DECISION"
 citations = [
-  "rust/crates/babylon-tick/content/rules/control-ratio.bsl:367",
-  "rust/crates/babylon-tick/content/rules/control-ratio.bsl:374",
+  "rust/crates/babylon-tick/content/rules/control-ratio.bsl:375",
+  "rust/crates/babylon-tick/content/rules/control-ratio.bsl:382",
 ]
 # Same 5 keys in both branches (outcome 1=revolution / 0=genocide is the only
 # difference) — no optional flag needed, unlike CONTROL_RATIO_CRISIS above.
@@ -160,18 +160,18 @@ keys = [
 
 [[tier1]]
 event_type = "SUPERWAGE_CRISIS"
-citations = ["rust/crates/babylon-tick/content/rules/decomposition.bsl:262"]
+citations = ["rust/crates/babylon-tick/content/rules/decomposition.bsl:266"]
 keys = [
   { name = "receiver", required = true, source = "bsl" },
   { name = "desired-wages", required = true, source = "bsl" },
   { name = "available-pool", required = true, source = "bsl" },
-  { name = "receiver-id", required = false, source = "builder-only", note = "EVENT_BUILDERS' SuperwageCrisisEvent builder reads payload.get('receiver_id', ...); decomposition.bsl:262-265 emits a bare 'receiver' key instead — a real spelling divergence between the frozen Python event's field name and the BSL port's payload, not yet reconciled (repair is R4.4.2, gated)." },
-  { name = "payer-id", required = false, source = "builder-only", note = "EVENT_BUILDERS' SuperwageCrisisEvent builder also reads payload.get('payer_id', ...); no observed BSL emit site provides any payer-side key at all — decomposition.bsl:262-265's payload is receiver-only." },
+  { name = "receiver-id", required = false, source = "builder-only", note = "EVENT_BUILDERS' SuperwageCrisisEvent builder reads payload.get('receiver_id', ...); decomposition.bsl:266-269 emits a bare 'receiver' key instead — a real spelling divergence between the frozen Python event's field name and the BSL port's payload, not yet reconciled (repair is R4.4.2, gated)." },
+  { name = "payer-id", required = false, source = "builder-only", note = "EVENT_BUILDERS' SuperwageCrisisEvent builder also reads payload.get('payer_id', ...); no observed BSL emit site provides any payer-side key at all — decomposition.bsl:266-269's payload is receiver-only." },
 ]
 
 [[tier1]]
 event_type = "CLASS_DECOMPOSITION"
-citations = ["rust/crates/babylon-tick/content/rules/decomposition.bsl:377"]
+citations = ["rust/crates/babylon-tick/content/rules/decomposition.bsl:389"]
 keys = [
   { name = "source-class", required = true, source = "bsl" },
   { name = "source-population", required = true, source = "bsl" },
@@ -186,7 +186,7 @@ keys = [
 
 [[tier1]]
 event_type = "SURPLUS_EXTRACTION"
-citations = ["rust/crates/babylon-tick/content/rules/imperial-rent.bsl:778"]
+citations = ["rust/crates/babylon-tick/content/rules/imperial-rent.bsl:782"]
 keys = [
   { name = "source", required = true, source = "bsl" },
   { name = "target", required = true, source = "bsl" },
@@ -198,7 +198,7 @@ keys = [
 
 [[tier1]]
 event_type = "POPULATION_ATTRITION"
-citations = ["rust/crates/babylon-tick/content/rules/vitality-attrition.bsl:579"]
+citations = ["rust/crates/babylon-tick/content/rules/vitality-attrition.bsl:583"]
 keys = [
   { name = "entity-id", required = true, source = "bsl" },
   { name = "deaths", required = true, source = "bsl" },
@@ -216,7 +216,7 @@ keys = [
 
 [[unminted_bsl_only]]
 name = "ORGANIZATION_SEEDED"
-citation = "rust/crates/babylon-tick/content/rules/organization.bsl:31"
+citation = "rust/crates/babylon-tick/content/rules/organization.bsl:33"
 note = "organization.bsl's own D-1 comment (lines 12-18): a KNOWINGLY-UNMINTED, probe-only event name — not in ADR196's mint, not a member of the frozen Python EventType enum, no consumer anywhere. Exists solely so the organization/kind-probe rule has an effect to gate; retire or mint it when the Events-in-BSL workstream (WS1, #502) gives emit effects a real observable."
 keys = [
   { name = "probe", required = true, source = "bsl" },
@@ -224,7 +224,7 @@ keys = [
 
 [[unminted_bsl_only]]
 name = "SUBSISTENCE_CLEARANCE_MEASURED"
-citation = "rust/crates/babylon-tick/content/rules/vitality-attrition.bsl:362"
+citation = "rust/crates/babylon-tick/content/rules/vitality-attrition.bsl:371"
 note = "vitality-attrition.bsl's own 'THE EVENT TYPE' comment (#491 T5): a knowingly-unminted measure event from the subsistence-clearing rule — disclosed in content rather than silently minted; no Python EventType member exists and minting is a forward-declared, deliberately out-of-scope follow-up (Python frozen/reference-only, ADR172/Amendment AE). Loads clean: nothing declares a defvocabulary naming EventType for its scenario, so check_enum_ref_membership stays inert on the undeclared kind."
 keys = [
   { name = "entity-id", required = true, source = "bsl" },

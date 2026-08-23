@@ -3,6 +3,8 @@
 ; E-PARSE-020; "always" is written by OMITTING the clause or (when #t),
 ; so the empty case can never be an accident (§2.3, §6.3).
 (rule event/empty-when
+  :role mechanic
+  :evidence derived
   :material-basis "an event with no stated preconditions has no material trigger"
   :fuel 16
   (bindings)

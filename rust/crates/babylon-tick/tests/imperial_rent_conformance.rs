@@ -481,7 +481,7 @@ fn hand_derived_rent() -> f64 {
 fn scenario_and_empty_pack_load() {
     const PROBE_RULE: &str = r#"
 (rule imperial-rent/probe
-  :material-basis "load-only smoke: prove the scenario loads against a registered imperial-rent system"
+  :role mechanic :evidence derived :material-basis "load-only smoke: prove the scenario loads against a registered imperial-rent system"
   :fuel 8
   (bindings (binding wealth :field social-class/wealth))
   (when (< wealth 0))
@@ -620,7 +620,7 @@ fn carrier_discriminator_resolves_over_a_lower_id_decoy() {
 "#;
     const DISCRIMINATOR_RULE: &str = r#"
 (rule imperial-rent/discriminator-probe
-  :material-basis "THE SPIKE item (f): the field-guarded select-max discriminator over a lower-id decoy INSTITUTION node (D198, plan §3.1)"
+  :role mechanic :evidence derived :material-basis "THE SPIKE item (f): the field-guarded select-max discriminator over a lower-id decoy INSTITUTION node (D198, plan §3.1)"
   :fuel 64
   (bindings (binding carrier :field institution/rent-carrier))
   (when (>= carrier 0))

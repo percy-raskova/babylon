@@ -103,6 +103,8 @@
 ;; ── Keywords (the `:name` option markers, §1.6's closed set) ────────────
 [
   ":material-basis"
+  ":role"
+  ":evidence"
   ":fuel"
   ":field"
   ":const"

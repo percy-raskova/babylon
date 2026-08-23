@@ -246,6 +246,8 @@
 ; one per tick.
 
 (rule lifecycle/dpd-circuit
+  :role mechanic
+  :evidence derived
   :material-basis "a county's population moves through three material phases every tick — pre-productive (raised out of household labor), productive (sells labor-power), post-productive (lives on the legitimation bargain) — at rates set by birth and mortality data and by the age structure of production; a cohort that dies takes a proportional share of whatever wealth its members held with it; the D' bargain's credibility and the ideology a new productive cohort inherits are computed alongside it every tick"
   :fuel 3072
   ; No explicit anchor: the executable registry resolves the `lifecycle`

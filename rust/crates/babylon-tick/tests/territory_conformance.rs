@@ -129,7 +129,7 @@ fn every_territory_seeds_all_six_declared_fields() {
 fn a_no_op_rule_is_deterministic_across_two_independent_loads() {
     const NO_OP_RULE: &str = r#"
 (rule territory/noop-probe
-  :material-basis "load-only smoke: prove the scenario alone hashes deterministically"
+  :role mechanic :evidence derived :material-basis "load-only smoke: prove the scenario alone hashes deterministically"
   :fuel 8
   (bindings (binding heat :field territory/heat))
   (when (< heat 0))

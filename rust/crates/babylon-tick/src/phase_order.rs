@@ -17,6 +17,7 @@
 
 use babylon_bsl::mod_anchors::{check_anchor, AnchorDecl, AnchorError, AnchorPosition};
 use babylon_bsl::reader::SExpr;
+use babylon_bsl::same_tick_order::RankedRule;
 use babylon_kernel::sha256_of;
 use std::collections::{BTreeMap, HashSet};
 
@@ -412,6 +413,58 @@ pub(crate) fn compile(rule_forms: &[(String, SExpr)]) -> Result<RuleOrderPlan, S
 }
 
 impl RuleOrderPlan {
+    /// Pair each source form with this plan's resolved execution rank without
+    /// consuming the plan.
+    ///
+    /// The same identity and cardinality checks [`Self::apply`] performs keep
+    /// the analyzer view total: every returned rule has exactly one compiled
+    /// rank and no source form can be silently dropped or substituted.
+    pub(crate) fn ranked_rules<'a>(
+        &self,
+        rules: &'a [(String, SExpr)],
+    ) -> Result<Vec<RankedRule<'a>>, ScheduleError> {
+        if self.rules.len() != rules.len() {
+            return Err(ScheduleError::Plan {
+                rule_id: None,
+                message: format!(
+                    "compiled {} rule ids but rank analysis received {} rule forms",
+                    self.rules.len(),
+                    rules.len()
+                ),
+            });
+        }
+        let mut by_id = BTreeMap::new();
+        for (id, form) in rules {
+            if by_id.insert(id.as_str(), (id.as_str(), form)).is_some() {
+                return Err(ScheduleError::Plan {
+                    rule_id: Some(id.clone()),
+                    message: "one rank-analysis rule id appeared twice".to_owned(),
+                });
+            }
+        }
+        let mut ranked = Vec::with_capacity(self.rules.len());
+        for row in &self.rules {
+            let Some((input_id, form)) = by_id.remove(row.id.as_str()) else {
+                return Err(ScheduleError::Plan {
+                    rule_id: Some(row.id.clone()),
+                    message: "a compiled rule id was absent from rank analysis".to_owned(),
+                });
+            };
+            ranked.push(RankedRule {
+                rule_id: input_id,
+                execution_rank: row.key.0,
+                form,
+            });
+        }
+        if let Some((id, _)) = by_id.into_iter().next() {
+            return Err(ScheduleError::Plan {
+                rule_id: Some(id.to_owned()),
+                message: "a rank-analysis rule id was absent from the compiled order".to_owned(),
+            });
+        }
+        Ok(ranked)
+    }
+
     /// Apply this already-validated order to the corresponding loaded rules.
     pub(crate) fn apply<T>(
         self,
@@ -669,6 +722,57 @@ mod tests {
     fn one_position_ties_by_rule_id_bytes() {
         let input = vec![rule("vitality/z", ""), rule("vitality/a", "")];
         assert_eq!(ids(&compile(&input).unwrap()), ["vitality/a", "vitality/z"]);
+    }
+
+    #[test]
+    fn ranked_rules_pair_each_form_with_its_resolved_rank_in_plan_order() {
+        let input = vec![
+            rule("mods/z-after-ooda", "(anchor :after ooda)"),
+            rule(
+                "mods/a-before-faction",
+                "(anchor :before faction-influence)",
+            ),
+        ];
+        let plan = compile(&input).expect("the shared boundary compiles");
+        let ranked = plan
+            .ranked_rules(&input)
+            .expect("every compiled id has one source form");
+
+        assert_eq!(ranked.len(), 2);
+        assert_eq!(ranked[0].rule_id, "mods/a-before-faction");
+        assert_eq!(ranked[1].rule_id, "mods/z-after-ooda");
+        assert_eq!(ranked[0].execution_rank, ranked[1].execution_rank);
+        assert!(std::ptr::eq(ranked[0].form, &input[1].1));
+        assert!(std::ptr::eq(ranked[1].form, &input[0].1));
+    }
+
+    #[test]
+    fn ranked_rules_refuse_cardinality_duplicate_and_identity_disagreement() {
+        let input = vec![rule("vitality/a", ""), rule("vitality/z", "")];
+        let plan = compile(&input).expect("the source plan compiles");
+
+        let short = plan.ranked_rules(&input[..1]).unwrap_err();
+        assert!(matches!(short, ScheduleError::Plan { rule_id: None, .. }));
+
+        let duplicate = vec![input[0].clone(), input[0].clone()];
+        let duplicate_error = plan.ranked_rules(&duplicate).unwrap_err();
+        assert!(matches!(
+            duplicate_error,
+            ScheduleError::Plan {
+                rule_id: Some(ref id),
+                ..
+            } if id == "vitality/a"
+        ));
+
+        let replacement = vec![input[0].clone(), rule("vitality/x", "")];
+        let identity_error = plan.ranked_rules(&replacement).unwrap_err();
+        assert!(matches!(
+            identity_error,
+            ScheduleError::Plan {
+                rule_id: Some(ref id),
+                ..
+            } if id == "vitality/z"
+        ));
     }
 
     #[test]

@@ -1,8 +1,8 @@
 ---
 meta:
   name: Babylon v4 behavioral tuning standard
-  version: "4.0.0"
-  updated: "2026-08-22"
+  version: "4.1.0"
+  updated: "2026-08-23"
   authority: CONSTITUTION.md v4.0.0 Articles I, III, IV, and VIII
   purpose: >-
     Tune a legible and entertaining causal simulation without prescribing a
@@ -23,6 +23,71 @@ provenance_rules:
   designed_liberty_rule: >-
     Designed choices are valid when declared, causally coherent, and in service
     of play. They must not be presented as observations.
+
+causal_rule_contract:
+  status: implemented_current
+  adr: ADR224_bsl_causal_composition_contract
+  roles:
+    - Mechanic
+    - Recognizer
+    - ExternalEvent
+    - Intent
+  authority:
+    Mechanic: ordinary_typed_effect_algebra
+    Recognizer: exact_allowlist_default_deny
+    ExternalEvent: exact_allowlist_default_deny
+    Intent: exact_allowlist_default_deny
+  attribution_ledgers:
+    declared_metadata: every_rule
+    governed_production_manifest:
+      symbol: causal_contract::GOVERNED_RULE_ATTRIBUTIONS
+      row_fields:
+        - rule_id
+        - role
+        - evidence
+        - owner
+        - date
+        - adr
+      adr_value: ADR224
+      known_id_drift: uncoded_typed_ContractError_GovernedAttributionMismatch
+      production_corpus_completeness: ci_exact_set_equality
+      unknown_mod_and_fixture_ids: self_declared
+  current_production_rules:
+    total: 60
+    mechanic_derived: 58
+    recognizer_derived: 2
+    external_event: 0
+    intent: 0
+  current_restricted_allowances:
+    recognizer:
+      control-ratio/c03-crisis:
+        - event/EventType/CONTROL_RATIO_CRISIS
+        - node-field/institution/control-crisis-emitted
+        - node-field/institution/control-crisis-tick
+      control-ratio/c04-terminal:
+        - event/EventType/TERMINAL_DECISION
+        - node-field/institution/terminal-decision-emitted
+    external_event: []
+    intent: []
+    production_sentinel:
+      footprint_contract: exact_set_equality_per_non_mechanic_rule
+      allowance_keys: unique
+      dead_permissions: refused
+  same_rank_execution: deterministic_sequential_later_rule_sees_earlier_writes
+  same_tick_dispositions:
+    E-LOAD-058: 13
+    E-LOAD-059: 11
+  restricted_shape_effects: forbidden
+  unauthorized_effect_error: E-LOAD-060
+  audit_receipt:
+    order: actual_events_then_actual_writes
+    identity_free: true
+    publication: whole_tick_success_only
+    durable: false
+  future_allowance_rule: >-
+    A benchmark shock or player intent receives only exact governed burden,
+    capacity, pressure, or next-week-intent rows. A plausible name never grants
+    effect authority.
 
 outcome_policy:
   predetermined_outcomes: forbidden
@@ -64,7 +129,10 @@ validation_contract:
     mutation_tests: severing a causal link removes its downstream signature
     heterogeneous_effects: effects vary across relevant territories and sectors
     hysteresis: some consequences persist after the exogenous shock ends
-    direct_write_audits: shocks never author prohibited downstream outcomes
+    direct_write_audits: >-
+      External-event and intent roles are default-deny; exact governed rows
+      may introduce only their declared input carriers, never downstream
+      outcomes.
 
 benchmark_horizons:
   covid_e0:

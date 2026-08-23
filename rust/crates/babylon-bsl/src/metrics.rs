@@ -428,7 +428,7 @@ mod tests {
 
     fn rule(body: &str) -> crate::reader::SExpr {
         e(&format!(
-            "(rule demo/m :material-basis \"the wage relation\" :fuel 4096 {body})"
+            "(rule demo/m :role mechanic :evidence derived :material-basis \"the wage relation\" :fuel 4096 {body})"
         ))
     }
 

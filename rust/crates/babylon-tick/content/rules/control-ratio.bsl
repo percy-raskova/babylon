@@ -230,11 +230,12 @@
 ;      TIGHTEST in this pack at 987/1024 (37 headroom). Recorded here so
 ;      the next editor adding a clause to either string sees the E-LEX-026
 ;      pressure coming instead of hitting a whole-load lexer refusal cold.
-;   6. (global D172) THE CROSS-PACK BYTE-ORDER INVERSION — `control-ratio/*` sorts
+;   6. (global D172, HISTORICAL; superseded by ADR222/PER-17) THE FORMER
+;      CROSS-PACK BYTE-ORDER INVERSION — `control-ratio/*` formerly sorted
 ;      BEFORE `decomposition/*` in ascending rule-id byte order (D100's
 ;      class, `docs/superpowers/plans/2026-08-17-decomposition-
 ;      controlratio-port.md` §5), inverting the frozen @11.0-then-@12.0
-;      system order. Benign here BY CONSTRUCTION, not by luck: every one
+;      system order. It was benign BY CONSTRUCTION, not by luck: every one
 ;      of this whole Pack B's four scenarios SEEDS
 ;      `decomposition-fire-tick`/`-fired-known`/`decomposition-complete`
 ;      directly rather than relying on a co-loaded `decomposition/*`

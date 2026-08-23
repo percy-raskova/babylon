@@ -101,7 +101,7 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     ),
     (
         "lifecycle.bsl",
-        "e388d4e4f54301e528004a4d3b5233bc4f039928054c4b6c6a4d1774a7614064",
+        "0161f308c352d95f363187853a78968ae8f5359b6fc4517579d999e3e7ca5b4c",
     ),
     (
         "metabolism.bsl",

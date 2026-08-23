@@ -64,8 +64,8 @@ pub use reader::{
     ReadErrorKind, SExpr, ScaledKind, ScaledLit, Span, SpanTable,
 };
 pub use rule_pipeline::{
-    bind_environment, load_rule, load_rule_form, resolve_expr_bindings, split_content, LoadContext,
-    LoadError, LoadedRule,
+    bind_environment, check_unique_rule_ids, load_rule, load_rule_form, resolve_expr_bindings,
+    split_content, LoadContext, LoadError, LoadedRule,
 };
 // `diagnose` re-exported under a qualified name (W2 fix round 1, review
 // Minor 4): `babylon_bsl::diagnose` unqualified reads as "diagnose

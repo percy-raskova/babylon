@@ -360,3 +360,18 @@ fn diagnose_content_set_duplicate_intrinsic_carries_e_load_001() {
     };
     assert_eq!(expected_identity_source.spec_code(), Some("E-LOAD-001"));
 }
+
+#[test]
+fn diagnose_content_set_duplicate_rule_carries_typed_location_data() {
+    let errors = diagnose_content_set(PROBE_SCENARIO, None, &[PROBE_RULE, PROBE_RULE]);
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert_eq!(errors[0].spec_code(), Some("E-LOAD-001"));
+
+    let located = Located::from_prepare_error(&errors[0]);
+    assert_eq!(located.code, Some("E-LOAD-001"));
+    assert_eq!(located.family, "E-LOAD");
+    assert!(matches!(
+        located.identity,
+        Some(babylon_bsl::ErrorIdentity::RuleId(ref id)) if id == "vitality/probe"
+    ));
+}

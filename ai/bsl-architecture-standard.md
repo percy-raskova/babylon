@@ -26,7 +26,9 @@ historical record against their stated baseline.
 - S-11 whole-tick rollback status: planned
 - S-25 renderer requirement status: retired
 - S-32 writer assignment status: superseded
-- D5/D16 byte-sort ordering status: implemented_current_to_be_replaced
+- D5/D16 phase-ordering status: implemented_executable_PER-17
+- PER-18 rollback and combined-world-hash status: planned
+- PER-19 causal-composition and outcome-write-contract status: planned
 - Persistence writer status: accepted_cutover_law
 - PER-48 status: Done
 - PostgreSQL boundary ADR: ADR220_rust_owned_postgresql_persistence_boundary
@@ -42,12 +44,13 @@ and ADR.
 ### Implemented current path
 
 The Rust estate implements the BSL parser, vocabulary and type checking,
-evaluator, canonical content digests, anchor validation, and graph execution.
-It does not yet use anchors as the tick's executable total order. Rule
-preparation sorts every rule globally by rule-ID bytes, then `TickSession`
-applies each rule to its held graph in place. A failing rule prevents the tick
-counter from advancing, but it does not restore mutations made by earlier
-rules.
+evaluator, canonical content digests, executable anchor placement, and graph
+execution. Rule preparation compiles the frozen 34-system causal spine before
+mutating caller state. Default homes come from the rule-ID namespace; explicit
+anchors select governed boundaries; D16 orders only same-position ties by
+rule-ID bytes. `TickSession` still applies each rule to its held graph in
+place. A failing rule prevents the tick counter from advancing, but it does not
+restore mutations made by earlier rules.
 
 The frozen Python estate's 34 systems, actions, resolvers, observers, and
 persistence remain reference and port sources. They are not a prerequisite for
@@ -55,14 +58,16 @@ starting playable Rust slices. The Bevy client is an unfogged administrative
 viewer; executable BSL shocks, executable player actions, and a player decision
 loop are not current.
 
-### Gate 2 target
+### Gate 2 delivery status
 
-PER-17 replaces the global byte sort with a phase-anchor total order and
-governed same-phase composition. PER-18 adds a whole-tick working copy that
-swaps only after successful adjudication. PER-19 extends canonical hashing over
-the graph and auxiliary registers. Therefore, S-11 must not be cited as proof
-that rollback exists today, and D5/D16 describe the current implementation to
-be replaced rather than the future engine order.
+PER-17 has replaced the global byte sort with an executable phase-anchor total
+order. Same-position rules remain sequential; their shared-prestate repair is
+separate from placement. PER-18 adds a whole-tick working copy that swaps only
+after successful adjudication and extends canonical big-endian hashing across
+auxiliary registers into the combined world hash. PER-19 owns BSL causal
+composition, the provenance/direct-write whitelist, and negative outcome-write
+contracts. Therefore, S-11 must not be cited as proof that rollback exists
+today.
 
 ### Durability and client boundary
 

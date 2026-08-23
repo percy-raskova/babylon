@@ -5,9 +5,9 @@
 //! loop needs the split this type provides instead: parse and load cost
 //! paid ONCE in `new`, the SAME `PreparedRules` and the SAME graph reused
 //! by every `advance()` call, every rule in the content set run once per
-//! call, in ascending rule-id byte order (§4.2, register row D16/D100 —
-//! `prepare_rules` sorts once at load time), with `tick` incremented by
-//! this type.
+//! call in the governed 34-slot causal order, with `tick` incremented by
+//! this type. D16's ascending rule-ID byte order breaks ties at one resolved
+//! position.
 
 use crate::{prepare_rules, PreparedRules, TickReport};
 use babylon_bsl::intrinsic_host::KernelIntrinsicHost;
@@ -34,9 +34,9 @@ pub struct TickSession<G> {
 
 impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
     /// Parse `rule_src` (one or more `(rule …)` forms) and load
-    /// `scenario_src` into `graph` once. `prepare_rules` sorts the forms
-    /// into ascending rule-id byte order (§4.2, D16/D100) before this
-    /// returns — the caller's own concatenation order is never observable.
+    /// `scenario_src` into `graph` once. `prepare_rules` compiles the forms
+    /// into governed phase order before this returns — the caller's own
+    /// concatenation order is never observable.
     ///
     /// `session` is this session's `rng-draw` identity (plan §3.5) — a
     /// caller-supplied, deterministic id (III.7: never a UUID, never a
@@ -98,12 +98,12 @@ impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
     }
 
     /// Run one more tick against the held graph: every rule in the
-    /// content set, in ASCENDING RULE-ID BYTE ORDER (§4.2, D16/D100 —
-    /// sorted once, at load time, by `prepare_rules`), each to completion
-    /// before the next starts, against the SAME graph — so a later rule
-    /// sees an earlier rule's writes from this same tick, matching the
-    /// frozen engine's own in-place strict-order semantics (inherited
-    /// from calling `run_tick` sequentially against one `&mut G`).
+    /// content set in the governed phase order compiled once at load time
+    /// by `prepare_rules`. D16 orders same-position ties by rule-ID bytes.
+    /// Each rule runs to completion before the next starts against the SAME
+    /// graph, so a later rule sees an earlier rule's writes from this same
+    /// tick, matching the frozen engine's own in-place strict-order semantics
+    /// (inherited from calling `run_tick` sequentially against one `&mut G`).
     ///
     /// **This is a RECORDED GAP, not a design feature.** §4.2 says "rules
     /// within one system position observe the same pre-state"
@@ -112,10 +112,11 @@ impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
     /// (D-row Q1) repaired the within-rule half (`run_tick`'s
     /// collect-then-apply split); this cross-rule half is a separate,
     /// still-open divergence — D-row Q14 (the query-evaluation plan's
-    /// draft-ruling register) — latent today because every landed rule
-    /// pack keeps its system position to exactly one rule. The first call
-    /// runs tick 1 (matching `run_once`'s own numbering), the second tick
-    /// 2, and so on.
+    /// draft-ruling register). It is live and observable in multi-rule packs
+    /// that exchange same-position writes. PER-17 preserves that behavior;
+    /// repairing it needs explicit content dispositions and behavioral
+    /// contracts. The first call runs tick 1 (matching `run_once`'s own
+    /// numbering), the second tick 2, and so on.
     ///
     /// # Errors
     /// The tick itself (named to its own rule id), or a pre/post

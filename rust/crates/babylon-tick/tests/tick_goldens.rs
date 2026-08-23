@@ -96,8 +96,8 @@ fn vitality_conformance_hashes_are_pinned() {
 /// left every other test in this crate and `babylon-client` green
 /// (mutation-proven, this fix round). `run_once` composes the two rule
 /// packs the same way `EngineSession::start`/`us_counties_demo.rs` do —
-/// concatenation order is arbitrary (`prepare_rules` sorts by rule-id byte
-/// order, §4.2/D16, regardless of it) — and runs tick 1.
+/// concatenation order is arbitrary because `prepare_rules` compiles the
+/// governed phase order — and runs tick 1.
 #[test]
 fn us_counties_lifecycle_demo_hashes_are_pinned() {
     let rule_src = format!("{DEMO_VITALITY_RULE}\n{DEMO_LIFECYCLE_RULE}");

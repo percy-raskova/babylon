@@ -248,14 +248,10 @@
 (rule lifecycle/dpd-circuit
   :material-basis "a county's population moves through three material phases every tick — pre-productive (raised out of household labor), productive (sells labor-power), post-productive (lives on the legitimation bargain) — at rates set by birth and mortality data and by the age structure of production; a cohort that dies takes a proportional share of whatever wealth its members held with it; the D' bargain's credibility and the ideology a new productive cohort inherits are computed alongside it every tick"
   :fuel 3072
-  ; Declarative only (Program 28 B2, register row D100/D16) — the frozen
-  ; engine's own tick-position order runs Vitality @1 before Lifecycle @7,
-  ; which this anchor states for the eventual Phase 3 anchor-resolution
-  ; registry. INERT for ordering today: the driver sorts by rule-id byte
-  ; order ('l' < 'v', so lifecycle actually runs FIRST), never reads this
-  ; field. check_anchor still parses and validates the form; nothing
-  ; downstream consumes it yet.
-  (anchor :after vitality)
+  ; No explicit anchor: the executable registry resolves the `lifecycle`
+  ; rule-id namespace to Lifecycle @7. `(anchor :after vitality)` would mean
+  ; the literal boundary immediately after Vitality @1, not "somewhere later
+  ; than vitality," and would illegally cut through Material Base.
   (bindings
     ; --- Block 1: DPD population flow (formulas/lifecycle.py:16-61,
     ; domain/economics/lifecycle/cohort_dynamics.py:129-163) ---

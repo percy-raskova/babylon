@@ -1020,3 +1020,8 @@ decisions:
     status: accepted
     date: '2026-08-22'
     file: ADR221_game_first_refoundation_v4.yaml
+  ADR222_executable_bsl_phase_order:
+    title: 'BSL rules execute on the governed 34-system causal spine: namespace homes and explicit boundary anchors compile before caller-state mutation, D16 orders only same-position ties, and the former global rule-ID sort retires'
+    status: accepted
+    date: '2026-08-23'
+    file: ADR222_executable_bsl_phase_order.yaml

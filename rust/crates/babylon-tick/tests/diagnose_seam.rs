@@ -95,6 +95,14 @@ const BROKEN_RULE_MATERIAL_BASIS: &str = r#"(rule vitality/broken-material-basis
   (when (> wages 0))
   (effects (emit EventType/PROBE)))"#;
 
+const ILLEGAL_PHASE_RULE: &str = r#"(rule mods/illegal-material-base-interleave
+  :material-basis "an independent causal-composition refusal"
+  :fuel 64
+  (domain :graph)
+  (anchor :after vitality)
+  (bindings)
+  (effects (emit EventType/PROBE)))"#;
+
 #[test]
 fn a_clean_content_set_diagnoses_empty() {
     let errors = diagnose_content_set(SCENARIO, None, &[RULE]);
@@ -124,4 +132,22 @@ fn a_scenario_that_redeclares_an_implicit_strength_field_yields_a_structured_cod
     assert_eq!(errors.len(), 1, "{errors:?}");
     assert_ne!(errors[0].spec_code(), None, "{errors:?}");
     assert_eq!(errors[0].spec_code(), Some("E-LOAD-001"));
+}
+
+#[test]
+fn a_bad_rule_does_not_hide_an_independent_phase_composition_failure() {
+    let errors = diagnose_content_set(SCENARIO, None, &[BROKEN_RULE_FUEL, ILLEGAL_PHASE_RULE]);
+
+    assert_eq!(errors.len(), 2, "{errors:?}");
+    assert_eq!(errors[0].spec_code(), Some("E-PARSE-012"));
+    assert_eq!(errors[1].spec_code(), Some("E-LOAD-003"));
+}
+
+#[test]
+fn duplicate_rule_ids_across_sources_are_one_structured_e_load_001() {
+    let errors = diagnose_content_set(SCENARIO, None, &[RULE, RULE]);
+
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert_eq!(errors[0].spec_code(), Some("E-LOAD-001"));
+    assert!(errors[0].to_string().contains("fundamental-theorem"));
 }

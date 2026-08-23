@@ -85,12 +85,11 @@ pub fn toggle_admin_panel(keys: Res<ButtonInput<KeyCode>>, mut visible: ResMut<A
 }
 
 /// Renders the per-rule breakdown from a `TickReport` — pure and
-/// independently testable. Ascending rule-id byte order is the ENGINE's
-/// own contract on `per_rule_fired` (`babylon-tick/src/lib.rs`'s own doc,
-/// §4.2/D16) — this function renders the vector AS GIVEN, never
-/// re-sorting it, so the render inherits the engine's own order rather
-/// than a coincidentally-matching reimplementation. Zero new computation:
-/// every number here is a field `TickReport` already carries.
+/// independently testable. Governed phase placement is the engine's contract
+/// on `per_rule_fired`; D16 bytes order same-position ties. This function
+/// renders the vector as given and never re-sorts it, so the display inherits
+/// engine order rather than duplicating the scheduler. Every number here is a
+/// field `TickReport` already carries.
 #[must_use]
 pub fn format_tick_report(report: &babylon_tick::TickReport) -> String {
     let mut lines = vec![format!("tick report \u{2014} {} fired", report.fired)];

@@ -32,9 +32,9 @@ Task 1's own scope: Task 1 ships no `control-ratio/*` rule content yet, so
 there is nothing for a later Rust conformance test to assert against
 ControlRatio's own event path from this run; that arrives in this train's
 Pack B tasks, with a companion scenario that seeds a decomposed world
-directly (matching plan §5's byte-order-hazard constraint: a zero-delay
-control-ratio companion must SEED `decomposition-fire-tick`, never rely on
-Pack A writing it the same tick).
+directly. That seed originally satisfied plan §5's byte-order-hazard
+constraint; executable phase ordering now makes same-tick Pack A writes
+visible to Pack B in the governed Decomposition-then-ControlRatio order.
 """
 
 from __future__ import annotations

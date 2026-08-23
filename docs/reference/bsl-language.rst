@@ -687,13 +687,26 @@ source order; the canonical serialization sorts them (§5.3).
 rule that means "always" writes ``(when #t)`` or omits the clause. This is one
 of the four deliberate III.11 corrections (§6.3).
 
-**[draft ruling — Phase 1 review]** *Anchor default.* A rule with no
-``<anchor>`` belongs to the system named by the first segment of its rule id
-and takes that system's declared position. A rule whose first id segment names
-no registered system, and which carries no anchor, is ``E-LOAD-002``. Mods
-therefore cannot land a rule "nowhere", and cannot express a raw position
-float. Interleaving an anchor into the Material Base partition is
-``E-LOAD-003`` (design §5, modding boundary).
+*Executable anchor placement (PER-17, ADR222).* A rule with no ``<anchor>``
+belongs to the system named by the first segment of its rule id and takes that
+system's governed position. A rule whose first id segment names no registered
+system, and which carries no anchor, is ``E-LOAD-002``. An explicit anchor
+selects the boundary immediately before or after its named system; ``:after``
+one slot and ``:before`` the next share one boundary. Rules at one resolved
+position use D16's rule-id byte order.
+
+The registry follows the frozen 34-system causal spine: 15 Material Base
+slots, one Action slot, and 18 Consequence slots. Four compatibility names
+retain governed homes: ``class-dynamics`` maps to ``tick-dynamics``,
+``economics`` to ``contradiction``, ``organization`` to ``ooda``, and
+``social-class`` to ``solidarity``. Mods therefore cannot land a rule
+"nowhere" and cannot express a raw position float. The boundary before
+Vitality and the boundary after Metabolism are legal; an explicit anchor that
+cuts through the interior of Material Base is ``E-LOAD-003``. Placement
+compiles for the complete content set before caller-owned hydration or
+mutation. Validation may hydrate a disposable graph first to preserve the
+established scenario-error precedence, but an invalid composition never
+touches caller-owned world state.
 
 **[draft ruling — Phase 1 review, R9 chapter C4]** *The rule domain — what a
 rule fires over, and how many times.* §4.2 says a rule evaluates against "the
@@ -3871,12 +3884,16 @@ the defines environment (coefficients), the current tick, the subject node, and
 the fuel meter. Bindings resolve first, in declaration order — the external
 sources by lookup, the ``:expr`` bindings (§2.5) by evaluation against the
 bindings already resolved. Effects are applied only after the whole condition
-has been evaluated. **A rule can never observe its own effects**, and rules within one
-system position observe the same pre-state.
+has been evaluated. **A rule can never observe its own effects.** The language
+target says rules within one system position share a pre-state; the current
+Rust driver instead applies same-position rules sequentially, so a later rule
+can observe an earlier rule's write (D116). This recorded divergence remains a
+separate composition repair, not a property supplied by phase ordering.
 
-Rules at the same anchor position evaluate in **ascending rule-id byte order**
-**[draft ruling — Phase 1 review]**, and their effects apply in that same
-order. File order and load order are never observable.
+Rules execute in the 34-slot causal order defined in §2.3. Rules at the same
+resolved position evaluate in **ascending rule-id byte order** (D16), and
+their effects apply in that same order. File order and load order are never
+observable.
 
 **[draft ruling — Phase 1 review, R9 chapter C4]** *Subject enumeration order,
 which this document had not specified.* A rule whose domain is a node type
@@ -3895,16 +3912,14 @@ chapter held. Currency's exact integer lane is immune; the bounded scalars are
 not, which is why the order is stated rather than left to the executor.
 
 **Task W2 (BSL Hygiene Knock-out, 2026-08-18) — same-tick ordering as LOAD
-REFUSALS.** Ascending rule-id byte order (above) and D116's recorded
-cross-rule same-tick visibility (a second rule at one anchor position
-observes the first rule's already-applied writes, not the tick's shared
-pre-state) together make a rule's read order *content-visible*: whether an
-``:optional :default`` binding's declared default is ever actually
-observed depends on where its field's writers happen to sort. Two load
-refusals make that dependency a checked property of the content set
+REFUSALS.** The resolved phase order, D16's same-position rule-id tie-break,
+and D116's recorded cross-rule same-tick visibility make a rule's read order
+*content-visible*: whether an ``:optional :default`` binding's declared
+default is ever observed depends on where its field's writers execute. Two
+load refusals make that dependency a checked property of the content set
 rather than a silent hazard, in the same family as ``E-LOAD-001``
-(content-set-wide, checked at load, over whatever set is actually
-loaded — never a hypothetical wider one).
+(content-set-wide, checked at load, over whatever set is actually loaded —
+never a hypothetical wider one).
 
 *Refusal 1 —* ``E-LOAD-058`` *, stale-default read.* For a binding
 ``(binding b :field f :optional :default d)`` in rule ``R``, the *writer
@@ -3919,9 +3934,9 @@ effects" **and** "all firings of one rule observe the same pre-state";
 the second is the operative one when the read and write targets differ,
 which is exactly ``solidarity/p0-transmit``'s shape: it reads ``self``
 and writes a neighbour ``it``, one rule, still self-excluded). If any
-rule in the writer set does not sort strictly before ``R`` (ascending
-rule-id byte order), the load is refused, naming both rules and the
-field.
+rule in the writer set does not execute strictly before ``R`` under the
+resolved phase rank and D16 tie-break, the load is refused, naming both rules
+and the field.
 
 *Refusal 2 —* ``E-LOAD-059`` *, unreset fan-in.* A field written by two or
 more distinct rules in the content set (via ``set``, or via fan-in
@@ -3930,43 +3945,36 @@ more distinct rules in the content set (via ``set``, or via fan-in
 literal ``#t``; nothing finer, no guard-dominance analysis between a
 reset and its fan-in writers — or the D127 unconditional-recompute shape
 (a writer meeting the same unconditional test whose ``:material-basis``
-cites D127). Concretely: among the field's distinct writers sorted by
-ascending rule-id byte order, the byte-earliest must satisfy one of the
-two tests above, or the load is refused, naming the field and its writer
-rules.
+cites D127). Concretely: among the field's distinct writers sorted by resolved
+execution rank and then D16 rule-id bytes, the earliest must satisfy one of the
+two tests above, or the load is refused, naming the field and its writer rules.
 
-**Enforcement is gated, not implemented-but-inert.** Both refusals are
-computable from existing declarations — no new author-facing grammar —
-so this is loader hardening, ADR-recorded, under the same boundary
-ruling that put same-tick coherence in the language rather than an
-external lint. But ``consciousness.bsl`` ships 13 deliberate same-tick
-reads (mitigated by guard structure or a documented one-tick-lag idiom
-the loader does not yet verify) that refusal 1 as stated above would
-refuse outright. The Director's ruling (R-W2a, the 2026-08-18 evening
-sitting): mint a per-binding author declaration (working name
-``:prior-tick``) via constitutional amendment, narrowing refusal 1's
-final semantics to *every UNDECLARED exposed read*. **This section's two
-rows describe that POST-RATIFICATION enforcement.** Until a Director
-sitting ratifies the declaration, both refusals are implemented and
-load-bearing in ``babylon-bsl``'s own fixture tests but gated OFF for the
-landed corpus by ``babylon_bsl::same_tick_order::
-ENFORCE_SAME_TICK_ORDERING`` — see that constant's doc and
-``ai/_inbox/amendment-prior-tick-draft.md`` (Amendment AI, DRAFT).
+**Enforcement is gated.** The semantic refusals are computable from existing
+declarations plus the resolved schedule; they need no new ordering grammar.
+However, ``consciousness.bsl`` ships 13 deliberate same-tick reads that the
+loader cannot yet distinguish from hazards. The Director's ruling (R-W2a, the
+2026-08-18 evening sitting) requires a per-binding author declaration (working
+name ``:prior-tick``), narrowing refusal 1's final semantics to every
+undeclared exposed read.
 
-**Refusing a composed load is intended, not a regression.** No committed
-load path co-loads ``consciousness.bsl`` with ``solidarity.bsl`` today —
-each loads solo — but should a future content set compose them, refusal
-1 fires on ``solidarity/p0-transmit``'s write to
-``social-class/revolutionary``: every ``consciousness/*`` writer of that
-field sorts before ``solidarity/*`` in rule-id byte order, so the
-composed load's own byte order runs ``consciousness/p6-route``'s simplex
-closure strictly *before* ``solidarity/p0-transmit``'s write, reopening
-the off-simplex window ``solidarity.bsl``'s own header already files as
-a non-blocking Director-gate question (issue #646 names the same
-co-load-hazard class for ``territory.bsl``/``decomposition.bsl``).
-Refusal 1 refusing that composition is the check doing exactly its job —
-mechanizing what #646 was filed for — not a false positive to work
-around.
+PER-17 adds a second gate. The fixture analyzer in
+``babylon_bsl::same_tick_order`` predates executable phase placement and still
+compares raw rule IDs globally. That comparison is correct only within one
+resolved position. ``ENFORCE_SAME_TICK_ORDERING`` therefore remains ``false``
+until the declaration is ratified *and* the analyzer consumes resolved phase
+ranks from ``babylon-tick`` over the post-concatenation aggregate content set.
+Its current per-source fixture tests preserve the historical W2 logic; they do
+not prove cross-phase or cross-file enforcement is ready. See the constant's
+documentation and ``ai/_inbox/amendment-prior-tick-draft.md`` (Amendment AI,
+DRAFT).
+
+**The former Consciousness/Solidarity example is superseded.** Global rule-ID
+order placed ``consciousness/*`` before ``solidarity/*`` and made the composed
+load look stale. The executable registry instead runs Solidarity in Material
+Base before Consciousness in Consequences. A rank-aware analyzer must accept
+that ordering case. Same-position multi-writer packs and genuine later-phase
+writers remain the load-refusal consumers; a raw-ID analyzer must not decide
+them across phases.
 
 4.3 Arithmetic
 ~~~~~~~~~~~~~~~~
@@ -4204,16 +4212,21 @@ the same rule.
 of allocation, per the same rule; full normative text at §4.2's own end
 (same-tick evaluation order is that section's subject). **Both rows
 describe POST-RATIFICATION enforcement.** The check is computable from
-existing declarations (no new author-facing grammar), so it is loader
-hardening under the same boundary ruling §4.2 records for the check's own
-motivation — but landed content includes 13 deliberate same-tick reads in
-``consciousness.bsl`` that need a per-binding author declaration (working
-name ``:prior-tick``) an amendment mints, not yet ratified. Both refusals
-are therefore implemented and load-bearing in this crate's own tests, but
-gated OFF for the landed corpus by ``babylon_bsl::same_tick_order::
-ENFORCE_SAME_TICK_ORDERING`` until a Director sitting ratifies the
-declaration; see that constant's own doc and the amendment draft it cites
-for the ratification ceremony.
+existing declarations plus the resolved phase schedule (no new ordering
+grammar), so it is loader hardening under the same boundary ruling §4.2
+records for the check's own motivation — but landed content includes 13
+deliberate same-tick reads in ``consciousness.bsl`` that need a per-binding
+author declaration (working name ``:prior-tick``) an amendment mints, not
+yet ratified. Both refusals therefore remain gated OFF for the landed corpus
+by ``babylon_bsl::same_tick_order::ENFORCE_SAME_TICK_ORDERING`` until two
+conditions hold: a Director sitting ratifies that declaration, and the
+fixture analyzer consumes ``babylon-tick``'s resolved phase ranks. Its
+current raw global rule-ID comparison is correct only within one resolved
+position. The replacement must also analyze the post-concatenation aggregate
+content set, not each source file independently. The tests preserve the
+historical W2 logic but cannot establish cross-phase readiness. See §4.2's
+PER-17 correction, the constant's own documentation, ADR222, and the amendment
+draft for the required ceremonies.
 
 **The #576 intrinsic-host train (Task 2) continues** ``E-EVAL``.
 ``E-EVAL-043`` — ``TranscendentalOutOfDomain``: a non-finite ``exp``/``log``
@@ -6219,7 +6232,12 @@ consequences are the ordinary kind of review item.
        ``rust/crates/babylon-tick/tests/currency_scale_op_e2e.rs``.
    * - D100
      - §2.2, §4.2
-     - **The content-set loader admits more than one** ``(rule …)``
+     - **Historical implementation record, superseded for scheduling by
+       ADR222/PER-17.** The multi-rule admission and duplicate-id refusal
+       remain; the global byte-order fallback and inert-anchor clauses below
+       describe the pre-ADR222 driver.
+
+       **The content-set loader admits more than one** ``(rule …)``
        **top-form, executed in ascending rule-id byte order (register row
        D16, §4.2), duplicate ids refused** — a driver-level fix (Program 28
        B2), not a spec change. §2.2's grammar (``<top-form>*``) and prose
@@ -8251,7 +8269,13 @@ consequences are the ordinary kind of review item.
    * - D172
      - N/A (D100's class — the global rule-id byte-order sort inverting a frozen
        tick-position order; not a new construct)
-     - ``control-ratio/*`` sorts BEFORE ``decomposition/*`` in ascending rule-id byte
+     - **Historical implementation record, superseded by ADR222/PER-17.**
+       The executable registry now runs Decomposition before ControlRatio;
+       the zero-delay acceptance test requires the same-tick crisis at tick
+       1. The text below records the former global-byte-order hazard and why
+       it was accepted at the time.
+
+       ``control-ratio/*`` sorts BEFORE ``decomposition/*`` in ascending rule-id byte
        order (D100's class — the comparison resolves at the NAMESPACE segment,
        ``'c'`` (``control-ratio/``) < ``'d'`` (``decomposition/``), before ever
        reaching the rule-local ``c01`` vs ``p01`` prefixes), inverting the frozen

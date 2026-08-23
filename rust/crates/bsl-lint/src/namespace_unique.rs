@@ -57,6 +57,7 @@ const ALLOWLIST: &[(&str, &[&str], &str)] = &[
         &[
             "babylon-bsl/src/declarations.rs",
             "babylon-bsl/src/metrics.rs",
+            "babylon-bsl/src/rule_pipeline.rs",
             "babylon-bsl/src/scenario.rs",
             "babylon-tick/src/lib.rs",
         ],
@@ -66,7 +67,9 @@ const ALLOWLIST: &[(&str, &[&str], &str)] = &[
          babylon-tick/src/lib.rs joined the set in the 2026-08-21 worktree sweep: the D32 \
          implicit-<edge-type>/strength collision check (#652 T2) refuses a deffield \
          re-declaring an implicit field — the same generic duplicate-declaration class, \
-         returned as PrepareError::Composition with the code carried as data.",
+         returned as PrepareError::Composition with the code carried as data. \
+         rule_pipeline.rs joined under ADR222/PER-17: duplicate rule ids now carry the \
+         same governed code as typed data across aggregate source boundaries.",
     ),
     (
         "E-LOAD-011",

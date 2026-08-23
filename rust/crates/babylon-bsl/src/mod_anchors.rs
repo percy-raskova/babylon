@@ -4,13 +4,11 @@
 //! a rule can never land "nowhere", and a raw position float is not
 //! expressible (§2.2 `:after`/`:before`).
 //!
-//! Scope (Phase 1 Task 16, per the plan): this module validates the
-//! DECLARATION — shape, and the E-LOAD-002 no-system case. Resolving
-//! anchors into a total order belongs to `babylon-engine`'s anchor-based
-//! registry (Phase 3), and the Material Base interleave check
-//! (`E-LOAD-003`) belongs there with it, because the partition boundaries
-//! are engine registry data this crate does not hold — deferred with a
-//! name, not silently.
+//! This module validates the declaration shape and the E-LOAD-002 no-system
+//! case against a caller-supplied registry. `babylon-tick::phase_order` owns
+//! the executable 34-slot registry, total-order compilation, and the
+//! Material Base interleave check (`E-LOAD-003`), because partition
+//! boundaries are engine scheduling data rather than BSL syntax.
 
 use crate::reader::{Atom, SExpr};
 use std::collections::HashSet;

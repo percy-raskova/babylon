@@ -2,8 +2,8 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.70.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
-  updated: "2026-08-22"
+  version: "2.71.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  updated: "2026-08-23"
   role: historical_implementation_ledger
   history_policy: append_or_prepend_only
   current_work_authority:
@@ -26,6 +26,14 @@ meta:
       issue: PER-48
       adr: ADR220_rust_owned_postgresql_persistence_boundary
       completion_commit: 9b4c9b2e
+    bsl_phase_order:
+      status: implemented_on_PER-17_branch
+      issue: PER-17
+      adr: ADR222_executable_bsl_phase_order
+      branch: codex/per-17-executable-phase-anchors
+      remaining_gate_2:
+        - PER-18
+        - PER-19
     attributed_membership_payload:
       status: planned
       horizon: Research
@@ -46,6 +54,26 @@ meta:
       work or override Linear status, priority, dependencies, Horizon,
       milestones, or schedule.
   truth_status: |
+    (2026-08-23 GATE 2 — PER-17 EXECUTABLE BSL PHASE ORDER IMPLEMENTED,
+    REVIEW/PR PENDING) `babylon-tick` now compiles every admitted rule onto
+    the frozen 34-system causal spine (15 Material Base, one Action, 18
+    Consequence) instead of globally sorting the content set by rule-ID
+    bytes. Namespace defaults and explicit before/after boundaries are
+    executable; D16 remains the same-position tie-break only; the four
+    compatibility namespaces resolve to governed canonical homes. Interior
+    Material Base anchors refuse as E-LOAD-003. Validation uses a disposable
+    graph in the established scenario -> rule -> composition error order and
+    hydrates caller state only after phase composition succeeds. Seven
+    integration vectors cover explicit placement, file permutations, missing
+    and duplicate anchors, E-LOAD-003, diagnostic parity, mixed-error
+    precedence, and mutation absence. The full babylon-tick crate suite and
+    all-target Clippy are green. ADR222 records the registry, rank law,
+    lifecycle anchor correction, unchanged CAS content hashing, and the named
+    same-position gap. Gate 2 remains open: PER-18 owns whole-tick working-copy
+    rollback plus canonical big-endian auxiliary-register hashing and the
+    combined world hash. PER-19 owns BSL causal composition, the
+    provenance/direct-write whitelist, and negative outcome-write contracts.
+    PREVIOUS:
     (2026-08-22 COMMUNITY PORT TRAIN — TASKS 1-6 LANDED ON dev, #680-#685)
     The hyperedge lane of the Community port (plan
     docs/superpowers/plans/2026-08-18-community-port.md) is complete through

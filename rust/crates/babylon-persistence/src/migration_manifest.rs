@@ -128,20 +128,21 @@ fn framed_len(chunks: &[&[u8]]) -> Result<usize, ManifestError> {
         if chunk.is_empty() {
             return Err(ManifestError::EmptyChunk { index });
         }
-        if chunk.contains(&0) {
-            return Err(ManifestError::EmbeddedNul { index });
-        }
-        total = total.checked_add(chunk.len().saturating_add(1)).ok_or(
-            ManifestError::TooManyBytes {
+        total = total
+            .checked_add(chunk.len())
+            .and_then(|length| length.checked_add(1))
+            .ok_or(ManifestError::TooManyBytes {
                 actual: usize::MAX,
                 max: MAX_MANIFEST_BYTES,
-            },
-        )?;
+            })?;
         if total > MAX_MANIFEST_BYTES {
             return Err(ManifestError::TooManyBytes {
                 actual: total,
                 max: MAX_MANIFEST_BYTES,
             });
+        }
+        if chunk.contains(&0) {
+            return Err(ManifestError::EmbeddedNul { index });
         }
     }
     Ok(total)

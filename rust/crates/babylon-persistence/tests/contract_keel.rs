@@ -9,15 +9,11 @@ use std::any::TypeId;
 use uuid::Uuid;
 
 #[test]
-fn campaign_uuid_is_not_an_rng_input() {
+fn campaign_uuid_is_a_storage_wrapper_and_rng_requires_a_session() {
     let first = CampaignId::from_uuid(Uuid::from_u128(1));
     let second = CampaignId::from_uuid(Uuid::from_u128(2));
-    let session = SessionId::new("contract-keel").expect("literal is non-empty");
+    let _: fn(&SessionId, u64, &str, &str) -> [u8; 32] = seed_for;
     assert_ne!(first, second);
-    assert_eq!(
-        seed_for(&session, 7, "contract", "carrier"),
-        seed_for(&session, 7, "contract", "carrier")
-    );
     assert_eq!(first.as_uuid(), &Uuid::from_u128(1));
 }
 

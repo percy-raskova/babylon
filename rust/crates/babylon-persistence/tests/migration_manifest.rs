@@ -76,6 +76,22 @@ fn embedded_nul_chunks_are_rejected() {
 }
 
 #[test]
+fn direct_chunks_enforce_the_framed_byte_ceiling_before_nul_scans() {
+    let accepted = vec![b'x'; MAX_MANIFEST_BYTES - 1];
+    assert!(MigrationManifest::from_chunks("exact-limit", &[&accepted]).is_ok());
+
+    let mut too_large = vec![b'x'; MAX_MANIFEST_BYTES];
+    too_large[MAX_MANIFEST_BYTES - 1] = 0;
+    assert_eq!(
+        MigrationManifest::from_chunks("over-limit", &[&too_large]),
+        Err(ManifestError::TooManyBytes {
+            actual: MAX_MANIFEST_BYTES + 1,
+            max: MAX_MANIFEST_BYTES,
+        })
+    );
+}
+
+#[test]
 fn the_cross_language_lock_key_is_pinned() {
     assert_eq!(SCHEMA_ADVISORY_LOCK_KEY, 0xBAB1_0537_i64);
     assert_eq!(SCHEMA_ADVISORY_LOCK_KEY, 3_132_163_383_i64);

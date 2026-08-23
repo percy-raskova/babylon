@@ -53,11 +53,11 @@ to the reserved theory line. Do not infer live authority from an old ADR.
 <!-- Vale: these paragraphs preserve literal crate, schema, and Linear identifiers. -->
 <!-- vale ste.UnapprovedWords = NO -->
 <!-- vale ste.NounClusters = NO -->
-The live Rust path is `babylon-kernel`, `babylon-graph`, `babylon-bsl`,
-`babylon-tick`, and `babylon-client`. Live BSL rules execute, but executable
-shocks do not exist. `TickSession` holds a world across weekly advances and
-returns an in-memory `TickReport`. The Bevy viewer draws 3,222 counties, moves
-ticks, and shows lenses, causal beats, events, and hash data.
+The live Rust path is `babylon-kernel`, `babylon-graph`, `babylon-bsl`, `babylon-tick`,
+and `babylon-client`. Live BSL rules execute, but executable shocks do not exist.
+`TickSession` adjudicates each tick on a detached graph and publishes graph, buffered
+events, completed time, and `NominalWorldHash` only after every rule and hash succeeds.
+`GraphStateHash` remains graph-only. The Bevy viewer shows the committed world hash.
 
 Program 27 froze the Python engine at `p27-python-freeze`. Its 34-system
 `SimulationEngine._DEFAULT_SYSTEMS` is the transcription oracle for Rust's

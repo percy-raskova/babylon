@@ -37,22 +37,31 @@ use babylon_bsl::tick::run_tick;
 use babylon_bsl::typecheck::TypeEnv;
 use babylon_bsl::types::{EnumRegistry, FieldDecl};
 use babylon_bsl::BindingVocabulary;
+use babylon_graph::allocator_state::AllocatorState;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::state_hash::CanonicalState;
-use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use babylon_graph::substrate::{GraphError, GraphSubstrate, NodeId};
+use babylon_graph::working_copy::DetachedCopy;
 use babylon_kernel::SessionId;
 use std::collections::{HashMap, HashSet};
 
 mod phase_order;
 pub mod session;
+mod world_hash;
 pub use session::TickSession;
 
 /// The result of running one or more rules over one scenario for one tick:
-/// the pre-tick and post-tick state hashes, and how many subjects fired.
+/// graph and nominal-world hashes around the commit, plus firing counts.
 #[derive(Debug)]
 pub struct TickReport {
+    /// Canonical graph-state hash before adjudication.
     pub before: [u8; 32],
+    /// Canonical graph-state hash after successful adjudication.
     pub after: [u8; 32],
+    /// Nominal graph-plus-current-auxiliary world hash before adjudication.
+    pub world_before: [u8; 32],
+    /// Nominal graph-plus-current-auxiliary world hash after commit.
+    pub world_after: [u8; 32],
     /// The TOTAL fired-subject count across every rule this tick ran —
     /// unchanged in meaning and type for a single-rule content set (today
     /// every existing caller: `run_once`, the CLI, B0's engine-link probe,
@@ -69,6 +78,35 @@ pub struct TickReport {
     /// content set (`fired == per_rule_fired[0].1` always holds); length N
     /// for an N-rule content set.
     pub per_rule_fired: Vec<(String, usize)>,
+}
+
+pub(crate) type EventRecord = (String, Vec<(String, Value)>);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HashBoundary {
+    Pre,
+    Post,
+}
+
+/// Fallible preparation plus infallible commit for one already-buffered tick
+/// event batch. Implementations must leave their logical event sequence
+/// unchanged when preparation refuses.
+pub(crate) trait PreparedEventBatchSink {
+    fn try_prepare(&mut self, additional: usize) -> Result<(), String>;
+    fn commit_prepared(&mut self, events: Vec<EventRecord>);
+}
+
+impl PreparedEventBatchSink for CollectingSink {
+    fn try_prepare(&mut self, additional: usize) -> Result<(), String> {
+        self.events
+            .try_reserve(additional)
+            .map_err(|error| format!("event commit refused: {error}"))
+    }
+
+    fn commit_prepared(&mut self, events: Vec<EventRecord>) {
+        debug_assert!(self.events.capacity() - self.events.len() >= events.len());
+        self.events.extend(events);
+    }
 }
 
 /// Render a 32-byte hash as lowercase hex — the same format the CLI driver
@@ -779,24 +817,26 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
 /// **one** implementation of the flow: `run_once`'s signature and
 /// [`TickReport`] are the seam `babylon-client` consumes and neither moves.
 ///
-/// Generic over the substrate — the storage-swap plan's entire
-/// production-side change was this one signature (Phase A Task 3) plus one
-/// construction-site swap (Phase D Task 10): `run_once` now constructs
-/// `HypergraphStore` (ADR179 T3) rather than `MemoryGraph`; this function
-/// itself never moved.
+/// Generic over the substrate. Atomic adjudication requires
+/// [`DetachedCopy`] for a disposable working world; [`AllocatorState`]
+/// supplies the non-graph identity cursors covered by the nominal world hash.
 ///
 /// # Errors
 ///
 /// A description of the first failing stage — an intrinsic declaration, a
 /// scenario load, a rule load, a state hash, or the tick itself.
-pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
+pub fn run_once_into<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy>(
     scenario_src: &str,
     rule_src: &str,
     graph: &mut G,
     sink: &mut CollectingSink,
 ) -> Result<TickReport, String> {
-    let prepared = prepare_rules(scenario_src, None, rule_src, graph).map_err(|e| e.to_string())?;
-    run_prepared_tick(&prepared, graph, sink, &run_once_session())
+    let mut candidate = graph.detached_copy();
+    let prepared =
+        prepare_rules(scenario_src, None, rule_src, &mut candidate).map_err(|e| e.to_string())?;
+    let report = run_prepared_tick(&prepared, &mut candidate, sink, &run_once_session(), 1)?;
+    *graph = candidate;
+    Ok(report)
 }
 
 /// `run_once_into`, with the scenario load routed through a **declaration
@@ -815,16 +855,21 @@ pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
 /// A description of the first failing stage — the prelude, an intrinsic
 /// declaration, a scenario load, a rule load, a state hash, or the tick
 /// itself.
-pub fn run_once_into_with_prelude<G: GraphSubstrate + CanonicalState>(
+pub fn run_once_into_with_prelude<
+    G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy,
+>(
     scenario_src: &str,
     prelude_src: &str,
     rule_src: &str,
     graph: &mut G,
     sink: &mut CollectingSink,
 ) -> Result<TickReport, String> {
-    let prepared = prepare_rules(scenario_src, Some(prelude_src), rule_src, graph)
+    let mut candidate = graph.detached_copy();
+    let prepared = prepare_rules(scenario_src, Some(prelude_src), rule_src, &mut candidate)
         .map_err(|e| e.to_string())?;
-    run_prepared_tick(&prepared, graph, sink, &run_once_session())
+    let report = run_prepared_tick(&prepared, &mut candidate, sink, &run_once_session(), 1)?;
+    *graph = candidate;
+    Ok(report)
 }
 
 /// The `rng-draw` seam's session id for every one-shot driver in this
@@ -841,30 +886,70 @@ fn run_once_session() -> SessionId {
 }
 
 /// `run_once_with_prelude` (this train) and `run_once_into` (above) share
-/// this from the point `prepare_rules` has already returned: run every
-/// prepared rule to completion, in order, against the SAME `graph`, and
-/// assemble the [`TickReport`]. Extracted so a prelude-bearing caller does
-/// not duplicate this loop — `prepare_rules`'s own `prelude_src` parameter
-/// is the only thing that differs between the two callers, and it is fully
+/// this from the point `prepare_rules` has already returned: clone the
+/// committed graph, run every prepared rule to completion against that one
+/// working copy, buffer its events, and publish both only after every rule
+/// and hash succeeds. Extracted so a prelude-bearing caller does not
+/// duplicate this loop — `prepare_rules`'s own `prelude_src` parameter is
+/// the only thing that differs between the two callers, and it is fully
 /// resolved before this function ever runs.
 ///
 /// # Errors
 ///
-/// The tick itself (named to its own rule id), or a pre/post state-hash
-/// failure.
-fn run_prepared_tick<G: GraphSubstrate + CanonicalState>(
+/// An invalid tick number, schedule/world/graph hashing, event reservation,
+/// or the tick itself (named to its own rule id). Every error leaves the
+/// caller's graph and existing events unchanged.
+pub(crate) fn run_prepared_tick<
+    G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy,
+>(
     prepared: &PreparedRules,
     graph: &mut G,
     sink: &mut CollectingSink,
     session: &SessionId,
+    tick: i64,
 ) -> Result<TickReport, String> {
-    let before = graph
-        .state_hash()
+    run_prepared_tick_with(
+        prepared,
+        graph,
+        sink,
+        session,
+        tick,
+        |_boundary, candidate| candidate.state_hash(),
+    )
+}
+
+fn run_prepared_tick_with<G, B, H>(
+    prepared: &PreparedRules,
+    graph: &mut G,
+    sink: &mut B,
+    session: &SessionId,
+    tick: i64,
+    mut state_hash: H,
+) -> Result<TickReport, String>
+where
+    G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy,
+    B: PreparedEventBatchSink,
+    H: FnMut(HashBoundary, &G) -> Result<[u8; 32], GraphError>,
+{
+    let completed_before = tick
+        .checked_sub(1)
+        .filter(|completed| *completed >= 0)
+        .ok_or_else(|| format!("tick to adjudicate must be positive, got {tick}"))?;
+    let schedule_digest = phase_order::schedule_digest().map_err(|e| e.to_string())?;
+    let before = state_hash(HashBoundary::Pre, graph)
         .map_err(|e| format!("pre-tick state: {}", e.message))?;
+    let world_before = world_hash::nominal_world_hash(
+        before,
+        completed_before,
+        graph.allocator_cursors(),
+        schedule_digest,
+    )?;
+    let mut working_graph = graph.detached_copy();
+    let mut working_sink = CollectingSink::default();
 
     // Every rule in `prepared.rules` runs to COMPLETION (every matching
     // subject) before the next rule starts — never interleaved — against
-    // the SAME `graph`, so a later rule sees an EARLIER rule's writes from
+    // the SAME working graph, so a later rule sees an EARLIER rule's writes from
     // the SAME tick. This falls out of calling `run_tick` sequentially
     // against one `&mut G`, and it matches the frozen Python engine's own
     // in-place, strict-order mutation semantics — but it is NOT what §4.2
@@ -888,16 +973,15 @@ fn run_prepared_tick<G: GraphSubstrate + CanonicalState>(
             &prepared.types,
             &prepared.enums,
             &KernelIntrinsicHost,
-            graph,
-            sink,
+            &mut working_graph,
+            &mut working_sink,
             &prepared.intrinsics,
             &prepared.consts,
-            // `run_once` is one tick, and it is tick 1 — the same number the
-            // CLI has always printed. §2.5's `:tick`/`:tick-in-cycle`
-            // bindings read it; `:year`/`:tick-of-year` need an epoch
-            // slice 1 does not pin and are refused by name at `run_tick`
-            // entry.
-            1,
+            // One-shot callers pass tick 1; persistent sessions pass their
+            // checked next tick. §2.5's `:tick`/`:tick-in-cycle` bindings
+            // read it; `:year`/`:tick-of-year` need an epoch slice 1 does
+            // not pin and are refused by name at `run_tick` entry.
+            tick,
             id,
             Some(&prepared.node_content_ids),
             session,
@@ -908,13 +992,23 @@ fn run_prepared_tick<G: GraphSubstrate + CanonicalState>(
     }
     let fired = per_rule_fired.iter().map(|(_, n)| n).sum();
 
-    let after = graph
-        .state_hash()
+    let after = state_hash(HashBoundary::Post, &working_graph)
         .map_err(|e| format!("post-tick state: {}", e.message))?;
+    let world_after = world_hash::nominal_world_hash(
+        after,
+        tick,
+        working_graph.allocator_cursors(),
+        schedule_digest,
+    )?;
+    sink.try_prepare(working_sink.events.len())?;
+    *graph = working_graph;
+    sink.commit_prepared(working_sink.events);
 
     Ok(TickReport {
         before,
         after,
+        world_before,
+        world_after,
         fired,
         per_rule_fired,
     })
@@ -1021,9 +1115,169 @@ pub fn any_over_budget(rows: &[FuelBoundRow]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{any_over_budget, fuel_bound_report, prepare_rules, run_once, FuelBoundRow};
+    use super::{
+        any_over_budget, fuel_bound_report, prepare_rules, run_once, run_once_into,
+        run_once_into_with_prelude, FuelBoundRow,
+    };
+    use babylon_bsl::structural_verbs::CollectingSink;
+    use babylon_graph::allocator_state::{AllocatorCursors, AllocatorState};
+    use babylon_graph::hypergraph_store::HypergraphStore;
+    use babylon_graph::memory::MemoryGraph;
+    use babylon_graph::state_hash::CanonicalState;
+    use babylon_graph::substrate::{GraphSubstrate, NodeId};
+    use babylon_graph::working_copy::DetachedCopy;
     const SCENARIO: &str = include_str!("../content/scenarios/two-classes.bscn");
     const RULE: &str = include_str!("../content/rules/fundamental-theorem.bsl");
+
+    const ONE_SHOT_FAILURE_SCENARIO: &str = r"
+(scenario tick/one-shot-atomicity
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (deffield social-class/probability probability intensive)
+  (node first NodeType/SOCIAL_CLASS (social-class/probability 0.1p))
+  (node second NodeType/SOCIAL_CLASS (social-class/probability 0.9p)))
+";
+    const ONE_SHOT_PRELUDE: &str = "(defvocabulary NodeType (SOCIAL_CLASS))";
+    const ONE_SHOT_FAILURE_SCENARIO_WITH_PRELUDE: &str = r"
+(scenario tick/one-shot-atomicity
+  (deffield social-class/probability probability intensive)
+  (node first NodeType/SOCIAL_CLASS (social-class/probability 0.1p))
+  (node second NodeType/SOCIAL_CLASS (social-class/probability 0.9p)))
+";
+    const ONE_SHOT_FAILURE_RULE: &str = r#"(rule vitality/one-shot-atomicity
+  :material-basis "PER-18: hydration and adjudication publish as one transaction"
+  :fuel 64
+  (bindings (binding probability :field social-class/probability))
+  (when (> probability 0.0p))
+  (effects
+    (emit EventType/PROBE)
+    (update-node self social-class/probability (add 0.4i))))"#;
+
+    const ONE_SHOT_SUCCESS_SCENARIO: &str = r"
+(scenario tick/one-shot-success
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (deffield social-class/count int extensive)
+  (node only NodeType/SOCIAL_CLASS (social-class/count 1)))
+";
+    const ONE_SHOT_SUCCESS_SCENARIO_WITH_PRELUDE: &str = r"
+(scenario tick/one-shot-success
+  (deffield social-class/count int extensive)
+  (node only NodeType/SOCIAL_CLASS (social-class/count 1)))
+";
+    const ONE_SHOT_SUCCESS_RULE: &str = r#"(rule vitality/one-shot-success
+  :material-basis "PER-18: successful staging preserves caller-relative identity allocation"
+  :fuel 32
+  (bindings (binding count :field social-class/count))
+  (when (= count 1))
+  (effects
+    (emit EventType/COMMITTED)
+    (update-node self social-class/count (add 1))))"#;
+
+    fn prepopulated_graph<G>() -> G
+    where
+        G: GraphSubstrate + Default,
+    {
+        let mut graph = G::default();
+        let prior = graph.add_node("PREEXISTING").unwrap();
+        graph.update_node(prior, "prior/value", 0.375).unwrap();
+        graph.add_hyperedge("PRIOR_GROUP", &[prior]).unwrap();
+        graph
+    }
+
+    fn assert_one_shot_failure_is_atomic<G>(with_prelude: bool)
+    where
+        G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy + Default,
+    {
+        let mut graph = prepopulated_graph::<G>();
+        let before = graph.encode_state().unwrap().as_bytes().to_vec();
+        let cursors = graph.allocator_cursors();
+        let mut sink = CollectingSink {
+            events: vec![("EventType/PRIOR".to_owned(), Vec::new())],
+        };
+        let events = sink.events.clone();
+
+        let result = if with_prelude {
+            run_once_into_with_prelude(
+                ONE_SHOT_FAILURE_SCENARIO_WITH_PRELUDE,
+                ONE_SHOT_PRELUDE,
+                ONE_SHOT_FAILURE_RULE,
+                &mut graph,
+                &mut sink,
+            )
+        } else {
+            run_once_into(
+                ONE_SHOT_FAILURE_SCENARIO,
+                ONE_SHOT_FAILURE_RULE,
+                &mut graph,
+                &mut sink,
+            )
+        };
+
+        let error = result.expect_err("the second probability write must fail");
+        assert!(error.contains("E-EVAL-020"), "{error}");
+        assert_eq!(graph.encode_state().unwrap().as_bytes(), before);
+        assert_eq!(graph.allocator_cursors(), cursors);
+        assert_eq!(sink.events, events);
+    }
+
+    fn assert_one_shot_success_preserves_relative_allocation<G>(with_prelude: bool)
+    where
+        G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy + Default,
+    {
+        let mut graph = prepopulated_graph::<G>();
+        let mut sink = CollectingSink::default();
+        let report = if with_prelude {
+            run_once_into_with_prelude(
+                ONE_SHOT_SUCCESS_SCENARIO_WITH_PRELUDE,
+                ONE_SHOT_PRELUDE,
+                ONE_SHOT_SUCCESS_RULE,
+                &mut graph,
+                &mut sink,
+            )
+        } else {
+            run_once_into(
+                ONE_SHOT_SUCCESS_SCENARIO,
+                ONE_SHOT_SUCCESS_RULE,
+                &mut graph,
+                &mut sink,
+            )
+        }
+        .expect("the staged one-shot tick commits");
+
+        assert_eq!(graph.nodes("SOCIAL_CLASS"), vec![NodeId(1)]);
+        assert_eq!(
+            graph
+                .node_attribute(NodeId(1), "social-class/count")
+                .unwrap()
+                .to_bits(),
+            2.0f64.to_bits()
+        );
+        assert_eq!(
+            graph.allocator_cursors(),
+            AllocatorCursors {
+                next_node: 2,
+                next_hyperedge: 1,
+            }
+        );
+        assert_eq!(report.fired, 1);
+        assert_eq!(sink.events.len(), 1);
+        assert_eq!(sink.events[0].0, "COMMITTED");
+    }
+
+    #[test]
+    fn both_one_shot_variants_roll_back_hydration_on_both_backends() {
+        assert_one_shot_failure_is_atomic::<MemoryGraph>(false);
+        assert_one_shot_failure_is_atomic::<MemoryGraph>(true);
+        assert_one_shot_failure_is_atomic::<HypergraphStore>(false);
+        assert_one_shot_failure_is_atomic::<HypergraphStore>(true);
+    }
+
+    #[test]
+    fn both_one_shot_variants_keep_preexisting_allocation_on_success() {
+        assert_one_shot_success_preserves_relative_allocation::<MemoryGraph>(false);
+        assert_one_shot_success_preserves_relative_allocation::<MemoryGraph>(true);
+        assert_one_shot_success_preserves_relative_allocation::<HypergraphStore>(false);
+        assert_one_shot_success_preserves_relative_allocation::<HypergraphStore>(true);
+    }
 
     // Task W3 (BSL Hygiene Knock-out): the fuel-bound report's smallest
     // possible fixture — one field binding, one comparison, one

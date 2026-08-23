@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 import pytest
 import yaml
@@ -16,6 +16,11 @@ _ARCHITECTURE: Final[Path] = _ROOT / "ai" / "architecture.yaml"
 _STATE: Final[Path] = _ROOT / "ai" / "state.yaml"
 _TUNING: Final[Path] = _ROOT / "ai" / "tuning-standard.yaml"
 _ROADMAP: Final[Path] = _ROOT / "project" / "roadmap.md"
+_ADR_INDEX: Final[Path] = _ROOT / "ai" / "decisions" / "index.yaml"
+_PER_18_ADR: Final[Path] = (
+    _ROOT / "ai" / "decisions" / "ADR223_whole_tick_atomicity_world_hash.yaml"
+)
+_DETERMINISM_REFERENCE: Final[Path] = _ROOT / "docs" / "reference" / "determinism-contract.rst"
 
 _LINEAR_PROJECT: Final[dict[str, str]] = {
     "id": "ebab3603-e391-4110-97e2-97422bc2037e",
@@ -72,6 +77,7 @@ _CURRENT_COMPONENTS: Final[tuple[str, ...]] = (
     "bsl_pipeline",
     "rust_tick_session",
     "canonical_graph_hash",
+    "nominal_world_hash",
     "bevy_admin_viewer",
     "frozen_python_engine",
     "legacy_python_persistence",
@@ -85,6 +91,10 @@ _CURRENT_EVIDENCE: Final[dict[str, tuple[str, ...]]] = {
     ),
     "rust_tick_session": ("rust/crates/babylon-tick/src/session.rs",),
     "canonical_graph_hash": ("rust/crates/babylon-graph/src/state_hash.rs",),
+    "nominal_world_hash": (
+        "rust/crates/babylon-tick/src/world_hash.rs",
+        "rust/crates/babylon-tick/src/session.rs",
+    ),
     "bevy_admin_viewer": ("rust/crates/babylon-client/src/ui/admin.rs",),
     "frozen_python_engine": (
         "src/babylon/engine/simulation_engine.py",
@@ -109,7 +119,7 @@ _H3_EVIDENCE: Final[tuple[str, ...]] = (
 )
 _GATE_2_STATUSES: Final[dict[str, str]] = {
     "PER-17": "implemented_current",
-    "PER-18": "planned",
+    "PER-18": "implemented_current",
     "PER-19": "planned",
 }
 _GATE_2_COMPONENTS: Final[dict[str, str]] = {
@@ -123,6 +133,13 @@ _GATE_2_COMPONENTS: Final[dict[str, str]] = {
         "negative_outcome_write_contracts"
     ),
 }
+_PER_18_EVIDENCE: Final[tuple[str, ...]] = (
+    "rust/crates/babylon-graph/src/working_copy.rs",
+    "rust/crates/babylon-tick/src/lib.rs",
+    "rust/crates/babylon-tick/src/session.rs",
+    "rust/crates/babylon-tick/src/world_hash.rs",
+    "ai/decisions/ADR223_whole_tick_atomicity_world_hash.yaml",
+)
 _GATE_3_ISSUES: Final[tuple[str, ...]] = (
     "PER-20",
     "PER-21",
@@ -162,9 +179,15 @@ _ROADMAP_DELIVERY_ROOT_PATTERN: Final[re.Pattern[str]] = re.compile(
     re.MULTILINE,
 )
 _POSTGRESQL_ADR: Final[str] = "ADR220_rust_owned_postgresql_persistence_boundary"
+_PER_18_ADR_KEY: Final[str] = "ADR223_whole_tick_atomicity_world_hash"
+_PER_18_ADR_TITLE: Final[str] = (
+    "Rust adjudicates each weekly tick on a detached world, publishes graph, "
+    "events, allocator state, and completed time only after total success, and "
+    "names current in-memory identity with a versioned nominal world hash"
+)
 
 
-def _yaml_document(path: Path) -> dict[str, object]:
+def _yaml_document(path: Path) -> dict[str, Any]:
     """Load one required YAML mapping."""
     document = yaml.safe_load(path.read_text(encoding="utf-8"))
     assert isinstance(document, dict), path
@@ -211,6 +234,8 @@ def test_architecture_records_current_components_and_gate_delivery_status() -> N
     assert tuple(gate_3) == _GATE_3_ISSUES
     assert {issue: gate_2[issue]["status"] for issue in _GATE_2_STATUSES} == _GATE_2_STATUSES
     assert {issue: gate_2[issue]["component"] for issue in _GATE_2_COMPONENTS} == _GATE_2_COMPONENTS
+    assert tuple(gate_2["PER-18"]["evidence"]) == _PER_18_EVIDENCE
+    assert all((_ROOT / evidence).is_file() for evidence in _PER_18_EVIDENCE)
     assert all(gate_3[issue]["status"] == "planned" for issue in _GATE_3_ISSUES)
 
 
@@ -435,7 +460,7 @@ def test_state_is_one_historical_ledger_not_a_status_authority() -> None:
     assert authority["project"] == _LINEAR_PROJECT
     assert authority["charter"] == _LINEAR_CHARTER
     snapshot = meta["v4_governance_snapshot"]
-    assert snapshot["as_of"] == "2026-08-22"
+    assert snapshot["as_of"] == "2026-08-23"
     assert snapshot["implementation_truth"] == "ai/architecture.yaml"
     assert snapshot["lower_entries"] == "dated_snapshots_only"
     assert snapshot["current_status_queries"] == "Linear"
@@ -445,12 +470,73 @@ def test_state_is_one_historical_ledger_not_a_status_authority() -> None:
         "adr": _POSTGRESQL_ADR,
         "completion_commit": "9b4c9b2e",
     }
+    assert snapshot["bsl_phase_order"] == {
+        "status": "implemented_on_dev",
+        "issue": "PER-17",
+        "adr": "ADR222_executable_bsl_phase_order",
+        "merge_commit": "5a0ef2a9",
+    }
+    assert snapshot["whole_tick_atomicity"] == {
+        "status": "implemented_on_PER-18_branch",
+        "issue": "PER-18",
+        "adr": _PER_18_ADR_KEY,
+        "branch": "codex/per-18-whole-tick-atomicity",
+        "scope": "in_memory_only",
+        "remaining_gate_2": ["PER-19"],
+    }
     assert snapshot["attributed_membership_payload"] == {
         "status": "planned",
         "horizon": "Research",
         "issue": "PER-44",
         "current_truth": "empty_unhashed_unwritten_unconsumed",
     }
+    history = " ".join(meta["truth_status"].split())
+    assert (
+        "(2026-08-23 GATE 2 — PER-17 EXECUTABLE BSL PHASE ORDER IMPLEMENTED, REVIEW/PR PENDING)"
+    ) in history
+
+
+def test_per_18_adr_and_catalog_are_exact() -> None:
+    """The accepted decision and catalog row cannot pass as an empty placeholder."""
+    catalog = _yaml_document(_ADR_INDEX)
+    assert catalog["meta"] == {
+        "version": "1.76.0",
+        "updated": "2026-08-23",
+        "description": "Architecture Decision Records Index",
+        "format": "See individual ADR files in this directory",
+    }
+    assert catalog["decisions"][_PER_18_ADR_KEY] == {
+        "title": _PER_18_ADR_TITLE,
+        "status": "accepted",
+        "date": "2026-08-23",
+        "file": "ADR223_whole_tick_atomicity_world_hash.yaml",
+    }
+    document = _yaml_document(_PER_18_ADR)
+    assert tuple(document) == (_PER_18_ADR_KEY,)
+    decision = document[_PER_18_ADR_KEY]
+    assert decision["status"] == "accepted"
+    assert decision["date"] == "2026-08-23"
+    assert decision["title"] == _PER_18_ADR_TITLE
+    assert tuple(decision["related"]) == (
+        "ADR179_topology_spine_director_rulings",
+        _POSTGRESQL_ADR,
+        "ADR221_game_first_refoundation_v4",
+        "ADR222_executable_bsl_phase_order",
+    )
+
+
+def test_determinism_reference_uses_v4_authority_and_honest_scope() -> None:
+    """Current hash guidance cannot cite superseded law or promise missing layouts."""
+    reference = _DETERMINISM_REFERENCE.read_text(encoding="utf-8")
+    index = (_ROOT / "docs" / "reference" / "index.rst").read_text(encoding="utf-8")
+    assert "Determinism Contract (Constitution Article V)" in index
+    assert "Current constitutional authority is Article V" in reference
+    assert "outer ``NominalWorldHash`` composition" in reference
+    assert "no byte layout is implemented or specified" in reference
+    assert "CONSTITUTION.md:250" not in reference
+    combined = " ".join(f"{reference}\n{index}".lower().split())
+    stale_clause = re.search(r"(?<!historical v3 clause )\b[IVX]+\.\d+(?:\.\d+)?\b", combined)
+    assert stale_clause is None, stale_clause.group() if stale_clause else ""
 
 
 def test_project_corpus_publishes_the_bounded_catchup_path() -> None:
@@ -513,6 +599,7 @@ def test_standard_addenda_classify_current_and_superseded_surfaces() -> None:
         "Ratatui/TUI status: retired",
         "Article V vocabulary authority status: superseded",
         "NarrationEnvelope status: superseded_proposal",
+        "In-memory whole-tick rollback status: implemented_current_PER-18",
         "CommittedTickEnvelope status: planned",
         "DecisionSurfaceContract executable status: planned",
         "Persistence writer status: accepted_cutover_law",
@@ -523,11 +610,11 @@ def test_standard_addenda_classify_current_and_superseded_surfaces() -> None:
     ):
         assert phrase in game_design
     for phrase in (
-        "S-11 whole-tick rollback status: planned",
+        "S-11 whole-tick rollback status: implemented_current_PER-18",
         "S-25 renderer requirement status: retired",
         "S-32 writer assignment status: superseded",
         "D5/D16 phase-ordering status: implemented_executable_PER-17",
-        "PER-18 rollback and combined-world-hash status: planned",
+        "PER-18 rollback and combined-world-hash status: implemented_current",
         "PER-19 causal-composition and outcome-write-contract status: planned",
         "Persistence writer status: accepted_cutover_law",
         "PER-48 status: Done",

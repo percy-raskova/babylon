@@ -33,6 +33,7 @@ service of play. It must never masquerade as an empirical observation.
 - Ratatui/TUI status: retired
 - Article V vocabulary authority status: superseded
 - NarrationEnvelope status: superseded_proposal
+- In-memory whole-tick rollback status: implemented_current_PER-18
 - CommittedTickEnvelope status: planned
 - DecisionSurfaceContract executable status: planned
 - Persistence writer status: accepted_cutover_law
@@ -61,8 +62,10 @@ cannot satisfy gameplay milestones. PER-24 owns the executable Rust contract
 and surface inventory at Gate 3; this addendum does not claim that code exists.
 
 The historical `NarrationEnvelope` proposal below is not an implemented v4
-boundary. Gate 3 plans `CommittedTickEnvelope`, durable state, and the Archive
-outbox. Durability begins after deterministic adjudication. PER-48 is Done;
+boundary. PER-18 implements detached in-memory adjudication and publishes a
+tick only after rules, event preparation, and hashes succeed. Gate 3 still
+plans `CommittedTickEnvelope`, durable state, and the Archive outbox.
+Durability begins after deterministic adjudication. PER-48 is Done;
 `ADR220_rust_owned_postgresql_persistence_boundary` records the accepted law.
 Python remains the sole live PostgreSQL writer before cutover. The one-way
 cutover disables Python migration and runtime-write entry points before Rust

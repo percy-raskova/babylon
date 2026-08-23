@@ -21,6 +21,11 @@ use crate::state_hash::CanonicalState;
 use crate::substrate::{Direction, GraphSubstrate, HyperedgeId, NodeId};
 use babylon_kernel::Currency;
 
+#[cfg(test)]
+use crate::allocator_state::{AllocatorCursors, AllocatorState, AllocatorTestControl};
+#[cfg(test)]
+use crate::working_copy::DetachedCopy;
+
 /// Run every invariant in this module against a fresh store from `make`.
 ///
 /// `make` is called many times — once per invariant block, each starting
@@ -1154,6 +1159,319 @@ where
             .is_err(),
         "a non-finite write refuses"
     );
+}
+
+/// Prove that a transactional working copy owns every mutable graph lane and
+/// both identity cursors. This is deliberately stronger than a type-level
+/// `Clone` bound: it exercises the behavioral promise the tick transaction
+/// relies on against each concrete backend.
+#[cfg(test)]
+pub(crate) fn run_detached_working_copy_conformance<G, F>(make: F)
+where
+    G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy,
+    F: Fn() -> G,
+{
+    let mut source = make();
+    let witness = seed_detached_copy_source(&mut source);
+    let mut working = source.detached_copy();
+    assert_detached_copy_matches_source(&source, &working, &witness);
+    exercise_every_mutable_lane(&mut working, witness.a, witness.b, witness.c, witness.cell);
+    assert_source_unchanged(&source, &witness);
+    assert_working_changed_independently(&working, &witness);
+    exercise_source_after_copy(&mut source, &working, &witness);
+}
+
+#[cfg(test)]
+struct DetachedCopyWitness {
+    a: NodeId,
+    b: NodeId,
+    c: NodeId,
+    cell: HyperedgeId,
+    source_bytes: Vec<u8>,
+    source_cursors: AllocatorCursors,
+}
+
+#[cfg(test)]
+fn seed_detached_copy_source<G>(source: &mut G) -> DetachedCopyWitness
+where
+    G: GraphSubstrate + CanonicalState + AllocatorState,
+{
+    let a = source.add_node("SOCIAL_CLASS").unwrap();
+    let b = source.add_node("TERRITORY").unwrap();
+    let c = source.add_node("ORGANIZATION").unwrap();
+    source.update_node(a, "class/power", 0.25).unwrap();
+    source
+        .update_node_currency(a, "class/cash", Currency::from_micro_units(12_345))
+        .unwrap();
+    source.add_edge("PRESENCE", a, b, 0.75).unwrap();
+    source
+        .update_edge("PRESENCE", a, b, "presence/friction", 0.125)
+        .unwrap();
+    let cell = source.add_hyperedge("COALITION", &[c, a, b]).unwrap();
+    source
+        .update_hyperedge_attribute(cell, "coalition/cohesion", 0.625)
+        .unwrap();
+    DetachedCopyWitness {
+        a,
+        b,
+        c,
+        cell,
+        source_bytes: source.encode_state().unwrap().as_bytes().to_vec(),
+        source_cursors: source.allocator_cursors(),
+    }
+}
+
+#[cfg(test)]
+fn assert_detached_copy_matches_source<G>(source: &G, working: &G, witness: &DetachedCopyWitness)
+where
+    G: GraphSubstrate + CanonicalState + AllocatorState,
+{
+    assert_eq!(
+        working.encode_state().unwrap().as_bytes(),
+        witness.source_bytes
+    );
+    assert_eq!(working.allocator_cursors(), witness.source_cursors);
+    assert_eq!(source.hyperedges("COALITION"), vec![witness.cell]);
+    assert_eq!(
+        source.hyperedges_of(witness.a, "COALITION").unwrap(),
+        vec![witness.cell]
+    );
+    assert_eq!(working.hyperedges("COALITION"), vec![witness.cell]);
+    assert_eq!(
+        working.hyperedges_of(witness.a, "COALITION").unwrap(),
+        vec![witness.cell]
+    );
+}
+
+#[cfg(test)]
+fn assert_source_unchanged<G>(source: &G, witness: &DetachedCopyWitness)
+where
+    G: GraphSubstrate + CanonicalState + AllocatorState,
+{
+    assert_eq!(
+        source.encode_state().unwrap().as_bytes(),
+        witness.source_bytes
+    );
+    assert_eq!(source.allocator_cursors(), witness.source_cursors);
+    assert_eq!(
+        source
+            .node_attribute(witness.a, "class/power")
+            .unwrap()
+            .to_bits(),
+        0.25f64.to_bits()
+    );
+    assert_eq!(
+        source
+            .node_attribute_currency(witness.a, "class/cash")
+            .unwrap(),
+        Currency::from_micro_units(12_345)
+    );
+    assert_eq!(
+        source
+            .edge_attribute("PRESENCE", witness.a, witness.b, "presence/friction")
+            .unwrap()
+            .to_bits(),
+        0.125f64.to_bits()
+    );
+    assert_eq!(
+        source
+            .hyperedge_attribute(witness.cell, "coalition/cohesion")
+            .unwrap()
+            .to_bits(),
+        0.625f64.to_bits()
+    );
+    assert_eq!(source.hyperedges("COALITION"), vec![witness.cell]);
+    assert_eq!(
+        source.hyperedges_of(witness.a, "COALITION").unwrap(),
+        vec![witness.cell]
+    );
+    assert_eq!(
+        source.members_of(witness.cell).unwrap(),
+        vec![witness.a, witness.b, witness.c]
+    );
+}
+
+#[cfg(test)]
+fn assert_working_changed_independently<G>(working: &G, witness: &DetachedCopyWitness)
+where
+    G: GraphSubstrate + CanonicalState + AllocatorState,
+{
+    assert_ne!(
+        working.encode_state().unwrap().as_bytes(),
+        witness.source_bytes
+    );
+    assert_ne!(working.allocator_cursors(), witness.source_cursors);
+    assert_eq!(working.hyperedges("COALITION"), vec![HyperedgeId(1)]);
+    assert_eq!(
+        working.hyperedges_of(witness.a, "COALITION").unwrap(),
+        vec![HyperedgeId(1)]
+    );
+    assert_eq!(
+        working.members_of(HyperedgeId(1)).unwrap(),
+        vec![witness.a, witness.b]
+    );
+}
+
+#[cfg(test)]
+fn exercise_source_after_copy<G>(source: &mut G, working: &G, witness: &DetachedCopyWitness)
+where
+    G: GraphSubstrate,
+{
+    assert_eq!(source.add_node("BUSINESS").unwrap(), NodeId(3));
+    assert_eq!(
+        source
+            .add_hyperedge("COALITION", &[witness.b, witness.c])
+            .unwrap(),
+        HyperedgeId(1)
+    );
+    assert_eq!(
+        source.hyperedges("COALITION"),
+        vec![witness.cell, HyperedgeId(1)]
+    );
+    assert_eq!(
+        source.hyperedges_of(witness.b, "COALITION").unwrap(),
+        vec![witness.cell, HyperedgeId(1)]
+    );
+    assert_eq!(
+        source.hyperedges_of(witness.a, "COALITION").unwrap(),
+        vec![witness.cell]
+    );
+    assert_eq!(
+        source.members_of(HyperedgeId(1)).unwrap(),
+        vec![witness.b, witness.c]
+    );
+    assert_eq!(working.hyperedges("COALITION"), vec![HyperedgeId(1)]);
+    assert_eq!(
+        working.hyperedges_of(witness.a, "COALITION").unwrap(),
+        vec![HyperedgeId(1)]
+    );
+    assert_eq!(
+        working.members_of(HyperedgeId(1)).unwrap(),
+        vec![witness.a, witness.b]
+    );
+
+    source.remove_hyperedge(witness.cell).unwrap();
+    assert_eq!(source.hyperedges("COALITION"), vec![HyperedgeId(1)]);
+    assert!(source
+        .hyperedges_of(witness.a, "COALITION")
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        source.members_of(HyperedgeId(1)).unwrap(),
+        vec![witness.b, witness.c]
+    );
+    assert_eq!(
+        working.hyperedges_of(witness.a, "COALITION").unwrap(),
+        vec![HyperedgeId(1)]
+    );
+    assert_eq!(
+        working.members_of(HyperedgeId(1)).unwrap(),
+        vec![witness.a, witness.b]
+    );
+}
+
+#[cfg(test)]
+fn exercise_every_mutable_lane<G: GraphSubstrate>(
+    working: &mut G,
+    a: NodeId,
+    b: NodeId,
+    c: NodeId,
+    cell: HyperedgeId,
+) {
+    working.update_node(a, "class/power", 0.5).unwrap();
+    working
+        .update_node_currency(a, "class/cash", Currency::from_micro_units(54_321))
+        .unwrap();
+    working
+        .update_edge("PRESENCE", a, b, "presence/friction", 0.875)
+        .unwrap();
+    assert_eq!(
+        working
+            .edge_attribute("PRESENCE", a, b, "presence/friction")
+            .unwrap()
+            .to_bits(),
+        0.875f64.to_bits()
+    );
+    working
+        .update_hyperedge_attribute(cell, "coalition/cohesion", 0.25)
+        .unwrap();
+    assert_eq!(
+        working
+            .hyperedge_attribute(cell, "coalition/cohesion")
+            .unwrap()
+            .to_bits(),
+        0.25f64.to_bits()
+    );
+    assert_eq!(working.add_node("BUSINESS").unwrap(), NodeId(3));
+    assert_eq!(
+        working.add_hyperedge("COALITION", &[a, b]).unwrap(),
+        HyperedgeId(1)
+    );
+    working.remove_edge("PRESENCE", a, b).unwrap();
+    working.remove_hyperedge(cell).unwrap();
+    working.remove_node(c).unwrap();
+}
+
+/// Both identity allocators mint `u64::MAX - 1`, advance to the reserved
+/// `u64::MAX` exhausted sentinel, then refuse before changing graph bytes or
+/// either cursor.
+#[cfg(test)]
+pub(crate) fn run_allocator_exhaustion_conformance<G, F>(make: F)
+where
+    G: GraphSubstrate + CanonicalState + AllocatorState + AllocatorTestControl,
+    F: Fn() -> G,
+{
+    let mut graph = make();
+    let a = graph.add_node("SOCIAL_CLASS").unwrap();
+    let b = graph.add_node("TERRITORY").unwrap();
+    graph.add_hyperedge("COALITION", &[a, b]).unwrap();
+
+    graph.set_allocator_cursors_for_test(AllocatorCursors {
+        next_node: u64::MAX - 1,
+        next_hyperedge: 1,
+    });
+    assert_eq!(graph.add_node("BUSINESS").unwrap(), NodeId(u64::MAX - 1));
+    assert_eq!(graph.allocator_cursors().next_node, u64::MAX);
+    assert_exhausted_node_allocator_is_atomic(&mut graph);
+
+    graph.set_allocator_cursors_for_test(AllocatorCursors {
+        next_node: u64::MAX,
+        next_hyperedge: u64::MAX - 1,
+    });
+    assert_eq!(
+        graph.add_hyperedge("COALITION", &[a, b]).unwrap(),
+        HyperedgeId(u64::MAX - 1)
+    );
+    assert_eq!(graph.allocator_cursors().next_hyperedge, u64::MAX);
+    assert_exhausted_hyperedge_allocator_is_atomic(&mut graph, a, b);
+}
+
+#[cfg(test)]
+fn assert_exhausted_node_allocator_is_atomic<G>(graph: &mut G)
+where
+    G: GraphSubstrate + CanonicalState + AllocatorState,
+{
+    let before = graph.encode_state().unwrap().as_bytes().to_vec();
+    let cursors = graph.allocator_cursors();
+    let error = graph.add_node("BUSINESS").unwrap_err();
+    assert!(error.message.contains("node identity allocator exhausted"));
+    assert_eq!(graph.encode_state().unwrap().as_bytes(), before);
+    assert_eq!(graph.allocator_cursors(), cursors);
+}
+
+#[cfg(test)]
+fn assert_exhausted_hyperedge_allocator_is_atomic<G>(graph: &mut G, a: NodeId, b: NodeId)
+where
+    G: GraphSubstrate + CanonicalState + AllocatorState,
+{
+    let before = graph.encode_state().unwrap().as_bytes().to_vec();
+    let cursors = graph.allocator_cursors();
+    let error = graph.add_hyperedge("COALITION", &[a, b]).unwrap_err();
+    assert!(error
+        .message
+        .contains("hyperedge identity allocator exhausted"));
+    assert_eq!(graph.encode_state().unwrap().as_bytes(), before);
+    assert_eq!(graph.allocator_cursors(), cursors);
 }
 
 #[cfg(test)]

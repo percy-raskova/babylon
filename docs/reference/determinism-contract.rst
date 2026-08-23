@@ -1,26 +1,26 @@
 Determinism Contract
 =====================
 
-The language-agnostic, byte-level specification of every constitutional hash
-in Babylon. This document exists so that a reimplementation of the engine in
-another language could reproduce these hashes without reading the Python —
-the **rewrite test** of Constitution III.12 ("Behavioral Contracts",
-Amendment Q, corollary (a); see ``CONSTITUTION.md``). It is a reference document: it describes what
-the current implementation *does*, byte for byte, not what an idealized
-implementation *should* do. Where the implementation's behavior surprises its
-own naming or docstrings, this document says so explicitly (see the
-*Known Discrepancies* section below) rather than papering over the gap.
+This reference inventories Babylon's implemented and reserved identities. It
+provides complete, language-agnostic byte layouts for the frozen Python
+artifacts that say so and for the outer ``NominalWorldHash`` composition given
+two authoritative 32-byte inputs. It does not yet specify the inner
+``GraphStateHash`` or phase-schedule encoding. ``TickContentHash`` remains a
+reserved taxonomy name; no byte layout is implemented or specified.
 
-Program 27 Phase 0 (``docs/superpowers/specs/2026-07-28-program-27-refoundation-design.md``)
-adds three chapters below — *The P27 Tick Hash*, *ContentDigest and the
-Canonical BSL AST Serialization*, and *Fuel Cost Model and RNG Seeding* — that
-are a different kind of artifact from the rest of this document: they are
-**forward specifications for the Rust kernel** (``babylon-kernel``,
-``babylon-bsl``) to be built in Program 27 Phase 1, not descriptions of code
-that runs today. Each states plainly, in its own "Today vs. this chapter"
-note, what the live Python implementation does differently — the same
-discipline the rest of this document applies retrospectively, applied here
-prospectively to a not-yet-written implementation.
+Current constitutional authority is Article V for deterministic identity and
+rewrite-surviving behavioral contracts, with Article VIII governing redundant
+validation evidence. ADR221 maps the historical v3 predecessors to those
+articles. This document describes what the current implementation *does*, not
+what an idealized implementation should do. It names incomplete rewrite
+contracts instead of claiming that code is a sufficient specification.
+
+Program 27 Phase 0
+(``docs/superpowers/specs/2026-07-28-program-27-refoundation-design.md``)
+added three forward-specification chapters below. Parts later gained frozen
+Python or Rust reference implementations. Each chapter's own status note now
+controls; historical target prose does not override the current identity
+taxonomy or ADR220's reserved ``TickContentHash`` name.
 
 .. contents:: On this page
    :local:
@@ -30,8 +30,7 @@ Scope: What "Deterministic" Guarantees
 ---------------------------------------
 
 Babylon makes two different determinism claims, and conflating them is a
-category error the codebase itself warns against (Constitution III.7,
-``CONSTITUTION.md:250``):
+category error under Constitution Article V:
 
 **Intra-implementation (byte-identical replay).** Given the same CPython
 interpreter, the same platform libm, the same random seed, and the same
@@ -44,8 +43,7 @@ because:
   machines.
 - CPython's ``random`` module (Mersenne Twister) is itself deterministic
   given a seed, and the engine's RNG usage is threaded through explicit
-  seeds (Constitution III.7 / the worktree's ``rng_seed`` convention) rather
-  than reseeded from wall-clock time.
+  seeds under Article V rather than reseeded from wall-clock time.
 - Dict and set iteration in CPython 3.7+ is insertion-ordered for dicts
   (sets remain unordered by the language spec, but this codebase's hot
   paths canonicalize via ``sorted()`` before hashing — see below).
@@ -67,18 +65,19 @@ comparison**, not hash equality — see *Float and Tolerance Policy* below.
 Catalog of Constitutional Hashes
 ----------------------------------
 
-Three genuinely different hashes exist in the codebase, all currently named
-some variant of "determinism hash." They are **not interchangeable** and, as
-of this writing, **not even consistent with each other's docstrings** inside
-the same code path — see *Known Discrepancies* below. This section specifies each
-one's exact byte-level construction.
+The frozen Python estate has three older identities in its live and reference
+paths. Rust adds a graph-only diagnostic and a current in-memory nominal-world
+identity. The complete durable ``TickContentHash`` remains reserved. These
+values are not interchangeable. The older entries specify their byte
+constructions. The PER-18 entry specifies the nominal hash's outer composition
+and names its two still-Rust-authoritative inputs.
 
 ``defines_hash`` — GameDefines fingerprint
 +++++++++++++++++++++++++++++++++++++++++++
 
 **Purpose:** detect when the tunable-coefficient space (``GameDefines`` /
 ``defines.yaml``) has moved between a checkpoint baseline's authoring time
-and a comparison run. Per Constitution III.7, a ``defines_hash`` mismatch
+and a comparison run. Under Constitution Article V, a ``defines_hash`` mismatch
 alone is **input-hash drift** — expected and benign, resolved by
 regenerating the baseline — as distinct from **behavioral drift** (a
 checkpoint value moved), which is the actual failure the ``qa:regression``
@@ -94,7 +93,7 @@ gate exists to catch.
    sort_keys=True, separators=(",", ":"), ensure_ascii=True)`` → UTF-8
    encode → SHA-256 → **full 64-char lowercase hex digest** (no
    truncation, no ``default=`` fallback — a non-JSON-native field raises
-   ``TypeError`` loudly per III.11). Note the canonical layout sorts keys
+   ``TypeError`` loudly under Article V). Note the canonical layout sorts keys
    alphabetically via stdlib ``json.dumps``, unlike the retired layout
    below. The remainder of this entry (including its worked examples)
    describes the **retired pre-Task-1 layout** — pydantic-core
@@ -235,8 +234,9 @@ lowercase hex, e.g. ``"4ad75b08-0258-48a4-a29a-61cab92d7d13"`` — a decimal
 ``str.encode()`` (UTF-8), then SHA-256, **full 64 hex-character digest, no
 truncation**.
 
-**Chaining:** **none in the cryptographic sense.** Despite the migration
-comment calling this "the queryable Constitution-III.7 hash chain"
+**Chaining:** **none in the cryptographic sense.** The migration comment
+assigns this marker to historical v3 clause III.7 and calls it a queryable
+hash chain
 (``src/babylon/persistence/migrations/0029_tick_commit.sql:9``), each row's
 hash does **not** incorporate the previous tick's hash (there is no
 ``H_n = H(H_{n-1} || data_n)`` construction anywhere in this codebase). "Chain"
@@ -271,22 +271,22 @@ between two independent runs sharing a seed — not by hash comparison. A
 reimplementation's test harness should adopt the same pattern: don't try to
 reproduce this hash across sessions; diff the persisted values instead.
 
-``conservation_audit_log.hex_frame_hash`` — the III.7 content hash
-++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+``conservation_audit_log.hex_frame_hash`` — historical v3 clause III.7 content hash
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 .. note::
    **Renamed from ``determinism_hash`` (migration 0044, ADR179 T2,
    2026-07-30)** — the honest name says what it covers: the 15-field
    ``DynamicHexState`` frame, not the full world state.
 
-**Purpose:** this is the hash that actually matches Constitution III.7's
-literal definition — *"a deterministic SHA-256 hash of its inputs (World
-state + player actions + random seed)"* (``CONSTITUTION.md:250``) — because
+**Purpose:** this is the hash that actually matches historical v3 clause
+III.7's literal definition — *"a deterministic SHA-256 hash of its inputs
+(World state + player actions + random seed)"* — because
 it is the only hash in the codebase whose bytes depend on the tick's
-computed content. This document identifies it with **"the III.7 tick hash"**
-named in Amendment Q corollary (a) (``CONSTITUTION.md:268``); no source
-comment uses that exact phrase, so this is this document's own reasoned
-mapping, stated explicitly as such.
+computed content. This historical section identifies it with **"the historical
+v3 clause III.7 tick hash"** named in Amendment Q corollary (a). ADR221 maps
+that predecessor clause into Article V. No source comment uses the quoted
+phrase, so this is this document's own reasoned mapping.
 
 **Computed by:** ``compute_hex_frame_hash()`` (renamed with the column),
 ``src/babylon/persistence/conservation_audit.py:70-111``:
@@ -314,8 +314,8 @@ per-tick hex checkpoint frame** (every hex, restamped to the current tick;
 ``bridge.py:492``), not the delta actually persisted to ``dynamic_hex_state``.
 ``action_list`` is **never passed** at this call site (it defaults to
 ``None`` → treated as an empty list) — player/organization actions do not
-currently enter this hash in the wired path, even though III.7's prose names
-them as an input. "World state" here is narrower than the full
+currently enter this hash in the wired path, even though historical v3 clause
+III.7 named them as an input. "World state" here is narrower than the full
 ``WorldState`` model: only the hex economic frame (``c``, ``v``, ``s``,
 ``k``, the three substrate stocks, ``internet_access_pct``,
 ``surveillance_coupling`` plus identity/spatial keys — the 15 fields of
@@ -396,7 +396,7 @@ transaction as ``tick_commit`` (``_spec_062.py:314-318``) but as a
 Behavioral artifact: ``trace.csv``
 +++++++++++++++++++++++++++++++++++
 
-Not a hash, but the other durable artifact Constitution III.12 names
+Not a hash, but another durable artifact named by historical v3 clause III.12
 alongside the three hashes above. ``trace.csv``'s column dictionary is
 pinned in ``specs/064-headless-sim-runner/contracts/trace_csv_schema.yaml``
 (22 columns; format: UTF-8, comma-delimited, RFC 4180 minimal quoting,
@@ -493,8 +493,9 @@ Float and Tolerance Policy
 -----------------------------
 
 Babylon uses **three distinct, independently-derived tolerance regimes** —
-conflating them is a documented anti-pattern (Constitution III.7's
-input-hash-drift vs behavioral-drift distinction generalizes to this too).
+conflating them is a documented anti-pattern. Article V's canonical-input
+identity and Article VIII's behavioral validation keep input drift distinct
+from behavioral drift.
 Each has a written derivation in the codebase, following the pattern
 established in ``specs/053-conservation-invariants/contracts/value_conservation.md``:
 state the invariant, state the tolerance as a function of a size parameter
@@ -504,8 +505,8 @@ where relevant, name the test file, name the failure mode.
    tolerance ``TOLERANCE = 1e-5`` per float field
    (``tools/regression_test.py:61``), applied field-by-field in
    ``compare_checkpoints()`` (``tools/regression_test.py:353-395``,
-   ``if abs(exp_val - act_val) > tolerance``). This is the gate Constitution
-   III.7 names as the falsifiability mechanism — "a prediction is a
+   ``if abs(exp_val - act_val) > tolerance``). Historical v3 clause III.7
+   named this gate as the falsifiability mechanism — "a prediction is a
    checkpointed value, a falsifying observation is a value that drifts
    beyond tolerance." Fixed, not scaled by any size parameter, because a
    checkpoint compares individual scalar fields (wealth, tension,
@@ -537,11 +538,12 @@ where relevant, name the test file, name the failure mode.
    name the growth model (here, summation error), not just a number pulled
    from thin air.
 
-Corollary (b) of Constitution III.12 states this policy's boundary
+Corollary (b) of historical v3 clause III.12 states this policy's boundary
 precisely: *"byte-identical replay is guaranteed only within a single
 implementation and libm; cross-implementation validation is
-tolerance-bounded checkpoint comparison (III.7) with written tolerance
-derivations."* A reimplementation should target regime 1's numbers
+tolerance-bounded checkpoint comparison (historical v3 clause III.7) with
+written tolerance derivations."* A reimplementation should target regime 1's
+numbers
 (checkpoint tolerance) for cross-language validation against
 ``tests/baselines/*.json``, since regimes 2 and 3 are internal engine
 self-consistency checks, not cross-implementation contracts.
@@ -583,10 +585,11 @@ What Stays Valid Under Rewrite
      - A reimplementation targeting the same Postgres runtime must match
        column names/types/constraints exactly; this is verified by test,
        not by hash.
-   * - ``observe()`` / HTTP contracts (Constitution II.8)
-     - Contract test per boundary (Constitution III.12 corollary (c))
+   * - ``observe()`` / HTTP contracts (historical v3 clause II.8)
+     - Contract test per boundary (historical v3 clause III.12 corollary (c))
      - Out of this document's scope; each boundary ships its own contract
-       test per III.12(c)'s redundant-verification requirement.
+       test per historical v3 clause III.12(c)'s redundant-verification
+       requirement.
    * - ``tick_commit.replay_identity_hash``
      - **Not** a cross-run or cross-implementation contract — see
        *Known Discrepancies* below
@@ -649,7 +652,7 @@ added later). Every subsequent tick's row re-derives the entity/edge set
 from the live ``WorldState`` and asserts it still matches the tick-0
 header; a scenario that ever violated this assumption would raise
 ``ValueError`` naming the tick and the topology delta rather than silently
-misaligning columns (Constitution III.11, Loud Failure) — this is
+misaligning columns (Constitution Article V, Loud Failure) — this is
 untested-because-unreachable by the current 5 scenarios, not a
 theoretical-only guard.
 
@@ -746,7 +749,7 @@ from a prior run is removed at the start of a compare, and the file is only
 leaves no misleading report behind. Absence of a dense golden for a scenario
 is **not** a failure (dense goldens are additive, per-scenario; a scenario
 without one is simply not dense-checked yet) — only a byte mismatch against
-an *existing* golden fails the gate, keeping with Constitution III.11's
+an *existing* golden fails the gate, keeping with Constitution Article V's
 distinction between a genuine failure and an empty/not-yet-populated domain.
 
 Determinism verified: the five committed goldens were generated twice, in
@@ -754,15 +757,105 @@ two independent ``uv run python`` processes, and byte-compared
 (``cmp``) identical before being committed — the intra-implementation
 guarantee *Scope* above claims, demonstrated rather than assumed.
 
-The P27 Tick Hash (Rust Kernel Reference)
---------------------------------------------
+Current Rust Nominal World Hash (PER-18)
+----------------------------------------
 
-**Status: forward specification, Program 27 Phase 1 target — not yet
-implemented.** This chapter names the single canonical per-tick content
-hash for ``babylon-kernel`` (Constitution III.7's literal definition —
+**Status: implemented in the Rust tick path.** PER-18 and ADR223 establish two
+separate current identities:
+
+``GraphStateHash``
+   The SHA-256 diagnostic over canonical graph facts. Its existing graph
+   layout remains unchanged. It does not cover elapsed time or allocator
+   history.
+
+``NominalWorldHash``
+   The SHA-256 identity of the current mutable Rust graph-and-tick registers:
+   ``GraphStateHash``, the completed weekly tick, both monotonic graph
+   allocator cursors, and the governed static phase-schedule digest.
+
+The frozen Python P27 tick hash below is a reference implementation over a
+JSON node, edge, action, tick, and seed record. It is neither of these Rust
+hashes. ADR220 reserves ``TickContentHash`` for the future complete
+seed/content/reference/state/action identity at the PostgreSQL writer cutover.
+``NominalWorldHash`` must never be stored under that stronger name.
+
+This section specifies only the outer ``NominalWorldHash`` composition. It
+treats ``GraphStateHash`` and ``phase_schedule_digest`` as authoritative
+32-byte inputs. Their inner domain strings, tagged sections, omissions, slot
+registry, alias table, and golden digests remain defined only in the cited Rust
+code and tests. An independent implementation still needs those sources. That
+is an explicit rewrite-contract gap, not a claim that this page specifies the
+complete Rust world identity.
+
+Canonical layout
+++++++++++++++++
+
+Every integer is big-endian. The 116-byte version-1 preimage is the fixed
+ASCII domain ``babylon.world-state`` followed by NUL, a big-endian ``u32``
+layout version, and four tagged sections in this exact order:
+
+.. code-block:: text
+
+   "babylon.world-state\0"
+   u32(1)
+   0x01 | GraphStateHash[32]
+   0x02 | completed_tick:i64
+   0x03 | next_node:u64 | next_hyperedge:u64
+   0x04 | phase_schedule_digest[32]
+
+The completed tick cannot be negative. The allocator value ``u64::MAX`` is
+the reserved exhausted sentinel; ``u64::MAX - 1`` is the last identity either
+allocator can mint. The current Rust schedule digest is separately versioned
+and hashes all 34 canonical slots plus the byte-sorted compatibility aliases.
+It includes each partition, ordinal, and resolved default rank. Content order
+does not enter the schedule digest or this nominal identity. This paragraph is
+descriptive; it is not a complete schedule-digest byte specification.
+
+Exact asymmetric vector
++++++++++++++++++++++++
+
+The executable vector uses graph bytes ``01`` through ``20``, completed tick
+``0x0102030405060708``, node cursor ``0x1112131415161718``, hyperedge cursor
+``0x2122232425262728``, and schedule bytes ``a1`` through ``c0``. Its exact
+116-byte preimage is:
+
+.. code-block:: text
+
+   626162796c6f6e2e776f726c642d73746174650000000001010102030405060708
+   090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20020102030405060708
+   031112131415161718212223242526272804a1a2a3a4a5a6a7a8a9aaabacadaeaf
+   b0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0
+
+Its SHA-256 is
+``8ce3e668779b762d26bf3543820775d52d711ffae6076006297c85968fb12751``.
+The test asserts the hand-written bytes before the digest, so a wrong tag,
+field order, or endian choice cannot pass by updating one captured hash.
+
+Atomicity and determinism evidence
+++++++++++++++++++++++++++++++++++
+
+``TickSession`` and both one-shot entry points adjudicate against a detached
+working graph, buffer events, and reserve the complete event batch before
+publication. A returned error leaves graph bytes, cursors, prior events, and
+completed time unchanged. Tests inject failures in Material Base, Action, and
+Consequences on both graph stores, plus pre-hash, post-hash non-finite, event
+publication, allocator-exhaustion, and tick-exhaustion paths.
+
+A real multi-rule tick compares both graph hashes, both nominal-world hashes,
+total and per-rule firing, and exact typed event payloads in parent and child
+processes, under reversed insertion order and both graph backends. These tests
+prove computational identity, not scientific truth or PostgreSQL durability.
+
+The P27 Tick Hash (Frozen Python Reference)
+-------------------------------------------
+
+**Status: implemented as a frozen Python reference serializer, but not wired as
+the current Rust tick identity or the future durable writer hash.** This
+chapter originally named a single canonical per-tick content hash for the
+Program 27 kernel under historical v3 clause III.7's literal definition:
 *"a deterministic SHA-256 hash of its inputs: World state + player actions
-+ random seed"*, ``CONSTITUTION.md:250``) that the Rust port is required to
-compute, replacing the three-hash tangle documented in *Catalog of
++ random seed"*. The historical target required the Rust port to compute it,
+replacing the three-hash tangle documented in *Catalog of
 Constitutional Hashes* above (``defines_hash``, ``tick_commit.replay_identity_hash``,
 ``conservation_audit_log.hex_frame_hash`` — both named ``determinism_hash``
 pre-0044) with **one unambiguously named value** — resolving the naming
@@ -786,8 +879,8 @@ reading aid):**
      - The current tick index.
    * - ``rng_seed``
      - ``u64``
-     - The session's fixed RNG seed (Constitution III.7's ``random seed``
-       input). **Not** the session UUID — the session identifier never
+     - The session's fixed RNG seed (historical v3 clause III.7's
+       ``random seed`` input). **Not** the session UUID — the session identifier never
        enters this hash, keeping it independent of run identity, unlike
        ``tick_commit.replay_identity_hash`` today.
    * - ``nodes``
@@ -883,7 +976,7 @@ reading aid):**
 - **Ban on stringly fallbacks:** a field encountered during serialization
   that has no encoding rule above (i.e. not one of int / ``i128`` / ``f64``
   / bool / enum-or-string / array / nested record) is a **hash-time load
-  failure** (Constitution III.11, Loud Failure) — it MUST NOT fall back to
+  failure** (Constitution Article V, Loud Failure) — it MUST NOT fall back to
   a generic ``str(obj)``/``Debug``-style rendering. This explicitly bans
   the pattern ``conservation_audit.py``'s ``compute_hex_frame_hash()``
   uses today (``json.dumps(..., default=str)``, ``conservation_audit.py:110``)
@@ -931,8 +1024,13 @@ Postgres ``EXCEPT`` row-diff pattern this document already documents (see
 ``tick_commit.replay_identity_hash`` above), and this hash's job is a single
 unambiguous per-tick content fingerprint, not a chain.
 
-**Today vs. this chapter — what changes:** all three of today's hashes
-must be reconciled into this one at cutover. Concretely: (1)
+**Current disposition:** ``babylon.kernel.tick_hash`` implements this
+language-neutral reference layout and its tests preserve the rewrite artifact.
+The shipping Rust tick does not call it. Gate 3 must decide which parts survive
+inside the complete ``TickContentHash`` while adding all current Rust auxiliary
+registers, content and reference digests, and the durable action/campaign
+contract. The original transition analysis follows: all three older Python
+hashes needed reconciliation at cutover. Concretely: (1)
 ``defines_hash`` is unaffected (it stays a separate, independent hash —
 see the *ContentDigest* chapter below); (2) ``tick_commit.replay_identity_hash``
 today carries **no world state at all** (just
@@ -979,10 +1077,10 @@ benefit from mirroring a 39-category Pydantic model's declaration order:
 
 **``rules_hash`` — canonical AST serialization (CAS): specified in the BSL
 Language Reference.** Purpose: a rule-file edit that only reformats
-whitespace or adds/removes a comment must **not** move ``rules_hash``
-(Constitution III.7's input-hash-drift-vs-behavioral-drift distinction,
-generalized to rule content — see *Content pipeline*,
-``docs/superpowers/specs/2026-07-28-program-27-refoundation-design.md:404-406``);
+whitespace or adds/removes a comment must **not** move ``rules_hash``.
+Article V's canonical-input identity applies here to rule content. See
+*Content pipeline*
+(``docs/superpowers/specs/2026-07-28-program-27-refoundation-design.md:404-406``);
 a rule edit that changes the parsed AST must move it.
 
 The byte-level serialization behind ``rules_hash`` is normatively defined in
@@ -1047,7 +1145,7 @@ Rationale, ratified from that module's own text: (1) it takes an exact
 32-byte seed — a SHA-256 digest's width, so the derivation needs no
 truncation or expansion step; (2) it is a pure-Rust, no-``unsafe``,
 platform-independent stream-cipher construction, fully deterministic from
-its seed with no OS-entropy dependency (III.7); (3) 8 rounds is the "fast,
+its seed with no OS-entropy dependency under Article V; (3) 8 rounds is the "fast,
 still no known practical distinguisher" configuration — this is not a
 cryptographic-security use case, so ``ChaCha8`` over ``ChaCha20`` is pure
 speed with no correctness cost. Constructed only per ``(session_id, tick)``
@@ -1165,9 +1263,9 @@ non-reproducibility the *Scope* chapter above names (lines 53-66) — so a
 per-build determinism claim would be strictly weaker than the ruling
 requires and would silently make the tick hash platform-dependent.
 Consequence: **the Rust engine's tick hash is byte-identical across OS,
-libc, and CPU architecture** — a *stronger* claim than Constitution
-III.12 corollary (b), which continues to govern comparisons against the
-frozen Python engine (glibc) and nothing else.
+libc, and CPU architecture** — a *stronger* claim than historical v3 clause
+III.12 corollary (b), which continues as the recorded comparison policy
+against the frozen Python engine (glibc) and nothing else.
 
 **Why ``libm 0.2.16`` satisfies "pinned soft-float," verified in the
 vendored source** (already present transitively via Bevy/glam/naga before
@@ -1226,8 +1324,8 @@ this train promotes it from a transitive to a *direct* dependency of
    never ``abs(a - b) < eps``. Any drift is a red gate: a ``libm`` bump, a
    feature flip, or an accidental ``f64::exp`` all fail the golden
    vectors.
-2. **Against the frozen Python engine: tolerance is the III.12
-   corollary-(b) regime** (*Float and Tolerance Policy* above, regime 1).
+2. **Against the frozen Python engine: tolerance is the historical v3 clause
+   III.12 corollary-(b) regime** (*Float and Tolerance Policy* above, regime 1).
    CPython's ``math.exp``/``math.log`` call glibc; glibc and MUSL
    disagree in the last 1-2 ULPs (lines 53-66 above). Derivation: a bound
    of ``2 ulp(result)`` covers the crossing error per call — glibc
@@ -1266,7 +1364,7 @@ The four spec-pinned operators (refoundation design §6.1):
      - Rule
    * - ``Currency ± Currency``
      - ``Currency``
-     - checked i128 add/sub; overflow is a loud III.11 failure, never
+     - checked i128 add/sub; overflow is a loud Article V failure, never
        wrapping or saturating
    * - ``Currency × Coefficient``
      - ``Currency``
@@ -1333,9 +1431,9 @@ this document** (doc-only lane).
    owner-queue item 31). The original finding, kept as history:
    **``PerTickTransactionEnvelope.determinism_hash`` is not "a single ...
    shared across all rows."** The docstring
-   (``src/babylon/persistence/envelope.py:42-43``) states: *"A single
-   ``determinism_hash`` is shared across all rows in the tick (GATE-1 /
-   Constitution III.7)."* In the live wiring
+   (``src/babylon/persistence/envelope.py:42-43``) states that one
+   ``determinism_hash`` is shared across every row and attributes the claim to
+   historical v3 clause III.7. In the live wiring
    (``bridge.py:544-563``), this is **false**: ``envelope.determinism_hash``
    (the trivial ``session_id:tick:seed`` identity string, destined for
    ``tick_commit``) and each ``ConservationAuditRow.determinism_hash``
@@ -1353,19 +1451,20 @@ this document** (doc-only lane).
    to be a determinism hash; ``0029``'s comment stands as history and
    ``0044`` records the correction.] Original finding: **The ``tick_commit``
    migration's own comment overstates what it stores.**
-   ``0029_tick_commit.sql:9`` calls the column "the queryable
-   Constitution-III.7 hash chain," but per III.7's own text
-   (``CONSTITUTION.md:250``, "hash of its inputs: World state + player
-   actions + random seed"), the stored value contains none of those three
+   ``0029_tick_commit.sql:9`` calls the column a queryable hash chain under
+   historical v3 clause III.7. That clause described a hash of world state,
+   player actions, and random seed, but the stored value contains none of those three
    things — it is a session/tick/seed identity string with no dependency on
-   engine output. The value that *does* match III.7's definition
+   engine output. The value that *does* match historical v3 clause III.7's
+   definition
    (``compute_determinism_hash()``) is stored elsewhere
    (``conservation_audit_log``), not in ``tick_commit``.
-3. **Player actions are not currently threaded into the III.7 content
-   hash.** ``bridge.py:544-549`` calls ``audit_end_of_tick()`` without an
+3. **Player actions are not currently threaded into the historical v3 clause
+   III.7 content hash.** ``bridge.py:544-549`` calls ``audit_end_of_tick()``
+   without an
    ``action_list`` argument, so ``compute_determinism_hash()``'s ``actions``
-   input is always ``[]`` in the live path — even though both III.7's prose
-   and the function's own parameter exist to accommodate them. This is a
+   input is always ``[]`` in the live path — even though historical v3 clause
+   III.7 and the function's own parameter exist to accommodate them. This is a
    gap between the mechanism's design surface and its current wiring, not a
    correctness bug (there is no current caller with actions to pass), but a
    reimplementation should not assume actions are exercised by any existing
@@ -1373,8 +1472,8 @@ this document** (doc-only lane).
 
 None of the above required a code change to observe or document; they are
 reported per this document's scope as facts about the current
-implementation, for the orchestrator to weigh against Constitution III.12
-corollary (a)'s ``[PENDING CODE]`` marker and Program 13 item 2 (dense
+implementation, for the orchestrator to weigh against historical v3 clause
+III.12 corollary (a)'s ``[PENDING CODE]`` marker and Program 13 item 2 (dense
 goldens).
 
 See Also
@@ -1388,8 +1487,10 @@ See Also
   related but distinct drift-prevention mechanism (grid-snapping engine
   values at the type boundary, independent of this document's
   hash/tolerance policy).
-- ``CONSTITUTION.md`` III.7 (Determinism and Replayability), III.12
-  (Behavioral Contracts, Amendment Q).
+- ``CONSTITUTION.md`` Articles V and VIII — current deterministic architecture
+  and behavioral-validation authority.
+- ``ai/decisions/ADR221_game_first_refoundation_v4.yaml`` — transition mapping
+  for historical v3 clause III.7 and historical v3 clause III.12.
 - ``specs/053-conservation-invariants/contracts/value_conservation.md`` —
   the tolerance-derivation pattern this document's *Float and Tolerance
   Policy* section follows.

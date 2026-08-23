@@ -1,6 +1,6 @@
 meta:
-  version: 1.75.0
-  updated: '2026-08-22'
+  version: 1.76.0
+  updated: '2026-08-23'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
   # ADR NUMBER ALLOCATION (controller ruling 2026-07-21, v1.0.0 parallel lanes —
@@ -1025,3 +1025,8 @@ decisions:
     status: accepted
     date: '2026-08-23'
     file: ADR222_executable_bsl_phase_order.yaml
+  ADR223_whole_tick_atomicity_world_hash:
+    title: 'Rust adjudicates each weekly tick on a detached world, publishes graph, events, allocator state, and completed time only after total success, and names current in-memory identity with a versioned nominal world hash'
+    status: accepted
+    date: '2026-08-23'
+    file: ADR223_whole_tick_atomicity_world_hash.yaml

@@ -9,6 +9,7 @@
 //! Row numbering below matches `task-2-brief.md` §2.2 verbatim (rows 1-8).
 use babylon_client::engine_link::EngineSession;
 use babylon_client::loop_ui::TickCounter;
+use babylon_client::ui::admin::LastTickReport;
 use babylon_client::ui::time::{ticks_due, AutopauseMode, RunState, SPEEDS_PER_SECOND};
 use bevy::asset::AssetPlugin;
 use bevy::input::keyboard::{Key, KeyboardInput, NativeKey};
@@ -240,7 +241,7 @@ fn ten_discrete_advances_and_a_ticks_due_batch_of_ten_hash_identically() {
     let mut stepped_hashes = Vec::new();
     for _ in 0..10 {
         let report = stepped.advance().expect("stepped advance");
-        stepped_hashes.push(report.after);
+        stepped_hashes.push(report.world_after);
     }
 
     let interval = 1.0 / SPEEDS_PER_SECOND[0];
@@ -259,7 +260,7 @@ fn ten_discrete_advances_and_a_ticks_due_batch_of_ten_hash_identically() {
         accumulator = remainder;
         for _ in 0..due {
             let report = batched.advance().expect("batched advance");
-            batched_hashes.push(report.after);
+            batched_hashes.push(report.world_after);
         }
     }
 
@@ -275,11 +276,9 @@ fn ten_discrete_advances_and_a_ticks_due_batch_of_ten_hash_identically() {
 /// The wiring-level half of the claim: the REAL `advance_ticks` system,
 /// driven once by ten real `Space` presses and once by real injected
 /// `Time` durations (never a keypress), must reach the identical tick
-/// count and state hash at tick 10.
+/// count and nominal world hash at tick 10.
 #[test]
 fn ten_space_presses_and_an_auto_run_batch_reach_the_same_wired_tick_and_hash() {
-    use babylon_graph::state_hash::CanonicalState;
-
     let mut stepped_app = new_app();
     stepped_app.update(); // Startup
     press_key_via_real_event(&mut stepped_app, KeyCode::KeyP);
@@ -293,11 +292,11 @@ fn ten_space_presses_and_an_auto_run_batch_reach_the_same_wired_tick_and_hash() 
     let stepped_tick = stepped_app.world().resource::<TickCounter>().0;
     let stepped_hash = stepped_app
         .world()
-        .resource::<EngineSession>()
-        .inner
-        .graph()
-        .state_hash()
-        .expect("stepped hash");
+        .resource::<LastTickReport>()
+        .0
+        .as_ref()
+        .expect("stepped tick ten report")
+        .world_after;
 
     let mut batched_app = new_app();
     batched_app.update(); // Startup
@@ -312,18 +311,18 @@ fn ten_space_presses_and_an_auto_run_batch_reach_the_same_wired_tick_and_hash() 
     let batched_tick = batched_app.world().resource::<TickCounter>().0;
     let batched_hash = batched_app
         .world()
-        .resource::<EngineSession>()
-        .inner
-        .graph()
-        .state_hash()
-        .expect("batched hash");
+        .resource::<LastTickReport>()
+        .0
+        .as_ref()
+        .expect("batched tick ten report")
+        .world_after;
 
     assert_eq!(stepped_tick, 10);
     assert_eq!(batched_tick, 10);
     assert_eq!(
         stepped_hash, batched_hash,
         "10 discrete Space presses and one auto-run batch of 10 must reach \
-         byte-identical state at tick 10"
+         byte-identical nominal world identity at tick 10"
     );
 }
 

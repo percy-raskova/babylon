@@ -5,9 +5,19 @@
 //! explicit `(anchor :before|:after <system>)` selects a boundary around a
 //! governed slot. Rules sharing one resolved position retain D16's ascending
 //! rule-ID byte order. Source and file order are never observable.
+//!
+//! [`schedule_digest`] fingerprints the governed scheduling law, not one
+//! content pack. Its version-1 canonical bytes are: the fixed domain string
+//! `babylon.phase-schedule\0`; a big-endian `u32` layout version; a
+//! big-endian `u32` slot count; then each canonical slot in governed order as
+//! `str name | u8 partition | u8 ordinal | u16 default-rank`; then a
+//! big-endian `u32` alias count and each alias sorted by alias name as
+//! `str alias | str canonical | u16 resolved-default-rank`. Here `str` is a
+//! big-endian `u32` UTF-8 byte length followed by the raw UTF-8 bytes.
 
 use babylon_bsl::mod_anchors::{check_anchor, AnchorDecl, AnchorError, AnchorPosition};
 use babylon_bsl::reader::SExpr;
+use babylon_kernel::sha256_of;
 use std::collections::{BTreeMap, HashSet};
 
 const MATERIAL_BASE_COUNT: usize = 15;
@@ -15,6 +25,8 @@ const ACTION_COUNT: usize = 1;
 const CONSEQUENCE_COUNT: usize = 18;
 const SYSTEM_COUNT: usize = MATERIAL_BASE_COUNT + ACTION_COUNT + CONSEQUENCE_COUNT;
 const AFTER_MATERIAL_BASE_RANK: usize = MATERIAL_BASE_COUNT * 2;
+const SCHEDULE_DIGEST_LAYOUT_VERSION: u32 = 1;
+const SCHEDULE_DIGEST_DOMAIN: &[u8] = b"babylon.phase-schedule\0";
 
 /// The three contiguous causal partitions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -302,6 +314,68 @@ pub(crate) fn registered_systems() -> HashSet<String> {
         .collect()
 }
 
+/// SHA-256 of the versioned, canonical 34-slot scheduling law.
+pub(crate) fn schedule_digest() -> Result<[u8; 32], ScheduleError> {
+    validate_registry()?;
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(SCHEDULE_DIGEST_DOMAIN);
+    bytes.extend_from_slice(&SCHEDULE_DIGEST_LAYOUT_VERSION.to_be_bytes());
+    push_schedule_count(&mut bytes, SYSTEM_SLOTS.len(), "canonical slots")?;
+    for slot in SYSTEM_SLOTS {
+        push_schedule_str(&mut bytes, slot.name)?;
+        bytes.push(partition_tag(slot.partition));
+        bytes.push(slot.ordinal);
+        bytes.extend_from_slice(&default_rank(slot)?.to_be_bytes());
+    }
+
+    let mut aliases: Vec<&SystemAlias> = SYSTEM_ALIASES.iter().collect();
+    aliases.sort_unstable_by(|a, b| a.name.as_bytes().cmp(b.name.as_bytes()));
+    push_schedule_count(&mut bytes, aliases.len(), "system aliases")?;
+    for alias in aliases {
+        push_schedule_str(&mut bytes, alias.name)?;
+        push_schedule_str(&mut bytes, alias.canonical)?;
+        let slot = SYSTEM_SLOTS
+            .iter()
+            .find(|slot| slot.name == alias.canonical)
+            .ok_or_else(|| ScheduleError::Registry {
+                message: format!("system alias {} has no canonical slot", alias.name),
+            })?;
+        bytes.extend_from_slice(&default_rank(*slot)?.to_be_bytes());
+    }
+    Ok(sha256_of(&bytes))
+}
+
+fn push_schedule_count(bytes: &mut Vec<u8>, count: usize, what: &str) -> Result<(), ScheduleError> {
+    let count = u32::try_from(count).map_err(|_| ScheduleError::Registry {
+        message: format!("{what} count {count} exceeds u32"),
+    })?;
+    bytes.extend_from_slice(&count.to_be_bytes());
+    Ok(())
+}
+
+fn push_schedule_str(bytes: &mut Vec<u8>, value: &str) -> Result<(), ScheduleError> {
+    push_schedule_count(bytes, value.len(), "schedule string bytes")?;
+    bytes.extend_from_slice(value.as_bytes());
+    Ok(())
+}
+
+fn partition_tag(partition: TickPartition) -> u8 {
+    match partition {
+        TickPartition::MaterialBase => 0,
+        TickPartition::Action => 1,
+        TickPartition::Consequence => 2,
+    }
+}
+
+fn default_rank(slot: SystemSlot) -> Result<u16, ScheduleError> {
+    u16::from(slot.ordinal)
+        .checked_mul(2)
+        .and_then(|rank| rank.checked_add(1))
+        .ok_or_else(|| ScheduleError::Registry {
+            message: format!("default execution rank overflow for system {}", slot.name),
+        })
+}
+
 /// Compile raw rule forms into their total execution order.
 pub(crate) fn compile(rule_forms: &[(String, SExpr)]) -> Result<RuleOrderPlan, ScheduleError> {
     validate_registry()?;
@@ -546,6 +620,14 @@ mod tests {
             ]
         );
         validate_registry().expect("the governed registry is internally valid");
+    }
+
+    #[test]
+    fn schedule_law_digest_pins_slots_partitions_ranks_and_sorted_aliases() {
+        assert_eq!(
+            crate::hex(&schedule_digest().expect("the governed schedule encodes")),
+            "3cb992b960112948023e5fcfa1335f2a6e6270628f27fe758186bc9c4d6b2487"
+        );
     }
 
     #[test]

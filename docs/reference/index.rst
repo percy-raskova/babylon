@@ -113,8 +113,8 @@ concrete implementations (``PostgresRuntime``, ``RuntimeDatabase``,
 ``PgVectorStore``, ``TraceRecorder``), database schema, and the
 ``PersistenceObserver`` lifecycle hook.
 
-Projection Registry (Program 24, Constitution II.11)
-----------------------------------------------------
+Projection Registry (Program 24)
+--------------------------------
 
 .. toctree::
    :maxdepth: 1
@@ -123,21 +123,23 @@ Projection Registry (Program 24, Constitution II.11)
 
 The declared-view registry behind the transport-neutral projection layer
 (``babylon.projection``): per-view ownership, frozen view-models, explicit
-``ORDER BY`` determinism, and FTS columns. The mandated II.11 spec.
+``ORDER BY`` determinism, and FTS columns. ADR221 re-homes historical v3
+clause II.11 here and in the architecture record.
 
-Determinism Contract (Constitution III.12)
--------------------------------------------
+Determinism Contract (Constitution Article V)
+----------------------------------------------
 
 .. toctree::
    :maxdepth: 1
 
    determinism-contract
 
-The language-agnostic, byte-level specification of every constitutional
-hash (``defines_hash``, ``tick_commit.determinism_hash``,
-``conservation_audit_log.determinism_hash``): canonical serialization,
-worked examples, the three float-tolerance regimes, and documented
-discrepancies between hash naming/docstrings and actual behavior.
+The identity taxonomy and selected byte layouts: the legacy Python replay
+marker and hex-frame hash, the roles of ``GraphStateHash`` and the current Rust
+``NominalWorldHash``, and the reserved ``TickContentHash`` name. The nominal
+section specifies its outer composition but records the graph and schedule
+inputs as a rewrite-contract gap. The page also records worked examples,
+float-tolerance regimes, and historical naming discrepancies.
 
 BSL Language Reference (Program 27)
 -------------------------------------
@@ -154,8 +156,8 @@ evaluation and fuel accounting, the canonical AST serialization behind
 ``rules_hash``, and the conformance-vector contract. Phase-1 draft under
 the Program 27 refoundation design.
 
-Declared Synthetic Data (Constitution III.11 / VIII.12)
----------------------------------------------------------
+Declared Synthetic Data (Constitution Article V)
+-------------------------------------------------
 
 .. toctree::
    :maxdepth: 1

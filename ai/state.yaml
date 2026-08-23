@@ -2,7 +2,7 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.71.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  version: "2.72.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-08-23"
   role: historical_implementation_ledger
   history_policy: append_or_prepend_only
@@ -17,7 +17,7 @@ meta:
       url: >-
         https://linear.app/percy-raskova/document/babylon-v4-roadmap-charter-2c67d2898306
   v4_governance_snapshot:
-    as_of: "2026-08-22"
+    as_of: "2026-08-23"
     implementation_truth: ai/architecture.yaml
     lower_entries: dated_snapshots_only
     current_status_queries: Linear
@@ -27,12 +27,17 @@ meta:
       adr: ADR220_rust_owned_postgresql_persistence_boundary
       completion_commit: 9b4c9b2e
     bsl_phase_order:
-      status: implemented_on_PER-17_branch
+      status: implemented_on_dev
       issue: PER-17
       adr: ADR222_executable_bsl_phase_order
-      branch: codex/per-17-executable-phase-anchors
+      merge_commit: 5a0ef2a9
+    whole_tick_atomicity:
+      status: implemented_on_PER-18_branch
+      issue: PER-18
+      adr: ADR223_whole_tick_atomicity_world_hash
+      branch: codex/per-18-whole-tick-atomicity
+      scope: in_memory_only
       remaining_gate_2:
-        - PER-18
         - PER-19
     attributed_membership_payload:
       status: planned
@@ -54,6 +59,25 @@ meta:
       work or override Linear status, priority, dependencies, Horizon,
       milestones, or schedule.
   truth_status: |
+    (2026-08-23 GATE 2 — PER-18 WHOLE-TICK ATOMICITY AND NOMINAL WORLD HASH
+    IMPLEMENTED, REVIEW/PR PENDING) `babylon-graph` now exposes an explicit
+    detached-copy contract for both stores and rejects node, hyperedge, and
+    tick-counter exhaustion before mutation. `babylon-tick` stages one-shot
+    preparation, hydration, ordered rules, hashes, and event reservation before
+    publishing graph, allocator cursors, events, or completed time. Failure
+    vectors cover all three causal partitions on both backends, both public
+    one-shot variants, event refusal, pre-hash failure, and a real StateEncoder
+    NaN rejection. A parent/child multi-rule proof compares graph hashes,
+    nominal world hashes, total and per-rule firing, and exact typed event
+    payloads across insertion permutations and both stores. NominalWorldHash v1
+    covers GraphStateHash, completed weekly time, both allocator cursors, and
+    the static governed phase-schedule digest with an exact 116-byte asymmetric
+    big-endian vector. Bevy shows the committed nominal world hash. ADR223
+    records the in-memory transaction and hash law. Gate 2 remains open only on
+    PER-19 causal composition, provenance/direct-write constraints, and
+    negative outcome-write contracts. PostgreSQL durability, the complete
+    TickContentHash, and CommittedTickEnvelope remain Gate 3 work.
+    PREVIOUS:
     (2026-08-23 GATE 2 — PER-17 EXECUTABLE BSL PHASE ORDER IMPLEMENTED,
     REVIEW/PR PENDING) `babylon-tick` now compiles every admitted rule onto
     the frozen 34-system causal spine (15 Material Base, one Action, 18

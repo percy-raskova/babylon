@@ -1,7 +1,7 @@
 ---
 meta:
   name: Babylon v4 architecture truth record
-  version: "4.1.0"
+  version: "4.2.0"
   updated: "2026-08-23"
   role: current_and_planned_architecture
   authority: CONSTITUTION.md v4.0.0
@@ -121,11 +121,12 @@ implementation_status:
       execution_truth: >-
         The tick compiles rules onto the governed 34-system causal spine.
         Namespace homes and explicit boundaries determine position; rule-ID
-        bytes break same-position ties only. Rules then mutate the held graph
-        in place.
+        bytes break same-position ties only. Rules then execute against one
+        detached working graph and buffer events. The graph and events publish
+        only after every rule and both hash boundaries succeed.
       limitation: >-
         Same-position rules remain sequential and can observe earlier writes.
-        Whole-tick working-copy rollback remains PER-18.
+        PER-19 owns the shared-prestate and causal-composition repair.
       absent_from_current_content:
         - executable_shocks
         - executable_player_actions
@@ -138,10 +139,12 @@ implementation_status:
       scope:
         - persistent_in_memory_graph
         - sequential_rule_execution
+        - detached_whole_tick_working_copy
+        - buffered_event_publication
         - tick_increment_after_success
       limitation: >-
-        There is no working-copy swap. A later rule failure can leave earlier
-        rule mutations in the held graph even though the tick does not advance.
+        Atomicity is in memory only. PostgreSQL durability, crash recovery, and
+        the CommittedTickEnvelope remain Gate 3 work.
       evidence:
         - rust/crates/babylon-tick/src/session.rs
 
@@ -150,9 +153,25 @@ implementation_status:
       scope:
         - canonical_graph_sections
         - unsigned_u64_big_endian_fields
-      limitation: auxiliary political-economy registers are not yet hash-covered
+      limitation: graph_only_diagnostic_not_complete_tick_identity
       evidence:
         - rust/crates/babylon-graph/src/state_hash.rs
+
+    nominal_world_hash:
+      status: implemented_current
+      scope:
+        - canonical_graph_hash
+        - completed_weekly_tick
+        - node_and_hyperedge_allocator_cursors
+        - governed_phase_schedule_digest
+        - versioned_tagged_big_endian_layout
+      limitation: >-
+        This covers every auxiliary register that currently exists in the Rust
+        tick. It is not the future TickContentHash and does not include content,
+        reference, seed, action, or durable campaign-envelope identity.
+      evidence:
+        - rust/crates/babylon-tick/src/world_hash.rs
+        - rust/crates/babylon-tick/src/session.rs
 
     bevy_admin_viewer:
       status: implemented_current
@@ -267,10 +286,16 @@ implementation_status:
         - rust/crates/babylon-tick/tests/phase_anchor_conformance.rs
         - ai/decisions/ADR222_executable_bsl_phase_order.yaml
     PER-18:
-      status: planned
+      status: implemented_current
       gate: G2
       component: >-
         whole_tick_working_copy_rollback_and_canonical_big_endian_auxiliary_register_combined_world_hashing
+      evidence:
+        - rust/crates/babylon-graph/src/working_copy.rs
+        - rust/crates/babylon-tick/src/lib.rs
+        - rust/crates/babylon-tick/src/session.rs
+        - rust/crates/babylon-tick/src/world_hash.rs
+        - ai/decisions/ADR223_whole_tick_atomicity_world_hash.yaml
     PER-19:
       status: planned
       gate: G2

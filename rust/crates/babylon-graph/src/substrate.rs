@@ -85,8 +85,9 @@ pub trait GraphSubstrate {
     /// Mint one typed node.
     ///
     /// # Errors
-    /// Returns [`GraphError`] if the implementation cannot allocate the node
-    /// (for example, an exhausted identity space).
+    /// Returns [`GraphError`] if the implementation cannot allocate the node.
+    /// `u64::MAX` is the reserved exhausted-cursor sentinel, so the last
+    /// mintable identity is `NodeId(u64::MAX - 1)`.
     fn add_node(&mut self, node_type: &str) -> Result<NodeId, GraphError>;
 
     /// Remove a node, **cascading** to its incident structure (ADR185 R2).
@@ -269,8 +270,10 @@ pub trait GraphSubstrate {
     /// `members.len()` incidences — never `C(n,2)` edges.
     ///
     /// # Errors
-    /// Returns [`GraphError`] if `members` is empty, contains a duplicate, or
-    /// names a node that does not exist.
+    /// Returns [`GraphError`] if `members` is empty, contains a duplicate,
+    /// names a node that does not exist, or the identity space is exhausted.
+    /// `u64::MAX` is the reserved exhausted-cursor sentinel, so the last
+    /// mintable identity is `HyperedgeId(u64::MAX - 1)`.
     fn add_hyperedge(
         &mut self,
         hyperedge_type: &str,

@@ -171,6 +171,8 @@ mod tests {
         let report = babylon_tick::TickReport {
             before: [0u8; 32],
             after: [1u8; 32],
+            world_before: [2u8; 32],
+            world_after: [3u8; 32],
             fired: 18,
             per_rule_fired: vec![
                 ("lifecycle/dpd-circuit".to_owned(), 12),

@@ -732,12 +732,16 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
 
     // rule_forms is `Vec<(String, SExpr)>` — each rule's id already paired
     // with its form by split_content (Task 2), so no second extraction
-    // here. Rules load in reader encounter order, then the preflighted plan
-    // places them on the 34-slot causal spine. D16 breaks only same-position
-    // ties by ascending rule-id bytes. This is the one place execution order
-    // gets decided, so every later stage just iterates the compiled order.
+    // here. Validate a temporary reference view by ascending rule-id bytes so
+    // two invalid source permutations name the same first failing identity.
+    // The preflighted plan then places valid rules on the 34-slot causal
+    // spine; D16 breaks only same-position execution ties by rule-id bytes.
+    // Every later stage just iterates that compiled execution order.
+    let mut validation_order: Vec<_> = rule_forms.iter().collect();
+    validation_order
+        .sort_unstable_by(|(left, _), (right, _)| left.as_bytes().cmp(right.as_bytes()));
     let mut rules = Vec::with_capacity(rule_forms.len());
-    for (id, form) in &rule_forms {
+    for (id, form) in validation_order {
         let loaded = load_rule_form(form.clone(), &ctx).map_err(|error| PrepareError::Rule {
             rule_id: Some(id.clone()),
             error,

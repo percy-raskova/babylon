@@ -48,6 +48,15 @@ fn an_explicit_anchor_uses_the_governed_system_spine_not_global_rule_id_order() 
 }
 
 fn assert_rejected_before_hydration(rule_src: &str, code: Option<&str>, text: &str) {
+    let error = rejection_before_hydration(rule_src);
+
+    if let Some(code) = code {
+        assert!(error.contains(code), "expected {code}, got {error}");
+    }
+    assert!(error.contains(text), "expected {text:?}, got {error}");
+}
+
+fn rejection_before_hydration(rule_src: &str) -> String {
     let mut graph = HypergraphStore::new();
     let before = graph.state_hash().expect("empty hash");
     let mut sink = CollectingSink::default();
@@ -55,12 +64,9 @@ fn assert_rejected_before_hydration(rule_src: &str, code: Option<&str>, text: &s
         .expect_err("invalid phase composition must fail");
     let after = graph.state_hash().expect("post-refusal hash");
 
-    if let Some(code) = code {
-        assert!(error.contains(code), "expected {code}, got {error}");
-    }
-    assert!(error.contains(text), "expected {text:?}, got {error}");
     assert_eq!(after, before, "composition failure must precede hydration");
     assert!(sink.events.is_empty(), "composition failure emits nothing");
+    error
 }
 
 #[test]
@@ -158,4 +164,30 @@ fn duplicate_anchor_forms_fail_before_hydration() {
   (effects (emit EventType/RUPTURE)))
 "#;
     assert_rejected_before_hydration(rule, None, "at most one");
+}
+
+#[test]
+fn invalid_rule_permutations_name_the_same_byte_least_identity() {
+    let byte_least = r#"
+(rule aaa/no-home
+  :material-basis "an unplaced rule must fail deterministically"
+  :fuel 16
+  (domain :graph)
+  (bindings)
+  (effects (emit EventType/RUPTURE)))
+"#;
+    let byte_greater = r#"
+(rule zzz/no-home
+  :material-basis "another unplaced rule must not win by source order"
+  :fuel 16
+  (domain :graph)
+  (bindings)
+  (effects (emit EventType/RUPTURE)))
+"#;
+    let forward = rejection_before_hydration(&format!("{byte_least}\n{byte_greater}"));
+    let reversed = rejection_before_hydration(&format!("{byte_greater}\n{byte_least}"));
+
+    assert_eq!(forward, reversed);
+    assert!(forward.contains("E-LOAD-002"), "{forward}");
+    assert!(forward.contains("rule aaa/no-home"), "{forward}");
 }

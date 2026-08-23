@@ -1,7 +1,6 @@
 # Repository Rules for Agents
 
-`AGENTS.md` points here. Keep this live configuration below 200 lines. Use `NORTH_STAR.md`
-for game direction, `docs/concepts/architecture.rst` for the live boundary, and `docs/agents/governance.md` for contributor authority.
+`AGENTS.md` points here. Keep this live configuration below 200 lines. Use `NORTH_STAR.md` for game direction, `docs/concepts/architecture.rst` for the live boundary, and `docs/agents/governance.md` for contributor authority.
 
 ## Babylon
 
@@ -101,8 +100,8 @@ Use TDD: show RED, make it pass, then refactor. Keep game data typed and
 immutable. Python models use frozen Pydantic types.
 `model_copy(update=...)` skips validation. Pass dependencies explicitly.
 
-Do not run Sphinx or full-documentation tasks unless the Director requests them.
-Run only targeted Vale and format checks on changed prose.
+Do not run Sphinx, `cargo doc`, or an umbrella task that generates documentation unless the Director requests it. This includes local `mise run rust:check`.
+Set `SKIP=rust-full-gate` for local pushes. Run the non-documentation Rust legs separately, and use only targeted Vale and format checks on changed prose.
 
 ## Tests and behavior contracts
 
@@ -114,16 +113,16 @@ replacement contract exists.
 ```bash
 mise run test:q -- tests/unit/path/to/test_file.py
 mise run check
-mise run rust:check
+cd rust && cargo fmt --all -- --check
+cd rust && cargo test -p <changed-crate> --locked
+cd rust && cargo clippy -p <changed-crate> --all-targets --locked -- -D warnings
 mise run qa:regression
 mise run qa:vault-regression-ci
 mise run check:gate-coverage
 ```
 
-Run `check` for the Python gate and `rust:check` for Rust changes. Engine,
-economics, and `GameDefines` changes must also run regression, vault, and
-coverage gates. Reject `NaN`, infinity, unchecked overflow, and an iteration
-order that can change.
+Run `check` for the Python gate. For Rust changes, run the applicable format, scoped test, clippy, and BSL-sentinel legs separately without documentation.
+Engine, economics, and `GameDefines` changes must also run regression, vault, and coverage gates. Reject `NaN`, infinity, unchecked overflow, and an iteration order that can change.
 
 Do not edit a baseline to hide a fault. An intentional baseline change requires
 its ceremony, trailer, and `tools/generate_ceremony_message.py` record.

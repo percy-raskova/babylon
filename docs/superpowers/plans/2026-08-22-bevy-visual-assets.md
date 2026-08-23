@@ -30,8 +30,9 @@ keep load, production use, and review concerns independent.
 - Interface SVG files use only `#1a0000`, `#e8e8e8`, `#dc143c`, `#ffd700`, `#404040`, `#202020`,
   `#4169e1`, `#228b22`, `none`, and opacity.
 - Illustration and texture never cover the live county map after the player dismisses the story card.
-- This work adds no runtime SVG loader or new crate dependency. The current Bevy dependency gains
-  only the `webp` feature.
+- This work adds no runtime SVG loader or new direct crate dependency.
+- The current Bevy dependency gains the `webp` feature.
+- Cargo resolves `image-webp` and `quick-error` as transitive decoder packages.
 - All new loops use compile-time fixed bounds. All asset-load polls stop after 64 updates.
 - Engine state, rules, tick ordering, and deterministic hash bytes do not change.
 

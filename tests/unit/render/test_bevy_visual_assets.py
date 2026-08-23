@@ -6,7 +6,9 @@ import tomllib
 import xml.etree.ElementTree as ET
 from itertools import islice
 from pathlib import Path
+from typing import cast
 
+import pytest
 from PIL import Image
 
 _ROOT = Path(__file__).resolve().parents[3]
@@ -269,11 +271,53 @@ _PALETTE = {
     "#228b22",
 }
 _HEX_COLOR = re.compile(r"#[0-9a-fA-F]{6}")
+_MAX_MANIFEST_ASSETS = 16
+_MAX_SVG_COLOR_MATCHES = 32
+
+
+def _bounded_manifest_rows(rows: object) -> tuple[dict[str, object], ...]:
+    if not isinstance(rows, list):
+        raise AssertionError("manifest asset rows must be a list")
+    rows_with_sentinel = tuple(islice(rows, _MAX_MANIFEST_ASSETS + 1))
+    if len(rows_with_sentinel) > _MAX_MANIFEST_ASSETS:
+        raise AssertionError("manifest must contain at most 16 asset rows")
+    bounded_rows = rows_with_sentinel[:_MAX_MANIFEST_ASSETS]
+    for index in range(_MAX_MANIFEST_ASSETS):
+        if index >= len(bounded_rows):
+            break
+        if not isinstance(bounded_rows[index], dict):
+            raise AssertionError(f"manifest asset row {index} must be a table")
+    return cast(tuple[dict[str, object], ...], bounded_rows)
+
+
+def _bounded_svg_colors(source: str) -> frozenset[str]:
+    matches_with_sentinel = tuple(islice(_HEX_COLOR.finditer(source), _MAX_SVG_COLOR_MATCHES + 1))
+    if len(matches_with_sentinel) > _MAX_SVG_COLOR_MATCHES:
+        raise AssertionError("SVG source must contain at most 32 color matches")
+    bounded_matches = matches_with_sentinel[:_MAX_SVG_COLOR_MATCHES]
+    colors: list[str] = []
+    for index in range(_MAX_SVG_COLOR_MATCHES):
+        if index >= len(bounded_matches):
+            break
+        colors.append(bounded_matches[index].group(0).lower())
+    return frozenset(colors)
 
 
 def _manifest_assets() -> tuple[dict[str, object], ...]:
     data = tomllib.loads((_DESIGN / "manifest.toml").read_text(encoding="utf-8"))
-    return tuple(data["asset"])
+    return _bounded_manifest_rows(data.get("asset"))
+
+
+def test_manifest_reader_rejects_a_seventeenth_row() -> None:
+    rows: list[object] = [{} for _ in range(17)]
+    with pytest.raises(AssertionError, match="at most 16 asset rows"):
+        _bounded_manifest_rows(rows)
+
+
+def test_svg_color_reader_rejects_a_thirty_third_match() -> None:
+    colors = " ".join("#1a0000" for _ in range(33))
+    with pytest.raises(AssertionError, match="at most 32 color matches"):
+        _bounded_svg_colors(colors)
 
 
 def _manifest_metadata(asset: dict[str, object]) -> tuple[object, ...]:
@@ -319,12 +363,10 @@ def test_interface_sources_and_rasters_match_the_manifest() -> None:
 
 
 def test_interface_svg_colors_are_palette_roles() -> None:
-    colors = set()
+    colors: set[str] = set()
     for index in range(6):
         source = _DESIGN / "sources" / f"{_INTERFACE_IDS[index]}.svg"
-        colors.update(
-            value.lower() for value in _HEX_COLOR.findall(source.read_text(encoding="utf-8"))
-        )
+        colors.update(_bounded_svg_colors(source.read_text(encoding="utf-8")))
     assert colors <= _PALETTE
 
 

@@ -107,7 +107,9 @@ Runtime assets live under `rust/crates/babylon-client/src/visual_assets/embedded
 `embedded_asset!` macro compiles them into the executable. This choice avoids a new install-time
 asset-root contract. The implementation uses PNG for transparent interface art. The current Bevy
 dependency enables WebP for compact opaque illustrations. This change introduces no SVG loader or
-extra crate.
+new direct crate dependency.
+
+Cargo resolves `image-webp` and `quick-error` as transitive decoder packages.
 
 Every file remains below the repository's 1 MiB blob limit. The manifest pins the selected outputs
 byte-for-byte. To regenerate or replace an image, update its digest and provenance.

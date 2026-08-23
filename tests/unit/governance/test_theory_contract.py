@@ -416,7 +416,7 @@ def test_human_source_ledger_renders_every_exact_source_field(
 
 def test_mantra_north_star_describes_contingent_political_possibility() -> None:
     document = yaml.safe_load(_MANTRAS.read_text(encoding="utf-8"))
-    north_star = document["mantras"]["north_star"]["meaning"].casefold()
+    north_star = " ".join(document["mantras"]["north_star"]["meaning"].casefold().split())
 
     assert "why revolution happens in the periphery, not the core" not in north_star
     assert "how organization and solidarity can redirect political possibilities" in north_star

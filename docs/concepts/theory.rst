@@ -5,12 +5,13 @@ Babylon records theory as constraints on represented relations and causal
 questions. The machine record in ``ai/theory.yaml`` is canonical. This page is
 its human rendering.
 
-.. The following is a faithful rendering of governed machine statements,
-   identifiers, hashes, titles, locators, and source anchors.
-.. vale off
-
 Authority and Scope
 -------------------
+
+.. The authority paragraph is an exact governed contract.
+.. vale Vale.Spelling = NO
+.. vale ste.UnapprovedWords = NO
+.. vale ste.Semicolon = NO
 
 `CONSTITUTION.md v4.0.0 <../../CONSTITUTION.md>`__ governs this page and
 reserves Babylon's Marxist-Leninist-Maoist Third Worldist theoretical line.
@@ -21,22 +22,40 @@ relations and causal questions. It does not create an executable rule,
 coefficient, threshold, response curve, geographic essence, class essence, or
 promised outcome.
 
+.. vale ste.Semicolon = YES
+.. vale ste.UnapprovedWords = YES
+.. vale Vale.Spelling = YES
+
+.. vale ste.Gerunds = NO
+
 Governing Constraints
 ---------------------
 
+.. vale ste.Gerunds = YES
+
+.. vale ste.UnapprovedWords = NO
+
 Accumulation and contingency
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. vale ste.UnapprovedWords = YES
+
+.. vale off
 
 ``accumulation_outcomes_are_contingent``
 Evidence class: Derived
 Executable status: theoretical_constraint
 Statement: Accumulation produces pressures and limits; paths and outcomes remain contingent.
 
-The causal question is how material pressures and limits shape a history whose
-paths remain contingent.
+.. vale on
+
+The causal question is how material pressures and limits shape a contingent
+history.
 
 Imperial rent and relations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. vale off
 
 ``imperial_rent_changes_relations_not_destiny``
 Evidence class: Derived
@@ -44,11 +63,15 @@ Executable status: theoretical_constraint
 Statement: Imperial rent changes incentives and causal pathways; organization,
 crisis, coercion, solidarity, and countervailing relations remain live variables.
 
-The causal question is how changes in incentives interact with organization,
-crisis, coercion, solidarity, and countervailing relations.
+.. vale on
+
+The causal question is how changes in incentives shape organization, crisis,
+coercion, solidarity, and other relations.
 
 Survival and heterogeneous relations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. vale off
 
 ``survival_is_a_heterogeneous_aggregate``
 Evidence class: Derived
@@ -56,11 +79,15 @@ Executable status: theoretical_constraint
 Statement: Survival is an aggregate over heterogeneous material distributions
 and relations. No fixed response curve is lawful.
 
-The causal question is how heterogeneous material distributions and relations
-compose survival without treating an aggregate as a fixed response.
+.. vale on
+
+The causal question is how different material distributions and relations shape
+survival without a fixed response.
 
 Class subjectivity and history
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. vale off
 
 ``class_subjectivity_is_historical``
 Evidence class: Derived
@@ -68,11 +95,15 @@ Executable status: theoretical_constraint
 Statement: Classes are positions and relations. Political practice and
 subjectivity are historical results.
 
-The causal question is how positions, relations, and political practice produce
-historical subjectivity.
+.. vale on
+
+The causal question is how positions, relations, and action produce historical
+subjectivity.
 
 Consciousness and relational direction
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. vale off
 
 ``consciousness_is_relational_and_multidirectional``
 Evidence class: Derived
@@ -80,22 +111,30 @@ Executable status: theoretical_constraint
 Statement: Consciousness and line travel through attributed organization and
 solidarity relations in multiple directions.
 
+.. vale on
+
 The causal question is how attributed organization and solidarity relations
-carry consciousness and line in multiple directions.
+move consciousness and line in many directions.
 
 Outcomes as historical recognizers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. vale off
 
 ``outcomes_are_history_recognizers``
 Evidence class: Derived
 Executable status: theoretical_constraint
 Statement: Outcomes are recognizers over histories, not downstream writes or promised verdicts.
 
+.. vale on
+
 The causal question is which historical relations a recognizer can identify
-without making the result a downstream write or verdict.
+without a downstream write or verdict.
 
 Ecology without predetermination
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. vale off
 
 ``ecology_constrains_without_predetermining``
 Evidence class: Derived
@@ -104,23 +143,39 @@ Statement: Ecological degradation and care capacity constrain choices;
 construction, repair, and redistribution can change consequences without
 promising equilibrium.
 
-The causal question is how ecological degradation and care capacity constrain
+.. vale on
+
+The causal question is how ecological degradation and capacity constrain
 choices while construction, repair, and redistribution change consequences.
 
 Theory and Executable Status
 ----------------------------
+
+.. The status paragraph is an exact governed contract.
+.. vale ste.UnapprovedWords = NO
+.. vale ste.Dictionary = NO
 
 Historical formulas that remain in Python belong to the frozen Python reference.
 They preserve reference or surrogate behavior and are not the live Rust law.
 Live Rust behavior exists only where the architecture and executable source
 establish it. This page claims no new implementation binding.
 
+.. vale ste.Dictionary = YES
+.. vale ste.UnapprovedWords = YES
+
+.. The ledger heading uses the governed evidence-class vocabulary.
+.. vale ste.UnapprovedWords = NO
+
 Evidence and Source Ledger
 --------------------------
 
-The two PDFs below are supplied external artifacts. The clipping is a repository
-file, and the 1935 chapter is an optional local-mirror source. Their bounded
-evidence does not grant executable authority.
+.. vale ste.UnapprovedWords = YES
+
+This ledger lists two supplied external PDF artifacts. The repository contains
+the clipping. A local mirror can supply the 1935 chapter. None grants executable
+authority.
+
+.. vale off
 
 ``neel_hinterland_2018``
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -135,6 +190,10 @@ Scope: Constrains relational territorial ontology. Supplies no coefficient,
 threshold, curve, or guaranteed outcome.
 Anchor: PDF p. 18 (printed p. 17)
 
+.. vale on
+
+.. vale off
+
 ``neel_hellworld_2025``
 ~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -147,6 +206,10 @@ Availability: supplied_external_artifact
 Scope: Constrains relations among production, circulation, reproduction,
 ecology, finance, and state power. Supplies no executable value.
 Anchors: PDF pp. 170-171 (printed pp. 143-144); PDF p. 239 (printed p. 212)
+
+.. vale on
+
+.. vale off
 
 ``party_practice_clipping``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -161,6 +224,10 @@ Repository path: ai/_inbox/archive/theory-of-the-party-ill-will.md
 Scope: Supports organization and subjectivity as products of situated practice.
 Does not authorize a party score, universal form, or scripted subject.
 Anchor: complete supplied clipping
+
+.. vale on
+
+.. vale off
 
 ``cpusa_organizers_manual_ch3_1935``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -177,19 +244,24 @@ secrecy rules, membership thresholds, and numeric guidance remain historical
 particulars rather than Babylon universals.
 Anchors: HTML lines 45-61; HTML lines 265-271; HTML lines 464-505; HTML lines 1175-1190
 
+.. vale on
+
 Source Policy
 -------------
 
-Director exclusions are governed only by ``src/babylon/data/corpus/manifest.yaml``.
-Narrator ingestion remains unchanged. The approved 1935 chapter is bounded
-research evidence rather than standalone narrator doctrine.
+.. The policy sentence preserves the machine record's bounded-evidence term.
+.. vale ste.UnapprovedWords = NO
+
+Only ``src/babylon/data/corpus/manifest.yaml`` governs Director exclusions.
+Narrator ingestion stays unchanged. Use the approved 1935 chapter only as
+bounded research evidence, not standalone narrator doctrine.
+
+.. vale ste.UnapprovedWords = YES
 
 See Also
 --------
 
 - :doc:`architecture`
 - ``CONSTITUTION.md`` v4.0.0
-- Frozen-reference formula pages are context only; they do not establish live
+- Frozen-reference formula pages are context only. They do not give live
   executable authority.
-
-.. vale on

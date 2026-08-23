@@ -33,13 +33,14 @@
 //! hypergraph-rs, all but one absorbed behind `HypergraphStore`'s adapter
 //! covenants. Depend on the TRAIT — every call site that did stayed
 //! unchanged by the swap, which is the entire point of the insulation.
+use crate::allocator_state::{AllocatorCursors, AllocatorState};
 use crate::state_hash::CanonicalState;
 use crate::substrate::{Direction, GraphError, GraphSubstrate, HyperedgeId, NodeId};
 use babylon_kernel::Currency;
 use std::collections::HashMap;
 
 /// The in-memory substrate. See the module documentation.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct MemoryGraph {
     nodes: HashMap<NodeId, String>,
     attributes: HashMap<(NodeId, String), f64>,
@@ -97,6 +98,15 @@ impl MemoryGraph {
     #[must_use]
     pub fn currency_attribute_key_count(&self) -> usize {
         self.currency_attributes.len()
+    }
+}
+
+impl AllocatorState for MemoryGraph {
+    fn allocator_cursors(&self) -> AllocatorCursors {
+        AllocatorCursors {
+            next_node: self.next_id,
+            next_hyperedge: self.next_hyperedge_id,
+        }
     }
 }
 
@@ -570,6 +580,7 @@ impl GraphSubstrate for MemoryGraph {
 #[cfg(test)]
 mod tests {
     use super::{CanonicalState, GraphSubstrate, MemoryGraph, NodeId};
+    use crate::allocator_state::{AllocatorCursors, AllocatorState};
     use crate::substrate::Direction;
 
     #[test]
@@ -612,6 +623,47 @@ mod tests {
         assert!(graph
             .neighbors(doomed, "solidarity", Direction::Any)
             .is_err());
+    }
+
+    #[test]
+    fn clone_is_an_independent_world_with_the_same_allocator_position() {
+        let mut original = MemoryGraph::new();
+        let first = original.add_node("social_class").unwrap();
+        original.update_node(first, "wealth", 10.0).unwrap();
+        let before = original.state_hash().unwrap();
+
+        let mut working = original.clone();
+        assert_eq!(working.state_hash().unwrap(), before);
+        assert_eq!(working.add_node("organization").unwrap(), NodeId(1));
+        working.update_node(first, "wealth", 20.0).unwrap();
+
+        assert_eq!(original.state_hash().unwrap(), before);
+        assert_eq!(
+            original.node_attribute(first, "wealth").unwrap().to_bits(),
+            10.0f64.to_bits()
+        );
+        assert_eq!(
+            original.add_node("organization").unwrap(),
+            NodeId(1),
+            "allocating in a clone must not consume the source world's next identity"
+        );
+    }
+
+    #[test]
+    fn allocator_cursors_report_the_next_ids_even_after_removal() {
+        let mut graph = MemoryGraph::new();
+        let first = graph.add_node("social_class").unwrap();
+        let second = graph.add_node("social_class").unwrap();
+        graph.add_hyperedge("class", &[first, second]).unwrap();
+        graph.remove_node(second).unwrap();
+
+        assert_eq!(
+            graph.allocator_cursors(),
+            AllocatorCursors {
+                next_node: 2,
+                next_hyperedge: 1,
+            }
+        );
     }
 
     /// Build the same world twice, inserting in opposite orders.

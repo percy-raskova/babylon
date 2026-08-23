@@ -34,6 +34,7 @@
 //! reachable, because no member this adapter would validate can be unknown
 //! to the library.
 
+use crate::allocator_state::{AllocatorCursors, AllocatorState};
 use crate::state_hash::CanonicalState;
 use crate::substrate::{Direction, GraphError, GraphSubstrate, HyperedgeId, NodeId};
 use babylon_kernel::Currency;
@@ -108,6 +109,34 @@ pub struct HypergraphStore {
     inner: Hypergraph<(), String, MembershipPayload>,
     next_id: u64,
     next_hyperedge_id: u64,
+}
+
+impl Clone for HypergraphStore {
+    fn clone(&self) -> Self {
+        Self {
+            nodes: self.nodes.clone(),
+            node_keys: self.node_keys.clone(),
+            attributes: self.attributes.clone(),
+            currency_attributes: self.currency_attributes.clone(),
+            edges: self.edges.clone(),
+            edge_attributes: self.edge_attributes.clone(),
+            hyperedge_attributes: self.hyperedge_attributes.clone(),
+            hyperedge_keys: self.hyperedge_keys.clone(),
+            hyperedge_type_index: self.hyperedge_type_index.clone(),
+            inner: self.inner.copy(),
+            next_id: self.next_id,
+            next_hyperedge_id: self.next_hyperedge_id,
+        }
+    }
+}
+
+impl AllocatorState for HypergraphStore {
+    fn allocator_cursors(&self) -> AllocatorCursors {
+        AllocatorCursors {
+            next_node: self.next_id,
+            next_hyperedge: self.next_hyperedge_id,
+        }
+    }
 }
 
 impl HypergraphStore {
@@ -729,6 +758,7 @@ impl CanonicalState for HypergraphStore {
 #[cfg(test)]
 mod tests {
     use super::HypergraphStore;
+    use crate::allocator_state::{AllocatorCursors, AllocatorState};
     use crate::conformance::run_substrate_conformance;
     use crate::state_hash::CanonicalState;
     use crate::substrate::GraphSubstrate;
@@ -737,6 +767,54 @@ mod tests {
     #[test]
     fn hypergraph_store_passes_the_conformance_suite() {
         run_substrate_conformance(HypergraphStore::new);
+    }
+
+    #[test]
+    fn clone_is_an_independent_world_with_the_same_allocator_position() {
+        let mut original = HypergraphStore::new();
+        let first = original.add_node("SOCIAL_CLASS").unwrap();
+        original.update_node(first, "wealth", 10.0).unwrap();
+        original.add_hyperedge("CLASS", &[first]).unwrap();
+        let before = original.state_hash().unwrap();
+
+        let mut working = original.clone();
+        assert_eq!(working.state_hash().unwrap(), before);
+        assert_eq!(working.add_node("ORGANIZATION").unwrap().0, 1);
+        working.update_node(first, "wealth", 20.0).unwrap();
+        assert_eq!(working.add_hyperedge("CLASS", &[first]).unwrap().0, 1);
+
+        assert_eq!(original.state_hash().unwrap(), before);
+        assert_eq!(
+            original.node_attribute(first, "wealth").unwrap().to_bits(),
+            10.0f64.to_bits()
+        );
+        assert_eq!(
+            original.add_node("ORGANIZATION").unwrap().0,
+            1,
+            "allocating in a clone must not consume the source world's next node identity"
+        );
+        assert_eq!(
+            original.add_hyperedge("CLASS", &[first]).unwrap().0,
+            1,
+            "allocating in a clone must not consume the source world's next hyperedge identity"
+        );
+    }
+
+    #[test]
+    fn allocator_cursors_report_the_next_ids_even_after_removal() {
+        let mut graph = HypergraphStore::new();
+        let first = graph.add_node("SOCIAL_CLASS").unwrap();
+        let second = graph.add_node("SOCIAL_CLASS").unwrap();
+        graph.add_hyperedge("CLASS", &[first, second]).unwrap();
+        graph.remove_node(second).unwrap();
+
+        assert_eq!(
+            graph.allocator_cursors(),
+            AllocatorCursors {
+                next_node: 2,
+                next_hyperedge: 1,
+            }
+        );
     }
 
     /// Task 3's III.7 evidence, not a claim (P27 Phase 2 Slice 1): the

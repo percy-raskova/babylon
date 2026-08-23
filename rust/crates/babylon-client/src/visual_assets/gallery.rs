@@ -48,6 +48,7 @@ fn spawn_gallery(mut commands: Commands, assets: Res<VisualAssets>) {
                 root.spawn((
                     Node {
                         flex_direction: FlexDirection::Column,
+                        flex_shrink: 0.0,
                         align_items: AlignItems::Center,
                         row_gap: px(8),
                         padding: UiRect::all(px(12)),
@@ -88,9 +89,9 @@ fn update_gallery_scroll(
     let Some(mouse_scroll) = mouse_scroll else {
         return;
     };
-    let Ok((mut scroll_position, computed)) = root.single_mut() else {
-        return;
-    };
+    let (mut scroll_position, computed) = root.single_mut().unwrap_or_else(|error| {
+        panic!("gallery scroll-root singleton invariant violated: {error}")
+    });
     let delta_y = match mouse_scroll.unit {
         MouseScrollUnit::Line => mouse_scroll.delta.y * 20.0,
         MouseScrollUnit::Pixel => mouse_scroll.delta.y,

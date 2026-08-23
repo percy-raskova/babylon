@@ -91,9 +91,9 @@ fn sync_story_banner(
     story_card_visible: Res<crate::ui::story_card::StoryCardVisible>,
     mut banners: Query<(&mut ImageNode, &mut Visibility), With<StoryBanner>>,
 ) {
-    let Ok((mut image, mut visibility)) = banners.single_mut() else {
-        return;
-    };
+    let (mut image, mut visibility) = banners
+        .single_mut()
+        .unwrap_or_else(|error| panic!("story banner singleton invariant violated: {error}"));
     if selected_story.is_changed() {
         image.image = story_banner(&assets, selected_story.0);
     }

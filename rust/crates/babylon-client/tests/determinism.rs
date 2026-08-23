@@ -8,8 +8,25 @@ use babylon_client::engine_link::EngineSession;
 use babylon_client::story;
 use bevy::asset::AssetPlugin;
 use bevy::image::ImagePlugin;
-use bevy::prelude::App;
+use bevy::input::keyboard::{Key, KeyboardInput, NativeKey};
+use bevy::input::ButtonState;
+use bevy::prelude::*;
 use bevy::render::texture::TexturePlugin;
+use bevy::time::TimeUpdateStrategy;
+use std::time::Duration;
+
+fn press_space_via_production_input(app: &mut App) {
+    app.world_mut()
+        .resource_mut::<Messages<KeyboardInput>>()
+        .write(KeyboardInput {
+            key_code: KeyCode::Space,
+            logical_key: Key::Unidentified(NativeKey::Unidentified),
+            state: ButtonState::Pressed,
+            text: None,
+            repeat: false,
+            window: Entity::PLACEHOLDER,
+        });
+}
 
 #[test]
 fn same_content_same_tick_count_yields_the_same_hash() {
@@ -48,10 +65,10 @@ fn five_ticks_produce_five_distinct_hashes() {
 }
 
 #[test]
-fn visual_presentation_leaves_an_independent_engine_tick_report_unchanged() {
+fn visual_presentation_leaves_the_app_owned_engine_tick_report_unchanged() {
     let mut visual_app = App::new();
     visual_app.add_plugins((
-        bevy::prelude::MinimalPlugins,
+        MinimalPlugins,
         AssetPlugin::default(),
         ImagePlugin::default(),
         TexturePlugin,
@@ -60,21 +77,33 @@ fn visual_presentation_leaves_an_independent_engine_tick_report_unchanged() {
         babylon_client::visual_assets::VisualAssetsPlugin,
         babylon_client::visual_assets::VisualPresentationPlugin,
     ));
+    visual_app.add_plugins(babylon_client::map::MapPlugin);
+    visual_app.add_plugins(babylon_client::loop_ui::TickLoopPlugin);
     visual_app.insert_resource(story::SelectedStory(story::counties()));
-    visual_app.insert_resource(babylon_client::ui::story_card::StoryCardVisible(true));
-    visual_app.update();
+    visual_app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
+    visual_app.update(); // Startup inserts the production EngineSession resource.
 
-    let mut with_visual_presentation =
-        EngineSession::start(story::counties()).expect("visual-presentation session starts");
-    let mut without_visual_presentation =
-        EngineSession::start(story::counties()).expect("control session starts");
+    press_space_via_production_input(&mut visual_app);
+    visual_app.update(); // The shipped TickLoopPlugin system advances the app-owned session.
 
-    let visual_report = with_visual_presentation
-        .advance()
-        .expect("visual tick advances");
-    let control_report = without_visual_presentation
-        .advance()
-        .expect("control tick advances");
+    let visual_report = visual_app
+        .world()
+        .resource::<babylon_client::ui::admin::LastTickReport>()
+        .0
+        .as_ref()
+        .expect("production tick system records its report");
+    assert_eq!(
+        visual_app
+            .world()
+            .resource::<babylon_client::loop_ui::TickCounter>()
+            .0,
+        1,
+        "the visual app must advance exactly one production tick"
+    );
+
+    let mut control = EngineSession::start(story::counties()).expect("control session starts");
+    let control_report = control.advance().expect("control tick advances");
 
     assert_eq!(visual_report.after, control_report.after);
+    assert_eq!(visual_report.per_rule_fired, control_report.per_rule_fired);
 }

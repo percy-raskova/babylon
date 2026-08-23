@@ -20,7 +20,7 @@ fn visual_assets_app() -> App {
     app
 }
 
-fn assert_loaded_sampler_contract(app: &App) {
+fn assert_loaded_asset_contract(app: &App) {
     let world = app.world();
     let assets = world.resource::<babylon_client::visual_assets::VisualAssets>();
     let images = world.resource::<Assets<Image>>();
@@ -65,6 +65,46 @@ fn assert_loaded_sampler_contract(app: &App) {
             "illustration {id:?} must use linear sampling"
         );
     }
+
+    let layouts = world.resource::<Assets<TextureAtlasLayout>>();
+    let atlas_layouts = [
+        (
+            "interface-atlas",
+            &assets.interface_layout,
+            UVec2::new(512, 512),
+            16,
+        ),
+        (
+            "marker-atlas",
+            &assets.marker_layout,
+            UVec2::new(384, 256),
+            6,
+        ),
+        (
+            "provenance-atlas",
+            &assets.provenance_layout,
+            UVec2::new(256, 256),
+            4,
+        ),
+        ("frame-atlas", &assets.frame_layout, UVec2::new(256, 64), 4),
+        (
+            "surface-atlas",
+            &assets.surface_layout,
+            UVec2::new(384, 128),
+            3,
+        ),
+    ];
+    for (id, handle, expected_size, expected_rectangles) in atlas_layouts {
+        let layout = layouts
+            .get(handle)
+            .unwrap_or_else(|| panic!("loaded atlas layout {id:?} is absent"));
+        assert_eq!(layout.size, expected_size, "atlas {id:?} size drifted");
+        assert_eq!(
+            layout.textures.len(),
+            expected_rectangles,
+            "atlas {id:?} rectangle count drifted"
+        );
+    }
 }
 
 #[test]
@@ -84,7 +124,7 @@ fn every_typed_embedded_image_loads_within_sixty_four_updates() {
                 asset_server.is_loaded_with_dependencies(assets.image(descriptor.id).id())
             })
         {
-            assert_loaded_sampler_contract(&app);
+            assert_loaded_asset_contract(&app);
             return;
         }
     }

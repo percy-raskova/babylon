@@ -162,9 +162,8 @@ fn h3_cell_id_validation_rejects_invalid_sql_and_text_vectors() {
         let expected = match vector.label.as_str() {
             "upper_case" => H3CellIdError::NonLowercaseHexText,
             "prefixed" => H3CellIdError::InvalidTextLength { actual_bytes: 17 },
-            "leading_zero" => H3CellIdError::InvalidTextLength { actual_bytes: 16 },
+            "leading_zero" | "long" => H3CellIdError::InvalidTextLength { actual_bytes: 16 },
             "short" => H3CellIdError::InvalidTextLength { actual_bytes: 14 },
-            "long" => H3CellIdError::InvalidTextLength { actual_bytes: 16 },
             "non_ascii" => H3CellIdError::NonAsciiText,
             other => panic!("unexpected invalid text vector {other}"),
         };
@@ -193,7 +192,7 @@ fn h3_cell_id_ancestor_requests_reject_too_fine_or_out_of_range_resolution() {
                 }
             ),
             "resolution_above_15" => {
-                assert_eq!(error, H3CellIdError::ResolutionOutOfRange { requested: 16 })
+                assert_eq!(error, H3CellIdError::ResolutionOutOfRange { requested: 16 });
             }
             other => panic!("unexpected invalid ancestor vector {other}"),
         }

@@ -66,7 +66,7 @@ const D32_TWO_COLLISION_SCENARIO: &str = r"
 /// reached when the scenario collides — its only job is to give
 /// `split_content` one legal `(rule …)` form to split out.
 const D32_RULE: &str = r#"(rule vitality/d32-diagnose-seam-probe
-  :material-basis "diagnose_content_set rows 2/4 (#652 Task 3): the D32 implicit-strength collision must survive as structured spec_code() data, not just message text"
+  :role mechanic :evidence derived :material-basis "diagnose_content_set rows 2/4 (#652 Task 3): the D32 implicit-strength collision must survive as structured spec_code() data, not just message text"
   :fuel 128
   (bindings (binding shape :field social-class/shape))
   (when (= shape 1))
@@ -78,7 +78,7 @@ const D32_RULE: &str = r#"(rule vitality/d32-diagnose-seam-probe
 /// (`E-PARSE-012`) — a pure surface-stage rejection, no scenario field
 /// dependency.
 const BROKEN_RULE_FUEL: &str = r#"(rule vitality/broken-fuel
-  :material-basis "diagnose_content_set row 3 (#652 Task 3): an out-of-range :fuel is its own independent entry"
+  :role mechanic :evidence derived :material-basis "diagnose_content_set row 3 (#652 Task 3): an out-of-range :fuel is its own independent entry"
   :fuel 0
   (bindings (binding wages :field social-class/wages))
   (when (> wages 0))
@@ -89,10 +89,26 @@ const BROKEN_RULE_FUEL: &str = r#"(rule vitality/broken-fuel
 /// [`BROKEN_RULE_FUEL`]'s, so the row proves two DISTINCT failures each get
 /// their own entry, not that the same failure is merely counted twice.
 const BROKEN_RULE_MATERIAL_BASIS: &str = r#"(rule vitality/broken-material-basis
-  :material-basis ""
+  :role mechanic :evidence derived :material-basis ""
   :fuel 64
   (bindings (binding wages :field social-class/wages))
   (when (> wages 0))
+  (effects (emit EventType/PROBE)))"#;
+
+const ILLEGAL_PHASE_RULE: &str = r#"(rule mods/illegal-material-base-interleave
+  :role mechanic :evidence derived :material-basis "an independent causal-composition refusal"
+  :fuel 64
+  (domain :graph)
+  (anchor :after vitality)
+  (bindings)
+  (effects (emit EventType/PROBE)))"#;
+
+const DUPLICATE_ID_WITH_ILLEGAL_PHASE: &str = r#"(rule economics/fundamental-theorem
+  :role mechanic :evidence derived :material-basis "duplicate identity makes phase placement undefined"
+  :fuel 64
+  (domain :graph)
+  (anchor :after vitality)
+  (bindings)
   (effects (emit EventType/PROBE)))"#;
 
 #[test]
@@ -124,4 +140,35 @@ fn a_scenario_that_redeclares_an_implicit_strength_field_yields_a_structured_cod
     assert_eq!(errors.len(), 1, "{errors:?}");
     assert_ne!(errors[0].spec_code(), None, "{errors:?}");
     assert_eq!(errors[0].spec_code(), Some("E-LOAD-001"));
+}
+
+#[test]
+fn a_bad_rule_does_not_hide_an_independent_phase_composition_failure() {
+    let errors = diagnose_content_set(SCENARIO, None, &[BROKEN_RULE_FUEL, ILLEGAL_PHASE_RULE]);
+
+    assert_eq!(errors.len(), 2, "{errors:?}");
+    assert_eq!(errors[0].spec_code(), Some("E-PARSE-012"));
+    assert_eq!(errors[1].spec_code(), Some("E-LOAD-003"));
+}
+
+#[test]
+fn duplicate_rule_ids_across_sources_are_one_structured_e_load_001() {
+    let errors = diagnose_content_set(SCENARIO, None, &[RULE, RULE]);
+
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert_eq!(errors[0].spec_code(), Some("E-LOAD-001"));
+    assert!(errors[0].to_string().contains("fundamental-theorem"));
+}
+
+#[test]
+fn duplicate_rule_ids_suppress_phase_diagnostics_in_both_source_orders() {
+    for sources in [
+        [RULE, DUPLICATE_ID_WITH_ILLEGAL_PHASE],
+        [DUPLICATE_ID_WITH_ILLEGAL_PHASE, RULE],
+    ] {
+        let errors = diagnose_content_set(SCENARIO, None, &sources);
+
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert_eq!(errors[0].spec_code(), Some("E-LOAD-001"));
+    }
 }

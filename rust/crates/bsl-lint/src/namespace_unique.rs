@@ -57,6 +57,7 @@ const ALLOWLIST: &[(&str, &[&str], &str)] = &[
         &[
             "babylon-bsl/src/declarations.rs",
             "babylon-bsl/src/metrics.rs",
+            "babylon-bsl/src/rule_pipeline.rs",
             "babylon-bsl/src/scenario.rs",
             "babylon-tick/src/lib.rs",
         ],
@@ -66,7 +67,9 @@ const ALLOWLIST: &[(&str, &[&str], &str)] = &[
          babylon-tick/src/lib.rs joined the set in the 2026-08-21 worktree sweep: the D32 \
          implicit-<edge-type>/strength collision check (#652 T2) refuses a deffield \
          re-declaring an implicit field — the same generic duplicate-declaration class, \
-         returned as PrepareError::Composition with the code carried as data.",
+         returned as PrepareError::Composition with the code carried as data. \
+         rule_pipeline.rs joined under ADR222/PER-17: duplicate rule ids now carry the \
+         same governed code as typed data across aggregate source boundaries.",
     ),
     (
         "E-LOAD-011",
@@ -111,6 +114,16 @@ const ALLOWLIST: &[(&str, &[&str], &str)] = &[
         "bsl-language.rst:630 — \"the keyword set is closed. An unrecognized keyword is \
          E-PARSE-013\" at every one of the (independent) positions that has a closed \
          keyword set: bindings, grammar/graph-flag placement, and mod-anchors",
+    ),
+    (
+        "E-PARSE-015",
+        &[
+            "babylon-bsl/src/causal_contract.rs",
+            "babylon-bsl/src/grammar.rs",
+        ],
+        "bsl-language.rst:691,1249 — a symbol outside any parser-owned closed set is \
+         E-PARSE-015; grammar.rs owns form/update-op sets, while ADR224's causal_contract.rs \
+         owns the closed :role and :evidence values",
     ),
     (
         "E-PARSE-022",

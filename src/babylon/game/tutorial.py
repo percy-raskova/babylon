@@ -43,7 +43,7 @@ the seven kinds an opening-arc teaching script needs today:
 * :class:`EventAcked` — a pending autopause has been acknowledged.
 * :class:`VerbIssued` — a named verb/binding action has been issued (this
   covers BOTH a TUI keybinding's action name — ``"advance_tick"``,
-  ``"run_until_paused"`` — and, in a future script, an Article-V player
+  ``"run_until_paused"`` — and, in a future script, an ADR177-governed player
   verb string; the ruling's own anchor phrasing, "the page/binding/verb it
   exercises", already treats bindings and verbs as one family). This is
   the HONEST FLOOR only where no outcome-shaped predicate is queryable
@@ -253,7 +253,7 @@ class VerbIssued(BaseModel):
     :param verb: an action name — either a TUI binding's own
         ``Binding(key, action, ...)`` action string (e.g.
         ``"advance_tick"``, ``"run_until_paused"``, ``"begin"``,
-        ``"new_campaign"``) or, in a future script, an Article-V player
+        ``"new_campaign"``) or, in a future script, an ADR177-governed player
         verb string (e.g. ``"educate"``). Never the raw KEY (``"t"``) —
         the action name is what a remapped keybinding would still share.
     """
@@ -803,7 +803,7 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             patches="See? One pin, and they're a doorway we can open any time.",
         ),
         # Unit "verb-targeting" (shell-interconnect, 2026-07-22): the arc's
-        # FIRST step to actually issue a real Article V verb through the
+        # FIRST step to actually issue a real ADR177-governed player verb through the
         # real registry-gated write path (Program 24 P5's own F1-F9
         # BINDINGS) — every earlier "press a key" beat in this train stayed
         # at the dispatch/navigation layer. Aid (F6), not Educate (F1):
@@ -828,7 +828,7 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
         # inventing one, never dropping an honestly-available one. No new
         # CompletionPredicate kind needed (VerbIssued is reused, exactly as
         # its own docstring already anticipated for "a future script"
-        # issuing "an Article-V player verb string"); proving the target
+        # issuing "an ADR177-governed player verb string"); proving the target
         # itself actually reached submit_turn is the Pilot executor's own
         # extra-content-check layer's job (test_tutorial_pilot.py's
         # ``_EXTRA_CONTENT_CHECK_BY_STEP_ID``, the same layering the four

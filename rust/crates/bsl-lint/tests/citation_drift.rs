@@ -116,7 +116,7 @@ fn a_missing_freeze_tag_exits_2_not_0_or_1() {
     // repo.tag_tree(FREEZE_TAG) and hits the missing-tag failure.
     std::fs::write(
         rules_dir.join("no_tag.bsl"),
-        "(rule fixture/needs-frozen-tag :material-basis \"cites a frozen file (widget.py:1-3).\" :fuel 64\n  \
+        "(rule fixture/needs-frozen-tag :role mechanic :evidence derived :material-basis \"cites a frozen file (widget.py:1-3).\" :fuel 64\n  \
          (bindings)\n  \
          (effects (update-node self social-class/agitation (add 0.01i))))\n",
     )

@@ -673,7 +673,8 @@ mod tests {
         check_foreign_field_scoping(&rule, &decls, subject, &vocabulary())
     }
 
-    const PREAMBLE: &str = ":material-basis \"the wage relation\" :fuel 4096";
+    const PREAMBLE: &str =
+        ":role mechanic :evidence derived :material-basis \"the wage relation\" :fuel 4096";
 
     #[test]
     fn the_subjects_own_field_is_always_in_scope() {

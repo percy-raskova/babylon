@@ -212,6 +212,8 @@
 (intrinsic floor :params (real) :returns int :cost 5)
 
 (rule decomposition/p01-la-census
+  :role mechanic
+  :evidence derived
   :material-basis "Per-node LA census publication, reformulating the frozen engine's single `_find_entity_by_role(graph, LABOR_ARISTOCRACY)` graph-scope lookup (decomposition.py:143-159) as a per-node gated write every SOCIAL_CLASS subject performs (plan §2's fold-body compound-expression restriction: the role/active filter cannot live in p03's carrier-side fold, so it lives here instead, production.bsl's D138 precedent). No `when` clause: every subject fires and a non-LA (or inactive LA) writes zero to all four fields, keeping the census fresh every tick rather than stale (the D127 hash-neutral idiom, territory.bsl's own row)."
   :fuel 73
   (bindings
@@ -245,6 +247,8 @@
     (update-node self social-class/la-dying-flag (set dying-flag))))
 
 (rule decomposition/p02-superwage-warning
+  :role mechanic
+  :evidence derived
   :material-basis "The early warning: when the active LA is approaching subsistence and no crisis has been latched yet, emit SUPERWAGE_CRISIS and latch the carrier so this fires at most once (decomposition.py:179-197). Reads p01's la-approaching-flag from THIS tick (D116). Transcribed order: emit first, then the latch (:180-197)."
   :fuel 33
   (bindings
@@ -271,6 +275,8 @@
                  (set tick))))
 
 (rule decomposition/p03-trigger
+  :role mechanic
+  :evidence derived
   :material-basis "The carrier trigger + frozen split (decomposition.py:150-208, 296-299). Folds p01's four SAME-TICK census fields onto the carrier unconditionally (D127 idiom on the carrier side). should-decompose = la_about_to_die (now la-dying-count > 0) OR (superwage_tick not None (the known-flag, III.11) AND tick >= superwage_tick + delay). Gated on decomposition-complete == 0 (:129-130) AND la-population > 0 (_execute_decomposition's early return, :290-291). Writes fire-tick/-fired-known/-complete and the four amounts: enforcer_pop_gain = int(pop * enforcer_fraction), proletariat_pop = int(pop * proletariat_fraction) — each floors INDEPENDENTLY (D-record 9/D173 item 3's non-conservation, transcribed verbatim); the two wealth amounts are NOT int()-demoted. fire-tick == tick is the idiom p04-p06 key off below; this rule's own complete gate makes its OWN re-fire idempotent."
   :fuel 177
   (bindings
@@ -315,6 +321,8 @@
       (update-node self institution/ip-wealth (set ip-wealth)))))
 
 (rule decomposition/p04-enforcer-intake
+  :role mechanic
+  :evidence derived
   :material-basis "The carceral-enforcer intake — ADDITIVE (decomposition.py:323-332's `graph.update_node(enforcer_id, population=current_pop + enforcer_pop_gain, wealth=current_wealth + enforcer_wealth_gain, active=True)`): reads the pre-seeded CARCERAL_ENFORCER's CURRENT population/wealth off self (nothing earlier in this pack writes them) and ADDS p03's SAME-TICK carrier enforcer-pop-gain/enforcer-wealth-gain (D116) — the field names say \"gain\" for exactly this reason, unlike p05's OVERWRITE. Gated on role == CARCERAL_ENFORCER and carrier decomposition-fire-tick == tick, the idiom p03's own header names as what this rule keys off."
   :fuel 36
   (bindings
@@ -333,6 +341,8 @@
     (update-node self social-class/active (set 1))))
 
 (rule decomposition/p05-ip-intake
+  :role mechanic
+  :evidence derived
   :material-basis "The internal-proletariat intake — OVERWRITE (decomposition.py:335-336's `graph.update_node(ip_id, population=proletariat_pop, wealth=proletariat_wealth, active=True)`): population/wealth are SET to p03's SAME-TICK carrier ip-population/ip-wealth (D116), REPLACING the pre-seeded baseline rather than accumulating onto it — unlike p04's additive enforcer write, the frozen code never reads the internal proletariat's CURRENT population/wealth at all. Gated on role == INTERNAL_PROLETARIAT and carrier decomposition-fire-tick == tick."
   :fuel 36
   (bindings
@@ -351,6 +361,8 @@
     (update-node self social-class/active (set 1))))
 
 (rule decomposition/p06-la-deactivate
+  :role mechanic
+  :evidence derived
   :material-basis "Deactivates the decomposed LA — active SET to 0 ONLY, population/wealth left UNTOUCHED (decomposition.py:339's `graph.update_node(la_id, active=False)`, no population/wealth keys at all — the non-conservation vector: the frozen engine never zeroes the source class's own numbers, it only flips the active latch). Emits CLASS_DECOMPOSITION with the flattened payload (D-record 4/D171 item 1: the two frozen nested dicts population_transferred/wealth_transferred become four flat keys; D-record 5/D171 item 2: narrative_hint and trigger_event, both strings, are dropped — emit carries no string payloads at all). Reads p03's SAME-TICK carrier fire-tick and the four transfer amounts (D116); population/wealth read off self are PRE-STATE (nothing earlier in this pack writes LA's own population/wealth). Gated on role == LABOR_ARISTOCRACY, active == 1 (only the currently-active LA decomposes), and carrier decomposition-fire-tick == tick."
   :fuel 46
   (bindings

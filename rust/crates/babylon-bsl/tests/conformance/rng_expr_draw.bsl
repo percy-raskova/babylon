@@ -7,6 +7,8 @@
 ; `rng_draw_is_now_legal_in_expr_binding_position_and_keyed_identically_to_
 ; guard_effect_position` (r9_chapters.rs::c14_rng_draw).
 (rule demo/rng-expr-draw
+  :role mechanic
+  :evidence derived
   :material-basis "rng-draw is legal in :expr binding position, keyed identically to guard/effect position (#576 I3)"
   :fuel 128
   (bindings

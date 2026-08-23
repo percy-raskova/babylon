@@ -339,8 +339,8 @@ const COUNTIES_PREMISE: &str = "\
 ; The Program 28 B2 demo world (Phase B, Task 7): twelve real-FIPS counties
 ; carrying the lifecycle/dpd-circuit rule pack, plus the six
 ; vitality/subsistence-and-death fixture nodes verbatim — one scenario,
-; two node types, both rule packs running together, in ascending rule-id
-; byte order (§4.2, register row D16/D100).";
+; two node types, both rule packs running together in governed phase order:
+; Vitality @1 before Lifecycle @7.";
 
 const CARCERAL_SCENARIO: &str =
     include_str!("../../babylon-tick/content/scenarios/carceral-arc-conformance.bscn");

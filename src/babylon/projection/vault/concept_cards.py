@@ -2,7 +2,7 @@
 
 Four vault pages that explain the simulation's foundational math instead of
 observing a tick: the **Fundamental Theorem** of MLM-TW, the **Survival
-Calculus**, the **Metabolic Rift**, and the **nine Article V verbs**. Each is
+Calculus**, the **Metabolic Rift**, and the **nine governed player verbs**. Each is
 condensed, with a citation, from the actual reference docs rather than
 re-derived from memory (the Verifiability discipline — a formula quoted here
 must be traceable to the doc it claims to come from; ``test_concept_cards.py``
@@ -44,12 +44,12 @@ rather than a named ``{absence}`` remedy block.
 
 **Sourcing deviation, recorded rather than silent:** three of the four cards
 cite ``docs/reference/formulas.rst`` verbatim math sections, exactly as the
-WO specifies. The nine-verbs card has no ``docs/reference/*.rst`` home — no
-reference doc names the Article V roster — so it cites ``CONSTITUTION.md``
-Article V directly (the actual source of truth for that content) plus
-:data:`babylon.engine.actions.VERB_RESOLVERS` as the implementation
-cross-check (the Aleksandrov Test: every formal construct traces to a
-material relation, here the live resolver registry).
+WO specifies. The nine-verbs card has no ``docs/reference/*.rst`` home. The
+v4 Constitution deliberately re-homes content vocabulary, so this card cites
+ADR177's Director ratification plus the canonical matrix and live action
+registry. The test derives its oracle from those executable sources instead
+of retaining vocabulary in the Constitution merely to keep a documentation
+test green.
 """
 
 from __future__ import annotations
@@ -225,7 +225,7 @@ _METABOLIC_RIFT: Final[ConceptCard] = ConceptCard(
 
 _NINE_VERBS: Final[ConceptCard] = ConceptCard(
     slug="nine-verbs",
-    title="The Nine Verbs — Article V Action Vocabulary",
+    title="The Nine Verbs — Governed Action Vocabulary",
     statement=(
         "Educate, Aid, Attack, Mobilize, Campaign, Move, Investigate, "
         "Reproduce, Negotiate: the complete player action vocabulary (3x3 — "
@@ -247,11 +247,15 @@ _NINE_VERBS: Final[ConceptCard] = ConceptCard(
         _term("Reproduce", "Recruit — grows the acting organization's base"),
         _term("Negotiate", "Proposes an alliance with another actor"),
     ),
-    implementation=("babylon.engine.actions.VERB_RESOLVERS",),
+    implementation=(
+        "babylon.game.actions.matrix.RATIFIED_MATRIX",
+        "babylon.game.actions.registry.ACTION_REGISTRY",
+        "babylon.engine.actions.VERB_RESOLVERS",
+    ),
     citation=(
-        "CONSTITUTION.md, Article V Action Vocabulary, section Player (9 verbs) "
-        "(no docs/reference/*.rst page names the roster; a documented sourcing "
-        "deviation — see this module's docstring)"
+        "ai/decisions/ADR177_verb_matrix_ratified_main_ruleset.yaml; canonical "
+        "data: babylon.game.actions.matrix.RATIFIED_MATRIX and "
+        "babylon.game.actions.registry.ACTION_REGISTRY"
     ),
     see_also=(),
 )

@@ -2742,7 +2742,7 @@ mod tests {
             };
             let rule = format!(
                 "(rule ft/mirror\n  \
-                 :material-basis \"pins the seed path and the runtime write path to the \
+                 :role mechanic :evidence derived :material-basis \"pins the seed path and the runtime write path to the \
                  SAME conversion, as one relation rather than two independently-eyeballed \
                  numbers\"\n  \
                  :fuel 64\n  \
@@ -2764,7 +2764,6 @@ mod tests {
                 &intrinsics,
                 &DefinesEnv::new(),
                 1,
-                "ft/mirror",
                 Some(&loaded_scenario.node_content_ids),
                 &SessionId::new("scenario-bit-equality-test").expect("literal is non-empty"),
                 None,
@@ -2849,7 +2848,7 @@ mod tests {
             };
             let rule = format!(
                 "(rule ft/currency-mirror\n  \
-                 :material-basis \"pins the Currency seed path and the Currency runtime \
+                 :role mechanic :evidence derived :material-basis \"pins the Currency seed path and the Currency runtime \
                  write path to the SAME i128 value, as one relation rather than two \
                  independently-eyeballed numbers\"\n  \
                  :fuel 64\n  \
@@ -2871,7 +2870,6 @@ mod tests {
                 &intrinsics,
                 &DefinesEnv::new(),
                 1,
-                "ft/currency-mirror",
                 Some(&loaded_scenario.node_content_ids),
                 &SessionId::new("scenario-currency-bit-equality-test").expect("non-empty"),
                 None,

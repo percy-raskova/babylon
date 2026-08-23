@@ -1,14 +1,10 @@
 ; The multi-rule conformance world for vitality/subsistence-and-death AND
 ; lifecycle/dpd-circuit run together, in ONE content set (Program 28 B2,
-; Phase A Task 5). Proves the mechanism Tasks 2 and 4 built: (1) the loader
-; sorts by rule-id byte order regardless of concatenation order (§4.2,
-; register row D16/D100), and (2) the sorted result reproduces the frozen
-; engine's own combined output for this pair, despite running in the
-; REVERSE of the frozen engine's own tick-position order — safe here only
-; because the two rules' domains are disjoint (the plan's Multi-Rule
-; Decision section), which vitality_lifecycle_combined_conformance.py
-; proves directly by running both engine-order and reverse-order against
-; the same ten-node state and diffing the results.
+; Phase A Task 5). The executable phase registry now restores the frozen
+; Vitality-then-Lifecycle order regardless of concatenation order. The
+; provenance script still runs both engine and reverse order against the
+; same ten-node state, proving this particular pair commutes because its
+; domains are disjoint rather than relying on that fact for scheduling.
 ;
 ; A straight UNION of two already-proven fixtures, transcribed byte-for-byte
 ; — deffield/defconst blocks and every node's field values, no new numbers:

@@ -56,6 +56,11 @@ LIVE_DOC_SURFACES: tuple[str, ...] = (
 )
 
 _WORKFLOW_REF_RE = re.compile(r"\.github/workflows/([A-Za-z0-9._-]+\.ya?ml)")
+_V3_1_COMMIT = "3acd1089b6b4e68177c99b4f4cec245e7b74317c"
+_V3_1_BLOB = "a265b85120ed2a90be40c72e63ee5bf27fc6e703"
+_V3_2_COMMIT = "cbfc67921283ccb6e00c4b0278288a232281440a"
+_V3_2_BLOB = "e905e90d66bddc6e4eca36a3896428f5ce63de5b"
+_CONSTITUTION_FETCH_STEP = "Fetch pinned Constitution predecessors (bounded)"
 
 
 def _triggers(workflow: dict[Any, Any]) -> dict[str, Any]:
@@ -137,6 +142,70 @@ def _unpinned_checkouts(workflow: dict[str, Any], filename: str) -> list[str]:
     return violations
 
 
+def _constitution_provenance_errors(workflow: dict[str, Any]) -> list[str]:
+    """Return violations in the unit job's bounded predecessor supply contract."""
+    errors: list[str] = []
+    jobs = workflow.get("jobs") or {}
+    job = jobs.get("test-unit") or {}
+    steps = job.get("steps") or []
+    checkout_index = next(
+        (
+            index
+            for index, step in enumerate(steps)
+            if str(step.get("uses", "")).startswith("actions/checkout")
+        ),
+        None,
+    )
+    unit_index = next(
+        (index for index, step in enumerate(steps) if step.get("run") == "mise run test:unit-ci"),
+        None,
+    )
+    fetch_index = next(
+        (index for index, step in enumerate(steps) if step.get("name") == _CONSTITUTION_FETCH_STEP),
+        None,
+    )
+    if checkout_index is None:
+        return ["test-unit has no actions/checkout step"]
+    checkout_with = steps[checkout_index].get("with") or {}
+    if checkout_with.get("persist-credentials") is not True:
+        errors.append("test-unit checkout must persist credentials for the bounded fetch")
+    if checkout_with.get("fetch-depth") == 0:
+        errors.append("test-unit checkout must stay shallow, never fetch-depth 0")
+    if fetch_index is None:
+        errors.append("test-unit has no bounded Constitution predecessor fetch")
+        return errors
+    if unit_index is None or not checkout_index < fetch_index < unit_index:
+        errors.append("bounded predecessor fetch must run after checkout and before unit tests")
+
+    fetch_step = steps[fetch_index]
+    if fetch_step.get("shell") != "bash":
+        errors.append("bounded predecessor fetch must declare shell: bash")
+
+    run = str(fetch_step.get("run", ""))
+    run_lines = [line.strip() for line in run.splitlines() if line.strip()]
+    if not run_lines or run_lines[0] != "set -euo pipefail":
+        errors.append("bounded predecessor fetch must start with set -euo pipefail")
+    normalized = " ".join(run.replace("\\\n", " ").split())
+    required_fragments = (
+        "git -c protocol.version=2 fetch",
+        "--depth=1 --no-tags --prune --no-recurse-submodules origin",
+        f'git rev-parse {_V3_1_COMMIT}:CONSTITUTION.md)" = "{_V3_1_BLOB}"',
+        f'git rev-parse {_V3_2_COMMIT}:CONSTITUTION.md)" = "{_V3_2_BLOB}"',
+    )
+    for fragment in required_fragments:
+        if fragment not in normalized:
+            errors.append(f"bounded predecessor fetch missing {fragment!r}")
+    required_refspecs = (
+        f"+{_V3_1_COMMIT}:refs/remotes/origin/constitution-v3.1",
+        f"+{_V3_2_COMMIT}:refs/remotes/origin/constitution-v3.2",
+    )
+    run_tokens = normalized.split()
+    for refspec in required_refspecs:
+        if refspec not in run_tokens:
+            errors.append(f"bounded predecessor fetch missing forced refspec {refspec!r}")
+    return errors
+
+
 @pytest.mark.skipif(not WORKFLOWS_DIR.is_dir(), reason=".github/workflows not present")
 class TestScheduledWorkflows:
     """The scheduled estate's shape rules (invariants 2 and 3)."""
@@ -186,6 +255,41 @@ class TestScheduledWorkflows:
         )
         triggers = _triggers(broken)
         assert "schedule" in triggers and "workflow_dispatch" not in triggers
+
+
+@pytest.mark.skipif(not WORKFLOWS_DIR.is_dir(), reason=".github/workflows not present")
+class TestConstitutionProvenanceSupply:
+    """The unit job gets exact predecessor blobs without a full-history checkout."""
+
+    def test_unit_job_fetches_exact_constitution_predecessors_before_tests(self) -> None:
+        workflow = yaml.safe_load((WORKFLOWS_DIR / "ci.yml").read_text())
+        assert _constitution_provenance_errors(workflow) == []
+
+    def test_checker_catches_an_unbounded_or_incomplete_fetch(self) -> None:
+        broken = yaml.safe_load(
+            f"""
+            jobs:
+              test-unit:
+                steps:
+                  - uses: actions/checkout@v7
+                    with:
+                      fetch-depth: 0
+                  - name: {_CONSTITUTION_FETCH_STEP}
+                    run: git fetch origin {_V3_2_COMMIT}
+                  - run: mise run test:unit-ci
+            """
+        )
+        errors = _constitution_provenance_errors(broken)
+        assert "test-unit checkout must persist credentials for the bounded fetch" in errors
+        assert "test-unit checkout must stay shallow, never fetch-depth 0" in errors
+        assert "bounded predecessor fetch must declare shell: bash" in errors
+        assert "bounded predecessor fetch must start with set -euo pipefail" in errors
+        assert any("protocol.version=2" in error for error in errors)
+        assert any(
+            "--depth=1 --no-tags --prune --no-recurse-submodules" in error for error in errors
+        )
+        assert any("forced refspec" in error and "constitution-v3.1" in error for error in errors)
+        assert any("CONSTITUTION.md" in error and _V3_1_BLOB in error for error in errors)
 
 
 @pytest.mark.skipif(not WORKFLOWS_DIR.is_dir(), reason=".github/workflows not present")

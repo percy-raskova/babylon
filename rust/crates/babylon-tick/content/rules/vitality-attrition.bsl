@@ -178,6 +178,8 @@
 (intrinsic floor :params (real) :returns int :cost 5)
 
 (rule vitality/subsistence-clearing
+  :role mechanic
+  :evidence derived
   :material-basis "The dual within-class subsistence measure (H2', design doc §6.2; ADR173's P(S|A)): w-bar = wealth/population, guarded total for population<=0; s-stock = (s-bio + s-class) * tau, the ADR210 R13 acquiescence level set. edge-k = cut-k * w-bar. clearing = mass in rungs 2..16 whose lower edge (cut_{k-1}) clears s-stock (rung 1 excluded by construction, its lower edge is the unspellable 0.0r). failing-certain = mass in rungs 1..15 whose upper edge (cut_k) sits wholly below s-stock (rung 16 open above, f-16 definitionally 0). straddle-band = mass-sum - clearing - failing-certain, the straddled rung, complemented against the BOUND total not a stipulated 1 (C-7). Every op is a multiply, add, comparison or rung-membership test -- no exponent, sigmoid or interpolation (S-7, ADR172 r5). DP-6-neutral: both duals land, neither is the mortality driver; T6 picks."
   ; §3.7 cost model: cost(literal)=0, cost(var-ref)=1, cost(arith|cmp)=
   ; 1+Sigma-children, cost(if)=1+cost(cond)+max(then,else), cost(intrinsic
@@ -455,6 +457,8 @@
 ; structure-contract row: SHAPE substitution is this task's mandate, not
 ; a divergence from it.
 (rule vitality/subsistence-mortality
+  :role mechanic
+  :evidence derived
   :material-basis "Grinding Attrition, ported (DP-6 = B, design doc S6.2 H2'): deaths = floor(population * failing-certain * kappa); the driver is failing-certain (H2''s dual), never (- 1.0c clearing) -- D199 records the departure from OQ-H's ruled form. w-bar/s-stock/edge-k/f-k re-run vitality/subsistence-clearing's H2' chain independently (no cross-rule binding reuse in BSL). kappa (Coefficient, DERIVED not picked, ADR210 R14; D198 records the fixture + divergence surface) converts the certainly-failing share into a per-tick death flow; the product stays in [0,1] by construction, so no clamp (S3.10's rider against scalar min/max). Transcribed from the frozen engine (ADR183, engine/systems/vitality.py:114-131): deaths reduce population never wealth, floored, with the two continue guards (active, population>0). Retires attrition_base_factor (ADR191 R3) and the inequality-dispersion surrogate (S3.3b) -- shape lives in the measured K=16 distribution, not a tuned knob."
   ; Fuel: re-measured the same way vitality/subsistence-clearing's own
   ; comment documents -- temporarily lower :fuel to 1 and read the

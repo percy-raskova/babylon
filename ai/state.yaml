@@ -2,9 +2,146 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.70.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
-  updated: "2026-08-22"
+  version: "2.73.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  updated: "2026-08-23"
+  role: historical_implementation_ledger
+  history_policy: append_or_prepend_only
+  current_work_authority:
+    system: Linear
+    project:
+      id: ebab3603-e391-4110-97e2-97422bc2037e
+      url: >-
+        https://linear.app/percy-raskova/project/babylon-v1-playable-political-economy-299b037e7feb
+    charter:
+      id: 4850c85c-1046-4a3d-8003-27cdbfebf5e0
+      url: >-
+        https://linear.app/percy-raskova/document/babylon-v4-roadmap-charter-2c67d2898306
+  v4_governance_snapshot:
+    as_of: "2026-08-23"
+    implementation_truth: ai/architecture.yaml
+    lower_entries: dated_snapshots_only
+    current_status_queries: Linear
+    persistence_boundary:
+      status: accepted_cutover_law
+      issue: PER-48
+      adr: ADR220_rust_owned_postgresql_persistence_boundary
+      completion_commit: 9b4c9b2e
+    bsl_phase_order:
+      status: implemented_on_dev
+      issue: PER-17
+      adr: ADR222_executable_bsl_phase_order
+      merge_commit: 5a0ef2a9
+    whole_tick_atomicity:
+      status: implemented_on_dev
+      issue: PER-18
+      adr: ADR223_whole_tick_atomicity_world_hash
+      merge_commit: 9182ec25
+      scope: in_memory_only
+    bsl_causal_composition:
+      status: implemented_on_PER-19_branch
+      issue: PER-19
+      adr: ADR224_bsl_causal_composition_contract
+      branch: codex/per-19-bsl-causal-composition
+      production_classification:
+        mechanic_derived: 58
+        recognizer_derived: 2
+        external_event: 0
+        intent: 0
+      attribution_governance:
+        manifest: causal_contract::GOVERNED_RULE_ATTRIBUTIONS
+        known_id_drift: uncoded_typed_ContractError_GovernedAttributionMismatch
+        production_corpus_completeness: ci_sentinel
+        unknown_mod_and_fixture_ids: self_declared
+      gate_2_status: complete_in_checkout
+      durable_boundary: planned_gate_3
+    attributed_membership_payload:
+      status: planned
+      horizon: Research
+      issue: PER-44
+      current_truth: empty_unhashed_unwritten_unconsumed
+    historical_labels:
+      - current_focus
+      - next_steps
+      - canonical_roadmap
+      - epoch
+      - phase
+      - dashboard
+      - TUI
+      - Django/React
+      - "Project #8"
+    interpretation: >-
+      Lower entries remain chronological evidence. They do not select current
+      work or override Linear status, priority, dependencies, Horizon,
+      milestones, or schedule.
   truth_status: |
+    (2026-08-23 GATE 2 — PER-19 BSL CAUSAL COMPOSITION CONTRACT
+    IMPLEMENTED, REVIEW/PR PENDING) Every BSL rule now declares a closed causal
+    role and Article IV evidence class. Mechanics retain the typed effect
+    algebra; recognizers, external events, and intents are exact-allowlist and
+    default-deny over the complete nested effect tree, with E-LOAD-060 for an
+    unauthorized event or field and no graph-shape authority. The current 60
+    production rules classify as 58 Mechanic/Derived and two
+    Recognizer/Derived ControlRatio rules. Their declarations are independently
+    pinned by `GOVERNED_RULE_ATTRIBUTIONS`; a known-ID mismatch refuses load,
+    and a CI sentinel proves exact production-corpus coverage. Unknown mod and
+    fixture IDs remain self-declared. The recognizer allowance table
+    contains only their two announcement events and three latches. The same
+    sentinel proves each non-Mechanic production footprint exactly equals its
+    allowance rows and that allowance keys are unique, so dead permissions
+    fail CI. External event and intent tables remain empty. Same-rank rules have an explicit
+    deterministic sequential-composition contract. The complete
+    post-phase-compile content set enforces rank-aware E-LOAD-058 and
+    E-LOAD-059 through exact ADR224 dispositions, so a near-match or new writer
+    refuses. The public ranked analyzer also rejects invalid forms,
+    AST/supplied-ID mismatches, and duplicate IDs before it computes findings.
+    Successful rules reduce actual events and then actual writes into
+    identity-free AuditReceipts carrying rule, role, evidence, ordinal, and
+    effect. Receipts publish only with a successful detached tick and do not
+    change state or hashes. ADR224 records the scoped supersession of
+    ADR222/ADR223's future shared-prestate target and retires the unratified
+    Amendment AI vocabulary path. Gate 2 is complete in this checkout. Durable
+    envelopes, subject/H3 identities, shocks, and player intents remain Gates
+    3, 4, and 5.
+    PREVIOUS:
+    (2026-08-23 GATE 2 — PER-18 WHOLE-TICK ATOMICITY AND NOMINAL WORLD HASH
+    IMPLEMENTED, REVIEW/PR PENDING) `babylon-graph` now exposes an explicit
+    detached-copy contract for both stores and rejects node, hyperedge, and
+    tick-counter exhaustion before mutation. `babylon-tick` stages one-shot
+    preparation, hydration, ordered rules, hashes, and event reservation before
+    publishing graph, allocator cursors, events, or completed time. Failure
+    vectors cover all three causal partitions on both backends, both public
+    one-shot variants, event refusal, pre-hash failure, and a real StateEncoder
+    NaN rejection. A parent/child multi-rule proof compares graph hashes,
+    nominal world hashes, total and per-rule firing, and exact typed event
+    payloads across insertion permutations and both stores. NominalWorldHash v1
+    covers GraphStateHash, completed weekly time, both allocator cursors, and
+    the static governed phase-schedule digest with an exact 116-byte asymmetric
+    big-endian vector. Bevy shows the committed nominal world hash. ADR223
+    records the in-memory transaction and hash law. Gate 2 remains open only on
+    PER-19 causal composition, provenance/direct-write constraints, and
+    negative outcome-write contracts. PostgreSQL durability, the complete
+    TickContentHash, and CommittedTickEnvelope remain Gate 3 work.
+    PREVIOUS:
+    (2026-08-23 GATE 2 — PER-17 EXECUTABLE BSL PHASE ORDER IMPLEMENTED,
+    REVIEW/PR PENDING) `babylon-tick` now compiles every admitted rule onto
+    the frozen 34-system causal spine (15 Material Base, one Action, 18
+    Consequence) instead of globally sorting the content set by rule-ID
+    bytes. Namespace defaults and explicit before/after boundaries are
+    executable; D16 remains the same-position tie-break only; the four
+    compatibility namespaces resolve to governed canonical homes. Interior
+    Material Base anchors refuse as E-LOAD-003. Validation uses a disposable
+    graph in the established scenario -> rule -> composition error order and
+    hydrates caller state only after phase composition succeeds. Seven
+    integration vectors cover explicit placement, file permutations, missing
+    and duplicate anchors, E-LOAD-003, diagnostic parity, mixed-error
+    precedence, and mutation absence. The full babylon-tick crate suite and
+    all-target Clippy are green. ADR222 records the registry, rank law,
+    lifecycle anchor correction, unchanged CAS content hashing, and the named
+    same-position gap. Gate 2 remains open: PER-18 owns whole-tick working-copy
+    rollback plus canonical big-endian auxiliary-register hashing and the
+    combined world hash. PER-19 owns BSL causal composition, the
+    provenance/direct-write whitelist, and negative outcome-write contracts.
+    PREVIOUS:
     (2026-08-22 COMMUNITY PORT TRAIN — TASKS 1-6 LANDED ON dev, #680-#685)
     The hyperedge lane of the Community port (plan
     docs/superpowers/plans/2026-08-18-community-port.md) is complete through
@@ -4918,3 +5055,44 @@ community_port_train_667:
     cross-check) is an engine check, unscheduled. The national-question pole
     shape and county_extraction BoundOpposition registration stay ADR171-line
     items owned by the post-#653 slice (DG-5/DG-6).
+
+rust_postgresql_persistence_boundary:
+  date: 2026-08-22
+  adr: ADR220
+  tracking: "Linear PER-48 / GitHub #697; implementation PER-20 and PER-21"
+  status: "ACCEPTED — contract keel landed; database adapter not yet landed"
+  contract_keel:
+    implementation_range: "bf02187a through f5b5ffa2"
+    implementation_tip: f5b5ffa2
+    crate: rust/crates/babylon-persistence
+    opens_database: false
+    postgres_dependency: false
+    legacy_schema_ddl:
+      chunks: 112
+      digest: 0902471053ab7a22cdaf0340978712772990e87a63aaaa1636608894fa52590b
+    legacy_migrations_0010_0044:
+      chunks: 35
+      digest: 4abe69ddc25569d5dff1941b4fbe2973df5cbd70a9bca4c92b9fe26f51dd45db
+  decision: >
+    Rust owns authoritative game-managed PostgreSQL connections, migration
+    authority, committed-tick transactions, checkpoint hydration, H3 codecs,
+    and compatibility views after one-way cutover. Python retains data builds,
+    external APIs, AI/Ollama, document/wiki/vault work, and CLI periphery;
+    transition observers are read-only.
+  identity_contract: >
+    CampaignId(UUID) is durable ledger identity; deterministic Rust SessionId
+    remains a separate RNG namespace and is never derived from the UUID.
+    RNG seed, ContentDigest, and ref_digest are separate replay inputs.
+    ReplayIdentityHash, GraphStateHash, and TickContentHash remain distinct;
+    a complete TickContentHash is a writer-cutover gate.
+  migration_contract: >
+    Freeze both ordered legacy DDL sets — POSTGRES_SCHEMA_DDL and SQL migrations
+    0010-0044 — with their UTF-8-plus-NUL digests and shared advisory lock;
+    adopt them from Rust, then use one Rust-owned append-only version/checksum
+    ledger. There is no dual-writer or dual-migrator interval.
+  current_reality: >
+    Python remains the sole live runtime writer and migrator. The Rust
+    contract crate opens no database and cannot write a campaign.
+  next: >
+    Land the separate PER-21 H3 identity contract, then the read-only
+    legacy schema adopter and census.

@@ -286,7 +286,7 @@ fn spawn_engine_session_and_hud(
 
 fn refresh_readouts(
     counter: Res<TickCounter>,
-    session: Res<EngineSession>,
+    last_report: Res<crate::ui::admin::LastTickReport>,
     mut tick_text: Query<&mut Text, (With<TickCounterReadout>, Without<HashReadout>)>,
     mut hash_text: Query<&mut Text, With<HashReadout>>,
 ) {
@@ -297,15 +297,10 @@ fn refresh_readouts(
         t.0 = format!("tick {}", counter.0);
     }
     if let Ok(mut h) = hash_text.single_mut() {
-        // The last hash this session computed — sink carries no hash, so
-        // read it back off the session's own last report by re-deriving
-        // from the graph directly (state_hash is cheap at this scale, see
-        // the Global Constraints Scale Note — 18 nodes, 0 hyperedges).
-        if let Ok(hash) =
-            babylon_graph::state_hash::CanonicalState::state_hash(session.inner.graph())
-        {
-            h.0 = format!("hash: {}", babylon_tick::hex(&hash));
-        }
+        h.0 = match last_report.0.as_ref() {
+            Some(report) => format!("hash: {}", babylon_tick::hex(&report.world_after)),
+            None => "hash: (not yet run)".to_owned(),
+        };
     }
 }
 

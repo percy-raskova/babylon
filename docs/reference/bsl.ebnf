@@ -313,6 +313,8 @@ top-form    ::= rule | deffield | intrinsic-decl              /* §2.2 */
 /* --- 2.3 Rules ------------------------------------------------------ */
 
 rule        ::= "(" "rule" qname                              /* §2.3 */
+                    ":role" rule-role
+                    ":evidence" evidence-class
                     ":material-basis" string
                     ":fuel" int-lit
                     domain?
@@ -321,12 +323,27 @@ rule        ::= "(" "rule" qname                              /* §2.3 */
                     when?
                     effects
                 ")"
-                /* The two keyword options may appear in EITHER source
+                /* The four valued keyword options may appear in ANY source
                    order (§2.3); the canonical serialization sorts them
                    (§5.3), so the fixed order above is this grammar's
-                   spelling, not a constraint. `:material-basis` must be
-                   present and non-empty (E-PARSE-011); `:fuel` must be
-                   > 0 and ≤ 1_000_000 (E-PARSE-012).
+                   spelling, not a constraint. All four are mandatory.
+                   `:material-basis` must be present and non-empty
+                   (E-PARSE-011); `:fuel` must be > 0 and ≤ 1_000_000
+                   (E-PARSE-012). Role and evidence values are closed sets;
+                   an off-set value is E-PARSE-015. */
+
+rule-role   ::= "mechanic" | "recognizer" | "external-event" | "intent"
+                                                               /* §2.3, ADR224 */
+                /* `external-event` is the role for exogenous shocks.
+                   `intent` writes only governed next-week intent carriers.
+                   Non-mechanic effects are default-deny under E-LOAD-060. */
+
+evidence-class ::= "observed" | "derived" | "calibrated" | "designed"
+                                                               /* §2.3, Article IV */
+                /* This class names the rule's evidentiary basis. It does
+                   not grant write authority. */
+
+                /*
                    An omitted <when> is unconditional. An EMPTY condition
                    is NOT expressible: `(when)` is E-PARSE-020, and a rule
                    meaning "always" writes `(when #t)` or omits the

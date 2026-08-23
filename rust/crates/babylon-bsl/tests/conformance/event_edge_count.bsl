@@ -2,6 +2,8 @@
 ; "count"): count over the typed edge query; the empty query counts 0 and
 ; the comparison decides — never a silent skip.
 (rule event/solidarity-web
+  :role mechanic
+  :evidence derived
   :material-basis "the solidarity web's existence conditions rupture routing"
   :fuel 128
   (bindings)

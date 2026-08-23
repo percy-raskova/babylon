@@ -186,7 +186,9 @@
 ; for imperial-rent specifically; the blanket "no single-tick test flips"
 ; sentence above governs rows 1-6 only.
 ;
-; §7's FOUR inter-pack byte-order inversions (plan §7, D190) — this pack's
+; HISTORICAL §7/D190 RECORD, superseded for execution by the governed phase
+; registry (ADR222/PER-17): the former FOUR inter-pack byte-order inversions.
+; This pack's
 ; own namespace, `imperial-rent`, sorts AFTER `consciousness, control-ratio,
 ; decomposition, dispossession, economics` and BEFORE `lifecycle, metabolism,
 ; organization, production, solidarity, territory, vitality` (`economics` <
@@ -397,7 +399,8 @@
 ;      default; `defines.yaml:97` SHIPS 0.7 and `ImperialRentSystem` passes
 ;      the define — the SHIPPED 0.7 governs, the code is the port's oracle,
 ;      not its own docstring).
-;   10. (D190) The inter-pack byte-order inversions — FOUR, each with its
+;   10. (D190, HISTORICAL; superseded by ADR222/PER-17) The inter-pack
+;       byte-order inversions — FOUR, each with its
 ;       own executable constraint. See the §7 disclosure block above (this
 ;       header, immediately before this D-record list) for the full text of
 ;       all four (7.1 production, 7.2 consciousness, 7.3 decomposition, 7.4
@@ -730,6 +733,8 @@
 ; (`institution/superwage-crisis-known`/`-tick`, Task 5).
 
 (rule imperial-rent/r00-tick-reset
+  :role mechanic
+  :evidence derived
   :material-basis "The per-tick re-creation of the frozen `tick_context` dict (economic.py:59-66): `tribute_inflow=0.0`. `rent-wages-outflow` stays unreset (D199); `rent-pool`/`rent-carrier`/the two B8 latches untouched. Domain EXPLICIT `NodeType/INSTITUTION` (`:field institution/rent-carrier` binding, TICK-time). Review fix round 2 (N1, PORT-ARTIFACT, NO frozen analog — D-row below): also zeroes EVERY TRIBUTE edge's `tribute/value-flow` — the frozen engine never needs this (its credit reads a FRESH local `tribute_amount`, never the edge attribute), but r04's own C1 fix reads the PUBLISHED edge value, so a stale prior-tick positive flow on an edge THIS tick's r03 skips (self inactive/wealth<=0) would wrongly pass r04's `> 0` gate without this reset. Both writes idempotent under repeated/multi-subject firing."
   :fuel 23
   (domain NodeType/INSTITUTION)
@@ -745,6 +750,8 @@
       (update-edge it tribute/value-flow (set 0)))))
 
 (rule imperial-rent/r01-extraction
+  :role mechanic
+  :evidence derived
   :material-basis "Phase 1 — Extraction (economic.py:239-345). eff = (extraction-efficiency/weeks-per-year) * max(trpf-efficiency-floor, 1-trpf-coefficient*tick) (:253-262, max as an `if`, §3.4). Per EXPLOITATION edge (source=worker=self, target=exploiter=it): rent = min(eff*wealth*(1-consciousness), wealth) (:289,292); consciousness reads social-class/revolutionary (B7 STRUCK, dossier CORRECTIONS 1). Writes: self wealth (sub rent) — D196's AST: economic.py:295's max(0,·) clamp NOT transcribed (dead in every frozen-reachable world, rent<=wealth always; r01_never_drives_a_single_edge_worker_negative is the converse witness; N>=2-edge negatives are D184(a), world 8, Task 6). it wealth (add rent) (:297); exploitation/value-flow (set rent) (:300-302, D182's self-anchored push). Both self/it active gated (:276,280). Emits SURPLUS_EXTRACTION when rent>negligible-rent (:332-345): source/target NodeRefs (BLOCKER-5b), amount — no mechanism key (BLOCKER-5, D188). Full prose: this file's header."
   :fuel 104
   (bindings
@@ -778,6 +785,8 @@
             (amount rent)))))))
 
 (rule imperial-rent/r02-extraction-credit
+  :role mechanic
+  :evidence derived
   :material-basis "Phase 1's CORE_BOURGEOISIE credit (economic.py:324-329): rent ALSO accumulates into tick_context['tribute_inflow']/['current_pool']. CORRECTED DESIGN (found in Task 2's own gate, not an independent re-derivation): reads r01's SAME-TICK `exploitation/value-flow` write via `(field-of (edge-between ...))` (D116/D197 ledger row 7, NEW) rather than re-deriving eff/wealth/consciousness — r01 runs FIRST (byte order) and MUTATES self's own wealth, so a fresh `:field social-class/wealth` re-read here would silently read POST-r01 wealth, producing a WRONG (smaller) rent; measured, not theorized (r02_credits_only_a_core_bourgeoisie_target caught it red before this fix). r01_and_r02_agree_on_the_rent (§8a) now asserts the READ is faithful, not that two independent formulas coincide. Both carrier writes score the D198 DISCRIMINATOR, never self, never a constant score (unlike B8's r05 exception). Full prose: this file's header, D184/D201 addendum."
   :fuel 75
   (bindings
@@ -797,6 +806,8 @@
           (add (field-of (edge-between EdgeType/EXPLOITATION self it) exploitation/value-flow)))))))
 
 (rule imperial-rent/r03-tribute
+  :role mechanic
+  :evidence derived
   :material-basis "Phase 2 — Tribute (economic.py:347-400). Per TRIBUTE edge (source=comprador=self, target=recipient=it): cut = wealth * comprador-cut (:381), tribute = wealth - cut (:382) — BOTH rule-scoped, computed ONCE from self's pre-state wealth, independent of `it` (D200/D184(b) — world 10 measures the divergence vs. the frozen engine's own per-edge SOURCE re-read, :375). Writes: self wealth (set cut) — the §1.6-c OVERWRITE, `source.wealth = cut_amount` (:385), a `set` not `sub` (D189(b)) — N TRIBUTE edges collect N identical `(set cut)` writes; D200: accepted, idempotent here (same value). it wealth (add tribute) (:387); tribute/value-flow (set tribute) (:390-392, D182's self-anchored push). Both self/it active gated (:367,371). Self also gated `wealth > 0` (:377-378, strict). No emit (r03_emits_nothing)."
   :fuel 64
   (bindings
@@ -814,6 +825,8 @@
         (update-edge (edge-between EdgeType/TRIBUTE self it) tribute/value-flow (set tribute))))))
 
 (rule imperial-rent/r04-tribute-credit
+  :role mechanic
+  :evidence derived
   :material-basis "Phase 2's CORE_BOURGEOISIE credit (economic.py:398-400): tribute accumulates into tick_context['tribute_inflow']/['current_pool'] when the recipient's role is CORE_BOURGEOISIE. Mirrors r02's corrected design: reads r03's SAME-TICK `tribute/value-flow` via `(field-of (edge-between ...))`, NOT a fresh comprador wealth re-read (r03 OVERWRITES it first, D116/D197 row 7). Review fix round 1 (C1): the gate is PER-EDGE `tribute/value-flow > 0`, NOT a self-level `wealth > 0` re-read — self's wealth is ALREADY OVERWRITTEN by r03's own `(set cut)` by the time this rule runs, so a self-level wealth check reads the post-transfer cut, not the frozen `:377-378` pre-transfer check it must mirror (wrong under comprador-cut=0 and under a comprador that is itself a TRIBUTE target). A positive published tribute IS the frozen pre-transfer check having passed AND produced a transfer. Both writes score the D198 discriminator."
   :fuel 85
   (bindings

@@ -1,401 +1,198 @@
-# CLAUDE.md
+# Repository Rules for Agents
 
-Operating guidance for any coding agent working in this repository (Claude Code reads this file
-natively; `AGENTS.md` is a symlink to it, so every tool shares one source of truth).
+`AGENTS.md` points here. Keep this live configuration below 200 lines. Use `NORTH_STAR.md` for game direction, `docs/concepts/architecture.rst` for the live boundary, and `docs/agents/governance.md` for contributor authority.
 
-<!-- This file is living configuration, not documentation. Keep it lean (<200 lines), accurate,
-     and imperative. Push deep reference into ai/ and docs/ that load on demand. -->
+## Babylon
 
-## Babylon — The Fall of America
+Babylon is an entertainment-first emergent political-economy game, not a forecast
+or scientific reproduction. Theory constrains causes but does not predetermine
+results. Determinism proves computational identity, not scientific truth.
+Historical cases test causal signatures and counterfactual behavior. Bevy remains
+an administrative viewer with no player action.
 
-Geopolitical simulation engine modeling the collapse of American hegemony through MLM-TW
-(Marxist-Leninist-Maoist Third Worldist) theory. Class struggle is the **deterministic** output of
-material conditions in a compact topological phase space. **Mantra: Graph + Math = History.**
+This checkout implements Gate 2. These three executable gates follow:
 
-You are a senior engineer on this codebase. You write deterministic, tested, mathematically
-grounded code, and you follow the Babylon Constitution for architectural decisions.
-**Orientation: `NORTH_STAR.md`** (repo root) — the explanation-quadrant mental model that
-threads the whole system: four-strata ontology, closed-for-v1.0 algebra ("we are rigorous
-enough" — game first), the text grammar, holism as a build-checkable property. Read it before
-proposing structure; the Constitution stays the law, architecture.yaml stays the reference.
+<!-- Vale: each protected item is a governed gate name. -->
+<!-- vale ste.UnapprovedWords = NO -->
+<!-- vale Vale.Terms = NO -->
+1. **PostgreSQL/H3/Archive decision-loop slice**
+<!-- vale Vale.Terms = YES -->
+<!-- vale ste.UnapprovedWords = YES -->
+<!-- vale ste.UnapprovedWords = NO -->
+<!-- vale ste.NounClusters = NO -->
+2. **COVID E0 emergence proof**
+<!-- vale ste.UnapprovedWords = YES -->
+3. **Player agency**
+<!-- vale ste.NounClusters = YES -->
 
-## Constitutional Compact
+Read `CONSTITUTION.md` v4.0.0 before a change to game law. ADR221 maps its predecessors and preserves history. `ai/mantras.yaml` is the canonical machine-readable orientation.
 
-Irreducible constraints. Full text: `CONSTITUTION.md` (v3.1.0, 10 Articles +
-Amendments A–AG — T ratified 2026-07-22 (Divergence Channel, observes-only, code
-queued; ADR072/ADR126); the canonical governance doc — read it before
-proposing architecture. AA: Windows = binding post-1.0 requirement, pre-1.0 dev
-SHIELDED from all Windows obligations except a one-line ADR disclosure duty.
-AC (2026-07-27, ADR150 — SUPERSEDED IN FULL by AF): the Rust/Ratatui client IS v1.0's terminal client,
-in-tree at `rust/`, 3D lane v1.0-blocking via hypergraph-rs raster git-dep,
-M7 Textual deletion inside the release.
-AD (2026-07-27, ADR151): the **Agentic Engineering model** — IX.5; a human
-Director steers direction + holds the reserved ideological line, agents are the
-gate-licensed engineering workforce; Benevolent-Dictator subsumed as the
-Director role.
-AE (2026-07-29, ADR172, **v3.0.0 MAJOR — Program 27 Refoundation**): **Rust is
-the engine language** (Python survives as data-build pipeline + out-of-process
-AI observer + CLI periphery; the Python engine freezes at the `p27-python-freeze`
-executable pin, reference-only after); the formalism surface re-opens for
-exactly ONE additive construct — **BSL**, rules-as-content expressing the closed
-algebra, minting no new mathematics — and for rider-recorded III.10 numeric
-retirements; **Amendment D ruled NATIVE HYPEREDGE** (first-class hyperedges in
-babylon-graph's exposed model; Levi/incidence = internal storage only); v1.0 is
-redefined as the Rust engine's release; engine crates live in-tree at `rust/`;
-clause (xi — SUPERSEDED by AF): **ratty + Ratatui are REQUIRED renderers** for in-game topology/
-hypergraph/Sankey-flow visualization (glyph floor unchanged). Standing theory
-ruling recorded same session: **no imposed functional forms — sigmoids must
-EMERGE from P(revolution)/P(acquiescence) and the Lawverian algebra**, never be
-stipulated by a mechanic).
-AF (2026-08-10, ADR186): **Bevy replaces the Ratatui client outright** — AC
-superseded in full, AE (xi) superseded, glyph floor retired; the Ratatui
-estate deleted by ceremony; `babylon-client` (Bevy) is the v1.0 client and
-the game ships as a pure Rust binary; visualization obligations transfer to
-Bevy scenes; hyperedge-lane pause lifted.
-AG (2026-08-10, ADR189): **attributed membership + lattice instances** —
-the (member, hyperedge) pair becomes a first-class payload-carrying
-element kind (dyadic-edge landing rejected; VIII.9 survives; hash-covered),
-and content may mint lattice rungs/adjunction INSTANCES (kinds closed);
-discharges the D66 CommunitySystem port blocker.
+## Constitutional compact
 
-**MUST**
+- Equal input bytes must produce equal output bytes and hashes.
+- The dialectic is primitive. BSL cannot add a mathematical primitive.
+- Each formal element needs a material relation. Geography stays fixed.
+- Political claims use overlays. Public hyperedges stay first-class.
+- AI can parse, retrieve, and narrate. Only the engine judges mechanics.
+- Classify substantive values as `Observed`, `Derived`, `Calibrated`, or `Designed`.
+- An external-event rule can add only an allowed pressure, burden, or capacity effect.
+  It cannot write downstream results.
+- A rule cannot impose a sigmoid or a second fixed response curve.
+- Each game display must answer a decision question. An administrative display
+  cannot pass a game milestone.
 
-- The dialectic `D = (A, Ā, w, T, σ)` is primitive; all partitions emerge from it.
-- Every tick produces a deterministic hash. Non-determinism is a bug.
-- Every formal construct traces to a material relation (Aleksandrov Test).
-- The spatial substrate is immutable; political claims are overlays.
-- AI parses/narrates only; the engine adjudicates the math.
+Stop and ask the Director before a new primitive, weaker prohibition, or change to the reserved theory line. Do not infer live authority from an old ADR.
 
-**MUST NOT**
+## Live architecture
 
-- Mutate the substrate, use ungrounded tensors, or substitute fixtures for runtime data.
-- Invent primitives without a constitutional amendment.
-- Skip the TDD red phase.
+<!-- Vale: these paragraphs preserve literal crate, schema, and Linear identifiers. -->
+<!-- vale ste.UnapprovedWords = NO -->
+<!-- vale ste.NounClusters = NO -->
+The live Rust path is `babylon-kernel`, `babylon-graph`, `babylon-bsl`,
+`babylon-tick`, and `babylon-client`. Every BSL rule declares one causal role
+and evidence class. Built-in declarations must match
+`GOVERNED_RULE_ATTRIBUTIONS`. Unknown mod and fixture IDs remain self-declared.
 
-**Escalation:** if a task requires violating a limit, STOP and propose an amendment.
+Mechanics have typed effects. Recognizers, external events, and intents are exact-allowlist and default-deny. Restricted production footprints must equal their unique allowance rows, so CI rejects dead permissions. Executable shocks and intents do not exist.
 
-**Ideological doubt (Director, 2026-07-28):** if you're ever in doubt of the correct
-ideological framing for a decision, err on the side of asking the Director. And hold the
-Director's intent as the compass for every design call: **"What gameplay mechanics are both
-engaging AND instill education about the correct revolutionary theory?"** — engagement and
-correct-theory pedagogy are one criterion, not a trade-off.
+Same-rank rules compose sequentially. `TickSession` publishes graph, events, identity-free event-then-write `AuditReceipt` rows,
+completed time, and `NominalWorldHash` only after the detached tick succeeds. `GraphStateHash` stays graph-only.
+The Bevy viewer shows the world hash.
 
-## Architecture: The Embedded Trinity
+Program 27 froze the Python engine at `p27-python-freeze`. Its 34-system
+`SimulationEngine._DEFAULT_SYSTEMS` is the transcription oracle for Rust's
+executable `phase_order.rs` causal spine. Five `EndgameDetector` labels remain
+reference facts, not promised outcomes. Python also owns data tools and periphery.
 
-Three-layer local system, no external servers. Full map: `ai/architecture.yaml`.
+Reference Parquet and deterministic SQLite are build artifacts. The Python
+`RuntimeDatabase` is separate mutable SQLite. Python also has
+`PerTickTransactionEnvelope`, atomic Postgres `persist_tick_atomic`,
+`tick_commit`, partial `babylon_meta`, and an action pipeline.
 
-- **The Ledger** — rigid material state. SQLite reference DB (`data/sqlite/marxist-data-3NF.sqlite`,
-  read-only — a deterministic BUILD PRODUCT since ADR098: parquet sources + `schema.sql` in
-  `data-artifacts.yaml` are canonical, `mise run data:build-db` rebuilds it sha-identically on the
-  pinned toolchain; loaders never write it, they produce sources via `tools/loader_to_sources.py` —
-  see `docs/how-to/reference-data-pipeline.rst`) + PostgreSQL runtime (`src/babylon/persistence/`)
-  + a few JSON seeds in `src/babylon/data/game/`.
-- **The Topology** — fluid relational state via **rustworkx** (`babylon.topology.BabylonGraph`;
-  its own package since Program 14; NetworkX was removed, Amendment L / ADR052).
-  `WorldState.to_graph()` / `from_graph()`. Foundational node types
-  `social_class` and `territory`; later specs add `organization`, `institution`, `sovereign`,
-  `hex`, `industry`, `key_figure`. Edges: EXPLOITATION, SOLIDARITY, WAGES, TRIBUTE, TENANCY,
-  ADJACENCY, …
-- **The Archive** — semantic history for AI narrative via **pgvector** in Postgres
-  (`persistence/pgvector_store.py`; replaced ChromaDB in spec-037). AI observes, never controls.
+Gate 3 will add the Rust three-schema boundary, `CommittedTickEnvelope`, Archive
+outbox, and fog-safe decision loop. Gate 4 adds governed external-event rows,
+and Gate 5 adds next-week intents and Bevy player actions.
 
-**Principle:** state is pure data; the engine is pure transformation; they never mix.
+<!-- Vale: the accepted Linear status uses a passive state label. -->
+<!-- vale strunk.ActiveVoice = NO -->
+<!-- vale ste.PassiveVoice = NO -->
+PER-48 is decided.
+<!-- vale ste.PassiveVoice = YES -->
+<!-- vale strunk.ActiveVoice = YES -->
+Python remains the sole live writer until cutover. After the one-way cutover,
+Rust owns authoritative game-managed Postgres. Python continues its declared
+data, AI, document, external-API, and CLI periphery. The legacy
+Django browser client lives only in `web/` and does not gate v1.
+<!-- vale ste.NounClusters = YES -->
+<!-- vale ste.UnapprovedWords = YES -->
 
-**Client status (owner ruling 2026-07-20; Amendment V / II.8; superseded in part by Amendment AF,
-2026-08-10, ADR186):** the browser/web client (`web/`,
-`src/frontend/`) is **legacy** — its failures don't gate work. The
-`observe()` projection contract is the durable seam; clients are disposable. **Amendment AF rules
-the Bevy client** `rust/crates/babylon-client` **the v1.0 client**, superseding Amendment AC in
-full: the shipped game is a pure Rust binary with no PyO3 in the play path. The Rust/Ratatui
-client (`babylon-tui`, `babylon play`) landed by AC and hardened by the M7 cutover was **deleted
-outright by the AF (iii) deletion ceremony** (Program 28 kickoff plan Phase B) — the ceremony
-removed the crates `babylon-tui`/`babylon-tui-python`/`babylon-md`, the maturin wheel packaging,
-and the Python client periphery (`src/babylon/tui/`, `src/babylon/cli/play.py`); `uv sync` no
-longer needs cargo. `babylon-client` (Bevy) is **live in-tree** — B2 "tick loop on screen" landed
-2026-08-11: 3,222-county atlas, Space advances a tick, Tab cycles three lenses, HUD/state
-panel/event feed/hash readout, engine-linked to `babylon-tick`. **B3 wave 1** ("watch the null
-hypothesis run", issue #663, ADR217, 2026-08-18) landed a bounded auto-run clock
-(autoplay-until-critical default, byte-identical hash whether ticks arrive as discrete presses
-or one auto-run batch), a four-provenance projection seam (`Projector::read` —
-Material/Absent/NotComputed/Redacted-declared-dead) replacing eleven raw graph reads with one, a
-drained severity-ranked beat feed with a transcribed causal `because:` chain (Python parity
-guard, ADR217 records its lifecycle across the eventual Python deletion ceremony), a two-story
-catalog (`counties` default, `carceral` — the first shipped story, with a byte-identical text
-golden and a three-layer engine-unchanged proof) with per-story `SessionId` closing ADR213
-follow-on (iii), a countdown/pressure instrument with an executed no-frozen-window cadence gate,
-a lens registry replacing the old five-file match cascade, and a 40-row field-coverage ledger
-(`coverage.rs`, the M22 artifact). It is still a simulation VIEWER, not yet a game — no player
-action verbs exist in committed BSL content (the org-verb surface is #593) — but it now runs
-unattended, narrates with its causal chain, paces itself, and ships a story; `babylon` with no
-subcommand still prints help. Client logs (Director directive 2026-07-28): everything under
-`~/.local/share/babylon/logs/` — `babylon.log` (Python, JSONL DEBUG) is live; the deletion
-ceremony retired `rust-client.log` (the Ratatui client's log4rs sink); the Bevy client's file sink
-landed with B2 (`babylon-client.log` — the deleted TUI crate's log4rs sink resurrected verbatim);
-`client-capture.log` (raw stdio captured during play) — all 10 MB size-rotated.
+## Source rules
 
-## Engine
+Frozen Python uses `kernel < models/formulas < topology < domain < persistence <
+engine`. `intelligence` observes. Check it with `mise run lint:imports`.
 
-`SimulationEngine.run_tick(graph, services, context)` runs 34 Systems in strict materialist-causality
-order (count verified 2026-07-29, `_SYSTEM_CLASSES`; incl. TransportSystem @9.5, default-OFF) — **source of truth: `simulation_engine._DEFAULT_SYSTEMS`** (the `ai/architecture.yaml`
-systems annotation is stale, ADR032-era). The three phases:
+Put coefficients in `GameDefines` and `src/babylon/data/defines.yaml`. Regenerate with
+`tools/generate_defines_config.py`. Use native public hyperedges, strict
+types, explicit errors, specific type-ignore codes, and production vocabulary.
+Do not use a `test_` prefix in production source.
 
-1. **Material Base** (positions 1–13, + Substrate @2.5): Vitality, Territory, Production, TickDynamics,
-   ReserveArmy, Community, Lifecycle, Solidarity, ImperialRent, Dispossession, Decomposition,
-   ControlRatio, Metabolism.
-2. **Action** (@14): OODASystem — organizations observe + act.
-3. **Consequences** (14.5–22): FactionInfluence, Doctrine (@14.7 — per-org Doctrine Tree accumulator,
-   ADR073; the reformist trunk is a five-stance electoral fork with ZERO acquisition tag_deltas, so
-   all reformist tag movement flows through MEASURED PRACTICE — `PracticeVariable` (a namespace
-   deliberately DISJOINT from the 3-member `DoctrineTag`), the `@coeff` trap DSL, the liquidationism
-   absorbing state, officeholder capture, congress line-splits, and `DoctrineCapability` verb gating,
-   P25 U11/ADR137; feedback into bifurcation/consciousness lands with DT Unit 6), Survival, Struggle,
-   Consciousness, FascistFaction, Allegiance (@17.42 — the electoral valve, P25 U8/ADR134),
-   Electoral (@17.45 — the clocked ambient machine: turnout, government formation,
-   legitimation, L-SUSPEND, T-7 disillusion routing, P25 U10/ADR136),
-   Policy (@17.47 — LEGISLATE's resolver + the reform ceiling, P25 U9/ADR135),
-   Sovereignty, MarketScissors (@17.8 — price⟷value axis feeding
-   the CANONICAL `price_value` opposition; the correction fires LIVE into wealth/reserve army/
-   wealth axis, Program 23/ADR077+ADR078), Contradiction, ContradictionField,
-   FieldDerivative, CollapseTransition, EdgeTransition, WealthDistribution (@21.5 — Program 21
-   Phase-1 shadow + consumes the market-correction shock stamp), EpistemicHorizon (Phase 1
-   shadow — runs last, observes-only).
+Use TDD: show RED, make it pass, then refactor. Keep game data typed and
+immutable. Python models use frozen Pydantic types.
+`model_copy(update=...)` skips validation. Pass dependencies explicitly.
 
-Key modules: `engine/services.py` (concrete ServiceContainer; the DI *protocol* is
-`kernel/services.py`), `kernel/event_bus.py` (plain-str types; the `EventType` enum — 100 values —
-is in `models/enums/events.py`), `engine/formula_registry.py` (24 hot-swappable formulas),
-`engine/observers/` (`SessionRecorder` black-box replay, `EndgameDetector` for the 5 terminal
-outcomes: REVOLUTIONARY_VICTORY, ECOLOGICAL_COLLAPSE, FASCIST_CONSOLIDATION, RED_OGV,
-FRAGMENTED_COLLAPSE).
+Do not run Sphinx, `cargo doc`, or an umbrella task that generates documentation unless the Director requests it. This includes local `mise run rust:check`.
+Set `SKIP=rust-full-gate` for local pushes. Run the non-documentation Rust legs separately, and use only targeted Vale and format checks on changed prose.
 
-**Layering (Program 14, enforced by `mise run lint:imports`):** `kernel` < `models`/`formulas` <
-`topology` < `domain` (economics, dialectics, organizations, institution, bifurcation, geography)
-< `persistence` < `engine`; `intelligence` (ai + rag) observes. Nothing imports the engine
-backward; the kernel imports nothing above itself.
+## Tests and behavior contracts
 
-## Mathematical Core
-
-- **Fundamental Theorem:** revolution in the Core is impossible while `W_c > V_c` (wages > value
-  produced); the gap is Imperial Rent (Φ).
-- **Survival Calculus:** `P(S|A) = Sigmoid(Wealth − Subsistence)`, `P(S|R) = Organization / Repression`;
-  rupture when `P(S|R) > P(S|A)`. **The logistic form is the frozen Python reference's, NOT the
-  going-forward law** (ADR173, 2026-07-29): in the Rust/BSL engine P(S|A) is the measure of class
-  members whose wealth clears subsistence — the S-curve EMERGES from within-class wealth
-  dispersion; no imposed functional forms (ADR172 ruling 5, `ai/bsl-architecture-standard.md` §3.2).
-- **Bifurcation:** when wages fall, agitation routes to Fascism (+1) or Revolution (−1) by SOLIDARITY
-  edge presence.
-- **Metabolic Rift:** `ΔB = R − (E·η)`; overshoot `O = C / B` (O > 1 = ecological overshoot).
-
-Formulas: ~56 functions across 17 modules in `src/babylon/formulas/` (re-exported via `__init__.py`
-`__all__`; the two Epoch-2 placeholder Marx formulas were retired by fork-ledger F12).
-Imperial-rent tensor/Leontief math lives in `src/babylon/domain/economics/`, not `formulas/`.
-
-## Configuration — one moddable source of truth
-
-All tunable coefficients live in `GameDefines` (Pydantic, 53 category sub-models in
-`src/babylon/config/defines/`). The **canonical, player-editable single source of truth** is
-`src/babylon/data/defines.yaml` — generated from the schema by `tools/generate_defines_config.py`,
-read by `GameDefines.load_default()`, sync-guarded by `tests/unit/config/test_constants_sync.py`.
-Modding guide: `docs/how-to/modding-defines.rst`. Never hardcode a coefficient — add a define and
-regenerate the YAML (`uv run python tools/generate_defines_config.py`).
-
-## Coding standards
-
-- **Pydantic first:** all game objects are frozen `BaseModel`s; use constrained types (`Probability`,
-  `Currency`, `Intensity`, `Coefficient`), never raw dicts or bare floats.
-- **Data-driven:** logic reads from `GameDefines`/`defines.yaml`, not hardcoded conditionals.
-- **Strict typing:** MyPy strict, explicit return types. SQLAlchemy 2.0 `DeclarativeBase` + `Mapped`.
-- **TDD:** red → green → refactor. `@pytest.mark.red_phase` for intentionally-failing tests.
-- **RST docstrings** on all public classes/functions (Sphinx `-W` blocks CI on malformed ones);
-  move heavy theory to `docs/reference/*.rst`. See `docs/how-to/` for the docstring pattern.
-- **No `test_` prefix in production code** (pytest auto-collects it) — use `check_`/`verify_`/`validate_`.
-- **Type-ignore** with a specific code (`# type: ignore[import-untyped]`), never blank.
-- **`SimulationConfig`** is a run-scoped config carrying only `rng_seed` (Constitution III.7) — NOT a
-  coefficient carrier; coefficients are in `GameDefines`.
-- **Wiring doctrine (ADR109, ratified 2026-07-21):** connecting any built-but-dormant construct is a
-  TYPED MOTION — W-C dataflow / W-𝔇 opposition / W-G scale-adjunction / W-P projection / W-A4
-  conservation closure — entered through declared data and closed by its class's sentinel row, never
-  a bare import-and-call. A wiring PR without its sentinel row (or a blocking-dependency citation)
-  is incomplete. Full text + gap ledger: `ai/wiring-doctrine.md`.
-
-## Git & commits
-
-**Agentic Engineering model** (Constitution §IX.5, Amendment AD; ADR151): Persephone Raskova is the
-**Director** — she steers direction, holds sole authority over the ideological/theoretical line (the
-MLM-TW commitments, doctrine trees, political framing, the five canonical outcomes), and holds final
-merge authority to `main` (the Benevolent-Dictator role, subsumed). You are the engineering
-workforce: autonomy is **licensed by the gates** (green self-merges, red STOPs); a task that would
-add a primitive, relax a prohibition, or **touch the ideological line** escalates — to an amendment
-or to the Director — never improvise it. Full model: `CONTRIBUTORS.md`. Branch from `dev`
-(`feature/|fix/|docs/|refactor/|test/`), never commit directly to `main` or `dev`. Conventional
-commits (`type(scope): desc`). **Commit after each unit of work** — pre-commit hooks test only staged
-files, so intertwined units force ugly giant commits. Use `mise run commit -- "type(scope): msg"`
-(hook-safe: pre-runs hooks, re-stages fixes, verifies HEAD moved). End commit messages with the
-`Co-Authored-By` trailer. Full workflow: `CONTRIBUTORS.md`. **Pre-push mirrors CI per ecosystem:**
-the Python full-tree legs always run (ADR181 R4); a `rust/`-touching push additionally runs the
-full `mise run rust:check` (range-guarded — non-Rust pushes skip the build; radon's four
-frozen-estate exemptions cite #580).
-
-**Merge protocol (ADR181, ratified 2026-07-30):** before self-merging a PR, (1) verify every CI
-check completed and `headRefOid` == the green run's `headSha`; (2) **harvest the Copilot review** —
-wait for it (median ~230s, lands before CI green) and for EACH inline comment either push a fix or
-post a reply stating why not; zero unaddressed comments is a merge precondition (evidence: 83%
-substantive signal, 4 real conformance defects found the first time it was harvested — audit
-`reports/ci-copilot-codeql-synergy-2026-07-30.md`); (3) merge with **`mise run pr:merge -- N`** —
-the ONE sanctioned merge path (R10, `tools/pr_merge.py`): it mechanizes all of the above plus the
-CodeQL zero-alert floor and refuses `--auto` (#392: it ignores failing non-required checks) and
-`--delete-branch` on stacked PRs (#193: closes-not-merges the child) by construction. Copilot stays
-advisory machinery, never a required check — its verdict is stochastic and does not belong on the
-merge path (WND-2); the OBLIGATION to read it is what's binding.
-
-## Definition of done
-
-- `mise run check` — lint + format + typecheck + `test:unit` — green.
-- For any engine/economics/defines change: `mise run qa:regression` **byte-identical** (11 scenarios
-  + no-dead-columns leg + in-gate two-process determinism leg, ~10s local) plus `mise run
-  check:gate-coverage` (static, fast lane) / `check:gate-coverage-truth` (dynamic, qa lane) —
-  coverage is now declared and proved, not implicit (ADR090). **Also `mise run
-  qa:vault-regression-ci`** — the golden-vault byte-gate (III.13) is a SEPARATE estate that renders
-  `observe()` pages; an engine change can drift it while every qa checkpoint/dense golden stays
-  byte-identical (U13's county-attr restamp drifted only `economy/USA.md` — caught first in PR CI,
-  2026-07-27). If a value moves unintentionally, STOP; if intentionally, regenerate baselines via a
-  declared ceremony (next bullet).
-- **Baseline ceremonies (§6.5, owner ruling 2026-07-20):** any commit touching `tests/baselines/**`
-  IS a ceremony — subject `test(baselines): …`, body records the drift table (per-scenario columns,
-  cell counts, max |d|, attribution), and the message MUST carry a
-  `Baselines: blessed(<ceremony-slug>)` trailer. Don't hand-write the drift table: stage the
-  baseline changes, then run `python3 tools/generate_ceremony_message.py --slug <slug> --summary
-  "<what and why>"` — it computes the per-file drift table (row/cell counts, max |d| where
-  CSV-parseable) and prints a message the gate accepts by construction; pipe it straight into
-  `git commit -F -` or paste it. Enforced three ways: the commit-msg hook locally (best-effort —
-  an `--amend` or pathspec commit can slip past it), a **pre-push** `--range` mirror of the CI
-  check (`baseline-ceremony-range` hook, against the merge-base with `origin/dev` — catches what
-  the commit-msg leg missed, before the push leaves the box), and the CI ceremony-gate on PRs
-  (`tools/check_baseline_ceremony.py`; evil merges included via `diff-tree --cc`; audit trail:
-  `git log -E --grep '^Baselines: blessed\(' --format='%h %s'`). Undeclared drift = red gate, STOP.
-- After significant work: update `ai/state.yaml`; add an ADR in `ai/decisions/` (individual
-  `ADR0NN_*.yaml` files + `index.yaml` catalog) for architectural decisions.
-- `docs/versioning.md` — save-compat semver policy + the owner-run release ceremony.
-
-## Commands
-
-`mise tasks` lists all ~120 tasks (full reference: `ai/tooling.yaml`). Agent inner loop:
+Run the smallest applicable test first and do not overlap heavy gates. `pytest` covers
+data tools for Python, periphery, the frozen reference, and durable
+language-neutral contracts. Retire an engine-specific Python test only after a
+replacement contract exists.
 
 ```bash
-mise run commit -- "type(scope): msg"   # hook-safe commit
-mise run check                          # fast gate: lint + format + typecheck + test:unit
-mise run check:quick                    # same minus the test leg
-mise run test:q -- tests/unit/foo.py    # quiet scoped pytest (keeps cache => --lf works)
-mise run test:failed                    # re-run last failures
-mise run qa:regression                  # 6-scenario byte-identical baseline gate (ADR090)
-mise run sim:status                     # canonical-run status (tick/520, DB size, liveness)
-mise run db:sql -- "SELECT ..."         # one-shot SQL vs babylon_test
+mise run test:q -- tests/unit/path/to/test_file.py
+mise run check
+cd rust && cargo fmt --all -- --check
+cd rust && cargo test -p <changed-crate> --locked
+cd rust && cargo clippy -p <changed-crate> --all-targets --locked -- -D warnings
+mise run qa:regression
+mise run qa:vault-regression-ci
+mise run check:gate-coverage
 ```
 
-CI (`.github/workflows/ci.yml`) invokes the same mise tasks devs run (`test:unit-ci`, `lint:check`,
-`qa:regression`, …) — the only raw-uv exceptions are the py3.13 forward-compat leg (`weekly-py313.yml`)
-and a handful of documented one-offs (migrations, doc build, ad hoc pytest legs).
+Run `check` for the Python gate. For Rust changes, run the applicable format, scoped test, clippy, and BSL-sentinel legs separately without documentation.
+Engine, economics, and `GameDefines` changes must also run regression, vault, and coverage gates. Reject `NaN`, infinity, unchecked overflow, and an iteration order that can change.
 
-## Environment — the vendored flake (canonical toolchain)
+Do not edit a baseline to hide a fault. An intentional baseline change requires
+its ceremony, trailer, and `tools/generate_ceremony_message.py` record.
 
-The repo's own `flake.nix` is the canonical toolchain (environment-sovereignty ruling
-2026-07-21, ADR102 — the infra submodule is unmounted; babylon-infra remains a private
-sibling repo for ops tooling only). `.python-version` pins the interpreter MINOR (3.12)
-as the uv-facing source of truth — the flake owns the patch via the rev-pinned `python312`
-(guard: `tests/unit/cli/test_uv_migration.py::test_python_version_pin_consistency`).
-`mise run install` is frozen-sync (install-from-lock; re-resolution needs the
-../hypergraph-rs sibling — see the [tool.uv.sources] comment in pyproject.toml). Two devshells: `default` — python 3.12 with **sqlite
-pinned 3.53.1** (the `nixpkgs-data` input, rev-pinned; lockstep with
-`tools/build_reference_db.py::PINNED_SQLITE_VERSION` — the reference-DB byte-identity
-contract, both halves same-repo now), uv, node, gdal/geos/proj, libpq, playwright
-browsers — and `dataBuild` (the reference-DB builder env). Run pinned-toolchain commands
-via `mise run nix -- <cmd>` (no submodule init needed, works in any fresh clone/worktree).
-The host venv (3.46.1 sqlite) still runs everything EXCEPT the reference-DB builder, which
-hard-fails off-pin by design. Bumping `nixpkgs-data` IS a declared sqlite-pin change.
-Every devshell `unset`s `PYTHONPATH` (nixpkgs python setup hooks used to leak tool
-site-packages onto it, shadowing the repo venv — the old `env -u PYTHONPATH git` litany
-is retired for shells entered after 2026-07-21; guard: `mise run check:env-contract`).
+## Git and merge rules
 
-## Machine safety — resource limits (history: froze the dev box twice, 2026-07-12)
+<!-- Vale: these paragraphs preserve exact Linear fields and Git terms. -->
+<!-- vale Vale.Spelling = NO -->
+<!-- vale ste.UnapprovedWords = NO -->
+<!-- vale ste.NounClusters = NO -->
+Linear alone owns current issue identity, scope, status, priority, dependencies,
+horizon, milestones, schedule, and work. GitHub owns source, PRs, reviews, and
+historical evidence. Project #7 and Project #8 are transitional inputs. Archive
+them only after full PER-15 acceptance. The migration is not complete.
+`ai/state.yaml` is historical
+implementation evidence, and `project/` is non-live context.
 
-Solo dev box (12 cores / 31 GB RAM). The 2026-07-12 freezes were root-caused and FIXED: BLAS
-thread oversubscription (pinned to 1, commit `f3dde939` — also a determinism win) stacked on the
-claude-mem chroma-mcp leak (fixed upstream + locally 2026-07-13; **earlyoom is now active** as the
-system backstop). Owner ruling 2026-07-14:
+Create regular lanes from `dev` and target `dev`. Use `feature/`, `fix/`, `docs/`,
+`refactor/`, `test/`, or a `codex/PER-123-short-name` lane. Link the PER identity
+manually as `docs/agents/governance.md` directs. Never commit directly to
+`dev` or `main`.
 
-- **Run heavy commands UNCAPPED.** `mise run cap` (`tools/capped.sh`) is retired from routine use —
-  a process that eats memory is a **code smell to catch loudly**, not contain silently; earlyoom
-  keeps the box alive. The cap wrapper still exists for deliberately-risky one-offs (memory bombs,
-  untrusted repro scripts), nothing else.
-- **Keep the BLAS=1 pin** (conftest + mise `[env]` + guard test `tests/unit/test_blas_thread_cap.py`)
-  — that one is correctness (deterministic FP reduction order), not just safety.
-- **Still never fan out a Workflow where multiple agents each spawn pytest / the full suite** —
-  `test:unit` is xdist with ~1 GB/worker coverage instrumentation; N agents × 4 workers stacks tens
-  of GB for no benefit. Parallel agents are for read-only investigation and doc work; heavy
-  test/build runs stay single-flight. Prefer scoped `mise run test:q -- <path>` locally.
-- **If chroma-mcp servers accumulate again** (`pgrep -fc -- '--client-type persistent'` climbing):
-  `mise run mcp:reap`. Never `pkill -f chroma-mcp` by hand (matches its own cmdline, SIGTERMs your
-  shell; the script uses a `chroma[-]mcp` bracket guard). The recycle-loop root cause is fixed, so
-  a climbing count is news — investigate, don't just reap.
+A critical hotfix alone can branch from and target `main`. Its merge is
+Director-only, and a backport PR to `dev` is mandatory.
+<!-- vale ste.NounClusters = YES -->
+<!-- vale ste.UnapprovedWords = YES -->
+<!-- vale Vale.Spelling = YES -->
 
-## Gotchas (hard-won; details in `ai/anti-patterns.yaml`)
+Use `type(scope): description`, one logical unit, and the required co-author
+trailer. Commit with `mise run commit -- "type(scope): description"`.
 
-- `WorldState.events` is **per-tick, not cumulative** — a tick with no events is `[]`, never carried over.
-- **Graph round-trip loses data:** `from_graph()` excludes computed fields and defaults missing ones;
-  a `data.get("field", 0.0)` fallback silently masks a missing-field bug.
-- **Systems mutate the shared graph in-place** in strict order — read `graph.nodes[id]["wealth"]`, not
-  model attributes; each system sees prior systems' mutations.
-- **MyPy misses Pydantic dynamic-attribute errors** — runtime tests are essential.
-- **`dynamic_hex_state` is SPARSE** (spec-089 delta persistence): read `v_hex_state_asof`, never
-  `WHERE tick = N` on the raw table; `MAX(tick)` ≠ last committed tick (that's `tick_commit`).
-- **`WorldState` is frozen** — mutate via `model_copy(update={...})`, never assignment.
-- **Inject dependencies explicitly**, don't discover them at runtime.
-- **Never hand-stamp `_node_type` with a raw string — use `NodeType.*`** (`models/enums/topology.py`),
-  in fixtures too. A fixture stamping a type production never emits gives a green test over a dead
-  feature: `balkanization_faction` vs `faction` silently disabled RED_SETTLER_TRAP, secession
-  enumeration and FASCIST_RECRUITMENT. **The same failure mode applies to node SHAPE, not just
-  type**: a fixture stamping an attribute a node's model doesn't declare (`territory_ids` on
-  `social_class` — no such field; only `Organization`/`Institution` have it) gives a green test over
-  dead production code the same way. `mise run check:vocabulary` enforces BOTH — 3 rules
-  (`src/babylon/sentinels/vocabulary/`): no invented type strings, every queried type has a producer,
-  and every stamped attribute on a production-stamped node type is a real declared field or a cited
-  `EXTRA_STAMPABLE_ATTRIBUTES` graph-only write (registry docs the full exemption governance).
-  Task #45 audit (2026-07-18) found 6 more live instances of the attribute-shape bug beyond
-  `territory_ids` — 3 fixed in `web/game/engine_bridge.py` (flat `agitation`/`factional_composition`
-  reads where production nests them one level deeper), 3 left open as owner-gated `src/babylon/engine/`
-  defects (`ATTRIBUTE_EXEMPTIONS`' "Reason 2" rows name each).
-  **Worktree gotcha**: `uv run python tools/sentinel_check.py ...` run directly (not via `mise
-  run`) resolves `babylon` to whichever checkout's venv is active, not necessarily this worktree's —
-  prefix with `PYTHONPATH="$PWD/src"` or use the `mise run check:vocabulary` task, which sets it
-  correctly.
-- **The `end-of-file-fixer` pre-commit hook mutates staged text goldens MID-COMMIT** (bitten
-  2026-08-18, B3 T7): a byte-exact golden staged without a trailing newline gets one appended
-  AFTER the last green test run, so the committed golden no longer matches what the test
-  captured. Either compare with a trailing-newline tolerance (`strip_suffix('\n')` on BOTH
-  sides) or list the golden in the hook's exclude — never hand-tune the golden to survive the
-  hook.
-- **Workflow `args` arrives stringified or absent — FOUR times bitten (2026-07-22 ×2, 2026-07-29,
-  2026-08-11).** The orchestration harness can deliver a Workflow script's `args` as a JSON *string*
-  (so `args.field` is `undefined`, and prompts interpolate `"the PDF at undefined"` into every
-  fanned-out agent), and `resumeFromRunId` passes no args at all (bare `args.x` throws before the
-  cache engages). The memory file existed for bites 2–4 and was skipped at authoring time each time,
-  so the rule is now positional: **the guard is the FIRST code in every workflow script, written
-  before `meta`'s body is even filled in, with hard absolute fallbacks whenever values are knowable**:
-  ```js
-  let A = {}
-  try { A = typeof args === 'string' ? JSON.parse(args) : (args || {}) } catch {}
-  const X = A.x || '/known/absolute/fallback'   // degrade to correct, not to crash
-  ```
-  The `try/catch` covers a third arrival shape (non-JSON string). It is right ONLY because hard
-  fallbacks follow — when a value has no knowable fallback, drop the catch and shape-check loudly
-  instead: a line-1 throw beats a runaway fan-out acting on `undefined`.
-  Bites 1–2 dispatched agents per *character* of the stringified array toward the 1000-agent cap;
-  bites 2 and 4 were saved only by a fanned-out agent refusing to act on an all-`undefined` spec and
-  messaging the controller — never count on that.
+Before merge, pin green CI to the PR head SHA and address all Copilot comments.
+Use only `mise run pr:merge -- N`. Do not use `gh pr merge --auto`. The Director
+controls all merges to `main`.
 
-## Maintaining this file
+Keep unrelated user changes unchanged. Report an unrelated fault unless the owner expands scope.
 
-This file is **yours**. You have standing permission to modify `CLAUDE.md` — and to shape your own
-operating instructions more broadly — whenever you see fit, without asking first. When you learn
-something durable (a convention, a corrected fact, a gotcha you hit twice), fix it here and prune what
-went stale; treat it as living config with a lifecycle, not a monument. Keep it lean and link out for
-depth. `AGENTS.md` symlinks to this file, so one edit updates both.
+## Toolchain and host safety
+
+`flake.nix` pins tools and `.python-version` pins Python 3.12. Use
+`mise run nix -- <command>` for the pinned shell. Do not set `PYTHONPATH` for
+standard tasks. Run heavy gates uncapped. Do not overlap them. Keep `BLAS=1`.
+
+`earlyoom` is the host backstop. Use `mise run mcp:reap`. Do not use broad
+`pkill`.
+
+## Important traps
+
+<!-- Vale: this block preserves exact identifiers from recurring failures. -->
+<!-- vale Vale.Spelling = NO -->
+<!-- vale ste.UnapprovedWords = NO -->
+<!-- vale ste.NounClusters = NO -->
+Read `docs/agents/gotchas.md` for per-tick `WorldState.events`, graph round-trip
+loss, shared-graph order, Pydantic runtime checks, immutability, and dependency
+injection.
+
+- `dynamic_hex_state` is sparse. Read `v_hex_state_asof`. `tick_commit`, not
+  `MAX(tick)`, marks durability.
+- Run `mise run check:vocabulary`. A direct worktree run needs
+  `PYTHONPATH="$PWD/src"`.
+- `end-of-file-fixer` can add a trailing newline. Use a tolerant comparison or
+  a precise exclusion.
+- Workflow `args` can arrive absent or stringified. Parse first. Use a hard
+  fallback only for known values.
+<!-- vale ste.NounClusters = YES -->
+<!-- vale ste.UnapprovedWords = YES -->
+<!-- vale Vale.Spelling = YES -->
+
+## Records
+
+Keep old ADRs and reports unchanged. Add an ADR for a new architecture decision.
+Linear alone records status and tasks. Check the source and an executable test
+before you claim live behavior.

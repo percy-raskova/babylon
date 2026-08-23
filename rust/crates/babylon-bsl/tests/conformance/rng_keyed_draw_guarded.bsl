@@ -11,6 +11,8 @@
 ; or is suppressed (this fixture), so its draw must be bit-identical
 ; whichever fixture ran (r9_chapters.rs::c14_rng_draw).
 (rule demo/rng-keyed-draw
+  :role mechanic
+  :evidence derived
   :material-basis "a guard-suppressed draw must not shift another subject's draw (D69)"
   :fuel 64
   (bindings

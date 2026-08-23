@@ -21,6 +21,8 @@
 ; so this rule's own `organization/kind-probe` id resolves it from the
 ; rule-id's namespace prefix, the same convention `vitality.bsl` uses.
 (rule organization/kind-probe
+  :role mechanic
+  :evidence derived
   :material-basis "the state's coercive organs are a distinct material kind; content can see the difference (spec Q1)"
   :fuel 32
   (bindings

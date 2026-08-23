@@ -1067,7 +1067,7 @@ ccs = [[0, 91, 0.0, 44]]
 name = "resistance_organize"
 family = "resistance"
 concept = "Taiko builds a grid out of nothing while two choir voices arrive from different pitches and land a minor third apart — the first cue in the game that is ON PURPOSE, but this is early work, not victory: a third, not a fifth."
-trigger_hint = "ActionType RECRUIT / ORGANIZE / FUNDRAISE (Article V: Mobilize, Reproduce)"
+trigger_hint = "ActionType RECRUIT / ORGANIZE / FUNDRAISE (ADR177-governed verbs: Mobilize, Reproduce)"
 bpm = 90
 notes = [
   [0, 116, 40, 0.0, 0.4, 66],
@@ -1084,7 +1084,7 @@ ccs = [[1, 91, 0.0, 60], [1, 93, 0.0, 45], [0, 91, 0.0, 35]]
 name = "resistance_educate"
 family = "resistance"
 concept = "Breath before tone: air that only then finds its pitch, answered by a choir a fourth below. Transmission, not proclamation — soft as the breath it starts from."
-trigger_hint = "ActionType EDUCATE / PROPAGANDIZE (Article V: Educate)"
+trigger_hint = "ActionType EDUCATE / PROPAGANDIZE (ADR177-governed verb: Educate)"
 bpm = 90
 notes = [
   [0, 121, 71, 0.0, 0.6, 50],
@@ -1097,7 +1097,7 @@ ccs = [[0, 91, 0.0, 50], [1, 91, 0.0, 55], [2, 91, 0.0, 60], [2, 93, 0.0, 40]]
 name = "resistance_agitate"
 family = "resistance"
 concept = "The accusation that starts under its breath and does not stay there: muted trumpet opens to open trumpet mid-note, and a hand-clap layer lands one sixteenth LATE — human timing against the machine's exact grid."
-trigger_hint = "ActionType AGITATE / DENOUNCE (Article V: Campaign)"
+trigger_hint = "ActionType AGITATE / DENOUNCE (ADR177-governed verb: Campaign)"
 bpm = 90
 notes = [
   [0, 59, 67, 0.0, 1.2, 62],
@@ -1111,7 +1111,7 @@ ccs = [[0, 91, 0.0, 40], [1, 91, 0.0, 45]]
 name = "resistance_protest"
 family = "resistance"
 concept = "A crowd: brass section spreading one E-minor-seventh chord across deliberately imprecise onsets over an exact taiko pulse, with claps and shaker running human-late. The crowd is MORE in tune than the beast and LESS in time."
-trigger_hint = "ActionType PROTEST (Article V: Mobilize)"
+trigger_hint = "ActionType PROTEST (ADR177-governed verb: Mobilize)"
 bpm = 90
 notes = [
   [0, 116, 40, 0.0, 0.4, 74],
@@ -1133,7 +1133,7 @@ ccs = [[1, 91, 0.0, 55], [1, 93, 0.0, 55], [0, 91, 0.0, 35]]
 name = "resistance_alliance"
 family = "resistance"
 concept = "Call and response: french horn states, trombone answers, and they land together on a bare perfect fifth — the only real consonance in the resistance set, earned rather than pleasant. A fifth, not a triad: no triumphalism."
-trigger_hint = "ActionType PROPOSE_ALLIANCE (Article V: Negotiate)"
+trigger_hint = "ActionType PROPOSE_ALLIANCE (ADR177-governed verb: Negotiate)"
 bpm = 90
 notes = [
   [0, 60, 64, 0.0, 1.0, 66],
@@ -1149,7 +1149,7 @@ ccs = [[0, 91, 0.0, 50], [1, 91, 0.0, 50], [0, 93, 0.0, 50], [1, 93, 0.0, 50]]
 name = "resistance_strike"
 family = "resistance"
 concept = "The centerpiece: full percussion architecture — timpani roll, taiko, kick and snare — with brass over it in E minor opening out to a suspended fourth that never resolves. The cue map instructs the mixer to DROP the beast's pulse beneath this for its whole duration: the beast stops feeding for exactly this long. Ends unresolved; the work is not finished."
-trigger_hint = "ActionType STRIKE (Article V: Mobilize sub_mode=strike — #593: no resolver yet, slot reserved)"
+trigger_hint = "ActionType STRIKE (ADR177-governed verb: Mobilize sub_mode=strike — #593: no resolver yet, slot reserved)"
 bpm = 90
 notes = [
   [0, 47, 40, 0.0, 0.5, 78],
@@ -1183,7 +1183,7 @@ ccs = [[2, 91, 0.0, 55], [2, 93, 0.0, 60], [0, 91, 0.0, 40], [1, 91, 0.0, 40]]
 name = "resistance_expropriate"
 family = "resistance"
 concept = "A seizure: the tuba pulls the ground note downward, a pizzicato snap marks the taking, and then the pitch is re-struck and RISES a full semitone — the estate's only upward-resolving bend outside the revolutionary endgame — and stops exactly there, on the Phrygian flat-2, short of any consonance. Taken, not yet won."
-trigger_hint = "ActionType EXPROPRIATE (Article V: Attack)"
+trigger_hint = "ActionType EXPROPRIATE (ADR177-governed verb: Attack)"
 bpm = 90
 notes = [
   [0, 58, 40, 0.0, 1.9, 76],
@@ -1203,7 +1203,7 @@ ccs = [[0, 91, 0.0, 40], [1, 91, 0.0, 35]]
 name = "resistance_sabotage"
 family = "resistance"
 concept = "Damage as subtraction: a reverse cymbal swells into a taiko strike that cuts the machine's tremolo grind off mid-note — after the hit, something that was sounding is simply GONE, and the silence where it stood is the point."
-trigger_hint = "ActionType ATTACK_INFRASTRUCTURE (Article V: Attack)"
+trigger_hint = "ActionType ATTACK_INFRASTRUCTURE (ADR177-governed verb: Attack)"
 bpm = 90
 notes = [
   [0, 44, 41, 0.0, 1.5, 44],
@@ -1216,7 +1216,7 @@ ccs = [[0, 91, 0.0, 30], [1, 91, 0.0, 50], [2, 91, 0.0, 45]]
 name = "resistance_dual_power"
 family = "resistance"
 concept = "The constructive counterpart: marimba stacks a figure over sustained choir, each repetition adding one voice — E, then A, then D — until a quartal interval stands on its own. The only cue in the estate that builds and STAYS built. But it builds fourths, not a triad: institutions, not paradise."
-trigger_hint = "ActionType BUILD_INFRASTRUCTURE (Article V: Reproduce)"
+trigger_hint = "ActionType BUILD_INFRASTRUCTURE (ADR177-governed verb: Reproduce)"
 bpm = 90
 notes = [
   [0, 52, 52, 0.0, 6.5, 50],
@@ -1236,7 +1236,7 @@ ccs = [[0, 91, 0.0, 60], [0, 93, 0.0, 50], [1, 91, 0.0, 45]]
 name = "resistance_clandestine"
 family = "resistance"
 concept = "The machine's own harpsichord, played by the wrong hands: very quiet, very short, doubled fifteen cents wide by muted guitar, panned hard left. The double never quite fuses — a disguise is an imperfect copy — and it is the only resistance cue permitted a machine patch."
-trigger_hint = "ActionType SURVEIL / INFILTRATE / COUNTER_INTEL / MAP_NETWORK (Article V: Investigate)"
+trigger_hint = "ActionType SURVEIL / INFILTRATE / COUNTER_INTEL / MAP_NETWORK (ADR177-governed verb: Investigate)"
 bpm = 90
 notes = [
   [0, 6, 64, 0.0, 0.25, 46],

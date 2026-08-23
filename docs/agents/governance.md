@@ -1,96 +1,130 @@
-# Governance & Workflow
+# Governance and Git
 
-## Model: Agentic Engineering
+Babylon is an entertainment-first emergent political-economy game. Babylon is
+not a forecast and not a scientific reproduction. Theory constrains the causal model but
+does not predetermine results.
 
-Babylon is built by **Agentic Engineering** (Constitution §IX.5, Amendment AD; ADR151). A human **Director** — Persephone Raskova ([@percy-raskova](https://github.com/percy-raskova)) — steers direction and holds **sole authority over the ideological/theoretical line** (the MLM-TW commitments, the doctrine trees, political framing, the five canonical outcomes) plus **final merge authority** to `main` (the Benevolent-Dictator role, subsumed and renamed). Autonomous AI agents are the engineering workforce: they execute across **parallel isolated worktree lanes** under the interleaving rule (one engine train on the tick pipeline at a time), and their autonomy is **licensed by the gates**, not by trust —
+Determinism proves computational identity, not scientific truth. Historical
+cases test causal signatures and counterfactual behavior. The Bevy client is an
+administrative viewer with no player action.
 
-- **green gate = self-merge license; red gate = STOP;**
-- determinism (III.7), the sentinel family, behavioral contracts (III.12), the TDD red phase, Loud Failure (III.11), baseline ceremonies (§6.5);
-- a task that would add a primitive, relax a prohibition, or **touch the ideological line** stops and escalates — to an amendment or **to the Director** (the escalation ladder is Constitution §IX.3), never resolved by improvisation.
+The three executable gates are:
 
-Full model + git workflow: [CONTRIBUTORS.md](../../CONTRIBUTORS.md).
+<!-- Vale: the next item is a governed gate name. -->
+<!-- vale Vale.Terms = NO -->
+<!-- vale ste.UnapprovedWords = NO -->
+1. **PostgreSQL/H3/Archive decision-loop slice**
+<!-- vale Vale.Terms = YES -->
+<!-- vale ste.UnapprovedWords = YES -->
+<!-- Vale: the next item is a governed gate name. -->
+<!-- vale ste.NounClusters = NO -->
+2. **COVID E0 emergence proof**
+<!-- vale ste.UnapprovedWords = YES -->
+<!-- Vale: the next item is a governed gate name. -->
+3. **Player agency**
+<!-- vale ste.NounClusters = YES -->
 
-## Git Workflow
+Read [`CONSTITUTION.md`](../../CONSTITUTION.md) v4.0.0 for the law. Read
+[`NORTH_STAR.md`](../../NORTH_STAR.md) for the game direction. Read
+[`CONTRIBUTORS.md`](../../CONTRIBUTORS.md) for the full merge rules.
 
-**Branch Structure**:
+## Control surfaces
 
-```
-main ────► stable releases (Director merges only)
-  │              ▲
-  ▼              │
-dev ─────► integration (PRs welcome here)
-  │    ▲
-  ▼    │
-feature/*, fix/*, docs/*, refactor/*
-```
+<!-- Vale: the next paragraphs preserve exact Linear fields, work-item IDs,
+     GitHub Project names, and pull-request field names from the contract. -->
+<!-- vale ste.UnapprovedWords = NO -->
+<!-- vale ste.NounClusters = NO -->
+<!-- vale ste.Dictionary = NO -->
+In Linear, use
+**[Babylon v1 — Playable Political Economy](https://linear.app/percy-raskova/project/babylon-v1-playable-political-economy-299b037e7feb)**
+and its charter as the current control surface. Start with
+[PER-5](https://linear.app/percy-raskova/issue/PER-5/constitution-v4-and-linear-portfolio-cutover).
+Use
+[PER-15](https://linear.app/percy-raskova/issue/PER-15/migrate-canonical-issue-governance-from-github-to-linear)
+for the migration status.
 
-- Contributors branch from `dev`, PR to `dev` (one branch per lane / worktree)
-- The Director only merges `dev` → `main` for releases
-- Hotfixes go `fix/*` → `main` (Director only), then backport to `dev`
-- **Never** commit directly to `main` or `dev`
+Linear alone is canonical for issue identity, scope, status, priority,
+dependencies, horizon, milestones, schedule, and current work. GitHub supplies
+source control, pull requests, reviews, and historical evidence.
 
-**Branch Naming**:
+GitHub Project #7 and Project #8 are transitional migration inputs. The
+migration is not complete. Archive either project only after full PER-15
+acceptance. Full acceptance requires a Linear identity or redirect for each
+commitment that remains.
 
-| Prefix      | Purpose           |
-| ----------- | ----------------- |
-| `feature/`  | New functionality |
-| `fix/`      | Bug fixes         |
-| `docs/`     | Documentation     |
-| `refactor/` | Code improvements |
-| `test/`     | Test changes      |
+PER-2 tracks status automation. The team has not verified automation. Until
+then, use this manual convention: link the work to its PER identity in the
+branch name, pull request title, or pull request description. GitHub Project
+fields are not authoritative.
+<!-- vale ste.Dictionary = YES -->
+<!-- vale ste.NounClusters = YES -->
+<!-- vale ste.UnapprovedWords = YES -->
 
-**Commits**: Use conventional commit format: `type(scope): description`
+## Authority
 
-**Commit Early, Commit Often**: Each logical unit of work should be its own commit. Pre-commit hooks test only staged files. If you accumulate multiple units and Bug B's tests depend on Bug A's code, you cannot commit them separately — hooks will fail.
+Babylon uses Agentic Engineering. The human Director controls the reserved
+theory line and merges releases to `main`. Gates grant agent autonomy.
 
-## CI Hygiene
+A green gate grants a merge license. A red gate means stop. Report the fault
+before you continue.
 
-**Fix Unrelated Issues When Encountered**: If CI reveals lint/type errors in files you didn't modify, fix them. Don't leave broken windows.
+Stop and ask the Director when a task needs one of these changes:
 
-## Session Continuity
+- a new mathematical primitive
+- a weaker prohibition
+- a change to the reserved theory line
 
-**Before Re-investigating**:
+Use the content vocabulary ceremony for new governed terms.
 
-- Check `ai/decisions.yaml` for relevant ADRs
-- Review `ai/state.yaml` for current project status
+## Git workflow
 
-**After Completing Significant Work**:
+For a regular change, create each lane from `dev`. Open the PR against `dev`. Do not
+commit directly to `dev` or `main`.
 
-1. Update `ai/state.yaml` with new status/test counts
-1. Create ADR in `ai/decisions.yaml` for architectural patterns
-1. Update `ai/roadmap.md` if milestones changed
+Use one of these prefixes for a lane:
 
-**ADR Format** (in `decisions.yaml`):
+- `feature/`
+- `fix/`
+- `docs/`
+- `refactor/`
+- `test/`
 
-```yaml
-ADR0XX_descriptive_name:
-  status: "accepted"
-  date: "YYYY-MM-DD"
-  title: "Short descriptive title"
-  context: |
-    What problem were we solving?
-  decision: |
-    What did we decide?
-  rationale:
-    key_point: "Why this approach?"
-  consequences:
-    positive:
-      - "Benefit 1"
-    negative:
-      - "Tradeoff 1"
-```
+<!-- Vale: this paragraph preserves literal branch and issue identifiers. -->
+<!-- vale ste.UnapprovedWords = NO -->
+Codex-managed work can use `codex/`, with a PER identity such as
+`codex/PER-123-short-name`. Other lanes can also include `PER-123` when that
+makes the manual Linear link clear.
+<!-- vale ste.UnapprovedWords = YES -->
 
-## AI-Docs Maintenance
+Use `type(scope): description` for each commit line. Keep one logical unit in
+each commit. Use `mise run commit` so the local hooks can check staged content.
 
-**Files to Consider**:
+<!-- Vale: this paragraph preserves literal Git emergency-workflow terms. -->
+<!-- vale Vale.Spelling = NO -->
+<!-- vale ste.UnapprovedWords = NO -->
+Only the Director moves `dev` to `main` for a release. A critical hotfix is the
+only bypass: branch from `main`, open directly to `main`, and use a
+Director-only merge. Every merged hotfix needs a mandatory backport PR to
+`dev`.
+<!-- vale ste.UnapprovedWords = YES -->
+<!-- vale Vale.Spelling = YES -->
+Use the merge rules in `CONTRIBUTORS.md` for all other pull requests.
 
-| File                  | Update When...                                                         |
-| --------------------- | ---------------------------------------------------------------------- |
-| `state.yaml`          | Test counts change, sprint status changes, new components added        |
-| `roadmap.md`          | Phase/sprint milestones reached, new planned work identified           |
-| `tooling.yaml`        | New tools added, configuration changes, testing infrastructure updates |
-| `observer-layer.yaml` | Observer system changes, event types added                             |
-| `architecture.yaml`   | System architecture changes, new Systems added                         |
-| `decisions.yaml`      | Architectural decisions made (ADRs)                                    |
+## Scope and records
 
-**Anti-Pattern**: Do NOT mark features as implemented without verifying the code exists.
+Read `ai/decisions/index.yaml` for recorded architecture decisions.
+<!-- Vale: this paragraph preserves exact authority and repository path terms. -->
+<!-- vale ste.UnapprovedWords = NO -->
+`ai/state.yaml` is historical implementation evidence, not current status.
+The `project/` tree is non-live context. Linear alone owns current status and
+work.
+<!-- vale ste.UnapprovedWords = YES -->
+
+Do not change an unrelated fault. Report it unless the task owner expands the
+scope.
+
+Add an ADR when the team makes an architecture decision. Keep old ADRs
+unchanged because they record the rationale for an earlier choice.
+
+Do not claim that planned behavior exists. Check the source and its executable
+test before you change a live status claim.

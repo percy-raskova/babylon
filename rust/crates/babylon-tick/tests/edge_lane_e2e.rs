@@ -68,7 +68,7 @@ const HUB: NodeId = NodeId(6);
 /// Coefficient-typed `social-class/fold-total`.
 const RULE_EDGES_FOLD: &str = r#"
 (rule social-class/edges-fold-e2e
-  :material-basis "T2's edges query head materializing every dyadic SOLIDARITY edge in the graph and folding its implicit strength (D32) — proves (edges <enum-ref>) evaluates for real and Task 2's D32 wiring resolves <edge-type>/strength through an UNWEIGHTED aggregation (typecheck.rs::resolve_field), not merely the bare accessor's graceful fallback"
+  :role mechanic :evidence derived :material-basis "T2's edges query head materializing every dyadic SOLIDARITY edge in the graph and folding its implicit strength (D32) — proves (edges <enum-ref>) evaluates for real and Task 2's D32 wiring resolves <edge-type>/strength through an UNWEIGHTED aggregation (typecheck.rs::resolve_field), not merely the bare accessor's graceful fallback"
   :fuel 512
   (bindings (binding shape :field social-class/shape))
   (when (= shape 1))
@@ -118,7 +118,7 @@ fn shape_1_edges_fold_sums_every_solidarity_edge_in_the_graph() {
 /// exactly (dyadic; bit-exact through Task 6a's hydration conversion).
 const RULE_EDGE_BETWEEN_RESOLVES: &str = r#"
 (rule social-class/edge-between-resolves-e2e
-  :material-basis "edge-between resolving successfully and its field-of read agreeing with the strength seeded at the edge's own declaration — the R9 chapter-C2 required-vector family, turned into a real evaluation-level vector"
+  :role mechanic :evidence derived :material-basis "edge-between resolving successfully and its field-of read agreeing with the strength seeded at the edge's own declaration — the R9 chapter-C2 required-vector family, turned into a real evaluation-level vector"
   :fuel 256
   (bindings (binding shape :field social-class/shape))
   (when (= shape 2))
@@ -137,7 +137,7 @@ const RULE_EDGE_BETWEEN_RESOLVES: &str = r#"
 /// resolving rule above (`pair-z`'s `:out` set is `{pair-x}` alone).
 const RULE_EDGE_BETWEEN_MISSING: &str = r#"
 (rule social-class/edge-between-missing-is-e-eval-034-e2e
-  :material-basis "edge-between is directional (§2.10's key is the ORDERED triple) — looking up the reverse of a seeded edge finds nothing and must fail loudly through the real driver, never a silent absent reference"
+  :role mechanic :evidence derived :material-basis "edge-between is directional (§2.10's key is the ORDERED triple) — looking up the reverse of a seeded edge finds nothing and must fail loudly through the real driver, never a silent absent reference"
   :fuel 256
   (bindings (binding shape :field social-class/shape))
   (when (= shape 4))
@@ -195,7 +195,7 @@ fn shape_2b_edge_between_on_a_missing_pair_is_e_eval_034() {
 /// (dyadic at every step; inside `[0,1]`).
 const RULE_SELF_ANCHORED: &str = r#"
 (rule social-class/self-anchored-solidarity-fold-e2e
-  :material-basis "the §3.8 item 8 worked example — Solidarity's own anticipated read shape, self-anchored via neighbors+edge-between rather than iterating (edges ...) and needing an endpoint accessor the language does not have (§3.8 item 8's own open item, dossier §8). T2 proves this idiom evaluates for real, and this is the vector that unblocks Solidarity's own port train without needing source-of/target-of."
+  :role mechanic :evidence derived :material-basis "the §3.8 item 8 worked example — Solidarity's own anticipated read shape, self-anchored via neighbors+edge-between rather than iterating (edges ...) and needing an endpoint accessor the language does not have (§3.8 item 8's own open item, dossier §8). T2 proves this idiom evaluates for real, and this is the vector that unblocks Solidarity's own port train without needing source-of/target-of."
   :fuel 512
   (bindings (binding shape :field social-class/shape))
   (when (= shape 3))

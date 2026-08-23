@@ -33,13 +33,15 @@
 //! hypergraph-rs, all but one absorbed behind `HypergraphStore`'s adapter
 //! covenants. Depend on the TRAIT — every call site that did stayed
 //! unchanged by the swap, which is the entire point of the insulation.
+use crate::allocator_state::{AllocatorCursors, AllocatorState};
 use crate::state_hash::CanonicalState;
 use crate::substrate::{Direction, GraphError, GraphSubstrate, HyperedgeId, NodeId};
+use crate::working_copy::DetachedCopy;
 use babylon_kernel::Currency;
 use std::collections::HashMap;
 
 /// The in-memory substrate. See the module documentation.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct MemoryGraph {
     nodes: HashMap<NodeId, String>,
     attributes: HashMap<(NodeId, String), f64>,
@@ -100,6 +102,29 @@ impl MemoryGraph {
     }
 }
 
+impl AllocatorState for MemoryGraph {
+    fn allocator_cursors(&self) -> AllocatorCursors {
+        AllocatorCursors {
+            next_node: self.next_id,
+            next_hyperedge: self.next_hyperedge_id,
+        }
+    }
+}
+
+impl DetachedCopy for MemoryGraph {
+    fn detached_copy(&self) -> Self {
+        self.clone()
+    }
+}
+
+#[cfg(test)]
+impl crate::allocator_state::AllocatorTestControl for MemoryGraph {
+    fn set_allocator_cursors_for_test(&mut self, cursors: AllocatorCursors) {
+        self.next_id = cursors.next_node;
+        self.next_hyperedge_id = cursors.next_hyperedge;
+    }
+}
+
 impl CanonicalState for MemoryGraph {
     /// The sort moved to [`CanonicalState::encode_state`] — this listing
     /// reports storage order, exactly as `HashMap` iteration gives it.
@@ -155,9 +180,12 @@ impl CanonicalState for MemoryGraph {
 
 impl GraphSubstrate for MemoryGraph {
     fn add_node(&mut self, node_type: &str) -> Result<NodeId, GraphError> {
+        let next_id = self.next_id.checked_add(1).ok_or_else(|| GraphError {
+            message: "node identity allocator exhausted".to_owned(),
+        })?;
         let id = NodeId(self.next_id);
-        self.next_id += 1;
         self.nodes.insert(id, node_type.to_owned());
+        self.next_id = next_id;
         Ok(id)
     }
 
@@ -443,10 +471,16 @@ impl GraphSubstrate for MemoryGraph {
                 message: format!("no such member node: {missing:?}"),
             });
         }
+        let next_id = self
+            .next_hyperedge_id
+            .checked_add(1)
+            .ok_or_else(|| GraphError {
+                message: "hyperedge identity allocator exhausted".to_owned(),
+            })?;
         let id = HyperedgeId(self.next_hyperedge_id);
-        self.next_hyperedge_id += 1;
         self.hyperedges
             .insert(id, (hyperedge_type.to_owned(), sorted));
+        self.next_hyperedge_id = next_id;
         Ok(id)
     }
 
@@ -570,6 +604,10 @@ impl GraphSubstrate for MemoryGraph {
 #[cfg(test)]
 mod tests {
     use super::{CanonicalState, GraphSubstrate, MemoryGraph, NodeId};
+    use crate::allocator_state::{AllocatorCursors, AllocatorState};
+    use crate::conformance::{
+        run_allocator_exhaustion_conformance, run_detached_working_copy_conformance,
+    };
     use crate::substrate::Direction;
 
     #[test]
@@ -612,6 +650,33 @@ mod tests {
         assert!(graph
             .neighbors(doomed, "solidarity", Direction::Any)
             .is_err());
+    }
+
+    #[test]
+    fn detached_working_copy_owns_every_mutable_lane() {
+        run_detached_working_copy_conformance(MemoryGraph::new);
+    }
+
+    #[test]
+    fn exhausted_allocators_leave_memory_graph_unchanged() {
+        run_allocator_exhaustion_conformance(MemoryGraph::new);
+    }
+
+    #[test]
+    fn allocator_cursors_report_the_next_ids_even_after_removal() {
+        let mut graph = MemoryGraph::new();
+        let first = graph.add_node("social_class").unwrap();
+        let second = graph.add_node("social_class").unwrap();
+        graph.add_hyperedge("class", &[first, second]).unwrap();
+        graph.remove_node(second).unwrap();
+
+        assert_eq!(
+            graph.allocator_cursors(),
+            AllocatorCursors {
+                next_node: 2,
+                next_hyperedge: 1,
+            }
+        );
     }
 
     /// Build the same world twice, inserting in opposite orders.

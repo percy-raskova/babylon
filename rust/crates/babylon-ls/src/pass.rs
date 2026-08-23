@@ -168,7 +168,7 @@ mod tests {
     // (`registered_systems`) — unlike "event" (a babylon-bsl conformance-
     // corpus-only namespace), a rule anchored under it clears the §2.3
     // anchor default check that `diagnose_content_set` actually runs.
-    const RULE: &str = "(rule vitality/probe :material-basis \"x\" :fuel 16 (bindings) \
+    const RULE: &str = "(rule vitality/probe :role mechanic :evidence derived :material-basis \"x\" :fuel 16 (bindings) \
                          (effects (emit EventType/CONSCIOUSNESS_SHIFT (gate 0))))";
 
     fn manifest_with_one_set() -> ContentSetManifest {

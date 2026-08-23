@@ -36,7 +36,8 @@
 //! tick from 1 to 112, sharing ONE `TickContext.persistent_data` (matching
 //! the frozen engine's own single `context` threaded through every system
 //! every tick — the composition this whole arc proves the ported estate
-//! reproduces despite §5's byte-order inversion, below). Run from the
+//! reproduces. The historical §5 byte-order inversion is superseded by the
+//! executable phase registry below. Run from the
 //! repository root:
 //!
 //! ```text
@@ -74,31 +75,14 @@
 //! ORDERING oracle, never a byte oracle; every numeric assertion below is
 //! measured from THIS engine's own run).
 //!
-//! # The cross-pack byte-order inversion (§5) — why the schedule still
-//! holds
+//! # Executable phase ordering
 //!
-//! `control-ratio/*` sorts BEFORE `decomposition/*` in ascending rule-id
-//! byte order (`'c' < 'd'` at the NAMESPACE segment — `control-ratio/`
-//! vs `decomposition/` — the comparison already resolves there and never
-//! reaches the rule-local `c01` vs `p01` prefixes), inverting the frozen
-//! @11.0-then-@12.0 system order: within EVERY tick, `c01`-`c04` run to
-//! completion before
-//! `p01`-`p06` start. The only cross-pack datum `control-ratio/*` reads is
-//! the carrier's `institution/decomposition-fire-tick`/`-fired-known`
-//! (written by `decomposition/p03-trigger`) — so on the tick decomposition
-//! ACTUALLY fires (tick 53 here), `c03`'s readiness gate reads THOSE
-//! fields' PRE-tick-53 values (still 0, since `p03` has not run yet this
-//! tick), one rule-order "behind". This is invisible to this arc's own
-//! schedule because `control_ratio_delay` is the SHIPPED 52, not 0 — the
-//! earliest `c03` could possibly fire is `53 + 52 = 105` regardless of
-//! whether it sees `fired-known` become 1 on tick 53 or tick 54 (one
-//! rule-order later than the write, but 51 ticks before the delay clears
-//! either way). `the_byte_order_inversion_delays_a_same_tick_race_by_
-//! exactly_one_tick` below is this constraint's EXECUTABLE form (plan §5's
-//! own instruction: "a test that fails if the constraint is violated") —
-//! an isolated, minimal fixture with `control-ratio-delay 0` and an
-//! UNSEEDED fire tick, where the one-rule-order lag is the ONLY thing
-//! standing between "no crisis" and "a crisis" on the firing tick.
+//! The governed registry places Decomposition @11 before ControlRatio @12.
+//! The ordinary 52-tick delay keeps the full arc's milestone schedule at
+//! 1/53/105/106. The zero-delay fixture below makes the ordering observable:
+//! ControlRatio must see Decomposition's same-tick carrier write and emit its
+//! crisis on tick 1. A global rule-id sort would invert the packs because
+//! `'c' < 'd'` and delay that crisis to tick 2.
 
 use babylon_bsl::evaluator::Value;
 use babylon_bsl::structural_verbs::CollectingSink;
@@ -125,9 +109,9 @@ const LUMPEN: NodeId = NodeId(3);
 const BOURGEOIS: NodeId = NodeId(4);
 const CARCERAL_REGISTER: NodeId = NodeId(5);
 
-/// Both packs, concatenated — `TickSession::new`/`prepare_rules` sorts by
-/// ascending rule-id byte order regardless of concatenation order
-/// (§4.2/D16/D100), so this order is arbitrary, matching
+/// Both packs, concatenated — `TickSession::new`/`prepare_rules` resolves
+/// the governed phase order regardless of concatenation order, so this
+/// order is arbitrary, matching
 /// `us_counties_lifecycle_demo_hashes_are_pinned`'s own `format!` idiom
 /// (`tick_goldens.rs`).
 fn joint_rule_src() -> String {
@@ -364,14 +348,12 @@ fn the_arc_post_session_class_states_match_the_frozen_mirror() {
 }
 
 // ---------------------------------------------------------------------
-// Step 4 — the byte-order constraint, made executable (plan §5's own
-// instruction: "a test that fails if the constraint is violated").
+// Step 4 — the governed phase order, made executable.
 // ---------------------------------------------------------------------
 
-/// `control-ratio/*` sorts BEFORE `decomposition/*` (`'c' < 'd'` at the
-/// NAMESPACE segment, ascending rule-id byte order), so within any ONE tick every
-/// `control-ratio/*` rule completes before any `decomposition/*` rule
-/// starts. This fixture isolates the ONE cross-pack datum that matters
+/// The registry places `decomposition/*` before `control-ratio/*`, despite
+/// the opposite global rule-id byte order. This fixture isolates the ONE
+/// cross-pack datum that matters
 /// (`institution/decomposition-fire-tick`/`-fired-known`) from every other
 /// variable: `control-ratio-delay` is 0 (so if `c03` could see
 /// `fired-known` become 1 on the SAME tick it is written, its readiness
@@ -508,22 +490,15 @@ const BOR_LA_DYING: NodeId = NodeId(0);
 const BOR_LUMPEN: NodeId = NodeId(1);
 const BOR_CARCERAL_REGISTER: NodeId = NodeId(2);
 
-/// **The byte-order constraint's executable form.** At tick 1
+/// **The phase-order contract's executable form.** At tick 1
 /// (`decomposition/p03-trigger`'s fallback fires and writes
 /// `decomposition-fire-tick 1`/`decomposition-fired-known 1` for the FIRST
-/// time, THIS tick), `control-ratio/c03-crisis` — which ran BEFORE `p03`
-/// this same tick, byte order — must NOT see those writes yet: its
-/// readiness gate reads the PRE-tick-1 seeded values (both 0), so `ready`
-/// is false and NO `CONTROL_RATIO_CRISIS` fires, even though the census
-/// (0 enforcers, 100 prisoners, the zero-enforcer branch's "any nonzero
-/// prisoner population is over capacity" shape) would otherwise clear
-/// every other gate. At tick 2, `fired-known`/`fire-tick` are readable (the
-/// writes are visible from the NEXT tick onward), `control-ratio-delay 0`
-/// clears the delay check immediately (`2 >= 1 + 0`), and the crisis DOES
-/// fire — proving the hazard is a benign ONE-TICK LAG, not a permanent
-/// block (§5's own claim, made executable rather than asserted in prose).
+/// time, THIS tick), `control-ratio/c03-crisis` runs afterward and must see
+/// those writes. With zero enforcers, 100 prisoners, and delay 0, every gate
+/// clears and `CONTROL_RATIO_CRISIS` fires on tick 1. Its latch prevents a
+/// duplicate crisis on tick 2.
 #[test]
-fn the_byte_order_inversion_delays_a_same_tick_race_by_exactly_one_tick() {
+fn governed_phase_order_exposes_decomposition_to_control_ratio_in_the_same_tick() {
     let rule_src = joint_rule_src();
     let mut session = TickSession::new(
         BYTE_ORDER_SCENARIO,
@@ -560,9 +535,8 @@ fn the_byte_order_inversion_delays_a_same_tick_race_by_exactly_one_tick() {
         .collect();
     assert_eq!(
         crises_tick1.len(),
-        0,
-        "tick 1: NO CONTROL_RATIO_CRISIS — c03 (byte order 'c' < 'd', namespace segment) ran BEFORE p03 wrote \
-         decomposition-fired-known this tick, so it read the SEEDED 0, not the tick-1 write"
+        1,
+        "tick 1: Decomposition @11 writes before ControlRatio @12 reads, so the zero-delay crisis fires now"
     );
 
     let mut sink2 = CollectingSink::default();
@@ -574,9 +548,8 @@ fn the_byte_order_inversion_delays_a_same_tick_race_by_exactly_one_tick() {
         .collect();
     assert_eq!(
         crises_tick2.len(),
-        1,
-        "tick 2: decomposition-fired-known (written at tick 1) is now readable — the crisis \
-         fires exactly one tick later, proving the hazard is benign, not a permanent block"
+        0,
+        "tick 2: the crisis latch prevents a duplicate after the phase-ordered tick-1 emission"
     );
     assert_eq!(
         attribute(
@@ -591,7 +564,6 @@ fn the_byte_order_inversion_delays_a_same_tick_race_by_exactly_one_tick() {
     assert_eq!(
         attribute(session.graph(), BOR_LA_DYING, "social-class/active"),
         0.0,
-        "la-dying: deactivated by p06 at tick 1 — its own decomposition is unaffected by \
-         the byte-order race, only control-ratio's downstream read of it is"
+        "la-dying: deactivated by p06 at tick 1 before ControlRatio's downstream read"
     );
 }

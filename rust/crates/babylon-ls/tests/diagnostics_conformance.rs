@@ -147,7 +147,7 @@ fn row_2_a_lexical_error_is_exact_tier_over_the_offending_token() {
 }
 
 const FLOOR_INTRINSIC: &str = "(intrinsic floor :params (real) :returns int :cost 5)";
-const PROBE_RULE: &str = "(rule vitality/probe :material-basis \"x\" :fuel 16 (bindings) \
+const PROBE_RULE: &str = "(rule vitality/probe :role mechanic :evidence derived :material-basis \"x\" :fuel 16 (bindings) \
                            (effects (emit EventType/CONSCIOUSNESS_SHIFT (gate 0))))";
 const PROBE_SCENARIO: &str = "(scenario ft/probe)";
 
@@ -292,7 +292,8 @@ note = "determinism row fixture"
     // other — chosen so their outcome does not depend on load ORDER, only
     // on the total-order SORT proving output order is input-order-blind.
     let rule_a = EMPTY_WHEN.replace("event/empty-when", "vitality/a");
-    let rule_b = "(rule vitality/b :material-basis \"x\" (bindings) \
+    let rule_b =
+        "(rule vitality/b :role mechanic :evidence derived :material-basis \"x\" (bindings) \
                   (effects (update-node self social-class/agitation (add 0.05i))))";
     let source = FixtureSourceReader {
         files: [
@@ -359,4 +360,19 @@ fn diagnose_content_set_duplicate_intrinsic_carries_e_load_001() {
         what: "intrinsic",
     };
     assert_eq!(expected_identity_source.spec_code(), Some("E-LOAD-001"));
+}
+
+#[test]
+fn diagnose_content_set_duplicate_rule_carries_typed_location_data() {
+    let errors = diagnose_content_set(PROBE_SCENARIO, None, &[PROBE_RULE, PROBE_RULE]);
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert_eq!(errors[0].spec_code(), Some("E-LOAD-001"));
+
+    let located = Located::from_prepare_error(&errors[0]);
+    assert_eq!(located.code, Some("E-LOAD-001"));
+    assert_eq!(located.family, "E-LOAD");
+    assert!(matches!(
+        located.identity,
+        Some(babylon_bsl::ErrorIdentity::RuleId(ref id)) if id == "vitality/probe"
+    ));
 }

@@ -1,6 +1,6 @@
 meta:
-  version: 1.74.0
-  updated: '2026-08-12'
+  version: 1.77.0
+  updated: '2026-08-23'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
   # ADR NUMBER ALLOCATION (controller ruling 2026-07-21, v1.0.0 parallel lanes —
@@ -1010,3 +1010,28 @@ decisions:
     status: accepted
     date: '2026-08-22'
     file: ADR219_exact_arithmetic_intrinsic_rider_train.yaml
+  ADR220_rust_owned_postgresql_persistence_boundary:
+    title: 'Rust owns the authoritative engine-to-PostgreSQL boundary: connections, migration authority, typed committed-tick transactions, hydration, H3 codecs, and compatibility views. Python retains data-build, AI, document/wiki, external-API, and CLI work, with read-only transition observers; ADR174''s PostgreSQL clause is superseded only.'
+    status: accepted
+    date: '2026-08-22'
+    file: ADR220_rust_owned_postgresql_persistence_boundary.yaml
+  ADR221_game_first_refoundation_v4:
+    title: 'Amendment AH — Game-First Refoundation: Constitution v4.0.0 makes emergent entertainment, expressive player agency, declared design liberties, decision-useful presentation, and behavioral historical benchmarks the governing product law while preserving the complete v3.1/v3.2 transition record'
+    status: accepted
+    date: '2026-08-22'
+    file: ADR221_game_first_refoundation_v4.yaml
+  ADR222_executable_bsl_phase_order:
+    title: 'BSL rules execute on the governed 34-system causal spine: namespace homes and explicit boundary anchors compile before caller-state mutation, D16 orders only same-position ties, and the former global rule-ID sort retires'
+    status: accepted
+    date: '2026-08-23'
+    file: ADR222_executable_bsl_phase_order.yaml
+  ADR223_whole_tick_atomicity_world_hash:
+    title: 'Rust adjudicates each weekly tick on a detached world, publishes graph, events, allocator state, and completed time only after total success, and names current in-memory identity with a versioned nominal world hash'
+    status: accepted
+    date: '2026-08-23'
+    file: ADR223_whole_tick_atomicity_world_hash.yaml
+  ADR224_bsl_causal_composition_contract:
+    title: 'BSL rules declare causal role and evidence, production attribution is independently governed, restricted effects and rank-aware composition refusals are live, and successful ticks publish identity-free event-then-write audit receipts'
+    status: accepted
+    date: '2026-08-23'
+    file: ADR224_bsl_causal_composition_contract.yaml

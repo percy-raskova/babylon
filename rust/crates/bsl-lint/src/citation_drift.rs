@@ -162,7 +162,7 @@ fn check_file(repo: &Repo, file: &Path) -> Result<Vec<Finding>, String> {
     Ok(findings)
 }
 
-/// `(rule … :material-basis "…" …)`'s string value, if `form` is a rule.
+/// `(rule … :role mechanic :evidence derived :material-basis "…" …)`'s string value, if `form` is a rule.
 fn rule_material_basis(form: &SExpr) -> Option<&str> {
     let SExpr::List(items) = form else {
         return None;

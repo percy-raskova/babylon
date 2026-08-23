@@ -6,6 +6,7 @@
 pub mod bindings;
 pub mod bound_checker;
 pub mod canonical_ast;
+pub mod causal_contract;
 pub mod declarations;
 pub mod default_lint;
 pub mod domain;
@@ -64,8 +65,8 @@ pub use reader::{
     ReadErrorKind, SExpr, ScaledKind, ScaledLit, Span, SpanTable,
 };
 pub use rule_pipeline::{
-    bind_environment, load_rule, load_rule_form, resolve_expr_bindings, split_content, LoadContext,
-    LoadError, LoadedRule,
+    bind_environment, check_unique_rule_ids, load_rule, load_rule_form, resolve_expr_bindings,
+    split_content, LoadContext, LoadError, LoadedRule,
 };
 // `diagnose` re-exported under a qualified name (W2 fix round 1, review
 // Minor 4): `babylon_bsl::diagnose` unqualified reads as "diagnose
@@ -75,8 +76,8 @@ pub use rule_pipeline::{
 // (checked: `rg -n 'babylon_bsl::diagnose\b'` across `rust/`, zero hits
 // besides this file), so the rename is free.
 pub use same_tick_order::{
-    diagnose as diagnose_same_tick_order, Diagnosis, SameTickOrderError, StaleDefaultRead,
-    UnresetFanIn, ENFORCE_SAME_TICK_ORDERING,
+    diagnose as diagnose_same_tick_order, Diagnosis, RankedRuleInputError, SameTickOrderError,
+    StaleDefaultRead, UnresetFanIn, ENFORCE_RANK_AWARE_AGGREGATE_ORDERING,
 };
 pub use scope::{
     check_element_names, check_foreign_field_scoping, declared_element_names, ElementNameError,

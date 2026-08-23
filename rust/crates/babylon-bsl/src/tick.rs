@@ -54,19 +54,13 @@
 //! none reads another node's field, so the divergence was unobservable
 //! until a rule does.
 //!
-//! **Scope of this claim, named explicitly (#519 fix round):** the quoted
-//! chapter-C4 sentence is ONE subject's worth of §4.2's own broader rule —
-//! "rules **within one system position** observe the same pre-state"
-//! (§4.2, the paragraph chapter C4 elaborates) — and this module only
-//! repairs the WITHIN-ONE-RULE half of it (subject-to-subject). The
-//! RULE-to-rule half (two rules at the same anchor position, each
-//! observing the OTHER's writes rather than the tick's shared pre-state)
-//! is a separate, still-open divergence: `babylon-tick`'s
-//! `run_once_into`/`TickSession::advance` run each rule to completion —
-//! collect AND apply — before the next rule starts, against the same
-//! mutable graph. Recorded as D-row **Q14** (the query-evaluation plan's
-//! draft-ruling register), latent today because every landed rule pack
-//! keeps its system position to exactly one rule.
+//! **Scope of this claim, resolved by ADR224:** this module owns the
+//! within-one-rule half (subject-to-subject). Across rules, the tick driver
+//! deliberately runs each rule to completion in canonical phase/rank/id
+//! order against one working graph. A later same-rank rule therefore sees
+//! earlier writes. The live rank-aware composition check rejects the two
+//! hazardous patterns that would make this sequential contract ambiguous:
+//! stale optional-default reads and unreset multiwriter fan-in.
 //!
 //! # Fuel
 //!
@@ -88,6 +82,7 @@ use crate::rule_pipeline::LoadedRule;
 use crate::structural_verbs::{EffectExecutor, EventSink};
 use crate::typecheck::TypeEnv;
 use crate::types::{BslType, EnumRegistry};
+use crate::write_log::WriteObserver;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
 use babylon_kernel::SessionId;
 use std::collections::HashMap;
@@ -602,13 +597,13 @@ fn check_sources_servable(bindings: &[BindingDecl], defines: &DefinesEnv) -> Res
 ///
 /// # The `rng-draw` seam (Task 4, #576 intrinsic-host train)
 ///
-/// `rule_id`, `node_content_ids`, and `session` carry no weight of their
-/// own here — `run_tick` only forwards them to `collect_pass`, which builds
-/// one [`crate::intrinsic_host::DrawContext`] per subject (plan §3.3:
-/// `domain` = `rule_id`, `subject` = that subject's Task-3 content id out
-/// of `node_content_ids`). No content calls `rng-draw` yet (Task 5 lands
-/// the intrinsic), so today this is plumbing only — it reaches no
-/// `babylon-graph` write path and moves no state hash.
+/// The loaded contract's governed rule id, `node_content_ids`, and `session`
+/// carry no weight of their own here — `run_tick` only forwards the latter
+/// two to `collect_pass`, which builds one
+/// [`crate::intrinsic_host::DrawContext`] per subject (plan §3.3: `domain` =
+/// `loaded.contract.rule_id`, `subject` = that subject's Task-3 content id
+/// out of `node_content_ids`). The rule identity has no parallel caller-
+/// supplied seam: the loaded contract also owns observed write attribution.
 ///
 /// `node_content_ids: Option<&HashMap<NodeId, String>>` fixes the standard
 /// hasher rather than generalizing over `S: BuildHasher` (`clippy::
@@ -642,7 +637,6 @@ pub fn run_tick(
     costs: &crate::fuel::IntrinsicCosts,
     defines: &DefinesEnv,
     tick: i64,
-    rule_id: &str,
     node_content_ids: Option<&HashMap<NodeId, String>>,
     session: &SessionId,
     // The scenario's closed vocabulary, when one was declared — the D29
@@ -651,6 +645,81 @@ pub fn run_tick(
     // filter cannot run and every binding namespace counts, exactly as
     // before this parameter existed.
     vocabulary: Option<&crate::vocabulary::ClosedVocabulary>,
+) -> Result<TickOutcome, TickError> {
+    run_tick_with_observer(
+        loaded,
+        types,
+        enums,
+        host,
+        graph,
+        sink,
+        costs,
+        defines,
+        tick,
+        node_content_ids,
+        session,
+        vocabulary,
+        None,
+    )
+}
+
+/// Run one rule while observing each successful apply-boundary mutation.
+///
+/// Observation is passive: it does not alter evaluation, state, fuel, or
+/// event behavior. Callers publish the resulting log only after their own
+/// transaction boundary succeeds.
+///
+/// # Errors
+///
+/// The same [`TickError`] conditions as [`run_tick`].
+#[allow(clippy::too_many_arguments, clippy::implicit_hasher)]
+pub fn run_tick_observed(
+    loaded: &LoadedRule,
+    types: &TypeEnv,
+    enums: &EnumRegistry,
+    host: &dyn IntrinsicHost,
+    graph: &mut dyn GraphSubstrate,
+    sink: &mut dyn EventSink,
+    costs: &crate::fuel::IntrinsicCosts,
+    defines: &DefinesEnv,
+    tick: i64,
+    node_content_ids: Option<&HashMap<NodeId, String>>,
+    session: &SessionId,
+    vocabulary: Option<&crate::vocabulary::ClosedVocabulary>,
+    observer: &mut dyn WriteObserver,
+) -> Result<TickOutcome, TickError> {
+    run_tick_with_observer(
+        loaded,
+        types,
+        enums,
+        host,
+        graph,
+        sink,
+        costs,
+        defines,
+        tick,
+        node_content_ids,
+        session,
+        vocabulary,
+        Some(observer),
+    )
+}
+
+#[allow(clippy::too_many_arguments, clippy::implicit_hasher)]
+fn run_tick_with_observer(
+    loaded: &LoadedRule,
+    types: &TypeEnv,
+    enums: &EnumRegistry,
+    host: &dyn IntrinsicHost,
+    graph: &mut dyn GraphSubstrate,
+    sink: &mut dyn EventSink,
+    costs: &crate::fuel::IntrinsicCosts,
+    defines: &DefinesEnv,
+    tick: i64,
+    node_content_ids: Option<&HashMap<NodeId, String>>,
+    session: &SessionId,
+    vocabulary: Option<&crate::vocabulary::ClosedVocabulary>,
+    observer: Option<&mut dyn WriteObserver>,
 ) -> Result<TickOutcome, TickError> {
     check_sources_servable(&loaded.bindings, defines)?;
     let subject_type = subject_type_of(&loaded.bindings, vocabulary)?;
@@ -675,7 +744,6 @@ pub fn run_tick(
         costs,
         defines,
         tick,
-        rule_id,
         node_content_ids,
         session,
     )?;
@@ -683,9 +751,22 @@ pub fn run_tick(
     // ---- Pass 2: apply, in the order collected (subject order outer,
     // source order inner) — `graph` is mutable again, `collect_pass`'s
     // immutable borrow having already ended. ----
-    let mut applier = EffectExecutor::new(types, enums, None);
-    for write in &all_pending {
-        applier.apply_pending_write(write, graph)?;
+    if let Some(observer) = observer {
+        let mut applier = EffectExecutor::observed(
+            types,
+            enums,
+            None,
+            loaded.contract.rule_id.as_str(),
+            observer,
+        );
+        for write in &all_pending {
+            applier.apply_pending_write(write, graph)?;
+        }
+    } else {
+        let mut applier = EffectExecutor::new(types, enums, None);
+        for write in &all_pending {
+            applier.apply_pending_write(write, graph)?;
+        }
     }
 
     Ok(TickOutcome {
@@ -750,12 +831,11 @@ fn collect_pass(
     defines: &DefinesEnv,
     tick: i64,
     // The `rng-draw` seam (Task 4, #576 intrinsic-host train, plan §3.3/
-    // §3.5): `rule_id` is `domain`, `node_content_ids` resolves `subject`
-    // (and any `it`/`:as` element `eval_intrinsic` meets) to a Task-3
-    // content id, and `session` is `DrawContext`'s own non-operand half
-    // (D69). All three are constant for the whole rule; only `subject`
-    // varies per iteration below.
-    rule_id: &str,
+    // §3.5): `loaded.contract.rule_id` is `domain`, `node_content_ids`
+    // resolves `subject` (and any `it`/`:as` element `eval_intrinsic` meets)
+    // to a Task-3 content id, and `session` is `DrawContext`'s own non-
+    // operand half (D69). All three are constant for the whole rule; only
+    // `subject` varies per iteration below.
     node_content_ids: Option<&HashMap<NodeId, String>>,
     session: &SessionId,
 ) -> Result<(Vec<crate::structural_verbs::PendingWrite>, usize), TickError> {
@@ -845,7 +925,7 @@ fn collect_pass(
         let draw_context = DrawContext {
             session,
             tick: draw_tick,
-            domain: rule_id,
+            domain: loaded.contract.rule_id.as_str(),
             subject: subject_content_id.as_ref(),
             node_content_ids,
         };
@@ -931,10 +1011,14 @@ fn collect_pass(
 
 #[cfg(test)]
 mod tests {
-    use super::{bind_field_value, check_sources_servable, run_tick, subject_type_of, DefinesEnv};
+    use super::{
+        bind_field_value, check_sources_servable, run_tick, run_tick_observed, subject_type_of,
+        DefinesEnv,
+    };
     use crate::bindings::{BindSource, BindingDecl};
     use crate::evaluator::Value;
     use crate::types::EnumRegistry;
+    use crate::write_log::CollectingWriteLog;
     use babylon_kernel::SessionId;
     use std::collections::HashMap;
 
@@ -1209,6 +1293,57 @@ mod tests {
         }
     }
 
+    #[test]
+    fn observed_write_attribution_uses_the_governed_loaded_rule_identity() {
+        use babylon_graph::memory::MemoryGraph;
+        use babylon_graph::substrate::GraphSubstrate;
+
+        let mut graph = MemoryGraph::new();
+        let territory = graph.add_node("TERRITORY").unwrap();
+        graph
+            .update_node(territory, "territory/heat", 10.0)
+            .unwrap();
+        let mut fixture = Fixture::new(
+            HashMap::from([(
+                "territory/heat".to_owned(),
+                territory_field(crate::types::FieldKind::Extensive),
+            )]),
+            HashMap::new(),
+        );
+        fixture.systems.insert("territory".to_owned());
+        let loaded = fixture.load(
+            r#"(rule territory/p1-heat-dynamics
+  :role mechanic :evidence derived :material-basis "the loaded contract alone owns write attribution"
+  :fuel 32
+  (bindings (binding heat :field territory/heat))
+  (effects (update-node self territory/heat (add 1))))"#,
+            "caller-supplied-name-must-not-matter.bsl",
+        );
+        let mut sink = crate::structural_verbs::CollectingSink::default();
+        let mut write_log = CollectingWriteLog::new();
+
+        run_tick_observed(
+            &loaded,
+            &fixture.types,
+            &fixture.enums,
+            &crate::intrinsic_host::EmptyIntrinsicHost,
+            &mut graph,
+            &mut sink,
+            &fixture.intrinsics,
+            &DefinesEnv::new(),
+            1,
+            None,
+            &test_session(),
+            None,
+            &mut write_log,
+        )
+        .expect("the governed mechanic must apply its write");
+
+        assert_eq!(write_log.records.len(), 1);
+        assert_eq!(loaded.contract.rule_id, "territory/p1-heat-dynamics");
+        assert_eq!(write_log.records[0].rule, "territory/p1-heat-dynamics");
+    }
+
     /// §4.2 chapter C4, quoted in the plan: "All firings of one rule
     /// observe the same pre-state … and the effects they collect are
     /// applied in that subject order." Two TERRITORY nodes, `a` (lower id)
@@ -1247,7 +1382,7 @@ mod tests {
         let loaded = fixture.load(
             r#"
 (rule geography/spillover
-  :material-basis "adjacent territories exchange heat; every firing of one rule observes the same pre-state (§4.2 chapter C4)"
+  :role mechanic :evidence derived :material-basis "adjacent territories exchange heat; every firing of one rule observes the same pre-state (§4.2 chapter C4)"
   :fuel 256
   (bindings
     (binding heat :field territory/heat))
@@ -1270,7 +1405,6 @@ mod tests {
             &fixture.intrinsics,
             &DefinesEnv::new(),
             1,
-            "geography/spillover",
             None,
             &test_session(),
             None,
@@ -1354,7 +1488,7 @@ mod tests {
         let loaded = fixture.load(
             r#"
 (rule geography/pool-contribution
-  :material-basis "each territory contributes its share to a shared regional pool; the pool must count every contribution, computed at apply time (D-row Q2)"
+  :role mechanic :evidence derived :material-basis "each territory contributes its share to a shared regional pool; the pool must count every contribution, computed at apply time (D-row Q2)"
   :fuel 256
   (bindings
     (binding contribution :field territory/contribution))
@@ -1378,7 +1512,6 @@ mod tests {
             &fixture.intrinsics,
             &DefinesEnv::new(),
             1,
-            "geography/pool-contribution",
             None,
             &test_session(),
             None,
@@ -1456,7 +1589,7 @@ mod tests {
         let loaded = fixture.load(
             r#"
 (rule organization/kind-probe
-  :material-basis "the state's coercive organs are a distinct material kind; content can see the difference (spec Q1)"
+  :role mechanic :evidence derived :material-basis "the state's coercive organs are a distinct material kind; content can see the difference (spec Q1)"
   :fuel 64
   (bindings
     (binding kind :field organization/kind))
@@ -1478,7 +1611,6 @@ mod tests {
             &fixture.intrinsics,
             &DefinesEnv::new(),
             1,
-            "organization/kind-probe",
             None,
             &test_session(),
             None,
@@ -1518,7 +1650,7 @@ mod tests {
         let loaded = fixture.load(
             r#"
 (rule organization/kind-ordering-probe
-  :material-basis "an enum has no ordering — this rule must never load-succeed AND run-succeed"
+  :role mechanic :evidence derived :material-basis "an enum has no ordering — this rule must never load-succeed AND run-succeed"
   :fuel 64
   (bindings
     (binding kind :field organization/kind))
@@ -1540,7 +1672,6 @@ mod tests {
             &fixture.intrinsics,
             &DefinesEnv::new(),
             1,
-            "organization/kind-ordering-probe",
             None,
             &test_session(),
             None,
@@ -1571,7 +1702,7 @@ mod tests {
         let loaded = fixture.load(
             r#"
 (rule organization/kind-integrity-probe
-  :material-basis "a corrupted store is a loud read-boundary failure, never a clamp"
+  :role mechanic :evidence derived :material-basis "a corrupted store is a loud read-boundary failure, never a clamp"
   :fuel 64
   (bindings
     (binding kind :field organization/kind))
@@ -1593,7 +1724,6 @@ mod tests {
             &fixture.intrinsics,
             &DefinesEnv::new(),
             1,
-            "organization/kind-integrity-probe",
             None,
             &test_session(),
             None,
@@ -1687,7 +1817,7 @@ mod tests {
         let fixture = org_kind_fixture();
         let loaded = fixture.load(
             r#"(rule organization/field-of-probe
-  :material-basis "field-of over an enum field reads the SAME way a :field binding does (D102 discharge, §2.5 read parity)"
+  :role mechanic :evidence derived :material-basis "field-of over an enum field reads the SAME way a :field binding does (D102 discharge, §2.5 read parity)"
   :fuel 64
   (bindings
     ; Unused in the guard on purpose: the guard reads the field through
@@ -1711,7 +1841,6 @@ mod tests {
             &fixture.intrinsics,
             &DefinesEnv::new(),
             1,
-            "organization/field-of-probe",
             None,
             &test_session(),
             None,
@@ -1742,7 +1871,7 @@ mod tests {
         let err = fixture
             .try_load(
                 r#"(rule organization/kind-arithmetic-probe
-  :material-basis "add/sub/scale on an :enum-type-declared field is statically decidable and refused at load (D118), never left to die mid-tick"
+  :role mechanic :evidence derived :material-basis "add/sub/scale on an :enum-type-declared field is statically decidable and refused at load (D118), never left to die mid-tick"
   :fuel 256
   (bindings
     (binding kind :field organization/kind))
@@ -1778,7 +1907,7 @@ mod tests {
         let err = fixture
             .try_load(
                 r#"(rule organization/emit-typo-probe
-  :material-basis "a slash typo in emit's type operand must refuse at load, not mid-tick (#528 fix round Item D)"
+  :role mechanic :evidence derived :material-basis "a slash typo in emit's type operand must refuse at load, not mid-tick (#528 fix round Item D)"
   :fuel 64
   (bindings)
   (when #t)
@@ -1817,7 +1946,7 @@ mod tests {
         let fixture = org_kind_fixture();
         let loaded = fixture.load(
             r#"(rule organization/kind-probe
-  :material-basis "the state's coercive organs are a distinct material kind; content can see the difference (spec Q1)"
+  :role mechanic :evidence derived :material-basis "the state's coercive organs are a distinct material kind; content can see the difference (spec Q1)"
   :fuel 64
   (bindings
     (binding kind :field organization/kind))
@@ -1837,7 +1966,6 @@ mod tests {
             &fixture.intrinsics,
             &DefinesEnv::new(),
             1,
-            "organization/kind-probe",
             None,
             &test_session(),
             None,
@@ -1864,7 +1992,7 @@ mod tests {
         let fixture = org_kind_fixture();
         let loaded = fixture.load(
             r#"(rule organization/kind-probe
-  :material-basis "the state's coercive organs are a distinct material kind; content can see the difference (spec Q1)"
+  :role mechanic :evidence derived :material-basis "the state's coercive organs are a distinct material kind; content can see the difference (spec Q1)"
   :fuel 64
   (bindings
     (binding kind :field organization/kind))
@@ -1891,7 +2019,6 @@ mod tests {
             &fixture.intrinsics,
             &DefinesEnv::new(),
             1,
-            "organization/kind-probe",
             Some(&non_empty_but_missing_subject),
             &test_session(),
             None,
@@ -1926,7 +2053,7 @@ mod tests {
         let fixture = org_kind_fixture();
         let loaded = fixture.load(
             r#"(rule organization/kind-probe
-  :material-basis "the state's coercive organs are a distinct material kind; content can see the difference (spec Q1)"
+  :role mechanic :evidence derived :material-basis "the state's coercive organs are a distinct material kind; content can see the difference (spec Q1)"
   :fuel 64
   (bindings
     (binding kind :field organization/kind))
@@ -1949,7 +2076,6 @@ mod tests {
             &fixture.intrinsics,
             &DefinesEnv::new(),
             1,
-            "organization/kind-probe",
             Some(&hydrated_but_empty),
             &test_session(),
             None,

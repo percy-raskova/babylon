@@ -32,6 +32,10 @@ use crate::bindings::{
     BindingVocabulary,
 };
 use crate::bound_checker::{check_rule, BoundError};
+use crate::causal_contract::{
+    authorize_rule_effects, parse_rule_contract, validate_ast_walk_bounds,
+    validate_governed_attribution, ContractError, RuleContract, AST_WALK_LIMITS,
+};
 use crate::declarations::DeclError;
 use crate::default_lint::{lint_defaults, DefaultLintFinding};
 use crate::domain::{resolve_domain, DomainError, RuleDomain};
@@ -45,7 +49,7 @@ use crate::grammar::{
 use crate::material_basis::{check_rule_surface, SurfaceError};
 use crate::mod_anchors::{check_anchor, AnchorDecl, AnchorError};
 use crate::reader::{read, read_all, Atom, ReadError, SExpr};
-use crate::same_tick_order::{self, SameTickOrderError};
+use crate::same_tick_order::SameTickOrderError;
 use crate::scope::{
     check_element_names, check_foreign_field_scoping, declared_element_names, ElementNameError,
     ScopeError,
@@ -93,6 +97,8 @@ pub struct LoadedRule {
     /// `None` when no vocabulary was supplied, since the inference resolves
     /// a field qname's owning node type through the registry.
     pub domain: Option<RuleDomain>,
+    /// The rule's governed causal role and constitutional evidence class.
+    pub contract: RuleContract,
     /// The §3.7 static bound `check_rule` computed and accepted — the
     /// load-time PROOF that the rule fits its budget.
     pub static_bound: u64,
@@ -135,6 +141,9 @@ pub enum LoadError {
     ElementName(ElementNameError),
     /// §3.7 static bound and member-list ceilings.
     Bound(BoundError),
+    /// ADR224's mandatory role/evidence metadata and role-sensitive effect
+    /// authorization (`E-PARSE-015` / `E-LOAD-060`).
+    Causal(ContractError),
     /// An `(intrinsic …)` top-form's own declaration errors — `E-LOAD-001`
     /// (duplicate name across the content set), `E-LOAD-020` (signature
     /// disagreeing with the kernel's registration), `E-LOAD-024`
@@ -146,6 +155,14 @@ pub enum LoadError {
     /// [`split_content`]'s discipline, not a §2 grammar production with a
     /// reserved `E-LOAD` number.
     Content(String),
+    /// `E-LOAD-001` — one rule id occurs more than once in the aggregate
+    /// content set. This stays distinct from [`Self::Content`] so callers
+    /// can consume the governed code as structured data instead of parsing
+    /// the display message.
+    DuplicateRuleId {
+        /// The duplicated rule id.
+        rule_id: String,
+    },
     /// No numbered code, same precedent as [`Self::Content`]: a rule using
     /// one of the six graph-shape verbs Task 12's collect-then-apply
     /// pre-state split does not yet defer (§4.2 chapter C4) — every one of
@@ -165,11 +182,9 @@ pub enum LoadError {
     /// error still names the class of defect the type-operand position
     /// shares with the three minting verbs.
     MintingTypeOperand(String),
-    /// §4.2/D116 same-tick ordering (Task W2, BSL Hygiene Knock-out) —
-    /// `E-LOAD-058` (stale-default read) or `E-LOAD-059` (unreset fan-in).
-    /// Gated OFF for the landed corpus by
-    /// [`crate::same_tick_order::ENFORCE_SAME_TICK_ORDERING`] (R-W2a, the
-    /// amendment-staging ruling) — see that constant's own doc.
+    /// §4.2/D116 rank-aware aggregate ordering — `E-LOAD-058`
+    /// (stale-default read) or `E-LOAD-059` (unreset fan-in). The tick
+    /// loader raises this only after executable phase ranks are compiled.
     SameTickOrder(SameTickOrderError),
 }
 
@@ -191,8 +206,10 @@ impl LoadError {
             Self::Scope(e) => Some(e.spec_code()),
             Self::ElementName(e) => Some(e.spec_code()),
             Self::Bound(e) => e.spec_code(),
+            Self::Causal(e) => e.spec_code(),
             Self::Intrinsic(e) => e.spec_code(),
-            Self::SameTickOrder(e) => Some(e.spec_code()),
+            Self::SameTickOrder(e) => e.spec_code(),
+            Self::DuplicateRuleId { .. } => Some("E-LOAD-001"),
             Self::Content(_) | Self::DeferredShapeVerb(_) | Self::MintingTypeOperand(_) => None,
         }
     }
@@ -211,8 +228,15 @@ impl std::fmt::Display for LoadError {
             Self::Scope(e) => write!(f, "{e}"),
             Self::ElementName(e) => write!(f, "{e}"),
             Self::Bound(e) => write!(f, "{e}"),
+            Self::Causal(e) => write!(f, "{e}"),
             Self::Intrinsic(e) => write!(f, "{e}"),
             Self::SameTickOrder(e) => write!(f, "{e}"),
+            Self::DuplicateRuleId { rule_id } => write!(
+                f,
+                "E-LOAD-001: duplicate rule id: {rule_id} (§2.2 — rule ids must be \
+                 content-set-unique, the same duplicate-name discipline \
+                 parse_intrinsic_decls already enforces for intrinsic declarations)"
+            ),
             Self::Content(message)
             | Self::DeferredShapeVerb(message)
             | Self::MintingTypeOperand(message) => write!(f, "{message}"),
@@ -256,6 +280,13 @@ pub fn load_rule(source: &str, ctx: &LoadContext<'_>) -> Result<LoadedRule, Load
 /// partially-loaded rules.
 pub fn load_rule_form(rule: SExpr, ctx: &LoadContext<'_>) -> Result<LoadedRule, LoadError> {
     check_rule_surface(&rule).map_err(LoadError::Surface)?;
+    let contract = parse_rule_contract(&rule).map_err(LoadError::Causal)?;
+    // The reader is iterative, while several older semantic passes below are
+    // recursive. Refuse hostile trees before any such pass can consume the
+    // process stack. Ordinary, in-bound rules retain the established
+    // E-PARSE/E-TYPE-before-causal-authority ordering.
+    validate_ast_walk_bounds(&rule, AST_WALK_LIMITS, "rule load preflight")
+        .map_err(|error| LoadError::Causal(ContractError::AstWalkLimit(error)))?;
     let bindings = parse_bindings(&rule).map_err(LoadError::Binding)?;
     let binding_names: Vec<String> = bindings.iter().map(|d| d.name.clone()).collect();
     check_element_names(&rule, &binding_names).map_err(LoadError::ElementName)?;
@@ -273,12 +304,6 @@ pub fn load_rule_form(rule: SExpr, ctx: &LoadContext<'_>) -> Result<LoadedRule, 
     // function's own doc for why these four specifically need it.
     check_type_operands_are_enum_refs(&rule).map_err(LoadError::MintingTypeOperand)?;
     check_graph_flag_placement(&rule).map_err(LoadError::Grammar)?;
-    // #519 fix round, fix 4: a rule using one of the six graph-shape verbs
-    // Task 12's collect-then-apply split cannot yet defer must be refused
-    // HERE, at load — not left to load clean and abort the first tick
-    // whose guard admits a subject (structural_verbs.rs's own doc names
-    // the regression this closes).
-    check_no_deferred_shape_verbs(&rule).map_err(LoadError::DeferredShapeVerb)?;
     let mut domain = None;
     if let Some(vocabulary) = ctx.vocabulary_registry {
         // Task 8 (Organization foundation plan): the closed-vocabulary
@@ -328,6 +353,20 @@ pub fn load_rule_form(rule: SExpr, ctx: &LoadContext<'_>) -> Result<LoadedRule, 
     // above (the fold arm), extending this pipeline's existing dispatch
     // rather than restructuring it.
     check_kind_mixing(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
+    // Causal attribution and authority are E-LOAD-class checks. They run
+    // only after every E-PARSE/E-TYPE pass, so a governed mismatch or
+    // E-LOAD-060 cannot mask an earlier-class defect. Role authority stays
+    // more specific than the engine's current inability to defer graph-
+    // shape writes: restricted roles receive E-LOAD-060; a mechanic using
+    // the same well-formed verb reaches DeferredShapeVerb below.
+    validate_governed_attribution(&contract).map_err(LoadError::Causal)?;
+    authorize_rule_effects(&rule, &contract).map_err(LoadError::Causal)?;
+    // #519 fix round, fix 4: a rule using one of the six graph-shape verbs
+    // Task 12's collect-then-apply split cannot yet defer must be refused
+    // HERE, at load — not left to load clean and abort the first tick
+    // whose guard admits a subject (structural_verbs.rs's own doc names
+    // the regression this closes).
+    check_no_deferred_shape_verbs(&rule).map_err(LoadError::DeferredShapeVerb)?;
     let anchor = check_anchor(&rule, ctx.systems).map_err(LoadError::Anchor)?;
     resolve_bindings(&bindings, ctx.vocabulary).map_err(LoadError::Binding)?;
     check_free_variables(&rule, &bindings, &declared_element_names(&rule))
@@ -344,6 +383,7 @@ pub fn load_rule_form(rule: SExpr, ctx: &LoadContext<'_>) -> Result<LoadedRule, 
         bindings,
         anchor,
         domain,
+        contract,
         static_bound,
         declared_fuel,
         default_findings,
@@ -368,8 +408,9 @@ pub fn load_rule_form(rule: SExpr, ctx: &LoadContext<'_>) -> Result<LoadedRule, 
 /// widening makes the driver honor what the grammar always admitted: one or
 /// more `(rule …)` forms, in whatever order the reader encounters them
 /// (this function makes no ordering claim — `babylon-tick::prepare_rules`
-/// sorts into ascending rule-id byte order per §4.2/D16), duplicate ids
-/// across the content set refused as `E-LOAD-001`.
+/// compiles executable phase placement; D16 orders only same-position
+/// ties), with duplicate ids across the content set refused as
+/// `E-LOAD-001`.
 ///
 /// (`deffield` and `manifest` top-forms are not split out here — nothing
 /// in this crate's Slice 1 content path reads them from a rule source yet;
@@ -378,60 +419,29 @@ pub fn load_rule_form(rule: SExpr, ctx: &LoadContext<'_>) -> Result<LoadedRule, 
 /// # Errors
 ///
 /// [`LoadError::Read`] for a parse failure; [`LoadError::Content`] (uncoded)
-/// when the source contains zero `(rule …)` top-forms, or when two rule
-/// forms share the same id (`E-LOAD-001`).
+/// when the source contains zero `(rule …)` top-forms; or
+/// [`LoadError::DuplicateRuleId`] (`E-LOAD-001`) when two rule forms share
+/// the same id.
 // The return type is a plain, un-nested pair of vecs — flagged only because
 // its second element is itself a `Vec` of pairs; a type alias would be one
 // more name to chase for a shape this crate already spells out in the doc
 // comment above. Same precedent as `structural_verbs.rs`'s test helper.
 #[allow(clippy::type_complexity)]
 pub fn split_content(source: &str) -> Result<(Vec<SExpr>, Vec<(String, SExpr)>), LoadError> {
-    let (intrinsic_forms, paired) = split_content_unchecked(source)?;
-    // Task W2 (BSL Hygiene Knock-out): the two same-tick-ordering
-    // refusals, content-set-wide, right alongside E-LOAD-001 above.
-    // Corrected (W2 fix round 1, review finding I1): the analysis runs
-    // ONLY inside this gate — `diagnose` is not called on the default load
-    // path at all, so the `const false` branch is dead-code-eliminated and
-    // this path is not merely refusal-free but *cost*-free. A caller that
-    // wants findings without waiting on ratification calls
-    // `same_tick_order::diagnose` directly (this module's own tests and
-    // W2.4's audit both do); `split_content` itself exposes no findings
-    // channel (its return type carries none). Rejection fires only when
-    // `same_tick_order::ENFORCE_SAME_TICK_ORDERING` is `true`, which it is
-    // not for the landed corpus (R-W2a) — see that constant's own doc for
-    // the amendment-draft citation. This is the ONE call site: no other
-    // production path reaches `E-LOAD-058`/`E-LOAD-059` except through
-    // here.
-    if same_tick_order::ENFORCE_SAME_TICK_ORDERING {
-        same_tick_order::diagnose(&paired)
-            .into_result()
-            .map_err(LoadError::SameTickOrder)?;
-    }
-    Ok((intrinsic_forms, paired))
+    split_content_unchecked(source)
 }
 
-/// [`split_content`]'s body minus the same-tick-ordering gate — the
-/// `(intrinsic …)` split and `E-LOAD-001` duplicate-id enforcement only.
+/// [`split_content`]'s parsing body: the `(intrinsic …)` split and
+/// `E-LOAD-001` duplicate-id enforcement only. Rank-aware aggregate
+/// ordering belongs to the tick loader after phase compilation.
 ///
-/// **`pub(crate)` on purpose (W2 fix round 2, review finding NEW-1): this
-/// crate's own test-only content-set helpers — `same_tick_order::tests::
-/// rules`, which every RED fixture and the corpus-wide audit test in that
-/// module calls — need a splitter that is gate-INDEPENDENT by
-/// construction.** Calling `split_content` itself from those tests was
-/// self-refuting: those tests exist specifically to MEASURE what the gate
-/// would refuse, so once a future ratifying commit flips
-/// `same_tick_order::ENFORCE_SAME_TICK_ORDERING` to `true`, every one of
-/// them would die at the splitter's own `.expect(…)`/`?` before its own
-/// assertion ever ran — the one thing this module's tests must never do,
-/// since they ARE the audit the gate flip depends on. This function is
-/// the fix: it can never refuse for a same-tick-ordering reason, by
-/// construction, because it never calls [`same_tick_order::diagnose`] at
-/// all — there is no gate state left to depend on.
+/// `pub(crate)` keeps the same-tick analyzer's source adapters on the exact
+/// production splitter without introducing a second parsing path.
 ///
 /// # Errors
 ///
-/// Same as [`split_content`], minus [`LoadError::SameTickOrder`], which
-/// this function cannot produce.
+/// Same as [`split_content`]. This function cannot produce
+/// [`LoadError::SameTickOrder`] because it has no execution ranks.
 #[allow(clippy::type_complexity)]
 pub(crate) fn split_content_unchecked(
     source: &str,
@@ -454,29 +464,39 @@ pub(crate) fn split_content_unchecked(
                 .to_owned(),
         ));
     }
-    // A set, not a `HashMap<String, ()>` — same duplicate-id-refusal shape
-    // `declarations::parse_intrinsic_decls` uses for intrinsic names
-    // (contains-check before insert, §2.2's duplicate-name discipline), but
-    // with no payload to store per id, so nothing here needs a map's value
-    // slot at all.
-    let mut seen: HashSet<String> = HashSet::with_capacity(rule_forms.len());
     let mut paired = Vec::with_capacity(rule_forms.len());
     for form in rule_forms {
         let id = crate::canonical_ast::rule_id(&form)
             .map_err(|e| LoadError::Content(e.message))?
             .to_owned();
-        if seen.contains(&id) {
-            return Err(LoadError::Content(format!(
-                "E-LOAD-001: duplicate rule id: {id} (§2.2 — rule ids must be \
-                 content-set-unique, the same duplicate-name discipline \
-                 parse_intrinsic_decls already enforces for intrinsic \
-                 declarations)"
-            )));
-        }
-        seen.insert(id.clone());
         paired.push((id, form));
     }
+    check_unique_rule_ids(&paired)?;
     Ok((intrinsic_forms, paired))
+}
+
+/// Refuse a duplicate rule id across an aggregate content set.
+///
+/// File boundaries carry no semantics, so callers that assemble forms from
+/// more than one source must run this over the aggregate, not merely rely on
+/// each source's [`split_content`] call. If several ids are duplicated, the
+/// byte-least id is named so source order cannot select the diagnostic.
+///
+/// # Errors
+///
+/// [`LoadError::DuplicateRuleId`] (`E-LOAD-001`) for the byte-least repeated
+/// id.
+pub fn check_unique_rule_ids(rules: &[(String, SExpr)]) -> Result<(), LoadError> {
+    let mut ids: Vec<&str> = rules.iter().map(|(id, _)| id.as_str()).collect();
+    ids.sort_unstable_by(|left, right| left.as_bytes().cmp(right.as_bytes()));
+    let duplicate = ids
+        .windows(2)
+        .find_map(|pair| (pair[0] == pair[1]).then_some(pair[0]));
+    duplicate.map_or(Ok(()), |rule_id| {
+        Err(LoadError::DuplicateRuleId {
+            rule_id: rule_id.to_owned(),
+        })
+    })
 }
 
 /// Whether `expr` is `(intrinsic …)` — the one top-form kind this module's
@@ -866,7 +886,7 @@ fn compound_fold_error() -> TypeError {
 mod split_content_tests {
     use super::{split_content, LoadError};
 
-    const RULE: &str = "(rule vitality/probe :material-basis \"x\" :fuel 8 (when #t))";
+    const RULE: &str = "(rule vitality/probe :role mechanic :evidence derived :material-basis \"x\" :fuel 8 (when #t))";
     const INTRINSIC: &str = "(intrinsic floor :params (real) :returns int :cost 5)";
 
     /// §2.2: "file boundaries and file names carry no semantics" — an
@@ -906,10 +926,11 @@ mod split_content_tests {
     }
 
     #[test]
-    fn a_source_with_two_rule_forms_is_a_loud_content_error() {
+    fn a_source_with_duplicate_rule_forms_is_a_typed_duplicate_error() {
         let source = format!("{RULE}\n{RULE}");
         let err = split_content(&source).unwrap_err();
-        assert!(matches!(err, LoadError::Content(_)));
+        assert!(matches!(err, LoadError::DuplicateRuleId { .. }));
+        assert_eq!(err.spec_code(), Some("E-LOAD-001"));
     }
 
     #[test]
@@ -927,10 +948,10 @@ mod split_content_tests {
     #[test]
     fn split_content_admits_two_rules_in_source_order() {
         let source = r#"
-(rule a/first :material-basis "x" :fuel 10
+(rule a/first :role mechanic :evidence derived :material-basis "x" :fuel 10
   (bindings (binding v :field a/v))
   (effects (update-node self a/v (set v))))
-(rule b/second :material-basis "y" :fuel 10
+(rule b/second :role mechanic :evidence derived :material-basis "y" :fuel 10
   (bindings (binding v :field b/v))
   (effects (update-node self b/v (set v))))
 "#;
@@ -945,7 +966,7 @@ mod split_content_tests {
         // The pre-Task-2 shape stays legal — this widening is additive, never
         // a floor raise. Every existing single-rule content set in the repo
         // must keep loading unchanged.
-        let source = r#"(rule a/only :material-basis "x" :fuel 10
+        let source = r#"(rule a/only :role mechanic :evidence derived :material-basis "x" :fuel 10
   (bindings (binding v :field a/v))
   (effects (update-node self a/v (set v))))"#;
         let (_intrinsics, rules) = split_content(source).expect("one rule still loads");
@@ -961,40 +982,37 @@ mod split_content_tests {
     #[test]
     fn a_duplicate_rule_id_across_the_content_set_is_e_load_001() {
         let source = r#"
-(rule a/dup :material-basis "x" :fuel 10
+(rule a/dup :role mechanic :evidence derived :material-basis "x" :fuel 10
   (bindings (binding v :field a/v))
   (effects (update-node self a/v (set v))))
-(rule a/dup :material-basis "y" :fuel 10
+(rule a/dup :role mechanic :evidence derived :material-basis "y" :fuel 10
   (bindings (binding v :field a/v2))
   (effects (update-node self a/v2 (set v))))
 "#;
         let err = split_content(source).unwrap_err();
+        assert_eq!(err.spec_code(), Some("E-LOAD-001"));
         assert!(err.to_string().contains("E-LOAD-001"));
         assert!(err.to_string().contains("a/dup"));
     }
 
-    /// Task W2 (BSL Hygiene Knock-out), R-W2a: the same-tick-ordering
-    /// refusals ARE wired into `split_content` — this fixture would refuse
-    /// under refusal 1 with the gate ON (proved directly against
-    /// `same_tick_order::diagnose` in that module's own tests) — but the
-    /// gate is OFF for the landed corpus, so the production entry point
-    /// must load it clean regardless. This is the "lands in the load
-    /// pipeline behind an explicit enforcement gate (default OFF)" claim,
-    /// proved through the REAL call site, not just the analysis function.
+    /// `split_content` validates and deduplicates individual forms but does
+    /// not yet know their phase-anchor ranks. Aggregate tick loading applies
+    /// the live rank-aware composition contract after phase compilation, so
+    /// this deliberately hazardous lexical shape remains valid at this seam.
     #[test]
-    fn same_tick_ordering_refusals_are_gated_off_through_split_content() {
+    fn split_content_defers_ranked_ordering_to_the_aggregate_tick_loader() {
         let source = r#"
-(rule a/reader :material-basis "x" :fuel 10
+(rule a/reader :role mechanic :evidence derived :material-basis "x" :fuel 10
   (bindings (binding v :field ns/f :optional :default 0))
   (when #t)
   (effects (update-node self ns/other (set 1))))
-(rule b/writer :material-basis "y" :fuel 10
+(rule b/writer :role mechanic :evidence derived :material-basis "y" :fuel 10
   (bindings)
   (when #t)
   (effects (update-node self ns/f (set 1))))
 "#;
-        let (_intrinsics, rules) =
-            split_content(source).expect("gate OFF: a refusal-1 shape must still load clean");
+        let (_intrinsics, rules) = split_content(source)
+            .expect("the splitter must defer rank-aware composition to aggregate loading");
         assert_eq!(rules.len(), 2);
     }
 }
@@ -1007,6 +1025,7 @@ mod deferred_shape_verb_tests {
     // RUNTIME, the first tick whose guard admitted a subject.
     use super::{load_rule, LoadContext, LoadError};
     use crate::bindings::BindingVocabulary;
+    use crate::causal_contract::{ContractError, EffectSignature, RuleRole, ShapeVerb};
     use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
     use crate::typecheck::TypeEnv;
     use std::collections::{HashMap, HashSet};
@@ -1033,7 +1052,10 @@ mod deferred_shape_verb_tests {
                 HashMap::new(),
             ))),
             intrinsics: Box::leak(Box::new(IntrinsicCosts::default())),
-            systems: Box::leak(Box::new(HashSet::from(["geography".to_owned()]))),
+            systems: Box::leak(Box::new(HashSet::from([
+                "control-ratio".to_owned(),
+                "geography".to_owned(),
+            ]))),
             vocabulary_registry: None,
             rule_file: "x.bsl",
         }
@@ -1043,7 +1065,7 @@ mod deferred_shape_verb_tests {
     fn a_rule_using_remove_node_refuses_at_load_naming_the_verb() {
         let ctx = load_ctx();
         let err = load_rule(
-            r#"(rule geography/mint :material-basis "x" :fuel 64
+            r#"(rule geography/mint :role mechanic :evidence derived :material-basis "x" :fuel 64
   (bindings)
   (effects (remove-node self)))"#,
             &ctx,
@@ -1057,12 +1079,95 @@ mod deferred_shape_verb_tests {
     }
 
     #[test]
+    fn restricted_roles_receive_e_load_060_for_every_shape_verb() {
+        let ctx = load_ctx();
+        let effects = [
+            ("(add-node NodeType/TERRITORY made)", ShapeVerb::AddNode),
+            ("(remove-node self)", ShapeVerb::RemoveNode),
+            (
+                "(add-edge EdgeType/ADJACENCY self self :strength 1.0c)",
+                ShapeVerb::AddEdge,
+            ),
+            (
+                "(remove-edge EdgeType/ADJACENCY self self)",
+                ShapeVerb::RemoveEdge,
+            ),
+            (
+                "(add-hyperedge HyperedgeType/COMMUNITY made (self))",
+                ShapeVerb::AddHyperedge,
+            ),
+            (
+                "(remove-hyperedge group HyperedgeType/COMMUNITY)",
+                ShapeVerb::RemoveHyperedge,
+            ),
+        ];
+        for (role_name, role) in [
+            ("recognizer", RuleRole::Recognizer),
+            ("external-event", RuleRole::ExternalEvent),
+            ("intent", RuleRole::Intent),
+        ] {
+            for (effect, verb) in effects {
+                let source = format!(
+                    "(rule geography/mint :role {role_name} :evidence derived \
+                     :material-basis \"x\" :fuel 64 \
+                     (bindings (binding group :field geography/group)) \
+                     (effects {effect}))"
+                );
+                let error = load_rule(&source, &ctx).unwrap_err();
+                assert_eq!(error.spec_code(), Some("E-LOAD-060"), "{source}: {error}");
+                assert!(matches!(
+                    error,
+                    LoadError::Causal(ContractError::UnauthorizedEffect {
+                        role: actual_role,
+                        effect: EffectSignature::Shape(actual_verb),
+                        ..
+                    }) if actual_role == role && actual_verb == verb
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn an_allowed_recognizer_event_ignores_verb_shaped_payload_labels() {
+        let ctx = load_ctx();
+        load_rule(
+            r#"(rule control-ratio/c03-crisis
+  :role recognizer :evidence derived :material-basis "payload labels are data" :fuel 64
+  (bindings)
+  (effects (emit EventType/CONTROL_RATIO_CRISIS (add-node 1) (emit 2))))"#,
+            &ctx,
+        )
+        .expect("payload labels must not fabricate forbidden causal effects");
+    }
+
+    #[test]
+    fn a_restricted_shape_inside_an_emit_payload_value_is_e_load_060() {
+        let ctx = load_ctx();
+        let error = load_rule(
+            r#"(rule control-ratio/c03-crisis
+  :role recognizer :evidence derived :material-basis "payload values are expressions" :fuel 64
+  (bindings)
+  (effects (emit EventType/CONTROL_RATIO_CRISIS
+    (payload (add-node NodeType/TERRITORY made)))))"#,
+            &ctx,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            LoadError::Causal(ContractError::UnauthorizedEffect {
+                effect: EffectSignature::Shape(ShapeVerb::AddNode),
+                ..
+            })
+        ));
+    }
+
+    #[test]
     fn a_rule_naming_remove_node_only_inside_a_guard_still_refuses_at_load() {
         // The walk must recurse through `guard` nesting, not just the
         // top-level effect-item list.
         let ctx = load_ctx();
         let err = load_rule(
-            r#"(rule geography/mint :material-basis "x" :fuel 64
+            r#"(rule geography/mint :role mechanic :evidence derived :material-basis "x" :fuel 64
   (bindings)
   (effects (guard #t (remove-node self))))"#,
             &ctx,
@@ -1087,7 +1192,7 @@ mod deferred_shape_verb_tests {
     fn a_deferred_shape_verb_inside_an_emit_payload_value_still_refuses_at_load() {
         let ctx = load_ctx();
         let err = load_rule(
-            r#"(rule geography/mint :material-basis "x" :fuel 64
+            r#"(rule geography/mint :role mechanic :evidence derived :material-basis "x" :fuel 64
   (bindings)
   (effects (emit EventType/RUPTURE (payload (add-node NodeType/SOCIAL_CLASS 5)))))"#,
             &ctx,
@@ -1104,7 +1209,7 @@ mod deferred_shape_verb_tests {
     fn a_deferred_shape_verb_inside_an_emit_payload_value_nested_in_a_guard_still_refuses() {
         let ctx = load_ctx();
         let err = load_rule(
-            r#"(rule geography/mint :material-basis "x" :fuel 64
+            r#"(rule geography/mint :role mechanic :evidence derived :material-basis "x" :fuel 64
   (bindings)
   (effects (guard #t (emit EventType/RUPTURE (payload (remove-node self))))))"#,
             &ctx,
@@ -1124,7 +1229,7 @@ mod deferred_shape_verb_tests {
         // gate over-fired on a verb it must never touch.
         let ctx = load_ctx();
         load_rule(
-            r#"(rule geography/mint :material-basis "x" :fuel 64
+            r#"(rule geography/mint :role mechanic :evidence derived :material-basis "x" :fuel 64
   (bindings)
   (effects (update-node self geography/heat (set 1))))"#,
             &ctx,
@@ -1203,7 +1308,7 @@ mod enum_fold_body_tests {
         let ctx = load_ctx();
         let err = load_rule(
             r#"(rule organization/enum-fold-probe
-  :material-basis "x" :fuel 64
+  :role mechanic :evidence derived :material-basis "x" :fuel 64
   (bindings (binding kind :field organization/kind))
   (when (> (fold sum (nodes NodeType/ORGANIZATION) kind) 0))
   (effects (emit EventType/RUPTURE (probe 1))))"#,
@@ -1227,7 +1332,7 @@ mod enum_fold_body_tests {
         let ctx = load_ctx();
         let err = load_rule(
             r#"(rule organization/enum-fold-probe
-  :material-basis "x" :fuel 64
+  :role mechanic :evidence derived :material-basis "x" :fuel 64
   (bindings)
   (when (> (fold sum (nodes NodeType/ORGANIZATION)
                  (field-of it organization/kind)) 0))
@@ -1251,7 +1356,7 @@ mod enum_fold_body_tests {
         let ctx = load_ctx();
         load_rule(
             r#"(rule organization/enum-fold-count-probe
-  :material-basis "x" :fuel 256
+  :role mechanic :evidence derived :material-basis "x" :fuel 256
   (bindings (binding kind :field organization/kind))
   (when (> (fold count (nodes NodeType/ORGANIZATION) kind) 0))
   (effects (emit EventType/RUPTURE (probe 1))))"#,
@@ -1262,7 +1367,7 @@ mod enum_fold_body_tests {
         let ctx = load_ctx();
         load_rule(
             r#"(rule organization/enum-fold-count-probe
-  :material-basis "x" :fuel 256
+  :role mechanic :evidence derived :material-basis "x" :fuel 256
   (bindings)
   (when (> (fold count (nodes NodeType/ORGANIZATION)
                  (field-of it organization/kind)) 0))
@@ -1322,13 +1427,13 @@ mod vocabulary_membership_tests {
         }
     }
 
-    const RULE: &str = r#"(rule probe/vocab :material-basis "x" :fuel 64
+    const RULE: &str = r#"(rule probe/vocab :role mechanic :evidence derived :material-basis "x" :fuel 64
   (domain :graph)
   (bindings)
   (when #t)
   (effects (emit EventType/RUPTURE)))"#;
 
-    const TYPO_RULE: &str = r#"(rule probe/vocab :material-basis "x" :fuel 64
+    const TYPO_RULE: &str = r#"(rule probe/vocab :role mechanic :evidence derived :material-basis "x" :fuel 64
   (domain :graph)
   (bindings)
   (when #t)
@@ -1388,6 +1493,7 @@ mod vocabulary_membership_tests {
 mod kind_mixing_wiring_tests {
     use super::{load_rule, LoadContext, LoadError};
     use crate::bindings::BindingVocabulary;
+    use crate::causal_contract::ContractError;
     use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
     use crate::typecheck::{TypeCode, TypeEnv};
     use crate::types::{BslType, FieldDecl, FieldKind};
@@ -1439,7 +1545,7 @@ mod kind_mixing_wiring_tests {
         let ctx = load_ctx();
         let err = load_rule(
             r#"(rule organization/kind-mixing-probe
-  :material-basis "x" :fuel 64
+  :role mechanic :evidence derived :material-basis "x" :fuel 64
   (bindings
     (binding budget :field organization/budget)
     (binding share :field organization/share))
@@ -1453,5 +1559,71 @@ mod kind_mixing_wiring_tests {
         assert_eq!(type_err.code, Some(TypeCode::KindMixing));
         assert_eq!(err.spec_code(), Some("E-TYPE-040"));
         assert!(err.to_string().contains("E-TYPE-040"), "{err}");
+    }
+
+    #[test]
+    fn governed_attribution_mismatch_cannot_mask_an_e_parse_defect() {
+        let ctx = load_ctx();
+        let err = load_rule(
+            r#"(rule economics/fundamental-theorem
+  :role mechanic :evidence designed :material-basis "x" :fuel 64
+  (bindings)
+  (effects (update-node self organization/budget (unset 1))))"#,
+            &ctx,
+        )
+        .unwrap_err();
+        assert!(matches!(err, LoadError::Grammar(_)), "{err:?}");
+        assert_eq!(err.spec_code(), Some("E-PARSE-015"));
+    }
+
+    #[test]
+    fn governed_attribution_mismatch_cannot_mask_an_e_type_defect() {
+        let ctx = load_ctx();
+        let err = load_rule(
+            r#"(rule economics/fundamental-theorem
+  :role mechanic :evidence designed :material-basis "x" :fuel 64
+  (bindings
+    (binding budget :field organization/budget)
+    (binding share :field organization/share))
+  (effects (emit EventType/RUPTURE (probe (+ budget share)))))"#,
+            &ctx,
+        )
+        .unwrap_err();
+        assert!(matches!(err, LoadError::Type(_)), "{err:?}");
+        assert_eq!(err.spec_code(), Some("E-TYPE-040"));
+    }
+
+    #[test]
+    fn a_well_typed_governed_attribution_mismatch_reaches_the_load_gate() {
+        let ctx = load_ctx();
+        let err = load_rule(
+            r#"(rule economics/fundamental-theorem
+  :role mechanic :evidence designed :material-basis "x" :fuel 8
+  (bindings)
+  (effects))"#,
+            &ctx,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            LoadError::Causal(ContractError::GovernedAttributionMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn unauthorized_role_effect_cannot_mask_an_e_type_defect() {
+        let ctx = load_ctx();
+        let err = load_rule(
+            r#"(rule organization/kind-mixing-probe
+  :role external-event :evidence designed :material-basis "x" :fuel 64
+  (bindings
+    (binding budget :field organization/budget)
+    (binding share :field organization/share))
+  (effects (emit EventType/RUPTURE (probe (+ budget share)))))"#,
+            &ctx,
+        )
+        .unwrap_err();
+        assert!(matches!(err, LoadError::Type(_)), "{err:?}");
+        assert_eq!(err.spec_code(), Some("E-TYPE-040"));
     }
 }

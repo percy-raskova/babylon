@@ -2,6 +2,8 @@
 ; an EXTENSIVE field are legal, §3.4 rows 1 and 5) and 185-193 via the
 ; weighted-mean row: mean of an intensive field with an extensive :weight.
 (rule event/wealth-aggregates
+  :role mechanic
+  :evidence derived
   :material-basis "total and extremal wealth positions gate the conjuncture"
   :fuel 1024
   (bindings

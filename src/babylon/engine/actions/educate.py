@@ -10,8 +10,8 @@ which computes a five-factor :class:`~babylon.domain.organizations.types.Conscio
 directs its theoretical labor toward a specific Doctrine Tree node, which the
 DoctrineSystem honors each tick (save-toward-target instead of greedy
 auto-acquire). This is a target type of the existing Educate verb, exactly as
-Investigate carries Territory/Org/Edge sub-verbs — the Article V nine-verb
-roster is untouched. Unlike the consciousness path, the sub-verb writes the
+Investigate carries Territory/Org/Edge sub-verbs — the ADR177-governed
+nine-verb roster is untouched. Unlike the consciousness path, the sub-verb writes the
 order onto the acting org's node directly (the mobilize/aid/move precedent).
 
 **Mass-work SOLIDARITY (Unit 6 write side, ADR087):** the classic

@@ -19,7 +19,7 @@ from babylon.models.enums import ActionType
 from babylon.projection.verbs.view_models import VerbPreview
 from babylon.topology import BabylonGraph
 
-#: The nine canonical Article V player verbs, in plate order, mapped onto
+#: The nine canonical ADR177-governed player verbs, in plate order, mapped onto
 #: the engine's OODA ``ActionType`` vocabulary. Relocated from the legacy
 #: bridge (which now imports it back from here).
 VERB_TO_ACTION_TYPE: dict[str, ActionType] = {

@@ -111,7 +111,7 @@ module.exports = grammar({
         '(',
         'rule',
         field('id', $.qname),
-        repeat(choice($.material_basis, $.fuel)),
+        repeat(choice($.rule_role, $.evidence, $.material_basis, $.fuel)),
         optional($.domain),
         optional($.anchor),
         $.bindings,
@@ -120,9 +120,13 @@ module.exports = grammar({
         ')',
       ),
 
-    /* §2.3: the two keyword options may appear in either source order, so
-     * they are collected rather than sequenced. Presence is a load check
-     * (E-PARSE-011 / E-PARSE-012), not a syntactic one. */
+    /* §2.3: the four valued keyword options may appear in any source order,
+     * so they are collected rather than sequenced. Presence and closed-set
+     * membership are load checks, not tree-sitter recovery policy. */
+    rule_role: (_$) =>
+      seq(':role', choice('mechanic', 'recognizer', 'external-event', 'intent')),
+    evidence: (_$) =>
+      seq(':evidence', choice('observed', 'derived', 'calibrated', 'designed')),
     material_basis: ($) => seq(':material-basis', $.string),
     fuel: ($) => seq(':fuel', $.int_lit),
 

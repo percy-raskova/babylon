@@ -2,11 +2,9 @@
 
 Pins: the closed four-card registry in WO-listed order; that three cards'
 formulas are traceable verbatim to ``docs/reference/formulas.rst`` (the WO's
-stated sourcing); that the fourth (nine verbs) documents its sourcing
-deviation to ``CONSTITUTION.md`` Article V rather than silently inventing a
-``docs/reference`` citation, and that its roster matches both the
-constitution's exact verb order and the live ``VERB_RESOLVERS`` registry
-size; and the render contract (frontmatter, statblock, formula fence,
+stated sourcing); that the fourth (nine verbs) cites ADR177 and derives its
+roster oracle from the governed matrix and live registry rather than the lean
+Constitution; and the render contract (frontmatter, statblock, formula fence,
 implementation/see-also sections, determinism).
 """
 
@@ -105,36 +103,24 @@ class TestFormulaCardsTraceToFormulasRst:
 
 
 class TestNineVerbsDeviationIsDocumented:
-    """No docs/reference/*.rst page names the roster — the deviation is loud."""
+    """The roster's governed source is ADR177 plus executable canonical data."""
 
-    def test_citation_names_the_constitution_not_a_reference_doc(self) -> None:
-        """The primary citation is the constitution, not a fabricated
-        ``docs/reference`` page — the string may still *explain* the
-        deviation by mentioning ``docs/reference/*.rst`` in prose, so this
-        pins the citation's opening clause rather than banning the
-        substring outright."""
+    def test_citation_names_the_ratification_adr_and_governed_matrix(self) -> None:
+        """The card points at both the ruling and its executable data."""
         card = CONCEPT_CARDS["nine-verbs"]
-        assert card.citation.startswith("CONSTITUTION.md")
+        assert card.citation.startswith("ai/decisions/ADR177_")
+        assert "babylon.game.actions.matrix.RATIFIED_MATRIX" in card.citation
 
-    def test_roster_matches_constitution_article_v_exact_order(self) -> None:
-        """Term order equals ``CONSTITUTION.md``'s '**Player (9 verbs)**' line."""
-        constitution_text = (_REPO_ROOT / "CONSTITUTION.md").read_text(encoding="utf-8")
-        assert (
-            "**Educate, Aid, Attack, Mobilize, Campaign, Move, Investigate, "
-            "Reproduce, Negotiate**." in constitution_text
-        )
+    def test_roster_matches_the_ratified_matrix_and_live_registry(self) -> None:
+        """Every card term is one governed, live verb, exactly once."""
+        from babylon.game.actions.matrix import verbs_in_matrix
+        from babylon.game.actions.registry import ACTION_REGISTRY
+
         card = CONCEPT_CARDS["nine-verbs"]
-        assert tuple(term.label for term in card.terms) == (
-            "Educate",
-            "Aid",
-            "Attack",
-            "Mobilize",
-            "Campaign",
-            "Move",
-            "Investigate",
-            "Reproduce",
-            "Negotiate",
-        )
+        roster = tuple(term.label.lower() for term in card.terms)
+        assert len(roster) == len(set(roster))
+        assert tuple(sorted(roster)) == verbs_in_matrix()
+        assert all(ACTION_REGISTRY[verb].status == "LIVE" for verb in roster)
 
     def test_roster_size_matches_the_live_verb_resolver_registry(self) -> None:
         """Nine terms on the card == nine registered player-verb resolvers."""

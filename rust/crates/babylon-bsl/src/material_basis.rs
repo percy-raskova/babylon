@@ -1,4 +1,4 @@
-//! The rule-surface checks of §2.2's two mandatory rule keywords —
+//! The rule-surface checks of §2.2's two mandatory material keywords —
 //! `:material-basis` and `:fuel` — at their §2.2-pinned strictness.
 //!
 //! `:material-basis` is the Aleksandrov Test's **parse-time half**
@@ -86,9 +86,10 @@ pub(crate) fn keyword_value<'a>(items: &'a [SExpr], name: &str) -> Option<&'a At
     })
 }
 
-/// Check a `(rule …)` form's mandatory keyword surface: `:material-basis`
-/// present and non-empty (`E-PARSE-011`), `:fuel` present and in
-/// `1..=1_000_000` (`E-PARSE-012`).
+/// Check a `(rule …)` form's material keyword surface: `:material-basis`
+/// present and non-empty (`E-PARSE-011`), and `:fuel` present and in
+/// `1..=1_000_000` (`E-PARSE-012`). Role and evidence are checked by the
+/// causal-contract loader.
 ///
 /// # Errors
 ///
@@ -146,7 +147,7 @@ mod tests {
 
     fn rule_with(material_basis: &str, fuel: &str) -> SExpr {
         let source = format!(
-            "(rule demo/surface :material-basis {material_basis} :fuel {fuel} \
+            "(rule demo/surface :role mechanic :evidence derived :material-basis {material_basis} :fuel {fuel} \
              (bindings) (effects (update-node self social-class/agitation (add 0.05i))))"
         );
         read(&source).expect("test rule must parse").0

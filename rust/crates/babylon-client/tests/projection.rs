@@ -280,11 +280,14 @@ fn the_admin_panel_renders_the_per_rule_breakdown_from_a_seeded_tick_report() {
         .0 = Some(babylon_tick::TickReport {
         before: [0u8; 32],
         after: [1u8; 32],
+        world_before: [2u8; 32],
+        world_after: [3u8; 32],
         fired: 7,
         per_rule_fired: vec![
             ("lifecycle/dpd-circuit".to_owned(), 5),
             ("vitality/subsistence-and-death".to_owned(), 2),
         ],
+        audit_receipts: Vec::new(),
     });
 
     press_key_via_real_event(&mut app, KeyCode::F3);

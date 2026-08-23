@@ -47,7 +47,7 @@ const SCENARIO: &str = r#"
 
 const RULE: &str = r#"
 (rule vitality/scale-op-e2e-rent-spike
-  :material-basis "prove Currency x declared-domain Ratio clears content, load and evaluation (#492/ADR194)"
+  :role mechanic :evidence derived :material-basis "prove Currency x declared-domain Ratio clears content, load and evaluation (#492/ADR194)"
   :fuel 64
   (bindings
     (binding population :field territory/population)
@@ -177,7 +177,7 @@ const FLOOR_SCENARIO: &str = r#"
 
 const FLOOR_RULE: &str = r#"
 (rule vitality/scale-op-e2e-entropy-factor
-  :material-basis "prove Currency x a floored-AND-capped declared-domain Ratio (#492/ADR194) — entropy_factor's exact shape"
+  :role mechanic :evidence derived :material-basis "prove Currency x a floored-AND-capped declared-domain Ratio (#492/ADR194) — entropy_factor's exact shape"
   :fuel 64
   (bindings
     (binding population :field territory/population)
@@ -297,7 +297,7 @@ const GATED_SCENARIO: &str = r#"
 
 const GATED_RULE_TEMPLATE: &str = r#"
 (rule vitality/scale-op-e2e-gated-modifier
-  :material-basis "prove a guard-gated Currency x Ratio effect is the content-layer answer to a zero-valued frozen-engine modifier — the multiply's absence, never a Ratio of zero (#492/ADR194)"
+  :role mechanic :evidence derived :material-basis "prove a guard-gated Currency x Ratio effect is the content-layer answer to a zero-valued frozen-engine modifier — the multiply's absence, never a Ratio of zero (#492/ADR194)"
   :fuel 64
   (bindings
     (binding population :field territory/population)

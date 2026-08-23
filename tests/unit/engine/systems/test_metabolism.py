@@ -759,11 +759,12 @@ class TestMetabolismPopulationScaling:
 class TestMetabolicHysteresis:
     """Hysteresis ratchet: extraction PERMANENTLY reduces max_biocapacity.
 
-    Epoch 1 "Tragedy of Inevitability" doctrine
-    (ai/epochs/epoch1/metabolic-slice.yaml): on each extraction event,
+    This suite preserves the frozen Python hysteresis contract from
+    ``ai/epochs/epoch1/metabolic-slice.yaml``: on each extraction event,
     ``max_biocapacity -= raw_extraction * hysteresis_rate``. The timeline is
-    finite by design — with any positive extraction and any positive
-    hysteresis rate, max_biocapacity monotonically approaches zero.
+    finite for this sustained-extraction scenario — with positive extraction
+    and hysteresis, max_biocapacity monotonically approaches zero. That mechanic
+    does not make ecological collapse a predetermined product outcome.
     """
 
     def test_extraction_permanently_reduces_max_biocapacity(self) -> None:

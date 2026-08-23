@@ -10,7 +10,7 @@
 //! canonical child reordering with `opt`-wrapped keyword options (§5.3),
 //! and `rules_hash = SHA-256(0x03 ‖ u32 N ‖ CAS(r_1) ‖ …)` over rules
 //! **sorted by rule id** (§5.5) — implemented as written, and proved
-//! against §5.6's own pinned worked example (421 bytes, both digests).
+//! against §5.6's own pinned worked example (500 bytes, both digests).
 //!
 //! Per §5.4 there are no stringify fallbacks: an unencodable node (an
 //! operator outside form-head position, a form whose head is not a
@@ -344,7 +344,7 @@ mod tests {
     const DEMO_RULE: &str = r#"
    ; a rule is data; this comment is not part of the hash
    (rule demo/hunger
-     :material-basis "subsistence deficit at the point of reproduction"
+     :role mechanic :evidence derived :material-basis "subsistence deficit at the point of reproduction"
      :fuel 64
      (bindings
        (binding wealth :field social-class/wealth))
@@ -353,24 +353,26 @@ mod tests {
        (update-node self social-class/agitation (add 0.05i))))
 "#;
 
-    /// §5.6's pinned canonical bytes — 421 bytes, reproduced verbatim from
+    /// §5.6's pinned canonical bytes — 500 bytes, reproduced verbatim from
     /// the spec (which states both digests are "reproducible from this
     /// document alone").
     const PINNED_HEX: &str = concat!(
-        "020472756c65000000060105716e616d650000000b64656d6f2f68756e676572",
-        "02036f70740000000201026b77000000046675656c0103696e74000000080000",
-        "00000000004002036f70740000000201026b770000000e6d6174657269616c2d",
-        "626173697301037374720000003073756273697374656e636520646566696369",
-        "742061742074686520706f696e74206f6620726570726f64756374696f6e0208",
-        "62696e64696e677300000001020762696e64696e6700000002010373796d0000",
-        "00067765616c746802036f70740000000201026b77000000056669656c640105",
-        "716e616d6500000013736f6369616c2d636c6173732f7765616c746802047768",
-        "656e0000000102013c00000002010373796d000000067765616c746801036375",
-        "72000000100000000000000000000000003ba26b200207656666656374730000",
-        "0001020b7570646174652d6e6f646500000003010373796d0000000473656c66",
-        "0105716e616d6500000016736f6369616c2d636c6173732f616769746174696f",
-        "6e0203616464000000010104696e746e00000011000000000000000000000000",
-        "0000000502"
+        "020472756c65000000080105716e616d650000000b64656d6f2f68756e676572",
+        "02036f70740000000201026b770000000865766964656e6365010373796d0000",
+        "00076465726976656402036f70740000000201026b77000000046675656c0103",
+        "696e7400000008000000000000004002036f70740000000201026b770000000e",
+        "6d6174657269616c2d626173697301037374720000003073756273697374656e",
+        "636520646566696369742061742074686520706f696e74206f6620726570726f",
+        "64756374696f6e02036f70740000000201026b7700000004726f6c6501037379",
+        "6d000000086d656368616e6963020862696e64696e677300000001020762696e",
+        "64696e6700000002010373796d000000067765616c746802036f707400000002",
+        "01026b77000000056669656c640105716e616d6500000013736f6369616c2d63",
+        "6c6173732f7765616c746802047768656e0000000102013c0000000201037379",
+        "6d000000067765616c7468010363757200000010000000000000000000000000",
+        "3ba26b2002076566666563747300000001020b7570646174652d6e6f64650000",
+        "0003010373796d0000000473656c660105716e616d6500000016736f6369616c",
+        "2d636c6173732f616769746174696f6e0203616464000000010104696e746e00",
+        "0000110000000000000000000000000000000502"
     );
 
     fn demo_rule() -> crate::reader::SExpr {
@@ -388,7 +390,7 @@ mod tests {
     #[test]
     fn the_spec_worked_example_reproduces_byte_for_byte() {
         let bytes = canonical_bytes(&demo_rule()).unwrap();
-        assert_eq!(bytes.len(), 421, "§5.6 pins exactly 421 canonical bytes");
+        assert_eq!(bytes.len(), 500, "§5.6 pins exactly 500 canonical bytes");
         assert_eq!(hex(&bytes), PINNED_HEX);
     }
 
@@ -399,18 +401,18 @@ mod tests {
         let single = Sha256::digest(&bytes);
         assert_eq!(
             hex(&single),
-            "8a62d0b5724de24ec36ea0dfb3f4d120a63d90a56bad2a4605e645368f304da3"
+            "9b49c1e87a63ccb64dee96bd179c8ffecd3fe476c81a4f81771daac237156396"
         );
         let rules_hash = rules_hash_of(&[demo_rule()]).unwrap();
         assert_eq!(
             hex(&rules_hash),
-            "4e6fbf64c771bd8e2f7874b4c906d0330458ba965911d00a9a731ea8a724238f"
+            "bf2f15517d1b4d10e44af36983c76249b49d8fa2dc71e6d8c1d2607b37b2f20f"
         );
     }
 
     #[test]
     fn formatting_and_comments_never_change_the_bytes() {
-        let reformatted = "(rule demo/hunger :material-basis \
+        let reformatted = "(rule demo/hunger :role mechanic :evidence derived :material-basis \
          \"subsistence deficit at the point of reproduction\" :fuel 64 \
          (bindings (binding wealth :field social-class/wealth)) \
          (when (< wealth 1000.5$)) ; inline comment\n \
@@ -478,7 +480,7 @@ mod tests {
     fn a_ratio_literal_encodes_with_its_own_kind_tag_additively() {
         assert_eq!(
             canonical_bytes(&demo_rule()).unwrap().len(),
-            421,
+            500,
             "the golden program must be unmoved before this row is trusted"
         );
         let bytes = canonical_bytes(&read("2.5r").unwrap().0).unwrap();
@@ -571,7 +573,7 @@ mod tests {
     fn a_metric_declarations_positional_domain_precedes_its_options() {
         assert_eq!(
             canonical_bytes(&demo_rule()).unwrap().len(),
-            421,
+            500,
             "the golden program must be unmoved before this row is trusted"
         );
         let bytes = canonical_bytes(

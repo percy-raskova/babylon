@@ -78,6 +78,8 @@
 (intrinsic floor :params (real) :returns int :cost 5)
 
 (rule territory/p1-heat-dynamics
+  :role mechanic
+  :evidence derived
   :material-basis "state legibility: HIGH_PROFILE visibility accumulates heat linearly, LOW_PROFILE opacity decays it geometrically (territory.py:107-137)"
   :fuel 128
   (bindings
@@ -99,6 +101,8 @@
     (update-node self territory/heat (set clamped))))
 
 (rule territory/p2-eviction-pipeline
+  :role mechanic
+  :evidence derived
   :material-basis "rent as a weapon: crossing the legibility threshold latches eviction; each latched tick spikes rent and displaces population toward the carceral sinks (territory.py:196-267; EXTRACTION mode is provably uniform, WS1 ledger)"
   :fuel 512
   (bindings
@@ -144,6 +148,8 @@
                0)))))
 
 (rule territory/p3-spillover
+  :role mechanic
+  :evidence derived
   :material-basis "heat is not contained by parcel lines: each ADJACENCY edge spills symmetrically, each endpoint receiving a fraction of the other's pre-phase heat (territory.py:269-316; pull-side fold reformulation is mathematically identical, ADR197/D103)"
   :fuel 512
   (bindings
@@ -188,6 +194,8 @@
 ; D116 reliance p1-p3 already established).
 
 (rule territory/p4-camp-decay
+  :role mechanic
+  :evidence derived
   :material-basis "elimination: the camp's population decays every tick — the necropolitical endpoint (territory.py:344-347)"
   :fuel 64
   (bindings
@@ -199,6 +207,8 @@
     (update-node self territory/population (set (floor (* pop (- 1 decay)))))))
 
 (rule territory/p4-penal-suppression
+  :role mechanic
+  :evidence derived
   :material-basis "atomization via incarceration: every class tenant of a penal colony has its organization zeroed (territory.py:349-378)"
   :fuel 128
   (bindings

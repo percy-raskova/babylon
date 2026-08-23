@@ -4,6 +4,8 @@
 ; whether class-a's draw fires — for the D69/§6.2 "a skipped draw shifts
 ; nothing" row (r9_chapters.rs::c14_rng_draw).
 (rule demo/rng-keyed-draw
+  :role mechanic
+  :evidence derived
   :material-basis "the rng-draw keyed-draw conformance vector: every subject draws unconditionally"
   :fuel 64
   (bindings

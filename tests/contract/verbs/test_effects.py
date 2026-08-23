@@ -90,7 +90,7 @@ class TestEducateDoctrineStudy:
     """Educate(Doctrine) sub-verb — the Study order (DoctrineSystem Unit 7b).
 
     A ``doctrine_node_id`` param turns EDUCATE into a standing study order the
-    DoctrineSystem honors (save-toward-target instead of greedy). The Article V
+    DoctrineSystem honors (save-toward-target instead of greedy). The ADR177-governed
     roster is untouched — this is a target type of the existing Educate verb,
     exactly as Investigate carries Territory/Org/Edge sub-verbs.
     """

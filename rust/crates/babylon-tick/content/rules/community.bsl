@@ -116,6 +116,8 @@
 
 ; ============================================================ c00 — the reset
 (rule community/c00-census-reset
+  :role mechanic
+  :evidence derived
   :material-basis "The per-tick rebuild (community.py:392-397 mints a fresh community_agents map on every step, and community.py:460-462 writes back via model_copy): every accumulator this pack reads derives from THIS tick's writes, so the tick begins by zeroing them. The institution/community-carrier binding is a SUBJECT-TYPE ANCHOR ONLY (tick.rs::subject_type_of requires >=1 :field binding to derive INSTITUTION) — never read again, never gating anything (`when #t`), so the domain is declared EXPLICITLY: an unreferenced anchor plus a vacuous guard is E-LOAD-004-undeterminable at load (domain.rs's candidate set is reference-fed), and control-ratio.bsl's precedent passes only because its fold bodies feed that set — recorded in the pack header."
   :fuel 104
   (bindings
@@ -132,6 +134,8 @@
 
 ; ============================================================ c01 — the census
 (rule community/c01-member-census
+  :role mechanic
+  :evidence derived
   :material-basis "The member census (community.py:465-479's _collect_memberships + :392-397's community_agents): ACTIVE classes only (the :472-474 gate — an inactive member is excluded from the count AND from every downstream write), one +1 per (class, community) membership. The adds collect against the pre-state and combine at apply, so N active members land N exactly."
   :fuel 27
   (bindings
@@ -143,6 +147,8 @@
 
 ; ============================================================ c02 — the per-class accumulator reset
 (rule community/c02-org-weight-reset
+  :role mechanic
+  :evidence derived
   :material-basis "Port scaffolding (D-NF+3): the per-class org accumulators frozen never needed (it sums per-org in one pass) are this pack's decomposition of the same sum — reset per tick, all four, EVERY social class (no active gate: the reset is not the census)."
   :fuel 21
   (bindings
@@ -160,6 +166,8 @@
 ; Byte order runs f, l, r; the order is unobservable (disjoint weight
 ; fields, integer-exact shared count) — see the header's byte-order map.
 (rule community/c03f-org-weight-push
+  :role mechanic
+  :evidence derived
   :material-basis "The FASCIST arm of the org-weight push (community.py:403-426 + formulas/consciousness.py:63-72): each FASCIST org pushes cadre x cohesion onto each member class's org-f-weight and +1 onto its org-count. The org iterates only ITS OWN outbound MEMBERSHIP edges (the D136 push idiom, solidarity.bsl's mandatory form) — every edge visited exactly once, by its unique source. Frozen's tendency-less skip (community.py:405-407) is inexpressible as a fold guard, so the three tendency rules partition every org (D-NF+25); a tendency-less org is never written by frozen either, and no world may seed one."
   :fuel 72
   (bindings
@@ -173,6 +181,8 @@
       (update-node it social-class/org-count (add 1)))))
 
 (rule community/c03l-org-weight-push
+  :role mechanic
+  :evidence derived
   :material-basis "The LIBERAL arm — same law as c03f (community.py:403-426), one tendency over."
   :fuel 72
   (bindings
@@ -186,6 +196,8 @@
       (update-node it social-class/org-count (add 1)))))
 
 (rule community/c03r-org-weight-push
+  :role mechanic
+  :evidence derived
   :material-basis "The REVOLUTIONARY arm — same law as c03f (community.py:403-426), one tendency over."
   :fuel 72
   (bindings
@@ -200,6 +212,8 @@
 
 ; ============================================================ c04 — the contribution push
 (rule community/c04-community-contribution-push
+  :role mechanic
+  :evidence derived
   :material-basis "The density decomposition (plan §1.3, D-NF+3): frozen's per-org weight (overlap/comm_size) x cadre x cohesion re-expressed as per-class sums divided by the census count — each active-in-census class pushes org-weight/member-count onto its communities' raw ternary accumulators and org-count/member-count onto density-sum. The divisor is c01's SAME-TICK census (§8b's D116 ledger row 1: fatal if apply-in-place is ever repaired to collect-across-rules — the Q14 train's acceptance input). The `active` gate is FIDELITY, not caution: frozen's community_agents is built from the active-only membership set (community.py:472-474 -> :392-397), so an inactive class's org weights (c03 pushes to members regardless of the target's active flag) must NEVER enter the sum — gated here, c03's push onto an inactive class stays inert (c02 resets it next tick)."
   :fuel 151
   (bindings
@@ -226,6 +240,8 @@
 ; bit-identically to frozen's fused branch, formulas/consciousness.py:89-91,
 ; because x1.0 and /1.0 are exact in IEEE-754.)
 (rule community/c05-normalize
+  :role mechanic
+  :evidence derived
   :material-basis "Normalize the raw accumulators to the simplex (formulas/consciousness.py:78-95): unorganized = max(0, 1 - density-sum) folds into l (Jackson: passive acceptance is liberal hegemony); total = (r + (l+u)) + f, frozen's exact association; total < 1e-10 is the degenerate branch -> (0, 1, 0) and NOTHING else (the floor routes through c06a/c06b, bit-identically — 6.2 I5). The density-sum > 0 guard is frozen's community.py:452 skip gate (no org_landscape -> keep the prior ternary). Frozen never stores the unorganized-folded l-raw, so neither does this rule — only the normalized ternary is written. The total/unorganized expressions are inlined per write (no defexpr exists — 8a ledger); the epsilon is the landed (/ 1c 10000000000) quotient (consciousness.bsl's idiom), bit-identical to frozen's 1e-10 literal."
   :fuel 596
   (domain NodeType/INSTITUTION)
@@ -259,6 +275,8 @@
 ; is invisible to a later operand's field-of, so dispatch-and-redistribute
 ; cannot be one rule; D204).
 (rule community/c06a-floor-dispatch
+  :role mechanic
+  :evidence derived
   :material-basis "The 14-row ADR214 floor table, dispatched on community/kind (6.2; the pack's ONLY 14-arm chain — spike shape (e) proved it at Task 7). Values and per-row provenance: the world's .bscn defconst block (ADR214 Ruling 1 + erratum 9 for the measured three; Ruling 2's demotions for the LOW five; INCARCERATED's named unreachability; SETTLER/PATRIARCHAL/YOUTH/ADULT structural zeros; ELDER estimated). The density-sum > 0 guard is the SAME skip gate as c05's — a skipped community's cache is never written, and c06b's guard never reads it (the honest-null discipline, 9 item 5)."
   :fuel 252
   (domain NodeType/INSTITUTION)
@@ -302,6 +320,8 @@
 
 ; ============================================================ c06b — the redistribution (Task 9 Step 3)
 (rule community/c06b-floor-redistribute
+  :role mechanic
+  :evidence derived
   :material-basis "The substrate floor, applied post-normalization (formulas/consciousness.py:98-107): if r < floor, r = floor and the remaining (1 - floor) redistributes to l and f PROPORTIONALLY (l x remaining / lf, f x remaining / lf) when lf > 1e-10, else l = remaining and f = 0 (the two-arm split). Reads c06a's cache the SAME TICK (8b's ledger; spike (f) proved the shape). The SETTLER control: floor 0.0 makes r < floor identically false — the 0.0-floor community is untouched (6.2)."
   :fuel 272
   (domain NodeType/INSTITUTION)
@@ -327,6 +347,8 @@
 
 ; ============================================ c09/c10 — the cost modifier (Task 10 Step 2)
 (rule community/c09-cost-modifier-reset
+  :role mechanic
+  :evidence derived
   :material-basis "formulas/community.py:164-165's per-tick reset to 1, gated ACTIVE-ONLY by community.py:472-474 (1.4/C4): an INACTIVE class is written NOTHING — its social-class/community-cost-modifier reads the substrate's honest-null error, never 1.0. The reset is what makes c10's product per-tick rather than compounding across ticks (the Task-8-deferred vector, proven in Task 10's arc world)."
   :fuel 8
   (bindings
@@ -336,6 +358,8 @@
     (update-node self social-class/community-cost-modifier (set 1))))
 
 (rule community/c10-cost-modifier-accumulate
+  :role mechanic
+  :evidence derived
   :material-basis "formulas/community.py:166-174: the modifier is the PRODUCT of the member communities' reproduction-cost-modifier — one `scale` per membership, ascending HyperedgeId (D25; D-NF+13 records the float-product-order divergence: frozen iterates a dict, this pack's order is the substrate's). The active guard is community.py:472-474's (C4). Spike shape (d) verdict, cited: `scale` accumulates multiplicatively across a for-each because the combine reads the current value at APPLY (the operand is pre-computed per collected write)."
   :fuel 35
   (bindings
@@ -348,6 +372,8 @@
 
 ; ============================================================ c11 — the state decay (Task 10 Step 3)
 (rule community/c11-state-decay
+  :role mechanic
+  :evidence derived
   :material-basis "community.py:648-675: per tick per community, heat/cohesion/education-pressure each decay max(0, x·(1−α)) (the three-arm triplication is 8a row 2 — decay_arms_are_independent carries the three mutation vectors). Frozen computes x·(1−α) then clamps at the model_copy (:668-674); the if-form here is max(0, ·) exactly. THE INFRASTRUCTURE ARM IS ABSENT — 5: its CORE_ORGANIZER maintenance term makes frozen's law NON-MONOTONE, and landing x·(1−α) alone would be a DIFFERENT law (monotone decay); port-as-is (ADR183) forbids it. The term waits on #653 (the AG(i) ceremony), DG-7's call. The decay has NO skip gate — frozen decays every community_state (:648's loop over the whole dict), including a no-org-skipped one."
   :fuel 208
   (domain NodeType/INSTITUTION)
@@ -371,6 +397,8 @@
 ; dominant-tendency (port fidelity — frozen publishes both,
 ; community.py:106-107 — plus the events-as-affordances thesis, #502).
 (rule community/c07-contestation
+  :role mechanic
+  :evidence derived
   :material-basis "The normalized Shannon entropy of the published simplex (entities/consciousness.py:274-291): entropy = 0 - t(r) - t(l) - t(f) with t(p) = p*log(p) guarded per component at p > 1e-10 (the (/ 1c 10000000000) quotient), divided by (log (* 1.0c 3)) — the divisor COMPUTED through the pack's declared `log` intrinsic (the pinned libm soft-float crossing), never pasted. DG-2's PUBLISH ruling is why this rule exists. NOTE the divisor divergence, recorded (D-row): libm::log(3) is 1.0986122886681096, ONE ulp below CPython's math.log(3) (1.0986122886681098) — the engine's pinned soft-float crossing is the law of THIS port (ADR176 r21 / ADR188), so the mirror divides by the libm value and the conformance pins are bit-exact against IT."
   :fuel 900
   (domain NodeType/INSTITUTION)
@@ -390,6 +418,8 @@
 
 ; ============================================ c08 — the dominant-tendency readout (DG-2: PUBLISH)
 (rule community/c08-dominant-tendency
+  :role mechanic
+  :evidence derived
   :material-basis "The argmax readout with the ruled tie order LIBERAL > REVOLUTIONARY > FASCIST at 1e-6 (entities/consciousness.py:167-191, epsilon :189) — the SAME shape consciousness/p8-dominant-worldview runs over the class surface (the 8a row-1 copies-agree test pins both to LIBERAL on the same seeded three-way tie). The skip gate is c05's (density-sum > 0): a no-org community keeps its prior tendency, never a fabricated readout."
   :fuel 336
   (domain NodeType/INSTITUTION)

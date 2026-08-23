@@ -1,5 +1,7 @@
 ; Transcribes test_mechanics.py:54-64: "CLASS_ANALYSIS <= 0 AND MILITANCY <= 0".
 (rule doctrine/liquidationism
+  :role mechanic
+  :evidence derived
   :material-basis "theory and militancy both abandoned dissolves the organization into the movement it tailed"
   :fuel 16
   (bindings

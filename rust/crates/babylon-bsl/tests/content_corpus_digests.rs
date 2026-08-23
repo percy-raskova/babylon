@@ -73,135 +73,135 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     ),
     (
         "community.bsl",
-        "8b955851e3dec97a89e73b951ba96609713e81a1db36315d0cbf9493b3175384",
+        "2a6ae05861045b8505b356e71e92fb99bc0a0b9a80dce67c8e25ca6e4433b088",
     ),
     (
         "consciousness.bsl",
-        "baee6e7ba35c97993c6bb700c365a65ba8cecf8fd72efc51619d5e740c1e5ad1",
+        "c98af42b4fb342dcc06c98d46b1a561778445095d026c45d6cdfdc3dce705652",
     ),
     (
         "control-ratio.bsl",
-        "7f411663760a1e5bac192bf87a99f4dbdd4c0088a7e74053672fa65a566181b7",
+        "3ba50198b2f4e855a9fc50d3f5a9ec6fc0bae21db2d1585f785d77ab144815b3",
     ),
     (
         "decomposition.bsl",
-        "6f26218d7a3bad2fb9362d327893a8029527fb4ef11ecda5d2afea3f1ccac388",
+        "1d5c1fc6efba986f540dd3a500dcf9f4aa0a7eb49a099d958a22ba995f286942",
     ),
     (
         "dispossession.bsl",
-        "1ed31856615e10db6df382d2ef8cce5bd0708f89f9c40b076178a9b95ab0f4aa",
+        "ccc325e7e91b8bbe0a0b904025b214c6138c6b2954263669c51b8581c93650a9",
     ),
     (
         "fundamental-theorem.bsl",
-        "254248a466a05af48690b3fc4b60b7a6379deeef24c7d2736c6b3e544d36e6b5",
+        "bf458f074a2ff0ef76cf96da7d1f31937165fd0a7b4e4021f809125e0c2766c9",
     ),
     (
         "imperial-rent.bsl",
-        "4695b937241f8becedbaee60bfb7b45b9d15d7353ce8d17bd46bd53462557296",
+        "2af8fa094edee81d04314b0ad9cc8ca6f3c41bb60e7bbf13a5b38cacc4b74099",
     ),
     (
         "lifecycle.bsl",
-        "e388d4e4f54301e528004a4d3b5233bc4f039928054c4b6c6a4d1774a7614064",
+        "70aab772dab4c4122cfdb65d61839f0bb871d9af3e3f067ca49e473cf67ea9ef",
     ),
     (
         "metabolism.bsl",
-        "faef0790620d4c6ddf88f24f2969995688b441b9a0270dc105ae32a808b023c1",
+        "02e0ba2e2e3212cfbe99031689aa483ebd39fee881027a5a7594f73a03c45409",
     ),
     (
         "organization.bsl",
-        "951841ff4892b87d186585f4e8cd219b6454d68b90be65a9b638508724584046",
+        "520719924d097816056b71e2df1f43e0f71b036fcc8e60946009fd6de75df116",
     ),
     (
         "production.bsl",
-        "35d61b03ae407977cc27d4feae025b6fd896ecbb9e2b8f2052abf6abe8677678",
+        "7b50bce70a7ff8e85e22cc15f1dff7c5eb4baeddc89d86e14c0edd1ad8833ece",
     ),
     (
         "solidarity.bsl",
-        "0a097f3c88ba6f03cbb79b03a160eeaf1179139164403f188575bc57755bcc8f",
+        "3f9e147898d9189b9f300a97a7df6513d5d3acb5cb5b7fbd3e9652a5e295ff37",
     ),
     (
         "territory.bsl",
-        "1874fb9421b35e489287f7fdf867ecb0da2a0c1c8bd519b649170b9a560aff66",
+        "0ae835ab2433ae529a620482e1d5ec72ef410a006c2178ca46603bbf97198197",
     ),
     (
         "vitality-attrition.bsl",
-        "79a3f9d2ecb5b9036f4957944968961c594335d79cbe569d60a27dab740110dc",
+        "50621cfd0d628791bd5ade93daa81a23f029445bc356978b2b70869b24f1958e",
     ),
     (
         "vitality.bsl",
-        "072d2a4f3d5a790a199cce9f8db9b2a4bae97d311336cd856f4ef41aa6efe517",
+        "417d87f835f9bfaaa601dd09890580544d6e040ae69e0bafd9af3a7968210538",
     ),
     (
         "worldview.bsl",
-        "17d58fea55ae0f4b9212b102761df827323c59085af6f9ae80eec075c1660c82",
+        "e9ae9183db9bd82d4cef9b6563c2375a746d77bfc2f5302535318df71ea34957",
     ),
     (
         "doctrine_adventurism.bsl",
-        "285229ce4700877b551328858e4c74dcaae2b87c5ea4da276e0f3e3e4db44762",
+        "f1aa5ff4971b15c5aa1e96e2e85bc5675b4e725cf8004ff67d3f5b255e73230c",
     ),
     (
         "doctrine_liquidation_absorbing.bsl",
-        "9d0e31d8a247f4d309c908e69179d06d7025c4fe5556fbe487eef3685ada1936",
+        "fc62da99af56446323275daf70b4007a63b02adb5fdd408aca0eae9ef8997b3b",
     ),
     (
         "doctrine_liquidationism.bsl",
-        "69f0a462c8bc1224fc83bd8841ee3a119117ee16478d2182446eeea38aac7053",
+        "0f296f8f33c54d35c03f6d2340150e35e6a67d159a830115d70f2f27b7930bfc",
     ),
     (
         "empty_when.bsl",
-        "0f26bdcf7f2528b21543cdc2c957f5767b9c23e791a8ea9c3de58fec5b678107",
+        "b194a865cd5d36ccc7f2676277ae92eef329415771e4044fc36374729b19e173",
     ),
     (
         "event_bifurcation.bsl",
-        "1a7b5691a65334230a5f0586c945963a167c4c5ff2cfa3950b47f002d918b8ee",
+        "1fcaab62d5a58747a7d1aa2974356d449236684ca2d52905d60e6e21fed7a458",
     ),
     (
         "event_edge_count.bsl",
-        "e87391e6e7189f8ed3778005a8e6a81298ab09fd2c2499d2dd9fe16d9c3590af",
+        "2b45bb62fd408a10513db40c795d62c12061a503125d976305240f20069b1376",
     ),
     (
         "event_forall.bsl",
-        "386baa2a57681d622beda6297fd9439dd060cc4b3131308b502adc63e2df8e04",
+        "06588b95cddab8c6a8b37bf73c90fd14a6aa069165248cc88880a29db1a707d9",
     ),
     (
         "event_metric_conditions.bsl",
-        "0f06890bdc03dd521541bb2019a84ea03bd27a3d2565c997bc6c114178c6acfb",
+        "efd291da9c649ad623f203159df119dccc332136e5931f9eef4880ab7109ebad",
     ),
     (
         "event_node_condition.bsl",
-        "c06bd83c4403151a70af815d420f0c60ab6c0b2d91a30d9f13399e5a7eb01cae",
+        "fb27d3189c4d1abd9f75a72ba822ee4961fbb53a65b81cf74bcf34ff0a4556eb",
     ),
     (
         "event_wealth_aggregates.bsl",
-        "79a94a5bc1131676818ed8b253fcf254f07a619f94a0255a3560e9fe1a9d9fcd",
+        "85c63b8d7ebf694ee9c49e4ee67eb60f6203d4d933fdb37b22b7162d5a713ce7",
     ),
     (
         "rng_edge_type_draw.bsl",
-        "ba83fecff0f748ea14e742b0f8c815a230d7581316b1ddb9203f5a1b04386540",
+        "b14b719eb112e9128a66328f71505a489d0039feace2a9278f67c16bdb78965d",
     ),
     (
         "rng_expr_draw.bsl",
-        "8344aed7fc0d5e4045af424fb4787fbc8bee850de7bd8e4f23b09cdb8e5e6ac2",
+        "232d22fae23d79aeb8c807761aae875012f61fb2ef6113109a9b9a5ec7a68ade",
     ),
     (
         "rng_fold_draw.bsl",
-        "48429f2d62c274430dc35531e696bc122290f83dc3e1fc29416910c0740ec7ca",
+        "ba06e999ae8bb1086c8ded9b7e3a1b78947ce016becd0179426a79cfc65a00be",
     ),
     (
         "rng_keyed_draw.bsl",
-        "bb51a0a08e95e91c2c981b9bcac92bbc374f17c4aed745dea8046246dfa485a5",
+        "d70f46f6e646fbea48fe96c6aedbdfc991aa5868a7ec692879fabe557fa501f2",
     ),
     (
         "rng_keyed_draw_guarded.bsl",
-        "5212c874e1b4f1decdc0f7d8d91d0008d4a9308d3aef215f943bb272978dc5c1",
+        "cebdabe5589b128285deed8fb2e17a7574cb687eb5a02cbe39e32f423f50b105",
     ),
     (
         "unconditional.bsl",
-        "61bf2a5b6690b6bffe3a3b67fe556ebfeecdf84efa1d1688c94f57c9100bcbf8",
+        "3086eb8e3e6aa89bb704bd369872c4434826b00c6d80630c3f34ce27e9110c8a",
     ),
     (
         "unknown_metric.bsl",
-        "299f11b09e064918f81186c96a631d2d599ee7a79a5102a038d7b3ea5bd053f4",
+        "83559f3c1fe5339ff3f0948f389e1b7b1d36697c1a32cc88d40707d0c44749cc",
     ),
     (
         "carceral-arc-conformance.bscn",
@@ -431,14 +431,20 @@ fn read_all_digest_is_pinned_across_the_full_content_corpus() {
         actual.push((label, digest));
     }
 
-    if actual.len() != PINNED_DIGESTS.len() {
+    let corpus_drift = actual.len() == PINNED_DIGESTS.len()
+        && actual.iter().zip(PINNED_DIGESTS).any(
+            |((label, digest), (expected_label, expected_digest))| {
+                label != expected_label || digest != expected_digest
+            },
+        );
+    if actual.len() != PINNED_DIGESTS.len() || corpus_drift {
         use std::fmt::Write as _;
         let mut dump = String::new();
         for (label, digest) in &actual {
             let _ = writeln!(dump, "    (\"{label}\", \"{digest}\"),");
         }
         panic!(
-            "PINNED_DIGESTS is empty/stale ({} pinned vs {} discovered) — \
+            "PINNED_DIGESTS is stale ({} pinned vs {} discovered) — \
              paste this into PINNED_DIGESTS:\n{dump}",
             PINNED_DIGESTS.len(),
             actual.len()

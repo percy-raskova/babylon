@@ -5,6 +5,8 @@ Fundamental theorem (content/rules/fundamental-theorem.bsl — ABRIDGED: :materi
 ; W_c > V_c: while core wages exceed the value core labour produces, the
 ; difference is imperial rent.
 (rule economics/fundamental-theorem
+  :role mechanic
+  :evidence derived
   :material-basis "core wages above the value core labour produces is imperial rent"
   :fuel 64
   (bindings
@@ -21,6 +23,8 @@ Fundamental theorem (content/rules/fundamental-theorem.bsl — ABRIDGED: :materi
   (comment)
   (rule
     (qname)
+    (rule_role)
+    (evidence)
     (material_basis
       (string))
     (fuel

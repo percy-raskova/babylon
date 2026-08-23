@@ -21,13 +21,14 @@
 
 use crate::bindings::BindingError;
 use crate::bound_checker::BoundError;
+use crate::causal_contract::{ContractError, EffectSignature};
 use crate::declarations::DeclError;
 use crate::domain::DomainError;
 use crate::grammar::GrammarError;
 use crate::material_basis::SurfaceError;
 use crate::mod_anchors::AnchorError;
 use crate::rule_pipeline::LoadError;
-use crate::same_tick_order::SameTickOrderError;
+use crate::same_tick_order::{RankedRuleInputError, SameTickOrderError};
 use crate::scope::{ElementNameError, ScopeError};
 use crate::types::EnumRegistryError;
 use crate::vocabulary::VocabularyError;
@@ -284,6 +285,45 @@ fn surface_identity(err: &SurfaceError) -> Option<ErrorIdentity> {
     }
 }
 
+fn causal_identity(err: &ContractError) -> Option<ErrorIdentity> {
+    match err {
+        ContractError::MissingMetadata { keyword }
+        | ContractError::MalformedMetadata { keyword }
+        | ContractError::UnknownMetadataValue { keyword, .. } => {
+            Some(ErrorIdentity::Keyword(format!(":{keyword}")))
+        }
+        ContractError::UnauthorizedEffect {
+            rule_id, effect, ..
+        } => match effect {
+            EffectSignature::NodeField(field)
+            | EffectSignature::EdgeField(field)
+            | EffectSignature::HyperedgeField(field) => Some(ErrorIdentity::Field(field.clone())),
+            EffectSignature::Event(event) => {
+                let (enum_type, member) = event.split_once('/')?;
+                Some(ErrorIdentity::Enum {
+                    enum_type: enum_type.to_owned(),
+                    member: Some(member.to_owned()),
+                })
+            }
+            EffectSignature::Shape(_) => Some(ErrorIdentity::RuleId(rule_id.clone())),
+        },
+        ContractError::MismatchedWriteAttribution { actual, .. } => {
+            Some(ErrorIdentity::RuleId(actual.clone()))
+        }
+        ContractError::GovernedAttributionMismatch { rule_id, .. } => {
+            Some(ErrorIdentity::RuleId(rule_id.clone()))
+        }
+        ContractError::MismatchedRuleContract { ast_contract, .. } => {
+            Some(ErrorIdentity::RuleId(ast_contract.rule_id.clone()))
+        }
+        ContractError::MalformedRule
+        | ContractError::AstWalkLimit(_)
+        | ContractError::MismatchedWriteOrdinal { .. }
+        | ContractError::MalformedEventType { .. }
+        | ContractError::ReceiptOrdinalOverflow => None,
+    }
+}
+
 /// The map from a rule-load rejection to WHAT it is about, as data a
 /// locator can find in a parsed tree — never derived from `err`'s own
 /// message text (sentinel 7.2: no scanning a message for identity).
@@ -307,7 +347,9 @@ pub fn identity_of(err: &LoadError) -> Option<ErrorIdentity> {
         LoadError::Scope(e) => Some(scope_identity(e)),
         LoadError::ElementName(e) => Some(element_name_identity(e)),
         LoadError::Bound(e) => bound_identity(e),
+        LoadError::Causal(e) => causal_identity(e),
         LoadError::Intrinsic(e) => decl_identity(e),
+        LoadError::DuplicateRuleId { rule_id } => Some(ErrorIdentity::RuleId(rule_id.clone())),
         // `Read`: E-LEX is located via `ReadError.position` ->
         // `SpanTable::innermost_at` (§6.2's own table, row 1), never through
         // `ErrorIdentity`. `Type`: `TypeError` is `{code, message}` with no
@@ -323,13 +365,24 @@ pub fn identity_of(err: &LoadError) -> Option<ErrorIdentity> {
         | LoadError::Content(_)
         | LoadError::DeferredShapeVerb(_)
         | LoadError::MintingTypeOperand(_) => None,
-        // `SameTickOrder` (W2's E-LOAD-058/059): both refusals are ABOUT a
-        // field — the stale-read target / the multi-writer fan-in — and
-        // carry it as data.
-        LoadError::SameTickOrder(e) => Some(ErrorIdentity::Field(match e {
-            SameTickOrderError::StaleDefaultRead(v) => v.field.clone(),
-            SameTickOrderError::UnresetFanIn(v) => v.field.clone(),
-        })),
+        // The two W2 refusals are about a field. A bounded-walk refusal is
+        // about the aggregate rule form and therefore stays at file tier. A
+        // forged rank input names the form's real identity when available;
+        // a non-rule form has no locatable identity.
+        LoadError::SameTickOrder(e) => match e {
+            SameTickOrderError::RankedRuleInput(error) => match error {
+                RankedRuleInputError::InvalidRuleForm { .. } => None,
+                RankedRuleInputError::IdentityMismatch { form_rule_id, .. } => {
+                    Some(ErrorIdentity::RuleId(form_rule_id.clone()))
+                }
+                RankedRuleInputError::DuplicateRuleId { rule_id } => {
+                    Some(ErrorIdentity::RuleId(rule_id.clone()))
+                }
+            },
+            SameTickOrderError::StaleDefaultRead(v) => Some(ErrorIdentity::Field(v.field.clone())),
+            SameTickOrderError::UnresetFanIn(v) => Some(ErrorIdentity::Field(v.field.clone())),
+            SameTickOrderError::AstWalkLimit(_) => None,
+        },
     }
 }
 
@@ -363,6 +416,17 @@ mod tests {
     }
 
     #[test]
+    fn identity_of_gives_a_rule_id_for_a_duplicate_rule() {
+        let err = LoadError::DuplicateRuleId {
+            rule_id: "vitality/duplicate".to_owned(),
+        };
+        assert_eq!(
+            identity_of(&err),
+            Some(ErrorIdentity::RuleId("vitality/duplicate".to_owned()))
+        );
+    }
+
+    #[test]
     fn identity_of_gives_an_operand_for_grammar_arity() {
         let err = LoadError::Grammar(GrammarError::Arity {
             form: "neighbors".to_owned(),
@@ -384,6 +448,63 @@ mod tests {
     }
 
     #[test]
+    fn identity_of_names_causal_metadata_and_unauthorized_fields() {
+        let missing = LoadError::Causal(ContractError::MissingMetadata { keyword: "role" });
+        assert_eq!(
+            identity_of(&missing),
+            Some(ErrorIdentity::Keyword(":role".to_owned()))
+        );
+
+        let unauthorized = LoadError::Causal(ContractError::UnauthorizedEffect {
+            rule_id: "vitality/probe".to_owned(),
+            role: crate::causal_contract::RuleRole::ExternalEvent,
+            effect: EffectSignature::NodeField("social-class/deaths".to_owned()),
+        });
+        assert_eq!(
+            identity_of(&unauthorized),
+            Some(ErrorIdentity::Field("social-class/deaths".to_owned()))
+        );
+
+        let mismatch = LoadError::Causal(ContractError::GovernedAttributionMismatch {
+            rule_id: "control-ratio/c03-crisis".to_owned(),
+            expected_role: crate::causal_contract::RuleRole::Recognizer,
+            actual_role: crate::causal_contract::RuleRole::Mechanic,
+            expected_evidence: crate::causal_contract::EvidenceClass::Derived,
+            actual_evidence: crate::causal_contract::EvidenceClass::Derived,
+        });
+        assert_eq!(
+            identity_of(&mismatch),
+            Some(ErrorIdentity::RuleId("control-ratio/c03-crisis".to_owned()))
+        );
+
+        let paired_with_wrong_contract = LoadError::Causal(ContractError::MismatchedRuleContract {
+            ast_contract: crate::causal_contract::RuleContract {
+                rule_id: "vitality/probe".to_owned(),
+                role: crate::causal_contract::RuleRole::ExternalEvent,
+                evidence: crate::causal_contract::EvidenceClass::Designed,
+            },
+            supplied_contract: crate::causal_contract::RuleContract {
+                rule_id: "control-ratio/c03-crisis".to_owned(),
+                role: crate::causal_contract::RuleRole::Recognizer,
+                evidence: crate::causal_contract::EvidenceClass::Derived,
+            },
+        });
+        assert_eq!(
+            identity_of(&paired_with_wrong_contract),
+            Some(ErrorIdentity::RuleId("vitality/probe".to_owned()))
+        );
+
+        let bounded_walk = LoadError::Causal(ContractError::AstWalkLimit(
+            crate::causal_contract::AstWalkError {
+                analyzer: "causal effect footprint",
+                limit: crate::causal_contract::AstWalkLimit::Depth,
+                maximum: 256,
+            },
+        ));
+        assert_eq!(identity_of(&bounded_walk), None);
+    }
+
+    #[test]
     fn identity_of_names_the_field_for_same_tick_order_refusals() {
         let err = LoadError::SameTickOrder(SameTickOrderError::StaleDefaultRead(
             crate::same_tick_order::StaleDefaultRead {
@@ -399,5 +520,42 @@ mod tests {
                 "social-class/solidarity-inbox".to_owned()
             ))
         );
+
+        let bounded_walk = LoadError::SameTickOrder(SameTickOrderError::AstWalkLimit(
+            crate::causal_contract::AstWalkError {
+                analyzer: "same-tick field writes",
+                limit: crate::causal_contract::AstWalkLimit::Stack,
+                maximum: 65_536,
+            },
+        ));
+        assert_eq!(identity_of(&bounded_walk), None);
+
+        let mismatch = LoadError::SameTickOrder(SameTickOrderError::RankedRuleInput(
+            RankedRuleInputError::IdentityMismatch {
+                supplied_rule_id: "forged/id".to_owned(),
+                form_rule_id: "actual/id".to_owned(),
+            },
+        ));
+        assert_eq!(
+            identity_of(&mismatch),
+            Some(ErrorIdentity::RuleId("actual/id".to_owned()))
+        );
+
+        let duplicate = LoadError::SameTickOrder(SameTickOrderError::RankedRuleInput(
+            RankedRuleInputError::DuplicateRuleId {
+                rule_id: "duplicate/id".to_owned(),
+            },
+        ));
+        assert_eq!(
+            identity_of(&duplicate),
+            Some(ErrorIdentity::RuleId("duplicate/id".to_owned()))
+        );
+
+        let invalid = LoadError::SameTickOrder(SameTickOrderError::RankedRuleInput(
+            RankedRuleInputError::InvalidRuleForm {
+                supplied_rule_id: "invalid/form".to_owned(),
+            },
+        ));
+        assert_eq!(identity_of(&invalid), None);
     }
 }

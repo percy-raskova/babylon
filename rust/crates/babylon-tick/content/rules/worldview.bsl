@@ -20,6 +20,8 @@
 ; arrive with the class-surface migration port (ADR204 W10's second
 ; half).
 (rule consciousness/worldview-mint-probe
+  :role mechanic
+  :evidence derived
   :material-basis "load-only smoke: the mint scenario loads and ticks; the mint's pins are the substrate-load hash plus the registry ordinal assertion"
   :fuel 8
   (bindings (binding population :field social-class/population))

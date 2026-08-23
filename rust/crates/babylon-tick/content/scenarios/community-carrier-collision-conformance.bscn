@@ -28,15 +28,15 @@
 ; c01/c02 (this task) OR c03/c04 (later) reads must be declared and seeded
 ; here now.
 ;
-; **Seeds a POST-DECOMPOSITION carrier state directly** (plan §5's own
-; byte-order-hazard note) — `decomposition-fire-tick 0`,
+; **Seeds a POST-DECOMPOSITION carrier state directly** (the historical
+; plan §5 byte-order hazard is superseded by executable phase ordering) —
+; `decomposition-fire-tick 0`,
 ; `decomposition-fired-known 1`, `decomposition-complete 1` — so Pack B is
 ; exercised end to end WITHOUT Pack A ever running. This is also why a
 ; ZERO `control-ratio-delay` is safe here: the frozen coupling key
 ; (`_class_decomposition_tick`) is SEEDED, never written the same tick by a
-; co-loaded `decomposition/*` rule, so §5's cross-pack byte-order inversion
-; (`control-ratio/*` sorts before `decomposition/*`) never has anything to
-; race.
+; co-loaded `decomposition/*` rule. The seed remains a Pack-B isolation
+; choice; the phase registry now orders Decomposition before ControlRatio.
 ;
 ; **Enum order is a hash-bearing transcription of the frozen Python
 ; declaration order (ADR195)** — do not reorder (same roster as

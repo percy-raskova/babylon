@@ -34,6 +34,7 @@
 #![forbid(unsafe_code)]
 #![warn(clippy::pedantic)]
 
+pub mod allocator_state;
 pub mod backfire;
 pub mod capacity;
 pub mod conformance;
@@ -44,3 +45,4 @@ pub mod induced;
 pub mod memory;
 pub mod state_hash;
 pub mod substrate;
+pub mod working_copy;

@@ -1,65 +1,86 @@
-# Copilot Review Instructions — Babylon
+# Copilot Rules
 
-**Primary reference:** [`CLAUDE.md`](../CLAUDE.md) (architecture, standards, the
-Constitution pointer). These instructions tune your REVIEW: flag what our
-deterministic gates cannot see. Rewritten 2026-07-30 under ADR181 — review
-directives only, no architecture prose.
+Read [`CLAUDE.md`](../CLAUDE.md) before each check. It links to the Constitution
+and the test rules.
 
-## What to flag (our invariants, in priority order)
+[`CONSTITUTION.md`](../CONSTITUTION.md) v4.0.0 is the authority.
+[`NORTH_STAR.md`](../NORTH_STAR.md) explains the game direction and the first
+three gates. Do not say that a planned system is complete.
 
-1. **Determinism is law** (Constitution III.7): every tick produces a
-   deterministic hash. Flag any float path that can emit `-0.0`, `NaN`, or
-   `inf`; any reduction whose order is not fixed; any iteration over an
-   unordered container that reaches an observable output; any wall-clock or
-   `time.sleep`-based logic in tests.
-2. **No imposed functional forms** (ADR172 ruling 5): a sigmoid / logistic /
-   tanh / softmax STIPULATED inside a mechanic is a constitutional violation —
-   S-curves must EMERGE from `P(revolution)`/`P(acquiescence)` and within-class
-   dispersion. Flag any new stipulated curve in `src/babylon/` mechanics or
-   `rust/` engine code, including via coefficient tables that encode one.
-3. **Frozen Pydantic + `model_copy`**: `model_copy(update=...)` SKIPS
-   validation (the phi_hour scar). Flag every `model_copy(update=...)` that
-   writes a constrained scalar (`ge=`, `le=`, `Probability`, `Currency`,
-   `Intensity`, `Coefficient`).
-4. **Native hyperedge law** (Amendment D): `babylon-graph`'s exposed model has
-   first-class hyperedges; Levi/incidence encodings are internal storage ONLY.
-   Flag any API that expands a member list into pairwise edges or leaks an
-   incidence representation.
-5. **Cross-language transcription fidelity** (your best skill): Rust code in
-   `rust/crates/` ports frozen Python reference semantics (`babylon.kernel`)
-   and the normative `docs/reference/bsl-language.rst` (§-numbers,
-   `E-LEX`/`E-PARSE`/`E-TYPE`/`E-LOAD`/`E-EVAL` codes). Flag any divergence
-   between a doc comment's claim and the code, any operation the §3.2 Currency
-   operator table does not license, and any error path that silently defaults
-   instead of failing loud (Constitution III.11).
-6. **Vocabulary honesty**: node/edge types and attributes in fixtures must be
-   ones production actually stamps (`NodeType.*`, declared model fields —
-   never invented strings or phantom attributes). Flag fixture-only vocabulary.
-7. **The Python engine is FROZEN** (tag `p27-python-freeze`, Amendment AE):
-   flag any PR adding engine capability in `src/babylon/engine/`,
-   `src/babylon/domain/`, or `src/babylon/formulas/` — new capability lands
-   Rust-side; Python changes are reference repairs or contract authoring only.
-8. **Determinism-adjacent config**: flag `gh pr merge --auto` anywhere, venv
-   cache keys gaining `restore-keys` (deliberate exact-match — a fallback
-   resurrects a stale `babylon-tui` wheel), and scheduled workflows that do
-   not exist on the default branch.
+<!-- Vale: this paragraph preserves exact Linear fields and GitHub Project
+     names from the control-surface contract. -->
+<!-- vale ste.UnapprovedWords = NO -->
+<!-- vale ste.NounClusters = NO -->
+Linear is canonical for current work. GitHub owns source control, pull
+requests, reviews, and historical evidence. Project #7 and Project #8 in GitHub
+are transitional inputs. The migration is not complete. See
+[`docs/agents/governance.md`](../docs/agents/governance.md) for scope or status
+disputes.
+<!-- vale ste.NounClusters = YES -->
+<!-- vale ste.UnapprovedWords = YES -->
 
-## What NOT to comment on
+## Report these defects
 
-- Formatting, line length, import order — ruff/rustfmt own these; your one
-  hallucination on record was a line-length claim.
-- Naming preferences, doc phrasing style, unused dev-dependencies.
-- Suggestions to add flexibility/configurability not asked for.
-- The `web/` and `src/frontend/` trees (legacy per Amendment V, non-gating).
+### Tick identity
 
-## House facts (so you don't re-derive them wrong)
+Each tick must have the same hash for the same input. Report each observable
+iteration with an order that is not stable. Report values such as `NaN`, `inf`,
+and `-0.0`. Report each game rule that reads the wall clock.
 
-- Graph substrate: **rustworkx** via `babylon.topology.BabylonGraph` (Python)
-  and the `GraphSubstrate` trait (Rust). NetworkX was removed (Amendment L).
-- Archive/RAG: **pgvector in Postgres** (ChromaDB retired, spec-037).
-- Coefficients live in `GameDefines`/`defines.yaml` — a hardcoded coefficient
-  in logic is a defect worth flagging.
-- Governance: a human Director holds the ideological line; agents self-merge
-  on green under `CLAUDE.md`'s merge protocol, which now REQUIRES harvesting
-  your review — write comments an agent can act on: one defect, its
-  consequence, the file:line.
+### Causal forms
+
+ADR172 forbids a fixed sigmoid, logistic, `tanh`, or `softmax` curve in a game
+rule. The engine must derive an S-curve from its population data. Report each
+new fixed curve in Python, Rust, or coefficient data.
+
+### Frozen models
+
+`model_copy(update=...)` skips validation. Report each use that writes a
+constrained value. Examples include `Probability`, `Currency`, `Intensity`,
+and `Coefficient`.
+
+### Native hyperedges
+
+The public `graph` model uses first-class hyperedges. Incidence data can be an
+internal storage method. Report each public pairwise expansion of a member list.
+
+### Rust ports
+
+Rust ports must keep the frozen Python behavior. `babylon.kernel` and
+`docs/reference/bsl-language.rst` give the contracts. Report changed
+semantics, unlicensed currency operations, or silent error defaults.
+
+### Honest vocabulary
+
+Fixtures must use node types, edge types, and fields that production creates.
+Report invented type strings and fixture-only fields.
+
+### Frozen Python engine
+
+The Python engine is a behavioral reference at `p27-python-freeze`. New engine
+features belong in Rust. Python changes can repair the reference or strengthen
+a language-neutral contract.
+
+### Workflow safety
+
+Report `gh pr merge --auto`. Report `restore-keys` on Python
+virtual-environment caches. A fallback for a non-venv cache can be correct.
+Report a scheduled workflow that is not on the default `branch`.
+
+## Skip these comments
+
+Do not report format, import order, line length, or name preferences.
+The project tools own those checks. Do not propose unrelated flexibility.
+Ignore `web/`, the legacy Django tree, unless a change affects a live contract.
+
+## Repository facts
+
+Python `graph code` uses `rustworkx` through `BabylonGraph`. Rust uses the
+`GraphSubstrate` trait. The Archive uses `pgvector` with Postgres.
+
+Game coefficients belong in `GameDefines` and `defines.yaml`. Report each new
+coefficient that game logic hard-codes.
+
+The Director holds the reserved theory line. Agents follow the merge protocol
+in `CLAUDE.md`. Write one actionable defect for each comment. Include its effect
+and its path.

@@ -2,6 +2,8 @@
 ; Python's two conditioned Resolutions become two guards in ONE effect
 ; list — the routing is content, not engine machinery.
 (rule event/bifurcation
+  :role mechanic
+  :evidence derived
   :material-basis "agitation routes to national identity or class consciousness by solidarity density"
   :fuel 512
   (bindings

@@ -342,3 +342,81 @@ _RETIRED_CATEGORICAL_PHRASES = (
 @pytest.mark.parametrize("retired_phrase", _RETIRED_CATEGORICAL_PHRASES)
 def test_machine_theory_rejects_retired_claims(retired_phrase: str) -> None:
     assert retired_phrase not in _normalized_text(_MACHINE_THEORY)
+
+
+@pytest.mark.parametrize("retired_phrase", _RETIRED_CATEGORICAL_PHRASES)
+@pytest.mark.parametrize("path", (_HUMAN_THEORY, _MANTRAS))
+def test_human_and_orientation_surfaces_reject_retired_claims(
+    retired_phrase: str,
+    path: Path,
+) -> None:
+    assert retired_phrase not in _normalized_text(path)
+
+
+def test_human_theory_routes_to_live_authority() -> None:
+    text = _HUMAN_THEORY.read_text(encoding="utf-8")
+    assert "<../../CONSTITUTION.md>" in text
+    assert "Marxist-Leninist-Maoist Third Worldist" in text
+    assert ":doc:`architecture`" in text
+    assert "frozen Python reference" in text
+    assert "not the live Rust law" in text
+
+
+@pytest.mark.parametrize("constraint_id", tuple(sorted(_CONSTRAINT_IDS)))
+def test_human_theory_renders_each_machine_constraint(constraint_id: str) -> None:
+    expected = _EXPECTED_CONSTRAINTS[constraint_id]
+    rendered = _normalized_text(_HUMAN_THEORY)
+    exact_block = _normalized_value(
+        f"``{constraint_id}`` Evidence class: {expected['evidence_class']} "
+        f"Executable status: {expected['executable_status']} "
+        f"Statement: {expected['statement']}"
+    )
+    assert exact_block in rendered
+
+
+@pytest.mark.parametrize(("source_id", "expected_hash"), _SOURCE_HASHES)
+def test_human_source_ledger_matches_machine_hashes(
+    source_id: str,
+    expected_hash: str,
+) -> None:
+    text = _HUMAN_THEORY.read_text(encoding="utf-8")
+    assert f"``{source_id}``" in text
+    assert expected_hash in text
+
+
+@pytest.mark.parametrize(("source_id", "end_marker"), _SOURCE_BLOCK_MARKERS)
+def test_human_source_ledger_renders_every_exact_source_field(
+    source_id: str,
+    end_marker: str,
+) -> None:
+    expected = _EXPECTED_SOURCES[source_id]
+    text = _HUMAN_THEORY.read_text(encoding="utf-8")
+    start = text.index(f"``{source_id}``")
+    end = text.index(end_marker, start + len(source_id) + 4)
+    rendered = _normalized_value(text[start:end])
+    scalar_fields = (
+        "title",
+        "edition",
+        "sha256",
+        "evidence_class",
+        "availability",
+        "scope",
+    )
+    for field in scalar_fields:
+        assert _normalized_value(str(expected[field])) in rendered
+    assert _normalized_value(str(expected["executable_authority"])) in rendered
+    for locator_field in ("repository_path", "relative_locator"):
+        if locator_field in expected:
+            assert _normalized_value(str(expected[locator_field])) in rendered
+    anchors = expected["anchors"]
+    assert isinstance(anchors, list)
+    for anchor in anchors[:4]:
+        assert _normalized_value(str(anchor)) in rendered
+
+
+def test_mantra_north_star_describes_contingent_political_possibility() -> None:
+    document = yaml.safe_load(_MANTRAS.read_text(encoding="utf-8"))
+    north_star = document["mantras"]["north_star"]["meaning"].casefold()
+
+    assert "why revolution happens in the periphery, not the core" not in north_star
+    assert "how organization and solidarity can redirect political possibilities" in north_star

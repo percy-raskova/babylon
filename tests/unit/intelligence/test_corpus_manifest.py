@@ -20,6 +20,7 @@ from babylon.intelligence.corpus_manifest import (
     CorpusFormat,
     CorpusManifest,
     CorpusRole,
+    ExclusionPolicy,
     load_bundled_manifest,
     load_manifest,
     parse_manifest,
@@ -80,6 +81,46 @@ class TestClosedVocabularies:
             CorpusRole.ATLAS_CN,
         )
 
+    def test_director_exclusion_requires_deny_status(self) -> None:
+        with pytest.raises(ValidationError, match="director exclusion"):
+            parse_manifest(
+                {
+                    "rows": [
+                        _row(
+                            canon_status="allow",
+                            exclusion_policy="director",
+                        )
+                    ]
+                }
+            )
+
+    def test_manifest_rejects_unknown_top_level_and_row_fields(self) -> None:
+        with pytest.raises(ValidationError, match="extra"):
+            parse_manifest({"rows": [_row()], "rowz": []})
+        with pytest.raises(ValidationError, match="extra"):
+            parse_manifest({"rows": [_row(exclusion_polciy="director")]})
+
+    def test_manifest_row_ceiling_is_loud(self) -> None:
+        at_limit = tuple(_row(work=f"Work {index}") for index in range(4_096))
+        assert len(parse_manifest({"rows": at_limit}).rows) == 4_096
+        with pytest.raises(ValidationError, match="4,096"):
+            parse_manifest({"rows": (*at_limit, _row(work="Over limit"))})
+
+    def test_director_excluded_rows_are_typed_and_exact(self) -> None:
+        manifest = load_bundled_manifest()
+        first, second, third = manifest.director_excluded_rows()
+
+        assert first.exclusion_policy is ExclusionPolicy.DIRECTOR
+        assert second.exclusion_policy is ExclusionPolicy.DIRECTOR
+        assert third.exclusion_policy is ExclusionPolicy.DIRECTOR
+        assert first.canon_status is CanonStatus.DENY
+        assert second.canon_status is CanonStatus.DENY
+        assert third.canon_status is CanonStatus.DENY
+        assert (
+            len({first.author.casefold(), second.author.casefold(), third.author.casefold()}) == 3
+        )
+        assert len({first.path_glob, second.path_glob, third.path_glob}) == 3
+
 
 # =============================================================================
 # 2. Apocrypha glob-fencing (ADR107) — both directions
@@ -126,28 +167,34 @@ class TestApocryphaFencing:
 
 class TestDenyInsideAllowPrecedence:
     def test_deny_row_wins_inside_an_enclosing_allow_glob(self, tmp_path: Path) -> None:
-        # The "Trotsky-quoted-for-rebuttal" case: one broad allow glob sweeps
-        # over several authors' subdirectories; a deny row nested inside it
-        # must still exclude that author's files.
-        (tmp_path / "classics" / "marx").mkdir(parents=True)
-        (tmp_path / "classics" / "trotsky").mkdir(parents=True)
-        marx_file = tmp_path / "classics" / "marx" / "capital.txt"
-        marx_file.write_text("value theory")
-        trotsky_file = tmp_path / "classics" / "trotsky" / "permanent-revolution.txt"
-        trotsky_file.write_text("denied position")
+        # One broad allow glob sweeps over several authors' subdirectories;
+        # a nested denied-source row must still exclude its files.
+        approved_dir = tmp_path / "classics" / "approved"
+        denied_dir = tmp_path / "classics" / "denied-author"
+        approved_dir.mkdir(parents=True)
+        denied_dir.mkdir(parents=True)
+        approved_file = approved_dir / "approved.txt"
+        denied_file = denied_dir / "denied.txt"
+        approved_file.write_text("approved source", encoding="utf-8")
+        denied_file.write_text("denied source", encoding="utf-8")
 
         manifest = parse_manifest(
             {
                 "rows": [
                     _row(path_glob="classics/**/*.txt", canon_status="allow"),
-                    _row(path_glob="classics/trotsky/**/*.txt", canon_status="deny"),
+                    _row(
+                        path_glob="classics/denied-author/**/*.txt",
+                        author="Denied Author",
+                        work="Denied Work",
+                        canon_status="deny",
+                    ),
                 ]
             }
         )
 
         resolved = manifest.resolve_ingestible_files(tmp_path)
-        assert marx_file in resolved
-        assert trotsky_file not in resolved
+        assert approved_file in resolved
+        assert denied_file not in resolved
 
     def test_flag_bd_row_never_appears_in_ingestible_files(self, tmp_path: Path) -> None:
         work_dir = tmp_path / "nitzan-bichler" / "capital-as-power"
@@ -379,11 +426,14 @@ class TestBundledManifest:
         manifest = load_bundled_manifest()
         assert len(manifest.allow_rows()) == 9
 
-    def test_bundled_manifest_denies_the_ruled_out_authors(self) -> None:
+    def test_bundled_manifest_preserves_non_director_deny_rows(self) -> None:
         manifest = load_bundled_manifest()
-        denied_authors = {row.author for row in manifest.deny_rows()}
+        denied_authors = {
+            row.author
+            for row in manifest.deny_rows()
+            if row.exclusion_policy is ExclusionPolicy.NONE
+        }
         assert denied_authors == {
-            "Leon Trotsky",
             "Karl Kautsky",
             "Communist Party USA",
             "Enver Hoxha",

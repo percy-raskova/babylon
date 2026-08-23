@@ -68,12 +68,16 @@ class TestManifestDrivenEnumeration:
             canon_status="allow",
         )
 
-        # A broad allow glob that would sweep in a denied sub-path if the
-        # deny row were not honored — the Trotsky-quoted-for-rebuttal case.
-        (corpus_root / "classics" / "marx").mkdir(parents=True)
-        (corpus_root / "classics" / "trotsky").mkdir(parents=True)
-        (corpus_root / "classics" / "marx" / "capital.txt").write_text("value theory")
-        (corpus_root / "classics" / "trotsky" / "pr.txt").write_text("denied position")
+        # A broad allow glob that would sweep in a nested denied source if
+        # the deny row were not honored.
+        approved_dir = corpus_root / "classics" / "approved"
+        denied_dir = corpus_root / "classics" / "denied-author"
+        approved_dir.mkdir(parents=True)
+        denied_dir.mkdir(parents=True)
+        approved_file = approved_dir / "approved.txt"
+        denied_file = denied_dir / "denied.txt"
+        approved_file.write_text("approved source", encoding="utf-8")
+        denied_file.write_text("denied source", encoding="utf-8")
 
         manifest = parse_manifest(
             {
@@ -87,14 +91,14 @@ class TestManifestDrivenEnumeration:
                     absent_row,
                     _row(
                         path_glob="classics/**/*.txt",
-                        author="Karl Marx",
+                        author="Approved Author",
                         work="Classics",
                         canon_status="allow",
                     ),
                     _row(
-                        path_glob="classics/trotsky/**/*.txt",
-                        author="Leon Trotsky",
-                        work="(all works — denied author)",
+                        path_glob="classics/denied-author/**/*.txt",
+                        author="Denied Author",
+                        work="Denied Work",
                         canon_status="deny",
                     ),
                 ]
@@ -112,8 +116,8 @@ class TestManifestDrivenEnumeration:
 
         classics_dest = corpus_dir / _dest_filename(manifest.allow_rows()[2])
         classics_text = classics_dest.read_text()
-        assert "value theory" in classics_text
-        assert "denied position" not in classics_text
+        assert "approved source" in classics_text
+        assert "denied source" not in classics_text
 
         # No file was ever prepared for the absent Fanon row.
         fanon_dest = corpus_dir / _dest_filename(manifest.allow_rows()[1])

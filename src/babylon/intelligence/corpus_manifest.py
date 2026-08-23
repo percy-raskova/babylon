@@ -31,8 +31,8 @@ enclosing allow glob: :meth:`CorpusManifest.ingest_targets` computes the
 exclusion as a set-difference over matched *files*, subtracting ALL non-allow
 rows' matches (not deny alone), never a directory-level carve-out — so a
 denied/flagged/apocryphal sub-path wins over whatever allow glob happens to
-sweep over it, however broad that glob is (the "Trotsky-quoted-for-rebuttal"
-case, and its ``_apocrypha``/``flag_bd`` analogues). The ``_apocrypha/``
+sweep over it, however broad that glob is (a nested denied-source case, and
+its ``_apocrypha``/``flag_bd`` analogues). The ``_apocrypha/``
 directory additionally gets a second, independent structural check at
 resolved-file granularity (:func:`_under_apocrypha`), so it stays unreachable
 from ``ingest_targets`` even if the per-row exclusion above were ever wrong.
@@ -47,10 +47,10 @@ from __future__ import annotations
 
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import yaml
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 #: Directory name the apocrypha class is fenced to (ADR107). No non-apocryphal
 #: row's ``path_glob`` may resolve into it, and no apocryphal row may resolve
@@ -83,6 +83,13 @@ class CanonStatus(StrEnum):
     APOCRYPHAL = "apocryphal"
 
 
+class ExclusionPolicy(StrEnum):
+    """Additional source policy that must remain machine-addressable."""
+
+    NONE = "none"
+    DIRECTOR = "director"
+
+
 class CorpusFormat(StrEnum):
     """Source format a ``path_glob``'s matched files are stored in."""
 
@@ -92,10 +99,13 @@ class CorpusFormat(StrEnum):
     JSONL = "jsonl"
 
 
+MAX_CORPUS_MANIFEST_ROWS: Final[int] = 4_096
+
+
 class CorpusRow(BaseModel):
     """One row of the corpus manifest: a glob, its canon disposition, provenance."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     path_glob: str
     author: str
@@ -103,12 +113,25 @@ class CorpusRow(BaseModel):
     role: tuple[CorpusRole, ...]
     format: CorpusFormat
     canon_status: CanonStatus
+    exclusion_policy: ExclusionPolicy = ExclusionPolicy.NONE
     provenance: str
 
     @model_validator(mode="after")
     def _check_role_nonempty(self) -> CorpusRow:
         if not self.role:
             raise ValueError(f"row {self.work!r} ({self.author!r}) must declare at least one role")
+        return self
+
+    @model_validator(mode="after")
+    def _check_director_exclusion_is_denied(self) -> CorpusRow:
+        if (
+            self.exclusion_policy is ExclusionPolicy.DIRECTOR
+            and self.canon_status is not CanonStatus.DENY
+        ):
+            raise ValueError(
+                f"row {self.work!r} declares a director exclusion "
+                f"but canon_status is {self.canon_status.value!r}, not deny"
+            )
         return self
 
     @model_validator(mode="after")
@@ -154,15 +177,30 @@ class ManifestTarget(BaseModel):
 class CorpusManifest(BaseModel):
     """A validated, ordered set of corpus rows."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
-    rows: tuple[CorpusRow, ...]
+    rows: tuple[CorpusRow, ...] = ()
+
+    @field_validator("rows", mode="before")
+    @classmethod
+    def _check_row_ceiling(cls, rows: object) -> object:
+        if isinstance(rows, (list, tuple)) and len(rows) > MAX_CORPUS_MANIFEST_ROWS:
+            raise ValueError("corpus manifest exceeds 4,096 rows")
+        return rows
 
     def allow_rows(self) -> tuple[CorpusRow, ...]:
         return tuple(r for r in self.rows if r.canon_status is CanonStatus.ALLOW)
 
     def deny_rows(self) -> tuple[CorpusRow, ...]:
         return tuple(r for r in self.rows if r.canon_status is CanonStatus.DENY)
+
+    def director_excluded_rows(self) -> tuple[CorpusRow, ...]:
+        """Return Director-excluded rows without exposing literals elsewhere."""
+        return tuple(
+            row
+            for row in self.rows[:MAX_CORPUS_MANIFEST_ROWS]
+            if row.exclusion_policy is ExclusionPolicy.DIRECTOR
+        )
 
     def flag_bd_rows(self) -> tuple[CorpusRow, ...]:
         return tuple(r for r in self.rows if r.canon_status is CanonStatus.FLAG_BD)
@@ -178,7 +216,7 @@ class CorpusManifest(BaseModel):
         existing-files-only, deterministic ordering. The exclusion is a set
         difference over matched files, never a directory-level carve-out, so
         a narrower deny/flag_bd/apocryphal glob nested inside a broader allow
-        glob still wins (the Trotsky-quoted-for-rebuttal case) — and this
+        glob still wins (a nested denied-source case) — and this
         holds for a broad allow glob too (e.g. a raw marxists.org mirror
         import, or ``**/*.jsonl``): it can never sweep a flag_bd or
         apocryphal row's files back into the ingestible set, because ANY
@@ -242,7 +280,7 @@ def _under_apocrypha(corpus_root: Path, file_path: Path) -> bool:
 
 def parse_manifest(raw: dict[str, Any]) -> CorpusManifest:
     """Parse a YAML mapping (a ``rows:`` list) into a validated manifest."""
-    return CorpusManifest(rows=tuple(raw.get("rows", [])))
+    return CorpusManifest.model_validate(raw)
 
 
 def load_manifest(path: Path) -> CorpusManifest:

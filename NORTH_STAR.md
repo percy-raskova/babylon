@@ -1,264 +1,206 @@
-# NORTH STAR — How The System Works
+# North Star
 
-*The technical-ideological orientation document for Babylon. BD-ratified framing,
-2026-07-21. This is **explanation** — the mental model that threads everything
-together. The law lives in `CONSTITUTION.md`; the machine-readable map lives in
-`ai/architecture.yaml`; the execution plan lives in
-`ai/_inbox/PROGRAM_v1_0_0_playable_archive.md`. This document tells you **why the
-shape is the shape**, so every other document makes sense.*
+This page explains the live game direction. It does not make law.
+[`CONSTITUTION.md`](CONSTITUTION.md) v4.0.0 governs Babylon. ADR221 records how
+the prior constitution moved into v4 without a rewrite of history.
+[`ai/mantras.yaml`](ai/mantras.yaml) carries the same orientation as structured
+data for repository tools.
 
----
+## Player promise
 
-## 0. The ruling that governs this document
+Babylon is an entertainment-first emergent political-economy game. Babylon is
+not a forecast and not a scientific reproduction. Theory constrains the causal
+model but does not predetermine results.
 
-**Babylon is a game first.** It is powered by a simulation engine that is rigorous —
-deterministic, hash-sealed, constitutionally governed — but the rigor exists to make
-the game *trustworthy*, not to make the project a research program. The BD ruling of
-2026-07-21 is binding: **we are rigorous enough.** The formalism surface is closed
-for v1.0: the dialectic 𝔇, the C/G/P constructor families, the level lattices, the
-adjunctions in production, the derived severity rule, the boundary operator ∂L.
-New formalism requires a constitutional amendment; the rigor budget is henceforth
-spent **wiring existing mathematics to the player**, not minting more mathematics.
-(Amendment AE, v3.0.0, re-opened this closure for **exactly one** additive
-construct — BSL, which *expresses* the closed algebra and mints no new
-mathematics — and for rider-recorded III.10 numeric retirements; Program 27 is
-the ruled exception to the rigor-budget sentence for its duration. Companion
-theory ruling, 2026-07-29: no functional form — sigmoid included — may be
-*imposed* on a mechanic; curve shapes must **emerge** from the algebraic
-operations.)
+Determinism proves computational identity, not scientific truth. Historical
+cases test causal signatures and counterfactual behavior. They do not dictate a
+historical path.
 
-The destination is equally binding: *a first-class, keyboard-driven simulation
-video game, installed by one shell script, in the hands of the masses.* (Amendment
-AF, 2026-08-10, ADR186: the destination was "terminal-based" from this document's
-first line until the Bevy Cutover; the client is now a native Bevy application and
-the rest of the sentence binds unchanged.) Every architectural argument in this
-document terminates at that sentence.
+The Bevy client is an administrative viewer with no player action. It can run
+and show the null world, but the player cannot change that world.
 
-## 1. The system in one paragraph
+The first three executable gates are:
 
-Babylon is a **deterministic materialist world** (Graph + Math = History) that the
-player touches through the client's projections: the engine ticks, projections bake the world
-into a markdown wiki (the Archive), the player reads the wiki, forms a theory,
-issues verbs, and the engine — never the AI, never the client — adjudicates the
-consequences, which revise the wiki. Around that loop stand three disciplines:
-**contracts** that pin what the world means, **sentinels** that prove every declared
-part is actually wired to the living whole, and **ceremonies** that make every
-intentional change of meaning a declared, audited event. The AI narrates; it never
-decides. The client renders; it never computes. The engine computes; it never
-explains itself — the wiki does.
+<!-- Vale: each protected item is a governed gate name. -->
+<!-- vale ste.UnapprovedWords = NO -->
+1. **Executable causality and whole-tick atomicity**
+<!-- vale ste.UnapprovedWords = YES -->
+<!-- vale Vale.Terms = NO -->
+<!-- vale ste.UnapprovedWords = NO -->
+1. **PostgreSQL/H3/Archive decision-loop slice**
+<!-- vale Vale.Terms = YES -->
+<!-- vale ste.UnapprovedWords = YES -->
+<!-- vale ste.NounClusters = NO -->
+1. **COVID E0 emergence proof**
+<!-- vale ste.NounClusters = YES -->
 
-## 2. The ontology — four strata and one lane
+## The system without political economy
 
-The conversation that produced this document began with an intuition: the sentinel
-system "doesn't fit anywhere." The resolution is that Babylon has grown a genuine
-stratification, and each stratum has its own citizenship rules:
+At its highest level, Babylon is a deterministic causal sandbox with weekly
+steps, limited knowledge, and delayed choice.
 
-```mermaid
-flowchart TB
-    subgraph S2["STRATUM 2 — REFLECTION (the critique)"]
-        SENT["Sentinel families · seam registry · ∂L boundary computation<br/>rent records · derivation trees · ceremony gates"]
-    end
-    subgraph S1["STRATUM 1 — CONTRACTS (the superstructure)"]
-        CONTR["Frozen Pydantic models · GameDefines/defines.yaml<br/>opposition catalog · golden baselines & vault goldens<br/>tutorial-BDD step script · import lattice"]
-    end
-    subgraph S0["STRATUM 0 — THE WORLD (the base)"]
-        ENG["SimulationEngine · 30 systems in materialist order<br/>BabylonGraph · WorldState · deterministic tick hash<br/>PostgreSQL runtime + reference data"]
-    end
-    subgraph PL["THE PROJECTION LANE (one-way, epistemic)"]
-        PROJ["observe() → vault markdown → clients (TUI now; HTML reskin,<br/>neovim later) · narrator side-channel · graph-render lane"]
-    end
-    S1 -- "types, defines, catalogs<br/>constrain" --> S0
-    S0 -- "state" --> PL
-    S1 -- "render contracts,<br/>severity, BDD script" --> PL
-    S2 -- "audits: is every declared construct<br/>REACHABLE from the live world?" --> S0
-    S2 -- "audits: does every contract have<br/>a producer and a consumer?" --> S1
-    S2 -- "audits: single-source severity,<br/>golden byte-identity" --> PL
-    PLAYER(("PLAYER")) -- "reads wiki,<br/>issues verbs" --> S0
-    PL -- "the Archive" --> PLAYER
-```
+Today one weekly tick takes a typed world and governed rules. It produces a new
+world, events, a Rust `TickReport`, and a canonical hash. That report is not a
+durable action receipt. Persisted replay remains in the frozen Python path.
 
-- **Stratum 0 — the world.** Material reality. Deterministic, per-tick, sealed by
-  hash. Nothing above it may reach down and mutate it: not the AI (Amendment V/Y),
-  not the client (import-linter), not the projections (Amendment S).
-- **Stratum 1 — contracts.** Statements *about* the world that outlive any
-  implementation of it: the frozen models, the moddable defines, the opposition
-  catalog, the golden baselines, and — since the tutorial-BDD ruling — the tutorial
-  step script itself, which is the behavioral contract for the entire game loop
-  (the "rewrite test": any future client is correct iff the tutorial suite passes
-  against it).
-- **Stratum 2 — reflection.** The layer the sentinel intuition was detecting.
-  Statements about the *relationship between declaration and reality*: does a
-  production caller exist; does a queried node type have a producer; does a formal
-  construct trace to a material relation (the Aleksandrov Test). This stratum is
-  the codebase applying the game's own boundary mathematics to its own body — a
-  registered-but-never-called subsystem is superstructure without base, and the
-  build system hunts it the way the game models it. It is neither test nor engine
-  because tests fake their own callers; only whole-program reachability proves that
-  something is *materially alive*.
-- **The projection lane** is not a stratum — it is a one-way functor out of the
-  world. Fog is epistemic, never material; the tick hash is blind to everything in
-  this lane; the narrator's prose is non-reproducible *by design* and fenced out of
-  every verify story.
+The planned action cycle adds prior intent and durable action receipts. A
+knowledge layer will show only what the player has learned. The player will then
+make a choice that becomes intent for a future tick.
 
-Why this shape and not a flat codebase: because the failure mode this project
-actually suffers — fully-built-but-disconnected subsystems, produced at AI speed
-faster than any eye can audit — is invisible to Stratum 0 tests and Stratum 1
-types. The stratification is not architecture astronautics; it is the minimum
-structure under which "the game is fully wired" is a *provable sentence*.
+Political economy supplies the entities, relations, and causal rules. The
+general system has seven parts:
 
-## 3. The algebra — closed for v1.0
+- a typed world model
+- a language for causal rules
+- an ordered tick judge
+- an in-memory Rust tick report
+- persisted replay in the frozen Python reference
+- a projection limited by knowledge
+- a delayed decision cycle
 
-One generator: the dialectic 𝔇 = (A, Ā, w, T, σ), bound oppositions measured fresh
-each tick. Three constructor families: **C** (composition), **G** (coarse-graining
-across the level lattices), **P** (projection — one-way, no morphism back). Every
-construct carries its derivation chain back to registered oppositions; that chain
-is its constitutional rent record. The severity of an event is *derived* — kind ×
-terminal proximity — never hand-tiered; the seam space is *finite* — ∂L over the
-construct graph — never vibes.
+The engine judges. The client shows. AI can parse, retrieve, and narrate, but AI
+does not judge mechanics.
 
-The trade-off we accepted, explicitly: this machinery is expensive to carry, and
-part of it is rent paid for building in a permissive language. We pay it because it
-is what lets a solo BD command an agent swarm without the swarm silently shipping
-dead institutions. And we cap it: **the algebra serves the game.** When a formal
-question arises during v1.0 work, the answer is "does the player feel it?" — if
-not, it goes to the research-seed inbox, not the codebase.
+## Live path and planned cycle
 
-## 4. The grammar — the text spine of the game
+The solid arrows show the live Rust and Bevy path. Dashed arrows show the Gate 3
+plan and the planned player-action slice.
 
-(Amendment AF, 2026-08-10, ADR186: this section's thesis — "the terminal is the
-load-bearing design decision" — read historically; the grammar below survives as
-the engine/test assertion medium and the Archive's medium, while the player's
-rendering surface is the Bevy client.) The load-bearing decisions:
-
-- **Verbs are the sentence forms.** The nine Article V verbs are the player's
-  entire expressive grammar; every one of them must appear in the tutorial-BDD
-  suite or it is a dead option (a ∂L seam) and the gate is red.
-- **Events are the tenses.** ALARM / CROSSING / FLOW / ACT / PATTERN — the five
-  event kinds are how the world conjugates change, and severity is intonation,
-  derived, single-sourced, joined (never summed).
-- **The wiki is the text corpus.** Vault markdown is simultaneously the game
-  surface, the assertion medium (byte-diffable goldens), and — post-Gate-3 — the
-  input to one opinionated single-definition grammar (BFM: GFM base + a restricted
-  MyST-style construct set, Rust engine, Python bindings, HTML "reskin" as a second
-  renderer over the same AST). One grammar, many renderers; assert the source,
-  display the render.
-- **Images were outsourced, floors were text (superseded by Amendment AF, 2026-08-10,
-  ADR186).** Complex visuals rendered graph-natively (rustworkx/XGI → SVG/PNG via the
-  kitty raster lane), with every raster carrying a glyph floor beneath it, and the
-  behavioral contract bound the floor — which was also, it turned out, the Windows
-  insurance policy (Amendment AA). Amendment AF retires the ADR099 glyph floor and the
-  glyph-only-client rule outright: the Rust/Ratatui client (and the kitty raster lane
-  it hosted) exits by declared deletion ceremony, and the topology/hypergraph/Sankey-flow
-  visualization obligations the floor protected **transfer to Bevy scenes** in the
-  `babylon-client` crate. Text stays the assertion medium for engine/test correctness
-  (§8 invariant 3); it no longer governs what the client renders.
-- **The playthrough transcript is the proof.** A headless run prints every screen
-  of the tutorial as deterministic text; transcript drift *is* behavior drift.
-
-## 5. The runtime, whole
-
+<!-- Vale: the Mermaid block contains literal crate and schema identifiers. -->
+<!-- vale off -->
 ```mermaid
 flowchart LR
-    subgraph WORLD["Stratum 0"]
-        E["SimulationEngine<br/>run_tick"] --> PG[("PostgreSQL<br/>runtime")]
-        E --> BUS["event bus<br/>(per-tick)"]
-    end
-    subgraph ROOT["composition root — babylon.game.session"]
-        DRV["paced driver<br/>verb windows · autopause-ack · endgame lock"]
-    end
-    subgraph PROJ["projection lane"]
-        BAKE["dirty-entity baker<br/>(full bake = CI baseline)"] --> VAULT[("markdown vault<br/>the Archive")]
-        REND["graph renders<br/>DOT/SVG"] --> VAULT
-        NARR["narrator side-process<br/>Llama 3.1 8B · corpus-RAG"] -. "{narrative} fences,<br/>latency-ordered" .-> VAULT
-    end
-    subgraph CLIENT["clients (disposable)"]
-        BEVY["Bevy client babylon-client<br/>(v1.0 — Amendment AF;<br/>Ratatui deleted by AF ceremony;<br/>Textual retired at M7)"]
-        HTML["HTML reskin<br/>(post-1.0)"]
-        NVIM["neovim client<br/>(post-1.0)"]
-    end
-    DRV --> E
-    BUS --> BAKE
-    PG --> BAKE
-    VAULT --> BEVY & HTML & NVIM
-    BEVY -- "verbs" --> DRV
-    TUT["tutorial-BDD script"] -- "drives headless +<br/>guides interactively (AF vi)" --> BEVY
+    REF["Pinned reference data"] --> TICK["Pure Rust weekly tick"]
+    BSL["BSL rules"] --> TICK
+    INTENT["Prior intent"] -. "planned action cycle" .-> TICK
+    TICK --> HASH["Canonical world hash"]
+    HASH --> VIEW["Bevy administrative viewer"]
+    TICK -. "Gate 3" .-> ENV["CommittedTickEnvelope"]
+    ENV -.-> STATE["babylon_state"]
+    STATE -.-> OUTBOX["Archive outbox"]
+    OUTBOX -.-> ARCHIVE["Knowledge-safe Archive"]
+    ARCHIVE -.-> CHOICE["Player choice"]
+    CHOICE -.-> INTENT
 ```
+<!-- vale on -->
 
-Everything on this diagram either exists today or is a unit in a running lane. That
-is deliberate: the North Star contains no box that lacks a committed plan.
+The live Rust path uses `babylon-kernel`, `babylon-graph`, `babylon-bsl`,
+`babylon-tick`, and `babylon-client`. The Bevy client draws the county atlas,
+moves ticks forward, and shows lenses, events, causal beats, and hash data.
 
-## 6. Engineering holism under real constraints
+The Python engine is a frozen behavioral reference. Its tests, traces, and
+goldens specify behavior for port and replacement decisions. Python also
+prepares data and runs selected periphery.
 
-"Holistic" is not a diagram; diagrams rot. Holistic is a **property the build can
-check**: every part reachable from the player loop, every contract producing and
-consumed, every intentional change declared. The three governors:
+<!-- Vale: this paragraph preserves literal persistence and schema identifiers. -->
+<!-- vale ste.UnapprovedWords = NO -->
+<!-- vale ste.NounClusters = NO -->
+The Python periphery has mutable SQLite replay, atomic Postgres tick
+persistence, `tick_commit`, partial `babylon_meta` navigation state, and an
+action pipeline. The full v4 Rust three-schema boundary, commit envelope,
+outbox, fog-safe Archive cycle, and BSL-Bevy player actions have not landed.
+<!-- vale ste.NounClusters = YES -->
+<!-- vale ste.UnapprovedWords = YES -->
 
-1. **Technical debt is ledgered, not forbidden.** DEBT.md, the seam registry's
-   liveness classes, the assumptions ledger, `{absence}` fences — debt is legal
-   when it is *visible and loud*. The only illegal debt is silent debt; that is the
-   entire sentinel doctrine (every discovered error class ships a mutation-validated
-   gate), and it is why the estate grows by infection, like an immune system, rather
-   than by speculation.
-2. **Personal familiarity is a design input, not a bias to apologize for.** Solo BD,
-   neovim-native, Python/Rust hands, one 12-core box. Hence: Rust (not OCaml, not
-   Haskell) is the sanctioned compiled lane — and since Amendment AE (v3.0.0,
-   2026-07-29) **Rust is the engine language** (superseding this section's former
-   "Python stays the engine language"; Python survives as the data-build pipeline,
-   the out-of-process AI observer, and the CLI periphery); the neovim client is the
-   sanctioned second client; heavy gates run single-flight; ceremony defers to
-   merge-time. A stack the BD cannot personally maintain at 2 a.m. is a stack the
-   project does not adopt.
-3. **Shipping is the forcing function.** The v1.0.0 Definition of Done is the only
-   finish line, Gate 3 (a full TUI campaign session) is the only gate that matters
-   between here and there, and anything that does not move a train toward it —
-   however intellectually alive — files as a research seed and waits.
+## Causal world
 
-The enforcement loops that make holism mechanical rather than aspirational:
-contracts pin meaning → sentinels prove wiring → ceremonies audit change → the
-tutorial-BDD suite proves the *player-facing* whole behaves as advertised. Four
-loops, one closed system. When all four are green, "it all connects" is not a
-feeling; it is a build status.
+The world contains typed entities, relations, and compact registers. Geography
+does not change. Political claims use overlays. Each tick can change the social
+world but not the spatial substrate.
 
-## 7. The road
+Live BSL expresses governed causal rules. It has no executable shock vocabulary
+or shock content. Planned shocks will add exogenous pressure. In the
+planned action slice, BSL will let actions run, charge costs, choose targets,
+and encode political results.
+<!-- Vale: this paragraph preserves governed engine operation names. -->
+<!-- vale ste.Gerunds = NO -->
+<!-- vale ste.UnapprovedWords = NO -->
+<!-- vale write-good.TooWordy = NO -->
+In planned circuit slices, Rust allocation, routing, settlement, and clearing
+mechanics will enforce conservation.
+Ordinary BSL rules derive and write world data through governed causal operations. Shock
+rules must not write downstream results directly, such as unemployment, death,
+shortages, shipments, defaults, or winners.
+<!-- vale write-good.TooWordy = YES -->
+<!-- vale ste.UnapprovedWords = YES -->
+<!-- vale ste.Gerunds = YES -->
 
-**Now (in flight):** six parallel lanes off the T1.0 contract commit — Capital
-Vol I and Vol II (the economy becomes real), T1.1 (seam algebra + derived
-severity), T1.2 (keel services), T4 (the campaign runtime — the critical path),
-T7 (installer, alpha merged). Then T3 (gap projections), T5 (narrator wiring),
-T6 (tutorial-as-BDD), **Gate 3**, cutover, T7-beta (embedded Postgres), T8
-(release + KSBC aesthetic pass), **v1.0.0**.
+The formal surface stays closed. The dialectic, constructor families, level
+lattices, adjunctions, and boundary operator supply the licensed algebra. BSL
+expresses that algebra and does not create a new mathematical primitive.
 
-**Post-1.0 horizon (committed direction, not scheduled work):** Windows via WSL2
-then native (Amendment AA — shielded from v1.0), the BFM Rust markdown engine with
-the HTML reskin, the neovim client behind the same BDD contract, the AI phase
-(fine-tuning; the tick-compression / narrative-vector-space seed).
+No game rule can impose a sigmoid or other fixed response curve. The world
+population and the licensed operations must produce curve shapes.
 
-**Round 2 — The Mirror (BD-flagged 2026-07-21, deferred until current workflows
-land):** turn Stratum 2's implicit self-model into an explicit one — the construct
-graph as first-class, queryable data; the codebase's own ontology modeled with the
-same tooling that models the game world. Not code-as-poetry: code-as-territory,
-mapped once the current trains are merged and the map has something stable to be
-*of*. This is on the radar precisely so it stays **off** the v1.0 critical path.
+## Political-economy circuit
 
-## 8. Invariants that do not move
+The intended game closes one causal circuit across production, circulation,
+realization, finance, class, government, ecology, and player action. A slice must
+connect a producer to a game consumer before the slice is complete.
 
-1. Determinism: same seed, same defines, same bytes — and everything epistemic
-   stays out of the hash.
-2. The engine adjudicates; AI narrates; clients render. No exceptions without
-   amendment.
-3. Text is the assertion medium: every tick hash, behavioral contract, and test
-   golden is byte-diffable text — this half stands, unamended (III.12). (Amendment
-   AF, 2026-08-10, ADR186: the client-facing half of this invariant — "every raster
-   has a text floor," "the game is fully playable glyph-only over ssh" — is
-   RETIRED; the declared ceremony deletes the ADR099 glyph floor and the Ratatui
-   client it protected, and the visualization obligations it carried transfer to
-   Bevy scenes in `babylon-client`.)
-4. Every formal construct traces to a material relation, in the world and in the
-   code.
-5. Debt is legal only when loud.
-6. No MVP scoping of ratified designs; scope moves by ruling, not erosion.
-7. The player's machine owns everything: their world, their save, their narrator,
-   their wiki.
-8. **The game ships.** (Amendment AE clause (ix): v1.0 is the **Rust engine's
-   release** — this invariant and §6.3's forcing function retarget onto it;
-   invariant 2's "engine" now denotes the Rust kernel, verbatim otherwise.)
+Ports follow slices. Babylon does not wait for all frozen Python systems before
+play begins. A port can keep, adapt, replace, or retire frozen behavior through
+a declared decision.
+
+Research data waits until a named game rule needs a field. Data volume alone
+does not complete a slice.
+
+## Emergence proof
+
+A large event supplies pressure and timing, not downstream results. The first
+benchmark will use a 2019 control world and encode a public-health burden in
+BSL. The engine must derive the economic, geographic, class, and political
+effects.
+
+COVID E0 compares a control, a historical shock envelope, a strong-capacity
+counterfactual, and a weak-capacity counterfactual across 104 weekly ticks. The
+test asks for causal divergence, heterogeneity, hysteresis, and response to the
+counterfactual.
+
+Historical agreement is useful information. It does not turn Babylon into a
+forecast. A different policy or capacity must be free to produce a different
+path.
+
+## Player knowledge
+
+Each game map, chart, relation diagram, topology, or other display must answer a decision
+question. Rich reference material belongs in a drill-down or the Archive.
+
+An administrative display can help development. It cannot pass a game
+milestone. The first accepted Archive slice will connect a geographic dossier,
+signals, a player decision, a future tick effect, and an updated dossier.
+
+The Archive must apply fog before AI retrieval. A query must name the campaign.
+The query must also use the knowledge of the player. The narrative must not
+change a fact about material conditions.
+
+## Holism as a test
+
+Babylon treats a system as live only when it has a producer, a consumer, and an
+observable effect. Contracts give behavior. Sentinels prove wiring. Ceremonies
+record intentional changes to meaning.
+
+This discipline matters because agents can make a complete but disconnected
+subsystem quickly. Unit tests can prove local behavior while the game does not
+use it. Reachability and mutation tests find this defect.
+
+## The road after the first three gates
+
+Player agency follows COVID E0. Then productive circulation, freight, class
+effects, and organization money complete the first circuit. The full-circuit
+COVID benchmark checks the same shock again.
+
+The 2008 benchmark then tests credit contraction, production, jobs, class,
+territory, and politics. Only after those circuits pass their tests does Babylon
+scale to the representative v1 world.
+
+## Stable rules
+
+1. One tick is one week.
+2. Equal inputs must produce equal bytes and hashes.
+3. Determinism proves identity, not truth.
+4. The engine judges, AI narrates, and clients show.
+5. Each formal element must have a material relation.
+6. Each substantive value must be `Observed`, `Derived`, `Calibrated`, or `Designed`.
+7. Plans must identify planned parts.
+8. The game must ship as an engaging game.

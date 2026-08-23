@@ -1,7 +1,9 @@
 """Integration tests for Phase 2 game loop.
 
 These tests prove that the feedback loops work correctly over multiple ticks.
-They verify the core thesis: Graph + Math = History.
+They pin a frozen Python causal-feedback contract for Rust ports. Deterministic
+replay establishes computational identity; parameter sensitivity establishes
+counterfactual response, not a guaranteed historical outcome.
 
 Sprint 6: Phase 2 integration testing.
 Sprint 1.5: Relaxed conservation assertions for Material Reality physics.

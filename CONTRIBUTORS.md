@@ -1,105 +1,137 @@
-# Contributing to Babylon
+# Contributor Rules
 
-Thanks for your interest in Babylon. This file covers **governance and the git
-workflow**. For getting set up and your first contribution, see
-[SETUP_GUIDE.md](SETUP_GUIDE.md); for coding standards and architecture, see
-[CLAUDE.md](CLAUDE.md). The model here is ratified in the Constitution
-([CONSTITUTION.md](CONSTITUTION.md) §IX.5, Amendment AD; ADR151).
+Babylon is an entertainment-first emergent political-economy game. Babylon is
+not a forecast and not a scientific reproduction. Theory constrains the causal
+model but does not predetermine results.
 
-## Governance: Agentic Engineering
+Determinism proves computational identity, not scientific truth. Historical
+cases test causal signatures and counterfactual behavior. The Bevy client is an
+administrative viewer with no player action.
 
-Babylon is built by **Agentic Engineering** — a human **Director** sets
-direction and holds the ideological line; autonomous AI agents perform the bulk
-of the engineering under a discipline regime that makes their autonomy
-trustworthy without line-by-line human review.
+The first three executable gates are:
 
-### The Director
+<!-- Vale: each protected item is a governed gate name. -->
+<!-- vale ste.UnapprovedWords = NO -->
+1. **Executable causality and whole-tick atomicity**
+<!-- vale ste.UnapprovedWords = YES -->
+<!-- vale Vale.Terms = NO -->
+<!-- vale ste.UnapprovedWords = NO -->
+2. **PostgreSQL/H3/Archive decision-loop slice**
+<!-- vale Vale.Terms = YES -->
+<!-- vale ste.UnapprovedWords = YES -->
+<!-- vale ste.NounClusters = NO -->
+3. **COVID E0 emergence proof**
+<!-- vale ste.NounClusters = YES -->
 
-Persephone Raskova ([@percy-raskova](https://github.com/percy-raskova)) is the
-Director. She holds two powers:
+Read [`CONSTITUTION.md`](CONSTITUTION.md) v4.0.0 for the law. Read
+[`NORTH_STAR.md`](NORTH_STAR.md) for the game direction. Read
+[`CLAUDE.md`](CLAUDE.md) for repository commands and live technical facts.
 
-1. **Final merge authority** — nothing reaches `main` without her. (This is the
-   [Benevolent Dictator](https://producingoss.com/en/benevolent-dictator.html)
-   role, **subsumed** here and renamed for the function it serves in an
-   agent-executed project — not replaced.)
-2. **Ideological authority** — she holds **sole authority over the ideological
-   and theoretical line the simulation encodes**: the MLM-TW theoretical
-   commitments (Constitution Article I), the doctrine trees, political framing,
-   and the canonical outcomes (the five terminal endgames).
+## Authority
 
-This second power is a **reserved power**. Agents engineer *within* the line —
-they implement, refactor, test, and propose — but they do **not** author or
-alter political content without a Director ruling. A question about the
-political line is not an ambiguity to resolve; it is an **escalation to the
-Director**.
+The Director controls the reserved theory line and all merges to `main`. Agents
+can merge a green PR to `dev` through the approved command.
 
-### Agents are the engineering workforce
+A green gate grants a merge license. A red gate means stop and report the
+fault.
 
-Autonomous agents execute across **parallel isolated lanes** — each lane a git
-worktree on its own branch — under the **interleaving rule**: at most one engine
-train touches the tick pipeline at a time, so determinism baselines never race.
-Lane ownership is declared (a lane marker) so concurrent sessions do not collide
-on the same files.
+Stop and ask the Director when a task needs one of these changes:
 
-### The discipline is what licenses the autonomy
+- a new mathematical primitive
+- a weaker prohibition
+- a change to the reserved theory line
 
-Agent output is trusted because the **gates**, not a reviewer, certify it:
+Use the governed ceremony for new content vocabulary. Do not improvise a term
+that changes the ontology.
 
-- **Determinism** — every tick produces a hash; non-determinism is a bug
-  (Constitution III.7).
-- **The sentinel family** — built-but-dead, wrong-shape, and dead-write
-  detectors that fail a green-looking test sitting over dead code.
-- **Behavioral contracts** — the rewrite test (III.12): golden baselines,
-  property laws, and byte-identity ceremonies that pin what the system *does*.
-- **The TDD red phase** and **Loud Failure** (III.11) — a missing input fails
-  loudly, never silently no-ops.
+## Development lane
 
-**A green gate is a self-merge license; a red gate is a STOP.** Ceremony
-discipline (baseline blessings, §6.5) is deferred to merge — never taxed on the
-inner loop. When a task would add a new primitive, relax a prohibition, or touch
-the ideological line, it **stops and escalates** — to a constitutional amendment
-or to the Director (the escalation ladder is Constitution §IX.3).
+Create a regular lane from `dev`. Open a PR against `dev`. Do not commit directly
+to `dev` or `main`.
 
-## Branch model
+<!-- Vale: this paragraph preserves exact Linear fields and GitHub Project
+     names from the control-surface contract. -->
+<!-- vale ste.UnapprovedWords = NO -->
+<!-- vale ste.NounClusters = NO -->
+Linear is canonical for current work. GitHub owns source control, pull
+requests, reviews, and historical evidence. Project #7 and Project #8 in GitHub
+are transitional inputs. The migration is not complete. See
+[`docs/agents/governance.md`](docs/agents/governance.md) for field ownership and
+the manual identity link and full PER-15 archive condition.
+<!-- vale ste.NounClusters = YES -->
+<!-- vale ste.UnapprovedWords = YES -->
 
-```
-main ────► stable releases        (Director merges only)
-  ▲
-dev ─────► integration             (open your PRs here)
-  ▲
-feature/*, fix/*, docs/*, refactor/*, test/*   (one per lane)
-```
+Use one of these lane prefixes:
 
-- Branch from `dev` and open PRs **to `dev`** — one branch per lane / worktree.
-- **Only the Director** merges `dev` → `main` for releases.
-- **Never** commit directly to `main` or `dev`.
+- `feature/`
+- `fix/`
+- `docs/`
+- `refactor/`
+- `test/`
+<!-- Vale: these lines preserve literal branch and issue identifiers. -->
+<!-- vale ste.UnapprovedWords = NO -->
+- `codex/PER-123-short-name`
 
-| Prefix | Purpose |
-| ----------- | --------------------------------------------- |
-| `feature/` | New functionality |
-| `fix/` | Bug fixes |
-| `docs/` | Documentation |
-| `refactor/` | Code improvements (no behavior change) |
-| `test/` | Test changes |
+Other lane names can also include their PER identity. This linkage remains a
+manual convention until PER-2 verifies automation.
+<!-- vale ste.UnapprovedWords = YES -->
 
-## Commit messages
+Keep unrelated user changes unchanged. Report an unrelated fault unless the owner
+adds it to the task.
 
-Use [Conventional Commits](https://www.conventionalcommits.org/):
-`type(scope): description` (e.g. `feat(engine): add faction influence system`).
-Commitizen validates this on commit. Commit after each logical unit of work —
-see [CLAUDE.md](CLAUDE.md) for the rationale.
+## Changes and tests
 
-## Before you open a PR
+Use TDD for behavior changes. Show a failing test before you change production
+behavior. Then make the test pass. Change only the task area.
+
+Use `type(scope): description` for a commit line. Put one logical unit in
+each commit. End the message with the required co-author trailer.
+
+Run this command for a commit:
 
 ```bash
-mise run check   # lint + format + typecheck + unit tests (the fast gate)
+mise run commit -- "type(scope): description"
 ```
 
-For any engine / economics / defines change, the byte-identity gate must be
-green too (`mise run qa:regression`), and any `tests/baselines/**` movement is a
-declared ceremony — see [CLAUDE.md](CLAUDE.md) §"Definition of done". These
-gates are what let a PR self-merge on green; a red gate is a STOP, not a
-negotiation.
+Run the checks that `CLAUDE.md` assigns to the changed area. Do not bless a
+baseline without its declared ceremony.
 
-The step-by-step fork → branch → PR walkthrough lives in
-[SETUP_GUIDE.md](SETUP_GUIDE.md#part-2--your-first-contribution).
+## Merge to `dev`
+
+Before a merge, complete these steps:
+
+1. Check that each CI task finished.
+2. Check that the green task tested the PR head SHA.
+3. Read each Copilot comment.
+4. Correct the fault or reply with the rationale for no change.
+5. Check that no Copilot comment remains without a response.
+6. Run the approved merge command.
+
+```bash
+mise run pr:merge -- N
+```
+
+Do not use `gh pr merge --auto`. The approved command also checks CodeQL and
+the merge target.
+
+<!-- Vale: this paragraph preserves literal Git emergency-workflow terms. -->
+<!-- vale Vale.Spelling = NO -->
+<!-- vale ste.UnapprovedWords = NO -->
+A critical hotfix alone can branch from and target `main`. Only the Director
+can merge it. A backport PR to `dev` is mandatory after the merge.
+<!-- vale ste.UnapprovedWords = YES -->
+<!-- vale Vale.Spelling = YES -->
+
+## Records
+
+Keep old ADRs unchanged. They record the rationale that applied when the team
+made a choice. Add a new ADR for a new architecture decision.
+
+<!-- Vale: this paragraph preserves exact authority and repository path terms. -->
+<!-- vale ste.UnapprovedWords = NO -->
+Linear alone owns current status and work. `ai/state.yaml` is historical
+implementation evidence, and `project/` is non-live context.
+<!-- vale ste.UnapprovedWords = YES -->
+
+Do not report a planned system as complete. Check the source behavior and an
+executable test first.

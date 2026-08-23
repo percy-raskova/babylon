@@ -35,6 +35,111 @@ _MAX_CONSTITUTION_BLOB_BYTES: Final[int] = 128_000
 _MAX_MANIFEST_BYTES: Final[int] = 16_384
 _MAX_PREDECESSOR_LINES: Final[int] = 1_024
 
+_LIVE_ORIENTATION_PATHS: Final[tuple[str, ...]] = (
+    "NORTH_STAR.md",
+    "CLAUDE.md",
+    "CONTRIBUTORS.md",
+    "docs/agents/governance.md",
+    ".github/copilot-instructions.md",
+    ".opencode/skills/specification-discover/SKILL.md",
+    ".opencode/skills/specification-validate/SKILL.md",
+    ".serena/memories/project_overview.md",
+    "README.md",
+    "SETUP_GUIDE.md",
+    "docs/index.rst",
+    "docs/docs-pdf-index.rst",
+    "docs/commentary/design-philosophy.rst",
+    "docs/concepts/architecture.rst",
+    "docs/concepts/index.rst",
+    "ai/mantras.yaml",
+)
+_BEHAVIORAL_CONTRACT_PATHS: Final[tuple[str, ...]] = (
+    "tests/unit/sentinels/test_determinism.py",
+    "tests/integration/system/test_phase2_game_loop.py",
+    "tests/constants.py",
+    "tests/unit/engine/systems/test_metabolism.py",
+)
+_CANONICAL_ORIENTATION_PATHS: Final[tuple[str, ...]] = (
+    "NORTH_STAR.md",
+    "CLAUDE.md",
+    "README.md",
+    "docs/index.rst",
+    "CONTRIBUTORS.md",
+    "docs/agents/governance.md",
+)
+_MACHINE_ORIENTATION_PATH: Final[str] = "ai/mantras.yaml"
+_HUMAN_ORIENTATION_PATH: Final[str] = "NORTH_STAR.md"
+_ROUTED_ORIENTATION_PATHS: Final[tuple[str, ...]] = tuple(
+    path
+    for path in _LIVE_ORIENTATION_PATHS
+    if path not in {_MACHINE_ORIENTATION_PATH, _HUMAN_ORIENTATION_PATH}
+)
+_CONTROL_SURFACE_PATHS: Final[tuple[str, ...]] = (
+    "CLAUDE.md",
+    "CONTRIBUTORS.md",
+    "docs/agents/governance.md",
+    ".github/copilot-instructions.md",
+)
+_CONTROL_AUTHORITY_PATH: Final[str] = "docs/agents/governance.md"
+_ORIENTATION_CONCEPTS: Final[tuple[tuple[str, ...], ...]] = (
+    ("entertainment-first",),
+    ("emergent political-economy game",),
+    ("not a forecast",),
+    ("scientific reproduction",),
+    ("theory constrains",),
+    ("does not predetermine", "without predetermining"),
+    ("computational identity",),
+    ("scientific truth",),
+    ("causal signatures",),
+    ("counterfactual",),
+    ("admin/viewer", "administrative viewer"),
+    ("no player action", "no committed player action"),
+)
+_NEXT_THREE_GATES: Final[tuple[str, ...]] = (
+    "Executable causality and whole-tick atomicity",
+    "PostgreSQL/H3/Archive decision-loop slice",
+    "COVID E0 emergence proof",
+)
+_SUPERSEDED_PRODUCT_PHRASES: Final[tuple[str, ...]] = (
+    "graph + math = history",
+    "modeling the collapse of american hegemony",
+    "models class struggle as a deterministic output",
+    "class struggle is the deterministic output",
+    "history is the deterministic output",
+    "collapse is certain",
+    "tragedy of inevitability",
+    "the default trajectory toward necropolis",
+    "the only gate that matters",
+    "must reproduce observed",
+    "failure = theory or implementation wrong",
+    "project #8 is the sole board",
+)
+_CATEGORICAL_OUTCOME_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
+    re.compile(
+        r"\b(?:agitation|conditions?|crises?|crisis|shocks?|theory|history|"
+        r"material relations?)\b[^.\n]{0,160}\b(?:produces?|determines?|dictates?|"
+        r"guarantees?|ensures?|inevitably (?:causes?|leads? to)|must (?:cause|lead to|"
+        r"end in)|always (?:causes?|becomes?|leads? to))\b[^.\n]{0,100}\b"
+        r"(?:fascism|revolution|collapse|victory|defeat|outcomes?|history)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:fascism|revolution|collapse|victory|defeat|history|outcomes?)\b"
+        r"[^.\n]{0,100}\b(?:is|are) (?:the )?(?:deterministic|inevitable|guaranteed)"
+        r" (?:result|output|outcome)\b",
+        re.IGNORECASE,
+    ),
+)
+_NEGATED_CATEGORICAL_PREDICATE: Final[re.Pattern[str]] = re.compile(
+    r"\b(?:(?:does?|do|did|can|could|will|would|must|may|might) not|"
+    r"cannot|never)\s+(?:produces?|determines?|dictates?|guarantees?|ensures?|"
+    r"inevitably (?:causes?|leads? to)|always (?:causes?|becomes?|leads? to))\b",
+    re.IGNORECASE,
+)
+_OLD_DOTTED_ARTICLE_REFERENCE: Final[re.Pattern[str]] = re.compile(
+    r"\b(?:I|II|III|IV|V|VI|VII|VIII|IX|X)\.\d+(?:\.\d+)?\b"
+)
+
 _ARTICLE_HEADINGS: Final[tuple[str, ...]] = (
     "## Article I — Purpose and Player Promise",
     "## Article II — Theoretical Commitments",
@@ -78,6 +183,21 @@ _PLAYER_ROSTER: Final[re.Pattern[str]] = re.compile(
 def _constitution_text() -> str:
     """Return the live constitutional text."""
     return _CONSTITUTION.read_text(encoding="utf-8")
+
+
+def _repository_text(relative_path: str) -> str:
+    """Return one text file from the bounded live-governance corpus."""
+    return (_ROOT / relative_path).read_text(encoding="utf-8")
+
+
+def _categorical_outcome_matches(text: str) -> tuple[str, ...]:
+    """Return affirmative categorical outcomes from one bounded prose record."""
+    return tuple(
+        match.group(0)
+        for pattern in _CATEGORICAL_OUTCOME_PATTERNS
+        for match in pattern.finditer(text)
+        if _NEGATED_CATEGORICAL_PREDICATE.search(match.group(0)) is None
+    )
 
 
 def _adr_entry() -> dict[str, object]:
@@ -223,6 +343,437 @@ def _extract_v3_2_manifest(text: str) -> dict[str, object]:
             "registered_amendments": sorted(amendments, key=lambda value: (len(value), value)),
         },
     }
+
+
+def test_live_orientation_corpus_is_exact_bounded_and_present() -> None:
+    """The v4 guard covers only the declared current entry points."""
+    expected = (
+        "NORTH_STAR.md",
+        "CLAUDE.md",
+        "CONTRIBUTORS.md",
+        "docs/agents/governance.md",
+        ".github/copilot-instructions.md",
+        ".opencode/skills/specification-discover/SKILL.md",
+        ".opencode/skills/specification-validate/SKILL.md",
+        ".serena/memories/project_overview.md",
+        "README.md",
+        "SETUP_GUIDE.md",
+        "docs/index.rst",
+        "docs/docs-pdf-index.rst",
+        "docs/commentary/design-philosophy.rst",
+        "docs/concepts/architecture.rst",
+        "docs/concepts/index.rst",
+        "ai/mantras.yaml",
+    )
+    assert expected == _LIVE_ORIENTATION_PATHS
+    assert len(_LIVE_ORIENTATION_PATHS) == len(set(_LIVE_ORIENTATION_PATHS))
+    assert all((_ROOT / path).is_file() for path in _LIVE_ORIENTATION_PATHS)
+
+
+def test_human_orientation_states_the_v4_semantic_contract() -> None:
+    """The human north star explains the machine-readable orientation."""
+    text = " ".join(_repository_text(_HUMAN_ORIENTATION_PATH).lower().split())
+    missing = tuple(
+        alternatives
+        for alternatives in _ORIENTATION_CONCEPTS
+        if not any(alternative in text for alternative in alternatives)
+    )
+    assert missing == (), f"{_HUMAN_ORIENTATION_PATH} is missing {missing}"
+
+
+@pytest.mark.parametrize("relative_path", _CANONICAL_ORIENTATION_PATHS)
+def test_canonical_entry_points_order_the_next_three_gates(relative_path: str) -> None:
+    """Canonical execution records state the next three gates in order."""
+    text = _repository_text(relative_path)
+    positions = tuple(text.find(gate) for gate in _NEXT_THREE_GATES)
+    assert all(position >= 0 for position in positions), (
+        f"{relative_path} is missing gates at positions {positions}"
+    )
+    assert positions == tuple(sorted(positions)), f"{relative_path} has reordered gates"
+
+
+@pytest.mark.parametrize("relative_path", _ROUTED_ORIENTATION_PATHS)
+def test_live_entry_points_route_to_v4_orientation(relative_path: str) -> None:
+    """Narrow entry points route readers instead of duplicating orientation prose."""
+    text = _repository_text(relative_path).lower()
+    authorities = ("constitution.md", "constitution v4", "north_star.md")
+    assert any(authority in text for authority in authorities), relative_path
+
+
+def test_mantras_publish_machine_readable_v4_orientation() -> None:
+    """One canonical data record exposes purpose, validation, status, and gates."""
+    document = yaml.safe_load(_repository_text(_MACHINE_ORIENTATION_PATH))
+    meta = document["meta"]
+    assert meta["authority"] == "CONSTITUTION.md v4.0.0"
+    assert meta["product"] == "entertainment-first emergent political-economy game"
+    assert meta["forecast"] is False
+    assert meta["scientific_reproduction"] is False
+    assert meta["theory"] == "constrains the causal model without predetermining outcomes"
+    assert meta["determinism_proves"] == "computational identity"
+    assert tuple(meta["historical_cases_test"]) == (
+        "causal signatures",
+        "counterfactual behavior",
+    )
+    assert meta["current_client"] == "Bevy admin/viewer; no player action"
+    assert tuple(meta["next_gates"]) == _NEXT_THREE_GATES
+
+
+@pytest.mark.parametrize("relative_path", _CONTROL_SURFACE_PATHS)
+def test_contributor_entry_points_route_work_tracking_to_linear(relative_path: str) -> None:
+    """Each contributor control entry routes current work through Linear."""
+    text = " ".join(_repository_text(relative_path).lower().split())
+    required = ("linear", "canonical", "github", "project #7", "project #8")
+    missing = tuple(phrase for phrase in required if phrase not in text)
+    assert missing == (), f"{relative_path} is missing {missing}"
+    assert "migration is not complete" in text or "migration remains in progress" in text
+
+
+def test_control_authority_states_the_linear_github_boundary() -> None:
+    """The control authority defines ownership without duplicating the charter."""
+    text = " ".join(_repository_text(_CONTROL_AUTHORITY_PATH).lower().split())
+    required = (
+        "babylon v1 — playable political economy",
+        "per-5",
+        "per-15",
+        "issue identity",
+        "scope",
+        "status",
+        "priority",
+        "dependencies",
+        "horizon",
+        "milestones",
+        "schedule",
+        "current work",
+        "source control",
+        "pull requests",
+        "reviews",
+        "historical evidence",
+        "project #7",
+        "project #8",
+        "transitional migration inputs",
+        "full per-15 acceptance",
+        "ai/state.yaml",
+        "historical implementation evidence",
+        "project/",
+        "non-live context",
+    )
+    missing = tuple(phrase for phrase in required if phrase not in text)
+    assert missing == (), f"{_CONTROL_AUTHORITY_PATH} is missing {missing}"
+
+
+def test_live_orientation_does_not_route_to_pending_architecture_record() -> None:
+    """Entry points defer the stale architecture catalog until Unit 2B aligns it."""
+    found = tuple(
+        path
+        for path in _LIVE_ORIENTATION_PATHS
+        if "ai/architecture.yaml" in _repository_text(path).lower()
+    )
+    assert found == ()
+
+
+def test_architecture_reference_marks_live_predecessors_and_v4_plan() -> None:
+    """The detailed reference separates current Rust and Python seams from the v4 plan."""
+    text = " ".join(_repository_text("docs/concepts/architecture.rst").lower().split())
+    required = (
+        "live rust bsl rules",
+        "no executable shock",
+        "tickreport",
+        "frozen python",
+        "runtimedatabase",
+        "perticktransactionenvelope",
+        "persist_tick_atomic",
+        "tick_commit",
+        "partial ``babylon_meta``",
+        "full v4 rust",
+        "planned",
+        "per-48 is decided",
+        "python remains the sole live writer until cutover",
+        "after the one-way cutover, rust owns",
+    )
+    missing = tuple(phrase for phrase in required if phrase not in text)
+    assert missing == (), f"docs/concepts/architecture.rst is missing {missing}"
+
+
+@pytest.mark.parametrize("relative_path", ("CLAUDE.md", "docs/concepts/architecture.rst"))
+def test_live_guidance_records_the_decided_postgres_cutover(relative_path: str) -> None:
+    """The accepted boundary keeps one writer while preserving Python periphery."""
+    text = " ".join(_repository_text(relative_path).lower().split())
+    required = (
+        "per-48 is decided",
+        "python remains the sole live writer until cutover",
+        "after the one-way cutover, rust owns",
+        "python continues",
+    )
+    prohibited = (
+        "per-48 must resolve",
+        "per-48 is in progress",
+        "per-48 blocks per-20",
+        "has not resolved which language",
+    )
+    missing = tuple(phrase for phrase in required if phrase not in text)
+    stale = tuple(phrase for phrase in prohibited if phrase in text)
+    assert missing == (), f"{relative_path} is missing {missing}"
+    assert stale == (), f"{relative_path} retains {stale}"
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    ("docs/concepts/architecture.rst", "NORTH_STAR.md"),
+)
+def test_live_architecture_limits_the_downstream_write_prohibition_to_shocks(
+    relative_path: str,
+) -> None:
+    """Ordinary BSL derivation remains legal while shocks cannot author effects."""
+    text = " ".join(_repository_text(relative_path).lower().split())
+    assert "shock" in text
+    assert "must not write" in text
+    assert "downstream result" in text
+    assert "ordinary bsl rules" in text
+    assert "derive" in text
+    assert "write world" in text
+    assert "bsl must not write a downstream result" not in text
+
+
+def test_claude_keeps_gate_4_and_gate_5_work_out_of_gate_3() -> None:
+    """The persistence slice cannot absorb later shock or player-action gates."""
+    text = " ".join(_repository_text("CLAUDE.md").split())
+    gate_3_start = text.index("Gate 3 will add")
+    gate_3_end = text.index(".", gate_3_start)
+    gate_3_sentence = text[gate_3_start:gate_3_end].lower()
+    assert "executable shocks" not in gate_3_sentence
+    assert "player actions" not in gate_3_sentence
+    assert "gate 4" in text.lower()
+    assert "gate 5" in text.lower()
+
+
+def test_contributor_guide_preserves_branch_and_hotfix_law() -> None:
+    """Normal lane flexibility cannot erase the Director-only emergency path."""
+    text = " ".join(_repository_text(_CONTROL_AUTHORITY_PATH).lower().split())
+    required = (
+        ("`codex/`",),
+        ("`per-",),
+        ("critical hotfix",),
+        ("director-only", "only the director"),
+        ("directly to `main`",),
+        ("mandatory backport",),
+        ("`dev`",),
+    )
+    missing = tuple(
+        alternatives
+        for alternatives in required
+        if not any(phrase in text for phrase in alternatives)
+    )
+    assert missing == (), f"{_CONTROL_AUTHORITY_PATH} is missing {missing}"
+
+
+def test_claude_preserves_exact_operational_gotchas() -> None:
+    """The compact agent guide retains the failure-prevention contracts."""
+    text = _repository_text("CLAUDE.md")
+    folded = " ".join(text.lower().split())
+    required = (
+        "docs/agents/gotchas.md",
+        "dynamic_hex_state",
+        "v_hex_state_asof",
+        "max(tick)",
+        "tick_commit",
+        "check:vocabulary",
+        'pythonpath="$pwd/src"',
+        "end-of-file-fixer",
+        "trailing newline",
+        "workflow `args`",
+        "stringified",
+        "hard fallback",
+    )
+    missing = tuple(phrase for phrase in required if phrase not in folded)
+    assert missing == (), f"CLAUDE.md is missing {missing}"
+    assert len(text.splitlines()) < 200
+
+
+def test_setup_names_host_and_optional_bevy_prerequisites() -> None:
+    """Fresh-clone setup distinguishes required services from optional client builds."""
+    text = " ".join(_repository_text("SETUP_GUIDE.md").lower().split())
+    required = (
+        "docker compose",
+        "host prerequisite",
+        "bevy",
+        "optional",
+        "nix",
+        "mise run nix -- mise run rust:client-dev-dylib",
+    )
+    missing = tuple(phrase for phrase in required if phrase not in text)
+    assert missing == (), f"SETUP_GUIDE.md is missing {missing}"
+
+
+def test_north_star_names_and_lists_all_seven_abstract_parts() -> None:
+    """The main abstraction keeps its declared count and enumerated parts aligned."""
+    text = _repository_text("NORTH_STAR.md")
+    section = text.split("## The system without political economy", 1)[1].split(
+        "## Live path and planned cycle", 1
+    )[0]
+    parts = tuple(line for line in section.splitlines() if line.startswith("- "))
+    assert "general system has seven parts:" in section
+    assert len(parts) == 7
+
+
+def test_readme_distinguishes_both_live_sqlite_roles() -> None:
+    """The reference artifact does not erase mutable Python runtime SQLite."""
+    text = " ".join(_repository_text("README.md").lower().split())
+    required = (
+        "deterministic reference sqlite",
+        "mutable python ``runtimedatabase`` sqlite",
+    )
+    missing = tuple(phrase for phrase in required if phrase not in text)
+    assert missing == (), f"README.md is missing {missing}"
+
+
+def test_readme_runs_bevy_through_the_pinned_nix_shell() -> None:
+    """The fresh-clone viewer command cannot rely on undeclared host Cargo."""
+    text = _repository_text("README.md")
+    assert "mise run nix -- mise run rust:client-dev-dylib" in text
+    assert "\nmise run rust:client-dev-dylib\n" not in text
+
+
+def test_north_star_marks_future_circuit_mechanics_as_planned() -> None:
+    """Allocation and clearing ownership cannot masquerade as live behavior."""
+    text = " ".join(_repository_text("NORTH_STAR.md").split())
+    assert "Rust allocates, routes, settles, clears" not in text
+    assert (
+        re.search(
+            r"planned[^.]{0,100}Rust[^.]{0,100}allocat[^.]{0,100}rout[^.]{0,100}"
+            r"settl[^.]{0,100}clear",
+            text,
+            re.IGNORECASE,
+        )
+        is not None
+    )
+
+
+def test_game_first_transition_uses_adr221_without_rewriting_history() -> None:
+    """The game-first ledger yields ADR220 to the accepted persistence boundary."""
+    expected = {
+        "CONSTITUTION.md": "ADR221_game_first_refoundation_v4.yaml",
+        "NORTH_STAR.md": "ADR221 records",
+        "CLAUDE.md": "ADR221 maps",
+        ".opencode/skills/specification-discover/SKILL.md": "Use ADR221",
+    }
+    for relative_path, phrase in expected.items():
+        assert phrase in _repository_text(relative_path), relative_path
+
+
+def test_live_entry_points_name_only_the_existing_legacy_web_client() -> None:
+    """Current orientation never resurrects the deleted React client tree."""
+    found = tuple(
+        path
+        for path in _LIVE_ORIENTATION_PATHS
+        if "src/frontend" in _repository_text(path).lower()
+        or "react" in _repository_text(path).lower()
+    )
+    assert found == ()
+
+
+def test_skill_frontmatter_keeps_literal_identifiers() -> None:
+    """Tool discovery sees literal skill names, not escaped lookalikes."""
+    expected = {
+        ".opencode/skills/specification-discover/SKILL.md": "specification-discover",
+        ".opencode/skills/specification-validate/SKILL.md": "specification-validate",
+    }
+    for relative_path, identifier in expected.items():
+        text = _repository_text(relative_path)
+        assert text.startswith("---\n"), relative_path
+        closing_delimiter = text.find("\n---\n", 4, 1_028)
+        assert closing_delimiter > 4, relative_path
+        frontmatter = text[4:closing_delimiter]
+        document = yaml.safe_load(frontmatter)
+        assert document["name"] == identifier
+        assert f"name: {identifier}" in frontmatter
+        assert "\\u" not in frontmatter
+
+
+def test_mantras_describe_tendency_and_session_state_honestly() -> None:
+    """Mantras stay memorable without making false outcome or statelessness claims."""
+    document = yaml.safe_load(_repository_text(_MACHINE_ORIENTATION_PATH))
+    mantras = document["mantras"]
+    state_meaning = mantras["state_is_data"]["meaning"].lower()
+    tendency = " ".join(
+        (
+            mantras["agitation_without_solidarity"]["text"],
+            mantras["agitation_without_solidarity"]["meaning"],
+        )
+    ).lower()
+    assert "ticksession" in state_meaning
+    assert "no state in engine classes" not in state_meaning
+    assert "pressure" in tendency
+    assert "does not predetermine" in tendency
+
+
+def test_copilot_restore_key_guidance_is_scoped_to_python_venv_caches() -> None:
+    """The cache warning does not prohibit valid non-venv restore fallbacks."""
+    text = " ".join(_repository_text(".github/copilot-instructions.md").lower().split())
+    required = ("python virtual-environment caches", "restore-keys")
+    missing = tuple(phrase for phrase in required if phrase not in text)
+    assert missing == (), f".github/copilot-instructions.md is missing {missing}"
+
+
+def test_control_authority_keeps_per_2_identity_linkage_manual() -> None:
+    """The guide does not promise unverified Linear status automation."""
+    text = " ".join(_repository_text(_CONTROL_AUTHORITY_PATH).lower().split())
+    required = (
+        "per-2",
+        "manual convention",
+        "branch name",
+        "pull request title",
+        "pull request description",
+        "team has not verified automation",
+        "github project fields are not authoritative",
+    )
+    missing = tuple(phrase for phrase in required if phrase not in text)
+    assert missing == (), f"{_CONTROL_AUTHORITY_PATH} is missing {missing}"
+
+
+@pytest.mark.parametrize("relative_path", _LIVE_ORIENTATION_PATHS + _BEHAVIORAL_CONTRACT_PATHS)
+def test_live_v4_corpus_rejects_superseded_product_promises(relative_path: str) -> None:
+    """Current authority and contracts never promise predetermined history."""
+    text = _repository_text(relative_path).lower()
+    found = tuple(phrase for phrase in _SUPERSEDED_PRODUCT_PHRASES if phrase in text)
+    assert found == (), f"{relative_path} retains {found}"
+
+
+@pytest.mark.parametrize("relative_path", _LIVE_ORIENTATION_PATHS + _BEHAVIORAL_CONTRACT_PATHS)
+def test_live_v4_corpus_rejects_categorical_historical_outcomes(relative_path: str) -> None:
+    """Causal pressure may shape tendencies but cannot guarantee a political result."""
+    found = _categorical_outcome_matches(_repository_text(relative_path))
+    assert found == (), f"{relative_path} retains categorical outcomes {found}"
+
+
+@pytest.mark.parametrize(
+    "statement",
+    (
+        "A shock does not guarantee victory.",
+        "Theory never dictates outcomes.",
+    ),
+)
+def test_categorical_outcome_guard_accepts_negated_law(statement: str) -> None:
+    """Accurate prohibitions are negative controls, not categorical promises."""
+    assert _categorical_outcome_matches(statement) == ()
+
+
+@pytest.mark.parametrize(
+    "statement",
+    (
+        "A shock guarantees victory.",
+        "Theory dictates outcomes.",
+    ),
+)
+def test_categorical_outcome_guard_rejects_affirmative_guarantees(statement: str) -> None:
+    """The semantic guard continues to reject affirmative outcome promises."""
+    assert _categorical_outcome_matches(statement)
+
+
+@pytest.mark.parametrize("relative_path", _LIVE_ORIENTATION_PATHS + _BEHAVIORAL_CONTRACT_PATHS)
+def test_live_v4_corpus_has_no_broken_dotted_article_references(relative_path: str) -> None:
+    """Current prose cites v4 Articles or ADRs, never retired dotted clauses."""
+    references = tuple(_OLD_DOTTED_ARTICLE_REFERENCE.findall(_repository_text(relative_path)))
+    assert references == (), f"{relative_path} retains {references}"
 
 
 def test_constitution_has_exactly_the_approved_eight_articles() -> None:

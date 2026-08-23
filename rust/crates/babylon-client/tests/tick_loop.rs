@@ -34,15 +34,11 @@ fn press_key_via_real_event(app: &mut App, key: bevy::input::keyboard::KeyCode) 
 /// `TickCounter` — hardcoding `refresh_readouts`' hash text to
 /// `"hash: deadbeefdeadbeef"` left this test fully green (mutation-proven).
 /// Now the test reads the ACTUAL rendered `HashReadout` text and checks it
-/// against the session's own real post-tick `state_hash`, so the name is
-/// no longer an overclaim.
+/// against the session's own committed nominal world hash, so the name is
+/// no longer an overclaim and the shipped readout cannot regress to graph-only
+/// identity.
 #[test]
 fn pressing_space_advances_the_tick_and_updates_the_hash_text() {
-    // Needed below to call `.state_hash()`; hoisted to the top of the
-    // function (clippy::items_after_statements) rather than left inline
-    // where it was first used.
-    use babylon_graph::state_hash::CanonicalState;
-
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, AssetPlugin::default()));
     app.add_plugins(babylon_client::map::MapPlugin);
@@ -68,16 +64,16 @@ fn pressing_space_advances_the_tick_and_updates_the_hash_text() {
         .resource::<babylon_client::loop_ui::TickCounter>();
     assert_eq!(counter.0, 1);
 
-    // The ACTUAL rendered hash text must match the session's own real
-    // post-tick state_hash — not a placeholder, not a stale value.
-    let session = app
+    // The ACTUAL rendered hash text must match the last committed report's
+    // nominal world identity — not a placeholder, stale value, or graph-only
+    // recomputation that omits completed time and allocator state.
+    let expected_hash = app
         .world()
-        .resource::<babylon_client::engine_link::EngineSession>();
-    let expected_hash = session
-        .inner
-        .graph()
-        .state_hash()
-        .expect("post-tick state hashes");
+        .resource::<babylon_client::ui::admin::LastTickReport>()
+        .0
+        .as_ref()
+        .expect("tick one produced a committed report")
+        .world_after;
     let expected_text = format!("hash: {}", babylon_tick::hex(&expected_hash));
 
     let world = app.world_mut();
@@ -89,6 +85,6 @@ fn pressing_space_advances_the_tick_and_updates_the_hash_text() {
         .clone();
     assert_eq!(
         hash_text, expected_text,
-        "the rendered hash readout must equal the session's own real post-tick state_hash"
+        "the rendered hash readout must equal the last committed nominal world hash"
     );
 }

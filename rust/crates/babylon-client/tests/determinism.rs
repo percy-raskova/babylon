@@ -15,8 +15,8 @@ fn same_content_same_tick_count_yields_the_same_hash() {
         let ra = a.advance().expect("a advances");
         let rb = b.advance().expect("b advances");
         assert_eq!(
-            ra.after, rb.after,
-            "tick {tick}: two independent EngineSessions over the same content must hash identically"
+            ra.world_after, rb.world_after,
+            "tick {tick}: two independent EngineSessions over the same content must have identical world hashes"
         );
         assert_eq!(
             ra.per_rule_fired, rb.per_rule_fired,
@@ -34,11 +34,11 @@ fn five_ticks_produce_five_distinct_hashes() {
     let mut hashes = std::collections::HashSet::new();
     for _ in 0..5 {
         let report = session.advance().expect("advance");
-        hashes.insert(report.after);
+        hashes.insert(report.world_after);
     }
     assert_eq!(
         hashes.len(),
         5,
-        "each tick must produce a distinct state hash"
+        "each completed tick must produce a distinct nominal world hash"
     );
 }

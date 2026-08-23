@@ -1,24 +1,26 @@
-# Licensing
+<!-- vale ste.UnapprovedWords = NO -->
+
+# Licenses
 
 Babylon splits its license by kind of content, not by directory tree shape:
 
-- **Code: AGPL-3.0-or-later.** Full text: [`LICENSE`](LICENSE) (verified
-  byte-identical to the FSF canonical text at
-  `https://www.gnu.org/licenses/agpl-3.0.txt`).
-- **Shipped creative assets: CC0-1.0.** Full text:
-  [`LICENSE-ASSETS`](LICENSE-ASSETS) — a two-line pointer header followed
-  by the Creative Commons canonical text
-  (`https://creativecommons.org/publicdomain/zero/1.0/legalcode.txt`),
-  verified byte-identical from the legal text's first line onward.
+- **Code and the Bevy image estate: AGPL-3.0-or-later.** Read [`LICENSE`](LICENSE).
+- **Shipped audio estates: CC0-1.0.** Read [`LICENSE-ASSETS`](LICENSE-ASSETS).
 
-This file states which directories fall under which license and flags the
-ones that are not yet decided. It does not restate either license's legal
-text — read `LICENSE` or `LICENSE-ASSETS` for that.
+The project verified `LICENSE` against the FSF canonical text at
+`https://www.gnu.org/licenses/agpl-3.0.txt`. `LICENSE-ASSETS` has a two-line pointer header. The
+text after the header matches the Creative Commons canonical text at
+`https://creativecommons.org/publicdomain/zero/1.0/legalcode.txt`.
+
+This file maps directories to each license. It also flags categories that do not have a decision.
+Read `LICENSE` or `LICENSE-ASSETS` for the legal text.
 
 ## AGPL-3.0-or-later (code)
 
-Everything that is source, configuration, or docs-as-code, including:
+This section covers source, configuration, and docs-as-code:
 
+<!-- vale off -->
+<!-- Exact repository paths, formats, and license fields. -->
 - `src/babylon/**` — the Python engine (package root; see `pyproject.toml`'s
   `license` field).
 - `rust/crates/**` — all five in-tree crates (`babylon-kernel`,
@@ -27,6 +29,10 @@ Everything that is source, configuration, or docs-as-code, including:
   `license.workspace = true`. This includes `babylon-bsl`'s BSL rule
   content — BSL is executable rules-as-content (Constitution Amendment AE),
   not a creative asset, so it is code for licensing purposes.
+- `design/bevy-assets/**` — original SVG interface masters, OpenAI image-generation prompt records,
+  the asset manifest, and the authoritative provenance record.
+- `rust/crates/babylon-client/src/visual_assets/embedded/**` — the Bevy interface PNG files and
+  generated illustration WebP files listed in `design/bevy-assets/manifest.toml`.
 - `tests/`, `tools/`, `scripts/`, `docs/` (the reStructuredText/Markdown
   sources, not any rendered build output), `data-artifacts.yaml`,
   `data-catalog.yaml`, and project TOML/YAML configuration.
@@ -34,28 +40,38 @@ Everything that is source, configuration, or docs-as-code, including:
   previews) — **except** the one vendored binary described below.
 - `design/mockups/**` and `design/ui_kits/webapp_v2/` (JSX/HTML/CSS/MD/JSON
   markup and code) — **except** the one binary image described below.
+<!-- vale on -->
 
-## CC0-1.0 (shipped creative assets)
+## CC0-1.0 (shipped audio estates)
 
+<!-- vale off -->
+<!-- Exact repository paths, license fields, and ADR identifiers. -->
 - `src/assets/sfx/` — the 39-sound interface SFX suite (ADR152). Also
   carries its own `src/assets/LICENSE` (identical CC0-1.0 text) and states
   "License: CC0-1.0" in `src/assets/README.md`.
 - `src/assets/music/` — the 13-track soundtrack (ADR153). Same
   `src/assets/LICENSE` and README statement as above.
+<!-- vale on -->
 
-## Third-party, not relicensed
+The new Bevy image estate described above does not change the CC0-1.0 classification of these
+audio estates.
 
+## Third-party license
+
+<!-- vale off -->
+<!-- Exact third-party path and license identifiers. -->
 - `.design-sync/fonts-nerd/iosevka-nerd-mono.woff` — Iosevka Nerd Font,
   ships under its own upstream license (SIL OFL 1.1). This repository does
   not hold copyright over this file and does not relicense it AGPL or CC0.
+<!-- vale on -->
 
 ## Known gaps — flagged, not yet decided
 
-The following tracked paths are not covered by either license statement
-above because their provenance or intended disposition has not been ruled
-on. They are listed here rather than silently omitted so nobody assumes an
-absence of a rule means "AGPL by default":
+The project has not assigned either license to the tracked paths below. Their provenance or intended
+disposition does not have a ruling. This explicit list prevents an "AGPL by default" assumption:
 
+<!-- vale off -->
+<!-- Exact unresolved paths and historical provenance notes. -->
 - **`assets/music/`** (legacy: `crisis/`, `fascist/`, `revolutionary/`
   suites + `babylon_theme_panopticon.mid` / `babylon_theme_phi.mid`, 32
   tracked files). Predates the `src/assets/` CC0 estates by about seven
@@ -79,8 +95,12 @@ absence of a rule means "AGPL by default":
   neither "code" nor "creative asset" in the sense this document addresses;
   a future issue should decide whether a source-attribution `NOTICE` is
   needed.
+<!-- vale on -->
 
+<!-- vale off -->
+<!-- Exact excluded paths and file names. -->
 `assets/audio/**` (MP3 renders) and the gitignored files under
 `assets/images/` (`fascist_flag.png`, `ff-template.zip`, `prolewiki.zip`,
 `templates.zip`) are excluded from this document because they are not
 tracked in git and are never shipped.
+<!-- vale on -->

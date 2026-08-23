@@ -79,6 +79,7 @@ fn spawn_story_banner(
             ..default()
         },
         visibility,
+        GlobalZIndex(-1),
         StoryBanner,
     ));
 }

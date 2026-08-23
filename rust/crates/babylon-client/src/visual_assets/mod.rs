@@ -12,8 +12,16 @@ pub use gallery::{GalleryAssetLabel, GalleryScrollRoot, VisualAssetGalleryPlugin
 pub use presentation::{ReadableTitle, StoryBanner, TitleMark, VisualPresentationPlugin};
 
 use bevy::asset::{embedded_asset, load_embedded_asset, AssetApp, Assets, Handle};
-use bevy::image::{Image, TextureAtlasLayout};
+use bevy::image::{Image, ImageLoaderSettings, ImageSampler, TextureAtlasLayout};
 use bevy::prelude::{App, Plugin, Resource, UVec2};
+
+fn nearest_image_settings(settings: &mut ImageLoaderSettings) {
+    settings.sampler = ImageSampler::nearest();
+}
+
+fn linear_image_settings(settings: &mut ImageLoaderSettings) {
+    settings.sampler = ImageSampler::linear();
+}
 
 /// Loads the complete embedded visual-asset family and its atlas layouts.
 #[derive(Default)]
@@ -40,26 +48,56 @@ impl Plugin for VisualAssetsPlugin {
         embedded_asset!(app, "embedded/banner-topology.webp");
         embedded_asset!(app, "embedded/banner-collapse.webp");
 
-        let title_mark = load_embedded_asset!(app, "embedded/title-mark.png");
-        let interface_atlas = load_embedded_asset!(app, "embedded/interface-atlas.png");
-        let marker_atlas = load_embedded_asset!(app, "embedded/marker-atlas.png");
-        let provenance_atlas = load_embedded_asset!(app, "embedded/provenance-atlas.png");
-        let frame_atlas = load_embedded_asset!(app, "embedded/frame-atlas.png");
-        let surface_atlas = load_embedded_asset!(app, "embedded/surface-atlas.png");
-        let hero_red_apparatus = load_embedded_asset!(app, "embedded/hero-red-apparatus.webp");
-        let hero_empire_anatomized =
-            load_embedded_asset!(app, "embedded/hero-empire-anatomized.webp");
-        let concept_bunker_oracle =
-            load_embedded_asset!(app, "embedded/concept-bunker-oracle.webp");
-        let concept_living_map = load_embedded_asset!(app, "embedded/concept-living-map.webp");
-        let concept_carceral_circuit =
-            load_embedded_asset!(app, "embedded/concept-carceral-circuit.webp");
-        let concept_metabolic_rift =
-            load_embedded_asset!(app, "embedded/concept-metabolic-rift.webp");
-        let banner_counties = load_embedded_asset!(app, "embedded/banner-counties.webp");
-        let banner_carceral = load_embedded_asset!(app, "embedded/banner-carceral.webp");
-        let banner_topology = load_embedded_asset!(app, "embedded/banner-topology.webp");
-        let banner_collapse = load_embedded_asset!(app, "embedded/banner-collapse.webp");
+        let title_mark =
+            load_embedded_asset!(app, "embedded/title-mark.png", nearest_image_settings);
+        let interface_atlas =
+            load_embedded_asset!(app, "embedded/interface-atlas.png", nearest_image_settings);
+        let marker_atlas =
+            load_embedded_asset!(app, "embedded/marker-atlas.png", nearest_image_settings);
+        let provenance_atlas =
+            load_embedded_asset!(app, "embedded/provenance-atlas.png", nearest_image_settings);
+        let frame_atlas =
+            load_embedded_asset!(app, "embedded/frame-atlas.png", nearest_image_settings);
+        let surface_atlas =
+            load_embedded_asset!(app, "embedded/surface-atlas.png", nearest_image_settings);
+        let hero_red_apparatus = load_embedded_asset!(
+            app,
+            "embedded/hero-red-apparatus.webp",
+            linear_image_settings
+        );
+        let hero_empire_anatomized = load_embedded_asset!(
+            app,
+            "embedded/hero-empire-anatomized.webp",
+            linear_image_settings
+        );
+        let concept_bunker_oracle = load_embedded_asset!(
+            app,
+            "embedded/concept-bunker-oracle.webp",
+            linear_image_settings
+        );
+        let concept_living_map = load_embedded_asset!(
+            app,
+            "embedded/concept-living-map.webp",
+            linear_image_settings
+        );
+        let concept_carceral_circuit = load_embedded_asset!(
+            app,
+            "embedded/concept-carceral-circuit.webp",
+            linear_image_settings
+        );
+        let concept_metabolic_rift = load_embedded_asset!(
+            app,
+            "embedded/concept-metabolic-rift.webp",
+            linear_image_settings
+        );
+        let banner_counties =
+            load_embedded_asset!(app, "embedded/banner-counties.webp", linear_image_settings);
+        let banner_carceral =
+            load_embedded_asset!(app, "embedded/banner-carceral.webp", linear_image_settings);
+        let banner_topology =
+            load_embedded_asset!(app, "embedded/banner-topology.webp", linear_image_settings);
+        let banner_collapse =
+            load_embedded_asset!(app, "embedded/banner-collapse.webp", linear_image_settings);
 
         let (interface_layout, marker_layout, provenance_layout, frame_layout, surface_layout) =
             create_atlas_layouts(app);

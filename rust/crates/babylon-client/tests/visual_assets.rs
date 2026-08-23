@@ -63,6 +63,7 @@ fn visual_presentation_app(
         story_card_visible,
     ));
     app.add_plugins(babylon_client::visual_assets::VisualPresentationPlugin);
+    app.add_systems(Startup, babylon_client::ui::story_card::spawn_story_card);
     app.finish();
     app.update();
     app
@@ -209,6 +210,32 @@ fn story_banner_tracks_the_selected_story_and_story_card_visibility() {
 
     let (_, visibility) = story_banner_state(&mut app);
     assert_eq!(visibility, Visibility::Hidden);
+}
+
+#[test]
+fn story_banner_is_globally_below_the_readable_story_card_layer() {
+    let _guard = bevy_app_test_guard();
+    let mut app = visual_presentation_app(babylon_client::story::counties(), true);
+    let world = app.world_mut();
+    let mut banner_query =
+        world.query_filtered::<&GlobalZIndex, With<babylon_client::visual_assets::StoryBanner>>();
+    let banner_z = banner_query
+        .single(world)
+        .expect("story banner must declare an explicit global z-index")
+        .0;
+    let mut story_card_query = world.query_filtered::<
+        Option<&GlobalZIndex>,
+        With<babylon_client::ui::story_card::StoryCardText>,
+    >();
+    let story_card_z = story_card_query
+        .single(world)
+        .expect("exactly one readable story-card layer")
+        .map_or(0, |z_index| z_index.0);
+
+    assert!(
+        banner_z < story_card_z,
+        "story banner z-index {banner_z} must remain below story-card z-index {story_card_z}"
+    );
 }
 
 #[test]

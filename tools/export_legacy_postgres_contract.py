@@ -148,7 +148,9 @@ def main() -> int:
         FIXTURES.mkdir(parents=True, exist_ok=True)
         SCHEMA_FIXTURE.write_bytes(schema)
         MIGRATION_FIXTURE.write_bytes(migrations)
-        print("wrote POSTGRES_SCHEMA_DDL=112 migrations=35")
+        schema_chunks = schema.count(b"\0")
+        migration_chunks = migrations.count(b"\0")
+        print(f"wrote POSTGRES_SCHEMA_DDL={schema_chunks} migrations={migration_chunks}")
         return 0
     checks = (
         _check(SCHEMA_FIXTURE, schema),

@@ -1,734 +1,292 @@
-<!--
-================================================================================
-SYNC IMPACT REPORT
-================================================================================
-Version Change: 3.1.0 → 3.2.0 (2026-08-10)
-Bump Rationale: MINOR — Amendment AG (Attributed Membership + Lattice
-  Instances) registered, Director-ratified (in-session approval 2026-08-10
-  over the two R9 spec-chapter escalations, bsl-language.rst D66/D62). The
-  exposed hypergraph model gains ATTRIBUTED MEMBERSHIP — per-(member,
-  hyperedge) payload as a first-class incidence object; the dyadic-edge
-  landing is rejected for re-exposing the incidence encoding sub-ruling D-1
-  confines to internal storage. The formalism surface re-opens for minting
-  INSTANCES of the existing scale-lattice adjunction schema from content
-  (kinds stay closed). Discharges the D66 port blocker (CommunitySystem
-  threat score); completes C11's lattice expression. Recording ADR: ADR189.
-================================================================================
-Version Change: 3.0.1 → 3.1.0 (2026-08-10)
-Bump Rationale: MINOR — Amendment AF (The Bevy Cutover) registered,
-  Director-ratified (rulings R1–R10, 2026-08-10, in-session). Bevy replaces
-  the Rust/Ratatui terminal client outright (Textual-deletion precedent);
-  Amendment AC superseded in full and AE clause (xi) superseded; the ADR099
-  glyph floor retires; the topology/hypergraph/Sankey visualization
-  obligations transfer to Bevy scenes. The Ratatui estate is deleted by
-  declared ceremony; the maturin wheel leaves the default dependency set.
-  Recording ADR: ADR186. Design: docs/superpowers/specs/
-  2026-08-10-program-28-bevy-cutover-roadmap-design.md.
-================================================================================
-Version Change: 3.0.0 → 3.0.1 (2026-07-30)
-Bump Rationale: PATCH — III.7 hash re-point (ADR179 T2, Director-delegated
-  ruling under a no-technical-debt constraint, executed same-day). III.7's
-  definition ("hash of its inputs: World state + player actions + random
-  seed") always described a CONTENT hash, but the clause's replay-integrity
-  sentence was read against tick_commit.determinism_hash — a
-  session:tick:seed identity string carrying no world state, structurally
-  unable to detect divergence. The clause now names its hash explicitly (the
-  P27 tick hash / content_hash, babylon.kernel.tick_hash reference
-  implementation, byte layout in docs/reference/determinism-contract.rst),
-  names the replay-identity stamp as a SEPARATE lineage marker
-  (replay_identity_hash, renamed from determinism_hash by migration 0044),
-  and names hex_frame_hash as the audit-scoped partial content hash. No
-  obligation is created or relaxed — the clause's own definition governs
-  throughout; the edit removes the reading under which a non-content hash
-  appeared to satisfy it. Companion code: PRs #416 (the content hash +
-  regression gate), #418 (the rename sweep, owner-queue item 31 closed).
-  Recording ADR: ADR179 (T2).
-================================================================================
-Version Change: 2.18.0 → 3.0.0 (2026-07-29)
-Bump Rationale: MAJOR — Amendment AE (The Refoundation: BSL + the Rust Kernel)
-  registered, Director-ratified (rulings R1–R9, 2026-07-28 → 2026-07-29).
-  Rebinds the ENGINE LANGUAGE to Rust (Python survives as data-build pipeline,
-  out-of-process AI observer, and engine-decoupled CLI periphery), superseding
-  NORTH_STAR §6.2. Re-opens NORTH_STAR §0's formalism closure ADDITIVELY for
-  exactly one construct — the Babylon Scripting Language (BSL), which expresses
-  the closed algebra and mints no new mathematics — and SUBTRACTIVELY for III.10
-  retirements out of the Program 27 numeric annex, each recorded as a RIDER to
-  this amendment enumerating the retired construct. Invariant 2 survives
-  verbatim with "engine" rebound. ADR063's Rust deferral superseded (its
-  monorepo + re-baselining conclusions retained; the tick profile is published
-  as evidence hygiene, not a gate). Amendment D resolved SAME-SESSION inside the
-  program: Director ruled NATIVE HYPEREDGE (analysis §9, PR #353) before
-  babylon-graph commits a data shape (IX.3.4 honored); II.3's transition-state
-  marker closes. Amendment AA Windows note recorded. The Python engine freezes
-  at an executable pin with a scheduled runnable-through-cutover CI job. v1.0
-  retargets to the Rust engine's release (invariant 8 + §6.3 forcing function
-  follow; save-compat semver resets). Engine crates land in the in-tree rust/
-  workspace (extends Amendment AC (i); supersedes the 2026-07-22 extraction
-  ruling for engine crates; hypergraph-rs's charter does not expand).
-  Sentinel-estate continuity is a hard cutover gate (IX.5's autonomy license).
-  MAJOR: a principle's binding is redefined (II.6) and a bounded removal power
-  over ratified constructs is created (clause iii). No Article-I primitive
-  changes, so no IX.2 staged series is triggered. Same-session theory ruling
-  recorded alongside (Director, 2026-07-29): NO functional form (sigmoid
-  included) may be IMPOSED on mechanics — curve shapes must EMERGE from the
-  algebraic operations; the P27 sigmoid-intrinsic question is reframed
-  accordingly (proscription audit chartered).
-  Same-session Director directive added as clause (xi): ratty + Ratatui are
-  the REQUIRED in-game renderers for the topology (native hyperedges), the
-  hypergraph structures, and value-flow Sankey diagrams — extends Amendment
-  AC (v)'s target list; glyph floor + AC (vi) dependency rule unchanged.
-  Recording ADR172. Draft's §8 items 2–6 applied at their drafted defaults
-  under the interactive ratification (letter AE confirmed; rider
-  disambiguation via this report; rigor-budget exception confirmed by
-  ratifying the clause set; log-estate stays an in-program ruling; clause (ix)
-  save-compat reset + client-stops-carry as drafted).
-
---- prior report (v2.17.0 → 2.18.0) ---
-Version Change: 2.17.0 → 2.18.0 (2026-07-27)
-Bump Rationale: MINOR — Amendment AD (The Agentic Engineering Model)
-  registered, owner-ratified 2026-07-27 (BD directive, in-session). Names the
-  project's development model: a human DIRECTOR who steers direction and holds
-  SOLE authority over the ideological/theoretical line the simulation encodes,
-  with autonomous AI agents as the engineering workforce whose autonomy is
-  LICENSED BY THE GATES (determinism III.7 / the sentinel family / behavioral
-  contracts III.12 / TDD red phase / Loud Failure III.11 / baseline ceremonies
-  §6.5). Adds IX.5 (Development Model — Agentic Engineering); SUBSUMES the
-  Benevolent-Dictator model as the Director role (final merge authority to main
-  PLUS reserved ideological authority — not a replacement, a renaming for the
-  function it serves in an agent-executed project). No primitive, tick, or
-  architecture principle changes — a development-model designation — MINOR.
-  Docs swept: CONTRIBUTORS.md, README.md, docs/agents/governance.md, CLAUDE.md.
-  Recording ADR151.
-
---- prior report (v2.16.0 → 2.17.0) ---
-Version Change: 2.16.0 → 2.17.0 (2026-07-27)
-Bump Rationale: MINOR — Amendment AC (The Raster Cutover) registered,
-  owner-ratified 2026-07-27 via the in-session interview rulings BD-1…BD-10
-  (recorded in ADR150 and the design doc §3): the Rust/Ratatui client is
-  DESIGNATED v1.0's terminal Archive client (superseding the 2026-07-23
-  critical-path plan's defer disposition), homed IN-TREE at rust/ (superseding
-  the 2026-07-22 extraction ruling for client crates only), with a chartered
-  v1.0-blocking 3D visualization lane rendered through hypergraph-rs's raster
-  feature consumed as a rev-pinned cargo git-dependency, the tutorial-BDD
-  parity gate + BD Gate 3 at M3, and the M7 Textual deletion INSIDE the v1.0
-  release (packaging consequence: the maturin wheel enters the default
-  install/T7 closure at M7). II.8/Amendment V's client contract is unchanged —
-  this designates an implementation, not a primitive — MINOR.
-
---- prior report (v2.15.0 → 2.16.0) ---
-Version Change: 2.15.0 → 2.16.0 (2026-07-22)
-Bump Rationale: MINOR — Amendment T (The Divergence Channel: Authored σ,
-  Observes-Only) registered, closing the letter reserved since ADR072
-  (2026-07-15). Ratification was BD-DELEGATED 2026-07-22 in-session ("you
-  can decide for me on amendment T" — delegation recorded in ADR126); the
-  delegated ruling: RATIFY as drafted in ADR072's proposed_amendment,
-  observes-only, WITH an off-critical-path rider — ratification is
-  governance only; Phase-1 implementation (the three additive fields + the
-  DT chauvinism_internationalism shadow binding) stays queued off the v1.0
-  critical path per NORTH_STAR §0 ("we are rigorous enough"; the rigor
-  budget is spent wiring existing mathematics to the player). Rationale for
-  ratifying rather than declining: T is a guarantee of RESTRAINT — it
-  fences the authored channel (the divergence adjudicates nothing until a
-  declared promotion ceremony) — and three programs (Doctrine Tree Unit 6,
-  P19's read_poles surface, the Electoral Question's practice-derived tag
-  drift) cite the reservation; a definitive disposition unblocks their
-  specs without adding a line of code. ADR072 status flips
-  proposed → accepted. No primitive touched — MINOR.
-
---- prior report (v2.14.0 → 2.15.0) ---
-Version Change: 2.14.0 → 2.15.0 (2026-07-21)
-Bump Rationale: MINOR — Amendment AA (Portability Horizon: Windows Post-1.0)
-  registered, BD-directed 2026-07-21 in-session ("windows-compatibility is
-  going to be a big factor in my choice of solution eventually, not for
-  v1.0.0 release but upgrading it to be compatible with windows is a must
-  once the game concept is proven to work" → "we should update the
-  constitution to make windows compatibility a requirement post v1.0.0 so
-  that way it doesn't hinder pre-1.0.0 development"). AA does two things:
-  (1) upgrades X.8's Windows language from roadmap prose ("documented
-  workaround" / "2.0.0 portability release") to a BINDING post-1.0.0
-  requirement with two ordered lanes (WSL2 first — the existing flake
-  channel promoted to a supported path; native Windows second — the 2.0.0
-  release, a separate non-Nix packaging story); (2) erects the SHIELD: no
-  pre-1.0.0 work may be gated, taxed, or complicated by Windows — no
-  Windows CI legs, no speculative cross-platform abstractions, no v1.0 DoD
-  item referencing Windows. The only pre-1.0 duty is cheap optionality:
-  a one-line Windows-impact note in load-bearing platform/language ADRs
-  (disclosure, never a gate) and preferring the non-foreclosing design
-  where otherwise equal. X.8's letter revised in place (Amendment P
-  factual-drift pattern; D1 unix-socket substance unchanged on Linux — the
-  TCP-loopback fallback is a documented SEAM for the future Windows lane,
-  not an implementation). Lettering consequence: the drafted Material-Triad
-  amendment (metabolic paper) slides from its planned AA to AB+; T remains
-  reserved (ADR072). Registered same-cycle: ADR108. No primitive touched —
-  MINOR.
-
---- prior report (v2.13.0 → 2.14.0) ---
-Version Change: 2.13.0 → 2.14.0 (2026-07-21)
-Bump Rationale: MINOR — Amendment Z (Environment Sovereignty) registered,
-  BD-directed 2026-07-21 in-session ("we can stop the subrepository
-  business, move babylon-infra/ into ../ and just copy paste what we need
-  in" → vendor ruling confirmed via structured question). Z revises X.7's
-  LETTER (the Amendment P factual-drift pattern; pinning substance
-  unchanged): the sole-pinning-authority flake now lives IN THIS REPO
-  (flake.nix devShells `default` + `dataBuild`, vendored from babylon-infra
-  at identical locked input revs — dataBuild python-env store-path identity
-  verified at vendoring), the `infra/` submodule is unmounted, and
-  babylon-infra remains the private sibling ops repo governed by its own
-  constitution (provisioning, host config, infra-agent conduct unchanged
-  there). Root cause distinguished for the record: the PYTHONPATH-shadowing
-  bug was nixpkgs python setup-hook leakage (fixed by shellHook `unset` +
-  the `check:env-contract` guard, both repos), NOT submodule mechanics; the
-  submodule was removed for its independent structural costs
-  (public-babylon/private-infra deploy-key fetch in nightly.yml,
-  dual-checkout pin ceremony, `submodule update --init` gotchas, cross-repo
-  sqlite lockstep). The sqlite-3.53.1 lockstep is now same-repo (flake.nix
-  `nixpkgs-data` rev-pinned URL ↔ `PINNED_SQLITE_VERSION`;
-  tools/check_release_pins.sh gates releases on both halves). Implemented
-  same-cycle: ADR102. No principle rewritten beyond X.7's home; no
-  primitive touched — MINOR under the Amendment L tooling precedent.
-
---- prior report (v2.12.0 → 2.13.0) ---
-Version Change: 2.12.0 → 2.13.0 (2026-07-20)
-Bump Rationale: MINOR — Amendment Y (Pydantic AI as Canonical LLM SDK)
-  registered, BD-directed 2026-07-20 ("we amend the constitution to use
-  Pydantic AI and we replace our hand rolled vibecode ai client"). Y rules
-  pydantic-ai (slim, openai extra) PASSES the X.6 solo-developer filter — a
-  maintained upstream SDK replacing two hand-rolled per-provider client
-  stacks is maintenance removed, not added — and adopts it as the canonical
-  SDK for the generation lane (narrator + judge). Boundaries unchanged: the
-  §A8 wire seam stays OpenAI-compatible /v1; Amendment V narrator-only holds
-  (no LLM in the input path, no agentic tool loops against engine state —
-  structured output validated by pydantic remains observation, never
-  adjudication); III.6 pinning governs all persisted output; embeddings and
-  health probes remain on the stock openai client (pydantic-ai carries no
-  embedding API); litellm/langchain remain rejected under X.6. Test-tier
-  hygiene: ALLOW_MODEL_REQUESTS=False globally (no real LLM request can
-  escape a test). Implemented same-cycle: ADR100 (llm_provider.py, judge.py
-  structured output, providers.py narrate lane). No principle rewritten,
-  no primitive touched — MINOR under the Amendment L tooling precedent.
-
---- prior report (v2.11.0 → 2.12.0) ---
-Version Change: 2.11.0 → 2.12.0 (2026-07-20)
-Bump Rationale: MINOR — Amendments V (Client Rebinding & Narrator-Only AI),
-  W (Deterministic Materialization), X (Infrastructure Domain & Local-First
-  Distribution) registered in one cycle (the R+S same-cycle precedent), all
-  owner-ratified 2026-07-20 (in-session instruction to implement the
-  babylon-infra / Archive-pivot amendment package; sources:
-  ai/_inbox/tui/tui-roadmap-update.md §6 — drafted with provisional letters
-  T/U/V against v2.10.0, re-lettered here to V/W/X because U was taken by the
-  Scale Lattice and T stays reserved for the Divergence Channel —
-  ai/_inbox/tui/babylonlocalfirstinfrastructure.md (BD rulings D1–D3), and
-  the babylon-infra constitution v1.0.0).
-  V rewrites II.5 (narrator-only: no LLM in the input path, ruling R4; local-
-  first provider stack per D2; Amendment I superseded-in-part), II.8 (client
-  transport-generalized: in-process call / HTTP / file materialization are
-  equal transports of the observe() contract; browser client = legacy per the
-  2026-07-20 TUI ruling), and III.6 (pinning law generalized from parsed
-  vectors to all persisted AI artifacts).
-  W adds III.13 Deterministic Materialization (ORDER BY projections,
-  sandboxed sim-time-only templates, byte-identical artifacts, the golden
-  vault joining III.12's artifact list) [PENDING CODE]; III.9 P1 tier gains
-  III.13.
-  X scopes X.1 to the production estate (the blanket "No Docker, no Nix"
-  letter corrected per the Amendment P factual-drift pattern — production-
-  host substance unchanged), carves out Grafana+SQL fleet observability in
-  X.6 (BD ruling D3), and adds X.7 Toolchain Single Pinning Authority
-  [IMPLEMENTED — the infra/ submodule flake, sqlite-3.53.1 lockstep] and
-  X.8 Local-First Distribution (Periphery/Metropole) [PENDING CODE —
-  embedded player PG17+pgvector, Nix flake beta channel, Metropole observes-
-  never-adjudicates, web serving stack legacy].
-  Held, explicitly NOT in this cycle: the roadmap's Provenance & Ceremony
-  amendment (6.5 — BD's call on its home is still open); the CCL amendment
-  (re-derive against ADR082/083); NLCD data-source amendment (gates Epic 14);
-  Amendments B/D unchanged; T still reserved (ADR072 awaiting BD).
-
---- prior report (v2.9.1 → 2.10.0) ---
-Version Change: 2.9.1 → 2.10.0 (2026-07-14)
-Bump Rationale: MINOR — Amendments R (Nationwide Canonical Scale) + S
-  (Dialectical Apex) registered in one cycle, both owner-ratified 2026-07-14.
-  R retitles Article IV: the canonical test case is now the United States
-  NATIONWIDE (all ~3,100 counties, 2010–2025); Michigan-83 and the tri-county
-  sub-test demote to coarse-graining backward-compat acceptance criteria —
-  the same preservation pattern Amendment E applied to tri-county when the
-  case went statewide. Owner rationale recorded verbatim in IV. The five
-  synthetic qa:regression micro-scenarios are explicitly NOT scale samples
-  (they are III.7/III.12 determinism contracts) and are unaffected. The
-  e2e/sample migration to a nationwide scenario is [RATIFIED · PENDING CODE];
-  the storage layer for it (specs 087/088/089, national res-7) already
-  shipped. III.9 P1 tier label updated ("IV Nationwide Test Case").
-  S extends I.19 with the Apex Abstraction clause: the Lawverian dialectic is
-  the highest level of abstraction in the system — pure motion and change
-  itself, and the mechanics by which it unfolds — and no construct may
-  abstract over it. Extends I.19/Amendment K; no primitive is removed or
-  redefined (hence MINOR, not MAJOR).
-
---- prior report (v2.9.0 → 2.9.1) ---
-Version Change: 2.9.0 → 2.9.1 (2026-07-09, same evening)
-Bump Rationale: PATCH — status-marker flip only: III.12 corollary (a)
-  [PENDING CODE] → [IMPLEMENTED] (program 13 landed both items the same day:
-  docs/reference/determinism-contract.rst with the hand-computation gate
-  satisfied, and dense full-trace goldens for the 5 regression scenarios
-  byte-compared in qa:regression with a double-generation determinism proof).
-  No principle text changed.
-
---- prior report (v2.8.0 → 2.9.0) ---
-Version Change: 2.8.0 → 2.9.0 (2026-07-09)
-Bump Rationale: MINOR — Amendment Q (Behavioral Contracts / Durable Spec).
-  New III.12: the system's observable behavior must be pinned in
-  implementation-agnostic artifacts (checkpoint baselines, full-trace goldens,
-  defines.yaml, seed data, the Postgres schema, observe()/HTTP contracts,
-  written predicate specs) — the durable spec any reimplementation is
-  validated against (the "rewrite test"); constitutional hashes require a
-  language-agnostic canonical-serialization reference [PENDING CODE,
-  program 13]; cross-implementation float validation is tolerance-bounded per
-  III.7; verification stays redundant (replay + property + scenario +
-  contract + mutation). New VIII.13 (Spec Trapped in Implementation). III.9
-  P1 tier gains III.12. Prompted by the 2026-07-09 test-suite rewrite audit
-  (project/assessments/TEST_SUITE_REWRITE_AUDIT-2026-07-09.md); doctrinal
-  sources Fowler ("evaluations as behavioral contracts that outlive any
-  particular implementation") and Majors ("code as a materialized view of
-  understanding"). Owner-ratified 2026-07-09.
-
---- prior report (v2.7.0 → 2.8.0) ---
-Version Change: 2.7.0 → 2.8.0 (2026-07-09)
-Bump Rationale: MINOR — Amendments M (superseded), N (Spectrum of Unequal
-  Exchange → I.2a), O (Transport Substrate extension → II.13), P (Loud Failure
-  III.11 + VIII.12 + III.7 determinism honesty). Amendment C RESOLVED (OODA home
-  = organization graph-node metadata). Article VII de-particularized (no
-  constitutional palette / type stack / texture — supersedes the drafted M;
-  aesthetics are a design-system concern). Factual drift fixed (II.6/II.10 →
-  Postgres runtime + pgvector; SQLite = read-only fixture). Dialectic sublation
-  glyph σ → s (I.19) to free σ for the I.2a spectrum coordinate. Governing
-  document relocated: .specify/memory/constitution.md → repo-root CONSTITUTION.md
-  (data-catalog.yaml likewise); the 10 stale constitution/article-*.md annex
-  fragments retired (the monolith is the single source of truth).
-
---- prior report (v2.6.1 → 2.7.0) ---
-Version Change: 2.6.1 → 2.7.0
-Bump Rationale: MINOR — Amendments K and L registered in one cycle. K
-  records the executable implementation of the dialectic primitive
-  (Lawverian refactor, ADR051) and adds two principles (III.10
-  Earn-Its-Keep, VIII.11 Tension-as-Accumulator anti-pattern). L rebinds
-  the graph substrate implementation from NetworkX to rustworkx. No
-  primitive is removed or redefined: II.3's manifold commitment is
-  library-independent — only the implementation binding changes.
-  Amendment C is RESOLVED in v2.8.0 (OODA home = organization graph-node metadata).
-
-Modified Principles:
-  - II.3 — retitled "Graph as Discretized Manifold"; implementation
-    binding now rustworkx; [TRANSITION STATE — Amendment D] marker
-    preserved with the dual-graph commitment renamed to rustworkx+XGI
-  - II.6 — Embedded Trinity: "NetworkX Topology" → "rustworkx Topology";
-    "ChromaDB Archive" → "pgvector Archive" (factual drift fix per
-    spec-037, rider on Amendment L)
-  - II.12 — rustworkx is the authoring API (three-layer stack unchanged)
-  - III.9 — P2 tier label "II.3 NetworkX Manifold" → "II.3 Graph
-    Manifold"; III.10 added to the P1 tier
-  - X.5 — Hetzner compute list: NetworkX → rustworkx
-
-Added Principles:
-  - III.10 Earn-Its-Keep (Categorical Constructs) — a categorical
-    construct ships only with a law, a prediction, or a running
-    computation (Amendment K)
-  - VIII.11 Tension as Accumulator — contradiction intensity is a fresh
-    per-tick measured gap, never an add-only ratchet (Amendment K)
-
-Added Sections:
-  - IX.2 Amendment K — Lawverian Dialectics Implementation (ratified
-    v2.7.0; source ai-docs/decisions/ADR051)
-  - IX.2 Amendment L — Graph Substrate: NetworkX → rustworkx (ratified
-    v2.7.0; implementation on branch refactor/networkx-to-rustworkx,
-    ADR052 forthcoming)
-
-Templates Requiring Updates:
-  ✅ plan-template.md: No hardcoded principle numbers
-  ✅ spec-template.md: No constitution references
-  ✅ tasks-template.md: No constitution references
-  ✅ checklist-template.md: No constitution references
-  ✅ agent-file-template.md: No constitution references
-
-Follow-up TODOs:
-  - AMENDMENT B: Four-node partition invariance proof under
-    morphism-preserving coarse-graining
-  - AMENDMENT C: RESOLVED in v2.8.0 — OODA profile home ratified as
-    organization graph-node metadata (`ooda_profile` on the org node),
-    the shipped implementation. No longer blocks the amendment cycle.
-  - CODE: Amendment L implementation (BabylonGraph substrate swap +
-    ADR052) lands on branch refactor/networkx-to-rustworkx; constitution
-    ratified ahead of code per IX.1 compliance triggers.
-  - ANNEX: RETIRED in v2.8.0 — the constitution/article-*.md fragment files
-    (which lagged the monolith) were deleted; this monolith is the single
-    source of truth.
-  - AMENDMENT D: Hyperedge reconciliation spec (preserve Anti-Pattern
-    VIII.9 under strictly-dyadic morphism constraint)
-  - CODE: Audit all Postgres schema definitions for subsystem table
-    ownership violations. Document coupling where found.
-  - CODE: Update AGENTS.md Embedded Trinity description to distinguish
-    runtime World from persistence layer
-  - SPEC: All specs referencing II.1 "Four-Node Recursive" must update
-    to II.1 "Partition Emergence"
-  - SPEC: Spec 038 (unified-class-system) references "fractal
-    consistency" — update per Amendment B
-  - SPEC: Spec 040 (michigan-statewide-scope) constitutional
-    ratification complete; implementation can proceed
-  - SPEC: New spec required for II.11 — subsystem boundary interface
-    contracts (views, RPC, events) and table ownership registry
-  - SPEC: New spec required for I.20 — political claim overlay model,
-    claim-substrate composition rules, contested territory state machine
-  - SPEC: New spec required for III.4 — data source ingestion pipeline
-    per category, fixture pinning mechanism, provenance tracking schema
-
-Previous Version History:
-  2.6.1 (2026-04-28): PATCH — agentic-AI consumption fixes: amendment
-    registry consistency (F–J), III.4 tables → data-catalog.yaml, III.9
-    AI Context Budget, IX.3 AI Decision Procedure, cross-references
-  2.6.0 (2026-04-28): Amendment J — Sparrow targeting, matrix layer,
-    transport substrate, determinism hash, structural provenance,
-    Investigate sub-verb decomposition
-  2.5.0 (2026-04-28): Amendment I — AI parser scope expanded, model
-    pinning, parsed vector persistence
-  2.4.0 (2026-04-28): Amendment H — Structured data source catalog,
-    provenance metadata, fixture vs runtime distinction
-  2.3.0 (2026-04-28): Amendment G — Spatial substrate as immutable ground
-    truth, political claims as overlay, unblocks institutional layer
-  2.2.0 (2026-04-28): Amendment F — Subsystem table ownership,
-    cross-subsystem interface discipline, Epoch 3 federation boundary
-  2.1.0 (2026-04-28): Amendment E — Michigan statewide test case,
-    Detroit-Windsor boundary condition, tri-county backward-compat
-  2.0.0 (2026-04-28): Amendment A — Dialectic as primitive, staged
-    amendment series framework, ValueTensor4x3 derived status
-  1.10.1 (2026-04-14): Added USDA ERS CZs, BEA EAs, OMB CBSAs to III.4
-  1.10.0 (2026-04-14): Added II.8 Client as Presentation Layer,
-    X Deployment Infrastructure
-  1.8.2 (2026-03-01): Added Natural Earth SQLite to III.4
-  1.8.1 (2026-02-27): Added Chetty Opportunity Atlas to III.4
-  1.8.0 (2026-02-26): Added I.16-I.18, expanded II.7, added VIII.10
-  1.7.0 (2026-02-25): Added V. State AI Verbs
-  1.6.1 (2026-02-25): Structural reorganization
-  1.6.0 (2026-02-25): Added II.7 Edges vs Hyperedges, VIII.9
-  1.5.0 (2026-02-24): Added I.12-I.15
-  1.4.0 (2026-02-24): Added V. Player Action Vocabulary
-  1.3.2 (2026-02-05): Added dispossession data sources to III.4
-  1.3.1 (2026-02-05): Added PWT and Census Trade to III.4
-  1.3.0 (2026-01-31): Added VIII. Visual Design Principles
-  1.2.0 (2026-01-30): Added I.8-I.11, II.5-II.6
-  1.1.0 (2026-01-30): Added I.7
-  1.0.0 (2026-01-30): Initial ratification
-================================================================================
--->
-
 # Babylon Constitution
 
-Governing document for the political simulation engine testing MLM-TW political economy against empirical data.
-
-## I. Theoretical Commitments
-
-**1. Settler-Colonial Frame** — Principal contradiction: imperialism vs oppressed nations, NOT capital vs labor.
-
-**2. Imperial Rent (Φ)** — Φ = unequal exchange + externalized reproduction + domestic shadow labor. W_c > V_c → imperial rent. Explains core working class pacification.
-
-**2a. Spectrum of Unequal Exchange (σ)** — `[RATIFIED · PENDING CODE]` Unequal exchange is not binary (core vs periphery) but a continuous gradient. Every production node carries a **spectrum coordinate σ** — its position on a single global unequal-exchange axis, computed from data only (organic composition of capital, capital intensity), never assigned. Target wages align to σ (`ŵ(σ)` monotone in σ, calibrated per sim-year from the wage cross-section); actual wages gravitate toward `ŵ(σ)` each tick, composing with — not replacing — reserve-army pressure; consciousness anti-correlates with σ (the labor aristocracy emerges at high σ). σ is a per-node scalar field; its edge gradient `σ(target) − σ(source)` is the measured direction of value transfer. This **refines, does not replace, I.2**: Φ's "unequal exchange" channel is the coarse-graining of the σ gradient — σ is **not** a fourth Φ channel (Φ remains I.2's three channels). This σ (spectrum coordinate) is distinct from the dialectic sublation predicate `s` (I.19). Owner-ratified 2026-07-08 (program 10 / spec-107). See Also: I.2 (Φ), III.4 (σ is data-computed).
-
-**3. TRPF with Counter-Tendencies** — Model tendency AND counter-tendencies separately. Stable r MUST emerge from interaction, not be assumed.
-
-**4. George Jackson Bifurcation** — Crisis → fascism (no solidarity edges) or revolution (solidarity across colonial divide). Warsaw Ghetto corollary: P(S|A) → 0 triggers revolt regardless of organization. Hegemony prevents this realization.
-
-**5. Department III** — Reproduction tensor MUST include Dept III. g₃₃ → 0 (invisible). Rising visibility compresses profits independent of TRPF.
-
-**6. Solidarity as Edge Mode** — Four modes: EXTRACTIVE, TRANSACTIONAL, SOLIDARISTIC, ANTAGONISTIC. Organizing transforms types, not weights. Qualitative, not scalar.
-
-**7. Quantitative → Qualitative** — Quantities accumulate (resilience, pressure, crisis, consciousness). Qualities transform discretely (edge modes, class position, system phase). Thresholds explicit. No continuous quality gradients. Enums for qualities, floats for quantities.
-
-**8. Tragedy of Inevitability** — Collapse is default. Player shapes character, not outcome. Existence costs calories (`base_subsistence > 0`). Earth remembers wounds. Death is real. Banned: infinite biocapacity, equilibrium stability, player "victory."
-
-**9. Metabolic Rift** — ΔB = R - (E × η), η > 1.0. Overshoot O = C/B. Extraction permanently reduces max biocapacity. Independent collapse vector alongside TRPF.
-
-**10. Terminal Crisis Arc** — Plantation → Prison → Camp → Death Camp. Each transition when previous stage unprofitable. Carceral turn responds to Φ exhaustion.
-
-**11. Emergent Pedagogy** — All strategies playable. Consequences modeled, not punished. Theory follows experience. No hidden win conditions. Decolonial victory is emergent, not enforced.
-
-**12. Catastrophe Surface** — Control parameters continuous (floats per tick). State variables discrete (enums at fold crossings). Catastrophe surface explicit per phase transition. I.7 is the what; I.12 is the geometry.
-
-**13. Principal Contradiction** — One contradiction leads per tick. Selection: intensity × structural position. Shifts are discrete events. Primary dynamics full effect; secondary dampened.
-
-**14. Contradiction Internals** — Aspect (dominant/subordinate — reversal is phase transition). Character (antagonistic/non-antagonistic, independent of edge mode). Trajectory (1st + 2nd derivatives per tick). Edges MUST be directed.
-
-**15. Edge Mode Transitions** — State machine governs permissible transitions. Prohibited: EXTRACTIVE → SOLIDARISTIC (requires TRANSACTIONAL intermediate). Conditions reference contradiction internals. Topology versioned as constitutional amendment.
-
-**16. Organization vs Institution** — Organization = voluntary coordination, can be destroyed. Institution = crystallized social relations, survives member turnover. Organizations become institutions through formalization. The player builds organizations; the state operates institutions. Destroying an organization kills it. Destroying an institution requires replacing the social relations it crystallizes. Organizations ARE the agents — they are the entities that take action via verbs. SocialClass, Territory, and Community are substrate, not agents. See Also: I.21 (verbs operate through orgs via targeting modes), V (atomic verb mapping to graph operations).
-
-**17. OODA Loop as Organizational Metabolism** — Every organization/institution has an OODA profile (Observe-Orient-Decide-Act) determining action capacity per turn. Trade-offs: speed vs coherence, autonomy vs coordination, democracy vs reaction time. Decentralized orgs observe fast but orient slowly. Hierarchical institutions decide fast but observe poorly. The profile constrains which verbs are available and how many per tick. \[RATIFIED · IMPLEMENTED — Amendment C (v2.8.0): the OODA profile lives as **organization graph-node metadata** (the `ooda_profile` attribute on each org node, read at tick time by the OODASystem). The three v1 candidate homes (PartyDialectic pole, morphism metadata, independent agent registry) are superseded by the shipped implementation.\]
-
-**18. Material-Ideological Distinction** — Every dialectic has two dimensions: material basis (objective structural position, exists regardless of consciousness) and ideological dimension (whether actors conceive of collective interests opposed to hegemonic order). The GAP between material position and ideological consciousness is the terrain of political struggle. This is class-in-itself vs class-for-itself, generalized across all contradiction axes. [TRANSITION STATE — Pending Amendment D: v1 implementation expressed this on hyperedges. v2 reimplementation must preserve the distinction without violating the dyadic morphism constraint or Anti-Pattern VIII.9.] See Also: II.7 (dyadic morphism constraint), VIII.9 (anti-pattern preserving).
-
-**19. Dialectic as Primitive** — The dialectic `D = (A, Ā, w, T, s)` is the irreducible structural unit. `A` and `Ā` are typed poles; `w ∈ [-1, 1]` is the principal aspect weight; `T` is the motion operator (pure function `step`); `s` is the sublation predicate (written `σ` before v2.8.0; renamed to free the glyph σ for the I.2a spectrum coordinate — the code identifier is `sublation`, unaffected). The ValueTensor4x3 is derived from dialectic structure, not primitive. All class partitions — including the {Core, Periphery} × {Bourgeoisie, Proletariat} schema — emerge from dialectic resolution patterns at specific scales. The engine enforces three universal invariants on every dialectic at every tick: weight ∈ [-1, 1], type stability across motion, and that `step` returns a Dialectic of the declared type.
-
-**Apex Abstraction clause** (Amendment S, owner-ratified 2026-07-14) — The Lawverian dialectic is not only the irreducible primitive at the bottom of the system; it is also the **highest level of abstraction** at its top, because it represents **pure motion and change itself — and the mechanics by which change unfolds** (the motion operator `T`, the measured adjunction defects, the sublation predicate `s`). Downward, everything decomposes *into* dialectics; upward, nothing abstracts *over* them: every higher-order formalism in the system — tensors, fields, partitions, level lattices, phase classifiers, endgame configurations — is a coarse-graining, composition, or projection of dialectical motion, never a container that subsumes it. A proposed abstraction that cannot be expressed as dialectic structure, composition, or measurement thereof fails III.8 (no material chain) and III.10 (no law, prediction, or computation) by construction, and its introduction as a peer or superior of the dialectic requires a MAJOR amendment. Corollary: statics are derived, motion is primitive — any representation that stores a state without the mechanism of its change inverts the hierarchy and is presumptively wrong.
-
-**20. Spatial Substrate as Immutable Ground Truth, Political Claims as Overlay** — The H3 hex grid and federal county data are the immutable spatial substrate. Political claims — jurisdictions, contested territory, secession, autonomous zones — are overlays on this substrate, never mutations of it. The substrate preserves the empirical validation regime (QCEW/Census data maps to fixed geography). Political claims are first-class state: a hex or county can have multiple overlapping claims, zero claims, or claims that change without the substrate changing. The institutional layer and electoral mechanics operate on claims, not on substrate. Banned: substrate-mutating political operations (redrawing county lines, creating hexes, deleting territory).
-
-**21. Sparrow Three-Targeting-Modes Framework** — State repression and player resistance both operate through three topological targeting modes: **centrality** (hubs and critical nodes — disrupt the network by removing its most connected elements), **singletons** (isolated targets — vulnerable because they lack solidarity edges, but also invisible because they lack network presence), and **cutsets** (bridges and bottlenecks — the minimal set of edges whose removal disconnects the graph). Repress sub-verbs (Surveil, Infiltrate, Raid, Prosecute, Liquidate) map to these modes: Surveil identifies singletons; Infiltrate targets cutsets; Raid hits centrality. Player verbs map to the inverse: Educate creates centrality; Aid strengthens cutsets; Attack exposes singletons. This is the topological grammar that gives both sides a combinatorial game to fight over. `[RATIFIED · PENDING CODE — the three modes and the Repress sub-verbs exist in code (`ooda/attention/sparrow.py`, `StateActionType`), but the mode↔verb correspondence (Surveil→singleton, Infiltrate→cutset, Raid→centrality, and the player inverse) is not yet wired into the tick path.]` See Also: I.16 (Organizations are the agents that execute targeting-mode verbs), II.5 (AI narrates targeting outcomes via `observe()` projections).
-
-## II. Architecture Principles
-
-**1. Partition Emergence from Dialectic Structure** — The {Core, Periphery} × {Bourgeoisie, Proletariat} schema is a derived partition of the dialectic graph at a specific resolution, not a primitive fractal. It emerges when the dialectical field is coarse-grained along the imperial rent and class-contradiction axes. At finer resolutions, the same structure resolves into more specific contradictions. Amendment B MUST provide an invariance proof that the partition is recoverable under morphism-preserving coarse-graining without loss of predictive power.
-
-**2. Primitives vs Derived** — Store: dialectic poles (typed frozen BaseModel), morphism graph (source, target, relation, weight), reproduction requirements. Compute: ValueTensor4x3, SNLT, value, c/v/s, Φ, r, s/v, OCC. NEVER store derived quantities. The Dialectic is primitive; the tensor is derived.
-
-**3. Graph as Discretized Manifold** — Graph is the manifold. Tensors are field values. Connectivity determines information/value flow. Implementation binding: `babylon-graph` (Amendment AE; rustworkx-core/petgraph consumed as re-export ONLY — Amendment L's determinism rider carries forward verbatim). [RESOLVED — Amendment D ruled 2026-07-29 (AE clause (vi); analysis §9, PR #353): **NATIVE HYPEREDGE** — hyperedges are first-class objects in `babylon-graph`'s exposed model and type system; membership is one typed hyperedge, never a clique expansion; the Levi/incidence construction is sanctioned as internal storage only. VIII.9's prohibition on collapsing hyperedges into pairwise edges is thereby discharged structurally.] See Also: II.9 (strictly dyadic morphism layer — dyadic morphisms coexist with first-class membership hyperedges in one typed substrate, D-2), VIII.9 (anti-pattern preserved).
-
-**4. Quantities vs Coefficients** — Quantities flux per tick. Coefficients α-smooth. Crisis = discontinuous coefficient reset, not gradual drift.
-
-**5. AI Observes, Never Controls (Narrator-Only)** — The AI is narrator, never adjudicator — and, as of Amendment V, **never a parser of player input**: there is **no LLM in the input path** (ruling R4). Player verbs enter through the deterministic verb registry (V); free text is flavor only and never becomes engine state. On the output path the AI narrates engine state into prose: narration is **attributed**, cached by `(entity, tick, model_pin)` (III.6), and **optional** — the game is fully playable and fully informative with the narrator off. Provider stack is local-first: a local model is the default provider, remote inference is an opt-in fallback, and mute is always legal (BD ruling D2, 2026-07-19). AI failure is non-fatal: narration fallback returns structured state. The AI layer consumes `observe()` projections, never invokes `step()` or mutates poles. The pre-V input-path parser scope (Amendment I) is superseded-in-part; its pinning discipline survives in generalized form (III.6). See Also: I.16 (AI narrates org actions, never executes them), I.21 (targeting modes exposed through `observe()` if Org dialectic encodes them).
-
-**6. State is Data, Engine is Transformation** — World: an immutable `World` state structure holding dialectics, morphisms, events. Engine: pure `tick(world, actions) → (new_world, events)`. Implementation binding (Amendment AE, exactly as Amendment L moved II.3's substrate binding): the **Rust kernel** (`babylon-kernel`/`babylon-engine` crates); the frozen-Pydantic form is the Python reference estate, frozen at the Program 27 freeze tag. The Embedded Trinity (Postgres runtime Ledger, `babylon-graph` Topology, pgvector Archive — with a read-only SQLite reference fixture as initialization input) provides persistence and serialization; the `World` is the single runtime structure for tick computation. No DB I/O during tick. Persistence access is constrained by II.11: no subsystem may read another subsystem's tables directly.
-
-**7. Edges vs Hyperedges** — Dyadic flows between two entities → morphism graph (II.9). N-ary membership → XGI hyperedge. Two layers MUST remain separate. Hyperedge overlap = solidarity potential; morphism edge = actuality. Edges per tick; hyperedges α-smooth. [TRANSITION STATE — Pending Amendment D: The v2 morphism graph is strictly dyadic. Reconciliation required: either (a) hyperedges as higher-order structures with 1-skeleton in the morphism graph plus explicit consistency constraints, (b) simplicial representation, or (c) hyperedges migrate to pole structure. Anti-Pattern VIII.9 MUST be preserved.] See Also: I.18 (material-ideological distinction), VIII.9 (oppressor hyperedge).
-
-**8. Client as Presentation Layer** — A client is a viewport into **engine-computed** state through the declared `observe()` projection contract, not a participant in computation. Projection shapes are JSON-serializable; **delivery is transport-independent** — an in-process function call, HTTP, or file materialization are equally legal transports of the same contract (Amendment V; the pre-V text bound the principle to a browser viewing server-computed state over JSON). Materializations (rendered pages, vault files, exports) are regenerable artifacts, **never authoritative** (III.13). The client never runs simulation logic, never hydrates graphs, never resolves ticks; it emits player intents through the verb registry. The `observe()` output is the durable contract; client frameworks are disposable and replaceable without affecting the engine — the browser client is **legacy** (owner ruling 2026-07-20) and the terminal Archive client is its successor under this same contract.
-
-**9. Morphism as Dyadic Relation** — Morphisms are strictly dyadic: source dialectic → target dialectic with typed relation and coupling weight. Five canonical relations: `feeds`, `constrains`, `transforms`, `contains`, `antagonizes`. No N-ary morphisms at this layer. The morphism graph is the wiring diagram for tick-level data flow. `feeds` determines `TickInputs` for `step()`.
-
-**10. World as Runtime Single Structure** — At runtime, the World holds all dialectics, their morphism wiring, and per-tick events. This is the single structure for tick computation. Persistence (Postgres runtime + pgvector Archive; SQLite only as a read-only reference fixture) is a serialization concern, not a runtime partition. The Embedded Trinity is the durability layer; the World is the execution layer. (Runtime writes go to Postgres — the web DB on port 5432, the headless-runner DB on 5433; SQLite is `mode=ro` hydration input, never a runtime ledger; ChromaDB was replaced by pgvector in Feature 037.)
-
-**11. Subsystem Table Ownership** — Each subsystem (consciousness, tensor, edge-mode state machine, dialectics, hex substrate, orgs) owns its persistence tables. Cross-subsystem reads MUST go through declared interfaces: SQL views with explicit contracts, RPC boundaries, or event streams. Direct table access from outside the owning subsystem is prohibited. If a monolithic deployment is chosen, the coupling must be explicitly documented per table with a federation migration plan. Unowned tables = undefined behavior. Epoch 3 federation requires this boundary discipline; its absence is a forward-blocking defect.
-
-**12. Matrix Representation Layer** — `babylon-graph` is the authoring API for graph construction and inspection (Amendment AE; previously rustworkx). **faer** is the computation layer for large-scale matrix operations (previously scipy.sparse); a LAPACK linkage is retained ONLY per-site by a recorded Phase-0 numeric-annex ruling, and each retained linkage is an Amendment-AA foreclosure entry. The actual mathematical structure is operator algebra on these matrices. The three-layer stack MUST remain separable: authoring → sparse matrix → operator expression. Never conflate graph traversal with matrix computation, and never implement operator logic directly in the graph layer. The operator algebra is the source of truth; the other two are interfaces.
-
-**13. Transport Substrate** — The movement of value, goods, and people is modeled as a transport substrate with two mechanisms: **min-cost flow** for deterministic routing `[RATIFIED · IMPLEMENTED]` (roads, rail, shipping lanes) and **slime-mold conductivity** for emergent routing `[RATIFIED · PENDING CODE]` (networks that optimize under pressure, like informal supply chains or migration routes). Transport edges have types: AIR_LINK (high speed, high visibility), SHIPPING_LANE (bulk, slow, regulated), the **road tier** (HIGHWAY / ARTERIAL / LOCAL_ROAD — flexible, medium visibility), RAIL (capacity-constrained, infrastructure-dependent), and **INFORMAL** (slime-mold-only routing, no built infrastructure). The transport substrate is a Volume II/III mechanic: it mediates between production (Volume I) and realization (Volume III), and its topology determines where crises of disproportionality and realization propagate. **Extension** `[RATIFIED · PENDING CODE]` (owner-ratified 2026-07-08): corridors are state-owned; edges carry a **condition** that **degrades** with use and neglect; agents **build and repair** them through the existing `BUILD_INFRASTRUCTURE` verb (no new verb); the implementing spec is not yet authored. See Also: V (BUILD_INFRASTRUCTURE), III.11 (a missing transport input fails loud, never silently no-ops).
-
-## III. Methodological Constraints
-
-**1. No Magic Constants** — Every number traces to primitives or data sources.
-
-**2. Falsifiability Required** — Every formula defines: prediction, null hypothesis, distinguishing observable, falsifying data.
-
-**3. Physics Cosplay Prohibition** — Tensor notation earns its keep through actual invariance. Reject formalism without transformation laws.
-
-**4. Data Source Traceability** — All data sources are organized in a categorized catalog with provenance metadata. New sources require explicit constitutional addition with full provenance record. Two classes of data exist: runtime data sources (fetched/updated during operation) and validation fixtures (pinned snapshots used for reproducible tests). Fixture data is NEVER a runtime dependency.
-
-**4.1 Catalog Reference** — The canonical machine-readable catalog is `data-catalog.yaml` in this directory. It defines six categories (Federal Economic, Federal Demographic, Federal Infrastructure, International Trade, Land Cover/Spatial, Legal/Judicial/Housing) with provenance metadata per source: `id`, `agency`, `dataset`, `vintage`, `granularity`, `cadence`, and `class` (Runtime or Fixture). New sources require explicit constitutional addition to both the YAML catalog and the amendment registry.
-
-**4.2 Validation Fixture vs Runtime Data Source** — **Validation fixtures** are pinned snapshots of data used for reproducible test cases. They are versioned, hashed, and stored in the repository or artifact store. Fixtures are NEVER fetched at runtime and NEVER substituted for runtime data. Examples: assessor parcel snapshots for test counties, Natural Earth boundaries, Chetty Opportunity Atlas tract-level data.
-
-**Runtime data sources** are fetched or updated during operation. They have live APIs, changing vintages, and require update pipelines. Runtime data MAY be cached but MUST be refreshable. Examples: QCEW wages, Census ACS estimates, FRED series, CDC WONDER mortality.
-
-The distinction is load-bearing for reproducibility: a test using a fixture must produce the same result in 2026 as in 2028. A test using runtime data is an integration test against live infrastructure, not a reproducible validation.
-
-**5. Empirical vs Strategic Separation** — Material conditions from data (nodes, constraints, extractive edges). Strategic intervention NOT from data (solidaristic edges, organizing, consciousness-raising).
-
-**6. Model Pinning and Persisted AI Artifacts** — Every persisted AI artifact — narrative blocks, embeddings, and any successor form — MUST carry its model pin (model identifier, weights version, tokenizer version) and its generation key (for narration: `(entity, tick, model_pin)`). Replayability across model deprecation is a constitutional requirement, not an optimization: a deprecated model MUST NOT orphan its artifacts — the stored artifact plus pin remains the record. No retroactive regeneration presented as the original. An AI artifact without its model pin is undefined behavior. (Amendment V generalizes the pre-V "parsed vector" form of this law; with the input-path parser abolished, the same pinning discipline now governs all persisted AI output.)
-
-**7. Determinism and Replayability** — Every tick MUST produce a deterministic SHA-256 hash of its inputs (World state + player actions + random seed). The same inputs MUST always produce the same outputs; non-determinism is a bug, not a design choice. The engine MUST support full replay from any tick given the initial state and action log. *The hash this clause defines is a **content hash*** (ADR179 T2 re-point, 2026-07-30): its implementation is the per-tick content hash specified in `docs/reference/determinism-contract.rst` (*The P27 Tick Hash*; Python reference `babylon.kernel.tick_hash`, surfaced as `content_hash`), whose bytes depend on the actual node/edge state and applied actions — a replayed tick whose content hash differs from the recorded one has diverged. The **replay-identity stamp** (`tick_commit.replay_identity_hash`, formerly misleadingly named `determinism_hash`) is a *separate* commit-lineage marker — `sha256(session_id:tick:seed)` — that carries no world state and therefore is NOT this clause's hash and cannot detect divergence; the audit-scoped `hex_frame_hash` is a partial content hash over the hex frame only. Naming any non-content hash as if it satisfied this clause is itself a violation of the honesty this article demands. **Falsifiability** (III.2) is enforced not by hash equality but by **tolerance-bounded value comparison** of recorded checkpoints (the `qa:regression` gate): a prediction is a checkpointed value, a falsifying observation is a value that drifts beyond tolerance. Distinguish two kinds of drift: **input-hash drift** — the `defines_hash` (the hash of the tunable coefficients) changed because a coefficient moved — is *expected and benign* (regenerate the baselines and say so); **behavioral drift** — a checkpoint value or an outcome changed — is *the bug the gate exists to catch*. Conflating the two (treating a benign defines change as a failure, or a behavioral change as a mere warning) defeats the gate.
-
-**8. Structural Provenance (Aleksandrov Test)** — Every formal construct — tensor, matrix, graph invariant, derived coefficient — MUST trace a chain of abstractions back to a material relation. This is a stricter version of III.1 (No Magic Constants) applied to formalism rather than scalars. The test: can you name the material process that this operator represents? If the chain breaks, the construct is invalid. Examples: the Laplacian represents diffusion of solidarity pressure; the adjacency matrix power represents multi-step exploitation chains; PageRank represents hierarchical command structure. Ungrounded operators are banned regardless of their mathematical elegance.
-
-**9. AI Context Budget** — The constitution is consumed by AI agents with finite context windows. Principles are tiered by load-bearing status:
-
-- **P0 (Never Drop)**: I.19 Dialectic Primitive, I.20 Spatial Substrate, II.9 Morphism Dyadic, III.7 Determinism, III.8 Aleksandrov Test, III.11 Loud Failure, V Verb Atomicity. These define the irreducible constraints of the system. An agent operating on any implementation task MUST retain these principles in context.
-
-- **P1 (Load-Bearing)**: I.1 Settler-Colonial Frame, I.2 Imperial Rent, I.2a Spectrum of Unequal Exchange, I.4 Bifurcation, I.6 Solidarity Edge Mode, I.7 Quantitative→Qualitative, I.12 Catastrophe Surface, I.16 Organization vs Institution, I.21 Sparrow, II.1 Partition Emergence, II.2 Primitives vs Derived, II.5 AI Scope, II.6 State is Data, II.11 Subsystem Ownership, II.12 Matrix Layer, II.13 Transport Substrate, III.1 No Magic Constants, III.2 Falsifiability, III.4 Data Catalog, III.6 Model Pinning, III.10 Earn-Its-Keep, III.12 Behavioral Contracts, III.13 Deterministic Materialization, IV Nationwide Test Case. These constrain specific domains. An agent MUST retain domain-relevant P1 principles for the file(s) it is editing.
-
-- **P2 (Elaboration)**: I.3 TRPF, I.5 Department III, I.8 Tragedy of Inevitability, I.9 Metabolic Rift, I.10 Terminal Crisis, I.11 Emergent Pedagogy, I.13 Principal Contradiction, I.14 Contradiction Internals, I.15 Edge Mode Transitions, I.17 OODA, I.18 Material-Ideological, II.3 Graph Manifold, II.4 Quantities vs Coefficients, II.7 Edges vs Hyperedges, II.8 Client Layer, II.10 World Runtime, III.3 Physics Cosplay, III.5 Empirical vs Strategic, VI Scope Control, VII Visual Design, VIII Anti-Patterns, X Deployment. These provide context and guardrails but are not load-bearing for implementation. Agents MAY drop P2 principles when context-constrained, provided P0 and relevant P1 are retained.
-
-An agent MUST report which tier it is operating from if it drops context.
-
-**10. Earn-Its-Keep (Categorical Constructs)** — A categorical construct (adjunction, cylinder, level lattice, functor, operator) ships only if it yields a LAW (a testable invariant), a PREDICTION (a falsifiable claim), or a COMPUTATION that runs in production — never as vocabulary. This is III.3 and III.8 applied to category theory: name the law, the prediction, or the running computation, or the construct is banned regardless of its elegance. (Amendment K; governing rule of the Lawverian dialectics refactor, ADR051.)
-
-**11. Loud Failure (No Silent Degradation)** — A subsystem that cannot do its job MUST fail loud — raise, or emit an alarm-severity signal — never silently no-op, skip, or return a plausible default. Guardrails, gates, test markers, and canaries MUST be armed and enforced; a disarmed guard, an unregistered handler that silently drops work, or a system that early-returns when its required inputs are absent is a constitutional **defect**, not graceful degradation. This is the operational lesson of the "Loud Machine" remediation: systemic *silent* failures (no-op engine systems, disarmed strict-markers, skipped canaries, a case-mismatched node filter) are more dangerous than crashes because they pass every green check while producing wrong or empty results. The good pattern: an unregistered verb resolver raises rather than no-ops. The banned pattern: a system that silently no-ops when a context key is missing. See Also: VIII.12 (Silent No-Op anti-pattern), III.7 (determinism), III.2 (falsifiability).
-
-**12. Behavioral Contracts (Durable Spec)** — The system's observable behavior MUST be pinned in implementation-agnostic artifacts: checkpoint baselines and full-trace goldens (`tests/baselines/`), the `defines.yaml` coefficient space, seed data, the Postgres schema, the `observe()`/HTTP contracts (II.8), and written predicate specs. These artifacts are the durable specification; any particular implementation — and its implementation-coupled tests (model shape, mock choreography) — is a disposable materialization that must be regenerable from them. The acceptance question is the **rewrite test**: could a reimplementation in another language be validated against the surviving artifacts alone? Three corollaries: **(a) Canonical serialization** — every constitutional hash (the III.7 tick hash, `defines_hash`, the `tick_commit` chain) MUST have its byte-level serialization specified in a language-agnostic reference document; a hash whose byte layout is defined only by the code that computes it is implementation-defined behavior. `[RATIFIED · IMPLEMENTED — docs/reference/determinism-contract.rst (program 13 item 1) + dense full-trace goldens byte-compared in qa:regression (item 2); program 13 complete 2026-07-09]` **(b) Float honesty** — byte-identical replay is guaranteed only within a single implementation and libm; cross-implementation validation is tolerance-bounded checkpoint comparison (III.7) with written tolerance derivations. **(c) Redundant verification** — behavior is verified by multiple independent strategies (replay baselines, property laws, scenario emergence, boundary contracts, mutation baselines); a single strategy has blind spots. Every new system boundary ships with a contract test and its behavioral artifact, not only unit tests. Implementation-coupled tests remain legitimate scaffolding but MUST NOT be the only home of load-bearing behavioral knowledge. See Also: III.7 (determinism and tolerance), III.2 (falsifiability), II.8 (client contract), VIII.13.
-
-**13. Deterministic Materialization** `[RATIFIED · PENDING CODE — Amendment W; the implementing work is the Archive presentation pipeline]` — Every materialized view of engine state — page projections, the vault, snapshot renders, exports — MUST be deterministic. Projections end in explicit `ORDER BY`; render templates run in a sandbox with wall-clock, randomness, and filesystem access forbidden (sim-time only); identical `(state, intel ledger, defines, templates)` yield **byte-identical artifacts**. The **golden vault** — snapshot baselines of rendered pages — joins III.12's enumerated artifact list as the behavioral contract of the presentation pipeline, with its own blessing discipline (a golden moves only in a declared ceremony). This is III.7 extended to renders: Loud Failure (III.11) extends to pixels — a missing record renders as a loud absence block, never as silence. See Also: III.7, III.12, II.8 (materializations never authoritative).
-
-## IV. Test Case: Nationwide (United States, 2010-2025)
-
-**(Amendment R, owner-ratified 2026-07-14.)** The canonical test case is the **United States, nationwide — all ~3,100 counties, 2010–2025**. Owner rationale, recorded verbatim: "all samples/e2e testing/whatever is done at the *nationwide* level rather than the Wayne County/Michigan/Tri-county area. Everything is nationwide. It's the only way to test scale and we're developed enough now to recognize that okay, the concept is valid." The smaller scales validated the concept; the nationwide scale is where the theory is now tested. BEA Economic Areas (EAs) remain the constitutional aggregation tier for regional analysis. The model MUST reproduce observed class transitions and inter-regional inequality using only QCEW/Census data + theoretical mechanisms. Failure = theory or implementation wrong.
-
-**Scope of the mandate** — every scale-bearing artifact runs nationwide: e2e tests, canonical runs, demo/sample scenarios, and any dataset presented as "the game." `[RATIFIED · PENDING CODE — the shipped e2e canon is still wayne_county; the storage layer for national scale (specs 087/088/089: Parquet archival, delta persistence, national res-7) already landed; the nationwide scenario + e2e migration is the implementing work.]` **Explicit carve-out:** the synthetic qa:regression micro-scenarios (imperial_circuit, two_node, starvation, glut, fascist_bifurcation) are **determinism contracts** (III.7/III.12 artifacts pinning the math byte-exactly), not scale samples — this amendment does not touch them, and reading it as license to delete or inflate them is error. Nationwide test *data* remains bound by III.4.2 and the 2026-07-14 hermetic-artifacts ruling: fixtures ship as versioned, deterministically-loadable artifacts, never as a workstation-drive dependency.
-
-### IV.1 Cross-Border Boundary Conditions (Detroit-Windsor Generalized)
-
-The Detroit-Windsor corridor is a required boundary condition, not an optional foreign node — and at nationwide scale its principle generalizes: **every corridor where imperial-rent circuits cross the national border is a first-class boundary condition** (Canada and Mexico are first-class territorial substrates where circuits touch them). Cross-border labor markets, trade flows, and imperial rent circuits (automotive supply chain, logistics, water rights) MUST be modeled. The boundary itself is a contradiction surface: same labor, different citizenship regimes, different repression budgets.
-
-### IV.2 Michigan + Tri-County Backward-Compat Acceptance Criteria
-
-The prior canonical cases are preserved as mandatory backward-compatibility acceptance criteria, exactly as Amendment E preserved tri-county when the case went statewide — the pattern recurses: **any nationwide model MUST reproduce the Michigan-statewide results (all 83 counties, Amendment E) and the original Wayne County vs Oakland County tri-county sub-test (Crisis → Devaluation → Recolonization → Displacement) when coarse-grained to those resolutions.** Regression at either resolution = implementation wrong.
-
-## V. Action Vocabulary
-
-### Player (9 verbs)
-
-**Educate, Aid, Attack, Mobilize, Campaign, Move, Investigate, Reproduce, Negotiate**.
-
-Player-facing (3x3): Build org | Project power | Manage resources. Engine-facing: Organization (node) | Population (org↔class edges) | Other actors (org↔org edges). Every verb maps to a graph operation. Atomic per target instance. All always available. Deterministic.
-
-**Investigate Sub-Verbs** — Investigate has three target types, each a distinct sub-verb preserving atomicity:
-
-- **Investigate(Territory)** — Reveals hidden substrate state (concealed exploitation, informal economy, unregistered claims). One territory node per tick.
-- **Investigate(Org)** — Reveals org internals (cadre quality, funding sources, OODA profile). One org node per tick.
-- **Investigate(Edge)** — Reveals edge properties (relation type, weight, history). One edge per tick.
-
-Each sub-verb is atomic. The player selects the target type; the engine resolves the appropriate sub-verb.
-
-### State AI (6 verbs)
-
-**Administer** (Fund, Staff, Audit, Legislate) — reproduce state apparatus. **Develop** (Rezone, Invest, Eminent Domain, Tax Incentives) — reshape territory layer; asymmetric verb player lacks; gentrification as verb. **Research** — advance tech; products potentially seizable by player. **Co-opt** (Bribe, Propagandize, Incorporate, Divide) — absorb opposition or destroy relationships; Divide targets edges not nodes. **Repress** (Surveil, Infiltrate, Raid, Prosecute, Liquidate) — escalation ladder; each step costs more legitimacy. **Withdraw** (Strategic / Tactical / Scorched Earth) — concede, reposition, or deny territory; player must read which mode.
-
-No separate state Negotiate verb — negotiation is a mode of Withdraw (terms of concession) or Co-opt (terms of absorption). Asymmetry is structural: state has fewer verbs but Develop operates on substrate player cannot directly modify.
-
-## VI. Scope Control
-
-1. **Material Base First** — Economic extraction → class formation → solidarity → THEN repression.
-1. **Zoom Where Data Exists** — Resolution matches data availability.
-1. **Flag Scope Creep** — Must trace to Detroit prediction or improve falsifiability. Otherwise DEFER.
-
-## VII. Visual Design Principles
-
-1. **UI Observes, Never Controls** — Passive observer. Emits intents, never mutates state.
-1. **Color as Data** — Color encodes semantic meaning (a verb, not a vibe); luminosity encodes magnitude; every color is a named palette token, never hardcoded in a component. The **concrete palette is a design-system artifact, not constitutional** — the specific token set lives in the design system (e.g. `design/mockups/colors_and_type.css`) and may evolve without amendment, provided these principles hold. (This de-particularization supersedes the drafted Amendment M: with no constitutional palette, there is none to violate.)
-1. **Data-Ink Maximization** — Every pixel encodes data or enables navigation. Small multiples over animation.
-1. **Graph Is Primary** — Node position/size/density ARE data. Verbs over nouns. Topology visible.
-1. **Signifier Legibility** — No hidden verbs. All interactive elements have visual affordance.
-1. **Semantic Invariance** — Color meaning invariant across all views.
-1. **Smallest Effective Difference** — Minimum visual distinction necessary.
-1. **Feedback/Feedforward** — State changes confirmed visually. Preview consequences.
-1. **Typography** — Monospace-dominant for data. Typography is disciplined by **function, not decoration**: each typeface family must serve one distinct role (data, chrome, display), and none may be introduced for ornament. The specific families are a design-system artifact, not constitutional.
-1. **Prohibitions** — No decoration on data-encoding surfaces (no chartjunk, no ornament where color or luminance carries meaning), no hardcoded colors, no hidden state, no gratuitous animation, no context-dependent color, no mood over meaning. Diegetic chrome/texture on non-data surfaces is a design-system choice, not a constitutional matter.
-
-## VIII. Anti-Patterns
-
-1. **Solidarity as Scalar** — Edge type transforms, not `+= x`.
-1. **Union Density as Revolutionary** — US unions = labor aristocracy institutions.
-1. **Determinism from Material Conditions** — Conditions constrain, not determine.
-1. **Ungrounded Tensor Notation** — See III.3.
-1. **Claims Without Falsifiability** — See III.2.
-1. **Constants Without Data Sources** — See III.1, III.4.
-1. **Superstructure Before Base** — See VI.1.
-1. **Decorative Visualization** — See VII.10.
-1. **Community as Pairwise Edge** — Community = XGI hyperedge, not combinatorial pairwise edges. See II.7.
-1. **Oppressor Hyperedge for Institutional Exclusion** — Category 2 communities (DISABLED, QUEER, UNDOCUMENTED, INCARCERATED) have NO paired oppressor hyperedge. ABLED is absence of disability, not a political community. HETEROSEXUAL is unmarked default, not solidarity community. Contrast with Category 1 where BOTH sides exist (SETTLER has institutions, recruits, defends extraction). See II.7.
-1. **Tension as Accumulator** — Contradiction intensity MUST be a fresh per-tick measured gap (an adjunction defect per I.19), never an add-only `+=` ratchet. Saturating accumulators pin at their bound and carry no information (the pre-Amendment-K inertness bug: edge tension pinned at exactly 1.0 by ~t100). See III.10, Amendment K.
-1. **Silent No-Op / Disarmed Guardrail** — A subsystem that skips its work when inputs are missing, a guardrail present but not enforced (a strict-marker set to no-op, a canary that always skips, an `ai`-marked test that selects zero tests), or a handler that silently drops unrecognized work. The failure passes every green check while producing wrong or empty state. See III.11 (Loud Failure).
-1. **Spec Trapped in Implementation** — Load-bearing behavioral knowledge whose ONLY home is implementation-coupled: a mock call-sequence test, a model-shape assertion, a hash whose byte layout exists only in the code that computes it. The knowledge dies with the materialization it describes. If it matters, it belongs in a durable artifact — a baseline, a golden trace, a schema, a predicate spec, a property law. See III.12 (Behavioral Contracts).
-
-## IX. Governance
-
-**1. Amendment Procedure** — Propose → demonstrate consistency → update artifacts → increment version.
-
-**Versioning**: MAJOR (removal/redefinition of primitive or principle), MINOR (new principle/section or material expansion), PATCH (clarification, wording, non-semantic refinement).
-
-**Compliance triggers**: New system, formula change, data source addition, scope expansion, UI implementation, infrastructure/deployment change, primitive redefinition.
-
-**2. Staged Amendment Series** — When a primitive changes, downstream principles MUST be translated through a numbered amendment series with invariance proofs. Each amendment in the series must demonstrate that affected principles are at least as constrained as their predecessors. No amendment in the series may be skipped. The series is complete only when all downstream principles are either re-grounded or explicitly superseded.
-
-**Amendment A — Dialectic Primitive** (ratified v2.0.0): Introduces `Dialectic[A, B]` as irreducible unit. Demotes Four-Node Recursive to derived partition. ValueTensor4x3 derived status.
-
-**Amendment B — Partition Invariance** (pending): Four-node schema as derived partition. Requirement: invariance proof under morphism-preserving coarse-graining.
-
-**Amendment C — OODA Placement** (ratified v2.8.0): The OODA profile's architectural home is **organization graph-node metadata** (`ooda_profile` on the org node, read by the OODASystem at tick time) — the shipped implementation, ratified behind code. Supersedes the three v1 candidates (PartyDialectic pole, morphism metadata, agent registry). Resolves the item that formerly blocked v2.8.0.
-
-**Amendment D — Hyperedge Reconciliation** (pending): rustworkx+XGI dual-graph commitment and strictly-dyadic morphism constraint (dual-graph binding renamed from NetworkX+XGI by Amendment L; the reconciliation requirement is unchanged). Requirement: spec preserving Anti-Pattern VIII.9.
-
-**Amendment E — Michigan Statewide** (ratified v2.1.0): Expands canonical test case to 83 Michigan counties. Adds BEA EAs as aggregation tier. Detroit-Windsor boundary condition required. Tri-county preserved as acceptance criterion.
-
-**Amendment F — Subsystem Table Ownership** (ratified v2.2.0): Each subsystem owns its persistence tables. Cross-subsystem reads via declared interfaces only (views, RPC, events). Direct table access prohibited. Federation boundary discipline.
-
-**Amendment G — Spatial Substrate** (ratified v2.3.0): H3 hex grid and federal county data are immutable spatial substrate. Political claims are overlays, never mutations. Bans substrate-mutating political operations.
-
-**Amendment H — Data Catalog Structure** (ratified v2.4.0): III.4 restructured from flat list to six-category catalog with provenance metadata. Fixture vs runtime distinction formalized.
-
-**Amendment I — AI Parser Scope** (ratified v2.5.0): AI is parser + narrator, never adjudicator. Model pinning and parsed vector persistence required. Replayability across model deprecation.
-
-**Amendment J — Determinism and Representation** (ratified v2.6.0): I.21 Sparrow targeting framework; II.12 matrix representation layer; II.13 transport substrate; III.7 determinism hash and replayability; III.8 structural provenance; V Investigate decomposed into three atomic sub-verbs.
-
-**Amendment K — Lawverian Dialectics Implementation** (ratified v2.7.0): I.19's dialectic primitive is executable. OppositionRegistry of measured adjunction defects (gap, balance ∈ [-1, 1], rate — fresh per tick, never accumulated); principal contradiction ranked by gap × (1 + rate_weight × |rate|), implementing I.13. Adjunction instances: connectivity (atomization), scale (allocate ⊣ aggregate; H3 aggregation as sheaf), value-form (wage⇄value counit defect Φ). Level lattices (spatial hex < county < state < nation; social individual < community < class < bloc) with Aufhebung operator. Fixed-point regime classifier: reproduction / crisis / sublation — RUPTURE is the crisis regime's boiling point; EventType.LEVEL_TRANSITION is the production Aufhebung signal. Composition algebra (product/sum/nesting), typed coupling graph (feeds/constrains/transforms/contains/antagonizes), sublation lineage. Anti-Pattern VIII.9 n-ary protection preserved. Adds III.10 and VIII.11. Source: ADR051.
-
-**Amendment L — Graph Substrate: NetworkX → rustworkx** (ratified v2.7.0): The manifold commitment (II.3) is library-independent; the implementation binding moves from NetworkX to rustworkx (Rust core) for runtime performance and memory behavior. II.3 retitled "Graph as Discretized Manifold"; II.6 Trinity updated (rustworkx Topology; pgvector Archive — ChromaDB drift fix per spec-037); II.12 authoring API; X.5 compute list. Determinism (III.7) MUST be preserved across the swap via insertion-ordered iteration surfaces; regression baselines regenerate only with written proof of an unavoidable order shift. Amendment D's pending reconciliation is unaffected: the dual-graph commitment becomes rustworkx+XGI.
-
-**Amendment M — Cold Collapse Visual Canon** (superseded, not ratified): The drafted palette/typography/texture amendment (`specs/090-cold-collapse/article-vii-amendment.md`) is **superseded by de-particularization** (v2.8.0): Article VII no longer binds a concrete palette, type stack, or texture, so there is no constitutional palette for the Cold Collapse canon to conflict with. The concrete canon lives in the design system.
-
-**Amendment N — Spectrum of Unequal Exchange** (ratified v2.8.0, `[PENDING CODE]`): Adds I.2a — the σ spectrum coordinate, a data-computed per-node position on a global unequal-exchange gradient; wages align to `ŵ(σ)`, consciousness anti-correlates. Refines I.2 without adding a fourth Φ channel. Frees the glyph σ by renaming the I.19 sublation predicate to `s`. Owner-ratified 2026-07-08 (program 10 / spec-107).
-
-**Amendment O — Transport Substrate Extension** (ratified v2.8.0, `[PENDING CODE]`): Extends II.13 — state-owned corridors, an INFORMAL edge type, edge condition/degradation, and BUILD/REPAIR via the existing `BUILD_INFRASTRUCTURE` verb. Fixes the `ROAD` → road-tier (HIGHWAY/ARTERIAL/LOCAL_ROAD) naming. Owner-ratified 2026-07-08.
-
-**Amendment P — Loud Failure and Determinism Honesty** (ratified v2.8.0): Adds III.11 (Loud Failure / No Silent Degradation) and VIII.12 (Silent No-Op anti-pattern); reconciles III.7 (the hash is replay-integrity; falsifiability is tolerance-bounded value comparison; input-hash drift ≠ behavioral drift). Corrects factual drift in II.6/II.10 (Postgres runtime + pgvector; SQLite = read-only fixture). The operational lesson of the Loud Machine remediation.
-
-**Amendment Q — Behavioral Contracts / Durable Spec** (ratified v2.9.0; corollary (a) `[IMPLEMENTED]` as of v2.9.1 — program 13 delivered both work items the same day): Adds III.12 — behavior pinned in implementation-agnostic artifacts (the rewrite test), canonical hash-serialization requirement, float-tolerance honesty, redundant verification, contract-test-per-boundary — and VIII.13 (Spec Trapped in Implementation). Registers program 13 (`project/programs/13-behavioral-contracts.md`): the determinism-contract reference doc + dense full-trace goldens for the five regression scenarios. Doctrinal sources: Fowler (evaluations as behavioral contracts that outlive implementations; redundant verification layers) and Majors (code as a materialized view of understanding; AI demands more discipline). Prompted by the 2026-07-09 test-suite rewrite audit (`project/assessments/TEST_SUITE_REWRITE_AUDIT-2026-07-09.md`). Owner-ratified 2026-07-09.
-
-**Amendment R — Nationwide Canonical Scale** (ratified v2.10.0, scope-mandate `[PENDING CODE]`): Article IV retitled — the canonical test case moves from Michigan-statewide to the **United States nationwide** (~3,100 counties, 2010–2025); all scale-bearing artifacts (e2e, canonical runs, samples) run nationwide. Michigan-83 and tri-county demote to coarse-graining backward-compat acceptance criteria (IV.2), preserving Amendment E's content as a criterion rather than the canon — the same move E made on tri-county. IV.1 generalizes Detroit-Windsor to all cross-border rent-circuit corridors (Canada + Mexico first-class where touched). The synthetic qa:regression determinism scenarios are explicitly out of scope. Composes with the 2026-07-14 hermetic-artifacts ruling (nationwide fixtures ship as deterministic artifacts, never drive reads). Storage substrate already shipped (specs 087/088/089). Owner-ratified 2026-07-14.
-
-**Amendment S — Dialectical Apex** (ratified v2.10.0): Extends I.19 with the Apex Abstraction clause — the Lawverian dialectic is the highest level of abstraction because it represents **pure motion and change itself, and the mechanics by which it unfolds**; downward everything decomposes into dialectics, upward nothing abstracts over them; higher-order formalisms are coarse-grainings/compositions/projections of dialectical motion; introducing a peer or superior of the dialectic requires a MAJOR amendment; statics are derived, motion is primitive. Extends I.19/Amendment K; no primitive removed or redefined. Owner-ratified 2026-07-14.
-
-**Amendment T — The Divergence Channel (Authored σ, Observes-Only)** (ratified v2.16.0, `[RATIFIED · CODE QUEUED — Phase-1 implementation deliberately off the v1.0 critical path]`): A pole reading MAY carry an **authored/subjective channel** (`sigma_authored`) alongside its material σ. The **divergence** between them is an **observes-only** reading: a derived static that adjudicates nothing — it may not mask, route, gate, or otherwise change any tick output — until explicitly promoted to a gating role through the recorded promotion ceremony (regenerated byte-identical baselines + an authorizing ADR + a `GATING_LEDGER` entry once that machinery exists). The material σ remains the primitive dialectical anchor; the authored channel never replaces it and never becomes a canonical BabylonGraph morphism. Amendment-S compliance is claimed the honest way: a shadow binding never steps, so the divergence is an observational **static** pinned to an opposition's poles, never a reading of opposition motion. Canonical first instance: the Doctrine Tree's `chauvinism_internationalism` shadow binding (authored pole = `normalize(CLASS_ANALYSIS − NATIONAL_CHAUVINISM)` off-graph per II.9/VIII.9; material pole = the SOLIDARITY-incidence proxy, explicitly labelled internationalism-UNPROVEN until the divergence sentinel earns the claim). Ratification rider: implementation (ADR072's Phase-1 scope) stays QUEUED behind player-felt work per NORTH_STAR §0 — this amendment adds governance, not code. Source: ADR072 (Phase-0 design, 9-agent adversarial workflow); disposition + BD delegation recorded in ADR126. BD-delegated ratification 2026-07-22.
-
-**Amendment U — Spatial Scale Lattice (lattice-corrected)** (ratified v2.11.0): Supersedes Amendment K's spatial level-lattice clause (`hex < county < state < nation`). The immutable substrate is the res-7 H3 hex; the base administrative atom is the **county** (`county_fips`), the sole spatial key the economy reads (`resolve_county_identity`). Above the county sit three PARALLEL materialist aggregations, each an allocate ⊣ aggregate adjunction: the **commuting zone** (USDA ERS 1990 delineation — the daily reproduction-of-labor-power geography, from journey-to-work flows; total over the scoped county universe — the established `_load_national_fips` scoping excluding synthetic `*999` rows and the territories — EXCEPT 19 post-1990 county reorganizations with no honest 1:1 predecessor: 10 Alaska census-area changes and 9 Connecticut planning regions, which fail loud rather than bridge by fabrication; empirical scope correction surfaced 2026-07-19 by T3 data verification, ADR091), the **metropolitan statistical area** (OMB delineation via `dim_metro_area` — the concentrated labor/housing-market geography; partial: non-metro counties carry no MSA), and the **state** (the juridical-repressive geography; total partition). Only the state aggregates further, into the **nation**. CZ and MSA cross state lines by construction and never nest into the state rung — the owner's recorded chain `county < CZ < [MSA] < state` is geographically unrealizable as a nesting and is codified as a lattice instead (correction surfaced 2026-07-19, ratified with the amendment). Territory graph nodes are county-grain overlays on the substrate; hex is never a graph node. Aleksandrov traces: hex→county = `bridge_county_h3`; county→CZ = `bridge_county_cz` (ERS journey-to-work delineation, in-repo artifact); county→MSA = `bridge_county_metro`; county→state = FIPS prefix; state→nation = constant. The social lattice (individual < community < class < bloc) is unchanged. Amendment letter T remains reserved for the drafted Divergence Channel amendment (ADR072, awaiting BD). Owner-ratified 2026-07-19. Source: ADR091.
-
-**Amendment V — Client Rebinding & Narrator-Only AI** (ratified v2.12.0): II.8 generalized — a client is a viewport into engine-computed state through the declared `observe()` projection contract; delivery is transport-independent (in-process call, HTTP, file materialization); materializations are regenerable, never authoritative; the browser client demotes to legacy (owner TUI ruling 2026-07-20) with the terminal Archive client as successor under the same contract. II.5 becomes narrator-only: **no LLM in the input path** (ruling R4) — the pre-V parser scope of **Amendment I is superseded-in-part** (its pinning discipline survives, generalized); provider stack local-first with opt-in remote fallback and mute always legal (D2). III.6 retitled "Model Pinning and Persisted AI Artifacts" — the pinning law now governs narrative blocks and embeddings keyed `(entity, tick, model_pin)`. Principle intact, binding generalized — MINOR under the Amendment L precedent. Source: ai/_inbox/tui/tui-roadmap-update.md §6.1 (authored as provisional "T", re-lettered V). Owner-ratified 2026-07-20.
-
-**Amendment W — Deterministic Materialization** (ratified v2.12.0, `[PENDING CODE]`): Adds III.13 — every materialized view of engine state (page projections, the vault, snapshot renders, exports) is deterministic: explicit `ORDER BY`, sandboxed sim-time-only templates (no wall-clock, randomness, or filesystem), identical `(state, intel ledger, defines, templates)` → byte-identical artifacts; the golden vault joins III.12's artifact list with its own blessing discipline; III.11 Loud Failure extends to pixels (missing records render as loud absence blocks). III.9 P1 tier gains III.13. Source: tui-roadmap-update.md §6.2 (provisional "U", re-lettered W). Owner-ratified 2026-07-20.
-
-**Amendment X — Infrastructure Domain & Local-First Distribution** (ratified v2.12.0; X.7 `[IMPLEMENTED]`, X.8 `[PENDING CODE]`): X.1 scoped to the production deployment estate — the blanket "No Docker, no Nix" letter corrected (Amendment P factual-drift pattern; production-host substance unchanged: bare metal, Ansible, systemd, no containers on the VPS). New X.7: the infrastructure domain is governed by the **babylon-infra constitution v1.0.0** in its own repo, mounted as the `infra/` submodule; its Nix flake is the sole toolchain pinning authority (second authorities prohibited; mise = task runner only; the `nixpkgs-data` input carries the data-layer interpreter in lockstep with `PINNED_SQLITE_VERSION` 3.53.1). *(X.7's flake home revised by Amendment Z, 2026-07-21: the flake is vendored in-repo and the submodule unmounted; see the current X.7 text.)* New X.8: local-first distribution — the whole Trinity on the player machine with a game-managed embedded PostgreSQL 17 + pgvector cluster (unix-socket-only, D1); Nix flake beta channel with R2 binary cache; Debian 13 baseline; the central server (Metropole) repurposed to observability + game-file ingest and bound by the observes-never-adjudicates clause; web serving stack legacy. X.6 carve-out: Grafana+SQL fleet observability (D3). Sources: babylon-infra constitution v1.0.0 (II.2–II.4, III.1), babylonlocalfirstinfrastructure.md (D1–D3), tui-roadmap-update.md §6.4, owner rulings 2026-07-20 (Nix consistency; submodule mount PR #223; sqlite pin PR #222; TUI switch). Owner-ratified 2026-07-20.
-
-**Amendment Y — Pydantic AI as Canonical LLM SDK** (ratified v2.13.0, `[IMPLEMENTED]`): the intelligence layer's **generation lane** (narrator + judge) adopts **pydantic-ai** (`pydantic-ai-slim[openai]`) as its canonical SDK, replacing the hand-rolled per-provider chat clients and the judge's hand-rolled JSON extraction. BD-ruled to **pass the X.6 solo-developer filter**: a maintained upstream SDK that deletes bespoke transport/parse code reduces the maintenance surface — the filter's own test. Boundaries unchanged: the **wire seam stays OpenAI-compatible `/v1`** (§A8 precedence bundled llama-server → external Ollama → Cloudflare → mute; mute always legal); **Amendment V holds in full** — narrator-only, no LLM in the input path (R4), and no agentic tool loops against engine state: pydantic-ai's agentic surface (tools, deps) is out of scope by this amendment's letter — only `Agent(output_type=...)` structured output and plain generation are sanctioned, and pydantic-validated output remains observation, never adjudication. **III.6 pinning** governs all persisted output unchanged. **Embeddings and health probes remain on the stock `openai` client** (pydantic-ai carries no embedding API) — the openai package stays a sanctioned transport beneath and beside the SDK. litellm/langchain remain rejected (X.6). Test-tier hygiene is constitutional: `pydantic_ai.models.ALLOW_MODEL_REQUESTS = False` globally in the test tier — an accidental network-bound model run raises, it never spends. Source: BD directive 2026-07-20; implementation ADR100. Owner-ratified 2026-07-20.
-
-**Amendment AA — Portability Horizon (Windows Post-1.0)** (ratified v2.15.0): Windows compatibility is a **REQUIRED post-1.0.0 portability milestone**, activated once the game concept is proven (BD judgment call, recorded as an owner ruling when made) — upgrading X.8's prior roadmap prose to a binding commitment with two ordered lanes: **(lane 1) WSL2** — the existing Nix flake channel running unchanged inside WSL2, promoted from "documented workaround" to a supported install path with its own doctor preflight; **(lane 2) native Windows** — the 2.0.0 portability release (X.8 unchanged on this), a separate packaging story (no Nix on native Windows; channel design deferred to its own ADR when activated). **The Shield (the operative half):** pre-1.0.0 development MUST NOT be gated, taxed, or complicated by Windows compatibility — no Windows CI legs, no Windows-conditional code paths, no speculative cross-platform abstraction layers, and no v1.0.0 Definition-of-Done item may reference Windows; proposing pre-1.0 Windows work requires amending THIS amendment first. **The sole pre-1.0 duty is cheap optionality (disclosure, never a gate):** (i) every ADR adopting a load-bearing platform, language, or dependency records a one-line Windows-impact note; (ii) where otherwise-equal designs differ in Windows foreclosure, prefer the non-foreclosing one and say so in one line; (iii) two seams are NAMED as already carrying the optionality — the unified DSN resolver documents its TCP-loopback fallback point (X.8/D1's unix-socket-only letter stands unchanged on Linux; the fallback is a documented seam for lane 2, not an implementation), and the glyph-floor playability discipline (ADR099; the graph-render-lane ruling) is the cross-platform rendering insurance (kitty graphics is absent from Windows Terminal — the floor, not the raster lane, is what ports). Lettering: the drafted Material-Triad amendment slides to AB+; T remains reserved (ADR072). Source: BD directives 2026-07-21; implementation record ADR108. Owner-ratified 2026-07-21.
-
-**Amendment AC — The Raster Cutover (Rust/Ratatui Client, v1.0)** (ratified v2.17.0): The **Rust/Ratatui client is the designated v1.0 terminal Archive client** — a BD superseding ruling (2026-07-27) over the 2026-07-23 critical-path plan; the v1.0 DoD and T7 renumber around it. Operative clauses: **(i) home** — the client lives **in-tree** at `rust/` (cargo workspace: `babylon-tui` core, `babylon-tui-python` cdylib, `babylon-md` fork; maturin/PyO3 extension consumed as a uv path-source), superseding the 2026-07-22 extraction ruling **for client crates only** — generic Rust libraries remain sibling repos; **(ii) contract unchanged** — II.8/Amendment V holds in full: the client is a presentation-only viewport over `observe()`-projection JSON shapes, clients remain disposable; this amendment designates an implementation, not a primitive; **(iii) the gate** — the tutorial-BDD suite passing against the Rust client (the `test_tutorial_pilot.py` arc, ported) is the constitutional correctness/parity condition, and **BD Gate 3 runs on the Rust client at M3** as a combined content+client gate; **(iv) the cutover** — the Textual implementation retires ONLY via the declared M7 ceremony, blocked on (iii), and **v1.0.0 ships WITH the completed deletion** (the one-way door is inside the release — reaffirmed knowingly); consequence: the maturin wheel joins the default install and the T7 uv2nix player closure at M7 (the client may not remain an opt-in dependency group at release); **(v) the 3D lane** — chartered and **v1.0-blocking**, four targets: topology hypergraph and contradiction-field surface **block the release**; choropleth extrusion and trend ridgelines are best-effort (slipping to v1.1 only before they would delay v1.0); Ratatui has no built-in 3D — the lane is CPU rasterization to cell grids, with the glyph-tier text output as the ADR099 floor and the III.12 text-assertion medium, plus an optional kitty true-pixel tier; **(vi) the rasterizer** — the shared deterministic 3D rasterizer is **hypergraph-rs's `raster`/`cells3d` feature** (this ruling un-pauses that lane for feature work), consumed as a **rev-pinned cargo git-dependency** from a new git remote with read-only deploy-key CI access; ratatui never enters hypergraph-rs's dependency graph. Windows-impact note (AA duty): crossterm + cargo/maturin do not foreclose native Windows; kitty/TGP raster is absent from Windows Terminal — the glyph floor, not the raster lane, is what ports. Source: BD interview rulings BD-1…BD-10 (2026-07-27, in-session); design/plan rev 2 (`docs/superpowers/specs/2026-07-26-ratatui-client-design.md` §3); recording ADR150. Owner-ratified 2026-07-27.
-
-**Amendment AD — The Agentic Engineering Model** (ratified v2.18.0): Names and ratifies the project's development model as **Agentic Engineering** and adds **IX.5**. The **Benevolent-Dictator model is subsumed, not replaced**: the human authority is recast as the **Director** — final merge authority to `main` (unchanged) PLUS **sole, reserved authority over the ideological/theoretical line** the simulation encodes (the Article-I MLM-TW commitments, the doctrine trees, political framing, the five canonical outcomes). Autonomous AI agents are the engineering workforce, executing across parallel isolated worktree lanes under the interleaving rule (one engine train on the tick pipeline at a time); their autonomy is **licensed by the gates** — determinism (III.7), the sentinel family, behavioral contracts (III.12), the TDD red phase, Loud Failure (III.11), and the baseline ceremonies (§6.5) — a green gate self-merges, a red gate STOPs, and a question touching the ideological line escalates to the **Director** rather than resolving under IX.3. This designates a **development model, not a primitive**: no tick output, no dialectic, no architecture principle changes — MINOR. Branch/PR mechanics are unchanged and remain documented in `CONTRIBUTORS.md`. Source: BD directive 2026-07-27 (in-session); recording ADR151; docs sweep (CONTRIBUTORS.md, README.md, docs/agents/governance.md, CLAUDE.md). Owner-ratified 2026-07-27.
-
-**Amendment AE — The Refoundation (BSL + the Rust Kernel)** (ratified v3.0.0): Rebinds the **engine language** and re-opens the formalism surface for exactly one additive construct and one class of subtractive rulings. Operative clauses: **(i) engine language** — **Rust is the engine language**; Python survives as the **data-build pipeline** (the parquet → sha-pinned reference-DB estate, ADR098), the **out-of-process AI observer** (with the vault baker), and the engine-decoupled CLI periphery; this supersedes NORTH_STAR §6.2's "Python stays the engine language" and moves II.6's implementation binding (the frozen Pydantic `World`, `tick(world, actions) → (new_world, events)`) onto the Rust kernel **exactly as Amendment L moved II.3's substrate binding** — II.6's principle (state is pure data; the engine is pure transformation; they never mix) is language-independent, and only the binding changes. **(ii) formalism closure, additive** — NORTH_STAR §0's closed formalism surface re-opens for **exactly one** additive construct, the **Babylon Scripting Language (BSL)**: a total, fuel-metered, homoiconic s-expression language whose rules are content data. BSL **expresses** the existing closed algebra and **mints no new mathematics** — no new generator, no new constructor family (C/G/P stand), no new adjunction, no new level lattice, no new severity rule. Everything else stays closed; new formalism still costs an amendment. **(iii) formalism closure, subtractive** — the same closure re-opens **subtractively** for III.10 Earn-Its-Keep retirements arising out of the numeric-annex per-site rulings: a retirement is **not sign-off-only** — *each III.10 retirement enacted under §6.2 rulings is recorded as a rider to this amendment enumerating the retired construct* — since removing a construct changes what the algebra can express. **(iv) Invariant 2 rebound** — "the engine adjudicates; AI narrates; clients render — no exceptions without amendment" survives **verbatim**, with "engine" rebound to the Rust kernel; II.5 (narrator-only) and II.8/Amendment V (the `observe()` client contract) are untouched, and moving the AI observer out of process strengthens the separation rather than relaxing it. **(v) ADR063 superseded** — ADR063's deferral of a Rust kernel behind a measured national-scale CPU profile is superseded by Director ruling R2; the tick profile is still published in Phase 0 as **evidence hygiene, not a gate**. ADR063's two surviving conclusions are **retained**: the monorepo argument (one determinism contract spans the sim — strengthened when engine and client share a language) and its characterization of a language port as a **re-baselining project** under III.12(b), which R3's hybrid correctness bar and R8's stream-change ruling accept explicitly rather than deny. **(vi) Amendment D** — II.7's `[TRANSITION STATE]` hyperedge reconciliation is resolved **inside this program**, by a Phase-0 analysis PR the Director ratifies **before** `babylon-graph` commits a data shape (R7); per IX.3.4 it is **not** resolved by engineering default. *Resolution recorded same-session (2026-07-29): the Director ruled **NATIVE HYPEREDGE** — hyperedges are first-class objects in `babylon-graph`'s exposed model; Levi/incidence sanctioned as internal storage only; sub-rulings D-2..D-7 per the analysis §9 (PR #353); II.3's transition-state marker closes.* **(vii) Windows (Amendment AA duty)** — Rust + cargo **improves** native-Windows feasibility versus the Nix-pinned CPython/numpy stack; residual foreclosure risks are the game-managed embedded Postgres cluster (X.8/D1) and whatever LAPACK linkage, if any, the per-site numeric-annex rulings retain — each retained linkage is itself a foreclosure entry. AA's **Shield** is unchanged in letter and now covers a longer pre-1.0 period by operation of clause (ix). **(viii) the Python engine freezes** — at the end of Phase 0 the Python engine is frozen at an **executable pin** (the freeze tag: source + `flake.lock` rev + `uv.lock` + reference-DB sha + Postgres migration head), and a scheduled CI job rebuilds and runs the tagged engine on the 11 canon scenarios through cutover — **failure of that job is a red gate**. After the tag the Python engine is reference-only; a mid-program fix to the frozen branch requires **Director sign-off plus contract re-extraction**. **(ix) v1.0 retargets** — **v1.0 is redefined as the Rust engine's release**; NORTH_STAR invariant 8 ("the game ships") and §6.3's forcing function retarget onto it, save-compat semver resets with it (`docs/versioning.md`), and every in-flight v1.0 stop receives an explicit disposition — closed-as-superseded, absorbed, or carried (client-side stops carry, since the client survives under clause (iv)). **(x) repo layout** — engine crates land in the existing **in-tree** `rust/` cargo workspace alongside `babylon-tui`/`babylon-md`, extending Amendment AC clause (i) from client crates to engine crates and superseding the 2026-07-22 extraction ruling for them; `hypergraph-rs` remains a **sibling library consumed as a dependency and its charter does not expand**. **Continuity condition (IX.5):** the sentinel estate is the license for agent autonomy and MUST NOT lapse — the per-family disposition table (subsumed / ported / git-level) is a **hard cutover gate**, and a family whose port slips either blocks cutover or degrades to a declared, Director-signed exemption row; there is no silent lapse. **(xi) in-game visualization requirement (Director directive, same session)** — the game MUST render the **topology** (the native-hyperedge graph of clause (vi)), the **hypergraph structures** (contradiction fields, membership formations), and **value-flow Sankey diagrams** (imperial-rent tribute circuits, Vol-II circulation, trade flows) **in the terminal client via Ratatui**, with **ratty** (the Bevy↔Ratatui bridge; `ratatui-rgp` inline-3D widget) sanctioned as the rendering vehicle for the 3D/scene tier ALONGSIDE Amendment AC (vi)'s hypergraph-rs CPU-raster tier — this extends AC (v)'s target list with the Sankey flow family and binds the requirement to v1.0 as retargeted by clause (ix). Unchanged: the ADR099 glyph floor and NORTH_STAR invariant 3 (every raster has a text floor; fully playable glyph-only over ssh), III.12's text-assertion medium, and AC (vi)'s dependency rule (neither ratatui nor ratty ever enters hypergraph-rs's dependency graph). Windows-impact note (AA duty (i)): recorded in clause (vii). Source: Director rulings R1–R9 (2026-07-28 → 2026-07-29, in-session) plus the same-session visualization directive, design `docs/superpowers/specs/2026-07-28-program-27-refoundation-design.md` §4; recording ADR172. Director-ratified 2026-07-29.
-
-**Amendment AF — The Bevy Cutover (Bevy Client, v1.0)** (ratified v3.1.0): **Bevy replaces the Rust/Ratatui client outright** — Textual-deletion precedent: no deprecation window, no dual-client period. Operative clauses: **(i) the client** — the v1.0 client is a standalone **Bevy** (0.18 line) executable crate `babylon-client` in the in-tree `rust/` cargo workspace; engine crates link in-process; the shipped game is a **pure Rust binary** with no PyO3 in the play path (Python remains the data-build pipeline and the out-of-process AI observer, exactly where Amendment AE put it); v1.0 visual scope is the 2D county-map game with selective 3D moments (Patches the tutorial guide; the topology view). **(ii) supersessions** — Amendment AC is superseded **in full**; Amendment AE clause (xi) is superseded; the ADR099 glyph floor and NORTH_STAR invariant 3's "fully playable glyph-only over ssh" retire as binding requirements. The topology / hypergraph / value-flow-Sankey visualization obligations **transfer to Bevy scenes** — the obligations survive, the renderer changes. AC clause (i)'s in-tree home ruling carries forward for every `rust/` crate — AE clause (x)'s extension of it to engine crates binds unchanged. AC clauses (v)–(vi)'s 3D CPU-raster lane (hypergraph-rs `raster`/`cells3d`, the kitty tier) loses its v1.0-blocking status and retires from the client path; hypergraph-rs itself survives as the ADR179 T3 storage backend, its charter still un-expanded. AC clause (ii)'s substance carries forward verbatim: the client is a presentation-only viewport over `observe()`-projection shapes (II.8/Amendment V holds), clients remain disposable, and this amendment designates an implementation, not a primitive. **(iii) deletion ceremony** — this amendment deletes the Ratatui estate outright: workspace crates `babylon-tui`, `babylon-tui-python`, and `babylon-md`, the maturin wheel packaging (`rust/pyproject.toml`), and the Python client periphery that boots it; the wheel leaves the default dependency set, so `uv sync` no longer requires cargo (which also removes the #463 CI-timeout lane's trigger surface). **(iv) packaging** — `babylon play` retires from the play path; the game launches as a normal binary; the Python CLI survives only for the data-pipeline and observer periphery. **(v) carried assets and contracts** — the §9b crimson/gold/near-black palette (source of truth `render/tiers.py::TRUECOLOR_PALETTE`, with the cross-language parity guard re-pointed at `babylon-client`), the Iosevka type direction, the SFX suite (ADR152) and soundtrack (ADR153) porting to Bevy's audio/asset system, and the ADR175 structured-JSONL engine log sink all carry; the client log contract re-points from `rust-client.log` to the Bevy client's log when its file sink lands (milestone B2). **(vi) gate transfer** — AC (iii)'s tutorial-BDD parity condition transfers to the Bevy client: the tutorial arc passing against the Bevy client is the constitutional correctness/parity condition before v1.0 (the `TutorialStep` script is the preserved content source; the harness is rebuilt Bevy-side), and a Director eyes-on session in the Bevy client replaces the retired TUI campaign gate (#262). **(vii) sentinel continuity (IX.5)** — client-bound sentinel families receive declared dispositions recorded in ADR186: the theme-parity guard PORTS to `babylon-client`; the raster-ban and tutorial-pilot families RETIRE with the estate they guarded; tutorial CONTENT checks are retained. No silent lapse. **(viii) hyperedge formalism note** — implementing `HyperedgeSet` / `NodeRef` / `EdgeRef` / `HyperedgeRef` in `BslType` mints no new mathematics: `bsl-language.rst` §2.6 already specifies the element/result table, so it does not extend the formalism surface under AE (ii); this recording closes the open question on task #50, and the 2026-07-31 hyperedge-lane pause lifts (R5). Windows-impact note (AA duty): Bevy/wgpu improves native-Windows feasibility versus the terminal raster tiers; retiring the glyph floor removes one of Amendment AA clause (iii)'s two named optionality seams — wgpu's cross-platform backends (Vulkan/DX12/Metal/GL) replace it as the rendering insurance; no new foreclosure entries. Source: Director rulings R1–R10 (2026-08-10, in-session), design `docs/superpowers/specs/2026-08-10-program-28-bevy-cutover-roadmap-design.md`; recording ADR186. Director-ratified 2026-08-10.
-
-**Amendment AG — Attributed Membership and Lattice Instances** (ratified v3.2.0): re-opens NORTH_STAR §0's formalism closure for **exactly two constructs**, both escalated by the R9 spec chapters (`bsl-language.rst` D66/D62) as amendment territory and both approved by the Director in session (2026-08-10). Operative clauses: **(i) attributed membership** — the exposed hypergraph model of Amendment D (AE clause (vi)) gains a third element kind: the *(member, hyperedge)* incidence pair becomes a first-class **attributed membership** carrying declared, typed payload fields (the role/strength/visibility family the frozen `CommunityMembership` carries). The alternative landing — a per-(member, hyperedge) dyadic edge — is REJECTED: it would re-expose precisely the incidence encoding sub-ruling D-1 confines to internal storage. Obligations: payload fields are typed exactly like node/edge fields (the §3.1/§3.4 disciplines apply), participate in the canonical state hash, iterate in the member list's ruled order (ascending member id), and mutate only through effects; the membership ceiling axis stays `:max-members`; **Anti-Pattern VIII.9 survives verbatim** — a member list crosses WHOLE, never C(n,2); attributed membership changes what a membership carries, never how many objects cross. This clause discharges the D66 port blocker (CommunitySystem's threat score). **(ii) lattice-instance minting** — content/scenario forms may DECLARE new scale-lattice rungs and `allocate`/`aggregate` adjunction INSTANCES of the existing adjunction schema, load-time validated; minting a new adjunction KIND, altering the conservation obligation between rungs, or introducing new level-lattice algebra stays closed under AE (ii). Two standing rulings bind every declared rung: the spatial-adjacency estate ruling (2026-07-30) — rungs over the invariant substrate resolve through the static per-resolution lookup estate, never per-tick state — and the intensive-aggregation rule: an aggregate of an intensive field is weighted or it is a load error, never an unweighted mean. **(iii) the closure re-seals** — this amendment adds no verb, no intrinsic, no severity rule, no constructor family; everything else under NORTH_STAR §0 stays closed. **(iv) consequences** — `bsl-language.rst` gains the normative sections for both constructs in a follow-up spec PR (the D66/D62 notes convert from escalations to specifications); `babylon-graph`'s exposed model gains the attributed-membership object with its hashing/iteration contract; the CommunitySystem BSL port unblocks; C11's lattice expression completes. Windows-impact note (AA duty): none — data-model and content-form changes only. Source: Director in-session approval 2026-08-10 over the two escalated items, the spec notes `bsl-language.rst` §2.8/§3.9 (PR #474), and the gap analysis `reports/bsl-gap-analysis-2026-08-10.md`; recording ADR189. Director-ratified 2026-08-10.
-
-Additional amendments will be registered as they are identified during downstream translation.
-
-**3. AI Decision Procedure** — When an AI agent encounters ambiguity, it MUST follow this escalation ladder:
-
-1. **Read and Proceed** — If the constitution provides an unambiguous constraint or prohibition that answers the question directly, the agent MUST apply it without asking for clarification. Examples: "Banned: infinite biocapacity" → reject any code producing it; "Every verb maps to a graph operation" → ensure `Investigate(Territory)` mutates the graph.
-
-1. **Read and Ask** — If the constitution constrains the shape of the answer but not its content, the agent MUST consult the relevant spec before proceeding. Examples: II.13 defines transport edge types (AIR_LINK, SHIPPING_LANE, ROAD, RAIL) but does not define their cost functions → read the transport spec; I.21 defines three targeting modes but does not define the exact graph operation for Educate → read the verb spec.
-
-1. **Escalate to Amendment** — If the question requires a choice between: adding a new primitive (new pole type, new morphism relation, new transport edge type not in II.13); redefining an existing primitive (changing the dialectic structure in I.19); relaxing a prohibition (allowing substrate mutation despite I.20); or introducing a formalism that fails the Aleksandrov Test (III.8) — then the agent MUST STOP and propose a constitutional amendment. It MUST NOT improvise a solution. The proposal MUST include: the problem, the proposed principle text, the principles it affects, and a draft invariance proof.
-
-1. **Transition State Protocol** — If a principle is marked `[TRANSITION STATE]`, the agent MUST treat it as blocked. It MAY propose a spec to resolve the transition state, but it MUST NOT implement code that depends on the unresolved principle. Examples: II.7 (hyperedges) is transition state → do not implement hyperedge logic until Amendment D is ratified.
-
-**4. AI Context Budget** — See III.9 for the canonical principle priority tiers. This section records governance rules for the budget:
-
-- P0 principles are immutable across all agent sessions. No implementation task may proceed without them.
-- P1 principles are domain-mandatory. An agent editing `engine/systems/territory.py` MUST retain II.13 and III.4; an agent editing `engine/systems/solidarity.py` MUST retain I.6 and I.21.
-- P2 principles MAY be dropped when context-constrained, but the agent MUST report which P2 principles were dropped in its session summary.
-- If an agent cannot fit P0 + relevant P1 into context, it MUST escalate — it MUST NOT drop P0 or P1 silently.
-
-**5. Development Model — Agentic Engineering** `[RATIFIED — Amendment AD, 2026-07-27]` — Babylon is built by **Agentic Engineering**: a human **Director** sets direction and holds the ideological line; autonomous AI agents perform the bulk of the engineering under a discipline regime that makes their autonomy trustworthy without line-by-line human review.
-
-- **The Director.** Persephone Raskova ([@percy-raskova](https://github.com/percy-raskova)) is the Director. She sets project direction and holds **sole authority over the ideological and theoretical line the simulation encodes** — the MLM-TW theoretical commitments (Article I), the doctrine trees, political framing, and the canonical outcomes (the five terminal endgames). This is a **reserved power**: agents engineer *within* that line — they implement, refactor, test, and propose — but they do **not** author or alter political content without a Director ruling. The Director also holds **final merge authority to `main`** — the Benevolent-Dictator role (`CONTRIBUTORS.md`), subsumed here and renamed for the function it serves in an agent-executed project. A question about the political line is not an ambiguity to resolve under IX.3; it is an **escalation to the Director**.
-
-- **Agents as the engineering workforce.** Autonomous agents execute across **parallel isolated lanes** — each lane a git worktree on its own branch (`CONTRIBUTORS.md`) — under the **interleaving rule**: at most one engine train touches the tick pipeline at a time, so determinism baselines never race. Lane ownership is declared (a lane marker) so concurrent sessions do not collide on the same files.
-
-- **The discipline is what licenses the autonomy.** Agent output is trusted because the **gates**, not a reviewer, certify it: determinism (III.7 — every tick a hash; non-determinism is a bug), the **sentinel family** (built-but-dead / wrong-shape / dead-write detectors), **behavioral contracts** (III.12 — the rewrite test: golden baselines, property laws, byte-identity ceremonies), the **TDD red phase**, and **Loud Failure** (III.11). **A green gate is a self-merge license; a red gate is a STOP.** Ceremony discipline (baseline blessings, §6.5) is deferred to merge, never taxed on the inner loop. Autonomy is bounded by the same escalation ladder every agent already follows (IX.3): a task that would add a new primitive, relax a prohibition, or touch the ideological line MUST stop and escalate — to a constitutional amendment, or to the Director. Source: BD directive 2026-07-27 (in-session); recording ADR151. Owner-ratified 2026-07-27.
-
-## X. Deployment Infrastructure
-
-**1. Bare Metal, Ansible-Managed (Production Estate)** — Scope: the **production deployment estate** (the VPS). On the production host: no containers, systemd as sole supervisor, everything installs on the host OS via apt packages and is configured declaratively by Ansible playbooks; the entire server state is described in version-controlled roles; nothing is installed by hand. **Explicitly out of this principle's scope** (Amendment X, correcting the pre-X blanket "No Docker, no Nix" letter — the Amendment P factual-drift pattern): the development toolchain (the Nix devshell, X.7; the docker-compose test Postgres the repo already runs) and the distribution channel (X.8). The production-host substance is unchanged.
-
-**2. Terraform Provisions, cloud-init Bridges, Ansible Configures** — Terraform creates and destroys cloud resources (servers, firewalls, DNS records, object storage). cloud-init creates the deploy user on first boot — the only thing it does. Ansible configures everything after. These three tools have non-overlapping responsibilities.
-
-**3. Postgres Bare Metal from PGDG** — PostgreSQL installs from the upstream PGDG apt repository directly on the host. Extensions (PostGIS, pgvector) install as apt packages. Ansible's `community.postgresql` collection manages database creation, roles, extensions, and pg_hba declaratively. Postgres listens on Unix socket only — never exposed to the network.
-
-**4. systemd as Sole Supervisor** — All processes (Postgres, Gunicorn, Nginx, Woodpecker) run as systemd units. No additional supervisors. Service dependencies, restart policies, and cgroup resource limits are declared in unit files deployed by Ansible.
-
-**5. Cloudflare Edge, Hetzner Compute** — Nothing computes on Cloudflare; nothing reaches users without Cloudflare first. Cloudflare handles DNS, SSL, DDoS, WAF, CDN, R2 storage, and Workers AI. Hetzner handles Django, Postgres, rustworkx, and CI/CD. Division of labor is strict — no function is shared between the two.
-
-**6. Solo-Developer Constraint** — Every infrastructure component is filtered through: does this require a second full-time job to maintain? If yes, reject it. Kubernetes, HashiCorp Vault, service meshes, and container orchestration are explicitly rejected until scale demands them. **Carve-out (Amendment X):** fleet observability on the central server uses **Grafana + SQL** per BD ruling D3 (2026-07-19) — the one named exception to the prior Prometheus+Grafana rejection; the filter still governs everything else, and the rejection list otherwise stands.
-
-**7. Toolchain Single Pinning Authority (Nix Flake)** `[RATIFIED · IMPLEMENTED — 2026-07-20; flake home revised by Amendment Z, 2026-07-21]` — The **infrastructure domain** — provisioning, host configuration, and infra-agent conduct — is governed by the **babylon-infra constitution** (v1.0.0, BD-ratified 2026-07-20) in its own private sibling repository. The **dev/build toolchain** is pinned by THIS repo's vendored Nix flake (`flake.nix` + `flake.lock`, devShells `default`/`dataBuild` — Amendment Z environment sovereignty; previously the `infra/` submodule flake, unmounted): the flake is the **sole version-pinning authority** for the dev/build toolchain; a second pinning authority (mise `[tools]`, ad-hoc installs, apt-on-dev-machines for pinned tools) is prohibited. mise remains the task runner, never a pinning authority; `mise run nix -- <cmd>` enters the devshell. Load-bearing example: the flake's dedicated `nixpkgs-data` input carries the data-layer interpreter in **lockstep with `PINNED_SQLITE_VERSION`** (sqlite 3.53.1 — the reference-DB byte-identity contract), both halves same-repo; the rev-pinned URL means `nix flake update` cannot drift it, bumping it IS a declared sqlite-pin change, and `tools/check_release_pins.sh` gates releases on the lockstep. Conflicts between the two constitutions resolve by BD ruling.
-
-**8. Local-First Distribution (Periphery/Metropole)** `[RATIFIED · PENDING CODE — Amendment X; sources: the 2026-07-19 BD design session (D1–D3), the babylon-infra constitution II.2–II.4]` — The whole Embedded Trinity runs on the **player's machine** (the Periphery): engine, Ledger, Topology, Archive, vault, narrator — one process, one **game-managed embedded PostgreSQL 17 + pgvector cluster** (unix socket only, no TCP listener, no root, no system service, no Docker on player machines; PostgreSQL major version pinned for the whole beta — D1). Baseline platform: Debian 13; **Windows is a REQUIRED post-1.0.0 milestone (Amendment AA)** — WSL2 as lane 1 (this same flake channel, promoted from workaround to supported path once the concept is proven), native Windows/macOS as lane 2, the 2.0.0 portability release; pre-1.0.0 work is shielded from all Windows obligations beyond AA's one-line disclosure duty. The beta **distribution channel is a Nix flake** with an R2-backed binary cache; Cloudflare Workers run on the free plan only. The central server (the **Metropole**) is repurposed to observability — telemetry, log collection, and player game-file ingest — and is subject to the same clause as the LLM: **it observes and narrates (dashboards are narration); it never adjudicates**; nothing flows back down into a running game; severing the WAN cable changes nothing about play. The web-client serving stack is **legacy** — kept validated, never extended (owner ruling 2026-07-20; the TUI succeeds it under II.8's unchanged contract).
-
-______________________________________________________________________
-
-**Version**: 3.2.0 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-08-10
+<!-- vale ste.UnapprovedWords = NO -->
+<!-- vale ste.NounClusters = NO -->
+<!-- vale Vale.Spelling = NO -->
+
+**Version 4.0.0**
+
+**Ratified:** 2026-08-22
+
+Babylon's Constitution defines the durable purpose, boundaries, and rules of
+the game. Architecture records, design standards, content registries, and
+roadmaps contain details that change more frequently.
+
+## Article I — Purpose and Player Promise
+
+Babylon is an emergent political-economy game built for entertainment,
+expression, and education. Babylon is not a forecast. Babylon is not a
+scientific reproduction of history or a policy oracle. Its scientific
+discipline concerns how it uses evidence, declares assumptions, and tests
+causal behavior. That discipline serves a game that must engage players,
+remain realistic enough to support reasoning, and be powerfully expressive.
+
+The player enters a living world of organizations, classes, firms,
+institutions, territories, and ecological limits. The world continues to move
+without the player, responds materially to intervention, and preserves the
+consequences of prior choices. The player must understand pressures and choose
+among meaningful strategies. Neither the scenario author nor the engine
+guarantees those trajectories in advance.
+
+Babylon teaches through consequences. It can be rich, difficult, tragic,
+funny, surprising, or hopeful, but it must not confuse obscurity with depth or
+predestination with rigor. Entertainment value and truthful causal structure
+are joint design requirements.
+
+## Article II — Theoretical Commitments
+
+Material relations and Babylon's Marxist-Leninist-Maoist Third Worldist
+(MLM-TW) theoretical line constrain the causal model. They constrain which
+relations the engine represents, which questions it asks, and which
+explanations it can offer. They neither predetermine a play outcome nor impose
+a historical script.
+
+The dialectic `D = (A, Ā, w, T, σ)` remains the irreducible formal unit. In
+v4, `σ` is the dialectic's sublation predicate. Nothing can abstract over
+dialectical motion. Higher formalisms are compositions, coarse-grainings, or
+projections of that motion. A proposed peer or superior is a new primitive and
+needs an amendment.
+
+Partitions such as class position, core and periphery, or political alignment
+must emerge from composed material relations at a declared scale. Any claimed
+partition must include an invariance proof under its declared coarse-graining.
+An actor's material position and conceived interest remain distinct dimensions.
+Their gap is a terrain of political struggle.
+
+Every formal construct must pass the Aleksandrov Test. The test traces each
+abstraction to a material process that an implementer can name and inspect. A
+formal construct must yield a law, a falsifiable prediction, or a running
+computation. Notation alone creates no authority.
+
+Imperial rent, unequal exchange, production and realization, class formation,
+organization, state power, social reproduction, ecological metabolism, and
+contradiction remain central theoretical concerns. Their exact equations,
+vocabularies, and implementation bindings belong in governed standards and
+ADRs. Theory can constrain possible mechanics. Designers must not use theory
+as a license to hard-code an answer for play to discover.
+
+The spatial substrate is immutable reference geography. Jurisdictions,
+political claims, occupation, secession, and control are mutable overlays.
+Political change can alter the overlay but must not falsify the ground beneath
+it.
+
+## Article III — Emergence and Agency
+
+Conditions pressure outcomes. They do not dictate them. No shock, scenario,
+coefficient, or hidden branch can guarantee a victory, collapse, political
+alignment, historical path, or terminal pattern. Governed recognizers can name
+outcome patterns, but recognition only describes a world state. Recognition
+does not force that state to occur.
+
+Player and non-player actors act through the same declared causal machinery.
+Actions must have an eligible actor, a target, and a cost or constraint. They
+must also give a preview of what the actor can know and a later receipt that
+shows what occurred. All material effects become next-week intents and enter
+only the next weekly causal interval. The current interval can resolve only
+non-material knowledge, previews, and receipts. Those effects must not mutate
+authoritative material state.
+
+External events can introduce only their declared exogenous burden, capacity
+change, or pressure. They must not directly author downstream unemployment,
+shortages, deaths, migration, consciousness, firm failure, bank failure, or a
+winner. Those consequences must emerge through the shared systems that also
+operate in control and counterfactual runs.
+
+Gameplay must support more than one viable strategy. A dominant zero-cost
+choice, an action with no legible consequence, or an outcome that cannot
+respond to counterfactual play is a design defect.
+
+## Article IV — Evidence and Design Liberties
+
+Every substantive value, relationship, or rule must carry one of four evidence
+classes:
+
+- **Observed:** directly transcribed from a named source and vintage.
+- **Derived:** computed from observed or already governed values by a declared
+  transformation.
+- **Calibrated:** selected to make a declared causal signature or operating
+  range plausible, with the target and method recorded.
+- **Designed:** chosen as a game-design liberty for pacing, legibility,
+  expression, challenge, or entertainment.
+
+Designed values and mechanics are legitimate. Creators must declare them and
+keep them causally coherent with the rest of the model. Reviewers must be able
+to distinguish them from observed fact and review them like other content. A
+design liberty can simplify, compress, or stylize reality. It must not claim
+empirical authority that it lacks. It must not bypass the causal circuit to
+manufacture an intended conclusion.
+
+Data sources, artifacts, transformations, calibrations, and designed values
+must carry enough provenance to reproduce the input state. Historical data can
+set envelopes, scales, priors, and comparison cases. It must not silently set a
+mechanic's response shape or dictate its result.
+
+## Article V — Deterministic Architecture
+
+Determinism establishes computational identity, not scientific truth. The
+engine must produce the same ordered events, state, and world hash from the
+same canonical input. That input includes the initial state, content, player
+and non-player intents, reference digests, and random seed. Nondeterminism,
+unchecked overflow, noncanonical serialization, and silent degradation are
+defects.
+
+Required inputs that are absent or invalid must fail loudly. A subsystem must
+not silently skip its work, substitute a plausible default, or leave a
+declared guardrail inactive.
+
+The Rust engine adjudicates a weekly tick as a pure transformation over a
+working copy. BSL supplies governed rules, shocks, policies, and action
+semantics as content. Database access, wall-clock time, narration, rendering,
+and network services must not take part in adjudication. A failed rule aborts
+the whole working copy. No partial tick becomes visible.
+
+Postgres durability occurs only after adjudication. A committed tick records
+the graph, auxiliary registers, action receipts, events, digests, and combined
+world hash as one atomic envelope. The durable tick advances only after the
+transaction acknowledges it. SQLite and pinned columnar artifacts remain
+reference-build inputs, never mutable campaign state.
+
+State is data, the engine is transformation, and clients are projections. AI
+can observe, retrieve knowledge allowed by fog, and narrate with citations. AI
+must not adjudicate mechanics or retrieve hidden ledger truth. A client can
+emit intent but must not mutate authoritative state directly.
+
+The graph exposes native hyperedges. Amendment AG keeps attributed membership
+as a first-class, typed, hash-covered element. A native n-ary membership must
+remain one whole membership object and must never expand into a pairwise clique.
+
+Governed content can mint instances of the ratified scale-lattice and
+adjunction schemas. New mathematical kinds remain closed without amendment.
+`ai/decisions/ADR189_amendment_ag_attributed_membership_lattice_instances.yaml`
+governs ordered membership, effect-only mutation, and weighted aggregation of
+intensive fields. Dyadic relations, hyperedges, compact registers, and
+transport substrate records must keep their distinct semantics.
+
+Behavioral contracts must outlive any implementation. Canonical byte layouts,
+golden traces, schemas, property laws, replay checks, scenario tests, and
+boundary contracts form the durable criteria for a rewrite.
+
+Every materialized projection must be deterministic for the same committed
+state, knowledge, definitions, templates, and projection version.
+
+## Article VI — Political-Economy Circuit
+
+Babylon must progressively close one political-economy circuit spanning:
+
+1. production and the transformation of inputs.
+2. circulation, transport, trade, and delivery.
+3. realization through orders, inventory, prices, and settlement.
+4. finance through money, claims, liquidity, solvency, and backstops.
+5. labor, reserve-army movement, class formation, and social reproduction.
+6. organizations, the state, political struggle, and player action.
+7. ecology, capacity, depletion, and recovery.
+
+A mechanic is complete only when its important outputs reach a real consumer
+or receive a recorded absence or retirement disposition. Ports are
+slice-driven: frozen systems receive Port, Adapt, Replace, or Retire decisions
+when a playable causal slice needs them. The project can begin play before it
+completes every port.
+
+The topology can contain detail without an all-pairs graph. Exact stocks
+belong in one authoritative register. Relations carry identity, routes, or
+shares without duplicate principal. Resolution expands only when a named
+mechanic and evidence source justify more entities or relations.
+
+Conservation laws bind the circuit. Goods cannot arrive before shipment.
+Settlement cannot occur before realization. Every money change needs a
+declared source or sink. Labor-force movement must close over employment,
+reserve, mortality, migration, and inactivity.
+
+## Article VII — Player Knowledge and Presentation
+
+Every player-facing map, chart, graph, topology, table, or visualization must
+answer a decision question. Rich detail is welcome when it helps the player
+interpret signals, compare options, act, or understand a receipt. Detail that
+does not serve a decision belongs in the semantic Archive, a reference view,
+or an explicitly labeled administrative or diagnostic surface.
+
+Every shipped gameplay surface must declare a `DecisionSurfaceContract` with:
+
+- its decision question.
+- visible signals and their uncertainty.
+- knowledge and fog requirements.
+- available actions.
+- expected feedback receipts.
+- linked Archive subjects.
+- an explicit `admin_debug_exempt` status.
+
+An administrative or diagnostic exemption must be visible to the user and
+cannot meet a gameplay milestone. No surface is exempt by default.
+
+The semantic Archive is part of play, not a decorative encyclopedia. It must
+present deterministic, citation-bearing pages and links under campaign and
+knowledge context. Unknown subjects appear as honest red links. Search and LLM
+retrieval must enforce fog at the data boundary. A page that lags the durable
+tick must show its last verified tick.
+
+The core Archive loop is evidence to decision to action to consequence to an
+updated dossier. Every important action must return a causal receipt that a
+player can inspect through this loop.
+
+## Article VIII — Behavioral Validation and Governance
+
+Historical cases are behavioral benchmarks, not reenactment scripts. They test
+causal signatures, heterogeneity across places and sectors, hysteresis after a
+shock ends, conservation, and counterfactual responsiveness. Success means the
+same declared mechanisms produce plausible, varied, inspectable dynamics in
+control, shock, and intervention runs. It does not mean a run must reproduce a
+single historical trajectory.
+
+Emergence claims need redundant evidence. The evidence includes control and
+shock twins, counterfactuals, and mutation tests that sever causal links. It
+also includes geographic and sector variation, persistence after the event,
+deterministic replay, and a direct-write audit. The audit must prove that the
+scenario did not author its downstream results.
+
+The human Director sets direction, holds the reserved ideological and
+theoretical line, approves changes to governed political content, and keeps
+final merge authority to `main`. Agents engineer within that line under TDD,
+behavioral contracts, deterministic gates, explicit ownership, and loud
+failure. A green gate licenses progress. A red gate stops it until the team
+resolves the failure.
+
+A new or redefined mathematical primitive, a relaxed constitutional
+prohibition, or a change to the reserved theoretical line needs a
+constitutional amendment. New governed content vocabulary does not need an
+amendment when it uses the current mathematics. It needs the applicable
+Director ceremony, schema and conformance updates, and a recording ADR.
+Ordinary BSL content that uses the current vocabulary follows the content
+review path.
+
+An amendment must state the problem, the changed law, affected commitments,
+transition treatment, verification, and version change. Historical records
+remain immutable. Later decisions supersede them explicitly. They do not
+rewrite what an earlier decision said.
+
+### Amendment AH — Game-First Refoundation
+
+Amendment AH ratifies this eight-article Constitution and the
+entertainment-first, emergence-through-play standard. It supersedes the former
+live v3.2.0 text and preserves its history and any authority explicitly
+retained or re-homed by
+`ai/decisions/ADR221_game_first_refoundation_v4.yaml`.
+
+AH restores the Director-approved v4 primitive notation
+`D = (A, Ā, w, T, σ)`. The immediate v3.2 predecessor used `Ā` and `s` after
+Amendment N. The change is a new v4 notation ruling, not a claim that v3.2
+used `σ`.
+
+The transition record pins both the requested v3.1.0 snapshot
+`a265b85120ed2a90be40c72e63ee5bf27fc6e703` and the immediate v3.2.0 snapshot
+`e905e90d66bddc6e4eca36a3896428f5ce63de5b`. Pre-AH unversioned dotted
+clauses, named sections, and amendment references resolve against the pinned
+v3.2.0 snapshot through ADR221. Post-AH living authority cites the named v4
+article or its stable heading.
+
+---
+
+**Version:** 4.0.0
+
+**Originally ratified:** 2026-01-30
+
+**Last amended:** 2026-08-22

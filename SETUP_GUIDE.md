@@ -1,109 +1,40 @@
-# Getting Started with Babylon
+# Install Babylon
 
-Welcome! This guide takes you from a **bare computer** to a **running simulation**,
-then shows you around the codebase. No prior development experience assumed — if
-you can copy-paste commands into a terminal, you can do this.
+These instructions install Babylon and run two checks. They then show the optional Bevy
+administrative viewer.
 
-It has two parts:
+Read [`NORTH_STAR.md`](NORTH_STAR.md) for the game purpose, client status,
+validation standard, and gate order. [`CONSTITUTION.md`](CONSTITUTION.md)
+v4.0.0 is the authority.
 
-- **Part 1 — Get Babylon running** (and take a tour). Start here.
-- **Part 2 — Your first contribution** (fork, branch, pull request). For when
-  you want to change something.
+The first simulation below is a frozen Python smoke test, not the Bevy play
+surface.
 
-______________________________________________________________________
+## 1. Prepare the host
 
-# Part 1 — Get Babylon running
+Babylon uses a Linux toolchain. On Windows, use
+[WSL](https://learn.microsoft.com/en-us/windows/wsl/install). On macOS or Linux,
+use a terminal with Git.
 
-## Step 1: Get a Linux-style terminal
-
-Babylon is developed on Linux. Pick the section for your machine.
-
-### Windows
-
-You'll run Babylon inside **WSL** (Windows Subsystem for Linux) — a real Linux
-environment inside Windows. Follow Microsoft's guide:
-[Install WSL](https://learn.microsoft.com/en-us/windows/wsl/install). It's a
-one-line command (`wsl --install`) plus a restart.
-
-When asked to pick a Linux distribution, choose **Debian** — that's what Babylon
-is built on, so the commands below match exactly. (Ubuntu also works and is very
-similar. Other distros are fine too, but Debian and Ubuntu are the only ones we
-can help you with.)
-
-Once WSL is installed, open the **Debian** app from your Start menu. Everything
-from Step 2 onward happens inside that terminal.
-
-### macOS
-
-Open the **Terminal** app (Applications → Utilities → Terminal). You'll use
-[Homebrew](https://brew.sh), the macOS package manager. If you don't have it:
-
-```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-```
-
-### Linux
-
-You already have a terminal. The commands below assume Debian/Ubuntu
-(`apt`). On other distros, use your package manager's equivalent.
-
-______________________________________________________________________
-
-## Step 2: Install Git
-
-Git is the version-control tool we use to track every change. It's
-non-negotiable. (Read more at the [official Git site](https://git-scm.com).)
-
-- **Debian / Ubuntu / WSL:** `sudo apt update && sudo apt install git`
-- **macOS:** `brew install git`
-
-Check it worked:
+<!-- Vale: this paragraph preserves literal Docker product and command names. -->
+<!-- vale ste.UnapprovedWords = NO -->
+Install [Git](https://git-scm.com/downloads),
+[`mise`](https://mise.jdx.dev/getting-started.html), and Docker Engine with the
+Docker Compose plug-in from their official guides. Docker Compose is a host
+prerequisite because `mise run setup` starts Postgres. Check them:
+<!-- vale ste.UnapprovedWords = YES -->
 
 ```bash
 git --version
-```
-
-______________________________________________________________________
-
-## Step 3: Install mise
-
-[**mise**](https://mise.jdx.dev) (rhymes with "ease") is our one-stop tool for
-the development environment. It installs the right version of Python, installs
-uv for us, sets environment variables, and runs every common task (tests,
-linting, the simulation) behind simple `mise run ...` commands. The name comes
-from *mise en place* — the kitchen idea of having everything in its place before
-you start cooking. That's exactly what it does here.
-
-Install it:
-
-- **Debian / Ubuntu / WSL:** `curl https://mise.run | sh`
-- **macOS:** `brew install mise` (or the same `curl` line as above)
-
-Now tell your shell to load mise automatically. Run the line that matches your
-shell (if unsure, you're probably using `bash` on WSL/Linux and `zsh` on macOS):
-
-```bash
-# bash
-echo 'eval "$(mise activate bash)"' >> ~/.bashrc
-
-# zsh
-echo 'eval "$(mise activate zsh)"' >> ~/.zshrc
-```
-
-**Then close and reopen your terminal** (or run `exec $SHELL`). This step is easy
-to forget — if `mise` later says "command not found," it's because the terminal
-wasn't restarted. Verify:
-
-```bash
 mise --version
+docker compose version
 ```
 
-______________________________________________________________________
+The repository pins its language tools. It does not install Docker on the host.
 
-## Step 4: Get the code
+## 2. Get Babylon
 
-Clone the repository and enter it. We develop on the `dev` branch, so check it
-out:
+Clone the repository and select `dev`:
 
 ```bash
 git clone https://github.com/percy-raskova/babylon.git
@@ -111,217 +42,98 @@ cd babylon
 git checkout dev
 ```
 
-______________________________________________________________________
-
-## Step 5: Trust the project, then install everything
-
-The first time you enter the folder, mise will refuse to load the project's
-configuration until you explicitly trust it (a safety feature). Run:
+Trust the local `mise` settings:
 
 ```bash
 mise trust
 ```
 
-Now install the toolchain. This single command reads `.mise.toml` and provisions
-**both Python 3.12 and uv** for you:
+Read a script before you grant trust when you did not get the clone from the
+official repository.
+
+## 3. Install the tools
+
+Run the repository installation task:
 
 ```bash
-mise install
+mise run setup
 ```
 
-Then install Babylon's Python dependencies:
+The task installs the pinned tools, project dependencies, and local hooks. The
+first run can be slow.
 
-```bash
-mise run install
-```
+## 4. Run the smoke test
 
-> **First-time note:** these two steps download a fair amount (Python itself,
-> then ~hundreds of packages) and can take a few minutes. That's normal and only
-> happens once.
-
-______________________________________________________________________
-
-## Step 6: Run your first simulation 🎉
-
-This is the payoff. Run:
+Run the frozen Python reference for one small tick:
 
 ```bash
 mise run sim:run
 ```
 
-You should see output like this — a tiny two-node world (one *Periphery Worker*,
-one *Core Owner*) advancing a single tick:
+The command must show an initial tick, one simulation step, and a completed
+tick. The command does not prove that the Bevy client has player actions.
 
-```text
-[INFO] __main__: Babylon - The Fall of America
-[INFO] __main__: Initial state: tick=0
-[INFO] __main__: Initial tension: 0.0000
-[INFO] __main__:   Periphery Worker (C001): wealth=0.50
-[INFO] __main__:   Core Owner (C002): wealth=0.50
-[INFO] __main__: Running simulation step...
-[INFO] __main__: After step: tick=1
-[INFO] __main__: Tension: 0.0015
-[INFO] __main__:   Periphery Worker (C001): wealth=0.51
-[INFO] __main__:   Core Owner (C002): wealth=0.49
-[INFO] __main__: Simulation step complete.
-```
+## 5. Run the repository check
 
-Look closely: in one tick the Owner's wealth fell and the Worker's rose, and
-tension appeared on the edge between them. That's the engine modelling a
-material relationship — *Graph + Math = History*. **If you saw this, your setup
-works.** 🎉
-
-For a second confidence check, run the fast quality gate (lint + types + unit
-tests):
+Run the standard local gate:
 
 ```bash
 mise run check
 ```
 
-### You do **not** need any of this (yet)
-
-A common beginner mistake is over-installing. For everything above — setup, the
-simulation, the tests, and the tour below — you do **not** need:
-
-- ❌ Docker
-- ❌ PostgreSQL
-- ❌ Node.js
-- ❌ The large reference database
-
-Those are only required for the advanced runs in the [appendix](#appendix--going-further).
-
-______________________________________________________________________
-
-## Step 7: Take a tour
-
-Now poke around. Here's where the interesting things live and a one-liner for
-each. (`less` shows a file; press `q` to quit.)
-
-| What                                                                                      | Where                                                                   | Try                                            |
-| ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------- |
-| **The toy world you just ran**                                                            | `src/babylon/__main__.py`                                               | `less src/babylon/__main__.py`                 |
-| **The engine spine** — the 25 systems that run every tick, in materialist-causality order | `src/babylon/engine/simulation_engine.py` (the `_DEFAULT_SYSTEMS` list) | `less src/babylon/engine/simulation_engine.py` |
-| **The math** — 18 formula modules (imperial rent, survival calculus, solidarity, …)       | `src/babylon/formulas/`                                                 | `ls src/babylon/formulas/`                     |
-| **Tunable coefficients**                                                                  | `src/babylon/config/defines.py`                                         | `less src/babylon/config/defines.py`           |
-| **Every available command**                                                               | —                                                                       | `mise tasks`                                   |
-| **The project map & theory**                                                              | `README.md`                                                             | `less README.md`                               |
-| **Coding standards & architecture**                                                       | `CLAUDE.md`                                                             | `less CLAUDE.md`                               |
-
-A good first read is `fundamental_theorem.py` and `survival_calculus.py` in the
-formulas folder — they encode the core of the model the worker-vs-owner tick
-just demonstrated. After a test run you can also print a summary of the last
-results with `mise run test:summary`.
-
-______________________________________________________________________
-
-# Part 2 — Your first contribution
-
-Ready to change something? Here's the full workflow. (Governance and branch
-rules are summarized in [CONTRIBUTORS.md](CONTRIBUTORS.md).)
-
-## Step 1: Fork and connect
-
-For first-time contributors, **fork** the repo (your own copy on GitHub):
-
-1. Go to [github.com/percy-raskova/babylon](https://github.com/percy-raskova/babylon)
-   and click **Fork**.
-1. Clone *your* fork and add the original as `upstream`:
+The gate checks format, lint, types, and Python unit contracts. Rust changes
+also use the Rust gate:
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/babylon.git
-cd babylon
-git remote add upstream https://github.com/percy-raskova/babylon.git
-git remote -v   # confirm: origin = your fork, upstream = percy-raskova
+mise run rust:check
 ```
 
-(Collaborators with write access can clone the main repo directly instead.)
+Python tests have value during the Rust port. They test the frozen reference,
+data tools, and language-neutral behavior contracts.
 
-## Step 2: Branch from `dev`
+## 6. Open the Bevy viewer
 
-Always branch from an up-to-date `dev` — **never** commit directly to `main` or
-`dev`:
+<!-- Vale: this paragraph preserves literal Bevy and host package names. -->
+<!-- vale ste.UnapprovedWords = NO -->
+<!-- vale ste.NounClusters = NO -->
+This step is optional. A Bevy build needs Rust and Cargo plus the host window,
+input, and audio development libraries. The pinned Nix shell supplies Rust and
+Cargo. Install [Nix](https://nixos.org/download/) for this optional step. On
+Debian-family Linux hosts, the native package set includes `libasound2-dev`,
+`libudev-dev`, `libwayland-dev`, and `libxkbcommon-dev`.
+<!-- vale ste.NounClusters = YES -->
+<!-- vale ste.UnapprovedWords = YES -->
+
+Run the fast developer lane:
 
 ```bash
-git fetch upstream
-git checkout dev
-git pull upstream dev
-git checkout -b feature/your-feature-name
+mise run nix -- mise run rust:client-dev-dylib
 ```
 
-Name branches `type/short-description`, e.g. `feature/add-territory-system`,
-`fix/123-rent-overflow`, `docs/improve-quickstart`. Prefixes: `feature/`,
-`fix/`, `docs/`, `refactor/`, `test/`.
+The Bevy client shows the county atlas and moves ticks forward. The client is
+an administrative viewer with no player action.
 
-## Step 3: Make your changes
+## Make a contribution
 
-Follow the standards in [CLAUDE.md](CLAUDE.md) and add tests for new behavior.
-We use **Conventional Commits**:
+Read [`CONTRIBUTORS.md`](CONTRIBUTORS.md) before a change. Create a lane from
+`dev`, add a failing test first, and open a PR against `dev`.
+
+Use this command for a commit:
 
 ```bash
-git commit -m "feat(engine): add faction influence system"
-git commit -m "fix(survival): correct revolution probability"
-git commit -m "docs: clarify mise setup"
+mise run commit -- "type(scope): description"
 ```
 
-> **First commit is slow.** Babylon installs Git pre-commit hooks (run once via
-> `uv run pre-commit install`). On the first push the hooks build their
-> environments and run type-checking plus a fast test slice, which can take a
-> couple of minutes. Later commits are quick.
+Do not commit directly to `dev` or `main`.
 
-Before pushing, run the gate:
+## Fault help
 
-```bash
-mise run check
-```
+If `mise` is not available after installation, open a new terminal. Then run
+`mise --version` again.
 
-## Step 4: Open a pull request
+If `mise` does not load the repository settings, run `mise trust` from the
+repository root.
 
-```bash
-git push origin feature/your-feature-name
-```
-
-On GitHub, open a PR and **set the base branch to `dev`** (not `main`).
-Describe what changed, why, and how you tested it; reference issues with
-`Fixes #123`. Then CI runs and a maintainer reviews. After merge:
-
-```bash
-git checkout dev
-git pull upstream dev
-git branch -d feature/your-feature-name
-```
-
-That's it — you're a contributor. 🚩
-
-______________________________________________________________________
-
-# Appendix — Going further
-
-These are the heavier, "real" runs. They need infrastructure you can add once
-you're comfortable.
-
-| What                                                                    | Command                     | Needs                                        |
-| ----------------------------------------------------------------------- | --------------------------- | -------------------------------------------- |
-| **Full county-scale simulation** (Michigan + Canada, hundreds of ticks) | `mise run sim:e2e-michigan` | PostgreSQL + Docker + the reference database |
-| **The web app** (React + Django map UI)                                 | `mise run web:dev`          | Node.js (`mise run web:install` first)       |
-| **The collapse trajectory viewer**                                      | `mise run viz:necropolis`   | reference data                               |
-| **Postgres test container**                                             | `mise run db:up`            | Docker                                       |
-
-See [README.md](README.md) for the full command reference and the architecture
-overview, and `mise tasks` for everything available.
-
-______________________________________________________________________
-
-## Getting help
-
-- **Issues / questions:** [open an issue](https://github.com/percy-raskova/babylon/issues)
-- **Code questions in a PR:** tag `@percy-raskova`
-
-| Problem                            | Try                                                         |
-| ---------------------------------- | ----------------------------------------------------------- |
-| `mise: command not found`          | You didn't restart your terminal after Step 3.              |
-| mise won't load the config         | Run `mise trust` in the project folder.                     |
-| `uv` / tests fail unexpectedly     | Re-run `mise run install`.                                  |
-| Pre-commit hook fails on commit    | `uv run ruff check . --fix && uv run ruff format .`         |
-| "Can't push to dev/main"           | Create a branch first (Part 2, Step 2).                     |
-
-**Thank you for contributing to Babylon!**
+If dependency installation stops, run `mise run setup` again and keep the first error.
+Open an [issue](https://github.com/percy-raskova/babylon/issues) with the command,
+host system, and full error text.

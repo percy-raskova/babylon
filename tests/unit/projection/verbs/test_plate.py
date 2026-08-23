@@ -1,6 +1,6 @@
 """Contract tests for the verb-plate view provider (WO-38).
 
-The plate lists all nine Article V verbs in canonical order, each with its
+The plate lists all nine ADR177-governed verbs in canonical order, each with its
 target-existence eligibility (the SAME predicates the per-verb target lists
 apply), player-facing ``(reason, remedy)`` copy when ineligible, and
 affordability via :func:`babylon.models.vanguard_resources.check_can_afford`

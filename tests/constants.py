@@ -106,7 +106,7 @@ Canon = CanonicalThresholds
 
 
 # =============================================================================
-# DETROIT METRO TEST CASE (Constitution IV)
+# DETROIT METRO HISTORICAL BENCHMARK (Constitution Article VIII)
 # =============================================================================
 # The Detroit metro area serves as the foundational validation case for
 # deindustrialization signal detection (Feature 003).
@@ -121,7 +121,9 @@ class DetroitMetro:
     - Oakland County (affluent suburb): Professional services growth
     - Macomb County (working-class suburb): Mixed manufacturing/services
 
-    Reference: Constitution Section IV, spec-003-hydrator-temporal-validation
+    Reference: Constitution Article VIII and spec-003-hydrator-temporal-validation.
+    The counties support causal-signature and counterfactual tests; they are not
+    an obligation to reproduce one authored trajectory.
     """
 
     WAYNE_FIPS: str = "26163"

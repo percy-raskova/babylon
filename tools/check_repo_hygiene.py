@@ -81,6 +81,7 @@ ALLOWED_TOP_LEVEL_FILES: frozenset[str] = frozenset(
         ".semgrep.yml",
         ".semgrepignore",  # replaces semgrep's default ignore (which silently excludes tests/)
         ".trivyignore",  # curated IaC-scan ignores, every entry evidenced (program 15)
+        ".vale.ini",  # repo-specific exceptions merged with the global Vale configuration
         ".yamllint.yaml",
         "AGENTS.md",
         "babylon.code-workspace",

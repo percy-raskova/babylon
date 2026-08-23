@@ -1,16 +1,15 @@
-"""The Determinism sentinel — Constitution III.7's dynamic guard.
+"""The Determinism sentinel — Constitution Article V's dynamic guard.
 
 The static-source sentinels prove non-determinism *sources* (unseeded RNG,
 wall-clock reads, set/dict iteration order) are absent from the code. This is
 their dynamic partner: it runs the shared scenario twice with an identical seed
 and asserts the two dense traces are **byte-identical**. If any latent
 non-determinism slips past the static guard, two seed-identical runs diverge and
-their canonical-CSV SHA-256 hashes stop matching — this sentinel reds loudly
-(III.11).
+their canonical-CSV SHA-256 hashes stop matching — this sentinel reds loudly.
 
-The invariant traces to a material relation (Aleksandrov Test): "history is the
-deterministic output of material conditions" — the same initial conditions and
-the same seed must yield the same history, or the engine is not a lawful model.
+The invariant proves computational identity, not historical inevitability or
+scientific truth: the same initial conditions and seed must yield the same
+canonical trace, or the implementation is not deterministic.
 
 The efficacy proof (:func:`test_hash_distinguishes_divergent_traces`) shows the
 check is non-vacuous: a single mutated cell in an otherwise-identical trace
@@ -41,7 +40,7 @@ def _hash_trace(trace: DenseTrace) -> str:
 def test_shared_run_is_deterministic(shared_tick: DynamicArtifact) -> None:
     """Two seed-identical runs of the shared scenario hash byte-identically.
 
-    This is the canonical Determinism assertion (Constitution III.7): the
+    This is the canonical determinism assertion (Constitution Article V): the
     ``shared_tick`` fixture executes the ``imperial_circuit`` scenario twice with
     the same seed and records both canonical dense-trace hashes. Equality is the
     invariant; any inequality is a non-determinism bug in the engine.
@@ -53,7 +52,7 @@ def test_shared_run_is_deterministic(shared_tick: DynamicArtifact) -> None:
         f"{shared_tick.scenario!r} produced diverging dense traces "
         f"({shared_tick.hash_a} != {shared_tick.hash_b}). A latent "
         "unseeded-RNG / wall-clock / iteration-order source has slipped past "
-        "the static guard (Constitution III.7)."
+        "the static guard (Constitution Article V)."
     )
 
 

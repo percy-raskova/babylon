@@ -1,6 +1,6 @@
-"""The RATIFIED Article V verb 3×3 (Director, live session 2026-07-30; #398, ADR177).
+"""The ADR177-governed verb 3×3 (Director, live session 2026-07-30; #398).
 
-Article V's own axes, made canonical data: rows are the player-facing
+ADR177's axes, made canonical data: rows are the player-facing
 motions (Build org / Project power / Manage resources), columns the
 engine-facing targets (the org's own node / org↔class edges / org↔org
 edges). Every canonical verb occupies exactly one cell; the ratification
@@ -59,5 +59,5 @@ def cell_of(verb: str) -> tuple[str, str]:
     for cell, verbs in RATIFIED_MATRIX.items():  # loop bound: 9 cells
         if verb in verbs:
             return cell
-    msg = f"verb {verb!r} is not placed by the ratified Article V matrix"
+    msg = f"verb {verb!r} is not placed by the ADR177-governed matrix"
     raise KeyError(msg)

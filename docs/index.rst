@@ -1,72 +1,90 @@
 Babylon: The Fall of America
 ============================
 
-A geopolitical simulation engine modeling the collapse of American hegemony
-through Marxist-Leninist-Maoist Third Worldist (MLM-TW) theory.
+Babylon is an **entertainment-first emergent political-economy game**. Babylon
+is not a forecast and not a scientific reproduction. Theory constrains the
+causal model but does not predetermine results.
 
-**Graph + Math = History**
+Determinism proves computational identity, not scientific truth. Historical
+cases test causal signatures and counterfactual behavior. The Bevy client is an
+administrative viewer with no player action.
 
-.. note::
+The first three executable gates are:
 
-   This project is under active development. See the :doc:`/tutorials/first-simulation`
-   to get started.
+.. Vale: each protected item is a governed gate name.
+.. vale ste.UnapprovedWords = NO
 
-What is Babylon?
-----------------
+#. **Executable causality and whole-tick atomicity**
 
-Babylon models class struggle not as random events, but as a **deterministic
-output of material conditions** within a compact topological phase space.
+.. vale ste.UnapprovedWords = YES
+.. vale Vale.Terms = NO
+.. vale ste.UnapprovedWords = NO
 
-The simulation implements:
+#. **PostgreSQL/H3/Archive decision-loop slice**
 
-- **Imperial Rent** (Φ): Value extraction from periphery to core
-- **Survival Calculus**: Agents maximize P(S|A) vs P(S|R)
-- **George Jackson Model**: Consciousness bifurcation (revolution vs fascism)
-- **Percolation Theory**: Phase transitions in solidarity networks
-- **Carceral Geography**: Detention, displacement, elimination pipelines
+.. vale Vale.Terms = YES
+.. vale ste.UnapprovedWords = YES
+.. vale ste.NounClusters = NO
 
-Architecture Overview
----------------------
+#. **COVID E0 emergence proof**
 
-The system runs locally without external servers, using the **Embedded Trinity**:
+.. vale ste.NounClusters = YES
 
-.. list-table::
-   :widths: 20 40 40
-   :header-rows: 1
+Read the repository ``CONSTITUTION.md`` v4.0.0 for the law. Read
+``NORTH_STAR.md`` for the game direction and gate contracts.
 
-   * - Layer
-     - Technology
-     - Purpose
-   * - **The Ledger**
-     - DuckDB (data warehouse) / SQLite or PostgreSQL (game state) / Pydantic (validation)
-     - Rigid material state (wealth, organization, empirical data)
-   * - **The Topology**
-     - NetworkX
-     - Fluid relational state (solidarity, exploitation)
-   * - **The Archive**
-     - ChromaDB / pgvector
-     - Semantic history for AI narrative
+System overview
+---------------
 
-See :doc:`/concepts/architecture` for detailed architecture documentation.
+Babylon is a causal sandbox with a fixed weekly tick. Typed world data, rules,
+and feedback produce a new world, an in-memory Rust ``TickReport``, and a stable
+hash. Persisted replay remains in the frozen Python path.
 
-Quick Start
------------
+Rust owns game judgment and world hashes. BSL has live rules but no executable
+shocks. The live
+Rust path uses ``babylon-kernel``, ``babylon-graph``, ``babylon-bsl``,
+``babylon-tick``, and ``babylon-client``.
+
+The Bevy client can show the county atlas and move ticks forward. The client has no
+game verbs. The Python engine is a frozen behavioral reference and remains
+useful for port contracts and data periphery.
+
+.. Vale: this paragraph preserves literal persistence and schema identifiers.
+.. vale ste.UnapprovedWords = NO
+.. vale ste.NounClusters = NO
+
+Python supplies mutable SQLite replay, atomic Postgres persistence, and
+partial ``babylon_meta`` state. The full v4 Rust three-schema campaign boundary
+and Archive decision cycle have not landed.
+
+.. vale ste.NounClusters = YES
+.. vale ste.UnapprovedWords = YES
+
+.. Vale: the next role contains a literal Sphinx document path.
+.. vale ste.Ambiguity = NO
+
+See :doc:`/concepts/architecture` for the boundary between live and planned
+parts.
+
+.. vale ste.Ambiguity = YES
+
+First run
+---------
 
 .. code-block:: bash
 
-   # Install dependencies
    git clone https://github.com/percy-raskova/babylon.git
    cd babylon
-   uv sync --extra server
+   mise trust
+   mise run setup
+   mise run sim:run
+   mise run check
 
-   # Run tests
-   uv run pytest -m "not ai"
+``mise run sim:run`` starts the frozen Python smoke test. It does not start a
+playable Bevy game. See the root ``SETUP_GUIDE.md`` for installation help.
 
-   # Run simulation
-   uv run python -m babylon
-
-Contents
---------
+Manual contents
+---------------
 
 .. toctree::
    :maxdepth: 2
@@ -76,9 +94,10 @@ Contents
 
 .. toctree::
    :maxdepth: 2
-   :caption: How-To Guides
+   :caption: How-to guides
 
    how-to/index
+   agents/governance
 
 .. toctree::
    :maxdepth: 2
@@ -94,7 +113,7 @@ Contents
 
 .. toctree::
    :maxdepth: 2
-   :caption: API Reference
+   :caption: API reference
 
    api/index
 
@@ -104,52 +123,15 @@ Contents
 
    commentary/index
 
-Current Systems
----------------
-
-**Implemented:**
-
-- Imperial Rent extraction (EXPLOITATION edges)
-- Consciousness drift and bifurcation (George Jackson model)
-- Solidarity transmission (SOLIDARITY edges)
-- Survival calculus (P(S|A), P(S|R))
-- Territory dynamics (heat, eviction, displacement)
-- Agency layer (EXCESSIVE_FORCE → UPRISING)
-- Topology monitoring (percolation, resilience testing)
-
-**In Development:**
-
-- Narrative generation (AI observer)
-- Full game UI (NiceGUI)
-
-Mathematical Core
------------------
-
-**Fundamental Theorem of MLM-TW:**
-
-.. math::
-
-   \text{Revolution in Core impossible when } W_c > V_c
-
-Where :math:`W_c` is core wages and :math:`V_c` is value produced.
-The difference is Imperial Rent (Φ).
-
-**Survival Calculus:**
-
-.. math::
-
-   P(S|A) = \text{Sigmoid}(W - S_{min})
-
-   P(S|R) = \frac{O}{R}
-
-Rupture occurs when :math:`P(S|R) > P(S|A)`.
-
-See :doc:`/concepts/imperial-rent` and :doc:`/concepts/survival-calculus`
-for detailed explanations.
-
 Indices and tables
 ==================
 
 * :ref:`genindex`
 * :ref:`modindex`
+
+.. Vale: the next role contains a literal Sphinx reference name.
+.. vale ste.UnapprovedWords = NO
+
 * :ref:`search`
+
+.. vale ste.UnapprovedWords = YES

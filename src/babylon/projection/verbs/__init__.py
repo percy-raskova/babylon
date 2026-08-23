@@ -1,4 +1,4 @@
-"""Verb projections — the read side of the nine Article V player verbs.
+"""Verb projections — the read side of the nine ADR177-governed player verbs.
 
 Transport-neutral ports of the legacy web bridge's verb read-models
 (Program 24 P2, WO-38): the canonical verb -> engine ``ActionType``

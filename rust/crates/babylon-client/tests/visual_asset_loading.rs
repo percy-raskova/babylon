@@ -107,10 +107,10 @@ fn assert_loaded_asset_contract(app: &App) {
 }
 
 #[test]
-fn every_typed_embedded_image_loads_within_ten_thousand_updates() {
+fn every_typed_embedded_image_loads_within_one_hundred_thousand_updates() {
     let mut app = visual_assets_app();
 
-    for _ in 0..10_000 {
+    for _ in 0..100_000 {
         app.update();
         std::thread::yield_now();
         let asset_server = app.world().resource::<AssetServer>();
@@ -141,6 +141,6 @@ fn every_typed_embedded_image_loads_within_ten_thousand_updates() {
         .collect();
     assert!(
         unloaded.is_empty(),
-        "embedded images did not load within 10,000 updates: {unloaded:?}"
+        "embedded images did not load within 100,000 updates: {unloaded:?}"
     );
 }

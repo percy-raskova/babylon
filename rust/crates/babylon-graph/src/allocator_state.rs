@@ -6,7 +6,7 @@
 //! reference. Tick-level world hashing therefore consumes this sibling
 //! contract without changing the established graph-state byte layout.
 
-/// The next identities each monotonic graph allocator will mint.
+/// The cursor state of each monotonic graph identity allocator.
 ///
 /// `u64::MAX` is the reserved exhausted-cursor sentinel for either lane. It
 /// is never a mintable identity. The last mintable identity is therefore

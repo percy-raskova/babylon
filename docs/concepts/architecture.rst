@@ -40,14 +40,23 @@ The Rust workspace contains the shipping engine path:
    The BSL lexer, parser, checker, loader, and evaluator.
 
 ``babylon-tick``
-   The weekly tick, ``TickSession``, and in-memory ``TickReport``.
+   The weekly tick, atomic ``TickSession``, and in-memory ``TickReport``.
 
 ``babylon-client``
    The Bevy administrative viewer.
 
-The Bevy client draws the county atlas and moves ticks forward. It has lenses,
-events, causal beats, and hash diagnostics. Committed BSL has no player action.
-The client does not complete a game decision cycle.
+Each weekly tick runs on a detached graph and buffers its events. The session
+publishes graph state, allocator cursors, events, and completed time only after
+all rules and hash boundaries succeed. ``GraphStateHash`` identifies graph
+bytes only. ``NominalWorldHash`` adds completed time, allocator cursors, and the
+governed phase-schedule digest. It is the hash the Bevy viewer shows after a
+committed tick.
+
+This boundary provides in-memory rollback. It is not the planned Gate 3
+``CommittedTickEnvelope`` or a PostgreSQL durability acknowledgment. The Bevy
+client draws the county atlas and moves ticks forward. It has lenses, events,
+causal beats, and hash diagnostics. Committed BSL has no player action. The
+client does not complete a game decision cycle.
 
 Frozen Python reference
 -----------------------
@@ -166,7 +175,8 @@ Invariants
 ----------
 
 Tick identity
-   Equal inputs and reference digests produce equal bytes and hashes.
+   Equal inputs produce equal graph and nominal-world bytes and hashes. Gate 3
+   will add the complete content, reference, seed, action, and campaign identity.
 
 Pure judgment
    The relation, BSL, and tick crates have no database dependency. Storage starts

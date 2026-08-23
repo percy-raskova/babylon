@@ -23,11 +23,11 @@ historical record against their stated baseline.
 
 - v3/Amendment AE authority table status: historical
 - S-4/S-5/S-22 vocabulary-amendment reading status: superseded
-- S-11 whole-tick rollback status: planned
+- S-11 whole-tick rollback status: implemented_current_PER-18
 - S-25 renderer requirement status: retired
 - S-32 writer assignment status: superseded
 - D5/D16 phase-ordering status: implemented_executable_PER-17
-- PER-18 rollback and combined-world-hash status: planned
+- PER-18 rollback and combined-world-hash status: implemented_current
 - PER-19 causal-composition and outcome-write-contract status: planned
 - Persistence writer status: accepted_cutover_law
 - PER-48 status: Done
@@ -48,9 +48,17 @@ evaluator, canonical content digests, executable anchor placement, and graph
 execution. Rule preparation compiles the frozen 34-system causal spine before
 mutating caller state. Default homes come from the rule-ID namespace; explicit
 anchors select governed boundaries; D16 orders only same-position ties by
-rule-ID bytes. `TickSession` still applies each rule to its held graph in
-place. A failing rule prevents the tick counter from advancing, but it does not
-restore mutations made by earlier rules.
+rule-ID bytes. `TickSession` applies the ordered rules to a detached working
+graph and buffers their events. It publishes graph state, allocator cursors,
+events, and completed time only after every rule and both hash boundaries
+succeed. Any failure leaves the prior in-memory world byte-identical.
+
+The canonical graph hash remains a graph-only diagnostic. The version-1
+nominal world hash adds the completed weekly tick, the node and hyperedge
+allocator cursors, and the governed phase-schedule digest in a tagged,
+big-endian layout. It covers every auxiliary Rust tick register that exists
+today. It is not Gate 3's complete `TickContentHash` and does not claim durable
+PostgreSQL publication.
 
 The frozen Python estate's 34 systems, actions, resolvers, observers, and
 persistence remain reference and port sources. They are not a prerequisite for
@@ -62,12 +70,13 @@ loop are not current.
 
 PER-17 has replaced the global byte sort with an executable phase-anchor total
 order. Same-position rules remain sequential; their shared-prestate repair is
-separate from placement. PER-18 adds a whole-tick working copy that swaps only
-after successful adjudication and extends canonical big-endian hashing across
-auxiliary registers into the combined world hash. PER-19 owns BSL causal
-composition, the provenance/direct-write whitelist, and negative outcome-write
-contracts. Therefore, S-11 must not be cited as proof that rollback exists
-today.
+separate from placement. PER-18 has landed a whole-tick working copy that swaps
+only after successful adjudication and extends canonical big-endian hashing
+across current auxiliary registers into the nominal world hash. PER-19 owns
+BSL causal composition, the provenance/direct-write whitelist, and negative
+outcome-write contracts. Therefore, S-11 may cite in-memory rollback through
+PER-18 and ADR223, but it cannot claim database durability or shared-prestate
+composition.
 
 ### Durability and client boundary
 

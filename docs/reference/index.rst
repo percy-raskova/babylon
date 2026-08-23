@@ -133,11 +133,11 @@ Determinism Contract (Constitution III.12)
 
    determinism-contract
 
-The language-agnostic, byte-level specification of every constitutional
-hash (``defines_hash``, ``tick_commit.determinism_hash``,
-``conservation_audit_log.determinism_hash``): canonical serialization,
-worked examples, the three float-tolerance regimes, and documented
-discrepancies between hash naming/docstrings and actual behavior.
+The language-agnostic, byte-level identity taxonomy and hash specification:
+the legacy Python replay marker and hex-frame hash, ``GraphStateHash``, the
+current Rust ``NominalWorldHash``, and the future complete
+``TickContentHash``. It records canonical serialization, worked examples,
+float-tolerance regimes, and historical naming discrepancies.
 
 BSL Language Reference (Program 27)
 -------------------------------------

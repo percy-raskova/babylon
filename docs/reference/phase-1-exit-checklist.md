@@ -14,7 +14,10 @@ tests, workspace clippy `-D warnings`, per-crate pedantic clippy on
 `RUSTDOCFLAGS='-D warnings' cargo doc` — **zero errors on every leg**.
 
 Current follow-through (2026-08-23): the deferred anchor total order and
-E-LOAD-003 item landed in `babylon-tick` through PER-17 and ADR222. The table
+E-LOAD-003 item landed in `babylon-tick` through PER-17 and ADR222. PER-18 and
+ADR223 then added detached whole-tick rollback, checked allocator exhaustion,
+buffered event publication, and the versioned nominal world hash. These are
+in-memory contracts; the durable Gate 3 envelope remains planned. The table
 below remains the Phase 1 handoff snapshot rather than rewriting its history.
 
 ## DONE — merged, tested, gate-clean

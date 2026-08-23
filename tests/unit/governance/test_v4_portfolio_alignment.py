@@ -72,6 +72,7 @@ _CURRENT_COMPONENTS: Final[tuple[str, ...]] = (
     "bsl_pipeline",
     "rust_tick_session",
     "canonical_graph_hash",
+    "nominal_world_hash",
     "bevy_admin_viewer",
     "frozen_python_engine",
     "legacy_python_persistence",
@@ -85,6 +86,10 @@ _CURRENT_EVIDENCE: Final[dict[str, tuple[str, ...]]] = {
     ),
     "rust_tick_session": ("rust/crates/babylon-tick/src/session.rs",),
     "canonical_graph_hash": ("rust/crates/babylon-graph/src/state_hash.rs",),
+    "nominal_world_hash": (
+        "rust/crates/babylon-tick/src/world_hash.rs",
+        "rust/crates/babylon-tick/src/session.rs",
+    ),
     "bevy_admin_viewer": ("rust/crates/babylon-client/src/ui/admin.rs",),
     "frozen_python_engine": (
         "src/babylon/engine/simulation_engine.py",
@@ -109,7 +114,7 @@ _H3_EVIDENCE: Final[tuple[str, ...]] = (
 )
 _GATE_2_STATUSES: Final[dict[str, str]] = {
     "PER-17": "implemented_current",
-    "PER-18": "planned",
+    "PER-18": "implemented_current",
     "PER-19": "planned",
 }
 _GATE_2_COMPONENTS: Final[dict[str, str]] = {
@@ -123,6 +128,13 @@ _GATE_2_COMPONENTS: Final[dict[str, str]] = {
         "negative_outcome_write_contracts"
     ),
 }
+_PER_18_EVIDENCE: Final[tuple[str, ...]] = (
+    "rust/crates/babylon-graph/src/working_copy.rs",
+    "rust/crates/babylon-tick/src/lib.rs",
+    "rust/crates/babylon-tick/src/session.rs",
+    "rust/crates/babylon-tick/src/world_hash.rs",
+    "ai/decisions/ADR223_whole_tick_atomicity_world_hash.yaml",
+)
 _GATE_3_ISSUES: Final[tuple[str, ...]] = (
     "PER-20",
     "PER-21",
@@ -211,6 +223,8 @@ def test_architecture_records_current_components_and_gate_delivery_status() -> N
     assert tuple(gate_3) == _GATE_3_ISSUES
     assert {issue: gate_2[issue]["status"] for issue in _GATE_2_STATUSES} == _GATE_2_STATUSES
     assert {issue: gate_2[issue]["component"] for issue in _GATE_2_COMPONENTS} == _GATE_2_COMPONENTS
+    assert tuple(gate_2["PER-18"]["evidence"]) == _PER_18_EVIDENCE
+    assert all((_ROOT / evidence).is_file() for evidence in _PER_18_EVIDENCE)
     assert all(gate_3[issue]["status"] == "planned" for issue in _GATE_3_ISSUES)
 
 
@@ -435,7 +449,7 @@ def test_state_is_one_historical_ledger_not_a_status_authority() -> None:
     assert authority["project"] == _LINEAR_PROJECT
     assert authority["charter"] == _LINEAR_CHARTER
     snapshot = meta["v4_governance_snapshot"]
-    assert snapshot["as_of"] == "2026-08-22"
+    assert snapshot["as_of"] == "2026-08-23"
     assert snapshot["implementation_truth"] == "ai/architecture.yaml"
     assert snapshot["lower_entries"] == "dated_snapshots_only"
     assert snapshot["current_status_queries"] == "Linear"
@@ -513,6 +527,7 @@ def test_standard_addenda_classify_current_and_superseded_surfaces() -> None:
         "Ratatui/TUI status: retired",
         "Article V vocabulary authority status: superseded",
         "NarrationEnvelope status: superseded_proposal",
+        "In-memory whole-tick rollback status: implemented_current_PER-18",
         "CommittedTickEnvelope status: planned",
         "DecisionSurfaceContract executable status: planned",
         "Persistence writer status: accepted_cutover_law",
@@ -523,11 +538,11 @@ def test_standard_addenda_classify_current_and_superseded_surfaces() -> None:
     ):
         assert phrase in game_design
     for phrase in (
-        "S-11 whole-tick rollback status: planned",
+        "S-11 whole-tick rollback status: implemented_current_PER-18",
         "S-25 renderer requirement status: retired",
         "S-32 writer assignment status: superseded",
         "D5/D16 phase-ordering status: implemented_executable_PER-17",
-        "PER-18 rollback and combined-world-hash status: planned",
+        "PER-18 rollback and combined-world-hash status: implemented_current",
         "PER-19 causal-composition and outcome-write-contract status: planned",
         "Persistence writer status: accepted_cutover_law",
         "PER-48 status: Done",

@@ -7,11 +7,18 @@
 //! contract without changing the established graph-state byte layout.
 
 /// The next identities each monotonic graph allocator will mint.
+///
+/// `u64::MAX` is the reserved exhausted-cursor sentinel for either lane. It
+/// is never a mintable identity. The last mintable identity is therefore
+/// `u64::MAX - 1`; a successful mint there advances its cursor to the
+/// sentinel, and every later mint refuses without mutation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AllocatorCursors {
-    /// The next [`crate::substrate::NodeId`] value.
+    /// The next [`crate::substrate::NodeId`] value, or `u64::MAX` when the
+    /// node allocator is exhausted.
     pub next_node: u64,
-    /// The next [`crate::substrate::HyperedgeId`] value.
+    /// The next [`crate::substrate::HyperedgeId`] value, or `u64::MAX` when
+    /// the hyperedge allocator is exhausted.
     pub next_hyperedge: u64,
 }
 

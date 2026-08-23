@@ -818,6 +818,9 @@ mod tests {
         });
         let before = graph.encode_state().unwrap().as_bytes().to_vec();
         let cursors = graph.allocator_cursors();
+        let indexed = graph.hyperedges("COALITION");
+        let memberships = graph.hyperedges_of(member, "COALITION").unwrap();
+        let members = graph.members_of(indexed[0]).unwrap();
 
         let error = graph
             .add_hyperedge("COALITION", &[member])
@@ -826,8 +829,32 @@ mod tests {
         assert!(error.message.contains("hyperedge-half mint"));
         assert_eq!(graph.encode_state().unwrap().as_bytes(), before);
         assert_eq!(graph.allocator_cursors(), cursors);
+        assert_eq!(graph.hyperedges("COALITION"), indexed);
+        assert_eq!(
+            graph.hyperedges_of(member, "COALITION").unwrap(),
+            memberships
+        );
+        assert_eq!(graph.members_of(indexed[0]).unwrap(), members);
+
+        graph.set_allocator_cursors_for_test(AllocatorCursors {
+            next_node: 1,
+            next_hyperedge: 1,
+        });
+        let next = graph
+            .add_hyperedge("COALITION", &[member])
+            .expect("a valid mint after the rejected library insert succeeds");
+        assert_eq!(next, crate::substrate::HyperedgeId(1));
+        assert_eq!(
+            graph.hyperedges("COALITION"),
+            vec![indexed[0], crate::substrate::HyperedgeId(1)]
+        );
+        assert_eq!(
+            graph.hyperedges_of(member, "COALITION").unwrap(),
+            vec![indexed[0], crate::substrate::HyperedgeId(1)]
+        );
+        assert_eq!(graph.members_of(next).unwrap(), vec![member]);
         let detached = graph.detached_copy();
-        assert_eq!(detached.allocator_cursors(), cursors);
+        assert_eq!(detached.allocator_cursors(), graph.allocator_cursors());
     }
 
     #[test]

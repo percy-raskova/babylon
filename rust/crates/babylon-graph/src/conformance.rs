@@ -1193,6 +1193,10 @@ where
     let mut working = source.detached_copy();
     assert_eq!(working.encode_state().unwrap().as_bytes(), source_bytes);
     assert_eq!(working.allocator_cursors(), source_cursors);
+    assert_eq!(source.hyperedges("COALITION"), vec![cell]);
+    assert_eq!(source.hyperedges_of(a, "COALITION").unwrap(), vec![cell]);
+    assert_eq!(working.hyperedges("COALITION"), vec![cell]);
+    assert_eq!(working.hyperedges_of(a, "COALITION").unwrap(), vec![cell]);
 
     exercise_every_mutable_lane(&mut working, a, b, c, cell);
 
@@ -1222,12 +1226,44 @@ where
     );
     assert_ne!(working.encode_state().unwrap().as_bytes(), source_bytes);
     assert_ne!(working.allocator_cursors(), source_cursors);
+    assert_eq!(source.hyperedges("COALITION"), vec![cell]);
+    assert_eq!(source.hyperedges_of(a, "COALITION").unwrap(), vec![cell]);
+    assert_eq!(source.members_of(cell).unwrap(), vec![a, b, c]);
+    assert_eq!(working.hyperedges("COALITION"), vec![HyperedgeId(1)]);
+    assert_eq!(
+        working.hyperedges_of(a, "COALITION").unwrap(),
+        vec![HyperedgeId(1)]
+    );
+    assert_eq!(working.members_of(HyperedgeId(1)).unwrap(), vec![a, b]);
 
     assert_eq!(source.add_node("BUSINESS").unwrap(), NodeId(3));
     assert_eq!(
-        source.add_hyperedge("COALITION", &[a, b]).unwrap(),
+        source.add_hyperedge("COALITION", &[b, c]).unwrap(),
         HyperedgeId(1)
     );
+    assert_eq!(source.hyperedges("COALITION"), vec![cell, HyperedgeId(1)]);
+    assert_eq!(
+        source.hyperedges_of(b, "COALITION").unwrap(),
+        vec![cell, HyperedgeId(1)]
+    );
+    assert_eq!(source.hyperedges_of(a, "COALITION").unwrap(), vec![cell]);
+    assert_eq!(source.members_of(HyperedgeId(1)).unwrap(), vec![b, c]);
+    assert_eq!(working.hyperedges("COALITION"), vec![HyperedgeId(1)]);
+    assert_eq!(
+        working.hyperedges_of(a, "COALITION").unwrap(),
+        vec![HyperedgeId(1)]
+    );
+    assert_eq!(working.members_of(HyperedgeId(1)).unwrap(), vec![a, b]);
+
+    source.remove_hyperedge(cell).unwrap();
+    assert_eq!(source.hyperedges("COALITION"), vec![HyperedgeId(1)]);
+    assert!(source.hyperedges_of(a, "COALITION").unwrap().is_empty());
+    assert_eq!(source.members_of(HyperedgeId(1)).unwrap(), vec![b, c]);
+    assert_eq!(
+        working.hyperedges_of(a, "COALITION").unwrap(),
+        vec![HyperedgeId(1)]
+    );
+    assert_eq!(working.members_of(HyperedgeId(1)).unwrap(), vec![a, b]);
 }
 
 #[cfg(test)]
@@ -1272,8 +1308,9 @@ fn exercise_every_mutable_lane<G: GraphSubstrate>(
     working.remove_node(c).unwrap();
 }
 
-/// Both identity allocators must reject exhaustion before changing graph
-/// bytes or either cursor.
+/// Both identity allocators mint `u64::MAX - 1`, advance to the reserved
+/// `u64::MAX` exhausted sentinel, then refuse before changing graph bytes or
+/// either cursor.
 #[cfg(test)]
 pub(crate) fn run_allocator_exhaustion_conformance<G, F>(make: F)
 where
@@ -1286,15 +1323,22 @@ where
     graph.add_hyperedge("COALITION", &[a, b]).unwrap();
 
     graph.set_allocator_cursors_for_test(AllocatorCursors {
-        next_node: u64::MAX,
+        next_node: u64::MAX - 1,
         next_hyperedge: 1,
     });
+    assert_eq!(graph.add_node("BUSINESS").unwrap(), NodeId(u64::MAX - 1));
+    assert_eq!(graph.allocator_cursors().next_node, u64::MAX);
     assert_exhausted_node_allocator_is_atomic(&mut graph);
 
     graph.set_allocator_cursors_for_test(AllocatorCursors {
-        next_node: 2,
-        next_hyperedge: u64::MAX,
+        next_node: u64::MAX,
+        next_hyperedge: u64::MAX - 1,
     });
+    assert_eq!(
+        graph.add_hyperedge("COALITION", &[a, b]).unwrap(),
+        HyperedgeId(u64::MAX - 1)
+    );
+    assert_eq!(graph.allocator_cursors().next_hyperedge, u64::MAX);
     assert_exhausted_hyperedge_allocator_is_atomic(&mut graph, a, b);
 }
 

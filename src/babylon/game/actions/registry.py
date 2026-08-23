@@ -1,6 +1,6 @@
 """The unified, agent-type-gated action registry.
 
-One action algebra: the player's nine Article V verbs and the institutional macro-actions are
+One action algebra: the player's nine ADR177-governed verbs and the institutional macro-actions are
 all :class:`ActionSpec` rows, gated by ``agent_types``. Intersections are actions available to
 several types. ``status`` marks whether the effect is wired (``LIVE``) or an honest placeholder
 (``STUB``). See ``project/research/24-the-archive/PLAYER_INTERFACE_SHELL_design.md`` §D.
@@ -55,7 +55,7 @@ class ActionSpec(BaseModel):
 _ORGANIZER = frozenset({"organizer"})
 _STATE_CORP = frozenset({"state", "corporation"})
 
-# The nine Article V verbs — LIVE, organizer-gated, mapped to real engine ActionTypes.
+# The nine ADR177-governed verbs — LIVE, organizer-gated, mapped to real engine ActionTypes.
 _VERB_LABELS = {
     "educate": "Educate",
     "reproduce": "Reproduce",

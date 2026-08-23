@@ -468,7 +468,7 @@ _DASHBOARD_ECONOMY_ID: Final[str] = "USA"
 #: The human player's fixed :class:`~babylon.game.actions.registry.ActionSpec`
 #: ``agent_types`` persona (Program 24 P5) — distinct from the acting org
 #: node's own ``org_type`` attribute (``political_faction``/``civil_society``/
-#: etc.): every Article V verb in the registry is gated to this one bucket,
+#: etc.): every ADR177-governed verb in the registry is gated to this one bucket,
 #: so :meth:`GameSession.issue_verb` always issues as "organizer", never a
 #: value derived from the org's graph attributes.
 _PLAYER_AGENT_TYPE: Final[str] = "organizer"
@@ -1435,7 +1435,7 @@ class GameSession:
         registry gating at all and must never be substituted for this method
         as the shell's write path.
 
-        :param action_id: one of the nine canonical Article V verbs (a
+        :param action_id: one of the nine canonical ADR177-governed verbs (a
             :class:`~babylon.projection.verbs.view_models.VerbPlateView`
             row's own ``verb``).
         :param target_id: unit "verb-targeting" (shell-interconnect) — an

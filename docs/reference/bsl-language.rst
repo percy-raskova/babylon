@@ -1515,8 +1515,11 @@ second (§2.12).
   verbs: a store outside the payload field's declared range is ``E-EVAL-020``,
   never a clamp.
 - *Why a verb at all, given Amendment AG (iii).* Clause (iii)'s "adds no verb"
-  is the closure list of NORTH_STAR §0 and Article V's action registry — the
-  same register as "no intrinsic, no severity rule, no constructor family".
+  is the ADR177-governed player-action contract:
+  ``ai/decisions/ADR177_verb_matrix_ratified_main_ruleset.yaml``,
+  ``src/babylon/game/actions/matrix.py``, and
+  ``src/babylon/game/actions/registry.py``. The matrix and named files are the
+  same closed list as "no intrinsic, no severity rule, no constructor family".
   Clause (i) of the same amendment obliges payload to **mutate only through
   effects**, and ADR189 clause (iv) names the "accessor/verb surface" as
   exactly what this document owes. An effect-position write is therefore
@@ -5735,6 +5738,13 @@ consequences are the ordinary kind of review item.
        §0 / Article V closure list, against AG (i)'s "mutate only through
        effects" and ADR189 (iv)'s "accessor/verb surface" — the effect-position
        write is required by the amendment, not licensed against it.
+       **Living-authority supersession (AH).** The text above preserves a
+       pre-AH v3.2.0 historical citation. ADR221 ``V.Player`` assigns
+       player-vocabulary authority to
+       ``ai/decisions/ADR177_verb_matrix_ratified_main_ruleset.yaml``,
+       ``src/babylon/game/actions/matrix.py``, and
+       ``src/babylon/game/actions/registry.py``. The supersession changes
+       authority only. D82's technical ruling applies.
    * - D83
      - §2.8, §3.9
      - Mint-time payload initialisation is **total and annotated**:

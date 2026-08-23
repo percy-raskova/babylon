@@ -1,4 +1,4 @@
-"""The RATIFIED Article V verb 3×3 — a sentinel, not documentation.
+"""The ADR177-governed verb 3×3 — a sentinel, not documentation.
 
 The Director ratified the matrix AS DRAFTED (live session 2026-07-30,
 recorded on #398; ADR177): nine registered resolvers over the canonical
@@ -11,9 +11,10 @@ axes, with two DECLARED structural facts —
   verb until the funding train (rulings 14/38's doctrine-pair surface)
   lands it — declared, never papered over.
 
-These pins make the ratification byte-checkable: a verb added, moved, or
-removed without a new Director ruling turns the gate red (Article V's
-closed algebra — no new verbs without an amendment).
+These pins make the ratification byte-checkable: moving a verb without the
+Director ruling that ADR177 requires turns the gate red. A new or changed
+governed vocabulary follows Constitution v4 Article VIII's Director ceremony,
+schema/conformance, and recording-ADR path.
 """
 
 from __future__ import annotations
@@ -33,7 +34,7 @@ pytestmark = [pytest.mark.unit]
 
 
 class TestRatifiedShape:
-    def test_axes_are_article_v_canonical(self) -> None:
+    def test_axes_are_adr177_governed(self) -> None:
         assert MATRIX_ROWS == ("build_org", "project_power", "manage_resources")
         assert MATRIX_COLUMNS == ("organization", "population", "other_actors")
 

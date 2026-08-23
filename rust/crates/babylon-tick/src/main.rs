@@ -69,9 +69,9 @@ fn run(scenario_path: &str, rule_path: &str) -> Result<(), String> {
 
 fn format_report(report: &TickReport) -> String {
     let unchanged_note = if report.before == report.after {
-        // Not an error — a tick where no guard passed is a real outcome, and
-        // saying so beats leaving the reader to compare 64 hex digits.
-        "note             graph state unchanged: no subject passed the guard\n"
+        // Graph equality says nothing by itself about rule eligibility,
+        // emitted events, or the completed-time component of world identity.
+        "note             graph state unchanged; the committed tick may still advance time or emit events\n"
     } else {
         ""
     };
@@ -96,14 +96,14 @@ mod tests {
     use babylon_tick::TickReport;
 
     #[test]
-    fn cli_labels_graph_and_world_hashes_and_names_graph_only_unchanged_state() {
+    fn cli_labels_hashes_and_describes_equal_graph_hashes_without_inferring_no_guard() {
         let report = TickReport {
             before: [0x11; 32],
             after: [0x11; 32],
             world_before: [0x22; 32],
             world_after: [0x33; 32],
-            fired: 0,
-            per_rule_fired: Vec::new(),
+            fired: 2,
+            per_rule_fired: vec![("vitality/emit-only".to_owned(), 2)],
         };
 
         let output = format_report(&report);
@@ -120,7 +120,10 @@ mod tests {
         assert!(output.contains(
             "world-after      3333333333333333333333333333333333333333333333333333333333333333"
         ));
-        assert!(output.contains("graph state unchanged: no subject passed the guard"));
+        assert!(output.contains(
+            "graph state unchanged; the committed tick may still advance time or emit events"
+        ));
+        assert!(!output.contains("no subject passed the guard"));
     }
 
     #[test]

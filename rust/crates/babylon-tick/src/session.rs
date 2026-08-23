@@ -158,6 +158,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> TickSes
 mod tests {
     use crate::session::TickSession;
     use crate::{run_prepared_tick_with, EventRecord, HashBoundary, PreparedEventBatchSink};
+    use babylon_bsl::evaluator::Value;
     use babylon_bsl::structural_verbs::CollectingSink;
     use babylon_graph::allocator_state::AllocatorState;
     use babylon_graph::hypergraph_store::HypergraphStore;
@@ -165,7 +166,8 @@ mod tests {
     use babylon_graph::state_hash::{CanonicalState, StateEncoder};
     use babylon_graph::substrate::{GraphError, GraphSubstrate, NodeId};
     use babylon_graph::working_copy::DetachedCopy;
-    use babylon_kernel::SessionId;
+    use babylon_kernel::{Currency, SessionId};
+    use std::fmt::Write as _;
     use std::process::Command;
 
     const SCENARIO: &str =
@@ -288,7 +290,7 @@ mod tests {
   (bindings (binding action :field social-class/action))
   (when (= action 10))
   (effects
-    (emit EventType/ACTION_ENVELOPE)
+    (emit EventType/ACTION_ENVELOPE (authorized #t) (budget 7.5$))
     (update-node self social-class/action (add 2))))
 
 (rule vitality/envelope-material
@@ -297,7 +299,7 @@ mod tests {
   (bindings (binding material :field social-class/material))
   (when (= material 1))
   (effects
-    (emit EventType/MATERIAL_ENVELOPE)
+    (emit EventType/MATERIAL_ENVELOPE (ordinal 101) (pressure 0.125c))
     (update-node self social-class/material (add 1))))"#;
 
     const ENVELOPE_CHILD_ENV: &str = "BABYLON_PER18_TICK_ENVELOPE_CHILD";
@@ -477,32 +479,125 @@ mod tests {
         after: [u8; 32],
         world_before: [u8; 32],
         world_after: [u8; 32],
+        fired: usize,
         per_rule_fired: Vec<(String, usize)>,
         events: Vec<EventRecord>,
     }
 
     impl TickEnvelopeProof {
-        fn canonical_text(&self) -> String {
-            let rules = self
-                .per_rule_fired
-                .iter()
-                .map(|(id, fired)| format!("{id}={fired}"))
-                .collect::<Vec<_>>()
-                .join(",");
-            let events = self
-                .events
-                .iter()
-                .map(|(kind, payload)| format!("{kind}#{}", payload.len()))
-                .collect::<Vec<_>>()
-                .join(",");
-            format!(
-                "graph-before={};graph-after={};world-before={};world-after={};rules={rules};events={events}",
-                crate::hex(&self.before),
-                crate::hex(&self.after),
-                crate::hex(&self.world_before),
-                crate::hex(&self.world_after),
-            )
+        fn canonical_bytes(&self) -> Vec<u8> {
+            let mut bytes = b"babylon.per18.tick-envelope\0".to_vec();
+            bytes.extend_from_slice(&self.before);
+            bytes.extend_from_slice(&self.after);
+            bytes.extend_from_slice(&self.world_before);
+            bytes.extend_from_slice(&self.world_after);
+            push_usize(&mut bytes, self.fired);
+            push_count(&mut bytes, self.per_rule_fired.len());
+            for (id, fired) in &self.per_rule_fired {
+                push_str(&mut bytes, id);
+                push_usize(&mut bytes, *fired);
+            }
+            push_count(&mut bytes, self.events.len());
+            for (kind, payload) in &self.events {
+                push_str(&mut bytes, kind);
+                push_count(&mut bytes, payload.len());
+                for (key, value) in payload {
+                    push_str(&mut bytes, key);
+                    push_value(&mut bytes, value);
+                }
+            }
+            bytes
         }
+    }
+
+    fn push_count(bytes: &mut Vec<u8>, count: usize) {
+        let count = u32::try_from(count).expect("the bounded proof fixture fits a u32 count");
+        bytes.extend_from_slice(&count.to_be_bytes());
+    }
+
+    fn push_usize(bytes: &mut Vec<u8>, value: usize) {
+        let value = u64::try_from(value).expect("the proof count fits canonical u64");
+        bytes.extend_from_slice(&value.to_be_bytes());
+    }
+
+    fn push_str(bytes: &mut Vec<u8>, value: &str) {
+        push_count(bytes, value.len());
+        bytes.extend_from_slice(value.as_bytes());
+    }
+
+    fn push_f64(bytes: &mut Vec<u8>, value: f64) {
+        assert!(value.is_finite(), "event payload values must be finite");
+        let canonical = if value == 0.0 { 0.0 } else { value };
+        bytes.extend_from_slice(&canonical.to_bits().to_be_bytes());
+    }
+
+    fn push_optional_ratio(bytes: &mut Vec<u8>, value: Option<babylon_kernel::Ratio>) {
+        match value {
+            Some(ratio) => {
+                bytes.push(1);
+                push_f64(bytes, ratio.get());
+            }
+            None => bytes.push(0),
+        }
+    }
+
+    /// Canonical test-envelope tags: Int=1, Currency=2, Real=3, Ratio=4,
+    /// Bool=5, Enum=6, NodeRef=7, HyperedgeRef=8, EdgeRef=9. Every numeric
+    /// payload is big-endian; strings are u32-length-prefixed UTF-8.
+    fn push_value(bytes: &mut Vec<u8>, value: &Value) {
+        match value {
+            Value::Int(integer) => {
+                bytes.push(1);
+                bytes.extend_from_slice(&integer.to_be_bytes());
+            }
+            Value::Currency(currency) => {
+                bytes.push(2);
+                bytes.extend_from_slice(&currency.micro_units().to_be_bytes());
+            }
+            Value::Real(real) => {
+                bytes.push(3);
+                push_f64(bytes, *real);
+            }
+            Value::Ratio { value, floor, cap } => {
+                bytes.push(4);
+                push_f64(bytes, value.get());
+                push_optional_ratio(bytes, *floor);
+                push_optional_ratio(bytes, *cap);
+            }
+            Value::Bool(boolean) => {
+                bytes.push(5);
+                bytes.push(u8::from(*boolean));
+            }
+            Value::Enum { enum_type, member } => {
+                bytes.push(6);
+                push_str(bytes, enum_type);
+                push_str(bytes, member);
+            }
+            Value::NodeRef(id) => {
+                bytes.push(7);
+                bytes.extend_from_slice(&id.0.to_be_bytes());
+            }
+            Value::HyperedgeRef(id) => {
+                bytes.push(8);
+                bytes.extend_from_slice(&id.0.to_be_bytes());
+            }
+            Value::EdgeRef(edge) => {
+                bytes.push(9);
+                bytes.extend_from_slice(&edge.source.0.to_be_bytes());
+                bytes.extend_from_slice(&edge.target.0.to_be_bytes());
+                push_str(bytes, &edge.edge_type);
+            }
+        }
+    }
+
+    fn byte_hex(bytes: &[u8]) -> String {
+        bytes.iter().fold(
+            String::with_capacity(bytes.len() * 2),
+            |mut output, byte| {
+                write!(&mut output, "{byte:02x}").expect("writing to String cannot fail");
+                output
+            },
+        )
     }
 
     fn envelope_prestate<G>(reverse_writes: bool) -> G
@@ -557,9 +652,25 @@ mod tests {
         let mut sink = CollectingSink::default();
         let report = session.advance(&mut sink).expect("the real tick commits");
         let expected_events = vec![
-            ("MATERIAL_ENVELOPE".to_owned(), Vec::new()),
-            ("ACTION_ENVELOPE".to_owned(), Vec::new()),
+            (
+                "MATERIAL_ENVELOPE".to_owned(),
+                vec![
+                    ("ordinal".to_owned(), Value::Int(101)),
+                    ("pressure".to_owned(), Value::Real(0.125)),
+                ],
+            ),
+            (
+                "ACTION_ENVELOPE".to_owned(),
+                vec![
+                    ("authorized".to_owned(), Value::Bool(true)),
+                    (
+                        "budget".to_owned(),
+                        Value::Currency(Currency::from_micro_units(7_500_000)),
+                    ),
+                ],
+            ),
         ];
+        assert_eq!(report.fired, 2);
         assert_eq!(
             report.per_rule_fired,
             vec![
@@ -573,6 +684,7 @@ mod tests {
             after: report.after,
             world_before: report.world_before,
             world_after: report.world_after,
+            fired: report.fired,
             per_rule_fired: report.per_rule_fired,
             events: sink.events,
         }
@@ -613,7 +725,7 @@ mod tests {
             "hypergraph-forward" => run_tick_envelope::<HypergraphStore>(false),
             other => panic!("unknown PER-18 child envelope mode: {other}"),
         };
-        println!("{ENVELOPE_MARKER}{}", envelope.canonical_text());
+        println!("{ENVELOPE_MARKER}{}", byte_hex(&envelope.canonical_bytes()));
     }
 
     #[test]
@@ -621,7 +733,7 @@ mod tests {
         let memory_parent = run_tick_envelope::<MemoryGraph>(false);
         let hypergraph_parent = run_tick_envelope::<HypergraphStore>(true);
         assert_eq!(memory_parent, hypergraph_parent);
-        let expected = memory_parent.canonical_text();
+        let expected = byte_hex(&memory_parent.canonical_bytes());
 
         assert_eq!(child_tick_envelope("memory-reverse"), expected);
         assert_eq!(child_tick_envelope("hypergraph-forward"), expected);

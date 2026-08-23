@@ -32,7 +32,7 @@
 //! before `LogPlugin::build` installs the subscriber.
 
 use babylon_client::story::{select_story, SelectedStory};
-use babylon_client::{logging, loop_ui, map, palette};
+use babylon_client::{logging, loop_ui, map, palette, visual_assets};
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 
@@ -67,27 +67,11 @@ fn main() {
         "babylon-client starting (story: {}, B3 tick loop)",
         story.id
     );
-    app.add_plugins(map::MapPlugin)
+    app.add_plugins(visual_assets::VisualAssetsPlugin)
+        .add_plugins(visual_assets::VisualPresentationPlugin)
+        .add_plugins(map::MapPlugin)
         .add_plugins(loop_ui::TickLoopPlugin)
         .insert_resource(SelectedStory(story))
         .insert_resource(ClearColor(palette::FIELD))
-        .add_systems(Startup, spawn_title)
         .run();
-}
-
-fn spawn_title(mut commands: Commands) {
-    commands.spawn((
-        Text::new("BABYLON"),
-        TextFont {
-            font_size: 64.0,
-            ..default()
-        },
-        TextColor(palette::GOLD),
-        Node {
-            position_type: PositionType::Absolute,
-            top: px(24),
-            left: px(24),
-            ..default()
-        },
-    ));
 }

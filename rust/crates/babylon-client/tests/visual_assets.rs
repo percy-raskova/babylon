@@ -2,6 +2,7 @@
 
 use bevy::asset::AssetPlugin;
 use bevy::image::ImagePlugin;
+use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::prelude::*;
 use bevy::render::texture::TexturePlugin;
 use std::sync::{Mutex, MutexGuard};
@@ -107,7 +108,11 @@ fn gallery_labels_match_the_fixed_visual_asset_catalog() {
     let world = app.world_mut();
     let mut labels =
         world.query_filtered::<&Text, With<babylon_client::visual_assets::GalleryAssetLabel>>();
-    let actual: Vec<_> = labels.iter(world).map(|text| text.0.clone()).collect();
+    let actual: Vec<_> = labels
+        .iter(world)
+        .take(17)
+        .map(|text| text.0.clone())
+        .collect();
     let expected: Vec<_> = babylon_client::visual_assets::VISUAL_ASSET_CATALOG
         .iter()
         .map(|descriptor| descriptor.label.to_owned())
@@ -115,6 +120,41 @@ fn gallery_labels_match_the_fixed_visual_asset_catalog() {
 
     assert_eq!(actual.len(), 16);
     assert_eq!(actual, expected);
+}
+
+#[test]
+fn gallery_scroll_position_changes_from_injected_line_input() {
+    let _guard = bevy_app_test_guard();
+    let mut app = visual_asset_gallery_app();
+    let root = {
+        let world = app.world_mut();
+        let mut roots = world
+            .query_filtered::<Entity, With<babylon_client::visual_assets::GalleryScrollRoot>>();
+        roots
+            .single(world)
+            .expect("exactly one gallery scroll root")
+    };
+    app.world_mut().entity_mut(root).insert(ComputedNode {
+        size: Vec2::new(100.0, 100.0),
+        content_size: Vec2::new(100.0, 300.0),
+        ..ComputedNode::DEFAULT
+    });
+    app.insert_resource(AccumulatedMouseScroll {
+        unit: MouseScrollUnit::Line,
+        delta: Vec2::new(0.0, -1.0),
+    });
+
+    app.update();
+
+    let scroll_position = app
+        .world()
+        .entity(root)
+        .get::<ScrollPosition>()
+        .expect("gallery root retains its scroll position");
+    assert!(
+        (scroll_position.y - 20.0).abs() < f32::EPSILON,
+        "one line of input must move the gallery by 20 logical pixels"
+    );
 }
 
 #[test]

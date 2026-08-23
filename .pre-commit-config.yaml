@@ -285,8 +285,10 @@ repos:
         # this hook.
         exclude: ^(tests/.*/__snapshots__/.*\.raw$|rust/crates/babylon-md/|openwiki/)
       - id: end-of-file-fixer
-        # Same vendored-fork + generated-openwiki rationale as above.
-        exclude: ^(rust/crates/babylon-md/|openwiki/)
+        # Same vendored-fork + generated-openwiki rationale as above. The two
+        # legacy vectors are NUL-framed byte contracts; appending a text newline
+        # changes their digest and makes the Python source-drift guard fail.
+        exclude: ^(rust/crates/babylon-md/|openwiki/|rust/crates/babylon-persistence/tests/fixtures/legacy_(schema_ddl_v1|migrations_0010_0044_v1)\.bin$)
       - id: check-yaml
         args: [--unsafe]  # Allow custom tags in GitHub Actions
       - id: check-json

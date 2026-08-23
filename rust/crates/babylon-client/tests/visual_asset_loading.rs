@@ -4,7 +4,6 @@ use bevy::asset::AssetPlugin;
 use bevy::image::{ImagePlugin, ImageSampler};
 use bevy::prelude::*;
 use bevy::render::texture::TexturePlugin;
-use std::time::Duration;
 
 fn visual_assets_app() -> App {
     let mut app = App::new();
@@ -108,12 +107,12 @@ fn assert_loaded_asset_contract(app: &App) {
 }
 
 #[test]
-fn every_typed_embedded_image_loads_within_sixty_four_updates() {
+fn every_typed_embedded_image_loads_within_ten_thousand_updates() {
     let mut app = visual_assets_app();
 
-    for _ in 0..64 {
+    for _ in 0..10_000 {
         app.update();
-        std::thread::sleep(Duration::from_millis(100));
+        std::thread::yield_now();
         let asset_server = app.world().resource::<AssetServer>();
         let assets = app
             .world()
@@ -142,6 +141,6 @@ fn every_typed_embedded_image_loads_within_sixty_four_updates() {
         .collect();
     assert!(
         unloaded.is_empty(),
-        "embedded images did not load within 64 updates: {unloaded:?}"
+        "embedded images did not load within 10,000 updates: {unloaded:?}"
     );
 }

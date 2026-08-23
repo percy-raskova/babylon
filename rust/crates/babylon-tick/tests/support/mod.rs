@@ -38,6 +38,7 @@ use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::allocator_state::AllocatorState;
 use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use babylon_graph::working_copy::DetachedCopy;
 use babylon_tick::{run_once, run_once_into, TickReport};
 
 /// Accepts either a raw `u64` (the majority shape across existing
@@ -95,7 +96,9 @@ pub fn attribute<G: GraphSubstrate>(graph: &G, id: impl IntoNodeId, field: &str)
 /// `metabolism_entropy_high_conformance.rs`,
 /// `metabolism_entropy_low_conformance.rs`) — the majority shape among the
 /// three `run_*` variants genuinely found (the other two below).
-pub fn run_conformance<G: GraphSubstrate + CanonicalState + AllocatorState + Clone + Default>(
+pub fn run_conformance<
+    G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy + Default,
+>(
     scenario: &str,
     rule: &str,
 ) -> G {
@@ -113,7 +116,7 @@ pub fn run_conformance<G: GraphSubstrate + CanonicalState + AllocatorState + Clo
 /// `lifecycle_crisis_conformance.rs`, `vitality_conformance.rs`, and
 /// `decomposition_conformance.rs`'s own `HypergraphStore` variant.
 pub fn run_conformance_with_sink<
-    G: GraphSubstrate + CanonicalState + AllocatorState + Clone + Default,
+    G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy + Default,
 >(
     scenario: &str,
     rule: &str,
@@ -130,7 +133,7 @@ pub fn run_conformance_with_sink<
 /// shape shared by `production_conformance.rs` and
 /// `territory_conformance.rs`, the third `run_*` variant genuinely found.
 pub fn run_conformance_with_report<
-    G: GraphSubstrate + CanonicalState + AllocatorState + Clone + Default,
+    G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy + Default,
 >(
     scenario: &str,
     rule: &str,

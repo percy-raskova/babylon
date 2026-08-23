@@ -157,12 +157,16 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> TickSes
 #[cfg(test)]
 mod tests {
     use crate::session::TickSession;
+    use crate::{run_prepared_tick_with, EventRecord, HashBoundary, PreparedEventBatchSink};
     use babylon_bsl::structural_verbs::CollectingSink;
     use babylon_graph::allocator_state::AllocatorState;
     use babylon_graph::hypergraph_store::HypergraphStore;
-    use babylon_graph::state_hash::CanonicalState;
-    use babylon_graph::substrate::{GraphSubstrate, NodeId};
+    use babylon_graph::memory::MemoryGraph;
+    use babylon_graph::state_hash::{CanonicalState, StateEncoder};
+    use babylon_graph::substrate::{GraphError, GraphSubstrate, NodeId};
+    use babylon_graph::working_copy::DetachedCopy;
     use babylon_kernel::SessionId;
+    use std::process::Command;
 
     const SCENARIO: &str =
         include_str!("../content/scenarios/vitality-lifecycle-combined-conformance.bscn");
@@ -198,6 +202,107 @@ mod tests {
   (when (= active 1))
   (effects (emit EventType/PROBE)))"#;
 
+    const PHASE_FAULT_SCENARIO: &str = r"
+(scenario tick/phase-fault-matrix
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (deffield social-class/probability probability intensive)
+  (deffield social-class/base int extensive)
+  (deffield social-class/action int extensive)
+  (node first NodeType/SOCIAL_CLASS
+    (social-class/probability 0.1p)
+    (social-class/base 0)
+    (social-class/action 0))
+  (node second NodeType/SOCIAL_CLASS
+    (social-class/probability 0.9p)
+    (social-class/base 0)
+    (social-class/action 0)))
+";
+    const MATERIAL_SUCCESS_RULE: &str = r#"(rule vitality/phase-success
+  :material-basis "PER-18 rollback matrix: representative Material Base work"
+  :fuel 64
+  (bindings (binding value :field social-class/base))
+  (when (>= value 0))
+  (effects
+    (emit EventType/MATERIAL_WORK)
+    (update-node self social-class/base (add 1))))"#;
+    const ACTION_SUCCESS_RULE: &str = r#"(rule ooda/phase-success
+  :material-basis "PER-18 rollback matrix: representative Action work"
+  :fuel 64
+  (bindings (binding value :field social-class/action))
+  (when (>= value 0))
+  (effects
+    (emit EventType/ACTION_WORK)
+    (update-node self social-class/action (add 1))))"#;
+    const MATERIAL_FAILURE_RULE: &str = r#"(rule metabolism/phase-failure
+  :material-basis "PER-18 rollback matrix: fail at the end of Material Base"
+  :fuel 64
+  (bindings (binding probability :field social-class/probability))
+  (when (> probability 0.0p))
+  (effects
+    (emit EventType/MATERIAL_FAILURE)
+    (update-node self social-class/probability (add 0.4i))))"#;
+    const ACTION_FAILURE_RULE: &str = r#"(rule ooda/phase-failure
+  :material-basis "PER-18 rollback matrix: fail after Material Base"
+  :fuel 64
+  (bindings (binding probability :field social-class/probability))
+  (when (> probability 0.0p))
+  (effects
+    (emit EventType/ACTION_FAILURE)
+    (update-node self social-class/probability (add 0.4i))))"#;
+    const CONSEQUENCE_FAILURE_RULE: &str = r#"(rule epistemic-horizon/phase-failure
+  :material-basis "PER-18 rollback matrix: fail after Material Base and Action"
+  :fuel 64
+  (bindings (binding probability :field social-class/probability))
+  (when (> probability 0.0p))
+  (effects
+    (emit EventType/CONSEQUENCE_FAILURE)
+    (update-node self social-class/probability (add 0.4i))))"#;
+
+    const HASH_FAILURE_SCENARIO: &str = r"
+(scenario tick/hash-failure
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (deffield social-class/count int extensive)
+  (node only NodeType/SOCIAL_CLASS (social-class/count 1)))
+";
+    const HASH_FAILURE_RULE: &str = r#"(rule vitality/hash-failure
+  :material-basis "PER-18 hash-boundary rollback mutates before the post hash"
+  :fuel 32
+  (bindings (binding count :field social-class/count))
+  (when (= count 1))
+  (effects
+    (emit EventType/HASH_WORK)
+    (update-node self social-class/count (add 1))))"#;
+
+    const ENVELOPE_SCENARIO: &str = r"
+(scenario tick/process-envelope
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (deffield social-class/material int extensive)
+  (deffield social-class/action int extensive)
+  (node subject NodeType/SOCIAL_CLASS
+    (social-class/material 1)
+    (social-class/action 10)))
+";
+    const ENVELOPE_RULES: &str = r#"(rule ooda/envelope-action
+  :material-basis "PER-18 real envelope proof: Action rule"
+  :fuel 32
+  (bindings (binding action :field social-class/action))
+  (when (= action 10))
+  (effects
+    (emit EventType/ACTION_ENVELOPE)
+    (update-node self social-class/action (add 2))))
+
+(rule vitality/envelope-material
+  :material-basis "PER-18 real envelope proof: Material Base rule"
+  :fuel 32
+  (bindings (binding material :field social-class/material))
+  (when (= material 1))
+  (effects
+    (emit EventType/MATERIAL_ENVELOPE)
+    (update-node self social-class/material (add 1))))"#;
+
+    const ENVELOPE_CHILD_ENV: &str = "BABYLON_PER18_TICK_ENVELOPE_CHILD";
+    const ENVELOPE_MARKER: &str = "PER18_TICK_ENVELOPE=";
+
     fn rule_src() -> String {
         format!("{VITALITY}\n{LIFECYCLE}")
     }
@@ -208,6 +313,318 @@ mod tests {
     /// wall-clock one anyway.
     fn test_session() -> SessionId {
         SessionId::new("tick-session-test").expect("literal is non-empty")
+    }
+
+    #[derive(Default)]
+    struct RejectingBatchSink {
+        prepare_attempts: usize,
+        commit_attempts: usize,
+    }
+
+    impl PreparedEventBatchSink for RejectingBatchSink {
+        fn try_prepare(&mut self, _additional: usize) -> Result<(), String> {
+            self.prepare_attempts += 1;
+            Err("injected event publication refusal".to_owned())
+        }
+
+        fn commit_prepared(&mut self, _events: Vec<EventRecord>) {
+            self.commit_attempts += 1;
+        }
+    }
+
+    #[test]
+    fn rejecting_event_publication_happens_before_graph_publication() {
+        let mut session = TickSession::new(
+            CLOCK_SCENARIO,
+            CLOCK_RULE,
+            HypergraphStore::new(),
+            test_session(),
+        )
+        .expect("the event publication probe loads");
+        let before = session.graph.encode_state().unwrap().as_bytes().to_vec();
+        let cursors = session.graph.allocator_cursors();
+        let mut publisher = RejectingBatchSink::default();
+
+        let error = run_prepared_tick_with(
+            &session.prepared,
+            &mut session.graph,
+            &mut publisher,
+            &session.session,
+            1,
+            |_boundary: HashBoundary, graph: &HypergraphStore| graph.state_hash(),
+        )
+        .expect_err("publication is injected to fail");
+
+        assert_eq!(error, "injected event publication refusal");
+        assert_eq!(publisher.prepare_attempts, 1);
+        assert_eq!(publisher.commit_attempts, 0);
+        assert_eq!(session.tick, 0);
+        assert_eq!(session.graph.encode_state().unwrap().as_bytes(), before);
+        assert_eq!(session.graph.allocator_cursors(), cursors);
+    }
+
+    fn assert_phase_fault_rolls_back<G>(rules: &str)
+    where
+        G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy + Default,
+    {
+        let mut session =
+            TickSession::new(PHASE_FAULT_SCENARIO, rules, G::default(), test_session())
+                .expect("the phase fault fixture loads");
+        let before = session.graph().encode_state().unwrap().as_bytes().to_vec();
+        let cursors = session.graph().allocator_cursors();
+        let completed_tick = session.tick();
+        let mut sink = CollectingSink {
+            events: vec![("EventType/PRIOR".to_owned(), Vec::new())],
+        };
+        let prior_events = sink.events.clone();
+
+        let error = session
+            .advance(&mut sink)
+            .expect_err("the second probability write exceeds one");
+
+        assert!(error.contains("E-EVAL-020"), "{error}");
+        assert_eq!(session.graph().encode_state().unwrap().as_bytes(), before);
+        assert_eq!(session.graph().allocator_cursors(), cursors);
+        assert_eq!(session.tick(), completed_tick);
+        assert_eq!(sink.events, prior_events);
+    }
+
+    #[test]
+    fn rollback_covers_material_action_and_consequence_faults_on_both_backends() {
+        let material = format!("{MATERIAL_SUCCESS_RULE}\n{MATERIAL_FAILURE_RULE}");
+        let action = format!("{MATERIAL_SUCCESS_RULE}\n{ACTION_FAILURE_RULE}");
+        let consequence =
+            format!("{MATERIAL_SUCCESS_RULE}\n{ACTION_SUCCESS_RULE}\n{CONSEQUENCE_FAILURE_RULE}");
+
+        assert_phase_fault_rolls_back::<MemoryGraph>(&material);
+        assert_phase_fault_rolls_back::<HypergraphStore>(&material);
+        assert_phase_fault_rolls_back::<MemoryGraph>(&action);
+        assert_phase_fault_rolls_back::<HypergraphStore>(&action);
+        assert_phase_fault_rolls_back::<MemoryGraph>(&consequence);
+        assert_phase_fault_rolls_back::<HypergraphStore>(&consequence);
+    }
+
+    fn assert_hash_fault_rolls_back<H>(mut state_hash: H, expected: &str)
+    where
+        H: FnMut(HashBoundary, &HypergraphStore) -> Result<[u8; 32], GraphError>,
+    {
+        let mut session = TickSession::new(
+            HASH_FAILURE_SCENARIO,
+            HASH_FAILURE_RULE,
+            HypergraphStore::new(),
+            test_session(),
+        )
+        .expect("the hash fault fixture loads");
+        let before = session.graph.encode_state().unwrap().as_bytes().to_vec();
+        let cursors = session.graph.allocator_cursors();
+        let mut sink = CollectingSink {
+            events: vec![("EventType/PRIOR".to_owned(), Vec::new())],
+        };
+        let events = sink.events.clone();
+
+        let error = run_prepared_tick_with(
+            &session.prepared,
+            &mut session.graph,
+            &mut sink,
+            &session.session,
+            1,
+            &mut state_hash,
+        )
+        .expect_err("the selected hash boundary refuses");
+
+        assert!(error.contains(expected), "{error}");
+        assert_eq!(session.graph.encode_state().unwrap().as_bytes(), before);
+        assert_eq!(session.graph.allocator_cursors(), cursors);
+        assert_eq!(session.tick, 0);
+        assert_eq!(sink.events, events);
+    }
+
+    #[test]
+    fn pre_hash_failure_leaves_the_whole_tick_unpublished() {
+        assert_hash_fault_rolls_back(
+            |boundary, graph| match boundary {
+                HashBoundary::Pre => Err(GraphError {
+                    message: "injected pre-hash refusal".to_owned(),
+                }),
+                HashBoundary::Post => graph.state_hash(),
+            },
+            "pre-tick state: injected pre-hash refusal",
+        );
+    }
+
+    #[test]
+    fn post_hash_nan_failure_leaves_the_whole_tick_unpublished() {
+        assert_hash_fault_rolls_back(
+            |boundary, graph| match boundary {
+                HashBoundary::Pre => graph.state_hash(),
+                HashBoundary::Post => {
+                    let mut encoder = StateEncoder::new();
+                    encoder.write_attributes(&[(
+                        NodeId(99),
+                        "fault/non-finite".to_owned(),
+                        f64::NAN,
+                    )])?;
+                    Ok(encoder.finish())
+                }
+            },
+            "post-tick state: attribute fault/non-finite on NodeId(99) is NaN",
+        );
+    }
+
+    #[derive(Debug, PartialEq)]
+    struct TickEnvelopeProof {
+        before: [u8; 32],
+        after: [u8; 32],
+        world_before: [u8; 32],
+        world_after: [u8; 32],
+        per_rule_fired: Vec<(String, usize)>,
+        events: Vec<EventRecord>,
+    }
+
+    impl TickEnvelopeProof {
+        fn canonical_text(&self) -> String {
+            let rules = self
+                .per_rule_fired
+                .iter()
+                .map(|(id, fired)| format!("{id}={fired}"))
+                .collect::<Vec<_>>()
+                .join(",");
+            let events = self
+                .events
+                .iter()
+                .map(|(kind, payload)| format!("{kind}#{}", payload.len()))
+                .collect::<Vec<_>>()
+                .join(",");
+            format!(
+                "graph-before={};graph-after={};world-before={};world-after={};rules={rules};events={events}",
+                crate::hex(&self.before),
+                crate::hex(&self.after),
+                crate::hex(&self.world_before),
+                crate::hex(&self.world_after),
+            )
+        }
+    }
+
+    fn envelope_prestate<G>(reverse_writes: bool) -> G
+    where
+        G: GraphSubstrate + Default,
+    {
+        let mut graph = G::default();
+        let territory = graph.add_node("TERRITORY").unwrap();
+        let organization = graph.add_node("ORGANIZATION").unwrap();
+        if reverse_writes {
+            graph
+                .update_node(organization, "organization/power", 0.625)
+                .unwrap();
+            graph
+                .update_node(territory, "territory/pressure", 0.125)
+                .unwrap();
+            graph
+                .add_hyperedge("PRESENCE_GROUP", &[organization, territory])
+                .unwrap();
+            graph
+                .add_edge("PRESENCE", organization, territory, 0.75)
+                .unwrap();
+        } else {
+            graph
+                .add_edge("PRESENCE", organization, territory, 0.75)
+                .unwrap();
+            graph
+                .add_hyperedge("PRESENCE_GROUP", &[territory, organization])
+                .unwrap();
+            graph
+                .update_node(territory, "territory/pressure", 0.125)
+                .unwrap();
+            graph
+                .update_node(organization, "organization/power", 0.625)
+                .unwrap();
+        }
+        graph
+    }
+
+    fn run_tick_envelope<G>(reverse_writes: bool) -> TickEnvelopeProof
+    where
+        G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy + Default,
+    {
+        let graph = envelope_prestate::<G>(reverse_writes);
+        let mut session = TickSession::new(
+            ENVELOPE_SCENARIO,
+            ENVELOPE_RULES,
+            graph,
+            SessionId::new("per18-envelope").unwrap(),
+        )
+        .expect("the real multi-rule envelope fixture loads");
+        let mut sink = CollectingSink::default();
+        let report = session.advance(&mut sink).expect("the real tick commits");
+        let expected_events = vec![
+            ("MATERIAL_ENVELOPE".to_owned(), Vec::new()),
+            ("ACTION_ENVELOPE".to_owned(), Vec::new()),
+        ];
+        assert_eq!(
+            report.per_rule_fired,
+            vec![
+                ("vitality/envelope-material".to_owned(), 1),
+                ("ooda/envelope-action".to_owned(), 1),
+            ]
+        );
+        assert_eq!(sink.events, expected_events);
+        TickEnvelopeProof {
+            before: report.before,
+            after: report.after,
+            world_before: report.world_before,
+            world_after: report.world_after,
+            per_rule_fired: report.per_rule_fired,
+            events: sink.events,
+        }
+    }
+
+    fn child_tick_envelope(mode: &str) -> String {
+        let executable = std::env::current_exe().expect("the test executable has a path");
+        let output = Command::new(executable)
+            .env(ENVELOPE_CHILD_ENV, mode)
+            .args([
+                "--exact",
+                "session::tests::real_tick_envelope_child_probe",
+                "--nocapture",
+            ])
+            .output()
+            .expect("the child test process starts");
+        let stdout = String::from_utf8(output.stdout).expect("child stdout is UTF-8");
+        let stderr = String::from_utf8(output.stderr).expect("child stderr is UTF-8");
+        assert!(
+            output.status.success(),
+            "child process failed\nstdout: {stdout}\nstderr: {stderr}"
+        );
+        stdout
+            .lines()
+            .find_map(|line| line.strip_prefix(ENVELOPE_MARKER))
+            .expect("child stdout carries the real tick envelope marker")
+            .to_owned()
+    }
+
+    #[test]
+    fn real_tick_envelope_child_probe() {
+        let Some(mode) = std::env::var_os(ENVELOPE_CHILD_ENV) else {
+            return;
+        };
+        let mode = mode.to_string_lossy();
+        let envelope = match mode.as_ref() {
+            "memory-reverse" => run_tick_envelope::<MemoryGraph>(true),
+            "hypergraph-forward" => run_tick_envelope::<HypergraphStore>(false),
+            other => panic!("unknown PER-18 child envelope mode: {other}"),
+        };
+        println!("{ENVELOPE_MARKER}{}", envelope.canonical_text());
+    }
+
+    #[test]
+    fn real_tick_envelope_is_identical_across_process_order_and_backend() {
+        let memory_parent = run_tick_envelope::<MemoryGraph>(false);
+        let hypergraph_parent = run_tick_envelope::<HypergraphStore>(true);
+        assert_eq!(memory_parent, hypergraph_parent);
+        let expected = memory_parent.canonical_text();
+
+        assert_eq!(child_tick_envelope("memory-reverse"), expected);
+        assert_eq!(child_tick_envelope("hypergraph-forward"), expected);
     }
 
     #[test]

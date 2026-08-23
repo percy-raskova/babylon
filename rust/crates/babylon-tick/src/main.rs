@@ -5,9 +5,9 @@
 //! ```
 //!
 //! Loads a world, loads a rule through every gate, runs one tick, and prints
-//! the state hash. Running it twice on the same inputs must print the same
-//! hash; that is Constitution III.7 made observable from a shell rather than
-//! only from a test.
+//! both the graph-state and nominal world hashes. Running it twice on the
+//! same inputs must print the same hashes; that is Constitution III.7 made
+//! observable from a shell rather than only from a test.
 //!
 //! # Where the content lives
 //!
@@ -36,7 +36,7 @@
 //! now only argument parsing, calling that seam, and printing. The same
 //! `run_once` is what `babylon-client`'s engine link calls in-process.
 
-use babylon_tick::{hex, run_once};
+use babylon_tick::{hex, run_once, TickReport};
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
@@ -63,13 +63,77 @@ fn run(scenario_path: &str, rule_path: &str) -> Result<(), String> {
 
     let report = run_once(&scenario_src, &rule_src)?;
 
-    println!("tick 1    {} subjects fired", report.fired);
-    println!("before    {}", hex(&report.before));
-    println!("after     {}", hex(&report.after));
-    if report.before == report.after {
+    print!("{}", format_report(&report));
+    Ok(())
+}
+
+fn format_report(report: &TickReport) -> String {
+    let unchanged_note = if report.before == report.after {
         // Not an error — a tick where no guard passed is a real outcome, and
         // saying so beats leaving the reader to compare 64 hex digits.
-        println!("note      state unchanged: no subject passed the guard");
+        "note             graph state unchanged: no subject passed the guard\n"
+    } else {
+        ""
+    };
+    format!(
+        "tick 1           {} subjects fired\n\
+         graph-before     {}\n\
+         graph-after      {}\n\
+         world-before     {}\n\
+         world-after      {}\n\
+         {unchanged_note}",
+        report.fired,
+        hex(&report.before),
+        hex(&report.after),
+        hex(&report.world_before),
+        hex(&report.world_after),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_report;
+    use babylon_tick::TickReport;
+
+    #[test]
+    fn cli_labels_graph_and_world_hashes_and_names_graph_only_unchanged_state() {
+        let report = TickReport {
+            before: [0x11; 32],
+            after: [0x11; 32],
+            world_before: [0x22; 32],
+            world_after: [0x33; 32],
+            fired: 0,
+            per_rule_fired: Vec::new(),
+        };
+
+        let output = format_report(&report);
+
+        assert!(output.contains(
+            "graph-before     1111111111111111111111111111111111111111111111111111111111111111"
+        ));
+        assert!(output.contains(
+            "graph-after      1111111111111111111111111111111111111111111111111111111111111111"
+        ));
+        assert!(output.contains(
+            "world-before     2222222222222222222222222222222222222222222222222222222222222222"
+        ));
+        assert!(output.contains(
+            "world-after      3333333333333333333333333333333333333333333333333333333333333333"
+        ));
+        assert!(output.contains("graph state unchanged: no subject passed the guard"));
     }
-    Ok(())
+
+    #[test]
+    fn unchanged_note_compares_the_clearly_named_graph_hashes() {
+        let report = TickReport {
+            before: [0x11; 32],
+            after: [0x12; 32],
+            world_before: [0x22; 32],
+            world_after: [0x22; 32],
+            fired: 1,
+            per_rule_fired: Vec::new(),
+        };
+
+        assert!(!format_report(&report).contains("graph state unchanged"));
+    }
 }

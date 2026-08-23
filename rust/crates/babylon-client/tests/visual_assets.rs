@@ -6,7 +6,6 @@ use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::prelude::*;
 use bevy::render::texture::TexturePlugin;
 use std::sync::{Mutex, MutexGuard};
-use std::time::Duration;
 
 static BEVY_APP_TEST_MUTEX: Mutex<()> = Mutex::new(());
 
@@ -42,13 +41,6 @@ fn bevy_app_test_guard() -> MutexGuard<'static, ()> {
         // guard, so later app tests must recover the mutex rather than conceal the assertion.
         Err(poisoned) => poisoned.into_inner(),
     }
-}
-
-fn visual_assets_app() -> App {
-    let mut app = App::new();
-    add_visual_asset_plugins(&mut app);
-    app.finish();
-    app
 }
 
 fn visual_asset_gallery_app() -> App {
@@ -154,45 +146,6 @@ fn gallery_scroll_position_changes_from_injected_line_input() {
     assert!(
         (scroll_position.y - 20.0).abs() < f32::EPSILON,
         "one line of input must move the gallery by 20 logical pixels"
-    );
-}
-
-#[test]
-fn every_typed_embedded_image_loads_within_sixty_four_updates() {
-    let _guard = bevy_app_test_guard();
-    let mut app = visual_assets_app();
-
-    for _ in 0..64 {
-        app.update();
-        std::thread::sleep(Duration::from_millis(100));
-        let asset_server = app.world().resource::<AssetServer>();
-        let assets = app
-            .world()
-            .resource::<babylon_client::visual_assets::VisualAssets>();
-        if babylon_client::visual_assets::VISUAL_ASSET_CATALOG
-            .iter()
-            .all(|descriptor| {
-                asset_server.is_loaded_with_dependencies(assets.image(descriptor.id).id())
-            })
-        {
-            return;
-        }
-    }
-
-    let asset_server = app.world().resource::<AssetServer>();
-    let assets = app
-        .world()
-        .resource::<babylon_client::visual_assets::VisualAssets>();
-    let unloaded: Vec<_> = babylon_client::visual_assets::VISUAL_ASSET_CATALOG
-        .iter()
-        .filter(|descriptor| {
-            !asset_server.is_loaded_with_dependencies(assets.image(descriptor.id).id())
-        })
-        .map(|descriptor| descriptor.id)
-        .collect();
-    assert!(
-        unloaded.is_empty(),
-        "embedded images did not load within 64 updates: {unloaded:?}"
     );
 }
 

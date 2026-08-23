@@ -1677,6 +1677,7 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --locked -- -D warnings -D clippy::cognitive_complexity
 cargo test --workspace --locked
 cargo clippy -p babylon-kernel --all-targets --locked -- -D warnings -D clippy::pedantic
+cargo clippy -p babylon-persistence --all-targets --locked -- -D warnings -D clippy::pedantic
 cargo test -p babylon-kernel --locked
 cargo clippy -p babylon-bsl --all-targets --locked -- -D warnings -D clippy::pedantic
 cargo test -p babylon-bsl --locked

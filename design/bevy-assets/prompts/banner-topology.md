@@ -1,10 +1,10 @@
-<!-- vale off -->
-<!-- The final prompt is a verbatim generation record. -->
+<!-- vale ste.UnapprovedWords = NO -->
 
 # Banner: Topology
 
 ## Final prompt
 
+<!-- vale off -->
 ```text
 Use case: stylized-concept
 Asset type: 4:1 ultra-wide game topology banner
@@ -19,11 +19,10 @@ Materials/textures: engraved lines, chipped concrete, wire, matte metal, paper g
 Constraints: every visible node must appear anchored to a material structure; do not imply live values, causal certainty, a canonical victory, named faction, doctrine emblem, national flag, new ending, or invented gameplay mechanic; no words, no letters, no logos; no text, no watermark
 Avoid: free-floating decorative particles, computer-circuit motherboard, glowing hologram, neon cyberpunk, glossy science-fiction interface
 ```
+<!-- vale on -->
 
 ## Curation record
 
 - Overlay safe zone: left third.
 - Crop gravity: center.
 - Acceptance: material anchors, topology, and directional flows stay legible at banner thumbnail size.
-
-<!-- vale on -->

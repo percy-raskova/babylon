@@ -1,10 +1,10 @@
-<!-- vale off -->
-<!-- The final prompt is a verbatim generation record. -->
+<!-- vale ste.UnapprovedWords = NO -->
 
 # Banner: Collapse
 
 ## Final prompt
 
+<!-- vale off -->
 ```text
 Use case: stylized-concept
 Asset type: 4:1 ultra-wide game collapse and end-state banner
@@ -19,11 +19,10 @@ Materials/textures: cracked concrete, twisted rail steel, soot, standing water, 
 Constraints: keep the collapse ambiguous among possible outcomes and do not portray a canonical victory, named faction, doctrine emblem, national flag, new ending, or invented gameplay result; no words, no letters, no logos; no text, no watermark
 Avoid: mushroom clouds, fantasy ruins, skulls, raised flags, celebrating crowds, lone survivors, neon cyberpunk, glossy science-fiction interface
 ```
+<!-- vale on -->
 
 ## Curation record
 
 - Overlay safe zone: right third.
 - Crop gravity: center.
-- Acceptance: several distinct material failures and disrupted relations stay legible at story-card size.
-
-<!-- vale on -->
+- Acceptance: rail, utility, distribution, and flood failures stay legible at story-card size.

@@ -1,10 +1,10 @@
-<!-- vale off -->
-<!-- The final prompt is a verbatim generation record. -->
+<!-- vale ste.UnapprovedWords = NO -->
 
 # Hero: Red Apparatus
 
 ## Final prompt
 
+<!-- vale off -->
 ```text
 Use case: stylized-concept
 Asset type: 16:9 landscape game hero art
@@ -19,11 +19,10 @@ Materials/textures: soot, chipped concrete, oxidized steel, torn asphalt, engrav
 Constraints: reveal material relations and atmosphere only; do not depict a canonical victory, named faction, doctrine emblem, national flag, new ending, or invented gameplay outcome; no words, no letters, no logos; no text, no watermark
 Avoid: patriotic iconography, recognizable monuments, raised-fist propaganda pose, lone savior, combat spectacle, neon cyberpunk, glossy science-fiction interface
 ```
+<!-- vale on -->
 
 ## Curation record
 
 - Overlay safe zone: upper left.
 - Crop gravity: center.
 - Acceptance: the city, pressure front, and relation lines stay legible at thumbnail size.
-
-<!-- vale on -->

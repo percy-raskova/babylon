@@ -1,5 +1,5 @@
-<!-- vale off -->
-<!-- Asset names, license terms, and generation records use required technical vocabulary. -->
+<!-- vale ste.UnapprovedWords = NO -->
+<!-- vale Vale.Spelling = NO -->
 
 # Bevy asset provenance
 
@@ -26,9 +26,9 @@ and SHA-256 digests remain in the repository for review.
 
 ## OpenAI-generated illustrations
 
-OpenAI's built-in image-generation tool created the ten illustration masters on 2026-08-22. No
-input image or third-party reference image was used. Each linked prompt record contains the complete
-final prompt verbatim.
+OpenAI's built-in image-generation tool created the ten illustration masters on 2026-08-22. The
+process used no input image or third-party reference image. Each linked prompt record contains the
+complete final prompt verbatim.
 
 The work used human-directed curation: the Director approved the three-mode visual family and its
 constraints, and Codex selected and inspected one output per prompt. Selection required a clear
@@ -48,13 +48,11 @@ thumbnail subject, usable negative space for a Bevy text overlay, and no invente
 | `banner-collapse` | `prompts/banner-collapse.md` | `exec-1ad583b3-1b97-4a74-b6d5-cd86b88135df.png` |
 
 ImageMagick applied only deterministic resize and center-crop operations. `cwebp` encoded each
-selected result at quality 82 with method 6. The committed WebP files are the selected output
-record, and `manifest.toml` pins their dimensions and SHA-256 digests.
+selected result at quality 82 with method 6. The committed WebP files record the selected outputs.
+`manifest.toml` pins their dimensions and SHA-256 digests.
 
 ## License disposition
 
 The project distributes the SVG masters, prompt records, interface PNG files, and generated WebP
 files under `AGPL-3.0-or-later`. This disposition covers all sixteen manifest rows. It does not
 change the separate CC0-1.0 classification of Babylon's shipped audio estates.
-
-<!-- vale on -->

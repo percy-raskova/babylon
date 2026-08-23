@@ -1,10 +1,10 @@
-<!-- vale off -->
-<!-- The final prompt is a verbatim generation record. -->
+<!-- vale ste.UnapprovedWords = NO -->
 
 # Concept: Living Map
 
 ## Final prompt
 
+<!-- vale off -->
 ```text
 Use case: stylized-concept
 Asset type: 1:1 game object concept plate
@@ -19,11 +19,10 @@ Materials/textures: stamped metal, chipped ceramic, paper fiber, knotted thread,
 Constraints: show a relation instrument rather than a literal live-data UI; do not invent county values, borders, gameplay outcomes, a canonical victory, named faction, doctrine emblem, national flag, or new ending; no words, no letters, no logos; no text, no watermark
 Avoid: recognizable flag map, state names, numbers, screen pixels, glowing hologram, neon cyberpunk, glossy science-fiction interface
 ```
+<!-- vale on -->
 
 ## Curation record
 
 - Overlay safe zone: upper left.
 - Crop gravity: center.
 - Acceptance: the county plates and physical relation network stay legible at thumbnail size.
-
-<!-- vale on -->

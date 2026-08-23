@@ -1,10 +1,10 @@
-<!-- vale off -->
-<!-- The final prompt is a verbatim generation record. -->
+<!-- vale ste.UnapprovedWords = NO -->
 
 # Hero: Empire Anatomized
 
 ## Final prompt
 
+<!-- vale off -->
 ```text
 Use case: stylized-concept
 Asset type: 16:9 landscape game hero art
@@ -19,11 +19,10 @@ Materials/textures: sectioned concrete, tarnished metal, paper fibers, engraved 
 Constraints: show material relations without claiming that any one node controls the whole; do not depict a canonical victory, named faction, doctrine emblem, national flag, new ending, or invented gameplay outcome; no words, no letters, no logos; no text, no watermark
 Avoid: anatomical gore, literal national symbols, corporate branding, heroic leaders, glowing holograms, neon cyberpunk, glossy science-fiction interface
 ```
+<!-- vale on -->
 
 ## Curation record
 
 - Overlay safe zone: upper right.
 - Crop gravity: center.
 - Acceptance: the systemic cutaway and six relation domains stay legible at thumbnail size.
-
-<!-- vale on -->

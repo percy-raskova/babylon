@@ -1,10 +1,10 @@
-<!-- vale off -->
-<!-- The final prompt is a verbatim generation record. -->
+<!-- vale ste.UnapprovedWords = NO -->
 
 # Concept: Bunker Oracle
 
 ## Final prompt
 
+<!-- vale off -->
 ```text
 Use case: stylized-concept
 Asset type: 1:1 game environment concept plate
@@ -19,11 +19,10 @@ Materials/textures: wet concrete bloom, scratched glass, oxidized steel, worn pa
 Constraints: instruments reveal relations but do not predict or decide outcomes; do not depict a canonical victory, named faction, doctrine emblem, national flag, new ending, or invented gameplay mechanic; no words, no letters, no logos; no text, no watermark
 Avoid: readable screens, supernatural oracle imagery, clean command center, military insignia, neon cyberpunk, glossy science-fiction interface
 ```
+<!-- vale on -->
 
 ## Curation record
 
 - Overlay safe zone: upper left.
 - Crop gravity: center.
 - Acceptance: the map table and repaired-room atmosphere stay legible at thumbnail size.
-
-<!-- vale on -->

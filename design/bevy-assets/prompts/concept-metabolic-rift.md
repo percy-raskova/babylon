@@ -1,10 +1,10 @@
-<!-- vale off -->
-<!-- The final prompt is a verbatim generation record. -->
+<!-- vale ste.UnapprovedWords = NO -->
 
 # Concept: Metabolic Rift
 
 ## Final prompt
 
+<!-- vale off -->
 ```text
 Use case: stylized-concept
 Asset type: 1:1 systemic game concept plate
@@ -19,11 +19,10 @@ Materials/textures: tailings, cracked soil, freight steel, concrete, ash, oily w
 Constraints: reveal the linked circuit without inventing measured values, a canonical outcome, or a new ecological ending; do not depict a canonical victory, named faction, doctrine emblem, national flag, new ending, or invented gameplay mechanic; no words, no letters, no logos; no text, no watermark
 Avoid: pristine nature-versus-evil allegory, fantasy apocalypse, skull symbolism, neon cyberpunk, glossy science-fiction interface
 ```
+<!-- vale on -->
 
 ## Curation record
 
 - Overlay safe zone: upper left.
 - Crop gravity: center.
 - Acceptance: extraction, transport, consumption, and ecological damage read as one circuit at thumbnail size.
-
-<!-- vale on -->

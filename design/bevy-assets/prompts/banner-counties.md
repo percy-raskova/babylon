@@ -1,10 +1,10 @@
-<!-- vale off -->
-<!-- The final prompt is a verbatim generation record. -->
+<!-- vale ste.UnapprovedWords = NO -->
 
 # Banner: Counties
 
 ## Final prompt
 
+<!-- vale off -->
 ```text
 Use case: stylized-concept
 Asset type: 4:1 ultra-wide game story banner
@@ -19,11 +19,10 @@ Materials/textures: stamped plate metal, paper fiber, oxidized pins, scratched c
 Constraints: atmospheric story art only, not a literal data visualization; do not invent territory values, a canonical victory, named faction, doctrine emblem, national flag, new ending, or gameplay result; no words, no letters, no logos; no text, no watermark
 Avoid: geographic labels, flag-shaped map, skyline, portraiture, neon cyberpunk, glossy science-fiction interface
 ```
+<!-- vale on -->
 
 ## Curation record
 
 - Overlay safe zone: left third.
 - Crop gravity: center.
 - Acceptance: the territorial plates and relation lines stay legible at story-card size.
-
-<!-- vale on -->

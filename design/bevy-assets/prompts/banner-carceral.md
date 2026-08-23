@@ -1,10 +1,12 @@
-<!-- vale off -->
-<!-- The final prompt is a verbatim generation record. -->
+<!-- vale ste.UnapprovedWords = NO -->
 
+<!-- vale Vale.Spelling = NO -->
 # Banner: Carceral
+<!-- vale Vale.Spelling = YES -->
 
 ## Final prompt
 
+<!-- vale off -->
 ```text
 Use case: stylized-concept
 Asset type: 4:1 ultra-wide game story banner
@@ -19,11 +21,10 @@ Materials/textures: poured concrete, mesh, freight steel, worn asphalt, engraved
 Constraints: show the systemic chain without gore, abuse spectacle, invented statistics, or a predetermined outcome; do not depict a canonical victory, named faction, doctrine emblem, national flag, new ending, or invented gameplay mechanic; no words, no letters, no logos; no text, no watermark
 Avoid: badges, named institutions, individual villains, combat, neon cyberpunk, glossy science-fiction interface
 ```
+<!-- vale on -->
 
 ## Curation record
 
 - Overlay safe zone: right third.
 - Crop gravity: center.
 - Acceptance: confinement, transport, labor, and extraction read as one chain at story-card size.
-
-<!-- vale on -->

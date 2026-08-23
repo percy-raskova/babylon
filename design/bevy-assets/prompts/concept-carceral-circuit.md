@@ -1,10 +1,12 @@
-<!-- vale off -->
-<!-- The final prompt is a verbatim generation record. -->
+<!-- vale ste.UnapprovedWords = NO -->
 
+<!-- vale Vale.Spelling = NO -->
 # Concept: Carceral Circuit
+<!-- vale Vale.Spelling = YES -->
 
 ## Final prompt
 
+<!-- vale off -->
 ```text
 Use case: stylized-concept
 Asset type: 1:1 systemic game concept plate
@@ -19,11 +21,10 @@ Materials/textures: poured concrete, cage mesh, worn road paint without symbols,
 Constraints: show logistics and extraction without depicting torture, a named institution, invented statistics, or a predetermined outcome; do not depict a canonical victory, named faction, doctrine emblem, national flag, new ending, or invented gameplay mechanic; no words, no letters, no logos; no text, no watermark
 Avoid: gore, individual villain portrait, police badge, prison logo, national symbols, neon cyberpunk, glossy science-fiction interface
 ```
+<!-- vale on -->
 
 ## Curation record
 
 - Overlay safe zone: upper right.
 - Crop gravity: center.
 - Acceptance: confinement, transport, labor, and supply flows stay legible at thumbnail size.
-
-<!-- vale on -->

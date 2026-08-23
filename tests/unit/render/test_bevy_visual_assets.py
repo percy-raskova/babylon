@@ -4,6 +4,7 @@ import hashlib
 import re
 import tomllib
 import xml.etree.ElementTree as ET
+from itertools import islice
 from pathlib import Path
 
 from PIL import Image
@@ -99,5 +100,5 @@ def test_manifest_and_runtime_directory_have_exactly_the_same_files() -> None:
     assets = _manifest_assets()
     assert len(assets) == 16
     declared = {Path(str(assets[index]["runtime"])).name for index in range(16)}
-    actual = {path.name for path in _RUNTIME.iterdir() if path.is_file()}
+    actual = {path.name for path in islice(_RUNTIME.iterdir(), 17)}
     assert actual == declared

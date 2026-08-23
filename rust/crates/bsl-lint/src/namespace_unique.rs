@@ -116,6 +116,16 @@ const ALLOWLIST: &[(&str, &[&str], &str)] = &[
          keyword set: bindings, grammar/graph-flag placement, and mod-anchors",
     ),
     (
+        "E-PARSE-015",
+        &[
+            "babylon-bsl/src/causal_contract.rs",
+            "babylon-bsl/src/grammar.rs",
+        ],
+        "bsl-language.rst:691,1249 — a symbol outside any parser-owned closed set is \
+         E-PARSE-015; grammar.rs owns form/update-op sets, while ADR224's causal_contract.rs \
+         owns the closed :role and :evidence values",
+    ),
+    (
         "E-PARSE-022",
         &["babylon-bsl/src/bindings.rs", "babylon-bsl/src/scope.rs"],
         "bsl-language.rst:779,897,1145 — self/it is a reserved name at both a binding's own \

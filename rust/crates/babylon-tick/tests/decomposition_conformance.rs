@@ -390,7 +390,7 @@ fn p02_latches_the_crisis_tick_on_the_carrier() {
 fn scenario_and_empty_pack_load() {
     const PROBE_RULE: &str = r#"
 (rule decomposition/probe
-  :material-basis "load-only smoke: prove the scenario loads against a registered decomposition system"
+  :role mechanic :evidence derived :material-basis "load-only smoke: prove the scenario loads against a registered decomposition system"
   :fuel 8
   (bindings (binding wealth :field social-class/wealth))
   (when (< wealth 0))
@@ -398,7 +398,7 @@ fn scenario_and_empty_pack_load() {
     (update-node self social-class/wealth (set wealth))))
 
 (rule control-ratio/probe
-  :material-basis "load-only smoke: prove the scenario loads against a registered control-ratio system"
+  :role mechanic :evidence derived :material-basis "load-only smoke: prove the scenario loads against a registered control-ratio system"
   :fuel 8
   (bindings (binding pop :field social-class/population))
   (when (< pop 0))

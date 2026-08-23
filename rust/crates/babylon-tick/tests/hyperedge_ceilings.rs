@@ -38,7 +38,7 @@ const SCENARIO: &str = r"
 /// `HyperedgeType/COMMUNITY` ceiling entry.
 const RULE_HYPEREDGES_FOLD: &str = r#"
 (rule community/probe-hyperedge-count
-  :material-basis "probe rule for the hyperedge ceiling supply chain (Task 4 RED) — the community/ namespace was registered one task early (Task 7 Step 2's content) precisely so this probe reaches the ceiling check instead of dying at E-LOAD-004"
+  :role mechanic :evidence derived :material-basis "probe rule for the hyperedge ceiling supply chain (Task 4 RED) — the community/ namespace was registered one task early (Task 7 Step 2's content) precisely so this probe reaches the ceiling check instead of dying at E-LOAD-004"
   :fuel 512
   (domain NodeType/SOCIAL_CLASS)
   (bindings
@@ -53,7 +53,7 @@ const RULE_HYPEREDGES_FOLD: &str = r#"
 /// `:max-members` axis (E-LOAD-042), not just the type ceiling.
 const RULE_MEMBERS_OF_FOLD: &str = r#"
 (rule community/probe-membership-count
-  :material-basis "probe rule for the :max-members axis (Task 4 RED) — namespace registration as probe-hyperedge-count's"
+  :role mechanic :evidence derived :material-basis "probe rule for the :max-members axis (Task 4 RED) — namespace registration as probe-hyperedge-count's"
   :fuel 512
   (domain NodeType/SOCIAL_CLASS)
   (bindings

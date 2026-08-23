@@ -20,6 +20,7 @@
 // branch that is rarely taken.
 #![allow(clippy::result_large_err)]
 
+use babylon_bsl::causal_contract::{reduce_audit_receipts, AuditReceipt};
 use babylon_bsl::declarations::{parse_intrinsic_decls, DeclError, FieldRegistry};
 use babylon_bsl::error_identity::ErrorIdentity;
 use babylon_bsl::evaluator::Value;
@@ -29,13 +30,15 @@ use babylon_bsl::reader::SExpr;
 use babylon_bsl::rule_pipeline::{
     check_unique_rule_ids, load_rule_form, split_content, LoadContext, LoadError, LoadedRule,
 };
+use babylon_bsl::same_tick_order::{diagnose_ranked, ENFORCE_RANK_AWARE_AGGREGATE_ORDERING};
 use babylon_bsl::scenario::{
     load_scenario, load_scenario_with_prelude, LoadedScenario, ScenarioError,
 };
 use babylon_bsl::structural_verbs::CollectingSink;
-use babylon_bsl::tick::run_tick;
+use babylon_bsl::tick::run_tick_observed;
 use babylon_bsl::typecheck::TypeEnv;
 use babylon_bsl::types::{EnumRegistry, FieldDecl};
+use babylon_bsl::write_log::CollectingWriteLog;
 use babylon_bsl::BindingVocabulary;
 use babylon_graph::allocator_state::AllocatorState;
 use babylon_graph::hypergraph_store::HypergraphStore;
@@ -78,6 +81,9 @@ pub struct TickReport {
     /// content set (`fired == per_rule_fired[0].1` always holds); length N
     /// for an N-rule content set.
     pub per_rule_fired: Vec<(String, usize)>,
+    /// Identity-free events and writes observed from successful rule effects,
+    /// in executable rule order. Failed ticks publish no receipts.
+    pub audit_receipts: Vec<AuditReceipt>,
 }
 
 pub(crate) type EventRecord = (String, Vec<(String, Value)>);
@@ -361,6 +367,24 @@ fn prepare_error_from_schedule(error: phase_order::ScheduleError) -> PrepareErro
             message,
         },
     }
+}
+
+fn enforce_ranked_composition(
+    plan: &phase_order::RuleOrderPlan,
+    rule_forms: &[(String, SExpr)],
+) -> Result<(), PrepareError> {
+    let ranked = plan
+        .ranked_rules(rule_forms)
+        .map_err(prepare_error_from_schedule)?;
+    if ENFORCE_RANK_AWARE_AGGREGATE_ORDERING {
+        diagnose_ranked(&ranked)
+            .into_enforced_result()
+            .map_err(|error| PrepareError::Rule {
+                rule_id: None,
+                error: LoadError::SameTickOrder(error),
+            })?;
+    }
+    Ok(())
 }
 
 fn hydrate_scenario<G: GraphSubstrate>(
@@ -688,8 +712,13 @@ pub fn diagnose_content_set(
     }
 
     if unique_rule_ids && !admitted_rule_forms.is_empty() {
-        if let Err(error) = phase_order::compile(&admitted_rule_forms) {
-            errors.push(prepare_error_from_schedule(error));
+        match phase_order::compile(&admitted_rule_forms) {
+            Ok(plan) => {
+                if let Err(error) = enforce_ranked_composition(&plan, &admitted_rule_forms) {
+                    errors.push(error);
+                }
+            }
+            Err(error) => errors.push(prepare_error_from_schedule(error)),
         }
     }
 
@@ -787,6 +816,7 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
         rules.push((id.clone(), loaded));
     }
     let rule_order = phase_order::compile(&rule_forms).map_err(prepare_error_from_schedule)?;
+    enforce_ranked_composition(&rule_order, &rule_forms)?;
     let rules = rule_order
         .apply(rules)
         .map_err(prepare_error_from_schedule)?;
@@ -918,6 +948,14 @@ pub(crate) fn run_prepared_tick<
     )
 }
 
+fn checked_fired_total(per_rule_fired: &[(String, usize)]) -> Result<usize, String> {
+    per_rule_fired.iter().try_fold(0usize, |total, (_, fired)| {
+        total
+            .checked_add(*fired)
+            .ok_or_else(|| "tick fired-subject total overflowed usize".to_owned())
+    })
+}
+
 fn run_prepared_tick_with<G, B, H>(
     prepared: &PreparedRules,
     graph: &mut G,
@@ -948,27 +986,20 @@ where
     let mut working_sink = CollectingSink::default();
 
     // Every rule in `prepared.rules` runs to COMPLETION (every matching
-    // subject) before the next rule starts — never interleaved — against
-    // the SAME working graph, so a later rule sees an EARLIER rule's writes from
-    // the SAME tick. This falls out of calling `run_tick` sequentially
-    // against one `&mut G`, and it matches the frozen Python engine's own
-    // in-place, strict-order mutation semantics — but it is NOT what §4.2
-    // demands: "rules within one system position observe the same
-    // pre-state" (bsl-language.rst §4.2) covers RULE-to-rule pre-state
-    // sharing, not just subject-to-subject within one rule. Task 12
-    // (D-row Q1) repaired the within-rule half via `run_tick`'s
-    // collect-then-apply split; this cross-rule half is a SEPARATE,
-    // RECORDED gap — D-row Q14 (the query-evaluation plan's draft-ruling
-    // register). This behavior is live and observable: Community,
-    // Consciousness, ControlRatio, and other multi-rule packs intentionally
-    // exchange same-position writes. A shared-prestate repair therefore needs
-    // explicit content dispositions and new behavioral contracts; it is not
-    // supplied by PER-17. The ORDER `prepared.rules`
-    // iterates in is the executable phase registry's causal order; D16
-    // applies only to rules at the same resolved position.
+    // subject) before the next rule starts — never interleaved — against the
+    // SAME working graph, so a later rule sees an earlier rule's same-tick
+    // writes. ADR224 makes that existing behavior the explicit rule-to-rule
+    // contract: phase rank orders causal positions, and rule id orders peers
+    // within one rank. The live aggregate analyzer rejects stale optional-
+    // default reads and unreset fan-in before execution. Within one rule,
+    // `run_tick_observed` still collects all subject effects against one
+    // pre-rule state and only then applies them in subject order.
     let mut per_rule_fired = Vec::with_capacity(prepared.rules.len());
+    let mut audit_receipts = Vec::new();
     for (id, loaded) in &prepared.rules {
-        let outcome = run_tick(
+        let event_start = working_sink.events.len();
+        let mut write_log = CollectingWriteLog::new();
+        let outcome = run_tick_observed(
             loaded,
             &prepared.types,
             &prepared.enums,
@@ -982,15 +1013,23 @@ where
             // read it; `:year`/`:tick-of-year` need an epoch slice 1 does
             // not pin and are refused by name at `run_tick` entry.
             tick,
-            id,
             Some(&prepared.node_content_ids),
             session,
             prepared.vocabulary.as_ref(),
+            &mut write_log,
         )
         .map_err(|e| format!("tick failed in rule {id}: {e}"))?;
+        let emitted_event_types = working_sink.events[event_start..]
+            .iter()
+            .map(|(event_type, _)| event_type.clone())
+            .collect::<Vec<_>>();
+        let mut rule_receipts =
+            reduce_audit_receipts(&loaded.contract, &emitted_event_types, &write_log.records)
+                .map_err(|error| format!("causal receipt refused in rule {id}: {error}"))?;
+        audit_receipts.append(&mut rule_receipts);
         per_rule_fired.push((id.clone(), outcome.fired));
     }
-    let fired = per_rule_fired.iter().map(|(_, n)| n).sum();
+    let fired = checked_fired_total(&per_rule_fired)?;
 
     let after = state_hash(HashBoundary::Post, &working_graph)
         .map_err(|e| format!("post-tick state: {}", e.message))?;
@@ -1011,6 +1050,7 @@ where
         world_after,
         fired,
         per_rule_fired,
+        audit_receipts,
     })
 }
 
@@ -1116,9 +1156,10 @@ pub fn any_over_budget(rows: &[FuelBoundRow]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        any_over_budget, fuel_bound_report, prepare_rules, run_once, run_once_into,
-        run_once_into_with_prelude, FuelBoundRow,
+        any_over_budget, checked_fired_total, fuel_bound_report, prepare_rules, run_once,
+        run_once_into, run_once_into_with_prelude, FuelBoundRow,
     };
+    use babylon_bsl::causal_contract::{AuditReceipt, EffectSignature, EvidenceClass, RuleRole};
     use babylon_bsl::structural_verbs::CollectingSink;
     use babylon_graph::allocator_state::{AllocatorCursors, AllocatorState};
     use babylon_graph::hypergraph_store::HypergraphStore;
@@ -1128,6 +1169,16 @@ mod tests {
     use babylon_graph::working_copy::DetachedCopy;
     const SCENARIO: &str = include_str!("../content/scenarios/two-classes.bscn");
     const RULE: &str = include_str!("../content/rules/fundamental-theorem.bsl");
+
+    #[test]
+    fn fired_total_refuses_usize_overflow_without_allocating_the_claimed_work() {
+        let per_rule_fired = vec![("first".to_owned(), usize::MAX), ("second".to_owned(), 1)];
+
+        assert_eq!(
+            checked_fired_total(&per_rule_fired),
+            Err("tick fired-subject total overflowed usize".to_owned())
+        );
+    }
 
     const ONE_SHOT_FAILURE_SCENARIO: &str = r"
 (scenario tick/one-shot-atomicity
@@ -1144,7 +1195,7 @@ mod tests {
   (node second NodeType/SOCIAL_CLASS (social-class/probability 0.9p)))
 ";
     const ONE_SHOT_FAILURE_RULE: &str = r#"(rule vitality/one-shot-atomicity
-  :material-basis "PER-18: hydration and adjudication publish as one transaction"
+  :role mechanic :evidence derived :material-basis "PER-18: hydration and adjudication publish as one transaction"
   :fuel 64
   (bindings (binding probability :field social-class/probability))
   (when (> probability 0.0p))
@@ -1164,7 +1215,7 @@ mod tests {
   (node only NodeType/SOCIAL_CLASS (social-class/count 1)))
 ";
     const ONE_SHOT_SUCCESS_RULE: &str = r#"(rule vitality/one-shot-success
-  :material-basis "PER-18: successful staging preserves caller-relative identity allocation"
+  :role mechanic :evidence derived :material-basis "PER-18: successful staging preserves caller-relative identity allocation"
   :fuel 32
   (bindings (binding count :field social-class/count))
   (when (= count 1))
@@ -1261,6 +1312,25 @@ mod tests {
         assert_eq!(report.fired, 1);
         assert_eq!(sink.events.len(), 1);
         assert_eq!(sink.events[0].0, "COMMITTED");
+        assert_eq!(
+            report.audit_receipts,
+            vec![
+                AuditReceipt {
+                    rule_id: "vitality/one-shot-success".to_owned(),
+                    role: RuleRole::Mechanic,
+                    evidence: EvidenceClass::Derived,
+                    ordinal: 0,
+                    effect: EffectSignature::Event("EventType/COMMITTED".to_owned()),
+                },
+                AuditReceipt {
+                    rule_id: "vitality/one-shot-success".to_owned(),
+                    role: RuleRole::Mechanic,
+                    evidence: EvidenceClass::Derived,
+                    ordinal: 1,
+                    effect: EffectSignature::NodeField("social-class/count".to_owned()),
+                },
+            ]
+        );
     }
 
     #[test]
@@ -1304,7 +1374,7 @@ mod tests {
   (node core NodeType/SOCIAL_CLASS (social-class/wealth 100)))
 ";
     const FUEL_REPORT_FIXTURE_RULE: &str = r#"(rule vitality/fuel-report-fixture
-  :material-basis "Task W3 fuel-bound report fixture — the simplest legal rule shape, so the report's smallest content set is trivial to hand-verify"
+  :role mechanic :evidence derived :material-basis "Task W3 fuel-bound report fixture — the simplest legal rule shape, so the report's smallest content set is trivial to hand-verify"
   :fuel 64
   (bindings (binding wealth :field social-class/wealth))
   (when (> wealth 0))
@@ -1428,7 +1498,7 @@ mod tests {
   (node core NodeType/SOCIAL_CLASS (social-class/wages 100)))
 ";
     const VOCAB_WIRING_RULE: &str = r#"(rule vitality/vocab-wiring-probe
-  :material-basis "F3 (#534 fix round item 3): proves the production seam threads a declared vocabulary end to end"
+  :role mechanic :evidence derived :material-basis "F3 (#534 fix round item 3): proves the production seam threads a declared vocabulary end to end"
   :fuel 64
   (domain NodeType/SOCIAL_CLA)
   (bindings (binding wages :field social-class/wages))
@@ -1457,7 +1527,7 @@ mod tests {
   (edge EdgeType/SOLIDARITY core other 1))
 ";
     const D32_WIRING_PROBE_RULE: &str = r#"(rule vitality/d32-wiring-probe
-  :material-basis "PLAN-MUST-VERIFY probe (T2, issue #559): the D32 implicit-strength field must resolve through prepare_rules's real TypeEnv construction, not merely in isolation (r9_chapters.rs::type_env already proves the isolated chain)"
+  :role mechanic :evidence derived :material-basis "PLAN-MUST-VERIFY probe (T2, issue #559): the D32 implicit-strength field must resolve through prepare_rules's real TypeEnv construction, not merely in isolation (r9_chapters.rs::type_env already proves the isolated chain)"
   :fuel 128
   (bindings (binding shape :field social-class/shape))
   (when (= shape 1))
@@ -1584,7 +1654,7 @@ mod tests {
   (edge EdgeType/MEMBERSHIP cell worker 1))
 ";
     const TASK_10_RULE: &str = r#"(rule organization/kind-probe
-  :material-basis "Task 10's own probe rule shape (organization foundation plan) — EventType stays undeclared while NodeType/EdgeType are declared, proving hydration and the emit payload both leave an opted-out kind inert through the full production seam"
+  :role mechanic :evidence derived :material-basis "Task 10's own probe rule shape (organization foundation plan) — EventType stays undeclared while NodeType/EdgeType are declared, proving hydration and the emit payload both leave an opted-out kind inert through the full production seam"
   :fuel 32
   (bindings (binding active :field organization/active))
   (when (= active 1))

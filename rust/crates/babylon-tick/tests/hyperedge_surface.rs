@@ -45,7 +45,7 @@ const SCENARIO: &str = r"
 fn update_hyperedge_writes_through_the_tick() {
     let rule = r#"
 (rule community/probe-update-hyperedge
-  :material-basis "Task 6 Step 2 proof: update-hyperedge writes through the tick"
+  :role mechanic :evidence derived :material-basis "Task 6 Step 2 proof: update-hyperedge writes through the tick"
   :fuel 2048
   (domain NodeType/SOCIAL_CLASS)
   (bindings
@@ -78,7 +78,7 @@ fn field_of_reads_a_seeded_hyperedge_field_into_a_node_write() {
     );
     let rule = r#"
 (rule community/probe-field-of-hyperedge
-  :material-basis "Task 6 Steps 3+5 proof: field-of reads a hyperedge-attr-seeded field"
+  :role mechanic :evidence derived :material-basis "Task 6 Steps 3+5 proof: field-of reads a hyperedge-attr-seeded field"
   :fuel 2048
   (domain NodeType/SOCIAL_CLASS)
   (bindings
@@ -112,7 +112,7 @@ fn field_of_reads_a_seeded_hyperedge_field_into_a_node_write() {
 fn update_hyperedge_refuses_a_qname_owned_by_another_type() {
     let rule = r#"
 (rule community/probe-referent-check
-  :material-basis "Task 6 proof: the §2.10 discipline-1 referent check"
+  :role mechanic :evidence derived :material-basis "Task 6 proof: the §2.10 discipline-1 referent check"
   :fuel 2048
   (domain NodeType/SOCIAL_CLASS)
   (bindings
@@ -140,7 +140,7 @@ fn update_hyperedge_refuses_a_qname_owned_by_another_type() {
 fn a_hyperedge_owned_field_binding_names_no_subject_type() {
     let rule = r#"
 (rule community/probe-d29-binding
-  :material-basis "Task 6 Step 4 proof: a hyperedge-owned :field binding names no subject type"
+  :role mechanic :evidence derived :material-basis "Task 6 Step 4 proof: a hyperedge-owned :field binding names no subject type"
   :fuel 2048
   (domain NodeType/SOCIAL_CLASS)
   (bindings
@@ -164,7 +164,7 @@ fn a_hyperedge_owned_field_binding_names_no_subject_type() {
 fn update_hyperedge_refuses_a_wrong_typed_write_value() {
     let rule = r#"
 (rule community/probe-write-type
-  :material-basis "Task 6 Step 6 proof: a wrong-typed write value refuses"
+  :role mechanic :evidence derived :material-basis "Task 6 Step 6 proof: a wrong-typed write value refuses"
   :fuel 2048
   (domain NodeType/SOCIAL_CLASS)
   (bindings
@@ -203,7 +203,7 @@ fn field_of_an_enum_typed_hyperedge_field_refuses_arithmetic() {
 ";
     let rule = r#"
 (rule community/probe-enum-arith
-  :material-basis "Task 6 Step 6 proof: enum field read in arithmetic position refuses"
+  :role mechanic :evidence derived :material-basis "Task 6 Step 6 proof: enum field read in arithmetic position refuses"
   :fuel 2048
   (domain NodeType/SOCIAL_CLASS)
   (bindings

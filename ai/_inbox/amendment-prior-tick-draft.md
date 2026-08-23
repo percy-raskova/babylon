@@ -1,7 +1,17 @@
+<!-- vale off -->
+
 # Amendment AI — Same-Tick Ordering Declarations (`:prior-tick` + a complementary-guard marker)
 
+> **Historical disposition (2026-08-23): never ratified; superseded as an
+> implementation path by ADR224.** ADR224 retains deterministic sequential
+> same-rank composition and activates rank-aware E-LOAD-058/E-LOAD-059 with
+> exact governed disposition tables. It does not mint `:prior-tick`,
+> `:complementary-writers`, or `:sequential-accumulator`; none is active BSL
+> vocabulary. The draft below remains unchanged historical design evidence for
+> the hazards and alternatives considered on 2026-08-18.
+
 - **Date**: 2026-08-18
-- **Status**: **DRAFT — DIRECTOR GATE.** Not ratified. This text is Task
+- **Status**: **HISTORICAL — NEVER RATIFIED — SUPERSEDED BY ADR224.** This text was Task
   W2.6's deliverable (`docs/superpowers/plans/2026-08-18-bsl-hygiene-
   knockout.md` §Task W2, amended by `.superpowers/sdd/2026-08-18-bsl-
   hygiene-knockout/task-w2-brief.md`'s R-W2a ruling): the Director

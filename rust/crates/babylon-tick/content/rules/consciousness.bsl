@@ -177,6 +177,8 @@
 ; anchored under it first), so this pack changes no Rust source.
 
 (rule consciousness/p0-position
+  :role mechanic
+  :evidence derived
   :material-basis "A-001 as the class-seeding law (Director flag 1): a class with material anchors (wages-paid + value-produced present) and no ternary record is positioned at the ruled unorganized rest state (0, 1, 0) — liberal hegemonic default, spec 034 A-001, THE one home (the seven scattered frozen sites are named in docs/concepts/consciousness-taxonomy.rst, not re-homed here). Data-absent classes are never positioned: UNPOSITIONED (L-ABS) — the row-19 disease's death certificate. Positioning does NOT record dominance: dominant-worldview's only writer is the read-path task's dominant rule (one-home law, pack D-record 3) — a freshly-positioned class reads it ABSENT until then. The agitation accumulator initializes to zero so later routing rules read a positioned class's agitation as present."
   :fuel 64
   (bindings
@@ -197,6 +199,8 @@
     (update-node self social-class/agitation (set 0))))
 
 (rule consciousness/p1-inbox-reset
+  :role mechanic
+  :evidence derived
   :material-basis "Per-tick accumulator reset (the production p0 idiom; D103/D104 collect-then-apply makes reset-then-accumulate safe): the solidarity inbox and the wages inbox are both machinery, not state — each carries this tick's pushed contributions only. UNCONDITIONAL (W2 repair, adjudication (d)): the positioned-only sum-guard this rule carried until now was strictly WEAKER than p7-persist-baselines' anchored-only read guard on wages-inbox, so an anchored-but-inactive class (never positioned, so never reset) could accumulate un-reset WAGES-edge pushes indefinitely and later read them as garbage previous-wages on its first positioned tick — a real, reachable latent defect on wages-inbox (solidarity-inbox was already safe: p0 positions a class the same tick p1's old guard would first pass). Resetting BOTH inbox fields unconditionally, every tick, for every subject, discharges both at once and is the E-LOAD-059 unconditional-set shape refusal 2 checks for."
   :fuel 32
   (bindings
@@ -209,6 +213,8 @@
     (update-node self social-class/wages-inbox (set 0))))
 
 (rule consciousness/p2-org-solidarity-push
+  :role mechanic
+  :evidence derived
   :material-basis "Org-sourced solidarity: strength above negligible_transmission counts (frozen ideology.py:339-356's org arm — org mass work has no ideology of its own to gate on; the edge's strength IS the signal, ADR087). Push form (the D136 fix-round pattern; exact vs the frozen pull at :337-356 — each edge is pushed exactly once by its unique source). One SOLIDARITY edge per (source, target) pair is STRUCTURAL, not discipline: both GraphSubstrate backends key edges on (type, from, to) and refuse a duplicate loudly — the frozen per-edge fold's multi-edge sum is unrepresentable here (recorded, D151)."
   :fuel 128
   (bindings
@@ -222,6 +228,8 @@
           (add (field-of (edge-between EdgeType/SOLIDARITY self it) solidarity/strength)))))))
 
 (rule consciousness/p2-wages-push
+  :role mechanic
+  :evidence derived
   :material-basis "The wage flow, un-narrowed (D151's narrowing 3 discharged, Train B item 3, #591): every WAGES edge's seeded wages/value-flow is pushed into the receiving class's wages-inbox (frozen ideology.py:299-309's incoming-WAGES fold-sum, expressed per the D136 push-over-pull idiom — D138 forbids the filter-in-fold pull). Push form (the D136 fix-round pattern, mirroring p2-org-solidarity-push's own shape exactly): each edge is pushed exactly once by its unique source. No transmission-floor gate — every seeded wage flow counts; the WAGES edge's own strength slot (1.0c, seeded above) is a structural presence marker with no semantic consumer (the register row) — nothing reads it."
   :fuel 128
   (bindings
@@ -233,6 +241,8 @@
         (add (field-of (edge-between EdgeType/WAGES self it) wages/value-flow))))))
 
 (rule consciousness/p3-class-solidarity-push
+  :role mechanic
+  :evidence derived
   :material-basis "Class-sourced solidarity transmits only past the percolation threshold (frozen: source class_consciousness > activation_threshold, ideology.py:339-356) — re-pointed to the source's revolutionary share (the same quantity post-W1 unification; D152). An UNPOSITIONED source reads r = 0.0p by the idiom and never transmits: absence is not organization. The frozen loop's strength <= 0 skip is not transcribed (inert on declared content; recorded narrowing, D151)."
   :fuel 128
   (bindings
@@ -245,6 +255,8 @@
         (add (field-of (edge-between EdgeType/SOLIDARITY self it) solidarity/strength))))))
 
 (rule consciousness/p4-wage-balance
+  :role mechanic
+  :evidence derived
   :material-basis "The per-class wage-value balance (formulas/contradiction.py:67-100, called (v_produced, w_paid) at ideology.py:241-244, so balance = (w−v)/(v+w)): positive = wages dominate = the imperial bribe. Frozen reads the per-class pair when present (ideology.py:239-259), which is the ONLY path the port carries: data-absent classes are UNPOSITIONED, never the graph-attr fallback (that attr has no BSL surface). The frozen [-1,1] clamp is inert-by-construction under the non-negative anchored sentinel guard (|w−v| <= v+w). The frozen 1e-9 zero-guard (formulas/contradiction.py:98-100: total <= 1e-9 -> 0.0) is NARROWED, not inert — the port's guard is `(+ wages value) > 0`, so for 0 < v+w <= 1e-9 the frozen yields 0.0 where the port yields the quotient; content-inert on declared content, whose sums sit orders of magnitude above 1e-9 — a recorded narrowing. Stored verbatim-f64, signed (spike 4's lane)."
   :fuel 64
   (bindings
@@ -284,6 +296,8 @@
 ; (64/32/128/224/256/96), leaving ~156 units of documented slack rather
 ; than solidarity's "measured + 1" convention.
 (rule consciousness/p5-agitation
+  :role mechanic
+  :evidence derived
   :material-basis "compute_agitation_delta (consciousness_routing.py:48-200) + the frozen call-site's exact argument mapping (ideology.py:372-380): exploitation_delta = |wage_change| when wages fall; visibility 0.0 verbatim; the Curve-5 balance component ABSENT (ADR202 R7 — the replacement rides #491, D147); repression as produced-excess-over-baseline, absent contributing zero (MEDIUM-2 discipline). The wage flow rides the pushed wages-inbox accumulator (D151's narrowing 3 discharged, Train B item 3, #591 — the frozen incoming-WAGES fold-sum now rides the seeded WAGES-edge wages/value-flow via p2-wages-push's push-over-pull, exact for single-employer content since each class receives exactly one employer edge). Guarded anchored AND positioned (D153: an unpositioned class never accumulates — the frozen step accumulated on every active class). Writes the UNDECAYED level; p6 routes on it and writes the decayed store. wealth-rate (Δwealth ÷ prev-wealth, a RATE, comment above) replaces frozen's wealth_change (#491 T1 C1)."
   :fuel 224
   (bindings
@@ -319,6 +333,8 @@
     (update-node self social-class/agitation (set new-agitation))))
 
 (rule consciousness/p6-route
+  :role mechanic
+  :evidence derived
   :material-basis "The ratified bifurcation law (ADR016; route_agitation_to_ternary, consciousness_routing.py:345-370) RE-POINTED at the stored ternary: solidarity routes agitation revolutionary-ward, its absence fascist-ward; chauvinist pressure (the positive-balance imperial bribe, Director flag 2's ruling) biases the split fascist-ward; Δl APPLIED here (the frozen engine discards it at the class call-site, ideology.py:394) — the re-point, D146 — with closure by a verbatim normalize_to_simplex (:373-409). Epsilon rides the expr quotient (/ 1c 10000000000), bit-identical to Python's 1e-10 via one correctly-rounded IEEE-754 division (pack D-record 4). The decay store follows ideology.py:413-414."
   :fuel 256
   (bindings
@@ -365,6 +381,8 @@
     (update-node self social-class/agitation (set decayed))))
 
 (rule consciousness/p7-persist-baselines
+  :role mechanic
+  :evidence derived
   :material-basis "The persistent previous-values re-homed to node fields (digest gap 4 — context.persistent_data has no BSL analog): next tick's deltas read this tick's declared flow (frozen: persistent[PREVIOUS_WAGES_KEY] = current_wages / PREVIOUS_WEALTH_KEY, ideology.py:441-442). Anchored classes only."
   :fuel 64
   (bindings
@@ -378,6 +396,8 @@
     (update-node self social-class/previous-wealth (set wealth))))
 
 (rule consciousness/p8-dominant-worldview
+  :role mechanic
+  :evidence derived
   :material-basis "The measured readout: dominant pole = argmax with the ruled tie order LIBERAL > REVOLUTIONARY > FASCIST at 1e-6 (frozen: models/entities/consciousness.py:177-192, transcribed verbatim). TWO DECLARED HOMES for the hegemonic tie-break, parity-guarded (DG-2 = PUBLISH, the 2026-08-18 sitting): this rule over the class surface, and community/c08-dominant-tendency over the community surface — the 8a row-1 copies-agree test (tests/community_conformance.rs::dominant_tendency_ties_match_the_class_surface_rule) pins both to LIBERAL on the same three-way tie. (The frozen anchor above is corrected with this amendment: models/entities/consciousness.py:167-191, epsilon :189 — the earlier :177-192 pointed past the property.) UNPOSITIONED classes (sum 0) are skipped: no reading, ever."
   :fuel 96
   (bindings

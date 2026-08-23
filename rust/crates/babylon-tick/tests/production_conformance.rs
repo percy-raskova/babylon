@@ -97,7 +97,7 @@ const T_TIGHT: NodeId = NodeId(13);
 fn scenario_loads_with_a_probe_pack() {
     const PROBE_RULE: &str = r#"
 (rule production/probe
-  :material-basis "load-only smoke: prove the scenario loads against a registered production system"
+  :role mechanic :evidence derived :material-basis "load-only smoke: prove the scenario loads against a registered production system"
   :fuel 8
   (bindings (binding wealth :field social-class/wealth))
   (when (< wealth 0))

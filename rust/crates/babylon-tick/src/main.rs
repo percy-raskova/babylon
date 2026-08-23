@@ -104,6 +104,7 @@ mod tests {
             world_after: [0x33; 32],
             fired: 2,
             per_rule_fired: vec![("vitality/emit-only".to_owned(), 2)],
+            audit_receipts: Vec::new(),
         };
 
         let output = format_report(&report);
@@ -135,6 +136,7 @@ mod tests {
             world_after: [0x22; 32],
             fired: 1,
             per_rule_fired: Vec::new(),
+            audit_receipts: Vec::new(),
         };
 
         assert!(!format_report(&report).contains("graph state unchanged"));

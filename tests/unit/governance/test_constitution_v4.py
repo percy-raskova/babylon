@@ -96,9 +96,9 @@ _ORIENTATION_CONCEPTS: Final[tuple[tuple[str, ...], ...]] = (
     ("no player action", "no committed player action"),
 )
 _NEXT_THREE_GATES: Final[tuple[str, ...]] = (
-    "Executable causality and whole-tick atomicity",
     "PostgreSQL/H3/Archive decision-loop slice",
     "COVID E0 emergence proof",
+    "Player agency",
 )
 _SUPERSEDED_PRODUCT_PHRASES: Final[tuple[str, ...]] = (
     "graph + math = history",

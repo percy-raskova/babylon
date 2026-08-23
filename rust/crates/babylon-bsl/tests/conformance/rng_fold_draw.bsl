@@ -6,6 +6,8 @@
 ; element through the C8 element stack the way a fold body does). Two
 ; neighbors, same subject (hub) -> two draws that differ only by element.
 (rule demo/rng-fold-draw
+  :role mechanic
+  :evidence derived
   :material-basis "rng-draw inside a for-each over neighbors reaches the real dispatch path end to end"
   :fuel 4096
   (bindings

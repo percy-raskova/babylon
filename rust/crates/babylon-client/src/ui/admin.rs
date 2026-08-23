@@ -178,6 +178,7 @@ mod tests {
                 ("lifecycle/dpd-circuit".to_owned(), 12),
                 ("vitality/subsistence-and-death".to_owned(), 6),
             ],
+            audit_receipts: Vec::new(),
         };
         let rendered = format_tick_report(&report);
         assert_eq!(

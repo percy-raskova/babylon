@@ -2,6 +2,8 @@
 ; practice variables + @coeff thresholds -> :field bindings + :const
 ; bindings (the @ sigil does not survive, per the §2.2 keyword table).
 (rule doctrine/liquidation-absorbing
+  :role mechanic
+  :evidence derived
   :material-basis "solidarity collapsed, co-optation dominant, base embourgeoised: the absorbing state"
   :fuel 32
   (bindings

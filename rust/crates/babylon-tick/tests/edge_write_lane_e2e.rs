@@ -60,7 +60,7 @@ const BASE_C: NodeId = NodeId(3);
 /// `0.5` and `0.25`, in that order.
 const RULE_FOR_EACH_WRITES: &str = r#"
 (rule social-class/edge-write-for-each-e2e
-  :material-basis "§6.2 chapter C6's required vector — for-each over edges applying update-edge per element, both write kinds (D143 strength-fork scale + deffield set), with an emit reading the PRE-tick strength inside the same body (the pre-state law on the edge lane)"
+  :role mechanic :evidence derived :material-basis "§6.2 chapter C6's required vector — for-each over edges applying update-edge per element, both write kinds (D143 strength-fork scale + deffield set), with an emit reading the PRE-tick strength inside the same body (the pre-state law on the edge lane)"
   :fuel 512
   (bindings (binding shape :field social-class/shape))
   (when (= shape 1))
@@ -151,7 +151,7 @@ fn shape_1_for_each_over_edges_writes_every_edge_and_the_emit_reads_pre_state() 
 /// tension never written (a loud error, never 0.0).
 const RULE_TARGETED_WRITE: &str = r#"
 (rule social-class/edge-write-targeted-e2e
-  :material-basis "§2.10's worked write shape (D36) through the production path — edge-between resolving the referent, add on <edge-type>/strength (the 0x03 slot, D143), set on the deffield field (the fifth section), and the untouched edge's never-written field reading loud"
+  :role mechanic :evidence derived :material-basis "§2.10's worked write shape (D36) through the production path — edge-between resolving the referent, add on <edge-type>/strength (the 0x03 slot, D143), set on the deffield field (the fifth section), and the untouched edge's never-written field reading loud"
   :fuel 512
   (bindings (binding shape :field social-class/shape))
   (when (= shape 2))

@@ -274,7 +274,7 @@ fn the_dispossession_tick_is_deterministic() {
 #[test]
 fn a_rule_reading_an_undeclared_coefficient_is_refused_at_load() {
     let rule = "(rule dispossession/typo \
-                :material-basis \"a territory has a foreclosure rate\" :fuel 32 \
+                :role mechanic :evidence derived :material-basis \"a territory has a foreclosure rate\" :fuel 32 \
                 (bindings \
                   (binding wealth :field territory/wealth) \
                   (binding rate :const dispossession/foreclosure-rat)) \

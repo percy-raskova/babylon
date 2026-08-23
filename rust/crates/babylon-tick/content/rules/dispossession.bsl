@@ -269,6 +269,8 @@
 ; Lifecycle each made for their own anchors.
 
 (rule dispossession/territory-transfer
+  :role mechanic
+  :evidence derived
   :material-basis "a county's foreclosure, eviction and displacement pressure, combined with how concentrated and absentee-owned its housing stock already is, draws a value transfer out of its wealth every tick primitive accumulation is live there — split between what changes hands and what evaporates as deadweight loss (auction fees, vacancy, abandonment)"
   :fuel 4096
   (bindings

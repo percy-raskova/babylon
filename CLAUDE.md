@@ -1,35 +1,32 @@
 # Repository Rules for Agents
 
-`AGENTS.md` points here. Keep this live configuration below 200 lines. Use
-`NORTH_STAR.md` for game direction, `docs/concepts/architecture.rst` for the
-live boundary, and `docs/agents/governance.md` for contributor authority.
+`AGENTS.md` points here. Keep this live configuration below 200 lines. Use `NORTH_STAR.md`
+for game direction, `docs/concepts/architecture.rst` for the live boundary, and `docs/agents/governance.md` for contributor authority.
 
 ## Babylon
 
-Babylon is an entertainment-first emergent political-economy game, not a
-forecast or scientific reproduction. Theory constrains causes but does not
-predetermine results. Determinism proves computational identity, not
-scientific truth. Historical cases test causal signatures and counterfactual
-behavior. Bevy remains an administrative viewer with no player action.
+Babylon is an entertainment-first emergent political-economy game, not a forecast
+or scientific reproduction. Theory constrains causes but does not predetermine
+results. Determinism proves computational identity, not scientific truth.
+Historical cases test causal signatures and counterfactual behavior. Bevy remains
+an administrative viewer with no player action.
 
-The first three executable gates are:
+This checkout implements Gate 2. These three executable gates follow:
 
 <!-- Vale: each protected item is a governed gate name. -->
 <!-- vale ste.UnapprovedWords = NO -->
-1. **Executable causality and whole-tick atomicity**
-<!-- vale ste.UnapprovedWords = YES -->
 <!-- vale Vale.Terms = NO -->
-<!-- vale ste.UnapprovedWords = NO -->
-2. **PostgreSQL/H3/Archive decision-loop slice**
+1. **PostgreSQL/H3/Archive decision-loop slice**
 <!-- vale Vale.Terms = YES -->
 <!-- vale ste.UnapprovedWords = YES -->
+<!-- vale ste.UnapprovedWords = NO -->
 <!-- vale ste.NounClusters = NO -->
-3. **COVID E0 emergence proof**
+2. **COVID E0 emergence proof**
+<!-- vale ste.UnapprovedWords = YES -->
+3. **Player agency**
 <!-- vale ste.NounClusters = YES -->
 
-Read `CONSTITUTION.md` v4.0.0 before a change to game law. ADR221 maps its
-predecessors and does not rewrite history. `ai/mantras.yaml` is the canonical
-machine-readable orientation.
+Read `CONSTITUTION.md` v4.0.0 before a change to game law. ADR221 maps its predecessors and preserves history. `ai/mantras.yaml` is the canonical machine-readable orientation.
 
 ## Constitutional compact
 
@@ -38,26 +35,30 @@ machine-readable orientation.
 - Each formal element needs a material relation. Geography stays fixed.
 - Political claims use overlays. Public hyperedges stay first-class.
 - AI can parse, retrieve, and narrate. Only the engine judges mechanics.
-- Classify substantive values as `Observed`, `Derived`, `Calibrated`, or
-  `Designed`.
-- A shock can add pressure but cannot write downstream results.
+- Classify substantive values as `Observed`, `Derived`, `Calibrated`, or `Designed`.
+- An external-event rule can add only an allowed pressure, burden, or capacity effect.
+  It cannot write downstream results.
 - A rule cannot impose a sigmoid or a second fixed response curve.
 - Each game display must answer a decision question. An administrative display
   cannot pass a game milestone.
 
-Stop and ask the Director before a new primitive, weaker prohibition, or change
-to the reserved theory line. Do not infer live authority from an old ADR.
+Stop and ask the Director before a new primitive, weaker prohibition, or change to the reserved theory line. Do not infer live authority from an old ADR.
 
 ## Live architecture
 
 <!-- Vale: these paragraphs preserve literal crate, schema, and Linear identifiers. -->
 <!-- vale ste.UnapprovedWords = NO -->
 <!-- vale ste.NounClusters = NO -->
-The live Rust path is `babylon-kernel`, `babylon-graph`, `babylon-bsl`, `babylon-tick`,
-and `babylon-client`. Live BSL rules execute, but executable shocks do not exist.
-`TickSession` adjudicates each tick on a detached graph and publishes graph, buffered
-events, completed time, and `NominalWorldHash` only after every rule and hash succeeds.
-`GraphStateHash` remains graph-only. The Bevy viewer shows the committed world hash.
+The live Rust path is `babylon-kernel`, `babylon-graph`, `babylon-bsl`,
+`babylon-tick`, and `babylon-client`. Every BSL rule declares one causal role
+and evidence class. Built-in declarations must match
+`GOVERNED_RULE_ATTRIBUTIONS`. Unknown mod and fixture IDs remain self-declared.
+
+Mechanics have typed effects. Recognizers, external events, and intents are exact-allowlist and default-deny. Restricted production footprints must equal their unique allowance rows, so CI rejects dead permissions. Executable shocks and intents do not exist.
+
+Same-rank rules compose sequentially. `TickSession` publishes graph, events, identity-free event-then-write `AuditReceipt` rows,
+completed time, and `NominalWorldHash` only after the detached tick succeeds. `GraphStateHash` stays graph-only.
+The Bevy viewer shows the world hash.
 
 Program 27 froze the Python engine at `p27-python-freeze`. Its 34-system
 `SimulationEngine._DEFAULT_SYSTEMS` is the transcription oracle for Rust's
@@ -69,9 +70,9 @@ Reference Parquet and deterministic SQLite are build artifacts. The Python
 `PerTickTransactionEnvelope`, atomic Postgres `persist_tick_atomic`,
 `tick_commit`, partial `babylon_meta`, and an action pipeline.
 
-Gate 3 will add the full v4 Rust three-schema boundary,
-`CommittedTickEnvelope`, Archive outbox, and fog-safe decision loop. Gate 4 adds
-executable shocks, and Gate 5 adds Bevy player actions.
+Gate 3 will add the Rust three-schema boundary, `CommittedTickEnvelope`, Archive
+outbox, and fog-safe decision loop. Gate 4 adds governed external-event rows,
+and Gate 5 adds next-week intents and Bevy player actions.
 
 <!-- Vale: the accepted Linear status uses a passive state label. -->
 <!-- vale strunk.ActiveVoice = NO -->
@@ -91,8 +92,8 @@ Django browser client lives only in `web/` and does not gate v1.
 Frozen Python uses `kernel < models/formulas < topology < domain < persistence <
 engine`. `intelligence` observes. Check it with `mise run lint:imports`.
 
-Put coefficients in `GameDefines` and `src/babylon/data/defines.yaml`. Regenerate
-with `tools/generate_defines_config.py`. Use native public hyperedges, strict
+Put coefficients in `GameDefines` and `src/babylon/data/defines.yaml`. Regenerate with
+`tools/generate_defines_config.py`. Use native public hyperedges, strict
 types, explicit errors, specific type-ignore codes, and production vocabulary.
 Do not use a `test_` prefix in production source.
 
@@ -105,8 +106,8 @@ on changed prose and distinguish live facts from plans.
 
 ## Tests and behavior contracts
 
-Run the smallest applicable test first and do not overlap heavy gates. `pytest`
-covers data tools for Python, periphery, the frozen reference, and durable
+Run the smallest applicable test first and do not overlap heavy gates. `pytest` covers
+data tools for Python, periphery, the frozen reference, and durable
 language-neutral contracts. Retire an engine-specific Python test only after a
 replacement contract exists.
 
@@ -158,8 +159,7 @@ Before merge, pin green CI to the PR head SHA and address all Copilot comments.
 Use only `mise run pr:merge -- N`. Do not use `gh pr merge --auto`. The Director
 controls all merges to `main`.
 
-Keep unrelated user changes unchanged. Report an unrelated fault unless the
-owner expands scope.
+Keep unrelated user changes unchanged. Report an unrelated fault unless the owner expands scope.
 
 ## Toolchain and host safety
 

@@ -4,6 +4,8 @@
 ; absent-reads-as-0 site — honest-null: absent = no accumulated strength,
 ; declared in content, carried on the DEFAULT_ALLOWLIST (§3.5 item 4).
 (rule doctrine/adventurism
+  :role mechanic
+  :evidence derived
   :material-basis "isolation from the mass base severs the practice loop"
   :fuel 16
   (bindings

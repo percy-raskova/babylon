@@ -28,7 +28,7 @@ historical record against their stated baseline.
 - S-32 writer assignment status: superseded
 - D5/D16 phase-ordering status: implemented_executable_PER-17
 - PER-18 rollback and combined-world-hash status: implemented_current
-- PER-19 causal-composition and outcome-write-contract status: planned
+- PER-19 causal-composition and outcome-write-contract status: implemented_current
 - Persistence writer status: accepted_cutover_law
 - PER-48 status: Done
 - PostgreSQL boundary ADR: ADR220_rust_owned_postgresql_persistence_boundary
@@ -44,14 +44,18 @@ and ADR.
 ### Implemented current path
 
 The Rust estate implements the BSL parser, vocabulary and type checking,
-evaluator, canonical content digests, executable anchor placement, and graph
-execution. Rule preparation compiles the frozen 34-system causal spine before
-mutating caller state. Default homes come from the rule-ID namespace; explicit
-anchors select governed boundaries; D16 orders only same-position ties by
-rule-ID bytes. `TickSession` applies the ordered rules to a detached working
-graph and buffers their events. It publishes graph state, allocator cursors,
-events, and completed time only after every rule and both hash boundaries
-succeed. Any failure leaves the prior in-memory world byte-identical.
+evaluator, canonical content digests, executable anchor placement, causal-role
+authorization, the governed production-attribution manifest, and graph
+execution. Rule preparation compiles the frozen
+34-system causal spine before mutating caller state. Default homes come from
+the rule-ID namespace; explicit anchors select governed boundaries; D16 orders
+only same-position ties by rule-ID bytes. Rules at one position execute
+sequentially, so later rules observe earlier rules' committed working-copy
+writes. `TickSession` applies the ordered rules to a detached working graph and
+buffers their events and identity-free audit receipts. It publishes graph
+state, allocator cursors, events, receipts, and completed time only after every
+rule and both hash boundaries succeed. Any failure leaves the prior in-memory
+world byte-identical and publishes no receipt.
 
 The canonical graph hash remains a graph-only diagnostic. The version-1
 nominal world hash adds the completed weekly tick, the node and hyperedge
@@ -68,15 +72,53 @@ loop are not current.
 
 ### Gate 2 delivery status
 
-PER-17 has replaced the global byte sort with an executable phase-anchor total
-order. Same-position rules remain sequential; their shared-prestate repair is
-separate from placement. PER-18 has landed a whole-tick working copy that swaps
-only after successful adjudication and extends canonical big-endian hashing
-across current auxiliary registers into the nominal world hash. PER-19 owns
-BSL causal composition, the provenance/direct-write whitelist, and negative
-outcome-write contracts. Therefore, S-11 may cite in-memory rollback through
-PER-18 and ADR223, but it cannot claim database durability or shared-prestate
-composition.
+PER-17 replaced the global byte sort with an executable phase-anchor total
+order. PER-18 landed a whole-tick working copy that swaps only after successful
+adjudication and extends canonical big-endian hashing across current auxiliary
+registers into the nominal world hash. PER-19 makes same-position sequential
+composition the explicit contract, activates rank-aware E-LOAD-058 and
+E-LOAD-059 refusals with exact governed dispositions, and adds role-sensitive
+effect authorization plus actual-effect audit receipts. ADR224 supersedes only
+ADR222 and ADR223's named future shared-prestate target; their historical
+diagnosis, phase order, and rollback law remain intact. Gate 2 is complete in
+this checkout. S-11 may cite in-memory rollback and atomic receipt publication,
+but it cannot claim database durability.
+
+### Causal authority and receipt boundary
+
+Every rule declares one causal role and one evidence class. The roles are
+`Mechanic`, `Recognizer`, `ExternalEvent`, and `Intent`. The evidence classes
+are `Observed`, `Derived`, `Calibrated`, and `Designed`. Mechanics retain the
+ordinary typed effect algebra. Every other role is exact-allowlist and
+default-deny over the complete nested effect tree; a nonmatching event or field
+effect is E-LOAD-060, and graph-shape effects are forbidden for restricted
+roles.
+
+Rule metadata is the first attribution ledger. Built-in content also has the
+independent `causal_contract::GOVERNED_RULE_ATTRIBUTIONS` ledger of
+`GovernedRuleAttribution` rows: exact rule ID, role, evidence, owner, date, and
+ADR224. A known ID whose declaration differs refuses load as the typed,
+unnumbered `ContractError::GovernedAttributionMismatch`. A CI
+sentinel requires exact equality between the production corpus and the manifest.
+Unknown fixture and mod IDs remain self-declared. The second ledger therefore
+prevents first-party production content from escalating by relabeling itself;
+it is not an untrusted-mod sandbox.
+
+The current allowance table contains only the five ControlRatio recognizer
+effects: the crisis and terminal recognition events and their three latches.
+External-event and intent allowances are empty. Of 60 governed production
+manifest rows, 58 are `Mechanic`/`Derived`; `control-ratio/c03-crisis` and
+`control-ratio/c04-terminal` are `Recognizer`/`Derived`.
+The production sentinel requires exact set equality between each non-Mechanic
+production footprint and its `GOVERNED_EFFECT_ALLOWANCES` rows, plus unique
+allowance keys. Dead, missing, or duplicated permissions cannot survive CI.
+
+After a rule succeeds, its actual collection-boundary events precede its actual
+apply-boundary writes in one continuous receipt sequence. Each `AuditReceipt`
+carries rule, role, evidence, ordinal, and an identity-free effect signature.
+It carries no graph-element ID and no written value. Gate 3 owns the durable
+envelope and dirty subject/H3 identities; Gates 4 and 5 own the first governed
+external-event and intent allowance rows.
 
 ### Durability and client boundary
 
@@ -1097,6 +1139,8 @@ two source arguments. Carrier-anchored, fires once per tick over a population of
 
 ```scheme
 (rule market-scissors/aggregate-profit-share
+  :role mechanic
+  :evidence derived
   :material-basis "the national economy's aggregate profit share, a population-weighted aggregate over the class profit-share distribution — the same extensive-over-extensive shape as Vol. III's r = surplus over capital (market_scissors.py:466-468)"
   :fuel 48
   (bindings

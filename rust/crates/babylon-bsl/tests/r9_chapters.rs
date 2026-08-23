@@ -179,7 +179,8 @@ fn aggregation_code(source: &str) -> Option<TypeCode> {
     }
 }
 
-const PREAMBLE: &str = ":material-basis \"the wage relation\" :fuel 65536";
+const PREAMBLE: &str =
+    ":role mechanic :evidence derived :material-basis \"the wage relation\" :fuel 65536";
 
 fn rule(body: &str) -> String {
     format!("(rule demo/r9 {PREAMBLE} {body})")
@@ -612,7 +613,7 @@ mod c4_rule_domain {
     #[test]
     fn the_worked_example_infers_a_node_domain_and_keeps_its_bytes() {
         let worked = "(rule demo/hunger \
-             :material-basis \"subsistence deficit at the point of reproduction\" \
+             :role mechanic :evidence derived :material-basis \"subsistence deficit at the point of reproduction\" \
              :fuel 64 \
              (bindings (binding wealth :field social-class/wealth)) \
              (when (< wealth 1000.5$)) \
@@ -625,8 +626,8 @@ mod c4_rule_domain {
         );
         assert_eq!(
             canonical_bytes(&form).unwrap().len(),
-            421,
-            "§5.6's bytes are unaffected: <domain> is optional and absent"
+            500,
+            "§5.6's bytes retain the optional, absent <domain>"
         );
     }
 
@@ -1509,7 +1510,7 @@ mod c6_effect_position_iteration {
         let body = "(bindings) (effects (for-each (edges EdgeType/SOLIDARITY) \
                     (update-edge it solidarity/strength (scale 0.95c))))";
         let starved =
-            format!("(rule demo/r9 :material-basis \"the wage relation\" :fuel 202 {body})");
+            format!("(rule demo/r9 :role mechanic :evidence derived :material-basis \"the wage relation\" :fuel 202 {body})");
         let err = check_rule(
             &super::e(&starved),
             &super::ceilings(),
@@ -1520,7 +1521,7 @@ mod c6_effect_position_iteration {
         // …and one MORE than the bound loads (§4.5's off-by-one: budget
         // `bound + 1`, because the meter must stay strictly positive).
         let funded =
-            format!("(rule demo/r9 :material-basis \"the wage relation\" :fuel 204 {body})");
+            format!("(rule demo/r9 :role mechanic :evidence derived :material-basis \"the wage relation\" :fuel 204 {body})");
         assert_eq!(
             check_rule(
                 &super::e(&funded),
@@ -2838,7 +2839,6 @@ mod c14_rng_draw {
             &intrinsics,
             &DefinesEnv::new(),
             tick,
-            "demo/rng-keyed-draw",
             Some(&loaded_scenario.node_content_ids),
             &SessionId::new(session).expect("literal is non-empty"),
             None,
@@ -3036,7 +3036,6 @@ mod c14_rng_draw {
             &intrinsics,
             &DefinesEnv::new(),
             1,
-            "demo/rng-fold-draw",
             Some(&loaded_scenario.node_content_ids),
             &SessionId::new("rng-c14-fold").expect("literal is non-empty"),
             None,
@@ -3146,9 +3145,9 @@ mod c14_rng_draw {
     }
 
     /// Run `EDGE_TYPE_RULE` once over `EDGE_TYPE_SCENARIO`, with the REAL
-    /// `KernelIntrinsicHost` and the rule's OWN declared id as `domain`
-    /// (never `run()`'s hard-coded `demo/rng-keyed-draw` — a different
-    /// fixture, a different domain).
+    /// `KernelIntrinsicHost` and the rule's OWN loaded contract id as
+    /// `domain` — a different fixture carries a different identity without
+    /// any parallel caller assertion.
     fn run_edge_type() -> MemoryGraph {
         let types = edge_type_types();
         let vocabulary = BindingVocabulary {
@@ -3195,7 +3194,6 @@ mod c14_rng_draw {
             &intrinsics,
             &DefinesEnv::new(),
             1,
-            "demo/rng-edge-type-draw",
             Some(&loaded_scenario.node_content_ids),
             &SessionId::new("rng-c14-edge-type").expect("literal is non-empty"),
             None,
@@ -3262,12 +3260,10 @@ mod c14_rng_draw {
     ) {
         const EXPR_DRAW_RULE: &str = include_str!("conformance/rng_expr_draw.bsl");
 
-        // NOT `run()` (this mod's own helper, above): `run()` hard-codes
-        // `rule_id: "demo/rng-keyed-draw"` for its two fixtures' shared
-        // domain (rows 3/4's own design) — this fixture declares itself
-        // `demo/rng-expr-draw`, a DIFFERENT domain, so this test drives
-        // `run_tick` directly with the MATCHING rule id (M4's own
-        // caller-asserted-domain gotcha, avoided by construction here).
+        // NOT `run()` (this mod's own helper, above): this fixture declares
+        // itself `demo/rng-expr-draw`, a DIFFERENT domain. `run_tick`
+        // derives that identity from the loaded contract, so no parallel
+        // identity seam can drift from the content.
         let types = field_types();
         let vocabulary = BindingVocabulary {
             fields: types.fields.keys().cloned().collect(),
@@ -3307,7 +3303,6 @@ mod c14_rng_draw {
             &intrinsics,
             &DefinesEnv::new(),
             1,
-            "demo/rng-expr-draw",
             Some(&loaded_scenario.node_content_ids),
             &SessionId::new("rng-c14-expr-position").expect("literal is non-empty"),
             None,
@@ -3557,7 +3552,8 @@ mod verification_repairs {
     use babylon_bsl::fuel::IntrinsicCosts;
     use babylon_bsl::scope::check_foreign_field_scoping;
 
-    const PRE: &str = ":material-basis \"the wage relation\" :fuel 262144";
+    const PRE: &str =
+        ":role mechanic :evidence derived :material-basis \"the wage relation\" :fuel 262144";
 
     fn rule(body: &str) -> String {
         format!("(rule demo/r9 {PRE} {body})")
@@ -3954,21 +3950,19 @@ mod verification_repairs {
         }
     }
 
-    /// §5.6's pinned bytes and both digests are **asserted**, not assumed,
-    /// after the encoder change — the golden program uses none of the R9
-    /// forms, and that is what makes this revision additive.
+    /// §5.6's pinned bytes and both digests are **asserted**, not assumed.
     #[test]
-    fn the_worked_examples_421_bytes_and_digests_are_untouched() {
+    fn the_worked_examples_500_bytes_and_digests_include_causal_metadata() {
         use babylon_bsl::canonical_ast::rules_hash_of;
         use sha2::{Digest, Sha256};
         let worked = e("(rule demo/hunger \
-             :material-basis \"subsistence deficit at the point of reproduction\" \
+             :role mechanic :evidence derived :material-basis \"subsistence deficit at the point of reproduction\" \
              :fuel 64 \
              (bindings (binding wealth :field social-class/wealth)) \
              (when (< wealth 1000.5$)) \
              (effects (update-node self social-class/agitation (add 0.05i))))");
         let bytes = canonical_bytes(&worked).unwrap();
-        assert_eq!(bytes.len(), 421);
+        assert_eq!(bytes.len(), 500);
         let hex = |b: &[u8]| {
             use std::fmt::Write as _;
             b.iter().fold(String::new(), |mut acc, byte| {
@@ -3978,11 +3972,11 @@ mod verification_repairs {
         };
         assert_eq!(
             hex(&Sha256::digest(&bytes)),
-            "8a62d0b5724de24ec36ea0dfb3f4d120a63d90a56bad2a4605e645368f304da3"
+            "9b49c1e87a63ccb64dee96bd179c8ffecd3fe476c81a4f81771daac237156396"
         );
         assert_eq!(
             hex(&rules_hash_of(&[worked]).unwrap()),
-            "4e6fbf64c771bd8e2f7874b4c906d0330458ba965911d00a9a731ea8a724238f"
+            "bf2f15517d1b4d10e44af36983c76249b49d8fa2dc71e6d8c1d2607b37b2f20f"
         );
     }
 
@@ -4018,7 +4012,8 @@ mod reverification_repairs {
     use babylon_bsl::domain::{resolve_domain, RuleDomain};
     use babylon_bsl::typecheck::{typecheck_aggregation, TypeCode, TypeEnv};
 
-    const PRE: &str = ":material-basis \"the wage relation\" :fuel 262144";
+    const PRE: &str =
+        ":role mechanic :evidence derived :material-basis \"the wage relation\" :fuel 262144";
 
     fn rule(body: &str) -> String {
         format!("(rule demo/rv {PRE} {body})")

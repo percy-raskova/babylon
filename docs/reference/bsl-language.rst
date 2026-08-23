@@ -181,6 +181,12 @@ brackets, no quote/quasiquote reader syntax, no dotted pairs, and no vectors.
 Every non-atomic construct is a parenthesised **form** whose first element is a
 symbol naming the form.
 
+The Rust reader accepts at most 512 simultaneously open lists. The 513th open
+list is a positioned, uncoded structural read error. This safety limit applies
+before the reader constructs the recursively owned syntax tree. Semantic load
+walkers apply a lower 256-level rule limit, so in-bound parsing does not grant
+unbounded semantic work.
+
 1.4 Atoms
 ~~~~~~~~~~~
 
@@ -664,6 +670,8 @@ content set are ``E-LOAD-001``.
 .. code-block:: text
 
    <rule>     ::= "(" "rule" <qname>
+                      ":role" <rule-role>
+                      ":evidence" <evidence-class>
                       ":material-basis" <string>
                       ":fuel" <int-lit>
                       <domain>?
@@ -673,14 +681,58 @@ content set are ``E-LOAD-001``.
                       <effects>
                   ")"
 
+   <rule-role> ::= "mechanic" | "recognizer" | "external-event" | "intent"
+   <evidence-class> ::= "observed" | "derived" | "calibrated" | "designed"
+
    <domain>   ::= "(" "domain" ( <enum-ref> | ":graph" ) ")"
    <anchor>   ::= "(" "anchor" ( ":after" | ":before" ) <symbol> ")"
    <bindings> ::= "(" "bindings" <binding>* ")"
    <when>     ::= "(" "when" <cond> ")"
    <effects>  ::= "(" "effects" <effect-item>+ ")"
 
-The keyword options ``:material-basis`` and ``:fuel`` may appear in either
-source order; the canonical serialization sorts them (§5.3).
+The four valued keyword options ``:role``, ``:evidence``,
+``:material-basis``, and ``:fuel`` are mandatory and may appear in any source
+order; the canonical serialization sorts them (§5.3). A missing option is a
+malformed rule surface. A role or evidence value outside its closed set is
+``E-PARSE-015``.
+
+``:role`` declares causal authority; it is not descriptive decoration.
+``mechanic`` derives endogenous state through the ordinary typed effect
+algebra. ``recognizer`` describes a governed state pattern. ``external-event``
+is the role for exogenous shocks and may introduce only an approved burden,
+capacity change, or pressure. ``intent`` may introduce only an approved
+next-week intent carrier. The latter three roles are default-deny: every
+possible field write and emitted event in their complete effect tree must
+match an exact governed allowance row for that rule id. An unapproved effect,
+including one under an untaken ``guard`` or ``for-each`` branch, is
+``E-LOAD-060``. Graph-shape effects are never allowed for these roles. Calling
+a downstream result a pressure does not grant authority; matching uses exact
+qualified names, never substrings.
+
+For built-in content, the production CI sentinel requires exact set equality
+between each non-``Mechanic`` rule's complete effect footprint and its
+``GOVERNED_EFFECT_ALLOWANCES`` rows. It also requires unique allowance keys.
+Thus a missing permission, an extra dead permission, or a duplicate key cannot
+survive the production corpus check.
+
+``:evidence`` carries Article IV's evidentiary class for the rule itself:
+``observed``, ``derived``, ``calibrated``, or ``designed``. Evidence class
+does not grant effect authority. A receipt preserves both role and evidence so
+a later projection can explain what kind of rule moved a value without
+misstating designed or calibrated content as observed fact.
+
+The declared pair is the first attribution ledger. A built-in production rule
+must also match the independent
+``causal_contract::GOVERNED_RULE_ATTRIBUTIONS`` manifest. Each governed row
+is a ``GovernedRuleAttribution`` that pins the exact rule id, ``RuleRole``,
+``EvidenceClass``, owner, date, and ADR224. A known ID whose declaration
+differs refuses load as the typed, unnumbered
+``ContractError::GovernedAttributionMismatch``. A CI sentinel proves exact set
+equality between the 60-rule production corpus and the manifest, catching an
+unlisted built-in or a row with no built-in rule. Unknown fixture and mod IDs
+remain self-declared. Thus the second ledger prevents first-party production
+content from escalating its own authority; it does not make arbitrary mod
+content an untrusted sandbox.
 
 **Omitted ``<when>``.** A rule with no ``<when>`` is unconditional. An
 **empty** condition is not expressible: ``(when)`` is ``E-PARSE-020``, and a
@@ -3056,10 +3108,19 @@ in prose is carrying a log line, not state.
 
 **5. No ledger or receipt binding** (B6). §2.8 prohibits I/O outright, and
 three surveys independently reached for a "ledger-write binding" anyway. There
-is nothing to add: a receipt is a **kernel observation of an effect that
-already happened**. The rule emits; the kernel records. Making the rule write
-the receipt would put the same fact in the content hash twice and give a
-content author a way to record an effect that did not occur.
+is nothing to add to BSL: a receipt is a **kernel observation of an effect that
+already happened**. The rule emits or writes; the kernel records. Making the
+rule write the receipt would put the same fact in the content hash twice and
+give a content author a way to record an effect that did not occur.
+
+ADR224 makes that observation executable. After each successful rule, the
+kernel reduces the actual collection-boundary events followed by the actual
+apply-boundary writes into one continuous ``AuditReceipt`` sequence. Each row
+carries the rule id, ``RuleRole``, ``EvidenceClass``, a ``u32`` ordinal, and a
+canonical identity-free effect signature. It carries no graph-element id and no
+written value. The receipts publish only when the detached whole tick succeeds;
+a later failure publishes none. This is Gate 2 in-memory audit evidence, not
+Gate 3's durable envelope, dirty-subject receipt, or Archive outbox.
 
 **6. No cascade semantics in the verb table** (B7). What ``remove-node`` does
 to incident edges and memberships is an **engine-level observable**, specified
@@ -3885,10 +3946,11 @@ the fuel meter. Bindings resolve first, in declaration order — the external
 sources by lookup, the ``:expr`` bindings (§2.5) by evaluation against the
 bindings already resolved. The engine applies effects after it evaluates the
 complete condition. **A rule cannot observe its own effects.** The language
-target requires rules at one system position to share a pre-state. The current
-Rust driver applies same-position rules in sequence. A later rule can observe
-an earlier rule's write (D116). Phase ordering does not repair this separate
-composition divergence.
+gives every subject firing of that rule the same prestate. Rules at one
+resolved system position, however, compose sequentially: a later rule observes
+the working-copy writes of every earlier rule, including an earlier
+same-position rule (D116, ADR224). This is the governed composition model, not
+a temporary divergence from a shared-prestate target.
 
 Rules execute in the 34-slot causal order from §2.3. D16 orders rules at one
 resolved position by rule-id bytes. The engine applies their effects in that
@@ -3939,40 +4001,45 @@ rules.
 
 *Refusal 2 —* ``E-LOAD-059`` *, unreset fan-in.* A field written by two or
 more distinct rules in the content set (via ``set``, or via fan-in
-``add``/``sub``/``scale``) requires an earlier **unconditional** ``set``
-— the rule has no ``(when …)`` at all, or its ``(when …)`` is the
-literal ``#t``; nothing finer, no guard-dominance analysis between a
-reset and its fan-in writers — or the D127 unconditional-recompute shape
+``add``/``sub``/``scale``) requires an earlier **unconditional** ``set``.
+The rule has no ``(when …)`` at all, or its ``(when …)`` is the literal
+``#t``, and the ``set`` is a direct member of the rule's effects sequence.
+A ``set`` beneath ``guard``, ``for-each``, or another construct that can
+execute zero times is conditional and cannot discharge this refusal. The
+analyzer performs no finer guard-dominance analysis between a reset and its
+fan-in writers. The alternative is the D127 unconditional-recompute shape
 (a writer meeting the same unconditional test whose ``:material-basis``
 cites D127). Sort the writers first by resolved execution rank and then by D16
 rule-id bytes. The first writer must pass one of the two tests above.
 Otherwise, the loader refuses the content and names the field and writer rules.
 
-**The loader does not enforce these rules yet.** Existing declarations and the
-resolved schedule supply the required data. The rules need no new ordering
-grammar. ``consciousness.bsl`` has 13 deliberate same-tick reads. The loader
-cannot yet distinguish those reads from hazards. The Director's ruling
-(R-W2a, 2026-08-18) requires a per-binding author declaration named
-``:prior-tick``. That declaration narrows refusal 1 to undeclared exposed
-reads.
+**ADR224 activates both refusals.** The analyzer consumes resolved phase ranks
+from ``babylon-tick`` over the complete aggregate content set after
+concatenation. Rank orders first; D16 rule-id bytes break only same-rank ties.
+The former raw-ID, per-source adapter remains historical test support and does
+not decide a production load. Thus Solidarity in Material Base correctly
+precedes Consciousness in Consequences even though their raw ids sort in the
+opposite order, while real same-position and later-writer hazards still refuse.
+The public ranked analyzer also verifies its own input before it computes a
+finding: every supplied rule id must equal the qname inside that rule form, and
+the set of ids must be unique. A non-rule form, mismatched id, or duplicate id
+returns a deterministic typed load refusal and no E-LOAD-058 or E-LOAD-059
+finding.
 
-PER-17 adds a second gate. The fixture analyzer in
-``babylon_bsl::same_tick_order`` predates executable phase placement and still
-compares raw rule IDs globally. That comparison works only within one resolved
-position. ``ENFORCE_SAME_TICK_ORDERING`` remains ``false`` until the Director
-ratifies the declaration. The analyzer must also consume resolved phase ranks
-from ``babylon-tick`` over the aggregate content set after concatenation. The
-current per-source fixture tests preserve the historical W2 logic. They do not
-prove cross-phase or cross-file readiness. See the constant's documentation
-and ``ai/_inbox/amendment-prior-tick-draft.md`` (Amendment AI, DRAFT).
+Intentional findings use exact governed dispositions, not a reusable content
+escape hatch. An E-LOAD-058 row keys the reader rule, binding, field, and
+complete allowed non-earlier writer set. An E-LOAD-059 row keys the field,
+complete allowed writer superset, each allowed execution-earliest writer, and
+that writer's reset-relevant shape. A new or near-match reader, binding, field,
+writer, earliest writer, or changed reset shape refuses. Every row carries its
+reason, Director owner, date, and ADR224 authority. The initial tables contain
+13 E-LOAD-058 rows and 11 E-LOAD-059 field rows.
 
-**The executable registry replaces the former Consciousness and Solidarity
-example.** Global rule-ID order placed ``consciousness/*`` before
-``solidarity/*`` and made the composed load look stale. The executable registry
-runs Solidarity in Material Base before Consciousness in Consequences. A
-rank-aware analyzer must accept that order. Same-position multi-writer packs
-and actual later-phase writers remain the load-refusal consumers. A raw-ID
-analyzer must not decide them across phases.
+The historical Amendment AI draft is not ratified and grants no vocabulary.
+``:prior-tick``, ``:complementary-writers``, and
+``:sequential-accumulator`` are not active declarations. ADR224 preserves the
+draft as design evidence but replaces its proposed implementation path with the
+exact disposition tables above.
 
 4.3 Arithmetic
 ~~~~~~~~~~~~~~~~
@@ -4112,7 +4179,7 @@ two times at which an error can occur.
        from Task W2 (BSL Hygiene Knock-out), a same-tick-ordering violation
        — an ``:optional :default`` binding a same-content-set writer can
        observe as stale, or a multi-writer field with no rule-identifiable
-       reset — post-ratification enforcement (§4.2).
+       reset — now enforced through ADR224's exact dispositions (§4.2).
    * - Evaluation
      - ``E-EVAL-0xx``
      - During a tick — checked-arithmetic failure, range violation at a store,
@@ -4204,23 +4271,20 @@ time.** ``E-LOAD-057`` — a hydration seeding one
 clause 7, D156) — is the next free number at the time of allocation, per
 the same rule.
 
-**Task W2 (BSL Hygiene Knock-out, 2026-08-18) continues the same**
+**Task W2 (BSL Hygiene Knock-out, 2026-08-18) continued the same**
 ``E-LOAD`` **block a fifth time.** ``E-LOAD-058`` (stale-default read) and
 ``E-LOAD-059`` (unreset fan-in) are the next two free numbers at the time
 of allocation, per the same rule; full normative text at §4.2's own end
-(same-tick evaluation order is that section's subject). **Both rows
-describe POST-RATIFICATION enforcement.** The check is computable from
-existing declarations plus the resolved phase schedule. The check needs no new
-ordering grammar. It strengthens the loader under the boundary ruling in §4.2.
-Landed content includes 13 deliberate same-tick reads in
-``consciousness.bsl``. Those reads need the unratified per-binding declaration
-``:prior-tick``. Two conditions keep both refusals off through
-``babylon_bsl::same_tick_order::ENFORCE_SAME_TICK_ORDERING``. The Director must
-ratify the declaration, and the analyzer must consume ``babylon-tick`` phase
-ranks. The replacement must analyze the aggregate content set after
-concatenation, not each source file by itself. Current tests preserve the
-historical W2 logic but cannot prove cross-phase readiness. See §4.2, ADR222,
-the constant documentation, and the amendment draft for the ceremonies.
+(same-tick evaluation order is that section's subject). ADR224 activates both
+rows over the post-phase-compile aggregate content set and governs the exact
+intentional findings through disposition tables. No ordering vocabulary was
+added. See §4.2 and ADR224.
+
+**PER-19 continues** ``E-LOAD`` **a sixth time.** ``E-LOAD-060`` is an
+unauthorized effect by a restricted causal role. The loader walks the complete
+nested effect tree. A ``Recognizer``, ``ExternalEvent``, or ``Intent`` field or
+event effect must match an exact governed rule/role/effect row; every shape
+effect refuses. ``Mechanic`` retains the ordinary typed effect surface.
 
 **The #576 intrinsic-host train (Task 2) continues** ``E-EVAL``.
 ``E-EVAL-043`` — ``TranscendentalOutOfDomain``: a non-finite ``exp``/``log``
@@ -4404,8 +4468,8 @@ that same rule (the tag *is* the head symbol), so they need no registry entry,
 no numeric id, and **no new atom kind**; ``:max-members`` is an ordinary
 keyword and encodes as an ``opt`` form like every other option. Nothing else in
 this chapter changes. In particular the §5.6 worked example contains none of
-these forms, so **its 421 canonical bytes and both of its digests are unchanged
-by this revision** — a hyperedge-bearing example would need its own vector
+these forms, so **its then-current 421 canonical bytes and both digests were
+unchanged by this revision** — a hyperedge-bearing example would need its own vector
 (§6.2), not a recomputation of that one.
 
 **The R9 tags obey the same rule, and the worked example survives them too.**
@@ -4413,8 +4477,8 @@ Every form tag the R9 spec chapters add — listed in the paragraph above
 alongside the originals — is its own head symbol, needs no registry entry, no
 numeric id and no new atom kind; every keyword they add encodes as an ``opt``
 form. None of them appears in §5.6's example, and none of the R9 chapters makes
-a previously-optional child of ``rule`` mandatory, so **§5.6's 421 bytes and
-both digests remain correct as written**. That invariance is deliberate: it is
+a previously-optional child of ``rule`` mandatory, so **§5.6's then-current
+421 bytes and both digests stayed unchanged**. That invariance was deliberate: it is
 the cheapest available proof that the chapters are additive.
 
 **The Amendment AG tags obey it a third time.** ``member``,
@@ -4429,7 +4493,7 @@ symbols, their keywords are ``opt`` forms, and they are **optional children of
 a form that already has a digest** (§5.5's ``manifest``), so a manifest that
 declares no lattice encodes byte-for-byte as it did. None of these appears in
 §5.6's example, and no previously-optional child of ``rule`` becomes mandatory
-— **§5.6's 421 bytes and both digests remain correct as written**.
+— **§5.6's then-current 421 bytes and both digests stayed unchanged**.
 
 **The Organization contract's Q12 tags obey it a fourth time — with one
 payload-shape correction, D117 (#528 fix round, adversarial-verifier
@@ -4454,9 +4518,19 @@ alternative in an existing keyword slot (``:enum-type`` beside ``:kind``,
 §2.9), not a new child position, so no existing ``deffield`` encoding
 moves. None of these forms appears in §5.6's example, and neither
 ``deffield`` nor any other form gains a newly *mandatory* child —
-**§5.6's 421 bytes and both digests remain correct as
-written**, the same proof of additivity every prior extension in this
+**§5.6's then-current 421 bytes and both digests stayed unchanged**, the same
+proof of additivity every prior extension in this
 section carries.
+
+**ADR224 moves the worked example deliberately.** ``:role`` and
+``:evidence`` are mandatory valued options on every rule. They use the existing
+``opt`` shape and ASCII option ordering, but their mandatory presence adds two
+children to §5.6's rule. The current vector is therefore 500 bytes with eight
+children. Its CAS digest is
+``9b49c1e87a63ccb64dee96bd179c8ffecd3fe476c81a4f81771daac237156396``;
+§5.6 records the one-rule ``rules_hash``.
+The earlier 421-byte statements above remain historical invariance claims
+about their own additive revisions; they do not override the current vector.
 
 A keyword option is encoded as a two-child form:
 
@@ -4533,6 +4607,8 @@ Source form:
 
    ; a rule is data; this comment is not part of the hash
    (rule demo/hunger
+     :role mechanic
+     :evidence derived
      :material-basis "subsistence deficit at the point of reproduction"
      :fuel 64
      (bindings
@@ -4541,16 +4617,18 @@ Source form:
      (effects
        (update-node self social-class/agitation (add 0.05i))))
 
-Canonical AST after §5.3 reordering (note ``:fuel`` now precedes
-``:material-basis`` — ``"fuel" < "material-basis"`` in ASCII):
+Canonical AST after §5.3 reordering (the option keys appear in ASCII order:
+``evidence``, ``fuel``, ``material-basis``, ``role``):
 
 .. code-block:: text
 
-   form "rule" (6 children)
+   form "rule" (8 children)
      atom qname "demo/hunger"
+     form "opt" : atom kw "evidence",       atom sym "derived"
      form "opt" : atom kw "fuel",           atom int 64
      form "opt" : atom kw "material-basis",
                   atom str "subsistence deficit at the point of reproduction"
+     form "opt" : atom kw "role",           atom sym "mechanic"
      form "bindings" (1)
        form "binding" (2)
          atom sym "wealth"
@@ -4566,27 +4644,29 @@ Canonical AST after §5.3 reordering (note ``:fuel`` now precedes
          form "add" (1)
            atom intn (unscaled 5, scale 2)
 
-Canonical bytes — 421 bytes, hex (wrapped at 64 characters for display only):
+Canonical bytes — 500 bytes, hex (wrapped at 64 characters for display only):
 
 .. code-block:: text
 
-   020472756c65000000060105716e616d650000000b64656d6f2f68756e676572
-   02036f70740000000201026b77000000046675656c0103696e74000000080000
-   00000000004002036f70740000000201026b770000000e6d6174657269616c2d
-   626173697301037374720000003073756273697374656e636520646566696369
-   742061742074686520706f696e74206f6620726570726f64756374696f6e0208
-   62696e64696e677300000001020762696e64696e6700000002010373796d0000
-   00067765616c746802036f70740000000201026b77000000056669656c640105
-   716e616d6500000013736f6369616c2d636c6173732f7765616c746802047768
-   656e0000000102013c00000002010373796d000000067765616c746801036375
-   72000000100000000000000000000000003ba26b200207656666656374730000
-   0001020b7570646174652d6e6f646500000003010373796d0000000473656c66
-   0105716e616d6500000016736f6369616c2d636c6173732f616769746174696f
-   6e0203616464000000010104696e746e00000011000000000000000000000000
-   0000000502
+   020472756c65000000080105716e616d650000000b64656d6f2f68756e676572
+   02036f70740000000201026b770000000865766964656e6365010373796d0000
+   00076465726976656402036f70740000000201026b77000000046675656c0103
+   696e7400000008000000000000004002036f70740000000201026b770000000e
+   6d6174657269616c2d626173697301037374720000003073756273697374656e
+   636520646566696369742061742074686520706f696e74206f6620726570726f
+   64756374696f6e02036f70740000000201026b7700000004726f6c6501037379
+   6d000000086d656368616e6963020862696e64696e677300000001020762696e
+   64696e6700000002010373796d000000067765616c746802036f707400000002
+   01026b77000000056669656c640105716e616d6500000013736f6369616c2d63
+   6c6173732f7765616c746802047768656e0000000102013c0000000201037379
+   6d000000067765616c7468010363757200000010000000000000000000000000
+   3ba26b2002076566666563747300000001020b7570646174652d6e6f64650000
+   0003010373796d0000000473656c660105716e616d6500000016736f6369616c
+   2d636c6173732f616769746174696f6e0203616464000000010104696e746e00
+   0000110000000000000000000000000000000502
 
 Reading the first 32 bytes: ``02`` (form) ``04`` ``72756c65`` (``"rule"``)
-``00000006`` (6 children) ``01`` (atom) ``05`` ``716e616d65`` (``"qname"``)
+``00000008`` (8 children) ``01`` (atom) ``05`` ``716e616d65`` (``"qname"``)
 ``0000000b`` (11 payload bytes) ``64656d6f2f68756e676572``
 (``"demo/hunger"``).
 
@@ -4594,14 +4674,14 @@ Digest of this single rule alone:
 
 .. code-block:: text
 
-   SHA-256(CAS(rule)) = 8a62d0b5724de24ec36ea0dfb3f4d120a63d90a56bad2a4605e645368f304da3
+   SHA-256(CAS(rule)) = 9b49c1e87a63ccb64dee96bd179c8ffecd3fe476c81a4f81771daac237156396
 
 ``rules_hash`` for a content set consisting of exactly this one rule — that is,
-``SHA-256(0x03 || 0x00000001 || CAS(rule))``, 426 bytes of input:
+``SHA-256(0x03 || 0x00000001 || CAS(rule))``, 505 bytes of input:
 
 .. code-block:: text
 
-   rules_hash = 4e6fbf64c771bd8e2f7874b4c906d0330458ba965911d00a9a731ea8a724238f
+   rules_hash = bf2f15517d1b4d10e44af36983c76249b49d8fa2dc71e6d8c1d2607b37b2f20f
 
 Static fuel bound for this rule, by §3.7:
 ``cost(when) = 1 + 1 + 0 = 2``;
@@ -6206,7 +6286,8 @@ consequences are the ordinary kind of review item.
        **CAS round-trip.** A ``Ratio`` literal is `Atom::Scaled`
        (`reader.rs`) with a new `ScaledKind::Ratio`, encoding with its own
        `"ratio"` kind tag (`canonical_ast.rs`) — purely additive, proved by
-       pinning §5.6's worked example unmoved (421 bytes, both digests) before
+       pinning §5.6's then-current worked example unmoved (421 bytes, both
+       digests) for that revision before
        asserting the new atom encodes at all
        (`a_ratio_literal_encodes_with_its_own_kind_tag_additively`).
        Canonicalization (minimal scale, e.g. ``2.50r`` ≡ ``2.5r``) follows
@@ -9849,6 +9930,8 @@ one above it.
 .. code-block:: scheme
 
    (rule solidarity/p0-transmit
+     :role mechanic
+     :evidence derived
      :material-basis "..."
      :fuel 3502
      ...

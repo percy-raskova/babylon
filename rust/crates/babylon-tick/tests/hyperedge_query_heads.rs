@@ -44,7 +44,7 @@ fn probe_rule(head_form: &str, position: &str) -> String {
         "query" => format!(
             r#"
 (rule community/probe-query
-  :material-basis "probe for the query-position refusal (Task 3 Step 1)"
+  :role mechanic :evidence derived :material-basis "probe for the query-position refusal (Task 3 Step 1)"
   :fuel 512
   (domain NodeType/SOCIAL_CLASS)
   (bindings
@@ -57,7 +57,7 @@ fn probe_rule(head_form: &str, position: &str) -> String {
         "expression" => format!(
             r#"
 (rule community/probe-expression
-  :material-basis "probe for the expression-position refusal (Task 3 Step 1)"
+  :role mechanic :evidence derived :material-basis "probe for the expression-position refusal (Task 3 Step 1)"
   :fuel 512
   (domain NodeType/SOCIAL_CLASS)
   (bindings
@@ -91,7 +91,7 @@ fn probe_rule(head_form: &str, position: &str) -> String {
 fn the_type_wide_head_serves_the_census() {
     let rule = r#"
 (rule community/probe-census-all
-  :material-basis "served-proof for the type-wide head (Task 3)"
+  :role mechanic :evidence derived :material-basis "served-proof for the type-wide head (Task 3)"
   :fuel 2048
   (domain NodeType/SOCIAL_CLASS)
   (bindings
@@ -130,7 +130,7 @@ fn the_type_wide_head_serves_the_census() {
 fn the_subject_relative_head_serves_per_class_membership_sums() {
     let rule = r#"
 (rule community/probe-census-per-class
-  :material-basis "served-proof for the subject-relative head (Task 3)"
+  :role mechanic :evidence derived :material-basis "served-proof for the subject-relative head (Task 3)"
   :fuel 2048
   (domain NodeType/SOCIAL_CLASS)
   (bindings
@@ -198,7 +198,7 @@ fn a_served_head_in_bare_expression_position_still_refuses_with_the_2_7_law() {
 fn the_fuel_axis_bounds_a_hyperedge_fold_as_landed() {
     let rule = r#"
 (rule community/probe-fuel
-  :material-basis "fuel-axis readback (Task 3 Step 5)"
+  :role mechanic :evidence derived :material-basis "fuel-axis readback (Task 3 Step 5)"
   :fuel 1
   (domain NodeType/SOCIAL_CLASS)
   (bindings
@@ -242,7 +242,7 @@ fn a_members_of_fold_in_an_empty_census_world_is_e_load_045() {
 ";
     let rule = r#"
 (rule community/probe-fuel-empty
-  :material-basis "fuel-axis negative readback (Task 3 Step 5)"
+  :role mechanic :evidence derived :material-basis "fuel-axis negative readback (Task 3 Step 5)"
   :fuel 512
   (domain NodeType/SOCIAL_CLASS)
   (bindings
@@ -267,7 +267,7 @@ fn a_members_of_fold_in_an_empty_census_world_is_e_load_045() {
 fn a_hyperedge_element_in_a_numeric_position_refuses_at_load() {
     let rule = r#"
 (rule community/probe-numeric
-  :material-basis "Step-6 pin: hyperedge element in a numeric position"
+  :role mechanic :evidence derived :material-basis "Step-6 pin: hyperedge element in a numeric position"
   :fuel 2048
   (domain NodeType/SOCIAL_CLASS)
   (bindings
@@ -294,7 +294,7 @@ fn a_hyperedge_element_in_a_numeric_position_refuses_at_load() {
 fn a_node_type_member_in_a_hyperedge_position_is_e_type_011() {
     let rule = r#"
 (rule community/probe-wrong-kind
-  :material-basis "Step-6 pin: enum-ref kind check on a hyperedge position"
+  :role mechanic :evidence derived :material-basis "Step-6 pin: enum-ref kind check on a hyperedge position"
   :fuel 2048
   (domain NodeType/SOCIAL_CLASS)
   (bindings
@@ -329,7 +329,7 @@ fn a_members_of_fold_with_a_mismatched_annotation_is_e_eval_032() {
 ";
     let rule = r#"
 (rule community/probe-type-mismatch
-  :material-basis "E-EVAL-032 pin (PR #684 harvest)"
+  :role mechanic :evidence derived :material-basis "E-EVAL-032 pin (PR #684 harvest)"
   :fuel 2048
   (domain NodeType/SOCIAL_CLASS)
   (bindings

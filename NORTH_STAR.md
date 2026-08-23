@@ -19,19 +19,21 @@ historical path.
 The Bevy client is an administrative viewer with no player action. It can run
 and show the null world, but the player cannot change that world.
 
-The first three executable gates are:
+<!-- vale ste.UnapprovedWords = NO -->
+Gate 2 now gives the Rust engine executable phase order, whole-tick atomicity,
+combined current-world hashing, role-sensitive causal authority, and atomic
+in-memory audit receipts. The next three executable gates are:
 
 <!-- Vale: each protected item is a governed gate name. -->
-<!-- vale ste.UnapprovedWords = NO -->
-1. **Executable causality and whole-tick atomicity**
-<!-- vale ste.UnapprovedWords = YES -->
 <!-- vale Vale.Terms = NO -->
-<!-- vale ste.UnapprovedWords = NO -->
 1. **PostgreSQL/H3/Archive decision-loop slice**
 <!-- vale Vale.Terms = YES -->
 <!-- vale ste.UnapprovedWords = YES -->
+<!-- vale ste.UnapprovedWords = NO -->
 <!-- vale ste.NounClusters = NO -->
 1. **COVID E0 emergence proof**
+<!-- vale ste.UnapprovedWords = YES -->
+1. **Player agency**
 <!-- vale ste.NounClusters = YES -->
 
 ## The system without political economy
@@ -39,9 +41,13 @@ The first three executable gates are:
 At its highest level, Babylon is a deterministic causal sandbox with weekly
 steps, limited knowledge, and delayed choice.
 
+<!-- vale ste.UnapprovedWords = NO -->
 Today one weekly tick takes a typed world and governed rules. It produces a new
-world, events, a Rust `TickReport`, and a canonical hash. That report is not a
-durable action receipt. Persisted replay remains in the frozen Python path.
+world, events, identity-free causal audit receipts, a Rust `TickReport`, and a
+canonical hash. The receipts state which role and evidence class produced each
+actual event and write. They are not durable action receipts. Persisted replay
+remains in the frozen Python path.
+<!-- vale ste.UnapprovedWords = YES -->
 
 The planned action cycle adds prior intent and durable action receipts. A
 knowledge layer will show only what the player has learned. The player will then
@@ -74,6 +80,7 @@ flowchart LR
     BSL["BSL rules"] --> TICK
     INTENT["Prior intent"] -. "planned action cycle" .-> TICK
     TICK --> HASH["Canonical world hash"]
+    TICK --> AUDIT["Identity-free audit receipts"]
     HASH --> VIEW["Bevy administrative viewer"]
     TICK -. "Gate 3" .-> ENV["CommittedTickEnvelope"]
     ENV -.-> STATE["babylon_state"]
@@ -108,20 +115,35 @@ The world contains typed entities, relations, and compact registers. Geography
 does not change. Political claims use overlays. Each tick can change the social
 world but not the spatial substrate.
 
-Live BSL expresses governed causal rules. It has no executable shock vocabulary
-or shock content. Planned shocks will add exogenous pressure. In the
-planned action slice, BSL will let actions run, charge costs, choose targets,
-and encode political results.
 <!-- Vale: this paragraph preserves governed engine operation names. -->
 <!-- vale ste.Gerunds = NO -->
 <!-- vale ste.UnapprovedWords = NO -->
+<!-- vale ste.NounClusters = NO -->
 <!-- vale write-good.TooWordy = NO -->
+Live BSL expresses governed causal rules. Each rule declares a causal role and
+an evidence class. Built-in rules must also match an independent governed
+attribution manifest. This second ledger prevents production content from
+changing its label to gain mechanic authority. Unknown mod and fixture IDs
+remain self-declared.
+
+Mechanics derive endogenous state. Recognizers, external events, and intents
+are exact-allowlist and default-deny. The current allowance table contains only
+the ControlRatio recognition events and latches. Executable shocks and intents
+remain absent. A production sentinel requires each restricted built-in rule's
+footprint to equal its unique allowance rows, so CI rejects dead permissions.
+
+Planned shocks will add only governed exogenous pressure,
+burden, or capacity effects. In the planned action slice, BSL will let actions
+run, charge costs, choose targets, and encode political results through
+governed next-week intents.
+
 In planned circuit slices, Rust allocation, routing, settlement, and clearing
 mechanics will enforce conservation.
-Ordinary BSL rules derive and write world data through governed causal operations. Shock
-rules must not write downstream results directly, such as unemployment, death,
-shortages, shipments, defaults, or winners.
+Ordinary BSL rules derive and write world data through governed causal
+operations. External-event rules must not write downstream results directly,
+such as unemployment, death, shortages, shipments, defaults, or winners.
 <!-- vale write-good.TooWordy = YES -->
+<!-- vale ste.NounClusters = YES -->
 <!-- vale ste.UnapprovedWords = YES -->
 <!-- vale ste.Gerunds = YES -->
 
@@ -204,3 +226,4 @@ scale to the representative v1 world.
 6. Each substantive value must be `Observed`, `Derived`, `Calibrated`, or `Designed`.
 7. Plans must identify planned parts.
 8. The game must ship as an engaging game.
+9. Restricted causal roles can use only listed and governed effects.

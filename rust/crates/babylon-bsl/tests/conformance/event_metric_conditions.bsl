@@ -2,6 +2,8 @@
 ; calculate_graph_metric): the six named Python metrics become :metric
 ; bindings against the registered metric set (§2.5).
 (rule event/conjuncture-metrics
+  :role mechanic
+  :evidence derived
   :material-basis "graph-level density and aggregate positions gate the conjuncture"
   :fuel 64
   (bindings

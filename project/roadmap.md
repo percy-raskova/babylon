@@ -28,11 +28,16 @@ gate meets its acceptance contract; elapsed time does not open it.
 
 - Target: 2026-11-30
 - Delivery roots: PER-6
-- Delivery detail: PER-17, PER-18, and PER-19 remain children of the
-  executable-causality root.
+- Delivery detail: PER-17 owns executable phase placement; PER-18 owns the
+  detached whole-tick transaction and nominal world hash; PER-19 owns
+  sequential same-rank composition, role-sensitive effect authority,
+  rank-aware refusals, and in-memory causal audit receipts. They remain
+  children of the executable-causality root.
 - Acceptance: phase anchors determine rule order, a failed tick rolls back its
-  working copy, and the combined graph-and-register state has one canonical
-  hash.
+  working copy, the combined graph-and-register state has one canonical hash,
+  governed production rules cannot relabel themselves to escape role authority,
+  restricted rule roles cannot author unapproved outcomes, and actual effects
+  produce deterministic receipts only after whole-tick success.
 
 ### G3 — PostgreSQL, H3 & Archive slice
 

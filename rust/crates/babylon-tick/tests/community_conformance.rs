@@ -306,7 +306,7 @@ const PACK: &str = include_str!("../content/rules/community.bsl");
 fn scenario_and_empty_pack_load() {
     let probe = r#"
 (rule community/load-smoke
-  :material-basis "Task 7 Step 1: the load-smoke probe — never fires, proves the world + registration"
+  :role mechanic :evidence derived :material-basis "Task 7 Step 1: the load-smoke probe — never fires, proves the world + registration"
   :fuel 64
   (domain NodeType/SOCIAL_CLASS)
   (bindings
@@ -768,7 +768,7 @@ fn floor_binds_and_redistributes_proportionally() {
 fn floor_redistribution_handles_zero_lf() {
     let rig = r#"
 (rule community/c05z-rig-zero-lf
-  :material-basis "Task 9 test rig: write the pathological (0.05, 0, 0) ternary onto world 3's h0 between c05 and c06a — the ONLY way lf <= 1e-10 with r < floor exists (c05's normalized outputs never produce it)"
+  :role mechanic :evidence derived :material-basis "Task 9 test rig: write the pathological (0.05, 0, 0) ternary onto world 3's h0 between c05 and c06a — the ONLY way lf <= 1e-10 with r < floor exists (c05's normalized outputs never produce it)"
   :fuel 64
   (domain NodeType/INSTITUTION)
   (bindings (binding carrier :field institution/community-carrier))

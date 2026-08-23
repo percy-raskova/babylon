@@ -155,7 +155,7 @@ const NON_TENANT: NodeId = NodeId(11);
 /// plan serves).
 const RULE_SPILLOVER: &str = r#"
 (rule territory/spillover-e2e
-  :material-basis "heat spillover via a pull-side fold reading pre-tick neighbour heat — Territory blocker table row 3 (_process_spillover, territory.py:269-316); proves the section-4.2 chapter-C4 pre-state law end to end through the real run_once_into seam"
+  :role mechanic :evidence derived :material-basis "heat spillover via a pull-side fold reading pre-tick neighbour heat — Territory blocker table row 3 (_process_spillover, territory.py:269-316); proves the section-4.2 chapter-C4 pre-state law end to end through the real run_once_into seam"
   :fuel 256
   (bindings
     (binding shape :field territory/shape)
@@ -240,7 +240,7 @@ fn shape_a_heat_spillover_reads_pre_tick_neighbour_state() {
 /// `sink-b` at all is caught unconditionally by the read failing to fail.
 const RULE_SINK_SELECTION: &str = r#"
 (rule territory/sink-selection-tiebreak-e2e
-  :material-basis "priority sink selection with the section-2.7 language-level tiebreak, guarded by exists (Task 6), feeding update-node against the computed reference — Territory blocker table rows 1-2 (_find_sink_node, territory.py:139-194; the population transfer, territory.py:259-267)"
+  :role mechanic :evidence derived :material-basis "priority sink selection with the section-2.7 language-level tiebreak, guarded by exists (Task 6), feeding update-node against the computed reference — Territory blocker table rows 1-2 (_find_sink_node, territory.py:139-194; the population transfer, territory.py:259-267)"
   :fuel 256
   (bindings
     (binding shape :field territory/shape)
@@ -302,7 +302,7 @@ fn shape_b_priority_sink_selection_with_a_tie() {
 /// could only happen if the target really was `isolated-c` itself.
 const RULE_FALLBACK: &str = r#"
 (rule territory/fallback-no-sink-e2e
-  :material-basis "the exists-guarded selection's fallback branch, never E-EVAL-021, when a territory has no ADJACENCY neighbour — the plan intro's exists requirement, over _process_eviction_pipeline's sink_id-is-None case"
+  :role mechanic :evidence derived :material-basis "the exists-guarded selection's fallback branch, never E-EVAL-021, when a territory has no ADJACENCY neighbour — the plan intro's exists requirement, over _process_eviction_pipeline's sink_id-is-None case"
   :fuel 128
   (bindings
     (binding shape :field territory/shape))
@@ -354,7 +354,7 @@ fn shape_c_empty_neighbourhood_takes_the_fallback_branch_never_e_eval_021() {
 /// directly: every tenant zeroed, the non-tenant left alone.
 const RULE_PENAL_COLONY: &str = r#"
 (rule territory/penal-colony-suppression-e2e
-  :material-basis "PENAL_COLONY organization suppression via for-each writing the source node's TENANCY :in neighbours — Territory blocker table row 4 (_suppress_organization, territory.py:353-378)"
+  :role mechanic :evidence derived :material-basis "PENAL_COLONY organization suppression via for-each writing the source node's TENANCY :in neighbours — Territory blocker table row 4 (_suppress_organization, territory.py:353-378)"
   :fuel 128
   (bindings
     (binding shape :field territory/shape))

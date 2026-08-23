@@ -214,11 +214,25 @@ pub fn family_of_load_error(err: &LoadError) -> &'static str {
         | LoadError::Content(_)
         | LoadError::DuplicateRuleId { .. }
         | LoadError::DeferredShapeVerb(_)
-        // `SameTickOrder` (W2, E-LOAD-058/059) always carries a spec code,
-        // so `spec_code()`'s early return classifies it — this pattern
-        // exists only for the wildcard-free discipline and never executes.
+        // E-LOAD-058/059 return through `spec_code()` above. The bounded
+        // same-tick AST-walk refusal is intentionally uncoded but still
+        // belongs to the load family, so this arm also classifies that path.
         | LoadError::SameTickOrder(_)
         | LoadError::MintingTypeOperand(_) => "E-LOAD",
+        LoadError::Causal(error) => match error {
+            babylon_bsl::causal_contract::ContractError::MissingMetadata { .. }
+            | babylon_bsl::causal_contract::ContractError::MalformedMetadata { .. }
+            | babylon_bsl::causal_contract::ContractError::UnknownMetadataValue { .. }
+            | babylon_bsl::causal_contract::ContractError::MalformedRule => "E-PARSE",
+            babylon_bsl::causal_contract::ContractError::UnauthorizedEffect { .. }
+            | babylon_bsl::causal_contract::ContractError::GovernedAttributionMismatch { .. }
+            | babylon_bsl::causal_contract::ContractError::MismatchedRuleContract { .. }
+            | babylon_bsl::causal_contract::ContractError::AstWalkLimit(_)
+            | babylon_bsl::causal_contract::ContractError::MismatchedWriteAttribution { .. }
+            | babylon_bsl::causal_contract::ContractError::MismatchedWriteOrdinal { .. }
+            | babylon_bsl::causal_contract::ContractError::MalformedEventType { .. }
+            | babylon_bsl::causal_contract::ContractError::ReceiptOrdinalOverflow => "E-LOAD",
+        },
         LoadError::Surface(_)
         | LoadError::Binding(_)
         | LoadError::Grammar(_)
@@ -562,7 +576,7 @@ mod tests {
         // `BoundError::Malformed` (missing `:fuel`), the same shape-level
         // family every bare `Malformed` variant classifies.
         let rule = babylon_bsl::read(
-            "(rule demo/no-fuel :material-basis \"x\" (bindings) \
+            "(rule demo/no-fuel :role mechanic :evidence derived :material-basis \"x\" (bindings) \
              (effects (update-node self social-class/agitation (add 0.05i))))",
         )
         .expect("must parse")
@@ -586,6 +600,76 @@ mod tests {
         let load_err = LoadError::Read(err);
         assert_eq!(load_err.spec_code(), None);
         assert_eq!(family_of_load_error(&load_err), "E-LEX");
+    }
+
+    #[test]
+    fn causal_metadata_and_authorization_keep_their_parse_and_load_families() {
+        let missing = LoadError::Causal(
+            babylon_bsl::causal_contract::ContractError::MissingMetadata { keyword: "role" },
+        );
+        assert_eq!(missing.spec_code(), None);
+        assert_eq!(family_of_load_error(&missing), "E-PARSE");
+
+        let unauthorized = LoadError::Causal(
+            babylon_bsl::causal_contract::ContractError::UnauthorizedEffect {
+                rule_id: "vitality/probe".to_owned(),
+                role: babylon_bsl::causal_contract::RuleRole::ExternalEvent,
+                effect: babylon_bsl::causal_contract::EffectSignature::NodeField(
+                    "social-class/deaths".to_owned(),
+                ),
+            },
+        );
+        assert_eq!(unauthorized.spec_code(), Some("E-LOAD-060"));
+        assert_eq!(family_of_load_error(&unauthorized), "E-LOAD");
+
+        let mismatch = LoadError::Causal(
+            babylon_bsl::causal_contract::ContractError::GovernedAttributionMismatch {
+                rule_id: "control-ratio/c03-crisis".to_owned(),
+                expected_role: babylon_bsl::causal_contract::RuleRole::Recognizer,
+                actual_role: babylon_bsl::causal_contract::RuleRole::Mechanic,
+                expected_evidence: babylon_bsl::causal_contract::EvidenceClass::Derived,
+                actual_evidence: babylon_bsl::causal_contract::EvidenceClass::Derived,
+            },
+        );
+        assert_eq!(mismatch.spec_code(), None);
+        assert_eq!(family_of_load_error(&mismatch), "E-LOAD");
+
+        let paired_with_wrong_contract = LoadError::Causal(
+            babylon_bsl::causal_contract::ContractError::MismatchedRuleContract {
+                ast_contract: babylon_bsl::causal_contract::RuleContract {
+                    rule_id: "vitality/probe".to_owned(),
+                    role: babylon_bsl::causal_contract::RuleRole::ExternalEvent,
+                    evidence: babylon_bsl::causal_contract::EvidenceClass::Designed,
+                },
+                supplied_contract: babylon_bsl::causal_contract::RuleContract {
+                    rule_id: "control-ratio/c03-crisis".to_owned(),
+                    role: babylon_bsl::causal_contract::RuleRole::Recognizer,
+                    evidence: babylon_bsl::causal_contract::EvidenceClass::Derived,
+                },
+            },
+        );
+        assert_eq!(paired_with_wrong_contract.spec_code(), None);
+        assert_eq!(family_of_load_error(&paired_with_wrong_contract), "E-LOAD");
+
+        let bounded_walk =
+            LoadError::Causal(babylon_bsl::causal_contract::ContractError::AstWalkLimit(
+                babylon_bsl::causal_contract::AstWalkError {
+                    analyzer: "causal effect footprint",
+                    limit: babylon_bsl::causal_contract::AstWalkLimit::Depth,
+                    maximum: 256,
+                },
+            ));
+        assert_eq!(bounded_walk.spec_code(), None);
+        assert_eq!(family_of_load_error(&bounded_walk), "E-LOAD");
+
+        let ordinal = LoadError::Causal(
+            babylon_bsl::causal_contract::ContractError::MismatchedWriteOrdinal {
+                expected: 0,
+                actual: 1,
+            },
+        );
+        assert_eq!(ordinal.spec_code(), None);
+        assert_eq!(family_of_load_error(&ordinal), "E-LOAD");
     }
 
     #[test]
@@ -660,7 +744,7 @@ mod tests {
     fn diagnostics_for_file_sorts_into_the_declared_total_order() {
         let text = "(intrinsic floor :params (real) :returns int :cost 5) \
                     (intrinsic floor :params (real) :returns int :cost 6) \
-                    (rule event/probe :material-basis \"x\" :fuel 16 (bindings) (effects (emit EventType/CONSCIOUSNESS_SHIFT (gate 0))))";
+                    (rule event/probe :role mechanic :evidence derived :material-basis \"x\" :fuel 16 (bindings) (effects (emit EventType/CONSCIOUSNESS_SHIFT (gate 0))))";
         let line_index = LineIndex::new(text);
         let located = vec![
             Located {
@@ -694,7 +778,7 @@ mod tests {
     fn duplicate_intrinsic_locates_ambiguous_with_two_related_information_entries() {
         let text = "(intrinsic floor :params (real) :returns int :cost 5) \
                     (intrinsic floor :params (real) :returns int :cost 6) \
-                    (rule event/probe :material-basis \"x\" :fuel 16 (bindings) (effects (emit EventType/CONSCIOUSNESS_SHIFT (gate 0))))";
+                    (rule event/probe :role mechanic :evidence derived :material-basis \"x\" :fuel 16 (bindings) (effects (emit EventType/CONSCIOUSNESS_SHIFT (gate 0))))";
         let line_index = LineIndex::new(text);
         let load_err = LoadError::Intrinsic(babylon_bsl::DeclError::Duplicate {
             name: "floor".to_owned(),

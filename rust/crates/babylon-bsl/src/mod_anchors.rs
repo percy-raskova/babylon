@@ -229,7 +229,7 @@ mod tests {
             ("before", AnchorPosition::Before),
         ] {
             let r = rule(&format!(
-                "(rule mods/extra :material-basis \"wage relation\" :fuel 8 \
+                "(rule mods/extra :role mechanic :evidence derived :material-basis \"wage relation\" :fuel 8 \
                  (anchor :{kw} survival) (bindings) \
                  (effects (update-node self social-class/agitation (add 0.05i))))"
             ));
@@ -249,7 +249,7 @@ mod tests {
     #[test]
     fn a_second_anchor_form_is_a_loud_error_never_first_wins() {
         let r = rule(
-            "(rule mods/extra :material-basis \"wage relation\" :fuel 8 \
+            "(rule mods/extra :role mechanic :evidence derived :material-basis \"wage relation\" :fuel 8 \
              (anchor :after survival) (anchor :before consciousness) (bindings) \
              (effects (update-node self social-class/agitation (add 0.05i))))",
         );
@@ -263,7 +263,7 @@ mod tests {
     #[test]
     fn the_anchor_default_places_a_system_named_rule() {
         let r = rule(
-            "(rule survival/hunger :material-basis \"wage relation\" :fuel 8 \
+            "(rule survival/hunger :role mechanic :evidence derived :material-basis \"wage relation\" :fuel 8 \
              (bindings) \
              (effects (update-node self social-class/agitation (add 0.05i))))",
         );
@@ -273,7 +273,7 @@ mod tests {
     #[test]
     fn a_rule_landing_nowhere_is_e_load_002() {
         let r = rule(
-            "(rule nowhere/hunger :material-basis \"wage relation\" :fuel 8 \
+            "(rule nowhere/hunger :role mechanic :evidence derived :material-basis \"wage relation\" :fuel 8 \
              (bindings) \
              (effects (update-node self social-class/agitation (add 0.05i))))",
         );
@@ -290,7 +290,7 @@ mod tests {
     #[test]
     fn an_off_set_anchor_keyword_is_e_parse_013() {
         let r = rule(
-            "(rule mods/extra :material-basis \"wage relation\" :fuel 8 \
+            "(rule mods/extra :role mechanic :evidence derived :material-basis \"wage relation\" :fuel 8 \
              (anchor :during survival) (bindings) \
              (effects (update-node self social-class/agitation (add 0.05i))))",
         );
@@ -307,7 +307,7 @@ mod tests {
     #[test]
     fn an_explicit_anchor_naming_an_unregistered_system_refuses_loudly() {
         let r = rule(
-            "(rule mods/extra :material-basis \"wage relation\" :fuel 8 \
+            "(rule mods/extra :role mechanic :evidence derived :material-basis \"wage relation\" :fuel 8 \
              (anchor :after vitalty) (bindings) \
              (effects (update-node self social-class/agitation (add 0.05i))))",
         );
@@ -332,7 +332,7 @@ mod tests {
     #[test]
     fn an_explicit_anchor_naming_a_registered_system_still_loads() {
         let r = rule(
-            "(rule mods/extra :material-basis \"wage relation\" :fuel 8 \
+            "(rule mods/extra :role mechanic :evidence derived :material-basis \"wage relation\" :fuel 8 \
              (anchor :after survival) (bindings) \
              (effects (update-node self social-class/agitation (add 0.05i))))",
         );

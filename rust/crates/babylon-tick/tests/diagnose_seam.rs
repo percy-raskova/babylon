@@ -66,7 +66,7 @@ const D32_TWO_COLLISION_SCENARIO: &str = r"
 /// reached when the scenario collides — its only job is to give
 /// `split_content` one legal `(rule …)` form to split out.
 const D32_RULE: &str = r#"(rule vitality/d32-diagnose-seam-probe
-  :material-basis "diagnose_content_set rows 2/4 (#652 Task 3): the D32 implicit-strength collision must survive as structured spec_code() data, not just message text"
+  :role mechanic :evidence derived :material-basis "diagnose_content_set rows 2/4 (#652 Task 3): the D32 implicit-strength collision must survive as structured spec_code() data, not just message text"
   :fuel 128
   (bindings (binding shape :field social-class/shape))
   (when (= shape 1))
@@ -78,7 +78,7 @@ const D32_RULE: &str = r#"(rule vitality/d32-diagnose-seam-probe
 /// (`E-PARSE-012`) — a pure surface-stage rejection, no scenario field
 /// dependency.
 const BROKEN_RULE_FUEL: &str = r#"(rule vitality/broken-fuel
-  :material-basis "diagnose_content_set row 3 (#652 Task 3): an out-of-range :fuel is its own independent entry"
+  :role mechanic :evidence derived :material-basis "diagnose_content_set row 3 (#652 Task 3): an out-of-range :fuel is its own independent entry"
   :fuel 0
   (bindings (binding wages :field social-class/wages))
   (when (> wages 0))
@@ -89,14 +89,14 @@ const BROKEN_RULE_FUEL: &str = r#"(rule vitality/broken-fuel
 /// [`BROKEN_RULE_FUEL`]'s, so the row proves two DISTINCT failures each get
 /// their own entry, not that the same failure is merely counted twice.
 const BROKEN_RULE_MATERIAL_BASIS: &str = r#"(rule vitality/broken-material-basis
-  :material-basis ""
+  :role mechanic :evidence derived :material-basis ""
   :fuel 64
   (bindings (binding wages :field social-class/wages))
   (when (> wages 0))
   (effects (emit EventType/PROBE)))"#;
 
 const ILLEGAL_PHASE_RULE: &str = r#"(rule mods/illegal-material-base-interleave
-  :material-basis "an independent causal-composition refusal"
+  :role mechanic :evidence derived :material-basis "an independent causal-composition refusal"
   :fuel 64
   (domain :graph)
   (anchor :after vitality)
@@ -104,7 +104,7 @@ const ILLEGAL_PHASE_RULE: &str = r#"(rule mods/illegal-material-base-interleave
   (effects (emit EventType/PROBE)))"#;
 
 const DUPLICATE_ID_WITH_ILLEGAL_PHASE: &str = r#"(rule economics/fundamental-theorem
-  :material-basis "duplicate identity makes phase placement undefined"
+  :role mechanic :evidence derived :material-basis "duplicate identity makes phase placement undefined"
   :fuel 64
   (domain :graph)
   (anchor :after vitality)

@@ -345,7 +345,7 @@ fn the_lifecycle_tick_is_deterministic() {
 #[test]
 fn a_rule_reading_an_undeclared_coefficient_is_refused_at_load() {
     let rule = "(rule lifecycle/typo \
-                :material-basis \"a population has a birth rate\" :fuel 32 \
+                :role mechanic :evidence derived :material-basis \"a population has a birth rate\" :fuel 32 \
                 (bindings \
                   (binding pop-p :field territory/pop-p) \
                   (binding rate :const lifecycle/birth-rat)) \

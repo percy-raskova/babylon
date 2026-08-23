@@ -2,6 +2,8 @@
 ; unknown graph metric — silent degradation. BSL: an unregistered :metric
 ; is E-LOAD-011 at content load, never 0.0 (§2.5, §6.3).
 (rule event/phantom-metric
+  :role mechanic
+  :evidence derived
   :material-basis "a metric that does not exist grounds nothing"
   :fuel 16
   (bindings

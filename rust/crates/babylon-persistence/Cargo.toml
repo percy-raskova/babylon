@@ -9,4 +9,5 @@ publish = false
 
 [dependencies]
 babylon-kernel = { path = "../babylon-kernel" }
+h3o = { version = "=0.10.0", default-features = false }
 uuid = { version = "1.24", default-features = false }

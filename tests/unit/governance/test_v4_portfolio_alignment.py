@@ -107,7 +107,22 @@ _H3_EVIDENCE: Final[tuple[str, ...]] = (
     "src/babylon/models/entities/territory.py",
     "src/babylon/persistence/hex_state.py",
 )
-_GATE_2_ISSUES: Final[tuple[str, ...]] = ("PER-17", "PER-18", "PER-19")
+_GATE_2_STATUSES: Final[dict[str, str]] = {
+    "PER-17": "implemented_current",
+    "PER-18": "planned",
+    "PER-19": "planned",
+}
+_GATE_2_COMPONENTS: Final[dict[str, str]] = {
+    "PER-17": "executable_phase_anchor_total_order",
+    "PER-18": (
+        "whole_tick_working_copy_rollback_and_canonical_big_endian_"
+        "auxiliary_register_combined_world_hashing"
+    ),
+    "PER-19": (
+        "bsl_causal_composition_provenance_direct_write_whitelist_and_"
+        "negative_outcome_write_contracts"
+    ),
+}
 _GATE_3_ISSUES: Final[tuple[str, ...]] = (
     "PER-20",
     "PER-21",
@@ -176,12 +191,12 @@ def test_v4_yaml_records_are_mappings() -> None:
         assert _yaml_document(path)
 
 
-def test_architecture_separates_current_components_from_planned_gates() -> None:
-    """Current evidence and planned work occupy separate machine-readable estates."""
+def test_architecture_records_current_components_and_gate_delivery_status() -> None:
+    """Current evidence and per-issue gate status remain machine-readable."""
     architecture = _yaml_document(_ARCHITECTURE)
     status = architecture["implementation_status"]
     assert isinstance(status, dict)
-    assert {"implemented_current", "planned_gate_2", "planned_gate_3"} <= set(status)
+    assert {"implemented_current", "gate_2_delivery", "planned_gate_3"} <= set(status)
     current = status["implemented_current"]
     assert isinstance(current, dict)
     for component in _CURRENT_COMPONENTS:
@@ -190,11 +205,12 @@ def test_architecture_separates_current_components_from_planned_gates() -> None:
         expected_evidence = _CURRENT_EVIDENCE[component]
         assert tuple(record["evidence"]) == expected_evidence
         assert all((_ROOT / evidence).is_file() for evidence in expected_evidence)
-    gate_2 = status["planned_gate_2"]
+    gate_2 = status["gate_2_delivery"]
     gate_3 = status["planned_gate_3"]
-    assert tuple(gate_2) == _GATE_2_ISSUES
+    assert tuple(gate_2) == tuple(_GATE_2_STATUSES)
     assert tuple(gate_3) == _GATE_3_ISSUES
-    assert all(gate_2[issue]["status"] == "planned" for issue in _GATE_2_ISSUES)
+    assert {issue: gate_2[issue]["status"] for issue in _GATE_2_STATUSES} == _GATE_2_STATUSES
+    assert {issue: gate_2[issue]["component"] for issue in _GATE_2_COMPONENTS} == _GATE_2_COMPONENTS
     assert all(gate_3[issue]["status"] == "planned" for issue in _GATE_3_ISSUES)
 
 
@@ -510,7 +526,9 @@ def test_standard_addenda_classify_current_and_superseded_surfaces() -> None:
         "S-11 whole-tick rollback status: planned",
         "S-25 renderer requirement status: retired",
         "S-32 writer assignment status: superseded",
-        "D5/D16 byte-sort ordering status: implemented_current_to_be_replaced",
+        "D5/D16 phase-ordering status: implemented_executable_PER-17",
+        "PER-18 rollback and combined-world-hash status: planned",
+        "PER-19 causal-composition and outcome-write-contract status: planned",
         "Persistence writer status: accepted_cutover_law",
         "PER-48 status: Done",
         _POSTGRESQL_ADR,

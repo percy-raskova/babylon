@@ -11,6 +11,16 @@
 //! `E-LOAD-001` (content-set-wide, checked at load, over whatever content
 //! set the caller actually loaded — never a hypothetical wider one).
 //!
+//! **PER-17 supersession boundary (ADR222).** This module's fixture analyzer
+//! predates executable phase placement and compares raw rule IDs globally.
+//! That comparison is semantically valid only when both rules share one
+//! resolved position. It is wrong across phase positions. The load gate MUST
+//! remain false until `diagnose` accepts the tick driver's resolved execution
+//! ranks, uses D16 bytes only as a same-rank tie-break, and receives the
+//! post-concatenation aggregate content set rather than one source file at a
+//! time. The refusal descriptions below preserve the historical W2 analyzer;
+//! they do not claim it is ready to enforce the current scheduler.
+//!
 //! **Refusal 1 — `E-LOAD-058`, stale-default read.** For every
 //! `(binding … :field f :optional :default d)` in rule `R`, compute `f`'s
 //! *writer set*: every OTHER rule `W` in the content set with an
@@ -66,11 +76,14 @@ use std::collections::{HashMap, HashSet};
 /// tests and W2.4's audit both prove the refusal's exact behavior against
 /// real content without waiting on ratification.
 ///
-/// Flip this to `true` only as part of the ratification ceremony this
-/// module's doc names: minting the `:prior-tick` declaration (or whatever
-/// name the Director ratifies), teaching refusal 1 to honor it on the 13
-/// rows the amendment draft lists, and re-running the W2.4 audit to prove
-/// the post-ratification inventory is `[]`. Draft:
+/// Flip this to `true` only after both gates close: the ratification ceremony
+/// mints the `:prior-tick` declaration (or the name the Director ratifies),
+/// and the analyzer consumes resolved phase ranks from `babylon-tick` rather
+/// than comparing rule IDs globally. Move the call site after aggregate
+/// source concatenation at the same time, so file boundaries cannot hide a
+/// writer/reader pair. Then teach refusal 1 to honor the declaration on the
+/// 13 draft rows and rerun the W2.4 audit to prove the post-ratification
+/// inventory is `[]`. Draft:
 /// `ai/_inbox/amendment-prior-tick-draft.md` (Amendment AI — reserved
 /// 2026-08-18 against the concurrently-drafted AH/defevent; DRAFT status,
 /// not ratified by this PR).
@@ -78,11 +91,12 @@ pub const ENFORCE_SAME_TICK_ORDERING: bool = false;
 
 /// Refusal 1: rule `reader_rule`'s binding `binding_name` reads field
 /// `field` with a declared `:optional :default`, and `writer_rule` — a
-/// DIFFERENT rule in the same content set — writes `field` and sorts
-/// on/after `reader_rule` in ascending rule-id byte order, so
+/// DIFFERENT rule in the same content set — writes `field` and this legacy
+/// analyzer sorts it on/after `reader_rule` by raw rule-ID bytes, so
 /// `reader_rule` can observe the DECLARED DEFAULT on a tick where
 /// `writer_rule` already ran and left a value from an earlier tick, not
-/// this one's write.
+/// this one's write. Valid only for rules at one resolved phase rank until
+/// ADR222's rank-aware follow-up lands.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StaleDefaultRead {
     /// The rule doing the exposed `:optional :default` read.
@@ -97,10 +111,10 @@ pub struct StaleDefaultRead {
     pub writer_rule: String,
 }
 
-/// Refusal 2: `field` is written by 2+ distinct rules (`writers`, ascending
-/// byte order) in the content set, and the byte-earliest of them is
+/// Refusal 2: `field` is written by 2+ distinct rules (`writers`, raw-ID byte
+/// order) in the content set, and the byte-earliest of them is
 /// neither an unconditional `set` nor the D127 unconditional-recompute
-/// shape.
+/// shape. This legacy ordering is valid only within one resolved phase rank.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnresetFanIn {
     /// The multi-writer field.
@@ -139,8 +153,8 @@ impl std::fmt::Display for SameTickOrderError {
                 f,
                 "E-LOAD-058: stale-default read — rule {reader}'s binding `{binding}` reads \
                  field {field} with :optional :default, but rule {writer} writes {field} and \
-                 does not sort strictly before {reader} in ascending rule-id byte order \
-                 (§4.2/D116 same-tick evaluation order) — {reader} can observe the declared \
+                 does not sort strictly before {reader} in the legacy raw rule-id analysis \
+                 (§4.2/D116; phase ranks required before enforcement) — {reader} can observe the declared \
                  default on a tick where {writer} already ran and left a value from an EARLIER \
                  tick, never this one's write. Refused at load (S-11), content-set-wide, like \
                  E-LOAD-001. Gated by same_tick_order::ENFORCE_SAME_TICK_ORDERING — see that \
@@ -157,7 +171,8 @@ impl std::fmt::Display for SameTickOrderError {
                  content set ({writers}), and the byte-earliest writer is neither an \
                  unconditional `set` (no (when …), or (when #t)) nor the D127 \
                  unconditional-recompute shape (a :material-basis citing D127) — an \
-                 accumulation with no rule-identifiable reset. Refused at load (S-11), \
+                 accumulation with no rule-identifiable reset. This is legacy raw-ID \
+                 analysis; phase ranks are required before load enforcement. Refused at load (S-11), \
                  content-set-wide, like E-LOAD-001.",
                 field = v.field,
                 n = v.writers.len(),
@@ -472,6 +487,14 @@ pub fn diagnose(rules: &[(String, SExpr)]) -> Diagnosis {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn raw_id_analysis_stays_load_gated_until_phase_ranks_are_injected() {
+        // Observe the public contract at runtime so clippy does not discard
+        // this guard as an assertion over a compile-time constant.
+        let enabled = std::hint::black_box(ENFORCE_SAME_TICK_ORDERING);
+        assert!(!enabled);
+    }
 
     /// Parse a multi-rule content set through
     /// `rule_pipeline::split_content_unchecked` — the real production

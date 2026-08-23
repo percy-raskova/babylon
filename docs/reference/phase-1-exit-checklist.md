@@ -1,3 +1,5 @@
+<!-- vale off -->
+
 # Program 27 — Phase 1 Exit Checklist
 
 **Status: Phase 1 (Language & Kernel) COMPLETE at this document's merge.**
@@ -10,6 +12,10 @@ Verification battery (Task 18 Step 1), run green 2026-07-30: workspace
 tests, workspace clippy `-D warnings`, per-crate pedantic clippy on
 `babylon-kernel`/`babylon-bsl`/`babylon-graph`, `cargo fmt --check`, and
 `RUSTDOCFLAGS='-D warnings' cargo doc` — **zero errors on every leg**.
+
+Current follow-through (2026-08-23): the deferred anchor total order and
+E-LOAD-003 item landed in `babylon-tick` through PER-17 and ADR222. The table
+below remains the Phase 1 handoff snapshot rather than rewriting its history.
 
 ## DONE — merged, tested, gate-clean
 
@@ -79,3 +85,5 @@ assignment ambiguity (`bindings.rs`).
    content pipeline generalizes.
 5. `ai/decisions/ADR179_*` (T3: hypergraph-rs as storage) and the
    babylon-graph trait docs — the storage decision's constraints.
+
+<!-- vale on -->

@@ -212,6 +212,7 @@ pub fn family_of_load_error(err: &LoadError) -> &'static str {
         // (shape-level, `E-PARSE`) alone.
         LoadError::Anchor(babylon_bsl::AnchorError::UnregisteredAnchorSystem { .. })
         | LoadError::Content(_)
+        | LoadError::DuplicateRuleId { .. }
         | LoadError::DeferredShapeVerb(_)
         // `SameTickOrder` (W2, E-LOAD-058/059) always carries a spec code,
         // so `spec_code()`'s early return classifies it — this pattern

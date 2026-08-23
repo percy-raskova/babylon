@@ -308,6 +308,7 @@ pub fn identity_of(err: &LoadError) -> Option<ErrorIdentity> {
         LoadError::ElementName(e) => Some(element_name_identity(e)),
         LoadError::Bound(e) => bound_identity(e),
         LoadError::Intrinsic(e) => decl_identity(e),
+        LoadError::DuplicateRuleId { rule_id } => Some(ErrorIdentity::RuleId(rule_id.clone())),
         // `Read`: E-LEX is located via `ReadError.position` ->
         // `SpanTable::innermost_at` (§6.2's own table, row 1), never through
         // `ErrorIdentity`. `Type`: `TypeError` is `{code, message}` with no
@@ -359,6 +360,17 @@ mod tests {
             Some(ErrorIdentity::RuleId(
                 "control-ratio/c01-prisoner-census".to_owned()
             ))
+        );
+    }
+
+    #[test]
+    fn identity_of_gives_a_rule_id_for_a_duplicate_rule() {
+        let err = LoadError::DuplicateRuleId {
+            rule_id: "vitality/duplicate".to_owned(),
+        };
+        assert_eq!(
+            identity_of(&err),
+            Some(ErrorIdentity::RuleId("vitality/duplicate".to_owned()))
         );
     }
 

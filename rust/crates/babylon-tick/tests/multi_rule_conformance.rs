@@ -4,21 +4,14 @@
 //!
 //! # What this proves
 //!
-//! 1. **The driver sorts by ascending rule-id byte order** (§4.2, register
-//!    row D16/D100), not by declaration/concatenation order — `'l' < 'v'`,
-//!    so `per_rule_fired[0]` is always `lifecycle/dpd-circuit` and
-//!    `per_rule_fired[1]` is always `vitality/subsistence-and-death`,
-//!    REGARDLESS of which order the caller concatenates the two `.bsl`
-//!    files in (`byte_order_sort_reproduces_the_frozen_engine_despite_
-//!    running_reversed` builds `rule_src` vitality-first; `file_order_is_
-//!    never_observable_per_section_4_2` proves the OTHER concatenation
-//!    order produces a byte-identical `TickReport`, including
-//!    `per_rule_fired`'s own order — the actual property §4.2 promises).
-//! 2. **The sorted (reverse-of-engine-order) result reproduces the frozen
-//!    engine's own combined output** for this pair, despite running
-//!    backwards from the frozen engine's Vitality-@1-before-Lifecycle-@7 —
-//!    safe here only because the two rules' domains are disjoint (the
-//!    plan's Multi-Rule Decision section), which
+//! 1. **The executable phase registry orders rules by governed system slot,**
+//!    not by declaration order or global rule-id bytes. Vitality @1 runs
+//!    before Lifecycle @7 even though `'l' < 'v'`. The second test proves
+//!    both source permutations produce a byte-identical `TickReport`,
+//!    including `per_rule_fired`'s resolved order.
+//! 2. **The phase-ordered result reproduces the frozen engine's own combined
+//!    output** for this pair. The rules' domains are disjoint (the plan's
+//!    Multi-Rule Decision section), which
 //!    `vitality_lifecycle_combined_conformance.py` proves EMPIRICALLY (not
 //!    just by reading the bindings): it runs both engine-order and
 //!    reverse-order against two independently-built copies of the same
@@ -220,7 +213,7 @@ fn assert_post_tick_state_matches(graph: &HypergraphStore) {
 }
 
 #[test]
-fn byte_order_sort_reproduces_the_frozen_engine_despite_running_reversed() {
+fn governed_phase_order_reproduces_the_frozen_engine() {
     // Concatenation order here is arbitrary on purpose (vitality text
     // first) — the second test below proves the OTHER concatenation order
     // gives an identical report, which is the actual claim this task makes.
@@ -229,23 +222,21 @@ fn byte_order_sort_reproduces_the_frozen_engine_despite_running_reversed() {
     let mut sink = CollectingSink::default();
     let report = run_once_into(SCENARIO, &rule_src, &mut graph, &mut sink).expect("tick");
 
-    // THE ORDER PROOF — ascending rule-id byte order puts lifecycle FIRST
-    // ('l' < 'v'), the reverse of the frozen engine's Vitality-@1-before-
-    // Lifecycle-@7. Per the Multi-Rule Decision section, the final hash
-    // would not, by itself, distinguish "sorts by id" from "preserves file
-    // order" for this pair, so per_rule_fired's own order is the
-    // load-bearing assertion.
+    // THE ORDER PROOF — the phase registry puts Vitality @1 before
+    // Lifecycle @7 even though the rule ids sort in the opposite order.
+    // The final hash would not distinguish the two for this disjoint pair,
+    // so per_rule_fired's own order is the load-bearing assertion.
     assert_eq!(report.per_rule_fired.len(), 2);
-    assert_eq!(report.per_rule_fired[0].0, "lifecycle/dpd-circuit");
-    assert_eq!(report.per_rule_fired[1].0, "vitality/subsistence-and-death");
+    assert_eq!(report.per_rule_fired[0].0, "vitality/subsistence-and-death");
+    assert_eq!(report.per_rule_fired[1].0, "lifecycle/dpd-circuit");
     // Exact counts, pinned from the Python reference: lifecycle fires
     // unconditionally on every territory (no `(when …)` guard on the
     // rule); vitality fires on 5 of 6 social classes (`dissolved` fails
     // the `(and (= active 1) (> population 0))` guard) — the SAME counts
     // vitality-conformance.bscn's and lifecycle-conformance.bscn's own
     // individually-pinned tests already assert, unchanged by union.
-    assert_eq!(report.per_rule_fired[0].1, 4, "lifecycle fired count");
-    assert_eq!(report.per_rule_fired[1].1, 5, "vitality fired count");
+    assert_eq!(report.per_rule_fired[0].1, 5, "vitality fired count");
+    assert_eq!(report.per_rule_fired[1].1, 4, "lifecycle fired count");
 
     // Per-node field values match the Python reference's printed output —
     // proven order-invariant by that script's own engine-order vs.
@@ -259,8 +250,8 @@ fn file_order_is_never_observable_per_section_4_2() {
     // sets built from the SAME two rules in DIFFERENT concatenation order
     // must produce BYTE-IDENTICAL TickReports — not merely the same hash,
     // the same report in full, including per_rule_fired's order (which
-    // must be IDENTICAL, not flipped, because the driver sorts rather
-    // than preserving file order).
+    // must be IDENTICAL, not flipped, because the driver resolves the
+    // governed phase order rather than preserving file order).
     let forward = format!("{VITALITY}\n{LIFECYCLE}");
     let reversed = format!("{LIFECYCLE}\n{VITALITY}");
 

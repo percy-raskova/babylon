@@ -39,8 +39,9 @@ pub fn engine_link_probe() -> Result<TickReport, String> {
 
 /// The client's own held tick session over the currently-selected
 /// [`crate::story::Story`] — `roster` is that story's territory-fips
-/// pairs, DERIVED (never hand-transcribed), one rule pack running every
-/// tick in ascending rule-id byte order (§4.2, D16/D100). `Resource`:
+/// pairs, DERIVED (never hand-transcribed), with admitted rules running
+/// every tick in governed phase order. D16 orders same-position ties.
+/// `Resource`:
 /// `loop_ui::spawn_engine_session_and_hud` inserts one at Startup, held for
 /// the whole session; `ui/story_card.rs`'s `N`-key restart replaces it with
 /// a fresh one over the catalog's next story.
@@ -128,11 +129,10 @@ impl EngineSession {
             })
             .collect::<Result<_, String>>()?;
 
-        // Concatenation order below is arbitrary — the driver sorts by
-        // rule-id BYTE ORDER (§4.2, D16) regardless of which text comes
-        // first, so this order has no bearing on execution order or on the
-        // resulting TickReport (babylon-tick's own multi_rule_conformance.rs
-        // proves the file-order invariance directly).
+        // Concatenation order below is arbitrary. The driver compiles governed
+        // phase placement and uses D16 bytes only for same-position ties, so
+        // text order has no bearing on execution or the resulting TickReport.
+        // babylon-tick's multi_rule_conformance.rs proves this invariance.
         let rule_src = story.rule_srcs.join("\n");
         // §3.5: the story's own scenario qname, transcribed from its
         // `.bscn`'s `(scenario …)` form — never a UUID, never a wall-clock

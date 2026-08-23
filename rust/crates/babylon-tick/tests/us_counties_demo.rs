@@ -22,10 +22,10 @@ fn the_demo_scenario_loads_and_ticks_both_packs() {
     let report = session.advance(&mut sink).expect("tick 1");
     assert_ne!(report.before, report.after);
     assert_eq!(report.per_rule_fired.len(), 2);
-    // Ascending rule-id byte order (§4.2, D16/D100) — lifecycle before
-    // vitality, regardless of the rule_src concatenation order above.
-    assert_eq!(report.per_rule_fired[0].0, "lifecycle/dpd-circuit");
-    assert_eq!(report.per_rule_fired[1].0, "vitality/subsistence-and-death");
+    // Governed phase order — Vitality @1 before Lifecycle @7, regardless
+    // of the rule_src concatenation order above.
+    assert_eq!(report.per_rule_fired[0].0, "vitality/subsistence-and-death");
+    assert_eq!(report.per_rule_fired[1].0, "lifecycle/dpd-circuit");
     // lifecycle fires unconditionally on all twelve territories; vitality
     // fires on 5 of 6 social classes (`dissolved` fails the guard) — the
     // same per-pack counts the individually-pinned conformance tests
@@ -33,11 +33,11 @@ fn the_demo_scenario_loads_and_ticks_both_packs() {
     // them; the scenario mints no territory that fails any guard) and
     // unchanged for the six untouched vitality fixture nodes.
     assert_eq!(
-        report.per_rule_fired[0].1, 12,
+        report.per_rule_fired[1].1, 12,
         "all twelve territories fire"
     );
     assert_eq!(
-        report.per_rule_fired[1].1, 5,
+        report.per_rule_fired[0].1, 5,
         "five of six social classes fire"
     );
     // The recovering-county archetype (county-01013/01015/01017) fires

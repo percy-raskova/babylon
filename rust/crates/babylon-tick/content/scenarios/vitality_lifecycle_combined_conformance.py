@@ -9,9 +9,9 @@ transcribed byte-for-byte from both scripts) and runs the frozen
 ``VitalitySystem`` and ``LifecycleSystem`` against it TWICE, on two
 independently-built copies of the same state: once in the frozen engine's
 own tick-position order (Vitality @1, then Lifecycle @7 — "engine order"),
-and once in the REVERSE order (Lifecycle, then Vitality — the order the
-Rust driver actually runs in, since it sorts by ascending rule-id byte
-order, and ``'l' < 'v'``).
+and once in the REVERSE order (Lifecycle, then Vitality). The Rust driver
+now uses the engine order through its executable phase registry; the reverse
+run remains a corroborating commutativity proof for this disjoint pair.
 
 The two runs' post-tick fields are compared field-for-field. They must
 match EXACTLY, because this is the empirical proof (not just an inference
@@ -19,9 +19,8 @@ from reading the bindings) that the two rules' domains are disjoint:
 ``VitalitySystem`` touches only ``social-class/*`` fields,
 ``LifecycleSystem`` touches only ``territory/*`` fields, so which one runs
 first cannot matter. If the two runs ever disagree, the disjoint-domain
-premise this whole task's byte-order-is-safe-here argument rests on is
-false, and this script exits loudly rather than printing vectors that
-would silently paper over that.
+premise is false, and this script exits loudly rather than printing vectors
+that would silently paper over that.
 
 Run it from the repository root, single process::
 

@@ -74,7 +74,7 @@ keys = [
 
 [[tier1]]
 event_type = "LIFECYCLE_TRANSITION"
-citations = ["rust/crates/babylon-tick/content/rules/lifecycle.bsl:409"]
+citations = ["rust/crates/babylon-tick/content/rules/lifecycle.bsl:405"]
 keys = [
   { name = "territory-id", required = true, source = "bsl" },
   { name = "pop-d", required = true, source = "bsl" },
@@ -85,7 +85,7 @@ keys = [
 
 [[tier1]]
 event_type = "LEGITIMATION_CRISIS"
-citations = ["rust/crates/babylon-tick/content/rules/lifecycle.bsl:422"]
+citations = ["rust/crates/babylon-tick/content/rules/lifecycle.bsl:418"]
 keys = [
   { name = "territory-id", required = true, source = "bsl" },
   { name = "legitimation-index", required = true, source = "bsl" },
@@ -93,7 +93,7 @@ keys = [
 
 [[tier1]]
 event_type = "LEGITIMATION_RECOVERY"
-citations = ["rust/crates/babylon-tick/content/rules/lifecycle.bsl:426"]
+citations = ["rust/crates/babylon-tick/content/rules/lifecycle.bsl:422"]
 keys = [
   { name = "territory-id", required = true, source = "bsl" },
   { name = "legitimation-index", required = true, source = "bsl" },
@@ -123,12 +123,12 @@ keys = [
 [[tier1]]
 event_type = "CONTROL_RATIO_CRISIS"
 citations = [
-  "rust/crates/babylon-tick/content/rules/control-ratio.bsl:320",
-  "rust/crates/babylon-tick/content/rules/control-ratio.bsl:330",
+  "rust/crates/babylon-tick/content/rules/control-ratio.bsl:321",
+  "rust/crates/babylon-tick/content/rules/control-ratio.bsl:331",
 ]
 # Two-shape payload, D-recorded (control_ratio.py:210-247's frozen origin;
-# ADR183 port-AS-IS): the enforcer-population > 0 branch (:320) emits all 8
-# keys; the = 0 branch (:330) omits actual-ratio and control-ratio. The
+# ADR183 port-AS-IS): the enforcer-population > 0 branch (:321) emits all 8
+# keys; the = 0 branch (:331) omits actual-ratio and control-ratio. The
 # registry lists the UNION with the two branch-specific keys flagged
 # optional, never a forced single shape.
 keys = [
@@ -138,15 +138,15 @@ keys = [
   { name = "max-controllable", required = true, source = "bsl" },
   { name = "over-capacity-by", required = true, source = "bsl" },
   { name = "capacity-threshold", required = true, source = "bsl" },
-  { name = "actual-ratio", required = false, source = "bsl", note = "present only in the enforcer-population > 0 branch (control-ratio.bsl:325); the = 0 branch omits it (deliberate, D-recorded — both are the frozen engine's real shapes, not a defect)." },
-  { name = "control-ratio", required = false, source = "bsl", note = "present only in the enforcer-population > 0 branch (control-ratio.bsl:327); the = 0 branch omits it (same D-record as actual-ratio)." },
+  { name = "actual-ratio", required = false, source = "bsl", note = "present only in the enforcer-population > 0 branch (control-ratio.bsl:326); the = 0 branch omits it (deliberate, D-recorded — both are the frozen engine's real shapes, not a defect)." },
+  { name = "control-ratio", required = false, source = "bsl", note = "present only in the enforcer-population > 0 branch (control-ratio.bsl:328); the = 0 branch omits it (same D-record as actual-ratio)." },
 ]
 
 [[tier1]]
 event_type = "TERMINAL_DECISION"
 citations = [
-  "rust/crates/babylon-tick/content/rules/control-ratio.bsl:366",
-  "rust/crates/babylon-tick/content/rules/control-ratio.bsl:373",
+  "rust/crates/babylon-tick/content/rules/control-ratio.bsl:367",
+  "rust/crates/babylon-tick/content/rules/control-ratio.bsl:374",
 ]
 # Same 5 keys in both branches (outcome 1=revolution / 0=genocide is the only
 # difference) — no optional flag needed, unlike CONTROL_RATIO_CRISIS above.
@@ -186,7 +186,7 @@ keys = [
 
 [[tier1]]
 event_type = "SURPLUS_EXTRACTION"
-citations = ["rust/crates/babylon-tick/content/rules/imperial-rent.bsl:775"]
+citations = ["rust/crates/babylon-tick/content/rules/imperial-rent.bsl:778"]
 keys = [
   { name = "source", required = true, source = "bsl" },
   { name = "target", required = true, source = "bsl" },

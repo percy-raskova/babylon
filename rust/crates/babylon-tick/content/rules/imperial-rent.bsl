@@ -186,7 +186,9 @@
 ; for imperial-rent specifically; the blanket "no single-tick test flips"
 ; sentence above governs rows 1-6 only.
 ;
-; §7's FOUR inter-pack byte-order inversions (plan §7, D190) — this pack's
+; HISTORICAL §7/D190 RECORD, superseded for execution by the governed phase
+; registry (ADR222/PER-17): the former FOUR inter-pack byte-order inversions.
+; This pack's
 ; own namespace, `imperial-rent`, sorts AFTER `consciousness, control-ratio,
 ; decomposition, dispossession, economics` and BEFORE `lifecycle, metabolism,
 ; organization, production, solidarity, territory, vitality` (`economics` <
@@ -397,7 +399,8 @@
 ;      default; `defines.yaml:97` SHIPS 0.7 and `ImperialRentSystem` passes
 ;      the define — the SHIPPED 0.7 governs, the code is the port's oracle,
 ;      not its own docstring).
-;   10. (D190) The inter-pack byte-order inversions — FOUR, each with its
+;   10. (D190, HISTORICAL; superseded by ADR222/PER-17) The inter-pack
+;       byte-order inversions — FOUR, each with its
 ;       own executable constraint. See the §7 disclosure block above (this
 ;       header, immediately before this D-record list) for the full text of
 ;       all four (7.1 production, 7.2 consciousness, 7.3 decomposition, 7.4

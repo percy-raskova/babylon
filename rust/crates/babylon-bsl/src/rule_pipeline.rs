@@ -146,6 +146,14 @@ pub enum LoadError {
     /// [`split_content`]'s discipline, not a §2 grammar production with a
     /// reserved `E-LOAD` number.
     Content(String),
+    /// `E-LOAD-001` — one rule id occurs more than once in the aggregate
+    /// content set. This stays distinct from [`Self::Content`] so callers
+    /// can consume the governed code as structured data instead of parsing
+    /// the display message.
+    DuplicateRuleId {
+        /// The duplicated rule id.
+        rule_id: String,
+    },
     /// No numbered code, same precedent as [`Self::Content`]: a rule using
     /// one of the six graph-shape verbs Task 12's collect-then-apply
     /// pre-state split does not yet defer (§4.2 chapter C4) — every one of
@@ -193,6 +201,7 @@ impl LoadError {
             Self::Bound(e) => e.spec_code(),
             Self::Intrinsic(e) => e.spec_code(),
             Self::SameTickOrder(e) => Some(e.spec_code()),
+            Self::DuplicateRuleId { .. } => Some("E-LOAD-001"),
             Self::Content(_) | Self::DeferredShapeVerb(_) | Self::MintingTypeOperand(_) => None,
         }
     }
@@ -213,6 +222,12 @@ impl std::fmt::Display for LoadError {
             Self::Bound(e) => write!(f, "{e}"),
             Self::Intrinsic(e) => write!(f, "{e}"),
             Self::SameTickOrder(e) => write!(f, "{e}"),
+            Self::DuplicateRuleId { rule_id } => write!(
+                f,
+                "E-LOAD-001: duplicate rule id: {rule_id} (§2.2 — rule ids must be \
+                 content-set-unique, the same duplicate-name discipline \
+                 parse_intrinsic_decls already enforces for intrinsic declarations)"
+            ),
             Self::Content(message)
             | Self::DeferredShapeVerb(message)
             | Self::MintingTypeOperand(message) => write!(f, "{message}"),
@@ -368,8 +383,9 @@ pub fn load_rule_form(rule: SExpr, ctx: &LoadContext<'_>) -> Result<LoadedRule, 
 /// widening makes the driver honor what the grammar always admitted: one or
 /// more `(rule …)` forms, in whatever order the reader encounters them
 /// (this function makes no ordering claim — `babylon-tick::prepare_rules`
-/// sorts into ascending rule-id byte order per §4.2/D16), duplicate ids
-/// across the content set refused as `E-LOAD-001`.
+/// compiles executable phase placement; D16 orders only same-position
+/// ties), with duplicate ids across the content set refused as
+/// `E-LOAD-001`.
 ///
 /// (`deffield` and `manifest` top-forms are not split out here — nothing
 /// in this crate's Slice 1 content path reads them from a rule source yet;
@@ -378,8 +394,9 @@ pub fn load_rule_form(rule: SExpr, ctx: &LoadContext<'_>) -> Result<LoadedRule, 
 /// # Errors
 ///
 /// [`LoadError::Read`] for a parse failure; [`LoadError::Content`] (uncoded)
-/// when the source contains zero `(rule …)` top-forms, or when two rule
-/// forms share the same id (`E-LOAD-001`).
+/// when the source contains zero `(rule …)` top-forms; or
+/// [`LoadError::DuplicateRuleId`] (`E-LOAD-001`) when two rule forms share
+/// the same id.
 // The return type is a plain, un-nested pair of vecs — flagged only because
 // its second element is itself a `Vec` of pairs; a type alias would be one
 // more name to chase for a shape this crate already spells out in the doc
@@ -399,7 +416,11 @@ pub fn split_content(source: &str) -> Result<(Vec<SExpr>, Vec<(String, SExpr)>),
     // channel (its return type carries none). Rejection fires only when
     // `same_tick_order::ENFORCE_SAME_TICK_ORDERING` is `true`, which it is
     // not for the landed corpus (R-W2a) — see that constant's own doc for
-    // the amendment-draft citation. This is the ONE call site: no other
+    // the amendment-draft citation. PER-17 also made the global-ID analysis
+    // inside `diagnose` invalid across resolved phase positions. The gate
+    // MUST remain false until the analyzer accepts the tick driver's resolved
+    // execution ranks; raw ID comparison remains valid only within one rank.
+    // This is the ONE call site: no other
     // production path reaches `E-LOAD-058`/`E-LOAD-059` except through
     // here.
     if same_tick_order::ENFORCE_SAME_TICK_ORDERING {
@@ -454,29 +475,39 @@ pub(crate) fn split_content_unchecked(
                 .to_owned(),
         ));
     }
-    // A set, not a `HashMap<String, ()>` — same duplicate-id-refusal shape
-    // `declarations::parse_intrinsic_decls` uses for intrinsic names
-    // (contains-check before insert, §2.2's duplicate-name discipline), but
-    // with no payload to store per id, so nothing here needs a map's value
-    // slot at all.
-    let mut seen: HashSet<String> = HashSet::with_capacity(rule_forms.len());
     let mut paired = Vec::with_capacity(rule_forms.len());
     for form in rule_forms {
         let id = crate::canonical_ast::rule_id(&form)
             .map_err(|e| LoadError::Content(e.message))?
             .to_owned();
-        if seen.contains(&id) {
-            return Err(LoadError::Content(format!(
-                "E-LOAD-001: duplicate rule id: {id} (§2.2 — rule ids must be \
-                 content-set-unique, the same duplicate-name discipline \
-                 parse_intrinsic_decls already enforces for intrinsic \
-                 declarations)"
-            )));
-        }
-        seen.insert(id.clone());
         paired.push((id, form));
     }
+    check_unique_rule_ids(&paired)?;
     Ok((intrinsic_forms, paired))
+}
+
+/// Refuse a duplicate rule id across an aggregate content set.
+///
+/// File boundaries carry no semantics, so callers that assemble forms from
+/// more than one source must run this over the aggregate, not merely rely on
+/// each source's [`split_content`] call. If several ids are duplicated, the
+/// byte-least id is named so source order cannot select the diagnostic.
+///
+/// # Errors
+///
+/// [`LoadError::DuplicateRuleId`] (`E-LOAD-001`) for the byte-least repeated
+/// id.
+pub fn check_unique_rule_ids(rules: &[(String, SExpr)]) -> Result<(), LoadError> {
+    let mut ids: Vec<&str> = rules.iter().map(|(id, _)| id.as_str()).collect();
+    ids.sort_unstable_by(|left, right| left.as_bytes().cmp(right.as_bytes()));
+    let duplicate = ids
+        .windows(2)
+        .find_map(|pair| (pair[0] == pair[1]).then_some(pair[0]));
+    duplicate.map_or(Ok(()), |rule_id| {
+        Err(LoadError::DuplicateRuleId {
+            rule_id: rule_id.to_owned(),
+        })
+    })
 }
 
 /// Whether `expr` is `(intrinsic …)` — the one top-form kind this module's
@@ -906,10 +937,11 @@ mod split_content_tests {
     }
 
     #[test]
-    fn a_source_with_two_rule_forms_is_a_loud_content_error() {
+    fn a_source_with_duplicate_rule_forms_is_a_typed_duplicate_error() {
         let source = format!("{RULE}\n{RULE}");
         let err = split_content(&source).unwrap_err();
-        assert!(matches!(err, LoadError::Content(_)));
+        assert!(matches!(err, LoadError::DuplicateRuleId { .. }));
+        assert_eq!(err.spec_code(), Some("E-LOAD-001"));
     }
 
     #[test]
@@ -969,6 +1001,7 @@ mod split_content_tests {
   (effects (update-node self a/v2 (set v))))
 "#;
         let err = split_content(source).unwrap_err();
+        assert_eq!(err.spec_code(), Some("E-LOAD-001"));
         assert!(err.to_string().contains("E-LOAD-001"));
         assert!(err.to_string().contains("a/dup"));
     }

@@ -238,9 +238,10 @@ fn main() -> ExitCode {
             }
         }
     }
-    // Global sort, byte order — each pack's own rows already arrive sorted
-    // (`prepare_rules`, §4.2/D16), but sorting the WHOLE report again makes
-    // its determinism independent of the table's own declared order, which
+    // Global presentation sort by rule-ID bytes. Each pack's rows arrive in
+    // executable phase order from `prepare_rules`; this report deliberately
+    // re-sorts the WHOLE inventory so its output stays independent of the
+    // table's declared order, which
     // (like any content ordering, §2.2) carries no semantics. `sort_by` is
     // STABLE, so when a rule-id repeats across a solo row and a co-load
     // row (see the module doc), the two keep their relative iteration

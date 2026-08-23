@@ -2,9 +2,9 @@ schema = 1
 
 # Paths in `scenario` / `prelude` / `rules` are relative to THIS FILE's
 # directory (the content root). `consumers` are repo-relative (D146).
-# The `rules` array is a SET, not a load order: the loader sorts rule ids
-# into ascending byte order before firing (§4.2 / D16,
-# babylon-tick/src/lib.rs:715, `prepare_rules`'s `rules.sort_by`).
+# The `rules` array is a SET, not a load order: the loader compiles each
+# rule onto the governed phase registry before firing. D16's ascending
+# rule-id byte order breaks ties at one resolved position.
 # Presented here in ascending byte order too, for deterministic diffs —
 # not because the loader requires it.
 #
@@ -370,6 +370,13 @@ scenario  = "scenarios/organization-foundation.bscn"
 prelude   = []
 rules     = ["rules/organization.bsl"]
 consumers = ["rust/crates/babylon-tick/tests/tick_goldens.rs"]
+
+[[set]]
+id        = "phase-anchor/conformance"
+scenario  = "scenarios/two-classes.bscn"
+prelude   = []
+rules     = []
+consumers = ["rust/crates/babylon-tick/tests/phase_anchor_conformance.rs"]
 
 [[set]]
 id        = "production/conformance"

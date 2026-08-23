@@ -60,9 +60,9 @@ returns an in-memory `TickReport`. The Bevy viewer draws 3,222 counties, moves
 ticks, and shows lenses, causal beats, events, and hash data.
 
 Program 27 froze the Python engine at `p27-python-freeze`. Its 34-system
-`SimulationEngine._DEFAULT_SYSTEMS` and five `EndgameDetector` labels are
-behavioral reference facts, not promised outcomes. Python also owns data tools,
-selected periphery, and persisted replay.
+`SimulationEngine._DEFAULT_SYSTEMS` is the transcription oracle for Rust's
+executable `phase_order.rs` causal spine. Five `EndgameDetector` labels remain
+reference facts, not promised outcomes. Python also owns data tools and periphery.
 
 Reference Parquet and deterministic SQLite are build artifacts. The Python
 `RuntimeDatabase` is separate mutable SQLite. Python also has

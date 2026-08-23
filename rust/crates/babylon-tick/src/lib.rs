@@ -27,7 +27,7 @@ use babylon_bsl::fuel::{CardinalityCeilings, IntrinsicCosts};
 use babylon_bsl::intrinsic_host::KernelIntrinsicHost;
 use babylon_bsl::reader::SExpr;
 use babylon_bsl::rule_pipeline::{
-    load_rule_form, split_content, LoadContext, LoadError, LoadedRule,
+    check_unique_rule_ids, load_rule_form, split_content, LoadContext, LoadError, LoadedRule,
 };
 use babylon_bsl::scenario::{
     load_scenario, load_scenario_with_prelude, LoadedScenario, ScenarioError,
@@ -43,6 +43,7 @@ use babylon_graph::substrate::{GraphSubstrate, NodeId};
 use babylon_kernel::SessionId;
 use std::collections::{HashMap, HashSet};
 
+mod phase_order;
 pub mod session;
 pub use session::TickSession;
 
@@ -61,12 +62,12 @@ pub struct TickReport {
     /// this crate's `tests/*_conformance.rs` and `tests/floor_intrinsic_e2e.rs`
     /// keep compiling and keep passing unmodified.
     pub fired: usize,
-    /// Per-rule detail, in ASCENDING RULE-ID BYTE ORDER (§4.2, register row
-    /// D16) — `(rule_id, fired)`. NEVER declaration order or file order;
-    /// §4.2 says those "are never observable", and this field's own order
-    /// is the driver's proof that it honors that. Length 1 for every
-    /// existing single-rule content set (`fired == per_rule_fired[0].1`
-    /// always holds); length N for an N-rule content set.
+    /// Per-rule detail in governed causal order — `(rule_id, fired)`.
+    /// Rules resolve through the 34-slot phase registry; rules sharing one
+    /// position use D16's ascending rule-ID byte order. Declaration and file
+    /// order are never observable. Length 1 for every existing single-rule
+    /// content set (`fired == per_rule_fired[0].1` always holds); length N
+    /// for an N-rule content set.
     pub per_rule_fired: Vec<(String, usize)>,
 }
 
@@ -151,13 +152,13 @@ pub fn run_once_with_prelude(
 /// Everything `run_once_into` does before running a tick: parse the
 /// intrinsic declarations, load the scenario into `graph`, and load every
 /// `(rule …)` form `split_content` returns against the vocabulary/types/
-/// ceilings that scenario declared — sorted into ascending rule-id BYTE
-/// order (§4.2, register row D16) before this returns, so every later
-/// stage (`TickSession::advance`, `run_once_into`) just iterates the
-/// already-correct order. Shared by `run_once_into` (which still runs
-/// exactly tick 1) and, from `session.rs` on, `TickSession::new` (Program
-/// 28 B2, `docs/superpowers/plans/2026-08-11-b2-tick-loop-plan.md` Phase A
-/// Task 4).
+/// ceilings that scenario declared — compiled into the governed phase order
+/// before this returns, so every later stage (`TickSession::advance`,
+/// `run_once_into`) just iterates the already-correct order. D16's ascending
+/// rule-ID byte order breaks ties at one resolved position. Shared by
+/// `run_once_into` (which still runs exactly tick 1) and, from `session.rs`
+/// on, `TickSession::new` (Program 28 B2,
+/// `docs/superpowers/plans/2026-08-11-b2-tick-loop-plan.md` Phase A Task 4).
 ///
 /// `Debug` (T2, issue #559): needed so `Result<PreparedRules, PrepareError>`
 /// (`String` before #652 Task 3's `PrepareError`) can be formatted with
@@ -217,9 +218,8 @@ pub enum PrepareError {
     Scenario(ScenarioError),
     /// One `(rule …)` form was rejected. `rule_id` is `None` for a
     /// composition-level [`split_content`] failure (a malformed content
-    /// source, or a duplicate rule id WITHIN one source) raised before any
-    /// individual rule's own id is even in scope; `Some` for a specific
-    /// rule's own load rejection.
+    /// source or duplicate rule id) raised before any individual rule's own
+    /// id is in scope; `Some` for a specific rule's own load rejection.
     Rule {
         /// The rejected rule's id, when the failure is attributable to one.
         rule_id: Option<String>,
@@ -292,120 +292,50 @@ impl std::error::Error for PrepareError {}
 /// The rule-pack namespaces this driver registers before loading any rule
 /// (`LoadContext::systems`) — extracted (Task 3, #652) so `prepare_rules`
 /// and [`diagnose_content_set`] build the IDENTICAL set from one place
-/// rather than two copies drifting apart. Every entry and its own comment
-/// is unchanged from `prepare_rules`'s pre-Task-3 inline literal, just
-/// relocated.
+/// rather than two copies drifting apart. PER-17 replaces the former partial
+/// inline set with the canonical 34-slot registry and its compatibility names.
 fn registered_systems() -> HashSet<String> {
-    HashSet::from([
-        "economics".to_owned(),
-        "vitality".to_owned(),
-        "consciousness".to_owned(),
-        // The lifecycle/* rule pack (Material Base @7.0, the D-P-D' circuit)
-        // — same class of minimal driver-scaffolding addition as "vitality"
-        // above.
-        "lifecycle".to_owned(),
-        // The dispossession/* rule pack (Material Base @10.0, primitive
-        // accumulation as value transfer) — same class of minimal
-        // driver-scaffolding addition as "vitality"/"lifecycle" above.
-        "dispossession".to_owned(),
-        // The metabolism/* rule pack (Material Base @13.0, the per-territory
-        // half of the metabolic rift) — same class of minimal
-        // driver-scaffolding addition as the three above.
-        "metabolism".to_owned(),
-        // The territory/* rule pack (Material Base @2.0, four sequential
-        // phase rules — heat dynamics, eviction pipeline, spillover,
-        // necropolitics; Territory port train, P27 PR B). This entry was
-        // ADDED EARLIER by the query-evaluation train solely so
-        // `query_lane_e2e.rs`'s four synthetic, Territory-SHAPED vectors
-        // had a legal namespace to anchor under, explicitly marked at the
-        // time as "not a Territory-port system... this train ships none" —
-        // the port train now ships the real content this namespace was
-        // reserved for; the string literal itself is unchanged.
-        "territory".to_owned(),
-        // The organization/* rule pack (Task 8, Organization foundation
-        // plan) — same class of minimal driver-scaffolding addition as the
-        // five above; Task 10 ships the first content using this
-        // namespace.
-        "organization".to_owned(),
-        // The production/* rule pack (Material Base @3.0, four rules —
-        // direct production, employed routing, employed fallback,
-        // extraction-intensity broadcast; Production port train, issue
-        // #565). Genuinely NEW registration (unlike territory's own
-        // pre-existing placeholder above) — the scout dossier
-        // (reports/production-bsl-surface-facts-2026-08-12.md §3) confirmed
-        // "production" had zero prior hits in this HashSet on either tree.
-        "production".to_owned(),
-        // The social-class/* namespace (T2 slice-2 edge reads, issue #559).
-        // Added solely so `edge_lane_e2e.rs`'s three synthetic, Solidarity-
-        // SHAPED vectors have a legal namespace to anchor under (E-LOAD-002)
-        // — the SAME class of driver-scaffolding entry "territory" itself
-        // was when the query-evaluation train added it for
-        // `query_lane_e2e.rs`'s vectors (see that entry's own comment
-        // above). NOT a system port: T2 ships no Solidarity content
-        // (Solidarity's PORT is a separate Wave C train), and no engine
-        // system is named "social-class" — this is the e2e fixture's own
-        // subject-type namespace, nothing more.
-        "social-class".to_owned(),
-        // The solidarity/* rule pack (Material Base @8.0, consciousness
-        // transmission over SOLIDARITY edges — Wave C: Solidarity port
-        // train, issue #557 umbrella, Task 1). Same class of minimal
-        // driver-scaffolding addition as "vitality"/"lifecycle"/
-        // "dispossession"/"metabolism"/"production" above: registers the
-        // namespace so `solidarity/p0-transmit`'s rule id resolves under
-        // E-LOAD-002 before the pack itself lands (Task 2).
-        "solidarity".to_owned(),
-        // The decomposition/* rule pack (Material Base @11.0, LA class
-        // breakdown into CARCERAL_ENFORCER/INTERNAL_PROLETARIAT during
-        // terminal crisis; Decomposition+ControlRatio port train, Task 1 of
-        // `docs/superpowers/plans/2026-08-17-decomposition-controlratio-
-        // port.md`). Genuinely NEW registration — the Task 0 surface-facts
-        // dossier confirmed zero prior hits in this HashSet.
-        "decomposition".to_owned(),
-        // The control-ratio/* rule pack (Material Base @12.0, the
-        // guard:prisoner ratio crisis + the ADR070-reserved revolution-vs-
-        // genocide terminal decision; same port train, Task 1). Hyphenated
-        // spelling is the RULED spelling (Task 0 dossier §7, three
-        // independent proofs: `reader.rs::validate_symbol` accepts hyphens,
-        // the landed `"social-class"` precedent immediately above, and
-        // `edge_lane_e2e.rs`'s landed hyphenated rule-id first segments) —
-        // genuinely NEW registration, same class as "decomposition" above.
-        "control-ratio".to_owned(),
-        // The imperial-rent/* rule pack (Material Base @9.0, the 5-phase
-        // Imperial Circuit — Extraction, Tribute, Wages, [Subsidy RESERVED,
-        // Constitution IX.5], Decision; ImperialRent BSL port train, Task 1
-        // of `docs/superpowers/plans/2026-08-18-imperialrent-port.md`).
-        // Genuinely NEW registration — the Task 0 surface-facts dossier
-        // (`reports/imperial-rent-bsl-surface-facts-2026-08-18.md`)
-        // confirmed zero prior hits in this HashSet, same class as
-        // "decomposition"/"control-ratio" above. Hyphenated spelling
-        // follows the same "control-ratio" precedent immediately above.
-        "imperial-rent".to_owned(),
-        // The community/* rule pack (Material Base @6.0, the Community port
-        // train, issue #667, plan
-        // `docs/superpowers/plans/2026-08-18-community-port.md`).
-        // Registered AT TASK 4 (one task earlier than the plan's Task 7
-        // Step 2): the ceiling supply chain's RED tests must observe the
-        // two refusal codes specifically — E-LOAD-045 (MissingCeiling, the
-        // type axis) and E-LOAD-042 (MissingMaxMembers, the
-        // :max-members axis) — and a rule under an
-        // unregistered namespace fails E-LOAD-004 (undeterminable domain)
-        // one stage earlier — the registration is the precondition for the
-        // probe to reach the check it pins. Genuinely NEW registration —
-        // the Task 0 surface-facts dossier
-        // (`reports/community-bsl-surface-facts-2026-08-18.md`) confirmed
-        // zero prior hits in this HashSet.
-        "community".to_owned(),
-        // The class-dynamics/* rule pack (Material Base @4.0's Feature-016
-        // class-dynamics engine — NOT all of @4.0; TickDynamics port train,
-        // issue #669, plan docs/superpowers/plans/2026-08-18-tickdynamics-port.md
-        // — path deliberately unbackticked so the line break cannot render a
-        // split path). Genuinely NEW registration — the Task 0 surface-facts
-        // dossier (`reports/class-dynamics-bsl-surface-facts-2026-08-18.md`)
-        // confirmed zero prior hits in this HashSet for `class-dynamics`/
-        // `tick-dynamics`/`tickdynamics` spellings. Hyphenated spelling
-        // follows the `social-class`/`control-ratio` precedent.
-        "class-dynamics".to_owned(),
-    ])
+    phase_order::registered_systems()
+}
+
+fn prepare_error_from_schedule(error: phase_order::ScheduleError) -> PrepareError {
+    let message = error.to_string();
+    match error {
+        phase_order::ScheduleError::Anchor { rule_id, source } => PrepareError::Rule {
+            rule_id: Some(rule_id),
+            error: LoadError::Anchor(source),
+        },
+        phase_order::ScheduleError::MaterialBaseInterleave { rule_id, .. } => {
+            PrepareError::Composition {
+                code: Some("E-LOAD-003"),
+                identity: Some(ErrorIdentity::RuleId(rule_id)),
+                message,
+            }
+        }
+        phase_order::ScheduleError::Registry { .. } => PrepareError::Composition {
+            code: None,
+            identity: None,
+            message,
+        },
+        phase_order::ScheduleError::Plan { rule_id, .. } => PrepareError::Composition {
+            code: None,
+            identity: rule_id.map(ErrorIdentity::RuleId),
+            message,
+        },
+    }
+}
+
+fn hydrate_scenario<G: GraphSubstrate>(
+    scenario_src: &str,
+    prelude_src: Option<&str>,
+    graph: &mut G,
+) -> Result<LoadedScenario, PrepareError> {
+    match prelude_src {
+        Some(prelude) => {
+            load_scenario_with_prelude(prelude, scenario_src, graph).map_err(PrepareError::Scenario)
+        }
+        None => load_scenario(scenario_src, graph).map_err(PrepareError::Scenario),
+    }
 }
 
 /// The D32 implicit-`<edge-type>/strength` collision check (D32,
@@ -458,8 +388,8 @@ fn seed_implicit_edge_strength_fields(
             .type_env_fields()
             .into_iter()
             .collect();
-        // Byte order, the same convention `rules.sort_by` uses in
-        // `prepare_rules`: the Err/Ok verdict never depended on
+        // Byte order, the same convention D16 uses for same-position rule
+        // ties: the Err/Ok verdict never depended on
         // `type_env_fields()`'s HashMap iteration order, but the refusal
         // TEXT did — with two or more colliding qnames it
         // nondeterministically named a different field per process.
@@ -604,13 +534,15 @@ fn build_shared_load_inputs(scenario: &LoadedScenario) -> Result<SharedLoadInput
 ///   malformed source cannot hide the forms a SIBLING source parses
 ///   cleanly, so a failure here is recorded and the NEXT source still gets
 ///   its own chance;
+/// - aggregate rule-id uniqueness is checked after splitting, because file
+///   boundaries carry no semantics; a duplicate split across sources is one
+///   structured `E-LOAD-001` diagnostic rather than a false-clean result;
 /// - intrinsic-declaration parsing runs once, over every collected
 ///   `(intrinsic …)` form — a failure here BLOCKS rule loading, because
 ///   every rule's static fuel-bound check needs `IntrinsicCosts` to exist
 ///   at all;
-/// - scenario hydration BLOCKS rule loading on failure too — a scenario
-///   that never hydrated leaves no field/vocabulary/ceiling registries to
-///   load a rule against;
+/// - scenario validation hydrates a disposable graph and BLOCKS rule loading
+///   on failure — caller-owned state is never in scope here;
 /// - the D32 implicit-`<edge-type>/strength` collision check (the same one
 ///   `prepare_rules` runs, `seed_implicit_edge_strength_fields`) BLOCKS
 ///   rule loading on failure — the seeded field registry would be
@@ -618,17 +550,19 @@ fn build_shared_load_inputs(scenario: &LoadedScenario) -> Result<SharedLoadInput
 /// - every `(rule …)` form collected across every source then loads
 ///   INDEPENDENTLY — one rule's rejection never hides a sibling's, matching
 ///   `prepare_rules`'s own "no partial admission, but every unit gets its
-///   own chance" discipline one radius wider.
+///   own chance" discipline one radius wider;
+/// - an aggregate duplicate rule ID suppresses phase placement because one
+///   identity cannot own two potentially different anchors;
+/// - phase placement compiles over the independently admitted rule forms after
+///   per-rule loading when their identities are unique, so a broken sibling
+///   cannot hide an unrelated causal composition failure.
 ///
-/// Ordering within the returned `Vec` is: split-stage failures (source
-/// order), then a single blocking intrinsic/scenario/composition failure,
-/// then per-rule failures in `rule_forms`' own order — the SAME ascending
-/// rule-id byte order `prepare_rules` sorts into (§4.2, register row D16,
-/// `prepare_rules`'s own `rules.sort_by` — this function reads that same
-/// pre-sorted-by-`split_content`-encounter-order sequence, since a
-/// diagnostic report has no tick to run and therefore no reason to commit
-/// to the byte-order sort `prepare_rules` performs solely for `run_tick`'s
-/// own iteration).
+/// Ordering within the returned `Vec` is: split-stage failures in source
+/// order, an aggregate duplicate-id failure when present, one blocking
+/// intrinsic/scenario/composition failure when present, then per-rule failures
+/// in encounter order, then a phase-composition failure over admitted
+/// siblings. Executable phase ordering applies to admitted rules, not
+/// diagnostic display order.
 ///
 /// An empty return means the content set loads clean end to end — the SAME
 /// success condition `prepare_rules` reports as `Ok`.
@@ -653,6 +587,16 @@ pub fn diagnose_content_set(
             }),
         }
     }
+    let unique_rule_ids = match check_unique_rule_ids(&rule_forms) {
+        Ok(()) => true,
+        Err(error) => {
+            errors.push(PrepareError::Rule {
+                rule_id: None,
+                error,
+            });
+            false
+        }
+    };
 
     let declared = match parse_intrinsic_decls(&intrinsic_forms) {
         Ok(declared) => declared,
@@ -669,14 +613,10 @@ pub fn diagnose_content_set(
     );
 
     let mut graph = HypergraphStore::new();
-    let loaded = match prelude_src {
-        Some(prelude) => load_scenario_with_prelude(prelude, scenario_src, &mut graph),
-        None => load_scenario(scenario_src, &mut graph),
-    };
-    let scenario = match loaded {
+    let scenario = match hydrate_scenario(scenario_src, prelude_src, &mut graph) {
         Ok(scenario) => scenario,
         Err(e) => {
-            errors.push(PrepareError::Scenario(e));
+            errors.push(e);
             return errors;
         }
     };
@@ -698,12 +638,20 @@ pub fn diagnose_content_set(
         rule_file: "rule",
     };
 
-    for (id, form) in rule_forms {
-        if let Err(error) = load_rule_form(form, &ctx) {
-            errors.push(PrepareError::Rule {
-                rule_id: Some(id),
+    let mut admitted_rule_forms = Vec::with_capacity(rule_forms.len());
+    for (id, form) in &rule_forms {
+        match load_rule_form(form.clone(), &ctx) {
+            Ok(_) => admitted_rule_forms.push((id.clone(), form.clone())),
+            Err(error) => errors.push(PrepareError::Rule {
+                rule_id: Some(id.clone()),
                 error,
-            });
+            }),
+        }
+    }
+
+    if unique_rule_ids && !admitted_rule_forms.is_empty() {
+        if let Err(error) = phase_order::compile(&admitted_rule_forms) {
+            errors.push(prepare_error_from_schedule(error));
         }
     }
 
@@ -742,11 +690,12 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
             .collect(),
     );
 
-    let scenario = match prelude_src {
-        Some(prelude) => load_scenario_with_prelude(prelude, scenario_src, graph)
-            .map_err(PrepareError::Scenario)?,
-        None => load_scenario(scenario_src, graph).map_err(PrepareError::Scenario)?,
-    };
+    // Validate scenario declarations and rule surfaces against a disposable
+    // graph first. This preserves the established scenario -> rule ->
+    // composition error order while ensuring a phase-composition refusal
+    // cannot partially hydrate the caller-owned graph.
+    let mut validation_graph = HypergraphStore::new();
+    let validation_scenario = hydrate_scenario(scenario_src, prelude_src, &mut validation_graph)?;
 
     // The scenario's `deffield` forms ARE the registries for slice 1. When
     // Phase 2's content registries land they replace this wholesale; until
@@ -755,7 +704,7 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
     // `<edge-type>/strength` seeding (and its own duplicate-declaration
     // refusal) is [`seed_implicit_edge_strength_fields`]'s own doc — shared
     // with [`diagnose_content_set`] via [`build_shared_load_inputs`].
-    let inputs = build_shared_load_inputs(&scenario)?;
+    let inputs = build_shared_load_inputs(&validation_scenario)?;
 
     // ONE shared LoadContext for every rule in the content set — the
     // vocabulary/types/ceilings come from the SCENARIO, not from any one
@@ -777,27 +726,37 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
         // enforcement live — whatever the scenario declared (`Some`, or
         // `None` for a scenario declaring none at all, exactly today's
         // unchecked behavior) is what every rule loads against.
-        vocabulary_registry: scenario.vocabulary.as_ref(),
+        vocabulary_registry: validation_scenario.vocabulary.as_ref(),
         rule_file: "rule",
     };
 
     // rule_forms is `Vec<(String, SExpr)>` — each rule's id already paired
     // with its form by split_content (Task 2), so no second extraction
-    // here. Loaded in WHATEVER order split_content returned them (reader-
-    // encounter order, unspecified) — then SORTED by id, ascending byte
-    // order, before returning. This is the one place execution order gets
-    // decided (§4.2, register row D16): sorting here, once, at load time,
-    // means every later stage (TickSession::advance, run_once_into) just
-    // iterates the already-correct order and never re-derives it.
+    // here. Validate a temporary reference view by ascending rule-id bytes so
+    // two invalid source permutations name the same first failing identity.
+    // The preflighted plan then places valid rules on the 34-slot causal
+    // spine; D16 breaks only same-position execution ties by rule-id bytes.
+    // Every later stage just iterates that compiled execution order.
+    let mut validation_order: Vec<_> = rule_forms.iter().collect();
+    validation_order
+        .sort_unstable_by(|(left, _), (right, _)| left.as_bytes().cmp(right.as_bytes()));
     let mut rules = Vec::with_capacity(rule_forms.len());
-    for (id, form) in rule_forms {
-        let loaded = load_rule_form(form, &ctx).map_err(|error| PrepareError::Rule {
+    for (id, form) in validation_order {
+        let loaded = load_rule_form(form.clone(), &ctx).map_err(|error| PrepareError::Rule {
             rule_id: Some(id.clone()),
             error,
         })?;
-        rules.push((id, loaded));
+        rules.push((id.clone(), loaded));
     }
-    rules.sort_by(|(a, _), (b, _)| a.as_bytes().cmp(b.as_bytes()));
+    let rule_order = phase_order::compile(&rule_forms).map_err(prepare_error_from_schedule)?;
+    let rules = rule_order
+        .apply(rules)
+        .map_err(prepare_error_from_schedule)?;
+
+    // All non-mutating validation has succeeded. Hydrate the caller graph
+    // exactly once and retain this pass's content-to-node identities, which
+    // may differ from the disposable graph when the caller was non-empty.
+    let scenario = hydrate_scenario(scenario_src, prelude_src, graph)?;
 
     Ok(PreparedRules {
         rules,
@@ -915,12 +874,13 @@ fn run_prepared_tick<G: GraphSubstrate + CanonicalState>(
     // (D-row Q1) repaired the within-rule half via `run_tick`'s
     // collect-then-apply split; this cross-rule half is a SEPARATE,
     // RECORDED gap — D-row Q14 (the query-evaluation plan's draft-ruling
-    // register) — latent today because every landed rule pack keeps its
-    // system position to exactly one rule (see `vitality.bsl`'s own
-    // header). This is a divergence to fix in its own train, not a
-    // design feature "inherited for free". The ORDER `prepared.rules`
-    // iterates in is rule-id byte order (`prepare_rules`'s sort), not the
-    // frozen engine's tick-position order.
+    // register). This behavior is live and observable: Community,
+    // Consciousness, ControlRatio, and other multi-rule packs intentionally
+    // exchange same-position writes. A shared-prestate repair therefore needs
+    // explicit content dispositions and new behavioral contracts; it is not
+    // supplied by PER-17. The ORDER `prepared.rules`
+    // iterates in is the executable phase registry's causal order; D16
+    // applies only to rules at the same resolved position.
     let mut per_rule_fired = Vec::with_capacity(prepared.rules.len());
     for (id, loaded) in &prepared.rules {
         let outcome = run_tick(
@@ -1005,8 +965,8 @@ impl std::fmt::Display for FuelBoundRow {
 /// Load one content set (scenario, optional declaration prelude, rule
 /// source) through the REAL production pipeline (`prepare_rules` — the same
 /// function `run_once`/`TickSession::new` use) and report its fuel bounds,
-/// one row per rule, in the SAME ascending rule-id byte order
-/// `prepare_rules` already sorts into (§4.2/D16).
+/// one row per rule, in the SAME governed phase order `prepare_rules`
+/// compiles. D16's ascending rule-ID byte order breaks same-position ties.
 ///
 /// This is a REPORT, not a gate: it runs no tick and changes no load
 /// behavior. The "same content the loader loads" guarantee is structural,

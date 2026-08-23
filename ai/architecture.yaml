@@ -1,8 +1,8 @@
 ---
 meta:
   name: Babylon v4 architecture truth record
-  version: "4.0.0"
-  updated: "2026-08-22"
+  version: "4.1.0"
+  updated: "2026-08-23"
   role: current_and_planned_architecture
   authority: CONSTITUTION.md v4.0.0
   interpretation: >-
@@ -115,10 +115,17 @@ implementation_status:
         - evaluator
         - content_digests
         - anchor_validation
+        - executable_phase_anchor_total_order
+        - pre_hydration_phase_composition
         - graph_execution
       execution_truth: >-
-        Anchors validate, but the tick prepares all rules with a global
-        rule-ID byte sort. Rules then mutate the held graph in place.
+        The tick compiles rules onto the governed 34-system causal spine.
+        Namespace homes and explicit boundaries determine position; rule-ID
+        bytes break same-position ties only. Rules then mutate the held graph
+        in place.
+      limitation: >-
+        Same-position rules remain sequential and can observe earlier writes.
+        Whole-tick working-copy rollback remains PER-18.
       absent_from_current_content:
         - executable_shocks
         - executable_player_actions
@@ -250,19 +257,25 @@ implementation_status:
           - forbid_legacy_writes
           - retire_duplicates
 
-  planned_gate_2:
+  gate_2_delivery:
     PER-17:
-      status: planned
+      status: implemented_current
       gate: G2
-      component: executable_phase_anchor_total_order_and_same_phase_composition
+      component: executable_phase_anchor_total_order
+      evidence:
+        - rust/crates/babylon-tick/src/phase_order.rs
+        - rust/crates/babylon-tick/tests/phase_anchor_conformance.rs
+        - ai/decisions/ADR222_executable_bsl_phase_order.yaml
     PER-18:
       status: planned
       gate: G2
-      component: whole_tick_working_copy_rollback
+      component: >-
+        whole_tick_working_copy_rollback_and_canonical_big_endian_auxiliary_register_combined_world_hashing
     PER-19:
       status: planned
       gate: G2
-      component: combined_graph_and_auxiliary_register_hash
+      component: >-
+        bsl_causal_composition_provenance_direct_write_whitelist_and_negative_outcome_write_contracts
 
   planned_gate_3:
     PER-20:

@@ -4,7 +4,10 @@ use bevy::asset::AssetPlugin;
 use bevy::image::ImagePlugin;
 use bevy::prelude::*;
 use bevy::render::texture::TexturePlugin;
+use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
+
+static BEVY_APP_TEST_MUTEX: Mutex<()> = Mutex::new(());
 
 static UNKNOWN_STORY: babylon_client::story::Story = babylon_client::story::Story {
     id: "not-in-catalog",
@@ -31,10 +34,28 @@ fn add_visual_asset_plugins(app: &mut App) {
     app.add_plugins(babylon_client::visual_assets::VisualAssetsPlugin);
 }
 
+fn bevy_app_test_guard() -> MutexGuard<'static, ()> {
+    match BEVY_APP_TEST_MUTEX.lock() {
+        Ok(guard) => guard,
+        // `presentation_rejects_an_unknown_story_id` deliberately panics while holding this
+        // guard, so later app tests must recover the mutex rather than conceal the assertion.
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
 fn visual_assets_app() -> App {
     let mut app = App::new();
     add_visual_asset_plugins(&mut app);
     app.finish();
+    app
+}
+
+fn visual_asset_gallery_app() -> App {
+    let mut app = App::new();
+    add_visual_asset_plugins(&mut app);
+    app.add_plugins(babylon_client::visual_assets::VisualAssetGalleryPlugin);
+    app.finish();
+    app.update();
     app
 }
 
@@ -80,7 +101,25 @@ fn typed_catalog_declares_all_sixteen_images_and_bounded_atlases() {
 }
 
 #[test]
+fn gallery_labels_match_the_fixed_visual_asset_catalog() {
+    let _guard = bevy_app_test_guard();
+    let mut app = visual_asset_gallery_app();
+    let world = app.world_mut();
+    let mut labels =
+        world.query_filtered::<&Text, With<babylon_client::visual_assets::GalleryAssetLabel>>();
+    let actual: Vec<_> = labels.iter(world).map(|text| text.0.clone()).collect();
+    let expected: Vec<_> = babylon_client::visual_assets::VISUAL_ASSET_CATALOG
+        .iter()
+        .map(|descriptor| descriptor.label.to_owned())
+        .collect();
+
+    assert_eq!(actual.len(), 16);
+    assert_eq!(actual, expected);
+}
+
+#[test]
 fn every_typed_embedded_image_loads_within_sixty_four_updates() {
+    let _guard = bevy_app_test_guard();
     let mut app = visual_assets_app();
 
     for _ in 0..64 {
@@ -119,6 +158,7 @@ fn every_typed_embedded_image_loads_within_sixty_four_updates() {
 
 #[test]
 fn presentation_spawns_the_title_mark_readable_title_and_counties_banner() {
+    let _guard = bevy_app_test_guard();
     let mut app = visual_presentation_app(babylon_client::story::counties(), true);
 
     let title_mark_image = {
@@ -154,6 +194,7 @@ fn presentation_spawns_the_title_mark_readable_title_and_counties_banner() {
 
 #[test]
 fn story_banner_tracks_the_selected_story_and_story_card_visibility() {
+    let _guard = bevy_app_test_guard();
     let mut app = visual_presentation_app(babylon_client::story::counties(), true);
 
     app.world_mut()
@@ -180,5 +221,6 @@ fn story_banner_tracks_the_selected_story_and_story_card_visibility() {
 #[test]
 #[should_panic(expected = "no visual banner declared for story \"not-in-catalog\"")]
 fn presentation_rejects_an_unknown_story_id() {
+    let _guard = bevy_app_test_guard();
     let _app = visual_presentation_app(&UNKNOWN_STORY, true);
 }

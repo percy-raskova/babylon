@@ -1,12 +1,14 @@
 //! Embedded visual assets and their typed Bevy loading surface.
 
 mod catalog;
+mod gallery;
 mod presentation;
 
 pub use catalog::{
     FrameKind, InterfaceIcon, MarkerIcon, ProvenanceIcon, SurfaceKind, VisualAssetDescriptor,
     VisualAssetId, VISUAL_ASSET_CATALOG,
 };
+pub use gallery::{GalleryAssetLabel, VisualAssetGalleryPlugin};
 pub use presentation::{ReadableTitle, StoryBanner, TitleMark, VisualPresentationPlugin};
 
 use bevy::asset::{embedded_asset, load_embedded_asset, AssetApp, Assets, Handle};

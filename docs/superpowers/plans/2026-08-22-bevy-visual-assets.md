@@ -1,7 +1,20 @@
 # Bevy visual assets — `Implementation Plan`
 
-<!-- vale off -->
-<!-- Literal code, commands, identifiers, and art terms intentionally exceed the STE lexicon. -->
+<!-- This approved plan contains literal commands, identifiers, and art-direction terms. -->
+<!-- vale ste.Ambiguity = NO -->
+<!-- vale ste.Dictionary = NO -->
+<!-- vale ste.Gerunds = NO -->
+<!-- vale ste.Modals = NO -->
+<!-- vale ste.NounClusters = NO -->
+<!-- vale ste.PassiveVoice = NO -->
+<!-- vale ste.ProcedureLength = NO -->
+<!-- vale ste.Semicolon = NO -->
+<!-- vale ste.SentenceLength = NO -->
+<!-- vale ste.ThisPronoun = NO -->
+<!-- vale ste.UnapprovedWords = NO -->
+<!-- vale strunk.ActiveVoice = NO -->
+<!-- vale write-good.TooWordy = NO -->
+<!-- vale Vale.Spelling = NO -->
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -605,5 +618,3 @@ mise run commit -- $'feat(client): add visual asset review gallery\n\nCo-Authore
   digests are taken from the real bytes before their rows are committed.
 - Type consistency: `VisualAssets`, `VisualAssetId`, `VISUAL_ASSET_CATALOG`,
   `VisualPresentationPlugin`, and `VisualAssetGalleryPlugin` are introduced before their consumers.
-
-<!-- vale on -->

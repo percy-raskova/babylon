@@ -1,7 +1,20 @@
 # Bevy visual assets — `Design`
 
-<!-- vale off -->
-<!-- Art-direction vocabulary intentionally exceeds the procedural STE lexicon. -->
+<!-- This approved design record uses art-direction and API vocabulary, not STE procedure prose. -->
+<!-- vale ste.Ambiguity = NO -->
+<!-- vale ste.Dictionary = NO -->
+<!-- vale ste.Gerunds = NO -->
+<!-- vale ste.Modals = NO -->
+<!-- vale ste.NounClusters = NO -->
+<!-- vale ste.PassiveVoice = NO -->
+<!-- vale ste.ProcedureLength = NO -->
+<!-- vale ste.Semicolon = NO -->
+<!-- vale ste.SentenceLength = NO -->
+<!-- vale ste.ThisPronoun = NO -->
+<!-- vale ste.UnapprovedWords = NO -->
+<!-- vale strunk.ActiveVoice = NO -->
+<!-- vale write-good.TooWordy = NO -->
+<!-- vale Vale.Spelling = NO -->
 
 **Status:** Approved in chat on 2026-08-22
 **License:** AGPL-3.0-or-later
@@ -156,5 +169,3 @@ four concept plates, and four banners form one recognizable visual family, all f
 the typed Bevy resource, the production title and story card use the appropriate art without
 covering live data after dismissal, the gallery exposes the complete suite, and scoped plus
 repository-wide verification remains green.
-
-<!-- vale on -->

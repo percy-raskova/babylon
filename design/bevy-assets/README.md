@@ -76,3 +76,15 @@ cwebp -quiet -q 82 -m 6 /tmp/babylon-asset.png -o rust/crates/babylon-client/src
 After you process each selected source, change the output name to `banner-carceral.webp`,
 `banner-topology.webp`, or `banner-collapse.webp`. Update the SHA-256 digest in `manifest.toml` when
 a runtime file changes.
+
+## Gallery review
+
+Run the standalone review gallery from `rust/`:
+
+```bash
+cargo run -p babylon-client --example visual_assets --locked
+```
+
+The gallery shows all sixteen assets with readable labels. Review crop quality, legibility,
+unintended text, repeated anatomy, and visual-family coherence. Hardware-rendered screenshots
+remain review evidence and are not CI goldens.

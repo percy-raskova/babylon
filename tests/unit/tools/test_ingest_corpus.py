@@ -107,8 +107,8 @@ class TestManifestDrivenEnumeration:
 
         imported, missing = import_corpus_files(corpus_root, corpus_dir, manifest)
 
-        assert imported == 2  # Cope + Classics(marx-only); Fanon absent
-        assert "The Wretched of the Earth (Frantz Fanon)" in missing
+        assert imported == 2  # Cope plus allowed Classics file; Fanon absent.
+        assert missing == ["The Wretched of the Earth (Frantz Fanon)"]
 
         cope_dest = corpus_dir / _dest_filename(manifest.allow_rows()[0])
         assert cope_dest.exists()

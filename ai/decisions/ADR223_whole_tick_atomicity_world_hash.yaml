@@ -1,7 +1,7 @@
 ADR223_whole_tick_atomicity_world_hash:
   status: "accepted"
   date: "2026-08-23"
-  title: >
+  title: >-
     Rust adjudicates each weekly tick on a detached world, publishes graph,
     events, allocator state, and completed time only after total success, and
     names current in-memory identity with a versioned nominal world hash

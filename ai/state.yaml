@@ -79,7 +79,7 @@ meta:
     TickContentHash, and CommittedTickEnvelope remain Gate 3 work.
     PREVIOUS:
     (2026-08-23 GATE 2 — PER-17 EXECUTABLE BSL PHASE ORDER IMPLEMENTED,
-    MERGED AS PR #701) `babylon-tick` now compiles every admitted rule onto
+    REVIEW/PR PENDING) `babylon-tick` now compiles every admitted rule onto
     the frozen 34-system causal spine (15 Material Base, one Action, 18
     Consequence) instead of globally sorting the content set by rule-ID
     bytes. Namespace defaults and explicit before/after boundaries are

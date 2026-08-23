@@ -1,6 +1,6 @@
 meta:
-  version: 1.75.0
-  updated: '2026-08-22'
+  version: 1.76.0
+  updated: '2026-08-23'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
   # ADR NUMBER ALLOCATION (controller ruling 2026-07-21, v1.0.0 parallel lanes —

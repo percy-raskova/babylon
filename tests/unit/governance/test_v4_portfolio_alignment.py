@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 import pytest
 import yaml
@@ -16,6 +16,11 @@ _ARCHITECTURE: Final[Path] = _ROOT / "ai" / "architecture.yaml"
 _STATE: Final[Path] = _ROOT / "ai" / "state.yaml"
 _TUNING: Final[Path] = _ROOT / "ai" / "tuning-standard.yaml"
 _ROADMAP: Final[Path] = _ROOT / "project" / "roadmap.md"
+_ADR_INDEX: Final[Path] = _ROOT / "ai" / "decisions" / "index.yaml"
+_PER_18_ADR: Final[Path] = (
+    _ROOT / "ai" / "decisions" / "ADR223_whole_tick_atomicity_world_hash.yaml"
+)
+_DETERMINISM_REFERENCE: Final[Path] = _ROOT / "docs" / "reference" / "determinism-contract.rst"
 
 _LINEAR_PROJECT: Final[dict[str, str]] = {
     "id": "ebab3603-e391-4110-97e2-97422bc2037e",
@@ -174,9 +179,15 @@ _ROADMAP_DELIVERY_ROOT_PATTERN: Final[re.Pattern[str]] = re.compile(
     re.MULTILINE,
 )
 _POSTGRESQL_ADR: Final[str] = "ADR220_rust_owned_postgresql_persistence_boundary"
+_PER_18_ADR_KEY: Final[str] = "ADR223_whole_tick_atomicity_world_hash"
+_PER_18_ADR_TITLE: Final[str] = (
+    "Rust adjudicates each weekly tick on a detached world, publishes graph, "
+    "events, allocator state, and completed time only after total success, and "
+    "names current in-memory identity with a versioned nominal world hash"
+)
 
 
-def _yaml_document(path: Path) -> dict[str, object]:
+def _yaml_document(path: Path) -> dict[str, Any]:
     """Load one required YAML mapping."""
     document = yaml.safe_load(path.read_text(encoding="utf-8"))
     assert isinstance(document, dict), path
@@ -459,12 +470,73 @@ def test_state_is_one_historical_ledger_not_a_status_authority() -> None:
         "adr": _POSTGRESQL_ADR,
         "completion_commit": "9b4c9b2e",
     }
+    assert snapshot["bsl_phase_order"] == {
+        "status": "implemented_on_dev",
+        "issue": "PER-17",
+        "adr": "ADR222_executable_bsl_phase_order",
+        "merge_commit": "5a0ef2a9",
+    }
+    assert snapshot["whole_tick_atomicity"] == {
+        "status": "implemented_on_PER-18_branch",
+        "issue": "PER-18",
+        "adr": _PER_18_ADR_KEY,
+        "branch": "codex/per-18-whole-tick-atomicity",
+        "scope": "in_memory_only",
+        "remaining_gate_2": ["PER-19"],
+    }
     assert snapshot["attributed_membership_payload"] == {
         "status": "planned",
         "horizon": "Research",
         "issue": "PER-44",
         "current_truth": "empty_unhashed_unwritten_unconsumed",
     }
+    history = " ".join(meta["truth_status"].split())
+    assert (
+        "(2026-08-23 GATE 2 — PER-17 EXECUTABLE BSL PHASE ORDER IMPLEMENTED, REVIEW/PR PENDING)"
+    ) in history
+
+
+def test_per_18_adr_and_catalog_are_exact() -> None:
+    """The accepted decision and catalog row cannot pass as an empty placeholder."""
+    catalog = _yaml_document(_ADR_INDEX)
+    assert catalog["meta"] == {
+        "version": "1.76.0",
+        "updated": "2026-08-23",
+        "description": "Architecture Decision Records Index",
+        "format": "See individual ADR files in this directory",
+    }
+    assert catalog["decisions"][_PER_18_ADR_KEY] == {
+        "title": _PER_18_ADR_TITLE,
+        "status": "accepted",
+        "date": "2026-08-23",
+        "file": "ADR223_whole_tick_atomicity_world_hash.yaml",
+    }
+    document = _yaml_document(_PER_18_ADR)
+    assert tuple(document) == (_PER_18_ADR_KEY,)
+    decision = document[_PER_18_ADR_KEY]
+    assert decision["status"] == "accepted"
+    assert decision["date"] == "2026-08-23"
+    assert decision["title"] == _PER_18_ADR_TITLE
+    assert tuple(decision["related"]) == (
+        "ADR179_topology_spine_director_rulings",
+        _POSTGRESQL_ADR,
+        "ADR221_game_first_refoundation_v4",
+        "ADR222_executable_bsl_phase_order",
+    )
+
+
+def test_determinism_reference_uses_v4_authority_and_honest_scope() -> None:
+    """Current hash guidance cannot cite superseded law or promise missing layouts."""
+    reference = _DETERMINISM_REFERENCE.read_text(encoding="utf-8")
+    index = (_ROOT / "docs" / "reference" / "index.rst").read_text(encoding="utf-8")
+    assert "Determinism Contract (Constitution Article V)" in index
+    assert "Current constitutional authority is Article V" in reference
+    assert "outer ``NominalWorldHash`` composition" in reference
+    assert "no byte layout is implemented or specified" in reference
+    assert "CONSTITUTION.md:250" not in reference
+    combined = " ".join(f"{reference}\n{index}".lower().split())
+    stale_clause = re.search(r"(?<!historical v3 clause )\b[IVX]+\.\d+(?:\.\d+)?\b", combined)
+    assert stale_clause is None, stale_clause.group() if stale_clause else ""
 
 
 def test_project_corpus_publishes_the_bounded_catchup_path() -> None:

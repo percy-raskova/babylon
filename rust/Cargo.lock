@@ -412,6 +412,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "babylon-persistence"
+version = "0.1.0"
+dependencies = [
+ "babylon-kernel",
+ "uuid",
+]
+
+[[package]]
 name = "babylon-tick"
 version = "0.1.0"
 dependencies = [

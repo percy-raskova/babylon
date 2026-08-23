@@ -31,3 +31,4 @@ pub mod severity;
 pub mod story;
 pub mod tessellate;
 pub mod ui;
+pub mod visual_assets;

@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import importlib.util
+import os
+import stat
 import subprocess
 import sys
-from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -37,15 +38,31 @@ def test_overfull_migration_directory_stops_at_its_sentinel_entry(
 ) -> None:
     """Directory discovery must reject at its bounded sentinel entry."""
 
-    def entries() -> Iterator[Path]:
-        for index in range(exporter.MAX_MIGRATION_DIRECTORY_ENTRIES + 1):
-            yield Path(f"{index:04d}_migration.sql")
-        raise AssertionError("migration discovery consumed beyond its sentinel entry")
+    class ScandirContext:
+        """Bounded fake directory stream."""
 
-    def iterdir(_: Path) -> Iterator[Path]:
-        return entries()
+        def __init__(self) -> None:
+            self.index = 0
 
-    monkeypatch.setattr(Path, "iterdir", iterdir)
+        def __enter__(self) -> ScandirContext:
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            return None
+
+        def __iter__(self) -> ScandirContext:
+            return self
+
+        def __next__(self) -> object:
+            if self.index == exporter.MAX_MIGRATION_DIRECTORY_ENTRIES + 1:
+                raise AssertionError("directory scan consumed beyond its sentinel entry")
+            self.index += 1
+            return object()
+
+    def scandir(_: Path) -> ScandirContext:
+        return ScandirContext()
+
+    monkeypatch.setattr(os, "scandir", scandir)
     with pytest.raises(RuntimeError, match=r"migration directory: entries exceed"):
         exporter._numbered_migrations()
 
@@ -90,6 +107,87 @@ def test_oversized_fixture_is_rejected_without_an_unbounded_read(
     monkeypatch.setattr(Path, "read_bytes", read_bytes)
     assert not exporter._check(fixture, b"expected")
     assert not read_bytes_called
+
+
+def test_frame_rejects_over_budget_text_before_encoding() -> None:
+    """A character-length overflow must not invoke a costly custom encoder."""
+
+    class EncodingTrap(str):
+        """String that fails if the exporter encodes it."""
+
+        def encode(self, *_: object, **__: object) -> bytes:
+            raise AssertionError("over-budget text must not be encoded")
+
+    chunk = EncodingTrap("x" * exporter.MAX_BYTES)
+    with pytest.raises(ValueError, match=r"frame: framed bytes exceed"):
+        exporter._frame([chunk], label="frame")
+
+
+def test_frame_checks_encoded_multibyte_length_before_nul_scan() -> None:
+    """UTF-8 expansion must still respect the remaining byte budget."""
+    chunk = "é" * (exporter.MAX_BYTES // 2)
+    with pytest.raises(ValueError, match=r"frame: framed bytes exceed"):
+        exporter._frame([chunk], label="frame")
+
+
+def test_frame_preserves_empty_chunk_precedence_after_a_full_chunk() -> None:
+    """An empty chunk remains invalid before any aggregate-size error."""
+    full_chunk = "x" * (exporter.MAX_BYTES - 1)
+    with pytest.raises(ValueError, match=r"frame: empty chunk 1"):
+        exporter._frame([full_chunk, ""], label="frame")
+
+
+@pytest.mark.parametrize(
+    ("mode", "size"),
+    [
+        (stat.S_IFREG, exporter.MAX_BYTES + 1),
+        (stat.S_IFDIR, len(b"expected")),
+    ],
+)
+def test_fixture_check_uses_one_descriptor_and_stops_before_read(
+    monkeypatch: pytest.MonkeyPatch,
+    mode: int,
+    size: int,
+) -> None:
+    """Oversize and nonregular fixtures must stop after descriptor metadata."""
+    open_calls = 0
+
+    class Fixture:
+        """Descriptor-backed fixture trap."""
+
+        def __enter__(self) -> Fixture:
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            return None
+
+        def fileno(self) -> int:
+            return 41
+
+        def read(self, _: int = -1) -> bytes:
+            raise AssertionError("metadata-rejected fixture must not be read")
+
+    class FixturePath:
+        """Path-shaped trap for the exporter only."""
+
+        def open(self, *_: object, **__: object) -> Fixture:
+            nonlocal open_calls
+            open_calls += 1
+            return Fixture()
+
+        def stat(self, *_: object, **__: object) -> SimpleNamespace:
+            raise AssertionError("fixture checks must not use Path.stat()")
+
+        def __str__(self) -> str:
+            return "fixture.bin"
+
+    def fstat(descriptor: int) -> SimpleNamespace:
+        assert descriptor == 41
+        return SimpleNamespace(st_mode=mode, st_size=size)
+
+    monkeypatch.setattr(os, "fstat", fstat)
+    assert not exporter._check(FixturePath(), b"expected")
+    assert open_calls == 1
 
 
 def test_numbered_migrations_preserve_unique_missing_and_duplicate_results(

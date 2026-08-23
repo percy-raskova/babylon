@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import os
+import stat
 import sys
 from collections.abc import Sequence
 from itertools import islice
@@ -24,7 +26,8 @@ def _numbered_migrations() -> list[str]:
     """Read exactly one bounded source file for each required migration version."""
     migration_dir = SRC / "babylon/persistence/migrations"
     try:
-        entries = list(islice(migration_dir.iterdir(), MAX_MIGRATION_DIRECTORY_ENTRIES + 1))
+        with os.scandir(migration_dir) as directory:
+            entries = list(islice(directory, MAX_MIGRATION_DIRECTORY_ENTRIES + 1))
     except FileNotFoundError:
         entries = []
     if len(entries) > MAX_MIGRATION_DIRECTORY_ENTRIES:
@@ -48,13 +51,13 @@ def _numbered_migrations() -> list[str]:
     return chunks
 
 
-def _migration_matches(entries: Sequence[Path], version: int) -> list[Path]:
+def _migration_matches(entries: Sequence[os.DirEntry[str]], version: int) -> list[Path]:
     """Return no more than the two source paths needed to detect duplicates."""
     prefix = f"{version:04d}_"
     matches: list[Path] = []
     for entry in islice(entries, MAX_MIGRATION_DIRECTORY_ENTRIES):
         if entry.name.startswith(prefix) and entry.name.endswith(".sql") and entry.is_file():
-            matches.append(entry)
+            matches.append(Path(entry.path))
             if len(matches) == 2:
                 break
     return matches
@@ -78,12 +81,14 @@ def _frame(chunks: Sequence[str], *, label: str) -> bytes:
         raise ValueError(f"{label}: {len(chunks)} chunks exceeds {MAX_CHUNKS}")
     framed = bytearray()
     for index, chunk in enumerate(islice(chunks, MAX_CHUNKS)):
-        encoded = chunk.encode("utf-8")
-        framed_length = len(framed) + len(encoded) + 1
-        if framed_length > MAX_BYTES:
-            raise ValueError(f"{label}: framed bytes exceed {MAX_BYTES}")
-        if not encoded:
+        if not chunk:
             raise ValueError(f"{label}: empty chunk {index}")
+        remaining = MAX_BYTES - len(framed) - 1
+        if len(chunk) > remaining:
+            raise ValueError(f"{label}: framed bytes exceed {MAX_BYTES}")
+        encoded = chunk.encode("utf-8")
+        if len(encoded) > remaining:
+            raise ValueError(f"{label}: framed bytes exceed {MAX_BYTES}")
         if b"\0" in encoded:
             raise ValueError(f"{label}: embedded NUL in chunk {index}")
         framed.extend(encoded)
@@ -111,15 +116,21 @@ def _expected() -> tuple[bytes, bytes]:
 
 def _check(path: Path, expected: bytes) -> bool:
     try:
-        actual_size = path.stat().st_size
+        with path.open("rb") as fixture:
+            metadata = os.fstat(fixture.fileno())
+            if not stat.S_ISREG(metadata.st_mode):
+                print(f"invalid fixture: {path} is not a regular file", file=sys.stderr)
+                return False
+            if metadata.st_size != len(expected):
+                print(f"stale fixture: {path}", file=sys.stderr)
+                return False
+            actual = fixture.read(len(expected) + 1)
     except FileNotFoundError:
         print(f"missing fixture: {path}", file=sys.stderr)
         return False
-    if actual_size != len(expected):
-        print(f"stale fixture: {path}", file=sys.stderr)
+    except OSError as error:
+        print(f"fixture access failed: {path}: {error}", file=sys.stderr)
         return False
-    with path.open("rb") as fixture:
-        actual = fixture.read(len(expected) + 1)
     if actual != expected:
         print(f"stale fixture: {path}", file=sys.stderr)
         return False

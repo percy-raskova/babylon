@@ -1,0 +1,344 @@
+"""Behavioral contract for the canonical T0 theory representation."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Final
+
+import pytest
+import yaml
+
+from babylon.intelligence.corpus_manifest import load_bundled_manifest
+
+pytestmark = pytest.mark.unit
+
+_ROOT: Final[Path] = Path(__file__).parents[3]
+_MACHINE_THEORY: Final[Path] = _ROOT / "ai" / "theory.yaml"
+_HUMAN_THEORY: Final[Path] = _ROOT / "docs" / "concepts" / "theory.rst"
+_MANTRAS: Final[Path] = _ROOT / "ai" / "mantras.yaml"
+_CORPUS_POLICY_MODULE: Final[Path] = (
+    _ROOT / "src" / "babylon" / "intelligence" / "corpus_manifest.py"
+)
+_CORPUS_POLICY_TEST: Final[Path] = (
+    _ROOT / "tests" / "unit" / "intelligence" / "test_corpus_manifest.py"
+)
+_INGEST_CORPUS_TEST: Final[Path] = _ROOT / "tests" / "unit" / "tools" / "test_ingest_corpus.py"
+_EXCLUSION_HYGIENE_PATHS: Final[tuple[Path, ...]] = (
+    _MACHINE_THEORY,
+    _HUMAN_THEORY,
+    _MANTRAS,
+    _CORPUS_POLICY_MODULE,
+    _CORPUS_POLICY_TEST,
+    _INGEST_CORPUS_TEST,
+)
+
+_CONSTRAINT_IDS: Final[frozenset[str]] = frozenset(
+    {
+        "accumulation_outcomes_are_contingent",
+        "imperial_rent_changes_relations_not_destiny",
+        "survival_is_a_heterogeneous_aggregate",
+        "class_subjectivity_is_historical",
+        "consciousness_is_relational_and_multidirectional",
+        "outcomes_are_history_recognizers",
+        "ecology_constrains_without_predetermining",
+    }
+)
+_EVIDENCE_CLASSES: Final[frozenset[str]] = frozenset(
+    {"Observed", "Derived", "Calibrated", "Designed"}
+)
+_SOURCE_HASHES: Final[tuple[tuple[str, str], ...]] = (
+    (
+        "neel_hinterland_2018",
+        "2799eb76f267551afa04a6bb76ffed4a89c5e1fc387c3744fcca3be3b00b4525",
+    ),
+    (
+        "neel_hellworld_2025",
+        "43127a54390f9fb798cb644f0e5af0f8228b79cc5c392b1b472b5dc96be8fe1e",
+    ),
+    (
+        "party_practice_clipping",
+        "373c2b594f932cbc7fcf590a784e6b48b9031a9bf7363e9b33a58fdc074454b1",
+    ),
+    (
+        "cpusa_organizers_manual_ch3_1935",
+        "6d27b580c657f68f35e8d4b5b2ac6ea6b076050b1de7a82cb0b615cce12f44fb",
+    ),
+)
+
+_EXPECTED_CONSTRAINTS: Final[dict[str, dict[str, str]]] = {
+    "accumulation_outcomes_are_contingent": {
+        "evidence_class": "Derived",
+        "executable_status": "theoretical_constraint",
+        "statement": (
+            "Accumulation produces pressures and limits; paths and outcomes remain contingent."
+        ),
+    },
+    "imperial_rent_changes_relations_not_destiny": {
+        "evidence_class": "Derived",
+        "executable_status": "theoretical_constraint",
+        "statement": (
+            "Imperial rent changes incentives and causal pathways; organization, "
+            "crisis, coercion, solidarity, and countervailing relations remain live "
+            "variables."
+        ),
+    },
+    "survival_is_a_heterogeneous_aggregate": {
+        "evidence_class": "Derived",
+        "executable_status": "theoretical_constraint",
+        "statement": (
+            "Survival is an aggregate over heterogeneous material distributions "
+            "and relations. No fixed response curve is lawful."
+        ),
+    },
+    "class_subjectivity_is_historical": {
+        "evidence_class": "Derived",
+        "executable_status": "theoretical_constraint",
+        "statement": (
+            "Classes are positions and relations. Political practice and "
+            "subjectivity are historical results."
+        ),
+    },
+    "consciousness_is_relational_and_multidirectional": {
+        "evidence_class": "Derived",
+        "executable_status": "theoretical_constraint",
+        "statement": (
+            "Consciousness and line travel through attributed organization and "
+            "solidarity relations in multiple directions."
+        ),
+    },
+    "outcomes_are_history_recognizers": {
+        "evidence_class": "Derived",
+        "executable_status": "theoretical_constraint",
+        "statement": (
+            "Outcomes are recognizers over histories, not downstream writes or promised verdicts."
+        ),
+    },
+    "ecology_constrains_without_predetermining": {
+        "evidence_class": "Derived",
+        "executable_status": "theoretical_constraint",
+        "statement": (
+            "Ecological degradation and care capacity constrain choices; "
+            "construction, repair, and redistribution can change consequences "
+            "without promising equilibrium."
+        ),
+    },
+}
+
+_EXPECTED_SOURCES: Final[dict[str, dict[str, object]]] = {
+    "neel_hinterland_2018": {
+        "title": "Hinterland: America's New Landscape of Class and Conflict",
+        "edition": "Reaktion, 2018, supplied PDF",
+        "sha256": _SOURCE_HASHES[0][1],
+        "evidence_class": "Observed",
+        "executable_authority": False,
+        "availability": "supplied_external_artifact",
+        "scope": (
+            "Constrains relational territorial ontology. Supplies no coefficient, "
+            "threshold, curve, or guaranteed outcome."
+        ),
+        "anchors": ["PDF p. 18 (printed p. 17)"],
+    },
+    "neel_hellworld_2025": {
+        "title": "Hellworld: The Human Species and the Planetary Factory",
+        "edition": "Brill, 2025, supplied PDF",
+        "sha256": _SOURCE_HASHES[1][1],
+        "evidence_class": "Observed",
+        "executable_authority": False,
+        "availability": "supplied_external_artifact",
+        "scope": (
+            "Constrains relations among production, circulation, reproduction, "
+            "ecology, finance, and state power. Supplies no executable value."
+        ),
+        "anchors": [
+            "PDF pp. 170-171 (printed pp. 143-144)",
+            "PDF p. 239 (printed p. 212)",
+        ],
+    },
+    "party_practice_clipping": {
+        "title": "theory-of-the-party-ill-will.md supplied clipping",
+        "edition": "complete supplied clipping",
+        "sha256": _SOURCE_HASHES[2][1],
+        "evidence_class": "Observed",
+        "executable_authority": False,
+        "availability": "repository_file",
+        "repository_path": "ai/_inbox/archive/theory-of-the-party-ill-will.md",
+        "scope": (
+            "Supports organization and subjectivity as products of situated "
+            "practice. Does not authorize a party score, universal form, or "
+            "scripted subject."
+        ),
+        "anchors": ["complete supplied clipping"],
+    },
+    "cpusa_organizers_manual_ch3_1935": {
+        "title": "Organizers' Manual, chapter 3",
+        "edition": "Communist Party USA, 1935, local HTML",
+        "sha256": _SOURCE_HASHES[3][1],
+        "evidence_class": "Observed",
+        "executable_authority": False,
+        "availability": "optional_local_mirror",
+        "relative_locator": ("history/usa/parties/cpusa/1935/07/organisers-manual/ch03.htm"),
+        "scope": (
+            "Supports rooted work and iterative evaluation. Hierarchy, fractions, "
+            "secrecy rules, membership thresholds, and numeric guidance remain "
+            "historical particulars rather than Babylon universals."
+        ),
+        "anchors": [
+            "HTML lines 45-61",
+            "HTML lines 265-271",
+            "HTML lines 464-505",
+            "HTML lines 1175-1190",
+        ],
+    },
+}
+_SOURCE_BLOCK_MARKERS: Final[tuple[tuple[str, str], ...]] = (
+    ("neel_hinterland_2018", "``neel_hellworld_2025``"),
+    ("neel_hellworld_2025", "``party_practice_clipping``"),
+    ("party_practice_clipping", "``cpusa_organizers_manual_ch3_1935``"),
+    ("cpusa_organizers_manual_ch3_1935", "Source Policy"),
+)
+
+
+def _machine_document() -> dict[str, object]:
+    document = yaml.safe_load(_MACHINE_THEORY.read_text(encoding="utf-8"))
+    assert isinstance(document, dict)
+    return document
+
+
+def _normalized_text(path: Path) -> str:
+    return " ".join(path.read_text(encoding="utf-8").casefold().split())
+
+
+def _normalized_value(value: str) -> str:
+    return " ".join(value.casefold().split())
+
+
+def _director_excluded_tokens() -> tuple[str, ...]:
+    first, second, third = load_bundled_manifest().director_excluded_rows()
+    rows = (first, second, third)
+    tokens = tuple(
+        token
+        for row in rows
+        for token in (
+            row.author.casefold(),
+            row.author.rpartition(" ")[2].casefold(),
+            Path(row.path_glob).parts[0].casefold(),
+        )
+    )
+    return tuple(dict.fromkeys(tokens))
+
+
+def test_machine_theory_has_exact_t0_schema_and_authority() -> None:
+    document = _machine_document()
+
+    assert tuple(document) == (
+        "meta",
+        "theory_boundary",
+        "constraints",
+        "reference_behavior",
+        "source_policy",
+        "sources",
+        "ai_assistant_guidelines",
+    )
+    meta = document["meta"]
+    assert isinstance(meta, dict)
+    assert meta["version"] == "2.0.0"
+    assert meta["authority"] == "CONSTITUTION.md v4.0.0"
+    assert meta["architecture"] == "docs/concepts/architecture.rst"
+    assert meta["reserved_line"] == "Marxist-Leninist-Maoist Third Worldist (MLM-TW)"
+
+
+def test_machine_theory_declares_exact_constraint_set() -> None:
+    constraints = _machine_document()["constraints"]
+    assert isinstance(constraints, dict)
+    assert constraints == _EXPECTED_CONSTRAINTS
+
+
+@pytest.mark.parametrize("constraint_id", tuple(sorted(_CONSTRAINT_IDS)))
+def test_each_constraint_is_derived_and_non_executable(constraint_id: str) -> None:
+    constraints = _machine_document()["constraints"]
+    assert isinstance(constraints, dict)
+    constraint = constraints[constraint_id]
+    assert isinstance(constraint, dict)
+    assert constraint["evidence_class"] == "Derived"
+    assert constraint["executable_status"] == "theoretical_constraint"
+    assert constraint["evidence_class"] in _EVIDENCE_CLASSES
+
+
+@pytest.mark.parametrize(("source_id", "expected_hash"), _SOURCE_HASHES)
+def test_source_ledger_pins_bounded_observed_evidence(
+    source_id: str,
+    expected_hash: str,
+) -> None:
+    sources = _machine_document()["sources"]
+    assert isinstance(sources, dict)
+    source = sources[source_id]
+    assert isinstance(source, dict)
+    assert source["sha256"] == expected_hash
+    assert source["evidence_class"] == "Observed"
+    assert source["executable_authority"] is False
+    assert source["scope"]
+    assert source["anchors"]
+
+
+def test_source_ledger_has_exact_structured_rows() -> None:
+    assert _machine_document()["sources"] == _EXPECTED_SOURCES
+
+
+def test_theory_source_policy_routes_to_one_canonical_denial_manifest() -> None:
+    policy = _machine_document()["source_policy"]
+    assert isinstance(policy, dict)
+    assert policy == {
+        "director_exclusions": "src/babylon/data/corpus/manifest.yaml",
+        "narrator_ingestion": "unchanged",
+        "approved_research_exception": "cpusa_organizers_manual_ch3_1935",
+        "research_exception_scope": "bounded_research_evidence_only",
+    }
+
+
+def test_machine_theory_makes_frozen_reference_status_explicit() -> None:
+    reference = _machine_document()["reference_behavior"]
+    assert isinstance(reference, dict)
+    assert reference == {
+        "frozen_python": {
+            "status": "frozen_reference",
+            "authority": "behavioral_reference_not_live_rust_law",
+            "architecture": "docs/concepts/architecture.rst",
+        },
+        "historical_formulas": {
+            "status": "reference_or_surrogate_only",
+            "executable_binding_claimed": False,
+        },
+    }
+
+
+def test_machine_theory_has_no_stale_implementation_claims() -> None:
+    text = _MACHINE_THEORY.read_text(encoding="utf-8")
+    assert "implemented_in:" not in text
+    assert "src/babylon/systems/formulas/" not in text
+    assert "src/babylon/engine/systems/" not in text
+
+
+@pytest.mark.parametrize("token", _director_excluded_tokens())
+@pytest.mark.parametrize("path", _EXCLUSION_HYGIENE_PATHS)
+def test_active_policy_and_theory_surfaces_exclude_director_denied_tokens(
+    token: str,
+    path: Path,
+) -> None:
+    assert token not in _normalized_text(path)
+
+
+_RETIRED_CATEGORICAL_PHRASES = (
+    "revolution in the imperial core is structurally impossible",
+    "revolutionary potential is concentrated in the periphery",
+    "p(s|a) = sigmoid",
+    "consciousness flows unidirectionally",
+    "the tragedy of inevitability",
+    "only delays inevitable",
+    "terminal bifurcation",
+    "the default is fascism",
+)
+
+
+@pytest.mark.parametrize("retired_phrase", _RETIRED_CATEGORICAL_PHRASES)
+def test_machine_theory_rejects_retired_claims(retired_phrase: str) -> None:
+    assert retired_phrase not in _normalized_text(_MACHINE_THEORY)

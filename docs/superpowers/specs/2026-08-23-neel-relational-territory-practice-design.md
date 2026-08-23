@@ -474,10 +474,24 @@ The county-to-CZ row identifies the 1990 ERS commuting-zone artifact and its
 digest. The MSA gap names the missing pinned OMB delineation vintage and digest
 as its remedy; until that artifact exists, no MSA membership row exists even if
 a legacy mapping carries `19820`. V1 may present the registered QCEW, LODES,
-Census, and carceral metrics at their native supported scales. It may present
-the registered H3 metrics only after PER-21 lands; before then it presents the
-typed gaps above. It must present these as unknown or not computed when
-appropriate:
+Census, and carceral metrics at their native supported scales only when every
+fact coordinate resolves consistently through its pinned dimension artifacts.
+
+The 2026-08-23 T1 artifact audit found a concrete Census provenance conflict in
+`data-artifacts-v7`: the selected 2023 fact rows carry `source_id = 2`, while
+the pinned source dimension maps 2 to the 2010 ACS five-year source and maps 4
+to the 2023 source; the three fact tables contain no matching source-4 rows at
+that 2023 coordinate. The control therefore emits no `Observed` Census housing,
+rent, or rent-burden facet from those rows. It retains the conflicting rows and
+all dimension coordinates in the extraction ledger and emits one `UNKNOWN` gap
+per registered Census metric with reason
+`PROVENANCE_COORDINATE_CONFLICT` and required producer `PER-28`. A corrected,
+reproducibly pinned artifact may close those gaps later; changing the source id
+inside T1 or relabeling source 2 as 2023 is forbidden.
+
+V1 may present the registered H3 metrics only after PER-21 lands; before then it
+presents the typed gaps above. It must present these as unknown or not computed
+when appropriate:
 
 - county freight and road-corridor intensity;
 - eviction, foreclosure, and absentee ownership scaffolds;
@@ -500,6 +514,8 @@ The language-neutral contract suite must prove:
 - unsupported downscaling fails;
 - CZ and MSA remain parallel;
 - missing governed OMB evidence yields one MSA gap and no membership row;
+- the pinned source/time mismatch yields three Census provenance gaps and no
+  Census facet until PER-28 supplies corrected artifacts;
 - before PER-21, each requested H3 metric yields a typed gap and no H3-bearing
   identity or vector; after PER-21, official cross-language vectors are reused;
 - one n-member hyperedge remains one n-member hyperedge;
@@ -585,7 +601,7 @@ submit_after_tick: u64
 resolve_tick: u64 = checked_add(submit_after_tick, 1)
 actor_org_id: u64 NodeId
 practice_id: u8 PracticeIdV1
-target_domain: u8 closed NodeType code
+target_domain: u8 PracticeTargetDomainV1 code naming a closed NodeType
 target_node_id: u64 NodeId
 quoted_content_digest: [u8; 32]
 quoted_action_budget_cost: u32
@@ -648,6 +664,19 @@ not observe one another. Permuting or alpha-renaming actors therefore cannot
 change a material sum. Actor-renaming twins must preserve results under the
 corresponding graph isomorphism.
 
+The flat-cadence proof uses two additional exact identities. Canonical
+parameter-sequence bytes are `parameters_count_u16_be ||
+length_framed_parameters` from the intent contract, and
+`parameter_bytes_digest = SHA256(ASCII("babylon.practice-parameter-bytes.v1")
+|| 0x00 || canonical_parameter_sequence_bytes)`. The V1 fixed-target policy
+bytes are `ASCII("babylon.fixed-target-selection.v1") || 0x00 ||
+target_domain_u8 || target_node_id_u64_be`; their SHA-256 digest is
+`target_selection_policy_digest`. A different policy kind requires a new
+closed byte contract; a caller cannot supply an unexplained digest. These
+identities let the post-commit evaluator prove constant practice, fixed target
+selection, governed cost, and parameter bytes without interpreting an opaque
+intent digest.
+
 Submission validates against the last committed state and pending ledger. A
 rejection returns a stable `PracticeSubmissionRejectionV1` and creates no
 receipt, Archive subject, outbox row, graph write, budget debit, or durable
@@ -664,8 +693,8 @@ hard prerequisites, not claims about live behavior.
 quota. It is not an efficacy multiplier or a substitute for `Capacity`, goods,
 labor, money, treasury, or escrow.
 
-The shared campaign prelude declares `organization/action-budget` as a
-non-aggregating BSL `int` field whose live graph storage is binary64-exact
+The shared campaign prelude declares `organization/action-budget` as an
+intensive BSL `int` field whose live graph storage is binary64-exact
 `u32`, not a new typed graph lane. Campaign setup is the sole initial writer
 and seeds every active organization from the `Designed`
 `practice/action-budget-initial` `GameDefines` row. The player organization's
@@ -679,6 +708,10 @@ fractional part and an exact `u32 -> f64 -> u32` round trip. It performs all
 budget arithmetic with checked `u32` operations before the one exact `u32` to
 binary64 graph write. Because every `u32` is exactly representable in binary64,
 this contract needs no new mathematical or graph-storage primitive.
+
+The cast-back check is bitwise canonical: storage bits must equal
+`f64::from(value).to_bits()` after the checked conversion. Thus `-0.0` refuses
+instead of becoming a second stored representation of integer zero.
 
 `MAX_ORGANIZATIONS = 4,096` and
 `MAX_ORG_SOLIDARITY_EDGES_PER_ORG = 256` are `Designed` compile-time scenario
@@ -1250,6 +1283,11 @@ operation_u8 || stable_row_id_digest_32
 || control_row_digest_or_zero_32 || intervention_row_digest_or_zero_32
 ```
 
+V1 admits at most 65,535 delta rows. Row 65,536 refuses before sorting or
+payload allocation. The ceiling is `Designed`: it keeps comparison work and
+the maximum 6,356,900-byte payload statically bounded without changing which
+ledger differences the rows represent.
+
 Rows sort by `stable_row_id_digest`; duplicates fail. Operation codes are
 `0 = ADD`, `1 = REMOVE`, and `2 = REPLACE`. `ADD` requires a zero control
 digest and a non-zero intervention digest; `REMOVE` requires the inverse;
@@ -1480,17 +1518,19 @@ misstate that completed scope.
    prohibited claims.
 3. **T1 contract:** schema, canonical vectors, rejection corpus, and
    administrative Detroit-Windsor fixtures.
-4. **T3 groundwork:** classifier and byte vectors, non-authorability checks,
+4. **T2 contract groundwork:** closed practice/input codecs, detached
+   ActionBudget math, bounded topology admission, and shared declarations.
+5. **T3 groundwork:** classifier and byte vectors, non-authorability checks,
    the scoped opt-in mechanic-footprint profile, and mutation specifications.
-5. **Gate 3 dependencies:** committed envelope, complete content/reference
+6. **Gate 3 dependencies:** committed envelope, complete content/reference
    identity, Archive outbox, fog, and decision-surface contract.
-6. **Gate 5 dependencies:** next-week intent input, ActionBudget, Organize,
+7. **Gate 5 dependencies:** next-week intent input, ActionBudget, Organize,
    Agitate, antagonist, decay, targeted receipt, and dossier update.
-7. **G6 dependency:** inventory, routing, and labor enable stock-only Mutual
+8. **G6 dependency:** inventory, routing, and labor enable stock-only Mutual
    Aid. Any route that uses money, credit, or escrow also depends on G7.
-8. **PER-44 activation and producer:** attributed membership payload,
+9. **PER-44 activation and producer:** attributed membership payload,
    territorial join, and the separately owned encounter-to-membership resolver.
-9. **T3 live proof:** control twins, flat-cadence and time-shifted inputs,
+10. **T3 live proof:** control twins, flat-cadence and time-shifted inputs,
    topology/distribution mutations,
    persistence comparison, and player-facing Archive evidence.
 

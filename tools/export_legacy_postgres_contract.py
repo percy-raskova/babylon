@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Sequence
+from itertools import islice
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,7 +23,7 @@ def _numbered_migrations() -> list[str]:
     migration_dir = SRC / "babylon/persistence/migrations"
     chunks: list[str] = []
     for version in range(10, 45):
-        matches = sorted(migration_dir.glob(f"{version:04d}_*.sql"))
+        matches = list(islice(migration_dir.glob(f"{version:04d}_*.sql"), 2))
         if len(matches) != 1:
             raise RuntimeError(f"migration {version:04d}: expected one file, found {len(matches)}")
         chunks.append(matches[0].read_text(encoding="utf-8"))

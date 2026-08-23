@@ -44,6 +44,14 @@ fn malformed_or_unbounded_inputs_fail_loudly() {
         Err(ManifestError::EmptySet)
     );
     assert_eq!(
+        MigrationManifest::from_chunks("empty-chunk", &[b""]),
+        Err(ManifestError::EmptyChunk { index: 0 })
+    );
+    assert_eq!(
+        MigrationManifest::from_nul_framed("empty-interior", b"a\0\0"),
+        Err(ManifestError::EmptyChunk { index: 1 })
+    );
+    assert_eq!(
         MigrationManifest::from_nul_framed("unterminated", b"a"),
         Err(ManifestError::MissingTrailingNul)
     );

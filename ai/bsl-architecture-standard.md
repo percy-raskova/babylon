@@ -529,16 +529,20 @@ Legend: **PORTED** = reproduced in Rust, ordering/bytes preserved · **FROZEN** 
 reference estate at the `p27-python-freeze` executable pin, reference-only ·
 **DIES** = not reproduced · **STAYS-PYTHON** = survives out of process.
 
-**The boundary criterion (ADR174, Director clarification 2026-07-29):** the Rust/Python
-line is **hot-path calculation vs. I/O glue**, not a fixed module list. Rust owns the
-calculation-heavy core — the tick loop, the math, the BSL host — wherever the strict
-compiler and type system replace the Pydantic-constraint + hand-rolled-sentinel estate.
-Python continues as the **glue language**: database connections and persistence glue,
-external API clients, serving our own APIs (FastAPI/Django-class, when chartered), and
-AI/ollama bridges. Amendment AE's periphery list (data-build + AI observer + CLI) is
-**illustrative of the glue category, not exhaustive of it**, and the `p27-python-freeze`
-tag pins the **engine**, not the glue — glue estates keep evolving
-(`ai/decisions/ADR174_python_glue_boundary_criterion.yaml`).
+<!-- vale ste.UnapprovedWords = NO -->
+<!-- vale Vale.Spelling = NO -->
+**The boundary criterion (ADR220, 2026-08-22):** ADR220 narrows only ADR174's Postgres
+clause. Rust owns the calculation core and the authoritative engine-to-Postgres boundary.
+The Postgres seam includes connections, migrations, committed-tick transactions, hydration,
+H3 codecs, and compatibility views. It lives downstream in `babylon-persistence`. Database I/O
+never enters tick calculation.
+
+Python remains the **glue language** for deterministic data
+builds, external API clients, API service, AI/Ollama, document and wiki work, and CLI periphery.
+Transition observers can read versioned views but cannot write a game-managed schema. ADR174
+otherwise stands. The `p27-python-freeze` tag still pins the **engine**, not Python's periphery.
+<!-- vale ste.UnapprovedWords = YES -->
+<!-- vale Vale.Spelling = YES -->
 
 ### 5.1 Process map
 
@@ -549,6 +553,7 @@ flowchart TD
     BSLC["babylon-bsl: reader, typecheck, fuel bound, CAS, evaluator, seven verbs"]
     GRF["babylon-graph: GraphSubstrate, native hyperedges (Levi internal only)"]
     ENGN["babylon-engine: tick order, anchor registry (Phase 3)"]
+    PGR["babylon-persistence: Rust Postgres boundary (ADR220, PORT TARGET, not landed)"]
     CLI2["babylon-cli"]
   end
 
@@ -557,11 +562,11 @@ flowchart TD
     RULES["BSL rule content -> rules_hash"]
   end
 
-  subgraph PY["Python glue — STAYS, keeps evolving (ADR174)"]
+  subgraph PY["Python periphery — STAYS, keeps evolving (ADR220)"]
     DB["data-build pipeline: parquet -> sha-pinned reference DB (ADR098)"]
     AIOBS["out-of-process AI observer plus vault baker"]
     CLIP["CLI periphery: doctor, telemetry, login, self_update, uninstall"]
-    GLUE["glue estates (ADR174): DB connections, external API clients, own API serving, AI/ollama bridges"]
+    GLUE["glue estates: external API clients, own API serving, AI/Ollama, document/wiki transforms"]
   end
 
   subgraph FRZ["Python reference estate — FROZEN"]
@@ -569,7 +574,7 @@ flowchart TD
     CIJOB["scheduled CI job: rebuild plus run 11 canon scenarios; failure is a RED GATE"]
   end
 
-  subgraph PG["Persistence — Postgres"]
+  subgraph PG["Persistence — Postgres (Rust-owned after cutover)"]
     ENV["PerTickTransactionEnvelope: one atomic transaction per tick"]
     COMMIT["tick_commit marker"]
     VIEWS["six DeclaredView SQL views"]
@@ -589,7 +594,7 @@ flowchart TD
   DEF --> KRN
   RULES --> BSLC
   KRN --> BSLC --> GRF --> ENGN
-  ENGN -->|"per-tick, atomic"| ENV --> COMMIT
+  ENGN --> PGR -->|"per-tick, atomic"| ENV --> COMMIT
   ENV --> VIEWS --> PROJ --> VAULT
   PROJ -->|"view models only, one way"| TUI --> RENDER --> GLYPH
   ENGN -->|"events out, never in"| AIOBS
@@ -612,7 +617,7 @@ flowchart TD
 | 7 | Endgame detection | 5 outcomes, re-evaluated every tick, never latching | in-process | **PORTED as BSL-expressible predicates**; priority order becomes conformance-corpus **data** | disposition `:23` |
 | 8 | Tick partition | `TickPartition` (3 members) | in-process | **PORTED as-is**; mods use anchors | `src/babylon/kernel/tick_partition.py:18-30`; disposition `:26` |
 | 9 | Content digest | `canonical_defines_hash` (JSON sort_keys, separators `,`/`:`, `ensure_ascii`, SHA-256, 64 hex, **no `default=` fallback**) + `rules_hash` | load-time, into the kernel | **PORTED** — byte layout must match exactly; `rules_hash` is `Option` only until Task 12 | `src/babylon/config/defines/_hash.py:18-26`; `plans/…phase-1…md:1082-1089,1991-1996` |
-| 10 | Persistence envelope | `PerTickTransactionEnvelope` (frozen Pydantic, 64-char `determinism_hash`) | engine → Postgres, one transaction | **PORTED** as the kernel replay unit | `src/babylon/persistence/envelope.py:35-96` |
+| 10 | Persistence envelope | `PerTickTransactionEnvelope` (frozen Pydantic, 64-char `replay_identity_hash`) | engine → Postgres, one transaction | **PORT TARGET** in downstream `babylon-persistence` (ADR220). Python remains the sole live writer until cutover. `tick_commit` follows the envelope rows. | `src/babylon/persistence/envelope.py:35-96`, ADR220 |
 | 11 | `observe()` projection | `project_national`, `project_economy`, `build_tick_summary_kwargs`, `DeclaredView` registry (6 views) | persisted state → clients, **one way, no morphism back** | **PORTED / preserved** — Amendment V and II.8 untouched by AE (clause iv). **Port the contract, NOT the call graph:** the Python projectors call no gate (§5.4 row 1), so a faithful transcription ships an ungated projection | `projection/registry.py:41-303`, `projection/national.py:305`, `projection/economy.py:380`, `projection/tick_summary.py:214`; `THE_FORMALISM.md:717-719` |
 | 12 | Client | view models only; clients never reach past `projection` into persistence | projection → client | **STAYS** (client-side v1.0 stops carry, AE clause ix); **renderers REQUIRED** for topology, hypergraph, Sankey (clause xi); glyph floor unchanged | `CONSTITUTION.md:639`; `projection/__init__.py:9-16` |
 | 13 | AI observer | `SimulationEvent`s and projection view models | engine → observer, **never back** | **STAYS-PYTHON, out of process** — AE clause (iv) notes this *strengthens* the separation | `CONSTITUTION.md:639`; `simulation_engine.py:410-433` |
@@ -711,7 +716,7 @@ PR is incomplete if it touches a row's subject matter and cannot point at the pr
 | **S-29** | **Ceremony before drift.** A baseline change is a declared ceremony with a `Baselines: blessed(<slug>)` trailer and a drift table; a cost-model or expectation change is a **vector re-bless**; expectations are eyeballed before blessing and never captured from a run under test. | §6.5 owner ruling; `bsl-language.rst:1456-1462,1580-1585` (F1–F4) | `tools/check_baseline_ceremony.py`; the commit-msg + pre-push + CI three-way gate; `:fuel-used` on every non-error vector |
 | **S-30** | **No ungrounded tensors.** The operator algebra is the source of truth; graph authoring and sparse matrix layers are interfaces and must remain separable. Never implement operator logic in the graph layer. | II.12 `CONSTITUTION.md:454`; III.8 | `L-EQUIV` relabeling-equivariance property (`THE_FORMALISM.md:442`, proposed); the three-layer separation is reviewable per PR |
 | **S-31** | **Every construct earns its keep.** A construct introduced in a Phase 1–4 PR carries a ⟦COMP⟧/⟦LAW⟧/⟦PRED⟧ rent tag with its file or test cited; an untaggable construct is vocabulary and does not ship. Over-claiming Lawverian machinery is itself an Aleksandrov failure (§4.1). | III.10; ADR051; `THE_FORMALISM.md:52-58`; `ai/BabylonCoreDraft_2.hs:17-19` | The tag appears in the PR body and in the construct's docstring/comment |
-| **S-32** | **The Rust/Python boundary criterion is hot-path calculation vs. I/O glue.** Rust owns the calculation core (tick loop, math, BSL host); Python continues as the glue language (DB connections, external API clients, own API serving, AI/ollama bridges). The freeze tag pins the engine, not the glue. | ADR174 (Director clarification 2026-07-29), `ai/decisions/ADR174_python_glue_boundary_criterion.yaml` | New Rust code that is I/O glue, or new Python code that is hot-path math, is a review flag citing this row |
+| **S-32** | **Rust owns math and the authoritative engine-to-Postgres seam.** `babylon-persistence` is downstream of the pure tick. Python owns data builds, external API clients, AI/Ollama, documents, wiki, and CLI periphery. Observers only read. | ADR220 (narrows ADR174's Postgres clause), `ai/decisions/ADR220_rust_owned_postgresql_persistence_boundary.yaml` | A Postgres dependency in `babylon-tick`, a Python schema write after cutover, dual migration authority, or hot-path Python math fails S-32. |
 
 ### 6.1 How to use this table
 

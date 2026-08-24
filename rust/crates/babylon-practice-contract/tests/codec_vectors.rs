@@ -5,7 +5,8 @@ use babylon_practice_contract::{
     parameter_bytes_digest, rejection_for, submission_rejection_alias,
     target_selection_policy_digest, OrganizationBudgetDeltaV1, PracticeAuthorityKindV1,
     PracticeContractError, PracticeIdV1, PracticeInputAuthorityV1, PracticeIntentV1,
-    PracticeRejectionCodeV1, PracticeSubmissionRejectionV1, PracticeTargetDomainV1,
+    PracticeParameterV1, PracticeRejectionCodeV1, PracticeSubmissionRejectionV1,
+    PracticeTargetDomainV1,
 };
 use serde_json::{Map, Value};
 
@@ -26,6 +27,11 @@ const KINDS: [&str; 9] = [
     "quote_validation",
     "batch_recipe",
 ];
+
+enum JsonFrame {
+    Object(Vec<String>),
+    Array,
+}
 
 fn authority() -> PracticeInputAuthorityV1 {
     PracticeInputAuthorityV1 {
@@ -142,6 +148,74 @@ fn scan_depth(line: &[u8]) -> Result<(), &'static str> {
     Ok(())
 }
 
+fn json_string_end(line: &[u8], start: usize) -> Result<usize, &'static str> {
+    let mut escaped = false;
+    for offset in 1..=MAX_LINE_BYTES + 1 {
+        let index = start.checked_add(offset).ok_or("json")?;
+        let byte = *line.get(index).ok_or("json")?;
+        if escaped {
+            escaped = false;
+        } else if byte == b'\\' {
+            escaped = true;
+        } else if byte == b'"' {
+            return index.checked_add(1).ok_or("json");
+        }
+    }
+    Err("json")
+}
+
+fn next_non_whitespace(line: &[u8], start: usize) -> Option<u8> {
+    for offset in 0..=MAX_LINE_BYTES {
+        let index = start.checked_add(offset)?;
+        let byte = *line.get(index)?;
+        if !byte.is_ascii_whitespace() {
+            return Some(byte);
+        }
+    }
+    None
+}
+
+fn reject_duplicate_json_keys(line: &[u8]) -> Result<(), &'static str> {
+    let mut frames: Vec<JsonFrame> = Vec::new();
+    let mut skip_until = 0_usize;
+    for index in 0..=MAX_LINE_BYTES {
+        if index == line.len() {
+            break;
+        }
+        if index < skip_until {
+            continue;
+        }
+        match line[index] {
+            b'{' => frames.push(JsonFrame::Object(Vec::new())),
+            b'[' => frames.push(JsonFrame::Array),
+            b'}' | b']' => {
+                frames.pop();
+            }
+            b'"' => {
+                let end = json_string_end(line, index)?;
+                if next_non_whitespace(line, end) == Some(b':') {
+                    let key: String =
+                        serde_json::from_slice(&line[index..end]).map_err(|_| "json")?;
+                    let Some(JsonFrame::Object(keys)) = frames.last_mut() else {
+                        return Err("json");
+                    };
+                    if keys
+                        .iter()
+                        .take(MAX_LINE_BYTES + 1)
+                        .any(|existing| existing == &key)
+                    {
+                        return Err("duplicate key");
+                    }
+                    keys.push(key);
+                }
+                skip_until = end;
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 fn parse_test_corpus(payload: &[u8]) -> Result<Vec<Map<String, Value>>, &'static str> {
     if payload.len() > MAX_SOURCE_BYTES {
         return Err("source");
@@ -162,6 +236,7 @@ fn parse_test_corpus(payload: &[u8]) -> Result<Vec<Map<String, Value>>, &'static
             .strip_suffix(b"\r")
             .unwrap_or(raw_line.strip_suffix(b"\n").unwrap_or(raw_line));
         scan_depth(line)?;
+        reject_duplicate_json_keys(line)?;
         let value: Value = serde_json::from_slice(line).map_err(|_| "json")?;
         let object = value.as_object().ok_or("object")?;
         if object.len() != 3
@@ -330,6 +405,17 @@ fn shared_vectors_pin_authority_intent_budget_and_all_rejections() {
             target_selection_policy_digest(value.target_domain, value.target_node_id),
             hex_digest(item["target_digest_hex"].as_str().unwrap())
         );
+        let mut target_preimage = b"babylon.fixed-target-selection.v1\0".to_vec();
+        target_preimage.push(value.target_domain as u8);
+        target_preimage.extend_from_slice(&value.target_node_id.to_be_bytes());
+        assert_eq!(
+            target_preimage,
+            hex_bytes(item["target_preimage_hex"].as_str().unwrap())
+        );
+        assert_eq!(
+            babylon_kernel::sha256_of(&target_preimage),
+            hex_digest(item["target_digest_hex"].as_str().unwrap())
+        );
     }
     let budget_case = corpus_cases("budget_delta").remove(0);
     let budget_bytes = hex_bytes(data(&budget_case)["canonical_hex"].as_str().unwrap());
@@ -469,6 +555,61 @@ fn truncation_oversize_and_alias_table_are_exact() {
 }
 
 #[test]
+fn parameter_refusal_waits_for_every_structural_frame() {
+    let valid = PracticeParameterV1 {
+        key_u8: 1,
+        value_kind_u8: 1,
+        value_length_u16: 0,
+        value_bytes: Vec::new(),
+    };
+    let malformed = PracticeParameterV1 {
+        key_u8: 2,
+        value_kind_u8: 1,
+        value_length_u16: 2,
+        value_bytes: vec![b'x'],
+    };
+    let mut value = intent();
+    value.parameters = vec![valid, malformed];
+    assert_eq!(
+        encode_intent_parameters(&value),
+        Err(PracticeContractError::PracticeParameterLength)
+    );
+
+    let canonical = encode_intent(&intent()).unwrap();
+    let parameter_offset = canonical.len() - 4;
+    let prefix = &canonical[..parameter_offset];
+    let valid_frame = [1, 1, 0, 0];
+    let mut malformed_payload = prefix.to_vec();
+    malformed_payload.extend_from_slice(&[0, 2]);
+    malformed_payload.extend_from_slice(&valid_frame);
+    malformed_payload.extend_from_slice(&[2, 1, 1, 1]);
+    malformed_payload.extend_from_slice(&vec![0; 257]);
+    malformed_payload.extend_from_slice(&[0, 0]);
+    assert_eq!(
+        decode_intent(&malformed_payload),
+        Err(PracticeContractError::PracticeParameterLength)
+    );
+
+    let mut truncated_payload = prefix.to_vec();
+    truncated_payload.extend_from_slice(&[0, 2]);
+    truncated_payload.extend_from_slice(&valid_frame);
+    truncated_payload.extend_from_slice(&[2, 1, 0, 2, b'x']);
+    assert_eq!(
+        decode_intent(&truncated_payload),
+        Err(PracticeContractError::PracticeTruncated)
+    );
+
+    let mut valid_payload = prefix.to_vec();
+    valid_payload.extend_from_slice(&[0, 2]);
+    valid_payload.extend_from_slice(&valid_frame);
+    valid_payload.extend_from_slice(&[2, 1, 0, 0, 0, 0]);
+    assert_eq!(
+        decode_intent(&valid_payload),
+        Err(PracticeContractError::PracticeParameter)
+    );
+}
+
+#[test]
 fn shared_corpus_reader_refuses_every_fixed_and_closed_bound() {
     let valid = br#"{"case_id":"a","kind":"manifest","data":{"parameter_limit_valid_witness":null,"intent_truncation_offsets":[]}}
 "#;
@@ -499,6 +640,8 @@ fn shared_corpus_reader_refuses_every_fixed_and_closed_bound() {
         br#"{"case_id":"a","kind":"unknown","data":{}}"#.to_vec(),
         br#"{"case_id":"a","kind":"manifest","data":{"parameter_limit_valid_witness":null,"intent_truncation_offsets":[],"extra":0}}"#.to_vec(),
         br#"{"case_id":"a","kind":"manifest","data":{"parameter_limit_valid_witness":null,"intent_truncation_offsets":[]}} {}"#.to_vec(),
+        br#"{"case_id":"a","case_id":"b","kind":"manifest","data":{"parameter_limit_valid_witness":null,"intent_truncation_offsets":[]}}"#.to_vec(),
+        br#"{"case_id":"a","kind":"manifest","data":{"parameter_limit_valid_witness":null,"parameter_limit_valid_witness":null,"intent_truncation_offsets":[]}}"#.to_vec(),
     ];
     for payload in &witnesses {
         assert!(parse_test_corpus(payload).is_err());

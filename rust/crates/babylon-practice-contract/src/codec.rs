@@ -85,13 +85,17 @@ pub fn encode_intent_parameters(
     }
     let count = u16::try_from(value.parameters.len())
         .map_err(|_| PracticeContractError::PracticeParameterLimit)?;
-    if let Some(parameter) = value.parameters.iter().take(MAX_PARAMETERS + 1).next() {
+    let mut saw_parameter = false;
+    for parameter in value.parameters.iter().take(MAX_PARAMETERS + 1) {
+        saw_parameter = true;
         let actual_length = parameter.value_bytes.len();
         if actual_length > MAX_PARAMETER_VALUE_BYTES
             || actual_length != usize::from(parameter.value_length_u16)
         {
             return Err(PracticeContractError::PracticeParameterLength);
         }
+    }
+    if saw_parameter {
         return Err(PracticeContractError::PracticeParameter);
     }
     let mut output = Vec::new();
@@ -285,7 +289,10 @@ fn decode_parameters(cursor: &mut Cursor<'_>) -> Result<(), PracticeContractErro
     if count > MAX_PARAMETERS {
         return Err(PracticeContractError::PracticeParameterLimit);
     }
-    if count != 0 {
+    for index in 0..=MAX_PARAMETERS {
+        if index == count {
+            break;
+        }
         let _key = cursor.u8()?;
         let _kind = cursor.u8()?;
         let length = usize::from(cursor.u16()?);
@@ -293,9 +300,11 @@ fn decode_parameters(cursor: &mut Cursor<'_>) -> Result<(), PracticeContractErro
             return Err(PracticeContractError::PracticeParameterLength);
         }
         cursor.take(length)?;
-        Err(PracticeContractError::PracticeParameter)
-    } else {
+    }
+    if count == 0 {
         Ok(())
+    } else {
+        Err(PracticeContractError::PracticeParameter)
     }
 }
 

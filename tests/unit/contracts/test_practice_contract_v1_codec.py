@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
@@ -154,6 +155,14 @@ def test_shared_valid_vectors_pin_bytes_round_trips_and_digests() -> None:
             ).hex()
             == data["target_digest_hex"]
         )
+        target_preimage = (
+            b"babylon.fixed-target-selection.v1"
+            + b"\x00"
+            + bytes((intent_value.target_domain.value,))
+            + intent_value.target_node_id.to_bytes(8, "big")
+        )
+        assert target_preimage.hex() == data["target_preimage_hex"]
+        assert sha256(target_preimage).hexdigest() == data["target_digest_hex"]
 
 
 def test_budget_and_all_rejection_vectors_pin_exact_bytes() -> None:
@@ -237,6 +246,34 @@ def test_encoder_precedence_pins_parameter_and_evidence_plus_one_witnesses() -> 
     with pytest.raises(PracticeContractViolation) as caught:
         intent_digest(bad_intent)
     assert caught.value.error is PracticeContractError.PRACTICE_EVIDENCE_DUPLICATE
+
+
+def test_parameter_refusal_waits_for_every_structural_frame() -> None:
+    valid = PracticeParameterV1(key_u8=1, value_kind_u8=1, value_length_u16=0, value_bytes=b"")
+    malformed = PracticeParameterV1(key_u8=2, value_kind_u8=1, value_length_u16=2, value_bytes=b"x")
+    value = _intent().model_copy(update={"parameters": (valid, malformed)})
+    with pytest.raises(PracticeContractViolation) as caught:
+        encode_intent_parameters(value)
+    assert caught.value.error is PracticeContractError.PRACTICE_PARAMETER_LENGTH
+
+    canonical = encode_intent(_intent())
+    parameter_offset = len(canonical) - 4
+    prefix = canonical[:parameter_offset]
+    valid_frame = b"\x01\x01\x00\x00"
+    malformed_frame = b"\x02\x01\x01\x01" + bytes(257)
+    with pytest.raises(PracticeContractViolation) as caught:
+        decode_intent(prefix + b"\x00\x02" + valid_frame + malformed_frame + b"\x00\x00")
+    assert caught.value.error is PracticeContractError.PRACTICE_PARAMETER_LENGTH
+
+    truncated_later = prefix + b"\x00\x02" + valid_frame + b"\x02\x01\x00\x02x"
+    with pytest.raises(PracticeContractViolation) as caught:
+        decode_intent(truncated_later)
+    assert caught.value.error is PracticeContractError.PRACTICE_TRUNCATED
+
+    valid_later = prefix + b"\x00\x02" + valid_frame + b"\x02\x01\x00\x00\x00\x00"
+    with pytest.raises(PracticeContractViolation) as caught:
+        decode_intent(valid_later)
+    assert caught.value.error is PracticeContractError.PRACTICE_PARAMETER
 
 
 def _vector_line(case_id: str = "case", kind: str = "manifest") -> bytes:
@@ -432,6 +469,8 @@ def test_governed_violation_error_identity_is_immutable() -> None:
     violation = PracticeContractViolation(PracticeContractError.PRACTICE_DOMAIN)
     with pytest.raises(AttributeError):
         violation.error = PracticeContractError.PRACTICE_LENGTH  # type: ignore[misc]
+    with pytest.raises(AttributeError):
+        violation._error = PracticeContractError.PRACTICE_LENGTH  # type: ignore[misc]
 
 
 def test_vector_reader_rejects_unknown_kind_specific_data_field() -> None:

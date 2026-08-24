@@ -103,12 +103,19 @@ class PracticeContractViolation(ValueError):
     """One governed practice-contract refusal."""
 
     __slots__ = ("_error",)
+    _error: PracticeContractError
 
     def __init__(self, error: PracticeContractError) -> None:
         if type(error) is not PracticeContractError:
             raise TypeError("error must be PracticeContractError")
-        self._error = error
+        object.__setattr__(self, "_error", error)
         super().__init__(error.name)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        raise AttributeError(f"{name} is immutable")
+
+    def __delattr__(self, name: str) -> None:
+        raise AttributeError(f"{name} is immutable")
 
     @property
     def error(self) -> PracticeContractError:
@@ -194,8 +201,9 @@ def encode_intent_parameters(value: PracticeIntentV1) -> bytes:
     parameters = value.parameters
     if len(parameters) > MAX_PARAMETERS:
         raise _fail(PracticeContractError.PRACTICE_PARAMETER_LIMIT)
-    parameter = next(islice(parameters, MAX_PARAMETERS + 1), None)
-    if parameter is not None:
+    saw_parameter = False
+    for parameter in islice(parameters, MAX_PARAMETERS + 1):
+        saw_parameter = True
         actual_length = len(parameter.value_bytes)
         if (
             parameter.value_length_u16 > MAX_PARAMETER_VALUE_BYTES
@@ -203,6 +211,7 @@ def encode_intent_parameters(value: PracticeIntentV1) -> bytes:
             or actual_length != parameter.value_length_u16
         ):
             raise _fail(PracticeContractError.PRACTICE_PARAMETER_LENGTH)
+    if saw_parameter:
         raise _fail(PracticeContractError.PRACTICE_PARAMETER)
     output = bytearray()
     _append_u16(output, len(parameters))
@@ -366,6 +375,7 @@ def _decode_parameters(cursor: _Cursor) -> tuple[PracticeParameterV1, ...]:
             raise _fail(PracticeContractError.PRACTICE_PARAMETER_LENGTH)
         cursor.take(value_length)
         _ = (key, value_kind)
+    if parameter_count != 0:
         raise _fail(PracticeContractError.PRACTICE_PARAMETER)
     return ()
 

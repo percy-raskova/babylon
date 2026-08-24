@@ -103,7 +103,8 @@ def _step_shape_errors(workflow: dict[str, Any], filename: str) -> list[str]:
 
 def _automation_paths() -> list[Path]:
     """Return live workflow and composite-action files."""
-    return sorted(WORKFLOWS_DIR.glob("*.yml")) + sorted(ACTIONS_DIR.rglob("action.y*ml"))
+    workflows = sorted(WORKFLOWS_DIR.glob("*.yml")) + sorted(WORKFLOWS_DIR.glob("*.yaml"))
+    return workflows + sorted(ACTIONS_DIR.rglob("action.y*ml"))
 
 
 def _automation_steps(automation: dict[str, Any]) -> list[dict[str, Any]]:
@@ -128,6 +129,19 @@ def _sibling_fabrication_errors(automation: dict[str, Any], filename: str) -> li
         if "ci_hypergraph_stub" in run or fabricates_sibling:
             errors.append(f"{filename} step#{index}: fabricates hypergraph-rs sibling")
     return errors
+
+
+def test_automation_paths_include_yaml_workflows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A valid .yaml workflow must receive the same automation scan as .yml."""
+    workflow_directory = tmp_path / "workflows"
+    workflow_directory.mkdir()
+    yaml_workflow = workflow_directory / "sibling-fabrication.yaml"
+    yaml_workflow.write_text("jobs: {}\n")
+    monkeypatch.setitem(globals(), "WORKFLOWS_DIR", workflow_directory)
+
+    assert yaml_workflow in _automation_paths()
 
 
 def _frozen_engine_errors(workflow: dict[str, Any]) -> list[str]:

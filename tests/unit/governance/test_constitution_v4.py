@@ -425,7 +425,7 @@ def test_contributor_entry_points_route_work_tracking_to_linear(relative_path: s
     required = ("linear", "canonical", "github", "project #7", "project #8")
     missing = tuple(phrase for phrase in required if phrase not in text)
     assert missing == (), f"{relative_path} is missing {missing}"
-    assert "migration is not complete" in text or "migration remains in progress" in text
+    assert "migration is complete" in text
 
 
 def test_control_authority_states_the_linear_github_boundary() -> None:
@@ -450,8 +450,9 @@ def test_control_authority_states_the_linear_github_boundary() -> None:
         "historical evidence",
         "project #7",
         "project #8",
-        "transitional migration inputs",
-        "full per-15 acceptance",
+        "team closed github project #7 and project #8",
+        "historical inputs",
+        "per-15 is complete",
         "ai/state.yaml",
         "historical implementation evidence",
         "project/",
@@ -714,20 +715,21 @@ def test_copilot_restore_key_guidance_is_scoped_to_python_venv_caches() -> None:
     assert missing == (), f".github/copilot-instructions.md is missing {missing}"
 
 
-def test_control_authority_keeps_per_2_identity_linkage_manual() -> None:
-    """The guide does not promise unverified Linear status automation."""
+def test_control_authority_documents_per_2_delivery_automation() -> None:
+    """The guide distinguishes partial delivery from final issue completion."""
     text = " ".join(_repository_text(_CONTROL_AUTHORITY_PATH).lower().split())
     required = (
         "per-2",
-        "manual convention",
-        "branch name",
-        "pull request title",
-        "pull request description",
-        "team has not verified automation",
-        "github project fields are not authoritative",
+        "part of per-n",
+        "fixes per-n",
+        "non-closing",
+        "closing",
+        "multi-pull-request",
+        "automation does not require github project fields",
     )
     missing = tuple(phrase for phrase in required if phrase not in text)
     assert missing == (), f"{_CONTROL_AUTHORITY_PATH} is missing {missing}"
+    assert "team has not verified automation" not in text
 
 
 @pytest.mark.parametrize("relative_path", _LIVE_ORIENTATION_PATHS + _BEHAVIORAL_CONTRACT_PATHS)

@@ -12,8 +12,8 @@ three gates. Do not say that a planned system is complete.
 <!-- vale ste.UnapprovedWords = NO -->
 <!-- vale ste.NounClusters = NO -->
 Linear is canonical for current work. GitHub owns source control, pull
-requests, reviews, and historical evidence. Project #7 and Project #8 in GitHub
-are transitional inputs. The migration is not complete. See
+requests, reviews, and historical evidence. The team closed GitHub Project #7
+and Project #8. They are historical inputs. The migration is complete. See
 [`docs/agents/governance.md`](../docs/agents/governance.md) for scope or status
 disputes.
 <!-- vale ste.NounClusters = YES -->

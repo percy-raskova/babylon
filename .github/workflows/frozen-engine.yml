@@ -35,9 +35,6 @@ jobs:
         with:
           ref: p27-python-freeze
 
-      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
-        run: sh tools/ci_hypergraph_stub.sh
-
       - uses: ./.github/actions/bootstrap-python
 
       - name: qa:regression (canon scenarios vs the frozen baselines)

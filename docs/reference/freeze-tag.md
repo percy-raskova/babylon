@@ -41,7 +41,6 @@ The Python engine is **reference-only** past this tag:
 
 ```bash
 git checkout p27-python-freeze
-sh tools/ci_hypergraph_stub.sh   # only where ../hypergraph-rs is absent (CI)
 uv sync --frozen
 mise run qa:regression           # canon scenarios, byte-identical
 mise run qa:vault-regression-ci  # golden-vault byte-gate

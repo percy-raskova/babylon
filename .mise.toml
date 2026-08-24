@@ -111,11 +111,8 @@ done
 
 [tasks.install]
 description = "Install all dependencies (from the committed lock — see deps:lock to re-resolve)"
-# --frozen: install exactly uv.lock, never re-resolve. Load-bearing since the
-# hypergraph dependency-group landed: re-resolution reads metadata from the
-# ../hypergraph-rs path source, which only exists on boxes with the sibling
-# checkout. Changing deps? Edit pyproject, then `uv lock` (needs the sibling
-# or the CI stub — see the [tool.uv.sources] comment in pyproject.toml).
+# --frozen: install exactly uv.lock, never re-resolve. Changing dependencies?
+# Edit pyproject.toml, then regenerate uv.lock with the pinned uv toolchain.
 # Amendment AF (ADR186) deleted the babylon-tui wheel from the default
 # dependency set — this sync no longer needs cargo/rustc on PATH.
 run = "uv sync --extra server --frozen"

@@ -10,9 +10,8 @@ Five asserts, each mapped to a real debugging session this class cost:
 3. Every ``data/`` symlink resolves and the reference DB is present (fresh
    worktrees lack the symlink farm; tests then auto-create empty sqlite).
 4. ``.env`` exists.
-5. ``uv.lock`` is unmodified vs HEAD (bare ``uv run`` in a worktree re-locks
-   against the ../hypergraph-rs sibling — committing that lock breaks CI;
-   fix: ``git checkout -- uv.lock`` and use ``UV_FROZEN=1``).
+5. ``uv.lock`` is unmodified vs HEAD (committing an incidental re-lock breaks
+   CI; fix: ``git checkout -- uv.lock`` and use ``UV_FROZEN=1``).
 
 Stdlib-only and interpreter-agnostic on purpose: it runs as the FIRST
 pre-commit hook (fail_fast), before anything trusts the venv it is checking.
@@ -78,8 +77,7 @@ def check_lock_unmodified() -> str | None:
     proc = subprocess.run(["git", "diff", "--quiet", "HEAD", "--", "uv.lock"], check=False)
     if proc.returncode != 0:
         return (
-            "uv.lock modified vs HEAD (a bare `uv run` re-locked against the "
-            "../hypergraph-rs sibling) — restore with `git checkout -- uv.lock` "
+            "uv.lock modified vs HEAD — restore with `git checkout -- uv.lock` "
             "and prefix commands with UV_FROZEN=1"
         )
     return None

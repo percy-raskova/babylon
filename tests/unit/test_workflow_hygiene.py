@@ -101,6 +101,17 @@ def _step_shape_errors(workflow: dict[str, Any], filename: str) -> list[str]:
 class TestWorkflowStepShape:
     """Every workflow step is GitHub-valid, not merely YAML-valid."""
 
+    def test_no_workflow_materializes_a_hypergraph_sibling(self) -> None:
+        """Python CI must not depend on a fabricated local checkout."""
+        violations: list[str] = []
+        for path in sorted(WORKFLOWS_DIR.glob("*.yml")):
+            workflow = yaml.safe_load(path.read_text())
+            for job_name, job in (workflow.get("jobs") or {}).items():
+                for index, step in enumerate(job.get("steps") or []):
+                    if "ci_hypergraph_stub.sh" in str(step.get("run", "")):
+                        violations.append(f"{path.name} job={job_name} step#{index}")
+        assert not violations, "\n".join(violations)
+
     def test_no_step_mixes_run_and_with(self) -> None:
         violations: list[str] = []
         for path in sorted(WORKFLOWS_DIR.glob("*.yml")):
@@ -116,8 +127,8 @@ class TestWorkflowStepShape:
               test-rest:
                 steps:
                   - uses: actions/checkout@v7
-                  - name: Materialize hypergraph-rs metadata stub
-                    run: sh tools/ci_hypergraph_stub.sh
+                  - name: Run setup
+                    run: mise run setup
                     with:
                       ref: dev
             """

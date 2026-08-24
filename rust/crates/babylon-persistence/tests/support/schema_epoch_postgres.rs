@@ -17,16 +17,18 @@ pub(super) fn verify_fresh_migration(base: &Config) {
     let first = migrate_schema_epoch(&config).expect("pinned fresh template must migrate");
     assert_eq!(first.origin, SchemaEpochOrigin::Fresh);
     assert_eq!(first.prior_applied, 0);
-    assert_eq!(first.final_applied, 1);
-    assert_eq!(first.applied_versions.len(), 1);
+    assert_eq!(first.final_applied, 2);
+    assert_eq!(first.applied_versions.len(), 2);
+    assert_eq!(first.applied_versions[0].as_i64(), 1);
+    assert_eq!(first.applied_versions[1].as_i64(), 2);
     assert!(first.reconciled_versions.is_empty());
     assert!(first.legacy_adoption.is_none());
 
     let before = epoch_snapshot(&config);
     let second = migrate_schema_epoch(&config).expect("exact Rust prefix must be idempotent");
     assert_eq!(second.origin, SchemaEpochOrigin::ExistingRustPrefix);
-    assert_eq!(second.prior_applied, 1);
-    assert_eq!(second.final_applied, 1);
+    assert_eq!(second.prior_applied, 2);
+    assert_eq!(second.final_applied, 2);
     assert!(second.applied_versions.is_empty());
     assert!(second.reconciled_versions.is_empty());
     assert_eq!(epoch_snapshot(&config), before);
@@ -48,6 +50,7 @@ pub(super) fn verify_schema_epoch_matrix(base: &Config, legacy_template: &str, o
     assert_epoch_authority(&fresh_config);
 
     verify_non_superuser_owner(base, owner);
+    verify_v1_to_v2_upgrade(base);
     verify_lock_refusal(base);
     verify_legacy_epoch(base, legacy_template);
     verify_bad_ledgers(base, fresh.name());
@@ -100,6 +103,46 @@ fn verify_non_superuser_owner(base: &Config, owner: &str) {
     database.cleanup();
 }
 
+fn verify_v1_to_v2_upgrade(base: &Config) {
+    let database = ScratchDatabase::empty(base, "epoch_v1_upgrade", database_user(base));
+    let config = database.config(base);
+    establish_v1_prefix(&config);
+    let before = raw_epoch_snapshot(&config);
+    assert_eq!(before.len(), 4);
+    assert!(before.iter().any(|row| row.0 == "ledger" && row.1 == "1"));
+    assert!(!before.iter().any(|row| row.1 == "2"));
+
+    let upgraded = migrate_schema_epoch(&config).expect("exact epoch 1 must upgrade to epoch 2");
+    assert_eq!(upgraded.origin, SchemaEpochOrigin::ExistingRustPrefix);
+    assert_eq!(upgraded.prior_applied, 1);
+    assert_eq!(upgraded.final_applied, 2);
+    assert_eq!(upgraded.applied_versions.len(), 1);
+    assert_eq!(upgraded.applied_versions[0].as_i64(), 2);
+    assert!(upgraded.reconciled_versions.is_empty());
+    assert_epoch_authority(&config);
+    let snapshot = epoch_snapshot(&config);
+    assert_idempotent(&config, &snapshot);
+    assert_lock_released(&config);
+    database.cleanup();
+}
+
+fn establish_v1_prefix(config: &Config) {
+    let compiled = compiled_schema_migrations().expect("compiled registry must be valid");
+    let version = compiled[0].version().as_i64();
+    let checksum = compiled[0].checksum();
+    let checksum_bytes = checksum.as_bytes().as_slice();
+    let mut client = config.connect(NoTls).unwrap();
+    let mut transaction = client.transaction().unwrap();
+    transaction.batch_execute(compiled[0].sql()).unwrap();
+    transaction
+        .execute(
+            "INSERT INTO babylon_state.schema_migration (version, checksum) VALUES ($1, $2)",
+            &[&version, &checksum_bytes],
+        )
+        .unwrap();
+    transaction.commit().unwrap();
+}
+
 fn verify_legacy_epoch(base: &Config, template: &str) {
     let database = ScratchDatabase::from_template(base, template, "epoch_legacy");
     let config = database.config(base);
@@ -111,7 +154,8 @@ fn verify_legacy_epoch(base: &Config, template: &str) {
     let first = migrate_schema_epoch(&config).unwrap();
     assert_eq!(first.origin, SchemaEpochOrigin::ExactLegacy);
     assert_eq!(first.prior_applied, 0);
-    assert_eq!(first.final_applied, 1);
+    assert_eq!(first.final_applied, 2);
+    assert_eq!(first.applied_versions.len(), 2);
     assert_eq!(first.legacy_adoption, Some(adoption));
     assert_eq!(legacy_meta_snapshot(&config), before);
     assert_epoch_authority(&config);
@@ -152,19 +196,36 @@ fn verify_bad_ledgers(base: &Config, migrated_template: &str) {
     assert_lock_released(&checksum_config);
     checksum.cleanup();
 
+    let checksum_v2 =
+        ScratchDatabase::from_template(base, migrated_template, "epoch_checksum_vtwo");
+    let checksum_v2_config = checksum_v2.config(base);
+    mutate(
+        &checksum_v2_config,
+        "UPDATE babylon_state.schema_migration SET checksum = decode(repeat('66', 32), 'hex') \
+         WHERE version = 2",
+    );
+    let before = raw_epoch_snapshot(&checksum_v2_config);
+    assert_eq!(
+        migrate_schema_epoch(&checksum_v2_config),
+        Err(SchemaEpochError::LedgerChecksumMismatch { version: 2 })
+    );
+    assert_eq!(raw_epoch_snapshot(&checksum_v2_config), before);
+    assert_lock_released(&checksum_v2_config);
+    checksum_v2.cleanup();
+
     let future = ScratchDatabase::from_template(base, migrated_template, "epoch_future");
     let future_config = future.config(base);
     mutate(
         &future_config,
         "INSERT INTO babylon_state.schema_migration (version, checksum) \
-         VALUES (2, decode(repeat('22', 32), 'hex'))",
+         VALUES (3, decode(repeat('33', 32), 'hex'))",
     );
     let before = raw_epoch_snapshot(&future_config);
     assert_eq!(
         migrate_schema_epoch(&future_config),
         Err(SchemaEpochError::UnknownFutureVersion {
-            actual: 2,
-            latest_compiled: 1,
+            actual: 3,
+            latest_compiled: 2,
         })
     );
     assert_eq!(raw_epoch_snapshot(&future_config), before);
@@ -312,8 +373,28 @@ fn verify_authority_refusals(base: &Config, migrated_template: &str, owner: &str
             "epoch_extra_object",
             "CREATE TABLE babylon_ref.unexpected_epoch_object (id BIGINT)",
         ),
+        (
+            "epoch_hthree_owner",
+            "ALTER TABLE babylon_ref.h3_cell OWNER TO babylon_intel",
+        ),
+        (
+            "epoch_hthree_public",
+            "GRANT SELECT ON babylon_ref.h3_cell TO PUBLIC",
+        ),
+        (
+            "epoch_hthree_intel",
+            "GRANT SELECT ON babylon_ref.h3_cell TO babylon_intel",
+        ),
+        (
+            "epoch_hthree_column",
+            "GRANT SELECT (resolution) ON babylon_ref.h3_cell TO babylon_intel",
+        ),
+        (
+            "epoch_hthree_drift",
+            "ALTER TABLE babylon_ref.h3_cell DROP CONSTRAINT h3_cell_resolution_matches_id",
+        ),
     ];
-    for (label, mutation) in cases.iter().take(8) {
+    for (label, mutation) in cases.iter().take(13) {
         let database = ScratchDatabase::from_template(base, migrated_template, label);
         let config = database.config(base);
         mutate(&config, mutation);
@@ -336,8 +417,10 @@ fn verify_authority_refusals(base: &Config, migrated_template: &str, owner: &str
 fn assert_fresh_receipt(report: &babylon_persistence::SchemaEpochReport) {
     assert_eq!(report.origin, SchemaEpochOrigin::Fresh);
     assert_eq!(report.prior_applied, 0);
-    assert_eq!(report.final_applied, 1);
-    assert_eq!(report.applied_versions.len(), 1);
+    assert_eq!(report.final_applied, 2);
+    assert_eq!(report.applied_versions.len(), 2);
+    assert_eq!(report.applied_versions[0].as_i64(), 1);
+    assert_eq!(report.applied_versions[1].as_i64(), 2);
     assert!(report.reconciled_versions.is_empty());
     assert!(report.legacy_adoption.is_none());
 }
@@ -345,8 +428,8 @@ fn assert_fresh_receipt(report: &babylon_persistence::SchemaEpochReport) {
 fn assert_idempotent(config: &Config, expected_snapshot: &[(String, String, String)]) {
     let second = migrate_schema_epoch(config).unwrap();
     assert_eq!(second.origin, SchemaEpochOrigin::ExistingRustPrefix);
-    assert_eq!(second.prior_applied, 1);
-    assert_eq!(second.final_applied, 1);
+    assert_eq!(second.prior_applied, 2);
+    assert_eq!(second.final_applied, 2);
     assert!(second.applied_versions.is_empty());
     assert!(second.reconciled_versions.is_empty());
     assert_eq!(epoch_snapshot(config), expected_snapshot);
@@ -371,13 +454,25 @@ fn assert_epoch_authority(config: &Config) {
                     NOT EXISTS (SELECT 1 FROM schemas CROSS JOIN intel \
                       WHERE pg_catalog.has_schema_privilege(intel.oid, schemas.oid, 'USAGE') \
                          OR pg_catalog.has_schema_privilege(intel.oid, schemas.oid, 'CREATE')), \
+                    (SELECT pg_catalog.count(*) = 2 \
+                     FROM pg_catalog.pg_class AS relation \
+                     JOIN pg_catalog.pg_namespace AS namespace \
+                       ON namespace.oid = relation.relnamespace \
+                     WHERE (namespace.nspname, relation.relname) IN (\
+                       ('babylon_ref', 'h3_cell'), \
+                       ('babylon_state', 'schema_migration')) \
+                       AND relation.relkind = 'r' AND relation.relpersistence = 'p'), \
                     NOT EXISTS (SELECT 1 FROM intel \
                       WHERE pg_catalog.has_table_privilege( \
-                        intel.oid, 'babylon_state.schema_migration', 'SELECT,INSERT,UPDATE,DELETE'))",
+                        intel.oid, 'babylon_state.schema_migration', \
+                        'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN') \
+                         OR pg_catalog.has_table_privilege( \
+                        intel.oid, 'babylon_ref.h3_cell', \
+                        'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN'))",
             &[],
         )
         .unwrap();
-    for index in 0..4 {
+    for index in 0..5 {
         assert!(row.try_get::<_, bool>(index).unwrap());
     }
 }
@@ -424,11 +519,16 @@ fn marker_snapshot(config: &Config) -> Vec<(String, String)> {
 
 fn epoch_snapshot(config: &Config) -> Vec<(String, String, String)> {
     let snapshot = raw_epoch_snapshot(config);
-    assert_eq!(snapshot.len(), 4);
-    let checksum = compiled_schema_migrations().unwrap()[0].checksum();
-    assert!(snapshot.iter().any(|row| {
-        row.0 == "ledger" && row.1 == "1" && row.2 == lower_hex(checksum.as_bytes())
-    }));
+    assert_eq!(snapshot.len(), 5);
+    let compiled = compiled_schema_migrations().unwrap();
+    for (index, migration) in compiled.iter().enumerate().take(2) {
+        let version = (index + 1).to_string();
+        assert!(snapshot.iter().any(|row| {
+            row.0 == "ledger"
+                && row.1 == version
+                && row.2 == lower_hex(migration.checksum().as_bytes())
+        }));
+    }
     snapshot
 }
 

@@ -20,6 +20,10 @@ use std::process::{Command, Stdio};
 use std::str::FromStr;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+#[path = "support/h3_cell_vectors.rs"]
+mod h3_cell_vectors;
+#[path = "support/h3_pg_oracle.rs"]
+mod h3_pg_oracle;
 #[path = "support/schema_epoch_postgres.rs"]
 mod schema_epoch_postgres;
 
@@ -168,6 +172,11 @@ fn live_adopter_contract_against_independent_builds_and_disposable_mutations() {
             "schema_epoch_matrix",
             schema_epoch_postgres::verify_schema_epoch_matrix(&base, &template, owner.name())
         );
+        live_phase!(
+            phases,
+            "h3_pg_oracle",
+            verify_h3_pg_oracle_in_scratch(&base, owner.name())
+        );
     }
     live_phase!(phases, "cleanup_first_database", first.cleanup());
     live_phase!(phases, "cleanup_second_database", second.cleanup());
@@ -213,6 +222,7 @@ fn run_first_live_phases(
             Some("schema_epoch_matrix") => {
                 schema_epoch_postgres::verify_schema_epoch_matrix(base, template, owner);
             }
+            Some("h3_pg_oracle") => verify_h3_pg_oracle_in_scratch(base, owner),
             _ => panic!("unknown bounded live focus"),
         }
         return false;
@@ -272,6 +282,14 @@ fn run_first_live_phases(
         verify_effective_authority_refusals(base, template)
     );
     true
+}
+
+fn verify_h3_pg_oracle_in_scratch(base: &Config, owner: &str) {
+    let database = ScratchDatabase::empty(base, "h3_pg_oracle", owner);
+    let owner_config = database.config_as(base, owner, OWNER_PASSWORD);
+    let admin_config = database.config(base);
+    h3_pg_oracle::verify_h3_pg_oracle(&owner_config, &admin_config);
+    database.cleanup();
 }
 
 fn run_second_live_phases(
@@ -2679,6 +2697,8 @@ fn preflight_disposable_harness(config: &Config) {
                      AS available WHERE available.name = 'postgis'), \
                     (SELECT available.default_version FROM pg_catalog.pg_available_extensions \
                      AS available WHERE available.name = 'vector'), \
+                    (SELECT available.default_version FROM pg_catalog.pg_available_extensions \
+                     AS available WHERE available.name = 'h3'), \
                     pg_catalog.current_setting('transaction_read_only') \
              FROM pg_catalog.pg_roles AS role_row WHERE role_row.rolname = current_user",
             &[],
@@ -2700,7 +2720,9 @@ fn preflight_disposable_harness(config: &Config) {
             .map_err(|_| DisposableHarnessRejection::Runtime),
         row.try_get::<_, Option<String>>(6)
             .map_err(|_| DisposableHarnessRejection::Runtime),
-        row.try_get::<_, String>(7)
+        row.try_get::<_, Option<String>>(7)
+            .map_err(|_| DisposableHarnessRejection::Runtime),
+        row.try_get::<_, String>(8)
             .map_err(|_| DisposableHarnessRejection::Runtime),
     );
     assert_eq!(
@@ -2713,6 +2735,7 @@ fn preflight_disposable_harness(config: &Config) {
             Ok(true),
             Ok(Some("3.5.2".into())),
             Ok(Some("0.8.5".into())),
+            Ok(Some("4.5.0".into())),
             Ok("on".into()),
         ),
         "disposable harness runtime profile must match the pinned oracle"

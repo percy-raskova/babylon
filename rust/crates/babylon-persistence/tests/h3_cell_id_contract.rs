@@ -2,52 +2,76 @@
 
 use babylon_persistence::{H3CellId, H3CellIdError};
 use std::mem::size_of;
+use std::path::Path;
 use std::str::FromStr;
 
-#[derive(Debug)]
-struct ValidVector {
-    label: String,
-    resolution: u8,
-    text: String,
-    raw_u64: u64,
-    sql_i64: i64,
-    bytes_be: [u8; 8],
-    immediate_parent: Option<String>,
-    ancestor_chain_r0_to_self: Vec<String>,
+#[path = "support/h3_cell_vectors.rs"]
+mod h3_cell_vectors;
+
+use h3_cell_vectors::{
+    load_fixture, INVALID_ANCESTOR_VECTOR_COUNT, INVALID_RAW_VECTOR_COUNT,
+    INVALID_SQL_VECTOR_COUNT, INVALID_TEXT_VECTOR_COUNT, PENTAGON_VECTOR_COUNT, VALID_VECTOR_COUNT,
+};
+
+const POSTGRES_DOCKERFILE: &str = include_str!("../../../../docker/postgres/Dockerfile");
+const POSTGRES_INITDB: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../docker/postgres/initdb"
+);
+const MAX_INITDB_ENTRIES: usize = 64;
+
+#[test]
+fn postgres_test_image_pins_h3_pg_without_activating_it() {
+    assert!(POSTGRES_DOCKERFILE.starts_with("# syntax=docker/dockerfile:1.6\n"));
+    for required in [
+        "gcc:12.2.0-bullseye@sha256:a3e091325c0af43bc9c1c576ddd155351d5b16438124421188bb4b4fcacc1452",
+        "https://github.com/Kitware/CMake/releases/download/v3.31.12/cmake-3.31.12-linux-x86_64.tar.gz",
+        "sha256:0dc2e9a6860f06bf10bd8fadc03e35d9eeb4df46e33763a7e480e987758f385c",
+        "postgresql-server-dev-17_17.5-1.pgdg110+1_amd64.deb",
+        "sha256:9f43e428d4145d3212b68a70970cc5b736ce544b4bec2f1d6f010225787ddef4",
+        "https://github.com/zachasme/h3-pg/archive/ed9a09c834787abb5952318bccef1c4fee119f1d.tar.gz",
+        "sha256:b7e56fb90d486897be3ccd4fdc007c724fc48abe1ff9bbe24bf351d3b8accc57",
+        "https://github.com/uber/h3/archive/refs/tags/v4.5.0.tar.gz",
+        "sha256:0da8a392a6ff77e76b60e6a331a49497d0935b6b7b6899da7a3e2786139b0441",
+        "--component h3-pg",
+    ] {
+        assert!(
+            POSTGRES_DOCKERFILE.contains(required),
+            "PostgreSQL test image lost pinned H3 build input {required:?}"
+        );
+    }
+    assert!(!POSTGRES_DOCKERFILE
+        .to_ascii_uppercase()
+        .contains("CREATE EXTENSION H3"));
+    assert_initdb_does_not_activate_h3(Path::new(POSTGRES_INITDB));
 }
 
-#[derive(Debug)]
-struct InvalidRawVector {
-    label: String,
-    raw_u64: u64,
-}
-
-#[derive(Debug)]
-struct InvalidSqlVector {
-    label: String,
-    sql_i64: i64,
-}
-
-#[derive(Debug)]
-struct InvalidTextVector {
-    label: String,
-    text: String,
-}
-
-#[derive(Debug)]
-struct InvalidAncestorVector {
-    label: String,
-    text: String,
-    requested_resolution: u8,
-}
-
-#[derive(Debug, Default)]
-struct VectorFixture {
-    valid: Vec<ValidVector>,
-    invalid_raw: Vec<InvalidRawVector>,
-    invalid_sql: Vec<InvalidSqlVector>,
-    invalid_text: Vec<InvalidTextVector>,
-    invalid_ancestor: Vec<InvalidAncestorVector>,
+fn assert_initdb_does_not_activate_h3(initdb: &Path) {
+    let entries = std::fs::read_dir(initdb)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", initdb.display()))
+        .take(MAX_INITDB_ENTRIES + 1)
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap_or_else(|error| panic!("failed to enumerate {}: {error}", initdb.display()));
+    assert!(
+        entries.len() <= MAX_INITDB_ENTRIES,
+        "initdb entry count exceeds the static test bound"
+    );
+    for entry in entries.iter().take(MAX_INITDB_ENTRIES) {
+        assert!(
+            entry
+                .file_type()
+                .expect("initdb file type must resolve")
+                .is_file(),
+            "initdb contract remains a bounded flat file set"
+        );
+        let body = std::fs::read_to_string(entry.path())
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", entry.path().display()));
+        assert!(
+            !body.to_ascii_uppercase().contains("CREATE EXTENSION H3"),
+            "initdb file {} must not activate the test-only H3 oracle",
+            entry.path().display()
+        );
+    }
 }
 
 #[test]
@@ -56,6 +80,7 @@ fn h3_cell_id_layout_and_order_follow_unsigned_identity() {
     let ordinary = fixture
         .valid
         .iter()
+        .take(VALID_VECTOR_COUNT)
         .filter(|vector| vector.label.starts_with("ordinary_"))
         .collect::<Vec<_>>();
     assert_eq!(ordinary.len(), 16);
@@ -63,14 +88,20 @@ fn h3_cell_id_layout_and_order_follow_unsigned_identity() {
 
     let mut ids = ordinary
         .iter()
+        .take(16)
         .rev()
         .map(|vector| H3CellId::try_from(vector.raw_u64).expect("fixture cell should validate"))
         .collect::<Vec<_>>();
     ids.sort_unstable();
 
-    let sorted_raws = ids.iter().map(|cell| cell.as_u64()).collect::<Vec<_>>();
+    let sorted_raws = ids
+        .iter()
+        .take(16)
+        .map(|cell| cell.as_u64())
+        .collect::<Vec<_>>();
     let expected_raws = ordinary
         .iter()
+        .take(16)
         .map(|vector| vector.raw_u64)
         .collect::<Vec<_>>();
     assert_eq!(sorted_raws, expected_raws);
@@ -82,11 +113,12 @@ fn h3_cell_id_round_trips_display_bytes_sql_and_semantic_parents_from_vectors() 
     let pentagons = fixture
         .valid
         .iter()
+        .take(VALID_VECTOR_COUNT)
         .filter(|vector| vector.label.starts_with("pentagon_"))
         .count();
-    assert_eq!(pentagons, 12 * 16);
+    assert_eq!(pentagons, PENTAGON_VECTOR_COUNT);
 
-    for vector in &fixture.valid {
+    for vector in fixture.valid.iter().take(VALID_VECTOR_COUNT) {
         let from_raw =
             H3CellId::try_from(vector.raw_u64).expect("fixture raw cell should validate");
         assert_eq!(from_raw.as_u64(), vector.raw_u64);
@@ -101,11 +133,16 @@ fn h3_cell_id_round_trips_display_bytes_sql_and_semantic_parents_from_vectors() 
             usize::from(vector.resolution) + 1
         );
         for (requested_resolution, expected_ancestor) in
-            vector.ancestor_chain_r0_to_self.iter().enumerate()
+            vector.ancestor_chain_r0_to_self.iter().take(16).enumerate()
         {
+            let requested_resolution = u8::try_from(requested_resolution).unwrap();
+            assert_eq!(
+                vector.ancestor_at(requested_resolution),
+                Some(expected_ancestor.as_str())
+            );
             assert_eq!(
                 from_raw
-                    .ancestor_at(u8::try_from(requested_resolution).unwrap())
+                    .ancestor_at(requested_resolution)
                     .unwrap()
                     .to_string(),
                 *expected_ancestor
@@ -131,7 +168,7 @@ fn h3_cell_id_round_trips_display_bytes_sql_and_semantic_parents_from_vectors() 
 fn h3_cell_id_validation_rejects_invalid_raw_vectors() {
     let fixture = load_fixture();
 
-    for vector in &fixture.invalid_raw {
+    for vector in fixture.invalid_raw.iter().take(INVALID_RAW_VECTOR_COUNT) {
         assert_eq!(
             H3CellId::try_from(vector.raw_u64),
             Err(H3CellIdError::InvalidCellIndex {
@@ -147,7 +184,7 @@ fn h3_cell_id_validation_rejects_invalid_raw_vectors() {
 fn h3_cell_id_validation_rejects_invalid_sql_and_text_vectors() {
     let fixture = load_fixture();
 
-    for vector in &fixture.invalid_sql {
+    for vector in fixture.invalid_sql.iter().take(INVALID_SQL_VECTOR_COUNT) {
         assert_eq!(
             H3CellId::try_from(vector.sql_i64),
             Err(H3CellIdError::NegativeSqlValue {
@@ -158,7 +195,7 @@ fn h3_cell_id_validation_rejects_invalid_sql_and_text_vectors() {
         );
     }
 
-    for vector in &fixture.invalid_text {
+    for vector in fixture.invalid_text.iter().take(INVALID_TEXT_VECTOR_COUNT) {
         let expected = match vector.label.as_str() {
             "upper_case" => H3CellIdError::NonLowercaseHexText,
             "prefixed" => H3CellIdError::InvalidTextLength { actual_bytes: 17 },
@@ -180,7 +217,11 @@ fn h3_cell_id_validation_rejects_invalid_sql_and_text_vectors() {
 fn h3_cell_id_ancestor_requests_reject_too_fine_or_out_of_range_resolution() {
     let fixture = load_fixture();
 
-    for vector in &fixture.invalid_ancestor {
+    for vector in fixture
+        .invalid_ancestor
+        .iter()
+        .take(INVALID_ANCESTOR_VECTOR_COUNT)
+    {
         let cell = H3CellId::from_str(&vector.text).expect("fixture ancestor cell is valid");
         let error = cell.ancestor_at(vector.requested_resolution).unwrap_err();
         match vector.label.as_str() {
@@ -197,84 +238,4 @@ fn h3_cell_id_ancestor_requests_reject_too_fine_or_out_of_range_resolution() {
             other => panic!("unexpected invalid ancestor vector {other}"),
         }
     }
-}
-
-fn load_fixture() -> VectorFixture {
-    let mut fixture = VectorFixture::default();
-
-    for line in include_str!("fixtures/h3_cell_id_vectors_v1.txt")
-        .lines()
-        .filter(|line| !line.is_empty() && !line.starts_with('#'))
-    {
-        let fields = line.split('|').collect::<Vec<_>>();
-        match fields.first().copied().unwrap_or_default() {
-            "valid" => fixture.valid.push(parse_valid(&fields)),
-            "invalid_raw" => fixture.invalid_raw.push(parse_invalid_raw(&fields)),
-            "invalid_sql" => fixture.invalid_sql.push(parse_invalid_sql(&fields)),
-            "invalid_text" => fixture.invalid_text.push(parse_invalid_text(&fields)),
-            "invalid_ancestor" => fixture
-                .invalid_ancestor
-                .push(parse_invalid_ancestor(&fields)),
-            other => panic!("unexpected fixture record kind {other}"),
-        }
-    }
-
-    fixture
-}
-
-fn parse_valid(fields: &[&str]) -> ValidVector {
-    assert_eq!(fields.len(), 9);
-    ValidVector {
-        label: fields[1].to_owned(),
-        resolution: fields[2].parse().unwrap(),
-        text: fields[3].to_owned(),
-        raw_u64: u64::from_str_radix(fields[4], 16).unwrap(),
-        sql_i64: fields[5].parse().unwrap(),
-        bytes_be: parse_hex_bytes(fields[6]),
-        immediate_parent: (!fields[7].is_empty()).then(|| fields[7].to_owned()),
-        ancestor_chain_r0_to_self: fields[8].split(',').map(str::to_owned).collect(),
-    }
-}
-
-fn parse_invalid_raw(fields: &[&str]) -> InvalidRawVector {
-    assert_eq!(fields.len(), 3);
-    InvalidRawVector {
-        label: fields[1].to_owned(),
-        raw_u64: u64::from_str_radix(fields[2], 16).unwrap(),
-    }
-}
-
-fn parse_invalid_sql(fields: &[&str]) -> InvalidSqlVector {
-    assert_eq!(fields.len(), 3);
-    InvalidSqlVector {
-        label: fields[1].to_owned(),
-        sql_i64: fields[2].parse().unwrap(),
-    }
-}
-
-fn parse_invalid_text(fields: &[&str]) -> InvalidTextVector {
-    assert_eq!(fields.len(), 3);
-    InvalidTextVector {
-        label: fields[1].to_owned(),
-        text: fields[2].to_owned(),
-    }
-}
-
-fn parse_invalid_ancestor(fields: &[&str]) -> InvalidAncestorVector {
-    assert_eq!(fields.len(), 4);
-    InvalidAncestorVector {
-        label: fields[1].to_owned(),
-        text: fields[2].to_owned(),
-        requested_resolution: fields[3].parse().unwrap(),
-    }
-}
-
-fn parse_hex_bytes(raw_hex16: &str) -> [u8; 8] {
-    assert_eq!(raw_hex16.len(), 16);
-    let mut bytes = [0_u8; 8];
-    for (index, chunk) in raw_hex16.as_bytes().chunks(2).enumerate() {
-        let pair = std::str::from_utf8(chunk).unwrap();
-        bytes[index] = u8::from_str_radix(pair, 16).unwrap();
-    }
-    bytes
 }

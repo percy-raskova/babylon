@@ -411,7 +411,6 @@ fn preflight_toml(path: &Path, bytes: &[u8]) -> Result<(), String> {
             delimiter_tail = delimiter_tail.saturating_sub(1);
             continue;
         }
-        let triple = bytes.get(byte_index..byte_index.saturating_add(3));
         match state {
             TomlState::Comment => {
                 if byte == b'\n' {
@@ -439,13 +438,13 @@ fn preflight_toml(path: &Path, bytes: &[u8]) -> Result<(), String> {
                     escaped = false;
                 } else if byte == b'\\' {
                     escaped = true;
-                } else if triple == Some(b"\"\"\"") {
+                } else if closes_multiline_quote_run(bytes, byte_index, b'"') {
                     state = TomlState::Plain;
                     delimiter_tail = 2;
                 }
             }
             TomlState::MultiLiteral => {
-                if triple == Some(b"'''") {
+                if closes_multiline_quote_run(bytes, byte_index, b'\'') {
                     state = TomlState::Plain;
                     delimiter_tail = 2;
                 }
@@ -465,6 +464,15 @@ fn preflight_toml(path: &Path, bytes: &[u8]) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+fn closes_multiline_quote_run(bytes: &[u8], index: usize, quote: u8) -> bool {
+    for quote_offset in 0..3 {
+        if bytes.get(index.saturating_add(quote_offset)) != Some(&quote) {
+            return false;
+        }
+    }
+    bytes.get(index.saturating_add(3)) != Some(&quote)
 }
 
 fn preflight_plain_toml_byte(

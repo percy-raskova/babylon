@@ -919,6 +919,31 @@ fn escaped_triple_quote_keeps_toml_structural_bytes_inside_multiline_string() {
     );
 }
 
+#[test]
+fn multiline_strings_close_on_the_final_three_quotes_of_valid_quote_runs() {
+    let scratch = ScratchRoot::new("toml-multiline-closing-run");
+    write_minimal_workspace(&scratch.0, &["babylon-evidence"]);
+    let root_path = scratch.0.join("Cargo.toml");
+    let header = concat!(
+        "[workspace]\n",
+        "members = [\"crates/babylon-evidence\"]\n",
+        "resolver = \"2\"\n",
+    );
+    for (delimiter, quote) in [("\"\"\"", '"'), ("'''", '\'')] {
+        for closing_count in [4_usize, 5] {
+            let closing = quote.to_string().repeat(closing_count);
+            let manifest =
+                format!("{header}note = {delimiter}trailing quotes{closing}\nafter = 1\n");
+            write_file(&root_path, manifest.as_bytes());
+            let (code, report) = run_root(&scratch.0);
+            assert_eq!(
+                code, 0,
+                "{delimiter} with {closing_count} closing quotes must pass:\n{report}"
+            );
+        }
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn intermediate_package_symlinks_and_canonical_escape_are_refused() {

@@ -7,6 +7,7 @@ from enum import StrEnum
 from itertools import islice
 from pathlib import Path
 from typing import Any, Never
+from unittest.mock import MagicMock
 
 import pytest
 import yaml
@@ -141,6 +142,11 @@ def _construct_unique_mapping(
 ) -> dict[object, object]:
     result: dict[object, object] = {}
     for key_node, value_node in islice(node.value, MAX_YAML_EVENTS + 1):
+        if not isinstance(key_node, yaml.ScalarNode) or key_node.tag not in {
+            "tag:yaml.org,2002:int",
+            "tag:yaml.org,2002:str",
+        }:
+            _refuse(PracticeSchemaError.MappingMismatch)
         key = loader.construct_object(key_node, deep=deep)
         if key in result:
             raise PracticeSchemaViolation(PracticeSchemaError.DuplicateKey)
@@ -192,17 +198,22 @@ def _scan_yaml(source: bytes) -> None:
     if len(source) > MAX_SOURCE_BYTES:
         _refuse(PracticeSchemaError.SourceBytes)
     depth = 0
-    for event_count, event in enumerate(islice(yaml.parse(source), MAX_YAML_EVENTS + 1), start=1):
-        if event_count > MAX_YAML_EVENTS:
-            _refuse(PracticeSchemaError.EventLimit)
-        if isinstance(event, AliasEvent):
-            _refuse(PracticeSchemaError.Alias)
-        if isinstance(event, CollectionStartEvent):
-            depth += 1
-            if depth > MAX_DEPTH:
-                _refuse(PracticeSchemaError.Depth)
-        elif isinstance(event, CollectionEndEvent):
-            depth -= 1
+    try:
+        for event_count, event in enumerate(
+            islice(yaml.parse(source), MAX_YAML_EVENTS + 1), start=1
+        ):
+            if event_count > MAX_YAML_EVENTS:
+                _refuse(PracticeSchemaError.EventLimit)
+            if isinstance(event, AliasEvent):
+                _refuse(PracticeSchemaError.Alias)
+            if isinstance(event, CollectionStartEvent):
+                depth += 1
+                if depth > MAX_DEPTH:
+                    _refuse(PracticeSchemaError.Depth)
+            elif isinstance(event, CollectionEndEvent):
+                depth -= 1
+    except yaml.YAMLError:
+        _refuse(PracticeSchemaError.MappingMismatch)
 
 
 def _validate_code_table(value: object, expected: dict[str, int], *, limit: int) -> dict[str, int]:
@@ -559,10 +570,21 @@ class PracticeContractSpec:
 def _load_unique_yaml(source: bytes) -> dict[str, Any]:
     loader = _UniqueKeyLoader(source)
     try:
-        loaded = loader.get_single_data()
+        try:
+            loaded = loader.get_single_data()
+        except yaml.YAMLError:
+            _refuse(PracticeSchemaError.MappingMismatch)
     finally:
         loader.dispose()
     return _mapping(loaded)
+
+
+def _read_source(path: Path) -> bytes:
+    with path.open("rb") as source_file:
+        source = source_file.read(MAX_SOURCE_BYTES + 1)
+    if len(source) > MAX_SOURCE_BYTES:
+        _refuse(PracticeSchemaError.SourceBytes)
+    return source
 
 
 def _validate_header(root: dict[str, Any]) -> None:
@@ -835,7 +857,7 @@ def _validate_budget_and_topology(root: dict[str, Any]) -> None:
 
 
 def load_practice_contract(path: Path) -> PracticeContractSpec:
-    source = path.read_bytes()
+    source = _read_source(path)
     _scan_yaml(source)
     root = _load_unique_yaml(source)
     _validate_header(root)
@@ -1007,6 +1029,41 @@ def test_wire_field_without_byte_order_refuses(tmp_path: Path) -> None:
     with pytest.raises(PracticeSchemaViolation) as raised:
         load_practice_contract(_dump_mutation(tmp_path, document))
     assert raised.value.error is PracticeSchemaError.MissingKey
+
+
+def test_source_read_is_bounded_before_parse(monkeypatch: pytest.MonkeyPatch) -> None:
+    source = _read_source(CONTRACT_PATH)
+    reader = MagicMock()
+    reader.__enter__.return_value = reader
+    reader.read.return_value = source
+    opener = MagicMock(return_value=reader)
+    monkeypatch.setattr(Path, "open", opener)
+
+    load_practice_contract(CONTRACT_PATH)
+
+    opener.assert_called_once_with("rb")
+    reader.read.assert_called_once_with(MAX_SOURCE_BYTES + 1)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        b"schema: [\n",
+        b"true: value\n",
+        b"? [sequence, key]\n: value\n",
+        b"? {mapping: key}\n: value\n",
+    ],
+)
+def test_malformed_or_complex_yaml_keys_return_typed_schema_error(
+    tmp_path: Path, source: bytes
+) -> None:
+    path = tmp_path / "malformed-practice-contract.yaml"
+    path.write_bytes(source)
+
+    with pytest.raises(PracticeSchemaViolation) as raised:
+        load_practice_contract(path)
+
+    assert raised.value.error is PracticeSchemaError.MappingMismatch
 
 
 def test_source_event_alias_duplicate_depth_and_key_refusals(tmp_path: Path) -> None:

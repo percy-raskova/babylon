@@ -60,11 +60,15 @@ def _pinned_uv() -> str:
             "repository-managed uv requires `mise`; install mise or expose it on PATH before "
             "running the lock contract"
         )
-    assert result.returncode == 0, (
-        f"mise which uv failed (exit {result.returncode})\n{_subprocess_diagnostics(result)}"
-    )
+    if result.returncode != 0:
+        raise AssertionError(
+            f"mise which uv failed (exit {result.returncode})\n{_subprocess_diagnostics(result)}"
+        )
     uv_path = result.stdout.strip()
-    assert uv_path, f"mise which uv returned no executable path\n{_subprocess_diagnostics(result)}"
+    if not uv_path:
+        raise AssertionError(
+            f"mise which uv returned no executable path\n{_subprocess_diagnostics(result)}"
+        )
     return uv_path
 
 
@@ -85,7 +89,7 @@ def test_pinned_uv_fails_actionably_when_mise_is_missing(
 def test_pinned_uv_failure_shows_bounded_combined_diagnostics(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A failed lookup reports both streams without dumping unbounded output."""
+    """A failed lookup remains bounded under pytest assertion rewriting."""
     result = subprocess.CompletedProcess(
         ["mise", "which", "uv"],
         returncode=17,
@@ -144,9 +148,10 @@ def test_pinned_uv_validates_an_isolated_archive_without_a_hypergraph_sibling() 
     ref = os.environ.get("BABYLON_LOCK_CONTRACT_REF", "HEAD")
     result = _run_archive_lock_check(ref)
 
-    assert result.returncode == 0, (
-        f"uv lock --check failed (exit {result.returncode})\n{_subprocess_diagnostics(result)}"
-    )
+    if result.returncode != 0:
+        raise AssertionError(
+            f"uv lock --check failed (exit {result.returncode})\n{_subprocess_diagnostics(result)}"
+        )
 
 
 def test_archive_lock_check_unsets_uv_frozen(
@@ -163,7 +168,8 @@ def test_archive_lock_check_unsets_uv_frozen(
 
     result = _run_archive_lock_check("HEAD")
 
-    assert result.returncode == 0, (
-        f"uv lock --check failed (exit {result.returncode})\n{_subprocess_diagnostics(result)}"
-    )
+    if result.returncode != 0:
+        raise AssertionError(
+            f"uv lock --check failed (exit {result.returncode})\n{_subprocess_diagnostics(result)}"
+        )
     assert captured_environment.read_text() == "absent"

@@ -1201,17 +1201,13 @@ fn parse_census_line(
     line: &str,
     line_number: usize,
 ) -> Result<LegacyCensusEntry, LegacyCensusParseError> {
+    let field_count = census_field_count(line);
     let mut fields = line.split('|');
     let kind = fields.next();
     let schema = fields.next();
     let name = fields.next();
     let digest = fields.next();
     let fifth = fields.next();
-    let field_count = usize::from(kind.is_some())
-        + usize::from(schema.is_some())
-        + usize::from(name.is_some())
-        + usize::from(digest.is_some())
-        + usize::from(fifth.is_some());
     let (Some(kind), Some(schema), Some(name), Some(digest), None) =
         (kind, schema, name, digest, fifth)
     else {
@@ -1225,6 +1221,16 @@ fn parse_census_line(
         .map_err(|_| LegacyCensusParseError::InvalidIdentifier { line: line_number })?;
     LegacyCensusEntry::new(key, digest)
         .map_err(|_| LegacyCensusParseError::InvalidDigest { line: line_number })
+}
+
+fn census_field_count(line: &str) -> usize {
+    line.as_bytes()
+        .iter()
+        .take(MAX_LEGACY_CENSUS_FIXTURE_BYTES + 1)
+        .filter(|byte| **byte == b'|')
+        .count()
+        .checked_add(1)
+        .expect("bounded census field count must fit usize")
 }
 
 fn parse_kind(raw: &str) -> Option<LegacyObjectKind> {

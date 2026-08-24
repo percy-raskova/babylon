@@ -317,6 +317,12 @@ fn census_fixture_parser_rejects_duplicate_unsorted_and_malformed_records() {
         parse_legacy_census_fixture(&format!("relation|public|name|{ZERO_DIGEST}|extra\n")),
         Err(LegacyCensusParseError::MalformedRecord { line: 1, fields: 5 })
     );
+    assert_eq!(
+        parse_legacy_census_fixture(&format!(
+            "relation|public|name|{ZERO_DIGEST}|extra|second_extra\n"
+        )),
+        Err(LegacyCensusParseError::MalformedRecord { line: 1, fields: 6 })
+    );
 }
 
 #[test]

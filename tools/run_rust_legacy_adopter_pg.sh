@@ -5,7 +5,9 @@ set -euo pipefail
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly REPO_ROOT
 readonly IMAGE="babylon-per20-legacy-adopter:local"
-readonly ACK="I_UNDERSTAND_PER20_DROPS_SCRATCH_DATABASES_ROLES_AND_CREATED_BABYLON_INTEL"
+# Internal handshake for the ignored Rust test. This runner forwards it only
+# after it proves exact ownership of the random-canary container below.
+readonly TEST_HARNESS_ACK="I_UNDERSTAND_PER20_DROPS_SCRATCH_DATABASES_ROLES_AND_CREATED_BABYLON_INTEL"
 CANARY="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
 readonly CANARY
 readonly CONTAINER="babylon-per20-adopter-${CANARY:0:12}"
@@ -179,7 +181,7 @@ status=0
 timeout --signal=TERM --kill-after=10s 600s \
   env \
     BABYLON_LEGACY_ADOPTER_TEST_DSN="postgresql://test:test@127.0.0.1:$PORT/postgres" \
-    BABYLON_LEGACY_ADOPTER_DISPOSABLE_ACK="$ACK" \
+    BABYLON_LEGACY_ADOPTER_DISPOSABLE_ACK="$TEST_HARNESS_ACK" \
     BABYLON_LEGACY_ADOPTER_DISPOSABLE_CANARY="$CANARY" \
     CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/rust/target}" \
   cargo test -p babylon-persistence --test legacy_adopter_postgres --locked -- --nocapture \

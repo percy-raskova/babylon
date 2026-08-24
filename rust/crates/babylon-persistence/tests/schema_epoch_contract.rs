@@ -9,18 +9,29 @@ const SQL_ONE: &str = "SELECT 1;\n";
 const SQL_TWO: &str = "SELECT 2;\n";
 
 #[test]
-fn compiled_registry_is_one_contiguous_exact_migration() {
+fn compiled_registry_is_two_contiguous_exact_migrations() {
     let compiled = compiled_schema_migrations().expect("checked-in migration bytes are valid");
 
-    assert_eq!(compiled.len(), 1);
+    assert_eq!(compiled.len(), 2);
     assert_eq!(compiled[0].version().as_i64(), 1);
+    assert_eq!(compiled[1].version().as_i64(), 2);
     assert_eq!(
         compiled[0].sql(),
         include_str!("../migrations/0001_owned_schema_epoch.sql")
     );
+    let migration_two = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/migrations/0002_h3_cell.sql"
+    ))
+    .expect("epoch-2 H3 migration must exist");
+    assert_eq!(compiled[1].sql(), migration_two);
     assert_eq!(
         compiled[0].checksum().as_bytes(),
         &hex_checksum("4fc40761ed3b9a2bfab574d14ce65d24e828d1d51ca3f953a515b18f6f2667d4")
+    );
+    assert_eq!(
+        compiled[1].checksum().as_bytes(),
+        &hex_checksum("1f749f1519196c81c911fff619c42daccbf36d6566442ca66015dadd281ab4cd")
     );
 }
 
@@ -135,6 +146,7 @@ fn production_epoch_has_no_runtime_activation_or_caller_supplied_sql_path() {
 
     assert!(production.contains("pub fn migrate_schema_epoch(config: &Config)"));
     assert!(production.contains("include_str!(\"../migrations/0001_owned_schema_epoch.sql\")"));
+    assert!(production.contains("include_str!(\"../migrations/0002_h3_cell.sql\")"));
     for stage in [
         "map_err(SchemaEpochError::ConnectionTarget)",
         "map_err(SchemaEpochError::Lock)",
@@ -157,7 +169,6 @@ fn production_epoch_has_no_runtime_activation_or_caller_supplied_sql_path() {
         "CommittedTickEnvelope",
         "tick_commit",
         "archive_outbox",
-        "h3_cell",
     ] {
         assert!(
             !production.contains(forbidden),
@@ -189,15 +200,34 @@ fn migration_executes_exact_ddl_verification_marker_then_commit() {
 }
 
 #[test]
+fn v2_prefix_has_an_independent_shape_and_census_contract() {
+    let source = include_str!("../src/schema_epoch.rs");
+    let v2_verifier = source
+        .split_once("fn verify_v2_prefix_client(")
+        .unwrap()
+        .1
+        .split_once("fn verify_post_epoch_census_client(")
+        .unwrap()
+        .0;
+
+    assert!(v2_verifier.contains("EPOCH_V2_SHAPE_SQL"));
+    assert!(v2_verifier.contains("SchemaEpochPrefix::V2"));
+    assert!(!v2_verifier.contains("verify_v1_prefix"));
+    assert!(!v2_verifier.contains("EPOCH_V1_SHAPE_SQL"));
+}
+
+#[test]
 fn fresh_and_owned_census_fixtures_are_bounded_and_exactly_sorted() {
     let fixtures = [
         include_str!("../src/fixtures/fresh_schema_epoch_census_v1.txt"),
         include_str!("../src/fixtures/fresh_schema_epoch_census_with_intel_v1.txt"),
         include_str!("../src/fixtures/schema_epoch_owned_census_v1.txt"),
         include_str!("../src/fixtures/schema_epoch_owned_fresh_census_v1.txt"),
+        include_str!("../src/fixtures/schema_epoch_owned_census_v2.txt"),
+        include_str!("../src/fixtures/schema_epoch_owned_fresh_census_v2.txt"),
     ];
-    let expected_counts = [7, 8, 3, 4];
-    for (fixture, expected) in fixtures.iter().zip(expected_counts).take(4) {
+    let expected_counts = [7, 8, 3, 4, 4, 5];
+    for (fixture, expected) in fixtures.iter().zip(expected_counts).take(6) {
         let parsed = babylon_persistence::parse_legacy_census_fixture(fixture).unwrap();
         assert_eq!(parsed.entries().len(), expected);
         assert!(fixture.len() <= 65_536);

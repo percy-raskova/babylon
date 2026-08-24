@@ -1108,9 +1108,7 @@ fn extension_authority_profile_is_path_aware_and_cross_owner_portable() {
     assert!(extensions.contains("owner_identity.identity"));
 }
 
-#[test]
-fn extension_role_identities_are_exact_bounded_and_complete() {
-    let sql = census_sql();
+fn assert_extension_member_owner_contract(sql: &str) {
     let member_owners = cte_slice(
         sql,
         "candidate_extension_member_owners AS MATERIALIZED",
@@ -1130,6 +1128,9 @@ fn extension_role_identities_are_exact_bounded_and_complete() {
             "missing extension member owner: {owner}"
         );
     }
+}
+
+fn assert_extension_role_reference_contract(sql: &str) {
     let reference_pairs = cte_slice(
         sql,
         "candidate_extension_role_reference_pairs AS MATERIALIZED",
@@ -1162,6 +1163,9 @@ fn extension_role_identities_are_exact_bounded_and_complete() {
             "missing bounded role set: {contract}"
         );
     }
+}
+
+fn assert_extension_role_profile_contract(sql: &str) {
     let profile = cte_slice(
         sql,
         "extension_role_identity_profile AS MATERIALIZED",
@@ -1180,6 +1184,9 @@ fn extension_role_identities_are_exact_bounded_and_complete() {
     assert!(counts.contains("canonical_identity_count"));
     assert!(counts.contains("pg_catalog.count(DISTINCT profile.identity)"));
     assert!(counts.contains("GROUP BY extension_row.oid"));
+}
+
+fn assert_extension_role_bound_contract(sql: &str) {
     let extensions = cte_slice(sql, "extension_objects AS", "candidate_role_configs AS");
     assert!(extensions.contains("'role_identity_count', role_counts.canonical_identity_count"));
     assert!(extensions.contains("'role_identities_complete', true"));
@@ -1198,6 +1205,15 @@ fn extension_role_identities_are_exact_bounded_and_complete() {
     assert!(live.contains("zzzz_per20_extension_grantor"));
     assert!(live.contains("yyyy_per20_extension_role_"));
     assert!(live.contains("FOR role_index IN 0..512 LOOP"));
+}
+
+#[test]
+fn extension_role_identities_are_exact_bounded_and_complete() {
+    let sql = census_sql();
+    assert_extension_member_owner_contract(sql);
+    assert_extension_role_reference_contract(sql);
+    assert_extension_role_profile_contract(sql);
+    assert_extension_role_bound_contract(sql);
 }
 
 #[test]

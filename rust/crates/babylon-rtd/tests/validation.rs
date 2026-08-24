@@ -185,6 +185,7 @@ fn empty_administrative_draft_and_focus_permutations_validate() {
 #[test]
 fn untrusted_json_boundary_classifies_shape_and_normalizes_float_negative_zero() {
     assert_eq!(parse_draft_json(b"{"), Err(RtdError::Json));
+    assert_eq!(parse_draft_json(b"{}"), Err(RtdError::Json));
     assert_eq!(parse_draft_json(b"{}{}"), Err(RtdError::Json));
     let deep = format!("{}{}", "[".repeat(33), "]".repeat(33));
     assert_eq!(parse_draft_json(deep.as_bytes()), Err(RtdError::JsonDepth));
@@ -215,6 +216,33 @@ fn untrusted_json_boundary_classifies_shape_and_normalizes_float_negative_zero()
     assert_eq!(
         parsed.facets[0].value_bits_or_null.as_deref(),
         Some("0000000000000000")
+    );
+}
+
+#[test]
+fn structural_refusal_taxonomy_matches_python_for_numeric_enums_and_missing_versions() {
+    let numeric_audience = valid_json().replace("\"ADMIN_MATERIAL\"", "7");
+    assert_eq!(
+        parse_draft_json(numeric_audience.as_bytes()),
+        Err(RtdError::Enum)
+    );
+
+    let mut facet = county_facet();
+    facet.metric_id = registry_identity("metric", "production/qcew-county-total-wages-usd");
+    facet.unit_id = registry_identity("unit", "usd-current");
+    facet.value_kind = ValueKindV1::Float64Bits;
+    let nested = facet_json(&facet).replace("\"coverage\":\"COMPLETE\"", "\"coverage\":7");
+    assert_eq!(parse_draft_json(nested.as_bytes()), Err(RtdError::Enum));
+
+    let missing_schema_version = valid_json().replace("\"schema_version\":1,", "");
+    assert_eq!(
+        parse_draft_json(missing_schema_version.as_bytes()),
+        Err(RtdError::SchemaVersion)
+    );
+    let missing_projection_version = valid_json().replace("\"projection_version\":1,", "");
+    assert_eq!(
+        parse_draft_json(missing_projection_version.as_bytes()),
+        Err(RtdError::SchemaVersion)
     );
 }
 

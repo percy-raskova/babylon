@@ -206,6 +206,7 @@ pub fn parse_draft_json(payload: &[u8]) -> Result<RtdDossierDraftV1, RtdError> {
         .map_err(|error| classify_json_error(&error))?
         .0;
     preflight_schema_version(&value)?;
+    preflight_enum_shapes(&value)?;
     let mut draft = serde_json::from_value::<RtdDossierDraftV1>(value)
         .map_err(|error| classify_structural_error(&error))?;
     preflight_limits(&draft)?;
@@ -218,22 +219,118 @@ fn preflight_schema_version(value: &Value) -> Result<(), RtdError> {
     let Value::Object(object) = value else {
         return Ok(());
     };
-    if let Some(schema) = object.get("schema") {
-        if schema.as_str() != Some(RTD_V1_SCHEMA_ID) {
-            return Err(RtdError::SchemaVersion);
-        }
+    let Some(schema) = object.get("schema") else {
+        return Ok(());
+    };
+    if schema.as_str() != Some(RTD_V1_SCHEMA_ID) {
+        return Err(RtdError::SchemaVersion);
     }
-    if let Some(version) = object.get("schema_version") {
-        if version.as_u64() != Some(1) {
-            return Err(RtdError::SchemaVersion);
-        }
+    let Some(schema_version) = object.get("schema_version") else {
+        return Err(RtdError::SchemaVersion);
+    };
+    if schema_version.as_u64() != Some(1) {
+        return Err(RtdError::SchemaVersion);
     }
-    if let Some(version) = object.get("projection_version") {
-        if version.as_u64() != Some(1) {
-            return Err(RtdError::SchemaVersion);
+    let Some(projection_version) = object.get("projection_version") else {
+        return Err(RtdError::SchemaVersion);
+    };
+    if projection_version.as_u64() != Some(1) {
+        return Err(RtdError::SchemaVersion);
+    }
+    Ok(())
+}
+
+fn preflight_enum_shapes(value: &Value) -> Result<(), RtdError> {
+    let Value::Object(object) = value else {
+        return Ok(());
+    };
+    require_string_enum(object, "audience")?;
+    require_string_enum(object, "durability")?;
+    preflight_records::<MAX_REFERENCE_DIGESTS>(object, "reference_digests", reference_enums)?;
+    preflight_records::<MAX_SCALE_MEMBERSHIPS>(object, "scale_memberships", membership_enums)?;
+    preflight_records::<MAX_FACETS>(object, "facets", facet_enums)?;
+    preflight_records::<MAX_DYADS>(object, "dyads", dyad_enums)?;
+    preflight_records::<MAX_HYPEREDGES>(object, "hyperedges", hyperedge_enums)?;
+    preflight_records::<MAX_FLOWS>(object, "flows", flow_enums)?;
+    preflight_records::<MAX_GAPS>(object, "gaps", gap_enums)?;
+    preflight_records::<MAX_PROVENANCE>(object, "provenance", provenance_enums)
+}
+
+fn preflight_records<const N: usize>(
+    object: &Map<String, Value>,
+    field: &str,
+    validate: fn(&Map<String, Value>) -> Result<(), RtdError>,
+) -> Result<(), RtdError> {
+    let Some(Value::Array(records)) = object.get(field) else {
+        return Ok(());
+    };
+    for index in 0..N {
+        if index == records.len() {
+            return Ok(());
+        }
+        if let Value::Object(record) = &records[index] {
+            validate(record)?;
         }
     }
     Ok(())
+}
+
+fn require_string_enum(object: &Map<String, Value>, field: &str) -> Result<(), RtdError> {
+    if object.get(field).is_some_and(|value| !value.is_string()) {
+        Err(RtdError::Enum)
+    } else {
+        Ok(())
+    }
+}
+
+fn reference_enums(object: &Map<String, Value>) -> Result<(), RtdError> {
+    require_string_enum(object, "evidence_class")
+}
+
+fn membership_enums(object: &Map<String, Value>) -> Result<(), RtdError> {
+    require_string_enum(object, "membership_kind")?;
+    require_string_enum(object, "status")?;
+    require_string_enum(object, "weight_status")?;
+    require_string_enum(object, "coverage")?;
+    require_string_enum(object, "evidence_class")
+}
+
+fn facet_enums(object: &Map<String, Value>) -> Result<(), RtdError> {
+    require_string_enum(object, "family")?;
+    require_string_enum(object, "status")?;
+    require_string_enum(object, "value_kind")?;
+    require_string_enum(object, "coverage")?;
+    require_string_enum(object, "evidence_class")
+}
+
+fn dyad_enums(object: &Map<String, Value>) -> Result<(), RtdError> {
+    require_string_enum(object, "relation_kind")?;
+    require_string_enum(object, "status")?;
+    require_string_enum(object, "coverage")?;
+    require_string_enum(object, "evidence_class")
+}
+
+fn hyperedge_enums(object: &Map<String, Value>) -> Result<(), RtdError> {
+    require_string_enum(object, "hyperedge_kind")?;
+    require_string_enum(object, "status")?;
+    require_string_enum(object, "coverage")?;
+    require_string_enum(object, "evidence_class")
+}
+
+fn flow_enums(object: &Map<String, Value>) -> Result<(), RtdError> {
+    require_string_enum(object, "flow_kind")?;
+    require_string_enum(object, "status")?;
+    require_string_enum(object, "coverage")?;
+    require_string_enum(object, "evidence_class")
+}
+
+fn gap_enums(object: &Map<String, Value>) -> Result<(), RtdError> {
+    require_string_enum(object, "status")?;
+    require_string_enum(object, "reason_code")
+}
+
+fn provenance_enums(object: &Map<String, Value>) -> Result<(), RtdError> {
+    require_string_enum(object, "evidence_class")
 }
 
 fn classify_json_error(error: &serde_json::Error) -> RtdError {

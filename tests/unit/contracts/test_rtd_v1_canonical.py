@@ -19,10 +19,12 @@ from babylon.contracts.rtd_v1_generated import RtdDossierDraftV1
 
 ROOT = Path(__file__).resolve().parents[3]
 VECTOR_PATH = ROOT / "contracts" / "relational_territory_dossier_v1_vectors.jsonl"
-SIZE_WITNESS_ROWS = 10_486
-SIZE_WITNESS_ROW_BYTES = 6_399
+SIZE_WITNESS_UNIFORM_ROWS = 10_485
+SIZE_WITNESS_UNIFORM_ROW_BYTES = 6_399
+SIZE_WITNESS_FINAL_ROW_BYTES = 3_781
 SIZE_WITNESS_EMPTY_DRAFT_BYTES = 1_083
-SIZE_WITNESS_CANONICAL_BYTES = 67_111_482
+SIZE_WITNESS_FINAL_NULS = 501
+SIZE_WITNESS_FINAL_XS = 520
 
 
 def _invalid_vector_line(case_id: str, ending: bytes = b"\n") -> bytes:
@@ -34,7 +36,22 @@ def _invalid_vector_line(case_id: str, ending: bytes = b"\n") -> bytes:
     )
 
 
-def _canonical_size_witness() -> RtdDossierDraftV1:
+def _provenance_row(row_index: int, locator: str) -> dict[str, object]:
+    return {
+        "provenance_id": {
+            "domain": "provenance",
+            "authority": "size",
+            "local_id": f"{row_index:05x}",
+        },
+        "artifact_digest": "55" * 32,
+        "locator": locator,
+        "vintage": "v",
+        "evidence_class": "Derived",
+        "transformation_digest_or_null": None,
+    }
+
+
+def _canonical_size_witness(*, one_extra_x: bool) -> RtdDossierDraftV1:
     cases = parse_vector_corpus(VECTOR_PATH.read_bytes())
     payload = None
     for case_index in range(256):
@@ -45,21 +62,18 @@ def _canonical_size_witness() -> RtdDossierDraftV1:
             break
     assert payload is not None
     provenance: list[dict[str, object]] = []
-    for row_index in range(SIZE_WITNESS_ROWS):
-        provenance.append(
-            {
-                "provenance_id": {
-                    "domain": "provenance",
-                    "authority": "size",
-                    "local_id": f"{row_index:05x}",
-                },
-                "artifact_digest": "55" * 32,
-                "locator": "\x00" * 1_024,
-                "vintage": "v",
-                "evidence_class": "Derived",
-                "transformation_digest_or_null": None,
-            }
+    uniform_locator = "\x00" * 1_024
+    for row_index in range(SIZE_WITNESS_UNIFORM_ROWS):
+        provenance.append(_provenance_row(row_index, uniform_locator))
+    final_locator = ("\x00" * SIZE_WITNESS_FINAL_NULS) + (
+        "x" * (SIZE_WITNESS_FINAL_XS + int(one_extra_x))
+    )
+    provenance.append(
+        _provenance_row(
+            SIZE_WITNESS_UNIFORM_ROWS,
+            final_locator,
         )
+    )
     payload["provenance"] = provenance
     return parse_draft(payload)
 
@@ -168,24 +182,28 @@ def test_vector_reader_rejects_duplicate_case_id() -> None:
         parse_vector_corpus(line + line)
 
 
-def test_public_canonical_apis_refuse_valid_oversize_draft_without_result() -> None:
-    previous_size = (
+def test_exact_canonical_size_is_accepted() -> None:
+    expected_size = (
         SIZE_WITNESS_EMPTY_DRAFT_BYTES
-        + ((SIZE_WITNESS_ROWS - 1) * SIZE_WITNESS_ROW_BYTES)
-        + SIZE_WITNESS_ROWS
-        - 2
+        + (SIZE_WITNESS_UNIFORM_ROWS * SIZE_WITNESS_UNIFORM_ROW_BYTES)
+        + SIZE_WITNESS_FINAL_ROW_BYTES
+        + SIZE_WITNESS_UNIFORM_ROWS
     )
-    assert previous_size <= RTD_MAX_JSON_INPUT_BYTES
-    assert SIZE_WITNESS_ROWS <= 65_535
-    assert SIZE_WITNESS_CANONICAL_BYTES == (
-        SIZE_WITNESS_EMPTY_DRAFT_BYTES
-        + (SIZE_WITNESS_ROWS * SIZE_WITNESS_ROW_BYTES)
-        + SIZE_WITNESS_ROWS
-        - 1
-    )
-    assert SIZE_WITNESS_CANONICAL_BYTES > RTD_MAX_JSON_INPUT_BYTES
+    assert expected_size == RTD_MAX_JSON_INPUT_BYTES
+    draft = _canonical_size_witness(one_extra_x=False)
+    assert len(canonical_draft_bytes(draft)) == RTD_MAX_JSON_INPUT_BYTES
 
-    draft = _canonical_size_witness()
+
+def test_public_canonical_apis_refuse_limit_plus_one_without_result() -> None:
+    expected_size = (
+        SIZE_WITNESS_EMPTY_DRAFT_BYTES
+        + (SIZE_WITNESS_UNIFORM_ROWS * SIZE_WITNESS_UNIFORM_ROW_BYTES)
+        + SIZE_WITNESS_FINAL_ROW_BYTES
+        + SIZE_WITNESS_UNIFORM_ROWS
+        + 1
+    )
+    assert expected_size == RTD_MAX_JSON_INPUT_BYTES + 1
+    draft = _canonical_size_witness(one_extra_x=True)
     for operation in (canonical_draft_bytes, projection_hash, seal_draft):
         with pytest.raises(RtdValidationError) as raised:
             operation(draft)

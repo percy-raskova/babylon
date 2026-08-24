@@ -6,10 +6,12 @@ use babylon_rtd::{
 
 const CORPUS: &str =
     include_str!("../../../../contracts/relational_territory_dossier_v1_vectors.jsonl");
-const SIZE_WITNESS_ROWS: usize = 10_486;
-const SIZE_WITNESS_ROW_BYTES: usize = 6_399;
+const SIZE_WITNESS_UNIFORM_ROWS: usize = 10_485;
+const SIZE_WITNESS_UNIFORM_ROW_BYTES: usize = 6_399;
+const SIZE_WITNESS_FINAL_ROW_BYTES: usize = 3_781;
 const SIZE_WITNESS_EMPTY_DRAFT_BYTES: usize = 1_083;
-const SIZE_WITNESS_CANONICAL_BYTES: usize = 67_111_482;
+const SIZE_WITNESS_FINAL_NULS: usize = 501;
+const SIZE_WITNESS_FINAL_XS: usize = 520;
 const MAX_CANONICAL_BYTES: usize = 67_108_864;
 
 fn invalid_vector_line(case_id: &str, ending: &str) -> Vec<u8> {
@@ -17,6 +19,57 @@ fn invalid_vector_line(case_id: &str, ending: &str) -> Vec<u8> {
         "{{\"case_id\":\"{case_id}\",\"kind\":\"invalid\",\"draft\":{{}},\"error\":\"RTD_JSON\"}}{ending}"
     )
     .into_bytes()
+}
+
+fn provenance_row(row_index: usize, locator: String) -> ProvenanceV1 {
+    ProvenanceV1 {
+        provenance_id: TypedIdentityV1 {
+            domain: "provenance".to_owned(),
+            authority: "size".to_owned(),
+            local_id: format!("{row_index:05x}"),
+        },
+        artifact_digest: "55".repeat(32),
+        locator,
+        vintage: "v".to_owned(),
+        evidence_class: EvidenceClassV1::Derived,
+        transformation_digest_or_null: None,
+    }
+}
+
+fn canonical_size_witness(one_extra_x: bool) -> RtdDossierDraftV1 {
+    let cases = parse_vector_corpus(CORPUS.as_bytes()).expect("checked corpus parses");
+    let mut draft = None;
+    for case_index in 0..256_usize {
+        if case_index == cases.len() {
+            break;
+        }
+        if let RtdVectorCaseV1::Valid {
+            case_id,
+            draft_json,
+            ..
+        } = &cases[case_index]
+        {
+            if case_id == "minimal-admin" {
+                draft = Some(parse_draft_json(draft_json).expect("valid minimal draft"));
+                break;
+            }
+        }
+    }
+    let mut draft = draft.expect("minimal-admin vector is required");
+    let mut provenance = Vec::with_capacity(SIZE_WITNESS_UNIFORM_ROWS + 1);
+    for row_index in 0..SIZE_WITNESS_UNIFORM_ROWS {
+        provenance.push(provenance_row(row_index, "\0".repeat(1_024)));
+    }
+    let extra_x = usize::from(one_extra_x);
+    let final_locator = format!(
+        "{}{}",
+        "\0".repeat(SIZE_WITNESS_FINAL_NULS),
+        "x".repeat(SIZE_WITNESS_FINAL_XS + extra_x)
+    );
+    provenance.push(provenance_row(SIZE_WITNESS_UNIFORM_ROWS, final_locator));
+    draft.provenance = provenance;
+    validate_draft(&draft).expect("size witness remains contract-valid");
+    draft
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -170,58 +223,30 @@ fn vector_reader_is_lf_oriented_with_crlf_and_cr_only_parity() {
 }
 
 #[test]
-fn public_canonical_apis_refuse_valid_oversize_draft_without_result() {
-    let previous_size = SIZE_WITNESS_EMPTY_DRAFT_BYTES
-        + ((SIZE_WITNESS_ROWS - 1) * SIZE_WITNESS_ROW_BYTES)
-        + SIZE_WITNESS_ROWS
-        - 2;
-    assert!(previous_size <= MAX_CANONICAL_BYTES);
-    assert_eq!(SIZE_WITNESS_ROWS.min(65_535), SIZE_WITNESS_ROWS);
+fn exact_canonical_size_is_accepted() {
+    let expected_size = SIZE_WITNESS_EMPTY_DRAFT_BYTES
+        + (SIZE_WITNESS_UNIFORM_ROWS * SIZE_WITNESS_UNIFORM_ROW_BYTES)
+        + SIZE_WITNESS_FINAL_ROW_BYTES
+        + SIZE_WITNESS_UNIFORM_ROWS;
+    assert_eq!(expected_size, MAX_CANONICAL_BYTES);
+    let draft = canonical_size_witness(false);
     assert_eq!(
-        SIZE_WITNESS_CANONICAL_BYTES,
-        SIZE_WITNESS_EMPTY_DRAFT_BYTES
-            + (SIZE_WITNESS_ROWS * SIZE_WITNESS_ROW_BYTES)
-            + SIZE_WITNESS_ROWS
-            - 1
+        canonical_draft_bytes(&draft)
+            .expect("exact canonical boundary succeeds")
+            .len(),
+        MAX_CANONICAL_BYTES
     );
-    assert_eq!(SIZE_WITNESS_CANONICAL_BYTES - MAX_CANONICAL_BYTES, 2_618);
+}
 
-    let cases = parse_vector_corpus(CORPUS.as_bytes()).expect("checked corpus parses");
-    let mut draft = None;
-    for case_index in 0..256_usize {
-        if case_index == cases.len() {
-            break;
-        }
-        if let RtdVectorCaseV1::Valid {
-            case_id,
-            draft_json,
-            ..
-        } = &cases[case_index]
-        {
-            if case_id == "minimal-admin" {
-                draft = Some(parse_draft_json(draft_json).expect("valid minimal draft"));
-                break;
-            }
-        }
-    }
-    let mut draft = draft.expect("minimal-admin vector is required");
-    let mut provenance = Vec::with_capacity(SIZE_WITNESS_ROWS);
-    for row_index in 0..SIZE_WITNESS_ROWS {
-        provenance.push(ProvenanceV1 {
-            provenance_id: TypedIdentityV1 {
-                domain: "provenance".to_owned(),
-                authority: "size".to_owned(),
-                local_id: format!("{row_index:05x}"),
-            },
-            artifact_digest: "55".repeat(32),
-            locator: "\0".repeat(1_024),
-            vintage: "v".to_owned(),
-            evidence_class: EvidenceClassV1::Derived,
-            transformation_digest_or_null: None,
-        });
-    }
-    draft.provenance = provenance;
-    validate_draft(&draft).expect("size witness remains contract-valid");
+#[test]
+fn public_canonical_apis_refuse_limit_plus_one_without_result() {
+    let expected_size = SIZE_WITNESS_EMPTY_DRAFT_BYTES
+        + (SIZE_WITNESS_UNIFORM_ROWS * SIZE_WITNESS_UNIFORM_ROW_BYTES)
+        + SIZE_WITNESS_FINAL_ROW_BYTES
+        + SIZE_WITNESS_UNIFORM_ROWS
+        + 1;
+    assert_eq!(expected_size, MAX_CANONICAL_BYTES + 1);
+    let draft = canonical_size_witness(true);
     assert_eq!(canonical_draft_bytes(&draft), Err(RtdError::CanonicalSize));
     assert_eq!(projection_hash(&draft), Err(RtdError::CanonicalSize));
     assert_eq!(seal_draft(draft), Err(RtdError::CanonicalSize));

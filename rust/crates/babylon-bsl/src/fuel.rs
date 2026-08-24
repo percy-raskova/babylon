@@ -9,7 +9,130 @@
 //! language reference's completion of that model and are
 //! `[draft ruling — Phase 1 review]`. Neither tier is a tuning knob.
 
+use babylon_kernel::sha256_of;
 use std::collections::HashMap;
+
+const MAX_SFS_IDENTITY_ROWS: usize = 64;
+const MAX_SFS_IDENTITY_KEY_BYTES: usize = 96;
+
+/// A refusal while constructing a complete synthetic-audit fuel-table identity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SfsFuelIdentityError {
+    /// A complete table contains more than 64 rows.
+    RowLimit {
+        /// Which table failed.
+        table: &'static str,
+        /// Complete row count.
+        actual: usize,
+    },
+    /// Two complete encoded rows are byte-identical.
+    DuplicateRow {
+        /// Which table failed.
+        table: &'static str,
+        /// The duplicate row.
+        row: String,
+    },
+    /// A key is empty.
+    KeyEmpty {
+        /// Which table failed.
+        table: &'static str,
+    },
+    /// A key exceeds 96 bytes.
+    KeyTooLong {
+        /// Which table failed.
+        table: &'static str,
+        /// Actual byte length.
+        actual: usize,
+    },
+    /// A key is not strict ASCII.
+    KeyNonAscii {
+        /// Which table failed.
+        table: &'static str,
+    },
+    /// A key contains a row delimiter.
+    KeyContainsDelimiter {
+        /// Which table failed.
+        table: &'static str,
+    },
+}
+
+fn validate_identity_key(table: &'static str, key: &str) -> Result<(), SfsFuelIdentityError> {
+    if key.is_empty() {
+        return Err(SfsFuelIdentityError::KeyEmpty { table });
+    }
+    if key.len() > MAX_SFS_IDENTITY_KEY_BYTES {
+        return Err(SfsFuelIdentityError::KeyTooLong {
+            table,
+            actual: key.len(),
+        });
+    }
+    if !key.is_ascii() {
+        return Err(SfsFuelIdentityError::KeyNonAscii { table });
+    }
+    if key.as_bytes().contains(&b'|')
+        || key.as_bytes().contains(&b'\n')
+        || key.as_bytes().contains(&b'\r')
+    {
+        return Err(SfsFuelIdentityError::KeyContainsDelimiter { table });
+    }
+    Ok(())
+}
+
+fn append_rows(
+    table: &'static str,
+    prefix: &str,
+    values: &HashMap<String, u64>,
+    rows: &mut Vec<String>,
+) -> Result<(), SfsFuelIdentityError> {
+    let mut entries = values.iter();
+    for _index in 0..MAX_SFS_IDENTITY_ROWS {
+        let Some((key, value)) = entries.next() else {
+            return Ok(());
+        };
+        validate_identity_key(table, key)?;
+        rows.push(format!("{prefix}|{key}|{value}\n"));
+    }
+    if entries.next().is_some() {
+        return Err(SfsFuelIdentityError::RowLimit {
+            table,
+            actual: values.len(),
+        });
+    }
+    Ok(())
+}
+
+fn table_identity(
+    table: &'static str,
+    domain: &[u8],
+    rows: &mut [String],
+) -> Result<[u8; 32], SfsFuelIdentityError> {
+    if rows.len() > MAX_SFS_IDENTITY_ROWS {
+        return Err(SfsFuelIdentityError::RowLimit {
+            table,
+            actual: rows.len(),
+        });
+    }
+    rows.sort_unstable_by(|left, right| left.as_bytes().cmp(right.as_bytes()));
+    for index in 1..MAX_SFS_IDENTITY_ROWS {
+        if index >= rows.len() {
+            break;
+        }
+        if rows[index - 1] == rows[index] {
+            return Err(SfsFuelIdentityError::DuplicateRow {
+                table,
+                row: rows[index].clone(),
+            });
+        }
+    }
+    let mut preimage = Vec::new();
+    preimage.extend_from_slice(domain);
+    preimage.push(0);
+    for index in 0..MAX_SFS_IDENTITY_ROWS {
+        let Some(row) = rows.get(index) else { break };
+        preimage.extend_from_slice(row.as_bytes());
+    }
+    Ok(sha256_of(&preimage))
+}
 
 /// The §3.7 cost table, one constant per row. Changing any constant here
 /// requires the conformance-vector re-bless the reference chapter mandates
@@ -116,6 +239,37 @@ impl CardinalityCeilings {
     pub fn max_members(&self, hyperedge_type: &str) -> Option<u64> {
         self.max_members.get(hyperedge_type).copied()
     }
+
+    /// Hash the complete bounded ceiling and max-member tables.
+    ///
+    /// # Errors
+    ///
+    /// [`SfsFuelIdentityError`] for a non-canonical key or more than 64
+    /// combined rows.
+    pub fn sfs_identity_digest(&self) -> Result<[u8; 32], SfsFuelIdentityError> {
+        let row_count = self
+            .ceilings
+            .len()
+            .checked_add(self.max_members.len())
+            .ok_or(SfsFuelIdentityError::RowLimit {
+                table: "cardinality",
+                actual: usize::MAX,
+            })?;
+        if row_count > MAX_SFS_IDENTITY_ROWS {
+            return Err(SfsFuelIdentityError::RowLimit {
+                table: "cardinality",
+                actual: row_count,
+            });
+        }
+        let mut rows = Vec::with_capacity(row_count);
+        append_rows("cardinality", "ceiling", &self.ceilings, &mut rows)?;
+        append_rows("cardinality", "max-members", &self.max_members, &mut rows)?;
+        table_identity(
+            "cardinality",
+            b"babylon.sfs-cardinality-ceilings.v1",
+            &mut rows,
+        )
+    }
 }
 
 /// The declared `:cost` of each kernel intrinsic (§2.7 `intrinsic-decl`),
@@ -139,5 +293,39 @@ impl IntrinsicCosts {
     #[must_use]
     pub fn declared_cost(&self, name: &str) -> Option<u64> {
         self.costs.get(name).copied()
+    }
+
+    /// Hash the complete bounded intrinsic-cost table.
+    ///
+    /// # Errors
+    ///
+    /// [`SfsFuelIdentityError`] for a non-canonical key or more than 64 rows.
+    pub fn sfs_identity_digest(&self) -> Result<[u8; 32], SfsFuelIdentityError> {
+        if self.costs.len() > MAX_SFS_IDENTITY_ROWS {
+            return Err(SfsFuelIdentityError::RowLimit {
+                table: "intrinsic",
+                actual: self.costs.len(),
+            });
+        }
+        let mut rows = Vec::with_capacity(self.costs.len());
+        append_rows("intrinsic", "intrinsic", &self.costs, &mut rows)?;
+        table_identity("intrinsic", b"babylon.sfs-intrinsic-costs.v1", &mut rows)
+    }
+}
+
+#[cfg(test)]
+mod sfs_profile_tests {
+    use super::{table_identity, SfsFuelIdentityError};
+
+    #[test]
+    fn sfs_profile_identity_encoder_rejects_duplicate_rows() {
+        let mut rows = vec!["intrinsic|same|1\n".to_owned(); 2];
+        assert_eq!(
+            table_identity("intrinsic", b"test", &mut rows),
+            Err(SfsFuelIdentityError::DuplicateRow {
+                table: "intrinsic",
+                row: "intrinsic|same|1\n".to_owned(),
+            })
+        );
     }
 }

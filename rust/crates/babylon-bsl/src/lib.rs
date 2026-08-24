@@ -27,6 +27,7 @@ pub mod same_tick_order;
 pub mod scenario;
 pub mod scope;
 pub mod score_class;
+pub mod sfs_profile;
 pub mod structural_verbs;
 pub mod tick;
 pub mod typecheck;
@@ -49,7 +50,7 @@ pub use domain::{resolve_domain, DomainError, RuleDomain};
 pub use error_identity::{identity_of, ErrorIdentity};
 pub use evaluator::{evaluate, EvalCode, EvalEnv, EvalError, Value};
 pub use exemptions::{IntensiveAggregationExemption, EXTENSIVE_INTENSIVE_EXEMPTIONS};
-pub use fuel::{CardinalityCeilings, IntrinsicCosts};
+pub use fuel::{CardinalityCeilings, IntrinsicCosts, SfsFuelIdentityError};
 pub use grammar::{
     check_arities_and_closed_sets, check_enum_ref_kinds, check_field_init_owners,
     check_graph_flag_placement, check_string_positions, GrammarError,
@@ -85,6 +86,11 @@ pub use scope::{
     ScopeError,
 };
 pub use score_class::{classify, ClassEnv, ScoreClass};
+pub use sfs_profile::{
+    audit_rule_footprint, validate_sfs_rule_profile, ForbiddenBindingSource,
+    GovernedComparisonSite, SfsAuditPolicy, SfsComparisonContext, SfsProfileError,
+    SfsRuleAuditResult, SfsRuleFootprint,
+};
 pub use structural_verbs::{CollectingSink, EffectExecutor, EventSink};
 pub use typecheck::{check_selection_scores, typecheck_aggregation, TypeCode, TypeEnv, TypeError};
 pub use types::{BslType, FieldDecl, FieldKind};

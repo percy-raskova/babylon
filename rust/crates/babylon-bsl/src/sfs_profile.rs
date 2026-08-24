@@ -581,8 +581,18 @@ struct SemanticFacts {
 struct Located<'a> {
     expression: &'a SExpr,
     path: Vec<u32>,
-    under_when: bool,
+    guard_scope: Option<Vec<u32>>,
 }
+
+#[derive(Default)]
+struct ThresholdIndex {
+    boolean_paths: BTreeSet<Vec<u32>>,
+    direct: ThresholdLiterals,
+    descendants: ThresholdLiterals,
+}
+
+type ThresholdKey = (Vec<u32>, String, Vec<u32>);
+type ThresholdLiterals = BTreeMap<ThresholdKey, BTreeSet<Vec<u8>>>;
 
 fn rule_items(rule: &SExpr) -> Result<&[SExpr], SfsProfileError> {
     let SExpr::List(items) = rule else {
@@ -723,13 +733,17 @@ fn children_to_stack<'a>(
         let mut path = located.path.clone();
         path.push(u32::try_from(index).map_err(|_error| SfsProfileError::AstWalkLimit)?);
         let parent_head = form_head(located.expression);
-        let child_under_when = located.under_when
-            || parent_head == Some("when")
-            || (parent_head == Some("guard") && index == 1);
+        let starts_guard =
+            (parent_head == Some("when") || parent_head == Some("guard")) && index == 1;
+        let guard_scope = if starts_guard {
+            Some(located.path.clone())
+        } else {
+            located.guard_scope.clone()
+        };
         stack.push(Located {
             expression: &items[index],
             path,
-            under_when: child_under_when,
+            guard_scope,
         });
     }
     Ok(())
@@ -837,6 +851,81 @@ fn threshold_pair(expr: &SExpr) -> Option<(String, Vec<u8>)> {
     numeric_key(&items[2]).map(|literal| (binding.clone(), literal))
 }
 
+fn has_distinct_literal(values: Option<&BTreeSet<Vec<u8>>>, literal: &[u8]) -> bool {
+    let Some(values) = values else { return false };
+    values.len() > 1 || (values.len() == 1 && !values.contains(literal))
+}
+
+fn threshold_containers(located: &Located<'_>, index: &ThresholdIndex) -> Vec<Vec<u32>> {
+    let mut output = Vec::new();
+    let Some(scope) = &located.guard_scope else {
+        return output;
+    };
+    for depth in 1..=MAX_AST_WALK_DEPTH {
+        if depth >= located.path.len() {
+            break;
+        }
+        let candidate = located.path[..depth].to_vec();
+        if candidate.len() > scope.len() && index.boolean_paths.contains(&candidate) {
+            output.push(candidate);
+        }
+    }
+    output
+}
+
+fn record_threshold(
+    located: &Located<'_>,
+    binding: &str,
+    literal: &[u8],
+    index: &mut ThresholdIndex,
+) -> bool {
+    let Some(scope) = &located.guard_scope else {
+        return false;
+    };
+    let containers = threshold_containers(located, index);
+    let Some(current) = containers.last() else {
+        return false;
+    };
+    let current_key = (scope.clone(), binding.to_owned(), current.clone());
+    if has_distinct_literal(index.descendants.get(&current_key), literal) {
+        return true;
+    }
+    for container_index in 0..MAX_AST_WALK_DEPTH {
+        if container_index + 1 >= containers.len() {
+            break;
+        }
+        let key = (
+            scope.clone(),
+            binding.to_owned(),
+            containers[container_index].clone(),
+        );
+        if has_distinct_literal(index.direct.get(&key), literal) {
+            return true;
+        }
+    }
+    index
+        .direct
+        .entry(current_key)
+        .or_default()
+        .insert(literal.to_owned());
+    for container_index in 0..MAX_AST_WALK_DEPTH {
+        if container_index + 1 >= containers.len() {
+            break;
+        }
+        let key = (
+            scope.clone(),
+            binding.to_owned(),
+            containers[container_index].clone(),
+        );
+        index
+            .descendants
+            .entry(key)
+            .or_default()
+            .insert(literal.to_owned());
+    }
+    false
+}
+
 fn fixed_guard_effect(expr: &SExpr) -> Option<(String, Vec<u8>)> {
     let SExpr::List(guard) = expr else {
         return None;
@@ -929,7 +1018,7 @@ fn scan_expression(
     vocabulary: &ClosedVocabulary,
     intrinsic_costs: &IntrinsicCosts,
     source_digest: [u8; 32],
-    thresholds: &mut BTreeMap<String, BTreeSet<Vec<u8>>>,
+    thresholds: &mut ThresholdIndex,
     facts: &mut SemanticFacts,
 ) -> Result<(), SfsProfileError> {
     let SExpr::List(items) = located.expression else {
@@ -938,6 +1027,9 @@ fn scan_expression(
     let Some(head) = form_head(located.expression) else {
         return Ok(());
     };
+    if matches!(head, "and" | "or") {
+        thresholds.boolean_paths.insert(located.path.clone());
+    }
     record_head(head, intrinsic_costs, facts);
     if operator_head(located.expression).is_some() {
         facts.operators.insert(head.to_owned());
@@ -950,11 +1042,13 @@ fn scan_expression(
     if is_comparison_or_clamp(located.expression) {
         let digest = site_digest(source_digest, &located.path)?;
         facts.comparison_sites.insert(digest);
-        if located.under_when && uses_time_binding(located.expression, &facts.time_bindings)? {
+        if located.guard_scope.is_some()
+            && uses_time_binding(located.expression, &facts.time_bindings)?
+        {
             facts.absolute_schedule = true;
         }
         if let Some((binding, literal)) = threshold_pair(located.expression) {
-            thresholds.entry(binding).or_default().insert(literal);
+            facts.threshold_ladder |= record_threshold(located, &binding, &literal, thresholds);
         }
     }
     if let Some(digest) =
@@ -977,11 +1071,11 @@ fn extract_semantic_facts(
         ..SemanticFacts::default()
     };
     binding_facts(rule, vocabulary, &mut facts)?;
-    let mut thresholds: BTreeMap<String, BTreeSet<Vec<u8>>> = BTreeMap::new();
+    let mut thresholds = ThresholdIndex::default();
     let mut stack = vec![Located {
         expression: rule,
         path: vec![0],
-        under_when: false,
+        guard_scope: None,
     }];
     for _visited in 0..MAX_AST_WALK_NODES {
         let Some(located) = stack.pop() else { break };
@@ -999,16 +1093,6 @@ fn extract_semantic_facts(
     }
     if !stack.is_empty() {
         return Err(SfsProfileError::AstWalkLimit);
-    }
-    let mut threshold_sets = thresholds.values();
-    for _index in 0..MAX_AST_WALK_NODES {
-        let Some(values) = threshold_sets.next() else {
-            break;
-        };
-        if values.len() >= 2 {
-            facts.threshold_ladder = true;
-            break;
-        }
     }
     collect_effects(rule, &mut facts)?;
     Ok(facts)
@@ -1078,8 +1162,9 @@ fn comparison_contexts(
             });
         }
     }
-    for index in 0..MAX_POLICY_ENTRIES {
-        let Some(actual) = actual_sites.iter().nth(index) else {
+    let mut actual = actual_sites.iter();
+    for _index in 0..MAX_AST_WALK_NODES {
+        let Some(actual) = actual.next() else {
             break;
         };
         if !governed.contains_key(actual) {
@@ -1139,7 +1224,7 @@ fn seal_result(footprint: SfsRuleFootprint, preflight: &Preflight) -> SfsRuleAud
 
 fn first_extra(actual: &BTreeSet<String>, expected: &BTreeSet<String>) -> Option<String> {
     let mut values = actual.iter();
-    for _index in 0..MAX_POLICY_ENTRIES {
+    for _index in 0..MAX_AST_WALK_NODES {
         let Some(value) = values.next() else { break };
         if !expected.contains(value) {
             return Some(value.clone());
@@ -1148,24 +1233,31 @@ fn first_extra(actual: &BTreeSet<String>, expected: &BTreeSet<String>) -> Option
     None
 }
 
+fn stage_extra(
+    actual: &BTreeSet<String>,
+    expected: &BTreeSet<String>,
+    extras: &mut BTreeSet<String>,
+) {
+    if let Some(entry) = first_extra(actual, expected) {
+        extras.insert(entry);
+    }
+}
+
 fn unexpected_read(
     actual: &SfsRuleFootprint,
     expected: &SfsRuleFootprint,
 ) -> Option<SfsProfileError> {
-    let pairs = [
-        (&actual.field_reads, &expected.field_reads),
-        (&actual.edge_reads, &expected.edge_reads),
-        (&actual.constant_reads, &expected.constant_reads),
-        (&actual.queries, &expected.queries),
-        (&actual.operators, &expected.operators),
-        (&actual.intrinsics, &expected.intrinsics),
-    ];
     let mut extras = BTreeSet::new();
-    for (actual_set, expected_set) in pairs {
-        if let Some(entry) = first_extra(actual_set, expected_set) {
-            extras.insert(entry);
-        }
-    }
+    stage_extra(&actual.field_reads, &expected.field_reads, &mut extras);
+    stage_extra(&actual.edge_reads, &expected.edge_reads, &mut extras);
+    stage_extra(
+        &actual.constant_reads,
+        &expected.constant_reads,
+        &mut extras,
+    );
+    stage_extra(&actual.queries, &expected.queries, &mut extras);
+    stage_extra(&actual.operators, &expected.operators, &mut extras);
+    stage_extra(&actual.intrinsics, &expected.intrinsics, &mut extras);
     extras.first().map(|entry| SfsProfileError::UnexpectedRead {
         entry: entry.clone(),
     })

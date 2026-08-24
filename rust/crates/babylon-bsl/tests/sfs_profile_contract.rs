@@ -1,19 +1,25 @@
 //! Behavioral contract for the opt-in synthetic-emergence BSL auditor.
 
 use babylon_bsl::causal_contract::MAX_AST_WALK_DEPTH;
+use babylon_bsl::declarations::FieldRegistry;
+use babylon_bsl::rule_pipeline::{load_rule, LoadContext};
+use babylon_bsl::scenario::{load_scenario, LoadedScenario};
+use babylon_bsl::typecheck::TypeEnv;
 use babylon_bsl::vocabulary::EnumKind;
 use babylon_bsl::{
     audit_rule_footprint, canonical_bytes, check_rule, read, validate_sfs_rule_profile, Atom,
-    BoundError, CardinalityCeilings, ClosedVocabulary, ForbiddenBindingSource,
+    BindingVocabulary, BoundError, CardinalityCeilings, ClosedVocabulary, ForbiddenBindingSource,
     GovernedComparisonSite, IntrinsicCosts, SExpr, SfsAuditPolicy, SfsComparisonContext,
-    SfsFuelIdentityError, SfsProfileError,
+    SfsFuelIdentityError, SfsProfileError, Value,
 };
+use babylon_graph::memory::MemoryGraph;
 use babylon_kernel::sha256_of;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::Write as _;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 const MAX_FIXTURE_BYTES: u64 = 262_144;
 const MAX_FIXTURE_ROWS: usize = 32;
@@ -33,7 +39,14 @@ const FORBIDDEN_INTRINSIC_HEX: &str =
 const FORBIDDEN_MANIFEST_HEX: &str =
     "e3e7d0c90b7302c441005a4cb482a1aff86c2e9178b06a514b2f9c6304aeca74";
 const AUDIT_SOURCE_MANIFEST_HEX: &str =
-    "703d223e9eac9be87f715fd349ec0a972b31558c91718e4fd03680e56f4d7246";
+    "b71b96a4f57bd023b402d12c80c998d3fb8eb0e95a0af04ed4f5e445feea8bd9";
+static READER_SCRATCH_COUNTER: AtomicU64 = AtomicU64::new(0);
+const FIXTURE_DECLARATIONS: &str = r"(scenario synthetic-source/declarations
+  (defvocabulary NodeType (SYNTHETIC_SOURCE ORGANIZATION))
+  (defvocabulary EdgeType (SYNTHETIC_LINK))
+  (deffield synthetic-source/quanta int extensive)
+  (defconst synthetic/minimum-link-strength 0)
+  (defconst synthetic/transfer-quantum 1))";
 
 fn fixture_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sfs_profile")
@@ -127,15 +140,12 @@ fn fixture_rule(relative: &str) -> SExpr {
     rule
 }
 
+fn fixture_declarations() -> LoadedScenario {
+    load_scenario(FIXTURE_DECLARATIONS, &mut MemoryGraph::new()).unwrap()
+}
+
 fn fixture_vocabulary() -> ClosedVocabulary {
-    ClosedVocabulary::new([
-        (
-            EnumKind::NodeType,
-            vec!["SYNTHETIC_SOURCE".to_owned(), "ORGANIZATION".to_owned()],
-        ),
-        (EnumKind::EdgeType, vec!["SYNTHETIC_LINK".to_owned()]),
-    ])
-    .unwrap()
+    fixture_declarations().vocabulary.unwrap()
 }
 
 fn fixture_cardinality_ceilings() -> CardinalityCeilings {
@@ -143,6 +153,71 @@ fn fixture_cardinality_ceilings() -> CardinalityCeilings {
         HashMap::from([("EdgeType/SYNTHETIC_LINK".to_owned(), 8)]),
         HashMap::new(),
     )
+}
+
+fn assert_allowed_fixture_loads_through_declaration_and_type_gates() {
+    let source = allowed_source();
+    let declared = fixture_declarations();
+    let vocabulary = declared.vocabulary.unwrap();
+    assert_eq!(
+        vocabulary.members(EnumKind::NodeType),
+        &["ORGANIZATION".to_owned(), "SYNTHETIC_SOURCE".to_owned()]
+    );
+    assert_eq!(
+        vocabulary.members(EnumKind::EdgeType),
+        &["SYNTHETIC_LINK".to_owned()]
+    );
+    let quanta = &declared.fields["synthetic-source/quanta"];
+    assert_eq!(quanta.ty, babylon_bsl::BslType::Int);
+    assert_eq!(quanta.kind, babylon_bsl::FieldKind::Extensive);
+    assert_eq!(
+        vocabulary
+            .owner_of_field("synthetic-source/quanta")
+            .unwrap(),
+        (EnumKind::NodeType, "SYNTHETIC_SOURCE")
+    );
+    let implicit = FieldRegistry::with_implicit_edge_strength(&vocabulary);
+    let strength = implicit.get("synthetic-link/strength").unwrap();
+    assert_eq!(strength.decl.ty, babylon_bsl::BslType::Coefficient);
+    assert_eq!(strength.decl.kind, babylon_bsl::FieldKind::Extensive);
+    assert_eq!(strength.owner_kind, EnumKind::EdgeType);
+    assert_eq!(strength.owner_member, "SYNTHETIC_LINK");
+    assert!(strength.implicit);
+    assert_eq!(
+        declared.consts["synthetic/minimum-link-strength"],
+        Value::Int(0)
+    );
+    assert_eq!(declared.consts["synthetic/transfer-quantum"], Value::Int(1));
+    let mut type_fields = declared.fields;
+    type_fields.insert("synthetic-link/strength".to_owned(), strength.decl.clone());
+    let types = TypeEnv {
+        fields: type_fields,
+        exemptions: &[],
+    };
+    let binding_vocabulary = BindingVocabulary {
+        fields: HashSet::from([
+            "synthetic-link/strength".to_owned(),
+            "synthetic-source/quanta".to_owned(),
+        ]),
+        consts: HashSet::from([
+            "synthetic/minimum-link-strength".to_owned(),
+            "synthetic/transfer-quantum".to_owned(),
+        ]),
+        metrics: HashSet::new(),
+    };
+    let ceilings = fixture_cardinality_ceilings();
+    let costs = IntrinsicCosts::default();
+    let systems = HashSet::from(["synthetic-source".to_owned()]);
+    let context = LoadContext {
+        vocabulary: &binding_vocabulary,
+        types: &types,
+        ceilings: &ceilings,
+        intrinsics: &costs,
+        systems: &systems,
+        vocabulary_registry: Some(&vocabulary),
+        rule_file: "tests/fixtures/sfs_profile/allowed/scoped_mechanic.bsl",
+    };
+    load_rule(&source, &context).unwrap();
 }
 
 fn forbidden_intrinsic_costs() -> IntrinsicCosts {
@@ -193,6 +268,7 @@ fn allowed_policy(rule: &SExpr) -> SfsAuditPolicy {
 
 #[test]
 fn allowed_rule_equals_its_complete_opt_in_profile() {
+    assert_allowed_fixture_loads_through_declaration_and_type_gates();
     let rule = fixture_rule("allowed/scoped_mechanic.bsl");
     let vocabulary = fixture_vocabulary();
     let ceilings = fixture_cardinality_ceilings();
@@ -363,6 +439,71 @@ fn audit_source_manifest_pins_two_bounded_exact_files_and_mutation_teeth() {
     assert_ne!(
         sha256_of(&changed_preimage),
         hex_digest(AUDIT_SOURCE_MANIFEST_HEX)
+    );
+}
+
+struct ReaderScratch {
+    root: PathBuf,
+}
+
+impl ReaderScratch {
+    fn new() -> Self {
+        let root = std::env::temp_dir().join(format!(
+            "babylon-sfs-profile-reader-{}-{}",
+            std::process::id(),
+            READER_SCRATCH_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir(&root).unwrap();
+        Self { root }
+    }
+}
+
+impl Drop for ReaderScratch {
+    fn drop(&mut self) {
+        for name in [
+            "maximum.txt",
+            "maximum-plus-one.txt",
+            "manifest-target.txt",
+            "sfs_audit_source_manifest_v1.txt",
+        ] {
+            let _ignored = std::fs::remove_file(self.root.join(name));
+        }
+        let _ignored = std::fs::remove_dir(&self.root);
+    }
+}
+
+#[test]
+fn bounded_reader_accepts_262144_and_rejects_262145_bytes() {
+    let scratch = ReaderScratch::new();
+    let maximum = scratch.root.join("maximum.txt");
+    let maximum_plus_one = scratch.root.join("maximum-plus-one.txt");
+    std::fs::write(&maximum, vec![b'x'; 262_144]).unwrap();
+    std::fs::write(&maximum_plus_one, vec![b'x'; 262_145]).unwrap();
+    assert_eq!(
+        read_bounded(&scratch.root, Path::new("maximum.txt"))
+            .unwrap()
+            .len(),
+        262_144
+    );
+    assert_eq!(
+        read_bounded(&scratch.root, Path::new("maximum-plus-one.txt")),
+        Err("fixture is not a bounded regular file".to_owned())
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn bounded_reader_rejects_a_direct_source_manifest_symlink() {
+    use std::os::unix::fs::symlink;
+
+    let scratch = ReaderScratch::new();
+    let target = scratch.root.join("manifest-target.txt");
+    let link = scratch.root.join("sfs_audit_source_manifest_v1.txt");
+    std::fs::write(&target, b"fuel.rs|00\n").unwrap();
+    symlink(&target, &link).unwrap();
+    assert_eq!(
+        read_bounded(&scratch.root, Path::new("sfs_audit_source_manifest_v1.txt")),
+        Err("fixture path contains a symlink".to_owned())
     );
 }
 
@@ -700,9 +841,13 @@ fn fuel_table_identities_pin_literals_syntax_and_exact_row_bounds() {
             u64::try_from(index).unwrap(),
         );
     }
-    assert!(IntrinsicCosts::new(sixty_five.clone())
-        .sfs_identity_digest()
-        .is_err());
+    assert_eq!(
+        IntrinsicCosts::new(sixty_five.clone()).sfs_identity_digest(),
+        Err(SfsFuelIdentityError::RowLimit {
+            table: "intrinsic",
+            actual: 65
+        })
+    );
     sixty_five.remove("synthetic-64");
     assert!(IntrinsicCosts::new(sixty_five)
         .sfs_identity_digest()
@@ -801,6 +946,272 @@ fn comparison_context_codes_and_duplicate_sites_are_closed() {
         Err(SfsProfileError::DuplicatePolicyEntry {
             set: "comparison_clamp_contexts"
         })
+    );
+}
+
+fn static_string(value: String) -> &'static str {
+    Box::leak(value.into_boxed_str())
+}
+
+fn comparison_rule(count: usize) -> SExpr {
+    assert!(count <= 65);
+    let mut source = String::from(
+        "(rule synthetic-source/comparison-ceiling\n  :role mechanic :evidence designed \
+         :material-basis \"test-local complete comparison scan\" :fuel 65536\n  \
+         (bindings (binding available :field synthetic-source/quanta))\n  (when (and",
+    );
+    for index in 0..65 {
+        if index == count {
+            break;
+        }
+        source.push_str(" (> available 0)");
+    }
+    source.push_str("))\n  (effects (update-node self synthetic-source/quanta (set 1))))");
+    parsed_rule(&source)
+}
+
+fn comparison_sites(rule: &SExpr, count: usize) -> Vec<GovernedComparisonSite> {
+    assert!(count <= 65);
+    let mut sites = Vec::new();
+    for index in 0..65 {
+        if index == count {
+            break;
+        }
+        sites.push(
+            GovernedComparisonSite::from_rule_path(
+                rule,
+                &[0, 11, 1, u32::try_from(index + 1).unwrap()],
+                SfsComparisonContext::InputValidity,
+            )
+            .unwrap(),
+        );
+    }
+    sites.sort_by(|left, right| left.site_digest().cmp(right.site_digest()));
+    sites
+}
+
+fn comparison_limit_policy(rule: &SExpr, sites: Vec<GovernedComparisonSite>) -> SfsAuditPolicy {
+    SfsAuditPolicy::new(
+        "synthetic-source/comparison-ceiling",
+        sha256_of(&canonical_bytes(rule).unwrap()),
+        check_rule(
+            rule,
+            &CardinalityCeilings::default(),
+            &IntrinsicCosts::default(),
+        )
+        .unwrap(),
+        ["synthetic-source/quanta"],
+        EMPTY,
+        EMPTY,
+        EMPTY,
+        [">"],
+        EMPTY,
+        sites,
+        ["node:synthetic-source/quanta"],
+    )
+    .unwrap()
+}
+
+#[test]
+fn comparison_scan_accepts_64_and_reports_the_byte_largest_65th_site() {
+    let maximum = comparison_rule(64);
+    let maximum_sites = comparison_sites(&maximum, 64);
+    assert!(validate_sfs_rule_profile(
+        &maximum,
+        &fixture_vocabulary(),
+        &CardinalityCeilings::default(),
+        &IntrinsicCosts::default(),
+        &comparison_limit_policy(&maximum, maximum_sites),
+    )
+    .is_ok());
+
+    let plus_one = comparison_rule(65);
+    let mut governed = comparison_sites(&plus_one, 65);
+    let omitted = *governed.pop().unwrap().site_digest();
+    let policy = comparison_limit_policy(&plus_one, governed);
+    assert_eq!(
+        validate_sfs_rule_profile(
+            &plus_one,
+            &fixture_vocabulary(),
+            &CardinalityCeilings::default(),
+            &IntrinsicCosts::default(),
+            &policy,
+        ),
+        Err(SfsProfileError::MissingComparisonContext {
+            site_digest: omitted
+        })
+    );
+    assert_eq!(
+        SfsAuditPolicy::new(
+            "synthetic-source/comparison-ceiling",
+            sha256_of(&canonical_bytes(&plus_one).unwrap()),
+            1,
+            EMPTY,
+            EMPTY,
+            EMPTY,
+            EMPTY,
+            EMPTY,
+            EMPTY,
+            comparison_sites(&plus_one, 65),
+            EMPTY,
+        ),
+        Err(SfsProfileError::PolicyEntryLimit {
+            set: "comparison_clamp_contexts",
+            actual: 65
+        })
+    );
+}
+
+fn wide_rule(kind: &str) -> (SExpr, Vec<&'static str>) {
+    let mut source = String::from(
+        "(rule synthetic-source/complete-scan\n  :role mechanic :evidence designed \
+         :material-basis \"test-local complete footprint scan\" :fuel 65536\n",
+    );
+    let mut rows = Vec::new();
+    if kind == "read" {
+        source.push_str("  (bindings");
+        for index in 0..65 {
+            let field = static_string(format!("synthetic-source/read-{index:02}"));
+            rows.push(field);
+            write!(&mut source, " (binding value-{index:02} :field {field})").unwrap();
+        }
+        source.push_str(")\n  (effects (update-node self synthetic-source/quanta (set 1))))");
+    } else {
+        source.push_str("  (bindings)\n  (effects");
+        for index in 0..65 {
+            let effect = static_string(format!("node:synthetic-source/effect-{index:02}"));
+            let field = effect.strip_prefix("node:").unwrap();
+            rows.push(effect);
+            write!(&mut source, " (update-node self {field} (set 1))").unwrap();
+        }
+        source.push_str("))");
+    }
+    (parsed_rule(&source), rows)
+}
+
+fn wide_policy(rule: &SExpr, kind: &str, rows: &[&'static str]) -> SfsAuditPolicy {
+    let maximum = rows[..64].to_vec();
+    let (field_reads, effects): (Vec<&'static str>, Vec<&'static str>) = if kind == "read" {
+        (maximum, vec!["node:synthetic-source/quanta"])
+    } else {
+        (Vec::new(), maximum)
+    };
+    SfsAuditPolicy::new(
+        "synthetic-source/complete-scan",
+        sha256_of(&canonical_bytes(rule).unwrap()),
+        check_rule(
+            rule,
+            &CardinalityCeilings::default(),
+            &IntrinsicCosts::default(),
+        )
+        .unwrap(),
+        field_reads,
+        EMPTY,
+        EMPTY,
+        EMPTY,
+        EMPTY,
+        EMPTY,
+        vec![],
+        effects,
+    )
+    .unwrap()
+}
+
+#[test]
+fn actual_read_scan_reports_the_65th_extra_before_set_mismatch() {
+    let (read_rule, reads) = wide_rule("read");
+    assert_eq!(
+        validate_sfs_rule_profile(
+            &read_rule,
+            &fixture_vocabulary(),
+            &CardinalityCeilings::default(),
+            &IntrinsicCosts::default(),
+            &wide_policy(&read_rule, "read", &reads),
+        ),
+        Err(SfsProfileError::UnexpectedRead {
+            entry: "synthetic-source/read-64".to_owned()
+        })
+    );
+}
+
+#[test]
+fn actual_effect_scan_reports_the_65th_extra_before_set_mismatch() {
+    let (effect_rule, effects) = wide_rule("effect");
+    assert_eq!(
+        validate_sfs_rule_profile(
+            &effect_rule,
+            &fixture_vocabulary(),
+            &CardinalityCeilings::default(),
+            &IntrinsicCosts::default(),
+            &wide_policy(&effect_rule, "effect", &effects),
+        ),
+        Err(SfsProfileError::UnexpectedEffect {
+            entry: "node:synthetic-source/effect-64".to_owned()
+        })
+    );
+}
+
+#[test]
+fn separated_governed_thresholds_pass_but_a_nested_ladder_refuses() {
+    let separated = parsed_rule(
+        r#"(rule synthetic-source/separated-thresholds
+  :role mechanic :evidence designed :material-basis "test-local flat guard" :fuel 128
+  (bindings (binding available :field synthetic-source/quanta))
+  (when (and (> available 1) (> available 2)))
+  (effects (update-node self synthetic-source/quanta (set 1))))"#,
+    );
+    let sites = [
+        GovernedComparisonSite::from_rule_path(
+            &separated,
+            &[0, 11, 1, 1],
+            SfsComparisonContext::EligibilityNoEffect,
+        )
+        .unwrap(),
+        GovernedComparisonSite::from_rule_path(
+            &separated,
+            &[0, 11, 1, 2],
+            SfsComparisonContext::EligibilityNoEffect,
+        )
+        .unwrap(),
+    ];
+    let policy = SfsAuditPolicy::new(
+        "synthetic-source/separated-thresholds",
+        sha256_of(&canonical_bytes(&separated).unwrap()),
+        check_rule(
+            &separated,
+            &CardinalityCeilings::default(),
+            &IntrinsicCosts::default(),
+        )
+        .unwrap(),
+        ["synthetic-source/quanta"],
+        EMPTY,
+        EMPTY,
+        EMPTY,
+        [">"],
+        EMPTY,
+        sites.into(),
+        ["node:synthetic-source/quanta"],
+    )
+    .unwrap();
+    assert!(validate_sfs_rule_profile(
+        &separated,
+        &fixture_vocabulary(),
+        &CardinalityCeilings::default(),
+        &IntrinsicCosts::default(),
+        &policy,
+    )
+    .is_ok());
+
+    let nested = fixture_rule("forbidden/threshold_ladder.bsl");
+    assert_eq!(
+        audit_rule_footprint(
+            &nested,
+            &fixture_vocabulary(),
+            &fixture_cardinality_ceilings(),
+            &IntrinsicCosts::default(),
+            &[],
+        ),
+        Err(SfsProfileError::ForbiddenThresholdLadder)
     );
 }
 

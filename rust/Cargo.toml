@@ -6,6 +6,7 @@ members = [
     "crates/babylon-tick",
     "crates/babylon-persistence",
     "crates/babylon-client",
+    "crates/babylon-rtd",
     "crates/bsl-lint",
     "crates/babylon-ls",
 ]

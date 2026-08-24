@@ -421,12 +421,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "babylon-rtd"
+version = "0.1.0"
+dependencies = [
+ "babylon-kernel",
+ "serde",
+ "serde_json",
+ "unicode-normalization",
+]
+
+[[package]]
 name = "babylon-tick"
 version = "0.1.0"
 dependencies = [
  "babylon-bsl",
  "babylon-graph",
  "babylon-kernel",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -56,13 +56,15 @@
 (rule organization/p1-rooted-work
   :role mechanic
   :evidence derived
-  :material-basis "Situated practice changes only territories reached through the organization's PRESENCE relation; reproductive pressure conditions the local gain, while circulation remains on the relations that carry it elsewhere."
-  :fuel 128
+  :material-basis "Situated practice changes only territories reached through the organization's PRESENCE relation. One weekly action is divided across those branches, so an organization cannot create free organizer labor by adding PRESENCE edges. Reproductive pressure conditions each branch's local gain, while circulation remains on the relations that carry it elsewhere."
+  :fuel 256
   (bindings
     (binding active :field organization/active)
     (binding practice :field organization/practice)
     (binding budget :field organization/action-budget)
-    (binding practice-rate :const organization/practice-rate))
+    (binding practice-rate :const organization/practice-rate)
+    (binding branch-count :expr
+      (fold count (neighbors self EdgeType/PRESENCE :out NodeType/TERRITORY) it)))
   (when (and (= active 1)
              (= practice PracticeKind/ROOTED_WORK)
              (> budget 0)
@@ -70,7 +72,7 @@
   (effects
     (for-each (neighbors self EdgeType/PRESENCE :out NodeType/TERRITORY)
       (update-node it territory/rooted-work-inbox
-        (add (* practice-rate
+        (add (* (/ practice-rate branch-count)
                 (field-of it territory/reproduction-pressure)))))
     (update-node self organization/action-budget (sub 1))))
 

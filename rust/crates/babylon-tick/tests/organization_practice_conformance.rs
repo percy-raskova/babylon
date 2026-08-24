@@ -28,6 +28,10 @@ fn capacity(session: &TickSession<HypergraphStore>, territory: NodeId) -> f64 {
     attribute(session, territory, "territory/rooted-capacity")
 }
 
+fn rooted_work(session: &TickSession<HypergraphStore>, territory: NodeId) -> f64 {
+    attribute(session, territory, "territory/rooted-work-inbox")
+}
+
 fn membership(session: &TickSession<HypergraphStore>) -> f64 {
     attribute(session, READING_GROUP, "organization/membership-share")
 }
@@ -82,6 +86,50 @@ fn unique_low_buffer_corridor_relays_more_capacity_than_reroutable_corridor() {
         unique_corridor_capacity > reroutable_corridor_capacity,
         "unique corridor capacity {unique_corridor_capacity} did not exceed reroutable corridor capacity {reroutable_corridor_capacity}"
     );
+}
+
+#[test]
+fn one_weekly_action_is_divided_across_the_organizations_branches() {
+    let mut one_branch = TickSession::new(
+        SCENARIO,
+        PACK,
+        HypergraphStore::new(),
+        SessionId::new("organization-one-branch").expect("literal is non-empty"),
+    )
+    .expect("the one-branch organization world loads");
+    let two_branch_scenario = SCENARIO.replace(
+        "  (edge EdgeType/SOLIDARITY reading-group precinct 1))",
+        "  (edge EdgeType/SOLIDARITY reading-group precinct 1)\n  \
+         (edge EdgeType/PRESENCE reading-group county-b 1))",
+    );
+    assert_ne!(
+        two_branch_scenario, SCENARIO,
+        "the second branch must be inserted"
+    );
+    let mut two_branches = TickSession::new(
+        &two_branch_scenario,
+        PACK,
+        HypergraphStore::new(),
+        SessionId::new("organization-two-branches").expect("literal is non-empty"),
+    )
+    .expect("the two-branch organization world loads");
+    let mut one_branch_sink = CollectingSink::default();
+    let mut two_branch_sink = CollectingSink::default();
+
+    one_branch
+        .advance(&mut one_branch_sink)
+        .expect("one-branch tick");
+    two_branches
+        .advance(&mut two_branch_sink)
+        .expect("two-branch tick");
+
+    let one_branch_work = rooted_work(&one_branch, COUNTY_A);
+    let first_branch_work = rooted_work(&two_branches, COUNTY_A);
+    let second_branch_work = rooted_work(&two_branches, COUNTY_B);
+    assert!(first_branch_work > 0.0);
+    assert!(second_branch_work > 0.0);
+    assert!(first_branch_work < one_branch_work);
+    assert!(first_branch_work + second_branch_work <= one_branch_work);
 }
 
 #[test]

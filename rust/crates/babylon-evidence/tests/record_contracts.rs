@@ -133,6 +133,36 @@ fn expected_run_payload() -> Vec<u8> {
     payload
 }
 
+fn literal_sample_envelope(tick: u64, aggregate: f64) -> Vec<u8> {
+    let mut payload = Vec::new();
+    payload.extend_from_slice(&tick.to_be_bytes());
+    payload.extend_from_slice(digest(20).as_bytes());
+    payload.extend_from_slice(digest(21).as_bytes());
+    payload.extend_from_slice(digest(22).as_bytes());
+    payload.extend_from_slice(&aggregate.to_bits().to_be_bytes());
+    literal_envelope(SfsSampleV1::DOMAIN, &payload)
+}
+
+fn literal_trace_envelope() -> Vec<u8> {
+    let mut payload = Vec::new();
+    payload.extend_from_slice(digest(40).as_bytes());
+    payload.extend_from_slice(digest(41).as_bytes());
+    payload.extend_from_slice(&42_u64.to_be_bytes());
+    payload.extend_from_slice(&10_u64.to_be_bytes());
+    payload.extend_from_slice(&1_u16.to_be_bytes());
+    payload.extend_from_slice(&2_u16.to_be_bytes());
+    payload.extend_from_slice(&7_u16.to_be_bytes());
+    payload.extend_from_slice(&literal_sample_envelope(10, 0.0));
+    payload.extend_from_slice(&literal_sample_envelope(11, 1.0));
+    payload.extend_from_slice(&literal_sample_envelope(12, 2.0));
+    payload.extend_from_slice(&literal_sample_envelope(13, 5.0));
+    payload.extend_from_slice(&literal_sample_envelope(14, 8.0));
+    payload.extend_from_slice(&literal_sample_envelope(15, 10.0));
+    payload.extend_from_slice(&literal_sample_envelope(16, 11.0));
+    payload.push(2);
+    literal_envelope(SfsTraceV1::DOMAIN, &payload)
+}
+
 fn sample(tick: u64, aggregate: f64) -> SfsSampleV1 {
     SfsSampleV1::new(tick, digest(20), digest(21), digest(22), aggregate).unwrap()
 }
@@ -241,6 +271,28 @@ fn run_identity_encodes_all_eighteen_fields_in_exact_order() {
         assert_ne!(canonical_envelope(&mutated).unwrap(), baseline_bytes);
         assert_ne!(record_digest(&mutated).unwrap(), baseline_digest);
     }
+    let all_different = RunIdentityV1::new(
+        SessionId::new("all-mutated").unwrap(),
+        digest(65),
+        digest(66),
+        digest(67),
+        digest(68),
+        digest(69),
+        digest(70),
+        digest(71),
+        digest(72),
+        digest(73),
+        digest(74),
+        digest(75),
+        digest(76),
+        digest(77),
+        digest(78),
+        digest(79),
+        "rng-all-mutated",
+        "graph-all-mutated",
+    )
+    .unwrap();
+    assert_eq!(run.differing_fields(&all_different), fields.to_vec());
 }
 
 #[test]
@@ -374,6 +426,14 @@ fn trace_requires_exact_window_count_start_and_consecutive_ticks() {
 }
 
 #[test]
+fn trace_wire_is_one_complete_literal_envelope_with_nested_sample_envelopes() {
+    let trace = SfsTraceV1::new(digest(40), digest(41), 42, 10, 2, continuing_samples(10)).unwrap();
+    let expected = literal_trace_envelope();
+    assert_eq!(canonical_envelope(&trace).unwrap(), expected);
+    assert_eq!(decode_envelope::<SfsTraceV1>(&expected).unwrap(), trace);
+}
+
+#[test]
 fn trace_decode_refusal_precedence_pins_interval_and_classification() {
     let trace = SfsTraceV1::new(digest(40), digest(41), 42, 10, 2, continuing_samples(10)).unwrap();
     let encoded = canonical_envelope(&trace).unwrap();
@@ -480,6 +540,38 @@ fn candidate_schedule_sorts_exact_rows_and_rejects_duplicates_or_bad_ids() {
     assert_eq!(
         decode_envelope::<PracticeCandidateScheduleV1>(&bad_id),
         Err(SfsRecordError::StableRowDigestMismatch)
+    );
+}
+
+#[test]
+fn candidate_schedule_literal_malformed_payloads_refuse_before_rows_or_trailing_bytes() {
+    let too_many = literal_envelope(
+        PracticeCandidateScheduleV1::DOMAIN,
+        &65_536_u32.to_be_bytes(),
+    );
+    assert_eq!(
+        decode_envelope::<PracticeCandidateScheduleV1>(&too_many),
+        Err(SfsRecordError::Wire(SfsWireError::CountTooLarge {
+            field: "candidate_rows",
+            limit: 65_535,
+            actual: 65_536,
+        }))
+    );
+
+    let truncated = literal_envelope(PracticeCandidateScheduleV1::DOMAIN, &1_u32.to_be_bytes());
+    assert_eq!(
+        decode_envelope::<PracticeCandidateScheduleV1>(&truncated),
+        Err(SfsRecordError::Wire(SfsWireError::TruncatedEnvelope))
+    );
+
+    let mut trailing_payload = 0_u32.to_be_bytes().to_vec();
+    trailing_payload.push(0xaa);
+    let trailing = literal_envelope(PracticeCandidateScheduleV1::DOMAIN, &trailing_payload);
+    assert_eq!(
+        decode_envelope::<PracticeCandidateScheduleV1>(&trailing),
+        Err(SfsRecordError::Wire(SfsWireError::TrailingBytes {
+            count: 1,
+        }))
     );
 }
 
@@ -668,6 +760,43 @@ fn attempt_rows_reject_zero_duplicate_unknown_and_mismatched_identity() {
     assert_eq!(
         decode_envelope::<PracticeAttemptLedgerV1>(&bad_id),
         Err(SfsRecordError::StableRowDigestMismatch)
+    );
+}
+
+#[test]
+fn attempt_ledger_literal_malformed_payloads_refuse_before_rows_or_trailing_bytes() {
+    let mut too_many_payload = Vec::new();
+    too_many_payload.extend_from_slice(digest(1).as_bytes());
+    too_many_payload.extend_from_slice(&65_536_u32.to_be_bytes());
+    let too_many = literal_envelope(PracticeAttemptLedgerV1::DOMAIN, &too_many_payload);
+    assert_eq!(
+        decode_envelope::<PracticeAttemptLedgerV1>(&too_many),
+        Err(SfsRecordError::Wire(SfsWireError::CountTooLarge {
+            field: "attempt_rows",
+            limit: 65_535,
+            actual: 65_536,
+        }))
+    );
+
+    let mut truncated_payload = Vec::new();
+    truncated_payload.extend_from_slice(digest(1).as_bytes());
+    truncated_payload.extend_from_slice(&1_u32.to_be_bytes());
+    let truncated = literal_envelope(PracticeAttemptLedgerV1::DOMAIN, &truncated_payload);
+    assert_eq!(
+        decode_envelope::<PracticeAttemptLedgerV1>(&truncated),
+        Err(SfsRecordError::Wire(SfsWireError::TruncatedEnvelope))
+    );
+
+    let mut trailing_payload = Vec::new();
+    trailing_payload.extend_from_slice(digest(1).as_bytes());
+    trailing_payload.extend_from_slice(&0_u32.to_be_bytes());
+    trailing_payload.push(0xaa);
+    let trailing = literal_envelope(PracticeAttemptLedgerV1::DOMAIN, &trailing_payload);
+    assert_eq!(
+        decode_envelope::<PracticeAttemptLedgerV1>(&trailing),
+        Err(SfsRecordError::Wire(SfsWireError::TrailingBytes {
+            count: 1,
+        }))
     );
 }
 

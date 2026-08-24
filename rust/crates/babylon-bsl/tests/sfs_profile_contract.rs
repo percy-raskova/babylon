@@ -705,7 +705,7 @@ fn exact_forbidden_file_set(rows: &[ManifestRow]) {
 }
 
 #[test]
-fn forbidden_corpus_manifest_pins_all_eighteen_semantic_refusals() {
+fn forbidden_corpus_exact() {
     let (rows, manifest_bytes) = forbidden_manifest();
     assert_eq!(rows.len(), 18);
     exact_forbidden_file_set(&rows);

@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 
 use babylon_bsl::{canonical_bytes, SExpr, SfsRuleAuditResult};
 use babylon_kernel::sha256_of;
-use unicode_normalization::UnicodeNormalization;
+use unicode_normalization::is_nfc;
 
 use crate::{
     record_digest, CanonicalProfileSet, CausalConeV1, ComponentKindV1, Digest32, RunIdentityV1,
@@ -20,6 +20,8 @@ const MAX_BOUND_ROWS: usize = 64;
 const MAX_EDGES: usize = 4_096;
 const MAX_SOURCE_BYTES: usize = 65_535;
 const MAX_TOTAL_ROWS: usize = 36_992;
+const MAX_MUTATION_MANIFEST_BYTES: usize = 4_399;
+const MAX_PROFILE_ENTRIES: usize = 64;
 const GOVERNED_DOMAIN: &[u8] = b"babylon.sfs-synthetic-governed-manifest.v1";
 const HOST_DOMAIN: &[u8] = b"babylon.sfs-synthetic-host-component-manifest.v1";
 const COMPONENT_SOURCE_DOMAIN: &[u8] = b"babylon.sfs-synthetic-component-source.v1";
@@ -79,6 +81,13 @@ pub struct SyntheticGovernedManifestV1 {
     edges: Vec<ProducerConsumerEdgeV1>,
     profile_rows: Vec<SyntheticProfileRowV1>,
     bound_rows: Vec<SyntheticBoundRowV1>,
+    source_profiles: Vec<SfsComponentProofProfileV1>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct DelimitedFields<'a> {
+    values: [&'a str; 6],
+    len: usize,
 }
 
 /// Closed synthetic channel kinds.
@@ -190,6 +199,9 @@ pub enum SfsValidationError {
     MutationManifestMalformed {
         row: usize,
     },
+    MutationManifestByteLimit {
+        actual: usize,
+    },
     MutationManifestDigestMismatch,
     MutationCoverageMismatch {
         mutation_id: String,
@@ -293,10 +305,67 @@ fn preflight_manifest(bytes: &[u8]) -> Result<(), SfsValidationError> {
             actual: bytes.len(),
         });
     }
-    if bytes.contains(&b'\r') || !bytes.ends_with(b"\n") || bytes.ends_with(b"\n\n") {
+    if manifest_has_cr(bytes) || !has_one_terminal_lf(bytes) {
         return Err(SfsValidationError::GovernedManifestMalformed { row: 0 });
     }
     Ok(())
+}
+
+fn manifest_has_cr(bytes: &[u8]) -> bool {
+    for index in 0..MAX_GOVERNED_MANIFEST_BYTES {
+        if index >= bytes.len() {
+            break;
+        }
+        if bytes[index] == b'\r' {
+            return true;
+        }
+    }
+    false
+}
+
+fn mutation_has_cr(bytes: &[u8]) -> bool {
+    for index in 0..MAX_MUTATION_MANIFEST_BYTES {
+        if index >= bytes.len() {
+            break;
+        }
+        if bytes[index] == b'\r' {
+            return true;
+        }
+    }
+    false
+}
+
+fn has_one_terminal_lf(bytes: &[u8]) -> bool {
+    if bytes.is_empty() || bytes[bytes.len() - 1] != b'\n' {
+        return false;
+    }
+    bytes.len() == 1 || bytes[bytes.len() - 2] != b'\n'
+}
+
+fn split_fields(text: &str) -> Option<DelimitedFields<'_>> {
+    let bytes = text.as_bytes();
+    let mut values = [""; 6];
+    let mut field_index = 0_usize;
+    let mut start = 0_usize;
+    for index in 0..MAX_GOVERNED_MANIFEST_LINE_BYTES {
+        if index >= bytes.len() {
+            break;
+        }
+        if bytes[index] != b'|' {
+            continue;
+        }
+        if field_index >= 5 {
+            return None;
+        }
+        values[field_index] = &text[start..index];
+        field_index += 1;
+        start = index + 1;
+    }
+    values[field_index] = &text[start..];
+    Some(DelimitedFields {
+        values,
+        len: field_index + 1,
+    })
 }
 
 fn manifest_lines(bytes: &[u8]) -> Result<Vec<&[u8]>, SfsValidationError> {
@@ -322,7 +391,8 @@ fn manifest_lines(bytes: &[u8]) -> Result<Vec<&[u8]>, SfsValidationError> {
             });
         }
         let line = &bytes[start..index];
-        if line.is_empty() || lines.last().is_some_and(|previous| *previous >= line) {
+        let out_of_order = !lines.is_empty() && lines[lines.len() - 1] >= line;
+        if line.is_empty() || out_of_order {
             return Err(SfsValidationError::GovernedManifestMalformed {
                 row: lines.len() + 1,
             });
@@ -342,6 +412,7 @@ fn empty_manifest(bytes: &[u8]) -> SyntheticGovernedManifestV1 {
         edges: Vec::new(),
         profile_rows: Vec::new(),
         bound_rows: Vec::new(),
+        source_profiles: Vec::new(),
     }
 }
 
@@ -352,23 +423,23 @@ fn dispatch_row(
 ) -> Result<(), SfsValidationError> {
     let text = std::str::from_utf8(line)
         .map_err(|_| SfsValidationError::GovernedManifestMalformed { row })?;
-    let fields: Vec<&str> = text.split('|').collect();
-    match fields.first().copied() {
-        Some("component") => parse_component(&fields, line, row, manifest),
-        Some("profile") => parse_profile(&fields, row, manifest),
-        Some("bound") => parse_bound(&fields, row, manifest),
-        Some("edge") => parse_edge(&fields, row, manifest),
+    let fields = split_fields(text).ok_or(SfsValidationError::GovernedManifestMalformed { row })?;
+    match fields.values[0] {
+        "component" => parse_component(&fields, line, row, manifest),
+        "profile" => parse_profile(&fields, row, manifest),
+        "bound" => parse_bound(&fields, row, manifest),
+        "edge" => parse_edge(&fields, row, manifest),
         _ => Err(SfsValidationError::GovernedManifestMalformed { row }),
     }
 }
 
 fn parse_component(
-    fields: &[&str],
+    fields: &DelimitedFields<'_>,
     line: &[u8],
     row: usize,
     manifest: &mut SyntheticGovernedManifestV1,
 ) -> Result<(), SfsValidationError> {
-    if fields.len() != 6 {
+    if fields.len != 6 {
         return malformed(row);
     }
     if manifest.components.len() >= MAX_COMPONENTS {
@@ -376,7 +447,7 @@ fn parse_component(
             actual: manifest.components.len() + 1,
         });
     }
-    let component_id = decode_nfc_hex(fields[1], 256, row)?;
+    let component_id = decode_nfc_hex(fields.values[1], 256, row)?;
     for index in 0..MAX_COMPONENTS {
         if index >= manifest.components.len() {
             break;
@@ -385,14 +456,14 @@ fn parse_component(
             return Err(SfsValidationError::DuplicateComponentId { component_id });
         }
     }
-    let component_kind = parse_component_kind(fields[2], &component_id)?;
-    let source_mode = match fields[3] {
+    let component_kind = parse_component_kind(fields.values[2], &component_id)?;
+    let source_mode = match fields.values[3] {
         "canonical-bsl" => SourceMode::CanonicalBsl,
         "synthetic-descriptor" => SourceMode::SyntheticDescriptor,
         _ => return malformed(row),
     };
     let source_payload =
-        decode_hex(fields[4], MAX_SOURCE_BYTES, row).map_err(|error| match error {
+        decode_hex(fields.values[4], MAX_SOURCE_BYTES, row).map_err(|error| match error {
             SfsValidationError::SourcePayloadLimit { actual, .. } => {
                 SfsValidationError::SourcePayloadLimit {
                     component_id: component_id.clone(),
@@ -401,7 +472,7 @@ fn parse_component(
             }
             other => other,
         })?;
-    let source_digest = digest_hex(fields[5], row)?;
+    let source_digest = digest_hex(fields.values[5], row)?;
     let computed = match source_mode {
         SourceMode::CanonicalBsl => Digest32::from_bytes(sha256_of(&source_payload)),
         SourceMode::SyntheticDescriptor => domain_digest(COMPONENT_SOURCE_DOMAIN, &source_payload),
@@ -421,11 +492,11 @@ fn parse_component(
 }
 
 fn parse_profile(
-    fields: &[&str],
+    fields: &DelimitedFields<'_>,
     row: usize,
     manifest: &mut SyntheticGovernedManifestV1,
 ) -> Result<(), SfsValidationError> {
-    if fields.len() != 4 {
+    if fields.len != 4 {
         return malformed(row);
     }
     if manifest.profile_rows.len() >= MAX_PROFILE_ROWS {
@@ -433,25 +504,25 @@ fn parse_profile(
             actual: manifest.profile_rows.len() + 1,
         });
     }
-    let component_id = decode_nfc_hex(fields[1], 256, row)?;
-    if !is_profile_set(fields[2]) {
+    let component_id = decode_nfc_hex(fields.values[1], 256, row)?;
+    if !is_profile_set(fields.values[2]) {
         return malformed(row);
     }
-    let entry = decode_nfc_hex(fields[3], 96, row)?;
+    let entry = decode_nfc_hex(fields.values[3], 96, row)?;
     manifest.profile_rows.push(SyntheticProfileRowV1 {
         component_id,
-        set_name: fields[2].to_owned(),
+        set_name: fields.values[2].to_owned(),
         entry,
     });
     Ok(())
 }
 
 fn parse_bound(
-    fields: &[&str],
+    fields: &DelimitedFields<'_>,
     row: usize,
     manifest: &mut SyntheticGovernedManifestV1,
 ) -> Result<(), SfsValidationError> {
-    if fields.len() != 6 {
+    if fields.len != 6 {
         return malformed(row);
     }
     if manifest.bound_rows.len() >= MAX_BOUND_ROWS {
@@ -460,25 +531,25 @@ fn parse_bound(
         });
     }
     manifest.bound_rows.push(SyntheticBoundRowV1 {
-        component_id: decode_nfc_hex(fields[1], 256, row)?,
-        declared_fuel: fields[2]
+        component_id: decode_nfc_hex(fields.values[1], 256, row)?,
+        declared_fuel: fields.values[2]
             .parse()
             .map_err(|_| SfsValidationError::GovernedManifestMalformed { row })?,
-        computed_bound: fields[3]
+        computed_bound: fields.values[3]
             .parse()
             .map_err(|_| SfsValidationError::GovernedManifestMalformed { row })?,
-        cardinality_digest: digest_hex(fields[4], row)?,
-        intrinsic_cost_digest: digest_hex(fields[5], row)?,
+        cardinality_digest: digest_hex(fields.values[4], row)?,
+        intrinsic_cost_digest: digest_hex(fields.values[5], row)?,
     });
     Ok(())
 }
 
 fn parse_edge(
-    fields: &[&str],
+    fields: &DelimitedFields<'_>,
     row: usize,
     manifest: &mut SyntheticGovernedManifestV1,
 ) -> Result<(), SfsValidationError> {
-    if fields.len() != 5 {
+    if fields.len != 5 {
         return malformed(row);
     }
     if manifest.edges.len() >= MAX_EDGES {
@@ -486,10 +557,10 @@ fn parse_edge(
             actual: manifest.edges.len() + 1,
         });
     }
-    let producer = decode_nfc_hex(fields[1], 256, row)?;
-    let consumer = decode_nfc_hex(fields[2], 256, row)?;
-    let kind = parse_channel(fields[3], row)?;
-    let channel = decode_nfc_hex(fields[4], 96, row)?;
+    let producer = decode_nfc_hex(fields.values[1], 256, row)?;
+    let consumer = decode_nfc_hex(fields.values[2], 256, row)?;
+    let kind = parse_channel(fields.values[3], row)?;
+    let channel = decode_nfc_hex(fields.values[4], 96, row)?;
     for index in 0..MAX_EDGES {
         if index >= manifest.edges.len() {
             break;
@@ -542,6 +613,7 @@ fn close_manifest(
     close_sources(manifest, rule, audit)?;
     close_bound(manifest, audit)?;
     close_references(manifest)?;
+    manifest.source_profiles = source_bound_profiles(audit)?;
     let mut host_rows = Vec::new();
     for index in 0..MAX_COMPONENTS {
         if index >= manifest.components.len() {
@@ -576,11 +648,10 @@ fn close_sources(
             component_id: bsl.component_id.clone(),
         });
     }
-    if manifest.components[..2]
-        .iter()
-        .any(|component| component.source_mode != SourceMode::SyntheticDescriptor)
-    {
-        return Err(SfsValidationError::GovernedComponentSetMismatch);
+    for index in 0..2 {
+        if manifest.components[index].source_mode != SourceMode::SyntheticDescriptor {
+            return Err(SfsValidationError::GovernedComponentSetMismatch);
+        }
     }
     if manifest.components[0].source_payload != MEMBERSHIP_DESCRIPTOR
         || manifest.components[1].source_payload != PRODUCER_DESCRIPTOR
@@ -623,11 +694,7 @@ fn close_references(manifest: &SyntheticGovernedManifestV1) -> Result<(), SfsVal
             break;
         }
         let row = &manifest.profile_rows[index];
-        if !manifest
-            .components
-            .iter()
-            .any(|component| component.component_id == row.component_id)
-        {
+        if !component_exists(manifest, &row.component_id) {
             return Err(SfsValidationError::GovernedComponentSetMismatch);
         }
     }
@@ -635,22 +702,72 @@ fn close_references(manifest: &SyntheticGovernedManifestV1) -> Result<(), SfsVal
         if index >= manifest.edges.len() {
             break;
         }
-        for id in [
-            &manifest.edges[index].producer_id,
-            &manifest.edges[index].consumer_id,
-        ] {
-            if !manifest
-                .components
-                .iter()
-                .any(|component| &component.component_id == id)
-            {
-                return Err(SfsValidationError::UnknownEdgeEndpoint {
-                    component_id: id.clone(),
-                });
-            }
+        let producer = &manifest.edges[index].producer_id;
+        if !component_exists(manifest, producer) {
+            return Err(SfsValidationError::UnknownEdgeEndpoint {
+                component_id: producer.clone(),
+            });
+        }
+        let consumer = &manifest.edges[index].consumer_id;
+        if !component_exists(manifest, consumer) {
+            return Err(SfsValidationError::UnknownEdgeEndpoint {
+                component_id: consumer.clone(),
+            });
         }
     }
     Ok(())
+}
+
+fn component_exists(manifest: &SyntheticGovernedManifestV1, id: &str) -> bool {
+    component_index(manifest, id).is_some()
+}
+
+fn source_bound_profiles(
+    audit: &SfsRuleAuditResult,
+) -> Result<Vec<SfsComponentProofProfileV1>, SfsValidationError> {
+    Ok(vec![
+        membership_source_profile()?,
+        producer_source_profile()?,
+        component_profile_from_bsl("scoped-bsl-rule", audit)?,
+    ])
+}
+
+fn membership_source_profile() -> Result<SfsComponentProofProfileV1, SfsValidationError> {
+    Ok(SfsComponentProofProfileV1::new(
+        "membership-reducer",
+        ComponentKindV1::Reducer,
+        domain_digest(COMPONENT_SOURCE_DOMAIN, MEMBERSHIP_DESCRIPTOR),
+        CanonicalProfileSet::new("field_reads", vec!["synthetic-source/quanta".to_owned()])?,
+        CanonicalProfileSet::new("edge_reads", vec![])?,
+        CanonicalProfileSet::new("constant_reads", vec![])?,
+        CanonicalProfileSet::new("queries", vec![])?,
+        CanonicalProfileSet::new("operators", vec![])?,
+        CanonicalProfileSet::new("intrinsics", vec![])?,
+        CanonicalProfileSet::new("comparison_clamp_contexts", vec![])?,
+        CanonicalProfileSet::new(
+            "effects",
+            vec!["reducer-output:synthetic/membership-reducer-output".to_owned()],
+        )?,
+    )?)
+}
+
+fn producer_source_profile() -> Result<SfsComponentProofProfileV1, SfsValidationError> {
+    Ok(SfsComponentProofProfileV1::new(
+        "post-commit-producer",
+        ComponentKindV1::PostCommitProducer,
+        domain_digest(COMPONENT_SOURCE_DOMAIN, PRODUCER_DESCRIPTOR),
+        CanonicalProfileSet::new(
+            "field_reads",
+            vec!["reducer-output:synthetic/membership-reducer-output".to_owned()],
+        )?,
+        CanonicalProfileSet::new("edge_reads", vec![])?,
+        CanonicalProfileSet::new("constant_reads", vec![])?,
+        CanonicalProfileSet::new("queries", vec![])?,
+        CanonicalProfileSet::new("operators", vec![])?,
+        CanonicalProfileSet::new("intrinsics", vec![])?,
+        CanonicalProfileSet::new("comparison_clamp_contexts", vec![])?,
+        CanonicalProfileSet::new("effects", vec!["receipt:synthetic/sfs-sample".to_owned()])?,
+    )?)
 }
 
 fn validate_profile_edge_closure(
@@ -751,6 +868,9 @@ pub fn validate_synthetic_cone(
     }
     validate_endpoints(cone, governed_manifest)?;
     let expected_profiles = manifest_profiles(governed_manifest)?;
+    if expected_profiles != governed_manifest.source_profiles {
+        return Err(SfsValidationError::ConeProfileMismatch);
+    }
     if profile.components() != expected_profiles.as_slice() {
         return Err(SfsValidationError::ConeProfileMismatch);
     }
@@ -789,33 +909,41 @@ fn manifest_profiles(
 }
 
 fn profile_entries(manifest: &SyntheticGovernedManifestV1, id: &str, name: &str) -> Vec<String> {
-    manifest
-        .profile_rows
-        .iter()
-        .filter(|row| row.component_id == id && row.set_name == name)
-        .map(|row| row.entry.clone())
-        .collect()
+    let mut output = Vec::new();
+    for index in 0..MAX_PROFILE_ROWS {
+        if index >= manifest.profile_rows.len() {
+            break;
+        }
+        let row = &manifest.profile_rows[index];
+        if row.component_id == id && row.set_name == name {
+            output.push(row.entry.clone());
+        }
+    }
+    output
 }
 
 fn validate_endpoints(
     cone: &CausalConeV1,
     manifest: &SyntheticGovernedManifestV1,
 ) -> Result<(), SfsValidationError> {
-    for (set_name, ids) in [("roots", cone.roots()), ("sinks", cone.sinks())] {
-        for index in 0..MAX_COMPONENTS {
-            if index >= ids.len() {
-                break;
-            }
-            if !manifest
-                .components
-                .iter()
-                .any(|component| component.component_id == ids[index])
-            {
-                return Err(SfsValidationError::UnknownConeEndpoint {
-                    set: set_name,
-                    component_id: ids[index].clone(),
-                });
-            }
+    validate_endpoint_set("roots", cone.roots(), manifest)?;
+    validate_endpoint_set("sinks", cone.sinks(), manifest)
+}
+
+fn validate_endpoint_set(
+    set_name: &'static str,
+    ids: &[String],
+    manifest: &SyntheticGovernedManifestV1,
+) -> Result<(), SfsValidationError> {
+    for index in 0..MAX_COMPONENTS {
+        if index >= ids.len() {
+            break;
+        }
+        if !component_exists(manifest, &ids[index]) {
+            return Err(SfsValidationError::UnknownConeEndpoint {
+                set: set_name,
+                component_id: ids[index].clone(),
+            });
         }
     }
     Ok(())
@@ -830,14 +958,8 @@ fn validate_typed_edges(
             break;
         }
         let edge = &manifest.edges[index];
-        let producer = profiles
-            .iter()
-            .find(|profile| profile.component_id() == edge.producer_id)
-            .unwrap();
-        let consumer = profiles
-            .iter()
-            .find(|profile| profile.component_id() == edge.consumer_id)
-            .unwrap();
+        let producer = component_profile(profiles, &edge.producer_id).unwrap();
+        let consumer = component_profile(profiles, &edge.consumer_id).unwrap();
         let (effect, read, set_name) = edge_tokens(edge);
         if !profile_has(manifest, producer.component_id(), "effects", &effect) {
             return Err(SfsValidationError::EdgeProducerEffectMismatch {
@@ -854,6 +976,21 @@ fn validate_typed_edges(
     }
     validate_profile_edge_closure(manifest)?;
     Ok(())
+}
+
+fn component_profile<'a>(
+    profiles: &'a [SfsComponentProofProfileV1],
+    id: &str,
+) -> Option<&'a SfsComponentProofProfileV1> {
+    for index in 0..MAX_COMPONENTS {
+        if index >= profiles.len() {
+            break;
+        }
+        if profiles[index].component_id() == id {
+            return Some(&profiles[index]);
+        }
+    }
+    None
 }
 
 fn edge_tokens(edge: &ProducerConsumerEdgeV1) -> (String, String, &'static str) {
@@ -881,10 +1018,16 @@ fn prefixed(prefix: &str, channel: &str) -> (String, String, &'static str) {
 }
 
 fn profile_has(manifest: &SyntheticGovernedManifestV1, id: &str, set: &str, entry: &str) -> bool {
-    manifest
-        .profile_rows
-        .iter()
-        .any(|row| row.component_id == id && row.set_name == set && row.entry == entry)
+    for index in 0..MAX_PROFILE_ROWS {
+        if index >= manifest.profile_rows.len() {
+            break;
+        }
+        let row = &manifest.profile_rows[index];
+        if row.component_id == id && row.set_name == set && row.entry == entry {
+            return true;
+        }
+    }
+    false
 }
 
 fn validate_reachability(
@@ -903,16 +1046,18 @@ fn validate_reachability(
     }
     let forward = closure(cone.roots(), manifest, &adjacency, false);
     let reverse = closure(cone.sinks(), manifest, &adjacency, true);
-    let actual: Vec<String> = (0..count)
-        .filter(|index| forward[*index] && reverse[*index])
-        .map(|index| manifest.components[index].component_id.clone())
-        .collect();
-    if !forward
-        .iter()
-        .take(count)
-        .zip(reverse.iter())
-        .any(|(left, right)| *left && *right)
-    {
+    let mut actual = Vec::with_capacity(count);
+    let mut has_path = false;
+    for index in 0..MAX_COMPONENTS {
+        if index >= count {
+            break;
+        }
+        if forward[index] && reverse[index] {
+            has_path = true;
+            actual.push(manifest.components[index].component_id.clone());
+        }
+    }
+    if !has_path {
         return Err(SfsValidationError::NoRootToSinkPath);
     }
     if actual != cone.components() {
@@ -928,8 +1073,11 @@ fn closure(
     reverse: bool,
 ) -> [bool; MAX_COMPONENTS] {
     let mut found = [false; MAX_COMPONENTS];
-    for start in starts {
-        found[component_index(manifest, start).unwrap()] = true;
+    for index in 0..MAX_COMPONENTS {
+        if index >= starts.len() {
+            break;
+        }
+        found[component_index(manifest, &starts[index]).unwrap()] = true;
     }
     for _pass in 0..MAX_COMPONENTS {
         for left in 0..MAX_COMPONENTS {
@@ -955,10 +1103,15 @@ fn closure(
 }
 
 fn component_index(manifest: &SyntheticGovernedManifestV1, id: &str) -> Option<usize> {
-    manifest
-        .components
-        .iter()
-        .position(|component| component.component_id == id)
+    for index in 0..MAX_COMPONENTS {
+        if index >= manifest.components.len() {
+            break;
+        }
+        if manifest.components[index].component_id == id {
+            return Some(index);
+        }
+    }
+    None
 }
 
 /// Validates distinct manifest/profile/preregistration identity placement.
@@ -1007,13 +1160,16 @@ pub fn validate_synthetic_mutation_manifest(
     bytes: &[u8],
     preregistration: &crate::SfsPreregistrationV1,
 ) -> Result<Digest32, SfsValidationError> {
-    if bytes.contains(&b'\r') || !bytes.ends_with(b"\n") || bytes.ends_with(b"\n\n") {
+    if bytes.len() > MAX_MUTATION_MANIFEST_BYTES {
+        return Err(SfsValidationError::MutationManifestByteLimit {
+            actual: bytes.len(),
+        });
+    }
+    if mutation_has_cr(bytes) || !has_one_terminal_lf(bytes) {
         return Err(SfsValidationError::MutationManifestMalformed { row: 0 });
     }
-    let rows: Vec<&[u8]> = bytes[..bytes.len() - 1]
-        .split(|byte| *byte == b'\n')
-        .collect();
-    if rows.len() != 41 {
+    let (rows, row_count) = mutation_rows(bytes)?;
+    if row_count != 41 {
         return Err(SfsValidationError::MutationCoverageMismatch {
             mutation_id: "row-count".to_owned(),
         });
@@ -1024,15 +1180,19 @@ pub fn validate_synthetic_mutation_manifest(
         }
         let text = std::str::from_utf8(rows[index])
             .map_err(|_| SfsValidationError::MutationManifestMalformed { row: index + 1 })?;
-        let fields: Vec<&str> = text.split('|').collect();
-        if fields.len() != 6
-            || !matches!(fields[1], "STATIC" | "DRIVER" | "DYNAMIC" | "EVALUATOR")
+        let fields = split_fields(text)
+            .ok_or(SfsValidationError::MutationManifestMalformed { row: index + 1 })?;
+        if fields.len != 6
             || !matches!(
-                fields[4],
+                fields.values[1],
+                "STATIC" | "DRIVER" | "DYNAMIC" | "EVALUATOR"
+            )
+            || !matches!(
+                fields.values[4],
                 "SYNTHETIC" | "GATE3" | "GATE5" | "G6" | "PER44" | "LIVE_T3"
             )
-            || (fields[4] == "SYNTHETIC" && fields[5] == "-")
-            || (fields[4] != "SYNTHETIC" && fields[5] != "-")
+            || (fields.values[4] == "SYNTHETIC" && fields.values[5] == "-")
+            || (fields.values[4] != "SYNTHETIC" && fields.values[5] != "-")
         {
             return Err(SfsValidationError::MutationManifestMalformed { row: index + 1 });
         }
@@ -1042,6 +1202,29 @@ pub fn validate_synthetic_mutation_manifest(
         return Err(SfsValidationError::MutationManifestDigestMismatch);
     }
     Ok(digest)
+}
+
+fn mutation_rows(bytes: &[u8]) -> Result<([&[u8]; 41], usize), SfsValidationError> {
+    let mut rows = [&[][..]; 41];
+    let mut row_count = 0_usize;
+    let mut start = 0_usize;
+    for index in 0..MAX_MUTATION_MANIFEST_BYTES {
+        if index >= bytes.len() {
+            break;
+        }
+        if bytes[index] != b'\n' {
+            continue;
+        }
+        if row_count >= 41 {
+            return Err(SfsValidationError::MutationCoverageMismatch {
+                mutation_id: "row-count".to_owned(),
+            });
+        }
+        rows[row_count] = &bytes[start..index];
+        row_count += 1;
+        start = index + 1;
+    }
+    Ok((rows, row_count))
 }
 
 fn parse_component_kind(value: &str, id: &str) -> Result<ComponentKindV1, SfsValidationError> {
@@ -1091,12 +1274,7 @@ fn decode_nfc_hex(value: &str, maximum: usize, row: usize) -> Result<String, Sfs
 }
 
 fn decode_hex(value: &str, maximum: usize, row: usize) -> Result<Vec<u8>, SfsValidationError> {
-    if value.is_empty()
-        || !value.len().is_multiple_of(2)
-        || value
-            .bytes()
-            .any(|byte| !matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
-    {
+    if value.is_empty() || !value.len().is_multiple_of(2) {
         return malformed(row);
     }
     let actual = value.len() / 2;
@@ -1107,15 +1285,26 @@ fn decode_hex(value: &str, maximum: usize, row: usize) -> Result<Vec<u8>, SfsVal
         });
     }
     let mut output = Vec::with_capacity(actual);
+    let encoded = value.as_bytes();
     for index in 0..MAX_SOURCE_BYTES {
         if index >= actual {
             break;
         }
-        let byte = u8::from_str_radix(&value[index * 2..index * 2 + 2], 16)
-            .map_err(|_| SfsValidationError::GovernedManifestMalformed { row })?;
-        output.push(byte);
+        let high = hex_nibble(encoded[index * 2])
+            .ok_or(SfsValidationError::GovernedManifestMalformed { row })?;
+        let low = hex_nibble(encoded[index * 2 + 1])
+            .ok_or(SfsValidationError::GovernedManifestMalformed { row })?;
+        output.push((high << 4) | low);
     }
     Ok(output)
+}
+
+const fn hex_nibble(value: u8) -> Option<u8> {
+    match value {
+        b'0'..=b'9' => Some(value - b'0'),
+        b'a'..=b'f' => Some(value - b'a' + 10),
+        _ => None,
+    }
 }
 
 fn digest_hex(value: &str, row: usize) -> Result<Digest32, SfsValidationError> {
@@ -1127,7 +1316,7 @@ fn digest_hex(value: &str, row: usize) -> Result<Digest32, SfsValidationError> {
 }
 
 fn validate_nfc(value: &str, maximum: usize, row: usize) -> Result<(), SfsValidationError> {
-    if value.is_empty() || value.len() > maximum || value.nfc().ne(value.chars()) {
+    if value.is_empty() || value.len() > maximum || !is_nfc(value) {
         return malformed(row);
     }
     Ok(())
@@ -1137,10 +1326,24 @@ fn set(
     field: &'static str,
     values: &BTreeSet<String>,
 ) -> Result<CanonicalProfileSet, SfsValidationError> {
-    Ok(CanonicalProfileSet::new(
-        field,
-        values.iter().cloned().collect(),
-    )?)
+    if values.len() > MAX_PROFILE_ENTRIES {
+        return Err(SfsValidationError::ProfileRecord(
+            SfsProfileRecordError::Wire(SfsWireError::CountTooLarge {
+                field,
+                limit: MAX_PROFILE_ENTRIES,
+                actual: values.len(),
+            }),
+        ));
+    }
+    let mut remaining = values.clone();
+    let mut entries = Vec::with_capacity(values.len());
+    for index in 0..MAX_PROFILE_ENTRIES {
+        if index >= values.len() {
+            break;
+        }
+        entries.push(remaining.pop_first().unwrap());
+    }
+    Ok(CanonicalProfileSet::new(field, entries)?)
 }
 
 fn domain_digest(domain: &[u8], payload: &[u8]) -> Digest32 {

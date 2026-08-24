@@ -6,7 +6,7 @@ use babylon_evidence::{
 };
 
 #[test]
-fn the_eight_w2_vectors_pin_sfs_predicate_order() {
+fn the_eight_w2_vectors_pin_predicate_order() {
     let cases = [
         (
             &[0.0, 1.0, 2.0, 5.0, 8.0, 10.0, 11.0][..],
@@ -55,7 +55,7 @@ fn sfs_class_codes_are_exact_and_closed() {
 }
 
 #[test]
-fn sfs_width_and_checked_length_bounds_are_exact() {
+fn classifier_rejects_off_by_one() {
     assert_eq!(
         classify_sfs(1, &[0.0; 4]),
         Err(SfsClassError::InvalidWindowWidth { found: 1 })

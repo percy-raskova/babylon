@@ -491,34 +491,75 @@ mod tests {
     }
 
     #[test]
-    fn cumulative_shape_predicate_refuses_authored_classes() {
+    fn both_cumulative_drivers_refuse_each_authored_shape_independently() {
         let continuing = [0.0, 1.0, 2.0, 5.0, 8.0, 10.0, 11.0];
-        assert!(matches!(
-            validate_cumulative_driver_shapes(2, &continuing, &continuing),
-            Err(SyntheticDriverError::DriverAuthoredShape {
-                class: SfsClass::Continuing,
-                ..
-            })
-        ));
+        let late_plateau = [0.0, 1.0, 2.0, 5.0, 8.0, 8.0, 8.0];
         let constant_rate = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let other = [0.0, 3.0, 6.0, 7.0, 8.0, 10.0, 12.0];
+        for (authored, class) in [
+            (&continuing[..], SfsClass::Continuing),
+            (&late_plateau[..], SfsClass::LatePlateau),
+        ] {
+            assert_eq!(
+                validate_cumulative_driver_shapes(2, authored, &other),
+                Err(SyntheticDriverError::DriverAuthoredShape {
+                    driver: "attempted-quanta",
+                    class,
+                })
+            );
+            assert_eq!(
+                validate_cumulative_driver_shapes(2, &other, authored),
+                Err(SyntheticDriverError::DriverAuthoredShape {
+                    driver: "governed-costs",
+                    class,
+                })
+            );
+        }
         assert_eq!(
-            validate_cumulative_driver_shapes(2, &constant_rate, &constant_rate),
+            validate_cumulative_driver_shapes(2, &constant_rate, &other),
+            Ok(())
+        );
+        assert_eq!(
+            validate_cumulative_driver_shapes(2, &other, &constant_rate),
             Ok(())
         );
     }
 
     #[test]
-    fn cumulative_value_refusals_precede_classification() {
-        let invalid = [0.0, f64::NAN, 2.0, 3.0, 4.0, 5.0, 6.0];
-        assert!(matches!(
-            validate_cumulative_driver_shapes(2, &invalid, &invalid),
-            Err(SyntheticDriverError::InvalidCumulativeDriverValue { index: 1, .. })
-        ));
+    fn either_cumulative_driver_refuses_nonfinite_negative_and_decreasing_values() {
+        let valid = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        for invalid_value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -1.0] {
+            let mut invalid = valid;
+            invalid[1] = invalid_value;
+            for (attempted, governed, driver) in [
+                (&invalid[..], &valid[..], "attempted-quanta"),
+                (&valid[..], &invalid[..], "governed-costs"),
+            ] {
+                assert_eq!(
+                    validate_cumulative_driver_shapes(2, attempted, governed),
+                    Err(SyntheticDriverError::InvalidCumulativeDriverValue {
+                        driver,
+                        index: 1,
+                        bits: invalid_value.to_bits(),
+                    })
+                );
+            }
+        }
         let decreasing = [0.0, 2.0, 1.0, 3.0, 4.0, 5.0, 6.0];
-        assert!(matches!(
-            validate_cumulative_driver_shapes(2, &decreasing, &decreasing),
-            Err(SyntheticDriverError::CumulativeDriverDecreased { index: 2, .. })
-        ));
+        for (attempted, governed, driver) in [
+            (&decreasing[..], &valid[..], "attempted-quanta"),
+            (&valid[..], &decreasing[..], "governed-costs"),
+        ] {
+            assert_eq!(
+                validate_cumulative_driver_shapes(2, attempted, governed),
+                Err(SyntheticDriverError::CumulativeDriverDecreased {
+                    driver,
+                    index: 2,
+                    previous_bits: 2.0_f64.to_bits(),
+                    actual_bits: 1.0_f64.to_bits(),
+                })
+            );
+        }
     }
 
     #[test]
@@ -560,6 +601,30 @@ mod tests {
             validate_aligned_material(&[], &[], 2, 2),
             Err(SyntheticDriverError::MaterialSampleCountMismatch { expected: 7, .. })
         ));
+        let too_short = (0..6)
+            .map(|index| SyntheticMaterialSample::new(index, digest(1), 1.0))
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(
+            validate_aligned_material(&too_short, &too_short, 2, 2),
+            Err(SyntheticDriverError::MaterialSampleCountMismatch {
+                expected: 7,
+                control: 6,
+                aligned: 6,
+            })
+        );
+        let too_long = (0..8)
+            .map(|index| SyntheticMaterialSample::new(index, digest(1), 1.0))
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(
+            validate_aligned_material(&too_long, &too_long, 2, 2),
+            Err(SyntheticDriverError::MaterialSampleCountMismatch {
+                expected: 7,
+                control: 8,
+                aligned: 8,
+            })
+        );
         let control = (0..7)
             .map(|index| SyntheticMaterialSample::new(index, digest(1), 1.0))
             .collect::<Result<Vec<_>, _>>()

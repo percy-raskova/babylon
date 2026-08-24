@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write as _;
 
 use babylon_bsl::{
@@ -7,15 +7,16 @@ use babylon_bsl::{
     SfsRuleAuditResult,
 };
 use babylon_evidence::{
-    bind_synthetic_driver, canonical_envelope, decode_envelope, parse_synthetic_driver_contract,
-    parse_synthetic_governed_manifest, record_digest, validate_synthetic_cone,
-    validate_synthetic_mutation_manifest, validate_synthetic_profile_identity, CausalConeV1,
+    bind_synthetic_driver, canonical_envelope, component_profile_from_bsl, decode_envelope,
+    parse_synthetic_driver_contract, parse_synthetic_governed_manifest, record_digest,
+    validate_synthetic_cone, validate_synthetic_mutation_manifest,
+    validate_synthetic_profile_identity, CanonicalProfileSet, CausalConeV1, ComponentKindV1,
     DifferingLedgerKindV1, Digest32, InterventionDeltaRowV1, InterventionDeltaV1,
     InterventionOperationV1, PersistenceComparisonV1, PracticeAttemptLedgerV1,
     PracticeAttemptRowV1, PracticeCandidateRowV1, PracticeCandidateScheduleV1,
     PracticeDispositionV1, RunIdentityField, RunIdentityV1, SfsComponentProofProfileV1,
     SfsPreregistrationV1, SfsProofProfileV1, SfsSampleV1, SfsTraceV1, SfsValidationError,
-    SyntheticDriverError,
+    SyntheticDriverError, T3Record,
 };
 use babylon_kernel::{sha256_of, SessionId};
 use babylon_practice_contract::{
@@ -34,6 +35,11 @@ const AUDIT_SOURCES: &[u8] =
 const WIRE_VECTORS: &str = include_str!("fixtures/sfs_wire_vectors_v1.txt");
 const IDENTITY_MUTATIONS: &str = include_str!("fixtures/sfs_identity_mutations_v1.txt");
 const SYNTHETIC_EMPTY_EXOGENOUS_DIGEST: Digest32 = Digest32::from_bytes([0xE0; 32]);
+const MEMBERSHIP_DESCRIPTOR: &[u8] =
+    b"membership-reducer maps one synthetic field value to one reducer output";
+const PRODUCER_DESCRIPTOR: &[u8] =
+    b"post-commit-producer emits one synthetic sample after a sealed envelope";
+const AUDIT_SEMANTICS_ID: &str = "babylon.sfs.audit.v1";
 
 fn digest(tag: u8) -> Digest32 {
     let mut bytes = [0_u8; 32];
@@ -136,11 +142,8 @@ fn audit() -> SfsRuleAuditResult {
 }
 
 fn proof_profile() -> SfsProofProfileV1 {
-    let row = PROFILE
-        .lines()
-        .find(|row| row.starts_with("proof-profile|"))
-        .unwrap();
-    decode_envelope(&hex_bytes(row.split('|').nth(3).unwrap())).unwrap()
+    let governed = parse_synthetic_governed_manifest(GOVERNED, &rule(), &audit()).unwrap();
+    proof_with(governed.manifest_digest(), &cone(), source_profiles())
 }
 
 fn domain_digest(domain: &[u8], payload: &[u8]) -> Digest32 {
@@ -155,7 +158,7 @@ fn proof_with(
     SfsProofProfileV1::new(
         governed_manifest_digest,
         domain_digest(b"babylon.sfs-forbidden-corpus-manifest.v1", FORBIDDEN),
-        "babylon.sfs.audit.v1",
+        AUDIT_SEMANTICS_ID,
         domain_digest(b"babylon.sfs-audit-source-manifest.v1", AUDIT_SOURCES),
         Digest32::from_bytes(*record_digest(selected_cone).unwrap().as_bytes()),
         components,
@@ -163,24 +166,96 @@ fn proof_with(
     .unwrap()
 }
 
-fn profile_component(label: &str) -> SfsComponentProofProfileV1 {
-    let prefix = format!("component|{label}|");
-    let row = PROFILE
-        .lines()
-        .find(|row| row.starts_with(&prefix))
-        .unwrap();
-    decode_envelope(&hex_bytes(row.split('|').nth(3).unwrap())).unwrap()
+fn profile_set(values: &[&str]) -> CanonicalProfileSet {
+    let mut entries = Vec::with_capacity(values.len());
+    for index in 0..64 {
+        if index >= values.len() {
+            break;
+        }
+        entries.push(values[index].to_owned());
+    }
+    CanonicalProfileSet::new("synthetic-test", entries).unwrap()
 }
 
-fn changed_membership_profile() -> SfsComponentProofProfileV1 {
-    let mut envelope = canonical_envelope(&profile_component("membership-reducer")).unwrap();
-    let original = b"synthetic-source/quanta";
-    let offset = envelope
-        .windows(original.len())
-        .position(|window| window == original)
-        .unwrap();
-    envelope[offset + original.len() - 1] = b'b';
-    decode_envelope(&envelope).unwrap()
+fn host_profile(
+    component_id: &str,
+    kind: ComponentKindV1,
+    descriptor: &[u8],
+    field_reads: &[&str],
+    effects: &[&str],
+) -> SfsComponentProofProfileV1 {
+    SfsComponentProofProfileV1::new(
+        component_id,
+        kind,
+        domain_digest(b"babylon.sfs-synthetic-component-source.v1", descriptor),
+        profile_set(field_reads),
+        profile_set(&[]),
+        profile_set(&[]),
+        profile_set(&[]),
+        profile_set(&[]),
+        profile_set(&[]),
+        profile_set(&[]),
+        profile_set(effects),
+    )
+    .unwrap()
+}
+
+fn membership_profile(field_read: &str) -> SfsComponentProofProfileV1 {
+    host_profile(
+        "membership-reducer",
+        ComponentKindV1::Reducer,
+        MEMBERSHIP_DESCRIPTOR,
+        &[field_read],
+        &["reducer-output:synthetic/membership-reducer-output"],
+    )
+}
+
+fn producer_profile() -> SfsComponentProofProfileV1 {
+    producer_profile_with(
+        "reducer-output:synthetic/membership-reducer-output",
+        "receipt:synthetic/sfs-sample",
+    )
+}
+
+fn producer_profile_with(field_read: &str, effect: &str) -> SfsComponentProofProfileV1 {
+    host_profile(
+        "post-commit-producer",
+        ComponentKindV1::PostCommitProducer,
+        PRODUCER_DESCRIPTOR,
+        &[field_read],
+        &[effect],
+    )
+}
+
+fn source_profiles() -> Vec<SfsComponentProofProfileV1> {
+    vec![
+        membership_profile("synthetic-source/quanta"),
+        producer_profile(),
+        component_profile_from_bsl("scoped-bsl-rule", &audit()).unwrap(),
+    ]
+}
+
+fn profile_set_from_audit(values: &BTreeSet<String>) -> CanonicalProfileSet {
+    CanonicalProfileSet::new("synthetic-test", values.iter().cloned().collect()).unwrap()
+}
+
+fn changed_scoped_profile(operator: &str) -> SfsComponentProofProfileV1 {
+    let sealed = audit();
+    let footprint = sealed.footprint();
+    SfsComponentProofProfileV1::new(
+        "scoped-bsl-rule",
+        ComponentKindV1::BslRule,
+        Digest32::from_bytes(*footprint.source_digest()),
+        profile_set_from_audit(footprint.field_reads()),
+        profile_set_from_audit(footprint.edge_reads()),
+        profile_set_from_audit(footprint.constant_reads()),
+        profile_set_from_audit(footprint.queries()),
+        profile_set(&[operator]),
+        profile_set_from_audit(footprint.intrinsics()),
+        profile_set_from_audit(footprint.comparison_clamp_contexts()),
+        profile_set_from_audit(footprint.effects()),
+    )
+    .unwrap()
 }
 
 fn cone() -> CausalConeV1 {
@@ -194,6 +269,66 @@ fn cone() -> CausalConeV1 {
         ],
     )
     .unwrap()
+}
+
+fn assert_profile_fixture<T: T3Record>(label: &str, name: &str, actual: &T) {
+    let prefix = format!("{label}|{name}|");
+    let row = PROFILE
+        .lines()
+        .find(|candidate| candidate.starts_with(&prefix))
+        .unwrap();
+    let fields = row.split('|').collect::<Vec<_>>();
+    assert_eq!(fields.len(), 5);
+    assert_eq!(fields[2].as_bytes(), T::DOMAIN);
+    assert_eq!(hex_bytes(fields[3]), canonical_envelope(actual).unwrap());
+    assert_eq!(fields[4], record_digest(actual).unwrap().to_hex());
+}
+
+#[test]
+fn five_profile_fixtures_derive_from_independent_source_contracts() {
+    let governed = parse_synthetic_governed_manifest(GOVERNED, &rule(), &audit()).unwrap();
+    let selected_cone = cone();
+    let components = source_profiles();
+    let proof = proof_with(
+        governed.manifest_digest(),
+        &selected_cone,
+        components.clone(),
+    );
+    assert_profile_fixture("component", "membership-reducer", &components[0]);
+    assert_profile_fixture("component", "post-commit-producer", &components[1]);
+    assert_profile_fixture("component", "scoped-bsl-rule", &components[2]);
+    assert_profile_fixture("cone", "synthetic-chain", &selected_cone);
+    assert_profile_fixture("proof-profile", "synthetic-chain", &proof);
+}
+
+#[test]
+fn proof_header_pins_forbidden_audit_source_and_semantics_independently() {
+    let forbidden = domain_digest(b"babylon.sfs-forbidden-corpus-manifest.v1", FORBIDDEN);
+    let audit_source = domain_digest(b"babylon.sfs-audit-source-manifest.v1", AUDIT_SOURCES);
+    assert_eq!(
+        forbidden.to_hex(),
+        "e3e7d0c90b7302c441005a4cb482a1aff86c2e9178b06a514b2f9c6304aeca74"
+    );
+    assert_eq!(
+        audit_source.to_hex(),
+        "b71b96a4f57bd023b402d12c80c998d3fb8eb0e95a0af04ed4f5e445feea8bd9"
+    );
+    let envelope = canonical_envelope(&proof_profile()).unwrap();
+    let payload = SfsProofProfileV1::DOMAIN.len() + 7;
+    assert_eq!(&envelope[payload + 32..payload + 64], forbidden.as_bytes());
+    assert_eq!(
+        u16::from_be_bytes([envelope[payload + 64], envelope[payload + 65]]),
+        u16::try_from(AUDIT_SEMANTICS_ID.len()).unwrap()
+    );
+    assert_eq!(
+        &envelope[payload + 66..payload + 66 + AUDIT_SEMANTICS_ID.len()],
+        AUDIT_SEMANTICS_ID.as_bytes()
+    );
+    let audit_start = payload + 66 + AUDIT_SEMANTICS_ID.len();
+    assert_eq!(
+        &envelope[audit_start..audit_start + 32],
+        audit_source.as_bytes()
+    );
 }
 
 #[test]
@@ -265,8 +400,8 @@ fn reachability_profile_and_path_boundaries_are_distinct() {
     );
 
     let without_middle = vec![
-        profile_component("scoped-bsl-rule"),
-        profile_component("post-commit-producer"),
+        component_profile_from_bsl("scoped-bsl-rule", &audit()).unwrap(),
+        producer_profile(),
     ];
     let unprofiled = proof_with(governed.manifest_digest(), &cone(), without_middle);
     assert_eq!(
@@ -298,9 +433,9 @@ fn recomputed_host_profile_identity_cannot_hide_changed_profile_bytes() {
         governed.manifest_digest(),
         &cone(),
         vec![
-            changed_membership_profile(),
-            profile_component("post-commit-producer"),
-            profile_component("scoped-bsl-rule"),
+            membership_profile("synthetic-source/quantb"),
+            producer_profile(),
+            component_profile_from_bsl("scoped-bsl-rule", &audit()).unwrap(),
         ],
     );
     assert_ne!(
@@ -310,6 +445,54 @@ fn recomputed_host_profile_identity_cannot_hide_changed_profile_bytes() {
     assert_eq!(
         validate_synthetic_cone(&cone(), &changed, &governed),
         Err(SfsValidationError::ConeProfileMismatch)
+    );
+}
+
+fn assert_changed_host_manifest_profile_refuses(
+    changed_manifest_bytes: &[u8],
+    changed_components: Vec<SfsComponentProofProfileV1>,
+) {
+    let governed =
+        parse_synthetic_governed_manifest(changed_manifest_bytes, &rule(), &audit()).unwrap();
+    let changed = proof_with(governed.manifest_digest(), &cone(), changed_components);
+    assert_eq!(
+        validate_synthetic_cone(&cone(), &changed, &governed),
+        Err(SfsValidationError::ConeProfileMismatch)
+    );
+}
+
+#[test]
+fn both_host_manifest_profiles_are_source_bound_to_exact_descriptor_contracts() {
+    let membership = String::from_utf8(GOVERNED.to_vec())
+        .unwrap()
+        .replace(
+            "profile|6d656d626572736869702d72656475636572|field_reads|73796e7468657469632d736f757263652f7175616e7461",
+            "profile|6d656d626572736869702d72656475636572|field_reads|73796e7468657469632d736f757263652f7175616e7462",
+        );
+    assert_changed_host_manifest_profile_refuses(
+        membership.as_bytes(),
+        vec![
+            membership_profile("synthetic-source/quantb"),
+            producer_profile(),
+            component_profile_from_bsl("scoped-bsl-rule", &audit()).unwrap(),
+        ],
+    );
+    let producer = String::from_utf8(GOVERNED.to_vec())
+        .unwrap()
+        .replace(
+            "profile|706f73742d636f6d6d69742d70726f6475636572|effects|726563656970743a73796e7468657469632f7366732d73616d706c65",
+            "profile|706f73742d636f6d6d69742d70726f6475636572|effects|726563656970743a73796e7468657469632f7366732d73616d706c66",
+        );
+    assert_changed_host_manifest_profile_refuses(
+        producer.as_bytes(),
+        vec![
+            membership_profile("synthetic-source/quanta"),
+            producer_profile_with(
+                "reducer-output:synthetic/membership-reducer-output",
+                "receipt:synthetic/sfs-samplf",
+            ),
+            component_profile_from_bsl("scoped-bsl-rule", &audit()).unwrap(),
+        ],
     );
 }
 
@@ -380,6 +563,59 @@ fn recomputed_bsl_source_cannot_replace_the_sealed_audit_source() {
         Err(SfsValidationError::ComponentSourceDigestMismatch {
             component_id: "scoped-bsl-rule".to_owned(),
         })
+    );
+}
+
+#[test]
+fn recomputed_outer_identities_cannot_hide_changed_bsl_profile_rows() {
+    let original_manifest = parse_synthetic_governed_manifest(GOVERNED, &rule(), &audit()).unwrap();
+    let original_profile = proof_profile();
+    let changed_bytes = String::from_utf8(GOVERNED.to_vec()).unwrap().replace(
+        "profile|73636f7065642d62736c2d72756c65|operators|3e",
+        "profile|73636f7065642d62736c2d72756c65|operators|3d",
+    );
+    let changed_manifest =
+        parse_synthetic_governed_manifest(changed_bytes.as_bytes(), &rule(), &audit()).unwrap();
+    let changed_profile = proof_with(
+        changed_manifest.manifest_digest(),
+        &cone(),
+        vec![
+            membership_profile("synthetic-source/quanta"),
+            producer_profile(),
+            changed_scoped_profile("="),
+        ],
+    );
+    let (_, schedule, attempts) = candidate_bundle();
+    let changed_prereg = preregistration(&schedule, &changed_profile, digest(99));
+    let changed_run = run_identity(
+        changed_manifest.host_component_manifest_digest(),
+        changed_manifest.manifest_digest(),
+        Digest32::from_bytes(*record_digest(&changed_profile).unwrap().as_bytes()),
+        Digest32::from_bytes(*record_digest(&changed_prereg).unwrap().as_bytes()),
+        Digest32::from_bytes(*record_digest(&attempts).unwrap().as_bytes()),
+        SYNTHETIC_EMPTY_EXOGENOUS_DIGEST,
+    );
+    assert_ne!(
+        original_manifest.manifest_digest(),
+        changed_manifest.manifest_digest()
+    );
+    assert_ne!(
+        record_digest(&original_profile).unwrap(),
+        record_digest(&changed_profile).unwrap()
+    );
+    assert_eq!(
+        validate_synthetic_profile_identity(
+            &changed_run,
+            &changed_profile,
+            &changed_prereg,
+            &changed_manifest,
+            changed_prereg.mutation_manifest_digest(),
+        ),
+        Ok(())
+    );
+    assert_eq!(
+        validate_synthetic_cone(&cone(), &changed_profile, &changed_manifest),
+        Err(SfsValidationError::ConeProfileMismatch)
     );
 }
 
@@ -1254,7 +1490,7 @@ fn malformed_adapter_intents_map_before_any_synthetic_run_membership() {
 }
 
 #[test]
-fn every_run_field_moves_identity_and_twins_change_one_ledger() {
+fn every_run_field_moves_identity() {
     let base_row = WIRE_VECTORS
         .lines()
         .find(|row| row.starts_with("wire|run-identity|"))
@@ -1720,16 +1956,18 @@ fn mutation_manifest_is_exact_dependency_labelled_specification() {
     let changed_activation = String::from_utf8(MUTATIONS.to_vec())
         .unwrap()
         .replace("|GATE5|-", "|SYNTHETIC|-");
-    assert!(matches!(
+    assert_eq!(
         validate_synthetic_mutation_manifest(changed_activation.as_bytes(), &prereg),
-        Err(SfsValidationError::MutationManifestMalformed { .. })
-    ));
+        Err(SfsValidationError::MutationManifestByteLimit {
+            actual: changed_activation.len(),
+        })
+    );
     let crlf = String::from_utf8(MUTATIONS.to_vec())
         .unwrap()
         .replacen('\n', "\r\n", 1);
     assert_eq!(
         validate_synthetic_mutation_manifest(crlf.as_bytes(), &prereg),
-        Err(SfsValidationError::MutationManifestMalformed { row: 0 })
+        Err(SfsValidationError::MutationManifestByteLimit { actual: 4_400 })
     );
 
     let rows = String::from_utf8(MUTATIONS.to_vec())
@@ -1746,28 +1984,29 @@ fn mutation_manifest_is_exact_dependency_labelled_specification() {
     ));
     let mut extra = rows.clone();
     extra.push("Z99_EXTRA|STATIC|x|x|GATE3|-".to_owned());
-    assert!(matches!(
-        validate_synthetic_mutation_manifest(&sorted_manifest(extra), &prereg),
-        Err(SfsValidationError::MutationCoverageMismatch { .. })
-    ));
+    let extra_manifest = sorted_manifest(extra);
+    assert_eq!(
+        validate_synthetic_mutation_manifest(&extra_manifest, &prereg),
+        Err(SfsValidationError::MutationManifestByteLimit {
+            actual: extra_manifest.len(),
+        })
+    );
     let mut duplicate = rows.clone();
     duplicate[1] = duplicate[0].clone();
     assert!(matches!(
         validate_synthetic_mutation_manifest(&sorted_manifest(duplicate), &prereg),
         Err(SfsValidationError::MutationManifestMalformed { .. })
     ));
-    let unknown_phase =
-        String::from_utf8(MUTATIONS.to_vec())
-            .unwrap()
-            .replacen("|DRIVER|", "|UNKNOWN|", 1);
+    let unknown_phase = String::from_utf8(MUTATIONS.to_vec())
+        .unwrap()
+        .replacen("|DRIVER|", "|BROKEN|", 1);
     assert!(matches!(
         validate_synthetic_mutation_manifest(unknown_phase.as_bytes(), &prereg),
         Err(SfsValidationError::MutationManifestMalformed { .. })
     ));
-    let unknown_activation =
-        String::from_utf8(MUTATIONS.to_vec())
-            .unwrap()
-            .replacen("|GATE5|-", "|UNKNOWN|-", 1);
+    let unknown_activation = String::from_utf8(MUTATIONS.to_vec())
+        .unwrap()
+        .replacen("|GATE5|-", "|WRONG|-", 1);
     assert!(matches!(
         validate_synthetic_mutation_manifest(unknown_activation.as_bytes(), &prereg),
         Err(SfsValidationError::MutationManifestMalformed { .. })
@@ -1785,6 +2024,92 @@ fn mutation_manifest_is_exact_dependency_labelled_specification() {
         validate_synthetic_mutation_manifest(&MUTATIONS[..MUTATIONS.len() - 1], &prereg),
         Err(SfsValidationError::MutationManifestMalformed { row: 0 })
     );
+}
+
+#[test]
+fn synthetic_manifest_test_names_resolve_to_genuine_exact_tests() {
+    let sources = [
+        include_str!("../src/driver.rs"),
+        include_str!("classifier_goldens.rs"),
+        include_str!("synthetic_proof_harness.rs"),
+        include_str!("../../babylon-bsl/tests/sfs_profile_contract.rs"),
+        include_str!("../../bsl-lint/tests/sfs_non_authorability.rs"),
+    ];
+    for row in String::from_utf8(MUTATIONS.to_vec()).unwrap().lines() {
+        let fields = row.split('|').collect::<Vec<_>>();
+        if fields[4] != "SYNTHETIC" {
+            continue;
+        }
+        assert_ne!(fields[5], "-");
+        let exact = format!("fn {}(", fields[5]);
+        assert!(
+            sources.iter().any(|source| source.contains(&exact)),
+            "missing exact executable test {}",
+            fields[5]
+        );
+    }
+}
+
+#[test]
+fn mutation_manifest_byte_preflight_precedes_framing_and_allocation() {
+    assert_eq!(MUTATIONS.len(), 4_399);
+    let contract = parse_synthetic_driver_contract(DRIVER_CONTRACT).unwrap();
+    let (_, schedule, _) = candidate_bundle();
+    let prereg = preregistration(&schedule, &proof_profile(), contract.manifest_digest());
+    assert_eq!(
+        validate_synthetic_mutation_manifest(MUTATIONS, &prereg),
+        Ok(prereg.mutation_manifest_digest())
+    );
+    let mut plus_one = vec![0xff; 4_400];
+    plus_one[0] = b'\r';
+    assert_eq!(
+        validate_synthetic_mutation_manifest(&plus_one, &prereg),
+        Err(SfsValidationError::MutationManifestByteLimit { actual: 4_400 })
+    );
+}
+
+#[test]
+fn validation_source_uses_only_literal_indexed_bounded_traversals() {
+    let source = include_str!("../src/validation.rs");
+    for forbidden in [
+        ".iter()",
+        ".into_iter()",
+        ".split(",
+        ".filter(",
+        ".map(",
+        ".find(",
+        ".position(",
+        ".zip(",
+        ".take(",
+        ".bytes()",
+        ".chars()",
+        ".nfc()",
+        ".contains(",
+        ".ends_with(",
+        "for start in",
+        "for id in",
+        "for (set_name, ids) in",
+    ] {
+        assert!(
+            !source.contains(forbidden),
+            "forbidden traversal: {forbidden}"
+        );
+    }
+    for required in [
+        "const MAX_MUTATION_MANIFEST_BYTES: usize = 4_399;",
+        "for index in 0..MAX_MUTATION_MANIFEST_BYTES",
+        "for index in 0..MAX_GOVERNED_MANIFEST_BYTES",
+        "for index in 0..MAX_COMPONENTS",
+        "for index in 0..MAX_PROFILE_ROWS",
+        "for index in 0..MAX_EDGES",
+        "for _pass in 0..MAX_COMPONENTS",
+        "for index in 0..MAX_PROFILE_ENTRIES",
+    ] {
+        assert!(
+            source.contains(required),
+            "missing literal ceiling: {required}"
+        );
+    }
 }
 
 #[test]

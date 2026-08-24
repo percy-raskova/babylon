@@ -2035,6 +2035,19 @@ fn engine_manifests_remain_postgres_free() {
 }
 
 #[test]
+fn postgres_ci_and_sanctioned_merger_share_the_pinned_runtime_name() {
+    let workflow = include_str!("../../../../.github/workflows/ci.yml");
+    let merger = include_str!("../../../../tools/pr_merge.py");
+    let critical_check = "Postgres Integration Tier (PG 17, pinned runtime)";
+    assert!(workflow.contains(&format!("    name: {critical_check}")));
+    assert!(merger.contains(&format!("\"{critical_check}\",")));
+    assert!(workflow.contains(
+        "- name: Build + start the isolated Postgres (CI fork; pinned runtime/package contract)"
+    ));
+    assert!(!workflow.contains("digest-pinned base"));
+}
+
+#[test]
 fn live_adopter_test_is_wired_into_the_remote_pg_tier() {
     let mise = include_str!("../../../../.mise.toml");
     let workflow = include_str!("../../../../.github/workflows/ci.yml");

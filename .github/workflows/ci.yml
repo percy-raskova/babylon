@@ -274,7 +274,7 @@ jobs:
           restore-keys: |
             legacy-adopter-${{ runner.os }}-v1-
 
-      - name: Build + start the isolated Postgres (CI fork; digest-pinned base)
+      - name: Build + start the isolated Postgres (CI fork; pinned runtime/package contract)
         # BABYLON_PG_DATA as a bare name = a NAMED VOLUME (the base file's
         # own convention) — inherently fresh on an ephemeral runner, so
         # every job initdb's clean. See docker-compose.ci.yml for why this

@@ -1,8 +1,8 @@
 //! Language-neutral representative H3 reference-cohort behavior.
 
 use babylon_persistence::{
-    build_representative_h3_cohort_v1, H3CellId, H3ReferenceCohortError, H3ReferenceOrigin,
-    RefDigest, MAX_H3_REFERENCE_SOURCE_CELLS,
+    build_representative_h3_cohort_v1, H3CellId, H3ReferenceCellRow, H3ReferenceCohortError,
+    H3ReferenceOrigin, RefDigest, MAX_H3_REFERENCE_SOURCE_CELLS,
 };
 use std::str::FromStr;
 
@@ -72,20 +72,33 @@ fn representative_rows_are_parent_first_and_preserve_full_hierarchy_semantics() 
     let rows = cohort.rows();
 
     assert_eq!(rows.len(), CLOSURE_COUNT);
-    assert_eq!(rows[0].cell_id().to_string(), "800dfffffffffff");
-    assert_eq!(rows[0].resolution(), 0);
-    assert_eq!(rows[0].origin(), H3ReferenceOrigin::DerivedAncestor);
-    assert_eq!(rows[0].immediate_parent(), None);
-    assert_eq!(rows[0].ancestor_r4(), None);
-    assert_eq!(rows[0].ancestor_r5(), None);
-    assert_eq!(rows[0].ancestor_r6(), None);
-    assert_eq!(rows[0].ancestor_r7(), None);
+    assert_root_row(&rows[0]);
 
     let r5 = rows
         .iter()
         .take(CLOSURE_COUNT)
         .find(|row| row.cell_id().to_string() == "852a1073fffffff")
         .expect("audited r5 row must exist");
+    assert_r5_row(r5);
+
+    let last = rows.last().expect("cohort must not be empty");
+    assert_last_row(last);
+    assert_parent_first_numeric_order(rows);
+    assert_positive_sql_identities(rows);
+}
+
+fn assert_root_row(row: &H3ReferenceCellRow) {
+    assert_eq!(row.cell_id().to_string(), "800dfffffffffff");
+    assert_eq!(row.resolution(), 0);
+    assert_eq!(row.origin(), H3ReferenceOrigin::DerivedAncestor);
+    assert_eq!(row.immediate_parent(), None);
+    assert_eq!(row.ancestor_r4(), None);
+    assert_eq!(row.ancestor_r5(), None);
+    assert_eq!(row.ancestor_r6(), None);
+    assert_eq!(row.ancestor_r7(), None);
+}
+
+fn assert_r5_row(r5: &H3ReferenceCellRow) {
     assert_eq!(r5.resolution(), 5);
     assert_eq!(r5.origin(), H3ReferenceOrigin::Direct);
     assert_eq!(
@@ -99,8 +112,9 @@ fn representative_rows_are_parent_first_and_preserve_full_hierarchy_semantics() 
     assert_eq!(r5.ancestor_r5(), Some(r5.cell_id()));
     assert_eq!(r5.ancestor_r6(), None);
     assert_eq!(r5.ancestor_r7(), None);
+}
 
-    let last = rows.last().expect("cohort must not be empty");
+fn assert_last_row(last: &H3ReferenceCellRow) {
     assert_eq!(last.cell_id().to_string(), "872ab6db6ffffff");
     assert_eq!(last.resolution(), 7);
     assert_eq!(last.origin(), H3ReferenceOrigin::Direct);
@@ -121,7 +135,9 @@ fn representative_rows_are_parent_first_and_preserve_full_hierarchy_semantics() 
         Some("862ab6db7ffffff".to_owned())
     );
     assert_eq!(last.ancestor_r7(), Some(last.cell_id()));
+}
 
+fn assert_parent_first_numeric_order(rows: &[H3ReferenceCellRow]) {
     for pair in rows.windows(2).take(CLOSURE_COUNT) {
         let left = &pair[0];
         let right = &pair[1];
@@ -134,6 +150,9 @@ fn representative_rows_are_parent_first_and_preserve_full_hierarchy_semantics() 
             "canonical H3 numeric order must match parent-first order"
         );
     }
+}
+
+fn assert_positive_sql_identities(rows: &[H3ReferenceCellRow]) {
     for row in rows.iter().take(CLOSURE_COUNT) {
         assert!(i64::try_from(row.cell_id()).expect("validated H3 fits SQL") > 0);
     }

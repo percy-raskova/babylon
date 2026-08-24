@@ -1,4 +1,4 @@
-//! Live PostgreSQL contracts for the representative H3 cohort installer.
+//! Live `PostgreSQL` contracts for the representative H3 cohort installer.
 
 use super::{
     assert_lock_released, authority_snapshot, database_user, repository_root, AuthoritySnapshot,
@@ -127,9 +127,10 @@ pub(super) fn verify_h3_reference_release_equivalence(base: &Config) {
 }
 
 fn required_path(name: &'static str) -> PathBuf {
-    std::env::var_os(name)
-        .map(PathBuf::from)
-        .unwrap_or_else(|| panic!("{name} must name the pinned PER-62 artifact"))
+    std::env::var_os(name).map_or_else(
+        || panic!("{name} must name the pinned PER-62 artifact"),
+        PathBuf::from,
+    )
 }
 
 fn verify_frozen_legacy_migration_install(

@@ -6,12 +6,15 @@
 ; Geography is relational. TENANCY anchors each class to a territory;
 ; ADJACENCY forms circulation paths whose fields distinguish throughput,
 ; alternate capacity, inventory buffers, and reproductive dependence;
-; PRESENCE and COMMAND locate organizational capacities. All territories
-; share one node type and differ only through relations and material state.
+; PRESENCE and COMMAND locate organizational capacities. A typed payload on
+; PRESENCE distinguishes the material setting of a branch without turning
+; workplace, neighborhood, reproductive, or associational practice into a
+; territory kind or an intrinsic bonus. All territories share one node type
+; and differ only through relations and material state.
 ;
-; The `OrgKind` and `PracticeKind` enums remain content declarations rather
-; than kernel primitives. Constants below are Designed controls for this
-; experiment, not universal coefficients.
+; The `OrgKind`, `PracticeKind`, and `PracticeEmbedding` enums remain content
+; declarations rather than kernel primitives. Constants below are Designed
+; controls for this experiment, not universal coefficients.
 (scenario organization/foundation
   (defvocabulary NodeType (SOCIAL_CLASS TERRITORY ORGANIZATION))
   (defvocabulary EdgeType
@@ -19,8 +22,10 @@
      TENANCY ADJACENCY))
   (defenum OrgKind (STATE_APPARATUS BUSINESS POLITICAL_FACTION CIVIL_SOCIETY))
   (defenum PracticeKind (NONE ROOTED_WORK))
+  (defenum PracticeEmbedding (NONE WORKPLACE NEIGHBORHOOD REPRODUCTION ASSOCIATION))
   (deffield organization/kind enum OrgKind)
   (deffield organization/practice enum PracticeKind)
+  (deffield organization/practice-embedding enum PracticeEmbedding)
   (deffield organization/active int extensive)
   (deffield organization/action-budget int extensive)
   (deffield organization/membership-share coefficient intensive)
@@ -35,6 +40,7 @@
   (deffield adjacency/alternate-capacity-share coefficient intensive)
   (deffield adjacency/inventory-buffer-share coefficient intensive)
   (deffield adjacency/reproduction-dependence coefficient intensive)
+  (deffield presence/embedding enum PracticeEmbedding)
 
   ; Designed control values for this experiment, not universal coefficients.
   (defconst organization/practice-rate 0.03c)
@@ -58,6 +64,7 @@
   (node reading-group NodeType/ORGANIZATION
     (organization/kind OrgKind/CIVIL_SOCIETY)
     (organization/practice PracticeKind/ROOTED_WORK)
+    (organization/practice-embedding PracticeEmbedding/NEIGHBORHOOD)
     (organization/active 1)
     (organization/action-budget 0)
     (organization/membership-share 0.01c))
@@ -65,6 +72,7 @@
   (node precinct NodeType/ORGANIZATION
     (organization/kind OrgKind/STATE_APPARATUS)
     (organization/practice PracticeKind/NONE)
+    (organization/practice-embedding PracticeEmbedding/NONE)
     (organization/active 1)
     (organization/action-budget 0)
     (organization/membership-share 0.0c))
@@ -104,6 +112,8 @@
   (edge EdgeType/MEMBERSHIP reading-group workers 1)
   (edge EdgeType/PRESENCE reading-group county 1)
   (edge EdgeType/PRESENCE precinct county 1)
+  (edge-attr EdgeType/PRESENCE reading-group county presence/embedding PracticeEmbedding/NEIGHBORHOOD)
+  (edge-attr EdgeType/PRESENCE precinct county presence/embedding PracticeEmbedding/NONE)
   (edge EdgeType/COMMAND precinct county 1)
   (edge EdgeType/TENANCY workers county 1)
   (edge EdgeType/TENANCY workers-b county-b 1)

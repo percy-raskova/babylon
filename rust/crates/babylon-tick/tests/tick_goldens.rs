@@ -125,8 +125,9 @@ fn us_counties_lifecycle_demo_hashes_are_pinned() {
 /// reproduction-dependence fields, recruits from a finite social base,
 /// provokes command response, and provides reproductive relief.
 ///
-/// The before hash pins the expanded relational world. The after hash pins
-/// its first material tick. Structural assertions in
+/// The before hash pins the expanded relational world, including the typed
+/// material embedding on each PRESENCE relation. The after hash pins its
+/// first material tick. Structural assertions in
 /// `organization_practice_conformance.rs` explain the behavior summarized
 /// by these bytes.
 #[test]
@@ -135,14 +136,14 @@ fn organization_foundation_hashes_are_pinned() {
         .expect("organization-foundation tick");
     assert_eq!(
         hex(&report.before),
-        "aa799a0f894d6c71f02fc35d060618ea9c8b72c1135451ab05b1833b260aa170",
+        "5cbb5a2e675292e3ef90f1f38c98b40321928f729a012329f9cabc80df504ba3",
         "pre-tick hash moved — this is the SUBSTRATE'S load of \
          organization-foundation.bscn (the org estate's first entry into \
          the Rust byte gate, spec §11)"
     );
     assert_eq!(
         hex(&report.after),
-        "dcd6c27a130d0a43c6d57f775a9812eee233bae339edb502313c78d3e6fc8f9b",
+        "431364ea2bbaceee9a9640170e4474ce010797e038de4ba81553b25b39e82597",
         "post-tick hash moved — this pins the first material practice, \
          propagation, recruitment, command, and care writes"
     );

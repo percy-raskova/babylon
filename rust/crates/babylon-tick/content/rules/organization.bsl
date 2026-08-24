@@ -6,9 +6,10 @@
 ; a sigmoid. The slow-fast-slow recruitment trajectory follows from these
 ; interacting limits and feedbacks.
 ;
-; `organization/practice` is seeded scenario state in this slice. It proves
-; the causal circuit but is not yet a player-input boundary; next-week intent
-; can replace that seed without changing the material rules.
+; `organization/practice` and `organization/practice-embedding` are seeded
+; scenario state in this slice. They prove the causal circuit but are not yet
+; a player-input boundary; next-week intent can replace those seeds without
+; changing the material rules.
 ;
 ; D-1: `EventType/ORGANIZATION_SEEDED` is a KNOWINGLY-UNMINTED, probe-only
 ; event name — not in ADR196's mint, not a member of the frozen Python
@@ -56,24 +57,36 @@
 (rule organization/p1-rooted-work
   :role mechanic
   :evidence derived
-  :material-basis "Situated practice changes only territories reached through the organization's PRESENCE relation. One weekly action is divided across those branches, so an organization cannot create free organizer labor by adding PRESENCE edges. Reproductive pressure conditions each branch's local gain, while circulation remains on the relations that carry it elsewhere."
-  :fuel 256
+  :material-basis "Situated practice changes only territories reached through PRESENCE relations whose material embedding matches the organization's chosen practice. One weekly action is divided across those matching branches, so an organization cannot create free organizer labor by adding PRESENCE edges. Reproductive pressure conditions each branch's local gain, while circulation remains on the relations that carry it elsewhere."
+  :fuel 512
   (bindings
     (binding active :field organization/active)
     (binding practice :field organization/practice)
+    (binding practice-embedding :field organization/practice-embedding)
     (binding budget :field organization/action-budget)
     (binding practice-rate :const organization/practice-rate)
     (binding branch-count :expr
-      (fold count (neighbors self EdgeType/PRESENCE :out NodeType/TERRITORY) it)))
+      (fold count (neighbors self EdgeType/PRESENCE :out NodeType/TERRITORY)
+        :as branch
+        (if (= (field-of
+                 (edge-between EdgeType/PRESENCE self branch)
+                 presence/embedding)
+               practice-embedding)
+            1
+            0))))
   (when (and (= active 1)
              (= practice PracticeKind/ROOTED_WORK)
              (> budget 0)
-             (exists (neighbors self EdgeType/PRESENCE :out NodeType/TERRITORY))))
+             (> branch-count 0)))
   (effects
     (for-each (neighbors self EdgeType/PRESENCE :out NodeType/TERRITORY)
-      (update-node it territory/rooted-work-inbox
-        (add (* (/ practice-rate branch-count)
-                (field-of it territory/reproduction-pressure)))))
+      (guard (= (field-of
+                  (edge-between EdgeType/PRESENCE self it)
+                  presence/embedding)
+                practice-embedding)
+        (update-node it territory/rooted-work-inbox
+          (add (* (/ practice-rate branch-count)
+                  (field-of it territory/reproduction-pressure))))))
     (update-node self organization/action-budget (sub 1))))
 
 (rule organization/p2-territorial-relay
@@ -201,11 +214,12 @@
 (rule organization/p6-care-relief
   :role mechanic
   :evidence derived
-  :material-basis "An organization converts part of its recruited social base into situated reproductive relief only where it has a declared PRESENCE, reducing the pressure that first made rooted work possible."
-  :fuel 128
+  :material-basis "An organization converts part of its recruited social base into reproductive relief only through PRESENCE relations whose material embedding matches its current practice, reducing the pressure that first made rooted work possible."
+  :fuel 256
   (bindings
     (binding active :field organization/active)
     (binding practice :field organization/practice)
+    (binding practice-embedding :field organization/practice-embedding)
     (binding membership :field organization/membership-share)
     (binding care-rate :const organization/care-rate))
   (when (and (= active 1)
@@ -214,11 +228,15 @@
              (exists (neighbors self EdgeType/PRESENCE :out NodeType/TERRITORY))))
   (effects
     (for-each (neighbors self EdgeType/PRESENCE :out NodeType/TERRITORY)
-      (update-node it territory/reproduction-pressure
-        (set
-          (if (> (- (field-of it territory/reproduction-pressure)
-                    (* care-rate membership))
-                 0.0c)
-              (- (field-of it territory/reproduction-pressure)
-                 (* care-rate membership))
-              0.0c))))))
+      (guard (= (field-of
+                  (edge-between EdgeType/PRESENCE self it)
+                  presence/embedding)
+                practice-embedding)
+        (update-node it territory/reproduction-pressure
+          (set
+            (if (> (- (field-of it territory/reproduction-pressure)
+                      (* care-rate membership))
+                   0.0c)
+                (- (field-of it territory/reproduction-pressure)
+                   (* care-rate membership))
+                0.0c)))))))

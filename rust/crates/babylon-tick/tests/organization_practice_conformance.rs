@@ -100,7 +100,8 @@ fn one_weekly_action_is_divided_across_the_organizations_branches() {
     let two_branch_scenario = SCENARIO.replace(
         "  (edge EdgeType/SOLIDARITY reading-group precinct 1))",
         "  (edge EdgeType/SOLIDARITY reading-group precinct 1)\n  \
-         (edge EdgeType/PRESENCE reading-group county-b 1))",
+         (edge EdgeType/PRESENCE reading-group county-b 1)\n  \
+         (edge-attr EdgeType/PRESENCE reading-group county-b presence/embedding PracticeEmbedding/NEIGHBORHOOD))",
     );
     assert_ne!(
         two_branch_scenario, SCENARIO,
@@ -130,6 +131,60 @@ fn one_weekly_action_is_divided_across_the_organizations_branches() {
     assert!(second_branch_work > 0.0);
     assert!(first_branch_work < one_branch_work);
     assert!(first_branch_work + second_branch_work <= one_branch_work);
+}
+
+#[test]
+fn practice_requires_presence_with_the_matching_material_embedding() {
+    let workplace_practice = SCENARIO.replace(
+        "(organization/practice-embedding PracticeEmbedding/NEIGHBORHOOD)",
+        "(organization/practice-embedding PracticeEmbedding/WORKPLACE)",
+    );
+    assert_ne!(
+        workplace_practice, SCENARIO,
+        "the organization must select workplace practice"
+    );
+    let matched_workplace = workplace_practice.replace(
+        "county presence/embedding PracticeEmbedding/NEIGHBORHOOD)",
+        "county presence/embedding PracticeEmbedding/WORKPLACE)",
+    );
+    assert_ne!(
+        matched_workplace, workplace_practice,
+        "the presence relation must become a workplace embedding"
+    );
+    let mut mismatched = TickSession::new(
+        &workplace_practice,
+        PACK,
+        HypergraphStore::new(),
+        SessionId::new("organization-mismatched-embedding").expect("literal is non-empty"),
+    )
+    .expect("the mismatched-embedding world loads");
+    let mut matched = TickSession::new(
+        &matched_workplace,
+        PACK,
+        HypergraphStore::new(),
+        SessionId::new("organization-matched-embedding").expect("literal is non-empty"),
+    )
+    .expect("the matched-embedding world loads");
+    let mut mismatched_sink = CollectingSink::default();
+    let mut matched_sink = CollectingSink::default();
+
+    mismatched
+        .advance(&mut mismatched_sink)
+        .expect("mismatched-embedding tick");
+    matched
+        .advance(&mut matched_sink)
+        .expect("matched-embedding tick");
+
+    assert_eq!(
+        rooted_work(&mismatched, COUNTY_A).to_bits(),
+        0.0_f64.to_bits()
+    );
+    assert_eq!(
+        attribute(&mismatched, COUNTY_A, "territory/reproduction-pressure").to_bits(),
+        0.9_f64.to_bits()
+    );
+    assert!(rooted_work(&matched, COUNTY_A) > 0.0);
+    assert!(attribute(&matched, COUNTY_A, "territory/reproduction-pressure") < 0.9);
 }
 
 #[test]

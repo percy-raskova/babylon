@@ -460,6 +460,23 @@ fn proof_profile_sorts_complete_nested_envelopes_and_closes_audit_semantics() {
 }
 
 #[test]
+fn proof_profile_empty_and_singleton_envelopes_round_trip() {
+    let empty = proof_profile(vec![]);
+    let empty_bytes = canonical_envelope(&empty).unwrap();
+    assert_eq!(
+        decode_envelope::<SfsProofProfileV1>(&empty_bytes).unwrap(),
+        empty
+    );
+
+    let singleton = proof_profile(vec![component("only-component", &["field"])]);
+    let singleton_bytes = canonical_envelope(&singleton).unwrap();
+    assert_eq!(
+        decode_envelope::<SfsProofProfileV1>(&singleton_bytes).unwrap(),
+        singleton
+    );
+}
+
+#[test]
 fn proof_profile_component_count_duplicates_order_and_trailing_are_closed() {
     let mut components = Vec::new();
     for index in 0..65 {
@@ -672,13 +689,20 @@ fn intervention_operations_enforce_exact_zero_and_nonzero_sides() {
     .is_ok());
     for (operation, control, intervention) in [
         (InterventionOperationV1::Add, digest(2), digest(3)),
+        (InterventionOperationV1::Add, digest(2), zero_digest()),
         (InterventionOperationV1::Add, zero_digest(), zero_digest()),
         (
             InterventionOperationV1::Remove,
             zero_digest(),
             zero_digest(),
         ),
+        (InterventionOperationV1::Remove, zero_digest(), digest(3)),
         (InterventionOperationV1::Remove, digest(2), digest(3)),
+        (
+            InterventionOperationV1::Replace,
+            zero_digest(),
+            zero_digest(),
+        ),
         (InterventionOperationV1::Replace, zero_digest(), digest(3)),
         (InterventionOperationV1::Replace, digest(2), zero_digest()),
         (InterventionOperationV1::Replace, digest(2), digest(2)),
@@ -817,9 +841,11 @@ fn intervention_count_maximum_succeeds_and_plus_one_preflights() {
         maximum
     );
     let empty = InterventionDeltaV1::new(DifferingLedgerKindV1::PracticeAttempt, vec![]).unwrap();
+    let empty_bytes = canonical_envelope(&empty).unwrap();
+    assert_eq!(payload_length::<InterventionDeltaV1>(&empty_bytes), 5);
     assert_eq!(
-        payload_length::<InterventionDeltaV1>(&canonical_envelope(&empty).unwrap()),
-        5
+        decode_envelope::<InterventionDeltaV1>(&empty_bytes).unwrap(),
+        empty
     );
 }
 

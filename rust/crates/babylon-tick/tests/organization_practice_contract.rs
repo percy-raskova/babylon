@@ -213,7 +213,8 @@ fn action_budget_is_intensive_and_aggregation_law_is_pinned() {
         "(max organization/action-budget)",
         "(count organization/action-budget)",
     ] {
-        assert_eq!(code(form), None, "{form}");
+        let result = typecheck_aggregation(&read(form).expect("valid aggregation form").0, &env);
+        assert!(result.is_ok(), "{form}: {result:?}");
     }
 }
 

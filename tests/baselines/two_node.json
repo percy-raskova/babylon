@@ -2,7 +2,7 @@
   "scenario": "two_node",
   "description": "Minimal worker vs owner",
   "generated_at": "2026-07-30T13:44:16+00:00",
-  "defines_hash": "4af1178032a2b420376e35c7a98ac2b151ea8fb9ee68636d1560528d5fd927d4",
+  "defines_hash": "cf8b9c066441304bcb871c5326f92a6d3747282a9c198177bd37ee80803e57ec",
   "max_ticks": 52,
   "checkpoints": [
     {

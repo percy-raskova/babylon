@@ -115,13 +115,13 @@ Record the refreshed issue states in the PER-52 implementation comment. Do not u
 - Records: the checked-in YAML contract as the only V1 structural source of truth; generated Rust/Python record declarations; independently hand-written validators and canonical encoders; the one-way `babylon-rtd -> babylon-kernel` dependency; and the prohibition on engine, persistence-writer, Archive, fog, or player-surface authority in T1.
 - Rejects: hand-maintained duplicate record schemas, an engine dependency on `babylon-rtd`, a generic schema framework, self-comparison between encoders, reuse of an administrative fixture as player evidence, or an ungoverned repository-root exception.
 
-- [ ] **Step 1: Write repository-hygiene red tests.** Assert that a tracked root named `contracts` is accepted only when it is present in the exact `ALLOWED_ROOTS` declaration, while `contractz` and another unknown root still fail. Run the test before modifying the checker.
+- [ ] **Step 1: Write repository-hygiene red tests.** Assert that a tracked root named `contracts` is accepted only when it is present in the exact `ALLOWED_TOP_LEVEL_DIRS` declaration, while `contractz` and another unknown root still fail. Run the test before modifying the checker.
 
   Run: `mise run test:q -- tests/unit/tools/test_repo_hygiene.py`
 
   Expected: FAIL because `contracts` is absent from the current exact root allowlist.
 
-- [ ] **Step 2: Govern the new root surgically.** Add only `"contracts"` to `ALLOWED_ROOTS` in `tools/check_repo_hygiene.py`; do not add a prefix, glob, or generic exemption. Make the behavioral test green.
+- [ ] **Step 2: Govern the new root surgically.** Add only `"contracts"` to `ALLOWED_TOP_LEVEL_DIRS` in `tools/check_repo_hygiene.py`; do not add a prefix, glob, or generic exemption. Make the behavioral test green.
 
   Run: `mise run test:q -- tests/unit/tools/test_repo_hygiene.py`
 
@@ -141,7 +141,7 @@ Record the refreshed issue states in the PER-52 implementation comment. Do not u
 
   Run: `uv run yamllint -c .yamllint.yaml ai/decisions/ADR225_relational_territory_dossier_contract.yaml ai/decisions/index.yaml`
 
-  Run: `mise run check:repo-hygiene`
+  Run: `mise run check:hygiene`
 
   Expected: PASS with exact ADR-number/index synchronization.
 

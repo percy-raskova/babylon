@@ -7,6 +7,9 @@ pub mod hashes;
 pub mod identity;
 pub mod legacy_adopter;
 pub mod migration_manifest;
+pub mod schema_epoch;
+pub mod schema_migration;
+pub mod writer_gate;
 
 pub use error::{PersistenceError, PersistenceFailureKind};
 pub use hashes::{
@@ -31,4 +34,17 @@ pub use legacy_adopter::{
 pub use migration_manifest::{
     ManifestError, MigrationManifest, MAX_MANIFEST_BYTES, MAX_MANIFEST_CHUNKS,
     SCHEMA_ADVISORY_LOCK_KEY,
+};
+pub use schema_epoch::{
+    compiled_schema_migrations, migrate_schema_epoch, validate_migration_prefix,
+    PersistedMigration, SchemaEpochError, SchemaEpochObservation, SchemaEpochOperation,
+    SchemaEpochOrigin, SchemaEpochRelation, SchemaEpochReport, SchemaEpochSchemas,
+    MAX_COMMIT_ATTEMPTS_PER_VERSION, MAX_SCHEMA_MIGRATIONS,
+};
+pub use schema_migration::{
+    MigrationChecksum, MigrationVersion, SchemaMigration, SchemaMigrationError,
+    MAX_SCHEMA_MIGRATION_SQL_BYTES, MIGRATION_CHECKSUM_BYTES,
+};
+pub use writer_gate::{
+    request_rust_writer_authority, RustWriterAuthority, RustWriterAuthorityError,
 };

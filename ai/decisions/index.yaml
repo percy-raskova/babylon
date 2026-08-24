@@ -1035,3 +1035,8 @@ decisions:
     status: accepted
     date: '2026-08-23'
     file: ADR224_bsl_causal_composition_contract.yaml
+  ADR225_rust_schema_epoch_and_cutover_interlock:
+    title: 'Rust schema migrations use babylon_state.schema_migration as one exact append-only version/checksum ledger, and Rust writer authority remains structurally unavailable until the separate cutover contract is complete'
+    status: accepted
+    date: '2026-08-24'
+    file: ADR225_rust_schema_epoch_and_cutover_interlock.yaml

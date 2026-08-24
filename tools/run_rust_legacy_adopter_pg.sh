@@ -179,7 +179,7 @@ printf 'PER-20 runtime ready: container=%s volume=%s port=%s\n' \
   "$CONTAINER" "$VOLUME" "$PORT"
 cd "$REPO_ROOT/rust"
 status=0
-timeout --signal=TERM --kill-after=10s 600s \
+timeout --signal=TERM --kill-after=10s 900s \
   env \
     BABYLON_LEGACY_ADOPTER_TEST_DSN="postgresql://test:test@127.0.0.1:$PORT/postgres" \
     BABYLON_LEGACY_ADOPTER_DISPOSABLE_ACK="$TEST_HARNESS_ACK" \
@@ -187,6 +187,18 @@ timeout --signal=TERM --kill-after=10s 600s \
     CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/rust/target}" \
   cargo test -p babylon-persistence --test legacy_adopter_postgres --locked -- --nocapture \
     --ignored --test-threads=1 || status=$?
+
+if [ "$status" -eq 0 ]; then
+  timeout --signal=TERM --kill-after=10s 180s \
+    env \
+      BABYLON_LEGACY_ADOPTER_TEST_DSN="postgresql://test:test@127.0.0.1:$PORT/postgres" \
+      BABYLON_LEGACY_ADOPTER_DISPOSABLE_ACK="$TEST_HARNESS_ACK" \
+      BABYLON_LEGACY_ADOPTER_DISPOSABLE_CANARY="$CANARY" \
+      CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/rust/target}" \
+    cargo test -p babylon-persistence --lib \
+      schema_epoch::live_rollback_tests::rollback_and_ambiguous_commit_reconciliation_are_atomic \
+      --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
+fi
 
 cleanup_checked
 trap - EXIT INT TERM HUP

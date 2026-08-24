@@ -287,7 +287,7 @@ jobs:
         run: mise run db:bootstrap
 
       - name: Rust legacy adopter (bounded disposable PG proof)
-        timeout-minutes: 20
+        timeout-minutes: 30
         run: mise run test:rust-legacy-adopter-pg
 
       - name: PG-backed integration subset (declared, data-drive-free)

@@ -1040,6 +1040,11 @@ decisions:
     status: accepted
     date: '2026-08-23'
     file: ADR225_relational_territory_dossier_contract.yaml
+  ADR226_t3_synthetic_emergence_evidence_boundary:
+    title: 'T3 emergence evidence is a downstream post-commit evaluator with exact language-neutral records, discrete output classification, scoped non-authorability audits, and synthetic groundwork that cannot claim a live membership observable before Gate 3, Gate 5, and PER-44 activation'
+    status: accepted
+    date: '2026-08-23'
+    file: ADR226_t3_synthetic_emergence_evidence_boundary.yaml
   ADR227_practice_contract_groundwork:
     title: 'Practice Contract V1 is a pure, closed, language-neutral input and budget groundwork boundary with no live admission, execution, or persistence'
     status: accepted

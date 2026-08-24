@@ -1,0 +1,237 @@
+//! Pure contracts for the bounded Rust schema epoch.
+
+use babylon_persistence::{
+    compiled_schema_migrations, validate_migration_prefix, MigrationVersion, PersistedMigration,
+    SchemaEpochError, SchemaMigration, MAX_SCHEMA_MIGRATIONS,
+};
+
+const SQL_ONE: &str = "SELECT 1;\n";
+const SQL_TWO: &str = "SELECT 2;\n";
+
+#[test]
+fn compiled_registry_is_one_contiguous_exact_migration() {
+    let compiled = compiled_schema_migrations().expect("checked-in migration bytes are valid");
+
+    assert_eq!(compiled.len(), 1);
+    assert_eq!(compiled[0].version().as_i64(), 1);
+    assert_eq!(
+        compiled[0].sql(),
+        include_str!("../migrations/0001_owned_schema_epoch.sql")
+    );
+    assert_eq!(
+        compiled[0].checksum().as_bytes(),
+        &hex_checksum("4fc40761ed3b9a2bfab574d14ce65d24e828d1d51ca3f953a515b18f6f2667d4")
+    );
+}
+
+#[test]
+fn empty_and_exact_ledgers_are_valid_prefixes() {
+    let compiled = two_compiled_migrations();
+    let first = persisted(&compiled[0]);
+    let second = persisted(&compiled[1]);
+
+    assert_eq!(validate_migration_prefix(&compiled, &[]), Ok(0));
+    assert_eq!(validate_migration_prefix(&compiled, &[first]), Ok(1));
+    assert_eq!(
+        validate_migration_prefix(&compiled, &[first, second]),
+        Ok(2)
+    );
+}
+
+#[test]
+fn ledger_must_be_the_exact_contiguous_compiled_prefix() {
+    let compiled = two_compiled_migrations();
+    let first = persisted(&compiled[0]);
+    let second = persisted(&compiled[1]);
+    let wrong_checksum = PersistedMigration::from_database(
+        MigrationVersion::try_from(1).unwrap().as_i64(),
+        &[0x5a; 32],
+    )
+    .unwrap();
+
+    assert_eq!(
+        validate_migration_prefix(&compiled, &[second]),
+        Err(SchemaEpochError::LedgerVersionMismatch {
+            row_index: 0,
+            expected: 1,
+            actual: 2,
+        })
+    );
+    assert_eq!(
+        validate_migration_prefix(&compiled, &[first, first]),
+        Err(SchemaEpochError::LedgerVersionMismatch {
+            row_index: 1,
+            expected: 2,
+            actual: 1,
+        })
+    );
+    assert_eq!(
+        validate_migration_prefix(&compiled, &[wrong_checksum]),
+        Err(SchemaEpochError::LedgerChecksumMismatch { version: 1 })
+    );
+
+    let future = PersistedMigration::from_database(3, &[0x33; 32]).unwrap();
+    assert_eq!(
+        validate_migration_prefix(&compiled, &[first, second, future]),
+        Err(SchemaEpochError::UnknownFutureVersion {
+            actual: 3,
+            latest_compiled: 2,
+        })
+    );
+}
+
+#[test]
+fn compiled_registry_and_database_rows_have_fixed_bounds() {
+    let migration = SchemaMigration::new(MigrationVersion::try_from(1).unwrap(), SQL_ONE).unwrap();
+    let too_many_compiled = vec![migration; MAX_SCHEMA_MIGRATIONS + 1];
+    assert_eq!(
+        validate_migration_prefix(&too_many_compiled, &[]),
+        Err(SchemaEpochError::CompiledMigrationBound {
+            actual: MAX_SCHEMA_MIGRATIONS + 1,
+            max: MAX_SCHEMA_MIGRATIONS,
+        })
+    );
+
+    let row = persisted(&migration);
+    let too_many_rows = vec![row; MAX_SCHEMA_MIGRATIONS + 1];
+    assert_eq!(
+        validate_migration_prefix(&[migration], &too_many_rows),
+        Err(SchemaEpochError::LedgerRowBound {
+            actual: MAX_SCHEMA_MIGRATIONS + 1,
+            max: MAX_SCHEMA_MIGRATIONS,
+        })
+    );
+}
+
+#[test]
+fn compiled_registry_itself_must_start_at_one_and_be_contiguous() {
+    let v1 = SchemaMigration::new(MigrationVersion::try_from(1).unwrap(), SQL_ONE).unwrap();
+    let v2 = SchemaMigration::new(MigrationVersion::try_from(2).unwrap(), SQL_TWO).unwrap();
+    let v3 = SchemaMigration::new(MigrationVersion::try_from(3).unwrap(), "SELECT 3;\n").unwrap();
+
+    assert_eq!(
+        validate_migration_prefix(&[v2], &[]),
+        Err(SchemaEpochError::CompiledVersionMismatch {
+            position: 0,
+            expected: 1,
+            actual: 2,
+        })
+    );
+    assert_eq!(
+        validate_migration_prefix(&[v1, v3], &[]),
+        Err(SchemaEpochError::CompiledVersionMismatch {
+            position: 1,
+            expected: 2,
+            actual: 3,
+        })
+    );
+    assert_eq!(validate_migration_prefix(&[v1, v2], &[]), Ok(0));
+}
+
+#[test]
+fn production_epoch_has_no_runtime_activation_or_caller_supplied_sql_path() {
+    let source = include_str!("../src/schema_epoch.rs");
+    let production = source.split("#[cfg(test)]").next().unwrap();
+
+    assert!(production.contains("pub fn migrate_schema_epoch(config: &Config)"));
+    assert!(production.contains("include_str!(\"../migrations/0001_owned_schema_epoch.sql\")"));
+    for stage in [
+        "map_err(SchemaEpochError::ConnectionTarget)",
+        "map_err(SchemaEpochError::Lock)",
+        "map_err(SchemaEpochError::LegacyAdoption)",
+        "map_err(SchemaEpochError::Census)",
+        "map_err(SchemaEpochError::Unlock)",
+    ] {
+        assert!(
+            production.contains(stage),
+            "schema epoch loses operational stage {stage:?}"
+        );
+    }
+    assert!(!production.contains("impl From<LegacyAdopterError>"));
+    assert!(!production.contains("adopt_legacy_schema"));
+    for forbidden in [
+        "std::env",
+        "option_env!",
+        "feature =",
+        "RustWriterAuthority",
+        "CommittedTickEnvelope",
+        "tick_commit",
+        "archive_outbox",
+        "h3_cell",
+    ] {
+        assert!(
+            !production.contains(forbidden),
+            "schema epoch exposes forbidden runtime surface {forbidden:?}"
+        );
+    }
+}
+
+#[test]
+fn migration_executes_exact_ddl_verification_marker_then_commit() {
+    let source = include_str!("../src/schema_epoch.rs");
+    let attempt = source
+        .split_once("fn attempt_migration(")
+        .unwrap()
+        .1
+        .split_once("fn begin_migration_transaction(")
+        .unwrap()
+        .0;
+    let execute = attempt.find("execute_migration_before_marker").unwrap();
+    let marker = attempt.find("insert_ledger_marker").unwrap();
+    let commit = attempt.find("transaction.commit()").unwrap();
+
+    assert!(execute < marker);
+    assert!(marker < commit);
+    assert!(source.contains(".isolation_level(IsolationLevel::Serializable)"));
+    assert!(source.contains(".read_only(false)"));
+    assert!(source.contains("SET LOCAL search_path TO pg_catalog"));
+    assert!(source.contains("SET LOCAL synchronous_commit TO on"));
+}
+
+#[test]
+fn fresh_and_owned_census_fixtures_are_bounded_and_exactly_sorted() {
+    let fixtures = [
+        include_str!("../src/fixtures/fresh_schema_epoch_census_v1.txt"),
+        include_str!("../src/fixtures/fresh_schema_epoch_census_with_intel_v1.txt"),
+        include_str!("../src/fixtures/schema_epoch_owned_census_v1.txt"),
+        include_str!("../src/fixtures/schema_epoch_owned_fresh_census_v1.txt"),
+    ];
+    let expected_counts = [7, 8, 3, 4];
+    for (fixture, expected) in fixtures.iter().zip(expected_counts).take(4) {
+        let parsed = babylon_persistence::parse_legacy_census_fixture(fixture).unwrap();
+        assert_eq!(parsed.entries().len(), expected);
+        assert!(fixture.len() <= 65_536);
+        assert!(fixture.ends_with('\n'));
+    }
+}
+
+fn two_compiled_migrations() -> [SchemaMigration; 2] {
+    [
+        SchemaMigration::new(MigrationVersion::try_from(1).unwrap(), SQL_ONE).unwrap(),
+        SchemaMigration::new(MigrationVersion::try_from(2).unwrap(), SQL_TWO).unwrap(),
+    ]
+}
+
+fn persisted(migration: &SchemaMigration) -> PersistedMigration {
+    PersistedMigration::from_database(
+        migration.version().as_i64(),
+        migration.checksum().as_bytes(),
+    )
+    .unwrap()
+}
+
+fn hex_checksum(value: &str) -> [u8; 32] {
+    let mut checksum = [0_u8; 32];
+    for (index, chunk) in value.as_bytes().chunks_exact(2).enumerate().take(32) {
+        checksum[index] = (hex_nibble(chunk[0]) << 4) | hex_nibble(chunk[1]);
+    }
+    checksum
+}
+
+fn hex_nibble(value: u8) -> u8 {
+    match value {
+        b'0'..=b'9' => value - b'0',
+        b'a'..=b'f' => value - b'a' + 10,
+        _ => panic!("test checksum must use lowercase hexadecimal"),
+    }
+}

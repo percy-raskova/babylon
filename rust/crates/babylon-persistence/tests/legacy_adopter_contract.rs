@@ -2060,7 +2060,7 @@ fn live_adopter_test_is_wired_into_the_remote_pg_tier() {
     let task = toml_section(mise, "[tasks.\"test:rust-legacy-adopter-pg\"]");
     assert!(task.contains("run = \"tools/run_rust_legacy_adopter_pg.sh\""));
     assert!(runner.contains("cd \"$REPO_ROOT/rust\""));
-    assert!(runner.contains("timeout --signal=TERM --kill-after=10s 600s"));
+    assert!(runner.contains("timeout --signal=TERM --kill-after=10s 900s"));
     assert!(runner
         .contains("cargo test -p babylon-persistence --test legacy_adopter_postgres --locked --"));
     assert!(runner.contains("--ignored --test-threads=1"));
@@ -2072,7 +2072,7 @@ fn live_adopter_test_is_wired_into_the_remote_pg_tier() {
         1
     );
     assert!(job.contains(
-        "- name: Rust legacy adopter (bounded disposable PG proof)\n        timeout-minutes: 20\n        run: mise run test:rust-legacy-adopter-pg"
+        "- name: Rust legacy adopter (bounded disposable PG proof)\n        timeout-minutes: 30\n        run: mise run test:rust-legacy-adopter-pg"
     ));
     assert!(!job.contains("BABYLON_LEGACY_ADOPTER_TEST_DSN"));
     assert!(!job.contains("cargo doc"));
@@ -2087,19 +2087,21 @@ fn ci_adopter_step_exceeds_the_full_bounded_runner_envelope() {
     const BUILD_ENVELOPE_SECONDS: u64 = 180 + 10;
     const START_ENVELOPE_SECONDS: u64 = 30 + 5;
     const READINESS_ENVELOPE_SECONDS: u64 = 90 + 2;
-    const CARGO_ENVELOPE_SECONDS: u64 = 600 + 10;
+    const CARGO_ENVELOPE_SECONDS: u64 = 900 + 10;
+    const ROLLBACK_CARGO_ENVELOPE_SECONDS: u64 = 180 + 10;
     const CLEANUP_ENVELOPE_SECONDS: u64 = 35 + 12 + 12 + 35;
     const RUNNER_ENVELOPE_SECONDS: u64 = CONTROL_PLANE_ENVELOPE_SECONDS
         + BUILD_ENVELOPE_SECONDS
         + START_ENVELOPE_SECONDS
         + READINESS_ENVELOPE_SECONDS
         + CARGO_ENVELOPE_SECONDS
+        + ROLLBACK_CARGO_ENVELOPE_SECONDS
         + CLEANUP_ENVELOPE_SECONDS;
 
     let workflow = include_str!("../../../../.github/workflows/ci.yml");
     let job = yaml_job(workflow, "  pg-integration:");
     assert!(job.contains(
-        "- name: Rust legacy adopter (bounded disposable PG proof)\n        timeout-minutes: 20\n        run: mise run test:rust-legacy-adopter-pg"
+        "- name: Rust legacy adopter (bounded disposable PG proof)\n        timeout-minutes: 30\n        run: mise run test:rust-legacy-adopter-pg"
     ));
     let job_seconds = job
         .lines()
@@ -2123,7 +2125,7 @@ fn ci_adopter_step_exceeds_the_full_bounded_runner_envelope() {
         .unwrap()
         * 60;
     assert_eq!(job_seconds, 60 * 60);
-    assert_eq!(ci_step_seconds, 20 * 60);
+    assert_eq!(ci_step_seconds, 30 * 60);
     assert!(ci_step_seconds >= RUNNER_ENVELOPE_SECONDS + 120);
     assert!(job_seconds >= ci_step_seconds + 30 * 60);
 
@@ -2134,10 +2136,22 @@ fn ci_adopter_step_exceeds_the_full_bounded_runner_envelope() {
         "local deadline=$((SECONDS + 90))",
         "for _attempt in {1..90}; do",
         "timeout --signal=TERM --kill-after=1s \"${remaining}s\" \\",
-        "timeout --signal=TERM --kill-after=10s 600s \\",
+        "timeout --signal=TERM --kill-after=10s 900s \\",
     ] {
         assert!(runner.contains(bounded_phase));
     }
+    let rollback_phase = cte_slice(
+        runner,
+        "if [ \"$status\" -eq 0 ]; then",
+        "\nfi\n\ncleanup_checked",
+    );
+    let rollback_timeout = rollback_phase
+        .find("timeout --signal=TERM --kill-after=10s 180s")
+        .unwrap();
+    let rollback_cargo = rollback_phase
+        .find("cargo test -p babylon-persistence --lib")
+        .unwrap();
+    assert!(rollback_timeout < rollback_cargo);
     assert_eq!(
         runner
             .matches("timeout --signal=TERM --kill-after=5s 30s \\\n    docker rm --force --volumes \"$CONTAINER\"")
@@ -2351,6 +2365,7 @@ fn live_matrix_receipts_survive_one_fixed_diagnostic_ceiling() {
         "sequence_owned_by",
         "sequence_acl_default",
         "canonical_after_cleanup",
+        "schema_epoch_matrix",
         "cleanup_first_database",
         "cleanup_second_database",
         "cleanup_owner_role",
@@ -2369,10 +2384,13 @@ fn live_matrix_receipts_survive_one_fixed_diagnostic_ceiling() {
     let runner = include_str!("../../../../tools/run_rust_legacy_adopter_pg.sh");
     assert_eq!(
         runner
-            .matches("timeout --signal=TERM --kill-after=10s 600s")
+            .matches("timeout --signal=TERM --kill-after=10s 900s")
             .count(),
         1
     );
+    assert!(runner.contains(
+        "schema_epoch::live_rollback_tests::rollback_and_ambiguous_commit_reconciliation_are_atomic"
+    ));
     let cargo = runner
         .split_once("cargo test -p babylon-persistence --test legacy_adopter_postgres")
         .unwrap()

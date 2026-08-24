@@ -836,7 +836,7 @@ fn statement(kind: LegacyAdopterSqlKind) -> &'static str {
     }
 }
 
-fn verify_under_lock(
+pub(crate) fn verify_under_lock(
     client: &mut postgres::Client,
 ) -> Result<LegacyAdoptionReport, LegacyAdopterError> {
     let mut transaction = client
@@ -852,6 +852,36 @@ fn verify_under_lock(
             operation: LegacyAdopterOperation::Rollback,
         });
     preserve_primary(verification, rollback)
+}
+
+pub(crate) fn catalog_census_under_lock(
+    client: &mut postgres::Client,
+    require_authority_schemas_absent: bool,
+) -> Result<Vec<LegacyCensusEntry>, LegacyAdopterError> {
+    let mut transaction = client
+        .build_transaction()
+        .isolation_level(IsolationLevel::RepeatableRead)
+        .read_only(true)
+        .start()
+        .map_err(|error| transaction_error(&error, LegacyAdopterOperation::BeginTransaction))?;
+    let census = catalog_census_transaction(&mut transaction, require_authority_schemas_absent);
+    let rollback = transaction
+        .rollback()
+        .map_err(|_| LegacyAdopterError::Cleanup {
+            operation: LegacyAdopterOperation::Rollback,
+        });
+    preserve_primary(census, rollback)
+}
+
+fn catalog_census_transaction(
+    transaction: &mut Transaction<'_>,
+    require_authority_schemas_absent: bool,
+) -> Result<Vec<LegacyCensusEntry>, LegacyAdopterError> {
+    verify_transaction_settings(transaction)?;
+    if require_authority_schemas_absent {
+        refuse_authority_schemas(transaction)?;
+    }
+    read_census_rows(transaction)
 }
 
 fn verify_transaction(
@@ -967,7 +997,7 @@ fn read_stamp_rows(transaction: &mut Transaction<'_>) -> Result<Vec<String>, Leg
     Ok(stamps)
 }
 
-fn read_census_rows(
+pub(crate) fn read_census_rows(
     transaction: &mut Transaction<'_>,
 ) -> Result<Vec<LegacyCensusEntry>, LegacyAdopterError> {
     let operation = LegacyAdopterOperation::Census;
@@ -1066,7 +1096,7 @@ fn decode_catalog_overflow(row: &Row) -> Result<(), LegacyAdopterError> {
     })
 }
 
-fn acquire_lock(client: &mut postgres::Client) -> Result<(), LegacyAdopterError> {
+pub(crate) fn acquire_lock(client: &mut postgres::Client) -> Result<(), LegacyAdopterError> {
     let operation = LegacyAdopterOperation::Lock;
     let locked: bool = client
         .query_one(
@@ -1083,7 +1113,7 @@ fn acquire_lock(client: &mut postgres::Client) -> Result<(), LegacyAdopterError>
     }
 }
 
-fn release_lock(client: &mut postgres::Client) -> Result<(), LegacyAdopterError> {
+pub(crate) fn release_lock(client: &mut postgres::Client) -> Result<(), LegacyAdopterError> {
     let operation = LegacyAdopterOperation::Unlock;
     let row = client
         .query_one(
@@ -1101,7 +1131,7 @@ fn release_lock(client: &mut postgres::Client) -> Result<(), LegacyAdopterError>
     }
 }
 
-fn preserve_primary<T>(
+pub(crate) fn preserve_primary<T>(
     primary: Result<T, LegacyAdopterError>,
     cleanup: Result<(), LegacyAdopterError>,
 ) -> Result<T, LegacyAdopterError> {

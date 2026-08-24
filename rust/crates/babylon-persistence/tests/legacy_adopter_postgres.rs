@@ -20,6 +20,9 @@ use std::process::{Command, Stdio};
 use std::str::FromStr;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+#[path = "support/schema_epoch_postgres.rs"]
+mod schema_epoch_postgres;
+
 const DSN_ENV: &str = "BABYLON_LEGACY_ADOPTER_TEST_DSN";
 const DISPOSABLE_ACK_ENV: &str = "BABYLON_LEGACY_ADOPTER_DISPOSABLE_ACK";
 const DISPOSABLE_ACK_VALUE: &str =
@@ -150,10 +153,21 @@ fn live_adopter_contract_against_independent_builds_and_disposable_mutations() {
     let second_config = second.config_as(&base, owner.name(), OWNER_PASSWORD);
     let template = first.name().to_owned();
 
-    let run_mutations =
-        run_first_live_phases(&phases, &base, &template, &first_config, &second_config);
+    let run_mutations = run_first_live_phases(
+        &phases,
+        &base,
+        &template,
+        &first_config,
+        &second_config,
+        owner.name(),
+    );
     if run_mutations {
         run_second_live_phases(&phases, &base, &template, &first_config);
+        live_phase!(
+            phases,
+            "schema_epoch_matrix",
+            schema_epoch_postgres::verify_schema_epoch_matrix(&base, &template, owner.name())
+        );
     }
     live_phase!(phases, "cleanup_first_database", first.cleanup());
     live_phase!(phases, "cleanup_second_database", second.cleanup());
@@ -168,6 +182,7 @@ fn run_first_live_phases(
     template: &str,
     first_config: &Config,
     second_config: &Config,
+    owner: &str,
 ) -> bool {
     live_phase!(phases, "repair_first", run_python_repair(first_config));
     live_phase!(
@@ -191,6 +206,12 @@ fn run_first_live_phases(
             Some("extension_dependency_bound") => {
                 verify_raw_non_catalog_bounds(first_config);
                 verify_unknown_extension_classification(base, template);
+            }
+            Some("schema_epoch_fresh") => {
+                schema_epoch_postgres::verify_fresh_migration(base);
+            }
+            Some("schema_epoch_matrix") => {
+                schema_epoch_postgres::verify_schema_epoch_matrix(base, template, owner);
             }
             _ => panic!("unknown bounded live focus"),
         }

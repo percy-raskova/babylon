@@ -42,6 +42,8 @@ EXPECTED_COORDINATE_COUNT = 13
 EXPECTED_SCALE_COUNT = 9
 EXPECTED_ARTIFACT_COUNT = 10
 MAX_EXPECTED_METRIC_COORDINATES = 4
+MAX_METRIC_COORDINATES = 32
+MAX_METRIC_EVIDENCE_CLASSES = 4
 MAX_EXPECTED_RECORD_FIELDS = 64
 EXTRA_RECORD_DECLARATIONS = 20
 EXTRA_ENUM_DECLARATIONS = 49
@@ -1242,38 +1244,150 @@ def test_generated_python_unsigned_fields_accept_exact_boundaries() -> None:
     assert draft.verified_tick == 18_446_744_073_709_551_615
 
 
-@pytest.mark.parametrize("outputs_exist", (False, True))
-def test_two_output_publication_rolls_back_when_second_replace_fails(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outputs_exist: bool
+@pytest.mark.parametrize(
+    ("python_exists", "rust_exists"),
+    ((False, False), (False, True), (True, False), (True, True)),
+)
+@pytest.mark.parametrize("failure_index", (1, 2))
+def test_two_output_publication_failure_restores_every_original_existence_combination(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    python_exists: bool,
+    rust_exists: bool,
+    failure_index: int,
 ) -> None:
     python_path = tmp_path / "generated.py"
     rust_path = tmp_path / "generated.rs"
     old_python = b"old python generation\n"
     old_rust = b"old rust generation\n"
-    if outputs_exist:
+    if python_exists:
         python_path.write_bytes(old_python)
+    if rust_exists:
         rust_path.write_bytes(old_rust)
 
     real_replace = os.replace
     replace_count = 0
 
-    def fail_second_replace(source: Any, destination: Any) -> None:
+    def fail_publication(source: Any, destination: Any) -> None:
         nonlocal replace_count
         replace_count += 1
-        if replace_count == 2:
-            raise OSError("injected second replace failure")
+        if replace_count == failure_index:
+            raise OSError(f"injected publication failure {failure_index}")
         real_replace(source, destination)
 
-    monkeypatch.setattr(os, "replace", fail_second_replace)
-    with pytest.raises(OSError, match="injected second replace failure"):
+    monkeypatch.setattr(os, "replace", fail_publication)
+    with pytest.raises(OSError, match=f"injected publication failure {failure_index}"):
         generator._write_outputs(python_path, "new python\n", rust_path, "new rust\n")
 
-    if outputs_exist:
+    if python_exists:
         assert python_path.read_bytes() == old_python
-        assert rust_path.read_bytes() == old_rust
     else:
         assert not python_path.exists()
+    if rust_exists:
+        assert rust_path.read_bytes() == old_rust
+    else:
         assert not rust_path.exists()
+    assert not tuple(tmp_path.glob(".generated.py.*"))
+    assert not tuple(tmp_path.glob(".generated.rs.*"))
+
+
+@pytest.mark.parametrize("restoration_failure_index", (1, 2))
+def test_rollback_preserves_only_the_failed_restoration_backup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    restoration_failure_index: int,
+) -> None:
+    python_path = tmp_path / "generated.py"
+    rust_path = tmp_path / "generated.rs"
+    old_python = b"old python generation\n"
+    old_rust = b"old rust generation\n"
+    python_path.write_bytes(old_python)
+    rust_path.write_bytes(old_rust)
+
+    real_replace = os.replace
+    publication_count = 0
+
+    def fail_after_second_publication(source: Any, destination: Any) -> None:
+        nonlocal publication_count
+        publication_count += 1
+        real_replace(source, destination)
+        if publication_count == 2:
+            raise OSError("injected post-publication failure")
+
+    real_link = os.link
+    restoration_count = 0
+
+    def fail_restoration(source: Any, destination: Any) -> None:
+        nonlocal restoration_count
+        restoration_count += 1
+        if restoration_count == restoration_failure_index:
+            raise OSError(f"injected restoration failure {restoration_failure_index}")
+        real_link(source, destination)
+
+    monkeypatch.setattr(os, "replace", fail_after_second_publication)
+    monkeypatch.setattr(os, "link", fail_restoration)
+    failed_label = "Python" if restoration_failure_index == 1 else "Rust"
+    with pytest.raises(
+        OSError,
+        match=rf"RTD_OUTPUT_ROLLBACK: {failed_label} restoration failed; recovery backup preserved at",
+    ) as error:
+        generator._write_outputs(python_path, "new python\n", rust_path, "new rust\n")
+
+    failed_path = python_path if restoration_failure_index == 1 else rust_path
+    restored_path = rust_path if restoration_failure_index == 1 else python_path
+    restored_bytes = old_rust if restoration_failure_index == 1 else old_python
+    failed_bytes = old_python if restoration_failure_index == 1 else old_rust
+    assert not failed_path.exists()
+    assert restored_path.read_bytes() == restored_bytes
+    assert not tuple(tmp_path.glob(f".{restored_path.name}.*"))
+    recovery_marker = "recovery backup preserved at "
+    recovery_path_text = str(error.value).split(recovery_marker, 1)[1].split(";", 1)[0]
+    recovery_path = Path(recovery_path_text)
+    assert recovery_path.read_bytes() == failed_bytes
+
+
+@pytest.mark.parametrize(
+    ("concurrent_bytes", "replace_inode"),
+    (
+        (b"unrelated concurrent writer\n", False),
+        (b"new python\n", True),
+    ),
+    ids=("changed-bytes-same-inode", "same-bytes-changed-inode"),
+)
+def test_absent_output_rollback_preserves_a_concurrent_replacement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    concurrent_bytes: bytes,
+    replace_inode: bool,
+) -> None:
+    python_path = tmp_path / "generated.py"
+    rust_path = tmp_path / "generated.rs"
+    concurrent_path = tmp_path / "concurrent.py"
+    concurrent_path.write_bytes(concurrent_bytes)
+
+    real_replace = os.replace
+    publication_count = 0
+
+    def replace_with_concurrent_writer(source: Any, destination: Any) -> None:
+        nonlocal publication_count
+        publication_count += 1
+        if publication_count == 2:
+            if replace_inode:
+                real_replace(concurrent_path, python_path)
+            else:
+                python_path.write_bytes(concurrent_bytes)
+            raise OSError("injected second publication failure")
+        real_replace(source, destination)
+
+    monkeypatch.setattr(os, "replace", replace_with_concurrent_writer)
+    with pytest.raises(
+        OSError,
+        match=r"RTD_OUTPUT_ROLLBACK: Python output changed after publication; preserved at",
+    ):
+        generator._write_outputs(python_path, "new python\n", rust_path, "new rust\n")
+
+    assert python_path.read_bytes() == concurrent_bytes
+    assert not rust_path.exists()
 
 
 def _canonical_document() -> dict[str, Any]:
@@ -1434,6 +1548,26 @@ def test_metric_semantic_mutations_refuse_atomically(
     document = _canonical_document()
     document["metric_registry"][0][field] = replacement
     _assert_contract_refusal(tmp_path, _dump_contract(document), CONTRACT_SCHEMA_ERROR)
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    (
+        ("coordinates", ["county"] * (MAX_METRIC_COORDINATES + 1)),
+        (
+            "evidence_classes",
+            ["Observed"] * (MAX_METRIC_EVIDENCE_CLASSES + 1),
+        ),
+    ),
+)
+def test_metric_nested_sequence_limit_plus_one_refuses_atomically(
+    tmp_path: Path,
+    field: str,
+    replacement: list[str],
+) -> None:
+    document = _canonical_document()
+    document["metric_registry"][0][field] = replacement
+    _assert_contract_refusal(tmp_path, _dump_contract(document), CONTRACT_LIMIT_ERROR)
 
 
 def test_missing_duplicate_and_remapped_bindings_refuse_atomically(tmp_path: Path) -> None:

@@ -36,8 +36,11 @@ RTD_MAX_ENUM_DECLARATIONS: Final = 64
 RTD_MAX_FIELDS_PER_RECORD: Final = 64
 RTD_MAX_MEMBERS_PER_ENUM: Final = 256
 RTD_MAX_REGISTRY_ROWS: Final = 512
+RTD_MAX_METRIC_COORDINATES: Final = 32
+RTD_MAX_METRIC_EVIDENCE_CLASSES: Final = 4
 RTD_IDENTITY_CATEGORY_COUNT: Final = 6
 RTD_MAX_ENUM_MEMBER_PARTS: Final = 16
+RTD_OUTPUT_COUNT: Final = 2
 
 CONTRACT_SCHEMA_ERROR: Final = "RTD_CONTRACT_SCHEMA"
 CONTRACT_LIMIT_ERROR: Final = "RTD_CONTRACT_LIMIT"
@@ -1419,15 +1422,43 @@ def _validate_identity_registry_counts(
             raise _schema_error(f"identity_registry.{category} has missing or extra rows")
 
 
-def _metric_signature(row: Mapping[str, Any]) -> tuple[Any, ...]:
+def _metric_coordinates(row: Mapping[str, Any]) -> tuple[Any, ...]:
+    coordinates = _sequence(row.get("coordinates"), "metric coordinates")
+    if len(coordinates) > RTD_MAX_METRIC_COORDINATES:
+        raise _limit_error("metric coordinates exceed 32 rows")
+    bounded: list[Any] = []
+    for coordinate_index in range(RTD_MAX_METRIC_COORDINATES):
+        if coordinate_index >= len(coordinates):
+            break
+        bounded.append(coordinates[coordinate_index])
+    return tuple(bounded)
+
+
+def _metric_evidence_classes(row: Mapping[str, Any]) -> tuple[Any, ...]:
+    evidence_classes = _sequence(row.get("evidence_classes"), "metric evidence_classes")
+    if len(evidence_classes) > RTD_MAX_METRIC_EVIDENCE_CLASSES:
+        raise _limit_error("metric evidence_classes exceed 4 rows")
+    bounded: list[Any] = []
+    for evidence_index in range(RTD_MAX_METRIC_EVIDENCE_CLASSES):
+        if evidence_index >= len(evidence_classes):
+            break
+        bounded.append(evidence_classes[evidence_index])
+    return tuple(bounded)
+
+
+def _metric_signature(
+    row: Mapping[str, Any],
+    coordinates: tuple[Any, ...],
+    evidence_classes: tuple[Any, ...],
+) -> tuple[Any, ...]:
     return (
         row.get("metric"),
         row.get("representation"),
         row.get("unit"),
         row.get("value_kind"),
         row.get("native_scale"),
-        tuple(_sequence(row.get("coordinates"), "metric coordinates")),
-        tuple(_sequence(row.get("evidence_classes"), "metric evidence_classes")),
+        coordinates,
+        evidence_classes,
         row.get("aggregation_rule"),
         row.get("producer"),
         row.get("reference"),
@@ -1448,12 +1479,11 @@ def _identity_lookup(
 def _expand_metric(
     row: Mapping[str, Any],
     registry: Mapping[str, Mapping[str, TypedIdentitySpec]],
+    coordinate_keys: tuple[Any, ...],
+    evidence_classes: tuple[Any, ...],
 ) -> ExpandedMetricSpec:
-    coordinate_keys = _sequence(row["coordinates"], "metric coordinates")
-    if len(coordinate_keys) > RTD_MAX_REGISTRY_ROWS:
-        raise _limit_error("metric coordinates exceed 512 rows")
     coordinates: list[TypedIdentitySpec] = []
-    for coordinate_index in range(RTD_MAX_REGISTRY_ROWS):
+    for coordinate_index in range(RTD_MAX_METRIC_COORDINATES):
         if coordinate_index >= len(coordinate_keys):
             break
         coordinates.append(
@@ -1470,7 +1500,7 @@ def _expand_metric(
         value_kind=row["value_kind"],
         native_scale=_identity_lookup(registry, "native_scales", row["native_scale"]),
         coordinates=tuple(coordinates),
-        evidence_classes=tuple(row["evidence_classes"]),
+        evidence_classes=evidence_classes,
         aggregation_rule=row["aggregation_rule"],
         producer=_identity_lookup(registry, "producers", row["producer"]),
         reference_artifact=reference,
@@ -1509,14 +1539,16 @@ def _parse_metric_registry(
             break
         row = _mapping(rows[row_index], "metric row")
         _closed_keys(row, allowed, "metric row")
-        signature = _metric_signature(row)
+        coordinate_keys = _metric_coordinates(row)
+        evidence_classes = _metric_evidence_classes(row)
+        signature = _metric_signature(row, coordinate_keys, evidence_classes)
         if signature != EXPECTED_METRIC_ROWS[row_index]:
             raise _schema_error(f"metric row {row_index} changed or is reordered")
         metric_key = row["metric"]
         if not isinstance(metric_key, str) or metric_key in seen:
             raise _schema_error("metric_registry duplicates a metric")
         seen.add(metric_key)
-        expanded.append(_expand_metric(row, identity_registry))
+        expanded.append(_expand_metric(row, identity_registry, coordinate_keys, evidence_classes))
     return tuple(expanded)
 
 
@@ -2228,33 +2260,146 @@ def _snapshot_output(path: Path) -> Path | None:
     return _stage_bytes(path, content)
 
 
-def _restore_output(path: Path, backup: Path | None) -> None:
-    if backup is None:
-        path.unlink(missing_ok=True)
-        return
-    os.replace(backup, path)
+@dataclass(frozen=True, slots=True)
+class _FileFingerprint:
+    device: int
+    inode: int
+    size: int
+    modified_ns: int
+    sha256: bytes
 
 
-def _rollback_outputs(
-    python_path: Path,
-    python_backup: Path | None,
-    rust_path: Path,
-    rust_backup: Path | None,
-) -> None:
-    python_error: OSError | None = None
-    rust_error: OSError | None = None
+@dataclass(slots=True)
+class _OutputPublication:
+    label: str
+    path: Path
+    staged: Path
+    staged_fingerprint: _FileFingerprint
+    backup: Path | None = None
+    published: bool = False
+    backup_redundant: bool = False
+
+
+def _fingerprint_output(path: Path) -> _FileFingerprint:
+    with path.open("rb") as output_file:
+        before = os.fstat(output_file.fileno())
+        content = output_file.read()
+        after = os.fstat(output_file.fileno())
+    before_identity = (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
+    after_identity = (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
+    if before_identity != after_identity:
+        raise OSError(f"output changed while fingerprinting {path}")
+    return _FileFingerprint(
+        device=after.st_dev,
+        inode=after.st_ino,
+        size=after.st_size,
+        modified_ns=after.st_mtime_ns,
+        sha256=hashlib.sha256(content).digest(),
+    )
+
+
+def _matches_fingerprint(path: Path, expected: _FileFingerprint) -> bool:
     try:
-        _restore_output(python_path, python_backup)
-    except OSError as error:
-        python_error = error
+        return _fingerprint_output(path) == expected
+    except OSError:
+        return False
+
+
+def _recovery_detail(state: _OutputPublication, displaced: Path | None = None) -> str:
+    evidence: list[str] = []
+    if state.backup is not None:
+        evidence.append(f"recovery backup preserved at {state.backup}")
+    if displaced is not None:
+        evidence.append(f"displaced output preserved at {displaced}")
+    elif state.path.exists():
+        evidence.append(f"output preserved at {state.path}")
+    return "; ".join(evidence)
+
+
+def _isolate_published_output(state: _OutputPublication) -> Path:
     try:
-        _restore_output(rust_path, rust_backup)
+        quarantine = _stage_bytes(state.path, b"")
     except OSError as error:
-        rust_error = error
-    if python_error is not None:
-        raise OSError("failed to roll back Python generated output") from python_error
-    if rust_error is not None:
-        raise OSError("failed to roll back Rust generated output") from rust_error
+        detail = _recovery_detail(state)
+        raise OSError(f"{state.label} rollback staging failed; {detail}") from error
+    try:
+        placeholder_fingerprint = _fingerprint_output(quarantine)
+    except OSError as error:
+        detail = _recovery_detail(state, quarantine)
+        raise OSError(f"{state.label} rollback staging verification failed; {detail}") from error
+    try:
+        os.replace(state.path, quarantine)
+    except OSError as error:
+        if _matches_fingerprint(quarantine, state.staged_fingerprint):
+            return quarantine
+        if _matches_fingerprint(quarantine, placeholder_fingerprint):
+            try:
+                quarantine.unlink()
+            except OSError as cleanup_error:
+                detail = _recovery_detail(state, quarantine)
+                raise OSError(
+                    f"{state.label} rollback staging cleanup failed; {detail}"
+                ) from cleanup_error
+            detail = _recovery_detail(state)
+            raise OSError(f"{state.label} rollback isolation failed; {detail}") from error
+        detail = _recovery_detail(state, quarantine)
+        raise OSError(f"{state.label} rollback isolation was indeterminate; {detail}") from error
+    if not _matches_fingerprint(quarantine, state.staged_fingerprint):
+        detail = _recovery_detail(state, quarantine)
+        raise OSError(f"{state.label} output changed during rollback; {detail}")
+    return quarantine
+
+
+def _restore_published_output(state: _OutputPublication) -> None:
+    if not _matches_fingerprint(state.path, state.staged_fingerprint):
+        detail = (
+            f"preserved at {state.path}"
+            if state.backup is None and state.path.exists()
+            else _recovery_detail(state)
+        )
+        raise OSError(f"{state.label} output changed after publication; {detail}")
+
+    quarantine = _isolate_published_output(state)
+
+    if state.backup is not None:
+        try:
+            os.link(state.backup, state.path)
+        except OSError as error:
+            detail = _recovery_detail(state, quarantine)
+            raise OSError(f"{state.label} restoration failed; {detail}") from error
+    try:
+        quarantine.unlink()
+    except OSError as error:
+        detail = _recovery_detail(state, quarantine)
+        raise OSError(f"{state.label} rollback cleanup failed; {detail}") from error
+
+
+def _publish_output(state: _OutputPublication) -> None:
+    try:
+        os.replace(state.staged, state.path)
+    except OSError:
+        state.published = (
+            _matches_fingerprint(state.path, state.staged_fingerprint) or not state.staged.exists()
+        )
+        raise
+    state.published = True
+
+
+def _rollback_outputs(states: tuple[_OutputPublication, _OutputPublication]) -> None:
+    errors: list[str] = []
+    for state_index in range(RTD_OUTPUT_COUNT):
+        state = states[state_index]
+        if not state.published:
+            state.backup_redundant = True
+            continue
+        try:
+            _restore_published_output(state)
+        except OSError as error:
+            errors.append(str(error))
+        else:
+            state.backup_redundant = True
+    if errors:
+        raise OSError("RTD_OUTPUT_ROLLBACK: " + " | ".join(errors))
 
 
 def _write_outputs(
@@ -2266,27 +2411,42 @@ def _write_outputs(
     except OSError:
         staged_python.unlink(missing_ok=True)
         raise
-    python_backup: Path | None = None
-    rust_backup: Path | None = None
     try:
-        python_backup = _snapshot_output(python_path)
-        rust_backup = _snapshot_output(rust_path)
+        states = (
+            _OutputPublication(
+                "Python", python_path, staged_python, _fingerprint_output(staged_python)
+            ),
+            _OutputPublication("Rust", rust_path, staged_rust, _fingerprint_output(staged_rust)),
+        )
+    except OSError:
+        staged_python.unlink(missing_ok=True)
+        staged_rust.unlink(missing_ok=True)
+        raise
+    try:
         try:
-            os.replace(staged_python, python_path)
-            os.replace(staged_rust, rust_path)
+            states[0].backup = _snapshot_output(python_path)
+            states[1].backup = _snapshot_output(rust_path)
+        except OSError:
+            states[0].backup_redundant = True
+            states[1].backup_redundant = True
+            raise
+        try:
+            _publish_output(states[0])
+            _publish_output(states[1])
         except OSError as publish_error:
             try:
-                _rollback_outputs(python_path, python_backup, rust_path, rust_backup)
+                _rollback_outputs(states)
             except OSError as rollback_error:
                 raise rollback_error from publish_error
             raise
+        states[0].backup_redundant = True
+        states[1].backup_redundant = True
     finally:
-        staged_python.unlink(missing_ok=True)
-        staged_rust.unlink(missing_ok=True)
-        if python_backup is not None:
-            python_backup.unlink(missing_ok=True)
-        if rust_backup is not None:
-            rust_backup.unlink(missing_ok=True)
+        for state_index in range(RTD_OUTPUT_COUNT):
+            state = states[state_index]
+            state.staged.unlink(missing_ok=True)
+            if state.backup is not None and state.backup_redundant:
+                state.backup.unlink(missing_ok=True)
 
 
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:

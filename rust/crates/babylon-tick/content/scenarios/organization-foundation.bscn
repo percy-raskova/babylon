@@ -20,14 +20,10 @@
   (defvocabulary EdgeType
     (MEMBERSHIP PRESENCE COMMAND TRANSACTIONAL SOLIDARISTIC SOLIDARITY
      TENANCY ADJACENCY))
-  (defenum OrgKind (STATE_APPARATUS BUSINESS POLITICAL_FACTION CIVIL_SOCIETY))
   (defenum PracticeKind (NONE ROOTED_WORK))
   (defenum PracticeEmbedding (NONE WORKPLACE NEIGHBORHOOD REPRODUCTION ASSOCIATION))
-  (deffield organization/kind enum OrgKind)
   (deffield organization/practice enum PracticeKind)
   (deffield organization/practice-embedding enum PracticeEmbedding)
-  (deffield organization/active int extensive)
-  (deffield organization/action-budget int extensive)
   (deffield organization/membership-share coefficient intensive)
   (deffield social-class/population int extensive)
   (deffield territory/rooted-capacity coefficient intensive)
@@ -67,7 +63,10 @@
     (organization/practice PracticeKind/ROOTED_WORK)
     (organization/practice-embedding PracticeEmbedding/NEIGHBORHOOD)
     (organization/active 1)
-    (organization/action-budget 0)
+    (organization/cadre-level 0.5p)
+    (organization/cohesion 0.5p)
+    (organization/consciousness-tendency ConsciousnessTendency/LIBERAL)
+    (organization/action-budget 1)
     (organization/membership-share 0.01c))
   ; The state apparatus: the local coercive organization.
   (node precinct NodeType/ORGANIZATION
@@ -75,7 +74,10 @@
     (organization/practice PracticeKind/NONE)
     (organization/practice-embedding PracticeEmbedding/NONE)
     (organization/active 1)
-    (organization/action-budget 0)
+    (organization/cadre-level 0.5p)
+    (organization/cohesion 0.5p)
+    (organization/consciousness-tendency ConsciousnessTendency/LIBERAL)
+    (organization/action-budget 1)
     (organization/membership-share 0.0c))
 
   ; Two more class/territory pairs make geography relational rather than a

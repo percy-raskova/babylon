@@ -1,5 +1,6 @@
 //! Behavioral proof for situated organizational practice over relational territory.
 
+use babylon_bsl::compose_declaration_preludes;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
@@ -8,6 +9,13 @@ use babylon_tick::TickSession;
 
 const SCENARIO: &str = include_str!("../content/scenarios/organization-foundation.bscn");
 const PACK: &str = include_str!("../content/rules/organization.bsl");
+const ORGANIZATION_PRACTICE_PRELUDE: &str =
+    include_str!("../content/declarations/organization-practice.bscn");
+
+fn practice_prelude() -> String {
+    compose_declaration_preludes(&[ORGANIZATION_PRACTICE_PRELUDE])
+        .expect("the organization practice prelude composes")
+}
 
 const COUNTY_A: NodeId = NodeId(1);
 const READING_GROUP: NodeId = NodeId(2);
@@ -58,15 +66,17 @@ fn recruitment_requires_a_shared_presence_and_tenancy_territory() {
         remote_base_scenario, SCENARIO,
         "the social base must move outside the organization's presence"
     );
-    let mut local = TickSession::new(
+    let mut local = TickSession::new_with_prelude(
         SCENARIO,
+        &practice_prelude(),
         PACK,
         HypergraphStore::new(),
         SessionId::new("organization-local-social-base").expect("literal is non-empty"),
     )
     .expect("the local-base world loads");
-    let mut remote = TickSession::new(
+    let mut remote = TickSession::new_with_prelude(
         &remote_base_scenario,
+        &practice_prelude(),
         PACK,
         HypergraphStore::new(),
         SessionId::new("organization-remote-social-base").expect("literal is non-empty"),
@@ -94,15 +104,17 @@ fn a_remote_branch_does_not_enter_the_local_recruitment_mean() {
         remote_branch_scenario, SCENARIO,
         "the organization must gain a remote branch"
     );
-    let mut local_only = TickSession::new(
+    let mut local_only = TickSession::new_with_prelude(
         SCENARIO,
+        &practice_prelude(),
         PACK,
         HypergraphStore::new(),
         SessionId::new("organization-local-mean").expect("literal is non-empty"),
     )
     .expect("the local-only world loads");
-    let mut with_remote_branch = TickSession::new(
+    let mut with_remote_branch = TickSession::new_with_prelude(
         &remote_branch_scenario,
+        &practice_prelude(),
         PACK,
         HypergraphStore::new(),
         SessionId::new("organization-local-mean-with-remote").expect("literal is non-empty"),
@@ -143,8 +155,9 @@ fn a_remote_branch_does_not_enter_the_local_recruitment_mean() {
 
 #[test]
 fn rooted_capacity_moves_one_relational_hop_per_tick() {
-    let mut session = TickSession::new(
+    let mut session = TickSession::new_with_prelude(
         SCENARIO,
+        &practice_prelude(),
         PACK,
         HypergraphStore::new(),
         SessionId::new("organization-practice-conformance").expect("literal is non-empty"),
@@ -171,8 +184,9 @@ fn rooted_capacity_moves_one_relational_hop_per_tick() {
 
 #[test]
 fn unique_low_buffer_corridor_relays_more_capacity_than_reroutable_corridor() {
-    let mut session = TickSession::new(
+    let mut session = TickSession::new_with_prelude(
         SCENARIO,
+        &practice_prelude(),
         PACK,
         HypergraphStore::new(),
         SessionId::new("organization-circulation-bottleneck").expect("literal is non-empty"),
@@ -195,8 +209,9 @@ fn unique_low_buffer_corridor_relays_more_capacity_than_reroutable_corridor() {
 
 #[test]
 fn one_weekly_action_is_divided_across_the_organizations_branches() {
-    let mut one_branch = TickSession::new(
+    let mut one_branch = TickSession::new_with_prelude(
         SCENARIO,
+        &practice_prelude(),
         PACK,
         HypergraphStore::new(),
         SessionId::new("organization-one-branch").expect("literal is non-empty"),
@@ -212,8 +227,9 @@ fn one_weekly_action_is_divided_across_the_organizations_branches() {
         two_branch_scenario, SCENARIO,
         "the second branch must be inserted"
     );
-    let mut two_branches = TickSession::new(
+    let mut two_branches = TickSession::new_with_prelude(
         &two_branch_scenario,
+        &practice_prelude(),
         PACK,
         HypergraphStore::new(),
         SessionId::new("organization-two-branches").expect("literal is non-empty"),
@@ -256,15 +272,17 @@ fn practice_requires_presence_with_the_matching_material_embedding() {
         matched_workplace, workplace_practice,
         "the presence relation must become a workplace embedding"
     );
-    let mut mismatched = TickSession::new(
+    let mut mismatched = TickSession::new_with_prelude(
         &workplace_practice,
+        &practice_prelude(),
         PACK,
         HypergraphStore::new(),
         SessionId::new("organization-mismatched-embedding").expect("literal is non-empty"),
     )
     .expect("the mismatched-embedding world loads");
-    let mut matched = TickSession::new(
+    let mut matched = TickSession::new_with_prelude(
         &matched_workplace,
+        &practice_prelude(),
         PACK,
         HypergraphStore::new(),
         SessionId::new("organization-matched-embedding").expect("literal is non-empty"),
@@ -298,8 +316,9 @@ fn practice_requires_presence_with_the_matching_material_embedding() {
 
 #[test]
 fn recruitment_emerges_as_slow_fast_slow_growth() {
-    let mut session = TickSession::new(
+    let mut session = TickSession::new_with_prelude(
         SCENARIO,
+        &practice_prelude(),
         PACK,
         HypergraphStore::new(),
         SessionId::new("organization-recruitment-emergence").expect("literal is non-empty"),

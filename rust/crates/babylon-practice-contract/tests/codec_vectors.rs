@@ -16,7 +16,7 @@ const MAX_CASES: usize = 512;
 const MAX_LINE_BYTES: usize = 65_536;
 const MAX_CASE_ID_BYTES: usize = 128;
 const MAX_DEPTH: usize = 32;
-const KINDS: [&str; 9] = [
+const KINDS: [&str; 10] = [
     "manifest",
     "authority",
     "intent",
@@ -26,6 +26,7 @@ const KINDS: [&str; 9] = [
     "authority_validation",
     "quote_validation",
     "batch_recipe",
+    "organization-practice-prelude",
 ];
 
 enum JsonFrame {
@@ -117,6 +118,7 @@ fn expected_data_fields(kind: &str) -> &'static [&'static str] {
         "invalid_wire" => &["codec", "payload_hex", "error"],
         "authority_validation" | "quote_validation" => &["recipe", "error"],
         "batch_recipe" => &["count", "recipe", "error"],
+        "organization-practice-prelude" => &["raw_hex", "digest_hex"],
         _ => &[],
     }
 }
@@ -309,6 +311,21 @@ fn shared_root_corpus_and_fixed_records_round_trip() {
     );
     let rejection_bytes = encode_rejection(&rejection).unwrap();
     assert_eq!(decode_rejection(&rejection_bytes).unwrap(), rejection);
+}
+
+#[test]
+fn organization_practice_prelude_vector_pins_raw_bytes_and_digest() {
+    let cases = corpus_cases("organization-practice-prelude");
+    assert_eq!(cases.len(), 1);
+    let item = data(&cases[0]);
+    let raw = hex_bytes(item["raw_hex"].as_str().unwrap());
+    let prelude =
+        include_bytes!("../../babylon-tick/content/declarations/organization-practice.bscn");
+    assert_eq!(raw, prelude);
+    assert_eq!(
+        babylon_kernel::sha256_of(&raw),
+        hex_digest(item["digest_hex"].as_str().unwrap())
+    );
 }
 
 #[test]

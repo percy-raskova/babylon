@@ -68,6 +68,7 @@ _KNOWN_VECTOR_KINDS = frozenset(
         "authority_validation",
         "quote_validation",
         "batch_recipe",
+        "organization-practice-prelude",
     }
 )
 _VECTOR_DATA_FIELDS = {
@@ -103,6 +104,7 @@ _VECTOR_DATA_FIELDS = {
     "authority_validation": frozenset({"recipe", "error"}),
     "quote_validation": frozenset({"recipe", "error"}),
     "batch_recipe": frozenset({"count", "recipe", "error"}),
+    "organization-practice-prelude": frozenset({"raw_hex", "digest_hex"}),
 }
 
 

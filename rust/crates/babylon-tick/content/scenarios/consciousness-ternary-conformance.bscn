@@ -228,8 +228,6 @@
   (deffield social-class/wealth real extensive)
   (deffield social-class/wages-paid int extensive)        ; frozen w_paid (ideology.py:239)
   (deffield social-class/value-produced int extensive)    ; frozen v_produced (ideology.py:240)
-  (deffield organization/active int intensive)            ; latch convention (production.bsl header item 2)
-
   ; ---- the ternary surface (FIRST probability deffields in committed content) ----
   (deffield social-class/revolutionary probability intensive)
   (deffield social-class/liberal probability intensive)
@@ -313,7 +311,9 @@
   (edge-attr EdgeType/WAGES employer class-emergent wages/value-flow 8)
 
   ; org-solid — the org solidarity source (active latch convention).
-  (node org-solid NodeType/ORGANIZATION (organization/active 1))
+  (node org-solid NodeType/ORGANIZATION
+    (organization/active 1)
+    (organization/action-budget 1))
 
   ; ---- Task 2 read-path fixtures (p8-dominant-worldview's tie vectors) ----
   ; Seed ONLY population / active=1 / the ternary / agitation 0 — NO anchors,

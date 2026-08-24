@@ -79,6 +79,7 @@ pub use same_tick_order::{
     diagnose as diagnose_same_tick_order, Diagnosis, RankedRuleInputError, SameTickOrderError,
     StaleDefaultRead, UnresetFanIn, ENFORCE_RANK_AWARE_AGGREGATE_ORDERING,
 };
+pub use scenario::compose_declaration_preludes;
 pub use scope::{
     check_element_names, check_foreign_field_scoping, declared_element_names, ElementNameError,
     ScopeError,

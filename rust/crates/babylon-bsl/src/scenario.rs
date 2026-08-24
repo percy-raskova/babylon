@@ -829,6 +829,69 @@ pub fn load_scenario_with_prelude(
     load_scenario_inner(scenario_src, graph, registries)
 }
 
+/// Compose ordered declaration preludes without changing any admitted byte.
+///
+/// Each source must be non-empty, contain no carriage return, and end in
+/// exactly one line feed. At most 16 sources, 262,144 bytes per source, and
+/// 1,048,576 bytes in total are admitted. The existing single-source loader
+/// remains the authority for declaration syntax and registry collisions.
+///
+/// # Errors
+///
+/// Returns [`ScenarioError`] when any source or combined bound is exceeded,
+/// or when a source violates the byte-shape contract.
+pub fn compose_declaration_preludes(sources: &[&str]) -> Result<String, ScenarioError> {
+    if sources.len() > 16 {
+        return Err(err(
+            "a content set may compose at most 16 declaration preludes",
+        ));
+    }
+    let mut combined_bytes = 0_usize;
+    for source_index in 0..16 {
+        if source_index == sources.len() {
+            break;
+        }
+        let source = sources[source_index];
+        let bytes = source.as_bytes();
+        if bytes.is_empty() {
+            return Err(err("a declaration prelude source must not be empty"));
+        }
+        if bytes.len() > 262_144 {
+            return Err(err("a declaration prelude source exceeds 262144 bytes"));
+        }
+        if bytes.last() != Some(&b'\n') || (bytes.len() >= 2 && bytes[bytes.len() - 2] == b'\n') {
+            return Err(err(
+                "a declaration prelude source must have exactly one terminal line feed",
+            ));
+        }
+        for byte_index in 0..262_144 {
+            if byte_index == bytes.len() {
+                break;
+            }
+            if bytes[byte_index] == b'\r' {
+                return Err(err(
+                    "a declaration prelude source must not contain carriage return",
+                ));
+            }
+        }
+        combined_bytes = combined_bytes
+            .checked_add(bytes.len())
+            .ok_or_else(|| err("declaration prelude combined byte count overflow"))?;
+        if combined_bytes > 1_048_576 {
+            return Err(err("composed declaration preludes exceed 1048576 bytes"));
+        }
+    }
+
+    let mut composed = String::with_capacity(combined_bytes);
+    for source_index in 0..16 {
+        if source_index == sources.len() {
+            break;
+        }
+        composed.push_str(sources[source_index]);
+    }
+    Ok(composed)
+}
+
 /// A prelude's own load pass: every top-level form in `prelude_src`, in
 /// order, dispatched to exactly the four declaration handlers
 /// [`load_scenario_inner`]'s own loop uses — never touching a graph, since

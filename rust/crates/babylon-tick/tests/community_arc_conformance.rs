@@ -19,6 +19,7 @@
 //! tick 3: heat = 0.42868749999999994 cohesion = 0.68450475 edu = 0.18225000000000002 | r = 1.0 l = 0.0 f = 0.0 | cost-modifier = 0.875 | member-count = 1.0 density-sum = 1.0
 //! ```
 
+use babylon_bsl::scenario::{compose_declaration_preludes, load_scenario_with_prelude};
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, HyperedgeId, NodeId};
@@ -27,6 +28,13 @@ use babylon_tick::TickSession;
 
 const SCENARIO: &str = include_str!("../content/scenarios/community-decay-arc-conformance.bscn");
 const PACK: &str = include_str!("../content/rules/community.bsl");
+const ORGANIZATION_PRACTICE_PRELUDE: &str =
+    include_str!("../content/declarations/organization-practice.bscn");
+
+fn practice_prelude() -> String {
+    compose_declaration_preludes(&[ORGANIZATION_PRACTICE_PRELUDE])
+        .expect("the organization practice prelude composes")
+}
 
 /// The session id — `SessionId::new`'s deterministic-identity law (D179).
 fn arc_session() -> SessionId {
@@ -35,8 +43,14 @@ fn arc_session() -> SessionId {
 
 /// Drive three ticks, returning the session (the graph lives in it).
 fn run_arc() -> TickSession<HypergraphStore> {
-    let mut session = TickSession::new(SCENARIO, PACK, HypergraphStore::new(), arc_session())
-        .expect("world 5 + the pack loads into a session");
+    let mut session = TickSession::new_with_prelude(
+        SCENARIO,
+        &practice_prelude(),
+        PACK,
+        HypergraphStore::new(),
+        arc_session(),
+    )
+    .expect("world 5 + the pack loads into a session");
     let mut sink = CollectingSink::default();
     session.advance(&mut sink).expect("tick 1");
     session.advance(&mut sink).expect("tick 2");
@@ -83,8 +97,14 @@ fn heat_cohesion_education_decay_independently() {
 /// non-increasing across the arc.
 #[test]
 fn decay_is_monotone_non_increasing() {
-    let mut session = TickSession::new(SCENARIO, PACK, HypergraphStore::new(), arc_session())
-        .expect("session loads");
+    let mut session = TickSession::new_with_prelude(
+        SCENARIO,
+        &practice_prelude(),
+        PACK,
+        HypergraphStore::new(),
+        arc_session(),
+    )
+    .expect("session loads");
     let mut sink = CollectingSink::default();
     let mut prev = f64::INFINITY;
     for _tick in 1..=3 {
@@ -150,14 +170,26 @@ const SOLIDARITY_PACK: &str = include_str!("../content/rules/solidarity.bsl");
 fn community_tick_leaves_solidarity_strength_byte_identical() {
     let mut solo = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    babylon_tick::run_once_into(SEAM_SCENARIO, SOLIDARITY_PACK, &mut solo, &mut sink)
-        .expect("the solidarity-only run ticks");
+    babylon_tick::run_once_into_with_prelude(
+        SEAM_SCENARIO,
+        &practice_prelude(),
+        SOLIDARITY_PACK,
+        &mut solo,
+        &mut sink,
+    )
+    .expect("the solidarity-only run ticks");
 
     let co_loaded = format!("{SOLIDARITY_PACK}\n{PACK}");
     let mut both = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    babylon_tick::run_once_into(SEAM_SCENARIO, &co_loaded, &mut both, &mut sink)
-        .expect("the co-loaded run ticks");
+    babylon_tick::run_once_into_with_prelude(
+        SEAM_SCENARIO,
+        &practice_prelude(),
+        &co_loaded,
+        &mut both,
+        &mut sink,
+    )
+    .expect("the co-loaded run ticks");
 
     for (from, to) in solo.edges("SOLIDARITY") {
         let solo_strength = solo
@@ -188,8 +220,14 @@ fn seam_world_community_half_actually_ran() {
     let co_loaded = format!("{SOLIDARITY_PACK}\n{PACK}");
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let report = babylon_tick::run_once_into(SEAM_SCENARIO, &co_loaded, &mut graph, &mut sink)
-        .expect("the co-loaded run ticks");
+    let report = babylon_tick::run_once_into_with_prelude(
+        SEAM_SCENARIO,
+        &practice_prelude(),
+        &co_loaded,
+        &mut graph,
+        &mut sink,
+    )
+    .expect("the co-loaded run ticks");
     assert!(
         report.fired > 0,
         "the carrier rules fired (the fired arithmetic is the per-rule-id ledger)"
@@ -222,8 +260,14 @@ fn co_loaded_packs_fire_once_each_on_one_carrier() {
     let co_loaded = format!("{CONTROL_RATIO_PACK}\n{PACK}");
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let report = babylon_tick::run_once_into(COLLISION_SCENARIO, &co_loaded, &mut graph, &mut sink)
-        .expect("the co-loaded world ticks");
+    let report = babylon_tick::run_once_into_with_prelude(
+        COLLISION_SCENARIO,
+        &practice_prelude(),
+        &co_loaded,
+        &mut graph,
+        &mut sink,
+    )
+    .expect("the co-loaded world ticks");
     let heat = graph
         .hyperedge_attribute(HyperedgeId(0), "community/heat")
         .expect("the collision community's heat");
@@ -266,8 +310,14 @@ const EMPTY_SCENARIO: &str = include_str!("../content/scenarios/community-empty-
 fn all_inactive_members_skip_every_membership_lane() {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let report = babylon_tick::run_once_into(EMPTY_SCENARIO, PACK, &mut graph, &mut sink)
-        .expect("every rule loads and the world ticks");
+    let report = babylon_tick::run_once_into_with_prelude(
+        EMPTY_SCENARIO,
+        &practice_prelude(),
+        PACK,
+        &mut graph,
+        &mut sink,
+    )
+    .expect("every rule loads and the world ticks");
     // The carrier rules fire; the class rules fire on nobody active.
     let per_rule: std::collections::HashMap<&str, usize> = report
         .per_rule_fired
@@ -379,8 +429,8 @@ fn a_world_with_no_community_hyperedge_refuses_at_load() {
 fn no_community_typed_node_exists_in_the_arc_worlds() {
     for scenario in [SCENARIO, SEAM_SCENARIO, COLLISION_SCENARIO, EMPTY_SCENARIO] {
         let mut graph = HypergraphStore::new();
-        let loaded =
-            babylon_bsl::scenario::load_scenario(scenario, &mut graph).expect("world loads");
+        let loaded = load_scenario_with_prelude(&practice_prelude(), scenario, &mut graph)
+            .expect("world loads");
         for (member, count) in &loaded.node_types {
             assert!(
                 !member.contains("COMMUNITY"),
@@ -397,8 +447,8 @@ fn no_community_typed_node_exists_in_the_arc_worlds() {
 fn exactly_one_institution_carrier_in_the_arc_worlds() {
     for scenario in [SCENARIO, SEAM_SCENARIO, COLLISION_SCENARIO, EMPTY_SCENARIO] {
         let mut graph = HypergraphStore::new();
-        let loaded =
-            babylon_bsl::scenario::load_scenario(scenario, &mut graph).expect("world loads");
+        let loaded = load_scenario_with_prelude(&practice_prelude(), scenario, &mut graph)
+            .expect("world loads");
         assert_eq!(
             loaded.node_types.get("INSTITUTION"),
             Some(&1),

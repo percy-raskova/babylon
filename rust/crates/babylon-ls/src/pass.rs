@@ -15,8 +15,9 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use lsp_types::{Diagnostic, Url};
+use lsp_types::{Diagnostic, DiagnosticSeverity, Url};
 
+use babylon_bsl::compose_declaration_preludes;
 use babylon_tick::diagnose_content_set;
 
 use crate::content_manifest::ContentSetManifest;
@@ -102,30 +103,93 @@ pub fn diagnose_bsl(
     manifest: &ContentSetManifest,
     source: &dyn SourceReader,
 ) -> Vec<Diagnostic> {
-    let Some(text) = source.read(content_relative_path) else {
-        return Vec::new();
-    };
-    let line_index = LineIndex::new(&text);
     let sets = manifest.sets_for(content_relative_path);
     if sets.is_empty() {
+        let Some(text) = source.read(content_relative_path) else {
+            return Vec::new();
+        };
+        let line_index = LineIndex::new(&text);
         return vec![missing_manifest_row_diagnostic(
             &text,
             &line_index,
             content_relative_path,
         )];
     }
+    if sets.iter().any(|set| set.prelude.len() > 16) {
+        return vec![source_refusal_diagnostic(
+            "a content set may name at most 16 declaration preludes",
+        )];
+    }
+    let Some(text) = source.read(content_relative_path) else {
+        return Vec::new();
+    };
+    let line_index = LineIndex::new(&text);
     let mut located: Vec<Located> = Vec::new();
     for set in &sets {
         let Some(scenario_src) = source.read(&set.scenario) else {
             continue;
         };
-        let prelude_src = set.prelude.first().and_then(|p| source.read(p));
+        let mut prelude_srcs = Vec::with_capacity(set.prelude.len());
+        let mut missing_prelude = None;
+        for prelude_index in 0..16 {
+            if prelude_index == set.prelude.len() {
+                break;
+            }
+            let path = &set.prelude[prelude_index];
+            if let Some(prelude_src) = source.read(path) {
+                prelude_srcs.push(prelude_src);
+            } else {
+                missing_prelude = Some(path.as_str());
+                break;
+            }
+        }
+        if let Some(path) = missing_prelude {
+            located.push(source_refusal(format!(
+                "content set `{}` names missing declaration prelude `{path}`",
+                set.id
+            )));
+            continue;
+        }
+        let prelude_refs: Vec<&str> = prelude_srcs.iter().map(String::as_str).collect();
+        let prelude_src = if prelude_refs.is_empty() {
+            None
+        } else {
+            match compose_declaration_preludes(&prelude_refs) {
+                Ok(composed) => Some(composed),
+                Err(error) => {
+                    located.push(Located::from_scenario_error(&error));
+                    continue;
+                }
+            }
+        };
         let rule_srcs: Vec<String> = set.rules.iter().filter_map(|r| source.read(r)).collect();
         let rule_refs: Vec<&str> = rule_srcs.iter().map(String::as_str).collect();
         let errors = diagnose_content_set(&scenario_src, prelude_src.as_deref(), &rule_refs);
         located.extend(errors.iter().map(Located::from_prepare_error));
     }
     diagnostics_for_file(uri, &text, &line_index, &located)
+}
+
+fn source_refusal(message: impl Into<String>) -> Located {
+    Located {
+        code: None,
+        family: "E-LOAD",
+        identity: None,
+        position: None,
+        message: message.into(),
+        severity: DiagnosticSeverity::ERROR,
+    }
+}
+
+fn source_refusal_diagnostic(message: impl Into<String>) -> Diagnostic {
+    let mut diagnostic = Diagnostic::new_simple(lsp_types::Range::default(), message.into());
+    diagnostic.severity = Some(DiagnosticSeverity::ERROR);
+    diagnostic.source = Some("bsl-ls".to_owned());
+    diagnostic.data = Some(serde_json::json!({
+        "family": "E-LOAD",
+        "precision": "file",
+    }));
+    diagnostic
 }
 
 /// The manifest's own directory (§4.1: "Paths... are relative to THIS
@@ -154,9 +218,12 @@ pub fn content_relative_path(content_root: &Path, uri: &Url) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{diagnose_bsl, FixtureSourceReader};
+    use super::{diagnose_bsl, FixtureSourceReader, SourceReader};
     use crate::content_manifest::ContentSetManifest;
     use lsp_types::Url;
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+    use std::fmt::Write;
     use std::path::Path;
 
     fn uri() -> Url {
@@ -241,5 +308,111 @@ note = "test fixture"
             serde_json::to_string(&second).unwrap()
         );
         assert!(!first.is_empty());
+    }
+
+    fn two_prelude_manifest(preludes: &str) -> ContentSetManifest {
+        let toml = format!(
+            r#"
+schema = 1
+[[set]]
+id = "probe/two-preludes"
+scenario = "scenario.bscn"
+prelude = [{preludes}]
+rules = ["rules/probe.bsl"]
+consumers = []
+note = "ordered prelude fixture"
+"#
+        );
+        ContentSetManifest::parse(Path::new("content-sets.toml"), &toml).expect("valid manifest")
+    }
+
+    fn two_prelude_source() -> FixtureSourceReader {
+        FixtureSourceReader {
+            files: [
+                (
+                    "scenario.bscn".to_owned(),
+                    "(scenario ft/probe (defvocabulary NodeType (SOCIAL_CLASS)) \
+                     (node probe NodeType/SOCIAL_CLASS (social-class/marker ProbeKind/READY)))"
+                        .to_owned(),
+                ),
+                (
+                    "declarations/enum.bscn".to_owned(),
+                    "(defenum ProbeKind (READY))\n".to_owned(),
+                ),
+                (
+                    "declarations/field.bscn".to_owned(),
+                    "(deffield social-class/marker enum ProbeKind)\n".to_owned(),
+                ),
+                (
+                    "rules/probe.bsl".to_owned(),
+                    RULE.replace(
+                        ":fuel 16 (bindings)",
+                        ":fuel 16 (domain NodeType/SOCIAL_CLASS) (bindings)",
+                    ),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        }
+    }
+
+    #[test]
+    fn ordered_diagnostics_compose_every_declared_prelude() {
+        let ordered =
+            two_prelude_manifest("\"declarations/enum.bscn\", \"declarations/field.bscn\"");
+        let source = two_prelude_source();
+        let ordered_diagnostics = diagnose_bsl(&uri(), "rules/probe.bsl", &ordered, &source);
+        assert!(
+            ordered_diagnostics.is_empty(),
+            "both sources in declared order must satisfy the real loader: {ordered_diagnostics:?}"
+        );
+
+        let reversed =
+            two_prelude_manifest("\"declarations/field.bscn\", \"declarations/enum.bscn\"");
+        assert!(
+            !diagnose_bsl(&uri(), "rules/probe.bsl", &reversed, &source).is_empty(),
+            "reversing the dependency order must fail"
+        );
+
+        let mut missing = two_prelude_source();
+        missing.files.remove("declarations/field.bscn");
+        let diagnostics = diagnose_bsl(&uri(), "rules/probe.bsl", &ordered, &missing);
+        assert_eq!(diagnostics.len(), 1);
+        assert!(diagnostics[0].message.contains("declarations/field.bscn"));
+    }
+
+    struct RecordingReader {
+        files: HashMap<String, String>,
+        reads: RefCell<Vec<String>>,
+    }
+
+    impl SourceReader for RecordingReader {
+        fn read(&self, content_relative_path: &str) -> Option<String> {
+            self.reads
+                .borrow_mut()
+                .push(content_relative_path.to_owned());
+            self.files.get(content_relative_path).cloned()
+        }
+    }
+
+    #[test]
+    fn seventeen_preludes_refuse_before_the_first_source_read() {
+        let mut paths = String::new();
+        for index in 0..17 {
+            if index > 0 {
+                paths.push_str(", ");
+            }
+            write!(&mut paths, "\"declarations/{index}.bscn\"")
+                .expect("writing to a String cannot fail");
+        }
+        let manifest = two_prelude_manifest(&paths);
+        let source = RecordingReader {
+            files: HashMap::new(),
+            reads: RefCell::new(Vec::new()),
+        };
+        let diagnostics = diagnose_bsl(&uri(), "rules/probe.bsl", &manifest, &source);
+        assert_eq!(diagnostics.len(), 1);
+        assert!(diagnostics[0].message.contains("at most 16"));
+        assert!(source.reads.borrow().is_empty());
     }
 }

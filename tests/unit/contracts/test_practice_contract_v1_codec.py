@@ -107,6 +107,23 @@ def test_shared_corpus_is_bounded_and_consumable() -> None:
     assert len({case.case_id for case in cases}) == len(cases)
 
 
+def test_organization_practice_prelude_vector_pins_raw_bytes_and_digest() -> None:
+    cases = _cases_by_kind("organization-practice-prelude")
+    assert len(cases) == 1
+    raw = bytes.fromhex(cases[0].data["raw_hex"])
+    prelude = (
+        ROOT
+        / "rust"
+        / "crates"
+        / "babylon-tick"
+        / "content"
+        / "declarations"
+        / "organization-practice.bscn"
+    ).read_bytes()
+    assert raw == prelude
+    assert sha256(raw).hexdigest() == cases[0].data["digest_hex"]
+
+
 def _cases_by_kind(kind: str) -> tuple[PracticeVectorCaseV1, ...]:
     return tuple(
         case for case in parse_vector_corpus(VECTOR_PATH.read_bytes()) if case.kind == kind

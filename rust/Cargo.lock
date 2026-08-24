@@ -446,6 +446,7 @@ dependencies = [
  "babylon-bsl",
  "babylon-graph",
  "babylon-kernel",
+ "babylon-practice-contract",
  "serde",
  "serde_json",
 ]

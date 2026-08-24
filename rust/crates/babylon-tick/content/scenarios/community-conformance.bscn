@@ -81,9 +81,6 @@
   (defenum CommunityType
     (SETTLER PATRIARCHAL NEW_AFRIKAN FIRST_NATIONS CHICANO WOMEN TRANS
      DISABLED QUEER UNDOCUMENTED INCARCERATED YOUTH ADULT ELDER))
-  ; ConsciousnessTendency: models/enums/consciousness.py:82-85 verbatim.
-  (defenum ConsciousnessTendency (LIBERAL FASCIST REVOLUTIONARY))
-
   ; ---- deffields ----
   ; The §3.7a anchor: bound by every carrier-subject rule, never read
   ; again (control-ratio.bsl:277's "SUBJECT-TYPE ANCHOR ONLY" pattern).
@@ -92,9 +89,6 @@
   ; c09/c10's per-class accumulator (real: a product of per-community
   ; modifiers, not [0,1]-bounded — formulas/community.py:164-174).
   (deffield social-class/community-cost-modifier real intensive)
-  (deffield organization/cadre-level probability intensive)
-  (deffield organization/cohesion probability intensive)
-  (deffield organization/consciousness-tendency enum ConsciousnessTendency)
   ; The hyperedge own-fields (Task 5 storage, Task 6 surface).
   (deffield community/kind enum CommunityType)
   (deffield community/heat intensity intensive)

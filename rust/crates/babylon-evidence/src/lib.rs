@@ -2,9 +2,14 @@
 #![forbid(unsafe_code)]
 #![warn(clippy::pedantic)]
 
+mod classifier;
 mod digest;
 mod wire;
 
+pub use classifier::{
+    classify_persistence, classify_sfs, PersistenceClass, PersistenceClassError, SfsClass,
+    SfsClassError,
+};
 pub use digest::{record_digest, Digest32, RecordDigest};
 pub use wire::{
     canonical_envelope, decode_envelope, PayloadCursor, PayloadEncoder, SfsWireError, T3Record,

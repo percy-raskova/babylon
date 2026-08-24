@@ -1035,3 +1035,8 @@ decisions:
     status: accepted
     date: '2026-08-23'
     file: ADR224_bsl_causal_composition_contract.yaml
+  ADR225_relational_territory_dossier_contract:
+    title: 'Relational Territory Dossier V1 is a language-neutral administrative projection contract, not a live game or persistence boundary'
+    status: accepted
+    date: '2026-08-23'
+    file: ADR225_relational_territory_dossier_contract.yaml

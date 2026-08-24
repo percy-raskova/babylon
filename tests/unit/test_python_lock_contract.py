@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+_DIAGNOSTIC_OUTPUT_LIMIT = 1_000
 
 
 def _archive_member(member: tarfile.TarInfo, destination: str) -> tarfile.TarInfo | None:
@@ -33,16 +34,89 @@ def _extract_archive(ref: str, destination: Path) -> None:
         tar.extractall(destination, filter=_archive_member)  # noqa: S202 -- filtered archive
 
 
+def _subprocess_diagnostics(result: subprocess.CompletedProcess[str]) -> str:
+    """Describe a subprocess result with bounded stdout and stderr."""
+    stdout = result.stdout or ""
+    stderr = result.stderr or ""
+    if len(stdout) > _DIAGNOSTIC_OUTPUT_LIMIT:
+        stdout = f"{stdout[:_DIAGNOSTIC_OUTPUT_LIMIT]}\n[truncated]"
+    if len(stderr) > _DIAGNOSTIC_OUTPUT_LIMIT:
+        stderr = f"{stderr[:_DIAGNOSTIC_OUTPUT_LIMIT]}\n[truncated]"
+    return f"stdout:\n{stdout}\nstderr:\n{stderr}"
+
+
 def _pinned_uv() -> str:
     """Return the repository-managed uv binary before entering the archive."""
-    result = subprocess.run(  # noqa: S603
-        ["mise", "which", "uv"],  # noqa: S607
-        cwd=REPOSITORY_ROOT,
-        capture_output=True,
-        text=True,
-        check=True,
+    try:
+        result = subprocess.run(  # noqa: S603
+            ["mise", "which", "uv"],  # noqa: S607
+            cwd=REPOSITORY_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        pytest.fail(
+            "repository-managed uv requires `mise`; install mise or expose it on PATH before "
+            "running the lock contract"
+        )
+    assert result.returncode == 0, (
+        f"mise which uv failed (exit {result.returncode})\n{_subprocess_diagnostics(result)}"
     )
-    return result.stdout.strip()
+    uv_path = result.stdout.strip()
+    assert uv_path, f"mise which uv returned no executable path\n{_subprocess_diagnostics(result)}"
+    return uv_path
+
+
+def test_pinned_uv_fails_actionably_when_mise_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The required pinned-toolchain lookup must not degrade into a skip."""
+
+    def missing_mise(*_args: object, **_kwargs: object) -> None:
+        raise FileNotFoundError("mise is absent")
+
+    monkeypatch.setattr(subprocess, "run", missing_mise)
+
+    with pytest.raises(pytest.fail.Exception, match="repository-managed uv"):
+        _pinned_uv()
+
+
+def test_pinned_uv_failure_shows_bounded_combined_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed lookup reports both streams without dumping unbounded output."""
+    result = subprocess.CompletedProcess(
+        ["mise", "which", "uv"],
+        returncode=17,
+        stdout="mise stdout: " + "x" * 4096,
+        stderr="mise stderr: " + "y" * 4096,
+    )
+    monkeypatch.setattr(subprocess, "run", lambda *_args, **_kwargs: result)
+
+    with pytest.raises(AssertionError) as failure:
+        _pinned_uv()
+
+    message = str(failure.value)
+    assert "mise which uv failed (exit 17)" in message
+    assert "stdout:" in message and "mise stdout:" in message
+    assert "stderr:" in message and "mise stderr:" in message
+    assert "[truncated]" in message
+    assert len(message) < 3_000
+
+
+def test_pinned_uv_rejects_empty_mise_output(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A successful lookup still needs to return an executable path."""
+    result = subprocess.CompletedProcess(
+        ["mise", "which", "uv"],
+        returncode=0,
+        stdout=" \n",
+        stderr="mise stderr",
+    )
+    monkeypatch.setattr(subprocess, "run", lambda *_args, **_kwargs: result)
+
+    with pytest.raises(AssertionError, match="returned no executable path"):
+        _pinned_uv()
 
 
 def _run_archive_lock_check(ref: str) -> subprocess.CompletedProcess[str]:
@@ -70,7 +144,9 @@ def test_pinned_uv_validates_an_isolated_archive_without_a_hypergraph_sibling() 
     ref = os.environ.get("BABYLON_LOCK_CONTRACT_REF", "HEAD")
     result = _run_archive_lock_check(ref)
 
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == 0, (
+        f"uv lock --check failed (exit {result.returncode})\n{_subprocess_diagnostics(result)}"
+    )
 
 
 def test_archive_lock_check_unsets_uv_frozen(
@@ -87,5 +163,7 @@ def test_archive_lock_check_unsets_uv_frozen(
 
     result = _run_archive_lock_check("HEAD")
 
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == 0, (
+        f"uv lock --check failed (exit {result.returncode})\n{_subprocess_diagnostics(result)}"
+    )
     assert captured_environment.read_text() == "absent"

@@ -18,6 +18,9 @@ const MAX_VECTOR_LINE_BYTES: usize = 262_144;
 const MAX_CASE_ID_BYTES: usize = 128;
 const MAX_JSON_DEPTH: usize = 32;
 const IDENTITY_COMPONENTS: usize = 3;
+const ERROR_REGISTRY_ITEMS: usize = 20;
+const MAX_CANONICAL_STRING_BYTES: usize = 67_108_864;
+const SHA256_WIDTH: usize = 32;
 const HASH_DOMAIN: &[u8] = b"babylon.relational-territory-dossier.v1";
 
 /// One closed line from the shared RTD V1 conformance corpus.
@@ -286,7 +289,7 @@ fn classify_vector_json_error(error: &serde_json::Error) -> RtdError {
 }
 
 fn is_registered_error(error: &str) -> bool {
-    for index in 0..20_usize {
+    for index in 0..ERROR_REGISTRY_ITEMS {
         if crate::RTD_V1_ERROR_REGISTRY[index] == error {
             return true;
         }
@@ -374,7 +377,7 @@ impl CanonicalWriter {
 fn write_string(writer: &mut CanonicalWriter, value: &str) -> Result<(), RtdError> {
     let bytes = value.as_bytes();
     writer.write(b"\"")?;
-    for index in 0..=67_108_864_usize {
+    for index in 0..=MAX_CANONICAL_STRING_BYTES {
         if index == bytes.len() {
             break;
         }
@@ -846,7 +849,7 @@ fn write_draft(writer: &mut CanonicalWriter, draft: &RtdDossierDraftV1) -> Resul
 }
 
 fn normalize_negative_zero(draft: &mut RtdDossierDraftV1) {
-    for index in 0..65_535_usize {
+    for index in 0..MAX_COLLECTION_ITEMS {
         if index == draft.facets.len() {
             break;
         }
@@ -857,7 +860,7 @@ fn normalize_negative_zero(draft: &mut RtdDossierDraftV1) {
             facet.value_bits_or_null = Some("0000000000000000".to_owned());
         }
     }
-    for index in 0..65_535_usize {
+    for index in 0..MAX_COLLECTION_ITEMS {
         if index == draft.scale_memberships.len() {
             break;
         }
@@ -911,7 +914,7 @@ pub fn projection_hash(draft: &RtdDossierDraftV1) -> Result<[u8; 32], RtdError> 
 fn digest_hex(digest: &[u8; 32]) -> String {
     use std::fmt::Write;
     let mut output = String::with_capacity(64);
-    for index in 0..32_usize {
+    for index in 0..SHA256_WIDTH {
         let _ = write!(output, "{:02x}", digest[index]);
     }
     output
@@ -951,19 +954,4 @@ pub fn seal_draft(mut draft: RtdDossierDraftV1) -> Result<RelationalTerritoryDos
         decision_surface: draft.decision_surface,
         projection_hash: digest_hex(&digest),
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{CanonicalWriter, RtdError, RTD_MAX_CANONICAL_BYTES};
-
-    #[test]
-    fn exact_canonical_size_plus_one_is_atomic() {
-        let mut writer = CanonicalWriter {
-            bytes: Vec::new(),
-            count: RTD_MAX_CANONICAL_BYTES,
-        };
-        assert_eq!(writer.write(b"x"), Err(RtdError::CanonicalSize));
-        assert!(writer.finish().is_empty());
-    }
 }

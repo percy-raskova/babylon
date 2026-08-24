@@ -13,6 +13,7 @@ import re
 import unicodedata
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from io import BytesIO
 from itertools import islice
 from typing import Final
 
@@ -1331,8 +1332,8 @@ def parse_vector_corpus(payload: bytes) -> tuple[RtdVectorCaseV1, ...]:
         raise _fail("RTD_VECTOR_LIMIT")
     output: list[RtdVectorCaseV1] = []
     seen: set[str] = set()
-    lines = payload.splitlines(keepends=True)
-    for line_index, line in enumerate(islice(lines, RTD_MAX_VECTOR_LINES + 1)):
+    line_source = BytesIO(payload)
+    for line_index, line in enumerate(islice(line_source, RTD_MAX_VECTOR_LINES + 1)):
         if line_index == RTD_MAX_VECTOR_LINES:
             raise _fail("RTD_VECTOR_LIMIT")
         case = _parse_vector_line(line)

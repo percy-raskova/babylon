@@ -1248,6 +1248,30 @@ def test_generated_python_unsigned_fields_accept_exact_boundaries() -> None:
     ("python_exists", "rust_exists"),
     ((False, False), (False, True), (True, False), (True, True)),
 )
+def test_two_output_publication_success_replaces_both_and_cleans_private_artifacts(
+    tmp_path: Path,
+    python_exists: bool,
+    rust_exists: bool,
+) -> None:
+    python_path = tmp_path / "generated.py"
+    rust_path = tmp_path / "generated.rs"
+    if python_exists:
+        python_path.write_bytes(b"old python generation\n")
+    if rust_exists:
+        rust_path.write_bytes(b"old rust generation\n")
+
+    generator._write_outputs(python_path, "new python\n", rust_path, "new rust\n")
+
+    assert python_path.read_bytes() == b"new python\n"
+    assert rust_path.read_bytes() == b"new rust\n"
+    assert not tuple(tmp_path.glob(".generated.py.*"))
+    assert not tuple(tmp_path.glob(".generated.rs.*"))
+
+
+@pytest.mark.parametrize(
+    ("python_exists", "rust_exists"),
+    ((False, False), (False, True), (True, False), (True, True)),
+)
 @pytest.mark.parametrize("failure_index", (1, 2))
 def test_two_output_publication_failure_restores_every_original_existence_combination(
     tmp_path: Path,
@@ -1265,17 +1289,17 @@ def test_two_output_publication_failure_restores_every_original_existence_combin
     if rust_exists:
         rust_path.write_bytes(old_rust)
 
-    real_replace = os.replace
-    replace_count = 0
+    real_publish = generator._publish_output
+    publication_count = 0
 
-    def fail_publication(source: Any, destination: Any) -> None:
-        nonlocal replace_count
-        replace_count += 1
-        if replace_count == failure_index:
+    def fail_publication(state: Any) -> None:
+        nonlocal publication_count
+        publication_count += 1
+        real_publish(state)
+        if publication_count == failure_index:
             raise OSError(f"injected publication failure {failure_index}")
-        real_replace(source, destination)
 
-    monkeypatch.setattr(os, "replace", fail_publication)
+    monkeypatch.setattr(generator, "_publish_output", fail_publication)
     with pytest.raises(OSError, match=f"injected publication failure {failure_index}"):
         generator._write_outputs(python_path, "new python\n", rust_path, "new rust\n")
 
@@ -1291,8 +1315,146 @@ def test_two_output_publication_failure_restores_every_original_existence_combin
     assert not tuple(tmp_path.glob(".generated.rs.*"))
 
 
+@pytest.mark.parametrize(
+    ("target_index", "target_label"),
+    ((1, "Python"), (2, "Rust")),
+)
+def test_prepublication_concurrent_create_never_overwrites_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    target_index: int,
+    target_label: str,
+) -> None:
+    python_path = tmp_path / "generated.py"
+    rust_path = tmp_path / "generated.rs"
+    target_path = python_path if target_index == 1 else rust_path
+    other_path = rust_path if target_index == 1 else python_path
+    concurrent_bytes = f"concurrent {target_label.lower()} create\n".encode()
+    real_publish = generator._publish_output
+    publication_count = 0
+
+    def race_before_publication(state: Any) -> None:
+        nonlocal publication_count
+        publication_count += 1
+        if publication_count == target_index:
+            target_path.write_bytes(concurrent_bytes)
+        real_publish(state)
+
+    monkeypatch.setattr(generator, "_publish_output", race_before_publication)
+    with pytest.raises(
+        OSError,
+        match=rf"RTD_OUTPUT_CAS: {target_label} target was created after snapshot",
+    ) as error:
+        generator._write_outputs(python_path, "new python\n", rust_path, "new rust\n")
+
+    assert target_path.read_bytes() == concurrent_bytes
+    assert str(target_path) in str(error.value)
+    assert not other_path.exists()
+
+
+@pytest.mark.parametrize(
+    ("target_index", "target_label"),
+    ((1, "Python"), (2, "Rust")),
+)
+def test_existing_output_publication_no_clobber_preserves_late_create(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    target_index: int,
+    target_label: str,
+) -> None:
+    python_path = tmp_path / "generated.py"
+    rust_path = tmp_path / "generated.rs"
+    original_python = b"original python generation\n"
+    original_rust = b"original rust generation\n"
+    python_path.write_bytes(original_python)
+    rust_path.write_bytes(original_rust)
+    target_path = python_path if target_index == 1 else rust_path
+    other_path = rust_path if target_index == 1 else python_path
+    target_original = original_python if target_index == 1 else original_rust
+    other_original = original_rust if target_index == 1 else original_python
+    concurrent_bytes = f"late {target_label.lower()} create\n".encode()
+    real_link_staged = generator._link_staged_output
+
+    def race_after_isolation(state: Any) -> None:
+        if state.label == target_label:
+            target_path.write_bytes(concurrent_bytes)
+        real_link_staged(state)
+
+    monkeypatch.setattr(generator, "_link_staged_output", race_after_isolation)
+    with pytest.raises(
+        OSError,
+        match=rf"RTD_OUTPUT_CAS: {target_label} target was created after snapshot",
+    ) as error:
+        generator._write_outputs(python_path, "new python\n", rust_path, "new rust\n")
+
+    assert target_path.read_bytes() == concurrent_bytes
+    assert other_path.read_bytes() == other_original
+    recovery_marker = "original output recovery preserved at "
+    recovery_path_text = str(error.value).split(recovery_marker, 1)[1].split(";", 1)[0]
+    recovery_path = Path(recovery_path_text)
+    assert recovery_path.read_bytes() == target_original
+
+
+@pytest.mark.parametrize(
+    ("target_index", "target_label"),
+    ((1, "Python"), (2, "Rust")),
+)
+@pytest.mark.parametrize("replace_inode", (False, True), ids=("same-inode", "replacement-inode"))
+def test_prepublication_concurrent_update_never_overwrites_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    target_index: int,
+    target_label: str,
+    replace_inode: bool,
+) -> None:
+    python_path = tmp_path / "generated.py"
+    rust_path = tmp_path / "generated.rs"
+    original_python = b"original python generation\n"
+    original_rust = b"original rust generation\n"
+    python_path.write_bytes(original_python)
+    rust_path.write_bytes(original_rust)
+    target_path = python_path if target_index == 1 else rust_path
+    other_path = rust_path if target_index == 1 else python_path
+    target_original = original_python if target_index == 1 else original_rust
+    other_original = original_rust if target_index == 1 else original_python
+    concurrent_bytes = f"concurrent {target_label.lower()} update\n".encode()
+    concurrent_path = tmp_path / f"concurrent-{target_label.lower()}"
+    real_publish = generator._publish_output
+    publication_count = 0
+
+    def race_before_publication(state: Any) -> None:
+        nonlocal publication_count
+        publication_count += 1
+        if publication_count == target_index:
+            if replace_inode:
+                concurrent_path.write_bytes(concurrent_bytes)
+                os.replace(concurrent_path, target_path)
+            else:
+                target_path.write_bytes(concurrent_bytes)
+        real_publish(state)
+
+    monkeypatch.setattr(generator, "_publish_output", race_before_publication)
+    with pytest.raises(
+        OSError,
+        match=rf"RTD_OUTPUT_CAS: {target_label} target changed after snapshot",
+    ) as error:
+        generator._write_outputs(python_path, "new python\n", rust_path, "new rust\n")
+
+    assert target_path.read_bytes() == concurrent_bytes
+    assert str(target_path) in str(error.value)
+    assert other_path.read_bytes() == other_original
+    recovery_marker = "original recovery snapshot preserved at "
+    recovery_path_text = str(error.value).split(recovery_marker, 1)[1].split(";", 1)[0]
+    recovery_path = Path(recovery_path_text)
+    assert recovery_path.read_bytes() == target_original
+    displaced_marker = "displaced output preserved at "
+    displaced_path_text = str(error.value).split(displaced_marker, 1)[1].split(";", 1)[0]
+    displaced_path = Path(displaced_path_text)
+    assert displaced_path.read_bytes() == concurrent_bytes
+
+
 @pytest.mark.parametrize("restoration_failure_index", (1, 2))
-def test_rollback_preserves_only_the_failed_restoration_backup(
+def test_rollback_preserves_failed_restoration_recovery(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     restoration_failure_index: int,
@@ -1304,32 +1466,32 @@ def test_rollback_preserves_only_the_failed_restoration_backup(
     python_path.write_bytes(old_python)
     rust_path.write_bytes(old_rust)
 
-    real_replace = os.replace
+    real_publish = generator._publish_output
     publication_count = 0
 
-    def fail_after_second_publication(source: Any, destination: Any) -> None:
+    def fail_after_second_publication(state: Any) -> None:
         nonlocal publication_count
         publication_count += 1
-        real_replace(source, destination)
+        real_publish(state)
         if publication_count == 2:
             raise OSError("injected post-publication failure")
 
-    real_link = os.link
+    real_restore = generator._restore_original_output
     restoration_count = 0
 
-    def fail_restoration(source: Any, destination: Any) -> None:
+    def fail_restoration(state: Any) -> None:
         nonlocal restoration_count
         restoration_count += 1
         if restoration_count == restoration_failure_index:
             raise OSError(f"injected restoration failure {restoration_failure_index}")
-        real_link(source, destination)
+        real_restore(state)
 
-    monkeypatch.setattr(os, "replace", fail_after_second_publication)
-    monkeypatch.setattr(os, "link", fail_restoration)
+    monkeypatch.setattr(generator, "_publish_output", fail_after_second_publication)
+    monkeypatch.setattr(generator, "_restore_original_output", fail_restoration)
     failed_label = "Python" if restoration_failure_index == 1 else "Rust"
     with pytest.raises(
         OSError,
-        match=rf"RTD_OUTPUT_ROLLBACK: {failed_label} restoration failed; recovery backup preserved at",
+        match=rf"RTD_OUTPUT_ROLLBACK: {failed_label} restoration failed; ",
     ) as error:
         generator._write_outputs(python_path, "new python\n", rust_path, "new rust\n")
 
@@ -1340,54 +1502,76 @@ def test_rollback_preserves_only_the_failed_restoration_backup(
     assert not failed_path.exists()
     assert restored_path.read_bytes() == restored_bytes
     assert not tuple(tmp_path.glob(f".{restored_path.name}.*"))
-    recovery_marker = "recovery backup preserved at "
+    recovery_marker = "original output recovery preserved at "
     recovery_path_text = str(error.value).split(recovery_marker, 1)[1].split(";", 1)[0]
     recovery_path = Path(recovery_path_text)
     assert recovery_path.read_bytes() == failed_bytes
 
 
 @pytest.mark.parametrize(
-    ("concurrent_bytes", "replace_inode"),
-    (
-        (b"unrelated concurrent writer\n", False),
-        (b"new python\n", True),
-    ),
-    ids=("changed-bytes-same-inode", "same-bytes-changed-inode"),
+    ("target_index", "target_label"),
+    ((1, "Python"), (2, "Rust")),
 )
-def test_absent_output_rollback_preserves_a_concurrent_replacement(
+@pytest.mark.parametrize("replace_inode", (False, True), ids=("same-inode", "replacement-inode"))
+def test_absent_output_rollback_preserves_a_concurrent_replacement_for_both_targets(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    concurrent_bytes: bytes,
+    target_index: int,
+    target_label: str,
     replace_inode: bool,
 ) -> None:
     python_path = tmp_path / "generated.py"
     rust_path = tmp_path / "generated.rs"
-    concurrent_path = tmp_path / "concurrent.py"
+    target_path = python_path if target_index == 1 else rust_path
+    other_path = rust_path if target_index == 1 else python_path
+    concurrent_bytes = f"concurrent {target_label.lower()} rollback writer\n".encode()
+    concurrent_path = tmp_path / f"concurrent-{target_label.lower()}"
     concurrent_path.write_bytes(concurrent_bytes)
 
-    real_replace = os.replace
+    real_publish = generator._publish_output
     publication_count = 0
 
-    def replace_with_concurrent_writer(source: Any, destination: Any) -> None:
+    def fail_after_second_publication(state: Any) -> None:
         nonlocal publication_count
         publication_count += 1
+        real_publish(state)
         if publication_count == 2:
-            if replace_inode:
-                real_replace(concurrent_path, python_path)
-            else:
-                python_path.write_bytes(concurrent_bytes)
-            raise OSError("injected second publication failure")
-        real_replace(source, destination)
+            raise OSError("injected post-publication failure")
 
-    monkeypatch.setattr(os, "replace", replace_with_concurrent_writer)
+    real_restore = generator._restore_published_output
+    race_injected = False
+
+    def race_before_rollback(state: Any) -> None:
+        nonlocal race_injected
+        if state.label == target_label and not race_injected:
+            race_injected = True
+            if replace_inode:
+                os.replace(concurrent_path, target_path)
+            else:
+                target_path.write_bytes(concurrent_bytes)
+        real_restore(state)
+
+    monkeypatch.setattr(generator, "_publish_output", fail_after_second_publication)
+    monkeypatch.setattr(generator, "_restore_published_output", race_before_rollback)
     with pytest.raises(
         OSError,
-        match=r"RTD_OUTPUT_ROLLBACK: Python output changed after publication; preserved at",
-    ):
+        match=rf"RTD_OUTPUT_ROLLBACK: {target_label} published output changed before rollback",
+    ) as error:
         generator._write_outputs(python_path, "new python\n", rust_path, "new rust\n")
 
-    assert python_path.read_bytes() == concurrent_bytes
-    assert not rust_path.exists()
+    assert target_path.read_bytes() == concurrent_bytes
+    assert str(target_path) in str(error.value)
+    assert not other_path.exists()
+    displaced_marker = "displaced output preserved at "
+    displaced_path_text = str(error.value).split(displaced_marker, 1)[1].split(";", 1)[0]
+    displaced_path = Path(displaced_path_text)
+    assert displaced_path.read_bytes() == concurrent_bytes
+    if replace_inode:
+        recovery_marker = "published generation preserved at "
+        recovery_path_text = str(error.value).split(recovery_marker, 1)[1].split(";", 1)[0]
+        recovery_path = Path(recovery_path_text)
+        expected_generation = b"new python\n" if target_index == 1 else b"new rust\n"
+        assert recovery_path.read_bytes() == expected_generation
 
 
 def _canonical_document() -> dict[str, Any]:

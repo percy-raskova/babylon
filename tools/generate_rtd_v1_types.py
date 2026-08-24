@@ -2252,14 +2252,6 @@ def _stage_output(path: Path, content: str) -> Path:
     return _stage_bytes(path, content.encode("utf-8"))
 
 
-def _snapshot_output(path: Path) -> Path | None:
-    try:
-        content = path.read_bytes()
-    except FileNotFoundError:
-        return None
-    return _stage_bytes(path, content)
-
-
 @dataclass(frozen=True, slots=True)
 class _FileFingerprint:
     device: int
@@ -2269,15 +2261,32 @@ class _FileFingerprint:
     sha256: bytes
 
 
+@dataclass(frozen=True, slots=True)
+class _OutputSnapshot:
+    existed: bool
+    fingerprint: _FileFingerprint | None
+    backup: Path | None
+    backup_fingerprint: _FileFingerprint | None
+
+
+@dataclass(frozen=True, slots=True)
+class _IsolatedOutput:
+    path: Path
+    fingerprint: _FileFingerprint
+
+
 @dataclass(slots=True)
 class _OutputPublication:
     label: str
     path: Path
     staged: Path
     staged_fingerprint: _FileFingerprint
-    backup: Path | None = None
+    snapshot: _OutputSnapshot | None = None
+    original_isolated: _IsolatedOutput | None = None
     published: bool = False
+    staged_redundant: bool = False
     backup_redundant: bool = False
+    preserve_snapshot: bool = False
 
 
 def _fingerprint_output(path: Path) -> _FileFingerprint:
@@ -2298,6 +2307,29 @@ def _fingerprint_output(path: Path) -> _FileFingerprint:
     )
 
 
+def _snapshot_output(path: Path) -> _OutputSnapshot:
+    try:
+        with path.open("rb") as output_file:
+            before = os.fstat(output_file.fileno())
+            content = output_file.read()
+            after = os.fstat(output_file.fileno())
+    except FileNotFoundError:
+        return _OutputSnapshot(False, None, None, None)
+    before_identity = (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
+    after_identity = (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
+    if before_identity != after_identity:
+        raise OSError(f"output changed while snapshotting {path}")
+    fingerprint = _FileFingerprint(
+        device=after.st_dev,
+        inode=after.st_ino,
+        size=after.st_size,
+        modified_ns=after.st_mtime_ns,
+        sha256=hashlib.sha256(content).digest(),
+    )
+    backup = _stage_bytes(path, content)
+    return _OutputSnapshot(True, fingerprint, backup, _fingerprint_output(backup))
+
+
 def _matches_fingerprint(path: Path, expected: _FileFingerprint) -> bool:
     try:
         return _fingerprint_output(path) == expected
@@ -2305,84 +2337,243 @@ def _matches_fingerprint(path: Path, expected: _FileFingerprint) -> bool:
         return False
 
 
-def _recovery_detail(state: _OutputPublication, displaced: Path | None = None) -> str:
+def _same_inode(path: Path, expected: _FileFingerprint) -> bool:
+    try:
+        status = path.stat()
+    except OSError:
+        return False
+    return status.st_dev == expected.device and status.st_ino == expected.inode
+
+
+def _unlink_owned(path: Path, expected: _FileFingerprint, context: str) -> None:
+    if not path.exists():
+        return
+    if not _same_inode(path, expected):
+        raise OSError(f"{context} ownership changed; recovery preserved at {path}")
+    path.unlink()
+
+
+def _snapshot_recovery_detail(state: _OutputPublication) -> str:
+    snapshot = state.snapshot
+    if snapshot is None or snapshot.backup is None or state.backup_redundant:
+        return ""
+    return f"original recovery snapshot preserved at {snapshot.backup}"
+
+
+def _recovery_detail(
+    state: _OutputPublication,
+    displaced: _IsolatedOutput | None = None,
+) -> str:
     evidence: list[str] = []
-    if state.backup is not None:
-        evidence.append(f"recovery backup preserved at {state.backup}")
+    snapshot_detail = _snapshot_recovery_detail(state)
+    if snapshot_detail:
+        evidence.append(snapshot_detail)
+    if state.original_isolated is not None:
+        evidence.append(f"original output recovery preserved at {state.original_isolated.path}")
     if displaced is not None:
-        evidence.append(f"displaced output preserved at {displaced}")
-    elif state.path.exists():
+        evidence.append(f"displaced output preserved at {displaced.path}")
+    if state.path.exists():
         evidence.append(f"output preserved at {state.path}")
     return "; ".join(evidence)
 
 
-def _isolate_published_output(state: _OutputPublication) -> Path:
+def _isolate_output(state: _OutputPublication, purpose: str) -> _IsolatedOutput:
     try:
         quarantine = _stage_bytes(state.path, b"")
     except OSError as error:
         detail = _recovery_detail(state)
-        raise OSError(f"{state.label} rollback staging failed; {detail}") from error
+        raise OSError(f"{state.label} {purpose} staging failed; {detail}") from error
     try:
         placeholder_fingerprint = _fingerprint_output(quarantine)
     except OSError as error:
-        detail = _recovery_detail(state, quarantine)
-        raise OSError(f"{state.label} rollback staging verification failed; {detail}") from error
+        raise OSError(
+            f"{state.label} {purpose} staging verification failed; "
+            f"recovery preserved at {quarantine}"
+        ) from error
     try:
         os.replace(state.path, quarantine)
     except OSError as error:
-        if _matches_fingerprint(quarantine, state.staged_fingerprint):
-            return quarantine
         if _matches_fingerprint(quarantine, placeholder_fingerprint):
             try:
-                quarantine.unlink()
+                _unlink_owned(
+                    quarantine,
+                    placeholder_fingerprint,
+                    f"{state.label} {purpose} placeholder cleanup",
+                )
             except OSError as cleanup_error:
-                detail = _recovery_detail(state, quarantine)
                 raise OSError(
-                    f"{state.label} rollback staging cleanup failed; {detail}"
+                    f"{state.label} {purpose} staging cleanup failed; "
+                    f"recovery preserved at {quarantine}"
                 ) from cleanup_error
             detail = _recovery_detail(state)
-            raise OSError(f"{state.label} rollback isolation failed; {detail}") from error
-        detail = _recovery_detail(state, quarantine)
-        raise OSError(f"{state.label} rollback isolation was indeterminate; {detail}") from error
-    if not _matches_fingerprint(quarantine, state.staged_fingerprint):
-        detail = _recovery_detail(state, quarantine)
-        raise OSError(f"{state.label} output changed during rollback; {detail}")
-    return quarantine
-
-
-def _restore_published_output(state: _OutputPublication) -> None:
-    if not _matches_fingerprint(state.path, state.staged_fingerprint):
-        detail = (
-            f"preserved at {state.path}"
-            if state.backup is None and state.path.exists()
-            else _recovery_detail(state)
-        )
-        raise OSError(f"{state.label} output changed after publication; {detail}")
-
-    quarantine = _isolate_published_output(state)
-
-    if state.backup is not None:
-        try:
-            os.link(state.backup, state.path)
-        except OSError as error:
-            detail = _recovery_detail(state, quarantine)
-            raise OSError(f"{state.label} restoration failed; {detail}") from error
+            suffix = f"; {detail}" if detail else ""
+            raise OSError(
+                f"{state.label} {purpose} isolation failed; output preserved at "
+                f"{state.path}{suffix}"
+            ) from error
     try:
-        quarantine.unlink()
+        fingerprint = _fingerprint_output(quarantine)
     except OSError as error:
-        detail = _recovery_detail(state, quarantine)
-        raise OSError(f"{state.label} rollback cleanup failed; {detail}") from error
+        raise OSError(
+            f"{state.label} {purpose} isolation was indeterminate; "
+            f"recovery preserved at {quarantine}"
+        ) from error
+    return _IsolatedOutput(quarantine, fingerprint)
+
+
+def _restore_isolated_output(
+    state: _OutputPublication,
+    isolated: _IsolatedOutput,
+    context: str,
+    *,
+    cleanup: bool,
+) -> None:
+    try:
+        os.link(isolated.path, state.path)
+    except OSError as error:
+        if not _matches_fingerprint(state.path, isolated.fingerprint):
+            detail = _recovery_detail(state, isolated)
+            raise OSError(f"{state.label} {context} failed; {detail}") from error
+    if not _matches_fingerprint(state.path, isolated.fingerprint):
+        detail = _recovery_detail(state, isolated)
+        raise OSError(f"{state.label} {context} verification failed; {detail}")
+    if cleanup:
+        _unlink_owned(isolated.path, isolated.fingerprint, f"{state.label} {context} cleanup")
+
+
+def _link_staged_output(state: _OutputPublication) -> None:
+    try:
+        os.link(state.staged, state.path)
+    except OSError as error:
+        if _matches_fingerprint(state.path, state.staged_fingerprint):
+            state.published = True
+            raise
+        state.staged_redundant = True
+        if state.path.exists():
+            detail = _recovery_detail(state)
+            suffix = f"; {detail}" if detail else ""
+            raise OSError(
+                f"RTD_OUTPUT_CAS: {state.label} target was created after snapshot; "
+                f"output preserved at {state.path}{suffix}"
+            ) from error
+        raise
+    if not _matches_fingerprint(state.path, state.staged_fingerprint):
+        state.staged_redundant = False
+        raise OSError(
+            f"RTD_OUTPUT_CAS: {state.label} publication verification failed; "
+            f"staged generation preserved at {state.staged}; output preserved at {state.path}"
+        )
+    state.published = True
+
+
+def _publish_existing_output(state: _OutputPublication) -> None:
+    snapshot = state.snapshot
+    if snapshot is None or snapshot.fingerprint is None:
+        raise OSError(f"{state.label} existing-output publication lacks a snapshot")
+    isolated = _isolate_output(state, "publication")
+    if isolated.fingerprint != snapshot.fingerprint:
+        state.preserve_snapshot = True
+        try:
+            _restore_isolated_output(
+                state,
+                isolated,
+                "concurrent-output restoration",
+                cleanup=False,
+            )
+        except OSError as restore_error:
+            detail = _recovery_detail(state, isolated)
+            raise OSError(
+                f"RTD_OUTPUT_CAS: {state.label} target changed after snapshot; {detail}"
+            ) from restore_error
+        state.staged_redundant = True
+        detail = _snapshot_recovery_detail(state)
+        suffix = f"; {detail}" if detail else ""
+        raise OSError(
+            f"RTD_OUTPUT_CAS: {state.label} target changed after snapshot; "
+            f"concurrent output preserved at {state.path}; "
+            f"displaced output preserved at {isolated.path}{suffix}"
+        )
+    state.original_isolated = isolated
+    try:
+        _link_staged_output(state)
+    except OSError:
+        if state.published or state.path.exists():
+            raise
+        try:
+            _restore_original_output(state)
+        except OSError as restore_error:
+            detail = _recovery_detail(state)
+            raise OSError(
+                f"RTD_OUTPUT_CAS: {state.label} publication and restoration failed; {detail}"
+            ) from restore_error
+        state.staged_redundant = True
+        raise
 
 
 def _publish_output(state: _OutputPublication) -> None:
-    try:
-        os.replace(state.staged, state.path)
-    except OSError:
-        state.published = (
-            _matches_fingerprint(state.path, state.staged_fingerprint) or not state.staged.exists()
+    snapshot = state.snapshot
+    if snapshot is None:
+        raise OSError(f"{state.label} publication lacks a snapshot")
+    if snapshot.existed:
+        _publish_existing_output(state)
+        return
+    _link_staged_output(state)
+
+
+def _restore_original_output(state: _OutputPublication) -> None:
+    snapshot = state.snapshot
+    if snapshot is None:
+        raise OSError(f"{state.label} rollback lacks a snapshot")
+    if not snapshot.existed:
+        return
+    original = state.original_isolated
+    if original is None:
+        raise OSError(
+            f"{state.label} restoration lacks isolated original; {_snapshot_recovery_detail(state)}"
         )
-        raise
-    state.published = True
+    _restore_isolated_output(state, original, "original restoration", cleanup=True)
+    state.original_isolated = None
+    state.backup_redundant = True
+
+
+def _restore_published_output(state: _OutputPublication) -> None:
+    displaced = _isolate_output(state, "rollback")
+    if displaced.fingerprint != state.staged_fingerprint:
+        try:
+            _restore_isolated_output(
+                state,
+                displaced,
+                "concurrent-output restoration",
+                cleanup=False,
+            )
+        except OSError as restore_error:
+            detail = _recovery_detail(state, displaced)
+            raise OSError(
+                f"{state.label} published output changed before rollback; {detail}"
+            ) from restore_error
+        if _matches_fingerprint(state.staged, state.staged_fingerprint):
+            staged_detail = f"; published generation preserved at {state.staged}"
+        else:
+            state.staged_redundant = True
+            staged_detail = ""
+        detail = _recovery_detail(state, displaced)
+        suffix = f"; {detail}" if detail else ""
+        raise OSError(
+            f"{state.label} published output changed before rollback; "
+            f"concurrent output preserved at {state.path}{staged_detail}{suffix}"
+        )
+    try:
+        _restore_original_output(state)
+    except OSError as error:
+        detail = _recovery_detail(state, displaced)
+        raise OSError(f"{state.label} restoration failed; {detail}") from error
+    _unlink_owned(
+        displaced.path,
+        displaced.fingerprint,
+        f"{state.label} displaced-publication cleanup",
+    )
+    state.published = False
+    state.staged_redundant = True
 
 
 def _rollback_outputs(states: tuple[_OutputPublication, _OutputPublication]) -> None:
@@ -2390,7 +2581,9 @@ def _rollback_outputs(states: tuple[_OutputPublication, _OutputPublication]) -> 
     for state_index in range(RTD_OUTPUT_COUNT):
         state = states[state_index]
         if not state.published:
-            state.backup_redundant = True
+            state.staged_redundant = True
+            if state.original_isolated is None and not state.preserve_snapshot:
+                state.backup_redundant = True
             continue
         try:
             _restore_published_output(state)
@@ -2424,11 +2617,15 @@ def _write_outputs(
         raise
     try:
         try:
-            states[0].backup = _snapshot_output(python_path)
-            states[1].backup = _snapshot_output(rust_path)
+            states[0].snapshot = _snapshot_output(python_path)
+            states[1].snapshot = _snapshot_output(rust_path)
         except OSError:
-            states[0].backup_redundant = True
-            states[1].backup_redundant = True
+            states[0].staged_redundant = True
+            states[1].staged_redundant = True
+            if states[0].snapshot is not None:
+                states[0].backup_redundant = True
+            if states[1].snapshot is not None:
+                states[1].backup_redundant = True
             raise
         try:
             _publish_output(states[0])
@@ -2439,14 +2636,38 @@ def _write_outputs(
             except OSError as rollback_error:
                 raise rollback_error from publish_error
             raise
-        states[0].backup_redundant = True
-        states[1].backup_redundant = True
+        for state_index in range(RTD_OUTPUT_COUNT):
+            state = states[state_index]
+            state.staged_redundant = True
+            state.backup_redundant = True
+            if state.original_isolated is not None:
+                _unlink_owned(
+                    state.original_isolated.path,
+                    state.original_isolated.fingerprint,
+                    f"{state.label} original-recovery cleanup",
+                )
+                state.original_isolated = None
     finally:
         for state_index in range(RTD_OUTPUT_COUNT):
             state = states[state_index]
-            state.staged.unlink(missing_ok=True)
-            if state.backup is not None and state.backup_redundant:
-                state.backup.unlink(missing_ok=True)
+            if state.staged_redundant:
+                _unlink_owned(
+                    state.staged,
+                    state.staged_fingerprint,
+                    f"{state.label} staged-output cleanup",
+                )
+            snapshot = state.snapshot
+            if (
+                snapshot is not None
+                and snapshot.backup is not None
+                and snapshot.backup_fingerprint is not None
+                and state.backup_redundant
+            ):
+                _unlink_owned(
+                    snapshot.backup,
+                    snapshot.backup_fingerprint,
+                    f"{state.label} snapshot cleanup",
+                )
 
 
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:

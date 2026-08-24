@@ -1919,6 +1919,7 @@ name = "bsl-lint"
 version = "0.1.0"
 dependencies = [
  "babylon-bsl",
+ "babylon-kernel",
  "proc-macro2",
  "regex",
  "syn 2.0.119",

@@ -452,6 +452,67 @@ fn dependency_count_max_passes_and_plus_one_refuses() {
 }
 
 #[test]
+fn resolved_local_edge_max_passes_and_shared_plus_one_refuses() {
+    let scratch = ScratchRoot::new("edge-count");
+    let mut names = vec!["babylon-tick".to_owned(), "babylon-evidence".to_owned()];
+    for index in 0..29 {
+        names.push(format!("helper-{index:02}"));
+    }
+    let borrowed = names.iter().map(String::as_str).collect::<Vec<_>>();
+    write_minimal_workspace(&scratch.0, &borrowed);
+    let mut edge_count = 0_usize;
+    for source_index in 0..30 {
+        let source = if source_index == 0 {
+            "babylon-tick"
+        } else {
+            &names[source_index + 1]
+        };
+        let requested = if source_index < 28 {
+            9
+        } else if source_index == 28 {
+            4
+        } else {
+            0
+        };
+        let mut manifest =
+            format!("[package]\nname = \"{source}\"\nversion = \"0.0.0\"\n\n[dependencies]\n");
+        for target_offset in 0..9 {
+            if target_offset >= requested {
+                break;
+            }
+            let target_index = (source_index + target_offset + 1) % 30;
+            let target = if target_index == 0 {
+                "babylon-tick"
+            } else {
+                &names[target_index + 1]
+            };
+            manifest.push_str(&format!(
+                "edge-{target_offset} = {{ package = \"{target}\", path = \"../{target}\" }}\n"
+            ));
+            edge_count = edge_count.saturating_add(1);
+        }
+        write_file(
+            &scratch.0.join(format!("crates/{source}/Cargo.toml")),
+            manifest.as_bytes(),
+        );
+    }
+    assert_eq!(edge_count, 256);
+    let (code, report) = run_root(&scratch.0);
+    assert_eq!(code, 0, "256 resolved local edges must pass:\n{report}");
+
+    let overflow_path = scratch.0.join("crates/helper-28/Cargo.toml");
+    let mut overflow = std::fs::read_to_string(&overflow_path).expect("overflow manifest");
+    overflow.push_str("overflow = { package = \"babylon-tick\", path = \"../babylon-tick\" }\n");
+    write_file(&overflow_path, overflow.as_bytes());
+    let (code, report) = run_root(&scratch.0);
+    assert_eq!(code, 2);
+    assert!(
+        report.contains("dependency entry count exceeds 256"),
+        "{report}"
+    );
+}
+
+#[test]
 fn dev_and_build_dependency_tables_are_closed_too() {
     let scratch = ScratchRoot::new("dependency-sections");
     write_minimal_workspace(&scratch.0, &["babylon-tick", "babylon-evidence"]);
@@ -566,6 +627,19 @@ fn semantic_sexpr_depth_max_passes_and_plus_one_refuses() {
 }
 
 #[test]
+fn field_of_inspects_the_production_qname_operand() {
+    let scratch = ScratchRoot::new("field-of-qname");
+    write_minimal_workspace(&scratch.0, &["babylon-bsl", "babylon-evidence"]);
+    write_file(
+        &scratch.0.join("crates/babylon-bsl/src/query.bsl"),
+        b"(defrule query\n  (let ((value (field-of it sfs/aggregate)))\n    value))\n",
+    );
+    let (code, report) = run_root(&scratch.0);
+    assert_eq!(code, 1, "production-shaped field-of must fail:\n{report}");
+    assert!(report.contains("sfs/aggregate"), "{report}");
+}
+
+#[test]
 fn rust_token_and_stack_max_passes_and_plus_one_refuses() {
     let scratch = ScratchRoot::new("rust-token-count");
     write_minimal_workspace(&scratch.0, &["babylon-tick", "babylon-evidence"]);
@@ -584,6 +658,30 @@ fn rust_token_and_stack_max_passes_and_plus_one_refuses() {
     let (code, report) = run_root(&scratch.0);
     assert_eq!(code, 2);
     assert!(report.contains("token tree 65537"), "{report}");
+}
+
+#[test]
+fn rust_explicit_stack_max_passes_and_plus_one_refuses_before_walk() {
+    let scratch = ScratchRoot::new("rust-stack-count");
+    write_minimal_workspace(&scratch.0, &["babylon-tick", "babylon-evidence"]);
+    let source_path = scratch.0.join("crates/babylon-tick/src/lib.rs");
+    let mut source = String::new();
+    for _index in 0..21_844 {
+        source.push_str("struct A;\n");
+    }
+    source.push_str("fn a() {}\n");
+    write_file(&source_path, source.as_bytes());
+    let (code, report) = run_root(&scratch.0);
+    assert_eq!(code, 0, "65,536 initial stack entries must pass:\n{report}");
+
+    source.push(';');
+    write_file(&source_path, source.as_bytes());
+    let (code, report) = run_root(&scratch.0);
+    assert_eq!(code, 2);
+    assert!(
+        report.contains("Rust token stack exceeds 65536"),
+        "{report}"
+    );
 }
 
 #[test]
@@ -625,6 +723,20 @@ fn reader_nesting_plus_one_is_a_typed_refusal() {
 }
 
 #[test]
+fn reader_nesting_exact_max_passes_before_semantic_preflight() {
+    let source = format!("{}x{}\n", "(".repeat(512), ")".repeat(512));
+    assert!(
+        babylon_bsl::read_all(source.as_bytes()).is_ok(),
+        "reader depth 512 must remain admitted"
+    );
+    let overflow = format!("{}x{}\n", "(".repeat(513), ")".repeat(513));
+    assert!(
+        babylon_bsl::read_all(overflow.as_bytes()).is_err(),
+        "reader depth 513 must remain refused"
+    );
+}
+
+#[test]
 fn directory_and_source_path_maxima_refuse_only_plus_one() {
     let scratch = ScratchRoot::new("filesystem-bounds");
     write_minimal_workspace(&scratch.0, &["babylon-tick", "babylon-evidence"]);
@@ -656,6 +768,29 @@ fn directory_and_source_path_maxima_refuse_only_plus_one() {
     let (code, report) = run_root(&scratch.0);
     assert_eq!(code, 2);
     assert!(report.contains("source path 4097 exceeds 4096"), "{report}");
+}
+
+#[test]
+fn directory_entry_max_passes_and_plus_one_refuses() {
+    let scratch = ScratchRoot::new("directory-entries");
+    write_minimal_workspace(&scratch.0, &["babylon-tick", "babylon-evidence"]);
+    let tick_root = scratch.0.join("crates/babylon-tick");
+    for index in 0..16_383 {
+        write_file(&tick_root.join(format!("entry-{index:05}.txt")), b"");
+    }
+    let (code, report) = run_root(&scratch.0);
+    assert_eq!(
+        code, 0,
+        "16,384 entries including Cargo.toml pass:\n{report}"
+    );
+
+    write_file(&tick_root.join("entry-overflow.txt"), b"");
+    let (code, report) = run_root(&scratch.0);
+    assert_eq!(code, 2);
+    assert!(
+        report.contains("directory entry 16385 exceeds 16384"),
+        "{report}"
+    );
 }
 
 #[test]
@@ -720,6 +855,95 @@ fn only_the_exact_digest_pinned_registry_declaration_is_exempt() {
     );
 }
 
+#[test]
+fn registry_exemption_covers_only_declaration_token_spans() {
+    let scratch = ScratchRoot::new("registry-span");
+    write_minimal_workspace(&scratch.0, &["babylon-bsl", "babylon-evidence"]);
+    let registry_path = scratch.0.join("crates/babylon-bsl/src/sfs_profile.rs");
+    let valid = concat!(
+        "pub const FORBIDDEN_AUTHORITATIVE_IDENTIFIERS_V1: [&str; 10] = [",
+        "\"SfsAggregate\", \"SfsClassification\", \"SfsHinterlandClass\", ",
+        "\"SfsPoliticalSubjectivity\", \"SfsWaveStage\", \"sfs/aggregate\", ",
+        "\"sfs/classification\", \"sfs/hinterland-class\", ",
+        "\"sfs/political-subjectivity\", \"sfs/wave-stage\"",
+        "];\n",
+    );
+    write_file(
+        &registry_path,
+        format!("{valid}pub fn leak() -> &'static str {{ \"sfs/aggregate\" }}\n").as_bytes(),
+    );
+    let (code, report) = run_root(&scratch.0);
+    assert_eq!(code, 1, "an extra reserved use must fail:\n{report}");
+    assert!(report.contains("sfs/aggregate"), "{report}");
+}
+
+#[test]
+fn registry_digest_is_independent_of_the_reserved_token_table() {
+    let scratch = ScratchRoot::new("registry-digest");
+    write_minimal_workspace(&scratch.0, &["babylon-bsl", "babylon-evidence"]);
+    let registry_path = scratch.0.join("crates/babylon-bsl/src/sfs_profile.rs");
+    let mutated = concat!(
+        "pub const FORBIDDEN_AUTHORITATIVE_IDENTIFIERS_V1: [&str; 10] = [",
+        "\"SfsAggregate\", \"SfsClassification\", \"SfsHinterlandClass\", ",
+        "\"SfsPoliticalSubjectivity\", \"SfsWaveStage\", \"sfs/aggregate\", ",
+        "\"sfs/classification\", \"sfs/hinterland-class\", ",
+        "\"sfs/political-subjectivity\", \"sfs/wave-stagf\"",
+        "];\n",
+    );
+    write_file(&registry_path, mutated.as_bytes());
+    let (code, report) = run_root(&scratch.0);
+    assert_eq!(code, 1);
+    assert!(
+        report.contains("65e7a808f3b078da9c91e424f8fc6ca0a1309eac9882a707c8033aaf0620fb4b"),
+        "{report}"
+    );
+}
+
+#[test]
+fn escaped_triple_quote_keeps_toml_structural_bytes_inside_multiline_string() {
+    let scratch = ScratchRoot::new("toml-multiline-escape");
+    write_minimal_workspace(&scratch.0, &["babylon-evidence"]);
+    let root_path = scratch.0.join("Cargo.toml");
+    let manifest = concat!(
+        "[workspace]\n",
+        "members = [\"crates/babylon-evidence\"]\n",
+        "resolver = \"2\"\n",
+        "note = \"\"\"escaped \\\"\"\" [ { , . = are still text\n",
+        "and this is still text\"\"\"\n",
+    );
+    write_file(&root_path, manifest.as_bytes());
+    let (code, report) = run_root(&scratch.0);
+    assert_eq!(
+        code, 0,
+        "escaped triple quote must not close early:\n{report}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn intermediate_package_symlinks_and_canonical_escape_are_refused() {
+    use std::os::unix::fs::symlink;
+
+    let workspace = ScratchRoot::new("intermediate-symlink");
+    let outside = ScratchRoot::new("outside-package");
+    write_file(
+        &outside.0.join("babylon-evidence/Cargo.toml"),
+        b"[package]\nname = \"babylon-evidence\"\nversion = \"0.0.0\"\n",
+    );
+    write_file(
+        &workspace.0.join("Cargo.toml"),
+        b"[workspace]\nmembers = [\"crates/link/babylon-evidence\"]\nresolver = \"2\"\n",
+    );
+    std::fs::create_dir_all(workspace.0.join("crates")).expect("workspace crates directory");
+    symlink(&outside.0, workspace.0.join("crates/link")).expect("intermediate symlink");
+    let (code, report) = run_root(&workspace.0);
+    assert_eq!(code, 2);
+    assert!(
+        report.contains("symlink") || report.contains("canonical package root escapes"),
+        "{report}"
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn a_live_source_symlink_is_refused_instead_of_followed() {
@@ -766,4 +990,49 @@ fn every_declared_bound_and_fixed_loop_stays_literal_in_source() {
         );
     }
     assert!(!source.contains("syn::visit"));
+    let production = source
+        .split("#[cfg(test)]")
+        .next()
+        .expect("production source prefix");
+    let compact = production.split_whitespace().collect::<Vec<_>>().join(" ");
+    for forbidden in [
+        ".iter() .any(",
+        ".iter() .map(",
+        ".iter() .filter(",
+        ".into_iter() .collect(",
+        ".components() .any(",
+        ".components() .rev(",
+        ".binary_search_by(",
+        ".collect(",
+        ".fold(",
+        ".for_each(",
+        ".position(",
+        ".rposition(",
+        ".windows(",
+        ".zip(",
+        ".sort(",
+        ".sort_by(",
+        ".sort_unstable(",
+        ".dedup(",
+        ".extend(",
+    ] {
+        assert!(
+            !compact.contains(forbidden),
+            "production traversal must use a literal indexed bound: {forbidden}"
+        );
+    }
+    for line in production.lines() {
+        let line = line.trim();
+        if !line.starts_with("for ") {
+            continue;
+        }
+        assert!(
+            line.contains(" in 0..")
+                || line.contains(" in 1..")
+                || line.contains(" in 3..")
+                || line.contains(" in ENGINE_CRATES")
+                || line.contains(" in ["),
+            "production for-loop lacks a literal/static bound: {line}"
+        );
+    }
 }

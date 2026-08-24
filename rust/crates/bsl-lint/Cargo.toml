@@ -13,7 +13,8 @@ path = "src/main.rs"
 
 [dependencies]
 babylon-bsl = { path = "../babylon-bsl" }
-proc-macro2 = "1"
+babylon-kernel = { path = "../babylon-kernel" }
+proc-macro2 = { version = "1", features = ["span-locations"] }
 syn = { version = "2", features = ["full"] }
 toml = "1"
 

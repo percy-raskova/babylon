@@ -4,8 +4,8 @@ use crate::finding::{Finding, Severity};
 use crate::repo::Repo;
 use babylon_bsl::causal_contract::{MAX_AST_WALK_DEPTH, MAX_AST_WALK_NODES, MAX_AST_WALK_STACK};
 use babylon_bsl::reader::{Atom, SExpr, MAX_READER_NESTING_DEPTH};
-use proc_macro2::{TokenStream, TokenTree};
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use proc_macro2::{LineColumn, TokenStream, TokenTree};
+use std::collections::{BTreeSet, VecDeque};
 use std::fs::File;
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
@@ -57,6 +57,7 @@ const MAX_SOURCE_BYTES: usize = 262_144;
 const MAX_RUST_TOKENS: usize = 65_536;
 const MAX_RUST_DEPTH: usize = 64;
 const MAX_RUST_STACK: usize = 65_536;
+const MAX_FINDINGS: usize = (MAX_SOURCE_PATHS * MAX_AST_WALK_NODES) + MAX_DEPENDENCIES + 7;
 
 #[derive(Debug)]
 struct ManifestDoc {
@@ -79,6 +80,24 @@ struct SourceFinding {
     path: PathBuf,
     line: usize,
     token: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TokenSpan {
+    start: LineColumn,
+    end: LineColumn,
+}
+
+#[derive(Debug)]
+struct RustToken {
+    value: String,
+    span: TokenSpan,
+}
+
+#[derive(Debug, Default)]
+struct RegistryInspection {
+    exempt_spans: Vec<TokenSpan>,
+    error: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -140,11 +159,37 @@ pub fn run(repo: &Repo, roots: &[String]) -> Result<Vec<Finding>, String> {
     })?;
     let workspace = load_workspace(&root)?;
     let mut findings = dependency_findings(repo, &workspace);
-    findings.extend(source_findings(repo, &workspace)?);
-    findings.sort_by(|left, right| {
-        (&left.file, left.line, &left.evidence).cmp(&(&right.file, right.line, &right.evidence))
-    });
+    let mut source = source_findings(repo, &workspace)?;
+    for _finding_index in 0..MAX_FINDINGS {
+        let Some(finding) = source.pop() else {
+            break;
+        };
+        findings.push(finding);
+    }
+    sort_findings(&mut findings);
     Ok(findings)
+}
+
+fn sort_findings(findings: &mut [Finding]) {
+    for outer in 1..MAX_FINDINGS {
+        if outer >= findings.len() {
+            break;
+        }
+        let mut current = outer;
+        for _shift in 0..MAX_FINDINGS {
+            if current == 0 {
+                break;
+            }
+            let left = &findings[current - 1];
+            let right = &findings[current];
+            if (&left.file, left.line, &left.evidence) <= (&right.file, right.line, &right.evidence)
+            {
+                break;
+            }
+            findings.swap(current - 1, current);
+            current -= 1;
+        }
+    }
 }
 
 fn fail(repo: &Repo, path: &Path, line: usize, what: String, evidence: String) -> Finding {
@@ -176,10 +221,9 @@ fn load_workspace(root: &Path) -> Result<Workspace, String> {
             break;
         };
         let crate_root = normalize_beneath(root, Path::new(member), root)?;
-        refuse_symlink_root(&crate_root)?;
         manifest_paths.push((crate_root.join("Cargo.toml"), crate_root));
     }
-    manifest_paths.sort_by(|left, right| left.0.as_os_str().cmp(right.0.as_os_str()));
+    sort_manifest_paths(&mut manifest_paths);
     let mut manifests = Vec::with_capacity(manifest_paths.len());
     let mut missing_evidence_manifest = None;
     for index in 0..32 {
@@ -201,7 +245,7 @@ fn load_workspace(root: &Path) -> Result<Workspace, String> {
             value,
         });
     }
-    manifests.sort_by(|left, right| left.package.as_bytes().cmp(right.package.as_bytes()));
+    sort_manifests(&mut manifests);
     for index in 1..32 {
         let Some(current) = manifests.get(index) else {
             break;
@@ -212,9 +256,7 @@ fn load_workspace(root: &Path) -> Result<Workspace, String> {
         }
     }
     if missing_evidence_manifest.is_some()
-        || !manifests
-            .iter()
-            .any(|manifest| manifest.package == "babylon-evidence")
+        || package_index_in(&manifests, "babylon-evidence").is_none()
     {
         return Ok(Workspace {
             root: root.to_path_buf(),
@@ -230,6 +272,41 @@ fn load_workspace(root: &Path) -> Result<Workspace, String> {
         edges,
         missing_evidence_manifest: None,
     })
+}
+
+fn sort_manifest_paths(paths: &mut [(PathBuf, PathBuf)]) {
+    for outer in 1..32 {
+        if outer >= paths.len() {
+            break;
+        }
+        let mut current = outer;
+        for _shift in 0..32 {
+            if current == 0 || paths[current - 1].0.as_os_str() <= paths[current].0.as_os_str() {
+                break;
+            }
+            paths.swap(current - 1, current);
+            current -= 1;
+        }
+    }
+}
+
+fn sort_manifests(manifests: &mut [ManifestDoc]) {
+    for outer in 1..32 {
+        if outer >= manifests.len() {
+            break;
+        }
+        let mut current = outer;
+        for _shift in 0..32 {
+            if current == 0
+                || manifests[current - 1].package.as_bytes()
+                    <= manifests[current].package.as_bytes()
+            {
+                break;
+            }
+            manifests.swap(current - 1, current);
+            current -= 1;
+        }
+    }
 }
 
 fn workspace_members(value: &toml::Value) -> Result<Vec<String>, String> {
@@ -264,12 +341,12 @@ fn workspace_members(value: &toml::Value) -> Result<Vec<String>, String> {
 }
 
 fn package_name(value: &toml::Value, path: &Path) -> Result<String, String> {
-    value
+    let name = value
         .get("package")
         .and_then(|package| package.get("name"))
         .and_then(toml::Value::as_str)
-        .map(str::to_owned)
-        .ok_or_else(|| format!("{}: missing string package.name", path.display()))
+        .ok_or_else(|| format!("{}: missing string package.name", path.display()))?;
+    Ok(name.to_owned())
 }
 
 fn read_manifest(path: &Path, aggregate: &mut usize) -> Result<toml::Value, String> {
@@ -324,11 +401,16 @@ fn read_bounded(path: &Path, maximum: usize, kind: &str) -> Result<Vec<u8>, Stri
 fn preflight_toml(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let mut state = TomlState::Plain;
     let mut escaped = false;
+    let mut delimiter_tail = 0_usize;
     let mut counters = TomlCounters::default();
     for byte_index in 0..262_144 {
         let Some(&byte) = bytes.get(byte_index) else {
             break;
         };
+        if delimiter_tail > 0 {
+            delimiter_tail = delimiter_tail.saturating_sub(1);
+            continue;
+        }
         let triple = bytes.get(byte_index..byte_index.saturating_add(3));
         match state {
             TomlState::Comment => {
@@ -353,17 +435,26 @@ fn preflight_toml(path: &Path, bytes: &[u8]) -> Result<(), String> {
                 }
             }
             TomlState::MultiBasic => {
-                if triple == Some(b"\"\"\"") {
+                if escaped {
+                    escaped = false;
+                } else if byte == b'\\' {
+                    escaped = true;
+                } else if triple == Some(b"\"\"\"") {
                     state = TomlState::Plain;
+                    delimiter_tail = 2;
                 }
             }
             TomlState::MultiLiteral => {
                 if triple == Some(b"'''") {
                     state = TomlState::Plain;
+                    delimiter_tail = 2;
                 }
             }
             TomlState::Plain => {
                 state = preflight_plain_toml_byte(path, bytes, byte_index, &mut counters)?;
+                if matches!(state, TomlState::MultiBasic | TomlState::MultiLiteral) {
+                    delimiter_tail = 2;
+                }
             }
         }
     }
@@ -456,23 +547,28 @@ fn preflight_toml_value(path: &Path, root: &toml::Value) -> Result<(), String> {
                 MAX_TOML_DEPTH
             ));
         }
-        let children: Vec<&toml::Value> = match value {
-            toml::Value::Array(values) => values.iter().collect(),
-            toml::Value::Table(values) => values.values().collect(),
-            _ => Vec::new(),
+        let child_count = match value {
+            toml::Value::Array(values) => values.len(),
+            toml::Value::Table(values) => values.len(),
+            _ => 0,
         };
-        if stack.len().saturating_add(children.len()) > MAX_TOML_TOKENS {
-            return Err(format!(
-                "{}: parsed TOML stack exceeds {} values",
-                path.display(),
-                MAX_TOML_TOKENS
-            ));
-        }
+        check_toml_stack_capacity(path, stack.len(), child_count)?;
         for child_offset in 0..65_536 {
-            let Some(child_index) = children.len().checked_sub(child_offset + 1) else {
+            let Some(child_index) = child_count.checked_sub(child_offset + 1) else {
                 break;
             };
-            stack.push((children[child_index], depth.saturating_add(1)));
+            let child = match value {
+                toml::Value::Array(values) => values.get(child_index),
+                toml::Value::Table(values) => toml_table_value_at(values, child_index),
+                _ => None,
+            };
+            let Some(child) = child else {
+                return Err(format!(
+                    "{}: parsed TOML child index vanished",
+                    path.display()
+                ));
+            };
+            stack.push((child, depth.saturating_add(1)));
         }
         if visited == MAX_TOML_TOKENS - 1 && !stack.is_empty() {
             return Err(format!(
@@ -492,6 +588,31 @@ fn preflight_toml_value(path: &Path, root: &toml::Value) -> Result<(), String> {
     }
 }
 
+fn check_toml_stack_capacity(path: &Path, current: usize, added: usize) -> Result<(), String> {
+    if current.saturating_add(added) > MAX_TOML_TOKENS {
+        return Err(format!(
+            "{}: parsed TOML stack exceeds {} values",
+            path.display(),
+            MAX_TOML_TOKENS
+        ));
+    }
+    Ok(())
+}
+
+fn toml_table_value_at(
+    table: &toml::map::Map<String, toml::Value>,
+    selected: usize,
+) -> Option<&toml::Value> {
+    let mut entries = table.iter();
+    for index in 0..65_536 {
+        let (_key, value) = entries.next()?;
+        if index == selected {
+            return Some(value);
+        }
+    }
+    None
+}
+
 fn normalize_beneath(base: &Path, relative: &Path, root: &Path) -> Result<PathBuf, String> {
     if relative.is_absolute() {
         return Err(format!(
@@ -503,6 +624,7 @@ fn normalize_beneath(base: &Path, relative: &Path, root: &Path) -> Result<PathBu
     let mut components = relative.components();
     for _component_index in 0..64 {
         let Some(component) = components.next() else {
+            inspect_path_components(root, &normalized)?;
             return Ok(normalized);
         };
         match component {
@@ -530,19 +652,48 @@ fn normalize_beneath(base: &Path, relative: &Path, root: &Path) -> Result<PathBu
             relative.display()
         ));
     }
+    inspect_path_components(root, &normalized)?;
     Ok(normalized)
 }
 
-fn refuse_symlink_root(path: &Path) -> Result<(), String> {
-    match std::fs::symlink_metadata(path) {
-        Ok(metadata) if metadata.file_type().is_symlink() => Err(format!(
-            "{}: package-root symlinks are forbidden",
+fn inspect_path_components(root: &Path, path: &Path) -> Result<(), String> {
+    let relative = path.strip_prefix(root).map_err(|error| {
+        format!(
+            "{}: canonical package root escapes workspace: {error}",
             path.display()
-        )),
-        Ok(_) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(format!("{}: {error}", path.display())),
+        )
+    })?;
+    let mut current = root.to_path_buf();
+    let mut components = relative.components();
+    for _component_index in 0..64 {
+        let Some(component) = components.next() else {
+            break;
+        };
+        current.push(component.as_os_str());
+        match std::fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(format!(
+                    "{}: package path symlinks are forbidden",
+                    current.display()
+                ));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(format!("{}: {error}", current.display())),
+        }
     }
+    if path.exists() {
+        let canonical = path
+            .canonicalize()
+            .map_err(|error| format!("{}: {error}", path.display()))?;
+        if !canonical.starts_with(root) {
+            return Err(format!(
+                "{}: canonical package root escapes workspace root",
+                path.display()
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn resolve_edges(
@@ -561,11 +712,6 @@ fn resolve_edges(
             workspace_dependency_count, MAX_DEPENDENCIES
         ));
     }
-    let roots_by_path: BTreeMap<PathBuf, usize> = manifests
-        .iter()
-        .enumerate()
-        .map(|(index, manifest)| (manifest.crate_root.clone(), index))
-        .collect();
     let mut pending = Vec::new();
     for manifest_index in 0..32 {
         let Some(manifest) = manifests.get(manifest_index) else {
@@ -600,7 +746,6 @@ fn resolve_edges(
             continue;
         };
         let target_root = normalize_beneath(base, Path::new(path_text), root)?;
-        refuse_symlink_root(&target_root)?;
         let target_manifest = target_root.join("Cargo.toml");
         if !target_manifest.is_file() {
             return Err(format!(
@@ -609,7 +754,7 @@ fn resolve_edges(
                 target_manifest.display()
             ));
         }
-        let Some(&to) = roots_by_path.get(&target_root) else {
+        let Some(to) = package_root_index(manifests, &target_root) else {
             return Err(format!(
                 "{}: local dependency `{alias}` targets a package outside workspace.members: {}",
                 declaring.path.display(),
@@ -627,8 +772,8 @@ fn resolve_edges(
         }
         edges.push((*from, to));
     }
-    edges.sort_unstable();
-    edges.dedup();
+    sort_edges(&mut edges);
+    dedup_edges(&mut edges);
     if edges.len() > MAX_DEPENDENCIES {
         return Err(format!(
             "local edge count {} exceeds {}",
@@ -637,6 +782,36 @@ fn resolve_edges(
         ));
     }
     Ok(edges)
+}
+
+fn sort_edges(edges: &mut [(usize, usize)]) {
+    for outer in 1..256 {
+        if outer >= edges.len() {
+            break;
+        }
+        let mut current = outer;
+        for _shift in 0..256 {
+            if current == 0 || edges[current - 1] <= edges[current] {
+                break;
+            }
+            edges.swap(current - 1, current);
+            current -= 1;
+        }
+    }
+}
+
+fn dedup_edges(edges: &mut Vec<(usize, usize)>) {
+    let mut admitted = 0_usize;
+    for read in 0..256 {
+        let Some(edge) = edges.get(read).copied() else {
+            break;
+        };
+        if admitted == 0 || edges[admitted - 1] != edge {
+            edges[admitted] = edge;
+            admitted = admitted.saturating_add(1);
+        }
+    }
+    edges.truncate(admitted);
 }
 
 fn resolve_workspace_row<'a>(
@@ -679,7 +854,7 @@ fn collect_manifest_dependencies<'a>(
             ));
         }
         for target_index in 0..256 {
-            let Some((_target, target_value)) = targets.iter().nth(target_index) else {
+            let Some((_target, target_value)) = toml_table_entry_at(targets, target_index) else {
                 break;
             };
             for table_name in ["dependencies", "dev-dependencies", "build-dependencies"] {
@@ -705,12 +880,38 @@ fn collect_dependency_table<'a>(
         ));
     }
     for index in 0..256 {
-        let Some((alias, row)) = table.iter().nth(index) else {
+        let Some((alias, row)) = toml_table_entry_at(table, index) else {
             break;
         };
         output.push((from, alias.clone(), row));
     }
     Ok(())
+}
+
+fn toml_table_entry_at(
+    table: &toml::map::Map<String, toml::Value>,
+    selected: usize,
+) -> Option<(&String, &toml::Value)> {
+    let mut entries = table.iter();
+    for index in 0..65_536 {
+        let entry = entries.next()?;
+        if index == selected {
+            return Some(entry);
+        }
+    }
+    None
+}
+
+fn package_root_index(manifests: &[ManifestDoc], root: &Path) -> Option<usize> {
+    for index in 0..32 {
+        let Some(manifest) = manifests.get(index) else {
+            break;
+        };
+        if manifest.crate_root == root {
+            return Some(index);
+        }
+    }
+    None
 }
 
 fn dependency_findings(repo: &Repo, workspace: &Workspace) -> Vec<Finding> {
@@ -755,7 +956,7 @@ fn dependency_findings(repo: &Repo, workspace: &Workspace) -> Vec<Finding> {
             continue;
         }
         let target = &workspace.manifests[to].package;
-        if !ALLOWED_EVIDENCE_PATH_DEPS.contains(&target.as_str()) {
+        if !is_allowed_evidence_dependency(target) {
             findings.push(fail(
                 repo,
                 &workspace.manifests[from].path,
@@ -768,11 +969,32 @@ fn dependency_findings(repo: &Repo, workspace: &Workspace) -> Vec<Finding> {
     findings
 }
 
+fn is_allowed_evidence_dependency(package: &str) -> bool {
+    for index in 0..3 {
+        let Some(allowed) = ALLOWED_EVIDENCE_PATH_DEPS.get(index) else {
+            break;
+        };
+        if *allowed == package {
+            return true;
+        }
+    }
+    false
+}
+
 fn package_index(workspace: &Workspace, name: &str) -> Option<usize> {
-    workspace
-        .manifests
-        .binary_search_by(|manifest| manifest.package.as_str().cmp(name))
-        .ok()
+    package_index_in(&workspace.manifests, name)
+}
+
+fn package_index_in(manifests: &[ManifestDoc], name: &str) -> Option<usize> {
+    for index in 0..32 {
+        let Some(manifest) = manifests.get(index) else {
+            break;
+        };
+        if manifest.package == name {
+            return Some(index);
+        }
+    }
+    None
 }
 
 fn byte_least_path(workspace: &Workspace, start: usize, target: usize) -> Option<Vec<usize>> {
@@ -787,7 +1009,7 @@ fn byte_least_path(workspace: &Workspace, start: usize, target: usize) -> Option
             let Some(prefix) = previous[from].as_ref() else {
                 continue;
             };
-            if prefix.contains(&to) {
+            if package_path_contains(prefix, to) {
                 continue;
             }
             let mut candidate = prefix.clone();
@@ -803,23 +1025,52 @@ fn byte_least_path(workspace: &Workspace, start: usize, target: usize) -> Option
     best.get(target).cloned().flatten()
 }
 
+fn package_path_contains(path: &[usize], selected: usize) -> bool {
+    for index in 0..32 {
+        let Some(package) = path.get(index) else {
+            break;
+        };
+        if *package == selected {
+            return true;
+        }
+    }
+    false
+}
+
 fn package_path_less(workspace: &Workspace, left: &[usize], right: &[usize]) -> bool {
-    let left_names: Vec<&str> = left
-        .iter()
-        .map(|index| workspace.manifests[*index].package.as_str())
-        .collect();
-    let right_names: Vec<&str> = right
-        .iter()
-        .map(|index| workspace.manifests[*index].package.as_str())
-        .collect();
-    left_names < right_names
+    for index in 0..32 {
+        match (left.get(index), right.get(index)) {
+            (Some(left_index), Some(right_index)) => {
+                let order = workspace.manifests[*left_index]
+                    .package
+                    .as_bytes()
+                    .cmp(workspace.manifests[*right_index].package.as_bytes());
+                if order.is_lt() {
+                    return true;
+                }
+                if order.is_gt() {
+                    return false;
+                }
+            }
+            (None, Some(_)) => return true,
+            (Some(_), None) | (None, None) => return false,
+        }
+    }
+    false
 }
 
 fn render_package_path(workspace: &Workspace, path: &[usize]) -> String {
-    path.iter()
-        .map(|index| workspace.manifests[*index].package.as_str())
-        .collect::<Vec<_>>()
-        .join(" -> ")
+    let mut rendered = String::new();
+    for index in 0..32 {
+        let Some(package_index) = path.get(index) else {
+            break;
+        };
+        if index > 0 {
+            rendered.push_str(" -> ");
+        }
+        rendered.push_str(&workspace.manifests[*package_index].package);
+    }
+    rendered
 }
 
 fn source_findings(repo: &Repo, workspace: &Workspace) -> Result<Vec<Finding>, String> {
@@ -834,7 +1085,13 @@ fn source_findings(repo: &Repo, workspace: &Workspace) -> Result<Vec<Finding>, S
         if manifest.package == "babylon-evidence" {
             continue;
         }
-        source_paths.extend(enumerate_sources(&manifest.crate_root, &mut walk_budget)?);
+        let mut package_sources = enumerate_sources(&manifest.crate_root, &mut walk_budget)?;
+        for _source_index in 0..4_096 {
+            let Some(source) = package_sources.pop() else {
+                break;
+            };
+            source_paths.push(source);
+        }
         if source_paths.len() > MAX_SOURCE_PATHS {
             return Err(format!(
                 "production source path {} exceeds {}",
@@ -843,8 +1100,8 @@ fn source_findings(repo: &Repo, workspace: &Workspace) -> Result<Vec<Finding>, S
             ));
         }
     }
-    source_paths.sort_by(|left, right| left.as_os_str().cmp(right.as_os_str()));
-    source_paths.dedup();
+    sort_source_paths(&mut source_paths);
+    dedup_source_paths(&mut source_paths);
     if source_paths.len() > MAX_SOURCE_PATHS {
         return Err(format!(
             "production source path {} exceeds {}",
@@ -868,9 +1125,8 @@ fn source_findings(repo: &Repo, workspace: &Workspace) -> Result<Vec<Finding>, S
             "bsl" | "bscn" => scan_sexpr_source(path, &bytes, extension)?,
             _ => Vec::new(),
         };
-        let mut discovered = discovered.into_iter();
-        for _finding_index in 0..65_536 {
-            let Some(source_finding) = discovered.next() else {
+        for finding_index in 0..65_536 {
+            let Some(source_finding) = discovered.get(finding_index) else {
                 break;
             };
             findings.push(fail(
@@ -878,7 +1134,7 @@ fn source_findings(repo: &Repo, workspace: &Workspace) -> Result<Vec<Finding>, S
                 &source_finding.path,
                 source_finding.line,
                 "reserved T3 evidence identifier is engine-authored".to_owned(),
-                source_finding.token,
+                source_finding.token.clone(),
             ));
         }
     }
@@ -892,6 +1148,36 @@ fn source_findings(repo: &Repo, workspace: &Workspace) -> Result<Vec<Finding>, S
         ));
     }
     Ok(findings)
+}
+
+fn sort_source_paths(paths: &mut [PathBuf]) {
+    for outer in 1..4_096 {
+        if outer >= paths.len() {
+            break;
+        }
+        let mut current = outer;
+        for _shift in 0..4_096 {
+            if current == 0 || paths[current - 1].as_os_str() <= paths[current].as_os_str() {
+                break;
+            }
+            paths.swap(current - 1, current);
+            current -= 1;
+        }
+    }
+}
+
+fn dedup_source_paths(paths: &mut Vec<PathBuf>) {
+    let mut admitted = 0_usize;
+    for read in 0..4_096 {
+        let Some(path) = paths.get(read).cloned() else {
+            break;
+        };
+        if admitted == 0 || paths[admitted - 1] != path {
+            paths[admitted] = path;
+            admitted = admitted.saturating_add(1);
+        }
+    }
+    paths.truncate(admitted);
 }
 
 fn reachable_engine_packages(workspace: &Workspace) -> Vec<usize> {
@@ -916,7 +1202,13 @@ fn reachable_engine_packages(workspace: &Workspace) -> Vec<usize> {
             }
         }
     }
-    reachable.into_iter().collect()
+    let mut ordered = Vec::new();
+    for index in 0..32 {
+        if reachable.contains(&index) {
+            ordered.push(index);
+        }
+    }
+    ordered
 }
 
 fn enumerate_sources(
@@ -1001,10 +1293,7 @@ fn admit_source_entry(
     if relative.to_str().is_none() {
         return Err(format!("{}: non-UTF-8 source path", path.display()));
     }
-    if relative
-        .components()
-        .any(|component| component.as_os_str() == "tests")
-    {
+    if path_contains_component(relative, "tests") {
         return Ok(());
     }
     if file_type.is_dir() {
@@ -1060,6 +1349,19 @@ fn admit_source_entry(
     Ok(())
 }
 
+fn path_contains_component(path: &Path, selected: &str) -> bool {
+    let mut components = path.components();
+    for _index in 0..=16 {
+        let Some(component) = components.next() else {
+            return false;
+        };
+        if component.as_os_str() == selected {
+            return true;
+        }
+    }
+    false
+}
+
 fn scan_rust_source(
     path: &Path,
     bytes: &[u8],
@@ -1072,38 +1374,61 @@ fn scan_rust_source(
     let tokens = bounded_rust_tokens(path, stream)?;
     let file = syn::parse_file(source)
         .map_err(|error| format!("{}: Rust parse failed: {error}", path.display()))?;
-    let (registry, registry_error) = inspect_registry(path, &file, registry_declarations);
+    let registry = inspect_registry(path, &file, registry_declarations);
     let mut findings = Vec::new();
-    if let Some(error) = registry_error {
+    if let Some(error) = registry.error {
         findings.push(SourceFinding {
             path: path.to_path_buf(),
             line: line_of(source, REGISTRY_NAME),
             token: error,
         });
     }
-    let mut tokens = tokens.into_iter();
-    for _token_index in 0..65_536 {
-        let Some(token) = tokens.next() else { break };
-        if token == REGISTRY_NAME && !path_ends_with(path, REGISTRY_PATH) {
+    for token_index in 0..65_536 {
+        let Some(token) = tokens.get(token_index) else {
+            break;
+        };
+        if token_span_is_exempt(token.span, &registry.exempt_spans) {
+            continue;
+        }
+        if token.value == REGISTRY_NAME {
             findings.push(SourceFinding {
                 path: path.to_path_buf(),
-                line: line_of(source, &token),
-                token,
+                line: token.span.start.line,
+                token: token.value.clone(),
             });
             continue;
         }
-        if RESERVED_ENGINE_TOKENS.contains(&token.as_str()) && !registry {
+        if is_reserved_engine_token(&token.value) {
             findings.push(SourceFinding {
                 path: path.to_path_buf(),
-                line: line_of(source, &token),
-                token,
+                line: token.span.start.line,
+                token: token.value.clone(),
             });
         }
     }
     Ok(findings)
 }
 
-fn bounded_rust_tokens(path: &Path, stream: TokenStream) -> Result<Vec<String>, String> {
+fn is_reserved_engine_token(token: &str) -> bool {
+    for index in 0..10 {
+        let Some(reserved) = RESERVED_ENGINE_TOKENS.get(index) else {
+            break;
+        };
+        if *reserved == token {
+            return true;
+        }
+    }
+    false
+}
+
+fn token_span(tree: &TokenTree) -> TokenSpan {
+    TokenSpan {
+        start: tree.span().start(),
+        end: tree.span().end(),
+    }
+}
+
+fn bounded_rust_tokens(path: &Path, stream: TokenStream) -> Result<Vec<RustToken>, String> {
     let mut stack = Vec::new();
     push_token_stream(path, stream, 0, &mut stack)?;
     let mut inspected = Vec::new();
@@ -1111,6 +1436,7 @@ fn bounded_rust_tokens(path: &Path, stream: TokenStream) -> Result<Vec<String>, 
         let Some((token, depth)) = stack.pop() else {
             return Ok(inspected);
         };
+        let span = token_span(&token);
         match token {
             TokenTree::Group(group) => {
                 let child_depth = depth.saturating_add(1);
@@ -1124,11 +1450,17 @@ fn bounded_rust_tokens(path: &Path, stream: TokenStream) -> Result<Vec<String>, 
                 }
                 push_token_stream(path, group.stream(), child_depth, &mut stack)?;
             }
-            TokenTree::Ident(identifier) => inspected.push(identifier.to_string()),
+            TokenTree::Ident(identifier) => inspected.push(RustToken {
+                value: identifier.to_string(),
+                span,
+            }),
             TokenTree::Literal(literal) => {
                 if let Ok(syn::Lit::Str(string)) = syn::parse_str::<syn::Lit>(&literal.to_string())
                 {
-                    inspected.push(string.value());
+                    inspected.push(RustToken {
+                        value: string.value(),
+                        span,
+                    });
                 }
             }
             TokenTree::Punct(_) => {}
@@ -1183,8 +1515,8 @@ fn inspect_registry(
     path: &Path,
     file: &syn::File,
     registry_declarations: &mut usize,
-) -> (bool, Option<String>) {
-    let mut rows: Option<Vec<String>> = None;
+) -> RegistryInspection {
+    let mut inspection = RegistryInspection::default();
     for item_index in 0..65_536 {
         let Some(item) = file.items.get(item_index) else {
             break;
@@ -1197,89 +1529,118 @@ fn inspect_registry(
         }
         *registry_declarations = registry_declarations.saturating_add(1);
         if !path_ends_with(path, REGISTRY_PATH) {
-            return (
-                false,
-                Some(format!(
-                    "{REGISTRY_NAME} declaration is outside {REGISTRY_PATH}"
-                )),
-            );
+            inspection.error = Some(format!(
+                "{REGISTRY_NAME} declaration is outside {REGISTRY_PATH}"
+            ));
+            return inspection;
         }
         let syn::Expr::Array(array) = item_const.expr.as_ref() else {
-            return (
-                false,
-                Some(format!("{REGISTRY_NAME} must be an array declaration")),
-            );
+            inspection.error = Some(format!("{REGISTRY_NAME} must be an array declaration"));
+            return inspection;
         };
         if array.elems.len() != RESERVED_ENGINE_TOKENS.len() {
-            return (
-                false,
-                Some(format!(
-                    "{REGISTRY_NAME} row count {} does not match digest {REGISTRY_DIGEST}",
-                    array.elems.len()
-                )),
-            );
+            inspection.error = Some(format!(
+                "{REGISTRY_NAME} row count {} does not match digest {REGISTRY_DIGEST}",
+                array.elems.len()
+            ));
+            return inspection;
         }
-        let mut extracted = Vec::with_capacity(array.elems.len());
+        let mut rows = Vec::with_capacity(array.elems.len());
+        let mut spans = Vec::with_capacity(array.elems.len().saturating_add(1));
+        spans.push(TokenSpan {
+            start: item_const.ident.span().start(),
+            end: item_const.ident.span().end(),
+        });
         for element_index in 0..10 {
             let Some(syn::Expr::Lit(expression)) = array.elems.get(element_index) else {
-                return (
-                    false,
-                    Some(format!("{REGISTRY_NAME} contains a non-literal row")),
-                );
+                inspection.error = Some(format!("{REGISTRY_NAME} contains a non-literal row"));
+                return inspection;
             };
             let syn::Lit::Str(value) = &expression.lit else {
-                return (
-                    false,
-                    Some(format!("{REGISTRY_NAME} contains a non-string row")),
-                );
+                inspection.error = Some(format!("{REGISTRY_NAME} contains a non-string row"));
+                return inspection;
             };
-            extracted.push(value.value());
+            rows.push(value.value());
+            spans.push(TokenSpan {
+                start: value.span().start(),
+                end: value.span().end(),
+            });
         }
-        rows = Some(extracted);
+        if let Err(error) = validate_registry_rows(&rows) {
+            inspection.error = Some(error);
+            return inspection;
+        }
+        inspection.exempt_spans = spans;
     }
-    let Some(rows) = rows else {
-        return (false, None);
-    };
-    let mut expected: Vec<String> = RESERVED_ENGINE_TOKENS
-        .iter()
-        .map(|row| (*row).to_owned())
-        .collect();
-    expected.sort_by(|left, right| left.as_bytes().cmp(right.as_bytes()));
-    if rows != expected {
-        return (
-            false,
-            Some(format!(
+    inspection
+}
+
+fn validate_registry_rows(rows: &[String]) -> Result<(), String> {
+    for row_index in 1..10 {
+        if rows[row_index - 1].as_bytes() >= rows[row_index].as_bytes() {
+            return Err(format!(
                 "{REGISTRY_NAME} bytes do not match digest {REGISTRY_DIGEST}"
-            )),
-        );
+            ));
+        }
     }
-    let rendered = format!("{}\n", rows.join("\n"));
-    if !rendered.ends_with('\n') {
-        return (
-            false,
-            Some(format!("{REGISTRY_NAME} rows lack LF termination")),
-        );
+    let mut rendered = Vec::new();
+    for row_index in 0..10 {
+        let Some(row) = rows.get(row_index) else {
+            return Err(format!("{REGISTRY_NAME} rows lack LF termination"));
+        };
+        rendered.extend_from_slice(row.as_bytes());
+        rendered.push(b'\n');
     }
-    (true, None)
+    let digest = babylon_kernel::sha256_of(&rendered);
+    let mut digest_hex = String::with_capacity(64);
+    for byte_index in 0..32 {
+        let Some(byte) = digest.get(byte_index) else {
+            return Err(format!("{REGISTRY_NAME} digest is incomplete"));
+        };
+        digest_hex.push_str(&format!("{byte:02x}"));
+    }
+    if digest_hex != REGISTRY_DIGEST {
+        return Err(format!(
+            "{REGISTRY_NAME} bytes do not match digest {REGISTRY_DIGEST}"
+        ));
+    }
+    Ok(())
+}
+
+fn token_span_is_exempt(span: TokenSpan, exemptions: &[TokenSpan]) -> bool {
+    for exemption_index in 0..11 {
+        let Some(exemption) = exemptions.get(exemption_index) else {
+            break;
+        };
+        if span == *exemption {
+            return true;
+        }
+    }
+    false
 }
 
 fn path_ends_with(path: &Path, suffix: &str) -> bool {
-    let suffix = Path::new(suffix);
-    path.components()
-        .rev()
-        .zip(suffix.components().rev())
-        .all(|(left, right)| left == right)
-        && path.components().count() >= suffix.components().count()
+    path.ends_with(Path::new(suffix))
 }
 
 fn line_of(source: &str, token: &str) -> usize {
-    source.find(token).map_or(1, |offset| {
-        source.as_bytes()[..offset]
-            .iter()
-            .filter(|&&byte| byte == b'\n')
-            .count()
-            + 1
-    })
+    let Some(offset) = source.find(token) else {
+        return 1;
+    };
+    let bytes = source.as_bytes();
+    let mut line = 1_usize;
+    for byte_index in 0..262_144 {
+        if byte_index >= offset {
+            break;
+        }
+        let Some(byte) = bytes.get(byte_index) else {
+            break;
+        };
+        if *byte == b'\n' {
+            line = line.saturating_add(1);
+        }
+    }
+    line
 }
 
 fn scan_sexpr_source(
@@ -1299,14 +1660,18 @@ fn scan_sexpr_source(
     let source = std::str::from_utf8(bytes)
         .map_err(|error| format!("{}: source is not UTF-8: {error}", path.display()))?;
     let tokens = semantic_sexpr_tokens(path, &forms, extension)?;
-    Ok(tokens
-        .into_iter()
-        .map(|token| SourceFinding {
+    let mut findings = Vec::with_capacity(tokens.len());
+    for token_index in 0..1_048_576 {
+        let Some(token) = tokens.get(token_index) else {
+            break;
+        };
+        findings.push(SourceFinding {
             path: path.to_path_buf(),
-            line: line_of(source, &token),
-            token,
-        })
-        .collect())
+            line: line_of(source, token),
+            token: token.clone(),
+        });
+    }
+    Ok(findings)
 }
 
 fn preflight_sexpr(path: &Path, forms: &[SExpr]) -> Result<(), String> {
@@ -1318,7 +1683,13 @@ fn preflight_sexpr(path: &Path, forms: &[SExpr]) -> Result<(), String> {
             MAX_AST_WALK_STACK
         ));
     }
-    let mut stack: Vec<(&SExpr, usize)> = forms.iter().rev().map(|form| (form, 0)).collect();
+    let mut stack = Vec::with_capacity(forms.len());
+    for form_offset in 0..65_536 {
+        let Some(form_index) = forms.len().checked_sub(form_offset + 1_usize) else {
+            break;
+        };
+        stack.push((&forms[form_index], 0_usize));
+    }
     for visited in 0..1_048_576 {
         let Some((expression, depth)) = stack.pop() else {
             return Ok(());
@@ -1372,7 +1743,13 @@ fn semantic_sexpr_tokens(
     forms: &[SExpr],
     extension: &str,
 ) -> Result<Vec<String>, String> {
-    let mut stack: Vec<&SExpr> = forms.iter().rev().collect();
+    let mut stack = Vec::with_capacity(forms.len());
+    for form_offset in 0..65_536 {
+        let Some(form_index) = forms.len().checked_sub(form_offset + 1_usize) else {
+            break;
+        };
+        stack.push(&forms[form_index]);
+    }
     let mut tokens = Vec::new();
     for visited in 0..1_048_576 {
         let Some(expression) = stack.pop() else {
@@ -1419,6 +1796,7 @@ fn inspect_semantic_list(items: &[SExpr], extension: &str, output: &mut Vec<Stri
     };
     match head.as_str() {
         "deffield" => inspect_qname(items.get(1), output),
+        "field-of" => inspect_qname(items.get(2), output),
         "update-node" | "update-edge" | "update-hyperedge" => {
             inspect_qname(items.get(2), output);
         }
@@ -1462,7 +1840,103 @@ fn inspect_qname(expression: Option<&SExpr>, output: &mut Vec<String>) {
     let Some(SExpr::Atom(Atom::QName(qname))) = expression else {
         return;
     };
-    if RESERVED_ENGINE_TOKENS[..5].contains(&qname.as_str()) {
+    if is_reserved_qname(qname) {
         output.push(qname.clone());
+    }
+}
+
+fn is_reserved_qname(qname: &str) -> bool {
+    for index in 0..5 {
+        let Some(reserved) = RESERVED_ENGINE_TOKENS.get(index) else {
+            break;
+        };
+        if *reserved == qname {
+            return true;
+        }
+    }
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn nested_toml_arrays(depth: usize) -> toml::Value {
+        let mut value = toml::Value::Integer(0);
+        for _depth_index in 0..33 {
+            if _depth_index >= depth {
+                break;
+            }
+            value = toml::Value::Array(vec![value]);
+        }
+        value
+    }
+
+    fn toml_value_fixture(overflow: bool) -> toml::Value {
+        let mut groups = Vec::with_capacity(256);
+        for group_index in 0..256 {
+            let mut leaf_count: usize = if group_index == 255 { 254 } else { 255 };
+            if overflow && group_index == 255 {
+                leaf_count = leaf_count.saturating_add(1);
+            }
+            let mut leaves = Vec::with_capacity(leaf_count);
+            for leaf_index in 0..255 {
+                if leaf_index >= leaf_count {
+                    break;
+                }
+                leaves.push(toml::Value::Integer(0));
+            }
+            groups.push(toml::Value::Array(leaves));
+        }
+        toml::Value::Array(groups)
+    }
+
+    fn sexpr_node_fixture(overflow: bool) -> SExpr {
+        let mut groups = Vec::with_capacity(4_096);
+        for group_index in 0..4_096 {
+            let mut leaf_count: usize = if group_index == 4_095 { 254 } else { 255 };
+            if overflow && group_index == 4_095 {
+                leaf_count = leaf_count.saturating_add(1);
+            }
+            let mut leaves = Vec::with_capacity(leaf_count);
+            for leaf_index in 0..255 {
+                if leaf_index >= leaf_count {
+                    break;
+                }
+                leaves.push(SExpr::List(Vec::new()));
+            }
+            groups.push(SExpr::List(leaves));
+        }
+        SExpr::List(groups)
+    }
+
+    #[test]
+    fn toml_path_and_inline_depth_have_independent_exact_boundaries() {
+        let path = Path::new("Cargo.toml");
+        let path64 = std::iter::repeat_n("a", 64).collect::<Vec<_>>().join(".");
+        assert!(preflight_toml(path, format!("{path64} = 1\n").as_bytes()).is_ok());
+        assert!(preflight_toml(path, format!("{path64}.a = 1\n").as_bytes()).is_err());
+        let depth32 = format!("value = {}0{}\n", "[".repeat(32), "]".repeat(32));
+        assert!(preflight_toml(path, depth32.as_bytes()).is_ok());
+        let depth33 = format!("value = {}0{}\n", "[".repeat(33), "]".repeat(33));
+        assert!(preflight_toml(path, depth33.as_bytes()).is_err());
+    }
+
+    #[test]
+    fn parsed_toml_depth_value_and_stack_bounds_pin_exact_max_plus_one() {
+        let path = Path::new("Cargo.toml");
+        assert!(preflight_toml_value(path, &nested_toml_arrays(32)).is_ok());
+        assert!(preflight_toml_value(path, &nested_toml_arrays(33)).is_err());
+        assert!(preflight_toml_value(path, &toml_value_fixture(false)).is_ok());
+        assert!(preflight_toml_value(path, &toml_value_fixture(true)).is_err());
+        assert!(check_toml_stack_capacity(path, 0, 65_536).is_ok());
+        assert!(check_toml_stack_capacity(path, 0, 65_537).is_err());
+    }
+
+    #[test]
+    fn sexpr_node_bound_pins_exact_max_plus_one() {
+        let path = Path::new("source.bsl");
+        assert!(preflight_sexpr(path, &[sexpr_node_fixture(false)]).is_ok());
+        assert!(preflight_sexpr(path, &[sexpr_node_fixture(true)]).is_err());
     }
 }

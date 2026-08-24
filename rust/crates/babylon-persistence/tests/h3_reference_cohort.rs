@@ -129,6 +129,10 @@ fn representative_rows_are_parent_first_and_preserve_full_hierarchy_semantics() 
             (left.resolution(), left.cell_id()) < (right.resolution(), right.cell_id()),
             "canonical rows must stay strictly parent-first"
         );
+        assert!(
+            left.cell_id() < right.cell_id(),
+            "canonical H3 numeric order must match parent-first order"
+        );
     }
     for row in rows.iter().take(CLOSURE_COUNT) {
         assert!(i64::try_from(row.cell_id()).expect("validated H3 fits SQL") > 0);

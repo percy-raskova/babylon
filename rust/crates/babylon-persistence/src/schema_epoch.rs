@@ -293,7 +293,7 @@ pub fn migrate_schema_epoch(config: &Config) -> Result<SchemaEpochReport, Schema
     session.finish(result)
 }
 
-fn bounded_config(config: &Config) -> Config {
+pub(crate) fn bounded_config(config: &Config) -> Config {
     let mut bounded = config.clone();
     bounded
         .connect_timeout(LEGACY_ADOPTER_CONNECT_TIMEOUT)
@@ -709,6 +709,16 @@ fn inspect_epoch(
             })
         }
     }
+}
+
+pub(crate) fn inspect_schema_epoch_under_lock(
+    client: &mut Client,
+) -> Result<(SchemaEpochOrigin, usize), SchemaEpochError> {
+    let compiled = compiled_schema_epoch_migrations()?;
+    validate_registry_prefix(&compiled, &[])?;
+    let inspected = inspect_epoch(client, &compiled)?;
+    let applied = validate_registry_prefix(&compiled, &inspected.persisted)?;
+    Ok((inspected.origin, applied))
 }
 
 fn require_recorded_rust_prefix(persisted: &[PersistedMigration]) -> Result<(), SchemaEpochError> {
@@ -1266,6 +1276,7 @@ mod live_rollback_tests {
     const ACK_ENV: &str = "BABYLON_LEGACY_ADOPTER_DISPOSABLE_ACK";
     const ACK: &str = "I_UNDERSTAND_PER20_DROPS_SCRATCH_DATABASES_ROLES_AND_CREATED_BABYLON_INTEL";
     const CANARY_ENV: &str = "BABYLON_LEGACY_ADOPTER_DISPOSABLE_CANARY";
+    const BACKEND_TERMINATION_TIMEOUT_MILLIS: i64 = 5_000;
 
     #[test]
     #[ignore = "requires the task-owned disposable PER-20 PostgreSQL runtime"]
@@ -1285,6 +1296,57 @@ mod live_rollback_tests {
         verify_v3_killed_commit_retry(&base);
         verify_v3_committed_reconciliation(&base);
         verify_leap_ahead_reconciliation(&base);
+        verify_h3_installer_commit_protocol(&base);
+    }
+
+    #[test]
+    #[ignore = "requires the task-owned disposable PER-20 PostgreSQL runtime"]
+    fn h3_installer_rollback_and_ambiguous_commit_reconciliation_are_atomic() {
+        let base = validated_base_config();
+        verify_h3_installer_commit_protocol(&base);
+    }
+
+    #[test]
+    #[ignore = "requires the task-owned disposable PER-20 PostgreSQL runtime"]
+    fn h3_installer_membership_cardinality_is_bounded() {
+        let base = validated_base_config();
+        let database = TestDatabase::create(&base, "hcardinality");
+        let config = database.config(&base);
+        assert_eq!(migrate_schema_epoch(&config).unwrap().final_applied, 3);
+        crate::h3_reference_installer::live_postgres_tests::verify_membership_cardinality_bound(
+            &config,
+        );
+        database.cleanup();
+    }
+
+    fn verify_h3_installer_commit_protocol(base: &Config) {
+        let rollback_retry = TestDatabase::create(base, "hrollback");
+        let rollback_config = rollback_retry.config(base);
+        assert_eq!(
+            migrate_schema_epoch(&rollback_config)
+                .unwrap()
+                .final_applied,
+            3
+        );
+        crate::h3_reference_installer::live_postgres_tests::verify_rollback_and_killed_retry(
+            &rollback_config,
+            base,
+        );
+        rollback_retry.cleanup();
+
+        let reconciliation = TestDatabase::create(base, "hreconcile");
+        let reconciliation_config = reconciliation.config(base);
+        assert_eq!(
+            migrate_schema_epoch(&reconciliation_config)
+                .unwrap()
+                .final_applied,
+            3
+        );
+        crate::h3_reference_installer::live_postgres_tests::verify_committed_reconciliation(
+            &reconciliation_config,
+            base,
+        );
+        reconciliation.cleanup();
     }
 
     fn verify_post_ddl_rollback(base: &Config) {
@@ -1893,8 +1955,8 @@ mod live_rollback_tests {
             .connect(NoTls)
             .unwrap()
             .query_one(
-                "SELECT pg_catalog.pg_terminate_backend($1)",
-                &[&backend_pid],
+                "SELECT pg_catalog.pg_terminate_backend($1, $2)",
+                &[&backend_pid, &BACKEND_TERMINATION_TIMEOUT_MILLIS],
             )
             .unwrap()
             .try_get(0)

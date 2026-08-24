@@ -12,7 +12,8 @@ const MEMBERSHIP_DOMAIN: &[u8] = b"babylon.h3.reference-membership.v1\0";
 const COHORT_DOMAIN: &[u8] = b"babylon.h3.reference-cohort.v1\0";
 const EXPECTED_SOURCE_CELLS: usize = 48_764;
 const MAX_H3_RESOLUTIONS: usize = 16;
-const MAX_H3_REFERENCE_CLOSURE_ROWS: usize = MAX_H3_REFERENCE_SOURCE_CELLS * MAX_H3_RESOLUTIONS;
+pub(crate) const MAX_H3_REFERENCE_CLOSURE_ROWS: usize =
+    MAX_H3_REFERENCE_SOURCE_CELLS * MAX_H3_RESOLUTIONS;
 const SOURCE_ROW_BYTES: usize = 8;
 const CLOSURE_ROW_BYTES: usize = 49;
 const MEMBERSHIP_ROW_BYTES: usize = 9;
@@ -43,7 +44,7 @@ pub enum H3ReferenceOrigin {
 }
 
 impl H3ReferenceOrigin {
-    fn code(self) -> u8 {
+    pub(crate) fn code(self) -> u8 {
         match self {
             Self::Direct => DIRECT_ORIGIN_CODE,
             Self::DerivedAncestor => DERIVED_ANCESTOR_ORIGIN_CODE,

@@ -24,6 +24,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 mod h3_cell_vectors;
 #[path = "support/h3_pg_oracle.rs"]
 mod h3_pg_oracle;
+#[path = "support/h3_reference_installer_postgres.rs"]
+mod h3_reference_installer_postgres;
 #[path = "support/schema_epoch_postgres.rs"]
 mod schema_epoch_postgres;
 
@@ -177,6 +179,15 @@ fn live_adopter_contract_against_independent_builds_and_disposable_mutations() {
             "h3_pg_oracle",
             verify_h3_pg_oracle_in_scratch(&base, owner.name())
         );
+        live_phase!(
+            phases,
+            "h3_reference_installer",
+            h3_reference_installer_postgres::verify_h3_reference_installer(
+                &base,
+                &template,
+                owner.name(),
+            )
+        );
     }
     live_phase!(phases, "cleanup_first_database", first.cleanup());
     live_phase!(phases, "cleanup_second_database", second.cleanup());
@@ -223,6 +234,14 @@ fn run_first_live_phases(
                 schema_epoch_postgres::verify_schema_epoch_matrix(base, template, owner);
             }
             Some("h3_pg_oracle") => verify_h3_pg_oracle_in_scratch(base, owner),
+            Some("h3_reference_installer") => {
+                h3_reference_installer_postgres::verify_h3_reference_installer(
+                    base, template, owner,
+                );
+            }
+            Some("h3_reference_release") => {
+                h3_reference_installer_postgres::verify_h3_reference_release_equivalence(base);
+            }
             _ => panic!("unknown bounded live focus"),
         }
         return false;

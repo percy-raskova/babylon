@@ -2367,6 +2367,7 @@ fn live_matrix_receipts_survive_one_fixed_diagnostic_ceiling() {
         "canonical_after_cleanup",
         "schema_epoch_matrix",
         "h3_pg_oracle",
+        "h3_reference_installer",
         "cleanup_first_database",
         "cleanup_second_database",
         "cleanup_owner_role",

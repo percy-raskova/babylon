@@ -20,9 +20,10 @@ pub use h3_reference_cohort::{
     MAX_H3_REFERENCE_SOURCE_CELLS,
 };
 pub use h3_reference_installer::{
-    install_representative_h3_cohort, H3ReferenceInstallBoundedResource,
-    H3ReferenceInstallConflict, H3ReferenceInstallDisposition, H3ReferenceInstallError,
-    H3ReferenceInstallOperation, H3ReferenceInstallReport,
+    install_representative_h3_cohort, H3ReferenceDatabaseDiagnostic,
+    H3ReferenceInstallBoundedResource, H3ReferenceInstallConflict, H3ReferenceInstallDisposition,
+    H3ReferenceInstallError, H3ReferenceInstallOperation, H3ReferenceInstallReport,
+    H3ReferenceMembershipReadContext,
 };
 pub use hashes::{
     GraphStateHash, MigrationSetDigest, RefDigest, ReplayIdentityHash, TickContentHash,

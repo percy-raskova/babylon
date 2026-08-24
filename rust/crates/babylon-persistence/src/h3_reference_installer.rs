@@ -115,9 +115,15 @@ pub enum H3ReferenceInstallOperation {
     /// Read the bounded cohort header identity.
     ReadHeader,
     /// Read the bounded membership cardinality sentinel.
-    ReadMembershipCardinality,
+    ReadMembershipCardinality {
+        /// Lifecycle path that read the membership cardinality.
+        context: H3ReferenceMembershipReadContext,
+    },
     /// Read and verify the bounded primary-key-ordered membership rows.
-    ReadMembershipRows,
+    ReadMembershipRows {
+        /// Lifecycle path that read the membership rows.
+        context: H3ReferenceMembershipReadContext,
+    },
     /// Begin the serializable write transaction.
     BeginTransaction,
     /// Apply exact local transaction settings.
@@ -138,6 +144,50 @@ pub enum H3ReferenceInstallOperation {
     CommitTransaction,
     /// Roll back a failed transaction explicitly.
     RollbackTransaction,
+}
+
+/// Lifecycle path that read a representative H3 membership result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum H3ReferenceMembershipReadContext {
+    /// The installer checked for an existing cohort before writing.
+    InitialInspection,
+    /// The installer verified the write transaction for one commit attempt.
+    CommitAttempt {
+        /// One-based commit attempt number.
+        attempt: usize,
+    },
+    /// The installer reconnected after an ambiguous commit attempt.
+    AmbiguousCommitReconciliation {
+        /// One-based commit attempt number that became ambiguous.
+        attempt: usize,
+    },
+}
+
+/// Credential-safe server diagnostic retained from a membership read.
+#[derive(Clone, PartialEq, Eq)]
+pub struct H3ReferenceDatabaseDiagnostic {
+    server: Option<Box<postgres::error::DbError>>,
+}
+
+impl H3ReferenceDatabaseDiagnostic {
+    /// Server diagnostic retained from the membership-read boundary.
+    #[must_use]
+    pub fn server(&self) -> Option<&postgres::error::DbError> {
+        self.server.as_deref()
+    }
+}
+
+impl std::fmt::Debug for H3ReferenceDatabaseDiagnostic {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let (sqlstate, message) = self.server.as_deref().map_or((None, None), |server| {
+            (Some(server.code().code()), Some(server.message()))
+        });
+        formatter
+            .debug_struct("H3ReferenceDatabaseDiagnostic")
+            .field("sqlstate", &sqlstate)
+            .field("message", &message)
+            .finish()
+    }
 }
 
 /// Fixed installer resources with explicit row ceilings.
@@ -179,9 +229,10 @@ pub enum H3ReferenceInstallError {
         actual: usize,
         origin: SchemaEpochOrigin,
     },
-    /// A database operation failed without retaining driver text.
+    /// A database operation failed with a credential-safe server diagnostic boundary.
     Database {
         operation: H3ReferenceInstallOperation,
+        diagnostic: H3ReferenceDatabaseDiagnostic,
     },
     /// A database value could not be decoded into the governed type.
     Decode {
@@ -323,8 +374,11 @@ struct InstallResolution {
 }
 
 trait InstallDriver {
-    fn attempt_commit(&mut self) -> Result<CommitAttempt, H3ReferenceInstallError>;
-    fn reconcile(&mut self) -> Result<InstallPresence, H3ReferenceInstallError>;
+    fn attempt_commit(&mut self, attempt: usize) -> Result<CommitAttempt, H3ReferenceInstallError>;
+    fn reconcile(
+        &mut self,
+        after_attempt: usize,
+    ) -> Result<InstallPresence, H3ReferenceInstallError>;
 }
 
 /// Install one already-validated representative H3 cohort into exact schema epoch 3.
@@ -349,8 +403,11 @@ fn install_representative_h3_cohort_using<Attempt>(
     attempt: &mut Attempt,
 ) -> Result<H3ReferenceInstallReport, H3ReferenceInstallError>
 where
-    Attempt:
-        FnMut(&mut Client, &H3ReferenceCohort) -> Result<CommitAttempt, H3ReferenceInstallError>,
+    Attempt: FnMut(
+        &mut Client,
+        &H3ReferenceCohort,
+        usize,
+    ) -> Result<CommitAttempt, H3ReferenceInstallError>,
 {
     validate_legacy_connection_target(config).map_err(H3ReferenceInstallError::ConnectionTarget)?;
     let bounded = installer_config(config);
@@ -370,12 +427,19 @@ fn install_under_lock<Attempt>(
     attempt: &mut Attempt,
 ) -> Result<H3ReferenceInstallReport, H3ReferenceInstallError>
 where
-    Attempt:
-        FnMut(&mut Client, &H3ReferenceCohort) -> Result<CommitAttempt, H3ReferenceInstallError>,
+    Attempt: FnMut(
+        &mut Client,
+        &H3ReferenceCohort,
+        usize,
+    ) -> Result<CommitAttempt, H3ReferenceInstallError>,
 {
     require_exact_schema_epoch(session.client())?;
     prepare_installer_session(session.client())?;
-    let initial = inspect_presence(session.client(), cohort)?;
+    let initial = inspect_presence(
+        session.client(),
+        cohort,
+        H3ReferenceMembershipReadContext::InitialInspection,
+    )?;
     let resolution = {
         let mut driver = DatabaseInstallDriver {
             config,
@@ -400,7 +464,7 @@ fn drive_install<Driver: InstallDriver>(
     }
     for attempt_index in 0..MAX_H3_REFERENCE_INSTALL_COMMIT_ATTEMPTS {
         let commit_attempts = attempt_index + 1;
-        match driver.attempt_commit()? {
+        match driver.attempt_commit(commit_attempts)? {
             CommitAttempt::Committed => {
                 return Ok(InstallResolution {
                     disposition: H3ReferenceInstallDisposition::Installed,
@@ -408,12 +472,14 @@ fn drive_install<Driver: InstallDriver>(
                 });
             }
             CommitAttempt::Ambiguous => {
-                let reconciled = driver.reconcile().map_err(|reconciliation| {
-                    H3ReferenceInstallError::AmbiguousCommitAndReconciliation {
-                        attempts: commit_attempts,
-                        reconciliation: Box::new(reconciliation),
-                    }
-                })?;
+                let reconciled = driver
+                    .reconcile(commit_attempts)
+                    .map_err(|reconciliation| {
+                        H3ReferenceInstallError::AmbiguousCommitAndReconciliation {
+                            attempts: commit_attempts,
+                            reconciliation: Box::new(reconciliation),
+                        }
+                    })?;
                 if reconciled == InstallPresence::Exact {
                     return Ok(InstallResolution {
                         disposition: H3ReferenceInstallDisposition::ReconciledAfterAmbiguousCommit,
@@ -504,18 +570,30 @@ struct DatabaseInstallDriver<'a, Attempt> {
 
 impl<Attempt> InstallDriver for DatabaseInstallDriver<'_, Attempt>
 where
-    Attempt:
-        FnMut(&mut Client, &H3ReferenceCohort) -> Result<CommitAttempt, H3ReferenceInstallError>,
+    Attempt: FnMut(
+        &mut Client,
+        &H3ReferenceCohort,
+        usize,
+    ) -> Result<CommitAttempt, H3ReferenceInstallError>,
 {
-    fn attempt_commit(&mut self) -> Result<CommitAttempt, H3ReferenceInstallError> {
-        (self.attempt)(self.session.client(), self.cohort)
+    fn attempt_commit(&mut self, attempt: usize) -> Result<CommitAttempt, H3ReferenceInstallError> {
+        (self.attempt)(self.session.client(), self.cohort, attempt)
     }
 
-    fn reconcile(&mut self) -> Result<InstallPresence, H3ReferenceInstallError> {
+    fn reconcile(
+        &mut self,
+        after_attempt: usize,
+    ) -> Result<InstallPresence, H3ReferenceInstallError> {
         self.session.reconnect(self.config)?;
         require_exact_schema_epoch(self.session.client())?;
         prepare_installer_session(self.session.client())?;
-        inspect_presence(self.session.client(), self.cohort)
+        inspect_presence(
+            self.session.client(),
+            self.cohort,
+            H3ReferenceMembershipReadContext::AmbiguousCommitReconciliation {
+                attempt: after_attempt,
+            },
+        )
     }
 }
 
@@ -585,6 +663,7 @@ struct StoredReferenceRow {
 fn inspect_presence<ClientType: GenericClient>(
     client: &mut ClientType,
     cohort: &H3ReferenceCohort,
+    context: H3ReferenceMembershipReadContext,
 ) -> Result<InstallPresence, H3ReferenceInstallError> {
     let receipt = cohort.receipt();
     let ref_digest = receipt.ref_digest();
@@ -615,7 +694,7 @@ fn inspect_presence<ClientType: GenericClient>(
     }
     let header = decode_header(row)?;
     validate_header(&header, receipt)?;
-    verify_membership(client, cohort)?;
+    verify_membership(client, cohort, context)?;
     Ok(InstallPresence::Exact)
 }
 
@@ -682,16 +761,18 @@ fn validate_header(
 fn verify_membership<ClientType: GenericClient>(
     client: &mut ClientType,
     cohort: &H3ReferenceCohort,
+    context: H3ReferenceMembershipReadContext,
 ) -> Result<(), H3ReferenceInstallError> {
-    verify_membership_cardinality(client, cohort)?;
-    let rows = read_membership_rows(client, cohort)?;
+    verify_membership_cardinality(client, cohort, context)?;
+    let operation = H3ReferenceInstallOperation::ReadMembershipRows { context };
+    let rows = read_membership_rows(client, cohort, operation)?;
     if rows.len() != cohort.rows().len() {
         return Err(conflict(H3ReferenceInstallConflict::Membership));
     }
     let mut expected_index = 0_usize;
     let mut direct_cells = Vec::with_capacity(cohort.receipt().direct_cell_count());
     for row in rows.iter().take(MAX_H3_REFERENCE_CLOSURE_ROWS) {
-        let stored = decode_stored_row(row)?;
+        let stored = decode_stored_row(row, operation)?;
         let expected = cohort
             .rows()
             .get(expected_index)
@@ -714,8 +795,9 @@ fn verify_membership<ClientType: GenericClient>(
 fn verify_membership_cardinality<ClientType: GenericClient>(
     client: &mut ClientType,
     cohort: &H3ReferenceCohort,
+    context: H3ReferenceMembershipReadContext,
 ) -> Result<(), H3ReferenceInstallError> {
-    let operation = H3ReferenceInstallOperation::ReadMembershipCardinality;
+    let operation = H3ReferenceInstallOperation::ReadMembershipCardinality { context };
     let ref_digest = cohort.receipt().ref_digest();
     let expected = cohort.rows().len();
     let query_limit = expected
@@ -736,7 +818,7 @@ fn verify_membership_cardinality<ClientType: GenericClient>(
             READ_MEMBERSHIP_CARDINALITY_SQL,
             &[&ref_digest.as_bytes().as_slice(), &query_limit],
         )
-        .map_err(|_| database_error(operation))?;
+        .map_err(|error| server_database_error(operation, &error))?;
     let actual: i64 = decode_value(&row, 0, operation)?;
     let actual =
         usize::try_from(actual).map_err(|_| H3ReferenceInstallError::Decode { operation })?;
@@ -756,6 +838,7 @@ fn verify_membership_cardinality<ClientType: GenericClient>(
 fn read_membership_rows<ClientType: GenericClient>(
     client: &mut ClientType,
     cohort: &H3ReferenceCohort,
+    operation: H3ReferenceInstallOperation,
 ) -> Result<Vec<Row>, H3ReferenceInstallError> {
     let expected = cohort.rows().len();
     let query_limit = expected
@@ -777,7 +860,7 @@ fn read_membership_rows<ClientType: GenericClient>(
             READ_MEMBERSHIP_SQL,
             &[&ref_digest.as_bytes().as_slice(), &query_limit],
         )
-        .map_err(|_| database_error(H3ReferenceInstallOperation::ReadMembershipRows))?;
+        .map_err(|error| server_database_error(operation, &error))?;
     if rows.len() > expected {
         return Err(H3ReferenceInstallError::Bounds {
             resource: H3ReferenceInstallBoundedResource::MembershipRows,
@@ -807,8 +890,10 @@ fn finish_membership_verification(
     Ok(())
 }
 
-fn decode_stored_row(row: &Row) -> Result<StoredReferenceRow, H3ReferenceInstallError> {
-    let operation = H3ReferenceInstallOperation::ReadMembershipRows;
+fn decode_stored_row(
+    row: &Row,
+    operation: H3ReferenceInstallOperation,
+) -> Result<StoredReferenceRow, H3ReferenceInstallError> {
     let cell_id = decode_cell(row, 0, operation)?;
     let resolution: i16 = decode_value(row, 1, operation)?;
     let resolution =
@@ -847,8 +932,13 @@ fn compare_stored_row(
 fn attempt_install_transaction(
     client: &mut Client,
     cohort: &H3ReferenceCohort,
+    attempt: usize,
 ) -> Result<CommitAttempt, H3ReferenceInstallError> {
-    let transaction = prepare_install_transaction(client, cohort)?;
+    let transaction = prepare_install_transaction(
+        client,
+        cohort,
+        H3ReferenceMembershipReadContext::CommitAttempt { attempt },
+    )?;
     match transaction.commit() {
         Ok(()) => Ok(CommitAttempt::Committed),
         Err(error) if error.as_db_error().is_some() => Err(database_error(
@@ -861,6 +951,7 @@ fn attempt_install_transaction(
 fn prepare_install_transaction<'client>(
     client: &'client mut Client,
     cohort: &H3ReferenceCohort,
+    context: H3ReferenceMembershipReadContext,
 ) -> Result<Transaction<'client>, H3ReferenceInstallError> {
     let mut transaction = client
         .build_transaction()
@@ -868,7 +959,7 @@ fn prepare_install_transaction<'client>(
         .read_only(false)
         .start()
         .map_err(|_| database_error(H3ReferenceInstallOperation::BeginTransaction))?;
-    let verification = install_and_verify(&mut transaction, cohort);
+    let verification = install_and_verify(&mut transaction, cohort, context);
     if let Err(primary) = verification {
         return rollback_preserving(transaction, primary);
     }
@@ -878,12 +969,13 @@ fn prepare_install_transaction<'client>(
 fn install_and_verify(
     transaction: &mut Transaction<'_>,
     cohort: &H3ReferenceCohort,
+    context: H3ReferenceMembershipReadContext,
 ) -> Result<(), H3ReferenceInstallError> {
     prepare_transaction(transaction)?;
     insert_cells(transaction, cohort.rows())?;
     insert_header(transaction, cohort.receipt())?;
     insert_membership(transaction, cohort)?;
-    match inspect_presence(transaction, cohort)? {
+    match inspect_presence(transaction, cohort, context)? {
         InstallPresence::Exact => Ok(()),
         InstallPresence::Absent => Err(conflict(H3ReferenceInstallConflict::CohortHeader)),
     }
@@ -1183,7 +1275,22 @@ fn count_to_sql(count: usize) -> Result<i64, H3ReferenceInstallError> {
 }
 
 fn database_error(operation: H3ReferenceInstallOperation) -> H3ReferenceInstallError {
-    H3ReferenceInstallError::Database { operation }
+    H3ReferenceInstallError::Database {
+        operation,
+        diagnostic: H3ReferenceDatabaseDiagnostic { server: None },
+    }
+}
+
+fn server_database_error(
+    operation: H3ReferenceInstallOperation,
+    error: &postgres::Error,
+) -> H3ReferenceInstallError {
+    H3ReferenceInstallError::Database {
+        operation,
+        diagnostic: H3ReferenceDatabaseDiagnostic {
+            server: error.as_db_error().cloned().map(Box::new),
+        },
+    }
 }
 
 fn conflict(component: H3ReferenceInstallConflict) -> H3ReferenceInstallError {
@@ -1200,7 +1307,7 @@ pub(crate) mod live_postgres_tests {
         attempt_install_transaction, conflict, install_representative_h3_cohort,
         install_representative_h3_cohort_using, prepare_install_transaction, CommitAttempt,
         H3ReferenceInstallBoundedResource, H3ReferenceInstallConflict,
-        H3ReferenceInstallDisposition, H3ReferenceInstallError,
+        H3ReferenceInstallDisposition, H3ReferenceInstallError, H3ReferenceMembershipReadContext,
     };
     use crate::{build_representative_h3_cohort_v1, H3CellId, H3ReferenceCohort, RefDigest};
 
@@ -1233,13 +1340,18 @@ pub(crate) mod live_postgres_tests {
     pub(crate) fn verify_rollback_and_killed_retry(config: &Config, admin: &Config) {
         let cohort = representative_cohort();
         assert_eq!(reference_counts(config), (0, 0, 0));
-        let mut forced_failure = |client: &mut postgres::Client, cohort: &H3ReferenceCohort| {
-            let transaction = prepare_install_transaction(client, cohort)?;
-            super::rollback_preserving(
-                transaction,
-                conflict(H3ReferenceInstallConflict::Membership),
-            )
-        };
+        let mut forced_failure =
+            |client: &mut postgres::Client, cohort: &H3ReferenceCohort, attempt: usize| {
+                let transaction = prepare_install_transaction(
+                    client,
+                    cohort,
+                    H3ReferenceMembershipReadContext::CommitAttempt { attempt },
+                )?;
+                super::rollback_preserving(
+                    transaction,
+                    conflict(H3ReferenceInstallConflict::Membership),
+                )
+            };
         assert!(matches!(
             install_representative_h3_cohort_using(config, &cohort, &mut forced_failure),
             Err(super::H3ReferenceInstallError::Conflict {
@@ -1249,14 +1361,15 @@ pub(crate) mod live_postgres_tests {
         assert_eq!(reference_counts(config), (0, 0, 0));
 
         let mut first_attempt = true;
-        let mut killed_attempt = |client: &mut postgres::Client, cohort: &H3ReferenceCohort| {
-            if first_attempt {
-                first_attempt = false;
-                killed_before_commit(client, cohort, admin)
-            } else {
-                attempt_install_transaction(client, cohort)
-            }
-        };
+        let mut killed_attempt =
+            |client: &mut postgres::Client, cohort: &H3ReferenceCohort, attempt: usize| {
+                if first_attempt {
+                    first_attempt = false;
+                    killed_before_commit(client, cohort, admin, attempt)
+                } else {
+                    attempt_install_transaction(client, cohort, attempt)
+                }
+            };
         let report =
             install_representative_h3_cohort_using(config, &cohort, &mut killed_attempt).unwrap();
         assert_eq!(
@@ -1270,18 +1383,19 @@ pub(crate) mod live_postgres_tests {
     pub(crate) fn verify_committed_reconciliation(config: &Config, admin: &Config) {
         let cohort = representative_cohort();
         let mut first_attempt = true;
-        let mut ambiguous_attempt = |client: &mut postgres::Client, cohort: &H3ReferenceCohort| {
-            let backend_pid = backend_pid(client);
-            let outcome = attempt_install_transaction(client, cohort)?;
-            if first_attempt {
-                first_attempt = false;
-                assert_eq!(outcome, CommitAttempt::Committed);
-                terminate_backend(admin, backend_pid);
-                Ok(CommitAttempt::Ambiguous)
-            } else {
-                Ok(outcome)
-            }
-        };
+        let mut ambiguous_attempt =
+            |client: &mut postgres::Client, cohort: &H3ReferenceCohort, attempt: usize| {
+                let backend_pid = backend_pid(client);
+                let outcome = attempt_install_transaction(client, cohort, attempt)?;
+                if first_attempt {
+                    first_attempt = false;
+                    assert_eq!(outcome, CommitAttempt::Committed);
+                    terminate_backend(admin, backend_pid);
+                    Ok(CommitAttempt::Ambiguous)
+                } else {
+                    Ok(outcome)
+                }
+            };
         let report =
             install_representative_h3_cohort_using(config, &cohort, &mut ambiguous_attempt)
                 .unwrap();
@@ -1358,9 +1472,14 @@ pub(crate) mod live_postgres_tests {
         client: &mut postgres::Client,
         cohort: &H3ReferenceCohort,
         admin: &Config,
+        attempt: usize,
     ) -> Result<CommitAttempt, super::H3ReferenceInstallError> {
         let backend_pid = backend_pid(client);
-        let transaction = prepare_install_transaction(client, cohort)?;
+        let transaction = prepare_install_transaction(
+            client,
+            cohort,
+            H3ReferenceMembershipReadContext::CommitAttempt { attempt },
+        )?;
         terminate_backend(admin, backend_pid);
         assert!(transaction.commit().is_err());
         Ok(CommitAttempt::Ambiguous)
@@ -1431,8 +1550,8 @@ pub(crate) mod live_postgres_tests {
 #[cfg(test)]
 mod tests {
     use super::{
-        drive_install, installer_config, preserve_rollback_result, CommitAttempt, InstallDriver,
-        InstallPresence, H3_REFERENCE_SESSION_SETTINGS_SQL,
+        database_error, drive_install, installer_config, preserve_rollback_result, CommitAttempt,
+        InstallDriver, InstallPresence, H3_REFERENCE_SESSION_SETTINGS_SQL,
         MAX_H3_REFERENCE_INSTALL_COMMIT_ATTEMPTS,
     };
     use crate::{
@@ -1449,6 +1568,8 @@ mod tests {
         reconciliation_failure: Option<H3ReferenceInstallError>,
         attempt_calls: usize,
         reconciliation_calls: usize,
+        received_attempts: [usize; MAX_H3_REFERENCE_INSTALL_COMMIT_ATTEMPTS],
+        received_reconciliations: [usize; MAX_H3_REFERENCE_INSTALL_COMMIT_ATTEMPTS],
     }
 
     impl ScriptedDriver {
@@ -1462,6 +1583,8 @@ mod tests {
                 reconciliation_failure: None,
                 attempt_calls: 0,
                 reconciliation_calls: 0,
+                received_attempts: [0; MAX_H3_REFERENCE_INSTALL_COMMIT_ATTEMPTS],
+                received_reconciliations: [0; MAX_H3_REFERENCE_INSTALL_COMMIT_ATTEMPTS],
             }
         }
 
@@ -1472,8 +1595,12 @@ mod tests {
     }
 
     impl InstallDriver for ScriptedDriver {
-        fn attempt_commit(&mut self) -> Result<CommitAttempt, H3ReferenceInstallError> {
+        fn attempt_commit(
+            &mut self,
+            attempt: usize,
+        ) -> Result<CommitAttempt, H3ReferenceInstallError> {
             let index = self.attempt_calls;
+            self.received_attempts[index] = attempt;
             self.attempt_calls = self
                 .attempt_calls
                 .checked_add(1)
@@ -1481,8 +1608,12 @@ mod tests {
             Ok(self.attempts[index].expect("unexpected commit attempt"))
         }
 
-        fn reconcile(&mut self) -> Result<InstallPresence, H3ReferenceInstallError> {
+        fn reconcile(
+            &mut self,
+            after_attempt: usize,
+        ) -> Result<InstallPresence, H3ReferenceInstallError> {
             let index = self.reconciliation_calls;
+            self.received_reconciliations[index] = after_attempt;
             self.reconciliation_calls = self
                 .reconciliation_calls
                 .checked_add(1)
@@ -1531,6 +1662,11 @@ mod tests {
         );
         assert_eq!(resolution.commit_attempts, 1);
         assert_eq!((driver.attempt_calls, driver.reconciliation_calls), (1, 0));
+        assert_eq!(&driver.received_attempts[..driver.attempt_calls], &[1]);
+        assert_eq!(
+            &driver.received_reconciliations[..driver.reconciliation_calls],
+            &[]
+        );
     }
 
     #[test]
@@ -1560,6 +1696,11 @@ mod tests {
         );
         assert_eq!(resolution.commit_attempts, 1);
         assert_eq!((driver.attempt_calls, driver.reconciliation_calls), (1, 1));
+        assert_eq!(&driver.received_attempts[..driver.attempt_calls], &[1]);
+        assert_eq!(
+            &driver.received_reconciliations[..driver.reconciliation_calls],
+            &[1]
+        );
     }
 
     #[test]
@@ -1579,6 +1720,11 @@ mod tests {
         );
         assert_eq!(resolution.commit_attempts, 2);
         assert_eq!((driver.attempt_calls, driver.reconciliation_calls), (2, 1));
+        assert_eq!(&driver.received_attempts[..driver.attempt_calls], &[1, 2]);
+        assert_eq!(
+            &driver.received_reconciliations[..driver.reconciliation_calls],
+            &[1]
+        );
     }
 
     #[test]
@@ -1597,13 +1743,16 @@ mod tests {
             H3ReferenceInstallError::AmbiguousCommitUnresolved { attempts: 2 }
         );
         assert_eq!((driver.attempt_calls, driver.reconciliation_calls), (2, 2));
+        assert_eq!(&driver.received_attempts[..driver.attempt_calls], &[1, 2]);
+        assert_eq!(
+            &driver.received_reconciliations[..driver.reconciliation_calls],
+            &[1, 2]
+        );
     }
 
     #[test]
     fn ambiguous_reconciliation_failure_preserves_commit_uncertainty() {
-        let reconciliation = H3ReferenceInstallError::Database {
-            operation: H3ReferenceInstallOperation::ReadHeader,
-        };
+        let reconciliation = database_error(H3ReferenceInstallOperation::ReadHeader);
         let mut driver = ScriptedDriver::new([Some(CommitAttempt::Ambiguous), None], [None, None])
             .with_reconciliation_failure(reconciliation.clone());
 
@@ -1615,6 +1764,11 @@ mod tests {
             })
         );
         assert_eq!((driver.attempt_calls, driver.reconciliation_calls), (1, 1));
+        assert_eq!(&driver.received_attempts[..driver.attempt_calls], &[1]);
+        assert_eq!(
+            &driver.received_reconciliations[..driver.reconciliation_calls],
+            &[1]
+        );
     }
 
     #[test]
@@ -1622,9 +1776,7 @@ mod tests {
         let primary = H3ReferenceInstallError::Conflict {
             component: H3ReferenceInstallConflict::Membership,
         };
-        let rollback = H3ReferenceInstallError::Database {
-            operation: H3ReferenceInstallOperation::RollbackTransaction,
-        };
+        let rollback = database_error(H3ReferenceInstallOperation::RollbackTransaction);
 
         assert_eq!(
             preserve_rollback_result::<()>(primary.clone(), Ok(())),

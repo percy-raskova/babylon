@@ -137,7 +137,8 @@ require_container_absent "startup"
 
 printf 'PER-20 runtime target: image=%s container=%s volume=anonymous port=dynamic-loopback\n' \
   "$IMAGE" "$CONTAINER"
-timeout --signal=TERM --kill-after=10s 180s \
+env DOCKER_BUILDKIT=1 \
+  timeout --signal=TERM --kill-after=10s 180s \
   docker build --tag "$IMAGE" "$REPO_ROOT/docker/postgres"
 
 run_status=0

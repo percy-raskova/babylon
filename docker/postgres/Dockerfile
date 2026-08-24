@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.6
+
 # Isolated test/runtime Postgres for Babylon (spec-087 FR-002).
 #
 # Base: postgis/postgis 17-3.5 — digest-pinned (ADR176 ruling 33: the PG 17

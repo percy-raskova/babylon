@@ -1608,8 +1608,10 @@ fn review_adoption_report_defers_database_owner_authority_proof() {
 fn review_postgres_image_pins_runtime_packages_without_apt_network_resolution() {
     let dockerfile = include_str!("../../../../docker/postgres/Dockerfile");
     let action = include_str!("../../../../.github/actions/postgres-up/action.yml");
+    let runner = include_str!("../../../../tools/run_rust_legacy_adopter_pg.sh");
     let vector_url = "https://apt-archive.postgresql.org/pub/repos/apt/pool/main/p/pgvector/\
                       postgresql-17-pgvector_0.8.5-1.pgdg11+1_amd64.deb";
+    assert!(dockerfile.starts_with("# syntax=docker/dockerfile:1.6\n"));
     assert!(dockerfile.contains(
         "ADD --checksum=sha256:ff0e10806fd87268e2dfac6b2d0aaa5fc2c24341188e7c24f3db7fd112c90f87"
     ));
@@ -1623,6 +1625,9 @@ fn review_postgres_image_pins_runtime_packages_without_apt_network_resolution() 
             "floating package operation: {floating}"
         );
     }
+    assert!(runner.contains(
+        "env DOCKER_BUILDKIT=1 \\\n  timeout --signal=TERM --kill-after=10s 180s \\\n  docker build"
+    ));
     assert!(action.contains("reproduces the pinned base and"));
     assert!(action.contains("archived-package runtime contract"));
     assert!(!action.contains("cold build produces the identical image"));

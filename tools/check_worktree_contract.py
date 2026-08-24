@@ -11,7 +11,8 @@ Five asserts, each mapped to a real debugging session this class cost:
    worktrees lack the symlink farm; tests then auto-create empty sqlite).
 4. ``.env`` exists.
 5. ``uv.lock`` is unmodified vs HEAD (committing an incidental re-lock breaks
-   CI; fix: ``git checkout -- uv.lock`` and use ``UV_FROZEN=1``).
+   CI; fix: ``git checkout -- uv.lock``; use ``UV_FROZEN=1`` only for ``uv
+   sync`` or ``uv run``; ``uv lock --check`` must run with ``UV_FROZEN`` unset).
 
 Stdlib-only and interpreter-agnostic on purpose: it runs as the FIRST
 pre-commit hook (fail_fast), before anything trusts the venv it is checking.
@@ -78,7 +79,8 @@ def check_lock_unmodified() -> str | None:
     if proc.returncode != 0:
         return (
             "uv.lock modified vs HEAD — restore with `git checkout -- uv.lock` "
-            "and prefix commands with UV_FROZEN=1"
+            "and use `UV_FROZEN=1` only for `uv sync` or `uv run`; "
+            "`uv lock --check` must run with `UV_FROZEN` unset"
         )
     return None
 

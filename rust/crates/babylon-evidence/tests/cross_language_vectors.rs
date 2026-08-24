@@ -245,7 +245,7 @@ fn proof_profile() -> SfsProofProfileV1 {
 
 fn causal_cone() -> CausalConeV1 {
     CausalConeV1::new(
-        vec!["a".to_owned(), "\u{10000}".to_owned()],
+        vec!["z".to_owned(), "aa".to_owned(), "\u{10000}".to_owned()],
         vec!["café".to_owned()],
         vec!["Ā".to_owned(), "互助".to_owned()],
     )

@@ -1,7 +1,5 @@
 """Independent behavioral contracts for the T3 cross-language vector oracle."""
 
-from __future__ import annotations
-
 import hashlib
 import importlib.util
 import os
@@ -205,6 +203,12 @@ def test_unicode_17_witnesses_and_scalar_byte_bounds_are_exact(
         exporter.main(["--check"])
 
 
+def test_string_set_sorts_raw_nfc_bytes_before_framing_and_rejects_duplicates() -> None:
+    assert exporter._string_set(("z", "aa"), 96) == b"\x00\x02\x00\x02aa\x00\x01z"
+    with pytest.raises(ValueError, match="duplicate profile set entry"):
+        exporter._string_set(("z", "z"), 96)
+
+
 def test_vector_collections_are_exact_closed_sorted_ascii_lf_rows() -> None:
     wire = exporter._wire_vectors()
     classifier = exporter._classifier_vectors()
@@ -269,7 +273,7 @@ def test_check_rejects_bad_descriptor_metadata_before_read(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class Fixture:
-        def __enter__(self) -> Fixture:
+        def __enter__(self) -> "Fixture":
             return self
 
         def __exit__(self, *_: object) -> None:
@@ -282,7 +286,7 @@ def test_check_rejects_bad_descriptor_metadata_before_read(
             raise AssertionError("metadata-rejected fixture must not be read")
 
     class FixturePath:
-        def open(self, *_: object, **__: object) -> Fixture:
+        def open(self, *_: object, **__: object) -> "Fixture":
             return Fixture()
 
         def stat(self, *_: object, **__: object) -> object:
@@ -308,7 +312,7 @@ def test_check_uses_one_bounded_read_from_the_opened_descriptor(
     reads: list[int] = []
 
     class Fixture:
-        def __enter__(self) -> Fixture:
+        def __enter__(self) -> "Fixture":
             return self
 
         def __exit__(self, *_: object) -> None:
@@ -322,7 +326,7 @@ def test_check_uses_one_bounded_read_from_the_opened_descriptor(
             return b"expected"
 
     class FixturePath:
-        def open(self, *_: object, **__: object) -> Fixture:
+        def open(self, *_: object, **__: object) -> "Fixture":
             return Fixture()
 
         def __str__(self) -> str:
@@ -363,6 +367,88 @@ def test_atomic_replace_failure_preserves_old_file_and_removes_stage(
     assert next(entries) == destination
     with pytest.raises(StopIteration):
         next(entries)
+
+
+def test_atomic_write_failure_survives_handle_close_cleanup_and_unlinks_stage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination = tmp_path / "vectors.txt"
+    destination.write_bytes(b"old-complete")
+
+    class FailingHandle:
+        def write(self, _: bytes) -> int:
+            raise OSError("write refused")
+
+        def close(self) -> None:
+            raise OSError("close cleanup refused")
+
+    def fake_fdopen(descriptor: int, mode: str) -> FailingHandle:
+        assert mode == "wb"
+        os.close(descriptor)
+        return FailingHandle()
+
+    monkeypatch.setattr(os, "fdopen", fake_fdopen)
+    with pytest.raises(exporter.VectorIoError) as caught:
+        exporter._write_atomic(destination, b"new-complete")
+    assert caught.value.operation == "write"
+    assert str(caught.value.__cause__) == "write refused"
+    assert destination.read_bytes() == b"old-complete"
+    assert list(tmp_path.iterdir()) == [destination]
+
+
+def test_atomic_open_failure_survives_descriptor_close_cleanup_and_unlinks_stage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination = tmp_path / "vectors.txt"
+    destination.write_bytes(b"old-complete")
+    real_close = os.close
+
+    def fail_fdopen(_: int, __: str) -> None:
+        raise OSError("open refused")
+
+    def close_then_fail(descriptor: int) -> None:
+        real_close(descriptor)
+        raise OSError("descriptor cleanup refused")
+
+    monkeypatch.setattr(os, "fdopen", fail_fdopen)
+    monkeypatch.setattr(os, "close", close_then_fail)
+    with pytest.raises(exporter.VectorIoError) as caught:
+        exporter._write_atomic(destination, b"new-complete")
+    assert caught.value.operation == "open"
+    assert str(caught.value.__cause__) == "open refused"
+    assert destination.read_bytes() == b"old-complete"
+    assert list(tmp_path.iterdir()) == [destination]
+
+
+def test_atomic_failure_preserves_original_when_exact_stage_unlink_cleanup_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination = tmp_path / "vectors.txt"
+    destination.write_bytes(b"old-complete")
+    staged_paths: list[Path] = []
+    real_unlink = Path.unlink
+
+    def fail_replace(_: object, __: object) -> None:
+        raise OSError("replace refused")
+
+    def fail_stage_unlink(path: Path, *args: object, **kwargs: object) -> None:
+        staged_paths.append(path)
+        raise OSError("unlink cleanup refused")
+
+    monkeypatch.setattr(os, "replace", fail_replace)
+    monkeypatch.setattr(Path, "unlink", fail_stage_unlink)
+    with pytest.raises(exporter.VectorIoError) as caught:
+        exporter._write_atomic(destination, b"new-complete")
+    assert caught.value.operation == "replace"
+    assert str(caught.value.__cause__) == "replace refused"
+    assert len(staged_paths) == 1
+    assert staged_paths[0].parent == tmp_path
+    assert staged_paths[0].name.startswith(f".{destination.name}.")
+    assert destination.read_bytes() == b"old-complete"
+    real_unlink(staged_paths[0])
 
 
 def test_command_reports_the_exact_later_fixture_replace_failure(

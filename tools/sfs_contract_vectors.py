@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Generate bounded language-neutral T3 evidence contract fixtures."""
 
-from __future__ import annotations
-
 import argparse
 import hashlib
 import os
@@ -374,9 +372,17 @@ def _string_set(values: Sequence[str], maximum: int) -> bytes:
     for index in range(MAX_COMPONENTS):
         if index >= len(values):
             break
-        encoded.append(_framed_nfc(values[index], "profile_set", maximum))
+        encoded.append(_nfc_utf8(values[index], "profile_set", 1, maximum))
     encoded.sort()
-    return struct.pack(">H", len(encoded)) + b"".join(encoded)
+    payload = bytearray(struct.pack(">H", len(encoded)))
+    for index in range(MAX_COMPONENTS):
+        if index >= len(encoded):
+            break
+        if index > 0 and encoded[index] == encoded[index - 1]:
+            raise ValueError("duplicate profile set entry")
+        payload.extend(struct.pack(">H", len(encoded[index])))
+        payload.extend(encoded[index])
+    return bytes(payload)
 
 
 def _component_envelope() -> bytes:
@@ -406,7 +412,7 @@ def _proof_profile_envelope() -> bytes:
 
 
 def _causal_cone_envelope() -> bytes:
-    payload = bytearray(_string_set(("a", "\U00010000"), 256))
+    payload = bytearray(_string_set(("z", "aa", "\U00010000"), 256))
     payload.extend(_string_set(("café",), 256))
     payload.extend(_string_set(("Ā", "互助"), 256))
     return _envelope(b"babylon.sfs-causal-cone.v1", bytes(payload))
@@ -571,7 +577,7 @@ def _check(path: Path, expected: bytes) -> bool:
 def _remove_stage(path: Path) -> None:
     try:
         path.unlink()
-    except FileNotFoundError:
+    except OSError:
         return
 
 
@@ -601,9 +607,15 @@ def _write_atomic(path: Path, expected: bytes) -> None:
         os.replace(staged, path)
     except OSError as error:
         if descriptor >= 0:
-            os.close(descriptor)
-        if handle is not None and not handle.closed:
-            handle.close()
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        if handle is not None:
+            try:
+                handle.close()
+            except OSError:
+                pass
         if staged is not None:
             _remove_stage(staged)
         raise VectorIoError(path, operation) from error

@@ -1710,7 +1710,7 @@ dir = "rust"
 run = "cargo build --workspace"
 
 [tasks."check:bsl-sentinels"]
-description = "bsl-lint's repo-relationship sentinels (BSL hygiene knock-out train, W1): citation-drift (every :material-basis cite in content/rules/*.bsl resolves + is in-bounds against the p27-python-freeze tag or the working tree) + namespace-unique (ai/decisions/ ADR-number<->index.yaml sync; cross-file BSL spec-code duplicates against a cited allowlist). Wired as an additive leg of rust:check (static gate, no reference DB, no engine run)."
+description = "bsl-lint's three repo-relationship sentinels: citation-drift, namespace-unique, and sfs-non-authorability. The third is a bounded dependency-direction and tracked/staged/untracked production-source exact-token sentinel; it does not claim universal disguised-name recognition. Wired as an additive leg of rust:check (static gate, no reference DB, no engine run)."
 dir = "rust"
 run = "cargo run -p bsl-lint --locked -- all"
 

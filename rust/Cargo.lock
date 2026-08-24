@@ -377,6 +377,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "babylon-evidence"
+version = "0.1.0"
+dependencies = [
+ "babylon-bsl",
+ "babylon-kernel",
+ "babylon-practice-contract",
+ "pretty_assertions",
+ "unicode-normalization",
+]
+
+[[package]]
 name = "babylon-graph"
 version = "0.1.0"
 dependencies = [
@@ -1908,7 +1919,10 @@ name = "bsl-lint"
 version = "0.1.0"
 dependencies = [
  "babylon-bsl",
+ "proc-macro2",
  "regex",
+ "syn 2.0.119",
+ "toml",
 ]
 
 [[package]]

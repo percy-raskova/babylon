@@ -14,6 +14,7 @@ const READING_GROUP: NodeId = NodeId(2);
 const PRECINCT: NodeId = NodeId(3);
 const COUNTY_B: NodeId = NodeId(6);
 const COUNTY_C: NodeId = NodeId(7);
+const COUNTY_D: NodeId = NodeId(9);
 const PRACTICE_TICKS: usize = 24;
 
 fn attribute(session: &TickSession<HypergraphStore>, node: NodeId, field: &str) -> f64 {
@@ -57,6 +58,30 @@ fn rooted_capacity_moves_one_relational_hop_per_tick() {
 
     session.advance(&mut sink).expect("tick 2");
     assert!(capacity(&session, COUNTY_C) > 0.0);
+}
+
+#[test]
+fn unique_low_buffer_corridor_relays_more_capacity_than_reroutable_corridor() {
+    let mut session = TickSession::new(
+        SCENARIO,
+        PACK,
+        HypergraphStore::new(),
+        SessionId::new("organization-circulation-bottleneck").expect("literal is non-empty"),
+    )
+    .expect("the organization practice world loads");
+    let mut sink = CollectingSink::default();
+
+    session
+        .advance(&mut sink)
+        .expect("circulation comparison tick");
+
+    let unique_corridor_capacity = capacity(&session, COUNTY_B);
+    let reroutable_corridor_capacity = capacity(&session, COUNTY_D);
+    assert!(reroutable_corridor_capacity > 0.0);
+    assert!(
+        unique_corridor_capacity > reroutable_corridor_capacity,
+        "unique corridor capacity {unique_corridor_capacity} did not exceed reroutable corridor capacity {reroutable_corridor_capacity}"
+    );
 }
 
 #[test]

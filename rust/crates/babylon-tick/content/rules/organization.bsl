@@ -1,6 +1,6 @@
 ; Organization practice circuit. A seeded organization spends one bounded
-; weekly action on rooted work. PRESENCE situates that work; ADJACENCY and
-; circulation relay capacity; MEMBERSHIP supplies a finite social base;
+; weekly action on rooted work. PRESENCE situates that work; material fields
+; on ADJACENCY relations relay capacity; MEMBERSHIP supplies a finite social base;
 ; COMMAND carries the state response; organized care changes the pressure of
 ; social reproduction. No territory label grants a bonus, and no rule applies
 ; a sigmoid. The slow-fast-slow recruitment trajectory follows from these
@@ -56,7 +56,7 @@
 (rule organization/p1-rooted-work
   :role mechanic
   :evidence derived
-  :material-basis "Situated practice changes only territories reached through the organization's PRESENCE relation; reproductive pressure and circulation jointly condition the gain."
+  :material-basis "Situated practice changes only territories reached through the organization's PRESENCE relation; reproductive pressure conditions the local gain, while circulation remains on the relations that carry it elsewhere."
   :fuel 128
   (bindings
     (binding active :field organization/active)
@@ -70,27 +70,44 @@
   (effects
     (for-each (neighbors self EdgeType/PRESENCE :out NodeType/TERRITORY)
       (update-node it territory/rooted-work-inbox
-        (add (* (* practice-rate
-                   (field-of it territory/reproduction-pressure))
-                (field-of it territory/circulation-access)))))
+        (add (* practice-rate
+                (field-of it territory/reproduction-pressure)))))
     (update-node self organization/action-budget (sub 1))))
 
 (rule organization/p2-territorial-relay
   :role mechanic
   :evidence derived
-  :material-basis "Rooted capacity travels through declared territory ADJACENCY relations, scaled by the source territory's circulation access; no territory category grants an intrinsic bonus."
-  :fuel 128
+  :material-basis "Rooted work becomes consequential across a declared circulation relation in proportion to its throughput and reproductive dependence, and in inverse proportion to alternate-route capacity and inventory buffers. No territory category or visible blockage grants intrinsic leverage."
+  :fuel 256
   (bindings
     (binding capacity :field territory/rooted-capacity)
     (binding rooted-work :field territory/rooted-work-inbox)
-    (binding circulation :field territory/circulation-access)
     (binding relay-rate :const organization/relay-rate))
   (when (and (> (+ capacity rooted-work) 0.0c)
              (exists (neighbors self EdgeType/ADJACENCY :out NodeType/TERRITORY))))
   (effects
     (for-each (neighbors self EdgeType/ADJACENCY :out NodeType/TERRITORY)
       (update-node it territory/rooted-relay-inbox
-        (add (* (* (+ capacity rooted-work) relay-rate) circulation))))))
+        (add
+          (*
+            (*
+              (*
+                (*
+                  (* (+ capacity rooted-work) relay-rate)
+                  (field-of
+                    (edge-between EdgeType/ADJACENCY self it)
+                    adjacency/throughput-share))
+                (- 1.0c
+                   (field-of
+                     (edge-between EdgeType/ADJACENCY self it)
+                     adjacency/alternate-capacity-share)))
+              (- 1.0c
+                 (field-of
+                   (edge-between EdgeType/ADJACENCY self it)
+                   adjacency/inventory-buffer-share)))
+            (field-of
+              (edge-between EdgeType/ADJACENCY self it)
+              adjacency/reproduction-dependence)))))))
 
 (rule organization/p3-rooted-capacity-apply
   :role mechanic

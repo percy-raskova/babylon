@@ -4,9 +4,10 @@
 ; is seeded state in this proof rather than a live input.
 ;
 ; Geography is relational. TENANCY anchors each class to a territory;
-; ADJACENCY forms the circulation path; PRESENCE and COMMAND locate
-; organizational capacities. All territories share one node type and differ
-; only through declared relations and material state.
+; ADJACENCY forms circulation paths whose fields distinguish throughput,
+; alternate capacity, inventory buffers, and reproductive dependence;
+; PRESENCE and COMMAND locate organizational capacities. All territories
+; share one node type and differ only through relations and material state.
 ;
 ; The `OrgKind` and `PracticeKind` enums remain content declarations rather
 ; than kernel primitives. Constants below are Designed controls for this
@@ -29,11 +30,14 @@
   (deffield territory/rooted-relay-inbox coefficient intensive)
   (deffield territory/command-pressure coefficient intensive)
   (deffield territory/reproduction-pressure coefficient intensive)
-  (deffield territory/circulation-access coefficient intensive)
   (deffield territory/resident-population int extensive)
+  (deffield adjacency/throughput-share coefficient intensive)
+  (deffield adjacency/alternate-capacity-share coefficient intensive)
+  (deffield adjacency/inventory-buffer-share coefficient intensive)
+  (deffield adjacency/reproduction-dependence coefficient intensive)
 
   ; Designed control values for this experiment, not universal coefficients.
-  (defconst organization/practice-rate 0.05c)
+  (defconst organization/practice-rate 0.03c)
   (defconst organization/relay-rate 0.5c)
   (defconst organization/recruitment-rate 0.45c)
   (defconst organization/command-response-rate 0.25c)
@@ -48,7 +52,6 @@
     (territory/rooted-relay-inbox 0.0c)
     (territory/command-pressure 0.0c)
     (territory/reproduction-pressure 0.9c)
-    (territory/circulation-access 0.8c)
     (territory/resident-population 1000))
   ; Civil society: a small propaganda/education circle, present in the
   ; county, with a MEMBERSHIP edge to the class it recruits from.
@@ -77,7 +80,6 @@
     (territory/rooted-relay-inbox 0.0c)
     (territory/command-pressure 0.0c)
     (territory/reproduction-pressure 0.6c)
-    (territory/circulation-access 0.5c)
     (territory/resident-population 700))
   (node county-c NodeType/TERRITORY
     (territory/rooted-capacity 0.0c)
@@ -85,8 +87,19 @@
     (territory/rooted-relay-inbox 0.0c)
     (territory/command-pressure 0.0c)
     (territory/reproduction-pressure 0.4c)
-    (territory/circulation-access 0.3c)
     (territory/resident-population 400))
+
+  ; A fourth territory is materially identical to county-b at the node level.
+  ; Its route from county differs: firms can reroute most flow and inventories
+  ; absorb part of an interruption. The contrast lives on the relation.
+  (node workers-d NodeType/SOCIAL_CLASS (social-class/population 700))
+  (node county-d NodeType/TERRITORY
+    (territory/rooted-capacity 0.0c)
+    (territory/rooted-work-inbox 0.0c)
+    (territory/rooted-relay-inbox 0.0c)
+    (territory/command-pressure 0.0c)
+    (territory/reproduction-pressure 0.6c)
+    (territory/resident-population 700))
 
   (edge EdgeType/MEMBERSHIP reading-group workers 1)
   (edge EdgeType/PRESENCE reading-group county 1)
@@ -95,9 +108,29 @@
   (edge EdgeType/TENANCY workers county 1)
   (edge EdgeType/TENANCY workers-b county-b 1)
   (edge EdgeType/TENANCY workers-c county-c 1)
+  (edge EdgeType/TENANCY workers-d county-d 1)
   (edge EdgeType/ADJACENCY county county-b 1)
+  (edge EdgeType/ADJACENCY county county-d 1)
   (edge EdgeType/ADJACENCY county-b county-c 1)
   (edge EdgeType/ADJACENCY county-c county 1)
+  ; The two county routes carry equal throughput and reproductive dependence.
+  ; Only the alternate-route and inventory-buffer relations differ.
+  (edge-attr EdgeType/ADJACENCY county county-b adjacency/throughput-share 0.8c)
+  (edge-attr EdgeType/ADJACENCY county county-b adjacency/alternate-capacity-share 0.0c)
+  (edge-attr EdgeType/ADJACENCY county county-b adjacency/inventory-buffer-share 0.0c)
+  (edge-attr EdgeType/ADJACENCY county county-b adjacency/reproduction-dependence 0.8c)
+  (edge-attr EdgeType/ADJACENCY county county-d adjacency/throughput-share 0.8c)
+  (edge-attr EdgeType/ADJACENCY county county-d adjacency/alternate-capacity-share 0.75c)
+  (edge-attr EdgeType/ADJACENCY county county-d adjacency/inventory-buffer-share 0.5c)
+  (edge-attr EdgeType/ADJACENCY county county-d adjacency/reproduction-dependence 0.8c)
+  (edge-attr EdgeType/ADJACENCY county-b county-c adjacency/throughput-share 0.5c)
+  (edge-attr EdgeType/ADJACENCY county-b county-c adjacency/alternate-capacity-share 0.25c)
+  (edge-attr EdgeType/ADJACENCY county-b county-c adjacency/inventory-buffer-share 0.25c)
+  (edge-attr EdgeType/ADJACENCY county-b county-c adjacency/reproduction-dependence 0.6c)
+  (edge-attr EdgeType/ADJACENCY county-c county adjacency/throughput-share 0.3c)
+  (edge-attr EdgeType/ADJACENCY county-c county adjacency/alternate-capacity-share 0.5c)
+  (edge-attr EdgeType/ADJACENCY county-c county adjacency/inventory-buffer-share 0.5c)
+  (edge-attr EdgeType/ADJACENCY county-c county adjacency/reproduction-dependence 0.4c)
   (edge EdgeType/SOLIDARITY workers workers-b 1)
   (edge EdgeType/SOLIDARITY workers-b workers-c 1)
   ; The deliberate org<->org SOLIDARITY edge (Q15/Q18) — see header.

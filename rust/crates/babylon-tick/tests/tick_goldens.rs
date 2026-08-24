@@ -118,11 +118,12 @@ fn us_counties_lifecycle_demo_hashes_are_pinned() {
 }
 
 /// The organization foundation hash anchor. The scenario seeds two
-/// organizations, three class-territory pairs, and explicit membership,
-/// presence, command, tenancy, adjacency, and solidarity relations. The
-/// rule pack spends a bounded practice action, relays rooted capacity,
-/// recruits from a finite social base, provokes command response, and
-/// provides reproductive relief.
+/// organizations, four class-territory pairs, and explicit membership,
+/// presence, command, tenancy, attributed adjacency, and solidarity
+/// relations. The rule pack spends a bounded practice action, relays rooted
+/// capacity through throughput, alternate-capacity, inventory-buffer, and
+/// reproduction-dependence fields, recruits from a finite social base,
+/// provokes command response, and provides reproductive relief.
 ///
 /// The before hash pins the expanded relational world. The after hash pins
 /// its first material tick. Structural assertions in
@@ -134,21 +135,22 @@ fn organization_foundation_hashes_are_pinned() {
         .expect("organization-foundation tick");
     assert_eq!(
         hex(&report.before),
-        "9e15ff8a1f3880f2ce7e5e6e8e4f198f2fcca927f24c876b8addaf84cd6f03f9",
+        "aa799a0f894d6c71f02fc35d060618ea9c8b72c1135451ab05b1833b260aa170",
         "pre-tick hash moved — this is the SUBSTRATE'S load of \
          organization-foundation.bscn (the org estate's first entry into \
          the Rust byte gate, spec §11)"
     );
     assert_eq!(
         hex(&report.after),
-        "91f4fd1e7d62b38ee85b6f70b92e5e45ebe8c8de8ddc179f897f55492dedf410",
+        "dcd6c27a130d0a43c6d57f775a9812eee233bae339edb502313c78d3e6fc8f9b",
         "post-tick hash moved — this pins the first material practice, \
          propagation, recruitment, command, and care writes"
     );
     assert_eq!(
-        report.fired, 13,
-        "the first tick must execute the measured subject-rule matches \
-         across the kind probe and eight material practice rules"
+        report.fired, 15,
+        "the first tick must execute 1 kind probe + 2 budget resets + 4 \
+         territory resets + 1 rooted practice + 1 circulation relay + 3 \
+         capacity applications + 1 recruitment + 1 command response + 1 care relief"
     );
 }
 

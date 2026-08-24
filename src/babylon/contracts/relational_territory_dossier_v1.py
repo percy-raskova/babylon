@@ -7,10 +7,13 @@ authoritative state.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import unicodedata
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from itertools import islice
 from typing import Final
 
 from pydantic import TypeAdapter, ValidationError
@@ -22,14 +25,20 @@ from babylon.contracts.rtd_v1_generated import (
     RTD_V1_RELATION_BINDING_REGISTRY,
     RTD_V1_SCHEMA_ID,
     AudienceV1,
+    DecisionSurfaceV1,
+    DimensionCoordinateV1,
     DurabilityV1,
     DyadV1,
     FacetV1,
     FlowKindV1,
     GapV1,
+    HyperedgeV1,
     MembershipKindV1,
     MetricRepresentationV1,
+    ProvenanceV1,
+    ReferenceDigestV1,
     ReferenceFlowV1,
+    RelationalTerritoryDossierV1,
     RelationPayloadModeV1,
     RtdCollectionKindV1,
     RtdDossierDraftV1,
@@ -43,9 +52,14 @@ from babylon.contracts.rtd_v1_generated import (
 
 __all__ = [
     "RtdValidationError",
+    "RtdVectorCaseV1",
     "append_bounded",
+    "canonical_draft_bytes",
     "parse_draft",
     "parse_draft_json",
+    "parse_vector_corpus",
+    "projection_hash",
+    "seal_draft",
     "validate_draft",
 ]
 
@@ -85,6 +99,11 @@ RTD_RECORD_ARRAY_COUNT: Final[int] = 7
 RTD_RECORD_ID_ATTRIBUTE_COUNT: Final[int] = 7
 RTD_CANADA_TOKEN_COUNT: Final[int] = 3
 RTD_ADMIN_FORBIDDEN_LIST_COUNT: Final[int] = 3
+RTD_MAX_VECTOR_BYTES: Final[int] = 1_048_576
+RTD_MAX_VECTOR_LINES: Final[int] = 256
+RTD_MAX_VECTOR_LINE_BYTES: Final[int] = 262_144
+RTD_MAX_CASE_ID_BYTES: Final[int] = 128
+RTD_HASH_DOMAIN: Final[bytes] = b"babylon.relational-territory-dossier.v1"
 
 _DRAFT_ADAPTER: Final[TypeAdapter[RtdDossierDraftV1]] = TypeAdapter(RtdDossierDraftV1)
 _DIGEST_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{64}$")
@@ -1229,3 +1248,527 @@ def validate_draft(draft: RtdDossierDraftV1) -> None:
     _validate_admin_boundary(draft)
     _validate_facets(draft)
     _validate_relations(draft)
+
+
+@dataclass(frozen=True, slots=True)
+class RtdVectorCaseV1:
+    """One closed shared canonical-vector envelope."""
+
+    case_id: str
+    kind: str
+    draft: Mapping[str, object]
+    canonical_utf8_hex: str = ""
+    projection_hash: str = ""
+    error: str = ""
+
+
+def _validate_case_id(case_id: object) -> str:
+    if not isinstance(case_id, str):
+        raise _fail("RTD_VECTOR_LIMIT", "case_id")
+    _validate_nfc(case_id, ("case_id",))
+    length = _utf8_length(case_id, ("case_id",))
+    if length == 0 or length > RTD_MAX_CASE_ID_BYTES:
+        raise _fail("RTD_VECTOR_LIMIT", "case_id")
+    return case_id
+
+
+def _parse_valid_vector(decoded: dict[str, object], case_id: str) -> RtdVectorCaseV1:
+    expected = {"case_id", "kind", "draft", "canonical_utf8_hex", "projection_hash"}
+    if set(decoded) != expected:
+        raise _fail("RTD_UNKNOWN_FIELD")
+    draft = decoded["draft"]
+    canonical_hex = decoded["canonical_utf8_hex"]
+    expected_hash = decoded["projection_hash"]
+    if not isinstance(draft, dict):
+        raise _fail("RTD_JSON", "draft")
+    if not isinstance(canonical_hex, str) or not isinstance(expected_hash, str):
+        raise _fail("RTD_JSON")
+    if len(canonical_hex) % 2 != 0 or re.fullmatch(r"[0-9a-f]*", canonical_hex) is None:
+        raise _fail("RTD_JSON", "canonical_utf8_hex")
+    if _DIGEST_RE.fullmatch(expected_hash) is None:
+        raise _fail("RTD_DIGEST", "projection_hash")
+    return RtdVectorCaseV1(case_id, "valid", draft, canonical_hex, expected_hash)
+
+
+def _parse_invalid_vector(decoded: dict[str, object], case_id: str) -> RtdVectorCaseV1:
+    expected = {"case_id", "kind", "draft", "error"}
+    if set(decoded) != expected:
+        raise _fail("RTD_UNKNOWN_FIELD")
+    draft = decoded["draft"]
+    error = decoded["error"]
+    if not isinstance(draft, dict):
+        raise _fail("RTD_JSON", "draft")
+    if not isinstance(error, str) or error not in RTD_V1_ERROR_REGISTRY:
+        raise _fail("RTD_ENUM", "error")
+    return RtdVectorCaseV1(case_id, "invalid", draft, error=error)
+
+
+def _parse_vector_line(line: bytes) -> RtdVectorCaseV1:
+    if len(line) > RTD_MAX_VECTOR_LINE_BYTES:
+        raise _fail("RTD_VECTOR_LIMIT")
+    line = line.removesuffix(b"\n").removesuffix(b"\r")
+    _scan_json_depth(line)
+    try:
+        decoded = json.loads(line, object_pairs_hook=_unique_json_object)
+    except RtdValidationError:
+        raise
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        raise _fail("RTD_JSON") from error
+    if not isinstance(decoded, dict):
+        raise _fail("RTD_JSON")
+    case_id = _validate_case_id(decoded.get("case_id"))
+    kind = decoded.get("kind")
+    if kind == "valid":
+        return _parse_valid_vector(decoded, case_id)
+    if kind == "invalid":
+        return _parse_invalid_vector(decoded, case_id)
+    raise _fail("RTD_VECTOR_LIMIT", "kind")
+
+
+def parse_vector_corpus(payload: bytes) -> tuple[RtdVectorCaseV1, ...]:
+    """Parse the closed, bounded RTD JSONL conformance corpus."""
+    if len(payload) > RTD_MAX_VECTOR_BYTES:
+        raise _fail("RTD_VECTOR_LIMIT")
+    output: list[RtdVectorCaseV1] = []
+    seen: set[str] = set()
+    lines = payload.splitlines(keepends=True)
+    for line_index, line in enumerate(islice(lines, RTD_MAX_VECTOR_LINES + 1)):
+        if line_index == RTD_MAX_VECTOR_LINES:
+            raise _fail("RTD_VECTOR_LIMIT")
+        case = _parse_vector_line(line)
+        if case.case_id in seen:
+            raise _fail("RTD_DUPLICATE_KEY", "case_id")
+        seen.add(case.case_id)
+        output.append(case)
+    return tuple(output)
+
+
+class _CanonicalWriter:
+    __slots__ = ("_buffer", "_count")
+
+    def __init__(self) -> None:
+        self._buffer = bytearray()
+        self._count = 0
+
+    def write(self, value: bytes) -> None:
+        next_count = self._count + len(value)
+        if next_count > RTD_MAX_JSON_INPUT_BYTES:
+            raise _fail("RTD_CANONICAL_SIZE")
+        self._buffer.extend(value)
+        self._count = next_count
+
+    def finish(self) -> bytes:
+        return bytes(self._buffer)
+
+
+def _write_string(writer: _CanonicalWriter, value: str) -> None:
+    encoded = value.encode("utf-8")
+    writer.write(b'"')
+    escapes = {
+        0x08: b"\\b",
+        0x09: b"\\t",
+        0x0A: b"\\n",
+        0x0C: b"\\f",
+        0x0D: b"\\r",
+        0x22: b'\\"',
+        0x5C: b"\\\\",
+    }
+    for byte_index in range(RTD_MAX_JSON_INPUT_BYTES + 1):
+        if byte_index == len(encoded):
+            break
+        byte = encoded[byte_index]
+        escaped = escapes.get(byte)
+        if escaped is not None:
+            writer.write(escaped)
+        elif byte < 0x20:
+            writer.write(f"\\u{byte:04x}".encode("ascii"))
+        else:
+            writer.write(bytes((byte,)))
+    writer.write(b'"')
+
+
+def _field(writer: _CanonicalWriter, key: str, first: bool) -> bool:
+    if not first:
+        writer.write(b",")
+    _write_string(writer, key)
+    writer.write(b":")
+    return False
+
+
+def _write_nullable_string(writer: _CanonicalWriter, value: str | None) -> None:
+    if value is None:
+        writer.write(b"null")
+    else:
+        _write_string(writer, value)
+
+
+def _write_u64(writer: _CanonicalWriter, value: int) -> None:
+    writer.write(str(value).encode("ascii"))
+
+
+def _write_enum(writer: _CanonicalWriter, value: object) -> None:
+    enum_value = getattr(value, "value", None)
+    if not isinstance(enum_value, str):
+        raise AssertionError("generated RTD enum lacks a string value")
+    _write_string(writer, enum_value)
+
+
+def _write_identity(writer: _CanonicalWriter, identity: TypedIdentityV1) -> None:
+    writer.write(b"{")
+    first = _field(writer, "authority", True)
+    _write_string(writer, identity.authority)
+    first = _field(writer, "domain", first)
+    _write_string(writer, identity.domain)
+    _field(writer, "local_id", first)
+    _write_string(writer, identity.local_id)
+    writer.write(b"}")
+
+
+def _write_nullable_identity(writer: _CanonicalWriter, identity: TypedIdentityV1 | None) -> None:
+    if identity is None:
+        writer.write(b"null")
+    else:
+        _write_identity(writer, identity)
+
+
+def _write_array[T](
+    writer: _CanonicalWriter,
+    items: tuple[T, ...],
+    emit: Callable[[_CanonicalWriter, T], None],
+    sort_key: Callable[[T], bytes] | None,
+) -> None:
+    ordered = items if sort_key is None else tuple(sorted(items, key=sort_key))
+    writer.write(b"[")
+    for item_index in range(RTD_MAX_COLLECTION_ITEMS):
+        if item_index == len(ordered):
+            break
+        if item_index != 0:
+            writer.write(b",")
+        emit(writer, ordered[item_index])
+    writer.write(b"]")
+
+
+def _write_identity_array(
+    writer: _CanonicalWriter,
+    items: tuple[TypedIdentityV1, ...],
+    preserve_order: bool = False,
+) -> None:
+    _write_array(writer, items, _write_identity, None if preserve_order else _identity_key)
+
+
+def _write_reference(writer: _CanonicalWriter, row: ReferenceDigestV1) -> None:
+    writer.write(b"{")
+    first = _field(writer, "artifact_schema_id_or_null", True)
+    _write_nullable_identity(writer, row.artifact_schema_id_or_null)
+    first = _field(writer, "evidence_class", first)
+    _write_enum(writer, row.evidence_class)
+    first = _field(writer, "reference_id", first)
+    _write_identity(writer, row.reference_id)
+    first = _field(writer, "sha256_hex", first)
+    _write_string(writer, row.sha256_hex)
+    _field(writer, "vintage", first)
+    _write_string(writer, row.vintage)
+    writer.write(b"}")
+
+
+def _write_coordinate(writer: _CanonicalWriter, row: DimensionCoordinateV1) -> None:
+    writer.write(b"{")
+    first = _field(writer, "dimension_ref", True)
+    _write_identity(writer, row.dimension_ref)
+    _field(writer, "member_ref", first)
+    _write_identity(writer, row.member_ref)
+    writer.write(b"}")
+
+
+def _write_membership(writer: _CanonicalWriter, row: ScaleMembershipV1) -> None:
+    writer.write(b"{")
+    first = _field(writer, "coverage", True)
+    _write_enum(writer, row.coverage)
+    first = _field(writer, "evidence_class", first)
+    _write_enum(writer, row.evidence_class)
+    first = _field(writer, "member_ref", first)
+    _write_identity(writer, row.member_ref)
+    first = _field(writer, "membership_id", first)
+    _write_identity(writer, row.membership_id)
+    first = _field(writer, "membership_kind", first)
+    _write_enum(writer, row.membership_kind)
+    first = _field(writer, "provenance_refs", first)
+    _write_identity_array(writer, row.provenance_refs)
+    first = _field(writer, "scale_ref", first)
+    _write_identity(writer, row.scale_ref)
+    first = _field(writer, "status", first)
+    _write_enum(writer, row.status)
+    first = _field(writer, "weight_bits_or_null", first)
+    _write_nullable_string(writer, row.weight_bits_or_null)
+    _field(writer, "weight_status", first)
+    _write_enum(writer, row.weight_status)
+    writer.write(b"}")
+
+
+def _write_facet(writer: _CanonicalWriter, row: FacetV1) -> None:
+    writer.write(b"{")
+    first = _field(writer, "coordinates", True)
+    _write_array(
+        writer, row.coordinates, _write_coordinate, lambda item: _identity_key(item.dimension_ref)
+    )
+    first = _field(writer, "coverage", first)
+    _write_enum(writer, row.coverage)
+    first = _field(writer, "evidence_class", first)
+    _write_enum(writer, row.evidence_class)
+    first = _field(writer, "facet_id", first)
+    _write_identity(writer, row.facet_id)
+    first = _field(writer, "family", first)
+    _write_enum(writer, row.family)
+    first = _field(writer, "metric_id", first)
+    _write_identity(writer, row.metric_id)
+    first = _field(writer, "native_scale", first)
+    _write_identity(writer, row.native_scale)
+    first = _field(writer, "provenance_refs", first)
+    _write_identity_array(writer, row.provenance_refs)
+    first = _field(writer, "status", first)
+    _write_enum(writer, row.status)
+    first = _field(writer, "subject_ref", first)
+    _write_identity(writer, row.subject_ref)
+    first = _field(writer, "unit_id", first)
+    _write_identity(writer, row.unit_id)
+    first = _field(writer, "value_bits_or_null", first)
+    _write_nullable_string(writer, row.value_bits_or_null)
+    first = _field(writer, "value_kind", first)
+    _write_enum(writer, row.value_kind)
+    _field(writer, "vintage", first)
+    _write_string(writer, row.vintage)
+    writer.write(b"}")
+
+
+def _write_dyad(writer: _CanonicalWriter, row: DyadV1) -> None:
+    writer.write(b"{")
+    first = _field(writer, "coverage", True)
+    _write_enum(writer, row.coverage)
+    first = _field(writer, "evidence_class", first)
+    _write_enum(writer, row.evidence_class)
+    first = _field(writer, "from_ref", first)
+    _write_identity(writer, row.from_ref)
+    first = _field(writer, "native_scale", first)
+    _write_identity(writer, row.native_scale)
+    first = _field(writer, "payload_facets", first)
+    _write_identity_array(writer, row.payload_facets)
+    first = _field(writer, "provenance_refs", first)
+    _write_identity_array(writer, row.provenance_refs)
+    first = _field(writer, "relation_id", first)
+    _write_identity(writer, row.relation_id)
+    first = _field(writer, "relation_kind", first)
+    _write_enum(writer, row.relation_kind)
+    first = _field(writer, "status", first)
+    _write_enum(writer, row.status)
+    _field(writer, "to_ref", first)
+    _write_identity(writer, row.to_ref)
+    writer.write(b"}")
+
+
+def _write_hyperedge(writer: _CanonicalWriter, row: HyperedgeV1) -> None:
+    writer.write(b"{")
+    first = _field(writer, "coverage", True)
+    _write_enum(writer, row.coverage)
+    first = _field(writer, "evidence_class", first)
+    _write_enum(writer, row.evidence_class)
+    first = _field(writer, "hyperedge_id", first)
+    _write_identity(writer, row.hyperedge_id)
+    first = _field(writer, "hyperedge_kind", first)
+    _write_enum(writer, row.hyperedge_kind)
+    first = _field(writer, "member_refs", first)
+    _write_identity_array(writer, row.member_refs)
+    first = _field(writer, "native_scale", first)
+    _write_identity(writer, row.native_scale)
+    first = _field(writer, "payload_facets", first)
+    _write_identity_array(writer, row.payload_facets)
+    first = _field(writer, "provenance_refs", first)
+    _write_identity_array(writer, row.provenance_refs)
+    _field(writer, "status", first)
+    _write_enum(writer, row.status)
+    writer.write(b"}")
+
+
+def _write_flow(writer: _CanonicalWriter, row: ReferenceFlowV1) -> None:
+    writer.write(b"{")
+    first = _field(writer, "coverage", True)
+    _write_enum(writer, row.coverage)
+    first = _field(writer, "destination_ref", first)
+    _write_identity(writer, row.destination_ref)
+    first = _field(writer, "evidence_class", first)
+    _write_enum(writer, row.evidence_class)
+    first = _field(writer, "flow_id", first)
+    _write_identity(writer, row.flow_id)
+    first = _field(writer, "flow_kind", first)
+    _write_enum(writer, row.flow_kind)
+    first = _field(writer, "native_scale", first)
+    _write_identity(writer, row.native_scale)
+    first = _field(writer, "origin_ref", first)
+    _write_identity(writer, row.origin_ref)
+    first = _field(writer, "payload_facets", first)
+    _write_identity_array(writer, row.payload_facets)
+    first = _field(writer, "provenance_refs", first)
+    _write_identity_array(writer, row.provenance_refs)
+    _field(writer, "status", first)
+    _write_enum(writer, row.status)
+    writer.write(b"}")
+
+
+def _write_gap(writer: _CanonicalWriter, row: GapV1) -> None:
+    writer.write(b"{")
+    first = _field(writer, "gap_id", True)
+    _write_identity(writer, row.gap_id)
+    first = _field(writer, "provenance_refs", first)
+    _write_identity_array(writer, row.provenance_refs)
+    first = _field(writer, "reason_code", first)
+    _write_enum(writer, row.reason_code)
+    first = _field(writer, "requested_metric_or_relation", first)
+    _write_identity(writer, row.requested_metric_or_relation)
+    first = _field(writer, "required_producer_or_null", first)
+    _write_nullable_string(writer, row.required_producer_or_null)
+    _field(writer, "status", first)
+    _write_enum(writer, row.status)
+    writer.write(b"}")
+
+
+def _write_provenance(writer: _CanonicalWriter, row: ProvenanceV1) -> None:
+    writer.write(b"{")
+    first = _field(writer, "artifact_digest", True)
+    _write_string(writer, row.artifact_digest)
+    first = _field(writer, "evidence_class", first)
+    _write_enum(writer, row.evidence_class)
+    first = _field(writer, "locator", first)
+    _write_string(writer, row.locator)
+    first = _field(writer, "provenance_id", first)
+    _write_identity(writer, row.provenance_id)
+    first = _field(writer, "transformation_digest_or_null", first)
+    _write_nullable_string(writer, row.transformation_digest_or_null)
+    _field(writer, "vintage", first)
+    _write_string(writer, row.vintage)
+    writer.write(b"}")
+
+
+def _write_decision_surface(writer: _CanonicalWriter, row: DecisionSurfaceV1) -> None:
+    writer.write(b"{")
+    first = _field(writer, "action_refs", True)
+    _write_identity_array(writer, row.action_refs, True)
+    first = _field(writer, "archive_subject_refs", first)
+    _write_identity_array(writer, row.archive_subject_refs, True)
+    first = _field(writer, "question_id", first)
+    _write_identity(writer, row.question_id)
+    first = _field(writer, "receipt_refs", first)
+    _write_identity_array(writer, row.receipt_refs, True)
+    _field(writer, "signal_refs", first)
+    _write_identity_array(writer, row.signal_refs, True)
+    writer.write(b"}")
+
+
+def _write_draft(writer: _CanonicalWriter, draft: RtdDossierDraftV1) -> None:
+    writer.write(b"{")
+    first = _field(writer, "actor", True)
+    _write_nullable_identity(writer, draft.actor)
+    first = _field(writer, "audience", first)
+    _write_enum(writer, draft.audience)
+    first = _field(writer, "decision_surface", first)
+    _write_decision_surface(writer, draft.decision_surface)
+    first = _field(writer, "definitions_digest", first)
+    _write_string(writer, draft.definitions_digest)
+    first = _field(writer, "durability", first)
+    _write_enum(writer, draft.durability)
+    first = _field(writer, "dyads", first)
+    _write_array(writer, draft.dyads, _write_dyad, lambda row: _identity_key(row.relation_id))
+    first = _field(writer, "facets", first)
+    _write_array(writer, draft.facets, _write_facet, lambda row: _identity_key(row.facet_id))
+    first = _field(writer, "flows", first)
+    _write_array(writer, draft.flows, _write_flow, lambda row: _identity_key(row.flow_id))
+    first = _field(writer, "focus", first)
+    _write_identity_array(writer, draft.focus)
+    first = _field(writer, "fog_policy_digest", first)
+    _write_nullable_string(writer, draft.fog_policy_digest)
+    first = _field(writer, "gaps", first)
+    _write_array(writer, draft.gaps, _write_gap, lambda row: _identity_key(row.gap_id))
+    first = _field(writer, "graph_state_hash", first)
+    _write_string(writer, draft.graph_state_hash)
+    first = _field(writer, "hyperedges", first)
+    _write_array(
+        writer, draft.hyperedges, _write_hyperedge, lambda row: _identity_key(row.hyperedge_id)
+    )
+    first = _field(writer, "knowledge_context_digest", first)
+    _write_nullable_string(writer, draft.knowledge_context_digest)
+    first = _field(writer, "nominal_world_hash", first)
+    _write_string(writer, draft.nominal_world_hash)
+    first = _field(writer, "projection_version", first)
+    _write_u64(writer, draft.projection_version)
+    first = _field(writer, "provenance", first)
+    _write_array(
+        writer, draft.provenance, _write_provenance, lambda row: _identity_key(row.provenance_id)
+    )
+    first = _field(writer, "reference_digests", first)
+    _write_array(
+        writer,
+        draft.reference_digests,
+        _write_reference,
+        lambda row: _identity_key(row.reference_id),
+    )
+    first = _field(writer, "scale_memberships", first)
+    _write_array(
+        writer,
+        draft.scale_memberships,
+        _write_membership,
+        lambda row: _identity_key(row.membership_id),
+    )
+    first = _field(writer, "schema", first)
+    _write_string(writer, draft.schema_)
+    first = _field(writer, "schema_version", first)
+    _write_u64(writer, draft.schema_version)
+    first = _field(writer, "template_digest", first)
+    _write_string(writer, draft.template_digest)
+    first = _field(writer, "verified_tick", first)
+    _write_u64(writer, draft.verified_tick)
+    writer.write(b"}")
+
+
+def canonical_draft_bytes(draft: RtdDossierDraftV1) -> bytes:
+    """Return the bounded canonical JSON bytes for one validated draft."""
+    normalized = _normalize_negative_zero(draft)
+    validate_draft(normalized)
+    writer = _CanonicalWriter()
+    _write_draft(writer, normalized)
+    return writer.finish()
+
+
+def projection_hash(draft: RtdDossierDraftV1) -> str:
+    """Return the domain-separated SHA-256 of one canonical draft."""
+    canonical = canonical_draft_bytes(draft)
+    return hashlib.sha256(RTD_HASH_DOMAIN + b"\x00" + canonical).hexdigest()
+
+
+def seal_draft(draft: RtdDossierDraftV1) -> RelationalTerritoryDossierV1:
+    """Seal a complete valid draft only after canonical hashing succeeds."""
+    normalized = _normalize_negative_zero(draft)
+    digest = projection_hash(normalized)
+    return RelationalTerritoryDossierV1(
+        schema=normalized.schema_,
+        schema_version=normalized.schema_version,
+        projection_version=normalized.projection_version,
+        audience=normalized.audience,
+        durability=normalized.durability,
+        verified_tick=normalized.verified_tick,
+        graph_state_hash=normalized.graph_state_hash,
+        nominal_world_hash=normalized.nominal_world_hash,
+        reference_digests=normalized.reference_digests,
+        definitions_digest=normalized.definitions_digest,
+        template_digest=normalized.template_digest,
+        fog_policy_digest=normalized.fog_policy_digest,
+        knowledge_context_digest=normalized.knowledge_context_digest,
+        actor=normalized.actor,
+        focus=normalized.focus,
+        scale_memberships=normalized.scale_memberships,
+        facets=normalized.facets,
+        dyads=normalized.dyads,
+        hyperedges=normalized.hyperedges,
+        flows=normalized.flows,
+        gaps=normalized.gaps,
+        provenance=normalized.provenance,
+        decision_surface=normalized.decision_surface,
+        projection_hash=digest,
+    )

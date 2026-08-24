@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import math
+import struct
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import IntEnum
@@ -20,6 +22,8 @@ from babylon.contracts.practice_contract_v1_generated import (
     MAX_JSONL_CASES,
     MAX_JSONL_LINE_BYTES,
     MAX_JSONL_SOURCE_BYTES,
+    MAX_ORG_SOLIDARITY_EDGES_PER_ORG,
+    MAX_ORGANIZATIONS,
     MAX_PARAMETER_VALUE_BYTES,
     MAX_PARAMETERS,
     MAX_POLICY_AUTHORITY_PAIRS,
@@ -28,9 +32,11 @@ from babylon.contracts.practice_contract_v1_generated import (
     PRACTICE_INTENT_V1_DOMAIN_BYTES,
     PRACTICE_WIRE_DOMAIN_TERMINATOR_BYTES,
     OrganizationBudgetDeltaV1,
+    OrganizationPracticeTopologyV1,
     PolicyAuthorityPairV1,
     PracticeAuthorityContextV1,
     PracticeAuthorityKindV1,
+    PracticeBudgetTermsV1,
     PracticeContractError,
     PracticeIdV1,
     PracticeInputAuthorityV1,
@@ -40,6 +46,7 @@ from babylon.contracts.practice_contract_v1_generated import (
     PracticeRejectionCodeV1,
     PracticeSubmissionRejectionV1,
     PracticeTargetDomainV1,
+    SolidarityFootprintEdgeV1,
 )
 
 _SCHEMA_VERSION = 1
@@ -151,6 +158,244 @@ def _require_u64(value: object, name: str) -> int:
     if value < 0 or value > _U64_MAX:
         raise ValueError(f"{name} must fit u64")
     return value
+
+
+def _require_u32(value: object, name: str) -> int:
+    if type(value) is not int:
+        raise TypeError(f"{name} must be int")
+    if value < 0 or value > _U32_MAX:
+        raise ValueError(f"{name} must fit u32")
+    return value
+
+
+def _practice_budget_terms_from_defines(
+    cls: type[PracticeBudgetTermsV1], defines: object
+) -> PracticeBudgetTermsV1:
+    from babylon.config.defines import GameDefines
+
+    if type(defines) is not GameDefines:
+        raise TypeError("defines must be GameDefines")
+    budget = defines.practice_budget
+    return cls(
+        initial=budget.action_budget_initial,
+        weekly_credit_cap=budget.action_budget_weekly_credit_cap,
+        storage_ceiling=budget.action_budget_storage_ceiling,
+        organize_cost=budget.organize_action_budget_cost,
+        agitate_cost=budget.agitate_action_budget_cost,
+        mutual_aid_cost=budget.mutual_aid_action_budget_cost,
+    )
+
+
+PracticeBudgetTermsV1.from_defines = classmethod(  # type: ignore[attr-defined]
+    _practice_budget_terms_from_defines
+)
+
+
+def read_action_budget(storage: float) -> int:
+    """Convert one canonical binary64 ActionBudget storage value to ``u32``."""
+    if type(storage) is not float:
+        raise TypeError("storage must be float")
+    if not math.isfinite(storage):
+        raise _fail(PracticeContractError.PRACTICE_BUDGET_NONFINITE)
+    if storage < 0.0:
+        raise _fail(PracticeContractError.PRACTICE_BUDGET_NEGATIVE)
+    if not storage.is_integer():
+        raise _fail(PracticeContractError.PRACTICE_BUDGET_FRACTIONAL)
+    if storage > float(_U32_MAX):
+        raise _fail(PracticeContractError.PRACTICE_BUDGET_RANGE)
+    value = int(storage)
+    if struct.pack(">d", storage) != struct.pack(">d", float(value)):
+        raise _fail(PracticeContractError.PRACTICE_BUDGET_ROUNDTRIP)
+    return value
+
+
+def write_action_budget(value: int) -> float:
+    """Convert one ``u32`` ActionBudget to canonical binary64 storage."""
+    return float(_require_u32(value, "value"))
+
+
+def _strength_from_bits(bits: int) -> float:
+    return float(struct.unpack(">d", bits.to_bytes(8, "big"))[0])
+
+
+def _validate_footprint(
+    actor_node_id: int,
+    footprint_edges: Sequence[SolidarityFootprintEdgeV1],
+) -> int:
+    if len(footprint_edges) > MAX_ORG_SOLIDARITY_EDGES_PER_ORG:
+        raise _fail(PracticeContractError.PRACTICE_FOOTPRINT_LIMIT)
+    previous: tuple[int, int] | None = None
+    for edge in islice(footprint_edges, MAX_ORG_SOLIDARITY_EDGES_PER_ORG + 1):
+        _require_exact(edge, SolidarityFootprintEdgeV1, "footprint edge")
+        current = (edge.source_org_node_id_u64, edge.target_class_node_id_u64)
+        if current == previous:
+            raise _fail(PracticeContractError.PRACTICE_FOOTPRINT_DUPLICATE)
+        if previous is not None and current < previous:
+            raise _fail(PracticeContractError.PRACTICE_FOOTPRINT_ORDER)
+        if edge.source_org_node_id_u64 != actor_node_id:
+            raise _fail(PracticeContractError.PRACTICE_FOOTPRINT_SOURCE)
+        _require_exact(
+            edge.target_domain_u8,
+            PracticeTargetDomainV1,
+            "target_domain_u8",
+        )
+        if edge.target_domain_u8 is not PracticeTargetDomainV1.SOCIAL_CLASS:
+            raise _fail(PracticeContractError.PRACTICE_ENUM_CODE)
+        strength = _strength_from_bits(edge.strength_f64_bits_u64)
+        if not math.isfinite(strength):
+            raise _fail(PracticeContractError.PRACTICE_FOOTPRINT_STRENGTH_NONFINITE)
+        if strength <= 0.0:
+            raise _fail(PracticeContractError.PRACTICE_FOOTPRINT_STRENGTH_NONPOSITIVE)
+        previous = current
+    return len(footprint_edges)
+
+
+def _governed_cost(practice: PracticeIdV1 | None, terms: PracticeBudgetTermsV1) -> int:
+    if practice is None:
+        return 0
+    _require_exact(practice, PracticeIdV1, "practice")
+    if practice is PracticeIdV1.ORGANIZE:
+        return terms.organize_cost
+    if practice is PracticeIdV1.AGITATE:
+        return terms.agitate_cost
+    return terms.mutual_aid_cost
+
+
+def compute_budget_delta(
+    tick: int,
+    actor_node_id: int,
+    pre_action_world_hash: bytes,
+    budget_before: int,
+    practice: PracticeIdV1 | None,
+    footprint_edges: Sequence[SolidarityFootprintEdgeV1],
+    terms: PracticeBudgetTermsV1,
+) -> OrganizationBudgetDeltaV1:
+    """Compute one detached transition from derived practice cost and footprint."""
+    checked_tick = _require_u64(tick, "tick")
+    checked_actor = _require_u64(actor_node_id, "actor_node_id")
+    checked_before = _require_u32(budget_before, "budget_before")
+    _require_exact(pre_action_world_hash, bytes, "pre_action_world_hash")
+    if len(pre_action_world_hash) != _DIGEST_BYTES:
+        raise ValueError("pre_action_world_hash must contain 32 bytes")
+    _require_exact(terms, PracticeBudgetTermsV1, "terms")
+    footprint_count = _validate_footprint(checked_actor, footprint_edges)
+    cost = _governed_cost(practice, terms)
+    if checked_before < cost:
+        raise _fail(PracticeContractError.PRACTICE_BUDGET_INSUFFICIENT)
+    after_cost = checked_before - cost
+    credited_credit = min(footprint_count, terms.weekly_credit_cap)
+    before_ceiling = after_cost + credited_credit
+    if before_ceiling > _U32_MAX:
+        raise _fail(PracticeContractError.PRACTICE_BUDGET_ARITHMETIC)
+    return OrganizationBudgetDeltaV1(
+        schema_version=_SCHEMA_VERSION,
+        tick=checked_tick,
+        actor_node_id=checked_actor,
+        pre_action_world_hash=pre_action_world_hash,
+        budget_before=checked_before,
+        governed_cost=cost,
+        footprint_count=footprint_count,
+        raw_credit=footprint_count,
+        credited_credit=credited_credit,
+        ceiling_bound=before_ceiling > terms.storage_ceiling,
+        budget_after=min(before_ceiling, terms.storage_ceiling),
+    )
+
+
+class PracticeTopologyLoadCounter:
+    """Bounded validation-local counts with no graph or identity authority."""
+
+    __slots__ = ("_edge_counts", "_organizations", "_solidarity_edges")
+
+    def __init__(self) -> None:
+        self._organizations: set[int] = set()
+        self._edge_counts: dict[int, int] = {}
+        self._solidarity_edges: set[tuple[int, int]] = set()
+
+    def observe_organization(
+        self,
+        organization_key: int,
+        active: bool,
+        action_budget_storage: float | None,
+    ) -> None:
+        """Observe one exact organization row in constant time."""
+        checked_key = _require_u64(organization_key, "organization_key")
+        if type(active) is not bool:
+            raise TypeError("active must be bool")
+        if checked_key in self._organizations:
+            raise _fail(PracticeContractError.PRACTICE_TOPOLOGY_ORGANIZATION_DUPLICATE)
+        if len(self._organizations) == MAX_ORGANIZATIONS:
+            raise _fail(PracticeContractError.PRACTICE_TOPOLOGY_ORGANIZATION_LIMIT)
+        if action_budget_storage is not None:
+            read_action_budget(action_budget_storage)
+        elif active:
+            raise _fail(PracticeContractError.PRACTICE_TOPOLOGY_BUDGET_MISSING)
+        self._organizations.add(checked_key)
+
+    def observe_solidarity_edge(
+        self,
+        source_organization_key: int,
+        target_domain: PracticeTargetDomainV1,
+        target_key: int,
+    ) -> None:
+        """Observe one qualified organization-to-class solidarity edge."""
+        checked_source = _require_u64(source_organization_key, "source_organization_key")
+        checked_target = _require_u64(target_key, "target_key")
+        _require_exact(target_domain, PracticeTargetDomainV1, "target_domain")
+        if target_domain is not PracticeTargetDomainV1.SOCIAL_CLASS:
+            raise _fail(PracticeContractError.PRACTICE_ENUM_CODE)
+        identity = (checked_source, checked_target)
+        if identity in self._solidarity_edges:
+            raise _fail(PracticeContractError.PRACTICE_TOPOLOGY_EDGE_DUPLICATE)
+        count = self._edge_counts.get(checked_source, 0)
+        if count == MAX_ORG_SOLIDARITY_EDGES_PER_ORG:
+            raise _fail(PracticeContractError.PRACTICE_FOOTPRINT_LIMIT)
+        self._edge_counts[checked_source] = count + 1
+        self._solidarity_edges.add(identity)
+
+    def finish(self) -> None:
+        """Complete a walk bounded to the organization maximum plus one."""
+        observed = 0
+        for _key in islice(self._organizations, MAX_ORGANIZATIONS + 1):
+            observed += 1
+        if observed > MAX_ORGANIZATIONS:
+            raise _fail(PracticeContractError.PRACTICE_TOPOLOGY_ORGANIZATION_LIMIT)
+
+
+def validate_topology(topology: OrganizationPracticeTopologyV1) -> None:
+    """Validate one already-qualified detached topology without graph authority."""
+    _require_exact(topology, OrganizationPracticeTopologyV1, "topology")
+    if len(topology.organizations) > MAX_ORGANIZATIONS:
+        raise _fail(PracticeContractError.PRACTICE_TOPOLOGY_ORGANIZATION_LIMIT)
+    counter = PracticeTopologyLoadCounter()
+    previous_organization: int | None = None
+    for row in islice(topology.organizations, MAX_ORGANIZATIONS + 1):
+        if row.node_id_u64 == previous_organization:
+            raise _fail(PracticeContractError.PRACTICE_TOPOLOGY_ORGANIZATION_DUPLICATE)
+        if previous_organization is not None and row.node_id_u64 < previous_organization:
+            raise _fail(PracticeContractError.PRACTICE_TOPOLOGY_ORGANIZATION_ORDER)
+        storage = (
+            None
+            if row.action_budget_storage_f64_bits_u64 is None
+            else _strength_from_bits(row.action_budget_storage_f64_bits_u64)
+        )
+        counter.observe_organization(row.node_id_u64, row.active_bool, storage)
+        if len(row.edges) > MAX_ORG_SOLIDARITY_EDGES_PER_ORG:
+            raise _fail(PracticeContractError.PRACTICE_FOOTPRINT_LIMIT)
+        previous_target: int | None = None
+        for edge in islice(row.edges, MAX_ORG_SOLIDARITY_EDGES_PER_ORG + 1):
+            if edge.target_class_node_id_u64 == previous_target:
+                raise _fail(PracticeContractError.PRACTICE_TOPOLOGY_EDGE_DUPLICATE)
+            if previous_target is not None and edge.target_class_node_id_u64 < previous_target:
+                raise _fail(PracticeContractError.PRACTICE_TOPOLOGY_EDGE_ORDER)
+            counter.observe_solidarity_edge(
+                row.node_id_u64,
+                edge.target_domain,
+                edge.target_class_node_id_u64,
+            )
+            previous_target = edge.target_class_node_id_u64
+        previous_organization = row.node_id_u64
+    counter.finish()
 
 
 def _domain_bytes(domain: bytes) -> bytes:
@@ -721,10 +966,13 @@ def parse_vector_corpus(payload: bytes) -> tuple[PracticeVectorCaseV1, ...]:
 
 
 __all__ = [
+    "PracticeBudgetTermsV1",
     "PracticeContractViolation",
+    "PracticeTopologyLoadCounter",
     "PracticeVectorCaseV1",
     "PracticeVectorCorpusError",
     "budget_delta_digest",
+    "compute_budget_delta",
     "decode_budget_delta",
     "decode_input_authority",
     "decode_intent",
@@ -738,10 +986,13 @@ __all__ = [
     "intent_digest",
     "parameter_bytes_digest",
     "parse_vector_corpus",
+    "read_action_budget",
     "rejection_for",
     "submission_rejection_alias",
     "target_selection_policy_digest",
     "validate_authority_pair",
     "validate_quote_context",
     "validate_resolve_batch",
+    "validate_topology",
+    "write_action_budget",
 ]

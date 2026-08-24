@@ -8,6 +8,69 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+_U32_MAX = (1 << 32) - 1
+
+
+class PracticeBudgetDefines(BaseModel):
+    """Designed bounded ActionBudget terms for detached practice contracts."""
+
+    model_config = ConfigDict(frozen=True)
+
+    action_budget_initial: int = Field(
+        default=1,
+        strict=True,
+        ge=0,
+        le=_U32_MAX,
+        description="Designed: initial organization ActionBudget.",
+    )
+    action_budget_weekly_credit_cap: int = Field(
+        default=1,
+        strict=True,
+        ge=0,
+        le=_U32_MAX,
+        description="Designed: maximum weekly solidarity-footprint credit.",
+    )
+    action_budget_storage_ceiling: int = Field(
+        default=4,
+        strict=True,
+        ge=0,
+        le=_U32_MAX,
+        description="Designed: canonical ActionBudget storage ceiling.",
+    )
+    organize_action_budget_cost: int = Field(
+        default=1,
+        strict=True,
+        ge=1,
+        le=_U32_MAX,
+        description="Designed: governed ORGANIZE ActionBudget cost.",
+    )
+    agitate_action_budget_cost: int = Field(
+        default=1,
+        strict=True,
+        ge=1,
+        le=_U32_MAX,
+        description="Designed: governed AGITATE ActionBudget cost.",
+    )
+    mutual_aid_action_budget_cost: int = Field(
+        default=1,
+        strict=True,
+        ge=1,
+        le=_U32_MAX,
+        description="Designed: governed MUTUAL_AID ActionBudget cost.",
+    )
+
+    @model_validator(mode="after")
+    def _validate_budget_relations(self) -> PracticeBudgetDefines:
+        if self.action_budget_initial > self.action_budget_storage_ceiling:
+            raise ValueError("initial ActionBudget must not exceed its storage ceiling")
+        cheapest_wired = min(
+            self.organize_action_budget_cost,
+            self.agitate_action_budget_cost,
+        )
+        if self.action_budget_initial < cheapest_wired:
+            raise ValueError("initial ActionBudget must fund one wired practice")
+        return self
+
 
 class CommunityDefines(BaseModel):
     """Hypergraph community layer coefficients (Feature 022).

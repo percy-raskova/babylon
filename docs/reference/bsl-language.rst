@@ -4286,6 +4286,18 @@ nested effect tree. A ``Recognizer``, ``ExternalEvent``, or ``Intent`` field or
 event effect must match an exact governed rule/role/effect row; every shape
 effect refuses. ``Mechanic`` retains the ordinary typed effect surface.
 
+**The T2 practice-contract groundwork continues** ``E-LOAD`` **with five
+pre-mutation topology refusals.** ``E-LOAD-061`` refuses the 4,097th exact
+``NodeType/ORGANIZATION`` row. ``E-LOAD-062`` refuses the 257th exact
+organization-to-``NodeType/SOCIAL_CLASS`` ``EdgeType/SOLIDARITY`` edge for
+one organization. ``E-LOAD-063`` refuses an active organization without an
+``organization/action-budget`` value. ``E-LOAD-064`` refuses non-canonical
+ActionBudget storage. ``E-LOAD-065`` requires both
+``organization/action-budget`` and ``organization/active`` to have the exact
+``int intensive`` declaration signature. These checks run before the loader's
+first graph operation. A duplicate canonical solidarity triple retains
+``E-LOAD-044``; this addition does not assign it a second identity.
+
 **The #576 intrinsic-host train (Task 2) continues** ``E-EVAL``.
 ``E-EVAL-043`` — ``TranscendentalOutOfDomain``: a non-finite ``exp``/``log``
 argument, or a non-positive ``log`` argument (§3.10, R10/ADR176 r21, ADR188

@@ -563,6 +563,17 @@ organization:
   surveillance_capacity_default: 0.3  # Game design: default StateApparatus surveillance capacity. (>= 0.0, <= 1.0)
 
 # ---------------------------------------------------------------------
+# practice_budget — Designed bounded ActionBudget terms for detached practice contracts.
+# ---------------------------------------------------------------------
+practice_budget:
+  action_budget_initial: 1  # Designed: initial organization ActionBudget. (>= 0, <= 4294967295)
+  action_budget_weekly_credit_cap: 1  # Designed: maximum weekly solidarity-footprint credit. (>= 0, <= 4294967295)
+  action_budget_storage_ceiling: 4  # Designed: canonical ActionBudget storage ceiling. (>= 0, <= 4294967295)
+  organize_action_budget_cost: 1  # Designed: governed ORGANIZE ActionBudget cost. (>= 1, <= 4294967295)
+  agitate_action_budget_cost: 1  # Designed: governed AGITATE ActionBudget cost. (>= 1, <= 4294967295)
+  mutual_aid_action_budget_cost: 1  # Designed: governed MUTUAL_AID ActionBudget cost. (>= 1, <= 4294967295)
+
+# ---------------------------------------------------------------------
 # ooda — OODA Loop System tunable coefficients (Feature 032).
 # ---------------------------------------------------------------------
 ooda:

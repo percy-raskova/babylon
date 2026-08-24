@@ -357,6 +357,7 @@ version = "0.1.0"
 dependencies = [
  "babylon-graph",
  "babylon-kernel",
+ "babylon-practice-contract",
  "pretty_assertions",
  "sha2",
  "unicode-normalization",

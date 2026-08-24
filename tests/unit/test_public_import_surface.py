@@ -257,6 +257,7 @@ class TestDefinesPublicSurface:
         from babylon.config import defines
 
         actual = frozenset(defines.__all__)
+        assert "PracticeBudgetDefines" not in actual
         missing = EXPECTED_DEFINES_PUBLIC - actual
         extra = actual - EXPECTED_DEFINES_PUBLIC
         assert not missing and not extra, (

@@ -34,14 +34,48 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: p27-python-freeze
+          path: babylon
 
-      - uses: ./.github/actions/bootstrap-python
+      - uses: actions/checkout@v7
+        with:
+          repository: percy-raskova/hypergraph-rs
+          ref: dc1c06abbbc7a3f8633d1561451e61e101ad2090
+          path: hypergraph-rs
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.9.8"
+
+      - name: Install frozen Rust toolchain
+        working-directory: babylon
+        run: |
+          channel="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust/rust-toolchain.toml)"
+          rustup toolchain install "$channel" --profile minimal --no-self-update
+
+      - name: Sync frozen dependencies
+        working-directory: babylon
+        env:
+          UV_FROZEN: "1"
+        run: uv sync --frozen
 
       - name: qa:regression (canon scenarios vs the frozen baselines)
+        working-directory: babylon
+        env:
+          UV_FROZEN: "1"
         run: mise run qa:regression
 
       - name: qa:vault-regression (golden-vault byte-gate, in-process scenario)
+        working-directory: babylon
+        env:
+          UV_FROZEN: "1"
         run: mise run qa:vault-regression-ci
 
       - name: Gate-coverage truth probe (declared evidence verified at gate cadence)
+        working-directory: babylon
+        env:
+          UV_FROZEN: "1"
         run: mise run check:gate-coverage-truth

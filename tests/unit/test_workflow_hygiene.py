@@ -43,6 +43,10 @@ import pytest
 import yaml
 
 WORKFLOWS_DIR = Path(".github/workflows")
+ACTIONS_DIR = Path(".github/actions")
+FROZEN_ENGINE_PATH = WORKFLOWS_DIR / "frozen-engine.yml"
+FROZEN_REF = "p27-python-freeze"
+HYPERGRAPH_REF = "dc1c06abbbc7a3f8633d1561451e61e101ad2090"
 
 #: Hand-maintained doc surfaces whose workflow references must stay live.
 #: Historical quadrants (ai/decisions, reports/, project/, docs/superpowers/
@@ -97,6 +101,62 @@ def _step_shape_errors(workflow: dict[str, Any], filename: str) -> list[str]:
     return errors
 
 
+def _automation_paths() -> list[Path]:
+    """Return live workflow and composite-action files."""
+    return sorted(WORKFLOWS_DIR.glob("*.yml")) + sorted(ACTIONS_DIR.rglob("action.y*ml"))
+
+
+def _automation_steps(automation: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return every executable step from a workflow or composite action."""
+    if "jobs" in automation:
+        return [
+            step
+            for job in (automation.get("jobs") or {}).values()
+            for step in (job.get("steps") or [])
+        ]
+    return list((automation.get("runs") or {}).get("steps") or [])
+
+
+def _sibling_fabrication_errors(automation: dict[str, Any], filename: str) -> list[str]:
+    """Reject executable construction of a local hypergraph sibling."""
+    errors: list[str] = []
+    for index, step in enumerate(_automation_steps(automation)):
+        run = str(step.get("run", ""))
+        fabricates_sibling = "hypergraph-rs" in run and any(
+            command in run for command in ("mkdir", "ln -s", "cp ", "cat >", "tee ")
+        )
+        if "ci_hypergraph_stub" in run or fabricates_sibling:
+            errors.append(f"{filename} step#{index}: fabricates hypergraph-rs sibling")
+    return errors
+
+
+def _frozen_engine_errors(workflow: dict[str, Any]) -> list[str]:
+    """Return violations in the immutable frozen-engine checkout contract."""
+    errors: list[str] = []
+    steps = ((workflow.get("jobs") or {}).get("frozen-canon") or {}).get("steps") or []
+    checkouts = {
+        (
+            str(step.get("with", {}).get("repository", "")),
+            str(step.get("with", {}).get("ref", "")),
+        ): str(step.get("with", {}).get("path", ""))
+        for step in steps
+        if str(step.get("uses", "")).startswith("actions/checkout")
+    }
+    if checkouts.get(("", FROZEN_REF)) != "babylon":
+        errors.append("frozen source must check out at babylon")
+    if checkouts.get(("percy-raskova/hypergraph-rs", HYPERGRAPH_REF)) != "hypergraph-rs":
+        errors.append("historical hypergraph source must use its full pinned SHA")
+    for index, step in enumerate(steps):
+        run = str(step.get("run", ""))
+        if "mise run" not in run and "uv sync" not in run:
+            continue
+        if step.get("working-directory") != "babylon":
+            errors.append(f"frozen command step#{index} must run in babylon")
+        if str((step.get("env") or {}).get("UV_FROZEN", "")).lower() not in {"1", "true"}:
+            errors.append(f"frozen command step#{index} must set UV_FROZEN")
+    return errors
+
+
 @pytest.mark.skipif(not WORKFLOWS_DIR.is_dir(), reason=".github/workflows not present")
 class TestWorkflowStepShape:
     """Every workflow step is GitHub-valid, not merely YAML-valid."""
@@ -104,13 +164,15 @@ class TestWorkflowStepShape:
     def test_no_workflow_materializes_a_hypergraph_sibling(self) -> None:
         """Python CI must not depend on a fabricated local checkout."""
         violations: list[str] = []
-        for path in sorted(WORKFLOWS_DIR.glob("*.yml")):
-            workflow = yaml.safe_load(path.read_text())
-            for job_name, job in (workflow.get("jobs") or {}).items():
-                for index, step in enumerate(job.get("steps") or []):
-                    if "ci_hypergraph_stub.sh" in str(step.get("run", "")):
-                        violations.append(f"{path.name} job={job_name} step#{index}")
+        for path in _automation_paths():
+            violations.extend(
+                _sibling_fabrication_errors(yaml.safe_load(path.read_text()), str(path))
+            )
         assert not violations, "\n".join(violations)
+
+    def test_frozen_engine_supplies_its_immutable_historical_sibling(self) -> None:
+        """The frozen tag gets its real historical path source, never a fabricated one."""
+        assert _frozen_engine_errors(yaml.safe_load(FROZEN_ENGINE_PATH.read_text())) == []
 
     def test_no_step_mixes_run_and_with(self) -> None:
         violations: list[str] = []

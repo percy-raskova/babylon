@@ -655,7 +655,7 @@ def _construct_locator_sequence(node: yaml.Node) -> list[str]:
         if not isinstance(child, yaml.ScalarNode):
             _fail("DETROIT_LOCATOR_SHAPE")
         values.append(child.value)
-    _fail("DETROIT_LOCATOR_LIMIT")
+    return values
 
 
 _StrictLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _construct_mapping)

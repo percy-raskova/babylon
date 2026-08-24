@@ -666,6 +666,22 @@ def test_locator_loader_constructs_only_bounded_nfc_strings() -> None:
     assert CONTROL_PATH.read_bytes() == control_bytes()
 
 
+def test_locator_loader_accepts_exact_collection_bound(tmp_path: Path) -> None:
+    ledger = copy.deepcopy(load_extraction())
+    artifacts = ledger["artifacts"]
+    assert isinstance(artifacts, list) and isinstance(artifacts[0], dict)
+    expected = [f"locator-{locator_index}" for locator_index in range(32)]
+    artifacts[0]["provenance_locators"] = expected
+    path = tmp_path / "extraction.yaml"
+    path.write_text(yaml.safe_dump(ledger, sort_keys=False))
+
+    loaded = load_extraction(path)
+
+    loaded_artifacts = loaded["artifacts"]
+    assert isinstance(loaded_artifacts, list) and isinstance(loaded_artifacts[0], dict)
+    assert loaded_artifacts[0]["provenance_locators"] == expected
+
+
 @pytest.mark.parametrize(
     ("replacement", "error"),
     [

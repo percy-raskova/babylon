@@ -65,6 +65,11 @@ _V3_1_BLOB = "a265b85120ed2a90be40c72e63ee5bf27fc6e703"
 _V3_2_COMMIT = "cbfc67921283ccb6e00c4b0278288a232281440a"
 _V3_2_BLOB = "e905e90d66bddc6e4eca36a3896428f5ce63de5b"
 _CONSTITUTION_FETCH_STEP = "Fetch pinned Constitution predecessors (bounded)"
+_ACTION_USES_LINE = re.compile(
+    r"^\s*(?:-\s+)?uses:\s+(?P<reference>[^\s#]+)(?:\s+#\s*(?P<tag>\S+))?\s*$"
+)
+_ACTION_SHA = re.compile(r"[0-9a-f]{40}")
+_RELEASE_TAG = re.compile(r"v\d+(?:\.\d+(?:\.\d+)?)?")
 
 
 def _triggers(workflow: dict[Any, Any]) -> dict[str, Any]:
@@ -201,19 +206,41 @@ def _frozen_engine_errors(workflow: dict[str, Any]) -> list[str]:
     if checkouts.get(("percy-raskova/hypergraph-rs", HYPERGRAPH_REF)) != "hypergraph-rs":
         errors.append("historical hypergraph source must use its full pinned SHA")
     mise_setup_index = next(
-        (index for index, step in enumerate(steps) if step.get("uses") == "jdx/mise-action@v4"),
+        (
+            index
+            for index, step in enumerate(steps)
+            if str(step.get("uses", "")).startswith("jdx/mise-action@")
+        ),
         None,
     )
     for index, step in enumerate(steps):
         run = str(step.get("run", ""))
         if "mise run" in run and (mise_setup_index is None or mise_setup_index >= index):
-            errors.append(f"frozen mise step#{index} must follow jdx/mise-action@v4")
+            errors.append(f"frozen mise step#{index} must follow jdx/mise-action")
         if "mise run" not in run and "uv sync" not in run:
             continue
         if step.get("working-directory") != "babylon":
             errors.append(f"frozen command step#{index} must run in babylon")
         if str((step.get("env") or {}).get("UV_FROZEN", "")).lower() not in {"1", "true"}:
             errors.append(f"frozen command step#{index} must set UV_FROZEN")
+    return errors
+
+
+def _frozen_engine_external_action_errors(workflow_text: str) -> list[str]:
+    """Return mutable or unannotated external action references in the frozen gate."""
+    errors: list[str] = []
+    for line_number, line in enumerate(workflow_text.splitlines(), start=1):
+        match = _ACTION_USES_LINE.match(line)
+        if match is None:
+            continue
+        action, separator, reference = match.group("reference").partition("@")
+        if action.startswith("./"):
+            continue
+        if not separator or not _ACTION_SHA.fullmatch(reference):
+            errors.append(f"frozen-engine.yml:{line_number}: external action must use a 40-hex SHA")
+        tag = match.group("tag")
+        if tag is None or not _RELEASE_TAG.fullmatch(tag):
+            errors.append(f"frozen-engine.yml:{line_number}: external action must have a # vN tag")
     return errors
 
 
@@ -233,6 +260,11 @@ class TestWorkflowStepShape:
     def test_frozen_engine_supplies_its_immutable_historical_sibling(self) -> None:
         """The frozen tag gets its real historical path source, never a fabricated one."""
         assert _frozen_engine_errors(yaml.safe_load(FROZEN_ENGINE_PATH.read_text())) == []
+
+    def test_frozen_engine_external_actions_are_sha_pinned_and_release_annotated(self) -> None:
+        """Frozen gate action references must be immutable and auditably versioned."""
+        errors = _frozen_engine_external_action_errors(FROZEN_ENGINE_PATH.read_text())
+        assert not errors, "\n".join(errors)
 
     def test_no_step_mixes_run_and_with(self) -> None:
         violations: list[str] = []

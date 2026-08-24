@@ -121,7 +121,9 @@ pub fn compute_budget_delta(
     if budget_before < cost {
         return Err(PracticeContractError::PracticeBudgetInsufficient);
     }
-    let after_cost = budget_before - cost;
+    let after_cost = budget_before
+        .checked_sub(cost)
+        .ok_or(PracticeContractError::PracticeBudgetInsufficient)?;
     let credited_credit = footprint_count.min(weekly_credit_cap);
     let before_ceiling = after_cost
         .checked_add(credited_credit)

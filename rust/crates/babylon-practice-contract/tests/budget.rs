@@ -125,6 +125,21 @@ fn insufficient_and_checked_addition_refusals_pin_codes_33_and_34() {
 }
 
 #[test]
+fn subtraction_keeps_precedence_guard_and_uses_checked_contract() {
+    let source = include_str!("../src/budget.rs");
+    let guard = source
+        .find("if budget_before < cost")
+        .expect("explicit code-33 precedence guard");
+    let checked = source
+        .find(
+            "checked_sub(cost)\n        .ok_or(PracticeContractError::PracticeBudgetInsufficient)?",
+        )
+        .expect("checked subtraction with the code-33 identity");
+    assert!(guard < checked);
+    assert!(!source.contains("let after_cost = budget_before - cost;"));
+}
+
+#[test]
 fn ceiling_binds_only_after_valid_checked_addition() {
     let capped_terms = PracticeBudgetTermsV1 {
         storage_ceiling: 3,

@@ -40,6 +40,22 @@ RUN_IDENTITY_HEX = (
     "0000000000f00006726e672d7631000867726170682d7631"
 )
 RUN_IDENTITY_SHA256 = "ded4b236aeb7cdbd093d007238a37725c700e22e67aa04222a332239129998d4"
+SYNTHETIC_MEMBERSHIP_COMPONENT_HEX = (
+    "626162796c6f6e2e7366732d636f6d706f6e656e742d70726f6f662d70726f"
+    "66696c652e76310000010000009200126d656d626572736869702d7265647563"
+    "65720232b8e7546851b84f24f556c72f5cb329f6c6a41962c65c68894a8c4bf"
+    "2c79a710001001773796e7468657469632d736f757263652f7175616e74610000"
+    "0000000000000000000000010032726564756365722d6f75747075743a73796e"
+    "7468657469632f6d656d626572736869702d726564756365722d6f7574707574"
+)
+SYNTHETIC_CONE_HEX = (
+    "626162796c6f6e2e7366732d63617573616c2d636f6e652e7631000001000000"
+    "680001000f73636f7065642d62736c2d72756c6500010014706f73742d636f6d"
+    "6d69742d70726f6475636572000300126d656d626572736869702d7265647563"
+    "65720014706f73742d636f6d6d69742d70726f6475636572000f73636f706564"
+    "2d62736c2d72756c65"
+)
+SYNTHETIC_PROOF_PROFILE_SHA256 = "36695a7f74a00557d3d2ff5f75423638ac777fd53f2dd3097b03fb56afe23cee"
 
 WIRE_LABELS = [
     "causal-cone",
@@ -76,6 +92,110 @@ MUTATION_FIELDS = sorted(
         "graph-contract-id",
     ]
 )
+
+
+def test_synthetic_profile_oracle_is_independent_and_source_bound() -> None:
+    rows = exporter._synthetic_profile_vectors(
+        exporter.SYNTHETIC_GOVERNED_MANIFEST_PATH,
+        exporter.FORBIDDEN_MANIFEST_PATH,
+        exporter.AUDIT_SOURCE_MANIFEST_PATH,
+    )
+    assert [row.split("|", 2)[0] for row in rows] == ["component"] * 3 + [
+        "cone",
+        "proof-profile",
+    ]
+    labels = [row.split("|", 3)[1] for row in rows]
+    assert labels == sorted(labels)
+    for row in rows:
+        _label, _name, _domain, envelope_hex, digest_hex = row.split("|")
+        envelope = bytes.fromhex(envelope_hex)
+        assert hashlib.sha256(envelope).hexdigest() == digest_hex
+    by_label = {row.split("|", 3)[1]: row.split("|") for row in rows}
+    assert by_label["membership-reducer"][3] == SYNTHETIC_MEMBERSHIP_COMPONENT_HEX
+    assert by_label["synthetic-chain"][0] == "proof-profile"
+    cone_row = next(row.split("|") for row in rows if row.startswith("cone|"))
+    proof_row = next(row.split("|") for row in rows if row.startswith("proof-profile|"))
+    assert cone_row[3] == SYNTHETIC_CONE_HEX
+    assert proof_row[4] == SYNTHETIC_PROOF_PROFILE_SHA256
+
+
+def test_synthetic_profile_oracle_rejects_cr_and_manifest_mutations(tmp_path: Path) -> None:
+    original = exporter.SYNTHETIC_GOVERNED_MANIFEST_PATH.read_bytes()
+    changed = tmp_path / "governed.txt"
+    changed.write_bytes(original.replace(b"\n", b"\r\n", 1))
+    with pytest.raises(ValueError, match="LF"):
+        exporter._synthetic_profile_vectors(
+            changed, exporter.FORBIDDEN_MANIFEST_PATH, exporter.AUDIT_SOURCE_MANIFEST_PATH
+        )
+    changed.write_bytes(original.replace(b"|128|31|", b"|128|32|", 1))
+    with pytest.raises(ValueError, match="bound"):
+        exporter._synthetic_profile_vectors(
+            changed, exporter.FORBIDDEN_MANIFEST_PATH, exporter.AUDIT_SOURCE_MANIFEST_PATH
+        )
+    bound_parts = original.splitlines()[0].split(b"|")
+    bound_parts[4] = b"00" * 32
+    changed.write_bytes(
+        b"|".join(bound_parts) + b"\n" + b"\n".join(original.splitlines()[1:]) + b"\n"
+    )
+    with pytest.raises(ValueError, match="cardinality"):
+        exporter._synthetic_profile_vectors(
+            changed, exporter.FORBIDDEN_MANIFEST_PATH, exporter.AUDIT_SOURCE_MANIFEST_PATH
+        )
+    changed.write_bytes(original.replace(b"|5|7379", b"|4|7379", 1))
+    mutated = exporter._synthetic_profile_vectors(
+        changed, exporter.FORBIDDEN_MANIFEST_PATH, exporter.AUDIT_SOURCE_MANIFEST_PATH
+    )
+    assert mutated != exporter._synthetic_profile_vectors(
+        exporter.SYNTHETIC_GOVERNED_MANIFEST_PATH,
+        exporter.FORBIDDEN_MANIFEST_PATH,
+        exporter.AUDIT_SOURCE_MANIFEST_PATH,
+    )
+
+
+def test_synthetic_driver_oracle_pins_source_and_contract() -> None:
+    contract, rows = exporter._synthetic_driver_vectors(exporter.DRIVER_SOURCE_PATH)
+    assert contract.splitlines()[:6] == [
+        b"schema|1",
+        b"predicate|candidate-projection|1",
+        b"predicate|cumulative-driver-shape|1",
+        b"predicate|persistence-comparison-identity|1",
+        b"predicate|aligned-material-sequence|1",
+        b"predicate|twin-identity-difference|1",
+    ]
+    assert len(rows) == 2
+    assert [row.split("|", 1)[0] for row in rows] == ["driver-contract", "driver-source"]
+    for row in rows:
+        _label, domain, preimage_hex, digest_hex = row.split("|")
+        expected = hashlib.sha256(domain.encode("ascii") + b"\0" + bytes.fromhex(preimage_hex))
+        assert expected.hexdigest() == digest_hex
+
+
+def test_synthetic_driver_check_refuses_cross_output_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source = tmp_path / "driver.rs"
+    contract_path = tmp_path / "driver-contract.txt"
+    vectors_path = tmp_path / "driver-vectors.txt"
+    source.write_bytes(exporter.DRIVER_SOURCE_PATH.read_bytes())
+    monkeypatch.setattr(exporter, "DRIVER_SOURCE_PATH", source)
+    monkeypatch.setattr(exporter, "SYNTHETIC_DRIVER_CONTRACT_PATH", contract_path)
+    monkeypatch.setattr(exporter, "SYNTHETIC_DRIVER_PATH", vectors_path)
+    contract, rows = exporter._synthetic_driver_vectors(source)
+    exporter._write_driver_pair(contract, exporter._render(rows))
+    contract_path.write_bytes(
+        contract.replace(b"candidate-projection|1", b"candidate-projection|2")
+    )
+    assert exporter.main(["--check-synthetic-driver"]) == 1
+    assert capsys.readouterr().err.strip() == str(vectors_path)
+
+
+def test_synthetic_driver_vector_byte_ceiling_preflights(tmp_path: Path) -> None:
+    source = tmp_path / "driver.rs"
+    source.write_bytes(b"x" * 131_072)
+    with pytest.raises(ValueError, match="driver vector bytes"):
+        exporter._synthetic_driver_vectors(source)
 
 
 def _line_parts(rows: Sequence[str]) -> list[list[str]]:

@@ -19,6 +19,8 @@ MAX_ROWS: Final = 65_535
 MAX_SAMPLES: Final = 157
 MAX_COMPONENTS: Final = 64
 MAX_VECTOR_BYTES: Final = 16_777_216
+MAX_SYNTHETIC_DRIVER_BYTES: Final = 262_144
+MAX_SYNTHETIC_DRIVER_CONTRACT_BYTES: Final = 4_096
 MAX_NFC_SCALARS: Final = 256
 UNICODE_DATA_VERSION: Final = "17.0.0"
 
@@ -27,6 +29,28 @@ FIXTURE_ROOT: Final = ROOT / "rust" / "crates" / "babylon-evidence" / "tests" / 
 WIRE_PATH: Final = FIXTURE_ROOT / "sfs_wire_vectors_v1.txt"
 CLASSIFIER_PATH: Final = FIXTURE_ROOT / "sfs_classifier_vectors_v1.txt"
 MUTATION_PATH: Final = FIXTURE_ROOT / "sfs_identity_mutations_v1.txt"
+SYNTHETIC_GOVERNED_MANIFEST_PATH: Final = FIXTURE_ROOT / "sfs_synthetic_governed_manifest_v1.txt"
+SYNTHETIC_PROFILE_PATH: Final = FIXTURE_ROOT / "sfs_synthetic_profile_v1.txt"
+DRIVER_SOURCE_PATH: Final = ROOT / "rust" / "crates" / "babylon-evidence" / "src" / "driver.rs"
+SYNTHETIC_DRIVER_CONTRACT_PATH: Final = FIXTURE_ROOT / "sfs_synthetic_driver_contract_v1.txt"
+SYNTHETIC_DRIVER_PATH: Final = FIXTURE_ROOT / "sfs_synthetic_driver_v1.txt"
+BSL_PROFILE_ROOT: Final = (
+    ROOT / "rust" / "crates" / "babylon-bsl" / "tests" / "fixtures" / "sfs_profile"
+)
+FORBIDDEN_MANIFEST_PATH: Final = BSL_PROFILE_ROOT / "sfs_forbidden_manifest_v1.txt"
+AUDIT_SOURCE_MANIFEST_PATH: Final = BSL_PROFILE_ROOT / "sfs_audit_source_manifest_v1.txt"
+
+SYNTHETIC_COMPONENT_SOURCE_DOMAIN: Final = b"babylon.sfs-synthetic-component-source.v1"
+SYNTHETIC_GOVERNED_MANIFEST_DOMAIN: Final = b"babylon.sfs-synthetic-governed-manifest.v1"
+SYNTHETIC_HOST_MANIFEST_DOMAIN: Final = b"babylon.sfs-synthetic-host-component-manifest.v1"
+FORBIDDEN_CORPUS_DOMAIN: Final = b"babylon.sfs-forbidden-corpus-manifest.v1"
+AUDIT_SOURCE_DOMAIN: Final = b"babylon.sfs-audit-source-manifest.v1"
+SYNTHETIC_CARDINALITY_DIGEST: Final = hashlib.sha256(
+    b"babylon.sfs-cardinality-ceilings.v1\0ceiling|EdgeType/SYNTHETIC_LINK|8\n"
+).digest()
+SYNTHETIC_INTRINSIC_COST_DIGEST: Final = hashlib.sha256(
+    b"babylon.sfs-intrinsic-costs.v1\0"
+).digest()
 
 RUN_FIELD_NAMES: Final = (
     "session",
@@ -519,6 +543,320 @@ def _identity_mutations() -> list[str]:
     return rows
 
 
+def _read_exact_manifest(path: Path, maximum: int) -> bytes:
+    with path.open("rb") as source:
+        metadata = os.fstat(source.fileno())
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > maximum:
+            raise ValueError(f"{path.name} is not one bounded regular file")
+        value = source.read(maximum + 1)
+    if b"\r" in value or not value.endswith(b"\n") or value.endswith(b"\n\n"):
+        raise ValueError(f"{path.name} must use exact LF framing")
+    return value
+
+
+def _lower_hex(value: str, field: str, maximum_bytes: int) -> bytes:
+    if not value or len(value) % 2 or value.lower() != value:
+        raise ValueError(f"{field} must be nonempty lowercase even hex")
+    try:
+        decoded = bytes.fromhex(value)
+    except ValueError as error:
+        raise ValueError(f"{field} must be lowercase hex") from error
+    if len(decoded) > maximum_bytes or decoded.hex() != value:
+        raise ValueError(f"{field} exceeds its exact bound")
+    return decoded
+
+
+def _nfc_hex(value: str, field: str, maximum_bytes: int) -> tuple[str, bytes]:
+    decoded = _lower_hex(value, field, maximum_bytes)
+    try:
+        text = decoded.decode("utf-8", "strict")
+    except UnicodeDecodeError as error:
+        raise ValueError(f"{field} must decode as UTF-8") from error
+    if unicodedata2.normalize("NFC", text) != text:
+        raise ValueError(f"{field} must decode to NFC")
+    return text, decoded
+
+
+def _verify_source_manifests(forbidden_path: Path, audit_path: Path) -> tuple[bytes, bytes]:
+    forbidden = _read_exact_manifest(forbidden_path, 131_072)
+    audit = _read_exact_manifest(audit_path, 4_096)
+    forbidden_rows = forbidden.decode("ascii", "strict").splitlines()
+    if forbidden_rows != sorted(forbidden_rows) or len(forbidden_rows) != 18:
+        raise ValueError("forbidden manifest rows must be exact and sorted")
+    for index in range(18):
+        parts = forbidden_rows[index].split("|")
+        if len(parts) != 5:
+            raise ValueError("forbidden manifest row malformed")
+        source = BSL_PROFILE_ROOT / parts[1]
+        if not source.is_file() or len(_lower_hex(parts[2], "forbidden source digest", 32)) != 32:
+            raise ValueError("forbidden source row mismatch")
+    audit_rows = audit.decode("ascii", "strict").splitlines()
+    if audit_rows != sorted(audit_rows) or len(audit_rows) != 2:
+        raise ValueError("audit source manifest rows must be exact and sorted")
+    source_root = ROOT / "rust" / "crates" / "babylon-bsl" / "src"
+    for index in range(2):
+        name, digest = audit_rows[index].split("|")
+        if hashlib.sha256((source_root / name).read_bytes()).hexdigest() != digest:
+            raise ValueError("audit source digest mismatch")
+    return forbidden, audit
+
+
+def _parse_synthetic_manifest(path: Path) -> tuple[bytes, list[dict[str, object]]]:
+    raw = _read_exact_manifest(path, 1_048_576)
+    rows = raw.decode("ascii", "strict").splitlines()
+    if rows != sorted(rows) or len(rows) > 36_992:
+        raise ValueError("governed manifest rows must be complete-row sorted")
+    parsed: list[dict[str, object]] = []
+    for index in range(36_992):
+        if index >= len(rows):
+            break
+        parts = rows[index].split("|")
+        kind = parts[0]
+        if kind == "component" and len(parts) == 6:
+            component_id, _ = _nfc_hex(parts[1], "component id", 256)
+            source_payload = _lower_hex(parts[4], "source payload", 65_535)
+            source_digest = _lower_hex(parts[5], "source digest", 32)
+            if len(source_digest) != 32:
+                raise ValueError("component source digest must be 32 bytes")
+            mode = parts[3]
+            if mode == "canonical-bsl":
+                expected = hashlib.sha256(source_payload).digest()
+            elif mode == "synthetic-descriptor":
+                expected = hashlib.sha256(
+                    SYNTHETIC_COMPONENT_SOURCE_DOMAIN + b"\0" + source_payload
+                ).digest()
+            else:
+                raise ValueError("unknown component source mode")
+            if source_digest != expected:
+                raise ValueError("component source digest mismatch")
+            parsed.append(
+                {
+                    "row": rows[index],
+                    "kind": kind,
+                    "id": component_id,
+                    "code": int(parts[2]),
+                    "mode": mode,
+                    "payload": source_payload,
+                    "digest": source_digest,
+                }
+            )
+        elif kind == "profile" and len(parts) == 4:
+            component_id, _ = _nfc_hex(parts[1], "profile component", 256)
+            entry, _ = _nfc_hex(parts[3], "profile entry", 96)
+            if parts[2] not in {
+                "field_reads",
+                "edge_reads",
+                "constant_reads",
+                "queries",
+                "operators",
+                "intrinsics",
+                "comparison_clamp_contexts",
+                "effects",
+            }:
+                raise ValueError("unknown profile set")
+            parsed.append(
+                {
+                    "row": rows[index],
+                    "kind": kind,
+                    "id": component_id,
+                    "set": parts[2],
+                    "entry": entry,
+                }
+            )
+        elif kind == "bound" and len(parts) == 6:
+            component_id, _ = _nfc_hex(parts[1], "bound component", 256)
+            if parts[2:4] != ["128", "31"]:
+                raise ValueError("bound row differs from the frozen audit")
+            cardinality = _lower_hex(parts[4], "cardinality digest", 32)
+            intrinsic = _lower_hex(parts[5], "intrinsic cost digest", 32)
+            if cardinality != SYNTHETIC_CARDINALITY_DIGEST:
+                raise ValueError("cardinality digest differs from the frozen audit")
+            if intrinsic != SYNTHETIC_INTRINSIC_COST_DIGEST:
+                raise ValueError("intrinsic cost digest differs from the frozen audit")
+            parsed.append({"row": rows[index], "kind": kind, "id": component_id})
+        elif kind == "edge" and len(parts) == 5:
+            producer, _ = _nfc_hex(parts[1], "edge producer", 256)
+            consumer, _ = _nfc_hex(parts[2], "edge consumer", 256)
+            channel, _ = _nfc_hex(parts[4], "edge channel", 96)
+            code = int(parts[3])
+            if not 0 <= code <= 5:
+                raise ValueError("edge channel kind outside V1")
+            parsed.append(
+                {
+                    "row": rows[index],
+                    "kind": kind,
+                    "producer": producer,
+                    "consumer": consumer,
+                    "code": code,
+                    "channel": channel,
+                }
+            )
+        else:
+            raise ValueError(f"governed manifest row {index + 1} malformed")
+    return raw, parsed
+
+
+def _profile_set_bytes(entries: Sequence[str]) -> bytes:
+    ordered = sorted(entries, key=lambda entry: entry.encode("utf-8"))
+    return _string_set(ordered, 96)
+
+
+def _synthetic_component_envelope(
+    component: dict[str, object], rows: list[dict[str, object]]
+) -> bytes:
+    component_id = str(component["id"])
+    payload = bytearray(_framed_nfc(component_id, "component_id", 256))
+    payload.append(int(component["code"]))
+    payload.extend(bytes(component["digest"]))
+    set_names = (
+        "field_reads",
+        "edge_reads",
+        "constant_reads",
+        "queries",
+        "operators",
+        "intrinsics",
+        "comparison_clamp_contexts",
+        "effects",
+    )
+    for set_name in set_names:
+        entries = [
+            str(row["entry"])
+            for row in rows
+            if row["kind"] == "profile" and row["id"] == component_id and row["set"] == set_name
+        ]
+        payload.extend(_profile_set_bytes(entries))
+    return _envelope(b"babylon.sfs-component-proof-profile.v1", bytes(payload))
+
+
+def _synthetic_profile_vectors(
+    governed_manifest_path: Path,
+    forbidden_manifest_path: Path,
+    audit_source_manifest_path: Path,
+) -> list[str]:
+    """Return the three component, one cone, and one proof-profile rows."""
+    raw, rows = _parse_synthetic_manifest(governed_manifest_path)
+    forbidden, audit = _verify_source_manifests(forbidden_manifest_path, audit_source_manifest_path)
+    components = [row for row in rows if row["kind"] == "component"]
+    if [(row["id"], row["code"], row["mode"]) for row in components] != [
+        ("membership-reducer", 2, "synthetic-descriptor"),
+        ("post-commit-producer", 3, "synthetic-descriptor"),
+        ("scoped-bsl-rule", 0, "canonical-bsl"),
+    ]:
+        raise ValueError("synthetic component registry mismatch")
+    profiles = [_synthetic_component_envelope(component, rows) for component in components]
+    cone_payload = (
+        _string_set(["scoped-bsl-rule"], 256)
+        + _string_set(["post-commit-producer"], 256)
+        + _string_set([str(row["id"]) for row in components], 256)
+    )
+    cone = _envelope(b"babylon.sfs-causal-cone.v1", cone_payload)
+    governed_digest = hashlib.sha256(SYNTHETIC_GOVERNED_MANIFEST_DOMAIN + b"\0" + raw).digest()
+    proof_payload = bytearray(governed_digest)
+    proof_payload.extend(hashlib.sha256(FORBIDDEN_CORPUS_DOMAIN + b"\0" + forbidden).digest())
+    proof_payload.extend(_framed_ascii("babylon.sfs.audit.v1", "audit_semantics_id", 64))
+    proof_payload.extend(hashlib.sha256(AUDIT_SOURCE_DOMAIN + b"\0" + audit).digest())
+    proof_payload.extend(hashlib.sha256(cone).digest())
+    proof_payload.extend(struct.pack(">H", len(profiles)))
+    for envelope in profiles:
+        proof_payload.extend(envelope)
+    proof = _envelope(b"babylon.sfs-proof-profile.v1", bytes(proof_payload))
+    output = [
+        f"component|{components[index]['id']}|babylon.sfs-component-proof-profile.v1|"
+        f"{profiles[index].hex()}|{hashlib.sha256(profiles[index]).hexdigest()}"
+        for index in range(3)
+    ]
+    output.extend(
+        [
+            f"cone|synthetic-chain|babylon.sfs-causal-cone.v1|{cone.hex()}|{hashlib.sha256(cone).hexdigest()}",
+            f"proof-profile|synthetic-chain|babylon.sfs-proof-profile.v1|{proof.hex()}|"
+            f"{hashlib.sha256(proof).hexdigest()}",
+        ]
+    )
+    output.sort(key=lambda row: row.encode("ascii"))
+    return output
+
+
+def _synthetic_driver_vectors(driver_source_path: Path) -> tuple[bytes, list[str]]:
+    """Return the complete source-bound contract and its two independent rows."""
+    source = _read_regular_bytes(driver_source_path, 262_144)
+    source_domain = b"babylon.sfs-driver-source.v1"
+    contract_domain = b"babylon.sfs-synthetic-driver-contract.v1"
+    source_digest = hashlib.sha256(source_domain + b"\0" + source).hexdigest()
+    contract = (
+        b"schema|1\n"
+        b"predicate|candidate-projection|1\n"
+        b"predicate|cumulative-driver-shape|1\n"
+        b"predicate|persistence-comparison-identity|1\n"
+        b"predicate|aligned-material-sequence|1\n"
+        b"predicate|twin-identity-difference|1\n"
+        + f"source|driver.rs|{source_digest}\n".encode("ascii")
+    )
+    if len(contract) > MAX_SYNTHETIC_DRIVER_CONTRACT_BYTES or len(contract.splitlines()) != 7:
+        raise ValueError("synthetic driver contract exceeds its exact bounds")
+    contract_digest = hashlib.sha256(contract_domain + b"\0" + contract).hexdigest()
+    rows = [
+        f"driver-contract|{contract_domain.decode()}|{contract.hex()}|{contract_digest}",
+        f"driver-source|{source_domain.decode()}|{source.hex()}|{source_digest}",
+    ]
+    rows.sort(key=lambda row: row.encode("ascii"))
+    vector_bytes = len(rows[0].encode("ascii")) + len(rows[1].encode("ascii")) + 2
+    if vector_bytes > MAX_SYNTHETIC_DRIVER_BYTES:
+        raise ValueError("synthetic driver vector bytes exceed the exact bound")
+    return contract, rows
+
+
+def _read_regular_bytes(path: Path, maximum: int) -> bytes:
+    with path.open("rb") as source:
+        metadata = os.fstat(source.fileno())
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > maximum:
+            raise ValueError(f"{path.name} is not one bounded regular file")
+        value = source.read(maximum + 1)
+    if len(value) != metadata.st_size:
+        raise ValueError(f"{path.name} changed during its bounded read")
+    return value
+
+
+def _stage_atomic(path: Path, expected: bytes) -> Path:
+    descriptor = -1
+    staged: Path | None = None
+    handle = None
+    try:
+        descriptor, staged_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+        staged = Path(staged_name)
+        handle = os.fdopen(descriptor, "wb")
+        descriptor = -1
+        if handle.write(expected) != len(expected):
+            raise OSError("short fixture write")
+        handle.flush()
+        os.fsync(handle.fileno())
+        handle.close()
+        return staged
+    except OSError as error:
+        if descriptor >= 0:
+            os.close(descriptor)
+        if handle is not None:
+            handle.close()
+        if staged is not None:
+            _remove_stage(staged)
+        raise VectorIoError(path, "stage") from error
+
+
+def _write_driver_pair(contract: bytes, vectors: bytes) -> None:
+    staged_contract = _stage_atomic(SYNTHETIC_DRIVER_CONTRACT_PATH, contract)
+    try:
+        staged_vectors = _stage_atomic(SYNTHETIC_DRIVER_PATH, vectors)
+    except VectorIoError:
+        _remove_stage(staged_contract)
+        raise
+    try:
+        os.replace(staged_contract, SYNTHETIC_DRIVER_CONTRACT_PATH)
+        os.replace(staged_vectors, SYNTHETIC_DRIVER_PATH)
+    except OSError as error:
+        _remove_stage(staged_contract)
+        _remove_stage(staged_vectors)
+        raise VectorIoError(SYNTHETIC_DRIVER_PATH, "replace-pair") from error
+
+
 def _row_key(row: str) -> str:
     kind, remainder = row.split("|", 1)
     label, remainder = remainder.split("|", 1)
@@ -627,7 +965,38 @@ def main(argv: Sequence[str] | None = None) -> int:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--write", action="store_true")
     mode.add_argument("--check", action="store_true")
+    mode.add_argument("--write-synthetic-profile", action="store_true")
+    mode.add_argument("--check-synthetic-profile", action="store_true")
+    mode.add_argument("--write-synthetic-driver", action="store_true")
+    mode.add_argument("--check-synthetic-driver", action="store_true")
     args = parser.parse_args(argv)
+    if args.write_synthetic_driver or args.check_synthetic_driver:
+        contract, rows = _synthetic_driver_vectors(DRIVER_SOURCE_PATH)
+        vectors = _render(rows)
+        if args.write_synthetic_driver:
+            _write_driver_pair(contract, vectors)
+            return 0
+        if not _check(SYNTHETIC_DRIVER_CONTRACT_PATH, contract) or not _check(
+            SYNTHETIC_DRIVER_PATH, vectors
+        ):
+            print(SYNTHETIC_DRIVER_PATH, file=sys.stderr)
+            return 1
+        return 0
+    if args.write_synthetic_profile or args.check_synthetic_profile:
+        expected = _render(
+            _synthetic_profile_vectors(
+                SYNTHETIC_GOVERNED_MANIFEST_PATH,
+                FORBIDDEN_MANIFEST_PATH,
+                AUDIT_SOURCE_MANIFEST_PATH,
+            )
+        )
+        if args.write_synthetic_profile:
+            _write_atomic(SYNTHETIC_PROFILE_PATH, expected)
+            return 0
+        if not _check(SYNTHETIC_PROFILE_PATH, expected):
+            print(SYNTHETIC_PROFILE_PATH, file=sys.stderr)
+            return 1
+        return 0
     outputs = _fixture_outputs()
     for index in range(3):
         path, expected = outputs[index]

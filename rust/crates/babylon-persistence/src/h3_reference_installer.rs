@@ -909,7 +909,7 @@ fn prepare_transaction(transaction: &mut Transaction<'_>) -> Result<(), H3Refere
         "off",
         "off",
     ];
-    for (index, wanted) in expected.iter().enumerate().take(10) {
+    for (index, wanted) in expected.iter().enumerate() {
         let actual: String = decode_value(&row, index, operation)?;
         if actual != *wanted {
             return Err(database_error(operation));

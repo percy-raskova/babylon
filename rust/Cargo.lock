@@ -421,6 +421,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "babylon-practice-contract"
+version = "0.1.0"
+dependencies = [
+ "babylon-kernel",
+ "serde_json",
+]
+
+[[package]]
 name = "babylon-rtd"
 version = "0.1.0"
 dependencies = [

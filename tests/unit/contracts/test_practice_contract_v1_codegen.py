@@ -2,30 +2,40 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from enum import StrEnum
-from itertools import islice
+import importlib
+import subprocess
+import sys
 from pathlib import Path
-from typing import Any, Never
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 import yaml
-from yaml.events import AliasEvent, CollectionEndEvent, CollectionStartEvent
+from pydantic import TypeAdapter, ValidationError
+from tools.generate_practice_contract_types import (
+    MAX_DEPTH,
+    MAX_ENUM_MEMBERS,
+    MAX_ENUMS,
+    MAX_ERROR_CODES,
+    MAX_FIELDS,
+    MAX_RECORDS,
+    MAX_SOURCE_BYTES,
+    MAX_YAML_EVENTS,
+    PracticeSchemaError,
+    PracticeSchemaViolation,
+    _read_source,
+    load_practice_contract,
+)
 
 ROOT = Path(__file__).parents[3]
 CONTRACT_PATH = ROOT / "contracts" / "practice_contract_v1.yaml"
 ADR_PATH = ROOT / "ai" / "decisions" / "ADR227_practice_contract_groundwork.yaml"
 INDEX_PATH = ROOT / "ai" / "decisions" / "index.yaml"
-
-MAX_SOURCE_BYTES = 262_144
-MAX_YAML_EVENTS = 65_536
-MAX_DEPTH = 16
-MAX_RECORDS = 64
-MAX_ENUMS = 64
-MAX_FIELDS = 64
-MAX_ENUM_MEMBERS = 256
-MAX_ERROR_CODES = 256
+GENERATOR_PATH = ROOT / "tools" / "generate_practice_contract_types.py"
+PYTHON_GENERATED_PATH = ROOT / "src" / "babylon" / "contracts" / "practice_contract_v1_generated.py"
+RUST_GENERATED_PATH = (
+    ROOT / "rust" / "crates" / "babylon-practice-contract" / "src" / "generated.rs"
+)
 
 PRACTICE_IDS = {"ORGANIZE": 1, "AGITATE": 2, "MUTUAL_AID": 3}
 VERB_STEMS = {"MOBILIZE": 1, "AID": 2}
@@ -109,127 +119,6 @@ REJECTION_ALIASES = {
     27: "PRACTICE_DUPLICATE_ACTOR",
     33: "PRACTICE_BUDGET_INSUFFICIENT",
 }
-
-
-class PracticeSchemaError(StrEnum):
-    SourceBytes = "SourceBytes"
-    EventLimit = "EventLimit"
-    Alias = "Alias"
-    DuplicateKey = "DuplicateKey"
-    Depth = "Depth"
-    UnknownKey = "UnknownKey"
-    MissingKey = "MissingKey"
-    DuplicateCode = "DuplicateCode"
-    MissingCode = "MissingCode"
-    InvalidLimit = "InvalidLimit"
-    CollectionLimit = "CollectionLimit"
-    FieldOrder = "FieldOrder"
-    MappingMismatch = "MappingMismatch"
-
-
-class PracticeSchemaViolation(ValueError):
-    def __init__(self, error: PracticeSchemaError) -> None:
-        self.error = error
-        super().__init__(error.value)
-
-
-class _UniqueKeyLoader(yaml.SafeLoader):
-    pass
-
-
-def _construct_unique_mapping(
-    loader: _UniqueKeyLoader, node: yaml.MappingNode, deep: bool = False
-) -> dict[object, object]:
-    result: dict[object, object] = {}
-    for key_node, value_node in islice(node.value, MAX_YAML_EVENTS + 1):
-        if not isinstance(key_node, yaml.ScalarNode) or key_node.tag not in {
-            "tag:yaml.org,2002:int",
-            "tag:yaml.org,2002:str",
-        }:
-            _refuse(PracticeSchemaError.MappingMismatch)
-        key = loader.construct_object(key_node, deep=deep)
-        if key in result:
-            raise PracticeSchemaViolation(PracticeSchemaError.DuplicateKey)
-        result[key] = loader.construct_object(value_node, deep=deep)
-    return result
-
-
-_UniqueKeyLoader.add_constructor(
-    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
-    _construct_unique_mapping,
-)
-
-
-def _refuse(error: PracticeSchemaError) -> Never:
-    raise PracticeSchemaViolation(error)
-
-
-def _bounded_items(value: dict[str, Any], limit: int) -> list[tuple[str, Any]]:
-    items = list(islice(value.items(), limit + 1))
-    if len(items) > limit:
-        _refuse(PracticeSchemaError.CollectionLimit)
-    return items
-
-
-def _bounded_list(value: list[Any], limit: int) -> list[Any]:
-    items = list(islice(value, limit + 1))
-    if len(items) > limit:
-        _refuse(PracticeSchemaError.CollectionLimit)
-    return items
-
-
-def _mapping(value: object) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        _refuse(PracticeSchemaError.MappingMismatch)
-    for key, _ in _bounded_items(value, MAX_YAML_EVENTS):
-        if not isinstance(key, str):
-            _refuse(PracticeSchemaError.MappingMismatch)
-    return value
-
-
-def _keys(value: dict[str, Any], expected: set[str]) -> None:
-    if value.keys() - expected:
-        _refuse(PracticeSchemaError.UnknownKey)
-    if expected - value.keys():
-        _refuse(PracticeSchemaError.MissingKey)
-
-
-def _scan_yaml(source: bytes) -> None:
-    if len(source) > MAX_SOURCE_BYTES:
-        _refuse(PracticeSchemaError.SourceBytes)
-    depth = 0
-    try:
-        for event_count, event in enumerate(
-            islice(yaml.parse(source), MAX_YAML_EVENTS + 1), start=1
-        ):
-            if event_count > MAX_YAML_EVENTS:
-                _refuse(PracticeSchemaError.EventLimit)
-            if isinstance(event, AliasEvent):
-                _refuse(PracticeSchemaError.Alias)
-            if isinstance(event, CollectionStartEvent):
-                depth += 1
-                if depth > MAX_DEPTH:
-                    _refuse(PracticeSchemaError.Depth)
-            elif isinstance(event, CollectionEndEvent):
-                depth -= 1
-    except yaml.YAMLError:
-        _refuse(PracticeSchemaError.MappingMismatch)
-
-
-def _validate_code_table(value: object, expected: dict[str, int], *, limit: int) -> dict[str, int]:
-    table = _mapping(value)
-    items = _bounded_items(table, limit)
-    if not all(type(code) is int and 0 < code <= 65_535 for _, code in items):
-        _refuse(PracticeSchemaError.MappingMismatch)
-    codes = [code for _, code in items]
-    if len(codes) != len(set(codes)):
-        _refuse(PracticeSchemaError.DuplicateCode)
-    missing = set(expected.values()) - set(codes)
-    if missing:
-        _refuse(PracticeSchemaError.MissingCode)
-    if dict(items) != expected:
-        _refuse(PracticeSchemaError.MappingMismatch)
-    return dict(items)
 
 
 EXPECTED_ENUMS = {
@@ -548,328 +437,6 @@ EXPECTED_RECORD_BYTE_ORDERS = {
 }
 
 
-@dataclass(frozen=True)
-class PracticeContractSpec:
-    raw: dict[str, Any]
-    practice_ids: dict[str, int]
-
-    def display_label(self, practice: str) -> str:
-        return self._mapping_row(practice)["display_label"]
-
-    def machine_mapping(self, practice: str) -> tuple[str, str | None]:
-        row = self._mapping_row(practice)
-        return row["machine_stem"], row["machine_mode"]
-
-    def _mapping_row(self, practice: str) -> dict[str, Any]:
-        for row in _bounded_list(self.raw["practice_mappings"], 3):
-            if row["practice"] == practice:
-                return row
-        raise KeyError(practice)
-
-
-def _load_unique_yaml(source: bytes) -> dict[str, Any]:
-    loader = _UniqueKeyLoader(source)
-    try:
-        try:
-            loaded = loader.get_single_data()
-        except yaml.YAMLError:
-            _refuse(PracticeSchemaError.MappingMismatch)
-    finally:
-        loader.dispose()
-    return _mapping(loaded)
-
-
-def _read_source(path: Path) -> bytes:
-    with path.open("rb") as source_file:
-        source = source_file.read(MAX_SOURCE_BYTES + 1)
-    if len(source) > MAX_SOURCE_BYTES:
-        _refuse(PracticeSchemaError.SourceBytes)
-    return source
-
-
-def _validate_header(root: dict[str, Any]) -> None:
-    expected_keys = {
-        "schema",
-        "schema_version",
-        "evidence_class",
-        "purpose",
-        "domain_terminator_hex",
-        "wire_layouts",
-        "scalar_types",
-        "parser_bounds",
-        "limits",
-        "enums",
-        "contract_errors",
-        "submission_rejection_aliases",
-        "practice_mappings",
-        "activation_blockers",
-        "validation_laws",
-        "records",
-        "budget_terms",
-        "topology",
-    }
-    _bounded_items(root, MAX_FIELDS)
-    _keys(root, expected_keys)
-    if (
-        root["schema"] != "babylon.practice-contract"
-        or root["schema_version"] != 1
-        or root["evidence_class"] != "Designed"
-        or not isinstance(root["purpose"], str)
-        or not root["purpose"]
-        or root["domain_terminator_hex"] != "00"
-    ):
-        _refuse(PracticeSchemaError.MappingMismatch)
-
-
-def _validate_limits(root: dict[str, Any]) -> None:
-    wire_layouts = _mapping(root["wire_layouts"])
-    _bounded_items(wire_layouts, MAX_FIELDS)
-    if wire_layouts != EXPECTED_WIRE_LAYOUTS:
-        _refuse(PracticeSchemaError.FieldOrder)
-    scalar_types = _mapping(root["scalar_types"])
-    _bounded_items(scalar_types, MAX_FIELDS)
-    if scalar_types != EXPECTED_SCALAR_TYPES:
-        _refuse(PracticeSchemaError.MappingMismatch)
-    parser_bounds = _mapping(root["parser_bounds"])
-    _bounded_items(parser_bounds, len(EXPECTED_PARSER_BOUNDS))
-    if parser_bounds != EXPECTED_PARSER_BOUNDS:
-        _refuse(PracticeSchemaError.InvalidLimit)
-    limits = _mapping(root["limits"])
-    limit_items = _bounded_items(limits, MAX_FIELDS)
-    if {name for name, _ in limit_items} != set(EXPECTED_LIMITS):
-        _refuse(PracticeSchemaError.MissingKey)
-    for name, row_value in limit_items:
-        row = _mapping(row_value)
-        _keys(row, {"value", "evidence_class", "play_purpose"})
-        if row["value"] != EXPECTED_LIMITS[name]:
-            _refuse(PracticeSchemaError.InvalidLimit)
-        if row["evidence_class"] != "Designed" or not row["play_purpose"]:
-            _refuse(PracticeSchemaError.MappingMismatch)
-
-
-def _validate_enums(root: dict[str, Any]) -> None:
-    enums = _mapping(root["enums"])
-    enum_items = _bounded_items(enums, MAX_ENUMS)
-    if {name for name, _ in enum_items} != set(EXPECTED_ENUMS):
-        _refuse(PracticeSchemaError.MissingKey)
-    for enum_name, enum_value in enum_items:
-        enum_row = _mapping(enum_value)
-        _keys(enum_row, {"width", "members", "evidence_class", "play_purpose"})
-        expected_width, expected_members = EXPECTED_ENUMS[enum_name]
-        if (
-            enum_row["width"] != expected_width
-            or enum_row["evidence_class"] != "Designed"
-            or not enum_row["play_purpose"]
-        ):
-            _refuse(PracticeSchemaError.MappingMismatch)
-        _validate_code_table(enum_row["members"], expected_members, limit=MAX_ENUM_MEMBERS)
-
-
-def _validate_errors_and_aliases(root: dict[str, Any]) -> None:
-    errors = _mapping(root["contract_errors"])
-    _keys(errors, {"width", "members", "evidence_class", "play_purpose"})
-    if (
-        errors["width"] != "u16"
-        or errors["evidence_class"] != "Designed"
-        or not errors["play_purpose"]
-    ):
-        _refuse(PracticeSchemaError.MappingMismatch)
-    _validate_code_table(errors["members"], CONTRACT_ERRORS, limit=MAX_ERROR_CODES)
-    aliases_value = root["submission_rejection_aliases"]
-    if not isinstance(aliases_value, dict):
-        _refuse(PracticeSchemaError.MappingMismatch)
-    alias_items = list(islice(aliases_value.items(), MAX_ERROR_CODES + 1))
-    if len(alias_items) > MAX_ERROR_CODES:
-        _refuse(PracticeSchemaError.CollectionLimit)
-    for key, value in alias_items:
-        if type(key) is not int or not isinstance(value, str):
-            _refuse(PracticeSchemaError.MappingMismatch)
-    if dict(alias_items) != REJECTION_ALIASES:
-        _refuse(PracticeSchemaError.MappingMismatch)
-
-
-def _validate_practice_mappings(root: dict[str, Any]) -> None:
-    mappings = root["practice_mappings"]
-    if not isinstance(mappings, list):
-        _refuse(PracticeSchemaError.MappingMismatch)
-    mapping_rows = _bounded_list(mappings, 3)
-    expected_mappings = [
-        {
-            "practice": "ORGANIZE",
-            "display_label": "ORGANIZE",
-            "machine_stem": "mobilize",
-            "machine_mode": "CANVASS",
-            "parameter_allowlist": [],
-        },
-        {
-            "practice": "AGITATE",
-            "display_label": "AGITATE",
-            "machine_stem": "mobilize",
-            "machine_mode": "AGITATE",
-            "parameter_allowlist": [],
-        },
-        {
-            "practice": "MUTUAL_AID",
-            "display_label": "MUTUAL-AID",
-            "machine_stem": "aid",
-            "machine_mode": None,
-            "parameter_allowlist": [],
-        },
-    ]
-    if mapping_rows != expected_mappings:
-        _refuse(PracticeSchemaError.MappingMismatch)
-    blockers = _mapping(root["activation_blockers"])
-    _bounded_items(blockers, 3)
-    expected_blockers = {
-        "ORGANIZE": ["GATE3_COMMITTED_ENVELOPE", "GATE5_PENDING_INPUT"],
-        "AGITATE": ["GATE3_COMMITTED_ENVELOPE", "GATE5_PENDING_INPUT"],
-        "MUTUAL_AID": [
-            "GATE3_COMMITTED_ENVELOPE",
-            "GATE5_PENDING_INPUT",
-            "PER30_ORDERS_INVENTORY",
-            "PER31_FREIGHT_REALIZATION",
-        ],
-    }
-    if blockers != expected_blockers:
-        _refuse(PracticeSchemaError.MappingMismatch)
-    expected_laws = {
-        "resolve_tick": "checked_submit_after_tick_plus_one",
-        "parameters_v1": "empty_allowlist_for_every_practice",
-        "parameter_sequence_bound": "max_parameters",
-        "parameter_value_bound": "max_parameter_value_bytes",
-        "parameter_total_bound": "max_parameter_bytes",
-        "evidence_digests": "sorted_unique_lexicographic",
-        "evidence_digest_bound": "max_evidence_digests",
-        "intent_canonical_bound": "max_intent_canonical_bytes",
-        "policy_authorities": "sorted_unique_by_producer_digest_then_actor",
-        "policy_authority_bound": "max_policy_authority_pairs",
-        "resolve_batch": "shared_tick_unique_actor",
-        "resolve_batch_bound": "max_intents_per_resolve_tick",
-        "budget_storage": "finite_nonnegative_integral_binary64_exact_u32",
-        "budget_storage_canonical_bits": "checked_u32_to_f64_bits",
-        "budget_storage_noncanonical_witness": "negative_zero",
-        "budget_arithmetic": "checked_u32_before_f64_storage",
-        "solidarity_footprint_order": "ascending_source_then_target",
-        "solidarity_footprint_identity": "source_target_EdgeType_SOLIDARITY",
-        "solidarity_strength": "finite_strictly_positive",
-        "topology_organizations": "ascending_unique_node_id",
-        "topology_organization_bound": "max_organizations",
-        "topology_edges": "ascending_unique_target_class_node_id",
-        "topology_edge_bound": "max_org_solidarity_edges_per_org",
-        "topology_active_budget": "required_when_active_optional_when_inactive",
-        "topology_supplied_budget": "always_validate_binary64_exact_u32",
-        "rejection_only_deferred": [
-            "PRACTICE_UNWIRED",
-            "PRACTICE_TARGET_INELIGIBLE",
-            "PRACTICE_PENDING_DUPLICATE",
-        ],
-    }
-    laws = _mapping(root["validation_laws"])
-    _bounded_items(laws, MAX_FIELDS)
-    if laws != expected_laws:
-        _refuse(PracticeSchemaError.MappingMismatch)
-
-
-def _validate_records(root: dict[str, Any]) -> None:
-    records = _mapping(root["records"])
-    record_items = _bounded_items(records, MAX_RECORDS)
-    if {name for name, _ in record_items} != set(EXPECTED_RECORD_FIELDS):
-        _refuse(PracticeSchemaError.MissingKey)
-    for record_name, record_value in record_items:
-        record = _mapping(record_value)
-        _keys(record, {"wire_domain", "evidence_class", "play_purpose", "fields"})
-        if record["evidence_class"] != "Designed" or not record["play_purpose"]:
-            _refuse(PracticeSchemaError.MappingMismatch)
-        fields = record["fields"]
-        if not isinstance(fields, list):
-            _refuse(PracticeSchemaError.MappingMismatch)
-        field_rows = _bounded_list(fields, MAX_FIELDS)
-        names: list[str] = []
-        types: list[str] = []
-        byte_orders: list[str] = []
-        for field_value in field_rows:
-            field = _mapping(field_value)
-            _keys(field, {"name", "type", "byte_order"})
-            if not field["byte_order"]:
-                _refuse(PracticeSchemaError.FieldOrder)
-            names.append(field["name"])
-            types.append(field["type"])
-            byte_orders.append(field["byte_order"])
-        if (
-            names != EXPECTED_RECORD_FIELDS[record_name]
-            or types != EXPECTED_RECORD_TYPES[record_name]
-            or byte_orders != EXPECTED_RECORD_BYTE_ORDERS[record_name]
-        ):
-            _refuse(PracticeSchemaError.FieldOrder)
-    domains: dict[str, str] = {}
-    for name, value in islice(record_items, MAX_RECORDS + 1):
-        if value["wire_domain"]:
-            domains[name] = value["wire_domain"]
-    if domains != {
-        "PracticeInputAuthorityV1": "babylon.practice-input-authority.v1",
-        "PracticeIntentV1": "babylon.practice-intent.v1",
-        "OrganizationBudgetDeltaV1": "babylon.organization-budget-delta.v1",
-    }:
-        _refuse(PracticeSchemaError.MappingMismatch)
-
-
-def _validate_budget_and_topology(root: dict[str, Any]) -> None:
-    budget_terms = _mapping(root["budget_terms"])
-    expected_budget = {
-        "initial": 1,
-        "weekly_credit_cap": 1,
-        "storage_ceiling": 4,
-        "organize_cost": 1,
-        "agitate_cost": 1,
-        "mutual_aid_cost": 1,
-    }
-    budget_items = _bounded_items(budget_terms, 6)
-    actual_budget: dict[str, int] = {}
-    for name, term_value in budget_items:
-        term = _mapping(term_value)
-        _keys(term, {"value", "evidence_class", "play_purpose"})
-        if term["evidence_class"] != "Designed" or not term["play_purpose"]:
-            _refuse(PracticeSchemaError.MappingMismatch)
-        actual_budget[name] = term["value"]
-    if actual_budget != expected_budget:
-        _refuse(PracticeSchemaError.MappingMismatch)
-    topology = _mapping(root["topology"])
-    _keys(
-        topology,
-        {
-            "organization_node_type",
-            "solidarity_edge_type",
-            "target_node_type",
-            "graph_identity",
-            "target_domain_enters_graph_identity",
-            "dynamic_organization_creation",
-        },
-    )
-    if topology != {
-        "organization_node_type": "NodeType/ORGANIZATION",
-        "solidarity_edge_type": "EdgeType/SOLIDARITY",
-        "target_node_type": "NodeType/SOCIAL_CLASS",
-        "graph_identity": ["source", "target", "type"],
-        "target_domain_enters_graph_identity": False,
-        "dynamic_organization_creation": "unavailable_v1",
-    }:
-        _refuse(PracticeSchemaError.MappingMismatch)
-
-
-def load_practice_contract(path: Path) -> PracticeContractSpec:
-    source = _read_source(path)
-    _scan_yaml(source)
-    root = _load_unique_yaml(source)
-    _validate_header(root)
-    _validate_limits(root)
-    _validate_enums(root)
-    _validate_errors_and_aliases(root)
-    _validate_practice_mappings(root)
-    _validate_records(root)
-    _validate_budget_and_topology(root)
-    return PracticeContractSpec(raw=root, practice_ids=PRACTICE_IDS.copy())
-
-
 def _dump_mutation(tmp_path: Path, document: dict[str, Any]) -> Path:
     path = tmp_path / "practice-contract-invalid.yaml"
     path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
@@ -1177,3 +744,392 @@ def test_schema_error_registry_is_exact() -> None:
         "FieldOrder",
         "MappingMismatch",
     ]
+
+
+def _generated_module() -> Any:
+    return importlib.import_module("babylon.contracts.practice_contract_v1_generated")
+
+
+def _valid_generated_records(generated: Any) -> dict[str, tuple[type[Any], dict[str, Any]]]:
+    zero_digest = b"\x00" * 32
+    budget_terms = generated.PracticeBudgetTermsV1(
+        initial=1,
+        weekly_credit_cap=1,
+        storage_ceiling=4,
+        organize_cost=1,
+        agitate_cost=1,
+        mutual_aid_cost=1,
+    )
+    parameter = generated.PracticeParameterV1(
+        key_u8=0,
+        value_kind_u8=0,
+        value_length_u16=0,
+        value_bytes=b"",
+    )
+    policy_pair = generated.PolicyAuthorityPairV1(
+        producer_content_digest=zero_digest,
+        actor_org_id=1,
+    )
+    topology_edge = generated.OrganizationPracticeTopologyEdgeV1(
+        target_domain=generated.PracticeTargetDomainV1.SOCIAL_CLASS,
+        target_class_node_id_u64=2,
+    )
+    topology_row = generated.OrganizationPracticeTopologyRowV1(
+        node_id_u64=1,
+        active_bool=True,
+        action_budget_storage_f64_bits_u64=0,
+        edges=(topology_edge,),
+    )
+    return {
+        "PracticeInputAuthorityV1": (
+            generated.PracticeInputAuthorityV1,
+            {
+                "schema_version": 1,
+                "authority_kind": generated.PracticeAuthorityKindV1.PLAYER_SEAT,
+                "actor_org_id": 1,
+                "producer_content_digest": zero_digest,
+            },
+        ),
+        "PracticeParameterV1": (
+            generated.PracticeParameterV1,
+            parameter.model_dump(),
+        ),
+        "PracticeIntentV1": (
+            generated.PracticeIntentV1,
+            {
+                "schema_version": 1,
+                "submit_after_tick": 0,
+                "resolve_tick": 1,
+                "actor_org_id": 1,
+                "practice_id": generated.PracticeIdV1.ORGANIZE,
+                "target_domain": generated.PracticeTargetDomainV1.SOCIAL_CLASS,
+                "target_node_id": 2,
+                "quoted_content_digest": zero_digest,
+                "quoted_action_budget_cost": 1,
+                "parameters": (),
+                "evidence_digests": (),
+            },
+        ),
+        "PolicyAuthorityPairV1": (
+            generated.PolicyAuthorityPairV1,
+            policy_pair.model_dump(),
+        ),
+        "PracticeAuthorityContextV1": (
+            generated.PracticeAuthorityContextV1,
+            {
+                "player_org_id": 1,
+                "player_gateway_content_digest": zero_digest,
+                "policy_authorities": (policy_pair,),
+            },
+        ),
+        "PracticeQuoteContextV1": (
+            generated.PracticeQuoteContextV1,
+            {
+                "last_committed_tick": 0,
+                "content_digest": zero_digest,
+                "budget_terms": budget_terms,
+            },
+        ),
+        "SolidarityFootprintEdgeV1": (
+            generated.SolidarityFootprintEdgeV1,
+            {
+                "source_org_node_id_u64": 1,
+                "target_domain_u8": generated.PracticeTargetDomainV1.SOCIAL_CLASS,
+                "target_class_node_id_u64": 2,
+                "strength_f64_bits_u64": 0x3FF0000000000000,
+            },
+        ),
+        "OrganizationPracticeTopologyEdgeV1": (
+            generated.OrganizationPracticeTopologyEdgeV1,
+            topology_edge.model_dump(),
+        ),
+        "OrganizationPracticeTopologyRowV1": (
+            generated.OrganizationPracticeTopologyRowV1,
+            topology_row.model_dump(),
+        ),
+        "OrganizationPracticeTopologyV1": (
+            generated.OrganizationPracticeTopologyV1,
+            {"organizations": (topology_row,)},
+        ),
+        "OrganizationBudgetDeltaV1": (
+            generated.OrganizationBudgetDeltaV1,
+            {
+                "schema_version": 1,
+                "tick": 1,
+                "actor_node_id": 1,
+                "pre_action_world_hash": zero_digest,
+                "budget_before": 1,
+                "governed_cost": 1,
+                "footprint_count": 0,
+                "raw_credit": 0,
+                "credited_credit": 0,
+                "ceiling_bound": False,
+                "budget_after": 0,
+            },
+        ),
+        "PracticeSubmissionRejectionV1": (
+            generated.PracticeSubmissionRejectionV1,
+            {
+                "schema_version": 1,
+                "submitted_bytes_digest": zero_digest,
+                "reason_code": generated.PracticeRejectionCodeV1.PRACTICE_UNWIRED,
+                "last_committed_tick": 0,
+                "content_digest": zero_digest,
+            },
+        ),
+        "PracticeBudgetTermsV1": (
+            generated.PracticeBudgetTermsV1,
+            budget_terms.model_dump(),
+        ),
+    }
+
+
+def test_generator_check_refuses_absent_outputs(tmp_path: Path) -> None:
+    python_output = tmp_path / "missing.py"
+    rust_output = tmp_path / "missing.rs"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(GENERATOR_PATH),
+            "--check",
+            "--python-out",
+            str(python_output),
+            "--rust-out",
+            str(rust_output),
+        ],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert not python_output.exists()
+    assert not rust_output.exists()
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_error"),
+    [
+        ("missing_agitate", PracticeSchemaError.MissingCode),
+        ("fourth_mode", PracticeSchemaError.MappingMismatch),
+    ],
+)
+def test_generator_invalid_contract_check_preserves_both_outputs(
+    tmp_path: Path,
+    mutation: str,
+    expected_error: PracticeSchemaError,
+) -> None:
+    document = _loaded_document()
+    if mutation == "missing_agitate":
+        del document["enums"]["PracticeIdV1"]["members"]["AGITATE"]
+    else:
+        document["enums"]["VerbModeV1"]["members"]["FOURTH_MODE"] = 3
+    invalid_contract = _dump_mutation(tmp_path, document)
+
+    with pytest.raises(PracticeSchemaViolation) as raised:
+        load_practice_contract(invalid_contract)
+    assert raised.value.error is expected_error
+
+    before_python = PYTHON_GENERATED_PATH.read_bytes()
+    before_rust = RUST_GENERATED_PATH.read_bytes()
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(GENERATOR_PATH),
+            "--check",
+            "--contract",
+            str(invalid_contract),
+        ],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert PYTHON_GENERATED_PATH.read_bytes() == before_python
+    assert RUST_GENERATED_PATH.read_bytes() == before_rust
+
+
+def test_generated_outputs_are_current_and_strict() -> None:
+    assert GENERATOR_PATH.is_file()
+    assert PYTHON_GENERATED_PATH.is_file()
+    assert RUST_GENERATED_PATH.is_file()
+    result = subprocess.run(
+        [sys.executable, str(GENERATOR_PATH), "--check"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    generated = _generated_module()
+    for model_name in (
+        "MachineVerbV1",
+        *EXPECTED_RECORD_FIELDS,
+    ):
+        config = getattr(generated, model_name).model_config
+        assert config["frozen"] is True
+        assert config["extra"] == "forbid"
+        assert config["strict"] is True
+
+
+def test_generated_python_enums_and_machine_mapping_are_closed() -> None:
+    generated = _generated_module()
+    expected = {
+        generated.PracticeIdV1.ORGANIZE: (
+            generated.VerbStemV1.MOBILIZE,
+            generated.VerbModeV1.CANVASS,
+        ),
+        generated.PracticeIdV1.AGITATE: (
+            generated.VerbStemV1.MOBILIZE,
+            generated.VerbModeV1.AGITATE,
+        ),
+        generated.PracticeIdV1.MUTUAL_AID: (generated.VerbStemV1.AID, None),
+    }
+    for practice, (stem, mode) in expected.items():
+        machine = generated.machine_verb_for(practice)
+        assert machine.stem is stem
+        assert machine.mode is mode
+    for enum_type in (
+        generated.PracticeIdV1,
+        generated.VerbStemV1,
+        generated.VerbModeV1,
+        generated.PracticeAuthorityKindV1,
+        generated.PracticeTargetDomainV1,
+        generated.PracticeRejectionCodeV1,
+        generated.PracticeActivationBlockerV1,
+        generated.PracticeContractError,
+    ):
+        with pytest.raises(ValidationError):
+            TypeAdapter(enum_type).validate_python(1, strict=True)
+
+
+def test_generated_python_rejects_non_strict_shapes() -> None:
+    generated = _generated_module()
+    records = _valid_generated_records(generated)
+    for model_name, field_name in (
+        ("OrganizationPracticeTopologyRowV1", "active_bool"),
+        ("OrganizationBudgetDeltaV1", "ceiling_bound"),
+    ):
+        model, values = records[model_name]
+        for invalid in (0, 1, "true"):
+            with pytest.raises(ValidationError):
+                model.model_validate({**values, field_name: invalid})
+    for model_name, field_name in (
+        ("PracticeIntentV1", "parameters"),
+        ("PracticeIntentV1", "evidence_digests"),
+        ("PracticeAuthorityContextV1", "policy_authorities"),
+        ("OrganizationPracticeTopologyRowV1", "edges"),
+        ("OrganizationPracticeTopologyV1", "organizations"),
+    ):
+        model, values = records[model_name]
+        with pytest.raises(ValidationError):
+            model.model_validate({**values, field_name: []})
+    parameter_model, parameter_values = records["PracticeParameterV1"]
+    with pytest.raises(ValidationError):
+        parameter_model.model_validate({**parameter_values, "value_bytes": ""})
+
+
+def test_generated_python_rejects_every_bad_digest_shape() -> None:
+    generated = _generated_module()
+    records = _valid_generated_records(generated)
+    direct_digest_fields = (
+        ("PracticeInputAuthorityV1", "producer_content_digest"),
+        ("PracticeIntentV1", "quoted_content_digest"),
+        ("PolicyAuthorityPairV1", "producer_content_digest"),
+        ("PracticeAuthorityContextV1", "player_gateway_content_digest"),
+        ("PracticeQuoteContextV1", "content_digest"),
+        ("OrganizationBudgetDeltaV1", "pre_action_world_hash"),
+        ("PracticeSubmissionRejectionV1", "submitted_bytes_digest"),
+        ("PracticeSubmissionRejectionV1", "content_digest"),
+    )
+    for model_name, field_name in direct_digest_fields:
+        model, values = records[model_name]
+        for invalid in (b"x" * 31, b"x" * 33, "x" * 32):
+            with pytest.raises(ValidationError):
+                model.model_validate({**values, field_name: invalid})
+    intent_model, intent_values = records["PracticeIntentV1"]
+    for invalid in (b"x" * 31, b"x" * 33):
+        with pytest.raises(ValidationError):
+            intent_model.model_validate({**intent_values, "evidence_digests": (invalid,)})
+
+
+def test_generated_python_rejects_unsigned_width_violations() -> None:
+    generated = _generated_module()
+    records = _valid_generated_records(generated)
+    unsigned_fields = (
+        ("PracticeInputAuthorityV1", "schema_version", 16),
+        ("PracticeInputAuthorityV1", "actor_org_id", 64),
+        ("PracticeParameterV1", "key_u8", 8),
+        ("PracticeParameterV1", "value_kind_u8", 8),
+        ("PracticeParameterV1", "value_length_u16", 16),
+        ("PracticeIntentV1", "submit_after_tick", 64),
+        ("PracticeIntentV1", "resolve_tick", 64),
+        ("PracticeIntentV1", "actor_org_id", 64),
+        ("PracticeIntentV1", "target_node_id", 64),
+        ("PracticeIntentV1", "quoted_action_budget_cost", 32),
+        ("PolicyAuthorityPairV1", "actor_org_id", 64),
+        ("PracticeAuthorityContextV1", "player_org_id", 64),
+        ("PracticeQuoteContextV1", "last_committed_tick", 64),
+        ("SolidarityFootprintEdgeV1", "source_org_node_id_u64", 64),
+        ("SolidarityFootprintEdgeV1", "target_class_node_id_u64", 64),
+        ("SolidarityFootprintEdgeV1", "strength_f64_bits_u64", 64),
+        ("OrganizationPracticeTopologyEdgeV1", "target_class_node_id_u64", 64),
+        ("OrganizationPracticeTopologyRowV1", "node_id_u64", 64),
+        ("OrganizationPracticeTopologyRowV1", "action_budget_storage_f64_bits_u64", 64),
+        ("OrganizationBudgetDeltaV1", "tick", 64),
+        ("OrganizationBudgetDeltaV1", "actor_node_id", 64),
+        ("OrganizationBudgetDeltaV1", "budget_before", 32),
+        ("OrganizationBudgetDeltaV1", "governed_cost", 32),
+        ("OrganizationBudgetDeltaV1", "footprint_count", 32),
+        ("OrganizationBudgetDeltaV1", "raw_credit", 32),
+        ("OrganizationBudgetDeltaV1", "credited_credit", 32),
+        ("OrganizationBudgetDeltaV1", "budget_after", 32),
+        ("PracticeSubmissionRejectionV1", "schema_version", 16),
+        ("PracticeSubmissionRejectionV1", "last_committed_tick", 64),
+        ("PracticeBudgetTermsV1", "initial", 32),
+        ("PracticeBudgetTermsV1", "weekly_credit_cap", 32),
+        ("PracticeBudgetTermsV1", "storage_ceiling", 32),
+        ("PracticeBudgetTermsV1", "organize_cost", 32),
+        ("PracticeBudgetTermsV1", "agitate_cost", 32),
+        ("PracticeBudgetTermsV1", "mutual_aid_cost", 32),
+    )
+    for model_name, field_name, width in unsigned_fields:
+        model, values = records[model_name]
+        for invalid in (-1, 2**width):
+            with pytest.raises(ValidationError):
+                model.model_validate({**values, field_name: invalid})
+
+
+def test_generated_tuple_constructors_are_shape_only_but_validators_are_bounded() -> None:
+    generated = _generated_module()
+    records = _valid_generated_records(generated)
+    parameter_model, parameter_values = records["PracticeParameterV1"]
+    parameter = parameter_model.model_validate(parameter_values)
+    intent_model, intent_values = records["PracticeIntentV1"]
+    intent = intent_model.model_validate({**intent_values, "parameters": (parameter,) * 17})
+    assert generated.validate_intent_collection_bounds(intent) is (
+        generated.PracticeContractError.PRACTICE_PARAMETER_LIMIT
+    )
+    intent = intent_model.model_validate(
+        {**intent_values, "evidence_digests": (b"\x00" * 32,) * 65}
+    )
+    assert generated.validate_intent_collection_bounds(intent) is (
+        generated.PracticeContractError.PRACTICE_EVIDENCE_LIMIT
+    )
+    policy_model, policy_values = records["PolicyAuthorityPairV1"]
+    policy = policy_model.model_validate(policy_values)
+    authority_model, authority_values = records["PracticeAuthorityContextV1"]
+    authority = authority_model.model_validate(
+        {**authority_values, "policy_authorities": (policy,) * 4_097}
+    )
+    assert generated.validate_authority_context_collection_bounds(authority) is (
+        generated.PracticeContractError.PRACTICE_AUTHORITY_REGISTRY_LIMIT
+    )
+    row_model, row_values = records["OrganizationPracticeTopologyRowV1"]
+    row = row_model.model_validate(row_values)
+    topology_model, topology_values = records["OrganizationPracticeTopologyV1"]
+    topology = topology_model.model_validate({**topology_values, "organizations": (row,) * 4_097})
+    assert generated.validate_topology_collection_bounds(topology) is (
+        generated.PracticeContractError.PRACTICE_TOPOLOGY_ORGANIZATION_LIMIT
+    )

@@ -123,7 +123,8 @@ fn us_counties_lifecycle_demo_hashes_are_pinned() {
 /// relations. The rule pack spends a bounded practice action, relays rooted
 /// capacity through throughput, alternate-capacity, inventory-buffer, and
 /// reproduction-dependence fields, recruits from a finite social base,
-/// provokes command response, and provides reproductive relief.
+/// and provokes command response. It does not fabricate care relief without
+/// a governed stock, labor, and routing path.
 ///
 /// The before hash pins the expanded relational world, including the typed
 /// material embedding on each PRESENCE relation. The after hash pins its
@@ -143,15 +144,15 @@ fn organization_foundation_hashes_are_pinned() {
     );
     assert_eq!(
         hex(&report.after),
-        "431364ea2bbaceee9a9640170e4474ce010797e038de4ba81553b25b39e82597",
+        "c068b8a316f24099bdcd7e03384f6b247dbcc45cc63a0e1ce956ee9866dc9bef",
         "post-tick hash moved — this pins the first material practice, \
-         propagation, recruitment, command, and care writes"
+         propagation, recruitment, and command writes"
     );
     assert_eq!(
-        report.fired, 15,
+        report.fired, 14,
         "the first tick must execute 1 kind probe + 2 budget resets + 4 \
          territory resets + 1 rooted practice + 1 circulation relay + 3 \
-         capacity applications + 1 recruitment + 1 command response + 1 care relief"
+         capacity applications + 1 recruitment + 1 command response"
     );
 }
 

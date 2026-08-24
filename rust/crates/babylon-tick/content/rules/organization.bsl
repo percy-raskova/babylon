@@ -1,10 +1,10 @@
 ; Organization practice circuit. A seeded organization spends one bounded
 ; weekly action on rooted work. PRESENCE situates that work; material fields
 ; on ADJACENCY relations relay capacity; MEMBERSHIP supplies a finite social base;
-; COMMAND carries the state response; organized care changes the pressure of
-; social reproduction. No territory label grants a bonus, and no rule applies
-; a sigmoid. The slow-fast-slow recruitment trajectory follows from these
-; interacting limits and feedbacks.
+; and COMMAND carries the state response. No territory label grants a bonus,
+; no rule applies a sigmoid, and organization alone cannot fabricate care
+; without stock, labor, and routing. The slow-fast-slow recruitment trajectory
+; follows from interacting limits and feedbacks.
 ;
 ; `organization/practice` and `organization/practice-embedding` are seeded
 ; scenario state in this slice. They prove the causal circuit but are not yet
@@ -210,33 +210,3 @@
                        (field-of it territory/rooted-capacity))
                     (- 1.0c (field-of it territory/command-pressure))))
               1.0c))))))
-
-(rule organization/p6-care-relief
-  :role mechanic
-  :evidence derived
-  :material-basis "An organization converts part of its recruited social base into reproductive relief only through PRESENCE relations whose material embedding matches its current practice, reducing the pressure that first made rooted work possible."
-  :fuel 256
-  (bindings
-    (binding active :field organization/active)
-    (binding practice :field organization/practice)
-    (binding practice-embedding :field organization/practice-embedding)
-    (binding membership :field organization/membership-share)
-    (binding care-rate :const organization/care-rate))
-  (when (and (= active 1)
-             (= practice PracticeKind/ROOTED_WORK)
-             (> membership 0.0c)
-             (exists (neighbors self EdgeType/PRESENCE :out NodeType/TERRITORY))))
-  (effects
-    (for-each (neighbors self EdgeType/PRESENCE :out NodeType/TERRITORY)
-      (guard (= (field-of
-                  (edge-between EdgeType/PRESENCE self it)
-                  presence/embedding)
-                practice-embedding)
-        (update-node it territory/reproduction-pressure
-          (set
-            (if (> (- (field-of it territory/reproduction-pressure)
-                      (* care-rate membership))
-                   0.0c)
-                (- (field-of it territory/reproduction-pressure)
-                   (* care-rate membership))
-                0.0c)))))))

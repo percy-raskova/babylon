@@ -109,7 +109,7 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     ),
     (
         "organization.bsl",
-        "54a20ab22149afdc73535b88b75fb76ec593824cfb7e1a2d61b2e4c17126f39e",
+        "6daa7e12a2fd693829f4d2027e81e72f0130356a38c138f435b7dd47bb73b116",
     ),
     (
         "production.bsl",
@@ -365,7 +365,7 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     ),
     (
         "organization-foundation.bscn",
-        "fd7258d18a84d63f91d4bcc897631cc3d1eb1464bdd2cc9fd98c0ab3ac094ec5",
+        "f708083cf36e6942f41710523bcf3d8dce1b4af425d7a10087197ed242b7e29b",
     ),
     (
         "production-conformance.bscn",

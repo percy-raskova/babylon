@@ -47,7 +47,6 @@
   (defconst organization/relay-rate 0.5c)
   (defconst organization/recruitment-rate 0.45c)
   (defconst organization/command-response-rate 0.25c)
-  (defconst organization/care-rate 0.1c)
 
   ; The social base: a working-class block a reading group can recruit from.
   (node workers NodeType/SOCIAL_CLASS (social-class/population 1000))

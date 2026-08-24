@@ -184,7 +184,11 @@ fn practice_requires_presence_with_the_matching_material_embedding() {
         0.9_f64.to_bits()
     );
     assert!(rooted_work(&matched, COUNTY_A) > 0.0);
-    assert!(attribute(&matched, COUNTY_A, "territory/reproduction-pressure") < 0.9);
+    assert_eq!(
+        attribute(&matched, COUNTY_A, "territory/reproduction-pressure").to_bits(),
+        0.9_f64.to_bits(),
+        "rooted work cannot fabricate care without stock, labor, and routing",
+    );
 }
 
 #[test]
@@ -223,8 +227,9 @@ fn recruitment_emerges_as_slow_fast_slow_growth() {
         attribute(&session, COUNTY_A, "territory/command-pressure") > 0.0,
         "rooted organization should provoke a territorial command response"
     );
-    assert!(
-        attribute(&session, COUNTY_A, "territory/reproduction-pressure") < 0.9,
-        "organized care should ease the pressure that initially conditioned recruitment"
+    assert_eq!(
+        attribute(&session, COUNTY_A, "territory/reproduction-pressure").to_bits(),
+        0.9_f64.to_bits(),
+        "the organization circuit cannot fabricate care relief",
     );
 }

@@ -43,6 +43,10 @@ import pytest
 import yaml
 
 WORKFLOWS_DIR = Path(".github/workflows")
+ACTIONS_DIR = Path(".github/actions")
+FROZEN_ENGINE_PATH = WORKFLOWS_DIR / "frozen-engine.yml"
+FROZEN_REF = "p27-python-freeze"
+HYPERGRAPH_REF = "dc1c06abbbc7a3f8633d1561451e61e101ad2090"
 
 #: Hand-maintained doc surfaces whose workflow references must stay live.
 #: Historical quadrants (ai/decisions, reports/, project/, docs/superpowers/
@@ -61,6 +65,11 @@ _V3_1_BLOB = "a265b85120ed2a90be40c72e63ee5bf27fc6e703"
 _V3_2_COMMIT = "cbfc67921283ccb6e00c4b0278288a232281440a"
 _V3_2_BLOB = "e905e90d66bddc6e4eca36a3896428f5ce63de5b"
 _CONSTITUTION_FETCH_STEP = "Fetch pinned Constitution predecessors (bounded)"
+_ACTION_USES_LINE = re.compile(
+    r"^\s*(?:-\s+)?uses:\s+(?P<reference>[^\s#]+)(?:\s+#\s*(?P<tag>\S+))?\s*$"
+)
+_ACTION_SHA = re.compile(r"[0-9a-f]{40}")
+_RELEASE_TAG = re.compile(r"v\d+(?:\.\d+(?:\.\d+)?)?")
 
 
 def _triggers(workflow: dict[Any, Any]) -> dict[str, Any]:
@@ -97,16 +106,193 @@ def _step_shape_errors(workflow: dict[str, Any], filename: str) -> list[str]:
     return errors
 
 
+def _workflow_paths() -> list[Path]:
+    """Return every live GitHub workflow manifest."""
+    return sorted(WORKFLOWS_DIR.glob("*.yml")) + sorted(WORKFLOWS_DIR.glob("*.yaml"))
+
+
+def _automation_paths() -> list[Path]:
+    """Return live workflow and composite-action files."""
+    return _workflow_paths() + sorted(ACTIONS_DIR.rglob("action.y*ml"))
+
+
+def _automation_step_locations(automation: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    """Return stable source identifiers and executable steps."""
+    jobs = automation.get("jobs")
+    if isinstance(jobs, dict):
+        return [
+            (f"job={job_name} step#{index}", step)
+            for job_name, job in jobs.items()
+            for index, step in enumerate(job.get("steps") or [])
+        ]
+    return [
+        (f"composite step#{index}", step)
+        for index, step in enumerate((automation.get("runs") or {}).get("steps") or [])
+    ]
+
+
+def _sibling_fabrication_errors(automation: dict[str, Any], filename: str) -> list[str]:
+    """Reject executable construction of a local hypergraph sibling."""
+    errors: list[str] = []
+    for location, step in _automation_step_locations(automation):
+        run = str(step.get("run", ""))
+        fabricates_sibling = "hypergraph-rs" in run and any(
+            command in run for command in ("mkdir", "ln -s", "cp ", "cat >", "tee ")
+        )
+        if "ci_hypergraph_stub" in run or fabricates_sibling:
+            errors.append(f"{filename} {location}: fabricates hypergraph-rs sibling")
+    return errors
+
+
+def test_sibling_fabrication_errors_name_workflow_job_and_step() -> None:
+    """A workflow violation must identify the exact executable source step."""
+    broken = yaml.safe_load(
+        """
+        jobs:
+          materialize:
+            steps:
+              - run: mkdir -p ../hypergraph-rs
+        """
+    )
+
+    assert _sibling_fabrication_errors(broken, ".github/workflows/future.yaml") == [
+        ".github/workflows/future.yaml job=materialize step#0: fabricates hypergraph-rs sibling"
+    ]
+
+
+def test_sibling_fabrication_errors_name_composite_step() -> None:
+    """A composite violation must identify its action file and executable step."""
+    broken = yaml.safe_load(
+        """
+        runs:
+          using: composite
+          steps:
+            - run: ln -s ../hypergraph-rs hypergraph-rs
+        """
+    )
+
+    assert _sibling_fabrication_errors(broken, ".github/actions/future/action.yml") == [
+        ".github/actions/future/action.yml composite step#0: fabricates hypergraph-rs sibling"
+    ]
+
+
+def test_automation_paths_include_yaml_workflows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A valid .yaml workflow must receive the same automation scan as .yml."""
+    workflow_directory = tmp_path / "workflows"
+    workflow_directory.mkdir()
+    yaml_workflow = workflow_directory / "sibling-fabrication.yaml"
+    yaml_workflow.write_text("jobs: {}\n")
+    monkeypatch.setitem(globals(), "WORKFLOWS_DIR", workflow_directory)
+
+    assert yaml_workflow in _automation_paths()
+
+
+def _frozen_engine_errors(workflow: dict[str, Any]) -> list[str]:
+    """Return violations in the immutable frozen-engine checkout contract."""
+    errors: list[str] = []
+    steps = ((workflow.get("jobs") or {}).get("frozen-canon") or {}).get("steps") or []
+    checkouts = {
+        (
+            str(step.get("with", {}).get("repository", "")),
+            str(step.get("with", {}).get("ref", "")),
+        ): str(step.get("with", {}).get("path", ""))
+        for step in steps
+        if str(step.get("uses", "")).startswith("actions/checkout")
+    }
+    if checkouts.get(("", FROZEN_REF)) != "babylon":
+        errors.append("frozen source must check out at babylon")
+    if checkouts.get(("percy-raskova/hypergraph-rs", HYPERGRAPH_REF)) != "hypergraph-rs":
+        errors.append("historical hypergraph source must use its full pinned SHA")
+    mise_setup_index = next(
+        (
+            index
+            for index, step in enumerate(steps)
+            if str(step.get("uses", "")).startswith("jdx/mise-action@")
+        ),
+        None,
+    )
+    for index, step in enumerate(steps):
+        run = str(step.get("run", ""))
+        if "mise run" in run and (mise_setup_index is None or mise_setup_index >= index):
+            errors.append(f"frozen mise step#{index} must follow jdx/mise-action")
+        if "mise run" not in run and "uv sync" not in run:
+            continue
+        if step.get("working-directory") != "babylon":
+            errors.append(f"frozen command step#{index} must run in babylon")
+        if str((step.get("env") or {}).get("UV_FROZEN", "")).lower() not in {"1", "true"}:
+            errors.append(f"frozen command step#{index} must set UV_FROZEN")
+    return errors
+
+
+def _frozen_engine_external_action_errors(workflow_text: str) -> list[str]:
+    """Return mutable or unannotated external action references in the frozen gate."""
+    errors: list[str] = []
+    for line_number, line in enumerate(workflow_text.splitlines(), start=1):
+        match = _ACTION_USES_LINE.match(line)
+        if match is None:
+            continue
+        action, separator, reference = match.group("reference").partition("@")
+        if action.startswith("./"):
+            continue
+        if not separator or not _ACTION_SHA.fullmatch(reference):
+            errors.append(f"frozen-engine.yml:{line_number}: external action must use a 40-hex SHA")
+        tag = match.group("tag")
+        if tag is None or not _RELEASE_TAG.fullmatch(tag):
+            errors.append(f"frozen-engine.yml:{line_number}: external action must have a # vN tag")
+    return errors
+
+
 @pytest.mark.skipif(not WORKFLOWS_DIR.is_dir(), reason=".github/workflows not present")
 class TestWorkflowStepShape:
     """Every workflow step is GitHub-valid, not merely YAML-valid."""
 
+    def test_no_workflow_materializes_a_hypergraph_sibling(self) -> None:
+        """Python CI must not depend on a fabricated local checkout."""
+        violations: list[str] = []
+        for path in _automation_paths():
+            violations.extend(
+                _sibling_fabrication_errors(yaml.safe_load(path.read_text()), str(path))
+            )
+        assert not violations, "\n".join(violations)
+
+    def test_frozen_engine_supplies_its_immutable_historical_sibling(self) -> None:
+        """The frozen tag gets its real historical path source, never a fabricated one."""
+        assert _frozen_engine_errors(yaml.safe_load(FROZEN_ENGINE_PATH.read_text())) == []
+
+    def test_frozen_engine_external_actions_are_sha_pinned_and_release_annotated(self) -> None:
+        """Frozen gate action references must be immutable and auditably versioned."""
+        errors = _frozen_engine_external_action_errors(FROZEN_ENGINE_PATH.read_text())
+        assert not errors, "\n".join(errors)
+
     def test_no_step_mixes_run_and_with(self) -> None:
         violations: list[str] = []
-        for path in sorted(WORKFLOWS_DIR.glob("*.yml")):
+        for path in _workflow_paths():
             workflow = yaml.safe_load(path.read_text())
             violations.extend(_step_shape_errors(workflow, path.name))
         assert not violations, "\n".join(violations)
+
+    def test_no_step_mixes_run_and_with_scans_yaml_workflows(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The workflow-wide shape guard must reject the same bad shape in .yaml."""
+        workflow_directory = tmp_path / "workflows"
+        workflow_directory.mkdir()
+        (workflow_directory / "future.yaml").write_text(
+            """
+            jobs:
+              test:
+                steps:
+                  - run: mise run test:q
+                    with:
+                      ref: dev
+            """
+        )
+        monkeypatch.setitem(globals(), "WORKFLOWS_DIR", workflow_directory)
+
+        with pytest.raises(AssertionError, match=r"future\.yaml job=test step#0"):
+            self.test_no_step_mixes_run_and_with()
 
     def test_checker_catches_the_e240a30f_breakage(self) -> None:
         # Mutation validation: the exact historical bad shape must be flagged.
@@ -116,8 +302,8 @@ class TestWorkflowStepShape:
               test-rest:
                 steps:
                   - uses: actions/checkout@v7
-                  - name: Materialize hypergraph-rs metadata stub
-                    run: sh tools/ci_hypergraph_stub.sh
+                  - name: Run setup
+                    run: mise run setup
                     with:
                       ref: dev
             """

@@ -1,4 +1,4 @@
-//! Live schema-epoch checks hosted by the task-owned PER-20 PostgreSQL suite.
+//! Live schema-epoch checks hosted by the task-owned PER-20 `PostgreSQL` suite.
 
 use super::{
     adopt_legacy_schema, assert_lock_released, database_user, mutate, ScratchDatabase,

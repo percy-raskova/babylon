@@ -4,6 +4,7 @@
 
 mod classifier;
 mod digest;
+mod records;
 mod wire;
 
 pub use classifier::{
@@ -11,6 +12,11 @@ pub use classifier::{
     SfsClassError,
 };
 pub use digest::{record_digest, Digest32, RecordDigest};
+pub use records::{
+    practice_attempt_row_id, PracticeAttemptLedgerV1, PracticeAttemptRowV1, PracticeCandidateRowV1,
+    PracticeCandidateScheduleV1, PracticeDispositionV1, RunIdentityField, RunIdentityV1,
+    SfsPreregistrationV1, SfsRecordError, SfsSampleV1, SfsTraceV1,
+};
 pub use wire::{
     canonical_envelope, decode_envelope, PayloadCursor, PayloadEncoder, SfsWireError, T3Record,
 };

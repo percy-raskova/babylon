@@ -146,8 +146,14 @@ def _frozen_engine_errors(workflow: dict[str, Any]) -> list[str]:
         errors.append("frozen source must check out at babylon")
     if checkouts.get(("percy-raskova/hypergraph-rs", HYPERGRAPH_REF)) != "hypergraph-rs":
         errors.append("historical hypergraph source must use its full pinned SHA")
+    mise_setup_index = next(
+        (index for index, step in enumerate(steps) if step.get("uses") == "jdx/mise-action@v4"),
+        None,
+    )
     for index, step in enumerate(steps):
         run = str(step.get("run", ""))
+        if "mise run" in run and (mise_setup_index is None or mise_setup_index >= index):
+            errors.append(f"frozen mise step#{index} must follow jdx/mise-action@v4")
         if "mise run" not in run and "uv sync" not in run:
             continue
         if step.get("working-directory") != "babylon":

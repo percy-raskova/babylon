@@ -50,6 +50,9 @@ jobs:
         with:
           version: "0.9.8"
 
+      - name: Set up mise
+        uses: jdx/mise-action@v4
+
       - name: Install frozen Rust toolchain
         working-directory: babylon
         run: |

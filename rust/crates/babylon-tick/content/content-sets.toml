@@ -369,7 +369,10 @@ id        = "organization/foundation"
 scenario  = "scenarios/organization-foundation.bscn"
 prelude   = []
 rules     = ["rules/organization.bsl"]
-consumers = ["rust/crates/babylon-tick/tests/tick_goldens.rs"]
+consumers = [
+    "rust/crates/babylon-tick/tests/organization_practice_conformance.rs",
+    "rust/crates/babylon-tick/tests/tick_goldens.rs",
+]
 
 [[set]]
 id        = "phase-anchor/conformance"

@@ -117,7 +117,7 @@ wait_for_runtime() {
 
 # shellcheck disable=SC2329 # Invoked by the INT, TERM, and HUP traps below.
 on_signal() {
-  readonly status="$1"
+  local -r status="$1"
   trap - EXIT INT TERM HUP
   if [ "$OWNED" -eq 0 ]; then
     claim_task_container "" || true

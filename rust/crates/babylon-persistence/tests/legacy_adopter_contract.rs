@@ -2200,6 +2200,8 @@ fn runner_never_removes_a_startup_collision_before_canary_claim() {
     assert!(runner.contains("claim_task_container \"$created_container_id\""));
 
     let signal = cte_slice(runner, "on_signal()", "trap cleanup_best_effort EXIT");
+    assert!(signal.contains("local -r status=\"$1\""));
+    assert!(!signal.contains("\n  readonly status="));
     let recovery = signal
         .find("claim_task_container \"\" || true")
         .expect("a signal during container creation must recover only the canary-labelled runtime");

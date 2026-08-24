@@ -367,6 +367,23 @@ fn unicode_17_nfc_accepts_the_full_scalar_witness_corpus() {
 }
 
 #[test]
+fn nfc_comparison_uses_exactly_256_loop_iterations_then_checks_exhaustion() {
+    let source = include_str!("../src/wire.rs");
+    let function_start = source
+        .find("fn is_nfc_bounded")
+        .expect("NFC comparison function exists");
+    let function = &source[function_start..];
+    let loop_position = function
+        .find("for _index in 0..256 {")
+        .expect("NFC comparison has the literal 256-iteration bound");
+    assert!(!function.contains("for _index in 0..=256 {"));
+    let exhaustion_position = function
+        .find("source.next().is_none() && normalized.next().is_none()")
+        .expect("NFC comparison checks both iterators after the loop");
+    assert!(loop_position < exhaustion_position);
+}
+
+#[test]
 fn finite_binary64_is_big_endian_and_normalizes_either_zero_sign() {
     let signed = SignedFloat(-1.5);
     let expected = literal_envelope(SignedFloat::DOMAIN, 1, &(-1.5_f64).to_bits().to_be_bytes());

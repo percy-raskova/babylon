@@ -629,12 +629,12 @@ fn validate_scalar_count(field: &'static str, value: &str) -> Result<(), SfsWire
 fn is_nfc_bounded(value: &str) -> bool {
     let mut source = value.chars();
     let mut normalized = value.nfc();
-    for _index in 0..=256 {
+    for _index in 0..256 {
         match (source.next(), normalized.next()) {
             (None, None) => return true,
             (Some(left), Some(right)) if left == right => {}
             _ => return false,
         }
     }
-    false
+    source.next().is_none() && normalized.next().is_none()
 }

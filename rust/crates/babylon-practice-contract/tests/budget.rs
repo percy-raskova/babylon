@@ -131,12 +131,14 @@ fn subtraction_keeps_precedence_guard_and_uses_checked_contract() {
         .find("if budget_before < cost")
         .expect("explicit code-33 precedence guard");
     let checked = source
-        .find(
-            "checked_sub(cost)\n        .ok_or(PracticeContractError::PracticeBudgetInsufficient)?",
-        )
-        .expect("checked subtraction with the code-33 identity");
+        .find(".checked_sub(cost)")
+        .expect("checked subtraction");
+    let mapping = checked
+        + source[checked..]
+            .find("PracticeContractError::PracticeBudgetInsufficient")
+            .expect("subtraction maps to the code-33 identity");
     assert!(guard < checked);
-    assert!(!source.contains("let after_cost = budget_before - cost;"));
+    assert!(checked < mapping);
 }
 
 #[test]

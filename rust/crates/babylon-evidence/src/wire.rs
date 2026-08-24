@@ -271,7 +271,7 @@ impl<'a> PayloadCursor<'a> {
         Ok(value)
     }
 
-    fn remaining(&self) -> usize {
+    pub(crate) const fn remaining(&self) -> usize {
         self.bytes.len().saturating_sub(self.index)
     }
 

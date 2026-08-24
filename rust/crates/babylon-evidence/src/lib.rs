@@ -4,6 +4,7 @@
 
 mod classifier;
 mod digest;
+mod profile;
 mod records;
 mod wire;
 
@@ -12,6 +13,11 @@ pub use classifier::{
     SfsClassError,
 };
 pub use digest::{record_digest, Digest32, RecordDigest};
+pub use profile::{
+    CanonicalProfileSet, CausalConeV1, ComponentKindV1, DifferingLedgerKindV1,
+    InterventionDeltaRowV1, InterventionDeltaV1, InterventionOperationV1, PersistenceComparisonV1,
+    SfsComponentProofProfileV1, SfsProfileRecordError, SfsProofProfileV1,
+};
 pub use records::{
     practice_attempt_row_id, PracticeAttemptLedgerV1, PracticeAttemptRowV1, PracticeCandidateRowV1,
     PracticeCandidateScheduleV1, PracticeDispositionV1, RunIdentityField, RunIdentityV1,

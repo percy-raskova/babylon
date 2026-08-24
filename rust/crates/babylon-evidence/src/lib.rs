@@ -2,6 +2,14 @@
 #![forbid(unsafe_code)]
 #![warn(clippy::pedantic)]
 
+mod digest;
+mod wire;
+
+pub use digest::{record_digest, Digest32, RecordDigest};
+pub use wire::{
+    canonical_envelope, decode_envelope, PayloadCursor, PayloadEncoder, SfsWireError, T3Record,
+};
+
 #[cfg(test)]
 mod tests {
     #[test]

@@ -23,8 +23,6 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: dev
-      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
-        run: sh tools/ci_hypergraph_stub.sh
       # Documented exception to the mise-pinned toolchain: this leg exists
       # precisely to run a DIFFERENT python (3.13) than .mise.toml pins.
       - name: Install uv

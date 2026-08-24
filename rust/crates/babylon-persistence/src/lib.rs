@@ -3,6 +3,8 @@
 #![warn(clippy::pedantic)]
 
 pub mod error;
+pub mod h3_reference_cohort;
+mod h3_reference_installer;
 pub mod hashes;
 pub mod identity;
 pub mod legacy_adopter;
@@ -12,6 +14,16 @@ pub mod schema_migration;
 pub mod writer_gate;
 
 pub use error::{PersistenceError, PersistenceFailureKind};
+pub use h3_reference_cohort::{
+    build_representative_h3_cohort_v1, H3ReferenceCellRow, H3ReferenceCohort,
+    H3ReferenceCohortError, H3ReferenceCohortReceipt, H3ReferenceOrigin,
+    MAX_H3_REFERENCE_SOURCE_CELLS,
+};
+pub use h3_reference_installer::{
+    install_representative_h3_cohort, H3ReferenceInstallBoundedResource,
+    H3ReferenceInstallConflict, H3ReferenceInstallDisposition, H3ReferenceInstallError,
+    H3ReferenceInstallOperation, H3ReferenceInstallReport,
+};
 pub use hashes::{
     GraphStateHash, MigrationSetDigest, RefDigest, ReplayIdentityHash, TickContentHash,
 };

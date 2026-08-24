@@ -66,7 +66,7 @@ unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 # The ONE sanctioned git dependency: the Director's hypergraph-rs, rev-pinned
-# in babylon-tui/Cargo.toml (ADR179 T3 makes it babylon-graph's storage in
+# in rust/crates/babylon-graph/Cargo.toml (ADR179 T3 makes it babylon-graph's storage in
 # Phase 2). No advisory feed covers a git dep — the pin + this allowlist +
 # a deliberate rev-bump protocol is the whole defense; adding any OTHER git
 # source is a reviewed decision, not a convenience.

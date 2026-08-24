@@ -47,15 +47,21 @@ Linear alone is canonical for issue identity, scope, status, priority,
 dependencies, horizon, milestones, schedule, and current work. GitHub supplies
 source control, pull requests, reviews, and historical evidence.
 
-GitHub Project #7 and Project #8 are transitional migration inputs. The
-migration is not complete. Archive either project only after full PER-15
-acceptance. Full acceptance requires a Linear identity or redirect for each
-commitment that remains.
+The team closed GitHub Project #7 and Project #8. They are historical inputs.
+The migration is complete, and PER-15 is complete. Both projects remain
+recoverable evidence. Neither supplies current fields, views, estimates, or
+status.
 
-PER-2 tracks status automation. The team has not verified automation. Until
-then, use this manual convention: link the work to its PER identity in the
-branch name, pull request title, or pull request description. GitHub Project
-fields are not authoritative.
+PER-2 records the accepted delivery automation. Link each pull request to its
+PER identity in the branch name, title, or description. Use `Part of PER-N` as
+a non-closing reference for a partial delivery. Use `Fixes PER-N` as a closing
+reference only on the final delivery that satisfies the issue.
+
+A multi-pull-request issue must remain open after every partial merge. Draft
+and review activity keep the linked issue in progress. Only the merged closing
+reference completes it. The automation does not require GitHub Project fields.
+Imported historical issue sync cannot override canonical Linear project
+scope, hierarchy, horizon, milestone, or priority.
 <!-- vale ste.Dictionary = YES -->
 <!-- vale ste.NounClusters = YES -->
 <!-- vale ste.UnapprovedWords = YES -->

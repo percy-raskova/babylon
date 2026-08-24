@@ -15,8 +15,8 @@ const PENTAGONS_PER_RESOLUTION: usize = 12;
 
 pub(super) fn verify_h3_pg_oracle(owner: &Config, admin: &Config) {
     let first = migrate_schema_epoch(owner).expect("H3 oracle scratch database must migrate");
-    assert_eq!((first.prior_applied, first.final_applied), (0, 2));
-    assert_eq!(first.applied_versions.len(), 2);
+    assert_eq!((first.prior_applied, first.final_applied), (0, 3));
+    assert_eq!(first.applied_versions.len(), 3);
 
     let fixture = load_fixture();
     assert_shared_fixture_transport(&fixture);
@@ -47,7 +47,7 @@ pub(super) fn verify_h3_pg_oracle(owner: &Config, admin: &Config) {
     drop(client);
 
     let second = migrate_schema_epoch(owner).expect("post-oracle epoch must remain valid");
-    assert_eq!((second.prior_applied, second.final_applied), (2, 2));
+    assert_eq!((second.prior_applied, second.final_applied), (3, 3));
     assert!(second.applied_versions.is_empty());
     assert!(second.reconciled_versions.is_empty());
 }
@@ -97,7 +97,7 @@ fn assert_pre_activation_state(client: &mut Client) {
             &[],
         )
         .expect("pre-activation H3 state must query");
-    assert_eq!(row.get::<_, i64>(0), 2);
+    assert_eq!(row.get::<_, i64>(0), 3);
     assert_eq!(row.get::<_, Option<String>>(1), None);
     assert_eq!(
         row.get::<_, Option<String>>(2).as_deref(),

@@ -29,8 +29,6 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: dev
-      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
-        run: sh tools/ci_hypergraph_stub.sh
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"

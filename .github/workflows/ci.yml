@@ -40,9 +40,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
-        run: sh tools/ci_hypergraph_stub.sh
-
       # gdal:true — mypy's django-stubs plugin loads Django settings at
       # startup, and the postgis backend imports GEOS/GDAL/PROJ.
       - uses: ./.github/actions/bootstrap-python
@@ -196,9 +193,6 @@ jobs:
           test "$(git rev-parse cbfc67921283ccb6e00c4b0278288a232281440a:CONSTITUTION.md)" = \
             "e905e90d66bddc6e4eca36a3896428f5ce63de5b"
 
-      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
-        run: sh tools/ci_hypergraph_stub.sh
-
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
@@ -221,9 +215,6 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-
-      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
-        run: sh tools/ci_hypergraph_stub.sh
 
       # No gdal: the 5 regression scenarios are synthetic in-memory factories
       # (no Django, no reference DB, no Postgres) — proven by the Phase-0
@@ -250,9 +241,6 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
-
-      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
-        run: sh tools/ci_hypergraph_stub.sh
 
       - uses: ./.github/actions/bootstrap-python
         with:
@@ -301,9 +289,6 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-
-      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
-        run: sh tools/ci_hypergraph_stub.sh
 
       - uses: ./.github/actions/bootstrap-python
 

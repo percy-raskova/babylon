@@ -101,34 +101,74 @@ def _step_shape_errors(workflow: dict[str, Any], filename: str) -> list[str]:
     return errors
 
 
+def _workflow_paths() -> list[Path]:
+    """Return every live GitHub workflow manifest."""
+    return sorted(WORKFLOWS_DIR.glob("*.yml")) + sorted(WORKFLOWS_DIR.glob("*.yaml"))
+
+
 def _automation_paths() -> list[Path]:
     """Return live workflow and composite-action files."""
-    workflows = sorted(WORKFLOWS_DIR.glob("*.yml")) + sorted(WORKFLOWS_DIR.glob("*.yaml"))
-    return workflows + sorted(ACTIONS_DIR.rglob("action.y*ml"))
+    return _workflow_paths() + sorted(ACTIONS_DIR.rglob("action.y*ml"))
 
 
-def _automation_steps(automation: dict[str, Any]) -> list[dict[str, Any]]:
-    """Return every executable step from a workflow or composite action."""
-    if "jobs" in automation:
+def _automation_step_locations(automation: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    """Return stable source identifiers and executable steps."""
+    jobs = automation.get("jobs")
+    if isinstance(jobs, dict):
         return [
-            step
-            for job in (automation.get("jobs") or {}).values()
-            for step in (job.get("steps") or [])
+            (f"job={job_name} step#{index}", step)
+            for job_name, job in jobs.items()
+            for index, step in enumerate(job.get("steps") or [])
         ]
-    return list((automation.get("runs") or {}).get("steps") or [])
+    return [
+        (f"composite step#{index}", step)
+        for index, step in enumerate((automation.get("runs") or {}).get("steps") or [])
+    ]
 
 
 def _sibling_fabrication_errors(automation: dict[str, Any], filename: str) -> list[str]:
     """Reject executable construction of a local hypergraph sibling."""
     errors: list[str] = []
-    for index, step in enumerate(_automation_steps(automation)):
+    for location, step in _automation_step_locations(automation):
         run = str(step.get("run", ""))
         fabricates_sibling = "hypergraph-rs" in run and any(
             command in run for command in ("mkdir", "ln -s", "cp ", "cat >", "tee ")
         )
         if "ci_hypergraph_stub" in run or fabricates_sibling:
-            errors.append(f"{filename} step#{index}: fabricates hypergraph-rs sibling")
+            errors.append(f"{filename} {location}: fabricates hypergraph-rs sibling")
     return errors
+
+
+def test_sibling_fabrication_errors_name_workflow_job_and_step() -> None:
+    """A workflow violation must identify the exact executable source step."""
+    broken = yaml.safe_load(
+        """
+        jobs:
+          materialize:
+            steps:
+              - run: mkdir -p ../hypergraph-rs
+        """
+    )
+
+    assert _sibling_fabrication_errors(broken, ".github/workflows/future.yaml") == [
+        ".github/workflows/future.yaml job=materialize step#0: fabricates hypergraph-rs sibling"
+    ]
+
+
+def test_sibling_fabrication_errors_name_composite_step() -> None:
+    """A composite violation must identify its action file and executable step."""
+    broken = yaml.safe_load(
+        """
+        runs:
+          using: composite
+          steps:
+            - run: ln -s ../hypergraph-rs hypergraph-rs
+        """
+    )
+
+    assert _sibling_fabrication_errors(broken, ".github/actions/future/action.yml") == [
+        ".github/actions/future/action.yml composite step#0: fabricates hypergraph-rs sibling"
+    ]
 
 
 def test_automation_paths_include_yaml_workflows(
@@ -196,10 +236,31 @@ class TestWorkflowStepShape:
 
     def test_no_step_mixes_run_and_with(self) -> None:
         violations: list[str] = []
-        for path in sorted(WORKFLOWS_DIR.glob("*.yml")):
+        for path in _workflow_paths():
             workflow = yaml.safe_load(path.read_text())
             violations.extend(_step_shape_errors(workflow, path.name))
         assert not violations, "\n".join(violations)
+
+    def test_no_step_mixes_run_and_with_scans_yaml_workflows(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The workflow-wide shape guard must reject the same bad shape in .yaml."""
+        workflow_directory = tmp_path / "workflows"
+        workflow_directory.mkdir()
+        (workflow_directory / "future.yaml").write_text(
+            """
+            jobs:
+              test:
+                steps:
+                  - run: mise run test:q
+                    with:
+                      ref: dev
+            """
+        )
+        monkeypatch.setitem(globals(), "WORKFLOWS_DIR", workflow_directory)
+
+        with pytest.raises(AssertionError, match=r"future\.yaml job=test step#0"):
+            self.test_no_step_mixes_run_and_with()
 
     def test_checker_catches_the_e240a30f_breakage(self) -> None:
         # Mutation validation: the exact historical bad shape must be flagged.

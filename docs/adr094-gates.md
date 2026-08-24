@@ -30,8 +30,9 @@ no key to sign with, and `install.sh` refuses to install.
 
 ## D6 — hypergraph-rs as a pinned flake input (BLOCKED on port parity)
 
-`hypergraph-rs` is an external Cargo git dependency with its own history and no flake of its
-own. Adoption checklist (implement none of this until the gate opens):
+`hypergraph-rs` is a gitignored local subrepo with its own git history and no flake of its
+own — invisible to flake builds as a subtree of `self`. Adoption checklist (implement none
+of this until the gate opens):
 
 - Enter the game flake as a pinned INPUT with `inputs.nixpkgs.follows = "nixpkgs"` — never a
   subtree of `self`.

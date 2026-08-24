@@ -36,6 +36,111 @@ fn membership(session: &TickSession<HypergraphStore>) -> f64 {
     attribute(session, READING_GROUP, "organization/membership-share")
 }
 
+fn local_base_population(session: &TickSession<HypergraphStore>, territory: NodeId) -> f64 {
+    session
+        .graph()
+        .edge_attribute(
+            "PRESENCE",
+            READING_GROUP,
+            territory,
+            "presence/local-base-population",
+        )
+        .unwrap_or_else(|error| panic!("PRESENCE local base must exist: {error:?}"))
+}
+
+#[test]
+fn recruitment_requires_a_shared_presence_and_tenancy_territory() {
+    let remote_base_scenario = SCENARIO.replace(
+        "(edge EdgeType/TENANCY workers county 1)",
+        "(edge EdgeType/TENANCY workers county-b 1)",
+    );
+    assert_ne!(
+        remote_base_scenario, SCENARIO,
+        "the social base must move outside the organization's presence"
+    );
+    let mut local = TickSession::new(
+        SCENARIO,
+        PACK,
+        HypergraphStore::new(),
+        SessionId::new("organization-local-social-base").expect("literal is non-empty"),
+    )
+    .expect("the local-base world loads");
+    let mut remote = TickSession::new(
+        &remote_base_scenario,
+        PACK,
+        HypergraphStore::new(),
+        SessionId::new("organization-remote-social-base").expect("literal is non-empty"),
+    )
+    .expect("the remote-base world loads");
+    let mut local_sink = CollectingSink::default();
+    let mut remote_sink = CollectingSink::default();
+
+    local.advance(&mut local_sink).expect("local-base tick");
+    remote.advance(&mut remote_sink).expect("remote-base tick");
+
+    assert!(membership(&local) > 0.01);
+    assert_eq!(membership(&remote).to_bits(), 0.01_f64.to_bits());
+}
+
+#[test]
+fn a_remote_branch_does_not_enter_the_local_recruitment_mean() {
+    let remote_branch_scenario = SCENARIO.replace(
+        "  (edge EdgeType/SOLIDARITY reading-group precinct 1))",
+        "  (edge EdgeType/SOLIDARITY reading-group precinct 1)\n  \
+         (edge EdgeType/PRESENCE reading-group county-b 1)\n  \
+         (edge-attr EdgeType/PRESENCE reading-group county-b presence/embedding PracticeEmbedding/NONE))",
+    );
+    assert_ne!(
+        remote_branch_scenario, SCENARIO,
+        "the organization must gain a remote branch"
+    );
+    let mut local_only = TickSession::new(
+        SCENARIO,
+        PACK,
+        HypergraphStore::new(),
+        SessionId::new("organization-local-mean").expect("literal is non-empty"),
+    )
+    .expect("the local-only world loads");
+    let mut with_remote_branch = TickSession::new(
+        &remote_branch_scenario,
+        PACK,
+        HypergraphStore::new(),
+        SessionId::new("organization-local-mean-with-remote").expect("literal is non-empty"),
+    )
+    .expect("the remote-branch world loads");
+    let mut local_sink = CollectingSink::default();
+    let mut remote_sink = CollectingSink::default();
+
+    local_only
+        .advance(&mut local_sink)
+        .expect("local-only tick");
+    with_remote_branch
+        .advance(&mut remote_sink)
+        .expect("remote-branch tick");
+
+    assert_eq!(
+        local_base_population(&with_remote_branch, COUNTY_A).to_bits(),
+        1000.0_f64.to_bits()
+    );
+    assert_eq!(
+        local_base_population(&with_remote_branch, COUNTY_B).to_bits(),
+        0.0_f64.to_bits()
+    );
+    assert_eq!(
+        rooted_work(&with_remote_branch, COUNTY_A).to_bits(),
+        rooted_work(&local_only, COUNTY_A).to_bits()
+    );
+    assert_eq!(
+        capacity(&with_remote_branch, COUNTY_A).to_bits(),
+        capacity(&local_only, COUNTY_A).to_bits()
+    );
+    assert_eq!(
+        membership(&with_remote_branch).to_bits(),
+        membership(&local_only).to_bits(),
+        "territories without the target class cannot alter its recruitment"
+    );
+}
+
 #[test]
 fn rooted_capacity_moves_one_relational_hop_per_tick() {
     let mut session = TickSession::new(

@@ -765,10 +765,13 @@ named shared mechanic with an exact read/effect footprint.
 The playable V1 fixture has an admissible starting topology: an active player
 organization, its `PRESENCE` relation to the declared territory, at least one
 outbound `SOLIDARITY` edge to a target `SOCIAL_CLASS`, and the separately
-declared `MEMBERSHIP` relation used by the community consumer. Organize and
-Agitate are selectable only for a target with that active actor, presence, and
-positive finite solidarity path. A missing relation returns an eligibility
-remedy and produces no pending intent.
+declared `MEMBERSHIP` relation used by the community consumer. The target
+class must also have `TENANCY` in at least one territory reached by that
+actor's `PRESENCE`. Organize and Agitate are selectable only when this
+`PRESENCE ∩ TENANCY` join and the positive finite solidarity path both exist
+in the sealed snapshot. A remote branch or solidarity edge cannot substitute
+for a local social base. A missing relation returns an eligibility remedy and
+produces no pending intent.
 
 **Organize** reads the pre-action `solidarity/strength`, the actor's active and
 presence fields, and the governed gain and ceiling constants. It adds the gain
@@ -848,10 +851,10 @@ The V1 allowance matrix is normative:
 | `input/player-gateway` (Rust boundary) | campaign `player_org_id`; committed player-gateway content identity; candidate intent actor | `PracticeInputAuthorityV1(PLAYER_SEAT)` candidate paired with the unchanged intent bytes | common `intent/admit`; no graph, budget, event, receipt, outbox, or pending-ledger write |
 | `input/non-player-policy` (Rust boundary) | registered producer/actor pair; policy content digest; candidate intent actor | `PracticeInputAuthorityV1(DETERMINISTIC_POLICY)` candidate paired with the unchanged intent bytes | common `intent/admit`; each actual policy producer needs its own exact mechanic-profile row; no controller-specific mechanic, arbitrary actor, or externally asserted policy authority |
 | `intent/admit` (Rust boundary) | authorized input-authority digest and matching actor; committed tick and input identity; practice-to-stem/mode registry; quoted content digest and cost; actor `organization/active`; target type and eligibility result required by the selected practice; pending-ledger uniqueness | authority and accepted `PracticeIntentV1` digests in the pending ledger, or non-durable `PracticeSubmissionRejectionV1` | `advance_with_inputs`; no graph, budget, event, receipt, or outbox write |
-| `eligibility/organize-agitate` | actor `organization/active`; actor-to-territory `PRESENCE`; actor-to-target `SOLIDARITY`; target `NodeType/SOCIAL_CLASS`; positive finite `solidarity/strength` | eligible/refusal contribution to admission; no durable evidence on refusal | `intent/admit`; no graph, budget, event, receipt, or outbox write |
+| `eligibility/organize-agitate` | actor `organization/active`; actor-to-territory `PRESENCE`; target-to-that-same-territory `TENANCY`; actor-to-target `SOLIDARITY`; target `NodeType/SOCIAL_CLASS`; positive finite `solidarity/strength` | eligible/refusal contribution to admission; no durable evidence on refusal | `intent/admit`; no graph, budget, event, receipt, or outbox write |
 | `budget/transition` | `organization/active`; `organization/action-budget`; sealed governed cost; sorted outbound organization-to-class `SOLIDARITY` and `solidarity/strength`; the weekly-credit and storage constants | `set organization/action-budget`; one `OrganizationBudgetDeltaV1` in the committed envelope | next dossier and next admission; no `Capacity`, inventory, labor, money, treasury, escrow, efficacy, or target write |
-| `act/organize` | `organization/active`; actor-to-territory `PRESENCE`; actor-to-target `SOLIDARITY`; prior `solidarity/strength`; organize-gain and solidarity-ceiling constants | `set solidarity/strength = min(prior + gain, ceiling)` on the admitted existing edge; effect delta attributed in `PracticeReceiptV1` | `consciousness/p2-org-solidarity-push`; no edge creation, membership, agitation, ternary, line, or generic support write |
-| `act/agitate` | `organization/active`; actor-to-territory `PRESENCE`; actor-to-target `SOLIDARITY`; target `social-class/agitation`; agitate-contribution constant | `add social-class/agitation` on the admitted target; effect delta attributed in `PracticeReceiptV1` | `consciousness/p5-agitation` then `p6-route`; no edge, membership, ternary, line, or generic support write |
+| `act/organize` | admitted `PRESENCE ∩ TENANCY` witness from the sealed snapshot; `organization/active`; actor-to-target `SOLIDARITY`; prior `solidarity/strength`; organize-gain and solidarity-ceiling constants | `set solidarity/strength = min(prior + gain, ceiling)` on the admitted existing edge; effect delta attributed in `PracticeReceiptV1` | `consciousness/p2-org-solidarity-push`; no edge creation, membership, agitation, ternary, line, or generic support write |
+| `act/agitate` | admitted `PRESENCE ∩ TENANCY` witness from the sealed snapshot; `organization/active`; actor-to-target `SOLIDARITY`; target `social-class/agitation`; agitate-contribution constant | `add social-class/agitation` on the admitted target; effect delta attributed in `PracticeReceiptV1` | `consciousness/p5-agitation` then `p6-route`; no edge, membership, ternary, line, or generic support write |
 | `practice/line-attribution` (Rust boundary) | actor `organization/consciousness-tendency`; attributed effect and membership digests | tendency and causal-path digest in `PracticeReceiptV1` | Archive evaluator and existing membership/community path; no graph write and no claim of transmission when membership did not change |
 | `act/solidarity-decay` | sorted organization-to-class `SOLIDARITY`; prior `solidarity/strength`; decay constant | `set solidarity/strength = max(prior - decay, +0)` | next tick's budget and consciousness inputs; no edge creation or controller exception |
 | `aid` | none until PER-30/PER-31 supplies the complete stock/labor/route contract | no material allowance; `E-PRACTICE-UNWIRED` at submission | no fallback asset or pressure write |

@@ -41,6 +41,8 @@
   (deffield adjacency/inventory-buffer-share coefficient intensive)
   (deffield adjacency/reproduction-dependence coefficient intensive)
   (deffield presence/embedding enum PracticeEmbedding)
+  (deffield presence/local-base-population int extensive)
+  (deffield presence/practice-branch int extensive)
 
   ; Designed control values for this experiment, not universal coefficients.
   (defconst organization/practice-rate 0.03c)

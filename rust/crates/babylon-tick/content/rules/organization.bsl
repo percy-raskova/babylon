@@ -54,6 +54,38 @@
     (update-node self territory/rooted-work-inbox (set 0.0c))
     (update-node self territory/rooted-relay-inbox (set 0.0c))))
 
+(rule organization/p1-presence-attribution
+  :role mechanic
+  :evidence derived
+  :material-basis "Each PRESENCE relation records two derived facts from the sealed snapshot: local-base population exists only when a declared MEMBERSHIP class has TENANCY in the same territory, and a practice branch exists only when the relation's material embedding matches the organization's chosen practice embedding. Recomputing both facts each tick prevents remote authorization and prevents a mismatched branch from consuming organizer labor."
+  :fuel 512
+  (domain NodeType/ORGANIZATION)
+  (bindings
+    (binding practice-embedding :field organization/practice-embedding))
+  (when (exists (neighbors self EdgeType/PRESENCE :out NodeType/TERRITORY)))
+  (effects
+    (for-each (neighbors self EdgeType/PRESENCE :out NodeType/TERRITORY)
+      :as base-territory
+      (update-edge (edge-between EdgeType/PRESENCE self base-territory)
+        presence/local-base-population
+        (set
+          (if (and (> (field-of base-territory territory/resident-population) 0)
+                   (exists (neighbors self EdgeType/MEMBERSHIP :out NodeType/SOCIAL_CLASS)
+                     :as base-class
+                     (exists (neighbors base-class EdgeType/TENANCY :out NodeType/TERRITORY)
+                       (= it base-territory))))
+              (field-of base-territory territory/resident-population)
+              0)))
+      (update-edge (edge-between EdgeType/PRESENCE self base-territory)
+        presence/practice-branch
+        (set
+          (if (= (field-of
+                   (edge-between EdgeType/PRESENCE self base-territory)
+                   presence/embedding)
+                 practice-embedding)
+              1
+              0))))))
+
 (rule organization/p1-rooted-work
   :role mechanic
   :evidence derived
@@ -66,14 +98,11 @@
     (binding budget :field organization/action-budget)
     (binding practice-rate :const organization/practice-rate)
     (binding branch-count :expr
-      (fold count (neighbors self EdgeType/PRESENCE :out NodeType/TERRITORY)
-        :as branch
-        (if (= (field-of
-                 (edge-between EdgeType/PRESENCE self branch)
-                 presence/embedding)
-               practice-embedding)
-            1
-            0))))
+      (fold sum (neighbors self EdgeType/PRESENCE :out NodeType/TERRITORY)
+        :as labor-branch
+        (field-of
+          (edge-between EdgeType/PRESENCE self labor-branch)
+          presence/practice-branch))))
   (when (and (= active 1)
              (= practice PracticeKind/ROOTED_WORK)
              (> budget 0)
@@ -144,30 +173,51 @@
 (rule organization/p4-recruitment
   :role mechanic
   :evidence derived
-  :material-basis "Recruitment depends on the organization's rooted territorial capacity, the pressure of social reproduction, the unorganized share of its declared membership base, and command pressure in the same places."
-  :fuel 512
+  :material-basis "Recruitment depends on rooted capacity, reproductive pressure, and command pressure only where the organization's PRESENCE overlaps the declared social base's TENANCY. Relayed or remote organizational capacity can assist that local base but cannot substitute for one. The remaining unorganized share limits growth."
+  :fuel 4096
   (bindings
     (binding active :field organization/active)
     (binding practice :field organization/practice)
     (binding membership :field organization/membership-share)
     (binding recruitment-rate :const organization/recruitment-rate)
+    (binding local-base :expr
+      (exists (neighbors self EdgeType/PRESENCE :out NodeType/TERRITORY)
+        :as recruitment-territory
+        (> (field-of
+             (edge-between EdgeType/PRESENCE self recruitment-territory)
+             presence/local-base-population)
+           0)))
     (binding rooted-capacity :expr
-      (fold mean (neighbors self EdgeType/PRESENCE :out NodeType/TERRITORY)
-        (field-of it territory/rooted-capacity)
-        :weight (field-of it territory/resident-population)))
+      (if local-base
+          (fold mean (neighbors self EdgeType/PRESENCE :out NodeType/TERRITORY)
+            :as capacity-territory
+            (field-of capacity-territory territory/rooted-capacity)
+            :weight (field-of
+              (edge-between EdgeType/PRESENCE self capacity-territory)
+              presence/local-base-population))
+          0.0c))
     (binding reproduction-pressure :expr
-      (fold mean (neighbors self EdgeType/PRESENCE :out NodeType/TERRITORY)
-        (field-of it territory/reproduction-pressure)
-        :weight (field-of it territory/resident-population)))
+      (if local-base
+          (fold mean (neighbors self EdgeType/PRESENCE :out NodeType/TERRITORY)
+            :as reproduction-territory
+            (field-of reproduction-territory territory/reproduction-pressure)
+            :weight (field-of
+              (edge-between EdgeType/PRESENCE self reproduction-territory)
+              presence/local-base-population))
+          0.0c))
     (binding command-pressure :expr
-      (fold mean (neighbors self EdgeType/PRESENCE :out NodeType/TERRITORY)
-        (field-of it territory/command-pressure)
-        :weight (field-of it territory/resident-population))))
+      (if local-base
+          (fold mean (neighbors self EdgeType/PRESENCE :out NodeType/TERRITORY)
+            :as command-territory
+            (field-of command-territory territory/command-pressure)
+            :weight (field-of
+              (edge-between EdgeType/PRESENCE self command-territory)
+              presence/local-base-population))
+          0.0c)))
   (when (and (= active 1)
              (= practice PracticeKind/ROOTED_WORK)
              (< membership 1.0c)
-             (exists (neighbors self EdgeType/MEMBERSHIP :out NodeType/SOCIAL_CLASS))
-             (exists (neighbors self EdgeType/PRESENCE :out NodeType/TERRITORY))))
+             local-base))
   (effects
     (update-node self organization/membership-share
       (set

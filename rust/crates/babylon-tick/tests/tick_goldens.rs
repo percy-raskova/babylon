@@ -144,15 +144,16 @@ fn organization_foundation_hashes_are_pinned() {
     );
     assert_eq!(
         hex(&report.after),
-        "c068b8a316f24099bdcd7e03384f6b247dbcc45cc63a0e1ce956ee9866dc9bef",
+        "ab51780d3dfb92d656613e0380bb9cfcf4efeb7c200183da80eb8c5261c42378",
         "post-tick hash moved — this pins the first material practice, \
          propagation, recruitment, and command writes"
     );
     assert_eq!(
-        report.fired, 14,
+        report.fired, 16,
         "the first tick must execute 1 kind probe + 2 budget resets + 4 \
-         territory resets + 1 rooted practice + 1 circulation relay + 3 \
-         capacity applications + 1 recruitment + 1 command response"
+         territory resets + 2 presence attributions + 1 rooted practice + \
+         1 circulation relay + 3 capacity applications + 1 recruitment + \
+         1 command response"
     );
 }
 

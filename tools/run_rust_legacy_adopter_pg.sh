@@ -189,7 +189,7 @@ timeout --signal=TERM --kill-after=10s 900s \
     --ignored --test-threads=1 || status=$?
 
 if [ "$status" -eq 0 ]; then
-  timeout --signal=TERM --kill-after=10s 180s \
+  timeout --signal=TERM --kill-after=10s 300s \
     env \
       BABYLON_LEGACY_ADOPTER_TEST_DSN="postgresql://test:test@127.0.0.1:$PORT/postgres" \
       BABYLON_LEGACY_ADOPTER_DISPOSABLE_ACK="$TEST_HARNESS_ACK" \

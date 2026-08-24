@@ -2088,7 +2088,7 @@ fn ci_adopter_step_exceeds_the_full_bounded_runner_envelope() {
     const START_ENVELOPE_SECONDS: u64 = 30 + 5;
     const READINESS_ENVELOPE_SECONDS: u64 = 90 + 2;
     const CARGO_ENVELOPE_SECONDS: u64 = 900 + 10;
-    const ROLLBACK_CARGO_ENVELOPE_SECONDS: u64 = 180 + 10;
+    const ROLLBACK_CARGO_ENVELOPE_SECONDS: u64 = 300 + 10;
     const CLEANUP_ENVELOPE_SECONDS: u64 = 35 + 12 + 12 + 35;
     const RUNNER_ENVELOPE_SECONDS: u64 = CONTROL_PLANE_ENVELOPE_SECONDS
         + BUILD_ENVELOPE_SECONDS
@@ -2146,7 +2146,7 @@ fn ci_adopter_step_exceeds_the_full_bounded_runner_envelope() {
         "\nfi\n\ncleanup_checked",
     );
     let rollback_timeout = rollback_phase
-        .find("timeout --signal=TERM --kill-after=10s 180s")
+        .find("timeout --signal=TERM --kill-after=10s 300s")
         .unwrap();
     let rollback_cargo = rollback_phase
         .find("cargo test -p babylon-persistence --lib")

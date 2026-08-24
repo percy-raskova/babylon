@@ -21,3 +21,33 @@ pub use codec::{
     target_selection_policy_digest,
 };
 pub use topology::{validate_topology, PracticeTopologyLoadCounter};
+
+const SHARED_ACTIVATION_BLOCKERS: &[PracticeActivationBlockerV1] = &[
+    PracticeActivationBlockerV1::Gate3CommittedEnvelope,
+    PracticeActivationBlockerV1::Gate5PendingInput,
+];
+const MUTUAL_AID_ACTIVATION_BLOCKERS: &[PracticeActivationBlockerV1] = &[
+    PracticeActivationBlockerV1::Gate3CommittedEnvelope,
+    PracticeActivationBlockerV1::Gate5PendingInput,
+    PracticeActivationBlockerV1::Per30OrdersInventory,
+    PracticeActivationBlockerV1::Per31FreightRealization,
+];
+
+/// Return the stable non-live refusal for one closed practice.
+#[must_use]
+pub const fn unwired_reason(practice: PracticeIdV1) -> PracticeRejectionCodeV1 {
+    match practice {
+        PracticeIdV1::Organize | PracticeIdV1::Agitate | PracticeIdV1::MutualAid => {
+            PracticeRejectionCodeV1::PracticeUnwired
+        }
+    }
+}
+
+/// Return immutable non-admission dependency metadata.
+#[must_use]
+pub const fn activation_blockers(practice: PracticeIdV1) -> &'static [PracticeActivationBlockerV1] {
+    match practice {
+        PracticeIdV1::Organize | PracticeIdV1::Agitate => SHARED_ACTIVATION_BLOCKERS,
+        PracticeIdV1::MutualAid => MUTUAL_AID_ACTIVATION_BLOCKERS,
+    }
+}

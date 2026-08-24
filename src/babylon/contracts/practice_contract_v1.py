@@ -34,6 +34,7 @@ from babylon.contracts.practice_contract_v1_generated import (
     OrganizationBudgetDeltaV1,
     OrganizationPracticeTopologyV1,
     PolicyAuthorityPairV1,
+    PracticeActivationBlockerV1,
     PracticeAuthorityContextV1,
     PracticeAuthorityKindV1,
     PracticeBudgetTermsV1,
@@ -106,6 +107,15 @@ _VECTOR_DATA_FIELDS = {
     "batch_recipe": frozenset({"count", "recipe", "error"}),
     "organization-practice-prelude": frozenset({"raw_hex", "digest_hex"}),
 }
+_SHARED_ACTIVATION_BLOCKERS = (
+    PracticeActivationBlockerV1.GATE3_COMMITTED_ENVELOPE,
+    PracticeActivationBlockerV1.GATE5_PENDING_INPUT,
+)
+_MUTUAL_AID_ACTIVATION_BLOCKERS = (
+    *_SHARED_ACTIVATION_BLOCKERS,
+    PracticeActivationBlockerV1.PER30_ORDERS_INVENTORY,
+    PracticeActivationBlockerV1.PER31_FREIGHT_REALIZATION,
+)
 
 
 class PracticeContractViolation(ValueError):
@@ -152,6 +162,28 @@ def _fail(error: PracticeContractError) -> PracticeContractViolation:
 def _require_exact(value: object, expected: type[object], name: str) -> None:
     if type(value) is not expected:
         raise TypeError(f"{name} must be {expected.__name__}")
+
+
+def unwired_reason(practice: PracticeIdV1) -> PracticeRejectionCodeV1:
+    """Return the stable non-live refusal for one closed practice."""
+    _require_exact(practice, PracticeIdV1, "practice")
+    match practice:
+        case PracticeIdV1.ORGANIZE | PracticeIdV1.AGITATE | PracticeIdV1.MUTUAL_AID:
+            return PracticeRejectionCodeV1.PRACTICE_UNWIRED
+    raise AssertionError("unreachable closed practice")
+
+
+def activation_blockers(
+    practice: PracticeIdV1,
+) -> tuple[PracticeActivationBlockerV1, ...]:
+    """Return immutable non-admission dependency metadata."""
+    _require_exact(practice, PracticeIdV1, "practice")
+    match practice:
+        case PracticeIdV1.ORGANIZE | PracticeIdV1.AGITATE:
+            return _SHARED_ACTIVATION_BLOCKERS
+        case PracticeIdV1.MUTUAL_AID:
+            return _MUTUAL_AID_ACTIVATION_BLOCKERS
+    raise AssertionError("unreachable closed practice")
 
 
 def _require_u64(value: object, name: str) -> int:
@@ -973,6 +1005,7 @@ __all__ = [
     "PracticeTopologyLoadCounter",
     "PracticeVectorCaseV1",
     "PracticeVectorCorpusError",
+    "activation_blockers",
     "budget_delta_digest",
     "compute_budget_delta",
     "decode_budget_delta",
@@ -992,6 +1025,7 @@ __all__ = [
     "rejection_for",
     "submission_rejection_alias",
     "target_selection_policy_digest",
+    "unwired_reason",
     "validate_authority_pair",
     "validate_quote_context",
     "validate_resolve_batch",

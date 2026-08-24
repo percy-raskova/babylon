@@ -17,6 +17,7 @@ own cleanliness from Phase 0 onward.
 from __future__ import annotations
 
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,9 @@ import pytest
 # Mirror the import path used by tools/*.py and its existing unit tests
 # (see tests/unit/tools/test_dense_goldens.py).
 TOOLS_DIR = Path(__file__).resolve().parents[3] / "tools"
+DENY_TOML = Path("rust/deny.toml")
+LIVE_HYPERGRAPH_MANIFEST = Path("rust/crates/babylon-graph/Cargo.toml")
+OBSOLETE_HYPERGRAPH_MANIFEST = "babylon-tui/Cargo.toml"
 sys.path.insert(0, str(TOOLS_DIR))
 
 from check_repo_hygiene import (  # type: ignore[import-not-found]  # noqa: E402
@@ -87,3 +91,18 @@ class TestRepoIsClean:
 
     def test_gate_passes_on_this_repo(self) -> None:
         assert main() == 0
+
+
+@pytest.mark.unit
+class TestCargoDenyProvenance:
+    """The Git-source allowlist identifies its live dependency manifest."""
+
+    def test_hypergraph_allowlist_comment_names_its_live_manifest(self) -> None:
+        """Avoid a stale manifest path in the hypergraph-rs allowlist rationale."""
+        manifest = tomllib.loads(LIVE_HYPERGRAPH_MANIFEST.read_text(encoding="utf-8"))
+        dependency = manifest["dependencies"]["hypergraph-rs"]
+        assert dependency["git"] == "https://github.com/percy-raskova/hypergraph-rs.git"
+
+        sources = DENY_TOML.read_text(encoding="utf-8").split("[sources]", maxsplit=1)[1]
+        assert str(LIVE_HYPERGRAPH_MANIFEST) in sources
+        assert OBSOLETE_HYPERGRAPH_MANIFEST not in sources

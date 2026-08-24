@@ -38,6 +38,14 @@ from check_repo_hygiene import (  # type: ignore[import-not-found]  # noqa: E402
 )
 
 
+def _sources_section(deny_toml: str) -> str:
+    """Return the source-allowlist portion of a cargo-deny configuration."""
+    _, separator, sources = deny_toml.partition("[sources]")
+    if not separator:
+        raise AssertionError("rust/deny.toml: missing [sources] section")
+    return sources
+
+
 @pytest.mark.unit
 class TestSyntheticViolations:
     """Each check must catch a planted violation (detection proof)."""
@@ -103,6 +111,14 @@ class TestCargoDenyProvenance:
         dependency = manifest["dependencies"]["hypergraph-rs"]
         assert dependency["git"] == "https://github.com/percy-raskova/hypergraph-rs.git"
 
-        sources = DENY_TOML.read_text(encoding="utf-8").split("[sources]", maxsplit=1)[1]
+        sources = _sources_section(DENY_TOML.read_text(encoding="utf-8"))
         assert str(LIVE_HYPERGRAPH_MANIFEST) in sources
         assert OBSOLETE_HYPERGRAPH_MANIFEST not in sources
+
+    def test_missing_sources_section_reports_an_actionable_contract_break(self) -> None:
+        """A renamed cargo-deny section must not leak an indexing exception."""
+        with pytest.raises(
+            AssertionError,
+            match=r"^rust/deny\.toml: missing \[sources\] section$",
+        ):
+            _sources_section("[advisories]\n")

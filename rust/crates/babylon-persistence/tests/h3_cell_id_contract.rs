@@ -105,6 +105,29 @@ fn h3_cell_id_layout_and_order_follow_unsigned_identity() {
         .map(|vector| vector.raw_u64)
         .collect::<Vec<_>>();
     assert_eq!(sorted_raws, expected_raws);
+
+    let mut raw_order = fixture
+        .valid
+        .iter()
+        .take(VALID_VECTOR_COUNT)
+        .map(|vector| H3CellId::try_from(vector.raw_u64).expect("fixture cell should validate"))
+        .collect::<Vec<_>>();
+    let mut resolution_then_raw = raw_order.clone();
+    raw_order.sort_unstable();
+    resolution_then_raw.sort_unstable_by_key(|cell| (cell.resolution(), cell.as_u64()));
+
+    assert_eq!(raw_order, resolution_then_raw);
+    for resolution in 0_u8..16 {
+        assert_eq!(
+            raw_order
+                .iter()
+                .take(VALID_VECTOR_COUNT)
+                .filter(|cell| cell.resolution() == resolution)
+                .count(),
+            13,
+            "raw order contract must cover every ordinary and pentagon vector at resolution {resolution}"
+        );
+    }
 }
 
 #[test]

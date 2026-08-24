@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 from types import MappingProxyType
+from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -163,7 +164,7 @@ class ScaleMembershipV1(BaseModel):
     weight_bits_or_null: str | None
     coverage: CoverageV1
     evidence_class: EvidenceClassV1
-    provenance_refs: list[TypedIdentityV1]
+    provenance_refs: tuple[TypedIdentityV1, ...]
 
 
 class FacetV1(BaseModel):
@@ -175,14 +176,14 @@ class FacetV1(BaseModel):
     metric_id: TypedIdentityV1
     unit_id: TypedIdentityV1
     native_scale: TypedIdentityV1
-    coordinates: list[DimensionCoordinateV1]
+    coordinates: tuple[DimensionCoordinateV1, ...]
     vintage: str
     status: StatusV1
     value_kind: ValueKindV1
     value_bits_or_null: str | None
     coverage: CoverageV1
     evidence_class: EvidenceClassV1
-    provenance_refs: list[TypedIdentityV1]
+    provenance_refs: tuple[TypedIdentityV1, ...]
 
 
 class DyadV1(BaseModel):
@@ -195,9 +196,9 @@ class DyadV1(BaseModel):
     native_scale: TypedIdentityV1
     status: StatusV1
     coverage: CoverageV1
-    payload_facets: list[TypedIdentityV1]
+    payload_facets: tuple[TypedIdentityV1, ...]
     evidence_class: EvidenceClassV1
-    provenance_refs: list[TypedIdentityV1]
+    provenance_refs: tuple[TypedIdentityV1, ...]
 
 
 class HyperedgeV1(BaseModel):
@@ -205,13 +206,13 @@ class HyperedgeV1(BaseModel):
 
     hyperedge_id: TypedIdentityV1
     hyperedge_kind: HyperedgeKindV1
-    member_refs: list[TypedIdentityV1]
+    member_refs: tuple[TypedIdentityV1, ...]
     native_scale: TypedIdentityV1
     status: StatusV1
     coverage: CoverageV1
-    payload_facets: list[TypedIdentityV1]
+    payload_facets: tuple[TypedIdentityV1, ...]
     evidence_class: EvidenceClassV1
-    provenance_refs: list[TypedIdentityV1]
+    provenance_refs: tuple[TypedIdentityV1, ...]
 
 
 class ReferenceFlowV1(BaseModel):
@@ -221,12 +222,12 @@ class ReferenceFlowV1(BaseModel):
     flow_kind: FlowKindV1
     origin_ref: TypedIdentityV1
     destination_ref: TypedIdentityV1
-    payload_facets: list[TypedIdentityV1]
+    payload_facets: tuple[TypedIdentityV1, ...]
     native_scale: TypedIdentityV1
     status: StatusV1
     coverage: CoverageV1
     evidence_class: EvidenceClassV1
-    provenance_refs: list[TypedIdentityV1]
+    provenance_refs: tuple[TypedIdentityV1, ...]
 
 
 class GapV1(BaseModel):
@@ -237,7 +238,7 @@ class GapV1(BaseModel):
     status: StatusV1
     reason_code: GapReasonV1
     required_producer_or_null: str | None
-    provenance_refs: list[TypedIdentityV1]
+    provenance_refs: tuple[TypedIdentityV1, ...]
 
 
 class ProvenanceV1(BaseModel):
@@ -255,37 +256,37 @@ class DecisionSurfaceV1(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     question_id: TypedIdentityV1
-    signal_refs: list[TypedIdentityV1]
-    action_refs: list[TypedIdentityV1]
-    receipt_refs: list[TypedIdentityV1]
-    archive_subject_refs: list[TypedIdentityV1]
+    signal_refs: tuple[TypedIdentityV1, ...]
+    action_refs: tuple[TypedIdentityV1, ...]
+    receipt_refs: tuple[TypedIdentityV1, ...]
+    archive_subject_refs: tuple[TypedIdentityV1, ...]
 
 
 class RtdDossierDraftV1(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     schema_: str = Field(alias="schema", serialization_alias="schema")
-    schema_version: int
-    projection_version: int
+    schema_version: Annotated[int, Field(strict=True, ge=0, le=65_535)]
+    projection_version: Annotated[int, Field(strict=True, ge=0, le=65_535)]
     audience: AudienceV1
     durability: DurabilityV1
-    verified_tick: int
+    verified_tick: Annotated[int, Field(strict=True, ge=0, le=18_446_744_073_709_551_615)]
     graph_state_hash: str
     nominal_world_hash: str
-    reference_digests: list[ReferenceDigestV1]
+    reference_digests: tuple[ReferenceDigestV1, ...]
     definitions_digest: str
     template_digest: str
     fog_policy_digest: str | None
     knowledge_context_digest: str | None
     actor: TypedIdentityV1 | None
-    focus: list[TypedIdentityV1]
-    scale_memberships: list[ScaleMembershipV1]
-    facets: list[FacetV1]
-    dyads: list[DyadV1]
-    hyperedges: list[HyperedgeV1]
-    flows: list[ReferenceFlowV1]
-    gaps: list[GapV1]
-    provenance: list[ProvenanceV1]
+    focus: tuple[TypedIdentityV1, ...]
+    scale_memberships: tuple[ScaleMembershipV1, ...]
+    facets: tuple[FacetV1, ...]
+    dyads: tuple[DyadV1, ...]
+    hyperedges: tuple[HyperedgeV1, ...]
+    flows: tuple[ReferenceFlowV1, ...]
+    gaps: tuple[GapV1, ...]
+    provenance: tuple[ProvenanceV1, ...]
     decision_surface: DecisionSurfaceV1
 
 
@@ -293,27 +294,27 @@ class RelationalTerritoryDossierV1(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     schema_: str = Field(alias="schema", serialization_alias="schema")
-    schema_version: int
-    projection_version: int
+    schema_version: Annotated[int, Field(strict=True, ge=0, le=65_535)]
+    projection_version: Annotated[int, Field(strict=True, ge=0, le=65_535)]
     audience: AudienceV1
     durability: DurabilityV1
-    verified_tick: int
+    verified_tick: Annotated[int, Field(strict=True, ge=0, le=18_446_744_073_709_551_615)]
     graph_state_hash: str
     nominal_world_hash: str
-    reference_digests: list[ReferenceDigestV1]
+    reference_digests: tuple[ReferenceDigestV1, ...]
     definitions_digest: str
     template_digest: str
     fog_policy_digest: str | None
     knowledge_context_digest: str | None
     actor: TypedIdentityV1 | None
-    focus: list[TypedIdentityV1]
-    scale_memberships: list[ScaleMembershipV1]
-    facets: list[FacetV1]
-    dyads: list[DyadV1]
-    hyperedges: list[HyperedgeV1]
-    flows: list[ReferenceFlowV1]
-    gaps: list[GapV1]
-    provenance: list[ProvenanceV1]
+    focus: tuple[TypedIdentityV1, ...]
+    scale_memberships: tuple[ScaleMembershipV1, ...]
+    facets: tuple[FacetV1, ...]
+    dyads: tuple[DyadV1, ...]
+    hyperedges: tuple[HyperedgeV1, ...]
+    flows: tuple[ReferenceFlowV1, ...]
+    gaps: tuple[GapV1, ...]
+    provenance: tuple[ProvenanceV1, ...]
     decision_surface: DecisionSurfaceV1
     projection_hash: str
 

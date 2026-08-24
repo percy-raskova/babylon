@@ -2,6 +2,14 @@
 
 use serde::Deserialize;
 
+fn deserialize_required_option<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer)
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
 pub enum AudienceV1 {
     #[serde(rename = "ADMIN_MATERIAL")]
@@ -219,6 +227,7 @@ pub struct TypedIdentityV1 {
 pub struct ReferenceDigestV1 {
     pub reference_id: TypedIdentityV1,
     pub sha256_hex: String,
+    #[serde(deserialize_with = "deserialize_required_option")]
     pub artifact_schema_id_or_null: Option<TypedIdentityV1>,
     pub vintage: String,
     pub evidence_class: EvidenceClassV1,
@@ -240,6 +249,7 @@ pub struct ScaleMembershipV1 {
     pub membership_kind: MembershipKindV1,
     pub status: StatusV1,
     pub weight_status: StatusV1,
+    #[serde(deserialize_with = "deserialize_required_option")]
     pub weight_bits_or_null: Option<String>,
     pub coverage: CoverageV1,
     pub evidence_class: EvidenceClassV1,
@@ -259,6 +269,7 @@ pub struct FacetV1 {
     pub vintage: String,
     pub status: StatusV1,
     pub value_kind: ValueKindV1,
+    #[serde(deserialize_with = "deserialize_required_option")]
     pub value_bits_or_null: Option<String>,
     pub coverage: CoverageV1,
     pub evidence_class: EvidenceClassV1,
@@ -316,6 +327,7 @@ pub struct GapV1 {
     pub requested_metric_or_relation: TypedIdentityV1,
     pub status: StatusV1,
     pub reason_code: GapReasonV1,
+    #[serde(deserialize_with = "deserialize_required_option")]
     pub required_producer_or_null: Option<String>,
     pub provenance_refs: Vec<TypedIdentityV1>,
 }
@@ -328,6 +340,7 @@ pub struct ProvenanceV1 {
     pub locator: String,
     pub vintage: String,
     pub evidence_class: EvidenceClassV1,
+    #[serde(deserialize_with = "deserialize_required_option")]
     pub transformation_digest_or_null: Option<String>,
 }
 
@@ -355,8 +368,11 @@ pub struct RtdDossierDraftV1 {
     pub reference_digests: Vec<ReferenceDigestV1>,
     pub definitions_digest: String,
     pub template_digest: String,
+    #[serde(deserialize_with = "deserialize_required_option")]
     pub fog_policy_digest: Option<String>,
+    #[serde(deserialize_with = "deserialize_required_option")]
     pub knowledge_context_digest: Option<String>,
+    #[serde(deserialize_with = "deserialize_required_option")]
     pub actor: Option<TypedIdentityV1>,
     pub focus: Vec<TypedIdentityV1>,
     pub scale_memberships: Vec<ScaleMembershipV1>,
@@ -383,8 +399,11 @@ pub struct RelationalTerritoryDossierV1 {
     pub reference_digests: Vec<ReferenceDigestV1>,
     pub definitions_digest: String,
     pub template_digest: String,
+    #[serde(deserialize_with = "deserialize_required_option")]
     pub fog_policy_digest: Option<String>,
+    #[serde(deserialize_with = "deserialize_required_option")]
     pub knowledge_context_digest: Option<String>,
+    #[serde(deserialize_with = "deserialize_required_option")]
     pub actor: Option<TypedIdentityV1>,
     pub focus: Vec<TypedIdentityV1>,
     pub scale_memberships: Vec<ScaleMembershipV1>,

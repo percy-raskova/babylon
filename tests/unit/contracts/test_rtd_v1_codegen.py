@@ -3,18 +3,23 @@
 from __future__ import annotations
 
 import copy
+import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
+import tools.generate_rtd_v1_types as generator
 import yaml
+from pydantic import ValidationError
 from tools.generate_rtd_v1_types import (
     CONTRACT_LIMIT_ERROR,
     CONTRACT_SCHEMA_ERROR,
     ContractLoadError,
     ExpandedMetricSpec,
+    FieldSpec,
+    RecordSpec,
     RelationBindingSpec,
     TypedIdentitySpec,
     load_contract,
@@ -22,6 +27,8 @@ from tools.generate_rtd_v1_types import (
     render_python,
     render_rust,
 )
+
+from babylon.contracts.rtd_v1_generated import RtdDossierDraftV1
 
 pytestmark = pytest.mark.unit
 
@@ -35,12 +42,15 @@ EXPECTED_COORDINATE_COUNT = 13
 EXPECTED_SCALE_COUNT = 9
 EXPECTED_ARTIFACT_COUNT = 10
 MAX_EXPECTED_METRIC_COORDINATES = 4
+MAX_EXPECTED_RECORD_FIELDS = 64
 EXTRA_RECORD_DECLARATIONS = 20
 EXTRA_ENUM_DECLARATIONS = 49
 EXTRA_FIELD_DECLARATIONS = 62
 EXTRA_ENUM_MEMBERS = 255
 EXTRA_LIMIT_ROWS = 493
 EXTRA_REGISTRY_ROWS = 495
+REQUIRED_OPTION_RECORD_COUNT = 7
+MAX_REQUIRED_OPTIONS_PER_RECORD = 3
 
 EXPECTED_RECORDS = {
     "TypedIdentityV1",
@@ -202,6 +212,385 @@ EXPECTED_ERRORS = (
     "RTD_FORBIDDEN_REDUCTION",
     "RTD_VECTOR_LIMIT",
     "RTD_CANONICAL_SIZE",
+)
+
+
+def _field_spec(
+    name: str,
+    type_name: str,
+    *,
+    nullable: bool = False,
+    bound: str | None = None,
+    sort_key: str | None = None,
+) -> FieldSpec:
+    return FieldSpec(name, type_name, nullable, bound, sort_key)
+
+
+EXPECTED_RECORD_SPECS = (
+    RecordSpec(
+        "TypedIdentityV1",
+        (
+            _field_spec("domain", "string", bound="max_identity_component_bytes"),
+            _field_spec("authority", "string", bound="max_identity_component_bytes"),
+            _field_spec("local_id", "string", bound="max_identity_component_bytes"),
+        ),
+    ),
+    RecordSpec(
+        "ReferenceDigestV1",
+        (
+            _field_spec("reference_id", "identity"),
+            _field_spec("sha256_hex", "digest_hex"),
+            _field_spec("artifact_schema_id_or_null", "identity", nullable=True),
+            _field_spec("vintage", "vintage", bound="max_vintage_bytes"),
+            _field_spec("evidence_class", "EvidenceClassV1"),
+        ),
+    ),
+    RecordSpec(
+        "DimensionCoordinateV1",
+        (
+            _field_spec("dimension_ref", "identity"),
+            _field_spec("member_ref", "identity"),
+        ),
+    ),
+    RecordSpec(
+        "ScaleMembershipV1",
+        (
+            _field_spec("membership_id", "identity"),
+            _field_spec("member_ref", "identity"),
+            _field_spec("scale_ref", "identity"),
+            _field_spec("membership_kind", "MembershipKindV1"),
+            _field_spec("status", "StatusV1"),
+            _field_spec("weight_status", "StatusV1"),
+            _field_spec("weight_bits_or_null", "bits64_hex", nullable=True),
+            _field_spec("coverage", "CoverageV1"),
+            _field_spec("evidence_class", "EvidenceClassV1"),
+            _field_spec(
+                "provenance_refs",
+                "list[identity]",
+                bound="max_provenance_refs",
+                sort_key="identity",
+            ),
+        ),
+    ),
+    RecordSpec(
+        "FacetV1",
+        (
+            _field_spec("facet_id", "identity"),
+            _field_spec("family", "FacetFamilyV1"),
+            _field_spec("subject_ref", "identity"),
+            _field_spec("metric_id", "identity"),
+            _field_spec("unit_id", "identity"),
+            _field_spec("native_scale", "identity"),
+            _field_spec(
+                "coordinates",
+                "list[DimensionCoordinateV1]",
+                bound="max_coordinates",
+                sort_key="dimension_ref",
+            ),
+            _field_spec("vintage", "vintage", bound="max_vintage_bytes"),
+            _field_spec("status", "StatusV1"),
+            _field_spec("value_kind", "ValueKindV1"),
+            _field_spec("value_bits_or_null", "bits64_hex", nullable=True),
+            _field_spec("coverage", "CoverageV1"),
+            _field_spec("evidence_class", "EvidenceClassV1"),
+            _field_spec(
+                "provenance_refs",
+                "list[identity]",
+                bound="max_provenance_refs",
+                sort_key="identity",
+            ),
+        ),
+    ),
+    RecordSpec(
+        "DyadV1",
+        (
+            _field_spec("relation_id", "identity"),
+            _field_spec("relation_kind", "DyadKindV1"),
+            _field_spec("from_ref", "identity"),
+            _field_spec("to_ref", "identity"),
+            _field_spec("native_scale", "identity"),
+            _field_spec("status", "StatusV1"),
+            _field_spec("coverage", "CoverageV1"),
+            _field_spec(
+                "payload_facets",
+                "list[identity]",
+                bound="max_payload_facets",
+                sort_key="identity",
+            ),
+            _field_spec("evidence_class", "EvidenceClassV1"),
+            _field_spec(
+                "provenance_refs",
+                "list[identity]",
+                bound="max_provenance_refs",
+                sort_key="identity",
+            ),
+        ),
+    ),
+    RecordSpec(
+        "HyperedgeV1",
+        (
+            _field_spec("hyperedge_id", "identity"),
+            _field_spec("hyperedge_kind", "HyperedgeKindV1"),
+            _field_spec(
+                "member_refs",
+                "list[identity]",
+                bound="max_hyperedge_members",
+                sort_key="identity",
+            ),
+            _field_spec("native_scale", "identity"),
+            _field_spec("status", "StatusV1"),
+            _field_spec("coverage", "CoverageV1"),
+            _field_spec(
+                "payload_facets",
+                "list[identity]",
+                bound="max_payload_facets",
+                sort_key="identity",
+            ),
+            _field_spec("evidence_class", "EvidenceClassV1"),
+            _field_spec(
+                "provenance_refs",
+                "list[identity]",
+                bound="max_provenance_refs",
+                sort_key="identity",
+            ),
+        ),
+    ),
+    RecordSpec(
+        "ReferenceFlowV1",
+        (
+            _field_spec("flow_id", "identity"),
+            _field_spec("flow_kind", "FlowKindV1"),
+            _field_spec("origin_ref", "identity"),
+            _field_spec("destination_ref", "identity"),
+            _field_spec(
+                "payload_facets",
+                "list[identity]",
+                bound="max_payload_facets",
+                sort_key="identity",
+            ),
+            _field_spec("native_scale", "identity"),
+            _field_spec("status", "StatusV1"),
+            _field_spec("coverage", "CoverageV1"),
+            _field_spec("evidence_class", "EvidenceClassV1"),
+            _field_spec(
+                "provenance_refs",
+                "list[identity]",
+                bound="max_provenance_refs",
+                sort_key="identity",
+            ),
+        ),
+    ),
+    RecordSpec(
+        "GapV1",
+        (
+            _field_spec("gap_id", "identity"),
+            _field_spec("requested_metric_or_relation", "identity"),
+            _field_spec("status", "StatusV1"),
+            _field_spec("reason_code", "GapReasonV1"),
+            _field_spec(
+                "required_producer_or_null",
+                "producer_issue",
+                nullable=True,
+                bound="max_required_producer_bytes",
+            ),
+            _field_spec(
+                "provenance_refs",
+                "list[identity]",
+                bound="max_provenance_refs",
+                sort_key="identity",
+            ),
+        ),
+    ),
+    RecordSpec(
+        "ProvenanceV1",
+        (
+            _field_spec("provenance_id", "identity"),
+            _field_spec("artifact_digest", "digest_hex"),
+            _field_spec("locator", "string", bound="max_provenance_locator_bytes"),
+            _field_spec("vintage", "vintage", bound="max_vintage_bytes"),
+            _field_spec("evidence_class", "EvidenceClassV1"),
+            _field_spec("transformation_digest_or_null", "digest_hex", nullable=True),
+        ),
+    ),
+    RecordSpec(
+        "DecisionSurfaceV1",
+        (
+            _field_spec("question_id", "identity"),
+            _field_spec(
+                "signal_refs",
+                "list[identity]",
+                bound="max_decision_surface_refs",
+                sort_key="input_order",
+            ),
+            _field_spec(
+                "action_refs",
+                "list[identity]",
+                bound="max_decision_surface_refs",
+                sort_key="input_order",
+            ),
+            _field_spec(
+                "receipt_refs",
+                "list[identity]",
+                bound="max_decision_surface_refs",
+                sort_key="input_order",
+            ),
+            _field_spec(
+                "archive_subject_refs",
+                "list[identity]",
+                bound="max_decision_surface_refs",
+                sort_key="input_order",
+            ),
+        ),
+    ),
+    RecordSpec(
+        "RtdDossierDraftV1",
+        (
+            _field_spec("schema", "string"),
+            _field_spec("schema_version", "u16"),
+            _field_spec("projection_version", "u16"),
+            _field_spec("audience", "AudienceV1"),
+            _field_spec("durability", "DurabilityV1"),
+            _field_spec("verified_tick", "u64"),
+            _field_spec("graph_state_hash", "digest_hex"),
+            _field_spec("nominal_world_hash", "digest_hex"),
+            _field_spec(
+                "reference_digests",
+                "list[ReferenceDigestV1]",
+                bound="max_reference_digests",
+                sort_key="reference_id",
+            ),
+            _field_spec("definitions_digest", "digest_hex"),
+            _field_spec("template_digest", "digest_hex"),
+            _field_spec("fog_policy_digest", "digest_hex", nullable=True),
+            _field_spec("knowledge_context_digest", "digest_hex", nullable=True),
+            _field_spec("actor", "identity", nullable=True),
+            _field_spec("focus", "list[identity]", bound="max_focus", sort_key="identity"),
+            _field_spec(
+                "scale_memberships",
+                "list[ScaleMembershipV1]",
+                bound="max_scale_memberships",
+                sort_key="membership_id",
+            ),
+            _field_spec("facets", "list[FacetV1]", bound="max_facets", sort_key="facet_id"),
+            _field_spec("dyads", "list[DyadV1]", bound="max_dyads", sort_key="relation_id"),
+            _field_spec(
+                "hyperedges",
+                "list[HyperedgeV1]",
+                bound="max_hyperedges",
+                sort_key="hyperedge_id",
+            ),
+            _field_spec("flows", "list[ReferenceFlowV1]", bound="max_flows", sort_key="flow_id"),
+            _field_spec("gaps", "list[GapV1]", bound="max_gaps", sort_key="gap_id"),
+            _field_spec(
+                "provenance",
+                "list[ProvenanceV1]",
+                bound="max_provenance",
+                sort_key="provenance_id",
+            ),
+            _field_spec("decision_surface", "DecisionSurfaceV1"),
+        ),
+    ),
+    RecordSpec(
+        "RelationalTerritoryDossierV1",
+        (
+            _field_spec("schema", "string"),
+            _field_spec("schema_version", "u16"),
+            _field_spec("projection_version", "u16"),
+            _field_spec("audience", "AudienceV1"),
+            _field_spec("durability", "DurabilityV1"),
+            _field_spec("verified_tick", "u64"),
+            _field_spec("graph_state_hash", "digest_hex"),
+            _field_spec("nominal_world_hash", "digest_hex"),
+            _field_spec(
+                "reference_digests",
+                "list[ReferenceDigestV1]",
+                bound="max_reference_digests",
+                sort_key="reference_id",
+            ),
+            _field_spec("definitions_digest", "digest_hex"),
+            _field_spec("template_digest", "digest_hex"),
+            _field_spec("fog_policy_digest", "digest_hex", nullable=True),
+            _field_spec("knowledge_context_digest", "digest_hex", nullable=True),
+            _field_spec("actor", "identity", nullable=True),
+            _field_spec("focus", "list[identity]", bound="max_focus", sort_key="identity"),
+            _field_spec(
+                "scale_memberships",
+                "list[ScaleMembershipV1]",
+                bound="max_scale_memberships",
+                sort_key="membership_id",
+            ),
+            _field_spec("facets", "list[FacetV1]", bound="max_facets", sort_key="facet_id"),
+            _field_spec("dyads", "list[DyadV1]", bound="max_dyads", sort_key="relation_id"),
+            _field_spec(
+                "hyperedges",
+                "list[HyperedgeV1]",
+                bound="max_hyperedges",
+                sort_key="hyperedge_id",
+            ),
+            _field_spec("flows", "list[ReferenceFlowV1]", bound="max_flows", sort_key="flow_id"),
+            _field_spec("gaps", "list[GapV1]", bound="max_gaps", sort_key="gap_id"),
+            _field_spec(
+                "provenance",
+                "list[ProvenanceV1]",
+                bound="max_provenance",
+                sort_key="provenance_id",
+            ),
+            _field_spec("decision_surface", "DecisionSurfaceV1"),
+            _field_spec("projection_hash", "digest_hex"),
+        ),
+    ),
+)
+
+EXPECTED_CANONICAL_SET_ROWS = (
+    ("ScaleMembershipV1.provenance_refs", "identity"),
+    ("FacetV1.coordinates", "dimension_ref"),
+    ("FacetV1.provenance_refs", "identity"),
+    ("DyadV1.payload_facets", "identity"),
+    ("DyadV1.provenance_refs", "identity"),
+    ("HyperedgeV1.member_refs", "identity"),
+    ("HyperedgeV1.payload_facets", "identity"),
+    ("HyperedgeV1.provenance_refs", "identity"),
+    ("ReferenceFlowV1.payload_facets", "identity"),
+    ("ReferenceFlowV1.provenance_refs", "identity"),
+    ("GapV1.provenance_refs", "identity"),
+    ("DecisionSurfaceV1.signal_refs", "input_order"),
+    ("DecisionSurfaceV1.action_refs", "input_order"),
+    ("DecisionSurfaceV1.receipt_refs", "input_order"),
+    ("DecisionSurfaceV1.archive_subject_refs", "input_order"),
+    ("RtdDossierDraftV1.reference_digests", "reference_id"),
+    ("RtdDossierDraftV1.focus", "identity"),
+    ("RtdDossierDraftV1.scale_memberships", "membership_id"),
+    ("RtdDossierDraftV1.facets", "facet_id"),
+    ("RtdDossierDraftV1.dyads", "relation_id"),
+    ("RtdDossierDraftV1.hyperedges", "hyperedge_id"),
+    ("RtdDossierDraftV1.flows", "flow_id"),
+    ("RtdDossierDraftV1.gaps", "gap_id"),
+    ("RtdDossierDraftV1.provenance", "provenance_id"),
+    ("RelationalTerritoryDossierV1.reference_digests", "reference_id"),
+    ("RelationalTerritoryDossierV1.focus", "identity"),
+    ("RelationalTerritoryDossierV1.scale_memberships", "membership_id"),
+    ("RelationalTerritoryDossierV1.facets", "facet_id"),
+    ("RelationalTerritoryDossierV1.dyads", "relation_id"),
+    ("RelationalTerritoryDossierV1.hyperedges", "hyperedge_id"),
+    ("RelationalTerritoryDossierV1.flows", "flow_id"),
+    ("RelationalTerritoryDossierV1.gaps", "gap_id"),
+    ("RelationalTerritoryDossierV1.provenance", "provenance_id"),
+)
+
+REQUIRED_OPTION_FIELDS = (
+    ("ReferenceDigestV1", ("artifact_schema_id_or_null",)),
+    ("ScaleMembershipV1", ("weight_bits_or_null",)),
+    ("FacetV1", ("value_bits_or_null",)),
+    ("GapV1", ("required_producer_or_null",)),
+    ("ProvenanceV1", ("transformation_digest_or_null",)),
+    (
+        "RtdDossierDraftV1",
+        ("fog_policy_digest", "knowledge_context_digest", "actor"),
+    ),
+    (
+        "RelationalTerritoryDossierV1",
+        ("fog_policy_digest", "knowledge_context_digest", "actor"),
+    ),
 )
 
 
@@ -624,6 +1013,12 @@ def test_contract_freezes_schema_enums_limits_and_errors() -> None:
     assert contract.error_registry == EXPECTED_ERRORS
 
 
+def test_contract_freezes_complete_record_layouts_and_order_policy() -> None:
+    contract = load_contract(CONTRACT_PATH)
+    assert contract.record_specs == EXPECTED_RECORD_SPECS
+    assert tuple(contract.canonical_sets.items()) == EXPECTED_CANONICAL_SET_ROWS
+
+
 def test_contract_expands_every_identity_registry_component() -> None:
     contract = load_contract(CONTRACT_PATH)
     expected = _expected_identity_registry()
@@ -705,6 +1100,34 @@ def test_projection_hash_exists_only_on_the_sealed_record() -> None:
     )
 
 
+def _rust_struct_body(source: str, record_name: str) -> str:
+    return source.split(f"pub struct {record_name} {{", 1)[1].split("\n}", 1)[0]
+
+
+def test_rust_nullable_fields_require_keys_and_accept_explicit_null() -> None:
+    rust_source = render_rust(load_contract(CONTRACT_PATH))
+    helper = """fn deserialize_required_option<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer)
+}"""
+    assert helper in rust_source
+    assert "#[serde(default" not in rust_source
+    for record_index in range(REQUIRED_OPTION_RECORD_COUNT):
+        record_name, field_names = REQUIRED_OPTION_FIELDS[record_index]
+        body = _rust_struct_body(rust_source, record_name)
+        for field_index in range(MAX_REQUIRED_OPTIONS_PER_RECORD):
+            if field_index >= len(field_names):
+                break
+            field_name = field_names[field_index]
+            assert (
+                '#[serde(deserialize_with = "deserialize_required_option")]\n'
+                f"    pub {field_name}: Option<"
+            ) in body
+
+
 def test_both_sources_publish_every_closed_registry() -> None:
     contract = load_contract(CONTRACT_PATH)
     python_source = render_python(contract)
@@ -728,10 +1151,210 @@ def test_generated_files_are_current() -> None:
     assert result.returncode == 0, f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
 
 
+def _identity_payload(local_id: str) -> dict[str, str]:
+    return {
+        "domain": "test",
+        "authority": "babylon.rtd.v1.tests",
+        "local_id": local_id,
+    }
+
+
+def _minimal_draft_payload() -> dict[str, Any]:
+    return {
+        "schema": "babylon.relational-territory-dossier",
+        "schema_version": 1,
+        "projection_version": 1,
+        "audience": "ADMIN_MATERIAL",
+        "durability": "IN_MEMORY",
+        "verified_tick": 0,
+        "graph_state_hash": "0" * 64,
+        "nominal_world_hash": "0" * 64,
+        "reference_digests": [],
+        "definitions_digest": "0" * 64,
+        "template_digest": "0" * 64,
+        "fog_policy_digest": None,
+        "knowledge_context_digest": None,
+        "actor": None,
+        "focus": [_identity_payload("focus")],
+        "scale_memberships": [],
+        "facets": [],
+        "dyads": [],
+        "hyperedges": [],
+        "flows": [],
+        "gaps": [],
+        "provenance": [],
+        "decision_surface": {
+            "question_id": _identity_payload("question"),
+            "signal_refs": [_identity_payload("signal")],
+            "action_refs": [],
+            "receipt_refs": [],
+            "archive_subject_refs": [],
+        },
+    }
+
+
+def test_generated_python_collections_are_deeply_immutable_tuples() -> None:
+    draft = RtdDossierDraftV1.model_validate(_minimal_draft_payload())
+    assert isinstance(draft.focus, tuple)
+    assert isinstance(draft.decision_surface.signal_refs, tuple)
+    with pytest.raises(AttributeError):
+        cast(Any, draft.focus).append(draft.focus[0])
+    with pytest.raises(TypeError):
+        cast(Any, draft.focus)[0] = draft.focus[0]
+    with pytest.raises(AttributeError):
+        cast(Any, draft.decision_surface.signal_refs).append(draft.focus[0])
+
+
+@pytest.mark.parametrize(
+    ("field_name", "invalid_value"),
+    (
+        ("schema_version", "1"),
+        ("schema_version", 1.0),
+        ("schema_version", -1),
+        ("schema_version", 65_536),
+        ("projection_version", "1"),
+        ("projection_version", 1.0),
+        ("projection_version", -1),
+        ("projection_version", 65_536),
+        ("verified_tick", "1"),
+        ("verified_tick", 1.0),
+        ("verified_tick", -1),
+        ("verified_tick", 18_446_744_073_709_551_616),
+    ),
+)
+def test_generated_python_unsigned_fields_refuse_coercion_and_overflow(
+    field_name: str, invalid_value: object
+) -> None:
+    payload = _minimal_draft_payload()
+    payload[field_name] = invalid_value
+    with pytest.raises(ValidationError):
+        RtdDossierDraftV1.model_validate(payload)
+
+
+def test_generated_python_unsigned_fields_accept_exact_boundaries() -> None:
+    payload = _minimal_draft_payload()
+    payload["schema_version"] = 0
+    payload["projection_version"] = 65_535
+    payload["verified_tick"] = 18_446_744_073_709_551_615
+    draft = RtdDossierDraftV1.model_validate(payload)
+    assert draft.schema_version == 0
+    assert draft.projection_version == 65_535
+    assert draft.verified_tick == 18_446_744_073_709_551_615
+
+
+@pytest.mark.parametrize("outputs_exist", (False, True))
+def test_two_output_publication_rolls_back_when_second_replace_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outputs_exist: bool
+) -> None:
+    python_path = tmp_path / "generated.py"
+    rust_path = tmp_path / "generated.rs"
+    old_python = b"old python generation\n"
+    old_rust = b"old rust generation\n"
+    if outputs_exist:
+        python_path.write_bytes(old_python)
+        rust_path.write_bytes(old_rust)
+
+    real_replace = os.replace
+    replace_count = 0
+
+    def fail_second_replace(source: Any, destination: Any) -> None:
+        nonlocal replace_count
+        replace_count += 1
+        if replace_count == 2:
+            raise OSError("injected second replace failure")
+        real_replace(source, destination)
+
+    monkeypatch.setattr(os, "replace", fail_second_replace)
+    with pytest.raises(OSError, match="injected second replace failure"):
+        generator._write_outputs(python_path, "new python\n", rust_path, "new rust\n")
+
+    if outputs_exist:
+        assert python_path.read_bytes() == old_python
+        assert rust_path.read_bytes() == old_rust
+    else:
+        assert not python_path.exists()
+        assert not rust_path.exists()
+
+
 def _canonical_document() -> dict[str, Any]:
     document = yaml.safe_load(CONTRACT_PATH.read_text(encoding="utf-8"))
     assert isinstance(document, dict)
     return document
+
+
+def _record_field(document: dict[str, Any], record_name: str, field_name: str) -> dict[str, Any]:
+    fields = cast(list[dict[str, Any]], document["records"][record_name]["fields"])
+    matches: list[dict[str, Any]] = []
+    for field_index in range(MAX_EXPECTED_RECORD_FIELDS):
+        if field_index >= len(fields):
+            break
+        field = fields[field_index]
+        if field["name"] == field_name:
+            matches.append(field)
+    assert len(matches) == 1
+    return matches[0]
+
+
+def _apply_record_layout_mutation(document: dict[str, Any], mutation: str) -> None:
+    if mutation == "add_field":
+        document["records"]["TypedIdentityV1"]["fields"].append({"name": "extra", "type": "string"})
+        return
+    if mutation == "remove_field":
+        document["records"]["TypedIdentityV1"]["fields"].pop()
+        return
+    if mutation == "type":
+        _record_field(document, "TypedIdentityV1", "domain")["type"] = "vintage"
+        return
+    if mutation == "nullability":
+        _record_field(document, "TypedIdentityV1", "domain")["nullable"] = True
+        return
+    if mutation == "bound":
+        _record_field(document, "TypedIdentityV1", "domain")["bound"] = "max_vintage_bytes"
+        return
+    if mutation == "field_order":
+        fields = document["records"]["TypedIdentityV1"]["fields"]
+        fields[0], fields[1] = fields[1], fields[0]
+        return
+    if mutation in {"u16_to_u64", "u64_to_u16", "digest_constraint"}:
+        field_name = {
+            "u16_to_u64": "projection_version",
+            "u64_to_u16": "verified_tick",
+            "digest_constraint": "graph_state_hash",
+        }[mutation]
+        replacement = {
+            "u16_to_u64": "u64",
+            "u64_to_u16": "u16",
+            "digest_constraint": "string",
+        }[mutation]
+        _record_field(document, "RtdDossierDraftV1", field_name)["type"] = replacement
+        _record_field(document, "RelationalTerritoryDossierV1", field_name)["type"] = replacement
+        return
+    if mutation == "display_order_to_sort":
+        _record_field(document, "DecisionSurfaceV1", "signal_refs")["sort_key"] = "identity"
+        document["canonical_sets"]["DecisionSurfaceV1.signal_refs"] = "identity"
+        return
+    raise AssertionError(f"unhandled test mutation {mutation}")
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "add_field",
+        "remove_field",
+        "type",
+        "nullability",
+        "bound",
+        "field_order",
+        "u16_to_u64",
+        "u64_to_u16",
+        "digest_constraint",
+        "display_order_to_sort",
+    ),
+)
+def test_complete_record_layout_mutations_refuse_atomically(tmp_path: Path, mutation: str) -> None:
+    document = _canonical_document()
+    _apply_record_layout_mutation(document, mutation)
+    _assert_contract_refusal(tmp_path, _dump_contract(document), CONTRACT_SCHEMA_ERROR)
 
 
 def _dump_contract(document: dict[str, Any]) -> bytes:
@@ -921,6 +1544,20 @@ def test_duplicate_yaml_key_and_alias_refuse_atomically(tmp_path: Path) -> None:
 
     alias = canonical + b"alias_source: &probe []\nalias_use: *probe\n"
     _assert_contract_refusal(tmp_path / "alias", alias, CONTRACT_SCHEMA_ERROR)
+
+
+@pytest.mark.parametrize(
+    ("case_id", "raw"),
+    (
+        ("sequence-key", b"? [one, two]\n: value\n"),
+        ("mapping-key", b"? {one: two}\n: value\n"),
+        ("non-string-scalar-key", b"1: value\n"),
+    ),
+)
+def test_non_string_yaml_mapping_keys_use_stable_contract_error(
+    tmp_path: Path, case_id: str, raw: bytes
+) -> None:
+    _assert_contract_refusal(tmp_path / case_id, raw, CONTRACT_SCHEMA_ERROR)
 
 
 def test_raw_size_event_count_and_depth_limits_refuse_atomically(tmp_path: Path) -> None:

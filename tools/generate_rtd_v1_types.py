@@ -21,6 +21,7 @@ from yaml.events import (
     SequenceEndEvent,
     SequenceStartEvent,
 )
+from yaml.nodes import ScalarNode
 
 REPO_ROOT: Final = Path(__file__).resolve().parent.parent
 DEFAULT_CONTRACT: Final = REPO_ROOT / "contracts" / "relational_territory_dossier_v1.yaml"
@@ -228,6 +229,381 @@ EXPECTED_RECORD_NAMES: Final = (
     "DecisionSurfaceV1",
     "RtdDossierDraftV1",
     "RelationalTerritoryDossierV1",
+)
+
+EXPECTED_RECORD_ROWS: Final = (
+    (
+        "TypedIdentityV1",
+        (
+            ("domain", "string", False, "max_identity_component_bytes", None),
+            ("authority", "string", False, "max_identity_component_bytes", None),
+            ("local_id", "string", False, "max_identity_component_bytes", None),
+        ),
+    ),
+    (
+        "ReferenceDigestV1",
+        (
+            ("reference_id", "identity", False, None, None),
+            ("sha256_hex", "digest_hex", False, None, None),
+            ("artifact_schema_id_or_null", "identity", True, None, None),
+            ("vintage", "vintage", False, "max_vintage_bytes", None),
+            ("evidence_class", "EvidenceClassV1", False, None, None),
+        ),
+    ),
+    (
+        "DimensionCoordinateV1",
+        (
+            ("dimension_ref", "identity", False, None, None),
+            ("member_ref", "identity", False, None, None),
+        ),
+    ),
+    (
+        "ScaleMembershipV1",
+        (
+            ("membership_id", "identity", False, None, None),
+            ("member_ref", "identity", False, None, None),
+            ("scale_ref", "identity", False, None, None),
+            ("membership_kind", "MembershipKindV1", False, None, None),
+            ("status", "StatusV1", False, None, None),
+            ("weight_status", "StatusV1", False, None, None),
+            ("weight_bits_or_null", "bits64_hex", True, None, None),
+            ("coverage", "CoverageV1", False, None, None),
+            ("evidence_class", "EvidenceClassV1", False, None, None),
+            (
+                "provenance_refs",
+                "list[identity]",
+                False,
+                "max_provenance_refs",
+                "identity",
+            ),
+        ),
+    ),
+    (
+        "FacetV1",
+        (
+            ("facet_id", "identity", False, None, None),
+            ("family", "FacetFamilyV1", False, None, None),
+            ("subject_ref", "identity", False, None, None),
+            ("metric_id", "identity", False, None, None),
+            ("unit_id", "identity", False, None, None),
+            ("native_scale", "identity", False, None, None),
+            (
+                "coordinates",
+                "list[DimensionCoordinateV1]",
+                False,
+                "max_coordinates",
+                "dimension_ref",
+            ),
+            ("vintage", "vintage", False, "max_vintage_bytes", None),
+            ("status", "StatusV1", False, None, None),
+            ("value_kind", "ValueKindV1", False, None, None),
+            ("value_bits_or_null", "bits64_hex", True, None, None),
+            ("coverage", "CoverageV1", False, None, None),
+            ("evidence_class", "EvidenceClassV1", False, None, None),
+            (
+                "provenance_refs",
+                "list[identity]",
+                False,
+                "max_provenance_refs",
+                "identity",
+            ),
+        ),
+    ),
+    (
+        "DyadV1",
+        (
+            ("relation_id", "identity", False, None, None),
+            ("relation_kind", "DyadKindV1", False, None, None),
+            ("from_ref", "identity", False, None, None),
+            ("to_ref", "identity", False, None, None),
+            ("native_scale", "identity", False, None, None),
+            ("status", "StatusV1", False, None, None),
+            ("coverage", "CoverageV1", False, None, None),
+            (
+                "payload_facets",
+                "list[identity]",
+                False,
+                "max_payload_facets",
+                "identity",
+            ),
+            ("evidence_class", "EvidenceClassV1", False, None, None),
+            (
+                "provenance_refs",
+                "list[identity]",
+                False,
+                "max_provenance_refs",
+                "identity",
+            ),
+        ),
+    ),
+    (
+        "HyperedgeV1",
+        (
+            ("hyperedge_id", "identity", False, None, None),
+            ("hyperedge_kind", "HyperedgeKindV1", False, None, None),
+            (
+                "member_refs",
+                "list[identity]",
+                False,
+                "max_hyperedge_members",
+                "identity",
+            ),
+            ("native_scale", "identity", False, None, None),
+            ("status", "StatusV1", False, None, None),
+            ("coverage", "CoverageV1", False, None, None),
+            (
+                "payload_facets",
+                "list[identity]",
+                False,
+                "max_payload_facets",
+                "identity",
+            ),
+            ("evidence_class", "EvidenceClassV1", False, None, None),
+            (
+                "provenance_refs",
+                "list[identity]",
+                False,
+                "max_provenance_refs",
+                "identity",
+            ),
+        ),
+    ),
+    (
+        "ReferenceFlowV1",
+        (
+            ("flow_id", "identity", False, None, None),
+            ("flow_kind", "FlowKindV1", False, None, None),
+            ("origin_ref", "identity", False, None, None),
+            ("destination_ref", "identity", False, None, None),
+            (
+                "payload_facets",
+                "list[identity]",
+                False,
+                "max_payload_facets",
+                "identity",
+            ),
+            ("native_scale", "identity", False, None, None),
+            ("status", "StatusV1", False, None, None),
+            ("coverage", "CoverageV1", False, None, None),
+            ("evidence_class", "EvidenceClassV1", False, None, None),
+            (
+                "provenance_refs",
+                "list[identity]",
+                False,
+                "max_provenance_refs",
+                "identity",
+            ),
+        ),
+    ),
+    (
+        "GapV1",
+        (
+            ("gap_id", "identity", False, None, None),
+            ("requested_metric_or_relation", "identity", False, None, None),
+            ("status", "StatusV1", False, None, None),
+            ("reason_code", "GapReasonV1", False, None, None),
+            (
+                "required_producer_or_null",
+                "producer_issue",
+                True,
+                "max_required_producer_bytes",
+                None,
+            ),
+            (
+                "provenance_refs",
+                "list[identity]",
+                False,
+                "max_provenance_refs",
+                "identity",
+            ),
+        ),
+    ),
+    (
+        "ProvenanceV1",
+        (
+            ("provenance_id", "identity", False, None, None),
+            ("artifact_digest", "digest_hex", False, None, None),
+            ("locator", "string", False, "max_provenance_locator_bytes", None),
+            ("vintage", "vintage", False, "max_vintage_bytes", None),
+            ("evidence_class", "EvidenceClassV1", False, None, None),
+            ("transformation_digest_or_null", "digest_hex", True, None, None),
+        ),
+    ),
+    (
+        "DecisionSurfaceV1",
+        (
+            ("question_id", "identity", False, None, None),
+            (
+                "signal_refs",
+                "list[identity]",
+                False,
+                "max_decision_surface_refs",
+                "input_order",
+            ),
+            (
+                "action_refs",
+                "list[identity]",
+                False,
+                "max_decision_surface_refs",
+                "input_order",
+            ),
+            (
+                "receipt_refs",
+                "list[identity]",
+                False,
+                "max_decision_surface_refs",
+                "input_order",
+            ),
+            (
+                "archive_subject_refs",
+                "list[identity]",
+                False,
+                "max_decision_surface_refs",
+                "input_order",
+            ),
+        ),
+    ),
+    (
+        "RtdDossierDraftV1",
+        (
+            ("schema", "string", False, None, None),
+            ("schema_version", "u16", False, None, None),
+            ("projection_version", "u16", False, None, None),
+            ("audience", "AudienceV1", False, None, None),
+            ("durability", "DurabilityV1", False, None, None),
+            ("verified_tick", "u64", False, None, None),
+            ("graph_state_hash", "digest_hex", False, None, None),
+            ("nominal_world_hash", "digest_hex", False, None, None),
+            (
+                "reference_digests",
+                "list[ReferenceDigestV1]",
+                False,
+                "max_reference_digests",
+                "reference_id",
+            ),
+            ("definitions_digest", "digest_hex", False, None, None),
+            ("template_digest", "digest_hex", False, None, None),
+            ("fog_policy_digest", "digest_hex", True, None, None),
+            ("knowledge_context_digest", "digest_hex", True, None, None),
+            ("actor", "identity", True, None, None),
+            ("focus", "list[identity]", False, "max_focus", "identity"),
+            (
+                "scale_memberships",
+                "list[ScaleMembershipV1]",
+                False,
+                "max_scale_memberships",
+                "membership_id",
+            ),
+            ("facets", "list[FacetV1]", False, "max_facets", "facet_id"),
+            ("dyads", "list[DyadV1]", False, "max_dyads", "relation_id"),
+            (
+                "hyperedges",
+                "list[HyperedgeV1]",
+                False,
+                "max_hyperedges",
+                "hyperedge_id",
+            ),
+            ("flows", "list[ReferenceFlowV1]", False, "max_flows", "flow_id"),
+            ("gaps", "list[GapV1]", False, "max_gaps", "gap_id"),
+            (
+                "provenance",
+                "list[ProvenanceV1]",
+                False,
+                "max_provenance",
+                "provenance_id",
+            ),
+            ("decision_surface", "DecisionSurfaceV1", False, None, None),
+        ),
+    ),
+    (
+        "RelationalTerritoryDossierV1",
+        (
+            ("schema", "string", False, None, None),
+            ("schema_version", "u16", False, None, None),
+            ("projection_version", "u16", False, None, None),
+            ("audience", "AudienceV1", False, None, None),
+            ("durability", "DurabilityV1", False, None, None),
+            ("verified_tick", "u64", False, None, None),
+            ("graph_state_hash", "digest_hex", False, None, None),
+            ("nominal_world_hash", "digest_hex", False, None, None),
+            (
+                "reference_digests",
+                "list[ReferenceDigestV1]",
+                False,
+                "max_reference_digests",
+                "reference_id",
+            ),
+            ("definitions_digest", "digest_hex", False, None, None),
+            ("template_digest", "digest_hex", False, None, None),
+            ("fog_policy_digest", "digest_hex", True, None, None),
+            ("knowledge_context_digest", "digest_hex", True, None, None),
+            ("actor", "identity", True, None, None),
+            ("focus", "list[identity]", False, "max_focus", "identity"),
+            (
+                "scale_memberships",
+                "list[ScaleMembershipV1]",
+                False,
+                "max_scale_memberships",
+                "membership_id",
+            ),
+            ("facets", "list[FacetV1]", False, "max_facets", "facet_id"),
+            ("dyads", "list[DyadV1]", False, "max_dyads", "relation_id"),
+            (
+                "hyperedges",
+                "list[HyperedgeV1]",
+                False,
+                "max_hyperedges",
+                "hyperedge_id",
+            ),
+            ("flows", "list[ReferenceFlowV1]", False, "max_flows", "flow_id"),
+            ("gaps", "list[GapV1]", False, "max_gaps", "gap_id"),
+            (
+                "provenance",
+                "list[ProvenanceV1]",
+                False,
+                "max_provenance",
+                "provenance_id",
+            ),
+            ("decision_surface", "DecisionSurfaceV1", False, None, None),
+            ("projection_hash", "digest_hex", False, None, None),
+        ),
+    ),
+)
+
+EXPECTED_CANONICAL_SET_ROWS: Final = (
+    ("ScaleMembershipV1.provenance_refs", "identity"),
+    ("FacetV1.coordinates", "dimension_ref"),
+    ("FacetV1.provenance_refs", "identity"),
+    ("DyadV1.payload_facets", "identity"),
+    ("DyadV1.provenance_refs", "identity"),
+    ("HyperedgeV1.member_refs", "identity"),
+    ("HyperedgeV1.payload_facets", "identity"),
+    ("HyperedgeV1.provenance_refs", "identity"),
+    ("ReferenceFlowV1.payload_facets", "identity"),
+    ("ReferenceFlowV1.provenance_refs", "identity"),
+    ("GapV1.provenance_refs", "identity"),
+    ("DecisionSurfaceV1.signal_refs", "input_order"),
+    ("DecisionSurfaceV1.action_refs", "input_order"),
+    ("DecisionSurfaceV1.receipt_refs", "input_order"),
+    ("DecisionSurfaceV1.archive_subject_refs", "input_order"),
+    ("RtdDossierDraftV1.reference_digests", "reference_id"),
+    ("RtdDossierDraftV1.focus", "identity"),
+    ("RtdDossierDraftV1.scale_memberships", "membership_id"),
+    ("RtdDossierDraftV1.facets", "facet_id"),
+    ("RtdDossierDraftV1.dyads", "relation_id"),
+    ("RtdDossierDraftV1.hyperedges", "hyperedge_id"),
+    ("RtdDossierDraftV1.flows", "flow_id"),
+    ("RtdDossierDraftV1.gaps", "gap_id"),
+    ("RtdDossierDraftV1.provenance", "provenance_id"),
+    ("RelationalTerritoryDossierV1.reference_digests", "reference_id"),
+    ("RelationalTerritoryDossierV1.focus", "identity"),
+    ("RelationalTerritoryDossierV1.scale_memberships", "membership_id"),
+    ("RelationalTerritoryDossierV1.facets", "facet_id"),
+    ("RelationalTerritoryDossierV1.dyads", "relation_id"),
+    ("RelationalTerritoryDossierV1.hyperedges", "hyperedge_id"),
+    ("RelationalTerritoryDossierV1.flows", "flow_id"),
+    ("RelationalTerritoryDossierV1.gaps", "gap_id"),
+    ("RelationalTerritoryDossierV1.provenance", "provenance_id"),
 )
 
 UNIT_LOCAL_IDS: Final = {
@@ -643,7 +1019,17 @@ def _construct_unique_mapping(
         if pair_index >= len(node.value):
             break
         key_node, value_node = node.value[pair_index]
+        if not isinstance(key_node, ScalarNode):
+            raise ContractLoadError(
+                CONTRACT_SCHEMA_ERROR,
+                "YAML mapping keys must be scalar strings",
+            )
         key = loader.construct_object(key_node, deep=deep)
+        if not isinstance(key, str):
+            raise ContractLoadError(
+                CONTRACT_SCHEMA_ERROR,
+                "YAML mapping keys must be scalar strings",
+            )
         if key in mapping:
             raise ContractLoadError(CONTRACT_SCHEMA_ERROR, f"duplicate YAML key {key!r}")
         mapping[key] = loader.construct_object(value_node, deep=deep)
@@ -892,9 +1278,32 @@ def _parse_records(
             _validate_field_semantics(parsed_field, known_types)
             parsed_fields.append(parsed_field)
         parsed.append(RecordSpec(name, tuple(parsed_fields)))
-    _validate_identity_field_rules(tuple(parsed))
-    _validate_draft_and_sealed(tuple(parsed))
-    return tuple(parsed)
+    result = tuple(parsed)
+    if _record_rows(result) != EXPECTED_RECORD_ROWS:
+        raise _schema_error("record field layouts changed or reordered")
+    _validate_identity_field_rules(result)
+    _validate_draft_and_sealed(result)
+    return result
+
+
+def _record_rows(
+    records: tuple[RecordSpec, ...],
+) -> tuple[tuple[str, tuple[tuple[str, str, bool, str | None, str | None], ...]], ...]:
+    rows: list[tuple[str, tuple[tuple[str, str, bool, str | None, str | None], ...]]] = []
+    for record_index in range(RTD_MAX_RECORD_DECLARATIONS):
+        if record_index >= len(records):
+            break
+        record = records[record_index]
+        fields: list[tuple[str, str, bool, str | None, str | None]] = []
+        for field_index in range(RTD_MAX_FIELDS_PER_RECORD):
+            if field_index >= len(record.fields):
+                break
+            field = record.fields[field_index]
+            fields.append(
+                (field.name, field.type_name, field.nullable, field.bound, field.sort_key)
+            )
+        rows.append((record.name, tuple(fields)))
+    return tuple(rows)
 
 
 def _validate_identity_field_rules(records: tuple[RecordSpec, ...]) -> None:
@@ -1169,6 +1578,8 @@ def _parse_canonical_sets(raw_sets: Any, records: tuple[RecordSpec, ...]) -> dic
         if not isinstance(path, str) or not isinstance(sort_key, str):
             raise _schema_error("canonical set rows must be string mappings")
         result[path] = sort_key
+    if tuple(result.items()) != EXPECTED_CANONICAL_SET_ROWS:
+        raise _schema_error("canonical set policy changed or is reordered")
     declared: dict[str, str] = {}
     for record_index in range(RTD_MAX_RECORD_DECLARATIONS):
         if record_index >= len(records):
@@ -1252,11 +1663,11 @@ def _python_type(field: FieldSpec) -> str:
         "producer_issue": "str",
         "digest_hex": "str",
         "bits64_hex": "str",
-        "u16": "int",
-        "u64": "int",
+        "u16": "Annotated[int, Field(strict=True, ge=0, le=65_535)]",
+        "u64": "Annotated[int, Field(strict=True, ge=0, le=18_446_744_073_709_551_615)]",
         "identity": "TypedIdentityV1",
     }.get(base, base)
-    rendered = f"list[{scalar}]" if is_list else scalar
+    rendered = f"tuple[{scalar}, ...]" if is_list else scalar
     return f"{rendered} | None" if field.nullable else rendered
 
 
@@ -1308,6 +1719,7 @@ def _python_header(spec: RtdContractSpec) -> list[str]:
         "",
         "from enum import StrEnum",
         "from types import MappingProxyType",
+        "from typing import Annotated",
         "",
         "from pydantic import BaseModel, ConfigDict, Field",
         "",
@@ -1511,6 +1923,14 @@ def _rust_header(spec: RtdContractSpec) -> list[str]:
         "",
         "use serde::Deserialize;",
         "",
+        "fn deserialize_required_option<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>",
+        "where",
+        "    D: serde::Deserializer<'de>,",
+        "    T: Deserialize<'de>,",
+        "{",
+        "    Option::<T>::deserialize(deserializer)",
+        "}",
+        "",
     ]
 
 
@@ -1548,6 +1968,8 @@ def _render_rust_records(spec: RtdContractSpec, lines: list[str]) -> None:
             if field_index >= len(record.fields):
                 break
             field = record.fields[field_index]
+            if field.nullable:
+                lines.append('    #[serde(deserialize_with = "deserialize_required_option")]')
             lines.append(f"    pub {field.name}: {_rust_type(field)},")
         lines.extend(("}", ""))
 
@@ -1779,19 +2201,60 @@ def _check_output(path: Path, expected: str) -> bool:
         return False
 
 
-def _stage_output(path: Path, content: str) -> Path:
+def _stage_bytes(path: Path, content: bytes) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     temporary_path = Path(temporary_name)
     try:
         with os.fdopen(descriptor, "wb") as output_file:
-            output_file.write(content.encode("utf-8"))
+            output_file.write(content)
             output_file.flush()
             os.fsync(output_file.fileno())
     except OSError:
         temporary_path.unlink(missing_ok=True)
         raise
     return temporary_path
+
+
+def _stage_output(path: Path, content: str) -> Path:
+    return _stage_bytes(path, content.encode("utf-8"))
+
+
+def _snapshot_output(path: Path) -> Path | None:
+    try:
+        content = path.read_bytes()
+    except FileNotFoundError:
+        return None
+    return _stage_bytes(path, content)
+
+
+def _restore_output(path: Path, backup: Path | None) -> None:
+    if backup is None:
+        path.unlink(missing_ok=True)
+        return
+    os.replace(backup, path)
+
+
+def _rollback_outputs(
+    python_path: Path,
+    python_backup: Path | None,
+    rust_path: Path,
+    rust_backup: Path | None,
+) -> None:
+    python_error: OSError | None = None
+    rust_error: OSError | None = None
+    try:
+        _restore_output(python_path, python_backup)
+    except OSError as error:
+        python_error = error
+    try:
+        _restore_output(rust_path, rust_backup)
+    except OSError as error:
+        rust_error = error
+    if python_error is not None:
+        raise OSError("failed to roll back Python generated output") from python_error
+    if rust_error is not None:
+        raise OSError("failed to roll back Rust generated output") from rust_error
 
 
 def _write_outputs(
@@ -1803,12 +2266,27 @@ def _write_outputs(
     except OSError:
         staged_python.unlink(missing_ok=True)
         raise
+    python_backup: Path | None = None
+    rust_backup: Path | None = None
     try:
-        os.replace(staged_python, python_path)
-        os.replace(staged_rust, rust_path)
+        python_backup = _snapshot_output(python_path)
+        rust_backup = _snapshot_output(rust_path)
+        try:
+            os.replace(staged_python, python_path)
+            os.replace(staged_rust, rust_path)
+        except OSError as publish_error:
+            try:
+                _rollback_outputs(python_path, python_backup, rust_path, rust_backup)
+            except OSError as rollback_error:
+                raise rollback_error from publish_error
+            raise
     finally:
         staged_python.unlink(missing_ok=True)
         staged_rust.unlink(missing_ok=True)
+        if python_backup is not None:
+            python_backup.unlink(missing_ok=True)
+        if rust_backup is not None:
+            rust_backup.unlink(missing_ok=True)
 
 
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:

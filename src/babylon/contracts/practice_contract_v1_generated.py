@@ -12,6 +12,10 @@ U16 = Annotated[int, Field(strict=True, ge=0, le=65_535)]
 U32 = Annotated[int, Field(strict=True, ge=0, le=4_294_967_295)]
 U64 = Annotated[int, Field(strict=True, ge=0, le=18_446_744_073_709_551_615)]
 Digest32 = Annotated[bytes, Field(strict=True, min_length=32, max_length=32)]
+PRACTICE_INPUT_AUTHORITY_V1_DOMAIN_BYTES = b"babylon.practice-input-authority.v1"
+PRACTICE_INTENT_V1_DOMAIN_BYTES = b"babylon.practice-intent.v1"
+ORGANIZATION_BUDGET_DELTA_V1_DOMAIN_BYTES = b"babylon.organization-budget-delta.v1"
+PRACTICE_WIRE_DOMAIN_TERMINATOR_BYTES = b"\x00"
 
 
 class PracticeIdV1(IntEnum):

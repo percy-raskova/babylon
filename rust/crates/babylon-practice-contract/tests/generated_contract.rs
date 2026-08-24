@@ -135,6 +135,23 @@ fn generated_field_order_is_the_contract_order() {
 }
 
 #[test]
+fn generated_wire_domain_bytes_and_terminator_are_exact() {
+    assert_eq!(
+        PRACTICE_INPUT_AUTHORITY_V1_DOMAIN_BYTES,
+        b"babylon.practice-input-authority.v1"
+    );
+    assert_eq!(
+        PRACTICE_INTENT_V1_DOMAIN_BYTES,
+        b"babylon.practice-intent.v1"
+    );
+    assert_eq!(
+        ORGANIZATION_BUDGET_DELTA_V1_DOMAIN_BYTES,
+        b"babylon.organization-budget-delta.v1"
+    );
+    assert_eq!(PRACTICE_WIRE_DOMAIN_TERMINATOR_BYTES, b"\x00");
+}
+
+#[test]
 fn generated_record_shapes_use_typed_fixed_width_values() {
     let digest = [0_u8; 32];
     let parameter = PracticeParameterV1 {
@@ -207,6 +224,22 @@ fn generated_sequence_validators_refuse_plus_one() {
     assert_eq!(
         validate_authority_context_collection_bounds(&authority),
         Err(PracticeContractError::PracticeAuthorityRegistryLimit)
+    );
+    let edge = OrganizationPracticeTopologyEdgeV1 {
+        target_domain: PracticeTargetDomainV1::SocialClass,
+        target_class_node_id_u64: 2,
+    };
+    let topology = OrganizationPracticeTopologyV1 {
+        organizations: vec![OrganizationPracticeTopologyRowV1 {
+            node_id_u64: 1,
+            active_bool: true,
+            action_budget_storage_f64_bits_u64: Some(0),
+            edges: vec![edge; MAX_ORG_SOLIDARITY_EDGES_PER_ORG + 1],
+        }],
+    };
+    assert_eq!(
+        validate_topology_collection_bounds(&topology),
+        Err(PracticeContractError::PracticeFootprintLimit)
     );
 }
 

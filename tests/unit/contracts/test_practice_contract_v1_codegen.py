@@ -781,6 +781,13 @@ def _valid_generated_records(generated: Any) -> dict[str, tuple[type[Any], dict[
         edges=(topology_edge,),
     )
     return {
+        "MachineVerbV1": (
+            generated.MachineVerbV1,
+            {
+                "stem": generated.VerbStemV1.MOBILIZE,
+                "mode": generated.VerbModeV1.CANVASS,
+            },
+        ),
         "PracticeInputAuthorityV1": (
             generated.PracticeInputAuthorityV1,
             {
@@ -973,6 +980,18 @@ def test_generated_outputs_are_current_and_strict() -> None:
         assert config["strict"] is True
 
 
+def test_generated_wire_domain_bytes_and_terminator_are_exact() -> None:
+    generated = _generated_module()
+    assert generated.PRACTICE_INPUT_AUTHORITY_V1_DOMAIN_BYTES == (
+        b"babylon.practice-input-authority.v1"
+    )
+    assert generated.PRACTICE_INTENT_V1_DOMAIN_BYTES == b"babylon.practice-intent.v1"
+    assert generated.ORGANIZATION_BUDGET_DELTA_V1_DOMAIN_BYTES == (
+        b"babylon.organization-budget-delta.v1"
+    )
+    assert generated.PRACTICE_WIRE_DOMAIN_TERMINATOR_BYTES == b"\x00"
+
+
 def test_generated_python_enums_and_machine_mapping_are_closed() -> None:
     generated = _generated_module()
     expected = {
@@ -1002,6 +1021,32 @@ def test_generated_python_enums_and_machine_mapping_are_closed() -> None:
     ):
         with pytest.raises(ValidationError):
             TypeAdapter(enum_type).validate_python(1, strict=True)
+
+
+@pytest.mark.parametrize(
+    ("model_name", "field_name", "cross_enum"),
+    [
+        ("MachineVerbV1", "stem", "PracticeIdV1"),
+        ("MachineVerbV1", "mode", "PracticeIdV1"),
+        ("PracticeInputAuthorityV1", "authority_kind", "PracticeIdV1"),
+        ("PracticeIntentV1", "practice_id", "PracticeTargetDomainV1"),
+        ("PracticeIntentV1", "target_domain", "PracticeIdV1"),
+        ("SolidarityFootprintEdgeV1", "target_domain_u8", "PracticeIdV1"),
+        ("OrganizationPracticeTopologyEdgeV1", "target_domain", "PracticeIdV1"),
+        ("PracticeSubmissionRejectionV1", "reason_code", "PracticeIdV1"),
+    ],
+)
+def test_generated_record_enum_fields_reject_raw_and_cross_enum_values(
+    model_name: str,
+    field_name: str,
+    cross_enum: str,
+) -> None:
+    generated = _generated_module()
+    model, values = _valid_generated_records(generated)[model_name]
+    invalid_values = (1, getattr(generated, cross_enum)(1))
+    for invalid in invalid_values:
+        with pytest.raises(ValidationError):
+            model.model_validate({**values, field_name: invalid})
 
 
 def test_generated_python_rejects_non_strict_shapes() -> None:
@@ -1064,6 +1109,7 @@ def test_generated_python_rejects_unsigned_width_violations() -> None:
         ("PracticeParameterV1", "value_kind_u8", 8),
         ("PracticeParameterV1", "value_length_u16", 16),
         ("PracticeIntentV1", "submit_after_tick", 64),
+        ("PracticeIntentV1", "schema_version", 16),
         ("PracticeIntentV1", "resolve_tick", 64),
         ("PracticeIntentV1", "actor_org_id", 64),
         ("PracticeIntentV1", "target_node_id", 64),
@@ -1078,6 +1124,7 @@ def test_generated_python_rejects_unsigned_width_violations() -> None:
         ("OrganizationPracticeTopologyRowV1", "node_id_u64", 64),
         ("OrganizationPracticeTopologyRowV1", "action_budget_storage_f64_bits_u64", 64),
         ("OrganizationBudgetDeltaV1", "tick", 64),
+        ("OrganizationBudgetDeltaV1", "schema_version", 16),
         ("OrganizationBudgetDeltaV1", "actor_node_id", 64),
         ("OrganizationBudgetDeltaV1", "budget_before", 32),
         ("OrganizationBudgetDeltaV1", "governed_cost", 32),
@@ -1132,4 +1179,11 @@ def test_generated_tuple_constructors_are_shape_only_but_validators_are_bounded(
     topology = topology_model.model_validate({**topology_values, "organizations": (row,) * 4_097})
     assert generated.validate_topology_collection_bounds(topology) is (
         generated.PracticeContractError.PRACTICE_TOPOLOGY_ORGANIZATION_LIMIT
+    )
+    edge_model, edge_values = records["OrganizationPracticeTopologyEdgeV1"]
+    edge = edge_model.model_validate(edge_values)
+    row = row_model.model_validate({**row_values, "edges": (edge,) * 257})
+    topology = topology_model.model_validate({**topology_values, "organizations": (row,)})
+    assert generated.validate_topology_collection_bounds(topology) is (
+        generated.PracticeContractError.PRACTICE_FOOTPRINT_LIMIT
     )

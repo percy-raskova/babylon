@@ -1,5 +1,11 @@
 // Generated from contracts/practice_contract_v1.yaml; sha256=e9ed6dbaf01f89f1294f2e6d28946e73b05d9a4d75472d5b2dd352350d332f79
 
+pub const PRACTICE_INPUT_AUTHORITY_V1_DOMAIN_BYTES: &[u8] = b"babylon.practice-input-authority.v1";
+pub const PRACTICE_INTENT_V1_DOMAIN_BYTES: &[u8] = b"babylon.practice-intent.v1";
+pub const ORGANIZATION_BUDGET_DELTA_V1_DOMAIN_BYTES: &[u8] =
+    b"babylon.organization-budget-delta.v1";
+pub const PRACTICE_WIRE_DOMAIN_TERMINATOR_BYTES: &[u8] = b"\x00";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u16)]
 pub enum PracticeContractError {

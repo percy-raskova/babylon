@@ -743,6 +743,48 @@ def _rust_const(name: str) -> str:
     return "".join(output)
 
 
+def _wire_domains(spec: PracticeContractSpec) -> list[tuple[str, bytes]]:
+    records = _mapping(spec.raw["records"])
+    domains: list[tuple[str, bytes]] = []
+    for record_name, record_value in islice(records.items(), MAX_RECORDS + 1):
+        record = _mapping(record_value)
+        wire_domain = record["wire_domain"]
+        if wire_domain:
+            domains.append(
+                (f"{_rust_const(record_name)}_DOMAIN_BYTES", wire_domain.encode("ascii"))
+            )
+    return domains
+
+
+def _render_python_wire_constants(spec: PracticeContractSpec) -> list[str]:
+    lines = [
+        f'{name} = b"{value.decode("ascii")}"'
+        for name, value in islice(_wire_domains(spec), MAX_RECORDS + 1)
+    ]
+    terminator = bytes.fromhex(spec.raw["domain_terminator_hex"])
+    lines.append(f'PRACTICE_WIRE_DOMAIN_TERMINATOR_BYTES = b"\\x{terminator[0]:02x}"')
+    lines.extend(["", ""])
+    return lines
+
+
+def _render_rust_wire_constants(spec: PracticeContractSpec) -> list[str]:
+    lines: list[str] = []
+    for name, value in islice(_wire_domains(spec), MAX_RECORDS + 1):
+        domain = value.decode("ascii")
+        declaration = f"pub const {name}: &[u8] ="
+        literal = f'b"{domain}";'
+        if len(declaration) + 1 + len(literal) <= 100:
+            lines.append(f"{declaration} {literal}")
+        else:
+            lines.extend([declaration, f"    {literal}"])
+    terminator = bytes.fromhex(spec.raw["domain_terminator_hex"])
+    lines.append(
+        f'pub const PRACTICE_WIRE_DOMAIN_TERMINATOR_BYTES: &[u8] = b"\\x{terminator[0]:02x}";'
+    )
+    lines.append("")
+    return lines
+
+
 def _python_type(type_name: str) -> str:
     scalar = {
         "u8": "U8",
@@ -897,9 +939,8 @@ def render_python(spec: PracticeContractSpec) -> str:
         "U32 = Annotated[int, Field(strict=True, ge=0, le=4_294_967_295)]",
         "U64 = Annotated[int, Field(strict=True, ge=0, le=18_446_744_073_709_551_615)]",
         "Digest32 = Annotated[bytes, Field(strict=True, min_length=32, max_length=32)]",
-        "",
-        "",
     ]
+    lines.extend(_render_python_wire_constants(spec))
     lines.extend(_render_python_enums(spec))
     lines.extend(_render_python_records(spec))
     lines.extend(_render_python_api(spec))
@@ -1102,6 +1143,7 @@ def render_rust(spec: PracticeContractSpec) -> str:
         f"// Generated from contracts/practice_contract_v1.yaml; sha256={spec.source_digest}",
         "",
     ]
+    lines.extend(_render_rust_wire_constants(spec))
     lines.extend(_render_rust_errors(spec))
     for name, row in islice(spec.raw["enums"].items(), MAX_ENUMS + 1):
         lines.extend(_render_rust_enum(name, row["width"], row["members"]))

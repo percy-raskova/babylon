@@ -29,7 +29,7 @@ import sys
 CRITICAL_CHECKS = (
     "Rust Gate (fmt, clippy, test, doc — rust/ workspace)",
     "Baseline Ceremony Gate (§6.5 provenance)",
-    "Postgres Integration Tier (PG 17, digest-pinned container)",
+    "Postgres Integration Tier (PG 17, pinned runtime)",
 )
 
 GREEN = {"SUCCESS", "NEUTRAL", "SKIPPED"}

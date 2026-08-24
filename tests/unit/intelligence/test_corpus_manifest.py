@@ -9,7 +9,10 @@ below builds its own tmp fixture tree.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
+from typing import Final
 
 import pytest
 from pydantic import ValidationError
@@ -20,6 +23,7 @@ from babylon.intelligence.corpus_manifest import (
     CorpusFormat,
     CorpusManifest,
     CorpusRole,
+    CorpusRow,
     ExclusionPolicy,
     load_bundled_manifest,
     load_manifest,
@@ -27,6 +31,10 @@ from babylon.intelligence.corpus_manifest import (
 )
 
 pytestmark = pytest.mark.unit
+
+_EXPECTED_DIRECTOR_POLICY_SHA256: Final[str] = (
+    "2ddfbd127723ea60c6e6cdb993763a3dd02b05dd479e8ddc4c850e5c94a3e243"
+)
 
 
 def _row(**overrides: object) -> dict[str, object]:
@@ -41,6 +49,29 @@ def _row(**overrides: object) -> dict[str, object]:
     }
     base.update(overrides)
     return base
+
+
+def _director_policy_digest(rows: tuple[CorpusRow, CorpusRow, CorpusRow]) -> str:
+    """Hash the closed row set through one documented canonical serialization.
+
+    Each row is Pydantic JSON-mode data encoded as compact UTF-8 JSON with
+    lexicographically sorted object keys. The three complete row objects sort
+    by their encoded bytes, then receive JSON array framing and a versioned
+    domain prefix before SHA-256.
+    """
+    encoded_rows = tuple(
+        json.dumps(
+            row.model_dump(mode="json"),
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        for row in rows
+    )
+    canonical = (
+        b"babylon.director-exclusion-policy.v1\x00[" + b",".join(sorted(encoded_rows)) + b"]"
+    )
+    return hashlib.sha256(canonical).hexdigest()
 
 
 # =============================================================================
@@ -106,20 +137,52 @@ class TestClosedVocabularies:
         with pytest.raises(ValidationError, match="4,096"):
             parse_manifest({"rows": (*at_limit, _row(work="Over limit"))})
 
+    def test_manifest_row_ceiling_is_loud_for_generator_input(self) -> None:
+        at_limit = (_row(work=f"Work {index}") for index in range(4_096))
+        assert len(parse_manifest({"rows": at_limit}).rows) == 4_096
+
+        over_limit = (_row(work=f"Work {index}") for index in range(4_097))
+        with pytest.raises(ValidationError, match="4,096"):
+            parse_manifest({"rows": over_limit})
+
     def test_director_excluded_rows_are_typed_and_exact(self) -> None:
         manifest = load_bundled_manifest()
-        first, second, third = manifest.director_excluded_rows()
-
-        assert first.exclusion_policy is ExclusionPolicy.DIRECTOR
-        assert second.exclusion_policy is ExclusionPolicy.DIRECTOR
-        assert third.exclusion_policy is ExclusionPolicy.DIRECTOR
-        assert first.canon_status is CanonStatus.DENY
-        assert second.canon_status is CanonStatus.DENY
-        assert third.canon_status is CanonStatus.DENY
-        assert (
-            len({first.author.casefold(), second.author.casefold(), third.author.casefold()}) == 3
+        rows = manifest.director_excluded_rows()
+        expected_fields = (
+            "path_glob",
+            "author",
+            "work",
+            "role",
+            "format",
+            "canon_status",
+            "exclusion_policy",
+            "provenance",
         )
-        assert len({first.path_glob, second.path_glob, third.path_glob}) == 3
+        expected_provenance = (
+            "Director exclusion ruling, 2026-08-23. This row exists solely to prevent ingestion."
+        )
+        if len(rows) != 3:
+            pytest.fail("Director exclusion row count mismatch", pytrace=False)
+        first, second, third = rows
+        exact_rows = (first, second, third)
+        envelope_matches = all(
+            (
+                row.role == (CorpusRole.DOCTRINE,)
+                and row.format is CorpusFormat.TXT
+                and row.canon_status is CanonStatus.DENY
+                and row.exclusion_policy is ExclusionPolicy.DIRECTOR
+                and row.provenance == expected_provenance
+            )
+            for row in exact_rows
+        )
+        if tuple(CorpusRow.model_fields) != expected_fields or not envelope_matches:
+            pytest.fail("Director exclusion governed envelope mismatch", pytrace=False)
+        if len({row.author.casefold() for row in exact_rows}) != 3:
+            pytest.fail("Director exclusion author uniqueness mismatch", pytrace=False)
+        if len({row.path_glob for row in exact_rows}) != 3:
+            pytest.fail("Director exclusion path uniqueness mismatch", pytrace=False)
+        if _director_policy_digest(exact_rows) != _EXPECTED_DIRECTOR_POLICY_SHA256:
+            pytest.fail("Director exclusion canonical digest mismatch", pytrace=False)
 
 
 # =============================================================================

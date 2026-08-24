@@ -45,7 +45,9 @@ rows rather than raising.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from enum import StrEnum
+from itertools import islice
 from pathlib import Path
 from typing import Any, Final
 
@@ -184,9 +186,16 @@ class CorpusManifest(BaseModel):
     @field_validator("rows", mode="before")
     @classmethod
     def _check_row_ceiling(cls, rows: object) -> object:
-        if isinstance(rows, (list, tuple)) and len(rows) > MAX_CORPUS_MANIFEST_ROWS:
+        if isinstance(rows, (list, tuple)):
+            bounded_rows = rows
+        elif isinstance(rows, Iterable):
+            bounded_rows = tuple(islice(rows, MAX_CORPUS_MANIFEST_ROWS + 1))
+        else:
+            return rows
+
+        if len(bounded_rows) > MAX_CORPUS_MANIFEST_ROWS:
             raise ValueError("corpus manifest exceeds 4,096 rows")
-        return rows
+        return bounded_rows
 
     def allow_rows(self) -> tuple[CorpusRow, ...]:
         return tuple(r for r in self.rows if r.canon_status is CanonStatus.ALLOW)

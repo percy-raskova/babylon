@@ -23,6 +23,7 @@ _CORPUS_POLICY_TEST: Final[Path] = (
     _ROOT / "tests" / "unit" / "intelligence" / "test_corpus_manifest.py"
 )
 _INGEST_CORPUS_TEST: Final[Path] = _ROOT / "tests" / "unit" / "tools" / "test_ingest_corpus.py"
+_THEORY_CONTRACT_TEST: Final[Path] = Path(__file__)
 _EXCLUSION_HYGIENE_PATHS: Final[tuple[Path, ...]] = (
     _MACHINE_THEORY,
     _HUMAN_THEORY,
@@ -30,6 +31,25 @@ _EXCLUSION_HYGIENE_PATHS: Final[tuple[Path, ...]] = (
     _CORPUS_POLICY_MODULE,
     _CORPUS_POLICY_TEST,
     _INGEST_CORPUS_TEST,
+    _THEORY_CONTRACT_TEST,
+)
+_EXCLUSION_HYGIENE_SURFACE_IDS: Final[tuple[str, ...]] = (
+    "machine-theory",
+    "human-theory",
+    "machine-orientation",
+    "corpus-policy-module",
+    "corpus-policy-test",
+    "corpus-ingest-test",
+    "theory-contract-test",
+)
+_DIRECTOR_TOKEN_IDS: Final[tuple[str, ...]] = (
+    "director-token-1",
+    "director-token-2",
+    "director-token-3",
+    "director-token-4",
+    "director-token-5",
+    "director-token-6",
+    "director-token-7",
 )
 
 _CONSTRAINT_IDS: Final[frozenset[str]] = frozenset(
@@ -227,6 +247,14 @@ def _director_excluded_tokens() -> tuple[str, ...]:
     return tuple(dict.fromkeys(tokens))
 
 
+def _assert_director_token_absent(*, token: str, path: Path, surface_id: str) -> None:
+    if token in _normalized_text(path):
+        pytest.fail(
+            f"Director-exclusion hygiene violation in {surface_id}",
+            pytrace=False,
+        )
+
+
 def test_machine_theory_has_exact_t0_schema_and_authority() -> None:
     document = _machine_document()
 
@@ -245,6 +273,22 @@ def test_machine_theory_has_exact_t0_schema_and_authority() -> None:
     assert meta["authority"] == "CONSTITUTION.md v4.0.0"
     assert meta["architecture"] == "docs/concepts/architecture.rst"
     assert meta["reserved_line"] == "Marxist-Leninist-Maoist Third Worldist (MLM-TW)"
+    assert document["theory_boundary"] == {
+        "constrains": "represented_relations_and_causal_questions",
+        "does_not": [
+            "predetermine_outcomes",
+            "impose_response_curves",
+            "create_executable_rules",
+            "make_geography_or_class_an_essence",
+        ],
+        "evidence_classes": ["Observed", "Derived", "Calibrated", "Designed"],
+    }
+    assert document["ai_assistant_guidelines"] == [
+        "Model material relations as constraints on causal questions, not outcomes.",
+        "Ask which classes and organizations benefit from each represented relation.",
+        "Use dialectical analysis to inspect contradictions and transformations.",
+        "Do not use theory to predetermine a result.",
+    ]
 
 
 def test_machine_theory_declares_exact_constraint_set() -> None:
@@ -318,13 +362,37 @@ def test_machine_theory_has_no_stale_implementation_claims() -> None:
     assert "src/babylon/engine/systems/" not in text
 
 
-@pytest.mark.parametrize("token", _director_excluded_tokens())
-@pytest.mark.parametrize("path", _EXCLUSION_HYGIENE_PATHS)
+@pytest.mark.parametrize(
+    "token",
+    _director_excluded_tokens(),
+    ids=_DIRECTOR_TOKEN_IDS,
+)
+@pytest.mark.parametrize(
+    "path",
+    _EXCLUSION_HYGIENE_PATHS,
+    ids=_EXCLUSION_HYGIENE_SURFACE_IDS,
+)
 def test_active_policy_and_theory_surfaces_exclude_director_denied_tokens(
     token: str,
     path: Path,
 ) -> None:
-    assert token not in _normalized_text(path)
+    surface_id = _EXCLUSION_HYGIENE_SURFACE_IDS[_EXCLUSION_HYGIENE_PATHS.index(path)]
+    _assert_director_token_absent(token=token, path=path, surface_id=surface_id)
+
+
+def test_exclusion_hygiene_failure_does_not_render_sensitive_token(tmp_path: Path) -> None:
+    sensitive_token = "sensitive sentinel"
+    surface = tmp_path / "neutral-surface.txt"
+    surface.write_text(sensitive_token, encoding="utf-8")
+
+    with pytest.raises(pytest.fail.Exception) as failure:
+        _assert_director_token_absent(
+            token=sensitive_token,
+            path=surface,
+            surface_id="neutral-surface",
+        )
+
+    assert sensitive_token not in str(failure.value)
 
 
 _RETIRED_CATEGORICAL_PHRASES = (

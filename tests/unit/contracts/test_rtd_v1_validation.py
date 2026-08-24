@@ -337,6 +337,15 @@ def test_status_bits_and_negative_zero_contracts() -> None:
     assert parse_draft(payload).facets[0].value_bits_or_null == "0000000000000000"
 
 
+def test_uint64_high_bit_is_not_normalized_as_float_negative_zero() -> None:
+    payload = draft_with_facet(county_facet(value_bits_or_null="8000000000000000")).model_dump(
+        by_alias=True, mode="json"
+    )
+    parsed = parse_draft(payload)
+    assert parsed.facets[0].value_kind is ValueKindV1.UINT64_BITS
+    assert parsed.facets[0].value_bits_or_null == "8000000000000000"
+
+
 @pytest.mark.parametrize(
     "updates",
     (
@@ -584,6 +593,29 @@ def test_h3_gap_requires_exact_pending_contract_state() -> None:
     assert validate_draft(base_draft(gaps=(gap,))) is None
     wrong_reason = gap.model_copy(update={"reason_code": GapReasonV1.MISSING_GOVERNED_PRODUCER})
     assert_error("RTD_H3_BEFORE_PER21", base_draft(gaps=(wrong_reason,)))
+
+
+def test_h3_gap_classification_uses_the_complete_typed_identity() -> None:
+    unrelated = GapV1(
+        gap_id=identity("unrelated-gap", "gap"),
+        requested_metric_or_relation=identity(
+            "reproduction/h3-population-persons", "unrelated-domain", "other-authority"
+        ),
+        status=StatusV1.UNKNOWN,
+        reason_code=GapReasonV1.MISSING_GOVERNED_PRODUCER,
+        required_producer_or_null="PER-28",
+        provenance_refs=(),
+    )
+    assert validate_draft(base_draft(gaps=(unrelated,))) is None
+
+    actual_h3 = unrelated.model_copy(
+        update={
+            "requested_metric_or_relation": registry_identity(
+                "metric", "reproduction/h3-population-persons"
+            )
+        }
+    )
+    assert_error("RTD_H3_BEFORE_PER21", base_draft(gaps=(actual_h3,)))
 
 
 def test_canadian_canonical_lodes_flow_refuses() -> None:

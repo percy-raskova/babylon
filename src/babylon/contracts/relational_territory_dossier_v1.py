@@ -211,7 +211,10 @@ def _normalize_negative_zero(draft: RtdDossierDraftV1) -> RtdDossierDraftV1:
         if facet_index == len(draft.facets):
             break
         facet = draft.facets[facet_index]
-        if facet.value_bits_or_null == _NEGATIVE_ZERO_BITS:
+        if (
+            facet.value_kind is ValueKindV1.FLOAT64_BITS
+            and facet.value_bits_or_null == _NEGATIVE_ZERO_BITS
+        ):
             facet = facet.model_copy(update={"value_bits_or_null": _POSITIVE_ZERO_BITS})
         facets.append(facet)
     memberships: list[ScaleMembershipV1] = []
@@ -958,6 +961,15 @@ def _metric_row(metric: TypedIdentityV1, path: tuple[PathPart, ...]) -> RtdMetri
     raise RtdValidationError("RTD_NATIVE_GRAIN", path)
 
 
+def _is_registered_h3_metric(identity: TypedIdentityV1) -> bool:
+    supplied_key = _identity_key(identity)
+    for row_index in range(RTD_METRIC_REGISTRY_ROWS):
+        row = RTD_V1_METRIC_REGISTRY[row_index]
+        if row.metric.local_id in _H3_METRICS and _identity_key(row.metric) == supplied_key:
+            return True
+    return False
+
+
 def _reference_digest_matches(
     draft: RtdDossierDraftV1,
     row: RtdMetricRegistryRowV1,
@@ -1164,7 +1176,7 @@ def _validate_memberships_and_gaps(draft: RtdDossierDraftV1) -> None:
 
 
 def _validate_gap(gap: GapV1, index: int) -> None:
-    if gap.requested_metric_or_relation.local_id not in _H3_METRICS:
+    if not _is_registered_h3_metric(gap.requested_metric_or_relation):
         return
     path = ("gaps", index)
     if (

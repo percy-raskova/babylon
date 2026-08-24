@@ -2085,6 +2085,9 @@ fn apply_equality(op: &str, lhs: &Value, rhs: &Value) -> Result<Value, EvalError
             }
             ma == mb
         }
+        (Value::NodeRef(a), Value::NodeRef(b)) => a == b,
+        (Value::EdgeRef(a), Value::EdgeRef(b)) => a == b,
+        (Value::HyperedgeRef(a), Value::HyperedgeRef(b)) => a == b,
         (Value::Int(a), Value::Int(b)) => a == b,
         (Value::Currency(a), Value::Currency(b)) => a == b,
         // Exact IEEE-754 equality: the basic ops are correctly rounded and
@@ -2439,6 +2442,45 @@ mod tests {
         );
         assert!(eval("(= NodeType/SOCIAL_CLASS EdgeType/SOLIDARITY)").is_err());
         assert!(eval("(< NodeType/SOCIAL_CLASS NodeType/TERRITORY)").is_err());
+    }
+
+    #[test]
+    fn references_compare_by_identity_within_their_own_kind() {
+        use babylon_graph::substrate::{HyperedgeId, NodeId};
+
+        let edge = EdgeKey {
+            source: NodeId(1),
+            target: NodeId(2),
+            edge_type: "TENANCY".to_owned(),
+        };
+        let bindings = HashMap::from([
+            ("node-a".to_owned(), Value::NodeRef(NodeId(1))),
+            ("node-b".to_owned(), Value::NodeRef(NodeId(2))),
+            ("edge-a".to_owned(), Value::EdgeRef(edge.clone())),
+            ("edge-b".to_owned(), Value::EdgeRef(edge)),
+            (
+                "hyperedge-a".to_owned(),
+                Value::HyperedgeRef(HyperedgeId(3)),
+            ),
+            (
+                "hyperedge-b".to_owned(),
+                Value::HyperedgeRef(HyperedgeId(3)),
+            ),
+        ]);
+
+        for (source, expected) in [
+            ("(= node-a node-a)", true),
+            ("(!= node-a node-b)", true),
+            ("(= edge-a edge-b)", true),
+            ("(= hyperedge-a hyperedge-b)", true),
+        ] {
+            let mut fuel = 32;
+            assert_eq!(
+                eval_with(source, bindings.clone(), &mut fuel).unwrap(),
+                Value::Bool(expected),
+                "{source}"
+            );
+        }
     }
 
     #[test]

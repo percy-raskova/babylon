@@ -68,8 +68,405 @@ ARTIFACT_IDS: Final = (
     "h3_res7_workplace",
     "h3_res7_land_mask",
 )
+ARTIFACT_LAYOUT: Final = (
+    ("fact_qcew_county_rollup.parquet", "PHYSICAL"),
+    ("fact_lodes_commuter_flow.parquet", "PHYSICAL"),
+    ("fact_census_housing.parquet", "PHYSICAL"),
+    ("fact_census_rent.parquet", "PHYSICAL"),
+    ("fact_census_rent_burden.parquet", "PHYSICAL"),
+    ("fact_coercive_infrastructure.parquet", "PHYSICAL"),
+    ("dim_county.parquet", "PHYSICAL"),
+    ("dim_state.parquet", "PHYSICAL"),
+    ("dim_data_source.parquet", "PHYSICAL"),
+    ("dim_time.parquet", "PHYSICAL"),
+    ("dim_ownership.parquet", "PHYSICAL"),
+    ("dim_housing_tenure.parquet", "PHYSICAL"),
+    ("dim_race.parquet", "PHYSICAL"),
+    ("dim_rent_burden.parquet", "PHYSICAL"),
+    ("dim_coercive_type.parquet", "PHYSICAL"),
+    ("src/babylon/data/reference/bridge_county_cz.csv", "TRACKED_CSV"),
+    ("h3_res7_population.parquet", "REFERENCE_DIGEST_ONLY"),
+    ("h3_res7_workplace.parquet", "REFERENCE_DIGEST_ONLY"),
+    ("h3_res7_land_mask.parquet", "REFERENCE_DIGEST_ONLY"),
+)
+ARTIFACT_METRICS: Final = (
+    (
+        "production/qcew-county-establishments",
+        "production/qcew-county-employment",
+        "production/qcew-county-total-wages-usd",
+    ),
+    ("circulation/lodes-county-commuter-total-jobs",),
+    ("reproduction/census-housing-households",),
+    ("reproduction/census-median-rent-usd",),
+    ("reproduction/census-rent-burden-households",),
+    ("carceral/facility-count",),
+    (),
+    (),
+    (),
+    (),
+    (),
+    (),
+    (),
+    (),
+    (),
+    (),
+    ("reproduction/h3-population-persons",),
+    ("production/h3-workplace-jobs",),
+    ("ecology/h3-land-fraction",),
+)
+SELECTOR_FIELDS: Final[tuple[tuple[tuple[str, ...], ...], ...]] = (
+    (("time_id", "ownership_id", "county_ids"),),
+    (("time_id", "county_ids"),),
+    (
+        ("source_id", "time_id", "race_id", "county_ids", "tenure_ids"),
+        ("source_id", "time_id", "race_id", "expected_rows"),
+    ),
+    (
+        ("source_id", "time_id", "race_id", "county_ids"),
+        ("source_id", "time_id", "race_id", "expected_rows"),
+    ),
+    (
+        ("source_id", "time_id", "race_id", "burden_id", "county_ids"),
+        ("source_id", "time_id", "race_id", "expected_rows"),
+    ),
+    (("source_id", "coercive_type_ids", "county_ids"),),
+    (("county_ids",),),
+    (("state_id",),),
+    (("source_ids",),),
+    (("time_ids",),),
+    (("ownership_id",),),
+    (("tenure_ids",),),
+    (("race_id",),),
+    (("burden_id",),),
+    (("coercive_type_ids",),),
+    (("county_fips",),),
+    (),
+    (),
+    (),
+)
+SELECTOR_COUNTS: Final[tuple[tuple[int, ...], ...]] = (
+    (3,),
+    (9,),
+    (9, 0),
+    (3, 0),
+    (3, 0),
+    (5,),
+    (3,),
+    (1,),
+    (3,),
+    (3,),
+    (1,),
+    (3,),
+    (1,),
+    (1,),
+    (2,),
+    (3,),
+    (),
+    (),
+    (),
+)
+QCEW_ROW_FIELDS: Final = (
+    "county_id",
+    "fips",
+    "establishments",
+    "establishments_bits",
+    "employment",
+    "employment_bits",
+    "total_wages_usd",
+    "total_wages_bits",
+    "disclosure_code",
+    "is_imputed",
+)
+DATA_SOURCE_ROW_FIELDS: Final = (
+    "source_id",
+    "source_code",
+    "source_year",
+    "coverage_start_year",
+    "coverage_end_year",
+)
+SELECTED_ROW_FIELDS: Final[tuple[tuple[tuple[str, ...], ...], ...]] = (
+    (QCEW_ROW_FIELDS,) * 3,
+    (("home_id", "work_id", "origin", "destination", "total_jobs", "bits"),) * 9,
+    (("county_id", "fips", "total", "total_bits", "owner", "owner_bits", "renter", "renter_bits"),)
+    * 3,
+    (("county_id", "fips", "median_rent_usd", "bits"),) * 3,
+    (("county_id", "fips", "household_count", "bits"),) * 3,
+    (("county_id", "fips", "coercive_type_id", "facility_count", "bits"),) * 5,
+    (("county_id", "fips", "county_name", "state_id", "h3_res4"),) * 3,
+    (("state_id", "state_fips", "state_name", "state_abbrev"),),
+    (DATA_SOURCE_ROW_FIELDS, DATA_SOURCE_ROW_FIELDS, ("source_id", "source_code", "source_year")),
+    (("time_id", "year", "month", "quarter", "is_annual"),) * 3,
+    (("ownership_id", "own_code", "own_title", "is_government", "is_private"),),
+    (("tenure_id", "tenure_type"),) * 3,
+    (("race_id", "race_code", "race_name", "display_order"),),
+    (
+        (
+            "burden_id",
+            "bracket_code",
+            "burden_min_pct",
+            "is_cost_burdened",
+            "is_severely_burdened",
+            "bracket_order",
+        ),
+    ),
+    (("coercive_type_id", "code", "command_chain"),) * 2,
+    (("county_fips", "cz_id"),) * 3,
+    (),
+    (),
+    (),
+)
+PARQUET_COLUMNS: Final[tuple[tuple[str, ...], ...]] = (
+    (
+        "county_id",
+        "time_id",
+        "ownership_id",
+        "establishments",
+        "employment",
+        "total_wages_usd",
+        "disclosure_code",
+        "is_imputed",
+    ),
+    ("home_county_id", "work_county_id", "time_id", "total_jobs"),
+    ("county_id", "source_id", "tenure_id", "time_id", "race_id", "household_count"),
+    ("county_id", "source_id", "time_id", "race_id", "median_rent_usd"),
+    ("county_id", "source_id", "burden_id", "time_id", "race_id", "household_count"),
+    ("county_id", "coercive_type_id", "source_id", "facility_count"),
+    ("county_id", "fips", "state_id", "county_name", "h3_res4"),
+    ("state_id", "state_fips", "state_name", "state_abbrev"),
+    ("source_id", "source_code", "source_year", "coverage_start_year", "coverage_end_year"),
+    ("time_id", "year", "month", "quarter", "is_annual"),
+    ("ownership_id", "own_code", "own_title", "is_government", "is_private"),
+    ("tenure_id", "tenure_type"),
+    ("race_id", "race_code", "race_name", "display_order"),
+    (
+        "burden_id",
+        "bracket_code",
+        "burden_min_pct",
+        "is_cost_burdened",
+        "is_severely_burdened",
+        "bracket_order",
+    ),
+    ("coercive_type_id", "code", "command_chain"),
+    (),
+    (),
+    (),
+    (),
+)
 COUNTY_IDS: Final = (1281, 1294, 1313)
 COUNTY_FIPS: Final = ("26099", "26125", "26163")
+
+type GapSpec = tuple[str, str, str, str, str | None, tuple[str, ...], str | None]
+
+GAP_SPECS: Final[tuple[GapSpec, ...]] = (
+    (
+        "omb-msa-detroit-tri-county",
+        "scale-membership/omb-msa",
+        "NOT_COMPUTED",
+        "MISSING_GOVERNED_OMB_DELINEATION",
+        None,
+        ("dim_county",),
+        "reject legacy export/code 19820; require pinned governed OMB delineation",
+    ),
+    (
+        "h3-population",
+        "reproduction/h3-population-persons",
+        "NOT_COMPUTED",
+        "IDENTITY_CONTRACT_PENDING",
+        "PER-21",
+        ("h3_res7_population",),
+        None,
+    ),
+    (
+        "h3-workplace",
+        "production/h3-workplace-jobs",
+        "NOT_COMPUTED",
+        "IDENTITY_CONTRACT_PENDING",
+        "PER-21",
+        ("h3_res7_workplace",),
+        None,
+    ),
+    (
+        "h3-land-fraction",
+        "ecology/h3-land-fraction",
+        "NOT_COMPUTED",
+        "IDENTITY_CONTRACT_PENDING",
+        "PER-21",
+        ("h3_res7_land_mask",),
+        None,
+    ),
+    (
+        "census-housing-source-vintage-conflict",
+        "reproduction/census-housing-households",
+        "UNKNOWN",
+        "PROVENANCE_COORDINATE_CONFLICT",
+        "PER-28",
+        ("fact_census_housing", "dim_data_source", "dim_time", "dim_housing_tenure", "dim_race"),
+        None,
+    ),
+    (
+        "census-rent-source-vintage-conflict",
+        "reproduction/census-median-rent-usd",
+        "UNKNOWN",
+        "PROVENANCE_COORDINATE_CONFLICT",
+        "PER-28",
+        ("fact_census_rent", "dim_data_source", "dim_time", "dim_race"),
+        None,
+    ),
+    (
+        "census-rent-burden-source-vintage-conflict",
+        "reproduction/census-rent-burden-households",
+        "UNKNOWN",
+        "PROVENANCE_COORDINATE_CONFLICT",
+        "PER-28",
+        ("fact_census_rent_burden", "dim_data_source", "dim_time", "dim_rent_burden", "dim_race"),
+        None,
+    ),
+    (
+        "command-administrative-centrality",
+        "command/administrative-centrality",
+        "NOT_COMPUTED",
+        "MISSING_GOVERNED_PRODUCER",
+        None,
+        (),
+        None,
+    ),
+    (
+        "freight-road-corridor",
+        "circulation/freight-road-corridor-intensity",
+        "NOT_COMPUTED",
+        "MISSING_GOVERNED_PRODUCER",
+        "PER-31",
+        (),
+        None,
+    ),
+    (
+        "eviction",
+        "reproduction/eviction",
+        "NOT_COMPUTED",
+        "MISSING_GOVERNED_PRODUCER",
+        None,
+        (),
+        None,
+    ),
+    (
+        "foreclosure",
+        "reproduction/foreclosure",
+        "NOT_COMPUTED",
+        "MISSING_GOVERNED_PRODUCER",
+        None,
+        (),
+        None,
+    ),
+    (
+        "absentee-ownership",
+        "reproduction/absentee-ownership",
+        "NOT_COMPUTED",
+        "MISSING_GOVERNED_PRODUCER",
+        None,
+        (),
+        None,
+    ),
+    (
+        "agricultural-tenure-displacement",
+        "extraction/agricultural-tenure-displacement",
+        "NOT_COMPUTED",
+        "MISSING_GOVERNED_PRODUCER",
+        None,
+        (),
+        None,
+    ),
+    (
+        "indigenous-jurisdiction",
+        "jurisdiction/indigenous",
+        "UNKNOWN",
+        "REFERENCE_COVERAGE_UNAVAILABLE",
+        None,
+        (),
+        None,
+    ),
+    ("care-capacity", "care/capacity", "NOT_COMPUTED", "MISSING_GOVERNED_PRODUCER", None, (), None),
+    (
+        "ecology-beyond-land-fraction",
+        "ecology/beyond-land-fraction",
+        "NOT_COMPUTED",
+        "MISSING_GOVERNED_PRODUCER",
+        None,
+        (),
+        None,
+    ),
+    (
+        "windsor-essex-spatial-membership",
+        "scale-membership/windsor-essex",
+        "UNKNOWN",
+        "REFERENCE_COVERAGE_UNAVAILABLE",
+        None,
+        (),
+        None,
+    ),
+    ("player-fog", "player/fog", "NOT_COMPUTED", "PLAYER_BOUNDARY_UNAVAILABLE", "PER-22", (), None),
+    (
+        "action-eligibility",
+        "player/action-eligibility",
+        "NOT_COMPUTED",
+        "PLAYER_BOUNDARY_UNAVAILABLE",
+        "PER-27",
+        (),
+        None,
+    ),
+    (
+        "organization-practice-state",
+        "organization/practice-state",
+        "NOT_COMPUTED",
+        "PLAYER_BOUNDARY_UNAVAILABLE",
+        "PER-56",
+        (),
+        None,
+    ),
+)
+
+BOOL_FIELDS: Final = frozenset(
+    {
+        "is_imputed",
+        "is_annual",
+        "is_government",
+        "is_private",
+        "is_cost_burdened",
+        "is_severely_burdened",
+    }
+)
+NONE_FIELDS: Final = frozenset({"disclosure_code", "h3_res4", "month", "quarter"})
+STRING_FIELDS: Final = frozenset(
+    {
+        "fips",
+        "establishments_bits",
+        "employment_bits",
+        "total_wages_usd",
+        "total_wages_bits",
+        "origin",
+        "destination",
+        "bits",
+        "total_bits",
+        "owner_bits",
+        "renter_bits",
+        "median_rent_usd",
+        "county_name",
+        "state_fips",
+        "state_name",
+        "state_abbrev",
+        "source_code",
+        "own_code",
+        "own_title",
+        "tenure_type",
+        "race_code",
+        "race_name",
+        "bracket_code",
+        "burden_min_pct",
+        "code",
+        "command_chain",
+        "county_fips",
+        "cz_id",
+    }
+)
 
 type Json = dict[str, object]
 
@@ -195,42 +592,167 @@ def _validate_artifact_rows(rows: list[object]) -> None:
             _fail("DETROIT_ARTIFACT_DUPLICATE")
         seen.add(artifact_id)
         ordered_ids.append(artifact_id)
+        _validate_artifact_metadata(row, artifact_index)
         if row["verification_mode"] == "REFERENCE_DIGEST_ONLY":
             reference_only.append(artifact_id)
         selectors = _sequence(row["selectors"], MAX_SELECTORS, "DETROIT_SELECTOR_LIMIT")
-        _validate_unique_selectors(selectors)
-        _sequence(row["selected_rows"], MAX_SELECTED_ROWS, "DETROIT_SELECTED_ROW_LIMIT")
+        _validate_selectors(selectors, artifact_index)
+        selected = _sequence(row["selected_rows"], MAX_SELECTED_ROWS, "DETROIT_SELECTED_ROW_LIMIT")
+        _validate_selected_rows(selected, artifact_index)
         _sequence(row["provenance_locators"], MAX_LOCATORS, "DETROIT_LOCATOR_LIMIT")
         contracts = _sequence(row["metric_contracts"], MAX_SELECTORS, "DETROIT_METRIC_LIMIT")
-        _validate_metric_contracts(contracts)
+        _validate_metric_contracts(contracts, artifact_index)
     if tuple(ordered_ids) != ARTIFACT_IDS:
         _fail("DETROIT_ARTIFACT_ALIAS")
     if tuple(reference_only) != REFERENCE_ONLY:
         _fail("DETROIT_REFERENCE_ONLY_SET")
 
 
-def _validate_unique_selectors(selectors: list[object]) -> None:
+def _validate_artifact_metadata(row: Json, artifact_index: int) -> None:
+    relative = row["relative_path"]
+    if not isinstance(relative, str):
+        _fail("DETROIT_ARTIFACT_PATH")
+    relative_path = Path(relative)
+    if relative_path.is_absolute() or ".." in relative_path.parts:
+        _fail("DETROIT_ARTIFACT_PATH")
+    expected_path, expected_mode = ARTIFACT_LAYOUT[artifact_index]
+    if relative != expected_path:
+        _fail("DETROIT_ARTIFACT_LAYOUT")
+    if row["verification_mode"] != expected_mode:
+        _fail("DETROIT_ARTIFACT_MODE")
+    digest = row["sha256"]
+    if not isinstance(digest, str) or len(digest) != 64:
+        _fail("DETROIT_ARTIFACT_METADATA")
+    try:
+        int(digest, 16)
+    except ValueError as error:
+        raise DetroitControlError("DETROIT_ARTIFACT_METADATA") from error
+    if expected_mode == "REFERENCE_DIGEST_ONLY":
+        nullable_fields = ("bytes", "rows", "row_groups", "schema")
+        for field_index in range(4):
+            if row[nullable_fields[field_index]] is not None:
+                _fail("DETROIT_ARTIFACT_METADATA")
+        return
+    integer_fields = ("bytes", "rows", "row_groups")
+    for field_index in range(3):
+        field = integer_fields[field_index]
+        value = row[field]
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            _fail("DETROIT_ARTIFACT_METADATA")
+    if not isinstance(row["schema"], str):
+        _fail("DETROIT_ARTIFACT_METADATA")
+
+
+def _validate_selectors(selectors: list[object], artifact_index: int) -> None:
+    specs = SELECTOR_FIELDS[artifact_index]
     seen: set[bytes] = set()
     for selector_index in range(MAX_SELECTORS):
         if selector_index == len(selectors):
-            return
+            break
         selector = _mapping(selectors[selector_index], "DETROIT_SELECTOR_SHAPE")
         key = json.dumps(selector, sort_keys=True, separators=(",", ":")).encode()
         if key in seen:
             _fail("DETROIT_SELECTOR_DUPLICATE")
         seen.add(key)
+    if len(selectors) != len(specs):
+        _fail("DETROIT_SELECTOR_CARDINALITY")
+    for selector_index in range(MAX_SELECTORS):
+        if selector_index == len(specs):
+            return
+        selector = cast(Json, selectors[selector_index])
+        _exact_fields(selector, set(specs[selector_index]), "DETROIT_SELECTOR_FIELDS")
+        fields = specs[selector_index]
+        for field_index in range(MAX_SOURCE_FIELDS):
+            if field_index == len(fields):
+                break
+            _validate_selector_value(fields[field_index], selector[fields[field_index]])
+    _fail("DETROIT_SELECTOR_LIMIT")
 
 
-def _validate_metric_contracts(contracts: list[object]) -> None:
+def _validate_selector_value(field: str, value: object) -> None:
+    list_lengths = {
+        "county_ids": 3,
+        "source_ids": 3,
+        "time_ids": 3,
+        "tenure_ids": 3,
+        "coercive_type_ids": 2,
+        "county_fips": 3,
+    }
+    expected_length = list_lengths.get(field)
+    if expected_length is None:
+        if not isinstance(value, int) or isinstance(value, bool):
+            _fail("DETROIT_SELECTOR_TYPE")
+        if field == "expected_rows" and value != 0:
+            _fail("DETROIT_SELECTOR_TYPE")
+        return
+    values = _sequence(value, expected_length, "DETROIT_SELECTOR_TYPE")
+    if len(values) != expected_length:
+        _fail("DETROIT_SELECTOR_TYPE")
+    seen: set[object] = set()
+    for value_index in range(3):
+        if value_index == len(values):
+            break
+        item = values[value_index]
+        if field == "county_fips":
+            if not isinstance(item, str):
+                _fail("DETROIT_SELECTOR_TYPE")
+        elif not isinstance(item, int) or isinstance(item, bool):
+            _fail("DETROIT_SELECTOR_TYPE")
+        if item in seen:
+            _fail("DETROIT_SELECTOR_TYPE")
+        seen.add(item)
+
+
+def _validate_selected_rows(rows: list[object], artifact_index: int) -> None:
+    expected_rows = SELECTED_ROW_FIELDS[artifact_index]
+    if len(rows) != len(expected_rows):
+        _fail("DETROIT_SELECTED_ROW_CARDINALITY")
+    for row_index in range(MAX_SELECTED_ROWS):
+        if row_index == len(expected_rows):
+            return
+        row = _mapping(rows[row_index], "DETROIT_SELECTED_ROW_SHAPE")
+        fields = expected_rows[row_index]
+        _exact_fields(row, set(fields), "DETROIT_SELECTED_ROW_FIELDS")
+        for field_index in range(MAX_LOCATORS):
+            if field_index == len(fields):
+                break
+            field = fields[field_index]
+            if not _selected_value_matches(field, row[field]):
+                _fail("DETROIT_SELECTED_ROW_TYPE")
+    _fail("DETROIT_SELECTED_ROW_LIMIT")
+
+
+def _selected_value_matches(field: str, value: object) -> bool:
+    if field in BOOL_FIELDS:
+        return isinstance(value, bool)
+    if field in NONE_FIELDS:
+        return value is None
+    if field in STRING_FIELDS:
+        return isinstance(value, str)
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _validate_string_sequence(values: list[object]) -> None:
+    for locator_index in range(MAX_LOCATORS):
+        if locator_index == len(values):
+            return
+        if not isinstance(values[locator_index], str):
+            _fail("DETROIT_LOCATOR_TYPE")
+
+
+def _validate_metric_contracts(contracts: list[object], artifact_index: int) -> None:
     if len(RTD_V1_METRIC_REGISTRY) != EXPECTED_METRICS:
         _fail("DETROIT_METRIC_REGISTRY")
     registry = {}
     for row_index in range(EXPECTED_METRICS):
         row = RTD_V1_METRIC_REGISTRY[row_index]
         registry[row.metric.local_id] = row
+    expected = ARTIFACT_METRICS[artifact_index]
+    seen: set[str] = set()
+    actual: list[str] = []
     for contract_index in range(MAX_SELECTORS):
         if contract_index == len(contracts):
-            return
+            break
         contract = _mapping(contracts[contract_index], "DETROIT_METRIC_SHAPE")
         _exact_fields(
             contract,
@@ -238,6 +760,14 @@ def _validate_metric_contracts(contracts: list[object]) -> None:
             "DETROIT_METRIC_UNKNOWN_FIELD",
         )
         local_id = contract["local_id"]
+        if not isinstance(local_id, str):
+            _fail("DETROIT_METRIC_REGISTRY")
+        if local_id in seen:
+            _fail("DETROIT_METRIC_DUPLICATE")
+        if local_id not in expected:
+            _fail("DETROIT_METRIC_EXTRA")
+        seen.add(local_id)
+        actual.append(local_id)
         registry_row = registry.get(local_id) if isinstance(local_id, str) else None
         if registry_row is None:
             _fail("DETROIT_METRIC_REGISTRY")
@@ -250,21 +780,39 @@ def _validate_metric_contracts(contracts: list[object]) -> None:
             or contract["digest"] != registry_row.reference_digest
         ):
             _fail("DETROIT_METRIC_REGISTRY")
+    if len(actual) < len(expected):
+        _fail("DETROIT_METRIC_MISSING")
+    if len(actual) > len(expected):
+        _fail("DETROIT_METRIC_EXTRA")
+    if tuple(actual) != expected:
+        _fail("DETROIT_METRIC_DECLARATION")
 
 
 def _validate_gap_rows(rows: list[object]) -> None:
     seen: set[str] = set()
-    expected = {"suffix", "requested", "status", "reason", "producer", "provenance_artifacts"}
-    optional = expected | {"note"}
+    fields = {"suffix", "requested", "status", "reason", "producer", "provenance_artifacts"}
     for gap_index in range(EXPECTED_GAPS):
         row = _mapping(rows[gap_index], "DETROIT_GAP_SHAPE")
-        if set(row) not in (expected, optional):
-            _fail("DETROIT_GAP_UNKNOWN_FIELD")
+        spec = GAP_SPECS[gap_index]
+        expected_fields = fields | ({"note"} if spec[6] is not None else set())
+        _exact_fields(row, expected_fields, "DETROIT_GAP_FIELDS")
         suffix = row["suffix"]
         if not isinstance(suffix, str) or suffix in seen:
             _fail("DETROIT_GAP_DUPLICATE")
         seen.add(suffix)
-        _sequence(row["provenance_artifacts"], MAX_LOCATORS, "DETROIT_LOCATOR_LIMIT")
+        provenance = _sequence(row["provenance_artifacts"], MAX_LOCATORS, "DETROIT_LOCATOR_LIMIT")
+        _validate_string_sequence(provenance)
+        actual = (
+            suffix,
+            row["requested"],
+            row["status"],
+            row["reason"],
+            row["producer"],
+            tuple(provenance),
+            row.get("note"),
+        )
+        if actual != spec:
+            _fail("DETROIT_GAP_SEMANTICS")
 
 
 def _identity(domain: str, authority: str, local_id: str) -> Json:
@@ -421,12 +969,12 @@ def _qcew_facets(artifact: Json) -> list[Json]:
     specs = (
         (
             "establishments",
-            "production/qcew-county-establishments",
+            ARTIFACT_METRICS[0][0],
             "establishments",
             "UINT64_BITS",
         ),
-        ("employment", "production/qcew-county-employment", "jobs", "UINT64_BITS"),
-        ("total-wages", "production/qcew-county-total-wages-usd", "usd-current", "FLOAT64_BITS"),
+        ("employment", ARTIFACT_METRICS[0][1], "jobs", "UINT64_BITS"),
+        ("total-wages", ARTIFACT_METRICS[0][2], "usd-current", "FLOAT64_BITS"),
     )
     for row_index in range(3):
         row = cast(Json, rows[row_index])
@@ -477,7 +1025,7 @@ def _lodes_facets_and_flows(artifact: Json) -> tuple[list[Json], list[Json]]:
                 local_id,
                 "PRODUCTION_CIRCULATION",
                 flow_id,
-                "circulation/lodes-county-commuter-total-jobs",
+                ARTIFACT_METRICS[1][0],
                 "jobs",
                 "home-county-work-county-year",
                 [_coordinate("home-county", origin), _coordinate("work-county", destination)],
@@ -522,7 +1070,7 @@ def _carceral_facets(artifact: Json) -> list[Json]:
                 f"carceral-{row['fips']}-{row['coercive_type_id']}",
                 "EXTRACTION_ABANDONMENT_CARCERAL",
                 county,
-                "carceral/facility-count",
+                ARTIFACT_METRICS[5][0],
                 "facilities",
                 "county-coercive-type-source",
                 [
@@ -759,9 +1307,17 @@ def _schema_string(schema: pa.Schema) -> str:
     return ",".join(fields)
 
 
-def _source_path(root: Path, artifact: Json) -> Path:
+def _source_path(root: Path, artifact: Json, artifact_index: int) -> Path:
     relative = cast(str, artifact["relative_path"])
-    return ROOT / relative if artifact["verification_mode"] == "TRACKED_CSV" else root / relative
+    base = ROOT if artifact["verification_mode"] == "TRACKED_CSV" else root
+    resolved_base = base.resolve()
+    resolved = (base / relative).resolve()
+    if not resolved.is_relative_to(resolved_base):
+        _fail("DETROIT_ARTIFACT_PATH")
+    expected_path, _ = ARTIFACT_LAYOUT[artifact_index]
+    if relative != expected_path:
+        _fail("DETROIT_ARTIFACT_LAYOUT")
+    return resolved
 
 
 def _verify_metadata(path: Path, artifact: Json) -> pq.ParquetFile:
@@ -787,65 +1343,75 @@ def _verify_metadata(path: Path, artifact: Json) -> pq.ParquetFile:
     return parquet
 
 
-def _wanted_row(artifact_id: str, row: Mapping[str, object]) -> bool:
-    county = row.get("county_id")
-    if artifact_id == "fact_qcew_county_rollup":
-        return county in COUNTY_IDS and row.get("time_id") == 28 and row.get("ownership_id") == 1
-    if artifact_id == "fact_lodes_commuter_flow":
-        return (
-            row.get("home_county_id") in COUNTY_IDS
-            and row.get("work_county_id") in COUNTY_IDS
-            and row.get("time_id") == 24
-        )
-    if artifact_id.startswith("fact_census_"):
-        base = county in COUNTY_IDS and row.get("time_id") == 27 and row.get("race_id") == 1
-        if artifact_id == "fact_census_housing":
-            return base and row.get("source_id") in (2, 4) and row.get("tenure_id") in (1, 2, 3)
-        if artifact_id == "fact_census_rent_burden":
-            return base and row.get("source_id") in (2, 4) and row.get("burden_id") == 9
-        return base and row.get("source_id") in (2, 4)
-    if artifact_id == "fact_coercive_infrastructure":
-        return (
-            county in COUNTY_IDS
-            and row.get("source_id") == 11
-            and row.get("coercive_type_id") in (2, 3)
-        )
-    selected_ids = {
-        "dim_county": ("county_id", COUNTY_IDS),
-        "dim_state": ("state_id", (23,)),
-        "dim_data_source": ("source_id", (2, 4, 11)),
-        "dim_time": ("time_id", (24, 27, 28)),
-        "dim_ownership": ("ownership_id", (1,)),
-        "dim_housing_tenure": ("tenure_id", (1, 2, 3)),
-        "dim_race": ("race_id", (1,)),
-        "dim_rent_burden": ("burden_id", (9,)),
-        "dim_coercive_type": ("coercive_type_id", (2, 3)),
-    }
-    key, values = selected_ids[artifact_id]
-    return row.get(key) in values
+def _selector_matches(artifact_index: int, row: Json, selector: Json) -> bool:
+    fields = tuple(selector)
+    for field_index in range(MAX_SOURCE_FIELDS):
+        if field_index == len(fields):
+            return True
+        field = fields[field_index]
+        expected = selector[field]
+        if field == "expected_rows":
+            continue
+        if artifact_index == 1 and field == "county_ids":
+            if row.get("home_county_id") not in cast(list[object], expected):
+                return False
+            if row.get("work_county_id") not in cast(list[object], expected):
+                return False
+            continue
+        column = "county_fips" if field == "county_fips" else field.removesuffix("s")
+        if isinstance(expected, list):
+            if row.get(column) not in expected:
+                return False
+        elif row.get(column) != expected:
+            return False
+    _fail("DETROIT_SELECTOR_FIELDS")
 
 
-def _scan_selected(parquet: pq.ParquetFile, artifact_id: str) -> list[Json]:
+def _finish_scan(selected: list[Json], match_counts: list[int], artifact_index: int) -> list[Json]:
+    expected = SELECTOR_COUNTS[artifact_index]
+    for selector_index in range(MAX_SELECTORS):
+        if selector_index == len(expected):
+            return selected
+        if match_counts[selector_index] != expected[selector_index]:
+            _fail("DETROIT_SOURCE_CARDINALITY")
+    _fail("DETROIT_SELECTOR_LIMIT")
+
+
+def _scan_selected(parquet: pq.ParquetFile, artifact: Json, artifact_index: int) -> list[Json]:
     selected: list[Json] = []
-    batches = parquet.iter_batches(row_groups=[0], batch_size=SOURCE_BATCH_SIZE)
+    selectors = cast(list[object], artifact["selectors"])
+    match_counts = [0] * len(selectors)
+    columns = list(PARQUET_COLUMNS[artifact_index])
+    batches = parquet.iter_batches(row_groups=[0], batch_size=SOURCE_BATCH_SIZE, columns=columns)
     for _batch_index in range(MAX_SOURCE_BATCHES):
         try:
             batch = next(batches)
         except StopIteration:
-            return selected
+            return _finish_scan(selected, match_counts, artifact_index)
         rows = batch.to_pylist()
         for row_index in range(SOURCE_BATCH_SIZE):
             if row_index == len(rows):
                 break
             row = cast(Json, rows[row_index])
-            if _wanted_row(artifact_id, row):
-                if len(selected) == MAX_SELECTED_ROWS:
-                    _fail("DETROIT_SELECTED_ROW_LIMIT")
-                selected.append(row)
+            matched = False
+            for selector_index in range(MAX_SELECTORS):
+                if selector_index == len(selectors):
+                    break
+                selector = cast(Json, selectors[selector_index])
+                if _selector_matches(artifact_index, row, selector):
+                    if matched:
+                        _fail("DETROIT_SELECTOR_OVERLAP")
+                    matched = True
+                    match_counts[selector_index] += 1
+            if not matched:
+                continue
+            if len(selected) == MAX_SELECTED_ROWS:
+                _fail("DETROIT_SELECTED_ROW_LIMIT")
+            selected.append(row)
     try:
         next(batches)
     except StopIteration:
-        return selected
+        return _finish_scan(selected, match_counts, artifact_index)
     _fail("DETROIT_SOURCE_BATCH_LIMIT")
 
 
@@ -1047,7 +1613,7 @@ def _verify_dimension_rows(artifact: Json, selected: list[Json]) -> None:
                 _fail("DETROIT_SOURCE_VALUE")
 
 
-def _verify_csv(path: Path, artifact: Json) -> None:
+def _verify_csv(path: Path, artifact: Json, artifact_index: int) -> None:
     raw = path.read_bytes()
     if len(raw) != artifact["bytes"] or hashlib.sha256(raw).hexdigest() != artifact["sha256"]:
         _fail("DETROIT_CZ_DIGEST")
@@ -1055,6 +1621,8 @@ def _verify_csv(path: Path, artifact: Json) -> None:
     if len(lines) != CSV_LINES or lines[0] != b"county_fips,cz_id,cz_name\n":
         _fail("DETROIT_CZ_FORMAT")
     expected = cast(list[object], artifact["selected_rows"])
+    selectors = cast(list[object], artifact["selectors"])
+    selector = cast(Json, selectors[0])
     wanted: dict[object, object] = {}
     for expected_index in range(MAX_SELECTED_ROWS):
         if expected_index == len(expected):
@@ -1062,14 +1630,21 @@ def _verify_csv(path: Path, artifact: Json) -> None:
         row = cast(Json, expected[expected_index])
         wanted[row["county_fips"]] = row["cz_id"]
     found: dict[str, str] = {}
+    matched = 0
     for line_index in range(CSV_LINES):
         if not lines[line_index].endswith(b"\n"):
             _fail("DETROIT_CZ_FORMAT")
         if line_index == 0:
             continue
-        fields = lines[line_index].decode("utf-8").rstrip("\n").split(",")
-        if fields[0] in wanted:
+        fields = lines[line_index].decode("utf-8").rstrip("\n").split(",", 2)
+        if len(fields) != 3:
+            _fail("DETROIT_CZ_FORMAT")
+        csv_row: Json = {"county_fips": fields[0], "cz_id": fields[1], "cz_name": fields[2]}
+        if _selector_matches(artifact_index, csv_row, selector):
+            matched += 1
             found[fields[0]] = fields[1]
+    if matched != SELECTOR_COUNTS[artifact_index][0]:
+        _fail("DETROIT_SOURCE_CARDINALITY")
     if found != wanted:
         _fail("DETROIT_CZ_MAPPING")
 
@@ -1090,12 +1665,12 @@ def verify_source_root(root: Path, ledger: Json | None = None) -> tuple[str, ...
         if mode == "REFERENCE_DIGEST_ONLY":
             reference_only.append(cast(str, artifact["artifact_id"]))
             continue
-        path = _source_path(root, artifact)
+        path = _source_path(root, artifact, artifact_index)
         if mode == "TRACKED_CSV":
-            _verify_csv(path, artifact)
+            _verify_csv(path, artifact, artifact_index)
             continue
         parquet = _verify_metadata(path, artifact)
-        selected = _scan_selected(parquet, cast(str, artifact["artifact_id"]))
+        selected = _scan_selected(parquet, artifact, artifact_index)
         if cast(str, artifact["artifact_id"]).startswith("fact_"):
             _verify_fact_rows(artifact, selected)
         else:

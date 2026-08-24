@@ -7,8 +7,12 @@ import hashlib
 import json
 import re
 import subprocess
+from collections.abc import Iterator
 from pathlib import Path
+from typing import cast
 
+import pyarrow as pa  # type: ignore[import-untyped]
+import pyarrow.parquet as pq  # type: ignore[import-untyped]
 import pytest
 import tools.build_detroit_rtd_control as builder
 import yaml
@@ -47,6 +51,81 @@ HEX64 = re.compile(r"[0-9a-f]{64}")
 COUNTIES = ("26163", "26125", "26099")
 MAX_WIRE_VALUES = 4_096
 MAX_VECTOR_CASES = 256
+EXPECTED_PARQUET_COLUMNS = {
+    "fact_qcew_county_rollup.parquet": (
+        "county_id",
+        "time_id",
+        "ownership_id",
+        "establishments",
+        "employment",
+        "total_wages_usd",
+        "disclosure_code",
+        "is_imputed",
+    ),
+    "fact_lodes_commuter_flow.parquet": (
+        "home_county_id",
+        "work_county_id",
+        "time_id",
+        "total_jobs",
+    ),
+    "fact_census_housing.parquet": (
+        "county_id",
+        "source_id",
+        "tenure_id",
+        "time_id",
+        "race_id",
+        "household_count",
+    ),
+    "fact_census_rent.parquet": (
+        "county_id",
+        "source_id",
+        "time_id",
+        "race_id",
+        "median_rent_usd",
+    ),
+    "fact_census_rent_burden.parquet": (
+        "county_id",
+        "source_id",
+        "burden_id",
+        "time_id",
+        "race_id",
+        "household_count",
+    ),
+    "fact_coercive_infrastructure.parquet": (
+        "county_id",
+        "coercive_type_id",
+        "source_id",
+        "facility_count",
+    ),
+    "dim_county.parquet": ("county_id", "fips", "state_id", "county_name", "h3_res4"),
+    "dim_state.parquet": ("state_id", "state_fips", "state_name", "state_abbrev"),
+    "dim_data_source.parquet": (
+        "source_id",
+        "source_code",
+        "source_year",
+        "coverage_start_year",
+        "coverage_end_year",
+    ),
+    "dim_time.parquet": ("time_id", "year", "month", "quarter", "is_annual"),
+    "dim_ownership.parquet": (
+        "ownership_id",
+        "own_code",
+        "own_title",
+        "is_government",
+        "is_private",
+    ),
+    "dim_housing_tenure.parquet": ("tenure_id", "tenure_type"),
+    "dim_race.parquet": ("race_id", "race_code", "race_name", "display_order"),
+    "dim_rent_burden.parquet": (
+        "burden_id",
+        "bracket_code",
+        "burden_min_pct",
+        "is_cost_burdened",
+        "is_severely_burdened",
+        "bracket_order",
+    ),
+    "dim_coercive_type.parquet": ("coercive_type_id", "code", "command_chain"),
+}
 
 
 def _control_payload() -> tuple[dict[str, object], str]:
@@ -317,7 +396,7 @@ def test_duplicate_selector_and_fourth_reference_only_refuse_pre_open() -> None:
     rows = fourth["artifacts"]
     assert isinstance(rows, list) and isinstance(rows[6], dict)
     rows[6]["verification_mode"] = "REFERENCE_DIGEST_ONLY"
-    with pytest.raises(DetroitControlError, match="DETROIT_REFERENCE_ONLY_SET"):
+    with pytest.raises(DetroitControlError, match="DETROIT_ARTIFACT_MODE"):
         verify_source_root(Path("/definitely/not/opened"), fourth)
 
 
@@ -337,7 +416,7 @@ def test_selected_value_and_cz_mapping_mutations_refuse_without_fixture_writes()
     assert isinstance(mappings, list) and isinstance(mappings[0], dict)
     mappings[0]["cz_id"] = "99999"
     with pytest.raises(DetroitControlError, match="DETROIT_CZ_MAPPING"):
-        builder._verify_csv(ROOT / bridge["relative_path"], bridge)  # noqa: SLF001
+        builder._verify_csv(ROOT / bridge["relative_path"], bridge, 15)  # noqa: SLF001
     _assert_unchanged(originals)
 
 
@@ -350,6 +429,181 @@ def test_metric_registry_mismatch_refuses_before_source_open() -> None:
     contracts[0]["producer"] = "wrong"
     with pytest.raises(DetroitControlError, match="DETROIT_METRIC_REGISTRY"):
         verify_source_root(Path("/definitely/not/opened"), ledger)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "error"),
+    [
+        ("missing", "DETROIT_METRIC_MISSING"),
+        ("extra", "DETROIT_METRIC_EXTRA"),
+        ("duplicate", "DETROIT_METRIC_DUPLICATE"),
+    ],
+)
+def test_metric_declarations_are_exact_before_source_open(mutation: str, error: str) -> None:
+    ledger = copy.deepcopy(load_extraction())
+    artifacts = ledger["artifacts"]
+    assert isinstance(artifacts, list)
+    qcew = artifacts[0]
+    lodes = artifacts[1]
+    assert isinstance(qcew, dict) and isinstance(lodes, dict)
+    contracts = qcew["metric_contracts"]
+    lodes_contracts = lodes["metric_contracts"]
+    assert isinstance(contracts, list) and isinstance(lodes_contracts, list)
+    if mutation == "missing":
+        contracts.pop()
+    elif mutation == "extra":
+        contracts.append(copy.deepcopy(lodes_contracts[0]))
+    else:
+        contracts.append(copy.deepcopy(contracts[0]))
+    with pytest.raises(DetroitControlError, match=error):
+        verify_source_root(Path("/definitely/not/opened"), ledger)
+
+
+def test_qcew_scan_uses_mutated_ledger_selector() -> None:
+    ledger = copy.deepcopy(load_extraction())
+    artifacts = ledger["artifacts"]
+    assert isinstance(artifacts, list) and isinstance(artifacts[0], dict)
+    selectors = artifacts[0]["selectors"]
+    assert isinstance(selectors, list) and isinstance(selectors[0], dict)
+    selectors[0]["time_id"] = 999
+    with pytest.raises(DetroitControlError, match="DETROIT_SOURCE_CARDINALITY"):
+        verify_source_root(SOURCE_ROOT, ledger)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "error"),
+    [
+        ("missing-field", "DETROIT_SELECTOR_FIELDS"),
+        ("extra-field", "DETROIT_SELECTOR_FIELDS"),
+        ("wrong-type", "DETROIT_SELECTOR_TYPE"),
+        ("extra-selector", "DETROIT_SELECTOR_CARDINALITY"),
+    ],
+)
+def test_selector_shape_type_and_cardinality_are_closed_pre_open(mutation: str, error: str) -> None:
+    ledger = copy.deepcopy(load_extraction())
+    artifacts = ledger["artifacts"]
+    assert isinstance(artifacts, list) and isinstance(artifacts[0], dict)
+    selectors = artifacts[0]["selectors"]
+    assert isinstance(selectors, list) and isinstance(selectors[0], dict)
+    if mutation == "missing-field":
+        selectors[0].pop("ownership_id")
+    elif mutation == "extra-field":
+        selectors[0]["unknown"] = 1
+    elif mutation == "wrong-type":
+        selectors[0]["time_id"] = "28"
+    else:
+        extra = copy.deepcopy(selectors[0])
+        extra["time_id"] = 999
+        selectors.append(extra)
+    with pytest.raises(DetroitControlError, match=error):
+        verify_source_root(Path("/definitely/not/opened"), ledger)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "error"),
+    [
+        ("artifact-unknown", "DETROIT_ARTIFACT_UNKNOWN_FIELD"),
+        ("artifact-missing", "DETROIT_ARTIFACT_UNKNOWN_FIELD"),
+        ("metric-unknown", "DETROIT_METRIC_UNKNOWN_FIELD"),
+        ("metric-missing", "DETROIT_METRIC_UNKNOWN_FIELD"),
+        ("selected-unknown", "DETROIT_SELECTED_ROW_FIELDS"),
+        ("selected-missing", "DETROIT_SELECTED_ROW_FIELDS"),
+        ("selected-wrong-type", "DETROIT_SELECTED_ROW_TYPE"),
+        ("gap-reason", "DETROIT_GAP_SEMANTICS"),
+        ("gap-missing", "DETROIT_GAP_FIELDS"),
+        ("absolute-path", "DETROIT_ARTIFACT_PATH"),
+        ("traversal-path", "DETROIT_ARTIFACT_PATH"),
+        ("wrong-relative-path", "DETROIT_ARTIFACT_LAYOUT"),
+        ("wrong-mode", "DETROIT_ARTIFACT_MODE"),
+    ],
+)
+def test_nested_ledger_contract_is_closed_pre_open(mutation: str, error: str) -> None:
+    ledger = copy.deepcopy(load_extraction())
+    artifacts = ledger["artifacts"]
+    gaps = ledger["gaps"]
+    assert isinstance(artifacts, list) and isinstance(artifacts[0], dict)
+    assert isinstance(gaps, list) and isinstance(gaps[0], dict)
+    selected = artifacts[0]["selected_rows"]
+    contracts = artifacts[0]["metric_contracts"]
+    assert isinstance(selected, list) and isinstance(selected[0], dict)
+    assert isinstance(contracts, list) and isinstance(contracts[0], dict)
+    if mutation == "artifact-unknown":
+        artifacts[0]["unknown"] = 1
+    elif mutation == "artifact-missing":
+        artifacts[0].pop("schema")
+    elif mutation == "metric-unknown":
+        contracts[0]["unknown"] = 1
+    elif mutation == "metric-missing":
+        contracts[0].pop("digest")
+    elif mutation == "selected-unknown":
+        selected[0]["unknown"] = 1
+    elif mutation == "selected-missing":
+        selected[0].pop("employment")
+    elif mutation == "selected-wrong-type":
+        selected[0]["employment"] = "336295"
+    elif mutation == "gap-reason":
+        gaps[0]["reason"] = "MISSING_GOVERNED_PRODUCER"
+    elif mutation == "gap-missing":
+        gaps[0].pop("producer")
+    elif mutation == "absolute-path":
+        artifacts[0]["relative_path"] = "/tmp/fact_qcew_county_rollup.parquet"
+    elif mutation == "traversal-path":
+        artifacts[0]["relative_path"] = "../fact_qcew_county_rollup.parquet"
+    elif mutation == "wrong-relative-path":
+        artifacts[0]["relative_path"] = "wrong.parquet"
+    else:
+        artifacts[0]["verification_mode"] = "TRACKED_CSV"
+    with pytest.raises(DetroitControlError, match=error):
+        verify_source_root(Path("/definitely/not/opened"), ledger)
+
+
+def test_physical_source_symlink_cannot_escape_root(tmp_path: Path) -> None:
+    outside = tmp_path / "outside.parquet"
+    outside.write_bytes(b"not parquet")
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    (source_root / "fact_qcew_county_rollup.parquet").symlink_to(outside)
+    with pytest.raises(DetroitControlError, match="DETROIT_ARTIFACT_PATH"):
+        verify_source_root(source_root)
+
+
+def test_parquet_scan_reads_only_required_columns(monkeypatch: pytest.MonkeyPatch) -> None:
+    real_parquet_file = pq.ParquetFile
+    seen: dict[str, tuple[str, ...]] = {}
+
+    class ParquetFileSpy:
+        def __init__(self, path: Path) -> None:
+            self._path = path
+            self._delegate = real_parquet_file(path)
+
+        @property
+        def metadata(self) -> object:
+            return cast(object, self._delegate.metadata)
+
+        @property
+        def schema_arrow(self) -> pa.Schema:
+            return cast(pa.Schema, self._delegate.schema_arrow)
+
+        def iter_batches(
+            self,
+            *,
+            row_groups: list[int],
+            batch_size: int,
+            columns: list[str] | None = None,
+        ) -> Iterator[pa.RecordBatch]:
+            seen[self._path.name] = () if columns is None else tuple(columns)
+            return cast(
+                Iterator[pa.RecordBatch],
+                self._delegate.iter_batches(
+                    row_groups=row_groups,
+                    batch_size=batch_size,
+                    columns=columns,
+                ),
+            )
+
+    monkeypatch.setattr(pq, "ParquetFile", ParquetFileSpy)
+    assert verify_source_root(SOURCE_ROOT) == REFERENCE_ONLY
+    assert seen == EXPECTED_PARQUET_COLUMNS
 
 
 def test_exact_source_root_metadata_rows_values_and_bits_verify() -> None:

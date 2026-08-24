@@ -1,0 +1,102 @@
+//! Behavioral proof for situated organizational practice over relational territory.
+
+use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_graph::hypergraph_store::HypergraphStore;
+use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use babylon_kernel::SessionId;
+use babylon_tick::TickSession;
+
+const SCENARIO: &str = include_str!("../content/scenarios/organization-foundation.bscn");
+const PACK: &str = include_str!("../content/rules/organization.bsl");
+
+const COUNTY_A: NodeId = NodeId(1);
+const READING_GROUP: NodeId = NodeId(2);
+const PRECINCT: NodeId = NodeId(3);
+const COUNTY_B: NodeId = NodeId(6);
+const COUNTY_C: NodeId = NodeId(7);
+const PRACTICE_TICKS: usize = 24;
+
+fn attribute(session: &TickSession<HypergraphStore>, node: NodeId, field: &str) -> f64 {
+    session
+        .graph()
+        .node_attribute(node, field)
+        .unwrap_or_else(|error| panic!("node {node:?} declares {field}: {error:?}"))
+}
+
+fn capacity(session: &TickSession<HypergraphStore>, territory: NodeId) -> f64 {
+    attribute(session, territory, "territory/rooted-capacity")
+}
+
+fn membership(session: &TickSession<HypergraphStore>) -> f64 {
+    attribute(session, READING_GROUP, "organization/membership-share")
+}
+
+#[test]
+fn rooted_capacity_moves_one_relational_hop_per_tick() {
+    let mut session = TickSession::new(
+        SCENARIO,
+        PACK,
+        HypergraphStore::new(),
+        SessionId::new("organization-practice-conformance").expect("literal is non-empty"),
+    )
+    .expect("the organization practice world loads");
+    let mut sink = CollectingSink::default();
+
+    session.advance(&mut sink).expect("tick 1");
+    assert!(capacity(&session, COUNTY_A) > 0.0);
+    assert!(capacity(&session, COUNTY_B) > 0.0);
+    assert_eq!(capacity(&session, COUNTY_C).to_bits(), 0.0_f64.to_bits());
+    assert_eq!(
+        attribute(&session, READING_GROUP, "organization/action-budget").to_bits(),
+        0.0_f64.to_bits()
+    );
+    assert_eq!(
+        attribute(&session, PRECINCT, "organization/action-budget").to_bits(),
+        1.0_f64.to_bits()
+    );
+
+    session.advance(&mut sink).expect("tick 2");
+    assert!(capacity(&session, COUNTY_C) > 0.0);
+}
+
+#[test]
+fn recruitment_emerges_as_slow_fast_slow_growth() {
+    let mut session = TickSession::new(
+        SCENARIO,
+        PACK,
+        HypergraphStore::new(),
+        SessionId::new("organization-recruitment-emergence").expect("literal is non-empty"),
+    )
+    .expect("the organization practice world loads");
+    let mut sink = CollectingSink::default();
+    let mut trajectory = [0.0_f64; PRACTICE_TICKS];
+
+    for membership_share in &mut trajectory {
+        session.advance(&mut sink).expect("bounded emergence tick");
+        *membership_share = membership(&session);
+    }
+
+    let early_gain = trajectory[3] - trajectory[0];
+    let middle_gain = trajectory[11] - trajectory[8];
+    let late_gain = trajectory[23] - trajectory[20];
+
+    assert!(trajectory.windows(2).all(|pair| pair[1] >= pair[0]));
+    assert!(early_gain > 0.0, "early gain was {early_gain}");
+    assert!(
+        middle_gain > early_gain,
+        "middle gain {middle_gain} did not exceed early gain {early_gain}"
+    );
+    assert!(
+        (0.0..middle_gain).contains(&late_gain),
+        "late gain {late_gain} did not decelerate from {middle_gain}"
+    );
+    assert!(trajectory[23] < 1.0);
+    assert!(
+        attribute(&session, COUNTY_A, "territory/command-pressure") > 0.0,
+        "rooted organization should provoke a territorial command response"
+    );
+    assert!(
+        attribute(&session, COUNTY_A, "territory/reproduction-pressure") < 0.9,
+        "organized care should ease the pressure that initially conditioned recruitment"
+    );
+}

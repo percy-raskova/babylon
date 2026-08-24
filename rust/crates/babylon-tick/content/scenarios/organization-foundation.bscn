@@ -1,67 +1,104 @@
-; The org-seeding canonical scenario — spec §11's hash anchor for the
-; Organization contract's floor (Organization-as-game-object design, §1
-; Q1/Q15). Before this file, `org_count=0` in every scenario the Rust engine
-; ran; this is the first golden that closes that blind spot.
+; Canonical organization practice scenario. One civil-society organization
+; repeats ROOTED_WORK while one state apparatus holds the local COMMAND
+; relation. The player-facing intent boundary has not landed yet, so practice
+; is seeded state in this proof rather than a live input.
 ;
-; Q1 ("Content-declared kinds"): one kernel NodeType/ORGANIZATION; the four
-; kinds — state apparatus, business, political faction, civil society — are
-; NOT four node types. They are a content-declared closed `OrgKind` enum on
-; a single `organization/kind` field (ADR195's `enum` deffield row), so
-; content, not the kernel, tells a police department from a union local.
+; Geography is relational. TENANCY anchors each class to a territory;
+; ADJACENCY forms the circulation path; PRESENCE and COMMAND locate
+; organizational capacities. All territories share one node type and differ
+; only through declared relations and material state.
 ;
-; Q15 ("Founding edge vocabulary, sharpened"): the six edge types this world
-; declares and the three of them it actually seeds — MEMBERSHIP (an org's
-; social base, weighted by the member class's population), PRESENCE (an
-; org's territorial footprint), and one org<->org SOLIDARITY edge (next
-; paragraph). The remaining three (COMMAND, TRANSACTIONAL, SOLIDARISTIC)
-; are declared unseeded so the vocabulary is honest about what a mature
-; org-bearing world will use before this floor golden exercises them.
-;
-; The org<->org SOLIDARITY edge (reading-group -> precinct) is deliberate,
-; not a mistake: SOLIDARITY has always meant class-to-class solidarity; Q15
-; extends its legal endpoint pair to org<->org too (the Q15/Q18 edge), and
-; this golden seeds one instance from the first commit so the win-gate
-; repair train (I.21's player half, Q18) has a real instance to count
-; against rather than a fixture built to order.
-;
-; A fieldless node is legal (`county` below carries no attributes at all —
-; scenario.rs's own "No defaults" contract: an unwritten field errors on
-; read, and seeding zeros here would defeat that at the easiest place to
-; defeat it) — verified against the query-eval train's own G3(b) golden
-; (babylon-tick/src/lib.rs's `the_task_10_scenario_shape_loads_clean_and_
-; fires_through_run_once`), which seeds a fieldless SOCIAL_CLASS node
-; through this exact loader with no special case.
-;
-; Vocabulary ceremony: ADR196 (org_vocabulary_ceremony) mints
-; NodeType/ORGANIZATION, the five new EdgeType members plus the org↔org
-; SOLIDARITY usage, and the OrgKind enum into the Rust closed BSL
-; vocabulary; ADR195 mints the `enum` deffield row (Q12) that
-; `organization/kind` is this scenario's first real consumer of.
+; The `OrgKind` and `PracticeKind` enums remain content declarations rather
+; than kernel primitives. Constants below are Designed controls for this
+; experiment, not universal coefficients.
 (scenario organization/foundation
   (defvocabulary NodeType (SOCIAL_CLASS TERRITORY ORGANIZATION))
   (defvocabulary EdgeType
-    (MEMBERSHIP PRESENCE COMMAND TRANSACTIONAL SOLIDARISTIC SOLIDARITY))
+    (MEMBERSHIP PRESENCE COMMAND TRANSACTIONAL SOLIDARISTIC SOLIDARITY
+     TENANCY ADJACENCY))
   (defenum OrgKind (STATE_APPARATUS BUSINESS POLITICAL_FACTION CIVIL_SOCIETY))
+  (defenum PracticeKind (NONE ROOTED_WORK))
   (deffield organization/kind enum OrgKind)
+  (deffield organization/practice enum PracticeKind)
   (deffield organization/active int extensive)
+  (deffield organization/action-budget int extensive)
+  (deffield organization/membership-share coefficient intensive)
   (deffield social-class/population int extensive)
+  (deffield territory/rooted-capacity coefficient intensive)
+  (deffield territory/rooted-work-inbox coefficient intensive)
+  (deffield territory/rooted-relay-inbox coefficient intensive)
+  (deffield territory/command-pressure coefficient intensive)
+  (deffield territory/reproduction-pressure coefficient intensive)
+  (deffield territory/circulation-access coefficient intensive)
+  (deffield territory/resident-population int extensive)
+
+  ; Designed control values for this experiment, not universal coefficients.
+  (defconst organization/practice-rate 0.05c)
+  (defconst organization/relay-rate 0.5c)
+  (defconst organization/recruitment-rate 0.45c)
+  (defconst organization/command-response-rate 0.25c)
+  (defconst organization/care-rate 0.1c)
 
   ; The social base: a working-class block a reading group can recruit from.
   (node workers NodeType/SOCIAL_CLASS (social-class/population 1000))
-  ; The territorial anchor both organizations are PRESENT in. Fieldless: a
-  ; TERRITORY node needs no attribute to exist, and this world reads none.
-  (node county NodeType/TERRITORY)
+  ; The territorial anchor both organizations are present in.
+  (node county NodeType/TERRITORY
+    (territory/rooted-capacity 0.0c)
+    (territory/rooted-work-inbox 0.0c)
+    (territory/rooted-relay-inbox 0.0c)
+    (territory/command-pressure 0.0c)
+    (territory/reproduction-pressure 0.9c)
+    (territory/circulation-access 0.8c)
+    (territory/resident-population 1000))
   ; Civil society: a small propaganda/education circle, present in the
   ; county, with a MEMBERSHIP edge to the class it recruits from.
   (node reading-group NodeType/ORGANIZATION
-    (organization/kind OrgKind/CIVIL_SOCIETY) (organization/active 1))
-  ; The state apparatus: the local coercive organ the probe rule is written
-  ; to pick out from the other three kinds.
+    (organization/kind OrgKind/CIVIL_SOCIETY)
+    (organization/practice PracticeKind/ROOTED_WORK)
+    (organization/active 1)
+    (organization/action-budget 0)
+    (organization/membership-share 0.01c))
+  ; The state apparatus: the local coercive organization.
   (node precinct NodeType/ORGANIZATION
-    (organization/kind OrgKind/STATE_APPARATUS) (organization/active 1))
+    (organization/kind OrgKind/STATE_APPARATUS)
+    (organization/practice PracticeKind/NONE)
+    (organization/active 1)
+    (organization/action-budget 0)
+    (organization/membership-share 0.0c))
+
+  ; Two more class/territory pairs make geography relational rather than a
+  ; label on one county. The directed ring gives every territory one sender
+  ; and one receiver, so each weekly relay has one deterministic writer.
+  (node workers-b NodeType/SOCIAL_CLASS (social-class/population 700))
+  (node workers-c NodeType/SOCIAL_CLASS (social-class/population 400))
+  (node county-b NodeType/TERRITORY
+    (territory/rooted-capacity 0.0c)
+    (territory/rooted-work-inbox 0.0c)
+    (territory/rooted-relay-inbox 0.0c)
+    (territory/command-pressure 0.0c)
+    (territory/reproduction-pressure 0.6c)
+    (territory/circulation-access 0.5c)
+    (territory/resident-population 700))
+  (node county-c NodeType/TERRITORY
+    (territory/rooted-capacity 0.0c)
+    (territory/rooted-work-inbox 0.0c)
+    (territory/rooted-relay-inbox 0.0c)
+    (territory/command-pressure 0.0c)
+    (territory/reproduction-pressure 0.4c)
+    (territory/circulation-access 0.3c)
+    (territory/resident-population 400))
 
   (edge EdgeType/MEMBERSHIP reading-group workers 1)
   (edge EdgeType/PRESENCE reading-group county 1)
   (edge EdgeType/PRESENCE precinct county 1)
+  (edge EdgeType/COMMAND precinct county 1)
+  (edge EdgeType/TENANCY workers county 1)
+  (edge EdgeType/TENANCY workers-b county-b 1)
+  (edge EdgeType/TENANCY workers-c county-c 1)
+  (edge EdgeType/ADJACENCY county county-b 1)
+  (edge EdgeType/ADJACENCY county-b county-c 1)
+  (edge EdgeType/ADJACENCY county-c county 1)
+  (edge EdgeType/SOLIDARITY workers workers-b 1)
+  (edge EdgeType/SOLIDARITY workers-b workers-c 1)
   ; The deliberate org<->org SOLIDARITY edge (Q15/Q18) — see header.
   (edge EdgeType/SOLIDARITY reading-group precinct 1))

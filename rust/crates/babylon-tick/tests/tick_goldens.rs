@@ -117,50 +117,38 @@ fn us_counties_lifecycle_demo_hashes_are_pinned() {
     );
 }
 
-/// Task 10 (Organization foundation plan) — spec §11's hash anchor: the
-/// org-seeding canonical scenario, pinned. `organization-foundation.bscn`
-/// declares NodeType/EdgeType vocabularies plus the `OrgKind` enum
-/// (ADR195/ADR196), seeds two organizations (a CIVIL_SOCIETY reading group
-/// and a STATE_APPARATUS precinct) over a class and a territory, and the
-/// `organization/kind-probe` rule reads `organization/kind` back through a
-/// `:field` binding (`field-of` is refused for enum-declared fields — D102)
-/// to fire on the one STATE_APPARATUS organization only.
+/// The organization foundation hash anchor. The scenario seeds two
+/// organizations, three class-territory pairs, and explicit membership,
+/// presence, command, tenancy, adjacency, and solidarity relations. The
+/// rule pack spends a bounded practice action, relays rooted capacity,
+/// recruits from a finite social base, provokes command response, and
+/// provides reproductive relief.
 ///
-/// `before == after` here is not a bug: the probe rule's only effect is
-/// `emit` — no `update-node` — and the tick-hash contract
-/// (`babylon-graph/src/state_hash.rs`, §"The canonical byte layout") covers
-/// only nodes/attributes/edges/hyperedges, never the event log. A rule that
-/// observes but does not mutate leaves the graph, and therefore the hash,
-/// genuinely unmoved; measured, not assumed. The `before` pin still
-/// discriminates — a reordered `defenum` moves it (declaration order IS the
-/// stored ordinal, ADR195) — and `fired == 1` pins both halves of the
-/// guard. What NO golden can pin today is the emit itself (`TickReport`
-/// carries no event log); that blind spot closes at the Events-in-BSL
-/// workstream's observable seam (WS1, #502), not by rewriting this probe.
+/// The before hash pins the expanded relational world. The after hash pins
+/// its first material tick. Structural assertions in
+/// `organization_practice_conformance.rs` explain the behavior summarized
+/// by these bytes.
 #[test]
 fn organization_foundation_hashes_are_pinned() {
     let report = run_once(ORG_FOUNDATION_SCENARIO, ORG_FOUNDATION_RULE)
         .expect("organization-foundation tick");
     assert_eq!(
         hex(&report.before),
-        "5d8d5c43088440787f993ce91bd9a676d4adf60fa35904b2afbafeccaab93a1e",
+        "9e15ff8a1f3880f2ce7e5e6e8e4f198f2fcca927f24c876b8addaf84cd6f03f9",
         "pre-tick hash moved — this is the SUBSTRATE'S load of \
          organization-foundation.bscn (the org estate's first entry into \
          the Rust byte gate, spec §11)"
     );
     assert_eq!(
         hex(&report.after),
-        "5d8d5c43088440787f993ce91bd9a676d4adf60fa35904b2afbafeccaab93a1e",
-        "post-tick hash moved — the probe rule's own effect is emit-only \
-         (no update-node), so this staying equal to `before` is the \
-         expected, measured result, not an oversight; a future rule that \
-         adds a mutating effect to this pack SHOULD move this value"
+        "91f4fd1e7d62b38ee85b6f70b92e5e45ebe8c8de8ddc179f897f55492dedf410",
+        "post-tick hash moved — this pins the first material practice, \
+         propagation, recruitment, command, and care writes"
     );
     assert_eq!(
-        report.fired, 1,
-        "the probe rule must fire for exactly the one STATE_APPARATUS \
-         organization (precinct) and skip the CIVIL_SOCIETY one \
-         (reading-group)"
+        report.fired, 13,
+        "the first tick must execute the measured subject-rule matches \
+         across the kind probe and eight material practice rules"
     );
 }
 

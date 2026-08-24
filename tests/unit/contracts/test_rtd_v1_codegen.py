@@ -1,0 +1,975 @@
+"""Behavioral contract for the closed RTD V1 schema generator."""
+
+from __future__ import annotations
+
+import copy
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+import pytest
+import yaml
+from tools.generate_rtd_v1_types import (
+    CONTRACT_LIMIT_ERROR,
+    CONTRACT_SCHEMA_ERROR,
+    ContractLoadError,
+    ExpandedMetricSpec,
+    RelationBindingSpec,
+    TypedIdentitySpec,
+    load_contract,
+    main,
+    render_python,
+    render_rust,
+)
+
+pytestmark = pytest.mark.unit
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+CONTRACT_PATH = REPO_ROOT / "contracts" / "relational_territory_dossier_v1.yaml"
+GENERATOR_PATH = REPO_ROOT / "tools" / "generate_rtd_v1_types.py"
+REQUIRED_REGISTRY_COUNT = 6
+EXPECTED_METRIC_COUNT = 18
+EXPECTED_UNIT_COUNT = 8
+EXPECTED_COORDINATE_COUNT = 13
+EXPECTED_SCALE_COUNT = 9
+EXPECTED_ARTIFACT_COUNT = 10
+MAX_EXPECTED_METRIC_COORDINATES = 4
+EXTRA_RECORD_DECLARATIONS = 20
+EXTRA_ENUM_DECLARATIONS = 49
+EXTRA_FIELD_DECLARATIONS = 62
+EXTRA_ENUM_MEMBERS = 255
+EXTRA_LIMIT_ROWS = 493
+EXTRA_REGISTRY_ROWS = 495
+
+EXPECTED_RECORDS = {
+    "TypedIdentityV1",
+    "ReferenceDigestV1",
+    "DimensionCoordinateV1",
+    "ScaleMembershipV1",
+    "FacetV1",
+    "DyadV1",
+    "HyperedgeV1",
+    "ReferenceFlowV1",
+    "GapV1",
+    "ProvenanceV1",
+    "DecisionSurfaceV1",
+    "RtdDossierDraftV1",
+    "RelationalTerritoryDossierV1",
+}
+
+EXPECTED_ENUMS = {
+    "AudienceV1": ("ADMIN_MATERIAL", "PLAYER_KNOWLEDGE"),
+    "DurabilityV1": ("IN_MEMORY", "COMMITTED"),
+    "EvidenceClassV1": ("Observed", "Derived", "Calibrated", "Designed"),
+    "StatusV1": ("PRESENT", "ABSENT", "UNKNOWN", "NOT_COMPUTED", "REDACTED"),
+    "ValueKindV1": ("UINT64_BITS", "FLOAT64_BITS"),
+    "CoverageV1": ("COMPLETE", "PARTIAL", "NOT_APPLICABLE", "UNKNOWN"),
+    "MembershipKindV1": (
+        "ADMINISTRATIVE",
+        "NATIONAL",
+        "COMMUTING_ZONE",
+        "METROPOLITAN",
+        "WEIGHTED_OVERLAP",
+    ),
+    "FacetFamilyV1": (
+        "COMMAND_ADMINISTRATION",
+        "PRODUCTION_CIRCULATION",
+        "REPRODUCTION_SETTLEMENT_ACCESS",
+        "EXTRACTION_ABANDONMENT_CARCERAL",
+        "ECOLOGY_CARE",
+        "ORGANIZATION_ROOTEDNESS",
+    ),
+    "DyadKindV1": ("PRESENCE", "MEMBERSHIP", "SOLIDARITY", "COMMAND"),
+    "HyperedgeKindV1": ("PUBLIC_RELATION",),
+    "FlowKindV1": ("COMMUTER_JOBS", "BORDER_SYNTHESIS"),
+    "RelationPayloadModeV1": ("EMPTY", "SINGLE_METRIC_FACET", "IMPLICIT_RELATION"),
+    "GapReasonV1": (
+        "MISSING_GOVERNED_OMB_DELINEATION",
+        "IDENTITY_CONTRACT_PENDING",
+        "MISSING_GOVERNED_PRODUCER",
+        "REFERENCE_COVERAGE_UNAVAILABLE",
+        "PLAYER_BOUNDARY_UNAVAILABLE",
+        "PROVENANCE_COORDINATE_CONFLICT",
+    ),
+    "MetricRepresentationV1": ("FACET", "REFERENCE_FLOW", "DYAD"),
+    "AggregationRuleV1": (
+        "NONE",
+        "PUBLISHED_ROLLUP",
+        "LOAD_TIME_SUM",
+        "BLOCK_INTERNAL_POINT_ASSIGNMENT",
+        "BLOCK_COORDINATE_ASSIGNMENT",
+        "EQUAL_AREA_WATER_INTERSECTION",
+        "TYPED_RELATION_PROJECTION",
+    ),
+    "RtdCollectionKindV1": (
+        "FOCUS",
+        "REFERENCE_DIGESTS",
+        "SCALE_MEMBERSHIPS",
+        "FACETS",
+        "DYADS",
+        "HYPEREDGES",
+        "FLOWS",
+        "GAPS",
+        "PROVENANCE",
+        "COORDINATES",
+        "MEMBER_REFS",
+        "PAYLOAD_FACETS",
+        "DISPLAY_REFS",
+        "PROVENANCE_REFS",
+    ),
+}
+
+EXPECTED_LIMITS = {
+    "max_collection_items": 65_535,
+    "max_focus": 64,
+    "max_reference_digests": 4_096,
+    "max_scale_memberships": 65_535,
+    "max_facets": 65_535,
+    "max_dyads": 65_535,
+    "max_hyperedges": 65_535,
+    "max_flows": 65_535,
+    "max_gaps": 65_535,
+    "max_provenance": 65_535,
+    "max_coordinates": 32,
+    "max_hyperedge_members": 1_024,
+    "max_payload_facets": 256,
+    "max_decision_surface_refs": 256,
+    "max_provenance_refs": 8_192,
+    "max_identity_component_bytes": 256,
+    "max_vintage_bytes": 256,
+    "max_provenance_locator_bytes": 1_024,
+    "max_required_producer_bytes": 64,
+    "max_canonical_bytes": 67_108_864,
+}
+
+EXPECTED_SCALAR_TYPES = {
+    "string": {"json_type": "string", "nfc": True},
+    "u16": {"json_type": "unsigned_integer", "minimum": 0, "maximum": 65_535},
+    "u64": {
+        "json_type": "unsigned_integer",
+        "minimum": 0,
+        "maximum": 18_446_744_073_709_551_615,
+    },
+    "digest_hex": {
+        "json_type": "string",
+        "nfc": True,
+        "utf8_bytes": 64,
+        "pattern": "^[0-9a-f]{64}$",
+    },
+    "bits64_hex": {
+        "json_type": "string",
+        "nfc": True,
+        "utf8_bytes": 16,
+        "pattern": "^[0-9a-f]{16}$",
+        "uint64_encoding": "big_endian_bits",
+        "float64_encoding": "finite_ieee754_binary64_bits",
+        "normalize_negative_zero": True,
+    },
+    "vintage": {
+        "json_type": "string",
+        "nfc": True,
+        "minimum_utf8_bytes": 1,
+        "maximum_utf8_bytes_limit": "max_vintage_bytes",
+    },
+    "producer_issue": {
+        "json_type": "string",
+        "nfc": True,
+        "minimum_utf8_bytes": 1,
+        "maximum_utf8_bytes_limit": "max_required_producer_bytes",
+        "pattern": "^PER-[1-9][0-9]*$",
+    },
+}
+
+EXPECTED_ERRORS = (
+    "RTD_JSON",
+    "RTD_JSON_DEPTH",
+    "RTD_SCHEMA_VERSION",
+    "RTD_UNKNOWN_FIELD",
+    "RTD_ENUM",
+    "RTD_IDENTITY",
+    "RTD_DIGEST",
+    "RTD_NON_NFC",
+    "RTD_LIMIT_EXCEEDED",
+    "RTD_DUPLICATE_KEY",
+    "RTD_DANGLING_REF",
+    "RTD_STATUS_VALUE",
+    "RTD_NATIVE_GRAIN",
+    "RTD_UNSUPPORTED_DOWNSCALE",
+    "RTD_H3_BEFORE_PER21",
+    "RTD_MSA_EVIDENCE",
+    "RTD_CANADA_CONTROL",
+    "RTD_FORBIDDEN_REDUCTION",
+    "RTD_VECTOR_LIMIT",
+    "RTD_CANONICAL_SIZE",
+)
+
+
+def _identity(domain: str, authority: str, local_id: str) -> TypedIdentitySpec:
+    return TypedIdentitySpec(domain=domain, authority=authority, local_id=local_id)
+
+
+def _metric_identity(local_id: str) -> TypedIdentitySpec:
+    return _identity("metric", "babylon.rtd.v1", local_id)
+
+
+def _unit(local_id: str) -> TypedIdentitySpec:
+    return _identity("unit", "babylon.rtd.v1", local_id)
+
+
+def _dimension(local_id: str) -> TypedIdentitySpec:
+    return _identity("dimension", "babylon.rtd.v1", local_id)
+
+
+def _native_scale(local_id: str) -> TypedIdentitySpec:
+    return _identity("native-scale", "babylon.rtd.v1", local_id)
+
+
+def _producer(local_id: str) -> TypedIdentitySpec:
+    authority = (
+        "babylon.engine"
+        if local_id == "typed-graph-relations-at-verified-tick"
+        else "babylon.data.v7"
+    )
+    return _identity("producer", authority, local_id)
+
+
+def _reference(local_id: str) -> TypedIdentitySpec:
+    return _identity("reference-artifact", "babylon.data.v7", local_id)
+
+
+UNIT_LOCAL_IDS = {
+    "JOBS": "jobs",
+    "ESTABLISHMENTS": "establishments",
+    "USD_CURRENT": "usd-current",
+    "HOUSEHOLDS": "households",
+    "PERSONS": "persons",
+    "FACILITIES": "facilities",
+    "FRACTION": "fraction",
+    "TYPED_RELATION": "typed-relation",
+}
+
+COORDINATE_LOCAL_IDS = {
+    "county": "county",
+    "naics6": "naics6",
+    "ownership": "ownership",
+    "home_county": "home-county",
+    "work_county": "work-county",
+    "source": "source",
+    "tenure": "tenure",
+    "race": "race",
+    "burden": "burden",
+    "h3_cell": "h3-cell",
+    "coercive_type": "coercive-type",
+    "actor": "actor",
+    "node": "node",
+}
+
+SCALE_LOCAL_IDS = {
+    "COUNTY_NAICS6_OWNERSHIP_YEAR": "county-naics6-ownership-year",
+    "COUNTY_OWNERSHIP_YEAR": "county-ownership-year",
+    "HOME_COUNTY_WORK_COUNTY_YEAR": "home-county-work-county-year",
+    "COUNTY_SOURCE_TENURE_TIME_RACE": "county-source-tenure-time-race",
+    "COUNTY_SOURCE_TIME_RACE": "county-source-time-race",
+    "COUNTY_SOURCE_BURDEN_TIME_RACE": "county-source-burden-time-race",
+    "H3_R7_VINTAGE": "h3-r7-vintage",
+    "COUNTY_COERCIVE_TYPE_SOURCE": "county-coercive-type-source",
+    "ACTOR_NODE_VERIFIED_TICK": "actor-node-verified-tick",
+}
+
+ARTIFACTS = (
+    "fact_qcew_annual",
+    "fact_qcew_county_rollup",
+    "fact_lodes_commuter_flow",
+    "fact_census_housing",
+    "fact_census_rent",
+    "fact_census_rent_burden",
+    "h3_res7_population",
+    "h3_res7_workplace",
+    "fact_coercive_infrastructure",
+    "h3_res7_land_mask",
+)
+
+
+def _metric(
+    metric: str,
+    representation: str,
+    unit: str,
+    value_kind: str | None,
+    native_scale: str,
+    coordinates: tuple[str, ...],
+    evidence_classes: tuple[str, ...],
+    aggregation_rule: str,
+    producer: str,
+    reference: str | None,
+    digest: str | None,
+) -> ExpandedMetricSpec:
+    producer_identity = (
+        _producer("typed-graph-relations-at-verified-tick")
+        if producer == "committed typed graph"
+        else _producer(producer)
+    )
+    expanded_coordinates: list[TypedIdentitySpec] = []
+    for coordinate_index in range(MAX_EXPECTED_METRIC_COORDINATES):
+        if coordinate_index >= len(coordinates):
+            break
+        key = coordinates[coordinate_index]
+        expanded_coordinates.append(_dimension(COORDINATE_LOCAL_IDS[key]))
+    return ExpandedMetricSpec(
+        metric=_metric_identity(metric),
+        representation=representation,
+        unit=_unit(UNIT_LOCAL_IDS[unit]),
+        value_kind=value_kind,
+        native_scale=_native_scale(SCALE_LOCAL_IDS[native_scale]),
+        coordinates=tuple(expanded_coordinates),
+        evidence_classes=evidence_classes,
+        aggregation_rule=aggregation_rule,
+        producer=producer_identity,
+        reference_artifact=None if reference is None else _reference(reference),
+        reference_digest=digest,
+    )
+
+
+QCEW_LEAF_DIGEST = "ca3825a3d60831479313632073b7fc9a941d57dcf9b8940181c4713b6d442248"
+QCEW_COUNTY_DIGEST = "34c2bbb935f79b3c8076a97092b004b14cca120e8272b93c35b3ac9dc2721d13"
+LODES_DIGEST = "d3745f8def09cd8c7a38e1870e6ec2c1853e210b777d8e8358cfce36665bd64d"
+CENSUS_HOUSING_DIGEST = "09ff2d9666b3f5ef267b65cbc77c14e99384f0157b6a4c898ac37df2e67ca59f"
+CENSUS_RENT_DIGEST = "4c8cc134ec490ca75961d83485fc97c6bf240b32128e9d0517e00e62d578a99e"
+CENSUS_BURDEN_DIGEST = "8a42a51c17bf3ebee09f0b0b5145d5c8253c7e3446eec8c75714f9951b20df12"
+H3_POPULATION_DIGEST = "b096a5891284f0ca55bedae9d1a9092eb8ea9e9e32d32b6ace430a9833b53afc"
+H3_WORKPLACE_DIGEST = "ea2ce1508f4fe51f1e879b9f4a1daf579c4b00349388b12a85f884a8f49eabb6"
+CARCERAL_DIGEST = "33e6558d2b438e7aea672021f0e15f743f1ea331ab82407c0805a428b29cf808"
+LAND_FRACTION_DIGEST = "4e6caba297f0111a9ec93d948a83543bb9f7179361fe5dd318bb8a98a5be5194"
+
+EXPECTED_METRICS = (
+    _metric(
+        "production/qcew-leaf-employment",
+        "FACET",
+        "JOBS",
+        "UINT64_BITS",
+        "COUNTY_NAICS6_OWNERSHIP_YEAR",
+        ("county", "naics6", "ownership"),
+        ("Observed", "Derived"),
+        "NONE",
+        "fact_qcew_annual",
+        "fact_qcew_annual",
+        QCEW_LEAF_DIGEST,
+    ),
+    _metric(
+        "production/qcew-leaf-establishments",
+        "FACET",
+        "ESTABLISHMENTS",
+        "UINT64_BITS",
+        "COUNTY_NAICS6_OWNERSHIP_YEAR",
+        ("county", "naics6", "ownership"),
+        ("Observed", "Derived"),
+        "NONE",
+        "fact_qcew_annual",
+        "fact_qcew_annual",
+        QCEW_LEAF_DIGEST,
+    ),
+    _metric(
+        "production/qcew-leaf-total-wages-usd",
+        "FACET",
+        "USD_CURRENT",
+        "FLOAT64_BITS",
+        "COUNTY_NAICS6_OWNERSHIP_YEAR",
+        ("county", "naics6", "ownership"),
+        ("Observed", "Derived"),
+        "NONE",
+        "fact_qcew_annual",
+        "fact_qcew_annual",
+        QCEW_LEAF_DIGEST,
+    ),
+    _metric(
+        "production/qcew-leaf-average-annual-pay-usd",
+        "FACET",
+        "USD_CURRENT",
+        "FLOAT64_BITS",
+        "COUNTY_NAICS6_OWNERSHIP_YEAR",
+        ("county", "naics6", "ownership"),
+        ("Observed", "Derived"),
+        "NONE",
+        "fact_qcew_annual",
+        "fact_qcew_annual",
+        QCEW_LEAF_DIGEST,
+    ),
+    _metric(
+        "production/qcew-county-employment",
+        "FACET",
+        "JOBS",
+        "UINT64_BITS",
+        "COUNTY_OWNERSHIP_YEAR",
+        ("county", "ownership"),
+        ("Observed", "Derived"),
+        "PUBLISHED_ROLLUP",
+        "fact_qcew_county_rollup",
+        "fact_qcew_county_rollup",
+        QCEW_COUNTY_DIGEST,
+    ),
+    _metric(
+        "production/qcew-county-establishments",
+        "FACET",
+        "ESTABLISHMENTS",
+        "UINT64_BITS",
+        "COUNTY_OWNERSHIP_YEAR",
+        ("county", "ownership"),
+        ("Observed", "Derived"),
+        "PUBLISHED_ROLLUP",
+        "fact_qcew_county_rollup",
+        "fact_qcew_county_rollup",
+        QCEW_COUNTY_DIGEST,
+    ),
+    _metric(
+        "production/qcew-county-total-wages-usd",
+        "FACET",
+        "USD_CURRENT",
+        "FLOAT64_BITS",
+        "COUNTY_OWNERSHIP_YEAR",
+        ("county", "ownership"),
+        ("Observed", "Derived"),
+        "PUBLISHED_ROLLUP",
+        "fact_qcew_county_rollup",
+        "fact_qcew_county_rollup",
+        QCEW_COUNTY_DIGEST,
+    ),
+    _metric(
+        "circulation/lodes-county-commuter-total-jobs",
+        "REFERENCE_FLOW",
+        "JOBS",
+        "UINT64_BITS",
+        "HOME_COUNTY_WORK_COUNTY_YEAR",
+        ("home_county", "work_county"),
+        ("Derived",),
+        "LOAD_TIME_SUM",
+        "fact_lodes_commuter_flow",
+        "fact_lodes_commuter_flow",
+        LODES_DIGEST,
+    ),
+    _metric(
+        "reproduction/census-housing-households",
+        "FACET",
+        "HOUSEHOLDS",
+        "UINT64_BITS",
+        "COUNTY_SOURCE_TENURE_TIME_RACE",
+        ("county", "source", "tenure", "race"),
+        ("Observed",),
+        "NONE",
+        "fact_census_housing",
+        "fact_census_housing",
+        CENSUS_HOUSING_DIGEST,
+    ),
+    _metric(
+        "reproduction/census-median-rent-usd",
+        "FACET",
+        "USD_CURRENT",
+        "FLOAT64_BITS",
+        "COUNTY_SOURCE_TIME_RACE",
+        ("county", "source", "race"),
+        ("Observed",),
+        "NONE",
+        "fact_census_rent",
+        "fact_census_rent",
+        CENSUS_RENT_DIGEST,
+    ),
+    _metric(
+        "reproduction/census-rent-burden-households",
+        "FACET",
+        "HOUSEHOLDS",
+        "UINT64_BITS",
+        "COUNTY_SOURCE_BURDEN_TIME_RACE",
+        ("county", "source", "burden", "race"),
+        ("Observed",),
+        "NONE",
+        "fact_census_rent_burden",
+        "fact_census_rent_burden",
+        CENSUS_BURDEN_DIGEST,
+    ),
+    _metric(
+        "reproduction/h3-population-persons",
+        "FACET",
+        "PERSONS",
+        "UINT64_BITS",
+        "H3_R7_VINTAGE",
+        ("h3_cell",),
+        ("Derived",),
+        "BLOCK_INTERNAL_POINT_ASSIGNMENT",
+        "h3_res7_population",
+        "h3_res7_population",
+        H3_POPULATION_DIGEST,
+    ),
+    _metric(
+        "production/h3-workplace-jobs",
+        "FACET",
+        "JOBS",
+        "UINT64_BITS",
+        "H3_R7_VINTAGE",
+        ("h3_cell",),
+        ("Derived",),
+        "BLOCK_COORDINATE_ASSIGNMENT",
+        "h3_res7_workplace",
+        "h3_res7_workplace",
+        H3_WORKPLACE_DIGEST,
+    ),
+    _metric(
+        "carceral/facility-count",
+        "FACET",
+        "FACILITIES",
+        "UINT64_BITS",
+        "COUNTY_COERCIVE_TYPE_SOURCE",
+        ("county", "coercive_type", "source"),
+        ("Observed",),
+        "NONE",
+        "fact_coercive_infrastructure",
+        "fact_coercive_infrastructure",
+        CARCERAL_DIGEST,
+    ),
+    _metric(
+        "ecology/h3-land-fraction",
+        "FACET",
+        "FRACTION",
+        "FLOAT64_BITS",
+        "H3_R7_VINTAGE",
+        ("h3_cell",),
+        ("Derived",),
+        "EQUAL_AREA_WATER_INTERSECTION",
+        "h3_res7_land_mask",
+        "h3_res7_land_mask",
+        LAND_FRACTION_DIGEST,
+    ),
+    _metric(
+        "rootedness/presence",
+        "DYAD",
+        "TYPED_RELATION",
+        None,
+        "ACTOR_NODE_VERIFIED_TICK",
+        ("actor", "node"),
+        ("Derived",),
+        "TYPED_RELATION_PROJECTION",
+        "committed typed graph",
+        None,
+        None,
+    ),
+    _metric(
+        "rootedness/solidarity",
+        "DYAD",
+        "TYPED_RELATION",
+        None,
+        "ACTOR_NODE_VERIFIED_TICK",
+        ("actor", "node"),
+        ("Derived",),
+        "TYPED_RELATION_PROJECTION",
+        "committed typed graph",
+        None,
+        None,
+    ),
+    _metric(
+        "rootedness/membership",
+        "DYAD",
+        "TYPED_RELATION",
+        None,
+        "ACTOR_NODE_VERIFIED_TICK",
+        ("actor", "node"),
+        ("Derived",),
+        "TYPED_RELATION_PROJECTION",
+        "committed typed graph",
+        None,
+        None,
+    ),
+)
+
+EXPECTED_BINDINGS = (
+    RelationBindingSpec(
+        "REFERENCE_FLOW",
+        "COMMUTER_JOBS",
+        _metric_identity("circulation/lodes-county-commuter-total-jobs"),
+        "SINGLE_METRIC_FACET",
+    ),
+    RelationBindingSpec("REFERENCE_FLOW", "BORDER_SYNTHESIS", None, "EMPTY"),
+    RelationBindingSpec(
+        "DYAD", "PRESENCE", _metric_identity("rootedness/presence"), "IMPLICIT_RELATION"
+    ),
+    RelationBindingSpec(
+        "DYAD", "MEMBERSHIP", _metric_identity("rootedness/membership"), "IMPLICIT_RELATION"
+    ),
+    RelationBindingSpec(
+        "DYAD", "SOLIDARITY", _metric_identity("rootedness/solidarity"), "IMPLICIT_RELATION"
+    ),
+    RelationBindingSpec("DYAD", "COMMAND", None, "EMPTY"),
+)
+
+
+def run_generator_check() -> subprocess.CompletedProcess[str]:
+    return subprocess.run(  # noqa: S603 - fixed argv and repository path
+        [sys.executable, str(GENERATOR_PATH), "--check"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_contract_declares_every_sealed_record() -> None:
+    contract = load_contract(CONTRACT_PATH)
+    assert contract.records == EXPECTED_RECORDS
+
+
+def test_contract_freezes_schema_enums_limits_and_errors() -> None:
+    contract = load_contract(CONTRACT_PATH)
+    assert contract.schema == "babylon.relational-territory-dossier"
+    assert contract.schema_version == 1
+    assert contract.scalar_types == EXPECTED_SCALAR_TYPES
+    assert contract.enums == EXPECTED_ENUMS
+    assert contract.limits == EXPECTED_LIMITS
+    assert contract.error_registry == EXPECTED_ERRORS
+
+
+def test_contract_expands_every_identity_registry_component() -> None:
+    contract = load_contract(CONTRACT_PATH)
+    expected = _expected_identity_registry()
+    assert contract.identity_registry == expected
+
+
+def _expected_identity_registry() -> dict[str, dict[str, TypedIdentitySpec]]:
+    expected: dict[str, dict[str, TypedIdentitySpec]] = {
+        "metrics": {},
+        "units": {},
+        "coordinates": {},
+        "native_scales": {},
+        "producers": {},
+        "references": {},
+    }
+    for metric_index in range(EXPECTED_METRIC_COUNT):
+        metric = EXPECTED_METRICS[metric_index].metric
+        expected["metrics"][metric.local_id] = metric
+    unit_rows = tuple(UNIT_LOCAL_IDS.items())
+    for unit_index in range(EXPECTED_UNIT_COUNT):
+        key, local_id = unit_rows[unit_index]
+        expected["units"][key] = _unit(local_id)
+    coordinate_rows = tuple(COORDINATE_LOCAL_IDS.items())
+    for coordinate_index in range(EXPECTED_COORDINATE_COUNT):
+        key, local_id = coordinate_rows[coordinate_index]
+        expected["coordinates"][key] = _dimension(local_id)
+    scale_rows = tuple(SCALE_LOCAL_IDS.items())
+    for scale_index in range(EXPECTED_SCALE_COUNT):
+        key, local_id = scale_rows[scale_index]
+        expected["native_scales"][key] = _native_scale(local_id)
+    for artifact_index in range(EXPECTED_ARTIFACT_COUNT):
+        artifact = ARTIFACTS[artifact_index]
+        expected["producers"][artifact] = _producer(artifact)
+        expected["references"][artifact] = _reference(artifact)
+    expected["producers"]["committed typed graph"] = _producer(
+        "typed-graph-relations-at-verified-tick"
+    )
+    return expected
+
+
+def test_metric_and_relation_registries_are_exact_and_fully_expanded() -> None:
+    contract = load_contract(CONTRACT_PATH)
+    assert contract.metric_registry == EXPECTED_METRICS
+    assert contract.relation_binding_registry == EXPECTED_BINDINGS
+
+
+def test_rendered_metric_rows_contain_complete_identities_not_registry_keys() -> None:
+    contract = load_contract(CONTRACT_PATH)
+    python_source = render_python(contract)
+    rust_source = render_rust(contract)
+    python_metrics = python_source.split("RTD_V1_METRIC_REGISTRY = (", 1)[1].split(
+        "RTD_V1_RELATION_BINDING_REGISTRY = (", 1
+    )[0]
+    rust_metrics = rust_source.split(
+        "pub const RTD_V1_METRIC_REGISTRY: &[RtdMetricRegistryRowV1] = &[", 1
+    )[1].split("pub const RTD_V1_RELATION_BINDING_REGISTRY", 1)[0]
+    assert python_metrics.count("metric=TypedIdentityV1(") == 18
+    assert rust_metrics.count("metric: TypedIdentityLiteralV1 {") == 18
+    assert "metric_key" not in python_source
+    assert "unit_key" not in python_source
+    assert "native_scale_key" not in python_source
+    assert "producer_key" not in python_source
+    assert "reference_key" not in python_source
+    assert "metric_key" not in rust_source
+    assert "unit_key" not in rust_source
+
+
+def test_projection_hash_exists_only_on_the_sealed_record() -> None:
+    contract = load_contract(CONTRACT_PATH)
+    python_source = render_python(contract)
+    rust_source = render_rust(contract)
+    assert python_source.count("projection_hash:") == 1
+    assert rust_source.count("projection_hash:") == 1
+    assert python_source.index("projection_hash:") > python_source.index(
+        "class RelationalTerritoryDossierV1"
+    )
+    assert rust_source.index("projection_hash:") > rust_source.index(
+        "pub struct RelationalTerritoryDossierV1"
+    )
+
+
+def test_both_sources_publish_every_closed_registry() -> None:
+    contract = load_contract(CONTRACT_PATH)
+    python_source = render_python(contract)
+    rust_source = render_rust(contract)
+    required_names = (
+        "RTD_V1_SCHEMA_ID",
+        "RTD_V1_LIMITS",
+        "RTD_V1_ERROR_REGISTRY",
+        "RTD_V1_IDENTITY_REGISTRY",
+        "RTD_V1_METRIC_REGISTRY",
+        "RTD_V1_RELATION_BINDING_REGISTRY",
+    )
+    for name_index in range(REQUIRED_REGISTRY_COUNT):
+        name = required_names[name_index]
+        assert name in python_source
+        assert name in rust_source
+
+
+def test_generated_files_are_current() -> None:
+    result = run_generator_check()
+    assert result.returncode == 0, f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+
+
+def _canonical_document() -> dict[str, Any]:
+    document = yaml.safe_load(CONTRACT_PATH.read_text(encoding="utf-8"))
+    assert isinstance(document, dict)
+    return document
+
+
+def _dump_contract(document: dict[str, Any]) -> bytes:
+    return yaml.safe_dump(document, sort_keys=False, allow_unicode=True).encode("utf-8")
+
+
+def _assert_contract_refusal(tmp_path: Path, raw: bytes, expected_code: str) -> None:
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    contract_path = tmp_path / "contract.yaml"
+    python_output = tmp_path / "generated.py"
+    rust_output = tmp_path / "generated.rs"
+    python_sentinel = b"unchanged python output\n"
+    rust_sentinel = b"unchanged rust output\n"
+    contract_path.write_bytes(raw)
+    python_output.write_bytes(python_sentinel)
+    rust_output.write_bytes(rust_sentinel)
+
+    with pytest.raises(ContractLoadError) as error:
+        load_contract(contract_path)
+    assert error.value.code == expected_code
+    assert (
+        main(
+            [
+                "--contract",
+                str(contract_path),
+                "--python-out",
+                str(python_output),
+                "--rust-out",
+                str(rust_output),
+            ]
+        )
+        == 2
+    )
+    assert python_output.read_bytes() == python_sentinel
+    assert rust_output.read_bytes() == rust_sentinel
+
+
+def test_missing_record_and_changed_limit_refuse_atomically(tmp_path: Path) -> None:
+    missing_record = _canonical_document()
+    del missing_record["records"]["GapV1"]
+    _assert_contract_refusal(
+        tmp_path / "missing-record", _dump_contract(missing_record), CONTRACT_SCHEMA_ERROR
+    )
+
+    changed_limit = _canonical_document()
+    changed_limit["limits"]["max_focus"] = 65
+    _assert_contract_refusal(
+        tmp_path / "changed-limit", _dump_contract(changed_limit), CONTRACT_SCHEMA_ERROR
+    )
+
+
+def test_missing_and_extra_metric_rows_refuse_atomically(tmp_path: Path) -> None:
+    missing = _canonical_document()
+    missing["metric_registry"].pop()
+    _assert_contract_refusal(tmp_path / "missing", _dump_contract(missing), CONTRACT_SCHEMA_ERROR)
+
+    extra = _canonical_document()
+    extra["metric_registry"].append(copy.deepcopy(extra["metric_registry"][0]))
+    _assert_contract_refusal(tmp_path / "extra", _dump_contract(extra), CONTRACT_SCHEMA_ERROR)
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    (
+        ("unit", "PERSONS"),
+        ("native_scale", "COUNTY_OWNERSHIP_YEAR"),
+        ("coordinates", ["county", "ownership"]),
+        ("evidence_classes", ["Observed"]),
+        ("aggregation_rule", "PUBLISHED_ROLLUP"),
+    ),
+)
+def test_metric_semantic_mutations_refuse_atomically(
+    tmp_path: Path,
+    field: str,
+    replacement: Any,
+) -> None:
+    document = _canonical_document()
+    document["metric_registry"][0][field] = replacement
+    _assert_contract_refusal(tmp_path, _dump_contract(document), CONTRACT_SCHEMA_ERROR)
+
+
+def test_missing_duplicate_and_remapped_bindings_refuse_atomically(tmp_path: Path) -> None:
+    missing = _canonical_document()
+    missing["relation_binding_registry"].pop()
+    _assert_contract_refusal(tmp_path / "missing", _dump_contract(missing), CONTRACT_SCHEMA_ERROR)
+
+    duplicate = _canonical_document()
+    duplicate["relation_binding_registry"].append(
+        copy.deepcopy(duplicate["relation_binding_registry"][0])
+    )
+    _assert_contract_refusal(
+        tmp_path / "duplicate", _dump_contract(duplicate), CONTRACT_SCHEMA_ERROR
+    )
+
+    remapped = _canonical_document()
+    remapped["relation_binding_registry"][2]["kind"] = "COMMAND"
+    _assert_contract_refusal(tmp_path / "remapped", _dump_contract(remapped), CONTRACT_SCHEMA_ERROR)
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    (
+        ("metric", "rootedness/presence"),
+        ("payload_mode", "EMPTY"),
+    ),
+)
+def test_commuter_binding_wrong_metric_or_payload_refuses_atomically(
+    tmp_path: Path,
+    field: str,
+    replacement: str,
+) -> None:
+    document = _canonical_document()
+    document["relation_binding_registry"][0][field] = replacement
+    _assert_contract_refusal(tmp_path, _dump_contract(document), CONTRACT_SCHEMA_ERROR)
+
+
+def test_missing_and_duplicate_identity_keys_refuse_atomically(tmp_path: Path) -> None:
+    missing = _canonical_document()
+    del missing["identity_registry"]["units"]["JOBS"]
+    _assert_contract_refusal(tmp_path / "missing", _dump_contract(missing), CONTRACT_SCHEMA_ERROR)
+
+    canonical = CONTRACT_PATH.read_bytes()
+    duplicate = canonical.replace(
+        b"    JOBS: {domain: unit, authority: babylon.rtd.v1, local_id: jobs}\n",
+        b"    JOBS: {domain: unit, authority: babylon.rtd.v1, local_id: jobs}\n"
+        b"    JOBS: {domain: unit, authority: babylon.rtd.v1, local_id: jobs}\n",
+        1,
+    )
+    assert duplicate != canonical
+    _assert_contract_refusal(tmp_path / "duplicate", duplicate, CONTRACT_SCHEMA_ERROR)
+
+
+@pytest.mark.parametrize(
+    ("component", "replacement"),
+    (
+        ("domain", "measure"),
+        ("authority", "babylon.changed"),
+        ("local_id", "employment"),
+    ),
+)
+def test_changed_identity_components_refuse_atomically(
+    tmp_path: Path,
+    component: str,
+    replacement: str,
+) -> None:
+    document = _canonical_document()
+    row = document["identity_registry"]["metrics"]["production/qcew-leaf-employment"]
+    row[component] = replacement
+    _assert_contract_refusal(tmp_path, _dump_contract(document), CONTRACT_SCHEMA_ERROR)
+
+
+def test_two_registry_keys_cannot_map_to_one_identity(tmp_path: Path) -> None:
+    document = _canonical_document()
+    first = document["identity_registry"]["metrics"]["production/qcew-leaf-employment"]
+    document["identity_registry"]["metrics"]["production/qcew-leaf-establishments"] = copy.deepcopy(
+        first
+    )
+    _assert_contract_refusal(tmp_path, _dump_contract(document), CONTRACT_SCHEMA_ERROR)
+
+
+def test_missing_and_extra_error_rows_refuse_atomically(tmp_path: Path) -> None:
+    missing = _canonical_document()
+    missing["error_registry"].pop()
+    _assert_contract_refusal(tmp_path / "missing", _dump_contract(missing), CONTRACT_SCHEMA_ERROR)
+
+    extra = _canonical_document()
+    extra["error_registry"].append("RTD_PRIVATE_ERROR")
+    _assert_contract_refusal(tmp_path / "extra", _dump_contract(extra), CONTRACT_SCHEMA_ERROR)
+
+
+def test_unknown_top_level_and_record_keys_refuse_atomically(tmp_path: Path) -> None:
+    unknown_top = _canonical_document()
+    unknown_top["private_registry"] = []
+    _assert_contract_refusal(tmp_path / "top", _dump_contract(unknown_top), CONTRACT_SCHEMA_ERROR)
+
+    unknown_record = _canonical_document()
+    unknown_record["records"]["GapV1"]["private"] = True
+    _assert_contract_refusal(
+        tmp_path / "record", _dump_contract(unknown_record), CONTRACT_SCHEMA_ERROR
+    )
+
+
+def test_duplicate_yaml_key_and_alias_refuse_atomically(tmp_path: Path) -> None:
+    canonical = CONTRACT_PATH.read_bytes()
+    duplicate = canonical + b"schema: babylon.relational-territory-dossier\n"
+    _assert_contract_refusal(tmp_path / "duplicate", duplicate, CONTRACT_SCHEMA_ERROR)
+
+    alias = canonical + b"alias_source: &probe []\nalias_use: *probe\n"
+    _assert_contract_refusal(tmp_path / "alias", alias, CONTRACT_SCHEMA_ERROR)
+
+
+def test_raw_size_event_count_and_depth_limits_refuse_atomically(tmp_path: Path) -> None:
+    oversized = b"x" * 262_145
+    _assert_contract_refusal(tmp_path / "size", oversized, CONTRACT_LIMIT_ERROR)
+
+    too_many_events = b"events: [" + (b"x," * 65_537) + b"]\n"
+    _assert_contract_refusal(tmp_path / "events", too_many_events, CONTRACT_LIMIT_ERROR)
+
+    too_deep = b"value: " + (b"[" * 17) + b"x" + (b"]" * 17) + b"\n"
+    _assert_contract_refusal(tmp_path / "depth", too_deep, CONTRACT_LIMIT_ERROR)
+
+
+def test_record_enum_field_and_member_meta_model_ceilings_refuse(tmp_path: Path) -> None:
+    records = _canonical_document()
+    for record_index in range(EXTRA_RECORD_DECLARATIONS):
+        records["records"][f"ExtraRecord{record_index}"] = {"fields": []}
+    _assert_contract_refusal(tmp_path / "records", _dump_contract(records), CONTRACT_LIMIT_ERROR)
+
+    enums = _canonical_document()
+    for enum_index in range(EXTRA_ENUM_DECLARATIONS):
+        enums["enums"][f"ExtraEnum{enum_index}"] = []
+    _assert_contract_refusal(tmp_path / "enums", _dump_contract(enums), CONTRACT_LIMIT_ERROR)
+
+    fields = _canonical_document()
+    for field_index in range(EXTRA_FIELD_DECLARATIONS):
+        fields["records"]["TypedIdentityV1"]["fields"].append(
+            {"name": f"extra_{field_index}", "type": "string"}
+        )
+    _assert_contract_refusal(tmp_path / "fields", _dump_contract(fields), CONTRACT_LIMIT_ERROR)
+
+    members = _canonical_document()
+    for member_index in range(EXTRA_ENUM_MEMBERS):
+        members["enums"]["AudienceV1"].append(f"EXTRA_{member_index}")
+    _assert_contract_refusal(tmp_path / "members", _dump_contract(members), CONTRACT_LIMIT_ERROR)
+
+
+def test_limit_and_registry_row_meta_model_ceilings_refuse(tmp_path: Path) -> None:
+    limits = _canonical_document()
+    for limit_index in range(EXTRA_LIMIT_ROWS):
+        limits["limits"][f"extra_limit_{limit_index}"] = limit_index
+    _assert_contract_refusal(tmp_path / "limits", _dump_contract(limits), CONTRACT_LIMIT_ERROR)
+
+    registry = _canonical_document()
+    for metric_index in range(EXTRA_REGISTRY_ROWS):
+        key = f"extra/metric-{metric_index}"
+        registry["identity_registry"]["metrics"][key] = {
+            "domain": "metric",
+            "authority": "babylon.rtd.v1",
+            "local_id": key,
+        }
+    _assert_contract_refusal(tmp_path / "registry", _dump_contract(registry), CONTRACT_LIMIT_ERROR)

@@ -9,7 +9,7 @@ import re
 import subprocess
 from collections.abc import Iterator
 from pathlib import Path
-from typing import cast
+from typing import NoReturn, cast
 
 import pyarrow as pa  # type: ignore[import-untyped]
 import pyarrow.parquet as pq  # type: ignore[import-untyped]
@@ -604,6 +604,148 @@ def test_parquet_scan_reads_only_required_columns(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(pq, "ParquetFile", ParquetFileSpy)
     assert verify_source_root(SOURCE_ROOT) == REFERENCE_ONLY
     assert seen == EXPECTED_PARQUET_COLUMNS
+
+
+@pytest.mark.parametrize(
+    ("artifact_index", "row_index", "field", "replacement"),
+    [
+        (0, 0, "county_id", 1294),
+        (0, 0, "fips", "99999"),
+        (1, 0, "home_id", 1294),
+        (1, 0, "work_id", 1313),
+        (1, 0, "origin", "99999"),
+        (1, 0, "destination", "99999"),
+        (2, 0, "fips", "99999"),
+        (3, 0, "county_id", 1294),
+        (4, 0, "fips", "99999"),
+        (5, 0, "fips", "99999"),
+        (5, 0, "coercive_type_id", 3),
+        (6, 0, "fips", "99999"),
+        (6, 0, "state_id", 99),
+        (7, 0, "state_fips", "99"),
+        (8, 0, "source_code", "FALSE_SOURCE"),
+        (9, 0, "year", 1999),
+        (10, 0, "own_code", "9"),
+        (11, 0, "tenure_type", "false-tenure"),
+        (12, 0, "race_code", "X"),
+        (13, 0, "bracket_code", "FALSE_BRACKET"),
+        (14, 0, "code", "false-command"),
+        (14, 0, "command_chain", "federal"),
+        (15, 0, "county_fips", "99999"),
+        (15, 0, "cz_id", "99999"),
+    ],
+)
+def test_selected_identity_join_mutations_refuse_pre_open(
+    artifact_index: int, row_index: int, field: str, replacement: object
+) -> None:
+    ledger = copy.deepcopy(load_extraction())
+    artifacts = ledger["artifacts"]
+    assert isinstance(artifacts, list) and isinstance(artifacts[artifact_index], dict)
+    selected = artifacts[artifact_index]["selected_rows"]
+    assert isinstance(selected, list) and isinstance(selected[row_index], dict)
+    selected[row_index][field] = replacement
+    with pytest.raises(DetroitControlError, match="DETROIT_SELECTED_ROW_IDENTITY"):
+        verify_source_root(Path("/definitely/not/opened"), ledger)
+
+
+def test_locator_loader_constructs_only_bounded_nfc_strings() -> None:
+    ledger = load_extraction()
+    artifacts = ledger["artifacts"]
+    assert isinstance(artifacts, list)
+    for artifact_index in range(19):
+        artifact = artifacts[artifact_index]
+        assert isinstance(artifact, dict)
+        locators = artifact["provenance_locators"]
+        assert isinstance(locators, list)
+        for locator_index in range(32):
+            if locator_index == len(locators):
+                break
+            assert isinstance(locators[locator_index], str)
+            assert locators[locator_index]
+            assert len(locators[locator_index].encode("utf-8")) <= 1_024
+    assert CONTROL_PATH.read_bytes() == control_bytes()
+
+
+@pytest.mark.parametrize(
+    ("replacement", "error"),
+    [
+        (1, "DETROIT_LOCATOR_TYPE"),
+        ({"bad": "mapping"}, "DETROIT_LOCATOR_TYPE"),
+        ("", "DETROIT_LOCATOR_TEXT"),
+        ("e\N{COMBINING ACUTE ACCENT}", "DETROIT_LOCATOR_TEXT"),
+        ("x" * 1_025, "DETROIT_LOCATOR_TEXT"),
+    ],
+)
+def test_locator_type_and_text_mutations_refuse_pre_open(replacement: object, error: str) -> None:
+    ledger = copy.deepcopy(load_extraction())
+    artifacts = ledger["artifacts"]
+    assert isinstance(artifacts, list) and isinstance(artifacts[0], dict)
+    locators = artifacts[0]["provenance_locators"]
+    assert isinstance(locators, list)
+    locators[0] = replacement
+    with pytest.raises(DetroitControlError, match=error):
+        verify_source_root(Path("/definitely/not/opened"), ledger)
+
+
+def test_locator_yaml_collection_node_refuses(tmp_path: Path) -> None:
+    raw = EXTRACTION_PATH.read_text()
+    mutated = raw.replace(
+        "provenance_locators: [time_id=28, ownership_id=1, annual=2024]",
+        "provenance_locators: [{bad: mapping}]",
+        1,
+    )
+    path = tmp_path / "extraction.yaml"
+    path.write_text(mutated)
+    with pytest.raises(DetroitControlError, match="DETROIT_LOCATOR_SHAPE"):
+        load_extraction(path)
+
+
+def test_csv_oversize_refuses_before_open(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    ledger = load_extraction()
+    artifacts = ledger["artifacts"]
+    assert isinstance(artifacts, list) and isinstance(artifacts[15], dict)
+    path = tmp_path / "oversized.csv"
+    path.write_bytes(b"x" * 103_193)
+    opened: list[Path] = []
+
+    def forbidden_open(self: Path, *args: object, **kwargs: object) -> NoReturn:
+        opened.append(self)
+        raise AssertionError("oversized CSV was opened")
+
+    monkeypatch.setattr(Path, "open", forbidden_open)
+    with pytest.raises(DetroitControlError, match="DETROIT_CZ_METADATA"):
+        builder._verify_csv(path, artifacts[15], 15)  # noqa: SLF001
+    assert opened == []
+
+
+def test_csv_streaming_refuses_cr_only_and_extra_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ledger = load_extraction()
+    artifacts = ledger["artifacts"]
+    assert isinstance(artifacts, list) and isinstance(artifacts[15], dict)
+    artifact = copy.deepcopy(artifacts[15])
+    source = ROOT / artifact["relative_path"]
+    raw = source.read_bytes()
+    cr_only = raw.replace(b"\n", b"\r")
+    cr_path = tmp_path / "cr-only.csv"
+    cr_path.write_bytes(cr_only)
+    artifact["sha256"] = hashlib.sha256(cr_only).hexdigest()
+    with pytest.raises(DetroitControlError, match="DETROIT_CZ_FORMAT"):
+        builder._verify_csv(cr_path, artifact, 15)  # noqa: SLF001
+    extra = raw + b"99999,99999,extra\n"
+    extra_path = tmp_path / "extra.csv"
+    extra_path.write_bytes(extra)
+    artifact["bytes"] = len(extra)
+    artifact["sha256"] = hashlib.sha256(extra).hexdigest()
+    with pytest.raises(DetroitControlError, match="DETROIT_CZ_METADATA"):
+        builder._verify_csv(extra_path, artifact, 15)  # noqa: SLF001
+
+    def forbidden_read_bytes(self: Path) -> bytes:
+        raise AssertionError(f"CSV allocation through read_bytes: {self}")
+
+    monkeypatch.setattr(Path, "read_bytes", forbidden_read_bytes)
+    builder._verify_csv(source, artifacts[15], 15)  # noqa: SLF001
 
 
 def test_exact_source_root_metadata_rows_values_and_bits_verify() -> None:

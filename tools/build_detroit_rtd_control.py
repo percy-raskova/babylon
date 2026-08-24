@@ -6,7 +6,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import stat as stat_module
 import struct
+import unicodedata
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Final, NoReturn, cast
@@ -16,7 +18,11 @@ import pyarrow.parquet as pq  # type: ignore[import-untyped]
 import yaml
 
 from babylon.config.defines import GameDefines, canonical_defines_hash
-from babylon.contracts.relational_territory_dossier_v1 import parse_draft, seal_draft
+from babylon.contracts.relational_territory_dossier_v1 import (
+    RTD_MAX_LOCATOR_BYTES,
+    parse_draft,
+    seal_draft,
+)
 from babylon.contracts.rtd_v1_generated import RTD_V1_METRIC_REGISTRY, RtdDossierDraftV1
 
 ROOT: Final = Path(__file__).resolve().parents[1]
@@ -41,6 +47,8 @@ MAX_SOURCE_BATCHES: Final = 41
 MAX_SOURCE_FIELDS: Final = 16
 EXPECTED_METRICS: Final = 18
 CSV_LINES: Final = 3_142
+CSV_BYTES: Final = 103_192
+MAX_CSV_LINE_BYTES: Final = 256
 DEFAULT_CASE_ID: Final = "detroit-windsor-admin-control"
 REFERENCE_ONLY: Final = (
     "h3_res7_population",
@@ -211,6 +219,127 @@ SELECTED_ROW_FIELDS: Final[tuple[tuple[tuple[str, ...], ...], ...]] = (
     ),
     (("coercive_type_id", "code", "command_chain"),) * 2,
     (("county_fips", "cz_id"),) * 3,
+    (),
+    (),
+    (),
+)
+type IdentityFields = tuple[tuple[str, object], ...]
+
+COUNTY_IDENTITY_FIELDS: Final[tuple[IdentityFields, ...]] = (
+    (("county_id", 1281), ("fips", "26099")),
+    (("county_id", 1294), ("fips", "26125")),
+    (("county_id", 1313), ("fips", "26163")),
+)
+IDENTITY_EXPECTATIONS: Final[tuple[tuple[IdentityFields, ...], ...]] = (
+    COUNTY_IDENTITY_FIELDS,
+    (
+        (("home_id", 1281), ("origin", "26099"), ("work_id", 1281), ("destination", "26099")),
+        (("home_id", 1281), ("origin", "26099"), ("work_id", 1294), ("destination", "26125")),
+        (("home_id", 1281), ("origin", "26099"), ("work_id", 1313), ("destination", "26163")),
+        (("home_id", 1294), ("origin", "26125"), ("work_id", 1281), ("destination", "26099")),
+        (("home_id", 1294), ("origin", "26125"), ("work_id", 1294), ("destination", "26125")),
+        (("home_id", 1294), ("origin", "26125"), ("work_id", 1313), ("destination", "26163")),
+        (("home_id", 1313), ("origin", "26163"), ("work_id", 1281), ("destination", "26099")),
+        (("home_id", 1313), ("origin", "26163"), ("work_id", 1294), ("destination", "26125")),
+        (("home_id", 1313), ("origin", "26163"), ("work_id", 1313), ("destination", "26163")),
+    ),
+    COUNTY_IDENTITY_FIELDS,
+    COUNTY_IDENTITY_FIELDS,
+    COUNTY_IDENTITY_FIELDS,
+    (
+        (("county_id", 1281), ("fips", "26099"), ("coercive_type_id", 2)),
+        (("county_id", 1281), ("fips", "26099"), ("coercive_type_id", 3)),
+        (("county_id", 1294), ("fips", "26125"), ("coercive_type_id", 3)),
+        (("county_id", 1313), ("fips", "26163"), ("coercive_type_id", 2)),
+        (("county_id", 1313), ("fips", "26163"), ("coercive_type_id", 3)),
+    ),
+    (
+        (
+            ("county_id", 1281),
+            ("fips", "26099"),
+            ("county_name", "Macomb County"),
+            ("state_id", 23),
+            ("h3_res4", None),
+        ),
+        (
+            ("county_id", 1294),
+            ("fips", "26125"),
+            ("county_name", "Oakland County"),
+            ("state_id", 23),
+            ("h3_res4", None),
+        ),
+        (
+            ("county_id", 1313),
+            ("fips", "26163"),
+            ("county_name", "Wayne County"),
+            ("state_id", 23),
+            ("h3_res4", None),
+        ),
+    ),
+    ((("state_id", 23), ("state_fips", "26"), ("state_name", "Michigan"), ("state_abbrev", "MI")),),
+    (
+        (
+            ("source_id", 2),
+            ("source_code", "ACS5Y2010_API"),
+            ("source_year", 2010),
+            ("coverage_start_year", 2006),
+            ("coverage_end_year", 2010),
+        ),
+        (
+            ("source_id", 4),
+            ("source_code", "ACS5Y2023_API"),
+            ("source_year", 2023),
+            ("coverage_start_year", 2019),
+            ("coverage_end_year", 2023),
+        ),
+        (("source_id", 11), ("source_code", "HIFLD_PRISONS_2024"), ("source_year", 2024)),
+    ),
+    (
+        (("time_id", 24), ("year", 2020), ("month", None), ("quarter", None), ("is_annual", True)),
+        (("time_id", 27), ("year", 2023), ("month", None), ("quarter", None), ("is_annual", True)),
+        (("time_id", 28), ("year", 2024), ("month", None), ("quarter", None), ("is_annual", True)),
+    ),
+    (
+        (
+            ("ownership_id", 1),
+            ("own_code", "0"),
+            ("own_title", "Ownership 0"),
+            ("is_government", False),
+            ("is_private", False),
+        ),
+    ),
+    (
+        (("tenure_id", 1), ("tenure_type", "total")),
+        (("tenure_id", 2), ("tenure_type", "owner")),
+        (("tenure_id", 3), ("tenure_type", "renter")),
+    ),
+    (
+        (
+            ("race_id", 1),
+            ("race_code", "T"),
+            ("race_name", "Total (all races)"),
+            ("display_order", 0),
+        ),
+    ),
+    (
+        (
+            ("burden_id", 9),
+            ("bracket_code", "B25070_010"),
+            ("burden_min_pct", "50.0"),
+            ("is_cost_burdened", True),
+            ("is_severely_burdened", True),
+            ("bracket_order", 9),
+        ),
+    ),
+    (
+        (("coercive_type_id", 2), ("code", "prison_state"), ("command_chain", "state")),
+        (("coercive_type_id", 3), ("code", "prison_local"), ("command_chain", "local")),
+    ),
+    (
+        (("county_fips", "26099"), ("cz_id", "11600")),
+        (("county_fips", "26125"), ("cz_id", "11600")),
+        (("county_fips", "26163"), ("cz_id", "11600")),
+    ),
     (),
     (),
     (),
@@ -506,8 +635,27 @@ def _construct_mapping(
         key = loader.construct_object(key_node, deep=deep)
         if not isinstance(key, str) or key in result:
             _fail("DETROIT_LEDGER_DUPLICATE_KEY")
-        result[key] = loader.construct_object(value_node, deep=deep)
+        if key == "provenance_locators":
+            result[key] = _construct_locator_sequence(value_node)
+        else:
+            result[key] = loader.construct_object(value_node, deep=deep)
     _fail("DETROIT_LEDGER_LIMIT")
+
+
+def _construct_locator_sequence(node: yaml.Node) -> list[str]:
+    if not isinstance(node, yaml.SequenceNode):
+        _fail("DETROIT_LOCATOR_SHAPE")
+    if len(node.value) > MAX_LOCATORS:
+        _fail("DETROIT_LOCATOR_LIMIT")
+    values: list[str] = []
+    for locator_index in range(MAX_LOCATORS):
+        if locator_index == len(node.value):
+            return values
+        child = node.value[locator_index]
+        if not isinstance(child, yaml.ScalarNode):
+            _fail("DETROIT_LOCATOR_SHAPE")
+        values.append(child.value)
+    _fail("DETROIT_LOCATOR_LIMIT")
 
 
 _StrictLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _construct_mapping)
@@ -599,7 +747,8 @@ def _validate_artifact_rows(rows: list[object]) -> None:
         _validate_selectors(selectors, artifact_index)
         selected = _sequence(row["selected_rows"], MAX_SELECTED_ROWS, "DETROIT_SELECTED_ROW_LIMIT")
         _validate_selected_rows(selected, artifact_index)
-        _sequence(row["provenance_locators"], MAX_LOCATORS, "DETROIT_LOCATOR_LIMIT")
+        locators = _sequence(row["provenance_locators"], MAX_LOCATORS, "DETROIT_LOCATOR_LIMIT")
+        _validate_locator_values(locators)
         contracts = _sequence(row["metric_contracts"], MAX_SELECTORS, "DETROIT_METRIC_LIMIT")
         _validate_metric_contracts(contracts, artifact_index)
     if tuple(ordered_ids) != ARTIFACT_IDS:
@@ -709,7 +858,7 @@ def _validate_selected_rows(rows: list[object], artifact_index: int) -> None:
         _fail("DETROIT_SELECTED_ROW_CARDINALITY")
     for row_index in range(MAX_SELECTED_ROWS):
         if row_index == len(expected_rows):
-            return
+            break
         row = _mapping(rows[row_index], "DETROIT_SELECTED_ROW_SHAPE")
         fields = expected_rows[row_index]
         _exact_fields(row, set(fields), "DETROIT_SELECTED_ROW_FIELDS")
@@ -719,7 +868,7 @@ def _validate_selected_rows(rows: list[object], artifact_index: int) -> None:
             field = fields[field_index]
             if not _selected_value_matches(field, row[field]):
                 _fail("DETROIT_SELECTED_ROW_TYPE")
-    _fail("DETROIT_SELECTED_ROW_LIMIT")
+    _validate_selected_identities(rows, artifact_index)
 
 
 def _selected_value_matches(field: str, value: object) -> bool:
@@ -730,6 +879,45 @@ def _selected_value_matches(field: str, value: object) -> bool:
     if field in STRING_FIELDS:
         return isinstance(value, str)
     return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _validate_selected_identities(rows: list[object], artifact_index: int) -> None:
+    expected_rows = IDENTITY_EXPECTATIONS[artifact_index]
+    if len(rows) != len(expected_rows):
+        _fail("DETROIT_SELECTED_ROW_CARDINALITY")
+    for row_index in range(MAX_SELECTED_ROWS):
+        if row_index == len(expected_rows):
+            return
+        row = cast(Json, rows[row_index])
+        expected_fields = expected_rows[row_index]
+        for field_index in range(MAX_SOURCE_FIELDS):
+            if field_index == len(expected_fields):
+                break
+            field, expected = expected_fields[field_index]
+            if row[field] != expected:
+                _fail("DETROIT_SELECTED_ROW_IDENTITY")
+    _fail("DETROIT_SELECTED_ROW_LIMIT")
+
+
+def _validate_locator_values(values: list[object]) -> None:
+    encoded_length = 0
+    for locator_index in range(MAX_LOCATORS):
+        if locator_index == len(values):
+            return
+        value = values[locator_index]
+        if not isinstance(value, str):
+            _fail("DETROIT_LOCATOR_TYPE")
+        if not value or unicodedata.normalize("NFC", value) != value:
+            _fail("DETROIT_LOCATOR_TEXT")
+        try:
+            value_bytes = value.encode("utf-8")
+        except UnicodeEncodeError as error:
+            raise DetroitControlError("DETROIT_LOCATOR_TEXT") from error
+        if len(value_bytes) > RTD_MAX_LOCATOR_BYTES:
+            _fail("DETROIT_LOCATOR_TEXT")
+        encoded_length += len(value_bytes) + (1 if locator_index > 0 else 0)
+        if encoded_length > RTD_MAX_LOCATOR_BYTES:
+            _fail("DETROIT_LOCATOR_TEXT")
 
 
 def _validate_string_sequence(values: list[object]) -> None:
@@ -862,7 +1050,7 @@ def _provenance(artifacts: dict[str, Json]) -> list[Json]:
         for locator_index in range(MAX_LOCATORS):
             if locator_index == len(locators):
                 break
-            locator_parts.append(str(locators[locator_index]))
+            locator_parts.append(cast(str, locators[locator_index]))
         locator = ";".join(locator_parts)
         rows.append(
             {
@@ -1311,13 +1499,14 @@ def _source_path(root: Path, artifact: Json, artifact_index: int) -> Path:
     relative = cast(str, artifact["relative_path"])
     base = ROOT if artifact["verification_mode"] == "TRACKED_CSV" else root
     resolved_base = base.resolve()
-    resolved = (base / relative).resolve()
+    candidate = base / relative
+    resolved = candidate.resolve()
     if not resolved.is_relative_to(resolved_base):
         _fail("DETROIT_ARTIFACT_PATH")
     expected_path, _ = ARTIFACT_LAYOUT[artifact_index]
     if relative != expected_path:
         _fail("DETROIT_ARTIFACT_LAYOUT")
-    return resolved
+    return candidate
 
 
 def _verify_metadata(path: Path, artifact: Json) -> pq.ParquetFile:
@@ -1613,13 +1802,30 @@ def _verify_dimension_rows(artifact: Json, selected: list[Json]) -> None:
                 _fail("DETROIT_SOURCE_VALUE")
 
 
+def _verify_csv_metadata(path: Path, artifact: Json) -> None:
+    if (
+        artifact["bytes"] != CSV_BYTES
+        or artifact["rows"] != CSV_LINES - 1
+        or artifact["row_groups"] != 0
+        or artifact["schema"] != "county_fips,cz_id,cz_name"
+    ):
+        _fail("DETROIT_CZ_METADATA")
+    try:
+        link_stat = path.lstat()
+        file_stat = path.stat()
+    except OSError as error:
+        raise DetroitControlError("DETROIT_SOURCE_MISSING") from error
+    if (
+        not stat_module.S_ISREG(link_stat.st_mode)
+        or not stat_module.S_ISREG(file_stat.st_mode)
+        or link_stat.st_size != CSV_BYTES
+        or file_stat.st_size != CSV_BYTES
+    ):
+        _fail("DETROIT_CZ_METADATA")
+
+
 def _verify_csv(path: Path, artifact: Json, artifact_index: int) -> None:
-    raw = path.read_bytes()
-    if len(raw) != artifact["bytes"] or hashlib.sha256(raw).hexdigest() != artifact["sha256"]:
-        _fail("DETROIT_CZ_DIGEST")
-    lines = raw.splitlines(keepends=True)
-    if len(lines) != CSV_LINES or lines[0] != b"county_fips,cz_id,cz_name\n":
-        _fail("DETROIT_CZ_FORMAT")
+    _verify_csv_metadata(path, artifact)
     expected = cast(list[object], artifact["selected_rows"])
     selectors = cast(list[object], artifact["selectors"])
     selector = cast(Json, selectors[0])
@@ -1631,22 +1837,49 @@ def _verify_csv(path: Path, artifact: Json, artifact_index: int) -> None:
         wanted[row["county_fips"]] = row["cz_id"]
     found: dict[str, str] = {}
     matched = 0
-    for line_index in range(CSV_LINES):
-        if not lines[line_index].endswith(b"\n"):
-            _fail("DETROIT_CZ_FORMAT")
-        if line_index == 0:
-            continue
-        fields = lines[line_index].decode("utf-8").rstrip("\n").split(",", 2)
-        if len(fields) != 3:
-            _fail("DETROIT_CZ_FORMAT")
-        csv_row: Json = {"county_fips": fields[0], "cz_id": fields[1], "cz_name": fields[2]}
-        if _selector_matches(artifact_index, csv_row, selector):
-            matched += 1
-            found[fields[0]] = fields[1]
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as stream:
+            for line_index in range(CSV_LINES):
+                line = stream.readline(MAX_CSV_LINE_BYTES + 1)
+                if (
+                    not line
+                    or len(line) > MAX_CSV_LINE_BYTES
+                    or not line.endswith(b"\n")
+                    or b"\r" in line
+                ):
+                    _fail("DETROIT_CZ_FORMAT")
+                digest.update(line)
+                if line_index == 0:
+                    if line != b"county_fips,cz_id,cz_name\n":
+                        _fail("DETROIT_CZ_FORMAT")
+                    continue
+                matched += _record_csv_match(line, selector, artifact_index, found)
+            if stream.readline(1):
+                _fail("DETROIT_CZ_FORMAT")
+    except UnicodeDecodeError as error:
+        raise DetroitControlError("DETROIT_CZ_FORMAT") from error
+    except OSError as error:
+        raise DetroitControlError("DETROIT_SOURCE_MISSING") from error
+    if digest.hexdigest() != artifact["sha256"]:
+        _fail("DETROIT_CZ_DIGEST")
     if matched != SELECTOR_COUNTS[artifact_index][0]:
         _fail("DETROIT_SOURCE_CARDINALITY")
     if found != wanted:
         _fail("DETROIT_CZ_MAPPING")
+
+
+def _record_csv_match(
+    line: bytes, selector: Json, artifact_index: int, found: dict[str, str]
+) -> int:
+    fields = line.decode("utf-8").rstrip("\n").split(",", 2)
+    if len(fields) != 3:
+        _fail("DETROIT_CZ_FORMAT")
+    csv_row: Json = {"county_fips": fields[0], "cz_id": fields[1], "cz_name": fields[2]}
+    if not _selector_matches(artifact_index, csv_row, selector):
+        return 0
+    found[fields[0]] = fields[1]
+    return 1
 
 
 def verify_source_root(root: Path, ledger: Json | None = None) -> tuple[str, ...]:

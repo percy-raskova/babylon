@@ -61,4 +61,6 @@ runs:
     - name: Install GeoDjango system libraries
       if: inputs.gdal == 'true'
       shell: bash
-      run: sudo apt-get update && sudo apt-get install -y --no-install-recommends binutils libproj-dev gdal-bin
+      run: >-
+        "$GITHUB_ACTION_PATH/../../../tools/install_ci_apt_packages.sh"
+        binutils libproj-dev gdal-bin

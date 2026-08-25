@@ -30,7 +30,9 @@ jobs:
       - name: Install dependencies on 3.13
         run: uv sync --frozen --extra server --python 3.13
       - name: Install GeoDjango system libraries
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends binutils libproj-dev gdal-bin
+        run: >-
+          tools/install_ci_apt_packages.sh
+          binutils libproj-dev gdal-bin
       # Max verbosity by owner ruling (2026-07-11): CI logs are agent-read.
       - name: Full suite on 3.13
         run: >-

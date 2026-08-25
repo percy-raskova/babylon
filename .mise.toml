@@ -394,7 +394,7 @@ uv run coverage report --include='src/babylon/engine/systems/*' --fail-under=80
 """
 
 [tasks."test:rest-ci"]
-description = "CI heavy shard (program 15): everything outside tests/unit except the web-Postgres suites (their own job), PLUS slow-marked tests/unit tests (test:unit-ci excludes slow — without this second leg they would run nowhere in CI); max-verbosity output; includes slow; excludes red_phase/requires_reference_db/pacing_gate (G1's 520-tick gate is nightly-only via qa:pacing, never this shard)"
+description = "CI heavy shard (program 15): everything outside tests/unit except the web-Postgres suites (their own job), PLUS slow-marked tests/unit tests (test:unit-ci excludes slow — without this second leg they would run nowhere in CI); max-verbosity output; includes slow; excludes red_phase/requires_reference_db/pacing_gate (the frozen Python 520-tick gate stays unscheduled until the PER-268 Rust successor exists)"
 # NO coverage on this shard (program 15, 2026-07-11): pytest-cov under
 # `-n 4` xdist instruments all of src/babylon in every worker, and stacked on
 # the memory-heavy integration/property suites it OOM-killed a worker on the
@@ -1286,7 +1286,7 @@ uv run python -m babylon.engine.headless_runner \
 """
 
 [tasks."qa:pacing"]
-description = "G1 standing gate: 520-tick (10yr) nationwide null-play pacing probe survival contract (spec-116 gate 1 / ADR079, owner ruling 2026-07-19). Multi-minute, single-flight — nightly-only, never mise run check/test:unit/test:rest-ci."
+description = "Frozen G1 reference: 520-tick (10yr) nationwide null-play pacing probe survival contract (spec-116 gate 1 / ADR079, owner ruling 2026-07-19). Manual-only through mise run qa:pacing; remains unscheduled until the PER-268 Rust successor exists; never part of mise run check/test:unit/test:rest-ci."
 run = """
 mkdir -p reports/test-results/pacing
 uv run pytest tests/integration/engine/test_pacing_gate_g1.py \

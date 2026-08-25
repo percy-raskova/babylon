@@ -210,7 +210,7 @@ jobs:
           -o addopts="" -vv -ra -l --tb=long --durations=0
       - name: Stop Postgres
         if: always()
-        run: docker compose down -v
+        run: tools/ci_postgres_compose.sh down
 
   # The Postgres-backed strict determinism bundle (spec-064): headless 5-tick
   # tri-county run compared like-for-like against the committed baseline.
@@ -243,7 +243,7 @@ jobs:
         run: mise run qa:storage-budget
       - name: Stop Postgres
         if: always()
-        run: docker compose down -v
+        run: tools/ci_postgres_compose.sh down
 
   # The requires_reference_db suites run here against the ci-data-v1 subset
   # artifact (item 40) — tests/unit's marked files are excluded from the

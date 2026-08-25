@@ -14,6 +14,7 @@ use postgres::Config;
 use std::fmt::Write as _;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
+use std::process::Command;
 
 const ZERO_DIGEST: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 const MAX_MIGRATION_DIRECTORY_ENTRIES: usize = 64;
@@ -2102,6 +2103,35 @@ fn h3_atomicity_focus_is_fixed_and_cannot_replace_default_pg_gate() {
         .find(full)
         .expect("default full contract must remain");
     assert!(broad < full_position);
+}
+
+#[test]
+fn unknown_live_focus_fails_before_any_docker_side_effect() {
+    let runner = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../tools/run_rust_legacy_adopter_pg.sh");
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let tool_directory = std::env::temp_dir().join(format!("babylon-per267-{unique}"));
+    std::fs::create_dir(&tool_directory).unwrap();
+    for tool in ["dirname", "od", "tr"] {
+        std::os::unix::fs::symlink(format!("/usr/bin/{tool}"), tool_directory.join(tool)).unwrap();
+    }
+    let output = Command::new("/usr/bin/bash")
+        .arg(runner)
+        .env("BABYLON_LEGACY_ADOPTER_LIVE_FOCUS", "unknown")
+        .env("PATH", &tool_directory)
+        .output()
+        .unwrap();
+    std::fs::remove_dir_all(tool_directory).unwrap();
+
+    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(
+        String::from_utf8(output.stderr).unwrap(),
+        "run_rust_legacy_adopter_pg: unsupported live focus: unknown\n"
+    );
+    assert!(output.stdout.is_empty());
 }
 
 #[test]

@@ -20,6 +20,11 @@ die() {
   exit 2
 }
 
+case "$LIVE_FOCUS" in
+  "" | h3_atomicity) ;;
+  *) die "unsupported live focus: $LIVE_FOCUS" ;;
+esac
+
 require_container_absent() {
   local context="$1"
   local inspect_status

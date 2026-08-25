@@ -1,7 +1,7 @@
 ; Canonical organization practice scenario. One civil-society organization
-; repeats ROOTED_WORK while one state apparatus holds the local COMMAND
-; relation. The player-facing intent boundary has not landed yet, so practice
-; is seeded state in this proof rather than a live input.
+; is seeded with one ROOTED_WORK action while one state apparatus holds the
+; local COMMAND relation. The player-facing intent boundary has not landed yet,
+; so practice is seeded state in this proof rather than a live input.
 ;
 ; Geography is relational. TENANCY anchors each class to a territory;
 ; ADJACENCY forms circulation paths whose fields distinguish throughput,
@@ -43,10 +43,9 @@
   ; Designed control values for this experiment, not universal coefficients.
   (defconst organization/practice-rate 0.03c)
   (defconst organization/relay-rate 0.5c)
-  (defconst organization/recruitment-rate 0.45c)
   (defconst organization/command-response-rate 0.25c)
 
-  ; The social base: a working-class block a reading group can recruit from.
+  ; The social base: a working-class block in which the reading group is rooted.
   (node workers NodeType/SOCIAL_CLASS (social-class/population 1000))
   ; The territorial anchor both organizations are present in.
   (node county NodeType/TERRITORY
@@ -56,8 +55,8 @@
     (territory/command-pressure 0.0c)
     (territory/reproduction-pressure 0.9c)
     (territory/resident-population 1000))
-  ; Civil society: a small propaganda/education circle, present in the
-  ; county, with a MEMBERSHIP edge to the class it recruits from.
+  ; Civil society: a small propaganda/education circle, present in the county,
+  ; with a MEMBERSHIP edge to its existing class base.
   (node reading-group NodeType/ORGANIZATION
     (organization/kind OrgKind/CIVIL_SOCIETY)
     (organization/practice PracticeKind/ROOTED_WORK)
@@ -82,7 +81,7 @@
 
   ; Two more class/territory pairs make geography relational rather than a
   ; label on one county. The directed ring gives every territory one sender
-  ; and one receiver, so each weekly relay has one deterministic writer.
+  ; and one receiver, so each fresh-work relay has one deterministic writer.
   (node workers-b NodeType/SOCIAL_CLASS (social-class/population 700))
   (node workers-c NodeType/SOCIAL_CLASS (social-class/population 400))
   (node county-b NodeType/TERRITORY

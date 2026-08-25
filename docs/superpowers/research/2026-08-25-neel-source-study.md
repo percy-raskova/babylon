@@ -2198,14 +2198,18 @@ relations among plural organizations must instead be modeled through their
 permitted material practices, public claims, attributed event history, and
 actual graph edges.
 
-## Immediate implications for the existing branch
+## Current implementation boundary
 
 - Preserve typed organization, presence, solidarity, and attributed event
   history.
-- Replace the direct `membership-share` write with effects whose material and
-  political consequences are adjudicated downstream.
-- Replace the unconditional per-tick action-budget reset with a durable player
-  intent and committed resource lifecycle.
+- The organization foundation pack now builds `territory/rooted-capacity`
+  without writing `organization/membership-share`. Membership attribution
+  remains downstream work.
+- The pack no longer resets action budget each tick. Its scenario seeds one
+  bounded action until the committed player-intent and resource lifecycle
+  exists.
+- Only fresh situated work can relay through adjacency. Durable rooted
+  capacity cannot copy itself into another territory without new practice.
 - Derive territory facets from existing graph relations at a declared scale.
   Keep the human near/far reading in the projection only.
 - Model strike, blockade, occupation, and damage as different practices with

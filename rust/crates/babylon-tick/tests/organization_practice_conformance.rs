@@ -23,7 +23,6 @@ const PRECINCT: NodeId = NodeId(3);
 const COUNTY_B: NodeId = NodeId(6);
 const COUNTY_C: NodeId = NodeId(7);
 const COUNTY_D: NodeId = NodeId(9);
-const PRACTICE_TICKS: usize = 24;
 
 fn attribute(session: &TickSession<HypergraphStore>, node: NodeId, field: &str) -> f64 {
     session
@@ -57,7 +56,7 @@ fn local_base_population(session: &TickSession<HypergraphStore>, territory: Node
 }
 
 #[test]
-fn recruitment_requires_a_shared_presence_and_tenancy_territory() {
+fn rooted_practice_requires_a_shared_presence_and_tenancy_territory() {
     let remote_base_scenario = SCENARIO.replace(
         "(edge EdgeType/TENANCY workers county 1)",
         "(edge EdgeType/TENANCY workers county-b 1)",
@@ -88,12 +87,12 @@ fn recruitment_requires_a_shared_presence_and_tenancy_territory() {
     local.advance(&mut local_sink).expect("local-base tick");
     remote.advance(&mut remote_sink).expect("remote-base tick");
 
-    assert!(membership(&local) > 0.01);
-    assert_eq!(membership(&remote).to_bits(), 0.01_f64.to_bits());
+    assert!(rooted_work(&local, COUNTY_A) > 0.0);
+    assert_eq!(rooted_work(&remote, COUNTY_A).to_bits(), 0.0_f64.to_bits());
 }
 
 #[test]
-fn a_remote_branch_does_not_enter_the_local_recruitment_mean() {
+fn a_nonparticipating_presence_does_not_dilute_rooted_work() {
     let remote_branch_scenario = SCENARIO.replace(
         "  (edge EdgeType/SOLIDARITY reading-group precinct 1))",
         "  (edge EdgeType/SOLIDARITY reading-group precinct 1)\n  \
@@ -149,12 +148,12 @@ fn a_remote_branch_does_not_enter_the_local_recruitment_mean() {
     assert_eq!(
         membership(&with_remote_branch).to_bits(),
         membership(&local_only).to_bits(),
-        "territories without the target class cannot alter its recruitment"
+        "situated practice cannot write membership"
     );
 }
 
 #[test]
-fn rooted_capacity_moves_one_relational_hop_per_tick() {
+fn rooted_capacity_does_not_self_replicate_without_fresh_practice() {
     let mut session = TickSession::new_with_prelude(
         SCENARIO,
         &practice_prelude(),
@@ -169,6 +168,7 @@ fn rooted_capacity_moves_one_relational_hop_per_tick() {
     assert!(capacity(&session, COUNTY_A) > 0.0);
     assert!(capacity(&session, COUNTY_B) > 0.0);
     assert_eq!(capacity(&session, COUNTY_C).to_bits(), 0.0_f64.to_bits());
+    let county_b_after_practice = capacity(&session, COUNTY_B);
     assert_eq!(
         attribute(&session, READING_GROUP, "organization/action-budget").to_bits(),
         0.0_f64.to_bits()
@@ -179,7 +179,12 @@ fn rooted_capacity_moves_one_relational_hop_per_tick() {
     );
 
     session.advance(&mut sink).expect("tick 2");
-    assert!(capacity(&session, COUNTY_C) > 0.0);
+    assert_eq!(rooted_work(&session, COUNTY_A).to_bits(), 0.0_f64.to_bits());
+    assert_eq!(
+        capacity(&session, COUNTY_B).to_bits(),
+        county_b_after_practice.to_bits()
+    );
+    assert_eq!(capacity(&session, COUNTY_C).to_bits(), 0.0_f64.to_bits());
 }
 
 #[test]
@@ -208,7 +213,7 @@ fn unique_low_buffer_corridor_relays_more_capacity_than_reroutable_corridor() {
 }
 
 #[test]
-fn one_weekly_action_is_divided_across_the_organizations_branches() {
+fn one_seeded_action_is_divided_across_the_organizations_branches() {
     let mut one_branch = TickSession::new_with_prelude(
         SCENARIO,
         &practice_prelude(),
@@ -220,6 +225,7 @@ fn one_weekly_action_is_divided_across_the_organizations_branches() {
     let two_branch_scenario = SCENARIO.replace(
         "  (edge EdgeType/SOLIDARITY reading-group precinct 1))",
         "  (edge EdgeType/SOLIDARITY reading-group precinct 1)\n  \
+         (edge EdgeType/MEMBERSHIP reading-group workers-b 1)\n  \
          (edge EdgeType/PRESENCE reading-group county-b 1)\n  \
          (edge-attr EdgeType/PRESENCE reading-group county-b presence/embedding PracticeEmbedding/NEIGHBORHOOD))",
     );
@@ -315,38 +321,20 @@ fn practice_requires_presence_with_the_matching_material_embedding() {
 }
 
 #[test]
-fn recruitment_emerges_as_slow_fast_slow_growth() {
+fn situated_practice_builds_capacity_without_direct_membership_or_care() {
     let mut session = TickSession::new_with_prelude(
         SCENARIO,
         &practice_prelude(),
         PACK,
         HypergraphStore::new(),
-        SessionId::new("organization-recruitment-emergence").expect("literal is non-empty"),
+        SessionId::new("organization-situated-practice").expect("literal is non-empty"),
     )
     .expect("the organization practice world loads");
     let mut sink = CollectingSink::default();
-    let mut trajectory = [0.0_f64; PRACTICE_TICKS];
+    session.advance(&mut sink).expect("situated practice tick");
 
-    for membership_share in &mut trajectory {
-        session.advance(&mut sink).expect("bounded emergence tick");
-        *membership_share = membership(&session);
-    }
-
-    let early_gain = trajectory[3] - trajectory[0];
-    let middle_gain = trajectory[11] - trajectory[8];
-    let late_gain = trajectory[23] - trajectory[20];
-
-    assert!(trajectory.windows(2).all(|pair| pair[1] >= pair[0]));
-    assert!(early_gain > 0.0, "early gain was {early_gain}");
-    assert!(
-        middle_gain > early_gain,
-        "middle gain {middle_gain} did not exceed early gain {early_gain}"
-    );
-    assert!(
-        (0.0..middle_gain).contains(&late_gain),
-        "late gain {late_gain} did not decelerate from {middle_gain}"
-    );
-    assert!(trajectory[23] < 1.0);
+    assert!(capacity(&session, COUNTY_A) > 0.0);
+    assert_eq!(membership(&session).to_bits(), 0.01_f64.to_bits());
     assert!(
         attribute(&session, COUNTY_A, "territory/command-pressure") > 0.0,
         "rooted organization should provoke a territorial command response"

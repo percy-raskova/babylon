@@ -1,10 +1,11 @@
 ; Organization practice circuit. A seeded organization spends one bounded
-; weekly action on rooted work. PRESENCE situates that work; material fields
+; action on rooted work. PRESENCE situates that work; material fields
 ; on ADJACENCY relations relay capacity; MEMBERSHIP supplies a finite social base;
 ; and COMMAND carries the state response. No territory label grants a bonus,
 ; no rule applies a sigmoid, and organization alone cannot fabricate care
-; without stock, labor, and routing. The slow-fast-slow recruitment trajectory
-; follows from interacting limits and feedbacks.
+; without stock, labor, and routing. This pack does not replenish action budget
+; or write membership; those effects require the future committed-intent and
+; attributed-membership boundaries.
 ;
 ; `organization/practice` and `organization/practice-embedding` are seeded
 ; scenario state in this slice. They prove the causal circuit but are not yet
@@ -32,16 +33,6 @@
   (when (and (= active 1) (= kind OrgKind/STATE_APPARATUS)))
   (effects
     (emit EventType/ORGANIZATION_SEEDED (probe 1))))
-
-(rule organization/p0-action-budget-reset
-  :role mechanic
-  :evidence derived
-  :material-basis "Every organization receives one bounded weekly practice action; activity and practice kind govern whether the later rule can spend it. The unconditional set is the declared per-tick reset for this multi-writer field."
-  :fuel 32
-  (bindings
-    (binding budget :field organization/action-budget))
-  (effects
-    (update-node self organization/action-budget (set 1))))
 
 (rule organization/p0-territory-inbox-reset
   :role mechanic
@@ -79,17 +70,22 @@
       (update-edge (edge-between EdgeType/PRESENCE self base-territory)
         presence/practice-branch
         (set
-          (if (= (field-of
-                   (edge-between EdgeType/PRESENCE self base-territory)
-                   presence/embedding)
-                 practice-embedding)
+          (if (and (= (field-of
+                        (edge-between EdgeType/PRESENCE self base-territory)
+                        presence/embedding)
+                      practice-embedding)
+                   (> (field-of base-territory territory/resident-population) 0)
+                   (exists (neighbors self EdgeType/MEMBERSHIP :out NodeType/SOCIAL_CLASS)
+                     :as branch-class
+                     (exists (neighbors branch-class EdgeType/TENANCY :out NodeType/TERRITORY)
+                       (= it base-territory))))
               1
               0))))))
 
 (rule organization/p1-rooted-work
   :role mechanic
   :evidence derived
-  :material-basis "Situated practice changes only territories reached through PRESENCE relations whose material embedding matches the organization's chosen practice. One weekly action is divided across those matching branches, so an organization cannot create free organizer labor by adding PRESENCE edges. Reproductive pressure conditions each branch's local gain, while circulation remains on the relations that carry it elsewhere."
+  :material-basis "Situated practice changes only territories reached through PRESENCE relations whose material embedding matches the organization's chosen practice. One available action is divided across those matching branches, so an organization cannot create free organizer labor by adding PRESENCE edges. Reproductive pressure conditions each branch's local gain, while circulation remains on the relations that carry it elsewhere."
   :fuel 512
   (bindings
     (binding active :field organization/active)
@@ -111,8 +107,8 @@
     (for-each (neighbors self EdgeType/PRESENCE :out NodeType/TERRITORY)
       (guard (= (field-of
                   (edge-between EdgeType/PRESENCE self it)
-                  presence/embedding)
-                practice-embedding)
+                  presence/practice-branch)
+                1)
         (update-node it territory/rooted-work-inbox
           (add (* (/ practice-rate branch-count)
                   (field-of it territory/reproduction-pressure))))))
@@ -121,13 +117,12 @@
 (rule organization/p2-territorial-relay
   :role mechanic
   :evidence derived
-  :material-basis "Rooted work becomes consequential across a declared circulation relation in proportion to its throughput and reproductive dependence, and in inverse proportion to alternate-route capacity and inventory buffers. No territory category or visible blockage grants intrinsic leverage."
+  :material-basis "Fresh rooted work becomes consequential across a declared circulation relation in proportion to its throughput and reproductive dependence, and in inverse proportion to alternate-route capacity and inventory buffers. Durable capacity does not copy itself into adjacent territories. No territory category or visible blockage grants intrinsic leverage."
   :fuel 256
   (bindings
-    (binding capacity :field territory/rooted-capacity)
     (binding rooted-work :field territory/rooted-work-inbox)
     (binding relay-rate :const organization/relay-rate))
-  (when (and (> (+ capacity rooted-work) 0.0c)
+  (when (and (> rooted-work 0.0c)
              (exists (neighbors self EdgeType/ADJACENCY :out NodeType/TERRITORY))))
   (effects
     (for-each (neighbors self EdgeType/ADJACENCY :out NodeType/TERRITORY)
@@ -137,7 +132,7 @@
             (*
               (*
                 (*
-                  (* (+ capacity rooted-work) relay-rate)
+                  (* rooted-work relay-rate)
                   (field-of
                     (edge-between EdgeType/ADJACENCY self it)
                     adjacency/throughput-share))
@@ -156,7 +151,7 @@
 (rule organization/p3-rooted-capacity-apply
   :role mechanic
   :evidence derived
-  :material-basis "A territory's durable rooted capacity is the bounded accumulation of prior capacity, situated work performed there, and capacity relayed through declared adjacency."
+  :material-basis "A territory's durable rooted capacity is the bounded accumulation of prior capacity, situated work performed there, and fresh work relayed through declared adjacency."
   :fuel 32
   (bindings
     (binding capacity :field territory/rooted-capacity)
@@ -168,70 +163,6 @@
       (set
         (if (< (+ (+ capacity rooted-work) rooted-relay) 1.0c)
             (+ (+ capacity rooted-work) rooted-relay)
-            1.0c)))))
-
-(rule organization/p4-recruitment
-  :role mechanic
-  :evidence derived
-  :material-basis "Recruitment depends on rooted capacity, reproductive pressure, and command pressure only where the organization's PRESENCE overlaps the declared social base's TENANCY. Relayed or remote organizational capacity can assist that local base but cannot substitute for one. The remaining unorganized share limits growth."
-  :fuel 4096
-  (bindings
-    (binding active :field organization/active)
-    (binding practice :field organization/practice)
-    (binding membership :field organization/membership-share)
-    (binding recruitment-rate :const organization/recruitment-rate)
-    (binding local-base :expr
-      (exists (neighbors self EdgeType/PRESENCE :out NodeType/TERRITORY)
-        :as recruitment-territory
-        (> (field-of
-             (edge-between EdgeType/PRESENCE self recruitment-territory)
-             presence/local-base-population)
-           0)))
-    (binding rooted-capacity :expr
-      (if local-base
-          (fold mean (neighbors self EdgeType/PRESENCE :out NodeType/TERRITORY)
-            :as capacity-territory
-            (field-of capacity-territory territory/rooted-capacity)
-            :weight (field-of
-              (edge-between EdgeType/PRESENCE self capacity-territory)
-              presence/local-base-population))
-          0.0c))
-    (binding reproduction-pressure :expr
-      (if local-base
-          (fold mean (neighbors self EdgeType/PRESENCE :out NodeType/TERRITORY)
-            :as reproduction-territory
-            (field-of reproduction-territory territory/reproduction-pressure)
-            :weight (field-of
-              (edge-between EdgeType/PRESENCE self reproduction-territory)
-              presence/local-base-population))
-          0.0c))
-    (binding command-pressure :expr
-      (if local-base
-          (fold mean (neighbors self EdgeType/PRESENCE :out NodeType/TERRITORY)
-            :as command-territory
-            (field-of command-territory territory/command-pressure)
-            :weight (field-of
-              (edge-between EdgeType/PRESENCE self command-territory)
-              presence/local-base-population))
-          0.0c)))
-  (when (and (= active 1)
-             (= practice PracticeKind/ROOTED_WORK)
-             (< membership 1.0c)
-             local-base))
-  (effects
-    (update-node self organization/membership-share
-      (set
-        (if (< (+ membership
-                  (* (* (* (* recruitment-rate rooted-capacity)
-                           reproduction-pressure)
-                        (- 1.0c membership))
-                     (- 1.0c command-pressure)))
-               1.0c)
-            (+ membership
-               (* (* (* (* recruitment-rate rooted-capacity)
-                        reproduction-pressure)
-                     (- 1.0c membership))
-                  (- 1.0c command-pressure)))
             1.0c)))))
 
 (rule organization/p5-command-response

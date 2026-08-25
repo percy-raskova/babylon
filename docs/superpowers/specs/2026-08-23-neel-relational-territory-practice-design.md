@@ -562,22 +562,20 @@ unassigned value fail. `PracticeIntentV1`, `SfsPreregistrationV1`, receipts,
 ledgers, and independent encoders all use this one code table.
 
 Display labels do not mint verbs. `mobilize:agitate` is a ratified target
-sub-mode, not a claim about current HEAD: the current registry has no such
-member. T2 must land the second closed `VerbMode` enum, its canonical registry
-identity, mismatch sentinel, and content-identity ceremony before the practice
-can load. It must not remap the ruled display labels to currently convenient
-stems. Strike Support and Study remain visible, loudly refusing practices until
-their real production and doctrine consumers exist.
+sub-mode. T2 landed the closed `VerbMode` enum, canonical registry identity,
+mismatch sentinel, and shared content declaration. This remains a contract-only
+surface because no executable intent effect exists. Strike Support and Study
+remain outside V1 until their real production and doctrine consumers exist.
 
 `organization/consciousness-tendency : ConsciousnessTendency` is the
 organization's ideological line. Community content already declares the closed
 members `LIBERAL`, `FASCIST`, and `REVOLUTIONARY`, and its
 `community/c03*-org-weight-push` rules read the field through `MEMBERSHIP`.
-The organization-foundation scenario does not yet carry that declaration. T2
-must promote the existing enum/deffield contract, plus the existing
-`organization/cadre-level` and `organization/cohesion` fields its community
-consumer requires, into the shared campaign prelude instead of minting a second
-line field. Campaign setup is their sole V1 initializer and the line's sole V1
+The organization-foundation content set now composes the shared
+`organization-practice.bscn` declaration prelude. That prelude owns the existing
+enum/deffield contract plus `organization/cadre-level` and
+`organization/cohesion`; it does not mint a second line field. Scenario setup is
+their sole V1 initializer and the line's sole V1
 writer; an intent cannot change the tendency. These fields are not XP,
 ActionBudget, inventory, or money. The separate line-attribution boundary reads
 the actor's tendency and binds it into the attributed receipt. An action

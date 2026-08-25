@@ -16,9 +16,13 @@ runs:
 
     - name: Build babylon-pg (GHA layer cache)
       uses: docker/bake-action@v7
+      env:
+        BABYLON_PG_DATA: babylon-pg-ci
       with:
         source: .
-        files: docker-compose.yml
+        files: |
+          docker-compose.yml
+          docker-compose.ci.yml
         targets: babylon-pg
         load: true
         set: |
@@ -27,4 +31,4 @@ runs:
 
     - name: Start Postgres (compose, port 5433)
       shell: bash
-      run: docker compose up -d --wait babylon-pg
+      run: tools/ci_postgres_compose.sh up

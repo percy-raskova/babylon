@@ -14,6 +14,7 @@ use postgres::Config;
 use std::fmt::Write as _;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
+use std::process::Command;
 
 const ZERO_DIGEST: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 const MAX_MIGRATION_DIRECTORY_ENTRIES: usize = 64;
@@ -2072,7 +2073,7 @@ fn live_adopter_test_is_wired_into_the_remote_pg_tier() {
         1
     );
     assert!(job.contains(
-        "- name: Rust legacy adopter (bounded disposable PG proof)\n        timeout-minutes: 30\n        run: mise run test:rust-legacy-adopter-pg"
+        "- name: Rust legacy adopter (bounded disposable PG proof)\n        timeout-minutes: 31\n        run: mise run test:rust-legacy-adopter-pg"
     ));
     assert!(!job.contains("BABYLON_LEGACY_ADOPTER_TEST_DSN"));
     assert!(!job.contains("cargo doc"));
@@ -2082,8 +2083,106 @@ fn live_adopter_test_is_wired_into_the_remote_pg_tier() {
 }
 
 #[test]
+fn h3_atomicity_focus_is_fixed_and_cannot_replace_default_pg_gate() {
+    let runner = include_str!("../../../../tools/run_rust_legacy_adopter_pg.sh");
+    let focused =
+        "schema_epoch::live_rollback_tests::h3_installer_rollback_and_ambiguous_commit_reconciliation_are_atomic";
+    let full =
+        "schema_epoch::live_rollback_tests::rollback_and_ambiguous_commit_reconciliation_are_atomic";
+
+    assert!(runner.contains("BABYLON_LEGACY_ADOPTER_LIVE_FOCUS:-}"));
+    assert_eq!(runner.matches(focused).count(), 1);
+    assert_eq!(runner.matches(full).count(), 1);
+    assert!(runner.contains("--ignored --exact --test-threads=1"));
+    assert!(!runner.contains("cargo test -p babylon-persistence --lib \"$"));
+
+    let broad = runner
+        .find("--test legacy_adopter_postgres")
+        .expect("default broad contract must remain");
+    let full_position = runner
+        .find(full)
+        .expect("default full contract must remain");
+    assert!(broad < full_position);
+}
+
+#[test]
+fn unknown_live_focus_fails_before_any_docker_side_effect() {
+    let runner = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../tools/run_rust_legacy_adopter_pg.sh");
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let tool_directory = std::env::temp_dir().join(format!("babylon-per267-{unique}"));
+    std::fs::create_dir(&tool_directory).unwrap();
+    for tool in ["dirname", "od", "tr"] {
+        std::os::unix::fs::symlink(format!("/usr/bin/{tool}"), tool_directory.join(tool)).unwrap();
+    }
+    let output = Command::new("/usr/bin/bash")
+        .arg(runner)
+        .env("BABYLON_LEGACY_ADOPTER_LIVE_FOCUS", "unknown")
+        .env("PATH", &tool_directory)
+        .output()
+        .unwrap();
+    std::fs::remove_dir_all(tool_directory).unwrap();
+
+    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(
+        String::from_utf8(output.stderr).unwrap(),
+        "run_rust_legacy_adopter_pg: unsupported live focus: unknown\n"
+    );
+    assert!(output.stdout.is_empty());
+}
+
+#[test]
+fn h3_atomicity_receipts_are_fixed_flushed_and_test_only() {
+    let installer = include_str!("../src/h3_reference_installer.rs");
+    let schema_epoch = include_str!("../src/schema_epoch.rs");
+
+    assert!(installer.contains("PER267_MEMBERSHIP_READ query="));
+    assert!(installer.contains("completion=ok"));
+    assert!(installer.contains("completion=error"));
+    assert!(installer.contains("std::io::stderr()"));
+    assert!(installer.contains(".flush()"));
+    for phase in [
+        "forced_rollback",
+        "killed_retry",
+        "committed_reconciliation",
+    ] {
+        assert!(
+            installer.contains(phase),
+            "missing fixed phase receipt: {phase}"
+        );
+    }
+    assert!(!installer.contains("static mut"));
+
+    let protocol = cte_slice(
+        schema_epoch,
+        "fn verify_h3_installer_commit_protocol(base: &Config)",
+        "fn verify_post_ddl_rollback(base: &Config)",
+    );
+    assert_eq!(protocol.matches("Instant::now()").count(), 1);
+    assert_eq!(protocol.matches("suite_started").count(), 3);
+    for phase in [
+        cte_slice(
+            installer,
+            "pub(crate) fn verify_rollback_and_killed_retry(",
+            "pub(crate) fn verify_committed_reconciliation(",
+        ),
+        cte_slice(
+            installer,
+            "pub(crate) fn verify_committed_reconciliation(",
+            "fn verify_membership_lock_timeout_preserves_server_diagnostic(",
+        ),
+    ] {
+        assert!(phase.contains("suite_started: Instant"));
+        assert!(!phase.contains("Instant::now()"));
+    }
+}
+
+#[test]
 fn ci_adopter_step_exceeds_the_full_bounded_runner_envelope() {
-    const CONTROL_PLANE_ENVELOPE_SECONDS: u64 = 4 * (10 + 2);
+    const CONTROL_PLANE_ENVELOPE_SECONDS: u64 = 5 * (10 + 2);
     const BUILD_ENVELOPE_SECONDS: u64 = 180 + 10;
     const START_ENVELOPE_SECONDS: u64 = 30 + 5;
     const READINESS_ENVELOPE_SECONDS: u64 = 90 + 2;
@@ -2101,7 +2200,7 @@ fn ci_adopter_step_exceeds_the_full_bounded_runner_envelope() {
     let workflow = include_str!("../../../../.github/workflows/ci.yml");
     let job = yaml_job(workflow, "  pg-integration:");
     assert!(job.contains(
-        "- name: Rust legacy adopter (bounded disposable PG proof)\n        timeout-minutes: 30\n        run: mise run test:rust-legacy-adopter-pg"
+        "- name: Rust legacy adopter (bounded disposable PG proof)\n        timeout-minutes: 31\n        run: mise run test:rust-legacy-adopter-pg"
     ));
     let job_seconds = job
         .lines()
@@ -2124,8 +2223,8 @@ fn ci_adopter_step_exceeds_the_full_bounded_runner_envelope() {
         .parse::<u64>()
         .unwrap()
         * 60;
-    assert_eq!(job_seconds, 60 * 60);
-    assert_eq!(ci_step_seconds, 30 * 60);
+    assert_eq!(job_seconds, 61 * 60);
+    assert_eq!(ci_step_seconds, 31 * 60);
     assert!(ci_step_seconds >= RUNNER_ENVELOPE_SECONDS + 120);
     assert!(job_seconds >= ci_step_seconds + 30 * 60);
 
@@ -2142,8 +2241,8 @@ fn ci_adopter_step_exceeds_the_full_bounded_runner_envelope() {
     }
     let rollback_phase = cte_slice(
         runner,
-        "if [ \"$status\" -eq 0 ]; then",
-        "\nfi\n\ncleanup_checked",
+        "if [ \"$status\" -eq 0 ] && [ -z \"$LIVE_FOCUS\" ]; then",
+        "\n  fi\nfi",
     );
     let rollback_timeout = rollback_phase
         .find("timeout --signal=TERM --kill-after=10s 300s")
@@ -2184,7 +2283,22 @@ fn ci_adopter_step_exceeds_the_full_bounded_runner_envelope() {
             "unbounded Docker call: {line}"
         );
     }
-    assert_eq!(docker_calls, 10);
+    assert_eq!(docker_calls, 11);
+}
+
+#[test]
+fn failed_pg_contract_emits_bounded_server_log_before_checked_cleanup() {
+    let runner = include_str!("../../../../tools/run_rust_legacy_adopter_pg.sh");
+    let logs = runner
+        .find("docker logs --timestamps --tail 200 \"$CONTAINER\"")
+        .expect("failure path must retain bounded server evidence");
+    let cleanup = runner
+        .rfind("cleanup_checked")
+        .expect("cleanup must remain checked");
+
+    assert!(runner.contains("if [ \"$status\" -ne 0 ]; then"));
+    assert!(runner.contains("docker logs --timestamps --tail 200 \"$CONTAINER\" >&2 || true"));
+    assert!(logs < cleanup);
 }
 
 #[test]

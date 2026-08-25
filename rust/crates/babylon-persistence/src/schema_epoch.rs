@@ -1267,6 +1267,7 @@ mod pure_tests {
 #[cfg(test)]
 mod live_rollback_tests {
     use std::str::FromStr;
+    use std::time::Instant;
 
     use postgres::error::SqlState;
 
@@ -1320,6 +1321,7 @@ mod live_rollback_tests {
     }
 
     fn verify_h3_installer_commit_protocol(base: &Config) {
+        let suite_started = Instant::now();
         let rollback_retry = TestDatabase::create(base, "hrollback");
         let rollback_config = rollback_retry.config(base);
         assert_eq!(
@@ -1331,6 +1333,7 @@ mod live_rollback_tests {
         crate::h3_reference_installer::live_postgres_tests::verify_rollback_and_killed_retry(
             &rollback_config,
             base,
+            suite_started,
         );
         rollback_retry.cleanup();
 
@@ -1345,6 +1348,7 @@ mod live_rollback_tests {
         crate::h3_reference_installer::live_postgres_tests::verify_committed_reconciliation(
             &reconciliation_config,
             base,
+            suite_started,
         );
         reconciliation.cleanup();
     }

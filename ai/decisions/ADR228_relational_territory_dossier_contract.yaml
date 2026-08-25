@@ -1,4 +1,4 @@
-ADR225_relational_territory_dossier_contract:
+ADR228_relational_territory_dossier_contract:
   status: "accepted"
   date: "2026-08-23"
   title: >-
@@ -46,7 +46,7 @@ ADR225_relational_territory_dossier_contract:
     `contracts` root is admitted while `contractz` and another unknown root
     refuse. The BSL sentinel gate proves that this ADR filename stem has a
     matching decision-index key; it does not validate the ADR top-level key or
-    the index row values. The ADR225 decision-index contract test parses both
+    the index row values. The ADR228 decision-index contract test parses both
     YAML documents and proves the top-level key plus the exact index title,
     status, date, and file. YAML lint checks the ADR and decision index syntax.
   supersedes: []

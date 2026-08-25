@@ -96,8 +96,8 @@ Record the refreshed issue states in the PER-52 implementation comment. Do not u
 | `rust/crates/babylon-rtd/tests/validation.rs` | Rust semantic-refusal tests. |
 | `rust/crates/babylon-rtd/tests/canonical_vectors.rs` | Rust consumption of the same root JSONL vectors and fixture bytes. |
 | `rust/crates/babylon-tick/tests/rtd_admin_fixture_identity.rs` | Executes the minimal scenario and compares real tick, graph, and world identities against the checked world-identity witness. It does not activate RTD in the tick. |
-| `ai/decisions/ADR225_relational_territory_dossier_contract.yaml` | Architecture record for the YAML source of truth, generated structural types, independent encoders, isolated crate, and administrative-only boundary. |
-| `ai/decisions/index.yaml` | Registers ADR225 under its exact stem. |
+| `ai/decisions/ADR228_relational_territory_dossier_contract.yaml` | Architecture record for the YAML source of truth, generated structural types, independent encoders, isolated crate, and administrative-only boundary. |
+| `ai/decisions/index.yaml` | Registers ADR228 under its exact stem. |
 
 ---
 
@@ -105,7 +105,7 @@ Record the refreshed issue states in the PER-52 implementation comment. Do not u
 
 **Files:**
 
-- Create: `ai/decisions/ADR225_relational_territory_dossier_contract.yaml`
+- Create: `ai/decisions/ADR228_relational_territory_dossier_contract.yaml`
 - Modify: `ai/decisions/index.yaml`
 - Modify: `tools/check_repo_hygiene.py`
 - Modify: `tests/unit/tools/test_repo_hygiene.py`
@@ -127,19 +127,19 @@ Record the refreshed issue states in the PER-52 implementation comment. Do not u
 
   Expected: PASS while the two unknown-root witnesses still refuse.
 
-- [ ] **Step 3: Create the ADR file without its index row and record the namespace red state.** Use top-level key `ADR225_relational_territory_dossier_contract` and the repository's modern record fields (`status`, `date`, `context`, `decision`, `consequences`, and `verification`).
+- [ ] **Step 3: Create the ADR file without its index row and record the namespace red state.** Use top-level key `ADR228_relational_territory_dossier_contract` and the repository's modern record fields (`status`, `date`, `context`, `decision`, `consequences`, and `verification`).
 
   Run: `mise run check:bsl-sentinels`
 
-  Expected: FAIL because ADR225 exists but `ai/decisions/index.yaml` has no matching stem.
+  Expected: FAIL because ADR228 exists but `ai/decisions/index.yaml` has no matching stem.
 
-- [ ] **Step 4: Register ADR225 in `ai/decisions/index.yaml`.** The index key and `file` value must match the exact ADR stem and filename. The title must state that this is a language-neutral administrative projection contract, not a live game or persistence boundary.
+- [ ] **Step 4: Register ADR228 in `ai/decisions/index.yaml`.** The index key and `file` value must match the exact ADR stem and filename. The title must state that this is a language-neutral administrative projection contract, not a live game or persistence boundary.
 
 - [ ] **Step 5: Make the architecture record green.**
 
   Run: `mise run check:bsl-sentinels`
 
-  Run: `uv run yamllint -c .yamllint.yaml ai/decisions/ADR225_relational_territory_dossier_contract.yaml ai/decisions/index.yaml`
+  Run: `uv run yamllint -c .yamllint.yaml ai/decisions/ADR228_relational_territory_dossier_contract.yaml ai/decisions/index.yaml`
 
   Run: `mise run check:hygiene`
 

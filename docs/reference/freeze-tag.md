@@ -40,11 +40,17 @@ The Python engine is **reference-only** past this tag:
 ## How to run the frozen engine
 
 ```bash
+git clone https://github.com/percy-raskova/babylon.git babylon
+cd babylon
 git checkout p27-python-freeze
-sh tools/ci_hypergraph_stub.sh   # only where ../hypergraph-rs is absent (CI)
-uv sync --frozen
-mise run qa:regression           # canon scenarios, byte-identical
-mise run qa:vault-regression-ci  # golden-vault byte-gate
+cd ..
+git clone https://github.com/percy-raskova/hypergraph-rs.git hypergraph-rs
+cd hypergraph-rs
+git checkout dc1c06abbbc7a3f8633d1561451e61e101ad2090
+cd ../babylon
+UV_FROZEN=1 uv sync --frozen
+UV_FROZEN=1 mise run qa:regression           # canon scenarios, byte-identical
+UV_FROZEN=1 mise run qa:vault-regression-ci  # golden-vault byte-gate
 ```
 
 ## The `frozen-engine` CI job

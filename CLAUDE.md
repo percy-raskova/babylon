@@ -135,15 +135,16 @@ its ceremony, trailer, and `tools/generate_ceremony_message.py` record.
 <!-- vale ste.NounClusters = NO -->
 Linear alone owns current issue identity, scope, status, priority, dependencies,
 horizon, milestones, schedule, and work. GitHub owns source, PRs, reviews, and
-historical evidence. Project #7 and Project #8 are transitional inputs. Archive
-them only after full PER-15 acceptance. The migration is not complete.
+historical evidence. The team closed GitHub Project #7 and Project #8. They are
+historical inputs. The migration is complete, and PER-15 is complete. Neither board is live.
+
 `ai/state.yaml` is historical
 implementation evidence, and `project/` is non-live context.
 
 Create regular lanes from `dev` and target `dev`. Use `feature/`, `fix/`, `docs/`,
 `refactor/`, `test/`, or a `codex/PER-123-short-name` lane. Link the PER identity
-manually as `docs/agents/governance.md` directs. Never commit directly to
-`dev` or `main`.
+as `docs/agents/governance.md` directs: `Part of PER-N` for partial delivery and
+`Fixes PER-N` only for final acceptance. Never commit directly to `dev` or `main`.
 
 A critical hotfix alone can branch from and target `main`. Its merge is
 Director-only, and a backport PR to `dev` is mandatory.

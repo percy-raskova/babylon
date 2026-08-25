@@ -53,10 +53,10 @@ to `dev` or `main`.
 <!-- vale ste.UnapprovedWords = NO -->
 <!-- vale ste.NounClusters = NO -->
 Linear is canonical for current work. GitHub owns source control, pull
-requests, reviews, and historical evidence. Project #7 and Project #8 in GitHub
-are transitional inputs. The migration is not complete. See
+requests, reviews, and historical evidence. The team closed GitHub Project #7
+and Project #8. They are historical inputs. The migration is complete. See
 [`docs/agents/governance.md`](docs/agents/governance.md) for field ownership and
-the manual identity link and full PER-15 archive condition.
+the accepted PER delivery convention.
 <!-- vale ste.NounClusters = YES -->
 <!-- vale ste.UnapprovedWords = YES -->
 
@@ -71,8 +71,8 @@ Use one of these lane prefixes:
 <!-- vale ste.UnapprovedWords = NO -->
 - `codex/PER-123-short-name`
 
-Other lane names can also include their PER identity. This linkage remains a
-manual convention until PER-2 verifies automation.
+Other lane names can also include their PER identity. Use `Part of PER-N` for
+partial delivery and `Fixes PER-N` only for the final accepted delivery.
 <!-- vale ste.UnapprovedWords = YES -->
 
 Keep unrelated user changes unchanged. Report an unrelated fault unless the owner

@@ -3,7 +3,8 @@
 # postgis image lacks pgvector and aborts PostgresRuntime.init_schema), so
 # every job that needs it pays an image build. This composite routes the
 # build through buildx with a GitHub-Actions layer cache, then starts the
-# service. Cache is speed only: a cold build produces the identical image.
+# service. Cache is speed only: a cold build reproduces the pinned base and
+# archived-package runtime contract; derived OCI metadata need not be identical.
 name: Postgres Up
 description: Build babylon-pg with GHA layer cache, then compose up --wait
 

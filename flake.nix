@@ -58,7 +58,6 @@
               (lib.fileset.maybeMissing ./web)
               (lib.fileset.maybeMissing ./node_modules)
               (lib.fileset.maybeMissing ./ai)
-              (lib.fileset.maybeMissing ./hypergraph-rs)
             ]
           );
         };

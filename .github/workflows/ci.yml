@@ -40,9 +40,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
-        run: sh tools/ci_hypergraph_stub.sh
-
       # gdal:true — mypy's django-stubs plugin loads Django settings at
       # startup, and the postgis backend imports GEOS/GDAL/PROJ.
       - uses: ./.github/actions/bootstrap-python
@@ -196,9 +193,6 @@ jobs:
           test "$(git rev-parse cbfc67921283ccb6e00c4b0278288a232281440a:CONSTITUTION.md)" = \
             "e905e90d66bddc6e4eca36a3896428f5ce63de5b"
 
-      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
-        run: sh tools/ci_hypergraph_stub.sh
-
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
@@ -222,9 +216,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
-        run: sh tools/ci_hypergraph_stub.sh
-
       # No gdal: the 5 regression scenarios are synthetic in-memory factories
       # (no Django, no reference DB, no Postgres) — proven by the Phase-0
       # probe: byte-identical on hosted runners across CPU/glibc/Python.
@@ -240,26 +231,38 @@ jobs:
         run: mise run check:gate-coverage-truth
 
   pg-integration:
-    name: Postgres Integration Tier (PG 17, digest-pinned container)
+    name: Postgres Integration Tier (PG 17, pinned runtime)
     # ADR176 ruling 33's un-gate: the PG-backed integration subset runs on
-    # every PR against the SAME digest-pinned image + initdb the dev box
-    # uses, with the CI config fork (tmpfs datadir, runner-sized memory).
+    # every PR against the same pinned base/runtime/package contract + initdb
+    # the dev box uses, with the CI config fork (runner-sized memory).
     # The subset is DECLARED in .mise.toml (test:integration-pg) — widen it
     # only with green evidence; narrowing it is a gate change.
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
-
-      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
-        run: sh tools/ci_hypergraph_stub.sh
 
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"  # the integration conftest chain imports Django GIS
           server: "true"
 
-      - name: Build + start the isolated Postgres (CI fork; digest-pinned base)
+      - name: Install Rust toolchain (legacy adopter only)
+        run: |
+          CHANNEL="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust/rust-toolchain.toml)"
+          rustup toolchain install "$CHANNEL" --profile minimal --no-self-update
+
+      - name: Load persistence cargo cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            rust/target
+          key: legacy-adopter-${{ runner.os }}-v1-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: |
+            legacy-adopter-${{ runner.os }}-v1-
+
+      - name: Build + start the isolated Postgres (CI fork; pinned runtime/package contract)
         # BABYLON_PG_DATA as a bare name = a NAMED VOLUME (the base file's
         # own convention) — inherently fresh on an ephemeral runner, so
         # every job initdb's clean. See docker-compose.ci.yml for why this
@@ -270,6 +273,10 @@ jobs:
 
       - name: Bootstrap the canonical schema (digest-stamped, idempotent)
         run: mise run db:bootstrap
+
+      - name: Rust legacy adopter (bounded disposable PG proof)
+        timeout-minutes: 30
+        run: mise run test:rust-legacy-adopter-pg
 
       - name: PG-backed integration subset (declared, data-drive-free)
         run: mise run test:integration-pg
@@ -282,9 +289,6 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-
-      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
-        run: sh tools/ci_hypergraph_stub.sh
 
       - uses: ./.github/actions/bootstrap-python
 

@@ -23,8 +23,6 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: dev
-      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
-        run: sh tools/ci_hypergraph_stub.sh
       - uses: ./.github/actions/bootstrap-python
       # sim:trace's headless runner requires the reference DB at
       # data/sqlite/marxist-data-3NF.sqlite — exactly where this action

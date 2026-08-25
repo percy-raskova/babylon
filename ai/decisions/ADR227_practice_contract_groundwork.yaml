@@ -89,4 +89,4 @@ ADR227_practice_contract_groundwork:
     - ADR220_rust_owned_postgresql_persistence_boundary
     - ADR221_game_first_refoundation_v4
     - ADR224_bsl_causal_composition_contract
-    - ADR225_relational_territory_dossier_contract
+    - ADR228_relational_territory_dossier_contract

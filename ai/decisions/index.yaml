@@ -1035,11 +1035,11 @@ decisions:
     status: accepted
     date: '2026-08-23'
     file: ADR224_bsl_causal_composition_contract.yaml
-  ADR225_relational_territory_dossier_contract:
-    title: 'Relational Territory Dossier V1 is a language-neutral administrative projection contract, not a live game or persistence boundary'
+  ADR225_rust_schema_epoch_and_cutover_interlock:
+    title: 'Rust schema migrations use babylon_state.schema_migration as one exact append-only version/checksum ledger, and Rust writer authority remains structurally unavailable until the separate cutover contract is complete'
     status: accepted
-    date: '2026-08-23'
-    file: ADR225_relational_territory_dossier_contract.yaml
+    date: '2026-08-24'
+    file: ADR225_rust_schema_epoch_and_cutover_interlock.yaml
   ADR226_t3_synthetic_emergence_evidence_boundary:
     title: 'T3 emergence evidence is a downstream post-commit evaluator with exact language-neutral records, discrete output classification, scoped non-authorability audits, and synthetic groundwork that cannot claim a live membership observable before Gate 3, Gate 5, and PER-44 activation'
     status: accepted
@@ -1050,3 +1050,8 @@ decisions:
     status: accepted
     date: '2026-08-24'
     file: ADR227_practice_contract_groundwork.yaml
+  ADR228_relational_territory_dossier_contract:
+    title: 'Relational Territory Dossier V1 is a language-neutral administrative projection contract, not a live game or persistence boundary'
+    status: accepted
+    date: '2026-08-23'
+    file: ADR228_relational_territory_dossier_contract.yaml

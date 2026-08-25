@@ -111,11 +111,8 @@ done
 
 [tasks.install]
 description = "Install all dependencies (from the committed lock — see deps:lock to re-resolve)"
-# --frozen: install exactly uv.lock, never re-resolve. Load-bearing since the
-# hypergraph dependency-group landed: re-resolution reads metadata from the
-# ../hypergraph-rs path source, which only exists on boxes with the sibling
-# checkout. Changing deps? Edit pyproject, then `uv lock` (needs the sibling
-# or the CI stub — see the [tool.uv.sources] comment in pyproject.toml).
+# --frozen: install exactly uv.lock, never re-resolve. Changing dependencies?
+# Edit pyproject.toml, then regenerate uv.lock with the pinned uv toolchain.
 # Amendment AF (ADR186) deleted the babylon-tui wheel from the default
 # dependency set — this sync no longer needs cargo/rustc on PATH.
 run = "uv sync --extra server --frozen"
@@ -1206,7 +1203,7 @@ run = "uv run python tools/make_reference_subset.py --source dist/build/marxist-
 # =============================================================================
 
 [tasks."db:up"]
-description = "Build (if needed) + start the isolated Postgres 17 container via docker compose, wait healthy (port 5433; digest-pinned image, ADR176 ruling 33)"
+description = "Build (if needed) + start isolated Postgres 17 via docker compose, wait healthy (port 5433; pinned runtime/package contract)"
 run = "docker compose up -d --wait babylon-pg"
 
 [tasks."db:start"]
@@ -1315,6 +1312,10 @@ df -h /var | tail -1
 [tasks."test:integration-pg"]
 description = "The declared PG-backed integration subset CI's pg-integration job runs (data-drive-free, green-by-construction — ADR176 ruling 33's un-gate; widen ONLY with green evidence, never narrow without a declared skip)"
 run = "uv run pytest tests/integration/persistence tests/integration/test_tick_commit.py tests/integration/test_persistence_monotonic_postgres.py tests/integration/test_archival_integration.py -q"
+
+[tasks."test:rust-legacy-adopter-pg"]
+description = "Run the bounded PER-20 Rust legacy-adopter proof in a task-owned PostgreSQL runtime"
+run = "tools/run_rust_legacy_adopter_pg.sh"
 
 [tasks."db:bootstrap"]
 # ensure_ddl_applied, not a bare per-statement loop (ADR074's own law): the

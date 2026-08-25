@@ -1,5 +1,10 @@
 //! Transactional installation of one exact representative H3 reference cohort.
 
+#[cfg(test)]
+use std::io::Write as _;
+#[cfg(test)]
+use std::time::Duration;
+
 use postgres::{Client, Config, GenericClient, IsolationLevel, NoTls, Row, Transaction};
 
 use crate::h3_reference_cohort::MAX_H3_REFERENCE_CLOSURE_ROWS;
@@ -758,6 +763,57 @@ fn validate_header(
     Ok(())
 }
 
+#[cfg(test)]
+fn membership_receipt_identity(
+    operation: H3ReferenceInstallOperation,
+) -> (&'static str, &'static str, Option<usize>) {
+    let (query, context) = match operation {
+        H3ReferenceInstallOperation::ReadMembershipCardinality { context } => {
+            ("cardinality", context)
+        }
+        H3ReferenceInstallOperation::ReadMembershipRows { context } => ("rows", context),
+        _ => unreachable!("membership receipts accept only membership-read operations"),
+    };
+    match context {
+        H3ReferenceMembershipReadContext::InitialInspection => (query, "initial", None),
+        H3ReferenceMembershipReadContext::CommitAttempt { attempt } => {
+            (query, "commit", Some(attempt))
+        }
+        H3ReferenceMembershipReadContext::AmbiguousCommitReconciliation { attempt } => {
+            (query, "reconcile", Some(attempt))
+        }
+    }
+}
+
+#[cfg(test)]
+fn emit_membership_read_receipt(
+    operation: H3ReferenceInstallOperation,
+    elapsed: Duration,
+    rows: Option<usize>,
+    error: Option<&postgres::Error>,
+) {
+    let (query, context, attempt) = membership_receipt_identity(operation);
+    let attempt = attempt.map_or_else(|| "none".to_owned(), |value| value.to_string());
+    let rows = rows.map_or_else(|| "none".to_owned(), |value| value.to_string());
+    let sqlstate = error
+        .and_then(postgres::Error::as_db_error)
+        .map_or("none", |server| server.code().code());
+    if error.is_some() {
+        eprintln!(
+            "PER267_MEMBERSHIP_READ query={query} context={context} attempt={attempt} completion=error elapsed_ms={} rows={rows} sqlstate={sqlstate}",
+            elapsed.as_millis()
+        );
+    } else {
+        eprintln!(
+            "PER267_MEMBERSHIP_READ query={query} context={context} attempt={attempt} completion=ok elapsed_ms={} rows={rows} sqlstate={sqlstate}",
+            elapsed.as_millis()
+        );
+    }
+    std::io::stderr()
+        .flush()
+        .expect("PER-267 diagnostic receipt must flush");
+}
+
 fn verify_membership<ClientType: GenericClient>(
     client: &mut ClientType,
     cohort: &H3ReferenceCohort,
@@ -813,12 +869,20 @@ fn verify_membership_cardinality<ClientType: GenericClient>(
         actual: expected,
         max: MAX_H3_REFERENCE_CLOSURE_ROWS,
     })?;
-    let row = client
-        .query_one(
-            READ_MEMBERSHIP_CARDINALITY_SQL,
-            &[&ref_digest.as_bytes().as_slice(), &query_limit],
-        )
-        .map_err(|error| server_database_error(operation, &error))?;
+    #[cfg(test)]
+    let query_started = std::time::Instant::now();
+    let query = client.query_one(
+        READ_MEMBERSHIP_CARDINALITY_SQL,
+        &[&ref_digest.as_bytes().as_slice(), &query_limit],
+    );
+    #[cfg(test)]
+    emit_membership_read_receipt(
+        operation,
+        query_started.elapsed(),
+        query.as_ref().ok().map(|_| 1),
+        query.as_ref().err(),
+    );
+    let row = query.map_err(|error| server_database_error(operation, &error))?;
     let actual: i64 = decode_value(&row, 0, operation)?;
     let actual =
         usize::try_from(actual).map_err(|_| H3ReferenceInstallError::Decode { operation })?;
@@ -855,12 +919,20 @@ fn read_membership_rows<ClientType: GenericClient>(
         max: MAX_H3_REFERENCE_CLOSURE_ROWS,
     })?;
     let ref_digest = cohort.receipt().ref_digest();
-    let rows = client
-        .query(
-            READ_MEMBERSHIP_SQL,
-            &[&ref_digest.as_bytes().as_slice(), &query_limit],
-        )
-        .map_err(|error| server_database_error(operation, &error))?;
+    #[cfg(test)]
+    let query_started = std::time::Instant::now();
+    let query = client.query(
+        READ_MEMBERSHIP_SQL,
+        &[&ref_digest.as_bytes().as_slice(), &query_limit],
+    );
+    #[cfg(test)]
+    emit_membership_read_receipt(
+        operation,
+        query_started.elapsed(),
+        query.as_ref().ok().map(Vec::len),
+        query.as_ref().err(),
+    );
+    let rows = query.map_err(|error| server_database_error(operation, &error))?;
     if rows.len() > expected {
         return Err(H3ReferenceInstallError::Bounds {
             resource: H3ReferenceInstallBoundedResource::MembershipRows,
@@ -1300,9 +1372,11 @@ fn conflict(component: H3ReferenceInstallConflict) -> H3ReferenceInstallError {
 
 #[cfg(test)]
 pub(crate) mod live_postgres_tests {
+    use std::io::Write as _;
     use std::mem::size_of;
+    use std::time::Instant;
 
-    use postgres::{Config, NoTls};
+    use postgres::{error::SqlState, Config, NoTls};
 
     use super::{
         attempt_install_transaction, conflict, install_representative_h3_cohort,
@@ -1338,9 +1412,52 @@ pub(crate) mod live_postgres_tests {
         0x13, 0xa9,
     ];
 
+    #[derive(Debug, Clone, Copy)]
+    enum H3AtomicityPhase {
+        ForcedRollback,
+        KilledRetry,
+        CommittedReconciliation,
+    }
+
+    impl H3AtomicityPhase {
+        const fn label(self) -> &'static str {
+            match self {
+                Self::ForcedRollback => "forced_rollback",
+                Self::KilledRetry => "killed_retry",
+                Self::CommittedReconciliation => "committed_reconciliation",
+            }
+        }
+    }
+
+    fn start_phase(phase: H3AtomicityPhase, suite_started: Instant) -> Instant {
+        eprintln!(
+            "PER267_H3_PHASE phase={} completion=started phase_ms=0 cumulative_ms={}",
+            phase.label(),
+            suite_started.elapsed().as_millis()
+        );
+        std::io::stderr()
+            .flush()
+            .expect("PER-267 phase receipt must flush");
+        Instant::now()
+    }
+
+    fn finish_phase(phase: H3AtomicityPhase, phase_started: Instant, suite_started: Instant) {
+        eprintln!(
+            "PER267_H3_PHASE phase={} completion=complete phase_ms={} cumulative_ms={}",
+            phase.label(),
+            phase_started.elapsed().as_millis(),
+            suite_started.elapsed().as_millis()
+        );
+        std::io::stderr()
+            .flush()
+            .expect("PER-267 phase receipt must flush");
+    }
+
     pub(crate) fn verify_rollback_and_killed_retry(config: &Config, admin: &Config) {
+        let suite_started = Instant::now();
         let cohort = representative_cohort();
         assert_eq!(reference_counts(config), (0, 0, 0));
+        let forced_rollback_started = start_phase(H3AtomicityPhase::ForcedRollback, suite_started);
         let mut forced_failure =
             |client: &mut postgres::Client, cohort: &H3ReferenceCohort, attempt: usize| {
                 let transaction = prepare_install_transaction(
@@ -1360,7 +1477,13 @@ pub(crate) mod live_postgres_tests {
             })
         ));
         assert_eq!(reference_counts(config), (0, 0, 0));
+        finish_phase(
+            H3AtomicityPhase::ForcedRollback,
+            forced_rollback_started,
+            suite_started,
+        );
 
+        let killed_retry_started = start_phase(H3AtomicityPhase::KilledRetry, suite_started);
         let mut first_attempt = true;
         let mut killed_attempt =
             |client: &mut postgres::Client, cohort: &H3ReferenceCohort, attempt: usize| {
@@ -1379,9 +1502,17 @@ pub(crate) mod live_postgres_tests {
         );
         assert_eq!(report.commit_attempts(), 2);
         assert_eq!(reference_counts(config), (59_849, 1, 59_849));
+        finish_phase(
+            H3AtomicityPhase::KilledRetry,
+            killed_retry_started,
+            suite_started,
+        );
+        verify_membership_lock_timeout_preserves_server_diagnostic(config, &cohort);
     }
 
     pub(crate) fn verify_committed_reconciliation(config: &Config, admin: &Config) {
+        let suite_started = Instant::now();
+        let phase_started = start_phase(H3AtomicityPhase::CommittedReconciliation, suite_started);
         let cohort = representative_cohort();
         let mut first_attempt = true;
         let mut ambiguous_attempt =
@@ -1406,6 +1537,56 @@ pub(crate) mod live_postgres_tests {
         );
         assert_eq!(report.commit_attempts(), 1);
         assert_eq!(reference_counts(config), (59_849, 1, 59_849));
+        finish_phase(
+            H3AtomicityPhase::CommittedReconciliation,
+            phase_started,
+            suite_started,
+        );
+    }
+
+    fn verify_membership_lock_timeout_preserves_server_diagnostic(
+        config: &Config,
+        cohort: &H3ReferenceCohort,
+    ) {
+        let before = reference_counts(config);
+        let bounded = super::installer_config(config);
+        let mut session = super::LockedInstallSession::connect(&bounded).unwrap();
+        super::require_exact_schema_epoch(session.client()).unwrap();
+        super::prepare_installer_session(session.client()).unwrap();
+        let context = H3ReferenceMembershipReadContext::InitialInspection;
+        super::verify_membership_cardinality(session.client(), cohort, context).unwrap();
+
+        let mut blocker = config.connect(NoTls).unwrap();
+        let mut blocker_transaction = blocker.transaction().unwrap();
+        blocker_transaction
+            .batch_execute("LOCK TABLE babylon_ref.h3_cell IN ACCESS EXCLUSIVE MODE")
+            .unwrap();
+        let operation = super::H3ReferenceInstallOperation::ReadMembershipRows { context };
+        let result = super::read_membership_rows(session.client(), cohort, operation);
+        blocker_transaction.rollback().unwrap();
+        session.finish(Ok(())).unwrap();
+
+        let error = result.expect_err("the membership read must honor the bounded lock timeout");
+        match error {
+            super::H3ReferenceInstallError::Database {
+                operation:
+                    super::H3ReferenceInstallOperation::ReadMembershipRows {
+                        context: H3ReferenceMembershipReadContext::InitialInspection,
+                    },
+                diagnostic,
+            } => {
+                let server = diagnostic
+                    .server()
+                    .expect("the membership query must retain its server diagnostic");
+                assert_eq!(server.code(), &SqlState::LOCK_NOT_AVAILABLE);
+                assert!(!server.message().is_empty());
+            }
+            other => panic!("unexpected membership lock-timeout error: {other:?}"),
+        }
+        assert_eq!(reference_counts(config), before);
+
+        let reacquired = super::LockedInstallSession::connect(&bounded).unwrap();
+        reacquired.finish(Ok(())).unwrap();
     }
 
     pub(crate) fn verify_membership_cardinality_bound(config: &Config) {

@@ -8,6 +8,7 @@ readonly IMAGE="babylon-per20-legacy-adopter:local"
 # Internal handshake for the ignored Rust test. This runner forwards it only
 # after it proves exact ownership of the random-canary container below.
 readonly TEST_HARNESS_ACK="I_UNDERSTAND_PER20_DROPS_SCRATCH_DATABASES_ROLES_AND_CREATED_BABYLON_INTEL"
+readonly LIVE_FOCUS="${BABYLON_LEGACY_ADOPTER_LIVE_FOCUS:-}"
 CANARY="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
 readonly CANARY
 readonly CONTAINER="babylon-per20-adopter-${CANARY:0:12}"
@@ -179,17 +180,27 @@ printf 'PER-20 runtime ready: container=%s volume=%s port=%s\n' \
   "$CONTAINER" "$VOLUME" "$PORT"
 cd "$REPO_ROOT/rust"
 status=0
-timeout --signal=TERM --kill-after=10s 900s \
-  env \
-    BABYLON_LEGACY_ADOPTER_TEST_DSN="postgresql://test:test@127.0.0.1:$PORT/postgres" \
-    BABYLON_LEGACY_ADOPTER_DISPOSABLE_ACK="$TEST_HARNESS_ACK" \
-    BABYLON_LEGACY_ADOPTER_DISPOSABLE_CANARY="$CANARY" \
-    CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/rust/target}" \
-  cargo test -p babylon-persistence --test legacy_adopter_postgres --locked -- --nocapture \
-    --ignored --test-threads=1 || status=$?
+if [ "$LIVE_FOCUS" = "h3_atomicity" ]; then
+  timeout --signal=TERM --kill-after=10s 300s \
+    env \
+      BABYLON_LEGACY_ADOPTER_TEST_DSN="postgresql://test:test@127.0.0.1:$PORT/postgres" \
+      BABYLON_LEGACY_ADOPTER_DISPOSABLE_ACK="$TEST_HARNESS_ACK" \
+      BABYLON_LEGACY_ADOPTER_DISPOSABLE_CANARY="$CANARY" \
+      CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/rust/target}" \
+    cargo test -p babylon-persistence --lib \
+      schema_epoch::live_rollback_tests::h3_installer_rollback_and_ambiguous_commit_reconciliation_are_atomic \
+      --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
+else
+  timeout --signal=TERM --kill-after=10s 900s \
+    env \
+      BABYLON_LEGACY_ADOPTER_TEST_DSN="postgresql://test:test@127.0.0.1:$PORT/postgres" \
+      BABYLON_LEGACY_ADOPTER_DISPOSABLE_ACK="$TEST_HARNESS_ACK" \
+      BABYLON_LEGACY_ADOPTER_DISPOSABLE_CANARY="$CANARY" \
+      CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/rust/target}" \
+    cargo test -p babylon-persistence --test legacy_adopter_postgres --locked -- --nocapture \
+      --ignored --test-threads=1 || status=$?
 
-if [ "$status" -eq 0 ]; then
-  if [ -z "${BABYLON_LEGACY_ADOPTER_LIVE_FOCUS:-}" ]; then
+  if [ "$status" -eq 0 ] && [ -z "$LIVE_FOCUS" ]; then
     timeout --signal=TERM --kill-after=10s 300s \
       env \
         BABYLON_LEGACY_ADOPTER_TEST_DSN="postgresql://test:test@127.0.0.1:$PORT/postgres" \
@@ -200,6 +211,11 @@ if [ "$status" -eq 0 ]; then
         schema_epoch::live_rollback_tests::rollback_and_ambiguous_commit_reconciliation_are_atomic \
         --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
   fi
+fi
+
+if [ "$status" -ne 0 ]; then
+  timeout --signal=TERM --kill-after=2s 10s \
+    docker logs --timestamps --tail 200 "$CONTAINER" >&2 || true
 fi
 
 cleanup_checked

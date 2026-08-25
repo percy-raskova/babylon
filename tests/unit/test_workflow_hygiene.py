@@ -45,6 +45,9 @@ import yaml
 WORKFLOWS_DIR = Path(".github/workflows")
 ACTIONS_DIR = Path(".github/actions")
 FROZEN_ENGINE_PATH = WORKFLOWS_DIR / "frozen-engine.yml"
+DEPENDABOT_AUTOMERGE_PATH = WORKFLOWS_DIR / "dependabot-automerge.yml"
+DEPENDABOT_CONFIG_PATH = Path(".github/dependabot.yml")
+PR_POLICY_PATH = Path(".github/settings/pr-policy.json")
 FROZEN_REF = "p27-python-freeze"
 HYPERGRAPH_REF = "dc1c06abbbc7a3f8633d1561451e61e101ad2090"
 
@@ -228,6 +231,11 @@ def _frozen_engine_errors(workflow: dict[str, Any]) -> list[str]:
 
 def _frozen_engine_external_action_errors(workflow_text: str) -> list[str]:
     """Return mutable or unannotated external action references in the frozen gate."""
+    return _external_action_reference_errors(workflow_text, "frozen-engine.yml")
+
+
+def _external_action_reference_errors(workflow_text: str, filename: str) -> list[str]:
+    """Return mutable or unannotated external action references."""
     errors: list[str] = []
     for line_number, line in enumerate(workflow_text.splitlines(), start=1):
         match = _ACTION_USES_LINE.match(line)
@@ -237,10 +245,10 @@ def _frozen_engine_external_action_errors(workflow_text: str) -> list[str]:
         if action.startswith("./"):
             continue
         if not separator or not _ACTION_SHA.fullmatch(reference):
-            errors.append(f"frozen-engine.yml:{line_number}: external action must use a 40-hex SHA")
+            errors.append(f"{filename}:{line_number}: external action must use a 40-hex SHA")
         tag = match.group("tag")
         if tag is None or not _RELEASE_TAG.fullmatch(tag):
-            errors.append(f"frozen-engine.yml:{line_number}: external action must have a # vN tag")
+            errors.append(f"{filename}:{line_number}: external action must have a # vN tag")
     return errors
 
 
@@ -508,3 +516,208 @@ class TestDocReferencedWorkflowsTracked:
             "The scheduled workflow (.github/workflows/openwiki-update.yml) refreshes the wiki."
         )
         assert refs == {"openwiki-update.yml"}
+
+
+def _dependabot_update(config: dict[str, Any], ecosystem: str) -> dict[str, Any]:
+    """Return one Dependabot ecosystem entry, requiring an unambiguous match."""
+    updates = config.get("updates") or []
+    assert len(updates) == 4, f"expected four ecosystem entries, got {len(updates)}"
+    matches = [
+        updates[index] for index in range(4) if updates[index].get("package-ecosystem") == ecosystem
+    ]
+    assert len(matches) == 1, f"expected one {ecosystem!r} update entry, got {len(matches)}"
+    return matches[0]
+
+
+@pytest.mark.skipif(not WORKFLOWS_DIR.is_dir(), reason=".github/workflows not present")
+class TestDependabotPolicy:
+    """Dependabot metadata and merge authority stay separate and exact-head pinned."""
+
+    def test_workflow_uses_only_trusted_event_driven_phases(self) -> None:
+        """Untrusted PR code must never enter either privileged automation phase."""
+        workflow = yaml.safe_load(DEPENDABOT_AUTOMERGE_PATH.read_text())
+        triggers = _triggers(workflow)
+        assert set(triggers) == {"pull_request_target", "workflow_run"}
+        assert triggers["pull_request_target"] == {
+            "branches": ["dev"],
+            "types": ["opened", "reopened", "synchronize"],
+        }
+        assert triggers["workflow_run"] == {
+            "workflows": ["CI", "CodeQL Security Scan"],
+            "types": ["completed"],
+        }
+        assert workflow.get("permissions") == {}
+
+        classify = workflow["jobs"]["classify"]
+        assert classify["permissions"] == {
+            "contents": "read",
+            "issues": "write",
+            "pull-requests": "read",
+        }
+        assert "github.event.pull_request.user.login == 'dependabot[bot]'" in classify["if"]
+        assert not any(
+            str(step.get("uses", "")).startswith("actions/checkout") for step in classify["steps"]
+        )
+
+        merge = workflow["jobs"]["merge"]
+        assert merge["permissions"] == {
+            "contents": "write",
+            "pull-requests": "write",
+            "security-events": "read",
+        }
+        assert "github.event.workflow_run.conclusion == 'success'" in merge["if"]
+        assert "github.event.workflow_run.event == 'pull_request'" in merge["if"]
+
+    def test_workflow_has_per_pr_concurrency(self) -> None:
+        """Duplicate completion events must serialize on the same Dependabot PR."""
+        workflow = yaml.safe_load(DEPENDABOT_AUTOMERGE_PATH.read_text())
+        concurrency = workflow["concurrency"]
+        group = str(concurrency["group"])
+        assert "github.event.pull_request.number" in group
+        assert "github.event.workflow_run.pull_requests[0].number" in group
+        assert "github.event.workflow_run.head_branch" in group
+        assert concurrency["cancel-in-progress"] is False
+
+    def test_eligibility_is_exactly_patch_or_minor_and_is_reversible(self) -> None:
+        """A major or malformed update must lose the dedicated eligibility label."""
+        workflow = yaml.safe_load(DEPENDABOT_AUTOMERGE_PATH.read_text())
+        classify = workflow["jobs"]["classify"]
+        assert set(classify["env"]["ELIGIBLE_UPDATE_TYPES"].split()) == {
+            "version-update:semver-patch",
+            "version-update:semver-minor",
+        }
+        assert classify["env"]["ELIGIBILITY_LABEL"] == "dependencies:automerge"
+
+        eligibility = next(step for step in classify["steps"] if step.get("id") == "eligibility")
+        assert eligibility["env"]["UPDATE_TYPE"] == "${{ steps.metadata.outputs.update-type }}"
+        label = next(
+            step for step in classify["steps"] if step.get("name") == "Set eligibility label"
+        )
+        script = str(label["run"])
+        assert "steps.eligibility.outputs.eligible" in label["env"]["ELIGIBLE"]
+        assert "--add-label" in script
+        assert "--remove-label" in script
+
+    def test_eligibility_label_matches_the_transactional_repository_policy(self) -> None:
+        """Classification verifies managed metadata without becoming a second writer."""
+        workflow = yaml.safe_load(DEPENDABOT_AUTOMERGE_PATH.read_text())
+        policy = yaml.safe_load(PR_POLICY_PATH.read_text())
+        desired_label = policy["automerge_label"]
+        classify = workflow["jobs"]["classify"]
+        label_step = next(
+            step for step in classify["steps"] if step.get("name") == "Set eligibility label"
+        )
+        script = str(label_step["run"])
+
+        assert classify["env"]["ELIGIBILITY_LABEL"] == desired_label["name"]
+        assert desired_label["color"] in classify["env"]["ELIGIBILITY_LABEL_COLOR"]
+        assert desired_label["description"] in classify["env"]["ELIGIBILITY_LABEL_DESCRIPTION"]
+        assert "gh api" in script
+        assert "jq -e" in script
+        assert "gh label create" not in script
+        assert "--force" not in script
+
+    def test_merge_uses_trusted_dev_tools_and_exact_candidate_head(self) -> None:
+        """A moved, non-Dependabot, or ambiguous PR must never merge."""
+        workflow = yaml.safe_load(DEPENDABOT_AUTOMERGE_PATH.read_text())
+        merge = workflow["jobs"]["merge"]
+        checkout = next(
+            step
+            for step in merge["steps"]
+            if str(step.get("uses", "")).startswith("actions/checkout")
+        )
+        assert checkout["with"] == {"ref": "dev", "persist-credentials": False}
+
+        candidate = next(step for step in merge["steps"] if step.get("id") == "candidate")
+        candidate_script = str(candidate["run"])
+        assert "base=dev" in candidate_script
+        assert '.user.login == "dependabot[bot]"' in candidate_script
+        assert ".head.sha == $head" in candidate_script
+        assert ".name == $label" not in candidate_script
+        assert "candidate_count" in candidate_script and "-ne 1" in candidate_script
+        assert candidate["env"]["EXPECTED_HEAD"] == "${{ github.event.workflow_run.head_sha }}"
+
+        merge_step = next(step for step in merge["steps"] if step.get("name") == "Merge")
+        assert merge_step["if"] == "steps.candidate.outputs.eligible == 'true'"
+        assert merge_step["env"]["EXPECTED_HEAD"] == "${{ github.event.workflow_run.head_sha }}"
+        assert (
+            'python3 tools/pr_merge.py "$PR_NUMBER" --expected-head "$EXPECTED_HEAD" --dependabot'
+        ) in str(merge_step["run"])
+
+    def test_dependabot_workflow_external_actions_are_immutable_and_annotated(self) -> None:
+        """A mutable tag must never select code inside the privileged workflow."""
+        errors = _external_action_reference_errors(
+            DEPENDABOT_AUTOMERGE_PATH.read_text(),
+            DEPENDABOT_AUTOMERGE_PATH.name,
+        )
+        assert not errors, "\n".join(errors)
+
+    def test_external_action_checker_rejects_a_mutable_release_tag(self) -> None:
+        """Mutation witness: a release-looking tag is still a mutable reference."""
+        errors = _external_action_reference_errors(
+            "steps:\n  - uses: actions/checkout@v7 # v7.0.1\n",
+            "future.yml",
+        )
+        assert errors == ["future.yml:2: external action must use a 40-hex SHA"]
+
+    def test_workflow_never_polls_or_calls_gh_merge_directly(self) -> None:
+        """The old forty-minute waiter and bypass merge command must stay retired."""
+        workflow_text = DEPENDABOT_AUTOMERGE_PATH.read_text()
+        assert re.search(r"\bsleep\b", workflow_text) is None
+        assert re.search(r"\bseq\b", workflow_text) is None
+        assert "gh pr checks" not in workflow_text
+        assert "gh pr merge" not in workflow_text
+
+    def test_config_targets_default_branch_and_never_groups_majors(self) -> None:
+        """Security settings must apply and grouped PRs must stay low-risk."""
+        config = yaml.safe_load(DEPENDABOT_CONFIG_PATH.read_text())
+        updates = config["updates"]
+        assert len(updates) == 4
+        assert all("target-branch" not in updates[index] for index in range(4))
+
+        uv_groups = _dependabot_update(config, "uv")["groups"]
+        assert set(uv_groups) == {"uv-minor-patch", "uv-security"}
+        assert set(uv_groups["uv-minor-patch"]["update-types"]) == {"minor", "patch"}
+        assert set(uv_groups["uv-security"]["update-types"]) == {"minor", "patch"}
+
+        action_groups = _dependabot_update(config, "github-actions")["groups"]
+        assert set(action_groups) == {"github-actions-minor-patch"}
+        assert set(action_groups["github-actions-minor-patch"]["update-types"]) == {
+            "minor",
+            "patch",
+        }
+
+        cargo_groups = _dependabot_update(config, "cargo")["groups"]
+        assert set(cargo_groups) == {"rust-minor-patch", "rust-security"}
+        assert set(cargo_groups["rust-minor-patch"]["update-types"]) == {"minor", "patch"}
+        assert set(cargo_groups["rust-security"]["update-types"]) == {"minor", "patch"}
+
+    def test_config_uses_uv_and_retains_only_justified_major_ignores(self) -> None:
+        """The live uv lock and explicit deferred-major rails must stay represented."""
+        config = yaml.safe_load(DEPENDABOT_CONFIG_PATH.read_text())
+        uv = _dependabot_update(config, "uv")
+        assert {entry["dependency-name"]: entry["update-types"] for entry in uv["ignore"]} == {
+            "django": ["version-update:semver-major"],
+            "django-stubs": ["version-update:semver-major"],
+            "mypy": ["version-update:semver-major"],
+        }
+        docker = _dependabot_update(config, "docker")
+        assert docker["ignore"] == [
+            {
+                "dependency-name": "postgis/postgis",
+                "update-types": ["version-update:semver-major"],
+            }
+        ]
+
+    def test_config_does_not_request_nonexistent_rust_label(self) -> None:
+        """Cargo PR creation must not fail because the removed label is absent."""
+        config = yaml.safe_load(DEPENDABOT_CONFIG_PATH.read_text())
+        cargo = _dependabot_update(config, "cargo")
+        assert cargo["labels"] == ["dependencies"]
+        actions = _dependabot_update(config, "github-actions")
+        assert list(actions["groups"].values()) == [
+            {
+                "patterns": ["*"],
+                "update-types": ["minor", "patch"],
+            }
+        ]

@@ -52,10 +52,11 @@ The migration is complete, and PER-15 is complete. Both projects remain
 recoverable evidence. Neither supplies current fields, views, estimates, or
 status.
 
-PER-2 records the accepted delivery automation. Link each pull request to its
-PER identity in the branch name, title, or description. Use `Part of PER-N` as
-a non-closing reference for a partial delivery. Use `Fixes PER-N` as a closing
-reference only on the final delivery that satisfies the issue.
+PER-2 records the accepted delivery automation. Each pull-request description
+must link its canonical Linear issue and select exactly one delivery
+disposition. Use `Part of PER-N` as a non-closing reference for a partial
+delivery. Use `Fixes PER-N` as a closing reference only on the final delivery
+that satisfies the issue.
 
 A multi-pull-request issue must remain open after every partial merge. Draft
 and review activity keep the linked issue in progress. Only the merged closing
@@ -108,13 +109,45 @@ each commit. Use `mise run commit` so the local hooks can check staged content.
 <!-- Vale: this paragraph preserves literal Git emergency-workflow terms. -->
 <!-- vale Vale.Spelling = NO -->
 <!-- vale ste.UnapprovedWords = NO -->
-Only the Director moves `dev` to `main` for a release. A critical hotfix is the
-only bypass: branch from `main`, open directly to `main`, and use a
-Director-only merge. Every merged hotfix needs a mandatory backport PR to
-`dev`.
+Only the Director merges to `main`. The two allowed sources are a release PR
+from `dev`, or a critical hotfix from `fix/*` that branches from `main`. Every
+merged hotfix needs a mandatory backport PR to `dev`.
 <!-- vale ste.UnapprovedWords = YES -->
 <!-- vale Vale.Spelling = YES -->
 Use the merge rules in `CONTRIBUTORS.md` for all other pull requests.
+
+<!-- Vale: this section preserves literal GitHub review and branch terms. -->
+<!-- vale ste.UnapprovedWords = NO -->
+## PR acceptance
+
+The merge record identifies the base branch and exact reviewed head SHA. All
+reported checks must complete successfully against that exact reviewed head
+SHA and base branch.
+
+The Copilot review must complete against the reviewed head. Each accepted
+comment needs a fix. Every comment needs a reply. The final record marks all
+Copilot review threads resolved.
+
+Each PR records a behavioral-contract disposition. Changed behavior links a
+durable, implementation-independent contract. No behavior change includes an
+explanation of why the current contracts are enough.
+
+Each PR also records its baseline disposition. An intentional governed
+baseline change includes the declared ceremony, the record from
+`tools/generate_ceremony_message.py`, and the required
+`Baselines: blessed(<slug>)` trailer. Unintended drift is a fault, not a
+ceremony.
+
+The sole merge command is:
+
+```bash
+mise run pr:merge -- N
+```
+
+Do not run `gh pr merge` directly in any form. Preserve the source branch by
+default. Branch deletion requires an explicit owner decision and verification
+that no open PR or other work depends on the branch.
+<!-- vale ste.UnapprovedWords = YES -->
 
 ## Scope and records
 

@@ -20,6 +20,18 @@ if _SPEC is None or _SPEC.loader is None:
 pr_merge = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(pr_merge)
 
+DEV_BLOCKING_CHECKS = (
+    "Fast Gate (hygiene, lint, format, imports, types, lock)",
+    "Unit Tests (xdist, coverage gate)",
+    "Determinism Gate (byte-identical dense goldens)",
+    "Secret Scan (gitleaks, full history)",
+    "IaC Config Scan (trivy, HIGH+CRITICAL blocking)",
+    "Security Audit (pip-audit policy — blocking since item-41)",
+    "Rust Gate (fmt, clippy, test, doc — rust/ workspace)",
+    "Baseline Ceremony Gate (§6.5 provenance)",
+    "Postgres Integration Tier (PG 17, pinned runtime)",
+)
+
 
 def _entry(
     name: str,
@@ -36,8 +48,8 @@ def _entry(
     }
 
 
-def _criticals_green() -> list[dict[str, str]]:
-    return [_entry(name, "SUCCESS", "2026-08-21T17:00:00Z") for name in pr_merge.CRITICAL_CHECKS]
+def _dev_manifest_green() -> list[dict[str, str]]:
+    return [_entry(name, "SUCCESS", "2026-08-21T17:00:00Z") for name in DEV_BLOCKING_CHECKS]
 
 
 class TestRollupFailuresLatestPerCheck:
@@ -47,7 +59,7 @@ class TestRollupFailuresLatestPerCheck:
             _entry("Security Audit", "FAILURE", "2026-08-21T18:11:11Z"),
             _entry("Security Audit", "SUCCESS", "2026-08-21T18:21:15Z"),
         ]
-        assert pr_merge._rollup_failures(rollup + _criticals_green()) == []
+        assert pr_merge._rollup_failures(rollup + _dev_manifest_green()) == []
 
     def test_latest_failure_still_refuses(self) -> None:
         rollup = [
@@ -89,15 +101,15 @@ class TestRollupFailuresLatestPerCheck:
                 "detailsUrl": f"{base}/222/job/1",
             },
         ]
-        assert pr_merge._rollup_failures(rollup + _criticals_green()) == []
+        assert pr_merge._rollup_failures(rollup + _dev_manifest_green()) == []
 
-    def test_critical_checks_still_require_explicit_pass(self) -> None:
-        """Dedupe must not weaken CRITICAL_CHECKS: a name whose latest entry
-        is SKIPPED/NEUTRAL still does not count as an explicit pass."""
-        critical = pr_merge.CRITICAL_CHECKS[0]
+    def test_every_blocking_check_still_requires_explicit_pass(self) -> None:
+        """Dedupe must not weaken the complete manifest's explicit-success rule."""
+        critical = DEV_BLOCKING_CHECKS[0]
         rollup = [
+            *[entry for entry in _dev_manifest_green() if entry["name"] != critical],
             _entry(critical, "SUCCESS", "2026-08-21T17:30:44Z"),
             _entry(critical, "SKIPPED", "2026-08-21T18:21:15Z"),
         ]
         failures = pr_merge._rollup_failures(rollup)
-        assert any("required an explicit PASS" in f for f in failures)
+        assert any(critical in failure and "SKIPPED" in failure for failure in failures)

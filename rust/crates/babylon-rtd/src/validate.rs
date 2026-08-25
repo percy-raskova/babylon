@@ -455,7 +455,7 @@ const fn collection_limit(kind: RtdCollectionKindV1) -> u64 {
     }
 }
 
-/// Validates one generated administrative RTD draft without publishing it.
+/// Validates one administrative RTD draft without publishing it.
 ///
 /// # Errors
 ///

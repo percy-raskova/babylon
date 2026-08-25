@@ -2,6 +2,9 @@ use babylon_rtd::*;
 use serde::de::DeserializeOwned;
 use std::collections::BTreeSet;
 
+const RTD_SCHEMA: &[u8] =
+    include_bytes!("../../../../contracts/relational_territory_dossier_v1.yaml");
+
 const EXPECTED_ERRORS: [&str; 20] = [
     "RTD_JSON",
     "RTD_JSON_DEPTH",
@@ -196,7 +199,7 @@ fn coordinate_signature(row: &RtdMetricRegistryRowV1) -> String {
 
 #[test]
 #[allow(clippy::needless_range_loop)] // Exact contract rows require fixed indexed bounds.
-fn generated_registries_are_exact_and_closed() {
+fn schema_registries_are_exact_and_closed() {
     assert_eq!(RTD_V1_SCHEMA_ID, "babylon.relational-territory-dossier");
     assert_eq!(RTD_MAX_FOCUS, 64);
     assert_eq!(RTD_MAX_REFERENCE_DIGESTS, 4_096);
@@ -555,7 +558,7 @@ fn generated_registries_are_exact_and_closed() {
 }
 
 #[test]
-fn generated_metadata_mutations_do_not_match_the_registry_contract() {
+fn schema_metadata_mutations_do_not_match_the_registry_contract() {
     let expected = RTD_V1_METRIC_REGISTRY[4];
     let mut aggregation_mutation = expected;
     aggregation_mutation.aggregation_rule = AggregationRuleV1::None;
@@ -571,7 +574,7 @@ fn generated_metadata_mutations_do_not_match_the_registry_contract() {
 
 #[test]
 #[allow(clippy::needless_range_loop)] // The error registry is a fixed 20-row contract.
-fn rust_error_display_matches_the_generated_registry_exactly() {
+fn rust_error_display_matches_the_schema_registry_exactly() {
     let errors = [
         RtdError::Json,
         RtdError::JsonDepth,
@@ -600,7 +603,7 @@ fn rust_error_display_matches_the_generated_registry_exactly() {
 }
 
 #[test]
-fn every_generated_enum_rejects_an_unknown_discriminant() {
+fn every_schema_enum_rejects_an_unknown_discriminant() {
     rejects_unknown::<AudienceV1>();
     rejects_unknown::<DurabilityV1>();
     rejects_unknown::<EvidenceClassV1>();
@@ -620,7 +623,7 @@ fn every_generated_enum_rejects_an_unknown_discriminant() {
 }
 
 #[test]
-fn generated_records_deny_unknown_fields_and_require_nullable_keys() {
+fn schema_records_deny_unknown_fields_and_require_nullable_keys() {
     let explicit_null = r#"{
         "reference_id":{"domain":"reference","authority":"test","local_id":"r"},
         "sha256_hex":"0000000000000000000000000000000000000000000000000000000000000000",
@@ -658,4 +661,12 @@ fn minimal_draft_json() -> String {
     format!(
         r#"{{"schema":"babylon.relational-territory-dossier","schema_version":1,"projection_version":1,"audience":"ADMIN_MATERIAL","durability":"IN_MEMORY","verified_tick":0,"graph_state_hash":"{zero}","nominal_world_hash":"{zero}","reference_digests":[],"definitions_digest":"{zero}","template_digest":"{zero}","fog_policy_digest":null,"knowledge_context_digest":null,"actor":null,"focus":[],"scale_memberships":[],"facets":[],"dyads":[],"hyperedges":[],"flows":[],"gaps":[],"provenance":[],"decision_surface":{{"question_id":{{"domain":"question","authority":"test","local_id":"q"}},"signal_refs":[],"action_refs":[],"receipt_refs":[],"archive_subject_refs":[]}}}}"#
     )
+}
+
+#[test]
+fn language_neutral_schema_bytes_are_bound_to_rust() {
+    assert_eq!(
+        babylon_kernel::sha256_of(RTD_SCHEMA),
+        RTD_CONTRACT_SOURCE_SHA256
+    );
 }

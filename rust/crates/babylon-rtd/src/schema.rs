@@ -1,4 +1,4 @@
-// Generated from contracts/relational_territory_dossier_v1.yaml; sha256=5f0e271d46783bd82fb5c9336c466f4c3631a499b43c83c11b854db23ea59e40
+// Rust schema implementation paired with contracts/relational_territory_dossier_v1.yaml.
 
 use serde::Deserialize;
 

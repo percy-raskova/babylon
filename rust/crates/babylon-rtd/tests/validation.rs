@@ -220,7 +220,7 @@ fn untrusted_json_boundary_classifies_shape_and_normalizes_float_negative_zero()
 }
 
 #[test]
-fn structural_refusal_taxonomy_matches_python_for_numeric_enums_and_missing_versions() {
+fn structural_refusal_taxonomy_matches_contract_for_numeric_enums_and_missing_versions() {
     let numeric_audience = valid_json().replace("\"ADMIN_MATERIAL\"", "7");
     assert_eq!(
         parse_draft_json(numeric_audience.as_bytes()),

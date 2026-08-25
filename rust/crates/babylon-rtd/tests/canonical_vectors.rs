@@ -307,7 +307,7 @@ fn direct_draft_negative_zero_is_normalized_before_sealing() {
                 continue;
             }
             let raw = serde_json::from_slice::<RtdDossierDraftV1>(draft_json)
-                .expect("generated draft structure");
+                .expect("decoded draft structure");
             assert_eq!(
                 raw.scale_memberships[0].weight_bits_or_null.as_deref(),
                 Some("8000000000000000")

@@ -2,7 +2,7 @@
   "scenario": "bernie_valve",
   "description": "The hope valve, both routings: entryism, derecognition, and the topology-routed disillusion windows (U13 golden, ADR140)",
   "generated_at": "2026-07-30T13:44:20+00:00",
-  "defines_hash": "6b57e639fc033ec72a5d4012fe8ac69a5da6d43da592853a1cdac94429b3a603",
+  "defines_hash": "714afc29dbe334442421457247807c46393f028bbf62751286acf07f2850ee6c",
   "max_ticks": 52,
   "checkpoints": [
     {

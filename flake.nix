@@ -41,6 +41,21 @@
         python = pkgs.python312;
         # sqlite-3.53.1 interpreter for the babylon data layer (see nixpkgs-data)
         pythonData = nixpkgs-data.legacyPackages.${system}.python312;
+        # Keep every Rust command inside one nixpkgs revision. Omitting a
+        # component lets a host rustup proxy leak into the shell, which can
+        # make cargo/rustc and clippy/rustfmt use incompatible compiler lines.
+        rustToolchainLine = lib.versions.majorMinor pkgs.rustc.version;
+        rustToolchainPackages =
+          let
+            packages = with pkgs; [
+              cargo
+              clippy
+              rustc
+              rustfmt
+            ];
+          in
+          assert lib.all (package: lib.versions.majorMinor package.version == rustToolchainLine) packages;
+          packages;
 
         # Source filter. The committed src/babylon_data symlink points outside
         # the sandbox and is DEAD in any Nix build; a fileset difference drops it
@@ -171,14 +186,12 @@
             geos
             proj
             openblas
-            rustc
-            cargo
             sccache            # R1.1: shared compile cache across worktrees (see shellHook)
             fluidsynth
             playwright-driver.browsers
             mise                # task runner pinned here, not assumed on the host
             jq                  # post-tool-lint.sh dispatcher
-          ]) ++ [
+          ]) ++ rustToolchainPackages ++ [
             pythonData          # the only python312 on PATH: venvs build on it unchanged
           ];
           # sentinel for task guards — IN_NIX_SHELL is too generic (the
@@ -257,6 +270,25 @@
           ${babylonEnv}/bin/python -c 'import babylon; print("babylon import OK")'
           ${babylonEnv}/bin/babylon --help > /dev/null
           echo "babylon --help OK"
+          touch $out
+        '';
+
+        # Prove the dev-shell Rust commands belong to one compiler line. The
+        # evaluation assertion on rustToolchainPackages also covers rustfmt,
+        # whose executable reports its formatter version instead of 1.91.x.
+        checks.rust-toolchain = pkgs.runCommand "babylon-rust-toolchain-contract" {
+          nativeBuildInputs = rustToolchainPackages;
+        } ''
+          rustc_minor="$(rustc --version | sed -E 's/^rustc 1\.([0-9]+)\..*/\1/')"
+          cargo_minor="$(cargo --version | sed -E 's/^cargo 1\.([0-9]+)\..*/\1/')"
+          clippy_minor="$(clippy-driver --version | sed -E 's/^clippy 0\.1\.([0-9]+).*/\1/')"
+
+          test -n "$rustc_minor"
+          test "$rustc_minor" = "$cargo_minor"
+          test "$rustc_minor" = "$clippy_minor"
+
+          cargo clippy --version > /dev/null
+          cargo fmt --version > /dev/null
           touch $out
         '';
 

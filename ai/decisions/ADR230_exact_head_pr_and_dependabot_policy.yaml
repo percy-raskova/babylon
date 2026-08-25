@@ -50,20 +50,30 @@ ADR230_exact_head_pr_and_dependabot_policy:
        refuses rather than silently paging beyond its fixed one-hundred-thread
        bound. The repository CodeQL alert floor must remain zero.
 
-    4. DEPENDABOT TRUST SPLIT. pull_request_target classifies Dependabot metadata
-       from trusted code and publishes an exact-head check run named Dependabot Eligibility.
-       The trusted GitHub Actions app records
-       success only for patch or minor updates and records failure otherwise.
-       Its eligibility label is presentation only and never merge authorization.
-       That phase never checks out pull-request code and never creates or updates
-       repository label metadata. A successful workflow_run resolves one open
-       Dependabot pull request at the completed run's exact head and checks out
-       trusted dev tooling. Immediately before the final ref snapshot, the merge
-       verifier queries bounded check runs on that head and requires the latest
-       exact-name check to be completed, successful, and owned by the canonical
-       GitHub Actions app. Commit author, committer, signature, and message fields
-       do not authorize eligibility. The workflow does not poll and does not call
-       a direct GitHub merge command. Major updates remain manual-review work.
+    4. DEPENDABOT TRUST SPLIT. pull_request_target manages an eligibility label
+       from trusted code without checking out pull-request code.
+       Its label is presentation only and never merge authorization. That
+       phase never creates
+       or updates repository label metadata. A completed native exact-head CI
+       pull_request run starts the trusted default-branch workflow_run consumer.
+       Its native job is named Dependabot Eligibility, but it does not publish a
+       custom check on the pull-request head.
+
+       Immediately before the final ref snapshot, the merge verifier requires
+       the immutable CI workflow ID, path, pull_request event, successful exact
+       head, exact pull-request association, canonical Dependabot event actor and
+       triggering actor, canonical GitHub Actions app, and matching check suite.
+       It also binds its current trusted workflow ID, path, run title, native job,
+       check-run ID, and suite to that source CI run and head. It then revalidates
+       the canonical Dependabot pull-request owner and exactly one current commit
+       before it reads update metadata. Commit author, committer, or signature
+       fields alone do not authorize eligibility.
+
+       The unattended mode accepts only patch and minor metadata. A major or
+       malformed update refuses unattended mode without creating a failing
+       pull-request check, so the normal reviewed path remains available. The
+       workflow does not execute pull-request code or artifacts and does not call
+       a direct GitHub merge command.
 
     5. CHECKED-IN SETTINGS. .github/settings/pr-policy.json is the desired
        repository merge policy, dev ruleset, and Dependabot eligibility label.
@@ -93,7 +103,10 @@ ADR230_exact_head_pr_and_dependabot_policy:
       conclusion, incomplete selected manifest, or open CodeQL alert blocks the
       wrapper.
     - Dependabot patch and minor updates can merge without a polling runner, but
-      only after the same exact-head acceptance path as every other pull request.
+      only after the native CI and trusted classifier provenance checks plus the
+      same exact-head acceptance path as every other pull request.
+    - A major Dependabot update cannot use unattended mode, but its normal
+      reviewed merge remains available after the standard checks pass.
     - Strict dev checks can require a branch refresh after dev moves. This cost
       is accepted because it binds green evidence to the base that will receive
       the merge.

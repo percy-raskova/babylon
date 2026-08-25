@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -42,7 +43,12 @@ COPILOT_REST_COMMENT_LOGIN = "Copilot"
 COPILOT_BOT_ID = 175728472
 COPILOT_BOT_NODE_ID = "BOT_kgDOCnlnWA"
 DEPENDABOT_LOGIN = "dependabot[bot]"
+DEPENDABOT_BOT_ID = 49699333
 DEPENDABOT_ELIGIBILITY_CHECK = "Dependabot Eligibility"
+DEPENDABOT_WORKFLOW_PATH = ".github/workflows/dependabot-automerge.yml"
+DEPENDABOT_WORKFLOW_ID = 214604133
+CI_WORKFLOW_PATH = ".github/workflows/ci.yml"
+CI_WORKFLOW_ID = 176131131
 GITHUB_ACTIONS_APP_ID = 15368
 GITHUB_ACTIONS_APP_SLUG = "github-actions"
 
@@ -327,7 +333,12 @@ def _child_prs(head_ref: str) -> list[int]:
     return numbers
 
 
-def _dependabot_pr_problems(pr: int, head_oid: str) -> list[str]:
+def _dependabot_pr_problems(
+    pr: int,
+    head_oid: str,
+    source_run_id: int,
+    classifier_run_id: int,
+) -> list[str]:
     """Revalidate exact-head Dependabot authority from trusted GitHub records."""
     payload = _json_dict(
         _gh_json("api", f"repos/{{owner}}/{{repo}}/pulls/{pr}"),
@@ -335,9 +346,7 @@ def _dependabot_pr_problems(pr: int, head_oid: str) -> list[str]:
     )
     problems: list[str] = []
     user = payload.get("user")
-    if not isinstance(user, dict) or (
-        user.get("login") != DEPENDABOT_LOGIN or user.get("type") != "Bot"
-    ):
+    if not _is_canonical_dependabot(user):
         problems.append("Dependabot mode requires the exact Dependabot bot author")
     head = payload.get("head")
     rest_head = head.get("sha") if isinstance(head, dict) else None
@@ -347,68 +356,280 @@ def _dependabot_pr_problems(pr: int, head_oid: str) -> list[str]:
     rest_base = base.get("ref") if isinstance(base, dict) else None
     if rest_base != "dev":
         problems.append(f"Dependabot mode requires base dev, found {rest_base}")
-    problems.extend(_dependabot_eligibility_problems(head_oid))
+    if problems:
+        return problems
+    source_run = _json_dict(
+        _gh_json("api", f"repos/{{owner}}/{{repo}}/actions/runs/{source_run_id}"),
+        "Dependabot source CI run",
+    )
+    source_problems = _source_ci_run_problems(source_run, pr, head_oid, source_run_id)
+    if source_problems:
+        return source_problems
+    classifier_run = _json_dict(
+        _gh_json("api", f"repos/{{owner}}/{{repo}}/actions/runs/{classifier_run_id}"),
+        "Dependabot classifier run",
+    )
+    classifier_problems = _classifier_run_problems(
+        classifier_run,
+        head_oid,
+        source_run_id,
+        classifier_run_id,
+    )
+    if classifier_problems:
+        return classifier_problems
+    job_problems = _native_classifier_job_problems(classifier_run_id, classifier_run)
+    if job_problems:
+        return job_problems
+    return _dependabot_update_problems(pr, head_oid)
+
+
+def _is_canonical_dependabot(actor: object) -> bool:
+    """Match immutable Dependabot identity at REST and Actions boundaries."""
+    return isinstance(actor, dict) and (
+        actor.get("login") == DEPENDABOT_LOGIN
+        and actor.get("id") == DEPENDABOT_BOT_ID
+        and actor.get("type") == "Bot"
+    )
+
+
+def _positive_int(value: object, context: str) -> int:
+    """Require one positive JSON integer identifier."""
+    if type(value) is not int or value <= 0:
+        raise RuntimeError(f"{context} must be a positive integer")
+    return value
+
+
+def _source_ci_run_problems(
+    run: dict[str, object],
+    pr: int,
+    head_oid: str,
+    run_id: int,
+) -> list[str]:
+    """Bind authorization to the canonical native exact-head CI run."""
+    problems: list[str] = []
+    if run.get("id") != run_id or run.get("workflow_id") != CI_WORKFLOW_ID:
+        problems.append("Dependabot source: wrong CI workflow identity")
+    if run.get("path") != CI_WORKFLOW_PATH or run.get("event") != "pull_request":
+        problems.append("Dependabot source: wrong CI workflow path or event")
+    if run.get("head_sha") != head_oid:
+        problems.append("Dependabot source: CI run is not on exact PR head")
+    if run.get("status") != "completed" or run.get("conclusion") != "success":
+        problems.append("Dependabot source: CI run did not complete successfully")
+    if not _is_canonical_dependabot(run.get("actor")):
+        problems.append("Dependabot source: wrong CI workflow actor")
+    if not _is_canonical_dependabot(run.get("triggering_actor")):
+        problems.append("Dependabot source: wrong CI triggering actor")
+    problems.extend(_run_repository_problems(run, "Dependabot source"))
+    problems.extend(_run_pr_identity_problems(run, pr, head_oid, "Dependabot source"))
+    suite_id = _positive_int(run.get("check_suite_id"), "Dependabot source check_suite_id")
+    suite = _json_dict(
+        _gh_json("api", f"repos/{{owner}}/{{repo}}/check-suites/{suite_id}"),
+        "Dependabot source check suite",
+    )
+    problems.extend(_source_suite_problems(suite, pr, head_oid, suite_id))
     return problems
 
 
-def _dependabot_eligibility_problems(head_oid: str) -> list[str]:
-    """Require the latest exact-head eligibility check from GitHub Actions."""
+def _classifier_run_problems(
+    run: dict[str, object],
+    head_oid: str,
+    source_run_id: int,
+    classifier_run_id: int,
+) -> list[str]:
+    """Bind the verifier to its trusted default-branch workflow run."""
+    expected_title = f"Dependabot eligibility for CI run {source_run_id} at {head_oid}"
+    problems: list[str] = []
+    if run.get("id") != classifier_run_id or run.get("workflow_id") != DEPENDABOT_WORKFLOW_ID:
+        problems.append("Dependabot classifier: wrong workflow identity")
+    if run.get("path") != DEPENDABOT_WORKFLOW_PATH or run.get("event") != "workflow_run":
+        problems.append("Dependabot classifier: wrong workflow path or event")
+    if run.get("display_title") != expected_title:
+        problems.append("Dependabot classifier: source run/head binding mismatch")
+    if run.get("status") != "in_progress" or run.get("conclusion") is not None:
+        problems.append("Dependabot classifier: workflow run is not currently executing")
+    if not _is_canonical_dependabot(run.get("actor")):
+        problems.append("Dependabot classifier: wrong workflow actor")
+    if not _is_canonical_dependabot(run.get("triggering_actor")):
+        problems.append("Dependabot classifier: wrong triggering actor")
+    problems.extend(_run_repository_problems(run, "Dependabot classifier"))
+    return problems
+
+
+def _native_classifier_job_problems(
+    classifier_run_id: int,
+    classifier_run: dict[str, object],
+) -> list[str]:
+    """Require the verifier's native job/check and owning check suite."""
+    run_attempt = _positive_int(
+        classifier_run.get("run_attempt"),
+        "Dependabot classifier run_attempt",
+    )
     payload = _json_dict(
         _gh_json(
             "api",
-            f"repos/{{owner}}/{{repo}}/commits/{head_oid}/check-runs"
-            f"?check_name=Dependabot%20Eligibility&filter=all&per_page={MAX_GITHUB_ITEMS}",
+            f"repos/{{owner}}/{{repo}}/actions/runs/{classifier_run_id}"
+            f"/attempts/{run_attempt}/jobs?filter=latest&per_page={MAX_GITHUB_ITEMS}",
         ),
-        "Dependabot eligibility check runs",
+        "Dependabot classifier jobs",
     )
-    total_count = payload.get("total_count")
-    if type(total_count) is not int:
-        raise RuntimeError("Dependabot eligibility total_count must be an integer")
-    if total_count >= MAX_GITHUB_ITEMS:
-        raise RuntimeError(
-            f"Dependabot eligibility checks reached the {MAX_GITHUB_ITEMS}-item safety bound"
-        )
-    runs = _json_dicts(
-        payload.get("check_runs"),
-        "Dependabot eligibility checks",
-        refuse_full_page=True,
+    jobs = _bounded_counted_items(payload, "Dependabot classifier jobs", "jobs")
+    matches = [job for job in jobs if job.get("name") == DEPENDABOT_ELIGIBILITY_CHECK]
+    if len(matches) != 1:
+        return [f"{DEPENDABOT_ELIGIBILITY_CHECK}: expected one native classifier job"]
+    job = matches[0]
+    job_id = _positive_int(job.get("id"), "Dependabot classifier job id")
+    check_run = _json_dict(
+        _gh_json("api", f"repos/{{owner}}/{{repo}}/check-runs/{job_id}"),
+        "Dependabot classifier check run",
     )
-    if total_count != len(runs):
-        raise RuntimeError("Dependabot eligibility check response is incomplete")
-    exact_runs = [run for run in runs if run.get("name") == DEPENDABOT_ELIGIBILITY_CHECK]
-    if not exact_runs:
-        return [f"{DEPENDABOT_ELIGIBILITY_CHECK}: missing on exact head {head_oid}"]
-    latest = max(exact_runs, key=_eligibility_sort_key)
+    suite_id = _positive_int(
+        classifier_run.get("check_suite_id"),
+        "Dependabot classifier check_suite_id",
+    )
+    return _classifier_job_and_check_problems(
+        job,
+        check_run,
+        classifier_run,
+        classifier_run_id,
+        suite_id,
+    )
+
+
+def _classifier_job_and_check_problems(
+    job: dict[str, object],
+    check_run: dict[str, object],
+    run: dict[str, object],
+    run_id: int,
+    suite_id: int,
+) -> list[str]:
+    """Validate the native job/check equality and check-suite ownership."""
+    job_id = _positive_int(job.get("id"), "Dependabot classifier job id")
     problems: list[str] = []
-    if latest.get("head_sha") != head_oid:
-        problems.append(f"{DEPENDABOT_ELIGIBILITY_CHECK}: check is not on exact head {head_oid}")
-    app = latest.get("app")
-    if not isinstance(app, dict) or (
-        app.get("id") != GITHUB_ACTIONS_APP_ID or app.get("slug") != GITHUB_ACTIONS_APP_SLUG
+    if job.get("run_id") != run_id or job.get("head_sha") != run.get("head_sha"):
+        problems.append(f"{DEPENDABOT_ELIGIBILITY_CHECK}: native job/run mismatch")
+    if job.get("status") != "in_progress" or job.get("conclusion") is not None:
+        problems.append(f"{DEPENDABOT_ELIGIBILITY_CHECK}: native job is not executing")
+    if check_run.get("id") != job_id or check_run.get("name") != job.get("name"):
+        problems.append(f"{DEPENDABOT_ELIGIBILITY_CHECK}: native job/check ID mismatch")
+    if check_run.get("head_sha") != job.get("head_sha"):
+        problems.append(f"{DEPENDABOT_ELIGIBILITY_CHECK}: native job/check head mismatch")
+    if check_run.get("status") != job.get("status") or check_run.get("conclusion") != job.get(
+        "conclusion"
     ):
-        problems.append(f"{DEPENDABOT_ELIGIBILITY_CHECK}: wrong GitHub Actions app identity")
-    status = latest.get("status")
-    conclusion = latest.get("conclusion")
-    if not isinstance(status, str):
-        raise RuntimeError("Dependabot eligibility check status must be a string")
-    if conclusion is not None and not isinstance(conclusion, str):
-        raise RuntimeError("Dependabot eligibility check conclusion must be a string or null")
-    if status != "completed" or conclusion != "success":
-        problems.append(
-            f"{DEPENDABOT_ELIGIBILITY_CHECK}: status={status}, conclusion={conclusion or ''}"
-        )
+        problems.append(f"{DEPENDABOT_ELIGIBILITY_CHECK}: native job/check result mismatch")
+    app = check_run.get("app")
+    if not _is_actions_app(app):
+        problems.append(f"{DEPENDABOT_ELIGIBILITY_CHECK}: wrong Actions app identity")
+    suite_ref = _json_dict(check_run.get("check_suite"), "classifier check suite reference")
+    if suite_ref.get("id") != suite_id:
+        problems.append(f"{DEPENDABOT_ELIGIBILITY_CHECK}: wrong check suite")
     return problems
 
 
-def _eligibility_sort_key(check_run: dict[str, object]) -> tuple[str, int]:
-    """Return a validated latest-run key for one eligibility check."""
-    check_id = check_run.get("id")
-    if type(check_id) is not int:
-        raise RuntimeError("Dependabot eligibility check id must be an integer")
-    started_at = check_run.get("started_at")
-    if started_at is not None and not isinstance(started_at, str):
-        raise RuntimeError("Dependabot eligibility started_at must be a string or null")
-    return (started_at or "", check_id)
+def _source_suite_problems(
+    suite: dict[str, object],
+    pr: int,
+    head_oid: str,
+    suite_id: int,
+) -> list[str]:
+    """Validate the exact-head native CI check-suite association."""
+    problems: list[str] = []
+    if suite.get("id") != suite_id or suite.get("head_sha") != head_oid:
+        problems.append("Dependabot source: check suite is not on exact head")
+    if not _is_actions_app(suite.get("app")):
+        problems.append("Dependabot source: wrong check-suite app identity")
+    problems.extend(_run_pr_identity_problems(suite, pr, head_oid, "Dependabot source suite"))
+    return problems
+
+
+def _is_actions_app(app: object) -> bool:
+    """Match the canonical GitHub Actions app identity."""
+    return isinstance(app, dict) and (
+        app.get("id") == GITHUB_ACTIONS_APP_ID and app.get("slug") == GITHUB_ACTIONS_APP_SLUG
+    )
+
+
+def _run_repository_problems(run: dict[str, object], context: str) -> list[str]:
+    """Require the source and executing repository identities to agree."""
+    head_repository = _json_dict(run.get("head_repository"), f"{context} head repository")
+    repository = _json_dict(run.get("repository"), f"{context} repository")
+    if head_repository.get("full_name") != repository.get("full_name"):
+        return [f"{context}: repository mismatch"]
+    return []
+
+
+def _run_pr_identity_problems(
+    payload: dict[str, object],
+    pr: int,
+    head_oid: str,
+    context: str,
+) -> list[str]:
+    """Require one exact PR/head/base association on a run or suite."""
+    pulls = _json_dicts(
+        payload.get("pull_requests"),
+        f"{context} pull requests",
+        refuse_full_page=True,
+    )
+    matches = [pull for pull in pulls if _pull_matches(pull, pr, head_oid)]
+    return [] if len(pulls) == 1 and len(matches) == 1 else [f"{context}: PR identity mismatch"]
+
+
+def _pull_matches(pull: dict[str, object], pr: int, head_oid: str) -> bool:
+    """Match one exact PR number, head SHA, and dev base."""
+    head = pull.get("head")
+    base = pull.get("base")
+    return (
+        pull.get("number") == pr
+        and isinstance(head, dict)
+        and head.get("sha") == head_oid
+        and isinstance(base, dict)
+        and base.get("ref") == "dev"
+    )
+
+
+def _bounded_counted_items(
+    payload: dict[str, object],
+    context: str,
+    key: str,
+) -> list[dict[str, object]]:
+    """Validate a bounded GitHub total_count/list response."""
+    total_count = payload.get("total_count")
+    if type(total_count) is not int:
+        raise RuntimeError(f"{context} total_count must be an integer")
+    if total_count >= MAX_GITHUB_ITEMS:
+        raise RuntimeError(f"{context} reached the {MAX_GITHUB_ITEMS}-item safety bound")
+    items = _json_dicts(payload.get(key), context, refuse_full_page=True)
+    if total_count != len(items):
+        raise RuntimeError(f"{context} response is incomplete")
+    return items
+
+
+def _dependabot_update_problems(pr: int, head_oid: str) -> list[str]:
+    """Classify the sole exact-head commit after native actor provenance."""
+    commits = _json_dicts(
+        _gh_json(
+            "api",
+            f"repos/{{owner}}/{{repo}}/pulls/{pr}/commits?per_page={MAX_GITHUB_ITEMS}",
+        ),
+        "Dependabot pull-request commits",
+        refuse_full_page=True,
+    )
+    if len(commits) != 1:
+        return [f"Dependabot mode requires exactly one current commit, found {len(commits)}"]
+    commit = commits[0]
+    if commit.get("sha") != head_oid:
+        return ["Dependabot commit does not match the exact PR head"]
+    details = _json_dict(commit.get("commit"), "Dependabot commit details")
+    message = details.get("message")
+    if not isinstance(message, str):
+        raise RuntimeError("Dependabot commit message must be a string")
+    update_types = re.findall(r"(?m)^\s*update-type:\s*([^\s]+)\s*$", message)
+    if not update_types or len(update_types) >= MAX_GITHUB_ITEMS:
+        return ["Dependabot update metadata is missing or exceeds the safety bound"]
+    allowed = {"version-update:semver-patch", "version-update:semver-minor"}
+    if any(update_type not in allowed for update_type in update_types):
+        return ["Dependabot mode permits only patch or minor updates"]
+    return []
 
 
 def _base_policy_problems(
@@ -432,6 +653,20 @@ def _base_policy_problems(
     return problems
 
 
+def _dependabot_mode_problems(
+    pr: int,
+    head_oid: str,
+    source_run_id: int | None,
+    classifier_run_id: int | None,
+) -> list[str]:
+    """Validate required run identifiers before Dependabot provenance reads."""
+    if source_run_id is None or classifier_run_id is None:
+        return ["--dependabot requires source and classifier workflow run IDs"]
+    _positive_int(source_run_id, "Dependabot source run ID")
+    _positive_int(classifier_run_id, "Dependabot classifier run ID")
+    return _dependabot_pr_problems(pr, head_oid, source_run_id, classifier_run_id)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("pr", type=int)
@@ -440,6 +675,8 @@ def main() -> int:
     parser.add_argument("--expected-head")
     parser.add_argument("--director-main", action="store_true")
     parser.add_argument("--dependabot", action="store_true")
+    parser.add_argument("--dependabot-source-run", type=int)
+    parser.add_argument("--dependabot-classifier-run", type=int)
     args = parser.parse_args()
 
     view = _json_dict(
@@ -485,7 +722,14 @@ def main() -> int:
             f"--delete-branch refused: open PR(s) {children} base on this branch (#193 class)"
         )
     if args.dependabot:
-        problems.extend(_dependabot_pr_problems(args.pr, head_oid))
+        problems.extend(
+            _dependabot_mode_problems(
+                args.pr,
+                head_oid,
+                args.dependabot_source_run,
+                args.dependabot_classifier_run,
+            )
+        )
 
     # Race guard: neither side may move after its verdict snapshot.
     refs_now = _json_dict(

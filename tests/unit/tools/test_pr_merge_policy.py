@@ -21,7 +21,17 @@ COPILOT_BOT_ID = 175728472
 COPILOT_BOT_NODE_ID = "BOT_kgDOCnlnWA"
 GITHUB_ACTIONS_APP_ID = 15368
 GITHUB_ACTIONS_APP_SLUG = "github-actions"
+DEPENDABOT_BOT_ID = 49699333
 DEPENDABOT_ELIGIBILITY_CHECK = "Dependabot Eligibility"
+DEPENDABOT_WORKFLOW_PATH = ".github/workflows/dependabot-automerge.yml"
+DEPENDABOT_WORKFLOW_ID = 214604133
+CI_WORKFLOW_PATH = ".github/workflows/ci.yml"
+CI_WORKFLOW_ID = 176131131
+ELIGIBILITY_CHECK_ID = 93481313127
+SOURCE_RUN_ID = 31396722297
+CLASSIFIER_RUN_ID = 31396722301
+SOURCE_SUITE_ID = 78264088632
+CLASSIFIER_SUITE_ID = 78264088701
 
 DEV_BLOCKING_CHECKS = (
     "Fast Gate (hygiene, lint, format, imports, types, lock)",
@@ -85,8 +95,22 @@ elif args[0] == "api" and args[1].endswith("/reviews?per_page=100"):
     print(json.dumps(scenario["rest_reviews"]))
 elif args[0] == "api" and args[1].endswith("/pulls/742"):
     print(json.dumps(scenario["dependabot_pr"]))
-elif args[0] == "api" and "/check-runs?check_name=Dependabot%20Eligibility" in args[1]:
-    print(json.dumps(scenario["dependabot_check_runs"]))
+elif args[0] == "api" and args[1].endswith(f"/actions/runs/{scenario['source_run']['id']}"):
+    print(json.dumps(scenario["source_run"]))
+elif args[0] == "api" and args[1].endswith(
+    f"/actions/runs/{scenario['classifier_run']['id']}"
+):
+    print(json.dumps(scenario["classifier_run"]))
+elif args[0] == "api" and "/attempts/" in args[1] and "/jobs?" in args[1]:
+    print(json.dumps(scenario["classifier_jobs"]))
+elif args[0] == "api" and args[1].endswith(
+    f"/check-runs/{scenario['classifier_check']['id']}"
+):
+    print(json.dumps(scenario["classifier_check"]))
+elif args[0] == "api" and args[1].endswith(
+    f"/check-suites/{scenario['source_suite']['id']}"
+):
+    print(json.dumps(scenario["source_suite"]))
 elif args[0] == "api" and args[1].endswith("/pulls/742/commits?per_page=100"):
     print(json.dumps(scenario["dependabot_commits"]))
 elif args[0] == "api" and "/comments" in args[1]:
@@ -154,29 +178,127 @@ def _dependabot_commit(
     }
 
 
-def _eligibility_check(
+def _classifier_job(
     *,
-    check_id: int = 9101,
+    job_id: int = ELIGIBILITY_CHECK_ID,
+    run_id: int = CLASSIFIER_RUN_ID,
+    head_sha: str = BASE_SHA,
+    name: str = DEPENDABOT_ELIGIBILITY_CHECK,
+    status: str = "in_progress",
+    conclusion: str | None = None,
+) -> dict[str, object]:
+    return {
+        "id": job_id,
+        "run_id": run_id,
+        "head_sha": head_sha,
+        "name": name,
+        "status": status,
+        "conclusion": conclusion,
+        "html_url": (
+            f"https://github.com/percy-raskova/babylon/actions/runs/{run_id}/job/{job_id}"
+        ),
+        "check_run_url": (
+            f"https://api.github.com/repos/percy-raskova/babylon/check-runs/{job_id}"
+        ),
+    }
+
+
+def _dependabot_actor(
+    *,
+    login: str = "dependabot[bot]",
+    actor_id: int = DEPENDABOT_BOT_ID,
+    actor_type: str = "Bot",
+) -> dict[str, object]:
+    return {"login": login, "id": actor_id, "type": actor_type}
+
+
+def _source_run(
+    *,
+    run_id: int = SOURCE_RUN_ID,
+    path: str = CI_WORKFLOW_PATH,
     head_sha: str = HEAD_SHA,
-    status: str = "completed",
-    conclusion: str | None = "success",
+    event: str = "pull_request",
+    actor: dict[str, object] | None = None,
+    triggering_actor: dict[str, object] | None = None,
+    suite_id: int = SOURCE_SUITE_ID,
+) -> dict[str, object]:
+    return {
+        "id": run_id,
+        "workflow_id": CI_WORKFLOW_ID,
+        "path": path,
+        "event": event,
+        "head_sha": head_sha,
+        "status": "completed",
+        "conclusion": "success",
+        "actor": actor or _dependabot_actor(),
+        "triggering_actor": triggering_actor or _dependabot_actor(),
+        "check_suite_id": suite_id,
+        "run_attempt": 1,
+        "head_repository": {"full_name": "percy-raskova/babylon"},
+        "repository": {"full_name": "percy-raskova/babylon"},
+        "pull_requests": [{"number": 742, "head": {"sha": head_sha}, "base": {"ref": "dev"}}],
+    }
+
+
+def _classifier_run(
+    *,
+    run_id: int = CLASSIFIER_RUN_ID,
+    source_run_id: int = SOURCE_RUN_ID,
+    source_head_sha: str = HEAD_SHA,
+    path: str = DEPENDABOT_WORKFLOW_PATH,
+    actor: dict[str, object] | None = None,
+    triggering_actor: dict[str, object] | None = None,
+) -> dict[str, object]:
+    return {
+        "id": run_id,
+        "workflow_id": DEPENDABOT_WORKFLOW_ID,
+        "path": path,
+        "event": "workflow_run",
+        "head_sha": BASE_SHA,
+        "status": "in_progress",
+        "conclusion": None,
+        "display_title": (
+            f"Dependabot eligibility for CI run {source_run_id} at {source_head_sha}"
+        ),
+        "actor": actor or _dependabot_actor(),
+        "triggering_actor": triggering_actor or _dependabot_actor(),
+        "check_suite_id": CLASSIFIER_SUITE_ID,
+        "run_attempt": 1,
+        "head_repository": {"full_name": "percy-raskova/babylon"},
+        "repository": {"full_name": "percy-raskova/babylon"},
+    }
+
+
+def _source_suite(
+    *,
+    suite_id: int = SOURCE_SUITE_ID,
+    head_sha: str = HEAD_SHA,
     app_id: int = GITHUB_ACTIONS_APP_ID,
     app_slug: str = GITHUB_ACTIONS_APP_SLUG,
-    started_at: str = "2026-08-25T12:02:00Z",
+) -> dict[str, object]:
+    return {
+        "id": suite_id,
+        "head_sha": head_sha,
+        "app": {"id": app_id, "slug": app_slug},
+        "pull_requests": [{"number": 742, "head": {"sha": head_sha}, "base": {"ref": "dev"}}],
+    }
+
+
+def _classifier_check(
+    *,
+    check_id: int = ELIGIBILITY_CHECK_ID,
+    app_id: int = GITHUB_ACTIONS_APP_ID,
+    app_slug: str = GITHUB_ACTIONS_APP_SLUG,
 ) -> dict[str, object]:
     return {
         "id": check_id,
         "name": DEPENDABOT_ELIGIBILITY_CHECK,
-        "head_sha": head_sha,
-        "status": status,
-        "conclusion": conclusion,
-        "started_at": started_at,
+        "head_sha": BASE_SHA,
+        "status": "in_progress",
+        "conclusion": None,
         "app": {"id": app_id, "slug": app_slug},
+        "check_suite": {"id": CLASSIFIER_SUITE_ID},
     }
-
-
-def _eligibility_payload(*checks: dict[str, object]) -> dict[str, object]:
-    return {"total_count": len(checks), "check_runs": list(checks)}
 
 
 def _default_scenario() -> dict[str, object]:
@@ -199,10 +321,18 @@ def _default_scenario() -> dict[str, object]:
         "dependabot_pr": {
             "head": {"sha": HEAD_SHA},
             "base": {"ref": "dev"},
-            "user": {"login": "dependabot[bot]", "type": "Bot"},
+            "user": {
+                "login": "dependabot[bot]",
+                "id": DEPENDABOT_BOT_ID,
+                "type": "Bot",
+            },
         },
         "dependabot_commits": [_dependabot_commit()],
-        "dependabot_check_runs": _eligibility_payload(_eligibility_check()),
+        "source_run": _source_run(),
+        "source_suite": _source_suite(),
+        "classifier_run": _classifier_run(),
+        "classifier_jobs": {"total_count": 1, "jobs": [_classifier_job()]},
+        "classifier_check": _classifier_check(),
         "threads": {
             "data": {
                 "repository": {
@@ -239,8 +369,18 @@ def _run_pr_merge(
             "PATH": f"{fake_bin}:{env['PATH']}",
         }
     )
+    command_arguments = list(arguments)
+    if "--dependabot" in command_arguments:
+        command_arguments.extend(
+            [
+                "--dependabot-source-run",
+                str(SOURCE_RUN_ID),
+                "--dependabot-classifier-run",
+                str(CLASSIFIER_RUN_ID),
+            ]
+        )
     result = subprocess.run(  # noqa: S603
-        [sys.executable, str(PR_MERGE), "742", *arguments],
+        [sys.executable, str(PR_MERGE), "742", *command_arguments],
         cwd=REPO_ROOT,
         env=env,
         capture_output=True,
@@ -631,47 +771,53 @@ def test_director_main_rejects_complete_dev_manifest_as_wrong_qualification(
     assert _merge_calls(calls) == []
 
 
-def test_dependabot_mode_requires_latest_canonical_exact_head_eligibility_check(
+def test_dependabot_mode_requires_native_ci_and_classifier_provenance(
     tmp_path: Path,
 ) -> None:
-    scenario = _default_scenario()
-    scenario["dependabot_check_runs"] = _eligibility_payload(
-        _eligibility_check(
-            check_id=9100,
-            status="completed",
-            conclusion="failure",
-            started_at="2026-08-25T12:01:00Z",
-        ),
-        _eligibility_check(check_id=9101),
-    )
-
-    result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
+    result, calls = _run_pr_merge(tmp_path, "--dependabot")
 
     assert result.returncode == 0, result.stderr
     assert len(_merge_calls(calls)) == 1
     assert any(
-        call[0] == "api"
-        and f"/commits/{HEAD_SHA}/check-runs?" in call[1]
-        and "check_name=Dependabot%20Eligibility" in call[1]
-        and "filter=all" in call[1]
-        and "per_page=100" in call[1]
+        call[0] == "api" and call[1].endswith(f"/actions/runs/{SOURCE_RUN_ID}") for call in calls
+    )
+    assert any(
+        call[0] == "api" and call[1].endswith(f"/actions/runs/{CLASSIFIER_RUN_ID}")
         for call in calls
     )
-    assert not any(call[0] == "api" and "/pulls/742/commits?" in call[1] for call in calls)
+    assert any(
+        call[0] == "api" and f"/actions/runs/{CLASSIFIER_RUN_ID}/attempts/1/jobs?" in call[1]
+        for call in calls
+    )
+    assert any(
+        call[0] == "api" and call[1].endswith(f"/check-runs/{ELIGIBILITY_CHECK_ID}")
+        for call in calls
+    )
+    assert any(call[0] == "api" and "/pulls/742/commits?per_page=100" in call[1] for call in calls)
 
 
-def test_dependabot_major_update_is_never_authorized_by_a_label(tmp_path: Path) -> None:
+def test_reviewed_major_update_uses_normal_path_but_dependabot_mode_refuses(
+    tmp_path: Path,
+) -> None:
     scenario = _default_scenario()
-    scenario["dependabot_check_runs"] = _eligibility_payload(
-        _eligibility_check(conclusion="failure")
+    scenario["dependabot_commits"] = [_dependabot_commit(update_type="version-update:semver-major")]
+
+    normal_dir = tmp_path / "normal"
+    normal_dir.mkdir()
+    normal, normal_calls = _run_pr_merge(normal_dir, scenario=scenario)
+    dependabot_dir = tmp_path / "dependabot"
+    dependabot_dir.mkdir()
+    unattended, unattended_calls = _run_pr_merge(
+        dependabot_dir,
+        "--dependabot",
+        scenario=scenario,
     )
 
-    result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
-
-    assert result.returncode == 1
-    assert DEPENDABOT_ELIGIBILITY_CHECK in result.stderr
-    assert "failure" in result.stderr
-    assert _merge_calls(calls) == []
+    assert normal.returncode == 0, normal.stderr
+    assert len(_merge_calls(normal_calls)) == 1
+    assert unattended.returncode == 1
+    assert "only patch or minor" in unattended.stderr
+    assert _merge_calls(unattended_calls) == []
 
 
 def test_dependabot_synchronization_invalidates_old_head_classification(tmp_path: Path) -> None:
@@ -692,20 +838,72 @@ def test_dependabot_attributed_commit_with_generic_signer_cannot_authorize(
 ) -> None:
     scenario = _default_scenario()
     scenario["dependabot_commits"] = [_dependabot_commit()]
-    scenario["dependabot_check_runs"] = _eligibility_payload()
+    scenario["source_run"] = _source_run(
+        actor=_dependabot_actor(login="attacker", actor_id=7, actor_type="User"),
+        triggering_actor=_dependabot_actor(login="attacker", actor_id=7, actor_type="User"),
+    )
 
     result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
 
     assert result.returncode == 1
-    assert "missing" in result.stderr
-    assert DEPENDABOT_ELIGIBILITY_CHECK in result.stderr
+    assert "wrong CI workflow actor" in result.stderr
     assert not any(call[0] == "api" and "/pulls/742/commits?" in call[1] for call in calls)
     assert _merge_calls(calls) == []
 
 
-def test_dependabot_eligibility_check_must_match_exact_head(tmp_path: Path) -> None:
+def test_appended_non_dependabot_commit_cannot_reuse_an_exact_head_check(
+    tmp_path: Path,
+) -> None:
     scenario = _default_scenario()
-    scenario["dependabot_check_runs"] = _eligibility_payload(_eligibility_check(head_sha=OTHER_SHA))
+    scenario["dependabot_commits"] = [
+        _dependabot_commit(head_sha=OTHER_SHA),
+        {
+            "sha": HEAD_SHA,
+            "author": {"login": "attacker"},
+            "committer": {"login": "attacker"},
+        },
+    ]
+    result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
+
+    assert result.returncode == 1
+    assert "exactly one current commit" in result.stderr
+    assert _merge_calls(calls) == []
+
+
+def test_forged_dependabot_author_with_different_committer_cannot_authorize(
+    tmp_path: Path,
+) -> None:
+    scenario = _default_scenario()
+    scenario["dependabot_commits"] = [_dependabot_commit()]
+    scenario["source_run"] = _source_run(
+        actor=_dependabot_actor(login="attacker", actor_id=7, actor_type="User"),
+        triggering_actor=_dependabot_actor(login="attacker", actor_id=7, actor_type="User"),
+    )
+
+    result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
+
+    assert result.returncode == 1
+    assert "wrong CI workflow actor" in result.stderr
+    assert not any(call[0] == "api" and "/pulls/742/commits?" in call[1] for call in calls)
+    assert _merge_calls(calls) == []
+
+
+def test_same_actions_app_check_from_another_workflow_cannot_authorize(
+    tmp_path: Path,
+) -> None:
+    scenario = _default_scenario()
+    scenario["source_run"] = _source_run(path=".github/workflows/attacker.yml")
+
+    result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
+
+    assert result.returncode == 1
+    assert "CI workflow path" in result.stderr
+    assert _merge_calls(calls) == []
+
+
+def test_dependabot_source_ci_run_must_match_exact_head(tmp_path: Path) -> None:
+    scenario = _default_scenario()
+    scenario["source_run"] = _source_run(head_sha=OTHER_SHA)
 
     result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
 
@@ -722,20 +920,18 @@ def test_dependabot_eligibility_check_must_match_exact_head(tmp_path: Path) -> N
     ],
     ids=["wrong-app-id", "wrong-app-slug"],
 )
-def test_dependabot_eligibility_check_requires_canonical_actions_app(
+def test_dependabot_source_suite_requires_canonical_actions_app(
     tmp_path: Path,
     app_id: int,
     app_slug: str,
 ) -> None:
     scenario = _default_scenario()
-    scenario["dependabot_check_runs"] = _eligibility_payload(
-        _eligibility_check(app_id=app_id, app_slug=app_slug)
-    )
+    scenario["source_suite"] = _source_suite(app_id=app_id, app_slug=app_slug)
 
     result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
 
     assert result.returncode == 1
-    assert "GitHub Actions app" in result.stderr
+    assert "check-suite app identity" in result.stderr
     assert _merge_calls(calls) == []
 
 
@@ -744,36 +940,81 @@ def test_dependabot_eligibility_check_requires_canonical_actions_app(
     [("queued", None), ("completed", "failure")],
     ids=["incomplete", "non-success"],
 )
-def test_dependabot_eligibility_check_must_complete_successfully(
+def test_dependabot_source_ci_run_must_complete_successfully(
     tmp_path: Path,
     status: str,
     conclusion: str | None,
 ) -> None:
     scenario = _default_scenario()
-    scenario["dependabot_check_runs"] = _eligibility_payload(
-        _eligibility_check(status=status, conclusion=conclusion)
-    )
+    source_run = scenario["source_run"]
+    assert isinstance(source_run, dict)
+    source_run.update({"status": status, "conclusion": conclusion})
 
     result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
 
     assert result.returncode == 1
-    assert f"status={status}" in result.stderr
-    assert f"conclusion={conclusion or ''}" in result.stderr
+    assert "did not complete successfully" in result.stderr
     assert _merge_calls(calls) == []
 
 
-def test_dependabot_eligibility_check_refuses_a_full_page(tmp_path: Path) -> None:
+def test_dependabot_classifier_jobs_refuse_a_full_page(tmp_path: Path) -> None:
     scenario = _default_scenario()
-    checks = tuple(_eligibility_check(check_id=index + 1) for index in range(100))
-    scenario["dependabot_check_runs"] = {
+    jobs = [_classifier_job(job_id=index + 1) for index in range(100)]
+    scenario["classifier_jobs"] = {
         "total_count": 100,
-        "check_runs": list(checks),
+        "jobs": jobs,
     }
 
     result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
 
     assert result.returncode == 1
     assert "100-item safety bound" in result.stderr
+    assert _merge_calls(calls) == []
+
+
+def test_classifier_run_must_bind_exact_source_run_and_head(tmp_path: Path) -> None:
+    scenario = _default_scenario()
+    scenario["classifier_run"] = _classifier_run(source_run_id=SOURCE_RUN_ID + 1)
+
+    result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
+
+    assert result.returncode == 1
+    assert "source run/head binding mismatch" in result.stderr
+    assert _merge_calls(calls) == []
+
+
+def test_classifier_native_check_requires_canonical_actions_app(tmp_path: Path) -> None:
+    scenario = _default_scenario()
+    scenario["classifier_check"] = _classifier_check(app_id=1)
+
+    result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
+
+    assert result.returncode == 1
+    assert "wrong Actions app identity" in result.stderr
+    assert _merge_calls(calls) == []
+
+
+def test_missing_native_classifier_job_refuses_dependabot_mode(tmp_path: Path) -> None:
+    scenario = _default_scenario()
+    scenario["classifier_jobs"] = {"total_count": 0, "jobs": []}
+
+    result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
+
+    assert result.returncode == 1
+    assert "expected one native classifier job" in result.stderr
+    assert _merge_calls(calls) == []
+
+
+def test_completed_classifier_run_cannot_be_replayed(tmp_path: Path) -> None:
+    scenario = _default_scenario()
+    classifier_run = scenario["classifier_run"]
+    assert isinstance(classifier_run, dict)
+    classifier_run.update({"status": "completed", "conclusion": "failure"})
+
+    result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
+
+    assert result.returncode == 1
+    assert "not currently executing" in result.stderr
     assert _merge_calls(calls) == []
 
 

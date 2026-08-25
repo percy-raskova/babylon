@@ -23,6 +23,7 @@ def _mapping(path: Path) -> dict[str, Any]:
 def test_accepted_decision_records_every_pr_policy_boundary() -> None:
     decision = _mapping(ADR_PATH)[ADR_KEY]
     text = str(decision["decision"])
+    normalized = " ".join(text.split())
 
     assert decision["status"] == "accepted"
     assert decision["date"] == "2026-08-25"
@@ -39,9 +40,13 @@ def test_accepted_decision_records_every_pr_policy_boundary() -> None:
     assert "workflow_run" in text
     assert "Dependabot Eligibility" in text
     assert "GitHub Actions app" in text
-    assert "exact-head check run" in text
+    assert "native exact-head CI" in text
+    assert "workflow ID" in text
+    assert "event actor" in text
+    assert "exactly one current commit" in text
+    assert "normal reviewed path" in text
     assert "signed commit metadata" not in text
-    assert "label is presentation only" in text
+    assert "label is presentation only" in normalized
     assert "snapshot" in text
     assert "rollback" in text
     assert "attempted writes" in text

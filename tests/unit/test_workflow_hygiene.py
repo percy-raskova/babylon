@@ -543,31 +543,49 @@ class TestDependabotPolicy:
             "types": ["opened", "reopened", "synchronize"],
         }
         assert triggers["workflow_run"] == {
-            "workflows": ["CI", "CodeQL Security Scan"],
+            "workflows": ["CI"],
             "types": ["completed"],
         }
         assert workflow.get("permissions") == {}
 
         classify = workflow["jobs"]["classify"]
         assert classify["permissions"] == {
-            "checks": "write",
             "contents": "read",
             "issues": "write",
             "pull-requests": "read",
         }
         assert "github.event.pull_request.user.login == 'dependabot[bot]'" in classify["if"]
+        assert "github.actor == 'dependabot[bot]'" in classify["if"]
+        assert "github.event.sender.login == 'dependabot[bot]'" in classify["if"]
+        assert "github.event.sender.id == 49699333" in classify["if"]
         assert not any(
             str(step.get("uses", "")).startswith("actions/checkout") for step in classify["steps"]
         )
 
         merge = workflow["jobs"]["merge"]
+        assert merge["name"] == "Dependabot Eligibility"
         assert merge["permissions"] == {
+            "actions": "read",
+            "checks": "read",
             "contents": "write",
             "pull-requests": "write",
             "security-events": "read",
         }
         assert "github.event.workflow_run.conclusion == 'success'" in merge["if"]
         assert "github.event.workflow_run.event == 'pull_request'" in merge["if"]
+        assert "github.event.workflow_run.name == 'CI'" in merge["if"]
+        run_name = str(workflow["run-name"])
+        assert "github.event.workflow_run.id" in run_name
+        assert "github.event.workflow_run.head_sha" in run_name
+
+    def test_non_dependabot_synchronizing_actor_cannot_classify(self) -> None:
+        """A branch update by any other actor must skip trusted metadata parsing."""
+        workflow = yaml.safe_load(DEPENDABOT_AUTOMERGE_PATH.read_text())
+        classify_if = str(workflow["jobs"]["classify"]["if"])
+
+        assert "github.actor == 'dependabot[bot]'" in classify_if
+        assert "github.event.sender.login == 'dependabot[bot]'" in classify_if
+        assert "github.event.sender.id == 49699333" in classify_if
 
     def test_workflow_has_per_pr_concurrency(self) -> None:
         """Duplicate completion events must serialize on the same Dependabot PR."""
@@ -592,25 +610,11 @@ class TestDependabotPolicy:
         eligibility = next(step for step in classify["steps"] if step.get("id") == "eligibility")
         assert eligibility["env"]["UPDATE_TYPE"] == "${{ steps.metadata.outputs.update-type }}"
         eligibility_script = str(eligibility["run"])
-        assert "conclusion=success" in eligibility_script
-        assert "conclusion=failure" in eligibility_script
+        assert "eligible=true" in eligibility_script
+        assert "conclusion=" not in eligibility_script
+        assert not any("check-runs" in str(step.get("run", "")) for step in classify["steps"])
 
-        attestation = next(
-            step
-            for step in classify["steps"]
-            if step.get("name") == "Publish exact-head eligibility check"
-        )
-        assert attestation["env"] == {
-            "CHECK_CONCLUSION": "${{ steps.eligibility.outputs.conclusion }}",
-            "CHECK_NAME": "Dependabot Eligibility",
-            "GH_TOKEN": "${{ github.token }}",
-            "HEAD_SHA": "${{ github.event.pull_request.head.sha }}",
-        }
-        attestation_script = str(attestation["run"])
-        assert "repos/$GITHUB_REPOSITORY/check-runs" in attestation_script
-        assert "jq -n" in attestation_script
-        assert "--arg status completed" in attestation_script
-        assert "--input -" in attestation_script
+        assert workflow["jobs"]["merge"]["name"] == "Dependabot Eligibility"
 
         label = next(
             step for step in classify["steps"] if step.get("name") == "Set eligibility label"
@@ -654,17 +658,24 @@ class TestDependabotPolicy:
         candidate_script = str(candidate["run"])
         assert "base=dev" in candidate_script
         assert '.user.login == "dependabot[bot]"' in candidate_script
+        assert ".user.id == 49699333" in candidate_script
+        assert '.user.type == "Bot"' in candidate_script
         assert ".head.sha == $head" in candidate_script
         assert ".name == $label" not in candidate_script
+        assert "pull_count=\"$(jq 'length'" in candidate_script
+        assert 'if [ "$pull_count" -ge 100 ]' in candidate_script
         assert "candidate_count" in candidate_script and "-ne 1" in candidate_script
         assert candidate["env"]["EXPECTED_HEAD"] == "${{ github.event.workflow_run.head_sha }}"
 
         merge_step = next(step for step in merge["steps"] if step.get("name") == "Merge")
         assert merge_step["if"] == "steps.candidate.outputs.eligible == 'true'"
         assert merge_step["env"]["EXPECTED_HEAD"] == "${{ github.event.workflow_run.head_sha }}"
-        assert (
-            'python3 tools/pr_merge.py "$PR_NUMBER" --expected-head "$EXPECTED_HEAD" --dependabot'
-        ) in str(merge_step["run"])
+        merge_script = str(merge_step["run"])
+        assert 'python3 tools/pr_merge.py "$PR_NUMBER" --expected-head "$EXPECTED_HEAD"' in (
+            merge_script
+        )
+        assert '--dependabot-source-run "$SOURCE_RUN_ID"' in merge_script
+        assert '--dependabot-classifier-run "$CLASSIFIER_RUN_ID"' in merge_script
 
     def test_dependabot_workflow_external_actions_are_immutable_and_annotated(self) -> None:
         """A mutable tag must never select code inside the privileged workflow."""

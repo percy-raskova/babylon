@@ -110,8 +110,9 @@ each commit. Use `mise run commit` so the local hooks can check staged content.
 <!-- vale Vale.Spelling = NO -->
 <!-- vale ste.UnapprovedWords = NO -->
 Only the Director merges to `main`. The two allowed sources are a release PR
-from `dev`, or a critical hotfix from `fix/*` that branches from `main`. Every
-merged hotfix needs a mandatory backport PR to `dev`.
+from `dev`, or a critical hotfix PR from `fix/*` that branches from `main` and
+goes directly to `main`. Every merged hotfix needs a mandatory backport PR to
+`dev`.
 <!-- vale ste.UnapprovedWords = YES -->
 <!-- vale Vale.Spelling = YES -->
 Use the merge rules in `CONTRIBUTORS.md` for all other pull requests.

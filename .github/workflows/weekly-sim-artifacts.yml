@@ -44,8 +44,9 @@ jobs:
         run: mise run sim:sweep
       - name: Stop Postgres
         if: always()
-        run: docker compose down -v
+        run: tools/ci_postgres_compose.sh down
       - name: Upload results
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: sim-analysis-${{ github.run_id }}

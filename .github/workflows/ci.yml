@@ -109,10 +109,9 @@ jobs:
       # the four packages Bevy's own Linux CI installs; compile-time only, no
       # display server needed (tests run headless).
       - name: Install Bevy system dependencies (compile-time headers)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
+        run: >-
+          tools/install_ci_apt_packages.sh
+          libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
 
       - name: Set up tools with mise
         uses: jdx/mise-action@v4
@@ -132,9 +131,11 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             rust/target
-          key: cargo-gate-${{ runner.os }}-v1-${{ hashFiles('rust/Cargo.lock') }}
+          key: >-
+            cargo-gate-${{ runner.os }}-v2-${{
+            hashFiles('rust/Cargo.lock', 'rust/rust-toolchain.toml') }}
           restore-keys: |
-            cargo-gate-${{ runner.os }}-v1-
+            cargo-gate-${{ runner.os }}-v2-
 
       - name: Rust full gate (CI parity with local rust:check)
         run: mise run rust:check
@@ -257,19 +258,20 @@ jobs:
         with:
           path: |
             ~/.cargo/registry
+            ~/.cargo/git
             rust/target
-          key: legacy-adopter-${{ runner.os }}-v1-${{ hashFiles('rust/Cargo.lock') }}
+          key: >-
+            legacy-adopter-${{ runner.os }}-v2-${{
+            hashFiles('rust/Cargo.lock', 'rust/rust-toolchain.toml') }}
           restore-keys: |
-            legacy-adopter-${{ runner.os }}-v1-
+            legacy-adopter-${{ runner.os }}-v2-
 
       - name: Build + start the isolated Postgres (CI fork; pinned runtime/package contract)
-        # BABYLON_PG_DATA as a bare name = a NAMED VOLUME (the base file's
-        # own convention) — inherently fresh on an ephemeral runner, so
-        # every job initdb's clean. See docker-compose.ci.yml for why this
+        # The shared wrapper selects BABYLON_PG_DATA=babylon-pg-ci. That bare
+        # name is a NAMED VOLUME (the base file's own convention), inherently
+        # fresh on an ephemeral runner. See docker-compose.ci.yml for why this
         # replaced the tmpfs override.
-        env:
-          BABYLON_PG_DATA: babylon-pg-ci
-        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --build --wait babylon-pg
+        uses: ./.github/actions/postgres-up
 
       - name: Bootstrap the canonical schema (digest-stamped, idempotent)
         run: mise run db:bootstrap
@@ -280,6 +282,10 @@ jobs:
 
       - name: PG-backed integration subset (declared, data-drive-free)
         run: mise run test:integration-pg
+
+      - name: Stop Postgres
+        if: always()
+        run: tools/ci_postgres_compose.sh down
 
   security:
     # Blocking since 2026-07-11: item 41 closed the CVE wave (73 -> 5, the

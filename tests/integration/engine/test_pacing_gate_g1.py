@@ -56,10 +56,10 @@ graph. This is why the gate:
   automatic sweep that would otherwise catch it by directory alone —
   ``mise run check`` / ``test:unit`` (different directory, unaffected),
   ``mise run test:rest-ci`` (marker-excluded: ``-m '... and not
-  pacing_gate'``), and the nightly ``py313-forward-compat`` leg
-  (same marker exclusion) — and is invoked ONLY via the dedicated
-  ``mise run qa:pacing`` task, wired into its own workflow
-  ``.github/workflows/nightly-pacing.yml`` (per-leg split, ADR181 R3);
+  pacing_gate'``), and the weekly ``py313-forward-compat`` leg
+  (same marker exclusion) — and can be invoked manually through the dedicated
+  ``mise run qa:pacing`` task. It has no scheduled Python workflow: PER-268
+  owns the Rust successor and forbids restoring this frozen engine run early;
 - is never part of the PR-blocking ``ci.yml`` path (that workflow only
   invokes ``test:unit-ci`` and ``qa:regression``, neither of which touches
   this file or directory).

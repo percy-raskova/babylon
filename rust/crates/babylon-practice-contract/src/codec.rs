@@ -59,7 +59,7 @@ fn check_evidence(value: &PracticeIntentV1) -> Result<(), PracticeContractError>
 /// Encodes one authority in its exact fixed field order.
 ///
 /// # Errors
-/// Returns the exact schema-version refusal for an invalid generated value.
+/// Returns the exact schema-version refusal for an invalid typed value.
 pub fn encode_input_authority(
     value: &PracticeInputAuthorityV1,
 ) -> Result<Vec<u8>, PracticeContractError> {
@@ -139,7 +139,7 @@ pub fn encode_intent(value: &PracticeIntentV1) -> Result<Vec<u8>, PracticeContra
 /// Encodes one fixed organization-budget delta.
 ///
 /// # Errors
-/// Returns the exact schema-version refusal for an invalid generated value.
+/// Returns the exact schema-version refusal for an invalid typed value.
 pub fn encode_budget_delta(
     value: &OrganizationBudgetDeltaV1,
 ) -> Result<Vec<u8>, PracticeContractError> {
@@ -167,7 +167,7 @@ pub fn encode_budget_delta(
 /// Encodes one context-complete submission rejection.
 ///
 /// # Errors
-/// Returns the exact schema-version refusal for an invalid generated value.
+/// Returns the exact schema-version refusal for an invalid typed value.
 pub fn encode_rejection(
     value: &PracticeSubmissionRejectionV1,
 ) -> Result<Vec<u8>, PracticeContractError> {

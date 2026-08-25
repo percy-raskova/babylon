@@ -1711,7 +1711,7 @@ dir = "rust"
 run = "cargo build --workspace"
 
 [tasks."check:bsl-sentinels"]
-description = "bsl-lint's three repo-relationship sentinels: citation-drift, namespace-unique, and sfs-non-authorability. The third is a bounded dependency-direction and tracked/staged/untracked production-source exact-token sentinel; it does not claim universal disguised-name recognition. Wired as an additive leg of rust:check (static gate, no reference DB, no engine run)."
+description = "bsl-lint's four repo-relationship checks: citation-drift, namespace-unique, rust-contract-authority, and sfs-non-authorability. The authority check refuses retired Python gameplay-contract paths. The non-authorability check is a bounded dependency-direction and tracked/staged/untracked production-source exact-token check; it does not claim universal disguised-name recognition. Wired as an additive leg of rust:check (static gate, no reference DB, no engine run)."
 dir = "rust"
 run = "cargo run -p bsl-lint --locked -- all"
 

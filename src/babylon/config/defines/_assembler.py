@@ -57,7 +57,6 @@ from babylon.config.defines.organizations import (
     MoveDefines,
     NegotiateDefines,
     OrganizationDefines,
-    PracticeBudgetDefines,
 )
 from babylon.config.defines.persistence import PersistenceDefines
 from babylon.config.defines.politics import PoliticsDefines
@@ -127,7 +126,6 @@ class GameDefines(BaseModel):
     - class_dynamics: Class wealth flow dynamics (Feature 016, FRED DFA-derived)
     - edge_transition: Edge mode transition thresholds (Feature 002)
     - organization: Organization system coefficients (Feature 031)
-    - practice_budget: Designed bounded practice ActionBudget terms
     - ooda: OODA loop system coefficients (Feature 032)
     - class_system: Unified class system coefficients (Feature 038)
     - bifurcation: Bifurcation topology analysis coefficients (Feature 033)
@@ -193,7 +191,6 @@ class GameDefines(BaseModel):
     lifecycle: LifecycleDefines = Field(default_factory=LifecycleDefines)
     # Organization Base Model (Feature 031)
     organization: OrganizationDefines = Field(default_factory=OrganizationDefines)
-    practice_budget: PracticeBudgetDefines = Field(default_factory=PracticeBudgetDefines)
     # OODA Loop System (Feature 032)
     ooda: OODADefines = Field(default_factory=OODADefines)
     # Bifurcation Topology Analysis (Feature 033)
@@ -352,7 +349,6 @@ class GameDefines(BaseModel):
             edge_transition=EdgeTransitionDefines(**data.get("edge_transition", {})),
             lifecycle=LifecycleDefines(**data.get("lifecycle", {})),
             organization=OrganizationDefines(**data.get("organization", {})),
-            practice_budget=PracticeBudgetDefines(**data.get("practice_budget", {})),
             ooda=OODADefines(**data.get("ooda", {})),
             bifurcation=BifurcationDefines(**data.get("bifurcation", {})),
             infra_terrain=InfraTerrainDefines(**data.get("infra_terrain", {})),

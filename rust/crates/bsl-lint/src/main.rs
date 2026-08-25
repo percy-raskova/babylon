@@ -16,6 +16,7 @@ mod citation_drift;
 mod finding;
 mod namespace_unique;
 mod repo;
+mod rust_contract_authority;
 mod sfs_non_authorability;
 
 use finding::{Finding, Severity};
@@ -27,6 +28,7 @@ type CheckFn = fn(&Repo, &[String]) -> Result<Vec<Finding>, String>;
 const CHECKS: &[(&str, CheckFn)] = &[
     (citation_drift::CHECK, citation_drift::run),
     (namespace_unique::CHECK, namespace_unique::run),
+    (rust_contract_authority::CHECK, rust_contract_authority::run),
     (sfs_non_authorability::CHECK, sfs_non_authorability::run),
 ];
 

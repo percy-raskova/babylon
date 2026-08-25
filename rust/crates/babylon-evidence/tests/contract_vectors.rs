@@ -1,4 +1,4 @@
-//! Independent Rust consumption of the Python-authored T3 vector fixtures.
+//! Language-neutral T3 contract vectors consumed by Rust.
 
 use babylon_evidence::{
     canonical_envelope, classify_persistence, classify_sfs, record_digest, CanonicalProfileSet,

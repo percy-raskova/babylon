@@ -1,6 +1,6 @@
 [package]
 name = "bsl-lint"
-description = "Repo-relationship sentinels for BSL identity, namespaces, and T3 non-authorability"
+description = "Repo-relationship checks for BSL identity, Rust authority, namespaces, and T3 non-authorability"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

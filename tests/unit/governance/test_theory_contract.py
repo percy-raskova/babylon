@@ -176,18 +176,34 @@ _EXPECTED_SOURCES: Final[dict[str, dict[str, object]]] = {
     },
     "party_practice_clipping": {
         "title": "theory-of-the-party-ill-will.md supplied clipping",
-        "edition": "complete supplied clipping",
+        "edition": "supplied clipping; mixed-admissibility source",
         "sha256": _SOURCE_HASHES[2][1],
         "evidence_class": "Observed",
         "executable_authority": False,
         "availability": "repository_file",
         "repository_path": "ai/_inbox/archive/theory-of-the-party-ill-will.md",
         "scope": (
-            "Supports organization and subjectivity as products of situated "
-            "practice. Does not authorize a party score, universal form, or "
-            "scripted subject."
+            "Retains only bounded observations about situated practice when "
+            "independently corroborated by permitted book findings. Cannot "
+            "authorize organization kinds, party relations, or mechanics."
         ),
-        "anchors": ["complete supplied clipping"],
+        "anchors": ["repository lines 30-42"],
+        "admissibility": "bounded_with_independent_corroboration",
+        "quarantined_ranges": [
+            "repository lines 44-46",
+            "repository lines 74-130",
+        ],
+        "corroborating_findings": [
+            "H8",
+            "W10",
+            "W20",
+            "W36",
+            "W37",
+            "W39",
+            "W40",
+            "W45",
+            "W62-W65",
+        ],
     },
     "cpusa_organizers_manual_ch3_1935": {
         "title": "Organizers' Manual, chapter 3",
@@ -269,7 +285,7 @@ def test_machine_theory_has_exact_t0_schema_and_authority() -> None:
     )
     meta = document["meta"]
     assert isinstance(meta, dict)
-    assert meta["version"] == "2.0.0"
+    assert meta["version"] == "2.1.0"
     assert meta["authority"] == "CONSTITUTION.md v4.0.0"
     assert meta["architecture"] == "docs/concepts/architecture.rst"
     assert meta["reserved_line"] == "Marxist-Leninist-Maoist Third Worldist (MLM-TW)"
@@ -480,6 +496,17 @@ def test_human_source_ledger_renders_every_exact_source_field(
     assert isinstance(anchors, list)
     for anchor in anchors[:4]:
         assert _normalized_value(str(anchor)) in rendered
+    for mixed_source_field in (
+        "admissibility",
+        "quarantined_ranges",
+        "corroborating_findings",
+    ):
+        if mixed_source_field not in expected:
+            continue
+        field_value = expected[mixed_source_field]
+        values = field_value if isinstance(field_value, list) else [field_value]
+        for value in values:
+            assert _normalized_value(str(value)) in rendered
 
 
 def test_mantra_north_star_describes_contingent_political_possibility() -> None:

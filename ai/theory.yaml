@@ -1,8 +1,8 @@
 ---
 meta:
   name: Babylon Canonical Theory Constraints
-  version: "2.0.0"
-  updated: "2026-08-23"
+  version: "2.1.0"
+  updated: "2026-08-25"
   authority: CONSTITUTION.md v4.0.0
   architecture: docs/concepts/architecture.rst
   reserved_line: "Marxist-Leninist-Maoist Third Worldist (MLM-TW)"
@@ -110,17 +110,32 @@ sources:
       - "PDF p. 239 (printed p. 212)"
   party_practice_clipping:
     title: "theory-of-the-party-ill-will.md supplied clipping"
-    edition: "complete supplied clipping"
+    edition: "supplied clipping; mixed-admissibility source"
     sha256: "373c2b594f932cbc7fcf590a784e6b48b9031a9bf7363e9b33a58fdc074454b1"
     evidence_class: Observed
     executable_authority: false
     availability: repository_file
     repository_path: ai/_inbox/archive/theory-of-the-party-ill-will.md
     scope: >-
-      Supports organization and subjectivity as products of situated practice.
-      Does not authorize a party score, universal form, or scripted subject.
+      Retains only bounded observations about situated practice when
+      independently corroborated by permitted book findings. Cannot authorize
+      organization kinds, party relations, or mechanics.
     anchors:
-      - "complete supplied clipping"
+      - "repository lines 30-42"
+    admissibility: bounded_with_independent_corroboration
+    quarantined_ranges:
+      - "repository lines 44-46"
+      - "repository lines 74-130"
+    corroborating_findings:
+      - H8
+      - W10
+      - W20
+      - W36
+      - W37
+      - W39
+      - W40
+      - W45
+      - W62-W65
   cpusa_organizers_manual_ch3_1935:
     title: "Organizers' Manual, chapter 3"
     edition: "Communist Party USA, 1935, local HTML"

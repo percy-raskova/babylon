@@ -7,7 +7,9 @@ error identities, byte-contract terms, and mathematical classification names. --
 **Status:** The Director approved the governing ontology on 2026-08-23 and
 authorized autonomous engineering within it. The authorization does not permit
 a new mathematical primitive, a weaker constitutional prohibition, a change to
-the reserved theory line, or an expansion of external authority.
+the reserved theory line, or an expansion of external authority. The
+page-complete source study corrected the mixed-source and organization boundary
+on 2026-08-25; this specification includes that correction.
 
 **Authority:** `CONSTITUTION.md` v4.0.0, `NORTH_STAR.md`, the v4 addendum to the
 Babylon Game Design Standard, the Organization-as-Game-Object rulings, and the
@@ -56,32 +58,35 @@ the CPUSA 1935 *Organizers' Manual*, chapter 3 (local HTML SHA-256
 `6d27b580c657f68f35e8d4b5b2ac6ea6b076050b1de7a82cb0b615cce12f44fb`),
 as bounded supporting evidence.
 
-The claim-to-source ledger is deliberately small:
+The table below is a compact routing index. The page-complete evidence ledger in
+`docs/superpowers/research/2026-08-25-neel-source-study.md` records findings
+H1-H10 and W1-W104, their page anchors, causal questions, and negative rulings.
 
 | Design constraint | Reproducible anchor |
 |---|---|
 | The hinterland contains materially different, unevenly connected spaces and cannot be reduced to rural absence. | *Hinterland*, supplied PDF p. 18 (printed p. 17), including industry, logistics, extraction, and the near/far distinction. |
 | Territorial industrial complexes join fixed capital, firms, labor, logistics, and metropolitan command without becoming one organic super-agent. | *Hellworld*, supplied PDF pp. 170–171 (printed pp. 143–144). |
 | Territorial positions can be built, deconstructed, and recomposed through crisis and social reproduction. | *Hellworld*, supplied PDF p. 239 (printed p. 212). |
-| Organization is produced through situated practice and practical confrontation with material limits, rather than guaranteed by a label. | `theory-of-the-party-ill-will.md`, complete supplied clipping. |
+| Organization can be produced through situated practice and practical confrontation with material limits, rather than guaranteed by a label. | `theory-of-the-party-ill-will.md` lines 30-42, admissible only with independent support from H8, W10, W20, W36-W40, W45, and W62-W65. |
 | Organization must root work across workplaces, residence, mass organizations, housing, and rent struggles, and must evaluate and revise practice. | CPUSA chapter 3 local HTML lines 45–61, 265–271, 464–505, and 1175–1190. “Reproduction struggle” is this design's synthesis, not the chapter's terminology. |
 
 The source boundary is normative:
 
 - Neel constrains ontology and causal questions. He supplies no coefficient,
   threshold, curve, or guaranteed historical outcome.
-- The party clipping supports organizations and subjectivity as products of
-  situated practice. It does not authorize a party score, a universal formal
-  party, or a scripted revolutionary subject.
+- The party clipping is a mixed-admissibility source. Only its bounded practice
+  observations at lines 30-42 remain available, and only with independent
+  support from permitted book findings. Its quarantined ranges cannot authorize
+  organization kinds, party relations, vocabulary, or mechanics.
 - The CPUSA chapter supports rooting across workplaces, neighborhoods, and
   concrete reproduction struggles, plus observation, deliberation, action,
   evaluation, and revision. Its hierarchy, fractions, membership thresholds,
   secrecy rules, and numeric guidance are historical particulars, not Babylon
   universals.
-- Every Director-excluded lineage is absent from this design, its mechanics,
-  comparisons, citations, and source ledger. Canonical corpus-denial records
-  remain the only place an excluded identifier may appear, solely to prevent
-  ingestion.
+- Director exclusions apply transitively. A concept, analogy, rationale, or
+  mechanic that depends on an excluded lineage remains excluded even when the
+  lineage identifier is omitted. Canonical corpus-denial records remain the
+  only active-policy location for those identifiers.
 - The current narrator/RAG manifest denies standalone CPUSA material. This
   design uses the approved chapter as research evidence and does not change
   that ingestion policy.
@@ -130,10 +135,10 @@ kernel kinds.
 
 The organization exists through typed relations and material practices. Its
 line is real, but selecting a line cannot directly write subjectivity or an
-outcome. Formal parties may appear, split, federate, or disappear. A broader
-historical party, if ever recognized, is an after-the-fact relation among
-organizations, repertoires, and events. It is never the player's automatic
-starting identity.
+outcome. Organizations may appear, split, federate, or disappear. A coalition,
+federation, council, or communication network exists only through concrete
+graph relations among its participants. Babylon does not infer a broader party
+relation behind those organizations, repertoires, or events.
 
 Competence is not XP. A typed repertoire may be recognized from attributed
 receipts, may fail under changed conditions, and may decay or be lost.

@@ -2,6 +2,12 @@
 
 # Neel T0 Theory Refoundation Implementation Plan
 
+> **Source-correction notice (2026-08-25):** This file records the T0 execution
+> contract as it stood on 2026-08-23. Its whole-clipping source literals are
+> superseded and must not be copied or re-executed. The current authority is
+> `ai/theory.yaml` v2.1.0, its human rendering, and the page-complete study in
+> `docs/superpowers/research/2026-08-25-neel-source-study.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace Babylon's categorical canonical-theory claims with the approved relational, contingent theory contract; consolidate Director source exclusions in one machine-readable policy; and prove the result with focused behavioral tests.

@@ -215,15 +215,19 @@ Anchors: PDF pp. 170-171 (printed pp. 143-144); PDF p. 239 (printed p. 212)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Title: theory-of-the-party-ill-will.md supplied clipping
-Edition: complete supplied clipping
+Edition: supplied clipping; mixed-admissibility source
 sha256: 373c2b594f932cbc7fcf590a784e6b48b9031a9bf7363e9b33a58fdc074454b1
 Evidence class: Observed
 Executable authority: false
 Availability: repository_file
 Repository path: ai/_inbox/archive/theory-of-the-party-ill-will.md
-Scope: Supports organization and subjectivity as products of situated practice.
-Does not authorize a party score, universal form, or scripted subject.
-Anchor: complete supplied clipping
+Scope: Retains only bounded observations about situated practice when
+independently corroborated by permitted book findings. Cannot authorize
+organization kinds, party relations, or mechanics.
+Anchor: repository lines 30-42
+Admissibility: bounded_with_independent_corroboration
+Quarantined ranges: repository lines 44-46; repository lines 74-130
+Corroborating findings: H8; W10; W20; W36; W37; W39; W40; W45; W62-W65
 
 .. vale on
 

@@ -1,3 +1,5 @@
+use std::fmt::Write as _;
+
 use babylon_bsl::scenario::{load_scenario, load_scenario_with_prelude, ScenarioError};
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::state_hash::CanonicalState;
@@ -61,7 +63,8 @@ fn organization_source(count: usize) -> String {
         if index == count {
             break;
         }
-        body.push_str(&format!("  (node org-{index} NodeType/ORGANIZATION)\n"));
+        writeln!(&mut body, "  (node org-{index} NodeType/ORGANIZATION)")
+            .expect("writing to a String cannot fail");
     }
     scenario(&body)
 }
@@ -76,15 +79,18 @@ fn solidarity_source(edge_count: usize) -> String {
         if index == edge_count {
             break;
         }
-        body.push_str(&format!("  (node class-{index} NodeType/SOCIAL_CLASS)\n"));
+        writeln!(&mut body, "  (node class-{index} NodeType/SOCIAL_CLASS)")
+            .expect("writing to a String cannot fail");
     }
     for index in 0..257 {
         if index == edge_count {
             break;
         }
-        body.push_str(&format!(
-            "  (edge EdgeType/SOLIDARITY org class-{index} 1)\n"
-        ));
+        writeln!(
+            &mut body,
+            "  (edge EdgeType/SOLIDARITY org class-{index} 1)"
+        )
+        .expect("writing to a String cannot fail");
     }
     scenario(&body)
 }
@@ -95,7 +101,8 @@ fn prelude_organization_source(count: usize) -> String {
         if index == count {
             break;
         }
-        body.push_str(&format!("  (node org-{index} NodeType/ORGANIZATION)\n"));
+        writeln!(&mut body, "  (node org-{index} NodeType/ORGANIZATION)")
+            .expect("writing to a String cannot fail");
     }
     prelude_scenario(&body)
 }
@@ -110,15 +117,18 @@ fn prelude_solidarity_source(edge_count: usize) -> String {
         if index == edge_count {
             break;
         }
-        body.push_str(&format!("  (node class-{index} NodeType/SOCIAL_CLASS)\n"));
+        writeln!(&mut body, "  (node class-{index} NodeType/SOCIAL_CLASS)")
+            .expect("writing to a String cannot fail");
     }
     for index in 0..257 {
         if index == edge_count {
             break;
         }
-        body.push_str(&format!(
-            "  (edge EdgeType/SOLIDARITY org class-{index} 1)\n"
-        ));
+        writeln!(
+            &mut body,
+            "  (edge EdgeType/SOLIDARITY org class-{index} 1)"
+        )
+        .expect("writing to a String cannot fail");
     }
     prelude_scenario(&body)
 }
@@ -257,7 +267,8 @@ fn effective_last_active_and_budget_attributes_match_loader_order() {
 fn only_exact_organization_rows_count_toward_the_limit() {
     let mut body = String::new();
     for index in 0..4_097 {
-        body.push_str(&format!("  (node class-{index} NodeType/SOCIAL_CLASS)\n"));
+        writeln!(&mut body, "  (node class-{index} NodeType/SOCIAL_CLASS)")
+            .expect("writing to a String cannot fail");
     }
     body.push_str("  (node org NodeType/ORGANIZATION)\n");
     let mut graph = MemoryGraph::new();
@@ -283,12 +294,15 @@ fn organization_to_organization_solidarity_does_not_count_toward_class_footprint
          (node other-org NodeType/ORGANIZATION)\n",
     );
     for index in 0..256 {
-        body.push_str(&format!("  (node class-{index} NodeType/SOCIAL_CLASS)\n"));
+        writeln!(&mut body, "  (node class-{index} NodeType/SOCIAL_CLASS)")
+            .expect("writing to a String cannot fail");
     }
     for index in 0..256 {
-        body.push_str(&format!(
-            "  (edge EdgeType/SOLIDARITY org class-{index} 1)\n"
-        ));
+        writeln!(
+            &mut body,
+            "  (edge EdgeType/SOLIDARITY org class-{index} 1)"
+        )
+        .expect("writing to a String cannot fail");
     }
     body.push_str("  (edge EdgeType/SOLIDARITY org other-org 1)\n");
     let loaded = load_scenario(&scenario(&body), &mut MemoryGraph::new()).unwrap();
@@ -323,7 +337,8 @@ fn scenario_with_body_form_count(count: usize) -> String {
         if index + 2 == count {
             break;
         }
-        source.push_str(&format!("  (defconst limit/v{index} 0)\n"));
+        writeln!(&mut source, "  (defconst limit/v{index} 0)")
+            .expect("writing to a String cannot fail");
     }
     source.push(')');
     source

@@ -139,7 +139,7 @@ repos:
 
   # ==========================================================================
   # RUST - the engine estate (Amendment AE). CI's Rust Gate is `mise run
-  # rust:check`; these legs mirror it locally. fmt runs at commit time on any
+  # ci:rust`; these legs mirror it locally. fmt runs at commit time on any
   # staged .rs (no build, seconds). The FULL gate runs at pre-push behind a
   # range guard: when neither the push range nor the working tree touches
   # rust/, the gate's inputs are unchanged and its result cannot differ —
@@ -158,17 +158,17 @@ repos:
         files: '\.rs$'
 
       - id: rust-full-gate
-        name: rust:check (full Rust gate, pre-push CI mirror)
+        name: ci:rust (full Rust gate, pre-push CI mirror)
         entry: >-
           bash -c 'set -euo pipefail;
           git fetch -q origin dev 2>/dev/null || true;
           base="$(git merge-base HEAD origin/dev 2>/dev/null || git merge-base HEAD dev 2>/dev/null || echo "")";
           dirty="$(git status --porcelain -- rust/)";
           if [ -n "$base" ] && [ -z "$(git diff --name-only "${base}..HEAD" -- rust/)" ] && [ -z "$dirty" ]; then
-            echo "rust:check skipped — push range and working tree touch no rust/ paths";
+            echo "ci:rust skipped — push range and working tree touch no rust/ paths";
             exit 0;
           fi;
-          mise run rust:check'
+          mise run ci:rust'
         language: system
         pass_filenames: false
         always_run: true

@@ -3,6 +3,7 @@
 #
 # Task Namespace Convention (ADR035):
 #   check         - Fast CI gate (lint + format + typecheck + unit tests)
+#   ci:*          - Hosted-CI entry points and local runner adapters
 #   test:*        - Test runners by scope
 #   sim:*         - Simulation execution and analysis
 #   tune:*        - Parameter optimization
@@ -13,6 +14,10 @@
 #   mutate:*      - Mutation testing
 #   midi:*        - Music generation
 #   web:*         - Web app local development (Django; src/frontend deleted at WO-54)
+
+# The vendored Nix shell currently provides this floor. Hosted CI installs the
+# exact current release separately through mise-action.
+min_version = "2025.11.7"
 
 [tools]
 python = "3.12"
@@ -73,8 +78,8 @@ AUDIO_OUTPUT_DIR = "assets/audio"
 # =============================================================================
 
 [tasks."nix"]
-description = "run any command inside the vendored devshell (pinned toolchain incl. sqlite-3.53.1 python), e.g. mise run nix -- uv run python tools/build_reference_db.py"
-run = 'nix develop "${MISE_PROJECT_ROOT:-$PWD}" --command'
+description = "Run any command inside the vendored devshell and pass through trust for this already-trusted project root, including nested mise tasks."
+run = 'MISE_TRUSTED_CONFIG_PATHS="${MISE_PROJECT_ROOT:-$PWD}" nix develop "${MISE_PROJECT_ROOT:-$PWD}" --command'
 
 [tasks."pr:merge"]
 description = "the ONE sanctioned merge path (ADR181 R10): all-green + head-pin + Copilot harvest + zero alert floor + stacked-PR guard"
@@ -1416,7 +1421,7 @@ run = 'rm -rf mutants/ && echo "Mutation results cleared."'
 # =============================================================================
 
 [tasks.ci]
-description = "Full CI check (same as check)"
+description = "Legacy local aggregate (same as check); hosted CI jobs use explicit ci:* entry points."
 depends = ["check"]
 
 [tasks.hooks]
@@ -1667,8 +1672,8 @@ run = "uv run python manage.py migrate"
 
 # ── Rust client (the raster cutover, Amendment AC / ADR150) ──────────────────
 
-[tasks."rust:check"]
-description = "Rust full gate for the in-tree rust/ client workspace: format:check + lint (clippy -D warnings -D clippy::cognitive_complexity, threshold in rust/clippy.toml) + test + the bsl-lint repo-relationship sentinels (check:bsl-sentinels, BSL hygiene knock-out train W1) + doc — CI parity. Sequential run-block, NOT parallel depends: one cargo target dir has one file lock, so parallel legs only contend (machine-safety: heavy builds single-flight). Shape mirrored from hypergraph-rs."
+[tasks."rust:check-no-docs"]
+description = "Canonical non-documentation Rust gate: format:check + workspace clippy -D warnings -D clippy::cognitive_complexity + tests + scoped pedantic legs + bsl-lint repo-relationship sentinels. This is the local/agent gate and the non-doc prefix of rust:check; sequential because one cargo target directory has one file lock."
 dir = "rust"
 run = """
 set -e
@@ -1697,11 +1702,23 @@ cargo test -p babylon-ls --locked
 # actual target; babylon-tick's 4 findings are tracked as a separate,
 # untouched hygiene item for a future train.
 cargo clippy -p babylon-client --all-targets --locked --no-deps -- -D warnings -D clippy::pedantic
+"""
+
+[tasks."ci:rust"]
+description = "Exact hosted Rust CI job: reuse rust:check-no-docs, then build workspace documentation with warnings denied. Do not run locally when repository guidance prohibits documentation generation."
+dir = "rust"
+run = """
+set -e
+mise run rust:check-no-docs
 RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked
 """
 
+[tasks."rust:check"]
+description = "Compatibility alias for ci:rust. New CI configuration must use the ci:* namespace."
+run = "mise run ci:rust"
+
 [tasks."rust:format"]
-description = "Rust format (rewrites; the CI-parity variant runs inside rust:check)"
+description = "Rust format (rewrites; the CI-parity check variant runs inside rust:check-no-docs)"
 dir = "rust"
 run = "cargo fmt --all"
 
@@ -1711,7 +1728,7 @@ dir = "rust"
 run = "cargo build --workspace"
 
 [tasks."check:bsl-sentinels"]
-description = "bsl-lint's four repo-relationship checks: citation-drift, namespace-unique, rust-contract-authority, and sfs-non-authorability. The authority check refuses retired Python gameplay-contract paths. The non-authorability check is a bounded dependency-direction and tracked/staged/untracked production-source exact-token check; it does not claim universal disguised-name recognition. Wired as an additive leg of rust:check (static gate, no reference DB, no engine run)."
+description = "bsl-lint's four repo-relationship checks: citation-drift, namespace-unique, rust-contract-authority, and sfs-non-authorability. The authority check refuses retired Python gameplay-contract paths. The non-authorability check is a bounded dependency-direction and tracked/staged/untracked production-source exact-token check; it does not claim universal disguised-name recognition. Wired into rust:check-no-docs and therefore rust:check (static gate, no reference DB, no engine run)."
 dir = "rust"
 run = "cargo run -p bsl-lint --locked -- all"
 

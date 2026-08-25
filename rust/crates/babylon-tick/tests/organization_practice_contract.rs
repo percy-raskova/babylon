@@ -80,9 +80,8 @@ fn raw_hex(bytes: &[u8]) -> String {
 }
 
 #[test]
-fn declaration_registry_matches_wire_mapping_and_labels() {
+fn declaration_ordinals_match_contract() {
     let loaded = load_contract(PRACTICE_PRELUDE, PRACTICE_SCENARIO);
-
     assert_eq!(ordinal(&loaded, "VerbMode", "CANVASS"), 0);
     assert_eq!(ordinal(&loaded, "VerbMode", "AGITATE"), 1);
     assert_eq!(ordinal(&loaded, "ConsciousnessTendency", "LIBERAL"), 0);
@@ -91,7 +90,11 @@ fn declaration_registry_matches_wire_mapping_and_labels() {
         ordinal(&loaded, "ConsciousnessTendency", "REVOLUTIONARY"),
         2
     );
+}
 
+#[test]
+fn practice_machine_verbs_match_declared_modes() {
+    let loaded = load_contract(PRACTICE_PRELUDE, PRACTICE_SCENARIO);
     let organize = practice_machine_verb(PracticeIdV1::Organize);
     let agitate = practice_machine_verb(PracticeIdV1::Agitate);
     let mutual_aid = practice_machine_verb(PracticeIdV1::MutualAid);
@@ -119,16 +122,26 @@ fn declaration_registry_matches_wire_mapping_and_labels() {
             assert!(loaded.enums.ordinal(verb_mode, member).is_some());
         }
     }
+}
+
+#[test]
+fn wire_discriminants_are_stable() {
     assert_eq!(PracticeIdV1::Organize as u8, 1);
     assert_eq!(PracticeIdV1::Agitate as u8, 2);
     assert_eq!(PracticeIdV1::MutualAid as u8, 3);
     assert_eq!(VerbModeV1::Canvass as u8, 1);
     assert_eq!(VerbModeV1::Agitate as u8, 2);
+}
 
+#[test]
+fn display_labels_match_contract() {
     for label in ["ORGANIZE", "AGITATE", "MUTUAL-AID"] {
         assert!(PRACTICE_SCHEMA.contains(&format!("display_label: {label}")));
     }
+}
 
+#[test]
+fn prelude_identity_vector_matches_bytes_and_digest() {
     let mut identity = None;
     let mut identity_count = 0_usize;
     for line in VECTOR_CORPUS.lines().take(513) {

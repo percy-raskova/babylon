@@ -87,7 +87,7 @@ jobs:
 
   # M7 packaging flip (BD-5 / ADR150 Task 44): the in-tree rust/ client
   # workspace gets the same CI-parity gate devs run locally. Single job, all
-  # cargo legs sequential inside `mise run rust:check` (one target-dir lock —
+  # cargo legs sequential inside `mise run ci:rust` (one target-dir lock —
   # parallel legs only contend; machine-safety doctrine).
   rust-gate:
     name: Rust Gate (fmt, clippy, test, doc — rust/ workspace)
@@ -98,7 +98,7 @@ jobs:
       # ceremony-gate/gitleaks below): check:bsl-sentinels' citation-drift
       # check resolves `.py` citations via `git show p27-python-freeze:<path>`
       # (Amendment AE) — a default shallow/no-tags checkout wouldn't have that
-      # tag ref at all, aborting the whole rust:check leg (task-w1-review.md C1).
+      # tag ref at all, aborting the whole ci:rust leg (task-w1-review.md C1).
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
@@ -116,6 +116,7 @@ jobs:
       - name: Set up tools with mise
         uses: jdx/mise-action@v4
         with:
+          version: 2026.8.12
           cache: true
 
       - name: Install Rust toolchain (with rustfmt + clippy)
@@ -137,8 +138,8 @@ jobs:
           restore-keys: |
             cargo-gate-${{ runner.os }}-v2-
 
-      - name: Rust full gate (CI parity with local rust:check)
-        run: mise run rust:check
+      - name: Rust full gate (canonical ci:rust task)
+        run: mise run ci:rust
 
       # ADR181 R6: supply-chain gate for the engine language — advisories,
       # bans, licenses, and a [sources] allowlist covering the rev-pinned

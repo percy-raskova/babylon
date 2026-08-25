@@ -186,6 +186,11 @@
             geos
             proj
             openblas
+            pkg-config          # native dependency discovery for Bevy's Linux backends
+            alsa-lib            # Bevy audio compile/runtime closure
+            udev                # Bevy input-device compile/runtime closure
+            wayland             # Bevy Wayland compile/runtime closure
+            libxkbcommon        # Bevy Linux keyboard compile/runtime closure
             sccache            # R1.1: shared compile cache across worktrees (see shellHook)
             fluidsynth
             playwright-driver.browsers
@@ -220,7 +225,14 @@
             # manylinux wheels (greenlet, pyarrow): the nix python's dynamic
             # linker cannot see host system libs, so every C++-linked wheel
             # needs the store's libstdc++ on the loader path.
-            export LD_LIBRARY_PATH=${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.postgresql_16.lib}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+            export LD_LIBRARY_PATH=${lib.makeLibraryPath [
+              pkgs.stdenv.cc.cc.lib
+              pkgs.postgresql_16.lib
+              pkgs.alsa-lib
+              pkgs.udev
+              pkgs.wayland
+              pkgs.libxkbcommon
+            ]}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
             # GeoDjango cannot ctypes-find_library() under the nix linker —
             # hand it exact store paths (web settings consume these when set;
             # host installs keep using ldconfig lookup).

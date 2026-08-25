@@ -154,6 +154,103 @@ const EXPECTED_DIGESTS: [Option<&str>; 18] = [
     None,
 ];
 
+const EXPECTED_REPRESENTATIONS: [MetricRepresentationV1; 18] = [
+    MetricRepresentationV1::Facet,
+    MetricRepresentationV1::Facet,
+    MetricRepresentationV1::Facet,
+    MetricRepresentationV1::Facet,
+    MetricRepresentationV1::Facet,
+    MetricRepresentationV1::Facet,
+    MetricRepresentationV1::Facet,
+    MetricRepresentationV1::ReferenceFlow,
+    MetricRepresentationV1::Facet,
+    MetricRepresentationV1::Facet,
+    MetricRepresentationV1::Facet,
+    MetricRepresentationV1::Facet,
+    MetricRepresentationV1::Facet,
+    MetricRepresentationV1::Facet,
+    MetricRepresentationV1::Facet,
+    MetricRepresentationV1::Dyad,
+    MetricRepresentationV1::Dyad,
+    MetricRepresentationV1::Dyad,
+];
+
+const EXPECTED_VALUE_KINDS: [Option<ValueKindV1>; 18] = [
+    Some(ValueKindV1::Uint64Bits),
+    Some(ValueKindV1::Uint64Bits),
+    Some(ValueKindV1::Float64Bits),
+    Some(ValueKindV1::Float64Bits),
+    Some(ValueKindV1::Uint64Bits),
+    Some(ValueKindV1::Uint64Bits),
+    Some(ValueKindV1::Float64Bits),
+    Some(ValueKindV1::Uint64Bits),
+    Some(ValueKindV1::Uint64Bits),
+    Some(ValueKindV1::Float64Bits),
+    Some(ValueKindV1::Uint64Bits),
+    Some(ValueKindV1::Uint64Bits),
+    Some(ValueKindV1::Uint64Bits),
+    Some(ValueKindV1::Uint64Bits),
+    Some(ValueKindV1::Float64Bits),
+    None,
+    None,
+    None,
+];
+
+const EXPECTED_AGGREGATIONS: [AggregationRuleV1; 18] = [
+    AggregationRuleV1::None,
+    AggregationRuleV1::None,
+    AggregationRuleV1::None,
+    AggregationRuleV1::None,
+    AggregationRuleV1::PublishedRollup,
+    AggregationRuleV1::PublishedRollup,
+    AggregationRuleV1::PublishedRollup,
+    AggregationRuleV1::LoadTimeSum,
+    AggregationRuleV1::None,
+    AggregationRuleV1::None,
+    AggregationRuleV1::None,
+    AggregationRuleV1::BlockInternalPointAssignment,
+    AggregationRuleV1::BlockCoordinateAssignment,
+    AggregationRuleV1::None,
+    AggregationRuleV1::EqualAreaWaterIntersection,
+    AggregationRuleV1::TypedRelationProjection,
+    AggregationRuleV1::TypedRelationProjection,
+    AggregationRuleV1::TypedRelationProjection,
+];
+
+const EXPECTED_BINDINGS: [(&str, &str, RelationPayloadModeV1); 6] = [
+    (
+        "REFERENCE_FLOW",
+        "COMMUTER_JOBS",
+        RelationPayloadModeV1::SingleMetricFacet,
+    ),
+    (
+        "REFERENCE_FLOW",
+        "BORDER_SYNTHESIS",
+        RelationPayloadModeV1::Empty,
+    ),
+    ("DYAD", "PRESENCE", RelationPayloadModeV1::ImplicitRelation),
+    (
+        "DYAD",
+        "MEMBERSHIP",
+        RelationPayloadModeV1::ImplicitRelation,
+    ),
+    (
+        "DYAD",
+        "SOLIDARITY",
+        RelationPayloadModeV1::ImplicitRelation,
+    ),
+    ("DYAD", "COMMAND", RelationPayloadModeV1::Empty),
+];
+
+const EXPECTED_BINDING_METRICS: [Option<&str>; 6] = [
+    Some("circulation/lodes-county-commuter-total-jobs"),
+    None,
+    Some("rootedness/presence"),
+    Some("rootedness/membership"),
+    Some("rootedness/solidarity"),
+    None,
+];
+
 fn rejects_unknown<T: DeserializeOwned>() {
     assert!(serde_json::from_str::<T>(r#""NOT_A_CONTRACT_VALUE""#).is_err());
 }
@@ -198,8 +295,7 @@ fn coordinate_signature(row: &RtdMetricRegistryRowV1) -> String {
 }
 
 #[test]
-#[allow(clippy::needless_range_loop)] // Exact contract rows require fixed indexed bounds.
-fn schema_registries_are_exact_and_closed() {
+fn schema_limits_and_error_registry_are_exact() {
     assert_eq!(RTD_V1_SCHEMA_ID, "babylon.relational-territory-dossier");
     assert_eq!(RTD_MAX_FOCUS, 64);
     assert_eq!(RTD_MAX_REFERENCE_DIGESTS, 4_096);
@@ -211,6 +307,11 @@ fn schema_registries_are_exact_and_closed() {
     assert_eq!(RTD_MAX_PROVENANCE_REFS, 8_192);
     assert_eq!(RTD_MAX_CANONICAL_BYTES, 67_108_864);
     assert_eq!(RTD_V1_ERROR_REGISTRY, EXPECTED_ERRORS);
+}
+
+#[test]
+#[allow(clippy::needless_range_loop)] // The identity registry has a fixed 69-row bound.
+fn identity_registry_has_exact_unique_rows() {
     assert_eq!(RTD_V1_IDENTITY_REGISTRY.len(), 69);
     let mut identities = BTreeSet::new();
     for index in 0..69 {
@@ -221,12 +322,20 @@ fn schema_registries_are_exact_and_closed() {
             row.identity.local_id,
         )));
     }
+}
+
+#[test]
+fn metric_identities_are_exact() {
     assert_identity_group(
         0,
         "metrics",
         "metric",
         EXPECTED_METRICS.map(|local_id| (local_id, "babylon.rtd.v1", local_id)),
     );
+}
+
+#[test]
+fn unit_identities_are_exact() {
     assert_identity_group(
         18,
         "units",
@@ -242,6 +351,10 @@ fn schema_registries_are_exact_and_closed() {
             ("TYPED_RELATION", "babylon.rtd.v1", "typed-relation"),
         ],
     );
+}
+
+#[test]
+fn coordinate_identities_are_exact() {
     assert_identity_group(
         26,
         "coordinates",
@@ -262,6 +375,10 @@ fn schema_registries_are_exact_and_closed() {
             ("node", "babylon.rtd.v1", "node"),
         ],
     );
+}
+
+#[test]
+fn native_scale_identities_are_exact() {
     assert_identity_group(
         39,
         "native_scales",
@@ -310,6 +427,10 @@ fn schema_registries_are_exact_and_closed() {
             ),
         ],
     );
+}
+
+#[test]
+fn producer_identities_are_exact() {
     assert_identity_group(
         48,
         "producers",
@@ -356,6 +477,10 @@ fn schema_registries_are_exact_and_closed() {
             ),
         ],
     );
+}
+
+#[test]
+fn reference_identities_are_exact() {
     assert_identity_group(
         59,
         "references",
@@ -397,158 +522,88 @@ fn schema_registries_are_exact_and_closed() {
             ("h3_res7_land_mask", "babylon.data.v7", "h3_res7_land_mask"),
         ],
     );
-    assert_eq!(RTD_V1_METRIC_REGISTRY.len(), 18);
-    let representations = [
-        MetricRepresentationV1::Facet,
-        MetricRepresentationV1::Facet,
-        MetricRepresentationV1::Facet,
-        MetricRepresentationV1::Facet,
-        MetricRepresentationV1::Facet,
-        MetricRepresentationV1::Facet,
-        MetricRepresentationV1::Facet,
-        MetricRepresentationV1::ReferenceFlow,
-        MetricRepresentationV1::Facet,
-        MetricRepresentationV1::Facet,
-        MetricRepresentationV1::Facet,
-        MetricRepresentationV1::Facet,
-        MetricRepresentationV1::Facet,
-        MetricRepresentationV1::Facet,
-        MetricRepresentationV1::Facet,
-        MetricRepresentationV1::Dyad,
-        MetricRepresentationV1::Dyad,
-        MetricRepresentationV1::Dyad,
-    ];
-    let value_kinds = [
-        Some(ValueKindV1::Uint64Bits),
-        Some(ValueKindV1::Uint64Bits),
-        Some(ValueKindV1::Float64Bits),
-        Some(ValueKindV1::Float64Bits),
-        Some(ValueKindV1::Uint64Bits),
-        Some(ValueKindV1::Uint64Bits),
-        Some(ValueKindV1::Float64Bits),
-        Some(ValueKindV1::Uint64Bits),
-        Some(ValueKindV1::Uint64Bits),
-        Some(ValueKindV1::Float64Bits),
-        Some(ValueKindV1::Uint64Bits),
-        Some(ValueKindV1::Uint64Bits),
-        Some(ValueKindV1::Uint64Bits),
-        Some(ValueKindV1::Uint64Bits),
-        Some(ValueKindV1::Float64Bits),
-        None,
-        None,
-        None,
-    ];
-    let aggregations = [
-        AggregationRuleV1::None,
-        AggregationRuleV1::None,
-        AggregationRuleV1::None,
-        AggregationRuleV1::None,
-        AggregationRuleV1::PublishedRollup,
-        AggregationRuleV1::PublishedRollup,
-        AggregationRuleV1::PublishedRollup,
-        AggregationRuleV1::LoadTimeSum,
-        AggregationRuleV1::None,
-        AggregationRuleV1::None,
-        AggregationRuleV1::None,
-        AggregationRuleV1::BlockInternalPointAssignment,
-        AggregationRuleV1::BlockCoordinateAssignment,
-        AggregationRuleV1::None,
-        AggregationRuleV1::EqualAreaWaterIntersection,
-        AggregationRuleV1::TypedRelationProjection,
-        AggregationRuleV1::TypedRelationProjection,
-        AggregationRuleV1::TypedRelationProjection,
-    ];
-    for index in 0..18 {
-        let row = RTD_V1_METRIC_REGISTRY[index];
-        assert_eq!(
-            row.metric,
-            TypedIdentityLiteralV1 {
-                domain: "metric",
-                authority: "babylon.rtd.v1",
-                local_id: EXPECTED_METRICS[index],
-            }
-        );
-        assert_eq!(row.representation, representations[index]);
-        assert_eq!(row.unit.domain, "unit");
-        assert_eq!(row.unit.authority, "babylon.rtd.v1");
-        assert_eq!(row.unit.local_id, EXPECTED_UNITS[index]);
-        assert_eq!(row.value_kind, value_kinds[index]);
-        assert_eq!(row.native_scale.domain, "native-scale");
-        assert_eq!(row.native_scale.authority, "babylon.rtd.v1");
-        assert_eq!(row.native_scale.local_id, EXPECTED_SCALES[index]);
-        assert_eq!(coordinate_signature(&row), EXPECTED_COORDINATES[index]);
-        let expected_evidence = if index < 7 {
-            &[EvidenceClassV1::Observed, EvidenceClassV1::Derived][..]
-        } else if matches!(index, 8 | 9 | 10 | 13) {
-            &[EvidenceClassV1::Observed][..]
-        } else {
-            &[EvidenceClassV1::Derived][..]
-        };
-        assert_eq!(row.evidence_classes, expected_evidence);
-        assert_eq!(row.aggregation_rule, aggregations[index]);
-        assert_eq!(row.producer.domain, "producer");
-        assert_eq!(
-            row.producer.authority,
-            if index < 15 {
-                "babylon.data.v7"
-            } else {
-                "babylon.engine"
-            }
-        );
-        assert_eq!(row.producer.local_id, EXPECTED_PRODUCERS[index]);
-        assert_eq!(row.reference_digest, EXPECTED_DIGESTS[index]);
-        if index < 15 {
-            let reference = row
-                .reference_artifact
-                .expect("first 15 metrics require a reference");
-            assert_eq!(reference.domain, "reference-artifact");
-            assert_eq!(reference.authority, "babylon.data.v7");
-            assert_eq!(reference.local_id, EXPECTED_PRODUCERS[index]);
-        } else {
-            assert_eq!(row.reference_artifact, None);
-        }
+}
+
+fn expected_evidence_classes(index: usize) -> &'static [EvidenceClassV1] {
+    if index < 7 {
+        &[EvidenceClassV1::Observed, EvidenceClassV1::Derived]
+    } else if matches!(index, 8 | 9 | 10 | 13) {
+        &[EvidenceClassV1::Observed]
+    } else {
+        &[EvidenceClassV1::Derived]
     }
-    let expected_bindings = [
-        (
-            "REFERENCE_FLOW",
-            "COMMUTER_JOBS",
-            RelationPayloadModeV1::SingleMetricFacet,
-        ),
-        (
-            "REFERENCE_FLOW",
-            "BORDER_SYNTHESIS",
-            RelationPayloadModeV1::Empty,
-        ),
-        ("DYAD", "PRESENCE", RelationPayloadModeV1::ImplicitRelation),
-        (
-            "DYAD",
-            "MEMBERSHIP",
-            RelationPayloadModeV1::ImplicitRelation,
-        ),
-        (
-            "DYAD",
-            "SOLIDARITY",
-            RelationPayloadModeV1::ImplicitRelation,
-        ),
-        ("DYAD", "COMMAND", RelationPayloadModeV1::Empty),
-    ];
-    let expected_binding_metrics = [
-        Some("circulation/lodes-county-commuter-total-jobs"),
-        None,
-        Some("rootedness/presence"),
-        Some("rootedness/membership"),
-        Some("rootedness/solidarity"),
-        None,
-    ];
+}
+
+fn expected_producer_authority(index: usize) -> &'static str {
+    if index < 15 {
+        "babylon.data.v7"
+    } else {
+        "babylon.engine"
+    }
+}
+
+fn assert_reference_artifact(index: usize, row: &RtdMetricRegistryRowV1) {
+    if index < 15 {
+        let reference = row
+            .reference_artifact
+            .expect("first 15 metrics require a reference");
+        assert_eq!(reference.domain, "reference-artifact");
+        assert_eq!(reference.authority, "babylon.data.v7");
+        assert_eq!(reference.local_id, EXPECTED_PRODUCERS[index]);
+    } else {
+        assert_eq!(row.reference_artifact, None);
+    }
+}
+
+fn assert_metric_registry_row(index: usize) {
+    let row = RTD_V1_METRIC_REGISTRY[index];
+    assert_eq!(
+        row.metric,
+        TypedIdentityLiteralV1 {
+            domain: "metric",
+            authority: "babylon.rtd.v1",
+            local_id: EXPECTED_METRICS[index],
+        }
+    );
+    assert_eq!(row.representation, EXPECTED_REPRESENTATIONS[index]);
+    assert_eq!(row.unit.domain, "unit");
+    assert_eq!(row.unit.authority, "babylon.rtd.v1");
+    assert_eq!(row.unit.local_id, EXPECTED_UNITS[index]);
+    assert_eq!(row.value_kind, EXPECTED_VALUE_KINDS[index]);
+    assert_eq!(row.native_scale.domain, "native-scale");
+    assert_eq!(row.native_scale.authority, "babylon.rtd.v1");
+    assert_eq!(row.native_scale.local_id, EXPECTED_SCALES[index]);
+    assert_eq!(coordinate_signature(&row), EXPECTED_COORDINATES[index]);
+    assert_eq!(row.evidence_classes, expected_evidence_classes(index));
+    assert_eq!(row.aggregation_rule, EXPECTED_AGGREGATIONS[index]);
+    assert_eq!(row.producer.domain, "producer");
+    assert_eq!(row.producer.authority, expected_producer_authority(index));
+    assert_eq!(row.producer.local_id, EXPECTED_PRODUCERS[index]);
+    assert_eq!(row.reference_digest, EXPECTED_DIGESTS[index]);
+    assert_reference_artifact(index, &row);
+}
+
+#[test]
+#[allow(clippy::needless_range_loop)] // The metric registry has a fixed 18-row bound.
+fn metric_registry_rows_are_exact() {
+    assert_eq!(RTD_V1_METRIC_REGISTRY.len(), 18);
+    for index in 0..18 {
+        assert_metric_registry_row(index);
+    }
+}
+
+#[test]
+#[allow(clippy::needless_range_loop)] // The relation registry has a fixed six-row bound.
+fn relation_binding_registry_rows_are_exact() {
     for index in 0..6 {
         let row = RTD_V1_RELATION_BINDING_REGISTRY[index];
         assert_eq!(
             (row.record_family, row.kind, row.payload_mode),
-            expected_bindings[index]
+            EXPECTED_BINDINGS[index]
         );
         assert_eq!(
             row.metric.map(|metric| metric.local_id),
-            expected_binding_metrics[index]
+            EXPECTED_BINDING_METRICS[index]
         );
         if let Some(metric) = row.metric {
             assert_eq!(metric.domain, "metric");

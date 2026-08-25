@@ -1453,8 +1453,11 @@ pub(crate) mod live_postgres_tests {
             .expect("PER-267 phase receipt must flush");
     }
 
-    pub(crate) fn verify_rollback_and_killed_retry(config: &Config, admin: &Config) {
-        let suite_started = Instant::now();
+    pub(crate) fn verify_rollback_and_killed_retry(
+        config: &Config,
+        admin: &Config,
+        suite_started: Instant,
+    ) {
         let cohort = representative_cohort();
         assert_eq!(reference_counts(config), (0, 0, 0));
         let forced_rollback_started = start_phase(H3AtomicityPhase::ForcedRollback, suite_started);
@@ -1510,8 +1513,11 @@ pub(crate) mod live_postgres_tests {
         verify_membership_lock_timeout_preserves_server_diagnostic(config, &cohort);
     }
 
-    pub(crate) fn verify_committed_reconciliation(config: &Config, admin: &Config) {
-        let suite_started = Instant::now();
+    pub(crate) fn verify_committed_reconciliation(
+        config: &Config,
+        admin: &Config,
+        suite_started: Instant,
+    ) {
         let phase_started = start_phase(H3AtomicityPhase::CommittedReconciliation, suite_started);
         let cohort = representative_cohort();
         let mut first_attempt = true;

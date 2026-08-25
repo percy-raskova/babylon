@@ -2137,6 +2137,7 @@ fn unknown_live_focus_fails_before_any_docker_side_effect() {
 #[test]
 fn h3_atomicity_receipts_are_fixed_flushed_and_test_only() {
     let installer = include_str!("../src/h3_reference_installer.rs");
+    let schema_epoch = include_str!("../src/schema_epoch.rs");
 
     assert!(installer.contains("PER267_MEMBERSHIP_READ query="));
     assert!(installer.contains("completion=ok"));
@@ -2154,6 +2155,29 @@ fn h3_atomicity_receipts_are_fixed_flushed_and_test_only() {
         );
     }
     assert!(!installer.contains("static mut"));
+
+    let protocol = cte_slice(
+        schema_epoch,
+        "fn verify_h3_installer_commit_protocol(base: &Config)",
+        "fn verify_post_ddl_rollback(base: &Config)",
+    );
+    assert_eq!(protocol.matches("Instant::now()").count(), 1);
+    assert_eq!(protocol.matches("suite_started").count(), 3);
+    for phase in [
+        cte_slice(
+            installer,
+            "pub(crate) fn verify_rollback_and_killed_retry(",
+            "pub(crate) fn verify_committed_reconciliation(",
+        ),
+        cte_slice(
+            installer,
+            "pub(crate) fn verify_committed_reconciliation(",
+            "fn verify_membership_lock_timeout_preserves_server_diagnostic(",
+        ),
+    ] {
+        assert!(phase.contains("suite_started: Instant"));
+        assert!(!phase.contains("Instant::now()"));
+    }
 }
 
 #[test]

@@ -1,8 +1,9 @@
 //! Public contract for the bounded representative H3 cohort installer.
 
 use babylon_persistence::{
-    install_representative_h3_cohort, H3ReferenceCohort, H3ReferenceInstallDisposition,
-    H3ReferenceInstallError, H3ReferenceInstallReport, RefDigest,
+    install_representative_h3_cohort, H3ReferenceCohort, H3ReferenceDatabaseDiagnostic,
+    H3ReferenceInstallDisposition, H3ReferenceInstallError, H3ReferenceInstallOperation,
+    H3ReferenceInstallReport, H3ReferenceMembershipReadContext, RefDigest,
 };
 use postgres::Config;
 
@@ -47,8 +48,30 @@ fn disposition_does_not_conflate_install_idempotence_and_commit_reconciliation()
 }
 
 #[test]
+fn membership_read_operations_distinguish_query_and_lifecycle_context() {
+    let initial = H3ReferenceMembershipReadContext::InitialInspection;
+    let attempt = H3ReferenceMembershipReadContext::CommitAttempt { attempt: 1 };
+    let reconciliation =
+        H3ReferenceMembershipReadContext::AmbiguousCommitReconciliation { attempt: 1 };
+
+    assert_ne!(initial, attempt);
+    assert_ne!(attempt, reconciliation);
+    assert_ne!(
+        H3ReferenceInstallOperation::ReadMembershipCardinality { context: initial },
+        H3ReferenceInstallOperation::ReadMembershipRows { context: initial },
+    );
+}
+
+#[test]
+fn database_diagnostic_exposes_a_typed_server_error_boundary() {
+    let _: for<'diagnostic> fn(
+        &'diagnostic H3ReferenceDatabaseDiagnostic,
+    ) -> Option<&'diagnostic postgres::error::DbError> = H3ReferenceDatabaseDiagnostic::server;
+}
+
+#[test]
 fn installer_failures_remain_a_typed_thread_safe_boundary() {
-    fn assert_error<T: std::error::Error + Send + Sync + 'static>() {}
+    fn assert_error<T: std::error::Error + Send + Sync + Clone + Eq + 'static>() {}
 
     assert_error::<H3ReferenceInstallError>();
 }

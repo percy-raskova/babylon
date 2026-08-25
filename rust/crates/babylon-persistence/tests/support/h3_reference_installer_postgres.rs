@@ -8,8 +8,9 @@ use babylon_persistence::{
     adopt_legacy_schema, build_representative_h3_cohort_v1, compiled_schema_migrations,
     install_representative_h3_cohort, migrate_schema_epoch, request_rust_writer_authority,
     H3CellId, H3ReferenceCohort, H3ReferenceInstallConflict, H3ReferenceInstallDisposition,
-    H3ReferenceInstallError, H3ReferenceInstallReport, LegacyAdopterError, RefDigest,
-    RustWriterAuthorityError, SchemaEpochError, SchemaEpochOrigin, SCHEMA_ADVISORY_LOCK_KEY,
+    H3ReferenceInstallError, H3ReferenceInstallOperation, H3ReferenceInstallReport,
+    LegacyAdopterError, RefDigest, RustWriterAuthorityError, SchemaEpochError, SchemaEpochOrigin,
+    SCHEMA_ADVISORY_LOCK_KEY,
 };
 use postgres::{Config, NoTls};
 use std::mem::size_of;
@@ -66,6 +67,7 @@ struct V2Snapshot {
 
 pub(super) fn verify_h3_reference_installer(base: &Config, legacy_template: &str, owner: &str) {
     let cohort = representative_cohort();
+    verify_connection_failure_redacts_credentials(&cohort);
     verify_frozen_legacy_migration_install(base, legacy_template, &cohort);
     verify_exact_vthree_install_and_retry(base, &cohort);
     verify_fresh_refusal(base, &cohort);
@@ -191,6 +193,25 @@ fn verify_exact_vthree_install_and_retry(base: &Config, cohort: &H3ReferenceCoho
     assert_writer_authority_refused();
     assert_lock_released(&config);
     database.cleanup();
+}
+
+fn verify_connection_failure_redacts_credentials(cohort: &H3ReferenceCohort) {
+    const PASSWORD: &str = "do-not-leak-h3-password";
+
+    let mut unavailable = Config::new();
+    unavailable.host("127.0.0.1").port(1).password(PASSWORD);
+    let error = install_representative_h3_cohort(&unavailable, cohort)
+        .expect_err("the unreachable loopback port must refuse the installer connection");
+
+    match &error {
+        H3ReferenceInstallError::Database {
+            operation: H3ReferenceInstallOperation::Connect,
+            diagnostic,
+        } => assert!(diagnostic.server().is_none()),
+        _ => panic!("connection refusal must remain a redacted typed database error"),
+    }
+    assert!(!format!("{error:?}").contains(PASSWORD));
+    assert!(!format!("{error}").contains(PASSWORD));
 }
 
 fn verify_fresh_refusal(base: &Config, cohort: &H3ReferenceCohort) {

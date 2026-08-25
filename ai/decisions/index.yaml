@@ -1055,3 +1055,8 @@ decisions:
     status: accepted
     date: '2026-08-23'
     file: ADR228_relational_territory_dossier_contract.yaml
+  ADR229_rust_gameplay_contract_authority:
+    title: 'Rust owns the executable Neel gameplay contracts while versioned fixtures remain language-neutral behavioral authority'
+    status: accepted
+    date: '2026-08-25'
+    file: ADR229_rust_gameplay_contract_authority.yaml

@@ -2,9 +2,9 @@
 #![warn(clippy::pedantic)]
 
 #[allow(clippy::unreadable_literal)]
-mod generated;
+mod schema;
 
-pub use generated::*;
+pub use schema::*;
 
 pub mod admission;
 pub mod budget;
@@ -21,6 +21,22 @@ pub use codec::{
     target_selection_policy_digest,
 };
 pub use topology::{validate_topology, PracticeTopologyLoadCounter};
+
+/// SHA-256 of the exact language-neutral V1 practice schema bytes.
+pub const PRACTICE_CONTRACT_SOURCE_SHA256: [u8; 32] = [
+    0xe9, 0xed, 0x6d, 0xba, 0xf0, 0x1f, 0x89, 0xf1, 0x29, 0x4f, 0x2e, 0x6d, 0x28, 0x94, 0x6e, 0x73,
+    0xb0, 0x5d, 0x9a, 0x4d, 0x75, 0x47, 0x2d, 0x5b, 0x2d, 0xd3, 0x52, 0x35, 0x0d, 0x33, 0x2f, 0x79,
+];
+
+/// Designed V1 practice-budget terms declared by the language-neutral contract.
+pub const DEFAULT_PRACTICE_BUDGET_TERMS_V1: PracticeBudgetTermsV1 = PracticeBudgetTermsV1 {
+    initial: 1,
+    weekly_credit_cap: 1,
+    storage_ceiling: 4,
+    organize_cost: 1,
+    agitate_cost: 1,
+    mutual_aid_cost: 1,
+};
 
 const SHARED_ACTIVATION_BLOCKERS: &[PracticeActivationBlockerV1] = &[
     PracticeActivationBlockerV1::Gate3CommittedEnvelope,

@@ -1,5 +1,7 @@
 use babylon_practice_contract::*;
 
+const PRACTICE_SCHEMA: &[u8] = include_bytes!("../../../../contracts/practice_contract_v1.yaml");
+
 const EXPECTED_ERRORS: [(PracticeContractError, u16); 44] = [
     (PracticeContractError::PracticeDomain, 1),
     (PracticeContractError::PracticeSchemaVersion, 2),
@@ -105,7 +107,7 @@ fn contract_error_codes_are_exact_and_holes_refuse() {
 }
 
 #[test]
-fn generated_field_order_is_the_contract_order() {
+fn schema_field_order_is_the_contract_order() {
     assert_eq!(
         SOLIDARITY_FOOTPRINT_EDGE_V1_FIELD_ORDER,
         [
@@ -135,7 +137,7 @@ fn generated_field_order_is_the_contract_order() {
 }
 
 #[test]
-fn generated_wire_domain_bytes_and_terminator_are_exact() {
+fn schema_wire_domain_bytes_and_terminator_are_exact() {
     assert_eq!(
         PRACTICE_INPUT_AUTHORITY_V1_DOMAIN_BYTES,
         b"babylon.practice-input-authority.v1"
@@ -152,7 +154,7 @@ fn generated_wire_domain_bytes_and_terminator_are_exact() {
 }
 
 #[test]
-fn generated_record_shapes_use_typed_fixed_width_values() {
+fn schema_record_shapes_use_typed_fixed_width_values() {
     let digest = [0_u8; 32];
     let parameter = PracticeParameterV1 {
         key_u8: 0,
@@ -187,7 +189,7 @@ fn generated_record_shapes_use_typed_fixed_width_values() {
 }
 
 #[test]
-fn generated_sequence_validators_refuse_plus_one() {
+fn schema_sequence_validators_refuse_plus_one() {
     let digest = [0_u8; 32];
     let parameter = PracticeParameterV1 {
         key_u8: 0,
@@ -257,4 +259,27 @@ fn crate_manifest_has_one_production_dependency() {
     ] {
         assert!(!manifest.contains(forbidden));
     }
+}
+
+#[test]
+fn language_neutral_schema_bytes_are_bound_to_rust() {
+    assert_eq!(
+        babylon_kernel::sha256_of(PRACTICE_SCHEMA),
+        PRACTICE_CONTRACT_SOURCE_SHA256
+    );
+}
+
+#[test]
+fn designed_budget_defaults_are_typed_and_exact() {
+    assert_eq!(
+        DEFAULT_PRACTICE_BUDGET_TERMS_V1,
+        PracticeBudgetTermsV1 {
+            initial: 1,
+            weekly_credit_cap: 1,
+            storage_ceiling: 4,
+            organize_cost: 1,
+            agitate_cost: 1,
+            mutual_aid_cost: 1,
+        }
+    );
 }

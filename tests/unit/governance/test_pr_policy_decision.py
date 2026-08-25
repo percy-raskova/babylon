@@ -37,8 +37,10 @@ def test_accepted_decision_records_every_pr_policy_boundary() -> None:
     assert "resolved" in text
     assert "pull_request_target" in text
     assert "workflow_run" in text
-    assert "verified Dependabot commit" in text
-    assert "exact-head update type" in text
+    assert "Dependabot Eligibility" in text
+    assert "GitHub Actions app" in text
+    assert "exact-head check run" in text
+    assert "signed commit metadata" not in text
     assert "label is presentation only" in text
     assert "snapshot" in text
     assert "rollback" in text

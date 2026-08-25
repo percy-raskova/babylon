@@ -19,6 +19,9 @@ OTHER_SHA = "c" * 40
 
 COPILOT_BOT_ID = 175728472
 COPILOT_BOT_NODE_ID = "BOT_kgDOCnlnWA"
+GITHUB_ACTIONS_APP_ID = 15368
+GITHUB_ACTIONS_APP_SLUG = "github-actions"
+DEPENDABOT_ELIGIBILITY_CHECK = "Dependabot Eligibility"
 
 DEV_BLOCKING_CHECKS = (
     "Fast Gate (hygiene, lint, format, imports, types, lock)",
@@ -82,6 +85,8 @@ elif args[0] == "api" and args[1].endswith("/reviews?per_page=100"):
     print(json.dumps(scenario["rest_reviews"]))
 elif args[0] == "api" and args[1].endswith("/pulls/742"):
     print(json.dumps(scenario["dependabot_pr"]))
+elif args[0] == "api" and "/check-runs?check_name=Dependabot%20Eligibility" in args[1]:
+    print(json.dumps(scenario["dependabot_check_runs"]))
 elif args[0] == "api" and args[1].endswith("/pulls/742/commits?per_page=100"):
     print(json.dumps(scenario["dependabot_commits"]))
 elif args[0] == "api" and "/comments" in args[1]:
@@ -137,6 +142,7 @@ def _dependabot_commit(
     return {
         "sha": head_sha,
         "author": {"login": "dependabot[bot]", "type": "Bot"},
+        "committer": {"login": "web-flow", "id": 19864447, "type": "User"},
         "commit": {
             "message": (
                 "Bump dependencies\n\n---\nupdated-dependencies:\n"
@@ -146,6 +152,31 @@ def _dependabot_commit(
             "verification": {"verified": True, "reason": "valid"},
         },
     }
+
+
+def _eligibility_check(
+    *,
+    check_id: int = 9101,
+    head_sha: str = HEAD_SHA,
+    status: str = "completed",
+    conclusion: str | None = "success",
+    app_id: int = GITHUB_ACTIONS_APP_ID,
+    app_slug: str = GITHUB_ACTIONS_APP_SLUG,
+    started_at: str = "2026-08-25T12:02:00Z",
+) -> dict[str, object]:
+    return {
+        "id": check_id,
+        "name": DEPENDABOT_ELIGIBILITY_CHECK,
+        "head_sha": head_sha,
+        "status": status,
+        "conclusion": conclusion,
+        "started_at": started_at,
+        "app": {"id": app_id, "slug": app_slug},
+    }
+
+
+def _eligibility_payload(*checks: dict[str, object]) -> dict[str, object]:
+    return {"total_count": len(checks), "check_runs": list(checks)}
 
 
 def _default_scenario() -> dict[str, object]:
@@ -171,6 +202,7 @@ def _default_scenario() -> dict[str, object]:
             "user": {"login": "dependabot[bot]", "type": "Bot"},
         },
         "dependabot_commits": [_dependabot_commit()],
+        "dependabot_check_runs": _eligibility_payload(_eligibility_check()),
         "threads": {
             "data": {
                 "repository": {
@@ -599,22 +631,46 @@ def test_director_main_rejects_complete_dev_manifest_as_wrong_qualification(
     assert _merge_calls(calls) == []
 
 
-def test_dependabot_mode_revalidates_verified_exact_head_metadata(tmp_path: Path) -> None:
-    result, calls = _run_pr_merge(tmp_path, "--dependabot")
+def test_dependabot_mode_requires_latest_canonical_exact_head_eligibility_check(
+    tmp_path: Path,
+) -> None:
+    scenario = _default_scenario()
+    scenario["dependabot_check_runs"] = _eligibility_payload(
+        _eligibility_check(
+            check_id=9100,
+            status="completed",
+            conclusion="failure",
+            started_at="2026-08-25T12:01:00Z",
+        ),
+        _eligibility_check(check_id=9101),
+    )
+
+    result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
 
     assert result.returncode == 0, result.stderr
     assert len(_merge_calls(calls)) == 1
-    assert any(call[0] == "api" and call[1].endswith("/commits?per_page=100") for call in calls)
+    assert any(
+        call[0] == "api"
+        and f"/commits/{HEAD_SHA}/check-runs?" in call[1]
+        and "check_name=Dependabot%20Eligibility" in call[1]
+        and "filter=all" in call[1]
+        and "per_page=100" in call[1]
+        for call in calls
+    )
+    assert not any(call[0] == "api" and "/pulls/742/commits?" in call[1] for call in calls)
 
 
 def test_dependabot_major_update_is_never_authorized_by_a_label(tmp_path: Path) -> None:
     scenario = _default_scenario()
-    scenario["dependabot_commits"] = [_dependabot_commit(update_type="version-update:semver-major")]
+    scenario["dependabot_check_runs"] = _eligibility_payload(
+        _eligibility_check(conclusion="failure")
+    )
 
     result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
 
     assert result.returncode == 1
-    assert "semver-major" in result.stderr
+    assert DEPENDABOT_ELIGIBILITY_CHECK in result.stderr
+    assert "failure" in result.stderr
     assert _merge_calls(calls) == []
 
 
@@ -631,18 +687,93 @@ def test_dependabot_synchronization_invalidates_old_head_classification(tmp_path
     assert _merge_calls(calls) == []
 
 
-def test_dependabot_exact_head_must_be_one_verified_bot_commit(tmp_path: Path) -> None:
+def test_dependabot_attributed_commit_with_generic_signer_cannot_authorize(
+    tmp_path: Path,
+) -> None:
     scenario = _default_scenario()
-    commit = _dependabot_commit()
-    commit_payload = commit["commit"]
-    assert isinstance(commit_payload, dict)
-    commit_payload["verification"] = {"verified": False, "reason": "unsigned"}
-    scenario["dependabot_commits"] = [commit]
+    scenario["dependabot_commits"] = [_dependabot_commit()]
+    scenario["dependabot_check_runs"] = _eligibility_payload()
 
     result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
 
     assert result.returncode == 1
-    assert "verified Dependabot commit" in result.stderr
+    assert "missing" in result.stderr
+    assert DEPENDABOT_ELIGIBILITY_CHECK in result.stderr
+    assert not any(call[0] == "api" and "/pulls/742/commits?" in call[1] for call in calls)
+    assert _merge_calls(calls) == []
+
+
+def test_dependabot_eligibility_check_must_match_exact_head(tmp_path: Path) -> None:
+    scenario = _default_scenario()
+    scenario["dependabot_check_runs"] = _eligibility_payload(_eligibility_check(head_sha=OTHER_SHA))
+
+    result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
+
+    assert result.returncode == 1
+    assert "head" in result.stderr
+    assert _merge_calls(calls) == []
+
+
+@pytest.mark.parametrize(
+    ("app_id", "app_slug"),
+    [
+        (1, GITHUB_ACTIONS_APP_SLUG),
+        (GITHUB_ACTIONS_APP_ID, "attacker-actions"),
+    ],
+    ids=["wrong-app-id", "wrong-app-slug"],
+)
+def test_dependabot_eligibility_check_requires_canonical_actions_app(
+    tmp_path: Path,
+    app_id: int,
+    app_slug: str,
+) -> None:
+    scenario = _default_scenario()
+    scenario["dependabot_check_runs"] = _eligibility_payload(
+        _eligibility_check(app_id=app_id, app_slug=app_slug)
+    )
+
+    result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
+
+    assert result.returncode == 1
+    assert "GitHub Actions app" in result.stderr
+    assert _merge_calls(calls) == []
+
+
+@pytest.mark.parametrize(
+    ("status", "conclusion"),
+    [("queued", None), ("completed", "failure")],
+    ids=["incomplete", "non-success"],
+)
+def test_dependabot_eligibility_check_must_complete_successfully(
+    tmp_path: Path,
+    status: str,
+    conclusion: str | None,
+) -> None:
+    scenario = _default_scenario()
+    scenario["dependabot_check_runs"] = _eligibility_payload(
+        _eligibility_check(status=status, conclusion=conclusion)
+    )
+
+    result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
+
+    assert result.returncode == 1
+    assert f"status={status}" in result.stderr
+    assert f"conclusion={conclusion or ''}" in result.stderr
+    assert _merge_calls(calls) == []
+
+
+def test_dependabot_eligibility_check_refuses_a_full_page(tmp_path: Path) -> None:
+    scenario = _default_scenario()
+    checks = tuple(_eligibility_check(check_id=index + 1) for index in range(100))
+    scenario["dependabot_check_runs"] = {
+        "total_count": 100,
+        "check_runs": list(checks),
+    }
+
+    result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
+
+    assert result.returncode == 1
+    assert "100-item safety bound" in result.stderr
     assert _merge_calls(calls) == []
 
 

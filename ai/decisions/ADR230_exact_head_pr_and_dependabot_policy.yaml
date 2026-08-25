@@ -50,17 +50,20 @@ ADR230_exact_head_pr_and_dependabot_policy:
        refuses rather than silently paging beyond its fixed one-hundred-thread
        bound. The repository CodeQL alert floor must remain zero.
 
-    4. DEPENDABOT TRUST SPLIT. pull_request_target may classify a verified
-       Dependabot patch or minor update and manage only its eligibility label.
-       The label is presentation only and never merge authorization. That phase
-       never checks out pull-request code and never creates or updates repository
-       label metadata. A successful workflow_run resolves one open Dependabot
-       pull request at the completed run's exact head and checks out trusted dev
-       tooling. Immediately before the final ref snapshot, the merge verifier
-       requires one verified Dependabot commit at that head and derives every
-       exact-head update type from its signed commit metadata. Only patch and
-       minor types pass. The workflow does not poll and does not call a direct
-       GitHub merge command. Major updates remain manual-review work.
+    4. DEPENDABOT TRUST SPLIT. pull_request_target classifies Dependabot metadata
+       from trusted code and publishes an exact-head check run named Dependabot Eligibility.
+       The trusted GitHub Actions app records
+       success only for patch or minor updates and records failure otherwise.
+       Its eligibility label is presentation only and never merge authorization.
+       That phase never checks out pull-request code and never creates or updates
+       repository label metadata. A successful workflow_run resolves one open
+       Dependabot pull request at the completed run's exact head and checks out
+       trusted dev tooling. Immediately before the final ref snapshot, the merge
+       verifier queries bounded check runs on that head and requires the latest
+       exact-name check to be completed, successful, and owned by the canonical
+       GitHub Actions app. Commit author, committer, signature, and message fields
+       do not authorize eligibility. The workflow does not poll and does not call
+       a direct GitHub merge command. Major updates remain manual-review work.
 
     5. CHECKED-IN SETTINGS. .github/settings/pr-policy.json is the desired
        repository merge policy, dev ruleset, and Dependabot eligibility label.

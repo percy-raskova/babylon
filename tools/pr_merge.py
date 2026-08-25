@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -43,13 +42,9 @@ COPILOT_REST_COMMENT_LOGIN = "Copilot"
 COPILOT_BOT_ID = 175728472
 COPILOT_BOT_NODE_ID = "BOT_kgDOCnlnWA"
 DEPENDABOT_LOGIN = "dependabot[bot]"
-ALLOWED_DEPENDABOT_UPDATE_TYPES = frozenset(
-    {"version-update:semver-patch", "version-update:semver-minor"}
-)
-_DEPENDABOT_UPDATE_TYPE = re.compile(
-    r"^\s*update-type:\s*(version-update:semver-[a-z]+)\s*$",
-    re.MULTILINE,
-)
+DEPENDABOT_ELIGIBILITY_CHECK = "Dependabot Eligibility"
+GITHUB_ACTIONS_APP_ID = 15368
+GITHUB_ACTIONS_APP_SLUG = "github-actions"
 
 _REVIEW_THREADS_QUERY = """
 query($owner: String!, $name: String!, $number: Int!) {
@@ -352,50 +347,68 @@ def _dependabot_pr_problems(pr: int, head_oid: str) -> list[str]:
     rest_base = base.get("ref") if isinstance(base, dict) else None
     if rest_base != "dev":
         problems.append(f"Dependabot mode requires base dev, found {rest_base}")
-    commits = _json_dicts(
-        _gh_json(
-            "api",
-            f"repos/{{owner}}/{{repo}}/pulls/{pr}/commits?per_page={MAX_GITHUB_ITEMS}",
-        ),
-        "Dependabot pull-request commits",
-        refuse_full_page=True,
-    )
-    problems.extend(_dependabot_commit_problems(commits, head_oid))
+    problems.extend(_dependabot_eligibility_problems(head_oid))
     return problems
 
 
-def _dependabot_commit_problems(
-    commits: list[dict[str, object]],
-    head_oid: str,
-) -> list[str]:
-    """Validate one verified Dependabot commit and its signed update metadata."""
-    if len(commits) != 1:
-        return [f"Dependabot exact head requires one commit, found {len(commits)}"]
-    candidate = commits[0]
-    author = candidate.get("author")
-    commit = candidate.get("commit")
-    commit_payload = commit if isinstance(commit, dict) else {}
-    verification = commit_payload.get("verification")
-    verified = verification if isinstance(verification, dict) else {}
-    if (
-        candidate.get("sha") != head_oid
-        or not isinstance(author, dict)
-        or author.get("login") != DEPENDABOT_LOGIN
-        or author.get("type") != "Bot"
-        or verified.get("verified") is not True
-        or verified.get("reason") != "valid"
+def _dependabot_eligibility_problems(head_oid: str) -> list[str]:
+    """Require the latest exact-head eligibility check from GitHub Actions."""
+    payload = _json_dict(
+        _gh_json(
+            "api",
+            f"repos/{{owner}}/{{repo}}/commits/{head_oid}/check-runs"
+            f"?check_name=Dependabot%20Eligibility&filter=all&per_page={MAX_GITHUB_ITEMS}",
+        ),
+        "Dependabot eligibility check runs",
+    )
+    total_count = payload.get("total_count")
+    if type(total_count) is not int:
+        raise RuntimeError("Dependabot eligibility total_count must be an integer")
+    if total_count >= MAX_GITHUB_ITEMS:
+        raise RuntimeError(
+            f"Dependabot eligibility checks reached the {MAX_GITHUB_ITEMS}-item safety bound"
+        )
+    runs = _json_dicts(
+        payload.get("check_runs"),
+        "Dependabot eligibility checks",
+        refuse_full_page=True,
+    )
+    if total_count != len(runs):
+        raise RuntimeError("Dependabot eligibility check response is incomplete")
+    exact_runs = [run for run in runs if run.get("name") == DEPENDABOT_ELIGIBILITY_CHECK]
+    if not exact_runs:
+        return [f"{DEPENDABOT_ELIGIBILITY_CHECK}: missing on exact head {head_oid}"]
+    latest = max(exact_runs, key=_eligibility_sort_key)
+    problems: list[str] = []
+    if latest.get("head_sha") != head_oid:
+        problems.append(f"{DEPENDABOT_ELIGIBILITY_CHECK}: check is not on exact head {head_oid}")
+    app = latest.get("app")
+    if not isinstance(app, dict) or (
+        app.get("id") != GITHUB_ACTIONS_APP_ID or app.get("slug") != GITHUB_ACTIONS_APP_SLUG
     ):
-        return ["Dependabot exact head is not one verified Dependabot commit"]
-    message = commit_payload.get("message")
-    if not isinstance(message, str):
-        return ["verified Dependabot commit has no message metadata"]
-    update_types = _DEPENDABOT_UPDATE_TYPE.findall(message)
-    if not update_types or len(update_types) >= MAX_GITHUB_ITEMS:
-        return ["verified Dependabot commit has no bounded update-type metadata"]
-    disallowed = sorted(set(update_types) - ALLOWED_DEPENDABOT_UPDATE_TYPES)
-    if disallowed:
-        return [f"Dependabot update type(s) are not eligible: {disallowed}"]
-    return []
+        problems.append(f"{DEPENDABOT_ELIGIBILITY_CHECK}: wrong GitHub Actions app identity")
+    status = latest.get("status")
+    conclusion = latest.get("conclusion")
+    if not isinstance(status, str):
+        raise RuntimeError("Dependabot eligibility check status must be a string")
+    if conclusion is not None and not isinstance(conclusion, str):
+        raise RuntimeError("Dependabot eligibility check conclusion must be a string or null")
+    if status != "completed" or conclusion != "success":
+        problems.append(
+            f"{DEPENDABOT_ELIGIBILITY_CHECK}: status={status}, conclusion={conclusion or ''}"
+        )
+    return problems
+
+
+def _eligibility_sort_key(check_run: dict[str, object]) -> tuple[str, int]:
+    """Return a validated latest-run key for one eligibility check."""
+    check_id = check_run.get("id")
+    if type(check_id) is not int:
+        raise RuntimeError("Dependabot eligibility check id must be an integer")
+    started_at = check_run.get("started_at")
+    if started_at is not None and not isinstance(started_at, str):
+        raise RuntimeError("Dependabot eligibility started_at must be a string or null")
+    return (started_at or "", check_id)
 
 
 def _base_policy_problems(

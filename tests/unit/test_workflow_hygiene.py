@@ -550,6 +550,7 @@ class TestDependabotPolicy:
 
         classify = workflow["jobs"]["classify"]
         assert classify["permissions"] == {
+            "checks": "write",
             "contents": "read",
             "issues": "write",
             "pull-requests": "read",
@@ -590,6 +591,27 @@ class TestDependabotPolicy:
 
         eligibility = next(step for step in classify["steps"] if step.get("id") == "eligibility")
         assert eligibility["env"]["UPDATE_TYPE"] == "${{ steps.metadata.outputs.update-type }}"
+        eligibility_script = str(eligibility["run"])
+        assert "conclusion=success" in eligibility_script
+        assert "conclusion=failure" in eligibility_script
+
+        attestation = next(
+            step
+            for step in classify["steps"]
+            if step.get("name") == "Publish exact-head eligibility check"
+        )
+        assert attestation["env"] == {
+            "CHECK_CONCLUSION": "${{ steps.eligibility.outputs.conclusion }}",
+            "CHECK_NAME": "Dependabot Eligibility",
+            "GH_TOKEN": "${{ github.token }}",
+            "HEAD_SHA": "${{ github.event.pull_request.head.sha }}",
+        }
+        attestation_script = str(attestation["run"])
+        assert "repos/$GITHUB_REPOSITORY/check-runs" in attestation_script
+        assert "jq -n" in attestation_script
+        assert "--arg status completed" in attestation_script
+        assert "--input -" in attestation_script
+
         label = next(
             step for step in classify["steps"] if step.get("name") == "Set eligibility label"
         )

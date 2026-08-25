@@ -1,7 +1,8 @@
 # Dependabot automation has two trusted, event-driven phases.
 #
 # 1. `pull_request_target` reads Dependabot metadata from the trusted default
-#    branch and manages one eligibility label. It never checks out PR code.
+#    branch, attests eligibility on the exact head, and manages one presentation
+#    label. It never checks out PR code.
 # 2. `workflow_run` resolves the completed run's exact head to one eligible PR,
 #    checks out trusted `dev`, and delegates to the repository merge verifier.
 
@@ -35,6 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
+      checks: write
       contents: read
       issues: write
       pull-requests: read
@@ -60,10 +62,59 @@ jobs:
         run: |
           set -euo pipefail
           eligible=false
+          conclusion=failure
           case " $ELIGIBLE_UPDATE_TYPES " in
-            *" $UPDATE_TYPE "*) eligible=true ;;
+            *" $UPDATE_TYPE "*)
+              eligible=true
+              conclusion=success
+              ;;
           esac
           printf 'eligible=%s\n' "$eligible" >> "$GITHUB_OUTPUT"
+          printf 'conclusion=%s\n' "$conclusion" >> "$GITHUB_OUTPUT"
+
+      - name: Publish exact-head eligibility check
+        shell: bash
+        env:
+          CHECK_CONCLUSION: ${{ steps.eligibility.outputs.conclusion }}
+          CHECK_NAME: Dependabot Eligibility
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Refusing a non-canonical pull-request head SHA."
+            exit 1
+          fi
+          case "$CHECK_CONCLUSION" in
+            success)
+              title="Eligible Dependabot update"
+              summary="Trusted metadata classifies this exact head as patch or minor."
+              ;;
+            failure)
+              title="Ineligible Dependabot update"
+              summary="Trusted metadata does not classify this exact head as patch or minor."
+              ;;
+            *)
+              echo "Refusing unknown eligibility conclusion: $CHECK_CONCLUSION"
+              exit 1
+              ;;
+          esac
+          jq -n \
+            --arg name "$CHECK_NAME" \
+            --arg head_sha "$HEAD_SHA" \
+            --arg status completed \
+            --arg conclusion "$CHECK_CONCLUSION" \
+            --arg title "$title" \
+            --arg summary "$summary" \
+            '{
+              name: $name,
+              head_sha: $head_sha,
+              status: $status,
+              conclusion: $conclusion,
+              output: {title: $title, summary: $summary}
+            }' |
+            gh api --method POST \
+              "repos/$GITHUB_REPOSITORY/check-runs" --input -
 
       - name: Set eligibility label
         shell: bash

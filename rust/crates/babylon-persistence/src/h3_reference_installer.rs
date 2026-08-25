@@ -934,6 +934,7 @@ fn attempt_install_transaction(
     cohort: &H3ReferenceCohort,
     attempt: usize,
 ) -> Result<CommitAttempt, H3ReferenceInstallError> {
+    debug_assert!(attempt > 0, "install attempts must be one-based");
     let transaction = prepare_install_transaction(
         client,
         cohort,

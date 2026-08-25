@@ -201,7 +201,7 @@ fn verify_connection_failure_redacts_credentials(cohort: &H3ReferenceCohort) {
     let mut unavailable = Config::new();
     unavailable.host("127.0.0.1").port(1).password(PASSWORD);
     let error = install_representative_h3_cohort(&unavailable, cohort)
-        .expect_err("the loopback discard port must refuse the installer connection");
+        .expect_err("the unreachable loopback port must refuse the installer connection");
 
     match &error {
         H3ReferenceInstallError::Database {

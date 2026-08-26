@@ -1,5 +1,5 @@
 meta:
-  version: 1.80.0
+  version: 1.81.0
   updated: '2026-08-26'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -1075,3 +1075,8 @@ decisions:
     status: accepted
     date: '2026-08-26'
     file: ADR232_neel_integration_program_architecture.yaml
+  ADR233_practice_input_authority_v2:
+    title: 'PracticeInputAuthorityV2 makes campaign habitation authoritative while preserving V1 bytes and granting no material eligibility'
+    status: accepted
+    date: '2026-08-26'
+    file: ADR233_practice_input_authority_v2.yaml

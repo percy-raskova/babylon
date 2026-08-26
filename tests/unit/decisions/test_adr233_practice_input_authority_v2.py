@@ -1,4 +1,4 @@
-"""Exact decision-index contract for the governed Neel program architecture."""
+"""Exact decision-index contract for V2 practice-input authority."""
 
 from __future__ import annotations
 
@@ -8,12 +8,12 @@ from typing import Any
 import yaml
 
 DECISIONS_DIR = Path(__file__).resolve().parents[3] / "ai" / "decisions"
-ADR_STEM = "ADR232_neel_integration_program_architecture"
+ADR_STEM = "ADR233_practice_input_authority_v2"
 ADR_PATH = DECISIONS_DIR / f"{ADR_STEM}.yaml"
 INDEX_PATH = DECISIONS_DIR / "index.yaml"
 EXPECTED_TITLE = (
-    "Neel integration freezes predecessor contracts, governs source quarantine, "
-    "and requires an emergent material causal architecture"
+    "PracticeInputAuthorityV2 makes campaign habitation authoritative while "
+    "preserving V1 bytes and granting no material eligibility"
 )
 
 
@@ -23,7 +23,7 @@ def _mapping(path: Path) -> dict[str, Any]:
     return payload
 
 
-def test_adr232_declares_the_approved_program_law_and_exact_index_row() -> None:
+def test_adr233_declares_the_v2_authority_boundary_and_exact_index_row() -> None:
     adr_document = _mapping(ADR_PATH)
     index_document = _mapping(INDEX_PATH)
 
@@ -32,16 +32,18 @@ def test_adr232_declares_the_approved_program_law_and_exact_index_row() -> None:
     assert decision["status"] == "accepted"
     assert decision["date"] == "2026-08-26"
     assert decision["title"] == EXPECTED_TITLE
+    assert decision["crate"] == "babylon-practice-contract"
+    assert decision["live_activation"] is False
 
     decision_text = " ".join(str(decision["decision"]).split())
     for required_text in (
-        "Pannekoek, Bordiga, and Trotsky",
-        "CPUSA",
-        "Rust and BSL",
-        "independently resolves participation",
-        "no stored hinterland",
-        "no authored sigmoid",
-        "Linear alone owns current work",
+        "authoritative campaign state",
+        "exactly one active PLAYER_SEAT",
+        "16,384-row",
+        "not an organization or political quota",
+        "grants no material eligibility",
+        "V1 domains, bytes, digests, refusal vectors",
+        "resource-reservation and capacity-allocation contract remains separate",
     ):
         assert required_text in decision_text
 

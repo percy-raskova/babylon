@@ -2,23 +2,23 @@
 
 from __future__ import annotations
 
+import subprocess
 import tomllib
 from pathlib import Path
 from typing import Final
 
 import pytest
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
 
 pytestmark = pytest.mark.unit
 
 _ROOT: Final[Path] = Path(__file__).resolve().parents[3]
 _PYPROJECT: Final[Path] = _ROOT / "pyproject.toml"
-_ACTIVE_AUTOMATION: Final[tuple[Path, ...]] = (
-    _ROOT / ".mise.toml",
-    _ROOT / ".github" / "actions" / "bootstrap-python" / "action.yml",
-    _ROOT / ".github" / "workflows" / "ci.yml",
-    _ROOT / ".github" / "workflows" / "main.yml",
-    _ROOT / ".github" / "workflows" / "weekly-pg-integration.yml",
-    _ROOT / ".github" / "workflows" / "weekly-py313.yml",
+_WORKFLOW_ROOT: Final[Path] = _ROOT / ".github" / "workflows"
+_ACTION_ROOT: Final[Path] = _ROOT / ".github" / "actions"
+_ACTIVE_AUTOMATION: Final[tuple[Path, ...]] = (_ROOT / ".mise.toml",) + tuple(
+    sorted((*_WORKFLOW_ROOT.glob("*.y*ml"), *_ACTION_ROOT.rglob("*.y*ml")))
 )
 _RETIRED_PATHS: Final[tuple[Path, ...]] = (
     _ROOT / "web",
@@ -27,6 +27,8 @@ _RETIRED_PATHS: Final[tuple[Path, ...]] = (
     _ROOT / "tests" / "unit" / "observatory",
     _ROOT / "tests" / "unit" / "test_contract_parity.py",
     _ROOT / "tests" / "scripts" / "quickstart_walkthrough.sh",
+    _ROOT / "tests" / "scripts" / "systemd_smoke_test.sh",
+    _ROOT / "tests" / "scripts" / "perf_verify_resolve_latency.sh",
 )
 _RETIRED_DISTRIBUTIONS: Final[frozenset[str]] = frozenset(
     {
@@ -50,12 +52,60 @@ _RETIRED_AUTOMATION_TERMS: Final[tuple[str, ...]] = (
 
 
 def _distribution_name(requirement: str) -> str:
-    """Return the normalized distribution name before extras or a version pin."""
-    return requirement.split("[", 1)[0].split(">", 1)[0].split("=", 1)[0].lower()
+    """Return the canonical distribution name from a valid PEP 508 requirement."""
+    return canonicalize_name(Requirement(requirement).name)
+
+
+def _is_tracked(path: Path) -> bool:
+    """Return whether Git tracks the retired file or anything beneath it."""
+    relative = path.relative_to(_ROOT)
+    result = subprocess.run(  # noqa: S603
+        ["git", "ls-files", "--error-unmatch", "--", relative.as_posix()],  # noqa: S607
+        cwd=_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode not in {0, 1}:
+        raise RuntimeError(result.stderr.strip() or "git ls-files failed")
+    return result.returncode == 0
+
+
+@pytest.mark.parametrize(
+    ("requirement", "expected"),
+    (
+        ("Django~=5.2", "django"),
+        ("django_cors_headers>=4", "django-cors-headers"),
+    ),
+)
+def test_distribution_name_parses_and_canonicalizes_pep_508(
+    requirement: str, expected: str
+) -> None:
+    assert _distribution_name(requirement) == expected
+
+
+def test_active_automation_inventory_covers_every_yaml_manifest() -> None:
+    expected = (_ROOT / ".mise.toml",) + tuple(
+        sorted(
+            (*_WORKFLOW_ROOT.glob("*.y*ml"), *_ACTION_ROOT.rglob("*.y*ml")),
+        )
+    )
+
+    assert expected == _ACTIVE_AUTOMATION
+
+
+def test_retired_inventory_covers_every_removed_django_script() -> None:
+    expected = {
+        _ROOT / "tests" / "scripts" / "quickstart_walkthrough.sh",
+        _ROOT / "tests" / "scripts" / "systemd_smoke_test.sh",
+        _ROOT / "tests" / "scripts" / "perf_verify_resolve_latency.sh",
+    }
+
+    assert expected <= set(_RETIRED_PATHS)
 
 
 def test_retired_django_paths_are_absent() -> None:
-    present = [str(path.relative_to(_ROOT)) for path in _RETIRED_PATHS if path.exists()]
+    present = [str(path.relative_to(_ROOT)) for path in _RETIRED_PATHS if _is_tracked(path)]
     assert present == [], f"retired Django/web paths remain: {present}"
 
 

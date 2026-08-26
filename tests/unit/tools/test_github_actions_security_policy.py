@@ -10,8 +10,27 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
 AUTOMATION_ROOTS = (ROOT / ".github" / "actions", ROOT / ".github" / "workflows")
-USES_LINE = re.compile(r"^\s*(?:-\s*)?uses:\s*(?P<reference>\S+)(?:\s+#\s*(?P<tag>\S+))?\s*$")
+USES_LINE = re.compile(r"^\s*(?:-\s*)?uses:\s*(?P<value>.*?)\s*$")
+COMMENT_START = re.compile(r"\s+#")
 PINNED_ACTION = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*@[0-9a-f]{40}$")
+
+
+def _action_use(line: str) -> tuple[str, str | None] | None:
+    match = USES_LINE.match(line)
+    if match is None:
+        return None
+    value = match.group("value")
+    parts = COMMENT_START.split(value, maxsplit=1)
+    reference = parts[0].strip()
+    comment = parts[1].strip() if len(parts) == 2 else ""
+    tag = comment.split(maxsplit=1)[0] if comment else None
+    return reference, tag
+
+
+def test_action_use_parser_keeps_version_tag_when_comment_has_details() -> None:
+    line = "      - uses: actions/checkout@" + "a" * 40 + " # v7 (pinned release)"
+
+    assert _action_use(line) == ("actions/checkout@" + "a" * 40, "v7")
 
 
 def _automation_paths() -> list[Path]:
@@ -39,13 +58,12 @@ def test_every_external_action_uses_a_documented_immutable_commit() -> None:
     violations: list[str] = []
     for path in _automation_paths():
         for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-            match = USES_LINE.match(line)
-            if match is None:
+            action_use = _action_use(line)
+            if action_use is None:
                 continue
-            reference = match.group("reference")
+            reference, tag = action_use
             if reference.startswith(("./", "docker://")):
                 continue
-            tag = match.group("tag")
             if PINNED_ACTION.fullmatch(reference) is None or tag is None or not tag.startswith("v"):
                 violations.append(f"{path.relative_to(ROOT)}:{line_number}: {line.strip()}")
 

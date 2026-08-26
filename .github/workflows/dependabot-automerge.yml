@@ -88,9 +88,12 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
+          encoded_label="$(
+            jq -rn --arg label "$ELIGIBILITY_LABEL" '$label | @uri'
+          )"
           label_json="$(
             gh api \
-              "repos/$GITHUB_REPOSITORY/labels/dependencies%3Aautomerge"
+              "repos/$GITHUB_REPOSITORY/labels/$encoded_label"
           )"
           jq -e \
             --arg name "$ELIGIBILITY_LABEL" \

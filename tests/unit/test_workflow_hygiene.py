@@ -34,6 +34,7 @@ Four invariants, one per failure mode:
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -642,6 +643,72 @@ class TestDependabotPolicy:
         assert "jq -e" in script
         assert "gh label create" not in script
         assert "--force" not in script
+
+    def test_eligibility_label_api_path_uses_the_url_encoded_declared_label(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Repository metadata lookup must derive its URL path from the label variable."""
+        workflow = yaml.safe_load(DEPENDABOT_AUTOMERGE_PATH.read_text())
+        classify = workflow["jobs"]["classify"]
+        label_step = next(
+            step for step in classify["steps"] if step.get("name") == "Set eligibility label"
+        )
+        fake_bin = tmp_path / "bin"
+        fake_bin.mkdir()
+        calls_path = tmp_path / "gh-calls.jsonl"
+        fake_gh = fake_bin / "gh"
+        fake_gh.write_text(
+            """#!/usr/bin/env python3
+import json
+import os
+import sys
+from pathlib import Path
+
+args = sys.argv[1:]
+with Path(os.environ["GH_CALLS"]).open("a") as calls:
+    calls.write(json.dumps(args) + "\\n")
+if args[0] == "api":
+    print(json.dumps({
+        "name": os.environ["ELIGIBILITY_LABEL"],
+        "color": os.environ["ELIGIBILITY_LABEL_COLOR"],
+        "description": os.environ["ELIGIBILITY_LABEL_DESCRIPTION"],
+    }))
+elif args[:2] == ["pr", "view"]:
+    print(json.dumps({"labels": [{"name": os.environ["ELIGIBILITY_LABEL"]}]}))
+else:
+    raise SystemExit(99)
+"""
+        )
+        fake_gh.chmod(0o755)
+        declared_label = "dependencies:automerge/next wave"
+        env = {
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "ELIGIBILITY_LABEL": declared_label,
+            "ELIGIBILITY_LABEL_COLOR": str(classify["env"]["ELIGIBILITY_LABEL_COLOR"]),
+            "ELIGIBILITY_LABEL_DESCRIPTION": str(classify["env"]["ELIGIBILITY_LABEL_DESCRIPTION"]),
+            "ELIGIBLE": "true",
+            "GH_CALLS": str(calls_path),
+            "GH_TOKEN": "test-token",
+            "GITHUB_REPOSITORY": "example/babylon",
+            "PR_NUMBER": "742",
+        }
+
+        result = subprocess.run(  # noqa: S603,S607 - executes the trusted workflow step
+            ["bash", "-c", str(label_step["run"])],
+            capture_output=True,
+            env=env,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+
+        assert result.returncode == 0, result.stderr
+        calls = [yaml.safe_load(line) for line in calls_path.read_text().splitlines()]
+        assert calls[0] == [
+            "api",
+            "repos/example/babylon/labels/dependencies%3Aautomerge%2Fnext%20wave",
+        ]
 
     def test_merge_uses_trusted_dev_tools_and_exact_candidate_head(self) -> None:
         """A moved, non-Dependabot, or ambiguous PR must never merge."""

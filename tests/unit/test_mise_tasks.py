@@ -41,6 +41,7 @@ class TestMiseTaskDiscoverability:
         assert "babylon.engine.headless_runner" in block
 
 
+@pytest.mark.skipif(not MISE_TOML.exists(), reason=".mise.toml not present")
 def test_nix_task_forces_git_source_for_linked_worktree(tmp_path: Path) -> None:
     """The Nix task must not copy a linked worktree as an unfiltered path source."""
     task_script = tomllib.loads(MISE_TOML.read_text())["tasks"]["nix"]["run"]

@@ -11,8 +11,8 @@ pub const PRACTICE_INPUT_AUTHORITY_LEDGER_V2_DOMAIN_BYTES: &[u8] =
     b"babylon.practice-input-authority-ledger.v2";
 /// SHA-256 of the exact language-neutral V2 authority schema bytes.
 pub const PRACTICE_INPUT_AUTHORITY_V2_SOURCE_SHA256: [u8; 32] = [
-    0x78, 0x30, 0xfb, 0x14, 0xf4, 0xef, 0xe1, 0x60, 0xc8, 0xbf, 0x13, 0x0d, 0x71, 0x4a, 0x86, 0x9c,
-    0x34, 0x7b, 0x81, 0x79, 0x02, 0x3b, 0x94, 0x59, 0xd3, 0x69, 0x4f, 0x66, 0xaf, 0x55, 0xe5, 0x1f,
+    0xdb, 0x43, 0x8c, 0xc8, 0x2f, 0xd3, 0x70, 0x62, 0x49, 0x6c, 0xcc, 0x48, 0x87, 0x5e, 0x9a, 0xdc,
+    0xeb, 0x5f, 0x57, 0x96, 0xea, 0xbe, 0xff, 0x4d, 0x41, 0xa6, 0xfd, 0xc5, 0xd0, 0x8d, 0x57, 0x5e,
 ];
 /// Designed serialization and validation-fuel ceiling, not an organization quota.
 pub const MAX_PRACTICE_INPUT_AUTHORITY_ROWS_V2: usize = 16_384;
@@ -39,6 +39,7 @@ pub enum PracticeAuthorityV2Error {
     AuthorityInactive = 13,
     AuthorityActorMismatch = 14,
     AuthorityPlayerSeatMissing = 15,
+    AuthorityPlayerSeatReassignment = 16,
 }
 
 /// Unknown V2 authority-contract error code.
@@ -65,6 +66,7 @@ impl TryFrom<u16> for PracticeAuthorityV2Error {
             13 => Ok(Self::AuthorityInactive),
             14 => Ok(Self::AuthorityActorMismatch),
             15 => Ok(Self::AuthorityPlayerSeatMissing),
+            16 => Ok(Self::AuthorityPlayerSeatReassignment),
             _ => Err(UnknownPracticeAuthorityV2ErrorCode(value)),
         }
     }
@@ -193,7 +195,7 @@ fn row_key(value: &PracticeInputAuthorityV2) -> (CampaignIdV2, InputAuthorityIdV
 fn validate_player_intervals(
     rows: &[PracticeInputAuthorityV2],
 ) -> Result<(), PracticeAuthorityV2Error> {
-    let mut intervals: Vec<(CampaignIdV2, u64, u64)> = rows
+    let mut intervals: Vec<(CampaignIdV2, u64, u64, InputAuthorityIdV2, u64)> = rows
         .iter()
         .take(MAX_PRACTICE_INPUT_AUTHORITY_ROWS_V2 + 1)
         .filter(|row| row.authority_kind == PracticeAuthorityKindV2::PlayerSeat)
@@ -202,6 +204,8 @@ fn validate_player_intervals(
                 row.campaign_id,
                 row.effective_from_tick,
                 row.effective_through_tick_exclusive,
+                row.input_authority_id,
+                row.actor_org_id,
             )
         })
         .collect();
@@ -214,6 +218,9 @@ fn validate_player_intervals(
         let current = pair[1];
         if prior.0 == current.0 && current.1 < prior.2 {
             return Err(PracticeAuthorityV2Error::AuthorityPlayerSeatOverlap);
+        }
+        if prior.0 == current.0 && (prior.3 != current.3 || prior.4 != current.4) {
+            return Err(PracticeAuthorityV2Error::AuthorityPlayerSeatReassignment);
         }
     }
     Ok(())

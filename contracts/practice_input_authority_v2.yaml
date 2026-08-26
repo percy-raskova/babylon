@@ -89,6 +89,7 @@ contract_errors:
     AUTHORITY_INACTIVE: 13
     AUTHORITY_ACTOR_MISMATCH: 14
     AUTHORITY_PLAYER_SEAT_MISSING: 15
+    AUTHORITY_PLAYER_SEAT_REASSIGNMENT: 16
 
 records:
   PracticeInputAuthorityV2:
@@ -123,6 +124,7 @@ validation_laws:
   effective_interval: effective_from_tick_lt_effective_through_tick_exclusive
   authority_interval: nonoverlapping_for_campaign_and_input_authority
   player_seat_interval: at_most_one_active_per_campaign_tick
+  player_seat_binding: one_input_authority_and_actor_organization_per_campaign
   intent_match_fields: [campaign_id, input_authority_id, actor_org_id, resolve_tick]
   unknown_kind: refuse
   trailing_bytes: refuse
@@ -137,6 +139,7 @@ authority_boundary:
   creates_organization: false
   changes_membership: false
   activates_practice: false
+  permits_midcampaign_player_seat_reassignment: false
   future_consumers:
     - PracticeIntentV2 admission
     - ResolvedPracticeBatchV2

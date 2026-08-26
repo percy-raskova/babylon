@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,8 @@ DECISIONS_DIR = Path(__file__).resolve().parents[3] / "ai" / "decisions"
 ADR_STEM = "ADR233_practice_input_authority_v2"
 ADR_PATH = DECISIONS_DIR / f"{ADR_STEM}.yaml"
 INDEX_PATH = DECISIONS_DIR / "index.yaml"
+CONTRACT_PATH = DECISIONS_DIR.parents[1] / "contracts" / "practice_input_authority_v2.yaml"
+VECTORS_PATH = DECISIONS_DIR.parents[1] / "contracts" / "practice_input_authority_v2_vectors.jsonl"
 EXPECTED_TITLE = (
     "PracticeInputAuthorityV2 makes campaign habitation authoritative while "
     "preserving V1 bytes and granting no material eligibility"
@@ -44,6 +47,7 @@ def test_adr233_declares_the_v2_authority_boundary_and_exact_index_row() -> None
         "grants no material eligibility",
         "V1 domains, bytes, digests, refusal vectors",
         "resource-reservation and capacity-allocation contract remains separate",
+        "mid-campaign player-seat reassignment",
     ):
         assert required_text in decision_text
 
@@ -55,3 +59,18 @@ def test_adr233_declares_the_v2_authority_boundary_and_exact_index_row() -> None
         "date": "2026-08-26",
         "file": ADR_PATH.name,
     }
+
+
+def test_adr233_row_size_matches_the_schema_and_literal_vector() -> None:
+    decision = _mapping(ADR_PATH)[ADR_STEM]
+    contract = _mapping(CONTRACT_PATH)
+    cases = [json.loads(line) for line in VECTORS_PATH.read_text(encoding="utf-8").splitlines()]
+    manifest = next(case for case in cases if case["case_id"] == "manifest")
+    authority = next(case for case in cases if case["case_id"] == "authority-player")
+    actual_bytes = len(bytes.fromhex(authority["data"]["canonical_hex"]))
+
+    assert contract["limits"]["row_canonical_bytes"]["value"] == actual_bytes
+    assert manifest["data"]["row_canonical_bytes"] == actual_bytes
+    assert actual_bytes == 127
+    assert "127 canonical bytes" in decision["decision"]
+    assert "2,080,768 bytes" in decision["decision"]

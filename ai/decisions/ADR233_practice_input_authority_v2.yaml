@@ -44,10 +44,12 @@ ADR233_practice_input_authority_v2:
     sorts rows by campaign, input authority, and effective-from tick. Duplicate
     keys, empty intervals, overlapping intervals for one authority, two active
     PLAYER_SEAT rows in one campaign tick, unknown kinds, truncation, trailing
-    bytes, and maximum-plus-one refuse with closed error identities. An intent
-    lookup must match campaign, authority, actor organization, and active
-    resolve tick. The first gameplay campaign must resolve exactly one active
-    PLAYER_SEAT row, which names only the inhabited organization.
+    bytes, maximum-plus-one, and a distinct PLAYER_SEAT authority or actor in
+    one campaign refuse with closed error identities. An intent lookup must
+    match campaign, authority, actor organization, and active resolve tick. The
+    first gameplay campaign must resolve exactly one active PLAYER_SEAT row,
+    which names only the inhabited organization. V2 does not permit a
+    mid-campaign player-seat reassignment.
 
     The 16,384-row ledger ceiling bounds canonical decode, validation, and sort
     memory and fuel. Each row is 127 canonical bytes, so the maximum row payload
@@ -80,11 +82,11 @@ ADR233_practice_input_authority_v2:
   verification: |
     Rust tests pin independent literal row and ledger bytes and SHA-256 digests,
     round trips, closed error codes, order, duplicate, interval, player-seat,
-    actor, activity, truncation, trailing-byte, and 16,384/16,385 boundaries.
-    The language-neutral schema hash and seven vector cases bind the committed
-    artifacts to the Rust implementation. Cross-version tests prove V1 and V2
-    decoders refuse one another while the complete V1 practice suite remains
-    unchanged.
+    actor, activity, reassignment, truncation, trailing-byte, and 16,384/16,385
+    boundaries. The language-neutral schema hash and eight vector cases bind
+    the committed artifacts to the Rust implementation. Cross-version tests
+    prove V1 and V2 decoders refuse one another while the complete V1 practice
+    suite remains unchanged.
   preserves:
     - ADR227 Practice Contract V1 byte and activation boundary
     - ADR229 Rust executable contract ownership

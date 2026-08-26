@@ -68,7 +68,7 @@ fn authority_v2_contract_schema_and_vectors_drive_the_rust_boundary() {
             serde_json::from_str(line).unwrap()
         })
         .collect();
-    assert_eq!(cases.len(), 7);
+    assert_eq!(cases.len(), 8);
 
     let row_case = cases
         .iter()
@@ -76,6 +76,14 @@ fn authority_v2_contract_schema_and_vectors_drive_the_rust_boundary() {
         .unwrap();
     let row = row_from_vector(&row_case["data"]);
     let canonical = hex_bytes(row_case["data"]["canonical_hex"].as_str().unwrap());
+    let manifest = cases
+        .iter()
+        .find(|case| case["case_id"] == "manifest")
+        .unwrap();
+    assert_eq!(
+        manifest["data"]["row_canonical_bytes"].as_u64().unwrap(),
+        u64::try_from(canonical.len()).unwrap()
+    );
     assert_eq!(encode_input_authority_v2(&row).unwrap(), canonical);
     assert_eq!(decode_input_authority_v2(&canonical).unwrap(), row);
     assert_eq!(

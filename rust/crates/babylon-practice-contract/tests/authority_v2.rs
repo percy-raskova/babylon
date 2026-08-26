@@ -247,6 +247,24 @@ fn authority_v2_ledger_refuses_two_active_player_seats_for_one_campaign() {
 }
 
 #[test]
+fn authority_v2_ledger_refuses_midcampaign_player_seat_reassignment() {
+    let first = player_authority();
+    let mut reassigned = player_authority();
+    reassigned.input_authority_id = InputAuthorityIdV2::from_bytes([0x21; 16]);
+    reassigned.actor_org_id = 8;
+    reassigned.effective_from_tick = first.effective_through_tick_exclusive;
+    reassigned.effective_through_tick_exclusive = 30;
+
+    assert_eq!(
+        validate_input_authority_ledger_v2(&PracticeInputAuthorityLedgerV2 {
+            schema_version: 2,
+            rows: vec![first, reassigned],
+        }),
+        Err(PracticeAuthorityV2Error::AuthorityPlayerSeatReassignment)
+    );
+}
+
+#[test]
 fn authority_v2_digests_are_pinned_to_independent_literals() {
     let row = player_authority();
     let ledger = PracticeInputAuthorityLedgerV2 {
@@ -281,13 +299,17 @@ fn authority_v2_error_codes_are_closed_and_exact() {
         (PracticeAuthorityV2Error::AuthorityInactive, 13),
         (PracticeAuthorityV2Error::AuthorityActorMismatch, 14),
         (PracticeAuthorityV2Error::AuthorityPlayerSeatMissing, 15),
+        (
+            PracticeAuthorityV2Error::AuthorityPlayerSeatReassignment,
+            16,
+        ),
     ];
     for (error, code) in expected {
         assert_eq!(u16::from(error), code);
         assert_eq!(PracticeAuthorityV2Error::try_from(code), Ok(error));
     }
     assert!(PracticeAuthorityV2Error::try_from(0_u16).is_err());
-    assert!(PracticeAuthorityV2Error::try_from(16_u16).is_err());
+    assert!(PracticeAuthorityV2Error::try_from(17_u16).is_err());
 }
 
 #[test]

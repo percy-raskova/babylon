@@ -2128,7 +2128,13 @@ fn pr_focus_reuses_the_h3_atomicity_and_installed_mutation_contracts() {
         "Some(\"installed_mutation\")",
         "Some(\"h3_reference_release\")",
     );
-    assert!(installed_focus.contains("phases.run(\"h3_installed_mutations\""));
+    assert!(installed_focus.contains("verify_h3_installed_mutations(phases, base)"));
+    let installed_helper = cte_slice(
+        live,
+        "fn verify_h3_installed_mutations(",
+        "fn verify_h3_pg_oracle_in_scratch(",
+    );
+    assert!(installed_helper.contains("phases.run(\"h3_installed_mutations\""));
     assert!(installer.contains("pub(super) fn verify_h3_reference_installed_mutations("));
     assert!(installer.contains("verify_installed_state_conflicts(base, &cohort)"));
     assert_eq!(installer.matches("mutate_orphan_membership,").count(), 1);
@@ -2218,14 +2224,12 @@ fn h3_atomicity_receipts_are_fixed_flushed_and_test_only() {
 }
 
 #[test]
-fn ci_and_weekly_steps_exceed_their_bounded_runner_envelopes() {
+fn ci_step_exceeds_the_focused_runner_envelope() {
     const CONTROL_PLANE_ENVELOPE_SECONDS: u64 = 5 * (10 + 2);
     const BUILD_ENVELOPE_SECONDS: u64 = 180 + 10;
     const START_ENVELOPE_SECONDS: u64 = 30 + 5;
     const READINESS_ENVELOPE_SECONDS: u64 = 90 + 2;
     const FOCUSED_CARGO_ENVELOPE_SECONDS: u64 = 2 * (300 + 10);
-    const EXHAUSTIVE_CARGO_ENVELOPE_SECONDS: u64 = 900 + 10;
-    const ROLLBACK_CARGO_ENVELOPE_SECONDS: u64 = 300 + 10;
     const CLEANUP_ENVELOPE_SECONDS: u64 = 35 + 12 + 12 + 35;
     const FOCUSED_RUNNER_ENVELOPE_SECONDS: u64 = CONTROL_PLANE_ENVELOPE_SECONDS
         + BUILD_ENVELOPE_SECONDS
@@ -2233,16 +2237,8 @@ fn ci_and_weekly_steps_exceed_their_bounded_runner_envelopes() {
         + READINESS_ENVELOPE_SECONDS
         + FOCUSED_CARGO_ENVELOPE_SECONDS
         + CLEANUP_ENVELOPE_SECONDS;
-    const EXHAUSTIVE_RUNNER_ENVELOPE_SECONDS: u64 = CONTROL_PLANE_ENVELOPE_SECONDS
-        + BUILD_ENVELOPE_SECONDS
-        + START_ENVELOPE_SECONDS
-        + READINESS_ENVELOPE_SECONDS
-        + EXHAUSTIVE_CARGO_ENVELOPE_SECONDS
-        + ROLLBACK_CARGO_ENVELOPE_SECONDS
-        + CLEANUP_ENVELOPE_SECONDS;
 
     let pr_workflow = include_str!("../../../../.github/workflows/ci.yml");
-    let weekly_workflow = include_str!("../../../../.github/workflows/weekly-pg-integration.yml");
     let pr_job = yaml_job(pr_workflow, "  pg-integration:");
     assert!(pr_job.contains(
         "- name: Rust H3 atomicity and installed-mutation contracts\n        timeout-minutes: 22"
@@ -2272,7 +2268,26 @@ fn ci_and_weekly_steps_exceed_their_bounded_runner_envelopes() {
     assert_eq!(pr_step_seconds, 22 * 60);
     assert!(pr_step_seconds >= FOCUSED_RUNNER_ENVELOPE_SECONDS + 120);
     assert!(pr_job_seconds >= pr_step_seconds + 30 * 60);
+}
 
+#[test]
+fn weekly_step_exceeds_the_exhaustive_runner_envelope() {
+    const CONTROL_PLANE_ENVELOPE_SECONDS: u64 = 5 * (10 + 2);
+    const BUILD_ENVELOPE_SECONDS: u64 = 180 + 10;
+    const START_ENVELOPE_SECONDS: u64 = 30 + 5;
+    const READINESS_ENVELOPE_SECONDS: u64 = 90 + 2;
+    const EXHAUSTIVE_CARGO_ENVELOPE_SECONDS: u64 = 900 + 10;
+    const ROLLBACK_CARGO_ENVELOPE_SECONDS: u64 = 300 + 10;
+    const CLEANUP_ENVELOPE_SECONDS: u64 = 35 + 12 + 12 + 35;
+    const EXHAUSTIVE_RUNNER_ENVELOPE_SECONDS: u64 = CONTROL_PLANE_ENVELOPE_SECONDS
+        + BUILD_ENVELOPE_SECONDS
+        + START_ENVELOPE_SECONDS
+        + READINESS_ENVELOPE_SECONDS
+        + EXHAUSTIVE_CARGO_ENVELOPE_SECONDS
+        + ROLLBACK_CARGO_ENVELOPE_SECONDS
+        + CLEANUP_ENVELOPE_SECONDS;
+
+    let weekly_workflow = include_str!("../../../../.github/workflows/weekly-pg-integration.yml");
     let weekly_job = yaml_job(weekly_workflow, "  exhaustive-legacy-adopter:");
     let weekly_step = weekly_job
         .split_once("      - name: Exhaustive adopter matrix and rollback proof")
@@ -2290,17 +2305,7 @@ fn ci_and_weekly_steps_exceed_their_bounded_runner_envelopes() {
     assert!(weekly_step_seconds >= EXHAUSTIVE_RUNNER_ENVELOPE_SECONDS + 120);
 
     let runner = include_str!("../../../../tools/run_rust_legacy_adopter_pg.sh");
-    for bounded_phase in [
-        "timeout --signal=TERM --kill-after=10s 180s \\",
-        "timeout --signal=TERM --kill-after=5s 30s docker run --detach \\",
-        "local deadline=$((SECONDS + 90))",
-        "for _attempt in {1..90}; do",
-        "timeout --signal=TERM --kill-after=1s \"${remaining}s\" \\",
-        "timeout --signal=TERM --kill-after=10s 300s \\",
-        "timeout --signal=TERM --kill-after=10s 900s \\",
-    ] {
-        assert!(runner.contains(bounded_phase));
-    }
+    assert!(runner.contains("timeout --signal=TERM --kill-after=10s 900s \\"));
     let rollback_phase = runner
         .rsplit_once("if [ \"$status\" -eq 0 ] && [ -z \"$LIVE_FOCUS\" ]; then")
         .unwrap()
@@ -2312,6 +2317,20 @@ fn ci_and_weekly_steps_exceed_their_bounded_runner_envelopes() {
         .find("cargo test -p babylon-persistence --lib")
         .unwrap();
     assert!(rollback_timeout < rollback_cargo);
+}
+
+#[test]
+fn live_runner_bounds_every_docker_control_plane_call() {
+    let runner = include_str!("../../../../tools/run_rust_legacy_adopter_pg.sh");
+    for bounded_phase in [
+        "timeout --signal=TERM --kill-after=10s 180s \\",
+        "timeout --signal=TERM --kill-after=5s 30s docker run --detach \\",
+        "local deadline=$((SECONDS + 90))",
+        "for _attempt in {1..90}; do",
+        "timeout --signal=TERM --kill-after=1s \"${remaining}s\" \\",
+    ] {
+        assert!(runner.contains(bounded_phase));
+    }
     assert_eq!(
         runner
             .matches("timeout --signal=TERM --kill-after=5s 30s \\\n    docker rm --force --volumes \"$CONTAINER\"")

@@ -9,7 +9,6 @@ Key Formulas:
 1. Fundamental Theorem of MLM-TW:
    - Imperial Rent: Phi(Wp, Psip) = alpha * Wp * (1 - Psip)
    - Labor Aristocracy: Wc/Vc > 1
-   - Consciousness Drift: dPsic/dt = k(1 - Wc/Vc) - lambda*Psic
 
 2. Survival Calculus:
    - Acquiescence: P(S|A) = 1 / (1 + e^(-k(x - x_critical)))
@@ -85,7 +84,6 @@ from babylon.formulas.dynamic_balance import (
 
 # Re-export Fundamental Theorem formulas
 from babylon.formulas.fundamental_theorem import (
-    calculate_consciousness_drift,
     calculate_imperial_rent_gap,
     calculate_labor_aristocracy_ratio,
     is_labor_aristocracy,
@@ -194,7 +192,6 @@ __all__ = [
     # Fundamental Theorem
     "calculate_labor_aristocracy_ratio",
     "is_labor_aristocracy",
-    "calculate_consciousness_drift",
     "calculate_imperial_rent_gap",
     # Survival Calculus
     "calculate_acquiescence_probability",

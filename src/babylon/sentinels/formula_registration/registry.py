@@ -5,29 +5,18 @@ hot-swappable surface (Sprint 3 Central Committee DI) — every
 ``registry.register(key, formulas.symbol)`` call in
 ``engine/formula_registry.py`` is an IMPLIED public API: modding/testing code
 may swap the callable, and a narrator/vault surface may resolve it by key. But
-registration is not consumption. The Vol I value-production program's own
-recon (``ai/_inbox/vol1-value-production-program-prompt.md`` §2d) found three
-Fundamental-Theorem formulas registered and, at the time, invoked from
-NOWHERE but their own registration/tests:
-``calculate_labor_aristocracy_ratio``, ``is_labor_aristocracy``,
-``calculate_consciousness_drift`` — the exact blind spot
+registration is not consumption. This registry prevents the exact blind spot
 :mod:`babylon.sentinels.inert` cannot see, because its own rule (b) counts
 ``formulas.calculate_labor_aristocracy_ratio`` (an ``ast.Attribute`` Load
 node right there in the ``register(...)`` call) as a satisfied reference.
 Registering a formula is not the same claim as USING it — this sentinel
 draws that line explicitly.
 
-Vol I's U2 (ADR117, ``feat(dialectics): the Fundamental Theorem, computed``)
-wired two of the three into
+The two retained rows both have genuine production callers in
 :func:`~babylon.domain.dialectics.instances.value_form.compute_fundamental_theorem`:
 ``calculate_labor_aristocracy_ratio`` (direct call) and ``is_labor_aristocracy``
 (imported under a LOCAL ALIAS, ``_is_labor_aristocracy`` — see
 :mod:`babylon.sentinels.formula_registration.checks`'s alias-resolution note).
-The third, ``calculate_consciousness_drift``, was deliberately left
-unwired (ADR117's own recorded scope boundary: it is a rate/drift formula,
-not part of the ``Wc``-vs-``Vc`` comparison U2 computed). PER-258 retired
-its only legacy reference surface, so neither that row nor its exemption
-remains live.
 
 This registry declares one closed, hand-curated invariant (mirrors
 :mod:`babylon.sentinels.inert.registry`'s and :mod:`babylon.sentinels.

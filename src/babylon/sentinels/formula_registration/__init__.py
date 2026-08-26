@@ -9,13 +9,9 @@ anywhere in the codebase. ``inert``'s producer-reachability rule counts that
 registration line itself as a satisfied reference — this sentinel scans the
 same production tree with that one file explicitly excluded.
 
-Founding incident (Vol I value-production program recon, §2d):
-``calculate_labor_aristocracy_ratio``, ``is_labor_aristocracy``, and
-``calculate_consciousness_drift`` were all formula-registry-registered with
-zero call sites outside registration/tests. Vol I's U2 (ADR117) wired the
-first two into
-:func:`~babylon.domain.dialectics.instances.value_form.compute_fundamental_theorem`;
-the third remains a real, open gap held GREEN via one recorded exemption.
+The two retained rows, ``calculate_labor_aristocracy_ratio`` and
+``is_labor_aristocracy``, are both called by
+:func:`~babylon.domain.dialectics.instances.value_form.compute_fundamental_theorem`.
 """
 
 from babylon.sentinels.formula_registration.checks import (

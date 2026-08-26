@@ -292,7 +292,10 @@ def _rest_reviews(pr: int) -> list[dict[str, object]]:
     )
 
 
-def _copilot_evidence_error(context: str, error: RuntimeError) -> CopilotEvidenceReadError:
+def _copilot_evidence_error(
+    context: str,
+    error: RuntimeError | KeyError | TypeError,
+) -> CopilotEvidenceReadError:
     """Convert one Copilot-only read failure into bounded typed evidence."""
     detail = _bounded_error_detail(str(error)) or type(error).__name__
     return CopilotEvidenceReadError(f"{context} unavailable: {detail}")
@@ -304,14 +307,14 @@ def _copilot_advisories(pr: int, graphql_reviews: object, head_oid: str) -> list
     try:
         rest_reviews = _rest_reviews(pr)
         completed = _has_completed_copilot_review(graphql_reviews, rest_reviews, head_oid)
-    except RuntimeError as error:
+    except (RuntimeError, KeyError, TypeError) as error:
         advisories.append(str(_copilot_evidence_error("Copilot review evidence", error)))
     else:
         if not completed:
             advisories.append("no completed Copilot review on verified head")
     try:
         advisories.extend(_unharvested_copilot_comments(pr))
-    except RuntimeError as error:
+    except (RuntimeError, KeyError, TypeError) as error:
         advisories.append(str(_copilot_evidence_error("Copilot comment evidence", error)))
     return advisories
 

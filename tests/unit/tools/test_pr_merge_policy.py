@@ -952,6 +952,43 @@ def test_top_level_copilot_comment_without_reply_is_advisory(tmp_path: Path) -> 
 
 
 @pytest.mark.parametrize(
+    "malformation",
+    ["missing-id", "unhashable-id", "unhashable-reply-id"],
+)
+def test_malformed_canonical_copilot_comment_is_a_bounded_advisory(
+    tmp_path: Path,
+    malformation: str,
+) -> None:
+    scenario = _default_scenario()
+    comment: dict[str, object] = {
+        "id": 91,
+        "html_url": "https://example.test/comment/91",
+        "in_reply_to_id": None,
+        "user": {
+            "login": "Copilot",
+            "id": COPILOT_BOT_ID,
+            "node_id": COPILOT_BOT_NODE_ID,
+            "type": "Bot",
+        },
+    }
+    if malformation == "missing-id":
+        comment.pop("id")
+    elif malformation == "unhashable-id":
+        comment["id"] = []
+    else:
+        comment["in_reply_to_id"] = []
+    scenario["comments"] = [comment]
+
+    result, calls = _run_pr_merge(tmp_path, scenario=scenario)
+
+    assert result.returncode == 0, result.stderr
+    assert "pr:merge ADVISORY — Copilot comment evidence unavailable" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert len(result.stderr) <= 550
+    assert len(_merge_calls(calls)) == 1
+
+
+@pytest.mark.parametrize(
     ("failure_field", "expected_context"),
     [
         ("rest_reviews_failure", "Copilot review evidence unavailable"),

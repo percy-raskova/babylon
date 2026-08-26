@@ -540,8 +540,8 @@ def test_per_18_adr_and_catalog_are_exact() -> None:
     """The accepted decision and catalog row cannot pass as an empty placeholder."""
     catalog = _yaml_document(_ADR_INDEX)
     assert catalog["meta"] == {
-        "version": "1.77.0",
-        "updated": "2026-08-23",
+        "version": "1.78.0",
+        "updated": "2026-08-25",
         "description": "Architecture Decision Records Index",
         "format": "See individual ADR files in this directory",
     }

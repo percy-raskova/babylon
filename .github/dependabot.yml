@@ -1,31 +1,29 @@
 # Dependabot configuration for Babylon
 # Docs: https://docs.github.com/en/code-security/dependabot
 #
-# Promotion model (Program 15, Phase 3): Dependabot never opens PRs against
-# `main`. Every ecosystem below targets `dev`. `dev`'s required-checks
-# ruleset is what makes `.github/workflows/dependabot-automerge.yml`
-# truthful — a PR can only auto-merge once it has actually satisfied the
-# checks the ruleset requires, not merely because the workflow ran.
-# `main` never receives a Dependabot PR directly; it only receives changes
-# via the fast-forward promotion (`tools/promote.sh`) once `dev` is green.
+# Branch model (Program 15, Phase 3): `dev` is the default branch, so
+# Dependabot opens every PR against `dev`. Omitting `target-branch` is
+# deliberate: GitHub then applies this configuration to security updates too.
+# The required-checks ruleset and `.github/workflows/dependabot-automerge.yml`
+# allow only exact-head, fully verified merges.
+# `main` never receives a Dependabot PR directly. A Director-authorized release PR
+# from `dev` carries these changes through the main qualification manifest.
 #
 # CONFIG-AUTHORITY INVARIANT (2026-07-12): Dependabot reads THIS FILE — every
-# `target-branch` and every `ignore` below — from the repository's DEFAULT
+# group and every `ignore` below — from the repository's DEFAULT
 # branch ONLY. The default branch is now `dev` (changed from `main` on
 # 2026-07-12) precisely so rule/ignore edits take effect the moment they land
-# on `dev`, with no promotion required. If the default branch is ever moved
-# back to `main`, edits here go INERT until promoted — the Program-15
-# "promote before closing" gotcha. Keep the default branch = the branch you
-# edit this file on.
+# on `dev`, with no main release PR required. If the default branch is ever
+# moved back to `main`, edits here go INERT until a configuration PR reaches
+# `main`. Keep the default branch equal to the branch where this file changes.
 
 version: 2
 updates:
   # ==========================================================================
-  # Python dependencies (Poetry)
+  # Python dependencies (uv)
   # ==========================================================================
-  - package-ecosystem: "pip"
+  - package-ecosystem: "uv"
     directory: "/"
-    target-branch: "dev"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -42,7 +40,7 @@ updates:
       - "python"
     groups:
       # Group all minor/patch updates into a single PR (reduces noise)
-      python-minor-patch:
+      uv-minor-patch:
         applies-to: version-updates
         patterns:
           - "*"
@@ -50,19 +48,13 @@ updates:
           - "minor"
           - "patch"
       # Security updates get their own group (higher priority)
-      python-security:
+      uv-security:
         applies-to: security-updates
         patterns:
           - "*"
-      # Majors arrive as ONE reviewable PR per ecosystem (never auto-merged —
-      # the automerge workflow only takes minor/patch). An agent unbundles
-      # locally if one member is red.
-      python-majors:
-        applies-to: version-updates
-        patterns:
-          - "*"
         update-types:
-          - "major"
+          - "minor"
+          - "patch"
     # Deferred majors (OWNER ITEM 55 — django 6 + mypy 2 modernization). This is
     # a deliberate railed batch (manage.py check + web suites + typecheck across
     # 567 files), not a drive-by bump: django-stubs 6 + drf-stubs cap `mypy<2.2`
@@ -84,7 +76,6 @@ updates:
   # ==========================================================================
   - package-ecosystem: "github-actions"
     directory: "/"
-    target-branch: "dev"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -98,10 +89,13 @@ updates:
       - "dependencies"
       - "ci"
     groups:
-      # Group all GitHub Actions updates together
-      github-actions-all:
+      # Major action updates remain individual manual-review PRs.
+      github-actions-minor-patch:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   # ==========================================================================
   # Postgres base image (Docker) — monthly: base-image bumps are deliberate,
@@ -109,7 +103,6 @@ updates:
   # ==========================================================================
   - package-ecosystem: "docker"
     directory: "/docker/postgres"
-    target-branch: "dev"
     schedule:
       interval: "monthly"
       time: "09:00"
@@ -136,7 +129,6 @@ updates:
   # ==========================================================================
   - package-ecosystem: "cargo"
     directory: "/rust"
-    target-branch: "dev"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -149,7 +141,6 @@ updates:
       prefix-development: "chore(deps-dev)"
     labels:
       - "dependencies"
-      - "rust"
     groups:
       rust-minor-patch:
         applies-to: version-updates
@@ -162,9 +153,6 @@ updates:
         applies-to: security-updates
         patterns:
           - "*"
-      rust-majors:
-        applies-to: version-updates
-        patterns:
-          - "*"
         update-types:
-          - "major"
+          - "minor"
+          - "patch"

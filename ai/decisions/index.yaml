@@ -1,6 +1,6 @@
 meta:
-  version: 1.77.0
-  updated: '2026-08-23'
+  version: 1.78.0
+  updated: '2026-08-25'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
   # ADR NUMBER ALLOCATION (controller ruling 2026-07-21, v1.0.0 parallel lanes —
@@ -1060,3 +1060,8 @@ decisions:
     status: accepted
     date: '2026-08-25'
     file: ADR229_rust_gameplay_contract_authority.yaml
+  ADR230_exact_head_pr_and_dependabot_policy:
+    title: 'Pull requests merge through one exact-head verifier, Dependabot separates trusted classification from verified merging, and GitHub PR settings are applied as a rollback-safe checked-in policy'
+    status: accepted
+    date: '2026-08-25'
+    file: ADR230_exact_head_pr_and_dependabot_policy.yaml

@@ -1,91 +1,191 @@
-# Dependabot Auto-Merge Workflow
+# Dependabot automation has two trusted, event-driven phases.
 #
-# Merges Dependabot PRs to `dev` after EVERY check completes clean.
-# - Minor/patch version updates: eligible (low risk)
-# - GitHub Actions non-major updates: eligible
-# - Major updates: require manual review (breaking changes)
-#
-# ADR181 R2b (2026-07-30): `gh pr merge --auto` is BANNED repo-wide — the
-# #392 scar proved it merges past failing NON-required checks. This job
-# instead waits for every other check to complete (bounded poll, Power-of-10
-# rule 2), refuses on ANY failure — required or not — and only then merges.
+# 1. `pull_request_target` manages one presentation label from trusted default-
+#    branch code. It never checks out PR code and grants no merge authority.
+# 2. `workflow_run` validates the native exact-head CI run, checks out trusted
+#    `dev`, and delegates eligibility and merging to the repository verifier.
 
 name: Dependabot Auto-Merge
 
-on:
-  pull_request:
-    branches:
-      - dev # Only trigger for PRs targeting dev
+run-name: >-
+  ${{ github.event_name == 'workflow_run' &&
+      format('Dependabot eligibility for CI run {0} at {1}',
+        github.event.workflow_run.id, github.event.workflow_run.head_sha) ||
+      format('Dependabot presentation for PR {0}',
+        github.event.pull_request.number) }}
 
-permissions:
-  contents: write
-  pull-requests: write
+on:
+  pull_request_target:
+    branches: [dev]
+    types: [opened, reopened, synchronize]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions: {}
+
+concurrency:
+  group: >-
+    dependabot-${{
+      github.event.pull_request.number ||
+      github.event.workflow_run.pull_requests[0].number ||
+      github.event.workflow_run.head_branch
+    }}
+  cancel-in-progress: false
 
 jobs:
-  dependabot-automerge:
-    name: Auto-merge Dependabot PRs
+  classify:
+    name: Classify Dependabot update
+    if: >-
+      github.event_name == 'pull_request_target' &&
+      github.actor == 'dependabot[bot]' &&
+      github.event.sender.login == 'dependabot[bot]' &&
+      github.event.sender.id == 49699333 &&
+      github.event.sender.type == 'Bot' &&
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.pull_request.user.id == 49699333 &&
+      github.event.pull_request.user.type == 'Bot'
     runs-on: ubuntu-latest
-    # Bounded wait: 40 polls x 60s inside a hard job ceiling.
-    timeout-minutes: 45
-    if: github.actor == 'dependabot[bot]'
-
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+    env:
+      ELIGIBILITY_LABEL: dependencies:automerge
+      ELIGIBILITY_LABEL_COLOR: 1f883d
+      ELIGIBILITY_LABEL_DESCRIPTION: >-
+        Patch/minor Dependabot update eligible for exact-head merge
+      ELIGIBLE_UPDATE_TYPES: >-
+        version-update:semver-patch version-update:semver-minor
     steps:
       - name: Fetch Dependabot metadata
         id: metadata
-        uses: dependabot/fetch-metadata@v3
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
         with:
-          github-token: "${{ secrets.GITHUB_TOKEN }}"
+          github-token: ${{ github.token }}
 
-      - name: Log update details
-        run: |
-          echo "Dependency: ${{ steps.metadata.outputs.dependency-names }}"
-          echo "Update type: ${{ steps.metadata.outputs.update-type }}"
-          echo "Ecosystem: ${{ steps.metadata.outputs.package-ecosystem }}"
-          echo "Previous version: ${{ steps.metadata.outputs.previous-version }}"
-          echo "New version: ${{ steps.metadata.outputs.new-version }}"
-
-      # One merge path for every eligible class: wait for all OTHER checks,
-      # refuse on any failure (required or not), then a plain --squash merge.
-      - name: Wait for all checks, refuse on any failure, then merge
-        if: |
-          steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
-          steps.metadata.outputs.update-type == 'version-update:semver-minor' ||
-          (steps.metadata.outputs.package-ecosystem == 'github_actions' &&
-           steps.metadata.outputs.update-type != 'version-update:semver-major')
-        run: |
-          SELF="Auto-merge Dependabot PRs"
-          for i in $(seq 1 40); do
-            checks=$(gh pr checks "$PR_URL" --json name,bucket 2>/dev/null || echo '[]')
-            failed=$(jq --arg self "$SELF" \
-              '[.[] | select(.bucket == "fail" and .name != $self)] | length' <<<"$checks")
-            pending=$(jq --arg self "$SELF" \
-              '[.[] | select(.bucket == "pending" and .name != $self)] | length' <<<"$checks")
-            if [ "$failed" -gt 0 ]; then
-              gh pr comment "$PR_URL" --body \
-                "Auto-merge REFUSED: $failed check(s) failed. ADR181 R2b — a \
-          failing check blocks the merge even when non-required (the #392 class)."
-              exit 1
-            fi
-            if [ "$pending" -eq 0 ] && [ "$checks" != "[]" ]; then
-              echo "All checks complete and clean — merging."
-              gh pr merge --squash "$PR_URL"
-              exit 0
-            fi
-            echo "poll $i/40: $pending check(s) still pending"
-            sleep 60
-          done
-          echo "Checks did not complete inside the wait budget — NOT merging."
-          exit 1
+      - name: Classify update
+        id: eligibility
+        shell: bash
         env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # MAJOR updates require manual review - just add a comment
-      - name: Comment on major updates
-        if: steps.metadata.outputs.update-type == 'version-update:semver-major'
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
         run: |
-          gh pr comment "$PR_URL" --body \
-            "**Major version update** - may contain breaking changes. Manual review required."
+          set -euo pipefail
+          eligible=false
+          case " $ELIGIBLE_UPDATE_TYPES " in
+            *" $UPDATE_TYPE "*)
+              eligible=true
+              ;;
+          esac
+          printf 'eligible=%s\n' "$eligible" >> "$GITHUB_OUTPUT"
+
+      - name: Set eligibility label
+        shell: bash
         env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ELIGIBLE: ${{ steps.eligibility.outputs.eligible }}
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          encoded_label="$(
+            jq -rn --arg label "$ELIGIBILITY_LABEL" '$label | @uri'
+          )"
+          label_json="$(
+            gh api \
+              "repos/$GITHUB_REPOSITORY/labels/$encoded_label"
+          )"
+          jq -e \
+            --arg name "$ELIGIBILITY_LABEL" \
+            --arg color "$ELIGIBILITY_LABEL_COLOR" \
+            --arg description "$ELIGIBILITY_LABEL_DESCRIPTION" \
+            '.name == $name and .color == $color and .description == $description' \
+            <<< "$label_json" >/dev/null
+
+          labels_json="$(
+            gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json labels
+          )"
+          has_label="$(
+            jq --arg label "$ELIGIBILITY_LABEL" \
+              'any(.labels[:100][]; .name == $label)' <<< "$labels_json"
+          )"
+          if [ "$ELIGIBLE" = true ] && [ "$has_label" = false ]; then
+            gh pr edit "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
+              --add-label "$ELIGIBILITY_LABEL"
+          elif [ "$ELIGIBLE" = false ] && [ "$has_label" = true ]; then
+            gh pr edit "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
+              --remove-label "$ELIGIBILITY_LABEL"
+          fi
+
+  merge:
+    name: Dependabot Eligibility
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.name == 'CI'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      checks: read
+      contents: write
+      pull-requests: write
+      security-events: read
+    steps:
+      - name: Checkout trusted merge verifier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: dev
+          persist-credentials: false
+
+      - name: Resolve exact eligible PR
+        id: candidate
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.workflow_run.head_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          pulls="$(
+            gh api "repos/$GITHUB_REPOSITORY/pulls?state=open&base=dev&per_page=100"
+          )"
+          pull_count="$(jq 'length' <<< "$pulls")"
+          if [ "$pull_count" -ge 100 ]; then
+            printf 'eligible=false\n' >> "$GITHUB_OUTPUT"
+            echo "Refusing a potentially truncated 100-PR candidate page."
+            exit 0
+          fi
+          candidates="$(
+            jq --arg head "$EXPECTED_HEAD" '
+              [
+                .[:100][]
+                | select(.user.login == "dependabot[bot]")
+                | select(.user.id == 49699333)
+                | select(.user.type == "Bot")
+                | select(.head.sha == $head)
+                | .number
+              ]
+            ' <<< "$pulls"
+          )"
+          candidate_count="$(jq 'length' <<< "$candidates")"
+          if [ "$candidate_count" -ne 1 ]; then
+            printf 'eligible=false\n' >> "$GITHUB_OUTPUT"
+            echo "Expected one eligible Dependabot PR at $EXPECTED_HEAD; found $candidate_count."
+            exit 0
+          fi
+          printf 'eligible=true\n' >> "$GITHUB_OUTPUT"
+          printf 'pr_number=%s\n' "$(jq -r '.[0]' <<< "$candidates")" >> "$GITHUB_OUTPUT"
+
+      - name: Merge
+        if: steps.candidate.outputs.eligible == 'true'
+        env:
+          EXPECTED_HEAD: ${{ github.event.workflow_run.head_sha }}
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+          CLASSIFIER_RUN_ID: ${{ github.run_id }}
+          PR_NUMBER: ${{ steps.candidate.outputs.pr_number }}
+        run: >-
+          python3 tools/pr_merge.py "$PR_NUMBER" --expected-head "$EXPECTED_HEAD"
+          --dependabot --dependabot-source-run "$SOURCE_RUN_ID"
+          --dependabot-classifier-run "$CLASSIFIER_RUN_ID"

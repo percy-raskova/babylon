@@ -73,6 +73,8 @@ Use one of these lane prefixes:
 
 Other lane names can also include their PER identity. Use `Part of PER-N` for
 partial delivery and `Fixes PER-N` only for the final accepted delivery.
+Every PR description must select exactly one of those two Linear delivery
+dispositions and link the canonical issue.
 <!-- vale ste.UnapprovedWords = YES -->
 
 Keep unrelated user changes unchanged. Report an unrelated fault unless the owner
@@ -95,29 +97,53 @@ mise run commit -- "type(scope): description"
 Run the checks that `CLAUDE.md` assigns to the changed area. Do not bless a
 baseline without its declared ceremony.
 
+<!-- Vale: these paragraphs preserve literal review and ceremony terms. -->
+<!-- vale ste.UnapprovedWords = NO -->
+Every PR needs a behavioral-contract disposition. For changed behavior, link
+the durable, implementation-independent contract that proves the change. For
+no behavior change, explain why the current contracts are enough.
+
+If a governed baseline changes intentionally, use
+`tools/generate_ceremony_message.py`. Include its ceremony record and the
+required `Baselines: blessed(<slug>)` trailer. If you did not intend the drift,
+stop and correct the fault.
+<!-- vale ste.UnapprovedWords = YES -->
+
 ## Merge to `dev`
 
+<!-- Vale: this procedure preserves literal GitHub review and branch terms. -->
+<!-- vale ste.UnapprovedWords = NO -->
 Before a merge, complete these steps:
 
-1. Check that each CI task finished.
-2. Check that the green task tested the PR head SHA.
-3. Read each Copilot comment.
-4. Correct the fault or reply with the rationale for no change.
-5. Check that no Copilot comment remains without a response.
+1. Confirm the base branch and record the exact reviewed head SHA.
+2. Confirm that all reported checks completed successfully for that exact
+   reviewed head SHA and base branch.
+3. Complete the Copilot review against that head. Fix each accepted finding or
+   reply with the rationale for no change.
+4. Confirm that every Copilot finding has a reply and that you resolved all
+   Copilot review threads.
+5. Confirm the behavioral-contract disposition and baseline disposition in the
+   PR description.
 6. Run the approved merge command.
 
 ```bash
 mise run pr:merge -- N
 ```
 
-Do not use `gh pr merge --auto`. The approved command also checks CodeQL and
-the merge target.
+Do not run `gh pr merge` directly in any form. The sanctioned command is the
+only merge path.
+
+Preserve the source branch by default. The standard command omits
+`--delete-branch`. Delete a source branch only after an explicit owner decision
+and a check that no open PR or other work depends on it.
+<!-- vale ste.UnapprovedWords = YES -->
 
 <!-- Vale: this paragraph preserves literal Git emergency-workflow terms. -->
 <!-- vale Vale.Spelling = NO -->
 <!-- vale ste.UnapprovedWords = NO -->
-A critical hotfix alone can branch from and target `main`. Only the Director
-can merge it. A backport PR to `dev` is mandatory after the merge.
+Only the Director merges to `main`. The two allowed sources are a release PR
+from `dev`, or a critical hotfix from `fix/*` that branches from `main`. A
+backport PR to `dev` is mandatory after a hotfix merge.
 <!-- vale ste.UnapprovedWords = YES -->
 <!-- vale Vale.Spelling = YES -->
 

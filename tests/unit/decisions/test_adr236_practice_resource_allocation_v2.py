@@ -48,7 +48,7 @@ def test_adr236_records_the_complete_allocator_law_and_exact_index_row() -> None
     ):
         assert required_text in decision_text
 
-    assert index["meta"]["version"] == "1.85.0"
+    assert index["meta"]["version"] == "1.86.0"
     assert index["decisions"][ADR_STEM] == {
         "title": EXPECTED_TITLE,
         "status": "accepted",

@@ -7,8 +7,8 @@ each of which has already bitten:
 1. Never ``--auto`` (#392: it ignores failing non-required checks) — this
    wrapper simply has no such flag.
 2. All checks green AND both PR refs unchanged across the verdict snapshot.
-3. A completed Copilot review must target the verified head; every top-level
-   Copilot inline comment needs a reply; and every review thread must resolve.
+3. Copilot review state and unreplied top-level comments are advisory; every
+   review thread, regardless of author, must resolve.
 4. Any open code-scanning alert is a STOP (CodeQL no longer runs on PRs — R5b
    — so the alert DB, not a PR check, is the source of truth).
 5. ``--delete-branch`` is refused for ``dev`` and while another open PR bases
@@ -86,6 +86,10 @@ class GitHubReadError(RuntimeError):
 
 class MergeIndeterminateError(RuntimeError):
     """A mutating merge call could not be reconciled to one exact outcome."""
+
+
+class CopilotEvidenceReadError(RuntimeError):
+    """A bounded Copilot-only evidence read failed without blocking merge."""
 
 
 def _bounded_error_detail(value: object) -> str:
@@ -242,7 +246,7 @@ def _unharvested_copilot_comments(pr: int) -> list[str]:
     )
     replied_to = {c.get("in_reply_to_id") for c in comments}
     return [
-        f"unaddressed Copilot comment {c['html_url']}"
+        f"unaddressed Copilot comment {_bounded_error_detail(c.get('html_url'))}"
         for c in comments
         if _is_rest_copilot_comment(c.get("user"))
         and c.get("in_reply_to_id") is None
@@ -286,6 +290,30 @@ def _rest_reviews(pr: int) -> list[dict[str, object]]:
         "REST pull-request reviews",
         refuse_full_page=True,
     )
+
+
+def _copilot_evidence_error(context: str, error: RuntimeError) -> CopilotEvidenceReadError:
+    """Convert one Copilot-only read failure into bounded typed evidence."""
+    detail = _bounded_error_detail(str(error)) or type(error).__name__
+    return CopilotEvidenceReadError(f"{context} unavailable: {detail}")
+
+
+def _copilot_advisories(pr: int, graphql_reviews: object, head_oid: str) -> list[str]:
+    """Return non-blocking Copilot review and comment evidence."""
+    advisories: list[str] = []
+    try:
+        rest_reviews = _rest_reviews(pr)
+        completed = _has_completed_copilot_review(graphql_reviews, rest_reviews, head_oid)
+    except RuntimeError as error:
+        advisories.append(str(_copilot_evidence_error("Copilot review evidence", error)))
+    else:
+        if not completed:
+            advisories.append("no completed Copilot review on verified head")
+    try:
+        advisories.extend(_unharvested_copilot_comments(pr))
+    except RuntimeError as error:
+        advisories.append(str(_copilot_evidence_error("Copilot comment evidence", error)))
+    return advisories
 
 
 def _has_completed_copilot_review(
@@ -831,9 +859,7 @@ def _main() -> int:
         problems.append("no checks reported on the head commit")
     manifest = manifest_for_base(base_ref) if base_ref in {"dev", "main"} else ()
     problems.extend(_rollup_failures(_json_dicts(rollup, "status-check rollup"), manifest))
-    if not _has_completed_copilot_review(view.get("reviews"), _rest_reviews(args.pr), head_oid):
-        problems.append("no completed Copilot review on verified head")
-    problems.extend(_unharvested_copilot_comments(args.pr))
+    advisories = _copilot_advisories(args.pr, view.get("reviews"), head_oid)
     problems.extend(_review_thread_problems(args.pr))
     if (alerts := _open_alert_count()) > 0:
         problems.append(f"{alerts} open code-scanning alert(s) — the zero floor is a STOP")
@@ -861,6 +887,8 @@ def _main() -> int:
     if refs_now.get("baseRefOid") != base_oid:
         problems.append("base moved while verifying — re-run against the new base")
 
+    for advisory in advisories:
+        print(f"pr:merge ADVISORY — {advisory}", file=sys.stderr)
     if problems:
         for problem in problems:
             print(f"pr:merge REFUSED — {problem}", file=sys.stderr)

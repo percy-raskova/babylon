@@ -29,9 +29,10 @@ Exact reviewed head SHA: <!-- Use the full 40-character commit SHA. -->
 - [ ] For a `main` target, this PR produced the complete combined manifest.
 - [ ] All reported checks completed successfully for the exact reviewed head
       SHA and base branch above.
-- [ ] The Copilot review completed against the exact reviewed head SHA.
-- [ ] I fixed each accepted Copilot finding, provided a reply to every finding,
-      and resolved all Copilot review threads.
+- [ ] Copilot evidence is advisory when absent, stale, incomplete, API-failed,
+      identity-mismatched, or without a reply.
+- [ ] No unresolved review thread remains. Any unresolved review thread blocks
+      the merge, regardless of its author.
 
 ## Behavioral-contract disposition
 

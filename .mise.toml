@@ -84,7 +84,7 @@ description = "Run any command inside the vendored devshell and pass through tru
 run = 'MISE_TRUSTED_CONFIG_PATHS="${MISE_PROJECT_ROOT:-$PWD}" nix develop "git+file://${MISE_PROJECT_ROOT:-$PWD}" --command'
 
 [tasks."pr:merge"]
-description = "the ONE sanctioned merge path (ADR181 R10): all-green + head-pin + Copilot harvest + zero alert floor + stacked-PR guard"
+description = "the ONE sanctioned merge path: all-green + head-pin + Copilot advisory + unresolved review thread block + zero alert floor + stacked-PR guard"
 run = "python3 tools/pr_merge.py"
 
 [tasks."check:worktree-contract"]

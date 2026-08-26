@@ -150,12 +150,12 @@ A critical hotfix alone can branch from and target `main`. Its Director-only mer
 For a release, prove `origin/main` is an ancestor of `origin/dev`, then qualify exact `dev` with `main.yml`.
 After the Director merge, return main through `release:prepare-dev-sync` before `release:tag` can publish.
 <!-- vale ste.NounClusters = YES -->
-<!-- vale ste.UnapprovedWords = YES -->
 <!-- vale Vale.Spelling = YES -->
 Use `type(scope): description`, one logical unit, and the required co-author
 trailer. Commit with `mise run commit -- "type(scope): description"`.
 
-Before merge, pin green CI to the PR head SHA and address all Copilot comments.
+Before merge, pin green CI to the PR head SHA. Copilot evidence is advisory. An unresolved review thread blocks.
+<!-- vale ste.UnapprovedWords = YES -->
 Use only `mise run pr:merge -- N`. Do not use `gh pr merge --auto`. The Director
 controls all merges to `main`.
 

@@ -145,6 +145,9 @@ elif args[:2] == ["pr", "merge"]:
         raise SystemExit(7)
     print("merged")
 elif args[0] == "api" and args[1].endswith("/reviews?per_page=100"):
+    if scenario.get("rest_reviews_failure"):
+        print(scenario["rest_reviews_failure"], file=sys.stderr)
+        raise SystemExit(9)
     print(json.dumps(scenario["rest_reviews"]))
 elif args[0] == "api" and args[1].endswith("/pulls/742"):
     print(json.dumps(scenario["dependabot_pr"]))
@@ -167,6 +170,9 @@ elif args[0] == "api" and args[1].endswith(
 elif args[0] == "api" and args[1].endswith("/pulls/742/commits?per_page=100"):
     print(json.dumps(scenario["dependabot_commits"]))
 elif args[0] == "api" and "/comments" in args[1]:
+    if scenario.get("comments_failure"):
+        print(scenario["comments_failure"], file=sys.stderr)
+        raise SystemExit(10)
     print(json.dumps(scenario["comments"]))
 else:
     print(f"unexpected fake gh arguments: {args}", file=sys.stderr)
@@ -372,6 +378,8 @@ def _default_scenario() -> dict[str, object]:
         "alerts": [],
         "children": [],
         "initial_view_failure": None,
+        "rest_reviews_failure": None,
+        "comments_failure": None,
         "merge_failure": None,
         "reconciliation_failure": None,
         "merge_reconciliation": {
@@ -678,7 +686,7 @@ def test_exactly_full_code_scanning_page_refuses_as_potentially_truncated(
     assert _merge_calls(calls) == []
 
 
-def test_one_hundred_rest_items_refuses_at_the_static_bound(tmp_path: Path) -> None:
+def test_full_copilot_comment_page_is_a_bounded_advisory(tmp_path: Path) -> None:
     scenario = _default_scenario()
     scenario["comments"] = [
         {
@@ -692,11 +700,11 @@ def test_one_hundred_rest_items_refuses_at_the_static_bound(tmp_path: Path) -> N
 
     result, calls = _run_pr_merge(tmp_path, scenario=scenario)
 
-    assert result.returncode == 1
-    assert result.stderr.startswith("pr:merge REFUSED — ")
+    assert result.returncode == 0, result.stderr
+    assert result.stderr.startswith("pr:merge ADVISORY — Copilot comment evidence unavailable")
     assert "100-item safety bound" in result.stderr
     assert "Traceback" not in result.stderr
-    assert _merge_calls(calls) == []
+    assert len(_merge_calls(calls)) == 1
 
 
 def test_one_hundred_check_entries_refuse_a_potentially_truncated_rollup(
@@ -864,7 +872,7 @@ def test_merge_is_atomically_matched_to_verified_head(tmp_path: Path) -> None:
     ],
     ids=["missing", "stale", "pending"],
 )
-def test_copilot_review_must_be_completed_on_verified_head(
+def test_copilot_review_state_is_advisory_on_verified_head(
     tmp_path: Path, reviews: list[dict[str, object]]
 ) -> None:
     scenario = _default_scenario()
@@ -872,16 +880,16 @@ def test_copilot_review_must_be_completed_on_verified_head(
 
     result, calls = _run_pr_merge(tmp_path, scenario=scenario)
 
-    assert result.returncode == 1
-    assert "completed Copilot review on verified head" in result.stderr
-    assert _merge_calls(calls) == []
+    assert result.returncode == 0, result.stderr
+    assert "pr:merge ADVISORY — no completed Copilot review on verified head" in result.stderr
+    assert len(_merge_calls(calls)) == 1
 
 
 @pytest.mark.parametrize(
     "login",
     ["attacker-copilot-reviewer", "copilot-pull-request-reviewer[bot]"],
 )
-def test_graphql_copilot_review_identity_is_exact(tmp_path: Path, login: str) -> None:
+def test_graphql_copilot_review_identity_mismatch_is_advisory(tmp_path: Path, login: str) -> None:
     scenario = _default_scenario()
     review = _copilot_review()
     review["author"] = {"login": login}
@@ -889,16 +897,16 @@ def test_graphql_copilot_review_identity_is_exact(tmp_path: Path, login: str) ->
 
     result, calls = _run_pr_merge(tmp_path, scenario=scenario)
 
-    assert result.returncode == 1
-    assert "completed Copilot review on verified head" in result.stderr
-    assert _merge_calls(calls) == []
+    assert result.returncode == 0, result.stderr
+    assert "pr:merge ADVISORY — no completed Copilot review on verified head" in result.stderr
+    assert len(_merge_calls(calls)) == 1
 
 
 @pytest.mark.parametrize(
     ("field", "value"),
     [("id", 1), ("node_id", "BOT_impostor"), ("type", "User")],
 )
-def test_rest_copilot_review_requires_immutable_bot_identity(
+def test_rest_copilot_review_identity_mismatch_is_advisory(
     tmp_path: Path,
     field: str,
     value: object,
@@ -912,12 +920,12 @@ def test_rest_copilot_review_requires_immutable_bot_identity(
 
     result, calls = _run_pr_merge(tmp_path, scenario=scenario)
 
-    assert result.returncode == 1
-    assert "completed Copilot review on verified head" in result.stderr
-    assert _merge_calls(calls) == []
+    assert result.returncode == 0, result.stderr
+    assert "pr:merge ADVISORY — no completed Copilot review on verified head" in result.stderr
+    assert len(_merge_calls(calls)) == 1
 
 
-def test_top_level_copilot_comment_still_requires_reply(tmp_path: Path) -> None:
+def test_top_level_copilot_comment_without_reply_is_advisory(tmp_path: Path) -> None:
     scenario = _default_scenario()
     scenario["comments"] = [
         {
@@ -935,9 +943,37 @@ def test_top_level_copilot_comment_still_requires_reply(tmp_path: Path) -> None:
 
     result, calls = _run_pr_merge(tmp_path, scenario=scenario)
 
-    assert result.returncode == 1
-    assert "unaddressed Copilot comment" in result.stderr
-    assert _merge_calls(calls) == []
+    assert result.returncode == 0, result.stderr
+    assert (
+        "pr:merge ADVISORY — unaddressed Copilot comment "
+        "https://example.test/comment/91" in result.stderr
+    )
+    assert len(_merge_calls(calls)) == 1
+
+
+@pytest.mark.parametrize(
+    ("failure_field", "expected_context"),
+    [
+        ("rest_reviews_failure", "Copilot review evidence unavailable"),
+        ("comments_failure", "Copilot comment evidence unavailable"),
+    ],
+)
+def test_copilot_only_api_failure_is_a_bounded_advisory(
+    tmp_path: Path,
+    failure_field: str,
+    expected_context: str,
+) -> None:
+    scenario = _default_scenario()
+    scenario[failure_field] = "private detail\n" * 100
+
+    result, calls = _run_pr_merge(tmp_path, scenario=scenario)
+
+    assert result.returncode == 0, result.stderr
+    assert f"pr:merge ADVISORY — {expected_context}: gh failed:" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert "private detail" in result.stderr
+    assert len(result.stderr) <= 550
+    assert len(_merge_calls(calls)) == 1
 
 
 @pytest.mark.parametrize(

@@ -10,6 +10,7 @@ import re
 from pathlib import Path
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE = Path(".github/PULL_REQUEST_TEMPLATE.md")
@@ -24,6 +25,14 @@ MAIN_RELEASE_SURFACES = (
     Path("docs/agents/governance.md"),
 )
 MERGE_COMMAND = "mise run pr:merge -- N"
+COPILOT_ADVISORY_SURFACES = (
+    *GOVERNANCE_SURFACES,
+    Path("CLAUDE.md"),
+    Path(".mise.toml"),
+)
+COPILOT_ADVISORY_ADR_NAME = "ADR241_copilot_advisory_merge_policy"
+COPILOT_ADVISORY_ADR = Path("ai/decisions") / f"{COPILOT_ADVISORY_ADR_NAME}.yaml"
+ADR_INDEX = Path("ai/decisions/index.yaml")
 
 
 def _text(path: Path) -> str:
@@ -62,14 +71,42 @@ def test_merge_evidence_is_pinned_to_reviewed_head_and_base(path: Path) -> None:
     assert "all reported checks" in text
 
 
-@pytest.mark.parametrize("path", GOVERNANCE_SURFACES)
-def test_copilot_review_requires_disposition_and_resolved_threads(path: Path) -> None:
-    """A completed review alone must not leave Copilot threads unresolved."""
+@pytest.mark.parametrize("path", COPILOT_ADVISORY_SURFACES)
+def test_copilot_evidence_is_advisory_but_unresolved_threads_block(path: Path) -> None:
+    """Copilot availability cannot block, while unresolved threads still do."""
     text = _normalized(path)
-    assert "copilot review" in text
-    assert "fix" in text
-    assert "reply" in text
-    assert "resolved" in text
+    assert "copilot" in text
+    assert "advisory" in text
+    assert "unresolved review thread" in text
+    assert "block" in text or "refuse" in text
+
+
+def test_copilot_advisory_decision_is_precisely_scoped_and_indexed() -> None:
+    """The successor ADR must preserve every non-Copilot merge boundary."""
+    record = yaml.safe_load(_text(COPILOT_ADVISORY_ADR))
+    assert isinstance(record, dict)
+    decision = record[COPILOT_ADVISORY_ADR_NAME]
+    text = " ".join(str(decision["decision"]).split())
+    supersedes = " ".join(str(item) for item in decision["supersedes"])
+
+    assert decision["status"] == "accepted"
+    assert decision["date"] == "2026-08-26"
+    assert "Copilot" in text and "advisory" in text
+    assert "unresolved review thread" in text and "blocks" in text
+    assert "required ci" in text.lower()
+    assert "exact head" in text and "exact base" in text
+    assert "PER identity" in text
+    assert MERGE_COMMAND in text
+    assert "ADR181" in supersedes and "Copilot" in supersedes
+    assert "ADR230" in supersedes and "Copilot" in supersedes
+    assert "only" in supersedes
+
+    index = yaml.safe_load(_text(ADR_INDEX))
+    assert isinstance(index, dict)
+    entry = index["decisions"][COPILOT_ADVISORY_ADR_NAME]
+    assert index["meta"]["version"] == "1.86.0"
+    assert entry["file"] == COPILOT_ADVISORY_ADR.name
+    assert entry["status"] == "accepted"
 
 
 @pytest.mark.parametrize("path", GOVERNANCE_SURFACES)

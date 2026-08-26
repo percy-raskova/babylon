@@ -138,16 +138,16 @@ horizon, milestones, schedule, and work. GitHub owns source, PRs, reviews, and
 historical evidence. The team closed GitHub Project #7 and Project #8. They are
 historical inputs. The migration is complete, and PER-15 is complete. Neither board is live.
 
-`ai/state.yaml` is historical
-implementation evidence, and `project/` is non-live context.
+`ai/state.yaml` is historical implementation evidence, and `project/` is non-live context.
 
 Create regular lanes from `dev` and target `dev`. Use `feature/`, `fix/`, `docs/`,
 `refactor/`, `test/`, or a `codex/PER-123-short-name` lane. Link the PER identity
 as `docs/agents/governance.md` directs: `Part of PER-N` for partial delivery and
 `Fixes PER-N` only for final acceptance. Never commit directly to `dev` or `main`.
 
-A critical hotfix alone can branch from and target `main`. Its merge is
-Director-only, and a backport PR to `dev` is mandatory.
+A critical hotfix alone can branch from and target `main`. Its Director-only merge requires a backport PR to `dev`.
+Before a release PR, prove `main.yml` on exact `dev` with `gh workflow run main.yml --ref dev`.
+A main PR must produce the combined manifest. Only the Director can merge it with `mise run pr:merge -- N --director-main`.
 <!-- vale ste.NounClusters = YES -->
 <!-- vale ste.UnapprovedWords = YES -->
 <!-- vale Vale.Spelling = YES -->

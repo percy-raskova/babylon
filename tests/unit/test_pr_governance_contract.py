@@ -19,6 +19,10 @@ GOVERNANCE_SURFACES = (
     Path("CONTRIBUTORS.md"),
     Path("docs/agents/governance.md"),
 )
+MAIN_RELEASE_SURFACES = (
+    Path("CONTRIBUTORS.md"),
+    Path("docs/agents/governance.md"),
+)
 MERGE_COMMAND = "mise run pr:merge -- N"
 
 
@@ -101,6 +105,19 @@ def test_main_documents_both_director_only_sources(path: Path) -> None:
     assert "from `dev`" in text
     assert "critical hotfix" in text
     assert "backport" in text
+
+
+@pytest.mark.parametrize("path", MAIN_RELEASE_SURFACES)
+def test_main_release_procedure_uses_premerge_qualification(path: Path) -> None:
+    """Main must use the dev proof and explicit Director merge mode."""
+    text = _text(path)
+    normalized = _normalized(path)
+    assert "gh workflow run main.yml --ref dev" in text
+    assert "mise run pr:merge -- N --director-main" in text
+    assert "complete combined manifest" in normalized
+    assert "before" in normalized and "release pr" in normalized
+    assert "dev:main" not in text
+    assert "tools/promote.sh" not in text
 
 
 def test_dependabot_config_names_pr_qualification_not_retired_promotion() -> None:

@@ -56,64 +56,55 @@ DEV_CHECK_MANIFEST: Final[tuple[CheckRequirement, ...]] = (
     ),
 )
 
-MAIN_CHECK_MANIFEST: Final[tuple[CheckRequirement, ...]] = (
+MAIN_QUALIFICATION_CHECK_MANIFEST: Final[tuple[CheckRequirement, ...]] = (
     CheckRequirement(
-        "Fast Gate (hygiene, lint, format, imports, types, lock)",
-        "blocking",
-        frozenset({"SUCCESS"}),
-    ),
-    CheckRequirement("Unit Tests (xdist, coverage gate)", "blocking", frozenset({"SUCCESS"})),
-    CheckRequirement(
-        "Determinism Gate (byte-identical dense goldens)",
+        "Main Qualification / Event Contract",
         "blocking",
         frozenset({"SUCCESS"}),
     ),
     CheckRequirement(
-        "Security Audit (pip-audit policy — blocking since item-41)",
+        "Main Qualification / Non-Unit Behavioral Contracts",
         "blocking",
         frozenset({"SUCCESS"}),
     ),
     CheckRequirement(
-        "Non-Unit Tests (integration, scenarios, property, contract)",
-        "blocking",
-        frozenset({"SUCCESS"}),
-    ),
-    CheckRequirement("Postgres Integration (web bridge)", "blocking", frozenset({"SUCCESS"})),
-    CheckRequirement(
-        "Determinism Bundle (Postgres-backed, strict)",
+        "Main Qualification / PostgreSQL Determinism Bundle",
         "blocking",
         frozenset({"SUCCESS"}),
     ),
     CheckRequirement(
-        "Reference-Data Tests (ci-data-v1 subset)",
+        "Main Qualification / Reference-Data Contracts",
         "blocking",
         frozenset({"SUCCESS"}),
     ),
     CheckRequirement(
-        "Documentation Build (doctest blocks; manual advisory)",
-        "blocking",
-        frozenset({"SUCCESS"}),
-    ),
-    CheckRequirement("Secret Scan (gitleaks, full history)", "blocking", frozenset({"SUCCESS"})),
-    CheckRequirement(
-        "IaC Config Scan (trivy, HIGH+CRITICAL blocking)",
+        "Main Qualification / Release Documentation",
         "blocking",
         frozenset({"SUCCESS"}),
     ),
     CheckRequirement(
-        "AI Tests (advisory — non-deterministic)",
+        "Main Qualification / AI Tests (advisory)",
         "advisory",
         frozenset({"SUCCESS", "NEUTRAL", "SKIPPED"}),
     ),
     CheckRequirement(
-        "Image Scan (trivy — advisory until postgis bump)",
+        "Main Qualification / Container Image Scan (advisory)",
         "advisory",
         frozenset({"SUCCESS", "NEUTRAL", "SKIPPED"}),
     ),
 )
 
+MAIN_CHECK_MANIFEST: Final[tuple[CheckRequirement, ...]] = (
+    *DEV_CHECK_MANIFEST,
+    *MAIN_QUALIFICATION_CHECK_MANIFEST,
+)
+
 DEV_BLOCKING_CONTEXTS: Final[tuple[str, ...]] = tuple(
     requirement.context for requirement in DEV_CHECK_MANIFEST if requirement.kind == "blocking"
+)
+
+MAIN_BLOCKING_CONTEXTS: Final[tuple[str, ...]] = tuple(
+    requirement.context for requirement in MAIN_CHECK_MANIFEST if requirement.kind == "blocking"
 )
 
 

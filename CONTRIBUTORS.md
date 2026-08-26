@@ -147,6 +147,34 @@ backport PR to `dev` is mandatory after a hotfix merge.
 <!-- vale ste.UnapprovedWords = YES -->
 <!-- vale Vale.Spelling = YES -->
 
+<!-- Vale: this procedure preserves literal GitHub workflow and branch terms. -->
+<!-- vale Vale.Spelling = NO -->
+<!-- vale ste.UnapprovedWords = NO -->
+<!-- vale ste.Articles = NO -->
+## Merge to `main`
+
+Before a release PR, prove the merged qualification workflow on the exact
+`dev` head:
+
+```bash
+gh workflow run main.yml --ref dev
+```
+
+Open the release PR from `dev` to `main` only after that run produces the
+complete combined manifest. The PR runs ordinary CI plus the uniquely named
+release-only qualification checks. After the exact-head review and every
+required check pass, the Director uses the sanctioned main mode:
+
+```bash
+mise run pr:merge -- N --director-main
+```
+
+A critical hotfix uses the same combined manifest and Director mode. Open its
+mandatory backport PR to `dev` after the main merge.
+<!-- vale ste.Articles = YES -->
+<!-- vale ste.UnapprovedWords = YES -->
+<!-- vale Vale.Spelling = YES -->
+
 ## Records
 
 Keep old ADRs unchanged. They record the rationale that applied when the team

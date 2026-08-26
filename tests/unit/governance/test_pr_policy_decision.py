@@ -57,8 +57,8 @@ def test_decision_index_resolves_to_the_live_record() -> None:
     index = _mapping(INDEX_PATH)
     entry = index["decisions"][ADR_KEY]
 
-    assert index["meta"]["version"] == "1.78.0"
-    assert str(index["meta"]["updated"]) == "2026-08-25"
+    assert index["meta"]["version"] == "1.79.0"
+    assert str(index["meta"]["updated"]) == "2026-08-26"
     assert entry["status"] == "accepted"
     assert entry["date"] == "2026-08-25"
     assert entry["file"] == ADR_PATH.name

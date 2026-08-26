@@ -24,6 +24,9 @@ Exact reviewed head SHA: <!-- Use the full 40-character commit SHA. -->
 - [ ] The base branch is `dev`, or the Director approved `main`.
   - Release PR from `dev`.
   - Critical hotfix from `fix/*`, with a mandatory backport PR to `dev`.
+- [ ] For a `main` target, the merged `main.yml` workflow passed on the exact
+      `dev` head before the release PR.
+- [ ] For a `main` target, this PR produced the complete combined manifest.
 - [ ] All reported checks completed successfully for the exact reviewed head
       SHA and base branch above.
 - [ ] The Copilot review completed against the exact reviewed head SHA.
@@ -51,6 +54,8 @@ Disposition and evidence:
 ## Merge
 
 - [ ] Merge only with `mise run pr:merge -- N`. Use this PR number for `N`.
+- [ ] For a `main` target, only the Director uses
+      `mise run pr:merge -- N --director-main`.
 - [ ] Preserve the source branch by default. Delete it only after an explicit
       owner decision and a check for dependent work.
 

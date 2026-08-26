@@ -1,6 +1,6 @@
 meta:
-  version: 1.78.0
-  updated: '2026-08-25'
+  version: 1.79.0
+  updated: '2026-08-26'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
   # ADR NUMBER ALLOCATION (controller ruling 2026-07-21, v1.0.0 parallel lanes —
@@ -1065,3 +1065,8 @@ decisions:
     status: accepted
     date: '2026-08-25'
     file: ADR230_exact_head_pr_and_dependabot_policy.yaml
+  ADR231_main_release_qualification:
+    title: 'Main advances only through a Director-controlled release or critical-hotfix PR after an exact combined CI and uniquely named release qualification manifest'
+    status: accepted
+    date: '2026-08-26'
+    file: ADR231_main_release_qualification.yaml

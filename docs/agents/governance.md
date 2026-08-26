@@ -115,6 +115,31 @@ goes directly to `main`. Every merged hotfix needs a mandatory backport PR to
 `dev`.
 <!-- vale ste.UnapprovedWords = YES -->
 <!-- vale Vale.Spelling = YES -->
+
+<!-- Vale: this procedure preserves literal GitHub workflow and branch terms. -->
+<!-- vale Vale.Spelling = NO -->
+<!-- vale ste.UnapprovedWords = NO -->
+Before a release PR, prove the merged qualification workflow on the exact
+`dev` head:
+
+```bash
+gh workflow run main.yml --ref dev
+```
+
+Open the PR from `dev` to `main` only after that run produces the complete
+combined manifest. The main PR reruns ordinary CI and adds uniquely named
+release-only qualification checks. After exact-head acceptance, only the
+Director runs:
+
+```bash
+mise run pr:merge -- N --director-main
+```
+
+A critical hotfix uses the same combined manifest and command, followed by its
+mandatory backport PR to `dev`.
+<!-- vale ste.UnapprovedWords = YES -->
+<!-- vale Vale.Spelling = YES -->
+
 Use the merge rules in `CONTRIBUTORS.md` for all other pull requests.
 
 <!-- Vale: this section preserves literal GitHub review and branch terms. -->

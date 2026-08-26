@@ -48,22 +48,17 @@ DEV_BLOCKING_CHECKS = (
 )
 
 MAIN_BLOCKING_CHECKS = (
-    "Fast Gate (hygiene, lint, format, imports, types, lock)",
-    "Unit Tests (xdist, coverage gate)",
-    "Determinism Gate (byte-identical dense goldens)",
-    "Security Audit (pip-audit policy — blocking since item-41)",
-    "Non-Unit Tests (integration, scenarios, property, contract)",
-    "Postgres Integration (web bridge)",
-    "Determinism Bundle (Postgres-backed, strict)",
-    "Reference-Data Tests (ci-data-v1 subset)",
-    "Documentation Build (doctest blocks; manual advisory)",
-    "Secret Scan (gitleaks, full history)",
-    "IaC Config Scan (trivy, HIGH+CRITICAL blocking)",
+    *DEV_BLOCKING_CHECKS,
+    "Main Qualification / Event Contract",
+    "Main Qualification / Non-Unit Behavioral Contracts",
+    "Main Qualification / PostgreSQL Determinism Bundle",
+    "Main Qualification / Reference-Data Contracts",
+    "Main Qualification / Release Documentation",
 )
 
 MAIN_ADVISORY_CHECKS = (
-    "AI Tests (advisory — non-deterministic)",
-    "Image Scan (trivy — advisory until postgis bump)",
+    "Main Qualification / AI Tests (advisory)",
+    "Main Qualification / Container Image Scan (advisory)",
 )
 
 
@@ -1003,7 +998,7 @@ def test_director_main_rejects_complete_dev_manifest_as_wrong_qualification(
     result, calls = _run_pr_merge(tmp_path, "--director-main", scenario=scenario)
 
     assert result.returncode == 1
-    assert MAIN_BLOCKING_CHECKS[4] in result.stderr
+    assert MAIN_BLOCKING_CHECKS[len(DEV_BLOCKING_CHECKS)] in result.stderr
     assert _merge_calls(calls) == []
 
 

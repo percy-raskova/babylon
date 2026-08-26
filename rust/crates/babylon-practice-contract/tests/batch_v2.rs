@@ -47,7 +47,7 @@ fn ledger() -> PracticeInputAuthorityLedgerV2 {
     }
 }
 
-fn intent(nonce: u8) -> PracticeIntentV2 {
+fn intent(proposal_marker: u8) -> PracticeIntentV2 {
     PracticeIntentV2 {
         schema_version: 2,
         submit_after_tick: 10,
@@ -59,7 +59,7 @@ fn intent(nonce: u8) -> PracticeIntentV2 {
             tag: PracticeTargetTagV2::LaborProcess,
             identity: PracticeTargetIdentityV2::from_bytes([0x50; 32]),
         },
-        proposal_nonce: ProposalNonceV2::from_bytes([nonce; 16]),
+        proposal_nonce: ProposalNonceV2::from_bytes([proposal_marker; 16]),
         quoted_content_digest: [0x30; 32],
         quoted_resource_contract_digest: [0x40; 32],
         parameters: Vec::new(),
@@ -67,10 +67,10 @@ fn intent(nonce: u8) -> PracticeIntentV2 {
     }
 }
 
-fn item(nonce: u8) -> ResolvedPracticeBatchItemV2 {
+fn item(proposal_marker: u8) -> ResolvedPracticeBatchItemV2 {
     ResolvedPracticeBatchItemV2 {
         authority: authority(),
-        intent: intent(nonce),
+        intent: intent(proposal_marker),
     }
 }
 

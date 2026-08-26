@@ -202,6 +202,13 @@ class TestRegistryFileItself:
         true."""
         assert registry.python_event_type_total == len(fresh_event_type_members)
 
+    def test_bsl_emit_measurements_match_a_fresh_scan(
+        self, registry: EventSchemaRegistry, fresh_bsl_sites: tuple[EmitSite, ...]
+    ) -> None:
+        """The registry records the live BSL site's total and name total."""
+        assert registry.bsl_emit_site_total == len(fresh_bsl_sites)
+        assert registry.bsl_emit_name_total == len({site.event_type for site in fresh_bsl_sites})
+
 
 class TestTier1MatchesAFreshBslScan:
     """R4.1.1's core claim: Tier 1 membership and every row's key set must

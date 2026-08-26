@@ -167,6 +167,18 @@ fn organization_foundation_hashes_are_pinned() {
          fresh-work propagation, unchanged membership, and command writes"
     );
     assert_eq!(
+        hex(&report.world_before),
+        "bc5d675cf9e0b2203beede6e861a4c263e5c80da66d3f4835f84c4ceddd33fe4",
+        "pre-tick nominal world hash moved — this pins graph state, completed \
+         time, allocator cursors, and the governed schedule"
+    );
+    assert_eq!(
+        hex(&report.world_after),
+        "21e0abce8e9dbaa83e55a3d2e5dc73235dc172e1cca3b05556beebd1eba7087a",
+        "post-tick nominal world hash moved — the retired emit changes neither \
+         graph state nor nominal-world inputs"
+    );
+    assert_eq!(
         report.fired, 12,
         "the first tick must execute 4 territory resets + 2 presence \
          attributions + 1 rooted practice + \

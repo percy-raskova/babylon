@@ -28,12 +28,17 @@ measured_at = "2026-08-25"
 # tier1 + tier2 + tier3 must sum to exactly this (CLAUDE.md's "100",
 # AST-verified, corrects the BSL-refactor-program survey's stale "98").
 python_event_type_total = 100
+# Fresh parse totals across every `(emit …)` form and distinct event name.
+# The registry test re-measures both values on every run.
+bsl_emit_site_total = 17
+bsl_emit_name_total = 15
 bsl_content_glob = "rust/crates/babylon-tick/content/rules/*.bsl"
 
 # =============================================================================
-# TIER 1 — verified-bsl (12 members; 12 real `(emit …)` distinct EventTypes
-# out of the 14 total `(emit …)` sites and 12 distinct event names a fresh scan
-# of content/rules/*.bsl finds).
+# TIER 1 — verified-bsl (14 members; 14 real `(emit …)` distinct EventTypes
+# out of the 17 total `(emit …)` sites and 15 distinct event names a fresh scan
+# of content/rules/*.bsl finds; the one remaining BSL-only name is in
+# `unminted_bsl_only` below).
 # =============================================================================
 
 [[tier1]]

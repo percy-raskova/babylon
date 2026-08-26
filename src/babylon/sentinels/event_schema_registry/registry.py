@@ -134,6 +134,8 @@ class EventSchemaRegistry:
     schema_version: int
     measured_at: str
     python_event_type_total: int
+    bsl_emit_site_total: int
+    bsl_emit_name_total: int
     bsl_content_glob: str
     tier1: tuple[Tier1Row, ...]
     tier2: tuple[Tier2Row, ...]
@@ -266,6 +268,8 @@ def load_registry(path: Path = REGISTRY_PATH) -> EventSchemaRegistry:
         schema_version=_require(data, "schema_version", "the registry header"),
         measured_at=measured_at,
         python_event_type_total=_require(data, "python_event_type_total", "the registry header"),
+        bsl_emit_site_total=_require(data, "bsl_emit_site_total", "the registry header"),
+        bsl_emit_name_total=_require(data, "bsl_emit_name_total", "the registry header"),
         bsl_content_glob=_require(data, "bsl_content_glob", "the registry header"),
         tier1=tier1,
         tier2=tier2,

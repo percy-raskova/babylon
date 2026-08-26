@@ -64,6 +64,11 @@ def test_retired_web_dependencies_are_absent_from_every_dependency_set() -> None
     )
 
 
+def test_ci_xdist_plugin_is_a_direct_dev_dependency() -> None:
+    dev = _names(DATA["dependency-groups"]["dev"])
+    assert "pytest-xdist" in dev
+
+
 def test_core_stays_in_default_deps() -> None:
     core = _names(DATA["project"]["dependencies"])
     for pkg in ("pydantic", "typer", "rich", "rustworkx", "openai"):

@@ -108,9 +108,21 @@ def _repository(*, merge_only: bool) -> dict[str, Any]:
     }
 
 
+def _actions_permissions(*, sha_pinning_required: bool) -> dict[str, Any]:
+    return {
+        "enabled": True,
+        "allowed_actions": "all",
+        "sha_pinning_required": sha_pinning_required,
+        "selected_actions_url": "read-only",
+    }
+
+
 def _policy() -> dict[str, Any]:
     return {
         "repository": policy_tool.normalize_repository(_repository(merge_only=True)),
+        "actions_permissions": policy_tool.normalize_actions_permissions(
+            _actions_permissions(sha_pinning_required=True)
+        ),
         "dev_ruleset": policy_tool.normalize_ruleset(_ruleset(strict=True, threads=True)),
         "main_ruleset": policy_tool.normalize_ruleset(
             _ruleset(
@@ -141,6 +153,7 @@ class FakeApi:
             ruleset_id=18807583,
         )
         self.repository = _repository(merge_only=False)
+        self.actions_permissions = _actions_permissions(sha_pinning_required=False)
         self.labels: list[dict[str, Any]] = []
         self.check_runs = [
             {
@@ -197,6 +210,8 @@ class FakeApi:
             return deepcopy(self.main_ruleset)
         if endpoint == policy_tool.REPOSITORY_ENDPOINT:
             return deepcopy(self.repository)
+        if endpoint == policy_tool.ACTIONS_PERMISSIONS_ENDPOINT:
+            return deepcopy(self.actions_permissions)
         if endpoint == policy_tool.LABELS_LIST_ENDPOINT:
             return deepcopy(self.labels)
         if endpoint == policy_tool.CHECK_RUNS_ENDPOINT.format(sha=self.dev_sha):
@@ -214,6 +229,7 @@ class FakeApi:
         if (
             self.fail_ruleset_restore
             and method == "PUT"
+            and endpoint == policy_tool.DEV_RULESET_ENDPOINT.format(ruleset_id=18807584)
             and payload["rules"][-1]["parameters"]["strict_required_status_checks_policy"] is False
         ):
             raise policy_tool.GitHubApiError("injected ruleset restore failure")
@@ -227,6 +243,9 @@ class FakeApi:
         if method == "PATCH" and endpoint == policy_tool.REPOSITORY_ENDPOINT:
             self.repository.update(payload)
             return self._write_result(method, endpoint, self.repository)
+        if method == "PUT" and endpoint == policy_tool.ACTIONS_PERMISSIONS_ENDPOINT:
+            self.actions_permissions.update(payload)
+            return self._write_result(method, endpoint, self.actions_permissions)
         if method == "PUT" and endpoint == policy_tool.DEV_RULESET_ENDPOINT.format(
             ruleset_id=18807584
         ):
@@ -256,6 +275,9 @@ class FakeApi:
 def test_normalizers_strip_read_only_api_fields() -> None:
     normalized_ruleset = policy_tool.normalize_ruleset(_ruleset(strict=False, threads=False))
     normalized_repository = policy_tool.normalize_repository(_repository(merge_only=False))
+    normalized_actions = policy_tool.normalize_actions_permissions(
+        _actions_permissions(sha_pinning_required=False)
+    )
 
     assert set(normalized_ruleset) == {
         "name",
@@ -271,6 +293,11 @@ def test_normalizers_strip_read_only_api_fields() -> None:
         "allow_rebase_merge",
         "allow_auto_merge",
         "delete_branch_on_merge",
+    }
+    assert normalized_actions == {
+        "enabled": True,
+        "allowed_actions": "all",
+        "sha_pinning_required": False,
     }
 
 
@@ -289,6 +316,7 @@ def test_check_reports_drift_without_mutation() -> None:
 
     assert drift == [
         "repository merge settings differ",
+        "GitHub Actions permissions differ",
         "dev ruleset differs",
         "main ruleset differs",
         "automerge label is absent",
@@ -415,6 +443,7 @@ def test_apply_snapshots_before_mutation_and_verifies_readback(tmp_path: Path) -
     assert snapshot["dev_sha"] == api.dev_sha
     assert snapshot["dev_ruleset_id"] == 18807584
     assert snapshot["main_ruleset_id"] == 18807583
+    assert snapshot["actions_permissions"]["sha_pinning_required"] is False
     assert snapshot["automerge_label"] is None
     first_write = next(index for index, call in enumerate(api.calls) if call[0] != "GET")
     assert snapshot_path.is_file()
@@ -526,6 +555,7 @@ def test_moved_dev_during_apply_rolls_back_every_mutation(tmp_path: Path) -> Non
     original_ruleset = deepcopy(api.ruleset)
     original_main_ruleset = deepcopy(api.main_ruleset)
     original_repository = deepcopy(api.repository)
+    original_actions_permissions = deepcopy(api.actions_permissions)
 
     with pytest.raises(policy_tool.PolicyError, match="dev moved during policy apply"):
         policy_tool.apply_policy(api, _policy(), expected_sha, tmp_path / "before.json")
@@ -537,6 +567,7 @@ def test_moved_dev_during_apply_rolls_back_every_mutation(tmp_path: Path) -> Non
         original_main_ruleset
     )
     assert api.repository == original_repository
+    assert api.actions_permissions == original_actions_permissions
     assert api.labels == []
 
 
@@ -562,6 +593,7 @@ def test_failed_ruleset_update_rolls_back_repo_and_new_label(tmp_path: Path) -> 
     [
         ("POST", policy_tool.LABELS_ENDPOINT),
         ("PATCH", policy_tool.REPOSITORY_ENDPOINT),
+        ("PUT", policy_tool.ACTIONS_PERMISSIONS_ENDPOINT),
         ("PUT", policy_tool.DEV_RULESET_ENDPOINT.format(ruleset_id=18807584)),
         ("PUT", policy_tool.MAIN_RULESET_ENDPOINT.format(ruleset_id=18807583)),
     ],
@@ -627,6 +659,7 @@ def test_readback_mismatch_rolls_back_every_mutation(tmp_path: Path) -> None:
     api.mismatch_ruleset_readback = True
     original_ruleset = deepcopy(api.ruleset)
     original_repository = deepcopy(api.repository)
+    original_actions_permissions = deepcopy(api.actions_permissions)
 
     with pytest.raises(policy_tool.PolicyError, match="readback mismatch"):
         policy_tool.apply_policy(api, _policy(), api.dev_sha, tmp_path / "before.json")
@@ -635,6 +668,7 @@ def test_readback_mismatch_rolls_back_every_mutation(tmp_path: Path) -> None:
         original_ruleset
     )
     assert api.repository == original_repository
+    assert api.actions_permissions == original_actions_permissions
     assert api.labels == []
 
 
@@ -676,6 +710,7 @@ def test_manual_rollback_restores_snapshot_and_verifies_readback(tmp_path: Path)
     original_ruleset = deepcopy(api.ruleset)
     original_main_ruleset = deepcopy(api.main_ruleset)
     original_repository = deepcopy(api.repository)
+    original_actions_permissions = deepcopy(api.actions_permissions)
     snapshot_path = tmp_path / "before.json"
     policy_tool.apply_policy(api, _policy(), api.dev_sha, snapshot_path)
 
@@ -688,7 +723,39 @@ def test_manual_rollback_restores_snapshot_and_verifies_readback(tmp_path: Path)
         original_main_ruleset
     )
     assert api.repository == original_repository
+    assert api.actions_permissions == original_actions_permissions
     assert api.labels == []
+
+
+def test_manual_rollback_preserves_actions_permissions_for_legacy_snapshot(
+    tmp_path: Path,
+) -> None:
+    api = FakeApi()
+    original_ruleset = deepcopy(api.ruleset)
+    original_main_ruleset = deepcopy(api.main_ruleset)
+    original_repository = deepcopy(api.repository)
+    snapshot_path = tmp_path / "before.json"
+    policy_tool.apply_policy(api, _policy(), api.dev_sha, snapshot_path)
+    actions_permissions_after_apply = deepcopy(api.actions_permissions)
+    legacy_snapshot = policy_tool.load_snapshot(snapshot_path)
+    del legacy_snapshot["actions_permissions"]
+    api.calls.clear()
+
+    policy_tool.rollback_policy(api, legacy_snapshot)
+
+    assert policy_tool.normalize_ruleset(api.ruleset) == policy_tool.normalize_ruleset(
+        original_ruleset
+    )
+    assert policy_tool.normalize_ruleset(api.main_ruleset) == policy_tool.normalize_ruleset(
+        original_main_ruleset
+    )
+    assert api.repository == original_repository
+    assert api.actions_permissions == actions_permissions_after_apply
+    assert api.labels == []
+    assert not any(
+        method == "PUT" and endpoint == policy_tool.ACTIONS_PERMISSIONS_ENDPOINT
+        for method, endpoint, _payload in api.calls
+    )
 
 
 def test_manual_rollback_refuses_a_stale_dev_snapshot_without_mutation(tmp_path: Path) -> None:

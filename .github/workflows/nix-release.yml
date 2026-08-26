@@ -64,7 +64,7 @@ jobs:
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ steps.tag.outputs.tag }}
           fetch-depth: 0
@@ -103,11 +103,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.verify-tag.outputs.tag }}
 
-      - uses: cachix/install-nix-action@v31
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes
@@ -125,11 +125,11 @@ jobs:
     # a hang must die loudly, not run to the 360min default.
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.verify-tag.outputs.tag }}
 
-      - uses: cachix/install-nix-action@v31
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes
@@ -169,10 +169,12 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          NIX_CACHE_SIGNING_KEY: ${{ secrets.NIX_CACHE_SIGNING_KEY }}
         run: |
           umask 077
-          printf '%s' "${{ secrets.NIX_CACHE_SIGNING_KEY }}" > /tmp/cache-key
-          ENDPOINT="${{ secrets.CF_ACCOUNT_ID }}.r2.cloudflarestorage.com"
+          printf '%s' "$NIX_CACHE_SIGNING_KEY" > /tmp/cache-key
+          ENDPOINT="${CF_ACCOUNT_ID}.r2.cloudflarestorage.com"
           STORE_URI="s3://babylon-cache?scheme=https&endpoint=${ENDPOINT}"
           STORE_URI="${STORE_URI}&region=auto&secret-key=/tmp/cache-key&compression=zstd"
           nix copy --to "$STORE_URI" .#babylon
@@ -191,11 +193,14 @@ jobs:
       - name: AppImage demo artifact (zero-install path)
         id: appimage_demo
         continue-on-error: true
-        run: nix bundle --bundler github:ralismark/nix-appimage .#babylon
+        run: >-
+          nix bundle
+          --bundler github:ralismark/nix-appimage/7946addbc0d97e358a6d7aefe5e82310f0fe6b18
+          .#babylon
 
       - name: Upload AppImage demo artifact
         if: steps.appimage_demo.outcome == 'success'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: babylon-appimage-demo-linux-x86_64
           path: babylon

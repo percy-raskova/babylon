@@ -29,7 +29,7 @@ runs:
   using: composite
   steps:
     - name: Set up tools with mise
-      uses: jdx/mise-action@v4
+      uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518 # v4
       with:
         version: 2026.8.12
         cache: true
@@ -40,7 +40,7 @@ runs:
     # the venv cache key needs no rust/ hashes either.
     - name: Load cached venv
       id: venv-cache
-      uses: actions/cache@v6
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: .venv
         key: >-

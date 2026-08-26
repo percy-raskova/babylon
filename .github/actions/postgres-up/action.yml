@@ -12,10 +12,10 @@ runs:
   using: composite
   steps:
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v4
+      uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
 
     - name: Build babylon-pg (GHA layer cache)
-      uses: docker/bake-action@v7
+      uses: docker/bake-action@d3418bd7d0e9324001bca92fa8ba175ea7e6dc9b # v7
       env:
         BABYLON_PG_DATA: babylon-pg-ci
       with:

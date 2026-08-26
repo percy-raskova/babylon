@@ -113,6 +113,9 @@ class TestPolicyParsing:
         assert command == [
             "uv",
             "run",
+            "--frozen",
+            "--extra",
+            "server",
             "pip-audit",
             "--ignore-vuln",
             "CVE-2026-3219",

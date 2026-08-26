@@ -27,6 +27,7 @@ from tools.pr_policy import (  # noqa: E402
 
 REPOSITORY = "percy-raskova/babylon"
 REPOSITORY_ENDPOINT = f"repos/{REPOSITORY}"
+ACTIONS_PERMISSIONS_ENDPOINT = f"{REPOSITORY_ENDPOINT}/actions/permissions"
 RULESETS_ENDPOINT = f"{REPOSITORY_ENDPOINT}/rulesets?includes_parents=false&per_page=100"
 DEV_RULESET_ENDPOINT = f"{REPOSITORY_ENDPOINT}/rulesets/{{ruleset_id}}"
 MAIN_RULESET_ENDPOINT = DEV_RULESET_ENDPOINT
@@ -82,6 +83,7 @@ REPOSITORY_POLICY_FIELDS = (
     "allow_auto_merge",
     "delete_branch_on_merge",
 )
+ACTIONS_PERMISSION_FIELDS = ("enabled", "allowed_actions", "sha_pinning_required")
 LABEL_FIELDS = ("name", "color", "description")
 
 
@@ -185,6 +187,11 @@ def normalize_repository(payload: dict[str, object]) -> dict[str, object]:
     return _select_fields(payload, REPOSITORY_POLICY_FIELDS)
 
 
+def normalize_actions_permissions(payload: dict[str, object]) -> dict[str, object]:
+    """Return the repository Actions fields owned by PER-263."""
+    return _select_fields(payload, ACTIONS_PERMISSION_FIELDS)
+
+
 def normalize_label(payload: dict[str, object]) -> dict[str, object]:
     """Return the stable label fields owned by PER-264."""
     return _select_fields(payload, LABEL_FIELDS)
@@ -212,6 +219,7 @@ def load_policy(path: Path = DEFAULT_POLICY_PATH) -> dict[str, object]:
         raise PolicyError(f"policy {path} is not valid JSON") from error
     policy = _object(raw, "policy")
     _object(policy.get("repository"), "policy.repository")
+    _object(policy.get("actions_permissions"), "policy.actions_permissions")
     _object(policy.get("dev_ruleset"), "policy.dev_ruleset")
     _object(policy.get("main_ruleset"), "policy.main_ruleset")
     _object(policy.get("automerge_label"), "policy.automerge_label")
@@ -288,6 +296,10 @@ def _current_state(api: Api) -> dict[str, object]:
     dev_ruleset_id, dev_ruleset = rulesets["dev"]
     main_ruleset_id, main_ruleset = rulesets["main"]
     repository = _object(api.get_json(REPOSITORY_ENDPOINT), "repository")
+    actions_permissions = _object(
+        api.get_json(ACTIONS_PERMISSIONS_ENDPOINT),
+        "GitHub Actions permissions",
+    )
     labels = _labels(api)
     return {
         "dev_ruleset_id": dev_ruleset_id,
@@ -295,6 +307,7 @@ def _current_state(api: Api) -> dict[str, object]:
         "main_ruleset_id": main_ruleset_id,
         "main_ruleset": normalize_ruleset(main_ruleset),
         "repository": normalize_repository(repository),
+        "actions_permissions": normalize_actions_permissions(actions_permissions),
         "automerge_label": _find_label(labels, CANONICAL_AUTOMERGE_LABEL),
     }
 
@@ -324,6 +337,9 @@ def _state_identity(state: dict[str, object]) -> dict[str, object]:
         "main_ruleset_id": main_ruleset_id,
         "main_ruleset": main_ruleset,
         "repository": normalize_repository(_object(state.get("repository"), "state repository")),
+        "actions_permissions": normalize_actions_permissions(
+            _object(state.get("actions_permissions"), "state Actions permissions")
+        ),
         "automerge_label": normalized_label,
     }
 
@@ -333,12 +349,17 @@ def check_policy(api: Api, policy: dict[str, object]) -> list[str]:
     _validate_policy(policy)
     current = _current_state(api)
     desired_repository = normalize_repository(_object(policy["repository"], "repository policy"))
+    desired_actions_permissions = normalize_actions_permissions(
+        _object(policy["actions_permissions"], "Actions permissions policy")
+    )
     desired_dev_ruleset = normalize_ruleset(_object(policy["dev_ruleset"], "dev ruleset policy"))
     desired_main_ruleset = normalize_ruleset(_object(policy["main_ruleset"], "main ruleset policy"))
     desired_label = _canonical_label(_object(policy["automerge_label"], "label policy"), "policy")
     drift: list[str] = []
     if current["repository"] != desired_repository:
         drift.append("repository merge settings differ")
+    if current["actions_permissions"] != desired_actions_permissions:
+        drift.append("GitHub Actions permissions differ")
     if current["dev_ruleset"] != desired_dev_ruleset:
         drift.append("dev ruleset differs")
     if current["main_ruleset"] != desired_main_ruleset:
@@ -399,6 +420,17 @@ def _validate_policy(policy: dict[str, object]) -> None:
     ):
         raise PolicyError("required checks must equal the complete main check manifest")
     normalize_repository(_object(policy.get("repository"), "repository policy"))
+    actions_permissions = normalize_actions_permissions(
+        _object(policy.get("actions_permissions"), "Actions permissions policy")
+    )
+    if actions_permissions != {
+        "enabled": True,
+        "allowed_actions": "all",
+        "sha_pinning_required": True,
+    }:
+        raise PolicyError(
+            "Actions permissions must require immutable SHAs without disabling Actions"
+        )
     _canonical_label(_object(policy.get("automerge_label"), "label policy"), "policy")
 
 
@@ -502,13 +534,14 @@ def _restore_label(api: Api, prior: object, current: object = _UNKNOWN) -> None:
 def _component_differences(
     current: dict[str, object],
     desired: dict[str, object],
-) -> tuple[bool, bool, bool, bool]:
+) -> tuple[bool, bool, bool, bool, bool]:
     current_identity = _state_identity(current)
     desired_identity = _state_identity(desired)
     return (
         current_identity["dev_ruleset"] != desired_identity["dev_ruleset"],
         current_identity["main_ruleset"] != desired_identity["main_ruleset"],
         current_identity["repository"] != desired_identity["repository"],
+        current_identity["actions_permissions"] != desired_identity["actions_permissions"],
         current_identity["automerge_label"] != desired_identity["automerge_label"],
     )
 
@@ -521,11 +554,15 @@ def _restore_components(
     restore_dev_ruleset: bool,
     restore_main_ruleset: bool,
     restore_repository: bool,
+    restore_actions_permissions: bool,
     restore_label: bool,
 ) -> list[str]:
     dev_ruleset_id, dev_ruleset = _state_ruleset_identity(before, "dev")
     main_ruleset_id, main_ruleset = _state_ruleset_identity(before, "main")
     repository = normalize_repository(_object(before.get("repository"), "snapshot repository"))
+    actions_permissions = normalize_actions_permissions(
+        _object(before.get("actions_permissions"), "snapshot Actions permissions")
+    )
     current_label = current.get("automerge_label") if current is not None else _UNKNOWN
     errors: list[str] = []
     if restore_dev_ruleset:
@@ -551,6 +588,11 @@ def _restore_components(
             api.send_json("PATCH", REPOSITORY_ENDPOINT, repository)
         except (GitHubApiError, PolicyError, OSError) as error:
             errors.append(f"repository restore failed: {error}")
+    if restore_actions_permissions:
+        try:
+            api.send_json("PUT", ACTIONS_PERMISSIONS_ENDPOINT, actions_permissions)
+        except (GitHubApiError, PolicyError, OSError) as error:
+            errors.append(f"GitHub Actions permissions restore failed: {error}")
     if restore_label:
         try:
             _restore_label(api, before.get("automerge_label"), current_label)
@@ -566,6 +608,7 @@ def _restore_snapshot(
     attempted_dev_ruleset: bool,
     attempted_main_ruleset: bool,
     attempted_repository: bool,
+    attempted_actions_permissions: bool,
     attempted_label: bool,
 ) -> None:
     _state_identity(before)
@@ -574,6 +617,7 @@ def _restore_snapshot(
         attempted_dev_ruleset,
         attempted_main_ruleset,
         attempted_repository,
+        attempted_actions_permissions,
         attempted_label,
     )
     try:
@@ -593,7 +637,8 @@ def _restore_snapshot(
         restore_dev_ruleset=restore_flags[0],
         restore_main_ruleset=restore_flags[1],
         restore_repository=restore_flags[2],
-        restore_label=restore_flags[3],
+        restore_actions_permissions=restore_flags[3],
+        restore_label=restore_flags[4],
     )
     try:
         restored = _state_identity(_current_state(api)) == _state_identity(before)
@@ -638,6 +683,9 @@ def apply_policy(
         raise PolicyError("dev moved after green evidence; no mutation was attempted")
 
     desired_repository = normalize_repository(_object(policy["repository"], "repository policy"))
+    desired_actions_permissions = normalize_actions_permissions(
+        _object(policy["actions_permissions"], "Actions permissions policy")
+    )
     desired_dev_ruleset = normalize_ruleset(_object(policy["dev_ruleset"], "dev ruleset policy"))
     desired_main_ruleset = normalize_ruleset(_object(policy["main_ruleset"], "main ruleset policy"))
     desired_label = _canonical_label(_object(policy["automerge_label"], "label policy"), "policy")
@@ -651,10 +699,12 @@ def apply_policy(
         != desired_label
     )
     repository_differs = before["repository"] != desired_repository
+    actions_permissions_differ = before["actions_permissions"] != desired_actions_permissions
     dev_ruleset_differs = before["dev_ruleset"] != desired_dev_ruleset
     main_ruleset_differs = before["main_ruleset"] != desired_main_ruleset
     label_attempted = False
     repository_attempted = False
+    actions_permissions_attempted = False
     dev_ruleset_attempted = False
     main_ruleset_attempted = False
 
@@ -679,6 +729,9 @@ def apply_policy(
                 MAIN_RULESET_ENDPOINT.format(ruleset_id=main_ruleset_id),
                 desired_main_ruleset,
             )
+        if actions_permissions_differ:
+            actions_permissions_attempted = True
+            api.send_json("PUT", ACTIONS_PERMISSIONS_ENDPOINT, desired_actions_permissions)
         drift = check_policy(api, policy)
         if drift:
             raise PolicyError("GitHub policy readback mismatch: " + "; ".join(drift))
@@ -692,6 +745,7 @@ def apply_policy(
                 attempted_dev_ruleset=dev_ruleset_attempted,
                 attempted_main_ruleset=main_ruleset_attempted,
                 attempted_repository=repository_attempted,
+                attempted_actions_permissions=actions_permissions_attempted,
                 attempted_label=label_attempted,
             )
         except (GitHubApiError, PolicyError, OSError) as rollback_error:
@@ -714,19 +768,37 @@ def load_snapshot(path: Path) -> dict[str, object]:
 
 def rollback_policy(api: Api, snapshot: dict[str, object]) -> None:
     """Restore one snapshot only while its exact dev evidence is still current."""
-    desired = _state_identity(snapshot)
+    owns_actions_permissions = "actions_permissions" in snapshot
+    validation_snapshot = dict(snapshot)
+    if not owns_actions_permissions:
+        validation_snapshot["actions_permissions"] = {
+            "enabled": True,
+            "allowed_actions": "all",
+            "sha_pinning_required": True,
+        }
+    validated_identity = _state_identity(validation_snapshot)
+
     expected_dev_sha = snapshot.get("dev_sha")
     if not isinstance(expected_dev_sha, str) or SHA_PATTERN.fullmatch(expected_dev_sha) is None:
         raise PolicyError("snapshot has no canonical dev SHA")
     if _dev_sha(api) != expected_dev_sha:
         raise PolicyError("snapshot dev SHA is stale; rollback refused")
 
+    rollback_snapshot = dict(snapshot)
+    if not owns_actions_permissions:
+        current = _current_state(api)
+        rollback_snapshot["actions_permissions"] = current["actions_permissions"]
+        desired = _state_identity(rollback_snapshot)
+    else:
+        desired = validated_identity
+
     _restore_snapshot(
         api,
-        snapshot,
+        rollback_snapshot,
         attempted_dev_ruleset=True,
         attempted_main_ruleset=True,
         attempted_repository=True,
+        attempted_actions_permissions=owns_actions_permissions,
         attempted_label=True,
     )
     if _state_identity(_current_state(api)) != desired:

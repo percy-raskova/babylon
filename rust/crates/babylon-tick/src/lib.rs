@@ -51,8 +51,10 @@ use std::collections::{HashMap, HashSet};
 
 mod phase_order;
 pub mod replay_identity;
+pub mod replay_session;
 pub mod session;
 mod world_hash;
+pub use replay_session::{IdentifiedTickReportV1, ReplayTickError, ReplayTickSession};
 pub use session::TickSession;
 
 /// The result of running one or more rules over one scenario for one tick:
@@ -215,10 +217,6 @@ pub(crate) struct PreparedRules {
     pub rules: Vec<(String, LoadedRule)>,
     /// Parsed rule forms retained so replay preparation can independently
     /// recompute the canonical rules hash over what this engine loaded.
-    #[allow(
-        dead_code,
-        reason = "PER-60 Task 9 retains these forms for Task 10 session construction"
-    )]
     pub rule_forms: Vec<SExpr>,
     pub types: TypeEnv,
     pub intrinsics: IntrinsicCosts,
@@ -983,6 +981,75 @@ fn checked_fired_total(per_rule_fired: &[(String, usize)]) -> Result<usize, Stri
     })
 }
 
+enum ExecutionIdentity<'a, C> {
+    Current {
+        rng_seed: RngSeedContext<'a>,
+        stable_resolver: Option<&'a StableElementResolverV1>,
+    },
+    Replay(replay_session::ReplayExecutionInputs<'a, C>),
+}
+
+impl<C> ExecutionIdentity<'_, C> {
+    fn rng_seed(&self) -> RngSeedContext<'_> {
+        match self {
+            Self::Current { rng_seed, .. } => *rng_seed,
+            Self::Replay(execution) => RngSeedContext::V2 {
+                session: execution.session,
+                seed: execution.seed,
+            },
+        }
+    }
+
+    fn stable_resolver(&self) -> Option<&StableElementResolverV1> {
+        match self {
+            Self::Current {
+                stable_resolver, ..
+            } => *stable_resolver,
+            Self::Replay(execution) => Some(execution.resolver),
+        }
+    }
+
+    const fn is_replay(&self) -> bool {
+        matches!(self, Self::Replay(_))
+    }
+}
+
+struct TickTransactionResult {
+    report: TickReport,
+    replay: Option<replay_session::ReplayIdentityArtifactsV1>,
+}
+
+struct TransactionPrelude {
+    schedule_digest: [u8; 32],
+    before: [u8; 32],
+    world_before: [u8; 32],
+    replay_prior: Option<replay_session::ReplayPriorIdentityV1>,
+}
+
+struct ExecutedRules<G> {
+    graph: G,
+    sink: CollectingSink,
+    fired: usize,
+    per_rule_fired: Vec<(String, usize)>,
+    audit_receipts: Vec<AuditReceipt>,
+}
+
+enum TickTransactionError {
+    Current(String),
+    Replay(ReplayTickError),
+}
+
+fn transaction_error<C>(
+    identity: &ExecutionIdentity<'_, C>,
+    message: String,
+) -> TickTransactionError {
+    if identity.is_replay() {
+        TickTransactionError::Replay(ReplayTickError::Execution { message })
+    } else {
+        TickTransactionError::Current(message)
+    }
+}
+
 fn run_prepared_tick_with<G, B, H>(
     prepared: &PreparedRules,
     graph: &mut G,
@@ -990,38 +1057,144 @@ fn run_prepared_tick_with<G, B, H>(
     rng_seed: RngSeedContext<'_>,
     stable_resolver: Option<&StableElementResolverV1>,
     tick: i64,
-    mut state_hash: H,
+    state_hash: H,
 ) -> Result<TickReport, String>
 where
     G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy,
     B: PreparedEventBatchSink,
     H: FnMut(HashBoundary, &G) -> Result<[u8; 32], GraphError>,
 {
+    let identity: ExecutionIdentity<'_, replay_session::ProductionReplayIdentityComposer> =
+        ExecutionIdentity::Current {
+            rng_seed,
+            stable_resolver,
+        };
+    run_prepared_tick_transaction(prepared, graph, sink, identity, tick, state_hash)
+        .map(|result| result.report)
+        .map_err(|error| match error {
+            TickTransactionError::Current(message) => message,
+            TickTransactionError::Replay(replay) => replay.to_string(),
+        })
+}
+
+pub(crate) fn run_prepared_replay_tick<G, C>(
+    prepared: &PreparedRules,
+    graph: &mut G,
+    sink: &mut CollectingSink,
+    tick: i64,
+    execution: replay_session::ReplayExecutionInputs<'_, C>,
+) -> Result<IdentifiedTickReportV1, ReplayTickError>
+where
+    G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy,
+    C: replay_session::ReplayIdentityComposer,
+{
+    let result = run_prepared_tick_transaction(
+        prepared,
+        graph,
+        sink,
+        ExecutionIdentity::Replay(execution),
+        tick,
+        |_boundary, candidate| candidate.state_hash(),
+    )
+    .map_err(|error| match error {
+        TickTransactionError::Current(message) => ReplayTickError::Execution { message },
+        TickTransactionError::Replay(replay) => replay,
+    })?;
+    let artifacts = result.replay.ok_or_else(|| ReplayTickError::Composer {
+        message: "replay transaction returned no identity artifacts".to_owned(),
+    })?;
+    Ok(replay_session::identified_report(result.report, artifacts))
+}
+
+fn run_prepared_tick_transaction<G, B, H, C>(
+    prepared: &PreparedRules,
+    graph: &mut G,
+    sink: &mut B,
+    identity: ExecutionIdentity<'_, C>,
+    tick: i64,
+    mut state_hash: H,
+) -> Result<TickTransactionResult, TickTransactionError>
+where
+    G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy,
+    B: PreparedEventBatchSink,
+    H: FnMut(HashBoundary, &G) -> Result<[u8; 32], GraphError>,
+    C: replay_session::ReplayIdentityComposer,
+{
+    let prelude = prepare_tick_transaction(graph, &identity, tick, &mut state_hash)?;
+    let executed = execute_prepared_rules(prepared, graph, &identity, tick)?;
+    complete_tick_transaction(
+        prepared,
+        graph,
+        sink,
+        &identity,
+        tick,
+        &mut state_hash,
+        prelude,
+        executed,
+    )
+}
+
+fn prepare_tick_transaction<G, H, C>(
+    graph: &G,
+    identity: &ExecutionIdentity<'_, C>,
+    tick: i64,
+    state_hash: &mut H,
+) -> Result<TransactionPrelude, TickTransactionError>
+where
+    G: CanonicalState + AllocatorState,
+    H: FnMut(HashBoundary, &G) -> Result<[u8; 32], GraphError>,
+{
     let completed_before = tick
         .checked_sub(1)
         .filter(|completed| *completed >= 0)
-        .ok_or_else(|| format!("tick to adjudicate must be positive, got {tick}"))?;
-    let schedule_digest = phase_order::schedule_digest().map_err(|e| e.to_string())?;
-    let before = state_hash(HashBoundary::Pre, graph)
-        .map_err(|e| format!("pre-tick state: {}", e.message))?;
+        .ok_or_else(|| {
+            transaction_error(
+                identity,
+                format!("tick to adjudicate must be positive, got {tick}"),
+            )
+        })?;
+    if let ExecutionIdentity::Replay(execution) = identity {
+        replay_session::validate_replay_actions(execution, tick)
+            .map_err(TickTransactionError::Replay)?;
+    }
+    let schedule_digest = phase_order::schedule_digest()
+        .map_err(|error| transaction_error(identity, error.to_string()))?;
+    let before = state_hash(HashBoundary::Pre, graph).map_err(|error| {
+        transaction_error(identity, format!("pre-tick state: {}", error.message))
+    })?;
     let world_before = world_hash::nominal_world_hash(
         before,
         completed_before,
         graph.allocator_cursors(),
         schedule_digest,
-    )?;
+    )
+    .map_err(|error| transaction_error(identity, error))?;
+    let replay_prior = match identity {
+        ExecutionIdentity::Current { .. } => None,
+        ExecutionIdentity::Replay(execution) => Some(
+            replay_session::compose_replay_prior(graph, execution, completed_before)
+                .map_err(TickTransactionError::Replay)?,
+        ),
+    };
+    Ok(TransactionPrelude {
+        schedule_digest,
+        before,
+        world_before,
+        replay_prior,
+    })
+}
+
+fn execute_prepared_rules<G, C>(
+    prepared: &PreparedRules,
+    graph: &G,
+    identity: &ExecutionIdentity<'_, C>,
+    tick: i64,
+) -> Result<ExecutedRules<G>, TickTransactionError>
+where
+    G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy,
+{
     let mut working_graph = graph.detached_copy();
     let mut working_sink = CollectingSink::default();
-
-    // Every rule in `prepared.rules` runs to COMPLETION (every matching
-    // subject) before the next rule starts — never interleaved — against the
-    // SAME working graph, so a later rule sees an earlier rule's same-tick
-    // writes. ADR224 makes that existing behavior the explicit rule-to-rule
-    // contract: phase rank orders causal positions, and rule id orders peers
-    // within one rank. The live aggregate analyzer rejects stale optional-
-    // default reads and unreset fan-in before execution. Within one rule,
-    // `run_tick_observed` still collects all subject effects against one
-    // pre-rule state and only then applies them in subject order.
     let mut per_rule_fired = Vec::with_capacity(prepared.rules.len());
     let mut audit_receipts = Vec::new();
     for (id, loaded) in &prepared.rules {
@@ -1042,45 +1215,108 @@ where
             // not pin and are refused by name at `run_tick` entry.
             tick,
             Some(&prepared.node_content_ids),
-            rng_seed,
-            stable_resolver,
+            identity.rng_seed(),
+            identity.stable_resolver(),
             prepared.vocabulary.as_ref(),
             &mut write_log,
         )
-        .map_err(|e| format!("tick failed in rule {id}: {e}"))?;
+        .map_err(|error| {
+            transaction_error(identity, format!("tick failed in rule {id}: {error}"))
+        })?;
         let emitted_event_types = working_sink.events[event_start..]
             .iter()
             .map(|(event_type, _)| event_type.clone())
             .collect::<Vec<_>>();
         let mut rule_receipts =
             reduce_audit_receipts(&loaded.contract, &emitted_event_types, &write_log.records)
-                .map_err(|error| format!("causal receipt refused in rule {id}: {error}"))?;
+                .map_err(|error| {
+                    transaction_error(
+                        identity,
+                        format!("causal receipt refused in rule {id}: {error}"),
+                    )
+                })?;
         audit_receipts.append(&mut rule_receipts);
         per_rule_fired.push((id.clone(), outcome.fired));
     }
-    let fired = checked_fired_total(&per_rule_fired)?;
-
-    let after = state_hash(HashBoundary::Post, &working_graph)
-        .map_err(|e| format!("post-tick state: {}", e.message))?;
-    let world_after = world_hash::nominal_world_hash(
-        after,
-        tick,
-        working_graph.allocator_cursors(),
-        schedule_digest,
-    )?;
-    sink.try_prepare(working_sink.events.len())?;
-    *graph = working_graph;
-    sink.commit_prepared(working_sink.events);
-
-    Ok(TickReport {
-        before,
-        after,
-        world_before,
-        world_after,
+    let fired =
+        checked_fired_total(&per_rule_fired).map_err(|error| transaction_error(identity, error))?;
+    Ok(ExecutedRules {
+        graph: working_graph,
+        sink: working_sink,
         fired,
         per_rule_fired,
         audit_receipts,
     })
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the shared transaction keeps state publication at one explicit boundary"
+)]
+fn complete_tick_transaction<G, B, H, C>(
+    prepared: &PreparedRules,
+    graph: &mut G,
+    sink: &mut B,
+    identity: &ExecutionIdentity<'_, C>,
+    tick: i64,
+    state_hash: &mut H,
+    prelude: TransactionPrelude,
+    executed: ExecutedRules<G>,
+) -> Result<TickTransactionResult, TickTransactionError>
+where
+    G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy,
+    B: PreparedEventBatchSink,
+    H: FnMut(HashBoundary, &G) -> Result<[u8; 32], GraphError>,
+    C: replay_session::ReplayIdentityComposer,
+{
+    let after = state_hash(HashBoundary::Post, &executed.graph).map_err(|error| {
+        transaction_error(identity, format!("post-tick state: {}", error.message))
+    })?;
+    let world_after = world_hash::nominal_world_hash(
+        after,
+        tick,
+        executed.graph.allocator_cursors(),
+        prelude.schedule_digest,
+    )
+    .map_err(|error| transaction_error(identity, error))?;
+    let report = TickReport {
+        before: prelude.before,
+        after,
+        world_before: prelude.world_before,
+        world_after,
+        fired: executed.fired,
+        per_rule_fired: executed.per_rule_fired,
+        audit_receipts: executed.audit_receipts,
+    };
+    let replay = match (identity, prelude.replay_prior) {
+        (ExecutionIdentity::Current { .. }, None) => None,
+        (ExecutionIdentity::Replay(execution), Some(prior)) => Some(
+            execution
+                .composer
+                .compose(replay_session::ReplayIdentityInputs {
+                    execution,
+                    prepared,
+                    prior,
+                    result_graph: &executed.graph,
+                    report: &report,
+                    events: &executed.sink.events,
+                    resolve_tick: tick,
+                })
+                .map_err(TickTransactionError::Replay)?,
+        ),
+        _ => {
+            return Err(transaction_error(
+                identity,
+                "replay prior identity invariant failed".to_owned(),
+            ));
+        }
+    };
+    sink.try_prepare(executed.sink.events.len())
+        .map_err(|error| transaction_error(identity, error))?;
+    *graph = executed.graph;
+    sink.commit_prepared(executed.sink.events);
+
+    Ok(TickTransactionResult { report, replay })
 }
 
 /// One rule's declared-vs-computed fuel bound (Task W3, BSL Hygiene

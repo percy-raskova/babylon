@@ -254,10 +254,6 @@ impl TickPayloadV1 {
 /// # Errors
 /// Returns when the loaded rule forms disagree with the declared content,
 /// any nested identity refuses, or a governed row/byte bound is exceeded.
-#[allow(
-    dead_code,
-    reason = "PER-60 Task 9 builds the checked object consumed by Task 10"
-)]
 pub(crate) fn encode_prepared_environment_v1(
     content: &ContentDigest,
     prepared: &PreparedRules,
@@ -329,10 +325,6 @@ pub(crate) fn encode_prepared_environment_v1(
     })
 }
 
-#[allow(
-    dead_code,
-    reason = "PER-60 Task 9 builds the checked object consumed by Task 10"
-)]
 fn validate_prepared_rows(prepared: &PreparedRules) -> Result<(), ReplayTickIdentityError> {
     validate_row_limit("prepared rules", prepared.rules.len(), MAX_PREPARED_ROWS_V1)?;
     let resolver_rows = prepared
@@ -345,10 +337,6 @@ fn validate_prepared_rows(prepared: &PreparedRules) -> Result<(), ReplayTickIden
     validate_row_limit("stable resolver rows", resolver_rows, MAX_PREPARED_ROWS_V1)
 }
 
-#[allow(
-    dead_code,
-    reason = "PER-60 Task 9 builds the checked object consumed by Task 10"
-)]
 fn validate_prepared_aggregate(
     prepared: &PreparedRules,
     bsl_rows: u32,
@@ -378,10 +366,6 @@ fn validate_prepared_aggregate(
     Ok(())
 }
 
-#[allow(
-    dead_code,
-    reason = "PER-60 Task 9 builds the checked object consumed by Task 10"
-)]
 fn validate_row_limit(
     section: &'static str,
     actual: usize,
@@ -487,9 +471,47 @@ pub fn encode_tick_payload_v1(
     receipts: &[AuditReceipt],
     resolver: &StableElementResolverV1,
 ) -> Result<TickPayloadV1, ReplayTickIdentityError> {
-    if expected_rule_order.len() != outcomes.len()
+    encode_tick_payload_with_order(
+        expected_rule_order.len(),
+        expected_rule_order.iter().map(String::as_str),
+        outcomes,
+        reported_fired,
+        events,
+        receipts,
+        resolver,
+    )
+}
+
+pub(crate) fn encode_tick_payload_for_prepared_v1(
+    prepared: &PreparedRules,
+    outcomes: &[(String, usize)],
+    reported_fired: usize,
+    events: &[(String, Vec<(String, Value)>)],
+    receipts: &[AuditReceipt],
+    resolver: &StableElementResolverV1,
+) -> Result<TickPayloadV1, ReplayTickIdentityError> {
+    encode_tick_payload_with_order(
+        prepared.rules.len(),
+        prepared.rules.iter().map(|(rule_id, _)| rule_id.as_str()),
+        outcomes,
+        reported_fired,
+        events,
+        receipts,
+        resolver,
+    )
+}
+
+fn encode_tick_payload_with_order<'a>(
+    expected_len: usize,
+    expected_rule_order: impl Iterator<Item = &'a str>,
+    outcomes: &[(String, usize)],
+    reported_fired: usize,
+    events: &[(String, Vec<(String, Value)>)],
+    receipts: &[AuditReceipt],
+    resolver: &StableElementResolverV1,
+) -> Result<TickPayloadV1, ReplayTickIdentityError> {
+    if expected_len != outcomes.len()
         || expected_rule_order
-            .iter()
             .zip(outcomes.iter())
             .any(|(expected, (actual, _))| expected != actual)
     {
@@ -558,10 +580,6 @@ impl Writer {
         self.extend(value.as_bytes())
     }
 
-    #[allow(
-        dead_code,
-        reason = "PER-60 Task 9 builds the checked object consumed by Task 10"
-    )]
     fn count32(
         &mut self,
         field: &'static str,

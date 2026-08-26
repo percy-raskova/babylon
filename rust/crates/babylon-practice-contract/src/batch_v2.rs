@@ -1,19 +1,25 @@
 //! Pure V2 resolved-practice batch identity and authority validation.
 
+use std::collections::BTreeMap;
+
 use babylon_kernel::sha256_of;
 
+use crate::authority_v2::validate_input_authority_row_v2;
 use crate::{
     decode_input_authority_v2, decode_practice_intent_v2, encode_input_authority_v2,
     encode_practice_intent_v2, input_authority_ledger_v2_digest, practice_proposal_key_v2,
-    resolve_input_authority_v2, validate_practice_intent_v2, CampaignIdV2,
-    PracticeAuthorityV2Error, PracticeInputAuthorityLedgerV2, PracticeInputAuthorityV2,
-    PracticeIntentV2, PracticeIntentV2Error, PracticeProposalKeyV2,
-    MAX_PRACTICE_INTENT_CANONICAL_BYTES_V2, PRACTICE_INPUT_AUTHORITY_V2_CANONICAL_BYTES,
+    validate_practice_intent_v2, CampaignIdV2, InputAuthorityIdV2, PracticeAuthorityV2Error,
+    PracticeInputAuthorityLedgerV2, PracticeInputAuthorityV2, PracticeIntentV2,
+    PracticeIntentV2Error, PracticeProposalKeyV2, MAX_PRACTICE_INPUT_AUTHORITY_ROWS_V2,
+    MAX_PRACTICE_INTENT_CANONICAL_BYTES_V2, MIN_PRACTICE_INTENT_CANONICAL_BYTES_V2,
+    PRACTICE_INPUT_AUTHORITY_V2_CANONICAL_BYTES,
 };
 
 const SCHEMA_VERSION: u16 = 2;
 const BATCH_HEADER_CANONICAL_BYTES: usize =
     RESOLVED_PRACTICE_BATCH_V2_DOMAIN_BYTES.len() + 1 + 2 + 16 + 8 + 32 + 32 + 32 + 2;
+const MIN_BATCH_ITEM_CANONICAL_BYTES: usize =
+    2 + PRACTICE_INPUT_AUTHORITY_V2_CANONICAL_BYTES + 2 + MIN_PRACTICE_INTENT_CANONICAL_BYTES_V2;
 
 /// Canonical domain for V2 resolved-practice batches.
 pub const RESOLVED_PRACTICE_BATCH_V2_DOMAIN_BYTES: &[u8] = b"babylon.resolved-practice-batch.v2";
@@ -155,6 +161,18 @@ fn validate_schema(value: u16) -> Result<(), PracticeBatchV2Error> {
     }
 }
 
+fn validate_ledger_digest(
+    expected: [u8; 32],
+    ledger: &PracticeInputAuthorityLedgerV2,
+) -> Result<(), ResolvedPracticeBatchV2Error> {
+    let actual = input_authority_ledger_v2_digest(ledger)?;
+    if expected == actual {
+        Ok(())
+    } else {
+        Err(PracticeBatchV2Error::BatchLedgerDigest.into())
+    }
+}
+
 fn validate_top_level(
     batch: &ResolvedPracticeBatchV2,
     ledger: &PracticeInputAuthorityLedgerV2,
@@ -163,18 +181,14 @@ fn validate_top_level(
     if batch.items.len() > MAX_RESOLVED_PRACTICE_BATCH_ITEMS_V2 {
         return Err(PracticeBatchV2Error::BatchItemLimit.into());
     }
-    let actual_digest = input_authority_ledger_v2_digest(ledger)?;
-    if batch.authority_ledger_digest != actual_digest {
-        return Err(PracticeBatchV2Error::BatchLedgerDigest.into());
-    }
-    Ok(())
+    validate_ledger_digest(batch.authority_ledger_digest, ledger)
 }
 
 fn validate_item_identity(
     batch: &ResolvedPracticeBatchV2,
     item: &ResolvedPracticeBatchItemV2,
 ) -> Result<(), ResolvedPracticeBatchV2Error> {
-    encode_input_authority_v2(&item.authority)?;
+    validate_input_authority_row_v2(&item.authority)?;
     validate_practice_intent_v2(&item.intent)?;
     if item.intent.resolve_tick != batch.resolve_tick {
         return Err(PracticeBatchV2Error::BatchResolveTick.into());
@@ -191,23 +205,84 @@ fn validate_item_identity(
     Ok(())
 }
 
+struct ActiveAuthorityIndexV2<'a> {
+    rows_by_id: BTreeMap<InputAuthorityIdV2, Option<&'a PracticeInputAuthorityV2>>,
+}
+
+impl<'a> ActiveAuthorityIndexV2<'a> {
+    fn new(
+        ledger: &'a PracticeInputAuthorityLedgerV2,
+        campaign_id: CampaignIdV2,
+        resolve_tick: u64,
+    ) -> Self {
+        let mut rows_by_id = BTreeMap::new();
+        for row in ledger
+            .rows
+            .iter()
+            .take(MAX_PRACTICE_INPUT_AUTHORITY_ROWS_V2 + 1)
+        {
+            if row.campaign_id != campaign_id {
+                continue;
+            }
+            let selected = rows_by_id.entry(row.input_authority_id).or_insert(None);
+            if resolve_tick >= row.effective_from_tick
+                && resolve_tick < row.effective_through_tick_exclusive
+            {
+                *selected = Some(row);
+            }
+        }
+        Self { rows_by_id }
+    }
+
+    fn resolve(
+        &self,
+        input_authority_id: InputAuthorityIdV2,
+        actor_org_id: u64,
+    ) -> Result<&'a PracticeInputAuthorityV2, PracticeAuthorityV2Error> {
+        let selected = self
+            .rows_by_id
+            .get(&input_authority_id)
+            .ok_or(PracticeAuthorityV2Error::AuthorityNotFound)?
+            .ok_or(PracticeAuthorityV2Error::AuthorityInactive)?;
+        if selected.actor_org_id != actor_org_id {
+            return Err(PracticeAuthorityV2Error::AuthorityActorMismatch);
+        }
+        Ok(selected)
+    }
+}
+
 fn validate_item_authority(
-    batch: &ResolvedPracticeBatchV2,
     item: &ResolvedPracticeBatchItemV2,
-    ledger: &PracticeInputAuthorityLedgerV2,
+    authority_index: &ActiveAuthorityIndexV2<'_>,
 ) -> Result<(), ResolvedPracticeBatchV2Error> {
-    let selected = resolve_input_authority_v2(
-        ledger,
-        batch.campaign_id,
-        item.intent.input_authority_id,
-        item.intent.actor_org_id,
-        batch.resolve_tick,
-    )?;
+    let selected =
+        authority_index.resolve(item.intent.input_authority_id, item.intent.actor_org_id)?;
     if selected == &item.authority {
         Ok(())
     } else {
         Err(PracticeBatchV2Error::BatchAuthorityMismatch.into())
     }
+}
+
+fn validate_batch_items_against_validated_ledger(
+    batch: &ResolvedPracticeBatchV2,
+    ledger: &PracticeInputAuthorityLedgerV2,
+) -> Result<(), ResolvedPracticeBatchV2Error> {
+    let authority_index =
+        ActiveAuthorityIndexV2::new(ledger, batch.campaign_id, batch.resolve_tick);
+    let mut previous: Option<PracticeProposalKeyV2> = None;
+    for item in batch
+        .items
+        .iter()
+        .take(MAX_RESOLVED_PRACTICE_BATCH_ITEMS_V2 + 1)
+    {
+        validate_item_identity(batch, item)?;
+        validate_item_authority(item, &authority_index)?;
+        let current = practice_proposal_key_v2(&item.intent);
+        validate_key_order(previous, current)?;
+        previous = Some(current);
+    }
+    Ok(())
 }
 
 fn validate_key_order(
@@ -232,19 +307,7 @@ pub fn validate_resolved_practice_batch_v2(
     ledger: &PracticeInputAuthorityLedgerV2,
 ) -> Result<(), ResolvedPracticeBatchV2Error> {
     validate_top_level(batch, ledger)?;
-    let mut previous: Option<PracticeProposalKeyV2> = None;
-    for item in batch
-        .items
-        .iter()
-        .take(MAX_RESOLVED_PRACTICE_BATCH_ITEMS_V2 + 1)
-    {
-        validate_item_identity(batch, item)?;
-        validate_item_authority(batch, item, ledger)?;
-        let current = practice_proposal_key_v2(&item.intent);
-        validate_key_order(previous, current)?;
-        previous = Some(current);
-    }
-    Ok(())
+    validate_batch_items_against_validated_ledger(batch, ledger)
 }
 
 fn append_domain(output: &mut Vec<u8>) {
@@ -274,6 +337,15 @@ fn append_item(
     Ok(())
 }
 
+fn minimum_batch_capacity(item_count: usize) -> Result<usize, PracticeBatchV2Error> {
+    let item_bytes = item_count
+        .checked_mul(MIN_BATCH_ITEM_CANONICAL_BYTES)
+        .ok_or(PracticeBatchV2Error::BatchLength)?;
+    BATCH_HEADER_CANONICAL_BYTES
+        .checked_add(item_bytes)
+        .ok_or(PracticeBatchV2Error::BatchLength)
+}
+
 /// Encode one validated V2 resolved-practice batch.
 ///
 /// # Errors
@@ -283,7 +355,7 @@ pub fn encode_resolved_practice_batch_v2(
     ledger: &PracticeInputAuthorityLedgerV2,
 ) -> Result<Vec<u8>, ResolvedPracticeBatchV2Error> {
     validate_resolved_practice_batch_v2(batch, ledger)?;
-    let mut output = Vec::with_capacity(256);
+    let mut output = Vec::with_capacity(minimum_batch_capacity(batch.items.len())?);
     append_domain(&mut output);
     output.extend_from_slice(&batch.schema_version.to_be_bytes());
     output.extend_from_slice(&batch.campaign_id.as_bytes());
@@ -412,6 +484,7 @@ pub fn decode_resolved_practice_batch_v2(
     if count > MAX_RESOLVED_PRACTICE_BATCH_ITEMS_V2 {
         return Err(PracticeBatchV2Error::BatchItemLimit.into());
     }
+    validate_ledger_digest(authority_ledger_digest, ledger)?;
     let mut items = Vec::with_capacity(count);
     for index in 0..=MAX_RESOLVED_PRACTICE_BATCH_ITEMS_V2 {
         if index == count {
@@ -429,7 +502,7 @@ pub fn decode_resolved_practice_batch_v2(
         content_digest,
         items,
     };
-    validate_resolved_practice_batch_v2(&batch, ledger)?;
+    validate_batch_items_against_validated_ledger(&batch, ledger)?;
     Ok(batch)
 }
 

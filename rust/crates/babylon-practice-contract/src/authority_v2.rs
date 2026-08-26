@@ -177,7 +177,9 @@ fn validate_schema(value: u16) -> Result<(), PracticeAuthorityV2Error> {
     }
 }
 
-fn validate_row(value: &PracticeInputAuthorityV2) -> Result<(), PracticeAuthorityV2Error> {
+pub(crate) fn validate_input_authority_row_v2(
+    value: &PracticeInputAuthorityV2,
+) -> Result<(), PracticeAuthorityV2Error> {
     validate_schema(value.schema_version)?;
     if value.effective_from_tick >= value.effective_through_tick_exclusive {
         return Err(PracticeAuthorityV2Error::AuthorityEmptyInterval);
@@ -244,7 +246,7 @@ pub fn validate_input_authority_ledger_v2(
         .iter()
         .take(MAX_PRACTICE_INPUT_AUTHORITY_ROWS_V2 + 1)
     {
-        validate_row(row)?;
+        validate_input_authority_row_v2(row)?;
         if let Some(prior) = previous {
             if row_key(prior) == row_key(row) {
                 return Err(PracticeAuthorityV2Error::AuthorityLedgerDuplicate);
@@ -276,7 +278,7 @@ fn append_domain(output: &mut Vec<u8>, domain: &[u8]) {
 pub fn encode_input_authority_v2(
     value: &PracticeInputAuthorityV2,
 ) -> Result<Vec<u8>, PracticeAuthorityV2Error> {
-    validate_row(value)?;
+    validate_input_authority_row_v2(value)?;
     let mut output = Vec::with_capacity(PRACTICE_INPUT_AUTHORITY_V2_CANONICAL_BYTES);
     append_domain(&mut output, PRACTICE_INPUT_AUTHORITY_V2_DOMAIN_BYTES);
     output.extend_from_slice(&value.schema_version.to_be_bytes());
@@ -387,7 +389,7 @@ pub fn decode_input_authority_v2(
         effective_through_tick_exclusive,
         decision_content_digest,
     };
-    validate_row(&value)?;
+    validate_input_authority_row_v2(&value)?;
     Ok(value)
 }
 

@@ -22,6 +22,22 @@ pub const MAX_PRACTICE_PARAMETERS_V2: usize = 16;
 pub const MAX_PRACTICE_PARAMETER_VALUE_BYTES_V2: usize = 256;
 /// Designed bound on sorted unique evidence digests in one intent.
 pub const MAX_PRACTICE_EVIDENCE_DIGESTS_V2: usize = 64;
+/// Exact canonical byte length of a valid V2 intent with no evidence digests.
+pub const MIN_PRACTICE_INTENT_CANONICAL_BYTES_V2: usize = PRACTICE_INTENT_V2_DOMAIN_BYTES.len()
+    + 1
+    + 2
+    + 8
+    + 8
+    + 16
+    + 8
+    + 1
+    + 1
+    + 32
+    + 16
+    + 32
+    + 32
+    + 2
+    + 2;
 /// Designed canonical-byte and decode-fuel ceiling for one intent.
 pub const MAX_PRACTICE_INTENT_CANONICAL_BYTES_V2: usize = 16_384;
 

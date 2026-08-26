@@ -1,12 +1,14 @@
 use babylon_practice_contract::{
-    decode_resolved_practice_batch_v2, encode_resolved_practice_batch_v2,
-    input_authority_ledger_v2_digest, resolved_practice_batch_v2_digest,
-    validate_resolved_practice_batch_v2, CampaignIdV2, InputAuthorityIdV2, PracticeAuthorityKindV2,
-    PracticeAuthorityV2Error, PracticeBatchV2Error, PracticeIdV2, PracticeInputAuthorityLedgerV2,
-    PracticeInputAuthorityV2, PracticeIntentV2, PracticeIntentV2Error, PracticeTargetIdentityV2,
-    PracticeTargetTagV2, ProposalNonceV2, ResolvedPracticeBatchItemV2, ResolvedPracticeBatchV2,
-    ResolvedPracticeBatchV2Error, TaggedPracticeTargetV2,
-    MAX_RESOLVED_PRACTICE_BATCH_CANONICAL_BYTES_V2, MAX_RESOLVED_PRACTICE_BATCH_ITEMS_V2,
+    decode_resolved_practice_batch_v2, encode_practice_intent_v2,
+    encode_resolved_practice_batch_v2, input_authority_ledger_v2_digest,
+    resolved_practice_batch_v2_digest, validate_resolved_practice_batch_v2, CampaignIdV2,
+    InputAuthorityIdV2, PracticeAuthorityKindV2, PracticeAuthorityV2Error, PracticeBatchV2Error,
+    PracticeIdV2, PracticeInputAuthorityLedgerV2, PracticeInputAuthorityV2, PracticeIntentV2,
+    PracticeIntentV2Error, PracticeTargetIdentityV2, PracticeTargetTagV2, ProposalNonceV2,
+    ResolvedPracticeBatchItemV2, ResolvedPracticeBatchV2, ResolvedPracticeBatchV2Error,
+    TaggedPracticeTargetV2, MAX_RESOLVED_PRACTICE_BATCH_CANONICAL_BYTES_V2,
+    MAX_RESOLVED_PRACTICE_BATCH_ITEMS_V2, MIN_PRACTICE_INTENT_CANONICAL_BYTES_V2,
+    RESOLVED_PRACTICE_BATCH_V2_DOMAIN_BYTES,
 };
 
 fn hex_bytes(value: &str) -> Vec<u8> {
@@ -294,6 +296,35 @@ fn resolved_batch_v2_refuses_maximum_plus_one_before_nested_work() {
         Err(ResolvedPracticeBatchV2Error::Batch(
             PracticeBatchV2Error::BatchLength
         ))
+    );
+}
+
+#[test]
+fn resolved_batch_v2_refuses_bad_ledger_before_nested_decode() {
+    let authoritative = ledger();
+    let mut payload =
+        encode_resolved_practice_batch_v2(&batch(vec![item(0x60)]), &authoritative).unwrap();
+    let ledger_digest_offset = RESOLVED_PRACTICE_BATCH_V2_DOMAIN_BYTES.len() + 1 + 2 + 16 + 8;
+    let header_length = ledger_digest_offset + 32 + 32 + 32 + 2;
+    payload[ledger_digest_offset] ^= 0x01;
+    payload.truncate(header_length);
+
+    assert_eq!(
+        decode_resolved_practice_batch_v2(&payload, &authoritative),
+        Err(ResolvedPracticeBatchV2Error::Batch(
+            PracticeBatchV2Error::BatchLedgerDigest
+        ))
+    );
+}
+
+#[test]
+fn resolved_batch_v2_minimum_nested_intent_length_is_exact() {
+    let mut minimum = intent(0x60);
+    minimum.evidence_digests.clear();
+
+    assert_eq!(
+        encode_practice_intent_v2(&minimum).unwrap().len(),
+        MIN_PRACTICE_INTENT_CANONICAL_BYTES_V2
     );
 }
 

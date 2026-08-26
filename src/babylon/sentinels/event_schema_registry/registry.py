@@ -269,7 +269,9 @@ def load_registry(path: Path = REGISTRY_PATH) -> EventSchemaRegistry:
         Tier1Row(
             event_type=(et := _require(row, "event_type", "a tier1 row", path)),
             citations=tuple(_require(row, "citations", f"tier1 row {et!r}", path)),
-            keys=_parse_keys(_require(row, "keys", f"tier1 row {et!r}", path), f"tier1 row {et!r}", path),
+            keys=_parse_keys(
+                _require(row, "keys", f"tier1 row {et!r}", path), f"tier1 row {et!r}", path
+            ),
         )
         for row in data.get("tier1", [])
     )
@@ -282,7 +284,9 @@ def load_registry(path: Path = REGISTRY_PATH) -> EventSchemaRegistry:
         Tier2Row(
             event_type=(et := _require(row, "event_type", "a tier2 row", path)),
             note=row.get("note", _default_tier2_note),
-            keys=_parse_keys(_require(row, "keys", f"tier2 row {et!r}", path), f"tier2 row {et!r}", path),
+            keys=_parse_keys(
+                _require(row, "keys", f"tier2 row {et!r}", path), f"tier2 row {et!r}", path
+            ),
         )
         for row in data.get("tier2", [])
     )
@@ -299,7 +303,9 @@ def load_registry(path: Path = REGISTRY_PATH) -> EventSchemaRegistry:
             name=(nm := _require(row, "name", "an unminted_bsl_only row", path)),
             citation=_require(row, "citation", f"unminted row {nm!r}", path),
             note=_require(row, "note", f"unminted row {nm!r}", path),
-            keys=_parse_keys(_require(row, "keys", f"unminted row {nm!r}", path), f"unminted row {nm!r}", path),
+            keys=_parse_keys(
+                _require(row, "keys", f"unminted row {nm!r}", path), f"unminted row {nm!r}", path
+            ),
         )
         for row in data.get("unminted_bsl_only", [])
     )

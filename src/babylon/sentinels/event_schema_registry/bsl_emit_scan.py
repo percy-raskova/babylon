@@ -45,9 +45,7 @@ class EmitSite:
     """One observed ``(emit EventType/X (k1 …) (k2 …) …)`` form.
 
     :param event_type: The bare member name after ``EventType/`` — BSL's own
-        spelling, not necessarily a member of Python's ``EventType`` enum
-        (``organization.bsl``'s ``ORGANIZATION_SEEDED`` is a documented,
-        deliberate counter-example — a probe-only name, D-1 in that file).
+        spelling, not necessarily a member of Python's ``EventType`` enum.
     :param path: Repo-relative path of the ``.bsl`` file this site is in.
     :param line: 1-indexed line the ``(emit`` token starts on.
     :param keys: The payload's key symbols, in source order, exactly as

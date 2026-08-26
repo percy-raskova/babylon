@@ -167,9 +167,9 @@ fn organization_foundation_hashes_are_pinned() {
          fresh-work propagation, unchanged membership, and command writes"
     );
     assert_eq!(
-        report.fired, 13,
-        "the first tick must execute 1 kind probe + 4 \
-         territory resets + 2 presence attributions + 1 rooted practice + \
+        report.fired, 12,
+        "the first tick must execute 4 territory resets + 2 presence \
+         attributions + 1 rooted practice + \
          1 circulation relay + 3 capacity applications + 1 command response"
     );
 }

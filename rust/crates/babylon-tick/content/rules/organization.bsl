@@ -12,28 +12,6 @@
 ; a player-input boundary; next-week intent can replace those seeds without
 ; changing the material rules.
 ;
-; D-1: `EventType/ORGANIZATION_SEEDED` is a KNOWINGLY-UNMINTED, probe-only
-; event name — not in ADR196's mint, not a member of the frozen Python
-; EventType enum, no consumer anywhere. The scenario deliberately leaves
-; EventType undeclared (per-kind opt-in, D119), so the name is inert by
-; design and nothing can catch a typo in it. It exists solely so this
-; probe has an effect to gate; retire or mint it when the Events-in-BSL
-; workstream (WS1, #502) gives emit effects a real observable.
-;
-; The retained kind probe exercises the content-declared `OrgKind` enum. It
-; compares identity only; §2.13 forbids arithmetic on enum members.
-(rule organization/kind-probe
-  :role mechanic
-  :evidence derived
-  :material-basis "the state's coercive organs are a distinct material kind; content can see the difference (spec Q1)"
-  :fuel 32
-  (bindings
-    (binding kind :field organization/kind)
-    (binding active :field organization/active))
-  (when (and (= active 1) (= kind OrgKind/STATE_APPARATUS)))
-  (effects
-    (emit EventType/ORGANIZATION_SEEDED (probe 1))))
-
 (rule organization/p0-territory-inbox-reset
   :role mechanic
   :evidence derived

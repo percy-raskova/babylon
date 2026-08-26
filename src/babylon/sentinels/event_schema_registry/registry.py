@@ -34,15 +34,14 @@ discipline forbids. Instead:
 - **Tier 3 — no-known-emitter.** Every remaining Python ``EventType`` member:
   no builder, no observed BSL emitter. No key list, honestly.
 
-**BSL-only, off the Python vocabulary entirely.** ``organization.bsl``'s
-``EventType/ORGANIZATION_SEEDED`` is a documented, deliberate probe-only name
-(that file's own D-1 comment) — content emits it, but it is NOT a member of
-Python's ``EventType`` enum. Folding it into Tier 1 would falsely imply the
-three tiers exhaustively partition the 100-member Python universe (they do —
-``python_event_type_total`` in the TOML pins that count, and
+**BSL-only, off the Python vocabulary entirely.** Content can emit a name that
+is not a member of Python's ``EventType`` enum. Folding such a name into Tier 1
+would falsely imply the three tiers exhaustively partition the 100-member
+Python universe (they do — ``python_event_type_total`` in the TOML pins that
+count, and
 ``tests/unit/sentinels/test_event_schema_registry.py`` proves
 ``len(tier1) + len(tier2) + len(tier3) == python_event_type_total`` at every
-run). It gets its own, separately-labelled table instead.
+run). Each such live, cited name gets its own separately-labelled table row.
 """
 
 from __future__ import annotations

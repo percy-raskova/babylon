@@ -237,8 +237,10 @@ party form, response curve, or terminal result.
 
 ## Hellworld findings
 
-These findings remain provisional until the complete book pass is finished.
-They currently record the Introduction and Chapters 1-9.
+These findings derive from the completed 819-page supplied-PDF receipt: the
+narrative pass covers PDF pages 1-783 and the reference pass covers PDF pages
+784-819, as recorded above. Their exclusions and negative rulings remain
+bounded; they are not provisional pending a further book pass.
 
 ### W1. The planetary factory is a relation, not an actor
 
@@ -2216,5 +2218,33 @@ actual graph edges.
   different causal roles.
 - Evaluate slow-fast-slow traces only after the live practice and circulation
   circuit exists. A trace shape is evidence about a history, not a rule.
+
+## PER-255 organization prototype disposition
+
+The original prototype entered at `28a3254d` (`feat(organization): model
+relational practice dynamics`). The later removals and adaptations are named
+below so the remaining organization-foundation pack is not mistaken for a
+complete player-facing circuit. The separately owned replacements are planned,
+not implemented: PER-56 supplies governed next-week Organize/Agitate input,
+effects, and action-budget lifecycle; PER-57 produces attributed membership
+from encounters; PER-58 supplies materially conservative Mutual Aid; and
+PER-59 evaluates live slow-fast-slow emergence after the practice/circulation
+circuit. Repository evidence confirms that PER-59 remains blocked by PER-57,
+PER-58, and PER-22.
+
+| Original prototype rule, write, or fixture | Disposition | Current evidence and replacement route |
+|---|---|---|
+| `organization/kind-probe` and its `EventType/ORGANIZATION_SEEDED` probe-only emit | Retire | The original D-1 probe is in `28a3254d:rust/crates/babylon-tick/content/rules/organization.bsl`; PER-255 removes its inert rule, unminted registry row, attribution, and fired-rule count. No gameplay replacement is authorized. |
+| Unconditional `organization/p0-action-budget-reset` | Retire | `88560d58` removed the reset. The current scenario has one explicit fixture seed, and the current rule source says a committed intent and resource lifecycle must replace it. Route live admission and budget spending to PER-56, through its existing PER-27 dependency. |
+| `organization/p0-territory-inbox-reset` | Adapt | Current `organization/p0-territory-inbox-reset` only clears tick-local rooted-work and relay inboxes before practice. Retain this accumulator boundary while PER-56 supplies live practice admission; it does not grant an action or author a result. |
+| Presence and local-base attribution | Adapt | `56796e95` added the current `organization/p1-presence-attribution`: a PRESENCE branch requires a matching MEMBERSHIP and TENANCY locality. PER-56 must consume the same declared locality boundary for live practice. |
+| `organization/p1-rooted-work` | Adapt | Current `organization/p1-rooted-work` spends the fixture-seeded bounded action across qualified local branches. Replace the fixture input, not its material locality constraint, through PER-56. |
+| `organization/p2-territorial-relay` | Adapt | `88560d58` changed relay to fresh rooted work only; the current rule cannot copy durable capacity. Keep that fresh-work condition for PER-56 mechanics and evaluate its live causal evidence only in the PER-57/PER-58/PER-59 dependency chain. |
+| `organization/p3-rooted-capacity-apply` | Adapt | The current rule is the bounded accumulation of prior capacity, fresh situated work, and fresh relay. It remains a tick-local material transformation; PER-56 is the route for a live producer, not a license to invent one here. |
+| `organization/p4-recruitment` direct `organization/membership-share` write | Retire and replace | `88560d58` removed the direct write. The current conformance test pins that situated practice cannot write membership. Route any attributed-membership replacement to PER-57; do not restore a scalar recruitment curve. |
+| `organization/p5-command-response` | Adapt | The current rule retains a declared COMMAND-relation response to rooted capacity. PER-56 is the planned live-input route; PER-59 may evaluate an emergence claim only after its PER-57, PER-58, and PER-22 blockers resolve. |
+| `organization/p6-care-relief` direct pressure reduction | Retire and replace | The original rule at `28a3254d` reduced reproduction pressure from membership share. `44082c55` began the material-care correction and `88560d58` removed the remaining authored care path. Route any care effect through PER-58's separately owned prerequisite work, with stock, labor, routing, and a committed input rather than organization membership alone. |
+| Seeded `organization/foundation` scenario | Adapt as fixture only | The scenario remains a deterministic conformance substrate with a one-action seed; it is not a player-input boundary. `88560d58` records that limitation. Replace fixture authorization with PER-56 live admission, preserving the scenario only as a test fixture. |
+| The 24-tick authored slow-fast-slow membership witness | Retire | `28a3254d:rust/crates/babylon-tick/tests/organization_practice_conformance.rs` used `PRACTICE_TICKS = 24` and the direct membership write to assert a trajectory. It has no current counterpart. PER-59 may receive a live emergence evaluation only after PER-57, PER-58, and PER-22; no fixed trace shape is a replacement rule. |
 
 <!-- vale on -->

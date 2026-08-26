@@ -334,8 +334,7 @@ class TestTier1CitationsAreReal:
 
 
 class TestUnmintedBslOnlyNames:
-    """``ORGANIZATION_SEEDED``-shaped rows: real BSL evidence, deliberately
-    absent from Python's EventType universe."""
+    """Real BSL evidence deliberately absent from Python's EventType universe."""
 
     def test_no_unminted_name_is_a_real_event_type_member(
         self, registry: EventSchemaRegistry, fresh_event_type_members: frozenset[str]
@@ -355,11 +354,22 @@ class TestUnmintedBslOnlyNames:
         for row in registry.unminted_bsl_only:
             assert row.name not in tiered
 
-    def test_organization_seeded_is_present_and_cited(self, registry: EventSchemaRegistry) -> None:
-        names = {row.name for row in registry.unminted_bsl_only}
-        assert "ORGANIZATION_SEEDED" in names
-        row = next(r for r in registry.unminted_bsl_only if r.name == "ORGANIZATION_SEEDED")
-        assert "organization.bsl" in row.citation
+    def test_only_the_governed_measurement_event_remains_unminted(
+        self,
+        registry: EventSchemaRegistry,
+        fresh_bsl_sites: tuple[EmitSite, ...],
+        fresh_event_type_members: frozenset[str],
+    ) -> None:
+        """The live scan and registry retain the one governed unminted measure."""
+        expected = {"SUBSISTENCE_CLEARANCE_MEASURED"}
+        emitted_unminted = {
+            site.event_type
+            for site in fresh_bsl_sites
+            if site.event_type not in fresh_event_type_members
+        }
+        registry_unminted = {row.name for row in registry.unminted_bsl_only}
+        assert emitted_unminted == expected
+        assert registry_unminted == expected
 
 
 class TestTier2MatchesFreshEventBuilders:

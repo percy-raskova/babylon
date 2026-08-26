@@ -321,7 +321,6 @@ pub const GOVERNED_RULE_ATTRIBUTIONS: &[GovernedRuleAttribution] = &[
     governed_attribution("imperial-rent/r04-tribute-credit", RuleRole::Mechanic),
     governed_attribution("lifecycle/dpd-circuit", RuleRole::Mechanic),
     governed_attribution("metabolism/biocapacity-update", RuleRole::Mechanic),
-    governed_attribution("organization/kind-probe", RuleRole::Mechanic),
     governed_attribution("organization/p0-territory-inbox-reset", RuleRole::Mechanic),
     governed_attribution("organization/p1-presence-attribution", RuleRole::Mechanic),
     governed_attribution("organization/p1-rooted-work", RuleRole::Mechanic),
@@ -1496,13 +1495,13 @@ mod tests {
             assert_eq!(row.date, "2026-08-23");
             assert_eq!(row.adr, "ADR224");
         }
-        assert_eq!(GOVERNED_RULE_ATTRIBUTIONS.len(), 66);
+        assert_eq!(GOVERNED_RULE_ATTRIBUTIONS.len(), 65);
         assert_eq!(
             GOVERNED_RULE_ATTRIBUTIONS
                 .iter()
                 .filter(|row| row.role == RuleRole::Mechanic)
                 .count(),
-            64
+            63
         );
         assert_eq!(
             GOVERNED_RULE_ATTRIBUTIONS

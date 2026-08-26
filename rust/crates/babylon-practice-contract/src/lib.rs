@@ -13,6 +13,7 @@ pub mod batch_v2;
 pub mod budget;
 pub mod codec;
 pub mod intent_v2;
+pub mod ordered_action_v1;
 pub mod resource_v2;
 pub mod strike_v2;
 pub mod topology;
@@ -30,6 +31,7 @@ pub use codec::{
     target_selection_policy_digest,
 };
 pub use intent_v2::*;
+pub use ordered_action_v1::*;
 pub use resource_v2::*;
 pub use strike_v2::*;
 pub use topology::{validate_topology, PracticeTopologyLoadCounter};

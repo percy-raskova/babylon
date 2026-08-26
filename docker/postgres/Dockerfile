@@ -18,7 +18,7 @@
 # sha256:77e89c11c4779c394ebeeaac1099dafb77b728abc8cd45dcaf6c4695503a0c37
 FROM postgis/postgis:17-3.5@sha256:77e89c11c4779c394ebeeaac1099dafb77b728abc8cd45dcaf6c4695503a0c37 AS postgres-runtime
 
-FROM gcc:12.2.0-bullseye@sha256:a3e091325c0af43bc9c1c576ddd155351d5b16438124421188bb4b4fcacc1452 AS h3-builder
+FROM gcc:12.3.0-bullseye@sha256:5e1768ffd3230192358cfbde63443750f8f78f160a449d25007de9828c41976d AS h3-builder
 
 ADD --checksum=sha256:0dc2e9a6860f06bf10bd8fadc03e35d9eeb4df46e33763a7e480e987758f385c \
     https://github.com/Kitware/CMake/releases/download/v3.31.12/cmake-3.31.12-linux-x86_64.tar.gz \

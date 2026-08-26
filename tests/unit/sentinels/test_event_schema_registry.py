@@ -235,6 +235,19 @@ class TestRegistryFileItself:
         ):
             load_registry(registry_path)
 
+    def test_missing_field_error_names_the_actual_path(self, tmp_path: Path) -> None:
+        """Missing-field errors must reference the file being loaded, not REGISTRY_PATH."""
+        registry_path = tmp_path / "custom-registry.toml"
+        source = REGISTRY_PATH.read_text(encoding="utf-8")
+        # Remove a required header field so _require raises.
+        registry_path.write_text(
+            source.replace("measured_at =", "# measured_at =", 1),
+            encoding="utf-8",
+        )
+
+        with pytest.raises(SentinelCheckError, match=str(registry_path)):
+            load_registry(registry_path)
+
     def test_declared_total_matches_a_fresh_events_py_count(
         self, registry: EventSchemaRegistry, fresh_event_type_members: frozenset[str]
     ) -> None:

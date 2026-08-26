@@ -15,8 +15,13 @@ ADR231_main_release_qualification:
 
     Release confidence must be earned before the protected branch moves. The
     proof must reuse ordinary PR evidence, add only release-specific behavioral
-    legs, remain reproducible on dev before a release PR exists, and preserve
+    legs, remain reproducible on dev before the Director merge, and preserve
     the Director-only main and mandatory hotfix-backport boundaries.
+
+    A merge commit on main is not present on dev automatically. A strict main
+    ruleset therefore also needs an explicit ancestry sync before the next
+    release qualification. Tag publication must follow the qualified main merge;
+    a tag created by the dev bump would publish player artifacts too early.
   decision: |
     1. MAIN SOURCES. Main accepts only a pull request from dev to main or a
        critical hotfix PR from fix/* branched from main. Only the Director can
@@ -27,11 +32,13 @@ ADR231_main_release_qualification:
        base is main. It does not run on a push to main. Every blocking result
        therefore exists before main advances.
 
-    3. DEV PROOF. workflow_dispatch on dev is the only manual qualification
-       shape. A checked event contract rejects dispatches on other refs and
-       rejects unsupported events. The merged qualification workflow must pass
-       on the exact dev head before the Director opens a release PR or applies
-       the corresponding main ruleset.
+    3. ANCESTRY PRECONDITION AND PROOF. Before qualification, current
+       origin/main must already be an ancestor of origin/dev. The ceremony does
+       not update the protected dev head in place. workflow_dispatch on dev is
+       the only manual qualification shape. A checked event contract rejects
+       dispatches on other refs and rejects unsupported events. The merged
+       qualification workflow must pass on the exact dev head before the
+       Director merges the release PR or applies the corresponding main ruleset.
 
     4. COMBINED MANIFEST. ci.yml supplies the ordinary fast, unit, Rust,
        PostgreSQL, determinism, ceremony, secret, infrastructure, and dependency
@@ -52,6 +59,17 @@ ADR231_main_release_qualification:
        review threads, and every blocking combined-manifest context. A settings
        apply remains snapshot-first, exact-dev-head-bound, rollback-safe, and
        read back after every mutation.
+
+    7. PR-SAFE LINEAGE RETURN AND TAG. release:bump creates the version and
+       changelog commit on dev without a tag. After the Director merges the
+       qualified PR, a sanctioned lane at exact origin/main runs
+       `mise run release:prepare-dev-sync -- vX.Y.Z N`. Its versioned lineage
+       record creates a real diff, so an ordinary PR can return the new main
+       merge ancestry to protected dev. `mise run release:tag -- --yes` refuses
+       until that exact main commit and lineage record are present on origin/dev.
+       It then creates and pushes the canonical tag only from exact origin/main.
+       Every publishing workflow independently rejects a tag target that is not
+       reachable from protected main.
   consequences: |
     - Main no longer advances ahead of its heavy qualification evidence.
     - The release-only workflow does not pay again for checks already produced
@@ -60,9 +78,11 @@ ADR231_main_release_qualification:
       loudly instead of being interpreted as success.
     - A critical hotfix pays the same combined qualification cost and still
       needs a dev backport after merge.
-    - Tag-driven publication remains separate. This decision qualifies source
-      promotion; it does not claim that player-install or release-artifact smoke
-      evidence exists before those later contracts land.
+    - Each protected main merge returns to dev through a real-diff PR before
+      tagging, so strict status checks remain usable after the first release.
+    - Tag-driven publication remains separate and cannot begin before the
+      qualified main merge. This decision does not claim that player-install or
+      release-artifact smoke evidence exists before those later contracts land.
   related:
     - ADR181_ci_synergy_rulings
     - ADR230_exact_head_pr_and_dependabot_policy

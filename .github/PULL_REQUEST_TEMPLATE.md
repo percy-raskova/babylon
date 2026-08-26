@@ -24,8 +24,8 @@ Exact reviewed head SHA: <!-- Use the full 40-character commit SHA. -->
 - [ ] The base branch is `dev`, or the Director approved `main`.
   - Release PR from `dev`.
   - Critical hotfix from `fix/*`, with a mandatory backport PR to `dev`.
-- [ ] For a `main` target, the merged `main.yml` workflow passed on the exact
-      `dev` head before the release PR.
+- [ ] For a `main` target, current `origin/main` is an ancestor of the exact
+      reviewed head before `main.yml` passed on that head.
 - [ ] For a `main` target, this PR produced the complete combined manifest.
 - [ ] All reported checks completed successfully for the exact reviewed head
       SHA and base branch above.

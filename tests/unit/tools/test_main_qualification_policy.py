@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[3]
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "main.yml"
 POLICY_PATH = ROOT / ".github" / "settings" / "pr-policy.json"
 PROMOTE_PATH = ROOT / "tools" / "promote.sh"
+MISE_PATH = ROOT / ".mise.toml"
 
 
 def _workflow() -> dict[str, Any]:
@@ -98,6 +99,14 @@ def test_main_manifest_is_ci_plus_unique_qualification_extension() -> None:
     assert all(context.startswith("Main Qualification / ") for context in extension_contexts)
 
 
+def test_only_explicit_advisories_accept_a_failure_conclusion() -> None:
+    for requirement in MAIN_CHECK_MANIFEST:
+        if requirement.kind == "advisory":
+            assert "FAILURE" in requirement.allowed_conclusions
+        else:
+            assert requirement.allowed_conclusions == frozenset({"SUCCESS"})
+
+
 def test_workflow_emits_every_qualification_context_once() -> None:
     jobs = _workflow()["jobs"]
     names = [job["name"] for job in jobs.values()]
@@ -130,3 +139,12 @@ def test_main_ruleset_requires_the_complete_blocking_manifest() -> None:
 
 def test_direct_push_promotion_script_is_retired() -> None:
     assert not PROMOTE_PATH.exists()
+
+
+def test_shared_pr_blocking_pg_subset_keeps_balkanization_contracts() -> None:
+    text = MISE_PATH.read_text(encoding="utf-8")
+    task = text.split('[tasks."test:integration-pg"]', maxsplit=1)[1].split("[tasks.", maxsplit=1)[
+        0
+    ]
+
+    assert "tests/integration/balkanization" in task

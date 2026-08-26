@@ -85,12 +85,12 @@ MAIN_QUALIFICATION_CHECK_MANIFEST: Final[tuple[CheckRequirement, ...]] = (
     CheckRequirement(
         "Main Qualification / AI Tests (advisory)",
         "advisory",
-        frozenset({"SUCCESS", "NEUTRAL", "SKIPPED"}),
+        frozenset({"SUCCESS", "FAILURE", "NEUTRAL", "SKIPPED"}),
     ),
     CheckRequirement(
         "Main Qualification / Container Image Scan (advisory)",
         "advisory",
-        frozenset({"SUCCESS", "NEUTRAL", "SKIPPED"}),
+        frozenset({"SUCCESS", "FAILURE", "NEUTRAL", "SKIPPED"}),
     ),
 )
 

@@ -145,9 +145,9 @@ Create regular lanes from `dev` and target `dev`. Use `feature/`, `fix/`, `docs/
 as `docs/agents/governance.md` directs: `Part of PER-N` for partial delivery and
 `Fixes PER-N` only for final acceptance. Never commit directly to `dev` or `main`.
 
-A critical hotfix alone can branch from and target `main`. Its Director-only merge requires a backport PR to `dev`.
-Before a release PR, prove `main.yml` on exact `dev` with `gh workflow run main.yml --ref dev`.
-A main PR must produce the combined manifest. Only the Director can merge it with `mise run pr:merge -- N --director-main`.
+A critical hotfix alone can branch from and target `main`. Its Director-only merge requires a `dev` backport.
+For a release, prove `origin/main` is an ancestor of `origin/dev`, then qualify exact `dev` with `main.yml`.
+After the Director merge, return main through `release:prepare-dev-sync` before `release:tag` can publish.
 <!-- vale ste.NounClusters = YES -->
 <!-- vale ste.UnapprovedWords = YES -->
 <!-- vale Vale.Spelling = YES -->

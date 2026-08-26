@@ -778,6 +778,32 @@ def test_director_main_accepts_only_sanctioned_main_sources(tmp_path: Path, head
     assert len(_merge_calls(calls)) == 1
 
 
+@pytest.mark.parametrize("advisory_name", MAIN_ADVISORY_CHECKS)
+def test_director_main_accepts_an_explicit_advisory_failure(
+    tmp_path: Path,
+    advisory_name: str,
+) -> None:
+    scenario = _default_scenario()
+    _view(scenario).update({"baseRefName": "main", "headRefName": "dev"})
+    _use_main_manifest(scenario)
+    rollup = _view(scenario)["statusCheckRollup"]
+    assert isinstance(rollup, list)
+    rollup[:] = [
+        _check(advisory_name, conclusion="FAILURE") if check.get("name") == advisory_name else check
+        for check in rollup
+    ]
+
+    result, calls = _run_pr_merge(
+        tmp_path,
+        "--director-main",
+        "--verify-only",
+        scenario=scenario,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _merge_calls(calls) == []
+
+
 def test_director_main_refuses_feature_source(tmp_path: Path) -> None:
     scenario = _default_scenario()
     _view(scenario).update({"baseRefName": "main", "headRefName": "feature/unsafe"})

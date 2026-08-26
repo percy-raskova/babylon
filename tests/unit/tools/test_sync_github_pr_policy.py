@@ -439,6 +439,20 @@ def test_apply_accepts_the_pr_only_baseline_gate_skipped_on_dev_push(tmp_path: P
     assert policy_tool.check_policy(api, _policy()) == []
 
 
+@pytest.mark.parametrize("advisory_name", MAIN_QUALIFICATION_CHECKS[-2:])
+def test_apply_accepts_an_explicit_qualification_advisory_failure(
+    tmp_path: Path,
+    advisory_name: str,
+) -> None:
+    api = FakeApi()
+    advisory = next(run for run in api.check_runs if run["name"] == advisory_name)
+    advisory["conclusion"] = "failure"
+
+    policy_tool.apply_policy(api, _policy(), api.dev_sha, tmp_path / "before.json")
+
+    assert policy_tool.check_policy(api, _policy()) == []
+
+
 def test_apply_refuses_any_other_skipped_dev_push_check(tmp_path: Path) -> None:
     api = FakeApi()
     api.check_runs[0]["conclusion"] = "skipped"

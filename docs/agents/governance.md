@@ -119,21 +119,39 @@ goes directly to `main`. Every merged hotfix needs a mandatory backport PR to
 <!-- Vale: this procedure preserves literal GitHub workflow and branch terms. -->
 <!-- vale Vale.Spelling = NO -->
 <!-- vale ste.UnapprovedWords = NO -->
-Before a release PR, prove the merged qualification workflow on the exact
-`dev` head:
+Retrieve the protected branches. Before qualification, prove that `dev` already
+contains the previous protected `main` merge:
+
+```bash
+git merge-base --is-ancestor origin/main origin/dev
+```
+
+Prove the merged qualification workflow on that exact `dev` head:
 
 ```bash
 gh workflow run main.yml --ref dev
 ```
 
-Open the PR from `dev` to `main` only after that run produces the complete
-combined manifest. The main PR reruns ordinary CI and adds uniquely named
-release-only qualification checks. After exact-head acceptance, only the
-Director runs:
+The main PR must produce the complete combined manifest. It reruns ordinary CI
+and adds uniquely named release-only qualification checks. After exact-head
+acceptance, only the Director runs:
 
 ```bash
 mise run pr:merge -- N --director-main
 ```
+
+After the merge, the owner publishes the version from exact `origin/main` with
+this enforced return path:
+
+```bash
+mise run release:prepare-dev-sync -- vX.Y.Z N
+mise run release:tag -- --yes
+```
+
+Run the first command on a sanctioned lane created at exact `origin/main`.
+Commit its real-diff lineage record, open its PR to `dev`, and merge it with the
+ordinary sanctioned command. The tag task refuses until that PR makes exact
+`origin/main` reachable from `origin/dev`.
 
 A critical hotfix uses the same combined manifest and command, followed by its
 mandatory backport PR to `dev`.

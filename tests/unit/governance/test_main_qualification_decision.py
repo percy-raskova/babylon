@@ -33,6 +33,9 @@ def test_release_qualification_decision_records_the_live_boundary() -> None:
     assert "complete combined manifest" in text
     assert "Director" in text
     assert "backport" in text
+    assert "release:prepare-dev-sync" in text
+    assert "origin/main" in text and "origin/dev" in text
+    assert "tag" in text and "main" in text
     assert "direct push" in text
     assert "tools/promote.sh" in text
     assert "ADR230_exact_head_pr_and_dependabot_policy" in decision["related"]

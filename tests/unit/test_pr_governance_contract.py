@@ -109,13 +109,25 @@ def test_main_documents_both_director_only_sources(path: Path) -> None:
 
 @pytest.mark.parametrize("path", MAIN_RELEASE_SURFACES)
 def test_main_release_procedure_uses_premerge_qualification(path: Path) -> None:
-    """Main must use the dev proof and explicit Director merge mode."""
+    """Main must prove dev, use Director mode, and return ancestry by PR."""
     text = _text(path)
     normalized = _normalized(path)
+    assert "git merge-base --is-ancestor origin/main origin/dev" in text
     assert "gh workflow run main.yml --ref dev" in text
     assert "mise run pr:merge -- N --director-main" in text
+    assert "mise run release:prepare-dev-sync -- vX.Y.Z N" in text
+    assert "mise run release:tag -- --yes" in text
     assert "complete combined manifest" in normalized
-    assert "before" in normalized and "release pr" in normalized
+    assert text.index("gh workflow run main.yml --ref dev") < text.index(
+        "mise run pr:merge -- N --director-main"
+    )
+    assert text.index("mise run pr:merge -- N --director-main") < text.index(
+        "mise run release:prepare-dev-sync -- vX.Y.Z N"
+    )
+    assert text.index("mise run release:prepare-dev-sync -- vX.Y.Z N") < text.index(
+        "mise run release:tag -- --yes"
+    )
+    assert "gh pr update-branch" not in text
     assert "dev:main" not in text
     assert "tools/promote.sh" not in text
 

@@ -153,21 +153,39 @@ backport PR to `dev` is mandatory after a hotfix merge.
 <!-- vale ste.Articles = NO -->
 ## Merge to `main`
 
-Before a release PR, prove the merged qualification workflow on the exact
-`dev` head:
+Open the release PR from `dev` to `main`. Retrieve both protected branches and prove
+that `dev` already contains the previous protected `main` merge:
+
+```bash
+git merge-base --is-ancestor origin/main origin/dev
+```
+
+Prove the merged qualification workflow on that exact `dev` head:
 
 ```bash
 gh workflow run main.yml --ref dev
 ```
 
-Open the release PR from `dev` to `main` only after that run produces the
-complete combined manifest. The PR runs ordinary CI plus the uniquely named
-release-only qualification checks. After the exact-head review and every
-required check pass, the Director uses the sanctioned main mode:
+The release PR must produce the complete combined manifest. It runs ordinary
+CI plus the uniquely named release-only qualification checks. After the
+exact-head review and every required check pass, the Director uses the
+sanctioned main mode:
 
 ```bash
 mise run pr:merge -- N --director-main
 ```
+
+After the main merge, create a sanctioned lane at exact `origin/main` and run:
+
+```bash
+mise run release:prepare-dev-sync -- vX.Y.Z N
+```
+
+Here, `N` is the merged release PR. Commit the generated lineage record, open
+that lane's PR to `dev`, and merge it with the ordinary sanctioned command.
+Then the owner creates and pushes the release tag from exact `origin/main` with
+`mise run release:tag -- --yes`. The tag task refuses until the lineage PR has
+made exact `origin/main` reachable from `origin/dev`.
 
 A critical hotfix uses the same combined manifest and Director mode. Open its
 mandatory backport PR to `dev` after the main merge.

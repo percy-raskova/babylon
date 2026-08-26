@@ -75,39 +75,8 @@ ReproductionBalance stub (``domain/economics/tick/system/__init__.py``),
 held open as a dated exemption (design §9 item 4) citing the staged Vol II
 circulation-engine program as the actual fix's home.
 
-**Severity single-source** (T1.1 U6, design §3.2 point 3) is this family's
-fourth check, and generalizes :func:`babylon.sentinels.seam.checks.
-check_severity_vocabulary` (which only guarded ``web/game/engine_bridge.py``
-against a reappeared ``_EVENT_SEVERITY`` literal, by NAME, never by value) into
-the full three-way parity gate T1.1 promises: web severity == Archive severity
-== U1's generated table (:func:`babylon.models.event_severity.resolve_severity`),
-across all 84 :class:`~babylon.models.enums.events.EventType` members including
-the loud ``unclassified -> warning`` floor. Static by the same family
-discipline as every check above (never importing ``web.game.engine_bridge`` or
-``babylon.tui.chronicle_salience`` live — the former transitively reaches
-``babylon.engine``, which the layer-0.5 import contract forbids reaching from
-``babylon.sentinels`` at all): :func:`check_severity_single_source` confirms,
-via :func:`~babylon.sentinels._ast.referenced_names`, that both surfaces still
-genuinely reference ``resolve_severity``; via
-:func:`~babylon.sentinels._ast.optional_dict_literal_str_items`, that neither
-retired hand-copied literal name (``_EVENT_SEVERITY``/``EVENT_SEVERITY``) has
-reappeared in EITHER file with a value diverging from the generated table; via
-:func:`~babylon.sentinels._ast.all_dict_literal_str_items`, that no OTHER
-module-level dict literal — reintroduced under any other name — carries a
-diverging entry either (a re-fork dodging the two watched names by simply
-being renamed); and, via
-:func:`~babylon.sentinels._ast.conditional_literal_returns_by_enum_member`,
-that no inline ``if event_type == EventType.MEMBER: return "<tier>"``-shaped
-branch anywhere in either file diverges from the generated table for that
-member (a re-fork introducing no dict literal at all, folded straight into
-the classify function's own control flow). Because each surface is checked
-independently against the SAME generated table, transitive equality (web ==
-archive) follows whenever both hold, so all three pairwise comparisons the
-design names are covered — across all four detection prongs — without a
-separate web-vs-archive pass.
-
 **Wall-clock-call-site** (T1.1 U7, design §3.2 point 4) is this family's
-fifth and final day-one check: a call site inside a P-tier/hashed-artifact
+fourth and final day-one check: a call site inside a P-tier/hashed-artifact
 producer that reads real wall-clock time
 (:data:`~babylon.sentinels._ast.WALLCLOCK_SYMBOLS` — ``datetime.now``/
 ``datetime.utcnow``/``time.time``/``time.perf_counter``/``time.monotonic``)
@@ -133,20 +102,15 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import Final, get_args
+from typing import Final
 
-from babylon.models.enums.events import EventType
-from babylon.models.event_severity import SeverityTier, resolve_severity
 from babylon.sentinels._ast import (
-    all_dict_literal_str_items,
     attribute_is_none_guard_lines,
-    conditional_literal_returns_by_enum_member,
     dict_get_call_lines,
     function_return_annotation_name,
     hasattr_guard_lines,
     literal_keyword_call_lines,
     module_level_function_names,
-    optional_dict_literal_str_items,
     referenced_names,
     wallclock_call_lines,
 )
@@ -177,7 +141,6 @@ __all__ = [
     "build_live_set",
     "check_disconnected_subsystems",
     "check_gate_satisfaction",
-    "check_severity_single_source",
     "check_stub_vs_calculator",
     "check_wallclock_call_sites",
     "main",
@@ -185,24 +148,6 @@ __all__ = [
 
 #: Repo root (this file is ``<root>/src/babylon/sentinels/seam_algebra/checks.py``).
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[4]
-
-#: The two severity surfaces T1.1 U2 single-sourced onto ``resolve_severity``.
-_WEB_SEVERITY_PATH: Final[Path] = _REPO_ROOT / "web" / "game" / "engine_bridge.py"
-_ARCHIVE_SEVERITY_PATH: Final[Path] = (
-    _REPO_ROOT / "src" / "babylon" / "projection" / "chronicle_salience.py"
-)
-
-#: The two hand-copied severity dict names T1.1 U2 retired — checked in BOTH
-#: files (not just each name's "home" surface) so a mutation reintroducing
-#: either name in either file is caught regardless of which surface it lands on.
-_SEVERITY_LITERAL_NAMES: Final[tuple[str, ...]] = ("_EVENT_SEVERITY", "EVENT_SEVERITY")
-
-#: The three-bucket taxonomy's own literal values, read off
-#: :data:`~babylon.models.event_severity.SeverityTier` (never duplicated as a
-#: hand-typed set) — both the any-name dict scan and the inline-override scan
-#: below use this to recognize a candidate re-fork by VALUE shape, not just by
-#: a watched name.
-_SEVERITY_TIER_VALUES: Final[frozenset[str]] = frozenset(get_args(SeverityTier))
 
 #: A fixed, statically-provable upper bound on the reachability fixed-point
 #: closure (Constitution "no unbounded loop" discipline) — mirrors
@@ -578,228 +523,6 @@ def check_stub_vs_calculator(
     return sorted(findings)
 
 
-_WHY_SEVERITY_FORKED: Final[str] = (
-    "WHY THIS FAILS: web/game/engine_bridge.py and babylon.tui.chronicle_salience used to "
-    "each carry their own hand-copied 47-entry severity dict with no mechanical guarantee "
-    "they stayed equal -- T1.1 U2 deleted both in favor of ONE generated resolver "
-    "(babylon.models.event_severity.resolve_severity). A reintroduced local severity "
-    "literal, or a classify function that no longer calls resolve_severity at all, is "
-    "exactly that silent-refork failure resurfacing -- the two surfaces (and the "
-    "render-tier / autopause behavior they drive) would drift apart again with every "
-    "green unit test unaware, until a player sees two different severities for the same "
-    "event on two different clients."
-)
-
-
-def _generated_severity_table() -> dict[str, str]:
-    """Build the real ``{EventType.value: tier}`` table for all 84 members.
-
-    Imports only :mod:`babylon.models.event_severity` (layer 0 — never the
-    engine), so calling this from a sentinel check carries no engine/web
-    weight, unlike importing either live surface would.
-
-    :returns: The generated table, one entry per :class:`~babylon.models.
-        enums.events.EventType` member — the 47 U1 classifies directly, plus
-        the 37 that resolve through the loud ``unclassified -> warning`` floor.
-    """
-    return {event_type.value: resolve_severity(event_type).tier for event_type in EventType}
-
-
-def _tier_divergence_finding(
-    label: str, symbol: str, path: Path, key: str, tier: str, table: dict[str, str]
-) -> str | None:
-    """A finding string when ``symbol`` (in the ``label`` surface) resolves
-    ``key`` to ``tier`` but the generated ``table`` disagrees.
-
-    Shared by BOTH re-fork-detection prongs added to close the review finding
-    against :func:`check_severity_single_source`'s original single prong
-    (a named-dict-literal scan alone): the any-name dict scan and the
-    inline-conditional-override scan both reduce to this same "does this
-    resolved value match the generated table" question once they have
-    extracted a ``(key, tier)`` candidate from wherever it was hiding.
-
-    :param label: ``"web"``/``"archive"`` — which surface this candidate came
-        from.
-    :param symbol: An agent-legible name for the candidate re-fork site.
-    :param path: The surface's source file (the finding's ``file`` field).
-    :param key: The ``EventType.value`` the candidate resolves.
-    :param tier: The tier the candidate resolves ``key`` to.
-    :param table: The generated reference table.
-    :returns: A finding string, or ``None`` when ``tier`` matches the table,
-        or ``key`` is absent from it (not a key either real generated table
-        row this comparison can speak to — e.g. a caller-supplied fixture
-        table narrower than the real 84 members).
-    """
-    generated_tier = table.get(key)
-    if generated_tier is None or tier == generated_tier:
-        return None
-    return finding(
-        error_class="severity-single-source",
-        symbol=symbol,
-        file=str(path),
-        line=0,
-        problem=(
-            f"the {label} surface's {symbol} resolves {key!r} to {tier!r} but the generated "
-            f"table resolves {key!r} to {generated_tier!r} — single source violated."
-        ),
-        remedy=(
-            "delete the reintroduced override and resolve severity "
-            f"through resolve_severity() instead. {_WHY_SEVERITY_FORKED}"
-        ),
-    )
-
-
-def check_severity_single_source(
-    web_path: Path = _WEB_SEVERITY_PATH,
-    archive_path: Path = _ARCHIVE_SEVERITY_PATH,
-    generated_table: dict[str, str] | None = None,
-) -> list[str]:
-    """GATING: web severity == Archive severity == U1's generated table, all 84 members.
-
-    T1.1 U6 (design §3.2 point 3) generalizes :func:`babylon.sentinels.seam.
-    checks.check_severity_vocabulary` (which only guarded the web bridge
-    against a reappeared ``_EVENT_SEVERITY`` literal, by NAME, regardless of
-    value) into the full three-way parity gate the design names. For each
-    surface (web bridge, Archive Chronicle) this check:
-
-    1. confirms, via :func:`~babylon.sentinels._ast.referenced_names`, that the
-       surface still genuinely references ``resolve_severity`` (T1.1 U2's
-       single-sourcing has not been quietly undone);
-    2. confirms, via :func:`~babylon.sentinels._ast.optional_dict_literal_str_items`,
-       that neither retired hand-copied literal name (``_EVENT_SEVERITY`` /
-       ``EVENT_SEVERITY``) has reappeared in that file with an entry whose
-       value diverges from ``generated_table``;
-    3. confirms, via :func:`~babylon.sentinels._ast.all_dict_literal_str_items`,
-       that NO OTHER module-level dict literal — reintroduced under any name,
-       not just the two retired ones — carries an entry whose key is a real
-       ``EventType.value`` and whose value is a taxonomy tier that diverges
-       from ``generated_table`` (a hand-copied severity dict does not stop
-       being a hand-copied severity dict just because it is renamed; a
-       finding here was a silent miss before this prong existed); and
-    4. confirms, via
-       :func:`~babylon.sentinels._ast.conditional_literal_returns_by_enum_member`,
-       that no ``if <x> == EventType.MEMBER: return "<tier>"``-shaped inline
-       branch anywhere in the file returns a tier that diverges from
-       ``generated_table`` for that member — the re-fork vector that
-       bypasses BOTH dict-literal prongs above by never introducing a dict at
-       all (an inline per-member override folded straight into the classify
-       function's control flow was a silent miss before this prong existed).
-
-    Because both surfaces are checked independently against the SAME
-    ``generated_table``, transitive equality (web == archive) is implied
-    whenever both individually hold — so all three pairwise comparisons the
-    design names (web/archive, web/generated, archive/generated) are covered
-    without a separate web-vs-archive pass, across all four prongs above.
-
-    :param web_path: The web bridge source (defaults to the real
-        ``web/game/engine_bridge.py``; injectable so tests can supply a
-        deliberately-forked fixture).
-    :param archive_path: The Archive Chronicle source (defaults to the real
-        ``src/babylon/projection/chronicle_salience.py``; injectable).
-    :param generated_table: The ``{EventType.value: tier}`` reference table
-        (defaults to the real 84-member table via
-        :func:`_generated_severity_table` when ``None``; injectable so a
-        fixture table can accompany a fixture path without touching the real
-        module — covers all 84 members, including the 37 that resolve
-        through the loud unclassified floor, by construction of
-        :func:`_generated_severity_table`).
-    :returns: Sorted agent-legible finding strings (empty when both surfaces
-        are clean — no reintroduced literal, any-name dict, or inline
-        conditional diverges from the generated table, and both still
-        reference ``resolve_severity``).
-    :raises babylon.sentinels.base.SentinelCheckError: If a source file is
-        missing/unparseable, or a reintroduced named literal is assigned to
-        something other than a dict literal.
-    """
-    table = generated_table if generated_table is not None else _generated_severity_table()
-    findings: list[str] = []
-    for label, path in (("web", web_path), ("archive", archive_path)):
-        if "resolve_severity" not in referenced_names(path):
-            findings.append(
-                finding(
-                    error_class="severity-single-source",
-                    symbol="resolve_severity",
-                    file=str(path),
-                    line=0,
-                    problem=(
-                        f"the {label} surface no longer references resolve_severity at all — "
-                        "severity has been re-forked away from the single source."
-                    ),
-                    remedy=(
-                        "restore a delegation to babylon.models.event_severity.resolve_severity "
-                        f"in this surface's classify function. {_WHY_SEVERITY_FORKED}"
-                    ),
-                )
-            )
-        for literal_name in _SEVERITY_LITERAL_NAMES:
-            for key, tier in optional_dict_literal_str_items(path, literal_name).items():
-                generated_tier = table.get(key)
-                if generated_tier is None:
-                    findings.append(
-                        finding(
-                            error_class="severity-single-source",
-                            symbol=f"{literal_name}[{key!r}]",
-                            file=str(path),
-                            line=0,
-                            problem=(
-                                f"the {label} surface's local {literal_name} names key {key!r}, "
-                                "which is not a value in the generated table (not a real "
-                                "EventType.value, or the table is stale)."
-                            ),
-                            remedy=(
-                                "delete the reintroduced literal dict and resolve severity "
-                                f"through resolve_severity() instead. {_WHY_SEVERITY_FORKED}"
-                            ),
-                        )
-                    )
-                elif tier != generated_tier:
-                    findings.append(
-                        finding(
-                            error_class="severity-single-source",
-                            symbol=f"{literal_name}[{key!r}]",
-                            file=str(path),
-                            line=0,
-                            problem=(
-                                f"the {label} surface's local {literal_name}[{key!r}] = {tier!r} "
-                                f"but the generated table resolves {key!r} to {generated_tier!r} "
-                                "— single source violated."
-                            ),
-                            remedy=(
-                                "delete the reintroduced literal dict and resolve severity "
-                                f"through resolve_severity() instead. {_WHY_SEVERITY_FORKED}"
-                            ),
-                        )
-                    )
-        # Prong 3: a re-forked severity dict reintroduced under ANY OTHER
-        # module-level name (review finding: the two prongs above only ever
-        # watched the two retired names by construction, so a dict-shaped
-        # re-fork simply renamed to dodge them was a silent miss).
-        for var_name, items in all_dict_literal_str_items(path).items():
-            if var_name in _SEVERITY_LITERAL_NAMES:
-                continue  # already checked above -- do not double-report
-            for key, tier in items.items():
-                if tier not in _SEVERITY_TIER_VALUES:
-                    continue  # not tier-shaped -- not a severity re-fork candidate
-                divergence = _tier_divergence_finding(
-                    label, f"{var_name}[{key!r}]", path, key, tier, table
-                )
-                if divergence is not None:
-                    findings.append(divergence)
-        # Prong 4: an inline per-member override folded straight into a
-        # classify function's control flow, introducing NO dict literal at
-        # all (review finding: neither dict-literal prong above can ever see
-        # this vector by construction).
-        for key, tier in conditional_literal_returns_by_enum_member(
-            path, _SEVERITY_TIER_VALUES, EventType, "EventType"
-        ).items():
-            divergence = _tier_divergence_finding(
-                label, f"inline branch resolving {key!r}", path, key, tier, table
-            )
-            if divergence is not None:
-                findings.append(divergence)
-    return sorted(findings)
-
-
 _WHY_WALLCLOCK: Final[str] = (
     "WHY THIS FAILS: a call site inside a P-tier/hashed-artifact producer that reads real "
     "wall-clock time is a non-determinism smell -- even where the value is provably excluded "
@@ -889,13 +612,12 @@ def check_wallclock_call_sites(
 
 
 #: Any non-exempt disconnected subsystem, unsatisfied construct-entry gate,
-#: live-consumer-fed-a-literal-over-a-registered-calculator, reforked severity
-#: surface, OR a non-exempt wall-clock read at a declared P-tier call site is
+#: live-consumer-fed-a-literal-over-a-registered-calculator, or non-exempt
+#: wall-clock read at a declared P-tier call site is
 #: a live defect.
 _GATING_CHECKS: Final[tuple[LabelledCheck, ...]] = (
     ("disconnected-subsystem", check_disconnected_subsystems),
     ("gate-satisfaction", check_gate_satisfaction),
-    ("severity-single-source", check_severity_single_source),
     ("stub-vs-calculator", check_stub_vs_calculator),
     ("wallclock-call-site", check_wallclock_call_sites),
 )
@@ -916,8 +638,7 @@ def _summary(advisory_count: int) -> str:
         f"{len(GATE_SATISFACTION_EXEMPTIONS)} unsatisfied gate(s), "
         f"{len(STUB_VS_CALCULATOR_EXEMPTIONS)} stub-vs-calculator site(s), and "
         f"{len(WALLCLOCK_EXEMPTIONS)} wall-clock call site(s) held open by a dated "
-        "exemption; severity single-sourced across all "
-        f"{len(EventType)} EventType member(s), 0 held open (T1.1 U6)."
+        "exemption."
     )
 
 

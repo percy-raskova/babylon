@@ -20,7 +20,6 @@ def test_registry_declares_the_known_producers() -> None:
     """The seeded rows cover the outputs this program investigated."""
     names = {row.name for row in LIVENESS_ROWS}
     assert {
-        "price_divergence",
         "market_balance",
         "pole_readings",
         "national_financial",

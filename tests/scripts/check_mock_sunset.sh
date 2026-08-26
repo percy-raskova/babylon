@@ -14,12 +14,12 @@
 set -euo pipefail
 SEARCH='MockEngineBridge|mock_defines|seed_mock_game|BABYLON_MOCK_MODE'
 
-matches=$(grep -rnE "${SEARCH}" src/ web/ \
-    --include="*.py" \
-    --exclude-dir=__pycache__ \
-    --exclude-dir=migrations \
-    --exclude-dir=scripts \
-    | grep -vE '(removed|deleted|deprecated|no longer|legacy|spec 061|Spec 061|FR-032)' \
+matches=$(rg -n "${SEARCH}" src/ \
+    --glob="*.py" \
+    --glob="!**/__pycache__/**" \
+    --glob="!**/migrations/**" \
+    --glob="!**/scripts/**" \
+    | rg -v '(removed|deleted|deprecated|no longer|legacy|spec 061|Spec 061|FR-032)' \
     || true)
 
 if [ -n "${matches}" ]; then

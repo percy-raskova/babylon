@@ -1,13 +1,7 @@
 """Contract tests for the epilogue content module (Program 24 P2 WO-34).
 
-Pins three things: (1) the port is a verbatim copy of ``web/game/
-epilogues.py``, not a re-authoring; (2) all SIX non-``IN_PROGRESS``
-``GameOutcome`` members ship a page, including ``UNRESOLVED`` — flagging the
-charter's "five epilogue pages" vs the enum's six members as an open
-question rather than silently dropping one; (3) the ``UNRESOLVED`` body
-renders exactly as ``src/frontend/e2e/first-session.spec.ts`` (lines
-434-439) already asserts against the live web bridge — the same copy in a
-new, transport-neutral home.
+Pins all SIX non-``IN_PROGRESS`` ``GameOutcome`` members, including
+``UNRESOLVED``, and the retained byte-exact ``UNRESOLVED`` body.
 """
 
 from __future__ import annotations
@@ -18,7 +12,6 @@ from pydantic import ValidationError
 from babylon.models.enums import GameOutcome
 from babylon.projection.vault.epilogues import EPILOGUES, Epilogue
 from babylon.projection.vault.render_epilogue import render_epilogue
-from game.epilogues import EPILOGUES as WEB_EPILOGUES
 
 pytestmark = pytest.mark.unit
 
@@ -47,20 +40,6 @@ class TestEpiloguesCoverage:
         not something this content module decides by omission."""
         assert len(EPILOGUES) == 6
         assert "unresolved" in EPILOGUES
-
-
-class TestVerbatimPort:
-    """Proves this is a DATA PORT, not a re-authoring (WO-34 deliverable)."""
-
-    def test_same_key_set_as_the_web_source(self) -> None:
-        assert set(EPILOGUES) == set(WEB_EPILOGUES)
-
-    def test_every_outcome_matches_the_web_source_field_by_field(self) -> None:
-        for outcome, entry in EPILOGUES.items():
-            source = WEB_EPILOGUES[outcome]
-            assert entry.headline == source.headline, outcome
-            assert entry.body == source.body, outcome
-            assert entry.palette == source.palette, outcome
 
 
 class TestUnresolvedPinnedCopy:

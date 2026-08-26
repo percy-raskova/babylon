@@ -159,7 +159,7 @@ def _isolate_random_state() -> Generator[None, None, None]:
 
 @pytest.fixture(autouse=True)
 def enable_logging_propagation() -> Generator[None, None, None]:
-    """Ensure caplog catches babylon logs despite Django settings disabling propagation."""
+    """Ensure caplog catches Babylon logs when a test changes propagation."""
     logger = logging.getLogger("babylon")
     old_propagate = logger.propagate
     logger.propagate = True
@@ -261,75 +261,6 @@ def mock_simulation() -> MagicMock:
     mock.tick = 0
     mock.is_running = False
     return mock
-
-
-# =============================================================================
-# DJANGO DB SETUP — exclude externally-managed postgres alias
-# =============================================================================
-# tests/integration/web/conftest.py registers an ephemeral testcontainers
-# Postgres as the "postgres" Django alias and runs its own migration/DDL
-# pipeline against it. pytest-django's stock ``django_db_setup`` (used by
-# every test outside ``tests/integration/web/``) would otherwise also try
-# to create a test database for the postgres alias and fail because
-# testcontainers already created it. Filtering "postgres" out here lets
-# the integration override own its lifecycle while leaving the default
-# SQLite setup untouched for unit tests.
-
-
-@pytest.fixture(scope="session")
-def django_db_setup(  # type: ignore[no-untyped-def]
-    request: pytest.FixtureRequest,
-    django_test_environment: None,  # noqa: ARG001
-    django_db_blocker,
-    django_db_use_migrations: bool,
-    django_db_keepdb: bool,
-    django_db_createdb: bool,
-    django_db_modify_db_settings: None,  # noqa: ARG001
-) -> Generator[None, None, None]:
-    """Replicate pytest-django's default ``django_db_setup`` but skip the
-    externally-managed ``"postgres"`` alias.
-
-    Identical to ``pytest_django.fixtures.django_db_setup`` except
-    ``"postgres"`` is removed from the alias set passed to
-    ``setup_databases``. The integration ``conftest.py`` under
-    ``tests/integration/web/`` overrides this fixture for tests in that
-    directory and handles postgres setup itself.
-    """
-    from django.test.utils import setup_databases, teardown_databases
-    from pytest_django.fixtures import _disable_migrations, _get_databases_for_setup
-
-    setup_databases_args: dict[str, object] = {}
-
-    if not django_db_use_migrations:
-        _disable_migrations()
-
-    if django_db_keepdb and not django_db_createdb:
-        setup_databases_args["keepdb"] = True
-
-    aliases, serialized_aliases = _get_databases_for_setup(request.session.items)
-
-    aliases = {a for a in aliases if a != "postgres"}
-    serialized_aliases = {a for a in serialized_aliases if a != "postgres"}
-
-    with django_db_blocker.unblock():
-        db_cfg = setup_databases(
-            verbosity=request.config.option.verbose,
-            interactive=False,
-            aliases=aliases,
-            serialized_aliases=serialized_aliases,
-            **setup_databases_args,
-        )
-
-    yield
-
-    if not django_db_keepdb:
-        with django_db_blocker.unblock():
-            try:
-                teardown_databases(db_cfg, verbosity=request.config.option.verbose)
-            except Exception as exc:  # noqa: BLE001
-                request.node.warn(
-                    pytest.PytestWarning(f"Error when trying to teardown test databases: {exc!r}")
-                )
 
 
 # =============================================================================

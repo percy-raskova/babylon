@@ -199,8 +199,7 @@ def test_dangling_check_reds_on_a_getattr_naming_no_real_member(
         "class Backend:\n    def real_method(self) -> None: ...\n",
         encoding="utf-8",
     )
-    call_dir = tmp_path / "web"
-    call_dir.mkdir()
+    call_dir = src_dir
     (call_dir / "caller.py").write_text(
         "def f(persistence: Backend) -> None:\n"
         "    getattr(persistence, 'real_methdo', None)\n",  # transposed typo of a real name
@@ -232,8 +231,7 @@ def test_dangling_check_passes_on_a_getattr_naming_a_real_member(
         "class Backend:\n    def real_method(self) -> None: ...\n",
         encoding="utf-8",
     )
-    call_dir = tmp_path / "web"
-    call_dir.mkdir()
+    call_dir = src_dir
     (call_dir / "caller.py").write_text(
         "def f(persistence: Backend) -> None:\n    getattr(persistence, 'real_method', None)\n",
         encoding="utf-8",
@@ -260,8 +258,7 @@ def test_exempted_dangling_reference_is_skipped(
         "class Backend:\n    def real_method(self) -> None: ...\n",
         encoding="utf-8",
     )
-    call_dir = tmp_path / "web"
-    call_dir.mkdir()
+    call_dir = src_dir
     (call_dir / "caller.py").write_text(
         "def f(persistence: Backend) -> None:\n"
         "    getattr(persistence, 'this_does_not_exist', None)\n",
@@ -276,7 +273,7 @@ def test_exempted_dangling_reference_is_skipped(
         member_classes=("synthetic_backend",),
     )
     exemption = SentinelExemption(
-        key=("dangling", "synthetic_receiver", "web/caller.py", "this_does_not_exist"),
+        key=("dangling", "synthetic_receiver", "src/caller.py", "this_does_not_exist"),
         reason="test exemption",
         owner="test",
         date="2026-07-18",

@@ -28,7 +28,7 @@ def test_real_rows_are_consumed() -> None:
 def test_efficacy_reds_when_the_declared_consumer_does_not_read_the_output() -> None:
     """MUTATION: inject an output no consumer mentions — the sensor must red.
 
-    ``web/game/map_contract.py`` is a real, parseable file that contains no
+    ``src/babylon/config/defines/_hash.py`` is a real, parseable file that contains no
     mention of ``phantom_never_read_output``; the row therefore claims a reader
     that does not exist, which is precisely computed-but-never-consumed.
     """
@@ -37,14 +37,14 @@ def test_efficacy_reds_when_the_declared_consumer_does_not_read_the_output() -> 
         producer_file="src/babylon/engine/systems/market_scissors.py",
         producer_symbol="MarketScissorsSystem",
         output_symbol="phantom_never_read_output",
-        consumer_files=("web/game/map_contract.py",),
+        consumer_files=("src/babylon/config/defines/_hash.py",),
         material_relation="injected defect for the efficacy proof",
     )
     findings = check_outputs_have_readers((injected,))
     assert len(findings) == 1
     assert findings[0].startswith("[computed-but-never-consumed]")
     assert "phantom_never_read_output" in findings[0]
-    assert "web/game/map_contract.py" in findings[0]
+    assert "src/babylon/config/defines/_hash.py" in findings[0]
     assert "REMEDY:" in findings[0]
 
 

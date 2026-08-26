@@ -64,7 +64,7 @@ __all__ = [
 #: reader satisfying this check would silently reproduce the same "closed
 #: loop, no external referent" bug the inert sentinel already guards against
 #: for writers.
-PRODUCTION_ROOTS: Final[tuple[str, ...]] = ("src", "web")
+PRODUCTION_ROOTS: Final[tuple[str, ...]] = ("src",)
 
 
 class DeclaredComputedField(BaseModel):

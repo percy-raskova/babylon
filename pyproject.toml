@@ -28,8 +28,8 @@ classifiers = [
 
 # PyQt6, PyQt6-WebEngine, pydeck removed in Spec 059 follow-up
 # (commit chore(ui): delete PyQt6 dashboard) — desktop dashboard at
-# src/babylon/ui/dashboard/ deleted; live UI stack is Django + React
-# (mise run web:dev) at web/ + frontend/.
+# src/babylon/ui/dashboard/ and the legacy Django/React client were deleted;
+# the live client is the Rust Bevy ``babylon-client`` crate.
 dependencies = [
     "pydantic>=2.10.3",
     "numpy>=1.26.4",
@@ -85,20 +85,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# server: the legacy web-client stack (Django + DRF + gunicorn) plus the
-# ansible / rst / boto dev-ops tools. X.8 marks this stack legacy — it is
-# opt-in via `--extra server`; the default install slims toward the player
-# closure. Dev + CI install it (see plan Task 7/8); the Nix player closure
-# does not.
-server = [
+# Operator-only automation and prose tooling. The retired Django server stack
+# was removed by PER-258; this extra preserves the unrelated Ansible/RST/Boto
+# tools used by repository automation.
+ops = [
     "ansible-dev-tools>=26.2.0,<27.0.0",
     "rstcheck>=6.2.5,<7.0.0",
     "doc8>=2.0.0,<3.0.0",
     "boto3>=1.42.59,<2.0.0",
-    "django>=5.0,<7.0",
-    "djangorestframework>=3.15",
-    "django-cors-headers>=4.0",
-    "gunicorn>=21.0",
 ]
 
 [dependency-groups]
@@ -132,9 +126,6 @@ dev = [
     "types-tqdm>=4.67.0.20250809,<5.0.0",
     "vulture>=2.14.0,<3.0.0",
     "hypothesis>=6.149.0,<7.0.0",
-    "pytest-django>=4.8.0,<5.0.0",
-    "django-stubs[compatible-mypy]>=5.0",
-    "djangorestframework-stubs[compatible-mypy]>=3.15",
     "testcontainers[postgres]>=4.14.2,<5.0.0",
     "pytest-json-report>=1.5.0,<2.0.0",
     "pytest-html>=4.1.0,<5.0.0",
@@ -192,10 +183,8 @@ Source = "https://github.com/percy-raskova/babylon"
 babylon = "babylon.cli:app"
 
 [tool.pytest.ini_options]
-DJANGO_SETTINGS_MODULE = "babylon_web.settings.testing"
 pythonpath = [
     "src",
-    "web",
 ]
 testpaths = [
     "tests",
@@ -235,7 +224,6 @@ markers = [
     "cross_scale: marks tests for spec 062 cross-scale integration",
     "contract: Contract tests pinning cross-boundary interfaces (tests/contract/)",
     "requires_reference_db: Tests needing the reference SQLite DB (data/sqlite/marxist-data-3NF.sqlite) — excluded on the dev CI tier; main/nightly include them via the CI subset artifact (item 40)",
-    "pacing_gate: frozen G1 520-tick nationwide null-play pacing reference (spec-116 gate 1 / ADR079) — manual-only via `mise run qa:pacing`; remains unscheduled until the PER-268 Rust successor exists; never in mise run check, test:unit, test:rest-ci, or py313-forward-compat",
     "requires_ollama: needs a live local Ollama daemon + chat model (multi-minute, probabilistic) — excluded from every fast gate; runs via `mise run test:ai`. The bare `ai` marker stays taxonomy-only (2026-07-16 re-tier: mock-based ai-suite tests DO run in fast gates)",
 ]
 # Enforce marker/config strictness via ini options: the --strict-markers /
@@ -340,15 +328,6 @@ known-first-party = [
     "S607",  # subprocess smoke tests invoke our own CLIs with literal args
     "S608",  # SQL literals in test fixtures
 ]
-"web/**" = [
-    "ARG001",
-]
-# The DEBUG-mode fake bridge: random fake data + best-effort side writes are
-# its design, not a defect (game/apps.py falls back to it without RUN_MAIN).
-"web/game/stub_bridge.py" = [
-    "S110",
-    "S311",
-]
 "tools/**" = [
     "C901",
     "SIM",
@@ -375,7 +354,7 @@ indent-style = "space"
 [tool.mypy]
 python_version = "3.12"
 strict = true
-mypy_path = "src:web"
+mypy_path = "src"
 explicit_package_bases = true
 warn_return_any = true
 warn_unused_configs = true
@@ -396,7 +375,6 @@ exclude = [
 ]
 plugins = [
     "pydantic.mypy",
-    "mypy_django_plugin.main",
 ]
 
 [[tool.mypy.overrides]]
@@ -406,17 +384,12 @@ module = [
     "h3.*",
     "tomli",
     "pgvector.*",
-    "gunicorn.*",
-    "corsheaders.*",
     # Retired at the M7 cutover (textual-image left the dependency set) but
     # render/capability.py keeps its try/except-guarded probe import as an
     # honest-absence path — mypy must tolerate the module never existing.
     "textual_image.*",
 ]
 ignore_missing_imports = true
-
-[tool.django-stubs]
-django_settings_module = "babylon_web.settings.development"
 
 [tool.pydantic-mypy]
 init_forbid_extra = true
@@ -582,10 +555,8 @@ extraPaths = ["."]
 [tool.importlinter]
 root_packages = ["babylon"]
 exclude_type_checking_imports = true
-# Originally required because the (now-deleted, Amendment AF/ADR186) tui
-# contract forbade an external package (django); left enabled since no
-# contract currently needs it forbidden again. Externals enter the graph
-# squashed; the babylon-internal contracts are unaffected by this flag.
+# Externals enter the graph squashed; the babylon-internal contracts are
+# unaffected by this flag.
 include_external_packages = true
 
 [[tool.importlinter.contracts]]

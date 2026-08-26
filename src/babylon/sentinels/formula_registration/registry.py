@@ -70,7 +70,7 @@ __all__ = [
 #: matter which root they live under (mirrors every sibling sentinel's own
 #: ``is_test_source`` exclusion) — a test-only caller is exactly the false
 #: liveness this gate exists to catch.
-PRODUCTION_ROOTS: Final[tuple[str, ...]] = ("src", "web")
+PRODUCTION_ROOTS: Final[tuple[str, ...]] = ("src",)
 
 #: The one file whose OWN reference to ``formulas.<symbol>`` must never count
 #: as a production call site — it is the registration act itself, not

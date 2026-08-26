@@ -41,7 +41,7 @@ def test_real_dependencies_are_all_declared() -> None:
 def test_efficacy_reds_on_a_declared_edge_with_no_real_dependency() -> None:
     """MUTATION: an edge whose target reads nothing the source publishes reds.
 
-    ``web/game/map_contract.py`` is a real, parseable file that mentions neither
+    ``src/babylon/config/defines/_hash.py`` is a real, parseable file that mentions neither
     ``phantom_published_symbol`` nor the source's fields — so the declared edge
     is a claim about the code that the code does not support.
     """
@@ -54,7 +54,7 @@ def test_efficacy_reds_on_a_declared_edge_with_no_real_dependency() -> None:
     target = MeasurementDependency(
         opposition_key="phantom_target",
         inputs_fields=("other_input",),
-        producer_file="web/game/map_contract.py",
+        producer_file="src/babylon/config/defines/_hash.py",
         produces_symbols=("other_published_symbol",),
     )
     findings = check_declared_edges_are_grounded(

@@ -64,7 +64,7 @@ __all__ = [
 #: top-level ``tests/``) — see
 #: :func:`babylon.sentinels.inert.checks.is_test_source`. A test-only caller
 #: satisfying this check would silently reproduce the founding bug.
-PRODUCTION_ROOTS: Final[tuple[str, ...]] = ("src", "web")
+PRODUCTION_ROOTS: Final[tuple[str, ...]] = ("src",)
 
 
 class DeclaredStore(BaseModel):

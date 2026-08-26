@@ -289,7 +289,7 @@ def test_stores_check_reds_on_a_writer_method_with_no_real_callers() -> None:
     genuine absence, independent of what IntelLedger.append looks like today."""
     phantom = DeclaredStore(
         name="phantom_store",
-        def_file="web/game/fog/ledger.py",
+        def_file="src/babylon/projection/fog/ledger.py",
         class_name="IntelLedger",
         writer_methods=("this_writer_method_does_not_exist_anywhere",),
         what_it_stores="synthetic defect for the efficacy proof",
@@ -302,11 +302,12 @@ def test_stores_check_reds_on_a_writer_method_with_no_real_callers() -> None:
 
 def test_stores_check_passes_on_a_writer_method_with_a_real_caller() -> None:
     """`IntelLedger.latest()` IS called in production (`read_intel()`,
-    `web/game/fog/ledger.py`, itself called from `web/game/fog/filter.py`)
+    `src/babylon/projection/fog/ledger.py`, itself called from
+    `src/babylon/projection/fog/filter.py`)
     -- a stable, real positive-control independent of the append() gap."""
     real = DeclaredStore(
         name="latest_reader",
-        def_file="web/game/fog/ledger.py",
+        def_file="src/babylon/projection/fog/ledger.py",
         class_name="IntelLedger",
         writer_methods=("latest",),
         what_it_stores="synthetic positive-control row",
@@ -336,7 +337,7 @@ def test_exempted_store_is_skipped(monkeypatch: pytest.MonkeyPatch) -> None:
 
     phantom = DeclaredStore(
         name="phantom_store",
-        def_file="web/game/fog/ledger.py",
+        def_file="src/babylon/projection/fog/ledger.py",
         class_name="IntelLedger",
         writer_methods=("this_writer_method_does_not_exist_anywhere",),
         what_it_stores="synthetic defect for the exemption proof",
@@ -367,7 +368,7 @@ def test_exemption_does_not_leak_across_store_and_producer_kinds(
 
     phantom_store = DeclaredStore(
         name="phantom_shared_name",
-        def_file="web/game/fog/ledger.py",
+        def_file="src/babylon/projection/fog/ledger.py",
         class_name="IntelLedger",
         writer_methods=("this_writer_method_does_not_exist_anywhere",),
         what_it_stores="synthetic defect for the cross-kind proof",
@@ -390,7 +391,7 @@ def test_exemption_does_not_leak_across_store_and_producer_kinds(
 def test_stores_check_raises_on_missing_declared_file() -> None:
     phantom = DeclaredStore(
         name="gone_module",
-        def_file="web/game/fog/does_not_exist.py",
+        def_file="src/babylon/projection/fog/does_not_exist.py",
         class_name="Whatever",
         writer_methods=("append",),
         what_it_stores="synthetic missing-file defect",

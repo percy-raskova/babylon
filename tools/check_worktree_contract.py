@@ -5,8 +5,8 @@ Five asserts, each mapped to a real debugging session this class cost:
 
 1. The venv interpreter matches ``.python-version`` (worktree venvs created
    against the wrong interpreter shadow imports unpredictably).
-2. The ``server`` extra is installed (Django import — its absence produced a
-   false "the game is broken" 500).
+2. The ``ops`` extra is installed (repository automation depends on the
+   operator-only Ansible toolchain).
 3. Every ``data/`` symlink resolves and the reference DB is present (fresh
    worktrees lack the symlink farm; tests then auto-create empty sqlite).
 4. ``.env`` exists.
@@ -33,7 +33,7 @@ def check_interpreter() -> str | None:
     pin = Path(".python-version").read_text().strip()
     venv_python = Path(".venv/bin/python")
     if not venv_python.exists():
-        return ".venv/bin/python missing — run `uv sync --extra server --frozen`"
+        return ".venv/bin/python missing — run `uv sync --extra ops --frozen`"
     proc = subprocess.run(
         [str(venv_python), "--version"], capture_output=True, text=True, check=False
     )
@@ -43,13 +43,15 @@ def check_interpreter() -> str | None:
     return None
 
 
-def check_server_extra() -> str | None:
-    """The server extra must be installed (django is its marker import)."""
+def check_ops_extra() -> str | None:
+    """The operator extra must be installed (Ansible is its marker import)."""
     proc = subprocess.run(
-        [".venv/bin/python", "-c", "import django"], capture_output=True, check=False
+        [".venv/bin/python", "-c", "import ansible"], capture_output=True, check=False
     )
     if proc.returncode != 0:
-        return "server extra not installed (import django failed) — run `uv sync --extra server --frozen`"
+        return (
+            "ops extra not installed (import ansible failed) — run `uv sync --extra ops --frozen`"
+        )
     return None
 
 
@@ -88,7 +90,7 @@ def check_lock_unmodified() -> str | None:
 def main() -> int:
     checks = (
         check_interpreter,
-        check_server_extra,
+        check_ops_extra,
         check_data_symlinks,
         check_dotenv,
         check_lock_unmodified,

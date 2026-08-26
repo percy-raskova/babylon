@@ -63,14 +63,14 @@ __all__ = [
 #: is in scope *because* the bug this sentinel exists to prevent lived in a
 #: fixture: a test that stamps a type production never emits is the whole
 #: failure mode, so excluding tests would exclude the defect.
-SCAN_ROOTS: Final[tuple[str, ...]] = ("src", "web", "tests")
+SCAN_ROOTS: Final[tuple[str, ...]] = ("src", "tests")
 
 #: The trees whose stamps and queries must CLOSE against each other — rule
 #: (b). Test fixtures deliberately do not count as producers: a node type that
 #: only a fixture ever stamps is exactly the "green test over a dead feature"
 #: shape, so letting ``tests`` satisfy a production query would blind the
 #: sentinel to its own founding bug.
-PRODUCTION_ROOTS: Final[tuple[str, ...]] = ("src", "web")
+PRODUCTION_ROOTS: Final[tuple[str, ...]] = ("src",)
 
 #: Node types production QUERIES but never STAMPS. Every entry is a live
 #: defect held open by an owner decision, not an approved pattern — a query

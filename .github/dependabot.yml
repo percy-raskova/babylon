@@ -55,19 +55,8 @@ updates:
         update-types:
           - "minor"
           - "patch"
-    # Deferred majors (OWNER ITEM 55 — django 6 + mypy 2 modernization). This is
-    # a deliberate railed batch (manage.py check + web suites + typecheck across
-    # 567 files), not a drive-by bump: django-stubs 6 + drf-stubs cap `mypy<2.2`
-    # via the compatible-mypy extras, so django 6 and mypy 2 are UNSATISFIABLE
-    # together on the current stubs. Hold the three majors until item 55 ships.
-    # `ignore` suppresses both version- and security-update PRs for the pinned
-    # MAJOR only — minor/patch security fixes within 5.x / 1.x still flow.
-    # UNBLOCK: delete these three entries when item 55 is executed.
+    # Hold the mypy major for its dedicated modernization batch.
     ignore:
-      - dependency-name: "django"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "django-stubs"
-        update-types: ["version-update:semver-major"]
       - dependency-name: "mypy"
         update-types: ["version-update:semver-major"]
 

@@ -1,4 +1,4 @@
-"""PEP-621 dependency layout + server extra (ADR095 D3a/D2)."""
+"""PEP-621 dependency layout and retained operator tooling."""
 
 from __future__ import annotations
 
@@ -32,28 +32,41 @@ def test_no_legacy_poetry_table() -> None:
     assert "poetry" not in DATA.get("tool", {}), "legacy [tool.poetry] table remains"
 
 
-def test_server_extra_absorbs_legacy_web_stack() -> None:
-    server = _names(DATA["project"]["optional-dependencies"]["server"])
-    expected = {
+def test_ops_extra_contains_only_operator_tooling() -> None:
+    ops = _names(DATA["project"]["optional-dependencies"]["ops"])
+    assert ops == {
         "ansible-dev-tools",
         "rstcheck",
         "doc8",
         "boto3",
-        "django",
-        "djangorestframework",
-        "django-cors-headers",
-        "gunicorn",
     }
-    assert expected <= server
+
+
+def test_retired_web_dependencies_are_absent_from_every_dependency_set() -> None:
+    requirements = [
+        *DATA["project"]["dependencies"],
+        *DATA["project"]["optional-dependencies"]["ops"],
+        *DATA["dependency-groups"]["dev"],
+        *DATA["dependency-groups"]["docs"],
+        *DATA["dependency-groups"]["mutation"],
+    ]
+    assert _names(requirements).isdisjoint(
+        {
+            "django",
+            "django-cors-headers",
+            "django-stubs",
+            "djangorestframework",
+            "djangorestframework-stubs",
+            "gunicorn",
+            "pytest-django",
+        }
+    )
 
 
 def test_core_stays_in_default_deps() -> None:
     core = _names(DATA["project"]["dependencies"])
     for pkg in ("pydantic", "typer", "rich", "rustworkx", "openai"):
         assert pkg in core
-    # server packages are NOT in the default set
-    assert "django" not in core
-    assert "gunicorn" not in core
 
 
 def test_build_backend_is_hatchling() -> None:

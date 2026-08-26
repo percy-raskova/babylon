@@ -26,9 +26,6 @@ jobs:
         with:
           ref: dev
       - uses: ./.github/actions/bootstrap-python
-        with:
-          gdal: "true"
-          server: "true"
       - name: Install Rust toolchain (legacy adopter only)
         run: |
           CHANNEL="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust/rust-toolchain.toml)"
@@ -59,13 +56,9 @@ jobs:
         with:
           ref: dev
       - uses: ./.github/actions/bootstrap-python
-        with:
-          gdal: "true"
-          server: "true"
       - uses: ./.github/actions/postgres-up
       - uses: ./.github/actions/fetch-reference-db
-      # Engine-runtime tables (node_state et al.) are not Django's — the
-      # canonical DDL apply is required on a fresh CI Postgres.
+      # Engine-runtime tables require the canonical DDL on fresh CI Postgres.
       - name: Babylon runtime schema bootstrap (node_state et al.)
         run: mise run db:bootstrap
       # Advisory until noise is characterized (audit 2026-07-16): per-system

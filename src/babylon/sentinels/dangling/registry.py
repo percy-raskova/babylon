@@ -65,7 +65,7 @@ __all__ = [
 #: Trees scanned for a dangling dynamic reference. Test files are EXCLUDED
 #: no matter which root they live under — see
 #: :func:`babylon.sentinels.dangling.checks.is_test_source`.
-PRODUCTION_ROOTS: Final[tuple[str, ...]] = ("src", "web")
+PRODUCTION_ROOTS: Final[tuple[str, ...]] = ("src",)
 
 
 class WatchedClass(BaseModel):

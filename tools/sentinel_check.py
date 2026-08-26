@@ -7,7 +7,7 @@ sentinel's ``main``. The check logic lives in the importable package
 (``babylon.sentinels.*``) so it is unit-testable and mutation-testable without a
 ``sys.path`` hack — this file carries no logic of its own.
 
-Run: ``uv run python tools/sentinel_check.py seam --check``. Exit codes are
+Run: ``uv run python tools/sentinel_check.py coverage --check``. Exit codes are
 the sentinel's own contract: 0 clean, 1 gating violations, 2 infrastructure
 failure (source missing/unparseable — never swallowed into a false pass).
 """
@@ -30,9 +30,7 @@ from babylon.sentinels.formula_registration.checks import main as formula_regist
 from babylon.sentinels.gate_coverage.checks import main as gate_coverage_main
 from babylon.sentinels.inert.checks import main as inert_main
 from babylon.sentinels.liveness.checks import main as liveness_main
-from babylon.sentinels.masked_arithmetic.checks import main as masked_arithmetic_main
 from babylon.sentinels.reachability.checks import main as reachability_main
-from babylon.sentinels.seam.checks import main as seam_main
 from babylon.sentinels.seam_algebra.checks import main as seam_algebra_main
 from babylon.sentinels.superstructure.checks import main as superstructure_main
 from babylon.sentinels.surface.checks import main as surface_main
@@ -51,40 +49,6 @@ def _catalog_main(argv: list[str] | None) -> int:
     from babylon.sentinels.coverage.db_probe import main as catalog_main
 
     return catalog_main(argv)
-
-
-def _aggregation_main(argv: list[str] | None) -> int:
-    """Route to the aggregation-symmetry probe (Track 1 Task 10) — lazy import.
-
-    The probe imports ``web.game.engine_bridge`` (a Django app layered above
-    ``babylon.*``), which ``babylon.sentinels`` may not import, so it lives
-    beside this file in ``tools/`` (``aggregation_symmetry_probe.py``) and
-    loads only when selected — the same split ``_partition_main`` uses for
-    the engine.
-
-    Not to be confused with ``aggregation-intensive`` (the static
-    intensive-means scanner from the Vol III sentinel program, ADR088):
-    two sub-sensors, one package, split keys because the symmetry probe is a
-    CI gate while the intensive scanner is advisory/local by owner ruling.
-    """
-    from aggregation_symmetry_probe import (
-        main as aggregation_main,  # type: ignore[import-not-found]
-    )
-
-    return aggregation_main(argv)
-
-
-def _fog_main(argv: list[str] | None) -> int:
-    """Route to the fog-containment Hypothesis probe (Track 1 Task 10) — lazy import.
-
-    The probe imports ``game.fog.filter``/``game.fog.ledger`` (``web.game.*``
-    modules), which ``babylon.sentinels`` may not import, so it lives beside
-    this file in ``tools/`` (``fog_containment_probe.py``) and loads only
-    when selected.
-    """
-    from fog_containment_probe import main as fog_main  # type: ignore[import-not-found]
-
-    return fog_main(argv)
 
 
 def _gate_coverage_truth_main(argv: list[str] | None) -> int:
@@ -119,7 +83,6 @@ def _partition_main(argv: list[str] | None) -> int:
 #: Registered sentinels: name -> its ``main(argv)`` entry point.
 _SENSORS: dict[str, Callable[[list[str] | None], int]] = {
     "absence": absence_main,
-    "seam": seam_main,
     "seam-algebra": seam_algebra_main,
     "coverage": coverage_main,
     "gate-coverage": gate_coverage_main,
@@ -134,12 +97,9 @@ _SENSORS: dict[str, Callable[[list[str] | None], int]] = {
     "domain_sync": domain_sync_main,
     "formula_registration": formula_registration_main,
     "unconsumed": unconsumed_main,
-    "masked_arithmetic": masked_arithmetic_main,
     "reachability": reachability_main,
     "fallback-coverage": fallback_coverage_main,
-    "aggregation": _aggregation_main,
     "aggregation-intensive": aggregation_intensive_main,
-    "fog": _fog_main,
     "liveness": liveness_main,
     "coupling": coupling_main,
     "superstructure": superstructure_main,

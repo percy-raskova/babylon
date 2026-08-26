@@ -92,17 +92,6 @@ _ECON_CREDIT = "src/babylon/domain/economics/credit"
 #: The declared producer outputs of the money/value estate.
 LIVENESS_ROWS: tuple[LivenessRow, ...] = (
     LivenessRow(
-        name="price_divergence",
-        producer_file=f"{_ENGINE_SYSTEMS}/market_scissors.py",
-        producer_symbol="MarketScissorsSystem",
-        output_symbol="price_divergence",
-        consumer_files=("web/game/engine_bridge.py", "web/game/map_contract.py"),
-        material_relation=(
-            "Per-territory divergence of market price from labour value — the "
-            "scissors as the player sees it on the map lens."
-        ),
-    ),
-    LivenessRow(
         name="market_balance",
         producer_file=f"{_ENGINE_SYSTEMS}/contradiction.py",
         producer_symbol="ContradictionSystem",

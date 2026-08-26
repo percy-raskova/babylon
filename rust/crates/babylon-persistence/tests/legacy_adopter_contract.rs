@@ -2058,9 +2058,10 @@ fn postgres_ci_and_sanctioned_merger_share_the_pinned_runtime_name() {
 }
 
 #[test]
-fn live_adopter_test_is_wired_into_the_remote_pg_tier() {
+fn live_adopter_tests_are_split_between_pr_and_weekly_cadences() {
     let mise = include_str!("../../../../.mise.toml");
-    let workflow = include_str!("../../../../.github/workflows/ci.yml");
+    let pr_workflow = include_str!("../../../../.github/workflows/ci.yml");
+    let weekly_workflow = include_str!("../../../../.github/workflows/weekly-pg-integration.yml");
     let runner = include_str!("../../../../tools/run_rust_legacy_adopter_pg.sh");
     let task = toml_section(mise, "[tasks.\"test:rust-legacy-adopter-pg\"]");
     assert!(task.contains("run = \"tools/run_rust_legacy_adopter_pg.sh\""));
@@ -2070,35 +2071,73 @@ fn live_adopter_test_is_wired_into_the_remote_pg_tier() {
         .contains("cargo test -p babylon-persistence --test legacy_adopter_postgres --locked --"));
     assert!(runner.contains("--ignored --test-threads=1"));
     assert!(!runner.contains("--manifest-path"));
-    let job = yaml_job(workflow, "  pg-integration:");
+
+    let pr_job = yaml_job(pr_workflow, "  pg-integration:");
     assert_eq!(
-        job.matches("run: mise run test:rust-legacy-adopter-pg")
+        pr_job
+            .matches("run: mise run test:rust-legacy-adopter-pg")
             .count(),
         1
     );
-    assert!(job.contains(
-        "- name: Rust legacy adopter (bounded disposable PG proof)\n        timeout-minutes: 31\n        run: mise run test:rust-legacy-adopter-pg"
+    assert!(pr_job.contains(
+        "- name: Rust H3 atomicity and installed-mutation contracts\n        timeout-minutes: 22\n        env:\n          BABYLON_LEGACY_ADOPTER_LIVE_FOCUS: pr\n        run: mise run test:rust-legacy-adopter-pg"
     ));
-    assert!(!job.contains("BABYLON_LEGACY_ADOPTER_TEST_DSN"));
-    assert!(!job.contains("cargo doc"));
+    assert!(!pr_job.contains("BABYLON_LEGACY_ADOPTER_TEST_DSN"));
+    assert!(!pr_job.contains("cargo doc"));
+
+    let weekly_job = yaml_job(weekly_workflow, "  exhaustive-legacy-adopter:");
+    assert!(weekly_job.contains("name: Exhaustive Rust legacy adopter matrix (dev HEAD)"));
+    assert!(weekly_job.contains("timeout-minutes: 40"));
+    assert!(weekly_job.contains("ref: dev"));
+    assert!(weekly_job.contains(
+        "- uses: ./.github/actions/bootstrap-python\n        with:\n          gdal: \"true\"\n          server: \"true\""
+    ));
+    assert!(!weekly_job.contains("uses: jdx/mise-action"));
+    assert!(weekly_job.contains(
+        "- name: Exhaustive adopter matrix and rollback proof\n        timeout-minutes: 31\n        run: mise run test:rust-legacy-adopter-pg"
+    ));
+    assert!(!weekly_job.contains("BABYLON_LEGACY_ADOPTER_LIVE_FOCUS"));
+    assert!(!weekly_job.contains("CI_REFDB_READY"));
 
     let synthetic = "jobs:\n  pg-integration:\n    run: true\n  unrelated:\n    run: mise run test:rust-legacy-adopter-pg\n  security:\n    run: true\n";
     assert!(!yaml_job(synthetic, "  pg-integration:").contains("test:rust-legacy-adopter-pg"));
 }
 
 #[test]
-fn h3_atomicity_focus_is_fixed_and_cannot_replace_default_pg_gate() {
+fn pr_focus_reuses_the_h3_atomicity_and_installed_mutation_contracts() {
     let runner = include_str!("../../../../tools/run_rust_legacy_adopter_pg.sh");
+    let live = include_str!("legacy_adopter_postgres.rs");
+    let installer = include_str!("support/h3_reference_installer_postgres.rs");
     let focused =
         "schema_epoch::live_rollback_tests::h3_installer_rollback_and_ambiguous_commit_reconciliation_are_atomic";
     let full =
         "schema_epoch::live_rollback_tests::rollback_and_ambiguous_commit_reconciliation_are_atomic";
 
     assert!(runner.contains("BABYLON_LEGACY_ADOPTER_LIVE_FOCUS:-}"));
+    assert!(runner.contains("\"\" | h3_atomicity | installed_mutation | pr)"));
     assert_eq!(runner.matches(focused).count(), 1);
     assert_eq!(runner.matches(full).count(), 1);
     assert!(runner.contains("--ignored --exact --test-threads=1"));
     assert!(!runner.contains("cargo test -p babylon-persistence --lib \"$"));
+    assert!(live.contains("Some(\"installed_mutation\")"));
+    assert!(live.contains(
+        "h3_reference_installer_postgres::verify_h3_reference_installed_mutations(base)"
+    ));
+    let installed_focus = cte_slice(
+        live,
+        "Some(\"installed_mutation\")",
+        "Some(\"h3_reference_release\")",
+    );
+    assert!(installed_focus.contains("verify_h3_installed_mutations(phases, base)"));
+    let installed_helper = cte_slice(
+        live,
+        "fn verify_h3_installed_mutations(",
+        "fn verify_h3_pg_oracle_in_scratch(",
+    );
+    assert!(installed_helper.contains("phases.run(\"h3_installed_mutations\""));
+    assert!(installer.contains("pub(super) fn verify_h3_reference_installed_mutations("));
+    assert!(installer.contains("verify_installed_state_conflicts(base, &cohort)"));
+    assert_eq!(installer.matches("mutate_orphan_membership,").count(), 1);
 
     let broad = runner
         .find("--test legacy_adopter_postgres")
@@ -2185,28 +2224,76 @@ fn h3_atomicity_receipts_are_fixed_flushed_and_test_only() {
 }
 
 #[test]
-fn ci_adopter_step_exceeds_the_full_bounded_runner_envelope() {
+fn ci_step_exceeds_the_focused_runner_envelope() {
     const CONTROL_PLANE_ENVELOPE_SECONDS: u64 = 5 * (10 + 2);
     const BUILD_ENVELOPE_SECONDS: u64 = 180 + 10;
     const START_ENVELOPE_SECONDS: u64 = 30 + 5;
     const READINESS_ENVELOPE_SECONDS: u64 = 90 + 2;
-    const CARGO_ENVELOPE_SECONDS: u64 = 900 + 10;
-    const ROLLBACK_CARGO_ENVELOPE_SECONDS: u64 = 300 + 10;
+    const FOCUSED_CARGO_ENVELOPE_SECONDS: u64 = 2 * (300 + 10);
     const CLEANUP_ENVELOPE_SECONDS: u64 = 35 + 12 + 12 + 35;
-    const RUNNER_ENVELOPE_SECONDS: u64 = CONTROL_PLANE_ENVELOPE_SECONDS
+    const FOCUSED_RUNNER_ENVELOPE_SECONDS: u64 = CONTROL_PLANE_ENVELOPE_SECONDS
         + BUILD_ENVELOPE_SECONDS
         + START_ENVELOPE_SECONDS
         + READINESS_ENVELOPE_SECONDS
-        + CARGO_ENVELOPE_SECONDS
+        + FOCUSED_CARGO_ENVELOPE_SECONDS
+        + CLEANUP_ENVELOPE_SECONDS;
+
+    let pr_workflow = include_str!("../../../../.github/workflows/ci.yml");
+    let pr_job = yaml_job(pr_workflow, "  pg-integration:");
+    assert!(pr_job.contains(
+        "- name: Rust H3 atomicity and installed-mutation contracts\n        timeout-minutes: 22"
+    ));
+    let pr_job_seconds = pr_job
+        .lines()
+        .take(MAX_WORKFLOW_JOB_BOUNDARY_CANDIDATES)
+        .find_map(|line| line.trim().strip_prefix("timeout-minutes: "))
+        .unwrap()
+        .parse::<u64>()
+        .unwrap()
+        * 60;
+    let pr_adopter_step = cte_slice(
+        pr_job,
+        "      - name: Rust H3 atomicity and installed-mutation contracts",
+        "      - name: PG-backed integration subset (declared, data-drive-free)",
+    );
+    let pr_step_seconds = pr_adopter_step
+        .lines()
+        .take(MAX_WORKFLOW_JOB_BOUNDARY_CANDIDATES)
+        .find_map(|line| line.trim().strip_prefix("timeout-minutes: "))
+        .unwrap()
+        .parse::<u64>()
+        .unwrap()
+        * 60;
+    assert_eq!(pr_job_seconds, 61 * 60);
+    assert_eq!(pr_step_seconds, 22 * 60);
+    assert!(pr_step_seconds >= FOCUSED_RUNNER_ENVELOPE_SECONDS + 120);
+    assert!(pr_job_seconds >= pr_step_seconds + 30 * 60);
+}
+
+#[test]
+fn weekly_step_exceeds_the_exhaustive_runner_envelope() {
+    const CONTROL_PLANE_ENVELOPE_SECONDS: u64 = 5 * (10 + 2);
+    const BUILD_ENVELOPE_SECONDS: u64 = 180 + 10;
+    const START_ENVELOPE_SECONDS: u64 = 30 + 5;
+    const READINESS_ENVELOPE_SECONDS: u64 = 90 + 2;
+    const EXHAUSTIVE_CARGO_ENVELOPE_SECONDS: u64 = 900 + 10;
+    const ROLLBACK_CARGO_ENVELOPE_SECONDS: u64 = 300 + 10;
+    const CLEANUP_ENVELOPE_SECONDS: u64 = 35 + 12 + 12 + 35;
+    const EXHAUSTIVE_RUNNER_ENVELOPE_SECONDS: u64 = CONTROL_PLANE_ENVELOPE_SECONDS
+        + BUILD_ENVELOPE_SECONDS
+        + START_ENVELOPE_SECONDS
+        + READINESS_ENVELOPE_SECONDS
+        + EXHAUSTIVE_CARGO_ENVELOPE_SECONDS
         + ROLLBACK_CARGO_ENVELOPE_SECONDS
         + CLEANUP_ENVELOPE_SECONDS;
 
-    let workflow = include_str!("../../../../.github/workflows/ci.yml");
-    let job = yaml_job(workflow, "  pg-integration:");
-    assert!(job.contains(
-        "- name: Rust legacy adopter (bounded disposable PG proof)\n        timeout-minutes: 31\n        run: mise run test:rust-legacy-adopter-pg"
-    ));
-    let job_seconds = job
+    let weekly_workflow = include_str!("../../../../.github/workflows/weekly-pg-integration.yml");
+    let weekly_job = yaml_job(weekly_workflow, "  exhaustive-legacy-adopter:");
+    let weekly_step = weekly_job
+        .split_once("      - name: Exhaustive adopter matrix and rollback proof")
+        .unwrap()
+        .1;
+    let weekly_step_seconds = weekly_step
         .lines()
         .take(MAX_WORKFLOW_JOB_BOUNDARY_CANDIDATES)
         .find_map(|line| line.trim().strip_prefix("timeout-minutes: "))
@@ -2214,40 +2301,15 @@ fn ci_adopter_step_exceeds_the_full_bounded_runner_envelope() {
         .parse::<u64>()
         .unwrap()
         * 60;
-    let adopter_step = cte_slice(
-        job,
-        "      - name: Rust legacy adopter (bounded disposable PG proof)",
-        "      - name: PG-backed integration subset (declared, data-drive-free)",
-    );
-    let ci_step_seconds = adopter_step
-        .lines()
-        .take(MAX_WORKFLOW_JOB_BOUNDARY_CANDIDATES)
-        .find_map(|line| line.trim().strip_prefix("timeout-minutes: "))
-        .unwrap()
-        .parse::<u64>()
-        .unwrap()
-        * 60;
-    assert_eq!(job_seconds, 61 * 60);
-    assert_eq!(ci_step_seconds, 31 * 60);
-    assert!(ci_step_seconds >= RUNNER_ENVELOPE_SECONDS + 120);
-    assert!(job_seconds >= ci_step_seconds + 30 * 60);
+    assert_eq!(weekly_step_seconds, 31 * 60);
+    assert!(weekly_step_seconds >= EXHAUSTIVE_RUNNER_ENVELOPE_SECONDS + 120);
 
     let runner = include_str!("../../../../tools/run_rust_legacy_adopter_pg.sh");
-    for bounded_phase in [
-        "timeout --signal=TERM --kill-after=10s 180s \\",
-        "timeout --signal=TERM --kill-after=5s 30s docker run --detach \\",
-        "local deadline=$((SECONDS + 90))",
-        "for _attempt in {1..90}; do",
-        "timeout --signal=TERM --kill-after=1s \"${remaining}s\" \\",
-        "timeout --signal=TERM --kill-after=10s 900s \\",
-    ] {
-        assert!(runner.contains(bounded_phase));
-    }
-    let rollback_phase = cte_slice(
-        runner,
-        "if [ \"$status\" -eq 0 ] && [ -z \"$LIVE_FOCUS\" ]; then",
-        "\n  fi\nfi",
-    );
+    assert!(runner.contains("timeout --signal=TERM --kill-after=10s 900s \\"));
+    let rollback_phase = runner
+        .rsplit_once("if [ \"$status\" -eq 0 ] && [ -z \"$LIVE_FOCUS\" ]; then")
+        .unwrap()
+        .1;
     let rollback_timeout = rollback_phase
         .find("timeout --signal=TERM --kill-after=10s 300s")
         .unwrap();
@@ -2255,6 +2317,20 @@ fn ci_adopter_step_exceeds_the_full_bounded_runner_envelope() {
         .find("cargo test -p babylon-persistence --lib")
         .unwrap();
     assert!(rollback_timeout < rollback_cargo);
+}
+
+#[test]
+fn live_runner_bounds_every_docker_control_plane_call() {
+    let runner = include_str!("../../../../tools/run_rust_legacy_adopter_pg.sh");
+    for bounded_phase in [
+        "timeout --signal=TERM --kill-after=10s 180s \\",
+        "timeout --signal=TERM --kill-after=5s 30s docker run --detach \\",
+        "local deadline=$((SECONDS + 90))",
+        "for _attempt in {1..90}; do",
+        "timeout --signal=TERM --kill-after=1s \"${remaining}s\" \\",
+    ] {
+        assert!(runner.contains(bounded_phase));
+    }
     assert_eq!(
         runner
             .matches("timeout --signal=TERM --kill-after=5s 30s \\\n    docker rm --force --volumes \"$CONTAINER\"")

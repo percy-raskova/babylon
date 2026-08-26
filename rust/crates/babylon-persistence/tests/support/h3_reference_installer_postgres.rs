@@ -78,6 +78,11 @@ pub(super) fn verify_h3_reference_installer(base: &Config, legacy_template: &str
     verify_preflight_artifact_identity_conflict(base, &cohort);
 }
 
+pub(super) fn verify_h3_reference_installed_mutations(base: &Config) {
+    let cohort = representative_cohort();
+    verify_installed_state_conflicts(base, &cohort);
+}
+
 pub(super) fn verify_h3_reference_release_equivalence(base: &Config) {
     let repository = repository_root();
     let bridge = required_path(BRIDGE_PARQUET_ENV);

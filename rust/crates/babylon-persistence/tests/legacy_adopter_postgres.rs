@@ -239,6 +239,7 @@ fn run_first_live_phases(
                     base, template, owner,
                 );
             }
+            Some("installed_mutation") => verify_h3_installed_mutations(phases, base),
             Some("h3_reference_release") => {
                 h3_reference_installer_postgres::verify_h3_reference_release_equivalence(base);
             }
@@ -301,6 +302,12 @@ fn run_first_live_phases(
         verify_effective_authority_refusals(base, template)
     );
     true
+}
+
+fn verify_h3_installed_mutations(phases: &LivePhaseReceipts, base: &Config) {
+    phases.run("h3_installed_mutations", || {
+        h3_reference_installer_postgres::verify_h3_reference_installed_mutations(base);
+    });
 }
 
 fn verify_h3_pg_oracle_in_scratch(base: &Config, owner: &str) {

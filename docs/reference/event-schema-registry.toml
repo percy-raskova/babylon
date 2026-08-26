@@ -12,7 +12,7 @@
 ### `sentinels/fallback_coverage` already runs for the bus-boundary surface).
 ###
 ### Full design rationale (why three tiers, what each key's `source`/
-### `required` mean, why `ORGANIZATION_SEEDED` is not a tier row) lives in
+### `required` mean, why unminted names are not tier rows) lives in
 ### `src/babylon/sentinels/event_schema_registry/registry.py`'s module
 ### docstring — read that before editing this file by hand.
 ###
@@ -22,19 +22,24 @@
 ### snake_case exactly as the builder spells them. The sync check normalizes
 ### (`_` <-> `-`) when COMPARING the two; this file never does.
 
-schema_version = 1
-measured_at = "2026-08-23"
+# Version 2 adds the required fresh-parse site and distinct-name totals.
+schema_version = 2
+measured_at = "2026-08-25"
 # The fresh AST count of `babylon.models.enums.events.EventType` members —
 # tier1 + tier2 + tier3 must sum to exactly this (CLAUDE.md's "100",
 # AST-verified, corrects the BSL-refactor-program survey's stale "98").
 python_event_type_total = 100
+# Fresh parse totals across every `(emit …)` form and distinct event name.
+# The registry test re-measures both values on every run.
+bsl_emit_site_total = 17
+bsl_emit_name_total = 15
 bsl_content_glob = "rust/crates/babylon-tick/content/rules/*.bsl"
 
 # =============================================================================
-# TIER 1 — verified-bsl (12 members; 12 real `(emit …)` distinct EventTypes
-# out of the 15 total `(emit …)` sites and 13 distinct EMIT NAMES a fresh scan
-# of content/rules/*.bsl finds — the 13th name, ORGANIZATION_SEEDED, is BSL-
-# only and lives in `unminted_bsl_only` below, not here; see that table).
+# TIER 1 — verified-bsl (14 members; 14 real `(emit …)` distinct EventTypes
+# out of the 17 total `(emit …)` sites and 15 distinct event names a fresh scan
+# of content/rules/*.bsl finds; the one remaining BSL-only name is in
+# `unminted_bsl_only` below).
 # =============================================================================
 
 [[tier1]]
@@ -213,14 +218,6 @@ keys = [
 # Python universe; folding this in would break that partition and falsely
 # imply it is a real, disposed member).
 # =============================================================================
-
-[[unminted_bsl_only]]
-name = "ORGANIZATION_SEEDED"
-citation = "rust/crates/babylon-tick/content/rules/organization.bsl:33"
-note = "organization.bsl's own D-1 comment (lines 12-18): a KNOWINGLY-UNMINTED, probe-only event name — not in ADR196's mint, not a member of the frozen Python EventType enum, no consumer anywhere. Exists solely so the organization/kind-probe rule has an effect to gate; retire or mint it when the Events-in-BSL workstream (WS1, #502) gives emit effects a real observable."
-keys = [
-  { name = "probe", required = true, source = "bsl" },
-]
 
 [[unminted_bsl_only]]
 name = "SUBSISTENCE_CLEARANCE_MEASURED"

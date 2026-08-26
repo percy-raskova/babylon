@@ -190,7 +190,63 @@ class TestRegistryFileItself:
         assert REGISTRY_PATH.exists(), f"{REGISTRY_PATH} is missing"
 
     def test_loads_without_error(self, registry: EventSchemaRegistry) -> None:
-        assert registry.schema_version == 1
+        assert registry.schema_version == 2
+
+    @pytest.mark.parametrize("replacement", ("1", "3", '"2"', "true"))
+    def test_unsupported_schema_version_fails_loudly(
+        self, tmp_path: Path, replacement: str
+    ) -> None:
+        registry_path = tmp_path / "event-schema-registry.toml"
+        source = REGISTRY_PATH.read_text(encoding="utf-8")
+        registry_path.write_text(
+            source.replace("schema_version = 2", f"schema_version = {replacement}", 1),
+            encoding="utf-8",
+        )
+
+        with pytest.raises(SentinelCheckError, match="unsupported schema_version"):
+            load_registry(registry_path)
+
+    @pytest.mark.parametrize(
+        ("field", "current"),
+        (
+            ("python_event_type_total", "100"),
+            ("bsl_emit_site_total", "17"),
+            ("bsl_emit_name_total", "15"),
+        ),
+    )
+    @pytest.mark.parametrize("replacement", ("-1", '"1"', "true", "1.5"))
+    def test_header_total_requires_a_non_negative_integer(
+        self,
+        tmp_path: Path,
+        field: str,
+        current: str,
+        replacement: str,
+    ) -> None:
+        registry_path = tmp_path / "event-schema-registry.toml"
+        source = REGISTRY_PATH.read_text(encoding="utf-8")
+        registry_path.write_text(
+            source.replace(f"{field} = {current}", f"{field} = {replacement}", 1),
+            encoding="utf-8",
+        )
+
+        with pytest.raises(
+            SentinelCheckError,
+            match=rf"{field}.*non-negative integer",
+        ):
+            load_registry(registry_path)
+
+    def test_missing_field_error_names_the_actual_path(self, tmp_path: Path) -> None:
+        """Missing-field errors must reference the file being loaded, not REGISTRY_PATH."""
+        registry_path = tmp_path / "custom-registry.toml"
+        source = REGISTRY_PATH.read_text(encoding="utf-8")
+        # Remove a required header field so _require raises.
+        registry_path.write_text(
+            source.replace("measured_at =", "# measured_at =", 1),
+            encoding="utf-8",
+        )
+
+        with pytest.raises(SentinelCheckError, match=str(registry_path)):
+            load_registry(registry_path)
 
     def test_declared_total_matches_a_fresh_events_py_count(
         self, registry: EventSchemaRegistry, fresh_event_type_members: frozenset[str]
@@ -201,6 +257,13 @@ class TestRegistryFileItself:
         correction of the survey's stale "98" both hinge on this staying
         true."""
         assert registry.python_event_type_total == len(fresh_event_type_members)
+
+    def test_bsl_emit_measurements_match_a_fresh_scan(
+        self, registry: EventSchemaRegistry, fresh_bsl_sites: tuple[EmitSite, ...]
+    ) -> None:
+        """The registry records the live BSL site's total and name total."""
+        assert registry.bsl_emit_site_total == len(fresh_bsl_sites)
+        assert registry.bsl_emit_name_total == len({site.event_type for site in fresh_bsl_sites})
 
 
 class TestTier1MatchesAFreshBslScan:
@@ -334,8 +397,7 @@ class TestTier1CitationsAreReal:
 
 
 class TestUnmintedBslOnlyNames:
-    """``ORGANIZATION_SEEDED``-shaped rows: real BSL evidence, deliberately
-    absent from Python's EventType universe."""
+    """Real BSL evidence deliberately absent from Python's EventType universe."""
 
     def test_no_unminted_name_is_a_real_event_type_member(
         self, registry: EventSchemaRegistry, fresh_event_type_members: frozenset[str]
@@ -355,11 +417,22 @@ class TestUnmintedBslOnlyNames:
         for row in registry.unminted_bsl_only:
             assert row.name not in tiered
 
-    def test_organization_seeded_is_present_and_cited(self, registry: EventSchemaRegistry) -> None:
-        names = {row.name for row in registry.unminted_bsl_only}
-        assert "ORGANIZATION_SEEDED" in names
-        row = next(r for r in registry.unminted_bsl_only if r.name == "ORGANIZATION_SEEDED")
-        assert "organization.bsl" in row.citation
+    def test_only_the_governed_measurement_event_remains_unminted(
+        self,
+        registry: EventSchemaRegistry,
+        fresh_bsl_sites: tuple[EmitSite, ...],
+        fresh_event_type_members: frozenset[str],
+    ) -> None:
+        """The live scan and registry retain the one governed unminted measure."""
+        expected = {"SUBSISTENCE_CLEARANCE_MEASURED"}
+        emitted_unminted = {
+            site.event_type
+            for site in fresh_bsl_sites
+            if site.event_type not in fresh_event_type_members
+        }
+        registry_unminted = {row.name for row in registry.unminted_bsl_only}
+        assert emitted_unminted == expected
+        assert registry_unminted == expected
 
 
 class TestTier2MatchesFreshEventBuilders:

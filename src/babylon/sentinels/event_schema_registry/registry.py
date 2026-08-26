@@ -34,15 +34,14 @@ discipline forbids. Instead:
 - **Tier 3 — no-known-emitter.** Every remaining Python ``EventType`` member:
   no builder, no observed BSL emitter. No key list, honestly.
 
-**BSL-only, off the Python vocabulary entirely.** ``organization.bsl``'s
-``EventType/ORGANIZATION_SEEDED`` is a documented, deliberate probe-only name
-(that file's own D-1 comment) — content emits it, but it is NOT a member of
-Python's ``EventType`` enum. Folding it into Tier 1 would falsely imply the
-three tiers exhaustively partition the 100-member Python universe (they do —
-``python_event_type_total`` in the TOML pins that count, and
+**BSL-only, off the Python vocabulary entirely.** Content can emit a name that
+is not a member of Python's ``EventType`` enum. Folding such a name into Tier 1
+would falsely imply the three tiers exhaustively partition the 100-member
+Python universe (they do — ``python_event_type_total`` in the TOML pins that
+count, and
 ``tests/unit/sentinels/test_event_schema_registry.py`` proves
 ``len(tier1) + len(tier2) + len(tier3) == python_event_type_total`` at every
-run). It gets its own, separately-labelled table instead.
+run). Each such live, cited name gets its own separately-labelled table row.
 """
 
 from __future__ import annotations
@@ -60,6 +59,7 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 #: second, Rust-side literal table in sync by construction (a future Rust
 #: consumer, R4.2, reads this same file rather than a transcription of it).
 REGISTRY_PATH = REPO_ROOT / "docs" / "reference" / "event-schema-registry.toml"
+SUPPORTED_SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -135,6 +135,8 @@ class EventSchemaRegistry:
     schema_version: int
     measured_at: str
     python_event_type_total: int
+    bsl_emit_site_total: int
+    bsl_emit_name_total: int
     bsl_content_glob: str
     tier1: tuple[Tier1Row, ...]
     tier2: tuple[Tier2Row, ...]
@@ -165,22 +167,40 @@ class EventSchemaRegistry:
         return None
 
 
-def _require(mapping: dict[str, Any], key: str, row_desc: str) -> Any:
+def _require(
+    mapping: dict[str, Any],
+    key: str,
+    row_desc: str,
+    path: Path = REGISTRY_PATH,
+) -> Any:
     if key not in mapping:
-        raise SentinelCheckError(f"{REGISTRY_PATH}: {row_desc} is missing required field {key!r}")
+        raise SentinelCheckError(f"{path}: {row_desc} is missing required field {key!r}")
     return mapping[key]
 
 
-def _parse_keys(raw_keys: list[dict[str, Any]], row_desc: str) -> tuple[RegistryKey, ...]:
+def _require_non_negative_int(mapping: dict[str, Any], key: str, row_desc: str, path: Path) -> int:
+    value = _require(mapping, key, row_desc, path)
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise SentinelCheckError(
+            f"{path}: {row_desc} field {key!r} must be a non-negative integer, got {value!r}"
+        )
+    return value
+
+
+def _parse_keys(
+    raw_keys: list[dict[str, Any]],
+    row_desc: str,
+    path: Path = REGISTRY_PATH,
+) -> tuple[RegistryKey, ...]:
     keys = []
     for raw in raw_keys:
-        name = _require(raw, "name", f"{row_desc} key")
-        required = _require(raw, "required", f"{row_desc} key {name!r}")
-        source = _require(raw, "source", f"{row_desc} key {name!r}")
+        name = _require(raw, "name", f"{row_desc} key", path)
+        required = _require(raw, "required", f"{row_desc} key {name!r}", path)
+        source = _require(raw, "source", f"{row_desc} key {name!r}", path)
         note = raw.get("note", "")
         if source == "builder-only" and not note:
             raise SentinelCheckError(
-                f"{REGISTRY_PATH}: {row_desc} key {name!r} is source=builder-only "
+                f"{path}: {row_desc} key {name!r} is source=builder-only "
                 "with no note — an unexplained content/builder divergence must "
                 "be explained, not silently carried"
             )
@@ -224,50 +244,79 @@ def load_registry(path: Path = REGISTRY_PATH) -> EventSchemaRegistry:
     except tomllib.TOMLDecodeError as exc:
         raise SentinelCheckError(f"cannot parse {path}: {exc}") from exc
 
+    schema_version = _require(data, "schema_version", "the registry header", path)
+    if (
+        not isinstance(schema_version, int)
+        or isinstance(schema_version, bool)
+        or schema_version != SUPPORTED_SCHEMA_VERSION
+    ):
+        raise SentinelCheckError(
+            f"{path}: unsupported schema_version {schema_version!r}; "
+            f"expected integer {SUPPORTED_SCHEMA_VERSION}"
+        )
+
+    python_event_type_total = _require_non_negative_int(
+        data, "python_event_type_total", "the registry header", path
+    )
+    bsl_emit_site_total = _require_non_negative_int(
+        data, "bsl_emit_site_total", "the registry header", path
+    )
+    bsl_emit_name_total = _require_non_negative_int(
+        data, "bsl_emit_name_total", "the registry header", path
+    )
+
     tier1 = tuple(
         Tier1Row(
-            event_type=(et := _require(row, "event_type", "a tier1 row")),
-            citations=tuple(_require(row, "citations", f"tier1 row {et!r}")),
-            keys=_parse_keys(_require(row, "keys", f"tier1 row {et!r}"), f"tier1 row {et!r}"),
+            event_type=(et := _require(row, "event_type", "a tier1 row", path)),
+            citations=tuple(_require(row, "citations", f"tier1 row {et!r}", path)),
+            keys=_parse_keys(
+                _require(row, "keys", f"tier1 row {et!r}", path), f"tier1 row {et!r}", path
+            ),
         )
         for row in data.get("tier1", [])
     )
-    measured_at = _require(data, "measured_at", "the registry header")
+    measured_at = _require(data, "measured_at", "the registry header", path)
     _default_tier2_note = (
         f"EVENT_BUILDERS entry only; no BSL emit site observed as of {measured_at} — "
         "transcribed verbatim, inheriting that source's own incompleteness"
     )
     tier2 = tuple(
         Tier2Row(
-            event_type=(et := _require(row, "event_type", "a tier2 row")),
+            event_type=(et := _require(row, "event_type", "a tier2 row", path)),
             note=row.get("note", _default_tier2_note),
-            keys=_parse_keys(_require(row, "keys", f"tier2 row {et!r}"), f"tier2 row {et!r}"),
+            keys=_parse_keys(
+                _require(row, "keys", f"tier2 row {et!r}", path), f"tier2 row {et!r}", path
+            ),
         )
         for row in data.get("tier2", [])
     )
     _default_tier3_note = f"declared in events.py, no emitter or builder found as of {measured_at}"
     tier3 = tuple(
         Tier3Row(
-            event_type=_require(row, "event_type", "a tier3 row"),
+            event_type=_require(row, "event_type", "a tier3 row", path),
             note=row.get("note", _default_tier3_note),
         )
         for row in data.get("tier3", [])
     )
     unminted = tuple(
         UnmintedRow(
-            name=(nm := _require(row, "name", "an unminted_bsl_only row")),
-            citation=_require(row, "citation", f"unminted row {nm!r}"),
-            note=_require(row, "note", f"unminted row {nm!r}"),
-            keys=_parse_keys(_require(row, "keys", f"unminted row {nm!r}"), f"unminted row {nm!r}"),
+            name=(nm := _require(row, "name", "an unminted_bsl_only row", path)),
+            citation=_require(row, "citation", f"unminted row {nm!r}", path),
+            note=_require(row, "note", f"unminted row {nm!r}", path),
+            keys=_parse_keys(
+                _require(row, "keys", f"unminted row {nm!r}", path), f"unminted row {nm!r}", path
+            ),
         )
         for row in data.get("unminted_bsl_only", [])
     )
 
     return EventSchemaRegistry(
-        schema_version=_require(data, "schema_version", "the registry header"),
+        schema_version=schema_version,
         measured_at=measured_at,
-        python_event_type_total=_require(data, "python_event_type_total", "the registry header"),
-        bsl_content_glob=_require(data, "bsl_content_glob", "the registry header"),
+        python_event_type_total=python_event_type_total,
+        bsl_emit_site_total=bsl_emit_site_total,
+        bsl_emit_name_total=bsl_emit_name_total,
+        bsl_content_glob=_require(data, "bsl_content_glob", "the registry header", path),
         tier1=tier1,
         tier2=tier2,
         tier3=tier3,

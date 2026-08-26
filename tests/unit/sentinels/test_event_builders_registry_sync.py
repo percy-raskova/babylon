@@ -40,9 +40,12 @@ def _registry(
     tier1: tuple[Tier1Row, ...] = (), tier2: tuple[Tier2Row, ...] = ()
 ) -> EventSchemaRegistry:
     return EventSchemaRegistry(
-        schema_version=1,
+        schema_version=2,
         measured_at="2026-08-18",
         python_event_type_total=100,
+        # This factory supplies no BSL corpus; rows are synthetic sync inputs.
+        bsl_emit_site_total=0,
+        bsl_emit_name_total=0,
         bsl_content_glob="rust/crates/babylon-tick/content/rules/*.bsl",
         tier1=tier1,
         tier2=tier2,

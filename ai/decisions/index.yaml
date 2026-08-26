@@ -1,5 +1,5 @@
 meta:
-  version: 1.79.0
+  version: 1.80.0
   updated: '2026-08-26'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -1070,3 +1070,8 @@ decisions:
     status: accepted
     date: '2026-08-26'
     file: ADR231_main_release_qualification.yaml
+  ADR232_neel_integration_program_architecture:
+    title: 'Neel integration freezes predecessor contracts, governs source quarantine, and requires an emergent material causal architecture'
+    status: accepted
+    date: '2026-08-26'
+    file: ADR232_neel_integration_program_architecture.yaml

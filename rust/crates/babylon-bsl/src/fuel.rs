@@ -295,6 +295,11 @@ impl IntrinsicCosts {
         self.costs.get(name).copied()
     }
 
+    /// Iterate the declared intrinsic-cost rows without imposing map order.
+    pub fn identity_rows(&self) -> impl Iterator<Item = (&str, u64)> {
+        self.costs.iter().map(|(name, cost)| (name.as_str(), *cost))
+    }
+
     /// Hash the complete bounded intrinsic-cost table.
     ///
     /// # Errors

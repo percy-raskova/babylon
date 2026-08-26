@@ -39,7 +39,7 @@ const FORBIDDEN_INTRINSIC_HEX: &str =
 const FORBIDDEN_MANIFEST_HEX: &str =
     "e3e7d0c90b7302c441005a4cb482a1aff86c2e9178b06a514b2f9c6304aeca74";
 const AUDIT_SOURCE_MANIFEST_HEX: &str =
-    "b71b96a4f57bd023b402d12c80c998d3fb8eb0e95a0af04ed4f5e445feea8bd9";
+    "1a6a7860c305f725fbd4a07ad0b8b4d8bbaba8bacfff547937e7d027645fda5e";
 static READER_SCRATCH_COUNTER: AtomicU64 = AtomicU64::new(0);
 const FIXTURE_DECLARATIONS: &str = r"(scenario synthetic-source/declarations
   (defvocabulary NodeType (SYNTHETIC_SOURCE ORGANIZATION))

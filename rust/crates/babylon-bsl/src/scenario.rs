@@ -414,6 +414,9 @@ pub struct LoadedScenario {
     /// (`state_hash` is computed over the substrate alone and does not see
     /// this field).
     pub node_content_ids: HashMap<NodeId, String>,
+    /// Content-stable authored hyperedge identities, inverted at hydration.
+    /// Runtime handles, types, and member sets never substitute for names.
+    pub hyperedge_content_ids: HashMap<HyperedgeId, String>,
 }
 
 /// The registries a **prelude** may pre-seed (§2.13 addendum, Train B item
@@ -1165,6 +1168,7 @@ fn load_scenario_inner(
     // Task 3 (plan §3.4): retain content-stable node identity by inverting
     // the load-time local-name table before it goes out of scope.
     let node_content_ids = invert_content_ids(&named);
+    let hyperedge_content_ids = invert_hyperedge_content_ids(&seeded_hyperedge_names);
 
     Ok(LoadedScenario {
         id,
@@ -1179,6 +1183,7 @@ fn load_scenario_inner(
         enums,
         vocabulary,
         node_content_ids,
+        hyperedge_content_ids,
     })
 }
 
@@ -1209,6 +1214,21 @@ fn invert_content_ids(named: &HashMap<String, NodeId>) -> HashMap<NodeId, String
                  (`{existing}` and `{local}`) — two content ids must never collide onto \
                  one NodeId handle, and silently keeping one would be indistinguishable \
                  from a lost node"
+            );
+        }
+    }
+    content_ids
+}
+
+fn invert_hyperedge_content_ids(
+    named: &HashMap<String, HyperedgeId>,
+) -> HashMap<HyperedgeId, String> {
+    let mut content_ids = HashMap::with_capacity(named.len());
+    for (local, &id) in named {
+        if let Some(existing) = content_ids.insert(id, local.clone()) {
+            panic!(
+                "hydration bug: HyperedgeId {id:?} is bound to two different content ids \
+                 (`{existing}` and `{local}`)"
             );
         }
     }
@@ -4906,11 +4926,15 @@ mod tests {
   (hyperedge-attr cell community/heat 0.25c))
 ";
         let mut graph = MemoryGraph::new();
-        load_scenario(source, &mut graph).unwrap();
+        let loaded = load_scenario(source, &mut graph).unwrap();
         let value = graph
             .hyperedge_attribute(HyperedgeId(0), "community/heat")
             .unwrap();
         assert_eq!(value.to_bits(), (0.25_f64).to_bits());
+        assert_eq!(
+            loaded.hyperedge_content_ids.get(&HyperedgeId(0)),
+            Some(&"cell".to_owned())
+        );
     }
 
     #[test]

@@ -15,6 +15,8 @@ pub mod evaluator;
 pub mod exemptions;
 pub mod fuel;
 pub mod grammar;
+pub mod identity_codec;
+pub mod identity_sections;
 pub mod intrinsic_host;
 pub mod manifest;
 pub mod material_basis;

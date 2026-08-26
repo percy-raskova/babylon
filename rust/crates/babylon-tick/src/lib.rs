@@ -43,7 +43,7 @@ use babylon_bsl::BindingVocabulary;
 use babylon_graph::allocator_state::AllocatorState;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::state_hash::CanonicalState;
-use babylon_graph::substrate::{GraphError, GraphSubstrate, NodeId};
+use babylon_graph::substrate::{GraphError, GraphSubstrate, HyperedgeId, NodeId};
 use babylon_graph::working_copy::DetachedCopy;
 use babylon_kernel::SessionId;
 use std::collections::{HashMap, HashSet};
@@ -233,6 +233,18 @@ pub(crate) struct PreparedRules {
     /// canonical-state weight — `state_hash` is computed over the substrate
     /// alone.
     pub node_content_ids: HashMap<NodeId, String>,
+    /// Validated scenario qname retained for stable replay identity.
+    #[allow(
+        dead_code,
+        reason = "PER-60 Task 7 retains this for Task 9's prepared-environment composer"
+    )]
+    pub scenario_scope: String,
+    /// Authored hyperedge identities retained from scenario hydration.
+    #[allow(
+        dead_code,
+        reason = "PER-60 Task 7 retains this for Task 10's sealed stable resolver"
+    )]
+    pub hyperedge_content_ids: HashMap<HyperedgeId, String>,
     /// The scenario's closed vocabulary, when it declared one —
     /// `run_tick`'s D29 owner-kind filter (`subject_type_of`, Community
     /// port train Task 6) reads it so a hyperedge/edge-owned `:field`
@@ -833,6 +845,8 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
         consts: scenario.consts,
         enums: scenario.enums,
         node_content_ids: scenario.node_content_ids,
+        scenario_scope: scenario.id,
+        hyperedge_content_ids: scenario.hyperedge_content_ids,
         vocabulary: scenario.vocabulary,
     })
 }
@@ -1480,6 +1494,8 @@ mod tests {
                 .get(&babylon_graph::substrate::NodeId(1)),
             Some(&"periphery".to_owned())
         );
+        assert_eq!(prepared.scenario_scope, "ft/two-classes");
+        assert!(prepared.hyperedge_content_ids.is_empty());
     }
 
     // F3 (#534 fix round item 3, panel-proven): `prepare_rules`'s ONE

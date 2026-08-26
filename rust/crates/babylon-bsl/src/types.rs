@@ -223,6 +223,18 @@ impl EnumRegistry {
     pub fn name(&self, ty: EnumTypeId) -> &str {
         &self.types[ty.0 as usize].name
     }
+
+    /// Resolve an enum id without panicking on a foreign registry identity.
+    #[must_use]
+    pub fn declaration(&self, ty: EnumTypeId) -> Option<&EnumDecl> {
+        self.types.get(ty.0 as usize)
+    }
+
+    /// Borrow all declarations in registry order for a read-only snapshot.
+    #[must_use]
+    pub fn declarations(&self) -> &[EnumDecl] {
+        &self.types
+    }
 }
 
 /// A BSL static type.

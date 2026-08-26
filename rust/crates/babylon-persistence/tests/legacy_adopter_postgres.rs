@@ -239,6 +239,11 @@ fn run_first_live_phases(
                     base, template, owner,
                 );
             }
+            Some("installed_mutation") => {
+                phases.run("h3_installed_mutations", || {
+                    h3_reference_installer_postgres::verify_h3_reference_installed_mutations(base);
+                });
+            }
             Some("h3_reference_release") => {
                 h3_reference_installer_postgres::verify_h3_reference_release_equivalence(base);
             }

@@ -21,7 +21,7 @@ die() {
 }
 
 case "$LIVE_FOCUS" in
-  "" | h3_atomicity) ;;
+  "" | h3_atomicity | installed_mutation | pr) ;;
   *) die "unsupported live focus: $LIVE_FOCUS" ;;
 esac
 
@@ -185,7 +185,7 @@ printf 'PER-20 runtime ready: container=%s volume=%s port=%s\n' \
   "$CONTAINER" "$VOLUME" "$PORT"
 cd "$REPO_ROOT/rust"
 status=0
-if [ "$LIVE_FOCUS" = "h3_atomicity" ]; then
+if [ "$LIVE_FOCUS" = "h3_atomicity" ] || [ "$LIVE_FOCUS" = "pr" ]; then
   timeout --signal=TERM --kill-after=10s 300s \
     env \
       BABYLON_LEGACY_ADOPTER_TEST_DSN="postgresql://test:test@127.0.0.1:$PORT/postgres" \
@@ -195,7 +195,22 @@ if [ "$LIVE_FOCUS" = "h3_atomicity" ]; then
     cargo test -p babylon-persistence --lib \
       schema_epoch::live_rollback_tests::h3_installer_rollback_and_ambiguous_commit_reconciliation_are_atomic \
       --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
-else
+fi
+
+if [ "$status" -eq 0 ] &&
+    { [ "$LIVE_FOCUS" = "installed_mutation" ] || [ "$LIVE_FOCUS" = "pr" ]; }; then
+  timeout --signal=TERM --kill-after=10s 300s \
+    env \
+      BABYLON_LEGACY_ADOPTER_TEST_DSN="postgresql://test:test@127.0.0.1:$PORT/postgres" \
+      BABYLON_LEGACY_ADOPTER_DISPOSABLE_ACK="$TEST_HARNESS_ACK" \
+      BABYLON_LEGACY_ADOPTER_DISPOSABLE_CANARY="$CANARY" \
+      BABYLON_LEGACY_ADOPTER_LIVE_FOCUS=installed_mutation \
+      CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/rust/target}" \
+    cargo test -p babylon-persistence --test legacy_adopter_postgres --locked -- --nocapture \
+      --ignored --test-threads=1 || status=$?
+fi
+
+if [ "$status" -eq 0 ] && [ -z "$LIVE_FOCUS" ]; then
   timeout --signal=TERM --kill-after=10s 900s \
     env \
       BABYLON_LEGACY_ADOPTER_TEST_DSN="postgresql://test:test@127.0.0.1:$PORT/postgres" \
@@ -204,18 +219,18 @@ else
       CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/rust/target}" \
     cargo test -p babylon-persistence --test legacy_adopter_postgres --locked -- --nocapture \
       --ignored --test-threads=1 || status=$?
+fi
 
-  if [ "$status" -eq 0 ] && [ -z "$LIVE_FOCUS" ]; then
-    timeout --signal=TERM --kill-after=10s 300s \
-      env \
-        BABYLON_LEGACY_ADOPTER_TEST_DSN="postgresql://test:test@127.0.0.1:$PORT/postgres" \
-        BABYLON_LEGACY_ADOPTER_DISPOSABLE_ACK="$TEST_HARNESS_ACK" \
-        BABYLON_LEGACY_ADOPTER_DISPOSABLE_CANARY="$CANARY" \
-        CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/rust/target}" \
-      cargo test -p babylon-persistence --lib \
-        schema_epoch::live_rollback_tests::rollback_and_ambiguous_commit_reconciliation_are_atomic \
-        --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
-  fi
+if [ "$status" -eq 0 ] && [ -z "$LIVE_FOCUS" ]; then
+  timeout --signal=TERM --kill-after=10s 300s \
+    env \
+      BABYLON_LEGACY_ADOPTER_TEST_DSN="postgresql://test:test@127.0.0.1:$PORT/postgres" \
+      BABYLON_LEGACY_ADOPTER_DISPOSABLE_ACK="$TEST_HARNESS_ACK" \
+      BABYLON_LEGACY_ADOPTER_DISPOSABLE_CANARY="$CANARY" \
+      CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/rust/target}" \
+    cargo test -p babylon-persistence --lib \
+      schema_epoch::live_rollback_tests::rollback_and_ambiguous_commit_reconciliation_are_atomic \
+      --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
 fi
 
 if [ "$status" -ne 0 ]; then

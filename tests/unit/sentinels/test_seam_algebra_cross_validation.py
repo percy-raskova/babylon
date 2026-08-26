@@ -1,4 +1,4 @@
-"""Cross-validation: the unified ∂L loses no coverage against its six legacy families.
+"""Cross-validation: the unified ∂L preserves four legacy sentinel families.
 
 T1.1 Unit 3 acceptance (design §4 U3): *"re-express >= 1 known construct per
 family and prove the unified dL catches the same mutation each family already
@@ -21,7 +21,7 @@ One family per test, named for the legacy sentinel it re-expresses:
 
 - **inert** — re-uses the SHIPPED ``reification_buffer_producer`` construct
   directly (already proven live in ``test_seam_algebra.py``); this module
-  proves ITS mutation instead (severing its edge), completing the six.
+  proves ITS mutation instead (severing its edge).
 - **unconsumed** — ``reification_buffer``'s dict-key write (``ideology.py``)
   genuinely has NO production reader anywhere (the real, currently-exempted
   gap) — proven both ways: disconnected against a real file that does not
@@ -30,17 +30,8 @@ One family per test, named for the legacy sentinel it re-expresses:
 - **coupling** — the ``price_value`` opposition's ``market_balance`` symbol,
   produced by ``contradiction.py`` and read by ``domain/dialectics/instances/
   catalog.py``.
-- **liveness** — ``price_divergence``, produced by ``market_scissors.py`` and
-  read by ``web/game/engine_bridge.py``.
 - **vocabulary** — ``NodeType.TERRITORY``, queried by
   ``engine/systems/territory.py``.
-- **dangling** — ``persist_action_results``, the (already-fixed) founding
-  specimen: ``protocols.py``'s real member, called from
-  ``web/game/engine_bridge.py``; the MUTATION re-creates the historical bug
-  (the SINGULAR ``persist_action_result``, verified absent as an exact name
-  from the real file — it survives only as a substring inside an unrelated
-  docstring, which does not count, see :func:`~babylon.sentinels._ast.
-  referenced_names`).
 """
 
 from __future__ import annotations

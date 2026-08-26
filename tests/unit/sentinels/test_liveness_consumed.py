@@ -68,8 +68,8 @@ def test_missing_consumer_file_is_infrastructure_failure() -> None:
         name="bad_path",
         producer_file="src/babylon/engine/systems/market_scissors.py",
         producer_symbol="MarketScissorsSystem",
-        output_symbol="price_divergence",
-        consumer_files=("web/game/this_file_does_not_exist.py",),
+        output_symbol="MARKET_ATTR",
+        consumer_files=("src/babylon/this_file_does_not_exist.py",),
         material_relation="injected infra failure for the loudness proof",
     )
     with pytest.raises(SentinelCheckError, match="cannot read"):

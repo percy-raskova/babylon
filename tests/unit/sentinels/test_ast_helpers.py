@@ -69,7 +69,7 @@ def test_referenced_names_covers_names_attributes_keywords_and_strings(
             [
                 "import thing",
                 "def f(graph):",
-                "    graph.update_node(node_id, price_divergence=1.0)",
+                "    graph.update_node(node_id, mass_receptivity=1.0)",
                 "    return thing.fictitious_log, attrs.get('national_financial')",
             ]
         ),
@@ -78,7 +78,7 @@ def test_referenced_names_covers_names_attributes_keywords_and_strings(
     names = referenced_names(target)
     assert "graph" in names
     assert "update_node" in names
-    assert "price_divergence" in names
+    assert "mass_receptivity" in names
     assert "fictitious_log" in names
     assert "national_financial" in names
 

@@ -81,8 +81,8 @@ def test_efficacy_reds_on_a_real_dependency_that_is_undeclared() -> None:
     fail that test: ``referenced_names`` collects string constants, and U5.7
     writes the literal ``"fictitious_log"`` into ``contradiction.py`` to derive
     ``financialization_index`` — so the reverse pair would fire a second finding
-    and this assertion would see 2. ``PRICE_DIVERGENCE_ATTR`` is a real
-    module-level constant in ``market_scissors.py`` that appears nowhere in
+    and this assertion would see 2. ``MARKET_CORRECTION_SHOCK_ATTR`` is a real
+    imported constant in ``market_scissors.py`` that appears nowhere in
     ``contradiction.py`` and is added to it by no task in this plan, so exactly
     one direction is a real read and exactly one finding is produced.
     """
@@ -96,7 +96,7 @@ def test_efficacy_reds_on_a_real_dependency_that_is_undeclared() -> None:
         opposition_key="phantom_financial",
         inputs_fields=("financialization_index",),
         producer_file="src/babylon/engine/systems/market_scissors.py",
-        produces_symbols=("PRICE_DIVERGENCE_ATTR",),
+        produces_symbols=("MARKET_CORRECTION_SHOCK_ATTR",),
     )
     findings = check_real_dependencies_are_declared(
         edges=(),
@@ -127,7 +127,7 @@ def test_declared_edge_silences_the_real_dependency_finding() -> None:
         opposition_key="phantom_financial",
         inputs_fields=("financialization_index",),
         producer_file="src/babylon/engine/systems/market_scissors.py",
-        produces_symbols=("PRICE_DIVERGENCE_ATTR",),
+        produces_symbols=("MARKET_CORRECTION_SHOCK_ATTR",),
     )
     assert (
         check_real_dependencies_are_declared(

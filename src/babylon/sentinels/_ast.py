@@ -522,9 +522,9 @@ def parse_module(path: Path) -> ast.Module:
 def referenced_names(path: Path) -> set[str]:
     """Collect every symbol a module *mentions*, however it mentions it.
 
-    A consumer can reach an output four ways: a bare name (``price_divergence``),
+    A consumer can reach an output four ways: a bare name (``mass_receptivity``),
     an attribute (``axis.fictitious_log``), a keyword argument
-    (``update_node(..., price_divergence=x)``), or a string key
+    (``update_node(..., mass_receptivity=x)``), or a string key
     (``attrs.get("national_financial")``). All four count as a reference — the
     liveness and coupling sensors ask "does this file read that output?", and a
     string-keyed graph read is as real a reader as an imported constant.

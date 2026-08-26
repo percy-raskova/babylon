@@ -1040,3 +1040,23 @@ decisions:
     status: accepted
     date: '2026-08-24'
     file: ADR225_rust_schema_epoch_and_cutover_interlock.yaml
+  ADR226_t3_synthetic_emergence_evidence_boundary:
+    title: 'T3 emergence evidence is a downstream post-commit evaluator with exact language-neutral records, discrete output classification, scoped non-authorability audits, and synthetic groundwork that cannot claim a live membership observable before Gate 3, Gate 5, and PER-44 activation'
+    status: accepted
+    date: '2026-08-23'
+    file: ADR226_t3_synthetic_emergence_evidence_boundary.yaml
+  ADR227_practice_contract_groundwork:
+    title: 'Practice Contract V1 is a pure, closed, language-neutral input and budget groundwork boundary with no live admission, execution, or persistence'
+    status: accepted
+    date: '2026-08-24'
+    file: ADR227_practice_contract_groundwork.yaml
+  ADR228_relational_territory_dossier_contract:
+    title: 'Relational Territory Dossier V1 is a language-neutral administrative projection contract, not a live game or persistence boundary'
+    status: accepted
+    date: '2026-08-23'
+    file: ADR228_relational_territory_dossier_contract.yaml
+  ADR229_rust_gameplay_contract_authority:
+    title: 'Rust owns the executable Neel gameplay contracts while versioned fixtures remain language-neutral behavioral authority'
+    status: accepted
+    date: '2026-08-25'
+    file: ADR229_rust_gameplay_contract_authority.yaml

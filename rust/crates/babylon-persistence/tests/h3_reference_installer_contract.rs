@@ -48,7 +48,7 @@ fn disposition_does_not_conflate_install_idempotence_and_commit_reconciliation()
 }
 
 #[test]
-fn membership_read_operations_distinguish_query_and_lifecycle_context() {
+fn reference_read_operations_distinguish_query_and_lifecycle_context() {
     let initial = H3ReferenceMembershipReadContext::InitialInspection;
     let attempt = H3ReferenceMembershipReadContext::CommitAttempt { attempt: 1 };
     let reconciliation =
@@ -59,6 +59,10 @@ fn membership_read_operations_distinguish_query_and_lifecycle_context() {
     assert_ne!(
         H3ReferenceInstallOperation::ReadMembershipCardinality { context: initial },
         H3ReferenceInstallOperation::ReadMembershipRows { context: initial },
+    );
+    assert_ne!(
+        H3ReferenceInstallOperation::ReadMembershipRows { context: initial },
+        H3ReferenceInstallOperation::ReadCellRows { context: initial },
     );
 }
 

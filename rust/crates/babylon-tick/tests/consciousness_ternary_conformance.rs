@@ -161,6 +161,7 @@
 //!   state — LIBERAL — and loud absence survives only for the genuinely
 //!   unread (class-unpositioned, employer).
 
+use babylon_bsl::compose_declaration_preludes;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
 use babylon_kernel::SessionId;
@@ -171,7 +172,14 @@ const SCENARIO: &str = include_str!("../content/scenarios/consciousness-ternary-
 // `WorldView` itself — every caller here routes through the shared
 // declaration prelude instead.
 const WORLDVIEW_PRELUDE: &str = include_str!("../content/declarations/worldview.bscn");
+const ORGANIZATION_PRACTICE_PRELUDE: &str =
+    include_str!("../content/declarations/organization-practice.bscn");
 const CONSCIOUSNESS_RULES: &str = include_str!("../content/rules/consciousness.bsl");
+
+fn practice_worldview_prelude() -> String {
+    compose_declaration_preludes(&[ORGANIZATION_PRACTICE_PRELUDE, WORLDVIEW_PRELUDE])
+        .expect("the ordered organization and worldview preludes compose")
+}
 
 // Node ids, fixed by the scenario's own declaration order (the scenario
 // file's header names the same map).
@@ -208,7 +216,7 @@ fn unpositioned_class_gets_no_reading() {
     let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
     let report = run_once_into_with_prelude(
         SCENARIO,
-        WORLDVIEW_PRELUDE,
+        &practice_worldview_prelude(),
         CONSCIOUSNESS_RULES,
         &mut graph,
         &mut sink,
@@ -418,7 +426,7 @@ fn dominant_worldview_readout_vectors() {
     let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
     let report = run_once_into_with_prelude(
         SCENARIO,
-        WORLDVIEW_PRELUDE,
+        &practice_worldview_prelude(),
         CONSCIOUSNESS_RULES,
         &mut graph,
         &mut sink,
@@ -519,7 +527,7 @@ fn measured_update_law_matches_the_dual_implementation_exactly() {
     let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
     let report = run_once_into_with_prelude(
         SCENARIO,
-        WORLDVIEW_PRELUDE,
+        &practice_worldview_prelude(),
         CONSCIOUSNESS_RULES,
         &mut graph,
         &mut sink,
@@ -741,7 +749,7 @@ fn measured_update_law_matches_the_dual_implementation_exactly() {
 fn tick_two_accumulation_witness() {
     let mut session = babylon_tick::TickSession::new_with_prelude(
         SCENARIO,
-        WORLDVIEW_PRELUDE,
+        &practice_worldview_prelude(),
         CONSCIOUSNESS_RULES,
         HypergraphStore::new(),
         SessionId::new("consciousness-ternary-conformance-test").expect("literal is non-empty"),

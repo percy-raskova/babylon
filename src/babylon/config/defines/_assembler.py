@@ -1,4 +1,4 @@
-"""GameDefines assembler — composes the 41 child Defines models.
+"""GameDefines assembler — composes the 42 child Defines models.
 
 Spec 058: extracted from the historical ``babylon.config.defines`` monolith. The :class:`GameDefines` class is the canonical assembler facade re-exported via :mod:`babylon.config.defines.__init__`.
 

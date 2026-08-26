@@ -9,8 +9,8 @@
 //! Four directories hold every real BSL source file in this tree: the
 //! shipped rule pack (`babylon-tick/content/rules/*.bsl`), this crate's
 //! own conformance fixtures (`tests/conformance/*.bsl`), and the shipped
-//! scenario corpus (`babylon-tick/content/scenarios/*.bscn` plus the one
-//! prelude, `babylon-tick/content/declarations/worldview.bscn`). The plan
+//! scenario corpus (`babylon-tick/content/scenarios/*.bscn` plus the
+//! declaration preludes in `babylon-tick/content/declarations/*.bscn`). The plan
 //! quoted 25/37/1 = 63 files, counted at planning time; re-deriving the
 //! same command against this tree finds 30/37/1 = 68 — five conformance
 //! `.bsl` fixtures (`rng_edge_type_draw`, `rng_expr_draw`, `rng_fold_draw`,
@@ -109,7 +109,7 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     ),
     (
         "organization.bsl",
-        "520719924d097816056b71e2df1f43e0f71b036fcc8e60946009fd6de75df116",
+        "fa4a009f580c58a88fe7e56ba8e28f92efdb84239b42d1c6cb2cb0e0717a5f3f",
     ),
     (
         "production.bsl",
@@ -213,43 +213,43 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     ),
     (
         "community-carrier-collision-conformance.bscn",
-        "a54427a115c6f92388f5b99a7e57e2ae0e7e4ffd1291f89503156d82a06a1e61",
+        "fbc3bdb51d979dbcb24b46ce4d40c6d2dfdb830cb6b36e4ba30bbd4642961424",
     ),
     (
         "community-conformance.bscn",
-        "aa2ce59f82c01c770116a8f719585a8cee55f5d5571afcd9f55968b1e3c196db",
+        "5c23e7783683d6c8b3fdb4d57bf2427c219405dfacbd35bdf44d51fc1adbb610",
     ),
     (
         "community-cost-modifier-conformance.bscn",
-        "c07992122b90bcb29e7efdd223f8f4f2db9e9000e5abc8d7c9b55a415a90c176",
+        "113927d5c2bd4f3b767ba5836bf21dbe217d0cece25c2542b68a68bbf957ec28",
     ),
     (
         "community-decay-arc-conformance.bscn",
-        "be92fbf179c713b2415e0dce50b604ee943e9cbb7b7bfeb17eeb1748f47c79ef",
+        "466fdb9e06026b6e92c011e977af7fd2d82491af1d3258d6d59331ce7ff915f1",
     ),
     (
         "community-degenerate-conformance.bscn",
-        "1c5b4d74abd8c2fd92607fc5382da812e5f8efaaaf6801ca3238118cff705e4c",
+        "7d41b8c88b92b7c7a38d28810ccc58c4588a7c2ac1b5c935c951c28f91a0d4d8",
     ),
     (
         "community-empty-conformance.bscn",
-        "0f39317a106dabbee5ab0e25ec6a1d18fc3480e7ca83114ad3238ada3be1c741",
+        "818d6347f95820f750c72eb2b986da6d2c34f3a1dba4dbd302fd80d0890f83fd",
     ),
     (
         "community-floor-conformance.bscn",
-        "e9bd0ca70a9a304121d47736764cc415fff06023fcee18c4892a55ed43921119",
+        "affd8f131a56d76a8d467c86096892bc35c2e732aa5f5e21e8a38c040485bf55",
     ),
     (
         "community-solidarity-seam-conformance.bscn",
-        "338f0781f53b23575cf528687a93f3b8ff1be43f0b1edd59862118ea220224b9",
+        "013c3754d216e6ac19608de8dbfafe710a195d0c5747e4774ffdc9c32947a77e",
     ),
     (
         "community-tie-conformance.bscn",
-        "5c5198de6147ac74541dc04f5c9aee4c900d6b35473ba464d5e9e5bf04819eff",
+        "78c31a62d6208c93cefe9edabf770ed26aafb6308b1b214aaa2e12a475cdd9e7",
     ),
     (
         "consciousness-ternary-conformance.bscn",
-        "aaf93f0493b4baa02972f0f35bc045d1096495ba05669b06e9344ea059c6913b",
+        "e2b5d4991107fd9c7de01f8294bc602d7fe0a6a5a3ba3d062c23d74e8764a2a4",
     ),
     (
         "control-ratio-conformance.bscn",
@@ -365,7 +365,11 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     ),
     (
         "organization-foundation.bscn",
-        "90534d4658b3d6adaa637abef12279dcc914a5c805ee1b47ffd4e4d4c69f05ee",
+        "fa287abb29a4f611e2bafda2cd6d06c0ff5c1f8896c4cff2291928d722fa58f5",
+    ),
+    (
+        "organization-practice-contract.bscn",
+        "8307e32fea7bd667ed8994b281bcf6f6d5f67170ea190edc6bc811e49903f159",
     ),
     (
         "production-conformance.bscn",
@@ -406,6 +410,10 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     (
         "worldview-foundation.bscn",
         "e1ad5e1a5a0fafa858d398cdca5202b8897041329f60a8a03f6370b4b2e8e40d",
+    ),
+    (
+        "organization-practice.bscn",
+        "7c3809a3e36d238c0bd7abc329d378305fb1b517918fdecf2f9fbbce23e0b1f8",
     ),
     (
         "worldview.bscn",

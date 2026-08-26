@@ -322,6 +322,12 @@ pub const GOVERNED_RULE_ATTRIBUTIONS: &[GovernedRuleAttribution] = &[
     governed_attribution("lifecycle/dpd-circuit", RuleRole::Mechanic),
     governed_attribution("metabolism/biocapacity-update", RuleRole::Mechanic),
     governed_attribution("organization/kind-probe", RuleRole::Mechanic),
+    governed_attribution("organization/p0-territory-inbox-reset", RuleRole::Mechanic),
+    governed_attribution("organization/p1-presence-attribution", RuleRole::Mechanic),
+    governed_attribution("organization/p1-rooted-work", RuleRole::Mechanic),
+    governed_attribution("organization/p2-territorial-relay", RuleRole::Mechanic),
+    governed_attribution("organization/p3-rooted-capacity-apply", RuleRole::Mechanic),
+    governed_attribution("organization/p5-command-response", RuleRole::Mechanic),
     governed_attribution("production/p0-production-total-reset", RuleRole::Mechanic),
     governed_attribution("production/p1-direct-production", RuleRole::Mechanic),
     governed_attribution("production/p2-employed-routing", RuleRole::Mechanic),
@@ -1490,13 +1496,13 @@ mod tests {
             assert_eq!(row.date, "2026-08-23");
             assert_eq!(row.adr, "ADR224");
         }
-        assert_eq!(GOVERNED_RULE_ATTRIBUTIONS.len(), 60);
+        assert_eq!(GOVERNED_RULE_ATTRIBUTIONS.len(), 66);
         assert_eq!(
             GOVERNED_RULE_ATTRIBUTIONS
                 .iter()
                 .filter(|row| row.role == RuleRole::Mechanic)
                 .count(),
-            58
+            64
         );
         assert_eq!(
             GOVERNED_RULE_ATTRIBUTIONS

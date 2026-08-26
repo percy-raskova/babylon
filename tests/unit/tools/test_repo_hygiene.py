@@ -31,6 +31,7 @@ OBSOLETE_HYPERGRAPH_MANIFEST = "babylon-tui/Cargo.toml"
 sys.path.insert(0, str(TOOLS_DIR))
 
 from check_repo_hygiene import (  # type: ignore[import-not-found]  # noqa: E402
+    ALLOWED_TOP_LEVEL_DIRS,
     check_large_non_lfs_blobs,
     check_top_level_allowlist,
     check_tracked_but_ignored,
@@ -63,6 +64,15 @@ class TestSyntheticViolations:
     def test_allowlist_clean_input_passes(self) -> None:
         tracked = ["src/a.py", "tests/b.py", "README.md", "pyproject.toml"]
         assert check_top_level_allowlist(tracked) == []
+
+    def test_allowlist_admits_contracts_root_only(self) -> None:
+        tracked = [
+            "contracts/relational_territory_dossier_v1.yaml",
+            "contractz/typo.yaml",
+            "unapproved-root/payload.txt",
+        ]
+        assert "contracts" in ALLOWED_TOP_LEVEL_DIRS
+        assert check_top_level_allowlist(tracked) == ["contractz", "unapproved-root"]
 
     def test_tracked_but_ignored_detected(self) -> None:
         ignored_tracked = ["reports/sim-runs/trace.csv"]

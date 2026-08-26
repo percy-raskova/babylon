@@ -49,17 +49,15 @@ const READ_HEADER_SQL: &str = "SELECT ref_digest, format_version, artifact_name,
     FROM babylon_ref.h3_reference_cohort \
     WHERE ref_digest = $1 OR (format_version = $2 AND artifact_digest = $3) \
     ORDER BY ref_digest LIMIT $4";
-const READ_MEMBERSHIP_SQL: &str = "WITH bounded_membership AS MATERIALIZED ( \
-    SELECT membership.cell_id, membership.origin \
+const READ_MEMBERSHIP_SQL: &str = "SELECT membership.cell_id, membership.origin \
     FROM babylon_ref.h3_reference_membership AS membership \
     WHERE membership.ref_digest = $1 \
-    ORDER BY membership.cell_id LIMIT $2 \
-) SELECT cell.cell_id, cell.resolution, \
-    cell.immediate_parent, cell.ancestor_r4, cell.ancestor_r5, cell.ancestor_r6, \
-    cell.ancestor_r7, membership.origin \
-    FROM bounded_membership AS membership \
-    JOIN babylon_ref.h3_cell AS cell ON cell.cell_id = membership.cell_id \
     ORDER BY membership.cell_id LIMIT $2";
+const READ_CELLS_SQL: &str = "SELECT cell.cell_id, cell.resolution, \
+    cell.immediate_parent, cell.ancestor_r4, cell.ancestor_r5, cell.ancestor_r6, \
+    cell.ancestor_r7 FROM babylon_ref.h3_cell AS cell \
+    WHERE cell.cell_id = ANY($1::bigint[]) \
+    ORDER BY cell.cell_id LIMIT $2";
 const READ_MEMBERSHIP_CARDINALITY_SQL: &str = "SELECT pg_catalog.count(*) \
     FROM (SELECT 1 \
     FROM babylon_ref.h3_reference_membership AS membership \
@@ -127,6 +125,11 @@ pub enum H3ReferenceInstallOperation {
     /// Read and verify the bounded primary-key-ordered membership rows.
     ReadMembershipRows {
         /// Lifecycle path that read the membership rows.
+        context: H3ReferenceMembershipReadContext,
+    },
+    /// Read and verify the bounded primary-key-ordered H3 cell rows.
+    ReadCellRows {
+        /// Lifecycle path that read the H3 cell rows.
         context: H3ReferenceMembershipReadContext,
     },
     /// Begin the serializable write transaction.
@@ -772,7 +775,8 @@ fn membership_receipt_identity(
             ("cardinality", context)
         }
         H3ReferenceInstallOperation::ReadMembershipRows { context } => ("rows", context),
-        _ => unreachable!("membership receipts accept only membership-read operations"),
+        H3ReferenceInstallOperation::ReadCellRows { context } => ("cells", context),
+        _ => unreachable!("reference receipts accept only reference-read operations"),
     };
     match context {
         H3ReferenceMembershipReadContext::InitialInspection => (query, "initial", None),
@@ -820,15 +824,26 @@ fn verify_membership<ClientType: GenericClient>(
     context: H3ReferenceMembershipReadContext,
 ) -> Result<(), H3ReferenceInstallError> {
     verify_membership_cardinality(client, cohort, context)?;
-    let operation = H3ReferenceInstallOperation::ReadMembershipRows { context };
-    let rows = read_membership_rows(client, cohort, operation)?;
-    if rows.len() != cohort.rows().len() {
+    let membership_operation = H3ReferenceInstallOperation::ReadMembershipRows { context };
+    let membership_rows = read_membership_rows(client, cohort, membership_operation)?;
+    let cell_operation = H3ReferenceInstallOperation::ReadCellRows { context };
+    let cell_rows = read_cell_rows(client, cohort, cell_operation)?;
+    if membership_rows.len() != cohort.rows().len() || cell_rows.len() != cohort.rows().len() {
         return Err(conflict(H3ReferenceInstallConflict::Membership));
     }
     let mut expected_index = 0_usize;
     let mut direct_cells = Vec::with_capacity(cohort.receipt().direct_cell_count());
-    for row in rows.iter().take(MAX_H3_REFERENCE_CLOSURE_ROWS) {
-        let stored = decode_stored_row(row, operation)?;
+    for (membership_row, cell_row) in membership_rows
+        .iter()
+        .zip(cell_rows.iter())
+        .take(MAX_H3_REFERENCE_CLOSURE_ROWS)
+    {
+        let stored = decode_stored_row(
+            membership_row,
+            cell_row,
+            membership_operation,
+            cell_operation,
+        )?;
         let expected = cohort
             .rows()
             .get(expected_index)
@@ -943,6 +958,50 @@ fn read_membership_rows<ClientType: GenericClient>(
     Ok(rows)
 }
 
+fn read_cell_rows<ClientType: GenericClient>(
+    client: &mut ClientType,
+    cohort: &H3ReferenceCohort,
+    operation: H3ReferenceInstallOperation,
+) -> Result<Vec<Row>, H3ReferenceInstallError> {
+    let expected = cohort.rows().len();
+    let query_limit = expected
+        .checked_add(1)
+        .filter(|limit| *limit <= MAX_H3_REFERENCE_CARDINALITY_QUERY_ROWS)
+        .ok_or(H3ReferenceInstallError::Bounds {
+            resource: H3ReferenceInstallBoundedResource::MembershipRows,
+            actual: expected,
+            max: MAX_H3_REFERENCE_CLOSURE_ROWS,
+        })?;
+    let query_limit = i64::try_from(query_limit).map_err(|_| H3ReferenceInstallError::Bounds {
+        resource: H3ReferenceInstallBoundedResource::MembershipRows,
+        actual: expected,
+        max: MAX_H3_REFERENCE_CLOSURE_ROWS,
+    })?;
+    let mut cell_ids = Vec::with_capacity(expected);
+    for row in cohort.rows().iter().take(MAX_H3_REFERENCE_CLOSURE_ROWS) {
+        cell_ids.push(cell_to_sql(row.cell_id(), operation)?);
+    }
+    #[cfg(test)]
+    let query_started = std::time::Instant::now();
+    let query = client.query(READ_CELLS_SQL, &[&cell_ids, &query_limit]);
+    #[cfg(test)]
+    emit_membership_read_receipt(
+        operation,
+        query_started.elapsed(),
+        query.as_ref().ok().map(Vec::len),
+        query.as_ref().err(),
+    );
+    let rows = query.map_err(|error| server_database_error(operation, &error))?;
+    if rows.len() > expected {
+        return Err(H3ReferenceInstallError::Bounds {
+            resource: H3ReferenceInstallBoundedResource::MembershipRows,
+            actual: rows.len(),
+            max: expected,
+        });
+    }
+    Ok(rows)
+}
+
 fn finish_membership_verification(
     expected_index: usize,
     direct_cells: &[H3CellId],
@@ -963,22 +1022,35 @@ fn finish_membership_verification(
 }
 
 fn decode_stored_row(
-    row: &Row,
-    operation: H3ReferenceInstallOperation,
+    membership_row: &Row,
+    cell_row: &Row,
+    membership_operation: H3ReferenceInstallOperation,
+    cell_operation: H3ReferenceInstallOperation,
 ) -> Result<StoredReferenceRow, H3ReferenceInstallError> {
-    let cell_id = decode_cell(row, 0, operation)?;
-    let resolution: i16 = decode_value(row, 1, operation)?;
-    let resolution =
-        u8::try_from(resolution).map_err(|_| H3ReferenceInstallError::Decode { operation })?;
+    let membership_identity: i64 = decode_value(membership_row, 0, membership_operation)?;
+    let stored_identity: i64 = decode_value(cell_row, 0, cell_operation)?;
+    if membership_identity != stored_identity {
+        return Err(conflict(H3ReferenceInstallConflict::Membership));
+    }
+    let cell_id = H3CellId::try_from(stored_identity).map_err(|source| {
+        H3ReferenceInstallError::CellIdentity {
+            operation: cell_operation,
+            source,
+        }
+    })?;
+    let resolution: i16 = decode_value(cell_row, 1, cell_operation)?;
+    let resolution = u8::try_from(resolution).map_err(|_| H3ReferenceInstallError::Decode {
+        operation: cell_operation,
+    })?;
     Ok(StoredReferenceRow {
         cell_id,
         resolution,
-        immediate_parent: decode_optional_cell(row, 2, operation)?,
-        ancestor_r4: decode_optional_cell(row, 3, operation)?,
-        ancestor_r5: decode_optional_cell(row, 4, operation)?,
-        ancestor_r6: decode_optional_cell(row, 5, operation)?,
-        ancestor_r7: decode_optional_cell(row, 6, operation)?,
-        origin: decode_origin(row, 7, operation)?,
+        immediate_parent: decode_optional_cell(cell_row, 2, cell_operation)?,
+        ancestor_r4: decode_optional_cell(cell_row, 3, cell_operation)?,
+        ancestor_r5: decode_optional_cell(cell_row, 4, cell_operation)?,
+        ancestor_r6: decode_optional_cell(cell_row, 5, cell_operation)?,
+        ancestor_r7: decode_optional_cell(cell_row, 6, cell_operation)?,
+        origin: decode_origin(membership_row, 1, membership_operation)?,
     })
 }
 
@@ -1290,16 +1362,6 @@ fn decode_count(
     usize::try_from(raw).map_err(|_| H3ReferenceInstallError::Decode { operation })
 }
 
-fn decode_cell(
-    row: &Row,
-    index: usize,
-    operation: H3ReferenceInstallOperation,
-) -> Result<H3CellId, H3ReferenceInstallError> {
-    let raw: i64 = decode_value(row, index, operation)?;
-    H3CellId::try_from(raw)
-        .map_err(|source| H3ReferenceInstallError::CellIdentity { operation, source })
-}
-
 fn decode_optional_cell(
     row: &Row,
     index: usize,
@@ -1460,6 +1522,8 @@ pub(crate) mod live_postgres_tests {
     ) {
         let cohort = representative_cohort();
         assert_eq!(reference_counts(config), (0, 0, 0));
+        verify_membership_read_is_join_plan_independent(config, &cohort);
+        assert_eq!(reference_counts(config), (0, 0, 0));
         let forced_rollback_started = start_phase(H3AtomicityPhase::ForcedRollback, suite_started);
         let mut forced_failure =
             |client: &mut postgres::Client, cohort: &H3ReferenceCohort, attempt: usize| {
@@ -1510,7 +1574,49 @@ pub(crate) mod live_postgres_tests {
             killed_retry_started,
             suite_started,
         );
-        verify_membership_lock_timeout_preserves_server_diagnostic(config, &cohort);
+        verify_cell_lock_timeout_preserves_server_diagnostic(config, &cohort);
+    }
+
+    fn verify_membership_read_is_join_plan_independent(
+        config: &Config,
+        cohort: &H3ReferenceCohort,
+    ) {
+        let bounded = super::installer_config(config);
+        let mut session = super::LockedInstallSession::connect(&bounded).unwrap();
+        super::require_exact_schema_epoch(session.client()).unwrap();
+        super::prepare_installer_session(session.client()).unwrap();
+        let mut transaction = session
+            .client()
+            .build_transaction()
+            .isolation_level(postgres::IsolationLevel::Serializable)
+            .read_only(false)
+            .start()
+            .unwrap();
+        super::prepare_transaction(&mut transaction).unwrap();
+        transaction
+            .batch_execute(
+                "SET LOCAL statement_timeout TO '5000ms'; \
+                 SET LOCAL enable_indexscan TO off; \
+                 SET LOCAL enable_indexonlyscan TO off; \
+                 SET LOCAL enable_bitmapscan TO off; \
+                 SET LOCAL enable_hashjoin TO off; \
+                 SET LOCAL enable_mergejoin TO off",
+            )
+            .unwrap();
+        super::insert_cells(&mut transaction, cohort.rows()).unwrap();
+        super::insert_header(&mut transaction, cohort.receipt()).unwrap();
+        super::insert_membership(&mut transaction, cohort).unwrap();
+        assert_eq!(
+            super::inspect_presence(
+                &mut transaction,
+                cohort,
+                H3ReferenceMembershipReadContext::CommitAttempt { attempt: 1 },
+            )
+            .unwrap(),
+            super::InstallPresence::Exact
+        );
+        transaction.rollback().unwrap();
+        session.finish(Ok(())).unwrap();
     }
 
     pub(crate) fn verify_committed_reconciliation(
@@ -1550,7 +1656,7 @@ pub(crate) mod live_postgres_tests {
         );
     }
 
-    fn verify_membership_lock_timeout_preserves_server_diagnostic(
+    fn verify_cell_lock_timeout_preserves_server_diagnostic(
         config: &Config,
         cohort: &H3ReferenceCohort,
     ) {
@@ -1567,27 +1673,27 @@ pub(crate) mod live_postgres_tests {
         blocker_transaction
             .batch_execute("LOCK TABLE babylon_ref.h3_cell IN ACCESS EXCLUSIVE MODE")
             .unwrap();
-        let operation = super::H3ReferenceInstallOperation::ReadMembershipRows { context };
-        let result = super::read_membership_rows(session.client(), cohort, operation);
+        let operation = super::H3ReferenceInstallOperation::ReadCellRows { context };
+        let result = super::read_cell_rows(session.client(), cohort, operation);
         blocker_transaction.rollback().unwrap();
         session.finish(Ok(())).unwrap();
 
-        let error = result.expect_err("the membership read must honor the bounded lock timeout");
+        let error = result.expect_err("the cell read must honor the bounded lock timeout");
         match error {
             super::H3ReferenceInstallError::Database {
                 operation:
-                    super::H3ReferenceInstallOperation::ReadMembershipRows {
+                    super::H3ReferenceInstallOperation::ReadCellRows {
                         context: H3ReferenceMembershipReadContext::InitialInspection,
                     },
                 diagnostic,
             } => {
                 let server = diagnostic
                     .server()
-                    .expect("the membership query must retain its server diagnostic");
+                    .expect("the cell query must retain its server diagnostic");
                 assert_eq!(server.code(), &SqlState::LOCK_NOT_AVAILABLE);
                 assert!(!server.message().is_empty());
             }
-            other => panic!("unexpected membership lock-timeout error: {other:?}"),
+            other => panic!("unexpected cell lock-timeout error: {other:?}"),
         }
         assert_eq!(reference_counts(config), before);
 

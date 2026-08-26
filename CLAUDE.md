@@ -100,8 +100,8 @@ Use TDD: show RED, make it pass, then refactor. Keep game data typed and
 immutable. Python models use frozen Pydantic types.
 `model_copy(update=...)` skips validation. Pass dependencies explicitly.
 
-Do not run Sphinx, `cargo doc`, or an umbrella task that generates documentation unless the Director requests it. This includes local `mise run rust:check`.
-Set `SKIP=rust-full-gate` for local pushes. Run the non-documentation Rust legs separately, and use only targeted Vale and format checks on changed prose.
+Do not run Sphinx, `cargo doc`, or a CI task that generates documentation unless the Director requests it. This includes local `mise run ci:rust` and its `rust:check` compatibility alias.
+Set `SKIP=rust-full-gate` for local pushes. Run `mise run rust:check-no-docs` for the canonical non-documentation Rust gate, and use only targeted Vale and format checks on changed prose.
 
 ## Tests and behavior contracts
 
@@ -115,7 +115,7 @@ mise run test:q -- tests/unit/path/to/test_file.py
 mise run check
 cd rust && cargo fmt --all -- --check
 cd rust && cargo test -p <changed-crate> --locked
-cd rust && cargo clippy -p <changed-crate> --all-targets --locked -- -D warnings
+mise run rust:check-no-docs
 mise run qa:regression
 mise run qa:vault-regression-ci
 mise run check:gate-coverage

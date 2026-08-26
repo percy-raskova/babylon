@@ -27,7 +27,9 @@
 //! `pressing_space_advances_the_tick_and_updates_the_hash_text` observes
 //! through the client's independent `EngineSession` seam.
 
-use babylon_bsl::scenario::{load_scenario, load_scenario_with_prelude};
+use babylon_bsl::scenario::{
+    compose_declaration_preludes, load_scenario, load_scenario_with_prelude,
+};
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_tick::{hex, run_once, run_once_with_prelude};
 
@@ -56,6 +58,18 @@ const SOLIDARITY_RULE: &str = include_str!("../content/rules/solidarity.bsl");
 // ternary golden now shares its WorldView type through, rather than
 // re-declaring it — see the .bscn's own header for the retirement note.
 const WORLDVIEW_PRELUDE: &str = include_str!("../content/declarations/worldview.bscn");
+const ORGANIZATION_PRACTICE_PRELUDE: &str =
+    include_str!("../content/declarations/organization-practice.bscn");
+
+fn practice_prelude() -> String {
+    compose_declaration_preludes(&[ORGANIZATION_PRACTICE_PRELUDE])
+        .expect("the organization practice prelude composes")
+}
+
+fn practice_worldview_prelude() -> String {
+    compose_declaration_preludes(&[ORGANIZATION_PRACTICE_PRELUDE, WORLDVIEW_PRELUDE])
+        .expect("the ordered organization and worldview preludes compose")
+}
 
 #[test]
 fn two_classes_fundamental_theorem_hashes_are_pinned() {
@@ -117,50 +131,46 @@ fn us_counties_lifecycle_demo_hashes_are_pinned() {
     );
 }
 
-/// Task 10 (Organization foundation plan) — spec §11's hash anchor: the
-/// org-seeding canonical scenario, pinned. `organization-foundation.bscn`
-/// declares NodeType/EdgeType vocabularies plus the `OrgKind` enum
-/// (ADR195/ADR196), seeds two organizations (a CIVIL_SOCIETY reading group
-/// and a STATE_APPARATUS precinct) over a class and a territory, and the
-/// `organization/kind-probe` rule reads `organization/kind` back through a
-/// `:field` binding (`field-of` is refused for enum-declared fields — D102)
-/// to fire on the one STATE_APPARATUS organization only.
+/// The organization foundation hash anchor. The scenario seeds two
+/// organizations, four class-territory pairs, and explicit membership,
+/// presence, command, tenancy, attributed adjacency, and solidarity
+/// relations. The rule pack spends a bounded practice action, relays rooted
+/// capacity through throughput, alternate-capacity, inventory-buffer, and
+/// reproduction-dependence fields, and provokes command response. It does not
+/// replenish the action or write membership or care without their governed
+/// intent, attribution, stock, labor, and routing paths.
 ///
-/// `before == after` here is not a bug: the probe rule's only effect is
-/// `emit` — no `update-node` — and the tick-hash contract
-/// (`babylon-graph/src/state_hash.rs`, §"The canonical byte layout") covers
-/// only nodes/attributes/edges/hyperedges, never the event log. A rule that
-/// observes but does not mutate leaves the graph, and therefore the hash,
-/// genuinely unmoved; measured, not assumed. The `before` pin still
-/// discriminates — a reordered `defenum` moves it (declaration order IS the
-/// stored ordinal, ADR195) — and `fired == 1` pins both halves of the
-/// guard. What NO golden can pin today is the emit itself (`TickReport`
-/// carries no event log); that blind spot closes at the Events-in-BSL
-/// workstream's observable seam (WS1, #502), not by rewriting this probe.
+/// The before hash pins the expanded relational world, including the typed
+/// material embedding on each PRESENCE relation. The after hash pins its
+/// first material tick. Structural assertions in
+/// `organization_practice_conformance.rs` explain the behavior summarized
+/// by these bytes.
 #[test]
 fn organization_foundation_hashes_are_pinned() {
-    let report = run_once(ORG_FOUNDATION_SCENARIO, ORG_FOUNDATION_RULE)
-        .expect("organization-foundation tick");
+    let report = run_once_with_prelude(
+        ORG_FOUNDATION_SCENARIO,
+        &practice_prelude(),
+        ORG_FOUNDATION_RULE,
+    )
+    .expect("organization-foundation tick");
     assert_eq!(
         hex(&report.before),
-        "5d8d5c43088440787f993ce91bd9a676d4adf60fa35904b2afbafeccaab93a1e",
+        "9ae0172b0ce63a1d3f5a9e82fce433bb06c516b4fff2ec5056ec588a21b9228f",
         "pre-tick hash moved — this is the SUBSTRATE'S load of \
          organization-foundation.bscn (the org estate's first entry into \
          the Rust byte gate, spec §11)"
     );
     assert_eq!(
         hex(&report.after),
-        "5d8d5c43088440787f993ce91bd9a676d4adf60fa35904b2afbafeccaab93a1e",
-        "post-tick hash moved — the probe rule's own effect is emit-only \
-         (no update-node), so this staying equal to `before` is the \
-         expected, measured result, not an oversight; a future rule that \
-         adds a mutating effect to this pack SHOULD move this value"
+        "75f8639bc52ee7353f0b7e62f7891f47185a005de57332bddec797d8aaf3da2b",
+        "post-tick hash moved — this pins the first material practice, \
+         fresh-work propagation, unchanged membership, and command writes"
     );
     assert_eq!(
-        report.fired, 1,
-        "the probe rule must fire for exactly the one STATE_APPARATUS \
-         organization (precinct) and skip the CIVIL_SOCIETY one \
-         (reading-group)"
+        report.fired, 13,
+        "the first tick must execute 1 kind probe + 4 \
+         territory resets + 2 presence attributions + 1 rooted practice + \
+         1 circulation relay + 3 capacity applications + 1 command response"
     );
 }
 
@@ -362,25 +372,32 @@ fn worldview_member_order_is_the_ruled_ordinal() {
 /// assumed (this is exactly the byte-neutrality proof the brief demanded;
 /// see `consciousness_ternary_conformance.rs` for the companion
 /// value-level proof).
+///
+/// TASK 5 PRACTICE PRELUDE — the scenario now composes the organization
+/// practice declarations before the WorldView prelude. Its already-active
+/// `org-solid` witness also seeds the promoted `organization/action-budget`
+/// field at 1. That explicit graph field moves both hashes below; the
+/// conformance suite proves that rule firings and material results stay
+/// unchanged.
 #[test]
 fn consciousness_ternary_foundation_hashes_are_pinned() {
     let report = run_once_with_prelude(
         CONSCIOUSNESS_TERNARY_SCENARIO,
-        WORLDVIEW_PRELUDE,
+        &practice_worldview_prelude(),
         CONSCIOUSNESS_TERNARY_RULES,
     )
     .expect("consciousness-ternary tick");
     assert_eq!(
         hex(&report.before),
-        "e2582dd4f3537a6baa26fdb273e9aaf39299ab4994cf0dcf2664a90b920821fe",
+        "bd881846b193228281d5be66a7083ded2aab2e9790b1fc86a9103a04f5629363",
         "pre-tick hash moved — this is the SUBSTRATE'S load of \
          consciousness-ternary-conformance.bscn (thirteen social classes + one \
          organization + three SOLIDARITY edges + three WAGES edges — the \
-         Train B item 3 re-pin, D151's discharge)"
+         Task 5 practice-prelude measurement)"
     );
     assert_eq!(
         hex(&report.after),
-        "a6329eadbfebcdfb134e2e693c032c57fb8a7d9cce9a8ef42e1ec84c6e2ce612",
+        "a59bf3721c35face89c02ec5a7e8bf79d3bf994927bb7d63e3e6f5cacf3ccd17",
         "post-tick hash moved — the ten-rule pack's combined tick-1 output \
          (p0's positioning, p1..p7's measured update law plus the new \
          p2-wages-push, p8's readout) — attribute-set change only, zero \
@@ -392,8 +409,7 @@ fn consciousness_ternary_foundation_hashes_are_pinned() {
          consciousness_ternary_conformance.rs's re-measured assertions and \
          its module-header post-repair note for the exact numbers and the \
          ternary-routing consequence (the tick-2 FASCIST flip no longer \
-         happens). report.before, above, is UNCHANGED — no new graph \
-         content, only rule text moved. RE-PINNED AGAIN 2026-08-21 in the \
+         happens). RE-PINNED AGAIN 2026-08-21 in the \
          worktree-sweep integration merge (bsl-hygiene-knockout × #491): \
          W2's unconditional p1-inbox-reset guard (adjudication (d), the \
          SIXTH re-pin on the hygiene train) composes with T1's value moves \
@@ -882,7 +898,8 @@ const COMMUNITY_CONTROL_RATIO: &str = include_str!("../content/rules/control-rat
 /// Measured, never derived; touches none of the sixteen prior pins.
 #[test]
 fn community_world_1_hashes_are_pinned() {
-    let report = run_once(COMMUNITY_W1, COMMUNITY_PACK).expect("world 1 tick");
+    let report = run_once_with_prelude(COMMUNITY_W1, &practice_prelude(), COMMUNITY_PACK)
+        .expect("world 1 tick");
     assert_eq!(
         hex(&report.before),
         "855f6f9b92a47b909f7d470aa84556c9ac48a319fff0905c142ee58199a392ba",
@@ -900,7 +917,8 @@ fn community_world_1_hashes_are_pinned() {
 /// none of the sixteen prior pins.
 #[test]
 fn community_world_2_hashes_are_pinned() {
-    let report = run_once(COMMUNITY_W2, COMMUNITY_PACK).expect("world 2 tick");
+    let report = run_once_with_prelude(COMMUNITY_W2, &practice_prelude(), COMMUNITY_PACK)
+        .expect("world 2 tick");
     assert_eq!(
         hex(&report.before),
         "74c94d50d41bbe816d3f0de17956162d9698aad36a39f2ecf006b169e17eeb6b",
@@ -917,7 +935,8 @@ fn community_world_2_hashes_are_pinned() {
 /// derived; touches none of the sixteen prior pins.
 #[test]
 fn community_world_3_hashes_are_pinned() {
-    let report = run_once(COMMUNITY_W3, COMMUNITY_PACK).expect("world 3 tick");
+    let report = run_once_with_prelude(COMMUNITY_W3, &practice_prelude(), COMMUNITY_PACK)
+        .expect("world 3 tick");
     assert_eq!(
         hex(&report.before),
         "cbc85aab2f12b2858ae215e896fe72e2343471b7e40f3e79b4360f321b40c83d",
@@ -935,7 +954,8 @@ fn community_world_3_hashes_are_pinned() {
 /// of the sixteen prior pins.
 #[test]
 fn community_world_4_hashes_are_pinned() {
-    let report = run_once(COMMUNITY_W4, COMMUNITY_PACK).expect("world 4 tick");
+    let report = run_once_with_prelude(COMMUNITY_W4, &practice_prelude(), COMMUNITY_PACK)
+        .expect("world 4 tick");
     assert_eq!(
         hex(&report.before),
         "3a021222a3c3d9a5606305feed76e5d20dd0e1a14dd712309ca0f0578e0107b7",
@@ -953,8 +973,9 @@ fn community_world_4_hashes_are_pinned() {
 /// prior pins.
 #[test]
 fn community_world_5_arc_hashes_are_pinned() {
-    let mut session = babylon_tick::TickSession::new(
+    let mut session = babylon_tick::TickSession::new_with_prelude(
         COMMUNITY_W5,
+        &practice_prelude(),
         COMMUNITY_PACK,
         HypergraphStore::new(),
         babylon_kernel::SessionId::new("community-decay-arc").expect("literal"),
@@ -984,7 +1005,8 @@ fn community_world_5_arc_hashes_are_pinned() {
 #[test]
 fn community_world_5b_seam_hashes_are_pinned() {
     let rules = format!("{COMMUNITY_SOLIDARITY}\n{COMMUNITY_PACK}");
-    let report = run_once(COMMUNITY_W5B, &rules).expect("world 5b tick");
+    let report =
+        run_once_with_prelude(COMMUNITY_W5B, &practice_prelude(), &rules).expect("world 5b tick");
     assert_eq!(
         hex(&report.before),
         "43c36eece2e8250410e7730467b2cb48b5e67d8c279391bf29ffd6c2d77acf3b",
@@ -1003,7 +1025,8 @@ fn community_world_5b_seam_hashes_are_pinned() {
 #[test]
 fn community_world_5c_collision_hashes_are_pinned() {
     let rules = format!("{COMMUNITY_CONTROL_RATIO}\n{COMMUNITY_PACK}");
-    let report = run_once(COMMUNITY_W5C, &rules).expect("world 5c tick");
+    let report =
+        run_once_with_prelude(COMMUNITY_W5C, &practice_prelude(), &rules).expect("world 5c tick");
     assert_eq!(
         hex(&report.before),
         "1ad177425e34ed4f972d8f530cec9cfe3122ab6bd3c14902ee282cfd71106d4f",
@@ -1021,7 +1044,8 @@ fn community_world_5c_collision_hashes_are_pinned() {
 /// none of the sixteen prior pins.
 #[test]
 fn community_world_6_hashes_are_pinned() {
-    let report = run_once(COMMUNITY_W6, COMMUNITY_PACK).expect("world 6 tick");
+    let report = run_once_with_prelude(COMMUNITY_W6, &practice_prelude(), COMMUNITY_PACK)
+        .expect("world 6 tick");
     assert_eq!(
         hex(&report.before),
         "0d10526ca3a6a14eb1e2bac27c63c0e4716d4f9189fc990c07bbd9226d70d946",
@@ -1042,16 +1066,16 @@ fn community_world_6_hashes_are_pinned() {
 #[test]
 fn community_tie_world_hashes_are_pinned() {
     let rules = format!("{CONSCIOUSNESS_TERNARY_RULES}\n{COMMUNITY_PACK}");
-    let report =
-        run_once_with_prelude(COMMUNITY_TIE, WORLDVIEW_PRELUDE, &rules).expect("tie world tick");
+    let report = run_once_with_prelude(COMMUNITY_TIE, &practice_worldview_prelude(), &rules)
+        .expect("tie world tick");
     assert_eq!(
         hex(&report.before),
-        "652479d6d29b82e4ce7256dbccbb1614b65c7fe2eaf38aba500edd134cbc6b14",
+        "347892760ad11bb974b95ce59b8559e7b3862befd0b14444cacf457964119e83",
         "pre-tick hash moved — the tie world's load"
     );
     assert_eq!(
         hex(&report.after),
-        "747a28d0e62aa31ec28a7bd33cf80a3486d1d590fba1a0150ca7a30c6b573673",
+        "ed8eb9c6933b6d0a5383c0d8261d00523995a86db685af83c4ec8fe527b7c247",
         "post-tick hash moved — both packs over the tie world"
     );
 }

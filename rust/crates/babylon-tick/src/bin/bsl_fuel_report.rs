@@ -66,92 +66,101 @@
 //! sufficient evidence that coverage is complete; `cargo test -p
 //! babylon-tick --locked --bin bsl-fuel-report` is.
 
+use babylon_bsl::compose_declaration_preludes;
 use babylon_tick::{any_over_budget, fuel_bound_report};
 use std::process::ExitCode;
 
-/// (pack name, scenario source, optional declaration prelude, rule source)
+const ORGANIZATION_PRACTICE_PRELUDE: &str =
+    include_str!("../../content/declarations/organization-practice.bscn");
+const WORLDVIEW_PRELUDE: &str = include_str!("../../content/declarations/worldview.bscn");
+const NO_PRELUDES: &[&str] = &[];
+const ORGANIZATION_PRELUDES: &[&str] = &[ORGANIZATION_PRACTICE_PRELUDE];
+const ORGANIZATION_WORLDVIEW_PRELUDES: &[&str] =
+    &[ORGANIZATION_PRACTICE_PRELUDE, WORLDVIEW_PRELUDE];
+
+/// (pack name, scenario source, ordered declaration preludes, rule source)
 /// — the SAME scenario each pack's own dedicated conformance test loads it
 /// against (see this file's module doc for the citations backing each
 /// pairing). `name` doubles as the expected `content/rules/<name>.bsl`
 /// file stem the enumeration sentinel test cross-checks — keep it exactly
 /// equal to the file's own stem, or that test fails.
-const SOLO_PACKS: &[(&str, &str, Option<&str>, &str)] = &[
+const SOLO_PACKS: &[(&str, &str, &[&str], &str)] = &[
     (
         "fundamental-theorem",
         include_str!("../../content/scenarios/two-classes.bscn"),
-        None,
+        NO_PRELUDES,
         include_str!("../../content/rules/fundamental-theorem.bsl"),
     ),
     (
         "vitality",
         include_str!("../../content/scenarios/vitality-conformance.bscn"),
-        None,
+        NO_PRELUDES,
         include_str!("../../content/rules/vitality.bsl"),
     ),
     (
         "lifecycle",
         include_str!("../../content/scenarios/lifecycle-conformance.bscn"),
-        None,
+        NO_PRELUDES,
         include_str!("../../content/rules/lifecycle.bsl"),
     ),
     (
         "organization",
         include_str!("../../content/scenarios/organization-foundation.bscn"),
-        None,
+        ORGANIZATION_PRELUDES,
         include_str!("../../content/rules/organization.bsl"),
     ),
     (
         "territory",
         include_str!("../../content/scenarios/territory-conformance.bscn"),
-        None,
+        NO_PRELUDES,
         include_str!("../../content/rules/territory.bsl"),
     ),
     (
         "production",
         include_str!("../../content/scenarios/production-conformance.bscn"),
-        None,
+        NO_PRELUDES,
         include_str!("../../content/rules/production.bsl"),
     ),
     (
         "worldview",
         include_str!("../../content/scenarios/worldview-foundation.bscn"),
-        None,
+        NO_PRELUDES,
         include_str!("../../content/rules/worldview.bsl"),
     ),
     (
         "consciousness",
         include_str!("../../content/scenarios/consciousness-ternary-conformance.bscn"),
-        Some(include_str!("../../content/declarations/worldview.bscn")),
+        ORGANIZATION_WORLDVIEW_PRELUDES,
         include_str!("../../content/rules/consciousness.bsl"),
     ),
     (
         "solidarity",
         include_str!("../../content/scenarios/solidarity-conformance.bscn"),
-        None,
+        NO_PRELUDES,
         include_str!("../../content/rules/solidarity.bsl"),
     ),
     (
         "decomposition",
         include_str!("../../content/scenarios/decomposition-conformance.bscn"),
-        None,
+        NO_PRELUDES,
         include_str!("../../content/rules/decomposition.bsl"),
     ),
     (
         "control-ratio",
         include_str!("../../content/scenarios/control-ratio-conformance.bscn"),
-        None,
+        NO_PRELUDES,
         include_str!("../../content/rules/control-ratio.bsl"),
     ),
     (
         "dispossession",
         include_str!("../../content/scenarios/dispossession-conformance.bscn"),
-        None,
+        NO_PRELUDES,
         include_str!("../../content/rules/dispossession.bsl"),
     ),
     (
         "metabolism",
         include_str!("../../content/scenarios/metabolism-conformance.bscn"),
-        None,
+        NO_PRELUDES,
         include_str!("../../content/rules/metabolism.bsl"),
     ),
     (
@@ -161,7 +170,7 @@ const SOLO_PACKS: &[(&str, &str, Option<&str>, &str)] = &[
         // (`imperial_rent_conformance.rs`'s SCENARIO/RULE pair).
         "imperial-rent",
         include_str!("../../content/scenarios/imperial-rent-conformance.bscn"),
-        None,
+        NO_PRELUDES,
         include_str!("../../content/rules/imperial-rent.bsl"),
     ),
     (
@@ -170,7 +179,7 @@ const SOLO_PACKS: &[(&str, &str, Option<&str>, &str)] = &[
         // `run_once(SCENARIO, RULE)`).
         "vitality-attrition",
         include_str!("../../content/scenarios/vitality-attrition-conformance.bscn"),
-        None,
+        NO_PRELUDES,
         include_str!("../../content/rules/vitality-attrition.bsl"),
     ),
     (
@@ -181,7 +190,7 @@ const SOLO_PACKS: &[(&str, &str, Option<&str>, &str)] = &[
         // the declared fuel (a world whose bound exceeds it reds at load).
         "community",
         include_str!("../../content/scenarios/community-conformance.bscn"),
-        None,
+        ORGANIZATION_PRELUDES,
         include_str!("../../content/rules/community.bsl"),
     ),
     (
@@ -191,7 +200,7 @@ const SOLO_PACKS: &[(&str, &str, Option<&str>, &str)] = &[
         // enumeration sentinel stays green as the file lands.
         "class-dynamics",
         include_str!("../../content/scenarios/class-dynamics-conformance.bscn"),
-        None,
+        NO_PRELUDES,
         include_str!("../../content/rules/class-dynamics.bsl"),
     ),
 ];
@@ -204,11 +213,11 @@ const SOLO_PACKS: &[(&str, &str, Option<&str>, &str)] = &[
 /// combinations any committed test loads together — no third co-load
 /// exists to add. Each `name` is a pack PAIR, not a file stem, so these
 /// entries are deliberately excluded from the enumeration sentinel below.
-const CO_LOADS: &[(&str, &str, Option<&str>, &str)] = &[
+const CO_LOADS: &[(&str, &str, &[&str], &str)] = &[
     (
         "vitality+lifecycle",
         include_str!("../../content/scenarios/us-counties-lifecycle-demo.bscn"),
-        None,
+        NO_PRELUDES,
         concat!(
             include_str!("../../content/rules/vitality.bsl"),
             "\n",
@@ -218,7 +227,7 @@ const CO_LOADS: &[(&str, &str, Option<&str>, &str)] = &[
     (
         "decomposition+control-ratio",
         include_str!("../../content/scenarios/carceral-arc-conformance.bscn"),
-        None,
+        NO_PRELUDES,
         concat!(
             include_str!("../../content/rules/decomposition.bsl"),
             "\n",
@@ -229,8 +238,19 @@ const CO_LOADS: &[(&str, &str, Option<&str>, &str)] = &[
 
 fn main() -> ExitCode {
     let mut rows = Vec::new();
-    for (pack, scenario, prelude, rule) in SOLO_PACKS.iter().chain(CO_LOADS) {
-        match fuel_bound_report(scenario, *prelude, rule) {
+    for (pack, scenario, preludes, rule) in SOLO_PACKS.iter().chain(CO_LOADS) {
+        let composed = if preludes.is_empty() {
+            None
+        } else {
+            match compose_declaration_preludes(preludes) {
+                Ok(source) => Some(source),
+                Err(error) => {
+                    eprintln!("bsl-fuel-report: {pack}: {error}");
+                    return ExitCode::from(2);
+                }
+            }
+        };
+        match fuel_bound_report(scenario, composed.as_deref(), rule) {
             Ok(pack_rows) => rows.extend(pack_rows),
             Err(e) => {
                 eprintln!("bsl-fuel-report: {pack}: {e}");

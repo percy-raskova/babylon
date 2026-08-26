@@ -124,16 +124,11 @@
   (defenum CommunityType
     (SETTLER PATRIARCHAL NEW_AFRIKAN FIRST_NATIONS CHICANO WOMEN TRANS
      DISABLED QUEER UNDOCUMENTED INCARCERATED YOUTH ADULT ELDER))
-  (defenum ConsciousnessTendency (LIBERAL FASCIST REVOLUTIONARY))
-
   (deffield social-class/revolutionary probability intensive)
   (deffield social-class/active int intensive)
   ; ---- the community pack's field surface (world 1's set, verbatim) ----
   (deffield institution/community-carrier int extensive)
   (deffield social-class/community-cost-modifier real intensive)
-  (deffield organization/cadre-level probability intensive)
-  (deffield organization/cohesion probability intensive)
-  (deffield organization/consciousness-tendency enum ConsciousnessTendency)
   (deffield community/kind enum CommunityType)
   (deffield community/heat intensity intensive)
   (deffield community/cohesion intensity intensive)

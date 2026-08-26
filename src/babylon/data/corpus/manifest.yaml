@@ -16,7 +16,7 @@
 #                enclosing allow glob — computed as a set-difference over
 #                matched files, never a directory-level carve-out — so a
 #                denied sub-path wins over whatever allow glob sweeps over it
-#                (the Trotsky-quoted-for-rebuttal case)
+#                (a nested denied-source case)
 #   flag_bd    - adversarial-only (Divergence Channel, ADR072). Never reachable
 #                from CorpusManifest.ingest_targets() — that method excludes
 #                every non-allow row's matched files (not deny rows alone), so
@@ -152,7 +152,7 @@ rows:
       ~/Documents/ocr/ on this box.
 
   # =========================================================================
-  # ruled-out lines (ADR107 decision: "deny: CPUSA, Trotsky, Kautsky, Hoxha")
+  # ruled-out lines (ADR107)
   # =========================================================================
 
   - path_glob: "trotsky/**/*.txt"
@@ -161,12 +161,29 @@ rows:
     role: [doctrine]
     format: txt
     canon_status: deny
+    exclusion_policy: director
     provenance: >-
-      ADR107 deny ruling: anti-Three-Worlds-Theory / anti-MLM-TW position.
-      Honored even if a future broad allow glob (e.g. a raw marxists.org
-      mirror import) would otherwise sweep this author in — the
-      Trotsky-quoted-for-rebuttal case the charter names explicitly (deny
-      rows win inside allow globs).
+      Director exclusion ruling, 2026-08-23. This row exists solely to prevent ingestion.
+
+  - path_glob: "pannekoe/**/*.txt"
+    author: "Anton Pannekoek"
+    work: "(all works — denied author)"
+    role: [doctrine]
+    format: txt
+    canon_status: deny
+    exclusion_policy: director
+    provenance: >-
+      Director exclusion ruling, 2026-08-23. This row exists solely to prevent ingestion.
+
+  - path_glob: "bordiga/**/*.txt"
+    author: "Amadeo Bordiga"
+    work: "(all works — denied author)"
+    role: [doctrine]
+    format: txt
+    canon_status: deny
+    exclusion_policy: director
+    provenance: >-
+      Director exclusion ruling, 2026-08-23. This row exists solely to prevent ingestion.
 
   - path_glob: "kautsky/**/*.txt"
     author: "Karl Kautsky"

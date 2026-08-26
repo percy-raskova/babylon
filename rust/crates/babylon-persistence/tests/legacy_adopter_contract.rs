@@ -2172,7 +2172,7 @@ fn h3_atomicity_receipts_are_fixed_flushed_and_test_only() {
         cte_slice(
             installer,
             "pub(crate) fn verify_committed_reconciliation(",
-            "fn verify_membership_lock_timeout_preserves_server_diagnostic(",
+            "fn verify_cell_lock_timeout_preserves_server_diagnostic(",
         ),
     ] {
         assert!(phase.contains("suite_started: Instant"));

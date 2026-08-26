@@ -98,7 +98,17 @@ use crate::types::{BslType, EnumRegistry, EnumTypeId, FieldDecl, FieldKind};
 use crate::vocabulary::{ClosedVocabulary, EnumKind, VocabularyError};
 use babylon_graph::substrate::{GraphError, GraphSubstrate, HyperedgeId, NodeId};
 use babylon_kernel::{Currency, Ratio};
+use babylon_practice_contract::{
+    PracticeContractError, PracticeTargetDomainV1, PracticeTopologyLoadCounter,
+};
 use std::collections::{HashMap, HashSet};
+
+const MAX_SCENARIO_SOURCE_BYTES: usize = 4_194_304;
+const MAX_SCENARIO_BODY_FORMS: usize = 65_536;
+const MAX_SCENARIO_AST_NODES: usize = 1_048_576;
+const MAX_SCENARIO_WALKER_DEPTH: usize = 256;
+const MAX_SCENARIO_WALKER_STACK: usize = 65_536;
+const MAX_SCENARIO_LOCAL_NAMES: usize = 65_536;
 
 /// Why a scenario would not load.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -454,6 +464,315 @@ struct PreludeRegistries {
     vocabulary_so_far: Option<ClosedVocabulary>,
 }
 
+struct AstWalkFrame<'a> {
+    nodes: &'a [SExpr],
+    next: usize,
+    depth: usize,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PreflightNodeKind {
+    Organization,
+    SocialClass,
+    Other,
+}
+
+#[derive(Clone, Copy)]
+struct PreflightNode {
+    ordinal: u64,
+    kind: PreflightNodeKind,
+}
+
+fn bounded_scenario_read(source: &str) -> Result<Vec<SExpr>, ScenarioError> {
+    if source.len() > MAX_SCENARIO_SOURCE_BYTES {
+        return Err(err(format!(
+            "scenario source exceeds the 4,194,304-byte load bound: {} bytes",
+            source.len()
+        )));
+    }
+    Ok(read_all(source.as_bytes())?)
+}
+
+fn check_scenario_ast_bounds(forms: &[SExpr]) -> Result<(), ScenarioError> {
+    let mut stack = vec![AstWalkFrame {
+        nodes: forms,
+        next: 0,
+        depth: 0,
+    }];
+    let mut ast_nodes = 0_usize;
+    for _step in 0..=(MAX_SCENARIO_AST_NODES * 2 + 2) {
+        let Some(frame) = stack.last_mut() else {
+            return Ok(());
+        };
+        if frame.next == frame.nodes.len() {
+            stack.pop();
+            continue;
+        }
+        let node = &frame.nodes[frame.next];
+        frame.next += 1;
+        let depth = frame.depth + 1;
+        if depth > MAX_SCENARIO_WALKER_DEPTH {
+            return Err(err("scenario AST exceeds the walker depth bound of 256"));
+        }
+        ast_nodes += 1;
+        if ast_nodes > MAX_SCENARIO_AST_NODES {
+            return Err(err("scenario AST exceeds the 1,048,576-node load bound"));
+        }
+        if let SExpr::List(children) = node {
+            if depth > 1 && children.len() > MAX_SCENARIO_WALKER_STACK {
+                return Err(err(
+                    "scenario AST exceeds the 65,536-entry walker stack bound",
+                ));
+            }
+            if stack.len() == MAX_SCENARIO_WALKER_STACK {
+                return Err(err(
+                    "scenario AST exceeds the 65,536-entry walker stack bound",
+                ));
+            }
+            stack.push(AstWalkFrame {
+                nodes: children,
+                next: 0,
+                depth,
+            });
+        }
+    }
+    Err(err(
+        "scenario AST walker exhausted its fixed iteration bound",
+    ))
+}
+
+fn practice_registry_trigger(body: &[SExpr], prelude_fields: &HashMap<String, FieldDecl>) -> bool {
+    if prelude_fields.contains_key("organization/action-budget") {
+        return true;
+    }
+    for form in body.iter().take(MAX_SCENARIO_BODY_FORMS + 1) {
+        let SExpr::List(parts) = form else {
+            continue;
+        };
+        let [SExpr::Atom(Atom::Symbol(tag)), SExpr::Atom(Atom::QName(qname)), ..] =
+            parts.as_slice()
+        else {
+            continue;
+        };
+        if tag == "deffield" && qname == "organization/action-budget" {
+            return true;
+        }
+    }
+    false
+}
+
+fn final_practice_fields(
+    body: &[SExpr],
+    prelude_fields: &HashMap<String, FieldDecl>,
+    prelude_enums: &EnumRegistry,
+) -> Result<HashMap<String, FieldDecl>, ScenarioError> {
+    let mut fields = prelude_fields.clone();
+    let mut enums = prelude_enums.clone();
+    for form in body.iter().take(MAX_SCENARIO_BODY_FORMS + 1) {
+        let SExpr::List(parts) = form else {
+            continue;
+        };
+        match parts.first() {
+            Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "defenum" => {
+                load_defenum(form, &mut enums)?;
+            }
+            Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "deffield" => {
+                load_deffield(parts, &mut fields, &enums)?;
+            }
+            _ => {}
+        }
+    }
+    Ok(fields)
+}
+
+fn require_practice_field_signatures(
+    fields: &HashMap<String, FieldDecl>,
+) -> Result<(), ScenarioError> {
+    for qname in ["organization/action-budget", "organization/active"] {
+        let Some(field) = fields.get(qname) else {
+            return Err(coded_err(
+                "E-LOAD-065",
+                format!("practice topology requires `{qname}` as exact `int intensive`"),
+            ));
+        };
+        if !matches!(field.ty, BslType::Int) || field.kind != FieldKind::Intensive {
+            return Err(coded_err(
+                "E-LOAD-065",
+                format!("practice topology requires `{qname}` as exact `int intensive`"),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn map_practice_load_error(error: PracticeContractError) -> ScenarioError {
+    match error {
+        PracticeContractError::PracticeTopologyOrganizationLimit => coded_err(
+            "E-LOAD-061",
+            "practice topology exceeds 4,096 exact organization rows",
+        ),
+        PracticeContractError::PracticeFootprintLimit => coded_err(
+            "E-LOAD-062",
+            "practice topology exceeds 256 qualifying solidarity edges for one organization",
+        ),
+        PracticeContractError::PracticeTopologyBudgetMissing => coded_err(
+            "E-LOAD-063",
+            "an active organization lacks organization/action-budget",
+        ),
+        PracticeContractError::PracticeBudgetNonfinite
+        | PracticeContractError::PracticeBudgetNegative
+        | PracticeContractError::PracticeBudgetFractional
+        | PracticeContractError::PracticeBudgetRange
+        | PracticeContractError::PracticeBudgetRoundtrip => coded_err(
+            "E-LOAD-064",
+            format!(
+                "organization/action-budget has invalid canonical storage (contract code {})",
+                error as u16
+            ),
+        ),
+        PracticeContractError::PracticeTopologyEdgeDuplicate => coded_err(
+            "E-LOAD-044",
+            "hydration seeds one canonical SOLIDARITY (source, target, type) triple twice",
+        ),
+        other => err(format!(
+            "practice topology preflight returned unmapped contract code {}",
+            other as u16
+        )),
+    }
+}
+
+fn preflight_node_kind(enum_type: &str, member: &str) -> PreflightNodeKind {
+    if enum_type != "NodeType" {
+        return PreflightNodeKind::Other;
+    }
+    match member {
+        "ORGANIZATION" => PreflightNodeKind::Organization,
+        "SOCIAL_CLASS" => PreflightNodeKind::SocialClass,
+        _ => PreflightNodeKind::Other,
+    }
+}
+
+fn effective_practice_attributes(attrs: &[SExpr]) -> (bool, Option<f64>) {
+    let mut active = false;
+    let mut budget = None;
+    for attr in attrs.iter().take(MAX_SCENARIO_AST_NODES + 1) {
+        let SExpr::List(pair) = attr else {
+            continue;
+        };
+        let [SExpr::Atom(Atom::QName(field)), SExpr::Atom(value)] = pair.as_slice() else {
+            continue;
+        };
+        if field == "organization/active" {
+            active = matches!(value, Atom::Int(1));
+        } else if field == "organization/action-budget" {
+            budget = match value {
+                Atom::Int(value) => {
+                    #[allow(clippy::cast_precision_loss)]
+                    let storage = *value as f64;
+                    Some(storage)
+                }
+                _ => None,
+            };
+        }
+    }
+    (active, budget)
+}
+
+fn collect_preflight_nodes(
+    body: &[SExpr],
+    counter: &mut PracticeTopologyLoadCounter,
+) -> Result<HashMap<String, PreflightNode>, ScenarioError> {
+    let mut nodes = HashMap::new();
+    for form in body.iter().take(MAX_SCENARIO_BODY_FORMS + 1) {
+        let SExpr::List(parts) = form else {
+            continue;
+        };
+        let [SExpr::Atom(Atom::Symbol(tag)), SExpr::Atom(Atom::Symbol(local)), SExpr::Atom(Atom::EnumRef { enum_type, member }), attrs @ ..] =
+            parts.as_slice()
+        else {
+            continue;
+        };
+        if tag != "node" {
+            continue;
+        }
+        if nodes.len() == MAX_SCENARIO_LOCAL_NAMES {
+            return Err(err(
+                "practice topology exceeds the 65,536-name local table bound",
+            ));
+        }
+        let ordinal = u64::try_from(nodes.len())
+            .map_err(|_| err("practice topology local ordinal does not fit u64"))?;
+        let kind = preflight_node_kind(enum_type, member);
+        if nodes
+            .insert(local.clone(), PreflightNode { ordinal, kind })
+            .is_some()
+        {
+            return Err(err(format!(
+                "duplicate scenario name `{local}` — a local name denotes exactly one node"
+            )));
+        }
+        if kind == PreflightNodeKind::Organization {
+            let (active, budget) = effective_practice_attributes(attrs);
+            counter
+                .observe_organization(ordinal, active, budget)
+                .map_err(map_practice_load_error)?;
+        }
+    }
+    Ok(nodes)
+}
+
+fn preflight_practice_edges(
+    body: &[SExpr],
+    nodes: &HashMap<String, PreflightNode>,
+    counter: &mut PracticeTopologyLoadCounter,
+) -> Result<(), ScenarioError> {
+    for form in body.iter().take(MAX_SCENARIO_BODY_FORMS + 1) {
+        let SExpr::List(parts) = form else {
+            continue;
+        };
+        let [SExpr::Atom(Atom::Symbol(tag)), SExpr::Atom(Atom::EnumRef { enum_type, member }), SExpr::Atom(Atom::Symbol(from)), SExpr::Atom(Atom::Symbol(to)), _strength] =
+            parts.as_slice()
+        else {
+            continue;
+        };
+        if tag != "edge" || enum_type != "EdgeType" || member != "SOLIDARITY" {
+            continue;
+        }
+        let (Some(source), Some(target)) = (nodes.get(from), nodes.get(to)) else {
+            continue;
+        };
+        if source.kind != PreflightNodeKind::Organization
+            || target.kind != PreflightNodeKind::SocialClass
+        {
+            continue;
+        }
+        counter
+            .observe_solidarity_edge(
+                source.ordinal,
+                PracticeTargetDomainV1::SocialClass,
+                target.ordinal,
+            )
+            .map_err(map_practice_load_error)?;
+    }
+    Ok(())
+}
+
+fn run_practice_topology_preflight(
+    body: &[SExpr],
+    prelude_fields: &HashMap<String, FieldDecl>,
+    prelude_enums: &EnumRegistry,
+) -> Result<(), ScenarioError> {
+    if !practice_registry_trigger(body, prelude_fields) {
+        return Ok(());
+    }
+    let fields = final_practice_fields(body, prelude_fields, prelude_enums)?;
+    require_practice_field_signatures(&fields)?;
+    let mut counter = PracticeTopologyLoadCounter::new();
+    let nodes = collect_preflight_nodes(body, &mut counter)?;
+    preflight_practice_edges(body, &nodes, &mut counter)?;
+    counter.finish().map_err(map_practice_load_error)
+}
+
 /// Read `source` and populate `graph` with it.
 ///
 /// # Errors
@@ -510,6 +829,69 @@ pub fn load_scenario_with_prelude(
     load_scenario_inner(scenario_src, graph, registries)
 }
 
+/// Compose ordered declaration preludes without changing any admitted byte.
+///
+/// Each source must be non-empty, contain no carriage return, and end in
+/// exactly one line feed. At most 16 sources, 262,144 bytes per source, and
+/// 1,048,576 bytes in total are admitted. The existing single-source loader
+/// remains the authority for declaration syntax and registry collisions.
+///
+/// # Errors
+///
+/// Returns [`ScenarioError`] when any source or combined bound is exceeded,
+/// or when a source violates the byte-shape contract.
+pub fn compose_declaration_preludes(sources: &[&str]) -> Result<String, ScenarioError> {
+    if sources.len() > 16 {
+        return Err(err(
+            "a content set may compose at most 16 declaration preludes",
+        ));
+    }
+    let mut combined_bytes = 0_usize;
+    for source_index in 0..16 {
+        if source_index == sources.len() {
+            break;
+        }
+        let source = sources[source_index];
+        let bytes = source.as_bytes();
+        if bytes.is_empty() {
+            return Err(err("a declaration prelude source must not be empty"));
+        }
+        if bytes.len() > 262_144 {
+            return Err(err("a declaration prelude source exceeds 262144 bytes"));
+        }
+        if bytes.last() != Some(&b'\n') || (bytes.len() >= 2 && bytes[bytes.len() - 2] == b'\n') {
+            return Err(err(
+                "a declaration prelude source must have exactly one terminal line feed",
+            ));
+        }
+        for byte_index in 0..262_144 {
+            if byte_index == bytes.len() {
+                break;
+            }
+            if bytes[byte_index] == b'\r' {
+                return Err(err(
+                    "a declaration prelude source must not contain carriage return",
+                ));
+            }
+        }
+        combined_bytes = combined_bytes
+            .checked_add(bytes.len())
+            .ok_or_else(|| err("declaration prelude combined byte count overflow"))?;
+        if combined_bytes > 1_048_576 {
+            return Err(err("composed declaration preludes exceed 1048576 bytes"));
+        }
+    }
+
+    let mut composed = String::with_capacity(combined_bytes);
+    for source_index in 0..16 {
+        if source_index == sources.len() {
+            break;
+        }
+        composed.push_str(sources[source_index]);
+    }
+    Ok(composed)
+}
+
 /// A prelude's own load pass: every top-level form in `prelude_src`, in
 /// order, dispatched to exactly the four declaration handlers
 /// [`load_scenario_inner`]'s own loop uses — never touching a graph, since
@@ -521,7 +903,7 @@ pub fn load_scenario_with_prelude(
 /// a list, or a form's head is not `defenum` / `defvocabulary` / `defconst`
 /// / `deffield`.
 fn load_prelude(prelude_src: &str) -> Result<PreludeRegistries, ScenarioError> {
-    let forms = read_all(prelude_src.as_bytes())?;
+    let forms = bounded_scenario_read(prelude_src)?;
     let mut registries = PreludeRegistries::default();
     for form in &forms {
         let SExpr::List(parts) = form else {
@@ -598,7 +980,8 @@ fn load_scenario_inner(
     graph: &mut dyn GraphSubstrate,
     registries: PreludeRegistries,
 ) -> Result<LoadedScenario, ScenarioError> {
-    let forms = read_all(source.as_bytes())?;
+    let forms = bounded_scenario_read(source)?;
+    check_scenario_ast_bounds(&forms)?;
     let [SExpr::List(items)] = forms.as_slice() else {
         return Err(err(format!(
             "a scenario file holds exactly one (scenario ...) form; found {}",
@@ -620,6 +1003,11 @@ fn load_scenario_inner(
             "expected a (scenario ...) form, found ({head} ...)"
         )));
     }
+    if body.len() > MAX_SCENARIO_BODY_FORMS {
+        return Err(err("scenario body exceeds the 65,536-form load bound"));
+    }
+
+    run_practice_topology_preflight(body, &registries.fields, &registries.enums)?;
 
     // The four declaration registries plus the vocabulary trio, pre-seeded
     // by a prelude pass (`load_scenario_with_prelude`) or empty

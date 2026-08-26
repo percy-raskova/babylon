@@ -235,16 +235,12 @@
   (defenum CommunityType
     (SETTLER PATRIARCHAL NEW_AFRIKAN FIRST_NATIONS CHICANO WOMEN TRANS
      DISABLED QUEER UNDOCUMENTED INCARCERATED YOUTH ADULT ELDER))
-  (defenum ConsciousnessTendency (LIBERAL FASCIST REVOLUTIONARY))
-
   ; ---- carriers (reuse exact qnames from two-classes.bscn where present) ----
   (deffield social-class/population int extensive)
   (deffield social-class/active int intensive)            ; 0/1 latch convention (no bool on the live path)
   (deffield social-class/wealth real extensive)
   (deffield social-class/wages-paid int extensive)        ; frozen w_paid (ideology.py:239)
   (deffield social-class/value-produced int extensive)    ; frozen v_produced (ideology.py:240)
-  (deffield organization/active int intensive)            ; latch convention (production.bsl header item 2)
-
   ; ---- the ternary surface (FIRST probability deffields in committed content) ----
   (deffield social-class/revolutionary probability intensive)
   (deffield social-class/liberal probability intensive)
@@ -264,9 +260,6 @@
   ; fields c03 reads ----
   (deffield institution/community-carrier int extensive)
   (deffield social-class/community-cost-modifier real intensive)
-  (deffield organization/cadre-level probability intensive)
-  (deffield organization/cohesion probability intensive)
-  (deffield organization/consciousness-tendency enum ConsciousnessTendency)
   (deffield community/kind enum CommunityType)
   (deffield community/heat intensity intensive)
   (deffield community/cohesion intensity intensive)
@@ -377,7 +370,8 @@
   ; inert for consciousness.bsl (which never reads them).
   (node org-solid NodeType/ORGANIZATION (organization/active 1)
     (organization/cadre-level 0.5p) (organization/cohesion 0.5p)
-    (organization/consciousness-tendency ConsciousnessTendency/LIBERAL))
+    (organization/consciousness-tendency ConsciousnessTendency/LIBERAL)
+    (organization/action-budget 1))
 
   ; ---- Task 2 read-path fixtures (p8-dominant-worldview's tie vectors) ----
   ; Seed ONLY population / active=1 / the ternary / agitation 0 — NO anchors,
@@ -438,15 +432,18 @@
   (node tie-rev-org NodeType/ORGANIZATION
     (organization/active 1)
     (organization/cadre-level 1.0p) (organization/cohesion 0.5p)
-    (organization/consciousness-tendency ConsciousnessTendency/REVOLUTIONARY))
+    (organization/consciousness-tendency ConsciousnessTendency/REVOLUTIONARY)
+    (organization/action-budget 1))
   (node tie-lib-org NodeType/ORGANIZATION
     (organization/active 1)
     (organization/cadre-level 1.0p) (organization/cohesion 0.5p)
-    (organization/consciousness-tendency ConsciousnessTendency/LIBERAL))
+    (organization/consciousness-tendency ConsciousnessTendency/LIBERAL)
+    (organization/action-budget 1))
   (node tie-fash-org NodeType/ORGANIZATION
     (organization/active 1)
     (organization/cadre-level 1.0p) (organization/cohesion 0.5p)
-    (organization/consciousness-tendency ConsciousnessTendency/FASCIST))
+    (organization/consciousness-tendency ConsciousnessTendency/FASCIST)
+    (organization/action-budget 1))
   (edge EdgeType/MEMBERSHIP tie-rev-org tie-class 1)
   (edge EdgeType/MEMBERSHIP tie-lib-org tie-class 1)
   (edge EdgeType/MEMBERSHIP tie-fash-org tie-class 1)

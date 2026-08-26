@@ -74,6 +74,25 @@ MANIFEST = CONTENT_ROOT / "content-sets.toml"
 #: ``tests/``, matching the census command exactly.
 INCLUDE_STR_RE = re.compile(r'include_str!\("\.\./content/([^"]+)"\)')
 
+ORGANIZATION_PRACTICE_PRELUDE = "declarations/organization-practice.bscn"
+WORLDVIEW_PRELUDE = "declarations/worldview.bscn"
+ORGANIZATION_PRACTICE_CONTRACT_CONSUMER = (
+    "rust/crates/babylon-tick/tests/organization_practice_contract.rs"
+)
+PROMOTED_PRACTICE_SET_IDS = (
+    "organization/foundation",
+    "community/carrier-collision",
+    "community/conformance",
+    "community/cost-modifier",
+    "community/decay-arc",
+    "community/degenerate",
+    "community/empty",
+    "community/floor",
+    "community/solidarity-seam",
+    "community/tie",
+    "consciousness/ternary-conformance",
+)
+
 
 def _read_manifest() -> dict[str, object]:
     assert MANIFEST.exists(), f"{MANIFEST} is missing"
@@ -283,3 +302,31 @@ class TestTheManifestHasRowsAtAll:
     def test_the_schema_version_is_declared(self) -> None:
         data = _read_manifest()
         assert data.get("schema") == 1, "content-sets.toml must declare `schema = 1`"
+
+
+class TestOrganizationPracticePreludePromotion:
+    """The eleven promoted sets must each declare the shared practice prelude."""
+
+    def test_each_promoted_set_declares_the_practice_prelude(self) -> None:
+        rows = {str(row["id"]): row for row in _rows()}
+        for set_id in PROMOTED_PRACTICE_SET_IDS:
+            assert set_id in rows, f"missing promoted content set: {set_id}"
+            prelude = rows[set_id]["prelude"]
+            assert isinstance(prelude, list)
+            assert ORGANIZATION_PRACTICE_PRELUDE in prelude, (
+                f"{set_id} must declare {ORGANIZATION_PRACTICE_PRELUDE}"
+            )
+
+    def test_dual_prelude_sets_preserve_exact_dependency_order(self) -> None:
+        rows = {str(row["id"]): row for row in _rows()}
+        expected = [ORGANIZATION_PRACTICE_PRELUDE, WORLDVIEW_PRELUDE]
+        for set_id in ("community/tie", "consciousness/ternary-conformance"):
+            assert rows[set_id]["prelude"] == expected, set_id
+
+    def test_practice_contract_row_is_the_exact_no_rule_witness(self) -> None:
+        rows = {str(row["id"]): row for row in _rows()}
+        row = rows["organization/practice-contract"]
+        assert row["scenario"] == "scenarios/organization-practice-contract.bscn"
+        assert row["prelude"] == [ORGANIZATION_PRACTICE_PRELUDE]
+        assert row["rules"] == []
+        assert row["consumers"] == [ORGANIZATION_PRACTICE_CONTRACT_CONSUMER]

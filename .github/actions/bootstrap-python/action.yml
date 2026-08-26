@@ -31,6 +31,7 @@ runs:
     - name: Set up tools with mise
       uses: jdx/mise-action@v4
       with:
+        version: 2026.8.12
         cache: true
 
     # Amendment AF (ADR186) deletion ceremony: the babylon-tui maturin wheel

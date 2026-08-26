@@ -283,15 +283,29 @@
 //! mirror transcript above; Task 7 lands the world, the load-smoke, the
 //! ordinal parity, and §8c's four guards only.
 
-use babylon_bsl::scenario::load_scenario;
+use babylon_bsl::scenario::{
+    compose_declaration_preludes, load_scenario_with_prelude, LoadedScenario,
+};
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, HyperedgeId, NodeId};
-use babylon_tick::run_once_into;
+use babylon_tick::run_once_into_with_prelude;
 
 /// The world-1 scenario source, single-homed here — Tasks 8-11's rule
 /// packs load against exactly this text.
 const SCENARIO: &str = include_str!("../content/scenarios/community-conformance.bscn");
+const ORGANIZATION_PRACTICE_PRELUDE: &str =
+    include_str!("../content/declarations/organization-practice.bscn");
+
+fn practice_prelude() -> String {
+    compose_declaration_preludes(&[ORGANIZATION_PRACTICE_PRELUDE])
+        .expect("the organization practice prelude composes")
+}
+
+fn load_practice_scenario(scenario: &str, graph: &mut HypergraphStore) -> LoadedScenario {
+    load_scenario_with_prelude(&practice_prelude(), scenario, graph)
+        .expect("the promoted scenario loads")
+}
 
 /// The pack source this suite drives — the c00-c04 census/decomposition
 /// rules (Task 8); §8c guard 2 reads it, which is what gives the guard
@@ -317,8 +331,9 @@ fn scenario_and_empty_pack_load() {
 "#;
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(SCENARIO, probe, &mut graph, &mut sink)
-        .expect("world 1 loads and ticks clean");
+    let report =
+        run_once_into_with_prelude(SCENARIO, &practice_prelude(), probe, &mut graph, &mut sink)
+            .expect("world 1 loads and ticks clean");
     assert_eq!(report.fired, 0, "the probe never fires");
     assert_eq!(
         report.before, report.after,
@@ -333,7 +348,7 @@ fn scenario_and_empty_pack_load() {
 #[test]
 fn defenum_ordinal_parity_with_the_frozen_order() {
     let mut graph = HypergraphStore::new();
-    let loaded = load_scenario(SCENARIO, &mut graph).expect("world 1 loads");
+    let loaded = load_practice_scenario(SCENARIO, &mut graph);
     let community = loaded
         .enums
         .resolve("CommunityType")
@@ -401,7 +416,7 @@ fn defenum_ordinal_parity_with_the_frozen_order() {
 fn no_community_typed_node_exists() {
     for scenario in [SCENARIO, SCENARIO_W2, SCENARIO_W3, SCENARIO_W4] {
         let mut graph = HypergraphStore::new();
-        let loaded = load_scenario(scenario, &mut graph).expect("world loads");
+        let loaded = load_practice_scenario(scenario, &mut graph);
         for (member, count) in &loaded.node_types {
             assert!(
                 !member.contains("COMMUNITY"),
@@ -441,7 +456,7 @@ fn no_field_binding_uses_the_community_namespace() {
 #[test]
 fn membership_crosses_whole() {
     let mut graph = HypergraphStore::new();
-    let loaded = load_scenario(SCENARIO, &mut graph).expect("world 1 loads");
+    let loaded = load_practice_scenario(SCENARIO, &mut graph);
     assert_eq!(loaded.edge_count, 5, "the five MEMBERSHIP edges, no more");
     assert_eq!(
         loaded.edge_types.get("MEMBERSHIP"),
@@ -477,7 +492,7 @@ fn exactly_one_institution_carrier() {
     // an empty population, silent inertness dressed as a passing test).
     for scenario in [SCENARIO, SCENARIO_W2, SCENARIO_W3, SCENARIO_W4] {
         let mut graph = HypergraphStore::new();
-        let loaded = load_scenario(scenario, &mut graph).expect("world loads");
+        let loaded = load_practice_scenario(scenario, &mut graph);
         assert_eq!(
             loaded.node_types.get("INSTITUTION"),
             Some(&1),
@@ -503,8 +518,9 @@ fn exactly_one_institution_carrier() {
 fn tick_world_1() -> HypergraphStore {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(SCENARIO, PACK, &mut graph, &mut sink)
-        .expect("world 1 + the c00-c04 pack ticks clean");
+    let report =
+        run_once_into_with_prelude(SCENARIO, &practice_prelude(), PACK, &mut graph, &mut sink)
+            .expect("world 1 + the c00-c04 pack ticks clean");
     assert_eq!(
         report.fired, 32,
         "c00:1 + c01:4 (active classes) + c02:5 (all classes) + c03f:1 + \
@@ -655,7 +671,8 @@ const SCENARIO_W3: &str =
 fn tick(scenario: &str, pack: &str) -> HypergraphStore {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    run_once_into(scenario, pack, &mut graph, &mut sink).expect("the world + pack ticks clean");
+    run_once_into_with_prelude(scenario, &practice_prelude(), pack, &mut graph, &mut sink)
+        .expect("the world + pack ticks clean");
     graph
 }
 
@@ -893,7 +910,7 @@ fn the_floor_table_is_byte_identical_across_all_three_worlds() {
     ];
     for scenario in [SCENARIO, SCENARIO_W2, SCENARIO_W3] {
         let mut graph = HypergraphStore::new();
-        let loaded = load_scenario(scenario, &mut graph).expect("world loads");
+        let loaded = load_practice_scenario(scenario, &mut graph);
         for (name, value) in &expected {
             let actual = loaded
                 .consts
@@ -999,6 +1016,11 @@ const CONSCIOUSNESS_PACK: &str = include_str!("../content/rules/consciousness.bs
 /// #591/D157).
 const WORLDVIEW_PRELUDE: &str = include_str!("../content/declarations/worldview.bscn");
 
+fn practice_worldview_prelude() -> String {
+    compose_declaration_preludes(&[ORGANIZATION_PRACTICE_PRELUDE, WORLDVIEW_PRELUDE])
+        .expect("the ordered organization and worldview preludes compose")
+}
+
 /// Step 4 (DG-2 landed): c07's contestation is the normalized Shannon
 /// entropy, bit-exact against the mirror — the divisor is the ENGINE's
 /// pinned soft-float `log(3)` (libm, 1.0986122886681096), one ulp below
@@ -1082,7 +1104,7 @@ fn dominant_tendency_ties_match_the_class_surface_rule() {
     let mut sink = CollectingSink::default();
     babylon_tick::run_once_into_with_prelude(
         SCENARIO_TIE,
-        WORLDVIEW_PRELUDE,
+        &practice_worldview_prelude(),
         &co_loaded,
         &mut graph,
         &mut sink,

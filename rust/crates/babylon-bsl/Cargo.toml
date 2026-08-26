@@ -10,6 +10,7 @@ publish = false
 [dependencies]
 babylon-graph = { path = "../babylon-graph" }
 babylon-kernel = { path = "../babylon-kernel" }
+babylon-practice-contract = { path = "../babylon-practice-contract" }
 
 [dev-dependencies]
 pretty_assertions = "1"

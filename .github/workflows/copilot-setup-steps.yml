@@ -34,6 +34,7 @@ jobs:
       - name: Install mise (task runner)
         uses: jdx/mise-action@v4
         with:
+          version: 2026.8.12
           install: true
 
       - name: Install pre-commit hooks

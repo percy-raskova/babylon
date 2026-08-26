@@ -796,8 +796,10 @@ practice identity or receipt vocabulary of a worker strike.
 After material execution and before atomic commit, Rust builds one canonical
 `PracticeProductReceiptV2` for each accepted practice resolution. It also
 builds canonical transition-batch receipts for later independent participant
-decisions. A multi-tick strike keeps its episode identity while each tick
-receives distinct batch identities. The receipt has one closed cause tag:
+decisions and one canonical `MembershipTransitionReceiptV1` for each
+authoritative membership-incidence mutation. A multi-tick strike keeps its
+episode identity while each tick receives distinct batch identities. The
+practice-product receipt has one closed cause tag:
 
 - `PROPOSAL_RESOLUTION` binds the originating intent, input authority, and
   proposing organization;
@@ -828,15 +830,47 @@ receipt attributes a function that the proposer actually performed. Reducers
 process each transition subrecord independently; batching creates no shared
 decision, tie, trust evidence, or product attribution.
 
-The receipt contains no membership result, solidarity result, victory,
-legitimacy, leadership, party state, or political-control result. The existing
-identity-free `AuditReceipt` remains the proof of BSL role and footprint. It is
-not replaced by the subject-bearing receipt.
+`PracticeProductReceiptV2` contains no membership result, solidarity result,
+victory, legitimacy, leadership, party state, or political-control result. The
+existing identity-free `AuditReceipt` remains the proof of BSL role and
+footprint. It is not replaced by either subject-bearing receipt.
 
-The receipt builder consumes the subject-bearing event payloads before the
-identity-free audit projection reduces them. The tick cannot discard actor,
-participant, target, value, observer, or affected-population identity before
-this receipt succeeds.
+`MembershipTransitionReceiptV1` is a separate canonical record, not a practice
+outcome. It binds one create, update, or end mutation to episode, tick,
+participant-owned resolver, organization-body hyperedge, member node,
+membership incidence, independent-decision-evidence digest, and canonical
+prerequisite-receipt-set digest. A create carries no prior payload and one
+resulting attributed-membership payload; an update carries distinct prior and
+resulting payloads; an end carries one prior payload and no resulting payload.
+Every other presence combination refuses before graph publication.
+
+Its
+domain-separated identity commits those fields and both optional payloads in
+that fixed order, so the same incidence mutation in another episode or tick
+cannot collide. The record has no variable collection: its optional payloads
+use the exact graph-layout-v5 membership-payload bytes and inherit their
+maximum. The successor byte ADR derives and freezes the resulting receipt-byte
+maximum before the complete envelope freezes.
+
+The membership-transition receipt commits in the same envelope as its graph
+mutation and counts against the subject-bearing receipt, row, and byte budgets
+below. Archive and actor-scoped projections consume it; each projection redacts
+unobserved member, organization, payload, and decision evidence. Product and
+formation reducers may use the canonical receipt as evidence on a later tick,
+but the receipt cannot itself author solidarity, legitimacy, leadership,
+party state, political control, or another downstream result.
+
+Campaign sealing bounds active formation and later membership candidates.
+Candidate admission reserves one membership-transition receipt and its
+worst-case bytes for every incidence the resolver can mutate. If the complete
+atomic candidate set cannot fit, admission refuses before participant decision
+resolution; execution cannot publish a partial organization, membership set,
+or receipt set.
+
+The subject-bearing receipt builders consume actor-bearing event and resolver
+payloads before the identity-free audit projection reduces them. The tick
+cannot discard actor, participant, target, value, observer, or
+affected-population identity before all required receipts succeed.
 
 The authoritative receipt commits in the same envelope as the final world but
 does not contain that final world digest. Actor-scoped projections
@@ -875,8 +909,12 @@ record per tick. A transition receipt canonically batches up to 4,096 sorted
 decision-owner records with the same episode, tick, target process, and resolver.
 The engine sorts the complete record sequence by decision-owner identity and
 splits it into consecutive 4,096-record chunks. The zero-based chunk index and
-chunk digest determine each batch identity. Batching never combines or changes
-the independent decisions.
+chunk digest do not determine identity alone.
+
+The domain-separated batch
+identity commits, in fixed order, the episode, tick, target process, resolver,
+zero-based chunk index, and chunk digest. Batching never combines or changes the
+independent decisions.
 
 Fog projection evaluates each decision-owner subrecord separately. It can
 expose only the lawfully visible subrecords in a separate canonical projection.
@@ -1273,20 +1311,25 @@ The critical order is:
    `ActorKnowledgeRegisterV2` bytes.
 4. Define labor-process identity and every conserved auxiliary-register byte
    contract.
-5. Define Practice V2, participant-transition receipts, and the
+5. Implement and verify the conserved production, orders, inventory, freight,
+   realization, and reproduction transitions that labor withholding affects.
+6. Define Practice V2, participant-transition receipt identities, the
+   membership-transition receipt contract, and the
    receipt-excluded post-state basis.
-6. Freeze `NominalWorldHashV2` and the complete envelope only after all bound
+7. Freeze `NominalWorldHashV2` and the complete envelope only after all bound
    component layouts are stable.
-7. Activate strike proposals and independent worker participation.
-8. Add blockade, occupation, damage, and capital-strike carriers.
-9. Build the dossier projection over the frozen knowledge register, prove
-   relation-and-attribute fog, then connect topology, candidates, capacity,
-   repression, affected populations, and Backfire.
-10. Add attributed products, formation, practical leadership, party
-   projections, and construction practices.
-11. Add `RelationalTerritoryDossierV2`, Bevy decisions, receipts, and Archive
-   consumers.
-12. Run the live counterfactual, mutation, heterogeneity, persistence, and
+8. Activate strike proposals and independent worker participation.
+9. Add blockade, occupation, damage, and capital-strike carriers.
+10. Define and implement `RelationalTerritoryDossierV2` over the frozen
+    knowledge register and prove relation-and-attribute fog.
+11. Connect the topology measurements, governed candidates, finite capacity,
+    repression, affected populations, and Backfire only through that V2
+    dossier.
+12. Add attributed products, membership-transition emission, formation,
+    practical leadership, party projections, and construction practices.
+13. Add Bevy decision projections, fog-safe receipt projections, and Archive
+    consumers.
+14. Run the live counterfactual, mutation, heterogeneity, persistence, and
     slow-fast-slow proof.
 
 Fog/repression and consumer-closure work may proceed in parallel after the
@@ -1304,13 +1347,13 @@ Before each dependent code slice lands, accepted successor ADRs must record:
 2. Practice V2 input authority, accepted-ledger identity, resource reservation,
    capacity allocation, and conflict semantics;
 3. Practice V2, resolved-batch, material-connection, participation, timing,
-   participant-transition provenance, and receipt identities;
+   participant- and membership-transition provenance and receipt identities;
 4. auxiliary economic-register ownership, units, conservation,
    post-state-basis composition, `NominalWorldHashV2`, and envelope ordering;
 5. gameplay dossier/fog, topology measurement, capacity, repression,
    affected-population, and Backfire boundaries;
-6. attributed practice products, participant-owned formation, party
-   projection, and long-run construction;
+6. attributed practice products, membership-transition consumption,
+   participant-owned formation, party projection, and long-run construction;
 7. the per-channel live evidence profile, mutation scope, and PR-versus-weekly
    CI policy.
 

@@ -118,13 +118,14 @@ Before a merge, complete these steps:
 1. Confirm the base branch and record the exact reviewed head SHA.
 2. Confirm that all reported checks completed successfully for that exact
    reviewed head SHA and base branch.
-3. Complete the Copilot review against that head. Fix each accepted finding or
-   reply with the rationale for no change.
-4. Confirm that every Copilot finding has a reply and that you resolved all
-   Copilot review threads.
-5. Confirm the behavioral-contract disposition and baseline disposition in the
+3. Inspect the available Copilot input.
+4. Treat absent, stale, incomplete, identity-mismatched, or API-failed Copilot
+   input as advisory.
+5. Treat a top-level Copilot comment without a reply as advisory.
+6. Confirm that no unresolved review thread remains. Any such thread blocks the merge.
+7. Confirm the behavioral-contract disposition and baseline disposition in the
    PR description.
-6. Run the approved merge command.
+8. Run the approved merge command.
 
 ```bash
 mise run pr:merge -- N

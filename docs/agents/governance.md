@@ -168,9 +168,10 @@ The merge record identifies the base branch and exact reviewed head SHA. All
 reported checks must complete successfully against that exact reviewed head
 SHA and base branch.
 
-The Copilot review must complete against the reviewed head. Each accepted
-comment needs a fix. Every comment needs a reply. The final record marks all
-Copilot review threads resolved.
+Copilot review evidence is advisory. An absent, stale, incomplete,
+identity-mismatched, or API-failed review does not block a merge. A top-level
+comment without a reply is also advisory. Any unresolved review thread blocks
+the merge, regardless of its author.
 
 Each PR records a behavioral-contract disposition. Changed behavior links a
 durable, implementation-independent contract. No behavior change includes an

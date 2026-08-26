@@ -12,6 +12,7 @@ pub mod grid;
 pub mod replay;
 pub mod rng;
 pub mod scalars;
+pub mod tick_content_hash;
 pub mod transcendental;
 
 pub use clock::{EmptySessionId, SessionId, SimClock};
@@ -28,5 +29,10 @@ pub use replay::{
 pub use rng::{seed_for, seed_for_v2, KernelRng, SEED_SALT};
 pub use scalars::{
     Balance, Coefficient, Ideology, Intensity, OutOfBoundsError, Probability, Ratio,
+};
+pub use tick_content_hash::{
+    OrderedPracticeActionBatchDigestV1, PreparedEnvironmentDigestV1, RefDigestV1,
+    StableWorldDigestV1, TickContentHashError, TickContentHashV1, TickContentPartsV1,
+    TickContentPreimageV1, TickPayloadDigestV1,
 };
 pub use transcendental::{exp, ln};

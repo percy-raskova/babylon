@@ -1,5 +1,7 @@
 //! Honest, nominal names for persistence-layer SHA-256 values.
 
+pub use babylon_kernel::{RefDigestV1 as RefDigest, TickContentHashV1 as TickContentHash};
+
 macro_rules! digest_type {
     ($(#[$meta:meta])* $name:ident) => {
         $(#[$meta])*
@@ -42,14 +44,6 @@ digest_type!(
 digest_type!(
     /// Diagnostic hash over the canonical graph state only.
     GraphStateHash
-);
-digest_type!(
-    /// Complete constitutional tick, seed, state, and ordered-action hash.
-    TickContentHash
-);
-digest_type!(
-    /// Identity of one immutable reference-data cohort.
-    RefDigest
 );
 digest_type!(
     /// Ordered-NUL SHA-256 identity of one migration set.

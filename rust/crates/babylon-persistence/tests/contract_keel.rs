@@ -1,6 +1,6 @@
 //! Public contracts that prevent persistence identity and hash-name collapse.
 
-use babylon_kernel::{seed_for, ContentDigest, SessionId};
+use babylon_kernel::{seed_for, ContentDigest, RefDigestV1, SessionId, TickContentHashV1};
 use babylon_persistence::{
     CampaignId, GraphStateHash, MigrationSetDigest, PersistenceError, PersistenceFailureKind,
     RefDigest, ReplayIdentityHash, TickContentHash,
@@ -56,6 +56,15 @@ fn honest_hashes_are_nominally_distinct() {
     let bytes = [0x07; 32];
     assert_eq!(GraphStateHash::from_bytes(bytes).as_bytes(), &bytes);
     assert_eq!(RefDigest::from_bytes(bytes).to_hex(), "07".repeat(32));
+}
+
+#[test]
+fn persistence_reuses_the_kernel_owned_tick_digest_types() {
+    assert_eq!(TypeId::of::<RefDigest>(), TypeId::of::<RefDigestV1>());
+    assert_eq!(
+        TypeId::of::<TickContentHash>(),
+        TypeId::of::<TickContentHashV1>()
+    );
 }
 
 #[test]

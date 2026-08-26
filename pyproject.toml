@@ -32,10 +32,10 @@ classifiers = [
 # (mise run web:dev) at web/ + frontend/.
 dependencies = [
     "pydantic>=2.10.3",
-    "numpy>=1.26.4",
-    "rustworkx>=0.18.0,<0.19.0",
-    "sqlalchemy>=2.0.36",
-    "pandas>=2.2.3",
+    "numpy>=2.5.2",
+    "rustworkx>=0.18.1,<0.19.0",
+    "sqlalchemy>=2.0.52",
+    "pandas>=3.0.5",
     "jsonschema>=4.25.1,<5.0.0",
     "referencing>=0.37.0,<0.38.0",
     "openpyxl>=3.1.5,<4.0.0",
@@ -44,11 +44,11 @@ dependencies = [
     # generation lane (slim + openai extra: the wire seam stays OpenAI-compatible
     # /v1; the stock openai client above carries embeddings and health probes).
     "pydantic-ai-slim[openai]>=2.14.0,<3.0.0",
-    "tokenizers>=0.19.1",
+    "tokenizers>=0.23.1",
     "aiohttp>=3.13.3,<4.0.0",
     "backoff>=2.2.1",
     "ratelimit>=2.2.1",
-    "typer>=0.15.1",
+    "typer>=0.27.1",
     "rich>=13.9.4",
     "coloredlogs>=15.0.1",
     "h3>=4.2.0,<5.0.0",
@@ -56,19 +56,19 @@ dependencies = [
     "pyproj>=3.6.0",
     "shapely>=2.0.0",
     "pyyaml>=6.0.2",
-    "python-dotenv>=1.0.1",
+    "python-dotenv>=1.2.3",
     "requests>=2.32.3",
-    "certifi>=2025.11.12",
-    "filelock>=3.20.3",
-    "scipy>=1.11.0",
+    "certifi>=2026.7.22",
+    "filelock>=3.32.3",
+    "scipy>=1.18.1",
     "xgi>=0.10.0,<0.11.0",
-    "polars>=1.38.1,<2.0.0",
+    "polars>=1.43.2,<2.0.0",
     "psycopg>=3.3.3,<4.0.0",
     "psycopg-pool>=3.3.0,<4.0.0",
-    "pyarrow>=25.0.0,<26.0.0",
-    "duckdb>=1.4.4,<2.0.0",
+    "pyarrow>=25.0.1,<26.0.0",
+    "duckdb>=1.5.5,<2.0.0",
     "pgvector>=0.5.0,<0.6.0",
-    "tqdm>=4.66.0,<5.0.0",
+    "tqdm>=4.70.0,<5.0.0",
     # The Archive keel (Program 24 P1, ADR099): vault pipeline. The Textual
     # client half of the original keel was retired at the M7 cutover ceremony
     # (test(cutover)!, ADR150); the Rust/Ratatui client that replaced it was
@@ -91,14 +91,14 @@ dependencies = [
 # closure. Dev + CI install it (see plan Task 7/8); the Nix player closure
 # does not.
 server = [
-    "ansible-dev-tools>=26.2.0,<27.0.0",
-    "rstcheck>=6.2.5,<7.0.0",
+    "ansible-dev-tools>=26.8.0,<27.0.0",
+    "rstcheck>=6.3.0,<7.0.0",
     "doc8>=2.0.0,<3.0.0",
-    "boto3>=1.42.59,<2.0.0",
+    "boto3>=1.43.78,<2.0.0",
     "django>=5.0,<7.0",
-    "djangorestframework>=3.15",
+    "djangorestframework>=3.18.0",
     "django-cors-headers>=4.0",
-    "gunicorn>=21.0",
+    "gunicorn>=26.1.0",
 ]
 
 [dependency-groups]
@@ -108,9 +108,9 @@ dev = [
     "pytest-asyncio>=1.0.0,<2.0.0",
     "pytest-cov>=7.0.0,<8.0.0",
     "mypy>=1.13.0,<3.0.0",
-    "ruff>=0.15.12,<0.17.0",
-    "pre-commit>=4.0.0,<5.0.0",
-    "commitizen>=4.1.0,<5.0.0",
+    "ruff>=0.16.4,<0.17.0",
+    "pre-commit>=4.6.2,<5.0.0",
+    "commitizen>=4.18.0,<5.0.0",
     "types-jsonschema>=4.25.1.20251009,<5.0.0",
     "types-pyyaml>=6.0.12.20250915,<7.0.0",
     "types-ratelimit>=2.2.0.20250501,<3.0.0",
@@ -120,7 +120,7 @@ dev = [
     "mido>=1.3.3,<2.0.0",
     "linkify-it-py>=2.0.3,<3.0.0",
     "pip-audit>=2.7.3,<3.0.0",
-    "pytest-playwright>=0.8.0,<0.10.0",
+    "pytest-playwright>=0.9.0,<0.10.0",
     "radon>=6.0.1,<7.0.0",
     "xenon>=0.9.3,<0.10.0",
     "pytest-randomly>=4.0.1,<5.0.0",
@@ -129,10 +129,10 @@ dev = [
     "optuna>=4.9.0,<5.0.0",
     "optuna-dashboard>=0.20.0,<0.21.0",
     "types-docutils>=0.22.3.20251115,<0.23.0",
-    "types-tqdm>=4.67.0.20250809,<5.0.0",
+    "types-tqdm>=4.70.0.20260805,<5.0.0",
     "vulture>=2.14.0,<3.0.0",
-    "hypothesis>=6.149.0,<7.0.0",
-    "pytest-django>=4.8.0,<5.0.0",
+    "hypothesis>=6.165.10,<7.0.0",
+    "pytest-django>=4.14.0,<5.0.0",
     "django-stubs[compatible-mypy]>=5.0",
     "djangorestframework-stubs[compatible-mypy]>=3.15",
     "testcontainers[postgres]>=4.14.2,<5.0.0",
@@ -156,7 +156,7 @@ docs = [
 # (`uv sync --group mutation`) without the retired stack riding back into
 # the default dev sync.
 mutation = [
-    "mutmut>=3.4.0,<4.0.0",
+    "mutmut>=3.7.0,<4.0.0",
 ]
 # The `tui` dependency-group was retired at the M7 packaging flip (BD-5,
 # ADR150 Task 44); the babylon-tui wheel it had become a default

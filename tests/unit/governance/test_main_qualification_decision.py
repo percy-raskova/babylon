@@ -45,7 +45,7 @@ def test_decision_index_resolves_to_main_qualification_record() -> None:
     index = _mapping(INDEX_PATH)
     entry = index["decisions"][ADR_KEY]
 
-    assert index["meta"]["version"] == "1.84.0"
+    assert index["meta"]["version"] == "1.85.0"
     assert str(index["meta"]["updated"]) == "2026-08-26"
     assert entry == {
         "title": decision_title(),

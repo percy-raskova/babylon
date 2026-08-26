@@ -46,7 +46,7 @@ def test_adr235_declares_the_resolved_batch_boundary_and_exact_index_row() -> No
     ):
         assert required_text in decision_text
 
-    assert index["meta"]["version"] == "1.84.0"
+    assert index["meta"]["version"] == "1.85.0"
     assert index["decisions"][ADR_STEM] == {
         "title": EXPECTED_TITLE,
         "status": "accepted",

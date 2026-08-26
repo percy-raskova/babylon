@@ -1,5 +1,5 @@
 meta:
-  version: 1.84.0
+  version: 1.85.0
   updated: '2026-08-26'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -1095,3 +1095,8 @@ decisions:
     status: accepted
     date: '2026-08-26'
     file: ADR236_practice_resource_allocation_v2.yaml
+  ADR237_strike_proposal_v2:
+    title: 'Strike Proposal V2 requires authoritative habitation and material worker connection while leaving every affected cohort independent'
+    status: accepted
+    date: '2026-08-26'
+    file: ADR237_strike_proposal_v2.yaml

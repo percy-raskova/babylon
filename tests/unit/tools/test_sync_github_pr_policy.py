@@ -727,6 +727,37 @@ def test_manual_rollback_restores_snapshot_and_verifies_readback(tmp_path: Path)
     assert api.labels == []
 
 
+def test_manual_rollback_preserves_actions_permissions_for_legacy_snapshot(
+    tmp_path: Path,
+) -> None:
+    api = FakeApi()
+    original_ruleset = deepcopy(api.ruleset)
+    original_main_ruleset = deepcopy(api.main_ruleset)
+    original_repository = deepcopy(api.repository)
+    snapshot_path = tmp_path / "before.json"
+    policy_tool.apply_policy(api, _policy(), api.dev_sha, snapshot_path)
+    actions_permissions_after_apply = deepcopy(api.actions_permissions)
+    legacy_snapshot = policy_tool.load_snapshot(snapshot_path)
+    del legacy_snapshot["actions_permissions"]
+    api.calls.clear()
+
+    policy_tool.rollback_policy(api, legacy_snapshot)
+
+    assert policy_tool.normalize_ruleset(api.ruleset) == policy_tool.normalize_ruleset(
+        original_ruleset
+    )
+    assert policy_tool.normalize_ruleset(api.main_ruleset) == policy_tool.normalize_ruleset(
+        original_main_ruleset
+    )
+    assert api.repository == original_repository
+    assert api.actions_permissions == actions_permissions_after_apply
+    assert api.labels == []
+    assert not any(
+        method == "PUT" and endpoint == policy_tool.ACTIONS_PERMISSIONS_ENDPOINT
+        for method, endpoint, _payload in api.calls
+    )
+
+
 def test_manual_rollback_refuses_a_stale_dev_snapshot_without_mutation(tmp_path: Path) -> None:
     api = FakeApi()
     snapshot_path = tmp_path / "before.json"

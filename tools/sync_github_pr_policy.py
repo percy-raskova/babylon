@@ -768,20 +768,37 @@ def load_snapshot(path: Path) -> dict[str, object]:
 
 def rollback_policy(api: Api, snapshot: dict[str, object]) -> None:
     """Restore one snapshot only while its exact dev evidence is still current."""
-    desired = _state_identity(snapshot)
+    owns_actions_permissions = "actions_permissions" in snapshot
+    validation_snapshot = dict(snapshot)
+    if not owns_actions_permissions:
+        validation_snapshot["actions_permissions"] = {
+            "enabled": True,
+            "allowed_actions": "all",
+            "sha_pinning_required": True,
+        }
+    validated_identity = _state_identity(validation_snapshot)
+
     expected_dev_sha = snapshot.get("dev_sha")
     if not isinstance(expected_dev_sha, str) or SHA_PATTERN.fullmatch(expected_dev_sha) is None:
         raise PolicyError("snapshot has no canonical dev SHA")
     if _dev_sha(api) != expected_dev_sha:
         raise PolicyError("snapshot dev SHA is stale; rollback refused")
 
+    rollback_snapshot = dict(snapshot)
+    if not owns_actions_permissions:
+        current = _current_state(api)
+        rollback_snapshot["actions_permissions"] = current["actions_permissions"]
+        desired = _state_identity(rollback_snapshot)
+    else:
+        desired = validated_identity
+
     _restore_snapshot(
         api,
-        snapshot,
+        rollback_snapshot,
         attempted_dev_ruleset=True,
         attempted_main_ruleset=True,
         attempted_repository=True,
-        attempted_actions_permissions=True,
+        attempted_actions_permissions=owns_actions_permissions,
         attempted_label=True,
     )
     if _state_identity(_current_state(api)) != desired:

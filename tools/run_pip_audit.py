@@ -157,7 +157,8 @@ def build_pip_audit_command(entries: list[dict[str, Any]], no_uv: bool) -> list[
 
     :param entries: Parsed (and validated) ``[[ignore]]`` entries.
     :param no_uv: If ``True``, invoke plain ``pip-audit``; else
-        ``uv run pip-audit`` (ADR095: uv is the dependency toolchain).
+        ``uv run --frozen --extra server pip-audit`` (ADR095: uv is the
+        dependency toolchain).
     :returns: The full argv to hand to :func:`subprocess.run`.
     """
     base = ["pip-audit"] if no_uv else ["uv", "run", "--frozen", "--extra", "server", "pip-audit"]

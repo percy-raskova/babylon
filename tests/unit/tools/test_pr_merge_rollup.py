@@ -31,6 +31,10 @@ DEV_BLOCKING_CHECKS = (
     "Baseline Ceremony Gate (§6.5 provenance)",
     "Postgres Integration Tier (PG 17, pinned runtime)",
 )
+OPTIONAL_DEPENDABOT_CHECKS = (
+    "Classify Dependabot update",
+    "Dependabot Eligibility",
+)
 
 
 def _entry(
@@ -113,3 +117,29 @@ class TestRollupFailuresLatestPerCheck:
         ]
         failures = pr_merge._rollup_failures(rollup)
         assert any(critical in failure and "SKIPPED" in failure for failure in failures)
+
+    def test_optional_dependabot_checks_may_skip_on_a_human_pr(self) -> None:
+        rollup = [
+            *_dev_manifest_green(),
+            *[
+                _entry(name, "SKIPPED", "2026-08-26T02:48:05Z")
+                for name in OPTIONAL_DEPENDABOT_CHECKS
+            ],
+        ]
+        assert pr_merge._rollup_failures(rollup) == []
+
+    def test_optional_dependabot_failure_still_refuses(self) -> None:
+        rollup = [
+            *_dev_manifest_green(),
+            _entry(OPTIONAL_DEPENDABOT_CHECKS[0], "FAILURE", "2026-08-26T02:48:05Z"),
+        ]
+        failures = pr_merge._rollup_failures(rollup)
+        assert any(OPTIONAL_DEPENDABOT_CHECKS[0] in failure for failure in failures)
+
+    def test_unknown_skipped_check_still_refuses(self) -> None:
+        rollup = [
+            *_dev_manifest_green(),
+            _entry("Unregistered Optional Check", "SKIPPED", "2026-08-26T02:48:05Z"),
+        ]
+        failures = pr_merge._rollup_failures(rollup)
+        assert any("Unregistered Optional Check" in failure for failure in failures)

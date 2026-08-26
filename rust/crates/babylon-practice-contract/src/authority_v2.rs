@@ -17,7 +17,8 @@ pub const PRACTICE_INPUT_AUTHORITY_V2_SOURCE_SHA256: [u8; 32] = [
 /// Designed serialization and validation-fuel ceiling, not an organization quota.
 pub const MAX_PRACTICE_INPUT_AUTHORITY_ROWS_V2: usize = 16_384;
 
-const ROW_CANONICAL_BYTES: usize =
+/// Exact canonical byte length of one frozen V2 input-authority row.
+pub const PRACTICE_INPUT_AUTHORITY_V2_CANONICAL_BYTES: usize =
     PRACTICE_INPUT_AUTHORITY_V2_DOMAIN_BYTES.len() + 1 + 2 + 16 + 1 + 16 + 8 + 8 + 8 + 32;
 
 /// Exact V2 authority-contract refusals.
@@ -276,7 +277,7 @@ pub fn encode_input_authority_v2(
     value: &PracticeInputAuthorityV2,
 ) -> Result<Vec<u8>, PracticeAuthorityV2Error> {
     validate_row(value)?;
-    let mut output = Vec::with_capacity(ROW_CANONICAL_BYTES);
+    let mut output = Vec::with_capacity(PRACTICE_INPUT_AUTHORITY_V2_CANONICAL_BYTES);
     append_domain(&mut output, PRACTICE_INPUT_AUTHORITY_V2_DOMAIN_BYTES);
     output.extend_from_slice(&value.schema_version.to_be_bytes());
     output.extend_from_slice(&value.campaign_id.as_bytes());
@@ -456,7 +457,7 @@ pub fn decode_input_authority_ledger_v2(
             break;
         }
         rows.push(decode_input_authority_v2(
-            cursor.take(ROW_CANONICAL_BYTES)?,
+            cursor.take(PRACTICE_INPUT_AUTHORITY_V2_CANONICAL_BYTES)?,
         )?);
     }
     cursor.finish()?;

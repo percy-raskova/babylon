@@ -49,7 +49,7 @@ def test_adr234_declares_the_v2_intent_boundary_and_exact_index_row() -> None:
     ):
         assert required_text in decision_text
 
-    assert index["meta"]["version"] == "1.82.0"
+    assert index["meta"]["version"] == "1.83.0"
     assert index["decisions"][ADR_STEM] == {
         "title": EXPECTED_TITLE,
         "status": "accepted",

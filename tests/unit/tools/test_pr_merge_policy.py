@@ -655,6 +655,34 @@ def test_all_rest_list_queries_are_bounded_without_pagination(tmp_path: Path) ->
     assert children[children.index("--limit") + 1] == "100"
 
 
+def test_ninety_nine_code_scanning_alerts_keep_the_zero_floor_refusal(
+    tmp_path: Path,
+) -> None:
+    scenario = _default_scenario()
+    scenario["alerts"] = [{"number": number, "state": "open"} for number in range(1, 100)]
+
+    result, calls = _run_pr_merge(tmp_path, scenario=scenario)
+
+    assert result.returncode == 1
+    assert "99 open code-scanning alert(s) — the zero floor is a STOP" in result.stderr
+    assert "code-scanning alerts reached the 100-item safety bound" not in result.stderr
+    assert _merge_calls(calls) == []
+
+
+def test_exactly_full_code_scanning_page_refuses_as_potentially_truncated(
+    tmp_path: Path,
+) -> None:
+    scenario = _default_scenario()
+    scenario["alerts"] = [{"number": number, "state": "open"} for number in range(1, 101)]
+
+    result, calls = _run_pr_merge(tmp_path, scenario=scenario)
+
+    assert result.returncode == 1
+    assert "code-scanning alerts reached the 100-item safety bound" in result.stderr
+    assert "100 open code-scanning alert(s)" not in result.stderr
+    assert _merge_calls(calls) == []
+
+
 def test_one_hundred_rest_items_refuses_at_the_static_bound(tmp_path: Path) -> None:
     scenario = _default_scenario()
     scenario["comments"] = [

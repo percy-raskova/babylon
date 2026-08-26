@@ -361,6 +361,7 @@ def _open_alert_count() -> int:
                 f"?state=open&per_page={MAX_GITHUB_ITEMS}",
             ),
             "code-scanning alerts",
+            refuse_full_page=True,
         )
     )
 

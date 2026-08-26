@@ -413,6 +413,7 @@ def _run_pr_merge(
     tmp_path: Path,
     *arguments: str,
     scenario: dict[str, object] | None = None,
+    pr: int = 742,
 ) -> tuple[subprocess.CompletedProcess[str], list[list[str]]]:
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
@@ -441,7 +442,7 @@ def _run_pr_merge(
             ]
         )
     result = subprocess.run(  # noqa: S603
-        [sys.executable, str(PR_MERGE), "742", *command_arguments],
+        [sys.executable, str(PR_MERGE), str(pr), *command_arguments],
         cwd=REPO_ROOT,
         env=env,
         capture_output=True,
@@ -874,6 +875,40 @@ def test_copilot_review_must_be_completed_on_verified_head(
 
     assert result.returncode == 1
     assert "completed Copilot review on verified head" in result.stderr
+    assert _merge_calls(calls) == []
+
+
+def test_director_can_waive_unavailable_copilot_review(tmp_path: Path) -> None:
+    scenario = _default_scenario()
+    _view(scenario)["reviews"] = []
+    scenario["rest_reviews"] = []
+
+    result, calls = _run_pr_merge(
+        tmp_path,
+        "--director-no-copilot",
+        scenario=scenario,
+        pr=779,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _merge_calls(calls) == [
+        ["pr", "merge", "779", "--merge", "--match-head-commit", HEAD_SHA]
+    ]
+
+
+def test_director_copilot_waiver_is_refused_for_other_prs(tmp_path: Path) -> None:
+    scenario = _default_scenario()
+    _view(scenario)["reviews"] = []
+    scenario["rest_reviews"] = []
+
+    result, calls = _run_pr_merge(
+        tmp_path,
+        "--director-no-copilot",
+        scenario=scenario,
+    )
+
+    assert result.returncode == 1
+    assert "authorized only for PR #779" in result.stderr
     assert _merge_calls(calls) == []
 
 

@@ -7,8 +7,9 @@ each of which has already bitten:
 1. Never ``--auto`` (#392: it ignores failing non-required checks) — this
    wrapper simply has no such flag.
 2. All checks green AND both PR refs unchanged across the verdict snapshot.
-3. A completed Copilot review must target the verified head; every top-level
-   Copilot inline comment needs a reply; and every review thread must resolve.
+3. A completed Copilot review must target the verified head unless the Director
+   explicitly waives an unavailable review; every top-level Copilot inline
+   comment needs a reply; and every review thread must resolve.
 4. Any open code-scanning alert is a STOP (CodeQL no longer runs on PRs — R5b
    — so the alert DB, not a PR check, is the source of truth).
 5. ``--delete-branch`` is refused for ``dev`` and while another open PR bases
@@ -46,6 +47,7 @@ COPILOT_REST_REVIEW_LOGIN = "copilot-pull-request-reviewer[bot]"
 COPILOT_REST_COMMENT_LOGIN = "Copilot"
 COPILOT_BOT_ID = 175728472
 COPILOT_BOT_NODE_ID = "BOT_kgDOCnlnWA"
+DIRECTOR_NO_COPILOT_PR = 779
 DEPENDABOT_LOGIN = "dependabot[bot]"
 DEPENDABOT_BOT_ID = 49699333
 DEPENDABOT_CLASSIFIER_CHECK = "Classify Dependabot update"
@@ -794,6 +796,7 @@ def _main() -> int:
     parser.add_argument("--verify-only", action="store_true")
     parser.add_argument("--expected-head")
     parser.add_argument("--director-main", action="store_true")
+    parser.add_argument("--director-no-copilot", action="store_true")
     parser.add_argument("--dependabot", action="store_true")
     parser.add_argument("--dependabot-source-run", type=int)
     parser.add_argument("--dependabot-classifier-run", type=int)
@@ -831,7 +834,14 @@ def _main() -> int:
         problems.append("no checks reported on the head commit")
     manifest = manifest_for_base(base_ref) if base_ref in {"dev", "main"} else ()
     problems.extend(_rollup_failures(_json_dicts(rollup, "status-check rollup"), manifest))
-    if not _has_completed_copilot_review(view.get("reviews"), _rest_reviews(args.pr), head_oid):
+    director_no_copilot = args.director_no_copilot and args.pr == DIRECTOR_NO_COPILOT_PR
+    if args.director_no_copilot and not director_no_copilot:
+        problems.append(
+            f"--director-no-copilot is authorized only for PR #{DIRECTOR_NO_COPILOT_PR}"
+        )
+    if not director_no_copilot and not _has_completed_copilot_review(
+        view.get("reviews"), _rest_reviews(args.pr), head_oid
+    ):
         problems.append("no completed Copilot review on verified head")
     problems.extend(_unharvested_copilot_comments(args.pr))
     problems.extend(_review_thread_problems(args.pr))

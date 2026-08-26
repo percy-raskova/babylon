@@ -616,6 +616,16 @@ fn organization_is_connected(
         .any(|row| row.labor_process_id == target && row.organization_id == organization_id)
 }
 
+fn validate_strike_target_kind(
+    practice_id: PracticeIdV2,
+    target_tag: PracticeTargetTagV2,
+) -> Result<(), StrikeProposalV2Error> {
+    if practice_id != PracticeIdV2::Strike || target_tag != PracticeTargetTagV2::LaborProcess {
+        return Err(StrikeProposalV2Error::StrikePracticeMismatch);
+    }
+    Ok(())
+}
+
 fn admit_strike_intent_v2(
     contract: &StrikeProposalContractV2,
     intent: &PracticeIntentV2,
@@ -624,9 +634,7 @@ fn admit_strike_intent_v2(
 ) -> Result<AdmittedStrikeProposalV2, ResolveStrikeProposalV2Error> {
     validate_contract(contract)?;
     validate_strike_labor_process_register_v2(register)?;
-    if intent.practice_id != PracticeIdV2::Strike {
-        return Err(StrikeProposalV2Error::StrikePracticeMismatch.into());
-    }
+    validate_strike_target_kind(intent.practice_id, intent.target.tag)?;
     if intent.resolve_tick != register.resolve_tick {
         return Err(StrikeProposalV2Error::StrikeResolveTickMismatch.into());
     }
@@ -698,6 +706,7 @@ fn decode_proposal_key(
         PracticeIdV2::try_from(cursor.u8()?).map_err(|_| StrikeProposalV2Error::StrikeEnumCode)?;
     let tag = PracticeTargetTagV2::try_from(cursor.u8()?)
         .map_err(|_| StrikeProposalV2Error::StrikeEnumCode)?;
+    validate_strike_target_kind(practice_id, tag)?;
     let identity = PracticeTargetIdentityV2::from_bytes(cursor.array()?);
     let proposal_nonce = ProposalNonceV2::from_bytes(cursor.array()?);
     Ok(PracticeProposalKeyV2 {

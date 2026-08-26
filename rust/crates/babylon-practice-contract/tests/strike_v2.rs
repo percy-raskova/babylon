@@ -376,6 +376,40 @@ fn forged_admission_cannot_substitute_an_affected_worker_cohort() {
 }
 
 #[test]
+fn admission_decoder_refuses_a_non_strike_proposal_key_kind() {
+    let contract = StrikeProposalContractV2::materially_connected_workers();
+    let intent = strike_intent(101);
+    let register = register(101);
+    let admission = admit(&intent, &register).unwrap();
+    let payload = encode_admitted_strike_proposal_v2(&contract, &admission).unwrap();
+    let (ledger, batch, proposal_key) = authoritative_context(&intent);
+    let proposal_key_offset = ADMITTED_STRIKE_PROPOSAL_V2_DOMAIN_BYTES.len() + 1 + 2 + 32 + 32 + 32;
+    let practice_offset = proposal_key_offset + 8 + 16 + 8;
+    let target_tag_offset = practice_offset + 1;
+
+    for (offset, replacement) in [
+        (practice_offset, PracticeIdV2::Organize as u8),
+        (target_tag_offset, PracticeTargetTagV2::Route as u8),
+    ] {
+        let mut forged = payload.clone();
+        forged[offset] = replacement;
+        assert_eq!(
+            decode_admitted_strike_proposal_v2(
+                &forged,
+                &contract,
+                &batch,
+                &ledger,
+                proposal_key,
+                &register,
+            ),
+            Err(ResolveStrikeProposalV2Error::Strike(
+                StrikeProposalV2Error::StrikePracticeMismatch
+            ))
+        );
+    }
+}
+
+#[test]
 fn register_rows_are_canonical_and_unique() {
     let mut unordered = register(101);
     unordered.affected_cohorts.reverse();

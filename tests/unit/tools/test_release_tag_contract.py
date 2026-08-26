@@ -146,6 +146,34 @@ def test_manual_tag_input_never_enters_shell_source(path: Path) -> None:
     assert '--tag "$RELEASE_TAG"' in text
 
 
+@pytest.mark.parametrize("path", RELEASE_WORKFLOWS)
+@pytest.mark.parametrize(
+    ("tag", "accepted"),
+    [
+        ("v1.2.3", True),
+        ("v1.2.3-rc.1", True),
+        ("v1.2.3+build.7", True),
+        ("v1.2.3-rc.1+build.7", True),
+        ("release-1.2.3", False),
+    ],
+)
+def test_publisher_shell_regex_accepts_canonical_semver_tags(
+    path: Path, tag: str, accepted: bool
+) -> None:
+    text = path.read_text(encoding="utf-8")
+    condition = next(line.strip() for line in text.splitlines() if '"$TAG" =~' in line)
+    pattern = condition.split("=~ ", maxsplit=1)[1].split(" ]];", maxsplit=1)[0]
+    result = subprocess.run(
+        ("bash", "-c", '[[ "$1" =~ $2 ]]', "bash", tag, pattern),
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+    assert (result.returncode == 0) is accepted
+
+
 def test_release_ceremony_tags_only_after_the_director_main_merge() -> None:
     text = VERSIONING_PATH.read_text(encoding="utf-8")
 

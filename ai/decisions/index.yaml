@@ -1100,3 +1100,8 @@ decisions:
     status: accepted
     date: '2026-08-26'
     file: ADR237_strike_proposal_v2.yaml
+  ADR238_material_circuit_v1:
+    title: 'Material Circuit V1 makes orders, exact stocks, delayed delivery, realization, and Leontief production one conserved Rust transition'
+    status: accepted
+    date: '2026-08-26'
+    file: ADR238_material_circuit_v1.yaml

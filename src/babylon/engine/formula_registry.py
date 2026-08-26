@@ -73,7 +73,6 @@ class FormulaRegistry:
         Registers formulas from babylon.formulas:
         - labor_aristocracy_ratio
         - is_labor_aristocracy
-        - consciousness_drift
         - phi_absolute
         - acquiescence_probability
         - revolution_probability
@@ -92,7 +91,6 @@ class FormulaRegistry:
         # Fundamental Theorem formulas
         registry.register("labor_aristocracy_ratio", formulas.calculate_labor_aristocracy_ratio)
         registry.register("is_labor_aristocracy", formulas.is_labor_aristocracy)
-        registry.register("consciousness_drift", formulas.calculate_consciousness_drift)
         # NOT "imperial_rent_gap": that string is already a LIVE, player-facing
         # scope key (web/game/engine_bridge.py's per-class + economy-dashboard
         # Phi = core_wages - wealth, gated via projection/veil.py's TIER1

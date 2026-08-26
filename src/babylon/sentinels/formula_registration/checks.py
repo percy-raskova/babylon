@@ -41,12 +41,7 @@ only the bare-``Name`` form needs alias resolution.
   NOT resolve ``getattr(module, "symbol_name")`` string-keyed indirection or
   a registry-mediated call (``FormulaRegistry.default().get("key")(...)`` —
   the REGISTRY KEY, not the bare symbol, is what such a call site mentions).
-  ``web/game/provenance.py`` resolves formulas exactly this way; it is
-  therefore invisible to this sensor's reference scan by construction. This
-  is intentionally conservative — the current :data:`DECLARED_FORMULAS`
-  rows are all correctly classified without needing to trust that path (see
-  the registry module's own docstring for the verified per-row reasoning),
-  and trusting a bare string-literal mention would reintroduce a WEAKER
+  Trusting a bare string-literal mention would reintroduce a WEAKER
   version of the exact bug this sensor exists to fix (a docstring or
   ``concept_cards.py`` citation mentioning a formula's name is not a real
   caller either).

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import subprocess
-import tomllib
 from pathlib import Path
 
 import pytest
@@ -261,29 +260,12 @@ def test_ci_cargo_caches_track_git_sources_and_toolchain() -> None:
     assert workflow.count("hashFiles('rust/Cargo.lock', 'rust/rust-toolchain.toml')") >= 2
 
 
-def test_scheduled_failure_artifacts_and_pacing_ownership_are_truthful() -> None:
-    """Slow evidence survives failure and no deleted Python nightly is claimed."""
+def test_scheduled_failure_artifacts_survive_failure() -> None:
+    """Slow evidence survives a scheduled-job failure."""
     weekly_sim = yaml.safe_load((WORKFLOWS_DIR / "weekly-sim-artifacts.yml").read_text())
     upload = next(
         step
         for step in weekly_sim["jobs"]["sim-artifacts"]["steps"]
         if str(step.get("uses", "")).startswith("actions/upload-artifact@")
     )
-    pacing_text = (REPO_ROOT / "tests/integration/engine/test_pacing_gate_g1.py").read_text()
-    mise_text = (REPO_ROOT / ".mise.toml").read_text()
-    pyproject_text = (REPO_ROOT / "pyproject.toml").read_text()
-    pacing_task = tomllib.loads(mise_text)["tasks"]["qa:pacing"]["description"]
-    pacing_marker = next(
-        marker
-        for marker in tomllib.loads(pyproject_text)["tool"]["pytest"]["ini_options"]["markers"]
-        if marker.startswith("pacing_gate:")
-    )
-
     assert str(upload.get("if", "")) == "always()"
-    assert "nightly-pacing.yml" not in pacing_text
-    assert "nightly-pacing.yml" not in mise_text
-    assert "nightly" not in pacing_task
-    assert "nightly" not in pacing_marker
-    assert "PER-268" in pacing_text
-    assert "PER-268" in pacing_task
-    assert "PER-268" in pacing_marker

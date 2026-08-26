@@ -4,15 +4,12 @@ Hard imports — a missing resolver is a COLLECTION FAILURE, not a skip. Pins:
 
 * all 9 canonical ActionTypes are registered and callable;
 * an unregistered ActionType resolves to a LOUD failure (never raises, never
-  silent-succeeds);
-* the web bridge's ``VERB_TO_ACTION_TYPE`` maps exactly onto the registry keys
-  (keeps map and registry from drifting apart).
+  silent-succeeds).
 """
 
 from __future__ import annotations
 
 import pytest
-from web.game.engine_bridge import VERB_TO_ACTION_TYPE
 
 from babylon.engine.actions import VERB_RESOLVERS, resolve_player_action
 from babylon.engine.services import ServiceContainer
@@ -63,13 +60,3 @@ class TestLoudFailure:
         action = Action(org_id="o", action_type=ActionType.DENOUNCE, target_id="t")
         result = resolve_player_action(action, {}, None, ServiceContainer.create())  # type: ignore[arg-type]
         assert result.success is False
-
-
-class TestBridgeParity:
-    """The web verb map and the engine registry must not drift apart."""
-
-    def test_bridge_map_values_equal_registry_keys(self) -> None:
-        assert set(VERB_TO_ACTION_TYPE.values()) == set(VERB_RESOLVERS.keys())
-
-    def test_bridge_map_has_nine_verbs(self) -> None:
-        assert len(VERB_TO_ACTION_TYPE) == 9

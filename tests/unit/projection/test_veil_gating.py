@@ -1,14 +1,10 @@
 """Contract tests for WO-41: veil relocation + gate composition.
 
 Three previously-separate gating systems get their Archive-side homes and
-one pinned composition rule: the doctrine veil relocates verbatim
-(``babylon.projection.veil``; web shim ``is``-identical), the class-vision
-gate ports as a pure function, and the documented fog+class-vision
-collision hazard (``fog/filter.py`` header) is RESOLVED —
+one pinned composition rule: the doctrine veil, the class-vision gate, and
+the documented fog+class-vision collision hazard are composed as
 vision-then-fog, both restriction maps, so the composite never reveals
-more than either gate alone. Ports the disabled veil-gate assertions from
-``test_engine_bridge.py::TestHexFeaturePropertiesVeilGate`` /
-``TestDerivedEconomyVeilGate`` at the contract level.
+more than either gate alone.
 """
 
 from __future__ import annotations
@@ -44,19 +40,6 @@ def _payload() -> dict[str, object]:
 
 
 class TestVeilRelocation:
-    def test_web_shim_is_identity_single_sourced(self) -> None:
-        import sys
-
-        sys.path.insert(0, "web")
-        try:
-            from babylon.projection import veil as canonical
-            from game import veil as legacy
-
-            assert legacy.compute_veil_tier is canonical.compute_veil_tier
-            assert legacy.TIER1_VALUE_RELATION_FIELDS is canonical.TIER1_VALUE_RELATION_FIELDS
-        finally:
-            sys.path.remove("web")
-
     def test_tier0_masks_both_field_families(self) -> None:
         payload = dict.fromkeys((*TIER1_VALUE_RELATION_FIELDS, *TIER2_SCISSORS_FIELDS), 1.0)
         gated = gate_value_axis_fields(payload, tier=0)

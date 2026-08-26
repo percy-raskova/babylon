@@ -70,8 +70,8 @@ def test_a_producer_with_one_live_output_is_not_inert() -> None:
         name="mixed_live",
         producer_file="src/babylon/engine/systems/market_scissors.py",
         producer_symbol="MixedSystem",
-        output_symbol="price_divergence",
-        consumer_files=("web/game/engine_bridge.py",),
+        output_symbol="MARKET_ATTR",
+        consumer_files=("src/babylon/engine/systems/contradiction.py",),
         material_relation="injected row",
     )
     assert check_producers_are_not_inert((dormant, live)) == []

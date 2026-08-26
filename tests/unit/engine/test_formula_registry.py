@@ -89,8 +89,9 @@ class TestFormulaRegistry:
         formula was permanently removed in commit a5f73139. Spec 057 wired the
         new Leontief pipeline via ServiceContainer fields, NOT via
         FormulaRegistry, so 'imperial_rent' remains absent. U2 (Vol I
-        value-production program) adds 'phi_absolute' (Phi = Wc - Vc,
-        the Fundamental Theorem's absolute form) — count is now 24. NOT
+        value-production program) added 'phi_absolute' (Phi = Wc - Vc,
+        the Fundamental Theorem's absolute form). PER-258 removes the
+        orphaned 'consciousness_drift' entry, leaving 23 formulas. NOT
         registered as 'imperial_rent_gap': that string is already a LIVE,
         player-facing scope key computed from a DIFFERENT feed
         (web/game/engine_bridge.py's core_wages - wealth); see
@@ -105,7 +106,6 @@ class TestFormulaRegistry:
         expected_formulas = [
             "labor_aristocracy_ratio",
             "is_labor_aristocracy",
-            "consciousness_drift",
             "phi_absolute",
             "acquiescence_probability",
             "revolution_probability",
@@ -123,7 +123,7 @@ class TestFormulaRegistry:
             "solidarity_amplification",  # Feature 022
         ]
 
-        assert len(formulas) == 24  # post-U2 (phi_absolute added)
+        assert len(formulas) == 23  # PER-258 removed orphaned consciousness_drift
         assert "imperial_rent_gap" not in formulas  # collision fence: NOT this key
         assert "imperial_rent" not in formulas  # moved to ServiceContainer
         for name in expected_formulas:

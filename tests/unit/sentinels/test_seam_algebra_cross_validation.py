@@ -1,4 +1,4 @@
-"""Cross-validation: the unified ∂L loses no coverage against its six legacy families.
+"""Cross-validation: the unified ∂L preserves four legacy sentinel families.
 
 T1.1 Unit 3 acceptance (design §4 U3): *"re-express >= 1 known construct per
 family and prove the unified dL catches the same mutation each family already
@@ -21,7 +21,7 @@ One family per test, named for the legacy sentinel it re-expresses:
 
 - **inert** — re-uses the SHIPPED ``reification_buffer_producer`` construct
   directly (already proven live in ``test_seam_algebra.py``); this module
-  proves ITS mutation instead (severing its edge), completing the six.
+  proves ITS mutation instead (severing its edge).
 - **unconsumed** — ``reification_buffer``'s dict-key write (``ideology.py``)
   genuinely has NO production reader anywhere (the real, currently-exempted
   gap) — proven both ways: disconnected against a real file that does not
@@ -30,17 +30,8 @@ One family per test, named for the legacy sentinel it re-expresses:
 - **coupling** — the ``price_value`` opposition's ``market_balance`` symbol,
   produced by ``contradiction.py`` and read by ``domain/dialectics/instances/
   catalog.py``.
-- **liveness** — ``price_divergence``, produced by ``market_scissors.py`` and
-  read by ``web/game/engine_bridge.py``.
 - **vocabulary** — ``NodeType.TERRITORY``, queried by
   ``engine/systems/territory.py``.
-- **dangling** — ``persist_action_results``, the (already-fixed) founding
-  specimen: ``protocols.py``'s real member, called from
-  ``web/game/engine_bridge.py``; the MUTATION re-creates the historical bug
-  (the SINGULAR ``persist_action_result``, verified absent as an exact name
-  from the real file — it survives only as a substring inside an unrelated
-  docstring, which does not count, see :func:`~babylon.sentinels._ast.
-  referenced_names`).
 """
 
 from __future__ import annotations
@@ -205,47 +196,6 @@ def test_coupling_market_balance_is_connected_then_reds_when_symbol_is_swapped()
 
 
 # ---------------------------------------------------------------------------
-# liveness — price_divergence (market_scissors.py -> web/game/engine_bridge.py)
-# ---------------------------------------------------------------------------
-
-
-def test_liveness_price_divergence_is_connected_then_reds_when_edge_is_deleted() -> None:
-    """Re-expresses babylon.sentinels.liveness.registry's `price_divergence`
-    row. Mirrors liveness's own
-    `test_efficacy_reds_when_the_declared_consumer_does_not_read_the_output`
-    mutation shape (there: point at a symbol absent from the file; here:
-    delete the edge outright -- an equally valid instance of 'the consumer
-    no longer reads it')."""
-    consumer_file = "web/game/engine_bridge.py"
-    construct = ConstructNode(
-        name="price_divergence",
-        def_file="src/babylon/engine/systems/market_scissors.py",
-        symbol="price_divergence",
-        origin_family="liveness",
-        material_relation="Re-expresses liveness.registry's price_divergence row.",
-    )
-    connected_edge = ExpectedConsumer(
-        construct_name="price_divergence", consumer_file=consumer_file, edge_kind="read"
-    )
-    assert (
-        check_disconnected_subsystems(
-            constructs=(construct,),
-            edges=(connected_edge,),
-            entry_points=(consumer_file,),
-            exemptions=(),
-        )
-        == []
-    )
-
-    # MUTATION: delete the edge (the consumer no longer reads it).
-    findings = check_disconnected_subsystems(
-        constructs=(construct,), edges=(), entry_points=(consumer_file,), exemptions=()
-    )
-    finding = _only_finding(findings)
-    assert "price_divergence" in finding
-
-
-# ---------------------------------------------------------------------------
 # vocabulary — NodeType.TERRITORY (engine/systems/territory.py)
 # ---------------------------------------------------------------------------
 
@@ -287,56 +237,3 @@ def test_vocabulary_territory_node_type_is_connected_then_reds_when_symbol_is_sw
     )
     finding = _only_finding(findings)
     assert "TERRITORY_PHANTOM_ZZZ" in finding
-
-
-# ---------------------------------------------------------------------------
-# dangling — persist_action_results (protocols.py -> web/game/engine_bridge.py)
-# ---------------------------------------------------------------------------
-
-
-def test_dangling_persist_action_results_is_connected_then_reds_on_the_historical_singular_bug() -> (
-    None
-):
-    """Re-expresses the dangling family's founding specimen: a
-    `getattr(persistence, "persist_action_result", None)` (SINGULAR) call
-    against a protocol that only ever declares `persist_action_results`
-    (PLURAL). That bug is fixed in production today (a direct
-    `.persist_action_results(...)` call, verified in the module docstring),
-    so the CONNECTED case reproduces the current, fixed state; the MUTATION
-    recreates the historical SINGULAR bug by swapping the symbol back --
-    verified absent as an exact name from `engine_bridge.py` (it survives
-    only as a substring inside an unrelated docstring sentence, which
-    :func:`~babylon.sentinels._ast.referenced_names` does not count)."""
-    consumer_file = "web/game/engine_bridge.py"
-    connected = ConstructNode(
-        name="persist_action_results_method",
-        def_file="src/babylon/persistence/protocols.py",
-        symbol="persist_action_results",
-        origin_family="dangling",
-        material_relation="Re-expresses the dangling family's founding specimen (now fixed).",
-    )
-    connected_edge = ExpectedConsumer(
-        construct_name="persist_action_results_method",
-        consumer_file=consumer_file,
-        edge_kind="call",
-    )
-    assert (
-        check_disconnected_subsystems(
-            constructs=(connected,),
-            edges=(connected_edge,),
-            entry_points=(consumer_file,),
-            exemptions=(),
-        )
-        == []
-    )
-
-    # MUTATION: the historical SINGULAR dangling-reference bug.
-    mutated = connected.model_copy(update={"symbol": "persist_action_result"})
-    findings = check_disconnected_subsystems(
-        constructs=(mutated,),
-        edges=(connected_edge,),
-        entry_points=(consumer_file,),
-        exemptions=(),
-    )
-    finding = _only_finding(findings)
-    assert "persist_action_result" in finding

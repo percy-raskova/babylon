@@ -41,7 +41,7 @@ def test_real_dependencies_are_all_declared() -> None:
 def test_efficacy_reds_on_a_declared_edge_with_no_real_dependency() -> None:
     """MUTATION: an edge whose target reads nothing the source publishes reds.
 
-    ``web/game/map_contract.py`` is a real, parseable file that mentions neither
+    ``src/babylon/config/defines/_hash.py`` is a real, parseable file that mentions neither
     ``phantom_published_symbol`` nor the source's fields — so the declared edge
     is a claim about the code that the code does not support.
     """
@@ -54,7 +54,7 @@ def test_efficacy_reds_on_a_declared_edge_with_no_real_dependency() -> None:
     target = MeasurementDependency(
         opposition_key="phantom_target",
         inputs_fields=("other_input",),
-        producer_file="web/game/map_contract.py",
+        producer_file="src/babylon/config/defines/_hash.py",
         produces_symbols=("other_published_symbol",),
     )
     findings = check_declared_edges_are_grounded(
@@ -81,8 +81,8 @@ def test_efficacy_reds_on_a_real_dependency_that_is_undeclared() -> None:
     fail that test: ``referenced_names`` collects string constants, and U5.7
     writes the literal ``"fictitious_log"`` into ``contradiction.py`` to derive
     ``financialization_index`` — so the reverse pair would fire a second finding
-    and this assertion would see 2. ``PRICE_DIVERGENCE_ATTR`` is a real
-    module-level constant in ``market_scissors.py`` that appears nowhere in
+    and this assertion would see 2. ``MARKET_CORRECTION_SHOCK_ATTR`` is a real
+    imported constant in ``market_scissors.py`` that appears nowhere in
     ``contradiction.py`` and is added to it by no task in this plan, so exactly
     one direction is a real read and exactly one finding is produced.
     """
@@ -96,7 +96,7 @@ def test_efficacy_reds_on_a_real_dependency_that_is_undeclared() -> None:
         opposition_key="phantom_financial",
         inputs_fields=("financialization_index",),
         producer_file="src/babylon/engine/systems/market_scissors.py",
-        produces_symbols=("PRICE_DIVERGENCE_ATTR",),
+        produces_symbols=("MARKET_CORRECTION_SHOCK_ATTR",),
     )
     findings = check_real_dependencies_are_declared(
         edges=(),
@@ -127,7 +127,7 @@ def test_declared_edge_silences_the_real_dependency_finding() -> None:
         opposition_key="phantom_financial",
         inputs_fields=("financialization_index",),
         producer_file="src/babylon/engine/systems/market_scissors.py",
-        produces_symbols=("PRICE_DIVERGENCE_ATTR",),
+        produces_symbols=("MARKET_CORRECTION_SHOCK_ATTR",),
     )
     assert (
         check_real_dependencies_are_declared(

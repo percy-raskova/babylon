@@ -22,7 +22,7 @@ class LivenessRow(BaseModel):
     Frozen and ``extra="forbid"`` so a malformed row fails loudly at import
     (Constitution III.11) rather than quietly at check time.
 
-    :ivar name: stable identity for the output (e.g. ``"price_divergence"``).
+    :ivar name: stable identity for the output (e.g. ``"mass_receptivity"``).
     :ivar producer_file: repo-relative ``.py`` path that stamps the output.
     :ivar producer_symbol: the producing ``System``/function/class; the
         correct-but-inert sensor groups rows by this name.
@@ -91,17 +91,6 @@ _ECON_CREDIT = "src/babylon/domain/economics/credit"
 
 #: The declared producer outputs of the money/value estate.
 LIVENESS_ROWS: tuple[LivenessRow, ...] = (
-    LivenessRow(
-        name="price_divergence",
-        producer_file=f"{_ENGINE_SYSTEMS}/market_scissors.py",
-        producer_symbol="MarketScissorsSystem",
-        output_symbol="price_divergence",
-        consumer_files=("web/game/engine_bridge.py", "web/game/map_contract.py"),
-        material_relation=(
-            "Per-territory divergence of market price from labour value — the "
-            "scissors as the player sees it on the map lens."
-        ),
-    ),
     LivenessRow(
         name="market_balance",
         producer_file=f"{_ENGINE_SYSTEMS}/contradiction.py",

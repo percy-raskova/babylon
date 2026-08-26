@@ -11,11 +11,11 @@ pins that trace).
 **Absorption ruling** (``project/programs/24-the-archive.md``, P0 exit batch,
 item 5): "``/explain`` + Observatory: absorbed as Archive pages (concept
 cards + formula terminals)". A concept card's ``{statblock}`` fence *is* the
-"formula terminal" here — the symbol glossary the legacy ``/explain``
-endpoint (``web/game/provenance.py::n_metric``) computed live from a session's
-inputs is, for these four *unchanging* concepts, baked once from the
+"formula terminal" here — the symbol glossary the retired legacy ``/explain``
+endpoint computed live from a session's inputs is, for these four *unchanging*
+concepts, baked once from the
 reference docs instead of recomputed per click. The Observatory's read-only
-debug dashboard (``web/observatory/``) had no dedicated concept-explainer
+debug dashboard had no dedicated concept-explainer
 pane to port; its absorption is satisfied by these pages existing as Archive
 content at all, per the charter ruling's phrasing.
 

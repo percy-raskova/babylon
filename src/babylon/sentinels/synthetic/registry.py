@@ -119,35 +119,10 @@ class SyntheticSource(BaseModel):
         return self
 
 
-#: The five known, sanctioned synthetic/fallback sources on production code
+#: The four known, sanctioned synthetic/fallback sources on production code
 #: paths (Phase F audit, 2026-07-16). See
 #: :doc:`/reference/declared-synthetic-data` for the full narrative.
 SYNTHETIC_SOURCES: tuple[SyntheticSource, ...] = (
-    SyntheticSource(
-        name="stub_engine_bridge",
-        source_file="web/game/stub_bridge.py",
-        source_symbol="StubEngineBridge",
-        guard_file="web/game/api.py",
-        guard_symbol="_get_bridge",
-        guard_kind="debug_gate",
-        what_it_fakes=(
-            "The full EngineBridge query/action surface (session, tick, map, doctrine, "
-            "organization snapshots) — deterministic, realistic-looking mock data (e.g. the "
-            "4-entity Wayne County class roster _make_wayne_county_entities builds) so the "
-            "Django app and frontend can run without PostgreSQL or a live engine."
-        ),
-        invariant=(
-            "_get_bridge() raises ImproperlyConfigured — citing 'Seam Sensor 3 provenance / "
-            "Constitution III.11' — whenever django.conf.settings.DEBUG is False and no real "
-            "bridge was initialized; the stub's fabricated data can never answer a production "
-            "(DEBUG=False) request. Enforced dynamically (not by this static sensor) and proved "
-            "by tests/unit/web/test_stub_bridge_guard.py."
-        ),
-        notes=(
-            "Bridge parity (same get_* methods/signatures as the real EngineBridge) is a "
-            "separate guard: tests/unit/web/test_stub_bridge_parity.py."
-        ),
-    ),
     SyntheticSource(
         name="economics_employment_default",
         source_file="src/babylon/domain/economics/tick/initializer.py",
@@ -219,8 +194,8 @@ SYNTHETIC_SOURCES: tuple[SyntheticSource, ...] = (
             "— never read from the reference database."
         ),
         invariant=(
-            "Only reachable by explicit scenario='two_node' selection (resolve_scenario(), "
-            "web/game/engine_bridge.py) — never a silent substitute for a real county. The "
+            "The registry exposes the exact key 'two_node'; get_scenario('two_node') returns "
+            "this class and unknown keys raise KeyError. Direct construction is also explicit. "
             "Scenario ABC's __init_subclass__ auto-registry raises ValueError on a name "
             "collision at import time, so two builders can never shadow each other under one "
             "name."
@@ -240,10 +215,9 @@ SYNTHETIC_SOURCES: tuple[SyntheticSource, ...] = (
             "entities/relationships — never read from the reference database."
         ),
         invariant=(
-            "Only reachable by explicit scenario selection — 'wayne_county' or the aliases "
-            "'wayne'/'detroit' (resolve_scenario(), web/game/engine_bridge.py) — never a silent "
-            "substitute for a real county. Same Scenario ABC auto-registry collision guard as "
-            "scenario_two_node."
+            "The registry exposes the exact key 'wayne_county'; get_scenario('wayne_county') "
+            "returns this class and unknown keys raise KeyError. Direct construction is explicit. "
+            "Same Scenario ABC auto-registry collision guard as scenario_two_node."
         ),
         notes=(
             "Delegates to the legacy free function create_wayne_county_scenario for "

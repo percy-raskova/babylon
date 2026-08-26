@@ -135,15 +135,6 @@ TERRITORY_EXCLUDED_FIELDS: Final[frozenset[str]] = frozenset(
         "mass_receptivity",
         "intel_confidence",
         "vision_state",
-        # Program 23 ADR078: MarketScissorsSystem (position 17.8) projects
-        # each territory's county price⟷value log-ratio onto its node
-        # (``_project_price_divergence``) — same "transient per-tick
-        # computed attr, not a Territory model field" shape as the
-        # receptivity trio above, so it hits the identical extra="forbid"
-        # landmine and is dropped here (the map-lens bridge re-injects it
-        # post-round-trip from ``WorldState.market_county``, which DOES
-        # survive — see ``_carry_price_divergence`` in web/game/engine_bridge.py).
-        "price_divergence",
         # Spec-108 (Transport Substrate, Program 26 U5e): TransportSystem
         # (position 9.5) writes a per-tick demand signal onto touched
         # territory nodes, feeding the sovereign's OODA budget evaluation
@@ -526,16 +517,6 @@ class WorldState(BaseModel):
         ),
     )
 
-    market_county: dict[str, MarketState] | None = Field(
-        default=None,
-        description=(
-            "Per-county scissors axes keyed by county_fips (ADR078; "
-            "MarketScissorsSystem advances them from each county's own "
-            "wage/value flow — the price_divergence map lens reads these). "
-            "Same absent-axis byte-safety contract as market."
-        ),
-    )
-
     opposition_states: dict[str, Any] = Field(
         default_factory=dict,
         description=(
@@ -889,10 +870,6 @@ class WorldState(BaseModel):
             G.graph["wealth_distribution"] = self.wealth_distribution.model_dump()
         if self.market is not None:
             G.graph["market"] = self.market.model_dump()
-        if self.market_county is not None:
-            G.graph["market_county"] = {
-                fips: axis.model_dump() for fips, axis in self.market_county.items()
-            }
 
     @classmethod
     def from_graph(
@@ -1063,11 +1040,6 @@ class WorldState(BaseModel):
             market=(
                 MarketState(**G.graph["market"])
                 if isinstance(G.graph.get("market"), dict)
-                else None
-            ),
-            market_county=(
-                {str(fips): MarketState(**axis) for fips, axis in G.graph["market_county"].items()}
-                if isinstance(G.graph.get("market_county"), dict)
                 else None
             ),
         )

@@ -115,7 +115,7 @@ class TestPolicyParsing:
             "run",
             "--frozen",
             "--extra",
-            "server",
+            "ops",
             "pip-audit",
             "--ignore-vuln",
             "CVE-2026-3219",

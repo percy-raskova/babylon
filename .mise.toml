@@ -13,7 +13,6 @@
 #   docs:*        - Documentation building
 #   mutate:*      - Mutation testing
 #   midi:*        - Music generation
-#   web:*         - Web app local development (Django; src/frontend deleted at WO-54)
 
 # The vendored Nix shell currently provides this floor. Hosted CI installs the
 # exact current release separately through mise-action.
@@ -89,7 +88,7 @@ description = "the ONE sanctioned merge path (ADR181 R10): all-green + head-pin 
 run = "python3 tools/pr_merge.py"
 
 [tasks."check:worktree-contract"]
-description = "worktree contract (ADR181 R9c): venv interpreter pin, server extra, data/ symlinks, .env, uv.lock unmodified"
+description = "worktree contract (ADR181 R9c): venv interpreter pin, ops extra, data/ symlinks, .env, uv.lock unmodified"
 run = "python3 tools/check_worktree_contract.py"
 
 [tasks."check:env-contract"]
@@ -123,14 +122,14 @@ description = "Install all dependencies (from the committed lock — see deps:lo
 # Edit pyproject.toml, then regenerate uv.lock with the pinned uv toolchain.
 # Amendment AF (ADR186) deleted the babylon-tui wheel from the default
 # dependency set — this sync no longer needs cargo/rustc on PATH.
-run = "uv sync --extra server --frozen"
+run = "uv sync --extra ops --frozen"
 
 [tasks.setup]
 description = "One-shot bootstrap for a fresh clone: toolchain + deps + hooks + tuned Postgres 16 + canonical schema (spec-087 FR-008)"
 run = """
 set -e
 mise install
-uv sync --extra server --frozen
+uv sync --extra ops --frozen
 uv run pre-commit install --hook-type commit-msg --hook-type pre-commit --hook-type pre-push
 mise run db:up
 mise run db:bootstrap
@@ -175,7 +174,7 @@ description = "Run complexity gate (xenon) - fails if CC > 15"
 run = "uv run xenon --max-absolute C src/"
 
 [tasks.check]
-description = "Fast CI gate: data-pathway + hygiene + ALL 14 sentinels + lint + imports + format + typecheck + unit tests"
+description = "Fast CI gate: data-pathway + hygiene + 16 static sentinels plus catalog + lint + imports + format + typecheck + unit tests"
 depends = ["data:doctor", "check:hygiene", "check:dynamic-linking-fence", "check:sentinels", "lint", "lint:imports", "format", "typecheck", "test:unit"]
 
 [tasks."data:doctor"]
@@ -205,10 +204,6 @@ arg "[base]" help="Base ref to diff from" default="origin/dev"
 arg "[head]" help="Head ref" default="HEAD"
 '''
 run = "uv run python tools/generate_pr_body.py --base ${usage_base} --head ${usage_head}"
-
-[tasks."check:seams"]
-description = "Seam Observatory Sensor 1: observable-field continuity gate (Constitution VIII.12 / III.11)"
-run = "uv run python tools/sentinel_check.py seam --check"
 
 [tasks."check:seam-algebra"]
 description = "Seam-algebra sentinel (T1.1 U3): static Lawvere co-Heyting boundary (dL) over the unified construct-to-expected-consumer registry -- disconnected-subsystem gate (static)"
@@ -250,18 +245,6 @@ run = "uv run python tools/sentinel_check.py formula_registration --check"
 description = "Defines-passthrough sentinel (task #42): every formulas-layer call declaring an optional `defines` param must pass the run's live defines, not silently fall back to schema defaults (static gate)"
 run = "uv run python tools/sentinel_check.py defines_passthrough --check"
 
-[tasks."check:masked-arithmetic"]
-description = "Masked-arithmetic sentinel: no unguarded arithmetic on a fog-masked political field (static gate)"
-run = "uv run python tools/sentinel_check.py masked_arithmetic --check"
-
-[tasks."check:aggregation"]
-description = "Aggregation-symmetry sentinel: all-masked group input must yield None, never a fabricated 0.0 (dynamic gate)"
-run = "uv run python tools/sentinel_check.py aggregation --check"
-
-[tasks."check:fog"]
-description = "Fog-containment sentinel: Hypothesis property — no political field escapes an out-of-reach mask (dynamic gate)"
-run = "uv run python tools/sentinel_check.py fog --check"
-
 [tasks."check:catalog"]
 description = "Data-catalog sentinel: reference-DB objects reconcile with data-catalog.yaml — no undeclared objects, phantom rows, or dark KEEP objects (DB probe)"
 run = "uv run python tools/sentinel_check.py catalog --check"
@@ -283,12 +266,12 @@ description = "Absence sentinel (task #64): every sqlite3.connect/create_engine(
 run = "uv run python tools/sentinel_check.py absence --check"
 
 [tasks."check:sentinels"]
-description = "ALL 19 sentinels (owner ruling 2026-07-18: the whole family is fast-gate LOCALLY — the dev box has the reference DB): seam seam-algebra coverage vocabulary inert dangling unconsumed masked-arithmetic aggregation fog catalog partition synthetic defines-passthrough gate-coverage absence formula-registration tutorial-coverage superstructure"
+description = "The 16 static sentinels plus the local reference-database catalog probe"
 depends = ["check:sentinels-static", "check:catalog"]
 
 [tasks."check:sentinels-static"]
-description = "The 20 static sentinels (no reference DB needed) — CI's fast-gate job runs THIS; the catalog DB-probe runs where the DB exists (locally via check:sentinels, in CI via nightly's requires_reference_db job)"
-depends = ["check:seams", "check:seam-algebra", "check:coverage", "check:vocabulary", "check:reachability", "check:fallback-coverage", "check:inert", "check:dangling", "check:unconsumed", "check:masked-arithmetic", "check:aggregation", "check:fog", "check:partition", "check:synthetic", "check:defines-passthrough", "check:gate-coverage", "check:absence", "check:formula-registration", "check:tutorial-coverage", "check:superstructure"]
+description = "The 16 static sentinels (no reference DB needed); the catalog DB probe runs in its reference-data lane"
+depends = ["check:seam-algebra", "check:coverage", "check:vocabulary", "check:reachability", "check:fallback-coverage", "check:inert", "check:dangling", "check:unconsumed", "check:partition", "check:synthetic", "check:defines-passthrough", "check:gate-coverage", "check:absence", "check:formula-registration", "check:tutorial-coverage", "check:superstructure"]
 
 [tasks."check:surface"]
 description = "Sentinel: __all__ vs its pinned baseline frozenset (public-surface baseline blindness gate)"
@@ -402,7 +385,7 @@ uv run coverage report --include='src/babylon/engine/systems/*' --fail-under=80
 """
 
 [tasks."test:rest-ci"]
-description = "CI heavy shard (program 15): everything outside tests/unit except the web-Postgres suites (their own job), PLUS slow-marked tests/unit tests (test:unit-ci excludes slow — without this second leg they would run nowhere in CI); max-verbosity output; includes slow; excludes red_phase/requires_reference_db/pacing_gate (the frozen Python 520-tick gate stays unscheduled until the PER-268 Rust successor exists)"
+description = "CI heavy shard (program 15): everything outside tests/unit, plus slow-marked tests/unit tests; excludes red_phase/requires_reference_db"
 # NO coverage on this shard (program 15, 2026-07-11): pytest-cov under
 # `-n 4` xdist instruments all of src/babylon in every worker, and stacked on
 # the memory-heavy integration/property suites it OOM-killed a worker on the
@@ -430,7 +413,7 @@ export HYPOTHESIS_PROFILE="${HYPOTHESIS_PROFILE:-ci}"
 timeout --signal=INT --kill-after=120 "${BABYLON_REST_SHARD_TIMEOUT:-100m}" \
 uv run pytest tests --ignore=tests/unit \
   -o addopts="" -vv -ra -l --tb=long --durations=0 \
-  -m 'not red_phase and not requires_reference_db and not pacing_gate' \
+  -m 'not red_phase and not requires_reference_db' \
   -n 4 --dist loadscope --max-worker-restart=2 \
   --junit-xml=reports/test-results/rest-ci/junit.xml
 echo '=== slow-marked tests/unit tests (excluded from the test:unit-ci fast shard) ==='
@@ -872,10 +855,6 @@ run = "watch -n 30 mise run sim:status"
 description = "Single-county Postgres tick probe; use: mise run sim:probe -- --county 26163 --ticks 3"
 run = "uv run python tools/tick_probe.py"
 
-[tasks."sim:pacing"]
-description = "Headless null-play pacing probe on the web scenario path (spec-116 ceremony instrument)"
-run = "cd web && uv run python manage.py pacing_probe"
-
 [tasks."sim:archive"]
 description = "Archive sessions to local Parquet + purge Postgres (spec-088); use: mise run sim:archive -- list | archive --all | archive --session <uuid>"
 run = "uv run python tools/archive_sessions.py"
@@ -1293,16 +1272,6 @@ uv run python -m babylon.engine.headless_runner \
   --output-dir "$(mktemp -d /tmp/michigan-smoke-XXXXXX)"
 """
 
-[tasks."qa:pacing"]
-description = "Frozen G1 reference: 520-tick (10yr) nationwide null-play pacing probe survival contract (spec-116 gate 1 / ADR079, owner ruling 2026-07-19). Manual-only through mise run qa:pacing; remains unscheduled until the PER-268 Rust successor exists; never part of mise run check/test:unit/test:rest-ci."
-run = """
-mkdir -p reports/test-results/pacing
-uv run pytest tests/integration/engine/test_pacing_gate_g1.py \
-  -o addopts="" -vv -ra -l --tb=long --durations=0 \
-  -m pacing_gate \
-  --junit-xml=reports/test-results/pacing/junit.xml
-"""
-
 [tasks."clean:testdb"]
 description = "Recycle the bloated babylon_test DB (test ticks accumulate ~GBs; drop, recreate, re-bootstrap)"
 run = """
@@ -1311,7 +1280,6 @@ docker exec babylon-pg-isolated psql -U test -d postgres -tc "SELECT pg_size_pre
 docker exec babylon-pg-isolated psql -U test -d postgres -c "DROP DATABASE IF EXISTS babylon_test;"
 docker exec babylon-pg-isolated psql -U test -d postgres -c "CREATE DATABASE babylon_test OWNER test;"
 mise run db:bootstrap
-mise run web:migrate
 echo "── babylon_test recycled:"
 docker exec babylon-pg-isolated psql -U test -d postgres -tc "SELECT pg_size_pretty(pg_database_size('babylon_test'));"
 df -h /var | tail -1
@@ -1634,105 +1602,6 @@ uv run python tools/necropolis_viewer.py \
   --years ${usage_years} \
   --interval ${usage_interval}
 """
-
-# =============================================================================
-# WEB APP (Namespaced)
-# PID files and logs stored in .web-pids/ (git-ignored)
-# =============================================================================
-
-[tasks."web:backend"]
-description = "Start Django dev server in foreground (port 8000)"
-dir = "web"
-raw = true
-run = "uv run python manage.py runserver 8000"
-
-[tasks."web:dev"]
-description = "Start Django as a background daemon (WO-54: src/frontend deleted, Vite/frontend legs retired)"
-run = """
-mkdir -p .web-pids
-
-if [ -f .web-pids/django.pid ] && kill -0 "$(cat .web-pids/django.pid)" 2>/dev/null; then
-  echo "Django already running (PID $(cat .web-pids/django.pid))"
-else
-  nohup bash -c 'cd web && exec uv run python manage.py runserver 8000' \
-    > .web-pids/django.log 2>&1 &
-  echo $! > .web-pids/django.pid
-  echo "Django started (PID $!) — log: .web-pids/django.log"
-fi
-
-echo ""
-echo "  Django: http://localhost:8000"
-echo ""
-echo "  mise run web:status  — check status"
-echo "  mise run web:logs    — tail logs"
-echo "  mise run web:stop    — graceful shutdown"
-"""
-
-[tasks."web:stop"]
-description = "Gracefully stop the Django dev server"
-run = """
-graceful_stop() {
-  name=$1
-  pidfile=".web-pids/${name}.pid"
-  if [ ! -f "$pidfile" ]; then
-    echo "${name}: no PID file"
-    return 0
-  fi
-  pid=$(cat "$pidfile")
-  if ! kill -0 "$pid" 2>/dev/null; then
-    echo "${name}: not running (stale PID ${pid})"
-    rm -f "$pidfile"
-    return 0
-  fi
-  echo "${name}: sending SIGTERM to PID ${pid}..."
-  kill -TERM "$pid" 2>/dev/null || true
-  pkill -TERM -P "$pid" 2>/dev/null || true
-  i=0
-  while [ "$i" -lt 5 ] && kill -0 "$pid" 2>/dev/null; do
-    sleep 1
-    i=$((i + 1))
-  done
-  if kill -0 "$pid" 2>/dev/null; then
-    echo "${name}: still alive after 5s, sending SIGKILL..."
-    kill -KILL "$pid" 2>/dev/null || true
-    pkill -KILL -P "$pid" 2>/dev/null || true
-  fi
-  rm -f "$pidfile"
-  echo "${name}: stopped"
-}
-
-graceful_stop django
-"""
-
-[tasks."web:status"]
-description = "Show status of the Django dev server"
-run = """
-for name in django; do
-  pidfile=".web-pids/${name}.pid"
-  if [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
-    echo "${name}: running (PID $(cat "$pidfile"))"
-  else
-    echo "${name}: stopped"
-    rm -f "$pidfile" 2>/dev/null || true
-  fi
-done
-"""
-
-[tasks."web:logs"]
-description = "Tail the Django dev server log"
-raw = true
-run = "tail -f .web-pids/django.log"
-
-[tasks."web:install"]
-description = "Install Python dependencies for the web app"
-run = """
-(cd web && uv sync --extra server)
-"""
-
-[tasks."web:migrate"]
-description = "Run Django database migrations"
-dir = "web"
-run = "uv run python manage.py migrate"
 
 # ── Rust client (the raster cutover, Amendment AC / ADR150) ──────────────────
 

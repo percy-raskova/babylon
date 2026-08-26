@@ -25,6 +25,6 @@ jobs:
           ref: dev
       - uses: ./.github/actions/bootstrap-python
         with:
-          server: "true"
+          ops: "true"
       - name: pip-audit (policy wrapper — ignores carry reason + expiry)
         run: mise run security:pip-audit

@@ -40,12 +40,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      # gdal:true — mypy's django-stubs plugin loads Django settings at
-      # startup, and the postgis backend imports GEOS/GDAL/PROJ.
       - uses: ./.github/actions/bootstrap-python
-        with:
-          gdal: "true"
-          server: "true"
 
       # Incremental mypy state. Key ends in the commit SHA so every run saves
       # a fresh snapshot; restore-keys fall back to the newest same-lock cache.
@@ -196,9 +191,6 @@ jobs:
             "e905e90d66bddc6e4eca36a3896428f5ce63de5b"
 
       - uses: ./.github/actions/bootstrap-python
-        with:
-          gdal: "true"
-          server: "true"
 
       - name: Unit shard (excludes ai/slow/reference-DB; engine/systems cov >= 80%)
         run: mise run test:unit-ci
@@ -218,8 +210,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      # No gdal: the 5 regression scenarios are synthetic in-memory factories
-      # (no Django, no reference DB, no Postgres) — proven by the Phase-0
+      # The 5 regression scenarios are synthetic in-memory factories
+      # (no reference DB or Postgres) — proven by the Phase-0
       # probe: byte-identical on hosted runners across CPU/glibc/Python.
       - uses: ./.github/actions/bootstrap-python
 
@@ -245,9 +237,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: ./.github/actions/bootstrap-python
-        with:
-          gdal: "true"  # the integration conftest chain imports Django GIS
-          server: "true"
 
       - name: Install Rust toolchain (legacy adopter only)
         run: |
@@ -301,7 +290,7 @@ jobs:
 
       - uses: ./.github/actions/bootstrap-python
         with:
-          server: "true"
+          ops: "true"
 
       - name: pip-audit (policy wrapper — ignores carry reason + expiry)
         run: mise run security:pip-audit

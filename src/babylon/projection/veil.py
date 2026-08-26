@@ -113,7 +113,7 @@ Tier >= 1 — wage-vs-value-produced axis and the imperial-rent family
 Tier >= 2 — the price<->value divergence instruments
 (:data:`TIER2_SCISSORS_FIELDS`):
 
-- ``price_divergence``, ``fictitious_ratio`` — the scissors themselves.
+- ``fictitious_ratio`` — the fictitious-to-real scissors.
 - ``price_index`` — MELT drift (``price_index - 1``): a dollar's command
   over labor time, the same phenomenal-form-vs-substance reading.
 - ``market_corrections`` — the scissors-snap chart marker (cumulative
@@ -244,7 +244,6 @@ TIER1_VALUE_RELATION_FIELDS: frozenset[str] = frozenset(
 #: Tier >= 2 — the price<->value divergence instruments (the scissors).
 TIER2_SCISSORS_FIELDS: frozenset[str] = frozenset(
     {
-        "price_divergence",
         "price_index",
         "fictitious_ratio",
         "market_corrections",

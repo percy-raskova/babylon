@@ -33,13 +33,13 @@ def test_real_gate_is_not_blind() -> None:
 def test_efficacy_reds_when_the_harness_injects_nothing() -> None:
     """MUTATION: point the estate at a harness that injects none of its keys.
 
-    ``web/game/map_contract.py`` is a real parseable file that mentions no
+    ``src/babylon/config/defines/_hash.py`` is a real parseable file that mentions no
     economics service key — the exact shape of a gate that runs green while
     executing none of the estate it claims to guard.
     """
     blind = GateEstate(
         gate_name="phantom:gate",
-        harness_file="web/game/map_contract.py",
+        harness_file="src/babylon/config/defines/_hash.py",
         estate_name="economics_calculators",
         factory_file="src/babylon/domain/economics/factory.py",
         factory_symbol="create_economics_services",
@@ -56,7 +56,7 @@ def test_exempt_keys_narrow_the_claim_with_a_reason() -> None:
     """A key the gate deliberately does not inject is exempt WITH a reason."""
     narrowed = GateEstate(
         gate_name="phantom:gate",
-        harness_file="web/game/map_contract.py",
+        harness_file="src/babylon/config/defines/_hash.py",
         estate_name="economics_calculators",
         factory_file="src/babylon/domain/economics/factory.py",
         factory_symbol="create_economics_services",

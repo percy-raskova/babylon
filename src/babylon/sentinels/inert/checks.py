@@ -620,7 +620,7 @@ def main(argv: list[str] | None = None) -> int:
         _summary,
         scope=(
             "the tree-wide sweep for undeclared accumulator-shaped classes covers "
-            "src/ and web/; the caller check covers only the registry's "
+            "src/; the caller check covers only the registry's "
             f"{len(DECLARED_STORES)} store(s) and {len(DECLARED_PRODUCERS)} producer(s) — "
             "a construct absent from inert/registry.py is not watched"
         ),

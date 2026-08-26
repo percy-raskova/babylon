@@ -95,7 +95,7 @@ def test_pages_write_permissions_exist_only_on_the_deploy_job() -> None:
     }
 
 
-def test_pip_audit_jobs_install_the_supported_server_runtime_set() -> None:
+def test_pip_audit_jobs_install_the_operator_dependency_set() -> None:
     violations: list[str] = []
     for name in ("ci.yml", "weekly-security.yml"):
         security = _workflow(name)["jobs"]["security"]
@@ -104,7 +104,7 @@ def test_pip_audit_jobs_install_the_supported_server_runtime_set() -> None:
             for step in security["steps"]
             if step.get("uses") == "./.github/actions/bootstrap-python"
         )
-        if bootstrap.get("with") != {"server": "true"}:
+        if bootstrap.get("with") != {"ops": "true"}:
             violations.append(name)
 
     assert violations == []

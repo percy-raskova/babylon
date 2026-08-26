@@ -59,7 +59,6 @@ ALLOWED_TOP_LEVEL_DIRS: frozenset[str] = frozenset(
         "src",
         "tests",
         "tools",
-        "web",
     }
 )
 

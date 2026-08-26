@@ -1026,7 +1026,6 @@ tables:
     consumers:
       - src/babylon/domain/economics/throughput/adapters.py
       - src/babylon/engine/services.py
-      - src/babylon/sentinels/seam/registry.py
     tests:
       - tests/integration/economics/test_unemployment_adapter.py
     disposition: keep
@@ -1047,7 +1046,6 @@ tables:
       - src/babylon/domain/economics/tick/types.py
       - src/babylon/domain/economics/tick/graph_bridge.py
       - src/babylon/engine/services.py
-      - src/babylon/sentinels/seam/registry.py
       - tools/validate_detroit.py
     tests:
       - tests/integration/economics/test_unemployment_adapter.py

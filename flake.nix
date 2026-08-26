@@ -70,7 +70,6 @@
           fileset = lib.fileset.difference ./. (
             lib.fileset.unions [
               (lib.fileset.maybeMissing ./src/babylon_data)
-              (lib.fileset.maybeMissing ./web)
               (lib.fileset.maybeMissing ./node_modules)
               (lib.fileset.maybeMissing ./ai)
             ]
@@ -182,7 +181,7 @@
             nodejs_22
             git-lfs
             postgresql_16.lib   # libpq for pure-python psycopg
-            gdal                # GeoDjango runtime + geospatial CLI/headers (ogr2ogr, gdal-config)
+            gdal                # geospatial CLI/headers (ogr2ogr, gdal-config)
             geos
             proj
             openblas
@@ -193,7 +192,6 @@
             libxkbcommon        # Bevy Linux keyboard compile/runtime closure
             sccache            # R1.1: shared compile cache across worktrees (see shellHook)
             fluidsynth
-            playwright-driver.browsers
             mise                # task runner pinned here, not assumed on the host
             jq                  # post-tool-lint.sh dispatcher
           ]) ++ rustToolchainPackages ++ [
@@ -233,14 +231,6 @@
               pkgs.wayland
               pkgs.libxkbcommon
             ]}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
-            # GeoDjango cannot ctypes-find_library() under the nix linker —
-            # hand it exact store paths (web settings consume these when set;
-            # host installs keep using ldconfig lookup).
-            export GDAL_LIBRARY_PATH=${pkgs.gdal}/lib/libgdal.so
-            export GEOS_LIBRARY_PATH=${pkgs.geos}/lib/libgeos_c.so
-            # Pinned Playwright browsers (no npx playwright install)
-            export PLAYWRIGHT_BROWSERS_PATH=${pkgs.playwright-driver.browsers}
-            export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
             # Environment contract: this shell provides TOOLS, not python
             # imports. nixpkgs' python setup hooks export python-built
             # packages' site-packages onto PYTHONPATH (gdal here), which

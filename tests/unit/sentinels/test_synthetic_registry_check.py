@@ -11,7 +11,7 @@ Two tiers, per the sentinel contract (mirrors ``test_coverage.py``):
   swallowed.
 
 This sentinel is **purely static** — it reads source files with :mod:`ast` and
-never imports/runs ``web`` or the engine, so it needs no Postgres and does not
+never imports/runs the engine, so it needs no Postgres and does not
 consume the ``shared_tick`` dynamic fixture.
 """
 
@@ -38,10 +38,9 @@ _TOOL_PATH = _TOOLS_DIR / "sentinel_check.py"
 
 
 def test_registry_is_non_empty() -> None:
-    """The registry declares at least the three background-verified sources."""
+    """The registry declares the retained engine fallback sources."""
     names = {row.name for row in SYNTHETIC_SOURCES}
     assert {
-        "stub_engine_bridge",
         "economics_employment_default",
         "economics_fallback_tally",
     } <= names
@@ -54,8 +53,8 @@ def test_real_sources_are_coherent() -> None:
 
 def test_symbol_exists_finds_a_known_top_level_class() -> None:
     """The AST resolver finds a real module-level class by bare name."""
-    path = _REPO_ROOT / "web/game/stub_bridge.py"
-    assert symbol_exists(path, "StubEngineBridge")
+    path = _REPO_ROOT / "src/babylon/engine/services.py"
+    assert symbol_exists(path, "ServiceContainer")
 
 
 def test_symbol_exists_finds_a_known_dotted_class_attribute() -> None:
@@ -72,7 +71,7 @@ def test_symbol_exists_finds_a_known_dotted_method() -> None:
 
 def test_symbol_exists_false_for_unknown_bare_name() -> None:
     """A name that is not defined at module scope resolves to False, not an error."""
-    path = _REPO_ROOT / "web/game/stub_bridge.py"
+    path = _REPO_ROOT / "src/babylon/engine/services.py"
     assert not symbol_exists(path, "ThisClassDoesNotExist")
 
 
@@ -96,10 +95,10 @@ def test_efficacy_reds_on_nonexistent_source_symbol() -> None:
     """
     broken = SyntheticSource(
         name="phantom_source",
-        source_file="web/game/stub_bridge.py",
+        source_file="src/babylon/engine/services.py",
         source_symbol="ThisClassDoesNotExist",
-        guard_file="web/game/api.py",
-        guard_symbol="_get_bridge",
+        guard_file="src/babylon/engine/services.py",
+        guard_symbol="EconomicsFallbackTally",
         guard_kind="debug_gate",
         what_it_fakes="synthetic defect for the efficacy proof",
         invariant="n/a",
@@ -118,9 +117,9 @@ def test_efficacy_reds_on_nonexistent_guard_symbol() -> None:
     """
     broken = SyntheticSource(
         name="unguarded_source",
-        source_file="web/game/stub_bridge.py",
-        source_symbol="StubEngineBridge",
-        guard_file="web/game/api.py",
+        source_file="src/babylon/engine/services.py",
+        source_symbol="ServiceContainer",
+        guard_file="src/babylon/engine/services.py",
         guard_symbol="_this_guard_was_deleted",
         guard_kind="debug_gate",
         what_it_fakes="synthetic defect for the efficacy proof",
@@ -137,9 +136,9 @@ def test_efficacy_both_symbols_missing_reports_two_violations() -> None:
     """EFFICACY: a row broken on both sides reports both, not just the first."""
     broken = SyntheticSource(
         name="doubly_phantom",
-        source_file="web/game/stub_bridge.py",
+        source_file="src/babylon/engine/services.py",
         source_symbol="NoSuchSource",
-        guard_file="web/game/api.py",
+        guard_file="src/babylon/engine/services.py",
         guard_symbol="no_such_guard",
         guard_kind="debug_gate",
         what_it_fakes="synthetic defect for the efficacy proof",
@@ -159,8 +158,8 @@ def test_efficacy_missing_source_file_is_loud() -> None:
         name="gone_module",
         source_file="src/babylon/domain/economics/does_not_exist.py",
         source_symbol="Whatever",
-        guard_file="web/game/api.py",
-        guard_symbol="_get_bridge",
+        guard_file="src/babylon/engine/services.py",
+        guard_symbol="EconomicsFallbackTally",
         guard_kind="debug_gate",
         what_it_fakes="synthetic missing-file defect",
         invariant="n/a",

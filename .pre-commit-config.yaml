@@ -373,7 +373,6 @@ repos:
           (?x)^(
             \.specify/.*|
             specs/.*|
-            \.agents/.*|
             openwiki/.*|
             CONSTITUTION\.md
           )$

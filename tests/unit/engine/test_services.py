@@ -107,8 +107,9 @@ class TestServiceContainer:
         Spec 057 unquarantine: count was 23 (was 24 before that). The
         'imperial_rent' formula was removed in commit a5f73139; Spec 057
         wired the new Leontief pipeline via ServiceContainer fields, NOT
-        FormulaRegistry. U2 (Vol I value-production program) adds
-        'phi_absolute' (Phi = Wc - Vc) — count is now 24 (NOT registered as
+        FormulaRegistry. U2 (Vol I value-production program) added
+        'phi_absolute' (Phi = Wc - Vc). PER-258 removes the orphaned
+        'consciousness_drift' entry, leaving 23 formulas (NOT registered as
         'imperial_rent_gap': that key already names a different, live,
         player-facing quantity — see value_form.py's collision fence).
         """
@@ -118,7 +119,7 @@ class TestServiceContainer:
 
         try:
             formulas = container.formulas.list_formulas()
-            assert len(formulas) == 24  # post-U2 (phi_absolute added)
+            assert len(formulas) == 23  # PER-258 removed orphaned consciousness_drift
             assert "imperial_rent" not in formulas  # moved to ServiceContainer
             assert "revolution_probability" in formulas
             assert "solidarity_transmission" in formulas  # Sprint 3.4.2

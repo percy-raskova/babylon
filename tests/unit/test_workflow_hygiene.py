@@ -797,8 +797,6 @@ else:
         config = yaml.safe_load(DEPENDABOT_CONFIG_PATH.read_text())
         uv = _dependabot_update(config, "uv")
         assert {entry["dependency-name"]: entry["update-types"] for entry in uv["ignore"]} == {
-            "django": ["version-update:semver-major"],
-            "django-stubs": ["version-update:semver-major"],
             "mypy": ["version-update:semver-major"],
         }
         docker = _dependabot_update(config, "docker")

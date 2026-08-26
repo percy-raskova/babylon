@@ -17,7 +17,6 @@ use std::path::PathBuf;
 use std::process::Command;
 
 const ZERO_DIGEST: &str = "0000000000000000000000000000000000000000000000000000000000000000";
-const MAX_MIGRATION_DIRECTORY_ENTRIES: usize = 64;
 const MAX_RUNNER_LINES: usize = 256;
 const MAX_WORKFLOW_JOB_BOUNDARY_CANDIDATES: usize = 128;
 const MAX_SQL_LITERAL_SEGMENTS: usize = 8_192;
@@ -1980,55 +1979,6 @@ fn connection_target_requires_one_literal_local_endpoint() {
 }
 
 #[test]
-fn django_history_terminates_exactly_at_0015_and_bytes_remain_frozen() {
-    let chunks: [&[u8]; 15] = [
-        include_bytes!("../../../../web/game/migrations/0001_initial.py"),
-        include_bytes!("../../../../web/game/migrations/0002_hex_states_schema.py"),
-        include_bytes!("../../../../web/game/migrations/0003_spec037_simulation_tables.py"),
-        include_bytes!("../../../../web/game/migrations/0004_dialectic_snapshot.py"),
-        include_bytes!("../../../../web/game/migrations/0005_game_session_snapshot_json.py"),
-        include_bytes!("../../../../web/game/migrations/0006_drop_sim_hex_states.py"),
-        include_bytes!("../../../../web/game/migrations/0007_purge_fixture_sessions.py"),
-        include_bytes!("../../../../web/game/migrations/0008_drop_snapshot_json.py"),
-        include_bytes!("../../../../web/game/migrations/0009_action_result_unique.py"),
-        include_bytes!("../../../../web/game/migrations/0010_document_chunk_reconciliation.py"),
-        include_bytes!(
-            "../../../../web/game/migrations/0011_communitysnapshot_economicsummary_edgesnapshot_and_more.py"
-        ),
-        include_bytes!("../../../../web/game/migrations/0012_alter_gameeventlog_category.py"),
-        include_bytes!("../../../../web/game/migrations/0013_hexstate_attributes.py"),
-        include_bytes!("../../../../web/game/migrations/0014_classsnapshot.py"),
-        include_bytes!("../../../../web/game/migrations/0015_narrationrecord.py"),
-    ];
-    let manifest = MigrationManifest::from_chunks("django-web-game-0001-0015", &chunks).unwrap();
-    assert_eq!(
-        chunks.iter().map(|chunk| chunk.len() + 1).sum::<usize>(),
-        46_908
-    );
-    assert_eq!(
-        manifest.digest().to_hex(),
-        "04a054dd3b56d4918f0e88217a9f8e6248af306b2946dcf86d7e496512721c23"
-    );
-
-    let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../web/game/migrations");
-    let names = std::fs::read_dir(directory)
-        .unwrap()
-        .take(MAX_MIGRATION_DIRECTORY_ENTRIES + 1)
-        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
-        .collect::<Vec<_>>();
-    assert!(names.len() <= MAX_MIGRATION_DIRECTORY_ENTRIES);
-    let mut numbered = names
-        .iter()
-        .take(MAX_MIGRATION_DIRECTORY_ENTRIES)
-        .filter(|name| name.len() >= 5 && name.as_bytes()[0..4].iter().all(u8::is_ascii_digit))
-        .cloned()
-        .collect::<Vec<_>>();
-    numbered.sort();
-    assert_eq!(numbered.len(), 15);
-    assert!(numbered.last().unwrap().starts_with("0015_"));
-}
-
-#[test]
 fn engine_manifests_remain_postgres_free() {
     let manifests = [
         include_str!("../../babylon-kernel/Cargo.toml"),
@@ -2057,9 +2007,21 @@ fn postgres_ci_and_sanctioned_merger_share_the_pinned_runtime_name() {
     assert!(!workflow.contains("digest-pinned base"));
 }
 
+fn assert_weekly_adopter_bootstrap_contract(bootstrap: &str, weekly_job: &str) {
+    assert!(weekly_job.contains("- uses: ./.github/actions/bootstrap-python"));
+    assert!(bootstrap.contains("  ops:\n    description:"));
+    assert!(bootstrap
+        .contains("if [ \"${{ inputs.ops }}\" = \"true\" ]; then EXTRA=\"--extra ops\"; fi"));
+    assert!(!bootstrap.contains("  gdal:"));
+    assert!(!bootstrap.contains("  server:"));
+    assert!(!weekly_job.contains("gdal:"));
+    assert!(!weekly_job.contains("server:"));
+}
+
 #[test]
 fn live_adopter_tests_are_split_between_pr_and_weekly_cadences() {
     let mise = include_str!("../../../../.mise.toml");
+    let bootstrap = include_str!("../../../../.github/actions/bootstrap-python/action.yml");
     let pr_workflow = include_str!("../../../../.github/workflows/ci.yml");
     let weekly_workflow = include_str!("../../../../.github/workflows/weekly-pg-integration.yml");
     let runner = include_str!("../../../../tools/run_rust_legacy_adopter_pg.sh");
@@ -2089,9 +2051,7 @@ fn live_adopter_tests_are_split_between_pr_and_weekly_cadences() {
     assert!(weekly_job.contains("name: Exhaustive Rust legacy adopter matrix (dev HEAD)"));
     assert!(weekly_job.contains("timeout-minutes: 40"));
     assert!(weekly_job.contains("ref: dev"));
-    assert!(weekly_job.contains(
-        "- uses: ./.github/actions/bootstrap-python\n        with:\n          gdal: \"true\"\n          server: \"true\""
-    ));
+    assert_weekly_adopter_bootstrap_contract(bootstrap, weekly_job);
     assert!(!weekly_job.contains("uses: jdx/mise-action"));
     assert!(weekly_job.contains(
         "- name: Exhaustive adopter matrix and rollback proof\n        timeout-minutes: 31\n        run: mise run test:rust-legacy-adopter-pg"

@@ -375,15 +375,6 @@ wheels = [
 ]
 
 [[package]]
-name = "asgiref"
-version = "3.12.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/e6/26/3b59f2bdae5f640389becb1f673cded775287f5fc4f816309d9ca9a3f93d/asgiref-3.12.1.tar.gz", hash = "sha256:59dcb51c272ad209d59bed5708a64a333083e86017d7fcdd67498eeab7784340", size = 42378, upload-time = "2026-07-14T09:56:18.087Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/c0/1b/54f4ad77cd8a584fa70746c47df988e002cf1ee1eba43364d46f87803647/asgiref-3.12.1-py3-none-any.whl", hash = "sha256:fe386d1c2bff7259ea95929266d12a8cf9a8b5a1c2598402967d8792e7a7c094", size = 25478, upload-time = "2026-07-14T09:56:16.926Z" },
-]
-
-[[package]]
 name = "attrs"
 version = "26.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -450,14 +441,10 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
-server = [
+ops = [
     { name = "ansible-dev-tools" },
     { name = "boto3" },
-    { name = "django" },
-    { name = "django-cors-headers" },
-    { name = "djangorestframework" },
     { name = "doc8" },
-    { name = "gunicorn" },
     { name = "rstcheck" },
 ]
 
@@ -465,8 +452,6 @@ server = [
 dev = [
     { name = "commitizen" },
     { name = "deptry" },
-    { name = "django-stubs", extra = ["compatible-mypy"] },
-    { name = "djangorestframework-stubs", extra = ["compatible-mypy"] },
     { name = "hypothesis" },
     { name = "import-linter" },
     { name = "linkify-it-py" },
@@ -481,13 +466,12 @@ dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
-    { name = "pytest-django" },
     { name = "pytest-html" },
     { name = "pytest-json-report" },
     { name = "pytest-mock" },
-    { name = "pytest-playwright" },
     { name = "pytest-randomly" },
     { name = "pytest-timeout" },
+    { name = "pytest-xdist" },
     { name = "radon" },
     { name = "ruff" },
     { name = "salib" },
@@ -516,20 +500,16 @@ mutation = [
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.13.3,<4.0.0" },
-    { name = "ansible-dev-tools", marker = "extra == 'server'", specifier = ">=26.2.0,<27.0.0" },
+    { name = "ansible-dev-tools", marker = "extra == 'ops'", specifier = ">=26.2.0,<27.0.0" },
     { name = "backoff", specifier = ">=2.2.1" },
-    { name = "boto3", marker = "extra == 'server'", specifier = ">=1.42.59,<2.0.0" },
+    { name = "boto3", marker = "extra == 'ops'", specifier = ">=1.42.59,<2.0.0" },
     { name = "certifi", specifier = ">=2025.11.12" },
     { name = "coloredlogs", specifier = ">=15.0.1" },
-    { name = "django", marker = "extra == 'server'", specifier = ">=5.0,<7.0" },
-    { name = "django-cors-headers", marker = "extra == 'server'", specifier = ">=4.0" },
-    { name = "djangorestframework", marker = "extra == 'server'", specifier = ">=3.15" },
-    { name = "doc8", marker = "extra == 'server'", specifier = ">=2.0.0,<3.0.0" },
+    { name = "doc8", marker = "extra == 'ops'", specifier = ">=2.0.0,<3.0.0" },
     { name = "duckdb", specifier = ">=1.4.4,<2.0.0" },
     { name = "dulwich", specifier = ">=1.2,<2" },
     { name = "filelock", specifier = ">=3.20.3" },
     { name = "geopandas", specifier = ">=1.0.0" },
-    { name = "gunicorn", marker = "extra == 'server'", specifier = ">=21.0" },
     { name = "h3", specifier = ">=4.2.0,<5.0.0" },
     { name = "jinja2", specifier = ">=3.1.6,<4.0.0" },
     { name = "jsonschema", specifier = ">=4.25.1,<5.0.0" },
@@ -554,7 +534,7 @@ requires-dist = [
     { name = "referencing", specifier = ">=0.37.0,<0.38.0" },
     { name = "requests", specifier = ">=2.32.3" },
     { name = "rich", specifier = ">=13.9.4" },
-    { name = "rstcheck", marker = "extra == 'server'", specifier = ">=6.2.5,<7.0.0" },
+    { name = "rstcheck", marker = "extra == 'ops'", specifier = ">=6.2.5,<7.0.0" },
     { name = "rustworkx", specifier = ">=0.18.0,<0.19.0" },
     { name = "scipy", specifier = ">=1.11.0" },
     { name = "shapely", specifier = ">=2.0.0" },
@@ -565,14 +545,12 @@ requires-dist = [
     { name = "typer", specifier = ">=0.15.1" },
     { name = "xgi", specifier = ">=0.10.0,<0.11.0" },
 ]
-provides-extras = ["server"]
+provides-extras = ["ops"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "commitizen", specifier = ">=4.1.0,<5.0.0" },
     { name = "deptry", specifier = ">=0.25.1,<0.26.0" },
-    { name = "django-stubs", extras = ["compatible-mypy"], specifier = ">=5.0" },
-    { name = "djangorestframework-stubs", extras = ["compatible-mypy"], specifier = ">=3.15" },
     { name = "hypothesis", specifier = ">=6.149.0,<7.0.0" },
     { name = "import-linter", specifier = ">=2.13.0,<3.0.0" },
     { name = "linkify-it-py", specifier = ">=2.0.3,<3.0.0" },
@@ -587,13 +565,12 @@ dev = [
     { name = "pytest", specifier = ">=9.0.3,<10.0.0" },
     { name = "pytest-asyncio", specifier = ">=1.0.0,<2.0.0" },
     { name = "pytest-cov", specifier = ">=7.0.0,<8.0.0" },
-    { name = "pytest-django", specifier = ">=4.8.0,<5.0.0" },
     { name = "pytest-html", specifier = ">=4.1.0,<5.0.0" },
     { name = "pytest-json-report", specifier = ">=1.5.0,<2.0.0" },
     { name = "pytest-mock", specifier = ">=3.14.0,<4.0.0" },
-    { name = "pytest-playwright", specifier = ">=0.8.0,<0.10.0" },
     { name = "pytest-randomly", specifier = ">=4.0.1,<5.0.0" },
     { name = "pytest-timeout", specifier = ">=2.4.0,<3.0.0" },
+    { name = "pytest-xdist", specifier = ">=3.8.0,<4.0.0" },
     { name = "radon", specifier = ">=6.0.1,<7.0.0" },
     { name = "ruff", specifier = ">=0.15.12,<0.17.0" },
     { name = "salib", specifier = ">=1.5.2,<2.0.0" },
@@ -1338,98 +1315,6 @@ wheels = [
 ]
 
 [[package]]
-name = "django"
-version = "5.2.17"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "asgiref" },
-    { name = "sqlparse" },
-    { name = "tzdata", marker = "sys_platform == 'win32'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/d5/d8/43e9d000519adceb189620b6869ff88031e046df91c2e9da72f8f6918399/django-5.2.17.tar.gz", hash = "sha256:9d4d93be539a18ab80d058eb515900e10951e04c537c5a6b394fc49528d3251f", size = 10889740, upload-time = "2026-08-04T15:04:03.173Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/df/f8/ce120525ca78f12b07daf65786679c5d0b54a75285a8958d3ae55e39da35/django-5.2.17-py3-none-any.whl", hash = "sha256:f04fb3b36ee119e1af4fa1d397d5fd6cf12700f49321e84d4f4c642c5b1973db", size = 8315563, upload-time = "2026-08-04T15:03:59.1Z" },
-]
-
-[[package]]
-name = "django-cors-headers"
-version = "4.9.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "asgiref" },
-    { name = "django" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/21/39/55822b15b7ec87410f34cd16ce04065ff390e50f9e29f31d6d116fc80456/django_cors_headers-4.9.0.tar.gz", hash = "sha256:fe5d7cb59fdc2c8c646ce84b727ac2bca8912a247e6e68e1fb507372178e59e8", size = 21458, upload-time = "2025-09-18T10:40:52.326Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/30/d8/19ed1e47badf477d17fb177c1c19b5a21da0fd2d9f093f23be3fb86c5fab/django_cors_headers-4.9.0-py3-none-any.whl", hash = "sha256:15c7f20727f90044dcee2216a9fd7303741a864865f0c3657e28b7056f61b449", size = 12809, upload-time = "2025-09-18T10:40:50.843Z" },
-]
-
-[[package]]
-name = "django-stubs"
-version = "6.0.7"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "django" },
-    { name = "django-stubs-ext" },
-    { name = "types-pyyaml" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/8a/90/087c6e424e705e05182e543ef6b366a59eb5c92ab008b0dbbba55f357a40/django_stubs-6.0.7.tar.gz", hash = "sha256:bc55431c0af745a64e39cf33a8d36c87dccbedeae2fe26fab47dd355270e8538", size = 282293, upload-time = "2026-07-14T10:08:27.122Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/02/86/230ae6056221b543d63f7710d73967fe1c6840693540e99ea3c54f45859c/django_stubs-6.0.7-py3-none-any.whl", hash = "sha256:7ed9a14c438e589272ca04e966dee82a4d1ff7ca5c2171bc986c50a0d03ec35b", size = 547460, upload-time = "2026-07-14T10:08:25.626Z" },
-]
-
-[package.optional-dependencies]
-compatible-mypy = [
-    { name = "mypy" },
-]
-
-[[package]]
-name = "django-stubs-ext"
-version = "6.0.7"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "django" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/36/50/917f7224ea470e89cdcdc93d3dfe75b8391adf976cf12f2ecdb5f5d122be/django_stubs_ext-6.0.7.tar.gz", hash = "sha256:c3172c5126614fd2a44d0196b313b44c21f717cb09477ba52b447d41f4ce613e", size = 6665, upload-time = "2026-07-14T10:07:56.933Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/83/65/4d73fce956b5ebf26449259664360e539fbe95f0e86be396c28b636ba72a/django_stubs_ext-6.0.7-py3-none-any.whl", hash = "sha256:53a9c7c5a7c7e718cc6308cfce1e7470f2cac0b9d38dbcd60fbfa82704f1d592", size = 10362, upload-time = "2026-07-14T10:07:55.653Z" },
-]
-
-[[package]]
-name = "djangorestframework"
-version = "3.17.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "django" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/ca/d7/c016e69fac19ff8afdc89db9d31d9ae43ae031e4d1993b20aca179b8301a/djangorestframework-3.17.1.tar.gz", hash = "sha256:a6def5f447fe78ff853bff1d47a3c59bf38f5434b031780b351b0c73a62db1a5", size = 905742, upload-time = "2026-03-24T16:58:33.705Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/5a/e1/2c516bdc83652b1a60c6119366ac2c0607b479ed05cd6093f916ca8928f8/djangorestframework-3.17.1-py3-none-any.whl", hash = "sha256:c3c74dd3e83a5a3efc37b3c18d92bd6f86a6791c7b7d4dff62bb068500e76457", size = 898844, upload-time = "2026-03-24T16:58:31.845Z" },
-]
-
-[[package]]
-name = "djangorestframework-stubs"
-version = "3.17.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "django-stubs" },
-    { name = "types-pyyaml" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/9d/a1/45e25dab89b3dfc5da7a138f7e82aca4e970269c53a3fceed1e94b31d390/djangorestframework_stubs-3.17.0.tar.gz", hash = "sha256:74c0307cad304c03c15aee5955ec2fdeab0ac854b5bea569dc124892792e2b96", size = 33115, upload-time = "2026-05-13T18:58:36.554Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/72/ff/6e27d4aea12f67d14e0c0ec41869307ae98ad3816858ddc2a56bc3f4e0b5/djangorestframework_stubs-3.17.0-py3-none-any.whl", hash = "sha256:babe2703f0401507780848439f49f76222a178b4fc73a6dcb30d0952a0a6dbc6", size = 57629, upload-time = "2026-05-13T18:58:34.779Z" },
-]
-
-[package.optional-dependencies]
-compatible-mypy = [
-    { name = "django-stubs", extra = ["compatible-mypy"] },
-    { name = "mypy" },
-]
-
-[[package]]
 name = "doc8"
 version = "2.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1882,18 +1767,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/00/ac/05d859a62ed9282f43a0f0962da230c46a2eb3d3ecb5b39117b3b4888405/grimp-3.15-cp315-cp315-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:fcc2e5065d35047729e41a55c9c3eb99810cf322fe3b3e89fa126f306ce6b3b5", size = 2273647, upload-time = "2026-07-03T12:08:36.139Z" },
     { url = "https://files.pythonhosted.org/packages/6d/dd/f726316f54e29da4f24d545d6299e1ea0accfbbf52729077fd4a619de055/grimp-3.15-cp315-cp315t-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:b38327673df49203cff0ebcbbf078999a80f0b11bb654760059f6f00f56f64d6", size = 2344080, upload-time = "2026-07-03T12:08:25.044Z" },
     { url = "https://files.pythonhosted.org/packages/c1/56/523a8f969f0a0b0a8ce43fbe8bc7a04e90f52724efc85f3305f1e07ae626/grimp-3.15-cp315-cp315t-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:965b37dad2f73164a103381c9fd1255bb3b2f6021ca2f38ffe70dd00fdc0fc55", size = 2275041, upload-time = "2026-07-03T12:08:37.582Z" },
-]
-
-[[package]]
-name = "gunicorn"
-version = "26.0.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "packaging" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/6d/b7/a4a3f632f823e432ce6bc65f62961b7980c898c77f075a2f7118cb3846fe/gunicorn-26.0.0.tar.gz", hash = "sha256:ca9346f85e3a4aeeb64d491045c16b9a35647abd37ea15efe53080eb8b090baf", size = 727286, upload-time = "2026-05-05T06:38:25.529Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e6/40/9c2384fc2be4ad25dd4a49decd5ad9ea5a3639814c11bd40ab77cb9f0a14/gunicorn-26.0.0-py3-none-any.whl", hash = "sha256:40233d26a5f0d1872916188c276e21641155111c2853f0c2cd55260aec0d24fc", size = 212009, upload-time = "2026-05-05T06:38:23.007Z" },
 ]
 
 [[package]]
@@ -3443,25 +3316,6 @@ wheels = [
 ]
 
 [[package]]
-name = "playwright"
-version = "1.61.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "greenlet" },
-    { name = "pyee" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/44/ee/31e4e0db36588b817a10b299a0285082545fde7d36543c2abe498bb3d61a/playwright-1.61.0-py3-none-macosx_10_13_x86_64.whl", hash = "sha256:ff138c3a604f69911e9d42fd036e55c2a171e5616edf04c1e7f60a2a285540b0", size = 43421877, upload-time = "2026-06-29T10:32:48.428Z" },
-    { url = "https://files.pythonhosted.org/packages/42/35/71395dd3ecc798965be4a3ef8c443217d4abca168e7cb34536304f9489e6/playwright-1.61.0-py3-none-macosx_11_0_arm64.whl", hash = "sha256:009588c2a7e499bc5a8b425b61fa65490968bbda9cd69e0cf2cff10f8304659a", size = 42205016, upload-time = "2026-06-29T10:32:52.104Z" },
-    { url = "https://files.pythonhosted.org/packages/f4/44/323164cf5cd1647bdefce76ffce27651aadb959d089b48f53ea40918276e/playwright-1.61.0-py3-none-macosx_11_0_universal2.whl", hash = "sha256:9f7de4536088d12037c13a52b7ea34b59270b78926bb56935070597ffac6b1af", size = 43421884, upload-time = "2026-06-29T10:32:55.773Z" },
-    { url = "https://files.pythonhosted.org/packages/ab/f8/a35bf179e4ba2522c1893635094a64e407572547bd61528820fc0abc87fe/playwright-1.61.0-py3-none-manylinux1_x86_64.whl", hash = "sha256:54f3b39f6eab832e33458c1dd7da0b5682aedab3b09ae731b5c59fa12fd2024e", size = 47421381, upload-time = "2026-06-29T10:32:59.903Z" },
-    { url = "https://files.pythonhosted.org/packages/b7/eb/e3f922348ec17c315f98c463f72faa1181a1c3de0bfe31a8d2edf6561723/playwright-1.61.0-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:93454322ade8c11d5d6c211bfd91bdfb9ffb4810e3e026371bcbc4bec1b7ee4c", size = 47120545, upload-time = "2026-06-29T10:33:03.574Z" },
-    { url = "https://files.pythonhosted.org/packages/c2/a6/5be4e52b40a9c0c8a073e7c5b0785c05cf5a9ea8f8a7b5b260e32d970342/playwright-1.61.0-py3-none-win32.whl", hash = "sha256:372d55a6f1248fa1dd47599686980cb8fb5bbe6fcda59eab793eb657c11d8a9b", size = 37844841, upload-time = "2026-06-29T10:33:07.361Z" },
-    { url = "https://files.pythonhosted.org/packages/6c/fd/2b78036e5fbe9d5f5645bbe08a1eac7160c51243c0093963edbcf67c35d9/playwright-1.61.0-py3-none-win_amd64.whl", hash = "sha256:35c6cc4589a5d00964a59d7b3e59641e0aac0c02f15479a7af77d20f6bc79597", size = 37844846, upload-time = "2026-06-29T10:33:10.637Z" },
-    { url = "https://files.pythonhosted.org/packages/27/0d/1b0f3c4ee4eb0514bc805b5c2f9a223e5b6de4f11a926f5235d51d0fc81b/playwright-1.61.0-py3-none-win_arm64.whl", hash = "sha256:e9fcbffcf557a8620fdedd92491eb59a32d18e23d6f3b4f6214b952be324fe51", size = 33955127, upload-time = "2026-06-29T10:33:14.008Z" },
-]
-
-[[package]]
 name = "pluggy"
 version = "1.6.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3841,18 +3695,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pyee"
-version = "13.0.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/8b/04/e7c1fe4dc78a6fdbfd6c337b1c3732ff543b8a397683ab38378447baa331/pyee-13.0.1.tar.gz", hash = "sha256:0b931f7c14535667ed4c7e0d531716368715e860b988770fc7eb8578d1f67fc8", size = 31655, upload-time = "2026-02-14T21:12:28.044Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a0/c4/b4d4827c93ef43c01f599ef31453ccc1c132b353284fc6c87d535c233129/pyee-13.0.1-py3-none-any.whl", hash = "sha256:af2f8fede4171ef667dfded53f96e2ed0d6e6bd7ee3bb46437f77e3b57689228", size = 15659, upload-time = "2026-02-14T21:12:26.263Z" },
-]
-
-[[package]]
 name = "pygments"
 version = "2.20.0"
 source = { registry = "https://pypi.org/simple" }
@@ -4020,19 +3862,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pytest-base-url"
-version = "2.1.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pytest" },
-    { name = "requests" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/ae/1a/b64ac368de6b993135cb70ca4e5d958a5c268094a3a2a4cac6f0021b6c4f/pytest_base_url-2.1.0.tar.gz", hash = "sha256:02748589a54f9e63fcbe62301d6b0496da0d10231b753e950c63e03aee745d45", size = 6702, upload-time = "2024-01-31T22:43:00.81Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/98/1c/b00940ab9eb8ede7897443b771987f2f4a76f06be02f1b3f01eb7567e24a/pytest_base_url-2.1.0-py3-none-any.whl", hash = "sha256:3ad15611778764d451927b2a53240c1a7a591b521ea44cebfe45849d2d2812e6", size = 5302, upload-time = "2024-01-31T22:42:58.897Z" },
-]
-
-[[package]]
 name = "pytest-cov"
 version = "7.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -4044,18 +3873,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b1/51/a849f96e117386044471c8ec2bd6cfebacda285da9525c9106aeb28da671/pytest_cov-7.1.0.tar.gz", hash = "sha256:30674f2b5f6351aa09702a9c8c364f6a01c27aae0c1366ae8016160d1efc56b2", size = 55592, upload-time = "2026-03-21T20:11:16.284Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9d/7a/d968e294073affff457b041c2be9868a40c1c71f4a35fcc1e45e5493067b/pytest_cov-7.1.0-py3-none-any.whl", hash = "sha256:a0461110b7865f9a271aa1b51e516c9a95de9d696734a2f71e3e78f46e1d4678", size = 22876, upload-time = "2026-03-21T20:11:14.438Z" },
-]
-
-[[package]]
-name = "pytest-django"
-version = "4.12.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pytest" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/13/2b/db9a193df89e5660137f5428063bcc2ced7ad790003b26974adf5c5ceb3b/pytest_django-4.12.0.tar.gz", hash = "sha256:df94ec819a83c8979c8f6de13d9cdfbe76e8c21d39473cfe2b40c9fc9be3c758", size = 91156, upload-time = "2026-02-14T18:40:49.235Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/83/a5/41d091f697c09609e7ef1d5d61925494e0454ebf51de7de05f0f0a728f1d/pytest_django-4.12.0-py3-none-any.whl", hash = "sha256:3ff300c49f8350ba2953b90297d23bf5f589db69545f56f1ec5f8cff5da83e85", size = 26123, upload-time = "2026-02-14T18:40:47.381Z" },
 ]
 
 [[package]]
@@ -4107,21 +3924,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/68/14/eb014d26be205d38ad5ad20d9a80f7d201472e08167f0bb4361e251084a9/pytest_mock-3.15.1.tar.gz", hash = "sha256:1849a238f6f396da19762269de72cb1814ab44416fa73a8686deac10b0d87a0f", size = 34036, upload-time = "2025-09-16T16:37:27.081Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5a/cc/06253936f4a7fa2e0f48dfe6d851d9c56df896a9ab09ac019d70b760619c/pytest_mock-3.15.1-py3-none-any.whl", hash = "sha256:0a25e2eb88fe5168d535041d09a4529a188176ae608a6d249ee65abc0949630d", size = 10095, upload-time = "2025-09-16T16:37:25.734Z" },
-]
-
-[[package]]
-name = "pytest-playwright"
-version = "0.8.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "playwright" },
-    { name = "pytest" },
-    { name = "pytest-base-url" },
-    { name = "python-slugify" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/58/ef/172eb8e23c80491fc72f1401c72f9305663873649351306a38b18406b0c9/pytest_playwright-0.8.0.tar.gz", hash = "sha256:7888d4a2443160c82e0c506c437076679f86b36d1910427250d90fbf1843a981", size = 17132, upload-time = "2026-05-18T10:16:15.919Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/fe/71/1c545fac6a9054b52b3771238fb2dc6e8f1d0ccec116e1c7786ec191887c/pytest_playwright-0.8.0-py3-none-any.whl", hash = "sha256:856aae6efd4bc055f2ef229c647768760bcaad5cd3a5983c314ac260a974a933", size = 17143, upload-time = "2026-05-18T10:16:18.226Z" },
 ]
 
 [[package]]
@@ -4214,18 +4016,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/98/2c/6cd2c7cff4bdbb434be5429ef6b8e96ee6b50155551361f30a1bb2ea3c1d/python_gnupg-0.5.6.tar.gz", hash = "sha256:5743e96212d38923fc19083812dc127907e44dbd3bcf0db4d657e291d3c21eac", size = 66825, upload-time = "2025-12-31T17:19:33.19Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d2/ab/0ea9de971caf3cd2e268d2b05dfe9883b21cfe686a59249bd2dccb4bae33/python_gnupg-0.5.6-py2.py3-none-any.whl", hash = "sha256:b5050a55663d8ab9fcc8d97556d229af337a87a3ebebd7054cbd8b7e2043394a", size = 22082, upload-time = "2025-12-31T17:16:22.743Z" },
-]
-
-[[package]]
-name = "python-slugify"
-version = "8.0.4"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "text-unidecode" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/87/c7/5e1547c44e31da50a460df93af11a535ace568ef89d7a811069ead340c4a/python-slugify-8.0.4.tar.gz", hash = "sha256:59202371d1d05b54a9e7720c5e038f928f45daaffe41dd10822f3907b937c856", size = 10921, upload-time = "2024-02-08T18:32:45.488Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a4/62/02da182e544a51a5c3ccf4b03ab79df279f9c60c5e82d5e8bec7ca26ac11/python_slugify-8.0.4-py2.py3-none-any.whl", hash = "sha256:276540b79961052b66b7d116620b36518847f52d5fd9e3a70164fc8c50faa6b8", size = 10051, upload-time = "2024-02-08T18:32:43.911Z" },
 ]
 
 [[package]]
@@ -5214,15 +5004,6 @@ wheels = [
 ]
 
 [[package]]
-name = "sqlparse"
-version = "0.6.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/5f/d3/3f06a1006f2261d1342aefb3c71eed02f5d4ca5bdbecd86ebc12ad38306e/sqlparse-0.6.0.tar.gz", hash = "sha256:113c35c75365ab9cc9c7231d68c6428fb11c085fc8e9eb1ad659b7ddbf6cd2b9", size = 178477, upload-time = "2026-08-13T19:16:06.396Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d9/50/f00935da0ec7cbf325f8dc4f772ae46fbc7b672dd62876e73f0a94adda57/sqlparse-0.6.0-py3-none-any.whl", hash = "sha256:b861c0288ce2fa56209a9a6412d2e066ac664b3873b89c26c9d8415e8e32996f", size = 50070, upload-time = "2026-08-13T19:16:04.062Z" },
-]
-
-[[package]]
 name = "starlette"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
@@ -5276,15 +5057,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/ca/ac/a597c3a0e02b26cbed6dd07df68be1e57684766fd1c381dee9b170a99690/testcontainers-4.14.2.tar.gz", hash = "sha256:1340ccf16fe3acd9389a6c9e1d9ab21d9fe99a8afdf8165f89c3e69c1967d239", size = 166841, upload-time = "2026-03-18T05:19:16.696Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/13/2d/26b8b30067d94339afee62c3edc9b803a6eb9332f521ba77d8aaab5de873/testcontainers-4.14.2-py3-none-any.whl", hash = "sha256:0d0522c3cd8f8d9627cda41f7a6b51b639fa57bdc492923c045117933c668d68", size = 125712, upload-time = "2026-03-18T05:19:15.29Z" },
-]
-
-[[package]]
-name = "text-unidecode"
-version = "1.3"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ab/e2/e9a00f0ccb71718418230718b3d900e71a5d16e701a3dae079a21e9cd8f8/text-unidecode-1.3.tar.gz", hash = "sha256:bad6603bb14d279193107714b288be206cac565dfa49aa5b105294dd5c4aab93", size = 76885, upload-time = "2019-08-30T21:36:45.405Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a6/a5/c0b6468d3824fe3fde30dbb5e1f687b291608f9473681bbf7dabbf5a87d7/text_unidecode-1.3-py2.py3-none-any.whl", hash = "sha256:1311f10e8b895935241623731c2ba64f4c455287888b18189350b67134a822e8", size = 78154, upload-time = "2019-08-30T21:37:03.543Z" },
 ]
 
 [[package]]

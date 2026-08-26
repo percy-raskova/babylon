@@ -71,7 +71,6 @@ Report a scheduled workflow that is not on the default `branch`.
 
 Do not report format, import order, line length, or name preferences.
 The project tools own those checks. Do not propose unrelated flexibility.
-Ignore `web/`, the legacy Django tree, unless a change affects a live contract.
 
 ## Repository facts
 

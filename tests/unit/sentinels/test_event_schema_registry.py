@@ -206,6 +206,35 @@ class TestRegistryFileItself:
         with pytest.raises(SentinelCheckError, match="unsupported schema_version"):
             load_registry(registry_path)
 
+    @pytest.mark.parametrize(
+        ("field", "current"),
+        (
+            ("python_event_type_total", "100"),
+            ("bsl_emit_site_total", "17"),
+            ("bsl_emit_name_total", "15"),
+        ),
+    )
+    @pytest.mark.parametrize("replacement", ("-1", '"1"', "true", "1.5"))
+    def test_header_total_requires_a_non_negative_integer(
+        self,
+        tmp_path: Path,
+        field: str,
+        current: str,
+        replacement: str,
+    ) -> None:
+        registry_path = tmp_path / "event-schema-registry.toml"
+        source = REGISTRY_PATH.read_text(encoding="utf-8")
+        registry_path.write_text(
+            source.replace(f"{field} = {current}", f"{field} = {replacement}", 1),
+            encoding="utf-8",
+        )
+
+        with pytest.raises(
+            SentinelCheckError,
+            match=rf"{field}.*non-negative integer",
+        ):
+            load_registry(registry_path)
+
     def test_declared_total_matches_a_fresh_events_py_count(
         self, registry: EventSchemaRegistry, fresh_event_type_members: frozenset[str]
     ) -> None:

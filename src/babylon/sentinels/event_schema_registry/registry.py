@@ -173,6 +173,15 @@ def _require(mapping: dict[str, Any], key: str, row_desc: str) -> Any:
     return mapping[key]
 
 
+def _require_non_negative_int(mapping: dict[str, Any], key: str, row_desc: str, path: Path) -> int:
+    value = _require(mapping, key, row_desc)
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise SentinelCheckError(
+            f"{path}: {row_desc} field {key!r} must be a non-negative integer, got {value!r}"
+        )
+    return value
+
+
 def _parse_keys(raw_keys: list[dict[str, Any]], row_desc: str) -> tuple[RegistryKey, ...]:
     keys = []
     for raw in raw_keys:
@@ -237,6 +246,16 @@ def load_registry(path: Path = REGISTRY_PATH) -> EventSchemaRegistry:
             f"expected integer {SUPPORTED_SCHEMA_VERSION}"
         )
 
+    python_event_type_total = _require_non_negative_int(
+        data, "python_event_type_total", "the registry header", path
+    )
+    bsl_emit_site_total = _require_non_negative_int(
+        data, "bsl_emit_site_total", "the registry header", path
+    )
+    bsl_emit_name_total = _require_non_negative_int(
+        data, "bsl_emit_name_total", "the registry header", path
+    )
+
     tier1 = tuple(
         Tier1Row(
             event_type=(et := _require(row, "event_type", "a tier1 row")),
@@ -279,9 +298,9 @@ def load_registry(path: Path = REGISTRY_PATH) -> EventSchemaRegistry:
     return EventSchemaRegistry(
         schema_version=schema_version,
         measured_at=measured_at,
-        python_event_type_total=_require(data, "python_event_type_total", "the registry header"),
-        bsl_emit_site_total=_require(data, "bsl_emit_site_total", "the registry header"),
-        bsl_emit_name_total=_require(data, "bsl_emit_name_total", "the registry header"),
+        python_event_type_total=python_event_type_total,
+        bsl_emit_site_total=bsl_emit_site_total,
+        bsl_emit_name_total=bsl_emit_name_total,
         bsl_content_glob=_require(data, "bsl_content_glob", "the registry header"),
         tier1=tier1,
         tier2=tier2,

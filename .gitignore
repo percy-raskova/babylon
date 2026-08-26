@@ -46,6 +46,8 @@ chromadb/
 .continue*
 .continuerules
 .continuerc.json
+/.codex/
+/.kimi-code/
 
 *.pyc
 
@@ -80,6 +82,8 @@ reports/sim-runs/
 # qa:regression first-divergence attribution (E4; transient — rewritten/removed
 # every compare run, only present while a dense-gate FAIL is being diagnosed)
 reports/qa-first-divergence.json
+# Local-only human/agent reports; durable reports remain tracked.
+/reports/*.LOCAL-*.md
 # Daemonized sim pidfiles/logs (sim:e2e-bg)
 .sim-pids/
 
@@ -129,10 +133,14 @@ node_modules
 # One-off tool dumps (regenerable; were briefly tracked pre-Program-14)
 pytest_out.txt
 ast_usages.txt
+/kimi-debug-session_*.zip
 
 # Claude's scratch space (ai/ tree is Claude-owned; scratch contents are ephemeral)
 ai/scratch/*
 !ai/scratch/README.md
+# Local knowledge-tool state and Percy's private research inbox.
+/ai/.obsidian/
+/ai/_inbox/phil-neel/
 
 # ai/_inbox is the owner's drop-zone (parsed items → ai/_inbox/archive/). Keep the
 # text notes tracked, but babylon_books/ is 555 MB of reference PDFs — never commit it.

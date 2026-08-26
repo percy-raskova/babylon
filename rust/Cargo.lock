@@ -435,6 +435,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "babylon-material-circuit"
+version = "0.1.0"
+dependencies = [
+ "babylon-kernel",
+ "serde_json",
+]
+
+[[package]]
 name = "babylon-persistence"
 version = "0.1.0"
 dependencies = [

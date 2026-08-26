@@ -59,6 +59,7 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 #: second, Rust-side literal table in sync by construction (a future Rust
 #: consumer, R4.2, reads this same file rather than a transcription of it).
 REGISTRY_PATH = REPO_ROOT / "docs" / "reference" / "event-schema-registry.toml"
+SUPPORTED_SCHEMA_VERSION = 1
 
 
 @dataclass(frozen=True)
@@ -225,6 +226,17 @@ def load_registry(path: Path = REGISTRY_PATH) -> EventSchemaRegistry:
     except tomllib.TOMLDecodeError as exc:
         raise SentinelCheckError(f"cannot parse {path}: {exc}") from exc
 
+    schema_version = _require(data, "schema_version", "the registry header")
+    if (
+        not isinstance(schema_version, int)
+        or isinstance(schema_version, bool)
+        or schema_version != SUPPORTED_SCHEMA_VERSION
+    ):
+        raise SentinelCheckError(
+            f"{path}: unsupported schema_version {schema_version!r}; "
+            f"expected integer {SUPPORTED_SCHEMA_VERSION}"
+        )
+
     tier1 = tuple(
         Tier1Row(
             event_type=(et := _require(row, "event_type", "a tier1 row")),
@@ -265,7 +277,7 @@ def load_registry(path: Path = REGISTRY_PATH) -> EventSchemaRegistry:
     )
 
     return EventSchemaRegistry(
-        schema_version=_require(data, "schema_version", "the registry header"),
+        schema_version=schema_version,
         measured_at=measured_at,
         python_event_type_total=_require(data, "python_event_type_total", "the registry header"),
         bsl_emit_site_total=_require(data, "bsl_emit_site_total", "the registry header"),

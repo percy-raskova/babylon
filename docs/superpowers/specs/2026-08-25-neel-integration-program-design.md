@@ -24,12 +24,13 @@
 
 # Neel Integration Program Design
 
-**Status:** Director-approved design, 2026-08-25. Not implemented.
+**Status:** Director-approved design, 2026-08-25. Governed by ADR232. Not
+implemented.
 
 **Authority:** `CONSTITUTION.md` v4.0.0, `NORTH_STAR.md`, ADR189, ADR220,
-ADR223, ADR224, ADR226, ADR227, ADR230, and the canonical Linear portfolio.
-This design introduces no mathematical primitive, weakens no prohibition, and
-does not change the reserved theoretical line.
+ADR223, ADR224, ADR226, ADR227, ADR230, ADR232, and the canonical Linear
+portfolio. This design introduces no mathematical primitive, weakens no
+prohibition, and does not change the reserved theoretical line.
 
 **Purpose:** Convert the verified findings from Phil Neel's *Hinterland* and
 *Hellworld*, together with the permitted Theory of the Party evidence, into one
@@ -159,7 +160,7 @@ document as history and makes these dispositions explicit:
 | `organization/p5-command-response` and `territory/command-pressure` | Retire from the future gameplay path. Repression must use dossiers, governed candidates, finite capacity, actual affected populations, and Backfire. |
 | `territory/rooted-capacity` | Keep only as fixture-local conformance state. It is not event-attributed competence, leadership, political power, or a live gameplay resource. |
 | Dyadic organization-to-class `MEMBERSHIP`, `community/c03*`, seeded `cadre-level`, seeded `cohesion`, and declared tendency attribution | Do not treat them as the ADR189 membership path or as consumers of new event products. A governed successor must consume native attributed membership and receipt evidence explicitly. |
-| Generic structural verbs and PER-186 | Preserve their generic boundary. They do not supply organization-formation law or atomic organization/body/membership initialization. |
+| Existing generic structural verbs | Preserve their generic boundary. They do not supply organization-formation law or atomic organization/body/membership initialization. |
 | Python-era `PoliticalFaction`, `cadre_level`, legitimacy-as-trust, and authored class-character documentation | Keep as historical reference only. It supplies no live Rust/BSL authority. |
 
 All current V1 byte and digest vectors freeze before successor work. A new
@@ -1247,29 +1248,17 @@ classification survives only because the scenario seeded its cadence, a
 stored stage selected effects, a hidden field bypassed a carrier, or an
 important output lacked a consumer.
 
-## 22. Linear ownership and landing order
+## 22. Architecture dependencies and Linear boundary
 
 Linear alone owns current scope, status, priority, dependencies, milestones,
 and work. GitHub owns source, pull requests, review, and historical evidence.
 This specification records architecture and required corrections; it does not
 replace Linear.
 
-Before implementation planning:
-
-- PER-56 must remove direct solidarity and agitation-result acceptance and
-  target the V2 proposal/product rail;
-- PER-57 must consume attributed encounter, trust-evidence, tie, and recurring
-  function records rather than `changed solidarity`;
-- PER-58 retains its conserved stock, labor, freight, arrival, and consumption
-  boundary;
-- PER-59 must evaluate the full live material trace, not membership alone;
-- PER-186 remains generic structural-verb work and cannot silently absorb
-  atomic organization formation;
-- PER-44/ADR189 owns attributed-membership identity and payload access;
-- PER-30 and PER-31 own orders, inventory, realization, and freight;
-- Gate 3 owners retain the committed envelope, PostgreSQL, outbox, and fog;
-- PER-23 and PER-24 retain the player decision-surface contract;
-- PER-269 and PER-271 may consume these contracts but cannot bypass them.
+The canonical Linear portfolio maps these architecture dependencies to current
+issue identities, owners, status, priority, and schedule. This specification
+does not duplicate those live assignments. Linear can reorder, split, or
+reassign delivery without changing the causal prerequisites below.
 
 Implementation proceeds from fresh `origin/dev` in independently reviewable
 slices. Shared causal-spine, `.mise.toml`, content-manifest, BSL, and CI files
@@ -1306,23 +1295,23 @@ the conserved economic carriers it affects.
 
 ## 23. Required ADRs
 
-Implementation cannot rely on this prose alone. Before the first dependent
-code lands, accepted ADRs must record:
+Implementation cannot rely on this prose alone. ADR232 records the program's
+source quarantine, supersession, causal architecture, and Linear boundary.
+Before each dependent code slice lands, accepted successor ADRs must record:
 
-1. the Neel program's source quarantine, supersession, and causal architecture;
-2. graph layout v5, attributed-membership bytes, and authoritative actor
+1. graph layout v5, attributed-membership bytes, and authoritative actor
    knowledge-register bytes;
-3. Practice V2 input authority, accepted-ledger identity, resource reservation,
+2. Practice V2 input authority, accepted-ledger identity, resource reservation,
    capacity allocation, and conflict semantics;
-4. Practice V2, resolved-batch, material-connection, participation, timing,
+3. Practice V2, resolved-batch, material-connection, participation, timing,
    participant-transition provenance, and receipt identities;
-5. auxiliary economic-register ownership, units, conservation,
+4. auxiliary economic-register ownership, units, conservation,
    post-state-basis composition, `NominalWorldHashV2`, and envelope ordering;
-6. gameplay dossier/fog, topology measurement, capacity, repression,
+5. gameplay dossier/fog, topology measurement, capacity, repression,
    affected-population, and Backfire boundaries;
-7. attributed practice products, participant-owned formation, party
+6. attributed practice products, participant-owned formation, party
    projection, and long-run construction;
-8. the per-channel live evidence profile, mutation scope, and PR-versus-weekly
+7. the per-channel live evidence profile, mutation scope, and PR-versus-weekly
    CI policy.
 
 Historical ADRs remain unchanged. Each successor ADR names what it supersedes

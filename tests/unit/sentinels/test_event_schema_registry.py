@@ -192,6 +192,20 @@ class TestRegistryFileItself:
     def test_loads_without_error(self, registry: EventSchemaRegistry) -> None:
         assert registry.schema_version == 1
 
+    @pytest.mark.parametrize("replacement", ("2", '"1"', "true"))
+    def test_unsupported_schema_version_fails_loudly(
+        self, tmp_path: Path, replacement: str
+    ) -> None:
+        registry_path = tmp_path / "event-schema-registry.toml"
+        source = REGISTRY_PATH.read_text(encoding="utf-8")
+        registry_path.write_text(
+            source.replace("schema_version = 1", f"schema_version = {replacement}", 1),
+            encoding="utf-8",
+        )
+
+        with pytest.raises(SentinelCheckError, match="unsupported schema_version"):
+            load_registry(registry_path)
+
     def test_declared_total_matches_a_fresh_events_py_count(
         self, registry: EventSchemaRegistry, fresh_event_type_members: frozenset[str]
     ) -> None:

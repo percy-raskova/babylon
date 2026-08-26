@@ -1319,7 +1319,7 @@ df -h /var | tail -1
 
 [tasks."test:integration-pg"]
 description = "The declared PG-backed integration subset CI's pg-integration job runs (data-drive-free, green-by-construction — ADR176 ruling 33's un-gate; widen ONLY with green evidence, never narrow without a declared skip)"
-run = "uv run pytest tests/integration/persistence tests/integration/test_tick_commit.py tests/integration/test_persistence_monotonic_postgres.py tests/integration/test_archival_integration.py -q"
+run = "uv run pytest tests/integration/persistence tests/integration/balkanization tests/integration/test_tick_commit.py tests/integration/test_persistence_monotonic_postgres.py tests/integration/test_archival_integration.py -q"
 
 [tasks."test:rust-legacy-adopter-pg"]
 description = "Run the bounded PER-20 Rust legacy-adopter proof in a task-owned PostgreSQL runtime"
@@ -1440,25 +1440,15 @@ run = "uv run pre-commit run --all-files"
 # =============================================================================
 
 [tasks.bump]
-description = "Deliberate version bump on dev (program 15, tag-driven releases): cz bump writes the bump commit + vX.Y.Z tag; both ride the next ff promotion, and pushing the tag fires release.yml"
-run = """
-set -e
-BRANCH=$(git branch --show-current)
-if [ "$BRANCH" != "dev" ]; then
-  echo "bump runs on dev (current: $BRANCH)"; exit 1
-fi
-uv run cz bump --yes --changelog
-echo ""
-echo "Bump committed + tagged. Publish with: git push origin dev --follow-tags"
-echo "Then promote: tools/promote.sh"
-"""
+description = "Compatibility dry-run for the owner release ceremony; use release:bump -- --yes to create the untagged dev bump commit"
+run = "mise run release:bump"
 
 [tasks."bump:dry"]
 description = "Preview version bump without changes"
 run = "uv run cz bump --dry-run"
 
 [tasks."release:bump"]
-description = "OWNER-RUN release ceremony: pin check + cz bump dry-run; pass -- --yes for the real bump (docs/versioning.md)"
+description = "OWNER-RUN dev ceremony: pin check + cz dry-run; --yes creates the bump commit without publishing a tag"
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
@@ -1467,11 +1457,82 @@ set -euo pipefail
 tools/check_release_pins.sh
 uv run cz bump --dry-run
 if [ "${1:-}" = "--yes" ]; then
-  uv run cz bump
-  echo "release:bump: bumped. OWNER: push dev, then push the new tag — the tag push IS the release."
+  OLD_VERSION="$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+  uv run cz bump --version-files-only --yes
+  NEW_VERSION="$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+  [ "$OLD_VERSION" != "$NEW_VERSION" ] || { echo "release:bump: refuse — version did not advance" >&2; exit 1; }
+  [ -z "$(git diff --name-only -- . ':(exclude)pyproject.toml' ':(exclude)CHANGELOG.md')" ] || {
+    echo "release:bump: refuse — Commitizen changed an unexpected tracked file" >&2; exit 1;
+  }
+  [ -z "$(git ls-files --others --exclude-standard)" ] || {
+    echo "release:bump: refuse — Commitizen created an unexpected untracked file" >&2; exit 1;
+  }
+  git add -- pyproject.toml CHANGELOG.md
+  mise run commit -- "bump: version $OLD_VERSION → $NEW_VERSION"
+  echo "release:bump: committed $NEW_VERSION on dev without a tag."
+  echo "OWNER: push dev, open the dev-to-main release PR, qualify it, and use the Director merge."
+  echo "After main merges, return its ancestry through the dev-sync PR before release:tag."
 else
   echo "release:bump: dry-run only. Execute with: mise run release:bump -- --yes"
 fi
+"""
+
+[tasks."release:tag"]
+description = "OWNER-RUN publish ceremony: create and push vX.Y.Z only from exact origin/main after the Director merge"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+[ -z "$(git status --porcelain)" ] || { echo "release:tag: refuse — dirty tree" >&2; exit 1; }
+[ "$(git branch --show-current)" = "main" ] || { echo "release:tag: refuse — not on main" >&2; exit 1; }
+git fetch --tags origin \
+  +refs/heads/main:refs/remotes/origin/main \
+  +refs/heads/dev:refs/remotes/origin/dev
+HEAD_SHA="$(git rev-parse HEAD)"
+MAIN_SHA="$(git rev-parse refs/remotes/origin/main)"
+[ "$HEAD_SHA" = "$MAIN_SHA" ] || { echo "release:tag: refuse — HEAD is not exact origin/main" >&2; exit 1; }
+VERSION="$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+TAG="v$VERSION"
+git merge-base --is-ancestor "$MAIN_SHA" refs/remotes/origin/dev || {
+  echo "release:tag: refuse — exact main has not returned to dev through its lineage PR" >&2; exit 1;
+}
+python3 tools/release_lineage.py verify \
+  --ref refs/remotes/origin/dev --tag "$TAG" --main-sha "$MAIN_SHA"
+if git show-ref --verify --quiet "refs/tags/$TAG"; then
+  echo "release:tag: refuse — local tag $TAG already exists" >&2; exit 1
+fi
+if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+  echo "release:tag: refuse — remote tag $TAG already exists" >&2; exit 1
+else
+  REMOTE_STATUS=$?
+  [ "$REMOTE_STATUS" -eq 2 ] || { echo "release:tag: refuse — remote tag lookup failed" >&2; exit 1; }
+fi
+if [ "${1:-}" != "--yes" ]; then
+  echo "release:tag: dry-run only. Ready to publish $TAG at $HEAD_SHA."
+  echo "Execute with: mise run release:tag -- --yes"
+  exit 0
+fi
+git tag --annotate "$TAG" --message "$TAG" HEAD
+python3 tools/check_release_tag.py --tag "$TAG"
+git push origin "refs/tags/$TAG"
+echo "release:tag: published $TAG from qualified main commit $HEAD_SHA"
+"""
+
+[tasks."release:prepare-dev-sync"]
+description = "Prepare the real-diff lineage record that returns exact main ancestry to protected dev by PR"
+usage = '''
+arg "<tag>" help="Pending canonical release tag, such as v1.2.3"
+arg "<release_pr>" help="Merged Director release PR number"
+'''
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+[ -z "$(git status --porcelain)" ] || { echo "release:prepare-dev-sync: refuse — dirty tree" >&2; exit 1; }
+git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+python3 tools/release_lineage.py prepare \
+  --tag "$usage_tag" --release-pr "$usage_release_pr"
+echo "Commit .github/settings/release-lineage.json, push this lane, and open its PR to dev."
+echo "Merge only with: mise run pr:merge -- N"
+echo "Tagging remains refused until exact origin/main is reachable from origin/dev."
 """
 
 # =============================================================================

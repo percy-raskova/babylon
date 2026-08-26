@@ -1,23 +1,15 @@
-name: Main (Full Pipeline)
+name: Main Qualification
 
-# Program 15 (The Gauntlet): the FULL PIPELINE — "push to main does the whole
-# thing". Runs everything the dev fast lane runs, plus the heavy legs: the
-# non-unit test shard, Postgres integration, Playwright E2E against the real
-# stack, the Postgres-backed determinism bundle, docs, and infra validation.
+# A pull request to main already runs ci.yml. This workflow adds only the
+# release-only legs, under unique check names, so the combined manifest is the
+# full pre-merge qualification without rerunning or racing the ordinary gates.
 #
-# Reference-DB legs are gated on the repo variable CI_REFDB_READY until the
-# CI subset artifact exists (owner item 40, Phase 6 of program 15): the full
-# reference DB is 5.7GB and lives only on the operator's machine. A gated
-# job is an EXPLICIT red, not a hidden one — the gate names its item.
-#
-# Concurrency: no cancel-in-progress — a running full-pipeline verdict on a
-# main push should complete even if another promotion lands behind it.
+# workflow_dispatch is the proof path required before the Director opens a
+# release PR. It is accepted only on dev. A push to main never starts this
+# workflow because qualification must finish before main advances.
 
-# R7 (ADR181): no pull_request trigger — PRs to main run ci.yml only. The two
-# workflows emitted identical check-context names with admitted drift, so the
-# required contexts were satisfiable by whichever (weaker) copy reported first.
 on:
-  push:
+  pull_request:
     branches: [main]
   workflow_dispatch:
 
@@ -25,107 +17,27 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  group: main-qualification-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # ── The dev fast lane, verbatim (same mise tasks, same composite) ────────
-  fast-gate:
-    name: Fast Gate (hygiene, lint, format, imports, types, lock)
+  event-contract:
+    name: Main Qualification / Event Contract
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/bootstrap-python
-        with:
-          gdal: "true"
-          server: "true"
-      # Incremental mypy state. Key ends in the commit SHA so every run saves
-      # a fresh snapshot; restore-keys fall back to the newest same-lock cache.
-      # Speed only — mypy's verdict is identical warm or cold.
-      - name: Cache mypy incremental state
-        uses: actions/cache@v6
-        with:
-          path: .mypy_cache
-          key: mypy-${{ runner.os }}-py3.12-${{ hashFiles('uv.lock') }}-${{ github.sha }}
-          restore-keys: |
-            mypy-${{ runner.os }}-py3.12-${{ hashFiles('uv.lock') }}-
+      - name: Accept only a main PR or exact dev proof
+        run: >-
+          python3 tools/check_main_qualification_event.py
+          --event "${{ github.event_name }}"
+          --ref "${{ github.ref }}"
+          --base-ref "${{ github.base_ref }}"
 
-      - name: Repo hygiene gate
-        run: mise run check:hygiene
-      # Drift fix 2026-07-16: ci.yml gained check:seams on 2026-07-12 (c4cf919f)
-      # and this "verbatim" copy never picked it up — the fast lane MUST stay
-      # byte-identical to ci.yml's until the two are factored into a reusable
-      # workflow (owner decision: workflow_call renames check contexts, which
-      # would break the branch-protection required-check names).
-      #
-      # Drift fix 2026-07-30 (tech-debt census): the SAME class recurred. ci.yml
-      # consolidated the individual sentinel steps into check:sentinels-static
-      # (20 families); this copy kept enumerating two of them by hand, so
-      # eighteen static sentinels never ran on a push to main. Enumerate nothing
-      # here — call the aggregate, so the next family added to .mise.toml's
-      # `depends` is picked up by both lanes at once.
-      - name: Sentinel family (static gates — VIII.12; catalog DB-probe runs in nightly refdata)
-        run: mise run check:sentinels-static
-      - name: Public-surface baseline gate (__all__ vs pinned baseline)
-        run: mise run check:surface
-      - name: Lint (ruff check)
-        run: mise run lint:check
-      - name: Format (ruff format --check — blocking)
-        run: mise run format:check
-      - name: Import-boundary contracts
-        run: mise run lint:imports
-      - name: Type check (mypy strict)
-        run: mise run typecheck
-      - name: uv lock consistency
-        run: uv lock --check
-
-  test-unit:
-    name: Unit Tests (xdist, coverage gate)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/bootstrap-python
-        with:
-          gdal: "true"
-          server: "true"
-      - name: Unit shard (excludes ai/slow/reference-DB; engine/systems cov >= 80%)
-        run: mise run test:unit-ci
-      - name: Upload test results + coverage
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: unit-ci-results
-          path: reports/test-results/unit-ci/
-          retention-days: 14
-
-  qa-regression:
-    name: Determinism Gate (byte-identical dense goldens)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/bootstrap-python
-      - name: qa:regression (5 scenarios vs committed baselines)
-        run: mise run qa:regression
-
-  security:
-    name: Security Audit (pip-audit policy — blocking since item-41)
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/bootstrap-python
-      - name: pip-audit (policy wrapper — ignores carry reason + expiry)
-        run: mise run security:pip-audit
-
-  # ── The heavy legs ────────────────────────────────────────────────────────
   test-rest:
-    name: Non-Unit Tests (integration, scenarios, property, contract)
+    name: Main Qualification / Non-Unit Behavioral Contracts
+    needs: [event-contract]
     runs-on: ubuntu-latest
-    # Maiden run was cancelled at 35 while still serial; the shard now runs
-    # xdist (test:rest-ci -n 4 loadscope) — 45 is the bounded first-measure.
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
@@ -133,98 +45,25 @@ jobs:
         with:
           gdal: "true"
           server: "true"
-      - name: Heavy shard (includes slow; web-Postgres suites run in their own job)
+      - name: Heavy shard (integration, scenarios, property, contract)
         env:
-          # Self-salvage caps (2026-07-16 wedge incident): a hung shard SIGINTs
-          # itself inside the 45-min job budget and still uploads summary + junit.
           BABYLON_REST_SHARD_TIMEOUT: 32m
           BABYLON_SLOWUNIT_TIMEOUT: 9m
         run: mise run test:rest-ci
-      - name: Upload test results + coverage
+      - name: Upload test results and coverage
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: rest-ci-results
+          name: main-qualification-rest-results
           path: reports/test-results/rest-ci/
           retention-days: 14
 
-  # The web integration suites expect the Django schema AND reference-derived
-  # seed data — item 40 territory until the subset artifact lands (Phase 6).
-  # Uses the repo-canonical compose service: docker/postgres/Dockerfile is
-  # postgis/postgis:16-3.4 + pgvector. A GitHub services: block cannot build
-  # that Dockerfile, and a stock postgis image lacks pgvector, which aborts
-  # PostgresRuntime.init_schema at `CREATE EXTENSION vector`.
-  postgres-integration:
-    name: Postgres Integration (web bridge)
+  postgres-determinism:
+    name: Main Qualification / PostgreSQL Determinism Bundle
+    needs: [event-contract]
     if: ${{ vars.CI_REFDB_READY == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/bootstrap-python
-        with:
-          gdal: "true"
-          server: "true"
-      - uses: ./.github/actions/postgres-up
-      - uses: ./.github/actions/fetch-reference-db
-      # Maiden-run finding (2026-07-11): the engine runtime schema
-      # (node_state et al.) is NOT created by Django migrate — every local
-      # dev DB already has it, so the gap only shows on a fresh CI Postgres
-      # (UndefinedTable: node_state). Idempotent canonical DDL apply.
-      - name: Apply engine schema (canonical DDL)
-        run: mise run db:bootstrap
-      # R8 fix (2026-07-27): the Django migrate step and the web-integration-
-      # suite step that consumed it were removed here — tests/integration/web/
-      # (and the rest of the Django test estate) was deleted (Director ruling,
-      # "test(web): remove the legacy Django test estate"; the web `manage.py`
-      # SOURCE tree itself stays, only its own test suite is gone). This job's
-      # name ("Postgres Integration (web bridge)") is now stale too, but
-      # renaming it would rotate its branch-protection required-check name —
-      # left as-is; the job still earns its keep via the advisory step below.
-      # Audit 2026-07-16: the non-web requires_postgres suites (balkanization,
-      # persistence, observatory, headless_runner) had NO Postgres-provisioned
-      # CI home — test-rest selects them but never starts Postgres, so their
-      # real assertions had never executed in CI. This job already has the
-      # container + reference DB. Advisory until the first green run proves the
-      # environment satisfies them ("advisory" in the name keeps promote.sh
-      # treating it as non-blocking).
-      # R8 fix (2026-07-27): tests/integration/observatory/ was deleted along
-      # with the rest of the Django test estate — its path below was a
-      # nonexistent-path COLLECTION ERROR that aborted this entire pytest
-      # invocation, so balkanization/persistence/engine never actually ran
-      # under this "advisory" label either. Removed from the path list.
-      - name: Non-web Postgres suites (advisory — first CI home)
-        continue-on-error: true
-        env:
-          BABYLON_TEST_PG_DSN: "dbname=babylon_test host=localhost port=5433 user=test password=test"
-          POSTGRES_HOST: localhost
-          POSTGRES_PORT: "5433"
-          POSTGRES_DB: babylon_test
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-        run: >-
-          uv run pytest
-          tests/integration/balkanization tests/integration/persistence
-          tests/integration/engine
-          -m requires_postgres
-          -o addopts="" -vv -ra -l --tb=long --durations=0
-      - name: Stop Postgres
-        if: always()
-        run: tools/ci_postgres_compose.sh down
-
-  # The Postgres-backed strict determinism bundle (spec-064): headless 5-tick
-  # tri-county run compared like-for-like against the committed baseline.
-  # Hydrates from the reference DB — item 40 territory until Phase 6, where
-  # the fetch-reference-db composite lands as the first step here.
-  qa-e2e-regression:
-    name: Determinism Bundle (Postgres-backed, strict)
-    if: ${{ vars.CI_REFDB_READY == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    # Maiden-run finding (2026-07-11): the headless runner reads its DSN from
-    # BABYLON_TEST_PG_DSN — without it the job dies POSTGRES_UNREACHABLE
-    # before ever touching the container postgres-up just started. Same DSN
-    # the db:bootstrap task targets (compose babylon-pg on :5433).
     env:
       BABYLON_TEST_PG_DSN: "dbname=babylon_test host=localhost port=5433 user=test password=test"
     steps:
@@ -237,20 +76,17 @@ jobs:
       - uses: ./.github/actions/fetch-reference-db
       - name: Apply engine schema (canonical DDL)
         run: mise run db:bootstrap
-      - name: qa:e2e-regression (strict 5-tick bundle vs baseline)
+      - name: Strict five-tick bundle versus baseline
         run: mise run qa:e2e-regression
-      - name: qa:storage-budget (rows/tick vs committed baseline)
+      - name: Rows-per-tick storage budget
         run: mise run qa:storage-budget
       - name: Stop Postgres
         if: always()
         run: tools/ci_postgres_compose.sh down
 
-  # The requires_reference_db suites run here against the ci-data-v1 subset
-  # artifact (item 40) — tests/unit's marked files are excluded from the
-  # dev unit shard and tests outside unit are excluded from test-rest by
-  # the marker, so this job is their ONE home on the main tier.
   refdata-tests:
-    name: Reference-Data Tests (ci-data-v1 subset)
+    name: Main Qualification / Reference-Data Contracts
+    needs: [event-contract]
     if: ${{ vars.CI_REFDB_READY == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -261,18 +97,37 @@ jobs:
           gdal: "true"
           server: "true"
       - uses: ./.github/actions/fetch-reference-db
-      - name: Catalog sentinel (DB probe — catalog↔DB reconciliation)
+      - name: Catalog-to-database reconciliation
         run: uv run python tools/sentinel_check.py catalog --check
-      # R8 fix (2026-07-27): --ignore=tests/integration/web dropped — that
-      # directory no longer exists (Django test estate removal), so the flag
-      # was a dead no-op.
-      - name: Run requires_reference_db suites
+      - name: Run reference-data contracts
         run: >-
           uv run pytest tests -m requires_reference_db
           -o addopts="" -vv -ra -l --tb=long --durations=0
 
+  docs:
+    name: Main Qualification / Release Documentation
+    needs: [event-contract]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/bootstrap-python
+        with:
+          docs: "true"
+          gdal: "true"
+          server: "true"
+      - name: Run formula doctest examples
+        run: >-
+          uv run pytest --doctest-modules src/babylon/formulas
+          -o addopts="" -vv -ra --tb=long
+      - name: Build the release manual (advisory until warning debt closes)
+        continue-on-error: true
+        working-directory: docs
+        run: timeout 480 uv run sphinx-build -b html . _build/html
+
   ai-tests:
-    name: AI Tests (advisory — non-deterministic)
+    name: Main Qualification / AI Tests (advisory)
+    needs: [event-contract]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     continue-on-error: true
@@ -285,85 +140,16 @@ jobs:
       - name: Run AI unit tests
         run: uv run pytest tests/unit/ai -o addopts="" -vv -ra -l --tb=long --durations=0
 
-  docs:
-    name: Documentation Build (doctest blocks; manual advisory)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/bootstrap-python
-        with:
-          docs: "true"
-          # Maiden-run finding (2026-07-11): pytest loads the root conftest,
-          # which initializes Django -> contrib.gis -> libgdal, so even the
-          # formulas-scoped doctest run needs the system GDAL package.
-          gdal: "true"
-          server: "true"
-      # The doctest run STAYS blocking: it verifies the formula docstring
-      # examples (III.12 float-honesty contract). It is cheap and deterministic.
-      - name: Run doctest examples
-        run: uv run pytest --doctest-modules src/babylon/formulas -o addopts="" -vv -ra --tb=long
-      # Bundling the manual is a RELEASE-TIME concern, not a per-push gate
-      # (owner ruling 2026-07-11: "we don't really need to bundle the docs as a
-      # manual until we're ready to release — lower priority"). Kept running so
-      # bit-rot stays visible as a red step, but continue-on-error so it never
-      # blocks a dev landing or the promotion. Flip back to blocking (or move to
-      # release.yml) when the manual becomes a release deliverable. item-44's
-      # 2.4k-warning wall still blocks the -W strict build regardless.
-      - name: Build documentation (advisory — manual bundled at release time)
-        continue-on-error: true
-        working-directory: docs
-        # Cap the advisory build at 8 min. Without this the huge doc tree
-        # (item-44's 2.4k-warning wall) can run past the job's 15-min
-        # timeout-minutes, which CANCELS the whole job — and a job-level
-        # cancellation is NOT swallowed by continue-on-error, so the docs job
-        # showed "cancelled" instead of green (proving run #4, 2026-07-11).
-        # coreutils `timeout` turns "too slow" into a swallowed step failure
-        # (exit 124) well under the job cap; real sphinx errors still show red.
-        run: timeout 480 uv run sphinx-build -b html . _build/html
-
-  gitleaks:
-    name: Secret Scan (gitleaks, full history)
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v3
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  trivy-config:
-    name: IaC Config Scan (trivy, HIGH+CRITICAL blocking)
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-      - uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          scan-type: config
-          scan-ref: .
-          severity: HIGH,CRITICAL
-          exit-code: "1"
-          skip-dirs: .pre-commit-cache
-          trivyignores: .trivyignore
-          cache: "true"
-
   trivy-image:
-    # Advisory until the postgis base-image bump lands (Phase-3 protocol:
-    # bump proven by local byte-identical qa:e2e-regression + dated
-    # .trivyignore residue). Upstream postgis:16-3.4 (bullseye) carries
-    # ~141 fixable HIGH/CRITICAL today — a red nobody can act on until
-    # the bump, hence explicitly labeled advisory, never silently hidden.
-    name: Image Scan (trivy — advisory until postgis bump)
+    name: Main Qualification / Container Image Scan (advisory)
+    needs: [event-contract]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     continue-on-error: true
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
-      - name: Build babylon-pg (shared GHA layer cache)
+      - name: Build babylon-pg with the shared GHA layer cache
         uses: docker/bake-action@v7
         with:
           source: .
@@ -373,7 +159,7 @@ jobs:
           set: |
             babylon-pg.tags=babylon-pg:ci
             babylon-pg.cache-from=type=gha,scope=babylon-pg
-      - name: Scan built image
+      - name: Scan the built image
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: image

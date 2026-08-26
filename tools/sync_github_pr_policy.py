@@ -20,6 +20,8 @@ from tools.pr_policy import (  # noqa: E402
     BASELINE_CEREMONY_CONTEXT,
     DEV_BLOCKING_CONTEXTS,
     DEV_CHECK_MANIFEST,
+    MAIN_BLOCKING_CONTEXTS,
+    MAIN_QUALIFICATION_CHECK_MANIFEST,
     CheckRequirement,
 )
 
@@ -27,6 +29,7 @@ REPOSITORY = "percy-raskova/babylon"
 REPOSITORY_ENDPOINT = f"repos/{REPOSITORY}"
 RULESETS_ENDPOINT = f"{REPOSITORY_ENDPOINT}/rulesets?includes_parents=false&per_page=100"
 DEV_RULESET_ENDPOINT = f"{REPOSITORY_ENDPOINT}/rulesets/{{ruleset_id}}"
+MAIN_RULESET_ENDPOINT = DEV_RULESET_ENDPOINT
 DEV_REF_ENDPOINT = f"{REPOSITORY_ENDPOINT}/git/ref/heads/dev"
 LABELS_ENDPOINT = f"{REPOSITORY_ENDPOINT}/labels"
 LABELS_LIST_ENDPOINT = f"{LABELS_ENDPOINT}?per_page=100"
@@ -49,6 +52,18 @@ DEV_PUSH_ATTESTATION_MANIFEST: Final[tuple[CheckRequirement, ...]] = tuple(
     )
     for requirement in DEV_CHECK_MANIFEST
     if requirement.kind == "blocking"
+)
+MAIN_QUALIFICATION_ATTESTATION_MANIFEST: Final[tuple[CheckRequirement, ...]] = tuple(
+    CheckRequirement(
+        requirement.context,
+        requirement.kind,
+        frozenset(conclusion.lower() for conclusion in requirement.allowed_conclusions),
+    )
+    for requirement in MAIN_QUALIFICATION_CHECK_MANIFEST
+)
+DEV_POLICY_ATTESTATION_MANIFEST: Final[tuple[CheckRequirement, ...]] = (
+    *DEV_PUSH_ATTESTATION_MANIFEST,
+    *MAIN_QUALIFICATION_ATTESTATION_MANIFEST,
 )
 _UNKNOWN = object()
 
@@ -192,22 +207,31 @@ def load_policy(path: Path = DEFAULT_POLICY_PATH) -> dict[str, object]:
     policy = _object(raw, "policy")
     _object(policy.get("repository"), "policy.repository")
     _object(policy.get("dev_ruleset"), "policy.dev_ruleset")
+    _object(policy.get("main_ruleset"), "policy.main_ruleset")
     _object(policy.get("automerge_label"), "policy.automerge_label")
     _validate_policy(policy)
     return policy
 
 
-def _exact_dev_scope(payload: dict[str, object]) -> bool:
+def _exact_branch_scope(payload: dict[str, object], branch: str) -> bool:
     if payload.get("target") != "branch":
         return False
-    conditions = _object(payload.get("conditions"), "dev ruleset conditions")
-    ref_name = _object(conditions.get("ref_name"), "dev ruleset ref condition")
-    return ref_name.get("include") == ["refs/heads/dev"] and ref_name.get("exclude") == []
+    conditions = _object(payload.get("conditions"), f"{branch} ruleset conditions")
+    ref_name = _object(conditions.get("ref_name"), f"{branch} ruleset ref condition")
+    return ref_name.get("include") == [f"refs/heads/{branch}"] and ref_name.get("exclude") == []
 
 
-def _dev_ruleset(api: Api) -> tuple[int, dict[str, object]]:
+def _exact_dev_scope(payload: dict[str, object]) -> bool:
+    return _exact_branch_scope(payload, "dev")
+
+
+def _exact_main_scope(payload: dict[str, object]) -> bool:
+    return _exact_branch_scope(payload, "main")
+
+
+def _protected_rulesets(api: Api) -> dict[str, tuple[int, dict[str, object]]]:
     summaries = _objects(api.get_json(RULESETS_ENDPOINT), "repository rulesets", MAX_RULESETS)
-    matches: list[tuple[int, dict[str, object]]] = []
+    matches: dict[str, list[tuple[int, dict[str, object]]]] = {"dev": [], "main": []}
     for summary in summaries:
         ruleset_id = summary.get("id")
         if not isinstance(ruleset_id, int):
@@ -219,13 +243,27 @@ def _dev_ruleset(api: Api) -> tuple[int, dict[str, object]]:
         conditions = _object(payload.get("conditions"), f"ruleset {ruleset_id} conditions")
         ref_name = _object(conditions.get("ref_name"), f"ruleset {ruleset_id} ref condition")
         includes = ref_name.get("include")
-        if isinstance(includes, list) and "refs/heads/dev" in includes:
-            if not _exact_dev_scope(payload):
-                raise PolicyError(f"ruleset {ruleset_id} does not have exact dev-only branch scope")
-            matches.append((ruleset_id, payload))
-    if len(matches) != 1:
-        raise PolicyError(f"expected exactly one dev ruleset, found {len(matches)}")
-    return matches[0]
+        if not isinstance(includes, list):
+            continue
+        protected = [branch for branch in ("dev", "main") if f"refs/heads/{branch}" in includes]
+        if len(protected) > 1:
+            raise PolicyError(f"ruleset {ruleset_id} has shared protected-branch scope")
+        for branch in ("dev", "main"):
+            if f"refs/heads/{branch}" not in includes:
+                continue
+            if not _exact_branch_scope(payload, branch):
+                raise PolicyError(
+                    f"ruleset {ruleset_id} does not have exact {branch}-only branch scope"
+                )
+            matches[branch].append((ruleset_id, payload))
+    resolved: dict[str, tuple[int, dict[str, object]]] = {}
+    for branch in ("dev", "main"):
+        if len(matches[branch]) != 1:
+            raise PolicyError(
+                f"expected exactly one {branch} ruleset, found {len(matches[branch])}"
+            )
+        resolved[branch] = matches[branch][0]
+    return resolved
 
 
 def _labels(api: Api) -> list[dict[str, object]]:
@@ -240,24 +278,34 @@ def _find_label(labels: list[dict[str, object]], name: str) -> dict[str, object]
 
 
 def _current_state(api: Api) -> dict[str, object]:
-    ruleset_id, ruleset = _dev_ruleset(api)
+    rulesets = _protected_rulesets(api)
+    dev_ruleset_id, dev_ruleset = rulesets["dev"]
+    main_ruleset_id, main_ruleset = rulesets["main"]
     repository = _object(api.get_json(REPOSITORY_ENDPOINT), "repository")
     labels = _labels(api)
     return {
-        "dev_ruleset_id": ruleset_id,
-        "dev_ruleset": normalize_ruleset(ruleset),
+        "dev_ruleset_id": dev_ruleset_id,
+        "dev_ruleset": normalize_ruleset(dev_ruleset),
+        "main_ruleset_id": main_ruleset_id,
+        "main_ruleset": normalize_ruleset(main_ruleset),
         "repository": normalize_repository(repository),
         "automerge_label": _find_label(labels, CANONICAL_AUTOMERGE_LABEL),
     }
 
 
-def _state_identity(state: dict[str, object]) -> dict[str, object]:
-    ruleset_id = state.get("dev_ruleset_id")
+def _state_ruleset_identity(state: dict[str, object], branch: str) -> tuple[int, dict[str, object]]:
+    ruleset_id = state.get(f"{branch}_ruleset_id")
     if not isinstance(ruleset_id, int):
-        raise PolicyError("state has no integer dev_ruleset_id")
-    ruleset = normalize_ruleset(_object(state.get("dev_ruleset"), "state dev ruleset"))
-    if not _exact_dev_scope(ruleset):
-        raise PolicyError("state ruleset does not have exact dev-only branch scope")
+        raise PolicyError(f"state has no integer {branch}_ruleset_id")
+    ruleset = normalize_ruleset(_object(state.get(f"{branch}_ruleset"), f"state {branch} ruleset"))
+    if not _exact_branch_scope(ruleset, branch):
+        raise PolicyError(f"state ruleset does not have exact {branch}-only branch scope")
+    return ruleset_id, ruleset
+
+
+def _state_identity(state: dict[str, object]) -> dict[str, object]:
+    dev_ruleset_id, dev_ruleset = _state_ruleset_identity(state, "dev")
+    main_ruleset_id, main_ruleset = _state_ruleset_identity(state, "main")
     label = state.get("automerge_label")
     normalized_label = (
         None
@@ -265,8 +313,10 @@ def _state_identity(state: dict[str, object]) -> dict[str, object]:
         else _canonical_label(_object(label, "state automerge label"), "state label")
     )
     return {
-        "dev_ruleset_id": ruleset_id,
-        "dev_ruleset": ruleset,
+        "dev_ruleset_id": dev_ruleset_id,
+        "dev_ruleset": dev_ruleset,
+        "main_ruleset_id": main_ruleset_id,
+        "main_ruleset": main_ruleset,
         "repository": normalize_repository(_object(state.get("repository"), "state repository")),
         "automerge_label": normalized_label,
     }
@@ -277,13 +327,16 @@ def check_policy(api: Api, policy: dict[str, object]) -> list[str]:
     _validate_policy(policy)
     current = _current_state(api)
     desired_repository = normalize_repository(_object(policy["repository"], "repository policy"))
-    desired_ruleset = normalize_ruleset(_object(policy["dev_ruleset"], "dev ruleset policy"))
+    desired_dev_ruleset = normalize_ruleset(_object(policy["dev_ruleset"], "dev ruleset policy"))
+    desired_main_ruleset = normalize_ruleset(_object(policy["main_ruleset"], "main ruleset policy"))
     desired_label = _canonical_label(_object(policy["automerge_label"], "label policy"), "policy")
     drift: list[str] = []
     if current["repository"] != desired_repository:
         drift.append("repository merge settings differ")
-    if current["dev_ruleset"] != desired_ruleset:
+    if current["dev_ruleset"] != desired_dev_ruleset:
         drift.append("dev ruleset differs")
+    if current["main_ruleset"] != desired_main_ruleset:
+        drift.append("main ruleset differs")
     existing_label = current["automerge_label"]
     if existing_label is None:
         drift.append("automerge label is absent")
@@ -304,16 +357,16 @@ def _dev_sha(api: Api) -> str:
     return sha
 
 
-def _required_contexts(policy: dict[str, object]) -> list[str]:
-    ruleset = _object(policy["dev_ruleset"], "dev ruleset policy")
-    rules = _objects(ruleset.get("rules"), "dev rules", MAX_RULESETS)
+def _required_contexts(policy: dict[str, object], branch: str = "dev") -> list[str]:
+    ruleset = _object(policy[f"{branch}_ruleset"], f"{branch} ruleset policy")
+    rules = _objects(ruleset.get("rules"), f"{branch} rules", MAX_RULESETS)
     status_rules = [rule for rule in rules if rule.get("type") == "required_status_checks"]
     if len(status_rules) != 1:
-        raise PolicyError("dev policy must contain exactly one required-status-checks rule")
+        raise PolicyError(f"{branch} policy must contain exactly one required-status-checks rule")
     parameters = _object(status_rules[0].get("parameters"), "status-check parameters")
     checks = _objects(parameters.get("required_status_checks"), "required checks", MAX_CHECK_RUNS)
     if not checks:
-        raise PolicyError("dev policy must contain at least one required status check")
+        raise PolicyError(f"{branch} policy must contain at least one required status check")
     contexts = [check.get("context") for check in checks]
     if not all(isinstance(context, str) and context for context in contexts):
         raise PolicyError("required status check has no context")
@@ -323,12 +376,22 @@ def _required_contexts(policy: dict[str, object]) -> list[str]:
 
 
 def _validate_policy(policy: dict[str, object]) -> None:
-    ruleset = normalize_ruleset(_object(policy.get("dev_ruleset"), "dev ruleset policy"))
-    if not _exact_dev_scope(ruleset):
+    dev_ruleset = normalize_ruleset(_object(policy.get("dev_ruleset"), "dev ruleset policy"))
+    if not _exact_dev_scope(dev_ruleset):
         raise PolicyError("desired ruleset must have exact dev-only branch scope")
-    contexts = _required_contexts(policy)
-    if len(contexts) != len(DEV_BLOCKING_CONTEXTS) or set(contexts) != set(DEV_BLOCKING_CONTEXTS):
+    dev_contexts = _required_contexts(policy, "dev")
+    if len(dev_contexts) != len(DEV_BLOCKING_CONTEXTS) or set(dev_contexts) != set(
+        DEV_BLOCKING_CONTEXTS
+    ):
         raise PolicyError("required checks must equal the complete dev check manifest")
+    main_ruleset = normalize_ruleset(_object(policy.get("main_ruleset"), "main ruleset policy"))
+    if not _exact_main_scope(main_ruleset):
+        raise PolicyError("desired ruleset must have exact main-only branch scope")
+    main_contexts = _required_contexts(policy, "main")
+    if len(main_contexts) != len(MAIN_BLOCKING_CONTEXTS) or set(main_contexts) != set(
+        MAIN_BLOCKING_CONTEXTS
+    ):
+        raise PolicyError("required checks must equal the complete main check manifest")
     normalize_repository(_object(policy.get("repository"), "repository policy"))
     _canonical_label(_object(policy.get("automerge_label"), "label policy"), "policy")
 
@@ -368,7 +431,7 @@ def _verify_green_dev(api: Api, expected_sha: str) -> None:
         if prior is None or current_key >= prior_key:
             latest[name] = candidate
     problems: list[str] = []
-    for requirement in DEV_PUSH_ATTESTATION_MANIFEST:
+    for requirement in DEV_POLICY_ATTESTATION_MANIFEST:
         selected = latest.get(requirement.context)
         if selected is None:
             problems.append(f"{requirement.context}: missing")
@@ -433,11 +496,12 @@ def _restore_label(api: Api, prior: object, current: object = _UNKNOWN) -> None:
 def _component_differences(
     current: dict[str, object],
     desired: dict[str, object],
-) -> tuple[bool, bool, bool]:
+) -> tuple[bool, bool, bool, bool]:
     current_identity = _state_identity(current)
     desired_identity = _state_identity(desired)
     return (
         current_identity["dev_ruleset"] != desired_identity["dev_ruleset"],
+        current_identity["main_ruleset"] != desired_identity["main_ruleset"],
         current_identity["repository"] != desired_identity["repository"],
         current_identity["automerge_label"] != desired_identity["automerge_label"],
     )
@@ -448,22 +512,34 @@ def _restore_components(
     before: dict[str, object],
     current: dict[str, object] | None,
     *,
-    restore_ruleset: bool,
+    restore_dev_ruleset: bool,
+    restore_main_ruleset: bool,
     restore_repository: bool,
     restore_label: bool,
 ) -> list[str]:
-    ruleset_id = before.get("dev_ruleset_id")
-    if not isinstance(ruleset_id, int):
-        raise PolicyError("snapshot has no integer dev_ruleset_id")
-    ruleset = normalize_ruleset(_object(before.get("dev_ruleset"), "snapshot dev ruleset"))
+    dev_ruleset_id, dev_ruleset = _state_ruleset_identity(before, "dev")
+    main_ruleset_id, main_ruleset = _state_ruleset_identity(before, "main")
     repository = normalize_repository(_object(before.get("repository"), "snapshot repository"))
     current_label = current.get("automerge_label") if current is not None else _UNKNOWN
     errors: list[str] = []
-    if restore_ruleset:
+    if restore_dev_ruleset:
         try:
-            api.send_json("PUT", DEV_RULESET_ENDPOINT.format(ruleset_id=ruleset_id), ruleset)
+            api.send_json(
+                "PUT",
+                DEV_RULESET_ENDPOINT.format(ruleset_id=dev_ruleset_id),
+                dev_ruleset,
+            )
         except (GitHubApiError, PolicyError, OSError) as error:
-            errors.append(f"ruleset restore failed: {error}")
+            errors.append(f"dev ruleset restore failed: {error}")
+    if restore_main_ruleset:
+        try:
+            api.send_json(
+                "PUT",
+                MAIN_RULESET_ENDPOINT.format(ruleset_id=main_ruleset_id),
+                main_ruleset,
+            )
+        except (GitHubApiError, PolicyError, OSError) as error:
+            errors.append(f"main ruleset restore failed: {error}")
     if restore_repository:
         try:
             api.send_json("PATCH", REPOSITORY_ENDPOINT, repository)
@@ -481,13 +557,19 @@ def _restore_snapshot(
     api: Api,
     before: dict[str, object],
     *,
-    attempted_ruleset: bool,
+    attempted_dev_ruleset: bool,
+    attempted_main_ruleset: bool,
     attempted_repository: bool,
     attempted_label: bool,
 ) -> None:
     _state_identity(before)
     current: dict[str, object] | None = None
-    restore_flags = (attempted_ruleset, attempted_repository, attempted_label)
+    restore_flags = (
+        attempted_dev_ruleset,
+        attempted_main_ruleset,
+        attempted_repository,
+        attempted_label,
+    )
     try:
         current = _current_state(api)
     except (GitHubApiError, PolicyError, OSError):
@@ -495,14 +577,17 @@ def _restore_snapshot(
     else:
         if current["dev_ruleset_id"] != before["dev_ruleset_id"]:
             raise PolicyError("dev ruleset ID changed; restore refused")
+        if current["main_ruleset_id"] != before["main_ruleset_id"]:
+            raise PolicyError("main ruleset ID changed; restore refused")
         restore_flags = _component_differences(current, before)
     errors = _restore_components(
         api,
         before,
         current,
-        restore_ruleset=restore_flags[0],
-        restore_repository=restore_flags[1],
-        restore_label=restore_flags[2],
+        restore_dev_ruleset=restore_flags[0],
+        restore_main_ruleset=restore_flags[1],
+        restore_repository=restore_flags[2],
+        restore_label=restore_flags[3],
     )
     try:
         restored = _state_identity(_current_state(api)) == _state_identity(before)
@@ -547,11 +632,11 @@ def apply_policy(
         raise PolicyError("dev moved after green evidence; no mutation was attempted")
 
     desired_repository = normalize_repository(_object(policy["repository"], "repository policy"))
-    desired_ruleset = normalize_ruleset(_object(policy["dev_ruleset"], "dev ruleset policy"))
+    desired_dev_ruleset = normalize_ruleset(_object(policy["dev_ruleset"], "dev ruleset policy"))
+    desired_main_ruleset = normalize_ruleset(_object(policy["main_ruleset"], "main ruleset policy"))
     desired_label = _canonical_label(_object(policy["automerge_label"], "label policy"), "policy")
-    ruleset_id = before["dev_ruleset_id"]
-    if not isinstance(ruleset_id, int):
-        raise PolicyError("current state has no integer dev_ruleset_id")
+    dev_ruleset_id, _dev_ruleset = _state_ruleset_identity(before, "dev")
+    main_ruleset_id, _main_ruleset = _state_ruleset_identity(before, "main")
 
     current_label = before["automerge_label"]
     label_differs = (
@@ -560,10 +645,12 @@ def apply_policy(
         != desired_label
     )
     repository_differs = before["repository"] != desired_repository
-    ruleset_differs = before["dev_ruleset"] != desired_ruleset
+    dev_ruleset_differs = before["dev_ruleset"] != desired_dev_ruleset
+    main_ruleset_differs = before["main_ruleset"] != desired_main_ruleset
     label_attempted = False
     repository_attempted = False
-    ruleset_attempted = False
+    dev_ruleset_attempted = False
+    main_ruleset_attempted = False
 
     try:
         if label_differs:
@@ -572,12 +659,19 @@ def apply_policy(
         if repository_differs:
             repository_attempted = True
             api.send_json("PATCH", REPOSITORY_ENDPOINT, desired_repository)
-        if ruleset_differs:
-            ruleset_attempted = True
+        if dev_ruleset_differs:
+            dev_ruleset_attempted = True
             api.send_json(
                 "PUT",
-                DEV_RULESET_ENDPOINT.format(ruleset_id=ruleset_id),
-                desired_ruleset,
+                DEV_RULESET_ENDPOINT.format(ruleset_id=dev_ruleset_id),
+                desired_dev_ruleset,
+            )
+        if main_ruleset_differs:
+            main_ruleset_attempted = True
+            api.send_json(
+                "PUT",
+                MAIN_RULESET_ENDPOINT.format(ruleset_id=main_ruleset_id),
+                desired_main_ruleset,
             )
         drift = check_policy(api, policy)
         if drift:
@@ -589,7 +683,8 @@ def apply_policy(
             _restore_snapshot(
                 api,
                 before,
-                attempted_ruleset=ruleset_attempted,
+                attempted_dev_ruleset=dev_ruleset_attempted,
+                attempted_main_ruleset=main_ruleset_attempted,
                 attempted_repository=repository_attempted,
                 attempted_label=label_attempted,
             )
@@ -623,7 +718,8 @@ def rollback_policy(api: Api, snapshot: dict[str, object]) -> None:
     _restore_snapshot(
         api,
         snapshot,
-        attempted_ruleset=True,
+        attempted_dev_ruleset=True,
+        attempted_main_ruleset=True,
         attempted_repository=True,
         attempted_label=True,
     )

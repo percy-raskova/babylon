@@ -1,51 +1,82 @@
-# Versioning — the save-compatibility contract
+# The release version contract
+
+<!-- Vale: this reference preserves literal Git, release, and semantic-versioning terms. -->
+<!-- vale Vale.Spelling = NO -->
+<!-- vale ste.UnapprovedWords = NO -->
+<!-- vale ste.Ambiguity = NO -->
+<!-- vale ste.NounClusters = NO -->
+<!-- vale ste.Gerunds = NO -->
 
 Owner-ratified 2026-07-20 (spec: docs/superpowers/specs/2026-07-20-versioning-rigor-design.md).
-Commitizen enforces commit form; this doc defines what versions MEAN and how releases happen.
+Commitizen enforces commit form. This document defines version meaning and the release process.
 
-**Supersession note (2026-07-29, Amendment AE / ADR172):** v1.0 is redefined as the
-**Rust engine's** release (Program 27 Refoundation), not the earlier Python "playable
-archive" release; save-compat semver resets with it. The MAJOR/MINOR/PATCH policy and
-ceremony below are unchanged in substance and apply to that release.
+**Supersession note (2026-07-29, Amendment AE / ADR172):** ADR172 defines v1.0
+as the **Rust engine's** release under Program 27. It replaces the earlier
+Python "playable archive" release and resets save-compatibility semver. The
+policy and ceremony below apply to the Rust engine release.
 
 ## The axis: player saves
 
-- **MAJOR** — an existing save/campaign cannot load without migration. Examples: Ledger
-  schema breaks, Archive embedding-column (`vector(N)`) binding changes, defines-format
-  breaks that invalidate campaign state.
-- **MINOR** — new features; old saves load clean.
-- **PATCH** — fixes; no behavior-contract change.
-- **Pre-1.0:** the strict reading applies anyway — a 0.x MINOR may not break saves.
-  `1.0.0` is a promise-keeping event, not a semantics change.
+- **MAJOR** — an existing campaign cannot load without migration. Examples
+  include Ledger schema breaks and Archive embedding-column binding changes.
+- **MINOR** — new features. Old campaigns load clean.
+- **PATCH** — fixes. The behavior contract does not change.
+- **Pre-1.0:** a 0.x MINOR cannot break saves.
+
+`1.0.0` is a promise-keeping event, not a semantics change.
 
 ## Commit scopes (controlled vocabulary)
 
 `cli`, `intelligence`, `engine`, `persistence`, `render`, `web`, `data`, `deps`, `ci`,
 `nix`, `flake`, `docs`, `plans`, `ai`, `specs`, `tooling`, `hygiene`, `packaging`.
 babylon-infra additionally: `tf`, `ansible`, `cloudflare`, `secrets`, `tasks`.
-New scopes are added here first, then used.
+Add new scopes here before use.
 
 ## The release ceremony (owner-run)
 
-1. `mise run release:bump` — refuses on a dirty tree or off-`dev`; runs the
-   releases-pin-environment check (below); shows `cz bump --dry-run`.
-2. `mise run release:bump -- --yes` — the real bump commit + `vX.Y.Z` tag (local).
-3. Owner pushes `dev`, then the tag. **Pushing the tag IS the release**: it fires
-   `release.yml` (GitHub release) and `nix-release.yml` (signed closure → player cache).
+1. Run `mise run release:bump` for the checked dry-run.
+2. Run `mise run release:bump -- --yes` to create the untagged `dev` commit.
+3. Push `dev` and open its release PR to `main`.
+4. Retrieve both protected branches.
+5. Run `git merge-base --is-ancestor origin/main origin/dev`.
+6. Refuse the release when current `main` is absent from `dev`.
+7. Run `gh workflow run main.yml --ref dev`.
+8. Pin the green qualification run to the exact `dev` SHA.
+9. The Director runs `mise run pr:merge -- N --director-main` after acceptance.
+10. Create a sanctioned lane at exact `origin/main`.
+11. Run `mise run release:prepare-dev-sync -- vX.Y.Z N`.
+12. Commit its lineage record and open that lane's PR to `dev`.
+13. Merge the lineage PR with the ordinary sanctioned command.
+14. Update the local `main` checkout to exact `origin/main`.
+15. Run `mise run release:tag -- --yes`.
+
+The tag task refuses until the lineage PR is in `origin/dev`. The task creates
+and pushes `vX.Y.Z` on the qualified main merge commit. The tag starts
+`release.yml` and `nix-release.yml`.
+
+The tag task proves that its target is exact protected `main`. It also proves
+that the main commit returned to protected `dev`. Each publishing workflow
+independently rejects a tag outside protected `main` history.
 
 ## Releases pin their environment
 
-Since the environment-sovereignty ruling (2026-07-21, ADR102) the toolchain is the
-vendored flake: `flake.nix` + `flake.lock` live in this repo, so every tag pins the
-environment by construction — there is no infra gitlink to police. What can still
-drift is the lockstep, so `tools/check_release_pins.sh` (run by the ceremony and
-re-checked in `release.yml`) asserts offline that (1) `flake.lock`'s `nixpkgs-data`
-node matches the rev declared in `flake.nix` and (2) the builder's
-`PINNED_SQLITE_VERSION` matches the `data-artifacts.yaml` product block. babylon-infra
-releases version independently (`mise run release:bump` there) for its own ops surface.
+ADR102 makes the vendored flake the release toolchain. `flake.nix` and
+`flake.lock` pin each tag's environment. No infrastructure gitlink
+remains. `tools/check_release_pins.sh` checks the remaining lockstep offline.
+
+It compares the `nixpkgs-data` revisions in `flake.lock` and `flake.nix`. It
+also compares `PINNED_SQLITE_VERSION` with the `data-artifacts.yaml` product
+block. The ceremony and `release.yml` run this check. The babylon-infra
+repository versions its operations surface independently.
 
 ## Tag namespace
 
-`v*` is for releases, only. Historical/narrative tags live under `archive/`.
-Owner-run cleanup 2026-07-20: `v1.0.0` (abandoned 2025-12 bump) deleted;
+`v*` is only for releases. Historical and narrative tags live under `archive/`.
+Owner-run cleanup 2026-07-20 deleted the abandoned `v1.0.0` tag.
 `v0.2.3-rent-trinity` and `v0.3.7.1-george-jackson-validated` moved to `archive/`.
+
+<!-- vale ste.Gerunds = YES -->
+<!-- vale ste.NounClusters = YES -->
+<!-- vale ste.Ambiguity = YES -->
+<!-- vale ste.UnapprovedWords = YES -->
+<!-- vale Vale.Spelling = YES -->

@@ -48,22 +48,17 @@ DEV_BLOCKING_CHECKS = (
 )
 
 MAIN_BLOCKING_CHECKS = (
-    "Fast Gate (hygiene, lint, format, imports, types, lock)",
-    "Unit Tests (xdist, coverage gate)",
-    "Determinism Gate (byte-identical dense goldens)",
-    "Security Audit (pip-audit policy — blocking since item-41)",
-    "Non-Unit Tests (integration, scenarios, property, contract)",
-    "Postgres Integration (web bridge)",
-    "Determinism Bundle (Postgres-backed, strict)",
-    "Reference-Data Tests (ci-data-v1 subset)",
-    "Documentation Build (doctest blocks; manual advisory)",
-    "Secret Scan (gitleaks, full history)",
-    "IaC Config Scan (trivy, HIGH+CRITICAL blocking)",
+    *DEV_BLOCKING_CHECKS,
+    "Main Qualification / Event Contract",
+    "Main Qualification / Non-Unit Behavioral Contracts",
+    "Main Qualification / PostgreSQL Determinism Bundle",
+    "Main Qualification / Reference-Data Contracts",
+    "Main Qualification / Release Documentation",
 )
 
 MAIN_ADVISORY_CHECKS = (
-    "AI Tests (advisory — non-deterministic)",
-    "Image Scan (trivy — advisory until postgis bump)",
+    "Main Qualification / AI Tests (advisory)",
+    "Main Qualification / Container Image Scan (advisory)",
 )
 
 
@@ -783,6 +778,32 @@ def test_director_main_accepts_only_sanctioned_main_sources(tmp_path: Path, head
     assert len(_merge_calls(calls)) == 1
 
 
+@pytest.mark.parametrize("advisory_name", MAIN_ADVISORY_CHECKS)
+def test_director_main_accepts_an_explicit_advisory_failure(
+    tmp_path: Path,
+    advisory_name: str,
+) -> None:
+    scenario = _default_scenario()
+    _view(scenario).update({"baseRefName": "main", "headRefName": "dev"})
+    _use_main_manifest(scenario)
+    rollup = _view(scenario)["statusCheckRollup"]
+    assert isinstance(rollup, list)
+    rollup[:] = [
+        _check(advisory_name, conclusion="FAILURE") if check.get("name") == advisory_name else check
+        for check in rollup
+    ]
+
+    result, calls = _run_pr_merge(
+        tmp_path,
+        "--director-main",
+        "--verify-only",
+        scenario=scenario,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _merge_calls(calls) == []
+
+
 def test_director_main_refuses_feature_source(tmp_path: Path) -> None:
     scenario = _default_scenario()
     _view(scenario).update({"baseRefName": "main", "headRefName": "feature/unsafe"})
@@ -1003,7 +1024,7 @@ def test_director_main_rejects_complete_dev_manifest_as_wrong_qualification(
     result, calls = _run_pr_merge(tmp_path, "--director-main", scenario=scenario)
 
     assert result.returncode == 1
-    assert MAIN_BLOCKING_CHECKS[4] in result.stderr
+    assert MAIN_BLOCKING_CHECKS[len(DEV_BLOCKING_CHECKS)] in result.stderr
     assert _merge_calls(calls) == []
 
 

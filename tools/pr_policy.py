@@ -56,64 +56,55 @@ DEV_CHECK_MANIFEST: Final[tuple[CheckRequirement, ...]] = (
     ),
 )
 
+MAIN_QUALIFICATION_CHECK_MANIFEST: Final[tuple[CheckRequirement, ...]] = (
+    CheckRequirement(
+        "Main Qualification / Event Contract",
+        "blocking",
+        frozenset({"SUCCESS"}),
+    ),
+    CheckRequirement(
+        "Main Qualification / Non-Unit Behavioral Contracts",
+        "blocking",
+        frozenset({"SUCCESS"}),
+    ),
+    CheckRequirement(
+        "Main Qualification / PostgreSQL Determinism Bundle",
+        "blocking",
+        frozenset({"SUCCESS"}),
+    ),
+    CheckRequirement(
+        "Main Qualification / Reference-Data Contracts",
+        "blocking",
+        frozenset({"SUCCESS"}),
+    ),
+    CheckRequirement(
+        "Main Qualification / Release Documentation",
+        "blocking",
+        frozenset({"SUCCESS"}),
+    ),
+    CheckRequirement(
+        "Main Qualification / AI Tests (advisory)",
+        "advisory",
+        frozenset({"SUCCESS", "FAILURE", "NEUTRAL", "SKIPPED"}),
+    ),
+    CheckRequirement(
+        "Main Qualification / Container Image Scan (advisory)",
+        "advisory",
+        frozenset({"SUCCESS", "FAILURE", "NEUTRAL", "SKIPPED"}),
+    ),
+)
+
 MAIN_CHECK_MANIFEST: Final[tuple[CheckRequirement, ...]] = (
-    CheckRequirement(
-        "Fast Gate (hygiene, lint, format, imports, types, lock)",
-        "blocking",
-        frozenset({"SUCCESS"}),
-    ),
-    CheckRequirement("Unit Tests (xdist, coverage gate)", "blocking", frozenset({"SUCCESS"})),
-    CheckRequirement(
-        "Determinism Gate (byte-identical dense goldens)",
-        "blocking",
-        frozenset({"SUCCESS"}),
-    ),
-    CheckRequirement(
-        "Security Audit (pip-audit policy — blocking since item-41)",
-        "blocking",
-        frozenset({"SUCCESS"}),
-    ),
-    CheckRequirement(
-        "Non-Unit Tests (integration, scenarios, property, contract)",
-        "blocking",
-        frozenset({"SUCCESS"}),
-    ),
-    CheckRequirement("Postgres Integration (web bridge)", "blocking", frozenset({"SUCCESS"})),
-    CheckRequirement(
-        "Determinism Bundle (Postgres-backed, strict)",
-        "blocking",
-        frozenset({"SUCCESS"}),
-    ),
-    CheckRequirement(
-        "Reference-Data Tests (ci-data-v1 subset)",
-        "blocking",
-        frozenset({"SUCCESS"}),
-    ),
-    CheckRequirement(
-        "Documentation Build (doctest blocks; manual advisory)",
-        "blocking",
-        frozenset({"SUCCESS"}),
-    ),
-    CheckRequirement("Secret Scan (gitleaks, full history)", "blocking", frozenset({"SUCCESS"})),
-    CheckRequirement(
-        "IaC Config Scan (trivy, HIGH+CRITICAL blocking)",
-        "blocking",
-        frozenset({"SUCCESS"}),
-    ),
-    CheckRequirement(
-        "AI Tests (advisory — non-deterministic)",
-        "advisory",
-        frozenset({"SUCCESS", "NEUTRAL", "SKIPPED"}),
-    ),
-    CheckRequirement(
-        "Image Scan (trivy — advisory until postgis bump)",
-        "advisory",
-        frozenset({"SUCCESS", "NEUTRAL", "SKIPPED"}),
-    ),
+    *DEV_CHECK_MANIFEST,
+    *MAIN_QUALIFICATION_CHECK_MANIFEST,
 )
 
 DEV_BLOCKING_CONTEXTS: Final[tuple[str, ...]] = tuple(
     requirement.context for requirement in DEV_CHECK_MANIFEST if requirement.kind == "blocking"
+)
+
+MAIN_BLOCKING_CONTEXTS: Final[tuple[str, ...]] = tuple(
+    requirement.context for requirement in MAIN_CHECK_MANIFEST if requirement.kind == "blocking"
 )
 
 

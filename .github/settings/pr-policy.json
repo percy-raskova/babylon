@@ -75,6 +75,90 @@
       }
     ]
   },
+  "main_ruleset": {
+    "name": "main protection (Director-only PR, combined qualification)",
+    "target": "branch",
+    "enforcement": "active",
+    "bypass_actors": [],
+    "conditions": {
+      "ref_name": {
+        "exclude": [],
+        "include": ["refs/heads/main"]
+      }
+    },
+    "rules": [
+      {
+        "type": "deletion"
+      },
+      {
+        "type": "non_fast_forward"
+      },
+      {
+        "type": "pull_request",
+        "parameters": {
+          "allowed_merge_methods": ["merge"],
+          "dismiss_stale_reviews_on_push": false,
+          "required_reviewers": [],
+          "require_code_owner_review": false,
+          "require_last_push_approval": false,
+          "required_approving_review_count": 0,
+          "required_review_thread_resolution": true,
+          "require_extra_approval_for_unattributed_changes": false
+        }
+      },
+      {
+        "type": "required_status_checks",
+        "parameters": {
+          "strict_required_status_checks_policy": true,
+          "do_not_enforce_on_create": false,
+          "required_status_checks": [
+            {
+              "context": "Fast Gate (hygiene, lint, format, imports, types, lock)"
+            },
+            {
+              "context": "Unit Tests (xdist, coverage gate)"
+            },
+            {
+              "context": "Determinism Gate (byte-identical dense goldens)"
+            },
+            {
+              "context": "Secret Scan (gitleaks, full history)"
+            },
+            {
+              "context": "IaC Config Scan (trivy, HIGH+CRITICAL blocking)"
+            },
+            {
+              "context": "Security Audit (pip-audit policy — blocking since item-41)"
+            },
+            {
+              "context": "Rust Gate (fmt, clippy, test, doc — rust/ workspace)"
+            },
+            {
+              "context": "Baseline Ceremony Gate (§6.5 provenance)"
+            },
+            {
+              "context": "Postgres Integration Tier (PG 17, pinned runtime)"
+            },
+            {
+              "context": "Main Qualification / Event Contract"
+            },
+            {
+              "context": "Main Qualification / Non-Unit Behavioral Contracts"
+            },
+            {
+              "context": "Main Qualification / PostgreSQL Determinism Bundle"
+            },
+            {
+              "context": "Main Qualification / Reference-Data Contracts"
+            },
+            {
+              "context": "Main Qualification / Release Documentation"
+            }
+          ]
+        }
+      }
+    ]
+  },
   "automerge_label": {
     "name": "dependencies:automerge",
     "color": "1f883d",

@@ -33,16 +33,37 @@ DEV_BLOCKING_CHECKS = (
     "Postgres Integration Tier (PG 17, pinned runtime)",
 )
 
+MAIN_QUALIFICATION_CHECKS = (
+    "Main Qualification / Event Contract",
+    "Main Qualification / Non-Unit Behavioral Contracts",
+    "Main Qualification / PostgreSQL Determinism Bundle",
+    "Main Qualification / Reference-Data Contracts",
+    "Main Qualification / Release Documentation",
+    "Main Qualification / AI Tests (advisory)",
+    "Main Qualification / Container Image Scan (advisory)",
+)
 
-def _ruleset(*, strict: bool, threads: bool) -> dict[str, Any]:
+
+def _ruleset(
+    *,
+    strict: bool,
+    threads: bool,
+    branch: str = "dev",
+    ruleset_id: int = 18807584,
+) -> dict[str, Any]:
+    contexts = (
+        DEV_BLOCKING_CHECKS
+        if branch == "dev"
+        else (*DEV_BLOCKING_CHECKS, *MAIN_QUALIFICATION_CHECKS[:5])
+    )
     return {
-        "id": 18807584,
-        "name": "dev protection",
+        "id": ruleset_id,
+        "name": f"{branch} protection",
         "target": "branch",
         "source_type": "Repository",
         "source": "percy-raskova/babylon",
         "enforcement": "active",
-        "conditions": {"ref_name": {"exclude": [], "include": ["refs/heads/dev"]}},
+        "conditions": {"ref_name": {"exclude": [], "include": [f"refs/heads/{branch}"]}},
         "bypass_actors": [],
         "rules": [
             {"type": "deletion"},
@@ -65,9 +86,7 @@ def _ruleset(*, strict: bool, threads: bool) -> dict[str, Any]:
                 "parameters": {
                     "strict_required_status_checks_policy": strict,
                     "do_not_enforce_on_create": False,
-                    "required_status_checks": [
-                        {"context": context} for context in DEV_BLOCKING_CHECKS
-                    ],
+                    "required_status_checks": [{"context": context} for context in contexts],
                 },
             },
         ],
@@ -93,6 +112,14 @@ def _policy() -> dict[str, Any]:
     return {
         "repository": policy_tool.normalize_repository(_repository(merge_only=True)),
         "dev_ruleset": policy_tool.normalize_ruleset(_ruleset(strict=True, threads=True)),
+        "main_ruleset": policy_tool.normalize_ruleset(
+            _ruleset(
+                strict=True,
+                threads=True,
+                branch="main",
+                ruleset_id=18807583,
+            )
+        ),
         "automerge_label": {
             "name": "dependencies:automerge",
             "color": "1f883d",
@@ -107,6 +134,12 @@ class FakeApi:
     def __init__(self) -> None:
         self.dev_sha = "a" * 40
         self.ruleset = _ruleset(strict=False, threads=False)
+        self.main_ruleset = _ruleset(
+            strict=False,
+            threads=False,
+            branch="main",
+            ruleset_id=18807583,
+        )
         self.repository = _repository(merge_only=False)
         self.labels: list[dict[str, Any]] = []
         self.check_runs = [
@@ -119,6 +152,16 @@ class FakeApi:
             }
             for index, context in enumerate(DEV_BLOCKING_CHECKS, start=1)
         ]
+        self.check_runs.extend(
+            {
+                "id": index,
+                "name": context,
+                "status": "completed",
+                "conclusion": "neutral" if "(advisory)" in context else "success",
+                "started_at": "2026-08-26T00:00:00Z",
+            }
+            for index, context in enumerate(MAIN_QUALIFICATION_CHECKS, start=50)
+        )
         self.calls: list[tuple[str, str, dict[str, Any] | None]] = []
         self.fail_method_endpoint: tuple[str, str] | None = None
         self.fail_oserror_method_endpoint: tuple[str, str] | None = None
@@ -139,7 +182,7 @@ class FakeApi:
                 self.dev_sha = "b" * 40
             return {"object": {"sha": self.dev_sha}}
         if endpoint == policy_tool.RULESETS_ENDPOINT:
-            return [{"id": 18807584}]
+            return [{"id": 18807584}, {"id": 18807583}]
         if endpoint == policy_tool.DEV_RULESET_ENDPOINT.format(ruleset_id=18807584):
             self._ruleset_reads += 1
             if self._ruleset_reads == self.policy_error_ruleset_read:
@@ -150,6 +193,8 @@ class FakeApi:
             if self.mismatch_ruleset_readback and self._ruleset_reads == 3:
                 value["enforcement"] = "disabled"
             return value
+        if endpoint == policy_tool.MAIN_RULESET_ENDPOINT.format(ruleset_id=18807583):
+            return deepcopy(self.main_ruleset)
         if endpoint == policy_tool.REPOSITORY_ENDPOINT:
             return deepcopy(self.repository)
         if endpoint == policy_tool.LABELS_LIST_ENDPOINT:
@@ -188,6 +233,12 @@ class FakeApi:
             current_id = self.ruleset["id"]
             self.ruleset = {"id": current_id, **deepcopy(payload)}
             return self._write_result(method, endpoint, self.ruleset)
+        if method == "PUT" and endpoint == policy_tool.MAIN_RULESET_ENDPOINT.format(
+            ruleset_id=18807583
+        ):
+            current_id = self.main_ruleset["id"]
+            self.main_ruleset = {"id": current_id, **deepcopy(payload)}
+            return self._write_result(method, endpoint, self.main_ruleset)
         raise AssertionError(f"unexpected {method} {endpoint}")
 
     def _write_result(
@@ -231,6 +282,7 @@ def test_check_reports_drift_without_mutation() -> None:
     assert drift == [
         "repository merge settings differ",
         "dev ruleset differs",
+        "main ruleset differs",
         "automerge label is absent",
     ]
     assert all(method == "GET" for method, _endpoint, _payload in api.calls)
@@ -239,13 +291,21 @@ def test_check_reports_drift_without_mutation() -> None:
 def test_dev_ruleset_selection_refuses_a_shared_or_non_branch_scope() -> None:
     shared = FakeApi()
     shared.ruleset["conditions"]["ref_name"]["include"].append("refs/heads/main")
-    with pytest.raises(policy_tool.PolicyError, match="exact dev-only branch scope"):
+    with pytest.raises(policy_tool.PolicyError, match="shared protected-branch scope"):
         policy_tool.check_policy(shared, _policy())
 
     tagged = FakeApi()
     tagged.ruleset["target"] = "tag"
     with pytest.raises(policy_tool.PolicyError, match="exact dev-only branch scope"):
         policy_tool.check_policy(tagged, _policy())
+
+
+def test_main_ruleset_selection_refuses_a_shared_scope() -> None:
+    shared = FakeApi()
+    shared.main_ruleset["conditions"]["ref_name"]["include"].append("refs/heads/dev")
+
+    with pytest.raises(policy_tool.PolicyError, match="shared protected-branch scope"):
+        policy_tool.check_policy(shared, _policy())
 
 
 def test_ruleset_enumeration_requests_one_bounded_complete_page() -> None:
@@ -271,6 +331,17 @@ def test_settings_policy_must_match_the_complete_typed_dev_manifest() -> None:
     status_rule["parameters"]["required_status_checks"].pop()
 
     with pytest.raises(policy_tool.PolicyError, match="complete dev check manifest"):
+        policy_tool._validate_policy(policy)
+
+
+def test_settings_policy_must_match_the_complete_typed_main_manifest() -> None:
+    policy = _policy()
+    status_rule = next(
+        rule for rule in policy["main_ruleset"]["rules"] if rule["type"] == "required_status_checks"
+    )
+    status_rule["parameters"]["required_status_checks"].pop()
+
+    with pytest.raises(policy_tool.PolicyError, match="complete main check manifest"):
         policy_tool._validate_policy(policy)
 
 
@@ -335,6 +406,7 @@ def test_apply_snapshots_before_mutation_and_verifies_readback(tmp_path: Path) -
     snapshot = json.loads(snapshot_path.read_text())
     assert snapshot["dev_sha"] == api.dev_sha
     assert snapshot["dev_ruleset_id"] == 18807584
+    assert snapshot["main_ruleset_id"] == 18807583
     assert snapshot["automerge_label"] is None
     first_write = next(index for index, call in enumerate(api.calls) if call[0] != "GET")
     assert snapshot_path.is_file()
@@ -367,11 +439,39 @@ def test_apply_accepts_the_pr_only_baseline_gate_skipped_on_dev_push(tmp_path: P
     assert policy_tool.check_policy(api, _policy()) == []
 
 
+@pytest.mark.parametrize("advisory_name", MAIN_QUALIFICATION_CHECKS[-2:])
+def test_apply_accepts_an_explicit_qualification_advisory_failure(
+    tmp_path: Path,
+    advisory_name: str,
+) -> None:
+    api = FakeApi()
+    advisory = next(run for run in api.check_runs if run["name"] == advisory_name)
+    advisory["conclusion"] = "failure"
+
+    policy_tool.apply_policy(api, _policy(), api.dev_sha, tmp_path / "before.json")
+
+    assert policy_tool.check_policy(api, _policy()) == []
+
+
 def test_apply_refuses_any_other_skipped_dev_push_check(tmp_path: Path) -> None:
     api = FakeApi()
     api.check_runs[0]["conclusion"] = "skipped"
 
     with pytest.raises(policy_tool.PolicyError, match=re.escape(DEV_BLOCKING_CHECKS[0])):
+        policy_tool.apply_policy(api, _policy(), api.dev_sha, tmp_path / "before.json")
+
+    assert all(method == "GET" for method, _endpoint, _payload in api.calls)
+
+
+def test_apply_refuses_missing_main_qualification_evidence(tmp_path: Path) -> None:
+    api = FakeApi()
+    api.check_runs = [
+        run
+        for run in api.check_runs
+        if run["name"] != "Main Qualification / Reference-Data Contracts"
+    ]
+
+    with pytest.raises(policy_tool.PolicyError, match="Reference-Data Contracts"):
         policy_tool.apply_policy(api, _policy(), api.dev_sha, tmp_path / "before.json")
 
     assert all(method == "GET" for method, _endpoint, _payload in api.calls)
@@ -416,6 +516,7 @@ def test_moved_dev_during_apply_rolls_back_every_mutation(tmp_path: Path) -> Non
     expected_sha = api.dev_sha
     api.move_dev_on_read = 3
     original_ruleset = deepcopy(api.ruleset)
+    original_main_ruleset = deepcopy(api.main_ruleset)
     original_repository = deepcopy(api.repository)
 
     with pytest.raises(policy_tool.PolicyError, match="dev moved during policy apply"):
@@ -423,6 +524,9 @@ def test_moved_dev_during_apply_rolls_back_every_mutation(tmp_path: Path) -> Non
 
     assert policy_tool.normalize_ruleset(api.ruleset) == policy_tool.normalize_ruleset(
         original_ruleset
+    )
+    assert policy_tool.normalize_ruleset(api.main_ruleset) == policy_tool.normalize_ruleset(
+        original_main_ruleset
     )
     assert api.repository == original_repository
     assert api.labels == []
@@ -451,6 +555,7 @@ def test_failed_ruleset_update_rolls_back_repo_and_new_label(tmp_path: Path) -> 
         ("POST", policy_tool.LABELS_ENDPOINT),
         ("PATCH", policy_tool.REPOSITORY_ENDPOINT),
         ("PUT", policy_tool.DEV_RULESET_ENDPOINT.format(ruleset_id=18807584)),
+        ("PUT", policy_tool.MAIN_RULESET_ENDPOINT.format(ruleset_id=18807583)),
     ],
 )
 def test_ambiguous_committed_write_is_discovered_and_rolled_back(
@@ -561,6 +666,7 @@ def test_rollback_attempts_every_component_after_one_restore_fails(tmp_path: Pat
 def test_manual_rollback_restores_snapshot_and_verifies_readback(tmp_path: Path) -> None:
     api = FakeApi()
     original_ruleset = deepcopy(api.ruleset)
+    original_main_ruleset = deepcopy(api.main_ruleset)
     original_repository = deepcopy(api.repository)
     snapshot_path = tmp_path / "before.json"
     policy_tool.apply_policy(api, _policy(), api.dev_sha, snapshot_path)
@@ -569,6 +675,9 @@ def test_manual_rollback_restores_snapshot_and_verifies_readback(tmp_path: Path)
 
     assert policy_tool.normalize_ruleset(api.ruleset) == policy_tool.normalize_ruleset(
         original_ruleset
+    )
+    assert policy_tool.normalize_ruleset(api.main_ruleset) == policy_tool.normalize_ruleset(
+        original_main_ruleset
     )
     assert api.repository == original_repository
     assert api.labels == []
@@ -597,6 +706,20 @@ def test_manual_rollback_refuses_tampered_scope_before_mutation(tmp_path: Path) 
     api.calls.clear()
 
     with pytest.raises(policy_tool.PolicyError, match="exact dev-only branch scope"):
+        policy_tool.rollback_policy(api, snapshot)
+
+    assert api.calls == []
+
+
+def test_manual_rollback_refuses_tampered_main_scope_before_mutation(tmp_path: Path) -> None:
+    api = FakeApi()
+    snapshot_path = tmp_path / "before.json"
+    policy_tool.apply_policy(api, _policy(), api.dev_sha, snapshot_path)
+    snapshot = policy_tool.load_snapshot(snapshot_path)
+    snapshot["main_ruleset"]["conditions"]["ref_name"]["include"].append("refs/heads/dev")
+    api.calls.clear()
+
+    with pytest.raises(policy_tool.PolicyError, match="exact main-only branch scope"):
         policy_tool.rollback_policy(api, snapshot)
 
     assert api.calls == []

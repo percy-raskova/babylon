@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import tools.pr_merge as pr_merge_tool
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PR_MERGE = REPO_ROOT / "tools" / "pr_merge.py"
@@ -32,6 +33,7 @@ SOURCE_RUN_ID = 31396722297
 CLASSIFIER_RUN_ID = 31396722301
 SOURCE_SUITE_ID = 78264088632
 CLASSIFIER_SUITE_ID = 78264088701
+MERGE_COMMIT_SHA = "d" * 40
 
 DEV_BLOCKING_CHECKS = (
     "Fast Gate (hygiene, lint, format, imports, types, lock)",
@@ -64,6 +66,51 @@ MAIN_ADVISORY_CHECKS = (
     "Image Scan (trivy — advisory until postgis bump)",
 )
 
+
+def test_gh_timeout_is_bounded_and_normalized(monkeypatch: pytest.MonkeyPatch) -> None:
+    observed_timeout: object = None
+
+    def timeout(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        nonlocal observed_timeout
+        observed_timeout = kwargs.get("timeout")
+        raise subprocess.TimeoutExpired(cmd=args[0], timeout=30)
+
+    monkeypatch.setattr(pr_merge_tool.subprocess, "run", timeout)
+
+    with pytest.raises(pr_merge_tool.GitHubReadError, match="gh timed out after 30 seconds"):
+        pr_merge_tool._gh("pr", "view", "742")
+
+    assert observed_timeout == 30
+
+
+def test_gh_nonzero_exit_is_normalized(monkeypatch: pytest.MonkeyPatch) -> None:
+    def nonzero(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise subprocess.CalledProcessError(
+            returncode=7,
+            cmd=args[0],
+            output="fallback output",
+            stderr="permission denied\n",
+        )
+
+    monkeypatch.setattr(pr_merge_tool.subprocess, "run", nonzero)
+
+    with pytest.raises(pr_merge_tool.GitHubReadError, match="gh failed: permission denied"):
+        pr_merge_tool._gh("pr", "view", "742")
+
+
+def test_gh_spawn_failure_is_normalized(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail_spawn(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise OSError("executable unavailable")
+
+    monkeypatch.setattr(pr_merge_tool.subprocess, "run", fail_spawn)
+
+    with pytest.raises(
+        pr_merge_tool.GitHubReadError,
+        match="gh could not start: executable unavailable",
+    ):
+        pr_merge_tool._gh("pr", "view", "742")
+
+
 _FAKE_GH = r"""#!/usr/bin/env python3
 import json
 import os
@@ -77,8 +124,16 @@ with Path(os.environ["FAKE_GH_CALLS"]).open("a") as call_log:
 
 if args[:2] == ["pr", "view"]:
     fields = args[args.index("--json") + 1]
-    if fields == "headRefOid,baseRefOid":
+    if fields == "state,headRefOid,mergeCommit":
+        if scenario.get("reconciliation_failure"):
+            print(scenario["reconciliation_failure"], file=sys.stderr)
+            raise SystemExit(8)
+        print(json.dumps(scenario["merge_reconciliation"]))
+    elif fields == "headRefOid,baseRefOid":
         print(json.dumps(scenario["reread"]))
+    elif scenario.get("initial_view_failure"):
+        print(scenario["initial_view_failure"], file=sys.stderr)
+        raise SystemExit(7)
     else:
         print(json.dumps(scenario["view"]))
 elif args[:2] == ["api", "graphql"]:
@@ -90,6 +145,9 @@ elif args[0] == "api" and args[1].startswith(
 elif args[:2] == ["pr", "list"]:
     print(json.dumps(scenario["children"]))
 elif args[:2] == ["pr", "merge"]:
+    if scenario.get("merge_failure"):
+        print(scenario["merge_failure"], file=sys.stderr)
+        raise SystemExit(7)
     print("merged")
 elif args[0] == "api" and args[1].endswith("/reviews?per_page=100"):
     print(json.dumps(scenario["rest_reviews"]))
@@ -318,6 +376,14 @@ def _default_scenario() -> dict[str, object]:
         "comments": [],
         "alerts": [],
         "children": [],
+        "initial_view_failure": None,
+        "merge_failure": None,
+        "reconciliation_failure": None,
+        "merge_reconciliation": {
+            "state": "MERGED",
+            "headRefOid": HEAD_SHA,
+            "mergeCommit": {"oid": MERGE_COMMIT_SHA},
+        },
         "dependabot_pr": {
             "head": {"sha": HEAD_SHA},
             "base": {"ref": "dev"},
@@ -427,6 +493,146 @@ def _thread_connection(scenario: dict[str, object]) -> dict[str, object]:
     return connection
 
 
+@pytest.mark.parametrize("failure_kind", ["timeout", "nonzero", "spawn"])
+def test_mutating_merge_boundary_reconciles_every_command_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    failure_kind: str,
+) -> None:
+    calls: list[list[str]] = []
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        assert kwargs["timeout"] == 30
+        if command[1:3] == ["pr", "merge"]:
+            if failure_kind == "timeout":
+                raise subprocess.TimeoutExpired(cmd=command, timeout=30)
+            if failure_kind == "nonzero":
+                raise subprocess.CalledProcessError(7, command, stderr="transport failed")
+            raise OSError("executable unavailable")
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(
+                {
+                    "state": "MERGED",
+                    "headRefOid": HEAD_SHA,
+                    "mergeCommit": {"oid": MERGE_COMMIT_SHA},
+                }
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(pr_merge_tool.subprocess, "run", run)
+
+    assert pr_merge_tool._merge_pr(742, HEAD_SHA, delete_branch=False) == ""
+    assert len(calls) == 2
+    assert calls[0][1:3] == ["pr", "merge"]
+    assert calls[1][1:3] == ["pr", "view"]
+
+
+def test_cli_read_failure_is_refused_without_traceback_or_unbounded_detail(
+    tmp_path: Path,
+) -> None:
+    scenario = _default_scenario()
+    scenario["initial_view_failure"] = "\x1b[31m" + ("authenticated detail\n" * 100)
+
+    result, calls = _run_pr_merge(tmp_path, scenario=scenario)
+
+    assert result.returncode == 1
+    assert result.stderr.startswith("pr:merge REFUSED — gh failed: ")
+    assert "Traceback" not in result.stderr
+    assert "\x1b" not in result.stderr
+    assert result.stderr.count("\n") == 1
+    assert len(result.stderr) <= 500
+    assert _merge_calls(calls) == []
+
+
+def test_cli_confirms_an_exact_head_merge_after_command_failure(tmp_path: Path) -> None:
+    scenario = _default_scenario()
+    scenario["merge_failure"] = "connection lost after request"
+
+    result, calls = _run_pr_merge(tmp_path, scenario=scenario)
+
+    assert result.returncode == 0, result.stderr
+    assert f"PR #742 merged at {HEAD_SHA}" in result.stdout
+    assert "INDETERMINATE" not in result.stderr
+    assert len(_merge_calls(calls)) == 1
+    assert (
+        sum(
+            call[:2] == ["pr", "view"]
+            and call[call.index("--json") + 1] == "state,headRefOid,mergeCommit"
+            for call in calls
+        )
+        == 1
+    )
+
+
+@pytest.mark.parametrize(
+    "reconciliation",
+    [
+        {"state": "OPEN", "headRefOid": HEAD_SHA, "mergeCommit": {"oid": MERGE_COMMIT_SHA}},
+        {
+            "state": "MERGED",
+            "headRefOid": OTHER_SHA,
+            "mergeCommit": {"oid": MERGE_COMMIT_SHA},
+        },
+        {"state": "MERGED", "headRefOid": HEAD_SHA, "mergeCommit": None},
+        {"state": "MERGED", "headRefOid": HEAD_SHA, "mergeCommit": "malformed"},
+        {"state": "MERGED", "headRefOid": HEAD_SHA, "mergeCommit": {"oid": ""}},
+    ],
+    ids=[
+        "not-merged",
+        "wrong-head",
+        "missing-merge-commit",
+        "malformed-merge-commit",
+        "empty-merge-commit-oid",
+    ],
+)
+def test_cli_reports_indeterminate_when_reconciliation_cannot_confirm_exact_merge(
+    tmp_path: Path,
+    reconciliation: dict[str, object],
+) -> None:
+    scenario = _default_scenario()
+    scenario["merge_failure"] = "connection lost after request"
+    scenario["merge_reconciliation"] = reconciliation
+
+    result, calls = _run_pr_merge(tmp_path, scenario=scenario)
+
+    assert result.returncode == 2
+    assert result.stderr.startswith("pr:merge INDETERMINATE — ")
+    assert "REFUSED" not in result.stderr
+    assert "Traceback" not in result.stderr
+    assert "merged at" not in result.stdout
+    assert len(_merge_calls(calls)) == 1
+
+
+def test_cli_reports_indeterminate_when_merge_reconciliation_read_fails(tmp_path: Path) -> None:
+    scenario = _default_scenario()
+    scenario["merge_failure"] = "connection lost after request"
+    scenario["reconciliation_failure"] = "reconciliation unavailable"
+
+    result, calls = _run_pr_merge(tmp_path, scenario=scenario)
+
+    assert result.returncode == 2
+    assert "pr:merge INDETERMINATE —" in result.stderr
+    assert "reconciliation failed" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert len(_merge_calls(calls)) == 1
+
+
+def test_confirmed_merge_warns_that_requested_branch_deletion_may_be_incomplete(
+    tmp_path: Path,
+) -> None:
+    scenario = _default_scenario()
+    scenario["merge_failure"] = "connection lost after request"
+
+    result, calls = _run_pr_merge(tmp_path, "--delete-branch", scenario=scenario)
+
+    assert result.returncode == 0, result.stderr
+    assert "branch deletion may be incomplete" in result.stderr
+    assert len(_merge_calls(calls)) == 1
+
+
 def test_verify_only_runs_full_policy_without_merging(tmp_path: Path) -> None:
     result, calls = _run_pr_merge(tmp_path, "--verify-only")
 
@@ -463,8 +669,10 @@ def test_one_hundred_rest_items_refuses_at_the_static_bound(tmp_path: Path) -> N
 
     result, calls = _run_pr_merge(tmp_path, scenario=scenario)
 
-    assert result.returncode != 0
+    assert result.returncode == 1
+    assert result.stderr.startswith("pr:merge REFUSED — ")
     assert "100-item safety bound" in result.stderr
+    assert "Traceback" not in result.stderr
     assert _merge_calls(calls) == []
 
 

@@ -25,6 +25,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from typing import Final
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -35,6 +36,9 @@ from tools.pr_policy import (  # noqa: E402
 )
 
 MAX_GITHUB_ITEMS = 100
+GH_TIMEOUT_SECONDS: Final[int] = 30
+GH_ERROR_DETAIL_LIMIT: Final[int] = 400
+INDETERMINATE_EXIT_CODE: Final[int] = 2
 
 COMPLETED_REVIEW_STATES = {"APPROVED", "CHANGES_REQUESTED", "COMMENTED"}
 COPILOT_GRAPHQL_LOGIN = "copilot-pull-request-reviewer"
@@ -71,13 +75,66 @@ query($owner: String!, $name: String!, $number: Int!) {
 """
 
 
+class GitHubReadError(RuntimeError):
+    """A bounded GitHub CLI read failed before producing trusted evidence."""
+
+
+class MergeIndeterminateError(RuntimeError):
+    """A mutating merge call could not be reconciled to one exact outcome."""
+
+
+def _bounded_error_detail(value: object) -> str:
+    """Return one sanitized, statically bounded child-process detail."""
+    if not isinstance(value, str):
+        return ""
+    truncated = len(value) > GH_ERROR_DETAIL_LIMIT
+    bounded = value[:GH_ERROR_DETAIL_LIMIT]
+    printable = re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", bounded)
+    detail = " ".join(printable.split())
+    return detail + ("…" if truncated else "")
+
+
+def _gh_failure_message(
+    error: subprocess.TimeoutExpired | subprocess.CalledProcessError | OSError,
+) -> str:
+    """Normalize one bounded GitHub CLI failure without exposing raw output."""
+    if isinstance(error, subprocess.TimeoutExpired):
+        return f"gh timed out after {GH_TIMEOUT_SECONDS} seconds"
+    if isinstance(error, subprocess.CalledProcessError):
+        detail = (
+            _bounded_error_detail(error.stderr)
+            or _bounded_error_detail(error.stdout)
+            or f"exit {error.returncode}"
+        )
+        return f"gh failed: {detail}"
+    detail = _bounded_error_detail(str(error)) or type(error).__name__
+    return f"gh could not start: {detail}"
+
+
+def _run_gh(*args: str) -> subprocess.CompletedProcess[str]:
+    """Run one GitHub CLI command with the shared fixed timeout."""
+    return subprocess.run(
+        ["gh", *args],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=GH_TIMEOUT_SECONDS,
+    )
+
+
 def _gh(*args: str) -> str:
-    """Run gh and return stdout; a nonzero exit aborts loudly."""
-    return subprocess.run(["gh", *args], capture_output=True, text=True, check=True).stdout
+    """Run one bounded read and normalize command failures."""
+    try:
+        return _run_gh(*args).stdout
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError) as error:
+        raise GitHubReadError(_gh_failure_message(error)) from error
 
 
 def _gh_json(*args: str) -> object:
-    return json.loads(_gh(*args))
+    try:
+        return json.loads(_gh(*args))
+    except json.JSONDecodeError as error:
+        raise GitHubReadError("gh returned invalid JSON") from error
 
 
 def _json_dict(value: object, context: str) -> dict[str, object]:
@@ -668,7 +725,59 @@ def _dependabot_mode_problems(
     return _dependabot_pr_problems(pr, head_oid, source_run_id, classifier_run_id)
 
 
-def main() -> int:
+def _merge_pr(pr: int, head_oid: str, *, delete_branch: bool) -> str:
+    """Merge once, then reconcile a failed command without retrying it."""
+    merge_args = [
+        "pr",
+        "merge",
+        str(pr),
+        "--merge",
+        "--match-head-commit",
+        head_oid,
+    ]
+    if delete_branch:
+        merge_args.append("--delete-branch")
+    try:
+        return _run_gh(*merge_args).stdout
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError) as command_error:
+        command_failure = _gh_failure_message(command_error)
+    try:
+        reconciliation = _json_dict(
+            _gh_json(
+                "pr",
+                "view",
+                str(pr),
+                "--json",
+                "state,headRefOid,mergeCommit",
+            ),
+            "merge reconciliation",
+        )
+    except RuntimeError as reconciliation_error:
+        raise MergeIndeterminateError(
+            f"{command_failure}; reconciliation failed: {reconciliation_error}"
+        ) from None
+    merge_commit = reconciliation.get("mergeCommit")
+    merge_oid = merge_commit.get("oid") if isinstance(merge_commit, dict) else None
+    confirmed = (
+        reconciliation.get("state") == "MERGED"
+        and reconciliation.get("headRefOid") == head_oid
+        and isinstance(merge_oid, str)
+        and bool(merge_oid)
+    )
+    if not confirmed:
+        raise MergeIndeterminateError(
+            f"{command_failure}; reconciliation did not confirm the exact-head merge"
+        ) from None
+    if delete_branch:
+        print(
+            "pr:merge WARNING — merge confirmed after command failure; "
+            "branch deletion may be incomplete",
+            file=sys.stderr,
+        )
+    return ""
+
+
+def _main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("pr", type=int)
     parser.add_argument("--delete-branch", action="store_true")
@@ -751,19 +860,21 @@ def main() -> int:
         print(f"pr:merge: PR #{args.pr} verified at {head_oid}")
         return 0
 
-    merge_args = [
-        "pr",
-        "merge",
-        str(args.pr),
-        "--merge",
-        "--match-head-commit",
-        head_oid,
-    ]
-    if args.delete_branch:
-        merge_args.append("--delete-branch")
-    print(_gh(*merge_args), end="")
+    print(_merge_pr(args.pr, head_oid, delete_branch=args.delete_branch), end="")
     print(f"pr:merge: PR #{args.pr} merged at {head_oid}")
     return 0
+
+
+def main() -> int:
+    """Map typed read and mutation outcomes onto the stable CLI surface."""
+    try:
+        return _main()
+    except MergeIndeterminateError as error:
+        print(f"pr:merge INDETERMINATE — {error}", file=sys.stderr)
+        return INDETERMINATE_EXIT_CODE
+    except RuntimeError as error:
+        print(f"pr:merge REFUSED — {error}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

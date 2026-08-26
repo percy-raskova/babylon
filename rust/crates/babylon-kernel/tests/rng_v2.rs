@@ -76,7 +76,7 @@ fn v2_seed_derivation_changes_when_any_identity_component_changes() {
     let other_session = ReplaySessionIdV1::try_from("per60-replay/A9?").unwrap();
     let seed = ReplaySeed::new(VECTOR_SEED);
     let domain = RngDomainV2::try_from("vitality/per60-vector").unwrap();
-    let other_domain = RngDomainV2::try_from("vitality/per60-vectoS").unwrap();
+    let other_domain = RngDomainV2::try_from("vitality/per60-vectos").unwrap();
     let original = seed_for_v2(&session, seed, VECTOR_TICK, &domain, VECTOR_CARRIER).unwrap();
 
     assert_ne!(

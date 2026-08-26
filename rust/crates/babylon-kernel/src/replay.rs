@@ -9,6 +9,9 @@ const MIN_REPLAY_SESSION_BYTES: usize = 1;
 const MAX_REPLAY_SESSION_BYTES: usize = 256;
 const MIN_RNG_DOMAIN_BYTES: usize = 1;
 const MAX_RNG_DOMAIN_BYTES: usize = 128;
+const MIN_RNG_DOMAIN_SEGMENTS: usize = 2;
+const MAX_RNG_DOMAIN_SEGMENTS: usize = 4;
+const MAX_RNG_DOMAIN_SEGMENT_BYTES: usize = 64;
 
 /// A checked replay identity failure.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,6 +35,11 @@ pub enum ReplayIdentityError {
         minimum: usize,
         /// The inclusive upper bound.
         maximum: usize,
+    },
+    /// An RNG domain did not match the governed BSL qname grammar.
+    InvalidRngDomainQname {
+        /// The zero-based byte index where validation failed.
+        index: usize,
     },
     /// A numeric layout value is not governed by this replay boundary.
     UnsupportedRngLayoutVersion {
@@ -175,6 +183,7 @@ impl TryFrom<&str> for RngDomainV2 {
             "RNG domain",
             value.as_bytes(),
         )?;
+        validate_rng_domain_qname(value.as_bytes())?;
         let mut bytes = reserve_bytes("RNG domain", value.len())?;
         bytes.extend_from_slice(value.as_bytes());
         let domain =
@@ -202,6 +211,37 @@ pub enum RngSeedContext<'a> {
         /// The explicit replay seed.
         seed: ReplaySeed,
     },
+}
+
+fn validate_rng_domain_qname(value: &[u8]) -> Result<(), ReplayIdentityError> {
+    let mut segment_count = 1usize;
+    let mut segment_length = 0usize;
+    for index in 0..MAX_RNG_DOMAIN_BYTES {
+        let Some(byte) = value.get(index).copied() else {
+            break;
+        };
+        if byte == b'/' {
+            if segment_length == 0 || segment_count == MAX_RNG_DOMAIN_SEGMENTS {
+                return Err(ReplayIdentityError::InvalidRngDomainQname { index });
+            }
+            segment_count = segment_count.saturating_add(1);
+            segment_length = 0;
+            continue;
+        }
+        let valid = if segment_length == 0 {
+            byte.is_ascii_lowercase()
+        } else {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-'
+        };
+        if !valid || segment_length == MAX_RNG_DOMAIN_SEGMENT_BYTES {
+            return Err(ReplayIdentityError::InvalidRngDomainQname { index });
+        }
+        segment_length = segment_length.saturating_add(1);
+    }
+    if segment_count < MIN_RNG_DOMAIN_SEGMENTS || segment_length == 0 {
+        return Err(ReplayIdentityError::InvalidRngDomainQname { index: value.len() });
+    }
+    Ok(())
 }
 
 fn validate_ascii_graphic<const MINIMUM: usize, const MAXIMUM: usize>(

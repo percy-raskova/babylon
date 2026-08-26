@@ -1,4 +1,6 @@
-use babylon_kernel::{ReplayIdentityError, ReplaySeed, ReplaySessionIdV1, RngLayoutVersion};
+use babylon_kernel::{
+    ReplayIdentityError, ReplaySeed, ReplaySessionIdV1, RngDomainV2, RngLayoutVersion,
+};
 
 fn checked_session_from_bytes(bytes: &[u8]) -> Result<ReplaySessionIdV1, ReplayIdentityError> {
     ReplaySessionIdV1::try_from(bytes)
@@ -70,5 +72,36 @@ fn rng_layout_version_accepts_only_the_two_governed_layouts() {
             RngLayoutVersion::try_from(value),
             Err(ReplayIdentityError::UnsupportedRngLayoutVersion { value: actual }) if actual == value
         ));
+    }
+}
+
+#[test]
+fn rng_domain_accepts_only_bsl_qnames_at_the_boundaries() {
+    let maximum = format!("{}/{}/c/d", "a".repeat(64), "b".repeat(59));
+
+    for valid in ["a/b", "rule-name/segment-2", maximum.as_str()] {
+        let domain = RngDomainV2::try_from(valid).unwrap();
+        assert_eq!(domain.as_str(), valid);
+    }
+}
+
+#[test]
+fn rng_domain_rejects_non_qname_grammar() {
+    let oversized_segment = format!("{}/b", "a".repeat(65));
+    let invalid = [
+        "not-a-qname",
+        "UPPER/x",
+        "1lower/x",
+        "-leading/x",
+        "not/a_qname",
+        "/a/b",
+        "a//b",
+        "a/b/",
+        "a/b/c/d/e",
+        oversized_segment.as_str(),
+    ];
+
+    for value in invalid {
+        assert!(RngDomainV2::try_from(value).is_err(), "{value}");
     }
 }

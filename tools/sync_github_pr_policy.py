@@ -171,7 +171,13 @@ def _select_fields(payload: dict[str, object], fields: tuple[str, ...]) -> dict[
 
 def normalize_ruleset(payload: dict[str, object]) -> dict[str, object]:
     """Return only fields accepted by GitHub's ruleset update endpoint."""
-    return _select_fields(payload, RULESET_WRITABLE_FIELDS)
+    normalized = _select_fields(payload, RULESET_WRITABLE_FIELDS)
+    rules = _objects(normalized["rules"], "ruleset rules", MAX_RULESETS)
+    rule_types = [rule.get("type") for rule in rules]
+    if not all(isinstance(rule_type, str) for rule_type in rule_types):
+        raise PolicyError("ruleset rule has no string type")
+    normalized["rules"] = sorted(rules, key=lambda rule: str(rule["type"]))
+    return normalized
 
 
 def normalize_repository(payload: dict[str, object]) -> dict[str, object]:

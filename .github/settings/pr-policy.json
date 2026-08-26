@@ -6,6 +6,11 @@
     "allow_auto_merge": false,
     "delete_branch_on_merge": false
   },
+  "actions_permissions": {
+    "enabled": true,
+    "allowed_actions": "all",
+    "sha_pinning_required": true
+  },
   "dev_ruleset": {
     "name": "dev protection (PR, exact checks, resolved threads)",
     "target": "branch",

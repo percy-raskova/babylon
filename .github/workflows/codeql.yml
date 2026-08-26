@@ -4,13 +4,14 @@ name: "CodeQL Security Scan"
 # - `rust` matrix leg added (Amendment AE: rust/ is the engine; the extractor
 #   is public-preview, build-mode none — findings are informational, never a
 #   required check, WND-4).
-# - `pull_request` trigger DROPPED: 132 runs/day produced zero actionable
-#   PR-time findings; the alert database lives on the default branch, so
-#   push + weekly cron keep it fresh at ~1/3 the compute.
+# - Protected-branch pull requests run CodeQL before merge. Push + weekly cron
+#   keep the default-branch alert database fresh after integration.
 # - `paths-ignore` excludes the Amendment-V legacy trees so the alert floor
 #   stays ZERO and any new alert on src/ or rust/ is news.
 
 on:
+  pull_request:
+    branches: [main, dev]
   push:
     branches: [main, dev]
   schedule:
@@ -43,10 +44,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4.37.8
+        uses: github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
@@ -59,7 +60,7 @@ jobs:
               - src/frontend
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v4.37.8
+        uses: github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
         with:
           category: "/language:${{ matrix.language }}"
           # Only fail on error/critical, not warnings

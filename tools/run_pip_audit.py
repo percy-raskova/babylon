@@ -160,7 +160,7 @@ def build_pip_audit_command(entries: list[dict[str, Any]], no_uv: bool) -> list[
         ``uv run pip-audit`` (ADR095: uv is the dependency toolchain).
     :returns: The full argv to hand to :func:`subprocess.run`.
     """
-    base = ["pip-audit"] if no_uv else ["uv", "run", "pip-audit"]
+    base = ["pip-audit"] if no_uv else ["uv", "run", "--frozen", "--extra", "server", "pip-audit"]
     return base + build_ignore_vuln_args(entries)
 
 

@@ -194,8 +194,8 @@ SYNTHETIC_SOURCES: tuple[SyntheticSource, ...] = (
             "— never read from the reference database."
         ),
         invariant=(
-            "Only reachable by explicit scenario='two_node' selection (resolve_scenario(), "
-            "web/game/engine_bridge.py) — never a silent substitute for a real county. The "
+            "The registry exposes the exact key 'two_node'; get_scenario('two_node') returns "
+            "this class and unknown keys raise KeyError. Direct construction is also explicit. "
             "Scenario ABC's __init_subclass__ auto-registry raises ValueError on a name "
             "collision at import time, so two builders can never shadow each other under one "
             "name."
@@ -215,10 +215,9 @@ SYNTHETIC_SOURCES: tuple[SyntheticSource, ...] = (
             "entities/relationships — never read from the reference database."
         ),
         invariant=(
-            "Only reachable by explicit scenario selection — 'wayne_county' or the aliases "
-            "'wayne'/'detroit' (resolve_scenario(), web/game/engine_bridge.py) — never a silent "
-            "substitute for a real county. Same Scenario ABC auto-registry collision guard as "
-            "scenario_two_node."
+            "The registry exposes the exact key 'wayne_county'; get_scenario('wayne_county') "
+            "returns this class and unknown keys raise KeyError. Direct construction is explicit. "
+            "Same Scenario ABC auto-registry collision guard as scenario_two_node."
         ),
         notes=(
             "Delegates to the legacy free function create_wayne_county_scenario for "

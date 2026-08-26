@@ -16,9 +16,7 @@ Four tiers, mirroring the inert/unconsumed sentinels' own test shape
   ``engine/formula_registry.py`` path itself (the registration act, not
   downstream consumption).
 - **Liveness** (the real, shipped registry) — ``labor_aristocracy_ratio`` and
-  ``is_labor_aristocracy`` (Vol I U2/ADR117) are genuinely live;
-  ``consciousness_drift`` is a real, open gap held GREEN only via the one
-  recorded :class:`~babylon.sentinels.exemptions.SentinelExemption`.
+  ``is_labor_aristocracy`` (Vol I U2/ADR117) are genuinely live.
 """
 
 from __future__ import annotations
@@ -36,6 +34,7 @@ from babylon.sentinels.formula_registration.checks import (
 )
 from babylon.sentinels.formula_registration.registry import (
     DECLARED_FORMULAS,
+    FORMULA_EXEMPTIONS,
     FORMULA_REGISTRY_FILE,
     DeclaredFormula,
 )
@@ -270,13 +269,13 @@ def test_repo_root_resolves_correctly() -> None:
     assert (_REPO_ROOT / "pyproject.toml").is_file()
 
 
-def test_declared_registry_has_the_three_seeded_rows() -> None:
-    assert len(DECLARED_FORMULAS) == 3
+def test_declared_registry_has_the_two_retained_rows() -> None:
+    assert len(DECLARED_FORMULAS) == 2
     assert {row.name for row in DECLARED_FORMULAS} == {
         "labor_aristocracy_ratio",
         "is_labor_aristocracy",
-        "consciousness_drift",
     }
+    assert FORMULA_EXEMPTIONS == ()
 
 
 def test_labor_aristocracy_ratio_is_genuinely_live() -> None:
@@ -293,31 +292,6 @@ def test_is_labor_aristocracy_is_genuinely_live_via_its_alias() -> None:
     assert formulas_without_production_caller((row,)) == []
 
 
-def test_consciousness_drift_is_clean_only_via_the_recorded_exemption(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """calculate_consciousness_drift IS registered and referenced by
-    web/game/provenance.py, but that reference only ever reads its __doc__ --
-    never invokes it for a value. This pins that the sentinel is GREEN
-    *because of the exemption*, not because the gap was fixed: WITHOUT the
-    exemption, the real registry row genuinely reds."""
-    from babylon.sentinels.exemptions import is_exempt
-    from babylon.sentinels.formula_registration.registry import FORMULA_EXEMPTIONS
-
-    assert is_exempt(("formula", "consciousness_drift"), FORMULA_EXEMPTIONS)
-    row = next(r for r in DECLARED_FORMULAS if r.name == "consciousness_drift")
-
-    monkeypatch.setattr("babylon.sentinels.formula_registration.checks.FORMULA_EXEMPTIONS", ())
-    violations = formulas_without_production_caller((row,))
-    assert len(violations) == 1
-    assert "consciousness_drift" in violations[0]
-
-    # With the real exemption restored (monkeypatch undone), the whole
-    # shipped registry is clean.
-    monkeypatch.undo()
-    assert formulas_without_production_caller() == []
-
-
 def test_full_registry_is_clean() -> None:
-    """The real, shipped registry — all three rows — gates clean today."""
+    """The real, shipped registry — both retained rows — gates clean today."""
     assert formulas_without_production_caller() == []

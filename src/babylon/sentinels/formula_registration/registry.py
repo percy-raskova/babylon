@@ -25,23 +25,22 @@ wired two of the three into
 :mod:`babylon.sentinels.formula_registration.checks`'s alias-resolution note).
 The third, ``calculate_consciousness_drift``, was deliberately left
 unwired (ADR117's own recorded scope boundary: it is a rate/drift formula,
-not part of the ``Wc``-vs-``Vc`` comparison U2 computed) and stays a real,
-open gap — held GREEN via the one recorded exemption below, not silently
-dropped.
+not part of the ``Wc``-vs-``Vc`` comparison U2 computed). PER-258 retired
+its only legacy reference surface, so neither that row nor its exemption
+remains live.
 
 This registry declares one closed, hand-curated invariant (mirrors
 :mod:`babylon.sentinels.inert.registry`'s and :mod:`babylon.sentinels.
 unconsumed.registry`'s own "closed, not merely additive" framing — this is
 NOT an exhaustive audit of every ``FormulaRegistry.default()`` entry; it is
-the three the Vol I recon actually found and named):
+the two retained formulas with genuine production callers):
 
 - :data:`DECLARED_FORMULAS` — a ``FormulaRegistry``-registered formula whose
   underlying ``symbol`` must have >=1 non-test production reference OTHER
   than its own ``engine/formula_registry.py`` registration call.
 
-:data:`FORMULA_EXEMPTIONS` is the one narrow escape hatch (gate-governance
-ruling, 2026-07-18 — the shared :class:`~babylon.sentinels.exemptions.
-SentinelExemption` record every sentinel family uses).
+:data:`FORMULA_EXEMPTIONS` is the typed escape-hatch surface shared with the
+checker. No live exemption remains.
 
 Layer 0.5: imports nothing above :mod:`babylon.models` — in particular never
 imports :mod:`babylon.engine` (the import-linter contract in
@@ -118,13 +117,8 @@ class DeclaredFormula(BaseModel):
         return self
 
 
-#: The three Fundamental-Theorem formulas the Vol I recon named
-#: (``formula_registry.py``'s own "Fundamental Theorem formulas" comment
-#: block, ``register()`` calls for ``labor_aristocracy_ratio``/
-#: ``is_labor_aristocracy``/``consciousness_drift``). Verified against the
-#: current tree (2026-07-21): the first two now have a genuine production
-#: caller (``value_form.py::compute_fundamental_theorem``, U2/ADR117); the
-#: third does not and is held open via :data:`FORMULA_EXEMPTIONS`.
+#: The two retained Fundamental-Theorem formulas have a genuine production
+#: caller in ``value_form.py::compute_fundamental_theorem`` (U2/ADR117).
 DECLARED_FORMULAS: Final[tuple[DeclaredFormula, ...]] = (
     DeclaredFormula(
         name="labor_aristocracy_ratio",
@@ -138,44 +132,7 @@ DECLARED_FORMULAS: Final[tuple[DeclaredFormula, ...]] = (
         symbol="is_labor_aristocracy",
         what_it_computes="Wc > Vc (strict) — the Fundamental Theorem's boolean form.",
     ),
-    DeclaredFormula(
-        name="consciousness_drift",
-        def_file="src/babylon/formulas/fundamental_theorem.py",
-        symbol="calculate_consciousness_drift",
-        what_it_computes="dPsi/dt consciousness drift rate, including bifurcation.",
-    ),
 )
 
-#: One recorded exemption (gate-governance ruling, 2026-07-21, Vol I U7).
-#: ``calculate_consciousness_drift`` is registered and has a real REFERENCE
-#: (``web/game/provenance.py``'s ``consciousness_drift`` ``MetricProvenance``
-#: entry resolves it via ``FormulaRegistry.default().get("consciousness_drift")``)
-#: but that reference only ever reads the formula's ``__doc__`` — see
-#: ``provenance.py``'s own ``_consciousness_drift_value`` and its docstring
-#: ("the formula cannot be honestly invoked without them" — its
-#: ``solidarity_pressure``/``wage_change`` inputs are formula-default
-#: literals, never real tick data). ADR117 (Vol I U2) recorded the same
-#: finding and deliberately left the formula unwired: it is a rate/drift
-#: formula, not part of the ``Wc``-vs-``Vc`` comparison U2 computed. This is
-#: a real, open gap — wiring a genuine consumer is future work, not a
-#: committed follow-up unit — held GREEN here rather than silently dropped.
-FORMULA_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = (
-    SentinelExemption(
-        key=("formula", "consciousness_drift"),
-        reason=(
-            "calculate_consciousness_drift is registered and referenced by "
-            "web/game/provenance.py's consciousness_drift MetricProvenance entry, but "
-            "that reference (_consciousness_drift_value) only ever reads the formula's "
-            "__doc__ -- it never invokes it for a value (see provenance.py's own comment: "
-            "'the formula cannot be honestly invoked without them'). ADR117 (Vol I U2) "
-            "independently recorded this as a deliberate scope boundary: consciousness_drift "
-            "is a rate/drift formula, not part of the Wc-vs-Vc Fundamental Theorem comparison "
-            "U2 wired via compute_fundamental_theorem. A real invoking consumer is possible "
-            "future work, not a committed unit -- this exemption records the gap honestly "
-            "rather than silently passing it."
-        ),
-        owner="Persephone Raskova",
-        date="2026-07-21",
-        tracking_task="N/A (ADR117 scope boundary; no committed remediation unit exists)",
-    ),
-)
+#: No retained formula row needs an exemption.
+FORMULA_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = ()

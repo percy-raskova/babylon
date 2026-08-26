@@ -91,9 +91,6 @@ mutants/
 .mutmut-cache/
 html/
 
-# Web app dev server PIDs and logs (mise run web:dev)
-.web-pids/
-
 # Claude Code local settings
 .claude/settings.local.json
 .claude/scheduled_tasks.lock

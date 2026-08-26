@@ -177,4 +177,3 @@ rules:
     paths:
       include:
         - "src/"
-        - "web/"

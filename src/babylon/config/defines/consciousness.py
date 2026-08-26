@@ -149,8 +149,7 @@ class ConsciousnessDefines(BaseModel):
         ge=0.0,
         le=1.0,
         description=(
-            "PROVISIONAL (calibrated later via `mise run sim:pacing`, spec: "
-            "2026-07-18-null-play-political-coupling.md Task 10). "
+            "PROVISIONAL (spec: 2026-07-18-null-play-political-coupling.md Task 10). "
             "opposition_states['wage']['balance'] -> agitation conversion "
             "(babylon.formulas.sustained_exploitation). balance is bounded "
             "[-1, 1] (a normalized ratio, not a currency scale), so this "
@@ -232,7 +231,7 @@ class ConsciousnessDefines(BaseModel):
         ge=0.0,
         le=1.0,
         description=(
-            "PROVISIONAL (calibrated later via `mise run sim:pacing`). "
+            "PROVISIONAL. "
             "repression_faced [0, 1] -> agitation, read as a continuous "
             "PRODUCED LEVEL in compute_agitation_delta -- effective_"
             "repression = max(0, repression_faced - DEFAULT_REPRESSION_"

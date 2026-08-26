@@ -24,7 +24,6 @@ specs/
 tests/
 thoughts/
 tools/
-web/
 
 # === Hidden top-level dirs (tooling, caches, runtime data) ===
 .agents/
@@ -46,7 +45,6 @@ web/
 .specify/
 .venv/
 .vscode/
-.web-pids/
 
 # === Hidden top-level files ===
 # Linter/formatter configs and env-related files (low orientation value).

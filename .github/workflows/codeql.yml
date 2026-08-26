@@ -6,7 +6,7 @@ name: "CodeQL Security Scan"
 #   required check, WND-4).
 # - Protected-branch pull requests run CodeQL before merge. Push + weekly cron
 #   keep the default-branch alert database fresh after integration.
-# - `paths-ignore` excludes the Amendment-V legacy trees so the alert floor
+# - `paths-ignore` excludes the Amendment-V legacy frontend so the alert floor
 #   stays ZERO and any new alert on src/ or rust/ is news.
 
 on:
@@ -56,7 +56,6 @@ jobs:
           queries: security-extended
           config: |
             paths-ignore:
-              - web
               - src/frontend
 
       - name: Perform CodeQL Analysis

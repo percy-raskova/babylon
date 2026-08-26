@@ -59,6 +59,7 @@ def test_retired_web_dependencies_are_absent_from_every_dependency_set() -> None
             "djangorestframework-stubs",
             "gunicorn",
             "pytest-django",
+            "pytest-playwright",
         }
     )
 

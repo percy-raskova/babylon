@@ -145,13 +145,13 @@ Create regular lanes from `dev` and target `dev`. Use `feature/`, `fix/`, `docs/
 as `docs/agents/governance.md` directs: `Part of PER-N` for partial delivery and
 `Fixes PER-N` only for final acceptance. Never commit directly to `dev` or `main`.
 
+Delete obsolete code. Do not add shims, aliases, adapters, deprecated paths, or backward-compatibility layers unless the Director explicitly requires them.
 A critical hotfix alone can branch from and target `main`. Its Director-only merge requires a `dev` backport.
 For a release, prove `origin/main` is an ancestor of `origin/dev`, then qualify exact `dev` with `main.yml`.
 After the Director merge, return main through `release:prepare-dev-sync` before `release:tag` can publish.
 <!-- vale ste.NounClusters = YES -->
 <!-- vale ste.UnapprovedWords = YES -->
 <!-- vale Vale.Spelling = YES -->
-
 Use `type(scope): description`, one logical unit, and the required co-author
 trailer. Commit with `mise run commit -- "type(scope): description"`.
 

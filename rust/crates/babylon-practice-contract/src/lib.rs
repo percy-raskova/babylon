@@ -12,6 +12,7 @@ pub mod batch_v2;
 pub mod budget;
 pub mod codec;
 pub mod intent_v2;
+pub mod resource_v2;
 pub mod topology;
 
 pub use admission::{validate_authority_pair, validate_quote_context, validate_resolve_batch};
@@ -26,6 +27,7 @@ pub use codec::{
     target_selection_policy_digest,
 };
 pub use intent_v2::*;
+pub use resource_v2::*;
 pub use topology::{validate_topology, PracticeTopologyLoadCounter};
 
 /// SHA-256 of the exact language-neutral V1 practice schema bytes.

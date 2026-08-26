@@ -289,7 +289,7 @@ fn validate_tick_pair(submit: u64, resolve: u64) -> Result<(), PracticeIntentV2E
     }
 }
 
-fn target_is_valid(practice: PracticeIdV2, tag: PracticeTargetTagV2) -> bool {
+pub(crate) fn target_is_valid(practice: PracticeIdV2, tag: PracticeTargetTagV2) -> bool {
     match practice {
         PracticeIdV2::Organize | PracticeIdV2::Agitate | PracticeIdV2::MutualAid => {
             tag == PracticeTargetTagV2::SocialClass

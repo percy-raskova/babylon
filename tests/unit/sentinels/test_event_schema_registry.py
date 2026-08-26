@@ -190,16 +190,16 @@ class TestRegistryFileItself:
         assert REGISTRY_PATH.exists(), f"{REGISTRY_PATH} is missing"
 
     def test_loads_without_error(self, registry: EventSchemaRegistry) -> None:
-        assert registry.schema_version == 1
+        assert registry.schema_version == 2
 
-    @pytest.mark.parametrize("replacement", ("2", '"1"', "true"))
+    @pytest.mark.parametrize("replacement", ("1", "3", '"2"', "true"))
     def test_unsupported_schema_version_fails_loudly(
         self, tmp_path: Path, replacement: str
     ) -> None:
         registry_path = tmp_path / "event-schema-registry.toml"
         source = REGISTRY_PATH.read_text(encoding="utf-8")
         registry_path.write_text(
-            source.replace("schema_version = 1", f"schema_version = {replacement}", 1),
+            source.replace("schema_version = 2", f"schema_version = {replacement}", 1),
             encoding="utf-8",
         )
 

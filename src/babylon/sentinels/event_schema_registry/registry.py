@@ -59,7 +59,7 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 #: second, Rust-side literal table in sync by construction (a future Rust
 #: consumer, R4.2, reads this same file rather than a transcription of it).
 REGISTRY_PATH = REPO_ROOT / "docs" / "reference" / "event-schema-registry.toml"
-SUPPORTED_SCHEMA_VERSION = 1
+SUPPORTED_SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True)

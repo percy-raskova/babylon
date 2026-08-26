@@ -2202,16 +2202,18 @@ actual graph edges.
 
 ## Current implementation boundary
 
-- Preserve typed organization, presence, solidarity, and attributed event
-  history.
-- The organization foundation pack now builds `territory/rooted-capacity`
-  without writing `organization/membership-share`. Membership attribution
-  remains downstream work.
+- Preserve typed organization and presence records. Existing solidarity fields
+  and attributed event-history shapes remain frozen reference or conformance
+  evidence; a live successor cannot directly author solidarity.
+- The organization foundation pack builds `territory/rooted-capacity` without
+  writing `organization/membership-share`. Rooted capacity remains fixture-only
+  conformance state, not live competence, leadership, or political power.
 - The pack no longer resets action budget each tick. Its scenario seeds one
-  bounded action until the committed player-intent and resource lifecycle
-  exists.
-- Only fresh situated work can relay through adjacency. Durable rooted
-  capacity cannot copy itself into another territory without new practice.
+  bounded fixture action. That seed is not a committed player-intent or resource
+  lifecycle.
+- Only fresh situated work can relay through adjacency in the conformance
+  fixture. Neither relay nor durable rooted capacity supplies future gameplay
+  authority without attributed practice products and their real consumers.
 - Derive territory facets from existing graph relations at a declared scale.
   Keep the human near/far reading in the projection only.
 - Model strike, blockade, occupation, and damage as different practices with
@@ -2224,27 +2226,24 @@ actual graph edges.
 The original prototype entered at `28a3254d` (`feat(organization): model
 relational practice dynamics`). The later removals and adaptations are named
 below so the remaining organization-foundation pack is not mistaken for a
-complete player-facing circuit. The separately owned replacements are planned,
-not implemented: PER-56 supplies governed next-week Organize/Agitate input,
-effects, and action-budget lifecycle; PER-57 produces attributed membership
-from encounters; PER-58 supplies materially conservative Mutual Aid; and
-PER-59 evaluates live slow-fast-slow emergence after the practice/circulation
-circuit. Repository evidence confirms that PER-59 remains blocked by PER-57,
-PER-58, and PER-22.
+complete player-facing circuit. This table records historical prototype
+dispositions and architecture prerequisites, not current ownership, status, or
+dependencies. The [canonical Linear portfolio](https://linear.app/percy-raskova/team/PER/all)
+alone owns those live facts.
 
-| Original prototype rule, write, or fixture | Disposition | Current evidence and replacement route |
+| Original prototype rule, write, or fixture | Disposition | Current evidence and architecture prerequisite |
 |---|---|---|
-| `organization/kind-probe` and its `EventType/ORGANIZATION_SEEDED` probe-only emit | Retire | The original D-1 probe is in `28a3254d:rust/crates/babylon-tick/content/rules/organization.bsl`; PER-255 removes its inert rule, unminted registry row, attribution, and fired-rule count. No gameplay replacement is authorized. |
-| Unconditional `organization/p0-action-budget-reset` | Retire | `88560d58` removed the reset. The current scenario has one explicit fixture seed, and the current rule source says a committed intent and resource lifecycle must replace it. Route live admission and budget spending to PER-56, through its existing PER-27 dependency. |
-| `organization/p0-territory-inbox-reset` | Adapt | Current `organization/p0-territory-inbox-reset` only clears tick-local rooted-work and relay inboxes before practice. Retain this accumulator boundary while PER-56 supplies live practice admission; it does not grant an action or author a result. |
-| Presence and local-base attribution | Adapt | `56796e95` added the current `organization/p1-presence-attribution`: a PRESENCE branch requires a matching MEMBERSHIP and TENANCY locality. PER-56 must consume the same declared locality boundary for live practice. |
-| `organization/p1-rooted-work` | Adapt | Current `organization/p1-rooted-work` spends the fixture-seeded bounded action across qualified local branches. Replace the fixture input, not its material locality constraint, through PER-56. |
-| `organization/p2-territorial-relay` | Adapt | `88560d58` changed relay to fresh rooted work only; the current rule cannot copy durable capacity. Keep that fresh-work condition for PER-56 mechanics and evaluate its live causal evidence only in the PER-57/PER-58/PER-59 dependency chain. |
-| `organization/p3-rooted-capacity-apply` | Adapt | The current rule is the bounded accumulation of prior capacity, fresh situated work, and fresh relay. It remains a tick-local material transformation; PER-56 is the route for a live producer, not a license to invent one here. |
-| `organization/p4-recruitment` direct `organization/membership-share` write | Retire and replace | `88560d58` removed the direct write. The current conformance test pins that situated practice cannot write membership. Route any attributed-membership replacement to PER-57; do not restore a scalar recruitment curve. |
-| `organization/p5-command-response` | Adapt | The current rule retains a declared COMMAND-relation response to rooted capacity. PER-56 is the planned live-input route; PER-59 may evaluate an emergence claim only after its PER-57, PER-58, and PER-22 blockers resolve. |
-| `organization/p6-care-relief` direct pressure reduction | Retire and replace | The original rule at `28a3254d` reduced reproduction pressure from membership share. `44082c55` began the material-care correction and `88560d58` removed the remaining authored care path. Route any care effect through PER-58's separately owned prerequisite work, with stock, labor, routing, and a committed input rather than organization membership alone. |
-| Seeded `organization/foundation` scenario | Adapt as fixture only | The scenario remains a deterministic conformance substrate with a one-action seed; it is not a player-input boundary. `88560d58` records that limitation. Replace fixture authorization with PER-56 live admission, preserving the scenario only as a test fixture. |
-| The 24-tick authored slow-fast-slow membership witness | Retire | `28a3254d:rust/crates/babylon-tick/tests/organization_practice_conformance.rs` used `PRACTICE_TICKS = 24` and the direct membership write to assert a trajectory. It has no current counterpart. PER-59 may receive a live emergence evaluation only after PER-57, PER-58, and PER-22; no fixed trace shape is a replacement rule. |
+| `organization/kind-probe` and its `EventType/ORGANIZATION_SEEDED` probe-only emit | Retire | The original D-1 probe is in `28a3254d:rust/crates/babylon-tick/content/rules/organization.bsl`; this disposition removes its inert rule, unminted registry row, attribution, and fired-rule count. No gameplay replacement is authorized. |
+| Unconditional `organization/p0-action-budget-reset` | Retire | `88560d58` removed the reset. The current scenario has one explicit fixture seed. A live successor requires accepted-input identity, reservation, allocation, and a conserved resource lifecycle. |
+| `organization/p0-territory-inbox-reset` | Fixture-only | The current rule clears tick-local rooted-work and relay inboxes before conformance practice. It grants no action and authors no result. A successor may reuse an accumulator boundary only under its own versioned practice contract. |
+| Presence and local-base attribution | Freeze as conformance evidence | `56796e95` added the current `organization/p1-presence-attribution`: a PRESENCE branch requires matching MEMBERSHIP and TENANCY locality. A live successor needs governed attributed membership and the same material-locality proof; the fixture does not supply either authority. |
+| `organization/p1-rooted-work` | Fixture-only | The rule spends the fixture-seeded action across qualified local branches. A successor must replace fixture authorization with accepted input and attributed material products while preserving locality. |
+| `organization/p2-territorial-relay` | Fixture-only | `88560d58` limited relay to fresh rooted work, so durable capacity cannot copy itself. A live successor must derive reach, access, and relay consequences from attributed events, actor-scoped knowledge, and real consumers. |
+| `organization/p3-rooted-capacity-apply` | Fixture-only | The current rule accumulates prior capacity, fresh situated work, and fresh relay for conformance. It is not event-attributed competence, leadership, political power, or a live gameplay resource. |
+| `organization/p4-recruitment` direct `organization/membership-share` write | Retire and replace | `88560d58` removed the direct write. The conformance test pins that situated practice cannot write membership. A successor requires attributed participant transitions and receipts; it cannot restore a scalar recruitment curve. |
+| `organization/p5-command-response` | Retire from future gameplay | The fixture retains a declared COMMAND-relation response to rooted capacity only as historical conformance evidence. Live repression must use actor-scoped dossiers, governed candidates, finite capacity, actual affected populations, and Backfire. |
+| `organization/p6-care-relief` direct pressure reduction | Retire and replace | The original rule at `28a3254d` reduced reproduction pressure from membership share. `44082c55` began the material-care correction and `88560d58` removed the remaining authored care path. Any successor needs conserved stock, labor, routing, access, and accepted input rather than organization membership alone. |
+| Seeded `organization/foundation` scenario | Preserve as fixture only | The scenario is a deterministic conformance substrate with a one-action seed, not a player-input boundary. A live successor must replace fixture authorization while leaving the fixture's limited evidence claim explicit. |
+| The 24-tick authored slow-fast-slow membership witness | Retire | `28a3254d:rust/crates/babylon-tick/tests/organization_practice_conformance.rs` used `PRACTICE_TICKS = 24` and a direct membership write to assert a trajectory. Live evidence requires the full practice and circulation circuit; no fixed trace shape or dependency claim replaces it. |
 
 <!-- vale on -->

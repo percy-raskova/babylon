@@ -22,7 +22,8 @@
 ### snake_case exactly as the builder spells them. The sync check normalizes
 ### (`_` <-> `-`) when COMPARING the two; this file never does.
 
-schema_version = 1
+# Version 2 adds the required fresh-parse site and distinct-name totals.
+schema_version = 2
 measured_at = "2026-08-25"
 # The fresh AST count of `babylon.models.enums.events.EventType` members —
 # tier1 + tier2 + tier3 must sum to exactly this (CLAUDE.md's "100",

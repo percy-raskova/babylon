@@ -26,7 +26,6 @@ thoughts/
 tools/
 
 # === Hidden top-level dirs (tooling, caches, runtime data) ===
-.agents/
 .claude/
 .continue/
 .github/
@@ -63,7 +62,6 @@ tools/
 DEBT.md
 CONTRIBUTORS.md
 CHANGELOG.md
-hexmap_contract.md
 
 # === Top-level junk/transient files ===
 test_hang.py

@@ -1027,11 +1027,17 @@ fn decode_stored_row(
     membership_operation: H3ReferenceInstallOperation,
     cell_operation: H3ReferenceInstallOperation,
 ) -> Result<StoredReferenceRow, H3ReferenceInstallError> {
-    let membership_cell_id = decode_cell(membership_row, 0, membership_operation)?;
-    let cell_id = decode_cell(cell_row, 0, cell_operation)?;
-    if membership_cell_id != cell_id {
+    let membership_identity: i64 = decode_value(membership_row, 0, membership_operation)?;
+    let stored_identity: i64 = decode_value(cell_row, 0, cell_operation)?;
+    if membership_identity != stored_identity {
         return Err(conflict(H3ReferenceInstallConflict::Membership));
     }
+    let cell_id = H3CellId::try_from(stored_identity).map_err(|source| {
+        H3ReferenceInstallError::CellIdentity {
+            operation: cell_operation,
+            source,
+        }
+    })?;
     let resolution: i16 = decode_value(cell_row, 1, cell_operation)?;
     let resolution = u8::try_from(resolution).map_err(|_| H3ReferenceInstallError::Decode {
         operation: cell_operation,
@@ -1354,16 +1360,6 @@ fn decode_count(
 ) -> Result<usize, H3ReferenceInstallError> {
     let raw: i64 = decode_value(row, index, operation)?;
     usize::try_from(raw).map_err(|_| H3ReferenceInstallError::Decode { operation })
-}
-
-fn decode_cell(
-    row: &Row,
-    index: usize,
-    operation: H3ReferenceInstallOperation,
-) -> Result<H3CellId, H3ReferenceInstallError> {
-    let raw: i64 = decode_value(row, index, operation)?;
-    H3CellId::try_from(raw)
-        .map_err(|source| H3ReferenceInstallError::CellIdentity { operation, source })
 }
 
 fn decode_optional_cell(

@@ -79,7 +79,10 @@ AUDIO_OUTPUT_DIR = "assets/audio"
 
 [tasks."nix"]
 description = "Run any command inside the vendored devshell and pass through trust for this already-trusted project root, including nested mise tasks."
-run = 'MISE_TRUSTED_CONFIG_PATHS="${MISE_PROJECT_ROOT:-$PWD}" nix develop "${MISE_PROJECT_ROOT:-$PWD}" --command'
+# Force Git's tracked-files accessor. Older Nix installations can classify a
+# linked worktree's .git file as path:, copying untracked rust/target into the
+# store before the flake fileset can filter it.
+run = 'MISE_TRUSTED_CONFIG_PATHS="${MISE_PROJECT_ROOT:-$PWD}" nix develop "git+file://${MISE_PROJECT_ROOT:-$PWD}" --command'
 
 [tasks."pr:merge"]
 description = "the ONE sanctioned merge path (ADR181 R10): all-green + head-pin + Copilot harvest + zero alert floor + stacked-PR guard"

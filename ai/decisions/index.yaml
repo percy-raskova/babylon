@@ -1,5 +1,5 @@
 meta:
-  version: 1.82.0
+  version: 1.83.0
   updated: '2026-08-26'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -1085,3 +1085,8 @@ decisions:
     status: accepted
     date: '2026-08-26'
     file: ADR234_practice_intent_v2.yaml
+  ADR235_resolved_practice_batch_v2:
+    title: 'ResolvedPracticeBatchV2 binds exact accepted proposals to committed authority without allocation priority or a self-referential digest'
+    status: accepted
+    date: '2026-08-26'
+    file: ADR235_resolved_practice_batch_v2.yaml

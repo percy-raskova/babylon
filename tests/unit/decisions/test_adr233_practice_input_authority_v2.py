@@ -51,7 +51,7 @@ def test_adr233_declares_the_v2_authority_boundary_and_exact_index_row() -> None
     ):
         assert required_text in decision_text
 
-    assert index_document["meta"]["version"] == "1.82.0"
+    assert index_document["meta"]["version"] == "1.83.0"
     assert str(index_document["meta"]["updated"]) == "2026-08-26"
     assert index_document["decisions"][ADR_STEM] == {
         "title": EXPECTED_TITLE,

@@ -30,69 +30,66 @@
 //! both call), not merely constructed in a test module.
 
 use crate::evaluator::{EvalCode, EvalError, Value};
-use babylon_graph::substrate::NodeId;
-use babylon_kernel::{KernelRng, SessionId};
-use std::collections::HashMap;
+use babylon_graph::stable_element::{
+    StableElementKeyV1, StableElementResolverV1, MAX_STABLE_CARRIER_ACTIVE_ELEMENTS_V2,
+};
+use babylon_kernel::{KernelRng, ReplaySeed, ReplaySessionIdV1, RngDomainV2, SessionId};
 
-/// The non-operand half of a draw key (plan §3.3/§3.5, D69): `session` and
-/// `tick` are kernel-supplied and are **never operands** — a rule cannot
-/// name them, only the driver that runs the tick can. `domain` is the
-/// firing rule's own id string (§3.3's "domain = the rule id", chosen over
-/// D69's enum operand — undeclarable today without a §5.6-CAS-touching
-/// grammar widening, and content cannot even NAME a stream this way, only
-/// mint a new rule, which is already hash-covered content). `subject` is
-/// the CURRENT subject's Task-3 content id (`babylon_bsl::scenario::
-/// LoadedScenario::node_content_ids`), never its `NodeId` handle — keying
-/// on the handle would be replay-deterministic but insertion-history-
-/// dependent (plan §3.4), exactly the butterfly ADR176 r20 forbids.
-///
-/// `node_content_ids` is the SAME Task-3 map, threaded through so
-/// `evaluator::eval_intrinsic` can resolve the §2.6 chapter C8 element
-/// stack (`EvalEnv::elements`) — `it`/`:as` may name a node OTHER than
-/// `self` (a neighbor materialized by `exists`/`for-each`/a fold) — to
-/// content ids too, the same grain-invariance guarantee `subject` gets.
-/// This is plumbing only in this task (Task 4, #576 intrinsic-host train):
-/// no intrinsic reads any of it yet — `rng-draw` (Task 5) is the first
-/// consumer, per plan §3.3's `stable_key` composition.
+/// The typed identity inputs for one RNG draw.
+pub enum DrawIdentityContext<'a> {
+    /// Current V1 identity and string carriers.
+    V1 {
+        /// Current V1 session identity.
+        session: &'a SessionId,
+        /// Current V1 rule domain.
+        domain: &'a str,
+        /// Current V1 subject content id or fixture fallback.
+        subject: &'a str,
+        /// Current V1 node-name map used by active-element resolution.
+        node_content_ids:
+            Option<&'a std::collections::HashMap<babylon_graph::substrate::NodeId, String>>,
+    },
+    /// Seed-aware V2 identity with graph-owned stable provenance.
+    V2 {
+        /// Checked replay session identity.
+        session: &'a ReplaySessionIdV1,
+        /// Explicit replay seed.
+        seed: ReplaySeed,
+        /// Checked firing-rule qname.
+        domain: RngDomainV2,
+        /// Resolver that sealed every accepted graph identity.
+        resolver: &'a StableElementResolverV1,
+        /// Resolver-produced subject identity.
+        subject: StableElementKeyV1,
+    },
+}
+
+/// The non-operand half of a draw key. V1 keeps its existing session,
+/// rule-domain, content-id, and fixture-fallback inputs byte-for-byte. V2
+/// accepts only a checked replay session, explicit seed, checked rule qname,
+/// and graph-resolver-produced stable subject identity. Neither layout lets
+/// a rule supply session, tick, or domain as an operand.
 pub struct DrawContext<'a> {
-    /// The host's construction-time session id — never an operand (D69).
-    pub session: &'a SessionId,
-    /// The host's construction-time tick — never an operand (D69).
+    /// Typed V1 or V2 identity inputs.
+    pub identity: DrawIdentityContext<'a>,
+    /// The host's construction-time tick — never an operand.
     pub tick: u64,
-    /// The firing rule's own id string (§3.3).
-    pub domain: &'a str,
-    /// The current subject's Task-3 content id (§3.4).
-    pub subject: &'a str,
-    /// The Task-3 `NodeId -> content id` map, for resolving `it`/`:as`
-    /// elements that name a node other than `self`.
-    ///
-    /// **Type-distinct, not value-distinct (review round 2, #576 I2).**
-    /// `None` means "no scenario was hydrated in this call path" — this
-    /// crate's own hand-built `MemoryGraph` fixtures, which never go
-    /// through `scenario::load_scenario`. `Some(map)` means "hydrated",
-    /// even when `map` is empty (a declarations-only scenario, zero
-    /// `(node …)` forms) — a `NodeId` miss against `Some(map)` is ALWAYS a
-    /// hard error, `map.is_empty()` or not, because `is_empty()` alone
-    /// cannot distinguish "never hydrated" from "hydrated with zero
-    /// nodes", and only the FORMER legitimizes the NodeId-Debug fallback.
-    /// Collapsing that distinction into one `&HashMap` + an
-    /// `is_empty()`-gated fallback (the review-round-1 shape) let a
-    /// pre-populated caller graph + a declarations-only scenario silently
-    /// feed insertion-order `NodeId` handles into `stable_key` — see
-    /// `evaluator::element_content_id`'s own doc for the full failure
-    /// scenario this type distinction closes.
-    pub node_content_ids: Option<&'a HashMap<NodeId, String>>,
+}
+
+/// One active-element identity already resolved for the selected RNG layout.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DrawActiveElement {
+    /// Current V1 content-id string or fixture fallback.
+    V1(String),
+    /// Resolver-produced V2 stable graph identity.
+    V2(StableElementKeyV1),
 }
 
 /// The full context one `IntrinsicHost::call` sees: the optional
-/// [`DrawContext`] (`None` for a pure-expression caller — `:expr` binding
-/// resolution, the arithmetic conformance vectors — which makes `rng-draw`
-/// fail loud rather than silently draw `0.0`, plan §3.5) plus the §2.6
-/// chapter C8 element stack, already resolved to content ids,
-/// OUTERMOST-FIRST (`EvalEnv::elements`'s own order) — a `Element::Node`
-/// resolves to its bare content id; a `Element::Edge` resolves to its
-/// source, target, and edge-type composed by `framed` into ONE chain
-/// entry (three segments since the final-review I1 fix — D177's layout).
+/// [`DrawContext`] (`None` for a context-free expression caller) plus the
+/// chapter C8 element stack in outermost-first order. V1 entries retain
+/// their current resolved string representation. V2 entries are stable
+/// graph keys that the resolver validates again while composing the carrier.
 ///
 /// Every intrinsic that is not `rng-draw` ignores this entirely —
 /// `floor`/`exp`/`log` gain the parameter only because the trait's
@@ -100,10 +97,8 @@ pub struct DrawContext<'a> {
 pub struct IntrinsicCallCtx<'a> {
     /// `None` for a pure-expression caller (see this struct's own doc).
     pub draw_context: Option<&'a DrawContext<'a>>,
-    /// The resolved element-content-id chain, outermost-first. Empty for
-    /// every call made with no element stack in scope (no enclosing
-    /// `exists`/`for-each`/fold/selection).
-    pub element_content_ids: Vec<String>,
+    /// The typed active-element chain, outermost-first.
+    pub active_elements: Vec<DrawActiveElement>,
 }
 
 impl IntrinsicCallCtx<'_> {
@@ -116,7 +111,7 @@ impl IntrinsicCallCtx<'_> {
     pub fn context_free() -> Self {
         Self {
             draw_context: None,
-            element_content_ids: Vec::new(),
+            active_elements: Vec::new(),
         }
     }
 }
@@ -678,20 +673,11 @@ fn eval_clamp(args: &[Value]) -> Result<Value, EvalError> {
 ///
 /// **The carrier key (plan §3.3):**
 ///
-/// ```text
-/// session      := ctx.draw_context.session   (kernel-supplied, never an operand — D69)
-/// tick         := ctx.draw_context.tick      (kernel-supplied, never an operand — D69)
-/// domain       := ctx.draw_context.domain    (the firing rule's own id string)
-/// stable_key   := framed( subject_content_id
-///                       , element_content_id … outermost→innermost
-///                       , slot )
-/// ```
-///
-/// `stable_key` is built by [`framed`] over the subject's content id, then
-/// every resolved element in `ctx.element_content_ids` (outermost-first,
-/// the SAME order the §2.6 chapter C8 element stack keeps), then the draw
-/// slot rendered as its decimal `i64` text — one call, one draw, at stream
-/// index 0. **The host holds no state**: a fresh [`KernelRng`] is
+/// V1 builds the exact existing [`framed`] string over subject, active
+/// elements in outermost-first order, and decimal draw slot. V2 asks the
+/// graph resolver to compose that ordered carrier from stable element keys,
+/// then passes only the resolver-validated bytes to the seed-aware kernel
+/// entry point. **The host holds no state**: a fresh [`KernelRng`] is
 /// constructed for this call alone and discarded when it returns, so a
 /// skipped draw (a guard suppressing one subject's call) cannot shift any
 /// OTHER subject's draw — there is no shared stream position to perturb
@@ -731,21 +717,104 @@ fn eval_rng_draw(args: &[Value], ctx: &IntrinsicCallCtx<'_>) -> Result<Value, Ev
                 .to_owned(),
         ));
     };
+    let mut rng = match &draw_context.identity {
+        DrawIdentityContext::V1 {
+            session,
+            domain,
+            subject,
+            node_content_ids: _,
+        } => rng_v1(
+            session,
+            draw_context.tick,
+            domain,
+            subject,
+            &ctx.active_elements,
+            *slot,
+        )?,
+        DrawIdentityContext::V2 {
+            session,
+            seed,
+            domain,
+            resolver,
+            subject,
+        } => replay_rng(
+            session,
+            *seed,
+            draw_context.tick,
+            domain,
+            resolver,
+            subject,
+            &ctx.active_elements,
+            *slot,
+        )?,
+    };
+    Ok(Value::Real(rng.next_f64()))
+}
+
+fn rng_v1(
+    session: &SessionId,
+    tick: u64,
+    domain: &str,
+    subject: &str,
+    active: &[DrawActiveElement],
+    slot: i64,
+) -> Result<KernelRng, EvalError> {
     let slot_text = slot.to_string();
-    let mut segments: Vec<&str> = Vec::with_capacity(ctx.element_content_ids.len() + 2);
-    segments.push(draw_context.subject);
-    for element in &ctx.element_content_ids {
-        segments.push(element.as_str());
+    let mut segments: Vec<&str> = Vec::with_capacity(active.len() + 2);
+    segments.push(subject);
+    for element in active {
+        let DrawActiveElement::V1(content_id) = element else {
+            return Err(EvalError::plain(
+                "rng-draw V1 received a V2 active-element identity".to_owned(),
+            ));
+        };
+        segments.push(content_id.as_str());
     }
     segments.push(&slot_text);
     let stable_key = framed(&segments);
-    let mut rng = KernelRng::for_carrier(
-        draw_context.session,
-        draw_context.tick,
-        draw_context.domain,
-        &stable_key,
-    );
-    Ok(Value::Real(rng.next_f64()))
+    Ok(KernelRng::for_carrier(session, tick, domain, &stable_key))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn replay_rng(
+    session: &ReplaySessionIdV1,
+    seed: ReplaySeed,
+    tick: u64,
+    domain: &RngDomainV2,
+    resolver: &StableElementResolverV1,
+    subject: &StableElementKeyV1,
+    active: &[DrawActiveElement],
+    slot: i64,
+) -> Result<KernelRng, EvalError> {
+    if active.len() > MAX_STABLE_CARRIER_ACTIVE_ELEMENTS_V2 {
+        return Err(EvalError::plain(format!(
+            "rng-draw V2 active-element count {} exceeds {}",
+            active.len(),
+            MAX_STABLE_CARRIER_ACTIVE_ELEMENTS_V2
+        )));
+    }
+    let mut stable = Vec::with_capacity(active.len());
+    for element in active
+        .iter()
+        .take(MAX_STABLE_CARRIER_ACTIVE_ELEMENTS_V2 + 1)
+    {
+        let DrawActiveElement::V2(key) = element else {
+            return Err(EvalError::plain(
+                "rng-draw V2 refused a V1 active-element identity".to_owned(),
+            ));
+        };
+        stable.push(key.clone());
+    }
+    let carrier = resolver
+        .carrier_key(subject, &stable, slot)
+        .map_err(|error| {
+            EvalError::plain(format!(
+                "rng-draw V2 stable carrier identity refused: {error:?}"
+            ))
+        })?;
+    KernelRng::for_carrier_v2(session, seed, tick, domain, carrier.validated_bytes()).map_err(
+        |error| EvalError::plain(format!("rng-draw V2 seed derivation refused: {error:?}")),
+    )
 }
 
 #[cfg(test)]

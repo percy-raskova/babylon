@@ -42,10 +42,11 @@ use babylon_bsl::write_log::CollectingWriteLog;
 use babylon_bsl::BindingVocabulary;
 use babylon_graph::allocator_state::AllocatorState;
 use babylon_graph::hypergraph_store::HypergraphStore;
+use babylon_graph::stable_element::StableElementResolverV1;
 use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::{GraphError, GraphSubstrate, HyperedgeId, NodeId};
 use babylon_graph::working_copy::DetachedCopy;
-use babylon_kernel::SessionId;
+use babylon_kernel::{RngSeedContext, SessionId};
 use std::collections::{HashMap, HashSet};
 
 mod phase_order;
@@ -956,7 +957,8 @@ pub(crate) fn run_prepared_tick<
         prepared,
         graph,
         sink,
-        session,
+        RngSeedContext::V1 { session },
+        None,
         tick,
         |_boundary, candidate| candidate.state_hash(),
     )
@@ -974,7 +976,8 @@ fn run_prepared_tick_with<G, B, H>(
     prepared: &PreparedRules,
     graph: &mut G,
     sink: &mut B,
-    session: &SessionId,
+    rng_seed: RngSeedContext<'_>,
+    stable_resolver: Option<&StableElementResolverV1>,
     tick: i64,
     mut state_hash: H,
 ) -> Result<TickReport, String>
@@ -1028,7 +1031,8 @@ where
             // not pin and are refused by name at `run_tick` entry.
             tick,
             Some(&prepared.node_content_ids),
-            session,
+            rng_seed,
+            stable_resolver,
             prepared.vocabulary.as_ref(),
             &mut write_log,
         )

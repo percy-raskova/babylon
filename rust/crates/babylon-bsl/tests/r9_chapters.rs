@@ -2677,19 +2677,24 @@ mod c14_rng_draw {
     use babylon_bsl::evaluator::Value;
     use babylon_bsl::fuel::{CardinalityCeilings, IntrinsicCosts};
     use babylon_bsl::intrinsic_host::{
-        DrawContext, IntrinsicCallCtx, IntrinsicHost, KernelIntrinsicHost,
+        DrawActiveElement, DrawContext, DrawIdentityContext, IntrinsicCallCtx, IntrinsicHost,
+        KernelIntrinsicHost,
     };
     use babylon_bsl::reader::read;
     use babylon_bsl::rule_pipeline::{load_rule, LoadContext};
     use babylon_bsl::scenario::load_scenario;
     use babylon_bsl::structural_verbs::CollectingSink;
-    use babylon_bsl::tick::{run_tick, DefinesEnv};
+    use babylon_bsl::tick::{run_tick, run_tick_observed, DefinesEnv};
     use babylon_bsl::typecheck::TypeEnv;
     use babylon_bsl::types::{BslType, EnumRegistry, FieldDecl, FieldKind};
+    use babylon_bsl::write_log::CollectingWriteLog;
     use babylon_bsl::BindingVocabulary;
     use babylon_graph::memory::MemoryGraph;
+    use babylon_graph::stable_element::{StableElementKeyV1, StableElementResolverV1};
     use babylon_graph::substrate::{GraphSubstrate, NodeId};
-    use babylon_kernel::{KernelRng, SessionId};
+    use babylon_kernel::{
+        KernelRng, ReplaySeed, ReplaySessionIdV1, RngDomainV2, RngSeedContext, SessionId,
+    };
     use std::collections::{HashMap, HashSet};
 
     // ---------------------------------------------------- rows 1/2: the cap
@@ -2847,6 +2852,68 @@ mod c14_rng_draw {
         graph
     }
 
+    fn run_v2(rule_src: &str, tick: i64, session: &str, seed: i64) -> MemoryGraph {
+        let types = field_types();
+        let vocabulary = BindingVocabulary {
+            fields: types.fields.keys().cloned().collect(),
+            consts: HashSet::new(),
+            metrics: HashSet::new(),
+        };
+        let ceilings = CardinalityCeilings::new(
+            HashMap::from([("NodeType/SOCIAL_CLASS".to_owned(), 100)]),
+            HashMap::new(),
+        );
+        let intrinsics = IntrinsicCosts::new(HashMap::from([("rng-draw".to_owned(), 12)]));
+        let systems = HashSet::from(["demo".to_owned()]);
+        let enums = EnumRegistry::default();
+        let mut graph = MemoryGraph::new();
+        let scenario = load_scenario(SCENARIO, &mut graph).unwrap();
+        let resolver = StableElementResolverV1::seal(
+            &graph,
+            &scenario.id,
+            &scenario.node_content_ids,
+            &scenario.hyperedge_content_ids,
+        )
+        .unwrap();
+        let loaded = load_rule(
+            rule_src,
+            &LoadContext {
+                vocabulary: &vocabulary,
+                types: &types,
+                ceilings: &ceilings,
+                intrinsics: &intrinsics,
+                systems: &systems,
+                vocabulary_registry: None,
+                rule_file: "tests/conformance/rng_keyed_draw.bsl",
+            },
+        )
+        .unwrap();
+        let replay_session = ReplaySessionIdV1::try_from(session).unwrap();
+        let mut sink = CollectingSink::default();
+        let mut write_log = CollectingWriteLog::new();
+        run_tick_observed(
+            &loaded,
+            &types,
+            &enums,
+            &KernelIntrinsicHost,
+            &mut graph,
+            &mut sink,
+            &intrinsics,
+            &DefinesEnv::new(),
+            tick,
+            Some(&scenario.node_content_ids),
+            RngSeedContext::V2 {
+                session: &replay_session,
+                seed: ReplaySeed::new(seed),
+            },
+            Some(&resolver),
+            None,
+            &mut write_log,
+        )
+        .unwrap();
+        graph
+    }
+
     /// `class-b` is always `NodeId(1)` — the second `(node …)` form in
     /// `SCENARIO` (Task 3's `node_content_ids` inversion is deterministic
     /// over hydration order).
@@ -2895,6 +2962,26 @@ mod c14_rng_draw {
         );
     }
 
+    #[test]
+    fn loaded_rng_rule_reaches_v2_session_seed_tick_domain_and_subject_identity() {
+        let baseline = run_v2(UNCONDITIONAL, 1, "replay-a", 1);
+        let other_session = run_v2(UNCONDITIONAL, 1, "replay-b", 1);
+        let other_seed = run_v2(UNCONDITIONAL, 1, "replay-a", 2);
+        let other_tick = run_v2(UNCONDITIONAL, 2, "replay-a", 1);
+        let other_domain_src = UNCONDITIONAL.replace("demo/rng-keyed-draw", "demo/rng-keyed-v2");
+        let other_domain = run_v2(&other_domain_src, 1, "replay-a", 1);
+        let baseline_subject = draw_of(&baseline, NodeId(0));
+        for changed in [
+            draw_of(&other_session, NodeId(0)),
+            draw_of(&other_seed, NodeId(0)),
+            draw_of(&other_tick, NodeId(0)),
+            draw_of(&other_domain, NodeId(0)),
+            draw_of(&baseline, CLASS_B),
+        ] {
+            assert_ne!(baseline_subject, changed);
+        }
+    }
+
     // ------------------- rows 5-12: the primitive's own keying properties,
     // via direct `KernelIntrinsicHost::call` — the same production
     // dispatcher `eval_intrinsic` invokes, exercised without the full
@@ -2909,11 +2996,13 @@ mod c14_rng_draw {
         subject: &'a str,
     ) -> DrawContext<'a> {
         DrawContext {
-            session,
+            identity: DrawIdentityContext::V1 {
+                session,
+                domain,
+                subject,
+                node_content_ids,
+            },
             tick,
-            domain,
-            subject,
-            node_content_ids,
         }
     }
 
@@ -2924,9 +3013,193 @@ mod c14_rng_draw {
     ) -> Result<Value, babylon_bsl::evaluator::EvalError> {
         let ctx = IntrinsicCallCtx {
             draw_context: Some(draw_ctx),
-            element_content_ids: elements,
+            active_elements: elements.into_iter().map(DrawActiveElement::V1).collect(),
         };
         KernelIntrinsicHost.call("rng-draw", &[Value::Int(slot)], ctx)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn v2_draw_bits(
+        resolver: &StableElementResolverV1,
+        session: &ReplaySessionIdV1,
+        seed: ReplaySeed,
+        tick: u64,
+        domain: RngDomainV2,
+        subject: StableElementKeyV1,
+        active: Vec<StableElementKeyV1>,
+        slot: i64,
+    ) -> Result<u64, babylon_bsl::evaluator::EvalError> {
+        let draw_ctx = DrawContext {
+            identity: DrawIdentityContext::V2 {
+                session,
+                seed,
+                domain,
+                resolver,
+                subject,
+            },
+            tick,
+        };
+        let value = KernelIntrinsicHost.call(
+            "rng-draw",
+            &[Value::Int(slot)],
+            IntrinsicCallCtx {
+                draw_context: Some(&draw_ctx),
+                active_elements: active.into_iter().map(DrawActiveElement::V2).collect(),
+            },
+        )?;
+        let Value::Real(draw) = value else {
+            panic!("rng-draw must return Value::Real");
+        };
+        Ok(draw.to_bits())
+    }
+
+    #[test]
+    fn rng_v2_changes_for_every_typed_identity_component_and_active_order() {
+        let mut graph = MemoryGraph::new();
+        let subject = graph.add_node("class").unwrap();
+        let active = graph.add_node("class").unwrap();
+        let edge_target = graph.add_node("class").unwrap();
+        graph.add_edge("link", active, edge_target, 1.0).unwrap();
+        let group = graph
+            .add_hyperedge("group", &[active, edge_target])
+            .unwrap();
+        let resolver = StableElementResolverV1::seal(
+            &graph,
+            "demo/world",
+            &HashMap::from([
+                (subject, "subject".to_owned()),
+                (active, "active".to_owned()),
+                (edge_target, "edge-target".to_owned()),
+            ]),
+            &HashMap::from([(group, "group-a".to_owned())]),
+        )
+        .unwrap();
+        let session_a = ReplaySessionIdV1::try_from("replay-a").unwrap();
+        let session_b = ReplaySessionIdV1::try_from("replay-b").unwrap();
+        let domain_a = RngDomainV2::try_from("demo/rule-a").unwrap();
+        let domain_b = RngDomainV2::try_from("demo/rule-b").unwrap();
+        let subject_key = resolver.node_key(subject).unwrap().clone();
+        let active_key = resolver.node_key(active).unwrap().clone();
+        let edge_key = resolver.edge_key("link", active, edge_target).unwrap();
+        let hyperedge_key = resolver.hyperedge_key(group).unwrap().clone();
+        let baseline = v2_draw_bits(
+            &resolver,
+            &session_a,
+            ReplaySeed::new(1),
+            1,
+            domain_a.clone(),
+            subject_key.clone(),
+            vec![active_key.clone()],
+            0,
+        )
+        .unwrap();
+        let changed = [
+            (&session_b, ReplaySeed::new(1), 1, domain_a.clone(), 0),
+            (&session_a, ReplaySeed::new(2), 1, domain_a.clone(), 0),
+            (&session_a, ReplaySeed::new(1), 2, domain_a.clone(), 0),
+            (&session_a, ReplaySeed::new(1), 1, domain_b, 0),
+            (&session_a, ReplaySeed::new(1), 1, domain_a.clone(), 1),
+        ];
+        for (session, seed, tick, domain, slot) in changed {
+            let bits = v2_draw_bits(
+                &resolver,
+                session,
+                seed,
+                tick,
+                domain,
+                subject_key.clone(),
+                vec![active_key.clone()],
+                slot,
+            )
+            .unwrap();
+            assert_ne!(baseline, bits);
+        }
+        for (changed_subject, changed_active) in [
+            (active_key.clone(), vec![subject_key.clone()]),
+            (subject_key.clone(), vec![edge_key.clone()]),
+            (subject_key.clone(), vec![hyperedge_key]),
+        ] {
+            let bits = v2_draw_bits(
+                &resolver,
+                &session_a,
+                ReplaySeed::new(1),
+                1,
+                domain_a.clone(),
+                changed_subject,
+                changed_active,
+                0,
+            )
+            .unwrap();
+            assert_ne!(baseline, bits);
+        }
+        let outer_first = v2_draw_bits(
+            &resolver,
+            &session_a,
+            ReplaySeed::new(1),
+            1,
+            domain_a.clone(),
+            subject_key.clone(),
+            vec![active_key.clone(), edge_key.clone()],
+            0,
+        )
+        .unwrap();
+        let inner_first = v2_draw_bits(
+            &resolver,
+            &session_a,
+            ReplaySeed::new(1),
+            1,
+            domain_a,
+            subject_key,
+            vec![edge_key, active_key],
+            0,
+        )
+        .unwrap();
+        assert_ne!(outer_first, inner_first);
+    }
+
+    #[test]
+    fn rng_v2_refuses_invalid_domains_and_unsealed_subjects_or_elements() {
+        assert!(RngDomainV2::try_from("not-qualified").is_err());
+        let mut graph = MemoryGraph::new();
+        let subject = graph.add_node("class").unwrap();
+        let resolver = StableElementResolverV1::seal(
+            &graph,
+            "demo/world",
+            &HashMap::from([(subject, "subject".to_owned())]),
+            &HashMap::new(),
+        )
+        .unwrap();
+        let session = ReplaySessionIdV1::try_from("replay/session").unwrap();
+        let domain = RngDomainV2::try_from("demo/rule").unwrap();
+        let valid_subject = resolver.node_key(subject).unwrap().clone();
+        let unknown = StableElementKeyV1::Node {
+            scenario: "demo/world".to_owned(),
+            local_name: "unknown".to_owned(),
+        };
+        let bad_subject = v2_draw_bits(
+            &resolver,
+            &session,
+            ReplaySeed::new(1),
+            1,
+            domain.clone(),
+            unknown.clone(),
+            Vec::new(),
+            0,
+        )
+        .unwrap_err();
+        let bad_active = v2_draw_bits(
+            &resolver,
+            &session,
+            ReplaySeed::new(1),
+            1,
+            domain,
+            valid_subject,
+            vec![unknown],
+            0,
+        )
+        .unwrap_err();
+        assert!(bad_subject.message.contains("ElementNotSealed"));
+        assert!(bad_active.message.contains("ElementNotSealed"));
     }
 
     /// Row 5: different slot ⇒ different draw.
@@ -2971,7 +3244,7 @@ mod c14_rng_draw {
     const FOLD_RULE: &str = include_str!("conformance/rng_fold_draw.bsl");
 
     /// Review round 1 (I3): row 6's fold-element half above hand-builds
-    /// `IntrinsicCallCtx { element_content_ids: vec!["neighbor-1"] }` — a
+    /// `IntrinsicCallCtx` with one V1 active element — a
     /// REAL dispatch of `eval_rng_draw`, but one that never resolves an
     /// element through the §2.6 chapter C8 element stack the way a fold
     /// body does. This row closes that gap: `rng-draw` called inside a REAL
@@ -3499,7 +3772,7 @@ mod c14_rng_draw {
         let call = |args: &[Value]| {
             let ctx = IntrinsicCallCtx {
                 draw_context: Some(&draw_ctx),
-                element_content_ids: Vec::new(),
+                active_elements: Vec::new(),
             };
             KernelIntrinsicHost.call("rng-draw", args, ctx)
         };

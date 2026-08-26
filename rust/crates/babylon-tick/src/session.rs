@@ -157,10 +157,11 @@ mod tests {
     use babylon_graph::allocator_state::AllocatorState;
     use babylon_graph::hypergraph_store::HypergraphStore;
     use babylon_graph::memory::MemoryGraph;
+    use babylon_graph::stable_element::StableElementResolverV1;
     use babylon_graph::state_hash::{CanonicalState, StateEncoder};
     use babylon_graph::substrate::{GraphError, GraphSubstrate, NodeId};
     use babylon_graph::working_copy::DetachedCopy;
-    use babylon_kernel::{Currency, SessionId};
+    use babylon_kernel::{Currency, ReplaySeed, ReplaySessionIdV1, RngSeedContext, SessionId};
     use std::fmt::Write as _;
     use std::process::Command;
 
@@ -345,7 +346,10 @@ mod tests {
             &session.prepared,
             &mut session.graph,
             &mut publisher,
-            &session.session,
+            RngSeedContext::V1 {
+                session: &session.session,
+            },
+            None,
             1,
             |_boundary: HashBoundary, graph: &HypergraphStore| graph.state_hash(),
         )
@@ -357,6 +361,54 @@ mod tests {
         assert_eq!(session.tick, 0);
         assert_eq!(session.graph.encode_state().unwrap().as_bytes(), before);
         assert_eq!(session.graph.allocator_cursors(), cursors);
+    }
+
+    #[test]
+    fn rng_v2_refuses_a_missing_resolver_and_topology_changed_after_sealing() {
+        let mut session = TickSession::new(
+            CLOCK_SCENARIO,
+            CLOCK_RULE,
+            HypergraphStore::new(),
+            test_session(),
+        )
+        .unwrap();
+        let replay_session = ReplaySessionIdV1::try_from("replay/session").unwrap();
+        let seed_context = RngSeedContext::V2 {
+            session: &replay_session,
+            seed: ReplaySeed::new(7),
+        };
+        let mut sink = CollectingSink::default();
+        let missing = run_prepared_tick_with(
+            &session.prepared,
+            &mut session.graph,
+            &mut sink,
+            seed_context,
+            None,
+            1,
+            |_boundary, graph: &HypergraphStore| graph.state_hash(),
+        )
+        .unwrap_err();
+        assert!(missing.contains("requires a sealed StableElementResolverV1"));
+
+        let resolver = StableElementResolverV1::seal(
+            &session.graph,
+            &session.prepared.scenario_scope,
+            &session.prepared.node_content_ids,
+            &session.prepared.hyperedge_content_ids,
+        )
+        .unwrap();
+        session.graph.add_node("DYNAMIC").unwrap();
+        let changed = run_prepared_tick_with(
+            &session.prepared,
+            &mut session.graph,
+            &mut sink,
+            seed_context,
+            Some(&resolver),
+            1,
+            |_boundary, graph: &HypergraphStore| graph.state_hash(),
+        )
+        .unwrap_err();
+        assert!(changed.contains("TopologyChanged"), "{changed}");
     }
 
     fn assert_phase_fault_rolls_back<G>(rules: &str)
@@ -422,7 +474,10 @@ mod tests {
             &session.prepared,
             &mut session.graph,
             &mut sink,
-            &session.session,
+            RngSeedContext::V1 {
+                session: &session.session,
+            },
+            None,
             1,
             &mut state_hash,
         )

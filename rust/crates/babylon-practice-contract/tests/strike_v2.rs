@@ -5,17 +5,17 @@ use babylon_practice_contract::{
     encode_strike_labor_process_register_v2, encode_strike_proposal_contract_v2,
     input_authority_ledger_v2_digest, practice_proposal_key_v2,
     practice_resource_allocation_contract_v2_digest, strike_labor_process_register_v2_digest,
-    strike_proposal_contract_v2_digest, validate_strike_labor_process_register_v2, CampaignIdV2,
-    InputAuthorityIdV2, PracticeAuthorityKindV2, PracticeIdV2, PracticeInputAuthorityLedgerV2,
-    PracticeInputAuthorityV2, PracticeIntentV2, PracticeIntentV2Error, PracticeParameterV2,
-    PracticeResourceAllocationContractV2, PracticeTargetIdentityV2, PracticeTargetTagV2,
-    ProposalNonceV2, ResolveStrikeProposalV2Error, ResolvedPracticeBatchItemV2,
-    ResolvedPracticeBatchV2, StrikeAffectedWorkerCohortV2, StrikeLaborProcessRegisterV2,
-    StrikeParticipationStateV2, StrikeProposalContractV2, StrikeProposalV2Error,
-    StrikeWorkerCohortIdentityV2, StrikeWorkerOrganizationRelationV2, TaggedPracticeTargetV2,
-    ADMITTED_STRIKE_PROPOSAL_V2_DOMAIN_BYTES, MAX_STRIKE_AFFECTED_COHORTS_V2,
-    MAX_STRIKE_ORGANIZATION_RELATIONS_V2, STRIKE_LABOR_PROCESS_REGISTER_V2_DOMAIN_BYTES,
-    STRIKE_PROPOSAL_CONTRACT_V2_DOMAIN_BYTES,
+    strike_proposal_contract_v2_digest, validate_strike_labor_process_register_v2,
+    ActorOrganizationIdV2, CampaignIdV2, InputAuthorityIdV2, PracticeAuthorityKindV2, PracticeIdV2,
+    PracticeInputAuthorityLedgerV2, PracticeInputAuthorityV2, PracticeIntentV2,
+    PracticeIntentV2Error, PracticeParameterV2, PracticeResourceAllocationContractV2,
+    PracticeTargetIdentityV2, PracticeTargetTagV2, ProposalNonceV2, ResolveStrikeProposalV2Error,
+    ResolvedPracticeBatchItemV2, ResolvedPracticeBatchV2, StrikeAffectedWorkerCohortV2,
+    StrikeLaborProcessRegisterV2, StrikeParticipationStateV2, StrikeProposalContractV2,
+    StrikeProposalV2Error, StrikeWorkerCohortIdentityV2, StrikeWorkerOrganizationRelationV2,
+    TaggedPracticeTargetV2, ADMITTED_STRIKE_PROPOSAL_V2_DOMAIN_BYTES,
+    MAX_STRIKE_AFFECTED_COHORTS_V2, MAX_STRIKE_ORGANIZATION_RELATIONS_V2,
+    STRIKE_LABOR_PROCESS_REGISTER_V2_DOMAIN_BYTES, STRIKE_PROPOSAL_CONTRACT_V2_DOMAIN_BYTES,
 };
 
 const CONTENT_DIGEST: [u8; 32] = [0x30; 32];
@@ -24,13 +24,17 @@ const OTHER_LABOR_PROCESS: [u8; 32] = [0x41; 32];
 const ASSEMBLY_WORKERS: [u8; 32] = [0x50; 32];
 const LOGISTICS_WORKERS: [u8; 32] = [0x51; 32];
 
+fn actor_id(value: u64) -> ActorOrganizationIdV2 {
+    ActorOrganizationIdV2::from_bytes(value.to_be_bytes())
+}
+
 fn strike_intent(actor_org_id: u64) -> PracticeIntentV2 {
     PracticeIntentV2 {
         schema_version: 2,
         submit_after_tick: 40,
         resolve_tick: 41,
         input_authority_id: InputAuthorityIdV2::from_bytes([0x10; 16]),
-        actor_org_id,
+        actor_org_id: actor_id(actor_org_id),
         practice_id: PracticeIdV2::Strike,
         target: TaggedPracticeTargetV2 {
             tag: PracticeTargetTagV2::LaborProcess,
@@ -108,7 +112,7 @@ fn relation(
     StrikeWorkerOrganizationRelationV2 {
         labor_process_id: PracticeTargetIdentityV2::from_bytes(labor_process),
         worker_cohort_id: StrikeWorkerCohortIdentityV2::from_bytes(cohort),
-        organization_id,
+        organization_id: actor_id(organization_id),
         membership_attribution_digest: [organization_id.to_be_bytes()[7]; 32],
     }
 }

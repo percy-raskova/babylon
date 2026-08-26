@@ -6,6 +6,7 @@ mod schema;
 
 pub use schema::*;
 
+pub mod actor_v2;
 pub mod admission;
 pub mod authority_v2;
 pub mod batch_v2;
@@ -16,6 +17,7 @@ pub mod resource_v2;
 pub mod strike_v2;
 pub mod topology;
 
+pub use actor_v2::ActorOrganizationIdV2;
 pub use admission::{validate_authority_pair, validate_quote_context, validate_resolve_batch};
 pub use authority_v2::*;
 pub use batch_v2::*;

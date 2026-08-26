@@ -1,11 +1,16 @@
 use babylon_practice_contract::{
     decode_practice_intent_v2, encode_practice_intent_v2, practice_intent_v2_digest,
     practice_proposal_key_v2, validate_practice_intent_authority_v2, validate_practice_intent_v2,
-    CampaignIdV2, InputAuthorityIdV2, PracticeAuthorityKindV2, PracticeAuthorityV2Error,
-    PracticeIdV2, PracticeInputAuthorityLedgerV2, PracticeInputAuthorityV2,
-    PracticeIntentAuthorityV2Error, PracticeIntentV2, PracticeIntentV2Error, PracticeParameterV2,
-    PracticeTargetIdentityV2, PracticeTargetTagV2, ProposalNonceV2, TaggedPracticeTargetV2,
+    ActorOrganizationIdV2, CampaignIdV2, InputAuthorityIdV2, PracticeAuthorityKindV2,
+    PracticeAuthorityV2Error, PracticeIdV2, PracticeInputAuthorityLedgerV2,
+    PracticeInputAuthorityV2, PracticeIntentAuthorityV2Error, PracticeIntentV2,
+    PracticeIntentV2Error, PracticeParameterV2, PracticeTargetIdentityV2, PracticeTargetTagV2,
+    ProposalNonceV2, TaggedPracticeTargetV2,
 };
+
+fn actor_id(value: u64) -> ActorOrganizationIdV2 {
+    ActorOrganizationIdV2::from_bytes(value.to_be_bytes())
+}
 
 fn hex_bytes(value: &str) -> Vec<u8> {
     assert_eq!(value.len() % 2, 0);
@@ -31,7 +36,7 @@ fn strike_intent() -> PracticeIntentV2 {
         submit_after_tick: 10,
         resolve_tick: 11,
         input_authority_id: InputAuthorityIdV2::from_bytes([0x20; 16]),
-        actor_org_id: 7,
+        actor_org_id: actor_id(7),
         practice_id: PracticeIdV2::Strike,
         target: TaggedPracticeTargetV2 {
             tag: PracticeTargetTagV2::LaborProcess,
@@ -53,7 +58,7 @@ fn authority_ledger() -> PracticeInputAuthorityLedgerV2 {
             campaign_id: CampaignIdV2::from_bytes([0x10; 16]),
             authority_kind: PracticeAuthorityKindV2::PlayerSeat,
             input_authority_id: InputAuthorityIdV2::from_bytes([0x20; 16]),
-            actor_org_id: 7,
+            actor_org_id: actor_id(7),
             effective_from_tick: 0,
             effective_through_tick_exclusive: 20,
             decision_content_digest: [0x90; 32],
@@ -178,7 +183,7 @@ fn intent_v2_authority_validation_consumes_the_authoritative_ledger() {
     );
 
     let mut wrong_actor = intent;
-    wrong_actor.actor_org_id = 8;
+    wrong_actor.actor_org_id = actor_id(8);
     assert_eq!(
         validate_practice_intent_authority_v2(&ledger, campaign, &wrong_actor),
         Err(PracticeIntentAuthorityV2Error::Authority(
@@ -323,7 +328,7 @@ fn intent_v2_digest_binds_every_valid_scalar_and_collection_identity() {
     authority.input_authority_id = InputAuthorityIdV2::from_bytes([0x21; 16]);
     variants.push(authority);
     let mut actor = base.clone();
-    actor.actor_org_id = 8;
+    actor.actor_org_id = actor_id(8);
     variants.push(actor);
     let mut practice = base.clone();
     practice.practice_id = PracticeIdV2::Blockade;

@@ -5,10 +5,11 @@ use std::collections::BTreeSet;
 use babylon_kernel::sha256_of;
 
 use crate::{
-    practice_proposal_key_v2, resolved_practice_batch_v2_digest, InputAuthorityIdV2, PracticeIdV2,
-    PracticeInputAuthorityLedgerV2, PracticeIntentV2, PracticeProposalKeyV2,
-    PracticeTargetIdentityV2, PracticeTargetTagV2, ProposalNonceV2, ResolvedPracticeBatchV2,
-    ResolvedPracticeBatchV2Error, TaggedPracticeTargetV2, MAX_RESOLVED_PRACTICE_BATCH_ITEMS_V2,
+    practice_proposal_key_v2, resolved_practice_batch_v2_digest, ActorOrganizationIdV2,
+    InputAuthorityIdV2, PracticeIdV2, PracticeInputAuthorityLedgerV2, PracticeIntentV2,
+    PracticeProposalKeyV2, PracticeTargetIdentityV2, PracticeTargetTagV2, ProposalNonceV2,
+    ResolvedPracticeBatchV2, ResolvedPracticeBatchV2Error, TaggedPracticeTargetV2,
+    MAX_RESOLVED_PRACTICE_BATCH_ITEMS_V2,
 };
 
 const SCHEMA_VERSION: u16 = 2;
@@ -151,7 +152,7 @@ pub struct StrikeAffectedWorkerCohortV2 {
 pub struct StrikeWorkerOrganizationRelationV2 {
     pub labor_process_id: PracticeTargetIdentityV2,
     pub worker_cohort_id: StrikeWorkerCohortIdentityV2,
-    pub organization_id: u64,
+    pub organization_id: ActorOrganizationIdV2,
     pub membership_attribution_digest: [u8; 32],
 }
 
@@ -278,7 +279,11 @@ fn affected_key(
 
 fn relation_key(
     value: &StrikeWorkerOrganizationRelationV2,
-) -> (PracticeTargetIdentityV2, StrikeWorkerCohortIdentityV2, u64) {
+) -> (
+    PracticeTargetIdentityV2,
+    StrikeWorkerCohortIdentityV2,
+    ActorOrganizationIdV2,
+) {
     (
         value.labor_process_id,
         value.worker_cohort_id,
@@ -506,7 +511,7 @@ pub fn encode_strike_labor_process_register_v2(
     {
         output.extend_from_slice(&row.labor_process_id.as_bytes());
         output.extend_from_slice(&row.worker_cohort_id.as_bytes());
-        output.extend_from_slice(&row.organization_id.to_be_bytes());
+        output.extend_from_slice(&row.organization_id.to_bytes());
         output.extend_from_slice(&row.membership_attribution_digest);
     }
     Ok(output)
@@ -560,7 +565,7 @@ fn decode_organization_relations(
         rows.push(StrikeWorkerOrganizationRelationV2 {
             labor_process_id: PracticeTargetIdentityV2::from_bytes(cursor.array()?),
             worker_cohort_id: StrikeWorkerCohortIdentityV2::from_bytes(cursor.array()?),
-            organization_id: cursor.u64()?,
+            organization_id: ActorOrganizationIdV2::from_bytes(cursor.array()?),
             membership_attribution_digest: cursor.array()?,
         });
     }
@@ -606,7 +611,7 @@ fn participation_rows(
 
 fn organization_is_connected(
     target: PracticeTargetIdentityV2,
-    organization_id: u64,
+    organization_id: ActorOrganizationIdV2,
     register: &StrikeLaborProcessRegisterV2,
 ) -> bool {
     register
@@ -689,7 +694,7 @@ pub fn admit_strike_proposal_v2(
 fn append_proposal_key(output: &mut Vec<u8>, value: PracticeProposalKeyV2) {
     output.extend_from_slice(&value.resolve_tick.to_be_bytes());
     output.extend_from_slice(&value.input_authority_id.as_bytes());
-    output.extend_from_slice(&value.actor_org_id.to_be_bytes());
+    output.extend_from_slice(&value.actor_org_id.to_bytes());
     output.push(value.practice_id as u8);
     output.push(value.target.tag as u8);
     output.extend_from_slice(&value.target.identity.as_bytes());
@@ -701,7 +706,7 @@ fn decode_proposal_key(
 ) -> Result<PracticeProposalKeyV2, StrikeProposalV2Error> {
     let resolve_tick = cursor.u64()?;
     let input_authority_id = InputAuthorityIdV2::from_bytes(cursor.array()?);
-    let actor_org_id = cursor.u64()?;
+    let actor_org_id = ActorOrganizationIdV2::from_bytes(cursor.array()?);
     let practice_id =
         PracticeIdV2::try_from(cursor.u8()?).map_err(|_| StrikeProposalV2Error::StrikeEnumCode)?;
     let tag = PracticeTargetTagV2::try_from(cursor.u8()?)

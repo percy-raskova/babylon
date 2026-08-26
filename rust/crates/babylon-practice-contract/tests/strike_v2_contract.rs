@@ -4,16 +4,21 @@ use babylon_practice_contract::{
     encode_admitted_strike_proposal_v2, encode_strike_labor_process_register_v2,
     encode_strike_proposal_contract_v2, input_authority_ledger_v2_digest, practice_proposal_key_v2,
     practice_resource_allocation_contract_v2_digest, strike_labor_process_register_v2_digest,
-    strike_proposal_contract_v2_digest, CampaignIdV2, InputAuthorityIdV2, PracticeAuthorityKindV2,
-    PracticeIdV2, PracticeInputAuthorityLedgerV2, PracticeInputAuthorityV2, PracticeIntentV2,
-    PracticeResourceAllocationContractV2, PracticeTargetIdentityV2, PracticeTargetTagV2,
-    ProposalNonceV2, ResolvedPracticeBatchItemV2, ResolvedPracticeBatchV2, StrikeProposalV2Error,
-    TaggedPracticeTargetV2, STRIKE_PROPOSAL_V2_SOURCE_SHA256,
+    strike_proposal_contract_v2_digest, ActorOrganizationIdV2, CampaignIdV2, InputAuthorityIdV2,
+    PracticeAuthorityKindV2, PracticeIdV2, PracticeInputAuthorityLedgerV2,
+    PracticeInputAuthorityV2, PracticeIntentV2, PracticeResourceAllocationContractV2,
+    PracticeTargetIdentityV2, PracticeTargetTagV2, ProposalNonceV2, ResolvedPracticeBatchItemV2,
+    ResolvedPracticeBatchV2, StrikeProposalV2Error, TaggedPracticeTargetV2,
+    STRIKE_PROPOSAL_V2_SOURCE_SHA256,
 };
 use serde_json::Value;
 
 const SCHEMA: &[u8] = include_bytes!("../../../../contracts/strike_proposal_v2.yaml");
 const VECTORS: &str = include_str!("../../../../contracts/strike_proposal_v2_vectors.jsonl");
+
+fn actor_id(value: u64) -> ActorOrganizationIdV2 {
+    ActorOrganizationIdV2::from_bytes(value.to_be_bytes())
+}
 
 fn hex_bytes(value: &str) -> Vec<u8> {
     assert_eq!(value.len() % 2, 0);
@@ -51,7 +56,7 @@ fn strike_intent() -> PracticeIntentV2 {
         submit_after_tick: 40,
         resolve_tick: 41,
         input_authority_id: InputAuthorityIdV2::from_bytes([0x10; 16]),
-        actor_org_id: 101,
+        actor_org_id: actor_id(101),
         practice_id: PracticeIdV2::Strike,
         target: TaggedPracticeTargetV2 {
             tag: PracticeTargetTagV2::LaborProcess,

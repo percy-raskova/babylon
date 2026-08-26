@@ -361,6 +361,41 @@ pub enum StableIdentityError {
     },
     /// A supplied element did not belong to this sealed resolver.
     ElementNotSealed,
+    /// One stable-state section exceeded its governed row ceiling.
+    StateSectionLimit {
+        /// Stable-state section name.
+        section: &'static str,
+        /// Received row count.
+        actual: usize,
+        /// Governed maximum.
+        maximum: usize,
+    },
+    /// Stable-state rows plus nested member references exceeded their ceiling.
+    FactUnitLimit {
+        /// Received aggregate fact-unit count.
+        actual: usize,
+        /// Governed maximum.
+        maximum: usize,
+    },
+    /// Two stable-state rows shared one governed semantic key.
+    DuplicateFact {
+        /// Stable-state section containing the duplicate.
+        section: &'static str,
+    },
+    /// One node field appeared in both the f64 and Currency lanes.
+    NumericLaneCollision {
+        /// Stable node local name.
+        node_local_name: String,
+        /// Duplicated field qname.
+        qname: String,
+    },
+    /// A non-finite binary64 value reached stable-state identity.
+    NonFiniteValue {
+        /// Stable-state section containing the value.
+        section: &'static str,
+    },
+    /// An edge attribute tried to duplicate the governed strength slot.
+    StrengthAttribute,
     /// Live graph topology no longer matches the sealed witness.
     TopologyChanged,
     /// Checked size arithmetic overflowed.
@@ -532,7 +567,7 @@ impl StableElementResolverV1 {
     ///
     /// # Errors
     /// Returns a topology or semantic snapshot error.
-    pub fn validate_topology<G: GraphSubstrate + CanonicalState>(
+    pub fn validate_topology<G: CanonicalState>(
         &self,
         graph: &G,
     ) -> Result<(), StableIdentityError> {
@@ -550,7 +585,11 @@ impl StableElementResolverV1 {
         &self.manifest
     }
 
-    fn node_local_name(&self, node: NodeId) -> Result<&str, StableIdentityError> {
+    pub(crate) fn scenario_scope(&self) -> &str {
+        &self.scenario_scope
+    }
+
+    pub(crate) fn node_local_name(&self, node: NodeId) -> Result<&str, StableIdentityError> {
         match self.node_key(node)? {
             StableElementKeyV1::Node { local_name, .. } => Ok(local_name),
             StableElementKeyV1::Edge { .. } | StableElementKeyV1::Hyperedge { .. } => {
@@ -915,7 +954,7 @@ fn frame_segments(
     Ok(output)
 }
 
-fn validate_qname(field: &'static str, value: &str) -> Result<(), StableIdentityError> {
+pub(crate) fn validate_qname(field: &'static str, value: &str) -> Result<(), StableIdentityError> {
     if value.is_empty() || value.len() > MAX_QNAME_BYTES {
         return Err(StableIdentityError::InvalidString {
             field,

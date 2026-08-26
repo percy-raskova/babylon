@@ -1,12 +1,16 @@
 use std::collections::HashMap;
 
+use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::stable_element::{
     StableElementKeyV1, StableElementResolverV1, StableIdentityError,
     MAX_STABLE_CARRIER_ACTIVE_ELEMENTS_V2, MAX_STABLE_CARRIER_BYTES_V2,
     MAX_STABLE_RESOLVER_MANIFEST_BYTES_V1, MAX_STABLE_RESOLVER_ROWS_V1,
 };
+use babylon_graph::stable_state::{encode_stable_graph_state_v1, StableGraphStateV1};
+use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::{GraphSubstrate, HyperedgeId, NodeId};
+use babylon_kernel::Currency;
 
 struct StableFixture {
     graph: MemoryGraph,
@@ -404,5 +408,377 @@ fn forged_stable_element_cannot_enter_a_resolver_owned_carrier() {
     assert_eq!(
         resolver.carrier_key(&forged, &[], 0),
         Err(StableIdentityError::ElementNotSealed)
+    );
+}
+
+struct StateFixture<G> {
+    graph: G,
+    node_names: HashMap<NodeId, String>,
+    hyperedge_names: HashMap<HyperedgeId, String>,
+}
+
+#[derive(Clone)]
+struct StateFacts {
+    nodes: Vec<(NodeId, String)>,
+    node_f64: Vec<(NodeId, String, f64)>,
+    edges: Vec<(String, NodeId, NodeId, f64)>,
+    hyperedges: Vec<(HyperedgeId, String, Vec<NodeId>)>,
+    edge_f64: Vec<(String, NodeId, NodeId, String, f64)>,
+    node_currency: Vec<(NodeId, String, Currency)>,
+    hyperedge_f64: Vec<(HyperedgeId, String, f64)>,
+}
+
+impl StateFacts {
+    fn from_graph(graph: &MemoryGraph) -> Self {
+        Self {
+            nodes: graph.all_nodes(),
+            node_f64: graph.all_attributes(),
+            edges: graph.all_edges(),
+            hyperedges: graph.all_hyperedges(),
+            edge_f64: graph.all_edge_attributes(),
+            node_currency: graph.all_currency_attributes(),
+            hyperedge_f64: graph.all_hyperedge_attributes(),
+        }
+    }
+}
+
+impl CanonicalState for StateFacts {
+    fn all_nodes(&self) -> Vec<(NodeId, String)> {
+        self.nodes.clone()
+    }
+    fn all_attributes(&self) -> Vec<(NodeId, String, f64)> {
+        self.node_f64.clone()
+    }
+    fn all_edges(&self) -> Vec<(String, NodeId, NodeId, f64)> {
+        self.edges.clone()
+    }
+    fn all_hyperedges(&self) -> Vec<(HyperedgeId, String, Vec<NodeId>)> {
+        self.hyperedges.clone()
+    }
+    fn all_edge_attributes(&self) -> Vec<(String, NodeId, NodeId, String, f64)> {
+        self.edge_f64.clone()
+    }
+    fn all_currency_attributes(&self) -> Vec<(NodeId, String, Currency)> {
+        self.node_currency.clone()
+    }
+    fn all_hyperedge_attributes(&self) -> Vec<(HyperedgeId, String, f64)> {
+        self.hyperedge_f64.clone()
+    }
+}
+
+fn state_fixture<G: GraphSubstrate + Default>(shift_handles: bool) -> StateFixture<G> {
+    let mut graph = G::default();
+    if shift_handles {
+        let discarded = graph.add_node("discarded").unwrap();
+        graph.remove_node(discarded).unwrap();
+    }
+    let (owners, workers) = if shift_handles {
+        let workers = graph.add_node("class").unwrap();
+        let owners = graph.add_node("class").unwrap();
+        (owners, workers)
+    } else {
+        let owners = graph.add_node("class").unwrap();
+        let workers = graph.add_node("class").unwrap();
+        (owners, workers)
+    };
+    graph.add_edge("solidarity", workers, owners, 0.75).unwrap();
+    if shift_handles {
+        let discarded = graph
+            .add_hyperedge("discarded", &[owners, workers])
+            .unwrap();
+        graph.remove_hyperedge(discarded).unwrap();
+    }
+    let coalition = graph
+        .add_hyperedge("coalition", &[workers, owners])
+        .unwrap();
+    graph.update_node(owners, "class/power", -0.0).unwrap();
+    graph.update_node(workers, "class/wage", 1.5).unwrap();
+    graph
+        .update_node_currency(
+            owners,
+            "class/wealth",
+            Currency::from_micro_units(-123_456_789),
+        )
+        .unwrap();
+    graph
+        .update_edge("solidarity", workers, owners, "solidarity/tension", -2.5)
+        .unwrap();
+    graph
+        .update_hyperedge_attribute(coalition, "coalition/cohesion", 0.25)
+        .unwrap();
+    StateFixture {
+        graph,
+        node_names: HashMap::from([
+            (workers, "workers".to_owned()),
+            (owners, "owners".to_owned()),
+        ]),
+        hyperedge_names: HashMap::from([(coalition, "coalition-a".to_owned())]),
+    }
+}
+
+fn stable_state<G: GraphSubstrate + CanonicalState>(value: &StateFixture<G>) -> StableGraphStateV1 {
+    let resolver = StableElementResolverV1::seal(
+        &value.graph,
+        "demo/world",
+        &value.node_names,
+        &value.hyperedge_names,
+    )
+    .unwrap();
+    encode_stable_graph_state_v1(&value.graph, &resolver).unwrap()
+}
+
+#[test]
+fn stable_graph_state_eight_sections_and_scalar_bytes_are_exact() {
+    let value = state_fixture::<MemoryGraph>(false);
+    let expected = [
+        b"babylon.stable-graph\0".as_slice(),
+        &1_u32.to_be_bytes(),
+        &[0x01],
+        &str32("demo/world"),
+        &[0x02],
+        &2_u32.to_be_bytes(),
+        &str32("owners"),
+        &str32("class"),
+        &str32("workers"),
+        &str32("class"),
+        &[0x03],
+        &2_u32.to_be_bytes(),
+        &str32("owners"),
+        &str32("class/power"),
+        &0_u64.to_be_bytes(),
+        &str32("workers"),
+        &str32("class/wage"),
+        &1.5_f64.to_bits().to_be_bytes(),
+        &[0x04],
+        &1_u32.to_be_bytes(),
+        &str32("solidarity"),
+        &str32("workers"),
+        &str32("owners"),
+        &0.75_f64.to_bits().to_be_bytes(),
+        &[0x05],
+        &1_u32.to_be_bytes(),
+        &str32("coalition-a"),
+        &str32("coalition"),
+        &2_u32.to_be_bytes(),
+        &str32("owners"),
+        &str32("workers"),
+        &[0x06],
+        &1_u32.to_be_bytes(),
+        &str32("solidarity"),
+        &str32("workers"),
+        &str32("owners"),
+        &str32("solidarity/tension"),
+        &(-2.5_f64).to_bits().to_be_bytes(),
+        &[0x07],
+        &1_u32.to_be_bytes(),
+        &str32("owners"),
+        &str32("class/wealth"),
+        &(-123_456_789_i128).to_be_bytes(),
+        &[0x08],
+        &1_u32.to_be_bytes(),
+        &str32("coalition-a"),
+        &str32("coalition/cohesion"),
+        &0.25_f64.to_bits().to_be_bytes(),
+    ]
+    .concat();
+
+    assert_eq!(stable_state(&value).canonical_bytes(), expected);
+}
+
+#[test]
+fn stable_graph_state_writes_every_empty_section() {
+    let mut graph = MemoryGraph::new();
+    let node = graph.add_node("class").unwrap();
+    let resolver = StableElementResolverV1::seal(
+        &graph,
+        "demo/world",
+        &HashMap::from([(node, "workers".to_owned())]),
+        &HashMap::new(),
+    )
+    .unwrap();
+    let state = encode_stable_graph_state_v1(&graph, &resolver).unwrap();
+    let expected = [
+        b"babylon.stable-graph\0".as_slice(),
+        &1_u32.to_be_bytes(),
+        &[0x01],
+        &str32("demo/world"),
+        &[0x02],
+        &1_u32.to_be_bytes(),
+        &str32("workers"),
+        &str32("class"),
+        &[0x03],
+        &0_u32.to_be_bytes(),
+        &[0x04],
+        &0_u32.to_be_bytes(),
+        &[0x05],
+        &0_u32.to_be_bytes(),
+        &[0x06],
+        &0_u32.to_be_bytes(),
+        &[0x07],
+        &0_u32.to_be_bytes(),
+        &[0x08],
+        &0_u32.to_be_bytes(),
+    ]
+    .concat();
+    assert_eq!(state.canonical_bytes(), expected);
+}
+
+#[test]
+fn stable_graph_state_ignores_substrate_and_runtime_handle_allocation() {
+    let memory = state_fixture::<MemoryGraph>(false);
+    let hypergraph = state_fixture::<HypergraphStore>(true);
+    assert_ne!(
+        memory.graph.state_hash().unwrap(),
+        hypergraph.graph.state_hash().unwrap(),
+        "the fixture must actually exercise different runtime handles"
+    );
+    let memory_state = stable_state(&memory);
+    let hypergraph_state = stable_state(&hypergraph);
+    assert_eq!(
+        memory_state.canonical_bytes(),
+        hypergraph_state.canonical_bytes()
+    );
+    assert_eq!(memory_state.digest(), hypergraph_state.digest());
+}
+
+#[test]
+fn stable_graph_state_refuses_topology_and_fact_ambiguity() {
+    let value = state_fixture::<MemoryGraph>(false);
+    let resolver = StableElementResolverV1::seal(
+        &value.graph,
+        "demo/world",
+        &value.node_names,
+        &value.hyperedge_names,
+    )
+    .unwrap();
+    let owners = *value
+        .node_names
+        .iter()
+        .find_map(|(node, name)| (name == "owners").then_some(node))
+        .unwrap();
+
+    let mut changed = value.graph.clone();
+    changed.add_node("class").unwrap();
+    assert_eq!(
+        encode_stable_graph_state_v1(&changed, &resolver),
+        Err(StableIdentityError::TopologyChanged)
+    );
+
+    let mut collision = value.graph.clone();
+    collision
+        .update_node_currency(owners, "class/power", Currency::from_micro_units(1))
+        .unwrap();
+    assert!(matches!(
+        encode_stable_graph_state_v1(&collision, &resolver),
+        Err(StableIdentityError::NumericLaneCollision { .. })
+    ));
+
+    let mut duplicate = StateFacts::from_graph(&value.graph);
+    duplicate.node_f64.push(duplicate.node_f64[0].clone());
+    assert_eq!(
+        encode_stable_graph_state_v1(&duplicate, &resolver),
+        Err(StableIdentityError::DuplicateFact {
+            section: "node f64 attributes",
+        })
+    );
+
+    let mut unknown_owner = StateFacts::from_graph(&value.graph);
+    unknown_owner
+        .node_f64
+        .push((NodeId(999), "class/ghost".to_owned(), 1.0));
+    assert_eq!(
+        encode_stable_graph_state_v1(&unknown_owner, &resolver),
+        Err(StableIdentityError::UnknownNode { node: NodeId(999) })
+    );
+
+    let mut absent_edge = StateFacts::from_graph(&value.graph);
+    absent_edge.edge_f64.push((
+        "solidarity".to_owned(),
+        owners,
+        owners,
+        "solidarity/tension".to_owned(),
+        1.0,
+    ));
+    assert!(matches!(
+        encode_stable_graph_state_v1(&absent_edge, &resolver),
+        Err(StableIdentityError::UnknownEdge { .. })
+    ));
+
+    let mut duplicate_member = StateFacts::from_graph(&value.graph);
+    duplicate_member.hyperedges[0].2.push(owners);
+    assert_eq!(
+        encode_stable_graph_state_v1(&duplicate_member, &resolver),
+        Err(StableIdentityError::InvalidHyperedge {
+            hyperedge: duplicate_member.hyperedges[0].0,
+        })
+    );
+
+    let mut empty_hyperedge = StateFacts::from_graph(&value.graph);
+    empty_hyperedge.hyperedges[0].2.clear();
+    assert!(matches!(
+        encode_stable_graph_state_v1(&empty_hyperedge, &resolver),
+        Err(StableIdentityError::InvalidHyperedge { .. })
+    ));
+
+    let mut unknown_member = StateFacts::from_graph(&value.graph);
+    unknown_member.hyperedges[0].2[0] = NodeId(999);
+    assert!(matches!(
+        encode_stable_graph_state_v1(&unknown_member, &resolver),
+        Err(StableIdentityError::InvalidHyperedge { .. })
+    ));
+}
+
+#[test]
+fn stable_graph_state_refuses_non_finite_values_and_strength_aliases() {
+    let value = state_fixture::<MemoryGraph>(false);
+    let resolver = StableElementResolverV1::seal(
+        &value.graph,
+        "demo/world",
+        &value.node_names,
+        &value.hyperedge_names,
+    )
+    .unwrap();
+    let workers = *value
+        .node_names
+        .iter()
+        .find_map(|(node, name)| (name == "workers").then_some(node))
+        .unwrap();
+    let owners = *value
+        .node_names
+        .iter()
+        .find_map(|(node, name)| (name == "owners").then_some(node))
+        .unwrap();
+
+    let mut non_finite = value.graph.clone();
+    non_finite
+        .update_node(workers, "class/wage", f64::INFINITY)
+        .unwrap();
+    assert_eq!(
+        encode_stable_graph_state_v1(&non_finite, &resolver),
+        Err(StableIdentityError::NonFiniteValue {
+            section: "node f64 attributes",
+        })
+    );
+
+    let mut nan = StateFacts::from_graph(&value.graph);
+    nan.hyperedge_f64[0].2 = f64::NAN;
+    assert_eq!(
+        encode_stable_graph_state_v1(&nan, &resolver),
+        Err(StableIdentityError::NonFiniteValue {
+            section: "hyperedge f64 attributes",
+        })
+    );
+
+    let mut invalid = StateFacts::from_graph(&value.graph);
+    invalid.edge_f64 = vec![(
+        "solidarity".to_owned(),
+        workers,
+        owners,
+        "solidarity/strength".to_owned(),
+        1.0,
+    )];
+    assert_eq!(
+        encode_stable_graph_state_v1(&invalid, &resolver),
+        Err(StableIdentityError::StrengthAttribute)
     );
 }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 from pathlib import Path
 from typing import Any
 
@@ -105,6 +106,15 @@ def test_only_explicit_advisories_accept_a_failure_conclusion() -> None:
             assert "FAILURE" in requirement.allowed_conclusions
         else:
             assert requirement.allowed_conclusions == frozenset({"SUCCESS"})
+
+
+def test_ai_qualification_excludes_live_ollama_tests() -> None:
+    ai_job = _workflow()["jobs"]["ai-tests"]
+    test_step = next(step for step in ai_job["steps"] if step.get("name") == "Run AI unit tests")
+    argv = shlex.split(test_step["run"])
+    marker_index = argv.index("-m")
+
+    assert argv[marker_index + 1] == "not requires_ollama"
 
 
 def test_workflow_emits_every_qualification_context_once() -> None:

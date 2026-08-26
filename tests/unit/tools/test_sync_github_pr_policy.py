@@ -274,6 +274,14 @@ def test_normalizers_strip_read_only_api_fields() -> None:
     }
 
 
+def test_ruleset_normalizer_ignores_github_rule_order() -> None:
+    desired = _ruleset(strict=True, threads=True)
+    github_readback = deepcopy(desired)
+    github_readback["rules"][-2:] = reversed(github_readback["rules"][-2:])
+
+    assert policy_tool.normalize_ruleset(github_readback) == policy_tool.normalize_ruleset(desired)
+
+
 def test_check_reports_drift_without_mutation() -> None:
     api = FakeApi()
 

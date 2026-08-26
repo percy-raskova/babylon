@@ -323,6 +323,7 @@ def _child_prs(head_ref: str) -> list[int]:
             "number",
         ),
         "child pull requests",
+        refuse_full_page=True,
     )
     numbers: list[int] = []
     for pr in prs:

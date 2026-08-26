@@ -17,6 +17,9 @@ class CheckRequirement:
     allowed_conclusions: frozenset[str]
 
 
+BASELINE_CEREMONY_CONTEXT: Final[str] = "Baseline Ceremony Gate (§6.5 provenance)"
+
+
 DEV_CHECK_MANIFEST: Final[tuple[CheckRequirement, ...]] = (
     CheckRequirement(
         "Fast Gate (hygiene, lint, format, imports, types, lock)",
@@ -45,9 +48,7 @@ DEV_CHECK_MANIFEST: Final[tuple[CheckRequirement, ...]] = (
         "blocking",
         frozenset({"SUCCESS"}),
     ),
-    CheckRequirement(
-        "Baseline Ceremony Gate (§6.5 provenance)", "blocking", frozenset({"SUCCESS"})
-    ),
+    CheckRequirement(BASELINE_CEREMONY_CONTEXT, "blocking", frozenset({"SUCCESS"})),
     CheckRequirement(
         "Postgres Integration Tier (PG 17, pinned runtime)",
         "blocking",

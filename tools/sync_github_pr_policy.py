@@ -11,12 +11,17 @@ import subprocess
 import sys
 from copy import deepcopy
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Final, Protocol, cast
 from urllib.parse import quote
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tools.pr_policy import DEV_BLOCKING_CONTEXTS  # noqa: E402
+from tools.pr_policy import (  # noqa: E402
+    BASELINE_CEREMONY_CONTEXT,
+    DEV_BLOCKING_CONTEXTS,
+    DEV_CHECK_MANIFEST,
+    CheckRequirement,
+)
 
 REPOSITORY = "percy-raskova/babylon"
 REPOSITORY_ENDPOINT = f"repos/{REPOSITORY}"
@@ -34,6 +39,17 @@ MAX_CHECK_RUNS = 100
 API_TIMEOUT_SECONDS = 30
 SHA_PATTERN = re.compile(r"[0-9a-f]{40}")
 CANONICAL_AUTOMERGE_LABEL = "dependencies:automerge"
+DEV_PUSH_ATTESTATION_MANIFEST: Final[tuple[CheckRequirement, ...]] = tuple(
+    CheckRequirement(
+        requirement.context,
+        requirement.kind,
+        frozenset({"success", "skipped"})
+        if requirement.context == BASELINE_CEREMONY_CONTEXT
+        else frozenset({"success"}),
+    )
+    for requirement in DEV_CHECK_MANIFEST
+    if requirement.kind == "blocking"
+)
 _UNKNOWN = object()
 
 RULESET_WRITABLE_FIELDS = (
@@ -310,14 +326,14 @@ def _validate_policy(policy: dict[str, object]) -> None:
     ruleset = normalize_ruleset(_object(policy.get("dev_ruleset"), "dev ruleset policy"))
     if not _exact_dev_scope(ruleset):
         raise PolicyError("desired ruleset must have exact dev-only branch scope")
-    contexts = tuple(_required_contexts(policy))
-    if contexts != DEV_BLOCKING_CONTEXTS:
+    contexts = _required_contexts(policy)
+    if len(contexts) != len(DEV_BLOCKING_CONTEXTS) or set(contexts) != set(DEV_BLOCKING_CONTEXTS):
         raise PolicyError("required checks must equal the complete dev check manifest")
     normalize_repository(_object(policy.get("repository"), "repository policy"))
     _canonical_label(_object(policy.get("automerge_label"), "label policy"), "policy")
 
 
-def _verify_green_dev(api: Api, policy: dict[str, object], expected_sha: str) -> None:
+def _verify_green_dev(api: Api, expected_sha: str) -> None:
     actual_sha = _dev_sha(api)
     if actual_sha != expected_sha:
         raise PolicyError(f"dev moved: expected {expected_sha}, found {actual_sha}")
@@ -352,15 +368,15 @@ def _verify_green_dev(api: Api, policy: dict[str, object], expected_sha: str) ->
         if prior is None or current_key >= prior_key:
             latest[name] = candidate
     problems: list[str] = []
-    for context in _required_contexts(policy):
-        selected = latest.get(context)
+    for requirement in DEV_PUSH_ATTESTATION_MANIFEST:
+        selected = latest.get(requirement.context)
         if selected is None:
-            problems.append(f"{context}: missing")
+            problems.append(f"{requirement.context}: missing")
             continue
         status = str(selected.get("status") or "")
         conclusion = str(selected.get("conclusion") or "")
-        if status != "completed" or conclusion != "success":
-            problems.append(f"{context}: status={status}, conclusion={conclusion}")
+        if status != "completed" or conclusion not in requirement.allowed_conclusions:
+            problems.append(f"{requirement.context}: status={status}, conclusion={conclusion}")
     if problems:
         raise PolicyError("exact dev checks are not green: " + "; ".join(problems))
 
@@ -474,11 +490,12 @@ def _restore_snapshot(
     restore_flags = (attempted_ruleset, attempted_repository, attempted_label)
     try:
         current = _current_state(api)
+    except (GitHubApiError, PolicyError, OSError):
+        pass
+    else:
         if current["dev_ruleset_id"] != before["dev_ruleset_id"]:
             raise PolicyError("dev ruleset ID changed; restore refused")
         restore_flags = _component_differences(current, before)
-    except (GitHubApiError, OSError):
-        pass
     errors = _restore_components(
         api,
         before,
@@ -521,7 +538,7 @@ def apply_policy(
     if SHA_PATTERN.fullmatch(expected_dev_sha) is None:
         raise PolicyError("--expected-dev-sha must be one canonical 40-hex SHA")
     _validate_policy(policy)
-    _verify_green_dev(api, policy, expected_dev_sha)
+    _verify_green_dev(api, expected_dev_sha)
     before = _current_state(api)
     _write_snapshot(snapshot_path, before, expected_dev_sha)
     if _state_identity(_current_state(api)) != _state_identity(before):

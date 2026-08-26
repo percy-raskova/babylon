@@ -126,6 +126,7 @@ class FakeApi:
         self.fail_ruleset_restore = False
         self.mismatch_ruleset_readback = False
         self.concurrent_ruleset_drift = False
+        self.policy_error_ruleset_read: int | None = None
         self._ruleset_reads = 0
         self.move_dev_on_read: int | None = None
         self._dev_reads = 0
@@ -141,6 +142,8 @@ class FakeApi:
             return [{"id": 18807584}]
         if endpoint == policy_tool.DEV_RULESET_ENDPOINT.format(ruleset_id=18807584):
             self._ruleset_reads += 1
+            if self._ruleset_reads == self.policy_error_ruleset_read:
+                raise policy_tool.PolicyError("injected malformed ruleset readback")
             value = deepcopy(self.ruleset)
             if self.concurrent_ruleset_drift and self._ruleset_reads == 2:
                 value["name"] = "concurrent change"
@@ -271,6 +274,16 @@ def test_settings_policy_must_match_the_complete_typed_dev_manifest() -> None:
         policy_tool._validate_policy(policy)
 
 
+def test_settings_policy_context_order_is_not_authoritative() -> None:
+    policy = _policy()
+    status_rule = next(
+        rule for rule in policy["dev_ruleset"]["rules"] if rule["type"] == "required_status_checks"
+    )
+    status_rule["parameters"]["required_status_checks"].reverse()
+
+    policy_tool._validate_policy(policy)
+
+
 def test_malformed_check_run_id_is_rejected_at_the_json_boundary(tmp_path: Path) -> None:
     api = FakeApi()
     api.check_runs[0]["id"] = "not-an-integer"
@@ -340,6 +353,28 @@ def test_apply_refuses_moved_dev_or_non_green_checks_before_mutation(tmp_path: P
     with pytest.raises(policy_tool.PolicyError, match=re.escape(DEV_BLOCKING_CHECKS[0])):
         policy_tool.apply_policy(red, _policy(), red.dev_sha, tmp_path / "red.json")
     assert all(method == "GET" for method, _endpoint, _payload in red.calls)
+
+
+def test_apply_accepts_the_pr_only_baseline_gate_skipped_on_dev_push(tmp_path: Path) -> None:
+    api = FakeApi()
+    baseline = next(
+        run for run in api.check_runs if run["name"] == "Baseline Ceremony Gate (§6.5 provenance)"
+    )
+    baseline["conclusion"] = "skipped"
+
+    policy_tool.apply_policy(api, _policy(), api.dev_sha, tmp_path / "before.json")
+
+    assert policy_tool.check_policy(api, _policy()) == []
+
+
+def test_apply_refuses_any_other_skipped_dev_push_check(tmp_path: Path) -> None:
+    api = FakeApi()
+    api.check_runs[0]["conclusion"] = "skipped"
+
+    with pytest.raises(policy_tool.PolicyError, match=re.escape(DEV_BLOCKING_CHECKS[0])):
+        policy_tool.apply_policy(api, _policy(), api.dev_sha, tmp_path / "before.json")
+
+    assert all(method == "GET" for method, _endpoint, _payload in api.calls)
 
 
 def test_existing_snapshot_is_preserved_before_any_remote_mutation(tmp_path: Path) -> None:
@@ -481,6 +516,25 @@ def test_readback_mismatch_rolls_back_every_mutation(tmp_path: Path) -> None:
     original_repository = deepcopy(api.repository)
 
     with pytest.raises(policy_tool.PolicyError, match="readback mismatch"):
+        policy_tool.apply_policy(api, _policy(), api.dev_sha, tmp_path / "before.json")
+
+    assert policy_tool.normalize_ruleset(api.ruleset) == policy_tool.normalize_ruleset(
+        original_ruleset
+    )
+    assert api.repository == original_repository
+    assert api.labels == []
+
+
+def test_recoverable_policy_error_during_rollback_read_uses_attempted_writes(
+    tmp_path: Path,
+) -> None:
+    api = FakeApi()
+    api.move_dev_on_read = 3
+    api.policy_error_ruleset_read = 4
+    original_ruleset = deepcopy(api.ruleset)
+    original_repository = deepcopy(api.repository)
+
+    with pytest.raises(policy_tool.PolicyError, match="dev moved during policy apply"):
         policy_tool.apply_policy(api, _policy(), api.dev_sha, tmp_path / "before.json")
 
     assert policy_tool.normalize_ruleset(api.ruleset) == policy_tool.normalize_ruleset(

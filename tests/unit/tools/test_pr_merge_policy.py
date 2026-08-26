@@ -1082,3 +1082,14 @@ def test_delete_branch_still_refuses_a_stacked_child(tmp_path: Path) -> None:
     assert result.returncode == 1
     assert "open PR(s) [743] base on this branch" in result.stderr
     assert _merge_calls(calls) == []
+
+
+def test_delete_branch_refuses_an_exactly_full_child_page(tmp_path: Path) -> None:
+    scenario = copy.deepcopy(_default_scenario())
+    scenario["children"] = [{"number": number} for number in range(1, 101)]
+
+    result, calls = _run_pr_merge(tmp_path, "--delete-branch", scenario=scenario)
+
+    assert result.returncode == 1
+    assert "child pull requests reached the 100-item safety bound" in result.stderr
+    assert _merge_calls(calls) == []

@@ -151,6 +151,7 @@ fn draws_from_blocks(first: &[u32; 16], second: &[u32; 16]) -> [u64; 9] {
 }
 
 fn reference_chacha8_block(key: [u8; 32], counter: u64) -> [u32; 16] {
+    let counter_bytes = counter.to_le_bytes();
     let mut state = [
         0x6170_7865,
         0x3320_646e,
@@ -164,8 +165,18 @@ fn reference_chacha8_block(key: [u8; 32], counter: u64) -> [u32; 16] {
         0,
         0,
         0,
-        counter as u32,
-        (counter >> 32) as u32,
+        u32::from_le_bytes([
+            counter_bytes[0],
+            counter_bytes[1],
+            counter_bytes[2],
+            counter_bytes[3],
+        ]),
+        u32::from_le_bytes([
+            counter_bytes[4],
+            counter_bytes[5],
+            counter_bytes[6],
+            counter_bytes[7],
+        ]),
         0,
         0,
     ];

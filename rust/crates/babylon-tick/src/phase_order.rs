@@ -19,6 +19,7 @@ use babylon_bsl::mod_anchors::{check_anchor, AnchorDecl, AnchorError, AnchorPosi
 use babylon_bsl::reader::SExpr;
 use babylon_bsl::same_tick_order::RankedRule;
 use babylon_kernel::sha256_of;
+use std::collections::TryReserveError;
 use std::collections::{BTreeMap, HashSet};
 
 const MATERIAL_BASE_COUNT: usize = 15;
@@ -258,6 +259,27 @@ pub(crate) struct RuleOrderPlan {
     rules: Vec<PlannedRule>,
 }
 
+/// Exact canonical identity of the governed causal schedule.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PhaseScheduleV1 {
+    canonical_bytes: Vec<u8>,
+    digest: [u8; 32],
+}
+
+impl PhaseScheduleV1 {
+    pub(crate) const fn layout_version(&self) -> u32 {
+        SCHEDULE_DIGEST_LAYOUT_VERSION
+    }
+
+    pub(crate) fn canonical_bytes(&self) -> &[u8] {
+        &self.canonical_bytes
+    }
+
+    pub(crate) const fn digest(&self) -> [u8; 32] {
+        self.digest
+    }
+}
+
 /// A loud phase-registry or composition failure.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ScheduleError {
@@ -272,6 +294,12 @@ pub(crate) enum ScheduleError {
     },
     Registry {
         message: String,
+    },
+    Allocation {
+        requested: usize,
+    },
+    CapacityOverflow {
+        field: &'static str,
     },
     Plan {
         rule_id: Option<String>,
@@ -299,6 +327,12 @@ impl std::fmt::Display for ScheduleError {
                 }
             ),
             Self::Registry { message } => write!(f, "invalid phase registry: {message}"),
+            Self::Allocation { requested } => {
+                write!(f, "phase schedule allocation of {requested} bytes failed")
+            }
+            Self::CapacityOverflow { field } => {
+                write!(f, "phase schedule capacity overflowed while sizing {field}")
+            }
             Self::Plan { message, .. } => write!(f, "invalid phase-order plan: {message}"),
         }
     }
@@ -317,8 +351,19 @@ pub(crate) fn registered_systems() -> HashSet<String> {
 
 /// SHA-256 of the versioned, canonical 34-slot scheduling law.
 pub(crate) fn schedule_digest() -> Result<[u8; 32], ScheduleError> {
+    Ok(phase_schedule_v1()?.digest())
+}
+
+/// Exact versioned bytes of the governed 34-slot scheduling law.
+pub(crate) fn phase_schedule_v1() -> Result<PhaseScheduleV1, ScheduleError> {
     validate_registry()?;
+    let capacity = phase_schedule_capacity()?;
     let mut bytes = Vec::new();
+    bytes
+        .try_reserve_exact(capacity)
+        .map_err(|_: TryReserveError| ScheduleError::Allocation {
+            requested: capacity,
+        })?;
     bytes.extend_from_slice(SCHEDULE_DIGEST_DOMAIN);
     bytes.extend_from_slice(&SCHEDULE_DIGEST_LAYOUT_VERSION.to_be_bytes());
     push_schedule_count(&mut bytes, SYSTEM_SLOTS.len(), "canonical slots")?;
@@ -343,7 +388,57 @@ pub(crate) fn schedule_digest() -> Result<[u8; 32], ScheduleError> {
             })?;
         bytes.extend_from_slice(&default_rank(*slot)?.to_be_bytes());
     }
-    Ok(sha256_of(&bytes))
+    debug_assert_eq!(bytes.len(), capacity);
+    let digest = sha256_of(&bytes);
+    Ok(PhaseScheduleV1 {
+        canonical_bytes: bytes,
+        digest,
+    })
+}
+
+fn phase_schedule_capacity() -> Result<usize, ScheduleError> {
+    let mut total =
+        SCHEDULE_DIGEST_DOMAIN
+            .len()
+            .checked_add(8)
+            .ok_or(ScheduleError::CapacityOverflow {
+                field: "schedule header",
+            })?;
+    for slot in SYSTEM_SLOTS {
+        let row = slot
+            .name
+            .len()
+            .checked_add(8)
+            .ok_or(ScheduleError::CapacityOverflow {
+                field: "schedule slot",
+            })?;
+        total = total
+            .checked_add(row)
+            .ok_or(ScheduleError::CapacityOverflow {
+                field: "schedule slots",
+            })?;
+    }
+    total = total
+        .checked_add(4)
+        .ok_or(ScheduleError::CapacityOverflow {
+            field: "schedule alias count",
+        })?;
+    for alias in SYSTEM_ALIASES {
+        let row = alias
+            .name
+            .len()
+            .checked_add(alias.canonical.len())
+            .and_then(|value| value.checked_add(10))
+            .ok_or(ScheduleError::CapacityOverflow {
+                field: "schedule alias",
+            })?;
+        total = total
+            .checked_add(row)
+            .ok_or(ScheduleError::CapacityOverflow {
+                field: "schedule aliases",
+            })?;
+    }
+    Ok(total)
 }
 
 fn push_schedule_count(bytes: &mut Vec<u8>, count: usize, what: &str) -> Result<(), ScheduleError> {
@@ -677,10 +772,16 @@ mod tests {
 
     #[test]
     fn schedule_law_digest_pins_slots_partitions_ranks_and_sorted_aliases() {
+        let schedule = phase_schedule_v1().expect("the governed schedule encodes");
+        assert_eq!(schedule.layout_version(), 1);
+        assert!(schedule
+            .canonical_bytes()
+            .starts_with(b"babylon.phase-schedule\0"));
         assert_eq!(
-            crate::hex(&schedule_digest().expect("the governed schedule encodes")),
+            crate::hex(&schedule.digest()),
             "3cb992b960112948023e5fcfa1335f2a6e6270628f27fe758186bc9c4d6b2487"
         );
+        assert_eq!(schedule_digest().unwrap(), schedule.digest());
     }
 
     #[test]

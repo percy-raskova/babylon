@@ -50,6 +50,7 @@ use babylon_kernel::{RngSeedContext, SessionId};
 use std::collections::{HashMap, HashSet};
 
 mod phase_order;
+pub mod replay_identity;
 pub mod session;
 mod world_hash;
 pub use session::TickSession;
@@ -212,6 +213,13 @@ pub fn run_once_with_prelude(
 #[derive(Debug)]
 pub(crate) struct PreparedRules {
     pub rules: Vec<(String, LoadedRule)>,
+    /// Parsed rule forms retained so replay preparation can independently
+    /// recompute the canonical rules hash over what this engine loaded.
+    #[allow(
+        dead_code,
+        reason = "PER-60 Task 9 retains these forms for Task 10 session construction"
+    )]
+    pub rule_forms: Vec<SExpr>,
     pub types: TypeEnv,
     pub intrinsics: IntrinsicCosts,
     pub consts: HashMap<String, Value>,
@@ -369,7 +377,9 @@ fn prepare_error_from_schedule(error: phase_order::ScheduleError) -> PrepareErro
                 message,
             }
         }
-        phase_order::ScheduleError::Registry { .. } => PrepareError::Composition {
+        phase_order::ScheduleError::Registry { .. }
+        | phase_order::ScheduleError::Allocation { .. }
+        | phase_order::ScheduleError::CapacityOverflow { .. } => PrepareError::Composition {
             code: None,
             identity: None,
             message,
@@ -841,6 +851,7 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
 
     Ok(PreparedRules {
         rules,
+        rule_forms: rule_forms.into_iter().map(|(_, form)| form).collect(),
         types: inputs.types,
         intrinsics,
         consts: scenario.consts,

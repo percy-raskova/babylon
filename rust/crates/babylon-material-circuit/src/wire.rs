@@ -3,6 +3,7 @@
 use babylon_kernel::sha256_of;
 
 use crate::transition::canonical_state_v1;
+use crate::wire_common::{Cursor, CursorError};
 use crate::{
     BacklogRowV1, CapacityRowV1, GoodIdV1, InputOutputCoefficientV1, InventoryRowV1,
     LaborCapacityRowV1, LaborCoefficientV1, MaterialCircuitErrorV1, MaterialCircuitStateV1,
@@ -14,56 +15,11 @@ use crate::{
 pub const MATERIAL_CIRCUIT_STATE_V1_DOMAIN_BYTES: &[u8] = b"babylon.material-circuit-state.v1";
 const SCHEMA_VERSION: u16 = 1;
 
-struct Cursor<'a> {
-    bytes: &'a [u8],
-    index: usize,
-}
-
-impl<'a> Cursor<'a> {
-    const fn new(bytes: &'a [u8]) -> Self {
-        Self { bytes, index: 0 }
-    }
-
-    fn take(&mut self, length: usize) -> Result<&'a [u8], MaterialCircuitErrorV1> {
-        let end = self
-            .index
-            .checked_add(length)
-            .ok_or(MaterialCircuitErrorV1::WireTruncated)?;
-        let output = self
-            .bytes
-            .get(self.index..end)
-            .ok_or(MaterialCircuitErrorV1::WireTruncated)?;
-        self.index = end;
-        Ok(output)
-    }
-
-    fn array<const N: usize>(&mut self) -> Result<[u8; N], MaterialCircuitErrorV1> {
-        self.take(N)?
-            .try_into()
-            .map_err(|_| MaterialCircuitErrorV1::WireTruncated)
-    }
-
-    fn u8(&mut self) -> Result<u8, MaterialCircuitErrorV1> {
-        Ok(self.array::<1>()?[0])
-    }
-
-    fn u16(&mut self) -> Result<u16, MaterialCircuitErrorV1> {
-        Ok(u16::from_be_bytes(self.array()?))
-    }
-
-    fn u32(&mut self) -> Result<u32, MaterialCircuitErrorV1> {
-        Ok(u32::from_be_bytes(self.array()?))
-    }
-
-    fn u64(&mut self) -> Result<u64, MaterialCircuitErrorV1> {
-        Ok(u64::from_be_bytes(self.array()?))
-    }
-
-    fn finish(self) -> Result<(), MaterialCircuitErrorV1> {
-        if self.index == self.bytes.len() {
-            Ok(())
-        } else {
-            Err(MaterialCircuitErrorV1::WireTrailing)
+impl From<CursorError> for MaterialCircuitErrorV1 {
+    fn from(value: CursorError) -> Self {
+        match value {
+            CursorError::Truncated => Self::WireTruncated,
+            CursorError::Trailing => Self::WireTrailing,
         }
     }
 }

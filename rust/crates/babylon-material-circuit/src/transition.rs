@@ -566,7 +566,7 @@ fn wide_product(multiplier: u64, multiplicand: u128) -> [u64; 3] {
     [high_limb, middle_limb, low_limb]
 }
 
-fn proportional_floor(
+pub(crate) fn proportional_floor(
     available: u64,
     requested: u128,
     total: u128,
@@ -641,6 +641,16 @@ fn execute_production(
     let allocations = allocate_production_batches(state, inventory, &commitments, state.week)?;
     debit_production_allocations(state, inventory, &commitments, &allocations)?;
     credit_production_allocations(state, inventory, commitments, &allocations, receipts)
+}
+
+pub(crate) fn execute_shared_production_v1(
+    state: &mut MaterialCircuitStateV1,
+) -> Result<Vec<ProductionReceiptV1>, MaterialCircuitErrorV1> {
+    let mut inventory = take_inventory(state);
+    let mut receipts = Vec::new();
+    execute_production(state, &mut inventory, &mut receipts)?;
+    publish_inventory(state, inventory);
+    Ok(receipts)
 }
 
 fn debit_production_allocations(
@@ -934,6 +944,17 @@ fn derive_next_week_production(
                 });
         }
     }
+    Ok(())
+}
+
+pub(crate) fn derive_shared_production_v1(
+    state: &mut MaterialCircuitStateV1,
+    next_week: u64,
+) -> Result<(), MaterialCircuitErrorV1> {
+    let inventory = take_inventory(state);
+    derive_next_week_production(state, &inventory, next_week)?;
+    prune_consumed_capacity(state, next_week);
+    publish_inventory(state, inventory);
     Ok(())
 }
 

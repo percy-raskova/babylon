@@ -1105,3 +1105,8 @@ decisions:
     status: accepted
     date: '2026-08-26'
     file: ADR238_material_circuit_v1.yaml
+  ADR239_routed_material_circuit_v2:
+    title: 'Routed Material Circuit V2 reserves exact corridor capacity and advances one authoritative freight-lot state before delivery and realization'
+    status: accepted
+    date: '2026-08-26'
+    file: ADR239_routed_material_circuit_v2.yaml

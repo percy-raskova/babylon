@@ -5,7 +5,7 @@ use babylon_material_circuit::{
     LaborCoefficientV1, MaterialCircuitErrorV1, MaterialCircuitStateV1, OrderAccessModeV1,
     OrderIdV1, OrderRowV1, ProcessIdV1, ProcessOutputV1, ProductionCommitmentV1, SiteIdV1,
     SupplierCandidateV1, UnitIdV1, MATERIAL_CIRCUIT_STATE_V1_DOMAIN_BYTES,
-    MAX_PRODUCTION_RESOURCE_GROUPS_V1,
+    MAX_MATERIAL_CIRCUIT_ROWS_V1, MAX_PRODUCTION_RESOURCE_GROUPS_V1,
 };
 
 fn site(byte: u8) -> SiteIdV1 {
@@ -26,6 +26,13 @@ fn process(byte: u8) -> ProcessIdV1 {
 
 fn order(byte: u8) -> OrderIdV1 {
     OrderIdV1::from_bytes([byte; 32])
+}
+
+fn numbered_good(index: usize) -> GoodIdV1 {
+    let mut bytes = [0_u8; 32];
+    let number = u64::try_from(index).expect("material row ceiling fits u64");
+    bytes[24..].copy_from_slice(&number.to_be_bytes());
+    GoodIdV1::from_bytes(bytes)
 }
 
 const SUPPLIER: u8 = 1;
@@ -255,6 +262,241 @@ fn leontief_output_is_bounded_by_labor_capacity_and_inputs() {
     assert_eq!(outcome.production[0].produced_batches, 2);
     assert_eq!(inventory_quantity(&outcome.state, FACTORY, GRAIN), 24);
     assert_eq!(inventory_quantity(&outcome.state, FACTORY, BREAD), 4);
+}
+
+#[test]
+fn production_debits_all_inputs_before_crediting_any_output() {
+    let producer = process(1);
+    let consumer = process(2);
+    let shared_good = good(3);
+    let consumer_output = good(4);
+    let production_site = site(5);
+    let goods_unit = unit(6);
+    let labor_unit = unit(7);
+    let state = MaterialCircuitStateV1 {
+        week: 1,
+        process_outputs: vec![
+            ProcessOutputV1 {
+                process_id: producer,
+                site_id: production_site,
+                good_id: shared_good,
+                unit_id: goods_unit,
+                quantity_per_batch: 1,
+            },
+            ProcessOutputV1 {
+                process_id: consumer,
+                site_id: production_site,
+                good_id: consumer_output,
+                unit_id: goods_unit,
+                quantity_per_batch: 1,
+            },
+        ],
+        input_coefficients: vec![InputOutputCoefficientV1 {
+            process_id: consumer,
+            good_id: shared_good,
+            unit_id: goods_unit,
+            quantity_per_batch: 1,
+        }],
+        labor_coefficients: vec![
+            LaborCoefficientV1 {
+                process_id: producer,
+                unit_id: labor_unit,
+                quantity_per_batch: 1,
+            },
+            LaborCoefficientV1 {
+                process_id: consumer,
+                unit_id: labor_unit,
+                quantity_per_batch: 1,
+            },
+        ],
+        supplier_candidates: Vec::new(),
+        inventory: vec![InventoryRowV1 {
+            site_id: production_site,
+            good_id: shared_good,
+            unit_id: goods_unit,
+            quantity: u64::MAX,
+        }],
+        orders: Vec::new(),
+        backlog: Vec::new(),
+        transit: Vec::new(),
+        capacities: vec![
+            CapacityRowV1 {
+                process_id: producer,
+                site_id: production_site,
+                week: 1,
+                available_batches: 1,
+            },
+            CapacityRowV1 {
+                process_id: consumer,
+                site_id: production_site,
+                week: 1,
+                available_batches: 1,
+            },
+        ],
+        labor: vec![LaborCapacityRowV1 {
+            site_id: production_site,
+            unit_id: labor_unit,
+            week: 1,
+            available: 2,
+        }],
+        production_commitments: vec![
+            ProductionCommitmentV1 {
+                process_id: producer,
+                site_id: production_site,
+                week: 1,
+                planned_batches: 1,
+            },
+            ProductionCommitmentV1 {
+                process_id: consumer,
+                site_id: production_site,
+                week: 1,
+                planned_batches: 1,
+            },
+        ],
+    };
+
+    let outcome = advance_material_circuit_v1(&state).expect("net-conserved production must close");
+    assert_eq!(
+        inventory_quantity(&outcome.state, 5, 3),
+        u64::MAX,
+        "the shared inventory must be debited before its output is credited"
+    );
+    assert_eq!(inventory_quantity(&outcome.state, 5, 4), 1);
+}
+
+#[test]
+fn proportional_production_uses_u128_for_unbounded_requested_units() {
+    let mut state = production_state_for_numeric_boundary();
+    state.production_commitments[0].planned_batches = u64::MAX;
+    state.capacities[0].available_batches = u64::MAX;
+    state.labor[0].available = u64::MAX;
+
+    let outcome = advance_material_circuit_v1(&state)
+        .expect("scarcity must bound an intermediate request larger than u64");
+    assert_eq!(outcome.production[0].produced_batches, 1);
+    assert_eq!(inventory_quantity(&outcome.state, 1, 2), 0);
+    assert_eq!(inventory_quantity(&outcome.state, 1, 3), 1);
+}
+
+fn production_state_for_numeric_boundary() -> MaterialCircuitStateV1 {
+    let production_site = site(1);
+    let input_good = good(2);
+    let output_good = good(3);
+    let goods_unit = unit(4);
+    let labor_unit = unit(5);
+    let process_id = process(6);
+    MaterialCircuitStateV1 {
+        week: 1,
+        process_outputs: vec![ProcessOutputV1 {
+            process_id,
+            site_id: production_site,
+            good_id: output_good,
+            unit_id: goods_unit,
+            quantity_per_batch: 1,
+        }],
+        input_coefficients: vec![InputOutputCoefficientV1 {
+            process_id,
+            good_id: input_good,
+            unit_id: goods_unit,
+            quantity_per_batch: 2,
+        }],
+        labor_coefficients: vec![LaborCoefficientV1 {
+            process_id,
+            unit_id: labor_unit,
+            quantity_per_batch: 1,
+        }],
+        supplier_candidates: Vec::new(),
+        inventory: vec![
+            InventoryRowV1 {
+                site_id: production_site,
+                good_id: input_good,
+                unit_id: goods_unit,
+                quantity: 2,
+            },
+            InventoryRowV1 {
+                site_id: production_site,
+                good_id: output_good,
+                unit_id: goods_unit,
+                quantity: 0,
+            },
+        ],
+        orders: Vec::new(),
+        backlog: Vec::new(),
+        transit: Vec::new(),
+        capacities: vec![CapacityRowV1 {
+            process_id,
+            site_id: production_site,
+            week: 1,
+            available_batches: 1,
+        }],
+        labor: vec![LaborCapacityRowV1 {
+            site_id: production_site,
+            unit_id: labor_unit,
+            week: 1,
+            available: 1,
+        }],
+        production_commitments: vec![ProductionCommitmentV1 {
+            process_id,
+            site_id: production_site,
+            week: 1,
+            planned_batches: 1,
+        }],
+    }
+}
+
+#[test]
+fn zero_production_does_not_create_an_empty_inventory_row() {
+    let production_site = site(1);
+    let output_good = GoodIdV1::from_bytes([0xff; 32]);
+    let goods_unit = unit(2);
+    let labor_unit = unit(3);
+    let process_id = process(4);
+    let inventory = (0..MAX_MATERIAL_CIRCUIT_ROWS_V1)
+        .map(|index| InventoryRowV1 {
+            site_id: production_site,
+            good_id: numbered_good(index),
+            unit_id: goods_unit,
+            quantity: 1,
+        })
+        .collect();
+    let state = MaterialCircuitStateV1 {
+        week: 1,
+        process_outputs: vec![ProcessOutputV1 {
+            process_id,
+            site_id: production_site,
+            good_id: output_good,
+            unit_id: goods_unit,
+            quantity_per_batch: 1,
+        }],
+        input_coefficients: Vec::new(),
+        labor_coefficients: vec![LaborCoefficientV1 {
+            process_id,
+            unit_id: labor_unit,
+            quantity_per_batch: 1,
+        }],
+        supplier_candidates: Vec::new(),
+        inventory,
+        orders: Vec::new(),
+        backlog: Vec::new(),
+        transit: Vec::new(),
+        capacities: Vec::new(),
+        labor: Vec::new(),
+        production_commitments: vec![ProductionCommitmentV1 {
+            process_id,
+            site_id: production_site,
+            week: 1,
+            planned_batches: 1,
+        }],
+    };
+
+    let outcome = advance_material_circuit_v1(&state).expect("zero production is a valid outcome");
+    assert_eq!(outcome.production[0].produced_batches, 0);
+    assert_eq!(outcome.state.inventory.len(), MAX_MATERIAL_CIRCUIT_ROWS_V1);
+    assert!(outcome
+        .state
+        .inventory
+        .iter()
+        .all(|row| row.good_id != output_good));
 }
 
 #[test]

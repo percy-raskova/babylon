@@ -45,7 +45,7 @@ def test_adr232_declares_the_approved_program_law_and_exact_index_row() -> None:
     ):
         assert required_text in decision_text
 
-    assert index_document["meta"]["version"] == "1.83.0"
+    assert index_document["meta"]["version"] == "1.84.0"
     assert str(index_document["meta"]["updated"]) == "2026-08-26"
     assert index_document["decisions"][ADR_STEM] == {
         "title": EXPECTED_TITLE,

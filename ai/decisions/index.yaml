@@ -1,5 +1,5 @@
 meta:
-  version: 1.83.0
+  version: 1.84.0
   updated: '2026-08-26'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -1090,3 +1090,8 @@ decisions:
     status: accepted
     date: '2026-08-26'
     file: ADR235_resolved_practice_batch_v2.yaml
+  ADR236_practice_resource_allocation_v2:
+    title: 'Practice Resource Allocation V2 derives exact material requests from sealed content and conserves scarcity without order priority'
+    status: accepted
+    date: '2026-08-26'
+    file: ADR236_practice_resource_allocation_v2.yaml

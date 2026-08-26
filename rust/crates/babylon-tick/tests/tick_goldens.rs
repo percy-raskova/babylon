@@ -175,8 +175,8 @@ fn organization_foundation_hashes_are_pinned() {
     assert_eq!(
         hex(&report.world_after),
         "21e0abce8e9dbaa83e55a3d2e5dc73235dc172e1cca3b05556beebd1eba7087a",
-        "post-tick nominal world hash moved — the retired emit changes neither \
-         graph state nor nominal-world inputs"
+        "post-tick nominal world hash moved — this pins post-tick graph state, \
+         completed time, allocator cursors, and the governed schedule"
     );
     assert_eq!(
         report.fired, 12,

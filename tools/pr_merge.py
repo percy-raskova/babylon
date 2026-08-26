@@ -48,7 +48,11 @@ COPILOT_BOT_ID = 175728472
 COPILOT_BOT_NODE_ID = "BOT_kgDOCnlnWA"
 DEPENDABOT_LOGIN = "dependabot[bot]"
 DEPENDABOT_BOT_ID = 49699333
+DEPENDABOT_CLASSIFIER_CHECK = "Classify Dependabot update"
 DEPENDABOT_ELIGIBILITY_CHECK = "Dependabot Eligibility"
+OPTIONAL_SKIPPED_CHECKS: Final[frozenset[str]] = frozenset(
+    {DEPENDABOT_CLASSIFIER_CHECK, DEPENDABOT_ELIGIBILITY_CHECK}
+)
 DEPENDABOT_WORKFLOW_PATH = ".github/workflows/dependabot-automerge.yml"
 DEPENDABOT_WORKFLOW_ID = 214604133
 CI_WORKFLOW_PATH = ".github/workflows/ci.yml"
@@ -207,7 +211,11 @@ def _rollup_failures(
         requirement = expected.get(name)
         if status and status != "COMPLETED":
             failures.append(f"{name}: still {status}")
-        elif requirement is None and conclusion != "SUCCESS":
+        elif (
+            requirement is None
+            and conclusion != "SUCCESS"
+            and not (conclusion == "SKIPPED" and name in OPTIONAL_SKIPPED_CHECKS)
+        ):
             failures.append(f"{name}: {conclusion}")
         elif requirement is not None and conclusion not in requirement.allowed_conclusions:
             failures.append(f"{name}: {conclusion}")

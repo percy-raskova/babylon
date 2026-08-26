@@ -25,6 +25,8 @@ macro_rules! identity_type {
     };
 }
 
+pub(crate) use identity_type;
+
 identity_type!(SiteIdV1);
 identity_type!(GoodIdV1);
 identity_type!(UnitIdV1);

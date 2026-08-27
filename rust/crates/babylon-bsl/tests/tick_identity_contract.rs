@@ -13,7 +13,7 @@ use babylon_bsl::identity_codec::{
     IdentityCodecError,
 };
 use babylon_bsl::identity_sections::{
-    encode_prepared_bsl_sections_v1, encode_tick_payload_sections_v1,
+    encode_prepared_bsl_sections_v1, encode_tick_payload_sections_v1, PreparedBslSectionsV1,
 };
 use babylon_bsl::query::EdgeKey;
 use babylon_bsl::typecheck::TypeEnv;
@@ -72,7 +72,7 @@ fn str32(value: &str) -> Vec<u8> {
 }
 
 #[test]
-fn every_value_discriminant_and_reference_encoding_is_exact() {
+fn scalar_value_discriminants_and_encoding_are_exact() {
     let fixture = graph_fixture();
     let ratio = Ratio::new(2.0).unwrap();
     let floor = Ratio::new(1.0).unwrap();
@@ -145,6 +145,11 @@ fn every_value_discriminant_and_reference_encoding_is_exact() {
         ),
         [vec![0x06], str32("OrgKind"), str32("BUSINESS")].concat()
     );
+}
+
+#[test]
+fn reference_value_discriminants_and_stable_encoding_are_exact() {
+    let fixture = graph_fixture();
     assert_eq!(
         encoded_value(&Value::NodeRef(fixture.workers), &fixture.resolver),
         [
@@ -340,8 +345,7 @@ static EXEMPTIONS: &[IntensiveAggregationExemption] = &[IntensiveAggregationExem
     date: "2026-08-26",
 }];
 
-#[test]
-fn prepared_sections_sort_registries_and_preserve_enum_member_order_and_presence() {
+fn prepared_sections() -> (PreparedBslSectionsV1, PreparedBslSectionsV1) {
     let mut enums = EnumRegistry::default();
     enums
         .declare("Zed", &["SECOND".to_owned(), "FIRST".to_owned()])
@@ -386,6 +390,12 @@ fn prepared_sections_sort_registries_and_preserve_enum_member_order_and_presence
             .unwrap();
     let absent =
         encode_prepared_bsl_sections_v1(&types, &intrinsics, &consts, &enums, None).unwrap();
+    (present, absent)
+}
+
+#[test]
+fn prepared_sections_preserve_vocabulary_presence() {
+    let (present, absent) = prepared_sections();
     assert_ne!(present.vocabulary(), absent.vocabulary());
     assert_eq!(present.vocabulary()[0], 1);
     assert_eq!(absent.vocabulary(), &[0]);
@@ -401,6 +411,11 @@ fn prepared_sections_sort_registries_and_preserve_enum_member_order_and_presence
         ]
         .concat()
     );
+}
+
+#[test]
+fn prepared_sections_sort_registries_and_preserve_enum_member_order() {
+    let (present, _) = prepared_sections();
     assert!(
         present
             .fields_and_exemptions()

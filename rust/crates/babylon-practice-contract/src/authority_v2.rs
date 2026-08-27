@@ -2,6 +2,8 @@
 
 use babylon_kernel::sha256_of;
 
+use crate::actor_v2::ActorOrganizationIdV2;
+
 const SCHEMA_VERSION: u16 = 2;
 
 /// Canonical row domain for authoritative V2 input authority.
@@ -144,7 +146,7 @@ pub struct PracticeInputAuthorityV2 {
     pub campaign_id: CampaignIdV2,
     pub authority_kind: PracticeAuthorityKindV2,
     pub input_authority_id: InputAuthorityIdV2,
-    pub actor_org_id: u64,
+    pub actor_org_id: ActorOrganizationIdV2,
     pub effective_from_tick: u64,
     pub effective_through_tick_exclusive: u64,
     pub decision_content_digest: [u8; 32],
@@ -198,7 +200,13 @@ fn row_key(value: &PracticeInputAuthorityV2) -> (CampaignIdV2, InputAuthorityIdV
 fn validate_player_intervals(
     rows: &[PracticeInputAuthorityV2],
 ) -> Result<(), PracticeAuthorityV2Error> {
-    let mut intervals: Vec<(CampaignIdV2, u64, u64, InputAuthorityIdV2, u64)> = rows
+    let mut intervals: Vec<(
+        CampaignIdV2,
+        u64,
+        u64,
+        InputAuthorityIdV2,
+        ActorOrganizationIdV2,
+    )> = rows
         .iter()
         .take(MAX_PRACTICE_INPUT_AUTHORITY_ROWS_V2 + 1)
         .filter(|row| row.authority_kind == PracticeAuthorityKindV2::PlayerSeat)
@@ -285,7 +293,7 @@ pub fn encode_input_authority_v2(
     output.extend_from_slice(&value.campaign_id.as_bytes());
     output.push(value.authority_kind as u8);
     output.extend_from_slice(&value.input_authority_id.as_bytes());
-    output.extend_from_slice(&value.actor_org_id.to_be_bytes());
+    output.extend_from_slice(&value.actor_org_id.to_bytes());
     output.extend_from_slice(&value.effective_from_tick.to_be_bytes());
     output.extend_from_slice(&value.effective_through_tick_exclusive.to_be_bytes());
     output.extend_from_slice(&value.decision_content_digest);
@@ -374,7 +382,7 @@ pub fn decode_input_authority_v2(
     let campaign_id = CampaignIdV2::from_bytes(cursor.array()?);
     let authority_kind = PracticeAuthorityKindV2::try_from(cursor.u8()?)?;
     let input_authority_id = InputAuthorityIdV2::from_bytes(cursor.array()?);
-    let actor_org_id = cursor.u64()?;
+    let actor_org_id = ActorOrganizationIdV2::from_bytes(cursor.array()?);
     let effective_from_tick = cursor.u64()?;
     let effective_through_tick_exclusive = cursor.u64()?;
     let decision_content_digest = cursor.array()?;
@@ -479,7 +487,7 @@ pub fn resolve_input_authority_v2(
     ledger: &PracticeInputAuthorityLedgerV2,
     campaign_id: CampaignIdV2,
     input_authority_id: InputAuthorityIdV2,
-    actor_org_id: u64,
+    actor_org_id: ActorOrganizationIdV2,
     resolve_tick: u64,
 ) -> Result<&PracticeInputAuthorityV2, PracticeAuthorityV2Error> {
     validate_input_authority_ledger_v2(ledger)?;

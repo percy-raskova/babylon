@@ -52,11 +52,23 @@ bytes only. ``NominalWorldHash`` adds completed time, allocator cursors, and the
 governed phase-schedule digest. It is the hash the Bevy viewer shows after a
 committed tick.
 
+.. Vale: these paragraphs preserve literal graph and identity terms.
+.. vale ste.UnapprovedWords = NO
+
+The database-free ``ReplayTickSession`` adds the canonical replay identity. It
+requires ``ReplaySessionIdV1``, ``ReplaySeed``, RNG V2, content and reference
+digests, stable element names, and the exact empty accepted-action batch.
+``ReplayTickSession`` publishes ``TickContentHashV1`` atomically with the
+detached graph, events, completed time, and nested identity evidence. It never
+nests ``GraphStateHash`` or ``NominalWorldHash`` inside that replay hash.
+
+.. vale ste.UnapprovedWords = YES
+
 This boundary provides in-memory rollback. It is not the planned Gate 3
 ``CommittedTickEnvelope`` or a PostgreSQL durability acknowledgment. The Bevy
 client draws the county atlas and moves ticks forward. It has lenses, events,
 causal beats, and hash diagnostics. Committed BSL has no player action. The
-client does not complete a game decision cycle.
+client remains on ``TickSession`` and does not complete a game decision cycle.
 
 Frozen Python reference
 -----------------------
@@ -160,10 +172,14 @@ The solid arrows show the live path. Dashed arrows show Gate 3 plans.
        BSL["BSL rules"] --> TICK
        TICK --> REPORT["TickReport"]
        REPORT --> VIEW["Bevy viewer"]
+       REF --> REPLAY["Rust replay tick"]
+       BSL --> REPLAY
+       EMPTY["Exact empty action batch"] --> REPLAY
+       REPLAY --> IDENTIFIED["IdentifiedTickReportV1"]
        PY["Frozen Python tick"] --> OLDENV["PerTickTransactionEnvelope"]
        OLDENV --> PG["Postgres tick_commit"]
        PY --> SQLITE["RuntimeDatabase SQLite"]
-       REPORT -. "Gate 3" .-> ENV["CommittedTickEnvelope"]
+       IDENTIFIED -. "Gate 3" .-> ENV["CommittedTickEnvelope"]
        ENV -.-> STATE["babylon_state"]
        STATE -.-> OUTBOX["Archive outbox"]
        OUTBOX -.-> ARCHIVE["Semantic Archive"]
@@ -174,9 +190,22 @@ The solid arrows show the live path. Dashed arrows show Gate 3 plans.
 Invariants
 ----------
 
+.. Vale: this invariant preserves literal graph and identity terms.
+.. vale ste.UnapprovedWords = NO
+.. vale ste.NounClusters = NO
+.. vale strunk.ActiveVoice = NO
+.. vale ste.PassiveVoice = NO
+
 Tick identity
-   Equal inputs produce equal graph and nominal-world bytes and hashes. Gate 3
-   will add the complete content, reference, seed, action, and campaign identity.
+   Equal inputs produce equal graph, nominal-world, and replay-tick bytes and
+   hashes. Replay identity and campaign durability identity are separate typed
+   inputs. Gate 3 will persist the accepted replay evidence. It will not
+   redefine the bytes.
+
+.. vale ste.PassiveVoice = YES
+.. vale strunk.ActiveVoice = YES
+.. vale ste.UnapprovedWords = YES
+.. vale ste.NounClusters = YES
 
 Pure judgment
    The relation, BSL, and tick crates have no database dependency. Storage starts

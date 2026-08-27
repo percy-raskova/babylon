@@ -1,3 +1,4 @@
+use babylon_practice_contract::actor_v2::ActorOrganizationIdV2;
 use babylon_practice_contract::{
     decode_resolved_practice_batch_v2, encode_practice_intent_v2,
     encode_resolved_practice_batch_v2, input_authority_ledger_v2_digest,
@@ -10,6 +11,10 @@ use babylon_practice_contract::{
     MAX_RESOLVED_PRACTICE_BATCH_ITEMS_V2, MIN_PRACTICE_INTENT_CANONICAL_BYTES_V2,
     RESOLVED_PRACTICE_BATCH_V2_DOMAIN_BYTES,
 };
+
+fn actor_id(value: u64) -> ActorOrganizationIdV2 {
+    ActorOrganizationIdV2::from_bytes(value.to_be_bytes())
+}
 
 fn hex_bytes(value: &str) -> Vec<u8> {
     assert_eq!(value.len() % 2, 0);
@@ -35,7 +40,7 @@ fn authority() -> PracticeInputAuthorityV2 {
         campaign_id: CampaignIdV2::from_bytes([0x10; 16]),
         authority_kind: PracticeAuthorityKindV2::PlayerSeat,
         input_authority_id: InputAuthorityIdV2::from_bytes([0x20; 16]),
-        actor_org_id: 7,
+        actor_org_id: actor_id(7),
         effective_from_tick: 10,
         effective_through_tick_exclusive: 20,
         decision_content_digest: [0x30; 32],
@@ -55,7 +60,7 @@ fn intent(proposal_marker: u8) -> PracticeIntentV2 {
         submit_after_tick: 10,
         resolve_tick: 11,
         input_authority_id: InputAuthorityIdV2::from_bytes([0x20; 16]),
-        actor_org_id: 7,
+        actor_org_id: actor_id(7),
         practice_id: PracticeIdV2::Strike,
         target: TaggedPracticeTargetV2 {
             tag: PracticeTargetTagV2::LaborProcess,
@@ -209,7 +214,7 @@ fn resolved_batch_v2_preserves_missing_inactive_and_actor_authority_refusals() {
     );
 
     let mut wrong_actor = batch(vec![item(0x60)]);
-    wrong_actor.items[0].intent.actor_org_id = 8;
+    wrong_actor.items[0].intent.actor_org_id = actor_id(8);
     assert_eq!(
         validate_resolved_practice_batch_v2(&wrong_actor, &ledger()),
         Err(ResolvedPracticeBatchV2Error::Authority(

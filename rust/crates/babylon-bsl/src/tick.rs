@@ -76,14 +76,17 @@
 
 use crate::bindings::{BindSource, BindingDecl};
 use crate::evaluator::{evaluate, EvalEnv, EvalError, Value};
-use crate::intrinsic_host::{DrawContext, IntrinsicHost};
+use crate::intrinsic_host::{DrawContext, DrawIdentityContext, IntrinsicHost};
 use crate::reader::{Atom, SExpr};
 use crate::rule_pipeline::LoadedRule;
 use crate::structural_verbs::{EffectExecutor, EventSink};
 use crate::typecheck::TypeEnv;
 use crate::types::{BslType, EnumRegistry};
 use crate::write_log::WriteObserver;
+use babylon_graph::stable_element::StableElementResolverV1;
+use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use babylon_kernel::replay::{RngDomainV2, RngSeedContext};
 use babylon_kernel::SessionId;
 use std::collections::HashMap;
 
@@ -610,7 +613,7 @@ fn check_sources_servable(bindings: &[BindingDecl], defines: &DefinesEnv) -> Res
 /// implicit_hasher`'s own preferred fix, and this crate's own precedent —
 /// `bind_environment`/`resolve_expr_bindings`, `rule_pipeline.rs`):
 /// unlike those two, this reference is stored VERBATIM into
-/// [`crate::intrinsic_host::DrawContext::node_content_ids`], which crosses
+/// [`crate::intrinsic_host::DrawIdentityContext::V1`], which crosses
 /// the [`IntrinsicHost`] trait boundary — generalizing here would cascade
 /// the hasher type parameter through `DrawContext`, `IntrinsicCallCtx`,
 /// `EvalEnv`, and every `IntrinsicHost` impl for a map that, in every
@@ -657,7 +660,8 @@ pub fn run_tick(
         defines,
         tick,
         node_content_ids,
-        session,
+        RngSeedContext::V1 { session },
+        None,
         vocabulary,
         None,
     )
@@ -673,21 +677,33 @@ pub fn run_tick(
 ///
 /// The same [`TickError`] conditions as [`run_tick`].
 #[allow(clippy::too_many_arguments, clippy::implicit_hasher)]
-pub fn run_tick_observed(
+pub fn run_tick_observed<G>(
     loaded: &LoadedRule,
     types: &TypeEnv,
     enums: &EnumRegistry,
     host: &dyn IntrinsicHost,
-    graph: &mut dyn GraphSubstrate,
+    graph: &mut G,
     sink: &mut dyn EventSink,
     costs: &crate::fuel::IntrinsicCosts,
     defines: &DefinesEnv,
     tick: i64,
     node_content_ids: Option<&HashMap<NodeId, String>>,
-    session: &SessionId,
+    rng_seed: RngSeedContext<'_>,
+    stable_resolver: Option<&StableElementResolverV1>,
     vocabulary: Option<&crate::vocabulary::ClosedVocabulary>,
     observer: &mut dyn WriteObserver,
-) -> Result<TickOutcome, TickError> {
+) -> Result<TickOutcome, TickError>
+where
+    G: GraphSubstrate + CanonicalState,
+{
+    if matches!(rng_seed, RngSeedContext::V2 { .. }) {
+        let resolver = stable_resolver.ok_or_else(|| {
+            err("rng-draw V2 requires a sealed StableElementResolverV1".to_owned())
+        })?;
+        resolver
+            .validate_topology(graph)
+            .map_err(|error| err(format!("rng-draw V2 sealed topology refused: {error:?}")))?;
+    }
     run_tick_with_observer(
         loaded,
         types,
@@ -699,7 +715,8 @@ pub fn run_tick_observed(
         defines,
         tick,
         node_content_ids,
-        session,
+        rng_seed,
+        stable_resolver,
         vocabulary,
         Some(observer),
     )
@@ -717,7 +734,8 @@ fn run_tick_with_observer(
     defines: &DefinesEnv,
     tick: i64,
     node_content_ids: Option<&HashMap<NodeId, String>>,
-    session: &SessionId,
+    rng_seed: RngSeedContext<'_>,
+    stable_resolver: Option<&StableElementResolverV1>,
     vocabulary: Option<&crate::vocabulary::ClosedVocabulary>,
     observer: Option<&mut dyn WriteObserver>,
 ) -> Result<TickOutcome, TickError> {
@@ -745,7 +763,8 @@ fn run_tick_with_observer(
         defines,
         tick,
         node_content_ids,
-        session,
+        rng_seed,
+        stable_resolver,
     )?;
 
     // ---- Pass 2: apply, in the order collected (subject order outer,
@@ -837,7 +856,8 @@ fn collect_pass(
     // operand half (D69). All three are constant for the whole rule; only
     // `subject` varies per iteration below.
     node_content_ids: Option<&HashMap<NodeId, String>>,
-    session: &SessionId,
+    rng_seed: RngSeedContext<'_>,
+    stable_resolver: Option<&StableElementResolverV1>,
 ) -> Result<(Vec<crate::structural_verbs::PendingWrite>, usize), TickError> {
     let mut fired = 0_usize;
     let mut all_pending: Vec<crate::structural_verbs::PendingWrite> = Vec::new();
@@ -851,6 +871,8 @@ fn collect_pass(
              non-negative tick, and III.7/III.11 forbid silently wrapping it"
         ))
     })?;
+    let replay_rule =
+        replay_rule_identity(rng_seed, stable_resolver, loaded.contract.rule_id.as_str())?;
 
     for subject in subjects {
         let mut values = bind_subject(
@@ -904,30 +926,40 @@ fn collect_pass(
         // straight out of `node_content_ids` (which outlives this loop)
         // instead of allocating a fresh `String` per subject per rule per
         // tick — only the Debug-rendering fallback arm allocates.
-        let subject_content_id: std::borrow::Cow<'_, str> = match node_content_ids {
-            None => std::borrow::Cow::Owned(format!("{subject:?}")),
-            Some(map) => match map.get(subject) {
-                Some(content_id) => std::borrow::Cow::Borrowed(content_id.as_str()),
-                None => {
-                    return Err(err(format!(
-                        "subject {subject:?} carries no Task-3 content id, but \
-                         node_content_ids IS hydrated ({} entries) — a \
-                         hydration bug: every scenario-hydrated node is named \
-                         (scenario::invert_content_ids), so a NodeId reaching \
-                         here with no entry means something minted a node \
-                         outside hydration without recording its content id \
-                         (review round 2, #576 I2 — see evaluator::element_content_id's own doc)",
-                        map.len()
-                    )))
-                }
+        let v1_subject = match rng_seed {
+            RngSeedContext::V1 { .. } => Some(v1_subject_identity(*subject, node_content_ids)?),
+            RngSeedContext::V2 { .. } => None,
+        };
+        let identity = match rng_seed {
+            RngSeedContext::V1 { session } => DrawIdentityContext::V1 {
+                session,
+                domain: loaded.contract.rule_id.as_str(),
+                subject: v1_subject
+                    .as_deref()
+                    .expect("V1 always resolves its subject"),
+                node_content_ids,
             },
+            RngSeedContext::V2 { session, seed } => {
+                let (domain, resolver) = replay_rule
+                    .as_ref()
+                    .expect("V2 rule identity checked before subject loop");
+                let stable_subject = resolver.node_key(*subject).map_err(|error| {
+                    err(format!(
+                        "rng-draw V2 subject has no sealed stable identity: {error:?}"
+                    ))
+                })?;
+                DrawIdentityContext::V2 {
+                    session,
+                    seed,
+                    domain: domain.clone(),
+                    resolver,
+                    subject: stable_subject.clone(),
+                }
+            }
         };
         let draw_context = DrawContext {
-            session,
+            identity,
             tick: draw_tick,
-            domain: loaded.contract.rule_id.as_str(),
-            subject: subject_content_id.as_ref(),
-            node_content_ids,
         };
 
         // §2.5/§4.2: `:expr` bindings resolve in DECLARATION order against
@@ -1009,6 +1041,46 @@ fn collect_pass(
     Ok((all_pending, fired))
 }
 
+fn replay_rule_identity<'a>(
+    rng_seed: RngSeedContext<'_>,
+    resolver: Option<&'a StableElementResolverV1>,
+    rule_id: &str,
+) -> Result<Option<(RngDomainV2, &'a StableElementResolverV1)>, TickError> {
+    match rng_seed {
+        RngSeedContext::V1 { .. } => Ok(None),
+        RngSeedContext::V2 { .. } => {
+            let domain = RngDomainV2::try_from(rule_id).map_err(|error| {
+                err(format!("rng-draw V2 firing-rule domain refused: {error:?}"))
+            })?;
+            let stable = resolver.ok_or_else(|| {
+                err("rng-draw V2 requires a sealed StableElementResolverV1".to_owned())
+            })?;
+            Ok(Some((domain, stable)))
+        }
+    }
+}
+
+fn v1_subject_identity(
+    subject: NodeId,
+    node_content_ids: Option<&HashMap<NodeId, String>>,
+) -> Result<std::borrow::Cow<'_, str>, TickError> {
+    let Some(map) = node_content_ids else {
+        return Ok(std::borrow::Cow::Owned(format!("{subject:?}")));
+    };
+    map.get(&subject)
+        .map(|content_id| std::borrow::Cow::Borrowed(content_id.as_str()))
+        .ok_or_else(|| {
+            err(format!(
+                "subject {subject:?} carries no Task-3 content id, but \
+                 node_content_ids IS hydrated ({} entries) — a hydration bug: every \
+                 scenario-hydrated node is named (scenario::invert_content_ids), so a \
+                 NodeId reaching here means something minted a node outside hydration \
+                 without recording its content id (review round 2, #576 I2)",
+                map.len()
+            ))
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -1019,6 +1091,7 @@ mod tests {
     use crate::evaluator::Value;
     use crate::types::EnumRegistry;
     use crate::write_log::CollectingWriteLog;
+    use babylon_kernel::replay::RngSeedContext;
     use babylon_kernel::SessionId;
     use std::collections::HashMap;
 
@@ -1030,7 +1103,7 @@ mod tests {
     /// fallback (`evaluator::element_content_id`'s own doc), which is
     /// correct here precisely because these nodes were never named
     /// (review round 2, #576 I2: `None`, not an empty map — see
-    /// `crate::intrinsic_host::DrawContext::node_content_ids`'s own doc).
+    /// `crate::intrinsic_host::DrawIdentityContext::V1`'s own doc).
     fn test_session() -> SessionId {
         SessionId::new("tick-test-session").expect("literal is non-empty")
     }
@@ -1333,7 +1406,10 @@ mod tests {
             &DefinesEnv::new(),
             1,
             None,
-            &test_session(),
+            RngSeedContext::V1 {
+                session: &test_session(),
+            },
+            None,
             None,
             &mut write_log,
         )

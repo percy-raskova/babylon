@@ -1,3 +1,4 @@
+use babylon_practice_contract::actor_v2::ActorOrganizationIdV2;
 use babylon_practice_contract::{
     active_player_authority_v2, decode_input_authority_ledger_v2, decode_input_authority_v2,
     encode_input_authority_ledger_v2, encode_input_authority_v2, input_authority_ledger_v2_digest,
@@ -5,6 +6,10 @@ use babylon_practice_contract::{
     CampaignIdV2, InputAuthorityIdV2, PracticeAuthorityKindV2, PracticeAuthorityV2Error,
     PracticeInputAuthorityLedgerV2, PracticeInputAuthorityV2,
 };
+
+fn actor_id(value: u64) -> ActorOrganizationIdV2 {
+    ActorOrganizationIdV2::from_bytes(value.to_be_bytes())
+}
 
 fn hex_bytes(value: &str) -> Vec<u8> {
     assert_eq!(value.len() % 2, 0);
@@ -30,7 +35,7 @@ fn player_authority() -> PracticeInputAuthorityV2 {
         campaign_id: CampaignIdV2::from_bytes([0x10; 16]),
         authority_kind: PracticeAuthorityKindV2::PlayerSeat,
         input_authority_id: InputAuthorityIdV2::from_bytes([0x20; 16]),
-        actor_org_id: 7,
+        actor_org_id: actor_id(7),
         effective_from_tick: 10,
         effective_through_tick_exclusive: 20,
         decision_content_digest: [0x30; 32],
@@ -48,7 +53,7 @@ fn policy_authority(
         campaign_id: CampaignIdV2::from_bytes([0x10; 16]),
         authority_kind: PracticeAuthorityKindV2::DeterministicPolicy,
         input_authority_id: InputAuthorityIdV2::from_bytes([input_authority_byte; 16]),
-        actor_org_id,
+        actor_org_id: actor_id(actor_org_id),
         effective_from_tick: from,
         effective_through_tick_exclusive: through,
         decision_content_digest: [0x40; 32],
@@ -186,7 +191,7 @@ fn authority_v2_lookup_requires_campaign_authority_actor_and_active_tick() {
             &ledger,
             player.campaign_id,
             player.input_authority_id,
-            7,
+            actor_id(7),
             10,
         ),
         Ok(&player)
@@ -196,7 +201,7 @@ fn authority_v2_lookup_requires_campaign_authority_actor_and_active_tick() {
             &ledger,
             player.campaign_id,
             player.input_authority_id,
-            8,
+            actor_id(8),
             10,
         ),
         Err(PracticeAuthorityV2Error::AuthorityActorMismatch)
@@ -206,7 +211,7 @@ fn authority_v2_lookup_requires_campaign_authority_actor_and_active_tick() {
             &ledger,
             player.campaign_id,
             player.input_authority_id,
-            7,
+            actor_id(7),
             20,
         ),
         Err(PracticeAuthorityV2Error::AuthorityInactive)
@@ -216,7 +221,7 @@ fn authority_v2_lookup_requires_campaign_authority_actor_and_active_tick() {
             &ledger,
             player.campaign_id,
             InputAuthorityIdV2::from_bytes([0x99; 16]),
-            7,
+            actor_id(7),
             10,
         ),
         Err(PracticeAuthorityV2Error::AuthorityNotFound)
@@ -236,7 +241,7 @@ fn authority_v2_ledger_refuses_two_active_player_seats_for_one_campaign() {
     let first = player_authority();
     let mut second = player_authority();
     second.input_authority_id = InputAuthorityIdV2::from_bytes([0x21; 16]);
-    second.actor_org_id = 8;
+    second.actor_org_id = actor_id(8);
     assert_eq!(
         validate_input_authority_ledger_v2(&PracticeInputAuthorityLedgerV2 {
             schema_version: 2,
@@ -251,7 +256,7 @@ fn authority_v2_ledger_refuses_midcampaign_player_seat_reassignment() {
     let first = player_authority();
     let mut reassigned = player_authority();
     reassigned.input_authority_id = InputAuthorityIdV2::from_bytes([0x21; 16]);
-    reassigned.actor_org_id = 8;
+    reassigned.actor_org_id = actor_id(8);
     reassigned.effective_from_tick = first.effective_through_tick_exclusive;
     reassigned.effective_through_tick_exclusive = 30;
 

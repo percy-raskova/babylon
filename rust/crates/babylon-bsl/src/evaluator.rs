@@ -37,11 +37,14 @@
 //!   a loud error here pending the Phase-1 review.
 
 use crate::fuel::{cost, IntrinsicCosts};
-use crate::intrinsic_host::{DrawContext, IntrinsicCallCtx, IntrinsicHost};
+use crate::intrinsic_host::{
+    DrawActiveElement, DrawContext, DrawIdentityContext, IntrinsicCallCtx, IntrinsicHost,
+};
 use crate::query::{EdgeKey, Element};
 use crate::reader::{Atom, SExpr, ScaledKind};
 use crate::typecheck::TypeEnv;
 use crate::types::{BslType, EnumRegistry};
+use babylon_graph::stable_element::{StableElementKeyV1, StableElementResolverV1};
 use babylon_graph::substrate::GraphSubstrate;
 use babylon_kernel::{Coefficient, Currency, Ratio};
 use std::collections::HashMap;
@@ -1652,28 +1655,54 @@ fn eval_intrinsic(
 /// fails loud on the missing `DrawContext` itself, never on a missing
 /// element chain.
 ///
-/// `Some(draw_context)` resolves the §2.6 chapter C8 element stack
-/// (`env.elements`) to content ids through the Task-3 map
-/// (`draw_context.node_content_ids`), outermost-first — the SAME order
-/// `env.elements` itself keeps.
+/// `Some(draw_context)` resolves the chapter C8 element stack in the same
+/// outermost-first order `env.elements` keeps. V1 uses its current content-id
+/// map and fixture fallback. V2 resolves each runtime element through the
+/// sealed stable graph resolver and has no string or debug fallback.
 ///
 /// # Errors
 ///
-/// [`EvalError`] if [`element_content_id`] does — see that function's own
-/// doc for exactly when (a `NodeId` miss against a `Some`-hydrated map;
-/// review round 2, #576 I2).
+/// [`EvalError`] if V1 content-id resolution or V2 stable graph resolution
+/// refuses an element.
 fn build_intrinsic_call_ctx<'a>(env: &EvalEnv<'a>) -> Result<IntrinsicCallCtx<'a>, EvalError> {
     let Some(draw_context) = env.draw_context else {
         return Ok(IntrinsicCallCtx::context_free());
     };
-    let element_content_ids = env
-        .elements
-        .iter()
-        .map(|(_, element)| element_content_id(element, draw_context.node_content_ids))
-        .collect::<Result<Vec<_>, _>>()?;
+    let active_elements = match &draw_context.identity {
+        DrawIdentityContext::V1 {
+            node_content_ids, ..
+        } => env
+            .elements
+            .iter()
+            .map(|(_, element)| {
+                element_content_id(element, *node_content_ids).map(DrawActiveElement::V1)
+            })
+            .collect::<Result<Vec<_>, _>>()?,
+        DrawIdentityContext::V2 { resolver, .. } => env
+            .elements
+            .iter()
+            .map(|(_, element)| stable_element_key(element, resolver).map(DrawActiveElement::V2))
+            .collect::<Result<Vec<_>, _>>()?,
+    };
     Ok(IntrinsicCallCtx {
         draw_context: Some(draw_context),
-        element_content_ids,
+        active_elements,
+    })
+}
+
+fn stable_element_key(
+    element: &Element,
+    resolver: &StableElementResolverV1,
+) -> Result<StableElementKeyV1, EvalError> {
+    let result = match element {
+        Element::Node(node) => resolver.node_key(*node).cloned(),
+        Element::Hyperedge(hyperedge) => resolver.hyperedge_key(*hyperedge).cloned(),
+        Element::Edge(key) => resolver.edge_key(&key.edge_type, key.source, key.target),
+    };
+    result.map_err(|error| {
+        EvalError::plain(format!(
+            "rng-draw V2 active element has no sealed stable identity: {error:?}"
+        ))
     })
 }
 
@@ -1698,8 +1727,7 @@ fn build_intrinsic_call_ctx<'a>(env: &EvalEnv<'a>) -> Result<IntrinsicCallCtx<'a
 ///
 /// **Review round 1 (#576) tightened the per-node lookup from an
 /// unconditional fallback to a TYPE-distinguished one (review round 2,
-/// #576 I2 — see [`crate::intrinsic_host::DrawContext::node_content_ids`]'s
-/// own doc for why `Option`, not `is_empty()`, is the gate).** `None`
+/// #576 I2 — see [`crate::intrinsic_host::DrawIdentityContext::V1`]).** `None`
 /// means no scenario was ever hydrated — this crate's own hand-built
 /// `MemoryGraph` fixtures (`tick.rs`'s tests) are exactly this shape — so
 /// a `NodeId` here carries its own `Debug` rendering (`{id:?}`) instead of

@@ -3,10 +3,9 @@ Determinism Contract
 
 This reference inventories Babylon's implemented and reserved identities. It
 provides complete, language-agnostic byte layouts for the frozen Python
-artifacts that say so and for the outer ``NominalWorldHash`` composition given
-two authoritative 32-byte inputs. It does not yet specify the inner
-``GraphStateHash`` or phase-schedule encoding. ``TickContentHash`` remains a
-reserved taxonomy name; no byte layout is implemented or specified.
+artifacts that say so, the outer ``NominalWorldHash`` composition, and the
+current ``TickContentHashV1`` contract. It does not specify the inner
+``GraphStateHash`` or phase-schedule encoding.
 
 Current constitutional authority is Article V for deterministic identity and
 rewrite-surviving behavioral contracts, with Article VIII governing redundant
@@ -20,7 +19,7 @@ Program 27 Phase 0
 added three forward-specification chapters below. Parts later gained frozen
 Python or Rust reference implementations. Each chapter's own status note now
 controls; historical target prose does not override the current identity
-taxonomy or ADR220's reserved ``TickContentHash`` name.
+taxonomy or ADR240's accepted ``TickContentHashV1`` contract.
 
 .. contents:: On this page
    :local:
@@ -65,12 +64,18 @@ comparison**, not hash equality — see *Float and Tolerance Policy* below.
 Catalog of Constitutional Hashes
 ----------------------------------
 
-The frozen Python estate has three older identities in its live and reference
-paths. Rust adds a graph-only diagnostic and a current in-memory nominal-world
-identity. The complete durable ``TickContentHash`` remains reserved. These
-values are not interchangeable. The older entries specify their byte
-constructions. The PER-18 entry specifies the nominal hash's outer composition
-and names its two still-Rust-authoritative inputs.
+.. Vale: this paragraph preserves literal identity and contract terms.
+.. vale ste.UnapprovedWords = NO
+
+The frozen Python estate has three identities in its live and reference paths.
+Rust adds a graph-only diagnostic, a current in-memory nominal-world identity,
+and the canonical replay-tick ``TickContentHashV1``. A future durable envelope
+can carry the replay evidence, but it does not redefine it. These values are
+not interchangeable. The Python entries specify their byte constructions. The
+PER-18 entry specifies the nominal hash's outer composition and names its two
+still-Rust-authoritative inputs.
+
+.. vale ste.UnapprovedWords = YES
 
 ``defines_hash`` — GameDefines fingerprint
 +++++++++++++++++++++++++++++++++++++++++++
@@ -775,17 +780,18 @@ separate current identities:
 
 The frozen Python P27 tick hash below is a reference implementation over a
 JSON node, edge, action, tick, and seed record. It is neither of these Rust
-hashes. ADR220 reserves ``TickContentHash`` for the future complete
-seed/content/reference/state/action identity at the PostgreSQL writer cutover.
-``NominalWorldHash`` must never be stored under that stronger name.
+hashes. ``TickContentHashV1`` now owns the complete replay session, seed,
+content, reference, stable world, accepted action, and payload identity.
+``NominalWorldHash`` does not enter that hash input, so it must use a different
+name.
 
 This section specifies only the outer ``NominalWorldHash`` composition. It
 treats ``GraphStateHash`` and ``phase_schedule_digest`` as authoritative
 32-byte inputs. Their inner domain strings, tagged sections, omissions, slot
-registry, alias table, and golden digests remain defined only in the cited Rust
-code and tests. An independent implementation still needs those sources. That
-is an explicit rewrite-contract gap, not a claim that this page specifies the
-complete Rust world identity.
+registry, accepted-name mapping table, and golden digests remain defined only
+in the cited Rust code and tests. An independent implementation still needs
+those sources. That is an explicit rewrite-contract gap, not a claim that this
+page specifies the complete Rust world identity.
 
 Canonical layout
 ++++++++++++++++
@@ -806,10 +812,11 @@ layout version, and four tagged sections in this exact order:
 The completed tick cannot be negative. The allocator value ``u64::MAX`` is
 the reserved exhausted sentinel; ``u64::MAX - 1`` is the last identity either
 allocator can mint. The current Rust schedule digest is separately versioned
-and hashes all 34 canonical slots plus the byte-sorted compatibility aliases.
-It includes each partition, ordinal, and resolved default rank. Content order
-does not enter the schedule digest or this nominal identity. This paragraph is
-descriptive; it is not a complete schedule-digest byte specification.
+and hashes all 34 canonical slots plus the four byte-sorted accepted-name
+mappings used by current content. It includes each partition, ordinal, and
+resolved default rank. Content order does not enter the schedule digest or
+this nominal identity. This paragraph is descriptive; it is not a complete
+schedule-digest byte specification.
 
 Exact asymmetric vector
 +++++++++++++++++++++++
@@ -846,12 +853,75 @@ total and per-rule firing, and exact typed event payloads in parent and child
 processes, under reversed insertion order and both graph backends. These tests
 prove computational identity, not scientific truth or PostgreSQL durability.
 
+.. Vale: this section preserves literal contract names and technical terms.
+.. vale ste.UnapprovedWords = NO
+.. vale ste.NounClusters = NO
+.. vale Vale.Spelling = NO
+.. vale strunk.ActiveVoice = NO
+.. vale ste.PassiveVoice = NO
+
+Canonical Rust Replay Tick Content Hash (PER-60)
+-------------------------------------------------
+
+**Status: ``TickContentHashV1`` is implemented in the database-free Rust replay
+path.** ``ReplayTickSession`` publishes it only after detached adjudication.
+All nested identity encoders must also succeed. The hash binds the replay
+session, resolve tick, signed replay seed, RNG V2, content and reference
+digests, and prepared mechanics. It also binds the stable prior and result
+worlds, the exact accepted-action batch, and the exact tick payload.
+
+The accepted byte layout, every nested layout and discriminant, fixed bounds,
+refusal classes, and asymmetric vectors live in:
+
+- ``contracts/tick_content_hash_v1.yaml``
+- ``contracts/tick_content_hash_v1_vectors.jsonl``
+- ``tools/verify_tick_content_hash_v1.py``
+
+The Python verifier uses compiled bounded reads, then reconstructs the canonical
+bodies and linked digests from semantic vector fields. A separate Rust contract
+consumer reconstructs the same corpus. Both execute every operation-specific
+limit and limit-plus-one refusal row. Both also enforce the exact-empty,
+matching-session, and matching-tick action link before they accept an outer
+identity. Production tests compare the real Rust RNG, graph-owned carrier,
+stable graph, ordered action, BSL section, stable-world, payload, and
+outer-composer paths with those vectors.
+
+Babylon defines one canonical replay-tick identity. P27 bytes do not enter
+``TickContentHashV1``. P27 stays executable as frozen reference evidence, with
+its exact tests and bytes unchanged. No runtime adapter, alias, fallback, or
+second identity resolver connects the two encodings.
+
+The current runtime accepts only the exact empty
+``OrderedPracticeActionBatchV1``. The nonempty form is structural contract
+evidence and confers no accepted-input provenance. PER-60 adds no Postgres
+I/O, durable envelope, Archive or outbox, Bevy behavior, BSL intent, or player
+action execution.
+
+``ReplaySessionIdV1`` is material replay identity. Campaign identity is a
+distinct durability input. No conversion joins the types, and campaign
+identity does not enter the ``TickContentHashV1`` preimage. ADR240 records this
+boundary.
+
+.. vale Vale.Spelling = YES
+.. vale ste.NounClusters = YES
+.. vale ste.UnapprovedWords = YES
+.. vale ste.PassiveVoice = YES
+.. vale strunk.ActiveVoice = YES
+
 The P27 Tick Hash (Frozen Python Reference)
 -------------------------------------------
 
-**Status: implemented as a frozen Python reference serializer, but not wired as
-the current Rust tick identity or the future durable writer hash.** This
-chapter originally named a single canonical per-tick content hash for the
+.. Vale: this paragraph preserves a historical definition and literal names.
+.. vale ste.UnapprovedWords = NO
+.. vale ste.NounClusters = NO
+.. vale ste.SentenceLength = NO
+.. vale ste.Gerunds = NO
+.. vale Vale.Spelling = NO
+
+**Status: the frozen Python reference serializer remains executable. The
+canonical Rust replay-tick identity and durable writer hash do not use it.**
+
+This chapter originally named a single canonical per-tick content hash for the
 Program 27 kernel under historical v3 clause III.7's literal definition:
 *"a deterministic SHA-256 hash of its inputs: World state + player actions
 + random seed"*. The historical target required the Rust port to compute it,
@@ -861,6 +931,12 @@ Constitutional Hashes* above (``defines_hash``, ``tick_commit.replay_identity_ha
 pre-0044) with **one unambiguously named value** — resolving the naming
 collision noted in *Known Discrepancies*
 item 1 below and owner-queue item 31 (``persistence/envelope.py``).
+
+.. vale Vale.Spelling = YES
+.. vale ste.Gerunds = YES
+.. vale ste.SentenceLength = YES
+.. vale ste.NounClusters = YES
+.. vale ste.UnapprovedWords = YES
 
 **Field set, in this order for the worked example below (the canonical
 serialization itself sorts keys alphabetically — see *Ordering* — so
@@ -1026,20 +1102,22 @@ unambiguous per-tick content fingerprint, not a chain.
 
 **Current disposition:** ``babylon.kernel.tick_hash`` implements this
 language-neutral reference layout and its tests preserve the rewrite artifact.
-The shipping Rust tick does not call it. Gate 3 must decide which parts survive
-inside the complete ``TickContentHash`` while adding all current Rust auxiliary
-registers, content and reference digests, and the durable action/campaign
-contract. The original transition analysis follows: all three older Python
-hashes needed reconciliation at cutover. Concretely: (1)
-``defines_hash`` is unaffected (it stays a separate, independent hash —
-see the *ContentDigest* chapter below); (2) ``tick_commit.replay_identity_hash``
-today carries **no world state at all** (just
-``session_id:tick:rng_seed``) — this chapter's hash replaces it as the
-content-bearing marker, with the session-scoped identity role served
-separately if a run-identity marker is still needed; (3)
-``conservation_audit_log.hex_frame_hash`` today hashes only the 15-field
-``DynamicHexState`` hex frame with ``default=str`` and no actions — this
-chapter widens scope to the full graph and bans the stringly fallback.
+
+.. Vale: this paragraph preserves literal identity and frozen-reference terms.
+.. vale ste.UnapprovedWords = NO
+
+The Rust replay tick does not call it. ADR240 settles the open disposition: P27
+remains frozen reference evidence, and its bytes never enter
+``TickContentHashV1``. No cutover reconciles or translates the two encodings.
+
+The other Python hashes keep their documented scopes. ``defines_hash`` remains
+a separate content input. ``tick_commit.replay_identity_hash`` remains a
+session, tick, and seed marker with no world state.
+``conservation_audit_log.hex_frame_hash`` remains the 15-field
+``DynamicHexState`` frame with ``default=str`` and no live actions. None is a
+second name or fallback for the accepted Rust replay-tick identity.
+
+.. vale ste.UnapprovedWords = YES
 
 ContentDigest and the Canonical BSL AST Serialization
 ---------------------------------------------------------

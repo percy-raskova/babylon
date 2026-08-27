@@ -4,12 +4,13 @@ use super::{
     assert_lock_released, authority_snapshot, database_user, repository_root, AuthoritySnapshot,
     ScratchDatabase, LIVE_TASK_SECONDS, MAX_LEGACY_CENSUS_ROWS, OWNER_PASSWORD,
 };
+use babylon_kernel::tick_content_hash::RefDigestV1;
 use babylon_persistence::{
     adopt_legacy_schema, build_representative_h3_cohort_v1, compiled_schema_migrations,
     install_representative_h3_cohort, migrate_schema_epoch, request_rust_writer_authority,
     H3CellId, H3ReferenceCohort, H3ReferenceInstallConflict, H3ReferenceInstallDisposition,
     H3ReferenceInstallError, H3ReferenceInstallOperation, H3ReferenceInstallReport,
-    LegacyAdopterError, RefDigest, RustWriterAuthorityError, SchemaEpochError, SchemaEpochOrigin,
+    LegacyAdopterError, RustWriterAuthorityError, SchemaEpochError, SchemaEpochOrigin,
     SCHEMA_ADVISORY_LOCK_KEY,
 };
 use postgres::{Config, NoTls};
@@ -786,12 +787,12 @@ fn source_cells() -> Vec<H3CellId> {
         .collect()
 }
 
-fn digest(text: &str) -> RefDigest {
+fn digest(text: &str) -> RefDigestV1 {
     assert_eq!(text.len(), 64);
     let mut bytes = [0_u8; 32];
     for (index, byte) in bytes.iter_mut().enumerate().take(32) {
         let offset = index * 2;
         *byte = u8::from_str_radix(&text[offset..offset + 2], 16).unwrap();
     }
-    RefDigest::from_bytes(bytes)
+    RefDigestV1::from_bytes(bytes)
 }

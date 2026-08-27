@@ -4,6 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use babylon_kernel::sha256_of;
 
+use crate::actor_v2::ActorOrganizationIdV2;
 use crate::intent_v2::target_is_valid;
 use crate::{
     practice_proposal_key_v2, InputAuthorityIdV2, PracticeIdV2, PracticeIntentV2,
@@ -151,7 +152,7 @@ impl PracticeUnitIdV2 {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum PracticeResourceOwnerV2 {
     Shared,
-    ActorOrganization(u64),
+    ActorOrganization(ActorOrganizationIdV2),
 }
 
 /// Content-owned locator law used to derive a request owner from an intent.
@@ -243,7 +244,7 @@ impl PracticeResourceRequestV2 {
 fn append_proposal_key(output: &mut Vec<u8>, value: PracticeProposalKeyV2) {
     output.extend_from_slice(&value.resolve_tick.to_be_bytes());
     output.extend_from_slice(&value.input_authority_id.as_bytes());
-    output.extend_from_slice(&value.actor_org_id.to_be_bytes());
+    output.extend_from_slice(&value.actor_org_id.to_bytes());
     output.push(value.practice_id as u8);
     output.push(value.target.tag as u8);
     output.extend_from_slice(&value.target.identity.as_bytes());
@@ -254,11 +255,11 @@ fn append_owner(output: &mut Vec<u8>, value: PracticeResourceOwnerV2) {
     match value {
         PracticeResourceOwnerV2::Shared => {
             output.push(1);
-            output.extend_from_slice(&0_u64.to_be_bytes());
+            output.extend_from_slice(&[0_u8; 8]);
         }
         PracticeResourceOwnerV2::ActorOrganization(actor_org_id) => {
             output.push(2);
-            output.extend_from_slice(&actor_org_id.to_be_bytes());
+            output.extend_from_slice(&actor_org_id.to_bytes());
         }
     }
 }
@@ -793,11 +794,13 @@ fn decode_owner(
     cursor: &mut ContractCursor<'_>,
 ) -> Result<PracticeResourceOwnerV2, PracticeResourceV2Error> {
     let tag = cursor.u8()?;
-    let actor_org_id = cursor.u64()?;
+    let actor_org_id: [u8; 8] = cursor.array()?;
     match tag {
-        1 if actor_org_id == 0 => Ok(PracticeResourceOwnerV2::Shared),
+        1 if actor_org_id == [0_u8; 8] => Ok(PracticeResourceOwnerV2::Shared),
         1 => Err(PracticeResourceV2Error::ResourceOwnerMismatch),
-        2 => Ok(PracticeResourceOwnerV2::ActorOrganization(actor_org_id)),
+        2 => Ok(PracticeResourceOwnerV2::ActorOrganization(
+            ActorOrganizationIdV2::from_bytes(actor_org_id),
+        )),
         _ => Err(PracticeResourceV2Error::ResourceEnumCode),
     }
 }
@@ -807,7 +810,7 @@ fn decode_proposal_key(
 ) -> Result<PracticeProposalKeyV2, PracticeResourceV2Error> {
     let resolve_tick = cursor.u64()?;
     let input_authority_id = InputAuthorityIdV2::from_bytes(cursor.array()?);
-    let actor_org_id = cursor.u64()?;
+    let actor_org_id = ActorOrganizationIdV2::from_bytes(cursor.array()?);
     let practice_id = PracticeIdV2::try_from(cursor.u8()?)
         .map_err(|_| PracticeResourceV2Error::ResourceEnumCode)?;
     let target = TaggedPracticeTargetV2 {

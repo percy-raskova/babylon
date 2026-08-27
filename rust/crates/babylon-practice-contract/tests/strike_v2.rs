@@ -1,3 +1,4 @@
+use babylon_practice_contract::actor_v2::ActorOrganizationIdV2;
 use babylon_practice_contract::{
     admit_strike_proposal_v2, admitted_strike_proposal_v2_digest,
     decode_admitted_strike_proposal_v2, decode_strike_labor_process_register_v2,
@@ -24,13 +25,17 @@ const OTHER_LABOR_PROCESS: [u8; 32] = [0x41; 32];
 const ASSEMBLY_WORKERS: [u8; 32] = [0x50; 32];
 const LOGISTICS_WORKERS: [u8; 32] = [0x51; 32];
 
+fn actor_id(value: u64) -> ActorOrganizationIdV2 {
+    ActorOrganizationIdV2::from_bytes(value.to_be_bytes())
+}
+
 fn strike_intent(actor_org_id: u64) -> PracticeIntentV2 {
     PracticeIntentV2 {
         schema_version: 2,
         submit_after_tick: 40,
         resolve_tick: 41,
         input_authority_id: InputAuthorityIdV2::from_bytes([0x10; 16]),
-        actor_org_id,
+        actor_org_id: actor_id(actor_org_id),
         practice_id: PracticeIdV2::Strike,
         target: TaggedPracticeTargetV2 {
             tag: PracticeTargetTagV2::LaborProcess,
@@ -108,7 +113,7 @@ fn relation(
     StrikeWorkerOrganizationRelationV2 {
         labor_process_id: PracticeTargetIdentityV2::from_bytes(labor_process),
         worker_cohort_id: StrikeWorkerCohortIdentityV2::from_bytes(cohort),
-        organization_id,
+        organization_id: actor_id(organization_id),
         membership_attribution_digest: [organization_id.to_be_bytes()[7]; 32],
     }
 }

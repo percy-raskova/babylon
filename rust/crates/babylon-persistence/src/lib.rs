@@ -25,9 +25,7 @@ pub use h3_reference_installer::{
     H3ReferenceInstallError, H3ReferenceInstallOperation, H3ReferenceInstallReport,
     H3ReferenceMembershipReadContext,
 };
-pub use hashes::{
-    GraphStateHash, MigrationSetDigest, RefDigest, ReplayIdentityHash, TickContentHash,
-};
+pub use hashes::{GraphStateHash, MigrationSetDigest, ReplayIdentityHash};
 pub use identity::{CampaignId, H3CellId, H3CellIdError};
 pub use legacy_adopter::{
     adopt_legacy_schema, compare_legacy_census, expected_legacy_census,

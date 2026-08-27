@@ -5,6 +5,7 @@ use std::io::Write as _;
 #[cfg(test)]
 use std::time::Duration;
 
+use babylon_kernel::tick_content_hash::RefDigestV1;
 use postgres::{Client, Config, GenericClient, IsolationLevel, NoTls, Row, Transaction};
 
 use crate::h3_reference_cohort::MAX_H3_REFERENCE_CLOSURE_ROWS;
@@ -17,7 +18,6 @@ use crate::schema_epoch::{
 use crate::{
     build_representative_h3_cohort_v1, H3CellId, H3CellIdError, H3ReferenceCellRow,
     H3ReferenceCohort, H3ReferenceCohortError, H3ReferenceCohortReceipt, H3ReferenceOrigin,
-    RefDigest,
 };
 
 const H3_REFERENCE_INSTALL_SCHEMA_EPOCH: usize = 3;
@@ -310,13 +310,13 @@ impl H3ReferenceInstallReport {
 
     /// Identity of the exact installed reference cohort.
     #[must_use]
-    pub fn ref_digest(&self) -> RefDigest {
+    pub fn ref_digest(&self) -> RefDigestV1 {
         self.receipt.ref_digest()
     }
 
     /// SHA-256 identity of the pinned source artifact bytes.
     #[must_use]
-    pub fn artifact_digest(&self) -> RefDigest {
+    pub fn artifact_digest(&self) -> RefDigestV1 {
         self.receipt.artifact_digest()
     }
 
@@ -641,16 +641,16 @@ fn prepare_installer_session(client: &mut Client) -> Result<(), H3ReferenceInsta
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CohortHeader {
-    ref_digest: RefDigest,
+    ref_digest: RefDigestV1,
     format_version: i16,
     artifact_name: String,
     artifact_manifest_version: String,
-    artifact_digest: RefDigest,
-    source_digest: RefDigest,
-    source_r5_digest: RefDigest,
-    source_r7_digest: RefDigest,
-    closure_digest: RefDigest,
-    membership_digest: RefDigest,
+    artifact_digest: RefDigestV1,
+    source_digest: RefDigestV1,
+    source_r5_digest: RefDigestV1,
+    source_r7_digest: RefDigestV1,
+    closure_digest: RefDigestV1,
+    membership_digest: RefDigestV1,
     direct_cell_count: usize,
     derived_ancestor_count: usize,
     closure_cell_count: usize,
@@ -1286,7 +1286,7 @@ fn insert_membership(
 
 fn insert_membership_batch(
     transaction: &mut Transaction<'_>,
-    ref_digest: RefDigest,
+    ref_digest: RefDigestV1,
     rows: &[H3ReferenceCellRow],
 ) -> Result<(), H3ReferenceInstallError> {
     let mut cell_ids = Vec::with_capacity(rows.len());
@@ -1346,11 +1346,11 @@ fn decode_digest(
     row: &Row,
     index: usize,
     operation: H3ReferenceInstallOperation,
-) -> Result<RefDigest, H3ReferenceInstallError> {
+) -> Result<RefDigestV1, H3ReferenceInstallError> {
     let raw: Vec<u8> = decode_value(row, index, operation)?;
     let bytes = <[u8; 32]>::try_from(raw.as_slice())
         .map_err(|_| H3ReferenceInstallError::Decode { operation })?;
-    Ok(RefDigest::from_bytes(bytes))
+    Ok(RefDigestV1::from_bytes(bytes))
 }
 
 fn decode_count(
@@ -1438,6 +1438,7 @@ pub(crate) mod live_postgres_tests {
     use std::mem::size_of;
     use std::time::Instant;
 
+    use babylon_kernel::tick_content_hash::RefDigestV1;
     use postgres::{error::SqlState, Config, NoTls};
 
     use super::{
@@ -1446,7 +1447,7 @@ pub(crate) mod live_postgres_tests {
         H3ReferenceInstallBoundedResource, H3ReferenceInstallConflict,
         H3ReferenceInstallDisposition, H3ReferenceInstallError, H3ReferenceMembershipReadContext,
     };
-    use crate::{build_representative_h3_cohort_v1, H3CellId, H3ReferenceCohort, RefDigest};
+    use crate::{build_representative_h3_cohort_v1, H3CellId, H3ReferenceCohort};
 
     const SOURCE_FIXTURE: &[u8] = include_bytes!("../tests/fixtures/h3_reference_source_v1.bin");
     const SOURCE_DOMAIN: &[u8] = b"babylon.h3.reference-source.v1\0";
@@ -1721,7 +1722,7 @@ pub(crate) mod live_postgres_tests {
         );
     }
 
-    fn insert_excess_membership(config: &Config, ref_digest: RefDigest) {
+    fn insert_excess_membership(config: &Config, ref_digest: RefDigestV1) {
         let mut client = config.connect(NoTls).unwrap();
         let mut transaction = client.transaction().unwrap();
         let rows = transaction
@@ -1816,7 +1817,7 @@ pub(crate) mod live_postgres_tests {
     }
 
     fn representative_cohort() -> H3ReferenceCohort {
-        build_representative_h3_cohort_v1(RefDigest::from_bytes(ARTIFACT_DIGEST), &source_cells())
+        build_representative_h3_cohort_v1(RefDigestV1::from_bytes(ARTIFACT_DIGEST), &source_cells())
             .unwrap()
     }
 

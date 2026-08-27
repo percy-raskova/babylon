@@ -46,7 +46,7 @@ def test_adr238_records_the_exact_order_inventory_and_production_law() -> None:
     ):
         assert required_text in decision_text
 
-    assert index["meta"]["version"] == "1.86.0"
+    assert index["meta"]["version"] == "1.87.0"
     assert index["decisions"][ADR_STEM] == {
         "title": EXPECTED_TITLE,
         "status": "accepted",

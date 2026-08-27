@@ -82,7 +82,7 @@ origin/dev commit 600e6b03cd3eff271cd4ccaecf5a914327d47581.
 
 ### P27 disposition
 
-P27 remains executable and byte-pinned as a compatibility oracle. Its existing
+P27 remains executable and byte-pinned as frozen reference evidence. Its existing
 vectors must not change.
 
 P27 bytes and digests do not enter authoritative TickContentHashV1. The new
@@ -117,8 +117,8 @@ and encodes as:
 
 ASCII makes normalization tables and Unicode-version drift irrelevant. The
 implementation rejects spaces, control bytes, DEL, and non-ASCII input; it
-never transforms case or bytes. The existing SessionId remains available to
-legacy logging and RNG V1. The new replay path validates a distinct
+never transforms case or bytes. The existing SessionId remains the current
+TickSession logging and RNG V1 identity. The replay path validates a distinct
 ReplaySessionIdV1 before adjudication.
 
 ReplaySessionIdV1 is a logical replay namespace, not a rendering of
@@ -143,8 +143,10 @@ UTF-8 bytes. A semantic category can impose a lower limit than `u32`:
   type are each 1 through 128 strict ASCII bytes at the replay boundary;
 - an intrinsic identity name is 1 through 96 strict ASCII bytes under its
   existing delimiter rules; and
-- a governance or enum string without a narrower live grammar limit is at
-  most 4,194,304 UTF-8 bytes at the replay boundary.
+- an enum type and member are each 1 through 64 strict ASCII bytes under their
+  existing case-specific grammars; and
+- a governance string without a narrower live grammar limit is at most
+  4,194,304 UTF-8 bytes at the replay boundary.
 
 Encoders and verifiers apply the lower semantic ceiling first. They reject an
 object over its total-byte ceiling before any new PER-60 codec-buffer
@@ -167,8 +169,8 @@ adjudication.
 
 RngLayoutVersion has two governed values:
 
-- V1 freezes the current seed_for and KernelRng behavior byte for byte. V1
-  ignores ReplaySeed and remains a compatibility path. It is not eligible for
+- V1 freezes the current seed_for and KernelRng behavior byte for byte. It is
+  the current TickSession contract, ignores ReplaySeed, and is not eligible for
   a durable Gate 3 campaign.
 - V2 is the seed-aware replay layout. Every new replay session uses V2.
 
@@ -210,7 +212,7 @@ of a future Rust dependency implementation:
 
 The API offers no stream-id setter, seek operation, or tick-global stream.
 An implementation can call rand_chacha 0.10, but the algorithm and vectors
-above own compatibility.
+above own reproducibility.
 
 An unknown layout refuses. A future RNG change creates V3 beside V2 and gets
 new vectors and a new ceremony. It never edits V2 in place.
@@ -224,7 +226,7 @@ V2 introduces two validated boundary values:
 
 - RngDomainV2 is the firing rule qname: 1 through 128 strict ASCII bytes.
 - StableCarrierKeyV2 is a graph-owned private strict ASCII value of 1 through
-  131,072 bytes. The authoritative BSL path cannot construct it from an
+  105,962 bytes. The authoritative BSL path cannot construct it from an
   arbitrary caller string.
 
 The stable carrier uses graph-owned StableElementCarrierSegmentV1, an exact
@@ -241,7 +243,7 @@ decimal byte length, `:`, then exact bytes, and `|` separates segments:
 The graph-owned builder takes one resolved subject segment, at most 256
 resolved active-element segments in outermost-to-innermost order, and the
 canonical decimal i64 draw slot. The slot has no leading plus or zeroes; zero
-is `0`. The builder checks its segment count and 131,072-byte ceiling before
+is `0`. The builder checks its segment count and 105,962-byte ceiling before
 allocation. V2 has no raw-id or debug fallback.
 
 The final bytes are exactly:
@@ -262,7 +264,7 @@ passes only `validated_bytes()` to the low-level kernel V2 derivation. Kernel
 cannot name a graph type because graph already depends on kernel, so its raw
 byte entry point does not by itself prove provenance. ReplayTickSession's
 typed BSL path is the authoritative construction boundary; direct low-level
-kernel use is contract-test or adapter infrastructure, never tick execution.
+kernel use is standalone contract-test evidence, never tick execution.
 
 One typed RngSeedContext dispatches the real intrinsic path:
 
@@ -271,7 +273,7 @@ One typed RngSeedContext dispatches the real intrinsic path:
 - DrawContext carries the typed context, so `rng-draw` cannot ignore the V2
   seed while a separate helper happens to hash it correctly.
 
-ReplayTickSession accepts only the V2 context. Legacy TickSession constructs
+ReplayTickSession accepts only the V2 context. The current TickSession constructs
 V1. The numeric layout is parsed once in babylon-kernel; BSL and tick do not
 duplicate a `version == 2` branch.
 
@@ -398,8 +400,12 @@ Exact action bounds are:
 
 - ActionId preimage is `68 + session byte length`, or 69 through 324 bytes;
 - an empty batch is `55 + session byte length`, or 56 through 311 bytes;
-- each item is `36 + intent byte length`, at most 16,420 bytes; and
-- the complete 4,096-item batch is at most 67,256,631 bytes.
+- each valid current Practice V2 item is at most 2,271 bytes; and
+- the complete 4,096-item batch is at most 9,302,326 bytes.
+
+Practice V2 keeps its frozen 16,384-byte decoder ceiling. Its current valid
+empty-parameter grammar can produce at most 2,235 intent bytes, so PER-60 does
+not restate the wider decoder ceiling as an ordered-action operation bound.
 
 ReplayTickSession accepts the typed batch but requires the zero-item form. A
 non-empty form refuses before the detached tick starts. Gate 5 must change this
@@ -473,9 +479,12 @@ runtime handles:
     tag 0x03, u32 hyperedge count
       rows sorted by local name: str32 local name, str32 hyperedge type
 
-All three tags are mandatory. The combined node and hyperedge count is at
-most 65,536 and the manifest is at most 16,777,216 bytes. Its digest is
-SHA-256 of the exact bytes.
+All three tags are mandatory. Node local names are unique within the node
+section, and hyperedge local names are unique within the hyperedge section.
+The combined node and hyperedge count is at most 65,536, one hyperedge has at
+most 65,534 members, all topology rows and member references total at most
+1,048,576 fact units, and the manifest is at most 8,388,608 bytes. Its digest
+is SHA-256 of the exact bytes.
 
 The immutable StableElementResolverV1 also seals the hydrated topology. It
 requires a bijection between live node handles and authored node names and a
@@ -491,7 +500,7 @@ insertion ordinal, type-plus-members synthesis, or allocator state.
 ### Stable graph bytes
 
 StableGraphStateV1 consumes the same seven CanonicalState fact listings as the
-legacy graph hash, resolves every runtime handle, and encodes:
+current graph hash, resolves every runtime handle, and encodes:
 
     ASCII "babylon.stable-graph" followed by NUL
     u32 layout version 1
@@ -515,7 +524,7 @@ legacy graph hash, resolves every runtime handle, and encodes:
       str32 hyperedge local name, str32 qname, u64 canonical f64 bits
 
 All eight tags are mandatory, exactly once, in order. Every listing section
-writes its count even when empty; this layout inherits no legacy empty-section
+writes its count even when empty; this layout inherits no prior empty-section
 elision. StableGraphStateHashV1 is SHA-256 of these exact bytes.
 
 Canonical unsigned-ASCII order is local name for nodes and hyperedges;
@@ -534,8 +543,8 @@ the BSL typechecker.
 V1 ceilings are:
 
     stable nodes, edges, or hyperedges each: 65,536
-    rows in any attribute section: 1,048,576
-    members in one hyperedge: 65,536
+    rows in any attribute section: 524,288
+    members in one hyperedge: 65,534
     all seven rows plus nested member references: 1,048,576 fact units
     complete StableGraphStateV1 bytes: 67,108,864
 
@@ -599,7 +608,7 @@ register gets a named payload layout and a new manifest version when it becomes
 live. PER-60 does not predeclare inventory, reservation, knowledge, mint, or
 other future placeholders.
 
-GraphStateHash and NominalWorldHash remain unchanged for compatibility and
+GraphStateHash and NominalWorldHash remain unchanged as current contracts for
 administrative display. TickContentHashV1 never nests either one.
 
 ## Prepared environment identity
@@ -677,13 +686,15 @@ PreparedEnvironmentV1 reuses the existing PhaseScheduleV1 bytes:
       u8 partition: 0 material base, 1 action, 2 consequence
       u8 ordinal
       u16 default rank
-    u32 alias count
-    for each alias sorted by alias name:
-      str32 alias
+    u32 accepted-name mapping count
+    for each mapping sorted by accepted name:
+      str32 accepted name
       str32 canonical slot
       u16 resolved default rank
 
-Its current 34 slots and four compatibility aliases remain the live schedule.
+Its current 34 slots and four governed accepted-name mappings remain the live
+schedule. Each accepted name is used by current content; this is not a
+second scheduling path.
 PhaseScheduleDigestV1 is SHA-256 of the exact bytes.
 
 ### Prepared environment bytes
@@ -755,9 +766,11 @@ bytes.
 
 PreparedEnvironmentV1 is at most 67,108,864 bytes. Its ceilings are 65,536
 rules, fields, constants, enum types, and combined stable resolver rows; 64
-exemptions and intrinsic rows; 1,048,576 members in one enum or vocabulary
-kind; and 1,048,576 aggregate prepared rows. Encoders enforce per-section and
-aggregate counts before allocation.
+exemptions and intrinsic rows; 4,096 members in one declared enum; 524,288
+members in one vocabulary kind; and 1,048,576 aggregate prepared rows. The
+aggregate includes the four vocabulary-kind rows and every vocabulary member.
+Encoders enforce the prepared aggregate and combined-byte ceilings separately
+from the tick-payload ceilings before allocation.
 
 Content identity remains the existing pair of defines_hash and rules_hash.
 Reference identity is one explicit RefDigestV1 containing exactly 32 bytes and
@@ -808,9 +821,10 @@ values. Its per-rule ordinal remains the published events-first-then-writes
 ordinal and is not resorted. StableWorldV1 binds the resulting writes.
 
 TickPayloadV1 is at most 67,108,864 bytes. It permits at most 65,536 rule
-outcomes; 1,048,576 events, receipts, aggregate payload items, and aggregate
 tick rows; 1,048,576 items in one event; and 4,096 action outcomes, with the
-last count fixed to zero here. Each local and aggregate count is checked before
+last count fixed to zero here. The tick aggregate-row and combined-byte
+ceilings are distinct from the prepared-environment ceilings. Each local and
+aggregate count is checked before
 allocation.
 
 TickPayloadDigestV1 is SHA-256 of the exact canonical payload bytes. The
@@ -865,7 +879,7 @@ bytes, GraphStateHash, and NominalWorldHash.
 
 ## Executable replay session seam
 
-The legacy TickSession API and RNG V1 results remain byte-compatible.
+The current TickSession API and RNG V1 results remain byte-identical.
 
 PER-60 adds a typed ReplayTickSession. Construction requires:
 
@@ -886,7 +900,7 @@ those static preimages into a tick report.
 
 TickSession and ReplayTickSession call one internal detached-tick transaction.
 They do not duplicate the causal rule loop. A typed execution identity mode
-supplies either legacy RngSeedContext V1 with no authoritative composer or
+supplies either current RngSeedContext V1 with no authoritative composer or
 replay RngSeedContext V2 with the PER-60 composer. Every other preparation,
 rule, event, receipt, graph, and publication step is shared.
 
@@ -903,7 +917,7 @@ One replay advance follows this order:
    exact TickPayloadV1.
 6. Compose and hash TickContentHashV1.
 7. Reserve the external event sink.
-8. Publish graph, events, completed tick, legacy administrative hashes,
+8. Publish graph, events, completed tick, current administrative hashes,
    exact nested identity objects, and TickContentHash as one success.
 
 Every new PER-60 codec or report buffer uses checked size arithmetic and
@@ -920,7 +934,7 @@ digest is complete. The graph encoder exposes exact bytes to contract tests
 and explicit diagnostics, but the live report does not retain or clone either
 large preimage.
 
-The returned IdentifiedTickReportV1 carries the legacy TickReport evidence;
+The returned IdentifiedTickReportV1 carries the current TickReport evidence;
 exact empty action-batch bytes; exact prior and result register-set and
 stable-world bytes; exact tick-payload and outer TickContentHash preimage
 bytes; all nested versions and digests; the resolver-manifest and prepared-
@@ -929,7 +943,7 @@ TickContentHashV1. Static resolver, register-manifest, and prepared bytes stay
 borrowed or shared by the session and are not copied per tick. The report is
 not a durability claim.
 
-The current Bevy engine link remains on legacy TickSession until Gate 3 gives
+The current Bevy engine link remains on TickSession until Gate 3 gives
 it authoritative seed, content, and reference identities. The new replay path
 is executable end to end through database-free Rust integration tests.
 
@@ -963,7 +977,7 @@ kind tag; a noncanonical Boolean or option byte; a truncated field; an
 out-of-order or duplicate mandatory tag; and trailing bytes. Those parsers
 prove the language-neutral schema but are not production hydration APIs.
 
-No returned failure falls back to legacy hashes, raw runtime ids, debug
+No returned failure falls back to alternate hashes, raw runtime ids, debug
 strings, JSON, or P27.
 
 ## Verification contract
@@ -978,26 +992,32 @@ vector corpus. The corpus includes:
   vector crosses the first 64-byte block, and the first f64 bits from a fresh
   stream;
 - ReplaySeed i64 minimum, negative one, zero, one, and maximum encodings;
-- exact binary stable-element, ASCII carrier-segment, and resolver-manifest
-  bytes and digests;
+- exact binary stable-element, ASCII carrier-segment, graph-owned final carrier,
+  and resolver-manifest bytes and digests;
 - one asymmetric ActionId and non-empty ordered-batch codec vector;
 - the exact empty runtime action-batch bytes and digest;
 - asymmetric stable graph, register manifest, register set, stable world,
   prepared environment, payload, and outer TickContentHash bytes and digests;
-- each BSL value, type, role, evidence, effect, shape, and vocabulary-presence
-  discriminant; and
-- one mutation row for every identity input and nested layout version.
+- each BSL value, type, role, evidence, effect, shape, vocabulary-presence
+  discriminant, and exact UTF-8 governance string;
+- nonempty, wrong-session, and wrong-tick outer action-link refusals;
+- one operation-specific maximum and maximum-plus-one refusal row for every
+  declared semantic string, row, member, aggregate, and byte ceiling; and
+- one mutation row for every independently variable identity input and nested
+  layout version. Session and tick mutations carry their derived exact-empty
+  action-batch links.
 
 Rust contract tests and an independent Python verifier read the same vectors.
-Their raw parsers use fixed byte, row, and loop ceilings. The Rust production
-surface remains typed encoder/composer-only.
+Their raw parsers use compiled fixed byte, row, and loop ceilings before they
+trust schema fields. Both consumers execute every refusal row. The Rust
+production surface remains typed encoder/composer-only.
 
 End-to-end verification must prove:
 
 - two independent processes produce identical canonical bytes and digests;
 - MemoryGraph and HypergraphStore produce identical stable bytes;
 - genuinely different NodeId and HyperedgeId allocations produce identical
-  stable bytes while the legacy GraphStateHash values differ;
+  stable bytes while the current GraphStateHash values differ;
 - storage, map, registry, and hyperedge-member insertion order cannot move
   canonical output where order is not semantic;
 - changing semantic rule, event, event-payload-pair, receipt, or enum-member
@@ -1035,8 +1055,8 @@ End-to-end verification must prove:
 - babylon-tick composes PreparedEnvironmentV1, the register manifest and set,
   StableWorldV1, and TickPayloadV1 from owned checked sections. It owns the
   shared transaction, ReplayTickSession, report, and atomic publication.
-- babylon-persistence may re-export kernel digest types. It does not calculate
-  an independent TickContentHash.
+- babylon-persistence imports the owning kernel digest types directly. It does
+  not calculate an independent TickContentHash.
 
 ## Explicit non-goals
 
@@ -1054,7 +1074,7 @@ PER-60 does not add:
 - topology tombstones, generations, journals, or stable-mint rules;
 - a Merkle tree or partial-proof protocol;
 - a second generic action model; or
-- changes to legacy GraphStateHash, NominalWorldHash, or P27 bytes.
+- changes to current GraphStateHash, NominalWorldHash, or P27 bytes.
 
 ## Supersession and preservation
 
@@ -1072,7 +1092,7 @@ It partially supersedes:
 - the Python tick-hash module claim that babylon-kernel must produce the
   identical P27 digest;
 - the open P27 disposition in the live determinism reference, now resolved as
-  compatibility-oracle preservation outside TickContentHashV1;
+  frozen reference preservation outside TickContentHashV1;
 - the Neel plan and ADR233 destination that placed campaign UUID inside
   NominalWorldHashV2, while preserving campaign-bound input authority and
   durable campaign identity; and
@@ -1080,7 +1100,7 @@ It partially supersedes:
   detached-tick action identity, while preserving its admission bytes and
   validation role.
 
-ADR220's byte-compatible writer gate remains. ADR240 clarifies that it means
+ADR220's byte-identity writer gate remains. ADR240 clarifies that it means
 all implementations reproduce the accepted language-neutral
 TickContentHashV1 vectors; it does not mean those bytes equal P27 JSON.
 Campaign identity remains part of persistence, checkpoint, and envelope

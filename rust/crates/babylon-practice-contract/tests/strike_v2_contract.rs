@@ -1,3 +1,4 @@
+use babylon_practice_contract::actor_v2::ActorOrganizationIdV2;
 use babylon_practice_contract::{
     admitted_strike_proposal_v2_digest, decode_admitted_strike_proposal_v2,
     decode_strike_labor_process_register_v2, decode_strike_proposal_contract_v2,
@@ -14,6 +15,10 @@ use serde_json::Value;
 
 const SCHEMA: &[u8] = include_bytes!("../../../../contracts/strike_proposal_v2.yaml");
 const VECTORS: &str = include_str!("../../../../contracts/strike_proposal_v2_vectors.jsonl");
+
+fn actor_id(value: u64) -> ActorOrganizationIdV2 {
+    ActorOrganizationIdV2::from_bytes(value.to_be_bytes())
+}
 
 fn hex_bytes(value: &str) -> Vec<u8> {
     assert_eq!(value.len() % 2, 0);
@@ -51,7 +56,7 @@ fn strike_intent() -> PracticeIntentV2 {
         submit_after_tick: 40,
         resolve_tick: 41,
         input_authority_id: InputAuthorityIdV2::from_bytes([0x10; 16]),
-        actor_org_id: 101,
+        actor_org_id: actor_id(101),
         practice_id: PracticeIdV2::Strike,
         target: TaggedPracticeTargetV2 {
             tag: PracticeTargetTagV2::LaborProcess,

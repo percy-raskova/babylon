@@ -540,7 +540,7 @@ def test_per_18_adr_and_catalog_are_exact() -> None:
     """The accepted decision and catalog row cannot pass as an empty placeholder."""
     catalog = _yaml_document(_ADR_INDEX)
     assert catalog["meta"] == {
-        "version": "1.86.0",
+        "version": "1.87.0",
         "updated": "2026-08-26",
         "description": "Architecture Decision Records Index",
         "format": "See individual ADR files in this directory",
@@ -590,10 +590,15 @@ def test_determinism_reference_uses_v4_authority_and_honest_scope() -> None:
     """Current hash guidance cannot cite superseded law or promise missing layouts."""
     reference = _DETERMINISM_REFERENCE.read_text(encoding="utf-8")
     index = (_ROOT / "docs" / "reference" / "index.rst").read_text(encoding="utf-8")
+    normalized_reference = " ".join(reference.split())
     assert "Determinism Contract (Constitution Article V)" in index
     assert "Current constitutional authority is Article V" in reference
     assert "outer ``NominalWorldHash`` composition" in reference
-    assert "no byte layout is implemented or specified" in reference
+    assert "current ``TickContentHashV1`` contract" in normalized_reference
+    assert (
+        "It does not specify the inner ``GraphStateHash`` or phase-schedule encoding."
+        in normalized_reference
+    )
     assert "CONSTITUTION.md:250" not in reference
     combined = " ".join(f"{reference}\n{index}".lower().split())
     stale_clause = re.search(r"(?<!historical v3 clause )\b[IVX]+\.\d+(?:\.\d+)?\b", combined)

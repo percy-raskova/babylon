@@ -13,11 +13,13 @@ use babylon_bsl::typecheck::TypeEnv;
 use babylon_bsl::types::EnumRegistry;
 use babylon_bsl::vocabulary::{ClosedVocabulary, EnumKind};
 use babylon_graph::memory::MemoryGraph;
-use babylon_graph::stable_element::{StableElementResolverV1, StableIdentityError};
+use babylon_graph::stable_element::{
+    StableElementKeyV1, StableElementResolverV1, StableIdentityError,
+};
 use babylon_graph::stable_state::encode_stable_graph_state_v1;
 use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::{GraphSubstrate, HyperedgeId, NodeId};
-use babylon_kernel::replay::ReplaySessionIdV1;
+use babylon_kernel::replay::{ReplayIdentityError, ReplaySessionIdV1, RngDomainV2};
 use babylon_kernel::Currency;
 use babylon_practice_contract::actor_v2::ActorOrganizationIdV2;
 use babylon_practice_contract::ordered_action_v1::{
@@ -34,6 +36,17 @@ use serde_json::Value;
 
 pub(super) fn execute(name: &str, recipe: &Value) -> Result<(), &'static str> {
     match name {
+        "replay_session_bytes"
+        | "rng_domain_bytes"
+        | "rng_domain_segments"
+        | "symbol_bytes"
+        | "qname_bytes"
+        | "qname_segments"
+        | "structural_type_bytes"
+        | "intrinsic_identity_bytes"
+        | "enum_type_bytes"
+        | "enum_member_bytes"
+        | "governance_utf8_bytes" => execute_text(name, recipe),
         "stable_carrier_active_elements" | "stable_carrier_bytes" => {
             execute_carrier(recipe).map_err(carrier_error)
         }
@@ -60,6 +73,172 @@ pub(super) fn execute(name: &str, recipe: &Value) -> Result<(), &'static str> {
             execute_tick(recipe).map_err(bsl_error)
         }
         _ => panic!("unknown production bound operation {name}"),
+    }
+}
+
+fn repeated_segments(recipe: &Value) -> String {
+    counts(recipe, "segment_bytes")
+        .iter()
+        .take(5)
+        .map(|length| "a".repeat(*length))
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn execute_text(name: &str, recipe: &Value) -> Result<(), &'static str> {
+    match name {
+        "replay_session_bytes" => {
+            ReplaySessionIdV1::try_from("s".repeat(count(recipe, "session_bytes")).as_str())
+                .and_then(|session| session.canonical_bytes().map(|_| ()))
+                .map_err(|error| replay_text_error(name, error))
+        }
+        "rng_domain_bytes" | "rng_domain_segments" => {
+            RngDomainV2::try_from(repeated_segments(recipe).as_str())
+                .map(|_| ())
+                .map_err(|error| replay_text_error(name, error))
+        }
+        "symbol_bytes" => execute_symbol("a".repeat(count(recipe, "symbol_bytes")))
+            .map_err(|error| bsl_text_error(name, error)),
+        "qname_bytes" | "qname_segments" => {
+            execute_qname(repeated_segments(recipe)).map_err(|error| bsl_text_error(name, error))
+        }
+        "structural_type_bytes" => execute_structural_type("A".repeat(count(recipe, "type_bytes")))
+            .map_err(|error| graph_text_error(name, error)),
+        "intrinsic_identity_bytes" => {
+            execute_intrinsic("a".repeat(count(recipe, "identity_bytes")))
+                .map_err(|error| bsl_text_error(name, error))
+        }
+        "enum_type_bytes" => execute_enum_type(format!(
+            "A{}",
+            "a".repeat(count(recipe, "type_bytes").saturating_sub(1))
+        ))
+        .map_err(|error| bsl_text_error(name, error)),
+        "enum_member_bytes" => execute_enum_member("A".repeat(count(recipe, "member_bytes")))
+            .map_err(|error| bsl_text_error(name, error)),
+        "governance_utf8_bytes" => execute_governance("a".repeat(count(recipe, "utf8_bytes")))
+            .map_err(|error| bsl_text_error(name, error)),
+        _ => panic!("non-text production operation {name}"),
+    }
+}
+
+fn execute_symbol(symbol: String) -> Result<(), IdentityCodecError> {
+    let events = vec![("EventType/A".to_owned(), vec![(symbol, BslValue::Int(0))])];
+    encode_tick_payload_sections_v1(&[], &events, &[], &empty_resolver()).map(|_| ())
+}
+
+fn execute_qname(qname: String) -> Result<(), IdentityCodecError> {
+    let constants = HashMap::from([(qname, BslValue::Int(0))]);
+    encode_prepared(
+        &empty_types(),
+        &IntrinsicCosts::default(),
+        &constants,
+        &EnumRegistry::default(),
+        None,
+    )
+}
+
+fn execute_structural_type(structural_type: String) -> Result<(), StableIdentityError> {
+    StableElementKeyV1::Edge {
+        scenario: "s".to_owned(),
+        edge_type: structural_type,
+        source_local_name: "a".to_owned(),
+        target_local_name: "b".to_owned(),
+    }
+    .canonical_bytes()
+    .map(|_| ())
+}
+
+fn execute_intrinsic(identity: String) -> Result<(), IdentityCodecError> {
+    let intrinsics = IntrinsicCosts::new(HashMap::from([(identity, 1)]));
+    encode_prepared(
+        &empty_types(),
+        &intrinsics,
+        &HashMap::new(),
+        &EnumRegistry::default(),
+        None,
+    )
+}
+
+fn execute_enum_type(enum_type: String) -> Result<(), IdentityCodecError> {
+    execute_enum(enum_type, "A".to_owned())
+}
+
+fn execute_enum_member(member: String) -> Result<(), IdentityCodecError> {
+    execute_enum("A".to_owned(), member)
+}
+
+fn execute_enum(enum_type: String, member: String) -> Result<(), IdentityCodecError> {
+    let mut enums = EnumRegistry::default();
+    enums
+        .declare(&enum_type, &[member])
+        .expect("one unique bounded enum member");
+    encode_prepared(
+        &empty_types(),
+        &IntrinsicCosts::default(),
+        &HashMap::new(),
+        &enums,
+        None,
+    )
+}
+
+fn execute_governance(governance: String) -> Result<(), IdentityCodecError> {
+    let governance = Box::leak(governance.into_boxed_str());
+    let exemptions = Box::leak(
+        vec![IntensiveAggregationExemption {
+            field_name: "a",
+            reason: governance,
+            owner: "a",
+            date: "a",
+        }]
+        .into_boxed_slice(),
+    );
+    let types = TypeEnv {
+        fields: HashMap::new(),
+        exemptions,
+    };
+    encode_prepared(
+        &types,
+        &IntrinsicCosts::default(),
+        &HashMap::new(),
+        &EnumRegistry::default(),
+        None,
+    )
+}
+
+fn replay_text_error(name: &str, error: ReplayIdentityError) -> &'static str {
+    match (name, error) {
+        ("replay_session_bytes", ReplayIdentityError::LengthOutOfBounds { .. }) => {
+            "string_too_long"
+        }
+        ("rng_domain_bytes", ReplayIdentityError::LengthOutOfBounds { .. }) => "rng_domain_length",
+        ("rng_domain_segments", ReplayIdentityError::InvalidRngDomainQname { .. }) => {
+            "rng_domain_segments"
+        }
+        (_, other) => panic!("unexpected replay text bound error: {other:?}"),
+    }
+}
+
+fn graph_text_error(name: &str, error: StableIdentityError) -> &'static str {
+    match (name, error) {
+        ("structural_type_bytes", StableIdentityError::InvalidString { .. }) => {
+            "invalid_structural_type"
+        }
+        (_, other) => panic!("unexpected graph text bound error: {other:?}"),
+    }
+}
+
+fn bsl_text_error(name: &str, error: IdentityCodecError) -> &'static str {
+    let IdentityCodecError::InvalidString { .. } = error else {
+        panic!("unexpected BSL text bound error: {error:?}");
+    };
+    match name {
+        "symbol_bytes" => "invalid_symbol",
+        "qname_bytes" | "qname_segments" => "invalid_qname",
+        "intrinsic_identity_bytes" => "invalid_intrinsic_identity",
+        "enum_type_bytes" => "invalid_enum_type",
+        "enum_member_bytes" => "invalid_enum_member",
+        "governance_utf8_bytes" => "governance_string_too_long",
+        _ => panic!("non-BSL text bound {name}"),
     }
 }
 

@@ -405,6 +405,26 @@ def test_vector_loader_refuses_unbounded_or_malformed_jsonl(
         load_contract(schema)
 
 
+def test_vector_loader_executes_governed_maximum_and_plus_one_inputs(tmp_path: Path) -> None:
+    row = json.dumps({"id": "x", "kind": "x", "data": {}}, separators=(",", ":"))
+    rows = tmp_path / "row-bound.jsonl"
+    rows.write_text("\n".join([row] * 256))
+
+    assert len(load_vectors(rows, maximum_rows=256, maximum_line_bytes=262_144)) == 256
+    rows.write_text("\n".join([row] * 257))
+    with pytest.raises(ContractRefusal, match="too_many_rows"):
+        load_vectors(rows, maximum_rows=256, maximum_line_bytes=262_144)
+
+    prefix = '{"id":"'
+    suffix = '","kind":"x","data":{}}'
+    line = tmp_path / "line-bound.jsonl"
+    line.write_text(prefix + ("x" * (262_144 - len(prefix) - len(suffix))) + suffix)
+    assert len(load_vectors(line, maximum_rows=256, maximum_line_bytes=262_144)) == 1
+    line.write_text(prefix + ("x" * (262_145 - len(prefix) - len(suffix))) + suffix)
+    with pytest.raises(ContractRefusal, match="invalid_line_length"):
+        load_vectors(line, maximum_rows=256, maximum_line_bytes=262_144)
+
+
 def test_schema_cannot_widen_vector_loader_bounds(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -492,11 +512,54 @@ def test_resolver_name_contract_refuses_duplicate_authored_names() -> None:
     }
     assert refusals["resolver-duplicate-node-name-refusal"] == {
         "operation": "seal_stable_resolver",
-        "fixture": "duplicate_node_names",
+        "manifest": {
+            "scenario": "s",
+            "nodes": [
+                {"local_name": "same", "node_type": "n"},
+                {"local_name": "same", "node_type": "n"},
+            ],
+            "hyperedges": [],
+        },
         "expected_code": "duplicate_node_name",
     }
     assert refusals["resolver-duplicate-hyperedge-name-refusal"] == {
         "operation": "seal_stable_resolver",
-        "fixture": "duplicate_hyperedge_names",
+        "manifest": {
+            "scenario": "s",
+            "nodes": [
+                {"local_name": "first", "node_type": "n"},
+                {"local_name": "second", "node_type": "n"},
+            ],
+            "hyperedges": [
+                {
+                    "local_name": "same",
+                    "hyperedge_type": "h",
+                    "member_node_indices": [0],
+                },
+                {
+                    "local_name": "same",
+                    "hyperedge_type": "h",
+                    "member_node_indices": [1],
+                },
+            ],
+        },
         "expected_code": "duplicate_hyperedge_name",
     }
+
+
+@pytest.mark.parametrize(
+    ("row_id", "section"),
+    [
+        ("resolver-duplicate-node-name-refusal", "nodes"),
+        ("resolver-duplicate-hyperedge-name-refusal", "hyperedges"),
+    ],
+)
+def test_resolver_duplicate_refusals_execute_semantic_manifest(row_id: str, section: str) -> None:
+    contract = load_contract(SCHEMA)
+    vectors = load_vectors(VECTORS, maximum_rows=256, maximum_line_bytes=262_144)
+    refusal = next(row for row in vectors if row["id"] == row_id)
+    refusal["data"]["manifest"][section][1]["local_name"] = "unique"
+
+    errors = verify_all(contract, vectors)
+
+    assert any(row_id in error and "missing_refusal" in error for error in errors)

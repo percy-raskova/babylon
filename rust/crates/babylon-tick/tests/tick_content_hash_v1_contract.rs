@@ -104,15 +104,66 @@ impl<'a> Cursor<'a> {
     }
 }
 
-fn rows() -> Vec<VectorRow> {
-    let lines: Vec<&str> = VECTORS.lines().take(MAX_ROWS + 1).collect();
-    assert!(lines.len() <= MAX_ROWS, "bounded vector row count");
-    let mut rows = Vec::with_capacity(lines.len());
-    for line in lines.iter().take(MAX_ROWS) {
-        assert!(!line.is_empty() && line.len() <= MAX_LINE_BYTES);
-        rows.push(serde_json::from_str(line).expect("closed vector row"));
+fn parse_vector_rows(input: &str) -> Result<Vec<VectorRow>, &'static str> {
+    let input = input.strip_suffix('\n').unwrap_or(input);
+    let mut rows = Vec::with_capacity(MAX_ROWS);
+    for (index, line) in input.split('\n').take(MAX_ROWS + 1).enumerate() {
+        if index == MAX_ROWS {
+            return Err("too_many_rows");
+        }
+        let content = line.strip_suffix('\r').unwrap_or(line);
+        if content.is_empty() || content.len() > MAX_LINE_BYTES {
+            return Err("invalid_line_length");
+        }
+        rows.push(serde_json::from_str(content).map_err(|_| "invalid_json")?);
     }
-    rows
+    Ok(rows)
+}
+
+fn rows() -> Vec<VectorRow> {
+    parse_vector_rows(VECTORS).expect("closed bounded vector rows")
+}
+
+fn valid_vector_line(length: usize) -> String {
+    let prefix = r#"{"id":""#;
+    let suffix = r#"","kind":"x","data":{}}"#;
+    assert!(length >= prefix.len() + suffix.len());
+    assert!(length <= MAX_LINE_BYTES + 1);
+    format!(
+        "{prefix}{}{suffix}",
+        "x".repeat(length - prefix.len() - suffix.len())
+    )
+}
+
+#[test]
+fn vector_loader_executes_governed_maximum_and_plus_one_inputs() {
+    let row = r#"{"id":"x","kind":"x","data":{}}"#;
+    let maximum_rows = std::iter::repeat_n(row, MAX_ROWS)
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert_eq!(
+        parse_vector_rows(&maximum_rows)
+            .expect("governed row maximum")
+            .len(),
+        MAX_ROWS
+    );
+    let oversized_rows = std::iter::repeat_n(row, MAX_ROWS + 1)
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(matches!(
+        parse_vector_rows(&oversized_rows),
+        Err("too_many_rows")
+    ));
+    assert_eq!(
+        parse_vector_rows(&valid_vector_line(MAX_LINE_BYTES))
+            .expect("governed line maximum")
+            .len(),
+        1
+    );
+    assert!(matches!(
+        parse_vector_rows(&valid_vector_line(MAX_LINE_BYTES + 1)),
+        Err("invalid_line_length")
+    ));
 }
 
 fn row<'a>(rows: &'a [VectorRow], kind: &str) -> &'a VectorRow {

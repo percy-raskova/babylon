@@ -6,10 +6,11 @@ from __future__ import annotations
 import argparse
 import copy
 import hashlib
+import io
 import json
 import struct
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 import yaml
 
@@ -119,31 +120,46 @@ def load_contract(path: Path) -> dict[str, Any]:
     return value
 
 
+def _load_vector_stream(
+    stream: BinaryIO, *, maximum_rows: int, maximum_line_bytes: int
+) -> list[dict[str, Any]]:
+    if (
+        maximum_rows < 1
+        or maximum_rows > MAX_VECTOR_ROWS
+        or maximum_line_bytes < 2
+        or maximum_line_bytes > COMPILED_BOUNDS["vector_line_bytes"]
+    ):
+        raise ContractRefusal("invalid_loader_bound", "bounds exceed compiled ceilings")
+    rows: list[dict[str, Any]] = []
+    for index in range(MAX_VECTOR_ROWS + 1):
+        line = stream.readline(maximum_line_bytes + 2)
+        if not line:
+            break
+        if index == maximum_rows:
+            raise ContractRefusal("too_many_rows", str(index + 1))
+        content = line[:-1] if line.endswith(b"\n") else line
+        if content.endswith(b"\r"):
+            content = content[:-1]
+        if not content or len(content) > maximum_line_bytes:
+            raise ContractRefusal("invalid_line_length", str(index + 1))
+        try:
+            value = json.loads(content)
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ContractRefusal("invalid_json", str(index + 1)) from error
+        if not isinstance(value, dict):
+            raise ContractRefusal("row_shape", str(index + 1))
+        rows.append(value)
+    return rows
+
+
 def load_vectors(path: Path, *, maximum_rows: int, maximum_line_bytes: int) -> list[dict[str, Any]]:
     """Load bounded JSONL without accepting blank or non-object rows."""
-    if maximum_rows < 1 or maximum_line_bytes < 2:
-        raise ContractRefusal("invalid_loader_bound", "bounds must be positive")
-    rows: list[dict[str, Any]] = []
     with path.open("rb") as stream:
-        for index in range(maximum_rows + 1):
-            line = stream.readline(maximum_line_bytes + 2)
-            if not line:
-                break
-            if index == maximum_rows:
-                raise ContractRefusal("too_many_rows", str(index + 1))
-            content = line[:-1] if line.endswith(b"\n") else line
-            if content.endswith(b"\r"):
-                content = content[:-1]
-            if not content or len(content) > maximum_line_bytes:
-                raise ContractRefusal("invalid_line_length", str(index + 1))
-            try:
-                value = json.loads(content)
-            except (UnicodeDecodeError, json.JSONDecodeError) as error:
-                raise ContractRefusal("invalid_json", str(index + 1)) from error
-            if not isinstance(value, dict):
-                raise ContractRefusal("row_shape", str(index + 1))
-            rows.append(value)
-    return rows
+        return _load_vector_stream(
+            stream,
+            maximum_rows=maximum_rows,
+            maximum_line_bytes=maximum_line_bytes,
+        )
 
 
 def _rotl32(value: int, count: int) -> int:
@@ -1427,6 +1443,33 @@ def _execute_text_bound_recipe(name: str, recipe: dict[str, Any], actual: int) -
     return True
 
 
+def _vector_line(length: int) -> bytes:
+    prefix = b'{"id":"'
+    suffix = b'","kind":"x","data":{}}'
+    if length < len(prefix) + len(suffix):
+        raise ContractRefusal("bound_recipe_shape", "line_bytes")
+    return prefix + (b"x" * (length - len(prefix) - len(suffix))) + suffix
+
+
+def _execute_vector_loader_bound_recipe(name: str, recipe: dict[str, Any]) -> bool:
+    if name == "vector_rows":
+        row = _vector_line(32)
+        count = _recipe_count(recipe, "row_count")
+        if count > MAX_VECTOR_ROWS + 1:
+            raise ContractRefusal("bound_recipe_shape", "row_count")
+        payload = b"\n".join(row for index in range(MAX_VECTOR_ROWS + 1) if index < count)
+    elif name == "vector_line_bytes":
+        payload = _vector_line(_recipe_count(recipe, "line_bytes"))
+    else:
+        return False
+    _load_vector_stream(
+        io.BytesIO(payload),
+        maximum_rows=COMPILED_BOUNDS["vector_rows"],
+        maximum_line_bytes=COMPILED_BOUNDS["vector_line_bytes"],
+    )
+    return True
+
+
 def _validate_graph_fixture(recipe: dict[str, Any]) -> None:
     fixture = _recipe_text(recipe, "fixture")
     expected_fields = {
@@ -1653,6 +1696,8 @@ def _execute_bound_recipe(name: str, recipe: dict[str, Any]) -> None:
     }.get(name, COMPILED_BOUNDS.get(name))
     if maximum is None:
         raise ContractRefusal("unknown_bound_recipe", name)
+    if _execute_vector_loader_bound_recipe(name, recipe):
+        return
     if _execute_text_bound_recipe(name, recipe, actual):
         return
     if _execute_graph_bound_recipe(name, recipe, maximum):
@@ -1719,13 +1764,13 @@ def _verify_refusal(
         _verify_bound_case(contract, row)
         return
     if data["operation"] == "seal_stable_resolver":
-        expected = {
-            "duplicate_node_names": "duplicate_node_name",
-            "duplicate_hyperedge_names": "duplicate_hyperedge_name",
-        }.get(data.get("fixture"))
-        if expected == data.get("expected_code"):
+        try:
+            _resolver_manifest(data["manifest"])
+        except ContractRefusal as error:
+            if error.code != data["expected_code"]:
+                raise ContractRefusal("wrong_refusal", error.code) from error
             return
-        raise ContractRefusal("wrong_refusal", str(data.get("fixture")))
+        raise ContractRefusal("missing_refusal", row["id"])
     if data["operation"] == "outer_action_link":
         outer = copy.deepcopy(rows_by_id[data["outer_id"]]["data"])
         outer["actions_id"] = data["actions_id"]

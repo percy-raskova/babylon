@@ -1075,26 +1075,56 @@ fn verify_refusal(row: &VectorRow, rows: &[VectorRow]) {
 }
 
 fn verify_resolver_refusal(data: &Value) {
+    let manifest = &data["manifest"];
     let mut graph = MemoryGraph::new();
-    let first = graph.add_node("n").expect("first duplicate-name node");
-    let second = graph.add_node("n").expect("second duplicate-name node");
-    let mut node_names = HashMap::from([(first, "same".to_owned()), (second, "same".to_owned())]);
+    let nodes = manifest["nodes"]
+        .as_array()
+        .expect("resolver refusal nodes");
+    assert!(nodes.len() <= 65_536, "bounded resolver refusal nodes");
+    let mut handles = Vec::with_capacity(nodes.len());
+    let mut node_names = HashMap::with_capacity(nodes.len());
+    for node in nodes.iter().take(65_536) {
+        let handle = graph
+            .add_node(text(node, "node_type"))
+            .expect("resolver refusal node");
+        handles.push(handle);
+        node_names.insert(handle, text(node, "local_name").to_owned());
+    }
     let mut hyperedge_names = HashMap::new();
-    let result = if text(data, "fixture") == "duplicate_hyperedge_names" {
-        node_names.insert(first, "first".to_owned());
-        node_names.insert(second, "second".to_owned());
-        let left = graph
-            .add_hyperedge("h", &[first])
-            .expect("first duplicate-name hyperedge");
-        let right = graph
-            .add_hyperedge("h", &[second])
-            .expect("second duplicate-name hyperedge");
-        hyperedge_names.insert(left, "same".to_owned());
-        hyperedge_names.insert(right, "same".to_owned());
-        StableElementResolverV1::seal(&graph, "s", &node_names, &hyperedge_names)
-    } else {
-        StableElementResolverV1::seal(&graph, "s", &node_names, &hyperedge_names)
-    };
+    let hyperedges = manifest["hyperedges"]
+        .as_array()
+        .expect("resolver refusal hyperedges");
+    assert!(
+        hyperedges.len() <= 65_536,
+        "bounded resolver refusal hyperedges"
+    );
+    for hyperedge in hyperedges.iter().take(65_536) {
+        let member_indices = hyperedge["member_node_indices"]
+            .as_array()
+            .expect("resolver refusal member indices");
+        assert!(
+            member_indices.len() <= 65_534,
+            "bounded resolver refusal members"
+        );
+        let members: Vec<_> = member_indices
+            .iter()
+            .take(65_534)
+            .map(|index| {
+                handles[usize::try_from(index.as_u64().expect("resolver refusal member index"))
+                    .expect("bounded member index")]
+            })
+            .collect();
+        let handle = graph
+            .add_hyperedge(text(hyperedge, "hyperedge_type"), &members)
+            .expect("resolver refusal hyperedge");
+        hyperedge_names.insert(handle, text(hyperedge, "local_name").to_owned());
+    }
+    let result = StableElementResolverV1::seal(
+        &graph,
+        text(manifest, "scenario"),
+        &node_names,
+        &hyperedge_names,
+    );
     let actual = match result {
         Err(StableIdentityError::DuplicateNodeName { .. }) => "duplicate_node_name",
         Err(StableIdentityError::DuplicateHyperedgeName { .. }) => "duplicate_hyperedge_name",
@@ -1167,14 +1197,6 @@ fn verify_bound_case(data: &Value) {
     assert_eq!(measure_bound_recipe(name, refused), maximum + 1);
     assert_eq!(execute_bound_recipe(name, accepted), Ok(()));
     assert_eq!(execute_bound_recipe(name, refused), Err(expected_code));
-}
-
-const fn check_bound(actual: u64, maximum: u64, code: &'static str) -> Result<(), &'static str> {
-    if actual <= maximum {
-        Ok(())
-    } else {
-        Err(code)
-    }
 }
 
 fn recipe_count(recipe: &Value, field: &str) -> u64 {
@@ -1359,6 +1381,9 @@ fn measure_tick_bytes(recipe: &Value) -> u64 {
 }
 
 fn execute_bound_recipe(name: &str, recipe: &Value) -> Result<(), &'static str> {
+    if matches!(name, "vector_rows" | "vector_line_bytes") {
+        return execute_vector_loader_bound_recipe(name, recipe);
+    }
     if matches!(
         name,
         "replay_session_bytes"
@@ -1373,7 +1398,7 @@ fn execute_bound_recipe(name: &str, recipe: &Value) -> Result<(), &'static str> 
             | "rng_domain_bytes"
             | "rng_domain_segments"
     ) {
-        return execute_text_bound_recipe(name, recipe);
+        return bound_operations::execute(name, recipe);
     }
     if name.starts_with("resolver_")
         || name.starts_with("stable_graph_")
@@ -1389,51 +1414,30 @@ fn execute_bound_recipe(name: &str, recipe: &Value) -> Result<(), &'static str> 
     {
         return bound_operations::execute(name, recipe);
     }
-    let (_, maximum, code) = bound_contract(name);
-    check_bound(measure_bound_recipe(name, recipe), maximum, code)
+    panic!("unexecuted bound operation {name}")
 }
 
-fn execute_text_bound_recipe(name: &str, recipe: &Value) -> Result<(), &'static str> {
-    let actual = measure_bound_recipe(name, recipe);
-    match name {
-        "replay_session_bytes" => check_bound(actual, 256, "string_too_long"),
-        "rng_domain_bytes" | "rng_domain_segments" => {
-            let segments = recipe_counts(recipe, "segment_bytes", 5);
-            check_bound(
-                segments.iter().take(5).sum::<u64>() + segments.len().saturating_sub(1) as u64,
-                128,
-                "rng_domain_length",
-            )?;
-            if !(2..=4).contains(&segments.len()) {
-                return Err("rng_domain_segments");
-            }
-            check_bound(
-                *segments.iter().take(5).max().unwrap_or(&0),
-                64,
-                "rng_domain_length",
-            )
+fn execute_vector_loader_bound_recipe(name: &str, recipe: &Value) -> Result<(), &'static str> {
+    let input = match name {
+        "vector_rows" => {
+            let count = usize::try_from(recipe_count(recipe, "row_count"))
+                .expect("bounded vector row recipe");
+            assert!(count <= MAX_ROWS + 1, "bounded vector row recipe");
+            (0..=MAX_ROWS)
+                .take(count)
+                .map(|_| r#"{"id":"x","kind":"x","data":{}}"#)
+                .collect::<Vec<_>>()
+                .join("\n")
         }
-        "qname_bytes" | "qname_segments" => {
-            let segments = recipe_counts(recipe, "segment_bytes", 5);
-            check_bound(
-                measure_bound_recipe("qname_bytes", recipe),
-                128,
-                "invalid_qname",
-            )?;
-            check_bound(segments.len() as u64, 4, "invalid_qname")?;
-            check_bound(
-                *segments.iter().take(5).max().unwrap_or(&0),
-                64,
-                "invalid_qname",
-            )
-        }
-        "symbol_bytes" => check_bound(actual, 64, "invalid_symbol"),
-        "structural_type_bytes" => check_bound(actual, 128, "invalid_structural_type"),
-        "intrinsic_identity_bytes" => check_bound(actual, 96, "invalid_intrinsic_identity"),
-        "enum_type_bytes" => check_bound(actual, 64, "invalid_enum_type"),
-        "enum_member_bytes" => check_bound(actual, 64, "invalid_enum_member"),
-        "governance_utf8_bytes" => check_bound(actual, 4_194_304, "governance_string_too_long"),
-        _ => panic!("non-text bound {name}"),
+        "vector_line_bytes" => super::valid_vector_line(
+            usize::try_from(recipe_count(recipe, "line_bytes"))
+                .expect("bounded vector line recipe"),
+        ),
+        _ => panic!("non-loader bound {name}"),
+    };
+    match super::parse_vector_rows(&input) {
+        Ok(_) => Ok(()),
+        Err(code) => Err(code),
     }
 }
 

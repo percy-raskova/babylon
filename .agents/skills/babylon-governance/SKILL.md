@@ -13,11 +13,13 @@ Start with computation, not the corpus.
 ## ADR lookup
 
 1. Run `mise run adr -- search "<topic>"` or `mise run adr -- show ADRNNN`.
-2. Treat structured `status`, index metadata, and diagnostics as recorded facts,
+2. Search returns newest ADR matches first. If `results_truncated` is true,
+   use `--offset <next_offset>` only when the first page lacks the relevant ADR.
+3. Treat structured `status`, index metadata, and diagnostics as recorded facts,
    not proof of live behavior.
-3. Use the source path and selector from `show`. Read only that file and the
+4. Use the source path and selector from `show`. Read only that file and the
    relevant field when exact rationale is needed.
-4. Verify a live-behavior claim against architecture, source, executable tests,
+5. Verify a live-behavior claim against architecture, source, executable tests,
    and Linear. Never read the full ADR index for lookup.
 
 ## Game-law assessment

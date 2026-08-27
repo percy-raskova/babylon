@@ -37,16 +37,27 @@ MAX_SUPERSESSION_PER_ADR: Final = 8
 MAX_SHOW_EDGES: Final = 8
 MAX_DIAGNOSTICS_PER_ADR: Final = 8
 MAX_SEARCH_RESULTS: Final = 5
+MAX_SEARCH_OFFSET: Final = MAX_ADR_FILES
 MAX_QUERY_CHARS: Final = 200
-MAX_SCOPE_CHARS: Final = 320
-MAX_TITLE_CHARS: Final = 320
-MAX_SEARCH_TITLE_CHARS: Final = 180
+MAX_SCOPE_JSON_BYTES: Final = 320
+MAX_TITLE_JSON_BYTES: Final = 320
+MAX_SEARCH_TITLE_JSON_BYTES: Final = 180
+MAX_STATUS_JSON_BYTES: Final = 96
+MAX_DATE_JSON_BYTES: Final = 96
+MAX_SELECTOR_JSON_BYTES: Final = 320
+MAX_QUERY_JSON_BYTES: Final = 240
+MAX_TRUNCATION_STEPS: Final = MAX_TITLE_JSON_BYTES
+MAX_CLI_OUTPUT_BYTES: Final = 4096
+MAX_QUERYABLE_ADR_IDS: Final = 1000
 
 DEFAULT_REPO_ROOT: Final = Path(__file__).resolve().parents[1]
 DEFAULT_CACHE: Final = Path(".cache/babylon/adr-catalog.sqlite3")
 
 _ADR_FILE_RE = re.compile(r"^ADR(?P<number>\d{3})_[A-Za-z0-9_]+\.yaml$")
-_ADR_ID_RE = re.compile(r"ADR[-_ ]?(?P<number>\d{1,3})", re.IGNORECASE)
+_ADR_ID_RE = re.compile(r"ADR[-_ ]?(?P<number>\d{1,3})(?!\d)", re.IGNORECASE)
+_ADR_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9_])ADR[-_ ]?[A-Za-z0-9_]+", re.IGNORECASE)
+_DECLARED_ID_RE = re.compile(r"ADR[-_ ]?(?P<number>\d{1,3})(?!\d)", re.IGNORECASE)
+_WRAPPED_ID_RE = re.compile(r"ADR[-_ ]?(?P<number>\d{1,3})(?!\d)(?:_[A-Za-z0-9_]+)?", re.IGNORECASE)
 _QUERY_ID_RE = re.compile(r"(?:ADR[-_ ]?)?(?P<number>\d{1,3})", re.IGNORECASE)
 _SUPERSESSION_KEYS: Final = frozenset({"supersedes", "superseded_by"})
 
@@ -218,15 +229,33 @@ def _scalar(value: object, field: str, source_path: str) -> str | None:
     raise SourceParseError(f"{source_path}: {field} must be scalar")
 
 
+def _json_string_bytes(value: str) -> int:
+    return len(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+
+
+def _encoded_payload(payload: object) -> bytes:
+    output = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return (output + "\n").encode()
+
+
+def _bounded_output_text(value: str, field: str, source_path: str, json_byte_limit: int) -> str:
+    if _json_string_bytes(value) > json_byte_limit:
+        raise SourceParseError(f"{source_path}: {field} is too long")
+    return value
+
+
 def _status(value: object, field: str, source_path: str) -> str | None:
     text = _scalar(value, field, source_path)
-    return text.casefold() if text is not None else None
+    if text is None:
+        return None
+    return _bounded_output_text(text.casefold(), field, source_path, MAX_STATUS_JSON_BYTES)
 
 
-def _id_from_text(value: str, source_path: str, field: str) -> str:
-    match = _ADR_ID_RE.search(value)
+def _structured_id(value: str, source_path: str, field: str, *, allow_suffix: bool = False) -> str:
+    pattern = _WRAPPED_ID_RE if allow_suffix else _DECLARED_ID_RE
+    match = pattern.fullmatch(value)
     if match is None:
-        raise SourceParseError(f"{source_path}: {field} has no ADR number")
+        raise SourceParseError(f"{source_path}: {field} is not a complete ADR identifier")
     return f"ADR{int(match.group('number')):03d}"
 
 
@@ -243,7 +272,7 @@ def _index_rows(snapshot: SourceSnapshot) -> dict[str, IndexRow]:
     rows: dict[str, IndexRow] = {}
     for raw_key, raw_value in items[:MAX_INDEX_ROWS]:
         key = str(raw_key)
-        adr_id = _id_from_text(key, "ai/decisions/index.yaml", key)
+        adr_id = _structured_id(key, "ai/decisions/index.yaml", key, allow_suffix=True)
         if adr_id in rows or not isinstance(raw_value, Mapping):
             raise SourceParseError(f"ai/decisions/index.yaml: malformed duplicate {key}")
         rows[adr_id] = IndexRow(
@@ -289,7 +318,12 @@ def _validate_identity(
         if value is not None:
             declarations.append(("meta.id", value))
     for field, value in declarations[:3]:
-        declared = _id_from_text(value, source.relative_path, field)
+        declared = _structured_id(
+            value,
+            source.relative_path,
+            field,
+            allow_suffix=True,
+        )
         if declared != source.adr_id:
             raise SourceParseError(
                 f"{source.relative_path}: {field} declares {declared}, expected {source.adr_id}"
@@ -312,9 +346,14 @@ def _relation_scopes(value: object, source_path: str, field: str) -> list[str]:
         text = _scalar(item, field, source_path)
         if text is not None:
             collapsed = " ".join(text.split())
-            if len(collapsed) > MAX_SCOPE_CHARS:
-                raise SourceParseError(f"{source_path}: {field} scope is too long")
-            scopes.append(collapsed)
+            scopes.append(
+                _bounded_output_text(
+                    collapsed,
+                    f"{field} scope",
+                    source_path,
+                    MAX_SCOPE_JSON_BYTES,
+                )
+            )
     return scopes
 
 
@@ -338,16 +377,27 @@ def _supersession(record: Mapping[object, object], source: SourceFile) -> tuple[
                 key = str(raw_key)
                 if key in _SUPERSESSION_KEYS:
                     for scope in _relation_scopes(value, source.relative_path, key):
-                        matches = list(
+                        tokens = list(
                             itertools.islice(
-                                _ADR_ID_RE.finditer(scope), MAX_SUPERSESSION_PER_ADR + 1
+                                _ADR_TOKEN_RE.finditer(scope),
+                                MAX_SUPERSESSION_PER_ADR + 1,
                             )
                         )
-                        if len(matches) > MAX_SUPERSESSION_PER_ADR:
+                        if not tokens:
+                            raise SourceParseError(
+                                f"{source.relative_path}: {key} has no valid supersession target"
+                            )
+                        if len(tokens) > MAX_SUPERSESSION_PER_ADR:
                             raise SourceParseError(
                                 f"{source.relative_path}: too many supersession targets"
                             )
-                        for match in matches[:MAX_SUPERSESSION_PER_ADR]:
+                        for token in tokens[:MAX_SUPERSESSION_PER_ADR]:
+                            match = _WRAPPED_ID_RE.fullmatch(token.group())
+                            if match is None:
+                                raise SourceParseError(
+                                    f"{source.relative_path}: invalid supersession target "
+                                    f"{token.group()!r}"
+                                )
                             target = f"ADR{int(match.group('number')):03d}"
                             identity = (key, target, scope)
                             if identity not in seen_edges:
@@ -385,13 +435,22 @@ def _parse_record(source: SourceFile, index: IndexRow | None) -> ParsedRecord:
     else:
         title = None
         title_source = "missing"
+    record_date = _scalar(record.get("date"), "date", source.relative_path)
+    if record_date is not None:
+        record_date = _bounded_output_text(
+            record_date, "date", source.relative_path, MAX_DATE_JSON_BYTES
+        )
+    if root_key is not None:
+        root_key = _bounded_output_text(
+            root_key, "root key", source.relative_path, MAX_SELECTOR_JSON_BYTES
+        )
     return ParsedRecord(
         source=source,
         root_key=root_key,
         status=status,
         title=title,
         title_source=title_source,
-        record_date=_scalar(record.get("date"), "date", source.relative_path),
+        record_date=record_date,
         index_status=index.status if index is not None else None,
         supersession=_supersession(record, source),
     )
@@ -512,6 +571,7 @@ def _write_database(
     diagnostics: tuple[Diagnostic, ...],
 ) -> None:
     connection = sqlite3.connect(path)
+    connection.row_factory = sqlite3.Row
     try:
         connection.execute("PRAGMA journal_mode = DELETE")
         connection.executescript(_SCHEMA_SQL)
@@ -531,6 +591,7 @@ def _write_database(
             )
         connection.commit()
         _metadata(connection)
+        _validate_show_contract(connection)
     finally:
         connection.close()
 
@@ -596,7 +657,16 @@ def build_cache(
 def _open_read_only(cache_path: Path) -> sqlite3.Connection:
     connection = sqlite3.connect(f"{cache_path.resolve().as_uri()}?mode=ro", uri=True)
     connection.row_factory = sqlite3.Row
+    connection.create_function("unicode_casefold", 1, _sqlite_casefold, deterministic=True)
     return connection
+
+
+def _sqlite_casefold(value: object) -> str:
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise TypeError("unicode_casefold accepts SQLite text")
+    return value.casefold()
 
 
 def _query_id(value: str) -> str:
@@ -609,44 +679,47 @@ def _query_id(value: str) -> str:
     return f"ADR{number:03d}"
 
 
-def _truncate(value: str | None, limit: int) -> tuple[str | None, bool]:
-    if value is None or len(value) <= limit:
+def _truncate(value: str | None, json_byte_limit: int) -> tuple[str | None, bool]:
+    if value is None or _json_string_bytes(value) <= json_byte_limit:
         return value, False
-    return value[: limit - 1] + "…", True
+    max_chars = min(len(value), MAX_TRUNCATION_STEPS)
+    for step in range(MAX_TRUNCATION_STEPS + 1):
+        if step > max_chars:
+            break
+        candidate = value[: max_chars - step] + "…"
+        if _json_string_bytes(candidate) <= json_byte_limit:
+            return candidate, True
+    raise CacheIntegrityError("string cannot fit the bounded JSON output")
 
 
-def show(cache_path: Path, adr_id: str) -> dict[str, object]:
-    normalized = _query_id(adr_id)
-    connection = _open_read_only(cache_path)
-    try:
-        metadata = _metadata(connection)
-        row = connection.execute(
-            "SELECT id,status,index_status,title,title_source,record_date,path,root_key,source_sha256 "
-            "FROM adr WHERE id=?",
-            (normalized,),
-        ).fetchone()
-        edge_total = int(
-            connection.execute(
-                "SELECT COUNT(*) FROM supersession WHERE source_id=? OR target_id=?",
-                (normalized, normalized),
-            ).fetchone()[0]
-        )
-        edge_rows = connection.execute(
-            "SELECT source_id,kind,target_id,scope FROM supersession "
-            "WHERE source_id=? OR target_id=? ORDER BY source_id,ordinal LIMIT ?",
-            (normalized, normalized, MAX_SHOW_EDGES),
-        ).fetchall()
-        diagnostic_rows = connection.execute(
-            "SELECT code,detail FROM diagnostic WHERE adr_id=? ORDER BY ordinal LIMIT ?",
-            (normalized, MAX_DIAGNOSTICS_PER_ADR + 1),
-        ).fetchall()
-    finally:
-        connection.close()
+def _show_payload(
+    connection: sqlite3.Connection, normalized: str, source_digest: str
+) -> dict[str, object]:
+    row = connection.execute(
+        "SELECT id,status,index_status,title,title_source,record_date,path,root_key,source_sha256 "
+        "FROM adr WHERE id=?",
+        (normalized,),
+    ).fetchone()
+    edge_total = int(
+        connection.execute(
+            "SELECT COUNT(*) FROM supersession WHERE source_id=? OR target_id=?",
+            (normalized, normalized),
+        ).fetchone()[0]
+    )
+    edge_rows = connection.execute(
+        "SELECT source_id,kind,target_id,scope FROM supersession "
+        "WHERE source_id=? OR target_id=? ORDER BY source_id,ordinal LIMIT ?",
+        (normalized, normalized, MAX_SHOW_EDGES),
+    ).fetchall()
+    diagnostic_rows = connection.execute(
+        "SELECT code,detail FROM diagnostic WHERE adr_id=? ORDER BY ordinal LIMIT ?",
+        (normalized, MAX_DIAGNOSTICS_PER_ADR + 1),
+    ).fetchall()
     edges = edge_rows[:MAX_SHOW_EDGES]
     diagnostics = diagnostic_rows[:MAX_DIAGNOSTICS_PER_ADR]
     record = None
     if row is not None:
-        title, title_truncated = _truncate(row["title"], MAX_TITLE_CHARS)
+        title, title_truncated = _truncate(row["title"], MAX_TITLE_JSON_BYTES)
         record = {
             "id": row["id"],
             "status": row["status"],
@@ -660,7 +733,7 @@ def show(cache_path: Path, adr_id: str) -> dict[str, object]:
             "selector": row["root_key"] or "$",
         }
     return {
-        "source_digest": metadata["source_digest"],
+        "source_digest": source_digest,
         "record": record,
         "supersession": [dict(item) for item in edges],
         "supersession_total": edge_total,
@@ -670,35 +743,87 @@ def show(cache_path: Path, adr_id: str) -> dict[str, object]:
     }
 
 
-def search(cache_path: Path, query: str, limit: int = MAX_SEARCH_RESULTS) -> dict[str, object]:
-    term = query.strip()
-    if not term or len(term) > MAX_QUERY_CHARS:
-        raise QueryError(f"search must contain 1..{MAX_QUERY_CHARS} characters")
-    if not 1 <= limit <= MAX_SEARCH_RESULTS:
-        raise QueryError(f"limit must be 1..{MAX_SEARCH_RESULTS}")
+def _validate_show_contract(connection: sqlite3.Connection) -> None:
+    metadata = _metadata(connection)
+    rows = connection.execute(
+        "SELECT id FROM (SELECT id FROM adr UNION SELECT target_id AS id FROM supersession "
+        "UNION SELECT adr_id AS id FROM diagnostic) ORDER BY id LIMIT ?",
+        (MAX_QUERYABLE_ADR_IDS + 1,),
+    ).fetchall()
+    if len(rows) > MAX_QUERYABLE_ADR_IDS:
+        raise CacheIntegrityError("catalog exceeds the queryable ADR identifier space")
+    for row in rows[:MAX_QUERYABLE_ADR_IDS]:
+        adr_id = str(row["id"])
+        payload = _show_payload(connection, adr_id, metadata["source_digest"])
+        if len(_encoded_payload(payload)) <= MAX_CLI_OUTPUT_BYTES:
+            continue
+        record = payload["record"]
+        source = record["source_path"] if isinstance(record, Mapping) else adr_id
+        raise SourceParseError(f"{source}: show output exceeds {MAX_CLI_OUTPUT_BYTES} bytes")
+
+
+def show(cache_path: Path, adr_id: str) -> dict[str, object]:
+    normalized = _query_id(adr_id)
     connection = _open_read_only(cache_path)
     try:
         metadata = _metadata(connection)
+        return _show_payload(connection, normalized, metadata["source_digest"])
+    finally:
+        connection.close()
+
+
+def search(
+    cache_path: Path,
+    query: str,
+    limit: int = MAX_SEARCH_RESULTS,
+    offset: int = 0,
+) -> dict[str, object]:
+    term = query.strip()
+    if not term or len(term) > MAX_QUERY_CHARS:
+        raise QueryError(f"search must contain 1..{MAX_QUERY_CHARS} characters")
+    if _json_string_bytes(term) > MAX_QUERY_JSON_BYTES:
+        raise QueryError(f"search JSON string must fit {MAX_QUERY_JSON_BYTES} bytes")
+    if not 1 <= limit <= MAX_SEARCH_RESULTS:
+        raise QueryError(f"limit must be 1..{MAX_SEARCH_RESULTS}")
+    if not 0 <= offset <= MAX_SEARCH_OFFSET:
+        raise QueryError(f"offset must be 0..{MAX_SEARCH_OFFSET}")
+    folded = term.casefold()
+    connection = _open_read_only(cache_path)
+    try:
+        metadata = _metadata(connection)
+        match_sql = (
+            "instr(unicode_casefold(COALESCE(title,'')),?)>0 OR instr(unicode_casefold(body),?)>0"
+        )
+        match_total = int(
+            connection.execute(
+                f"SELECT COUNT(*) FROM adr WHERE {match_sql}",  # noqa: S608
+                (folded, folded),
+            ).fetchone()[0]
+        )
         rows = connection.execute(
             "SELECT id,status,title,title_source,path,"
-            "CASE WHEN instr(lower(COALESCE(title,'')),lower(?))>0 THEN 'title' ELSE 'body' END "
-            "AS match_location FROM adr WHERE instr(lower(COALESCE(title,'')),lower(?))>0 "
-            "OR instr(lower(body),lower(?))>0 ORDER BY CASE match_location WHEN 'title' THEN 0 "
-            "ELSE 1 END,number LIMIT ?",
-            (term, term, term, limit),
+            "CASE WHEN instr(unicode_casefold(COALESCE(title,'')),?)>0 "
+            "THEN 'title' ELSE 'body' END AS match_location FROM adr WHERE "
+            f"{match_sql} ORDER BY number DESC, "  # noqa: S608
+            "CASE match_location WHEN 'title' THEN 0 ELSE 1 END LIMIT ? OFFSET ?",
+            (folded, folded, folded, limit, offset),
         ).fetchall()
     finally:
         connection.close()
     results: list[dict[str, object]] = []
     for row in rows[:MAX_SEARCH_RESULTS]:
         item = dict(row)
-        title, title_truncated = _truncate(item["title"], MAX_SEARCH_TITLE_CHARS)
+        title, title_truncated = _truncate(item["title"], MAX_SEARCH_TITLE_JSON_BYTES)
         item["title"] = title
         item["title_truncated"] = title_truncated
         results.append(item)
     return {
         "source_digest": metadata["source_digest"],
         "query": term,
+        "match_total": match_total,
+        "offset": offset,
+        "results_truncated": offset + len(results) < match_total,
+        "next_offset": offset + len(results) if offset + len(results) < match_total else None,
         "results": results,
     }
 
@@ -723,13 +848,13 @@ def _parser() -> argparse.ArgumentParser:
     finder = commands.add_parser("search", help="search titles and stored source bytes")
     finder.add_argument("query")
     finder.add_argument("--limit", type=int, default=MAX_SEARCH_RESULTS)
+    finder.add_argument("--offset", type=int, default=0)
     commands.add_parser("check", help="build and validate a temporary catalog")
     return parser
 
 
-def _emit(payload: object, byte_limit: int = 4096) -> None:
-    output = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    encoded = (output + "\n").encode()
+def _emit(payload: object, byte_limit: int = MAX_CLI_OUTPUT_BYTES) -> None:
+    encoded = _encoded_payload(payload)
     if len(encoded) > byte_limit:
         raise CacheIntegrityError(f"CLI output exceeds {byte_limit} bytes")
     sys.stdout.buffer.write(encoded)
@@ -755,7 +880,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.command == "show":
                 _emit(show(cache, args.adr_id))
             elif args.command == "search":
-                _emit(search(cache, args.query, args.limit))
+                _emit(search(cache, args.query, args.limit, args.offset))
             else:
                 raise QueryError(f"unsupported command: {args.command}")
     except (AdrCatalogError, OSError, sqlite3.Error) as error:

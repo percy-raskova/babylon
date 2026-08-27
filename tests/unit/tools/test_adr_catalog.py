@@ -14,7 +14,7 @@ sys.path.insert(0, str(TOOLS_DIR))
 
 import adr_catalog  # type: ignore[import-not-found]  # noqa: E402
 from adr_catalog import (  # type: ignore[import-not-found]  # noqa: E402
-    MAX_TITLE_CHARS,
+    MAX_TITLE_JSON_BYTES,
     DuplicateAdrError,
     SourceChangedError,
     SourceParseError,
@@ -137,6 +137,11 @@ def test_imports_current_record_shapes_without_promoting_comment_status(
             SourceParseError,
         ),
         (
+            "ai/decisions/ADR002_flat.yaml",
+            "id: ADR0020\nstatus: accepted\ntitle: Truncated identity\n",
+            SourceParseError,
+        ),
+        (
             "ai/decisions/ADR001_collision.yaml",
             "id: ADR001\nstatus: proposed\ntitle: Collision\n",
             DuplicateAdrError,
@@ -210,6 +215,21 @@ def test_nested_and_partial_supersession_is_queryable(tmp_path: Path) -> None:
     ]
 
 
+@pytest.mark.parametrize("target", ["ADR1000", "ADR002oops"])
+def test_malformed_supersession_identifier_fails_instead_of_truncating(
+    tmp_path: Path, target: str
+) -> None:
+    repo = _fixture_repo(tmp_path)
+    _write(
+        repo,
+        "ai/decisions/ADR001_wrapper.yaml",
+        f"ADR001_wrapper:\n  status: accepted\n  title: Wrapper decision\n  supersedes: {target}\n",
+    )
+
+    with pytest.raises(SourceParseError, match="supersession target"):
+        build_cache(repo, tmp_path / "adr.sqlite3")
+
+
 def test_literal_body_search_finds_nonstandard_decisions_without_returning_body(
     tmp_path: Path,
 ) -> None:
@@ -223,6 +243,183 @@ def test_literal_body_search_finds_nonstandard_decisions_without_returning_body(
     assert result["results"][0]["match_location"] == "body"
     assert "body" not in result["results"][0]
     assert search(cache, "%")["results"] == []
+
+
+def test_search_uses_unicode_casefolding(tmp_path: Path) -> None:
+    repo = _fixture_repo(tmp_path)
+    _write(
+        repo,
+        "ai/decisions/ADR002_flat.yaml",
+        "id: ADR002\n"
+        "status: accepted\n"
+        "title: Lukács decision\n"
+        "decision: Preserve the accented name.\n",
+    )
+    cache = tmp_path / "adr.sqlite3"
+    build_cache(repo, cache)
+
+    assert [item["id"] for item in search(cache, "LUKÁCS")["results"]] == ["ADR002"]
+
+
+def test_search_orders_newer_body_match_before_older_title_match(tmp_path: Path) -> None:
+    repo = _fixture_repo(tmp_path)
+    _write(
+        repo,
+        "ai/decisions/ADR001_wrapper.yaml",
+        "ADR001_wrapper:\n  status: accepted\n  title: Governance title match\n",
+    )
+    _write(
+        repo,
+        "ai/decisions/ADR003_alternate.yaml",
+        "ADR003:\n  status: proposed\n  title: Newer record\n  decision: Governance body match.\n",
+    )
+    cache = tmp_path / "adr.sqlite3"
+    build_cache(repo, cache)
+
+    assert [item["id"] for item in search(cache, "governance")["results"]] == [
+        "ADR003",
+        "ADR001",
+    ]
+
+
+def test_search_reports_and_pages_bounded_matches(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = _fixture_repo(tmp_path)
+    statuses = {
+        "ADR001_wrapper": "accepted",
+        "ADR002_flat": "proposed",
+        "ADR003_alternate": "proposed",
+        "ADR004_comments": "accepted",
+    }
+    for number in range(5, 11):
+        adr_id = f"ADR{number:03d}"
+        key = f"{adr_id}_merge"
+        statuses[key] = "accepted"
+        _write(
+            repo,
+            f"ai/decisions/{key}.yaml",
+            f"{key}:\n  status: accepted\n  title: Merge policy {number} {'🧱' * 500}\n",
+        )
+    _write_index(repo, statuses)
+    cache = tmp_path / "adr.sqlite3"
+    build_cache(repo, cache)
+
+    first = search(cache, "merge", limit=2, offset=0)
+    second = search(cache, "merge", limit=2, offset=2)
+
+    assert first["match_total"] == 6
+    assert first["results_truncated"] is True
+    assert first["next_offset"] == 2
+    assert [item["id"] for item in first["results"]] == ["ADR010", "ADR009"]
+    assert [item["id"] for item in second["results"]] == ["ADR008", "ADR007"]
+
+    assert (
+        main(
+            [
+                "--repo",
+                str(repo),
+                "--cache",
+                str(cache),
+                "search",
+                "merge",
+                "--limit",
+                "2",
+                "--offset",
+                "2",
+            ]
+        )
+        == 0
+    )
+    assert [item["id"] for item in json.loads(capsys.readouterr().out)["results"]] == [
+        "ADR008",
+        "ADR007",
+    ]
+
+    assert (
+        main(
+            [
+                "--repo",
+                str(repo),
+                "--cache",
+                str(cache),
+                "search",
+                "merge",
+                "--limit",
+                "5",
+            ]
+        )
+        == 0
+    )
+    assert len(capsys.readouterr().out.encode("utf-8")) <= 4096
+
+
+@pytest.mark.parametrize("location", ["source", "index"])
+def test_status_fields_are_bounded_at_ingestion(tmp_path: Path, location: str) -> None:
+    repo = _fixture_repo(tmp_path)
+    oversized = "x" * 5000
+    if location == "source":
+        _write(
+            repo,
+            "ai/decisions/ADR002_flat.yaml",
+            f"id: ADR002\nstatus: {oversized}\ntitle: Flat decision\n",
+        )
+    else:
+        _write_index(
+            repo,
+            {
+                "ADR001_wrapper": "accepted",
+                "ADR002_flat": oversized,
+                "ADR003_alternate": "proposed",
+                "ADR004_comments": "accepted",
+            },
+        )
+
+    with pytest.raises(SourceParseError, match="status is too long"):
+        build_cache(repo, tmp_path / "adr.sqlite3")
+
+
+def test_multibyte_scope_is_bounded_by_output_bytes(tmp_path: Path) -> None:
+    repo = _fixture_repo(tmp_path)
+    _write(
+        repo,
+        "ai/decisions/ADR001_wrapper.yaml",
+        "ADR001_wrapper:\n"
+        "  status: accepted\n"
+        "  title: Wrapper decision\n"
+        f"  supersedes: ADR002 {'🧱' * 280}\n",
+    )
+
+    with pytest.raises(SourceParseError, match="scope is too long"):
+        build_cache(repo, tmp_path / "adr.sqlite3")
+
+
+@pytest.mark.parametrize(
+    ("content", "message"),
+    [
+        (
+            f"id: ADR002\nstatus: accepted\ntitle: Flat decision\ndate: {'d' * 5000}\n",
+            "date is too long",
+        ),
+        (
+            f"ADR001_{'r' * 400}:\n  status: accepted\n  title: Wrapper decision\n",
+            "root key is too long",
+        ),
+    ],
+)
+def test_show_metadata_fields_are_bounded_at_ingestion(
+    tmp_path: Path, content: str, message: str
+) -> None:
+    repo = _fixture_repo(tmp_path)
+    relative = (
+        "ai/decisions/ADR002_flat.yaml"
+        if content.startswith("id:")
+        else "ai/decisions/ADR001_wrapper.yaml"
+    )
+    _write(repo, relative, content)
+
+    with pytest.raises(SourceParseError, match=message):
+        build_cache(repo, tmp_path / "adr.sqlite3")
 
 
 def test_failed_rebuild_preserves_the_completed_cache(tmp_path: Path) -> None:
@@ -320,10 +517,7 @@ def test_worst_case_show_output_stays_inside_its_contract(
     _write(
         repo,
         "ai/decisions/ADR001_wrapper.yaml",
-        "ADR001_wrapper:\n"
-        "  status: accepted\n"
-        f"  title: {'title ' * 200}\n"
-        f"  supersedes:\n{scopes}\n",
+        f"ADR001_wrapper:\n  status: accepted\n  title: {'🧱' * 1000}\n  supersedes:\n{scopes}\n",
     )
 
     exit_code = main(["--repo", str(repo), "--cache", str(cache), "show", "ADR001"])
@@ -331,7 +525,41 @@ def test_worst_case_show_output_stays_inside_its_contract(
 
     assert exit_code == 0
     assert len(captured.out.encode("utf-8")) <= 4096
-    assert len(json.loads(captured.out)["record"]["title"]) <= MAX_TITLE_CHARS
+    title = json.loads(captured.out)["record"]["title"]
+    assert len(json.dumps(title, ensure_ascii=False).encode("utf-8")) <= MAX_TITLE_JSON_BYTES
+
+
+def test_build_rejects_metadata_whose_aggregate_show_output_exceeds_contract(
+    tmp_path: Path,
+) -> None:
+    repo = _fixture_repo(tmp_path)
+    selector = "ADR001_" + "s" * 311
+    source_status = "a" * 94
+    index_status = "b" * 94
+    scopes = "\n".join(f"    - ADR{number:03d} {'x' * 311}" for number in range(10, 18))
+    _write(
+        repo,
+        "ai/decisions/ADR001_wrapper.yaml",
+        (
+            f"{selector}:\n"
+            f"  status: {source_status}\n"
+            f"  title: {'t' * 318}\n"
+            f"  date: {'d' * 94}\n"
+            f"  supersedes:\n{scopes}\n"
+        ),
+    )
+    _write_index(
+        repo,
+        {
+            "ADR001_wrapper": index_status,
+            "ADR002_flat": "proposed",
+            "ADR003_alternate": "proposed",
+            "ADR004_comments": "accepted",
+        },
+    )
+
+    with pytest.raises(SourceParseError, match="show output exceeds 4096 bytes"):
+        build_cache(repo, tmp_path / "adr.sqlite3")
 
 
 def test_live_estate_retains_the_historical_adr_floor() -> None:

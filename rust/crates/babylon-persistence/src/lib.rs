@@ -11,6 +11,7 @@ pub mod legacy_adopter;
 pub mod migration_manifest;
 pub mod schema_epoch;
 pub mod schema_migration;
+pub mod tick_commit_claim;
 pub mod writer_gate;
 
 pub use error::{PersistenceError, PersistenceFailureKind};

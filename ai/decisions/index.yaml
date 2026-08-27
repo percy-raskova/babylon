@@ -1120,3 +1120,8 @@ decisions:
     status: accepted
     date: '2026-08-26'
     file: ADR241_copilot_advisory_merge_policy.yaml
+  ADR242_tick_commit_claim_v1:
+    title: 'TickCommitClaimV1 binds a durable campaign and tick directly to the kernel-owned content identity before PostgreSQL activation'
+    status: accepted
+    date: '2026-08-27'
+    file: ADR242_tick_commit_claim_v1.yaml

@@ -20,6 +20,12 @@ impl CampaignId {
     pub fn as_uuid(&self) -> &Uuid {
         &self.0
     }
+
+    /// Borrow the exact 16 UUID bytes in network order.
+    #[must_use]
+    pub fn canonical_bytes(&self) -> &[u8; 16] {
+        self.0.as_bytes()
+    }
 }
 
 /// Canonical H3 cell identity stored at the `PostgreSQL` seam.

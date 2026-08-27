@@ -449,6 +449,8 @@ dependencies = [
  "babylon-kernel",
  "h3o",
  "postgres",
+ "serde",
+ "serde_json",
  "uuid",
 ]
 

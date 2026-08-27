@@ -196,7 +196,18 @@ that no open PR or other work depends on the branch.
 
 ## Scope and records
 
-Read `ai/decisions/index.yaml` for recorded architecture decisions.
+Query recorded decision metadata before you read ADR source:
+
+```bash
+mise run adr -- search "<topic>"
+mise run adr -- show ADR221
+```
+
+The ignored SQLite catalog is a disposable read model of Git-tracked ADR YAML.
+Its recorded status does not prove live behavior. The `show` command returns a
+source path and record-root selector. Read only that record for the rationale.
+Do not load `ai/decisions/index.yaml`
+for lookup. It remains a legacy registry and deterministic sentinel input.
 <!-- Vale: this paragraph preserves exact authority and repository path terms. -->
 <!-- vale ste.UnapprovedWords = NO -->
 `ai/state.yaml` is historical implementation evidence, not current status.

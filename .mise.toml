@@ -175,8 +175,8 @@ description = "Run complexity gate (xenon) - fails if CC > 15"
 run = "uv run xenon --max-absolute C src/"
 
 [tasks.check]
-description = "Fast CI gate: data-pathway + hygiene + 16 static sentinels plus catalog + lint + imports + format + typecheck + unit tests"
-depends = ["data:doctor", "check:hygiene", "check:dynamic-linking-fence", "check:sentinels", "lint", "lint:imports", "format", "typecheck", "test:unit"]
+description = "Fast CI gate: data-pathway + hygiene + governance budgets + ADR catalog + 16 static sentinels plus reference catalog + lint + imports + format + typecheck + unit tests"
+depends = ["data:doctor", "check:hygiene", "check:governance-mass", "check:adr-catalog", "check:dynamic-linking-fence", "check:sentinels", "lint", "lint:imports", "format", "typecheck", "test:unit"]
 
 [tasks."data:doctor"]
 description = "Loud data-pathway gate: trove mount + repo symlinks + Postgres bind on the data drive (clean skip off the dev box); heal = sudo tools/heal_data_mount.sh"
@@ -189,6 +189,22 @@ depends = ["lint", "format", "typecheck"]
 [tasks."check:hygiene"]
 description = "Repo-hygiene gate: root allowlist, ignore-consistency, blob sizes (program 14)"
 run = "uv run python tools/check_repo_hygiene.py"
+
+[tasks.adr]
+description = "Rebuild and query the disposable local ADR catalog"
+run = "uv run python tools/adr_catalog.py"
+
+[tasks."check:adr-catalog"]
+description = "Build and validate a temporary ADR catalog"
+run = "uv run python tools/adr_catalog.py check"
+
+[tasks."governance:mass"]
+description = "Report ADR, plan-history, and repo-skill context mass as bounded JSON"
+run = "uv run python tools/check_governance_mass.py"
+
+[tasks."check:governance-mass"]
+description = "Enforce repo-skill discovery/body budgets and query-first ADR routing"
+run = "uv run python tools/check_governance_mass.py --check"
 
 [tasks."check:dynamic-linking-fence"]
 description = "R1.4 fence, static half: bevy/dynamic_linking never referenced in a workflow, never leaks out of the sanctioned rust:client-dev-dylib task, never a default feature (Director ruling 2026-08-18)"

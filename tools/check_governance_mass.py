@@ -17,14 +17,21 @@ MAX_FILES: Final = 2048
 MAX_REPO_SKILLS: Final = 8
 MAX_SKILL_BODY_BYTES: Final = 5000
 MAX_SKILL_DISCOVERY_CHARS: Final = 2500
+MAX_ROUTING_LINES: Final = 2048
+ROUTING_WINDOW_RADIUS_LINES: Final = 4
+MAX_ROUTING_ACTIONS_PER_WINDOW: Final = 64
+MAX_ROUTING_CLAUSES_PER_WINDOW: Final = 64
 
 _INDEX_REFERENCE = "ai/decisions/index.yaml"
+_INDEX_REFERENCE_PATTERN = re.compile(re.escape(_INDEX_REFERENCE), re.IGNORECASE)
 _INDEX_ACTION = re.compile(r"\b(?:read|consult|load|open|review)\b", re.IGNORECASE)
 _NEGATED_INDEX_ACTION = re.compile(
     r"\b(?:do\s+not|don't|never)\s+(?:need\s+to\s+)?"
-    r"(?:read|consult|load|open|review)\b",
+    r"(?P<actions>(?:read|consult|load|open|review)\b"
+    r"(?:\s+(?:or|and)\s+(?:read|consult|load|open|review)\b)*)",
     re.IGNORECASE,
 )
+_ROUTING_CLAUSE_BOUNDARY = re.compile(r"(?<=[.!?;])\s+")
 _LIVE_ROUTING_FILES: Final = (
     "docs/agents/governance.md",
     "ai/README.md",
@@ -113,6 +120,93 @@ def _skill_report(skill_files: list[Path]) -> tuple[dict[str, int], list[str]]:
     )
 
 
+def _normalized_index_windows(text: str) -> tuple[str, ...]:
+    lines = tuple(itertools.islice(text.splitlines(), MAX_ROUTING_LINES))
+    windows: list[str] = []
+    for index, line in enumerate(lines[:MAX_ROUTING_LINES]):
+        if _INDEX_REFERENCE_PATTERN.search(line) is None:
+            continue
+        start = max(0, index - ROUTING_WINDOW_RADIUS_LINES)
+        stop = min(len(lines), index + ROUTING_WINDOW_RADIUS_LINES + 1)
+        normalized = " ".join(" ".join(part.split()) for part in lines[start:stop])
+        windows.append(normalized)
+    return tuple(windows)
+
+
+def _negated_action_spans(clause: str) -> tuple[tuple[int, int], ...] | None:
+    sequences = tuple(
+        itertools.islice(
+            _NEGATED_INDEX_ACTION.finditer(clause),
+            MAX_ROUTING_ACTIONS_PER_WINDOW + 1,
+        )
+    )
+    if len(sequences) > MAX_ROUTING_ACTIONS_PER_WINDOW:
+        return None
+    spans: list[tuple[int, int]] = []
+    for sequence in sequences[:MAX_ROUTING_ACTIONS_PER_WINDOW]:
+        base = sequence.start("actions")
+        actions = itertools.islice(
+            _INDEX_ACTION.finditer(sequence.group("actions")),
+            MAX_ROUTING_ACTIONS_PER_WINDOW + 1,
+        )
+        for action in actions:
+            spans.append((base + action.start(), base + action.end()))
+            if len(spans) > MAX_ROUTING_ACTIONS_PER_WINDOW:
+                return None
+    return tuple(spans)
+
+
+def _reference_gap(action: re.Match[str], reference: re.Match[str]) -> tuple[int, bool, int]:
+    if action.end() <= reference.start():
+        return reference.start() - action.end(), False, -action.start()
+    if reference.end() <= action.start():
+        return action.start() - reference.end(), True, action.start()
+    return 0, False, -action.start()
+
+
+def _clause_has_unnegated_index_action(clause: str) -> bool:
+    actions = tuple(
+        itertools.islice(_INDEX_ACTION.finditer(clause), MAX_ROUTING_ACTIONS_PER_WINDOW + 1)
+    )
+    references = tuple(
+        itertools.islice(
+            _INDEX_REFERENCE_PATTERN.finditer(clause),
+            MAX_ROUTING_ACTIONS_PER_WINDOW + 1,
+        )
+    )
+    negated_spans = _negated_action_spans(clause)
+    if (
+        len(actions) > MAX_ROUTING_ACTIONS_PER_WINDOW
+        or len(references) > MAX_ROUTING_ACTIONS_PER_WINDOW
+    ):
+        return True
+    if negated_spans is None:
+        return True
+    if not actions:
+        return False
+    for reference in references[:MAX_ROUTING_ACTIONS_PER_WINDOW]:
+        nearest = min(actions, key=lambda action: _reference_gap(action, reference))
+        if nearest.span() not in negated_spans:
+            return True
+    return False
+
+
+def _has_unnegated_index_action(window: str) -> bool:
+    clauses = tuple(
+        itertools.islice(
+            _ROUTING_CLAUSE_BOUNDARY.split(window),
+            MAX_ROUTING_CLAUSES_PER_WINDOW + 1,
+        )
+    )
+    if len(clauses) > MAX_ROUTING_CLAUSES_PER_WINDOW:
+        return True
+    return any(
+        _INDEX_REFERENCE_PATTERN.search(clause) is not None
+        and _clause_has_unnegated_index_action(clause)
+        for clause in clauses
+    )
+
+
 def _routing_violations(repo_root: Path) -> list[str]:
     violations: list[str] = []
     for relative in _LIVE_ROUTING_FILES:
@@ -120,12 +214,9 @@ def _routing_violations(repo_root: Path) -> list[str]:
         if not path.is_file():
             violations.append(f"routing-file-missing: {relative}")
             continue
-        lines = path.read_text(encoding="utf-8").splitlines()
+        windows = _normalized_index_windows(path.read_text(encoding="utf-8"))
         directs_full_read = any(
-            _INDEX_REFERENCE in line
-            and _INDEX_ACTION.search(line) is not None
-            and _NEGATED_INDEX_ACTION.search(line) is None
-            for line in lines[:MAX_FILES]
+            _has_unnegated_index_action(window) for window in windows[:MAX_ROUTING_LINES]
         )
         if directs_full_read:
             violations.append(

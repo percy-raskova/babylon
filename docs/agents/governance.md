@@ -203,6 +203,11 @@ mise run adr -- search "<topic>"
 mise run adr -- show ADR221
 ```
 
+<!-- vale ste.UnapprovedWords = NO -->
+The first result page puts new ADR matches first. If `results_truncated` is
+true, use `--offset <next_offset>` when you need more matches.
+<!-- vale ste.UnapprovedWords = YES -->
+
 The ignored SQLite catalog is a disposable read model of Git-tracked ADR YAML.
 Its recorded status does not prove live behavior. The `show` command returns a
 source path and record-root selector. Read only that record for the rationale.

@@ -88,11 +88,78 @@ def test_oversized_skill_body_fails_the_budget(tmp_path: Path) -> None:
         "5. Consult ai/decisions/index.yaml before every architecture question.\n",
         "You must review ai/decisions/index.yaml before architecture work.\n",
         "- Open ai/decisions/index.yaml before architecture work.\n",
+        "Read AI/DECISIONS/INDEX.YAML before architecture work.\n",
+        "Read the complete ADR index at\n`ai/decisions/index.yaml` before architecture work.\n",
     ],
 )
 def test_live_instruction_to_read_full_index_fails(tmp_path: Path, directive: str) -> None:
     repo = _fixture_repo(tmp_path)
     _write(repo, "docs/agents/governance.md", directive)
+
+    with pytest.raises(GovernanceBudgetError) as error:
+        measure_governance(repo, check=True)
+
+    assert str(error.value) == (
+        "full-index-routing: docs/agents/governance.md directs agents to load the full index"
+    )
+
+
+def test_multiline_negated_full_index_instruction_is_allowed(tmp_path: Path) -> None:
+    repo = _fixture_repo(tmp_path)
+    _write(
+        repo,
+        "docs/agents/governance.md",
+        "Do not\nread the complete ADR index at\n`ai/decisions/index.yaml`.\n",
+    )
+
+    report = measure_governance(repo, check=True)
+
+    assert report["violations"] == []
+
+
+def test_neighboring_read_sentence_does_not_cancel_index_negation(tmp_path: Path) -> None:
+    repo = _fixture_repo(tmp_path)
+    _write(
+        repo,
+        "docs/agents/governance.md",
+        (
+            "Read only the selected ADR record for its rationale.\n"
+            "Do not load `ai/decisions/index.yaml`\n"
+            "for lookup.\n"
+        ),
+    )
+
+    report = measure_governance(repo, check=True)
+
+    assert report["violations"] == []
+
+
+def test_same_sentence_unrelated_read_does_not_cancel_index_negation(
+    tmp_path: Path,
+) -> None:
+    repo = _fixture_repo(tmp_path)
+    _write(
+        repo,
+        "docs/agents/governance.md",
+        "Read ADR221, but do not load ai/decisions/index.yaml for lookup.\n",
+    )
+
+    report = measure_governance(repo, check=True)
+
+    assert report["violations"] == []
+
+
+def test_negated_neighbor_does_not_hide_multiline_read_directive(tmp_path: Path) -> None:
+    repo = _fixture_repo(tmp_path)
+    _write(
+        repo,
+        "docs/agents/governance.md",
+        (
+            "Do not read `ai/decisions/index.yaml` during ordinary work.\n"
+            "Read the complete ADR index at\n"
+            "`ai/decisions/index.yaml` before architecture work.\n"
+        ),
+    )
 
     with pytest.raises(GovernanceBudgetError, match="full-index-routing"):
         measure_governance(repo, check=True)

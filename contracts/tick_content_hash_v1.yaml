@@ -1,0 +1,194 @@
+meta:
+  contract: TickContentHashV1
+  version: 1
+  issue: PER-60
+  byte_order: big-endian unless a layout says otherwise
+  digest: SHA-256
+  text: strict graphic ASCII, bytes preserved without normalization
+
+authority:
+  owner: Rust adjudication boundary
+  purpose: language-neutral replay identity and tick-content verification
+  classifications:
+    layout_versions: Designed
+    domains_and_tags: Designed
+    bounds: Designed
+    fixture_values: Designed
+  invariants:
+    - Equal canonical input bytes produce equal canonical output bytes and hashes.
+    - Each identity has one canonical encoding and one owning type.
+    - No compatibility shim, alias, fallback, or duplicate identity resolver exists.
+    - Runtime graph handles never enter replay identity bytes.
+    - Floating-point payloads use raw IEEE-754 binary64 bits.
+    - NaN and infinity are refused before canonical encoding.
+
+primitives:
+  u8: {bytes: 1, signed: false}
+  u16: {bytes: 2, signed: false}
+  u32: {bytes: 4, signed: false}
+  u64: {bytes: 8, signed: false}
+  i64: {bytes: 8, signed: true}
+  f64_bits: {bytes: 8, signed: false}
+  digest32: {bytes: 32}
+  str16: {length: u16, encoding: ASCII}
+  str32: {length: u32, encoding: ASCII}
+
+bounds:
+  vector_rows: 256
+  vector_line_bytes: 262144
+  replay_session_bytes: {minimum: 1, maximum: 256}
+  rng_domain_bytes: {minimum: 1, maximum: 128}
+  rng_domain_segments: {minimum: 2, maximum: 4}
+  stable_carrier_active_elements: 256
+  stable_carrier_bytes: 131072
+  resolver_rows: 65536
+  resolver_manifest_bytes: 16777216
+
+layouts:
+  replay_session_v1:
+    fields: [session_length_u16, session_bytes]
+  replay_seed:
+    fields: [signed_i64]
+  rng_v1:
+    byte_order: little-endian
+    key_preimage:
+      - session_bytes
+      - tick_u64
+      - salt_u64
+      - domain_length_u64
+      - domain_bytes
+      - carrier_length_u64
+      - carrier_bytes
+    salt_u64: 195144730
+  rng_v2:
+    domain_hex: 626162796c6f6e2e726e672d73747265616d00
+    layout_u32: 2
+    tags: [1, 2, 3, 4, 5]
+    fields:
+      - {tag: 1, value: seed_i64}
+      - {tag: 2, value: replay_session_v1}
+      - {tag: 3, value: tick_u64}
+      - {tag: 4, value: domain_str32}
+      - {tag: 5, value: carrier_bytes32}
+    stream: ChaCha8 with a 64-bit block counter and zero stream id
+    next_u64: two consecutive little-endian u32 output words
+    next_f64: top 53 bits of next_u64 multiplied by 2^-53
+  stable_element_v1:
+    domain_ascii_nul: babylon.stable-element
+    layout_u32: 1
+    kinds:
+      node: {tag: 1, fields: [scenario_str32, local_name_str32]}
+      edge: {tag: 2, fields: [scenario_str32, edge_type_str32, source_str32, target_str32]}
+      hyperedge: {tag: 3, fields: [scenario_str32, local_name_str32]}
+  carrier_segment_v1:
+    grammar: decimal_byte_length, colon, exact graphic ASCII bytes
+    composition: segments joined by a vertical bar
+  resolver_manifest_v1:
+    domain_ascii_nul: babylon.stable-element-resolver
+    layout_u32: 1
+    tags: [1, 2, 3]
+    fields:
+      - {tag: 1, value: scenario_str32}
+      - {tag: 2, value: sorted_node_rows32}
+      - {tag: 3, value: sorted_hyperedge_rows32}
+  stable_graph_v1:
+    domain_ascii_nul: babylon.stable-graph
+    layout_u32: 1
+    ordering: stable element key, field qname, value kind
+  action_id_v1:
+    domain_ascii_nul: babylon.practice-action-id.v1
+    schema_u16: 1
+    fields: [replay_session_v1, practice_intent_schema_u16_2, intent_digest32]
+  ordered_action_batch_v1:
+    domain_ascii_nul: babylon.ordered-practice-action-batch.v1
+    schema_u16: 1
+    fields: [replay_session_v1, resolve_tick_u64, item_count_u16, ordered_items]
+    item_fields: [canonical_input_ordinal_u16, action_id_digest32, intent_length_u16, intent_bytes]
+  prepared_environment_v1:
+    domain_ascii_nul: babylon.prepared-environment
+    layout_u32: 1
+    tags: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+  world_register_manifest_v1:
+    domain_ascii_nul: babylon.world-register-manifest
+    layout_u32: 1
+  world_register_set_v1:
+    domain_ascii_nul: babylon.world-register-set
+    layout_u32: 1
+  stable_world_v1:
+    domain_ascii_nul: babylon.stable-world
+    layout_u32: 1
+    tags: [1, 2]
+    fields:
+      - {tag: 1, value: stable_graph_digest32}
+      - {tag: 2, value: world_register_set_digest32}
+  tick_payload_v1:
+    domain_ascii_nul: babylon.tick-payload
+    layout_u32: 1
+    tags: [1, 2, 3, 4]
+  tick_content_hash_v1:
+    domain_ascii_nul: babylon.tick-content
+    layout_u32: 1
+    tags: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    fields:
+      - {tag: 1, value: layout_u32_1_then_replay_session_v1}
+      - {tag: 2, value: resolve_tick_u64}
+      - {tag: 3, value: rng_layout_u32_2_then_seed_i64}
+      - {tag: 4, value: content_layout_u32_1_then_defines_and_rules_digest32}
+      - {tag: 5, value: reference_layout_u32_1_then_digest32}
+      - {tag: 6, value: prepared_layout_u32_1_then_digest32}
+      - {tag: 7, value: prior_world_layout_u32_1_then_digest32}
+      - {tag: 8, value: actions_layout_u32_1_then_digest32}
+      - {tag: 9, value: result_world_layout_u32_1_then_digest32}
+      - {tag: 10, value: payload_layout_u32_1_then_digest32}
+
+bsl_discriminants:
+  value_kinds:
+    "null": 0
+    bool: 1
+    i64: 2
+    f64_bits: 3
+    string: 4
+  effect_kinds:
+    write: 1
+    emit_event: 2
+    rng_draw: 3
+  evidence_classes:
+    observed: 1
+    derived: 2
+    calibrated: 3
+    designed: 4
+
+vector_families:
+  required:
+    - replay_session
+    - replay_seed
+    - rng_v1
+    - rng_v2
+    - stable_element
+    - carrier_segment
+    - resolver_manifest
+    - stable_graph
+    - action_id
+    - ordered_action_batch
+    - bsl_discriminant
+    - prepared_environment
+    - register_manifest
+    - register_set
+    - stable_world
+    - tick_payload
+    - tick_content_hash
+    - mutation
+    - refusal
+
+preserved_contracts:
+  - RNG V1 byte derivation and stream vectors
+  - Practice V2 contract vector corpora
+  - P27 frozen Python bytes and behavior
+
+excluded_authority:
+  - PostgreSQL I/O
+  - CommittedTickEnvelope
+  - Archive or outbox
+  - Bevy
+  - player-action execution
+  - BSL intents

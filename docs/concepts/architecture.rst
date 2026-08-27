@@ -64,11 +64,15 @@ nests ``GraphStateHash`` or ``NominalWorldHash`` inside that replay hash.
 
 .. vale ste.UnapprovedWords = YES
 
-This boundary provides in-memory rollback. It is not the planned Gate 3
-``CommittedTickEnvelope`` or a PostgreSQL durability acknowledgment. The Bevy
-client draws the county atlas and moves ticks forward. It has lenses, events,
-causal beats, and hash diagnostics. Committed BSL has no player action. The
-client remains on ``TickSession`` and does not complete a game decision cycle.
+This boundary provides in-memory rollback. ``babylon-persistence`` now defines
+the database-free ``CommittedTickEnvelopeV1`` byte contract and complete-payload
+retry contract. No tick runtime composes the envelope. No Postgres acknowledgment
+of durability exists.
+
+The Bevy client draws the county atlas and moves ticks forward.
+It has lenses, events, causal beats, and hash diagnostics. Committed BSL has no
+player action. The client remains on ``TickSession`` and does not complete a
+game decision cycle.
 
 Frozen Python reference
 -----------------------

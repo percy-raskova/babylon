@@ -259,7 +259,7 @@ pub struct TickContentPartsV1<'a> {
 
 - [ ] **Step 4: Make persistence reuse kernel authority**
 
-  Remove only persistence's duplicate `TickContentHash` and `RefDigest` macro invocations. Preserve the public API exactly with `pub use babylon_kernel::{RefDigestV1 as RefDigest, TickContentHashV1 as TickContentHash}` and the existing `from_bytes`, `as_bytes`, and `to_hex` methods. Add `TypeId` assertions that the persistence names are the kernel types. Add no calculation logic and change no persistence schema or H3 reference-cohort meaning.
+  Remove only persistence's duplicate `TickContentHash` and `RefDigest` macro invocations. At each persistence caller, use `babylon_kernel::tick_content_hash::{RefDigestV1, TickContentHashV1}` directly. Add contract assertions that `babylon-persistence` exposes no short identity name or re-export. Add no calculation logic and change no persistence schema or H3 reference-cohort meaning.
 
 - [ ] **Step 5: Run kernel and persistence gates**
 

@@ -22,6 +22,13 @@ DESIGN_PATH = (
     / "specs"
     / "2026-08-26-per-60-replay-action-tick-content-hash-design.md"
 )
+PLAN_PATH = (
+    ROOT
+    / "docs"
+    / "superpowers"
+    / "plans"
+    / "2026-08-26-per-60-replay-action-tick-content-hash-plan.md"
+)
 EXPECTED_TITLE = (
     "TickContentHashV1 owns canonical replay-tick identity while campaign "
     "durability and P27 evidence stay separate"
@@ -118,6 +125,7 @@ def test_new_identity_types_have_one_public_owning_module_path() -> None:
     )
     tick = _normalized(ROOT / "rust" / "crates" / "babylon-tick" / "src" / "lib.rs")
     design = _normalized(DESIGN_PATH)
+    plan = _normalized(PLAN_PATH)
 
     assert "pub use replay::" not in kernel
     assert "pub use tick_content_hash::" not in kernel
@@ -127,3 +135,9 @@ def test_new_identity_types_have_one_public_owning_module_path() -> None:
     assert "compatibility oracle" not in design
     assert "compatibility path" not in design
     assert "legacy TickSession" not in design
+    assert "pub use babylon_kernel" not in plan
+    assert "TypeId" not in plan
+    assert (
+        "use `babylon_kernel::tick_content_hash::{RefDigestV1, TickContentHashV1}` directly" in plan
+    )
+    assert "exposes no short identity name or re-export" in plan

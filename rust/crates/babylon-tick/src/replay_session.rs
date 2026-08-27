@@ -709,7 +709,7 @@ mod tests {
             &session.prepared,
             &mut session.graph,
             &mut sink,
-            crate::ExecutionIdentity::Replay(execution),
+            &crate::ExecutionIdentity::Replay(execution),
             1,
             |_boundary, graph: &MemoryGraph| graph.state_hash(),
         );

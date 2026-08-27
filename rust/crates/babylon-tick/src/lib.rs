@@ -1069,7 +1069,7 @@ where
             rng_seed,
             stable_resolver,
         };
-    run_prepared_tick_transaction(prepared, graph, sink, identity, tick, state_hash)
+    run_prepared_tick_transaction(prepared, graph, sink, &identity, tick, state_hash)
         .map(|result| result.report)
         .map_err(|error| match error {
             TickTransactionError::Current(message) => message,
@@ -1088,11 +1088,12 @@ where
     G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy,
     C: replay_session::ReplayIdentityComposer,
 {
+    let identity = ExecutionIdentity::Replay(execution);
     let result = run_prepared_tick_transaction(
         prepared,
         graph,
         sink,
-        ExecutionIdentity::Replay(execution),
+        &identity,
         tick,
         |_boundary, candidate| candidate.state_hash(),
     )
@@ -1110,7 +1111,7 @@ fn run_prepared_tick_transaction<G, B, H, C>(
     prepared: &PreparedRules,
     graph: &mut G,
     sink: &mut B,
-    identity: ExecutionIdentity<'_, C>,
+    identity: &ExecutionIdentity<'_, C>,
     tick: i64,
     mut state_hash: H,
 ) -> Result<TickTransactionResult, TickTransactionError>
@@ -1120,13 +1121,13 @@ where
     H: FnMut(HashBoundary, &G) -> Result<[u8; 32], GraphError>,
     C: replay_session::ReplayIdentityComposer,
 {
-    let prelude = prepare_tick_transaction(graph, &identity, tick, &mut state_hash)?;
-    let executed = execute_prepared_rules(prepared, graph, &identity, tick)?;
+    let prelude = prepare_tick_transaction(graph, identity, tick, &mut state_hash)?;
+    let executed = execute_prepared_rules(prepared, graph, identity, tick)?;
     complete_tick_transaction(
         prepared,
         graph,
         sink,
-        &identity,
+        identity,
         tick,
         &mut state_hash,
         prelude,

@@ -267,7 +267,7 @@ pub(crate) struct PhaseScheduleV1 {
 }
 
 impl PhaseScheduleV1 {
-    pub(crate) const fn layout_version(&self) -> u32 {
+    pub(crate) const fn layout_version() -> u32 {
         SCHEDULE_DIGEST_LAYOUT_VERSION
     }
 
@@ -773,7 +773,7 @@ mod tests {
     #[test]
     fn schedule_law_digest_pins_slots_partitions_ranks_and_sorted_aliases() {
         let schedule = phase_schedule_v1().expect("the governed schedule encodes");
-        assert_eq!(schedule.layout_version(), 1);
+        assert_eq!(PhaseScheduleV1::layout_version(), 1);
         assert!(schedule
             .canonical_bytes()
             .starts_with(b"babylon.phase-schedule\0"));

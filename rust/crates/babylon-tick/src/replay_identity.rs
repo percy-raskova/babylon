@@ -293,7 +293,7 @@ pub(crate) fn encode_prepared_environment_v1(
     writer.push(0x01)?;
     writer.extend(&computed)?;
     writer.push(0x02)?;
-    writer.u32(schedule.layout_version())?;
+    writer.u32(phase_order::PhaseScheduleV1::layout_version())?;
     writer.extend(&schedule.digest())?;
     writer.push(0x03)?;
     writer.count32("prepared rule count", prepared.rules.len())?;
@@ -682,7 +682,7 @@ mod tests {
         expected.push(0x01);
         expected.extend_from_slice(&rules_hash);
         expected.push(0x02);
-        expected.extend_from_slice(&schedule.layout_version().to_be_bytes());
+        expected.extend_from_slice(&phase_order::PhaseScheduleV1::layout_version().to_be_bytes());
         expected.extend_from_slice(&schedule.digest());
         expected.push(0x03);
         expected.extend_from_slice(&u32::try_from(prepared.rules.len()).unwrap().to_be_bytes());

@@ -1125,3 +1125,8 @@ decisions:
     status: accepted
     date: '2026-08-27'
     file: ADR242_tick_commit_claim_v1.yaml
+  ADR243_committed_tick_envelope_v1:
+    title: 'CommittedTickEnvelopeV1 binds every mandatory tick output to exact whole-payload retry equality before PostgreSQL activation'
+    status: accepted
+    date: '2026-08-27'
+    file: ADR243_committed_tick_envelope_v1.yaml

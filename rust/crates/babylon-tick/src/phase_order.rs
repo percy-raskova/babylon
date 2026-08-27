@@ -11,8 +11,9 @@
 //! `babylon.phase-schedule\0`; a big-endian `u32` layout version; a
 //! big-endian `u32` slot count; then each canonical slot in governed order as
 //! `str name | u8 partition | u8 ordinal | u16 default-rank`; then a
-//! big-endian `u32` alias count and each alias sorted by alias name as
-//! `str alias | str canonical | u16 resolved-default-rank`. Here `str` is a
+//! big-endian `u32` accepted-name mapping count and each mapping sorted by its
+//! accepted name as `str accepted | str canonical | u16 resolved-default-rank`.
+//! Here `str` is a
 //! big-endian `u32` UTF-8 byte length followed by the raw UTF-8 bytes.
 
 use babylon_bsl::mod_anchors::{check_anchor, AnchorDecl, AnchorError, AnchorPosition};
@@ -219,27 +220,27 @@ const SYSTEM_SLOTS: [SystemSlot; SYSTEM_COUNT] = [
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct SystemAlias {
-    name: &'static str,
+struct SystemNameMapping {
+    accepted: &'static str,
     canonical: &'static str,
 }
 
-/// Compatibility homes for already-landed content and conformance fixtures.
-const SYSTEM_ALIASES: [SystemAlias; 4] = [
-    SystemAlias {
-        name: "class-dynamics",
+/// Governed accepted names used by current content and conformance fixtures.
+const SYSTEM_NAME_MAPPINGS: [SystemNameMapping; 4] = [
+    SystemNameMapping {
+        accepted: "class-dynamics",
         canonical: "tick-dynamics",
     },
-    SystemAlias {
-        name: "economics",
+    SystemNameMapping {
+        accepted: "economics",
         canonical: "contradiction",
     },
-    SystemAlias {
-        name: "organization",
+    SystemNameMapping {
+        accepted: "organization",
         canonical: "ooda",
     },
-    SystemAlias {
-        name: "social-class",
+    SystemNameMapping {
+        accepted: "social-class",
         canonical: "solidarity",
     },
 ];
@@ -340,12 +341,16 @@ impl std::fmt::Display for ScheduleError {
 
 impl std::error::Error for ScheduleError {}
 
-/// Every canonical and compatibility system name accepted by BSL loading.
+/// Every governed system name accepted by BSL loading.
 pub(crate) fn registered_systems() -> HashSet<String> {
     SYSTEM_SLOTS
         .iter()
         .map(|slot| slot.name.to_owned())
-        .chain(SYSTEM_ALIASES.iter().map(|alias| alias.name.to_owned()))
+        .chain(
+            SYSTEM_NAME_MAPPINGS
+                .iter()
+                .map(|mapping| mapping.accepted.to_owned()),
+        )
         .collect()
 }
 
@@ -374,17 +379,20 @@ pub(crate) fn phase_schedule_v1() -> Result<PhaseScheduleV1, ScheduleError> {
         bytes.extend_from_slice(&default_rank(slot)?.to_be_bytes());
     }
 
-    let mut aliases: Vec<&SystemAlias> = SYSTEM_ALIASES.iter().collect();
-    aliases.sort_unstable_by(|a, b| a.name.as_bytes().cmp(b.name.as_bytes()));
-    push_schedule_count(&mut bytes, aliases.len(), "system aliases")?;
-    for alias in aliases {
-        push_schedule_str(&mut bytes, alias.name)?;
-        push_schedule_str(&mut bytes, alias.canonical)?;
+    let mut mappings: Vec<&SystemNameMapping> = SYSTEM_NAME_MAPPINGS.iter().collect();
+    mappings.sort_unstable_by(|a, b| a.accepted.as_bytes().cmp(b.accepted.as_bytes()));
+    push_schedule_count(&mut bytes, mappings.len(), "accepted-name mappings")?;
+    for mapping in mappings {
+        push_schedule_str(&mut bytes, mapping.accepted)?;
+        push_schedule_str(&mut bytes, mapping.canonical)?;
         let slot = SYSTEM_SLOTS
             .iter()
-            .find(|slot| slot.name == alias.canonical)
+            .find(|slot| slot.name == mapping.canonical)
             .ok_or_else(|| ScheduleError::Registry {
-                message: format!("system alias {} has no canonical slot", alias.name),
+                message: format!(
+                    "accepted system name {} has no canonical slot",
+                    mapping.accepted
+                ),
             })?;
         bytes.extend_from_slice(&default_rank(*slot)?.to_be_bytes());
     }
@@ -421,21 +429,21 @@ fn phase_schedule_capacity() -> Result<usize, ScheduleError> {
     total = total
         .checked_add(4)
         .ok_or(ScheduleError::CapacityOverflow {
-            field: "schedule alias count",
+            field: "accepted-name mapping count",
         })?;
-    for alias in SYSTEM_ALIASES {
-        let row = alias
-            .name
+    for mapping in SYSTEM_NAME_MAPPINGS {
+        let row = mapping
+            .accepted
             .len()
-            .checked_add(alias.canonical.len())
+            .checked_add(mapping.canonical.len())
             .and_then(|value| value.checked_add(10))
             .ok_or(ScheduleError::CapacityOverflow {
-                field: "schedule alias",
+                field: "accepted-name mapping",
             })?;
         total = total
             .checked_add(row)
             .ok_or(ScheduleError::CapacityOverflow {
-                field: "schedule aliases",
+                field: "accepted-name mappings",
             })?;
     }
     Ok(total)
@@ -638,9 +646,9 @@ fn system_index(name: &str) -> Option<usize> {
     if let Some(index) = SYSTEM_SLOTS.iter().position(|slot| slot.name == name) {
         return Some(index);
     }
-    let canonical = SYSTEM_ALIASES
+    let canonical = SYSTEM_NAME_MAPPINGS
         .iter()
-        .find(|alias| alias.name == name)?
+        .find(|mapping| mapping.accepted == name)?
         .canonical;
     SYSTEM_SLOTS.iter().position(|slot| slot.name == canonical)
 }
@@ -651,7 +659,7 @@ fn is_material_base_interior(key: ExecutionKey) -> bool {
 }
 
 fn validate_registry() -> Result<(), ScheduleError> {
-    let mut names = HashSet::with_capacity(SYSTEM_COUNT + SYSTEM_ALIASES.len());
+    let mut names = HashSet::with_capacity(SYSTEM_COUNT + SYSTEM_NAME_MAPPINGS.len());
     for (index, slot) in SYSTEM_SLOTS.iter().enumerate() {
         let expected_ordinal = u8::try_from(index).map_err(|_| ScheduleError::Registry {
             message: format!("system index {index} exceeds u8"),
@@ -676,17 +684,23 @@ fn validate_registry() -> Result<(), ScheduleError> {
             });
         }
     }
-    for alias in SYSTEM_ALIASES {
-        if !names.insert(alias.name) {
-            return Err(ScheduleError::Registry {
-                message: format!("duplicate or colliding system alias {}", alias.name),
-            });
-        }
-        if !SYSTEM_SLOTS.iter().any(|slot| slot.name == alias.canonical) {
+    for mapping in SYSTEM_NAME_MAPPINGS {
+        if !names.insert(mapping.accepted) {
             return Err(ScheduleError::Registry {
                 message: format!(
-                    "system alias {} names missing canonical target {}",
-                    alias.name, alias.canonical
+                    "duplicate or colliding accepted system name {}",
+                    mapping.accepted
+                ),
+            });
+        }
+        if !SYSTEM_SLOTS
+            .iter()
+            .any(|slot| slot.name == mapping.canonical)
+        {
+            return Err(ScheduleError::Registry {
+                message: format!(
+                    "accepted system name {} names missing canonical target {}",
+                    mapping.accepted, mapping.canonical
                 ),
             });
         }
@@ -771,7 +785,7 @@ mod tests {
     }
 
     #[test]
-    fn schedule_law_digest_pins_slots_partitions_ranks_and_sorted_aliases() {
+    fn schedule_law_digest_pins_slots_partitions_ranks_and_sorted_name_mappings() {
         let schedule = phase_schedule_v1().expect("the governed schedule encodes");
         assert_eq!(PhaseScheduleV1::layout_version(), 1);
         assert!(schedule
@@ -922,14 +936,14 @@ mod tests {
     }
 
     #[test]
-    fn compatibility_names_have_governed_canonical_homes() {
-        for (alias, canonical) in [
+    fn accepted_names_have_governed_canonical_homes() {
+        for (accepted, canonical) in [
             ("class-dynamics", "tick-dynamics"),
             ("economics", "contradiction"),
             ("organization", "ooda"),
             ("social-class", "solidarity"),
         ] {
-            assert_eq!(system_index(alias), system_index(canonical));
+            assert_eq!(system_index(accepted), system_index(canonical));
         }
     }
 

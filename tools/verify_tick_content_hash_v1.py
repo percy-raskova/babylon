@@ -17,6 +17,7 @@ MAX_CHACHA_U64 = 256
 MAX_VECTOR_ROWS = 256
 MAX_SECTION_ROWS = 1_048_576
 MAX_SCHEMA_BYTES = 262_144
+MAX_PRACTICE_INTENT_BYTES_V2 = 16_384
 U32_MASK = (1 << 32) - 1
 U64_MASK = (1 << 64) - 1
 COMPILED_BOUNDS = {
@@ -31,27 +32,29 @@ COMPILED_BOUNDS = {
     "enum_member_bytes": 64,
     "governance_utf8_bytes": 4_194_304,
     "stable_carrier_active_elements": 256,
-    "stable_carrier_bytes": 131_072,
+    "stable_carrier_bytes": 105_962,
     "resolver_rows": 65_536,
     "resolver_edges": 65_536,
-    "resolver_hyperedge_members": 65_536,
+    "resolver_hyperedge_members": 65_534,
     "resolver_fact_units": 1_048_576,
-    "resolver_manifest_bytes": 16_777_216,
+    "resolver_manifest_bytes": 8_388_608,
     "stable_graph_elements": 65_536,
-    "stable_graph_attribute_rows": 1_048_576,
-    "stable_graph_hyperedge_members": 65_536,
+    "stable_graph_attribute_rows": 524_288,
+    "stable_graph_hyperedge_members": 65_534,
     "stable_graph_fact_units": 1_048_576,
     "stable_graph_bytes": 67_108_864,
     "ordered_action_items": 4_096,
-    "practice_intent_bytes": 16_384,
-    "ordered_action_batch_bytes": 67_256_631,
+    "ordered_action_batch_bytes": 9_302_326,
     "prepared_rows": 65_536,
     "prepared_small_rows": 64,
-    "identity_members": 1_048_576,
-    "identity_aggregate_rows": 1_048_576,
-    "identity_section_bytes": 67_108_864,
+    "prepared_enum_members": 4_096,
+    "prepared_vocabulary_members": 524_288,
+    "prepared_aggregate_rows": 1_048_576,
+    "prepared_combined_bytes": 67_108_864,
     "tick_rule_outcomes": 65_536,
     "tick_rows": 1_048_576,
+    "tick_aggregate_rows": 1_048_576,
+    "tick_combined_bytes": 67_108_864,
 }
 COMPILED_SEMANTIC_TEXT = {
     "symbol": {"encoding": "ASCII", "minimum_bytes": 1, "maximum_bytes": 64},
@@ -593,6 +596,12 @@ def _resolver_manifest(data: dict[str, Any]) -> bytes:
     hyperedges = _counted_rows(data["hyperedges"], maximum=65_536, field="resolver hyperedges")
     if len(nodes) + len(hyperedges) > 65_536:
         raise ContractRefusal("row_limit", "resolver rows")
+    node_names = [row["local_name"] for row in nodes]
+    hyperedge_names = [row["local_name"] for row in hyperedges]
+    if len(node_names) != len(set(node_names)):
+        raise ContractRefusal("duplicate_node_name", "resolver nodes")
+    if len(hyperedge_names) != len(set(hyperedge_names)):
+        raise ContractRefusal("duplicate_hyperedge_name", "resolver hyperedges")
     sorted_nodes = sorted(nodes, key=lambda row: _ascii(row["local_name"]))
     sorted_hyperedges = sorted(hyperedges, key=lambda row: _ascii(row["local_name"]))
     output = bytearray(b"babylon.stable-element-resolver\0" + _u32(1, "resolver layout"))
@@ -607,19 +616,19 @@ def _resolver_manifest(data: dict[str, Any]) -> bytes:
         _symbol(row["local_name"])
         _structural_type(row["hyperedge_type"])
         output.extend(_str32(row["local_name"]) + _str32(row["hyperedge_type"]))
-    return _bounded_bytes(output, maximum=16_777_216, field="resolver manifest")
+    return _bounded_bytes(output, maximum=8_388_608, field="resolver manifest")
 
 
 def _stable_graph(data: dict[str, Any]) -> bytes:
     _qname(data["scenario"])
     sections = [
         (2, "nodes", _stable_node_row, 65_536),
-        (3, "node_f64", _stable_node_f64_row, 1_048_576),
+        (3, "node_f64", _stable_node_f64_row, 524_288),
         (4, "edges", _stable_edge_row, 65_536),
         (5, "hyperedges", _stable_hyperedge_row, 65_536),
-        (6, "edge_f64", _stable_edge_f64_row, 1_048_576),
-        (7, "node_currency", _stable_node_currency_row, 1_048_576),
-        (8, "hyperedge_f64", _stable_hyperedge_f64_row, 1_048_576),
+        (6, "edge_f64", _stable_edge_f64_row, 524_288),
+        (7, "node_currency", _stable_node_currency_row, 524_288),
+        (8, "hyperedge_f64", _stable_hyperedge_f64_row, 524_288),
     ]
     output = bytearray(b"babylon.stable-graph\0" + _u32(1, "stable graph layout"))
     output.extend(b"\x01" + _str32(data["scenario"]))
@@ -665,16 +674,16 @@ def _stable_edge_row(row: dict[str, Any]) -> tuple[tuple[bytes, ...], bytes]:
 
 def _stable_hyperedge_row(row: dict[str, Any]) -> tuple[tuple[bytes, ...], bytes]:
     raw_members = row["members"]
-    if not isinstance(raw_members, list) or not raw_members or len(raw_members) > 65_536:
+    if not isinstance(raw_members, list) or not raw_members or len(raw_members) > 65_534:
         raise ContractRefusal("hyperedge_members", row["local_name"])
     _symbol(row["local_name"])
     _structural_type(row["hyperedge_type"])
-    members = sorted((_symbol(value), value) for value in raw_members[:65_536])
+    members = sorted((_symbol(value), value) for value in raw_members[:65_534])
     if len(members) != len({item[0] for item in members}):
         raise ContractRefusal("hyperedge_members", row["local_name"])
     body = bytearray(_str32(row["local_name"]) + _str32(row["hyperedge_type"]))
     body.extend(_u32(len(members), "stable hyperedge member count"))
-    for _, member in members[:65_536]:
+    for _, member in members[:65_534]:
         body.extend(_str32(member))
     return (_ascii(row["local_name"]),), bytes(body)
 
@@ -704,7 +713,7 @@ def _stable_hyperedge_f64_row(row: dict[str, Any]) -> tuple[tuple[bytes, ...], b
 
 def _action_id(data: dict[str, Any]) -> bytes:
     intent_bytes = _hex_bytes(data["intent_bytes_hex"])
-    if len(intent_bytes) > COMPILED_BOUNDS["practice_intent_bytes"]:
+    if len(intent_bytes) > MAX_PRACTICE_INTENT_BYTES_V2:
         raise ContractRefusal("intent_length", data.get("session", "action"))
     intent_digest = hashlib.sha256(intent_bytes).digest()
     if intent_digest.hex() != data["intent_digest_hex"]:
@@ -747,7 +756,7 @@ def _ordered_action_batch(data: dict[str, Any]) -> bytes:
         output.extend(action_id + _u16(len(intent_bytes), "ordered intent length") + intent_bytes)
     if data.get("action_ids_hex", action_ids) != action_ids:
         raise ContractRefusal("action_id", "ordered batch")
-    return _bounded_bytes(output, maximum=67_256_631, field="ordered action batch")
+    return _bounded_bytes(output, maximum=9_302_326, field="ordered action batch")
 
 
 def _bsl_type(data: dict[str, Any]) -> bytes:
@@ -906,7 +915,7 @@ def _validate_prepared_counts(data: dict[str, Any]) -> None:
     )
     for declaration in enum_types[:65_536]:
         members = declaration["members"]
-        if not isinstance(members, list) or len(members) > MAX_SECTION_ROWS:
+        if not isinstance(members, list) or len(members) > 4_096:
             raise ContractRefusal("row_limit", "prepared enum members")
         total += len(members)
     vocabulary_data = data["vocabulary"]
@@ -914,7 +923,7 @@ def _validate_prepared_counts(data: dict[str, Any]) -> None:
         total += 4
         for name in ("node_type", "edge_type", "hyperedge_type", "event_type"):
             members = vocabulary_data["kinds"][name]["members"]
-            if len(members) > MAX_SECTION_ROWS:
+            if len(members) > 524_288:
                 raise ContractRefusal("row_limit", "vocabulary members")
             total += len(members)
     if total > MAX_SECTION_ROWS:
@@ -966,7 +975,7 @@ def _prepared_enums(data: dict[str, Any]) -> bytes:
     for row in rows[:65_536]:
         _enum_type(row["name"])
         output.extend(_str32(row["name"]) + _u32(len(row["members"]), "enum member count"))
-        for member in row["members"][:MAX_SECTION_ROWS]:
+        for member in row["members"][:4_096]:
             _enum_member(member)
             output.extend(_str32(member))
     return bytes(output)
@@ -1207,6 +1216,18 @@ def _recipe_count(recipe: dict[str, Any], name: str) -> int:
     return value
 
 
+def _recipe_text(recipe: dict[str, Any], name: str) -> str:
+    value = recipe.get(name)
+    if not isinstance(value, str):
+        raise ContractRefusal("bound_recipe_shape", name)
+    return value
+
+
+def _expect_recipe_value(recipe: dict[str, Any], name: str, expected: Any) -> None:
+    if recipe.get(name) != expected:
+        raise ContractRefusal("bound_recipe_shape", name)
+
+
 def _recipe_counts(recipe: dict[str, Any], name: str, maximum: int) -> list[int]:
     values = recipe.get(name)
     if not isinstance(values, list) or len(values) > maximum:
@@ -1245,104 +1266,121 @@ def _measure_text_bound_recipe(name: str, recipe: dict[str, Any]) -> int | None:
 
 
 def _measure_graph_bound_recipe(name: str, recipe: dict[str, Any]) -> int | None:
-    scalar_fields = {
-        "stable_carrier_active_elements": "active_segment_count",
-        "resolver_edges": "edge_rows",
-        "resolver_hyperedge_members": "maximum_members_per_hyperedge",
-        "stable_graph_hyperedge_members": "maximum_members_per_hyperedge",
-    }
-    if name in scalar_fields:
-        return _recipe_count(recipe, scalar_fields[name])
+    fixture = recipe.get("fixture")
+    if name == "stable_carrier_active_elements":
+        return _recipe_count(recipe, "active_element_count")
     if name == "stable_carrier_bytes":
-        active_count = _recipe_count(recipe, "active_segment_count")
-        active_length = _recipe_count(recipe, "active_segment_bytes")
-        total = _framed_length(_recipe_count(recipe, "subject_segment_bytes"))
-        total += active_count * (1 + _framed_length(active_length))
-        return total + 1 + _framed_length(_recipe_count(recipe, "draw_slot_bytes"))
+        scenario = _recipe_count(recipe, "scenario_bytes")
+        subject_name = _recipe_count(recipe, "subject_local_name_bytes")
+        edge_type = _recipe_count(recipe, "active_edge_type_bytes")
+        endpoint = _recipe_count(recipe, "active_endpoint_name_bytes")
+        subject_segment = sum(_framed_length(value) for value in (4, scenario, subject_name)) + 2
+        edge_segment = (
+            sum(_framed_length(value) for value in (4, scenario, edge_type, endpoint, endpoint)) + 4
+        )
+        active = _recipe_count(recipe, "active_element_count")
+        slot = len(str(recipe["draw_slot"]))
+        return (
+            _framed_length(subject_segment)
+            + active * (1 + _framed_length(edge_segment))
+            + 1
+            + _framed_length(slot)
+        )
     if name == "resolver_rows":
-        return _recipe_count(recipe, "node_rows") + _recipe_count(recipe, "hyperedge_rows")
+        hyperedges = (
+            1
+            if fixture == "resolver_single_hyperedge"
+            else len(recipe.get("hyperedge_member_rows", []))
+        )
+        return _recipe_count(recipe, "node_rows") + hyperedges
+    if name == "resolver_edges":
+        return _recipe_count(recipe, "edge_rows")
+    if name == "resolver_hyperedge_members":
+        return _recipe_count(recipe, "hyperedge_member_rows")
     if name == "resolver_fact_units":
-        return sum(
-            _recipe_count(recipe, field)
-            for field in (
-                "node_rows",
-                "edge_rows",
-                "hyperedge_rows",
-                "hyperedge_member_rows",
-            )
-        )
+        members = _recipe_counts(recipe, "hyperedge_member_rows", 32)
+        return _recipe_count(recipe, "node_rows") + len(members) + sum(members)
     if name == "resolver_manifest_bytes":
-        return sum(
-            _recipe_count(recipe, field)
-            for field in (
-                "domain_layout_bytes",
-                "scenario_section_bytes",
-                "node_section_bytes",
-                "hyperedge_section_bytes",
-            )
+        full_rows = _recipe_count(recipe, "full_node_rows")
+        full_row_bytes = (
+            8
+            + _recipe_count(recipe, "full_node_name_bytes")
+            + _recipe_count(recipe, "full_node_type_bytes")
         )
-    graph_elements = ("node_rows", "edge_rows", "hyperedge_rows")
-    graph_attributes = (
-        "node_f64_rows",
-        "edge_f64_rows",
-        "node_currency_rows",
-        "hyperedge_f64_rows",
-    )
+        final_row_bytes = (
+            8
+            + _recipe_count(recipe, "final_node_name_bytes")
+            + _recipe_count(recipe, "final_node_type_bytes")
+        )
+        return 31 + 20 + len(recipe["scenario"]) + full_rows * full_row_bytes + final_row_bytes
     if name == "stable_graph_elements":
-        return max((_recipe_count(recipe, field) for field in graph_elements), default=0)
+        return _recipe_count(recipe, "state_node_rows")
     if name == "stable_graph_attribute_rows":
-        return max((_recipe_count(recipe, field) for field in graph_attributes), default=0)
+        return _recipe_count(recipe, "node_f64_rows")
+    if name == "stable_graph_hyperedge_members":
+        return _recipe_count(recipe, "state_member_rows")
     if name == "stable_graph_fact_units":
         return sum(
             _recipe_count(recipe, field)
-            for field in (*graph_elements, *graph_attributes, "hyperedge_member_rows")
+            for field in ("node_rows", "node_f64_rows", "node_currency_rows")
         )
     if name == "stable_graph_bytes":
-        return (
-            _recipe_count(recipe, "domain_layout_bytes")
-            + _recipe_count(recipe, "scenario_section_bytes")
-            + sum(_recipe_counts(recipe, "section_bytes", 8))
-        )
+        fixed = 20 + 1 + 4 + 1 + 4 + len(recipe["scenario"]) + 7 * 5
+        node_row = 8 + len(recipe["node_name"]) + len(recipe["node_type"])
+        full_row = 17 + _recipe_count(recipe, "full_qname_bytes")
+        final_row = 17 + _recipe_count(recipe, "final_qname_bytes")
+        return fixed + node_row + _recipe_count(recipe, "full_node_f64_rows") * full_row + final_row
     return None
 
 
 def _measure_runtime_bound_recipe(name: str, recipe: dict[str, Any]) -> int | None:
-    scalar_fields = {
-        "ordered_action_items": "item_count",
-        "practice_intent_bytes": "intent_bytes",
-        "tick_rule_outcomes": "rule_outcome_rows",
-    }
-    if name in scalar_fields:
-        return _recipe_count(recipe, scalar_fields[name])
+    if name == "ordered_action_items":
+        return _recipe_count(recipe, "item_count")
     if name == "ordered_action_batch_bytes":
+        intent_bytes = 187 + 32 * _recipe_count(recipe, "evidence_digests_per_intent")
         return (
-            _recipe_count(recipe, "existing_batch_bytes")
-            + 36
-            + _recipe_count(recipe, "next_intent_bytes")
+            55
+            + _recipe_count(recipe, "session_bytes")
+            + _recipe_count(recipe, "item_count") * (36 + intent_bytes)
         )
-    prepared_rows = ("field_rows", "constant_rows", "enum_type_rows")
-    prepared_small = ("exemption_rows", "intrinsic_rows")
     if name == "prepared_rows":
-        return max((_recipe_count(recipe, field) for field in prepared_rows), default=0)
+        return _recipe_count(recipe, "constant_rows")
     if name == "prepared_small_rows":
-        return max((_recipe_count(recipe, field) for field in prepared_small), default=0)
-    if name == "identity_members":
+        return _recipe_count(recipe, "intrinsic_rows")
+    if name == "prepared_enum_members":
         return _recipe_count(recipe, "enum_member_rows")
-    if name == "identity_aggregate_rows":
+    if name == "prepared_vocabulary_members":
+        return _recipe_count(recipe, "vocabulary_member_rows")
+    if name == "prepared_aggregate_rows":
         return sum(
             _recipe_count(recipe, field)
-            for field in (*prepared_rows, *prepared_small, "enum_member_rows")
+            for field in ("vocabulary_kind_rows", "node_type_members", "event_type_members")
         )
-    if name == "identity_section_bytes":
-        return sum(_recipe_counts(recipe, "section_bytes", 5))
-    if name == "tick_rows":
-        return max(
-            (
+    if name == "prepared_combined_bytes":
+        full_rows = _recipe_count(recipe, "full_exemption_rows")
+        full_text = _recipe_count(recipe, "full_governance_field_bytes")
+        full_row_bytes = 16 + 1 + 3 * full_text
+        final_row_bytes = (
+            16
+            + 1
+            + sum(
                 _recipe_count(recipe, field)
-                for field in ("event_rows", "receipt_rows", "payload_rows")
-            ),
-            default=0,
+                for field in ("final_reason_bytes", "final_owner_bytes", "final_date_bytes")
+            )
         )
+        return 21 + full_rows * full_row_bytes + final_row_bytes
+    if name == "tick_rule_outcomes":
+        return _recipe_count(recipe, "rule_outcome_rows")
+    if name == "tick_rows":
+        return _recipe_count(recipe, "event_rows")
+    if name == "tick_aggregate_rows":
+        return _recipe_count(recipe, "event_rows") + _recipe_count(recipe, "payload_rows")
+    if name == "tick_combined_bytes":
+        event_name_bytes = len("EventType/") + len(recipe["event_name"])
+        fixed = 14 + 4 + event_name_bytes + 4
+        full_row = 13 + _recipe_count(recipe, "full_payload_label_bytes")
+        final_row = 13 + _recipe_count(recipe, "final_payload_label_bytes")
+        return fixed + _recipe_count(recipe, "full_payload_rows") * full_row + final_row
     return None
 
 
@@ -1389,74 +1427,220 @@ def _execute_text_bound_recipe(name: str, recipe: dict[str, Any], actual: int) -
     return True
 
 
+def _validate_graph_fixture(recipe: dict[str, Any]) -> None:
+    fixture = _recipe_text(recipe, "fixture")
+    expected_fields = {
+        "resolver_nodes": {
+            "node_name_pattern": "n{index:05x}",
+            "node_type": "n",
+        },
+        "resolver_edges": {
+            "node_name_pattern": "n{index}",
+            "edge_type_pattern": "e{index:05x}",
+        },
+        "resolver_single_hyperedge": {
+            "hyperedge_rows": 1,
+            "node_name_pattern": "n{index:05x}",
+            "hyperedge_name": "h",
+            "hyperedge_type": "h",
+        },
+        "resolver_fact_units": {
+            "node_name_pattern": "n{index:04x}",
+            "hyperedge_name_pattern": "h{index}",
+        },
+        "stable_graph_nodes": {
+            "node_name_pattern": "n{index:05x}",
+            "node_type": "n",
+        },
+        "stable_graph_node_f64": {"node_rows": 1, "qname_pattern": "a{index}"},
+        "stable_graph_single_hyperedge": {"node_name_pattern": "n{index:05x}"},
+        "stable_graph_fact_units": {
+            "node_rows": 1,
+            "f64_qname_pattern": "f{index}",
+            "currency_qname_pattern": "c{index}",
+        },
+    }
+    for field, expected in expected_fields.get(fixture, {}).items():
+        _expect_recipe_value(recipe, field, expected)
+
+
 def _execute_graph_bound_recipe(name: str, recipe: dict[str, Any], maximum: int) -> bool:
-    if name.startswith("resolver_") and name != "resolver_manifest_bytes":
+    fixture = recipe.get("fixture")
+    expected_fixtures = {
+        "stable_carrier_active_elements": "sealed_carrier_active_stack",
+        "stable_carrier_bytes": "sealed_carrier_byte_boundary",
+        "resolver_rows": "resolver_nodes",
+        "resolver_edges": "resolver_edges",
+        "resolver_hyperedge_members": "resolver_single_hyperedge",
+        "resolver_fact_units": "resolver_fact_units",
+        "resolver_manifest_bytes": "resolver_manifest_nodes",
+        "stable_graph_elements": "stable_graph_nodes",
+        "stable_graph_attribute_rows": "stable_graph_node_f64",
+        "stable_graph_hyperedge_members": "stable_graph_single_hyperedge",
+        "stable_graph_fact_units": "stable_graph_fact_units",
+        "stable_graph_bytes": "stable_graph_byte_boundary",
+    }
+    if name not in expected_fixtures:
+        return False
+    if expected_fixtures.get(name) != fixture:
+        raise ContractRefusal("bound_recipe_shape", "fixture")
+    _validate_graph_fixture(recipe)
+    if name == "stable_carrier_active_elements":
+        if _measure_bound_recipe(name, recipe) > maximum:
+            raise ContractRefusal("active_element_limit", name)
+        return True
+    if name == "stable_carrier_bytes":
+        for field, limit in (
+            ("scenario_bytes", 128),
+            ("subject_local_name_bytes", 64),
+            ("active_edge_type_bytes", 128),
+            ("active_endpoint_name_bytes", 64),
+        ):
+            if _recipe_count(recipe, field) > limit:
+                raise ContractRefusal("bound_recipe_shape", field)
+        if _recipe_count(recipe, "active_element_count") > 256:
+            raise ContractRefusal("active_element_limit", name)
+        if _measure_bound_recipe(name, recipe) > maximum:
+            raise ContractRefusal("byte_limit", name)
+        return True
+    if name.startswith("resolver_"):
+        if name == "resolver_manifest_bytes":
+            if fixture != "resolver_manifest_nodes":
+                raise ContractRefusal("bound_recipe_shape", name)
+            if _recipe_count(recipe, "full_node_rows") + 1 > 65_536:
+                raise ContractRefusal("row_limit", name)
+            if _measure_bound_recipe(name, recipe) > maximum:
+                raise ContractRefusal("byte_limit", name)
+            return True
         rows = _measure_bound_recipe("resolver_rows", recipe)
-        edges = _measure_bound_recipe("resolver_edges", recipe)
-        members = _measure_bound_recipe("resolver_hyperedge_members", recipe)
-        facts = _measure_bound_recipe("resolver_fact_units", recipe)
-        if rows > COMPILED_BOUNDS["resolver_rows"]:
+        edges = _recipe_count(recipe, "edge_rows")
+        if fixture == "resolver_fact_units":
+            member_counts = _recipe_counts(recipe, "hyperedge_member_rows", 32)
+            members = max(member_counts, default=0)
+            facts = _measure_bound_recipe("resolver_fact_units", recipe)
+        elif fixture == "resolver_single_hyperedge":
+            members = _recipe_count(recipe, "hyperedge_member_rows")
+            facts = rows + members
+        else:
+            members = 0
+            facts = rows + edges
+        if rows > 65_536:
             raise ContractRefusal("row_limit", name)
-        if edges > COMPILED_BOUNDS["resolver_edges"]:
+        if edges > 65_536:
             raise ContractRefusal("edge_limit", name)
-        if members > COMPILED_BOUNDS["resolver_hyperedge_members"]:
+        if members > 65_534:
             raise ContractRefusal("hyperedge_members", name)
-        if facts > COMPILED_BOUNDS["resolver_fact_units"]:
+        if facts > 1_048_576:
             raise ContractRefusal("aggregate_row_limit", name)
+        return True
     elif name.startswith("stable_graph_"):
-        elements = _measure_bound_recipe("stable_graph_elements", recipe)
-        attributes = _measure_bound_recipe("stable_graph_attribute_rows", recipe)
-        members = _measure_bound_recipe("stable_graph_hyperedge_members", recipe)
-        facts = _measure_bound_recipe("stable_graph_fact_units", recipe)
-        if elements > COMPILED_BOUNDS["stable_graph_elements"]:
+        elements = _recipe_count(recipe, "state_node_rows")
+        attributes = _recipe_count(recipe, "node_f64_rows")
+        members = _recipe_count(recipe, "state_member_rows")
+        facts = sum(
+            _recipe_count(recipe, field)
+            for field in ("node_rows", "node_f64_rows", "node_currency_rows")
+        )
+        if elements > 65_536:
             raise ContractRefusal("row_limit", name)
-        if attributes > COMPILED_BOUNDS["stable_graph_attribute_rows"]:
+        if attributes > 524_288:
             raise ContractRefusal("row_limit", name)
-        if members > COMPILED_BOUNDS["stable_graph_hyperedge_members"]:
+        if members > 65_534:
             raise ContractRefusal("hyperedge_members", name)
-        if facts > COMPILED_BOUNDS["stable_graph_fact_units"]:
+        if facts > 1_048_576:
             raise ContractRefusal("aggregate_row_limit", name)
         if name == "stable_graph_bytes" and _measure_bound_recipe(name, recipe) > maximum:
             raise ContractRefusal("byte_limit", name)
+        return True
     else:
         return False
-    return True
+
+
+def _validate_runtime_fixture(name: str, recipe: dict[str, Any]) -> None:
+    expected_fixtures = {
+        "ordered_action_items": "ordered_action_items",
+        "ordered_action_batch_bytes": "ordered_action_batch_byte_boundary",
+        "prepared_rows": "prepared_constants",
+        "prepared_small_rows": "prepared_intrinsics",
+        "prepared_enum_members": "prepared_enum_members",
+        "prepared_vocabulary_members": "prepared_vocabulary_members",
+        "prepared_aggregate_rows": "prepared_vocabulary_aggregate",
+        "prepared_combined_bytes": "prepared_exemption_byte_boundary",
+        "tick_rule_outcomes": "tick_rule_outcomes",
+        "tick_rows": "tick_events",
+        "tick_aggregate_rows": "tick_payload_aggregate",
+        "tick_combined_bytes": "tick_payload_byte_boundary",
+    }
+    if expected_fixtures.get(name) != _recipe_text(recipe, "fixture"):
+        raise ContractRefusal("bound_recipe_shape", "fixture")
+    expected_fields = {
+        "prepared_rows": {"constant_name_pattern": "c{index}", "constant_value": 0},
+        "prepared_small_rows": {"intrinsic_name_pattern": "i{index}", "intrinsic_cost": 1},
+        "prepared_enum_members": {"enum_type": "T", "enum_member_pattern": "M{index}"},
+        "prepared_vocabulary_members": {
+            "vocabulary_kind": "EventType",
+            "vocabulary_member_pattern": "EVENT_{index}",
+        },
+        "prepared_aggregate_rows": {
+            "vocabulary_kind_rows": 4,
+            "node_member_pattern": "NODE_{index}",
+            "event_member_pattern": "EVENT_{index}",
+        },
+        "tick_rule_outcomes": {"rule_name_pattern": "r{index}"},
+        "tick_rows": {"event_name": "X"},
+        "tick_aggregate_rows": {
+            "event_rows": 1,
+            "event_name": "X",
+            "payload_label": "a",
+            "payload_value": 0,
+        },
+        "tick_combined_bytes": {"event_name": "X", "payload_value": 0},
+    }
+    for field, expected in expected_fields.get(name, {}).items():
+        _expect_recipe_value(recipe, field, expected)
 
 
 def _execute_runtime_bound_recipe(name: str, recipe: dict[str, Any], maximum: int) -> bool:
-    if name in {"ordered_action_items", "practice_intent_bytes"}:
-        if _recipe_count(recipe, "item_count") > COMPILED_BOUNDS["ordered_action_items"]:
+    if not (name.startswith(("ordered_action_", "prepared_", "tick_"))):
+        return False
+    _validate_runtime_fixture(name, recipe)
+    if name in {"ordered_action_items", "ordered_action_batch_bytes"}:
+        if _recipe_count(recipe, "item_count") > 4_096:
             raise ContractRefusal("row_limit", name)
-        if _recipe_count(recipe, "intent_bytes") > COMPILED_BOUNDS["practice_intent_bytes"]:
-            raise ContractRefusal("intent_length", name)
-    elif name == "ordered_action_batch_bytes":
-        if _recipe_count(recipe, "next_intent_bytes") > COMPILED_BOUNDS["practice_intent_bytes"]:
-            raise ContractRefusal("intent_length", name)
-        if _measure_bound_recipe(name, recipe) > maximum:
+        if _recipe_count(recipe, "evidence_digests_per_intent") > 64:
+            raise ContractRefusal("bound_recipe_shape", name)
+        if name == "ordered_action_batch_bytes" and _measure_bound_recipe(name, recipe) > maximum:
             raise ContractRefusal("byte_limit", name)
-    elif name.startswith("prepared_") or name.startswith("identity_"):
-        rows = _measure_bound_recipe("prepared_rows", recipe)
-        small = _measure_bound_recipe("prepared_small_rows", recipe)
-        members = _measure_bound_recipe("identity_members", recipe)
-        aggregate = _measure_bound_recipe("identity_aggregate_rows", recipe)
+    elif name.startswith("prepared_"):
+        if _recipe_count(recipe, "constant_rows") > 65_536:
+            raise ContractRefusal("row_limit", name)
+        if _recipe_count(recipe, "intrinsic_rows") > 64:
+            raise ContractRefusal("row_limit", name)
+        if _recipe_count(recipe, "enum_member_rows") > 4_096:
+            raise ContractRefusal("row_limit", name)
+        if _recipe_count(recipe, "vocabulary_member_rows") > 524_288:
+            raise ContractRefusal("row_limit", name)
         if (
-            rows > COMPILED_BOUNDS["prepared_rows"]
-            or small > COMPILED_BOUNDS["prepared_small_rows"]
+            _recipe_count(recipe, "node_type_members") > 524_288
+            or _recipe_count(recipe, "event_type_members") > 524_288
         ):
             raise ContractRefusal("row_limit", name)
-        if members > COMPILED_BOUNDS["identity_members"]:
-            raise ContractRefusal("row_limit", name)
-        if aggregate > COMPILED_BOUNDS["identity_aggregate_rows"]:
+        if name == "prepared_aggregate_rows" and _measure_bound_recipe(name, recipe) > maximum:
             raise ContractRefusal("aggregate_row_limit", name)
-        if name == "identity_section_bytes" and _measure_bound_recipe(name, recipe) > maximum:
+        if name == "prepared_combined_bytes" and _measure_bound_recipe(name, recipe) > maximum:
             raise ContractRefusal("byte_limit", name)
-    elif name in {"tick_rule_outcomes", "tick_rows"}:
-        outcomes = _measure_bound_recipe("tick_rule_outcomes", recipe)
-        rows = _measure_bound_recipe("tick_rows", recipe)
-        if outcomes > COMPILED_BOUNDS["tick_rule_outcomes"] or rows > COMPILED_BOUNDS["tick_rows"]:
+    elif name.startswith("tick_"):
+        if _recipe_count(recipe, "rule_outcome_rows") > 65_536:
             raise ContractRefusal("row_limit", name)
-    else:
-        return False
+        if (
+            _recipe_count(recipe, "event_rows") > 1_048_576
+            or _recipe_count(recipe, "payload_rows") > 1_048_576
+        ):
+            raise ContractRefusal("row_limit", name)
+        if name == "tick_aggregate_rows" and _measure_bound_recipe(name, recipe) > maximum:
+            raise ContractRefusal("aggregate_row_limit", name)
+        if name == "tick_combined_bytes" and _measure_bound_recipe(name, recipe) > maximum:
+            raise ContractRefusal("byte_limit", name)
     return True
 
 
@@ -1534,6 +1718,14 @@ def _verify_refusal(
     if data["operation"] == "bound_case":
         _verify_bound_case(contract, row)
         return
+    if data["operation"] == "seal_stable_resolver":
+        expected = {
+            "duplicate_node_names": "duplicate_node_name",
+            "duplicate_hyperedge_names": "duplicate_hyperedge_name",
+        }.get(data.get("fixture"))
+        if expected == data.get("expected_code"):
+            return
+        raise ContractRefusal("wrong_refusal", str(data.get("fixture")))
     if data["operation"] == "outer_action_link":
         outer = copy.deepcopy(rows_by_id[data["outer_id"]]["data"])
         outer["actions_id"] = data["actions_id"]

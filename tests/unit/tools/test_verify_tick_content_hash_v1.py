@@ -203,11 +203,11 @@ def test_bound_refusals_use_operation_recipes_and_cover_resolver_edges() -> None
     aggregate = next(row for row in refusal_rows if row["data"]["bound"] == "resolver_fact_units")
     assert aggregate["data"]["accepted_recipe"] == {
         "operation": "seal_stable_resolver",
-        "node_rows": 0,
-        "edge_rows": 0,
-        "hyperedge_rows": 16,
-        "hyperedge_member_rows": 1_048_560,
-        "maximum_members_per_hyperedge": 65_535,
+        "fixture": "resolver_fact_units",
+        "node_rows": 32_768,
+        "hyperedge_member_rows": [32_768] * 30 + [32_737],
+        "node_name_pattern": "n{index:04x}",
+        "hyperedge_name_pattern": "h{index}",
     }
 
     aggregate["data"]["accepted_recipe"]["node_rows"] = 1
@@ -425,3 +425,78 @@ def test_schema_cannot_widen_vector_loader_bounds(
     )
 
     assert main() == 1
+
+
+def test_bound_contract_uses_one_reachable_operation_path_per_ceiling() -> None:
+    contract = load_contract(SCHEMA)
+    vectors = load_vectors(VECTORS, maximum_rows=256, maximum_line_bytes=262_144)
+    bounds = contract["bounds"]
+
+    assert "practice_intent_bytes" not in bounds
+    assert "identity_members" not in bounds
+    assert "identity_aggregate_rows" not in bounds
+    assert "identity_section_bytes" not in bounds
+    assert {
+        "prepared_enum_members",
+        "prepared_vocabulary_members",
+        "prepared_aggregate_rows",
+        "prepared_combined_bytes",
+        "tick_aggregate_rows",
+        "tick_combined_bytes",
+    } <= bounds.keys()
+
+    bound_rows = {
+        row["data"]["bound"]: row
+        for row in vectors
+        if row["kind"] == "refusal" and row["data"]["operation"] == "bound_case"
+    }
+    for name in [
+        "stable_carrier_bytes",
+        "resolver_rows",
+        "resolver_edges",
+        "resolver_hyperedge_members",
+        "resolver_fact_units",
+        "resolver_manifest_bytes",
+        "stable_graph_elements",
+        "stable_graph_attribute_rows",
+        "stable_graph_hyperedge_members",
+        "stable_graph_fact_units",
+        "stable_graph_bytes",
+        "ordered_action_items",
+        "ordered_action_batch_bytes",
+        "prepared_rows",
+        "prepared_small_rows",
+        "prepared_enum_members",
+        "prepared_vocabulary_members",
+        "prepared_aggregate_rows",
+        "prepared_combined_bytes",
+        "tick_rule_outcomes",
+        "tick_rows",
+        "tick_aggregate_rows",
+        "tick_combined_bytes",
+    ]:
+        accepted = bound_rows[name]["data"]["accepted_recipe"]
+        refused = bound_rows[name]["data"]["refused_recipe"]
+        assert accepted["fixture"] == refused["fixture"]
+        assert accepted["fixture"]
+
+
+def test_resolver_name_contract_refuses_duplicate_authored_names() -> None:
+    contract = load_contract(SCHEMA)
+    vectors = load_vectors(VECTORS, maximum_rows=256, maximum_line_bytes=262_144)
+    refusals = {row["id"]: row["data"] for row in vectors if row["kind"] == "refusal"}
+
+    assert contract["layouts"]["resolver_manifest_v1"]["authored_name_uniqueness"] == {
+        "nodes": "unique within node local names",
+        "hyperedges": "unique within hyperedge local names",
+    }
+    assert refusals["resolver-duplicate-node-name-refusal"] == {
+        "operation": "seal_stable_resolver",
+        "fixture": "duplicate_node_names",
+        "expected_code": "duplicate_node_name",
+    }
+    assert refusals["resolver-duplicate-hyperedge-name-refusal"] == {
+        "operation": "seal_stable_resolver",
+        "fixture": "duplicate_hyperedge_names",
+        "expected_code": "duplicate_hyperedge_name",
+    }

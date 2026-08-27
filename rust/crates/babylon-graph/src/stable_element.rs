@@ -14,15 +14,15 @@ pub const STABLE_ELEMENT_RESOLVER_MANIFEST_LAYOUT_VERSION_V1: u32 = 1;
 /// Maximum resolved active-element stack depth in one V2 carrier.
 pub const MAX_STABLE_CARRIER_ACTIVE_ELEMENTS_V2: usize = 256;
 /// Maximum canonical V2 carrier byte length.
-pub const MAX_STABLE_CARRIER_BYTES_V2: usize = 131_072;
+pub const MAX_STABLE_CARRIER_BYTES_V2: usize = 105_962;
 /// Maximum combined node and hyperedge rows in one resolver manifest.
 pub const MAX_STABLE_RESOLVER_ROWS_V1: usize = 65_536;
 /// Maximum members in one hyperedge while sealing a stable resolver.
-pub const MAX_STABLE_RESOLVER_HYPEREDGE_MEMBERS_V1: usize = 65_536;
+pub const MAX_STABLE_RESOLVER_HYPEREDGE_MEMBERS_V1: usize = 65_534;
 /// Maximum topology rows plus member references while sealing a resolver.
 pub const MAX_STABLE_RESOLVER_FACT_UNITS_V1: usize = 1_048_576;
 /// Maximum canonical resolver-manifest byte length.
-pub const MAX_STABLE_RESOLVER_MANIFEST_BYTES_V1: usize = 16_777_216;
+pub const MAX_STABLE_RESOLVER_MANIFEST_BYTES_V1: usize = 8_388_608;
 
 const STABLE_ELEMENT_DOMAIN: &[u8] = b"babylon.stable-element";
 const STABLE_RESOLVER_DOMAIN: &[u8] = b"babylon.stable-element-resolver";
@@ -1204,7 +1204,7 @@ mod tests {
     use super::{
         frame_segments, snapshot_topology, validate_resolver_edge_count,
         validate_resolver_fact_unit_count, validate_resolver_member_count, StableIdentityError,
-        MAX_STABLE_CARRIER_BYTES_V2, MAX_STABLE_EDGES_V1, MAX_STABLE_RESOLVER_FACT_UNITS_V1,
+        MAX_STABLE_EDGES_V1, MAX_STABLE_RESOLVER_FACT_UNITS_V1,
         MAX_STABLE_RESOLVER_HYPEREDGE_MEMBERS_V1,
     };
     use crate::state_hash::CanonicalState;
@@ -1343,27 +1343,15 @@ mod tests {
     }
 
     #[test]
-    fn carrier_byte_ceiling_accepts_exactly_maximum_and_refuses_plus_one() {
-        let exact_segment = "x".repeat(MAX_STABLE_CARRIER_BYTES_V2 - 7);
-        let exact = frame_segments(
-            "stable carrier key",
-            &[&exact_segment],
-            MAX_STABLE_CARRIER_BYTES_V2,
-        )
-        .unwrap();
-        assert_eq!(exact.len(), MAX_STABLE_CARRIER_BYTES_V2);
-
-        let oversized_segment = "x".repeat(MAX_STABLE_CARRIER_BYTES_V2 - 6);
+    fn frame_segments_enforces_its_supplied_byte_ceiling() {
+        let exact = frame_segments("test frame", &["xxxxxxxxxxxx"], 15).unwrap();
+        assert_eq!(exact.len(), 15);
         assert_eq!(
-            frame_segments(
-                "stable carrier key",
-                &[&oversized_segment],
-                MAX_STABLE_CARRIER_BYTES_V2,
-            ),
+            frame_segments("test frame", &["xxxxxxxxxxxxx"], 15),
             Err(StableIdentityError::ByteLimit {
-                field: "stable carrier key",
-                actual: MAX_STABLE_CARRIER_BYTES_V2 + 1,
-                maximum: MAX_STABLE_CARRIER_BYTES_V2,
+                field: "test frame",
+                actual: 16,
+                maximum: 15,
             })
         );
     }

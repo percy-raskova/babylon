@@ -95,9 +95,12 @@ ADR240_replay_action_tick_content_identity:
     the same corpus and production integration tests run the real RNG, graph,
     BSL, and detached replay path.
 
-    Both consumers execute the corpus's operation-specific maximum and
-    maximum-plus-one refusal rows for every string, row, member, aggregate, and
-    byte ceiling. Both also refuse nonempty, wrong-session, and wrong-tick outer
+    Both consumers execute the corpus's reachable operation-specific maximum
+    and maximum-plus-one refusal rows for every string, row, member, aggregate,
+    and byte ceiling. The Rust consumer calls the public resolver, graph, BSL,
+    and ordered-action operations; the independent verifier reconstructs and
+    validates the complete semantic generators. Both also refuse duplicate
+    authored resolver names and nonempty, wrong-session, and wrong-tick outer
     action links. Frozen P27, RNG V1, and Practice V2 tests prove that their
     bytes did not move. Exact-head review and the sequential repository gates
     remain required before merge.

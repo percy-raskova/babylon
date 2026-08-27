@@ -60,27 +60,29 @@ bounds:
   enum_member_bytes: 64
   governance_utf8_bytes: 4194304
   stable_carrier_active_elements: 256
-  stable_carrier_bytes: 131072
+  stable_carrier_bytes: 105962
   resolver_rows: 65536
   resolver_edges: 65536
-  resolver_hyperedge_members: 65536
+  resolver_hyperedge_members: 65534
   resolver_fact_units: 1048576
-  resolver_manifest_bytes: 16777216
+  resolver_manifest_bytes: 8388608
   stable_graph_elements: 65536
-  stable_graph_attribute_rows: 1048576
-  stable_graph_hyperedge_members: 65536
+  stable_graph_attribute_rows: 524288
+  stable_graph_hyperedge_members: 65534
   stable_graph_fact_units: 1048576
   stable_graph_bytes: 67108864
   ordered_action_items: 4096
-  practice_intent_bytes: 16384
-  ordered_action_batch_bytes: 67256631
+  ordered_action_batch_bytes: 9302326
   prepared_rows: 65536
   prepared_small_rows: 64
-  identity_members: 1048576
-  identity_aggregate_rows: 1048576
-  identity_section_bytes: 67108864
+  prepared_enum_members: 4096
+  prepared_vocabulary_members: 524288
+  prepared_aggregate_rows: 1048576
+  prepared_combined_bytes: 67108864
   tick_rule_outcomes: 65536
   tick_rows: 1048576
+  tick_aggregate_rows: 1048576
+  tick_combined_bytes: 67108864
 
 bound_refusals:
   vector_rows: {operation: load_vector_file, expected_code: too_many_rows}
@@ -102,22 +104,24 @@ bound_refusals:
   resolver_edges: {operation: seal_stable_resolver, expected_code: edge_limit}
   resolver_hyperedge_members: {operation: seal_stable_resolver, expected_code: hyperedge_members}
   resolver_fact_units: {operation: seal_stable_resolver, expected_code: aggregate_row_limit}
-  resolver_manifest_bytes: {operation: encode_resolver_manifest, expected_code: byte_limit}
+  resolver_manifest_bytes: {operation: seal_stable_resolver, expected_code: byte_limit}
   stable_graph_elements: {operation: encode_stable_graph, expected_code: row_limit}
   stable_graph_attribute_rows: {operation: encode_stable_graph, expected_code: row_limit}
   stable_graph_hyperedge_members: {operation: encode_stable_graph, expected_code: hyperedge_members}
   stable_graph_fact_units: {operation: encode_stable_graph, expected_code: aggregate_row_limit}
   stable_graph_bytes: {operation: encode_stable_graph, expected_code: byte_limit}
   ordered_action_items: {operation: project_ordered_action_batch, expected_code: row_limit}
-  practice_intent_bytes: {operation: project_ordered_action_batch, expected_code: intent_length}
   ordered_action_batch_bytes: {operation: project_ordered_action_batch, expected_code: byte_limit}
   prepared_rows: {operation: encode_prepared_bsl, expected_code: row_limit}
   prepared_small_rows: {operation: encode_prepared_bsl, expected_code: row_limit}
-  identity_members: {operation: encode_prepared_bsl, expected_code: row_limit}
-  identity_aggregate_rows: {operation: encode_prepared_bsl, expected_code: aggregate_row_limit}
-  identity_section_bytes: {operation: encode_prepared_bsl, expected_code: byte_limit}
+  prepared_enum_members: {operation: encode_prepared_bsl, expected_code: row_limit}
+  prepared_vocabulary_members: {operation: encode_prepared_bsl, expected_code: row_limit}
+  prepared_aggregate_rows: {operation: encode_prepared_bsl, expected_code: aggregate_row_limit}
+  prepared_combined_bytes: {operation: encode_prepared_bsl, expected_code: byte_limit}
   tick_rule_outcomes: {operation: encode_tick_payload, expected_code: row_limit}
   tick_rows: {operation: encode_tick_payload, expected_code: row_limit}
+  tick_aggregate_rows: {operation: encode_tick_payload, expected_code: aggregate_row_limit}
+  tick_combined_bytes: {operation: encode_tick_payload, expected_code: byte_limit}
 
 layouts:
   replay_session_v1:
@@ -172,6 +176,9 @@ layouts:
     domain_ascii_nul: babylon.stable-element-resolver
     layout_u32: 1
     tags: [1, 2, 3]
+    authored_name_uniqueness:
+      nodes: unique within node local names
+      hyperedges: unique within hyperedge local names
     sections:
       - {tag: 1, body: scenario_str32}
       - tag: 2

@@ -788,10 +788,10 @@ name.
 This section specifies only the outer ``NominalWorldHash`` composition. It
 treats ``GraphStateHash`` and ``phase_schedule_digest`` as authoritative
 32-byte inputs. Their inner domain strings, tagged sections, omissions, slot
-registry, alias table, and golden digests remain defined only in the cited Rust
-code and tests. An independent implementation still needs those sources. That
-is an explicit rewrite-contract gap, not a claim that this page specifies the
-complete Rust world identity.
+registry, accepted-name mapping table, and golden digests remain defined only
+in the cited Rust code and tests. An independent implementation still needs
+those sources. That is an explicit rewrite-contract gap, not a claim that this
+page specifies the complete Rust world identity.
 
 Canonical layout
 ++++++++++++++++
@@ -812,10 +812,11 @@ layout version, and four tagged sections in this exact order:
 The completed tick cannot be negative. The allocator value ``u64::MAX`` is
 the reserved exhausted sentinel; ``u64::MAX - 1`` is the last identity either
 allocator can mint. The current Rust schedule digest is separately versioned
-and hashes all 34 canonical slots plus the byte-sorted compatibility aliases.
-It includes each partition, ordinal, and resolved default rank. Content order
-does not enter the schedule digest or this nominal identity. This paragraph is
-descriptive; it is not a complete schedule-digest byte specification.
+and hashes all 34 canonical slots plus the four byte-sorted accepted-name
+mappings used by current content. It includes each partition, ordinal, and
+resolved default rank. Content order does not enter the schedule digest or
+this nominal identity. This paragraph is descriptive; it is not a complete
+schedule-digest byte specification.
 
 Exact asymmetric vector
 +++++++++++++++++++++++

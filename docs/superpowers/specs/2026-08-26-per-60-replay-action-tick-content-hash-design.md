@@ -226,7 +226,7 @@ V2 introduces two validated boundary values:
 
 - RngDomainV2 is the firing rule qname: 1 through 128 strict ASCII bytes.
 - StableCarrierKeyV2 is a graph-owned private strict ASCII value of 1 through
-  131,072 bytes. The authoritative BSL path cannot construct it from an
+  105,962 bytes. The authoritative BSL path cannot construct it from an
   arbitrary caller string.
 
 The stable carrier uses graph-owned StableElementCarrierSegmentV1, an exact
@@ -243,7 +243,7 @@ decimal byte length, `:`, then exact bytes, and `|` separates segments:
 The graph-owned builder takes one resolved subject segment, at most 256
 resolved active-element segments in outermost-to-innermost order, and the
 canonical decimal i64 draw slot. The slot has no leading plus or zeroes; zero
-is `0`. The builder checks its segment count and 131,072-byte ceiling before
+is `0`. The builder checks its segment count and 105,962-byte ceiling before
 allocation. V2 has no raw-id or debug fallback.
 
 The final bytes are exactly:
@@ -264,7 +264,7 @@ passes only `validated_bytes()` to the low-level kernel V2 derivation. Kernel
 cannot name a graph type because graph already depends on kernel, so its raw
 byte entry point does not by itself prove provenance. ReplayTickSession's
 typed BSL path is the authoritative construction boundary; direct low-level
-kernel use is contract-test or adapter infrastructure, never tick execution.
+kernel use is standalone contract-test evidence, never tick execution.
 
 One typed RngSeedContext dispatches the real intrinsic path:
 
@@ -400,8 +400,12 @@ Exact action bounds are:
 
 - ActionId preimage is `68 + session byte length`, or 69 through 324 bytes;
 - an empty batch is `55 + session byte length`, or 56 through 311 bytes;
-- each item is `36 + intent byte length`, at most 16,420 bytes; and
-- the complete 4,096-item batch is at most 67,256,631 bytes.
+- each valid current Practice V2 item is at most 2,271 bytes; and
+- the complete 4,096-item batch is at most 9,302,326 bytes.
+
+Practice V2 keeps its frozen 16,384-byte decoder ceiling. Its current valid
+empty-parameter grammar can produce at most 2,235 intent bytes, so PER-60 does
+not restate the wider decoder ceiling as an ordered-action operation bound.
 
 ReplayTickSession accepts the typed batch but requires the zero-item form. A
 non-empty form refuses before the detached tick starts. Gate 5 must change this
@@ -475,9 +479,12 @@ runtime handles:
     tag 0x03, u32 hyperedge count
       rows sorted by local name: str32 local name, str32 hyperedge type
 
-All three tags are mandatory. The combined node and hyperedge count is at
-most 65,536 and the manifest is at most 16,777,216 bytes. Its digest is
-SHA-256 of the exact bytes.
+All three tags are mandatory. Node local names are unique within the node
+section, and hyperedge local names are unique within the hyperedge section.
+The combined node and hyperedge count is at most 65,536, one hyperedge has at
+most 65,534 members, all topology rows and member references total at most
+1,048,576 fact units, and the manifest is at most 8,388,608 bytes. Its digest
+is SHA-256 of the exact bytes.
 
 The immutable StableElementResolverV1 also seals the hydrated topology. It
 requires a bijection between live node handles and authored node names and a
@@ -536,8 +543,8 @@ the BSL typechecker.
 V1 ceilings are:
 
     stable nodes, edges, or hyperedges each: 65,536
-    rows in any attribute section: 1,048,576
-    members in one hyperedge: 65,536
+    rows in any attribute section: 524,288
+    members in one hyperedge: 65,534
     all seven rows plus nested member references: 1,048,576 fact units
     complete StableGraphStateV1 bytes: 67,108,864
 
@@ -679,13 +686,15 @@ PreparedEnvironmentV1 reuses the existing PhaseScheduleV1 bytes:
       u8 partition: 0 material base, 1 action, 2 consequence
       u8 ordinal
       u16 default rank
-    u32 alias count
-    for each alias sorted by alias name:
-      str32 alias
+    u32 accepted-name mapping count
+    for each mapping sorted by accepted name:
+      str32 accepted name
       str32 canonical slot
       u16 resolved default rank
 
-Its current 34 slots and four compatibility aliases remain the live schedule.
+Its current 34 slots and four governed accepted-name mappings remain the live
+schedule. Each accepted name is used by current content; this is not a
+second scheduling path.
 PhaseScheduleDigestV1 is SHA-256 of the exact bytes.
 
 ### Prepared environment bytes
@@ -757,9 +766,11 @@ bytes.
 
 PreparedEnvironmentV1 is at most 67,108,864 bytes. Its ceilings are 65,536
 rules, fields, constants, enum types, and combined stable resolver rows; 64
-exemptions and intrinsic rows; 1,048,576 members in one enum or vocabulary
-kind; and 1,048,576 aggregate prepared rows. Encoders enforce per-section and
-aggregate counts before allocation.
+exemptions and intrinsic rows; 4,096 members in one declared enum; 524,288
+members in one vocabulary kind; and 1,048,576 aggregate prepared rows. The
+aggregate includes the four vocabulary-kind rows and every vocabulary member.
+Encoders enforce the prepared aggregate and combined-byte ceilings separately
+from the tick-payload ceilings before allocation.
 
 Content identity remains the existing pair of defines_hash and rules_hash.
 Reference identity is one explicit RefDigestV1 containing exactly 32 bytes and
@@ -810,9 +821,10 @@ values. Its per-rule ordinal remains the published events-first-then-writes
 ordinal and is not resorted. StableWorldV1 binds the resulting writes.
 
 TickPayloadV1 is at most 67,108,864 bytes. It permits at most 65,536 rule
-outcomes; 1,048,576 events, receipts, aggregate payload items, and aggregate
 tick rows; 1,048,576 items in one event; and 4,096 action outcomes, with the
-last count fixed to zero here. Each local and aggregate count is checked before
+last count fixed to zero here. The tick aggregate-row and combined-byte
+ceilings are distinct from the prepared-environment ceilings. Each local and
+aggregate count is checked before
 allocation.
 
 TickPayloadDigestV1 is SHA-256 of the exact canonical payload bytes. The

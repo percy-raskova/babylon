@@ -28,7 +28,7 @@ const ORDERED_BATCH_SCHEMA_VERSION: u16 = 1;
 const ACTION_ID_FIXED_BYTES: usize = 68;
 const ORDERED_BATCH_FIXED_BYTES: usize = 55;
 const ORDERED_ACTION_FIXED_BYTES: usize = 36;
-const MAX_ORDERED_PRACTICE_ACTION_BATCH_BYTES_V1: usize = 67_256_631;
+const MAX_ORDERED_PRACTICE_ACTION_BATCH_BYTES_V1: usize = 9_302_326;
 
 /// Exact identity of one accepted Practice V2 intent in a replay session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

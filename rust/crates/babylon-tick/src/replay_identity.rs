@@ -7,7 +7,7 @@ use babylon_bsl::evaluator::Value;
 use babylon_bsl::identity_codec::{IdentityCodecError, MAX_IDENTITY_SECTION_BYTES_V1};
 use babylon_bsl::identity_sections::{
     encode_prepared_bsl_sections_v1, encode_tick_payload_sections_v1,
-    MAX_IDENTITY_AGGREGATE_ROWS_V1, MAX_PREPARED_ROWS_V1,
+    MAX_PREPARED_AGGREGATE_ROWS_V1, MAX_PREPARED_ROWS_V1,
 };
 use babylon_bsl::rules_hash_of;
 use babylon_graph::stable_element::{StableElementResolverV1, StableIdentityError};
@@ -358,10 +358,10 @@ fn validate_prepared_aggregate(
         .ok_or(ReplayTickIdentityError::CapacityOverflow {
             field: "prepared aggregate rows",
         })?;
-    if total > MAX_IDENTITY_AGGREGATE_ROWS_V1 {
+    if total > MAX_PREPARED_AGGREGATE_ROWS_V1 {
         return Err(ReplayTickIdentityError::AggregateRowLimit {
             actual: total,
-            maximum: MAX_IDENTITY_AGGREGATE_ROWS_V1,
+            maximum: MAX_PREPARED_AGGREGATE_ROWS_V1,
         });
     }
     Ok(())

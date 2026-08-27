@@ -15,9 +15,9 @@ pub const STABLE_GRAPH_STATE_LAYOUT_VERSION_V1: u32 = 1;
 /// Maximum node, edge, or hyperedge rows in stable graph state.
 pub const MAX_STABLE_GRAPH_ELEMENTS_V1: usize = 65_536;
 /// Maximum rows in one stable graph attribute section.
-pub const MAX_STABLE_GRAPH_ATTRIBUTES_V1: usize = 1_048_576;
+pub const MAX_STABLE_GRAPH_ATTRIBUTES_V1: usize = 524_288;
 /// Maximum members in one stable hyperedge.
-pub const MAX_STABLE_GRAPH_HYPEREDGE_MEMBERS_V1: usize = 65_536;
+pub const MAX_STABLE_GRAPH_HYPEREDGE_MEMBERS_V1: usize = 65_534;
 /// Maximum rows plus nested member references in stable graph state.
 pub const MAX_STABLE_GRAPH_FACT_UNITS_V1: usize = 1_048_576;
 /// Maximum complete stable graph-state canonical byte length.

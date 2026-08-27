@@ -1,8 +1,11 @@
 //! Independent semantic reconstruction for the shared PER-60 vector corpus.
 
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
+use babylon_graph::memory::MemoryGraph;
+use babylon_graph::stable_element::{StableElementResolverV1, StableIdentityError};
+use babylon_graph::substrate::GraphSubstrate;
 use babylon_kernel::sha256_of;
 use serde_json::Value;
 
@@ -10,6 +13,9 @@ use super::{
     hex_bytes, integer, row_by_id, text, unsigned, verify_fixed_tags, TagRefusal, VectorRow,
     MAX_ROWS,
 };
+
+#[path = "tick_content_hash_v1_bound_operations.rs"]
+mod bound_operations;
 
 pub(super) fn canonical(row: &VectorRow, rows: &[VectorRow]) -> Option<Vec<u8>> {
     let data = &row.data;
@@ -175,7 +181,7 @@ fn stable_carrier_key(data: &Value, rows: &[VectorRow]) -> Vec<u8> {
         output.push(b':');
         output.extend_from_slice(segment);
     }
-    assert!(output.len() <= 131_072, "bounded final stable carrier");
+    assert!(output.len() <= 105_962, "bounded final stable carrier");
     output
 }
 
@@ -1062,9 +1068,39 @@ fn verify_refusal(row: &VectorRow, rows: &[VectorRow]) {
                 Err(text(data, "expected_code"))
             );
         }
+        "seal_stable_resolver" => verify_resolver_refusal(data),
         "bound_case" => verify_bound_case(data),
         operation => panic!("unexecuted shared refusal operation {operation}"),
     }
+}
+
+fn verify_resolver_refusal(data: &Value) {
+    let mut graph = MemoryGraph::new();
+    let first = graph.add_node("n").expect("first duplicate-name node");
+    let second = graph.add_node("n").expect("second duplicate-name node");
+    let mut node_names = HashMap::from([(first, "same".to_owned()), (second, "same".to_owned())]);
+    let mut hyperedge_names = HashMap::new();
+    let result = if text(data, "fixture") == "duplicate_hyperedge_names" {
+        node_names.insert(first, "first".to_owned());
+        node_names.insert(second, "second".to_owned());
+        let left = graph
+            .add_hyperedge("h", &[first])
+            .expect("first duplicate-name hyperedge");
+        let right = graph
+            .add_hyperedge("h", &[second])
+            .expect("second duplicate-name hyperedge");
+        hyperedge_names.insert(left, "same".to_owned());
+        hyperedge_names.insert(right, "same".to_owned());
+        StableElementResolverV1::seal(&graph, "s", &node_names, &hyperedge_names)
+    } else {
+        StableElementResolverV1::seal(&graph, "s", &node_names, &hyperedge_names)
+    };
+    let actual = match result {
+        Err(StableIdentityError::DuplicateNodeName { .. }) => "duplicate_node_name",
+        Err(StableIdentityError::DuplicateHyperedgeName { .. }) => "duplicate_hyperedge_name",
+        other => panic!("unexpected duplicate authored-name result: {other:?}"),
+    };
+    assert_eq!(actual, text(data, "expected_code"));
 }
 
 fn session_refusal(value: &str) -> &'static str {
@@ -1163,16 +1199,6 @@ fn sum_fields(recipe: &Value, fields: &[&str]) -> u64 {
         .sum()
 }
 
-fn max_fields(recipe: &Value, fields: &[&str]) -> u64 {
-    assert!(fields.len() <= 8, "bounded recipe fields");
-    fields
-        .iter()
-        .take(8)
-        .map(|field| recipe_count(recipe, field))
-        .max()
-        .unwrap_or(0)
-}
-
 fn framed_length(length: u64) -> u64 {
     let digits = if length == 0 {
         1
@@ -1199,96 +1225,137 @@ fn measure_bound_recipe(name: &str, recipe: &Value) -> u64 {
         "intrinsic_identity_bytes" => recipe_count(recipe, "identity_bytes"),
         "enum_member_bytes" => recipe_count(recipe, "member_bytes"),
         "governance_utf8_bytes" => recipe_count(recipe, "utf8_bytes"),
-        "stable_carrier_active_elements" => recipe_count(recipe, "active_segment_count"),
+        "stable_carrier_active_elements" => recipe_count(recipe, "active_element_count"),
         "stable_carrier_bytes" => measure_carrier_bytes(recipe),
-        "resolver_rows" => sum_fields(recipe, &["node_rows", "hyperedge_rows"]),
+        "resolver_rows" => measure_resolver_rows(recipe),
         "resolver_edges" => recipe_count(recipe, "edge_rows"),
-        "resolver_hyperedge_members" | "stable_graph_hyperedge_members" => {
-            recipe_count(recipe, "maximum_members_per_hyperedge")
-        }
-        "resolver_fact_units" => sum_fields(
-            recipe,
-            &[
-                "node_rows",
-                "edge_rows",
-                "hyperedge_rows",
-                "hyperedge_member_rows",
-            ],
-        ),
-        "resolver_manifest_bytes" => sum_fields(
-            recipe,
-            &[
-                "domain_layout_bytes",
-                "scenario_section_bytes",
-                "node_section_bytes",
-                "hyperedge_section_bytes",
-            ],
-        ),
-        "stable_graph_elements" => {
-            max_fields(recipe, &["node_rows", "edge_rows", "hyperedge_rows"])
-        }
-        "stable_graph_attribute_rows" => max_fields(recipe, graph_attribute_fields()),
+        "resolver_hyperedge_members" => recipe_count(recipe, "hyperedge_member_rows"),
+        "resolver_fact_units" => measure_resolver_facts(recipe),
+        "resolver_manifest_bytes" => measure_resolver_manifest_bytes(recipe),
+        "stable_graph_elements" => recipe_count(recipe, "state_node_rows"),
+        "stable_graph_attribute_rows" => recipe_count(recipe, "node_f64_rows"),
+        "stable_graph_hyperedge_members" => recipe_count(recipe, "state_member_rows"),
         "stable_graph_fact_units" => measure_graph_facts(recipe),
-        "stable_graph_bytes" => {
-            sum_fields(recipe, &["domain_layout_bytes", "scenario_section_bytes"])
-                + recipe_counts(recipe, "section_bytes", 8)
-                    .iter()
-                    .take(8)
-                    .sum::<u64>()
-        }
+        "stable_graph_bytes" => measure_stable_graph_bytes(recipe),
         "ordered_action_items" => recipe_count(recipe, "item_count"),
-        "practice_intent_bytes" => recipe_count(recipe, "intent_bytes"),
-        "ordered_action_batch_bytes" => {
-            recipe_count(recipe, "existing_batch_bytes")
-                + 36
-                + recipe_count(recipe, "next_intent_bytes")
-        }
-        "prepared_rows" => max_fields(recipe, prepared_row_fields()),
-        "prepared_small_rows" => max_fields(recipe, prepared_small_fields()),
-        "identity_members" => recipe_count(recipe, "enum_member_rows"),
-        "identity_aggregate_rows" => measure_prepared_aggregate(recipe),
-        "identity_section_bytes" => recipe_counts(recipe, "section_bytes", 5).iter().sum(),
+        "ordered_action_batch_bytes" => measure_ordered_action_batch_bytes(recipe),
+        "prepared_rows" => recipe_count(recipe, "constant_rows"),
+        "prepared_small_rows" => recipe_count(recipe, "intrinsic_rows"),
+        "prepared_enum_members" => recipe_count(recipe, "enum_member_rows"),
+        "prepared_vocabulary_members" => recipe_count(recipe, "vocabulary_member_rows"),
+        "prepared_aggregate_rows" => measure_prepared_aggregate(recipe),
+        "prepared_combined_bytes" => measure_prepared_bytes(recipe),
         "tick_rule_outcomes" => recipe_count(recipe, "rule_outcome_rows"),
-        "tick_rows" => max_fields(recipe, &["event_rows", "receipt_rows", "payload_rows"]),
+        "tick_rows" => recipe_count(recipe, "event_rows"),
+        "tick_aggregate_rows" => {
+            recipe_count(recipe, "event_rows") + recipe_count(recipe, "payload_rows")
+        }
+        "tick_combined_bytes" => measure_tick_bytes(recipe),
         _ => panic!("unknown bound recipe {name}"),
     }
 }
 
 fn measure_carrier_bytes(recipe: &Value) -> u64 {
-    let active = recipe_count(recipe, "active_segment_count");
-    let subject = framed_length(recipe_count(recipe, "subject_segment_bytes"));
-    let active_bytes = framed_length(recipe_count(recipe, "active_segment_bytes"));
-    let slot = framed_length(recipe_count(recipe, "draw_slot_bytes"));
-    subject + active * (1 + active_bytes) + 1 + slot
+    let scenario = recipe_count(recipe, "scenario_bytes");
+    let subject_name = recipe_count(recipe, "subject_local_name_bytes");
+    let edge_type = recipe_count(recipe, "active_edge_type_bytes");
+    let endpoint = recipe_count(recipe, "active_endpoint_name_bytes");
+    let subject_segment = [4, scenario, subject_name]
+        .iter()
+        .map(|length| framed_length(*length))
+        .sum::<u64>()
+        + 2;
+    let edge_segment = [4, scenario, edge_type, endpoint, endpoint]
+        .iter()
+        .map(|length| framed_length(*length))
+        .sum::<u64>()
+        + 4;
+    let active = recipe_count(recipe, "active_element_count");
+    let slot = integer(recipe, "draw_slot").to_string().len() as u64;
+    framed_length(subject_segment)
+        + active * (1 + framed_length(edge_segment))
+        + 1
+        + framed_length(slot)
 }
 
-const fn graph_attribute_fields() -> &'static [&'static str] {
-    &[
-        "node_f64_rows",
-        "edge_f64_rows",
-        "node_currency_rows",
-        "hyperedge_f64_rows",
-    ]
+fn measure_resolver_rows(recipe: &Value) -> u64 {
+    let hyperedges = match text(recipe, "fixture") {
+        "resolver_single_hyperedge" => 1,
+        "resolver_fact_units" => recipe_counts(recipe, "hyperedge_member_rows", 32).len() as u64,
+        _ => 0,
+    };
+    recipe_count(recipe, "node_rows") + hyperedges
+}
+
+fn measure_resolver_facts(recipe: &Value) -> u64 {
+    let members = recipe_counts(recipe, "hyperedge_member_rows", 32);
+    recipe_count(recipe, "node_rows") + members.len() as u64 + members.iter().sum::<u64>()
+}
+
+fn measure_resolver_manifest_bytes(recipe: &Value) -> u64 {
+    let full_row = 8
+        + recipe_count(recipe, "full_node_name_bytes")
+        + recipe_count(recipe, "full_node_type_bytes");
+    let final_row = 8
+        + recipe_count(recipe, "final_node_name_bytes")
+        + recipe_count(recipe, "final_node_type_bytes");
+    31 + 20
+        + text(recipe, "scenario").len() as u64
+        + recipe_count(recipe, "full_node_rows") * full_row
+        + final_row
 }
 
 fn measure_graph_facts(recipe: &Value) -> u64 {
-    sum_fields(recipe, &["node_rows", "edge_rows", "hyperedge_rows"])
-        + sum_fields(recipe, graph_attribute_fields())
-        + recipe_count(recipe, "hyperedge_member_rows")
+    sum_fields(
+        recipe,
+        &["node_rows", "node_f64_rows", "node_currency_rows"],
+    )
 }
 
-const fn prepared_row_fields() -> &'static [&'static str] {
-    &["field_rows", "constant_rows", "enum_type_rows"]
+fn measure_stable_graph_bytes(recipe: &Value) -> u64 {
+    let fixed = 20 + 1 + 4 + 1 + 4 + text(recipe, "scenario").len() as u64 + 7 * 5;
+    let node = 8 + text(recipe, "node_name").len() as u64 + text(recipe, "node_type").len() as u64;
+    let full = 17 + recipe_count(recipe, "full_qname_bytes");
+    let final_row = 17 + recipe_count(recipe, "final_qname_bytes");
+    fixed + node + recipe_count(recipe, "full_node_f64_rows") * full + final_row
 }
 
-const fn prepared_small_fields() -> &'static [&'static str] {
-    &["exemption_rows", "intrinsic_rows"]
+fn measure_ordered_action_batch_bytes(recipe: &Value) -> u64 {
+    let intent = 187 + 32 * recipe_count(recipe, "evidence_digests_per_intent");
+    55 + recipe_count(recipe, "session_bytes") + recipe_count(recipe, "item_count") * (36 + intent)
 }
 
 fn measure_prepared_aggregate(recipe: &Value) -> u64 {
-    sum_fields(recipe, prepared_row_fields())
-        + sum_fields(recipe, prepared_small_fields())
-        + recipe_count(recipe, "enum_member_rows")
+    sum_fields(
+        recipe,
+        &[
+            "vocabulary_kind_rows",
+            "node_type_members",
+            "event_type_members",
+        ],
+    )
+}
+
+fn measure_prepared_bytes(recipe: &Value) -> u64 {
+    let full = 16 + 1 + 3 * recipe_count(recipe, "full_governance_field_bytes");
+    let final_row = 16
+        + 1
+        + sum_fields(
+            recipe,
+            &[
+                "final_reason_bytes",
+                "final_owner_bytes",
+                "final_date_bytes",
+            ],
+        );
+    21 + recipe_count(recipe, "full_exemption_rows") * full + final_row
+}
+
+fn measure_tick_bytes(recipe: &Value) -> u64 {
+    let fixed = 14 + 4 + 10 + text(recipe, "event_name").len() as u64 + 4;
+    let full = 13 + recipe_count(recipe, "full_payload_label_bytes");
+    let final_row = 13 + recipe_count(recipe, "final_payload_label_bytes");
+    fixed + recipe_count(recipe, "full_payload_rows") * full + final_row
 }
 
 fn execute_bound_recipe(name: &str, recipe: &Value) -> Result<(), &'static str> {
@@ -1308,38 +1375,22 @@ fn execute_bound_recipe(name: &str, recipe: &Value) -> Result<(), &'static str> 
     ) {
         return execute_text_bound_recipe(name, recipe);
     }
-    if name.starts_with("resolver_") || name.starts_with("stable_graph_") {
-        return execute_graph_bound_recipe(name, recipe);
-    }
-    if name.starts_with("prepared_") || name.starts_with("identity_") || name.starts_with("tick_") {
-        return execute_bsl_bound_recipe(name, recipe);
-    }
-    if matches!(
-        name,
-        "ordered_action_items" | "practice_intent_bytes" | "ordered_action_batch_bytes"
-    ) {
-        return execute_action_bound_recipe(name, recipe);
+    if name.starts_with("resolver_")
+        || name.starts_with("stable_graph_")
+        || name.starts_with("prepared_")
+        || name.starts_with("tick_")
+        || matches!(
+            name,
+            "stable_carrier_active_elements"
+                | "stable_carrier_bytes"
+                | "ordered_action_items"
+                | "ordered_action_batch_bytes"
+        )
+    {
+        return bound_operations::execute(name, recipe);
     }
     let (_, maximum, code) = bound_contract(name);
     check_bound(measure_bound_recipe(name, recipe), maximum, code)
-}
-
-fn execute_action_bound_recipe(name: &str, recipe: &Value) -> Result<(), &'static str> {
-    check_bound(recipe_count(recipe, "item_count"), 4_096, "row_limit")?;
-    check_bound(
-        recipe_count(recipe, "intent_bytes"),
-        16_384,
-        "intent_length",
-    )?;
-    check_bound(
-        recipe_count(recipe, "next_intent_bytes"),
-        16_384,
-        "intent_length",
-    )?;
-    if name == "ordered_action_batch_bytes" {
-        check_bound(measure_bound_recipe(name, recipe), 67_256_631, "byte_limit")?;
-    }
-    Ok(())
 }
 
 fn execute_text_bound_recipe(name: &str, recipe: &Value) -> Result<(), &'static str> {
@@ -1386,97 +1437,6 @@ fn execute_text_bound_recipe(name: &str, recipe: &Value) -> Result<(), &'static 
     }
 }
 
-fn execute_graph_bound_recipe(name: &str, recipe: &Value) -> Result<(), &'static str> {
-    if name.starts_with("resolver_") && name != "resolver_manifest_bytes" {
-        check_bound(
-            measure_bound_recipe("resolver_rows", recipe),
-            65_536,
-            "row_limit",
-        )?;
-        check_bound(
-            measure_bound_recipe("resolver_edges", recipe),
-            65_536,
-            "edge_limit",
-        )?;
-        check_bound(
-            measure_bound_recipe("resolver_hyperedge_members", recipe),
-            65_536,
-            "hyperedge_members",
-        )?;
-        return check_bound(
-            measure_bound_recipe("resolver_fact_units", recipe),
-            1_048_576,
-            "aggregate_row_limit",
-        );
-    }
-    if name == "resolver_manifest_bytes" {
-        return check_bound(measure_bound_recipe(name, recipe), 16_777_216, "byte_limit");
-    }
-    check_bound(
-        measure_bound_recipe("stable_graph_elements", recipe),
-        65_536,
-        "row_limit",
-    )?;
-    check_bound(
-        measure_bound_recipe("stable_graph_attribute_rows", recipe),
-        1_048_576,
-        "row_limit",
-    )?;
-    check_bound(
-        measure_bound_recipe("stable_graph_hyperedge_members", recipe),
-        65_536,
-        "hyperedge_members",
-    )?;
-    check_bound(
-        measure_bound_recipe("stable_graph_fact_units", recipe),
-        1_048_576,
-        "aggregate_row_limit",
-    )?;
-    if name == "stable_graph_bytes" {
-        check_bound(measure_bound_recipe(name, recipe), 67_108_864, "byte_limit")?;
-    }
-    Ok(())
-}
-
-fn execute_bsl_bound_recipe(name: &str, recipe: &Value) -> Result<(), &'static str> {
-    if name.starts_with("tick_") {
-        check_bound(
-            measure_bound_recipe("tick_rule_outcomes", recipe),
-            65_536,
-            "row_limit",
-        )?;
-        return check_bound(
-            measure_bound_recipe("tick_rows", recipe),
-            1_048_576,
-            "row_limit",
-        );
-    }
-    check_bound(
-        measure_bound_recipe("prepared_rows", recipe),
-        65_536,
-        "row_limit",
-    )?;
-    check_bound(
-        measure_bound_recipe("prepared_small_rows", recipe),
-        64,
-        "row_limit",
-    )?;
-    check_bound(
-        measure_bound_recipe("identity_members", recipe),
-        1_048_576,
-        "row_limit",
-    )?;
-    check_bound(
-        measure_bound_recipe("identity_aggregate_rows", recipe),
-        1_048_576,
-        "aggregate_row_limit",
-    )?;
-    if name == "identity_section_bytes" {
-        check_bound(measure_bound_recipe(name, recipe), 67_108_864, "byte_limit")?;
-    }
-    Ok(())
-}
-
 fn bound_contract(name: &str) -> (&'static str, u64, &'static str) {
     match name {
         "vector_rows" => ("load_vector_file", 256, "too_many_rows"),
@@ -1501,27 +1461,29 @@ fn bound_contract(name: &str) -> (&'static str, u64, &'static str) {
             "governance_string_too_long",
         ),
         "stable_carrier_active_elements" => ("compose_stable_carrier", 256, "active_element_limit"),
-        "stable_carrier_bytes" => ("compose_stable_carrier", 131_072, "byte_limit"),
+        "stable_carrier_bytes" => ("compose_stable_carrier", 105_962, "byte_limit"),
         "resolver_rows" => ("seal_stable_resolver", 65_536, "row_limit"),
         "resolver_edges" => ("seal_stable_resolver", 65_536, "edge_limit"),
-        "resolver_hyperedge_members" => ("seal_stable_resolver", 65_536, "hyperedge_members"),
+        "resolver_hyperedge_members" => ("seal_stable_resolver", 65_534, "hyperedge_members"),
         "resolver_fact_units" => ("seal_stable_resolver", 1_048_576, "aggregate_row_limit"),
-        "resolver_manifest_bytes" => ("encode_resolver_manifest", 16_777_216, "byte_limit"),
+        "resolver_manifest_bytes" => ("seal_stable_resolver", 8_388_608, "byte_limit"),
         "stable_graph_elements" => ("encode_stable_graph", 65_536, "row_limit"),
-        "stable_graph_attribute_rows" => ("encode_stable_graph", 1_048_576, "row_limit"),
-        "stable_graph_hyperedge_members" => ("encode_stable_graph", 65_536, "hyperedge_members"),
+        "stable_graph_attribute_rows" => ("encode_stable_graph", 524_288, "row_limit"),
+        "stable_graph_hyperedge_members" => ("encode_stable_graph", 65_534, "hyperedge_members"),
         "stable_graph_fact_units" => ("encode_stable_graph", 1_048_576, "aggregate_row_limit"),
         "stable_graph_bytes" => ("encode_stable_graph", 67_108_864, "byte_limit"),
         "ordered_action_items" => ("project_ordered_action_batch", 4_096, "row_limit"),
-        "practice_intent_bytes" => ("project_ordered_action_batch", 16_384, "intent_length"),
-        "ordered_action_batch_bytes" => ("project_ordered_action_batch", 67_256_631, "byte_limit"),
+        "ordered_action_batch_bytes" => ("project_ordered_action_batch", 9_302_326, "byte_limit"),
         "prepared_rows" => ("encode_prepared_bsl", 65_536, "row_limit"),
         "prepared_small_rows" => ("encode_prepared_bsl", 64, "row_limit"),
-        "identity_members" => ("encode_prepared_bsl", 1_048_576, "row_limit"),
-        "identity_aggregate_rows" => ("encode_prepared_bsl", 1_048_576, "aggregate_row_limit"),
-        "identity_section_bytes" => ("encode_prepared_bsl", 67_108_864, "byte_limit"),
+        "prepared_enum_members" => ("encode_prepared_bsl", 4_096, "row_limit"),
+        "prepared_vocabulary_members" => ("encode_prepared_bsl", 524_288, "row_limit"),
+        "prepared_aggregate_rows" => ("encode_prepared_bsl", 1_048_576, "aggregate_row_limit"),
+        "prepared_combined_bytes" => ("encode_prepared_bsl", 67_108_864, "byte_limit"),
         "tick_rule_outcomes" => ("encode_tick_payload", 65_536, "row_limit"),
         "tick_rows" => ("encode_tick_payload", 1_048_576, "row_limit"),
+        "tick_aggregate_rows" => ("encode_tick_payload", 1_048_576, "aggregate_row_limit"),
+        "tick_combined_bytes" => ("encode_tick_payload", 67_108_864, "byte_limit"),
         _ => panic!("unknown bound refusal {name}"),
     }
 }

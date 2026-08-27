@@ -358,7 +358,7 @@ impl std::error::Error for PrepareError {}
 /// (`LoadContext::systems`) — extracted (Task 3, #652) so `prepare_rules`
 /// and [`diagnose_content_set`] build the IDENTICAL set from one place
 /// rather than two copies drifting apart. PER-17 replaces the former partial
-/// inline set with the canonical 34-slot registry and its compatibility names.
+/// inline set with the canonical 34-slot registry and its accepted names.
 fn registered_systems() -> HashSet<String> {
     phase_order::registered_systems()
 }

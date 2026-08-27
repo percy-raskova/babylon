@@ -6,12 +6,14 @@ mod schema;
 
 pub use schema::*;
 
+pub mod actor_v2;
 pub mod admission;
 pub mod authority_v2;
 pub mod batch_v2;
 pub mod budget;
 pub mod codec;
 pub mod intent_v2;
+pub mod ordered_action_v1;
 pub mod resource_v2;
 pub mod strike_v2;
 pub mod topology;

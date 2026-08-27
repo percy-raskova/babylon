@@ -104,7 +104,7 @@ def test_copilot_advisory_decision_is_precisely_scoped_and_indexed() -> None:
     index = yaml.safe_load(_text(ADR_INDEX))
     assert isinstance(index, dict)
     entry = index["decisions"][COPILOT_ADVISORY_ADR_NAME]
-    assert index["meta"]["version"] == "1.86.0"
+    assert index["meta"]["version"] == "1.87.0"
     assert entry["file"] == COPILOT_ADVISORY_ADR.name
     assert entry["status"] == "accepted"
 

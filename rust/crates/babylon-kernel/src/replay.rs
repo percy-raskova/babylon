@@ -139,7 +139,7 @@ impl ReplaySeed {
 /// The governed RNG layouts parsed once at the replay boundary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RngLayoutVersion {
-    /// The frozen legacy layout.
+    /// The frozen current `TickSession` layout.
     V1,
     /// The seed-aware replay layout.
     V2,
@@ -199,9 +199,9 @@ impl TryFrom<&str> for RngDomainV2 {
 /// numeric RNG layout.
 #[derive(Debug, Clone, Copy)]
 pub enum RngSeedContext<'a> {
-    /// Frozen V1 derivation using its legacy session identity.
+    /// Frozen V1 derivation using the current `TickSession` identity.
     V1 {
-        /// The legacy session identity.
+        /// The current `TickSession` session identity.
         session: &'a SessionId,
     },
     /// V2 derivation using the replay session and explicit replay seed.

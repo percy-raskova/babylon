@@ -47,7 +47,7 @@ def test_adr237_records_authoritative_habitation_and_worker_independence() -> No
     ):
         assert required_text in decision_text
 
-    assert index["meta"]["version"] == "1.86.0"
+    assert index["meta"]["version"] == "1.87.0"
     assert index["decisions"][ADR_STEM] == {
         "title": EXPECTED_TITLE,
         "status": "accepted",

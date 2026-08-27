@@ -44,14 +44,6 @@ digest_type!(
     GraphStateHash
 );
 digest_type!(
-    /// Complete constitutional tick, seed, state, and ordered-action hash.
-    TickContentHash
-);
-digest_type!(
-    /// Identity of one immutable reference-data cohort.
-    RefDigest
-);
-digest_type!(
     /// Ordered-NUL SHA-256 identity of one migration set.
     MigrationSetDigest
 );

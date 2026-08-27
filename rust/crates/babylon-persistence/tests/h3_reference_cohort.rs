@@ -1,8 +1,9 @@
 //! Language-neutral representative H3 reference-cohort behavior.
 
+use babylon_kernel::tick_content_hash::RefDigestV1;
 use babylon_persistence::{
     build_representative_h3_cohort_v1, H3CellId, H3ReferenceCellRow, H3ReferenceCohortError,
-    H3ReferenceOrigin, RefDigest, MAX_H3_REFERENCE_SOURCE_CELLS,
+    H3ReferenceOrigin, MAX_H3_REFERENCE_SOURCE_CELLS,
 };
 use std::str::FromStr;
 
@@ -163,10 +164,10 @@ fn representative_cohort_refuses_every_untrusted_or_drifted_source_shape() {
     let source = source_cells();
 
     assert_eq!(
-        build_representative_h3_cohort_v1(RefDigest::from_bytes([0; 32]), &source),
+        build_representative_h3_cohort_v1(RefDigestV1::from_bytes([0; 32]), &source),
         Err(H3ReferenceCohortError::ArtifactDigestMismatch {
             expected: artifact_digest(),
-            actual: RefDigest::from_bytes([0; 32]),
+            actual: RefDigestV1::from_bytes([0; 32]),
         })
     );
     assert_eq!(
@@ -250,18 +251,18 @@ fn source_cells() -> Vec<H3CellId> {
         .collect()
 }
 
-fn artifact_digest() -> RefDigest {
+fn artifact_digest() -> RefDigestV1 {
     digest("e60d93a43d6c66e84f1e53ecaf633af5911bd5b48b0ef0ad6a012f6d9f5b13a9")
 }
 
-fn digest(text: &str) -> RefDigest {
+fn digest(text: &str) -> RefDigestV1 {
     assert_eq!(text.len(), 64);
     let mut bytes = [0_u8; 32];
     for (index, byte) in bytes.iter_mut().enumerate().take(32) {
         let offset = index * 2;
         *byte = u8::from_str_radix(&text[offset..offset + 2], 16).unwrap();
     }
-    RefDigest::from_bytes(bytes)
+    RefDigestV1::from_bytes(bytes)
 }
 
 use std::mem::size_of;

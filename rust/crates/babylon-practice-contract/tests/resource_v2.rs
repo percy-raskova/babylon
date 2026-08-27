@@ -1,3 +1,4 @@
+use babylon_practice_contract::actor_v2::ActorOrganizationIdV2;
 use babylon_practice_contract::{
     allocate_practice_resources_v2, decode_practice_resource_allocation_contract_v2,
     decode_practice_resource_allocation_outcome_v2, decode_practice_resource_capacity_v2,
@@ -21,6 +22,10 @@ const RESOURCE_CONTRACT_DIGEST: [u8; 32] = [
     0x5d, 0x23, 0x38, 0x6e, 0x61, 0xea, 0x4e, 0x01, 0x59, 0xbc, 0x99, 0xaf, 0xd6, 0xee, 0x91, 0xb9,
 ];
 
+fn actor_id(value: u64) -> ActorOrganizationIdV2 {
+    ActorOrganizationIdV2::from_bytes(value.to_be_bytes())
+}
+
 fn intent(authority_marker: u8, actor_org_id: u64) -> PracticeIntentV2 {
     intent_with_nonce(authority_marker, actor_org_id, authority_marker)
 }
@@ -35,7 +40,7 @@ fn intent_with_nonce(
         submit_after_tick: 40,
         resolve_tick: 41,
         input_authority_id: InputAuthorityIdV2::from_bytes([authority_marker; 16]),
-        actor_org_id,
+        actor_org_id: actor_id(actor_org_id),
         practice_id: PracticeIdV2::Strike,
         target: TaggedPracticeTargetV2 {
             tag: PracticeTargetTagV2::LaborProcess,

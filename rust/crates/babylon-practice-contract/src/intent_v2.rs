@@ -2,6 +2,7 @@
 
 use babylon_kernel::sha256_of;
 
+use crate::actor_v2::ActorOrganizationIdV2;
 use crate::{
     resolve_input_authority_v2, CampaignIdV2, InputAuthorityIdV2, PracticeAuthorityV2Error,
     PracticeInputAuthorityLedgerV2, PracticeInputAuthorityV2,
@@ -226,7 +227,7 @@ pub struct PracticeIntentV2 {
     pub submit_after_tick: u64,
     pub resolve_tick: u64,
     pub input_authority_id: InputAuthorityIdV2,
-    pub actor_org_id: u64,
+    pub actor_org_id: ActorOrganizationIdV2,
     pub practice_id: PracticeIdV2,
     pub target: TaggedPracticeTargetV2,
     pub proposal_nonce: ProposalNonceV2,
@@ -257,7 +258,7 @@ pub const PRACTICE_INTENT_V2_FIELD_ORDER: [&str; 12] = [
 pub struct PracticeProposalKeyV2 {
     pub resolve_tick: u64,
     pub input_authority_id: InputAuthorityIdV2,
-    pub actor_org_id: u64,
+    pub actor_org_id: ActorOrganizationIdV2,
     pub practice_id: PracticeIdV2,
     pub target: TaggedPracticeTargetV2,
     pub proposal_nonce: ProposalNonceV2,
@@ -393,7 +394,7 @@ pub fn encode_practice_intent_v2(
     output.extend_from_slice(&value.submit_after_tick.to_be_bytes());
     output.extend_from_slice(&value.resolve_tick.to_be_bytes());
     output.extend_from_slice(&value.input_authority_id.as_bytes());
-    output.extend_from_slice(&value.actor_org_id.to_be_bytes());
+    output.extend_from_slice(&value.actor_org_id.to_bytes());
     output.push(value.practice_id as u8);
     output.push(value.target.tag as u8);
     output.extend_from_slice(&value.target.identity.as_bytes());
@@ -553,7 +554,7 @@ pub fn decode_practice_intent_v2(
     let resolve_tick = cursor.u64()?;
     validate_tick_pair(submit_after_tick, resolve_tick)?;
     let input_authority_id = InputAuthorityIdV2::from_bytes(cursor.array()?);
-    let actor_org_id = cursor.u64()?;
+    let actor_org_id = ActorOrganizationIdV2::from_bytes(cursor.array()?);
     let practice_id = PracticeIdV2::try_from(cursor.u8()?)?;
     let target = TaggedPracticeTargetV2 {
         tag: PracticeTargetTagV2::try_from(cursor.u8()?)?,

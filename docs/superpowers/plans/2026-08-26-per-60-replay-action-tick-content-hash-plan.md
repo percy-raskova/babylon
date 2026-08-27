@@ -6,9 +6,9 @@
 
 **Goal:** Ratify and implement Babylon's versioned replay seed, ordered Practice action identity, stable world identity, and canonical `TickContentHashV1`, producing the database-free identity boundary needed by an honest future `CommittedTickEnvelope`.
 
-**Architecture:** Kernel owns replay primitives, seed-aware RNG V2, nominal digest types, and the fixed outer hash. Practice owns actor and ordered-action identity. Graph owns stable element, carrier, resolver, and stable-state identity. BSL owns semantic discriminants and the real typed RNG carrier path. Tick composes prepared mechanics, world registers, payload, and one shared detached transaction used by legacy and replay sessions. One schema and JSONL corpus bind all exact bytes to Rust and an independent Python verifier without making Python authoritative.
+**Architecture:** Kernel owns replay primitives, seed-aware RNG V2, nominal digest types, and the fixed outer hash. Practice owns actor and ordered-action identity. Graph owns stable element, carrier, resolver, and stable-state identity. BSL owns semantic discriminants and the real typed RNG carrier path. Tick composes prepared mechanics, world registers, payload, and one shared detached transaction used by the current `TickSession` and the identified `ReplayTickSession`. One schema and JSONL corpus bind all exact bytes to Rust and an independent Python verifier without making Python authoritative.
 
-**Tech Stack:** Rust 2021 workspace, `sha2`, `rand_chacha` 0.10 compatibility, BSL, `babylon-kernel`, `babylon-practice-contract`, `babylon-graph`, `babylon-bsl`, `babylon-tick`, `babylon-persistence`, Python 3.12, Pytest, YAML, JSONL, Cargo, Clippy, Vale
+**Tech Stack:** Rust 2021 workspace, `sha2`, `rand_chacha` 0.10, BSL, `babylon-kernel`, `babylon-practice-contract`, `babylon-graph`, `babylon-bsl`, `babylon-tick`, `babylon-persistence`, Python 3.12, Pytest, YAML, JSONL, Cargo, Clippy, Vale
 
 **Spec:** `docs/superpowers/specs/2026-08-26-per-60-replay-action-tick-content-hash-design.md`
 
@@ -23,8 +23,8 @@
 - Create `rust/crates/babylon-kernel/tests/replay_identity.rs`: replay-session, replay-seed, and layout boundary tests.
 - Create `rust/crates/babylon-kernel/tests/rng_v2.rs`: exact V1 preservation and cross-block V2 stream tests.
 - Create `rust/crates/babylon-kernel/tests/tick_content_hash.rs`: typed outer-composer tests and mutation coverage.
-- Modify `rust/crates/babylon-persistence/src/hashes.rs`: retain persistence-only hashes and compatibility-alias kernel-owned `RefDigestV1` as `RefDigest` and `TickContentHashV1` as `TickContentHash` rather than duplicating them.
-- Modify `rust/crates/babylon-persistence/src/lib.rs`: preserve the existing persistence names and methods while proving they are the kernel-owned nominal types.
+- Modify `rust/crates/babylon-persistence/src/hashes.rs`: remove the unused duplicate `RefDigest` and `TickContentHash` types; callers use the kernel-owned `RefDigestV1` and `TickContentHashV1` directly.
+- Modify `rust/crates/babylon-persistence/src/lib.rs`: expose no second names or re-exports for the kernel-owned identity types.
 
 ### Practice actor and action identity
 
@@ -64,10 +64,10 @@
 
 ### Tick composition and replay seam
 
-- Modify `rust/crates/babylon-tick/src/phase_order.rs`: expose the already governed 34-slot/four-alias bytes and digest without changing them.
+- Modify `rust/crates/babylon-tick/src/phase_order.rs`: expose the already governed 34-slot/four-accepted-name-mapping bytes and digest without changing them.
 - Create `rust/crates/babylon-tick/src/replay_identity.rs`: prepared environment, register manifest/set, stable world, and exact payload composition.
 - Create `rust/crates/babylon-tick/src/replay_session.rs`: `ReplayTickSession` and `IdentifiedTickReportV1`.
-- Modify `rust/crates/babylon-tick/src/session.rs`: route legacy `TickSession` through the shared typed transaction.
+- Modify `rust/crates/babylon-tick/src/session.rs`: route the current `TickSession` through the shared typed transaction.
 - Modify `rust/crates/babylon-tick/src/lib.rs`: retain full preparation identity and host the single detached causal loop.
 - Modify `rust/crates/babylon-tick/Cargo.toml`: promote `babylon-practice-contract` to a production dependency for the typed action batch.
 - Create `rust/crates/babylon-tick/tests/replay_session.rs`: end-to-end identity, seed propagation, atomicity, and empty-action enforcement.
@@ -82,14 +82,14 @@
 - Create `ai/decisions/ADR240_replay_action_tick_content_identity.yaml`: accepted ownership, P27 disposition, Gate 3 boundary, and supersession record.
 - Modify `ai/decisions/index.yaml`: add ADR240 and advance the index version according to the existing sequence.
 - Create `tests/unit/decisions/test_adr240_replay_action_tick_content_identity.py`: bind the exact decision and index entry.
-- Modify `src/babylon/kernel/tick_hash.py`: correct the live module wording so P27 remains a compatibility oracle outside authoritative Rust `TickContentHashV1`.
+- Modify `src/babylon/kernel/tick_hash.py`: correct the live module wording so P27 remains frozen reference evidence outside authoritative Rust `TickContentHashV1`.
 - Modify `docs/reference/determinism-contract.rst`: record accepted V1 layouts, vectors, and resolved P27 disposition.
 - Modify `docs/concepts/architecture.rst`: distinguish replay-session physics identity from separate campaign durability identity.
 
 ## Global Constraints
 
 - Every change serves the playable game slice by making one detached player-decision tick replayable and auditable. Do not add infrastructure without a direct identity-boundary consumer in this plan.
-- Keep the existing P27 Python bytes, digests, fixtures, and tests unchanged. P27 remains an executable compatibility oracle outside authoritative `TickContentHashV1`.
+- Keep the existing P27 Python bytes, digests, fixtures, and tests unchanged. P27 remains executable reference evidence outside authoritative `TickContentHashV1`.
 - Keep RNG V1's unversioned preimage, validation behavior, four-draw vector, and `TickSession` results byte-identical.
 - Do not edit accepted Practice V2 YAML, pinned source SHA constants, canonical field descriptions, existing JSONL bytes, or manifests. Their `actor_org_id_u64` and `type: u64` descriptions remain frozen.
 - `ActorOrganizationIdV2` is an opaque `[u8; 8]`; add no numeric, graph-handle, arithmetic, `From<u64>`, or `TryFrom<u64>` API.
@@ -97,8 +97,8 @@
 - Production code is typed encoder/composer-only. Add no production raw decoder for replay, action batch, graph identity, prepared environment, world, payload, or outer hash.
 - The live Gate 3 replay path accepts only the exact empty action batch. A non-empty projection exists only for structural codec tests and confers no admission provenance.
 - Do not add PostgreSQL schema, migration, hydration, writer, Archive outbox, `CommittedTickEnvelope`, cutover, player action execution, BSL practice effects, dynamic topology, or Bevy integration.
-- Keep legacy `GraphStateHash` and `NominalWorldHash` unchanged and outside `TickContentHashV1`.
-- Use fixed-width big-endian integers for every new PER-60 canonical field, raw SHA-256 bytes, exact validated string bytes, checked arithmetic, fallible reservations, bounded iteration, and explicit typed errors. The explicitly governed ChaCha8 state words, block words, and V1 compatibility preimage retain their specified little-endian layouts.
+- Keep the current `GraphStateHash` and `NominalWorldHash` unchanged and outside `TickContentHashV1`.
+- Use fixed-width big-endian integers for every new PER-60 canonical field, raw SHA-256 bytes, exact validated string bytes, checked arithmetic, fallible reservations, bounded iteration, and explicit typed errors. The explicitly governed ChaCha8 state words, block words, and current V1 preimage retain their specified little-endian layouts.
 - Preserve semantic order where the design says order matters: rule execution, enum member declaration, event arrival, event payload source pairs including duplicates, and receipt publication. Sort only the declared canonical map/set lanes.
 - Show RED before each behavioral implementation, make the smallest GREEN change, refactor only after GREEN, and run the smallest applicable test after every edit.
 - Do not overlap heavy gates. Use `BLAS=1` for repository gates. Do not run Sphinx, `cargo doc`, `mise run ci:rust`, `mise run rust:check`, or another documentation-generating task.
@@ -184,7 +184,7 @@ pub fn seed_for_v2(
 
 - [ ] **Step 8: Refactor dispatch through one parsed layout**
 
-  Add the typed `RngSeedContext` dispatch in kernel so BSL and tick do not branch on numeric version values. Keep the low-level V2 byte API documented as tests/adapters only; the graph-owned caller provides provenance later.
+  Add the typed `RngSeedContext` dispatch in kernel so BSL and tick do not branch on numeric version values. Keep the low-level V2 byte API documented as contract-test support only; the graph-owned production caller provides provenance later.
 
 - [ ] **Step 9: Run the kernel gate and verify GREEN**
 
@@ -255,11 +255,11 @@ pub struct TickContentPartsV1<'a> {
 
 - [ ] **Step 3: Implement private digest wrappers and composer**
 
-  Give every digest a private `[u8; 32]`, exact byte constructor/accessor, and no default. These constructors wrap an already-computed SHA-256 value for nominal typing and contract/persistence adapters; they do not decode a canonical identity object, prove provenance, or let `ReplayTickSession` accept caller-supplied prepared/world/payload digests. The authoritative replay session derives every such digest from its owning typed encoder, and only the outer composer creates its published `TickContentHashV1`. Implement the ten mandatory sections with checked capacity and `try_reserve_exact`; accept no optional/extension field. Keep campaign, database, P27, legacy graph/world hashes, allocator cursors, and wall time out.
+  Give every digest a private `[u8; 32]`, exact byte constructor/accessor, and no default. These constructors wrap an already-computed SHA-256 value for nominal typing and direct persistence callers; they do not decode a canonical identity object, prove provenance, or let `ReplayTickSession` accept caller-supplied prepared/world/payload digests. The authoritative replay session derives every such digest from its owning typed encoder, and only the outer composer creates its published `TickContentHashV1`. Implement the ten mandatory sections with checked capacity and `try_reserve_exact`; accept no optional/extension field. Keep campaign, database, P27, current graph/world hashes, allocator cursors, and wall time out.
 
 - [ ] **Step 4: Make persistence reuse kernel authority**
 
-  Remove only persistence's duplicate `TickContentHash` and `RefDigest` macro invocations. Preserve the public API exactly with `pub use babylon_kernel::{RefDigestV1 as RefDigest, TickContentHashV1 as TickContentHash}` and the existing `from_bytes`, `as_bytes`, and `to_hex` methods. Add `TypeId` assertions that the persistence names are the kernel types. Add no calculation logic and change no persistence schema or H3 reference-cohort meaning.
+  Remove only persistence's duplicate `TickContentHash` and `RefDigest` macro invocations. At each persistence caller, use `babylon_kernel::tick_content_hash::{RefDigestV1, TickContentHashV1}` directly. Add contract assertions that `babylon-persistence` exposes no short identity name or re-export. Add no calculation logic and change no persistence schema or H3 reference-cohort meaning.
 
 - [ ] **Step 5: Run kernel and persistence gates**
 
@@ -505,11 +505,11 @@ impl StableElementResolverV1 {
 
 - [ ] **Step 1: Write exact stable-key and carrier tests**
 
-  Assert standalone binary node, directed edge, and hyperedge keys; their distinct ASCII carrier segments; zero-active and mixed node/edge/hyperedge carrier framing; outermost-to-innermost active order; canonical signed decimal draw slots; 256-element and 131,072-byte maxima; and maximum-plus-one refusal before allocation.
+  Assert standalone binary node, directed edge, and hyperedge keys; their distinct ASCII carrier segments; zero-active and mixed node/edge/hyperedge carrier framing; outermost-to-innermost active order; canonical signed decimal draw slots; 256-element and 105,962-byte maxima; and maximum-plus-one refusal before allocation.
 
 - [ ] **Step 2: Write resolver and manifest tests**
 
-  Assert exact mandatory scenario/node/hyperedge sections, canonical sorting, 65,536 combined-row and 16 MiB ceilings, handle↔name bijections, parallel authored hyperedges, and refusal for missing, duplicate, dangling, non-ASCII, added, removed, or membership-mutated topology. Assert no Debug/raw-id fallback.
+  Assert exact mandatory scenario/node/hyperedge sections, canonical sorting, 65,536 combined-row and 8 MiB ceilings, handle↔name bijections, parallel authored hyperedges, and refusal for missing, duplicate, dangling, non-ASCII, added, removed, or membership-mutated topology. Assert no Debug/raw-id fallback.
 
 - [ ] **Step 3: Run graph stable identity test and verify RED**
 
@@ -571,7 +571,7 @@ pub fn encode_stable_graph_state_v1<G: CanonicalState>(
 
 - [ ] **Step 2: Write cross-substrate and handle-allocation tests**
 
-  Build semantically equal `MemoryGraph` and `HypergraphStore` values in different insertion orders and with genuinely different `NodeId` and `HyperedgeId` allocation histories. Assert stable bytes/digests equal while at least one legacy `GraphStateHash` differs. Assert unordered map, registry, and hyperedge-member insertion cannot move stable output.
+  Build semantically equal `MemoryGraph` and `HypergraphStore` values in different insertion orders and with genuinely different `NodeId` and `HyperedgeId` allocation histories. Assert stable bytes/digests equal while at least one current `GraphStateHash` differs. Assert unordered map, registry, and hyperedge-member insertion cannot move stable output.
 
 - [ ] **Step 3: Write refusal and bound tests**
 
@@ -588,7 +588,7 @@ pub fn encode_stable_graph_state_v1<G: CanonicalState>(
 
 - [ ] **Step 5: Implement stable-state encoding over the seven live listings**
 
-  Reuse `CanonicalState` listings rather than widening the substrate. Resolve every runtime handle through the sealed resolver, validate topology again at encoding, sort only the specified identity tuples, reject equal keys, and drop no empty section. Keep legacy graph hashing untouched.
+  Reuse `CanonicalState` listings rather than widening the substrate. Resolve every runtime handle through the sealed resolver, validate topology again at encoding, sort only the specified identity tuples, reject equal keys, and drop no empty section. Keep current graph hashing untouched.
 
 - [ ] **Step 6: Run graph gate and verify GREEN**
 
@@ -709,7 +709,7 @@ pub enum DrawIdentityContext<'a> {
     V1 {
         session: &'a SessionId,
         domain: &'a str,
-        legacy_subject: &'a str,
+        subject: &'a str,
     },
     V2 {
         session: &'a ReplaySessionIdV1,
@@ -725,13 +725,13 @@ pub struct DrawContext<'a> {
 }
 ```
 
-  V1 retains its current unvalidated domain and legacy subject/carrier adapters exactly. The authoritative V2 branch must receive validated `RngDomainV2` and resolver-produced graph types and may not enter the old content-id/Debug fallback.
+  V1 retains its current domain and subject/carrier behavior exactly. The authoritative V2 branch must receive validated `RngDomainV2` and resolver-produced graph types and may not enter the V1 content-id/Debug fallback.
 
 - [ ] **Step 1: Write real-intrinsic mutation tests**
 
   Execute one loaded rule containing `rng-draw`. Hold mechanics fixed and mutate V2 seed, session, tick, firing rule qname, subject node, nested active node, edge, hyperedge, and draw slot. Assert exact written `f64::to_bits()` changes for every mutation. Assert the stable active-element order is outermost first.
 
-- [ ] **Step 2: Write legacy V1 preservation and missing-provenance tests**
+- [ ] **Step 2: Write current V1 preservation and missing-provenance tests**
 
   Assert the current V1 rule and four-draw results remain exact. Assert V2 refuses a missing resolver, unresolvable subject/element, dynamic topology, invalid domain, and caller-supplied raw stable-key bytes.
 
@@ -742,11 +742,11 @@ pub struct DrawContext<'a> {
   cargo test -p babylon-bsl --test r9_chapters --test tick_identity_contract --locked
   ```
 
-  Expected: V2 tests fail because `DrawContext` still carries only legacy session/content-id data.
+  Expected: V2 tests fail because `DrawContext` still carries only current V1 session/content-id data.
 
 - [ ] **Step 4: Replace the split helper path with typed dispatch**
 
-  Thread `RngSeedContext` through `run_tick_observed`, evaluator call context, `KernelIntrinsicHost`, and tick's shared `run_prepared_tick_with` seam. For V2, resolve subject plus active elements through `StableElementResolverV1`, call graph's `carrier_key`, and pass only `validated_bytes()` to kernel. For V1, call the unchanged `KernelRng::for_carrier` route with no V2 validation. Delete no legacy tests or V1 API. Task 8 prepares the live internal seam; Task 10 creates `ReplayTickSession` as its authoritative V2 caller.
+  Thread `RngSeedContext` through `run_tick_observed`, evaluator call context, `KernelIntrinsicHost`, and tick's shared `run_prepared_tick_with` seam. For V2, resolve subject plus active elements through `StableElementResolverV1`, call graph's `carrier_key`, and pass only `validated_bytes()` to kernel. For V1, call the unchanged `KernelRng::for_carrier` route with no V2 validation. Preserve the current V1 tests and API. Task 8 prepares the live internal seam; Task 10 creates `ReplayTickSession` as its authoritative V2 caller.
 
 - [ ] **Step 5: Prove the production call graph contains the seed**
 
@@ -866,7 +866,7 @@ pub struct ReplayTickSession<G> {
     prepared_environment: PreparedEnvironmentV1,
 }
 pub struct IdentifiedTickReportV1 {
-    legacy: TickReport,
+    report: TickReport,
     action_batch_bytes: Vec<u8>,
     action_batch_layout_version: u32,
     action_batch_digest: OrderedPracticeActionBatchDigestV1,
@@ -914,7 +914,7 @@ impl<G> ReplayTickSession<G> {
 
 - [ ] **Step 1: Write construction and success-path tests**
 
-  Construct replay sessions for both supported graph substrates with session, seed, content, reference, scenario, optional prelude, and rules. The public constructor has no V1 or caller-selected numeric layout input: it constructs `RngSeedContext::V2` by type, and an API assertion proves a legacy `SessionId`/V1 context cannot construct it. Assert construction seals topology, verifies rules hash, and owns resolver/register/prepared bytes once. Borrow all three static diagnostic slices before and after two advances and assert the same session-owned storage remains; assert reports contain only their small digests and no cloned static preimages. Advance an exact empty batch and assert legacy report, exact action bytes and direct typed action digest/version, prior/result register and stable-world bytes, exact payload, outer preimage, all versions/digests, and `TickContentHashV1` agree.
+  Construct replay sessions for both supported graph substrates with session, seed, content, reference, scenario, optional prelude, and rules. The public constructor has no V1 or caller-selected numeric layout input: it constructs `RngSeedContext::V2` by type, and an API assertion proves a current `SessionId`/V1 context cannot construct it. Assert construction seals topology, verifies rules hash, and owns resolver/register/prepared bytes once. Borrow all three static diagnostic slices before and after two advances and assert the same session-owned storage remains; assert reports contain only their small digests and no cloned static preimages. Advance an exact empty batch and assert the tick report, exact action bytes and direct typed action digest/version, prior/result register and stable-world bytes, exact payload, outer preimage, all versions/digests, and `TickContentHashV1` agree.
 
 - [ ] **Step 2: Write real seed propagation and process identity tests**
 
@@ -922,7 +922,7 @@ impl<G> ReplayTickSession<G> {
 
 - [ ] **Step 3: Write runtime guard and atomic-failure tests**
 
-  Assert a non-empty structural batch, mismatched session, mismatched next tick, topology change, resolver failure, deterministic returned hash/codec reservation failure, event-sink reservation failure, and rule failure leave graph, sink events, receipts, completed tick, legacy hashes, nested identity, and outer hash unpublished. Inject the identity reservation failure through the crate-private `ReplayIdentityComposer` boundary, analogous to the existing prepared-sink/hash seams; do not attempt to provoke process OOM. Assert the action guard runs before detached adjudication.
+  Assert a non-empty structural batch, mismatched session, mismatched next tick, topology change, resolver failure, deterministic returned hash/codec reservation failure, event-sink reservation failure, and rule failure leave graph, sink events, receipts, completed tick, current hashes, nested identity, and outer hash unpublished. Inject the identity reservation failure through the crate-private `ReplayIdentityComposer` boundary, analogous to the existing prepared-sink/hash seams; do not attempt to provoke process OOM. Assert the action guard runs before detached adjudication.
 
 - [ ] **Step 4: Run replay session tests and verify RED**
 
@@ -935,13 +935,13 @@ impl<G> ReplayTickSession<G> {
 
 - [ ] **Step 5: Extract one shared internal transaction**
 
-  Replace the session-specific call shape with a private typed execution mode: legacy V1 has no authoritative composer; replay V2 carries the resolver and a crate-private `ReplayIdentityComposer`. The production implementation runs the exact real codecs; a test implementation returns one deterministic typed reservation error at the same pre-publication boundary. Keep one detached graph, one causal rule loop, one event/receipt buffer, and one publication point. Perform every fallible stable encode, digest, payload, outer compose, and sink reserve before assigning graph, committing events, or incrementing completed tick.
+  Replace the session-specific call shape with a private typed execution mode: current V1 has no `TickContentHashV1` composer; replay V2 carries the resolver and a crate-private `ReplayIdentityComposer`. The production implementation runs the exact real codecs; a test implementation returns one deterministic typed reservation error at the same pre-publication boundary. Keep one detached graph, one causal rule loop, one event/receipt buffer, and one publication point. Perform every fallible stable encode, digest, payload, outer compose, and sink reserve before assigning graph, committing events, or incrementing completed tick.
 
 - [ ] **Step 6: Implement ReplayTickSession without per-tick static clones**
 
   Cache resolver manifest, register manifest, and prepared environment exact bytes in the session and expose the borrowed diagnostic accessors shown above. Drop prior stable-graph bytes after digest and before rule execution; drop result stable-graph bytes after digest. Return only their digests in the report while retaining exact dynamic register/world/action/payload/outer bytes. Carry the accepted-action layout version and `OrderedPracticeActionBatchDigestV1` as direct typed report fields, and expose direct equality with the supplied empty batch digest; do not force PER-20 to decode the outer preimage. Keep the report explicitly non-durable.
 
-- [ ] **Step 7: Keep legacy and Bevy paths unchanged**
+- [ ] **Step 7: Keep current TickSession and Bevy paths unchanged**
 
   Route `TickSession` through the shared transaction with `RngSeedContext::V1`; preserve its public constructor, report, hashes, and V1 draws. Do not change `babylon-client`, Bevy engine link, PostgreSQL, or Python writer code.
 
@@ -1055,7 +1055,7 @@ impl<G> ReplayTickSession<G> {
   rg -n "ADR240" ai/decisions tests/unit/decisions
   ```
 
-  Then add a test requiring accepted status/date/title, crate ownership, Gate 3 live-empty action rule, P27 compatibility-oracle disposition, separate campaign/replay identity, exact vector path, preserved V1/Practice contracts, partial supersessions, and the exact decision-index entry.
+  Then add a test requiring accepted status/date/title, crate ownership, Gate 3 live-empty action rule, P27 reference-evidence disposition, separate campaign/replay identity, exact vector path, preserved V1/Practice contracts, partial supersessions, and the exact decision-index entry.
 
 - [ ] **Step 2: Run the decision test and verify RED**
 
@@ -1067,11 +1067,11 @@ impl<G> ReplayTickSession<G> {
 
 - [ ] **Step 3: Create ADR240 and update the decision index**
 
-  Record the design's ownership and exact boundaries. State that ADR220 byte compatibility means accepted `TickContentHashV1` vectors across implementations, not equality with P27 JSON. Preserve P27 execution/tests and Python writer authority until cutover. Record that runtime action batch is empty, non-empty projection has no accepted-input provenance, and PER-20/Gate 5 retain their scopes.
+  Record the design's ownership and exact boundaries. State that ADR220 cross-implementation identity means equal accepted `TickContentHashV1` vectors, not equality with P27 JSON. Preserve P27 execution/tests and Python writer authority until cutover. Record that runtime action batch is empty, non-empty projection has no accepted-input provenance, and PER-20/Gate 5 retain their scopes.
 
 - [ ] **Step 4: Correct only live documentation claims**
 
-  In the Python module docstring, describe P27 as frozen compatibility evidence outside authoritative Rust V1. In the determinism reference, close the open P27 disposition and link exact schema/vectors. In architecture, state replay session is material identity while campaign identity remains separate durability identity. Do not rewrite historical ADRs, specs, reports, or completed plans.
+  In the Python module docstring, describe P27 as frozen reference evidence outside authoritative Rust V1. In the determinism reference, close the open P27 disposition and link exact schema/vectors. In architecture, state replay session is material identity while campaign identity remains separate durability identity. Do not rewrite historical ADRs, specs, reports, or completed plans.
 
 - [ ] **Step 5: Run targeted docs and decision checks**
 

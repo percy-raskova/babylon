@@ -1,3 +1,4 @@
+use babylon_practice_contract::actor_v2::ActorOrganizationIdV2;
 use babylon_practice_contract::{
     decode_intent, decode_practice_intent_v2, encode_intent, encode_practice_intent_v2,
     practice_intent_v2_digest, InputAuthorityIdV2, PracticeContractError, PracticeIdV1,
@@ -9,6 +10,10 @@ use serde_json::Value;
 
 const SCHEMA: &[u8] = include_bytes!("../../../../contracts/practice_intent_v2.yaml");
 const VECTORS: &str = include_str!("../../../../contracts/practice_intent_v2_vectors.jsonl");
+
+fn actor_id(value: u64) -> ActorOrganizationIdV2 {
+    ActorOrganizationIdV2::from_bytes(value.to_be_bytes())
+}
 
 fn hex_bytes(value: &str) -> Vec<u8> {
     assert_eq!(value.len() % 2, 0);
@@ -32,7 +37,7 @@ fn intent_from_vector(data: &Value) -> PracticeIntentV2 {
                 .try_into()
                 .unwrap(),
         ),
-        actor_org_id: data["actor_org_id"].as_u64().unwrap(),
+        actor_org_id: actor_id(data["actor_org_id"].as_u64().unwrap()),
         practice_id: PracticeIdV2::try_from(
             u8::try_from(data["practice_id"].as_u64().unwrap()).unwrap(),
         )

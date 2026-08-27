@@ -1,3 +1,4 @@
+use babylon_practice_contract::actor_v2::ActorOrganizationIdV2;
 use babylon_practice_contract::{
     decode_input_authority, decode_input_authority_ledger_v2, decode_input_authority_v2,
     encode_input_authority, encode_input_authority_ledger_v2, encode_input_authority_v2,
@@ -11,6 +12,10 @@ use serde_json::Value;
 const SCHEMA: &[u8] = include_bytes!("../../../../contracts/practice_input_authority_v2.yaml");
 const VECTORS: &str =
     include_str!("../../../../contracts/practice_input_authority_v2_vectors.jsonl");
+
+fn actor_id(value: u64) -> ActorOrganizationIdV2 {
+    ActorOrganizationIdV2::from_bytes(value.to_be_bytes())
+}
 
 fn hex_bytes(value: &str) -> Vec<u8> {
     assert_eq!(value.len() % 2, 0);
@@ -42,7 +47,7 @@ fn row_from_vector(data: &Value) -> PracticeInputAuthorityV2 {
                 .try_into()
                 .unwrap(),
         ),
-        actor_org_id: data["actor_org_id"].as_u64().unwrap(),
+        actor_org_id: actor_id(data["actor_org_id"].as_u64().unwrap()),
         effective_from_tick: data["effective_from_tick"].as_u64().unwrap(),
         effective_through_tick_exclusive: data["effective_through_tick_exclusive"]
             .as_u64()
@@ -135,7 +140,7 @@ fn v1_and_v2_authority_domains_refuse_cross_version_decoding() {
         campaign_id: CampaignIdV2::from_bytes([0x10; 16]),
         authority_kind: PracticeAuthorityKindV2::PlayerSeat,
         input_authority_id: InputAuthorityIdV2::from_bytes([0x20; 16]),
-        actor_org_id: 7,
+        actor_org_id: actor_id(7),
         effective_from_tick: 10,
         effective_through_tick_exclusive: 20,
         decision_content_digest: [0x30; 32],

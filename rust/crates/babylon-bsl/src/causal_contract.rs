@@ -950,7 +950,7 @@ pub struct AuditReceipt {
     pub effect: EffectSignature,
 }
 
-fn canonical_event_type(event_type: &str) -> Result<String, ContractError> {
+pub(crate) fn canonical_event_type(event_type: &str) -> Result<String, ContractError> {
     if let Some(member) = event_type.strip_prefix("EventType/") {
         if !member.is_empty() && !member.contains('/') {
             return Ok(event_type.to_owned());

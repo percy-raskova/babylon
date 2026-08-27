@@ -405,6 +405,12 @@ impl ClosedVocabulary {
     pub fn members(&self, kind: EnumKind) -> &[String] {
         self.members.get(&kind).map_or(&[], Vec::as_slice)
     }
+
+    /// Whether the scenario declared this kind, including as present-empty.
+    #[must_use]
+    pub fn contains_kind(&self, kind: EnumKind) -> bool {
+        self.members.contains_key(&kind)
+    }
 }
 
 #[cfg(test)]

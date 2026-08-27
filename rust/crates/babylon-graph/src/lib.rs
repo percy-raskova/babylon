@@ -43,6 +43,8 @@ pub mod exposure;
 pub mod hypergraph_store;
 pub mod induced;
 pub mod memory;
+pub mod stable_element;
+pub mod stable_state;
 pub mod state_hash;
 pub mod substrate;
 pub mod working_copy;

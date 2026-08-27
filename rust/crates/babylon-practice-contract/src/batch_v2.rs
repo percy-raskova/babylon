@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 
 use babylon_kernel::sha256_of;
 
+use crate::actor_v2::ActorOrganizationIdV2;
 use crate::authority_v2::validate_input_authority_row_v2;
 use crate::{
     decode_input_authority_v2, decode_practice_intent_v2, encode_input_authority_v2,
@@ -237,7 +238,7 @@ impl<'a> ActiveAuthorityIndexV2<'a> {
     fn resolve(
         &self,
         input_authority_id: InputAuthorityIdV2,
-        actor_org_id: u64,
+        actor_org_id: ActorOrganizationIdV2,
     ) -> Result<&'a PracticeInputAuthorityV2, PracticeAuthorityV2Error> {
         let selected = self
             .rows_by_id

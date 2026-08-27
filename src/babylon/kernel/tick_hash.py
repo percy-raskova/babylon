@@ -1,10 +1,10 @@
-"""The P27 tick hash — one canonical per-tick **content** fingerprint.
+"""The frozen P27 reference serializer for one per-tick content fingerprint.
 
 Normative specification: ``docs/reference/determinism-contract.rst``, chapter
-*The P27 Tick Hash*. This module is the Python reference implementation of that
-byte layout; ``babylon-kernel`` (Rust) is required to produce the identical
-digest from the identical state, so **every byte here is contract**, not
-convenience (Constitution III.7).
+*The P27 Tick Hash*. This module preserves that Python JSON layout and its exact
+tests as executable reference evidence. It is not an input or alternate path
+for `TickContentHashV1`. The Rust replay path has one separate canonical binary
+identity defined by ``contracts/tick_content_hash_v1.yaml``.
 
 Why this exists alongside ``tick_commit.replay_identity_hash``
 ---------------------------------------------------------------
@@ -17,10 +17,10 @@ noticing a dropped node, a lost edge, or a corrupted attribute. This hash is
 the other half: it says nothing about run identity (the session id is
 deliberately not an input) and everything about content.
 
-The two are **additive, not substitutes** — ruled so by ADR179 T2 (the
-dossier's §8 Q2): the older hash keeps its replay-identity role under the
-honest name ``replay_identity_hash``; this module's digest is the content
-half, ``content_hash`` in the regression checkpoints.
+Within the frozen Python evidence, the two are **additive, not substitutes** —
+ruled so by ADR179 T2 (the dossier's §8 Q2). The commit marker keeps its
+replay-lineage role under the honest name ``replay_identity_hash``; this
+module's digest is ``content_hash`` in the regression checkpoints.
 
 Encoding rules, in one place
 -----------------------------

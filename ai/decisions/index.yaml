@@ -1,5 +1,5 @@
 meta:
-  version: 1.86.0
+  version: 1.87.0
   updated: '2026-08-26'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -1110,6 +1110,11 @@ decisions:
     status: accepted
     date: '2026-08-26'
     file: ADR239_routed_material_circuit_v2.yaml
+  ADR240_replay_action_tick_content_identity:
+    title: 'TickContentHashV1 owns canonical replay-tick identity while campaign durability and P27 evidence stay separate'
+    status: accepted
+    date: '2026-08-26'
+    file: ADR240_replay_action_tick_content_identity.yaml
   ADR241_copilot_advisory_merge_policy:
     title: 'Copilot evidence is advisory while exact-head CI and unresolved review threads remain hard merge boundaries'
     status: accepted

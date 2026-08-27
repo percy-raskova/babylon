@@ -1,7 +1,5 @@
 //! Honest, nominal names for persistence-layer SHA-256 values.
 
-pub use babylon_kernel::{RefDigestV1 as RefDigest, TickContentHashV1 as TickContentHash};
-
 macro_rules! digest_type {
     ($(#[$meta:meta])* $name:ident) => {
         $(#[$meta])*

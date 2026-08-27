@@ -3,10 +3,21 @@
 use babylon_kernel::{seed_for, ContentDigest, RefDigestV1, SessionId, TickContentHashV1};
 use babylon_persistence::{
     CampaignId, GraphStateHash, MigrationSetDigest, PersistenceError, PersistenceFailureKind,
-    RefDigest, ReplayIdentityHash, TickContentHash,
+    ReplayIdentityHash,
 };
 use std::any::TypeId;
 use uuid::Uuid;
+
+#[test]
+fn persistence_exposes_no_short_identity_aliases() {
+    let hashes = include_str!("../src/hashes.rs");
+    let exports = include_str!("../src/lib.rs");
+
+    assert!(!hashes.contains(" as RefDigest"));
+    assert!(!hashes.contains(" as TickContentHash"));
+    assert!(!exports.contains("RefDigest,"));
+    assert!(!exports.contains("TickContentHash,"));
+}
 
 #[test]
 fn campaign_uuid_is_a_storage_wrapper_and_rng_requires_a_session() {
@@ -25,11 +36,11 @@ fn honest_hashes_are_nominally_distinct() {
     );
     assert_ne!(
         TypeId::of::<ReplayIdentityHash>(),
-        TypeId::of::<TickContentHash>()
+        TypeId::of::<TickContentHashV1>()
     );
     assert_ne!(
         TypeId::of::<ReplayIdentityHash>(),
-        TypeId::of::<RefDigest>()
+        TypeId::of::<RefDigestV1>()
     );
     assert_ne!(
         TypeId::of::<ReplayIdentityHash>(),
@@ -37,34 +48,28 @@ fn honest_hashes_are_nominally_distinct() {
     );
     assert_ne!(
         TypeId::of::<GraphStateHash>(),
-        TypeId::of::<TickContentHash>()
+        TypeId::of::<TickContentHashV1>()
     );
-    assert_ne!(TypeId::of::<GraphStateHash>(), TypeId::of::<RefDigest>());
+    assert_ne!(TypeId::of::<GraphStateHash>(), TypeId::of::<RefDigestV1>());
     assert_ne!(
         TypeId::of::<GraphStateHash>(),
         TypeId::of::<MigrationSetDigest>()
     );
-    assert_ne!(TypeId::of::<TickContentHash>(), TypeId::of::<RefDigest>());
     assert_ne!(
-        TypeId::of::<TickContentHash>(),
+        TypeId::of::<TickContentHashV1>(),
+        TypeId::of::<RefDigestV1>()
+    );
+    assert_ne!(
+        TypeId::of::<TickContentHashV1>(),
         TypeId::of::<MigrationSetDigest>()
     );
     assert_ne!(
-        TypeId::of::<RefDigest>(),
+        TypeId::of::<RefDigestV1>(),
         TypeId::of::<MigrationSetDigest>()
     );
     let bytes = [0x07; 32];
     assert_eq!(GraphStateHash::from_bytes(bytes).as_bytes(), &bytes);
-    assert_eq!(RefDigest::from_bytes(bytes).to_hex(), "07".repeat(32));
-}
-
-#[test]
-fn persistence_reuses_the_kernel_owned_tick_digest_types() {
-    assert_eq!(TypeId::of::<RefDigest>(), TypeId::of::<RefDigestV1>());
-    assert_eq!(
-        TypeId::of::<TickContentHash>(),
-        TypeId::of::<TickContentHashV1>()
-    );
+    assert_eq!(RefDigestV1::from_bytes(bytes).to_hex(), "07".repeat(32));
 }
 
 #[test]

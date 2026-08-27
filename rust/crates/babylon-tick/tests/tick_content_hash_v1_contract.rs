@@ -1,14 +1,21 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
-use babylon_graph::stable_element::StableElementKeyV1;
+use babylon_graph::memory::MemoryGraph;
+use babylon_graph::stable_element::{StableElementKeyV1, StableElementResolverV1};
+use babylon_graph::stable_state::encode_stable_graph_state_v1;
+use babylon_graph::substrate::{GraphSubstrate, HyperedgeId, NodeId};
 use babylon_kernel::{
-    seed_for, seed_for_v2, sha256_of, ContentDigest, KernelRng, OrderedPracticeActionBatchDigestV1,
-    PreparedEnvironmentDigestV1, RefDigestV1, ReplaySeed, ReplaySessionIdV1, RngDomainV2,
-    SessionId, StableWorldDigestV1, TickContentPartsV1, TickContentPreimageV1, TickPayloadDigestV1,
+    seed_for, seed_for_v2, sha256_of, ContentDigest, Currency, KernelRng,
+    OrderedPracticeActionBatchDigestV1, PreparedEnvironmentDigestV1, RefDigestV1, ReplaySeed,
+    ReplaySessionIdV1, RngDomainV2, SessionId, StableWorldDigestV1, TickContentPartsV1,
+    TickContentPreimageV1, TickPayloadDigestV1,
 };
 use babylon_practice_contract::OrderedPracticeActionBatchV1;
 use serde::Deserialize;
 use serde_json::Value;
+
+#[path = "support/tick_content_hash_v1_vectors.rs"]
+mod contract_support;
 
 const VECTORS: &str = include_str!("../../../../contracts/tick_content_hash_v1_vectors.jsonl");
 const MAX_ROWS: usize = 256;
@@ -112,6 +119,23 @@ fn row<'a>(rows: &'a [VectorRow], kind: &str) -> &'a VectorRow {
         .expect("required vector family")
 }
 
+fn row_by_id<'a>(rows: &'a [VectorRow], id: &str) -> &'a VectorRow {
+    rows.iter()
+        .take(MAX_ROWS)
+        .find(|row| row.id == id)
+        .expect("required vector id")
+}
+
+fn linked_digest(rows: &[VectorRow], data: &Value, name: &str) -> [u8; 32] {
+    let digest_name = format!("{name}_digest_hex");
+    if let Some(value) = data[&digest_name].as_str() {
+        return hex32(value);
+    }
+    let id_name = format!("{name}_id");
+    let id = text(data, &id_name);
+    hex32(text(&row_by_id(rows, id).data, "digest_hex"))
+}
+
 fn text<'a>(data: &'a Value, name: &str) -> &'a str {
     data[name].as_str().expect("text field")
 }
@@ -187,6 +211,102 @@ fn shared_corpus_is_bounded_complete_and_digest_exact() {
         if let Some(digest_hex) = row.data["digest_hex"].as_str() {
             assert_eq!(sha256_of(&canonical), hex32(digest_hex), "{}", row.id);
         }
+    }
+}
+
+#[test]
+fn every_canonical_row_is_reconstructed_from_semantic_inputs() {
+    contract_support::verify_every_canonical_row(&rows());
+}
+
+#[test]
+fn every_outer_input_and_nested_layout_mutation_moves_identity() {
+    contract_support::verify_every_outer_mutation(&rows());
+}
+
+fn corpus_graph(
+    shift_handles: bool,
+) -> (
+    MemoryGraph,
+    HashMap<NodeId, String>,
+    HashMap<HyperedgeId, String>,
+) {
+    let mut graph = MemoryGraph::new();
+    if shift_handles {
+        let discarded = graph.add_node("DISCARDED").unwrap();
+        graph.remove_node(discarded).unwrap();
+    }
+    let workers = graph.add_node("SOCIAL_CLASS").unwrap();
+    let capital = graph.add_node("SOCIAL_CLASS").unwrap();
+    graph.add_edge("OWNS", capital, workers, 0.75).unwrap();
+    let coalition = graph
+        .add_hyperedge("COMMUNITY", &[workers, capital])
+        .unwrap();
+    graph
+        .update_node(workers, "social-class/active", -0.0)
+        .unwrap();
+    graph
+        .update_node(capital, "social-class/active", 1.5)
+        .unwrap();
+    graph
+        .update_node_currency(
+            workers,
+            "economy/wealth",
+            Currency::from_micro_units(-1_234_567_890_123),
+        )
+        .unwrap();
+    graph
+        .update_edge("OWNS", capital, workers, "relation/tension", -2.25)
+        .unwrap();
+    graph
+        .update_hyperedge_attribute(coalition, "organization/cohesion", 0.125)
+        .unwrap();
+    (
+        graph,
+        HashMap::from([
+            (workers, "workers".to_owned()),
+            (capital, "capital".to_owned()),
+        ]),
+        HashMap::from([(coalition, "coalition-one".to_owned())]),
+    )
+}
+
+#[test]
+fn production_stable_graph_matches_cross_allocation_vectors() {
+    let vectors = rows();
+    for shift_handles in [false, true] {
+        let (mut graph, node_names, hyperedge_names) = corpus_graph(shift_handles);
+        let resolver = StableElementResolverV1::seal(
+            &graph,
+            "demo/cross-allocation",
+            &node_names,
+            &hyperedge_names,
+        )
+        .unwrap();
+        let prior = encode_stable_graph_state_v1(&graph, &resolver).unwrap();
+        assert_eq!(
+            prior.canonical_bytes(),
+            hex_bytes(text(
+                &row_by_id(&vectors, "cross-allocation-stable-graph").data,
+                "canonical_hex",
+            ))
+        );
+        let workers = *node_names
+            .iter()
+            .find(|(_, name)| name.as_str() == "workers")
+            .expect("workers name")
+            .0;
+        graph
+            .update_node(workers, "social-class/active", 2.5)
+            .unwrap();
+        let result = encode_stable_graph_state_v1(&graph, &resolver).unwrap();
+        assert_eq!(
+            result.canonical_bytes(),
+            hex_bytes(text(
+                &row_by_id(&vectors, "result-stable-graph").data,
+                "canonical_hex",
+            ))
+        );
     }
 }
 
@@ -301,14 +421,13 @@ fn verify_outer_vector(vectors: &[VectorRow]) {
         seed: ReplaySeed::new(integer(data, "seed")),
         content: &content,
         reference: RefDigestV1::from_bytes(hex32(text(data, "reference_digest_hex"))),
-        prepared: PreparedEnvironmentDigestV1::from_bytes(hex32(text(data, "prepared_digest_hex"))),
-        prior_world: StableWorldDigestV1::from_bytes(hex32(text(data, "prior_world_digest_hex"))),
-        actions: OrderedPracticeActionBatchDigestV1::from_bytes(hex32(text(
-            data,
-            "actions_digest_hex",
-        ))),
-        result_world: StableWorldDigestV1::from_bytes(hex32(text(data, "result_world_digest_hex"))),
-        payload: TickPayloadDigestV1::from_bytes(hex32(text(data, "payload_digest_hex"))),
+        prepared: PreparedEnvironmentDigestV1::from_bytes(linked_digest(vectors, data, "prepared")),
+        prior_world: StableWorldDigestV1::from_bytes(linked_digest(vectors, data, "prior_world")),
+        actions: OrderedPracticeActionBatchDigestV1::from_bytes(linked_digest(
+            vectors, data, "actions",
+        )),
+        result_world: StableWorldDigestV1::from_bytes(linked_digest(vectors, data, "result_world")),
+        payload: TickPayloadDigestV1::from_bytes(linked_digest(vectors, data, "payload")),
     };
     let preimage = TickContentPreimageV1::compose(&parts).expect("outer preimage");
     assert_eq!(preimage.as_bytes(), hex_bytes(text(data, "canonical_hex")));

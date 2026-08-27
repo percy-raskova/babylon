@@ -19,7 +19,8 @@ authority:
     - Each identity has one canonical encoding and one owning type.
     - No compatibility shim, alias, fallback, or duplicate identity resolver exists.
     - Runtime graph handles never enter replay identity bytes.
-    - Floating-point payloads use raw IEEE-754 binary64 bits.
+    - Finite nonzero floating-point payloads use raw IEEE-754 binary64 bits.
+    - Finite floating-point zero canonicalizes to positive zero before encoding.
     - NaN and infinity are refused before canonical encoding.
 
 primitives:
@@ -42,11 +43,29 @@ bounds:
   stable_carrier_active_elements: 256
   stable_carrier_bytes: 131072
   resolver_rows: 65536
+  resolver_hyperedge_members: 65536
+  resolver_fact_units: 1048576
   resolver_manifest_bytes: 16777216
+  stable_graph_elements: 65536
+  stable_graph_attribute_rows: 1048576
+  stable_graph_hyperedge_members: 65536
+  stable_graph_fact_units: 1048576
+  stable_graph_bytes: 67108864
+  ordered_action_items: 4096
+  practice_intent_bytes: 16384
+  ordered_action_batch_bytes: 67256631
+  prepared_rows: 65536
+  prepared_small_rows: 64
+  identity_members: 1048576
+  identity_aggregate_rows: 1048576
+  identity_section_bytes: 67108864
+  tick_rule_outcomes: 65536
+  tick_rows: 1048576
 
 layouts:
   replay_session_v1:
-    fields: [session_length_u16, session_bytes]
+    fields: [session_length_u16, strict_graphic_ascii_session_bytes]
+    length: replay_session_bytes
   replay_seed:
     fields: [signed_i64]
   rng_v1:
@@ -87,49 +106,120 @@ layouts:
     domain_ascii_nul: babylon.stable-element-resolver
     layout_u32: 1
     tags: [1, 2, 3]
-    fields:
-      - {tag: 1, value: scenario_str32}
-      - {tag: 2, value: sorted_node_rows32}
-      - {tag: 3, value: sorted_hyperedge_rows32}
+    sections:
+      - {tag: 1, body: scenario_str32}
+      - tag: 2
+        body: node_count_u32 then node_count rows of local_name_str32, node_type_str32
+        order: local_name_unsigned_ascii
+      - tag: 3
+        body: hyperedge_count_u32 then hyperedge_count rows of local_name_str32, hyperedge_type_str32
+        order: local_name_unsigned_ascii
+    bounds: [resolver_rows, resolver_hyperedge_members, resolver_fact_units, resolver_manifest_bytes]
   stable_graph_v1:
     domain_ascii_nul: babylon.stable-graph
     layout_u32: 1
-    ordering: stable element key, field qname, value kind
+    tags: [1, 2, 3, 4, 5, 6, 7, 8]
+    sections:
+      - {tag: 1, body: scenario_str32}
+      - {tag: 2, body: "node_count_u32 then local_name_str32, node_type_str32 rows", order: local_name}
+      - tag: 3
+        body: node_f64_count_u32 then local_name_str32, qname_str32, canonical_f64_bits_u64 rows
+        order: [local_name, qname]
+      - tag: 4
+        body: edge_count_u32 then edge_type_str32, source_str32, target_str32, canonical_strength_bits_u64 rows
+        order: [edge_type, source, target]
+      - tag: 5
+        body: >-
+          hyperedge_count_u32 then local_name_str32, hyperedge_type_str32,
+          member_count_u32, sorted member_str32 rows
+        order: local_name
+      - tag: 6
+        body: >-
+          edge_f64_count_u32 then edge_type_str32, source_str32, target_str32,
+          qname_str32, canonical_f64_bits_u64 rows
+        order: [edge_type, source, target, qname]
+      - tag: 7
+        body: node_currency_count_u32 then local_name_str32, qname_str32, signed_i128_micro_units rows
+        order: [local_name, qname]
+      - tag: 8
+        body: hyperedge_f64_count_u32 then local_name_str32, qname_str32, canonical_f64_bits_u64 rows
+        order: [local_name, qname]
+    float_rule: finite nonzero raw binary64 bits; either signed zero becomes all-zero bits
+    bounds:
+      - stable_graph_elements
+      - stable_graph_attribute_rows
+      - stable_graph_hyperedge_members
+      - stable_graph_fact_units
+      - stable_graph_bytes
   action_id_v1:
     domain_ascii_nul: babylon.practice-action-id.v1
     schema_u16: 1
-    fields: [replay_session_v1, practice_intent_schema_u16_2, intent_digest32]
+    fields: [replay_session_v1, practice_intent_schema_u16_2, sha256_of_exact_practice_intent_v2_bytes]
   ordered_action_batch_v1:
     domain_ascii_nul: babylon.ordered-practice-action-batch.v1
     schema_u16: 1
     fields: [replay_session_v1, resolve_tick_u64, item_count_u16, ordered_items]
     item_fields: [canonical_input_ordinal_u16, action_id_digest32, intent_length_u16, intent_bytes]
+    order: contiguous ordinal equal to array position after complete Practice V2 source validation
+    runtime_rule: item_count must be zero before detached adjudication
   prepared_environment_v1:
     domain_ascii_nul: babylon.prepared-environment
     layout_u32: 1
     tags: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    sections:
+      - {tag: 1, body: verified_rules_digest32}
+      - {tag: 2, body: "phase_schedule_layout_u32 then phase_schedule_digest32"}
+      - {tag: 3, body: "rule_count_u32 then rule_qname_str32 rows", order: resolved_execution_order}
+      - tag: 4
+        body: sorted field rows of qname_str32, BslTypeV1, FieldKindV1; then sorted exemption rows of four str32 fields
+      - {tag: 5, body: "sorted intrinsic rows of name_str32, cost_u64"}
+      - {tag: 6, body: "sorted constant rows of qname_str32, ConstValueV1"}
+      - {tag: 7, body: "sorted enum type rows of name_str32, member_count_u32, declaration-order member_str32 rows"}
+      - {tag: 8, body: "outer vocabulary option then four EnumKindV1 rows with per-kind option and sorted members"}
+      - {tag: 9, body: "resolver_manifest_layout_u32 then resolver_manifest_digest32"}
+      - {tag: 10, body: "register_manifest_layout_u32 then register_manifest_digest32"}
   world_register_manifest_v1:
     domain_ascii_nul: babylon.world-register-manifest
     layout_u32: 1
+    sections:
+      - body: entry_count_u32 then name_str32, register_layout_u32 rows
+        exact_entries: [{name: world/completed-tick, layout: 1}]
   world_register_set_v1:
     domain_ascii_nul: babylon.world-register-set
     layout_u32: 1
+    tags: [1, 2]
+    sections:
+      - {tag: 1, body: "register_manifest_layout_u32 then register_manifest_digest32"}
+      - tag: 2
+        body: >-
+          entry_count_u32 then name_str32, register_layout_u32,
+          payload_length_u32, nonnegative_completed_tick_i64 rows
+        exact_entry_count: 1
   stable_world_v1:
     domain_ascii_nul: babylon.stable-world
     layout_u32: 1
     tags: [1, 2]
-    fields:
+    sections:
       - {tag: 1, value: stable_graph_digest32}
       - {tag: 2, value: world_register_set_digest32}
   tick_payload_v1:
     domain_ascii_nul: babylon.tick-payload
     layout_u32: 1
     tags: [1, 2, 3, 4]
+    sections:
+      - {tag: 1, body: "rule_outcome_count_u32 then rule_qname_str32, fired_u64 rows", order: prepared_rule_order}
+      - tag: 2
+        body: event_count_u32 then event_name_str32, payload_count_u32, label_str32, ValueV1 rows
+        order: executable_arrival_and_source_pair_order
+      - tag: 3
+        body: receipt_count_u32 then rule_qname_str32, RuleRoleV1, EvidenceClassV1, ordinal_u32, EffectSignatureV1 rows
+        order: published_receipt_order
+      - {tag: 4, body: accepted_action_outcome_count_u16, exact_value: 0}
   tick_content_hash_v1:
     domain_ascii_nul: babylon.tick-content
     layout_u32: 1
     tags: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    fields:
+    sections:
       - {tag: 1, value: layout_u32_1_then_replay_session_v1}
       - {tag: 2, value: resolve_tick_u64}
       - {tag: 3, value: rng_layout_u32_2_then_seed_i64}
@@ -143,20 +233,60 @@ layouts:
 
 bsl_discriminants:
   value_kinds:
-    "null": 0
-    bool: 1
-    i64: 2
-    f64_bits: 3
-    string: 4
+    int: 1
+    currency: 2
+    real: 3
+    ratio: 4
+    bool: 5
+    enum: 6
+    node_ref: 7
+    hyperedge_ref: 8
+    edge_ref: 9
+  bsl_types:
+    probability: 1
+    intensity: 2
+    coefficient: 3
+    currency: 4
+    real: 5
+    int: 6
+    bool: 7
+    enum: 8
+    node_set: 9
+    edge_set: 10
+  field_kinds:
+    intensive: 1
+    extensive: 2
+    not_applicable: 3
+  rule_roles:
+    mechanic: 1
+    recognizer: 2
+    external_event: 3
+    intent: 4
   effect_kinds:
-    write: 1
-    emit_event: 2
-    rng_draw: 3
+    node_field: 1
+    edge_field: 2
+    hyperedge_field: 3
+    event: 4
+    shape: 5
   evidence_classes:
     observed: 1
     derived: 2
     calibrated: 3
     designed: 4
+  shape_verbs:
+    add_node: 1
+    remove_node: 2
+    add_edge: 3
+    remove_edge: 4
+    add_hyperedge: 5
+    remove_hyperedge: 6
+  enum_kinds:
+    node_type: 1
+    edge_type: 2
+    hyperedge_type: 3
+    event_type: 4
+  option_presence: {absent: 0, present: 1}
+  boolean: {"false": 0, "true": 1}
 
 vector_families:
   required:

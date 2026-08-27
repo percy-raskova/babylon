@@ -1,9 +1,10 @@
 //! Public contract for the bounded representative H3 cohort installer.
 
+use babylon_kernel::RefDigestV1;
 use babylon_persistence::{
     install_representative_h3_cohort, H3ReferenceCohort, H3ReferenceDatabaseDiagnostic,
     H3ReferenceInstallDisposition, H3ReferenceInstallError, H3ReferenceInstallOperation,
-    H3ReferenceInstallReport, H3ReferenceMembershipReadContext, RefDigest,
+    H3ReferenceInstallReport, H3ReferenceMembershipReadContext,
 };
 use postgres::Config;
 
@@ -22,8 +23,8 @@ fn installer_signature_cannot_accept_unvalidated_rows_or_caller_provenance() {
 fn report_accessors_preserve_exact_provenance_and_bounded_count_types() {
     let _: fn(&H3ReferenceInstallReport) -> H3ReferenceInstallDisposition =
         H3ReferenceInstallReport::disposition;
-    let _: fn(&H3ReferenceInstallReport) -> RefDigest = H3ReferenceInstallReport::ref_digest;
-    let _: fn(&H3ReferenceInstallReport) -> RefDigest = H3ReferenceInstallReport::artifact_digest;
+    let _: fn(&H3ReferenceInstallReport) -> RefDigestV1 = H3ReferenceInstallReport::ref_digest;
+    let _: fn(&H3ReferenceInstallReport) -> RefDigestV1 = H3ReferenceInstallReport::artifact_digest;
     let _: fn(&H3ReferenceInstallReport) -> i16 = H3ReferenceInstallReport::format_version;
     let _: for<'report> fn(&'report H3ReferenceInstallReport) -> &'report str =
         H3ReferenceInstallReport::artifact_name;

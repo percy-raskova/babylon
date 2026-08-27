@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import struct
@@ -13,8 +14,35 @@ from typing import Any
 import yaml
 
 MAX_CHACHA_U64 = 256
+MAX_VECTOR_ROWS = 256
+MAX_SECTION_ROWS = 1_048_576
 U32_MASK = (1 << 32) - 1
 U64_MASK = (1 << 64) - 1
+COMPILED_BOUNDS = {
+    "vector_rows": 256,
+    "vector_line_bytes": 262_144,
+    "stable_carrier_active_elements": 256,
+    "stable_carrier_bytes": 131_072,
+    "resolver_rows": 65_536,
+    "resolver_hyperedge_members": 65_536,
+    "resolver_fact_units": 1_048_576,
+    "resolver_manifest_bytes": 16_777_216,
+    "stable_graph_elements": 65_536,
+    "stable_graph_attribute_rows": 1_048_576,
+    "stable_graph_hyperedge_members": 65_536,
+    "stable_graph_fact_units": 1_048_576,
+    "stable_graph_bytes": 67_108_864,
+    "ordered_action_items": 4_096,
+    "practice_intent_bytes": 16_384,
+    "ordered_action_batch_bytes": 67_256_631,
+    "prepared_rows": 65_536,
+    "prepared_small_rows": 64,
+    "identity_members": 1_048_576,
+    "identity_aggregate_rows": 1_048_576,
+    "identity_section_bytes": 67_108_864,
+    "tick_rule_outcomes": 65_536,
+    "tick_rows": 1_048_576,
+}
 
 
 class ContractRefusal(ValueError):
@@ -23,6 +51,19 @@ class ContractRefusal(ValueError):
     def __init__(self, code: str, detail: str) -> None:
         super().__init__(f"{code}: {detail}")
         self.code = code
+
+
+def _verify_compiled_bounds(contract: dict[str, Any]) -> None:
+    bounds = contract["bounds"]
+    for name, compiled in COMPILED_BOUNDS.items():
+        if bounds[name] != compiled:
+            raise ContractRefusal("compiled_bound_drift", name)
+    if bounds["replay_session_bytes"] != {"minimum": 1, "maximum": 256}:
+        raise ContractRefusal("compiled_bound_drift", "replay_session_bytes")
+    if bounds["rng_domain_bytes"] != {"minimum": 1, "maximum": 128}:
+        raise ContractRefusal("compiled_bound_drift", "rng_domain_bytes")
+    if bounds["rng_domain_segments"] != {"minimum": 2, "maximum": 4}:
+        raise ContractRefusal("compiled_bound_drift", "rng_domain_segments")
 
 
 def load_contract(path: Path) -> dict[str, Any]:
@@ -143,6 +184,8 @@ def verify_ordered_tags(
 
 
 def _ascii(value: str) -> bytes:
+    if not isinstance(value, str):
+        raise ContractRefusal("non_ascii", type(value).__name__)
     try:
         encoded = value.encode("ascii")
     except UnicodeEncodeError as error:
@@ -162,6 +205,74 @@ def _str16(value: str) -> bytes:
 def _str32(value: str) -> bytes:
     encoded = _ascii(value)
     return len(encoded).to_bytes(4, "big") + encoded
+
+
+def _hex_bytes(value: str, *, exact: int | None = None) -> bytes:
+    if len(value) % 2 != 0 or any(character not in "0123456789abcdef" for character in value):
+        raise ContractRefusal("invalid_hex", value[:64])
+    decoded = bytes.fromhex(value)
+    if exact is not None and len(decoded) != exact:
+        raise ContractRefusal("invalid_hex_length", f"{len(decoded)} != {exact}")
+    return decoded
+
+
+def _bounded_int(value: Any, *, minimum: int, maximum: int, field: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or value < minimum or value > maximum:
+        raise ContractRefusal("integer_range", field)
+    return value
+
+
+def _u16(value: Any, field: str) -> bytes:
+    return _bounded_int(value, minimum=0, maximum=(1 << 16) - 1, field=field).to_bytes(2, "big")
+
+
+def _u32(value: Any, field: str) -> bytes:
+    return _bounded_int(value, minimum=0, maximum=(1 << 32) - 1, field=field).to_bytes(4, "big")
+
+
+def _u64(value: Any, field: str) -> bytes:
+    return _bounded_int(value, minimum=0, maximum=U64_MASK, field=field).to_bytes(8, "big")
+
+
+def _i64(value: Any, field: str) -> bytes:
+    return _bounded_int(value, minimum=-(1 << 63), maximum=(1 << 63) - 1, field=field).to_bytes(
+        8, "big", signed=True
+    )
+
+
+def _i128_text(value: Any, field: str) -> bytes:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as error:
+        raise ContractRefusal("integer_shape", field) from error
+    if str(parsed) != str(value) or parsed < -(1 << 127) or parsed > (1 << 127) - 1:
+        raise ContractRefusal("integer_range", field)
+    return parsed.to_bytes(16, "big", signed=True)
+
+
+def _counted_rows(rows: Any, *, maximum: int, field: str) -> list[dict[str, Any]]:
+    if not isinstance(rows, list) or len(rows) > maximum:
+        raise ContractRefusal("row_limit", field)
+    if any(not isinstance(row, dict) for row in rows):
+        raise ContractRefusal("row_shape", field)
+    return rows
+
+
+def _bounded_bytes(value: bytes | bytearray, *, maximum: int, field: str) -> bytes:
+    if len(value) > maximum:
+        raise ContractRefusal("byte_limit", field)
+    return bytes(value)
+
+
+def _canonical_f64_bits(value: str) -> bytes:
+    bits = int.from_bytes(_hex_bytes(value, exact=8), "big")
+    exponent = (bits >> 52) & 0x7FF
+    mantissa = bits & ((1 << 52) - 1)
+    if exponent == 0x7FF:
+        raise ContractRefusal("non_finite", value)
+    if exponent == 0 and mantissa == 0:
+        bits = 0
+    return bits.to_bytes(8, "big")
 
 
 def _rng_v1_preimage(data: dict[str, Any]) -> bytes:
@@ -224,53 +335,484 @@ def _stable_element(data: dict[str, Any]) -> bytes:
 
 
 def _carrier_segment(data: dict[str, Any]) -> bytes:
-    parts = [_ascii(part) for part in data["segments"]]
-    return b"|".join(str(len(part)).encode("ascii") + b":" + part for part in parts)
+    segments = data["segments"]
+    maximum_segments = COMPILED_BOUNDS["stable_carrier_active_elements"]
+    if not isinstance(segments, list) or len(segments) > maximum_segments:
+        raise ContractRefusal("row_limit", "carrier segments")
+    parts = [_ascii(part) for part in segments[:maximum_segments]]
+    canonical = b"|".join(str(len(part)).encode("ascii") + b":" + part for part in parts)
+    return _bounded_bytes(
+        canonical,
+        maximum=COMPILED_BOUNDS["stable_carrier_bytes"],
+        field="carrier segment",
+    )
+
+
+def _resolver_manifest(data: dict[str, Any]) -> bytes:
+    nodes = _counted_rows(data["nodes"], maximum=65_536, field="resolver nodes")
+    hyperedges = _counted_rows(data["hyperedges"], maximum=65_536, field="resolver hyperedges")
+    if len(nodes) + len(hyperedges) > 65_536:
+        raise ContractRefusal("row_limit", "resolver rows")
+    sorted_nodes = sorted(nodes, key=lambda row: _ascii(row["local_name"]))
+    sorted_hyperedges = sorted(hyperedges, key=lambda row: _ascii(row["local_name"]))
+    output = bytearray(b"babylon.stable-element-resolver\0" + _u32(1, "resolver layout"))
+    output.extend(b"\x01" + _str32(data["scenario"]))
+    output.extend(b"\x02" + _u32(len(sorted_nodes), "resolver node count"))
+    for row in sorted_nodes[:65_536]:
+        output.extend(_str32(row["local_name"]) + _str32(row["node_type"]))
+    output.extend(b"\x03" + _u32(len(sorted_hyperedges), "resolver hyperedge count"))
+    for row in sorted_hyperedges[:65_536]:
+        output.extend(_str32(row["local_name"]) + _str32(row["hyperedge_type"]))
+    return _bounded_bytes(output, maximum=16_777_216, field="resolver manifest")
+
+
+def _stable_graph(data: dict[str, Any]) -> bytes:
+    sections = [
+        (2, "nodes", _stable_node_row, 65_536),
+        (3, "node_f64", _stable_node_f64_row, 1_048_576),
+        (4, "edges", _stable_edge_row, 65_536),
+        (5, "hyperedges", _stable_hyperedge_row, 65_536),
+        (6, "edge_f64", _stable_edge_f64_row, 1_048_576),
+        (7, "node_currency", _stable_node_currency_row, 1_048_576),
+        (8, "hyperedge_f64", _stable_hyperedge_f64_row, 1_048_576),
+    ]
+    output = bytearray(b"babylon.stable-graph\0" + _u32(1, "stable graph layout"))
+    output.extend(b"\x01" + _str32(data["scenario"]))
+    fact_units = 0
+    for tag, name, builder, maximum in sections:
+        rows = _counted_rows(data[name], maximum=maximum, field=name)
+        fact_units += len(rows)
+        if name == "hyperedges":
+            fact_units += sum(len(row["members"]) for row in rows[:maximum])
+        if fact_units > MAX_SECTION_ROWS:
+            raise ContractRefusal("aggregate_row_limit", "stable graph")
+        encoded = sorted((builder(row) for row in rows[:maximum]), key=lambda item: item[0])
+        keys = [item[0] for item in encoded]
+        if len(keys) != len(set(keys)):
+            raise ContractRefusal("duplicate_fact", name)
+        output.extend(bytes([tag]) + _u32(len(rows), f"{name} count"))
+        for _, body in encoded[:maximum]:
+            output.extend(body)
+    return _bounded_bytes(output, maximum=67_108_864, field="stable graph")
+
+
+def _stable_node_row(row: dict[str, Any]) -> tuple[tuple[bytes, ...], bytes]:
+    key = (_ascii(row["local_name"]),)
+    return key, _str32(row["local_name"]) + _str32(row["node_type"])
+
+
+def _stable_node_f64_row(row: dict[str, Any]) -> tuple[tuple[bytes, ...], bytes]:
+    key = (_ascii(row["local_name"]), _ascii(row["qname"]))
+    return key, _str32(row["local_name"]) + _str32(row["qname"]) + _canonical_f64_bits(
+        row["value_bits_hex"]
+    )
+
+
+def _stable_edge_row(row: dict[str, Any]) -> tuple[tuple[bytes, ...], bytes]:
+    key = tuple(_ascii(row[name]) for name in ("edge_type", "source", "target"))
+    body = b"".join(_str32(row[name]) for name in ("edge_type", "source", "target"))
+    return key, body + _canonical_f64_bits(row["strength_bits_hex"])
+
+
+def _stable_hyperedge_row(row: dict[str, Any]) -> tuple[tuple[bytes, ...], bytes]:
+    raw_members = row["members"]
+    if not isinstance(raw_members, list) or not raw_members or len(raw_members) > 65_536:
+        raise ContractRefusal("hyperedge_members", row["local_name"])
+    members = sorted((_ascii(value), value) for value in raw_members[:65_536])
+    if len(members) != len({item[0] for item in members}):
+        raise ContractRefusal("hyperedge_members", row["local_name"])
+    body = bytearray(_str32(row["local_name"]) + _str32(row["hyperedge_type"]))
+    body.extend(_u32(len(members), "stable hyperedge member count"))
+    for _, member in members[:65_536]:
+        body.extend(_str32(member))
+    return (_ascii(row["local_name"]),), bytes(body)
+
+
+def _stable_edge_f64_row(row: dict[str, Any]) -> tuple[tuple[bytes, ...], bytes]:
+    names = ("edge_type", "source", "target", "qname")
+    key = tuple(_ascii(row[name]) for name in names)
+    body = b"".join(_str32(row[name]) for name in names)
+    return key, body + _canonical_f64_bits(row["value_bits_hex"])
+
+
+def _stable_node_currency_row(row: dict[str, Any]) -> tuple[tuple[bytes, ...], bytes]:
+    key = (_ascii(row["local_name"]), _ascii(row["qname"]))
+    body = _str32(row["local_name"]) + _str32(row["qname"])
+    return key, body + _i128_text(row["micro_units"], "Currency micro-units")
+
+
+def _stable_hyperedge_f64_row(row: dict[str, Any]) -> tuple[tuple[bytes, ...], bytes]:
+    key = (_ascii(row["local_name"]), _ascii(row["qname"]))
+    body = _str32(row["local_name"]) + _str32(row["qname"])
+    return key, body + _canonical_f64_bits(row["value_bits_hex"])
 
 
 def _action_id(data: dict[str, Any]) -> bytes:
+    intent_bytes = _hex_bytes(data["intent_bytes_hex"])
+    if len(intent_bytes) > COMPILED_BOUNDS["practice_intent_bytes"]:
+        raise ContractRefusal("intent_length", data.get("session", "action"))
+    intent_digest = hashlib.sha256(intent_bytes).digest()
+    if intent_digest.hex() != data["intent_digest_hex"]:
+        raise ContractRefusal("intent_digest", data.get("session", "action"))
     return b"".join(
         (
             b"babylon.practice-action-id.v1\0",
             (1).to_bytes(2, "big"),
             _str16(data["session"]),
             (2).to_bytes(2, "big"),
-            bytes.fromhex(data["intent_digest_hex"]),
+            intent_digest,
         )
     )
 
 
-def _empty_action_batch(data: dict[str, Any]) -> bytes:
-    return b"".join(
-        (
-            b"babylon.ordered-practice-action-batch.v1\0",
-            (1).to_bytes(2, "big"),
-            _str16(data["session"]),
-            int(data["resolve_tick"]).to_bytes(8, "big"),
-            (0).to_bytes(2, "big"),
+def _ordered_action_batch(data: dict[str, Any]) -> bytes:
+    items = _counted_rows(data["items"], maximum=4_096, field="ordered action items")
+    output = bytearray(b"babylon.ordered-practice-action-batch.v1\0")
+    output.extend(_u16(1, "ordered action schema") + _str16(data["session"]))
+    output.extend(_u64(data["resolve_tick"], "ordered action resolve tick"))
+    output.extend(_u16(len(items), "ordered action count"))
+    action_ids: list[str] = []
+    for index, item in enumerate(items[:4_096]):
+        if item["ordinal"] != index:
+            raise ContractRefusal("action_ordinal", str(index))
+        intent_bytes = _hex_bytes(item["intent_bytes_hex"])
+        if len(intent_bytes) > 16_384:
+            raise ContractRefusal("intent_length", str(index))
+        intent_digest = hashlib.sha256(intent_bytes).hexdigest()
+        action_preimage = _action_id(
+            {
+                "session": data["session"],
+                "intent_bytes_hex": item["intent_bytes_hex"],
+                "intent_digest_hex": intent_digest,
+            }
         )
-    )
+        action_id = hashlib.sha256(action_preimage).digest()
+        action_ids.append(action_id.hex())
+        output.extend(_u16(index, "canonical action ordinal"))
+        output.extend(action_id + _u16(len(intent_bytes), "ordered intent length") + intent_bytes)
+    if data.get("action_ids_hex", action_ids) != action_ids:
+        raise ContractRefusal("action_id", "ordered batch")
+    return _bounded_bytes(output, maximum=67_256_631, field="ordered action batch")
 
 
-def _tick_content(data: dict[str, Any]) -> bytes:
-    output = bytearray(b"babylon.tick-content\0" + (1).to_bytes(4, "big"))
-    output.extend(b"\x01" + (1).to_bytes(4, "big") + _str16(data["session"]))
-    output.extend(b"\x02" + int(data["resolve_tick"]).to_bytes(8, "big"))
-    output.extend(b"\x03" + (1).to_bytes(4, "big") + (2).to_bytes(4, "big"))
-    output.extend(int(data["seed"]).to_bytes(8, "big", signed=True))
-    output.extend(b"\x04" + (1).to_bytes(4, "big"))
-    output.extend(bytes.fromhex(data["defines_digest_hex"]))
-    output.extend(bytes.fromhex(data["rules_digest_hex"]))
-    for tag, name in enumerate(
-        ("reference", "prepared", "prior_world", "actions", "result_world", "payload"),
-        start=5,
-    ):
-        output.extend(bytes([tag]) + (1).to_bytes(4, "big"))
-        output.extend(bytes.fromhex(data[f"{name}_digest_hex"]))
+def _bsl_type(data: dict[str, Any]) -> bytes:
+    tags = {
+        "probability": 1,
+        "intensity": 2,
+        "coefficient": 3,
+        "currency": 4,
+        "real": 5,
+        "int": 6,
+        "bool": 7,
+        "enum": 8,
+        "node_set": 9,
+        "edge_set": 10,
+    }
+    kind = data["kind"]
+    if kind not in tags:
+        raise ContractRefusal("unknown_bsl_type", str(kind))
+    output = bytearray([tags[kind]])
+    if kind in {"enum", "node_set", "edge_set"}:
+        output.extend(_str32(data["name"]))
     return bytes(output)
 
 
-def _canonical_for(row: dict[str, Any]) -> bytes | None:
+def _bsl_value(data: dict[str, Any]) -> bytes:
+    kind = data["kind"]
+    if kind == "int":
+        return b"\x01" + _i64(data["value"], "ValueV1 int")
+    if kind == "currency":
+        return b"\x02" + _i128_text(data["micro_units"], "ValueV1 Currency")
+    if kind == "real":
+        return b"\x03" + _canonical_f64_bits(data["value_bits_hex"])
+    if kind == "ratio":
+        return (
+            b"\x04"
+            + _canonical_f64_bits(data["value_bits_hex"])
+            + _ratio_option(data.get("floor_bits_hex"))
+            + _ratio_option(data.get("cap_bits_hex"))
+        )
+    if kind == "bool":
+        value = data["value"]
+        if not isinstance(value, bool):
+            raise ContractRefusal("noncanonical_boolean", str(value))
+        return b"\x05" + bytes([int(value)])
+    if kind == "enum":
+        return b"\x06" + _str32(data["enum_type"]) + _str32(data["member"])
+    stable_kinds = {
+        "node_ref": (7, "node"),
+        "hyperedge_ref": (8, "hyperedge"),
+        "edge_ref": (9, "edge"),
+    }
+    if kind in stable_kinds:
+        tag, element_kind = stable_kinds[kind]
+        element = dict(data["element"])
+        element["element_kind"] = element_kind
+        return bytes([tag]) + _stable_element(element)
+    raise ContractRefusal("unknown_value", str(kind))
+
+
+def _ratio_option(value: Any) -> bytes:
+    if value is None:
+        return b"\x00"
+    return b"\x01" + _canonical_f64_bits(value)
+
+
+def _effect(data: dict[str, Any]) -> bytes:
+    kind = data["kind"]
+    field_tags = {"node_field": 1, "edge_field": 2, "hyperedge_field": 3}
+    if kind in field_tags:
+        return bytes([field_tags[kind]]) + _str32(data["qname"])
+    if kind == "event":
+        return b"\x04" + _str32(data["event"])
+    if kind == "shape":
+        shape_tags = {
+            "add_node": 1,
+            "remove_node": 2,
+            "add_edge": 3,
+            "remove_edge": 4,
+            "add_hyperedge": 5,
+            "remove_hyperedge": 6,
+        }
+        if data["verb"] not in shape_tags:
+            raise ContractRefusal("unknown_shape", data["verb"])
+        return b"\x05" + bytes([shape_tags[data["verb"]]])
+    raise ContractRefusal("unknown_effect", str(kind))
+
+
+def _closed_tag(value: str, choices: tuple[str, ...], field: str) -> bytes:
+    try:
+        return bytes([choices.index(value) + 1])
+    except ValueError as error:
+        raise ContractRefusal(f"unknown_{field}", value) from error
+
+
+def _vocabulary(data: dict[str, Any]) -> bytes:
+    if not data["present"]:
+        return b"\x00"
+    kinds = data["kinds"]
+    output = bytearray(b"\x01")
+    for tag, name in enumerate(("node_type", "edge_type", "hyperedge_type", "event_type"), 1):
+        row = kinds[name]
+        output.extend(bytes([tag, int(row["present"])]))
+        if row["present"]:
+            members = sorted(row["members"], key=_ascii)
+            output.extend(_u32(len(members), "vocabulary member count"))
+            for member in members[:MAX_SECTION_ROWS]:
+                output.extend(_str32(member))
+    return bytes(output)
+
+
+def _prepared_environment(data: dict[str, Any], digests: dict[str, bytes]) -> bytes:
+    _validate_prepared_counts(data)
+    output = bytearray(b"babylon.prepared-environment\0" + _u32(1, "prepared layout"))
+    output.extend(b"\x01" + _hex_bytes(data["rules_hash_hex"], exact=32))
+    output.extend(b"\x02" + _u32(data["phase_schedule_layout"], "phase schedule layout"))
+    output.extend(_hex_bytes(data["phase_schedule_digest_hex"], exact=32))
+    rules = data["rule_order"]
+    output.extend(b"\x03" + _u32(len(rules), "prepared rule count"))
+    for rule in rules[:65_536]:
+        output.extend(_str32(rule))
+    output.extend(b"\x04" + _prepared_fields(data))
+    output.extend(b"\x05" + _prepared_intrinsics(data))
+    output.extend(b"\x06" + _prepared_constants(data))
+    output.extend(b"\x07" + _prepared_enums(data))
+    output.extend(b"\x08" + _vocabulary(data["vocabulary"]))
+    output.extend(b"\x09" + _u32(1, "resolver manifest layout"))
+    output.extend(digests[data["resolver_manifest_id"]])
+    output.extend(b"\x0a" + _u32(1, "register manifest layout"))
+    output.extend(digests[data["register_manifest_id"]])
+    return _bounded_bytes(output, maximum=67_108_864, field="prepared environment")
+
+
+def _validate_prepared_counts(data: dict[str, Any]) -> None:
+    rules = data["rule_order"]
+    if not isinstance(rules, list) or len(rules) > 65_536:
+        raise ContractRefusal("row_limit", "prepared rules")
+    if any(not isinstance(rule, str) for rule in rules[:65_536]):
+        raise ContractRefusal("row_shape", "prepared rules")
+    fields = _counted_rows(data["fields"], maximum=65_536, field="prepared fields")
+    exemptions = _counted_rows(data["exemptions"], maximum=64, field="prepared exemptions")
+    intrinsics = _counted_rows(data["intrinsics"], maximum=64, field="prepared intrinsics")
+    constants = _counted_rows(data["constants"], maximum=65_536, field="prepared constants")
+    enum_types = _counted_rows(data["enum_types"], maximum=65_536, field="prepared enum types")
+    total = sum(
+        len(rows) for rows in (rules, fields, exemptions, intrinsics, constants, enum_types)
+    )
+    for declaration in enum_types[:65_536]:
+        members = declaration["members"]
+        if not isinstance(members, list) or len(members) > MAX_SECTION_ROWS:
+            raise ContractRefusal("row_limit", "prepared enum members")
+        total += len(members)
+    vocabulary_data = data["vocabulary"]
+    if vocabulary_data["present"]:
+        total += 4
+        for name in ("node_type", "edge_type", "hyperedge_type", "event_type"):
+            members = vocabulary_data["kinds"][name]["members"]
+            if len(members) > MAX_SECTION_ROWS:
+                raise ContractRefusal("row_limit", "vocabulary members")
+            total += len(members)
+    if total > MAX_SECTION_ROWS:
+        raise ContractRefusal("aggregate_row_limit", "prepared environment")
+
+
+def _prepared_fields(data: dict[str, Any]) -> bytes:
+    fields = sorted(data["fields"], key=lambda row: _ascii(row["qname"]))
+    output = bytearray(_u32(len(fields), "field count"))
+    field_kinds = {"intensive": 1, "extensive": 2, "not_applicable": 3}
+    for row in fields[:65_536]:
+        output.extend(_str32(row["qname"]) + _bsl_type(row["type"]))
+        output.extend(bytes([field_kinds[row["field_kind"]]]))
+    exemptions = sorted(
+        data["exemptions"],
+        key=lambda row: tuple(_ascii(row[name]) for name in ("field", "reason", "owner", "date")),
+    )
+    output.extend(_u32(len(exemptions), "exemption count"))
+    for row in exemptions[:64]:
+        for name in ("field", "reason", "owner", "date"):
+            output.extend(_str32(row[name]))
+    return bytes(output)
+
+
+def _prepared_intrinsics(data: dict[str, Any]) -> bytes:
+    rows = sorted(data["intrinsics"], key=lambda row: _ascii(row["name"]))
+    output = bytearray(_u32(len(rows), "intrinsic count"))
+    for row in rows[:64]:
+        output.extend(_str32(row["name"]) + _u64(row["cost"], "intrinsic cost"))
+    return bytes(output)
+
+
+def _prepared_constants(data: dict[str, Any]) -> bytes:
+    rows = sorted(data["constants"], key=lambda row: _ascii(row["qname"]))
+    output = bytearray(_u32(len(rows), "constant count"))
+    for row in rows[:65_536]:
+        output.extend(_str32(row["qname"]) + _bsl_value(row["value"]))
+    return bytes(output)
+
+
+def _prepared_enums(data: dict[str, Any]) -> bytes:
+    rows = sorted(data["enum_types"], key=lambda row: _ascii(row["name"]))
+    output = bytearray(_u32(len(rows), "enum type count"))
+    for row in rows[:65_536]:
+        output.extend(_str32(row["name"]) + _u32(len(row["members"]), "enum member count"))
+        for member in row["members"][:MAX_SECTION_ROWS]:
+            output.extend(_str32(member))
+    return bytes(output)
+
+
+def _register_manifest(data: dict[str, Any]) -> bytes:
+    entries = data["entries"]
+    output = bytearray(b"babylon.world-register-manifest\0" + _u32(1, "manifest layout"))
+    output.extend(_u32(len(entries), "register manifest count"))
+    for row in entries[:MAX_SECTION_ROWS]:
+        output.extend(_str32(row["name"]) + _u32(row["layout"], "register layout"))
+    return bytes(output)
+
+
+def _register_set(data: dict[str, Any], digests: dict[str, bytes]) -> bytes:
+    entries = data["entries"]
+    output = bytearray(b"babylon.world-register-set\0" + _u32(1, "register set layout"))
+    output.extend(b"\x01" + _u32(1, "manifest layout"))
+    output.extend(digests[data["register_manifest_id"]])
+    output.extend(b"\x02" + _u32(len(entries), "register set count"))
+    for row in entries[:MAX_SECTION_ROWS]:
+        payload = _i64(row["completed_tick"], "completed tick")
+        if row["completed_tick"] < 0:
+            raise ContractRefusal("negative_completed_tick", str(row["completed_tick"]))
+        output.extend(_str32(row["name"]) + _u32(row["layout"], "register layout"))
+        output.extend(_u32(len(payload), "register payload length") + payload)
+    return bytes(output)
+
+
+def _stable_world(data: dict[str, Any], digests: dict[str, bytes]) -> bytes:
+    return b"".join(
+        (
+            b"babylon.stable-world\0",
+            _u32(1, "stable world layout"),
+            b"\x01",
+            _u32(1, "stable graph layout"),
+            digests[data["stable_graph_id"]],
+            b"\x02",
+            _u32(1, "register set layout"),
+            digests[data["register_set_id"]],
+        )
+    )
+
+
+def _tick_payload(data: dict[str, Any]) -> bytes:
+    _validate_payload_counts(data)
+    output = bytearray(b"babylon.tick-payload\0" + _u32(1, "tick payload layout"))
+    outcomes = data["rule_outcomes"]
+    output.extend(b"\x01" + _u32(len(outcomes), "rule outcome count"))
+    for row in outcomes[:65_536]:
+        output.extend(_str32(row["rule"]) + _u64(row["fired"], "fired count"))
+    events = data["events"]
+    output.extend(b"\x02" + _u32(len(events), "event count"))
+    for row in events[:MAX_SECTION_ROWS]:
+        output.extend(_str32(row["event"]) + _u32(len(row["payload"]), "event payload count"))
+        for item in row["payload"][:MAX_SECTION_ROWS]:
+            output.extend(_str32(item["label"]) + _bsl_value(item["value"]))
+    receipts = data["receipts"]
+    output.extend(b"\x03" + _u32(len(receipts), "receipt count"))
+    role_tags = {"mechanic": 1, "recognizer": 2, "external_event": 3, "intent": 4}
+    evidence_tags = {"observed": 1, "derived": 2, "calibrated": 3, "designed": 4}
+    for row in receipts[:MAX_SECTION_ROWS]:
+        output.extend(_str32(row["rule"]))
+        output.extend(bytes([role_tags[row["role"]], evidence_tags[row["evidence"]]]))
+        output.extend(_u32(row["ordinal"], "receipt ordinal") + _effect(row["effect"]))
+    output.extend(b"\x04" + _u16(data["accepted_action_outcome_count"], "action outcomes"))
+    if data["accepted_action_outcome_count"] != 0:
+        raise ContractRefusal("nonempty_action_outcomes", "Gate 3")
+    return _bounded_bytes(output, maximum=67_108_864, field="tick payload")
+
+
+def _validate_payload_counts(data: dict[str, Any]) -> None:
+    outcomes = _counted_rows(data["rule_outcomes"], maximum=65_536, field="rule outcomes")
+    events = _counted_rows(data["events"], maximum=MAX_SECTION_ROWS, field="events")
+    receipts = _counted_rows(data["receipts"], maximum=MAX_SECTION_ROWS, field="receipts")
+    total = len(outcomes) + len(events) + len(receipts)
+    for event in events[:MAX_SECTION_ROWS]:
+        payload = _counted_rows(
+            event["payload"], maximum=MAX_SECTION_ROWS, field="event payload items"
+        )
+        total += len(payload)
+    if total > MAX_SECTION_ROWS:
+        raise ContractRefusal("aggregate_row_limit", "tick payload")
+
+
+def _tick_content(data: dict[str, Any], digests: dict[str, bytes]) -> bytes:
+    layouts = {
+        "outer": 1,
+        "session": 1,
+        "seed": 1,
+        "rng": 2,
+        "content": 1,
+        "reference": 1,
+        "prepared": 1,
+        "prior_world": 1,
+        "actions": 1,
+        "result_world": 1,
+        "payload": 1,
+        **data.get("layout_overrides", {}),
+    }
+    output = bytearray(b"babylon.tick-content\0" + _u32(layouts["outer"], "outer layout"))
+    output.extend(b"\x01" + _u32(layouts["session"], "session layout") + _str16(data["session"]))
+    output.extend(b"\x02" + _u64(data["resolve_tick"], "resolve tick"))
+    output.extend(b"\x03" + _u32(layouts["seed"], "seed layout"))
+    output.extend(_u32(layouts["rng"], "RNG layout") + _i64(data["seed"], "replay seed"))
+    output.extend(b"\x04" + _u32(layouts["content"], "content layout"))
+    output.extend(_hex_bytes(data["defines_digest_hex"], exact=32))
+    output.extend(_hex_bytes(data["rules_digest_hex"], exact=32))
+    names = ("reference", "prepared", "prior_world", "actions", "result_world", "payload")
+    for tag, name in enumerate(names, start=5):
+        output.extend(bytes([tag]) + _u32(layouts[name], f"{name} layout"))
+        linked = data.get(f"{name}_id")
+        digest = digests[linked] if linked else _hex_bytes(data[f"{name}_digest_hex"], exact=32)
+        output.extend(digest)
+    return bytes(output)
+
+
+def _canonical_for(row: dict[str, Any], digests: dict[str, bytes]) -> bytes | None:
     kind = row["kind"]
     data = row["data"]
     builders = {
@@ -279,9 +821,53 @@ def _canonical_for(row: dict[str, Any]) -> bytes | None:
         "stable_element": lambda: _stable_element(data),
         "carrier_segment": lambda: _carrier_segment(data),
         "action_id": lambda: _action_id(data),
-        "ordered_action_batch": lambda: _empty_action_batch(data),
-        "tick_content_hash": lambda: _tick_content(data),
+        "resolver_manifest": lambda: _resolver_manifest(data),
+        "stable_graph": lambda: _stable_graph(data),
+        "ordered_action_batch": lambda: _ordered_action_batch(data),
+        "prepared_environment": lambda: _prepared_environment(data, digests),
+        "register_manifest": lambda: _register_manifest(data),
+        "register_set": lambda: _register_set(data, digests),
+        "stable_world": lambda: _stable_world(data, digests),
+        "tick_payload": lambda: _tick_payload(data),
+        "tick_content_hash": lambda: _tick_content(data, digests),
     }
+    if kind == "bsl_discriminant" and "vocabulary" in data:
+        return _vocabulary(data["vocabulary"])
+    if kind == "bsl_discriminant" and "bsl_type" in data:
+        return _bsl_type(data["bsl_type"])
+    if kind == "bsl_discriminant" and "bsl_value" in data:
+        return _bsl_value(data["bsl_value"])
+    if kind == "bsl_discriminant" and "effect" in data:
+        return _effect(data["effect"])
+    if kind == "bsl_discriminant" and "shape_verb" in data:
+        return _closed_tag(
+            data["shape_verb"],
+            (
+                "add_node",
+                "remove_node",
+                "add_edge",
+                "remove_edge",
+                "add_hyperedge",
+                "remove_hyperedge",
+            ),
+            "shape",
+        )
+    if kind == "bsl_discriminant" and "field_kind" in data:
+        return _closed_tag(
+            data["field_kind"], ("intensive", "extensive", "not_applicable"), "field_kind"
+        )
+    if kind == "bsl_discriminant" and "rule_role" in data:
+        return _closed_tag(
+            data["rule_role"],
+            ("mechanic", "recognizer", "external_event", "intent"),
+            "rule_role",
+        )
+    if kind == "bsl_discriminant" and "evidence_class" in data:
+        return _closed_tag(
+            data["evidence_class"],
+            ("observed", "derived", "calibrated", "designed"),
+            "evidence_class",
+        )
     builder = builders.get(kind)
     return None if builder is None else builder()
 
@@ -300,26 +886,40 @@ def _verify_rng(data: dict[str, Any], *, version: int) -> None:
         raise ContractRefusal("rng_f64", "V2")
 
 
-def _verify_domain_row(contract: dict[str, Any], row: dict[str, Any]) -> None:
-    kind = row["kind"]
-    layout_names = {
-        "resolver_manifest": "resolver_manifest_v1",
-        "stable_graph": "stable_graph_v1",
-        "prepared_environment": "prepared_environment_v1",
-        "register_manifest": "world_register_manifest_v1",
-        "register_set": "world_register_set_v1",
-        "stable_world": "stable_world_v1",
-        "tick_payload": "tick_payload_v1",
-    }
-    layout = contract["layouts"][layout_names[kind]]
-    expected = layout["domain_ascii_nul"].encode("ascii") + b"\0"
-    canonical = bytes.fromhex(row["data"]["canonical_hex"])
-    if not canonical.startswith(expected + (1).to_bytes(4, "big")):
-        raise ContractRefusal("domain_or_layout", kind)
-
-
-def _verify_refusal(row: dict[str, Any]) -> None:
+def _verify_refusal(contract: dict[str, Any], row: dict[str, Any]) -> None:
     data = row["data"]
+    if data["operation"] == "session":
+        try:
+            _str16(data["value"])
+        except ContractRefusal as error:
+            if error.code != data["expected_code"]:
+                raise ContractRefusal("wrong_refusal", error.code) from error
+            return
+        raise ContractRefusal("missing_refusal", row["id"])
+    if data["operation"] == "bounds":
+        pairs = _counted_rows(data["pairs"], maximum=64, field="bound pairs")
+        expected_names = list(contract["bounds"])
+        if [pair.get("name") for pair in pairs] != expected_names:
+            raise ContractRefusal("bound_pair_set", "declared bounds")
+        for pair in pairs[:64]:
+            maximum = contract["bounds"][pair["name"]]
+            if isinstance(maximum, dict):
+                maximum = maximum["maximum"]
+            if pair != {"name": pair["name"], "accepted": maximum, "refused": maximum + 1}:
+                raise ContractRefusal("bound_pair", pair["name"])
+        return
+    if data["operation"] == "bsl_value":
+        try:
+            _bsl_value(data["value"])
+        except ContractRefusal as error:
+            if error.code != data["expected_code"]:
+                raise ContractRefusal("wrong_refusal", error.code) from error
+            return
+        raise ContractRefusal("missing_refusal", row["id"])
+    if data["operation"] == "option_byte":
+        if data["value"] not in (0, 1) and data["expected_code"] == "invalid_option":
+            return
+        raise ContractRefusal("missing_refusal", row["id"])
     try:
         verify_ordered_tags(
             bytes.fromhex(data["canonical_hex"]),
@@ -333,7 +933,35 @@ def _verify_refusal(row: dict[str, Any]) -> None:
     raise ContractRefusal("missing_refusal", row["id"])
 
 
-def _verify_row(contract: dict[str, Any], row: dict[str, Any]) -> None:
+def _verify_mutation(
+    row: dict[str, Any], rows_by_id: dict[str, dict[str, Any]], digests: dict[str, bytes]
+) -> None:
+    data = row["data"]
+    base = copy.deepcopy(rows_by_id[data["base_id"]])
+    before = _canonical_for(base, digests)
+    if before is None or hashlib.sha256(before).digest() != digests[data["base_id"]]:
+        raise ContractRefusal("mutation_base", data["base_id"])
+    target = base["data"]
+    path = data["field"].split(".")
+    for part in path[:-1]:
+        target = target.setdefault(part, {})
+    target[path[-1]] = data["replacement"]
+    if path[-1].endswith("_digest_hex"):
+        digest_name = path[-1].removesuffix("_digest_hex")
+        base["data"].pop(f"{digest_name}_id", None)
+    after = _canonical_for(base, digests)
+    if after is None or before == after:
+        raise ContractRefusal("mutation_did_not_change_identity", row["id"])
+    if hashlib.sha256(after).hexdigest() != data["after_digest_hex"]:
+        raise ContractRefusal("mutation_digest", row["id"])
+
+
+def _verify_row(
+    contract: dict[str, Any],
+    row: dict[str, Any],
+    rows_by_id: dict[str, dict[str, Any]],
+    digests: dict[str, bytes],
+) -> bytes | None:
     if set(row) != {"id", "kind", "data"} or not isinstance(row["data"], dict):
         raise ContractRefusal("row_fields", str(row.get("id")))
     kind = row["kind"]
@@ -343,50 +971,52 @@ def _verify_row(contract: dict[str, Any], row: dict[str, Any]) -> None:
     elif kind == "rng_v2":
         _verify_rng(data, version=2)
     elif kind == "bsl_discriminant":
-        if data["tables"] != contract["bsl_discriminants"]:
+        if "tables" in data and data["tables"] != contract["bsl_discriminants"]:
             raise ContractRefusal("bsl_discriminants", row["id"])
     elif kind == "mutation":
-        before = bytes.fromhex(data["before_hex"])
-        after = bytes.fromhex(data["after_hex"])
-        if before == after or hashlib.sha256(before).digest() == hashlib.sha256(after).digest():
-            raise ContractRefusal("mutation_did_not_change_identity", row["id"])
+        _verify_mutation(row, rows_by_id, digests)
+        return None
     elif kind == "refusal":
-        _verify_refusal(row)
-    elif kind in {
-        "resolver_manifest",
-        "stable_graph",
-        "prepared_environment",
-        "register_manifest",
-        "register_set",
-        "stable_world",
-        "tick_payload",
-    }:
-        _verify_domain_row(contract, row)
-    canonical = _canonical_for(row)
+        _verify_refusal(contract, row)
+        return None
+    canonical = _canonical_for(row, digests)
     expected_hex = data.get("canonical_hex")
     if canonical is not None and canonical.hex() != expected_hex:
         raise ContractRefusal("canonical_bytes", row["id"])
-    if expected_hex is not None and "digest_hex" in data:
-        digest = hashlib.sha256(bytes.fromhex(expected_hex)).hexdigest()
-        if digest != data["digest_hex"]:
+    if canonical is not None:
+        digest = hashlib.sha256(canonical).digest()
+        if digest.hex() != data.get("digest_hex"):
             raise ContractRefusal("digest", row["id"])
+        return digest
+    return None
 
 
 def verify_all(contract: dict[str, Any], vectors: list[dict[str, Any]]) -> list[str]:
     """Return every independent contract error in stable vector order."""
     errors: list[str] = []
+    try:
+        _verify_compiled_bounds(contract)
+    except (ContractRefusal, KeyError, TypeError) as error:
+        errors.append(f"contract bounds: {error}")
     required = set(contract["vector_families"]["required"])
     received = {row.get("kind") for row in vectors}
     if received != required:
         errors.append(
             f"vector families: missing={sorted(required - received)} extra={sorted(received - required)}"
         )
-    for index in range(256):
+    row_ids = [row.get("id") for row in vectors]
+    if len(row_ids) != len(set(row_ids)):
+        errors.append("vector ids: duplicate")
+    rows_by_id = {str(row["id"]): row for row in vectors if "id" in row}
+    digests: dict[str, bytes] = {}
+    for index in range(MAX_VECTOR_ROWS):
         if index >= len(vectors):
             break
         row = vectors[index]
         try:
-            _verify_row(contract, row)
+            digest = _verify_row(contract, row, rows_by_id, digests)
+            if digest is not None:
+                digests[row["id"]] = digest
         except (ContractRefusal, KeyError, TypeError, ValueError) as error:
             errors.append(f"{row.get('id', index)}: {error}")
     return errors

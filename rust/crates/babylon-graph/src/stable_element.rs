@@ -17,6 +17,10 @@ pub const MAX_STABLE_CARRIER_ACTIVE_ELEMENTS_V2: usize = 256;
 pub const MAX_STABLE_CARRIER_BYTES_V2: usize = 131_072;
 /// Maximum combined node and hyperedge rows in one resolver manifest.
 pub const MAX_STABLE_RESOLVER_ROWS_V1: usize = 65_536;
+/// Maximum members in one hyperedge while sealing a stable resolver.
+pub const MAX_STABLE_RESOLVER_HYPEREDGE_MEMBERS_V1: usize = 65_536;
+/// Maximum topology rows plus member references while sealing a resolver.
+pub const MAX_STABLE_RESOLVER_FACT_UNITS_V1: usize = 1_048_576;
 /// Maximum canonical resolver-manifest byte length.
 pub const MAX_STABLE_RESOLVER_MANIFEST_BYTES_V1: usize = 16_777_216;
 
@@ -643,7 +647,10 @@ fn snapshot_topology<G: CanonicalState>(
 ) -> Result<SealedTopologyV1, StableIdentityError> {
     let raw_nodes = graph.all_nodes();
     let raw_hyperedges = graph.all_hyperedges();
+    let raw_edges = graph.all_edges();
     validate_resolver_row_count(raw_nodes.len(), raw_hyperedges.len())?;
+    validate_resolver_edge_count(raw_edges.len())?;
+    validate_resolver_fact_units(&raw_nodes, &raw_edges, &raw_hyperedges)?;
     let mut nodes = BTreeMap::new();
     for (node, node_type) in raw_nodes.into_iter().take(MAX_STABLE_RESOLVER_ROWS_V1 + 1) {
         validate_ascii_graphic("node type", &node_type, 1, MAX_STRUCTURAL_TYPE_BYTES)?;
@@ -671,13 +678,6 @@ fn snapshot_topology<G: CanonicalState>(
             return Err(StableIdentityError::TopologyChanged);
         }
     }
-    let raw_edges = graph.all_edges();
-    if raw_edges.len() > MAX_STABLE_EDGES_V1 {
-        return Err(StableIdentityError::EdgeLimit {
-            actual: raw_edges.len(),
-            maximum: MAX_STABLE_EDGES_V1,
-        });
-    }
     let mut edges = BTreeSet::new();
     for (edge_type, source, target, _) in raw_edges.into_iter().take(MAX_STABLE_EDGES_V1 + 1) {
         validate_ascii_graphic("edge type", &edge_type, 1, MAX_STRUCTURAL_TYPE_BYTES)?;
@@ -697,6 +697,64 @@ fn snapshot_topology<G: CanonicalState>(
         edges,
         hyperedges,
     })
+}
+
+fn validate_resolver_edge_count(actual: usize) -> Result<(), StableIdentityError> {
+    if actual <= MAX_STABLE_EDGES_V1 {
+        Ok(())
+    } else {
+        Err(StableIdentityError::EdgeLimit {
+            actual,
+            maximum: MAX_STABLE_EDGES_V1,
+        })
+    }
+}
+
+fn validate_resolver_fact_units(
+    nodes: &[(NodeId, String)],
+    edges: &[(String, NodeId, NodeId, f64)],
+    hyperedges: &[(HyperedgeId, String, Vec<NodeId>)],
+) -> Result<(), StableIdentityError> {
+    let mut actual = nodes
+        .len()
+        .checked_add(edges.len())
+        .and_then(|value| value.checked_add(hyperedges.len()))
+        .ok_or(StableIdentityError::CapacityOverflow {
+            field: "stable resolver fact units",
+        })?;
+    for (_, _, members) in hyperedges.iter().take(MAX_STABLE_RESOLVER_ROWS_V1 + 1) {
+        validate_resolver_member_count(members.len())?;
+        actual =
+            actual
+                .checked_add(members.len())
+                .ok_or(StableIdentityError::CapacityOverflow {
+                    field: "stable resolver fact units",
+                })?;
+    }
+    validate_resolver_fact_unit_count(actual)
+}
+
+fn validate_resolver_fact_unit_count(actual: usize) -> Result<(), StableIdentityError> {
+    if actual <= MAX_STABLE_RESOLVER_FACT_UNITS_V1 {
+        Ok(())
+    } else {
+        Err(StableIdentityError::FactUnitLimit {
+            actual,
+            maximum: MAX_STABLE_RESOLVER_FACT_UNITS_V1,
+        })
+    }
+}
+
+fn validate_resolver_member_count(actual: usize) -> Result<(), StableIdentityError> {
+    if actual <= MAX_STABLE_RESOLVER_HYPEREDGE_MEMBERS_V1 {
+        Ok(())
+    } else {
+        Err(StableIdentityError::StateSectionLimit {
+            section: "resolver hyperedge members",
+            actual,
+            maximum: MAX_STABLE_RESOLVER_HYPEREDGE_MEMBERS_V1,
+        })
+    }
 }
 
 fn validate_hyperedge_members(
@@ -1144,7 +1202,9 @@ mod tests {
     use babylon_kernel::Currency;
 
     use super::{
-        frame_segments, snapshot_topology, StableIdentityError, MAX_STABLE_CARRIER_BYTES_V2,
+        frame_segments, snapshot_topology, validate_resolver_fact_unit_count,
+        validate_resolver_member_count, StableIdentityError, MAX_STABLE_CARRIER_BYTES_V2,
+        MAX_STABLE_RESOLVER_FACT_UNITS_V1, MAX_STABLE_RESOLVER_HYPEREDGE_MEMBERS_V1,
     };
     use crate::state_hash::CanonicalState;
     use crate::substrate::{HyperedgeId, NodeId};
@@ -1217,6 +1277,54 @@ mod tests {
             snapshot_topology(&facts),
             Err(StableIdentityError::InvalidHyperedge {
                 hyperedge: HyperedgeId(0),
+            })
+        );
+    }
+
+    #[test]
+    fn snapshot_refuses_excess_hyperedge_members_before_member_validation() {
+        let facts = Facts {
+            nodes: Vec::new(),
+            edges: Vec::new(),
+            hyperedges: vec![(
+                HyperedgeId(0),
+                "coalition".to_owned(),
+                vec![NodeId(0); MAX_STABLE_RESOLVER_HYPEREDGE_MEMBERS_V1 + 1],
+            )],
+        };
+        assert_eq!(
+            snapshot_topology(&facts),
+            Err(StableIdentityError::StateSectionLimit {
+                section: "resolver hyperedge members",
+                actual: MAX_STABLE_RESOLVER_HYPEREDGE_MEMBERS_V1 + 1,
+                maximum: MAX_STABLE_RESOLVER_HYPEREDGE_MEMBERS_V1,
+            })
+        );
+    }
+
+    #[test]
+    fn resolver_member_ceiling_accepts_maximum_and_refuses_plus_one() {
+        assert_eq!(
+            validate_resolver_member_count(MAX_STABLE_RESOLVER_HYPEREDGE_MEMBERS_V1),
+            Ok(())
+        );
+        assert_eq!(
+            validate_resolver_member_count(MAX_STABLE_RESOLVER_HYPEREDGE_MEMBERS_V1 + 1),
+            Err(StableIdentityError::StateSectionLimit {
+                section: "resolver hyperedge members",
+                actual: MAX_STABLE_RESOLVER_HYPEREDGE_MEMBERS_V1 + 1,
+                maximum: MAX_STABLE_RESOLVER_HYPEREDGE_MEMBERS_V1,
+            })
+        );
+        assert_eq!(
+            validate_resolver_fact_unit_count(MAX_STABLE_RESOLVER_FACT_UNITS_V1),
+            Ok(())
+        );
+        assert_eq!(
+            validate_resolver_fact_unit_count(MAX_STABLE_RESOLVER_FACT_UNITS_V1 + 1),
+            Err(StableIdentityError::FactUnitLimit {
+                actual: MAX_STABLE_RESOLVER_FACT_UNITS_V1 + 1,
+                maximum: MAX_STABLE_RESOLVER_FACT_UNITS_V1,
             })
         );
     }

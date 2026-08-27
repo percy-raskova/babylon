@@ -1,6 +1,6 @@
 //! Language-neutral representative H3 reference-cohort behavior.
 
-use babylon_kernel::RefDigestV1;
+use babylon_kernel::tick_content_hash::RefDigestV1;
 use babylon_persistence::{
     build_representative_h3_cohort_v1, H3CellId, H3ReferenceCellRow, H3ReferenceCohortError,
     H3ReferenceOrigin, MAX_H3_REFERENCE_SOURCE_CELLS,

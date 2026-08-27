@@ -5,7 +5,7 @@ use std::io::Write as _;
 #[cfg(test)]
 use std::time::Duration;
 
-use babylon_kernel::RefDigestV1;
+use babylon_kernel::tick_content_hash::RefDigestV1;
 use postgres::{Client, Config, GenericClient, IsolationLevel, NoTls, Row, Transaction};
 
 use crate::h3_reference_cohort::MAX_H3_REFERENCE_CLOSURE_ROWS;
@@ -1438,7 +1438,7 @@ pub(crate) mod live_postgres_tests {
     use std::mem::size_of;
     use std::time::Instant;
 
-    use babylon_kernel::RefDigestV1;
+    use babylon_kernel::tick_content_hash::RefDigestV1;
     use postgres::{error::SqlState, Config, NoTls};
 
     use super::{

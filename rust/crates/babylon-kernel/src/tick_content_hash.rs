@@ -1,6 +1,7 @@
 //! Nominal replay digests and the fixed `TickContentHashV1` outer codec.
 
-use crate::{sha256_of, ContentDigest, ReplaySeed, ReplaySessionIdV1};
+use crate::replay::{ReplaySeed, ReplaySessionIdV1};
+use crate::{sha256_of, ContentDigest};
 use std::collections::TryReserveError;
 
 const TICK_CONTENT_DOMAIN: &[u8] = b"babylon.tick-content\0";

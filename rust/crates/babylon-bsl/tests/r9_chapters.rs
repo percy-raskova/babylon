@@ -2692,9 +2692,8 @@ mod c14_rng_draw {
     use babylon_graph::memory::MemoryGraph;
     use babylon_graph::stable_element::{StableElementKeyV1, StableElementResolverV1};
     use babylon_graph::substrate::{GraphSubstrate, NodeId};
-    use babylon_kernel::{
-        KernelRng, ReplaySeed, ReplaySessionIdV1, RngDomainV2, RngSeedContext, SessionId,
-    };
+    use babylon_kernel::replay::{ReplaySeed, ReplaySessionIdV1, RngDomainV2, RngSeedContext};
+    use babylon_kernel::{KernelRng, SessionId};
     use std::collections::{HashMap, HashSet};
 
     // ---------------------------------------------------- rows 1/2: the cap

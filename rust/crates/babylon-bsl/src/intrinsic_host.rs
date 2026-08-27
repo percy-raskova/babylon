@@ -33,7 +33,8 @@ use crate::evaluator::{EvalCode, EvalError, Value};
 use babylon_graph::stable_element::{
     StableElementKeyV1, StableElementResolverV1, MAX_STABLE_CARRIER_ACTIVE_ELEMENTS_V2,
 };
-use babylon_kernel::{KernelRng, ReplaySeed, ReplaySessionIdV1, RngDomainV2, SessionId};
+use babylon_kernel::replay::{ReplaySeed, ReplaySessionIdV1, RngDomainV2};
+use babylon_kernel::{KernelRng, SessionId};
 
 /// The typed identity inputs for one RNG draw.
 pub enum DrawIdentityContext<'a> {

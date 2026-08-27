@@ -12,7 +12,7 @@ use crate::identity_codec::{
     canonical_event_name_v1, checked_add, checked_u32, encode_bsl_type_v1, encode_const_value_v1,
     encode_effect_signature_v1, encode_enum_kind_v1, encode_evidence_class_v1,
     encode_field_kind_v1, encode_rule_role_v1, validate_enum_member, validate_enum_type,
-    validate_qname, validate_symbol, IdentityCodecError, IdentityWriter,
+    validate_governance_text, validate_qname, validate_symbol, IdentityCodecError, IdentityWriter,
     MAX_IDENTITY_SECTION_BYTES_V1,
 };
 use crate::typecheck::TypeEnv;
@@ -275,8 +275,11 @@ fn encode_exemptions(
     for row in rows.iter().take(MAX_PREPARED_SMALL_ROWS_V1 + 1) {
         validate_qname("exemption field", row.field_name)?;
         output.str32("exemption field", row.field_name)?;
+        validate_governance_text("exemption reason", row.reason)?;
         output.str32("exemption reason", row.reason)?;
+        validate_governance_text("exemption owner", row.owner)?;
         output.str32("exemption owner", row.owner)?;
+        validate_governance_text("exemption date", row.date)?;
         output.str32("exemption date", row.date)?;
     }
     Ok(())
@@ -521,7 +524,9 @@ mod tests {
         MAX_PREPARED_ROWS_V1, MAX_PREPARED_SMALL_ROWS_V1, MAX_TICK_ROWS_V1,
         MAX_TICK_RULE_OUTCOMES_V1,
     };
-    use crate::identity_codec::IdentityCodecError;
+    use crate::identity_codec::{
+        validate_governance_text, IdentityCodecError, MAX_GOVERNANCE_UTF8_BYTES_V1,
+    };
 
     #[test]
     fn every_bsl_section_ceiling_accepts_maximum_and_refuses_plus_one() {
@@ -548,6 +553,20 @@ mod tests {
             Err(IdentityCodecError::AggregateRowLimit {
                 actual: MAX_IDENTITY_AGGREGATE_ROWS_V1 + 1,
                 maximum: MAX_IDENTITY_AGGREGATE_ROWS_V1,
+            })
+        );
+    }
+
+    #[test]
+    fn governance_utf8_accepts_exact_bytes_and_refuses_plus_one() {
+        let maximum = "é".repeat(MAX_GOVERNANCE_UTF8_BYTES_V1 / 2);
+        assert_eq!(validate_governance_text("governance", &maximum), Ok(()));
+        let oversized = format!("{maximum}x");
+        assert_eq!(
+            validate_governance_text("governance", &oversized),
+            Err(IdentityCodecError::InvalidString {
+                field: "governance",
+                index: MAX_GOVERNANCE_UTF8_BYTES_V1 + 1,
             })
         );
     }

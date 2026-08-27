@@ -1,6 +1,6 @@
 //! Public contract for the bounded representative H3 cohort installer.
 
-use babylon_kernel::RefDigestV1;
+use babylon_kernel::tick_content_hash::RefDigestV1;
 use babylon_persistence::{
     install_representative_h3_cohort, H3ReferenceCohort, H3ReferenceDatabaseDiagnostic,
     H3ReferenceInstallDisposition, H3ReferenceInstallError, H3ReferenceInstallOperation,

@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 from pathlib import Path
 
 import pytest
+import yaml
 from tools.verify_tick_content_hash_v1 import (
     ContractRefusal,
     _stable_graph,
     chacha8_stream,
     load_contract,
     load_vectors,
+    main,
     verify_all,
     verify_ordered_tags,
 )
@@ -109,7 +112,10 @@ def test_corpus_covers_promised_extremes_and_structural_classes() -> None:
         "nonempty-ordered-action-batch",
         "vocabulary-absent",
         "vocabulary-present-empty",
-        "bounds-accept-maximum-refuse-plus-one",
+        "bound-vector-rows-maximum-plus-one-refusal",
+        "outer-nonempty-action-link-refusal",
+        "outer-wrong-session-action-link-refusal",
+        "outer-wrong-tick-action-link-refusal",
     } <= ids
     assert {
         f"bsl-type-{name.replace('_', '-')}"
@@ -153,29 +159,96 @@ def test_corpus_covers_promised_extremes_and_structural_classes() -> None:
     } <= ids
 
 
-def test_bound_pairs_cover_every_declared_bound() -> None:
+def test_bound_refusal_rows_cover_every_declared_bound() -> None:
     contract = load_contract(SCHEMA)
     vectors = load_vectors(VECTORS, maximum_rows=256, maximum_line_bytes=262_144)
-    row = next(row for row in vectors if row["id"] == "bounds-accept-maximum-refuse-plus-one")
-    row["data"]["pairs"].pop()
+    refusal_rows = [
+        row
+        for row in vectors
+        if row["kind"] == "refusal" and row["data"]["operation"] == "bound_case"
+    ]
+
+    assert {row["data"]["bound"] for row in refusal_rows} == set(contract["bounds"])
+    assert all("accepted_input" in row["data"] for row in refusal_rows)
+    assert all("refused_input" in row["data"] for row in refusal_rows)
+    assert all("expected_code" in row["data"] for row in refusal_rows)
+    removed = refusal_rows[-1]
+    vectors.remove(removed)
 
     errors = verify_all(contract, vectors)
 
-    assert any("bounds-accept-maximum-refuse-plus-one" in error for error in errors)
+    assert any("bound refusal set" in error for error in errors)
 
 
-def test_carrier_count_is_enforced_against_self_consistent_bytes() -> None:
+def test_rng_v2_requires_a_graph_owned_stable_carrier_key() -> None:
     contract = load_contract(SCHEMA)
     vectors = load_vectors(VECTORS, maximum_rows=256, maximum_line_bytes=262_144)
-    row = next(row for row in vectors if row["kind"] == "carrier_segment")
-    row["data"]["segments"] = ["x"] * 257
-    canonical = b"|".join([b"1:x"] * 257)
-    row["data"]["canonical_hex"] = canonical.hex()
-    row["data"]["digest_hex"] = hashlib.sha256(canonical).hexdigest()
+    row = next(row for row in vectors if row["kind"] == "rng_v2")
+    row["data"]["carrier_id"] = "stable-node-carrier-segment"
 
     errors = verify_all(contract, vectors)
 
     assert any(row["id"] in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    ("action_id", "expected_code"),
+    [
+        ("nonempty-ordered-action-batch", "nonempty_runtime_actions"),
+        ("empty-ordered-action-batch-wrong-session", "action_session_mismatch"),
+        ("empty-ordered-action-batch-wrong-tick", "action_tick_mismatch"),
+    ],
+)
+def test_outer_refuses_nonempty_or_mismatched_action_links(
+    action_id: str, expected_code: str
+) -> None:
+    contract = load_contract(SCHEMA)
+    vectors = load_vectors(VECTORS, maximum_rows=256, maximum_line_bytes=262_144)
+    row = next(row for row in vectors if row["kind"] == "tick_content_hash")
+    row["data"]["actions_id"] = action_id
+
+    errors = verify_all(contract, vectors)
+
+    assert any(row["id"] in error and expected_code in error for error in errors)
+
+
+def test_schema_declares_semantic_text_carrier_provenance_and_no_decoder() -> None:
+    contract = load_contract(SCHEMA)
+
+    assert contract["semantic_text"] == {
+        "symbol": {"encoding": "ASCII", "minimum_bytes": 1, "maximum_bytes": 64},
+        "qname": {
+            "encoding": "ASCII",
+            "minimum_bytes": 1,
+            "maximum_bytes": 128,
+            "maximum_segments": 4,
+        },
+        "structural_type": {
+            "encoding": "graphic ASCII",
+            "minimum_bytes": 1,
+            "maximum_bytes": 128,
+        },
+        "intrinsic_identity": {
+            "encoding": "ASCII",
+            "minimum_bytes": 1,
+            "maximum_bytes": 96,
+        },
+        "enum_type": {"encoding": "ASCII", "minimum_bytes": 1, "maximum_bytes": 64},
+        "enum_member": {"encoding": "ASCII", "minimum_bytes": 1, "maximum_bytes": 64},
+        "governance": {"encoding": "UTF-8", "maximum_bytes": 4_194_304},
+    }
+    carrier = contract["layouts"]["stable_carrier_key_v2"]
+    assert carrier["provenance"] == "sealed graph resolver only"
+    assert contract["production_decoder"] == "prohibited"
+
+
+def test_governance_utf8_and_final_stable_carrier_are_reconstructed() -> None:
+    contract = load_contract(SCHEMA)
+    vectors = load_vectors(VECTORS, maximum_rows=256, maximum_line_bytes=262_144)
+    ids = {row["id"] for row in vectors}
+
+    assert {"governance-utf8", "stable-carrier-key-v2"} <= ids
+    assert verify_all(contract, vectors) == []
 
 
 def test_action_intent_limit_is_enforced_against_self_consistent_bytes() -> None:
@@ -256,7 +329,9 @@ def test_bounded_tag_parser_refuses_unknown_truncated_trailing_and_order(
         verify_ordered_tags(broken, expected_tags=(1, 2), payload_bytes=4)
 
 
-def test_vector_loader_refuses_unbounded_or_malformed_jsonl(tmp_path: Path) -> None:
+def test_vector_loader_refuses_unbounded_or_malformed_jsonl(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     path = tmp_path / "vectors.jsonl"
     path.write_text("\n".join(json.dumps({"row": index}) for index in range(3)))
 
@@ -266,3 +341,34 @@ def test_vector_loader_refuses_unbounded_or_malformed_jsonl(tmp_path: Path) -> N
     path.write_text("{" + ("x" * 128))
     with pytest.raises(ContractRefusal):
         load_vectors(path, maximum_rows=2, maximum_line_bytes=64)
+
+    monkeypatch.setattr(Path, "read_bytes", lambda _path: pytest.fail("unbounded read"))
+    with pytest.raises(ContractRefusal):
+        load_vectors(path, maximum_rows=2, maximum_line_bytes=64)
+
+    schema = tmp_path / "contract.yaml"
+    schema.write_bytes(b"x" * 262_145)
+    with pytest.raises(ContractRefusal, match="schema_too_large"):
+        load_contract(schema)
+
+
+def test_schema_cannot_widen_vector_loader_bounds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    contract = load_contract(SCHEMA)
+    contract["bounds"]["vector_rows"] = 257
+    schema = tmp_path / "contract.yaml"
+    schema.write_text(yaml.safe_dump(contract))
+    vectors = tmp_path / "vectors.jsonl"
+    vectors.write_text("{}\n")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["verify", "--schema", str(schema), "--vectors", str(vectors)],
+    )
+    monkeypatch.setattr(
+        "tools.verify_tick_content_hash_v1.load_vectors",
+        lambda *_args, **_kwargs: pytest.fail("schema widened vector loader"),
+    )
+
+    assert main() == 1

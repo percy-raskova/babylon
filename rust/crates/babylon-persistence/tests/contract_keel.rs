@@ -1,6 +1,7 @@
 //! Public contracts that prevent persistence identity and hash-name collapse.
 
-use babylon_kernel::{seed_for, ContentDigest, RefDigestV1, SessionId, TickContentHashV1};
+use babylon_kernel::tick_content_hash::{RefDigestV1, TickContentHashV1};
+use babylon_kernel::{seed_for, ContentDigest, SessionId};
 use babylon_persistence::{
     CampaignId, GraphStateHash, MigrationSetDigest, PersistenceError, PersistenceFailureKind,
     ReplayIdentityHash,

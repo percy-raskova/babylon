@@ -2,9 +2,9 @@
 
 use std::collections::TryReserveError;
 
-use babylon_kernel::{
-    sha256_of, OrderedPracticeActionBatchDigestV1, ReplayIdentityError, ReplaySessionIdV1,
-};
+use babylon_kernel::replay::{ReplayIdentityError, ReplaySessionIdV1};
+use babylon_kernel::sha256_of;
+use babylon_kernel::tick_content_hash::OrderedPracticeActionBatchDigestV1;
 
 use crate::{
     encode_practice_intent_v2, practice_intent_v2_digest, validate_resolved_practice_batch_v2,

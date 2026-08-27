@@ -1,6 +1,5 @@
-use babylon_kernel::{
-    seed_for, seed_for_v2, KernelRng, ReplaySeed, ReplaySessionIdV1, RngDomainV2, SessionId,
-};
+use babylon_kernel::replay::{ReplaySeed, ReplaySessionIdV1, RngDomainV2};
+use babylon_kernel::{seed_for, seed_for_v2, KernelRng, SessionId};
 use sha2::{Digest, Sha256};
 
 const VECTOR_SEED: i64 = -72_623_859_790_382_856;

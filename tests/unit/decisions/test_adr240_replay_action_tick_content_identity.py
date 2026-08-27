@@ -15,6 +15,13 @@ INDEX_PATH = DECISIONS_DIR / "index.yaml"
 TICK_HASH_PATH = ROOT / "src" / "babylon" / "kernel" / "tick_hash.py"
 DETERMINISM_PATH = ROOT / "docs" / "reference" / "determinism-contract.rst"
 ARCHITECTURE_PATH = ROOT / "docs" / "concepts" / "architecture.rst"
+DESIGN_PATH = (
+    ROOT
+    / "docs"
+    / "superpowers"
+    / "specs"
+    / "2026-08-26-per-60-replay-action-tick-content-hash-design.md"
+)
 EXPECTED_TITLE = (
     "TickContentHashV1 owns canonical replay-tick identity while campaign "
     "durability and P27 evidence stay separate"
@@ -52,12 +59,15 @@ def test_adr240_records_one_canonical_identity_and_exact_authority() -> None:
         "independent_verifier": "tools/verify_tick_content_hash_v1.py",
     }
     assert decision["runtime_action_boundary"] == {
-        "accepted_batch": "exact empty OrderedPracticeActionBatchV1",
+        "accepted_batch": (
+            "exact empty OrderedPracticeActionBatchV1 with matching replay session and resolve tick"
+        ),
         "nonempty_batch": "structural contract evidence only",
         "execution": False,
     }
     assert (
-        decision["persistence_identity_use"] == "direct kernel types only; no aliases or re-exports"
+        decision["persistence_identity_use"]
+        == "direct owning kernel module paths only; no aliases or re-exports"
     )
 
     decision_text = " ".join(str(decision["decision"]).split())
@@ -99,3 +109,20 @@ def test_adr240_corrects_only_live_identity_boundary_claims() -> None:
         "Replay identity and campaign durability identity are separate typed inputs" in architecture
     )
     assert "Gate 3 will add the complete content" not in architecture
+
+
+def test_new_identity_types_have_one_public_owning_module_path() -> None:
+    kernel = _normalized(ROOT / "rust" / "crates" / "babylon-kernel" / "src" / "lib.rs")
+    practice = _normalized(
+        ROOT / "rust" / "crates" / "babylon-practice-contract" / "src" / "lib.rs"
+    )
+    tick = _normalized(ROOT / "rust" / "crates" / "babylon-tick" / "src" / "lib.rs")
+    design = _normalized(DESIGN_PATH)
+
+    assert "pub use replay::" not in kernel
+    assert "pub use tick_content_hash::" not in kernel
+    assert "pub use ordered_action_v1::" not in practice
+    assert "pub use replay_session::" not in tick
+    assert "compatibility oracle" not in design
+    assert "compatibility path" not in design
+    assert "legacy TickSession" not in design

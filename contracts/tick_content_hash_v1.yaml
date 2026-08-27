@@ -4,7 +4,18 @@ meta:
   issue: PER-60
   byte_order: big-endian unless a layout says otherwise
   digest: SHA-256
-  text: strict graphic ASCII, bytes preserved without normalization
+  text: category-specific exact bytes, preserved without normalization
+
+semantic_text:
+  symbol: {encoding: ASCII, minimum_bytes: 1, maximum_bytes: 64}
+  qname: {encoding: ASCII, minimum_bytes: 1, maximum_bytes: 128, maximum_segments: 4}
+  structural_type: {encoding: graphic ASCII, minimum_bytes: 1, maximum_bytes: 128}
+  intrinsic_identity: {encoding: ASCII, minimum_bytes: 1, maximum_bytes: 96}
+  enum_type: {encoding: ASCII, minimum_bytes: 1, maximum_bytes: 64}
+  enum_member: {encoding: ASCII, minimum_bytes: 1, maximum_bytes: 64}
+  governance: {encoding: UTF-8, maximum_bytes: 4194304}
+
+production_decoder: prohibited
 
 authority:
   owner: Rust adjudication boundary
@@ -32,7 +43,7 @@ primitives:
   f64_bits: {bytes: 8, signed: false}
   digest32: {bytes: 32}
   str16: {length: u16, encoding: ASCII}
-  str32: {length: u32, encoding: ASCII}
+  str32: {length: u32, encoding: exact semantic-category bytes}
 
 bounds:
   vector_rows: 256
@@ -40,6 +51,14 @@ bounds:
   replay_session_bytes: {minimum: 1, maximum: 256}
   rng_domain_bytes: {minimum: 1, maximum: 128}
   rng_domain_segments: {minimum: 2, maximum: 4}
+  symbol_bytes: 64
+  qname_bytes: 128
+  qname_segments: 4
+  structural_type_bytes: 128
+  intrinsic_identity_bytes: 96
+  enum_type_bytes: 64
+  enum_member_bytes: 64
+  governance_utf8_bytes: 4194304
   stable_carrier_active_elements: 256
   stable_carrier_bytes: 131072
   resolver_rows: 65536
@@ -61,6 +80,42 @@ bounds:
   identity_section_bytes: 67108864
   tick_rule_outcomes: 65536
   tick_rows: 1048576
+
+bound_refusals:
+  vector_rows: {input: vector_file_rows, expected_code: too_many_rows}
+  vector_line_bytes: {input: vector_line_bytes, expected_code: invalid_line_length}
+  replay_session_bytes: {input: replay_session_bytes, expected_code: string_too_long}
+  rng_domain_bytes: {input: rng_domain_bytes, expected_code: rng_domain_length}
+  rng_domain_segments: {input: rng_domain_segments, expected_code: rng_domain_segments}
+  symbol_bytes: {input: symbol_bytes, expected_code: invalid_symbol}
+  qname_bytes: {input: qname_bytes, expected_code: invalid_qname}
+  qname_segments: {input: qname_segments, expected_code: invalid_qname}
+  structural_type_bytes: {input: structural_type_bytes, expected_code: invalid_structural_type}
+  intrinsic_identity_bytes: {input: intrinsic_identity_bytes, expected_code: invalid_intrinsic_identity}
+  enum_type_bytes: {input: enum_type_bytes, expected_code: invalid_enum_type}
+  enum_member_bytes: {input: enum_member_bytes, expected_code: invalid_enum_member}
+  governance_utf8_bytes: {input: governance_utf8_bytes, expected_code: governance_string_too_long}
+  stable_carrier_active_elements: {input: stable_carrier_active_elements, expected_code: active_element_limit}
+  stable_carrier_bytes: {input: stable_carrier_bytes, expected_code: byte_limit}
+  resolver_rows: {input: resolver_rows, expected_code: row_limit}
+  resolver_hyperedge_members: {input: resolver_hyperedge_members, expected_code: hyperedge_members}
+  resolver_fact_units: {input: resolver_fact_units, expected_code: aggregate_row_limit}
+  resolver_manifest_bytes: {input: resolver_manifest_bytes, expected_code: byte_limit}
+  stable_graph_elements: {input: stable_graph_elements, expected_code: row_limit}
+  stable_graph_attribute_rows: {input: stable_graph_attribute_rows, expected_code: row_limit}
+  stable_graph_hyperedge_members: {input: stable_graph_hyperedge_members, expected_code: hyperedge_members}
+  stable_graph_fact_units: {input: stable_graph_fact_units, expected_code: aggregate_row_limit}
+  stable_graph_bytes: {input: stable_graph_bytes, expected_code: byte_limit}
+  ordered_action_items: {input: ordered_action_items, expected_code: row_limit}
+  practice_intent_bytes: {input: practice_intent_bytes, expected_code: intent_length}
+  ordered_action_batch_bytes: {input: ordered_action_batch_bytes, expected_code: byte_limit}
+  prepared_rows: {input: prepared_rows, expected_code: row_limit}
+  prepared_small_rows: {input: prepared_small_rows, expected_code: row_limit}
+  identity_members: {input: identity_members, expected_code: row_limit}
+  identity_aggregate_rows: {input: identity_aggregate_rows, expected_code: aggregate_row_limit}
+  identity_section_bytes: {input: identity_section_bytes, expected_code: byte_limit}
+  tick_rule_outcomes: {input: tick_rule_outcomes, expected_code: row_limit}
+  tick_rows: {input: tick_rows, expected_code: row_limit}
 
 layouts:
   replay_session_v1:
@@ -88,7 +143,7 @@ layouts:
       - {tag: 2, value: replay_session_v1}
       - {tag: 3, value: tick_u64}
       - {tag: 4, value: domain_str32}
-      - {tag: 5, value: carrier_bytes32}
+      - {tag: 5, value: stable_carrier_key_v2_bytes32}
     stream: ChaCha8 with a 64-bit block counter and zero stream id
     next_u64: two consecutive little-endian u32 output words
     next_f64: top 53 bits of next_u64 multiplied by 2^-53
@@ -102,6 +157,11 @@ layouts:
   carrier_segment_v1:
     grammar: decimal_byte_length, colon, exact graphic ASCII bytes
     composition: segments joined by a vertical bar
+  stable_carrier_key_v2:
+    grammar: carrier_segment_v1 framing over opaque stable-element carrier segments and canonical signed decimal slot
+    provenance: sealed graph resolver only
+    fields: [subject_segment, active_segments_in_outermost_to_innermost_order, canonical_i64_draw_slot]
+    bounds: [stable_carrier_active_elements, stable_carrier_bytes]
   resolver_manifest_v1:
     domain_ascii_nul: babylon.stable-element-resolver
     layout_u32: 1
@@ -161,7 +221,9 @@ layouts:
     fields: [replay_session_v1, resolve_tick_u64, item_count_u16, ordered_items]
     item_fields: [canonical_input_ordinal_u16, action_id_digest32, intent_length_u16, intent_bytes]
     order: contiguous ordinal equal to array position after complete Practice V2 source validation
-    runtime_rule: item_count must be zero before detached adjudication
+    runtime_rule: >-
+      item_count must be zero and session and resolve tick must equal the outer
+      tick before detached adjudication
   prepared_environment_v1:
     domain_ascii_nul: babylon.prepared-environment
     layout_u32: 1
@@ -219,6 +281,8 @@ layouts:
     domain_ascii_nul: babylon.tick-content
     layout_u32: 1
     tags: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    linked_constraints:
+      actions: exact empty ordered_action_batch_v1 with matching session and resolve tick
     sections:
       - {tag: 1, value: layout_u32_1_then_replay_session_v1}
       - {tag: 2, value: resolve_tick_u64}
@@ -296,6 +360,7 @@ vector_families:
     - rng_v2
     - stable_element
     - carrier_segment
+    - stable_carrier_key
     - resolver_manifest
     - stable_graph
     - action_id

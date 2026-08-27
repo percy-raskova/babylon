@@ -2,7 +2,8 @@
 
 use std::collections::BTreeSet;
 
-use babylon_kernel::{sha256_of, RefDigestV1};
+use babylon_kernel::sha256_of;
+use babylon_kernel::tick_content_hash::RefDigestV1;
 
 use crate::{H3CellId, H3CellIdError};
 

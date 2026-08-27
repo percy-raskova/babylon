@@ -15,6 +15,8 @@ use crate::vocabulary::EnumKind;
 
 /// Maximum bytes one BSL-owned identity section may contain.
 pub const MAX_IDENTITY_SECTION_BYTES_V1: usize = 67_108_864;
+/// Maximum exact UTF-8 bytes in one governance string without a narrower grammar.
+pub const MAX_GOVERNANCE_UTF8_BYTES_V1: usize = 4_194_304;
 
 /// A governed BSL identity-codec refusal.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -439,6 +441,20 @@ pub const fn decode_option_presence_v1(value: u8) -> Result<bool, IdentityCodecE
 
 pub(crate) fn validate_symbol(field: &'static str, value: &str) -> Result<(), IdentityCodecError> {
     validate_segment(field, value, false)
+}
+
+pub(crate) fn validate_governance_text(
+    field: &'static str,
+    value: &str,
+) -> Result<(), IdentityCodecError> {
+    if value.len() <= MAX_GOVERNANCE_UTF8_BYTES_V1 {
+        Ok(())
+    } else {
+        Err(IdentityCodecError::InvalidString {
+            field,
+            index: value.len(),
+        })
+    }
 }
 
 pub(crate) fn validate_qname(field: &'static str, value: &str) -> Result<(), IdentityCodecError> {

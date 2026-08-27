@@ -9,12 +9,13 @@ use babylon_graph::stable_state::{encode_stable_graph_state_v1, StableGraphState
 use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::GraphSubstrate;
 use babylon_graph::working_copy::DetachedCopy;
-use babylon_kernel::{
-    ContentDigest, OrderedPracticeActionBatchDigestV1, PreparedEnvironmentDigestV1, RefDigestV1,
-    ReplaySeed, ReplaySessionIdV1, TickContentHashError, TickContentHashV1, TickContentPartsV1,
-    TickContentPreimageV1,
+use babylon_kernel::replay::{ReplaySeed, ReplaySessionIdV1};
+use babylon_kernel::tick_content_hash::{
+    OrderedPracticeActionBatchDigestV1, PreparedEnvironmentDigestV1, RefDigestV1,
+    TickContentHashError, TickContentHashV1, TickContentPartsV1, TickContentPreimageV1,
 };
-use babylon_practice_contract::{
+use babylon_kernel::ContentDigest;
+use babylon_practice_contract::ordered_action_v1::{
     OrderedPracticeActionBatchV1, ORDERED_PRACTICE_ACTION_BATCH_V1_LAYOUT_VERSION,
 };
 
@@ -576,8 +577,10 @@ mod tests {
     use babylon_graph::memory::MemoryGraph;
     use babylon_graph::state_hash::CanonicalState;
     use babylon_graph::substrate::GraphSubstrate;
-    use babylon_kernel::{ContentDigest, RefDigestV1, ReplaySeed, ReplaySessionIdV1};
-    use babylon_practice_contract::OrderedPracticeActionBatchV1;
+    use babylon_kernel::replay::{ReplaySeed, ReplaySessionIdV1};
+    use babylon_kernel::tick_content_hash::RefDigestV1;
+    use babylon_kernel::ContentDigest;
+    use babylon_practice_contract::ordered_action_v1::OrderedPracticeActionBatchV1;
 
     use super::{
         ReplayExecutionInputs, ReplayIdentityArtifactsV1, ReplayIdentityComposer,

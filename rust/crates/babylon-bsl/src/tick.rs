@@ -86,7 +86,8 @@ use crate::write_log::WriteObserver;
 use babylon_graph::stable_element::StableElementResolverV1;
 use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_kernel::{RngDomainV2, RngSeedContext, SessionId};
+use babylon_kernel::replay::{RngDomainV2, RngSeedContext};
+use babylon_kernel::SessionId;
 use std::collections::HashMap;
 
 /// Why a tick would not run.
@@ -1090,7 +1091,8 @@ mod tests {
     use crate::evaluator::Value;
     use crate::types::EnumRegistry;
     use crate::write_log::CollectingWriteLog;
-    use babylon_kernel::{RngSeedContext, SessionId};
+    use babylon_kernel::replay::RngSeedContext;
+    use babylon_kernel::SessionId;
     use std::collections::HashMap;
 
     /// The `rng-draw` seam's session/content-id parameters (Task 4, #576

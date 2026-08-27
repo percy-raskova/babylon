@@ -16,11 +16,20 @@ import yaml
 MAX_CHACHA_U64 = 256
 MAX_VECTOR_ROWS = 256
 MAX_SECTION_ROWS = 1_048_576
+MAX_SCHEMA_BYTES = 262_144
 U32_MASK = (1 << 32) - 1
 U64_MASK = (1 << 64) - 1
 COMPILED_BOUNDS = {
     "vector_rows": 256,
     "vector_line_bytes": 262_144,
+    "symbol_bytes": 64,
+    "qname_bytes": 128,
+    "qname_segments": 4,
+    "structural_type_bytes": 128,
+    "intrinsic_identity_bytes": 96,
+    "enum_type_bytes": 64,
+    "enum_member_bytes": 64,
+    "governance_utf8_bytes": 4_194_304,
     "stable_carrier_active_elements": 256,
     "stable_carrier_bytes": 131_072,
     "resolver_rows": 65_536,
@@ -43,6 +52,28 @@ COMPILED_BOUNDS = {
     "tick_rule_outcomes": 65_536,
     "tick_rows": 1_048_576,
 }
+COMPILED_SEMANTIC_TEXT = {
+    "symbol": {"encoding": "ASCII", "minimum_bytes": 1, "maximum_bytes": 64},
+    "qname": {
+        "encoding": "ASCII",
+        "minimum_bytes": 1,
+        "maximum_bytes": 128,
+        "maximum_segments": 4,
+    },
+    "structural_type": {
+        "encoding": "graphic ASCII",
+        "minimum_bytes": 1,
+        "maximum_bytes": 128,
+    },
+    "intrinsic_identity": {
+        "encoding": "ASCII",
+        "minimum_bytes": 1,
+        "maximum_bytes": 96,
+    },
+    "enum_type": {"encoding": "ASCII", "minimum_bytes": 1, "maximum_bytes": 64},
+    "enum_member": {"encoding": "ASCII", "minimum_bytes": 1, "maximum_bytes": 64},
+    "governance": {"encoding": "UTF-8", "maximum_bytes": 4_194_304},
+}
 
 
 class ContractRefusal(ValueError):
@@ -64,12 +95,19 @@ def _verify_compiled_bounds(contract: dict[str, Any]) -> None:
         raise ContractRefusal("compiled_bound_drift", "rng_domain_bytes")
     if bounds["rng_domain_segments"] != {"minimum": 2, "maximum": 4}:
         raise ContractRefusal("compiled_bound_drift", "rng_domain_segments")
+    if set(contract["bound_refusals"]) != set(bounds):
+        raise ContractRefusal("compiled_bound_drift", "bound_refusals")
+    if contract["semantic_text"] != COMPILED_SEMANTIC_TEXT:
+        raise ContractRefusal("compiled_semantic_text_drift", "semantic_text")
+    if contract["production_decoder"] != "prohibited":
+        raise ContractRefusal("compiled_decoder_drift", "production_decoder")
 
 
 def load_contract(path: Path) -> dict[str, Any]:
     """Load one bounded YAML mapping."""
-    raw = path.read_bytes()
-    if len(raw) > 262_144:
+    with path.open("rb") as stream:
+        raw = stream.read(MAX_SCHEMA_BYTES + 1)
+    if len(raw) > MAX_SCHEMA_BYTES:
         raise ContractRefusal("schema_too_large", str(len(raw)))
     value = yaml.safe_load(raw)
     if not isinstance(value, dict):
@@ -81,27 +119,26 @@ def load_vectors(path: Path, *, maximum_rows: int, maximum_line_bytes: int) -> l
     """Load bounded JSONL without accepting blank or non-object rows."""
     if maximum_rows < 1 or maximum_line_bytes < 2:
         raise ContractRefusal("invalid_loader_bound", "bounds must be positive")
-    raw = path.read_bytes()
-    maximum_file_bytes = maximum_rows * maximum_line_bytes
-    if len(raw) > maximum_file_bytes:
-        raise ContractRefusal("vector_file_too_large", str(len(raw)))
-    lines = raw.splitlines()
-    if len(lines) > maximum_rows:
-        raise ContractRefusal("too_many_rows", str(len(lines)))
     rows: list[dict[str, Any]] = []
-    for index in range(maximum_rows):
-        if index >= len(lines):
-            break
-        line = lines[index]
-        if not line or len(line) > maximum_line_bytes:
-            raise ContractRefusal("invalid_line_length", str(index + 1))
-        try:
-            value = json.loads(line)
-        except json.JSONDecodeError as error:
-            raise ContractRefusal("invalid_json", str(index + 1)) from error
-        if not isinstance(value, dict):
-            raise ContractRefusal("row_shape", str(index + 1))
-        rows.append(value)
+    with path.open("rb") as stream:
+        for index in range(maximum_rows + 1):
+            line = stream.readline(maximum_line_bytes + 2)
+            if not line:
+                break
+            if index == maximum_rows:
+                raise ContractRefusal("too_many_rows", str(index + 1))
+            content = line[:-1] if line.endswith(b"\n") else line
+            if content.endswith(b"\r"):
+                content = content[:-1]
+            if not content or len(content) > maximum_line_bytes:
+                raise ContractRefusal("invalid_line_length", str(index + 1))
+            try:
+                value = json.loads(content)
+            except (UnicodeDecodeError, json.JSONDecodeError) as error:
+                raise ContractRefusal("invalid_json", str(index + 1)) from error
+            if not isinstance(value, dict):
+                raise ContractRefusal("row_shape", str(index + 1))
+            rows.append(value)
     return rows
 
 
@@ -195,6 +232,95 @@ def _ascii(value: str) -> bytes:
     return encoded
 
 
+def _symbol(value: str) -> bytes:
+    encoded = _ascii(value)
+    if len(encoded) > COMPILED_BOUNDS["symbol_bytes"]:
+        raise ContractRefusal("invalid_symbol", value[:64])
+    for index, byte in enumerate(encoded):
+        lowercase = ord("a") <= byte <= ord("z")
+        digit = ord("0") <= byte <= ord("9")
+        valid = lowercase if index == 0 else lowercase or digit or byte == ord("-")
+        if not valid:
+            raise ContractRefusal("invalid_symbol", value[:64])
+    return encoded
+
+
+def _qname(value: str, *, minimum_segments: int = 1) -> bytes:
+    if not isinstance(value, str):
+        raise ContractRefusal("invalid_qname", type(value).__name__)
+    try:
+        encoded = value.encode("ascii")
+    except UnicodeEncodeError as error:
+        raise ContractRefusal("invalid_qname", value[:64]) from error
+    if not encoded or len(encoded) > COMPILED_BOUNDS["qname_bytes"]:
+        raise ContractRefusal("invalid_qname", str(value)[:64])
+    segments = value.split("/")
+    if not minimum_segments <= len(segments) <= COMPILED_BOUNDS["qname_segments"]:
+        raise ContractRefusal("invalid_qname", value[:64])
+    try:
+        for segment in segments:
+            _symbol(segment)
+    except (UnicodeEncodeError, ContractRefusal) as error:
+        raise ContractRefusal("invalid_qname", value[:64]) from error
+    return encoded
+
+
+def _structural_type(value: str) -> bytes:
+    encoded = _ascii(value)
+    if len(encoded) > COMPILED_BOUNDS["structural_type_bytes"]:
+        raise ContractRefusal("invalid_structural_type", value[:64])
+    return encoded
+
+
+def _enum_type(value: str) -> bytes:
+    encoded = _ascii(value)
+    if len(encoded) > COMPILED_BOUNDS["enum_type_bytes"]:
+        raise ContractRefusal("invalid_enum_type", value[:64])
+    for index, byte in enumerate(encoded):
+        uppercase = ord("A") <= byte <= ord("Z")
+        lowercase = ord("a") <= byte <= ord("z")
+        digit = ord("0") <= byte <= ord("9")
+        valid = uppercase if index == 0 else uppercase or lowercase or digit
+        if not valid:
+            raise ContractRefusal("invalid_enum_type", value[:64])
+    return encoded
+
+
+def _enum_member(value: str) -> bytes:
+    encoded = _ascii(value)
+    if len(encoded) > COMPILED_BOUNDS["enum_member_bytes"]:
+        raise ContractRefusal("invalid_enum_member", value[:64])
+    for index, byte in enumerate(encoded):
+        uppercase = ord("A") <= byte <= ord("Z")
+        digit = ord("0") <= byte <= ord("9")
+        valid = uppercase if index == 0 else uppercase or digit or byte == ord("_")
+        if not valid:
+            raise ContractRefusal("invalid_enum_member", value[:64])
+    return encoded
+
+
+def _intrinsic_identity(value: str) -> bytes:
+    encoded = _ascii(value)
+    if len(encoded) > COMPILED_BOUNDS["intrinsic_identity_bytes"] or any(
+        byte in b"|\r\n" for byte in encoded
+    ):
+        raise ContractRefusal("invalid_intrinsic_identity", value[:64])
+    return encoded
+
+
+def _governance(value: str) -> bytes:
+    if not isinstance(value, str):
+        raise ContractRefusal("invalid_governance_string", type(value).__name__)
+    encoded = value.encode("utf-8")
+    if len(encoded) > COMPILED_BOUNDS["governance_utf8_bytes"]:
+        raise ContractRefusal("governance_string_too_long", str(len(encoded)))
+    return encoded
+
+
+def _framed32(value: bytes, field: str) -> bytes:
+    return _u32(len(value), field) + value
+
+
 def _str16(value: str) -> bytes:
     encoded = _ascii(value)
     if len(encoded) > 256:
@@ -204,7 +330,11 @@ def _str16(value: str) -> bytes:
 
 def _str32(value: str) -> bytes:
     encoded = _ascii(value)
-    return len(encoded).to_bytes(4, "big") + encoded
+    return _framed32(encoded, "str32 length")
+
+
+def _governance_str32(value: str) -> bytes:
+    return _framed32(_governance(value), "governance length")
 
 
 def _hex_bytes(value: str, *, exact: int | None = None) -> bytes:
@@ -292,9 +422,15 @@ def _rng_v1_preimage(data: dict[str, Any]) -> bytes:
     )
 
 
-def _rng_v2_preimage(data: dict[str, Any]) -> bytes:
-    domain = _ascii(data["domain"])
-    carrier = _ascii(data["carrier"])
+def _rng_v2_preimage(data: dict[str, Any], rows_by_id: dict[str, dict[str, Any]]) -> bytes:
+    try:
+        domain = _qname(data["domain"], minimum_segments=2)
+    except (UnicodeEncodeError, ContractRefusal) as error:
+        raise ContractRefusal("invalid_rng_domain", str(data.get("domain"))[:64]) from error
+    carrier_row = rows_by_id[data["carrier_id"]]
+    if carrier_row.get("kind") != "stable_carrier_key":
+        raise ContractRefusal("carrier_provenance", data["carrier_id"])
+    carrier = _stable_carrier_key(carrier_row["data"], rows_by_id)
     return b"".join(
         (
             b"babylon.rng-stream\0",
@@ -317,17 +453,23 @@ def _rng_v2_preimage(data: dict[str, Any]) -> bytes:
 
 def _stable_element(data: dict[str, Any]) -> bytes:
     kind = data["element_kind"]
+    _qname(data["scenario"])
     fields = [_str32(data["scenario"])]
     if kind == "node":
         tag = 1
+        _symbol(data["local_name"])
         fields.append(_str32(data["local_name"]))
     elif kind == "edge":
         tag = 2
+        _structural_type(data["edge_type"])
+        _symbol(data["source_local_name"])
+        _symbol(data["target_local_name"])
         fields.extend(
             _str32(data[name]) for name in ("edge_type", "source_local_name", "target_local_name")
         )
     elif kind == "hyperedge":
         tag = 3
+        _symbol(data["local_name"])
         fields.append(_str32(data["local_name"]))
     else:
         raise ContractRefusal("stable_element_kind", str(kind))
@@ -336,19 +478,57 @@ def _stable_element(data: dict[str, Any]) -> bytes:
 
 def _carrier_segment(data: dict[str, Any]) -> bytes:
     segments = data["segments"]
-    maximum_segments = COMPILED_BOUNDS["stable_carrier_active_elements"]
-    if not isinstance(segments, list) or len(segments) > maximum_segments:
-        raise ContractRefusal("row_limit", "carrier segments")
-    parts = [_ascii(part) for part in segments[:maximum_segments]]
+    if not isinstance(segments, list) or len(segments) not in (3, 5):
+        raise ContractRefusal("carrier_segment_shape", "stable element")
+    kind = segments[0]
+    if (kind in {"node", "hyperedge"} and len(segments) != 3) or (
+        kind == "edge" and len(segments) != 5
+    ):
+        raise ContractRefusal("carrier_segment_shape", str(kind))
+    _qname(segments[1])
+    if kind == "edge":
+        _structural_type(segments[2])
+        _symbol(segments[3])
+        _symbol(segments[4])
+    elif kind in {"node", "hyperedge"}:
+        _symbol(segments[2])
+    else:
+        raise ContractRefusal("carrier_segment_kind", str(kind))
+    parts = [_ascii(part) for part in segments]
     canonical = b"|".join(str(len(part)).encode("ascii") + b":" + part for part in parts)
+    return canonical
+
+
+def _stable_carrier_key(data: dict[str, Any], rows_by_id: dict[str, dict[str, Any]]) -> bytes:
+    active_ids = data["active_segment_ids"]
+    if (
+        not isinstance(active_ids, list)
+        or len(active_ids) > COMPILED_BOUNDS["stable_carrier_active_elements"]
+    ):
+        raise ContractRefusal("active_element_limit", "stable carrier")
+    segment_ids = [data["subject_segment_id"], *active_ids]
+    segments: list[bytes] = []
+    for row_id in segment_ids[: COMPILED_BOUNDS["stable_carrier_active_elements"] + 1]:
+        linked = rows_by_id[row_id]
+        if linked.get("kind") != "carrier_segment":
+            raise ContractRefusal("carrier_provenance", str(row_id))
+        segments.append(_carrier_segment(linked["data"]))
+    slot = _bounded_int(
+        data["draw_slot"], minimum=-(1 << 63), maximum=(1 << 63) - 1, field="draw slot"
+    )
+    segments.append(str(slot).encode("ascii"))
+    canonical = b"|".join(
+        str(len(segment)).encode("ascii") + b":" + segment for segment in segments
+    )
     return _bounded_bytes(
         canonical,
         maximum=COMPILED_BOUNDS["stable_carrier_bytes"],
-        field="carrier segment",
+        field="stable carrier",
     )
 
 
 def _resolver_manifest(data: dict[str, Any]) -> bytes:
+    _qname(data["scenario"])
     nodes = _counted_rows(data["nodes"], maximum=65_536, field="resolver nodes")
     hyperedges = _counted_rows(data["hyperedges"], maximum=65_536, field="resolver hyperedges")
     if len(nodes) + len(hyperedges) > 65_536:
@@ -359,14 +539,19 @@ def _resolver_manifest(data: dict[str, Any]) -> bytes:
     output.extend(b"\x01" + _str32(data["scenario"]))
     output.extend(b"\x02" + _u32(len(sorted_nodes), "resolver node count"))
     for row in sorted_nodes[:65_536]:
+        _symbol(row["local_name"])
+        _structural_type(row["node_type"])
         output.extend(_str32(row["local_name"]) + _str32(row["node_type"]))
     output.extend(b"\x03" + _u32(len(sorted_hyperedges), "resolver hyperedge count"))
     for row in sorted_hyperedges[:65_536]:
+        _symbol(row["local_name"])
+        _structural_type(row["hyperedge_type"])
         output.extend(_str32(row["local_name"]) + _str32(row["hyperedge_type"]))
     return _bounded_bytes(output, maximum=16_777_216, field="resolver manifest")
 
 
 def _stable_graph(data: dict[str, Any]) -> bytes:
+    _qname(data["scenario"])
     sections = [
         (2, "nodes", _stable_node_row, 65_536),
         (3, "node_f64", _stable_node_f64_row, 1_048_576),
@@ -397,18 +582,22 @@ def _stable_graph(data: dict[str, Any]) -> bytes:
 
 
 def _stable_node_row(row: dict[str, Any]) -> tuple[tuple[bytes, ...], bytes]:
-    key = (_ascii(row["local_name"]),)
+    key = (_symbol(row["local_name"]),)
+    _structural_type(row["node_type"])
     return key, _str32(row["local_name"]) + _str32(row["node_type"])
 
 
 def _stable_node_f64_row(row: dict[str, Any]) -> tuple[tuple[bytes, ...], bytes]:
-    key = (_ascii(row["local_name"]), _ascii(row["qname"]))
+    key = (_symbol(row["local_name"]), _qname(row["qname"]))
     return key, _str32(row["local_name"]) + _str32(row["qname"]) + _canonical_f64_bits(
         row["value_bits_hex"]
     )
 
 
 def _stable_edge_row(row: dict[str, Any]) -> tuple[tuple[bytes, ...], bytes]:
+    _structural_type(row["edge_type"])
+    _symbol(row["source"])
+    _symbol(row["target"])
     key = tuple(_ascii(row[name]) for name in ("edge_type", "source", "target"))
     body = b"".join(_str32(row[name]) for name in ("edge_type", "source", "target"))
     return key, body + _canonical_f64_bits(row["strength_bits_hex"])
@@ -418,7 +607,9 @@ def _stable_hyperedge_row(row: dict[str, Any]) -> tuple[tuple[bytes, ...], bytes
     raw_members = row["members"]
     if not isinstance(raw_members, list) or not raw_members or len(raw_members) > 65_536:
         raise ContractRefusal("hyperedge_members", row["local_name"])
-    members = sorted((_ascii(value), value) for value in raw_members[:65_536])
+    _symbol(row["local_name"])
+    _structural_type(row["hyperedge_type"])
+    members = sorted((_symbol(value), value) for value in raw_members[:65_536])
     if len(members) != len({item[0] for item in members}):
         raise ContractRefusal("hyperedge_members", row["local_name"])
     body = bytearray(_str32(row["local_name"]) + _str32(row["hyperedge_type"]))
@@ -430,19 +621,23 @@ def _stable_hyperedge_row(row: dict[str, Any]) -> tuple[tuple[bytes, ...], bytes
 
 def _stable_edge_f64_row(row: dict[str, Any]) -> tuple[tuple[bytes, ...], bytes]:
     names = ("edge_type", "source", "target", "qname")
+    _structural_type(row["edge_type"])
+    _symbol(row["source"])
+    _symbol(row["target"])
+    _qname(row["qname"])
     key = tuple(_ascii(row[name]) for name in names)
     body = b"".join(_str32(row[name]) for name in names)
     return key, body + _canonical_f64_bits(row["value_bits_hex"])
 
 
 def _stable_node_currency_row(row: dict[str, Any]) -> tuple[tuple[bytes, ...], bytes]:
-    key = (_ascii(row["local_name"]), _ascii(row["qname"]))
+    key = (_symbol(row["local_name"]), _qname(row["qname"]))
     body = _str32(row["local_name"]) + _str32(row["qname"])
     return key, body + _i128_text(row["micro_units"], "Currency micro-units")
 
 
 def _stable_hyperedge_f64_row(row: dict[str, Any]) -> tuple[tuple[bytes, ...], bytes]:
-    key = (_ascii(row["local_name"]), _ascii(row["qname"]))
+    key = (_symbol(row["local_name"]), _qname(row["qname"]))
     body = _str32(row["local_name"]) + _str32(row["qname"])
     return key, body + _canonical_f64_bits(row["value_bits_hex"])
 
@@ -513,6 +708,10 @@ def _bsl_type(data: dict[str, Any]) -> bytes:
         raise ContractRefusal("unknown_bsl_type", str(kind))
     output = bytearray([tags[kind]])
     if kind in {"enum", "node_set", "edge_set"}:
+        if kind == "enum":
+            _enum_type(data["name"])
+        else:
+            _enum_member(data["name"])
         output.extend(_str32(data["name"]))
     return bytes(output)
 
@@ -538,6 +737,8 @@ def _bsl_value(data: dict[str, Any]) -> bytes:
             raise ContractRefusal("noncanonical_boolean", str(value))
         return b"\x05" + bytes([int(value)])
     if kind == "enum":
+        _enum_type(data["enum_type"])
+        _enum_member(data["member"])
         return b"\x06" + _str32(data["enum_type"]) + _str32(data["member"])
     stable_kinds = {
         "node_ref": (7, "node"),
@@ -562,8 +763,10 @@ def _effect(data: dict[str, Any]) -> bytes:
     kind = data["kind"]
     field_tags = {"node_field": 1, "edge_field": 2, "hyperedge_field": 3}
     if kind in field_tags:
+        _qname(data["qname"])
         return bytes([field_tags[kind]]) + _str32(data["qname"])
     if kind == "event":
+        _structural_type(data["event"])
         return b"\x04" + _str32(data["event"])
     if kind == "shape":
         shape_tags = {
@@ -599,6 +802,7 @@ def _vocabulary(data: dict[str, Any]) -> bytes:
             members = sorted(row["members"], key=_ascii)
             output.extend(_u32(len(members), "vocabulary member count"))
             for member in members[:MAX_SECTION_ROWS]:
+                _enum_member(member)
                 output.extend(_str32(member))
     return bytes(output)
 
@@ -612,6 +816,7 @@ def _prepared_environment(data: dict[str, Any], digests: dict[str, bytes]) -> by
     rules = data["rule_order"]
     output.extend(b"\x03" + _u32(len(rules), "prepared rule count"))
     for rule in rules[:65_536]:
+        _qname(rule)
         output.extend(_str32(rule))
     output.extend(b"\x04" + _prepared_fields(data))
     output.extend(b"\x05" + _prepared_intrinsics(data))
@@ -661,6 +866,7 @@ def _prepared_fields(data: dict[str, Any]) -> bytes:
     output = bytearray(_u32(len(fields), "field count"))
     field_kinds = {"intensive": 1, "extensive": 2, "not_applicable": 3}
     for row in fields[:65_536]:
+        _qname(row["qname"])
         output.extend(_str32(row["qname"]) + _bsl_type(row["type"]))
         output.extend(bytes([field_kinds[row["field_kind"]]]))
     exemptions = sorted(
@@ -669,8 +875,10 @@ def _prepared_fields(data: dict[str, Any]) -> bytes:
     )
     output.extend(_u32(len(exemptions), "exemption count"))
     for row in exemptions[:64]:
-        for name in ("field", "reason", "owner", "date"):
-            output.extend(_str32(row[name]))
+        _qname(row["field"])
+        output.extend(_str32(row["field"]))
+        for name in ("reason", "owner", "date"):
+            output.extend(_governance_str32(row[name]))
     return bytes(output)
 
 
@@ -678,6 +886,7 @@ def _prepared_intrinsics(data: dict[str, Any]) -> bytes:
     rows = sorted(data["intrinsics"], key=lambda row: _ascii(row["name"]))
     output = bytearray(_u32(len(rows), "intrinsic count"))
     for row in rows[:64]:
+        _symbol(row["name"])
         output.extend(_str32(row["name"]) + _u64(row["cost"], "intrinsic cost"))
     return bytes(output)
 
@@ -686,6 +895,7 @@ def _prepared_constants(data: dict[str, Any]) -> bytes:
     rows = sorted(data["constants"], key=lambda row: _ascii(row["qname"]))
     output = bytearray(_u32(len(rows), "constant count"))
     for row in rows[:65_536]:
+        _qname(row["qname"])
         output.extend(_str32(row["qname"]) + _bsl_value(row["value"]))
     return bytes(output)
 
@@ -694,8 +904,10 @@ def _prepared_enums(data: dict[str, Any]) -> bytes:
     rows = sorted(data["enum_types"], key=lambda row: _ascii(row["name"]))
     output = bytearray(_u32(len(rows), "enum type count"))
     for row in rows[:65_536]:
+        _enum_type(row["name"])
         output.extend(_str32(row["name"]) + _u32(len(row["members"]), "enum member count"))
         for member in row["members"][:MAX_SECTION_ROWS]:
+            _enum_member(member)
             output.extend(_str32(member))
     return bytes(output)
 
@@ -745,18 +957,22 @@ def _tick_payload(data: dict[str, Any]) -> bytes:
     outcomes = data["rule_outcomes"]
     output.extend(b"\x01" + _u32(len(outcomes), "rule outcome count"))
     for row in outcomes[:65_536]:
+        _qname(row["rule"])
         output.extend(_str32(row["rule"]) + _u64(row["fired"], "fired count"))
     events = data["events"]
     output.extend(b"\x02" + _u32(len(events), "event count"))
     for row in events[:MAX_SECTION_ROWS]:
+        _structural_type(row["event"])
         output.extend(_str32(row["event"]) + _u32(len(row["payload"]), "event payload count"))
         for item in row["payload"][:MAX_SECTION_ROWS]:
+            _symbol(item["label"])
             output.extend(_str32(item["label"]) + _bsl_value(item["value"]))
     receipts = data["receipts"]
     output.extend(b"\x03" + _u32(len(receipts), "receipt count"))
     role_tags = {"mechanic": 1, "recognizer": 2, "external_event": 3, "intent": 4}
     evidence_tags = {"observed": 1, "derived": 2, "calibrated": 3, "designed": 4}
     for row in receipts[:MAX_SECTION_ROWS]:
+        _qname(row["rule"])
         output.extend(_str32(row["rule"]))
         output.extend(bytes([role_tags[row["role"]], evidence_tags[row["evidence"]]]))
         output.extend(_u32(row["ordinal"], "receipt ordinal") + _effect(row["effect"]))
@@ -780,7 +996,31 @@ def _validate_payload_counts(data: dict[str, Any]) -> None:
         raise ContractRefusal("aggregate_row_limit", "tick payload")
 
 
-def _tick_content(data: dict[str, Any], digests: dict[str, bytes]) -> bytes:
+def _validate_outer_action_link(
+    data: dict[str, Any], rows_by_id: dict[str, dict[str, Any]]
+) -> None:
+    action_id = data.get("actions_id")
+    if not isinstance(action_id, str):
+        raise ContractRefusal("runtime_actions_link", "missing action row")
+    action_row = rows_by_id[action_id]
+    if action_row.get("kind") != "ordered_action_batch":
+        raise ContractRefusal("runtime_actions_link", action_id)
+    action_data = action_row["data"]
+    items = action_data.get("items")
+    if not isinstance(items, list) or items:
+        raise ContractRefusal("nonempty_runtime_actions", action_id)
+    if action_data.get("session") != data.get("session"):
+        raise ContractRefusal("action_session_mismatch", action_id)
+    if action_data.get("resolve_tick") != data.get("resolve_tick"):
+        raise ContractRefusal("action_tick_mismatch", action_id)
+
+
+def _tick_content(
+    data: dict[str, Any],
+    digests: dict[str, bytes],
+    rows_by_id: dict[str, dict[str, Any]],
+) -> bytes:
+    _validate_outer_action_link(data, rows_by_id)
     layouts = {
         "outer": 1,
         "session": 1,
@@ -812,7 +1052,11 @@ def _tick_content(data: dict[str, Any], digests: dict[str, bytes]) -> bytes:
     return bytes(output)
 
 
-def _canonical_for(row: dict[str, Any], digests: dict[str, bytes]) -> bytes | None:
+def _canonical_for(
+    row: dict[str, Any],
+    digests: dict[str, bytes],
+    rows_by_id: dict[str, dict[str, Any]],
+) -> bytes | None:
     kind = row["kind"]
     data = row["data"]
     builders = {
@@ -820,6 +1064,7 @@ def _canonical_for(row: dict[str, Any], digests: dict[str, bytes]) -> bytes | No
         "replay_seed": lambda: int(data["seed"]).to_bytes(8, "big", signed=True),
         "stable_element": lambda: _stable_element(data),
         "carrier_segment": lambda: _carrier_segment(data),
+        "stable_carrier_key": lambda: _stable_carrier_key(data, rows_by_id),
         "action_id": lambda: _action_id(data),
         "resolver_manifest": lambda: _resolver_manifest(data),
         "stable_graph": lambda: _stable_graph(data),
@@ -829,8 +1074,10 @@ def _canonical_for(row: dict[str, Any], digests: dict[str, bytes]) -> bytes | No
         "register_set": lambda: _register_set(data, digests),
         "stable_world": lambda: _stable_world(data, digests),
         "tick_payload": lambda: _tick_payload(data),
-        "tick_content_hash": lambda: _tick_content(data, digests),
+        "tick_content_hash": lambda: _tick_content(data, digests, rows_by_id),
     }
+    if kind == "bsl_discriminant" and "governance_utf8" in data:
+        return _governance_str32(data["governance_utf8"])
     if kind == "bsl_discriminant" and "vocabulary" in data:
         return _vocabulary(data["vocabulary"])
     if kind == "bsl_discriminant" and "bsl_type" in data:
@@ -872,8 +1119,10 @@ def _canonical_for(row: dict[str, Any], digests: dict[str, bytes]) -> bytes | No
     return None if builder is None else builder()
 
 
-def _verify_rng(data: dict[str, Any], *, version: int) -> None:
-    preimage = _rng_v1_preimage(data) if version == 1 else _rng_v2_preimage(data)
+def _verify_rng(
+    data: dict[str, Any], rows_by_id: dict[str, dict[str, Any]], *, version: int
+) -> None:
+    preimage = _rng_v1_preimage(data) if version == 1 else _rng_v2_preimage(data, rows_by_id)
     if preimage.hex() != data["preimage_hex"]:
         raise ContractRefusal("rng_preimage", f"V{version}")
     key = hashlib.sha256(preimage).digest()
@@ -886,7 +1135,71 @@ def _verify_rng(data: dict[str, Any], *, version: int) -> None:
         raise ContractRefusal("rng_f64", "V2")
 
 
-def _verify_refusal(contract: dict[str, Any], row: dict[str, Any]) -> None:
+def _bound_maximum(contract: dict[str, Any], name: str) -> int:
+    maximum = contract["bounds"][name]
+    return maximum["maximum"] if isinstance(maximum, dict) else maximum
+
+
+def _validate_bound_recipe(name: str, actual: int, maximum: int, expected_code: str) -> None:
+    try:
+        if name == "replay_session_bytes":
+            _str16("a" * actual)
+        elif name == "rng_domain_bytes":
+            _qname("a" * 64 + "/" + "b" * (actual - 65), minimum_segments=2)
+        elif name in {"rng_domain_segments", "qname_segments"}:
+            _qname("/".join("a" for _index in range(actual)))
+        elif name == "symbol_bytes":
+            _symbol("a" * actual)
+        elif name == "qname_bytes":
+            _qname("a" * 64 + "/" + "b" * (actual - 65))
+        elif name == "structural_type_bytes":
+            _structural_type("A" * actual)
+        elif name == "intrinsic_identity_bytes":
+            _intrinsic_identity("a" * actual)
+        elif name == "enum_type_bytes":
+            _enum_type("A" + "a" * (actual - 1))
+        elif name == "enum_member_bytes":
+            _enum_member("A" * actual)
+        elif name == "governance_utf8_bytes":
+            _governance("a" * actual)
+        elif actual > maximum:
+            raise ContractRefusal(expected_code, name)
+    except ContractRefusal as error:
+        if actual <= maximum:
+            raise
+        raise ContractRefusal(expected_code, name) from error
+
+
+def _verify_bound_case(contract: dict[str, Any], row: dict[str, Any]) -> None:
+    data = row["data"]
+    name = data["bound"]
+    declaration = contract["bound_refusals"][name]
+    input_name = declaration["input"]
+    expected_code = declaration["expected_code"]
+    if data["expected_code"] != expected_code:
+        raise ContractRefusal("wrong_refusal", data["expected_code"])
+    accepted = data["accepted_input"]
+    refused = data["refused_input"]
+    if set(accepted) != {input_name} or set(refused) != {input_name}:
+        raise ContractRefusal("bound_input_shape", name)
+    maximum = _bound_maximum(contract, name)
+    if accepted[input_name] != maximum or refused[input_name] != maximum + 1:
+        raise ContractRefusal("bound_input_value", name)
+    _validate_bound_recipe(name, accepted[input_name], maximum, expected_code)
+    try:
+        _validate_bound_recipe(name, refused[input_name], maximum, expected_code)
+    except ContractRefusal as error:
+        if error.code != expected_code:
+            raise ContractRefusal("wrong_refusal", error.code) from error
+        return
+    raise ContractRefusal("missing_refusal", row["id"])
+
+
+def _verify_refusal(
+    contract: dict[str, Any],
+    row: dict[str, Any],
+    rows_by_id: dict[str, dict[str, Any]],
+) -> None:
     data = row["data"]
     if data["operation"] == "session":
         try:
@@ -896,18 +1209,29 @@ def _verify_refusal(contract: dict[str, Any], row: dict[str, Any]) -> None:
                 raise ContractRefusal("wrong_refusal", error.code) from error
             return
         raise ContractRefusal("missing_refusal", row["id"])
-    if data["operation"] == "bounds":
-        pairs = _counted_rows(data["pairs"], maximum=64, field="bound pairs")
-        expected_names = list(contract["bounds"])
-        if [pair.get("name") for pair in pairs] != expected_names:
-            raise ContractRefusal("bound_pair_set", "declared bounds")
-        for pair in pairs[:64]:
-            maximum = contract["bounds"][pair["name"]]
-            if isinstance(maximum, dict):
-                maximum = maximum["maximum"]
-            if pair != {"name": pair["name"], "accepted": maximum, "refused": maximum + 1}:
-                raise ContractRefusal("bound_pair", pair["name"])
+    if data["operation"] == "bound_case":
+        _verify_bound_case(contract, row)
         return
+    if data["operation"] == "outer_action_link":
+        outer = copy.deepcopy(rows_by_id[data["outer_id"]]["data"])
+        outer["actions_id"] = data["actions_id"]
+        try:
+            _validate_outer_action_link(outer, rows_by_id)
+        except ContractRefusal as error:
+            if error.code != data["expected_code"]:
+                raise ContractRefusal("wrong_refusal", error.code) from error
+            return
+        raise ContractRefusal("missing_refusal", row["id"])
+    if data["operation"] == "governance_utf8":
+        try:
+            _governance(data["value"])
+        except ContractRefusal as error:
+            if error.code != data["expected_code"]:
+                raise ContractRefusal("wrong_refusal", error.code) from error
+            return
+        raise ContractRefusal("missing_refusal", row["id"])
+    if data["operation"] == "bounds":
+        raise ContractRefusal("obsolete_refusal", row["id"])
     if data["operation"] == "bsl_value":
         try:
             _bsl_value(data["value"])
@@ -938,7 +1262,7 @@ def _verify_mutation(
 ) -> None:
     data = row["data"]
     base = copy.deepcopy(rows_by_id[data["base_id"]])
-    before = _canonical_for(base, digests)
+    before = _canonical_for(base, digests, rows_by_id)
     if before is None or hashlib.sha256(before).digest() != digests[data["base_id"]]:
         raise ContractRefusal("mutation_base", data["base_id"])
     target = base["data"]
@@ -946,10 +1270,12 @@ def _verify_mutation(
     for part in path[:-1]:
         target = target.setdefault(part, {})
     target[path[-1]] = data["replacement"]
+    if derived_actions_id := data.get("derived_actions_id"):
+        base["data"]["actions_id"] = derived_actions_id
     if path[-1].endswith("_digest_hex"):
         digest_name = path[-1].removesuffix("_digest_hex")
         base["data"].pop(f"{digest_name}_id", None)
-    after = _canonical_for(base, digests)
+    after = _canonical_for(base, digests, rows_by_id)
     if after is None or before == after:
         raise ContractRefusal("mutation_did_not_change_identity", row["id"])
     if hashlib.sha256(after).hexdigest() != data["after_digest_hex"]:
@@ -967,9 +1293,9 @@ def _verify_row(
     kind = row["kind"]
     data = row["data"]
     if kind == "rng_v1":
-        _verify_rng(data, version=1)
+        _verify_rng(data, rows_by_id, version=1)
     elif kind == "rng_v2":
-        _verify_rng(data, version=2)
+        _verify_rng(data, rows_by_id, version=2)
     elif kind == "bsl_discriminant":
         if "tables" in data and data["tables"] != contract["bsl_discriminants"]:
             raise ContractRefusal("bsl_discriminants", row["id"])
@@ -977,9 +1303,9 @@ def _verify_row(
         _verify_mutation(row, rows_by_id, digests)
         return None
     elif kind == "refusal":
-        _verify_refusal(contract, row)
+        _verify_refusal(contract, row, rows_by_id)
         return None
-    canonical = _canonical_for(row, digests)
+    canonical = _canonical_for(row, digests, rows_by_id)
     expected_hex = data.get("canonical_hex")
     if canonical is not None and canonical.hex() != expected_hex:
         raise ContractRefusal("canonical_bytes", row["id"])
@@ -1007,6 +1333,18 @@ def verify_all(contract: dict[str, Any], vectors: list[dict[str, Any]]) -> list[
     row_ids = [row.get("id") for row in vectors]
     if len(row_ids) != len(set(row_ids)):
         errors.append("vector ids: duplicate")
+    expected_bound_refusals = set(contract["bounds"])
+    received_bound_refusals = {
+        row.get("data", {}).get("bound")
+        for row in vectors
+        if row.get("kind") == "refusal" and row.get("data", {}).get("operation") == "bound_case"
+    }
+    if received_bound_refusals != expected_bound_refusals:
+        errors.append(
+            "bound refusal set: "
+            f"missing={sorted(expected_bound_refusals - received_bound_refusals)} "
+            f"extra={sorted(received_bound_refusals - expected_bound_refusals)}"
+        )
     rows_by_id = {str(row["id"]): row for row in vectors if "id" in row}
     digests: dict[str, bytes] = {}
     for index in range(MAX_VECTOR_ROWS):
@@ -1029,11 +1367,15 @@ def main() -> int:
     parser.add_argument("--vectors", type=Path, required=True)
     args = parser.parse_args()
     contract = load_contract(args.schema)
-    bounds = contract["bounds"]
+    try:
+        _verify_compiled_bounds(contract)
+    except (ContractRefusal, KeyError, TypeError) as error:
+        print(f"contract bounds: {error}")
+        return 1
     vectors = load_vectors(
         args.vectors,
-        maximum_rows=bounds["vector_rows"],
-        maximum_line_bytes=bounds["vector_line_bytes"],
+        maximum_rows=COMPILED_BOUNDS["vector_rows"],
+        maximum_line_bytes=COMPILED_BOUNDS["vector_line_bytes"],
     )
     errors = verify_all(contract, vectors)
     for error in errors[:256]:

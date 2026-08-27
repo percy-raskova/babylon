@@ -12,9 +12,10 @@ use babylon_bsl::identity_sections::{
 use babylon_bsl::rules_hash_of;
 use babylon_graph::stable_element::{StableElementResolverV1, StableIdentityError};
 use babylon_graph::stable_state::{StableGraphStateV1, STABLE_GRAPH_STATE_LAYOUT_VERSION_V1};
-use babylon_kernel::{
-    sha256_of, ContentDigest, PreparedEnvironmentDigestV1, StableWorldDigestV1, TickPayloadDigestV1,
+use babylon_kernel::tick_content_hash::{
+    PreparedEnvironmentDigestV1, StableWorldDigestV1, TickPayloadDigestV1,
 };
+use babylon_kernel::{sha256_of, ContentDigest};
 
 use crate::{phase_order, PreparedRules};
 

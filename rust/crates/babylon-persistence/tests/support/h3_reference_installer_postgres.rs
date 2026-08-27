@@ -4,7 +4,7 @@ use super::{
     assert_lock_released, authority_snapshot, database_user, repository_root, AuthoritySnapshot,
     ScratchDatabase, LIVE_TASK_SECONDS, MAX_LEGACY_CENSUS_ROWS, OWNER_PASSWORD,
 };
-use babylon_kernel::RefDigestV1;
+use babylon_kernel::tick_content_hash::RefDigestV1;
 use babylon_persistence::{
     adopt_legacy_schema, build_representative_h3_cohort_v1, compiled_schema_migrations,
     install_representative_h3_cohort, migrate_schema_epoch, request_rust_writer_authority,

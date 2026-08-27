@@ -4,13 +4,15 @@ use babylon_graph::memory::MemoryGraph;
 use babylon_graph::stable_element::{StableElementKeyV1, StableElementResolverV1};
 use babylon_graph::stable_state::encode_stable_graph_state_v1;
 use babylon_graph::substrate::{GraphSubstrate, HyperedgeId, NodeId};
-use babylon_kernel::{
-    seed_for, seed_for_v2, sha256_of, ContentDigest, Currency, KernelRng,
-    OrderedPracticeActionBatchDigestV1, PreparedEnvironmentDigestV1, RefDigestV1, ReplaySeed,
-    ReplaySessionIdV1, RngDomainV2, SessionId, StableWorldDigestV1, TickContentPartsV1,
-    TickContentPreimageV1, TickPayloadDigestV1,
+use babylon_kernel::replay::{ReplaySeed, ReplaySessionIdV1, RngDomainV2};
+use babylon_kernel::tick_content_hash::{
+    OrderedPracticeActionBatchDigestV1, PreparedEnvironmentDigestV1, RefDigestV1,
+    StableWorldDigestV1, TickContentPartsV1, TickContentPreimageV1, TickPayloadDigestV1,
 };
-use babylon_practice_contract::OrderedPracticeActionBatchV1;
+use babylon_kernel::{
+    seed_for, seed_for_v2, sha256_of, ContentDigest, Currency, KernelRng, SessionId,
+};
+use babylon_practice_contract::ordered_action_v1::OrderedPracticeActionBatchV1;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -20,7 +22,7 @@ mod contract_support;
 const VECTORS: &str = include_str!("../../../../contracts/tick_content_hash_v1_vectors.jsonl");
 const MAX_ROWS: usize = 256;
 const MAX_LINE_BYTES: usize = 262_144;
-const REQUIRED_FAMILIES: [&str; 19] = [
+const REQUIRED_FAMILIES: [&str; 20] = [
     "action_id",
     "bsl_discriminant",
     "carrier_segment",
@@ -36,6 +38,7 @@ const REQUIRED_FAMILIES: [&str; 19] = [
     "rng_v1",
     "rng_v2",
     "stable_element",
+    "stable_carrier_key",
     "stable_graph",
     "stable_world",
     "tick_content_hash",
@@ -224,6 +227,11 @@ fn every_outer_input_and_nested_layout_mutation_moves_identity() {
     contract_support::verify_every_outer_mutation(&rows());
 }
 
+#[test]
+fn every_shared_refusal_is_executed() {
+    contract_support::verify_every_refusal(&rows());
+}
+
 fn corpus_graph(
     shift_handles: bool,
 ) -> (
@@ -343,13 +351,54 @@ fn production_rng_matches_both_language_neutral_vectors() {
     let replay = ReplaySessionIdV1::try_from(text(v2, "session")).expect("replay session");
     let seed = ReplaySeed::new(integer(v2, "seed"));
     let domain = RngDomainV2::try_from(text(v2, "domain")).expect("RNG domain");
-    let carrier = text(v2, "carrier").as_bytes();
+    let carrier_row = row_by_id(&vectors, text(v2, "carrier_id"));
+    assert_eq!(carrier_row.kind, "stable_carrier_key");
+    let subject_row = row_by_id(&vectors, text(&carrier_row.data, "subject_segment_id"));
+    let segments = subject_row.data["segments"]
+        .as_array()
+        .expect("subject carrier segments");
+    let mut graph = MemoryGraph::new();
+    let subject = graph.add_node("SOCIAL_CLASS").expect("carrier subject");
+    let resolver = StableElementResolverV1::seal(
+        &graph,
+        segments[1].as_str().expect("carrier scenario"),
+        &HashMap::from([(
+            subject,
+            segments[2].as_str().expect("carrier local name").to_owned(),
+        )]),
+        &HashMap::new(),
+    )
+    .expect("sealed graph resolver");
+    let carrier = resolver
+        .carrier_key(
+            resolver.node_key(subject).expect("stable subject"),
+            &[],
+            integer(&carrier_row.data, "draw_slot"),
+        )
+        .expect("graph-owned stable carrier");
     assert_eq!(
-        seed_for_v2(&replay, seed, unsigned(v2, "tick"), &domain, carrier).expect("V2 key"),
+        carrier.validated_bytes(),
+        hex_bytes(text(&carrier_row.data, "canonical_hex"))
+    );
+    assert_eq!(
+        seed_for_v2(
+            &replay,
+            seed,
+            unsigned(v2, "tick"),
+            &domain,
+            carrier.validated_bytes(),
+        )
+        .expect("V2 key"),
         hex32(text(v2, "stream_seed_hex"))
     );
-    let mut rng = KernelRng::for_carrier_v2(&replay, seed, unsigned(v2, "tick"), &domain, carrier)
-        .expect("V2 stream");
+    let mut rng = KernelRng::for_carrier_v2(
+        &replay,
+        seed,
+        unsigned(v2, "tick"),
+        &domain,
+        carrier.validated_bytes(),
+    )
+    .expect("V2 stream");
     for expected in v2["first_nine_u64"]
         .as_array()
         .expect("V2 draws")
@@ -358,9 +407,14 @@ fn production_rng_matches_both_language_neutral_vectors() {
     {
         assert_eq!(rng.next_u64(), expected.as_u64().expect("u64 draw"));
     }
-    let mut fresh =
-        KernelRng::for_carrier_v2(&replay, seed, unsigned(v2, "tick"), &domain, carrier)
-            .expect("fresh V2 stream");
+    let mut fresh = KernelRng::for_carrier_v2(
+        &replay,
+        seed,
+        unsigned(v2, "tick"),
+        &domain,
+        carrier.validated_bytes(),
+    )
+    .expect("fresh V2 stream");
     assert_eq!(fresh.next_f64().to_bits(), unsigned(v2, "fresh_f64_bits"));
 }
 
@@ -411,6 +465,24 @@ fn production_primitives_and_outer_preimage_match_shared_corpus() {
 fn verify_outer_vector(vectors: &[VectorRow]) {
     let data = &row(vectors, "tick_content_hash").data;
     let session = ReplaySessionIdV1::try_from(text(data, "session")).expect("outer session");
+    let action_row = row_by_id(vectors, text(data, "actions_id"));
+    assert_eq!(action_row.kind, "ordered_action_batch");
+    assert!(action_row.data["items"]
+        .as_array()
+        .expect("runtime action items")
+        .is_empty());
+    assert_eq!(text(&action_row.data, "session"), text(data, "session"));
+    assert_eq!(
+        unsigned(&action_row.data, "resolve_tick"),
+        unsigned(data, "resolve_tick")
+    );
+    let action_batch =
+        OrderedPracticeActionBatchV1::empty(session.clone(), unsigned(data, "resolve_tick"))
+            .expect("exact empty runtime action batch");
+    assert_eq!(
+        action_batch.digest().as_bytes(),
+        &linked_digest(vectors, data, "actions")
+    );
     let content = ContentDigest {
         defines_hash: hex32(text(data, "defines_digest_hex")),
         rules_hash: hex32(text(data, "rules_digest_hex")),

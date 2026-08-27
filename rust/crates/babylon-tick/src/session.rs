@@ -161,7 +161,8 @@ mod tests {
     use babylon_graph::state_hash::{CanonicalState, StateEncoder};
     use babylon_graph::substrate::{GraphError, GraphSubstrate, NodeId};
     use babylon_graph::working_copy::DetachedCopy;
-    use babylon_kernel::{Currency, ReplaySeed, ReplaySessionIdV1, RngSeedContext, SessionId};
+    use babylon_kernel::replay::{ReplaySeed, ReplaySessionIdV1, RngSeedContext};
+    use babylon_kernel::{Currency, SessionId};
     use std::fmt::Write as _;
     use std::process::Command;
 

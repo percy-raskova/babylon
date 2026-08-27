@@ -16,10 +16,10 @@ ADR240_replay_action_tick_content_identity:
     vectors: contracts/tick_content_hash_v1_vectors.jsonl
     independent_verifier: tools/verify_tick_content_hash_v1.py
   runtime_action_boundary:
-    accepted_batch: exact empty OrderedPracticeActionBatchV1
+    accepted_batch: exact empty OrderedPracticeActionBatchV1 with matching replay session and resolve tick
     nonempty_batch: structural contract evidence only
     execution: false
-  persistence_identity_use: direct kernel types only; no aliases or re-exports
+  persistence_identity_use: direct owning kernel module paths only; no aliases or re-exports
   context: |
     PER-60 needs one database-free Rust replay tick whose identity survives a
     rewrite and does not depend on runtime graph handles. The current
@@ -70,9 +70,10 @@ ADR240_replay_action_tick_content_identity:
     Archive or outbox, Bevy behavior, BSL intent, player-action execution, or
     broader runtime authority.
 
-    `GraphStateHash`, `NominalWorldHash`, the current `TickSession`, RNG V1, P27,
-    and Practice V2 bytes remain unchanged. None of those identities can replace
-    or be substituted for `TickContentHashV1`.
+    Each new identity type has one public owning-module path. `GraphStateHash`,
+    `NominalWorldHash`, the current `TickSession`, RNG V1, P27, and Practice V2
+    bytes remain unchanged. None of those identities can replace or be
+    substituted for `TickContentHashV1`.
   consequences: |
     Equal accepted replay inputs now produce exact language-neutral bytes and
     one nominal hash across process, graph-backend, and handle-allocation
@@ -86,14 +87,18 @@ ADR240_replay_action_tick_content_identity:
     owning gate provides accepted-input provenance and mechanics.
   verification: |
     The shared corpus pins all nested layouts, BSL discriminants, stable graph
-    forms, action forms, seed extremes, refusal classes, and every outer input
-    and layout mutation. The independent verifier reconstructs semantic bytes
-    and digests instead of trusting supplied canonical bodies. A separate Rust
-    consumer reconstructs the same corpus and production integration tests run
-    the real RNG, graph, BSL, and detached replay path.
+    and graph-owned carrier forms, action forms, seed extremes, refusal classes,
+    independently variable outer inputs, derived action links, and every layout
+    mutation. The independent verifier reconstructs semantic bytes and digests
+    instead of trusting supplied canonical bodies. It uses compiled bounded
+    reads before it accepts schema data. A separate Rust consumer reconstructs
+    the same corpus and production integration tests run the real RNG, graph,
+    BSL, and detached replay path.
 
-    Maximum and maximum-plus-one tests bind every row, member, aggregate, and
-    byte ceiling. Frozen P27, RNG V1, and Practice V2 tests prove that their
+    Both consumers execute the corpus's operation-specific maximum and
+    maximum-plus-one refusal rows for every string, row, member, aggregate, and
+    byte ceiling. Both also refuse nonempty, wrong-session, and wrong-tick outer
+    action links. Frozen P27, RNG V1, and Practice V2 tests prove that their
     bytes did not move. Exact-head review and the sequential repository gates
     remain required before merge.
   preserves:

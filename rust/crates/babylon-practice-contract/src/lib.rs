@@ -31,7 +31,6 @@ pub use codec::{
     target_selection_policy_digest,
 };
 pub use intent_v2::*;
-pub use ordered_action_v1::*;
 pub use resource_v2::*;
 pub use strike_v2::*;
 pub use topology::{validate_topology, PracticeTopologyLoadCounter};

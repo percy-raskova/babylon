@@ -5,7 +5,10 @@ use std::cmp::Ordering;
 use babylon_kernel::sha256_of;
 use serde_json::Value;
 
-use super::{hex_bytes, integer, row_by_id, text, unsigned, VectorRow, MAX_ROWS};
+use super::{
+    hex_bytes, integer, row_by_id, text, unsigned, verify_fixed_tags, TagRefusal, VectorRow,
+    MAX_ROWS,
+};
 
 pub(super) fn canonical(row: &VectorRow, rows: &[VectorRow]) -> Option<Vec<u8>> {
     let data = &row.data;
@@ -14,10 +17,16 @@ pub(super) fn canonical(row: &VectorRow, rows: &[VectorRow]) -> Option<Vec<u8>> 
         "replay_seed" => Some(integer(data, "seed").to_be_bytes().to_vec()),
         "stable_element" => Some(stable_element(data)),
         "carrier_segment" => Some(carrier_segment(data)),
+        "stable_carrier_key" => Some(stable_carrier_key(data, rows)),
         "resolver_manifest" => Some(resolver_manifest(data)),
         "stable_graph" => Some(stable_graph(data)),
         "action_id" => Some(action_id(data)),
         "ordered_action_batch" => Some(ordered_action_batch(data)),
+        "bsl_discriminant" if data.get("governance_utf8").is_some() => {
+            let mut output = Vec::new();
+            push_str32(&mut output, text(data, "governance_utf8"));
+            Some(output)
+        }
         "bsl_discriminant" if data.get("vocabulary").is_some() => {
             Some(vocabulary(&data["vocabulary"]))
         }
@@ -126,6 +135,42 @@ fn carrier_segment(data: &Value) -> Vec<u8> {
         output.push(b':');
         output.extend_from_slice(segment.as_bytes());
     }
+    output
+}
+
+fn stable_carrier_key(data: &Value, rows: &[VectorRow]) -> Vec<u8> {
+    let active = data["active_segment_ids"]
+        .as_array()
+        .expect("active stable carrier segments");
+    assert!(
+        active.len() <= 256,
+        "bounded active stable carrier segments"
+    );
+    let mut segment_ids = Vec::with_capacity(active.len() + 1);
+    segment_ids.push(text(data, "subject_segment_id"));
+    for id in active.iter().take(256) {
+        segment_ids.push(id.as_str().expect("active carrier segment id"));
+    }
+    let mut segments = Vec::with_capacity(segment_ids.len() + 1);
+    for id in segment_ids.iter().take(257) {
+        let linked = row_by_id(rows, id);
+        assert_eq!(
+            linked.kind, "carrier_segment",
+            "graph-owned carrier segment"
+        );
+        segments.push(carrier_segment(&linked.data));
+    }
+    segments.push(integer(data, "draw_slot").to_string().into_bytes());
+    let mut output = Vec::new();
+    for (index, segment) in segments.iter().take(258).enumerate() {
+        if index > 0 {
+            output.push(b'|');
+        }
+        output.extend_from_slice(segment.len().to_string().as_bytes());
+        output.push(b':');
+        output.extend_from_slice(segment);
+    }
+    assert!(output.len() <= 131_072, "bounded final stable carrier");
     output
 }
 
@@ -724,6 +769,7 @@ fn tag(value: &str, choices: &[&str]) -> u8 {
 }
 
 fn tick_content(data: &Value, rows: &[VectorRow]) -> Vec<u8> {
+    validate_outer_action_link(data, rows).expect("exact-empty runtime action link");
     let mut output = b"babylon.tick-content\0".to_vec();
     output.extend_from_slice(&layout(data, "outer", 1).to_be_bytes());
     output.push(1);
@@ -755,6 +801,28 @@ fn tick_content(data: &Value, rows: &[VectorRow]) -> Vec<u8> {
         output.extend_from_slice(&outer_digest(data, rows, name));
     }
     output
+}
+
+fn validate_outer_action_link(data: &Value, rows: &[VectorRow]) -> Result<(), &'static str> {
+    let action = row_by_id(rows, text(data, "actions_id"));
+    if action.kind != "ordered_action_batch" {
+        return Err("runtime_actions_link");
+    }
+    let action_data = &action.data;
+    if !action_data["items"]
+        .as_array()
+        .ok_or("runtime_actions_link")?
+        .is_empty()
+    {
+        return Err("nonempty_runtime_actions");
+    }
+    if text(action_data, "session") != text(data, "session") {
+        return Err("action_session_mismatch");
+    }
+    if unsigned(action_data, "resolve_tick") != unsigned(data, "resolve_tick") {
+        return Err("action_tick_mismatch");
+    }
+    Ok(())
 }
 
 fn layout(data: &Value, name: &str, default: u32) -> u32 {
@@ -813,6 +881,9 @@ pub(super) fn verify_every_outer_mutation(rows: &[VectorRow]) {
                     .remove(&format!("{name}_id"));
             }
         }
+        if let Some(actions_id) = data["derived_actions_id"].as_str() {
+            changed["actions_id"] = Value::String(actions_id.to_owned());
+        }
         let actual = tick_content(&changed, rows);
         assert_ne!(actual, tick_content(&base.data, rows), "{}", mutation.id);
         assert_eq!(
@@ -821,5 +892,181 @@ pub(super) fn verify_every_outer_mutation(rows: &[VectorRow]) {
             "{}",
             mutation.id
         );
+    }
+}
+
+pub(super) fn verify_every_refusal(rows: &[VectorRow]) {
+    let refusals: Vec<_> = rows
+        .iter()
+        .take(MAX_ROWS)
+        .filter(|row| row.kind == "refusal")
+        .collect();
+    assert!(!refusals.is_empty(), "shared refusal rows");
+    for row in refusals.into_iter().take(MAX_ROWS) {
+        verify_refusal(row, rows);
+    }
+}
+
+fn verify_refusal(row: &VectorRow, rows: &[VectorRow]) {
+    let data = &row.data;
+    match text(data, "operation") {
+        "session" => assert_eq!(
+            session_refusal(text(data, "value")),
+            text(data, "expected_code")
+        ),
+        "bsl_value" => assert_eq!(
+            bsl_value_refusal(&data["value"]),
+            text(data, "expected_code")
+        ),
+        "option_byte" => {
+            assert_eq!(unsigned(data, "value"), 2);
+            assert_eq!(text(data, "expected_code"), "invalid_option");
+        }
+        "ordered_tags" => verify_tag_refusal(data),
+        "outer_action_link" => {
+            let mut outer = row_by_id(rows, text(data, "outer_id")).data.clone();
+            outer["actions_id"] = Value::String(text(data, "actions_id").to_owned());
+            assert_eq!(
+                validate_outer_action_link(&outer, rows),
+                Err(text(data, "expected_code")),
+                "{}",
+                row.id
+            );
+        }
+        "bound_case" => verify_bound_case(data),
+        operation => panic!("unexecuted shared refusal operation {operation}"),
+    }
+}
+
+fn session_refusal(value: &str) -> &'static str {
+    if !value.is_ascii() {
+        return "non_ascii";
+    }
+    if value.len() > 256 {
+        return "string_too_long";
+    }
+    if value.is_empty() || value.bytes().any(|byte| !(0x21..=0x7e).contains(&byte)) {
+        return "non_graphic_ascii";
+    }
+    "missing_refusal"
+}
+
+fn bsl_value_refusal(value: &Value) -> &'static str {
+    if text(value, "kind") == "bool" && value["value"].as_bool().is_none() {
+        return "noncanonical_boolean";
+    }
+    let bits = u64::from_be_bytes(
+        hex_bytes(text(value, "value_bits_hex"))
+            .try_into()
+            .expect("binary64 refusal bits"),
+    );
+    if bits & 0x7ff0_0000_0000_0000 == 0x7ff0_0000_0000_0000 {
+        "non_finite"
+    } else {
+        "missing_refusal"
+    }
+}
+
+fn verify_tag_refusal(data: &Value) {
+    let expected: Vec<u8> = data["expected_tags"]
+        .as_array()
+        .expect("expected tags")
+        .iter()
+        .take(10)
+        .map(|value| u8::try_from(value.as_u64().expect("tag")).expect("u8 tag"))
+        .collect();
+    let actual = verify_fixed_tags(
+        &hex_bytes(text(data, "canonical_hex")),
+        &expected,
+        usize::try_from(unsigned(data, "payload_bytes")).expect("payload bytes"),
+    );
+    let expected = match text(data, "expected_code") {
+        "unknown_tag" => TagRefusal::Unknown,
+        "truncated" => TagRefusal::Truncated,
+        "trailing_bytes" => TagRefusal::Trailing,
+        "tag_order" => TagRefusal::Order,
+        code => panic!("unknown tag refusal code {code}"),
+    };
+    assert_eq!(actual, Err(expected));
+}
+
+fn verify_bound_case(data: &Value) {
+    let name = text(data, "bound");
+    let (input, maximum, expected_code) = bound_contract(name);
+    assert_eq!(text(data, "expected_code"), expected_code);
+    let accepted = unsigned(&data["accepted_input"], input);
+    let refused = unsigned(&data["refused_input"], input);
+    assert_eq!(accepted, maximum, "{name} accepted maximum");
+    assert_eq!(refused, maximum + 1, "{name} refused maximum plus one");
+    assert_eq!(check_bound(accepted, maximum, expected_code), Ok(()));
+    assert_eq!(
+        check_bound(refused, maximum, expected_code),
+        Err(expected_code)
+    );
+}
+
+const fn check_bound(
+    actual: u64,
+    maximum: u64,
+    expected_code: &'static str,
+) -> Result<(), &'static str> {
+    if actual <= maximum {
+        Ok(())
+    } else {
+        Err(expected_code)
+    }
+}
+
+fn bound_contract(name: &str) -> (&'static str, u64, &'static str) {
+    match name {
+        "vector_rows" => ("vector_file_rows", 256, "too_many_rows"),
+        "vector_line_bytes" => ("vector_line_bytes", 262_144, "invalid_line_length"),
+        "replay_session_bytes" => ("replay_session_bytes", 256, "string_too_long"),
+        "rng_domain_bytes" => ("rng_domain_bytes", 128, "rng_domain_length"),
+        "rng_domain_segments" => ("rng_domain_segments", 4, "rng_domain_segments"),
+        "symbol_bytes" => ("symbol_bytes", 64, "invalid_symbol"),
+        "qname_bytes" => ("qname_bytes", 128, "invalid_qname"),
+        "qname_segments" => ("qname_segments", 4, "invalid_qname"),
+        "structural_type_bytes" => ("structural_type_bytes", 128, "invalid_structural_type"),
+        "intrinsic_identity_bytes" => {
+            ("intrinsic_identity_bytes", 96, "invalid_intrinsic_identity")
+        }
+        "enum_type_bytes" => ("enum_type_bytes", 64, "invalid_enum_type"),
+        "enum_member_bytes" => ("enum_member_bytes", 64, "invalid_enum_member"),
+        "governance_utf8_bytes" => (
+            "governance_utf8_bytes",
+            4_194_304,
+            "governance_string_too_long",
+        ),
+        "stable_carrier_active_elements" => (
+            "stable_carrier_active_elements",
+            256,
+            "active_element_limit",
+        ),
+        "stable_carrier_bytes" => ("stable_carrier_bytes", 131_072, "byte_limit"),
+        "resolver_rows" => ("resolver_rows", 65_536, "row_limit"),
+        "resolver_hyperedge_members" => ("resolver_hyperedge_members", 65_536, "hyperedge_members"),
+        "resolver_fact_units" => ("resolver_fact_units", 1_048_576, "aggregate_row_limit"),
+        "resolver_manifest_bytes" => ("resolver_manifest_bytes", 16_777_216, "byte_limit"),
+        "stable_graph_elements" => ("stable_graph_elements", 65_536, "row_limit"),
+        "stable_graph_attribute_rows" => ("stable_graph_attribute_rows", 1_048_576, "row_limit"),
+        "stable_graph_hyperedge_members" => (
+            "stable_graph_hyperedge_members",
+            65_536,
+            "hyperedge_members",
+        ),
+        "stable_graph_fact_units" => ("stable_graph_fact_units", 1_048_576, "aggregate_row_limit"),
+        "stable_graph_bytes" => ("stable_graph_bytes", 67_108_864, "byte_limit"),
+        "ordered_action_items" => ("ordered_action_items", 4_096, "row_limit"),
+        "practice_intent_bytes" => ("practice_intent_bytes", 16_384, "intent_length"),
+        "ordered_action_batch_bytes" => ("ordered_action_batch_bytes", 67_256_631, "byte_limit"),
+        "prepared_rows" => ("prepared_rows", 65_536, "row_limit"),
+        "prepared_small_rows" => ("prepared_small_rows", 64, "row_limit"),
+        "identity_members" => ("identity_members", 1_048_576, "row_limit"),
+        "identity_aggregate_rows" => ("identity_aggregate_rows", 1_048_576, "aggregate_row_limit"),
+        "identity_section_bytes" => ("identity_section_bytes", 67_108_864, "byte_limit"),
+        "tick_rule_outcomes" => ("tick_rule_outcomes", 65_536, "row_limit"),
+        "tick_rows" => ("tick_rows", 1_048_576, "row_limit"),
+        _ => panic!("unknown bound refusal {name}"),
     }
 }

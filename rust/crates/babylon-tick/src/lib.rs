@@ -46,7 +46,8 @@ use babylon_graph::stable_element::StableElementResolverV1;
 use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::{GraphError, GraphSubstrate, HyperedgeId, NodeId};
 use babylon_graph::working_copy::DetachedCopy;
-use babylon_kernel::{RngSeedContext, SessionId};
+use babylon_kernel::replay::RngSeedContext;
+use babylon_kernel::SessionId;
 use std::collections::{HashMap, HashSet};
 
 mod phase_order;
@@ -54,8 +55,9 @@ pub mod replay_identity;
 pub mod replay_session;
 pub mod session;
 mod world_hash;
-pub use replay_session::{IdentifiedTickReportV1, ReplayTickError, ReplayTickSession};
 pub use session::TickSession;
+
+use replay_session::{IdentifiedTickReportV1, ReplayTickError};
 
 /// The result of running one or more rules over one scenario for one tick:
 /// graph and nominal-world hashes around the commit, plus firing counts.

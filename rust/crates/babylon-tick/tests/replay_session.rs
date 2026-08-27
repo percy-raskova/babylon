@@ -12,17 +12,19 @@ use babylon_graph::stable_state::encode_stable_graph_state_v1;
 use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
 use babylon_graph::{allocator_state::AllocatorState, working_copy::DetachedCopy};
-use babylon_kernel::{
-    sha256_of, ContentDigest, PreparedEnvironmentDigestV1, RefDigestV1, ReplaySeed,
-    ReplaySessionIdV1, TickContentPartsV1, TickContentPreimageV1,
+use babylon_kernel::replay::{ReplaySeed, ReplaySessionIdV1};
+use babylon_kernel::tick_content_hash::{
+    PreparedEnvironmentDigestV1, RefDigestV1, TickContentPartsV1, TickContentPreimageV1,
+};
+use babylon_kernel::{sha256_of, ContentDigest};
+use babylon_practice_contract::ordered_action_v1::{
+    OrderedPracticeActionBatchV1, ORDERED_PRACTICE_ACTION_BATCH_V1_LAYOUT_VERSION,
 };
 use babylon_practice_contract::{
     input_authority_ledger_v2_digest, ActorOrganizationIdV2, CampaignIdV2, InputAuthorityIdV2,
-    OrderedPracticeActionBatchV1, PracticeAuthorityKindV2, PracticeIdV2,
-    PracticeInputAuthorityLedgerV2, PracticeInputAuthorityV2, PracticeIntentV2,
-    PracticeTargetIdentityV2, PracticeTargetTagV2, ProposalNonceV2, ResolvedPracticeBatchItemV2,
-    ResolvedPracticeBatchV2, TaggedPracticeTargetV2,
-    ORDERED_PRACTICE_ACTION_BATCH_V1_LAYOUT_VERSION,
+    PracticeAuthorityKindV2, PracticeIdV2, PracticeInputAuthorityLedgerV2,
+    PracticeInputAuthorityV2, PracticeIntentV2, PracticeTargetIdentityV2, PracticeTargetTagV2,
+    ProposalNonceV2, ResolvedPracticeBatchItemV2, ResolvedPracticeBatchV2, TaggedPracticeTargetV2,
 };
 use babylon_tick::replay_identity::{
     encode_stable_world_v1, encode_tick_payload_v1, encode_world_register_set_v1,
@@ -30,7 +32,7 @@ use babylon_tick::replay_identity::{
     TICK_PAYLOAD_LAYOUT_VERSION_V1, WORLD_REGISTER_MANIFEST_LAYOUT_VERSION_V1,
     WORLD_REGISTER_SET_LAYOUT_VERSION_V1,
 };
-use babylon_tick::{ReplayTickError, ReplayTickSession};
+use babylon_tick::replay_session::{ReplayTickError, ReplayTickSession};
 
 const REPLAY_SCENARIO: &str = r"
 (scenario demo/rng-two-classes

@@ -12,8 +12,8 @@ use crate::identity_codec::{
     canonical_event_name_v1, checked_add, checked_u32, encode_bsl_type_v1, encode_const_value_v1,
     encode_effect_signature_v1, encode_enum_kind_v1, encode_evidence_class_v1,
     encode_field_kind_v1, encode_rule_role_v1, validate_enum_member, validate_enum_type,
-    validate_governance_text, validate_qname, validate_symbol, IdentityCodecError, IdentityWriter,
-    MAX_IDENTITY_SECTION_BYTES_V1,
+    validate_governance_text, validate_intrinsic_identity, validate_qname, validate_symbol,
+    IdentityCodecError, IdentityWriter, IntrinsicIdentityViolation, MAX_IDENTITY_SECTION_BYTES_V1,
 };
 use crate::typecheck::TypeEnv;
 use crate::types::{EnumDecl, EnumRegistry};
@@ -294,7 +294,17 @@ fn encode_intrinsics(
     let mut output = IdentityWriter::new("prepared intrinsic costs");
     output.extend(&checked_u32("intrinsic count", count)?.to_be_bytes())?;
     for (name, cost) in rows.iter().take(MAX_PREPARED_SMALL_ROWS_V1 + 1) {
-        validate_symbol("intrinsic name", name)?;
+        validate_intrinsic_identity(name).map_err(|violation| {
+            IdentityCodecError::InvalidString {
+                field: "intrinsic name",
+                index: match violation {
+                    IntrinsicIdentityViolation::Empty => 0,
+                    IntrinsicIdentityViolation::TooLong { actual } => actual,
+                    IntrinsicIdentityViolation::NonAscii { index }
+                    | IntrinsicIdentityViolation::Delimiter { index } => index,
+                },
+            }
+        })?;
         output.str32("intrinsic name", name)?;
         output.extend(&cost.to_be_bytes())?;
     }

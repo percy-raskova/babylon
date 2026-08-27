@@ -1,4 +1,4 @@
-use babylon_practice_contract::ActorOrganizationIdV2;
+use babylon_practice_contract::actor_v2::ActorOrganizationIdV2;
 
 #[test]
 fn actor_identity_round_trips_only_its_opaque_bytes() {

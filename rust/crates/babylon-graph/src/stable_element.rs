@@ -1202,9 +1202,10 @@ mod tests {
     use babylon_kernel::Currency;
 
     use super::{
-        frame_segments, snapshot_topology, validate_resolver_fact_unit_count,
-        validate_resolver_member_count, StableIdentityError, MAX_STABLE_CARRIER_BYTES_V2,
-        MAX_STABLE_RESOLVER_FACT_UNITS_V1, MAX_STABLE_RESOLVER_HYPEREDGE_MEMBERS_V1,
+        frame_segments, snapshot_topology, validate_resolver_edge_count,
+        validate_resolver_fact_unit_count, validate_resolver_member_count, StableIdentityError,
+        MAX_STABLE_CARRIER_BYTES_V2, MAX_STABLE_EDGES_V1, MAX_STABLE_RESOLVER_FACT_UNITS_V1,
+        MAX_STABLE_RESOLVER_HYPEREDGE_MEMBERS_V1,
     };
     use crate::state_hash::CanonicalState;
     use crate::substrate::{HyperedgeId, NodeId};
@@ -1325,6 +1326,18 @@ mod tests {
             Err(StableIdentityError::FactUnitLimit {
                 actual: MAX_STABLE_RESOLVER_FACT_UNITS_V1 + 1,
                 maximum: MAX_STABLE_RESOLVER_FACT_UNITS_V1,
+            })
+        );
+    }
+
+    #[test]
+    fn resolver_edge_ceiling_accepts_maximum_and_refuses_plus_one() {
+        assert_eq!(validate_resolver_edge_count(MAX_STABLE_EDGES_V1), Ok(()));
+        assert_eq!(
+            validate_resolver_edge_count(MAX_STABLE_EDGES_V1 + 1),
+            Err(StableIdentityError::EdgeLimit {
+                actual: MAX_STABLE_EDGES_V1 + 1,
+                maximum: MAX_STABLE_EDGES_V1,
             })
         );
     }

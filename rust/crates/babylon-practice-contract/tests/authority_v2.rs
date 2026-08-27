@@ -1,9 +1,10 @@
+use babylon_practice_contract::actor_v2::ActorOrganizationIdV2;
 use babylon_practice_contract::{
     active_player_authority_v2, decode_input_authority_ledger_v2, decode_input_authority_v2,
     encode_input_authority_ledger_v2, encode_input_authority_v2, input_authority_ledger_v2_digest,
     input_authority_v2_digest, resolve_input_authority_v2, validate_input_authority_ledger_v2,
-    ActorOrganizationIdV2, CampaignIdV2, InputAuthorityIdV2, PracticeAuthorityKindV2,
-    PracticeAuthorityV2Error, PracticeInputAuthorityLedgerV2, PracticeInputAuthorityV2,
+    CampaignIdV2, InputAuthorityIdV2, PracticeAuthorityKindV2, PracticeAuthorityV2Error,
+    PracticeInputAuthorityLedgerV2, PracticeInputAuthorityV2,
 };
 
 fn actor_id(value: u64) -> ActorOrganizationIdV2 {

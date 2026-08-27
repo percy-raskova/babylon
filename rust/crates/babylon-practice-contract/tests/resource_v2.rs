@@ -1,3 +1,4 @@
+use babylon_practice_contract::actor_v2::ActorOrganizationIdV2;
 use babylon_practice_contract::{
     allocate_practice_resources_v2, decode_practice_resource_allocation_contract_v2,
     decode_practice_resource_allocation_outcome_v2, decode_practice_resource_capacity_v2,
@@ -6,8 +7,8 @@ use babylon_practice_contract::{
     encode_practice_resource_allocation_outcome_v2, encode_practice_resource_capacity_v2,
     encode_practice_resource_request_v2, practice_resource_allocation_contract_v2_digest,
     practice_resource_allocation_outcome_v2_digest, practice_resource_capacity_v2_digest,
-    practice_resource_request_v2_digest, ActorOrganizationIdV2, InputAuthorityIdV2, PracticeIdV2,
-    PracticeIntentV2, PracticeResourceAllocationContractV2, PracticeResourceAllocationModeV2,
+    practice_resource_request_v2_digest, InputAuthorityIdV2, PracticeIdV2, PracticeIntentV2,
+    PracticeResourceAllocationContractV2, PracticeResourceAllocationModeV2,
     PracticeResourceCapacityV2, PracticeResourceIdV2, PracticeResourceLocatorV2,
     PracticeResourceRequirementV2, PracticeResourceV2Error, PracticeTargetIdentityV2,
     PracticeTargetTagV2, PracticeUnitIdV2, ProposalNonceV2, TaggedPracticeTargetV2,

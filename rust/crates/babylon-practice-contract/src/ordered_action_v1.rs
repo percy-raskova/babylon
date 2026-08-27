@@ -404,3 +404,37 @@ fn reserve_bytes(
         )?;
     Ok(output)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        checked_batch_capacity, validate_intent_length, OrderedPracticeActionError,
+        MAX_ORDERED_PRACTICE_ACTION_BATCH_BYTES_V1, MAX_PRACTICE_INTENT_CANONICAL_BYTES_V2,
+    };
+
+    #[test]
+    fn ordered_action_encoders_accept_each_maximum_and_refuse_plus_one() {
+        assert_eq!(
+            validate_intent_length(0, MAX_PRACTICE_INTENT_CANONICAL_BYTES_V2),
+            Ok(())
+        );
+        assert_eq!(
+            validate_intent_length(0, MAX_PRACTICE_INTENT_CANONICAL_BYTES_V2 + 1),
+            Err(OrderedPracticeActionError::IntentLength {
+                index: 0,
+                actual: MAX_PRACTICE_INTENT_CANONICAL_BYTES_V2 + 1,
+            })
+        );
+        let accepted_capacity = MAX_ORDERED_PRACTICE_ACTION_BATCH_BYTES_V1 - 37;
+        assert_eq!(
+            checked_batch_capacity(accepted_capacity, 1),
+            Ok(MAX_ORDERED_PRACTICE_ACTION_BATCH_BYTES_V1)
+        );
+        assert_eq!(
+            checked_batch_capacity(accepted_capacity + 1, 1),
+            Err(OrderedPracticeActionError::BatchLength {
+                actual: MAX_ORDERED_PRACTICE_ACTION_BATCH_BYTES_V1 + 1,
+            })
+        );
+    }
+}

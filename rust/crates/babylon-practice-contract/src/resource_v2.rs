@@ -4,11 +4,12 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use babylon_kernel::sha256_of;
 
+use crate::actor_v2::ActorOrganizationIdV2;
 use crate::intent_v2::target_is_valid;
 use crate::{
-    practice_proposal_key_v2, ActorOrganizationIdV2, InputAuthorityIdV2, PracticeIdV2,
-    PracticeIntentV2, PracticeProposalKeyV2, PracticeTargetIdentityV2, PracticeTargetTagV2,
-    ProposalNonceV2, TaggedPracticeTargetV2,
+    practice_proposal_key_v2, InputAuthorityIdV2, PracticeIdV2, PracticeIntentV2,
+    PracticeProposalKeyV2, PracticeTargetIdentityV2, PracticeTargetTagV2, ProposalNonceV2,
+    TaggedPracticeTargetV2,
 };
 
 const SCHEMA_VERSION: u16 = 2;

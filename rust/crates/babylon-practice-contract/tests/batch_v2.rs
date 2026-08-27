@@ -1,14 +1,15 @@
+use babylon_practice_contract::actor_v2::ActorOrganizationIdV2;
 use babylon_practice_contract::{
     decode_resolved_practice_batch_v2, encode_practice_intent_v2,
     encode_resolved_practice_batch_v2, input_authority_ledger_v2_digest,
-    resolved_practice_batch_v2_digest, validate_resolved_practice_batch_v2, ActorOrganizationIdV2,
-    CampaignIdV2, InputAuthorityIdV2, PracticeAuthorityKindV2, PracticeAuthorityV2Error,
-    PracticeBatchV2Error, PracticeIdV2, PracticeInputAuthorityLedgerV2, PracticeInputAuthorityV2,
-    PracticeIntentV2, PracticeIntentV2Error, PracticeTargetIdentityV2, PracticeTargetTagV2,
-    ProposalNonceV2, ResolvedPracticeBatchItemV2, ResolvedPracticeBatchV2,
-    ResolvedPracticeBatchV2Error, TaggedPracticeTargetV2,
-    MAX_RESOLVED_PRACTICE_BATCH_CANONICAL_BYTES_V2, MAX_RESOLVED_PRACTICE_BATCH_ITEMS_V2,
-    MIN_PRACTICE_INTENT_CANONICAL_BYTES_V2, RESOLVED_PRACTICE_BATCH_V2_DOMAIN_BYTES,
+    resolved_practice_batch_v2_digest, validate_resolved_practice_batch_v2, CampaignIdV2,
+    InputAuthorityIdV2, PracticeAuthorityKindV2, PracticeAuthorityV2Error, PracticeBatchV2Error,
+    PracticeIdV2, PracticeInputAuthorityLedgerV2, PracticeInputAuthorityV2, PracticeIntentV2,
+    PracticeIntentV2Error, PracticeTargetIdentityV2, PracticeTargetTagV2, ProposalNonceV2,
+    ResolvedPracticeBatchItemV2, ResolvedPracticeBatchV2, ResolvedPracticeBatchV2Error,
+    TaggedPracticeTargetV2, MAX_RESOLVED_PRACTICE_BATCH_CANONICAL_BYTES_V2,
+    MAX_RESOLVED_PRACTICE_BATCH_ITEMS_V2, MIN_PRACTICE_INTENT_CANONICAL_BYTES_V2,
+    RESOLVED_PRACTICE_BATCH_V2_DOMAIN_BYTES,
 };
 
 fn actor_id(value: u64) -> ActorOrganizationIdV2 {

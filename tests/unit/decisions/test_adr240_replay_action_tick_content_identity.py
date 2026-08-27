@@ -121,6 +121,7 @@ def test_new_identity_types_have_one_public_owning_module_path() -> None:
 
     assert "pub use replay::" not in kernel
     assert "pub use tick_content_hash::" not in kernel
+    assert "pub use actor_v2::" not in practice
     assert "pub use ordered_action_v1::" not in practice
     assert "pub use replay_session::" not in tick
     assert "compatibility oracle" not in design

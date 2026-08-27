@@ -2,7 +2,7 @@
 
 use babylon_kernel::sha256_of;
 
-use crate::ActorOrganizationIdV2;
+use crate::actor_v2::ActorOrganizationIdV2;
 
 const SCHEMA_VERSION: u16 = 2;
 

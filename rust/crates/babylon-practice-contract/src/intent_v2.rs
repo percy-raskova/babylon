@@ -2,9 +2,10 @@
 
 use babylon_kernel::sha256_of;
 
+use crate::actor_v2::ActorOrganizationIdV2;
 use crate::{
-    resolve_input_authority_v2, ActorOrganizationIdV2, CampaignIdV2, InputAuthorityIdV2,
-    PracticeAuthorityV2Error, PracticeInputAuthorityLedgerV2, PracticeInputAuthorityV2,
+    resolve_input_authority_v2, CampaignIdV2, InputAuthorityIdV2, PracticeAuthorityV2Error,
+    PracticeInputAuthorityLedgerV2, PracticeInputAuthorityV2,
 };
 
 const SCHEMA_VERSION: u16 = 2;

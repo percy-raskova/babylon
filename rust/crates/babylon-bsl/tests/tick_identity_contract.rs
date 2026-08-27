@@ -414,6 +414,27 @@ fn prepared_sections_preserve_vocabulary_presence() {
 }
 
 #[test]
+fn prepared_intrinsic_identity_accepts_96_bytes_and_refuses_97() {
+    let maximum = IntrinsicCosts::new(HashMap::from([("x".repeat(96), 1)]));
+    let oversized = IntrinsicCosts::new(HashMap::from([("x".repeat(97), 1)]));
+    let types = TypeEnv {
+        fields: HashMap::new(),
+        exemptions: &[],
+    };
+    let constants = HashMap::new();
+    let enums = EnumRegistry::default();
+
+    assert!(encode_prepared_bsl_sections_v1(&types, &maximum, &constants, &enums, None,).is_ok());
+    assert_eq!(
+        encode_prepared_bsl_sections_v1(&types, &oversized, &constants, &enums, None,),
+        Err(IdentityCodecError::InvalidString {
+            field: "intrinsic name",
+            index: 97,
+        })
+    );
+}
+
+#[test]
 fn prepared_sections_sort_registries_and_preserve_enum_member_order() {
     let (present, _) = prepared_sections();
     assert!(

@@ -12,8 +12,9 @@
 use babylon_kernel::sha256_of;
 use std::collections::HashMap;
 
+use crate::identity_codec::{validate_intrinsic_identity, IntrinsicIdentityViolation};
+
 const MAX_SFS_IDENTITY_ROWS: usize = 64;
-const MAX_SFS_IDENTITY_KEY_BYTES: usize = 96;
 
 /// A refusal while constructing a complete synthetic-audit fuel-table identity.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,25 +58,16 @@ pub enum SfsFuelIdentityError {
 }
 
 fn validate_identity_key(table: &'static str, key: &str) -> Result<(), SfsFuelIdentityError> {
-    if key.is_empty() {
-        return Err(SfsFuelIdentityError::KeyEmpty { table });
-    }
-    if key.len() > MAX_SFS_IDENTITY_KEY_BYTES {
-        return Err(SfsFuelIdentityError::KeyTooLong {
-            table,
-            actual: key.len(),
-        });
-    }
-    if !key.is_ascii() {
-        return Err(SfsFuelIdentityError::KeyNonAscii { table });
-    }
-    if key.as_bytes().contains(&b'|')
-        || key.as_bytes().contains(&b'\n')
-        || key.as_bytes().contains(&b'\r')
-    {
-        return Err(SfsFuelIdentityError::KeyContainsDelimiter { table });
-    }
-    Ok(())
+    validate_intrinsic_identity(key).map_err(|violation| match violation {
+        IntrinsicIdentityViolation::Empty => SfsFuelIdentityError::KeyEmpty { table },
+        IntrinsicIdentityViolation::TooLong { actual } => {
+            SfsFuelIdentityError::KeyTooLong { table, actual }
+        }
+        IntrinsicIdentityViolation::NonAscii { .. } => SfsFuelIdentityError::KeyNonAscii { table },
+        IntrinsicIdentityViolation::Delimiter { .. } => {
+            SfsFuelIdentityError::KeyContainsDelimiter { table }
+        }
+    })
 }
 
 fn append_rows(

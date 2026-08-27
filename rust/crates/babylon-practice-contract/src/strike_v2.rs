@@ -4,12 +4,12 @@ use std::collections::BTreeSet;
 
 use babylon_kernel::sha256_of;
 
+use crate::actor_v2::ActorOrganizationIdV2;
 use crate::{
-    practice_proposal_key_v2, resolved_practice_batch_v2_digest, ActorOrganizationIdV2,
-    InputAuthorityIdV2, PracticeIdV2, PracticeInputAuthorityLedgerV2, PracticeIntentV2,
-    PracticeProposalKeyV2, PracticeTargetIdentityV2, PracticeTargetTagV2, ProposalNonceV2,
-    ResolvedPracticeBatchV2, ResolvedPracticeBatchV2Error, TaggedPracticeTargetV2,
-    MAX_RESOLVED_PRACTICE_BATCH_ITEMS_V2,
+    practice_proposal_key_v2, resolved_practice_batch_v2_digest, InputAuthorityIdV2, PracticeIdV2,
+    PracticeInputAuthorityLedgerV2, PracticeIntentV2, PracticeProposalKeyV2,
+    PracticeTargetIdentityV2, PracticeTargetTagV2, ProposalNonceV2, ResolvedPracticeBatchV2,
+    ResolvedPracticeBatchV2Error, TaggedPracticeTargetV2, MAX_RESOLVED_PRACTICE_BATCH_ITEMS_V2,
 };
 
 const SCHEMA_VERSION: u16 = 2;

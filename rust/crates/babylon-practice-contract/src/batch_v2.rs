@@ -4,15 +4,16 @@ use std::collections::BTreeMap;
 
 use babylon_kernel::sha256_of;
 
+use crate::actor_v2::ActorOrganizationIdV2;
 use crate::authority_v2::validate_input_authority_row_v2;
 use crate::{
     decode_input_authority_v2, decode_practice_intent_v2, encode_input_authority_v2,
     encode_practice_intent_v2, input_authority_ledger_v2_digest, practice_proposal_key_v2,
-    validate_practice_intent_v2, ActorOrganizationIdV2, CampaignIdV2, InputAuthorityIdV2,
-    PracticeAuthorityV2Error, PracticeInputAuthorityLedgerV2, PracticeInputAuthorityV2,
-    PracticeIntentV2, PracticeIntentV2Error, PracticeProposalKeyV2,
-    MAX_PRACTICE_INPUT_AUTHORITY_ROWS_V2, MAX_PRACTICE_INTENT_CANONICAL_BYTES_V2,
-    MIN_PRACTICE_INTENT_CANONICAL_BYTES_V2, PRACTICE_INPUT_AUTHORITY_V2_CANONICAL_BYTES,
+    validate_practice_intent_v2, CampaignIdV2, InputAuthorityIdV2, PracticeAuthorityV2Error,
+    PracticeInputAuthorityLedgerV2, PracticeInputAuthorityV2, PracticeIntentV2,
+    PracticeIntentV2Error, PracticeProposalKeyV2, MAX_PRACTICE_INPUT_AUTHORITY_ROWS_V2,
+    MAX_PRACTICE_INTENT_CANONICAL_BYTES_V2, MIN_PRACTICE_INTENT_CANONICAL_BYTES_V2,
+    PRACTICE_INPUT_AUTHORITY_V2_CANONICAL_BYTES,
 };
 
 const SCHEMA_VERSION: u16 = 2;

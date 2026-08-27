@@ -17,14 +17,15 @@ use babylon_kernel::tick_content_hash::{
     PreparedEnvironmentDigestV1, RefDigestV1, TickContentPartsV1, TickContentPreimageV1,
 };
 use babylon_kernel::{sha256_of, ContentDigest};
+use babylon_practice_contract::actor_v2::ActorOrganizationIdV2;
 use babylon_practice_contract::ordered_action_v1::{
     OrderedPracticeActionBatchV1, ORDERED_PRACTICE_ACTION_BATCH_V1_LAYOUT_VERSION,
 };
 use babylon_practice_contract::{
-    input_authority_ledger_v2_digest, ActorOrganizationIdV2, CampaignIdV2, InputAuthorityIdV2,
-    PracticeAuthorityKindV2, PracticeIdV2, PracticeInputAuthorityLedgerV2,
-    PracticeInputAuthorityV2, PracticeIntentV2, PracticeTargetIdentityV2, PracticeTargetTagV2,
-    ProposalNonceV2, ResolvedPracticeBatchItemV2, ResolvedPracticeBatchV2, TaggedPracticeTargetV2,
+    input_authority_ledger_v2_digest, CampaignIdV2, InputAuthorityIdV2, PracticeAuthorityKindV2,
+    PracticeIdV2, PracticeInputAuthorityLedgerV2, PracticeInputAuthorityV2, PracticeIntentV2,
+    PracticeTargetIdentityV2, PracticeTargetTagV2, ProposalNonceV2, ResolvedPracticeBatchItemV2,
+    ResolvedPracticeBatchV2, TaggedPracticeTargetV2,
 };
 use babylon_tick::replay_identity::{
     encode_stable_world_v1, encode_tick_payload_v1, encode_world_register_set_v1,

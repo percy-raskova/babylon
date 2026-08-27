@@ -1,7 +1,8 @@
+use babylon_practice_contract::actor_v2::ActorOrganizationIdV2;
 use babylon_practice_contract::{
     decode_intent, decode_practice_intent_v2, encode_intent, encode_practice_intent_v2,
-    practice_intent_v2_digest, ActorOrganizationIdV2, InputAuthorityIdV2, PracticeContractError,
-    PracticeIdV1, PracticeIdV2, PracticeIntentV1, PracticeIntentV2, PracticeIntentV2Error,
+    practice_intent_v2_digest, InputAuthorityIdV2, PracticeContractError, PracticeIdV1,
+    PracticeIdV2, PracticeIntentV1, PracticeIntentV2, PracticeIntentV2Error,
     PracticeTargetDomainV1, PracticeTargetIdentityV2, PracticeTargetTagV2, ProposalNonceV2,
     TaggedPracticeTargetV2, PRACTICE_INTENT_V2_SOURCE_SHA256,
 };

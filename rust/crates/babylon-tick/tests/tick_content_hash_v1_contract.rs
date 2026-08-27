@@ -353,28 +353,49 @@ fn production_rng_matches_both_language_neutral_vectors() {
     let domain = RngDomainV2::try_from(text(v2, "domain")).expect("RNG domain");
     let carrier_row = row_by_id(&vectors, text(v2, "carrier_id"));
     assert_eq!(carrier_row.kind, "stable_carrier_key");
-    let subject_row = row_by_id(&vectors, text(&carrier_row.data, "subject_segment_id"));
-    let segments = subject_row.data["segments"]
-        .as_array()
-        .expect("subject carrier segments");
-    let mut graph = MemoryGraph::new();
-    let subject = graph.add_node("SOCIAL_CLASS").expect("carrier subject");
+    assert_eq!(
+        text(&carrier_row.data, "resolver_id"),
+        "cross-allocation-resolver-manifest"
+    );
+    assert_eq!(
+        text(&carrier_row.data, "stable_graph_id"),
+        "cross-allocation-stable-graph"
+    );
+    let (graph, node_names, hyperedge_names) = corpus_graph(false);
     let resolver = StableElementResolverV1::seal(
         &graph,
-        segments[1].as_str().expect("carrier scenario"),
-        &HashMap::from([(
-            subject,
-            segments[2].as_str().expect("carrier local name").to_owned(),
-        )]),
-        &HashMap::new(),
+        "demo/cross-allocation",
+        &node_names,
+        &hyperedge_names,
     )
     .expect("sealed graph resolver");
+    let workers = *node_names
+        .iter()
+        .find(|(_, name)| name.as_str() == "workers")
+        .expect("workers")
+        .0;
+    let capital = *node_names
+        .iter()
+        .find(|(_, name)| name.as_str() == "capital")
+        .expect("capital")
+        .0;
+    let coalition = *hyperedge_names
+        .iter()
+        .find(|(_, name)| name.as_str() == "coalition-one")
+        .expect("coalition")
+        .0;
+    let subject = resolver.node_key(workers).expect("stable subject").clone();
+    let active = [
+        resolver
+            .edge_key("OWNS", capital, workers)
+            .expect("stable edge"),
+        resolver
+            .hyperedge_key(coalition)
+            .expect("stable hyperedge")
+            .clone(),
+    ];
     let carrier = resolver
-        .carrier_key(
-            resolver.node_key(subject).expect("stable subject"),
-            &[],
-            integer(&carrier_row.data, "draw_slot"),
-        )
+        .carrier_key(&subject, &active, integer(&carrier_row.data, "draw_slot"))
         .expect("graph-owned stable carrier");
     assert_eq!(
         carrier.validated_bytes(),

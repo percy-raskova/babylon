@@ -169,8 +169,8 @@ def test_bound_refusal_rows_cover_every_declared_bound() -> None:
     ]
 
     assert {row["data"]["bound"] for row in refusal_rows} == set(contract["bounds"])
-    assert all("accepted_input" in row["data"] for row in refusal_rows)
-    assert all("refused_input" in row["data"] for row in refusal_rows)
+    assert all("accepted_recipe" in row["data"] for row in refusal_rows)
+    assert all("refused_recipe" in row["data"] for row in refusal_rows)
     assert all("expected_code" in row["data"] for row in refusal_rows)
     removed = refusal_rows[-1]
     vectors.remove(removed)
@@ -178,6 +178,54 @@ def test_bound_refusal_rows_cover_every_declared_bound() -> None:
     errors = verify_all(contract, vectors)
 
     assert any("bound refusal set" in error for error in errors)
+
+
+def test_bound_refusals_use_operation_recipes_and_cover_resolver_edges() -> None:
+    contract = load_contract(SCHEMA)
+    vectors = load_vectors(VECTORS, maximum_rows=256, maximum_line_bytes=262_144)
+    refusal_rows = [
+        row
+        for row in vectors
+        if row["kind"] == "refusal" and row["data"]["operation"] == "bound_case"
+    ]
+
+    assert contract["bounds"]["resolver_edges"] == 65_536
+    assert contract["bound_refusals"]["resolver_edges"] == {
+        "operation": "seal_stable_resolver",
+        "expected_code": "edge_limit",
+    }
+    for row in refusal_rows:
+        assert "accepted_input" not in row["data"]
+        assert "refused_input" not in row["data"]
+        assert isinstance(row["data"]["accepted_recipe"]["operation"], str)
+        assert isinstance(row["data"]["refused_recipe"]["operation"], str)
+
+    aggregate = next(row for row in refusal_rows if row["data"]["bound"] == "resolver_fact_units")
+    assert aggregate["data"]["accepted_recipe"] == {
+        "operation": "seal_stable_resolver",
+        "node_rows": 0,
+        "edge_rows": 0,
+        "hyperedge_rows": 16,
+        "hyperedge_member_rows": 1_048_560,
+        "maximum_members_per_hyperedge": 65_535,
+    }
+
+    aggregate["data"]["accepted_recipe"]["node_rows"] = 1
+    errors = verify_all(contract, vectors)
+    assert any(aggregate["id"] in error and "bound_input_value" in error for error in errors)
+
+
+def test_carrier_provenance_is_bound_to_resolver_and_stable_graph_witnesses() -> None:
+    contract = load_contract(SCHEMA)
+    vectors = load_vectors(VECTORS, maximum_rows=256, maximum_line_bytes=262_144)
+    carrier = next(row for row in vectors if row["kind"] == "stable_carrier_key")
+    refusal = next(row for row in vectors if row["id"] == "unknown-carrier-element-refusal")
+
+    assert carrier["data"]["resolver_id"] == "cross-allocation-resolver-manifest"
+    assert carrier["data"]["stable_graph_id"] == "cross-allocation-stable-graph"
+    assert refusal["data"]["operation"] == "stable_carrier_provenance"
+    assert refusal["data"]["expected_code"] == "carrier_provenance"
+    assert verify_all(contract, vectors) == []
 
 
 def test_rng_v2_requires_a_graph_owned_stable_carrier_key() -> None:
@@ -239,6 +287,11 @@ def test_schema_declares_semantic_text_carrier_provenance_and_no_decoder() -> No
     }
     carrier = contract["layouts"]["stable_carrier_key_v2"]
     assert carrier["provenance"] == "sealed graph resolver only"
+    assert carrier["witnesses"] == ["resolver_manifest_v1", "stable_graph_v1"]
+    assert carrier["membership"] == (
+        "node and hyperedge segments must exist in both sealed witnesses; each directed edge "
+        "must exist exactly in the stable graph and both endpoints must exist in both witnesses"
+    )
     assert contract["production_decoder"] == "prohibited"
 
 

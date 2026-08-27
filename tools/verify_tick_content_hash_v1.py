@@ -33,6 +33,7 @@ COMPILED_BOUNDS = {
     "stable_carrier_active_elements": 256,
     "stable_carrier_bytes": 131_072,
     "resolver_rows": 65_536,
+    "resolver_edges": 65_536,
     "resolver_hyperedge_members": 65_536,
     "resolver_fact_units": 1_048_576,
     "resolver_manifest_bytes": 16_777_216,
@@ -300,9 +301,16 @@ def _enum_member(value: str) -> bytes:
 
 
 def _intrinsic_identity(value: str) -> bytes:
-    encoded = _ascii(value)
-    if len(encoded) > COMPILED_BOUNDS["intrinsic_identity_bytes"] or any(
-        byte in b"|\r\n" for byte in encoded
+    if not isinstance(value, str):
+        raise ContractRefusal("invalid_intrinsic_identity", type(value).__name__)
+    try:
+        encoded = value.encode("ascii")
+    except UnicodeEncodeError as error:
+        raise ContractRefusal("invalid_intrinsic_identity", value[:64]) from error
+    if (
+        not encoded
+        or len(encoded) > COMPILED_BOUNDS["intrinsic_identity_bytes"]
+        or any(byte in b"|\r\n" for byte in encoded)
     ):
         raise ContractRefusal("invalid_intrinsic_identity", value[:64])
     return encoded
@@ -507,6 +515,7 @@ def _stable_carrier_key(data: dict[str, Any], rows_by_id: dict[str, dict[str, An
     ):
         raise ContractRefusal("active_element_limit", "stable carrier")
     segment_ids = [data["subject_segment_id"], *active_ids]
+    _validate_carrier_provenance(data, segment_ids, rows_by_id)
     segments: list[bytes] = []
     for row_id in segment_ids[: COMPILED_BOUNDS["stable_carrier_active_elements"] + 1]:
         linked = rows_by_id[row_id]
@@ -525,6 +534,57 @@ def _stable_carrier_key(data: dict[str, Any], rows_by_id: dict[str, dict[str, An
         maximum=COMPILED_BOUNDS["stable_carrier_bytes"],
         field="stable carrier",
     )
+
+
+def _validate_carrier_provenance(
+    data: dict[str, Any],
+    segment_ids: list[str],
+    rows_by_id: dict[str, dict[str, Any]],
+) -> None:
+    resolver = rows_by_id.get(data.get("resolver_id"))
+    stable_graph = rows_by_id.get(data.get("stable_graph_id"))
+    if (
+        resolver is None
+        or resolver.get("kind") != "resolver_manifest"
+        or stable_graph is None
+        or stable_graph.get("kind") != "stable_graph"
+    ):
+        raise ContractRefusal("carrier_provenance", "missing sealed witnesses")
+    resolver_data = resolver["data"]
+    graph_data = stable_graph["data"]
+    if resolver_data["scenario"] != graph_data["scenario"]:
+        raise ContractRefusal("carrier_provenance", "scenario witness mismatch")
+    resolver_nodes = {row["local_name"]: row["node_type"] for row in resolver_data["nodes"]}
+    graph_nodes = {row["local_name"]: row["node_type"] for row in graph_data["nodes"]}
+    resolver_hyperedges = {
+        row["local_name"]: row["hyperedge_type"] for row in resolver_data["hyperedges"]
+    }
+    graph_hyperedges = {
+        row["local_name"]: row["hyperedge_type"] for row in graph_data["hyperedges"]
+    }
+    if resolver_nodes != graph_nodes or resolver_hyperedges != graph_hyperedges:
+        raise ContractRefusal("carrier_provenance", "resolver graph mismatch")
+    graph_edges = {(row["edge_type"], row["source"], row["target"]) for row in graph_data["edges"]}
+    for row_id in segment_ids[: COMPILED_BOUNDS["stable_carrier_active_elements"] + 1]:
+        linked = rows_by_id.get(row_id)
+        if linked is None or linked.get("kind") != "carrier_segment":
+            raise ContractRefusal("carrier_provenance", str(row_id))
+        segments = linked["data"]["segments"]
+        if segments[1] != resolver_data["scenario"]:
+            raise ContractRefusal("carrier_provenance", str(row_id))
+        kind = segments[0]
+        sealed = (
+            (kind == "node" and segments[2] in resolver_nodes)
+            or (kind == "hyperedge" and segments[2] in resolver_hyperedges)
+            or (
+                kind == "edge"
+                and segments[3] in resolver_nodes
+                and segments[4] in resolver_nodes
+                and tuple(segments[2:5]) in graph_edges
+            )
+        )
+        if not sealed:
+            raise ContractRefusal("carrier_provenance", str(row_id))
 
 
 def _resolver_manifest(data: dict[str, Any]) -> bytes:
@@ -1140,54 +1200,316 @@ def _bound_maximum(contract: dict[str, Any], name: str) -> int:
     return maximum["maximum"] if isinstance(maximum, dict) else maximum
 
 
-def _validate_bound_recipe(name: str, actual: int, maximum: int, expected_code: str) -> None:
-    try:
-        if name == "replay_session_bytes":
-            _str16("a" * actual)
-        elif name == "rng_domain_bytes":
-            _qname("a" * 64 + "/" + "b" * (actual - 65), minimum_segments=2)
-        elif name in {"rng_domain_segments", "qname_segments"}:
-            _qname("/".join("a" for _index in range(actual)))
-        elif name == "symbol_bytes":
-            _symbol("a" * actual)
-        elif name == "qname_bytes":
-            _qname("a" * 64 + "/" + "b" * (actual - 65))
-        elif name == "structural_type_bytes":
-            _structural_type("A" * actual)
-        elif name == "intrinsic_identity_bytes":
-            _intrinsic_identity("a" * actual)
-        elif name == "enum_type_bytes":
-            _enum_type("A" + "a" * (actual - 1))
-        elif name == "enum_member_bytes":
-            _enum_member("A" * actual)
-        elif name == "governance_utf8_bytes":
-            _governance("a" * actual)
-        elif actual > maximum:
-            raise ContractRefusal(expected_code, name)
-    except ContractRefusal as error:
-        if actual <= maximum:
-            raise
-        raise ContractRefusal(expected_code, name) from error
+def _recipe_count(recipe: dict[str, Any], name: str) -> int:
+    value = recipe.get(name, 0)
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ContractRefusal("bound_recipe_shape", name)
+    return value
+
+
+def _recipe_counts(recipe: dict[str, Any], name: str, maximum: int) -> list[int]:
+    values = recipe.get(name)
+    if not isinstance(values, list) or len(values) > maximum:
+        raise ContractRefusal("bound_recipe_shape", name)
+    counts = [_recipe_count({name: value}, name) for value in values]
+    return counts
+
+
+def _framed_length(length: int) -> int:
+    return len(str(length)) + 1 + length
+
+
+def _measure_text_bound_recipe(name: str, recipe: dict[str, Any]) -> int | None:
+    if name == "vector_rows":
+        return _recipe_count(recipe, "row_count")
+    if name == "vector_line_bytes":
+        return _recipe_count(recipe, "line_bytes")
+    if name == "replay_session_bytes":
+        return _recipe_count(recipe, "session_bytes")
+    if name in {"rng_domain_bytes", "qname_bytes"}:
+        segments = _recipe_counts(recipe, "segment_bytes", 5)
+        return sum(segments) + max(len(segments) - 1, 0)
+    if name in {"rng_domain_segments", "qname_segments"}:
+        return len(_recipe_counts(recipe, "segment_bytes", 5))
+    scalar_fields = {
+        "symbol_bytes": "symbol_bytes",
+        "structural_type_bytes": "type_bytes",
+        "intrinsic_identity_bytes": "identity_bytes",
+        "enum_type_bytes": "type_bytes",
+        "enum_member_bytes": "member_bytes",
+        "governance_utf8_bytes": "utf8_bytes",
+    }
+    if name in scalar_fields:
+        return _recipe_count(recipe, scalar_fields[name])
+    return None
+
+
+def _measure_graph_bound_recipe(name: str, recipe: dict[str, Any]) -> int | None:
+    scalar_fields = {
+        "stable_carrier_active_elements": "active_segment_count",
+        "resolver_edges": "edge_rows",
+        "resolver_hyperedge_members": "maximum_members_per_hyperedge",
+        "stable_graph_hyperedge_members": "maximum_members_per_hyperedge",
+    }
+    if name in scalar_fields:
+        return _recipe_count(recipe, scalar_fields[name])
+    if name == "stable_carrier_bytes":
+        active_count = _recipe_count(recipe, "active_segment_count")
+        active_length = _recipe_count(recipe, "active_segment_bytes")
+        total = _framed_length(_recipe_count(recipe, "subject_segment_bytes"))
+        total += active_count * (1 + _framed_length(active_length))
+        return total + 1 + _framed_length(_recipe_count(recipe, "draw_slot_bytes"))
+    if name == "resolver_rows":
+        return _recipe_count(recipe, "node_rows") + _recipe_count(recipe, "hyperedge_rows")
+    if name == "resolver_fact_units":
+        return sum(
+            _recipe_count(recipe, field)
+            for field in (
+                "node_rows",
+                "edge_rows",
+                "hyperedge_rows",
+                "hyperedge_member_rows",
+            )
+        )
+    if name == "resolver_manifest_bytes":
+        return sum(
+            _recipe_count(recipe, field)
+            for field in (
+                "domain_layout_bytes",
+                "scenario_section_bytes",
+                "node_section_bytes",
+                "hyperedge_section_bytes",
+            )
+        )
+    graph_elements = ("node_rows", "edge_rows", "hyperedge_rows")
+    graph_attributes = (
+        "node_f64_rows",
+        "edge_f64_rows",
+        "node_currency_rows",
+        "hyperedge_f64_rows",
+    )
+    if name == "stable_graph_elements":
+        return max((_recipe_count(recipe, field) for field in graph_elements), default=0)
+    if name == "stable_graph_attribute_rows":
+        return max((_recipe_count(recipe, field) for field in graph_attributes), default=0)
+    if name == "stable_graph_fact_units":
+        return sum(
+            _recipe_count(recipe, field)
+            for field in (*graph_elements, *graph_attributes, "hyperedge_member_rows")
+        )
+    if name == "stable_graph_bytes":
+        return (
+            _recipe_count(recipe, "domain_layout_bytes")
+            + _recipe_count(recipe, "scenario_section_bytes")
+            + sum(_recipe_counts(recipe, "section_bytes", 8))
+        )
+    return None
+
+
+def _measure_runtime_bound_recipe(name: str, recipe: dict[str, Any]) -> int | None:
+    scalar_fields = {
+        "ordered_action_items": "item_count",
+        "practice_intent_bytes": "intent_bytes",
+        "tick_rule_outcomes": "rule_outcome_rows",
+    }
+    if name in scalar_fields:
+        return _recipe_count(recipe, scalar_fields[name])
+    if name == "ordered_action_batch_bytes":
+        return (
+            _recipe_count(recipe, "existing_batch_bytes")
+            + 36
+            + _recipe_count(recipe, "next_intent_bytes")
+        )
+    prepared_rows = ("field_rows", "constant_rows", "enum_type_rows")
+    prepared_small = ("exemption_rows", "intrinsic_rows")
+    if name == "prepared_rows":
+        return max((_recipe_count(recipe, field) for field in prepared_rows), default=0)
+    if name == "prepared_small_rows":
+        return max((_recipe_count(recipe, field) for field in prepared_small), default=0)
+    if name == "identity_members":
+        return _recipe_count(recipe, "enum_member_rows")
+    if name == "identity_aggregate_rows":
+        return sum(
+            _recipe_count(recipe, field)
+            for field in (*prepared_rows, *prepared_small, "enum_member_rows")
+        )
+    if name == "identity_section_bytes":
+        return sum(_recipe_counts(recipe, "section_bytes", 5))
+    if name == "tick_rows":
+        return max(
+            (
+                _recipe_count(recipe, field)
+                for field in ("event_rows", "receipt_rows", "payload_rows")
+            ),
+            default=0,
+        )
+    return None
+
+
+def _measure_bound_recipe(name: str, recipe: dict[str, Any]) -> int:
+    measured = _measure_text_bound_recipe(name, recipe)
+    if measured is not None:
+        return measured
+    measured = _measure_graph_bound_recipe(name, recipe)
+    if measured is not None:
+        return measured
+    measured = _measure_runtime_bound_recipe(name, recipe)
+    if measured is not None:
+        return measured
+    raise ContractRefusal("unknown_bound_recipe", name)
+
+
+def _execute_text_bound_recipe(name: str, recipe: dict[str, Any], actual: int) -> bool:
+    if name == "replay_session_bytes":
+        _str16("a" * actual)
+    elif name in {"rng_domain_bytes", "rng_domain_segments"}:
+        segments = _recipe_counts(recipe, "segment_bytes", 5)
+        if sum(segments) + len(segments) - 1 > 128:
+            raise ContractRefusal("rng_domain_length", name)
+        if not 2 <= len(segments) <= 4:
+            raise ContractRefusal("rng_domain_segments", name)
+        _qname("/".join("a" * length for length in segments), minimum_segments=2)
+    elif name == "symbol_bytes":
+        _symbol("a" * actual)
+    elif name in {"qname_bytes", "qname_segments"}:
+        segments = _recipe_counts(recipe, "segment_bytes", 5)
+        _qname("/".join("a" * length for length in segments))
+    elif name == "structural_type_bytes":
+        _structural_type("A" * actual)
+    elif name == "intrinsic_identity_bytes":
+        _intrinsic_identity("a" * actual)
+    elif name == "enum_type_bytes":
+        _enum_type("A" + "a" * (actual - 1))
+    elif name == "enum_member_bytes":
+        _enum_member("A" * actual)
+    elif name == "governance_utf8_bytes":
+        _governance("a" * actual)
+    else:
+        return False
+    return True
+
+
+def _execute_graph_bound_recipe(name: str, recipe: dict[str, Any], maximum: int) -> bool:
+    if name.startswith("resolver_") and name != "resolver_manifest_bytes":
+        rows = _measure_bound_recipe("resolver_rows", recipe)
+        edges = _measure_bound_recipe("resolver_edges", recipe)
+        members = _measure_bound_recipe("resolver_hyperedge_members", recipe)
+        facts = _measure_bound_recipe("resolver_fact_units", recipe)
+        if rows > COMPILED_BOUNDS["resolver_rows"]:
+            raise ContractRefusal("row_limit", name)
+        if edges > COMPILED_BOUNDS["resolver_edges"]:
+            raise ContractRefusal("edge_limit", name)
+        if members > COMPILED_BOUNDS["resolver_hyperedge_members"]:
+            raise ContractRefusal("hyperedge_members", name)
+        if facts > COMPILED_BOUNDS["resolver_fact_units"]:
+            raise ContractRefusal("aggregate_row_limit", name)
+    elif name.startswith("stable_graph_"):
+        elements = _measure_bound_recipe("stable_graph_elements", recipe)
+        attributes = _measure_bound_recipe("stable_graph_attribute_rows", recipe)
+        members = _measure_bound_recipe("stable_graph_hyperedge_members", recipe)
+        facts = _measure_bound_recipe("stable_graph_fact_units", recipe)
+        if elements > COMPILED_BOUNDS["stable_graph_elements"]:
+            raise ContractRefusal("row_limit", name)
+        if attributes > COMPILED_BOUNDS["stable_graph_attribute_rows"]:
+            raise ContractRefusal("row_limit", name)
+        if members > COMPILED_BOUNDS["stable_graph_hyperedge_members"]:
+            raise ContractRefusal("hyperedge_members", name)
+        if facts > COMPILED_BOUNDS["stable_graph_fact_units"]:
+            raise ContractRefusal("aggregate_row_limit", name)
+        if name == "stable_graph_bytes" and _measure_bound_recipe(name, recipe) > maximum:
+            raise ContractRefusal("byte_limit", name)
+    else:
+        return False
+    return True
+
+
+def _execute_runtime_bound_recipe(name: str, recipe: dict[str, Any], maximum: int) -> bool:
+    if name in {"ordered_action_items", "practice_intent_bytes"}:
+        if _recipe_count(recipe, "item_count") > COMPILED_BOUNDS["ordered_action_items"]:
+            raise ContractRefusal("row_limit", name)
+        if _recipe_count(recipe, "intent_bytes") > COMPILED_BOUNDS["practice_intent_bytes"]:
+            raise ContractRefusal("intent_length", name)
+    elif name == "ordered_action_batch_bytes":
+        if _recipe_count(recipe, "next_intent_bytes") > COMPILED_BOUNDS["practice_intent_bytes"]:
+            raise ContractRefusal("intent_length", name)
+        if _measure_bound_recipe(name, recipe) > maximum:
+            raise ContractRefusal("byte_limit", name)
+    elif name.startswith("prepared_") or name.startswith("identity_"):
+        rows = _measure_bound_recipe("prepared_rows", recipe)
+        small = _measure_bound_recipe("prepared_small_rows", recipe)
+        members = _measure_bound_recipe("identity_members", recipe)
+        aggregate = _measure_bound_recipe("identity_aggregate_rows", recipe)
+        if (
+            rows > COMPILED_BOUNDS["prepared_rows"]
+            or small > COMPILED_BOUNDS["prepared_small_rows"]
+        ):
+            raise ContractRefusal("row_limit", name)
+        if members > COMPILED_BOUNDS["identity_members"]:
+            raise ContractRefusal("row_limit", name)
+        if aggregate > COMPILED_BOUNDS["identity_aggregate_rows"]:
+            raise ContractRefusal("aggregate_row_limit", name)
+        if name == "identity_section_bytes" and _measure_bound_recipe(name, recipe) > maximum:
+            raise ContractRefusal("byte_limit", name)
+    elif name in {"tick_rule_outcomes", "tick_rows"}:
+        outcomes = _measure_bound_recipe("tick_rule_outcomes", recipe)
+        rows = _measure_bound_recipe("tick_rows", recipe)
+        if outcomes > COMPILED_BOUNDS["tick_rule_outcomes"] or rows > COMPILED_BOUNDS["tick_rows"]:
+            raise ContractRefusal("row_limit", name)
+    else:
+        return False
+    return True
+
+
+def _execute_bound_recipe(name: str, recipe: dict[str, Any]) -> None:
+    actual = _measure_bound_recipe(name, recipe)
+    maximum = {
+        "replay_session_bytes": 256,
+        "rng_domain_bytes": 128,
+        "rng_domain_segments": 4,
+    }.get(name, COMPILED_BOUNDS.get(name))
+    if maximum is None:
+        raise ContractRefusal("unknown_bound_recipe", name)
+    if _execute_text_bound_recipe(name, recipe, actual):
+        return
+    if _execute_graph_bound_recipe(name, recipe, maximum):
+        return
+    if _execute_runtime_bound_recipe(name, recipe, maximum):
+        return
+    if actual <= maximum:
+        return
+    expected_codes = {
+        "vector_rows": "too_many_rows",
+        "vector_line_bytes": "invalid_line_length",
+        "stable_carrier_active_elements": "active_element_limit",
+        "stable_carrier_bytes": "byte_limit",
+        "resolver_manifest_bytes": "byte_limit",
+    }
+    raise ContractRefusal(expected_codes[name], name)
 
 
 def _verify_bound_case(contract: dict[str, Any], row: dict[str, Any]) -> None:
     data = row["data"]
     name = data["bound"]
     declaration = contract["bound_refusals"][name]
-    input_name = declaration["input"]
     expected_code = declaration["expected_code"]
     if data["expected_code"] != expected_code:
         raise ContractRefusal("wrong_refusal", data["expected_code"])
-    accepted = data["accepted_input"]
-    refused = data["refused_input"]
-    if set(accepted) != {input_name} or set(refused) != {input_name}:
-        raise ContractRefusal("bound_input_shape", name)
+    accepted = data["accepted_recipe"]
+    refused = data["refused_recipe"]
+    if (
+        accepted.get("operation") != declaration["operation"]
+        or refused.get("operation") != declaration["operation"]
+    ):
+        raise ContractRefusal("bound_recipe_operation", name)
     maximum = _bound_maximum(contract, name)
-    if accepted[input_name] != maximum or refused[input_name] != maximum + 1:
+    if (
+        _measure_bound_recipe(name, accepted) != maximum
+        or _measure_bound_recipe(name, refused) != maximum + 1
+    ):
         raise ContractRefusal("bound_input_value", name)
-    _validate_bound_recipe(name, accepted[input_name], maximum, expected_code)
+    _execute_bound_recipe(name, accepted)
     try:
-        _validate_bound_recipe(name, refused[input_name], maximum, expected_code)
+        _execute_bound_recipe(name, refused)
     except ContractRefusal as error:
         if error.code != expected_code:
             raise ContractRefusal("wrong_refusal", error.code) from error
@@ -1217,6 +1539,16 @@ def _verify_refusal(
         outer["actions_id"] = data["actions_id"]
         try:
             _validate_outer_action_link(outer, rows_by_id)
+        except ContractRefusal as error:
+            if error.code != data["expected_code"]:
+                raise ContractRefusal("wrong_refusal", error.code) from error
+            return
+        raise ContractRefusal("missing_refusal", row["id"])
+    if data["operation"] == "stable_carrier_provenance":
+        carrier = copy.deepcopy(rows_by_id[data["carrier_id"]]["data"])
+        carrier["subject_segment_id"] = data["subject_segment_id"]
+        try:
+            _stable_carrier_key(carrier, rows_by_id)
         except ContractRefusal as error:
             if error.code != data["expected_code"]:
                 raise ContractRefusal("wrong_refusal", error.code) from error

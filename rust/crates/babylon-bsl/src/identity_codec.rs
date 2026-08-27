@@ -17,6 +17,42 @@ use crate::vocabulary::EnumKind;
 pub const MAX_IDENTITY_SECTION_BYTES_V1: usize = 67_108_864;
 /// Maximum exact UTF-8 bytes in one governance string without a narrower grammar.
 pub const MAX_GOVERNANCE_UTF8_BYTES_V1: usize = 4_194_304;
+/// Maximum bytes in one intrinsic identity shared by fuel and replay identity.
+pub(crate) const MAX_INTRINSIC_IDENTITY_BYTES_V1: usize = 96;
+
+/// One grammar violation in the shared intrinsic identity validator.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum IntrinsicIdentityViolation {
+    Empty,
+    TooLong { actual: usize },
+    NonAscii { index: usize },
+    Delimiter { index: usize },
+}
+
+/// Validate the one canonical intrinsic identity grammar.
+pub(crate) fn validate_intrinsic_identity(value: &str) -> Result<(), IntrinsicIdentityViolation> {
+    if value.is_empty() {
+        return Err(IntrinsicIdentityViolation::Empty);
+    }
+    if value.len() > MAX_INTRINSIC_IDENTITY_BYTES_V1 {
+        return Err(IntrinsicIdentityViolation::TooLong {
+            actual: value.len(),
+        });
+    }
+    for (index, byte) in value
+        .bytes()
+        .enumerate()
+        .take(MAX_INTRINSIC_IDENTITY_BYTES_V1)
+    {
+        if !byte.is_ascii() {
+            return Err(IntrinsicIdentityViolation::NonAscii { index });
+        }
+        if matches!(byte, b'|' | b'\n' | b'\r') {
+            return Err(IntrinsicIdentityViolation::Delimiter { index });
+        }
+    }
+    Ok(())
+}
 
 /// A governed BSL identity-codec refusal.
 #[derive(Debug, Clone, PartialEq, Eq)]

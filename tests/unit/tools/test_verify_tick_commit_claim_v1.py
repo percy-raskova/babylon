@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import json
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,7 @@ from tools.verify_tick_commit_claim_v1 import (
     ClaimContractRefusal,
     load_contract,
     load_vectors,
+    main,
     verify_all,
 )
 
@@ -55,6 +57,94 @@ def test_compiled_schema_drift_refuses() -> None:
 
     with pytest.raises(ClaimContractRefusal, match="compiled_contract_drift"):
         verify_all(contract, vectors)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["contract", "version", "claim_fields", "claim_key", "content_link"],
+)
+def test_compiled_layout_and_identity_drift_refuses(mutation: str) -> None:
+    contract = load_contract(SCHEMA)
+    vectors = load_vectors(VECTORS)
+    if mutation == "contract":
+        contract["meta"]["contract"] = "TickCommitClaimV2"
+    elif mutation == "version":
+        contract["meta"]["version"] = 2
+    elif mutation == "claim_fields":
+        contract["layouts"]["tick_commit_claim_v1"]["fields"].pop()
+    elif mutation == "claim_key":
+        contract["layouts"]["tick_commit_claim_v1"]["key"].reverse()
+    else:
+        contract["layouts"]["tick_content_link_v1"]["fields"][1] = "other_digest32"
+
+    with pytest.raises(ClaimContractRefusal) as exc_info:
+        verify_all(contract, vectors)
+
+    assert exc_info.value.code == "compiled_contract_drift"
+
+
+def test_missing_retry_outcome_refuses() -> None:
+    contract = load_contract(SCHEMA)
+    vectors = [row for row in load_vectors(VECTORS) if row["id"] != "retry-content-mismatch"]
+
+    with pytest.raises(ClaimContractRefusal) as exc_info:
+        verify_all(contract, vectors)
+
+    assert exc_info.value.code == "retry_outcome_drift"
+
+
+def test_duplicate_vector_id_refuses_before_indexing() -> None:
+    contract = load_contract(SCHEMA)
+    vectors = load_vectors(VECTORS)
+    duplicate = copy.deepcopy(next(row for row in vectors if row["id"] == "claim-content-mutated"))
+    duplicate["id"] = "claim-base"
+    vectors.append(duplicate)
+
+    with pytest.raises(ClaimContractRefusal) as exc_info:
+        verify_all(contract, vectors)
+
+    assert exc_info.value.code == "duplicate_vector_id"
+
+
+@pytest.mark.parametrize("malformation", ["missing_id", "missing_data", "missing_reference"])
+def test_malformed_vector_rows_use_typed_refusals(malformation: str) -> None:
+    contract = load_contract(SCHEMA)
+    vectors = copy.deepcopy(load_vectors(VECTORS))
+    expected = "vector_row_shape"
+    if malformation == "missing_id":
+        vectors[0].pop("id")
+    elif malformation == "missing_data":
+        vectors[0].pop("data")
+    else:
+        retry = next(row for row in vectors if row["id"] == "retry-idempotent")
+        retry["data"]["requested_id"] = "claim-missing"
+        expected = "missing_vector_reference"
+
+    with pytest.raises(ClaimContractRefusal) as exc_info:
+        verify_all(contract, vectors)
+
+    assert exc_info.value.code == expected
+
+
+def test_cli_prints_typed_refusal_without_traceback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    vectors = copy.deepcopy(load_vectors(VECTORS))
+    vectors[0].pop("id")
+    vectors_path = tmp_path / "malformed.jsonl"
+    vectors_path.write_text(
+        "\n".join(json.dumps(row, separators=(",", ":")) for row in vectors),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        ["verify_tick_commit_claim_v1.py", "--schema", str(SCHEMA), "--vectors", str(vectors_path)],
+    )
+
+    assert main() == 1
+    assert capsys.readouterr().out == "vector_row_shape: 1\n"
 
 
 def test_vector_loader_refuses_row_and_line_overflow(tmp_path: Path) -> None:

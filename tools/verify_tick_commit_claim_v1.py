@@ -17,6 +17,13 @@ MAX_VECTOR_ROWS = 32
 MAX_VECTOR_LINE_BYTES = 4_096
 MAX_U64 = (1 << 64) - 1
 DOMAIN = b"babylon.tick-commit-claim\0"
+COMPILED_META = {
+    "contract": "TickCommitClaimV1",
+    "version": 1,
+    "issue": "PER-20",
+    "byte_order": "big-endian",
+    "digest": "SHA-256 for vector verification only",
+}
 COMPILED_CONSTANTS = {
     "domain_ascii_nul": "babylon.tick-commit-claim",
     "layout_u32": 1,
@@ -35,6 +42,30 @@ COMPILED_RETRY = {
     "different_key": "key_mismatch",
     "same_key_same_tick_content_hash": "idempotent",
     "same_key_different_tick_content_hash": "content_identity_mismatch",
+}
+COMPILED_LAYOUTS = {
+    "campaign_id_v1": {
+        "semantic_type": "UUID",
+        "vector_text": "canonical lowercase 8-4-4-4-12 hexadecimal",
+        "canonical_value": "exact 16 UUID bytes in network order",
+        "engine_physics": "excluded",
+    },
+    "tick_content_link_v1": {
+        "owning_type": "babylon_kernel::tick_content_hash::TickContentHashV1",
+        "fields": ["tick_content_layout_u32_1", "exact_digest32"],
+        "persistence_alias": "prohibited",
+    },
+    "tick_commit_claim_v1": {
+        "fields": [
+            "domain_ascii_nul",
+            "layout_u32_1",
+            {"tag": 1, "value": "campaign_id_v1_bytes16"},
+            {"tag": 2, "value": "resolve_tick_u64"},
+            {"tag": 3, "value": "tick_content_link_v1"},
+        ],
+        "key": ["campaign_id", "resolve_tick"],
+        "fixed_bytes": 93,
+    },
 }
 REQUIRED_FAMILIES = {"claim", "mutation", "retry", "refusal"}
 
@@ -83,10 +114,14 @@ def load_vectors(path: Path) -> list[dict[str, Any]]:
 
 
 def _verify_compiled_contract(contract: dict[str, Any]) -> None:
+    if contract.get("meta") != COMPILED_META:
+        raise ClaimContractRefusal("compiled_contract_drift", "meta")
     if contract.get("constants") != COMPILED_CONSTANTS:
         raise ClaimContractRefusal("compiled_contract_drift", "constants")
     if contract.get("bounds") != COMPILED_BOUNDS:
         raise ClaimContractRefusal("compiled_contract_drift", "bounds")
+    if contract.get("layouts") != COMPILED_LAYOUTS:
+        raise ClaimContractRefusal("compiled_contract_drift", "layouts")
     retry = contract.get("retry_semantics", {}).get("requested_against_existing")
     if retry != COMPILED_RETRY:
         raise ClaimContractRefusal("compiled_contract_drift", "retry_semantics")
@@ -95,6 +130,56 @@ def _verify_compiled_contract(contract: dict[str, Any]) -> None:
     required = contract.get("vector_families", {}).get("required")
     if not isinstance(required, list) or set(required) != REQUIRED_FAMILIES:
         raise ClaimContractRefusal("compiled_contract_drift", "vector_families")
+
+
+def _validated_rows(vectors: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if len(vectors) > MAX_VECTOR_ROWS:
+        raise ClaimContractRefusal("too_many_rows", str(len(vectors)))
+    rows = vectors[:MAX_VECTOR_ROWS]
+    seen_ids: set[str] = set()
+    for index in range(MAX_VECTOR_ROWS):
+        if index >= len(rows):
+            break
+        row = rows[index]
+        row_id = row.get("id")
+        if (
+            set(row) != {"id", "kind", "data"}
+            or not isinstance(row_id, str)
+            or not row_id
+            or not isinstance(row.get("kind"), str)
+            or not isinstance(row.get("data"), dict)
+        ):
+            raise ClaimContractRefusal("vector_row_shape", str(index + 1))
+        if row_id in seen_ids:
+            raise ClaimContractRefusal("duplicate_vector_id", row_id)
+        seen_ids.add(row_id)
+    return rows
+
+
+def _verify_retry_outcomes(rows: list[dict[str, Any]]) -> None:
+    received: set[str] = set()
+    for index in range(MAX_VECTOR_ROWS):
+        if index >= len(rows):
+            break
+        row = rows[index]
+        if row["kind"] != "retry":
+            continue
+        expected = row["data"].get("expected")
+        if not isinstance(expected, str):
+            raise ClaimContractRefusal("retry_outcome_drift", row["id"])
+        received.add(expected)
+    required = set(COMPILED_RETRY.values())
+    if received != required:
+        detail = f"missing={sorted(required - received)} extra={sorted(received - required)}"
+        raise ClaimContractRefusal("retry_outcome_drift", detail)
+
+
+def _claim_reference(
+    claims: dict[str, dict[str, Any]], value: object, field: str
+) -> dict[str, Any]:
+    if not isinstance(value, str) or value not in claims:
+        raise ClaimContractRefusal("missing_vector_reference", field)
+    return claims[value]
 
 
 def _campaign_bytes(value: object) -> bytes:
@@ -153,6 +238,8 @@ def compose_claim(data: dict[str, Any]) -> bytes:
 
 
 def _retry_result(requested: dict[str, Any], existing: dict[str, Any]) -> str:
+    compose_claim(requested)
+    compose_claim(existing)
     requested_key = (requested["campaign_id"], requested["resolve_tick"])
     existing_key = (existing["campaign_id"], existing["resolve_tick"])
     if requested_key != existing_key:
@@ -188,25 +275,31 @@ def _verify_refusal(row: dict[str, Any]) -> str | None:
 def verify_all(contract: dict[str, Any], vectors: list[dict[str, Any]]) -> list[str]:
     """Verify all bounded rows and return exact row-scoped mismatches."""
     _verify_compiled_contract(contract)
-    families = {row.get("kind") for row in vectors[:MAX_VECTOR_ROWS]}
+    rows = _validated_rows(vectors)
+    families = {row["kind"] for row in rows}
     if families != REQUIRED_FAMILIES:
         raise ClaimContractRefusal("vector_family_drift", repr(families))
-    claims = {
-        row["id"]: row["data"] for row in vectors[:MAX_VECTOR_ROWS] if row.get("kind") == "claim"
-    }
+    _verify_retry_outcomes(rows)
+    claims = {row["id"]: row["data"] for row in rows if row["kind"] == "claim"}
     errors: list[str] = []
-    for row in vectors[:MAX_VECTOR_ROWS]:
-        kind = row.get("kind")
+    for row in rows:
+        kind = row["kind"]
         error: str | None = None
         if kind == "claim":
             error = _verify_claim(row)
         elif kind == "mutation":
             data = row["data"]
-            if compose_claim(claims[data["base_id"]]) == compose_claim(claims[data["mutated_id"]]):
+            base = _claim_reference(claims, data.get("base_id"), f"{row['id']}.base_id")
+            mutated = _claim_reference(claims, data.get("mutated_id"), f"{row['id']}.mutated_id")
+            if compose_claim(base) == compose_claim(mutated):
                 error = f"{row['id']}: mutation did not move claim"
         elif kind == "retry":
             data = row["data"]
-            actual = _retry_result(claims[data["requested_id"]], claims[data["existing_id"]])
+            requested = _claim_reference(
+                claims, data.get("requested_id"), f"{row['id']}.requested_id"
+            )
+            existing = _claim_reference(claims, data.get("existing_id"), f"{row['id']}.existing_id")
+            actual = _retry_result(requested, existing)
             if actual != data.get("expected"):
                 error = f"{row['id']}: expected {data.get('expected')}, got {actual}"
         elif kind == "refusal":
@@ -226,7 +319,11 @@ def main() -> int:
         default=Path("contracts/tick_commit_claim_v1_vectors.jsonl"),
     )
     arguments = parser.parse_args()
-    errors = verify_all(load_contract(arguments.schema), load_vectors(arguments.vectors))
+    try:
+        errors = verify_all(load_contract(arguments.schema), load_vectors(arguments.vectors))
+    except ClaimContractRefusal as error:
+        print(error)
+        return 1
     for error in errors[:MAX_VECTOR_ROWS]:
         print(error)
     return 1 if errors else 0

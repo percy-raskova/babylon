@@ -1,0 +1,768 @@
+#!/usr/bin/env python3
+"""Build and query Babylon's disposable local ADR catalog.
+
+Git-tracked YAML remains authoritative. SQLite stores a validated search copy
+and returns only bounded metadata; it never promotes status or emits ADR bodies.
+"""
+
+from __future__ import annotations
+
+import argparse
+import dataclasses
+import datetime
+import hashlib
+import itertools
+import json
+import os
+import re
+import sqlite3
+import sys
+import tempfile
+from collections import deque
+from collections.abc import Mapping, Sequence
+from pathlib import Path
+from typing import Any, Final
+
+import yaml
+
+SCHEMA_VERSION: Final = "2"
+MAX_DIRECTORY_ENTRIES: Final = 512
+MAX_ADR_FILES: Final = 512
+MAX_DIAGNOSTICS: Final = MAX_ADR_FILES * 4
+MAX_FILE_BYTES: Final = 1_000_000
+MAX_INDEX_ROWS: Final = 512
+MAX_CONTAINER_ITEMS: Final = 512
+MAX_YAML_NODES: Final = 4096
+MAX_SUPERSESSION_PER_ADR: Final = 8
+MAX_SHOW_EDGES: Final = 8
+MAX_DIAGNOSTICS_PER_ADR: Final = 8
+MAX_SEARCH_RESULTS: Final = 5
+MAX_QUERY_CHARS: Final = 200
+MAX_SCOPE_CHARS: Final = 320
+MAX_TITLE_CHARS: Final = 320
+MAX_SEARCH_TITLE_CHARS: Final = 180
+
+DEFAULT_REPO_ROOT: Final = Path(__file__).resolve().parents[1]
+DEFAULT_CACHE: Final = Path(".cache/babylon/adr-catalog.sqlite3")
+
+_ADR_FILE_RE = re.compile(r"^ADR(?P<number>\d{3})_[A-Za-z0-9_]+\.yaml$")
+_ADR_ID_RE = re.compile(r"ADR[-_ ]?(?P<number>\d{1,3})", re.IGNORECASE)
+_QUERY_ID_RE = re.compile(r"(?:ADR[-_ ]?)?(?P<number>\d{1,3})", re.IGNORECASE)
+_SUPERSESSION_KEYS: Final = frozenset({"supersedes", "superseded_by"})
+
+
+class AdrCatalogError(Exception):
+    """Base class for catalog failures."""
+
+
+class SourceParseError(AdrCatalogError):
+    """An ADR source cannot be interpreted safely."""
+
+
+class DuplicateAdrError(AdrCatalogError):
+    """Two files claim the same ADR number."""
+
+
+class SourceChangedError(AdrCatalogError):
+    """Source bytes changed during a build."""
+
+
+class CacheIntegrityError(AdrCatalogError):
+    """A completed cache does not match its recorded digest."""
+
+
+class QueryError(AdrCatalogError):
+    """A query violates the bounded output contract."""
+
+
+@dataclasses.dataclass(frozen=True)
+class SourceFile:
+    relative_path: str
+    adr_id: str
+    number: int
+    content: bytes
+    text: str
+    sha256: str
+
+
+@dataclasses.dataclass(frozen=True)
+class SourceSnapshot:
+    repo_root: Path
+    files: tuple[SourceFile, ...]
+    index_content: bytes
+    source_digest: str
+
+
+@dataclasses.dataclass(frozen=True)
+class IndexRow:
+    status: str | None
+    title: str | None
+
+
+@dataclasses.dataclass(frozen=True)
+class Supersession:
+    kind: str
+    target_id: str
+    scope: str
+
+
+@dataclasses.dataclass(frozen=True)
+class ParsedRecord:
+    source: SourceFile
+    root_key: str | None
+    status: str | None
+    title: str | None
+    title_source: str
+    record_date: str | None
+    index_status: str | None
+    supersession: tuple[Supersession, ...]
+
+
+@dataclasses.dataclass(frozen=True)
+class Diagnostic:
+    adr_id: str
+    code: str
+    detail: str
+
+
+@dataclasses.dataclass(frozen=True)
+class BuildSummary:
+    record_count: int
+    missing_status: int
+    conflicts: int
+    membership_errors: int
+    warning_count: int
+    source_digest: str
+
+
+def _bounded_bytes(path: Path) -> bytes:
+    size = path.stat().st_size
+    if size > MAX_FILE_BYTES:
+        raise SourceParseError(f"{path}: {size} bytes exceeds {MAX_FILE_BYTES}")
+    return path.read_bytes()
+
+
+def capture_snapshot(repo_root: Path) -> SourceSnapshot:
+    """Read each authoritative byte sequence once for one build attempt."""
+    root = repo_root.resolve()
+    directory = root / "ai/decisions"
+    if not directory.is_dir():
+        raise SourceParseError(f"missing ADR directory: {directory}")
+    entries = list(itertools.islice(directory.iterdir(), MAX_DIRECTORY_ENTRIES + 1))
+    if len(entries) > MAX_DIRECTORY_ENTRIES:
+        raise SourceParseError(f"{directory}: too many directory entries")
+    paths = sorted(
+        (entry for entry in entries[:MAX_DIRECTORY_ENTRIES] if _ADR_FILE_RE.match(entry.name)),
+        key=lambda item: item.name,
+    )
+    if not paths or len(paths) > MAX_ADR_FILES:
+        raise SourceParseError(f"expected 1..{MAX_ADR_FILES} ADR files; found {len(paths)}")
+
+    digest = hashlib.sha256()
+    sources: list[SourceFile] = []
+    seen: set[int] = set()
+    for path in paths[:MAX_ADR_FILES]:
+        match = _ADR_FILE_RE.match(path.name)
+        if match is None:
+            raise SourceParseError(f"invalid ADR filename: {path.name}")
+        number = int(match.group("number"))
+        if number in seen:
+            raise DuplicateAdrError(f"ADR{number:03d} appears more than once")
+        seen.add(number)
+        content = _bounded_bytes(path)
+        try:
+            text = content.decode("utf-8")
+        except UnicodeDecodeError as error:
+            raise SourceParseError(f"{path}: source is not UTF-8") from error
+        relative = path.relative_to(root).as_posix()
+        digest.update(relative.encode())
+        digest.update(b"\0")
+        digest.update(content)
+        digest.update(b"\0")
+        sources.append(
+            SourceFile(
+                relative_path=relative,
+                adr_id=f"ADR{number:03d}",
+                number=number,
+                content=content,
+                text=text,
+                sha256=hashlib.sha256(content).hexdigest(),
+            )
+        )
+
+    index_path = directory / "index.yaml"
+    if not index_path.is_file():
+        raise SourceParseError(f"missing legacy index: {index_path}")
+    index_content = _bounded_bytes(index_path)
+    digest.update(b"ai/decisions/index.yaml\0")
+    digest.update(index_content)
+    return SourceSnapshot(root, tuple(sources), index_content, digest.hexdigest())
+
+
+def _load_yaml(content: bytes, source_path: str) -> Any:
+    try:
+        return yaml.safe_load(content)
+    except yaml.YAMLError as error:
+        raise SourceParseError(f"{source_path}: invalid YAML: {error}") from error
+
+
+def _scalar(value: object, field: str, source_path: str) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value.strip() or None
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    if isinstance(value, (datetime.date, datetime.datetime)):
+        return value.isoformat()
+    raise SourceParseError(f"{source_path}: {field} must be scalar")
+
+
+def _status(value: object, field: str, source_path: str) -> str | None:
+    text = _scalar(value, field, source_path)
+    return text.casefold() if text is not None else None
+
+
+def _id_from_text(value: str, source_path: str, field: str) -> str:
+    match = _ADR_ID_RE.search(value)
+    if match is None:
+        raise SourceParseError(f"{source_path}: {field} has no ADR number")
+    return f"ADR{int(match.group('number')):03d}"
+
+
+def _index_rows(snapshot: SourceSnapshot) -> dict[str, IndexRow]:
+    document = _load_yaml(snapshot.index_content, "ai/decisions/index.yaml")
+    if not isinstance(document, Mapping):
+        raise SourceParseError("ai/decisions/index.yaml: root must be a mapping")
+    decisions = document.get("decisions")
+    if not isinstance(decisions, Mapping):
+        raise SourceParseError("ai/decisions/index.yaml: decisions must be a mapping")
+    items = list(decisions.items())
+    if len(items) > MAX_INDEX_ROWS:
+        raise SourceParseError("ai/decisions/index.yaml: too many rows")
+    rows: dict[str, IndexRow] = {}
+    for raw_key, raw_value in items[:MAX_INDEX_ROWS]:
+        key = str(raw_key)
+        adr_id = _id_from_text(key, "ai/decisions/index.yaml", key)
+        if adr_id in rows or not isinstance(raw_value, Mapping):
+            raise SourceParseError(f"ai/decisions/index.yaml: malformed duplicate {key}")
+        rows[adr_id] = IndexRow(
+            status=_status(raw_value.get("status"), f"{key}.status", "index.yaml"),
+            title=_scalar(raw_value.get("title"), f"{key}.title", "index.yaml"),
+        )
+    return rows
+
+
+def _select_record(
+    document: object, source: SourceFile
+) -> tuple[Mapping[object, object], str | None]:
+    if not isinstance(document, Mapping):
+        raise SourceParseError(f"{source.relative_path}: root must be a mapping")
+    items = list(document.items())
+    if len(items) > MAX_CONTAINER_ITEMS:
+        raise SourceParseError(f"{source.relative_path}: root mapping is too large")
+    if len(items) == 1 and isinstance(items[0][1], Mapping):
+        return items[0][1], str(items[0][0])
+    if isinstance(document.get("meta"), Mapping):
+        candidates = [item for item in items[:MAX_CONTAINER_ITEMS] if item[0] != "meta"]
+        if len(candidates) == 1 and isinstance(candidates[0][1], Mapping):
+            return candidates[0][1], str(candidates[0][0])
+    return document, None
+
+
+def _validate_identity(
+    document: Mapping[object, object],
+    record: Mapping[object, object],
+    root_key: str | None,
+    source: SourceFile,
+) -> None:
+    declarations: list[tuple[str, str]] = []
+    if root_key is not None:
+        declarations.append(("root key", root_key))
+    if "id" in record:
+        value = _scalar(record.get("id"), "id", source.relative_path)
+        if value is not None:
+            declarations.append(("id", value))
+    meta = document.get("meta")
+    if isinstance(meta, Mapping) and "id" in meta:
+        value = _scalar(meta.get("id"), "meta.id", source.relative_path)
+        if value is not None:
+            declarations.append(("meta.id", value))
+    for field, value in declarations[:3]:
+        declared = _id_from_text(value, source.relative_path, field)
+        if declared != source.adr_id:
+            raise SourceParseError(
+                f"{source.relative_path}: {field} declares {declared}, expected {source.adr_id}"
+            )
+
+
+def _relation_scopes(value: object, source_path: str, field: str) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        values: list[object] = [value]
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        if len(value) > MAX_SUPERSESSION_PER_ADR:
+            raise SourceParseError(f"{source_path}: {field} has too many entries")
+        values = list(value)[:MAX_SUPERSESSION_PER_ADR]
+    else:
+        raise SourceParseError(f"{source_path}: {field} must be scalar or a list")
+    scopes: list[str] = []
+    for item in values[:MAX_SUPERSESSION_PER_ADR]:
+        text = _scalar(item, field, source_path)
+        if text is not None:
+            collapsed = " ".join(text.split())
+            if len(collapsed) > MAX_SCOPE_CHARS:
+                raise SourceParseError(f"{source_path}: {field} scope is too long")
+            scopes.append(collapsed)
+    return scopes
+
+
+def _supersession(record: Mapping[object, object], source: SourceFile) -> tuple[Supersession, ...]:
+    queue: deque[object] = deque([record])
+    seen_nodes: set[int] = set()
+    edges: list[Supersession] = []
+    seen_edges: set[tuple[str, str, str]] = set()
+    for _ in range(MAX_YAML_NODES):
+        if not queue:
+            break
+        node = queue.popleft()
+        if id(node) in seen_nodes:
+            continue
+        seen_nodes.add(id(node))
+        if isinstance(node, Mapping):
+            items = list(node.items())
+            if len(items) > MAX_CONTAINER_ITEMS:
+                raise SourceParseError(f"{source.relative_path}: mapping is too large")
+            for raw_key, value in items[:MAX_CONTAINER_ITEMS]:
+                key = str(raw_key)
+                if key in _SUPERSESSION_KEYS:
+                    for scope in _relation_scopes(value, source.relative_path, key):
+                        matches = list(
+                            itertools.islice(
+                                _ADR_ID_RE.finditer(scope), MAX_SUPERSESSION_PER_ADR + 1
+                            )
+                        )
+                        if len(matches) > MAX_SUPERSESSION_PER_ADR:
+                            raise SourceParseError(
+                                f"{source.relative_path}: too many supersession targets"
+                            )
+                        for match in matches[:MAX_SUPERSESSION_PER_ADR]:
+                            target = f"ADR{int(match.group('number')):03d}"
+                            identity = (key, target, scope)
+                            if identity not in seen_edges:
+                                seen_edges.add(identity)
+                                edges.append(Supersession(key, target, scope))
+                if isinstance(value, Mapping) or (
+                    isinstance(value, Sequence) and not isinstance(value, (str, bytes))
+                ):
+                    queue.append(value)
+        elif isinstance(node, Sequence) and not isinstance(node, (str, bytes)):
+            if len(node) > MAX_CONTAINER_ITEMS:
+                raise SourceParseError(f"{source.relative_path}: list is too large")
+            queue.extend(list(node)[:MAX_CONTAINER_ITEMS])
+        if len(edges) > MAX_SUPERSESSION_PER_ADR:
+            raise SourceParseError(f"{source.relative_path}: too many supersession edges")
+    if queue:
+        raise SourceParseError(f"{source.relative_path}: YAML node budget exceeded")
+    return tuple(edges)
+
+
+def _parse_record(source: SourceFile, index: IndexRow | None) -> ParsedRecord:
+    document = _load_yaml(source.content, source.relative_path)
+    record, root_key = _select_record(document, source)
+    if not isinstance(document, Mapping):
+        raise SourceParseError(f"{source.relative_path}: root must be a mapping")
+    _validate_identity(document, record, root_key, source)
+    status = _status(record.get("status"), "status", source.relative_path)
+    source_title = _scalar(record.get("title"), "title", source.relative_path)
+    if source_title is not None:
+        title = source_title
+        title_source = "source"
+    elif index is not None and index.title is not None:
+        title = index.title
+        title_source = "index"
+    else:
+        title = None
+        title_source = "missing"
+    return ParsedRecord(
+        source=source,
+        root_key=root_key,
+        status=status,
+        title=title,
+        title_source=title_source,
+        record_date=_scalar(record.get("date"), "date", source.relative_path),
+        index_status=index.status if index is not None else None,
+        supersession=_supersession(record, source),
+    )
+
+
+def _diagnostics(
+    records: tuple[ParsedRecord, ...], indexes: Mapping[str, IndexRow]
+) -> tuple[Diagnostic, ...]:
+    findings: list[Diagnostic] = []
+    source_ids = {record.source.adr_id for record in records[:MAX_ADR_FILES]}
+    for record in records[:MAX_ADR_FILES]:
+        if record.status is None:
+            findings.append(
+                Diagnostic(
+                    record.source.adr_id, "missing-structured-status", "YAML status is absent"
+                )
+            )
+        if (
+            record.status is not None
+            and record.index_status is not None
+            and record.status != record.index_status
+        ):
+            findings.append(
+                Diagnostic(
+                    record.source.adr_id,
+                    "index-status-conflict",
+                    f"source={record.status}; index={record.index_status}",
+                )
+            )
+        if record.title is None:
+            findings.append(Diagnostic(record.source.adr_id, "missing-title", "title is absent"))
+        if record.source.adr_id not in indexes:
+            findings.append(
+                Diagnostic(record.source.adr_id, "missing-index-row", "legacy index row is absent")
+            )
+    for adr_id in sorted(indexes)[:MAX_INDEX_ROWS]:
+        if adr_id not in source_ids:
+            findings.append(Diagnostic(adr_id, "orphan-index-row", "ADR source is absent"))
+    return tuple(findings)
+
+
+_SCHEMA_SQL: Final = """
+PRAGMA foreign_keys = ON;
+CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
+CREATE TABLE adr (
+    id TEXT PRIMARY KEY,
+    number INTEGER NOT NULL UNIQUE,
+    path TEXT NOT NULL UNIQUE,
+    root_key TEXT,
+    source_sha256 TEXT NOT NULL,
+    status TEXT,
+    title TEXT,
+    title_source TEXT NOT NULL,
+    record_date TEXT,
+    index_status TEXT,
+    body TEXT NOT NULL
+) WITHOUT ROWID;
+CREATE TABLE supersession (
+    source_id TEXT NOT NULL REFERENCES adr(id),
+    ordinal INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    PRIMARY KEY (source_id, ordinal)
+) WITHOUT ROWID;
+CREATE TABLE diagnostic (
+    ordinal INTEGER PRIMARY KEY,
+    adr_id TEXT NOT NULL,
+    code TEXT NOT NULL,
+    detail TEXT NOT NULL
+);
+"""
+
+
+def _insert_records(connection: sqlite3.Connection, records: tuple[ParsedRecord, ...]) -> None:
+    for record in records[:MAX_ADR_FILES]:
+        connection.execute(
+            "INSERT INTO adr VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                record.source.adr_id,
+                record.source.number,
+                record.source.relative_path,
+                record.root_key,
+                record.source.sha256,
+                record.status,
+                record.title,
+                record.title_source,
+                record.record_date,
+                record.index_status,
+                record.source.text,
+            ),
+        )
+        for ordinal, edge in enumerate(record.supersession[:MAX_SUPERSESSION_PER_ADR]):
+            connection.execute(
+                "INSERT INTO supersession VALUES (?,?,?,?,?)",
+                (record.source.adr_id, ordinal, edge.kind, edge.target_id, edge.scope),
+            )
+
+
+def _metadata(connection: sqlite3.Connection) -> dict[str, str]:
+    result = connection.execute("PRAGMA quick_check").fetchone()
+    if result is None or result[0] != "ok":
+        raise CacheIntegrityError(f"SQLite quick_check failed: {result}")
+    rows = connection.execute("SELECT key,value FROM meta").fetchmany(5)
+    metadata = {str(row[0]): str(row[1]) for row in rows[:4]}
+    if metadata.get("schema_version") != SCHEMA_VERSION:
+        raise CacheIntegrityError("cache schema version is stale")
+    count = int(connection.execute("SELECT COUNT(*) FROM adr").fetchone()[0])
+    if metadata.get("source_count") != str(count):
+        raise CacheIntegrityError("cache source count does not match its rows")
+    return metadata
+
+
+def _write_database(
+    path: Path,
+    snapshot: SourceSnapshot,
+    records: tuple[ParsedRecord, ...],
+    diagnostics: tuple[Diagnostic, ...],
+) -> None:
+    connection = sqlite3.connect(path)
+    try:
+        connection.execute("PRAGMA journal_mode = DELETE")
+        connection.executescript(_SCHEMA_SQL)
+        connection.executemany(
+            "INSERT INTO meta VALUES (?,?)",
+            (
+                ("schema_version", SCHEMA_VERSION),
+                ("source_digest", snapshot.source_digest),
+                ("source_count", str(len(records))),
+            ),
+        )
+        _insert_records(connection, records)
+        for ordinal, diagnostic in enumerate(diagnostics[:MAX_DIAGNOSTICS]):
+            connection.execute(
+                "INSERT INTO diagnostic VALUES (?,?,?,?)",
+                (ordinal, diagnostic.adr_id, diagnostic.code, diagnostic.detail),
+            )
+        connection.commit()
+        _metadata(connection)
+    finally:
+        connection.close()
+
+
+def _summary(
+    snapshot: SourceSnapshot,
+    records: tuple[ParsedRecord, ...],
+    diagnostics: tuple[Diagnostic, ...],
+) -> BuildSummary:
+    missing = sum(
+        1 for item in diagnostics[:MAX_DIAGNOSTICS] if item.code == "missing-structured-status"
+    )
+    conflicts = sum(
+        1 for item in diagnostics[:MAX_DIAGNOSTICS] if item.code == "index-status-conflict"
+    )
+    membership_errors = sum(
+        1
+        for item in diagnostics[:MAX_DIAGNOSTICS]
+        if item.code in {"missing-index-row", "orphan-index-row"}
+    )
+    return BuildSummary(
+        record_count=len(records),
+        missing_status=missing,
+        conflicts=conflicts,
+        membership_errors=membership_errors,
+        warning_count=len(diagnostics),
+        source_digest=snapshot.source_digest,
+    )
+
+
+def build_cache(
+    repo_root: Path,
+    cache_path: Path,
+    *,
+    snapshot: SourceSnapshot | None = None,
+) -> BuildSummary:
+    """Build, validate, recheck source bytes, and atomically replace the cache."""
+    captured = snapshot if snapshot is not None else capture_snapshot(repo_root)
+    indexes = _index_rows(captured)
+    records = tuple(
+        _parse_record(source, indexes.get(source.adr_id))
+        for source in captured.files[:MAX_ADR_FILES]
+    )
+    diagnostics = _diagnostics(records, indexes)
+    target = cache_path if cache_path.is_absolute() else captured.repo_root / cache_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    handle = tempfile.NamedTemporaryFile(
+        prefix=f".{target.name}.", suffix=".tmp", dir=target.parent, delete=False
+    )
+    temporary = Path(handle.name)
+    handle.close()
+    try:
+        _write_database(temporary, captured, records, diagnostics)
+        if capture_snapshot(captured.repo_root).source_digest != captured.source_digest:
+            raise SourceChangedError("ADR source changed during cache build")
+        os.replace(temporary, target)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+    return _summary(captured, records, diagnostics)
+
+
+def _open_read_only(cache_path: Path) -> sqlite3.Connection:
+    connection = sqlite3.connect(f"{cache_path.resolve().as_uri()}?mode=ro", uri=True)
+    connection.row_factory = sqlite3.Row
+    return connection
+
+
+def _query_id(value: str) -> str:
+    match = _QUERY_ID_RE.fullmatch(value.strip())
+    if match is None:
+        raise QueryError(f"invalid ADR identifier: {value!r}")
+    number = int(match.group("number"))
+    if not 0 <= number <= 999:
+        raise QueryError(f"ADR number outside 000..999: {number}")
+    return f"ADR{number:03d}"
+
+
+def _truncate(value: str | None, limit: int) -> tuple[str | None, bool]:
+    if value is None or len(value) <= limit:
+        return value, False
+    return value[: limit - 1] + "…", True
+
+
+def show(cache_path: Path, adr_id: str) -> dict[str, object]:
+    normalized = _query_id(adr_id)
+    connection = _open_read_only(cache_path)
+    try:
+        metadata = _metadata(connection)
+        row = connection.execute(
+            "SELECT id,status,index_status,title,title_source,record_date,path,root_key,source_sha256 "
+            "FROM adr WHERE id=?",
+            (normalized,),
+        ).fetchone()
+        edge_total = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM supersession WHERE source_id=? OR target_id=?",
+                (normalized, normalized),
+            ).fetchone()[0]
+        )
+        edge_rows = connection.execute(
+            "SELECT source_id,kind,target_id,scope FROM supersession "
+            "WHERE source_id=? OR target_id=? ORDER BY source_id,ordinal LIMIT ?",
+            (normalized, normalized, MAX_SHOW_EDGES),
+        ).fetchall()
+        diagnostic_rows = connection.execute(
+            "SELECT code,detail FROM diagnostic WHERE adr_id=? ORDER BY ordinal LIMIT ?",
+            (normalized, MAX_DIAGNOSTICS_PER_ADR + 1),
+        ).fetchall()
+    finally:
+        connection.close()
+    edges = edge_rows[:MAX_SHOW_EDGES]
+    diagnostics = diagnostic_rows[:MAX_DIAGNOSTICS_PER_ADR]
+    record = None
+    if row is not None:
+        title, title_truncated = _truncate(row["title"], MAX_TITLE_CHARS)
+        record = {
+            "id": row["id"],
+            "status": row["status"],
+            "index_status": row["index_status"],
+            "title": title,
+            "title_truncated": title_truncated,
+            "title_source": row["title_source"],
+            "date": row["record_date"],
+            "source_path": row["path"],
+            "source_sha256": row["source_sha256"],
+            "selector": row["root_key"] or "$",
+        }
+    return {
+        "source_digest": metadata["source_digest"],
+        "record": record,
+        "supersession": [dict(item) for item in edges],
+        "supersession_total": edge_total,
+        "supersession_truncated": edge_total > len(edges),
+        "diagnostics": [dict(item) for item in diagnostics],
+        "diagnostics_truncated": len(diagnostic_rows) > MAX_DIAGNOSTICS_PER_ADR,
+    }
+
+
+def search(cache_path: Path, query: str, limit: int = MAX_SEARCH_RESULTS) -> dict[str, object]:
+    term = query.strip()
+    if not term or len(term) > MAX_QUERY_CHARS:
+        raise QueryError(f"search must contain 1..{MAX_QUERY_CHARS} characters")
+    if not 1 <= limit <= MAX_SEARCH_RESULTS:
+        raise QueryError(f"limit must be 1..{MAX_SEARCH_RESULTS}")
+    connection = _open_read_only(cache_path)
+    try:
+        metadata = _metadata(connection)
+        rows = connection.execute(
+            "SELECT id,status,title,title_source,path,"
+            "CASE WHEN instr(lower(COALESCE(title,'')),lower(?))>0 THEN 'title' ELSE 'body' END "
+            "AS match_location FROM adr WHERE instr(lower(COALESCE(title,'')),lower(?))>0 "
+            "OR instr(lower(body),lower(?))>0 ORDER BY CASE match_location WHEN 'title' THEN 0 "
+            "ELSE 1 END,number LIMIT ?",
+            (term, term, term, limit),
+        ).fetchall()
+    finally:
+        connection.close()
+    results: list[dict[str, object]] = []
+    for row in rows[:MAX_SEARCH_RESULTS]:
+        item = dict(row)
+        title, title_truncated = _truncate(item["title"], MAX_SEARCH_TITLE_CHARS)
+        item["title"] = title
+        item["title_truncated"] = title_truncated
+        results.append(item)
+    return {
+        "source_digest": metadata["source_digest"],
+        "query": term,
+        "results": results,
+    }
+
+
+def check_catalog(repo_root: Path) -> BuildSummary:
+    with tempfile.TemporaryDirectory(prefix="babylon-adr-check-") as temporary:
+        summary = build_cache(repo_root, Path(temporary) / "catalog.sqlite3")
+    if summary.membership_errors:
+        raise SourceParseError(
+            f"source/index membership differs in {summary.membership_errors} row(s)"
+        )
+    return summary
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo", type=Path, default=DEFAULT_REPO_ROOT)
+    parser.add_argument("--cache", type=Path, default=DEFAULT_CACHE)
+    commands = parser.add_subparsers(dest="command", required=True)
+    exact = commands.add_parser("show", help="show bounded metadata for one ADR")
+    exact.add_argument("adr_id")
+    finder = commands.add_parser("search", help="search titles and stored source bytes")
+    finder.add_argument("query")
+    finder.add_argument("--limit", type=int, default=MAX_SEARCH_RESULTS)
+    commands.add_parser("check", help="build and validate a temporary catalog")
+    return parser
+
+
+def _emit(payload: object, byte_limit: int = 4096) -> None:
+    output = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    encoded = (output + "\n").encode()
+    if len(encoded) > byte_limit:
+        raise CacheIntegrityError(f"CLI output exceeds {byte_limit} bytes")
+    sys.stdout.buffer.write(encoded)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parser().parse_args(argv)
+    repo = args.repo.resolve()
+    cache = args.cache if args.cache.is_absolute() else repo / args.cache
+    try:
+        if args.command == "check":
+            summary = check_catalog(repo)
+            _emit(
+                {
+                    "status": "ok",
+                    "records": summary.record_count,
+                    "missing_status": summary.missing_status,
+                    "conflicts": summary.conflicts,
+                }
+            )
+        else:
+            build_cache(repo, cache)
+            if args.command == "show":
+                _emit(show(cache, args.adr_id))
+            elif args.command == "search":
+                _emit(search(cache, args.query, args.limit))
+            else:
+                raise QueryError(f"unsupported command: {args.command}")
+    except (AdrCatalogError, OSError, sqlite3.Error) as error:
+        print(f"adr-catalog: {error}", file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

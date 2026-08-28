@@ -26,7 +26,7 @@ use crate::writer_gate::RustWriterAuthority;
 
 const COMMITTED_TICK_SESSION_SETTINGS_SQL: &str = "SET statement_timeout TO '30000ms'";
 const COMMITTED_TICK_LOCAL_SETTINGS_SQL: &str = "SET LOCAL search_path TO pg_catalog; \
-    SET LOCAL synchronous_commit TO off";
+    SET LOCAL synchronous_commit TO on";
 const COMMITTED_TICK_SETTINGS_QUERY: &str = "SELECT \
     pg_catalog.current_setting('transaction_isolation'), \
     pg_catalog.current_setting('transaction_read_only'), \
@@ -819,7 +819,7 @@ fn prepare_transaction(transaction: &mut Transaction<'_>) -> Result<(), Committe
         ("transaction_isolation", "serializable"),
         ("transaction_read_only", "off"),
         ("search_path", "pg_catalog"),
-        ("synchronous_commit", "off"),
+        ("synchronous_commit", "on"),
         ("statement_timeout", "30s"),
         ("lock_timeout", "5s"),
         ("idle_in_transaction_session_timeout", "5s"),

@@ -52,6 +52,15 @@ fn commit_acknowledgements_have_closed_direct_idempotent_and_reconciled_disposit
 }
 
 #[test]
+fn commit_acknowledgement_requires_synchronous_wal_flush() {
+    let source = include_str!("../src/committed_tick_writer.rs");
+
+    assert!(source.contains("SET LOCAL synchronous_commit TO on"));
+    assert!(source.contains("(\"synchronous_commit\", \"on\")"));
+    assert!(!source.contains("SET LOCAL synchronous_commit TO off"));
+}
+
+#[test]
 fn hydration_plan_owns_exact_ordered_checkpoint_rows_and_bounded_tail() {
     let plan = CommittedTickHydrationPlanV1::compose(
         12,

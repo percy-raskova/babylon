@@ -2042,7 +2042,7 @@ fn live_adopter_tests_are_split_between_pr_and_weekly_cadences() {
         1
     );
     assert!(pr_job.contains(
-        "- name: Rust PostgreSQL atomicity and installed-mutation contracts\n        timeout-minutes: 22\n        env:\n          BABYLON_LEGACY_ADOPTER_LIVE_FOCUS: pr\n        run: mise run test:rust-legacy-adopter-pg"
+        "- name: Rust PostgreSQL atomicity and installed-mutation contracts\n        timeout-minutes: 26\n        env:\n          BABYLON_LEGACY_ADOPTER_LIVE_FOCUS: pr\n        run: mise run test:rust-legacy-adopter-pg"
     ));
     assert!(!pr_job.contains("BABYLON_LEGACY_ADOPTER_TEST_DSN"));
     assert!(!pr_job.contains("cargo doc"));
@@ -2202,7 +2202,7 @@ fn ci_step_exceeds_the_focused_runner_envelope() {
     const BUILD_ENVELOPE_SECONDS: u64 = 180 + 10;
     const START_ENVELOPE_SECONDS: u64 = 30 + 5;
     const READINESS_ENVELOPE_SECONDS: u64 = 90 + 2;
-    const FOCUSED_CARGO_ENVELOPE_SECONDS: u64 = 2 * (300 + 10);
+    const FOCUSED_CARGO_ENVELOPE_SECONDS: u64 = 3 * (300 + 10);
     const CLEANUP_ENVELOPE_SECONDS: u64 = 35 + 12 + 12 + 35;
     const FOCUSED_RUNNER_ENVELOPE_SECONDS: u64 = CONTROL_PLANE_ENVELOPE_SECONDS
         + BUILD_ENVELOPE_SECONDS
@@ -2214,7 +2214,7 @@ fn ci_step_exceeds_the_focused_runner_envelope() {
     let pr_workflow = include_str!("../../../../.github/workflows/ci.yml");
     let pr_job = yaml_job(pr_workflow, "  pg-integration:");
     assert!(pr_job.contains(
-        "- name: Rust PostgreSQL atomicity and installed-mutation contracts\n        timeout-minutes: 22"
+        "- name: Rust PostgreSQL atomicity and installed-mutation contracts\n        timeout-minutes: 26"
     ));
     let pr_job_seconds = pr_job
         .lines()
@@ -2238,7 +2238,7 @@ fn ci_step_exceeds_the_focused_runner_envelope() {
         .unwrap()
         * 60;
     assert_eq!(pr_job_seconds, 61 * 60);
-    assert_eq!(pr_step_seconds, 22 * 60);
+    assert_eq!(pr_step_seconds, 26 * 60);
     assert!(pr_step_seconds >= FOCUSED_RUNNER_ENVELOPE_SECONDS + 120);
     assert!(pr_job_seconds >= pr_step_seconds + 30 * 60);
 }

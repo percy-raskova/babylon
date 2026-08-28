@@ -138,7 +138,7 @@ fn verify_coarse_child_resolution_refuses_before_ancestry(base: &Config, templat
                             actual: 4
                         }
                     )
-            }))
+            }));
         }
         other => panic!("coarse child resolution must refuse without panic: {other:?}"),
     }

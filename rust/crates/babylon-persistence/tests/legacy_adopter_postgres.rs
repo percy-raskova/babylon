@@ -483,42 +483,45 @@ fn raw_v6_epoch_census(config: &Config, legacy_origin: bool) -> String {
         let schema: String = row.try_get(1).unwrap();
         let name: String = row.try_get(2).unwrap();
         let digest: String = row.try_get(3).unwrap();
-        let owned_relation =
-            kind == "relation" && matches!(schema.as_str(), "babylon_ref" | "babylon_state");
-        let owned_schema = kind == "schema"
-            && schema == "pg_namespace"
-            && matches!(name.as_str(), "babylon_ref" | "babylon_state");
-        let fresh_meta = !legacy_origin
-            && kind == "schema_grant"
-            && schema == "pg_namespace"
-            && name == "babylon_meta";
-        let legacy_shadow = legacy_origin
-            && matches!(kind.as_str(), "relation" | "partitioned_table")
-            && schema == "public"
-            && matches!(
-                name.as_str(),
-                "dynamic_hex_state"
-                    | "hex_activity"
-                    | "hex_cell"
-                    | "hex_latest"
-                    | "hex_map"
-                    | "hex_r8_linear_features_reference"
-                    | "hex_r8_reference"
-                    | "hex_spatial_map"
-                    | "hex_state"
-                    | "hex_substrate"
-                    | "hex_terrain_state"
-                    | "immutable_reference_lodes_od_matrix"
-                    | "infrastructure_link_state"
-                    | "org_snapshot"
-                    | "tick_event"
-            );
-        if owned_relation || owned_schema || fresh_meta || legacy_shadow {
+        if is_v6_epoch_census_entry(&kind, &schema, &name, legacy_origin) {
             writeln!(fixture, "{kind}|{schema}|{name}|{digest}").unwrap();
         }
     }
     transaction.rollback().unwrap();
     fixture
+}
+
+fn is_v6_epoch_census_entry(kind: &str, schema: &str, name: &str, legacy_origin: bool) -> bool {
+    let owned_relation = kind == "relation" && matches!(schema, "babylon_ref" | "babylon_state");
+    let owned_schema = kind == "schema"
+        && schema == "pg_namespace"
+        && matches!(name, "babylon_ref" | "babylon_state");
+    let fresh_meta = !legacy_origin
+        && kind == "schema_grant"
+        && schema == "pg_namespace"
+        && name == "babylon_meta";
+    let legacy_shadow = legacy_origin
+        && matches!(kind, "relation" | "partitioned_table")
+        && schema == "public"
+        && matches!(
+            name,
+            "dynamic_hex_state"
+                | "hex_activity"
+                | "hex_cell"
+                | "hex_latest"
+                | "hex_map"
+                | "hex_r8_linear_features_reference"
+                | "hex_r8_reference"
+                | "hex_spatial_map"
+                | "hex_state"
+                | "hex_substrate"
+                | "hex_terrain_state"
+                | "immutable_reference_lodes_od_matrix"
+                | "infrastructure_link_state"
+                | "org_snapshot"
+                | "tick_event"
+        );
+    owned_relation || owned_schema || fresh_meta || legacy_shadow
 }
 
 fn verify_h3_installed_mutations(phases: &LivePhaseReceipts, base: &Config) {

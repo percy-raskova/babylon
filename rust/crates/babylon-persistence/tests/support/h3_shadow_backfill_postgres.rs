@@ -1,4 +1,4 @@
-//! Live PostgreSQL proof for the frozen legacy H3 shadow-key backfill.
+//! Live `PostgreSQL` proof for the frozen legacy H3 shadow-key backfill.
 
 use super::{
     assert_lock_released, database_user, h3_reference_installer_postgres, ScratchDatabase,
@@ -6,7 +6,8 @@ use super::{
 use babylon_persistence::{
     adopt_legacy_schema, backfill_legacy_h3_shadow_keys, install_representative_h3_cohort,
     migrate_schema_epoch, H3CellId, H3ShadowBackfillDisposition, H3ShadowBackfillError,
-    H3ShadowBackfillIssueKind, H3ShadowRelation, H3_SHADOW_FIELD_COUNT, H3_SHADOW_RELATION_COUNT,
+    H3ShadowBackfillIssueKind, H3ShadowBackfillReport, H3ShadowFieldReport, H3ShadowRelation,
+    H3ShadowRelationReport, H3_SHADOW_FIELD_COUNT, H3_SHADOW_RELATION_COUNT,
 };
 use postgres::{Config, IsolationLevel, NoTls};
 use uuid::Uuid;
@@ -103,7 +104,20 @@ fn verify_all_governed_fields_backfill_once_and_retry_exactly(base: &Config, tem
     assert_eq!(report.relations.len(), H3_SHADOW_RELATION_COUNT);
     assert_eq!(legacy_value_snapshot(&config), legacy_before);
 
-    for field in &report.fields {
+    assert_field_coverage(&report.fields);
+    assert_relation_coverage(&report.relations);
+    assert_exact_shadow_values(&config, &cell);
+
+    let retry = backfill_legacy_h3_shadow_keys(&config)
+        .expect("the exact completed H3 shadow estate must be idempotent");
+    assert_retry_receipt(&report, &retry);
+    assert_eq!(legacy_value_snapshot(&config), legacy_before);
+    assert_lock_released(&config);
+    database.cleanup();
+}
+
+fn assert_field_coverage(fields: &[H3ShadowFieldReport]) {
+    for field in fields {
         let intentionally_empty_r8 = matches!(
             field.relation,
             H3ShadowRelation::HexR8LinearFeaturesReference
@@ -117,8 +131,7 @@ fn verify_all_governed_fields_backfill_once_and_retry_exactly(base: &Config, tem
             assert_eq!(field.source_value_count, field.mapped_value_count);
         }
     }
-    let workplace = report
-        .fields
+    let workplace = fields
         .iter()
         .find(|field| {
             field.relation == H3ShadowRelation::ImmutableReferenceLodesOdMatrix
@@ -134,7 +147,10 @@ fn verify_all_governed_fields_backfill_once_and_retry_exactly(base: &Config, tem
         ),
         (2, 1, 1, 1)
     );
-    for relation in &report.relations {
+}
+
+fn assert_relation_coverage(relations: &[H3ShadowRelationReport]) {
+    for relation in relations {
         let intentionally_empty_r8 = matches!(
             relation.relation,
             H3ShadowRelation::HexR8LinearFeaturesReference
@@ -157,31 +173,27 @@ fn verify_all_governed_fields_backfill_once_and_retry_exactly(base: &Config, tem
         }
         assert_ne!(relation.ordered_semantic_hash, [0; 32]);
     }
-    assert_exact_shadow_values(&config, &cell);
+}
 
-    let retry = backfill_legacy_h3_shadow_keys(&config)
-        .expect("the exact completed H3 shadow estate must be idempotent");
+fn assert_retry_receipt(initial: &H3ShadowBackfillReport, retry: &H3ShadowBackfillReport) {
     assert_eq!(
         retry.disposition,
         H3ShadowBackfillDisposition::AlreadyComplete
     );
-    assert_eq!(retry.fields, report.fields);
+    assert_eq!(retry.fields, initial.fields);
     assert!(retry
         .relations
         .iter()
         .all(|relation| relation.rows_backfilled == 0 && relation.batches_committed == 0));
-    for (initial, retried) in report.relations.iter().zip(&retry.relations) {
-        assert_eq!(initial.relation, retried.relation);
-        assert_eq!(initial.row_count, retried.row_count);
+    for (first, retried) in initial.relations.iter().zip(&retry.relations) {
+        assert_eq!(first.relation, retried.relation);
+        assert_eq!(first.row_count, retried.row_count);
         assert_eq!(
-            initial.distinct_semantic_group_count,
+            first.distinct_semantic_group_count,
             retried.distinct_semantic_group_count
         );
-        assert_eq!(initial.ordered_semantic_hash, retried.ordered_semantic_hash);
+        assert_eq!(first.ordered_semantic_hash, retried.ordered_semantic_hash);
     }
-    assert_eq!(legacy_value_snapshot(&config), legacy_before);
-    assert_lock_released(&config);
-    database.cleanup();
 }
 
 fn verify_backend_crash_rolls_back_shadow_write(
@@ -359,13 +371,17 @@ fn insert_governed_rows(config: &Config, cell: &RepresentativeCell) {
             &[&session, r7],
         )
         .unwrap();
+    insert_nullable_and_multi_field_rows(&mut client, session, r7);
+}
+
+fn insert_nullable_and_multi_field_rows(client: &mut postgres::Client, session: Uuid, r7: &str) {
     client
         .execute(
             "INSERT INTO public.immutable_reference_lodes_od_matrix \
          (session_id, year, home_hex, workplace_dest, workplace_dest_kind, s000_workers) \
          VALUES ($1, 2026, $2, $2, 'hex', 1), \
                 ($1, 2026, $2, 'canada', 'external', 1)",
-            &[&session, r7],
+            &[&session, &r7],
         )
         .unwrap();
     client
@@ -373,7 +389,7 @@ fn insert_governed_rows(config: &Config, cell: &RepresentativeCell) {
             "INSERT INTO public.infrastructure_link_state \
          (session_id, tick, source_h3, target_h3, link_id, infra_type) \
          VALUES ($1, 0, $2, $2, 'per279-link', 'power')",
-            &[&session, r7],
+            &[&session, &r7],
         )
         .unwrap();
     client
@@ -382,7 +398,7 @@ fn insert_governed_rows(config: &Config, cell: &RepresentativeCell) {
          (game_id, tick, org_id, org_type, home_hex, attributes) \
          VALUES ($1, 0, 'mapped-org', 'business', $2, '{}'::jsonb), \
                 ($1, 0, 'unplaced-org', 'business', NULL, '{}'::jsonb)",
-            &[&session, r7],
+            &[&session, &r7],
         )
         .unwrap();
     client
@@ -391,7 +407,7 @@ fn insert_governed_rows(config: &Config, cell: &RepresentativeCell) {
          (game_id, tick, event_type, h3_index, summary) \
          VALUES ($1, 0, 'mapped', $2, 'mapped'), \
                 ($1, 0, 'unplaced', NULL, 'unplaced')",
-            &[&session, r7],
+            &[&session, &r7],
         )
         .unwrap();
 }

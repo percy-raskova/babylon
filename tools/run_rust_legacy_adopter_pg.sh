@@ -22,8 +22,9 @@ die() {
 
 case "$LIVE_FOCUS" in
   "" | h3_atomicity | installed_mutation | schema_epoch_fresh | schema_epoch_matrix | \
-    schema_epoch_rollback | schema_epoch_v5_census | h3_pg_oracle | \
-    h3_reference_installer | committed_tick_writer | pr) ;;
+    schema_epoch_rollback | schema_epoch_v5_census | schema_epoch_v6_census | \
+    h3_pg_oracle | h3_reference_installer | h3_shadow_backfill | \
+    committed_tick_writer | pr) ;;
   *) die "unsupported live focus: $LIVE_FOCUS" ;;
 esac
 
@@ -123,6 +124,19 @@ wait_for_runtime() {
   return 1
 }
 
+run_schema_epoch_rollback_test() {
+  local migration="$1"
+  timeout --signal=TERM --kill-after=10s 300s \
+    env \
+      BABYLON_LEGACY_ADOPTER_TEST_DSN="postgresql://test:test@127.0.0.1:$PORT/postgres" \
+      BABYLON_LEGACY_ADOPTER_DISPOSABLE_ACK="$TEST_HARNESS_ACK" \
+      BABYLON_LEGACY_ADOPTER_DISPOSABLE_CANARY="$CANARY" \
+      CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/rust/target}" \
+    cargo test -p babylon-persistence --lib \
+      "schema_epoch::live_rollback_tests::${migration}_rollback_and_ambiguous_commit_reconciliation_are_atomic" \
+      --locked -- --nocapture --ignored --exact --test-threads=1
+}
+
 # shellcheck disable=SC2329 # Invoked by the INT, TERM, and HUP traps below.
 on_signal() {
   local -r status="$1"
@@ -188,27 +202,9 @@ printf 'PER-20 runtime ready: container=%s volume=%s port=%s\n' \
 cd "$REPO_ROOT/rust"
 status=0
 if [ "$LIVE_FOCUS" = "schema_epoch_rollback" ]; then
-  timeout --signal=TERM --kill-after=10s 300s \
-    env \
-      BABYLON_LEGACY_ADOPTER_TEST_DSN="postgresql://test:test@127.0.0.1:$PORT/postgres" \
-      BABYLON_LEGACY_ADOPTER_DISPOSABLE_ACK="$TEST_HARNESS_ACK" \
-      BABYLON_LEGACY_ADOPTER_DISPOSABLE_CANARY="$CANARY" \
-      CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/rust/target}" \
-    cargo test -p babylon-persistence --lib \
-      schema_epoch::live_rollback_tests::migration_four_rollback_and_ambiguous_commit_reconciliation_are_atomic \
-      --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
-fi
-
-if [ "$status" -eq 0 ] && [ "$LIVE_FOCUS" = "schema_epoch_rollback" ]; then
-  timeout --signal=TERM --kill-after=10s 300s \
-    env \
-      BABYLON_LEGACY_ADOPTER_TEST_DSN="postgresql://test:test@127.0.0.1:$PORT/postgres" \
-      BABYLON_LEGACY_ADOPTER_DISPOSABLE_ACK="$TEST_HARNESS_ACK" \
-      BABYLON_LEGACY_ADOPTER_DISPOSABLE_CANARY="$CANARY" \
-      CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/rust/target}" \
-    cargo test -p babylon-persistence --lib \
-      schema_epoch::live_rollback_tests::migration_five_rollback_and_ambiguous_commit_reconciliation_are_atomic \
-      --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
+  for migration in migration_four migration_five migration_six; do
+    run_schema_epoch_rollback_test "$migration" || { status=$?; break; }
+  done
 fi
 
 if [ "$LIVE_FOCUS" = "h3_atomicity" ] || [ "$LIVE_FOCUS" = "pr" ]; then
@@ -253,8 +249,10 @@ if [ "$status" -eq 0 ] &&
     { [ "$LIVE_FOCUS" = "schema_epoch_fresh" ] ||
       [ "$LIVE_FOCUS" = "schema_epoch_matrix" ] ||
       [ "$LIVE_FOCUS" = "schema_epoch_v5_census" ] ||
+      [ "$LIVE_FOCUS" = "schema_epoch_v6_census" ] ||
       [ "$LIVE_FOCUS" = "h3_pg_oracle" ] ||
-      [ "$LIVE_FOCUS" = "h3_reference_installer" ]; }; then
+      [ "$LIVE_FOCUS" = "h3_reference_installer" ] ||
+      [ "$LIVE_FOCUS" = "h3_shadow_backfill" ]; }; then
   timeout --signal=TERM --kill-after=10s 300s \
     env \
       BABYLON_LEGACY_ADOPTER_TEST_DSN="postgresql://test:test@127.0.0.1:$PORT/postgres" \

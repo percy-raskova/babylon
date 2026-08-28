@@ -351,8 +351,12 @@ def read_hex_county_adjunction(runtime: RuntimePersistence, session_id: UUID) ->
 
 
 _HEX_SPATIAL_MAP_INSERT = """
-INSERT INTO hex_spatial_map (session_id, h3_index, county_fips, state_fips, region_id)
-VALUES (%(session_id)s, %(h3_index)s, %(county_fips)s, %(state_fips)s, %(region_id)s)
+INSERT INTO hex_spatial_map (
+    session_id, h3_index, county_fips, state_fips, region_id, cell_id
+)
+VALUES (
+    %(session_id)s, %(h3_index)s, %(county_fips)s, %(state_fips)s, %(region_id)s, NULL
+)
 ON CONFLICT (session_id, h3_index) DO NOTHING
 """
 
@@ -389,20 +393,21 @@ def _persist_hex_spatial_map(runtime: Any, hex_rows: list[DynamicHexState]) -> N
     with pool.connection() as conn, conn.transaction(), conn.cursor() as cur:
         cur.execute(
             "CREATE TEMP TABLE _hex_spatial_map_tmp "
-            "(session_id UUID, h3_index TEXT, county_fips TEXT, "
+            "(session_id UUID, h3_index TEXT, cell_id BIGINT, county_fips TEXT, "
             "state_fips TEXT, region_id TEXT) "
             "ON COMMIT DROP"
         )
         with cur.copy("COPY _hex_spatial_map_tmp FROM STDIN") as copy:
+            null = "\\N"
             for row in hex_rows:
-                copy.write(
-                    f"{row.session_id}\t{row.h3_index}\t{row.county_fips}\t"
+                copy.write(  # The Rust maintenance backfill alone fills cell_id.
+                    f"{row.session_id}\t{row.h3_index}\t{null}\t{row.county_fips}\t"
                     f"{row.state_fips}\t{row.region_id}\n".encode()
                 )
         cur.execute(
             "INSERT INTO hex_spatial_map "
-            "(session_id, h3_index, county_fips, state_fips, region_id) "
-            "SELECT session_id, h3_index, county_fips, state_fips, region_id "
+            "(session_id, h3_index, county_fips, state_fips, region_id, cell_id) SELECT "
+            "session_id, h3_index, county_fips, state_fips, region_id, cell_id "
             "FROM _hex_spatial_map_tmp "
             "ON CONFLICT (session_id, h3_index) DO NOTHING"
         )
@@ -410,7 +415,7 @@ def _persist_hex_spatial_map(runtime: Any, hex_rows: list[DynamicHexState]) -> N
 
 # Per spec-088 S3 (FR-007): spatial keys (county_fips, state_fips, region_id)
 # write NULL in dynamic_hex_state — the single stored copy lives in
-# hex_spatial_map. The COPY column order is: session_id, tick, h3_index,
+# hex_spatial_map. The COPY column order is: session_id, tick, h3_index, cell_id,
 # county_fips, state_fips, region_id, c, v, s, k, biocapacity_stock,
 # energy_stock, raw_material_stock, internet_access_pct, surveillance_coupling.
 
@@ -434,7 +439,7 @@ def _persist_hex_rows_bulk(
     with pool.connection() as conn, conn.transaction(), conn.cursor() as cur:
         cur.execute(
             "CREATE TEMP TABLE _hex_state_tmp ("
-            "session_id UUID, tick INTEGER, h3_index TEXT, "
+            "session_id UUID, tick INTEGER, h3_index TEXT, cell_id BIGINT, "
             "county_fips TEXT, state_fips TEXT, region_id TEXT, "
             "c DOUBLE PRECISION, v DOUBLE PRECISION, s DOUBLE PRECISION, "
             "k DOUBLE PRECISION, biocapacity_stock DOUBLE PRECISION, "
@@ -447,7 +452,7 @@ def _persist_hex_rows_bulk(
             _N = "\\N"
             for row in hex_rows:
                 copy.write(
-                    f"{sid_str}\t{row.tick}\t{row.h3_index}\t{_N}\t{_N}\t{_N}\t"
+                    f"{sid_str}\t{row.tick}\t{row.h3_index}\t{_N}\t{_N}\t{_N}\t{_N}\t"
                     f"{row.c}\t{row.v}\t{row.s}\t{row.k}\t"
                     f"{row.biocapacity_stock}\t{row.energy_stock}\t"
                     f"{row.raw_material_stock}\t"
@@ -455,12 +460,12 @@ def _persist_hex_rows_bulk(
                 )
         cur.execute(
             "INSERT INTO dynamic_hex_state ("
-            "session_id, tick, h3_index, "
+            "session_id, tick, h3_index, cell_id, "
             "county_fips, state_fips, region_id, "
             "c, v, s, k, "
             "biocapacity_stock, energy_stock, raw_material_stock, "
-            "internet_access_pct, surveillance_coupling) "
-            "SELECT session_id, tick, h3_index, "
+            "internet_access_pct, surveillance_coupling) SELECT "
+            "session_id, tick, h3_index, cell_id, "
             "county_fips, state_fips, region_id, "
             "c, v, s, k, "
             "biocapacity_stock, energy_stock, raw_material_stock, "

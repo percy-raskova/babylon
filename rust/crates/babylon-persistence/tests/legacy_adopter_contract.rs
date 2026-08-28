@@ -2075,10 +2075,11 @@ fn pr_focus_reuses_the_postgres_atomicity_and_installed_mutation_contracts() {
 
     assert!(runner.contains("BABYLON_LEGACY_ADOPTER_LIVE_FOCUS:-}"));
     assert!(runner.contains(
-        "\"\" | h3_atomicity | installed_mutation | schema_epoch_fresh | schema_epoch_matrix | \\\n    schema_epoch_rollback | schema_epoch_v5_census | h3_pg_oracle | \\\n    h3_reference_installer | committed_tick_writer | pr)"
+        "\"\" | h3_atomicity | installed_mutation | schema_epoch_fresh | schema_epoch_matrix | \\\n    schema_epoch_rollback | schema_epoch_v5_census | schema_epoch_v6_census | \\\n    h3_pg_oracle | h3_reference_installer | h3_shadow_backfill | \\\n    committed_tick_writer | pr)"
     ));
     assert!(runner.contains("[ \"$LIVE_FOCUS\" = \"h3_pg_oracle\" ]"));
     assert!(runner.contains("[ \"$LIVE_FOCUS\" = \"h3_reference_installer\" ]"));
+    assert!(runner.contains("[ \"$LIVE_FOCUS\" = \"h3_shadow_backfill\" ]"));
     assert!(runner.contains("[ \"$LIVE_FOCUS\" = \"committed_tick_writer\" ]"));
     assert_eq!(
         runner

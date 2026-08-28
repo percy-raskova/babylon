@@ -13,7 +13,7 @@ use babylon_persistence::{
 };
 use postgres::config::Host;
 use postgres::error::SqlState;
-use postgres::{Client, Config, NoTls};
+use postgres::{Client, Config, IsolationLevel, NoTls};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -26,6 +26,8 @@ mod h3_cell_vectors;
 mod h3_pg_oracle;
 #[path = "support/h3_reference_installer_postgres.rs"]
 mod h3_reference_installer_postgres;
+#[path = "support/h3_shadow_backfill_postgres.rs"]
+mod h3_shadow_backfill_postgres;
 #[path = "support/schema_epoch_postgres.rs"]
 mod schema_epoch_postgres;
 
@@ -211,6 +213,12 @@ fn run_first_live_phases(
         return false;
     }
     if std::env::var_os(LIVE_FOCUS_ENV).as_deref()
+        == Some(std::ffi::OsStr::new("schema_epoch_v6_census"))
+    {
+        export_v6_epoch_censuses(base, template);
+        return false;
+    }
+    if std::env::var_os(LIVE_FOCUS_ENV).as_deref()
         == Some(std::ffi::OsStr::new("schema_epoch_fresh"))
     {
         schema_epoch_postgres::verify_fresh_migration(base);
@@ -316,6 +324,9 @@ fn run_focused_live_phase(
         Some("h3_reference_installer") => {
             h3_reference_installer_postgres::verify_h3_reference_installer(base, template, owner);
         }
+        Some("h3_shadow_backfill") => {
+            h3_shadow_backfill_postgres::verify_h3_shadow_backfill(base, template);
+        }
         Some("installed_mutation") => verify_h3_installed_mutations(phases, base),
         Some("h3_reference_release") => {
             h3_reference_installer_postgres::verify_h3_reference_release_equivalence(base);
@@ -384,6 +395,130 @@ fn export_fresh_v5_epoch_census(base: &Config) {
     eprintln!("PER278_V5_CENSUS_START\n{fixture}PER278_V5_CENSUS_END");
     drop(client);
     database.cleanup();
+}
+
+fn export_v6_epoch_censuses(base: &Config, legacy_template: &str) {
+    let fresh = ScratchDatabase::empty(base, "epoch_v6_fresh_census", database_user(base));
+    let fresh_config = fresh.config(base);
+    let fresh_fixture = raw_v6_epoch_census(&fresh_config, false);
+    eprintln!("PER279_V6_FRESH_CENSUS_START\n{fresh_fixture}PER279_V6_FRESH_CENSUS_END");
+    fresh.cleanup();
+
+    let legacy = ScratchDatabase::from_template(base, legacy_template, "epoch_v6_legacy_census");
+    let legacy_config = legacy.config(base);
+    run_python_repair(&legacy_config);
+    adopt_legacy_schema(&legacy_config).expect("repaired legacy template must adopt exactly");
+    let legacy_fixture = raw_v6_epoch_census(&legacy_config, true);
+    eprintln!("PER279_V6_LEGACY_CENSUS_START\n{legacy_fixture}PER279_V6_LEGACY_CENSUS_END");
+    legacy.cleanup();
+}
+
+fn raw_v6_epoch_census(config: &Config, legacy_origin: bool) -> String {
+    const EXPORT_LIMITS: [i64; 6] = [513, 4097, 8193, 16385, 2, 8193];
+    let compiled = compiled_schema_migrations().unwrap();
+    let mut bounded = config.clone();
+    bounded
+        .connect_timeout(LEGACY_ADOPTER_CONNECT_TIMEOUT)
+        .tcp_user_timeout(LEGACY_ADOPTER_TCP_USER_TIMEOUT)
+        .options(LEGACY_ADOPTER_STARTUP_OPTIONS);
+    let mut client = bounded.connect(NoTls).unwrap();
+    for migration in compiled.iter().take(5) {
+        let mut transaction = client
+            .build_transaction()
+            .isolation_level(IsolationLevel::Serializable)
+            .read_only(false)
+            .start()
+            .unwrap();
+        transaction
+            .batch_execute(
+                "SET LOCAL search_path TO pg_catalog; SET LOCAL synchronous_commit TO on",
+            )
+            .unwrap();
+        transaction.batch_execute(migration.sql()).unwrap();
+        let version = migration.version().as_i64();
+        let checksum = migration.checksum();
+        let checksum_bytes = checksum.as_bytes().as_slice();
+        transaction
+            .execute(
+                "INSERT INTO babylon_state.schema_migration (version, checksum) VALUES ($1, $2)",
+                &[&version, &checksum_bytes],
+            )
+            .unwrap();
+        transaction.commit().unwrap();
+    }
+
+    let migration = &compiled[5];
+    let mut transaction = client
+        .build_transaction()
+        .isolation_level(IsolationLevel::Serializable)
+        .read_only(false)
+        .start()
+        .unwrap();
+    transaction
+        .batch_execute("SET LOCAL search_path TO pg_catalog; SET LOCAL synchronous_commit TO on")
+        .unwrap();
+    transaction.batch_execute(migration.sql()).unwrap();
+
+    let census_sql = legacy_adopter_sql_statements()
+        .iter()
+        .find(|statement| statement.kind() == LegacyAdopterSqlKind::CatalogCensus)
+        .unwrap()
+        .sql();
+    let rows = transaction
+        .query(
+            census_sql,
+            &[
+                &EXPORT_LIMITS[0],
+                &EXPORT_LIMITS[1],
+                &EXPORT_LIMITS[2],
+                &EXPORT_LIMITS[3],
+                &EXPORT_LIMITS[4],
+                &EXPORT_LIMITS[5],
+            ],
+        )
+        .unwrap();
+    let mut fixture = String::new();
+    for row in rows.iter().take(513) {
+        let kind: String = row.try_get(0).unwrap();
+        let schema: String = row.try_get(1).unwrap();
+        let name: String = row.try_get(2).unwrap();
+        let digest: String = row.try_get(3).unwrap();
+        let owned_relation =
+            kind == "relation" && matches!(schema.as_str(), "babylon_ref" | "babylon_state");
+        let owned_schema = kind == "schema"
+            && schema == "pg_namespace"
+            && matches!(name.as_str(), "babylon_ref" | "babylon_state");
+        let fresh_meta = !legacy_origin
+            && kind == "schema_grant"
+            && schema == "pg_namespace"
+            && name == "babylon_meta";
+        let legacy_shadow = legacy_origin
+            && matches!(kind.as_str(), "relation" | "partitioned_table")
+            && schema == "public"
+            && matches!(
+                name.as_str(),
+                "dynamic_hex_state"
+                    | "hex_activity"
+                    | "hex_cell"
+                    | "hex_latest"
+                    | "hex_map"
+                    | "hex_r8_linear_features_reference"
+                    | "hex_r8_reference"
+                    | "hex_spatial_map"
+                    | "hex_state"
+                    | "hex_substrate"
+                    | "hex_terrain_state"
+                    | "immutable_reference_lodes_od_matrix"
+                    | "infrastructure_link_state"
+                    | "org_snapshot"
+                    | "tick_event"
+            );
+        if owned_relation || owned_schema || fresh_meta || legacy_shadow {
+            writeln!(fixture, "{kind}|{schema}|{name}|{digest}").unwrap();
+        }
+    }
+    transaction.rollback().unwrap();
+    fixture
 }
 
 fn verify_h3_installed_mutations(phases: &LivePhaseReceipts, base: &Config) {

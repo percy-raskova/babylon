@@ -50,6 +50,23 @@ EXPECTED_SOURCE_URL: Final = (
 )
 EXPECTED_SOURCE_DEST: Final = "tiger/county/tl_2023_us_county.zip"
 EXPECTED_SOURCE_SHA256: Final = "692e12c30c83adcaabdbac0d3954fafa55e1c89a24b36d95e72e02dff938652e"
+EXPECTED_COUNTY_IDENTITY_FIXTURE: Final = {
+    "path": "contracts/fixtures/census_county_geoids_mi_2023.txt",
+    "format": "newline-delimited-ascii",
+    "rows": 83,
+    "bytes": 498,
+    "sha256": "216b281d01b7d457c6d510af24c6026d6d28d918cdca8f6b2ab39975b264faa5",
+    "semantic_sha256": "b0357679c075cc3e56a0709872baa92e67bf42b668871e544282cbab7509bdb6",
+}
+EXPECTED_H3_IDENTITY_FIXTURE: Final = {
+    "path": "contracts/fixtures/h3_res7_land_mask_ids_v1.txt.gz",
+    "format": "newline-delimited-lowercase-h3-gzip",
+    "rows": 45_572,
+    "bytes": 111_386,
+    "uncompressed_bytes": 729_152,
+    "sha256": "de0ae67607aeb2ba80f5b64092d6c3c98b9020f9554685af135d52e33ea6696f",
+    "semantic_sha256": "3b6eda7d8b29c6208157ff531f03750c44889535d37e0767c5bed17209a30f5d",
+}
 EXPECTED_SOURCE_COLUMNS: Final = (
     "STATEFP",
     "COUNTYFP",
@@ -314,6 +331,7 @@ def verify_contract(contract: dict[str, Any]) -> None:
         "national_rows",
         "michigan_rows",
         "michigan_extent",
+        "identity_fixture",
         "columns",
         "zip_members",
     }
@@ -332,6 +350,8 @@ def verify_contract(contract: dict[str, Any]) -> None:
         raise CountyPlaceH3OverlapRefusal("contract_shape", "source")
     _require_sha256(source.get("manifest_sha256"), "source.manifest_sha256")
     _require_sha256(source.get("sha256"), "source.sha256")
+    if source.get("identity_fixture") != EXPECTED_COUNTY_IDENTITY_FIXTURE:
+        raise CountyPlaceH3OverlapRefusal("contract_shape", "source.identity_fixture")
     if (
         isinstance(source.get("bytes"), bool)
         or not isinstance(source.get("bytes"), int)
@@ -403,6 +423,7 @@ def verify_contract(contract: dict[str, Any]) -> None:
             "rows",
             "identity_column",
             "ignored_measure_columns",
+            "identity_fixture",
         }
         or cohort.get("identity_column") != "h3_index"
         or cohort.get("ignored_measure_columns") != ["county_fips", "land_fraction"]
@@ -410,6 +431,7 @@ def verify_contract(contract: dict[str, Any]) -> None:
         or cohort.get("bytes") != 295_194
         or cohort.get("sha256")
         != "4e6caba297f0111a9ec93d948a83543bb9f7179361fe5dd318bb8a98a5be5194"
+        or cohort.get("identity_fixture") != EXPECTED_H3_IDENTITY_FIXTURE
     ):
         raise CountyPlaceH3OverlapRefusal("contract_shape", "predecessors.h3_cohort")
     _require_sha256(cohort.get("sha256"), "predecessors.h3_cohort.sha256")
@@ -599,7 +621,9 @@ def _checked_int(value: object, code: str, detail: str, maximum: int) -> int:
 
 
 def verify_county_records(
-    records: Iterable[Sequence[object]], cohort_ids: set[int]
+    records: Iterable[Sequence[object]],
+    cohort_ids: set[int],
+    county_geoids: set[str],
 ) -> dict[int, int]:
     """Verify ordered positive cell/county land rows and return denominators."""
     import h3
@@ -622,6 +646,8 @@ def verify_county_records(
             raise CountyPlaceH3OverlapRefusal("county_cell", str(cell_id))
         if not isinstance(county_fips, str) or COUNTY_FIPS.fullmatch(county_fips) is None:
             raise CountyPlaceH3OverlapRefusal("county_fips", repr(county_fips))
+        if county_fips not in county_geoids:
+            raise CountyPlaceH3OverlapRefusal("county_fips_unknown", county_fips)
         normalized.append((cell_id, county_fips, land_area))
         denominator[cell_id] += land_area
         if denominator[cell_id] > (1 << 64) - 1:
@@ -636,11 +662,12 @@ def verify_place_records(
     records: Iterable[Sequence[object]],
     county_records: Iterable[Sequence[object]],
     cohort_ids: set[int],
+    county_geoids: set[str],
     place_geoids: set[str],
 ) -> None:
     """Verify exact fixed-point place shares and both conservation bounds."""
     county_rows = list(county_records)
-    denominator = verify_county_records(county_rows, cohort_ids)
+    denominator = verify_county_records(county_rows, cohort_ids, county_geoids)
     county_limit = {
         (cast(int, row[0]), cast(str, row[1])): cast(int, row[2]) for row in county_rows
     }
@@ -787,6 +814,93 @@ def _place_geoids(root: Path, contract: dict[str, Any]) -> set[str]:
     return geoids
 
 
+def _identity_fixture_values(
+    root: Path,
+    raw_spec: object,
+    expected: dict[str, object],
+    *,
+    domain: bytes,
+    compressed: bool,
+    detail: str,
+) -> list[str]:
+    spec = _mapping(raw_spec, detail)
+    if spec != expected:
+        raise CountyPlaceH3OverlapRefusal("identity_fixture_contract", detail)
+    path = _repo_path(root, spec["path"], detail)
+    raw = _bounded_bytes(path, EXPECTED_BOUNDS["artifact_bytes"], "identity_fixture_size")
+    if len(raw) != spec["bytes"] or _sha256_bytes(raw) != spec["sha256"]:
+        raise CountyPlaceH3OverlapRefusal("identity_fixture_sha256", detail)
+    if compressed:
+        try:
+            with gzip.GzipFile(fileobj=io.BytesIO(raw), mode="rb") as archive:
+                decoded = archive.read(EXPECTED_BOUNDS["artifact_uncompressed_bytes"] + 1)
+        except (EOFError, OSError) as error:
+            raise CountyPlaceH3OverlapRefusal("identity_fixture_decode", detail) from error
+        expected_uncompressed = spec.get("uncompressed_bytes")
+    else:
+        decoded = raw
+        expected_uncompressed = spec["bytes"]
+    if (
+        len(decoded) > EXPECTED_BOUNDS["artifact_uncompressed_bytes"]
+        or len(decoded) != expected_uncompressed
+        or _sha256_bytes(domain + b"\0" + decoded) != spec["semantic_sha256"]
+    ):
+        raise CountyPlaceH3OverlapRefusal("identity_fixture_semantic_sha256", detail)
+    try:
+        text = decoded.decode("ascii")
+    except UnicodeDecodeError as error:
+        raise CountyPlaceH3OverlapRefusal("identity_fixture_decode", detail) from error
+    if not text.endswith("\n") or "\r" in text:
+        raise CountyPlaceH3OverlapRefusal("identity_fixture_format", detail)
+    values = text.splitlines()
+    if len(values) != spec["rows"] or len(values) != len(set(values)) or values != sorted(values):
+        raise CountyPlaceH3OverlapRefusal("identity_fixture_rows", detail)
+    return values
+
+
+def load_county_geoids(contract: dict[str, Any], root: Path) -> set[str]:
+    """Load the independently pinned official Michigan county allowlist."""
+    values = _identity_fixture_values(
+        root,
+        _mapping(contract.get("source"), "source").get("identity_fixture"),
+        EXPECTED_COUNTY_IDENTITY_FIXTURE,
+        domain=b"babylon.census-county-geoids-mi-2023.v1",
+        compressed=False,
+        detail="source.identity_fixture",
+    )
+    if any(COUNTY_FIPS.fullmatch(value) is None for value in values):
+        raise CountyPlaceH3OverlapRefusal("identity_fixture_county", repr(values[:1]))
+    return set(values)
+
+
+def load_h3_cohort_ids(contract: dict[str, Any], root: Path) -> set[int]:
+    """Load the exact PER-275 H3 cohort from its independent checked fixture."""
+    import h3
+
+    predecessors = _mapping(contract.get("predecessors"), "predecessors")
+    cohort = _mapping(predecessors.get("h3_cohort"), "predecessors.h3_cohort")
+    values = _identity_fixture_values(
+        root,
+        cohort.get("identity_fixture"),
+        EXPECTED_H3_IDENTITY_FIXTURE,
+        domain=b"babylon.h3-res7-land-mask-identities.v1",
+        compressed=True,
+        detail="predecessors.h3_cohort.identity_fixture",
+    )
+    result: set[int] = set()
+    for value in values:
+        if (
+            not h3.is_valid_cell(value)
+            or h3.get_resolution(value) != 7
+            or h3.int_to_str(h3.str_to_int(value)) != value
+        ):
+            raise CountyPlaceH3OverlapRefusal("identity_fixture_h3", value)
+        result.add(h3.str_to_int(value))
+    if len(result) != len(values):
+        raise CountyPlaceH3OverlapRefusal("identity_fixture_h3", "duplicate integer")
+    return result
+
+
 def verify_artifacts(
     contract: dict[str, Any], root: Path
 ) -> tuple[list[tuple[object, ...]], list[tuple[object, ...]]]:
@@ -801,10 +915,15 @@ def verify_artifacts(
     )
     typed_county_rows = cast(list[tuple[int, str, int]], county_rows)
     typed_place_rows = cast(list[tuple[int, str, str, int, int, int]], place_rows)
-    cohort_ids = {row[0] for row in typed_county_rows}
-    denominator = verify_county_records(typed_county_rows, cohort_ids)
+    cohort_ids = load_h3_cohort_ids(contract, root)
+    county_geoids = load_county_geoids(contract, root)
+    denominator = verify_county_records(typed_county_rows, cohort_ids, county_geoids)
     verify_place_records(
-        typed_place_rows, typed_county_rows, cohort_ids, _place_geoids(root, contract)
+        typed_place_rows,
+        typed_county_rows,
+        cohort_ids,
+        county_geoids,
+        _place_geoids(root, contract),
     )
     county_semantic = _semantic_sha256(
         b"babylon.census-county-h3-land-overlap.v1",
@@ -830,10 +949,9 @@ def verify_artifacts(
         counties_by_place[place_geoid].add(county_fips)
         cells_with_place.add(cell_id)
         share_sums[cell_id] += share
-    cohort_rows = contract["predecessors"]["h3_cohort"]["rows"]
     evidence = {
         "positive_land_cells": len(denominator),
-        "cohort_absent_cells": cohort_rows - len(denominator),
+        "cohort_absent_cells": len(cohort_ids) - len(denominator),
         "cross_county_cells": sum(count > 1 for count in counties_by_cell.values()),
         "maximum_counties_per_cell": max(counties_by_cell.values()),
         "places_crossing_counties": sum(

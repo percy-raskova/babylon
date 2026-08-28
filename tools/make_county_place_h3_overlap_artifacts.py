@@ -10,8 +10,10 @@ emits only positive whole-square-metre land intersections.
 from __future__ import annotations
 
 import argparse
+import gzip
 import hashlib
 import importlib.metadata
+import io
 import json
 import math
 import re
@@ -52,6 +54,8 @@ PLACE_IDENTITY = (
 PLACE_GEOMETRY = PLACE_IDENTITY.with_name("census_place_geometry_mi_2023.parquet")
 COUNTY_OUT = PLACE_IDENTITY.with_name("census_county_h3_land_overlap_mi_2023.parquet")
 PLACE_OUT = PLACE_IDENTITY.with_name("census_county_place_h3_land_overlap_mi_2023.parquet")
+COUNTY_IDENTITY_OUT = REPO_ROOT / "contracts" / "fixtures" / "census_county_geoids_mi_2023.txt"
+H3_IDENTITY_OUT = REPO_ROOT / "contracts" / "fixtures" / "h3_res7_land_mask_ids_v1.txt.gz"
 
 SOURCE_DEST: Final = "tiger/county/tl_2023_us_county.zip"
 SOURCE_URL: Final = "https://www2.census.gov/geo/tiger/TIGER2023/COUNTY/tl_2023_us_county.zip"
@@ -201,6 +205,8 @@ class CountySource:
 class BuildResult:
     """Final artifacts and bounded cohort evidence."""
 
+    county_identity_fixture: ArtifactStats
+    h3_identity_fixture: ArtifactStats
     county_artifact: ArtifactStats
     place_artifact: ArtifactStats
     county_source_rows: int
@@ -823,6 +829,50 @@ def _semantic_sha256(
     return digest.hexdigest()
 
 
+def _identity_semantic_sha256(domain: bytes, raw: bytes) -> str:
+    return hashlib.sha256(domain + b"\0" + raw).hexdigest()
+
+
+def write_identity_fixture(
+    path: Path,
+    values: Sequence[str],
+    *,
+    domain: bytes,
+    compressed: bool,
+) -> ArtifactStats:
+    """Write one deterministic newline-delimited identity allowlist."""
+    if not values or len(values) > MAX_COHORT_ROWS or len(values) != len(set(values)):
+        raise OverlapBuildError("identity_fixture_rows", str(len(values)))
+    if any(not value or "\n" in value or "\r" in value for value in values):
+        raise OverlapBuildError("identity_fixture_value", repr(values[:1]))
+    try:
+        raw = "".join(f"{value}\n" for value in values).encode("ascii")
+    except UnicodeEncodeError as error:
+        raise OverlapBuildError("identity_fixture_value", "non-ascii") from error
+    if len(raw) > MAX_ZIP_UNCOMPRESSED_BYTES:
+        raise OverlapBuildError("identity_fixture_size", str(len(raw)))
+    if compressed:
+        buffer = io.BytesIO()
+        with gzip.GzipFile(
+            filename="", mode="wb", fileobj=buffer, compresslevel=9, mtime=0
+        ) as archive:
+            archive.write(raw)
+        payload = buffer.getvalue()
+    else:
+        payload = raw
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        path.write_bytes(payload)
+    except OSError as error:
+        raise OverlapBuildError("identity_fixture_write", str(path)) from error
+    return ArtifactStats(
+        rows=len(values),
+        bytes=len(payload),
+        sha256=hashlib.sha256(payload).hexdigest(),
+        semantic_sha256=_identity_semantic_sha256(domain, raw),
+    )
+
+
 def _write_parquet(path: Path, table: Any) -> None:
     import pyarrow as pa
     import pyarrow.parquet as pq
@@ -922,6 +972,8 @@ def build(
     *,
     source_path: Path | None = None,
     h3_source: Path = H3_SOURCE,
+    county_identity_out: Path = COUNTY_IDENTITY_OUT,
+    h3_identity_out: Path = H3_IDENTITY_OUT,
     county_out: Path = COUNTY_OUT,
     place_out: Path = PLACE_OUT,
     progress: bool = False,
@@ -941,6 +993,18 @@ def build(
     pins = load_areawater_pins(set(county_source.geometries))
     county_land = load_county_land_geometries(county_source, pins, progress=progress)
     h3_cells = load_h3_cohort(h3_source)
+    county_identity_stats = write_identity_fixture(
+        county_identity_out,
+        sorted(county_source.geometries),
+        domain=b"babylon.census-county-geoids-mi-2023.v1",
+        compressed=False,
+    )
+    h3_identity_stats = write_identity_fixture(
+        h3_identity_out,
+        h3_cells,
+        domain=b"babylon.h3-res7-land-mask-identities.v1",
+        compressed=True,
+    )
     cells = project_h3_cells(h3_cells)
     places = load_place_geometries()
     county_rows, place_rows = derive_overlap_rows(cells, county_land, places, progress=progress)
@@ -954,6 +1018,8 @@ def build(
     for row in place_rows:
         counties_by_place[row.place_geoid].add(row.county_fips)
     return BuildResult(
+        county_identity_fixture=county_identity_stats,
+        h3_identity_fixture=h3_identity_stats,
         county_artifact=county_stats,
         place_artifact=place_stats,
         county_source_rows=county_source.all_rows,

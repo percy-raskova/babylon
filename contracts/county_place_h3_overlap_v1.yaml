@@ -38,6 +38,13 @@ source:
     - 41.696118
     - -82.122971
     - 48.306063
+  identity_fixture:
+    path: contracts/fixtures/census_county_geoids_mi_2023.txt
+    format: newline-delimited-ascii
+    rows: 83
+    bytes: 498
+    sha256: 216b281d01b7d457c6d510af24c6026d6d28d918cdca8f6b2ab39975b264faa5
+    semantic_sha256: b0357679c075cc3e56a0709872baa92e67bf42b668871e544282cbab7509bdb6
   columns:
     - STATEFP
     - COUNTYFP
@@ -102,6 +109,14 @@ predecessors:
     ignored_measure_columns:
       - county_fips
       - land_fraction
+    identity_fixture:
+      path: contracts/fixtures/h3_res7_land_mask_ids_v1.txt.gz
+      format: newline-delimited-lowercase-h3-gzip
+      rows: 45572
+      bytes: 111386
+      uncompressed_bytes: 729152
+      sha256: de0ae67607aeb2ba80f5b64092d6c3c98b9020f9554685af135d52e33ea6696f
+      semantic_sha256: 3b6eda7d8b29c6208157ff531f03750c44889535d37e0767c5bed17209a30f5d
   place_contract:
     path: contracts/census_place_authority_v1.yaml
     sha256: 0bced499b9144e51d48bc2356260448bc09ab56b64035ab94c98a7287b462102

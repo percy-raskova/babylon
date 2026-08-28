@@ -11,6 +11,7 @@ import zipfile
 from pathlib import Path
 
 import geopandas as gpd
+import h3
 import pyarrow.parquet as pq
 import pytest
 import yaml
@@ -21,6 +22,7 @@ TOOLS = ROOT / "tools"
 sys.path.insert(0, str(TOOLS))
 
 import make_county_place_h3_overlap_artifacts as builder  # type: ignore[import-not-found]  # noqa: E402
+import verify_county_place_h3_overlap_v1 as verifier  # type: ignore[import-not-found]  # noqa: E402
 from verify_county_place_h3_overlap_v1 import (  # type: ignore[import-not-found]  # noqa: E402
     CountyPlaceH3OverlapRefusal,
     load_contract,
@@ -238,19 +240,49 @@ def test_parquet_writers_are_byte_identical_across_paths(tmp_path: Path) -> None
 
 def test_record_verifier_refuses_unknown_h3_and_conservation_drift() -> None:
     county = [(CELL_ID, "26001", 200)]
-    denominator = verify_county_records(county, {CELL_ID})
+    denominator = verify_county_records(county, {CELL_ID}, {"26001"})
     assert denominator == {CELL_ID: 200}
 
     with pytest.raises(CountyPlaceH3OverlapRefusal, match="county_cell_unknown"):
-        verify_county_records([(CELL_ID + 1, "26001", 200)], {CELL_ID})
+        verify_county_records([(CELL_ID + 1, "26001", 200)], {CELL_ID}, {"26001"})
 
     with pytest.raises(CountyPlaceH3OverlapRefusal, match="place_conservation"):
         verify_place_records(
             [(CELL_ID, "26001", "2600001", 201, 200, 1_000_000_000)],
             county,
             {CELL_ID},
+            {"26001"},
             {"2600001"},
         )
+
+
+def test_record_verifier_refuses_syntactically_valid_unknown_county() -> None:
+    with pytest.raises(CountyPlaceH3OverlapRefusal, match="county_fips_unknown"):
+        verify_county_records([(CELL_ID, "26999", 200)], {CELL_ID}, {"26001"})
+
+
+def test_artifact_verifier_uses_the_pinned_h3_identity_fixture(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contract = load_contract(CONTRACT)
+    cohort_ids = verifier.load_h3_cohort_ids(contract, ROOT)
+    outside_cell_id = h3.str_to_int(h3.latlng_to_cell(0.0, 0.0, 7))
+    assert outside_cell_id not in cohort_ids
+    original_read = verifier._read_parquet
+
+    def read_with_outside_cell(
+        path: Path, spec: dict[str, object], columns: tuple[str, ...]
+    ) -> list[tuple[object, ...]]:
+        rows = original_read(path, spec, columns)
+        if columns == verifier.EXPECTED_COUNTY_COLUMNS:
+            first = rows[0]
+            return [(outside_cell_id, first[1], first[2]), *rows[1:]]
+        return rows
+
+    monkeypatch.setattr(verifier, "_read_parquet", read_with_outside_cell)
+
+    with pytest.raises(CountyPlaceH3OverlapRefusal, match="county_cell_unknown"):
+        verify_artifacts(contract, ROOT)
 
 
 @pytest.mark.parametrize(
@@ -267,7 +299,7 @@ def test_place_record_verifier_refuses_invalid_rows(record: tuple[object, ...], 
     county = [(CELL_ID, "26001", 200)]
 
     with pytest.raises(CountyPlaceH3OverlapRefusal, match=code):
-        verify_place_records([record], county, {CELL_ID}, {"2600001"})
+        verify_place_records([record], county, {CELL_ID}, {"26001"}, {"2600001"})
 
 
 def test_artifact_verifier_refuses_noncanonical_parquet_compression(tmp_path: Path) -> None:

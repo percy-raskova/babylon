@@ -57,14 +57,19 @@ fn source_exposes_no_alternate_activation_channel() {
             "writer authority source must not expose forbidden activation token {token:?}"
         );
     }
-    assert!(source.contains("pub struct RustWriterAuthority"));
-    assert!(source.contains("_private: ()"));
-    assert!(!source.contains("pub _private"));
-    assert!(!source.contains("pub(crate) _private"));
+    assert!(source.contains("pub enum RustWriterAuthority {}"));
+    assert!(!source.contains("pub struct RustWriterAuthority"));
 }
 
 #[test]
 fn production_tree_has_exactly_one_closed_authority_definition() {
+    let gate_source = include_str!("../src/writer_gate.rs");
+    assert!(
+        gate_source.contains("pub enum RustWriterAuthority {}"),
+        "writer authority must be structurally uninhabited"
+    );
+    assert!(!gate_source.contains("pub struct RustWriterAuthority"));
+
     let source_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let mut pending = vec![source_root];
     let mut rust_sources = Vec::new();
@@ -81,23 +86,27 @@ fn production_tree_has_exactly_one_closed_authority_definition() {
     rust_sources.sort();
 
     let mut request_definitions = 0;
-    let mut authority_definitions_or_literals = 0;
-    let mut authority_impls = 0;
+    let mut uninhabited_authority_definitions = 0;
+    let mut authority_variants_or_constructors = 0;
     for path in rust_sources {
         let source = std::fs::read_to_string(&path).expect("read UTF-8 production Rust source");
         request_definitions += source
             .matches("pub fn request_rust_writer_authority(")
             .count();
-        authority_definitions_or_literals += source.matches("RustWriterAuthority {").count();
-        authority_impls += source.matches("impl RustWriterAuthority").count();
+        uninhabited_authority_definitions +=
+            source.matches("pub enum RustWriterAuthority {}").count();
+        authority_variants_or_constructors += source.matches("RustWriterAuthority::").count();
     }
 
     assert_eq!(request_definitions, 1, "one public authority request path");
     assert_eq!(
-        authority_definitions_or_literals, 1,
-        "the private struct definition must be the only constructor-shaped source"
+        uninhabited_authority_definitions, 1,
+        "one structurally uninhabited authority type"
     );
-    assert_eq!(authority_impls, 0, "no alternate inherent constructor path");
+    assert_eq!(
+        authority_variants_or_constructors, 0,
+        "the authority enum must expose no variant or constructor path"
+    );
 }
 
 #[test]

@@ -543,12 +543,6 @@ impl CommitTransactionBoundaryV1 {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum WriteTransactionOutcome {
-    Presence(StoredPresence),
-    Disconnected,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct CommitResolution {
     disposition: CommittedTickCommitDispositionV1,
     commit_attempts: usize,
@@ -799,7 +793,7 @@ fn attempt_commit(
     campaign: CampaignStorageRowV1<'_>,
     storage: &CommittedTickStorageEnvelopeV1<'_>,
 ) -> Result<CommitAttempt, CommittedTickWriteErrorV1> {
-    attempt_commit_using(client, campaign, storage, &mut |_| false)
+    attempt_commit_using(client, campaign, storage, &mut |_| {})
 }
 
 fn attempt_commit_using<Probe>(
@@ -809,51 +803,69 @@ fn attempt_commit_using<Probe>(
     probe: &mut Probe,
 ) -> Result<CommitAttempt, CommittedTickWriteErrorV1>
 where
-    Probe: FnMut(CommitTransactionBoundaryV1) -> bool,
+    Probe: FnMut(CommitTransactionBoundaryV1),
 {
     let begin_step = CommitTransactionStepV1::Begin;
-    if probe(CommitTransactionBoundaryV1::before(begin_step)) {
-        return Ok(CommitAttempt::Ambiguous);
-    }
-    let mut transaction = client
+    probe(CommitTransactionBoundaryV1::before(begin_step));
+    let mut transaction = match client
         .build_transaction()
         .isolation_level(IsolationLevel::Serializable)
         .read_only(false)
         .start()
-        .map_err(|error| {
-            database_error(CommittedTickDatabaseOperationV1::BeginTransaction, &error)
-        })?;
-    if probe(CommitTransactionBoundaryV1::after(begin_step)) {
-        return Ok(CommitAttempt::Ambiguous);
-    }
+    {
+        Ok(transaction) => transaction,
+        Err(error) if postgres_error_is_connection_loss(&error) => {
+            return Ok(CommitAttempt::Ambiguous);
+        }
+        Err(error) => {
+            return Err(database_error(
+                CommittedTickDatabaseOperationV1::BeginTransaction,
+                &error,
+            ));
+        }
+    };
+    probe(CommitTransactionBoundaryV1::after(begin_step));
     let write = write_transaction_using(&mut transaction, campaign, storage, probe);
     match write {
-        Ok(WriteTransactionOutcome::Presence(StoredPresence::Exact)) => {
+        Ok(StoredPresence::Exact) => {
             rollback(transaction)?;
             Ok(CommitAttempt::AlreadyCommitted)
         }
-        Ok(WriteTransactionOutcome::Presence(StoredPresence::Absent)) => {
+        Ok(StoredPresence::Absent) => {
             let commit_step = CommitTransactionStepV1::Commit;
-            if probe(CommitTransactionBoundaryV1::before(commit_step)) {
-                return Ok(CommitAttempt::Ambiguous);
-            }
+            probe(CommitTransactionBoundaryV1::before(commit_step));
             match transaction.commit() {
                 Ok(()) => {
-                    if probe(CommitTransactionBoundaryV1::after(commit_step)) {
-                        Ok(CommitAttempt::Ambiguous)
-                    } else {
-                        Ok(CommitAttempt::Committed)
+                    probe(CommitTransactionBoundaryV1::after(commit_step));
+                    match client.simple_query("SELECT 1") {
+                        Ok(_) => Ok(CommitAttempt::Committed),
+                        Err(error) if postgres_error_is_connection_loss(&error) => {
+                            Ok(CommitAttempt::Ambiguous)
+                        }
+                        Err(error) => Err(database_error(
+                            CommittedTickDatabaseOperationV1::CommitTransaction,
+                            &error,
+                        )),
                     }
                 }
-                Err(error) if error.as_db_error().is_some() => Err(database_error(
+                Err(error) if postgres_error_is_connection_loss(&error) => {
+                    Ok(CommitAttempt::Ambiguous)
+                }
+                Err(error) => Err(database_error(
                     CommittedTickDatabaseOperationV1::CommitTransaction,
                     &error,
                 )),
-                Err(_) => Ok(CommitAttempt::Ambiguous),
             }
         }
-        Ok(WriteTransactionOutcome::Disconnected) => Ok(CommitAttempt::Ambiguous),
-        Err(primary) => rollback_preserving(transaction, primary),
+        Err(primary) => {
+            let failure = rollback_preserving(transaction, primary);
+            match failure {
+                Err(error) if is_connection_loss_transaction_failure(&error) => {
+                    Ok(CommitAttempt::Ambiguous)
+                }
+                other => other,
+            }
+        }
     }
 }
 
@@ -862,88 +874,58 @@ fn write_transaction_using<Probe>(
     campaign: CampaignStorageRowV1<'_>,
     storage: &CommittedTickStorageEnvelopeV1<'_>,
     probe: &mut Probe,
-) -> Result<WriteTransactionOutcome, CommittedTickWriteErrorV1>
+) -> Result<StoredPresence, CommittedTickWriteErrorV1>
 where
-    Probe: FnMut(CommitTransactionBoundaryV1) -> bool,
+    Probe: FnMut(CommitTransactionBoundaryV1),
 {
     let prepare_step = CommitTransactionStepV1::PrepareTransaction;
-    if probe(CommitTransactionBoundaryV1::before(prepare_step)) {
-        return Ok(WriteTransactionOutcome::Disconnected);
-    }
+    probe(CommitTransactionBoundaryV1::before(prepare_step));
     prepare_transaction(transaction)?;
-    if probe(CommitTransactionBoundaryV1::after(prepare_step)) {
-        return Ok(WriteTransactionOutcome::Disconnected);
-    }
+    probe(CommitTransactionBoundaryV1::after(prepare_step));
 
     let campaign_step = CommitTransactionStepV1::EnsureCampaign;
-    if probe(CommitTransactionBoundaryV1::before(campaign_step)) {
-        return Ok(WriteTransactionOutcome::Disconnected);
-    }
+    probe(CommitTransactionBoundaryV1::before(campaign_step));
     ensure_campaign(transaction, campaign)?;
-    if probe(CommitTransactionBoundaryV1::after(campaign_step)) {
-        return Ok(WriteTransactionOutcome::Disconnected);
-    }
+    probe(CommitTransactionBoundaryV1::after(campaign_step));
 
     let campaign_text = campaign.campaign_id().as_uuid().to_string();
     let lock_step = CommitTransactionStepV1::LockCampaign;
-    if probe(CommitTransactionBoundaryV1::before(lock_step)) {
-        return Ok(WriteTransactionOutcome::Disconnected);
-    }
+    probe(CommitTransactionBoundaryV1::before(lock_step));
     transaction
         .query_one(LOCK_CAMPAIGN_SQL, &[&campaign_text])
         .map_err(|error| database_error(CommittedTickDatabaseOperationV1::ReadCampaign, &error))?;
-    if probe(CommitTransactionBoundaryV1::after(lock_step)) {
-        return Ok(WriteTransactionOutcome::Disconnected);
-    }
+    probe(CommitTransactionBoundaryV1::after(lock_step));
 
     let presence_step = CommitTransactionStepV1::InspectPresence;
-    if probe(CommitTransactionBoundaryV1::before(presence_step)) {
-        return Ok(WriteTransactionOutcome::Disconnected);
-    }
+    probe(CommitTransactionBoundaryV1::before(presence_step));
     match inspect_presence(transaction, storage)? {
         StoredPresence::Exact => {
-            if probe(CommitTransactionBoundaryV1::after(presence_step)) {
-                return Ok(WriteTransactionOutcome::Disconnected);
-            }
-            return Ok(WriteTransactionOutcome::Presence(StoredPresence::Exact));
+            probe(CommitTransactionBoundaryV1::after(presence_step));
+            return Ok(StoredPresence::Exact);
         }
         StoredPresence::Absent => {}
     }
-    if probe(CommitTransactionBoundaryV1::after(presence_step)) {
-        return Ok(WriteTransactionOutcome::Disconnected);
-    }
+    probe(CommitTransactionBoundaryV1::after(presence_step));
 
     let sequence_step = CommitTransactionStepV1::RequireNextTick;
-    if probe(CommitTransactionBoundaryV1::before(sequence_step)) {
-        return Ok(WriteTransactionOutcome::Disconnected);
-    }
+    probe(CommitTransactionBoundaryV1::before(sequence_step));
     require_next_tick(transaction, storage)?;
-    if probe(CommitTransactionBoundaryV1::after(sequence_step)) {
-        return Ok(WriteTransactionOutcome::Disconnected);
-    }
+    probe(CommitTransactionBoundaryV1::after(sequence_step));
 
     for batch in storage.batches() {
         let insert_step = CommitTransactionStepV1::InsertRows {
             family: batch.target().family(),
         };
-        if probe(CommitTransactionBoundaryV1::before(insert_step)) {
-            return Ok(WriteTransactionOutcome::Disconnected);
-        }
+        probe(CommitTransactionBoundaryV1::before(insert_step));
         insert_batch(transaction, batch)?;
-        if probe(CommitTransactionBoundaryV1::after(insert_step)) {
-            return Ok(WriteTransactionOutcome::Disconnected);
-        }
+        probe(CommitTransactionBoundaryV1::after(insert_step));
     }
 
     let marker_step = CommitTransactionStepV1::InsertMarker;
-    if probe(CommitTransactionBoundaryV1::before(marker_step)) {
-        return Ok(WriteTransactionOutcome::Disconnected);
-    }
+    probe(CommitTransactionBoundaryV1::before(marker_step));
     insert_marker(transaction, storage)?;
-    if probe(CommitTransactionBoundaryV1::after(marker_step)) {
-        return Ok(WriteTransactionOutcome::Disconnected);
-    }
-    Ok(WriteTransactionOutcome::Presence(StoredPresence::Absent))
+    probe(CommitTransactionBoundaryV1::after(marker_step));
+    Ok(StoredPresence::Absent)
 }
 
 fn require_exact_schema_epoch(client: &mut Client) -> Result<(), CommittedTickWriteErrorV1> {
@@ -1588,6 +1570,28 @@ fn rollback_preserving<T>(
     }
 }
 
+fn postgres_error_is_connection_loss(error: &postgres::Error) -> bool {
+    error
+        .as_db_error()
+        .is_none_or(|server| sqlstate_is_connection_loss(server.code().code()))
+}
+
+fn sqlstate_is_connection_loss(code: &str) -> bool {
+    code.starts_with("08") || matches!(code, "57P01" | "57P02" | "57P03")
+}
+
+fn is_connection_loss_transaction_failure(error: &CommittedTickWriteErrorV1) -> bool {
+    match error {
+        CommittedTickWriteErrorV1::Database { diagnostic, .. } => diagnostic
+            .server()
+            .is_none_or(|server| sqlstate_is_connection_loss(server.code().code())),
+        CommittedTickWriteErrorV1::FailureAndRollback { primary, .. } => {
+            is_connection_loss_transaction_failure(primary)
+        }
+        _ => false,
+    }
+}
+
 fn decode<T: postgres::types::FromSqlOwned>(
     row: &Row,
     index: usize,
@@ -1697,6 +1701,35 @@ mod tests {
         ));
         assert_eq!(unresolved.attempt_index, 2);
         assert_eq!(unresolved.reconciliation_index, 2);
+    }
+
+    #[test]
+    fn connection_loss_failures_require_ambiguity_reconciliation() {
+        assert!(sqlstate_is_connection_loss("08006"));
+        assert!(sqlstate_is_connection_loss("57P01"));
+        assert!(!sqlstate_is_connection_loss("23505"));
+
+        let transport = CommittedTickWriteErrorV1::Database {
+            operation: CommittedTickDatabaseOperationV1::InsertMarker,
+            diagnostic: CommittedTickDatabaseDiagnosticV1 { server: None },
+        };
+        assert!(is_connection_loss_transaction_failure(&transport));
+
+        let wrapped = CommittedTickWriteErrorV1::FailureAndRollback {
+            primary: Box::new(transport),
+            rollback: Box::new(CommittedTickWriteErrorV1::Database {
+                operation: CommittedTickDatabaseOperationV1::RollbackTransaction,
+                diagnostic: CommittedTickDatabaseDiagnosticV1 { server: None },
+            }),
+        };
+        assert!(is_connection_loss_transaction_failure(&wrapped));
+
+        assert!(!is_connection_loss_transaction_failure(
+            &CommittedTickWriteErrorV1::TickSequence {
+                last_committed: Some(3),
+                requested: 5,
+            }
+        ));
     }
 
     #[test]
@@ -2331,9 +2364,6 @@ mod tests {
                 if eligible && boundary == target {
                     terminate_backend(admin, pid);
                     injected_now = true;
-                    true
-                } else {
-                    false
                 }
             };
             let result = attempt_commit_using(

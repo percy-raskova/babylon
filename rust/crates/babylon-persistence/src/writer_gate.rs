@@ -2,12 +2,17 @@
 
 /// Capability required by any future authoritative Rust tick writer.
 ///
-/// Its field is private, and this module provides no successful construction
-/// path while Python retains live writer authority.
+/// This type is structurally uninhabited while Python retains live writer
+/// authority. The crate's safe-code prohibition means no trait implementation,
+/// descendant module, or alternate function can forge a value.
+///
+/// ```compile_fail
+/// use babylon_persistence::RustWriterAuthority;
+///
+/// let _authority = RustWriterAuthority {};
+/// ```
 #[derive(Debug)]
-pub struct RustWriterAuthority {
-    _private: (),
-}
+pub enum RustWriterAuthority {}
 
 /// Exact reason Rust writer authority cannot currently be acquired.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

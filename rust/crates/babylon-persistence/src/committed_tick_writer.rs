@@ -67,7 +67,7 @@ const READ_REPLAY_TAIL_SQL: &str = "SELECT resolve_tick, tick_content_hash, enve
     FROM babylon_state.tick_commit \
     WHERE campaign_id = $1::text::uuid AND resolve_tick > $2 AND resolve_tick <= $3 \
     ORDER BY resolve_tick LIMIT $4";
-const MAX_COMMIT_ATTEMPTS_V1: usize = 2;
+const MAX_TRANSACTION_ATTEMPTS_V1: usize = 2;
 /// Hard safety ceiling for caller-selected checkpoint replay tails.
 pub const MAX_COMMITTED_TICK_HYDRATION_TAIL_V1: usize = MAX_COMMITTED_TICK_ROWS_V1;
 
@@ -498,7 +498,55 @@ enum StoredPresence {
 enum CommitAttempt {
     Committed,
     AlreadyCommitted,
-    Ambiguous,
+    AmbiguousBeforeCommit,
+    AmbiguousCommit,
+}
+
+impl CommitAttempt {
+    const fn attempted_commit_operation(self) -> bool {
+        matches!(self, Self::Committed | Self::AmbiguousCommit)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CommitTransactionStepV1 {
+    Begin,
+    PrepareTransaction,
+    EnsureCampaign,
+    LockCampaign,
+    InspectPresence,
+    RequireNextTick,
+    InsertRows { family: CommittedTickRowFamilyV1 },
+    InsertMarker,
+    Commit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CommitBoundarySideV1 {
+    Before,
+    After,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct CommitTransactionBoundaryV1 {
+    step: CommitTransactionStepV1,
+    side: CommitBoundarySideV1,
+}
+
+impl CommitTransactionBoundaryV1 {
+    const fn before(step: CommitTransactionStepV1) -> Self {
+        Self {
+            step,
+            side: CommitBoundarySideV1::Before,
+        }
+    }
+
+    const fn after(step: CommitTransactionStepV1) -> Self {
+        Self {
+            step,
+            side: CommitBoundarySideV1::After,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -664,40 +712,46 @@ fn drive_commit<Driver: CommitDriver>(
             commit_attempts: 0,
         });
     }
-    for attempt_index in 0..MAX_COMMIT_ATTEMPTS_V1 {
-        let attempts = attempt_index + 1;
-        match driver.attempt_commit(attempts)? {
+    let mut commit_attempts = 0;
+    for attempt_index in 0..MAX_TRANSACTION_ATTEMPTS_V1 {
+        let transaction_attempts = attempt_index + 1;
+        let attempt = driver.attempt_commit(transaction_attempts)?;
+        commit_attempts += usize::from(attempt.attempted_commit_operation());
+        match attempt {
             CommitAttempt::Committed => {
                 return Ok(CommitResolution {
                     disposition: CommittedTickCommitDispositionV1::Committed,
-                    commit_attempts: attempts,
+                    commit_attempts,
                 });
             }
             CommitAttempt::AlreadyCommitted => {
                 return Ok(CommitResolution {
                     disposition: CommittedTickCommitDispositionV1::AlreadyCommitted,
-                    commit_attempts: attempt_index,
+                    commit_attempts,
                 });
             }
-            CommitAttempt::Ambiguous => {
-                let reconciled = driver.reconcile(attempts).map_err(|reconciliation| {
-                    CommittedTickWriteErrorV1::AmbiguousCommitAndReconciliation {
-                        attempts,
-                        reconciliation: Box::new(reconciliation),
-                    }
-                })?;
+            CommitAttempt::AmbiguousBeforeCommit | CommitAttempt::AmbiguousCommit => {
+                let reconciled =
+                    driver
+                        .reconcile(transaction_attempts)
+                        .map_err(|reconciliation| {
+                            CommittedTickWriteErrorV1::AmbiguousCommitAndReconciliation {
+                                attempts: transaction_attempts,
+                                reconciliation: Box::new(reconciliation),
+                            }
+                        })?;
                 if reconciled == StoredPresence::Exact {
                     return Ok(CommitResolution {
                         disposition:
                             CommittedTickCommitDispositionV1::ReconciledAfterAmbiguousCommit,
-                        commit_attempts: attempts,
+                        commit_attempts,
                     });
                 }
             }
         }
     }
     Err(CommittedTickWriteErrorV1::AmbiguousCommitUnresolved {
-        attempts: MAX_COMMIT_ATTEMPTS_V1,
+        attempts: MAX_TRANSACTION_ATTEMPTS_V1,
     })
 }
 
@@ -720,16 +774,30 @@ impl CommitDriver for DatabaseCommitDriver<'_, '_, '_, '_> {
         &mut self,
         _after_attempt: usize,
     ) -> Result<StoredPresence, CommittedTickWriteErrorV1> {
-        self.session.reconnect(self.config)?;
-        require_exact_schema_epoch(self.session.client())?;
-        prepare_session(self.session.client())?;
-        match inspect_campaign(self.session.client(), self.campaign)? {
-            Some(true) => inspect_presence(self.session.client(), self.storage),
-            Some(false) => Err(CommittedTickWriteErrorV1::Conflict {
+        reconcile_after_ambiguous_commit(self.config, self.session, self.campaign, self.storage)
+    }
+}
+
+fn reconcile_after_ambiguous_commit(
+    config: &Config,
+    session: &mut LockedCommittedTickSession,
+    campaign: CampaignStorageRowV1<'_>,
+    storage: &CommittedTickStorageEnvelopeV1<'_>,
+) -> Result<StoredPresence, CommittedTickWriteErrorV1> {
+    session.reconnect(config)?;
+    require_exact_schema_epoch(session.client())?;
+    prepare_session(session.client())?;
+    match inspect_campaign(session.client(), campaign)? {
+        Some(true) => inspect_presence(session.client(), storage),
+        Some(false) => Err(CommittedTickWriteErrorV1::Conflict {
+            component: CommittedTickConflictComponentV1::CampaignIdentity,
+        }),
+        None => match inspect_presence(session.client(), storage)? {
+            StoredPresence::Absent => Ok(StoredPresence::Absent),
+            StoredPresence::Exact => Err(CommittedTickWriteErrorV1::Conflict {
                 component: CommittedTickConflictComponentV1::CampaignIdentity,
             }),
-            None => Ok(StoredPresence::Absent),
-        }
+        },
     }
 }
 
@@ -738,52 +806,129 @@ fn attempt_commit(
     campaign: CampaignStorageRowV1<'_>,
     storage: &CommittedTickStorageEnvelopeV1<'_>,
 ) -> Result<CommitAttempt, CommittedTickWriteErrorV1> {
-    let mut transaction = client
+    attempt_commit_using(client, campaign, storage, &mut |_| {})
+}
+
+fn attempt_commit_using<Probe>(
+    client: &mut Client,
+    campaign: CampaignStorageRowV1<'_>,
+    storage: &CommittedTickStorageEnvelopeV1<'_>,
+    probe: &mut Probe,
+) -> Result<CommitAttempt, CommittedTickWriteErrorV1>
+where
+    Probe: FnMut(CommitTransactionBoundaryV1),
+{
+    let begin_step = CommitTransactionStepV1::Begin;
+    probe(CommitTransactionBoundaryV1::before(begin_step));
+    let mut transaction = match client
         .build_transaction()
         .isolation_level(IsolationLevel::Serializable)
         .read_only(false)
         .start()
-        .map_err(|error| {
-            database_error(CommittedTickDatabaseOperationV1::BeginTransaction, &error)
-        })?;
-    let write = write_transaction(&mut transaction, campaign, storage);
+    {
+        Ok(transaction) => transaction,
+        Err(error) if postgres_error_is_connection_loss(&error) => {
+            return Ok(CommitAttempt::AmbiguousBeforeCommit);
+        }
+        Err(error) => {
+            return Err(database_error(
+                CommittedTickDatabaseOperationV1::BeginTransaction,
+                &error,
+            ));
+        }
+    };
+    probe(CommitTransactionBoundaryV1::after(begin_step));
+    let write = write_transaction_using(&mut transaction, campaign, storage, probe);
     match write {
         Ok(StoredPresence::Exact) => {
             rollback(transaction)?;
             Ok(CommitAttempt::AlreadyCommitted)
         }
-        Ok(StoredPresence::Absent) => match transaction.commit() {
-            Ok(()) => Ok(CommitAttempt::Committed),
-            Err(error) if error.as_db_error().is_some() => Err(database_error(
-                CommittedTickDatabaseOperationV1::CommitTransaction,
-                &error,
-            )),
-            Err(_) => Ok(CommitAttempt::Ambiguous),
-        },
-        Err(primary) => rollback_preserving(transaction, primary),
+        Ok(StoredPresence::Absent) => {
+            let commit_step = CommitTransactionStepV1::Commit;
+            probe(CommitTransactionBoundaryV1::before(commit_step));
+            match transaction.commit() {
+                Ok(()) => {
+                    probe(CommitTransactionBoundaryV1::after(commit_step));
+                    Ok(CommitAttempt::Committed)
+                }
+                Err(error) if postgres_error_is_connection_loss(&error) => {
+                    Ok(CommitAttempt::AmbiguousCommit)
+                }
+                Err(error) => Err(database_error(
+                    CommittedTickDatabaseOperationV1::CommitTransaction,
+                    &error,
+                )),
+            }
+        }
+        Err(primary) => {
+            let failure = rollback_preserving(transaction, primary);
+            match failure {
+                Err(error) if is_connection_loss_transaction_failure(&error) => {
+                    Ok(CommitAttempt::AmbiguousBeforeCommit)
+                }
+                other => other,
+            }
+        }
     }
 }
 
-fn write_transaction(
+fn write_transaction_using<Probe>(
     transaction: &mut Transaction<'_>,
     campaign: CampaignStorageRowV1<'_>,
     storage: &CommittedTickStorageEnvelopeV1<'_>,
-) -> Result<StoredPresence, CommittedTickWriteErrorV1> {
+    probe: &mut Probe,
+) -> Result<StoredPresence, CommittedTickWriteErrorV1>
+where
+    Probe: FnMut(CommitTransactionBoundaryV1),
+{
+    let prepare_step = CommitTransactionStepV1::PrepareTransaction;
+    probe(CommitTransactionBoundaryV1::before(prepare_step));
     prepare_transaction(transaction)?;
+    probe(CommitTransactionBoundaryV1::after(prepare_step));
+
+    let campaign_step = CommitTransactionStepV1::EnsureCampaign;
+    probe(CommitTransactionBoundaryV1::before(campaign_step));
     ensure_campaign(transaction, campaign)?;
+    probe(CommitTransactionBoundaryV1::after(campaign_step));
+
     let campaign_text = campaign.campaign_id().as_uuid().to_string();
+    let lock_step = CommitTransactionStepV1::LockCampaign;
+    probe(CommitTransactionBoundaryV1::before(lock_step));
     transaction
         .query_one(LOCK_CAMPAIGN_SQL, &[&campaign_text])
         .map_err(|error| database_error(CommittedTickDatabaseOperationV1::ReadCampaign, &error))?;
+    probe(CommitTransactionBoundaryV1::after(lock_step));
+
+    let presence_step = CommitTransactionStepV1::InspectPresence;
+    probe(CommitTransactionBoundaryV1::before(presence_step));
     match inspect_presence(transaction, storage)? {
-        StoredPresence::Exact => return Ok(StoredPresence::Exact),
+        StoredPresence::Exact => {
+            probe(CommitTransactionBoundaryV1::after(presence_step));
+            return Ok(StoredPresence::Exact);
+        }
         StoredPresence::Absent => {}
     }
+    probe(CommitTransactionBoundaryV1::after(presence_step));
+
+    let sequence_step = CommitTransactionStepV1::RequireNextTick;
+    probe(CommitTransactionBoundaryV1::before(sequence_step));
     require_next_tick(transaction, storage)?;
+    probe(CommitTransactionBoundaryV1::after(sequence_step));
+
     for batch in storage.batches() {
+        let insert_step = CommitTransactionStepV1::InsertRows {
+            family: batch.target().family(),
+        };
+        probe(CommitTransactionBoundaryV1::before(insert_step));
         insert_batch(transaction, batch)?;
+        probe(CommitTransactionBoundaryV1::after(insert_step));
     }
+
+    let marker_step = CommitTransactionStepV1::InsertMarker;
+    probe(CommitTransactionBoundaryV1::before(marker_step));
     insert_marker(transaction, storage)?;
+    probe(CommitTransactionBoundaryV1::after(marker_step));
     Ok(StoredPresence::Absent)
 }
 
@@ -1429,6 +1574,28 @@ fn rollback_preserving<T>(
     }
 }
 
+fn postgres_error_is_connection_loss(error: &postgres::Error) -> bool {
+    error
+        .as_db_error()
+        .is_none_or(|server| sqlstate_is_connection_loss(server.code().code()))
+}
+
+fn sqlstate_is_connection_loss(code: &str) -> bool {
+    code.starts_with("08") || matches!(code, "57P01" | "57P02" | "57P03")
+}
+
+fn is_connection_loss_transaction_failure(error: &CommittedTickWriteErrorV1) -> bool {
+    match error {
+        CommittedTickWriteErrorV1::Database { diagnostic, .. } => diagnostic
+            .server()
+            .is_none_or(|server| sqlstate_is_connection_loss(server.code().code())),
+        CommittedTickWriteErrorV1::FailureAndRollback { primary, .. } => {
+            is_connection_loss_transaction_failure(primary)
+        }
+        _ => false,
+    }
+}
+
 fn decode<T: postgres::types::FromSqlOwned>(
     row: &Row,
     index: usize,
@@ -1513,7 +1680,7 @@ mod tests {
         );
 
         let mut reconciled = ScriptedCommitDriver::new(
-            [CommitAttempt::Ambiguous, CommitAttempt::Committed],
+            [CommitAttempt::AmbiguousCommit, CommitAttempt::Committed],
             [StoredPresence::Exact, StoredPresence::Absent],
         );
         assert_eq!(
@@ -1527,9 +1694,31 @@ mod tests {
     }
 
     #[test]
+    fn connection_retry_before_commit_does_not_count_as_a_commit_attempt() {
+        let mut retried = ScriptedCommitDriver::new(
+            [
+                CommitAttempt::AmbiguousBeforeCommit,
+                CommitAttempt::Committed,
+            ],
+            [StoredPresence::Absent, StoredPresence::Absent],
+        );
+        assert_eq!(
+            drive_commit(StoredPresence::Absent, &mut retried)
+                .expect("pre-commit connection retry then direct commit"),
+            CommitResolution {
+                disposition: CommittedTickCommitDispositionV1::Committed,
+                commit_attempts: 1,
+            }
+        );
+    }
+
+    #[test]
     fn commit_driver_bounds_two_ambiguous_absent_attempts_without_acknowledgement() {
         let mut unresolved = ScriptedCommitDriver::new(
-            [CommitAttempt::Ambiguous, CommitAttempt::Ambiguous],
+            [
+                CommitAttempt::AmbiguousCommit,
+                CommitAttempt::AmbiguousCommit,
+            ],
             [StoredPresence::Absent, StoredPresence::Absent],
         );
         assert!(matches!(
@@ -1538,6 +1727,35 @@ mod tests {
         ));
         assert_eq!(unresolved.attempt_index, 2);
         assert_eq!(unresolved.reconciliation_index, 2);
+    }
+
+    #[test]
+    fn connection_loss_failures_require_ambiguity_reconciliation() {
+        assert!(sqlstate_is_connection_loss("08006"));
+        assert!(sqlstate_is_connection_loss("57P01"));
+        assert!(!sqlstate_is_connection_loss("23505"));
+
+        let transport = CommittedTickWriteErrorV1::Database {
+            operation: CommittedTickDatabaseOperationV1::InsertMarker,
+            diagnostic: CommittedTickDatabaseDiagnosticV1 { server: None },
+        };
+        assert!(is_connection_loss_transaction_failure(&transport));
+
+        let wrapped = CommittedTickWriteErrorV1::FailureAndRollback {
+            primary: Box::new(transport),
+            rollback: Box::new(CommittedTickWriteErrorV1::Database {
+                operation: CommittedTickDatabaseOperationV1::RollbackTransaction,
+                diagnostic: CommittedTickDatabaseDiagnosticV1 { server: None },
+            }),
+        };
+        assert!(is_connection_loss_transaction_failure(&wrapped));
+
+        assert!(!is_connection_loss_transaction_failure(
+            &CommittedTickWriteErrorV1::TickSequence {
+                last_committed: Some(3),
+                requested: 5,
+            }
+        ));
     }
 
     #[test]
@@ -1651,6 +1869,212 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    #[ignore = "requires the owned disposable PER-20 PostgreSQL harness"]
+    fn live_crash_boundary_matrix_is_atomic_and_retryable() {
+        require_owned_disposable_harness();
+        let base = Config::from_str(
+            &std::env::var("BABYLON_LEGACY_ADOPTER_TEST_DSN").expect("owned harness DSN"),
+        )
+        .expect("valid owned harness DSN");
+        let scratch = WriterScratchDatabase::create(&base);
+        migrate_schema_epoch(&scratch.config).expect("fresh exact Rust schema epoch");
+        install_writer_reference_fixture(&scratch.config);
+
+        for (index, boundary) in committed_tick_crash_boundaries_v1().into_iter().enumerate() {
+            prove_crash_boundary_is_atomic(&scratch, index, boundary);
+        }
+    }
+
+    fn committed_tick_crash_boundaries_v1() -> Vec<CommitTransactionBoundaryV1> {
+        let mut steps = vec![
+            CommitTransactionStepV1::Begin,
+            CommitTransactionStepV1::PrepareTransaction,
+            CommitTransactionStepV1::EnsureCampaign,
+            CommitTransactionStepV1::LockCampaign,
+            CommitTransactionStepV1::InspectPresence,
+            CommitTransactionStepV1::RequireNextTick,
+        ];
+        steps.extend(
+            crate::committed_tick_envelope::ALL_COMMITTED_TICK_ROW_FAMILIES_V1
+                .map(|family| CommitTransactionStepV1::InsertRows { family }),
+        );
+        steps.extend([
+            CommitTransactionStepV1::InsertMarker,
+            CommitTransactionStepV1::Commit,
+        ]);
+
+        let mut boundaries = Vec::with_capacity(steps.len() * 2);
+        for step in steps {
+            boundaries.push(CommitTransactionBoundaryV1::before(step));
+            boundaries.push(CommitTransactionBoundaryV1::after(step));
+        }
+        assert_eq!(boundaries.len(), 32, "V1 crash matrix must stay exhaustive");
+        boundaries
+    }
+
+    fn prove_crash_boundary_is_atomic(
+        scratch: &WriterScratchDatabase,
+        index: usize,
+        boundary: CommitTransactionBoundaryV1,
+    ) {
+        let campaign_id = CampaignId::from_uuid(Uuid::from_u128(
+            0x3011_2233_4455_6677_8899_aabb_ccdd_0000
+                + u128::try_from(index).expect("bounded crash-matrix index"),
+        ));
+        let replay_session = ReplaySessionIdV1::try_from(format!("per20-crash-{index}").as_str())
+            .expect("valid crash-matrix replay session");
+        let content = ContentDigest {
+            defines_hash: [0x71; 32],
+            rules_hash: [0x82; 32],
+        };
+        let campaign = CampaignStorageRowV1::new(
+            campaign_id,
+            &replay_session,
+            ReplaySeed::new(-72),
+            &content,
+            RefDigestV1::from_bytes([0x53; 32]),
+        );
+        let index_byte = u8::try_from(index).expect("V1 crash matrix fits one byte");
+        let envelope = live_envelope(
+            campaign_id,
+            0,
+            0x60_u8.wrapping_add(index_byte),
+            0xd0_u8.wrapping_add(index_byte),
+            true,
+        );
+        let storage =
+            CommittedTickStorageEnvelopeV1::try_from(&envelope).expect("mapped crash envelope");
+
+        let proof = commit_through_crash_boundary_test_seam(
+            &scratch.config,
+            &scratch.base,
+            campaign,
+            &envelope,
+            boundary,
+        )
+        .unwrap_or_else(|error| panic!("crash boundary {boundary:?} failed: {error:?}"));
+        let committed_response_lost =
+            boundary == CommitTransactionBoundaryV1::after(CommitTransactionStepV1::Commit);
+        let first_transaction_attempted_commit = matches!(
+            boundary,
+            CommitTransactionBoundaryV1 {
+                step: CommitTransactionStepV1::InsertMarker,
+                side: CommitBoundarySideV1::After,
+            } | CommitTransactionBoundaryV1 {
+                step: CommitTransactionStepV1::Commit,
+                ..
+            }
+        );
+        assert_eq!(
+            proof.observed_after_crash,
+            if committed_response_lost {
+                StoredPresence::Exact
+            } else {
+                StoredPresence::Absent
+            },
+            "unexpected restart state after {boundary:?}"
+        );
+        assert_eq!(proof.campaign_present_after_crash, committed_response_lost);
+        assert_eq!(
+            proof.report.disposition(),
+            if committed_response_lost {
+                CommittedTickCommitDispositionV1::ReconciledAfterAmbiguousCommit
+            } else {
+                CommittedTickCommitDispositionV1::Committed
+            }
+        );
+        assert_eq!(
+            proof.report.commit_attempts(),
+            if committed_response_lost || !first_transaction_attempted_commit {
+                1
+            } else {
+                2
+            }
+        );
+
+        let mut verifier = scratch.config.connect(NoTls).expect("matrix verifier");
+        assert_eq!(
+            inspect_campaign(&mut verifier, campaign).unwrap(),
+            Some(true)
+        );
+        assert_eq!(
+            inspect_presence(&mut verifier, &storage).unwrap(),
+            StoredPresence::Exact
+        );
+    }
+
+    struct CrashBoundaryProofV1 {
+        report: CommittedTickCommitReportV1,
+        observed_after_crash: StoredPresence,
+        campaign_present_after_crash: bool,
+    }
+
+    fn commit_through_crash_boundary_test_seam(
+        config: &Config,
+        admin: &Config,
+        campaign: CampaignStorageRowV1<'_>,
+        envelope: &CommittedTickEnvelopeV1,
+        target: CommitTransactionBoundaryV1,
+    ) -> Result<CrashBoundaryProofV1, CommittedTickWriteErrorV1> {
+        validate_legacy_connection_target(config)
+            .map_err(CommittedTickWriteErrorV1::ConnectionTarget)?;
+        let storage = CommittedTickStorageEnvelopeV1::try_from(envelope)
+            .map_err(CommittedTickWriteErrorV1::StorageMapping)?;
+        let bounded = bounded_config(config);
+        let mut session = LockedCommittedTickSession::connect(&bounded)?;
+        require_exact_schema_epoch(session.client())?;
+        prepare_session(session.client())?;
+        let initial = match inspect_campaign(session.client(), campaign)? {
+            Some(false) => {
+                return Err(CommittedTickWriteErrorV1::Conflict {
+                    component: CommittedTickConflictComponentV1::CampaignIdentity,
+                });
+            }
+            Some(true) => inspect_presence(session.client(), &storage)?,
+            None => StoredPresence::Absent,
+        };
+        let (resolution, injected, observed_after_crash, campaign_present_after_crash) = {
+            let mut driver = CrashBoundaryCommitDriver {
+                admin,
+                config: &bounded,
+                session: &mut session,
+                campaign,
+                storage: &storage,
+                target,
+                injected: false,
+                observed_after_crash: None,
+                campaign_present_after_crash: None,
+            };
+            let resolution = drive_commit(initial, &mut driver);
+            (
+                resolution,
+                driver.injected,
+                driver.observed_after_crash,
+                driver.campaign_present_after_crash,
+            )
+        };
+        let result = resolution.map(|resolution| {
+            assert!(
+                injected,
+                "target crash boundary was not reached: {target:?}"
+            );
+            CrashBoundaryProofV1 {
+                report: CommittedTickCommitReportV1 {
+                    disposition: resolution.disposition,
+                    resolve_tick: u64::try_from(storage.marker().resolve_tick())
+                        .expect("storage mapping checked non-negative u64 tick"),
+                    commit_attempts: resolution.commit_attempts,
+                },
+                observed_after_crash: observed_after_crash
+                    .expect("injected ambiguity must be reconciled"),
+                campaign_present_after_crash: campaign_present_after_crash
+                    .expect("injected ambiguity must observe campaign presence"),
+            }
+        });
+        session.finish(result)
     }
 
     fn assert_checkpoint_only_hydration(
@@ -1954,17 +2378,110 @@ mod tests {
         }
     }
 
+    struct CrashBoundaryCommitDriver<'admin, 'config, 'session, 'campaign, 'storage> {
+        admin: &'admin Config,
+        config: &'config Config,
+        session: &'session mut LockedCommittedTickSession,
+        campaign: CampaignStorageRowV1<'campaign>,
+        storage: &'storage CommittedTickStorageEnvelopeV1<'storage>,
+        target: CommitTransactionBoundaryV1,
+        injected: bool,
+        observed_after_crash: Option<StoredPresence>,
+        campaign_present_after_crash: Option<bool>,
+    }
+
+    impl CommitDriver for CrashBoundaryCommitDriver<'_, '_, '_, '_, '_> {
+        fn attempt_commit(
+            &mut self,
+            _attempt: usize,
+        ) -> Result<CommitAttempt, CommittedTickWriteErrorV1> {
+            let pid = backend_pid(self.session.client());
+            let eligible = !self.injected;
+            let target = self.target;
+            let admin = self.admin;
+            let mut injected_now = false;
+            let mut probe = |boundary| {
+                if eligible && boundary == target {
+                    terminate_backend(admin, pid);
+                    injected_now = true;
+                }
+            };
+            let result = attempt_commit_using(
+                self.session.client(),
+                self.campaign,
+                self.storage,
+                &mut probe,
+            );
+            self.injected |= injected_now;
+            match result {
+                Ok(CommitAttempt::Committed)
+                    if injected_now
+                        && target
+                            == CommitTransactionBoundaryV1::after(
+                                CommitTransactionStepV1::Commit,
+                            ) =>
+                {
+                    Ok(CommitAttempt::AmbiguousCommit)
+                }
+                other => other,
+            }
+        }
+
+        fn reconcile(
+            &mut self,
+            _after_attempt: usize,
+        ) -> Result<StoredPresence, CommittedTickWriteErrorV1> {
+            let presence = reconcile_after_ambiguous_commit(
+                self.config,
+                self.session,
+                self.campaign,
+                self.storage,
+            )?;
+            self.observed_after_crash = Some(presence);
+            self.campaign_present_after_crash = Some(
+                inspect_campaign(self.session.client(), self.campaign)?.is_some_and(|exact| exact),
+            );
+            Ok(presence)
+        }
+    }
+
+    fn backend_pid(client: &mut Client) -> i32 {
+        client
+            .query_one("SELECT pg_catalog.pg_backend_pid()", &[])
+            .expect("writer backend pid")
+            .try_get(0)
+            .expect("integer writer backend pid")
+    }
+
+    fn terminate_backend(admin: &Config, pid: i32) {
+        const TERMINATION_TIMEOUT_MILLIS: i64 = 5_000;
+        let terminated: bool = admin
+            .connect(NoTls)
+            .expect("crash injector connection")
+            .query_one(
+                "SELECT pg_catalog.pg_terminate_backend($1, $2)",
+                &[&pid, &TERMINATION_TIMEOUT_MILLIS],
+            )
+            .expect("terminate writer backend")
+            .try_get(0)
+            .expect("boolean backend termination result");
+        assert!(
+            terminated,
+            "writer backend must terminate at the target boundary"
+        );
+    }
+
     struct ScriptedCommitDriver {
-        attempts: [CommitAttempt; MAX_COMMIT_ATTEMPTS_V1],
-        reconciliations: [StoredPresence; MAX_COMMIT_ATTEMPTS_V1],
+        attempts: [CommitAttempt; MAX_TRANSACTION_ATTEMPTS_V1],
+        reconciliations: [StoredPresence; MAX_TRANSACTION_ATTEMPTS_V1],
         attempt_index: usize,
         reconciliation_index: usize,
     }
 
     impl ScriptedCommitDriver {
         const fn new(
-            attempts: [CommitAttempt; MAX_COMMIT_ATTEMPTS_V1],
-            reconciliations: [StoredPresence; MAX_COMMIT_ATTEMPTS_V1],
+            attempts: [CommitAttempt; MAX_TRANSACTION_ATTEMPTS_V1],
+            reconciliations: [StoredPresence; MAX_TRANSACTION_ATTEMPTS_V1],
         ) -> Self {
             Self {
                 attempts,

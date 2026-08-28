@@ -76,33 +76,34 @@ const INSERT_PLACES_SQL: &str = "INSERT INTO babylon_ref.place_identity \
       AS input(place_geoid, state_fips, place_fips, place_ns, name, name_lsad, lsad, class_fp, \
                principal_city_indicator, mtfcc, functional_status) ON CONFLICT DO NOTHING";
 const INSERT_LAND_FRACTIONS_SQL: &str = "INSERT INTO babylon_ref.h3_land_fraction \
-    (ref_digest, product_code, cell_id, source_county_geoid, land_fraction_ppm) \
-    SELECT $1, 'h3_res7_land_mask', input.cell_id, input.source_county_geoid, \
+    (ref_digest, product_code, cell_id, membership_origin, source_county_geoid, \
+     land_fraction_ppm) \
+    SELECT $1, 'h3_res7_land_mask', input.cell_id, 1, input.source_county_geoid, \
            input.land_fraction_ppm \
     FROM ROWS FROM (pg_catalog.unnest($2::bigint[]), pg_catalog.unnest($3::text[]), \
                     pg_catalog.unnest($4::integer[])) \
       AS input(cell_id, source_county_geoid, land_fraction_ppm) ON CONFLICT DO NOTHING";
 const INSERT_POPULATION_SQL: &str = "INSERT INTO babylon_ref.h3_population_count \
-    (ref_digest, product_code, cell_id, population_count) \
-    SELECT $1, 'h3_res7_population', input.cell_id, input.measure_count \
+    (ref_digest, product_code, cell_id, membership_origin, population_count) \
+    SELECT $1, 'h3_res7_population', input.cell_id, 1, input.measure_count \
     FROM ROWS FROM (pg_catalog.unnest($2::bigint[]), pg_catalog.unnest($3::bigint[])) \
       AS input(cell_id, measure_count) ON CONFLICT DO NOTHING";
 const INSERT_WORKPLACE_SQL: &str = "INSERT INTO babylon_ref.h3_workplace_count \
-    (ref_digest, product_code, cell_id, workplace_count) \
-    SELECT $1, 'h3_res7_workplace', input.cell_id, input.measure_count \
+    (ref_digest, product_code, cell_id, membership_origin, workplace_count) \
+    SELECT $1, 'h3_res7_workplace', input.cell_id, 1, input.measure_count \
     FROM ROWS FROM (pg_catalog.unnest($2::bigint[]), pg_catalog.unnest($3::bigint[])) \
       AS input(cell_id, measure_count) ON CONFLICT DO NOTHING";
 const INSERT_COUNTY_LAND_SQL: &str = "INSERT INTO babylon_ref.county_h3_land_area \
-    (ref_digest, product_code, cell_id, county_geoid, land_area_m2) \
-    SELECT $1, 'census_county_h3_land_overlap_mi_2023', input.cell_id, input.county_geoid, \
-           input.land_area_m2 \
+    (ref_digest, product_code, cell_id, membership_origin, county_geoid, land_area_m2) \
+    SELECT $1, 'census_county_h3_land_overlap_mi_2023', input.cell_id, 1, \
+           input.county_geoid, input.land_area_m2 \
     FROM ROWS FROM (pg_catalog.unnest($2::bigint[]), pg_catalog.unnest($3::text[]), \
                     pg_catalog.unnest($4::bigint[])) \
       AS input(cell_id, county_geoid, land_area_m2) ON CONFLICT DO NOTHING";
 const INSERT_COUNTY_PLACE_LAND_SQL: &str = "INSERT INTO babylon_ref.county_place_h3_land_area \
-    (ref_digest, product_code, cell_id, county_geoid, place_geoid, place_land_area_m2, \
-     cell_mi_land_area_m2, place_land_area_share_ppb) \
-    SELECT $1, 'census_county_place_h3_land_overlap_mi_2023', input.cell_id, \
+    (ref_digest, product_code, cell_id, membership_origin, county_geoid, place_geoid, \
+     place_land_area_m2, cell_mi_land_area_m2, place_land_area_share_ppb) \
+    SELECT $1, 'census_county_place_h3_land_overlap_mi_2023', input.cell_id, 1, \
            input.county_geoid, input.place_geoid, input.place_land_area_m2, \
            input.cell_mi_land_area_m2, input.place_land_area_share_ppb \
     FROM ROWS FROM (pg_catalog.unnest($2::bigint[]), pg_catalog.unnest($3::text[]), \

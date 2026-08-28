@@ -29,7 +29,7 @@ fn migration_five_is_schema_qualified_additive_reference_storage_only() {
 
     for required in [
         "REFERENCES babylon_ref.h3_reference_cohort(ref_digest)",
-        "REFERENCES babylon_ref.h3_cell(cell_id)",
+        "REFERENCES babylon_ref.h3_reference_membership(ref_digest, cell_id, origin)",
         "census_county_h3_land_overlap_mi_2023",
         "census_county_place_h3_land_overlap_mi_2023",
         "land_fraction_ppm",
@@ -98,4 +98,42 @@ fn migration_five_keeps_unlike_measures_in_distinct_relations() {
         );
     }
     assert!(!MIGRATION_SQL.to_ascii_lowercase().contains("weight"));
+}
+
+#[test]
+fn every_cell_product_requires_direct_membership_in_its_named_cohort() {
+    assert!(MIGRATION_SQL.contains(concat!(
+        "CREATE UNIQUE INDEX h3_reference_membership_origin_key\n",
+        "    ON babylon_ref.h3_reference_membership (ref_digest, cell_id, origin);"
+    )));
+    assert_eq!(
+        MIGRATION_SQL
+            .lines()
+            .filter(|line| line.trim() == "membership_origin SMALLINT NOT NULL,")
+            .count(),
+        5,
+        "every H3-bearing product relation must store the governed origin discriminator"
+    );
+    assert_eq!(
+        MIGRATION_SQL
+            .matches("FOREIGN KEY (ref_digest, cell_id, membership_origin)")
+            .count(),
+        5,
+        "every H3-bearing product relation must bind cohort, cell, and origin together"
+    );
+    assert_eq!(
+        MIGRATION_SQL
+            .matches("REFERENCES babylon_ref.h3_reference_membership(ref_digest, cell_id, origin)",)
+            .count(),
+        5,
+        "every H3-bearing product relation must reference exact cohort membership"
+    );
+    assert_eq!(
+        MIGRATION_SQL
+            .matches("CHECK (membership_origin = 1)")
+            .count(),
+        5,
+        "product cells must be direct artifact members, never derived ancestors"
+    );
+    assert!(!MIGRATION_SQL.contains("REFERENCES babylon_ref.h3_cell(cell_id)"));
 }

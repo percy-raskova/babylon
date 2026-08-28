@@ -38,6 +38,12 @@ fn installer_is_exact_epoch_locked_transactional_and_reconciled() {
             "installer must write and read back {relation}"
         );
     }
+
+    assert_eq!(
+        SOURCE.matches("membership_origin").count(),
+        5,
+        "every H3-bearing insert must write the governed direct-origin discriminator"
+    );
 }
 
 #[test]

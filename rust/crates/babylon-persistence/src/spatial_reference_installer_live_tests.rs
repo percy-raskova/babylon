@@ -1,7 +1,7 @@
 use std::mem::size_of;
 
 use babylon_kernel::tick_content_hash::RefDigestV1;
-use postgres::{Config, NoTls};
+use postgres::{error::SqlState, Config, NoTls};
 
 use super::{
     attempt_install_transaction, conflict, install_michigan_spatial_reference_products,
@@ -83,6 +83,7 @@ pub(crate) fn verify_commit_protocol(config: &Config, admin: &Config) {
     assert_eq!(retry.commit_attempts(), 0);
     assert_eq!(reference_counts(config), EXPECTED_COUNTS);
 
+    refuse_derived_ancestor_as_product_cell(config);
     mutate_product_digest(config);
     let mutated_counts = reference_counts(config);
     assert_eq!(
@@ -92,6 +93,41 @@ pub(crate) fn verify_commit_protocol(config: &Config, admin: &Config) {
         })
     );
     assert_eq!(reference_counts(config), mutated_counts);
+}
+
+fn refuse_derived_ancestor_as_product_cell(config: &Config) {
+    let mut client = config.connect(NoTls).unwrap();
+    let membership = client
+        .query_one(
+            "SELECT ref_digest, cell_id \
+             FROM babylon_ref.h3_reference_membership \
+             WHERE origin = 2 ORDER BY ref_digest, cell_id LIMIT 1",
+            &[],
+        )
+        .unwrap();
+    let ref_digest: Vec<u8> = membership.try_get(0).unwrap();
+    let cell_id: i64 = membership.try_get(1).unwrap();
+    let mut transaction = client.transaction().unwrap();
+    transaction
+        .execute(
+            "INSERT INTO babylon_ref.h3_population_count \
+             (ref_digest, product_code, cell_id, membership_origin, population_count) \
+             VALUES ($1, 'h3_res7_population', $2, 1, 1)",
+            &[&ref_digest, &cell_id],
+        )
+        .unwrap();
+    let refusal = transaction.commit().unwrap_err();
+    assert_eq!(refusal.code(), Some(&SqlState::FOREIGN_KEY_VIOLATION));
+    let visible: i64 = client
+        .query_one(
+            "SELECT pg_catalog.count(*) FROM babylon_ref.h3_population_count \
+             WHERE ref_digest = $1 AND cell_id = $2",
+            &[&ref_digest, &cell_id],
+        )
+        .unwrap()
+        .try_get(0)
+        .unwrap();
+    assert_eq!(visible, 0);
 }
 
 fn backend_pid(client: &mut postgres::Client) -> i32 {

@@ -1,3 +1,6 @@
+CREATE UNIQUE INDEX h3_reference_membership_origin_key
+    ON babylon_ref.h3_reference_membership (ref_digest, cell_id, origin);
+
 CREATE TABLE babylon_ref.reference_product (
     ref_digest BYTEA NOT NULL,
     product_code TEXT COLLATE "C" NOT NULL,
@@ -83,11 +86,14 @@ CREATE TABLE babylon_ref.h3_land_fraction (
     ref_digest BYTEA NOT NULL,
     product_code TEXT COLLATE "C" NOT NULL,
     cell_id BIGINT NOT NULL,
+    membership_origin SMALLINT NOT NULL,
     source_county_geoid TEXT COLLATE "C" NOT NULL,
     land_fraction_ppm INTEGER NOT NULL,
     CONSTRAINT h3_land_fraction_pkey PRIMARY KEY (ref_digest, cell_id),
-    CONSTRAINT h3_land_fraction_cell_fkey FOREIGN KEY (cell_id)
-        REFERENCES babylon_ref.h3_cell(cell_id) DEFERRABLE INITIALLY DEFERRED,
+    CONSTRAINT h3_land_fraction_membership_fkey
+        FOREIGN KEY (ref_digest, cell_id, membership_origin)
+        REFERENCES babylon_ref.h3_reference_membership(ref_digest, cell_id, origin)
+        DEFERRABLE INITIALLY DEFERRED,
     CONSTRAINT h3_land_fraction_product_fkey FOREIGN KEY (ref_digest, product_code)
         REFERENCES babylon_ref.reference_product(ref_digest, product_code)
         DEFERRABLE INITIALLY DEFERRED,
@@ -96,6 +102,7 @@ CREATE TABLE babylon_ref.h3_land_fraction (
         DEFERRABLE INITIALLY DEFERRED,
     CONSTRAINT h3_land_fraction_product_code CHECK (product_code = 'h3_res7_land_mask'),
     CONSTRAINT h3_land_fraction_cell_positive CHECK (cell_id > 0),
+    CONSTRAINT h3_land_fraction_direct_origin CHECK (membership_origin = 1),
     CONSTRAINT h3_land_fraction_range CHECK (land_fraction_ppm BETWEEN 0 AND 1000000)
 );
 
@@ -103,15 +110,19 @@ CREATE TABLE babylon_ref.h3_population_count (
     ref_digest BYTEA NOT NULL,
     product_code TEXT COLLATE "C" NOT NULL,
     cell_id BIGINT NOT NULL,
+    membership_origin SMALLINT NOT NULL,
     population_count BIGINT NOT NULL,
     CONSTRAINT h3_population_count_pkey PRIMARY KEY (ref_digest, cell_id),
-    CONSTRAINT h3_population_count_cell_fkey FOREIGN KEY (cell_id)
-        REFERENCES babylon_ref.h3_cell(cell_id) DEFERRABLE INITIALLY DEFERRED,
+    CONSTRAINT h3_population_count_membership_fkey
+        FOREIGN KEY (ref_digest, cell_id, membership_origin)
+        REFERENCES babylon_ref.h3_reference_membership(ref_digest, cell_id, origin)
+        DEFERRABLE INITIALLY DEFERRED,
     CONSTRAINT h3_population_count_product_fkey FOREIGN KEY (ref_digest, product_code)
         REFERENCES babylon_ref.reference_product(ref_digest, product_code)
         DEFERRABLE INITIALLY DEFERRED,
     CONSTRAINT h3_population_count_product_code CHECK (product_code = 'h3_res7_population'),
     CONSTRAINT h3_population_count_cell_positive CHECK (cell_id > 0),
+    CONSTRAINT h3_population_count_direct_origin CHECK (membership_origin = 1),
     CONSTRAINT h3_population_count_positive CHECK (population_count > 0)
 );
 
@@ -119,15 +130,19 @@ CREATE TABLE babylon_ref.h3_workplace_count (
     ref_digest BYTEA NOT NULL,
     product_code TEXT COLLATE "C" NOT NULL,
     cell_id BIGINT NOT NULL,
+    membership_origin SMALLINT NOT NULL,
     workplace_count BIGINT NOT NULL,
     CONSTRAINT h3_workplace_count_pkey PRIMARY KEY (ref_digest, cell_id),
-    CONSTRAINT h3_workplace_count_cell_fkey FOREIGN KEY (cell_id)
-        REFERENCES babylon_ref.h3_cell(cell_id) DEFERRABLE INITIALLY DEFERRED,
+    CONSTRAINT h3_workplace_count_membership_fkey
+        FOREIGN KEY (ref_digest, cell_id, membership_origin)
+        REFERENCES babylon_ref.h3_reference_membership(ref_digest, cell_id, origin)
+        DEFERRABLE INITIALLY DEFERRED,
     CONSTRAINT h3_workplace_count_product_fkey FOREIGN KEY (ref_digest, product_code)
         REFERENCES babylon_ref.reference_product(ref_digest, product_code)
         DEFERRABLE INITIALLY DEFERRED,
     CONSTRAINT h3_workplace_count_product_code CHECK (product_code = 'h3_res7_workplace'),
     CONSTRAINT h3_workplace_count_cell_positive CHECK (cell_id > 0),
+    CONSTRAINT h3_workplace_count_direct_origin CHECK (membership_origin = 1),
     CONSTRAINT h3_workplace_count_positive CHECK (workplace_count > 0)
 );
 
@@ -135,11 +150,14 @@ CREATE TABLE babylon_ref.county_h3_land_area (
     ref_digest BYTEA NOT NULL,
     product_code TEXT COLLATE "C" NOT NULL,
     cell_id BIGINT NOT NULL,
+    membership_origin SMALLINT NOT NULL,
     county_geoid TEXT COLLATE "C" NOT NULL,
     land_area_m2 BIGINT NOT NULL,
     CONSTRAINT county_h3_land_area_pkey PRIMARY KEY (ref_digest, cell_id, county_geoid),
-    CONSTRAINT county_h3_land_area_cell_fkey FOREIGN KEY (cell_id)
-        REFERENCES babylon_ref.h3_cell(cell_id) DEFERRABLE INITIALLY DEFERRED,
+    CONSTRAINT county_h3_land_area_membership_fkey
+        FOREIGN KEY (ref_digest, cell_id, membership_origin)
+        REFERENCES babylon_ref.h3_reference_membership(ref_digest, cell_id, origin)
+        DEFERRABLE INITIALLY DEFERRED,
     CONSTRAINT county_h3_land_area_product_fkey FOREIGN KEY (ref_digest, product_code)
         REFERENCES babylon_ref.reference_product(ref_digest, product_code)
         DEFERRABLE INITIALLY DEFERRED,
@@ -149,6 +167,7 @@ CREATE TABLE babylon_ref.county_h3_land_area (
     CONSTRAINT county_h3_land_area_product_code
         CHECK (product_code = 'census_county_h3_land_overlap_mi_2023'),
     CONSTRAINT county_h3_land_area_cell_positive CHECK (cell_id > 0),
+    CONSTRAINT county_h3_land_area_direct_origin CHECK (membership_origin = 1),
     CONSTRAINT county_h3_land_area_positive CHECK (land_area_m2 > 0)
 );
 
@@ -156,6 +175,7 @@ CREATE TABLE babylon_ref.county_place_h3_land_area (
     ref_digest BYTEA NOT NULL,
     product_code TEXT COLLATE "C" NOT NULL,
     cell_id BIGINT NOT NULL,
+    membership_origin SMALLINT NOT NULL,
     county_geoid TEXT COLLATE "C" NOT NULL,
     place_geoid TEXT COLLATE "C" NOT NULL,
     place_land_area_m2 BIGINT NOT NULL,
@@ -163,8 +183,10 @@ CREATE TABLE babylon_ref.county_place_h3_land_area (
     place_land_area_share_ppb INTEGER NOT NULL,
     CONSTRAINT county_place_h3_land_area_pkey
         PRIMARY KEY (ref_digest, cell_id, county_geoid, place_geoid),
-    CONSTRAINT county_place_h3_land_area_cell_fkey FOREIGN KEY (cell_id)
-        REFERENCES babylon_ref.h3_cell(cell_id) DEFERRABLE INITIALLY DEFERRED,
+    CONSTRAINT county_place_h3_land_area_membership_fkey
+        FOREIGN KEY (ref_digest, cell_id, membership_origin)
+        REFERENCES babylon_ref.h3_reference_membership(ref_digest, cell_id, origin)
+        DEFERRABLE INITIALLY DEFERRED,
     CONSTRAINT county_place_h3_land_area_product_fkey FOREIGN KEY (ref_digest, product_code)
         REFERENCES babylon_ref.reference_product(ref_digest, product_code)
         DEFERRABLE INITIALLY DEFERRED,
@@ -178,6 +200,7 @@ CREATE TABLE babylon_ref.county_place_h3_land_area (
     CONSTRAINT county_place_h3_land_area_product_code
         CHECK (product_code = 'census_county_place_h3_land_overlap_mi_2023'),
     CONSTRAINT county_place_h3_land_area_cell_positive CHECK (cell_id > 0),
+    CONSTRAINT county_place_h3_land_area_direct_origin CHECK (membership_origin = 1),
     CONSTRAINT county_place_h3_land_area_place_positive CHECK (place_land_area_m2 > 0),
     CONSTRAINT county_place_h3_land_area_denominator_positive CHECK (cell_mi_land_area_m2 > 0),
     CONSTRAINT county_place_h3_land_area_numerator_bound

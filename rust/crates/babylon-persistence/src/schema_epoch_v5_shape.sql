@@ -12,15 +12,15 @@ owned_schemas AS MATERIALIZED (
 ),
 expected_relations(nspname, relname, column_count, constraint_count, index_count) AS (
     VALUES
-        ('babylon_ref'::pg_catalog.text, 'county_h3_land_area'::pg_catalog.text, 5, 7, 2),
+        ('babylon_ref'::pg_catalog.text, 'county_h3_land_area'::pg_catalog.text, 6, 8, 2),
         ('babylon_ref', 'county_identity', 7, 10, 2),
-        ('babylon_ref', 'county_place_h3_land_area', 8, 12, 2),
+        ('babylon_ref', 'county_place_h3_land_area', 9, 13, 2),
         ('babylon_ref', 'h3_cell', 7, 14, 1),
-        ('babylon_ref', 'h3_land_fraction', 5, 7, 1),
-        ('babylon_ref', 'h3_population_count', 4, 6, 1),
+        ('babylon_ref', 'h3_land_fraction', 6, 8, 1),
+        ('babylon_ref', 'h3_population_count', 5, 7, 1),
         ('babylon_ref', 'h3_reference_cohort', 13, 15, 2),
-        ('babylon_ref', 'h3_reference_membership', 3, 6, 2),
-        ('babylon_ref', 'h3_workplace_count', 4, 6, 1),
+        ('babylon_ref', 'h3_reference_membership', 3, 6, 3),
+        ('babylon_ref', 'h3_workplace_count', 5, 7, 1),
         ('babylon_ref', 'place_identity', 13, 15, 1),
         ('babylon_ref', 'reference_product', 8, 10, 1),
         ('babylon_state', 'campaign', 8, 9, 1),
@@ -57,7 +57,7 @@ relation_columns AS MATERIALIZED (
      AND default_row.adnum = attribute.attnum
     WHERE attribute.attnum > 0 AND NOT attribute.attisdropped
     ORDER BY relation.nspname, relation.relname, attribute.attnum
-    LIMIT 133
+    LIMIT 138
 ),
 relation_constraints AS MATERIALIZED (
     SELECT relation.nspname, relation.relname, constraint_row.contype,
@@ -68,7 +68,7 @@ relation_constraints AS MATERIALIZED (
     JOIN pg_catalog.pg_constraint AS constraint_row
       ON constraint_row.conrelid = relation.oid
     ORDER BY relation.nspname, relation.relname, constraint_row.conname
-    LIMIT 175
+    LIMIT 180
 ),
 relation_indexes AS MATERIALIZED (
     SELECT relation.nspname, relation.relname,
@@ -77,7 +77,7 @@ relation_indexes AS MATERIALIZED (
     FROM owned_relations AS relation
     JOIN pg_catalog.pg_index AS index_row ON index_row.indrelid = relation.oid
     ORDER BY relation.nspname, relation.relname, index_row.indexrelid
-    LIMIT 28
+    LIMIT 29
 ),
 owned_classes AS MATERIALIZED (
     SELECT relation.oid, namespace.nspname, relation.relname, relation.relkind,
@@ -86,7 +86,7 @@ owned_classes AS MATERIALIZED (
     JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
     WHERE namespace.nspname IN ('babylon_ref', 'babylon_state')
     ORDER BY namespace.nspname, relation.relname, relation.relkind
-    LIMIT 50
+    LIMIT 51
 ),
 allowed_types AS MATERIALIZED (
     SELECT type_row.oid, type_row.typarray
@@ -149,7 +149,7 @@ SELECT
            OR pg_catalog.has_table_privilege(intel.oid, relation.oid, 'TRIGGER')
         LIMIT 1
     )
-    AND (SELECT pg_catalog.count(*) = 132 FROM relation_columns)
+    AND (SELECT pg_catalog.count(*) = 137 FROM relation_columns)
     AND NOT EXISTS (
         SELECT 1 FROM relation_columns
         WHERE attidentity <> '' OR attgenerated <> '' OR has_default
@@ -190,7 +190,7 @@ SELECT
         WHERE actual.actual_count <> expected.column_count
         LIMIT 1
     )
-    AND (SELECT pg_catalog.count(*) = 174 FROM relation_constraints)
+    AND (SELECT pg_catalog.count(*) = 179 FROM relation_constraints)
     AND (SELECT pg_catalog.bool_and(convalidated) FROM relation_constraints)
     AND NOT EXISTS (
         SELECT 1 FROM relation_constraints
@@ -212,7 +212,7 @@ SELECT
         WHERE actual.actual_count <> expected.constraint_count
         LIMIT 1
     )
-    AND (SELECT pg_catalog.count(*) = 27 FROM relation_indexes)
+    AND (SELECT pg_catalog.count(*) = 28 FROM relation_indexes)
     AND NOT EXISTS (
         SELECT 1 FROM relation_indexes
         WHERE NOT indisvalid OR NOT indisready OR indpred IS NOT NULL OR indexprs IS NOT NULL
@@ -230,7 +230,7 @@ SELECT
         WHERE actual.actual_count <> expected.index_count
         LIMIT 1
     )
-    AND (SELECT pg_catalog.count(*) = 49 FROM owned_classes)
+    AND (SELECT pg_catalog.count(*) = 50 FROM owned_classes)
     AND NOT EXISTS (
         SELECT 1 FROM owned_classes AS class_row
         CROSS JOIN database_owner AS owner_row

@@ -64,7 +64,7 @@ fn compiled_registry_is_five_contiguous_exact_migrations() {
     );
     assert_eq!(
         compiled[4].checksum().as_bytes(),
-        &hex_checksum("1d46108e67a896ac6bacb507b215e457ede4d6ad6fa728c9aa549f39f2c0370c")
+        &hex_checksum("3d49e29410419b0573fd16ecaac65ba0f57ca0a9174c0bff1a00b633cc40720b")
     );
 }
 

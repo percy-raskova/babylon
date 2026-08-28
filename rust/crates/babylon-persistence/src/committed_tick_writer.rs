@@ -3,6 +3,8 @@
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionIdV1};
 use babylon_kernel::tick_content_hash::{RefDigestV1, TickContentHashV1};
 use babylon_kernel::ContentDigest;
+use postgres::binary_copy::BinaryCopyInWriter;
+use postgres::types::Type;
 use postgres::{Client, Config, GenericClient, IsolationLevel, NoTls, Row, Transaction};
 
 use crate::committed_tick_envelope::{
@@ -53,7 +55,8 @@ const INSERT_MARKER_SQL: &str = "INSERT INTO babylon_state.tick_commit \
 const READ_LAST_MARKER_SQL: &str = "SELECT resolve_tick, tick_content_hash, envelope_digest \
     FROM babylon_state.tick_commit WHERE campaign_id = $1::text::uuid \
     ORDER BY resolve_tick DESC LIMIT 1";
-const READ_NEAREST_CHECKPOINT_SQL: &str = "SELECT marker.resolve_tick \
+const READ_NEAREST_CHECKPOINT_SQL: &str = "SELECT marker.resolve_tick, \
+    marker.tick_content_hash, marker.envelope_digest \
     FROM babylon_state.tick_commit AS marker \
     WHERE marker.campaign_id = $1::text::uuid AND marker.resolve_tick <= $2 \
       AND EXISTS (SELECT 1 FROM babylon_state.tick_checkpoint_row AS checkpoint \
@@ -452,6 +455,7 @@ impl CommittedTickHydrationPlanV1 {
 pub struct CommittedTickHydrationV1 {
     campaign: CommittedTickHydratedCampaignV1,
     plan: CommittedTickHydrationPlanV1,
+    checkpoint_marker: Option<CommittedTickHydratedMarkerV1>,
     replay_markers: Box<[CommittedTickHydratedMarkerV1]>,
 }
 
@@ -466,6 +470,15 @@ impl CommittedTickHydrationV1 {
     #[must_use]
     pub const fn plan(&self) -> &CommittedTickHydrationPlanV1 {
         &self.plan
+    }
+
+    /// Exact committed identity for the restored checkpoint bytes.
+    ///
+    /// This remains available when the checkpoint is the last committed tick
+    /// and the replay tail is therefore empty.
+    #[must_use]
+    pub const fn checkpoint_marker(&self) -> Option<CommittedTickHydratedMarkerV1> {
+        self.checkpoint_marker
     }
 
     /// Exact expected identities for every tick in the replay tail.
@@ -1107,27 +1120,35 @@ fn insert_batch(
     let family = batch.target().family();
     let operation = CommittedTickDatabaseOperationV1::InsertRows { family };
     let sql = format!(
-        "INSERT INTO {} (campaign_id, resolve_tick, row_ordinal, row_key, row_payload) \
-         VALUES ($1::text::uuid, $2, $3, $4, $5)",
+        "COPY {} (campaign_id, resolve_tick, row_ordinal, row_key, row_payload) \
+         FROM STDIN BINARY",
         batch.target().table().qualified_name()
     );
-    let campaign_text = batch.campaign_id().as_uuid().to_string();
+    let copy = transaction
+        .copy_in(&sql)
+        .map_err(|error| database_error(operation, &error))?;
+    let mut copy = BinaryCopyInWriter::new(
+        copy,
+        &[Type::UUID, Type::INT8, Type::INT4, Type::BYTEA, Type::BYTEA],
+    );
     for index in 0..batch.row_count() {
         let row = batch
             .storage_row(index)
             .expect("checked storage batch owns every bounded ordinal");
-        transaction
-            .execute(
-                &sql,
-                &[
-                    &campaign_text,
-                    &row.resolve_tick(),
-                    &row.row_ordinal(),
-                    &row.key(),
-                    &row.payload(),
-                ],
-            )
-            .map_err(|error| database_error(operation, &error))?;
+        copy.write(&[
+            batch.campaign_id().as_uuid(),
+            &row.resolve_tick(),
+            &row.row_ordinal(),
+            &row.key(),
+            &row.payload(),
+        ])
+        .map_err(|error| database_error(operation, &error))?;
+    }
+    let inserted = copy
+        .finish()
+        .map_err(|error| database_error(operation, &error))?;
+    if usize::try_from(inserted).ok() != Some(batch.row_count()) {
+        return Err(CommittedTickWriteErrorV1::Decode { operation });
     }
     Ok(())
 }
@@ -1177,19 +1198,15 @@ fn hydrate_under_lock(
     let last_marker = decode_hydrated_marker(&last_row, operation)?;
     let last_tick_i64 = i64::try_from(last_marker.resolve_tick)
         .map_err(|_| CommittedTickWriteErrorV1::Decode { operation })?;
-    let checkpoint_tick = client
+    let checkpoint_marker = client
         .query_opt(
             READ_NEAREST_CHECKPOINT_SQL,
             &[&campaign_text, &last_tick_i64],
         )
         .map_err(|error| database_error(CommittedTickDatabaseOperationV1::ReadCheckpoint, &error))?
-        .map(|row| {
-            let value: i64 = decode(&row, 0, CommittedTickDatabaseOperationV1::ReadCheckpoint)?;
-            u64::try_from(value).map_err(|_| CommittedTickWriteErrorV1::Decode {
-                operation: CommittedTickDatabaseOperationV1::ReadCheckpoint,
-            })
-        })
+        .map(|row| decode_hydrated_marker(&row, CommittedTickDatabaseOperationV1::ReadCheckpoint))
         .transpose()?;
+    let checkpoint_tick = checkpoint_marker.map(CommittedTickHydratedMarkerV1::resolve_tick);
     let checkpoint_rows = checkpoint_tick.map_or_else(
         || Ok(Vec::new()),
         |tick| read_checkpoint_rows(client, campaign_id, tick),
@@ -1235,6 +1252,7 @@ fn hydrate_under_lock(
     Ok(Some(CommittedTickHydrationV1 {
         campaign,
         plan,
+        checkpoint_marker,
         replay_markers: replay_markers.into_boxed_slice(),
     }))
 }
@@ -1565,6 +1583,9 @@ mod tests {
         );
         assert_eq!(retry.commit_attempts(), 0);
 
+        let checkpoint_marker =
+            assert_checkpoint_only_hydration(&scratch.config, campaign_id, &tick_zero);
+
         let payload_conflict = live_envelope(campaign_id, 0, 0x10, 0xff, true);
         assert!(matches!(
             commit_through_test_seam(&scratch.config, campaign, &payload_conflict),
@@ -1594,6 +1615,7 @@ mod tests {
         assert_eq!(hydrated.plan().checkpoint_tick(), Some(0));
         assert_eq!(hydrated.plan().last_committed_tick(), 2);
         assert_eq!(hydrated.plan().replay_tail(), &[1, 2]);
+        assert_eq!(hydrated.checkpoint_marker(), Some(checkpoint_marker));
         assert_eq!(
             hydrated
                 .replay_markers()
@@ -1629,6 +1651,27 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    fn assert_checkpoint_only_hydration(
+        config: &Config,
+        campaign_id: CampaignId,
+        envelope: &CommittedTickEnvelopeV1,
+    ) -> CommittedTickHydratedMarkerV1 {
+        let hydration = hydrate_committed_tick_checkpoint_v1(config, campaign_id, 0)
+            .expect("checkpoint-only hydration")
+            .expect("committed campaign");
+        assert!(hydration.plan().replay_tail().is_empty());
+        let marker = hydration
+            .checkpoint_marker()
+            .expect("checkpoint identity survives an empty replay tail");
+        assert_eq!(marker.resolve_tick(), 0);
+        assert_eq!(
+            marker.tick_content_hash(),
+            TickContentHashV1::from_bytes([0x10; 32])
+        );
+        assert_eq!(marker.envelope_digest(), *envelope.digest().as_bytes());
+        marker
     }
 
     fn live_envelope(

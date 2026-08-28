@@ -4,7 +4,8 @@ use babylon_persistence::committed_tick_envelope::CommittedTickEnvelopeV1;
 use babylon_persistence::committed_tick_storage::CampaignStorageRowV1;
 use babylon_persistence::committed_tick_writer::{
     commit_committed_tick_v1, CommittedTickCommitDispositionV1, CommittedTickCommitReportV1,
-    CommittedTickHydratedRowV1, CommittedTickHydrationPlanV1, CommittedTickWriteErrorV1,
+    CommittedTickHydratedMarkerV1, CommittedTickHydratedRowV1, CommittedTickHydrationPlanV1,
+    CommittedTickHydrationV1, CommittedTickWriteErrorV1,
 };
 use babylon_persistence::writer_gate::RustWriterAuthority;
 use postgres::Config;
@@ -21,6 +22,13 @@ fn assert_closed_writer_signature(
         CommittedTickCommitReportV1,
         CommittedTickWriteErrorV1,
     >,
+) {
+}
+
+fn assert_checkpoint_identity_signature(
+    _identity: for<'hydration> fn(
+        &'hydration CommittedTickHydrationV1,
+    ) -> Option<CommittedTickHydratedMarkerV1>,
 ) {
 }
 
@@ -61,4 +69,28 @@ fn hydration_plan_owns_exact_ordered_checkpoint_rows_and_bounded_tail() {
     assert_eq!(plan.checkpoint_rows()[0].key(), &[0x01]);
     assert_eq!(plan.checkpoint_rows()[1].payload(), &[0xa2]);
     assert_eq!(plan.replay_tail(), &[11, 12]);
+}
+
+#[test]
+fn hydration_exposes_the_checkpoint_commit_identity_even_when_no_tail_exists() {
+    assert_checkpoint_identity_signature(CommittedTickHydrationV1::checkpoint_marker);
+}
+
+#[test]
+fn family_insertion_uses_one_binary_copy_protocol_not_one_command_per_row() {
+    let source = include_str!("../src/committed_tick_writer.rs");
+    let start = source
+        .find("fn insert_batch(")
+        .expect("insert batch function");
+    let end = source[start..]
+        .find("\nfn insert_marker(")
+        .map(|offset| start + offset)
+        .expect("insert marker boundary");
+    let insert_batch = &source[start..end];
+
+    assert!(insert_batch.contains("BinaryCopyInWriter::new"));
+    assert!(insert_batch.contains("FROM STDIN BINARY"));
+    assert!(insert_batch.contains(".copy_in("));
+    assert!(insert_batch.contains(".finish()"));
+    assert!(!insert_batch.contains("transaction.execute"));
 }

@@ -266,7 +266,7 @@ jobs:
       - name: Bootstrap the canonical schema (digest-stamped, idempotent)
         run: mise run db:bootstrap
 
-      - name: Rust H3 atomicity and installed-mutation contracts
+      - name: Rust PostgreSQL atomicity and installed-mutation contracts
         timeout-minutes: 22
         env:
           BABYLON_LEGACY_ADOPTER_LIVE_FOCUS: pr

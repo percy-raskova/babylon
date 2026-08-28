@@ -2042,7 +2042,7 @@ fn live_adopter_tests_are_split_between_pr_and_weekly_cadences() {
         1
     );
     assert!(pr_job.contains(
-        "- name: Rust H3 atomicity and installed-mutation contracts\n        timeout-minutes: 22\n        env:\n          BABYLON_LEGACY_ADOPTER_LIVE_FOCUS: pr\n        run: mise run test:rust-legacy-adopter-pg"
+        "- name: Rust PostgreSQL atomicity and installed-mutation contracts\n        timeout-minutes: 22\n        env:\n          BABYLON_LEGACY_ADOPTER_LIVE_FOCUS: pr\n        run: mise run test:rust-legacy-adopter-pg"
     ));
     assert!(!pr_job.contains("BABYLON_LEGACY_ADOPTER_TEST_DSN"));
     assert!(!pr_job.contains("cargo doc"));
@@ -2064,7 +2064,7 @@ fn live_adopter_tests_are_split_between_pr_and_weekly_cadences() {
 }
 
 #[test]
-fn pr_focus_reuses_the_h3_atomicity_and_installed_mutation_contracts() {
+fn pr_focus_reuses_the_postgres_atomicity_and_installed_mutation_contracts() {
     let runner = include_str!("../../../../tools/run_rust_legacy_adopter_pg.sh");
     let live = include_str!("legacy_adopter_postgres.rs");
     let installer = include_str!("support/h3_reference_installer_postgres.rs");
@@ -2075,10 +2075,17 @@ fn pr_focus_reuses_the_h3_atomicity_and_installed_mutation_contracts() {
 
     assert!(runner.contains("BABYLON_LEGACY_ADOPTER_LIVE_FOCUS:-}"));
     assert!(runner.contains(
-        "\"\" | h3_atomicity | installed_mutation | schema_epoch_fresh | schema_epoch_matrix | \\\n    schema_epoch_rollback | schema_epoch_v4_census | h3_pg_oracle | \\\n    h3_reference_installer | pr)"
+        "\"\" | h3_atomicity | installed_mutation | schema_epoch_fresh | schema_epoch_matrix | \\\n    schema_epoch_rollback | schema_epoch_v4_census | h3_pg_oracle | \\\n    h3_reference_installer | committed_tick_writer | pr)"
     ));
     assert!(runner.contains("[ \"$LIVE_FOCUS\" = \"h3_pg_oracle\" ]"));
     assert!(runner.contains("[ \"$LIVE_FOCUS\" = \"h3_reference_installer\" ]"));
+    assert!(runner.contains("[ \"$LIVE_FOCUS\" = \"committed_tick_writer\" ]"));
+    assert_eq!(
+        runner
+            .matches("committed_tick_writer::tests::live_marker_last_commit_retry_conflict_and_hydration_are_atomic")
+            .count(),
+        1
+    );
     assert!(live.contains("Some(\"h3_pg_oracle\")"));
     assert!(live.contains("Some(\"h3_reference_installer\")"));
     assert_eq!(runner.matches(focused).count(), 1);
@@ -2207,7 +2214,7 @@ fn ci_step_exceeds_the_focused_runner_envelope() {
     let pr_workflow = include_str!("../../../../.github/workflows/ci.yml");
     let pr_job = yaml_job(pr_workflow, "  pg-integration:");
     assert!(pr_job.contains(
-        "- name: Rust H3 atomicity and installed-mutation contracts\n        timeout-minutes: 22"
+        "- name: Rust PostgreSQL atomicity and installed-mutation contracts\n        timeout-minutes: 22"
     ));
     let pr_job_seconds = pr_job
         .lines()
@@ -2219,7 +2226,7 @@ fn ci_step_exceeds_the_focused_runner_envelope() {
         * 60;
     let pr_adopter_step = cte_slice(
         pr_job,
-        "      - name: Rust H3 atomicity and installed-mutation contracts",
+        "      - name: Rust PostgreSQL atomicity and installed-mutation contracts",
         "      - name: PG-backed integration subset (declared, data-drive-free)",
     );
     let pr_step_seconds = pr_adopter_step

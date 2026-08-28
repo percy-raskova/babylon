@@ -64,10 +64,13 @@ nests ``GraphStateHash`` or ``NominalWorldHash`` inside that replay hash.
 
 .. vale ste.UnapprovedWords = YES
 
-This boundary provides in-memory rollback. ``babylon-persistence`` now defines
-the database-free ``CommittedTickEnvelopeV1`` byte contract and complete-payload
-retry contract. No tick runtime composes the envelope. No Postgres acknowledgment
-of durability exists.
+This boundary provides in-memory rollback. ``babylon-persistence`` defines the
+database-free ``CommittedTickEnvelopeV1`` byte contract and binds it to a
+marker-last Postgres transaction. The writer acknowledges only after ``COMMIT``
+or exact ambiguous-commit reconciliation, and the reader hydrates the last
+surviving marker plus a bounded checkpoint replay tail. No tick runtime composes
+the envelope, and the private ``RustWriterAuthority`` capability has no
+successful production construction path while Python remains authoritative.
 
 The Bevy client draws the county atlas and moves ticks forward.
 It has lenses, events, causal beats, and hash diagnostics. Committed BSL has no

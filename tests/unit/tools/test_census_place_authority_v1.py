@@ -183,6 +183,14 @@ def test_checked_in_contract_and_artifacts_verify() -> None:
     assert len(identities) == len(geometries) == contract["identity_artifact"]["rows"]
 
 
+def test_contract_refuses_missing_substantive_value_classification() -> None:
+    contract = copy.deepcopy(load_contract(CONTRACT))
+    del contract["classifications"]["semantic_digests"]
+
+    with pytest.raises(CensusPlaceAuthorityRefusal, match="contract_shape"):
+        verify_contract(contract)
+
+
 def test_contract_loader_refuses_duplicate_keys(tmp_path: Path) -> None:
     duplicate = tmp_path / "duplicate.yaml"
     duplicate.write_text("meta: first\nmeta: second\n", encoding="utf-8")

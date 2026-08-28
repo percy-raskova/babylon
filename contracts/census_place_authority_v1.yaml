@@ -4,6 +4,13 @@ meta:
   issue: PER-276
   parent: PER-21
 
+classifications:
+  source_url_bytes_vintage_schema_crs_and_members: Observed
+  artifact_bytes_rows_columns_and_extent: Observed
+  semantic_digests: Derived
+  canonical_formats_ordering_and_geometry_encoding: Designed
+  bounds_refusals_absences_and_lineage: Designed
+
 bounds:
   contract_bytes: 65536
   artifact_bytes: 1048576

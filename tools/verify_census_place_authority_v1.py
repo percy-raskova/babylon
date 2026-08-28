@@ -29,6 +29,13 @@ EXPECTED_META: Final = {
     "issue": "PER-276",
     "parent": "PER-21",
 }
+EXPECTED_CLASSIFICATIONS: Final = {
+    "source_url_bytes_vintage_schema_crs_and_members": "Observed",
+    "artifact_bytes_rows_columns_and_extent": "Observed",
+    "semantic_digests": "Derived",
+    "canonical_formats_ordering_and_geometry_encoding": "Designed",
+    "bounds_refusals_absences_and_lineage": "Designed",
+}
 EXPECTED_SOURCE_URL: Final = (
     "https://www2.census.gov/geo/tiger/TIGER2023/PLACE/tl_2023_26_place.zip"
 )
@@ -181,6 +188,7 @@ def verify_contract(contract: dict[str, Any]) -> None:
     """Verify the closed contract shape and declared authority boundary."""
     if set(contract) != {
         "meta",
+        "classifications",
         "bounds",
         "source",
         "identity_artifact",
@@ -190,8 +198,12 @@ def verify_contract(contract: dict[str, Any]) -> None:
         "lineage",
     }:
         raise CensusPlaceAuthorityRefusal("contract_shape", "root")
-    if contract.get("meta") != EXPECTED_META or contract.get("bounds") != EXPECTED_BOUNDS:
-        raise CensusPlaceAuthorityRefusal("contract_shape", "meta_or_bounds")
+    if (
+        contract.get("meta") != EXPECTED_META
+        or contract.get("classifications") != EXPECTED_CLASSIFICATIONS
+        or contract.get("bounds") != EXPECTED_BOUNDS
+    ):
+        raise CensusPlaceAuthorityRefusal("contract_shape", "meta_classifications_or_bounds")
     source = contract.get("source")
     if not isinstance(source, dict) or set(source) != {
         "manifest",

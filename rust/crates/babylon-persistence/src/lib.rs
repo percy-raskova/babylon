@@ -13,6 +13,8 @@ pub mod legacy_adopter;
 pub mod migration_manifest;
 pub mod schema_epoch;
 pub mod schema_migration;
+mod spatial_reference_installer;
+pub mod spatial_reference_products;
 pub mod tick_commit_claim;
 pub mod writer_gate;
 
@@ -58,6 +60,16 @@ pub use schema_epoch::{
 pub use schema_migration::{
     MigrationChecksum, MigrationVersion, SchemaMigration, SchemaMigrationError,
     MAX_SCHEMA_MIGRATION_SQL_BYTES, MIGRATION_CHECKSUM_BYTES,
+};
+pub use spatial_reference_installer::{
+    install_michigan_spatial_reference_products, SpatialReferenceInstallDisposition,
+    SpatialReferenceInstallError, SpatialReferenceInstallOperation, SpatialReferenceInstallReport,
+    SpatialReferenceRelation,
+};
+pub use spatial_reference_products::{
+    michigan_spatial_reference_products_v1, CountyH3LandAreaRow, CountyIdentityRow,
+    CountyPlaceH3LandAreaRow, H3CountRow, H3LandFractionRow, PlaceIdentityRow, ReferenceProduct,
+    ReferenceProductEvidenceClass, SpatialReferenceProducts, SpatialReferenceProductsError,
 };
 pub use writer_gate::{
     request_rust_writer_authority, RustWriterAuthority, RustWriterAuthorityError,

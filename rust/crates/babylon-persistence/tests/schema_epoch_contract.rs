@@ -9,14 +9,15 @@ const SQL_ONE: &str = "SELECT 1;\n";
 const SQL_TWO: &str = "SELECT 2;\n";
 
 #[test]
-fn compiled_registry_is_four_contiguous_exact_migrations() {
+fn compiled_registry_is_five_contiguous_exact_migrations() {
     let compiled = compiled_schema_migrations().expect("checked-in migration bytes are valid");
 
-    assert_eq!(compiled.len(), 4);
+    assert_eq!(compiled.len(), 5);
     assert_eq!(compiled[0].version().as_i64(), 1);
     assert_eq!(compiled[1].version().as_i64(), 2);
     assert_eq!(compiled[2].version().as_i64(), 3);
     assert_eq!(compiled[3].version().as_i64(), 4);
+    assert_eq!(compiled[4].version().as_i64(), 5);
     assert_eq!(
         compiled[0].sql(),
         include_str!("../migrations/0001_owned_schema_epoch.sql")
@@ -39,6 +40,12 @@ fn compiled_registry_is_four_contiguous_exact_migrations() {
     ))
     .expect("epoch-4 committed-tick storage migration must exist");
     assert_eq!(compiled[3].sql(), migration_four);
+    let migration_five = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/migrations/0005_spatial_reference_products.sql"
+    ))
+    .expect("epoch-5 spatial reference product migration must exist");
+    assert_eq!(compiled[4].sql(), migration_five);
     assert_eq!(
         compiled[0].checksum().as_bytes(),
         &hex_checksum("4fc40761ed3b9a2bfab574d14ce65d24e828d1d51ca3f953a515b18f6f2667d4")
@@ -54,6 +61,10 @@ fn compiled_registry_is_four_contiguous_exact_migrations() {
     assert_eq!(
         compiled[3].checksum().as_bytes(),
         &hex_checksum("496509cd05a5b911e933139cd28bbe281fe9c131560c3efca6bdf1ba8abb7dcf")
+    );
+    assert_eq!(
+        compiled[4].checksum().as_bytes(),
+        &hex_checksum("1d46108e67a896ac6bacb507b215e457ede4d6ad6fa728c9aa549f39f2c0370c")
     );
 }
 
@@ -171,6 +182,9 @@ fn production_epoch_has_no_runtime_activation_or_caller_supplied_sql_path() {
     assert!(production.contains("include_str!(\"../migrations/0002_h3_cell.sql\")"));
     assert!(production.contains("include_str!(\"../migrations/0003_h3_reference_cohort.sql\")"));
     assert!(production.contains("include_str!(\"../migrations/0004_committed_tick_storage.sql\")"));
+    assert!(
+        production.contains("include_str!(\"../migrations/0005_spatial_reference_products.sql\")")
+    );
     for stage in [
         "map_err(SchemaEpochError::ConnectionTarget)",
         "map_err(SchemaEpochError::Lock)",
@@ -275,6 +289,23 @@ fn v4_prefix_has_an_independent_shape_and_census_contract() {
 }
 
 #[test]
+fn v5_prefix_has_an_independent_shape_and_census_contract() {
+    let source = include_str!("../src/schema_epoch.rs");
+    let v5_verifier = source
+        .split_once("fn verify_v5_prefix_client(")
+        .unwrap()
+        .1
+        .split_once("fn verify_post_epoch_census_client(")
+        .unwrap()
+        .0;
+
+    assert!(v5_verifier.contains("EPOCH_V5_SHAPE_SQL"));
+    assert!(v5_verifier.contains("SchemaEpochPrefix::V5"));
+    assert!(!v5_verifier.contains("verify_v4_prefix"));
+    assert!(!v5_verifier.contains("EPOCH_V4_SHAPE_SQL"));
+}
+
+#[test]
 fn fresh_and_owned_census_fixtures_are_bounded_and_exactly_sorted() {
     let fixtures = [
         include_str!("../src/fixtures/fresh_schema_epoch_census_v1.txt"),
@@ -287,9 +318,11 @@ fn fresh_and_owned_census_fixtures_are_bounded_and_exactly_sorted() {
         include_str!("../src/fixtures/schema_epoch_owned_fresh_census_v3.txt"),
         include_str!("../src/fixtures/schema_epoch_owned_census_v4.txt"),
         include_str!("../src/fixtures/schema_epoch_owned_fresh_census_v4.txt"),
+        include_str!("../src/fixtures/schema_epoch_owned_census_v5.txt"),
+        include_str!("../src/fixtures/schema_epoch_owned_fresh_census_v5.txt"),
     ];
-    let expected_counts = [7, 8, 3, 4, 4, 5, 6, 7, 16, 17];
-    for (fixture, expected) in fixtures.iter().zip(expected_counts).take(10) {
+    let expected_counts = [7, 8, 3, 4, 4, 5, 6, 7, 16, 17, 24, 25];
+    for (fixture, expected) in fixtures.iter().zip(expected_counts).take(12) {
         let parsed = babylon_persistence::parse_legacy_census_fixture(fixture).unwrap();
         assert_eq!(parsed.entries().len(), expected);
         assert!(fixture.len() <= 65_536);

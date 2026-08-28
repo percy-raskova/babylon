@@ -14,6 +14,7 @@ from tools.verify_h3_estate_contract_v1 import (
     checked_land_fraction,
     discover_current_view_census,
     discover_persistent_table_census,
+    discover_runtime_consumer_census,
     load_contract,
     main,
     verified_artifact_bytes,
@@ -59,7 +60,7 @@ def test_contract_closes_the_full_estate_and_hard_gaps() -> None:
         "_hex_state_tmp",
     }
     assert contract["estate"]["unused_domain"]["name"] == "h3index"
-    assert len(contract["estate"]["runtime_consumer_census"]) == 39
+    assert len(contract["estate"]["runtime_consumer_census"]) == 41
     assert {row["kind"] for row in contract["hard_gaps"]} == {
         "census_place_identity",
         "census_place_geometry",
@@ -83,12 +84,123 @@ CREATE VIEW v_contract_probe AS SELECT h3_index FROM contract_probe;
     )
     contract = load_contract(CONTRACT)
 
-    assert discover_persistent_table_census(tmp_path) == {"contract_probe": {"h3_index": "TEXT"}}
+    assert discover_persistent_table_census(tmp_path) == {
+        "contract_probe": {
+            "identity_fields": {"h3_index": "TEXT"},
+            "tagged_discriminators": {},
+        }
+    }
     assert discover_current_view_census(contract, tmp_path) == {"v_contract_probe"}
 
     migration.unlink()
     assert discover_persistent_table_census(tmp_path) == {}
     assert discover_current_view_census(contract, tmp_path) == set()
+
+
+def test_catalog_census_applies_later_migration_changes_in_order(tmp_path: Path) -> None:
+    persistence = tmp_path / "src" / "babylon" / "persistence"
+    migrations = persistence / "migrations"
+    migrations.mkdir(parents=True)
+    (persistence / "postgres_schema.py").write_text("", encoding="utf-8")
+    (migrations / "0001_contract_probe.sql").write_text(
+        """CREATE TABLE contract_probe (
+    h3_index TEXT NOT NULL
+);
+CREATE VIEW v_contract_probe AS SELECT h3_index FROM contract_probe;
+""",
+        encoding="utf-8",
+    )
+    (migrations / "0002_commented_out_change.sql").write_text(
+        """-- DROP TABLE contract_probe;
+-- DROP VIEW v_contract_probe;
+-- ALTER TABLE contract_probe ALTER COLUMN h3_index TYPE BIGINT;
+""",
+        encoding="utf-8",
+    )
+    contract = load_contract(CONTRACT)
+    assert discover_persistent_table_census(tmp_path) == {
+        "contract_probe": {
+            "identity_fields": {"h3_index": "TEXT"},
+            "tagged_discriminators": {},
+        }
+    }
+    assert discover_current_view_census(contract, tmp_path) == {"v_contract_probe"}
+
+    later = migrations / "0003_contract_probe_change.sql"
+    later.write_text(
+        """ALTER TABLE contract_probe ALTER COLUMN h3_index TYPE VARCHAR(16);
+DROP VIEW v_contract_probe;
+""",
+        encoding="utf-8",
+    )
+    assert discover_persistent_table_census(tmp_path) == {
+        "contract_probe": {
+            "identity_fields": {"h3_index": "VARCHAR(16)"},
+            "tagged_discriminators": {},
+        }
+    }
+    assert discover_current_view_census(contract, tmp_path) == set()
+
+    later.write_text("DROP TABLE contract_probe;\n", encoding="utf-8")
+    assert discover_persistent_table_census(tmp_path) == {}
+
+
+def test_table_census_includes_tagged_destination_discriminator() -> None:
+    census = discover_persistent_table_census(ROOT)
+
+    assert census["immutable_reference_lodes_od_matrix"]["tagged_discriminators"] == {
+        "workplace_dest_kind": {
+            "legacy_type": "TEXT",
+            "allowed_values": ["external", "hex"],
+        }
+    }
+
+
+def test_table_census_applies_later_tag_constraint_changes(tmp_path: Path) -> None:
+    persistence = tmp_path / "src" / "babylon" / "persistence"
+    migrations = persistence / "migrations"
+    migrations.mkdir(parents=True)
+    (persistence / "postgres_schema.py").write_text("", encoding="utf-8")
+    (migrations / "0001_tagged_destination.sql").write_text(
+        """CREATE TABLE contract_probe (
+    home_hex TEXT NOT NULL,
+    workplace_dest TEXT NOT NULL,
+    workplace_dest_kind TEXT NOT NULL
+        CHECK (workplace_dest_kind IN ('hex', 'external'))
+);
+""",
+        encoding="utf-8",
+    )
+    (migrations / "0002_widen_tag.sql").write_text(
+        """ALTER TABLE contract_probe
+DROP CONSTRAINT contract_probe_workplace_dest_kind_check;
+ALTER TABLE contract_probe
+ADD CONSTRAINT contract_probe_workplace_dest_kind_check
+CHECK (workplace_dest_kind IN ('hex', 'external', 'unknown'));
+""",
+        encoding="utf-8",
+    )
+
+    census = discover_persistent_table_census(tmp_path)
+
+    assert census["contract_probe"]["tagged_discriminators"] == {
+        "workplace_dest_kind": {
+            "legacy_type": "TEXT",
+            "allowed_values": ["external", "hex", "unknown"],
+        }
+    }
+
+
+def test_runtime_consumer_census_includes_supported_archive_cli() -> None:
+    contract = copy.deepcopy(load_contract(CONTRACT))
+    contract["estate"]["partition"]["default_child"] = "dynamic_hex_state_default"
+
+    consumers = discover_runtime_consumer_census(contract, ROOT)
+
+    assert {
+        ("tools/archive_sessions.py", "dynamic_hex_state", "read"),
+        ("tools/archive_sessions.py", "dynamic_hex_state_default", "read"),
+    } <= {(row["path"], row["relation"], row["access"]) for row in consumers}
 
 
 def test_contract_loader_refuses_duplicate_mapping_keys(tmp_path: Path) -> None:
@@ -99,6 +211,27 @@ def test_contract_loader_refuses_duplicate_mapping_keys(tmp_path: Path) -> None:
         load_contract(path)
 
     assert exc_info.value.code == "invalid_contract"
+
+
+@pytest.mark.parametrize(
+    "extra_gap",
+    [
+        None,
+        {
+            "kind": "census_place_identity",
+            "status": "blocking",
+            "required_authority": "duplicate contradiction",
+        },
+    ],
+)
+def test_contract_refuses_malformed_or_duplicate_hard_gaps(extra_gap: object) -> None:
+    contract = copy.deepcopy(load_contract(CONTRACT))
+    contract["hard_gaps"].append(extra_gap)
+
+    with pytest.raises(H3EstateContractRefusal) as exc_info:
+        verify_contract(contract, ROOT)
+
+    assert exc_info.value.code == "contract_shape"
 
 
 def test_source_inventory_refuses_a_missing_persistent_table() -> None:

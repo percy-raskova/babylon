@@ -61,6 +61,32 @@ fn commit_acknowledgement_requires_synchronous_wal_flush() {
 }
 
 #[test]
+fn acknowledged_commit_returns_without_a_followup_database_operation() {
+    let source = include_str!("../src/committed_tick_writer.rs");
+    let attempt_start = source
+        .find("fn attempt_commit_using<Probe>(")
+        .expect("commit attempt function");
+    let attempt_end = source[attempt_start..]
+        .find("\nfn write_transaction_using<Probe>(")
+        .map(|offset| attempt_start + offset)
+        .expect("write transaction boundary");
+    let attempt = &source[attempt_start..attempt_end];
+    let acknowledged_start = attempt
+        .find("                Ok(()) => {")
+        .expect("successful commit response");
+    let acknowledged_end = attempt[acknowledged_start..]
+        .find("\n                Err(error)")
+        .map(|offset| acknowledged_start + offset)
+        .expect("failed commit response boundary");
+    let acknowledged = &attempt[acknowledged_start..acknowledged_end];
+
+    assert!(acknowledged.contains("CommitTransactionBoundaryV1::after(commit_step)"));
+    assert!(acknowledged.contains("Ok(CommitAttempt::Committed)"));
+    assert!(!acknowledged.contains("client."));
+    assert!(!acknowledged.contains("simple_query"));
+}
+
+#[test]
 fn hydration_plan_owns_exact_ordered_checkpoint_rows_and_bounded_tail() {
     let plan = CommittedTickHydrationPlanV1::compose(
         12,

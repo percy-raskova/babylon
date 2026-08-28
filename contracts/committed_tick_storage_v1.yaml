@@ -7,7 +7,7 @@ meta:
 migration:
   version: 4
   file: rust/crates/babylon-persistence/migrations/0004_committed_tick_storage.sql
-  sha256: 64ace4141e0c9c7167629c2bd731b04b287803fece2741e897fcd9e167e30aa4
+  sha256: 496509cd05a5b911e933139cd28bbe281fe9c131560c3efca6bdf1ba8abb7dcf
   transaction_owner: babylon-persistence schema epoch migrator
   marker_order: schema_migration row is the final statement before commit
   origin_contracts: [fresh, exact_legacy, exact_rust_prefix]
@@ -49,14 +49,16 @@ family_row_shape:
   columns:
     - {source: TickCommitClaimV1.campaign_id, column: campaign_id, postgresql: UUID}
     - {source: TickCommitClaimV1.resolve_tick, column: resolve_tick, postgresql: NONNEGATIVE_BIGINT}
+    - {source: CommittedTickStorageRowV1.row_ordinal, column: row_ordinal, postgresql: INTEGER_0_TO_1048575}
     - {source: CommittedTickRowV1.key, column: row_key, postgresql: BYTEA_NONEMPTY_MAX_67108856}
     - {source: CommittedTickRowV1.payload, column: row_payload, postgresql: BYTEA_MAX_67108855}
-  primary_key: [campaign_id, resolve_tick, row_key]
+  primary_key: [campaign_id, resolve_tick, row_ordinal]
   marker_foreign_key:
     columns: [campaign_id, resolve_tick]
     destination: babylon_state.tick_commit(campaign_id,resolve_tick)
     timing: DEFERRABLE_INITIALLY_DEFERRED
-  canonical_order: strict ascending row_key bytes within each family
+  canonical_order: row_ordinal is the zero-based position in strict ascending row_key order
+  opaque_key_indexing: none
 
 row_families:
   - {family: graph, tag_u8: 16, relation: babylon_state.tick_graph_row}
@@ -72,6 +74,9 @@ invariants:
   - The eight-family map is closed, ordered, and one-to-one.
   - All relation and column identities are schema-qualified and fixed.
   - Exact envelope validation happens before any future parameter binding.
+  - >-
+    The bounded row ordinal is a collision-free physical identity that keeps
+    every valid opaque row key storeable without a B-tree entry over those bytes.
   - Family rows reference the marker through deferred foreign keys so a future transaction can insert the marker last.
   - The schema epoch must remain an exact contiguous version and checksum prefix.
   - Failed or ambiguous migration outcomes reconcile against the durable prefix.

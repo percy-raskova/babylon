@@ -14,13 +14,13 @@ use crate::legacy_adopter::{
 };
 use crate::schema_epoch::{
     bounded_config, inspect_schema_epoch_under_lock, SchemaEpochError, SchemaEpochOrigin,
+    CURRENT_SCHEMA_EPOCH,
 };
 use crate::{
     build_representative_h3_cohort_v1, H3CellId, H3CellIdError, H3ReferenceCellRow,
     H3ReferenceCohort, H3ReferenceCohortError, H3ReferenceCohortReceipt, H3ReferenceOrigin,
 };
 
-const H3_REFERENCE_INSTALL_SCHEMA_EPOCH: usize = 3;
 const H3_REFERENCE_COHORT_FORMAT_VERSION: i16 = 1;
 const H3_REFERENCE_ARTIFACT_NAME: &str = "bridge_county_h3.parquet";
 const H3_REFERENCE_ARTIFACT_MANIFEST_VERSION: &str = "2.0.0";
@@ -389,7 +389,7 @@ trait InstallDriver {
     ) -> Result<InstallPresence, H3ReferenceInstallError>;
 }
 
-/// Install one already-validated representative H3 cohort into exact schema epoch 3.
+/// Install one already-validated representative H3 cohort into the exact current schema epoch.
 ///
 /// This immutable reference-data maintenance entry point does not request runtime writer
 /// authority and never advances the schema epoch for the caller.
@@ -608,13 +608,11 @@ where
 fn require_exact_schema_epoch(client: &mut Client) -> Result<(), H3ReferenceInstallError> {
     let (origin, actual) =
         inspect_schema_epoch_under_lock(client).map_err(H3ReferenceInstallError::SchemaEpoch)?;
-    if origin == SchemaEpochOrigin::ExistingRustPrefix
-        && actual == H3_REFERENCE_INSTALL_SCHEMA_EPOCH
-    {
+    if origin == SchemaEpochOrigin::ExistingRustPrefix && actual == CURRENT_SCHEMA_EPOCH {
         Ok(())
     } else {
         Err(H3ReferenceInstallError::ExactSchemaEpochRequired {
-            expected: H3_REFERENCE_INSTALL_SCHEMA_EPOCH,
+            expected: CURRENT_SCHEMA_EPOCH,
             actual,
             origin,
         })

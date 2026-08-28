@@ -7,13 +7,21 @@ use babylon_kernel::ContentDigest;
 use crate::committed_tick_envelope::{
     CommittedTickEnvelopeDigestV1, CommittedTickEnvelopeV1, CommittedTickRowBatchV1,
     CommittedTickRowFamilyV1, CommittedTickRowV1, COMMITTED_TICK_ENVELOPE_LAYOUT_VERSION_V1,
+    MAX_COMMITTED_TICK_ROWS_V1,
 };
 use crate::identity::CampaignId;
 
 const STATE_SCHEMA: &str = "babylon_state";
 const TICK_COMMIT_ENVELOPE_LAYOUT_VERSION_V1: i16 = 1;
 const _: () = assert!(COMMITTED_TICK_ENVELOPE_LAYOUT_VERSION_V1 == 1);
-const FAMILY_COLUMNS: &[&str] = &["campaign_id", "resolve_tick", "row_key", "row_payload"];
+const _: () = assert!(MAX_COMMITTED_TICK_ROWS_V1 <= i32::MAX as usize);
+const FAMILY_COLUMNS: &[&str] = &[
+    "campaign_id",
+    "resolve_tick",
+    "row_ordinal",
+    "row_key",
+    "row_payload",
+];
 const CAMPAIGN_COLUMNS: &[&str] = &[
     "campaign_id",
     "replay_layout_version",
@@ -285,6 +293,47 @@ impl TickCommitStorageRowV1 {
     }
 }
 
+/// One exact family row bound to its lossless physical storage identity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CommittedTickStorageRowV1<'a> {
+    campaign_id: CampaignId,
+    resolve_tick: i64,
+    row_ordinal: i32,
+    row: &'a CommittedTickRowV1,
+}
+
+impl<'a> CommittedTickStorageRowV1<'a> {
+    /// Return the durable campaign key.
+    #[must_use]
+    pub const fn campaign_id(self) -> CampaignId {
+        self.campaign_id
+    }
+
+    /// Return the checked `PostgreSQL` `BIGINT` tick.
+    #[must_use]
+    pub const fn resolve_tick(self) -> i64 {
+        self.resolve_tick
+    }
+
+    /// Return the zero-based canonical family position used by the physical primary key.
+    #[must_use]
+    pub const fn row_ordinal(self) -> i32 {
+        self.row_ordinal
+    }
+
+    /// Borrow the exact logical row-key bytes without indexing them.
+    #[must_use]
+    pub fn key(self) -> &'a [u8] {
+        self.row.key()
+    }
+
+    /// Borrow the exact canonical row-payload bytes.
+    #[must_use]
+    pub fn payload(self) -> &'a [u8] {
+        self.row.payload()
+    }
+}
+
 /// One family batch bound to its exact table and marker key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CommittedTickStorageBatchV1<'a> {
@@ -313,10 +362,23 @@ impl<'a> CommittedTickStorageBatchV1<'a> {
         self.resolve_tick
     }
 
-    /// Borrow the strict key-ordered exact key and payload bytes.
+    /// Return the number of strict key-ordered rows in this checked batch.
     #[must_use]
-    pub const fn rows(&self) -> &'a [CommittedTickRowV1] {
-        self.rows
+    pub const fn row_count(&self) -> usize {
+        self.rows.len()
+    }
+
+    /// Map one checked canonical row to its complete physical storage parameters.
+    #[must_use]
+    pub fn storage_row(&self, index: usize) -> Option<CommittedTickStorageRowV1<'a>> {
+        let row = self.rows.get(index)?;
+        let row_ordinal = i32::try_from(index).ok()?;
+        Some(CommittedTickStorageRowV1 {
+            campaign_id: self.campaign_id,
+            resolve_tick: self.resolve_tick,
+            row_ordinal,
+            row,
+        })
     }
 }
 

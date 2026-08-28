@@ -17,15 +17,15 @@ expected_relations(nspname, relname, column_count, constraint_count, index_count
         ('babylon_ref', 'h3_reference_membership', 3, 6, 2),
         ('babylon_state', 'campaign', 8, 9, 1),
         ('babylon_state', 'schema_migration', 2, 3, 1),
-        ('babylon_state', 'tick_archive_dirty_receipt_row', 4, 5, 1),
-        ('babylon_state', 'tick_boundary_flow_row', 4, 5, 1),
-        ('babylon_state', 'tick_checkpoint_row', 4, 5, 1),
+        ('babylon_state', 'tick_archive_dirty_receipt_row', 5, 6, 1),
+        ('babylon_state', 'tick_boundary_flow_row', 5, 6, 1),
+        ('babylon_state', 'tick_checkpoint_row', 5, 6, 1),
         ('babylon_state', 'tick_commit', 5, 6, 1),
-        ('babylon_state', 'tick_conservation_row', 4, 5, 1),
-        ('babylon_state', 'tick_event_row', 4, 5, 1),
-        ('babylon_state', 'tick_graph_row', 4, 5, 1),
-        ('babylon_state', 'tick_state_row', 4, 5, 1),
-        ('babylon_state', 'tick_subsystem_row', 4, 5, 1)
+        ('babylon_state', 'tick_conservation_row', 5, 6, 1),
+        ('babylon_state', 'tick_event_row', 5, 6, 1),
+        ('babylon_state', 'tick_graph_row', 5, 6, 1),
+        ('babylon_state', 'tick_state_row', 5, 6, 1),
+        ('babylon_state', 'tick_subsystem_row', 5, 6, 1)
 ),
 owned_relations AS MATERIALIZED (
     SELECT relation.oid, namespace.nspname, relation.relname, relation.relowner,
@@ -56,7 +56,7 @@ relation_columns AS MATERIALIZED (
      AND default_row.adnum = attribute.attnum
     WHERE attribute.attnum > 0 AND NOT attribute.attisdropped
     ORDER BY relation.nspname, relation.relname, attribute.attnum
-    LIMIT 71
+    LIMIT 79
 ),
 expected_columns(
     nspname, relname, attnum, attname, atttypid, attnotnull, attcollation
@@ -132,25 +132,31 @@ expected_columns(
          'pg_catalog.uuid'::pg_catalog.regtype, true, 0),
         ('babylon_state', 'tick_archive_dirty_receipt_row', 2, 'resolve_tick',
          'pg_catalog.int8'::pg_catalog.regtype, true, 0),
-        ('babylon_state', 'tick_archive_dirty_receipt_row', 3, 'row_key',
+        ('babylon_state', 'tick_archive_dirty_receipt_row', 3, 'row_ordinal',
+         'pg_catalog.int4'::pg_catalog.regtype, true, 0),
+        ('babylon_state', 'tick_archive_dirty_receipt_row', 4, 'row_key',
          'pg_catalog.bytea'::pg_catalog.regtype, true, 0),
-        ('babylon_state', 'tick_archive_dirty_receipt_row', 4, 'row_payload',
+        ('babylon_state', 'tick_archive_dirty_receipt_row', 5, 'row_payload',
          'pg_catalog.bytea'::pg_catalog.regtype, true, 0),
         ('babylon_state', 'tick_boundary_flow_row', 1, 'campaign_id',
          'pg_catalog.uuid'::pg_catalog.regtype, true, 0),
         ('babylon_state', 'tick_boundary_flow_row', 2, 'resolve_tick',
          'pg_catalog.int8'::pg_catalog.regtype, true, 0),
-        ('babylon_state', 'tick_boundary_flow_row', 3, 'row_key',
+        ('babylon_state', 'tick_boundary_flow_row', 3, 'row_ordinal',
+         'pg_catalog.int4'::pg_catalog.regtype, true, 0),
+        ('babylon_state', 'tick_boundary_flow_row', 4, 'row_key',
          'pg_catalog.bytea'::pg_catalog.regtype, true, 0),
-        ('babylon_state', 'tick_boundary_flow_row', 4, 'row_payload',
+        ('babylon_state', 'tick_boundary_flow_row', 5, 'row_payload',
          'pg_catalog.bytea'::pg_catalog.regtype, true, 0),
         ('babylon_state', 'tick_checkpoint_row', 1, 'campaign_id',
          'pg_catalog.uuid'::pg_catalog.regtype, true, 0),
         ('babylon_state', 'tick_checkpoint_row', 2, 'resolve_tick',
          'pg_catalog.int8'::pg_catalog.regtype, true, 0),
-        ('babylon_state', 'tick_checkpoint_row', 3, 'row_key',
+        ('babylon_state', 'tick_checkpoint_row', 3, 'row_ordinal',
+         'pg_catalog.int4'::pg_catalog.regtype, true, 0),
+        ('babylon_state', 'tick_checkpoint_row', 4, 'row_key',
          'pg_catalog.bytea'::pg_catalog.regtype, true, 0),
-        ('babylon_state', 'tick_checkpoint_row', 4, 'row_payload',
+        ('babylon_state', 'tick_checkpoint_row', 5, 'row_payload',
          'pg_catalog.bytea'::pg_catalog.regtype, true, 0),
         ('babylon_state', 'tick_commit', 1, 'campaign_id',
          'pg_catalog.uuid'::pg_catalog.regtype, true, 0),
@@ -166,41 +172,51 @@ expected_columns(
          'pg_catalog.uuid'::pg_catalog.regtype, true, 0),
         ('babylon_state', 'tick_conservation_row', 2, 'resolve_tick',
          'pg_catalog.int8'::pg_catalog.regtype, true, 0),
-        ('babylon_state', 'tick_conservation_row', 3, 'row_key',
+        ('babylon_state', 'tick_conservation_row', 3, 'row_ordinal',
+         'pg_catalog.int4'::pg_catalog.regtype, true, 0),
+        ('babylon_state', 'tick_conservation_row', 4, 'row_key',
          'pg_catalog.bytea'::pg_catalog.regtype, true, 0),
-        ('babylon_state', 'tick_conservation_row', 4, 'row_payload',
+        ('babylon_state', 'tick_conservation_row', 5, 'row_payload',
          'pg_catalog.bytea'::pg_catalog.regtype, true, 0),
         ('babylon_state', 'tick_event_row', 1, 'campaign_id',
          'pg_catalog.uuid'::pg_catalog.regtype, true, 0),
         ('babylon_state', 'tick_event_row', 2, 'resolve_tick',
          'pg_catalog.int8'::pg_catalog.regtype, true, 0),
-        ('babylon_state', 'tick_event_row', 3, 'row_key',
+        ('babylon_state', 'tick_event_row', 3, 'row_ordinal',
+         'pg_catalog.int4'::pg_catalog.regtype, true, 0),
+        ('babylon_state', 'tick_event_row', 4, 'row_key',
          'pg_catalog.bytea'::pg_catalog.regtype, true, 0),
-        ('babylon_state', 'tick_event_row', 4, 'row_payload',
+        ('babylon_state', 'tick_event_row', 5, 'row_payload',
          'pg_catalog.bytea'::pg_catalog.regtype, true, 0),
         ('babylon_state', 'tick_graph_row', 1, 'campaign_id',
          'pg_catalog.uuid'::pg_catalog.regtype, true, 0),
         ('babylon_state', 'tick_graph_row', 2, 'resolve_tick',
          'pg_catalog.int8'::pg_catalog.regtype, true, 0),
-        ('babylon_state', 'tick_graph_row', 3, 'row_key',
+        ('babylon_state', 'tick_graph_row', 3, 'row_ordinal',
+         'pg_catalog.int4'::pg_catalog.regtype, true, 0),
+        ('babylon_state', 'tick_graph_row', 4, 'row_key',
          'pg_catalog.bytea'::pg_catalog.regtype, true, 0),
-        ('babylon_state', 'tick_graph_row', 4, 'row_payload',
+        ('babylon_state', 'tick_graph_row', 5, 'row_payload',
          'pg_catalog.bytea'::pg_catalog.regtype, true, 0),
         ('babylon_state', 'tick_state_row', 1, 'campaign_id',
          'pg_catalog.uuid'::pg_catalog.regtype, true, 0),
         ('babylon_state', 'tick_state_row', 2, 'resolve_tick',
          'pg_catalog.int8'::pg_catalog.regtype, true, 0),
-        ('babylon_state', 'tick_state_row', 3, 'row_key',
+        ('babylon_state', 'tick_state_row', 3, 'row_ordinal',
+         'pg_catalog.int4'::pg_catalog.regtype, true, 0),
+        ('babylon_state', 'tick_state_row', 4, 'row_key',
          'pg_catalog.bytea'::pg_catalog.regtype, true, 0),
-        ('babylon_state', 'tick_state_row', 4, 'row_payload',
+        ('babylon_state', 'tick_state_row', 5, 'row_payload',
          'pg_catalog.bytea'::pg_catalog.regtype, true, 0),
         ('babylon_state', 'tick_subsystem_row', 1, 'campaign_id',
          'pg_catalog.uuid'::pg_catalog.regtype, true, 0),
         ('babylon_state', 'tick_subsystem_row', 2, 'resolve_tick',
          'pg_catalog.int8'::pg_catalog.regtype, true, 0),
-        ('babylon_state', 'tick_subsystem_row', 3, 'row_key',
+        ('babylon_state', 'tick_subsystem_row', 3, 'row_ordinal',
+         'pg_catalog.int4'::pg_catalog.regtype, true, 0),
+        ('babylon_state', 'tick_subsystem_row', 4, 'row_key',
          'pg_catalog.bytea'::pg_catalog.regtype, true, 0),
-        ('babylon_state', 'tick_subsystem_row', 4, 'row_payload',
+        ('babylon_state', 'tick_subsystem_row', 5, 'row_payload',
          'pg_catalog.bytea'::pg_catalog.regtype, true, 0)
 ),
 relation_constraints AS MATERIALIZED (
@@ -215,7 +231,7 @@ relation_constraints AS MATERIALIZED (
     JOIN pg_catalog.pg_constraint AS constraint_row
       ON constraint_row.conrelid = relation.oid
     ORDER BY relation.nspname, relation.relname, constraint_row.conname
-    LIMIT 94
+    LIMIT 102
 ),
 expected_constraints(relname, conname, contype) AS (
     VALUES
@@ -240,6 +256,8 @@ expected_constraints(relname, conname, contype) AS (
         ('tick_archive_dirty_receipt_row',
          'tick_archive_dirty_receipt_row_key_length', 'c'::pg_catalog."char"),
         ('tick_archive_dirty_receipt_row',
+         'tick_archive_dirty_receipt_row_ordinal_range', 'c'::pg_catalog."char"),
+        ('tick_archive_dirty_receipt_row',
          'tick_archive_dirty_receipt_row_payload_length', 'c'::pg_catalog."char"),
         ('tick_archive_dirty_receipt_row',
          'tick_archive_dirty_receipt_row_pkey', 'p'::pg_catalog."char"),
@@ -249,6 +267,8 @@ expected_constraints(relname, conname, contype) AS (
          'f'::pg_catalog."char"),
         ('tick_boundary_flow_row', 'tick_boundary_flow_row_key_length',
          'c'::pg_catalog."char"),
+        ('tick_boundary_flow_row', 'tick_boundary_flow_row_ordinal_range',
+         'c'::pg_catalog."char"),
         ('tick_boundary_flow_row', 'tick_boundary_flow_row_payload_length',
          'c'::pg_catalog."char"),
         ('tick_boundary_flow_row', 'tick_boundary_flow_row_pkey', 'p'::pg_catalog."char"),
@@ -257,6 +277,8 @@ expected_constraints(relname, conname, contype) AS (
         ('tick_checkpoint_row', 'tick_checkpoint_row_campaign_tick_fkey',
          'f'::pg_catalog."char"),
         ('tick_checkpoint_row', 'tick_checkpoint_row_key_length', 'c'::pg_catalog."char"),
+        ('tick_checkpoint_row', 'tick_checkpoint_row_ordinal_range',
+         'c'::pg_catalog."char"),
         ('tick_checkpoint_row', 'tick_checkpoint_row_payload_length',
          'c'::pg_catalog."char"),
         ('tick_checkpoint_row', 'tick_checkpoint_row_pkey', 'p'::pg_catalog."char"),
@@ -266,6 +288,8 @@ expected_constraints(relname, conname, contype) AS (
          'f'::pg_catalog."char"),
         ('tick_conservation_row', 'tick_conservation_row_key_length',
          'c'::pg_catalog."char"),
+        ('tick_conservation_row', 'tick_conservation_row_ordinal_range',
+         'c'::pg_catalog."char"),
         ('tick_conservation_row', 'tick_conservation_row_payload_length',
          'c'::pg_catalog."char"),
         ('tick_conservation_row', 'tick_conservation_row_pkey', 'p'::pg_catalog."char"),
@@ -273,22 +297,27 @@ expected_constraints(relname, conname, contype) AS (
          'c'::pg_catalog."char"),
         ('tick_event_row', 'tick_event_row_campaign_tick_fkey', 'f'::pg_catalog."char"),
         ('tick_event_row', 'tick_event_row_key_length', 'c'::pg_catalog."char"),
+        ('tick_event_row', 'tick_event_row_ordinal_range', 'c'::pg_catalog."char"),
         ('tick_event_row', 'tick_event_row_payload_length', 'c'::pg_catalog."char"),
         ('tick_event_row', 'tick_event_row_pkey', 'p'::pg_catalog."char"),
         ('tick_event_row', 'tick_event_row_resolve_tick_sql_range', 'c'::pg_catalog."char"),
         ('tick_graph_row', 'tick_graph_row_campaign_tick_fkey', 'f'::pg_catalog."char"),
         ('tick_graph_row', 'tick_graph_row_key_length', 'c'::pg_catalog."char"),
+        ('tick_graph_row', 'tick_graph_row_ordinal_range', 'c'::pg_catalog."char"),
         ('tick_graph_row', 'tick_graph_row_payload_length', 'c'::pg_catalog."char"),
         ('tick_graph_row', 'tick_graph_row_pkey', 'p'::pg_catalog."char"),
         ('tick_graph_row', 'tick_graph_row_resolve_tick_sql_range', 'c'::pg_catalog."char"),
         ('tick_state_row', 'tick_state_row_campaign_tick_fkey', 'f'::pg_catalog."char"),
         ('tick_state_row', 'tick_state_row_key_length', 'c'::pg_catalog."char"),
+        ('tick_state_row', 'tick_state_row_ordinal_range', 'c'::pg_catalog."char"),
         ('tick_state_row', 'tick_state_row_payload_length', 'c'::pg_catalog."char"),
         ('tick_state_row', 'tick_state_row_pkey', 'p'::pg_catalog."char"),
         ('tick_state_row', 'tick_state_row_resolve_tick_sql_range', 'c'::pg_catalog."char"),
         ('tick_subsystem_row', 'tick_subsystem_row_campaign_tick_fkey',
          'f'::pg_catalog."char"),
         ('tick_subsystem_row', 'tick_subsystem_row_key_length', 'c'::pg_catalog."char"),
+        ('tick_subsystem_row', 'tick_subsystem_row_ordinal_range',
+         'c'::pg_catalog."char"),
         ('tick_subsystem_row', 'tick_subsystem_row_payload_length',
          'c'::pg_catalog."char"),
         ('tick_subsystem_row', 'tick_subsystem_row_pkey', 'p'::pg_catalog."char"),
@@ -330,23 +359,23 @@ expected_indexes(
          true, true, 'ref_digest', 'cell_id', NULL),
         ('schema_migration', 'schema_migration_pkey', true, true, 'version', NULL, NULL),
         ('tick_archive_dirty_receipt_row', 'tick_archive_dirty_receipt_row_pkey',
-         true, true, 'campaign_id', 'resolve_tick', 'row_key'),
+         true, true, 'campaign_id', 'resolve_tick', 'row_ordinal'),
         ('tick_boundary_flow_row', 'tick_boundary_flow_row_pkey',
-         true, true, 'campaign_id', 'resolve_tick', 'row_key'),
+         true, true, 'campaign_id', 'resolve_tick', 'row_ordinal'),
         ('tick_checkpoint_row', 'tick_checkpoint_row_pkey',
-         true, true, 'campaign_id', 'resolve_tick', 'row_key'),
+         true, true, 'campaign_id', 'resolve_tick', 'row_ordinal'),
         ('tick_commit', 'tick_commit_pkey',
          true, true, 'campaign_id', 'resolve_tick', NULL),
         ('tick_conservation_row', 'tick_conservation_row_pkey',
-         true, true, 'campaign_id', 'resolve_tick', 'row_key'),
+         true, true, 'campaign_id', 'resolve_tick', 'row_ordinal'),
         ('tick_event_row', 'tick_event_row_pkey',
-         true, true, 'campaign_id', 'resolve_tick', 'row_key'),
+         true, true, 'campaign_id', 'resolve_tick', 'row_ordinal'),
         ('tick_graph_row', 'tick_graph_row_pkey',
-         true, true, 'campaign_id', 'resolve_tick', 'row_key'),
+         true, true, 'campaign_id', 'resolve_tick', 'row_ordinal'),
         ('tick_state_row', 'tick_state_row_pkey',
-         true, true, 'campaign_id', 'resolve_tick', 'row_key'),
+         true, true, 'campaign_id', 'resolve_tick', 'row_ordinal'),
         ('tick_subsystem_row', 'tick_subsystem_row_pkey',
-         true, true, 'campaign_id', 'resolve_tick', 'row_key')
+         true, true, 'campaign_id', 'resolve_tick', 'row_ordinal')
 ),
 owned_classes AS MATERIALIZED (
     SELECT namespace.nspname, relation.relname, relation.relkind
@@ -413,8 +442,8 @@ SELECT
             'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN'
         ) LIMIT 1
     )
-    AND (SELECT pg_catalog.count(*) = 70 FROM relation_columns)
-    AND (SELECT pg_catalog.count(*) = 70 FROM expected_columns)
+    AND (SELECT pg_catalog.count(*) = 78 FROM relation_columns)
+    AND (SELECT pg_catalog.count(*) = 78 FROM expected_columns)
     AND NOT EXISTS (
         SELECT 1 FROM relation_columns AS actual
         FULL JOIN expected_columns AS expected
@@ -456,7 +485,7 @@ SELECT
           )
         LIMIT 1
     )
-    AND (SELECT pg_catalog.count(*) = 93 FROM relation_constraints)
+    AND (SELECT pg_catalog.count(*) = 101 FROM relation_constraints)
     AND (SELECT pg_catalog.bool_and(convalidated) FROM relation_constraints)
     AND NOT EXISTS (
         SELECT 1 FROM relation_constraints
@@ -474,7 +503,7 @@ SELECT
         ) AS actual ON true
         WHERE actual.actual_count <> expected.constraint_count LIMIT 1
     )
-    AND (SELECT pg_catalog.count(*) = 55 FROM expected_constraints)
+    AND (SELECT pg_catalog.count(*) = 63 FROM expected_constraints)
     AND NOT EXISTS (
         SELECT 1 FROM expected_constraints AS expected
         LEFT JOIN relation_constraints AS actual

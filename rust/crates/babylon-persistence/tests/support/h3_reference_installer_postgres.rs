@@ -70,7 +70,7 @@ pub(super) fn verify_h3_reference_installer(base: &Config, legacy_template: &str
     let cohort = representative_cohort();
     verify_connection_failure_redacts_credentials(&cohort);
     verify_frozen_legacy_migration_install(base, legacy_template, &cohort);
-    verify_exact_vthree_install_and_retry(base, &cohort);
+    verify_exact_epoch_install_and_retry(base, &cohort);
     verify_fresh_refusal(base, &cohort);
     verify_exact_vtwo_refusal(base, &cohort);
     verify_lock_refusal(base, &cohort);
@@ -120,9 +120,9 @@ pub(super) fn verify_h3_reference_release_equivalence(base: &Config) {
     assert!(status.success(), "PER-62 release verifier must succeed");
 
     let cohort = representative_cohort();
-    let (database, config) = exact_vthree_database(base, "h3_release_equivalence");
+    let (database, config) = exact_epoch_database(base, "h3_release_equivalence");
     let installed = install_representative_h3_cohort(&config, &cohort)
-        .expect("release-proved cohort must install into exact epoch 3");
+        .expect("release-proved cohort must install into the exact current epoch");
     assert_exact_report(&installed, H3ReferenceInstallDisposition::Installed, 1);
     let installed_snapshot = reference_snapshot(&config);
     assert_eq!(installed_snapshot, expected_installed_snapshot());
@@ -160,8 +160,12 @@ fn verify_frozen_legacy_migration_install(
 
     let migration = migrate_schema_epoch(&config).expect("adopted legacy database must migrate");
     assert_eq!(migration.origin, SchemaEpochOrigin::ExactLegacy);
-    assert_eq!((migration.prior_applied, migration.final_applied), (0, 3));
-    assert_eq!(migration.applied_versions.len(), 3);
+    let current_epoch = current_schema_epoch();
+    assert_eq!(
+        (migration.prior_applied, migration.final_applied),
+        (0, current_epoch)
+    );
+    assert_eq!(migration.applied_versions.len(), current_epoch);
     assert_eq!(migration.legacy_adoption.as_ref(), Some(&adoption));
     assert_frozen_legacy_retained(&config, &legacy_before);
 
@@ -182,12 +186,12 @@ fn verify_frozen_legacy_migration_install(
     database.cleanup();
 }
 
-fn verify_exact_vthree_install_and_retry(base: &Config, cohort: &H3ReferenceCohort) {
-    let (database, config) = exact_vthree_database(base, "h3_installer_exact");
+fn verify_exact_epoch_install_and_retry(base: &Config, cohort: &H3ReferenceCohort) {
+    let (database, config) = exact_epoch_database(base, "h3_installer_exact");
     assert_writer_authority_refused();
 
     let installed = install_representative_h3_cohort(&config, cohort)
-        .expect("exact epoch 3 must install the representative cohort");
+        .expect("the exact current epoch must install the representative cohort");
     assert_exact_report(&installed, H3ReferenceInstallDisposition::Installed, 1);
     let before_retry = reference_snapshot(&config);
     assert_eq!(before_retry, expected_installed_snapshot());
@@ -230,7 +234,7 @@ fn verify_fresh_refusal(base: &Config, cohort: &H3ReferenceCohort) {
             actual,
             origin,
         }) => {
-            assert_eq!(expected, 3);
+            assert_eq!(expected, current_schema_epoch());
             assert_eq!(actual, 0);
             assert_eq!(origin, SchemaEpochOrigin::Fresh);
         }
@@ -252,7 +256,7 @@ fn verify_exact_vtwo_refusal(base: &Config, cohort: &H3ReferenceCohort) {
             actual,
             origin,
         }) => {
-            assert_eq!(expected, 3);
+            assert_eq!(expected, current_schema_epoch());
             assert_eq!(actual, 2);
             assert_eq!(origin, SchemaEpochOrigin::ExistingRustPrefix);
         }
@@ -264,7 +268,7 @@ fn verify_exact_vtwo_refusal(base: &Config, cohort: &H3ReferenceCohort) {
 }
 
 fn verify_lock_refusal(base: &Config, cohort: &H3ReferenceCohort) {
-    let (database, config) = exact_vthree_database(base, "h3_installer_lock");
+    let (database, config) = exact_epoch_database(base, "h3_installer_lock");
     let mut blocker = config.connect(NoTls).unwrap();
     let locked: bool = blocker
         .query_one(
@@ -299,8 +303,8 @@ fn verify_non_owner_refusal(base: &Config, owner: &str, cohort: &H3ReferenceCoho
     let database = ScratchDatabase::empty(base, "h3_installer_non_owner", owner);
     let owner_config = database.config_as(base, owner, OWNER_PASSWORD);
     let report =
-        migrate_schema_epoch(&owner_config).expect("database owner must establish epoch 4");
-    assert_eq!(report.final_applied, 4);
+        migrate_schema_epoch(&owner_config).expect("database owner must establish current epoch");
+    assert_eq!(report.final_applied, current_schema_epoch());
 
     let admin_config = database.config(base);
     let before = reference_snapshot(&admin_config);
@@ -317,7 +321,7 @@ fn verify_non_owner_refusal(base: &Config, owner: &str, cohort: &H3ReferenceCoho
 }
 
 fn verify_preflight_artifact_identity_conflict(base: &Config, cohort: &H3ReferenceCohort) {
-    let (database, config) = exact_vthree_database(base, "h3_installer_preflight_conflict");
+    let (database, config) = exact_epoch_database(base, "h3_installer_preflight_conflict");
     seed_conflicting_artifact_identity(&config);
     let before = reference_snapshot(&config);
     assert_eq!((before.h3_cell_count, before.cohort_count), (0, 1));
@@ -333,7 +337,7 @@ fn verify_preflight_artifact_identity_conflict(base: &Config, cohort: &H3Referen
 }
 
 fn verify_installed_state_conflicts(base: &Config, cohort: &H3ReferenceCohort) {
-    let (template, config) = exact_vthree_database(base, "h3_installer_mutation_template");
+    let (template, config) = exact_epoch_database(base, "h3_installer_mutation_template");
     let installed = install_representative_h3_cohort(&config, cohort)
         .expect("mutation template must contain the exact installed cohort");
     assert_exact_report(&installed, H3ReferenceInstallDisposition::Installed, 1);
@@ -555,14 +559,25 @@ fn assert_exact_report(
     assert_eq!(report.commit_attempts(), commit_attempts);
 }
 
-fn exact_vthree_database(base: &Config, label: &str) -> (ScratchDatabase, Config) {
+fn exact_epoch_database(base: &Config, label: &str) -> (ScratchDatabase, Config) {
     let database = ScratchDatabase::empty(base, label, database_user(base));
     let config = database.config(base);
-    let report = migrate_schema_epoch(&config).expect("fresh database must reach exact epoch 3");
+    let report =
+        migrate_schema_epoch(&config).expect("fresh database must reach the exact current epoch");
     assert_eq!(report.origin, SchemaEpochOrigin::Fresh);
-    assert_eq!((report.prior_applied, report.final_applied), (0, 3));
-    assert_eq!(report.applied_versions.len(), 3);
+    let current_epoch = current_schema_epoch();
+    assert_eq!(
+        (report.prior_applied, report.final_applied),
+        (0, current_epoch)
+    );
+    assert_eq!(report.applied_versions.len(), current_epoch);
     (database, config)
+}
+
+fn current_schema_epoch() -> usize {
+    compiled_schema_migrations()
+        .expect("compiled migration registry must validate")
+        .len()
 }
 
 fn establish_vtwo_prefix(config: &Config) {

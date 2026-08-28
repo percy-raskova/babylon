@@ -124,6 +124,7 @@ pub(super) fn verify_fresh_migration(base: &Config) {
     assert_eq!(first.applied_versions[3].as_i64(), 4);
     assert!(first.reconciled_versions.is_empty());
     assert!(first.legacy_adoption.is_none());
+    assert_oversized_row_key_is_storeable(&config);
 
     let before = epoch_snapshot(&config);
     let second = migrate_schema_epoch(&config).expect("exact Rust prefix must be idempotent");
@@ -614,6 +615,36 @@ fn assert_epoch_authority(config: &Config) {
     for index in 0..5 {
         assert!(row.try_get::<_, bool>(index).unwrap());
     }
+}
+
+fn assert_oversized_row_key_is_storeable(config: &Config) {
+    let key = incompressible_oversized_btree_key();
+    let payload = vec![0x5a_u8];
+    let mut client = config.connect(NoTls).unwrap();
+    let mut transaction = client.transaction().unwrap();
+    let inserted = transaction
+        .execute(
+            "INSERT INTO babylon_state.tick_graph_row \
+             (campaign_id, resolve_tick, row_ordinal, row_key, row_payload) \
+             VALUES ('00112233-4455-6677-8899-aabbccddeeff', 0, 0, $1, $2)",
+            &[&key, &payload],
+        )
+        .unwrap();
+    assert_eq!(inserted, 1);
+    transaction.rollback().unwrap();
+}
+
+fn incompressible_oversized_btree_key() -> Vec<u8> {
+    const OVERSIZED_BTREE_KEY_BYTES: usize = 4_096;
+    const MULTIPLIER: u64 = 6_364_136_223_846_793_005;
+    const INCREMENT: u64 = 1_442_695_040_888_963_407;
+    let mut state = 0x0011_2233_4455_6677_u64;
+    let mut key = Vec::with_capacity(OVERSIZED_BTREE_KEY_BYTES);
+    for _ in 0..OVERSIZED_BTREE_KEY_BYTES {
+        state = state.wrapping_mul(MULTIPLIER).wrapping_add(INCREMENT);
+        key.push(state.to_be_bytes()[0]);
+    }
+    key
 }
 
 fn legacy_meta_snapshot(config: &Config) -> Vec<(String, String)> {

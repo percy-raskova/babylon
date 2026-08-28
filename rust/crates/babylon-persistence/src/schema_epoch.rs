@@ -17,6 +17,7 @@ use crate::schema_migration::{
 pub const MAX_SCHEMA_MIGRATIONS: usize = 256;
 /// Maximum commit/reconciliation attempts for one version.
 pub const MAX_COMMIT_ATTEMPTS_PER_VERSION: usize = 2;
+pub(crate) const CURRENT_SCHEMA_EPOCH: usize = 4;
 
 const MIGRATION_0001_SQL: &str = include_str!("../migrations/0001_owned_schema_epoch.sql");
 const MIGRATION_0002_SQL: &str = include_str!("../migrations/0002_h3_cell.sql");
@@ -412,7 +413,8 @@ const PREFIX_V4: SchemaPrefixContract = SchemaPrefixContract {
     verify_transaction: verify_v4_prefix_transaction,
 };
 
-fn compiled_schema_epoch_migrations() -> Result<[SchemaEpochMigration; 4], SchemaMigrationError> {
+fn compiled_schema_epoch_migrations(
+) -> Result<[SchemaEpochMigration; CURRENT_SCHEMA_EPOCH], SchemaMigrationError> {
     let migration_v1 = SchemaMigration::new(MigrationVersion::try_from(1)?, MIGRATION_0001_SQL)?;
     let migration_v2 = SchemaMigration::new(MigrationVersion::try_from(2)?, MIGRATION_0002_SQL)?;
     let migration_v3 = SchemaMigration::new(MigrationVersion::try_from(3)?, MIGRATION_0003_SQL)?;
@@ -430,7 +432,8 @@ fn compiled_schema_epoch_migrations() -> Result<[SchemaEpochMigration; 4], Schem
 /// # Errors
 /// Returns [`SchemaMigrationError`] if a checked-in migration violates its
 /// bounded byte contract.
-pub fn compiled_schema_migrations() -> Result<[SchemaMigration; 4], SchemaMigrationError> {
+pub fn compiled_schema_migrations(
+) -> Result<[SchemaMigration; CURRENT_SCHEMA_EPOCH], SchemaMigrationError> {
     let compiled = compiled_schema_epoch_migrations()?;
     Ok([
         compiled[0].migration,

@@ -121,7 +121,7 @@ impl CommittedTickRowV1 {
         })
     }
 
-    /// Borrow the exact canonical primary-key bytes.
+    /// Borrow the exact canonical logical row-key bytes.
     #[must_use]
     pub fn key(&self) -> &[u8] {
         &self.key

@@ -61,7 +61,13 @@ fn all_eight_families_have_one_closed_schema_qualified_storage_target() {
         assert_eq!(target.table().relation(), table);
         assert_eq!(
             target.table().columns(),
-            &["campaign_id", "resolve_tick", "row_key", "row_payload"]
+            &[
+                "campaign_id",
+                "resolve_tick",
+                "row_ordinal",
+                "row_key",
+                "row_payload",
+            ]
         );
         assert_eq!(
             target.table().qualified_name(),
@@ -167,13 +173,45 @@ fn checked_mapping_preserves_claim_digests_and_every_exact_family_row() {
         assert_eq!(batch.target(), *target);
         assert_eq!(batch.campaign_id(), campaign_id);
         assert_eq!(batch.resolve_tick(), 42_i64);
-        assert_eq!(batch.rows().len(), 1);
-        assert_eq!(batch.rows()[0].key(), &[u8::try_from(index + 1).unwrap()]);
-        assert_eq!(
-            batch.rows()[0].payload(),
-            &[0xa1 + u8::try_from(index).unwrap()]
-        );
+        assert_eq!(batch.row_count(), 1);
+        let row = batch.storage_row(0).unwrap();
+        assert_eq!(row.campaign_id(), campaign_id);
+        assert_eq!(row.resolve_tick(), 42_i64);
+        assert_eq!(row.row_ordinal(), 0_i32);
+        assert_eq!(row.key(), &[u8::try_from(index + 1).unwrap()]);
+        assert_eq!(row.payload(), &[0xa1 + u8::try_from(index).unwrap()]);
+        assert!(batch.storage_row(1).is_none());
     }
+}
+
+#[test]
+fn storage_ordinals_preserve_checked_canonical_order_without_indexing_opaque_keys() {
+    let claim = TickCommitClaimV1::compose(
+        CampaignId::from_uuid(Uuid::from_u128(CAMPAIGN)),
+        43,
+        TickContentHashV1::from_bytes([0x12; 32]),
+    );
+    let envelope = CommittedTickEnvelopeV1::compose(
+        claim,
+        CommittedTickRowFamiliesV1 {
+            graph: vec![
+                CommittedTickRowV1::compose(vec![0x01; 4_096], vec![0xa1]).unwrap(),
+                CommittedTickRowV1::compose(vec![0x02; 4_096], vec![0xa2]).unwrap(),
+            ],
+            ..CommittedTickRowFamiliesV1::default()
+        },
+    )
+    .unwrap();
+
+    let storage = CommittedTickStorageEnvelopeV1::try_from(&envelope).unwrap();
+    let graph = &storage.batches()[0];
+    assert_eq!(graph.row_count(), 2);
+    let first = graph.storage_row(0).unwrap();
+    let second = graph.storage_row(1).unwrap();
+    assert_eq!(first.row_ordinal(), 0_i32);
+    assert_eq!(second.row_ordinal(), 1_i32);
+    assert_eq!(first.key(), &[0x01; 4_096]);
+    assert_eq!(second.key(), &[0x02; 4_096]);
 }
 
 #[test]

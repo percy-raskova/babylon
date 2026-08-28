@@ -56,6 +56,12 @@ fn migration_four_is_schema_qualified_additive_storage_only() {
 
 #[test]
 fn every_family_row_is_marker_last_compatible_and_byte_exact() {
+    assert_eq!(
+        MIGRATION_SQL
+            .matches("row_ordinal INTEGER NOT NULL")
+            .count(),
+        8
+    );
     assert_eq!(MIGRATION_SQL.matches("row_key BYTEA NOT NULL").count(), 8);
     assert_eq!(
         MIGRATION_SQL.matches("row_payload BYTEA NOT NULL").count(),
@@ -74,6 +80,17 @@ fn every_family_row_is_marker_last_compatible_and_byte_exact() {
         10
     );
     assert_eq!(MIGRATION_SQL.matches("row_pkey PRIMARY KEY").count(), 8);
+    assert_eq!(
+        MIGRATION_SQL.matches("resolve_tick, row_ordinal").count(),
+        8
+    );
+    assert_eq!(
+        MIGRATION_SQL
+            .matches("row_ordinal BETWEEN 0 AND 1048575")
+            .count(),
+        8
+    );
+    assert!(!MIGRATION_SQL.contains("PRIMARY KEY (campaign_id, resolve_tick, row_key)"));
     assert_eq!(
         MIGRATION_SQL
             .matches("pg_catalog.octet_length(row_key) BETWEEN 1 AND 67108856")

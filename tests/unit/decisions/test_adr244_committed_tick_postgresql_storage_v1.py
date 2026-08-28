@@ -53,6 +53,7 @@ def test_adr244_binds_the_migration_mapping_and_closed_authority() -> None:
     normalized = " ".join(decision["decision"].split())
     for text in (
         "one explicit babylon_state relation for each of the eight",
+        "exact opaque key remains unindexed",
         "permits the future atomic writer to insert tick_commit last",
         "cannot construct RustWriterAuthority",
         "Python remains the sole live writer and migrator",
@@ -80,8 +81,9 @@ def test_contract_pins_all_eight_relations_and_exact_migration_bytes() -> None:
     assert contract["family_row_shape"]["primary_key"] == [
         "campaign_id",
         "resolve_tick",
-        "row_key",
+        "row_ordinal",
     ]
+    assert contract["family_row_shape"]["opaque_key_indexing"] == "none"
     assert contract["family_row_shape"]["marker_foreign_key"]["timing"] == (
         "DEFERRABLE_INITIALLY_DEFERRED"
     )

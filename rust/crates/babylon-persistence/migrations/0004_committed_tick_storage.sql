@@ -51,10 +51,14 @@ CREATE TABLE babylon_state.tick_commit (
 CREATE TABLE babylon_state.tick_graph_row (
     campaign_id UUID NOT NULL,
     resolve_tick BIGINT NOT NULL,
+    row_ordinal INTEGER NOT NULL,
     row_key BYTEA NOT NULL,
     row_payload BYTEA NOT NULL,
-    CONSTRAINT tick_graph_row_pkey PRIMARY KEY (campaign_id, resolve_tick, row_key),
+    CONSTRAINT tick_graph_row_pkey PRIMARY KEY (campaign_id, resolve_tick, row_ordinal),
     CONSTRAINT tick_graph_row_resolve_tick_sql_range CHECK (resolve_tick >= 0),
+    CONSTRAINT tick_graph_row_ordinal_range CHECK (
+        row_ordinal BETWEEN 0 AND 1048575
+    ),
     CONSTRAINT tick_graph_row_key_length CHECK (
         pg_catalog.octet_length(row_key) BETWEEN 1 AND 67108856
     ),
@@ -68,10 +72,14 @@ CREATE TABLE babylon_state.tick_graph_row (
 CREATE TABLE babylon_state.tick_state_row (
     campaign_id UUID NOT NULL,
     resolve_tick BIGINT NOT NULL,
+    row_ordinal INTEGER NOT NULL,
     row_key BYTEA NOT NULL,
     row_payload BYTEA NOT NULL,
-    CONSTRAINT tick_state_row_pkey PRIMARY KEY (campaign_id, resolve_tick, row_key),
+    CONSTRAINT tick_state_row_pkey PRIMARY KEY (campaign_id, resolve_tick, row_ordinal),
     CONSTRAINT tick_state_row_resolve_tick_sql_range CHECK (resolve_tick >= 0),
+    CONSTRAINT tick_state_row_ordinal_range CHECK (
+        row_ordinal BETWEEN 0 AND 1048575
+    ),
     CONSTRAINT tick_state_row_key_length CHECK (
         pg_catalog.octet_length(row_key) BETWEEN 1 AND 67108856
     ),
@@ -85,10 +93,14 @@ CREATE TABLE babylon_state.tick_state_row (
 CREATE TABLE babylon_state.tick_event_row (
     campaign_id UUID NOT NULL,
     resolve_tick BIGINT NOT NULL,
+    row_ordinal INTEGER NOT NULL,
     row_key BYTEA NOT NULL,
     row_payload BYTEA NOT NULL,
-    CONSTRAINT tick_event_row_pkey PRIMARY KEY (campaign_id, resolve_tick, row_key),
+    CONSTRAINT tick_event_row_pkey PRIMARY KEY (campaign_id, resolve_tick, row_ordinal),
     CONSTRAINT tick_event_row_resolve_tick_sql_range CHECK (resolve_tick >= 0),
+    CONSTRAINT tick_event_row_ordinal_range CHECK (
+        row_ordinal BETWEEN 0 AND 1048575
+    ),
     CONSTRAINT tick_event_row_key_length CHECK (
         pg_catalog.octet_length(row_key) BETWEEN 1 AND 67108856
     ),
@@ -102,10 +114,14 @@ CREATE TABLE babylon_state.tick_event_row (
 CREATE TABLE babylon_state.tick_subsystem_row (
     campaign_id UUID NOT NULL,
     resolve_tick BIGINT NOT NULL,
+    row_ordinal INTEGER NOT NULL,
     row_key BYTEA NOT NULL,
     row_payload BYTEA NOT NULL,
-    CONSTRAINT tick_subsystem_row_pkey PRIMARY KEY (campaign_id, resolve_tick, row_key),
+    CONSTRAINT tick_subsystem_row_pkey PRIMARY KEY (campaign_id, resolve_tick, row_ordinal),
     CONSTRAINT tick_subsystem_row_resolve_tick_sql_range CHECK (resolve_tick >= 0),
+    CONSTRAINT tick_subsystem_row_ordinal_range CHECK (
+        row_ordinal BETWEEN 0 AND 1048575
+    ),
     CONSTRAINT tick_subsystem_row_key_length CHECK (
         pg_catalog.octet_length(row_key) BETWEEN 1 AND 67108856
     ),
@@ -119,10 +135,14 @@ CREATE TABLE babylon_state.tick_subsystem_row (
 CREATE TABLE babylon_state.tick_conservation_row (
     campaign_id UUID NOT NULL,
     resolve_tick BIGINT NOT NULL,
+    row_ordinal INTEGER NOT NULL,
     row_key BYTEA NOT NULL,
     row_payload BYTEA NOT NULL,
-    CONSTRAINT tick_conservation_row_pkey PRIMARY KEY (campaign_id, resolve_tick, row_key),
+    CONSTRAINT tick_conservation_row_pkey PRIMARY KEY (campaign_id, resolve_tick, row_ordinal),
     CONSTRAINT tick_conservation_row_resolve_tick_sql_range CHECK (resolve_tick >= 0),
+    CONSTRAINT tick_conservation_row_ordinal_range CHECK (
+        row_ordinal BETWEEN 0 AND 1048575
+    ),
     CONSTRAINT tick_conservation_row_key_length CHECK (
         pg_catalog.octet_length(row_key) BETWEEN 1 AND 67108856
     ),
@@ -136,10 +156,14 @@ CREATE TABLE babylon_state.tick_conservation_row (
 CREATE TABLE babylon_state.tick_boundary_flow_row (
     campaign_id UUID NOT NULL,
     resolve_tick BIGINT NOT NULL,
+    row_ordinal INTEGER NOT NULL,
     row_key BYTEA NOT NULL,
     row_payload BYTEA NOT NULL,
-    CONSTRAINT tick_boundary_flow_row_pkey PRIMARY KEY (campaign_id, resolve_tick, row_key),
+    CONSTRAINT tick_boundary_flow_row_pkey PRIMARY KEY (campaign_id, resolve_tick, row_ordinal),
     CONSTRAINT tick_boundary_flow_row_resolve_tick_sql_range CHECK (resolve_tick >= 0),
+    CONSTRAINT tick_boundary_flow_row_ordinal_range CHECK (
+        row_ordinal BETWEEN 0 AND 1048575
+    ),
     CONSTRAINT tick_boundary_flow_row_key_length CHECK (
         pg_catalog.octet_length(row_key) BETWEEN 1 AND 67108856
     ),
@@ -153,10 +177,14 @@ CREATE TABLE babylon_state.tick_boundary_flow_row (
 CREATE TABLE babylon_state.tick_checkpoint_row (
     campaign_id UUID NOT NULL,
     resolve_tick BIGINT NOT NULL,
+    row_ordinal INTEGER NOT NULL,
     row_key BYTEA NOT NULL,
     row_payload BYTEA NOT NULL,
-    CONSTRAINT tick_checkpoint_row_pkey PRIMARY KEY (campaign_id, resolve_tick, row_key),
+    CONSTRAINT tick_checkpoint_row_pkey PRIMARY KEY (campaign_id, resolve_tick, row_ordinal),
     CONSTRAINT tick_checkpoint_row_resolve_tick_sql_range CHECK (resolve_tick >= 0),
+    CONSTRAINT tick_checkpoint_row_ordinal_range CHECK (
+        row_ordinal BETWEEN 0 AND 1048575
+    ),
     CONSTRAINT tick_checkpoint_row_key_length CHECK (
         pg_catalog.octet_length(row_key) BETWEEN 1 AND 67108856
     ),
@@ -170,13 +198,17 @@ CREATE TABLE babylon_state.tick_checkpoint_row (
 CREATE TABLE babylon_state.tick_archive_dirty_receipt_row (
     campaign_id UUID NOT NULL,
     resolve_tick BIGINT NOT NULL,
+    row_ordinal INTEGER NOT NULL,
     row_key BYTEA NOT NULL,
     row_payload BYTEA NOT NULL,
     CONSTRAINT tick_archive_dirty_receipt_row_pkey PRIMARY KEY (
-        campaign_id, resolve_tick, row_key
+        campaign_id, resolve_tick, row_ordinal
     ),
     CONSTRAINT tick_archive_dirty_receipt_row_resolve_tick_sql_range CHECK (
         resolve_tick >= 0
+    ),
+    CONSTRAINT tick_archive_dirty_receipt_row_ordinal_range CHECK (
+        row_ordinal BETWEEN 0 AND 1048575
     ),
     CONSTRAINT tick_archive_dirty_receipt_row_key_length CHECK (
         pg_catalog.octet_length(row_key) BETWEEN 1 AND 67108856

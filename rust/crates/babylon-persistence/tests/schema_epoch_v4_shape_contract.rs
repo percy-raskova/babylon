@@ -24,6 +24,8 @@ fn v4_shape_verifier_is_bounded_and_checks_the_closed_authority_surface() {
         "campaign_replay_session_ascii_graphic",
         "tick_commit_envelope_layout_v1",
         "tick_archive_dirty_receipt_row_campaign_tick_fkey",
+        "tick_archive_dirty_receipt_row_ordinal_range",
+        "row_ordinal",
         "pg_catalog.has_table_privilege",
         "pg_catalog.has_column_privilege",
         "pg_catalog.aclexplode",

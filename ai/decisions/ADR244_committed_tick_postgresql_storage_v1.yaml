@@ -25,8 +25,13 @@ ADR244_committed_tick_postgresql_storage_v1:
     Migration 0004 adds one campaign relation, one tick_commit marker relation,
     and one explicit babylon_state relation for each of the eight closed
     CommittedTickEnvelopeV1 families. Every family relation stores the durable
-    campaign and nonnegative PostgreSQL BIGINT tick, exact canonical row key,
-    and exact canonical row payload. The family map is one-to-one, ordered,
+    campaign and nonnegative PostgreSQL BIGINT tick, zero-based canonical row
+    ordinal, exact canonical row key, and exact canonical row payload. The
+    bounded ordinal is the physical primary-key component. The exact opaque key
+    remains unindexed, so every envelope-valid key stays storeable instead of
+    encountering PostgreSQL B-tree entry limits. The checked envelope already
+    enforces key uniqueness and strict ordering, and the ordinal preserves that
+    order without a digest collision. The family map is one-to-one, ordered,
     schema-qualified, and exposed by a database-free Rust type.
 
     Campaign storage keeps CampaignId, replay session, replay seed, defines
@@ -55,8 +60,9 @@ ADR244_committed_tick_postgresql_storage_v1:
     Rust contract tests prove the closed eight-family mapping and writer-gate
     refusal. PostgreSQL 17 integration tests prove fresh installation, exact
     legacy adoption, every prior-prefix upgrade, exact ownership and ACLs,
-    catalog census, failure rollback before the migration marker, killed-commit
-    reconciliation, and exact version/checksum conflicts.
+    catalog census, storage of an opaque key larger than a B-tree entry, failure
+    rollback before the migration marker, killed-commit reconciliation, and
+    exact version/checksum conflicts.
   preserves:
     - ADR220 one-way writer cutover and complete atomic tick requirements
     - ADR223 whole-tick atomic publication

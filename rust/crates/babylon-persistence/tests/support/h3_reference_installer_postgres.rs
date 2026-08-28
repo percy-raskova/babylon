@@ -299,8 +299,8 @@ fn verify_non_owner_refusal(base: &Config, owner: &str, cohort: &H3ReferenceCoho
     let database = ScratchDatabase::empty(base, "h3_installer_non_owner", owner);
     let owner_config = database.config_as(base, owner, OWNER_PASSWORD);
     let report =
-        migrate_schema_epoch(&owner_config).expect("database owner must establish epoch 3");
-    assert_eq!(report.final_applied, 3);
+        migrate_schema_epoch(&owner_config).expect("database owner must establish epoch 4");
+    assert_eq!(report.final_applied, 4);
 
     let admin_config = database.config(base);
     let before = reference_snapshot(&admin_config);

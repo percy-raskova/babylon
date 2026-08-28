@@ -10,7 +10,7 @@ publish = false
 [dependencies]
 babylon-kernel = { path = "../babylon-kernel" }
 h3o = { version = "=0.10.0", default-features = false }
-postgres = "=0.19.14"
+postgres = { version = "=0.19.14", features = ["with-uuid-1"] }
 uuid = { version = "1.24", default-features = false }
 
 [dev-dependencies]

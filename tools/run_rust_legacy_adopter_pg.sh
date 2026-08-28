@@ -23,7 +23,7 @@ die() {
 case "$LIVE_FOCUS" in
   "" | h3_atomicity | installed_mutation | schema_epoch_fresh | schema_epoch_matrix | \
     schema_epoch_rollback | schema_epoch_v5_census | h3_pg_oracle | \
-    h3_reference_installer | pr) ;;
+    h3_reference_installer | committed_tick_writer | pr) ;;
   *) die "unsupported live focus: $LIVE_FOCUS" ;;
 esac
 
@@ -220,6 +220,19 @@ if [ "$LIVE_FOCUS" = "h3_atomicity" ] || [ "$LIVE_FOCUS" = "pr" ]; then
       CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/rust/target}" \
     cargo test -p babylon-persistence --lib \
       schema_epoch::live_rollback_tests::h3_installer_rollback_and_ambiguous_commit_reconciliation_are_atomic \
+      --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
+fi
+
+if [ "$status" -eq 0 ] &&
+    { [ "$LIVE_FOCUS" = "committed_tick_writer" ] || [ "$LIVE_FOCUS" = "pr" ]; }; then
+  timeout --signal=TERM --kill-after=10s 300s \
+    env \
+      BABYLON_LEGACY_ADOPTER_TEST_DSN="postgresql://test:test@127.0.0.1:$PORT/postgres" \
+      BABYLON_LEGACY_ADOPTER_DISPOSABLE_ACK="$TEST_HARNESS_ACK" \
+      BABYLON_LEGACY_ADOPTER_DISPOSABLE_CANARY="$CANARY" \
+      CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/rust/target}" \
+    cargo test -p babylon-persistence --lib \
+      committed_tick_writer::tests::live_marker_last_commit_retry_conflict_and_hydration_are_atomic \
       --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
 fi
 

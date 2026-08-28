@@ -55,14 +55,14 @@ const INSERT_MARKER_SQL: &str = "INSERT INTO babylon_state.tick_commit \
 const READ_LAST_MARKER_SQL: &str = "SELECT resolve_tick, tick_content_hash, envelope_digest \
     FROM babylon_state.tick_commit WHERE campaign_id = $1::text::uuid \
     ORDER BY resolve_tick DESC LIMIT 1";
-const READ_NEAREST_CHECKPOINT_SQL: &str = "SELECT marker.resolve_tick, \
+const READ_FOUNDATION_CHECKPOINT_SQL: &str = "SELECT marker.resolve_tick, \
     marker.tick_content_hash, marker.envelope_digest \
     FROM babylon_state.tick_commit AS marker \
-    WHERE marker.campaign_id = $1::text::uuid AND marker.resolve_tick <= $2 \
+    WHERE marker.campaign_id = $1::text::uuid AND marker.resolve_tick = 0 \
       AND EXISTS (SELECT 1 FROM babylon_state.tick_checkpoint_row AS checkpoint \
                   WHERE checkpoint.campaign_id = marker.campaign_id \
                     AND checkpoint.resolve_tick = marker.resolve_tick) \
-    ORDER BY marker.resolve_tick DESC LIMIT 1";
+    LIMIT 1";
 const READ_REPLAY_TAIL_SQL: &str = "SELECT resolve_tick, tick_content_hash, envelope_digest \
     FROM babylon_state.tick_commit \
     WHERE campaign_id = $1::text::uuid AND resolve_tick > $2 AND resolve_tick <= $3 \
@@ -431,7 +431,7 @@ impl CommittedTickHydrationPlanV1 {
         self.last_committed_tick
     }
 
-    /// Nearest committed tick carrying checkpoint rows.
+    /// Tick-zero foundation checkpoint selected without interpreting opaque payloads.
     #[must_use]
     pub const fn checkpoint_tick(&self) -> Option<u64> {
         self.checkpoint_tick
@@ -547,8 +547,10 @@ pub fn commit_committed_tick_v1(
     session.finish(result)
 }
 
-/// Load exact replay inputs, the last surviving marker, the nearest committed
-/// checkpoint rows, and a caller-bounded contiguous committed replay tail.
+/// Load exact replay inputs, the last surviving marker, committed tick-zero
+/// foundation checkpoint rows, and a caller-bounded contiguous committed replay tail.
+/// Later checkpoint rows remain inside the replay history because V1 intentionally
+/// carries opaque complete-or-delta payloads with no completeness discriminator.
 ///
 /// This read-only path does not require writer authority.
 ///
@@ -1199,10 +1201,7 @@ fn hydrate_under_lock(
     let last_tick_i64 = i64::try_from(last_marker.resolve_tick)
         .map_err(|_| CommittedTickWriteErrorV1::Decode { operation })?;
     let checkpoint_marker = client
-        .query_opt(
-            READ_NEAREST_CHECKPOINT_SQL,
-            &[&campaign_text, &last_tick_i64],
-        )
+        .query_opt(READ_FOUNDATION_CHECKPOINT_SQL, &[&campaign_text])
         .map_err(|error| database_error(CommittedTickDatabaseOperationV1::ReadCheckpoint, &error))?
         .map(|row| decode_hydrated_marker(&row, CommittedTickDatabaseOperationV1::ReadCheckpoint))
         .transpose()?;
@@ -1594,7 +1593,8 @@ mod tests {
             })
         ));
 
-        let tick_one = live_envelope(campaign_id, 1, 0x11, 0xa1, false);
+        // A later checkpoint row is an opaque delta, not a proven restoration base.
+        let tick_one = live_envelope(campaign_id, 1, 0x11, 0xa1, true);
         let tick_two = live_envelope(campaign_id, 2, 0x12, 0xa2, false);
         for (expected_tick, envelope) in [(1_u64, &tick_one), (2_u64, &tick_two)] {
             let report = commit_through_test_seam(&scratch.config, campaign, envelope)

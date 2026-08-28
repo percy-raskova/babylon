@@ -77,6 +77,22 @@ fn hydration_exposes_the_checkpoint_commit_identity_even_when_no_tail_exists() {
 }
 
 #[test]
+fn opaque_checkpoint_hydration_uses_only_the_tick_zero_foundation() {
+    let source = include_str!("../src/committed_tick_writer.rs");
+    let start = source
+        .find("const READ_FOUNDATION_CHECKPOINT_SQL")
+        .expect("foundation checkpoint query");
+    let end = source[start..]
+        .find("const READ_REPLAY_TAIL_SQL")
+        .map(|offset| start + offset)
+        .expect("replay-tail query boundary");
+    let query = &source[start..end];
+
+    assert!(query.contains("marker.resolve_tick = 0"));
+    assert!(!query.contains("ORDER BY marker.resolve_tick DESC"));
+}
+
+#[test]
 fn family_insertion_uses_one_binary_copy_protocol_not_one_command_per_row() {
     let source = include_str!("../src/committed_tick_writer.rs");
     let start = source

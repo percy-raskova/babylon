@@ -986,6 +986,17 @@ class TestPersistInfrastructureState:
         )
 
         assert mock_cursor.executemany.call_count == 2
+        link_upsert = " ".join(mock_cursor.executemany.call_args_list[1].args[0].split())
+        assert (
+            "source_cell_id = CASE WHEN infrastructure_link_state.source_h3 "
+            "IS DISTINCT FROM EXCLUDED.source_h3 THEN NULL "
+            "ELSE infrastructure_link_state.source_cell_id END"
+        ) in link_upsert
+        assert (
+            "target_cell_id = CASE WHEN infrastructure_link_state.target_h3 "
+            "IS DISTINCT FROM EXCLUDED.target_h3 THEN NULL "
+            "ELSE infrastructure_link_state.target_cell_id END"
+        ) in link_upsert
 
     def test_skips_empty_terrain_and_links(
         self,

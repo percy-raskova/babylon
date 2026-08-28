@@ -18,6 +18,7 @@ const BACKEND_TERMINATION_TIMEOUT_MILLIS: i64 = 5_000;
 pub(super) fn verify_h3_shadow_backfill(base: &Config, legacy_template: &str) {
     verify_fresh_origin_is_an_exact_noop(base);
     verify_invalid_late_relation_refuses_before_any_mutation(base, legacy_template);
+    verify_coarse_child_resolution_refuses_before_ancestry(base, legacy_template);
     verify_all_governed_fields_backfill_once_and_retry_exactly(base, legacy_template);
 }
 
@@ -86,6 +87,71 @@ fn verify_invalid_late_relation_refuses_before_any_mutation(base: &Config, templ
         .unwrap();
     assert_eq!(unchanged, (1, 1));
     drop(client);
+    assert_lock_released(&config);
+    database.cleanup();
+}
+
+fn verify_coarse_child_resolution_refuses_before_ancestry(base: &Config, template: &str) {
+    let (database, config) = exact_legacy_database(base, template, "h3_shadow_coarse_child");
+    let cell = representative_r7(&config);
+    let coarse_child = config
+        .connect(NoTls)
+        .unwrap()
+        .query_one(
+            "SELECT cell_id FROM babylon_ref.h3_cell WHERE resolution = 4 ORDER BY cell_id LIMIT 1",
+            &[],
+        )
+        .map(|row| {
+            H3CellId::try_from(row.get::<_, i64>(0))
+                .unwrap()
+                .to_string()
+        })
+        .unwrap();
+    let session = session_id();
+    let mut client = config.connect(NoTls).unwrap();
+    insert_game_session(&mut client, session);
+    client
+        .execute(
+            "INSERT INTO public.hex_cell \
+             (h3_index, county_fips, state_fips, res6_parent, res5_parent, geometry, centroid) \
+             VALUES ($1, '26163', '26', $2, $3, \
+                     ST_GeomFromText('POLYGON((0 0,0 1,1 1,1 0,0 0))', 4326), \
+                     ST_GeomFromText('POINT(0.5 0.5)', 4326))",
+            &[
+                &coarse_child,
+                &cell.ancestor_r6_text,
+                &cell.ancestor_r5_text,
+            ],
+        )
+        .unwrap();
+    drop(client);
+
+    match backfill_legacy_h3_shadow_keys(&config) {
+        Err(H3ShadowBackfillError::Refused { evidence, .. }) => {
+            assert!(evidence.iter().any(|issue| {
+                issue.relation == H3ShadowRelation::HexCell
+                    && issue.legacy_column == "h3_index"
+                    && matches!(
+                        issue.kind,
+                        H3ShadowBackfillIssueKind::UnexpectedResolution {
+                            expected: 7,
+                            actual: 4
+                        }
+                    )
+            }))
+        }
+        other => panic!("coarse child resolution must refuse without panic: {other:?}"),
+    }
+    let shadow_count: i64 = config
+        .connect(NoTls)
+        .unwrap()
+        .query_one(
+            "SELECT pg_catalog.count(*) FROM public.hex_cell WHERE cell_id IS NOT NULL",
+            &[],
+        )
+        .unwrap()
+        .get(0);
+    assert_eq!(shadow_count, 0);
     assert_lock_released(&config);
     database.cleanup();
 }

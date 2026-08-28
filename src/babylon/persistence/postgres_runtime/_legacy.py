@@ -702,6 +702,18 @@ class PostgresRuntime:
                              infra_type, capacity, condition, owner_org_id)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (session_id, tick, link_id) DO UPDATE SET
+                            source_cell_id = CASE
+                                WHEN infrastructure_link_state.source_h3
+                                    IS DISTINCT FROM EXCLUDED.source_h3
+                                THEN NULL
+                                ELSE infrastructure_link_state.source_cell_id
+                            END,
+                            target_cell_id = CASE
+                                WHEN infrastructure_link_state.target_h3
+                                    IS DISTINCT FROM EXCLUDED.target_h3
+                                THEN NULL
+                                ELSE infrastructure_link_state.target_cell_id
+                            END,
                             source_h3 = EXCLUDED.source_h3, target_h3 = EXCLUDED.target_h3,
                             infra_type = EXCLUDED.infra_type, capacity = EXCLUDED.capacity,
                             condition = EXCLUDED.condition, owner_org_id = EXCLUDED.owner_org_id

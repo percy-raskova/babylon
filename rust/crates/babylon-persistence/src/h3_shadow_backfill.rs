@@ -988,6 +988,7 @@ fn inspect_field(
                 actual: cell.resolution(),
             },
         });
+        return None;
     }
     let expected = i64::try_from(cell).expect("validated H3 identities fit the signed SQL seam");
     if !canonical.contains(&expected) {

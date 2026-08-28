@@ -205,9 +205,9 @@ fn run_first_live_phases(
     owner: &str,
 ) -> bool {
     if std::env::var_os(LIVE_FOCUS_ENV).as_deref()
-        == Some(std::ffi::OsStr::new("schema_epoch_v4_census"))
+        == Some(std::ffi::OsStr::new("schema_epoch_v5_census"))
     {
-        export_fresh_v4_epoch_census(base);
+        export_fresh_v5_epoch_census(base);
         return false;
     }
     if std::env::var_os(LIVE_FOCUS_ENV).as_deref()
@@ -325,14 +325,14 @@ fn run_focused_live_phase(
     true
 }
 
-fn export_fresh_v4_epoch_census(base: &Config) {
+fn export_fresh_v5_epoch_census(base: &Config) {
     const EXPORT_LIMITS: [i64; 6] = [513, 4097, 8193, 16385, 2, 8193];
-    let database = ScratchDatabase::empty(base, "epoch_v4_census", database_user(base));
+    let database = ScratchDatabase::empty(base, "epoch_v5_census", database_user(base));
     let config = database.config(base);
     let compiled = compiled_schema_migrations().unwrap();
     let mut client = config.connect(NoTls).unwrap();
     let mut transaction = client.transaction().unwrap();
-    for migration in compiled.iter().take(4) {
+    for migration in compiled.iter().take(5) {
         transaction.batch_execute(migration.sql()).unwrap();
         let version = migration.version().as_i64();
         let checksum = migration.checksum();
@@ -381,7 +381,7 @@ fn export_fresh_v4_epoch_census(base: &Config) {
             writeln!(fixture, "{kind}|{schema}|{name}|{digest}").unwrap();
         }
     }
-    eprintln!("PER20_V4_CENSUS_START\n{fixture}PER20_V4_CENSUS_END");
+    eprintln!("PER278_V5_CENSUS_START\n{fixture}PER278_V5_CENSUS_END");
     drop(client);
     database.cleanup();
 }

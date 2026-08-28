@@ -22,7 +22,7 @@ die() {
 
 case "$LIVE_FOCUS" in
   "" | h3_atomicity | installed_mutation | schema_epoch_fresh | schema_epoch_matrix | \
-    schema_epoch_rollback | schema_epoch_v4_census | h3_pg_oracle | \
+    schema_epoch_rollback | schema_epoch_v5_census | h3_pg_oracle | \
     h3_reference_installer | committed_tick_writer | pr) ;;
   *) die "unsupported live focus: $LIVE_FOCUS" ;;
 esac
@@ -199,6 +199,18 @@ if [ "$LIVE_FOCUS" = "schema_epoch_rollback" ]; then
       --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
 fi
 
+if [ "$status" -eq 0 ] && [ "$LIVE_FOCUS" = "schema_epoch_rollback" ]; then
+  timeout --signal=TERM --kill-after=10s 300s \
+    env \
+      BABYLON_LEGACY_ADOPTER_TEST_DSN="postgresql://test:test@127.0.0.1:$PORT/postgres" \
+      BABYLON_LEGACY_ADOPTER_DISPOSABLE_ACK="$TEST_HARNESS_ACK" \
+      BABYLON_LEGACY_ADOPTER_DISPOSABLE_CANARY="$CANARY" \
+      CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/rust/target}" \
+    cargo test -p babylon-persistence --lib \
+      schema_epoch::live_rollback_tests::migration_five_rollback_and_ambiguous_commit_reconciliation_are_atomic \
+      --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
+fi
+
 if [ "$LIVE_FOCUS" = "h3_atomicity" ] || [ "$LIVE_FOCUS" = "pr" ]; then
   timeout --signal=TERM --kill-after=10s 300s \
     env \
@@ -240,7 +252,7 @@ fi
 if [ "$status" -eq 0 ] &&
     { [ "$LIVE_FOCUS" = "schema_epoch_fresh" ] ||
       [ "$LIVE_FOCUS" = "schema_epoch_matrix" ] ||
-      [ "$LIVE_FOCUS" = "schema_epoch_v4_census" ] ||
+      [ "$LIVE_FOCUS" = "schema_epoch_v5_census" ] ||
       [ "$LIVE_FOCUS" = "h3_pg_oracle" ] ||
       [ "$LIVE_FOCUS" = "h3_reference_installer" ]; }; then
   timeout --signal=TERM --kill-after=10s 300s \

@@ -17,7 +17,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 const ZERO_DIGEST: &str = "0000000000000000000000000000000000000000000000000000000000000000";
-const MAX_RUNNER_LINES: usize = 256;
+const MAX_RUNNER_LINES: usize = 288;
 const MAX_WORKFLOW_JOB_BOUNDARY_CANDIDATES: usize = 128;
 const MAX_SQL_LITERAL_SEGMENTS: usize = 8_192;
 const MAX_SQL_STATEMENT_BYTES: usize = 262_144;
@@ -2074,7 +2074,13 @@ fn pr_focus_reuses_the_h3_atomicity_and_installed_mutation_contracts() {
         "schema_epoch::live_rollback_tests::rollback_and_ambiguous_commit_reconciliation_are_atomic";
 
     assert!(runner.contains("BABYLON_LEGACY_ADOPTER_LIVE_FOCUS:-}"));
-    assert!(runner.contains("\"\" | h3_atomicity | installed_mutation | pr)"));
+    assert!(runner.contains(
+        "\"\" | h3_atomicity | installed_mutation | schema_epoch_fresh | schema_epoch_matrix | \\\n    schema_epoch_rollback | schema_epoch_v4_census | h3_pg_oracle | \\\n    h3_reference_installer | pr)"
+    ));
+    assert!(runner.contains("[ \"$LIVE_FOCUS\" = \"h3_pg_oracle\" ]"));
+    assert!(runner.contains("[ \"$LIVE_FOCUS\" = \"h3_reference_installer\" ]"));
+    assert!(live.contains("Some(\"h3_pg_oracle\")"));
+    assert!(live.contains("Some(\"h3_reference_installer\")"));
     assert_eq!(runner.matches(focused).count(), 1);
     assert_eq!(runner.matches(full).count(), 1);
     assert!(runner.contains("--ignored --exact --test-threads=1"));

@@ -5057,10 +5057,10 @@ community_port_train_667:
     items owned by the post-#653 slice (DG-5/DG-6).
 
 rust_postgresql_persistence_boundary:
-  date: 2026-08-22
+  date: 2026-08-27
   adr: ADR220
   tracking: "Linear PER-48 / GitHub #697; implementation PER-20 and PER-21"
-  status: "ACCEPTED — contract keel landed; database adapter not yet landed"
+  status: "IN PROGRESS — schema epoch 4 and typed committed storage map implemented on PER-20 lane"
   contract_keel:
     implementation_range: "bf02187a through f5b5ffa2"
     implementation_tip: f5b5ffa2
@@ -5091,8 +5091,10 @@ rust_postgresql_persistence_boundary:
     adopt them from Rust, then use one Rust-owned append-only version/checksum
     ledger. There is no dual-writer or dual-migrator interval.
   current_reality: >
-    Python remains the sole live runtime writer and migrator. The Rust
-    contract crate opens no database and cannot write a campaign.
+    Rust can adopt or install exact schema epoch 4 and map every
+    CommittedTickEnvelopeV1 family to its schema-qualified storage relation.
+    It has no committed-tick execution method and RustWriterAuthority still
+    refuses. Python remains the sole live runtime writer and migrator.
   next: >
-    Land the separate PER-21 H3 identity contract, then the read-only
-    legacy schema adopter and census.
+    Implement the marker-last committed-tick transaction and its crash matrix
+    without activating Rust writer authority before the one-way cutover.

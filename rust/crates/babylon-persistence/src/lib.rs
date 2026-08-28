@@ -3,6 +3,7 @@
 #![warn(clippy::pedantic)]
 
 pub mod committed_tick_envelope;
+pub mod committed_tick_storage;
 pub mod error;
 pub mod h3_reference_cohort;
 mod h3_reference_installer;

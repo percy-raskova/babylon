@@ -1,12 +1,12 @@
 //! Ignored live tests for the PER-20 legacy adopter against disposable `PostgreSQL`.
 
 use babylon_persistence::{
-    adopt_legacy_schema, legacy_adopter_sql_statements, validate_legacy_connection_target,
-    LegacyAdopterError, LegacyAdopterOperation, LegacyAdopterSqlKind, LegacyBoundedResource,
-    LegacyObjectKey, LegacyObjectKind, LegacyOwnerAuthorityDisposition, LegacyStampClass,
-    LEGACY_ADOPTER_CONNECT_TIMEOUT, LEGACY_ADOPTER_STARTUP_OPTIONS,
-    LEGACY_ADOPTER_TCP_USER_TIMEOUT, LEGACY_CENSUS_FIXTURE, LEGACY_STAMP_CATALOG,
-    MAX_LEGACY_CENSUS_FIXTURE_BYTES, MAX_LEGACY_CENSUS_ROWS,
+    adopt_legacy_schema, compiled_schema_migrations, legacy_adopter_sql_statements,
+    validate_legacy_connection_target, LegacyAdopterError, LegacyAdopterOperation,
+    LegacyAdopterSqlKind, LegacyBoundedResource, LegacyObjectKey, LegacyObjectKind,
+    LegacyOwnerAuthorityDisposition, LegacyStampClass, LEGACY_ADOPTER_CONNECT_TIMEOUT,
+    LEGACY_ADOPTER_STARTUP_OPTIONS, LEGACY_ADOPTER_TCP_USER_TIMEOUT, LEGACY_CENSUS_FIXTURE,
+    LEGACY_STAMP_CATALOG, MAX_LEGACY_CENSUS_FIXTURE_BYTES, MAX_LEGACY_CENSUS_ROWS,
     MAX_LEGACY_EXTENSION_DEPENDENCY_ADDRESSES, MAX_LEGACY_EXTENSION_MEMBERS,
     MAX_LEGACY_EXTENSION_ROLE_IDENTITIES, MAX_LEGACY_PARTITIONS_PER_FAMILY,
     MAX_LEGACY_SEQUENCE_OWNERSHIP, MAX_LEGACY_STAMP_ROWS, SCHEMA_ADVISORY_LOCK_KEY,
@@ -204,6 +204,18 @@ fn run_first_live_phases(
     second_config: &Config,
     owner: &str,
 ) -> bool {
+    if std::env::var_os(LIVE_FOCUS_ENV).as_deref()
+        == Some(std::ffi::OsStr::new("schema_epoch_v4_census"))
+    {
+        export_fresh_v4_epoch_census(base);
+        return false;
+    }
+    if std::env::var_os(LIVE_FOCUS_ENV).as_deref()
+        == Some(std::ffi::OsStr::new("schema_epoch_fresh"))
+    {
+        schema_epoch_postgres::verify_fresh_migration(base);
+        return false;
+    }
     live_phase!(phases, "repair_first", run_python_repair(first_config));
     live_phase!(
         phases,
@@ -215,36 +227,7 @@ fn run_first_live_phases(
         "canonical_fixture_bytes",
         verify_canonical_fixture_bytes(first_config, second_config)
     );
-    if let Some(focus) = std::env::var_os(LIVE_FOCUS_ENV) {
-        match focus.to_str() {
-            Some("extension_dependency_role") => {
-                verify_extension_superuser_owner_portability(base, template);
-            }
-            Some("extension_window_routine") => {
-                verify_extension_window_routine_body_refusal(base, template);
-            }
-            Some("extension_dependency_bound") => {
-                verify_raw_non_catalog_bounds(first_config);
-                verify_unknown_extension_classification(base, template);
-            }
-            Some("schema_epoch_fresh") => {
-                schema_epoch_postgres::verify_fresh_migration(base);
-            }
-            Some("schema_epoch_matrix") => {
-                schema_epoch_postgres::verify_schema_epoch_matrix(base, template, owner);
-            }
-            Some("h3_pg_oracle") => verify_h3_pg_oracle_in_scratch(base, owner),
-            Some("h3_reference_installer") => {
-                h3_reference_installer_postgres::verify_h3_reference_installer(
-                    base, template, owner,
-                );
-            }
-            Some("installed_mutation") => verify_h3_installed_mutations(phases, base),
-            Some("h3_reference_release") => {
-                h3_reference_installer_postgres::verify_h3_reference_release_equivalence(base);
-            }
-            _ => panic!("unknown bounded live focus"),
-        }
+    if run_focused_live_phase(phases, base, template, first_config, owner) {
         return false;
     }
     if std::env::var_os(CENSUS_EXPORT_ENV).is_some() {
@@ -302,6 +285,105 @@ fn run_first_live_phases(
         verify_effective_authority_refusals(base, template)
     );
     true
+}
+
+fn run_focused_live_phase(
+    phases: &LivePhaseReceipts,
+    base: &Config,
+    template: &str,
+    first_config: &Config,
+    owner: &str,
+) -> bool {
+    let Some(focus) = std::env::var_os(LIVE_FOCUS_ENV) else {
+        return false;
+    };
+    match focus.to_str() {
+        Some("extension_dependency_role") => {
+            verify_extension_superuser_owner_portability(base, template);
+        }
+        Some("extension_window_routine") => {
+            verify_extension_window_routine_body_refusal(base, template);
+        }
+        Some("extension_dependency_bound") => {
+            verify_raw_non_catalog_bounds(first_config);
+            verify_unknown_extension_classification(base, template);
+        }
+        Some("schema_epoch_fresh") => schema_epoch_postgres::verify_fresh_migration(base),
+        Some("schema_epoch_matrix") => {
+            schema_epoch_postgres::verify_schema_epoch_matrix(base, template, owner);
+        }
+        Some("h3_pg_oracle") => verify_h3_pg_oracle_in_scratch(base, owner),
+        Some("h3_reference_installer") => {
+            h3_reference_installer_postgres::verify_h3_reference_installer(base, template, owner);
+        }
+        Some("installed_mutation") => verify_h3_installed_mutations(phases, base),
+        Some("h3_reference_release") => {
+            h3_reference_installer_postgres::verify_h3_reference_release_equivalence(base);
+        }
+        _ => panic!("unknown bounded live focus"),
+    }
+    true
+}
+
+fn export_fresh_v4_epoch_census(base: &Config) {
+    const EXPORT_LIMITS: [i64; 6] = [513, 4097, 8193, 16385, 2, 8193];
+    let database = ScratchDatabase::empty(base, "epoch_v4_census", database_user(base));
+    let config = database.config(base);
+    let compiled = compiled_schema_migrations().unwrap();
+    let mut client = config.connect(NoTls).unwrap();
+    let mut transaction = client.transaction().unwrap();
+    for migration in compiled.iter().take(4) {
+        transaction.batch_execute(migration.sql()).unwrap();
+        let version = migration.version().as_i64();
+        let checksum = migration.checksum();
+        let checksum_bytes = checksum.as_bytes().as_slice();
+        transaction
+            .execute(
+                "INSERT INTO babylon_state.schema_migration (version, checksum) VALUES ($1, $2)",
+                &[&version, &checksum_bytes],
+            )
+            .unwrap();
+    }
+    transaction.commit().unwrap();
+
+    let census_sql = legacy_adopter_sql_statements()
+        .iter()
+        .find(|statement| statement.kind() == LegacyAdopterSqlKind::CatalogCensus)
+        .unwrap()
+        .sql();
+    let rows = client
+        .query(
+            census_sql,
+            &[
+                &EXPORT_LIMITS[0],
+                &EXPORT_LIMITS[1],
+                &EXPORT_LIMITS[2],
+                &EXPORT_LIMITS[3],
+                &EXPORT_LIMITS[4],
+                &EXPORT_LIMITS[5],
+            ],
+        )
+        .unwrap();
+    let mut fixture = String::new();
+    for row in rows.iter().take(513) {
+        let kind: String = row.try_get(0).unwrap();
+        let schema: String = row.try_get(1).unwrap();
+        let name: String = row.try_get(2).unwrap();
+        let digest: String = row.try_get(3).unwrap();
+        let epoch_relation =
+            kind == "relation" && matches!(schema.as_str(), "babylon_ref" | "babylon_state");
+        let epoch_schema = kind == "schema"
+            && schema == "pg_namespace"
+            && matches!(name.as_str(), "babylon_ref" | "babylon_state");
+        let fresh_meta =
+            kind == "schema_grant" && schema == "pg_namespace" && name == "babylon_meta";
+        if epoch_relation || epoch_schema || fresh_meta {
+            writeln!(fixture, "{kind}|{schema}|{name}|{digest}").unwrap();
+        }
+    }
+    eprintln!("PER20_V4_CENSUS_START\n{fixture}PER20_V4_CENSUS_END");
+    drop(client);
+    database.cleanup();
 }
 
 fn verify_h3_installed_mutations(phases: &LivePhaseReceipts, base: &Config) {

@@ -359,6 +359,15 @@ implementation_status:
         - CommittedTickEnvelope
         - transactional_archive_outbox
         - crash_safe_tick_commit
+      implemented_foundation:
+        - exact_schema_epoch_v4
+        - committed_tick_envelope_v1
+        - typed_eight_family_postgresql_storage_map
+      evidence:
+        - rust/crates/babylon-persistence/migrations/0004_committed_tick_storage.sql
+        - rust/crates/babylon-persistence/src/committed_tick_storage.rs
+        - contracts/committed_tick_storage_v1.yaml
+        - ai/decisions/ADR244_committed_tick_postgresql_storage_v1.yaml
     PER-21:
       status: planned
       gate: G3

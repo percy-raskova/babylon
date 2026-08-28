@@ -4,7 +4,7 @@ use super::h3_cell_vectors::{
     load_fixture, ValidVector, VectorFixture, INVALID_RAW_VECTOR_COUNT, PENTAGON_VECTOR_COUNT,
     VALID_VECTOR_COUNT,
 };
-use babylon_persistence::migrate_schema_epoch;
+use babylon_persistence::{compiled_schema_migrations, migrate_schema_epoch};
 use postgres::error::SqlState;
 use postgres::types::ToSql;
 use postgres::{Client, Config, NoTls, Transaction};
@@ -14,9 +14,13 @@ const H3_RESOLUTION_COUNT: usize = 16;
 const PENTAGONS_PER_RESOLUTION: usize = 12;
 
 pub(super) fn verify_h3_pg_oracle(owner: &Config, admin: &Config) {
+    let current_epoch = current_schema_epoch();
     let first = migrate_schema_epoch(owner).expect("H3 oracle scratch database must migrate");
-    assert_eq!((first.prior_applied, first.final_applied), (0, 3));
-    assert_eq!(first.applied_versions.len(), 3);
+    assert_eq!(
+        (first.prior_applied, first.final_applied),
+        (0, current_epoch)
+    );
+    assert_eq!(first.applied_versions.len(), current_epoch);
 
     let fixture = load_fixture();
     assert_shared_fixture_transport(&fixture);
@@ -47,9 +51,18 @@ pub(super) fn verify_h3_pg_oracle(owner: &Config, admin: &Config) {
     drop(client);
 
     let second = migrate_schema_epoch(owner).expect("post-oracle epoch must remain valid");
-    assert_eq!((second.prior_applied, second.final_applied), (3, 3));
+    assert_eq!(
+        (second.prior_applied, second.final_applied),
+        (current_epoch, current_epoch)
+    );
     assert!(second.applied_versions.is_empty());
     assert!(second.reconciled_versions.is_empty());
+}
+
+fn current_schema_epoch() -> usize {
+    compiled_schema_migrations()
+        .expect("compiled migration registry must validate")
+        .len()
 }
 
 fn assert_shared_fixture_transport(fixture: &VectorFixture) {
@@ -97,7 +110,10 @@ fn assert_pre_activation_state(client: &mut Client) {
             &[],
         )
         .expect("pre-activation H3 state must query");
-    assert_eq!(row.get::<_, i64>(0), 3);
+    assert_eq!(
+        row.get::<_, i64>(0),
+        i64::try_from(current_schema_epoch()).expect("schema epoch must fit BIGINT")
+    );
     assert_eq!(row.get::<_, Option<String>>(1), None);
     assert_eq!(
         row.get::<_, Option<String>>(2).as_deref(),

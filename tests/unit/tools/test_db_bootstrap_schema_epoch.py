@@ -22,13 +22,15 @@ def _mise_task(name: str) -> str:
     raise AssertionError(f"missing Mise task: {name}")
 
 
-def test_db_bootstrap_advances_the_exact_rust_epoch_after_legacy_ddl() -> None:
+def test_db_bootstrap_preflights_target_then_advances_after_legacy_ddl() -> None:
     task = _mise_task("db:bootstrap")
 
-    legacy = task.index("ensure_ddl_applied")
+    preflight = task.index("--locked -- --validate-target-only")
+    legacy = task.index("executed = ensure_ddl_applied(conn, POSTGRES_SCHEMA_DDL)")
     migrations = task.index("_apply_migrations(pool)")
-    rust_epoch = task.index("babylon-schema-epoch")
-    assert legacy < migrations < rust_epoch
+    rust_epoch = task.rindex("babylon-schema-epoch")
+    assert preflight < legacy < migrations < rust_epoch
+    assert task.count("babylon-schema-epoch") == 2
     assert "BABYLON_SCHEMA_EPOCH_DSN" in task
     assert "host=127.0.0.1" in task
     assert "host=localhost" not in task
@@ -44,25 +46,33 @@ def test_repository_cargo_concurrency_matches_the_host_contract() -> None:
     assert 'CARGO_BUILD_JOBS = "8"' not in mise
 
 
-def test_fresh_clone_setup_runs_rust_bootstrap_in_the_pinned_nix_shell() -> None:
-    setup_lines = {line.strip() for line in _mise_task("setup").splitlines()}
+def test_local_bootstrap_callers_run_rust_in_the_pinned_nix_shell() -> None:
+    setup = _mise_task("setup")
+    assert "PostgreSQL 17" in setup
+    assert "Postgres 16" not in setup
 
-    assert "mise run nix -- mise run db:bootstrap" in setup_lines
-    assert "mise run db:bootstrap" not in setup_lines
+    for task_name in ("setup", "clean:testdb", "test:int-pg"):
+        task_lines = {line.strip() for line in _mise_task(task_name).splitlines()}
+        assert "mise run nix -- mise run db:bootstrap" in task_lines
+        assert "mise run db:bootstrap" not in task_lines
 
     for relative in ("README.md", "SETUP_GUIDE.md"):
         guide = (ROOT / relative).read_text(encoding="utf-8")
         assert "`mise run setup` requires [Nix]" in guide
 
 
-def test_schema_epoch_cli_has_one_environment_only_connection_boundary() -> None:
+def test_schema_epoch_cli_has_exact_nonconnecting_target_validation_mode() -> None:
     source = (ROOT / "rust/crates/babylon-persistence/src/bin/babylon-schema-epoch.rs").read_text(
         encoding="utf-8"
     )
 
     assert 'const DSN_ENV: &str = "BABYLON_SCHEMA_EPOCH_DSN";' in source
+    assert 'const VALIDATE_TARGET_ONLY_MODE: &str = "--validate-target-only";' in source
+    assert "std::env::args_os()" in source
+    assert "Mode::ValidateTargetOnly => validate_target_only(&config)" in source
+    assert "validate_legacy_connection_target(config)" in source
     assert "migrate_schema_epoch(&config)" in source
-    assert "std::env::args" not in source
+    assert "unexpected arguments; expected no arguments or" in source
 
 
 def test_every_checked_in_bootstrap_caller_provisions_pinned_rust() -> None:
@@ -83,3 +93,9 @@ def test_disposable_pg_runner_proves_bootstrap_and_michigan_smoke() -> None:
     assert "mise run db:bootstrap" in runner
     assert "mise run qa:michigan-rollover-smoke" in runner
     assert '"6|bigint"' in runner
+    smoke = runner.split("mise run qa:michigan-rollover-smoke", maxsplit=1)[0].rsplit(
+        "timeout --signal=TERM --kill-after=30s 1800s", maxsplit=1
+    )[1]
+    assert 'BABYLON_DSN="$BOOTSTRAP_DSN"' in smoke
+    assert "BABYLON_PG_DSN=" not in smoke
+    assert "BABYLON_TEST_PG_DSN=" not in smoke

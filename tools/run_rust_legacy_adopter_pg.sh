@@ -230,7 +230,7 @@ if [ "$LIVE_FOCUS" = "clean_bootstrap" ]; then
 
   if [ "$status" -eq 0 ]; then
     timeout --signal=TERM --kill-after=30s 1800s \
-      env BABYLON_PG_DSN="$BOOTSTRAP_DSN" BABYLON_TEST_PG_DSN="$BOOTSTRAP_DSN" \
+      env BABYLON_DSN="$BOOTSTRAP_DSN" \
       mise run qa:michigan-rollover-smoke || status=$?
   fi
 fi

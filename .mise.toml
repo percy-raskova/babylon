@@ -126,7 +126,7 @@ description = "Install all dependencies (from the committed lock — see deps:lo
 run = "uv sync --extra ops --frozen"
 
 [tasks.setup]
-description = "One-shot bootstrap for a fresh clone: toolchain + deps + hooks + tuned Postgres 16 + canonical schema (spec-087 FR-008)"
+description = "One-shot bootstrap for a fresh clone: toolchain + deps + hooks + tuned PostgreSQL 17 + canonical schema (spec-087 FR-008)"
 run = """
 set -e
 mise install
@@ -1280,7 +1280,7 @@ echo "── babylon_test size before:"
 docker exec babylon-pg-isolated psql -U test -d postgres -tc "SELECT pg_size_pretty(pg_database_size('babylon_test'));"
 docker exec babylon-pg-isolated psql -U test -d postgres -c "DROP DATABASE IF EXISTS babylon_test;"
 docker exec babylon-pg-isolated psql -U test -d postgres -c "CREATE DATABASE babylon_test OWNER test;"
-mise run db:bootstrap
+mise run nix -- mise run db:bootstrap
 echo "── babylon_test recycled:"
 docker exec babylon-pg-isolated psql -U test -d postgres -tc "SELECT pg_size_pretty(pg_database_size('babylon_test'));"
 df -h /var | tail -1
@@ -1305,6 +1305,7 @@ run = "tools/run_rust_legacy_adopter_pg.sh"
 description = "Apply the complete frozen Python estate, then advance the running test database to the exact Rust-owned schema epoch"
 run = """
 export BABYLON_SCHEMA_EPOCH_DSN="${BABYLON_SCHEMA_EPOCH_DSN:-host=127.0.0.1 port=5433 dbname=babylon_test user=test password=test}"
+(cd rust && CARGO_BUILD_JOBS=4 cargo run -p babylon-persistence --bin babylon-schema-epoch --locked -- --validate-target-only)
 uv run python -c "
 import os
 import psycopg
@@ -1328,7 +1329,7 @@ run = """
 mise run db:up
 
 # Apply canonical schema (idempotent; tolerates already-applied)
-mise run db:bootstrap
+mise run nix -- mise run db:bootstrap
 
 export BABYLON_TEST_PG_DSN="dbname=babylon_test host=localhost port=5433 user=test password=test"
 export POSTGRES_HOST=localhost

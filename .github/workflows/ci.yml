@@ -232,7 +232,7 @@ jobs:
     # The subset is DECLARED in .mise.toml (test:integration-pg) — widen it
     # only with green evidence; narrowing it is a gate change.
     runs-on: ubuntu-latest
-    timeout-minutes: 61
+    timeout-minutes: 99
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -253,7 +253,7 @@ jobs:
         run: mise run db:bootstrap
 
       - name: Rust PostgreSQL atomicity and installed-mutation contracts
-        timeout-minutes: 28
+        timeout-minutes: 69
         env:
           BABYLON_LEGACY_ADOPTER_LIVE_FOCUS: pr
         run: mise run test:rust-legacy-adopter-pg

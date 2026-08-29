@@ -3,25 +3,23 @@
 use std::ffi::{OsStr, OsString};
 use std::process::ExitCode;
 
-use babylon_persistence::{
-    migrate_schema_epoch, validate_legacy_connection_target, LegacyAdopterError,
-};
+use babylon_persistence::{migrate_schema_epoch, preflight_schema_epoch};
 use postgres::Config;
 
 const DSN_ENV: &str = "BABYLON_SCHEMA_EPOCH_DSN";
-const VALIDATE_TARGET_ONLY_MODE: &str = "--validate-target-only";
+const PREFLIGHT_MODE: &str = "--preflight";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Mode {
     Migrate,
-    ValidateTargetOnly,
+    Preflight,
 }
 
 fn main() -> ExitCode {
     let Ok(mode) = parse_mode(std::env::args_os().skip(1)) else {
         eprintln!(
             "babylon-schema-epoch: unexpected arguments; expected no arguments or \
-             {VALIDATE_TARGET_ONLY_MODE}"
+             {PREFLIGHT_MODE}"
         );
         return ExitCode::from(2);
     };
@@ -38,8 +36,8 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     };
 
-    let target_validation = match mode {
-        Mode::ValidateTargetOnly => validate_target_only(&config),
+    let preflight = match mode {
+        Mode::Preflight => preflight_schema_epoch(&config),
         Mode::Migrate => {
             return match migrate_schema_epoch(&config) {
                 Ok(report) => {
@@ -61,9 +59,9 @@ fn main() -> ExitCode {
         }
     };
 
-    match target_validation {
+    match preflight {
         Ok(()) => {
-            println!("Rust schema target preflight complete.");
+            println!("Rust schema target and owner preflight complete.");
             ExitCode::SUCCESS
         }
         Err(error) => {
@@ -76,41 +74,46 @@ fn main() -> ExitCode {
 fn parse_mode(mut args: impl Iterator<Item = OsString>) -> Result<Mode, ()> {
     match (args.next(), args.next()) {
         (None, None) => Ok(Mode::Migrate),
-        (Some(argument), None) if argument == OsStr::new(VALIDATE_TARGET_ONLY_MODE) => {
-            Ok(Mode::ValidateTargetOnly)
-        }
+        (Some(argument), None) if argument == OsStr::new(PREFLIGHT_MODE) => Ok(Mode::Preflight),
         _ => Err(()),
     }
 }
 
-fn validate_target_only(config: &Config) -> Result<(), LegacyAdopterError> {
-    validate_legacy_connection_target(config)
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{parse_mode, validate_target_only, Mode, VALIDATE_TARGET_ONLY_MODE};
+    use super::{parse_mode, Mode, PREFLIGHT_MODE};
+    use babylon_persistence::{
+        preflight_schema_epoch, LegacyAdopterError, LegacyConnectionTargetRejection,
+        SchemaEpochError,
+    };
 
     #[test]
     fn mode_is_exact_and_default_migrates() {
         assert_eq!(parse_mode(Vec::new().into_iter()), Ok(Mode::Migrate));
         assert_eq!(
-            parse_mode(vec![VALIDATE_TARGET_ONLY_MODE.into()].into_iter()),
-            Ok(Mode::ValidateTargetOnly)
+            parse_mode(vec![PREFLIGHT_MODE.into()].into_iter()),
+            Ok(Mode::Preflight)
         );
         assert_eq!(parse_mode(vec!["--unknown".into()].into_iter()), Err(()));
         assert_eq!(
-            parse_mode(vec![VALIDATE_TARGET_ONLY_MODE.into(), "extra".into()].into_iter()),
+            parse_mode(vec![PREFLIGHT_MODE.into(), "extra".into()].into_iter()),
             Err(())
         );
     }
 
     #[test]
-    fn target_only_validation_does_not_open_a_database_connection() {
-        let config = "postgresql://test@127.0.0.1:1/babylon_test"
+    fn preflight_rejects_a_nonlocal_target_before_connecting() {
+        let config = "postgresql://test@203.0.113.1:1/babylon_test"
             .parse()
-            .expect("loopback DSN is valid");
+            .expect("nonlocal DSN is syntactically valid");
 
-        validate_target_only(&config).expect("loopback target is admitted without connecting");
+        assert_eq!(
+            preflight_schema_epoch(&config),
+            Err(SchemaEpochError::ConnectionTarget(
+                LegacyAdopterError::UnsupportedConnectionTarget {
+                    reason: LegacyConnectionTargetRejection::NonLoopbackTcp,
+                }
+            ))
+        );
     }
 }

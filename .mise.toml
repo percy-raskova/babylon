@@ -133,7 +133,7 @@ mise install
 uv sync --extra ops --frozen
 uv run pre-commit install --hook-type commit-msg --hook-type pre-commit --hook-type pre-push
 mise run db:up
-mise run nix -- mise run db:bootstrap
+BABYLON_SCHEMA_EPOCH_DSN="host=127.0.0.1 port=5433 dbname=babylon_test user=test password=test" mise run nix -- mise run db:bootstrap
 if [ ! -f data/sqlite/marxist-data-3NF.sqlite ]; then
   echo "WARN: reference DB missing at data/sqlite/marxist-data-3NF.sqlite"
   echo "      (headless runs need it; see project/04-data-program-098.md)"
@@ -1280,7 +1280,7 @@ echo "── babylon_test size before:"
 docker exec babylon-pg-isolated psql -U test -d postgres -tc "SELECT pg_size_pretty(pg_database_size('babylon_test'));"
 docker exec babylon-pg-isolated psql -U test -d postgres -c "DROP DATABASE IF EXISTS babylon_test;"
 docker exec babylon-pg-isolated psql -U test -d postgres -c "CREATE DATABASE babylon_test OWNER test;"
-mise run nix -- mise run db:bootstrap
+BABYLON_SCHEMA_EPOCH_DSN="host=127.0.0.1 port=5433 dbname=babylon_test user=test password=test" mise run nix -- mise run db:bootstrap
 echo "── babylon_test recycled:"
 docker exec babylon-pg-isolated psql -U test -d postgres -tc "SELECT pg_size_pretty(pg_database_size('babylon_test'));"
 df -h /var | tail -1
@@ -1306,7 +1306,7 @@ description = "Apply the complete frozen Python estate, then advance the running
 run = """
 export BABYLON_SCHEMA_EPOCH_DSN="${BABYLON_SCHEMA_EPOCH_DSN:-host=127.0.0.1 port=5433 dbname=babylon_test user=test password=test}"
 unset PGHOST PGHOSTADDR PGPORT PGDATABASE PGSERVICE PGSERVICEFILE PGSYSCONFDIR
-(cd rust && CARGO_BUILD_JOBS=4 cargo run -p babylon-persistence --bin babylon-schema-epoch --locked -- --validate-target-only)
+(cd rust && CARGO_BUILD_JOBS=4 cargo run -p babylon-persistence --bin babylon-schema-epoch --locked -- --preflight)
 uv run python -c "
 import os
 import psycopg
@@ -1330,7 +1330,7 @@ run = """
 mise run db:up
 
 # Apply canonical schema (idempotent; tolerates already-applied)
-mise run nix -- mise run db:bootstrap
+BABYLON_SCHEMA_EPOCH_DSN="host=127.0.0.1 port=5433 dbname=babylon_test user=test password=test" mise run nix -- mise run db:bootstrap
 
 export BABYLON_TEST_PG_DSN="dbname=babylon_test host=localhost port=5433 user=test password=test"
 export POSTGRES_HOST=localhost

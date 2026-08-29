@@ -63,10 +63,10 @@ pub use migration_manifest::{
     SCHEMA_ADVISORY_LOCK_KEY,
 };
 pub use schema_epoch::{
-    compiled_schema_migrations, migrate_schema_epoch, validate_migration_prefix,
-    PersistedMigration, SchemaEpochError, SchemaEpochObservation, SchemaEpochOperation,
-    SchemaEpochOrigin, SchemaEpochRelation, SchemaEpochReport, SchemaEpochSchemas,
-    MAX_COMMIT_ATTEMPTS_PER_VERSION, MAX_SCHEMA_MIGRATIONS,
+    compiled_schema_migrations, migrate_schema_epoch, preflight_schema_epoch,
+    validate_migration_prefix, PersistedMigration, SchemaEpochError, SchemaEpochObservation,
+    SchemaEpochOperation, SchemaEpochOrigin, SchemaEpochRelation, SchemaEpochReport,
+    SchemaEpochSchemas, MAX_COMMIT_ATTEMPTS_PER_VERSION, MAX_SCHEMA_MIGRATIONS,
 };
 pub use schema_migration::{
     MigrationChecksum, MigrationVersion, SchemaMigration, SchemaMigrationError,

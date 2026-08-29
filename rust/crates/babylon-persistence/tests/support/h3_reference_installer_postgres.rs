@@ -773,7 +773,7 @@ fn assert_writer_authority_refused() {
     );
 }
 
-fn representative_cohort() -> H3ReferenceCohort {
+pub(super) fn representative_cohort() -> H3ReferenceCohort {
     build_representative_h3_cohort_v1(digest(ARTIFACT_DIGEST_HEX), &source_cells())
         .expect("pinned representative H3 fixture must build")
 }

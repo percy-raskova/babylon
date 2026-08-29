@@ -8,6 +8,7 @@ pub mod committed_tick_writer;
 pub mod error;
 pub mod h3_reference_cohort;
 mod h3_reference_installer;
+mod h3_shadow_backfill;
 pub mod hashes;
 pub mod identity;
 pub mod legacy_adopter;
@@ -30,6 +31,15 @@ pub use h3_reference_installer::{
     H3ReferenceInstallBoundedResource, H3ReferenceInstallConflict, H3ReferenceInstallDisposition,
     H3ReferenceInstallError, H3ReferenceInstallOperation, H3ReferenceInstallReport,
     H3ReferenceMembershipReadContext,
+};
+pub use h3_shadow_backfill::{
+    backfill_legacy_h3_shadow_keys, H3ShadowBackfillBoundedResource, H3ShadowBackfillDisposition,
+    H3ShadowBackfillError, H3ShadowBackfillIssue, H3ShadowBackfillIssueKind,
+    H3ShadowBackfillOperation, H3ShadowBackfillReport, H3ShadowFieldReport, H3ShadowRelation,
+    H3ShadowRelationReport, H3_SHADOW_FIELD_COUNT, H3_SHADOW_RELATION_COUNT,
+    MAX_H3_SHADOW_BACKFILL_BATCH_ROWS, MAX_H3_SHADOW_BACKFILL_COMMIT_ATTEMPTS,
+    MAX_H3_SHADOW_BACKFILL_ISSUES, MAX_H3_SHADOW_DISTINCT_GROUPS, MAX_H3_SHADOW_ROWS_PER_RELATION,
+    MAX_H3_SHADOW_TEXT_BYTES,
 };
 pub use hashes::{GraphStateHash, MigrationSetDigest, ReplayIdentityHash};
 pub use identity::{CampaignId, H3CellId, H3CellIdError};

@@ -447,10 +447,12 @@ name = "babylon-persistence"
 version = "0.1.0"
 dependencies = [
  "babylon-kernel",
+ "fallible-iterator",
  "h3o",
  "postgres",
  "serde",
  "serde_json",
+ "sha2",
  "uuid",
 ]
 

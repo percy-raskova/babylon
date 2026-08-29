@@ -9,8 +9,10 @@ publish = false
 
 [dependencies]
 babylon-kernel = { path = "../babylon-kernel" }
+fallible-iterator = "0.2"
 h3o = { version = "=0.10.0", default-features = false }
 postgres = { version = "=0.19.14", features = ["with-uuid-1"] }
+sha2 = "0.11"
 uuid = { version = "1.24", default-features = false }
 
 [dev-dependencies]

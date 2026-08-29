@@ -9,15 +9,16 @@ const SQL_ONE: &str = "SELECT 1;\n";
 const SQL_TWO: &str = "SELECT 2;\n";
 
 #[test]
-fn compiled_registry_is_five_contiguous_exact_migrations() {
+fn compiled_registry_is_six_contiguous_exact_migrations() {
     let compiled = compiled_schema_migrations().expect("checked-in migration bytes are valid");
 
-    assert_eq!(compiled.len(), 5);
+    assert_eq!(compiled.len(), 6);
     assert_eq!(compiled[0].version().as_i64(), 1);
     assert_eq!(compiled[1].version().as_i64(), 2);
     assert_eq!(compiled[2].version().as_i64(), 3);
     assert_eq!(compiled[3].version().as_i64(), 4);
     assert_eq!(compiled[4].version().as_i64(), 5);
+    assert_eq!(compiled[5].version().as_i64(), 6);
     assert_eq!(
         compiled[0].sql(),
         include_str!("../migrations/0001_owned_schema_epoch.sql")
@@ -46,6 +47,12 @@ fn compiled_registry_is_five_contiguous_exact_migrations() {
     ))
     .expect("epoch-5 spatial reference product migration must exist");
     assert_eq!(compiled[4].sql(), migration_five);
+    let migration_six = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/migrations/0006_h3_shadow_keys.sql"
+    ))
+    .expect("epoch-6 H3 shadow-key migration must exist");
+    assert_eq!(compiled[5].sql(), migration_six);
     assert_eq!(
         compiled[0].checksum().as_bytes(),
         &hex_checksum("4fc40761ed3b9a2bfab574d14ce65d24e828d1d51ca3f953a515b18f6f2667d4")
@@ -65,6 +72,10 @@ fn compiled_registry_is_five_contiguous_exact_migrations() {
     assert_eq!(
         compiled[4].checksum().as_bytes(),
         &hex_checksum("3d49e29410419b0573fd16ecaac65ba0f57ca0a9174c0bff1a00b633cc40720b")
+    );
+    assert_eq!(
+        compiled[5].checksum().as_bytes(),
+        &hex_checksum("5d97424b4036a3648d49f1f388b0b6da387bb1082fd330eda9ae39cd80d1e249")
     );
 }
 
@@ -185,6 +196,7 @@ fn production_epoch_has_no_runtime_activation_or_caller_supplied_sql_path() {
     assert!(
         production.contains("include_str!(\"../migrations/0005_spatial_reference_products.sql\")")
     );
+    assert!(production.contains("include_str!(\"../migrations/0006_h3_shadow_keys.sql\")"));
     for stage in [
         "map_err(SchemaEpochError::ConnectionTarget)",
         "map_err(SchemaEpochError::Lock)",
@@ -306,6 +318,22 @@ fn v5_prefix_has_an_independent_shape_and_census_contract() {
 }
 
 #[test]
+fn v6_prefix_has_an_independent_shape_and_census_contract() {
+    let source = include_str!("../src/schema_epoch.rs");
+    let v6_verifier = source
+        .split_once("fn verify_v6_prefix_client(")
+        .unwrap()
+        .1
+        .split_once("fn verify_post_epoch_census_client(")
+        .unwrap()
+        .0;
+
+    assert!(v6_verifier.contains("EPOCH_V6_SHAPE_SQL"));
+    assert!(v6_verifier.contains("SchemaEpochPrefix::V6"));
+    assert!(!v6_verifier.contains("verify_v5_prefix"));
+}
+
+#[test]
 fn fresh_and_owned_census_fixtures_are_bounded_and_exactly_sorted() {
     let fixtures = [
         include_str!("../src/fixtures/fresh_schema_epoch_census_v1.txt"),
@@ -320,9 +348,11 @@ fn fresh_and_owned_census_fixtures_are_bounded_and_exactly_sorted() {
         include_str!("../src/fixtures/schema_epoch_owned_fresh_census_v4.txt"),
         include_str!("../src/fixtures/schema_epoch_owned_census_v5.txt"),
         include_str!("../src/fixtures/schema_epoch_owned_fresh_census_v5.txt"),
+        include_str!("../src/fixtures/schema_epoch_owned_census_v6.txt"),
+        include_str!("../src/fixtures/schema_epoch_owned_fresh_census_v6.txt"),
     ];
-    let expected_counts = [7, 8, 3, 4, 4, 5, 6, 7, 16, 17, 24, 25];
-    for (fixture, expected) in fixtures.iter().zip(expected_counts).take(12) {
+    let expected_counts = [7, 8, 3, 4, 4, 5, 6, 7, 16, 17, 24, 25, 39, 25];
+    for (fixture, expected) in fixtures.iter().zip(expected_counts) {
         let parsed = babylon_persistence::parse_legacy_census_fixture(fixture).unwrap();
         assert_eq!(parsed.entries().len(), expected);
         assert!(fixture.len() <= 65_536);

@@ -16,7 +16,10 @@ BOOTSTRAP_CALLERS = (
 
 def _mise_task(name: str) -> str:
     text = (ROOT / ".mise.toml").read_text(encoding="utf-8")
-    return text.split(f'[tasks."{name}"]', maxsplit=1)[1].split("\n[tasks.", maxsplit=1)[0]
+    for header in (f'[tasks."{name}"]', f"[tasks.{name}]"):
+        if header in text:
+            return text.split(header, maxsplit=1)[1].split("\n[tasks.", maxsplit=1)[0]
+    raise AssertionError(f"missing Mise task: {name}")
 
 
 def test_db_bootstrap_advances_the_exact_rust_epoch_after_legacy_ddl() -> None:
@@ -39,6 +42,17 @@ def test_repository_cargo_concurrency_matches_the_host_contract() -> None:
 
     assert 'CARGO_BUILD_JOBS = "4"' in mise
     assert 'CARGO_BUILD_JOBS = "8"' not in mise
+
+
+def test_fresh_clone_setup_runs_rust_bootstrap_in_the_pinned_nix_shell() -> None:
+    setup_lines = {line.strip() for line in _mise_task("setup").splitlines()}
+
+    assert "mise run nix -- mise run db:bootstrap" in setup_lines
+    assert "mise run db:bootstrap" not in setup_lines
+
+    for relative in ("README.md", "SETUP_GUIDE.md"):
+        guide = (ROOT / relative).read_text(encoding="utf-8")
+        assert "`mise run setup` requires [Nix]" in guide
 
 
 def test_schema_epoch_cli_has_one_environment_only_connection_boundary() -> None:

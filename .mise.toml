@@ -133,7 +133,7 @@ mise install
 uv sync --extra ops --frozen
 uv run pre-commit install --hook-type commit-msg --hook-type pre-commit --hook-type pre-push
 mise run db:up
-mise run db:bootstrap
+mise run nix -- mise run db:bootstrap
 if [ ! -f data/sqlite/marxist-data-3NF.sqlite ]; then
   echo "WARN: reference DB missing at data/sqlite/marxist-data-3NF.sqlite"
   echo "      (headless runs need it; see project/04-data-program-098.md)"

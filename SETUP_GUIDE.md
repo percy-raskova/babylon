@@ -19,14 +19,19 @@ use a terminal with Git.
 <!-- Vale: this paragraph preserves literal Docker product and command names. -->
 <!-- vale ste.UnapprovedWords = NO -->
 Install [Git](https://git-scm.com/downloads),
-[`mise`](https://mise.jdx.dev/getting-started.html), and Docker Engine with the
-Docker Compose plug-in from their official guides. Docker Compose is a host
-prerequisite because `mise run setup` starts Postgres. Check them:
+[`mise`](https://mise.jdx.dev/getting-started.html),
+[Nix](https://nixos.org/download/), and Docker Engine with the Docker Compose
+plug-in from their official guides. Docker Compose is a host prerequisite
+because `mise run setup` starts Postgres.
+`mise run setup` requires [Nix](https://nixos.org/download/) because canonical
+schema bootstrap uses the repository Nix shell to run the pinned Rust migrator.
+Check them:
 <!-- vale ste.UnapprovedWords = YES -->
 
 ```bash
 git --version
 mise --version
+nix --version
 docker compose version
 ```
 
@@ -97,10 +102,10 @@ data tools, and language-neutral behavior contracts.
 <!-- vale ste.UnapprovedWords = NO -->
 <!-- vale ste.NounClusters = NO -->
 This step is optional. A Bevy build needs Rust and Cargo plus the host window,
-input, and audio development libraries. The pinned Nix shell supplies Rust and
-Cargo. Install [Nix](https://nixos.org/download/) for this optional step. On
-Debian-family Linux hosts, the native package set includes `libasound2-dev`,
-`libudev-dev`, `libwayland-dev`, and `libxkbcommon-dev`.
+input, and audio development libraries. The pinned Nix shell installed in step
+1 supplies Rust and Cargo. On Debian-family Linux hosts, the native package set
+includes `libasound2-dev`, `libudev-dev`, `libwayland-dev`, and
+`libxkbcommon-dev`.
 <!-- vale ste.NounClusters = YES -->
 <!-- vale ste.UnapprovedWords = YES -->
 

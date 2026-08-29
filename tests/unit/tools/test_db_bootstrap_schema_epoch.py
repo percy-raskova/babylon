@@ -111,6 +111,7 @@ def test_disposable_pg_runner_proves_bootstrap_and_michigan_smoke() -> None:
     runner = (ROOT / "tools/run_rust_legacy_adopter_pg.sh").read_text(encoding="utf-8")
 
     assert "clean_bootstrap" in runner
+    assert 'if [ "$LIVE_FOCUS" = "clean_bootstrap" ] || [ "$LIVE_FOCUS" = "pr" ]; then' in runner
     assert "mise run db:bootstrap" in runner
     bootstrap_prefix = runner.split("mise run db:bootstrap", maxsplit=1)[0]
     for assignment in (

@@ -202,7 +202,7 @@ wait_for_runtime || die "pinned PostgreSQL runtime was not ready within 90 secon
 printf 'PER-20 runtime ready: container=%s volume=%s port=%s\n' \
   "$CONTAINER" "$VOLUME" "$PORT"
 status=0
-if [ "$LIVE_FOCUS" = "clean_bootstrap" ]; then
+if [ "$LIVE_FOCUS" = "clean_bootstrap" ] || [ "$LIVE_FOCUS" = "pr" ]; then
   BOOTSTRAP_DSN="postgresql://test:test@127.0.0.1:$PORT/babylon_test"
   readonly BOOTSTRAP_DSN
   cd "$REPO_ROOT"

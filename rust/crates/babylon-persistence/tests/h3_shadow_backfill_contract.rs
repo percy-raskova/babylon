@@ -99,7 +99,7 @@ fn backfill_is_a_closed_maintenance_api_not_a_runtime_writer() {
         "MAX_H3_SHADOW_BACKFILL_ISSUES",
         "BTreeSet",
         "H3CellId",
-        "sha256_of",
+        "Sha256",
         "ordered_semantic_hash",
         "distinct_semantic_group_count",
         "pg_catalog.int8",
@@ -125,6 +125,71 @@ fn backfill_is_a_closed_maintenance_api_not_a_runtime_writer() {
             "backfill exposes forbidden runtime authority {forbidden}"
         );
     }
+}
+
+#[test]
+fn large_h3_relations_stream_relation_appropriate_groups() {
+    let backfill = std::fs::read_to_string(crate_path("src/h3_shadow_backfill.rs"))
+        .expect("bounded H3 shadow backfill module must exist");
+    let inspection = backfill
+        .split_once("fn inspect_relation(")
+        .expect("relation inspection must exist")
+        .1
+        .split_once("fn inspect_group(")
+        .expect("group inspection must follow relation inspection")
+        .0;
+
+    assert!(inspection.contains("query_raw"));
+    assert!(inspection.contains("distinct_group_limit(specification)"));
+    assert!(inspection.contains("Sha256"));
+    assert!(backfill.contains("ImmutableReferenceLodesOdMatrix =>"));
+    assert!(backfill.contains("MAX_H3_SHADOW_ROWS_PER_RELATION"));
+}
+
+#[test]
+fn legacy_h3_text_is_byte_bounded_before_client_decode() {
+    let backfill = std::fs::read_to_string(crate_path("src/h3_shadow_backfill.rs"))
+        .expect("bounded H3 shadow backfill module must exist");
+    let inspection_sql = backfill
+        .split_once("fn grouped_inspection_sql(")
+        .expect("grouped inspection SQL must exist")
+        .1
+        .split_once("fn inspect_group(")
+        .expect("group inspection must follow SQL construction")
+        .0;
+
+    assert!(backfill.contains("MAX_H3_SHADOW_TEXT_BYTES"));
+    assert!(backfill.contains("TextTooLong"));
+    assert!(inspection_sql.contains("bounded_text_sql"));
+    assert!(inspection_sql.contains("text_digest_sql"));
+    assert!(backfill.contains("octet_length"));
+    assert!(backfill.contains("convert_to"));
+    assert!(backfill.contains("sha256"));
+    assert!(backfill.contains("encode"));
+}
+
+#[test]
+fn ordinary_batches_retain_progress_without_whole_relation_recounts() {
+    let backfill = std::fs::read_to_string(crate_path("src/h3_shadow_backfill.rs"))
+        .expect("bounded H3 shadow backfill module must exist");
+    let ordinary_loop = backfill
+        .split_once("fn backfill_relation(")
+        .expect("relation backfill loop must exist")
+        .1
+        .split_once("fn commit_one_batch(")
+        .expect("batch commit helper must follow relation loop")
+        .0;
+    let transaction = backfill
+        .split_once("fn prepare_batch_transaction(")
+        .expect("batch transaction helper must exist")
+        .1
+        .split_once("fn rollback_preserving")
+        .expect("rollback helper must follow batch preparation")
+        .0;
+
+    assert_eq!(ordinary_loop.matches("pending_count(").count(), 1);
+    assert!(ordinary_loop.contains("checked_sub(resolution.updated)"));
+    assert!(!transaction.contains("pending_count("));
 }
 
 #[test]

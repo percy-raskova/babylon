@@ -1,10 +1,11 @@
 //! Bounded maintenance backfill for the frozen legacy H3 estate.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::str::FromStr;
 
-use babylon_kernel::sha256_of;
+use fallible_iterator::FallibleIterator;
 use postgres::{Client, Config, GenericClient, IsolationLevel, NoTls, Row, Transaction};
+use sha2::{Digest, Sha256};
 
 use crate::h3_reference_cohort::MAX_H3_REFERENCE_CLOSURE_ROWS;
 use crate::legacy_adopter::{
@@ -28,6 +29,8 @@ pub const MAX_H3_SHADOW_BACKFILL_COMMIT_ATTEMPTS: usize = 2;
 pub const MAX_H3_SHADOW_BACKFILL_ISSUES: usize = 64;
 /// Maximum distinct legacy/shadow groups inspected per relation.
 pub const MAX_H3_SHADOW_DISTINCT_GROUPS: usize = 65_536;
+/// Maximum legacy H3 source bytes loaded into one client-side diagnostic.
+pub const MAX_H3_SHADOW_TEXT_BYTES: usize = 64;
 /// Maximum rows accepted in one legacy relation.
 pub const MAX_H3_SHADOW_ROWS_PER_RELATION: u64 = 100_000_000;
 
@@ -57,7 +60,8 @@ const LEGACY_ORIGIN_SQL: &str =
     "SELECT pg_catalog.to_regclass('public._babylon_schema_stamp') IS NOT NULL";
 const CANONICAL_CELLS_SQL: &str =
     "SELECT cell_id FROM babylon_ref.h3_cell ORDER BY cell_id LIMIT $1";
-const LEGACY_SEMANTIC_HASH_DOMAIN: &[u8] = b"BABYLON-H3-SHADOW-LEGACY-SEMANTICS-V1\0";
+const LEGACY_SEMANTIC_HASH_DOMAIN: &[u8] = b"BABYLON-H3-SHADOW-LEGACY-SEMANTICS-V2\0";
+const INSPECTION_FIELD_WIDTH: usize = 4;
 
 /// Frozen relation identity used in reports and refusal evidence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -107,6 +111,7 @@ impl H3ShadowRelation {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum H3ShadowBackfillIssueKind {
     RequiredValueIsNull,
+    TextTooLong { actual: u64, max: u64 },
     InvalidText(H3CellIdError),
     UnexpectedResolution { expected: u8, actual: u8 },
     UnknownCanonicalCell { cell_id: i64 },
@@ -434,6 +439,20 @@ const fn relation(relation: H3ShadowRelation, fields: &'static [FieldSpec]) -> R
     }
 }
 
+const fn distinct_group_limit(specification: RelationSpec) -> u64 {
+    match specification.relation {
+        H3ShadowRelation::ImmutableReferenceLodesOdMatrix => MAX_H3_SHADOW_ROWS_PER_RELATION,
+        _ => MAX_H3_SHADOW_DISTINCT_GROUPS as u64,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BoundedText {
+    value: Option<String>,
+    byte_len: Option<u64>,
+    digest: Option<String>,
+}
+
 struct Inspection {
     fields: Vec<H3ShadowFieldReport>,
     relations: Vec<H3ShadowRelationSemantics>,
@@ -688,20 +707,11 @@ fn inspect_relation(
         relation: specification.relation,
     };
     let query = grouped_inspection_sql(specification);
-    let limit =
-        i64::try_from(MAX_H3_SHADOW_DISTINCT_GROUPS + 1).expect("distinct group bound fits i64");
-    let rows = client
-        .query(&query, &[&limit])
+    let group_limit = distinct_group_limit(specification);
+    let query_limit = i64::try_from(group_limit + 1).expect("distinct group bound fits i64");
+    let mut rows = client
+        .query_raw(&query, [&query_limit])
         .map_err(|_| database_error(operation))?;
-    if rows.len() > MAX_H3_SHADOW_DISTINCT_GROUPS {
-        return Err(H3ShadowBackfillError::Bounds {
-            resource: H3ShadowBackfillBoundedResource::DistinctGroups {
-                relation: specification.relation,
-            },
-            actual: u64::try_from(rows.len()).unwrap_or(u64::MAX),
-            max: u64::try_from(MAX_H3_SHADOW_DISTINCT_GROUPS).expect("bound fits u64"),
-        });
-    }
 
     let report_start = reports.len();
     reports.extend(
@@ -718,19 +728,55 @@ fn inspect_relation(
                 preserved_null_or_external_count: 0,
             }),
     );
-    let mut semantic_groups = BTreeMap::<Vec<Option<String>>, u64>::new();
-    for row in rows.iter().take(MAX_H3_SHADOW_DISTINCT_GROUPS) {
-        let (semantic_key, count) = semantic_group(row, specification, operation)?;
-        let group_count = semantic_groups.entry(semantic_key).or_default();
-        *group_count = checked_row_add(*group_count, count, specification.relation)?;
+    let mut hasher = Sha256::new();
+    hasher.update(LEGACY_SEMANTIC_HASH_DOMAIN);
+    update_semantic_bytes(&mut hasher, specification.relation.as_str().as_bytes());
+    let mut current_key: Option<Vec<BoundedText>> = None;
+    let mut current_count = 0_u64;
+    let mut distinct_group_count = 0_u64;
+    let mut raw_group_count = 0_u64;
+    let mut row_count = 0_u64;
+    while let Some(row) = rows.next().map_err(|_| database_error(operation))? {
+        raw_group_count = raw_group_count.saturating_add(1);
+        if raw_group_count > group_limit {
+            return Err(H3ShadowBackfillError::Bounds {
+                resource: H3ShadowBackfillBoundedResource::DistinctGroups {
+                    relation: specification.relation,
+                },
+                actual: raw_group_count,
+                max: group_limit,
+            });
+        }
+        let (semantic_key, count) = semantic_group(&row, specification, operation)?;
+        if current_key
+            .as_ref()
+            .is_some_and(|current| current != &semantic_key)
+        {
+            let key = current_key
+                .take()
+                .expect("the semantic key was checked as present");
+            update_semantic_group(&mut hasher, &key, current_count);
+            distinct_group_count = distinct_group_count.saturating_add(1);
+            row_count = checked_row_add(row_count, current_count, specification.relation)?;
+            current_count = 0;
+        }
+        if current_key.is_none() {
+            current_key = Some(semantic_key);
+        }
+        current_count = checked_row_add(current_count, count, specification.relation)?;
         inspect_group(
-            row,
+            &row,
             specification,
             canonical,
             &mut reports[report_start..],
             issues,
             operation,
         )?;
+    }
+    if let Some(key) = current_key {
+        update_semantic_group(&mut hasher, &key, current_count);
+        distinct_group_count = distinct_group_count.saturating_add(1);
+        row_count = checked_row_add(row_count, current_count, specification.relation)?;
     }
     for report in reports.iter().skip(report_start) {
         if report.row_count > MAX_H3_SHADOW_ROWS_PER_RELATION {
@@ -743,15 +789,12 @@ fn inspect_relation(
             });
         }
     }
-    let row_count = semantic_groups.values().try_fold(0_u64, |total, count| {
-        checked_row_add(total, *count, specification.relation)
-    })?;
+    hasher.update(distinct_group_count.to_be_bytes());
     Ok(H3ShadowRelationSemantics {
         relation: specification.relation,
         row_count,
-        distinct_group_count: u64::try_from(semantic_groups.len())
-            .expect("bounded semantic group count fits u64"),
-        ordered_hash: ordered_semantic_hash(specification.relation, &semantic_groups),
+        distinct_group_count,
+        ordered_hash: ordered_semantic_hash(hasher),
     })
 }
 
@@ -759,88 +802,135 @@ fn semantic_group(
     row: &Row,
     specification: RelationSpec,
     operation: H3ShadowBackfillOperation,
-) -> Result<(Vec<Option<String>>, u64), H3ShadowBackfillError> {
+) -> Result<(Vec<BoundedText>, u64), H3ShadowBackfillError> {
     let mut key = Vec::with_capacity(
         specification.fields.len() + usize::from(specification.tag_column.is_some()),
     );
     for index in 0..specification.fields.len() {
-        key.push(decode(row, index * 2, operation)?);
+        key.push(decode_bounded_text(
+            row,
+            index * INSPECTION_FIELD_WIDTH,
+            operation,
+        )?);
     }
-    let tag_index = specification.fields.len() * 2;
+    let tag_index = specification.fields.len() * INSPECTION_FIELD_WIDTH;
     if specification.tag_column.is_some() {
-        key.push(decode(row, tag_index, operation)?);
+        key.push(decode_bounded_text(row, tag_index, operation)?);
     }
-    let count_index = tag_index + usize::from(specification.tag_column.is_some());
+    let count_index = tag_index + 3 * usize::from(specification.tag_column.is_some());
     let raw_count: i64 = decode(row, count_index, operation)?;
     let count = u64::try_from(raw_count).map_err(|_| database_error(operation))?;
     Ok((key, count))
 }
 
-fn ordered_semantic_hash(
-    relation: H3ShadowRelation,
-    groups: &BTreeMap<Vec<Option<String>>, u64>,
-) -> [u8; 32] {
-    let mut bytes = Vec::new();
-    bytes.extend_from_slice(LEGACY_SEMANTIC_HASH_DOMAIN);
-    push_semantic_bytes(&mut bytes, relation.as_str().as_bytes());
-    bytes.extend_from_slice(
-        &u64::try_from(groups.len())
-            .expect("bounded semantic group count fits u64")
-            .to_be_bytes(),
-    );
-    for (key, count) in groups {
-        bytes.extend_from_slice(
-            &u64::try_from(key.len())
-                .expect("static semantic key width fits u64")
-                .to_be_bytes(),
-        );
-        for value in key {
-            match value {
-                None => bytes.push(0),
-                Some(value) => {
-                    bytes.push(1);
-                    push_semantic_bytes(&mut bytes, value.as_bytes());
-                }
-            }
-        }
-        bytes.extend_from_slice(&count.to_be_bytes());
+fn decode_bounded_text(
+    row: &Row,
+    index: usize,
+    operation: H3ShadowBackfillOperation,
+) -> Result<BoundedText, H3ShadowBackfillError> {
+    let value: Option<String> = decode(row, index, operation)?;
+    let raw_byte_len: Option<i64> = decode(row, index + 1, operation)?;
+    let digest: Option<String> = decode(row, index + 2, operation)?;
+    let byte_len = raw_byte_len
+        .map(u64::try_from)
+        .transpose()
+        .map_err(|_| database_error(operation))?;
+    if value.is_some() != byte_len.is_some() || value.is_some() != digest.is_some() {
+        return Err(database_error(operation));
     }
-    sha256_of(&bytes)
+    Ok(BoundedText {
+        value,
+        byte_len,
+        digest,
+    })
 }
 
-fn push_semantic_bytes(bytes: &mut Vec<u8>, value: &[u8]) {
-    bytes.extend_from_slice(
-        &u64::try_from(value.len())
+fn update_semantic_group(hasher: &mut Sha256, key: &[BoundedText], count: u64) {
+    hasher.update(
+        u64::try_from(key.len())
+            .expect("static semantic key width fits u64")
+            .to_be_bytes(),
+    );
+    for value in key {
+        match (&value.value, value.byte_len, &value.digest) {
+            (None, None, None) => hasher.update([0]),
+            (Some(_), Some(byte_len), Some(digest)) => {
+                hasher.update([1]);
+                update_semantic_bytes(hasher, digest.as_bytes());
+                hasher.update(byte_len.to_be_bytes());
+            }
+            _ => unreachable!("bounded text decode keeps value and byte length aligned"),
+        }
+    }
+    hasher.update(count.to_be_bytes());
+}
+
+fn update_semantic_bytes(hasher: &mut Sha256, value: &[u8]) {
+    hasher.update(
+        u64::try_from(value.len())
             .expect("bounded semantic value length fits u64")
             .to_be_bytes(),
     );
-    bytes.extend_from_slice(value);
+    hasher.update(value);
+}
+
+fn ordered_semantic_hash(hasher: Sha256) -> [u8; 32] {
+    hasher.finalize().into()
+}
+
+fn bounded_text_sql(column: &str) -> String {
+    format!(
+        "CASE WHEN {column} IS NULL THEN NULL \
+         WHEN pg_catalog.octet_length({column}::pg_catalog.text) <= {MAX_H3_SHADOW_TEXT_BYTES} \
+         THEN {column}::pg_catalog.text ELSE 'hex:'::pg_catalog.text || \
+         pg_catalog.encode(pg_catalog.substring(\
+         pg_catalog.convert_to({column}::pg_catalog.text, 'UTF8'), \
+         1, {MAX_H3_SHADOW_TEXT_BYTES}), 'hex') END"
+    )
+}
+
+fn text_digest_sql(column: &str) -> String {
+    format!(
+        "CASE WHEN {column} IS NULL THEN NULL ELSE pg_catalog.encode(\
+         pg_catalog.sha256(pg_catalog.convert_to({column}::pg_catalog.text, 'UTF8')), 'hex') END"
+    )
 }
 
 fn grouped_inspection_sql(specification: RelationSpec) -> String {
-    let mut selected = Vec::with_capacity(specification.fields.len() * 2 + 2);
+    let mut selected = Vec::with_capacity(specification.fields.len() * 4 + 4);
     let mut grouped = Vec::with_capacity(specification.fields.len() * 2 + 1);
-    let mut ordered = Vec::with_capacity(specification.fields.len() * 2 + 1);
+    let mut source_ordered = Vec::with_capacity(specification.fields.len() + 1);
+    let mut shadow_ordered = Vec::with_capacity(specification.fields.len());
     for field in specification.fields {
-        selected.push(format!("{}::pg_catalog.text", field.legacy));
+        selected.push(bounded_text_sql(field.legacy));
+        selected.push(format!(
+            "pg_catalog.octet_length({}::pg_catalog.text)::pg_catalog.int8",
+            field.legacy
+        ));
+        selected.push(text_digest_sql(field.legacy));
         selected.push(field.shadow.to_owned());
         grouped.push(field.legacy.to_owned());
         grouped.push(field.shadow.to_owned());
-        ordered.push(format!("{} COLLATE \"C\" NULLS FIRST", field.legacy));
-        ordered.push(format!("{} NULLS FIRST", field.shadow));
+        source_ordered.push(format!("{} COLLATE \"C\" NULLS FIRST", field.legacy));
+        shadow_ordered.push(format!("{} NULLS FIRST", field.shadow));
     }
     if let Some(tag_column) = specification.tag_column {
-        selected.push(format!("{tag_column}::pg_catalog.text"));
+        selected.push(bounded_text_sql(tag_column));
+        selected.push(format!(
+            "pg_catalog.octet_length({tag_column}::pg_catalog.text)::pg_catalog.int8"
+        ));
+        selected.push(text_digest_sql(tag_column));
         grouped.push(tag_column.to_owned());
-        ordered.push(format!("{tag_column} COLLATE \"C\" NULLS FIRST"));
+        source_ordered.push(format!("{tag_column} COLLATE \"C\" NULLS FIRST"));
     }
     selected.push("pg_catalog.count(*)".to_owned());
+    source_ordered.extend(shadow_ordered);
     format!(
         "SELECT {} FROM public.{} GROUP BY {} ORDER BY {} LIMIT $1",
         selected.join(", "),
         specification.relation.as_str(),
         grouped.join(", "),
-        ordered.join(", ")
+        source_ordered.join(", ")
     )
 }
 
@@ -852,19 +942,19 @@ fn inspect_group(
     issues: &mut IssueCollector,
     operation: H3ShadowBackfillOperation,
 ) -> Result<(), H3ShadowBackfillError> {
-    let tag_index = specification.fields.len() * 2;
+    let tag_index = specification.fields.len() * INSPECTION_FIELD_WIDTH;
     let tag = specification
         .tag_column
-        .map(|_| decode::<Option<String>>(row, tag_index, operation))
+        .map(|_| decode_bounded_text(row, tag_index, operation))
         .transpose()?
-        .flatten();
-    let count_index = tag_index + usize::from(specification.tag_column.is_some());
+        .and_then(|value| value.value);
+    let count_index = tag_index + 3 * usize::from(specification.tag_column.is_some());
     let raw_count: i64 = decode(row, count_index, operation)?;
     let count = u64::try_from(raw_count).map_err(|_| database_error(operation))?;
     let mut parsed = Vec::with_capacity(specification.fields.len());
     for (index, field) in specification.fields.iter().enumerate() {
-        let legacy: Option<String> = decode(row, index * 2, operation)?;
-        let shadow: Option<i64> = decode(row, index * 2 + 1, operation)?;
+        let legacy = decode_bounded_text(row, index * INSPECTION_FIELD_WIDTH, operation)?;
+        let shadow: Option<i64> = decode(row, index * INSPECTION_FIELD_WIDTH + 3, operation)?;
         let report = reports
             .get_mut(index)
             .expect("field report count matches static descriptor");
@@ -872,7 +962,8 @@ fn inspect_group(
         let cell = inspect_field(
             specification.relation,
             *field,
-            legacy.as_deref(),
+            legacy.value.as_deref(),
+            legacy.byte_len,
             shadow,
             tag.as_deref(),
             canonical,
@@ -913,6 +1004,7 @@ fn inspect_field(
     relation: H3ShadowRelation,
     field: FieldSpec,
     legacy: Option<&str>,
+    legacy_byte_len: Option<u64>,
     shadow: Option<i64>,
     tag: Option<&str>,
     canonical: &BTreeSet<i64>,
@@ -966,6 +1058,9 @@ fn inspect_field(
     };
 
     report.source_value_count = report.source_value_count.saturating_add(count);
+    if refuse_oversized_text(relation, field, legacy, legacy_byte_len, issues) {
+        return None;
+    }
     let cell = match H3CellId::from_str(legacy) {
         Ok(cell) => cell,
         Err(error) => {
@@ -1014,6 +1109,27 @@ fn inspect_field(
     Some(cell)
 }
 
+fn refuse_oversized_text(
+    relation: H3ShadowRelation,
+    field: FieldSpec,
+    legacy: &str,
+    legacy_byte_len: Option<u64>,
+    issues: &mut IssueCollector,
+) -> bool {
+    let actual = legacy_byte_len.expect("bounded non-null text includes its byte length");
+    let max = u64::try_from(MAX_H3_SHADOW_TEXT_BYTES).expect("text bound fits u64");
+    if actual <= max {
+        return false;
+    }
+    issues.push(H3ShadowBackfillIssue {
+        relation,
+        legacy_column: field.legacy,
+        legacy_value: Some(legacy.to_owned()),
+        kind: H3ShadowBackfillIssueKind::TextTooLong { actual, max },
+    });
+    true
+}
+
 fn checked_row_add(
     current: u64,
     count: u64,
@@ -1047,9 +1163,9 @@ fn backfill_relation(
             .div_ceil(u64::try_from(MAX_H3_SHADOW_BACKFILL_BATCH_ROWS).expect("batch fits u64")),
     )
     .expect("batch bound fits usize");
+    let mut remaining = pending_count(session.client(), specification)?;
     for _ in 0..=max_batches {
-        let before = pending_count(session.client(), specification)?;
-        if before == 0 {
+        if remaining == 0 {
             return Ok(report);
         }
         if report.batches_committed == max_batches {
@@ -1061,7 +1177,12 @@ fn backfill_relation(
                 max: u64::try_from(max_batches).unwrap_or(u64::MAX),
             });
         }
-        let resolution = commit_one_batch(config, session, specification, before)?;
+        let resolution = commit_one_batch(config, session, specification, remaining)?;
+        remaining = remaining.checked_sub(resolution.updated).ok_or_else(|| {
+            database_error(H3ShadowBackfillOperation::UpdateBatch {
+                relation: specification.relation,
+            })
+        })?;
         report.rows_backfilled = report
             .rows_backfilled
             .checked_add(resolution.updated)
@@ -1092,7 +1213,7 @@ fn commit_one_batch(
 ) -> Result<BatchResolution, H3ShadowBackfillError> {
     let mut before = initial_before;
     for attempt in 1..=MAX_H3_SHADOW_BACKFILL_COMMIT_ATTEMPTS {
-        let batch = attempt_batch(session.client(), specification, before)?;
+        let batch = attempt_batch(session.client(), specification)?;
         match batch.outcome {
             CommitOutcome::Committed => {
                 return Ok(BatchResolution {
@@ -1168,7 +1289,6 @@ enum CommitOutcome {
 fn attempt_batch(
     client: &mut Client,
     specification: RelationSpec,
-    expected_before: u64,
 ) -> Result<BatchAttempt, H3ShadowBackfillError> {
     let begin_operation = H3ShadowBackfillOperation::BeginTransaction {
         relation: specification.relation,
@@ -1179,7 +1299,7 @@ fn attempt_batch(
         .read_only(false)
         .start()
         .map_err(|_| database_error(begin_operation))?;
-    let prepared = prepare_batch_transaction(&mut transaction, specification, expected_before);
+    let prepared = prepare_batch_transaction(&mut transaction, specification);
     let updated = match prepared {
         Ok(updated) => updated,
         Err(primary) => return rollback_preserving(transaction, primary, specification.relation),
@@ -1204,7 +1324,6 @@ fn attempt_batch(
 fn prepare_batch_transaction(
     transaction: &mut Transaction<'_>,
     specification: RelationSpec,
-    expected_before: u64,
 ) -> Result<u64, H3ShadowBackfillError> {
     let settings_operation = H3ShadowBackfillOperation::SetTransactionSettings {
         relation: specification.relation,
@@ -1231,15 +1350,6 @@ fn prepare_batch_transaction(
         if actual != *wanted {
             return Err(database_error(settings_operation));
         }
-    }
-    let actual_before = pending_count(transaction, specification)?;
-    if actual_before != expected_before {
-        return Err(H3ShadowBackfillError::AmbiguousCommitDrift {
-            relation: specification.relation,
-            before: expected_before,
-            updated: 0,
-            after: actual_before,
-        });
     }
     let batch_rows =
         i64::try_from(MAX_H3_SHADOW_BACKFILL_BATCH_ROWS).expect("batch bound fits i64");

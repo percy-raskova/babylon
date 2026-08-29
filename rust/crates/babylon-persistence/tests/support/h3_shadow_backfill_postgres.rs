@@ -8,17 +8,20 @@ use babylon_persistence::{
     migrate_schema_epoch, H3CellId, H3ShadowBackfillDisposition, H3ShadowBackfillError,
     H3ShadowBackfillIssueKind, H3ShadowBackfillReport, H3ShadowFieldReport, H3ShadowRelation,
     H3ShadowRelationReport, H3_SHADOW_FIELD_COUNT, H3_SHADOW_RELATION_COUNT,
+    MAX_H3_SHADOW_BACKFILL_BATCH_ROWS, MAX_H3_SHADOW_TEXT_BYTES,
 };
 use postgres::{Config, IsolationLevel, NoTls};
 use uuid::Uuid;
 
 const SESSION_ID: &str = "27900000-0000-0000-0000-000000000001";
 const BACKEND_TERMINATION_TIMEOUT_MILLIS: i64 = 5_000;
+const MULTI_BATCH_HEX_ACTIVITY_ROWS: usize = MAX_H3_SHADOW_BACKFILL_BATCH_ROWS + 1;
 
 pub(super) fn verify_h3_shadow_backfill(base: &Config, legacy_template: &str) {
     verify_fresh_origin_is_an_exact_noop(base);
     verify_invalid_late_relation_refuses_before_any_mutation(base, legacy_template);
     verify_coarse_child_resolution_refuses_before_ancestry(base, legacy_template);
+    verify_oversized_text_refuses_with_bounded_evidence(base, legacy_template);
     verify_all_governed_fields_backfill_once_and_retry_exactly(base, legacy_template);
 }
 
@@ -156,6 +159,50 @@ fn verify_coarse_child_resolution_refuses_before_ancestry(base: &Config, templat
     database.cleanup();
 }
 
+fn verify_oversized_text_refuses_with_bounded_evidence(base: &Config, template: &str) {
+    let (database, config) = exact_legacy_database(base, template, "h3_shadow_text_bound");
+    let session = session_id();
+    let mut client = config.connect(NoTls).unwrap();
+    insert_game_session(&mut client, session);
+    let oversized_bytes = i32::try_from(MAX_H3_SHADOW_TEXT_BYTES + 1).unwrap();
+    client
+        .execute(
+            "INSERT INTO public.immutable_reference_lodes_od_matrix \
+             (session_id, year, home_hex, workplace_dest, workplace_dest_kind, s000_workers) \
+             VALUES ($1, 2026, pg_catalog.repeat('x', $2), 'canada', 'external', 1)",
+            &[&session, &oversized_bytes],
+        )
+        .unwrap();
+    drop(client);
+
+    match backfill_legacy_h3_shadow_keys(&config) {
+        Err(H3ShadowBackfillError::Refused { evidence, .. }) => {
+            let issue = evidence
+                .iter()
+                .find(|issue| {
+                    issue.relation == H3ShadowRelation::ImmutableReferenceLodesOdMatrix
+                        && issue.legacy_column == "home_hex"
+                        && matches!(issue.kind, H3ShadowBackfillIssueKind::TextTooLong { .. })
+                })
+                .expect("oversized legacy text must produce bounded typed evidence");
+            assert_eq!(
+                issue.kind,
+                H3ShadowBackfillIssueKind::TextTooLong {
+                    actual: u64::try_from(oversized_bytes).unwrap(),
+                    max: u64::try_from(MAX_H3_SHADOW_TEXT_BYTES).unwrap(),
+                }
+            );
+            assert!(
+                issue.legacy_value.as_ref().unwrap().len()
+                    <= "hex:".len() + MAX_H3_SHADOW_TEXT_BYTES * 2
+            );
+        }
+        other => panic!("oversized legacy H3 text must refuse with bounded evidence: {other:?}"),
+    }
+    assert_lock_released(&config);
+    database.cleanup();
+}
+
 fn verify_all_governed_fields_backfill_once_and_retry_exactly(base: &Config, template: &str) {
     let (database, config) = exact_legacy_database(base, template, "h3_shadow_green");
     let cell = representative_r7(&config);
@@ -239,6 +286,22 @@ fn assert_relation_coverage(relations: &[H3ShadowRelationReport]) {
         }
         assert_ne!(relation.ordered_semantic_hash, [0; 32]);
     }
+    let activity = relations
+        .iter()
+        .find(|relation| relation.relation == H3ShadowRelation::HexActivity)
+        .unwrap();
+    assert_eq!(
+        (
+            activity.row_count,
+            activity.rows_backfilled,
+            activity.batches_committed,
+        ),
+        (
+            u64::try_from(MULTI_BATCH_HEX_ACTIVITY_ROWS).unwrap(),
+            u64::try_from(MULTI_BATCH_HEX_ACTIVITY_ROWS).unwrap(),
+            2,
+        )
+    );
 }
 
 fn assert_retry_receipt(initial: &H3ShadowBackfillReport, retry: &H3ShadowBackfillReport) {
@@ -285,7 +348,7 @@ fn verify_backend_crash_rolls_back_shadow_write(
                 &[&cell.sql],
             )
             .unwrap(),
-        1
+        u64::try_from(MULTI_BATCH_HEX_ACTIVITY_ROWS).unwrap()
     );
     let terminated: bool = admin
         .connect(NoTls)
@@ -391,6 +454,17 @@ fn insert_governed_rows(config: &Config, cell: &RepresentativeCell) {
             &[&session, r7],
         )
         .unwrap();
+    let final_tick = i32::try_from(MULTI_BATCH_HEX_ACTIVITY_ROWS - 1).unwrap();
+    assert_eq!(
+        client
+            .execute(
+                "INSERT INTO public.hex_activity (game_id, tick, h3_index) \
+                 SELECT $1, tick, $2 FROM pg_catalog.generate_series(1, $3) AS ticks(tick)",
+                &[&session, r7, &final_tick],
+            )
+            .unwrap(),
+        u64::try_from(MULTI_BATCH_HEX_ACTIVITY_ROWS - 1).unwrap()
+    );
     client
         .execute(
             "INSERT INTO public.hex_cell \

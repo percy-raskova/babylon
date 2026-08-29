@@ -39,6 +39,7 @@ pub use h3_shadow_backfill::{
     H3ShadowRelationReport, H3_SHADOW_FIELD_COUNT, H3_SHADOW_RELATION_COUNT,
     MAX_H3_SHADOW_BACKFILL_BATCH_ROWS, MAX_H3_SHADOW_BACKFILL_COMMIT_ATTEMPTS,
     MAX_H3_SHADOW_BACKFILL_ISSUES, MAX_H3_SHADOW_DISTINCT_GROUPS, MAX_H3_SHADOW_ROWS_PER_RELATION,
+    MAX_H3_SHADOW_TEXT_BYTES,
 };
 pub use hashes::{GraphStateHash, MigrationSetDigest, ReplayIdentityHash};
 pub use identity::{CampaignId, H3CellId, H3CellIdError};

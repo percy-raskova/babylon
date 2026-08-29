@@ -208,6 +208,13 @@ if [ "$LIVE_FOCUS" = "clean_bootstrap" ]; then
   cd "$REPO_ROOT"
   timeout --signal=TERM --kill-after=30s 600s \
     env BABYLON_SCHEMA_EPOCH_DSN="$BOOTSTRAP_DSN" \
+    PGHOST="host.invalid" \
+    PGHOSTADDR="203.0.113.1" \
+    PGPORT="1" \
+    PGDATABASE="redirected" \
+    PGSERVICE="redirected" \
+    PGSERVICEFILE="/nonexistent/babylon-pg-service.conf" \
+    PGSYSCONFDIR="/nonexistent/babylon-pg-service.d" \
     mise run db:bootstrap || status=$?
 
   if [ "$status" -eq 0 ]; then

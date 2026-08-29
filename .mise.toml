@@ -1305,6 +1305,7 @@ run = "tools/run_rust_legacy_adopter_pg.sh"
 description = "Apply the complete frozen Python estate, then advance the running test database to the exact Rust-owned schema epoch"
 run = """
 export BABYLON_SCHEMA_EPOCH_DSN="${BABYLON_SCHEMA_EPOCH_DSN:-host=127.0.0.1 port=5433 dbname=babylon_test user=test password=test}"
+unset PGHOST PGHOSTADDR PGPORT PGDATABASE PGSERVICE PGSERVICEFILE PGSYSCONFDIR
 (cd rust && CARGO_BUILD_JOBS=4 cargo run -p babylon-persistence --bin babylon-schema-epoch --locked -- --validate-target-only)
 uv run python -c "
 import os

@@ -12,6 +12,15 @@ BOOTSTRAP_CALLERS = (
     ".github/workflows/weekly-pg-integration.yml",
     ".github/workflows/weekly-sim-artifacts.yml",
 )
+LIBPQ_TARGET_ENV = (
+    "PGHOST",
+    "PGHOSTADDR",
+    "PGPORT",
+    "PGDATABASE",
+    "PGSERVICE",
+    "PGSERVICEFILE",
+    "PGSYSCONFDIR",
+)
 
 
 def _mise_task(name: str) -> str:
@@ -37,6 +46,18 @@ def test_db_bootstrap_preflights_target_then_advances_after_legacy_ddl() -> None
     assert (
         "CARGO_BUILD_JOBS=4 cargo run -p babylon-persistence --bin babylon-schema-epoch --locked"
     ) in task
+
+
+def test_db_bootstrap_clears_inherited_libpq_targets_before_any_database_access() -> None:
+    task = _mise_task("db:bootstrap")
+
+    unset_lines = [line.strip() for line in task.splitlines() if line.strip().startswith("unset ")]
+    assert unset_lines == [f"unset {' '.join(LIBPQ_TARGET_ENV)}"]
+    sanitization = task.index(unset_lines[0])
+    preflight = task.index("--locked -- --validate-target-only")
+    python = task.index('uv run python -c "')
+    legacy = task.index("executed = ensure_ddl_applied(conn, POSTGRES_SCHEMA_DDL)")
+    assert sanitization < preflight < python < legacy
 
 
 def test_repository_cargo_concurrency_matches_the_host_contract() -> None:
@@ -91,6 +112,17 @@ def test_disposable_pg_runner_proves_bootstrap_and_michigan_smoke() -> None:
 
     assert "clean_bootstrap" in runner
     assert "mise run db:bootstrap" in runner
+    bootstrap_prefix = runner.split("mise run db:bootstrap", maxsplit=1)[0]
+    for assignment in (
+        'PGHOST="host.invalid"',
+        'PGHOSTADDR="203.0.113.1"',
+        'PGPORT="1"',
+        'PGDATABASE="redirected"',
+        'PGSERVICE="redirected"',
+        'PGSERVICEFILE="/nonexistent/babylon-pg-service.conf"',
+        'PGSYSCONFDIR="/nonexistent/babylon-pg-service.d"',
+    ):
+        assert assignment in bootstrap_prefix
     assert "mise run qa:michigan-rollover-smoke" in runner
     assert '"6|bigint"' in runner
     smoke = runner.split("mise run qa:michigan-rollover-smoke", maxsplit=1)[0].rsplit(

@@ -107,6 +107,17 @@ def test_every_checked_in_bootstrap_caller_provisions_pinned_rust() -> None:
         assert "uses: ./.github/actions/bootstrap-persistence" in workflow
 
 
+def test_pr_pg_lane_fetches_reference_data_before_the_michigan_proof() -> None:
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    pg_lane = workflow.split("\n  pg-integration:", maxsplit=1)[1].split(
+        "\n  security:", maxsplit=1
+    )[0]
+
+    reference_data = pg_lane.index("uses: ./.github/actions/fetch-reference-db")
+    pr_focus = pg_lane.index("BABYLON_LEGACY_ADOPTER_LIVE_FOCUS: pr")
+    assert reference_data < pr_focus
+
+
 def test_disposable_pg_runner_proves_bootstrap_and_michigan_smoke() -> None:
     runner = (ROOT / "tools/run_rust_legacy_adopter_pg.sh").read_text(encoding="utf-8")
 

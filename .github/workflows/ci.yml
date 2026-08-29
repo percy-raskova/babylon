@@ -240,6 +240,8 @@ jobs:
 
       - uses: ./.github/actions/bootstrap-persistence
 
+      - uses: ./.github/actions/fetch-reference-db
+
       - name: Build + start the isolated Postgres (CI fork; pinned runtime/package contract)
         # The shared wrapper selects BABYLON_PG_DATA=babylon-pg-ci. That bare
         # name is a NAMED VOLUME (the base file's own convention), inherently

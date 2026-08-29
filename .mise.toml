@@ -65,8 +65,9 @@ SCCACHE_CACHE_SIZE = "25G"
 # Cache-safe: does not change fingerprints. The user-global interim entry is
 # now redundant and is scheduled for retirement per M-5 — left in place
 # deliberately (not this task's file to edit; its own comment already says
-# "Revert: delete this entry" once this repo entry lands).
-CARGO_BUILD_JOBS = "8"
+# "Revert: delete this entry" once this repo entry lands). The installed host
+# isolation contract admits at most four concurrent Cargo jobs.
+CARGO_BUILD_JOBS = "4"
 # Soundfont for MIDI conversion
 SOUNDFONT = "/usr/share/sounds/sf2/FluidR3_GM.sf2"
 MUSIC_DIR = "assets/music"
@@ -1301,16 +1302,23 @@ run = "tools/run_rust_legacy_adopter_pg.sh"
 # any test touching the stamp table failed (nightly 2026-07-19). The DDL set
 # is fully IF NOT EXISTS-idempotent, so the loop's error-swallowing bought
 # nothing; ensure_ddl_applied fails loudly instead (III.11).
-description = "Apply babylon canonical schema to the running test container (digest-stamped via ensure_ddl_applied, idempotent)"
+description = "Apply the complete frozen Python estate, then advance the running test database to the exact Rust-owned schema epoch"
 run = """
+export BABYLON_SCHEMA_EPOCH_DSN="${BABYLON_SCHEMA_EPOCH_DSN:-host=127.0.0.1 port=5433 dbname=babylon_test user=test password=test}"
 uv run python -c "
+import os
 import psycopg
+from psycopg_pool import ConnectionPool
+from babylon.engine.headless_runner.runner import _apply_migrations
 from babylon.persistence.postgres_schema import POSTGRES_SCHEMA_DDL, ensure_ddl_applied
-dsn = 'host=localhost port=5433 dbname=babylon_test user=test password=test'
+dsn = os.environ['BABYLON_SCHEMA_EPOCH_DSN']
 with psycopg.connect(dsn, autocommit=True) as conn:
     executed = ensure_ddl_applied(conn, POSTGRES_SCHEMA_DDL)
-print(f'Schema bootstrap complete (executed={executed}, stamp table guaranteed).')
+with ConnectionPool(dsn, min_size=1, max_size=1, open=True) as pool:
+    _apply_migrations(pool)
+print(f'Frozen Python estate complete (schema_executed={executed}, both governed stamps present).')
 "
+(cd rust && CARGO_BUILD_JOBS=4 cargo run -p babylon-persistence --bin babylon-schema-epoch --locked)
 """
 
 [tasks."test:int-pg"]

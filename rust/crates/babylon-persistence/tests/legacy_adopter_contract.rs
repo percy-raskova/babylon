@@ -17,7 +17,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 const ZERO_DIGEST: &str = "0000000000000000000000000000000000000000000000000000000000000000";
-const MAX_RUNNER_LINES: usize = 300;
+const MAX_RUNNER_LINES: usize = 350;
 const MAX_WORKFLOW_JOB_BOUNDARY_CANDIDATES: usize = 128;
 const MAX_SQL_LITERAL_SEGMENTS: usize = 8_192;
 const MAX_SQL_STATEMENT_BYTES: usize = 262_144;
@@ -2076,7 +2076,7 @@ fn pr_focus_reuses_the_postgres_atomicity_and_installed_mutation_contracts() {
 
     assert!(runner.contains("BABYLON_LEGACY_ADOPTER_LIVE_FOCUS:-}"));
     assert!(runner.contains(
-        "\"\" | h3_atomicity | installed_mutation | schema_epoch_fresh | schema_epoch_matrix | \\\n    schema_epoch_rollback | schema_epoch_v5_census | schema_epoch_v6_census | \\\n    h3_pg_oracle | h3_reference_installer | h3_shadow_backfill | \\\n    committed_tick_writer | pr)"
+        "\"\" | clean_bootstrap | h3_atomicity | installed_mutation | schema_epoch_fresh | schema_epoch_matrix | \\\n    schema_epoch_rollback | schema_epoch_v5_census | schema_epoch_v6_census | \\\n    h3_pg_oracle | h3_reference_installer | h3_shadow_backfill | \\\n    committed_tick_writer | pr)"
     ));
     assert!(runner.contains("[ \"$LIVE_FOCUS\" = \"h3_pg_oracle\" ]"));
     assert!(runner.contains("[ \"$LIVE_FOCUS\" = \"h3_reference_installer\" ]"));
@@ -2303,6 +2303,8 @@ fn weekly_step_exceeds_the_exhaustive_runner_envelope() {
 #[test]
 fn live_runner_bounds_every_docker_control_plane_call() {
     let runner = include_str!("../../../../tools/run_rust_legacy_adopter_pg.sh");
+    assert!(runner.contains("export CARGO_BUILD_JOBS=4"));
+    assert!(runner.contains("readonly CARGO_BUILD_JOBS"));
     for bounded_phase in [
         "timeout --signal=TERM --kill-after=10s 180s \\",
         "timeout --signal=TERM --kill-after=5s 30s docker run --detach \\",

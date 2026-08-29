@@ -255,9 +255,12 @@ def test_postgres_action_builds_the_ci_override_with_buildkit_cache() -> None:
 def test_ci_cargo_caches_track_git_sources_and_toolchain() -> None:
     """Pinned Git sources and compiler changes invalidate the right caches."""
     workflow = (WORKFLOWS_DIR / "ci.yml").read_text()
+    persistence_bootstrap = (ACTIONS_DIR / "bootstrap-persistence" / "action.yml").read_text()
+    assert "uses: ./.github/actions/bootstrap-persistence" in workflow
+    cache_contracts = f"{workflow}\n{persistence_bootstrap}"
 
-    assert workflow.count("~/.cargo/git") >= 2
-    assert workflow.count("hashFiles('rust/Cargo.lock', 'rust/rust-toolchain.toml')") >= 2
+    assert cache_contracts.count("~/.cargo/git") >= 2
+    assert cache_contracts.count("hashFiles('rust/Cargo.lock', 'rust/rust-toolchain.toml')") >= 2
 
 
 def test_scheduled_failure_artifacts_survive_failure() -> None:

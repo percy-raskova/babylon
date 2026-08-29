@@ -26,22 +26,7 @@ jobs:
         with:
           ref: dev
       - uses: ./.github/actions/bootstrap-python
-      - name: Install Rust toolchain (legacy adopter only)
-        run: |
-          CHANNEL="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust/rust-toolchain.toml)"
-          rustup toolchain install "$CHANNEL" --profile minimal --no-self-update
-      - name: Load persistence cargo cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            rust/target
-          key: >-
-            legacy-adopter-${{ runner.os }}-v2-${{
-            hashFiles('rust/Cargo.lock', 'rust/rust-toolchain.toml') }}
-          restore-keys: |
-            legacy-adopter-${{ runner.os }}-v2-
+      - uses: ./.github/actions/bootstrap-persistence
       - name: Exhaustive adopter matrix and rollback proof
         timeout-minutes: 31
         run: mise run test:rust-legacy-adopter-pg
@@ -56,6 +41,7 @@ jobs:
         with:
           ref: dev
       - uses: ./.github/actions/bootstrap-python
+      - uses: ./.github/actions/bootstrap-persistence
       - uses: ./.github/actions/postgres-up
       - uses: ./.github/actions/fetch-reference-db
       # Engine-runtime tables require the canonical DDL on fresh CI Postgres.

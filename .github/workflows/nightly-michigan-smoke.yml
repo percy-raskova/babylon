@@ -30,6 +30,7 @@ jobs:
         with:
           ref: dev
       - uses: ./.github/actions/bootstrap-python
+      - uses: ./.github/actions/bootstrap-persistence
       - uses: ./.github/actions/postgres-up
       - uses: ./.github/actions/fetch-reference-db
       - name: Babylon runtime schema bootstrap (node_state et al.)

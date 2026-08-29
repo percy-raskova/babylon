@@ -217,7 +217,7 @@
             # venv, outside this shell, where sccache is not guaranteed to
             # exist.)
             export RUSTC_WRAPPER=sccache
-            export SCCACHE_DIR=/media/user/data/sccache
+            export SCCACHE_DIR="$HOME/.cache/sccache"
             export SCCACHE_CACHE_SIZE=25G
             # libpq for pure-python psycopg, PLUS the nix libstdc++ for
             # manylinux wheels (greenlet, pyarrow): the nix python's dynamic

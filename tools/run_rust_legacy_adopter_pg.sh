@@ -212,6 +212,7 @@ if [ "$LIVE_FOCUS" = "clean_bootstrap" ] || [ "$LIVE_FOCUS" = "pr" ]; then
     PGHOSTADDR="203.0.113.1" \
     PGPORT="1" \
     PGDATABASE="redirected" \
+    PGOPTIONS='-c search_path=redirected,public' \
     PGSERVICE="redirected" \
     PGSERVICEFILE="/nonexistent/babylon-pg-service.conf" \
     PGSYSCONFDIR="/nonexistent/babylon-pg-service.d" \

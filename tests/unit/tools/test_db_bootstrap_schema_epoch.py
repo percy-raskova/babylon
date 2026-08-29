@@ -17,6 +17,7 @@ LIBPQ_TARGET_ENV = (
     "PGHOSTADDR",
     "PGPORT",
     "PGDATABASE",
+    "PGOPTIONS",
     "PGSERVICE",
     "PGSERVICEFILE",
     "PGSYSCONFDIR",
@@ -66,6 +67,16 @@ def test_repository_cargo_concurrency_matches_the_host_contract() -> None:
 
     assert 'CARGO_BUILD_JOBS = "4"' in mise
     assert 'CARGO_BUILD_JOBS = "8"' not in mise
+
+
+def test_sccache_uses_one_home_relative_cache_on_fresh_hosts() -> None:
+    mise = (ROOT / ".mise.toml").read_text(encoding="utf-8")
+    flake = (ROOT / "flake.nix").read_text(encoding="utf-8")
+
+    assert 'SCCACHE_DIR = "{{env.HOME}}/.cache/sccache"' in mise
+    assert 'export SCCACHE_DIR="$HOME/.cache/sccache"' in flake
+    assert "/media/user/data/sccache" not in mise
+    assert "/media/user/data/sccache" not in flake
 
 
 def test_local_bootstrap_callers_run_rust_in_the_pinned_nix_shell() -> None:
@@ -141,6 +152,7 @@ def test_disposable_pg_runner_proves_bootstrap_and_michigan_smoke() -> None:
         'PGHOSTADDR="203.0.113.1"',
         'PGPORT="1"',
         'PGDATABASE="redirected"',
+        "PGOPTIONS='-c search_path=redirected,public'",
         'PGSERVICE="redirected"',
         'PGSERVICEFILE="/nonexistent/babylon-pg-service.conf"',
         'PGSYSCONFDIR="/nonexistent/babylon-pg-service.d"',

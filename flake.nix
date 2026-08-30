@@ -56,6 +56,12 @@
           in
           assert lib.all (package: lib.versions.majorMinor package.version == rustToolchainLine) packages;
           packages;
+        linuxBevyPackages = lib.optionals pkgs.stdenv.isLinux (with pkgs; [
+          alsa-lib
+          udev
+          wayland
+          libxkbcommon
+        ]);
 
         # Source filter. The committed src/babylon_data symlink points outside
         # the sandbox and is DEAD in any Nix build; a fileset difference drops it
@@ -186,15 +192,11 @@
             proj
             openblas
             pkg-config          # native dependency discovery for Bevy's Linux backends
-            alsa-lib            # Bevy audio compile/runtime closure
-            udev                # Bevy input-device compile/runtime closure
-            wayland             # Bevy Wayland compile/runtime closure
-            libxkbcommon        # Bevy Linux keyboard compile/runtime closure
             sccache            # R1.1: shared compile cache across worktrees (see shellHook)
             fluidsynth
             mise                # task runner pinned here, not assumed on the host
             jq                  # post-tool-lint.sh dispatcher
-          ]) ++ rustToolchainPackages ++ [
+          ]) ++ linuxBevyPackages ++ rustToolchainPackages ++ [
             pythonData          # the only python312 on PATH: venvs build on it unchanged
           ];
           # sentinel for task guards — IN_NIX_SHELL is too generic (the
@@ -217,20 +219,16 @@
             # venv, outside this shell, where sccache is not guaranteed to
             # exist.)
             export RUSTC_WRAPPER=sccache
-            export SCCACHE_DIR=/media/user/data/sccache
+            export SCCACHE_DIR="$HOME/.cache/sccache"
             export SCCACHE_CACHE_SIZE=25G
             # libpq for pure-python psycopg, PLUS the nix libstdc++ for
             # manylinux wheels (greenlet, pyarrow): the nix python's dynamic
             # linker cannot see host system libs, so every C++-linked wheel
             # needs the store's libstdc++ on the loader path.
-            export LD_LIBRARY_PATH=${lib.makeLibraryPath [
+            export LD_LIBRARY_PATH=${lib.makeLibraryPath ([
               pkgs.stdenv.cc.cc.lib
               pkgs.postgresql_16.lib
-              pkgs.alsa-lib
-              pkgs.udev
-              pkgs.wayland
-              pkgs.libxkbcommon
-            ]}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+            ] ++ linuxBevyPackages)}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
             # Environment contract: this shell provides TOOLS, not python
             # imports. nixpkgs' python setup hooks export python-built
             # packages' site-packages onto PYTHONPATH (gdal here), which

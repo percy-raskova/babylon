@@ -5,8 +5,9 @@ use super::{
     OWNER_PASSWORD, SCHEMA_ADVISORY_LOCK_KEY,
 };
 use babylon_persistence::{
-    compiled_schema_migrations, migrate_schema_epoch, request_rust_writer_authority,
-    LegacyAdopterError, RustWriterAuthorityError, SchemaEpochError, SchemaEpochOrigin,
+    compiled_schema_migrations, migrate_schema_epoch, preflight_schema_epoch,
+    request_rust_writer_authority, LegacyAdopterError, RustWriterAuthorityError, SchemaEpochError,
+    SchemaEpochOrigin,
 };
 use postgres::{Config, NoTls};
 
@@ -483,20 +484,21 @@ fn verify_bad_ledgers(base: &Config, migrated_template: &str) {
     verify_checksum_refusal(base, migrated_template, "epoch_checksum_vthree", 3, "77");
     verify_checksum_refusal(base, migrated_template, "epoch_checksum_vfour", 4, "88");
     verify_checksum_refusal(base, migrated_template, "epoch_checksum_vfive", 5, "99");
+    verify_checksum_refusal(base, migrated_template, "epoch_checksum_vsix", 6, "aa");
 
     let future = ScratchDatabase::from_template(base, migrated_template, "epoch_future");
     let future_config = future.config(base);
     mutate(
         &future_config,
         "INSERT INTO babylon_state.schema_migration (version, checksum) \
-         VALUES (6, decode(repeat('44', 32), 'hex'))",
+         VALUES (7, decode(repeat('44', 32), 'hex'))",
     );
     let before = raw_epoch_snapshot(&future_config);
     assert_eq!(
         migrate_schema_epoch(&future_config),
         Err(SchemaEpochError::UnknownFutureVersion {
-            actual: 6,
-            latest_compiled: 5,
+            actual: 7,
+            latest_compiled: 6,
         })
     );
     assert_eq!(raw_epoch_snapshot(&future_config), before);
@@ -631,6 +633,11 @@ fn verify_authority_refusals(base: &Config, migrated_template: &str, owner: &str
     let non_owner_config = non_owner.config(base);
     let before = marker_snapshot(&non_owner_config);
     assert_eq!(
+        preflight_schema_epoch(&non_owner_config),
+        Err(SchemaEpochError::CurrentUserIsNotDatabaseOwner)
+    );
+    assert_eq!(marker_snapshot(&non_owner_config), before);
+    assert_eq!(
         migrate_schema_epoch(&non_owner_config),
         Err(SchemaEpochError::CurrentUserIsNotDatabaseOwner)
     );
@@ -644,11 +651,19 @@ fn verify_authority_refusals(base: &Config, migrated_template: &str, owner: &str
         let config = database.config(base);
         mutate(&config, mutation);
         let before = authority_snapshot(&config);
-        assert_eq!(
-            migrate_schema_epoch(&config),
-            Err(SchemaEpochError::EpochShapeMismatch),
-            "authority mutation must refuse: {label}"
-        );
+        let refusal = migrate_schema_epoch(&config);
+        if *label == "epoch_extra_object" {
+            assert!(
+                matches!(refusal, Err(SchemaEpochError::FreshCensusMismatch { .. })),
+                "extra epoch object must refuse through the fresh baseline: {refusal:?}"
+            );
+        } else {
+            assert_eq!(
+                refusal,
+                Err(SchemaEpochError::EpochCensusMismatch),
+                "authority mutation must refuse: {label}"
+            );
+        }
         assert_eq!(
             authority_snapshot(&config),
             before,

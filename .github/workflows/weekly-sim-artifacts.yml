@@ -24,6 +24,7 @@ jobs:
         with:
           ref: dev
       - uses: ./.github/actions/bootstrap-python
+      - uses: ./.github/actions/bootstrap-persistence
       # sim:trace's headless runner requires the reference DB at
       # data/sqlite/marxist-data-3NF.sqlite — exactly where this action
       # installs the pinned ci-data subset.

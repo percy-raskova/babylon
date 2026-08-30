@@ -294,6 +294,24 @@ impl PersistedMigration {
     }
 }
 
+/// Validate the local target and require the connected principal to own the database.
+///
+/// This bounded preflight returns before schema classification, migration, or any write.
+///
+/// # Errors
+/// Returns [`SchemaEpochError`] when the target is not admitted, the bounded connection
+/// fails, or the connected principal is not exactly the current database owner.
+pub fn preflight_schema_epoch(config: &Config) -> Result<(), SchemaEpochError> {
+    validate_legacy_connection_target(config).map_err(SchemaEpochError::ConnectionTarget)?;
+    let mut client =
+        bounded_config(config)
+            .connect(NoTls)
+            .map_err(|_| SchemaEpochError::Database {
+                operation: SchemaEpochOperation::Connect,
+            })?;
+    verify_database_owner(&mut client)
+}
+
 /// Validate, classify, and advance the closed Rust schema migration epoch.
 ///
 /// This maintenance entry point cannot grant runtime writer authority.

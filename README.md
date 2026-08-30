@@ -84,6 +84,9 @@ The Django browser client in `web/` is legacy. Its failures do not gate v1.
 
 The repository uses `mise` to load the pinned tools. Start in a new clone:
 
+`mise run setup` requires [Nix](https://nixos.org/download/) because canonical
+schema bootstrap uses the repository Nix shell to run the pinned Rust migrator.
+
 ```bash
 mise trust
 mise run setup

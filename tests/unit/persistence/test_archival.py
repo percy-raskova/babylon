@@ -16,6 +16,7 @@ import pytest
 from babylon.persistence.archival import (
     EXPORT_TABLES,
     ArchiveVerificationError,
+    _table_schema,
     _verify_manifest_against_live,
     purge_session,
     query_archived_session,
@@ -32,6 +33,37 @@ class TestExportRegistry:
     def test_export_includes_session_keyed_extras(self) -> None:
         assert "contradiction_field" in EXPORT_TABLES
         assert "simulation_event" in EXPORT_TABLES
+
+
+class _DuplicateNameCatalogConn:
+    """Model ``public.tick_commit`` beside Rust's same-named state table."""
+
+    def __init__(self) -> None:
+        self.public_scoped = False
+
+    def execute(self, sql: str, params: object = None) -> _DuplicateNameCatalogConn:
+        assert params == ("tick_commit",)
+        self.public_scoped = "table_schema = 'public'" in sql
+        return self
+
+    def fetchall(self) -> list[tuple[str, str]]:
+        public = [
+            ("session_id", "uuid"),
+            ("tick", "integer"),
+            ("determinism_hash", "character"),
+        ]
+        rust_state = [
+            ("campaign_id", "uuid"),
+            ("resolve_tick", "bigint"),
+            ("envelope_layout_version", "smallint"),
+        ]
+        return public if self.public_scoped else [*public, *rust_state]
+
+
+def test_table_schema_ignores_same_named_tables_outside_public() -> None:
+    schema = _table_schema(_DuplicateNameCatalogConn(), "tick_commit")
+
+    assert schema.names == ["session_id", "tick", "determinism_hash"]
 
 
 class TestPurgeSafety:

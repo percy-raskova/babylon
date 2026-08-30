@@ -17,7 +17,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 const ZERO_DIGEST: &str = "0000000000000000000000000000000000000000000000000000000000000000";
-const MAX_RUNNER_LINES: usize = 300;
+const MAX_RUNNER_LINES: usize = 395;
 const MAX_WORKFLOW_JOB_BOUNDARY_CANDIDATES: usize = 128;
 const MAX_SQL_LITERAL_SEGMENTS: usize = 8_192;
 const MAX_SQL_STATEMENT_BYTES: usize = 262_144;
@@ -1962,6 +1962,17 @@ fn connection_target_requires_one_literal_local_endpoint() {
             reason: LegacyConnectionTargetRejection::HostAddressOverride,
         })
     );
+    let mut caller_options = Config::new();
+    caller_options
+        .host("127.0.0.1")
+        .port(1)
+        .options("-c search_path=redirected,public");
+    assert_eq!(
+        validate_legacy_connection_target(&caller_options),
+        Err(LegacyAdopterError::UnsupportedConnectionTarget {
+            reason: LegacyConnectionTargetRejection::StartupOptionsOverride,
+        })
+    );
     #[cfg(unix)]
     {
         let mut absolute_socket = Config::new();
@@ -2042,7 +2053,7 @@ fn live_adopter_tests_are_split_between_pr_and_weekly_cadences() {
         1
     );
     assert!(pr_job.contains(
-        "- name: Rust PostgreSQL atomicity and installed-mutation contracts\n        timeout-minutes: 28\n        env:\n          BABYLON_LEGACY_ADOPTER_LIVE_FOCUS: pr\n        run: mise run test:rust-legacy-adopter-pg"
+        "- name: Rust PostgreSQL atomicity and installed-mutation contracts\n        timeout-minutes: 69\n        env:\n          BABYLON_LEGACY_ADOPTER_LIVE_FOCUS: pr\n        run: mise run test:rust-legacy-adopter-pg"
     ));
     assert!(!pr_job.contains("BABYLON_LEGACY_ADOPTER_TEST_DSN"));
     assert!(!pr_job.contains("cargo doc"));
@@ -2076,7 +2087,7 @@ fn pr_focus_reuses_the_postgres_atomicity_and_installed_mutation_contracts() {
 
     assert!(runner.contains("BABYLON_LEGACY_ADOPTER_LIVE_FOCUS:-}"));
     assert!(runner.contains(
-        "\"\" | h3_atomicity | installed_mutation | schema_epoch_fresh | schema_epoch_matrix | \\\n    schema_epoch_rollback | schema_epoch_v5_census | schema_epoch_v6_census | \\\n    h3_pg_oracle | h3_reference_installer | h3_shadow_backfill | \\\n    committed_tick_writer | pr)"
+        "\"\" | clean_bootstrap | h3_atomicity | installed_mutation | schema_epoch_fresh | schema_epoch_matrix | \\\n    schema_epoch_rollback | schema_epoch_v5_census | schema_epoch_v6_census | \\\n    h3_pg_oracle | h3_reference_installer | h3_shadow_backfill | \\\n    committed_tick_writer | pr)"
     ));
     assert!(runner.contains("[ \"$LIVE_FOCUS\" = \"h3_pg_oracle\" ]"));
     assert!(runner.contains("[ \"$LIVE_FOCUS\" = \"h3_reference_installer\" ]"));
@@ -2210,19 +2221,23 @@ fn ci_step_exceeds_the_focused_runner_envelope() {
     const BUILD_ENVELOPE_SECONDS: u64 = 180 + 10;
     const START_ENVELOPE_SECONDS: u64 = 30 + 5;
     const READINESS_ENVELOPE_SECONDS: u64 = 90 + 2;
+    const BOOTSTRAP_ENVELOPE_SECONDS: u64 = 600 + 30;
+    const MICHIGAN_ENVELOPE_SECONDS: u64 = 1800 + 30;
     const FOCUSED_CARGO_ENVELOPE_SECONDS: u64 = 2 * (300 + 10) + (420 + 10);
     const CLEANUP_ENVELOPE_SECONDS: u64 = 35 + 12 + 12 + 35;
     const FOCUSED_RUNNER_ENVELOPE_SECONDS: u64 = CONTROL_PLANE_ENVELOPE_SECONDS
         + BUILD_ENVELOPE_SECONDS
         + START_ENVELOPE_SECONDS
         + READINESS_ENVELOPE_SECONDS
+        + BOOTSTRAP_ENVELOPE_SECONDS
+        + MICHIGAN_ENVELOPE_SECONDS
         + FOCUSED_CARGO_ENVELOPE_SECONDS
         + CLEANUP_ENVELOPE_SECONDS;
 
     let pr_workflow = include_str!("../../../../.github/workflows/ci.yml");
     let pr_job = yaml_job(pr_workflow, "  pg-integration:");
     assert!(pr_job.contains(
-        "- name: Rust PostgreSQL atomicity and installed-mutation contracts\n        timeout-minutes: 28"
+        "- name: Rust PostgreSQL atomicity and installed-mutation contracts\n        timeout-minutes: 69"
     ));
     let pr_job_seconds = pr_job
         .lines()
@@ -2245,8 +2260,8 @@ fn ci_step_exceeds_the_focused_runner_envelope() {
         .parse::<u64>()
         .unwrap()
         * 60;
-    assert_eq!(pr_job_seconds, 61 * 60);
-    assert_eq!(pr_step_seconds, 28 * 60);
+    assert_eq!(pr_job_seconds, 99 * 60);
+    assert_eq!(pr_step_seconds, 69 * 60);
     assert!(pr_step_seconds >= FOCUSED_RUNNER_ENVELOPE_SECONDS + 120);
     assert!(pr_job_seconds >= pr_step_seconds + 30 * 60);
 }
@@ -2303,6 +2318,8 @@ fn weekly_step_exceeds_the_exhaustive_runner_envelope() {
 #[test]
 fn live_runner_bounds_every_docker_control_plane_call() {
     let runner = include_str!("../../../../tools/run_rust_legacy_adopter_pg.sh");
+    assert!(runner.contains("export CARGO_BUILD_JOBS=4"));
+    assert!(runner.contains("readonly CARGO_BUILD_JOBS"));
     for bounded_phase in [
         "timeout --signal=TERM --kill-after=10s 180s \\",
         "timeout --signal=TERM --kill-after=5s 30s docker run --detach \\",

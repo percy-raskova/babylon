@@ -66,6 +66,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/bootstrap-python
+      - uses: ./.github/actions/bootstrap-persistence
       - uses: ./.github/actions/postgres-up
       - uses: ./.github/actions/fetch-reference-db
       - name: Apply engine schema (canonical DDL)

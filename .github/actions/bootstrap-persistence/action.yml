@@ -1,0 +1,27 @@
+# Shared Rust persistence bootstrap for PostgreSQL jobs that advance the
+# authoritative schema epoch. This stays separate from bootstrap-python so
+# Python-only jobs do not pay for a Rust toolchain or Cargo cache.
+name: Bootstrap Rust Persistence
+description: Install the pinned Rust toolchain and load the persistence Cargo cache
+
+runs:
+  using: composite
+  steps:
+    - name: Install pinned Rust toolchain
+      shell: bash
+      run: |
+        CHANNEL="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust/rust-toolchain.toml)"
+        rustup toolchain install "$CHANNEL" --profile minimal --no-self-update
+
+    - name: Load persistence Cargo cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          rust/target
+        key: >-
+          persistence-${{ runner.os }}-v1-${{
+          hashFiles('rust/Cargo.lock', 'rust/rust-toolchain.toml') }}
+        restore-keys: |
+          persistence-${{ runner.os }}-v1-

@@ -3,10 +3,11 @@
 use babylon_persistence::{
     adopt_legacy_schema, compiled_schema_migrations, legacy_adopter_sql_statements,
     validate_legacy_connection_target, LegacyAdopterError, LegacyAdopterOperation,
-    LegacyAdopterSqlKind, LegacyBoundedResource, LegacyObjectKey, LegacyObjectKind,
-    LegacyOwnerAuthorityDisposition, LegacyStampClass, LEGACY_ADOPTER_CONNECT_TIMEOUT,
-    LEGACY_ADOPTER_STARTUP_OPTIONS, LEGACY_ADOPTER_TCP_USER_TIMEOUT, LEGACY_CENSUS_FIXTURE,
-    LEGACY_STAMP_CATALOG, MAX_LEGACY_CENSUS_FIXTURE_BYTES, MAX_LEGACY_CENSUS_ROWS,
+    LegacyAdopterSqlKind, LegacyBoundedResource, LegacyConnectionTargetRejection, LegacyObjectKey,
+    LegacyObjectKind, LegacyOwnerAuthorityDisposition, LegacyStampClass,
+    LEGACY_ADOPTER_CONNECT_TIMEOUT, LEGACY_ADOPTER_STARTUP_OPTIONS,
+    LEGACY_ADOPTER_TCP_USER_TIMEOUT, LEGACY_CENSUS_FIXTURE, LEGACY_STAMP_CATALOG,
+    MAX_LEGACY_CENSUS_FIXTURE_BYTES, MAX_LEGACY_CENSUS_ROWS,
     MAX_LEGACY_EXTENSION_DEPENDENCY_ADDRESSES, MAX_LEGACY_EXTENSION_MEMBERS,
     MAX_LEGACY_EXTENSION_ROLE_IDENTITIES, MAX_LEGACY_PARTITIONS_PER_FAMILY,
     MAX_LEGACY_SEQUENCE_OWNERSHIP, MAX_LEGACY_STAMP_ROWS, SCHEMA_ADVISORY_LOCK_KEY,
@@ -760,9 +761,13 @@ fn verify_hostile_caller_and_connection_redaction(config: &Config) {
          -c statement_timeout=0 -c lock_timeout=0 \
          -c idle_in_transaction_session_timeout=0",
     );
-    let report = adopt_legacy_schema(&hostile).expect("owned startup options must defeat caller");
-    assert!(report.transaction_verified);
-    assert_lock_released(&hostile);
+    assert_eq!(
+        adopt_legacy_schema(&hostile),
+        Err(LegacyAdopterError::UnsupportedConnectionTarget {
+            reason: LegacyConnectionTargetRejection::StartupOptionsOverride,
+        })
+    );
+    assert_lock_released(config);
 
     let mut client = config.connect(NoTls).unwrap();
     let value: i32 = client

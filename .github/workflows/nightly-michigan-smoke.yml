@@ -24,12 +24,13 @@ jobs:
     name: qa:michigan-rollover-smoke (blocking — tick-52 year-rollover crash gate)
     if: vars.CI_REFDB_READY == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 69
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: dev
       - uses: ./.github/actions/bootstrap-python
+      - uses: ./.github/actions/bootstrap-persistence
       - uses: ./.github/actions/postgres-up
       - uses: ./.github/actions/fetch-reference-db
       - name: Babylon runtime schema bootstrap (node_state et al.)

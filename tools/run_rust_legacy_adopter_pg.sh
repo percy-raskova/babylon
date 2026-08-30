@@ -5,6 +5,8 @@ set -euo pipefail
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly REPO_ROOT
 readonly IMAGE="babylon-per20-legacy-adopter:local"
+export CARGO_BUILD_JOBS=4
+readonly CARGO_BUILD_JOBS
 # Internal handshake for the ignored Rust test. This runner forwards it only
 # after it proves exact ownership of the random-canary container below.
 readonly TEST_HARNESS_ACK="I_UNDERSTAND_PER20_DROPS_SCRATCH_DATABASES_ROLES_AND_CREATED_BABYLON_INTEL"
@@ -21,7 +23,7 @@ die() {
 }
 
 case "$LIVE_FOCUS" in
-  "" | h3_atomicity | installed_mutation | schema_epoch_fresh | schema_epoch_matrix | \
+  "" | clean_bootstrap | h3_atomicity | installed_mutation | schema_epoch_fresh | schema_epoch_matrix | \
     schema_epoch_rollback | schema_epoch_v5_census | schema_epoch_v6_census | \
     h3_pg_oracle | h3_reference_installer | h3_shadow_backfill | \
     committed_tick_writer | pr) ;;
@@ -199,8 +201,94 @@ wait_for_runtime || die "pinned PostgreSQL runtime was not ready within 90 secon
 
 printf 'PER-20 runtime ready: container=%s volume=%s port=%s\n' \
   "$CONTAINER" "$VOLUME" "$PORT"
-cd "$REPO_ROOT/rust"
 status=0
+if [ "$LIVE_FOCUS" = "clean_bootstrap" ] || [ "$LIVE_FOCUS" = "pr" ]; then
+  BOOTSTRAP_DSN="postgresql://test:test@127.0.0.1:$PORT/babylon_test"
+  readonly BOOTSTRAP_DSN
+  HOSTILE_OPTIONS_DSN="${BOOTSTRAP_DSN}?options=-c%20search_path%3Dredirected%2Cpublic"
+  readonly HOSTILE_OPTIONS_DSN
+  before_options_refusal="$(timeout --signal=TERM --kill-after=2s 10s \
+    env PGPASSWORD=test PGCONNECT_TIMEOUT=2 PGSSLMODE=disable \
+    psql -X -w -qAt -h 127.0.0.1 -p "$PORT" -U test -d babylon_test \
+      -v ON_ERROR_STOP=1 \
+      -c "SELECT pg_catalog.count(*)::pg_catalog.text \
+          FROM pg_catalog.pg_class AS relation \
+          JOIN pg_catalog.pg_namespace AS namespace \
+            ON namespace.oid = relation.relnamespace \
+          WHERE namespace.nspname NOT IN ('pg_catalog', 'information_schema') \
+            AND namespace.nspname NOT LIKE 'pg_toast%'")" || status=$?
+
+  if [ "$status" -eq 0 ]; then
+    hostile_options_status=0
+    cd "$REPO_ROOT"
+    timeout --signal=TERM --kill-after=30s 600s \
+      env BABYLON_SCHEMA_EPOCH_DSN="$HOSTILE_OPTIONS_DSN" \
+      mise run db:bootstrap || hostile_options_status=$?
+    if [ "$hostile_options_status" -eq 0 ]; then
+      printf 'options-bearing DSN unexpectedly passed schema preflight\n' >&2
+      status=1
+    fi
+  fi
+
+  if [ "$status" -eq 0 ]; then
+    after_options_refusal="$(timeout --signal=TERM --kill-after=2s 10s \
+      env PGPASSWORD=test PGCONNECT_TIMEOUT=2 PGSSLMODE=disable \
+      psql -X -w -qAt -h 127.0.0.1 -p "$PORT" -U test -d babylon_test \
+        -v ON_ERROR_STOP=1 \
+        -c "SELECT pg_catalog.count(*)::pg_catalog.text \
+            FROM pg_catalog.pg_class AS relation \
+            JOIN pg_catalog.pg_namespace AS namespace \
+              ON namespace.oid = relation.relnamespace \
+            WHERE namespace.nspname NOT IN ('pg_catalog', 'information_schema') \
+              AND namespace.nspname NOT LIKE 'pg_toast%'")" || status=$?
+    if [ "$status" -eq 0 ] && [ "$after_options_refusal" != "$before_options_refusal" ]; then
+      printf 'options-bearing DSN changed the fresh database before refusal: before=%s after=%s\n' \
+        "$before_options_refusal" "$after_options_refusal" >&2
+      status=1
+    fi
+  fi
+
+  if [ "$status" -eq 0 ]; then
+    cd "$REPO_ROOT"
+    timeout --signal=TERM --kill-after=30s 600s \
+      env BABYLON_SCHEMA_EPOCH_DSN="$BOOTSTRAP_DSN" \
+      PGHOST="host.invalid" \
+      PGHOSTADDR="203.0.113.1" \
+      PGPORT="1" \
+      PGDATABASE="redirected" \
+      PGOPTIONS='-c search_path=redirected,public' \
+      PGSERVICE="redirected" \
+      PGSERVICEFILE="/nonexistent/babylon-pg-service.conf" \
+      PGSYSCONFDIR="/nonexistent/babylon-pg-service.d" \
+      mise run db:bootstrap || status=$?
+  fi
+
+  if [ "$status" -eq 0 ]; then
+    observation="$(timeout --signal=TERM --kill-after=2s 10s \
+      env PGPASSWORD=test PGCONNECT_TIMEOUT=2 PGSSLMODE=disable \
+      psql -X -w -qAt -h 127.0.0.1 -p "$PORT" -U test -d babylon_test \
+        -v ON_ERROR_STOP=1 \
+        -c "SELECT (SELECT pg_catalog.max(version)::text FROM babylon_state.schema_migration) \
+                   || '|' || \
+                   (SELECT data_type FROM information_schema.columns \
+                    WHERE table_schema = 'public' \
+                      AND table_name = 'hex_spatial_map' \
+                      AND column_name = 'cell_id')")" || status=$?
+    if [ "$status" -eq 0 ] && [ "$observation" != "6|bigint" ]; then
+      printf 'clean bootstrap observation mismatch: expected=6|bigint actual=%s\n' \
+        "$observation" >&2
+      status=1
+    fi
+  fi
+
+  if [ "$status" -eq 0 ]; then
+    timeout --signal=TERM --kill-after=30s 1800s \
+      env BABYLON_DSN="$BOOTSTRAP_DSN" \
+      mise run qa:michigan-rollover-smoke || status=$?
+  fi
+fi
+
+cd "$REPO_ROOT/rust"
 if [ "$LIVE_FOCUS" = "schema_epoch_rollback" ]; then
   for migration in migration_four migration_five migration_six; do
     run_schema_epoch_rollback_test "$migration" || { status=$?; break; }

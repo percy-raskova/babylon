@@ -46,6 +46,7 @@ import yaml
 WORKFLOWS_DIR = Path(".github/workflows")
 ACTIONS_DIR = Path(".github/actions")
 FROZEN_ENGINE_PATH = WORKFLOWS_DIR / "frozen-engine.yml"
+WEEKLY_PY313_PATH = WORKFLOWS_DIR / "weekly-py313.yml"
 DEPENDABOT_AUTOMERGE_PATH = WORKFLOWS_DIR / "dependabot-automerge.yml"
 DEPENDABOT_CONFIG_PATH = Path(".github/dependabot.yml")
 PR_POLICY_PATH = Path(".github/settings/pr-policy.json")
@@ -69,6 +70,8 @@ _V3_1_BLOB = "a265b85120ed2a90be40c72e63ee5bf27fc6e703"
 _V3_2_COMMIT = "cbfc67921283ccb6e00c4b0278288a232281440a"
 _V3_2_BLOB = "e905e90d66bddc6e4eca36a3896428f5ce63de5b"
 _CONSTITUTION_FETCH_STEP = "Fetch pinned Constitution predecessors (bounded)"
+_MISE_ACTION = "jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518"
+_PY313_SYNC = "uv sync --frozen --extra ops --python 3.13"
 _ACTION_USES_LINE = re.compile(
     r"^\s*(?:-\s+)?uses:\s+(?P<reference>[^\s#]+)(?:\s+#\s*(?P<tag>\S+))?\s*$"
 )
@@ -423,6 +426,40 @@ class TestScheduledWorkflows:
             if "schedule" in triggers and "workflow_dispatch" not in triggers:
                 violations.append(f"{path.name}: schedule without workflow_dispatch")
         assert not violations, "\n".join(violations)
+
+    def test_python313_leg_has_bounded_provenance_and_uv_only_mise_bootstrap(self) -> None:
+        """The full forward-compat suite gets history and tools without broad fetches."""
+        weekly = yaml.safe_load(WEEKLY_PY313_PATH.read_text())
+        ci = yaml.safe_load((WORKFLOWS_DIR / "ci.yml").read_text())
+        steps = weekly["jobs"]["py313-forward-compat"]["steps"]
+
+        checkout = next(
+            step for step in steps if str(step.get("uses", "")).startswith("actions/checkout")
+        )
+        assert checkout["with"] == {
+            "ref": "dev",
+            "fetch-depth": 1,
+            "persist-credentials": True,
+        }
+
+        ci_fetch = next(
+            step
+            for step in ci["jobs"]["test-unit"]["steps"]
+            if step.get("name") == _CONSTITUTION_FETCH_STEP
+        )
+        weekly_fetch = next(step for step in steps if step.get("name") == _CONSTITUTION_FETCH_STEP)
+        assert weekly_fetch == ci_fetch
+
+        mise = next(step for step in steps if step.get("uses") == _MISE_ACTION)
+        assert mise.get("with") == {"install_args": "uv"}
+        assert not any("astral-sh/setup-uv" in str(step.get("uses", "")) for step in steps)
+
+        fetch_index = steps.index(weekly_fetch)
+        mise_index = steps.index(mise)
+        sync_index = next(
+            index for index, step in enumerate(steps) if step.get("run") == _PY313_SYNC
+        )
+        assert fetch_index < mise_index < sync_index
 
     def test_checker_catches_an_unpinned_deep_leg_checkout(self) -> None:
         # Mutation validation: the e240a30f ref-loss shape must be flagged.

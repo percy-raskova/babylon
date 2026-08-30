@@ -176,6 +176,13 @@ def fresh_bsl_sites() -> tuple[EmitSite, ...]:
 
 
 @pytest.fixture(scope="module")
+def fresh_sites_by_location(
+    fresh_bsl_sites: tuple[EmitSite, ...],
+) -> dict[tuple[str, int], EmitSite]:
+    return {(site.path, site.line): site for site in fresh_bsl_sites}
+
+
+@pytest.fixture(scope="module")
 def fresh_builder_fields() -> dict[str, tuple[str, ...]]:
     return eventtype_dict_value_get_string_keys(EVENT_BUILDERS_PATH, EVENT_BUILDERS_DICT)
 
@@ -366,12 +373,6 @@ class TestTier1MatchesAFreshBslScan:
 class TestTier1CitationsAreReal:
     """Every Tier 1 row's citation must point at a real, current emit site —
     not a stale line number left behind by a later edit."""
-
-    @classmethod
-    @pytest.fixture(scope="class")
-    def fresh_sites_by_location(cls) -> dict[tuple[str, int], EmitSite]:
-        sites = scan_directory(RULES_DIR, REPO_ROOT)
-        return {(s.path, s.line): s for s in sites}
 
     def test_every_tier1_row_has_at_least_one_citation(self, registry: EventSchemaRegistry) -> None:
         for row in registry.tier1:

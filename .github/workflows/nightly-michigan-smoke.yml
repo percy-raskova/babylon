@@ -24,7 +24,7 @@ jobs:
     name: qa:michigan-rollover-smoke (blocking — tick-52 year-rollover crash gate)
     if: vars.CI_REFDB_READY == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 69
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:

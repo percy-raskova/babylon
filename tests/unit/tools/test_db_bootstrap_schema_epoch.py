@@ -140,6 +140,28 @@ def test_pr_pg_lane_fetches_reference_data_before_the_michigan_proof() -> None:
     assert reference_data < pr_focus
 
 
+def test_nightly_michigan_job_covers_bootstrap_smoke_and_hosted_setup_cleanup() -> None:
+    workflow = (ROOT / ".github/workflows/nightly-michigan-smoke.yml").read_text(encoding="utf-8")
+    job = workflow.split("\n  michigan-smoke:", maxsplit=1)[1]
+    timeout_minutes = int(
+        next(
+            line.split(":", maxsplit=1)[1].strip()
+            for line in job.splitlines()
+            if line.strip().startswith("timeout-minutes:")
+        )
+    )
+
+    bootstrap_envelope_seconds = 600 + 30
+    michigan_envelope_seconds = 1800 + 30
+    hosted_setup_and_cleanup_headroom_seconds = 15 * 60
+    assert timeout_minutes == 69
+    assert timeout_minutes * 60 >= (
+        bootstrap_envelope_seconds
+        + michigan_envelope_seconds
+        + hosted_setup_and_cleanup_headroom_seconds
+    )
+
+
 def test_disposable_pg_runner_proves_bootstrap_and_michigan_smoke() -> None:
     runner = (ROOT / "tools/run_rust_legacy_adopter_pg.sh").read_text(encoding="utf-8")
 

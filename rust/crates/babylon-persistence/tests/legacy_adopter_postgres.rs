@@ -66,6 +66,17 @@ const CURRENT_CENSUS_V2_LEGACY_FILE: &str = "legacy_adopter_census_v2.txt";
 const CURRENT_CENSUS_V2_FRESH_FILE: &str = "fresh_schema_epoch_census_v2.txt";
 const CURRENT_CENSUS_V2_FRESH_WITH_INTEL_FILE: &str = "fresh_schema_epoch_census_with_intel_v2.txt";
 const CURRENT_CENSUS_V2_REPORT_FILE: &str = "current_census_v2_drift_report.txt";
+const DIGEST_PROJECTION: &str = "pg_catalog.encode(\n            \
+pg_catalog.sha256(pg_catalog.convert_to(objects.payload::pg_catalog.text, 'UTF8')),\n            \
+'hex'\n        ) AS digest_hex";
+const OUTPUT_TAIL: &str = "FROM catalog_output AS output\n\
+ORDER BY output.kind, output.schema_name, output.object_name\nLIMIT $1";
+const FILTERED_OUTPUT_TAIL: &str = "FROM catalog_output AS output\n\
+JOIN ROWS FROM (\n    pg_catalog.unnest($7::pg_catalog.text[]),\n    \
+pg_catalog.unnest($8::pg_catalog.text[]),\n    \
+pg_catalog.unnest($9::pg_catalog.text[])\n) AS wanted(kind, schema_name, object_name)\n  ON wanted.kind = \
+output.kind\n AND wanted.schema_name = output.schema_name\n AND wanted.object_name = \
+output.object_name\nORDER BY output.kind, output.schema_name, output.object_name\nLIMIT $1";
 
 struct LivePhaseReceipts {
     suite_start: Instant,
@@ -780,26 +791,40 @@ fn export_current_census_v2(
     intel_first.cleanup();
     intel_second.cleanup();
 
+    write_current_census_v2_artifacts(
+        &legacy_fixture,
+        &fresh_fixture,
+        &fresh_with_intel_fixture,
+        &drift_report,
+    );
+}
+
+fn write_current_census_v2_artifacts(
+    legacy_fixture: &[u8],
+    fresh_fixture: &[u8],
+    fresh_with_intel_fixture: &[u8],
+    drift_report: &[u8],
+) {
     let output_dir = current_census_v2_export_dir();
     for (name, contents, max_bytes) in [
         (
             CURRENT_CENSUS_V2_LEGACY_FILE,
-            legacy_fixture.as_slice(),
+            legacy_fixture,
             MAX_LEGACY_CENSUS_FIXTURE_BYTES,
         ),
         (
             CURRENT_CENSUS_V2_FRESH_FILE,
-            fresh_fixture.as_slice(),
+            fresh_fixture,
             MAX_LEGACY_CENSUS_FIXTURE_BYTES,
         ),
         (
             CURRENT_CENSUS_V2_FRESH_WITH_INTEL_FILE,
-            fresh_with_intel_fixture.as_slice(),
+            fresh_with_intel_fixture,
             MAX_LEGACY_CENSUS_FIXTURE_BYTES,
         ),
         (
             CURRENT_CENSUS_V2_REPORT_FILE,
-            drift_report.as_slice(),
+            drift_report,
             MAX_CURRENT_CENSUS_V2_REPORT_BYTES,
         ),
     ] {
@@ -1136,29 +1161,8 @@ fn current_census_payload_keys(drift: &[CurrentCensusDrift]) -> Vec<CurrentCensu
         .collect()
 }
 
-fn census_payloads_for_drift(
-    config: &Config,
-    keys: &[CurrentCensusKey],
-) -> BTreeMap<CurrentCensusKey, String> {
-    if keys.is_empty() {
-        return BTreeMap::new();
-    }
-    assert!(keys.len() <= MAX_CURRENT_CENSUS_V2_DRIFT_ROWS);
-    const DIGEST_PROJECTION: &str = "pg_catalog.encode(\n            \
-pg_catalog.sha256(pg_catalog.convert_to(objects.payload::pg_catalog.text, 'UTF8')),\n            \
-'hex'\n        ) AS digest_hex";
-    const OUTPUT_TAIL: &str = "FROM catalog_output AS output\n\
-ORDER BY output.kind, output.schema_name, output.object_name\nLIMIT $1";
-    const FILTERED_OUTPUT_TAIL: &str = "FROM catalog_output AS output\n\
-JOIN ROWS FROM (\n    pg_catalog.unnest($7::pg_catalog.text[]),\n    \
-pg_catalog.unnest($8::pg_catalog.text[]),\n    \
-pg_catalog.unnest($9::pg_catalog.text[])\n) AS wanted(kind, schema_name, object_name)\n  ON wanted.kind = \
-output.kind\n AND wanted.schema_name = output.schema_name\n AND wanted.object_name = \
-output.object_name\nORDER BY output.kind, output.schema_name, output.object_name\nLIMIT $1";
-    let census_sql = adopter_sql(LegacyAdopterSqlKind::CatalogCensus);
-    assert_eq!(census_sql.matches(DIGEST_PROJECTION).count(), 1);
-    assert_eq!(census_sql.matches(OUTPUT_TAIL).count(), 1);
-    let payload_projection = format!(
+fn current_census_payload_projection() -> String {
+    format!(
         "CASE\n\
             WHEN pg_catalog.octet_length(objects.payload::pg_catalog.text) <= \
 {MAX_CURRENT_CENSUS_V2_INLINE_PAYLOAD_BYTES}\n\
@@ -1234,7 +1238,21 @@ output.object_name\nORDER BY output.kind, output.schema_name, output.object_name
                 ), '{{}}'::pg_catalog.jsonb)\n\
             )\n\
         END::pg_catalog.text AS digest_hex"
-    );
+    )
+}
+
+fn census_payloads_for_drift(
+    config: &Config,
+    keys: &[CurrentCensusKey],
+) -> BTreeMap<CurrentCensusKey, String> {
+    if keys.is_empty() {
+        return BTreeMap::new();
+    }
+    assert!(keys.len() <= MAX_CURRENT_CENSUS_V2_DRIFT_ROWS);
+    let census_sql = adopter_sql(LegacyAdopterSqlKind::CatalogCensus);
+    assert_eq!(census_sql.matches(DIGEST_PROJECTION).count(), 1);
+    assert_eq!(census_sql.matches(OUTPUT_TAIL).count(), 1);
+    let payload_projection = current_census_payload_projection();
     let payload_sql = census_sql
         .replacen(DIGEST_PROJECTION, payload_projection.as_str(), 1)
         .replacen(OUTPUT_TAIL, FILTERED_OUTPUT_TAIL, 1);

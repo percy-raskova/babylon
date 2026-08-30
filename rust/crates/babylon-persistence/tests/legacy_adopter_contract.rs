@@ -2716,6 +2716,48 @@ fn destructive_live_harness_preflights_an_ephemeral_loopback_container() {
     assert!(!task.contains(": \"${BABYLON_LEGACY_ADOPTER_TEST_DSN:?"));
 }
 
+fn assert_live_runner_timeout_contract(runner: &str) {
+    let h3_reference_focus = cte_slice(
+        runner,
+        "if [ \"$status\" -eq 0 ] &&\n    [ \"$LIVE_FOCUS\" = \
+         \"h3_reference_installer\" ]; then",
+        "if [ \"$status\" -eq 0 ] &&\n    { [ \"$LIVE_FOCUS\" = \
+         \"schema_epoch_fresh\" ] ||",
+    );
+    assert!(h3_reference_focus.contains("timeout --signal=TERM --kill-after=10s 900s"));
+    assert!(!h3_reference_focus.contains("timeout --signal=TERM --kill-after=10s 300s"));
+    let other_single_focus = cte_slice(
+        runner,
+        "if [ \"$status\" -eq 0 ] &&\n    { [ \"$LIVE_FOCUS\" = \
+         \"schema_epoch_fresh\" ] ||",
+        "if [ \"$status\" -eq 0 ] && [ -z \"$LIVE_FOCUS\" ]; then",
+    );
+    assert!(other_single_focus.contains("timeout --signal=TERM --kill-after=10s 300s"));
+    assert!(!other_single_focus.contains("timeout --signal=TERM --kill-after=10s 900s"));
+    assert!(!other_single_focus.contains("h3_reference_installer"));
+    let exhaustive = runner
+        .split_once("if [ \"$status\" -eq 0 ] && [ -z \"$LIVE_FOCUS\" ]; then")
+        .unwrap()
+        .1
+        .split_once("if [ \"$status\" -eq 0 ] && [ -z \"$LIVE_FOCUS\" ]; then")
+        .unwrap()
+        .0;
+    assert!(exhaustive.contains("timeout --signal=TERM --kill-after=10s 900s"));
+    assert!(!exhaustive.contains("timeout --signal=TERM --kill-after=10s 300s"));
+    assert!(runner.contains(
+        "schema_epoch::live_rollback_tests::rollback_and_ambiguous_commit_reconciliation_are_atomic"
+    ));
+    let cargo = runner
+        .split_once("cargo test -p babylon-persistence --test legacy_adopter_postgres")
+        .unwrap()
+        .1
+        .split_once("|| status=$?")
+        .unwrap()
+        .0;
+    assert!(cargo.find("--nocapture").unwrap() < cargo.find("--ignored").unwrap());
+    assert!(cargo.contains("--test-threads=1"));
+}
+
 #[test]
 fn live_matrix_receipts_survive_one_fixed_diagnostic_ceiling() {
     let source = include_str!("legacy_adopter_postgres.rs");
@@ -2777,49 +2819,9 @@ fn live_matrix_receipts_survive_one_fixed_diagnostic_ceiling() {
     assert!(source.contains("self.emit(name, \"complete\", phase_start.elapsed())"));
     assert!(source.contains("completion={completion} phase_ms="));
     assert!(source.contains("cumulative_ms="));
-
-    let runner = include_str!("../../../../tools/run_rust_legacy_adopter_pg.sh");
-    let h3_reference_focus = cte_slice(
-        runner,
-        "if [ \"$status\" -eq 0 ] &&\n    [ \"$LIVE_FOCUS\" = \
-         \"h3_reference_installer\" ]; then",
-        "if [ \"$status\" -eq 0 ] &&\n    { [ \"$LIVE_FOCUS\" = \
-         \"schema_epoch_fresh\" ] ||",
-    );
-    assert!(h3_reference_focus.contains("timeout --signal=TERM --kill-after=10s 900s"));
-    assert!(!h3_reference_focus.contains("timeout --signal=TERM --kill-after=10s 300s"));
-    let other_single_focus = cte_slice(
-        runner,
-        "if [ \"$status\" -eq 0 ] &&\n    { [ \"$LIVE_FOCUS\" = \
-         \"schema_epoch_fresh\" ] ||",
-        "if [ \"$status\" -eq 0 ] && [ -z \"$LIVE_FOCUS\" ]; then",
-    );
-    assert!(other_single_focus.contains("timeout --signal=TERM --kill-after=10s 300s"));
-    assert!(!other_single_focus.contains("timeout --signal=TERM --kill-after=10s 900s"));
-    assert!(!other_single_focus.contains("h3_reference_installer"));
-    let exhaustive = runner
-        .split_once("if [ \"$status\" -eq 0 ] && [ -z \"$LIVE_FOCUS\" ]; then")
-        .unwrap()
-        .1
-        .split_once("if [ \"$status\" -eq 0 ] && [ -z \"$LIVE_FOCUS\" ]; then")
-        .unwrap()
-        .0;
-    assert!(exhaustive.contains("timeout --signal=TERM --kill-after=10s 900s"));
-    assert!(!exhaustive.contains("timeout --signal=TERM --kill-after=10s 300s"));
-    assert!(runner.contains(
-        "schema_epoch::live_rollback_tests::rollback_and_ambiguous_commit_reconciliation_are_atomic"
+    assert_live_runner_timeout_contract(include_str!(
+        "../../../../tools/run_rust_legacy_adopter_pg.sh"
     ));
-    let cargo = runner
-        .split_once("cargo test -p babylon-persistence --test legacy_adopter_postgres")
-        .unwrap()
-        .1
-        .split_once("|| status=$?")
-        .unwrap()
-        .0;
-    let nocapture = cargo.find("--nocapture").unwrap();
-    let ignored = cargo.find("--ignored").unwrap();
-    assert!(nocapture < ignored);
-    assert!(cargo.contains("--test-threads=1"));
 }
 
 #[test]

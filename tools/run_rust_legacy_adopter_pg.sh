@@ -205,18 +205,63 @@ status=0
 if [ "$LIVE_FOCUS" = "clean_bootstrap" ] || [ "$LIVE_FOCUS" = "pr" ]; then
   BOOTSTRAP_DSN="postgresql://test:test@127.0.0.1:$PORT/babylon_test"
   readonly BOOTSTRAP_DSN
-  cd "$REPO_ROOT"
-  timeout --signal=TERM --kill-after=30s 600s \
-    env BABYLON_SCHEMA_EPOCH_DSN="$BOOTSTRAP_DSN" \
-    PGHOST="host.invalid" \
-    PGHOSTADDR="203.0.113.1" \
-    PGPORT="1" \
-    PGDATABASE="redirected" \
-    PGOPTIONS='-c search_path=redirected,public' \
-    PGSERVICE="redirected" \
-    PGSERVICEFILE="/nonexistent/babylon-pg-service.conf" \
-    PGSYSCONFDIR="/nonexistent/babylon-pg-service.d" \
-    mise run db:bootstrap || status=$?
+  HOSTILE_OPTIONS_DSN="${BOOTSTRAP_DSN}?options=-c%20search_path%3Dredirected%2Cpublic"
+  readonly HOSTILE_OPTIONS_DSN
+  before_options_refusal="$(timeout --signal=TERM --kill-after=2s 10s \
+    env PGPASSWORD=test PGCONNECT_TIMEOUT=2 PGSSLMODE=disable \
+    psql -X -w -qAt -h 127.0.0.1 -p "$PORT" -U test -d babylon_test \
+      -v ON_ERROR_STOP=1 \
+      -c "SELECT pg_catalog.count(*)::pg_catalog.text \
+          FROM pg_catalog.pg_class AS relation \
+          JOIN pg_catalog.pg_namespace AS namespace \
+            ON namespace.oid = relation.relnamespace \
+          WHERE namespace.nspname NOT IN ('pg_catalog', 'information_schema') \
+            AND namespace.nspname NOT LIKE 'pg_toast%'")" || status=$?
+
+  if [ "$status" -eq 0 ]; then
+    hostile_options_status=0
+    cd "$REPO_ROOT"
+    timeout --signal=TERM --kill-after=30s 600s \
+      env BABYLON_SCHEMA_EPOCH_DSN="$HOSTILE_OPTIONS_DSN" \
+      mise run db:bootstrap || hostile_options_status=$?
+    if [ "$hostile_options_status" -eq 0 ]; then
+      printf 'options-bearing DSN unexpectedly passed schema preflight\n' >&2
+      status=1
+    fi
+  fi
+
+  if [ "$status" -eq 0 ]; then
+    after_options_refusal="$(timeout --signal=TERM --kill-after=2s 10s \
+      env PGPASSWORD=test PGCONNECT_TIMEOUT=2 PGSSLMODE=disable \
+      psql -X -w -qAt -h 127.0.0.1 -p "$PORT" -U test -d babylon_test \
+        -v ON_ERROR_STOP=1 \
+        -c "SELECT pg_catalog.count(*)::pg_catalog.text \
+            FROM pg_catalog.pg_class AS relation \
+            JOIN pg_catalog.pg_namespace AS namespace \
+              ON namespace.oid = relation.relnamespace \
+            WHERE namespace.nspname NOT IN ('pg_catalog', 'information_schema') \
+              AND namespace.nspname NOT LIKE 'pg_toast%'")" || status=$?
+    if [ "$status" -eq 0 ] && [ "$after_options_refusal" != "$before_options_refusal" ]; then
+      printf 'options-bearing DSN changed the fresh database before refusal: before=%s after=%s\n' \
+        "$before_options_refusal" "$after_options_refusal" >&2
+      status=1
+    fi
+  fi
+
+  if [ "$status" -eq 0 ]; then
+    cd "$REPO_ROOT"
+    timeout --signal=TERM --kill-after=30s 600s \
+      env BABYLON_SCHEMA_EPOCH_DSN="$BOOTSTRAP_DSN" \
+      PGHOST="host.invalid" \
+      PGHOSTADDR="203.0.113.1" \
+      PGPORT="1" \
+      PGDATABASE="redirected" \
+      PGOPTIONS='-c search_path=redirected,public' \
+      PGSERVICE="redirected" \
+      PGSERVICEFILE="/nonexistent/babylon-pg-service.conf" \
+      PGSYSCONFDIR="/nonexistent/babylon-pg-service.d" \
+      mise run db:bootstrap || status=$?
+  fi
 
   if [ "$status" -eq 0 ]; then
     observation="$(timeout --signal=TERM --kill-after=2s 10s \

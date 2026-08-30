@@ -17,7 +17,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 const ZERO_DIGEST: &str = "0000000000000000000000000000000000000000000000000000000000000000";
-const MAX_RUNNER_LINES: usize = 350;
+const MAX_RUNNER_LINES: usize = 395;
 const MAX_WORKFLOW_JOB_BOUNDARY_CANDIDATES: usize = 128;
 const MAX_SQL_LITERAL_SEGMENTS: usize = 8_192;
 const MAX_SQL_STATEMENT_BYTES: usize = 262_144;
@@ -1960,6 +1960,17 @@ fn connection_target_requires_one_literal_local_endpoint() {
         validate_legacy_connection_target(&redirected),
         Err(LegacyAdopterError::UnsupportedConnectionTarget {
             reason: LegacyConnectionTargetRejection::HostAddressOverride,
+        })
+    );
+    let mut caller_options = Config::new();
+    caller_options
+        .host("127.0.0.1")
+        .port(1)
+        .options("-c search_path=redirected,public");
+    assert_eq!(
+        validate_legacy_connection_target(&caller_options),
+        Err(LegacyAdopterError::UnsupportedConnectionTarget {
+            reason: LegacyConnectionTargetRejection::StartupOptionsOverride,
         })
     );
     #[cfg(unix)]

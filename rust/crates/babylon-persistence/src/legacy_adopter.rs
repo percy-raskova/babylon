@@ -338,6 +338,8 @@ pub enum LegacyAdopterOperation {
 /// Safe reason that a caller's connection target is outside the local-only contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LegacyConnectionTargetRejection {
+    /// Caller-supplied startup options could redirect unqualified database operations.
+    StartupOptionsOverride,
     /// No explicit target was supplied.
     MissingHost,
     /// More than one host was supplied.
@@ -777,9 +779,14 @@ pub fn adopt_legacy_schema(config: &Config) -> Result<LegacyAdoptionReport, Lega
 /// Require one explicit local-only connection target before any socket is opened.
 ///
 /// # Errors
-/// Returns [`LegacyAdopterError::UnsupportedConnectionTarget`] for missing, remote, DNS, or
-/// multi-host/multi-port targets.
+/// Returns [`LegacyAdopterError::UnsupportedConnectionTarget`] for caller startup options or a
+/// missing, remote, DNS, multi-host, or multi-port target.
 pub fn validate_legacy_connection_target(config: &Config) -> Result<(), LegacyAdopterError> {
+    if config.get_options().is_some() {
+        return Err(connection_target_error(
+            LegacyConnectionTargetRejection::StartupOptionsOverride,
+        ));
+    }
     if !config.get_hostaddrs().is_empty() {
         return Err(connection_target_error(
             LegacyConnectionTargetRejection::HostAddressOverride,

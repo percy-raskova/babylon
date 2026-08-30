@@ -116,4 +116,20 @@ mod tests {
             ))
         );
     }
+
+    #[test]
+    fn preflight_rejects_caller_startup_options_before_connecting() {
+        let config = "postgresql://test@127.0.0.1:1/babylon_test?options=-c%20search_path%3Dredirected%2Cpublic"
+            .parse()
+            .expect("options-bearing loopback DSN is syntactically valid");
+
+        assert_eq!(
+            preflight_schema_epoch(&config),
+            Err(SchemaEpochError::ConnectionTarget(
+                LegacyAdopterError::UnsupportedConnectionTarget {
+                    reason: LegacyConnectionTargetRejection::StartupOptionsOverride,
+                }
+            ))
+        );
+    }
 }

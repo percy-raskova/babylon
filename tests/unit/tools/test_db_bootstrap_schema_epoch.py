@@ -79,6 +79,18 @@ def test_sccache_uses_one_home_relative_cache_on_fresh_hosts() -> None:
     assert "/media/user/data/sccache" not in flake
 
 
+def test_default_nix_shell_conditions_the_linux_only_bevy_closure() -> None:
+    flake = (ROOT / "flake.nix").read_text(encoding="utf-8")
+
+    assert flake.count("devShells.default = pkgs.mkShell") == 1
+    assert "linuxBevyPackages = lib.optionals pkgs.stdenv.isLinux" in flake
+    assert "linuxBevyLibraryPackages" not in flake
+    assert "]) ++ linuxBevyPackages ++ rustToolchainPackages ++ [" in flake
+    assert "] ++ linuxBevyPackages)}" in flake
+    for package in ("alsa-lib", "udev", "wayland", "libxkbcommon"):
+        assert flake.count(package) == 1
+
+
 def test_local_bootstrap_callers_run_rust_in_the_pinned_nix_shell() -> None:
     setup = _mise_task("setup")
     assert "PostgreSQL 17" in setup
@@ -167,8 +179,20 @@ def test_disposable_pg_runner_proves_bootstrap_and_michigan_smoke() -> None:
 
     assert "clean_bootstrap" in runner
     assert 'if [ "$LIVE_FOCUS" = "clean_bootstrap" ] || [ "$LIVE_FOCUS" = "pr" ]; then' in runner
+    options_refusal = runner.index('HOSTILE_OPTIONS_DSN="${BOOTSTRAP_DSN}?options=')
+    before_snapshot = runner.index('before_options_refusal="$(timeout', options_refusal)
+    refused_bootstrap = runner.index(
+        'BABYLON_SCHEMA_EPOCH_DSN="$HOSTILE_OPTIONS_DSN"', before_snapshot
+    )
+    after_snapshot = runner.index('after_options_refusal="$(timeout', refused_bootstrap)
     assert "mise run db:bootstrap" in runner
-    bootstrap_prefix = runner.split("mise run db:bootstrap", maxsplit=1)[0]
+    normal_bootstrap = runner.index('BABYLON_SCHEMA_EPOCH_DSN="$BOOTSTRAP_DSN"', after_snapshot)
+    assert options_refusal < before_snapshot < refused_bootstrap < after_snapshot < normal_bootstrap
+    assert "options-bearing DSN unexpectedly passed schema preflight" in runner
+    assert "options-bearing DSN changed the fresh database before refusal" in runner
+    bootstrap_prefix = runner[
+        normal_bootstrap : runner.index("mise run db:bootstrap", normal_bootstrap)
+    ]
     for assignment in (
         'PGHOST="host.invalid"',
         'PGHOSTADDR="203.0.113.1"',

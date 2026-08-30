@@ -12,6 +12,8 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 _SPEC = importlib.util.spec_from_file_location(
     "pr_merge", Path(__file__).resolve().parents[3] / "tools" / "pr_merge.py"
 )
@@ -108,15 +110,39 @@ class TestRollupFailuresLatestPerCheck:
         ]
         assert pr_merge._rollup_failures(rollup + _dev_manifest_green()) == []
 
-    def test_every_blocking_check_still_requires_explicit_pass(self) -> None:
-        """Dedupe must not weaken the complete manifest's explicit-success rule."""
+    def test_every_blocking_check_still_requires_explicit_pass(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Canonical REST evidence, not the source-free rollup, enforces explicit success."""
         critical = DEV_BLOCKING_CHECKS[0]
         rollup = [
             *[entry for entry in _dev_manifest_green() if entry["name"] != critical],
             _entry(critical, "SUCCESS", "2026-08-21T17:30:44Z"),
             _entry(critical, "SKIPPED", "2026-08-21T18:21:15Z"),
         ]
-        failures = pr_merge._rollup_failures(rollup)
+        assert pr_merge._rollup_failures(rollup) == []
+
+        head_sha = "a" * 40
+        check_runs = [
+            {
+                "id": index,
+                "name": requirement.context,
+                "head_sha": head_sha,
+                "status": "completed",
+                "conclusion": "skipped" if requirement.context == critical else "success",
+                "started_at": "2026-08-21T18:21:15Z",
+                "app": {
+                    "id": requirement.producer.integration_id,
+                    "slug": requirement.producer.slug,
+                },
+            }
+            for index, requirement in enumerate(pr_merge.DEV_CHECK_MANIFEST, start=1)
+        ]
+        payload = {"total_count": len(check_runs), "check_runs": check_runs}
+        monkeypatch.setattr(pr_merge, "_gh_json", lambda *_args: payload)
+
+        failures = pr_merge._manifest_check_run_failures(head_sha, pr_merge.DEV_CHECK_MANIFEST)
         assert any(critical in failure and "SKIPPED" in failure for failure in failures)
 
     def test_optional_dependabot_checks_may_skip_on_a_human_pr(self) -> None:

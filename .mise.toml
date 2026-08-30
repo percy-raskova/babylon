@@ -749,10 +749,12 @@ uv run python tools/parameter_analysis.py trace \
 
 [tasks."sim:sweep"]
 description = "Run parameter sweep analysis"
+usage = 'arg "[ticks]" help="Maximum ticks per trial" default="5200"'
 run = """
 mkdir -p results
 uv run python -m babylon.engine.optimization sweep \
   --param "economy.extraction_efficiency=0.05:0.50:0.05" \
+  --max-ticks ${usage_ticks} \
   --output-csv results/sweep.csv --report
 """
 

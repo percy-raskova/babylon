@@ -2,75 +2,118 @@
 
 # Isolated test/runtime Postgres for Babylon (spec-087 FR-002).
 #
-# Base: postgis/postgis 17-3.5 — digest-pinned (ADR176 ruling 33: the PG 17
-# move + image-pin ceremony). The player ships
-# PostgreSQL 17 via the flake closure (flake.nix postgresql_17.withPackages
-# [postgis pgvector]); dev/CI running 16 left every config value and plan
-# shape unverified against the shipping major (postgres brief, Profile 2).
-# Debian variant paired with checksum-pinned pgvector, h3-pg, and H3 core inputs.
+# Base: supported postgis/postgis 17-3.5 Alpine lineage for both stages. Using
+# one digest keeps the compiled extensions on the final image's PostgreSQL,
+# musl, and PostGIS ABI. The player still ships PostgreSQL 17 through the
+# flake closure (flake.nix postgresql_17.withPackages [postgis pgvector]).
 #
-# THE PIN CEREMONY: the image digests plus all five archive checksums define the
-# runtime/package contract. Derived OCI metadata need not be byte-identical.
-# Changing an input pin is a declared change: record the old and new identities
-# and re-run the applicable PostgreSQL integration gates before merging.
+# PIN AND VERIFICATION CONTRACT: the digest-pinned base, checksum-pinned source
+# archives, and exact final-stage runtime package revisions are the declared
+# shipped inputs. Builder-only APK packages are repository-resolved inside the
+# pinned base and affect compiled output, so this does not claim byte-identical
+# image rebuilds. Build-time and health behavioral version checks prove the
+# required runtime interface. Changing a declared input is a reviewed change:
+# record it and re-run the PostgreSQL integration gates and blocking image scan.
 #
-# Pinned 2026-07-29: tag 17-3.5, digest
-# sha256:77e89c11c4779c394ebeeaac1099dafb77b728abc8cd45dcaf6c4695503a0c37
-FROM postgis/postgis:17-3.5@sha256:77e89c11c4779c394ebeeaac1099dafb77b728abc8cd45dcaf6c4695503a0c37 AS postgres-runtime
+# Pinned 2026-08-30: tag 17-3.5-alpine, OCI index digest
+# sha256:08f4b1e1f4a571008c60272ceb9e0d1f9f8f643792d006b74a35b1bec44c2218
+# (linux/amd64 manifest sha256:35d90a44f150ef26c1c734e86e3f888753ca7fd6e1321d85e73f66a7dbffb531,
+# Alpine Linux v3.24.1).
+FROM postgis/postgis:17-3.5-alpine@sha256:08f4b1e1f4a571008c60272ceb9e0d1f9f8f643792d006b74a35b1bec44c2218 AS extension-builder
 
-FROM gcc:12.2.0-bullseye@sha256:a3e091325c0af43bc9c1c576ddd155351d5b16438124421188bb4b4fcacc1452 AS h3-builder
-
-ADD --checksum=sha256:0dc2e9a6860f06bf10bd8fadc03e35d9eeb4df46e33763a7e480e987758f385c \
-    https://github.com/Kitware/CMake/releases/download/v3.31.12/cmake-3.31.12-linux-x86_64.tar.gz \
-    /tmp/cmake.tar.gz
-ADD --checksum=sha256:9f43e428d4145d3212b68a70970cc5b736ce544b4bec2f1d6f010225787ddef4 \
-    https://apt-archive.postgresql.org/pub/repos/apt/pool/main/p/postgresql-17/postgresql-server-dev-17_17.5-1.pgdg110+1_amd64.deb \
-    /tmp/postgresql-server-dev-17.deb
-
-ADD --checksum=sha256:b7e56fb90d486897be3ccd4fdc007c724fc48abe1ff9bbe24bf351d3b8accc57 \
-    https://github.com/zachasme/h3-pg/archive/ed9a09c834787abb5952318bccef1c4fee119f1d.tar.gz \
+# Official release tags resolve to h3-pg ed9a09c834787abb5952318bccef1c4fee119f1d,
+# H3 core v4.5.0, and pgvector 159b79aaad5983fb7459c1e3df2897fbb2d11788.
+ADD --checksum=sha256:c54c119e1d9a578d5cbcce22f6c66dab2b5a45219fc2b260619807f7f061e53a \
+    https://github.com/postgis/h3-pg/archive/refs/tags/v4.5.0.tar.gz \
     /tmp/h3-pg.tar.gz
 ADD --checksum=sha256:0da8a392a6ff77e76b60e6a331a49497d0935b6b7b6899da7a3e2786139b0441 \
     https://github.com/uber/h3/archive/refs/tags/v4.5.0.tar.gz \
     /tmp/h3-core.tar.gz
+ADD --checksum=sha256:6f88a5cbdde31666f4b6c1a6b75c51dcbeffe58f9a7d2b26e502d5a6e5e14d44 \
+    https://github.com/pgvector/pgvector/archive/refs/tags/v0.8.5.tar.gz \
+    /tmp/pgvector.tar.gz
 
-COPY --from=postgres-runtime /usr/lib/postgresql/17/bin/pg_config /usr/lib/postgresql/17/bin/pg_config
-
-RUN mkdir /opt/cmake /tmp/h3-pg-source /tmp/h3-core-source \
-    && tar --extract --gzip --file=/tmp/cmake.tar.gz \
-        --directory=/opt/cmake --strip-components=1 \
-    && dpkg-deb --extract /tmp/postgresql-server-dev-17.deb / \
-    && test "$(/usr/lib/postgresql/17/bin/pg_config --version)" = \
-        "PostgreSQL 17.5 (Debian 17.5-1.pgdg110+1)" \
-    && tar --extract --gzip --file=/tmp/h3-pg.tar.gz \
-        --directory=/tmp/h3-pg-source --strip-components=1 \
-    && tar --extract --gzip --file=/tmp/h3-core.tar.gz \
-        --directory=/tmp/h3-core-source --strip-components=1 \
-    && /opt/cmake/bin/cmake -S /tmp/h3-pg-source -B /tmp/h3-pg-build \
+RUN set -eux; \
+    apk add --no-cache --virtual .extension-build-deps \
+        $DOCKER_PG_LLVM_DEPS \
+        build-base \
+        cmake; \
+    mkdir \
+        /tmp/extension-install \
+        /tmp/h3-core-source \
+        /tmp/h3-pg-source \
+        /tmp/pgvector-source; \
+    tar --extract --gzip --file=/tmp/h3-core.tar.gz \
+        --directory=/tmp/h3-core-source --strip-components=1; \
+    tar --extract --gzip --file=/tmp/h3-pg.tar.gz \
+        --directory=/tmp/h3-pg-source --strip-components=1; \
+    tar --extract --gzip --file=/tmp/pgvector.tar.gz \
+        --directory=/tmp/pgvector-source --strip-components=1; \
+    cmake -S /tmp/h3-pg-source -B /tmp/h3-pg-build \
+        -DBUILD_TESTING=OFF \
         -DCMAKE_BUILD_TYPE=Release \
         -DFETCHCONTENT_SOURCE_DIR_H3=/tmp/h3-core-source \
-        -DPOSTGRESQL_VERSION=17 \
-    && /opt/cmake/bin/cmake --build /tmp/h3-pg-build --parallel 2 \
-    && DESTDIR=/tmp/h3-pg-install \
-        /opt/cmake/bin/cmake --install /tmp/h3-pg-build --component h3-pg \
-    && test -f /tmp/h3-pg-install/usr/lib/postgresql/17/lib/h3.so \
-    && test -f /tmp/h3-pg-install/usr/share/postgresql/17/extension/h3.control \
-    && test -f /tmp/h3-pg-install/usr/share/postgresql/17/extension/h3--4.5.0.sql
+        -DPOSTGRESQL_VERSION=17; \
+    cmake --build /tmp/h3-pg-build --parallel 2; \
+    DESTDIR=/tmp/extension-install \
+        cmake --install /tmp/h3-pg-build --component h3-pg; \
+    make -C /tmp/pgvector-source --jobs=2 OPTFLAGS=""; \
+    make -C /tmp/pgvector-source \
+        DESTDIR=/tmp/extension-install OPTFLAGS="" install; \
+    test -f /tmp/extension-install/usr/local/lib/postgresql/h3.so; \
+    test -f /tmp/extension-install/usr/local/lib/postgresql/h3_postgis.so; \
+    test -f /tmp/extension-install/usr/local/lib/postgresql/vector.so; \
+    test -f \
+        /tmp/extension-install/usr/local/share/postgresql/extension/h3--4.5.0.sql; \
+    test -f \
+        /tmp/extension-install/usr/local/share/postgresql/extension/vector--0.8.5.sql
 
-FROM postgis/postgis:17-3.5@sha256:77e89c11c4779c394ebeeaac1099dafb77b728abc8cd45dcaf6c4695503a0c37
+FROM postgis/postgis:17-3.5-alpine@sha256:08f4b1e1f4a571008c60272ceb9e0d1f9f8f643792d006b74a35b1bec44c2218
 
-ADD --checksum=sha256:ff0e10806fd87268e2dfac6b2d0aaa5fc2c24341188e7c24f3db7fd112c90f87 \
-    https://apt-archive.postgresql.org/pub/repos/apt/pool/main/p/pgvector/postgresql-17-pgvector_0.8.5-1.pgdg11+1_amd64.deb \
-    /tmp/postgresql-17-pgvector.deb
+COPY --from=extension-builder \
+    /tmp/extension-install/usr/local/lib/postgresql/ /usr/local/lib/postgresql/
+COPY --from=extension-builder \
+    /tmp/extension-install/usr/local/share/postgresql/extension/ /usr/local/share/postgresql/extension/
 
-COPY --from=h3-builder /tmp/h3-pg-install/usr/ /usr/
-
-RUN dpkg --install /tmp/postgresql-17-pgvector.deb \
-    && test "$(dpkg-query -W -f='${Version}' postgresql-17)" = "17.5-1.pgdg110+1" \
-    && test "$(dpkg-query -W -f='${Version}' postgresql-17-postgis-3)" = \
-        "3.5.2+dfsg-1.pgdg110+1" \
-    && test "$(dpkg-query -W -f='${Version}' postgresql-17-pgvector)" = \
-        "0.8.5-1.pgdg11+1" \
-    && grep --fixed-strings --line-regexp "default_version = '4.5.0'" \
-        /usr/share/postgresql/17/extension/h3.control \
-    && rm /tmp/postgresql-17-pgvector.deb
+# The upstream entrypoint must start as root to repair bind/named-volume
+# ownership and migrate numeric UIDs. The build-time transformer fails closed
+# on the exact upstream shape, injects the recoverability fence before that
+# mutation, and replaces the privilege drop directly. The marker is not a
+# security attestation. No runtime wrapper, fallback, or global USER directive
+# may bypass the upstream initialization.
+RUN --mount=type=bind,source=patch-entrypoint.awk,target=/tmp/patch-entrypoint.awk,readonly \
+    set -eux; \
+    apk add --no-cache su-exec=0.3-r0 \
+        giflib=5.2.2-r2 \
+        libcrypto3=3.5.8-r0 \
+        libssl3=3.5.8-r0; \
+    entrypoint=/usr/local/bin/docker-entrypoint.sh; \
+    patched_entrypoint="${entrypoint}.babylon"; \
+    awk -f /tmp/patch-entrypoint.awk "$entrypoint" > "$patched_entrypoint"; \
+    chmod 0755 "$patched_entrypoint"; \
+    mv "$patched_entrypoint" "$entrypoint"; \
+    expected_gosu='exec gosu postgres "$BASH_SOURCE" "$@"'; \
+    expected_su_exec='exec su-exec postgres "$BASH_SOURCE" "$@"'; \
+    expected_lineage='babylon-postgres-lineage-v1|postgres=17|locale-provider=builtin|locale=C.UTF-8|encoding=UTF8|postgis=3.5.7|h3=4.5.0|h3_postgis=4.5.0|vector=0.8.5'; \
+    ! grep -Fq "$expected_gosu" "$entrypoint"; \
+    test "$(awk -v expected="$expected_su_exec" \
+        '{ line=$0; sub(/^[[:space:]]*/, "", line); if (line == expected) count++ } \
+         END { print count + 0 }' "$entrypoint")" -eq 1; \
+    test "$(grep -Fc "$expected_lineage" "$entrypoint")" -eq 1; \
+    test "$(grep -Fc -- '--locale-provider=builtin --builtin-locale=C.UTF-8 --encoding=UTF8' "$entrypoint")" -eq 1; \
+    test "$(grep -Fc 'mv "$babylon_lineage_tmp" "$babylon_lineage_marker"' "$entrypoint")" -eq 1; \
+    ! grep -Fq 'gosu' "$entrypoint"; \
+    rm /usr/local/bin/gosu; \
+    test ! -e /usr/local/bin/gosu; \
+    ! command -v gosu; \
+    su-exec nobody true; \
+    test "$(cat /etc/alpine-release)" = '3.24.1'; \
+    test "$(postgres --version)" = 'postgres (PostgreSQL) 17.11'; \
+    grep -Fx "default_version = '3.5.7'" \
+        /usr/local/share/postgresql/extension/postgis.control; \
+    grep -Fx "default_version = '4.5.0'" \
+        /usr/local/share/postgresql/extension/h3.control; \
+    grep -Fx "default_version = '4.5.0'" \
+        /usr/local/share/postgresql/extension/h3_postgis.control; \
+    grep -Fx "default_version = '0.8.5'" \
+        /usr/local/share/postgresql/extension/vector.control

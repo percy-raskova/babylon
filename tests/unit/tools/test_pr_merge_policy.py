@@ -54,12 +54,10 @@ MAIN_BLOCKING_CHECKS = (
     "Main Qualification / PostgreSQL Determinism Bundle",
     "Main Qualification / Reference-Data Contracts",
     "Main Qualification / Release Documentation",
+    "Main Qualification / Container Image Scan",
 )
 
-MAIN_ADVISORY_CHECKS = (
-    "Main Qualification / AI Tests (advisory)",
-    "Main Qualification / Container Image Scan (advisory)",
-)
+MAIN_ADVISORY_CHECKS = ("Main Qualification / AI Tests (advisory)",)
 
 
 def test_gh_timeout_is_bounded_and_normalized(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -151,6 +149,8 @@ elif args[0] == "api" and args[1].endswith("/reviews?per_page=100"):
     print(json.dumps(scenario["rest_reviews"]))
 elif args[0] == "api" and args[1].endswith("/pulls/742"):
     print(json.dumps(scenario["dependabot_pr"]))
+elif args[0] == "api" and "/commits/" in args[1] and "/check-runs?filter=all&per_page=100" in args[1]:
+    print(json.dumps(scenario["manifest_check_runs"]))
 elif args[0] == "api" and args[1].endswith(f"/actions/runs/{scenario['source_run']['id']}"):
     print(json.dumps(scenario["source_run"]))
 elif args[0] == "api" and args[1].endswith(
@@ -191,6 +191,28 @@ def _check(
         "status": status,
         "conclusion": conclusion,
         "startedAt": "2026-08-25T12:00:00Z",
+    }
+
+
+def _manifest_check_run(
+    name: str,
+    *,
+    run_id: int,
+    head_sha: str = HEAD_SHA,
+    conclusion: str = "success",
+    status: str = "completed",
+    started_at: str = "2026-08-25T12:00:00Z",
+    app_id: int = GITHUB_ACTIONS_APP_ID,
+    app_slug: str = GITHUB_ACTIONS_APP_SLUG,
+) -> dict[str, object]:
+    return {
+        "id": run_id,
+        "name": name,
+        "head_sha": head_sha,
+        "status": status,
+        "conclusion": conclusion,
+        "started_at": started_at,
+        "app": {"id": app_id, "slug": app_slug},
     }
 
 
@@ -361,6 +383,10 @@ def _classifier_check(
 
 
 def _default_scenario() -> dict[str, object]:
+    manifest_runs = [
+        _manifest_check_run(name, run_id=index)
+        for index, name in enumerate(DEV_BLOCKING_CHECKS, start=1)
+    ]
     return {
         "view": {
             "state": "OPEN",
@@ -377,6 +403,10 @@ def _default_scenario() -> dict[str, object]:
         "comments": [],
         "alerts": [],
         "children": [],
+        "manifest_check_runs": {
+            "total_count": len(manifest_runs),
+            "check_runs": manifest_runs,
+        },
         "initial_view_failure": None,
         "rest_reviews_failure": None,
         "comments_failure": None,
@@ -480,6 +510,29 @@ def _use_main_manifest(scenario: dict[str, object]) -> None:
         *(_check(name) for name in MAIN_BLOCKING_CHECKS),
         *(_check(name, conclusion="NEUTRAL") for name in MAIN_ADVISORY_CHECKS),
     ]
+    runs = [
+        *(
+            _manifest_check_run(name, run_id=index)
+            for index, name in enumerate(MAIN_BLOCKING_CHECKS, start=1)
+        ),
+        *(
+            _manifest_check_run(name, run_id=index, conclusion="neutral")
+            for index, name in enumerate(MAIN_ADVISORY_CHECKS, start=50)
+        ),
+    ]
+    scenario["manifest_check_runs"] = {
+        "total_count": len(runs),
+        "check_runs": runs,
+    }
+
+
+def _manifest_runs(scenario: dict[str, object]) -> list[dict[str, object]]:
+    payload = scenario["manifest_check_runs"]
+    assert isinstance(payload, dict)
+    runs = payload["check_runs"]
+    assert isinstance(runs, list)
+    assert all(isinstance(run, dict) for run in runs)
+    return runs
 
 
 def _thread_connection(scenario: dict[str, object]) -> dict[str, object]:
@@ -652,9 +705,15 @@ def test_all_rest_list_queries_are_bounded_without_pagination(tmp_path: Path) ->
     assert not any("--paginate" in call for call in calls)
     comments = next(call for call in calls if call[0] == "api" and "/comments" in call[1])
     alerts = next(call for call in calls if call[0] == "api" and "code-scanning/alerts" in call[1])
+    check_runs = next(
+        call
+        for call in calls
+        if call[0] == "api" and "/commits/" in call[1] and "/check-runs?" in call[1]
+    )
     children = next(call for call in calls if call[:2] == ["pr", "list"])
     assert "per_page=100" in comments[1]
     assert "per_page=100" in alerts[1]
+    assert "filter=all&per_page=100" in check_runs[1]
     assert children[children.index("--limit") + 1] == "100"
 
 
@@ -794,12 +853,8 @@ def test_director_main_accepts_an_explicit_advisory_failure(
     scenario = _default_scenario()
     _view(scenario).update({"baseRefName": "main", "headRefName": "dev"})
     _use_main_manifest(scenario)
-    rollup = _view(scenario)["statusCheckRollup"]
-    assert isinstance(rollup, list)
-    rollup[:] = [
-        _check(advisory_name, conclusion="FAILURE") if check.get("name") == advisory_name else check
-        for check in rollup
-    ]
+    advisory = next(run for run in _manifest_runs(scenario) if run["name"] == advisory_name)
+    advisory["conclusion"] = "failure"
 
     result, calls = _run_pr_merge(
         tmp_path,
@@ -809,6 +864,29 @@ def test_director_main_accepts_an_explicit_advisory_failure(
     )
 
     assert result.returncode == 0, result.stderr
+    assert _merge_calls(calls) == []
+
+
+def test_director_main_refuses_container_image_scan_failure(tmp_path: Path) -> None:
+    scenario = _default_scenario()
+    _view(scenario).update({"baseRefName": "main", "headRefName": "dev"})
+    _use_main_manifest(scenario)
+    scan = next(
+        run
+        for run in _manifest_runs(scenario)
+        if run["name"] == "Main Qualification / Container Image Scan"
+    )
+    scan["conclusion"] = "failure"
+
+    result, calls = _run_pr_merge(
+        tmp_path,
+        "--director-main",
+        "--verify-only",
+        scenario=scenario,
+    )
+
+    assert result.returncode == 1
+    assert "Main Qualification / Container Image Scan" in result.stderr
     assert _merge_calls(calls) == []
 
 
@@ -1029,14 +1107,9 @@ def test_every_dev_blocking_check_requires_explicit_success(
     status: str,
 ) -> None:
     scenario = _default_scenario()
-    rollup = _view(scenario)["statusCheckRollup"]
-    assert isinstance(rollup, list)
-    rollup[:] = [
-        _check(check_name, conclusion=conclusion, status=status)
-        if check_name == name
-        else _check(check_name)
-        for check_name in DEV_BLOCKING_CHECKS
-    ]
+    run = next(run for run in _manifest_runs(scenario) if run["name"] == name)
+    run["conclusion"] = conclusion.lower()
+    run["status"] = status.lower()
 
     result, calls = _run_pr_merge(tmp_path, scenario=scenario)
 
@@ -1047,15 +1120,201 @@ def test_every_dev_blocking_check_requires_explicit_success(
 
 def test_missing_expected_dev_check_blocks_registration_race(tmp_path: Path) -> None:
     scenario = _default_scenario()
-    rollup = _view(scenario)["statusCheckRollup"]
-    assert isinstance(rollup, list)
-    rollup.pop(0)
+    _manifest_runs(scenario).pop(0)
+    payload = scenario["manifest_check_runs"]
+    assert isinstance(payload, dict)
+    payload["total_count"] = len(_manifest_runs(scenario))
 
     result, calls = _run_pr_merge(tmp_path, scenario=scenario)
 
     assert result.returncode == 1
     assert DEV_BLOCKING_CHECKS[0] in result.stderr
     assert "missing" in result.stderr
+    assert _merge_calls(calls) == []
+
+
+def test_status_context_success_cannot_satisfy_a_required_check(tmp_path: Path) -> None:
+    scenario = _default_scenario()
+    missing_name = DEV_BLOCKING_CHECKS[0]
+    runs = _manifest_runs(scenario)
+    runs[:] = [run for run in runs if run["name"] != missing_name]
+    payload = scenario["manifest_check_runs"]
+    assert isinstance(payload, dict)
+    payload["total_count"] = len(runs)
+    rollup = _view(scenario)["statusCheckRollup"]
+    assert isinstance(rollup, list)
+    rollup[0] = {
+        "context": missing_name,
+        "state": "SUCCESS",
+        "startedAt": "2026-08-29T00:00:00Z",
+    }
+
+    result, calls = _run_pr_merge(tmp_path, "--verify-only", scenario=scenario)
+
+    assert result.returncode == 1
+    assert f"{missing_name}: missing" in result.stderr
+    assert _merge_calls(calls) == []
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("id", 1, "required producer"),
+        ("slug", "attacker-actions", "required producer"),
+        ("id", "15368", "malformed app identity"),
+    ],
+)
+def test_wrong_or_malformed_app_cannot_satisfy_a_required_check(
+    tmp_path: Path,
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    scenario = _default_scenario()
+    app = _manifest_runs(scenario)[0]["app"]
+    assert isinstance(app, dict)
+    app[field] = value
+
+    result, calls = _run_pr_merge(tmp_path, "--verify-only", scenario=scenario)
+
+    assert result.returncode == 1
+    assert message in result.stderr
+    assert _merge_calls(calls) == []
+
+
+def test_later_wrong_app_duplicate_cannot_displace_the_canonical_run(tmp_path: Path) -> None:
+    scenario = _default_scenario()
+    runs = _manifest_runs(scenario)
+    forged = copy.deepcopy(runs[0])
+    forged.update(
+        {
+            "id": 1000,
+            "started_at": "2026-08-29T00:00:00Z",
+            "conclusion": "failure",
+            "app": {"id": 1, "slug": "attacker-actions"},
+        }
+    )
+    runs.append(forged)
+    payload = scenario["manifest_check_runs"]
+    assert isinstance(payload, dict)
+    payload["total_count"] = len(runs)
+
+    result, calls = _run_pr_merge(tmp_path, "--verify-only", scenario=scenario)
+
+    assert result.returncode == 0, result.stderr
+    assert _merge_calls(calls) == []
+
+
+def test_later_canonical_duplicate_controls_the_required_verdict(tmp_path: Path) -> None:
+    scenario = _default_scenario()
+    runs = _manifest_runs(scenario)
+    rerun = copy.deepcopy(runs[0])
+    rerun.update(
+        {
+            "id": 1000,
+            "started_at": "2026-08-29T00:00:00Z",
+            "conclusion": "failure",
+        }
+    )
+    runs.append(rerun)
+    payload = scenario["manifest_check_runs"]
+    assert isinstance(payload, dict)
+    payload["total_count"] = len(runs)
+
+    result, calls = _run_pr_merge(tmp_path, "--verify-only", scenario=scenario)
+
+    assert result.returncode == 1
+    assert DEV_BLOCKING_CHECKS[0] in result.stderr
+    assert _merge_calls(calls) == []
+
+
+def test_newer_queued_canonical_duplicate_with_no_started_at_blocks_merge(
+    tmp_path: Path,
+) -> None:
+    scenario = _default_scenario()
+    runs = _manifest_runs(scenario)
+    queued = copy.deepcopy(runs[0])
+    queued.update(
+        {
+            "id": 1000,
+            "started_at": None,
+            "status": "queued",
+            "conclusion": None,
+        }
+    )
+    runs.append(queued)
+    payload = scenario["manifest_check_runs"]
+    assert isinstance(payload, dict)
+    payload["total_count"] = len(runs)
+
+    result, calls = _run_pr_merge(tmp_path, "--verify-only", scenario=scenario)
+
+    assert result.returncode == 1
+    assert f"{DEV_BLOCKING_CHECKS[0]}: still QUEUED" in result.stderr
+    assert _merge_calls(calls) == []
+
+
+def test_repeated_lower_canonical_check_run_id_is_rejected(tmp_path: Path) -> None:
+    scenario = _default_scenario()
+    runs = _manifest_runs(scenario)
+    newer = copy.deepcopy(runs[0])
+    newer["id"] = 1000
+    runs.append(newer)
+    duplicate = copy.deepcopy(runs[0])
+    duplicate["started_at"] = None
+    duplicate["status"] = "queued"
+    duplicate["conclusion"] = None
+    runs.append(duplicate)
+    payload = scenario["manifest_check_runs"]
+    assert isinstance(payload, dict)
+    payload["total_count"] = len(runs)
+
+    result, calls = _run_pr_merge(tmp_path, "--verify-only", scenario=scenario)
+
+    assert result.returncode == 1
+    assert f"repeats id {duplicate['id']}" in result.stderr
+    assert _merge_calls(calls) == []
+
+
+def test_required_check_run_must_repeat_the_exact_head_sha(tmp_path: Path) -> None:
+    scenario = _default_scenario()
+    _manifest_runs(scenario)[0]["head_sha"] = OTHER_SHA
+
+    result, calls = _run_pr_merge(tmp_path, "--verify-only", scenario=scenario)
+
+    assert result.returncode == 1
+    assert "wrong head" in result.stderr
+    assert _merge_calls(calls) == []
+
+
+@pytest.mark.parametrize("total_count", [10, 100])
+def test_incomplete_or_full_check_run_page_is_refused(
+    tmp_path: Path,
+    total_count: int,
+) -> None:
+    scenario = _default_scenario()
+    payload = scenario["manifest_check_runs"]
+    assert isinstance(payload, dict)
+    payload["total_count"] = total_count
+
+    result, calls = _run_pr_merge(tmp_path, "--verify-only", scenario=scenario)
+
+    assert result.returncode == 1
+    assert "check runs" in result.stderr
+    assert _merge_calls(calls) == []
+
+
+def test_graphql_required_check_failure_does_not_override_canonical_rest_evidence(
+    tmp_path: Path,
+) -> None:
+    scenario = _default_scenario()
+    rollup = _view(scenario)["statusCheckRollup"]
+    assert isinstance(rollup, list)
+    rollup[0] = _check(DEV_BLOCKING_CHECKS[0], conclusion="FAILURE")
+
+    result, calls = _run_pr_merge(tmp_path, "--verify-only", scenario=scenario)
+
+    assert result.returncode == 0, result.stderr
     assert _merge_calls(calls) == []
 
 

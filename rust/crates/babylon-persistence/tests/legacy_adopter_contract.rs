@@ -11,13 +11,15 @@ use babylon_persistence::{
     POSTGRES_IDENTIFIER_MAX_BYTES, SCHEMA_ADVISORY_LOCK_KEY,
 };
 use postgres::Config;
+use sha2::{Digest, Sha256};
 use std::fmt::Write as _;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use std::process::Command;
 
 const ZERO_DIGEST: &str = "0000000000000000000000000000000000000000000000000000000000000000";
-const MAX_RUNNER_LINES: usize = 395;
+const LEGACY_CENSUS_V1_ARCHIVE: &str = include_str!("../src/fixtures/legacy_adopter_census_v1.txt");
+const MAX_RUNNER_LINES: usize = 413;
 const MAX_WORKFLOW_JOB_BOUNDARY_CANDIDATES: usize = 128;
 const MAX_SQL_LITERAL_SEGMENTS: usize = 8_192;
 const MAX_SQL_STATEMENT_BYTES: usize = 262_144;
@@ -25,7 +27,7 @@ const MAX_SQL_STATEMENT_BYTES: usize = 262_144;
 #[test]
 fn checked_in_census_fixture_is_bounded_sorted_and_versioned() {
     let census = expected_legacy_census().expect("checked-in census fixture must parse");
-    assert_eq!(LEGACY_CENSUS_VERSION, 1);
+    assert_eq!(LEGACY_CENSUS_VERSION, 2);
     assert!(census.entries().len() <= MAX_LEGACY_CENSUS_ROWS);
     assert!(LEGACY_CENSUS_FIXTURE.len() <= MAX_LEGACY_CENSUS_FIXTURE_BYTES);
     assert!(census
@@ -65,60 +67,260 @@ fn fixture_preserves_zero_schema_and_two_canonical_schema_grants() {
 }
 
 #[test]
-fn fixture_provenance_matches_the_digest_pinned_dockerfile() {
-    let dockerfile = include_str!("../../../../docker/postgres/Dockerfile");
+fn v1_archive_provenance_preserves_the_observed_legacy_runtime() {
+    let fixture = LEGACY_CENSUS_V1_ARCHIVE;
     let pinned = "sha256:77e89c11c4779c394ebeeaac1099dafb77b728abc8cd45dcaf6c4695503a0c37";
-    assert!(dockerfile.lines().take(64).any(|line| {
-        line.starts_with("FROM postgis/postgis:17-3.5@") && line.ends_with(pinned)
-    }));
-    assert!(LEGACY_CENSUS_FIXTURE.lines().take(32).any(|line| {
+    assert!(fixture.lines().take(32).any(|line| {
         line == format!("# provenance|postgres_image|postgis/postgis:17-3.5@{pinned}")
     }));
-    assert!(LEGACY_CENSUS_FIXTURE
+    assert!(fixture
         .lines()
         .take(32)
         .any(|line| line == "# provenance|postgres_version|17.5 (Debian 17.5-1.pgdg110+1)"));
-    for (docker_identity, fixture_line) in [
-        (
-            "17.5-1.pgdg110+1",
-            "# provenance|postgres_package|postgresql-17=17.5-1.pgdg110+1",
-        ),
-        (
-            "3.5.2+dfsg-1.pgdg110+1",
-            "# provenance|postgis_package|postgresql-17-postgis-3=3.5.2+dfsg-1.pgdg110+1",
-        ),
-        (
-            "0.8.5-1.pgdg11+1",
-            "# provenance|pgvector_package|postgresql-17-pgvector=0.8.5-1.pgdg11+1",
-        ),
-        (
-            "ff0e10806fd87268e2dfac6b2d0aaa5fc2c24341188e7c24f3db7fd112c90f87",
-            "# provenance|pgvector_deb_sha256|ff0e10806fd87268e2dfac6b2d0aaa5fc2c24341188e7c24f3db7fd112c90f87",
-        ),
+    for fixture_line in [
+        "# provenance|postgres_package|postgresql-17=17.5-1.pgdg110+1",
+        "# provenance|postgis_package|postgresql-17-postgis-3=3.5.2+dfsg-1.pgdg110+1",
+        "# provenance|pgvector_package|postgresql-17-pgvector=0.8.5-1.pgdg11+1",
+        "# provenance|pgvector_deb_sha256|ff0e10806fd87268e2dfac6b2d0aaa5fc2c24341188e7c24f3db7fd112c90f87",
     ] {
-        assert!(dockerfile.contains(docker_identity));
-        assert!(LEGACY_CENSUS_FIXTURE
+        assert!(fixture
             .lines()
             .take(32)
             .any(|line| line == fixture_line));
     }
-    assert!(LEGACY_CENSUS_FIXTURE.lines().take(32).any(|line| {
+    assert!(fixture.lines().take(32).any(|line| {
         line == "# provenance|source_git_commit|a95ddd1b24b1157eef95b9b1885219c67486a160"
     }));
-    assert!(LEGACY_CENSUS_FIXTURE.lines().take(32).any(|line| {
+    assert!(fixture.lines().take(32).any(|line| {
         line == "# provenance|startup_options|default_transaction_read_only=on|\
                  statement_timeout=5000ms|lock_timeout=5000ms|\
                  idle_in_transaction_session_timeout=5000ms|\
                  quote_all_identifiers=off|search_path=pg_catalog|jit=off|event_triggers=off"
     }));
     for definition in LEGACY_STAMP_CATALOG.iter().take(LEGACY_STAMP_CATALOG.len()) {
-        assert!(LEGACY_CENSUS_FIXTURE.lines().take(32).any(|line| {
+        assert!(fixture.lines().take(32).any(|line| {
             line == format!(
                 "# provenance|{}|chunks={}|digest={}",
                 definition.name, definition.chunk_count, definition.digest_hex
             )
         }));
     }
+}
+
+#[test]
+fn v2_fixture_provenance_is_exact_across_the_container_boundary() {
+    let header = LEGACY_CENSUS_FIXTURE.lines().take(24).collect::<Vec<_>>();
+    for expected in [
+        "# Babylon PER-272 current legacy adopter census fixture v2",
+        "# provenance|source|legacy_adopter_census.sql",
+        "# provenance|census_sql_sha256|\
+         f6b876b0e379081adf25a89165eac7a57f1e596fc369abbbc34807d6268a6c22",
+        "# provenance|postgres_image|postgis/postgis:17-3.5-alpine@sha256:\
+         08f4b1e1f4a571008c60272ceb9e0d1f9f8f643792d006b74a35b1bec44c2218",
+        "# provenance|postgres_server_version_num|170011",
+        "# provenance|locale_provider|builtin",
+        "# provenance|locale|C.UTF-8",
+        "# provenance|encoding|UTF8",
+        "# provenance|postgis_version|3.5.7",
+        "# provenance|pgvector_version|0.8.5",
+        "# provenance|h3_version|4.5.0",
+        "# provenance|artifact_contract|digest-pinned-base|checksum-pinned-sources|\
+         exact-final-runtime-packages|behaviorally-verified|not-byte-reproducible",
+        "# provenance|optional_cluster_role|babylon_intel",
+        "# provenance|authority_schemas|babylon_ref,babylon_state",
+        "# provenance|POSTGRES_SCHEMA_DDL|chunks=112|digest=\
+         0902471053ab7a22cdaf0340978712772990e87a63aaaa1636608894fa52590b",
+        "# provenance|migrations-0010-0044|chunks=35|digest=\
+         4abe69ddc25569d5dff1941b4fbe2973df5cbd70a9bca4c92b9fe26f51dd45db",
+    ] {
+        assert!(
+            header.contains(&expected),
+            "missing v2 provenance: {expected}"
+        );
+    }
+
+    let dockerfile = include_str!("../../../../docker/postgres/Dockerfile");
+    for exact_input in [
+        "Alpine Linux v3.24.1",
+        "sha256:35d90a44f150ef26c1c734e86e3f888753ca7fd6e1321d85e73f66a7dbffb531",
+        "ed9a09c834787abb5952318bccef1c4fee119f1d",
+        "159b79aaad5983fb7459c1e3df2897fbb2d11788",
+        "sha256:c54c119e1d9a578d5cbcce22f6c66dab2b5a45219fc2b260619807f7f061e53a",
+        "sha256:0da8a392a6ff77e76b60e6a331a49497d0935b6b7b6899da7a3e2786139b0441",
+        "sha256:6f88a5cbdde31666f4b6c1a6b75c51dcbeffe58f9a7d2b26e502d5a6e5e14d44",
+        "su-exec=0.3-r0",
+        "giflib=5.2.2-r2",
+        "libcrypto3=3.5.8-r0",
+        "libssl3=3.5.8-r0",
+        "test \"$(cat /etc/alpine-release)\" = '3.24.1'",
+        "does not claim byte-identical",
+        "image rebuilds",
+    ] {
+        assert!(
+            dockerfile.contains(exact_input),
+            "missing exact container input: {exact_input}"
+        );
+    }
+
+    let marker = "babylon-postgres-lineage-v1|postgres=17|locale-provider=builtin|\
+                  locale=C.UTF-8|encoding=UTF8|postgis=3.5.7|h3=4.5.0|\
+                  h3_postgis=4.5.0|vector=0.8.5";
+    let compose = include_str!("../../../../docker-compose.yml");
+    let entrypoint_patch = include_str!("../../../../docker/postgres/patch-entrypoint.awk");
+    assert!(compose.contains(marker));
+    assert!(entrypoint_patch.contains(marker));
+
+    for historical_stamp in [
+        "# provenance|BABYLON_META_DDL|",
+        "# provenance|migrations-0010-0043|",
+        "# provenance|trace-view-v2-migrations-0020-0023|",
+    ] {
+        assert!(!LEGACY_CENSUS_FIXTURE.contains(historical_stamp));
+    }
+}
+
+#[test]
+fn every_v2_header_pins_the_exact_executable_census_sql() {
+    const EXPECTED_CENSUS_SQL_SHA256: &str =
+        "f6b876b0e379081adf25a89165eac7a57f1e596fc369abbbc34807d6268a6c22";
+    let census_sql = include_bytes!("../src/legacy_adopter_census.sql");
+    assert_eq!(sha256_hex(census_sql), EXPECTED_CENSUS_SQL_SHA256);
+
+    let expected_header = format!("# provenance|census_sql_sha256|{EXPECTED_CENSUS_SQL_SHA256}");
+    for fixture in [
+        LEGACY_CENSUS_FIXTURE,
+        include_str!("../src/fixtures/fresh_schema_epoch_census_v2.txt"),
+        include_str!("../src/fixtures/fresh_schema_epoch_census_with_intel_v2.txt"),
+    ] {
+        assert_eq!(
+            fixture
+                .lines()
+                .take(24)
+                .filter(|line| *line == expected_header)
+                .count(),
+            1
+        );
+    }
+}
+
+#[test]
+fn v2_is_the_only_current_census_path_while_v1_bytes_remain_archival() {
+    for (fixture, expected_sha256) in [
+        (
+            include_bytes!("../src/fixtures/legacy_adopter_census_v1.txt").as_slice(),
+            "f80017b2e5bc2ae2577b4ff610af2f9ff369da1c78232edee4dfc67f6a01fd49",
+        ),
+        (
+            include_bytes!("../src/fixtures/fresh_schema_epoch_census_v1.txt").as_slice(),
+            "6a2a7f3fbbfac61bee42fee1f920cf4785f3163372f03a6918d8eb029865dc20",
+        ),
+        (
+            include_bytes!("../src/fixtures/fresh_schema_epoch_census_with_intel_v1.txt")
+                .as_slice(),
+            "023850010f306495080586c4699fd4c99bd8a527951720566c5a2b585094e720",
+        ),
+        (
+            include_bytes!("../src/fixtures/legacy_adopter_census_v2.txt").as_slice(),
+            "e2593b124bf813a02aa993bfea1bad91b54a7b37d3589947429a4cbe3b3d218d",
+        ),
+        (
+            include_bytes!("../src/fixtures/fresh_schema_epoch_census_v2.txt").as_slice(),
+            "42a03597faa64d388398395f12fb1eaa7890fb1487837c29a4a12985720ea294",
+        ),
+        (
+            include_bytes!("../src/fixtures/fresh_schema_epoch_census_with_intel_v2.txt")
+                .as_slice(),
+            "51ffa07e0adfa3125f6054169dd475baf3dbce03ecca5d9213548b963d35acfb",
+        ),
+    ] {
+        assert_eq!(sha256_hex(fixture), expected_sha256);
+    }
+
+    let adopter = include_str!("../src/legacy_adopter.rs");
+    assert!(adopter.contains(
+        "pub const LEGACY_CENSUS_FIXTURE: &str = \
+         include_str!(\"fixtures/legacy_adopter_census_v2.txt\");"
+    ));
+    assert!(!adopter.contains("fixtures/legacy_adopter_census_v1.txt"));
+
+    let epoch = include_str!("../src/schema_epoch.rs");
+    let current_start = epoch.find("const FRESH_CENSUS:").unwrap();
+    let current_end = epoch.find("const EPOCH_OWNED_CENSUS_V1:").unwrap();
+    let current = &epoch[current_start..current_end];
+    assert!(current.contains("fresh_schema_epoch_census_v2.txt"));
+    assert!(current.contains("fresh_schema_epoch_census_with_intel_v2.txt"));
+    assert!(!current.contains("_v1.txt"));
+}
+
+#[test]
+fn conservation_drift_is_only_the_locale_order_of_two_exact_constraints() {
+    const V1_PAYLOAD_SHA256: &str =
+        "30ef0e3b7795606b15a35a2f91bcc40dc60be80f0a000d362bc17c5737ff00e2";
+    const V2_PAYLOAD_SHA256: &str =
+        "5eff9766641285da9cf078e6633f603a3492f2735b6e5dd6f1c9b1fd07b84b50";
+    let archived_bytes = canonical_json_receipt(include_bytes!(
+        "fixtures/conservation_audit_log_payload_v1.json"
+    ));
+    let current_bytes = canonical_json_receipt(include_bytes!(
+        "fixtures/conservation_audit_log_payload_v2.json"
+    ));
+    assert_eq!(sha256_hex(archived_bytes), V1_PAYLOAD_SHA256);
+    assert_eq!(sha256_hex(current_bytes), V2_PAYLOAD_SHA256);
+    assert_eq!(
+        census_fixture_digest(
+            LEGACY_CENSUS_V1_ARCHIVE,
+            "partitioned_table|public|conservation_audit_log|"
+        ),
+        V1_PAYLOAD_SHA256
+    );
+    assert_eq!(
+        census_fixture_digest(
+            LEGACY_CENSUS_FIXTURE,
+            "partitioned_table|public|conservation_audit_log|"
+        ),
+        V2_PAYLOAD_SHA256
+    );
+
+    let mut archived: serde_json::Value = serde_json::from_slice(archived_bytes).unwrap();
+    let current: serde_json::Value = serde_json::from_slice(current_bytes).unwrap();
+    let pointer = "/default_partition_template/shape/partition_constraints";
+    let archived_constraints = archived.pointer(pointer).unwrap().as_array().unwrap();
+    let current_constraints = current.pointer(pointer).unwrap().as_array().unwrap();
+    assert_eq!(archived_constraints.len(), 5);
+    assert_eq!(current_constraints.len(), 5);
+    assert_eq!(archived_constraints[0], current_constraints[1]);
+    assert_eq!(archived_constraints[1], current_constraints[0]);
+    assert_eq!(&archived_constraints[2..], &current_constraints[2..]);
+    assert_eq!(
+        archived_constraints[0]["definition"],
+        "CHECK (length(hex_frame_hash) = 64)"
+    );
+    assert_eq!(
+        archived_constraints[1]["definition"],
+        "CHECK ((scale = ANY (ARRAY['hex'::text, 'county'::text, 'state'::text, \
+         'national'::text, 'global_phi'::text, 'per_stage'::text])) OR scale ~~ \
+         'external:%'::text)"
+    );
+
+    archived
+        .pointer_mut(pointer)
+        .unwrap()
+        .as_array_mut()
+        .unwrap()
+        .swap(0, 1);
+    assert_eq!(archived, current);
+
+    let sql = census_sql();
+    assert!(sql.contains(
+        "'partition_constraints', coalesce((\n                SELECT \
+         pg_catalog.jsonb_agg"
+    ));
+    assert!(sql.contains(
+        ") ORDER BY\n                    con.contype,\n                    \
+         pg_catalog.pg_get_constraintdef(con.oid, true),\n                    \
+         con.condeferrable,\n                    con.condeferred,\n                    \
+         con.convalidated)"
+    ));
 }
 
 #[test]
@@ -1605,31 +1807,31 @@ fn review_adoption_report_defers_database_owner_authority_proof() {
 }
 
 #[test]
-fn review_postgres_image_pins_runtime_packages_without_apt_network_resolution() {
+fn review_postgres_image_builds_checksum_pinned_sources_on_one_abi() {
     let dockerfile = include_str!("../../../../docker/postgres/Dockerfile");
     let action = include_str!("../../../../.github/actions/postgres-up/action.yml");
     let runner = include_str!("../../../../tools/run_rust_legacy_adopter_pg.sh");
-    let vector_url = "https://apt-archive.postgresql.org/pub/repos/apt/pool/main/p/pgvector/\
-                      postgresql-17-pgvector_0.8.5-1.pgdg11+1_amd64.deb";
     assert!(dockerfile.starts_with("# syntax=docker/dockerfile:1.6\n"));
-    assert!(dockerfile.contains(
-        "ADD --checksum=sha256:ff0e10806fd87268e2dfac6b2d0aaa5fc2c24341188e7c24f3db7fd112c90f87"
-    ));
-    assert!(dockerfile.contains(&vector_url.replace(char::is_whitespace, "")));
-    assert!(dockerfile.contains("17.5-1.pgdg110+1"));
-    assert!(dockerfile.contains("3.5.2+dfsg-1.pgdg110+1"));
-    assert!(dockerfile.contains("0.8.5-1.pgdg11+1"));
-    for floating in ["apt-get update", "apt-get upgrade", "apt-get install"] {
+    for pinned in [
+        "postgis/postgis:17-3.5-alpine@sha256:08f4b1e1f4a571008c60272ceb9e0d1f9f8f643792d006b74a35b1bec44c2218",
+        "sha256:c54c119e1d9a578d5cbcce22f6c66dab2b5a45219fc2b260619807f7f061e53a",
+        "sha256:0da8a392a6ff77e76b60e6a331a49497d0935b6b7b6899da7a3e2786139b0441",
+        "sha256:6f88a5cbdde31666f4b6c1a6b75c51dcbeffe58f9a7d2b26e502d5a6e5e14d44",
+        "OPTFLAGS=\"\"",
+    ] {
+        assert!(dockerfile.contains(pinned), "missing image input {pinned}");
+    }
+    for floating in ["apt-get", "apt-archive", ".deb", "gcc:12.2.0-bullseye"] {
         assert!(
             !dockerfile.contains(floating),
-            "floating package operation: {floating}"
+            "retired Debian build input: {floating}"
         );
     }
     assert!(runner.contains(
         "env DOCKER_BUILDKIT=1 \\\n  timeout --signal=TERM --kill-after=10s 180s \\\n  docker build"
     ));
     assert!(action.contains("reproduces the pinned base and"));
-    assert!(action.contains("archived-package runtime contract"));
+    assert!(action.contains("checksum-pinned source runtime contract"));
     assert!(!action.contains("cold build produces the identical image"));
 }
 
@@ -2087,7 +2289,7 @@ fn pr_focus_reuses_the_postgres_atomicity_and_installed_mutation_contracts() {
 
     assert!(runner.contains("BABYLON_LEGACY_ADOPTER_LIVE_FOCUS:-}"));
     assert!(runner.contains(
-        "\"\" | clean_bootstrap | h3_atomicity | installed_mutation | schema_epoch_fresh | schema_epoch_matrix | \\\n    schema_epoch_rollback | schema_epoch_v5_census | schema_epoch_v6_census | \\\n    h3_pg_oracle | h3_reference_installer | h3_shadow_backfill | \\\n    committed_tick_writer | pr)"
+        "\"\" | clean_bootstrap | h3_atomicity | installed_mutation | schema_epoch_fresh | schema_epoch_matrix | \\\n    schema_epoch_rollback | schema_epoch_v5_census | schema_epoch_v6_census | \\\n    h3_pg_oracle | h3_reference_installer | h3_shadow_backfill | \\\n    committed_tick_writer | runtime_census_v2 | pr)"
     ));
     assert!(runner.contains("[ \"$LIVE_FOCUS\" = \"h3_pg_oracle\" ]"));
     assert!(runner.contains("[ \"$LIVE_FOCUS\" = \"h3_reference_installer\" ]"));
@@ -2479,8 +2681,8 @@ fn destructive_live_harness_preflights_an_ephemeral_loopback_container() {
         "config.get_user() != Some(\"test\")",
         "config.get_dbname() != Some(\"postgres\")",
         "server_version_num",
-        "170005",
-        "3.5.2",
+        "170011",
+        "3.5.7",
         "0.8.5",
         "babylon.per20_disposable",
         "DISPOSABLE_CANARY_ENV",
@@ -2530,6 +2732,7 @@ fn live_matrix_receipts_survive_one_fixed_diagnostic_ceiling() {
         "create_owner_role",
         "create_first_database",
         "create_second_database",
+        "runtime_census_v2",
         "repair_first",
         "repair_second",
         "canonical_fixture_bytes",
@@ -2576,12 +2779,33 @@ fn live_matrix_receipts_survive_one_fixed_diagnostic_ceiling() {
     assert!(source.contains("cumulative_ms="));
 
     let runner = include_str!("../../../../tools/run_rust_legacy_adopter_pg.sh");
-    assert_eq!(
-        runner
-            .matches("timeout --signal=TERM --kill-after=10s 900s")
-            .count(),
-        1
+    let h3_reference_focus = cte_slice(
+        runner,
+        "if [ \"$status\" -eq 0 ] &&\n    [ \"$LIVE_FOCUS\" = \
+         \"h3_reference_installer\" ]; then",
+        "if [ \"$status\" -eq 0 ] &&\n    { [ \"$LIVE_FOCUS\" = \
+         \"schema_epoch_fresh\" ] ||",
     );
+    assert!(h3_reference_focus.contains("timeout --signal=TERM --kill-after=10s 900s"));
+    assert!(!h3_reference_focus.contains("timeout --signal=TERM --kill-after=10s 300s"));
+    let other_single_focus = cte_slice(
+        runner,
+        "if [ \"$status\" -eq 0 ] &&\n    { [ \"$LIVE_FOCUS\" = \
+         \"schema_epoch_fresh\" ] ||",
+        "if [ \"$status\" -eq 0 ] && [ -z \"$LIVE_FOCUS\" ]; then",
+    );
+    assert!(other_single_focus.contains("timeout --signal=TERM --kill-after=10s 300s"));
+    assert!(!other_single_focus.contains("timeout --signal=TERM --kill-after=10s 900s"));
+    assert!(!other_single_focus.contains("h3_reference_installer"));
+    let exhaustive = runner
+        .split_once("if [ \"$status\" -eq 0 ] && [ -z \"$LIVE_FOCUS\" ]; then")
+        .unwrap()
+        .1
+        .split_once("if [ \"$status\" -eq 0 ] && [ -z \"$LIVE_FOCUS\" ]; then")
+        .unwrap()
+        .0;
+    assert!(exhaustive.contains("timeout --signal=TERM --kill-after=10s 900s"));
+    assert!(!exhaustive.contains("timeout --signal=TERM --kill-after=10s 300s"));
     assert!(runner.contains(
         "schema_epoch::live_rollback_tests::rollback_and_ambiguous_commit_reconciliation_are_atomic"
     ));
@@ -2826,6 +3050,31 @@ fn count_kind(census: &babylon_persistence::LegacyCensus, kind: LegacyObjectKind
         .take(MAX_LEGACY_CENSUS_ROWS)
         .filter(|entry| entry.key().kind() == kind)
         .count()
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    let mut hex = String::with_capacity(64);
+    for byte in digest.iter().take(32) {
+        write!(&mut hex, "{byte:02x}").unwrap();
+    }
+    hex
+}
+
+fn canonical_json_receipt(receipt: &'static [u8]) -> &'static [u8] {
+    let payload = receipt
+        .strip_suffix(b"\n")
+        .expect("checked-in JSON receipt must have one trailing newline");
+    assert!(!payload.ends_with(b"\n"));
+    payload
+}
+
+fn census_fixture_digest<'a>(fixture: &'a str, row_prefix: &str) -> &'a str {
+    fixture
+        .lines()
+        .take(MAX_LEGACY_CENSUS_ROWS + 32)
+        .find_map(|line| line.strip_prefix(row_prefix))
+        .expect("named census row must exist")
 }
 
 fn census_sql() -> &'static str {

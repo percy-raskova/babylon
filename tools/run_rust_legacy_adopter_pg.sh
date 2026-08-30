@@ -11,6 +11,7 @@ readonly CARGO_BUILD_JOBS
 # after it proves exact ownership of the random-canary container below.
 readonly TEST_HARNESS_ACK="I_UNDERSTAND_PER20_DROPS_SCRATCH_DATABASES_ROLES_AND_CREATED_BABYLON_INTEL"
 readonly LIVE_FOCUS="${BABYLON_LEGACY_ADOPTER_LIVE_FOCUS:-}"
+readonly CURRENT_CENSUS_V2_EXPORT_DIR="${BABYLON_CURRENT_CENSUS_V2_EXPORT_DIR:-}"
 CANARY="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
 readonly CANARY
 readonly CONTAINER="babylon-per20-adopter-${CANARY:0:12}"
@@ -26,9 +27,22 @@ case "$LIVE_FOCUS" in
   "" | clean_bootstrap | h3_atomicity | installed_mutation | schema_epoch_fresh | schema_epoch_matrix | \
     schema_epoch_rollback | schema_epoch_v5_census | schema_epoch_v6_census | \
     h3_pg_oracle | h3_reference_installer | h3_shadow_backfill | \
-    committed_tick_writer | pr) ;;
+    committed_tick_writer | runtime_census_v2 | pr) ;;
   *) die "unsupported live focus: $LIVE_FOCUS" ;;
 esac
+
+if [ "$LIVE_FOCUS" = "runtime_census_v2" ]; then
+  [ -n "$CURRENT_CENSUS_V2_EXPORT_DIR" ] ||
+    die "runtime_census_v2 requires BABYLON_CURRENT_CENSUS_V2_EXPORT_DIR"
+  case "$CURRENT_CENSUS_V2_EXPORT_DIR" in
+    /*) ;;
+    *) die "current-census-v2 output directory must be absolute" ;;
+  esac
+  [ -d "$CURRENT_CENSUS_V2_EXPORT_DIR" ] && [ ! -L "$CURRENT_CENSUS_V2_EXPORT_DIR" ] ||
+    die "current-census-v2 output directory must be an existing non-symlink directory"
+elif [ -n "$CURRENT_CENSUS_V2_EXPORT_DIR" ]; then
+  die "current-census-v2 export directory is accepted only with runtime_census_v2 focus"
+fi
 
 require_container_absent() {
   local context="$1"
@@ -105,7 +119,7 @@ wait_for_runtime() {
     if [ "$(timeout --signal=TERM --kill-after=1s "${remaining}s" \
       docker exec "$CONTAINER" psql -qAt -U test -d template1 -c \
         "SELECT pg_catalog.current_setting('babylon.per20_disposable', true) = '$CANARY' \
-           AND (SELECT extversion = '3.5.2' FROM pg_catalog.pg_extension WHERE extname = 'postgis') \
+           AND (SELECT extversion = '3.5.7' FROM pg_catalog.pg_extension WHERE extname = 'postgis') \
            AND (SELECT extversion = '0.8.5' FROM pg_catalog.pg_extension WHERE extname = 'vector')" \
         2>/dev/null || true)" = "t" ]; then
       host_probe="$(timeout --signal=TERM --kill-after=1s 1s \
@@ -334,12 +348,25 @@ if [ "$status" -eq 0 ] &&
 fi
 
 if [ "$status" -eq 0 ] &&
+    [ "$LIVE_FOCUS" = "h3_reference_installer" ]; then
+  timeout --signal=TERM --kill-after=10s 900s \
+    env \
+      BABYLON_LEGACY_ADOPTER_TEST_DSN="postgresql://test:test@127.0.0.1:$PORT/postgres" \
+      BABYLON_LEGACY_ADOPTER_DISPOSABLE_ACK="$TEST_HARNESS_ACK" \
+      BABYLON_LEGACY_ADOPTER_DISPOSABLE_CANARY="$CANARY" \
+      BABYLON_LEGACY_ADOPTER_LIVE_FOCUS="$LIVE_FOCUS" \
+      CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/rust/target}" \
+    cargo test -p babylon-persistence --test legacy_adopter_postgres --locked -- --nocapture \
+      --ignored --test-threads=1 || status=$?
+fi
+
+if [ "$status" -eq 0 ] &&
     { [ "$LIVE_FOCUS" = "schema_epoch_fresh" ] ||
       [ "$LIVE_FOCUS" = "schema_epoch_matrix" ] ||
       [ "$LIVE_FOCUS" = "schema_epoch_v5_census" ] ||
       [ "$LIVE_FOCUS" = "schema_epoch_v6_census" ] ||
+      [ "$LIVE_FOCUS" = "runtime_census_v2" ] ||
       [ "$LIVE_FOCUS" = "h3_pg_oracle" ] ||
-      [ "$LIVE_FOCUS" = "h3_reference_installer" ] ||
       [ "$LIVE_FOCUS" = "h3_shadow_backfill" ]; }; then
   timeout --signal=TERM --kill-after=10s 300s \
     env \

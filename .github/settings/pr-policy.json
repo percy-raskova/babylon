@@ -49,31 +49,40 @@
           "do_not_enforce_on_create": false,
           "required_status_checks": [
             {
-              "context": "Fast Gate (hygiene, lint, format, imports, types, lock)"
+              "context": "Fast Gate (hygiene, lint, format, imports, types, lock)",
+              "integration_id": 15368
             },
             {
-              "context": "Unit Tests (xdist, coverage gate)"
+              "context": "Unit Tests (xdist, coverage gate)",
+              "integration_id": 15368
             },
             {
-              "context": "Determinism Gate (byte-identical dense goldens)"
+              "context": "Determinism Gate (byte-identical dense goldens)",
+              "integration_id": 15368
             },
             {
-              "context": "Secret Scan (gitleaks, full history)"
+              "context": "Secret Scan (gitleaks, full history)",
+              "integration_id": 15368
             },
             {
-              "context": "IaC Config Scan (trivy, HIGH+CRITICAL blocking)"
+              "context": "IaC Config Scan (trivy, HIGH+CRITICAL blocking)",
+              "integration_id": 15368
             },
             {
-              "context": "Security Audit (pip-audit policy — blocking since item-41)"
+              "context": "Security Audit (pip-audit policy — blocking since item-41)",
+              "integration_id": 15368
             },
             {
-              "context": "Rust Gate (fmt, clippy, test, doc — rust/ workspace)"
+              "context": "Rust Gate (fmt, clippy, test, doc — rust/ workspace)",
+              "integration_id": 15368
             },
             {
-              "context": "Baseline Ceremony Gate (§6.5 provenance)"
+              "context": "Baseline Ceremony Gate (§6.5 provenance)",
+              "integration_id": 15368
             },
             {
-              "context": "Postgres Integration Tier (PG 17, pinned runtime)"
+              "context": "Postgres Integration Tier (PG 17, pinned runtime)",
+              "integration_id": 15368
             }
           ]
         }
@@ -118,46 +127,64 @@
           "do_not_enforce_on_create": false,
           "required_status_checks": [
             {
-              "context": "Fast Gate (hygiene, lint, format, imports, types, lock)"
+              "context": "Fast Gate (hygiene, lint, format, imports, types, lock)",
+              "integration_id": 15368
             },
             {
-              "context": "Unit Tests (xdist, coverage gate)"
+              "context": "Unit Tests (xdist, coverage gate)",
+              "integration_id": 15368
             },
             {
-              "context": "Determinism Gate (byte-identical dense goldens)"
+              "context": "Determinism Gate (byte-identical dense goldens)",
+              "integration_id": 15368
             },
             {
-              "context": "Secret Scan (gitleaks, full history)"
+              "context": "Secret Scan (gitleaks, full history)",
+              "integration_id": 15368
             },
             {
-              "context": "IaC Config Scan (trivy, HIGH+CRITICAL blocking)"
+              "context": "IaC Config Scan (trivy, HIGH+CRITICAL blocking)",
+              "integration_id": 15368
             },
             {
-              "context": "Security Audit (pip-audit policy — blocking since item-41)"
+              "context": "Security Audit (pip-audit policy — blocking since item-41)",
+              "integration_id": 15368
             },
             {
-              "context": "Rust Gate (fmt, clippy, test, doc — rust/ workspace)"
+              "context": "Rust Gate (fmt, clippy, test, doc — rust/ workspace)",
+              "integration_id": 15368
             },
             {
-              "context": "Baseline Ceremony Gate (§6.5 provenance)"
+              "context": "Baseline Ceremony Gate (§6.5 provenance)",
+              "integration_id": 15368
             },
             {
-              "context": "Postgres Integration Tier (PG 17, pinned runtime)"
+              "context": "Postgres Integration Tier (PG 17, pinned runtime)",
+              "integration_id": 15368
             },
             {
-              "context": "Main Qualification / Event Contract"
+              "context": "Main Qualification / Event Contract",
+              "integration_id": 15368
             },
             {
-              "context": "Main Qualification / Non-Unit Behavioral Contracts"
+              "context": "Main Qualification / Non-Unit Behavioral Contracts",
+              "integration_id": 15368
             },
             {
-              "context": "Main Qualification / PostgreSQL Determinism Bundle"
+              "context": "Main Qualification / PostgreSQL Determinism Bundle",
+              "integration_id": 15368
             },
             {
-              "context": "Main Qualification / Reference-Data Contracts"
+              "context": "Main Qualification / Reference-Data Contracts",
+              "integration_id": 15368
             },
             {
-              "context": "Main Qualification / Release Documentation"
+              "context": "Main Qualification / Release Documentation",
+              "integration_id": 15368
+            },
+            {
+              "context": "Main Qualification / Container Image Scan",
+              "integration_id": 15368
             }
           ]
         }

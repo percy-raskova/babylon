@@ -31,6 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from tools.pr_policy import (  # noqa: E402
     DEV_CHECK_MANIFEST,
+    GITHUB_ACTIONS_PRODUCER,
     CheckRequirement,
     manifest_for_base,
 )
@@ -58,8 +59,11 @@ DEPENDABOT_WORKFLOW_PATH = ".github/workflows/dependabot-automerge.yml"
 DEPENDABOT_WORKFLOW_ID = 214604133
 CI_WORKFLOW_PATH = ".github/workflows/ci.yml"
 CI_WORKFLOW_ID = 176131131
-GITHUB_ACTIONS_APP_ID = 15368
-GITHUB_ACTIONS_APP_SLUG = "github-actions"
+GITHUB_ACTIONS_APP_ID: Final[int] = GITHUB_ACTIONS_PRODUCER.integration_id
+GITHUB_ACTIONS_APP_SLUG: Final[str] = GITHUB_ACTIONS_PRODUCER.slug
+CHECK_RUNS_ENDPOINT: Final[str] = (
+    "repos/{{owner}}/{{repo}}/commits/{head_oid}/check-runs?filter=all&per_page=100"
+)
 
 _REVIEW_THREADS_QUERY = """
 query($owner: String!, $name: String!, $number: Int!) {
@@ -196,41 +200,129 @@ def _rollup_failures(
     rollup: list[dict[str, object]],
     manifest: tuple[CheckRequirement, ...] = DEV_CHECK_MANIFEST,
 ) -> list[str]:
-    """Return incomplete or disallowed latest check conclusions."""
+    """Return disallowed unknown rollup conclusions.
+
+    GitHub's GraphQL union includes source-free ``StatusContext`` values, so
+    the REST check-run endpoint alone proves the producer-bound manifest.
+    The rollup remains useful for visibility into additional failing checks.
+    """
     if len(rollup) >= MAX_GITHUB_ITEMS:
         raise RuntimeError(f"status-check rollup reached the {MAX_GITHUB_ITEMS}-item safety bound")
     if len(manifest) >= MAX_GITHUB_ITEMS:
         raise RuntimeError(f"check manifest reached the {MAX_GITHUB_ITEMS}-item safety bound")
     latest: dict[str, dict[str, object]] = {}
+    expected = {requirement.context for requirement in manifest}
     for entry in rollup:
         name = str(entry.get("name") or entry.get("context") or "?")
+        if name in expected:
+            continue
         if name not in latest or _entry_sort_key(entry) >= _entry_sort_key(latest[name]):
             latest[name] = entry
-    expected = {requirement.context: requirement for requirement in manifest}
     failures: list[str] = []
-    reported: set[str] = set()
     for entry in latest.values():
         name = str(entry.get("name") or entry.get("context") or "?")
         status = str(entry.get("status") or "")
         conclusion = str(entry.get("conclusion") or entry.get("state") or "")
-        requirement = expected.get(name)
         if status and status != "COMPLETED":
             failures.append(f"{name}: still {status}")
-        elif (
-            requirement is None
-            and conclusion != "SUCCESS"
-            and not (conclusion == "SKIPPED" and name in OPTIONAL_SKIPPED_CHECKS)
+        elif conclusion != "SUCCESS" and not (
+            conclusion == "SKIPPED" and name in OPTIONAL_SKIPPED_CHECKS
         ):
             failures.append(f"{name}: {conclusion}")
-        elif requirement is not None and conclusion not in requirement.allowed_conclusions:
-            failures.append(f"{name}: {conclusion}")
-        if requirement is not None:
-            reported.add(name)
-    failures.extend(
-        f"{requirement.context}: missing from complete {requirement.kind} manifest"
-        for requirement in manifest
-        if requirement.context not in reported
-    )
+    return failures
+
+
+def _manifest_check_run_failures(
+    head_oid: str,
+    manifest: tuple[CheckRequirement, ...],
+) -> list[str]:
+    """Prove every manifest entry from a canonical exact-head REST check run."""
+    if re.fullmatch(r"[0-9a-f]{40}", head_oid) is None:
+        raise RuntimeError("pull-request head is not one canonical 40-hex SHA")
+    if len(manifest) >= MAX_GITHUB_ITEMS:
+        raise RuntimeError(f"check manifest reached the {MAX_GITHUB_ITEMS}-item safety bound")
+    endpoint = CHECK_RUNS_ENDPOINT.format(head_oid=head_oid)
+    payload = _json_dict(_gh_json("api", endpoint), "exact-head check runs")
+    total_count = payload.get("total_count")
+    if type(total_count) is not int or total_count < 0 or total_count >= MAX_GITHUB_ITEMS:
+        raise RuntimeError(
+            f"exact-head check runs reached the {MAX_GITHUB_ITEMS}-item safety bound"
+        )
+    runs = _json_dicts(payload.get("check_runs"), "exact-head check runs")
+    if total_count != len(runs):
+        raise RuntimeError("exact-head check runs did not return one complete page")
+
+    expected = {requirement.context: requirement for requirement in manifest}
+    latest: dict[str, dict[str, object]] = {}
+    seen_ids: dict[str, set[int]] = {}
+    wrong_producer: set[str] = set()
+    for run in runs:
+        name = run.get("name")
+        if not isinstance(name, str) or not name:
+            raise RuntimeError("exact-head check run has no name")
+        requirement = expected.get(name)
+        if requirement is None:
+            continue
+        run_id = run.get("id")
+        if type(run_id) is not int or run_id <= 0:
+            raise RuntimeError(f"exact-head check run {name!r} has no positive integer id")
+        started_at = run.get("started_at")
+        if started_at is not None and not isinstance(started_at, str):
+            raise RuntimeError(f"exact-head check run {name!r} has malformed started_at")
+        run_head = run.get("head_sha")
+        if not isinstance(run_head, str) or run_head != head_oid:
+            raise RuntimeError(
+                f"exact-head check run {name!r} has wrong head: "
+                f"expected {head_oid}, found {run_head}"
+            )
+        app = _json_dict(run.get("app"), f"exact-head check run {name!r} app")
+        app_id = app.get("id")
+        app_slug = app.get("slug")
+        if type(app_id) is not int or not isinstance(app_slug, str) or not app_slug:
+            raise RuntimeError(f"exact-head check run {name!r} has malformed app identity")
+        if app_id != requirement.producer.integration_id or app_slug != requirement.producer.slug:
+            wrong_producer.add(name)
+            continue
+        context_ids = seen_ids.setdefault(name, set())
+        if run_id in context_ids:
+            raise RuntimeError(f"exact-head check run {name!r} repeats id {run_id}")
+        context_ids.add(run_id)
+        prior = latest.get(name)
+        prior_id = prior.get("id") if prior is not None else 0
+        if type(prior_id) is not int:
+            raise RuntimeError(f"exact-head check run {name!r} has malformed prior id")
+        # Check-run IDs are monotonic unique API identities; queued runs may have no started_at.
+        if prior is None or run_id > prior_id:
+            latest[name] = run
+
+    failures: list[str] = []
+    for requirement in manifest:
+        selected = latest.get(requirement.context)
+        if selected is None:
+            if requirement.context in wrong_producer:
+                failures.append(
+                    f"{requirement.context}: missing required producer "
+                    f"{requirement.producer.slug} ({requirement.producer.integration_id})"
+                )
+            else:
+                failures.append(
+                    f"{requirement.context}: missing from complete {requirement.kind} manifest"
+                )
+            continue
+        status = selected.get("status")
+        conclusion = selected.get("conclusion")
+        if not isinstance(status, str) or not status:
+            raise RuntimeError(f"exact-head check run {requirement.context!r} has malformed status")
+        if conclusion is not None and not isinstance(conclusion, str):
+            raise RuntimeError(
+                f"exact-head check run {requirement.context!r} has malformed conclusion"
+            )
+        normalized_status = status.upper()
+        normalized_conclusion = conclusion.upper() if isinstance(conclusion, str) else ""
+        if normalized_status != "COMPLETED":
+            failures.append(f"{requirement.context}: still {normalized_status}")
+        elif normalized_conclusion not in requirement.allowed_conclusions:
+            failures.append(f"{requirement.context}: {normalized_conclusion}")
     return failures
 
 
@@ -858,9 +950,9 @@ def _main() -> int:
     if args.expected_head is not None and args.expected_head != head_oid:
         problems.append(f"expected head {args.expected_head}, found {head_oid}")
     rollup = view.get("statusCheckRollup") or []
-    if not rollup:
-        problems.append("no checks reported on the head commit")
     manifest = manifest_for_base(base_ref) if base_ref in {"dev", "main"} else ()
+    if manifest:
+        problems.extend(_manifest_check_run_failures(head_oid, manifest))
     problems.extend(_rollup_failures(_json_dicts(rollup, "status-check rollup"), manifest))
     advisories = _copilot_advisories(args.pr, view.get("reviews"), head_oid)
     problems.extend(_review_thread_problems(args.pr))

@@ -25,9 +25,9 @@ const MIGRATION_0003_SQL: &str = include_str!("../migrations/0003_h3_reference_c
 const MIGRATION_0004_SQL: &str = include_str!("../migrations/0004_committed_tick_storage.sql");
 const MIGRATION_0005_SQL: &str = include_str!("../migrations/0005_spatial_reference_products.sql");
 const MIGRATION_0006_SQL: &str = include_str!("../migrations/0006_h3_shadow_keys.sql");
-const FRESH_CENSUS: &str = include_str!("fixtures/fresh_schema_epoch_census_v1.txt");
+const FRESH_CENSUS: &str = include_str!("fixtures/fresh_schema_epoch_census_v2.txt");
 const FRESH_CENSUS_WITH_INTEL: &str =
-    include_str!("fixtures/fresh_schema_epoch_census_with_intel_v1.txt");
+    include_str!("fixtures/fresh_schema_epoch_census_with_intel_v2.txt");
 const EPOCH_OWNED_CENSUS_V1: &str = include_str!("fixtures/schema_epoch_owned_census_v1.txt");
 const EPOCH_OWNED_FRESH_CENSUS_V1: &str =
     include_str!("fixtures/schema_epoch_owned_fresh_census_v1.txt");

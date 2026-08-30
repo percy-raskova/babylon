@@ -1191,12 +1191,12 @@ run = "uv run python tools/make_reference_subset.py --source dist/build/marxist-
 # =============================================================================
 
 [tasks."db:up"]
-description = "Build (if needed) + start isolated Postgres 17 via docker compose, wait healthy (port 5433; pinned runtime/package contract)"
-run = "docker compose up -d --wait babylon-pg"
+description = "Build and start isolated Postgres 17 on the marked babylon-pg-alpine-c-utf8-v1 volume (port 5433; exact runtime/locale health contract)"
+run = "docker compose up --build -d --wait babylon-pg"
 
 [tasks."db:start"]
-description = "Alias of db:up (compose up is idempotent)"
-run = "docker compose up -d --wait babylon-pg"
+description = "Alias of db:up (always builds before the idempotent compose start)"
+run = "docker compose up --build -d --wait babylon-pg"
 
 [tasks."db:stop"]
 description = "Stop the isolated Postgres container (maintains data)"
@@ -1207,7 +1207,7 @@ description = "Remove the isolated Postgres container (data volume PRESERVED; se
 run = "docker compose down"
 
 [tasks."db:nuke"]
-description = "Remove container AND named data volume (bind-mounted BABYLON_PG_DATA dirs are NOT deleted)"
+description = "Remove container AND babylon-pg-alpine-c-utf8-v1 (legacy babylon-pg-data and bind mounts are NOT deleted)"
 run = "docker compose down -v"
 
 [tasks."db:query"]

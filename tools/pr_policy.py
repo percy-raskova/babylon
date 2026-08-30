@@ -9,15 +9,28 @@ CheckKind = Literal["blocking", "advisory"]
 
 
 @dataclass(frozen=True, slots=True)
+class CheckProducer:
+    """Immutable GitHub App identity allowed to produce one check."""
+
+    integration_id: int
+    slug: str
+
+
+@dataclass(frozen=True, slots=True)
 class CheckRequirement:
     """One expected check and its exact accepted conclusions."""
 
     context: str
     kind: CheckKind
     allowed_conclusions: frozenset[str]
+    producer: CheckProducer
 
 
 BASELINE_CEREMONY_CONTEXT: Final[str] = "Baseline Ceremony Gate (§6.5 provenance)"
+GITHUB_ACTIONS_PRODUCER: Final[CheckProducer] = CheckProducer(
+    integration_id=15368,
+    slug="github-actions",
+)
 
 
 DEV_CHECK_MANIFEST: Final[tuple[CheckRequirement, ...]] = (
@@ -25,34 +38,55 @@ DEV_CHECK_MANIFEST: Final[tuple[CheckRequirement, ...]] = (
         "Fast Gate (hygiene, lint, format, imports, types, lock)",
         "blocking",
         frozenset({"SUCCESS"}),
+        GITHUB_ACTIONS_PRODUCER,
     ),
-    CheckRequirement("Unit Tests (xdist, coverage gate)", "blocking", frozenset({"SUCCESS"})),
+    CheckRequirement(
+        "Unit Tests (xdist, coverage gate)",
+        "blocking",
+        frozenset({"SUCCESS"}),
+        GITHUB_ACTIONS_PRODUCER,
+    ),
     CheckRequirement(
         "Determinism Gate (byte-identical dense goldens)",
         "blocking",
         frozenset({"SUCCESS"}),
+        GITHUB_ACTIONS_PRODUCER,
     ),
-    CheckRequirement("Secret Scan (gitleaks, full history)", "blocking", frozenset({"SUCCESS"})),
+    CheckRequirement(
+        "Secret Scan (gitleaks, full history)",
+        "blocking",
+        frozenset({"SUCCESS"}),
+        GITHUB_ACTIONS_PRODUCER,
+    ),
     CheckRequirement(
         "IaC Config Scan (trivy, HIGH+CRITICAL blocking)",
         "blocking",
         frozenset({"SUCCESS"}),
+        GITHUB_ACTIONS_PRODUCER,
     ),
     CheckRequirement(
         "Security Audit (pip-audit policy — blocking since item-41)",
         "blocking",
         frozenset({"SUCCESS"}),
+        GITHUB_ACTIONS_PRODUCER,
     ),
     CheckRequirement(
         "Rust Gate (fmt, clippy, test, doc — rust/ workspace)",
         "blocking",
         frozenset({"SUCCESS"}),
+        GITHUB_ACTIONS_PRODUCER,
     ),
-    CheckRequirement(BASELINE_CEREMONY_CONTEXT, "blocking", frozenset({"SUCCESS"})),
+    CheckRequirement(
+        BASELINE_CEREMONY_CONTEXT,
+        "blocking",
+        frozenset({"SUCCESS"}),
+        GITHUB_ACTIONS_PRODUCER,
+    ),
     CheckRequirement(
         "Postgres Integration Tier (PG 17, pinned runtime)",
         "blocking",
         frozenset({"SUCCESS"}),
+        GITHUB_ACTIONS_PRODUCER,
     ),
 )
 
@@ -61,36 +95,43 @@ MAIN_QUALIFICATION_CHECK_MANIFEST: Final[tuple[CheckRequirement, ...]] = (
         "Main Qualification / Event Contract",
         "blocking",
         frozenset({"SUCCESS"}),
+        GITHUB_ACTIONS_PRODUCER,
     ),
     CheckRequirement(
         "Main Qualification / Non-Unit Behavioral Contracts",
         "blocking",
         frozenset({"SUCCESS"}),
+        GITHUB_ACTIONS_PRODUCER,
     ),
     CheckRequirement(
         "Main Qualification / PostgreSQL Determinism Bundle",
         "blocking",
         frozenset({"SUCCESS"}),
+        GITHUB_ACTIONS_PRODUCER,
     ),
     CheckRequirement(
         "Main Qualification / Reference-Data Contracts",
         "blocking",
         frozenset({"SUCCESS"}),
+        GITHUB_ACTIONS_PRODUCER,
     ),
     CheckRequirement(
         "Main Qualification / Release Documentation",
         "blocking",
         frozenset({"SUCCESS"}),
+        GITHUB_ACTIONS_PRODUCER,
+    ),
+    CheckRequirement(
+        "Main Qualification / Container Image Scan",
+        "blocking",
+        frozenset({"SUCCESS"}),
+        GITHUB_ACTIONS_PRODUCER,
     ),
     CheckRequirement(
         "Main Qualification / AI Tests (advisory)",
         "advisory",
         frozenset({"SUCCESS", "FAILURE", "NEUTRAL", "SKIPPED"}),
-    ),
-    CheckRequirement(
-        "Main Qualification / Container Image Scan (advisory)",
-        "advisory",
-        frozenset({"SUCCESS", "FAILURE", "NEUTRAL", "SKIPPED"}),
+        GITHUB_ACTIONS_PRODUCER,
     ),
 )
 

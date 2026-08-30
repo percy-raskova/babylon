@@ -2,9 +2,10 @@
 
 use babylon_persistence::{
     adopt_legacy_schema, compiled_schema_migrations, legacy_adopter_sql_statements,
-    validate_legacy_connection_target, LegacyAdopterError, LegacyAdopterOperation,
-    LegacyAdopterSqlKind, LegacyBoundedResource, LegacyConnectionTargetRejection, LegacyObjectKey,
-    LegacyObjectKind, LegacyOwnerAuthorityDisposition, LegacyStampClass,
+    parse_legacy_census_fixture, validate_legacy_connection_target, validate_legacy_stamps,
+    LegacyAdopterError, LegacyAdopterOperation, LegacyAdopterSqlKind, LegacyBoundedResource,
+    LegacyConnectionTargetRejection, LegacyObjectKey, LegacyObjectKind,
+    LegacyOwnerAuthorityDisposition, LegacyStampClass, LegacyStampDefinition,
     LEGACY_ADOPTER_CONNECT_TIMEOUT, LEGACY_ADOPTER_STARTUP_OPTIONS,
     LEGACY_ADOPTER_TCP_USER_TIMEOUT, LEGACY_CENSUS_FIXTURE, LEGACY_STAMP_CATALOG,
     MAX_LEGACY_CENSUS_FIXTURE_BYTES, MAX_LEGACY_CENSUS_ROWS,
@@ -15,7 +16,11 @@ use babylon_persistence::{
 use postgres::config::Host;
 use postgres::error::SqlState;
 use postgres::{Client, Config, IsolationLevel, NoTls};
+use sha2::{Digest, Sha256};
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
+use std::fs::OpenOptions;
+use std::io::Write as IoWrite;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::str::FromStr;
@@ -37,13 +42,30 @@ const DISPOSABLE_ACK_ENV: &str = "BABYLON_LEGACY_ADOPTER_DISPOSABLE_ACK";
 const DISPOSABLE_ACK_VALUE: &str =
     "I_UNDERSTAND_PER20_DROPS_SCRATCH_DATABASES_ROLES_AND_CREATED_BABYLON_INTEL";
 const DISPOSABLE_CANARY_ENV: &str = "BABYLON_LEGACY_ADOPTER_DISPOSABLE_CANARY";
-const CENSUS_EXPORT_ENV: &str = "BABYLON_LEGACY_ADOPTER_CENSUS_EXPORT";
+const CURRENT_CENSUS_V2_FOCUS: &str = "runtime_census_v2";
+const CURRENT_CENSUS_V2_EXPORT_DIR_ENV: &str = "BABYLON_CURRENT_CENSUS_V2_EXPORT_DIR";
 const LIVE_FOCUS_ENV: &str = "BABYLON_LEGACY_ADOPTER_LIVE_FOCUS";
 const VALID_DISPOSABLE_CANARY: &str = "0123456789abcdef0123456789abcdef";
 const OWNER_PASSWORD: &str = "per20-owner-password";
 const SESSION_UUID: &str = "01234567-89ab-cdef-0123-456789abcdef";
 const SECOND_UUID: &str = "fedcba98-7654-3210-fedc-ba9876543210";
 const LIVE_TASK_SECONDS: &str = "45s";
+const LEGACY_CENSUS_V1_ARCHIVE: &str = include_str!("../src/fixtures/legacy_adopter_census_v1.txt");
+const FRESH_CENSUS_V1_ARCHIVE: &str =
+    include_str!("../src/fixtures/fresh_schema_epoch_census_v1.txt");
+const FRESH_CENSUS_WITH_INTEL_V1_ARCHIVE: &str =
+    include_str!("../src/fixtures/fresh_schema_epoch_census_with_intel_v1.txt");
+const CURRENT_POSTGRES_IMAGE: &str = "postgis/postgis:17-3.5-alpine@sha256:\
+08f4b1e1f4a571008c60272ceb9e0d1f9f8f643792d006b74a35b1bec44c2218";
+const CURRENT_CENSUS_SQL_BYTES: &[u8] = include_bytes!("../src/legacy_adopter_census.sql");
+const MAX_CURRENT_CENSUS_V2_DRIFT_ROWS: usize = MAX_LEGACY_CENSUS_ROWS * 2;
+const MAX_CURRENT_CENSUS_V2_INLINE_PAYLOAD_BYTES: usize = 65_536;
+const MAX_CURRENT_CENSUS_V2_PAYLOAD_ROW_BYTES: usize = 1_048_576;
+const MAX_CURRENT_CENSUS_V2_REPORT_BYTES: usize = 8_388_608;
+const CURRENT_CENSUS_V2_LEGACY_FILE: &str = "legacy_adopter_census_v2.txt";
+const CURRENT_CENSUS_V2_FRESH_FILE: &str = "fresh_schema_epoch_census_v2.txt";
+const CURRENT_CENSUS_V2_FRESH_WITH_INTEL_FILE: &str = "fresh_schema_epoch_census_with_intel_v2.txt";
+const CURRENT_CENSUS_V2_REPORT_FILE: &str = "current_census_v2_drift_report.txt";
 
 struct LivePhaseReceipts {
     suite_start: Instant,
@@ -208,6 +230,16 @@ fn run_first_live_phases(
     owner: &str,
 ) -> bool {
     if std::env::var_os(LIVE_FOCUS_ENV).as_deref()
+        == Some(std::ffi::OsStr::new(CURRENT_CENSUS_V2_FOCUS))
+    {
+        live_phase!(
+            phases,
+            "runtime_census_v2",
+            export_current_census_v2(base, first_config, second_config, owner)
+        );
+        return false;
+    }
+    if std::env::var_os(LIVE_FOCUS_ENV).as_deref()
         == Some(std::ffi::OsStr::new("schema_epoch_v5_census"))
     {
         export_fresh_v5_epoch_census(base);
@@ -237,9 +269,6 @@ fn run_first_live_phases(
         verify_canonical_fixture_bytes(first_config, second_config)
     );
     if run_focused_live_phase(phases, base, template, first_config, owner) {
-        return false;
-    }
-    if std::env::var_os(CENSUS_EXPORT_ENV).is_some() {
         return false;
     }
     live_phase!(
@@ -612,6 +641,754 @@ fn run_second_live_phases(
     );
 }
 
+#[derive(Clone, Copy)]
+enum CurrentCensusV2Variant {
+    LegacyAdopter,
+    FreshSchemaEpoch,
+    FreshSchemaEpochWithIntel,
+}
+
+impl CurrentCensusV2Variant {
+    fn title(self) -> &'static str {
+        match self {
+            Self::LegacyAdopter => "legacy adopter",
+            Self::FreshSchemaEpoch => "fresh schema epoch",
+            Self::FreshSchemaEpochWithIntel => "fresh schema epoch with babylon_intel",
+        }
+    }
+
+    fn records_legacy_stamps(self) -> bool {
+        matches!(self, Self::LegacyAdopter)
+    }
+
+    fn records_optional_intel(self) -> bool {
+        matches!(self, Self::FreshSchemaEpochWithIntel)
+    }
+}
+
+type CurrentCensusKey = (String, String, String);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CurrentCensusV2RuntimeProvenance {
+    postgres_server_version_num: String,
+    locale_provider: String,
+    locale: String,
+    encoding: String,
+    postgis_version: String,
+    pgvector_version: String,
+    h3_version: String,
+    optional_intel: bool,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct CurrentCensusDrift {
+    change: &'static str,
+    key: CurrentCensusKey,
+    old_digest: Option<String>,
+    new_digest: Option<String>,
+}
+
+fn export_current_census_v2(
+    base: &Config,
+    first_config: &Config,
+    second_config: &Config,
+    owner: &str,
+) {
+    let admin = admin_config(base);
+    assert!(
+        !try_cluster_role_exists(&admin, "babylon_intel").unwrap(),
+        "current-census-v2 export requires an initially absent babylon_intel role"
+    );
+
+    let fresh_without_intel_first = hardened_census_snapshot(first_config);
+    let fresh_without_intel_second = hardened_census_snapshot(second_config);
+    assert_eq!(fresh_without_intel_first, fresh_without_intel_second);
+    let fresh_provenance_first = current_census_v2_runtime_provenance(first_config);
+    let fresh_provenance_second = current_census_v2_runtime_provenance(second_config);
+    assert_eq!(fresh_provenance_first, fresh_provenance_second);
+    assert_current_census_v2_runtime(&fresh_provenance_first, false);
+    let fresh_fixture = current_census_v2_fixture_bytes(
+        CurrentCensusV2Variant::FreshSchemaEpoch,
+        &fresh_without_intel_first,
+        &fresh_provenance_first,
+    );
+    let fresh_drift = current_census_drift(FRESH_CENSUS_V1_ARCHIVE, &fresh_without_intel_first);
+    let fresh_payloads =
+        census_payloads_for_drift(first_config, &current_census_payload_keys(&fresh_drift));
+
+    run_python_repair(first_config);
+    run_python_repair(second_config);
+    let legacy_first = hardened_authority_snapshot(first_config);
+    let legacy_second = hardened_authority_snapshot(second_config);
+    assert_eq!(legacy_first, legacy_second);
+    let legacy_stamps_first = validated_current_stamp_definitions(&legacy_first);
+    let legacy_stamps_second = validated_current_stamp_definitions(&legacy_second);
+    assert_eq!(legacy_stamps_first, legacy_stamps_second);
+    let legacy_provenance_first = current_census_v2_runtime_provenance(first_config);
+    let legacy_provenance_second = current_census_v2_runtime_provenance(second_config);
+    assert_eq!(legacy_provenance_first, legacy_provenance_second);
+    assert_current_census_v2_runtime(&legacy_provenance_first, true);
+    assert!(try_cluster_role_exists(&admin, "babylon_intel").unwrap());
+
+    let intel_first =
+        ScratchDatabase::empty(base, "current_census_v2_intel_a", database_user(base));
+    let intel_second = ScratchDatabase::empty(base, "current_census_v2_intel_b", owner);
+    let intel_first_config = intel_first.config(base);
+    let intel_second_config = intel_second.config_as(base, owner, OWNER_PASSWORD);
+    let fresh_with_intel_first = hardened_census_snapshot(&intel_first_config);
+    let fresh_with_intel_second = hardened_census_snapshot(&intel_second_config);
+    assert_eq!(fresh_with_intel_first, fresh_with_intel_second);
+    let intel_provenance_first = current_census_v2_runtime_provenance(&intel_first_config);
+    let intel_provenance_second = current_census_v2_runtime_provenance(&intel_second_config);
+    assert_eq!(intel_provenance_first, intel_provenance_second);
+    assert_current_census_v2_runtime(&intel_provenance_first, true);
+
+    let legacy_fixture = current_census_v2_fixture_bytes(
+        CurrentCensusV2Variant::LegacyAdopter,
+        &legacy_first,
+        &legacy_provenance_first,
+    );
+    let fresh_with_intel_fixture = current_census_v2_fixture_bytes(
+        CurrentCensusV2Variant::FreshSchemaEpochWithIntel,
+        &fresh_with_intel_first,
+        &intel_provenance_first,
+    );
+
+    let legacy_drift = current_census_drift(LEGACY_CENSUS_V1_ARCHIVE, &legacy_first);
+    let fresh_with_intel_drift =
+        current_census_drift(FRESH_CENSUS_WITH_INTEL_V1_ARCHIVE, &fresh_with_intel_first);
+    let legacy_payloads =
+        census_payloads_for_drift(first_config, &current_census_payload_keys(&legacy_drift));
+    let fresh_with_intel_payloads = census_payloads_for_drift(
+        &intel_first_config,
+        &current_census_payload_keys(&fresh_with_intel_drift),
+    );
+    let drift_report = current_census_v2_drift_report(&[
+        ("legacy_adopter", legacy_drift.as_slice(), &legacy_payloads),
+        (
+            "fresh_schema_epoch",
+            fresh_drift.as_slice(),
+            &fresh_payloads,
+        ),
+        (
+            "fresh_schema_epoch_with_intel",
+            fresh_with_intel_drift.as_slice(),
+            &fresh_with_intel_payloads,
+        ),
+    ]);
+
+    intel_first.cleanup();
+    intel_second.cleanup();
+
+    let output_dir = current_census_v2_export_dir();
+    for (name, contents, max_bytes) in [
+        (
+            CURRENT_CENSUS_V2_LEGACY_FILE,
+            legacy_fixture.as_slice(),
+            MAX_LEGACY_CENSUS_FIXTURE_BYTES,
+        ),
+        (
+            CURRENT_CENSUS_V2_FRESH_FILE,
+            fresh_fixture.as_slice(),
+            MAX_LEGACY_CENSUS_FIXTURE_BYTES,
+        ),
+        (
+            CURRENT_CENSUS_V2_FRESH_WITH_INTEL_FILE,
+            fresh_with_intel_fixture.as_slice(),
+            MAX_LEGACY_CENSUS_FIXTURE_BYTES,
+        ),
+        (
+            CURRENT_CENSUS_V2_REPORT_FILE,
+            drift_report.as_slice(),
+            MAX_CURRENT_CENSUS_V2_REPORT_BYTES,
+        ),
+    ] {
+        write_current_census_v2_artifact(&output_dir, name, contents, max_bytes);
+    }
+}
+
+fn hardened_census_snapshot(config: &Config) -> AuthoritySnapshot {
+    let mut bounded = config.clone();
+    bounded
+        .connect_timeout(LEGACY_ADOPTER_CONNECT_TIMEOUT)
+        .tcp_user_timeout(LEGACY_ADOPTER_TCP_USER_TIMEOUT)
+        .options(LEGACY_ADOPTER_STARTUP_OPTIONS);
+    let mut client = bounded.connect(NoTls).unwrap();
+    AuthoritySnapshot {
+        census: census_snapshot(&mut client),
+        stamps: Vec::new(),
+        authority_schemas: Vec::new(),
+    }
+}
+
+fn hardened_authority_snapshot(config: &Config) -> AuthoritySnapshot {
+    let mut bounded = config.clone();
+    bounded
+        .connect_timeout(LEGACY_ADOPTER_CONNECT_TIMEOUT)
+        .tcp_user_timeout(LEGACY_ADOPTER_TCP_USER_TIMEOUT)
+        .options(LEGACY_ADOPTER_STARTUP_OPTIONS);
+    let mut client = bounded.connect(NoTls).unwrap();
+    authority_snapshot(&mut client)
+}
+
+fn current_census_v2_runtime_provenance(config: &Config) -> CurrentCensusV2RuntimeProvenance {
+    let mut bounded = config.clone();
+    bounded
+        .connect_timeout(LEGACY_ADOPTER_CONNECT_TIMEOUT)
+        .tcp_user_timeout(LEGACY_ADOPTER_TCP_USER_TIMEOUT)
+        .options(LEGACY_ADOPTER_STARTUP_OPTIONS);
+    let mut client = bounded.connect(NoTls).unwrap();
+    let row = client
+        .query_one(
+            "SELECT pg_catalog.current_setting('server_version_num'), \
+                    CASE database_row.datlocprovider \
+                      WHEN 'b' THEN 'builtin' \
+                      WHEN 'c' THEN 'libc' \
+                      WHEN 'i' THEN 'icu' \
+                      ELSE database_row.datlocprovider::pg_catalog.text \
+                    END, \
+                    pg_catalog.coalesce(\
+                        pg_catalog.nullif(database_row.datlocale, ''), \
+                        database_row.datcollate\
+                    ), \
+                    pg_catalog.pg_encoding_to_char(database_row.encoding), \
+                    (SELECT extension_row.extversion::pg_catalog.text \
+                     FROM pg_catalog.pg_extension AS extension_row \
+                     WHERE extension_row.extname = 'postgis'), \
+                    (SELECT extension_row.extversion::pg_catalog.text \
+                     FROM pg_catalog.pg_extension AS extension_row \
+                     WHERE extension_row.extname = 'vector'), \
+                    (SELECT available.default_version::pg_catalog.text \
+                     FROM pg_catalog.pg_available_extensions AS available \
+                     WHERE available.name = 'h3'), \
+                    EXISTS (\
+                        SELECT 1 \
+                        FROM pg_catalog.pg_roles AS role_row \
+                        WHERE role_row.rolname = 'babylon_intel'\
+                    ) \
+             FROM pg_catalog.pg_database AS database_row \
+             WHERE database_row.datname = pg_catalog.current_database()",
+            &[],
+        )
+        .unwrap();
+    CurrentCensusV2RuntimeProvenance {
+        postgres_server_version_num: row.try_get(0).unwrap(),
+        locale_provider: row.try_get(1).unwrap(),
+        locale: row.try_get(2).unwrap(),
+        encoding: row.try_get(3).unwrap(),
+        postgis_version: row.try_get(4).unwrap(),
+        pgvector_version: row.try_get(5).unwrap(),
+        h3_version: row.try_get(6).unwrap(),
+        optional_intel: row.try_get(7).unwrap(),
+    }
+}
+
+fn assert_current_census_v2_runtime(
+    actual: &CurrentCensusV2RuntimeProvenance,
+    optional_intel: bool,
+) {
+    assert_eq!(
+        actual,
+        &CurrentCensusV2RuntimeProvenance {
+            postgres_server_version_num: "170011".to_owned(),
+            locale_provider: "builtin".to_owned(),
+            locale: "C.UTF-8".to_owned(),
+            encoding: "UTF8".to_owned(),
+            postgis_version: "3.5.7".to_owned(),
+            pgvector_version: "0.8.5".to_owned(),
+            h3_version: "4.5.0".to_owned(),
+            optional_intel,
+        }
+    );
+}
+
+fn validated_current_stamp_definitions(snapshot: &AuthoritySnapshot) -> Vec<LegacyStampDefinition> {
+    assert_eq!(
+        snapshot.authority_schemas,
+        ["babylon_ref".to_owned(), "babylon_state".to_owned()]
+    );
+    assert_eq!(snapshot.stamps.len(), 2);
+    let mut digests = Vec::with_capacity(2);
+    for (digest, digest_bytes) in snapshot.stamps.iter().take(MAX_LEGACY_STAMP_ROWS) {
+        assert_eq!(*digest_bytes, 64);
+        assert_eq!(digest.len(), 64);
+        digests.push(digest.clone());
+    }
+    let report = validate_legacy_stamps(&digests).expect("observed current stamps must classify");
+    let observed = report
+        .matches()
+        .iter()
+        .take(MAX_LEGACY_STAMP_ROWS)
+        .map(|stamp_match| stamp_match.definition)
+        .collect::<Vec<_>>();
+    let expected = LEGACY_STAMP_CATALOG
+        .iter()
+        .copied()
+        .filter(|definition| definition.class == LegacyStampClass::RequiredCurrent)
+        .take(2)
+        .collect::<Vec<_>>();
+    assert_eq!(observed, expected);
+    observed
+}
+
+fn current_census_sql_sha256() -> String {
+    sha256_hex(CURRENT_CENSUS_SQL_BYTES)
+}
+
+fn current_census_startup_options() -> String {
+    let settings = LEGACY_ADOPTER_STARTUP_OPTIONS
+        .strip_prefix("-c ")
+        .unwrap()
+        .split(" -c ")
+        .take(9)
+        .collect::<Vec<_>>();
+    assert_eq!(settings.len(), 8);
+    settings.join("|")
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    let mut hex = String::with_capacity(64);
+    for byte in digest.iter().take(32) {
+        write!(&mut hex, "{byte:02x}").unwrap();
+    }
+    hex
+}
+
+fn current_census_v2_fixture_bytes(
+    variant: CurrentCensusV2Variant,
+    snapshot: &AuthoritySnapshot,
+    provenance: &CurrentCensusV2RuntimeProvenance,
+) -> Vec<u8> {
+    let mut output = String::with_capacity(MAX_LEGACY_CENSUS_FIXTURE_BYTES);
+    writeln!(
+        output,
+        "# Babylon PER-272 current {} census fixture v2",
+        variant.title()
+    )
+    .unwrap();
+    writeln!(output, "# provenance|source|legacy_adopter_census.sql").unwrap();
+    writeln!(
+        output,
+        "# provenance|census_sql_sha256|{}",
+        current_census_sql_sha256()
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "# provenance|postgres_image|{CURRENT_POSTGRES_IMAGE}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "# provenance|postgres_server_version_num|{}",
+        provenance.postgres_server_version_num
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "# provenance|locale_provider|{}",
+        provenance.locale_provider
+    )
+    .unwrap();
+    writeln!(output, "# provenance|locale|{}", provenance.locale).unwrap();
+    writeln!(output, "# provenance|encoding|{}", provenance.encoding).unwrap();
+    writeln!(
+        output,
+        "# provenance|postgis_version|{}",
+        provenance.postgis_version
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "# provenance|pgvector_version|{}",
+        provenance.pgvector_version
+    )
+    .unwrap();
+    writeln!(output, "# provenance|h3_version|{}", provenance.h3_version).unwrap();
+    writeln!(
+        output,
+        "# provenance|artifact_contract|digest-pinned-base|checksum-pinned-sources|\
+exact-final-runtime-packages|behaviorally-verified|not-byte-reproducible"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "# provenance|startup_options|{}",
+        current_census_startup_options()
+    )
+    .unwrap();
+    assert_eq!(
+        provenance.optional_intel,
+        variant.records_optional_intel() || variant.records_legacy_stamps()
+    );
+    if provenance.optional_intel {
+        writeln!(output, "# provenance|optional_cluster_role|babylon_intel").unwrap();
+    }
+    if variant.records_legacy_stamps() {
+        let stamp_definitions = validated_current_stamp_definitions(snapshot);
+        writeln!(
+            output,
+            "# provenance|authority_schemas|{}",
+            snapshot.authority_schemas.join(",")
+        )
+        .unwrap();
+        for definition in stamp_definitions.iter().take(MAX_LEGACY_STAMP_ROWS) {
+            writeln!(
+                output,
+                "# provenance|{}|chunks={}|digest={}",
+                definition.name, definition.chunk_count, definition.digest_hex
+            )
+            .unwrap();
+        }
+    } else {
+        assert!(snapshot.stamps.is_empty());
+        assert!(snapshot.authority_schemas.is_empty());
+    }
+    writeln!(output, "# format|kind|schema|name|sha256").unwrap();
+    for ((kind, schema, name, digest), overflow) in
+        snapshot.census.iter().take(MAX_LEGACY_CENSUS_ROWS)
+    {
+        assert_eq!(overflow, &(None, None, None));
+        writeln!(output, "{kind}|{schema}|{name}|{digest}").unwrap();
+    }
+    assert!(output.len() <= MAX_LEGACY_CENSUS_FIXTURE_BYTES);
+    let fixture_text = output.as_str();
+    parse_legacy_census_fixture(fixture_text)
+        .expect("current-census-v2 candidate must satisfy the bounded fixture parser");
+    output.into_bytes()
+}
+
+fn current_census_drift(
+    archived_fixture: &str,
+    current: &AuthoritySnapshot,
+) -> Vec<CurrentCensusDrift> {
+    let archived = census_fixture_digest_map(archived_fixture);
+    let current = authority_digest_map(current);
+    let keys = archived
+        .keys()
+        .chain(current.keys())
+        .take(MAX_CURRENT_CENSUS_V2_DRIFT_ROWS + 1)
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    assert!(keys.len() <= MAX_CURRENT_CENSUS_V2_DRIFT_ROWS);
+    let mut drift = Vec::new();
+    for key in keys.iter().take(MAX_CURRENT_CENSUS_V2_DRIFT_ROWS) {
+        let old_digest = archived.get(key).cloned();
+        let new_digest = current.get(key).cloned();
+        let change = match (&old_digest, &new_digest) {
+            (Some(old), Some(new)) if old != new => "changed",
+            (Some(_), None) => "missing",
+            (None, Some(_)) => "extra",
+            _ => continue,
+        };
+        drift.push(CurrentCensusDrift {
+            change,
+            key: key.clone(),
+            old_digest,
+            new_digest,
+        });
+    }
+    assert!(drift.len() <= MAX_CURRENT_CENSUS_V2_DRIFT_ROWS);
+    drift
+}
+
+fn census_fixture_digest_map(fixture: &str) -> BTreeMap<CurrentCensusKey, String> {
+    parse_legacy_census_fixture(fixture).expect("archived census fixture must remain parseable");
+    let mut rows = BTreeMap::new();
+    for line in fixture
+        .lines()
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .take(MAX_LEGACY_CENSUS_ROWS)
+    {
+        let mut fields = line.split('|');
+        let key = (
+            fields.next().unwrap().to_owned(),
+            fields.next().unwrap().to_owned(),
+            fields.next().unwrap().to_owned(),
+        );
+        let digest = fields.next().unwrap().to_owned();
+        assert!(fields.next().is_none());
+        assert!(rows.insert(key, digest).is_none());
+    }
+    rows
+}
+
+fn authority_digest_map(snapshot: &AuthoritySnapshot) -> BTreeMap<CurrentCensusKey, String> {
+    let mut rows = BTreeMap::new();
+    for ((kind, schema, name, digest), overflow) in
+        snapshot.census.iter().take(MAX_LEGACY_CENSUS_ROWS)
+    {
+        assert_eq!(overflow, &(None, None, None));
+        assert!(rows
+            .insert((kind.clone(), schema.clone(), name.clone()), digest.clone(),)
+            .is_none());
+    }
+    rows
+}
+
+fn current_census_payload_keys(drift: &[CurrentCensusDrift]) -> Vec<CurrentCensusKey> {
+    drift
+        .iter()
+        .take(MAX_CURRENT_CENSUS_V2_DRIFT_ROWS)
+        .filter(|item| item.new_digest.is_some())
+        .map(|item| item.key.clone())
+        .collect()
+}
+
+fn census_payloads_for_drift(
+    config: &Config,
+    keys: &[CurrentCensusKey],
+) -> BTreeMap<CurrentCensusKey, String> {
+    if keys.is_empty() {
+        return BTreeMap::new();
+    }
+    assert!(keys.len() <= MAX_CURRENT_CENSUS_V2_DRIFT_ROWS);
+    const DIGEST_PROJECTION: &str = "pg_catalog.encode(\n            \
+pg_catalog.sha256(pg_catalog.convert_to(objects.payload::pg_catalog.text, 'UTF8')),\n            \
+'hex'\n        ) AS digest_hex";
+    const OUTPUT_TAIL: &str = "FROM catalog_output AS output\n\
+ORDER BY output.kind, output.schema_name, output.object_name\nLIMIT $1";
+    const FILTERED_OUTPUT_TAIL: &str = "FROM catalog_output AS output\n\
+JOIN ROWS FROM (\n    pg_catalog.unnest($7::pg_catalog.text[]),\n    \
+pg_catalog.unnest($8::pg_catalog.text[]),\n    \
+pg_catalog.unnest($9::pg_catalog.text[])\n) AS wanted(kind, schema_name, object_name)\n  ON wanted.kind = \
+output.kind\n AND wanted.schema_name = output.schema_name\n AND wanted.object_name = \
+output.object_name\nORDER BY output.kind, output.schema_name, output.object_name\nLIMIT $1";
+    let census_sql = adopter_sql(LegacyAdopterSqlKind::CatalogCensus);
+    assert_eq!(census_sql.matches(DIGEST_PROJECTION).count(), 1);
+    assert_eq!(census_sql.matches(OUTPUT_TAIL).count(), 1);
+    let payload_projection = format!(
+        "CASE\n\
+            WHEN pg_catalog.octet_length(objects.payload::pg_catalog.text) <= \
+{MAX_CURRENT_CENSUS_V2_INLINE_PAYLOAD_BYTES}\n\
+            THEN pg_catalog.jsonb_build_object(\n\
+                'mode', 'inline',\n\
+                'payload_bytes', pg_catalog.octet_length(objects.payload::pg_catalog.text),\n\
+                'payload_sha256', pg_catalog.encode(\n\
+                    pg_catalog.sha256(pg_catalog.convert_to(\n\
+                        objects.payload::pg_catalog.text, 'UTF8'\n\
+                    )),\n\
+                    'hex'\n\
+                ),\n\
+                'payload', objects.payload\n\
+            )\n\
+            ELSE pg_catalog.jsonb_build_object(\n\
+                'mode', 'structural',\n\
+                'payload_bytes', pg_catalog.octet_length(objects.payload::pg_catalog.text),\n\
+                'payload_sha256', pg_catalog.encode(\n\
+                    pg_catalog.sha256(pg_catalog.convert_to(\n\
+                        objects.payload::pg_catalog.text, 'UTF8'\n\
+                    )),\n\
+                    'hex'\n\
+                ),\n\
+                'scalars', coalesce((\n\
+                    SELECT pg_catalog.jsonb_object_agg(field.key, field.value ORDER BY field.key)\n\
+                    FROM pg_catalog.jsonb_each(objects.payload) AS field(key, value)\n\
+                    WHERE pg_catalog.jsonb_typeof(field.value) NOT IN ('array', 'object')\n\
+                      AND pg_catalog.octet_length(field.value::pg_catalog.text) <= 4096\n\
+                ), '{{}}'::pg_catalog.jsonb),\n\
+                'oversize_scalars', coalesce((\n\
+                    SELECT pg_catalog.jsonb_object_agg(\n\
+                        field.key,\n\
+                        pg_catalog.jsonb_build_object(\n\
+                            'type', pg_catalog.jsonb_typeof(field.value),\n\
+                            'bytes', pg_catalog.octet_length(field.value::pg_catalog.text),\n\
+                            'sha256', pg_catalog.encode(\n\
+                                pg_catalog.sha256(pg_catalog.convert_to(\n\
+                                    field.value::pg_catalog.text, 'UTF8'\n\
+                                )),\n\
+                                'hex'\n\
+                            )\n\
+                        )\n\
+                        ORDER BY field.key\n\
+                    )\n\
+                    FROM pg_catalog.jsonb_each(objects.payload) AS field(key, value)\n\
+                    WHERE pg_catalog.jsonb_typeof(field.value) NOT IN ('array', 'object')\n\
+                      AND pg_catalog.octet_length(field.value::pg_catalog.text) > 4096\n\
+                ), '{{}}'::pg_catalog.jsonb),\n\
+                'collections', coalesce((\n\
+                    SELECT pg_catalog.jsonb_object_agg(\n\
+                        field.key,\n\
+                        pg_catalog.jsonb_build_object(\n\
+                            'type', pg_catalog.jsonb_typeof(field.value),\n\
+                            'count', CASE pg_catalog.jsonb_typeof(field.value)\n\
+                                WHEN 'array' THEN pg_catalog.jsonb_array_length(field.value)\n\
+                                ELSE (\n\
+                                    SELECT pg_catalog.count(*)\n\
+                                    FROM pg_catalog.jsonb_object_keys(field.value)\n\
+                                )\n\
+                            END,\n\
+                            'bytes', pg_catalog.octet_length(field.value::pg_catalog.text),\n\
+                            'sha256', pg_catalog.encode(\n\
+                                pg_catalog.sha256(pg_catalog.convert_to(\n\
+                                    field.value::pg_catalog.text, 'UTF8'\n\
+                                )),\n\
+                                'hex'\n\
+                            )\n\
+                        )\n\
+                        ORDER BY field.key\n\
+                    )\n\
+                    FROM pg_catalog.jsonb_each(objects.payload) AS field(key, value)\n\
+                    WHERE pg_catalog.jsonb_typeof(field.value) IN ('array', 'object')\n\
+                ), '{{}}'::pg_catalog.jsonb)\n\
+            )\n\
+        END::pg_catalog.text AS digest_hex"
+    );
+    let payload_sql = census_sql
+        .replacen(DIGEST_PROJECTION, payload_projection.as_str(), 1)
+        .replacen(OUTPUT_TAIL, FILTERED_OUTPUT_TAIL, 1);
+    let kinds = keys.iter().map(|key| key.0.clone()).collect::<Vec<_>>();
+    let schemas = keys.iter().map(|key| key.1.clone()).collect::<Vec<_>>();
+    let names = keys.iter().map(|key| key.2.clone()).collect::<Vec<_>>();
+    let census_limit = i64::try_from(MAX_LEGACY_CENSUS_ROWS + 1).unwrap();
+    let partition_limit = i64::try_from(MAX_LEGACY_PARTITIONS_PER_FAMILY + 1).unwrap();
+    let extension_member_limit = i64::try_from(MAX_LEGACY_EXTENSION_MEMBERS + 1).unwrap();
+    let extension_dependency_address_limit =
+        i64::try_from(MAX_LEGACY_EXTENSION_DEPENDENCY_ADDRESSES + 1).unwrap();
+    let sequence_ownership_limit = i64::try_from(MAX_LEGACY_SEQUENCE_OWNERSHIP + 1).unwrap();
+    let extension_role_identity_limit =
+        i64::try_from(MAX_LEGACY_EXTENSION_ROLE_IDENTITIES + 1).unwrap();
+    let mut bounded = config.clone();
+    bounded
+        .connect_timeout(LEGACY_ADOPTER_CONNECT_TIMEOUT)
+        .tcp_user_timeout(LEGACY_ADOPTER_TCP_USER_TIMEOUT)
+        .options(LEGACY_ADOPTER_STARTUP_OPTIONS);
+    let mut client = bounded.connect(NoTls).unwrap();
+    let rows = client
+        .query(
+            payload_sql.as_str(),
+            &[
+                &census_limit,
+                &partition_limit,
+                &extension_member_limit,
+                &extension_dependency_address_limit,
+                &sequence_ownership_limit,
+                &extension_role_identity_limit,
+                &kinds,
+                &schemas,
+                &names,
+            ],
+        )
+        .unwrap();
+    assert_eq!(rows.len(), keys.len());
+    let mut payloads = BTreeMap::new();
+    let mut total_bytes = 0_usize;
+    for row in rows.iter().take(MAX_CURRENT_CENSUS_V2_DRIFT_ROWS) {
+        let key = (
+            row.try_get::<_, String>(0).unwrap(),
+            row.try_get::<_, String>(1).unwrap(),
+            row.try_get::<_, String>(2).unwrap(),
+        );
+        let payload = row.try_get::<_, String>(3).unwrap();
+        assert_eq!(row.try_get::<_, Option<String>>(4).unwrap(), None);
+        assert_eq!(row.try_get::<_, Option<i64>>(5).unwrap(), None);
+        assert_eq!(row.try_get::<_, Option<i64>>(6).unwrap(), None);
+        assert!(payload.len() <= MAX_CURRENT_CENSUS_V2_PAYLOAD_ROW_BYTES);
+        total_bytes = total_bytes.checked_add(payload.len()).unwrap();
+        assert!(total_bytes <= MAX_CURRENT_CENSUS_V2_REPORT_BYTES);
+        assert!(payloads.insert(key, payload).is_none());
+    }
+    payloads
+}
+
+fn current_census_v2_drift_report(
+    sections: &[(
+        &str,
+        &[CurrentCensusDrift],
+        &BTreeMap<CurrentCensusKey, String>,
+    )],
+) -> Vec<u8> {
+    let mut report = String::with_capacity(MAX_LEGACY_CENSUS_FIXTURE_BYTES);
+    writeln!(report, "# Babylon PER-272 current census v2 drift review").unwrap();
+    writeln!(report, "# status|blocked_pending_exact_payload_comparison").unwrap();
+    writeln!(
+        report,
+        "# contract|v1 fixtures remain immutable archives; candidates are not accepted by this export"
+    )
+    .unwrap();
+    for (variant, drift, payloads) in sections.iter().take(3) {
+        writeln!(report, "variant|{variant}|drift_rows={}", drift.len()).unwrap();
+        for item in drift.iter().take(MAX_CURRENT_CENSUS_V2_DRIFT_ROWS) {
+            let (kind, schema, name) = &item.key;
+            writeln!(
+                report,
+                "drift|{}|{kind}|{schema}|{name}|old={}|new={}",
+                item.change,
+                item.old_digest.as_deref().unwrap_or("absent"),
+                item.new_digest.as_deref().unwrap_or("absent")
+            )
+            .unwrap();
+            writeln!(
+                report,
+                "review|blocked_pending_exact_payload_comparison|{kind}|{schema}|{name}|{}",
+                current_census_drift_context(&item.key)
+            )
+            .unwrap();
+            if let Some(payload) = payloads.get(&item.key) {
+                writeln!(
+                    report,
+                    "current_payload_diagnostic|{kind}|{schema}|{name}|bytes={}|{payload}",
+                    payload.len()
+                )
+                .unwrap();
+            }
+        }
+    }
+    assert!(report.len() <= MAX_CURRENT_CENSUS_V2_REPORT_BYTES);
+    report.into_bytes()
+}
+
+fn current_census_drift_context(key: &CurrentCensusKey) -> &'static str {
+    match (key.0.as_str(), key.1.as_str(), key.2.as_str()) {
+        ("database", "pg_database", "current_database") => {
+            "candidate cause is the PG17.11 Alpine builtin C.UTF-8 runtime envelope; compare exact old/new JSON fields"
+        }
+        ("extension", "pg_extension", "plpgsql") => {
+            "candidate cause is the PostgreSQL-bundled extension catalog moving with PG17.11; compare exact old/new JSON fields"
+        }
+        ("extension", "pg_extension", "postgis") => {
+            "candidate cause is the PostGIS 3.5.2 to 3.5.7 runtime change; compare exact old/new JSON fields"
+        }
+        ("extension", "pg_extension", "vector") => {
+            "logical version remains 0.8.5 but packaging moved to a checksum-pinned source build on Alpine; compare exact old/new JSON fields"
+        }
+        ("partitioned_table", "public", "conservation_audit_log") => {
+            "DDL and census SQL are unchanged; no cause is accepted until an old/new canonical JSON field diff identifies the drift"
+        }
+        _ => "unexpected drift has no accepted explanation; compare exact old/new JSON fields",
+    }
+}
+
+fn current_census_v2_export_dir() -> PathBuf {
+    let output_dir = PathBuf::from(
+        std::env::var_os(CURRENT_CENSUS_V2_EXPORT_DIR_ENV)
+            .expect("runtime_census_v2 requires BABYLON_CURRENT_CENSUS_V2_EXPORT_DIR"),
+    );
+    assert!(output_dir.is_absolute());
+    let metadata = std::fs::symlink_metadata(&output_dir).unwrap();
+    assert!(metadata.file_type().is_dir());
+    assert!(std::fs::read_dir(&output_dir).unwrap().next().is_none());
+    output_dir
+}
+
+fn write_current_census_v2_artifact(
+    output_dir: &Path,
+    name: &str,
+    contents: &[u8],
+    max_bytes: usize,
+) {
+    assert!(contents.len() <= max_bytes);
+    let path = output_dir.join(name);
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .unwrap();
+    IoWrite::write_all(&mut file, contents).unwrap();
+    file.sync_all().unwrap();
+}
+
 fn verify_pinned_postgres_runtime(config: &Config) {
     let mut client = config.connect(NoTls).unwrap();
     let row = client
@@ -624,9 +1401,9 @@ fn verify_pinned_postgres_runtime(config: &Config) {
             &[],
         )
         .unwrap();
-    assert_eq!(row.try_get::<_, String>(0).unwrap(), "170005");
+    assert_eq!(row.try_get::<_, String>(0).unwrap(), "170011");
     assert_eq!(row.try_get::<_, String>(1).unwrap(), "0.8.5");
-    assert_eq!(row.try_get::<_, String>(2).unwrap(), "3.5.2");
+    assert_eq!(row.try_get::<_, String>(2).unwrap(), "3.5.7");
 }
 
 fn verify_raw_non_catalog_bounds(config: &Config) {
@@ -732,9 +1509,6 @@ fn verify_canonical_fixture_bytes(first: &Config, second: &Config) {
     let first_fixture = canonical_fixture_bytes(&authority_snapshot(&mut first_client));
     let second_fixture = canonical_fixture_bytes(&authority_snapshot(&mut second_client));
     assert_eq!(first_fixture, second_fixture);
-    if let Ok(path) = std::env::var(CENSUS_EXPORT_ENV) {
-        std::fs::write(path, first_fixture).unwrap();
-    }
 }
 
 fn canonical_fixture_bytes(snapshot: &AuthoritySnapshot) -> Vec<u8> {
@@ -2352,6 +3126,14 @@ type CensusObjectSnapshot = (String, String, String, String);
 type CensusOverflowSnapshot = (Option<String>, Option<i64>, Option<i64>);
 
 fn authority_snapshot(client: &mut Client) -> AuthoritySnapshot {
+    AuthoritySnapshot {
+        census: census_snapshot(client),
+        stamps: stamp_snapshot(client),
+        authority_schemas: authority_schema_snapshot(client),
+    }
+}
+
+fn census_snapshot(client: &mut Client) -> Vec<(CensusObjectSnapshot, CensusOverflowSnapshot)> {
     let census_limit = i64::try_from(MAX_LEGACY_CENSUS_ROWS + 1).unwrap();
     let partition_limit = i64::try_from(MAX_LEGACY_PARTITIONS_PER_FAMILY + 1).unwrap();
     let extension_member_limit = i64::try_from(MAX_LEGACY_EXTENSION_MEMBERS + 1).unwrap();
@@ -2390,11 +3172,7 @@ fn authority_snapshot(client: &mut Client) -> AuthoritySnapshot {
             ),
         ));
     }
-    AuthoritySnapshot {
-        census,
-        stamps: stamp_snapshot(client),
-        authority_schemas: authority_schema_snapshot(client),
-    }
+    census
 }
 
 fn database_digest(snapshot: &AuthoritySnapshot) -> &str {
@@ -2979,12 +3757,12 @@ fn preflight_disposable_harness(config: &Config) {
     assert_eq!(
         runtime,
         (
-            Ok("170005".into()),
+            Ok("170011".into()),
             Ok(Some(canary)),
             Ok("test".into()),
             Ok("postgres".into()),
             Ok(true),
-            Ok(Some("3.5.2".into())),
+            Ok(Some("3.5.7".into())),
             Ok(Some("0.8.5".into())),
             Ok(Some("4.5.0".into())),
             Ok("on".into()),

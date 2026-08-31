@@ -234,6 +234,7 @@ impl StableWorldV1 {
 pub struct TickPayloadV1 {
     canonical_bytes: Vec<u8>,
     digest: TickPayloadDigestV1,
+    event_section_digest: [u8; 32],
 }
 
 impl TickPayloadV1 {
@@ -247,6 +248,10 @@ impl TickPayloadV1 {
     #[must_use]
     pub const fn digest(&self) -> TickPayloadDigestV1 {
         self.digest
+    }
+
+    pub(crate) const fn event_section_digest(&self) -> [u8; 32] {
+        self.event_section_digest
     }
 }
 
@@ -530,6 +535,7 @@ fn encode_tick_payload_with_order<'a>(
         });
     }
     let sections = encode_tick_payload_sections_v1(outcomes, events, receipts, resolver)?;
+    let event_section_digest = sha256_of(sections.events());
     let mut writer = Writer::new("tick payload");
     writer.extend(TICK_PAYLOAD_DOMAIN)?;
     writer.u32(TICK_PAYLOAD_LAYOUT_VERSION_V1)?;
@@ -547,6 +553,7 @@ fn encode_tick_payload_with_order<'a>(
     Ok(TickPayloadV1 {
         canonical_bytes,
         digest,
+        event_section_digest,
     })
 }
 

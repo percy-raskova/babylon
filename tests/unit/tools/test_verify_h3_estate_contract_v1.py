@@ -28,13 +28,7 @@ ROOT = Path(__file__).resolve().parents[3]
 CONTRACT = ROOT / "contracts" / "h3_estate_contract_v1.yaml"
 MANIFEST = ROOT / "data-artifacts.yaml"
 VECTORS = (
-    ROOT
-    / "rust"
-    / "crates"
-    / "babylon-persistence"
-    / "tests"
-    / "fixtures"
-    / "h3_cell_id_vectors_v1.txt"
+    ROOT / "rust" / "crates" / "babylon-kernel" / "tests" / "fixtures" / "h3_cell_id_vectors_v1.txt"
 )
 
 
@@ -60,12 +54,38 @@ def test_contract_closes_the_full_estate_and_hard_gaps() -> None:
         "_hex_state_tmp",
     }
     assert contract["estate"]["unused_domain"]["name"] == "h3index"
-    assert len(contract["estate"]["runtime_consumer_census"]) == 41
+    assert len(contract["estate"]["runtime_consumer_census"]) == 31
     assert {row["kind"] for row in contract["hard_gaps"]} == {
         "census_place_identity",
         "census_place_geometry",
         "county_place_h3_overlap",
     }
+
+
+def test_retired_legacy_runtime_read_write_triples_are_absent() -> None:
+    contract = load_contract(CONTRACT)
+    consumers = {
+        (row["path"], row["relation"], row["access"])
+        for row in contract["estate"]["runtime_consumer_census"]
+    }
+    legacy = "src/babylon/persistence/postgres_runtime/_legacy.py"
+    retired = {
+        (legacy, "hex_activity", "read"),
+        (legacy, "hex_activity", "write"),
+        (legacy, "hex_cell", "read"),
+        (legacy, "hex_latest", "write"),
+        (legacy, "hex_map", "read"),
+        (legacy, "hex_state", "read"),
+        (legacy, "hex_state", "write"),
+        (legacy, "hex_terrain_state", "write"),
+        (legacy, "infrastructure_link_state", "read"),
+        (legacy, "infrastructure_link_state", "write"),
+    }
+
+    assert consumers.isdisjoint(retired)
+    assert contract["vectors"]["path"] == (
+        "rust/crates/babylon-kernel/tests/fixtures/h3_cell_id_vectors_v1.txt"
+    )
 
 
 def test_catalog_census_detects_catalog_addition_and_removal(tmp_path: Path) -> None:
@@ -145,15 +165,17 @@ DROP VIEW v_contract_probe;
     assert discover_persistent_table_census(tmp_path) == {}
 
 
-def test_table_census_includes_tagged_destination_discriminator() -> None:
-    census = discover_persistent_table_census(ROOT)
+def test_historical_table_census_preserves_tagged_destination_discriminator() -> None:
+    contract = load_contract(CONTRACT)
+    table = next(
+        row
+        for row in contract["estate"]["persistent_tables"]
+        if row["name"] == "immutable_reference_lodes_od_matrix"
+    )
 
-    assert census["immutable_reference_lodes_od_matrix"]["tagged_discriminators"] == {
-        "workplace_dest_kind": {
-            "legacy_type": "TEXT",
-            "allowed_values": ["external", "hex"],
-        }
-    }
+    assert table["tag_field"] == "workplace_dest_kind"
+    assert table["tag_legacy_type"] == "TEXT"
+    assert table["tag_allowed_values"] == ["external", "hex"]
 
 
 def test_table_census_applies_later_tag_constraint_changes(tmp_path: Path) -> None:
@@ -191,16 +213,14 @@ CHECK (workplace_dest_kind IN ('hex', 'external', 'unknown'));
     }
 
 
-def test_runtime_consumer_census_includes_supported_archive_cli() -> None:
+def test_terminal_runtime_consumer_census_excludes_retired_archive_cli() -> None:
     contract = copy.deepcopy(load_contract(CONTRACT))
     contract["estate"]["partition"]["default_child"] = "dynamic_hex_state_default"
 
     consumers = discover_runtime_consumer_census(contract, ROOT)
 
-    assert {
-        ("tools/archive_sessions.py", "dynamic_hex_state", "read"),
-        ("tools/archive_sessions.py", "dynamic_hex_state_default", "read"),
-    } <= {(row["path"], row["relation"], row["access"]) for row in consumers}
+    assert consumers == []
+    assert not (ROOT / "tools/archive_sessions.py").exists()
 
 
 def test_contract_loader_refuses_duplicate_mapping_keys(tmp_path: Path) -> None:

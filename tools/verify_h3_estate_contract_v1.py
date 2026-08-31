@@ -54,6 +54,10 @@ EXPECTED_HARD_GAPS: Final = {
     "census_place_geometry",
     "county_place_h3_overlap",
 }
+EXPECTED_HISTORICAL_CONTRACT_DIGEST: Final = (
+    "b7fcde99da1d68d1f389f3e1f905d8434f97d2a9d620979001ce4d0f793e4db7"
+)
+TERMINAL_READER_CONTRACT: Final = Path("contracts/h3_reader_cutover_v1.yaml")
 
 
 class _UniqueKeyLoader(yaml.SafeLoader):
@@ -202,7 +206,7 @@ def _verify_contract_shape(contract: dict[str, Any]) -> None:
         "persistent_tables": 15,
         "current_views": 10,
         "temporary_shapes": 2,
-        "runtime_consumers": 41,
+        "runtime_consumers": 31,
         "artifacts": 6,
         "artifact_rows": MAX_ARTIFACT_ROWS,
         "artifact_bytes": MAX_ARTIFACT_BYTES,
@@ -220,12 +224,12 @@ def _verify_contract_shape(contract: dict[str, Any]) -> None:
     consumers = _require_list(estate, "runtime_consumer_census")
     if any(not isinstance(row, dict) for row in consumers):
         raise H3EstateContractRefusal("contract_shape", "runtime_consumer_census")
-    if len(consumers) != 41 or consumers != sorted(
+    if len(consumers) != 31 or consumers != sorted(
         consumers,
         key=lambda row: (row.get("path"), row.get("relation"), row.get("access")),
     ):
         raise H3EstateContractRefusal("contract_order", "runtime_consumer_census")
-    if len({(row.get("path"), row.get("relation"), row.get("access")) for row in consumers}) != 41:
+    if len({(row.get("path"), row.get("relation"), row.get("access")) for row in consumers}) != 31:
         raise H3EstateContractRefusal("contract_shape", "runtime_consumer_census")
     if any(row.get("access") not in {"read", "write"} for row in consumers):
         raise H3EstateContractRefusal("contract_shape", "runtime consumer access")
@@ -679,10 +683,38 @@ def discover_runtime_consumer_census(
 
 
 def verify_source_inventory(contract: dict[str, Any], repo_root: Path) -> None:
-    """Compare the frozen estate with executable DDL and supported readers."""
+    """Verify the frozen estate or its exact terminal reader handoff."""
     estate = contract.get("estate")
     if not isinstance(estate, dict):
         raise H3EstateContractRefusal("contract_shape", "estate")
+    terminal_reader = repo_root / TERMINAL_READER_CONTRACT
+    if terminal_reader.is_file():
+        tables = _require_list(estate, "persistent_tables")
+        views = _require_list(estate, "current_views")
+        consumers = _require_list(estate, "runtime_consumer_census")
+        if len(tables) != 15:
+            raise H3EstateContractRefusal("persistent_table_census", "historical epoch-7 snapshot")
+        if len(views) != 10:
+            raise H3EstateContractRefusal("view_census", "historical epoch-7 snapshot")
+        if len(consumers) != 31:
+            raise H3EstateContractRefusal("runtime_consumer_census", "historical epoch-7 snapshot")
+        if canonical_contract_digest(contract) != EXPECTED_HISTORICAL_CONTRACT_DIGEST:
+            raise H3EstateContractRefusal(
+                "historical_inventory_digest", EXPECTED_HISTORICAL_CONTRACT_DIGEST
+            )
+        from tools.verify_h3_reader_cutover_v1 import (
+            H3ReaderCutoverRefusal,
+            load_reader_cutover_contract,
+            verify_reader_cutover_contract,
+        )
+
+        try:
+            reader_contract = load_reader_cutover_contract(terminal_reader)
+            verify_reader_cutover_contract(reader_contract, repo_root)
+        except H3ReaderCutoverRefusal as error:
+            raise H3EstateContractRefusal("terminal_reader_contract", str(error)) from error
+        return
+
     declared_tables = _declared_table_shapes(_require_list(estate, "persistent_tables"))
     discovered_tables = discover_persistent_table_census(repo_root)
     if set(declared_tables) != set(discovered_tables):

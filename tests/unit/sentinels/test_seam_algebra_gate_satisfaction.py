@@ -15,7 +15,7 @@ Four tiers, mirroring ``test_seam_algebra.py``'s own shape:
   with no declared supplier reds; (2) reverting F-1/F-2's exemptions reds the
   REAL shipped registry.
 - **Liveness + CLI wiring** — the real, shipped registry is clean (with the
-  three dated F-1/F-2 exemptions), and the family's CLI dispatch still exits 0.
+  two dated F-1/F-2 exemptions), and the family's CLI dispatch still exits 0.
 """
 
 from __future__ import annotations
@@ -280,11 +280,8 @@ def test_mutation_removing_f2_exemption_reds_the_real_registry() -> None:
     """MUTATION (design §4 U4): 'remove F-2's exemption row -> real run reds.'
 
     With ALL exemptions removed, the REAL shipped GATE_REGISTRY must red on
-    exactly the two remaining F-1/F-2 witnesses -- and NOT on the
-    melt_calculator positive control, nor on vol2_circulation_vol2_step,
-    which GRADUATED to a wired gate 2026-07-27 (P26 U2, ADR162:
-    ``GameSession.advance_tick`` is its declared supplier — see
-    ``test_seam_algebra_catch_list.py``'s LEDGER HISTORY note).
+    exactly the two remaining F-1/F-2 witnesses. The former positive-control
+    rows retired with their Python suppliers.
     """
     findings = check_gate_satisfaction(exemptions=())
     assert len(findings) == 2
@@ -351,14 +348,6 @@ def test_shipped_exemptions_hold_exactly_f1_and_f2() -> None:
         ("gate", "run_audit_session_id"),
         ("gate", "financial_layer_distribution_calculator"),
     }
-
-
-def test_the_positive_control_gate_needs_no_exemption() -> None:
-    """tick_dynamics_melt_calculator is genuinely, unconditionally wired --
-    proves the check recognizes a satisfied gate, not just a red-everything
-    scanner."""
-    melt_gate = next(gate for gate in GATE_REGISTRY if gate.name == "tick_dynamics_melt_calculator")
-    assert check_gate_satisfaction(gates=(melt_gate,), exemptions=()) == []
 
 
 def test_repo_root_resolves_to_the_real_repository_root() -> None:

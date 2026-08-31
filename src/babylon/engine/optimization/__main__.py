@@ -34,8 +34,8 @@ from babylon.engine.optimization.objectives import Objective, carceral_objective
 from babylon.engine.optimization.ranges import parse_override, parse_range
 
 #: CLI-facing backend names, translated to runner_api's "headless"/"in_memory".
-_BACKEND_CHOICES = ("headless", "in-memory")
-_BACKEND_TRANSLATION = {"headless": "headless", "in-memory": "in_memory"}
+_BACKEND_CHOICES = ("in-memory",)
+_BACKEND_TRANSLATION = {"in-memory": "in_memory"}
 
 #: CLI-facing objective names for the algorithms that accept one. Excludes
 #: ``objectives.endgame_objective``, a documented Track-B stub that always
@@ -93,7 +93,7 @@ def _add_backend_arg(parser: argparse.ArgumentParser) -> None:
         type=str,
         default=None,
         choices=_BACKEND_CHOICES,
-        help="Execution backend. Default: each algorithm's own default (headless).",
+        help="Execution backend. The retained Python optimizer is in-memory only.",
     )
 
 

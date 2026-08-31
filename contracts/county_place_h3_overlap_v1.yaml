@@ -95,11 +95,11 @@ areawater:
 predecessors:
   h3_contract:
     path: contracts/h3_estate_contract_v1.yaml
-    sha256: a674d334d37c4fe8a4064a47e1c6bb6fd257090313563c08c18ea1bc89acf78d
-    canonical_sha256: 4cfb3a5e36d0a97f35f7c33b6362ba4e48b1ad90bf277c82fe4ed36e9b740202
+    sha256: 1ea546e572c499424086d52bc62820626328c8336c38d57b6053c337c0b943b5
+    canonical_sha256: b7fcde99da1d68d1f389f3e1f905d8434f97d2a9d620979001ce4d0f793e4db7
   h3_vectors:
-    path: rust/crates/babylon-persistence/tests/fixtures/h3_cell_id_vectors_v1.txt
-    sha256: c21599d911163db9d939c73f3d6f5d0218b7ee06c7a866f219413c412229863b
+    path: rust/crates/babylon-kernel/tests/fixtures/h3_cell_id_vectors_v1.txt
+    sha256: 079fd93db1cfb9b2aef79b7b32476f737689a91c194de912864bb3849e578487
   h3_cohort:
     url: https://github.com/percy-raskova/babylon/releases/download/ci-data-v8/h3_res7_land_mask.parquet
     bytes: 295194

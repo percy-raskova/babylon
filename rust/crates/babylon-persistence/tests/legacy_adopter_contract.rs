@@ -2281,7 +2281,7 @@ fn pr_focus_reuses_the_postgres_atomicity_and_installed_mutation_contracts() {
     let runner = include_str!("../../../../tools/run_rust_legacy_adopter_pg.sh");
     let live = include_str!("legacy_adopter_postgres.rs");
     let installer = include_str!("support/h3_reference_installer_postgres.rs");
-    let writer = include_str!("../src/committed_tick_writer.rs");
+    let writer = include_str!("../src/runtime.rs");
     let focused =
         "schema_epoch::live_rollback_tests::h3_installer_rollback_and_ambiguous_commit_reconciliation_are_atomic";
     let full =
@@ -2289,21 +2289,16 @@ fn pr_focus_reuses_the_postgres_atomicity_and_installed_mutation_contracts() {
 
     assert!(runner.contains("BABYLON_LEGACY_ADOPTER_LIVE_FOCUS:-}"));
     assert!(runner.contains(
-        "\"\" | clean_bootstrap | h3_atomicity | installed_mutation | schema_epoch_fresh | schema_epoch_matrix | \\\n    schema_epoch_rollback | schema_epoch_v5_census | schema_epoch_v6_census | \\\n    h3_pg_oracle | h3_reference_installer | h3_shadow_backfill | \\\n    committed_tick_writer | runtime_census_v2 | pr)"
+        "\"\" | clean_bootstrap | h3_atomicity | installed_mutation | schema_epoch_fresh | schema_epoch_matrix | \\\n    schema_epoch_rollback | schema_epoch_v5_census | schema_epoch_v6_census | schema_epoch_v7_census | \\\n    h3_pg_oracle | h3_reference_installer | h3_shadow_backfill | \\\n    rust_persistence_runtime | runtime_census_v2 | pr)"
     ));
     assert!(runner.contains("[ \"$LIVE_FOCUS\" = \"h3_pg_oracle\" ]"));
     assert!(runner.contains("[ \"$LIVE_FOCUS\" = \"h3_reference_installer\" ]"));
     assert!(runner.contains("[ \"$LIVE_FOCUS\" = \"h3_shadow_backfill\" ]"));
-    assert!(runner.contains("[ \"$LIVE_FOCUS\" = \"committed_tick_writer\" ]"));
-    assert_eq!(
-        runner
-            .matches("committed_tick_writer::tests::live_")
-            .count(),
-        1
-    );
+    assert!(runner.contains("[ \"$LIVE_FOCUS\" = \"rust_persistence_runtime\" ]"));
+    assert_eq!(runner.matches("runtime::live_tests::live_").count(), 1);
     for live_test in [
-        "fn live_marker_last_commit_retry_conflict_and_hydration_are_atomic()",
-        "fn live_crash_boundary_matrix_is_atomic_and_retryable()",
+        "fn live_marker_last_commit_and_restart_are_atomic()",
+        "fn live_commit_ambiguity_reconciliation_is_exact()",
     ] {
         assert_eq!(writer.matches(live_test).count(), 1);
     }
@@ -2340,6 +2335,89 @@ fn pr_focus_reuses_the_postgres_atomicity_and_installed_mutation_contracts() {
         .find(full)
         .expect("default full contract must remain");
     assert!(broad < full_position);
+}
+
+fn assert_epoch_seven_source_contract(epoch: &str, migration_seven: &str, shared_fixture: &str) {
+    assert_eq!(
+        epoch
+            .matches("fn migration_seven_rollback_and_ambiguous_commit_reconciliation_are_atomic()")
+            .count(),
+        1
+    );
+    for proof in [
+        "verify_v7_pre_marker_rollback",
+        "verify_v7_marker_rollback",
+        "verify_v7_killed_commit_retry",
+        "verify_v7_committed_reconciliation",
+    ] {
+        assert!(epoch.contains(proof));
+    }
+    assert!(epoch.contains("legacy_epoch_fixture::build_frozen_python_estate"));
+    assert!(migration_seven.contains("spec-065 trace emission contract"));
+    assert!(migration_seven.contains("canonical Rust epoch-7 reader"));
+    assert!(migration_seven.contains("definition (spec-088 FR-003)"));
+    assert!(!migration_seven.contains("0030_views_current.sql"));
+    assert!(shared_fixture.contains("pub(crate) fn build_frozen_python_estate"));
+    assert!(shared_fixture.contains("pub(crate) fn execute_h3_reader_parity_v1"));
+    assert!(shared_fixture
+        .contains("execute_h3_reader_parity_v1(contract, vectors, repository_root, backend)"));
+    assert!(shared_fixture.contains("default_transaction_read_only=on"));
+    assert!(shared_fixture.contains("export_epoch7_reader_fixture"));
+    assert!(shared_fixture.contains("query_epoch7_reader_fixture"));
+    for operation in [
+        "sparse_fill_forward",
+        "value_aggregates",
+        "runtime_trace",
+        "session_partition_isolation",
+        "r8_parent_reference_identity",
+        "nullable_locations",
+        "tagged_destinations",
+        "stable_pagination",
+        "archive_round_trip",
+    ] {
+        assert!(shared_fixture.contains(operation));
+    }
+}
+
+fn assert_epoch_seven_live_harness(runner: &str, live: &str, shadow: &str) {
+    assert!(runner.contains(
+        "for migration in migration_four migration_five migration_six migration_seven; do"
+    ));
+    assert!(live.contains("mod legacy_epoch_fixture;"));
+    let exporter = cte_slice(
+        live,
+        "fn export_v7_epoch_censuses(",
+        "fn verify_h3_installed_mutations(",
+    );
+    assert!(exporter.contains("IsolationLevel::Serializable"));
+    assert!(exporter.contains("compiled[6].sql()"));
+    assert!(exporter.contains("transaction.rollback()"));
+    assert!(!exporter.contains("migrate_schema_epoch(&fresh_config)"));
+    assert!(!exporter.contains("INSERT INTO babylon_state.schema_migration"));
+
+    for proof in [
+        "verify_epoch_seven_view_definition_mutation_refuses",
+        "verify_epoch_seven_cell_id_mutation_refuses",
+        "verify_epoch_seven_acl_mutation_refuses",
+        "verify_epoch_seven_reader_parity_v1",
+    ] {
+        assert!(shadow.contains(proof));
+    }
+    assert!(live.contains("Some(\"h3_shadow_backfill\" | \"schema_epoch_rollback\")"));
+    assert!(runner.contains("[ \"$LIVE_FOCUS\" = \"schema_epoch_rollback\" ] ||"));
+}
+
+#[test]
+fn epoch_seven_fault_census_and_mutation_proofs_reuse_the_closed_live_harness() {
+    let runner = include_str!("../../../../tools/run_rust_legacy_adopter_pg.sh");
+    let epoch = include_str!("../src/schema_epoch.rs");
+    let migration_seven = include_str!("../migrations/0007_h3_canonical_readers.sql");
+    let live = include_str!("legacy_adopter_postgres.rs");
+    let shadow = include_str!("support/h3_shadow_backfill_postgres.rs");
+    let shared_fixture = include_str!("support/legacy_epoch_fixture.rs");
+
+    assert_epoch_seven_source_contract(epoch, migration_seven, shared_fixture);
+    assert_epoch_seven_live_harness(runner, live, shadow);
 }
 
 #[test]

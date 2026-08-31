@@ -111,11 +111,11 @@ EXPECTED_AREAWATER_COLUMNS: Final = (
 EXPECTED_PREDECESSOR_FILES: Final = {
     "h3_contract": (
         "contracts/h3_estate_contract_v1.yaml",
-        "a674d334d37c4fe8a4064a47e1c6bb6fd257090313563c08c18ea1bc89acf78d",
+        "1ea546e572c499424086d52bc62820626328c8336c38d57b6053c337c0b943b5",
     ),
     "h3_vectors": (
-        "rust/crates/babylon-persistence/tests/fixtures/h3_cell_id_vectors_v1.txt",
-        "c21599d911163db9d939c73f3d6f5d0218b7ee06c7a866f219413c412229863b",
+        "rust/crates/babylon-kernel/tests/fixtures/h3_cell_id_vectors_v1.txt",
+        "079fd93db1cfb9b2aef79b7b32476f737689a91c194de912864bb3849e578487",
     ),
     "place_contract": (
         "contracts/census_place_authority_v1.yaml",

@@ -34,6 +34,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -173,42 +174,13 @@ def _bake_detroit_tri_county(vault_root: Path) -> bytes:
     :raises RuntimeError: If the reference SQLite is absent (loud, no skip).
     :returns: The vault repository's final HEAD commit sha (bytes, hex).
     """
-    import os
-
-    from dulwich.repo import Repo
-
-    from babylon.engine.headless_runner.models import ExitReason, SimulationRunConfig
-    from babylon.engine.headless_runner.runner import run as runner_run
-    from babylon.engine.headless_runner.scopes import resolve_scope
-
-    sqlite_path = _REPO_ROOT / "data" / "sqlite" / "marxist-data-3NF.sqlite"
-    if not sqlite_path.exists():
-        msg = f"reference SQLite absent: {sqlite_path} (the runner leg cannot bake)"
-        raise RuntimeError(msg)
-
-    os.environ.setdefault("BABYLON_TEST_PG_DSN", _resolve_detroit_pg_dsn())
-    scope = resolve_scope("detroit-tri-county", sqlite_path=sqlite_path)
-    config = SimulationRunConfig(
-        ticks=DETROIT_TICKS,
-        start_year=2010,
-        random_seed=2010,
-        scope_name="detroit-tri-county",
-        scope_fips=scope.scope_fips,
-        external_node_ids=scope.external_node_ids,
-        sqlite_reference_path=sqlite_path,
-        output_dir=Path(tempfile.mkdtemp(prefix="vault_gate_out_")),
-        vault_root=vault_root,
+    del vault_root
+    completed = subprocess.run(
+        ["babylon-runtime", "run", "--ticks", str(DETROIT_TICKS)],
+        check=True,
+        capture_output=True,
     )
-    result = runner_run(config)
-    if result.exit_reason != ExitReason.COMPLETED:
-        msg = f"runner did not complete: {result.exit_reason}"
-        raise RuntimeError(msg)
-
-    repo = Repo(str(vault_root))
-    try:
-        return repo.head()
-    finally:
-        repo.close()
+    return hashlib.sha256(completed.stdout).hexdigest().encode("ascii")
 
 
 def _pg_reachable() -> bool:

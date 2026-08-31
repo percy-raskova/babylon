@@ -21,9 +21,9 @@ class ReproRecord(BaseModel):
     """Minimal, frozen receipt for replaying one optimization trial.
 
     :ivar defines_hash: SHA-256 over the canonical ``model_dump()`` of the
-        trial's ``GameDefines`` — the same hash
-        ``babylon.engine.headless_runner.runner._defines_hash`` computes
-        (see ``docs/reference/determinism-contract.rst`` for the canonical
+        trial's ``GameDefines`` — produced by
+        :func:`babylon.config.defines.canonical_defines_hash` (see
+        ``docs/reference/determinism-contract.rst`` for the canonical
         serialization contract). Two trials with the same ``defines_hash``
         ran against byte-identical coefficients.
     :ivar rng_seed: The RNG seed threaded through the trial.

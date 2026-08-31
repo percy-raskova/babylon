@@ -83,8 +83,8 @@ _CURRENT_COMPONENTS: Final[tuple[str, ...]] = (
     "nominal_world_hash",
     "bevy_admin_viewer",
     "frozen_python_engine",
-    "legacy_python_persistence",
-    "partial_babylon_meta",
+    "rust_postgresql_persistence",
+    "python_persistence_periphery",
 )
 _CURRENT_EVIDENCE: Final[dict[str, tuple[str, ...]]] = {
     "rust_graph_hypergraph": ("rust/crates/babylon-graph/src/lib.rs",),
@@ -104,22 +104,24 @@ _CURRENT_EVIDENCE: Final[dict[str, tuple[str, ...]]] = {
         "src/babylon/engine/simulation_engine.py",
         "src/babylon/engine/actions/__init__.py",
     ),
-    "legacy_python_persistence": (
-        "src/babylon/persistence/runtime_db.py",
-        "src/babylon/persistence/envelope.py",
-        "src/babylon/persistence/postgres_runtime/__init__.py",
+    "rust_postgresql_persistence": (
+        "rust/crates/babylon-persistence/src/runtime.rs",
+        "rust/crates/babylon-persistence/migrations/0009_rust_persistence_activation.sql",
+        "contracts/rust_persistence_cutover_v1.yaml",
     ),
-    "partial_babylon_meta": ("src/babylon/persistence/migrations/0037_babylon_meta.sql",),
+    "python_persistence_periphery": (
+        "src/babylon/persistence/runtime_db.py",
+        "src/babylon/persistence/protocols.py",
+        "src/babylon/persistence/postgres_reference.py",
+    ),
 }
 _H3_EVIDENCE: Final[tuple[str, ...]] = (
-    "src/babylon/persistence/postgres_schema.py",
     "src/babylon/persistence/migrations/0011_dynamic_hex_state.sql",
     "src/babylon/persistence/migrations/0027_hex_spatial_map.sql",
     "src/babylon/persistence/migrations/0028_hex_spatial_map_session_scope.sql",
-    "src/babylon/reference/schema.py",
-    "src/babylon/models/snapshots.py",
-    "src/babylon/models/entities/territory.py",
-    "src/babylon/persistence/hex_state.py",
+    "rust/crates/babylon-persistence/migrations/0007_h3_canonical_readers.sql",
+    "rust/crates/babylon-persistence/migrations/0009_rust_persistence_activation.sql",
+    "contracts/h3_reader_cutover_v1.yaml",
 )
 _GATE_2_STATUSES: Final[dict[str, str]] = {
     "PER-17": "implemented_current",
@@ -274,12 +276,12 @@ def test_control_surface_routes_status_to_linear_and_delivery_to_github() -> Non
     )
 
 
-def test_architecture_inventories_the_legacy_h3_migration_source() -> None:
-    """The positive-BIGINT plan remains visibly a migration from string identities."""
+def test_architecture_records_the_retired_legacy_h3_migration_source() -> None:
+    """The positive-BIGINT cutover retains exact string-identity history."""
     architecture = _yaml_document(_ARCHITECTURE)
     current = architecture["implementation_status"]["implemented_current"]
     legacy = current["legacy_h3_text_keys"]
-    assert legacy["status"] == "implemented_legacy"
+    assert legacy["status"] == "retired_by_epoch_9"
     assert tuple(legacy["evidence"]) == _H3_EVIDENCE
     assert all((_ROOT / evidence).is_file() for evidence in _H3_EVIDENCE)
     inventory = legacy["inventory"]
@@ -310,14 +312,13 @@ def test_architecture_inventories_the_legacy_h3_migration_source() -> None:
         "persistence",
     }
     assert set(inventory["python_str_models"].values()) == {"str"}
-    disposition = legacy["planned_disposition"]
-    assert disposition["owner"] == "PER-21"
+    disposition = legacy["realized_disposition"]
+    assert disposition["owner"] == "PER-280/PER-281"
     assert disposition["target"] == "positive BIGINT H3CellId(u64)"
     assert tuple(disposition["migration_sequence"]) == (
         "add_keys",
         "backfill",
         "prove_count_hash_query_equivalence",
-        "add_compatibility_views",
         "switch_readers_and_writers",
         "forbid_legacy_writes",
         "retire_duplicates",

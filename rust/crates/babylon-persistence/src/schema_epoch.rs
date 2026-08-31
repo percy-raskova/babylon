@@ -17,7 +17,8 @@ use crate::schema_migration::{
 pub const MAX_SCHEMA_MIGRATIONS: usize = 256;
 /// Maximum commit/reconciliation attempts for one version.
 pub const MAX_COMMIT_ATTEMPTS_PER_VERSION: usize = 2;
-pub(crate) const CURRENT_SCHEMA_EPOCH: usize = 6;
+pub(crate) const CURRENT_SCHEMA_EPOCH: usize = 7;
+pub(crate) const LEGACY_H3_CUTOVER_INPUT_EPOCH: usize = 6;
 
 const MIGRATION_0001_SQL: &str = include_str!("../migrations/0001_owned_schema_epoch.sql");
 const MIGRATION_0002_SQL: &str = include_str!("../migrations/0002_h3_cell.sql");
@@ -25,6 +26,7 @@ const MIGRATION_0003_SQL: &str = include_str!("../migrations/0003_h3_reference_c
 const MIGRATION_0004_SQL: &str = include_str!("../migrations/0004_committed_tick_storage.sql");
 const MIGRATION_0005_SQL: &str = include_str!("../migrations/0005_spatial_reference_products.sql");
 const MIGRATION_0006_SQL: &str = include_str!("../migrations/0006_h3_shadow_keys.sql");
+const MIGRATION_0007_SQL: &str = include_str!("../migrations/0007_h3_canonical_readers.sql");
 const FRESH_CENSUS: &str = include_str!("fixtures/fresh_schema_epoch_census_v2.txt");
 const FRESH_CENSUS_WITH_INTEL: &str =
     include_str!("fixtures/fresh_schema_epoch_census_with_intel_v2.txt");
@@ -46,6 +48,9 @@ const EPOCH_OWNED_FRESH_CENSUS_V5: &str =
 const EPOCH_OWNED_CENSUS_V6: &str = include_str!("fixtures/schema_epoch_owned_census_v6.txt");
 const EPOCH_OWNED_FRESH_CENSUS_V6: &str =
     include_str!("fixtures/schema_epoch_owned_fresh_census_v6.txt");
+const EPOCH_OWNED_CENSUS_V7: &str = include_str!("fixtures/schema_epoch_owned_census_v7.txt");
+const EPOCH_OWNED_FRESH_CENSUS_V7: &str =
+    include_str!("fixtures/schema_epoch_owned_fresh_census_v7.txt");
 const OWNER_SQL: &str = "SELECT database_row.datdba = role_row.oid \
     FROM pg_catalog.pg_database AS database_row \
     JOIN pg_catalog.pg_roles AS role_row ON role_row.rolname = CURRENT_USER \
@@ -91,6 +96,7 @@ const EPOCH_V3_SHAPE_SQL: &str = include_str!("schema_epoch_v3_shape.sql");
 const EPOCH_V4_SHAPE_SQL: &str = include_str!("schema_epoch_v4_shape.sql");
 const EPOCH_V5_SHAPE_SQL: &str = include_str!("schema_epoch_v5_shape.sql");
 const EPOCH_V6_SHAPE_SQL: &str = include_str!("schema_epoch_v6_shape.sql");
+const EPOCH_V7_SHAPE_SQL: &str = include_str!("schema_epoch_v7_shape.sql");
 
 /// Database lane selected under the schema advisory lock.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -327,6 +333,32 @@ pub fn migrate_schema_epoch(config: &Config) -> Result<SchemaEpochReport, Schema
     session.finish(result)
 }
 
+/// Advance only as far as the exact H3 reader bootstrap handoff requires.
+///
+/// Fresh databases and already-current databases still advance to the compiled terminal epoch.
+/// Exact legacy databases, including interrupted legacy-origin prefixes, stop at epoch 6 so the
+/// canonical cohort installer and closed shadow backfill can run before migration 7 replaces the
+/// reader views.
+///
+/// # Errors
+/// Returns [`SchemaEpochError`] under the same closed target, authority, prefix, transaction, and
+/// reconciliation laws as [`migrate_schema_epoch`].
+pub(crate) fn migrate_schema_epoch_to_h3_handoff(
+    config: &Config,
+) -> Result<SchemaEpochReport, SchemaEpochError> {
+    validate_legacy_connection_target(config).map_err(SchemaEpochError::ConnectionTarget)?;
+    let bounded = bounded_config(config);
+    let mut session = LockedSession::connect(&bounded)?;
+    let compiled = compiled_schema_epoch_migrations()?;
+    let result = migrate_locked_with_registry_for_goal(
+        &bounded,
+        &mut session,
+        &compiled,
+        MigrationGoal::H3ReaderBootstrap,
+    );
+    session.finish(result)
+}
+
 pub(crate) fn bounded_config(config: &Config) -> Config {
     let mut bounded = config.clone();
     bounded
@@ -448,6 +480,10 @@ const PREFIX_V6: SchemaPrefixContract = SchemaPrefixContract {
     verify_client: verify_v6_prefix_client,
     verify_transaction: verify_v6_prefix_transaction,
 };
+const PREFIX_V7: SchemaPrefixContract = SchemaPrefixContract {
+    verify_client: verify_v7_prefix_client,
+    verify_transaction: verify_v7_prefix_transaction,
+};
 
 fn compiled_schema_epoch_migrations(
 ) -> Result<[SchemaEpochMigration; CURRENT_SCHEMA_EPOCH], SchemaMigrationError> {
@@ -457,6 +493,7 @@ fn compiled_schema_epoch_migrations(
     let migration_v4 = SchemaMigration::new(MigrationVersion::try_from(4)?, MIGRATION_0004_SQL)?;
     let migration_v5 = SchemaMigration::new(MigrationVersion::try_from(5)?, MIGRATION_0005_SQL)?;
     let migration_v6 = SchemaMigration::new(MigrationVersion::try_from(6)?, MIGRATION_0006_SQL)?;
+    let migration_v7 = SchemaMigration::new(MigrationVersion::try_from(7)?, MIGRATION_0007_SQL)?;
     Ok([
         SchemaEpochMigration::new(migration_v1, PREFIX_V1),
         SchemaEpochMigration::new(migration_v2, PREFIX_V2),
@@ -464,7 +501,44 @@ fn compiled_schema_epoch_migrations(
         SchemaEpochMigration::new(migration_v4, PREFIX_V4),
         SchemaEpochMigration::new(migration_v5, PREFIX_V5),
         SchemaEpochMigration::new(migration_v6, PREFIX_V6),
+        SchemaEpochMigration::new(migration_v7, PREFIX_V7),
     ])
+}
+
+fn legacy_h3_cutover_handoff_target(
+    origin: SchemaEpochOrigin,
+    candidate: &[SchemaEpochMigration],
+) -> Result<Option<usize>, SchemaMigrationError> {
+    if origin != SchemaEpochOrigin::ExactLegacy || !is_canonical_schema_epoch_registry(candidate)? {
+        return Ok(None);
+    }
+    Ok(Some(LEGACY_H3_CUTOVER_INPUT_EPOCH))
+}
+
+fn h3_reader_bootstrap_handoff_target(
+    legacy_origin: bool,
+    prior_applied: usize,
+    candidate: &[SchemaEpochMigration],
+) -> Result<Option<usize>, SchemaMigrationError> {
+    if !legacy_origin
+        || prior_applied > LEGACY_H3_CUTOVER_INPUT_EPOCH
+        || !is_canonical_schema_epoch_registry(candidate)?
+    {
+        return Ok(None);
+    }
+    Ok(Some(LEGACY_H3_CUTOVER_INPUT_EPOCH))
+}
+
+fn is_canonical_schema_epoch_registry(
+    candidate: &[SchemaEpochMigration],
+) -> Result<bool, SchemaMigrationError> {
+    let canonical = compiled_schema_epoch_migrations()?;
+    Ok(candidate.len() == canonical.len()
+        && candidate.iter().zip(canonical.iter()).all(|(left, right)| {
+            left.migration.version() == right.migration.version()
+                && left.migration.checksum() == right.migration.checksum()
+                && left.migration.sql() == right.migration.sql()
+        }))
 }
 
 /// Build the checked-in migration registry from exact SQL bytes.
@@ -482,6 +556,7 @@ pub fn compiled_schema_migrations(
         compiled[3].migration,
         compiled[4].migration,
         compiled[5].migration,
+        compiled[6].migration,
     ])
 }
 
@@ -603,13 +678,52 @@ fn migrate_locked_with_registry(
     session: &mut LockedSession,
     compiled: &[SchemaEpochMigration],
 ) -> Result<SchemaEpochReport, SchemaEpochError> {
-    migrate_locked_with_registry_using(config, session, compiled, &mut attempt_migration)
+    migrate_locked_with_registry_for_goal(config, session, compiled, MigrationGoal::Normal)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MigrationGoal {
+    Normal,
+    H3ReaderBootstrap,
+}
+
+fn migrate_locked_with_registry_for_goal(
+    config: &Config,
+    session: &mut LockedSession,
+    compiled: &[SchemaEpochMigration],
+    goal: MigrationGoal,
+) -> Result<SchemaEpochReport, SchemaEpochError> {
+    migrate_locked_with_registry_using_goal(config, session, compiled, goal, &mut attempt_migration)
+}
+
+#[cfg(test)]
 fn migrate_locked_with_registry_using<Attempt>(
     config: &Config,
     session: &mut LockedSession,
     compiled: &[SchemaEpochMigration],
+    attempt_migration_fn: &mut Attempt,
+) -> Result<SchemaEpochReport, SchemaEpochError>
+where
+    Attempt: FnMut(
+        &mut Client,
+        SchemaEpochMigration,
+        bool,
+    ) -> Result<MigrationAttempt, SchemaEpochError>,
+{
+    migrate_locked_with_registry_using_goal(
+        config,
+        session,
+        compiled,
+        MigrationGoal::Normal,
+        attempt_migration_fn,
+    )
+}
+
+fn migrate_locked_with_registry_using_goal<Attempt>(
+    config: &Config,
+    session: &mut LockedSession,
+    compiled: &[SchemaEpochMigration],
+    goal: MigrationGoal,
     attempt_migration_fn: &mut Attempt,
 ) -> Result<SchemaEpochReport, SchemaEpochError>
 where
@@ -631,8 +745,20 @@ where
         reconciled_versions: Vec::with_capacity(compiled.len()),
         legacy_adoption: initial.legacy_adoption,
     };
+    let target_applied = match goal {
+        MigrationGoal::Normal => {
+            legacy_h3_cutover_handoff_target(initial.origin, compiled)?.unwrap_or(compiled.len())
+        }
+        MigrationGoal::H3ReaderBootstrap => {
+            h3_reader_bootstrap_handoff_target(legacy_origin, prior_applied, compiled)?
+                .unwrap_or(compiled.len())
+        }
+    };
     let mut next_pending = prior_applied;
     for _attempt in 0..MAX_SCHEMA_MIGRATIONS {
+        if next_pending == target_applied {
+            break;
+        }
         let Some(migration) = compiled.get(next_pending).copied() else {
             break;
         };
@@ -646,7 +772,7 @@ where
             attempt_migration_fn,
         )?;
     }
-    if next_pending < compiled.len() {
+    if next_pending < target_applied {
         return Err(SchemaEpochError::CompiledMigrationBound {
             actual: compiled.len(),
             max: MAX_SCHEMA_MIGRATIONS,
@@ -655,7 +781,7 @@ where
     let final_state = inspect_epoch(session.client(), compiled)?;
     let final_applied = validate_registry_prefix(compiled, &final_state.persisted)?;
     if final_state.origin != SchemaEpochOrigin::ExistingRustPrefix
-        || final_applied != compiled.len()
+        || final_applied != target_applied
     {
         return Err(SchemaEpochError::EpochShapeMismatch);
     }
@@ -991,6 +1117,24 @@ fn verify_v6_prefix_transaction(
     verify_post_epoch_census_transaction(transaction, legacy_origin, SchemaEpochPrefix::V6)
 }
 
+fn verify_v7_prefix_client(
+    client: &mut Client,
+    legacy_origin: bool,
+) -> Result<(), SchemaEpochError> {
+    verify_epoch_shape_client(client, EPOCH_V6_SHAPE_SQL)?;
+    verify_epoch_shape_client(client, EPOCH_V7_SHAPE_SQL)?;
+    verify_post_epoch_census_client(client, legacy_origin, SchemaEpochPrefix::V7)
+}
+
+fn verify_v7_prefix_transaction(
+    transaction: &mut Transaction<'_>,
+    legacy_origin: bool,
+) -> Result<(), SchemaEpochError> {
+    verify_epoch_shape_transaction(transaction, EPOCH_V6_SHAPE_SQL)?;
+    verify_epoch_shape_transaction(transaction, EPOCH_V7_SHAPE_SQL)?;
+    verify_post_epoch_census_transaction(transaction, legacy_origin, SchemaEpochPrefix::V7)
+}
+
 fn verify_post_epoch_census_client(
     client: &mut Client,
     legacy_origin: bool,
@@ -1017,7 +1161,12 @@ fn verify_post_epoch_census(
     prefix: SchemaEpochPrefix,
 ) -> Result<(), SchemaEpochError> {
     let mut baseline = Vec::with_capacity(actual.len());
-    let mut epoch = Vec::with_capacity(25);
+    let epoch_capacity = if prefix == SchemaEpochPrefix::V7 && legacy_origin {
+        49
+    } else {
+        25
+    };
+    let mut epoch = Vec::with_capacity(epoch_capacity);
     for entry in actual.iter().take(MAX_LEGACY_CENSUS_ROWS) {
         if is_epoch_entry(entry, legacy_origin, prefix) {
             epoch.push(entry.clone());
@@ -1038,15 +1187,17 @@ fn verify_post_epoch_census(
         (SchemaEpochPrefix::V5, false) => EPOCH_OWNED_FRESH_CENSUS_V5,
         (SchemaEpochPrefix::V6, true) => EPOCH_OWNED_CENSUS_V6,
         (SchemaEpochPrefix::V6, false) => EPOCH_OWNED_FRESH_CENSUS_V6,
+        (SchemaEpochPrefix::V7, true) => EPOCH_OWNED_CENSUS_V7,
+        (SchemaEpochPrefix::V7, false) => EPOCH_OWNED_FRESH_CENSUS_V7,
     };
     let expected_epoch = parse_legacy_census_fixture(epoch_fixture)?;
     compare_legacy_census(&expected_epoch, epoch.as_slice())
         .map_err(|_| SchemaEpochError::EpochCensusMismatch)?;
     if legacy_origin {
         let expected = crate::legacy_adopter::expected_legacy_census()?;
-        // Relations changed by this migration are governed by the epoch fixture above. Restore
+        // Objects changed by this migration are governed by the epoch fixture above. Restore
         // their frozen pre-migration entries only for the baseline comparison so every other
-        // legacy object remains exact without requiring the changed relations twice.
+        // legacy object remains exact without requiring the changed objects twice.
         baseline.extend(
             expected
                 .entries()
@@ -1070,6 +1221,7 @@ enum SchemaEpochPrefix {
     V4,
     V5,
     V6,
+    V7,
 }
 
 fn is_epoch_entry(
@@ -1088,6 +1240,7 @@ fn is_epoch_entry(
             | SchemaEpochPrefix::V4
             | SchemaEpochPrefix::V5
             | SchemaEpochPrefix::V6
+            | SchemaEpochPrefix::V7
     ) && key.kind() == LegacyObjectKind::Relation
         && key.schema() == "babylon_ref"
         && key.name() == "h3_cell";
@@ -1097,6 +1250,7 @@ fn is_epoch_entry(
             | SchemaEpochPrefix::V4
             | SchemaEpochPrefix::V5
             | SchemaEpochPrefix::V6
+            | SchemaEpochPrefix::V7
     ) && key.kind() == LegacyObjectKind::Relation
         && key.schema() == "babylon_ref"
         && matches!(
@@ -1105,7 +1259,10 @@ fn is_epoch_entry(
         );
     let committed_tick_relation = matches!(
         prefix,
-        SchemaEpochPrefix::V4 | SchemaEpochPrefix::V5 | SchemaEpochPrefix::V6
+        SchemaEpochPrefix::V4
+            | SchemaEpochPrefix::V5
+            | SchemaEpochPrefix::V6
+            | SchemaEpochPrefix::V7
     ) && key.kind() == LegacyObjectKind::Relation
         && key.schema() == "babylon_state"
         && matches!(
@@ -1128,23 +1285,43 @@ fn is_epoch_entry(
         && key.kind() == LegacyObjectKind::SchemaGrant
         && key.schema() == "pg_namespace"
         && key.name() == "babylon_meta";
-    let spatial_reference_relation =
-        matches!(prefix, SchemaEpochPrefix::V5 | SchemaEpochPrefix::V6)
-            && key.kind() == LegacyObjectKind::Relation
-            && key.schema() == "babylon_ref"
-            && matches!(
-                key.name(),
-                "reference_product"
-                    | "county_identity"
-                    | "place_identity"
-                    | "h3_land_fraction"
-                    | "h3_population_count"
-                    | "h3_workplace_count"
-                    | "county_h3_land_area"
-                    | "county_place_h3_land_area"
-            );
-    let h3_shadow_relation = legacy_origin
-        && prefix == SchemaEpochPrefix::V6
+    let spatial_reference_relation = matches!(
+        prefix,
+        SchemaEpochPrefix::V5 | SchemaEpochPrefix::V6 | SchemaEpochPrefix::V7
+    ) && key.kind() == LegacyObjectKind::Relation
+        && key.schema() == "babylon_ref"
+        && matches!(
+            key.name(),
+            "reference_product"
+                | "county_identity"
+                | "place_identity"
+                | "h3_land_fraction"
+                | "h3_population_count"
+                | "h3_workplace_count"
+                | "county_h3_land_area"
+                | "county_place_h3_land_area"
+        );
+    let h3_shadow_relation = is_h3_shadow_epoch_entry(entry, legacy_origin, prefix);
+    let canonical_reader_view = is_canonical_reader_epoch_entry(entry, legacy_origin, prefix);
+    migration_relation
+        || h3_relation
+        || h3_cohort_relation
+        || committed_tick_relation
+        || spatial_reference_relation
+        || h3_shadow_relation
+        || canonical_reader_view
+        || owned_schema
+        || fresh_meta
+}
+
+fn is_h3_shadow_epoch_entry(
+    entry: &LegacyCensusEntry,
+    legacy_origin: bool,
+    prefix: SchemaEpochPrefix,
+) -> bool {
+    let key = entry.key();
+    legacy_origin
+        && matches!(prefix, SchemaEpochPrefix::V6 | SchemaEpochPrefix::V7)
         && matches!(
             key.kind(),
             LegacyObjectKind::Relation | LegacyObjectKind::PartitionedTable
@@ -1167,15 +1344,32 @@ fn is_epoch_entry(
                 | "infrastructure_link_state"
                 | "org_snapshot"
                 | "tick_event"
-        );
-    migration_relation
-        || h3_relation
-        || h3_cohort_relation
-        || committed_tick_relation
-        || spatial_reference_relation
-        || h3_shadow_relation
-        || owned_schema
-        || fresh_meta
+        )
+}
+
+fn is_canonical_reader_epoch_entry(
+    entry: &LegacyCensusEntry,
+    legacy_origin: bool,
+    prefix: SchemaEpochPrefix,
+) -> bool {
+    let key = entry.key();
+    legacy_origin
+        && prefix == SchemaEpochPrefix::V7
+        && key.kind() == LegacyObjectKind::View
+        && key.schema() == "public"
+        && matches!(
+            key.name(),
+            "v_county_value_aggregate"
+                | "v_hex_aid"
+                | "v_hex_economic"
+                | "v_hex_heat"
+                | "v_hex_intel"
+                | "v_hex_mobilize"
+                | "v_hex_state_asof"
+                | "v_national_value_aggregate"
+                | "v_state_value_aggregate"
+                | "view_runtime_trace_emission"
+        )
 }
 
 fn verify_authority_sentinels_client(client: &mut Client) -> Result<(), SchemaEpochError> {
@@ -1364,6 +1558,10 @@ fn database_error(operation: SchemaEpochOperation) -> SchemaEpochError {
 }
 
 #[cfg(test)]
+#[path = "../tests/support/legacy_epoch_fixture.rs"]
+pub(crate) mod legacy_epoch_fixture;
+
+#[cfg(test)]
 mod pure_tests {
     use super::*;
 
@@ -1371,13 +1569,100 @@ mod pure_tests {
     fn compiled_registry_binds_each_migration_to_a_prefix_contract() {
         let compiled = compiled_schema_epoch_migrations().unwrap();
 
-        assert_eq!(compiled.len(), 6);
+        assert_eq!(compiled.len(), 7);
         assert_eq!(compiled[0].migration.version().as_i64(), 1);
         assert_eq!(compiled[1].migration.version().as_i64(), 2);
         assert_eq!(compiled[2].migration.version().as_i64(), 3);
         assert_eq!(compiled[3].migration.version().as_i64(), 4);
         assert_eq!(compiled[4].migration.version().as_i64(), 5);
         assert_eq!(compiled[5].migration.version().as_i64(), 6);
+        assert_eq!(compiled[6].migration.version().as_i64(), 7);
+    }
+
+    #[test]
+    fn only_the_exact_canonical_registry_has_the_legacy_epoch_six_handoff() {
+        let canonical = compiled_schema_epoch_migrations().unwrap();
+        assert_eq!(
+            legacy_h3_cutover_handoff_target(SchemaEpochOrigin::ExactLegacy, &canonical).unwrap(),
+            Some(LEGACY_H3_CUTOVER_INPUT_EPOCH)
+        );
+        assert_eq!(
+            legacy_h3_cutover_handoff_target(SchemaEpochOrigin::Fresh, &canonical).unwrap(),
+            None
+        );
+        assert_eq!(
+            legacy_h3_cutover_handoff_target(SchemaEpochOrigin::ExistingRustPrefix, &canonical,)
+                .unwrap(),
+            None
+        );
+
+        let mut altered_sql = canonical;
+        altered_sql[6] = SchemaEpochMigration::new(
+            SchemaMigration::new(
+                MigrationVersion::try_from(7).unwrap(),
+                "SELECT 'not the canonical epoch seven';\n",
+            )
+            .unwrap(),
+            PREFIX_V7,
+        );
+        assert_eq!(
+            legacy_h3_cutover_handoff_target(SchemaEpochOrigin::ExactLegacy, &altered_sql).unwrap(),
+            None
+        );
+
+        assert_eq!(
+            legacy_h3_cutover_handoff_target(SchemaEpochOrigin::ExactLegacy, &canonical[..6])
+                .unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn bootstrap_handoff_recovers_every_legacy_origin_prefix_through_epoch_six() {
+        let canonical = compiled_schema_epoch_migrations().unwrap();
+        for applied in 0..=LEGACY_H3_CUTOVER_INPUT_EPOCH {
+            assert_eq!(
+                h3_reader_bootstrap_handoff_target(true, applied, &canonical).unwrap(),
+                Some(LEGACY_H3_CUTOVER_INPUT_EPOCH)
+            );
+        }
+        assert_eq!(
+            h3_reader_bootstrap_handoff_target(
+                true,
+                LEGACY_H3_CUTOVER_INPUT_EPOCH + 1,
+                &canonical,
+            )
+            .unwrap(),
+            None
+        );
+        assert_eq!(
+            h3_reader_bootstrap_handoff_target(false, 0, &canonical).unwrap(),
+            None
+        );
+        assert_eq!(
+            h3_reader_bootstrap_handoff_target(true, 0, &canonical[..6]).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn epoch_seven_classification_is_cumulative_and_owns_only_the_reader_cutover_views() {
+        let h3_cell = census_entry("relation", "babylon_ref", "h3_cell");
+        let spatial_product = census_entry("relation", "babylon_ref", "reference_product");
+        let shadow_table = census_entry("relation", "public", "hex_latest");
+        let reader_view = census_entry("view", "public", "v_hex_aid");
+
+        for entry in [&h3_cell, &spatial_product, &shadow_table] {
+            assert!(is_epoch_entry(entry, true, SchemaEpochPrefix::V7));
+        }
+        assert!(is_epoch_entry(&reader_view, true, SchemaEpochPrefix::V7));
+        assert!(!is_epoch_entry(&reader_view, true, SchemaEpochPrefix::V6));
+        assert!(!is_epoch_entry(&reader_view, false, SchemaEpochPrefix::V7));
+    }
+
+    fn census_entry(kind: &str, schema: &str, name: &str) -> LegacyCensusEntry {
+        let fixture = format!("{kind}|{schema}|{name}|{}\n", "0".repeat(64));
+        parse_legacy_census_fixture(&fixture).unwrap().entries()[0].clone()
     }
 
     #[test]
@@ -1511,6 +1796,7 @@ mod live_rollback_tests {
         verify_v6_marker_rollback(&base);
         verify_v6_killed_commit_retry(&base);
         verify_v6_committed_reconciliation(&base);
+        verify_v7_fault_matrix(&base);
         verify_leap_ahead_reconciliation(&base);
         verify_h3_installer_commit_protocol(&base);
     }
@@ -1535,7 +1821,10 @@ mod live_rollback_tests {
         verify_v5_committed_reconciliation(&base);
         let database = TestDatabase::create(&base, "spatialproducts");
         let config = database.config(&base);
-        assert_eq!(migrate_schema_epoch(&config).unwrap().final_applied, 6);
+        assert_eq!(
+            migrate_schema_epoch(&config).unwrap().final_applied,
+            CURRENT_SCHEMA_EPOCH
+        );
         crate::spatial_reference_installer::live_postgres_tests::verify_commit_protocol(
             &config, &base,
         );
@@ -1553,6 +1842,13 @@ mod live_rollback_tests {
     }
 
     #[test]
+    #[ignore = "requires the task-owned disposable PER-280 PostgreSQL runtime"]
+    fn migration_seven_rollback_and_ambiguous_commit_reconciliation_are_atomic() {
+        let base = validated_base_config();
+        verify_v7_fault_matrix(&base);
+    }
+
+    #[test]
     #[ignore = "requires the task-owned disposable PER-20 PostgreSQL runtime"]
     fn h3_installer_rollback_and_ambiguous_commit_reconciliation_are_atomic() {
         let base = validated_base_config();
@@ -1565,7 +1861,10 @@ mod live_rollback_tests {
         let base = validated_base_config();
         let database = TestDatabase::create(&base, "hcardinality");
         let config = database.config(&base);
-        assert_eq!(migrate_schema_epoch(&config).unwrap().final_applied, 6);
+        assert_eq!(
+            migrate_schema_epoch(&config).unwrap().final_applied,
+            CURRENT_SCHEMA_EPOCH
+        );
         crate::h3_reference_installer::live_postgres_tests::verify_membership_cardinality_bound(
             &config,
         );
@@ -1580,7 +1879,7 @@ mod live_rollback_tests {
             migrate_schema_epoch(&rollback_config)
                 .unwrap()
                 .final_applied,
-            6
+            CURRENT_SCHEMA_EPOCH
         );
         crate::h3_reference_installer::live_postgres_tests::verify_rollback_and_killed_retry(
             &rollback_config,
@@ -1595,7 +1894,7 @@ mod live_rollback_tests {
             migrate_schema_epoch(&reconciliation_config)
                 .unwrap()
                 .final_applied,
-            6
+            CURRENT_SCHEMA_EPOCH
         );
         crate::h3_reference_installer::live_postgres_tests::verify_committed_reconciliation(
             &reconciliation_config,
@@ -1626,8 +1925,8 @@ mod live_rollback_tests {
         drop(client);
         let retry = migrate_schema_epoch(&config).unwrap();
         assert_eq!(retry.origin, SchemaEpochOrigin::Fresh);
-        assert_eq!(retry.final_applied, 6);
-        assert_eq!(retry.applied_versions.len(), 6);
+        assert_eq!(retry.final_applied, CURRENT_SCHEMA_EPOCH);
+        assert_eq!(retry.applied_versions.len(), CURRENT_SCHEMA_EPOCH);
         database.cleanup();
     }
 
@@ -1696,7 +1995,7 @@ mod live_rollback_tests {
         assert!(report.reconciled_versions.is_empty());
         let completed = migrate_schema_epoch(&config).unwrap();
         assert_eq!(completed.prior_applied, 1);
-        assert_eq!(completed.final_applied, 6);
+        assert_eq!(completed.final_applied, CURRENT_SCHEMA_EPOCH);
         database.cleanup();
     }
 
@@ -1736,7 +2035,7 @@ mod live_rollback_tests {
         );
         let completed = migrate_schema_epoch(&config).unwrap();
         assert_eq!(completed.prior_applied, 1);
-        assert_eq!(completed.final_applied, 6);
+        assert_eq!(completed.final_applied, CURRENT_SCHEMA_EPOCH);
         database.cleanup();
     }
 
@@ -1745,12 +2044,13 @@ mod live_rollback_tests {
         let config = database.config(base);
         establish_v1(&config);
         let registry = production_registry();
+        let current_registry = compiled_schema_epoch_migrations().unwrap();
         assert_v1_prefix(&config, &registry);
 
         let first = migrate_schema_epoch(&config).unwrap();
         assert_eq!(first.origin, SchemaEpochOrigin::ExistingRustPrefix);
         assert_eq!(first.prior_applied, 1);
-        assert_eq!(first.final_applied, 6);
+        assert_eq!(first.final_applied, CURRENT_SCHEMA_EPOCH);
         assert_eq!(
             first.applied_versions,
             vec![
@@ -1758,15 +2058,16 @@ mod live_rollback_tests {
                 registry[2].migration.version(),
                 registry[3].migration.version(),
                 registry[4].migration.version(),
-                registry[5].migration.version()
+                registry[5].migration.version(),
+                current_registry[6].migration.version()
             ]
         );
         assert!(first.reconciled_versions.is_empty());
         let before = v6_snapshot(&config, &registry);
 
         let second = migrate_schema_epoch(&config).unwrap();
-        assert_eq!(second.prior_applied, 6);
-        assert_eq!(second.final_applied, 6);
+        assert_eq!(second.prior_applied, CURRENT_SCHEMA_EPOCH);
+        assert_eq!(second.final_applied, CURRENT_SCHEMA_EPOCH);
         assert!(second.applied_versions.is_empty());
         assert!(second.reconciled_versions.is_empty());
         assert_eq!(v6_snapshot(&config, &registry), before);
@@ -1787,7 +2088,10 @@ mod live_rollback_tests {
         session.finish(Ok(())).unwrap();
 
         assert_v1_prefix(&config, &registry);
-        assert_eq!(migrate_schema_epoch(&config).unwrap().final_applied, 6);
+        assert_eq!(
+            migrate_schema_epoch(&config).unwrap().final_applied,
+            CURRENT_SCHEMA_EPOCH
+        );
         database.cleanup();
     }
 
@@ -1806,7 +2110,10 @@ mod live_rollback_tests {
         session.finish(Ok(())).unwrap();
 
         assert_v1_prefix(&config, &registry);
-        assert_eq!(migrate_schema_epoch(&config).unwrap().final_applied, 6);
+        assert_eq!(
+            migrate_schema_epoch(&config).unwrap().final_applied,
+            CURRENT_SCHEMA_EPOCH
+        );
         database.cleanup();
     }
 
@@ -1845,7 +2152,7 @@ mod live_rollback_tests {
         assert!(report.reconciled_versions.is_empty());
         let completed = migrate_schema_epoch(&config).unwrap();
         assert_eq!(completed.prior_applied, 2);
-        assert_eq!(completed.final_applied, 6);
+        assert_eq!(completed.final_applied, CURRENT_SCHEMA_EPOCH);
         database.cleanup();
     }
 
@@ -1886,7 +2193,7 @@ mod live_rollback_tests {
         );
         let completed = migrate_schema_epoch(&config).unwrap();
         assert_eq!(completed.prior_applied, 2);
-        assert_eq!(completed.final_applied, 6);
+        assert_eq!(completed.final_applied, CURRENT_SCHEMA_EPOCH);
         database.cleanup();
     }
 
@@ -1904,7 +2211,10 @@ mod live_rollback_tests {
         session.finish(Ok(())).unwrap();
 
         assert_v2_prefix(&config, &registry);
-        assert_eq!(migrate_schema_epoch(&config).unwrap().final_applied, 6);
+        assert_eq!(
+            migrate_schema_epoch(&config).unwrap().final_applied,
+            CURRENT_SCHEMA_EPOCH
+        );
         database.cleanup();
     }
 
@@ -1923,7 +2233,10 @@ mod live_rollback_tests {
         session.finish(Ok(())).unwrap();
 
         assert_v2_prefix(&config, &registry);
-        assert_eq!(migrate_schema_epoch(&config).unwrap().final_applied, 6);
+        assert_eq!(
+            migrate_schema_epoch(&config).unwrap().final_applied,
+            CURRENT_SCHEMA_EPOCH
+        );
         database.cleanup();
     }
 
@@ -2017,7 +2330,10 @@ mod live_rollback_tests {
         session.finish(Ok(())).unwrap();
 
         assert_v3_prefix(&config, &registry);
-        assert_eq!(migrate_schema_epoch(&config).unwrap().final_applied, 6);
+        assert_eq!(
+            migrate_schema_epoch(&config).unwrap().final_applied,
+            CURRENT_SCHEMA_EPOCH
+        );
         database.cleanup();
     }
 
@@ -2036,7 +2352,10 @@ mod live_rollback_tests {
         session.finish(Ok(())).unwrap();
 
         assert_v3_prefix(&config, &registry);
-        assert_eq!(migrate_schema_epoch(&config).unwrap().final_applied, 6);
+        assert_eq!(
+            migrate_schema_epoch(&config).unwrap().final_applied,
+            CURRENT_SCHEMA_EPOCH
+        );
         database.cleanup();
     }
 
@@ -2130,7 +2449,10 @@ mod live_rollback_tests {
         session.finish(Ok(())).unwrap();
 
         assert_v4_prefix(&config, &registry);
-        assert_eq!(migrate_schema_epoch(&config).unwrap().final_applied, 6);
+        assert_eq!(
+            migrate_schema_epoch(&config).unwrap().final_applied,
+            CURRENT_SCHEMA_EPOCH
+        );
         database.cleanup();
     }
 
@@ -2149,7 +2471,10 @@ mod live_rollback_tests {
         session.finish(Ok(())).unwrap();
 
         assert_v4_prefix(&config, &registry);
-        assert_eq!(migrate_schema_epoch(&config).unwrap().final_applied, 6);
+        assert_eq!(
+            migrate_schema_epoch(&config).unwrap().final_applied,
+            CURRENT_SCHEMA_EPOCH
+        );
         database.cleanup();
     }
 
@@ -2243,7 +2568,10 @@ mod live_rollback_tests {
         session.finish(Ok(())).unwrap();
 
         assert_v5_prefix(&config, &registry);
-        assert_eq!(migrate_schema_epoch(&config).unwrap().final_applied, 6);
+        assert_eq!(
+            migrate_schema_epoch(&config).unwrap().final_applied,
+            CURRENT_SCHEMA_EPOCH
+        );
         database.cleanup();
     }
 
@@ -2262,7 +2590,10 @@ mod live_rollback_tests {
         session.finish(Ok(())).unwrap();
 
         assert_v5_prefix(&config, &registry);
-        assert_eq!(migrate_schema_epoch(&config).unwrap().final_applied, 6);
+        assert_eq!(
+            migrate_schema_epoch(&config).unwrap().final_applied,
+            CURRENT_SCHEMA_EPOCH
+        );
         database.cleanup();
     }
 
@@ -2340,6 +2671,164 @@ mod live_rollback_tests {
         );
         assert_eq!(migrate_schema_epoch(&config).unwrap().prior_applied, 6);
         database.cleanup();
+    }
+
+    fn verify_v7_fault_matrix(base: &Config) {
+        let template = TestDatabase::create(base, "vseventemplate");
+        let template_config = template.config(base);
+        prepare_legacy_v6_cutover_input(&template_config);
+        verify_v7_pre_marker_rollback(base, template.name.as_str());
+        verify_v7_marker_rollback(base, template.name.as_str());
+        verify_v7_killed_commit_retry(base, template.name.as_str());
+        verify_v7_committed_reconciliation(base, template.name.as_str());
+        template.cleanup();
+    }
+
+    fn prepare_legacy_v6_cutover_input(config: &Config) {
+        legacy_epoch_fixture::build_frozen_python_estate(config);
+        crate::legacy_adopter::adopt_legacy_schema(config)
+            .expect("the frozen Python estate must adopt exactly");
+        let prefix = migrate_schema_epoch(config)
+            .expect("the exact adopted estate must stop at the epoch-6 cutover input");
+        assert_eq!((prefix.prior_applied, prefix.final_applied), (0, 6));
+        let cohort = crate::h3_reference_cohort::representative_h3_reference_cohort_v1()
+            .expect("the sole embedded H3 cohort must validate");
+        let foundation =
+            crate::michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation_v1()
+                .expect("the sole checked Michigan foundation fixture must validate");
+        crate::h3_reference_installer::install_michigan_h3_reference_bundle_v1(
+            config, cohort, foundation,
+        )
+        .expect("the exact epoch-6 estate must install the canonical Michigan H3 bundle");
+        crate::h3_shadow_backfill::backfill_legacy_h3_shadow_keys(config)
+            .expect("the exact epoch-6 estate must complete every H3 shadow");
+        let registry = compiled_schema_epoch_migrations().unwrap();
+        assert_v6_prefix(config, &registry);
+    }
+
+    fn verify_v7_pre_marker_rollback(base: &Config, template: &str) {
+        let database = TestDatabase::create_from_template(base, template, "vsevenprerollback");
+        let config = database.config(base);
+        let registry = compiled_schema_epoch_migrations().unwrap();
+        let bounded = bounded_config(&config);
+        let mut session = LockedSession::connect(&bounded).unwrap();
+        let mut transaction = begin_migration_transaction(session.client()).unwrap();
+        execute_migration_before_marker(&mut transaction, registry[6], true).unwrap();
+        force_transaction_rollback(&mut transaction);
+        transaction.rollback().unwrap();
+        session.finish(Ok(())).unwrap();
+
+        assert_v6_prefix(&config, &registry);
+        assert_v7_retry_applies_once_then_is_idempotent(&config);
+        database.cleanup();
+    }
+
+    fn verify_v7_marker_rollback(base: &Config, template: &str) {
+        let database = TestDatabase::create_from_template(base, template, "vsevenmarkerrollback");
+        let config = database.config(base);
+        let registry = compiled_schema_epoch_migrations().unwrap();
+        let bounded = bounded_config(&config);
+        let mut session = LockedSession::connect(&bounded).unwrap();
+        let mut transaction = begin_migration_transaction(session.client()).unwrap();
+        execute_migration_before_marker(&mut transaction, registry[6], true).unwrap();
+        insert_ledger_marker(&mut transaction, registry[6].migration).unwrap();
+        force_transaction_rollback(&mut transaction);
+        transaction.rollback().unwrap();
+        session.finish(Ok(())).unwrap();
+
+        assert_v6_prefix(&config, &registry);
+        assert_v7_retry_applies_once_then_is_idempotent(&config);
+        database.cleanup();
+    }
+
+    fn verify_v7_killed_commit_retry(base: &Config, template: &str) {
+        let database = TestDatabase::create_from_template(base, template, "vsevenkilled");
+        let config = database.config(base);
+        let registry = compiled_schema_epoch_migrations().unwrap();
+        let bounded = bounded_config(&config);
+        let mut session = LockedSession::connect(&bounded).unwrap();
+        let mut report = v7_report();
+        let mut first_attempt = true;
+        let mut attempt = |client: &mut Client, migration, legacy_origin| {
+            if first_attempt {
+                first_attempt = false;
+                killed_before_commit_attempt(client, migration, legacy_origin, base)
+            } else {
+                attempt_migration(client, migration, legacy_origin)
+            }
+        };
+        apply_with_reconciliation_using(
+            &bounded,
+            &mut session,
+            &registry,
+            registry[6],
+            true,
+            &mut report,
+            &mut attempt,
+        )
+        .unwrap();
+        session.finish(Ok(())).unwrap();
+        assert_eq!(
+            report.applied_versions,
+            vec![registry[6].migration.version()]
+        );
+        assert!(report.reconciled_versions.is_empty());
+        assert_v7_idempotent(&config);
+        database.cleanup();
+    }
+
+    fn verify_v7_committed_reconciliation(base: &Config, template: &str) {
+        let database = TestDatabase::create_from_template(base, template, "vsevenreconciled");
+        let config = database.config(base);
+        let registry = compiled_schema_epoch_migrations().unwrap();
+        let bounded = bounded_config(&config);
+        let mut session = LockedSession::connect(&bounded).unwrap();
+        let mut report = v7_report();
+        let mut first_attempt = true;
+        let mut attempt = |client: &mut Client, migration, legacy_origin| {
+            let outcome = attempt_migration(client, migration, legacy_origin)?;
+            if first_attempt {
+                first_attempt = false;
+                assert_eq!(outcome, MigrationAttempt::Committed);
+                Ok(MigrationAttempt::Ambiguous)
+            } else {
+                Ok(outcome)
+            }
+        };
+        apply_with_reconciliation_using(
+            &bounded,
+            &mut session,
+            &registry,
+            registry[6],
+            true,
+            &mut report,
+            &mut attempt,
+        )
+        .unwrap();
+        session.finish(Ok(())).unwrap();
+        assert!(report.applied_versions.is_empty());
+        assert_eq!(
+            report.reconciled_versions,
+            vec![registry[6].migration.version()]
+        );
+        assert_v7_idempotent(&config);
+        database.cleanup();
+    }
+
+    fn assert_v7_retry_applies_once_then_is_idempotent(config: &Config) {
+        let retry = migrate_schema_epoch(config).unwrap();
+        assert_eq!((retry.prior_applied, retry.final_applied), (6, 7));
+        assert_eq!(retry.applied_versions.len(), 1);
+        assert_eq!(retry.applied_versions[0].as_i64(), 7);
+        assert!(retry.reconciled_versions.is_empty());
+        assert_v7_idempotent(config);
+    }
+
+    fn assert_v7_idempotent(config: &Config) {
+        let idempotent = migrate_schema_epoch(config).unwrap();
+        assert_eq!((idempotent.prior_applied, idempotent.final_applied), (7, 7));
+        assert!(idempotent.applied_versions.is_empty());
+        assert!(idempotent.reconciled_versions.is_empty());
     }
 
     fn verify_leap_ahead_reconciliation(base: &Config) {
@@ -2521,13 +3010,35 @@ mod live_rollback_tests {
         session.finish(Ok(())).unwrap();
     }
 
+    fn assert_v6_prefix(config: &Config, registry: &[SchemaEpochMigration]) {
+        let bounded = bounded_config(config);
+        let mut session = LockedSession::connect(&bounded).unwrap();
+        let inspected = inspect_epoch(session.client(), registry).unwrap();
+        assert_eq!(inspected.origin, SchemaEpochOrigin::ExistingRustPrefix);
+        assert!(inspected.legacy_origin);
+        assert_eq!(
+            validate_registry_prefix(registry, &inspected.persisted),
+            Ok(6)
+        );
+        session.finish(Ok(())).unwrap();
+    }
+
     fn force_transaction_rollback(transaction: &mut Transaction<'_>) {
         let failure = transaction.batch_execute("SELECT 1 / 0").unwrap_err();
         assert_eq!(failure.code(), Some(&SqlState::DIVISION_BY_ZERO));
     }
 
+    // Test-only prefix used to keep the established v1-v6 rollback laws isolated from v7.
     fn production_registry() -> [SchemaEpochMigration; 6] {
-        compiled_schema_epoch_migrations().unwrap()
+        let compiled = compiled_schema_epoch_migrations().unwrap();
+        [
+            compiled[0],
+            compiled[1],
+            compiled[2],
+            compiled[3],
+            compiled[4],
+            compiled[5],
+        ]
     }
 
     fn v2_report() -> SchemaEpochReport {
@@ -2579,6 +3090,17 @@ mod live_rollback_tests {
             origin: SchemaEpochOrigin::ExistingRustPrefix,
             prior_applied: 5,
             final_applied: 5,
+            applied_versions: Vec::new(),
+            reconciled_versions: Vec::new(),
+            legacy_adoption: None,
+        }
+    }
+
+    fn v7_report() -> SchemaEpochReport {
+        SchemaEpochReport {
+            origin: SchemaEpochOrigin::ExistingRustPrefix,
+            prior_applied: 6,
+            final_applied: 6,
             applied_versions: Vec::new(),
             reconciled_versions: Vec::new(),
             legacy_adoption: None,
@@ -2754,6 +3276,23 @@ mod live_rollback_tests {
             let mut config = base.clone();
             config.dbname(&self.name);
             config
+        }
+
+        fn create_from_template(base: &Config, template: &str, label: &str) -> Self {
+            assert!(label.bytes().all(|byte| byte.is_ascii_lowercase()));
+            assert!(template
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_'));
+            let name = format!("per20_epoch_{label}_{}", std::process::id());
+            let mut admin = base.clone();
+            admin.dbname("postgres");
+            let sql = format!("CREATE DATABASE \"{name}\" OWNER test TEMPLATE \"{template}\"");
+            admin.connect(NoTls).unwrap().batch_execute(&sql).unwrap();
+            Self {
+                name,
+                admin,
+                active: true,
+            }
         }
 
         fn cleanup(mut self) {

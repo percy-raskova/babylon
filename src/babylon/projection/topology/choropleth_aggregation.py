@@ -62,7 +62,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from babylon.persistence.hex_state import DynamicHexState
-from babylon.persistence.postgres_aggregation import CountyValueAggregate
+from babylon.projection.sql_rows import CountyValueAggregate
 from babylon.projection.topology.choropleth import ChoroplethCell
 
 __all__ = [

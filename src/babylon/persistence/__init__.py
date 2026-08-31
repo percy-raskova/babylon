@@ -1,34 +1,25 @@
-"""Persistence layer for simulation runtime state.
+"""Non-authoritative Python persistence periphery.
 
-This module provides both SQLite-based and PostgreSQL-based persistence
-for simulation runs.
+Authoritative campaign PostgreSQL persistence is owned solely by the Rust
+``babylon-runtime`` composition root. Python retains the deterministic local
+runtime database and dedicated periphery stores.
 
 Components:
     - RuntimeDatabase: Per-run SQLite database for tick-keyed state
-    - PostgresRuntime: PostgreSQL backend with session-scoped persistence
-    - RuntimePersistence: Protocol for backend-agnostic access
+    - RuntimePersistence: Frozen local SQLite protocol
     - TraceRecorder: Buffered in-memory trace collector
     - VectorStoreProtocol: Backend-agnostic vector search interface
 
 Architecture (ADR030/031/032/033 + Feature 037):
     The persistence layer uses tick-keyed temporal tables where
     (session_id, tick, entity_id) forms the fundamental identity.
-    Both SQLite (dev/test) and Postgres (production) implement
-    the RuntimePersistence protocol.
+    The SQLite runtime remains a frozen reference and test/periphery store.
 """
 
-from babylon.persistence.archival import (
-    export_session_to_parquet,
-    purge_session,
-    query_archived_session,
-    upload_to_r2,
-)
-from babylon.persistence.babylon_meta import BabylonMetaStore, CampaignRecord
 from babylon.persistence.pgvector_store import PgVectorStore
-from babylon.persistence.postgres_runtime import PostgresRuntime
 from babylon.persistence.protocols import (
     MonotonicityViolationError,
-    PostgresRuntimeExtensions,
+    ReadOnlyPostgres,
     RuntimePersistence,
     TraceLevel,
     VectorStoreProtocol,
@@ -37,19 +28,12 @@ from babylon.persistence.runtime_db import RuntimeDatabase
 from babylon.persistence.runtime_schema import RUNTIME_SCHEMA_DDL
 
 __all__ = [
-    "BabylonMetaStore",
-    "CampaignRecord",
     "MonotonicityViolationError",
     "PgVectorStore",
-    "PostgresRuntime",
-    "PostgresRuntimeExtensions",
+    "ReadOnlyPostgres",
     "RUNTIME_SCHEMA_DDL",
     "RuntimeDatabase",
     "RuntimePersistence",
     "TraceLevel",
     "VectorStoreProtocol",
-    "export_session_to_parquet",
-    "purge_session",
-    "query_archived_session",
-    "upload_to_r2",
 ]

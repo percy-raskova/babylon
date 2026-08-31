@@ -8,7 +8,7 @@ The economy-wide rate of profit ``r`` moved to
 ``TickDynamicsSystem._economy_wide_profit_rate`` (it must source the realized
 surplus/profit-rate tensors, not the county MELT quantities whose
 ``capital_stock`` is 0); it is pinned by the full-step anti-inertness sentinels
-in ``test_system.py`` and the live ``test_vol3_surplus_distribution_live.py``.
+in ``test_system.py`` and the hermetic ``test_single_county.py`` production-path proof.
 """
 
 from __future__ import annotations

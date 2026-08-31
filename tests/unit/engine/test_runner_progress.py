@@ -10,7 +10,6 @@ uses.
 from __future__ import annotations
 
 import io
-import sys
 from typing import Any
 
 import pytest
@@ -43,13 +42,3 @@ def test_tqdm_suppressed_when_stderr_is_not_a_tty(monkeypatch: pytest.MonkeyPatc
 def test_tqdm_imports_when_present() -> None:
     """tqdm is a hard dep per T001; importing it must succeed."""
     import tqdm  # noqa: F401
-
-
-def test_runner_module_imports_without_postgres() -> None:
-    """Importing :mod:`babylon.engine.headless_runner.runner` MUST NOT
-    open Postgres; the connection only happens inside :func:`run`."""
-    sys.modules.pop("babylon.engine.headless_runner.runner", None)
-    import babylon.engine.headless_runner.runner as runner_mod
-
-    assert callable(runner_mod.run)
-    assert callable(runner_mod.main_from_argv)

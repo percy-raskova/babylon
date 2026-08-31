@@ -1,6 +1,7 @@
 //! Transactional installation of the exact PER-278 spatial reference bundle.
 
 use babylon_kernel::tick_content_hash::RefDigestV1;
+use babylon_kernel::H3CellId;
 use postgres::{Client, Config, GenericClient, IsolationLevel, NoTls, Row, Transaction};
 
 use crate::legacy_adopter::{
@@ -12,8 +13,8 @@ use crate::schema_epoch::{
 };
 use crate::{
     michigan_spatial_reference_products_v1, CountyH3LandAreaRow, CountyIdentityRow,
-    CountyPlaceH3LandAreaRow, H3CellId, H3CountRow, H3LandFractionRow, H3ReferenceCohort,
-    PlaceIdentityRow, ReferenceProduct, SpatialReferenceProducts, SpatialReferenceProductsError,
+    CountyPlaceH3LandAreaRow, H3CountRow, H3LandFractionRow, H3ReferenceCohort, PlaceIdentityRow,
+    ReferenceProduct, SpatialReferenceProducts, SpatialReferenceProductsError,
 };
 
 const INSTALL_BATCH_ROWS: usize = 1_024;
@@ -46,8 +47,9 @@ const WRITE_SETTINGS_SQL: &str = "SELECT \
 
 const READ_PRODUCTS_SQL: &str = "SELECT product_code, artifact_sha256, semantic_sha256, \
     row_count, evidence_class, measure_unit, denominator \
-    FROM babylon_ref.reference_product WHERE ref_digest = $1 \
-    ORDER BY product_code LIMIT $2";
+    FROM babylon_ref.reference_product \
+    WHERE ref_digest = $1 AND product_code = ANY($2::text[]) \
+    ORDER BY product_code LIMIT $3";
 const INSERT_PRODUCT_SQL: &str = "INSERT INTO babylon_ref.reference_product \
     (ref_digest, product_code, artifact_sha256, semantic_sha256, row_count, evidence_class, \
      measure_unit, denominator) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
@@ -859,10 +861,15 @@ fn inspect_presence<ClientType: GenericClient>(
     let operation = SpatialReferenceInstallOperation::Read(relation);
     let ref_digest = bundle.ref_digest();
     let limit = query_limit(PRODUCT_COUNT, relation)?;
+    let product_codes = bundle
+        .products()
+        .iter()
+        .map(ReferenceProduct::code)
+        .collect::<Vec<_>>();
     let rows = client
         .query(
             READ_PRODUCTS_SQL,
-            &[&ref_digest.as_bytes().as_slice(), &limit],
+            &[&ref_digest.as_bytes().as_slice(), &product_codes, &limit],
         )
         .map_err(|_| database_error(operation))?;
     if rows.is_empty() {

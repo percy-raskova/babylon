@@ -228,38 +228,35 @@ implementation_status:
         - src/babylon/engine/simulation_engine.py
         - src/babylon/engine/actions/__init__.py
 
-    legacy_python_persistence:
+    rust_postgresql_persistence:
       status: implemented_current
-      estate: frozen_predecessor
+      estate: sole_game_managed_postgresql_authority
       scope:
-        - mutable_runtime_sqlite
-        - postgres_per_tick_transaction_envelope
-        - persist_tick_atomic
-        - tick_commit
-      not_v4_authority: true
+        - one_way_epoch_9_activation
+        - typed_semantic_tick_rows
+        - committed_tick_marker_last
+        - exact_restart_and_commit_ambiguity_reconciliation
+      evidence:
+        - rust/crates/babylon-persistence/src/runtime.rs
+        - rust/crates/babylon-persistence/migrations/0009_rust_persistence_activation.sql
+        - contracts/rust_persistence_cutover_v1.yaml
+
+    python_persistence_periphery:
+      status: implemented_current
+      estate: non_authoritative_periphery
+      scope:
+        - mutable_local_sqlite
+        - enforced_read_only_postgresql
+        - dedicated_vector_store
+      not_game_authority: true
       evidence:
         - src/babylon/persistence/runtime_db.py
-        - src/babylon/persistence/envelope.py
-        - src/babylon/persistence/postgres_runtime/__init__.py
-
-    partial_babylon_meta:
-      status: implemented_current
-      estate: legacy_partial_archive_predecessor
-      scope:
-        - campaign_profile
-        - watchlist
-        - jumplist
-        - breadcrumb_navigation
-      absent:
-        - semantic_pages_and_links
-        - fog_safe_retrieval
-        - archive_outbox_materialization
-      evidence:
-        - src/babylon/persistence/migrations/0037_babylon_meta.sql
+        - src/babylon/persistence/protocols.py
+        - src/babylon/persistence/postgres_reference.py
 
     legacy_h3_text_keys:
-      status: implemented_legacy
-      estate: frozen_python_and_postgresql_predecessor
+      status: retired_by_epoch_9
+      estate: frozen_migration_history
       inventory:
         hex_cell:
           h3_index: VARCHAR(15)
@@ -288,23 +285,21 @@ implementation_status:
           entity: str
           persistence: str
       evidence:
-        - src/babylon/persistence/postgres_schema.py
         - src/babylon/persistence/migrations/0011_dynamic_hex_state.sql
         - src/babylon/persistence/migrations/0027_hex_spatial_map.sql
         - src/babylon/persistence/migrations/0028_hex_spatial_map_session_scope.sql
-        - src/babylon/reference/schema.py
-        - src/babylon/models/snapshots.py
-        - src/babylon/models/entities/territory.py
-        - src/babylon/persistence/hex_state.py
-      planned_disposition:
-        owner: PER-21
+        - rust/crates/babylon-persistence/migrations/0007_h3_canonical_readers.sql
+        - rust/crates/babylon-persistence/migrations/0009_rust_persistence_activation.sql
+        - contracts/h3_reader_cutover_v1.yaml
+      realized_disposition:
+        owner: PER-280/PER-281
         target: positive BIGINT H3CellId(u64)
         consolidated_table: babylon_ref.h3_cell
+        terminal: zero Python game-state readers and zero compatibility views
         migration_sequence:
           - add_keys
           - backfill
           - prove_count_hash_query_equivalence
-          - add_compatibility_views
           - switch_readers_and_writers
           - forbid_legacy_writes
           - retire_duplicates

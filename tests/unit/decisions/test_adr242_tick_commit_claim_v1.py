@@ -54,14 +54,16 @@ def test_adr242_binds_contract_ownership_and_exclusions() -> None:
     }
 
 
-def test_design_keeps_writer_and_migration_outside_the_slice() -> None:
+def test_historical_slice_boundary_is_superseded_by_the_one_way_cutover() -> None:
     design = (
         ROOT / "docs" / "superpowers" / "specs" / "2026-08-27-per-20-tick-commit-claim-design.md"
     ).read_text(encoding="utf-8")
-    writer_gate = (
-        ROOT / "rust" / "crates" / "babylon-persistence" / "src" / "writer_gate.rs"
-    ).read_text(encoding="utf-8")
+    writer_gate = ROOT / "rust" / "crates" / "babylon-persistence" / "src" / "writer_gate.rs"
+    runtime = (ROOT / "rust" / "crates" / "babylon-persistence" / "src" / "runtime.rs").read_text(
+        encoding="utf-8"
+    )
 
     assert "This slice adds no migration, SQL, database connection" in design
-    assert "PythonAuthorityActive" in writer_gate
-    assert "Ok(RustWriterAuthority" not in writer_gate
+    assert not writer_gate.exists()
+    assert "activate_rust_persistence_v1" in runtime
+    assert "PersistenceAuthorityStateV1::RustActive" in runtime

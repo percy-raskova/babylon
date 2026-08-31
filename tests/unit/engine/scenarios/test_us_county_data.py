@@ -18,7 +18,7 @@ import json
 
 import pytest
 
-from babylon.engine.headless_runner.scopes import DEFAULT_SQLITE_PATH, _load_national_fips
+from babylon.data.reference_scope import DEFAULT_SQLITE_PATH, _load_national_fips
 from babylon.engine.scenarios.us_county_data import (
     ARTIFACT_PATH,
     _verify_content_hash,
@@ -304,7 +304,7 @@ class TestArtifactRederivesFromDB:
     the artifact is not a stale hand-edit."""
 
     def test_autauga_population_rederives(self) -> None:
-        from babylon.engine.headless_runner.reference_data_cache import ReferenceDataCache
+        from babylon.data.reference_data_cache import ReferenceDataCache
 
         data = load_county_data()
         year = data["source"]["population_year"]

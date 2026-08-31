@@ -106,7 +106,7 @@ def sweep_1d(
     *,
     max_ticks: int = DEFAULT_MAX_TICKS_1D,
     seed: int = 2010,
-    backend: str = "headless",
+    backend: str = "in_memory",
     scope_name: str = "detroit-tri-county",
     scenario: str = "imperial_circuit",
     base_defines: GameDefines | None = None,
@@ -160,7 +160,6 @@ def sweep_1d(
             seed=seed,
             max_ticks=max_ticks,
             backend=backend,
-            scope_name=scope_name,
             scenario=scenario,
         )
         repro = build_repro_record(result, scope_name=scope_label, max_ticks=max_ticks)
@@ -184,7 +183,7 @@ def sweep_2d(
     *,
     max_ticks: int = DEFAULT_MAX_TICKS_2D,
     seed: int = 2010,
-    backend: str = "headless",
+    backend: str = "in_memory",
     scope_name: str = "detroit-tri-county",
     scenario: str = "imperial_circuit",
     base_defines: GameDefines | None = None,
@@ -244,7 +243,6 @@ def sweep_2d(
                 seed=seed,
                 max_ticks=max_ticks,
                 backend=backend,
-                scope_name=scope_name,
                 scenario=scenario,
             )
             repro = build_repro_record(result, scope_name=scope_label, max_ticks=max_ticks)
@@ -401,7 +399,7 @@ def run_sweep(
     param2: str | None = None,
     max_ticks: int | None = None,
     seed: int = 2010,
-    backend: str = "headless",
+    backend: str = "in_memory",
     scope_name: str = "detroit-tri-county",
     scenario: str = "imperial_circuit",
     base_defines: GameDefines | None = None,

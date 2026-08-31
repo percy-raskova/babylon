@@ -59,7 +59,6 @@ SWEPT_ENTRY_POINTS: tuple[Path, ...] = (
     REPO_ROOT / "tools" / "ingest_corpus.py",
     REPO_ROOT / "tools" / "demo_substrate.py",
     REPO_ROOT / "src" / "babylon" / "persistence" / "tiger_ingestion.py",
-    REPO_ROOT / "src" / "babylon" / "engine" / "headless_runner" / "runner.py",
 )
 
 #: Baseline of engine/formulas files that already imported `logging` before
@@ -70,19 +69,11 @@ ENGINE_HOT_PATH_LOGGING_BASELINE: frozenset[str] = frozenset(
     {
         "engine/bifurcation_monitor.py",
         "engine/field_registry.py",
-        "engine/headless_runner/bridge.py",
-        # Vol II U2 (v1-cascade merge): LODES OD-matrix hydration — one-shot
-        # data-loading plumbing beside runner.py, not per-tick hot path;
-        # logs through the same spine as its siblings above/below.
-        "engine/headless_runner/lodes_hydration.py",
-        "engine/headless_runner/runner.py",
-        "engine/headless_runner/storage_probe.py",
         "engine/hydration/reference.py",
         "engine/observer_adapter.py",
         "engine/observers/causal.py",
         "engine/observers/economic.py",
         "engine/observers/endgame_detector.py",
-        "engine/observers/session_recorder.py",
         "engine/optimization/bayesian.py",
         "engine/scenarios/_legacy.py",
         "engine/simulation_engine.py",

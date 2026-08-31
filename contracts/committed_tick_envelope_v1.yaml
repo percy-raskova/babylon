@@ -17,7 +17,8 @@ authority:
     cumulative_bounds: Designed from existing identity aggregate and section ceilings
     fixture_values: Designed
   invariants:
-    - Every envelope contains all eight row-family sections, including empty sections.
+    - Every envelope contains all five live row-family sections.
+    - Archive dirty receipt is singular and mandatory; every other live family is sparse.
     - Each family uses exact nonempty canonical key bytes in strict ascending order.
     - A family body has at least nine bytes for every declared row.
     - Row payload bytes remain owned by the typed producer for that row family.
@@ -29,10 +30,10 @@ constants:
   layout_u32: 1
   claim_tag_u8: 1
   claim_bytes: 93
-  family_count: 8
+  family_count: 5
   row_length_field_bytes: 4
-  fixed_envelope_bytes: 209
-  max_envelope_bytes: 536871121
+  fixed_envelope_bytes: 182
+  max_envelope_bytes: 335544502
 
 bounds:
   schema_bytes: 65536
@@ -62,9 +63,6 @@ layouts:
       - graph_section
       - state_section
       - event_section
-      - subsystem_section
-      - conservation_section
-      - boundary_flow_section
       - checkpoint_section
       - archive_dirty_receipt_section
     key: [campaign_id, resolve_tick]
@@ -73,11 +71,17 @@ row_families:
   - {name: graph, tag_u8: 16}
   - {name: state, tag_u8: 17}
   - {name: event, tag_u8: 18}
-  - {name: subsystem, tag_u8: 19}
-  - {name: conservation, tag_u8: 20}
-  - {name: boundary_flow, tag_u8: 21}
   - {name: checkpoint, tag_u8: 22}
   - {name: archive_dirty_receipt, tag_u8: 23}
+
+archive_dirty_receipt:
+  cardinality: exactly_one
+  producer: campaign_work
+  row_key: fixed_archive_dirty_receipt_v1_prefix
+  payload: IdentifiedTickReportV1.tick_content_hash_exact_32_bytes
+  typed_relation_primary_key: [campaign_id, resolve_tick]
+  caller_subject: prohibited
+  empty_proof: prohibited
 
 retry_semantics:
   requested_against_existing:

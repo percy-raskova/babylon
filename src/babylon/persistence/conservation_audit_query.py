@@ -13,7 +13,7 @@ from uuid import UUID
 from babylon.persistence.audit_models import AuditSeverity, ConservationAuditRow
 
 if TYPE_CHECKING:
-    from babylon.persistence import PostgresRuntime
+    from babylon.persistence.protocols import ReadOnlyPostgres
 
 
 _FETCH_BASE = """
@@ -37,7 +37,7 @@ GROUP BY severity
 class ConservationAuditQuery:
     """Read-only typed-protocol facade for audit-log queries."""
 
-    def __init__(self, runtime: PostgresRuntime) -> None:
+    def __init__(self, runtime: ReadOnlyPostgres) -> None:
         self._runtime = runtime
 
     def fetch(

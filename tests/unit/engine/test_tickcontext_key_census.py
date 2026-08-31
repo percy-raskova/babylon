@@ -10,12 +10,6 @@ from tickcontext_key_census import stamped_keys  # noqa: E402
 # AND the Rust TickContext contract — never add silently.
 DECLARED_STAMPED_KEYS = frozenset(
     {
-        "session_id",
-        "boundary_flow_register",
-        "external_nodes_phi",
-        "county_exposure_by_external",
-        "simulated_year",
-        "vol2_step",
         "vol2_circulation_result",
     }
 )

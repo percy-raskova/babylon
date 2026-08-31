@@ -50,6 +50,8 @@ use babylon_kernel::replay::RngSeedContext;
 use babylon_kernel::SessionId;
 use std::collections::{HashMap, HashSet};
 
+pub mod h3_runtime;
+pub mod material_state;
 mod phase_order;
 pub mod replay_identity;
 pub mod replay_session;

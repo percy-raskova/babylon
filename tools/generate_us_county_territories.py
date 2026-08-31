@@ -121,8 +121,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from babylon.engine.headless_runner.reference_data_cache import ReferenceDataCache
-from babylon.engine.headless_runner.scopes import DEFAULT_SQLITE_PATH, _load_national_fips
+from babylon.data.reference_data_cache import ReferenceDataCache
+from babylon.data.reference_scope import DEFAULT_SQLITE_PATH, _load_national_fips
 from babylon.reference.database import get_normalized_session_factory
 from babylon.reference.schema import DimCounty, DimCountyGeometry, DimState, FactStateMinerals
 

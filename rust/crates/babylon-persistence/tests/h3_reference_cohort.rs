@@ -1,14 +1,13 @@
 //! Language-neutral representative H3 reference-cohort behavior.
 
 use babylon_kernel::tick_content_hash::RefDigestV1;
+use babylon_kernel::H3CellId;
 use babylon_persistence::{
-    build_representative_h3_cohort_v1, H3CellId, H3ReferenceCellRow, H3ReferenceCohortError,
-    H3ReferenceOrigin, MAX_H3_REFERENCE_SOURCE_CELLS,
+    build_representative_h3_cohort_v1, representative_h3_reference_cohort_v1, H3ReferenceCellRow,
+    H3ReferenceCohortError, H3ReferenceOrigin, MAX_H3_REFERENCE_SOURCE_CELLS,
 };
 use std::str::FromStr;
 
-const SOURCE_FIXTURE: &[u8] = include_bytes!("fixtures/h3_reference_source_v1.bin");
-const SOURCE_DOMAIN: &[u8] = b"babylon.h3.reference-source.v1\0";
 const SOURCE_COUNT: usize = 48_764;
 const CLOSURE_COUNT: usize = 59_849;
 const SOURCE_COUNTS: [u32; 16] = [0, 0, 0, 0, 0, 3_192, 0, 45_572, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -227,27 +226,12 @@ fn representative_cohort_refuses_every_untrusted_or_drifted_source_shape() {
 }
 
 fn source_cells() -> Vec<H3CellId> {
-    assert!(SOURCE_FIXTURE.starts_with(SOURCE_DOMAIN));
-    let count_offset = SOURCE_DOMAIN.len();
-    let payload_offset = count_offset + 8;
-    let count = u64::from_be_bytes(
-        SOURCE_FIXTURE[count_offset..payload_offset]
-            .try_into()
-            .expect("fixture count is exactly eight bytes"),
-    );
-    assert_eq!(usize::try_from(count).unwrap(), SOURCE_COUNT);
-    assert_eq!(
-        SOURCE_FIXTURE.len(),
-        payload_offset + SOURCE_COUNT * size_of::<u64>()
-    );
-
-    SOURCE_FIXTURE[payload_offset..]
-        .chunks_exact(size_of::<u64>())
-        .take(SOURCE_COUNT)
-        .map(|chunk| {
-            let raw = u64::from_be_bytes(chunk.try_into().expect("cell is exactly eight bytes"));
-            H3CellId::try_from(raw).expect("fixture identities must validate")
-        })
+    representative_h3_reference_cohort_v1()
+        .expect("the sole checked-in source fixture must validate")
+        .rows()
+        .iter()
+        .filter(|row| row.origin() == H3ReferenceOrigin::Direct)
+        .map(H3ReferenceCellRow::cell_id)
         .collect()
 }
 
@@ -264,5 +248,3 @@ fn digest(text: &str) -> RefDigestV1 {
     }
     RefDigestV1::from_bytes(bytes)
 }
-
-use std::mem::size_of;

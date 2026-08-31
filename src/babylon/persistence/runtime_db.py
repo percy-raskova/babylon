@@ -660,14 +660,6 @@ class RuntimeDatabase:
         del session_id, limit
         return []
 
-    def query_infrastructure_link_state(self, session_id: UUID, tick: int) -> list[dict[str, Any]]:
-        """Honest-empty: no infrastructure read-model on SQLite.
-
-        :returns: Empty list always.
-        """
-        del session_id, tick
-        return []
-
     def persist_full_tick(
         self,
         session_id: UUID,
@@ -678,13 +670,12 @@ class RuntimeDatabase:
         classes: list[dict[str, Any]] | None = None,
         edges: list[dict[str, Any]] | None = None,
         communities: list[dict[str, Any]] | None = None,
-        hex_activities: list[dict[str, Any]] | None = None,
         economic_summary: dict[str, Any] | None = None,
         events: list[dict[str, Any]] | None = None,
     ) -> None:
         """No-op: the read-model snapshot tables are Postgres-only."""
         del session_id, tick, territories, orgs, classes, edges
-        del communities, hex_activities, economic_summary, events
+        del communities, economic_summary, events
 
     def persist_tick_summary(self, tick: int, summary: dict[str, Any], *, session_id: UUID) -> None:
         """No-op: ``tick_summary`` is a Postgres-only read-model table."""

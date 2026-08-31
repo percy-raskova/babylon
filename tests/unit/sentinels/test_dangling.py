@@ -371,12 +371,10 @@ def test_registry_declares_the_persistence_receiver() -> None:
     assert "persistence" in names
 
 
-def test_registry_declares_all_four_persistence_watched_classes() -> None:
+def test_registry_declares_the_retained_local_persistence_classes() -> None:
     names = {row.name for row in WATCHED_CLASSES}
     assert names == {
         "runtime_persistence_protocol",
-        "postgres_runtime_extensions_protocol",
-        "postgres_runtime_impl",
         "sqlite_runtime_impl",
     }
 
@@ -392,14 +390,10 @@ def test_live_tree_is_clean_founding_specimen_fixed() -> None:
     assert dangling_references() == []
 
 
-def test_class_members_matches_real_postgres_runtime_shape() -> None:
-    """POSITIVE control: PostgresRuntime really does declare the plural
-    method and NOT the singular -- pins the real-world fact this whole
-    sentinel is built to enforce, independent of engine_bridge.py's state."""
-    members = class_members(
-        "src/babylon/persistence/postgres_runtime/_legacy.py", "PostgresRuntime"
-    )
-    assert "persist_action_results" in members
+def test_class_members_matches_retained_runtime_database_shape() -> None:
+    """Positive control for the retained local persistence implementation."""
+    members = class_members("src/babylon/persistence/runtime_db.py", "RuntimeDatabase")
+    assert "persist_tick" in members
     assert "persist_action_result" not in members
 
 

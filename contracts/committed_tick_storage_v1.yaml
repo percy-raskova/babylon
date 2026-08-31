@@ -60,7 +60,7 @@ family_row_shape:
   canonical_order: row_ordinal is the zero-based position in strict ascending row_key order
   opaque_key_indexing: none
 
-row_families:
+historical_epoch4_relations:
   - {family: graph, tag_u8: 16, relation: babylon_state.tick_graph_row}
   - {family: state, tag_u8: 17, relation: babylon_state.tick_state_row}
   - {family: event, tag_u8: 18, relation: babylon_state.tick_event_row}
@@ -70,8 +70,16 @@ row_families:
   - {family: checkpoint, tag_u8: 22, relation: babylon_state.tick_checkpoint_row}
   - {family: archive_dirty_receipt, tag_u8: 23, relation: babylon_state.tick_archive_dirty_receipt_row}
 
+live_writer_targets:
+  - {family: graph, tag_u8: 16, relation: babylon_state.tick_graph_row}
+  - {family: state, tag_u8: 17, relation: babylon_state.tick_state_row}
+  - {family: event, tag_u8: 18, relation: babylon_state.tick_event_row}
+  - {family: checkpoint, tag_u8: 22, relation: babylon_state.tick_checkpoint_row}
+  - {family: archive_dirty_receipt, tag_u8: 23, relation: babylon_state.tick_archive_dirty_receipt_row}
+
 invariants:
-  - The eight-family map is closed, ordered, and one-to-one.
+  - The five live writer targets are closed, ordered, and one-to-one.
+  - The eight epoch-4 relations remain an immutable historical migration fact.
   - All relation and column identities are schema-qualified and fixed.
   - Exact envelope validation happens before any future parameter binding.
   - >-

@@ -247,7 +247,7 @@ def run_trials(
     *,
     max_ticks: int = DEFAULT_MAX_TICKS,
     base_seed: int | None = None,
-    backend: str = "headless",
+    backend: str = "in_memory",
     scope_name: str = "detroit-tri-county",
     scenario: str = "imperial_circuit",
     objective: Objective = carceral_objective,
@@ -294,7 +294,6 @@ def run_trials(
             seed=sample_seed,
             max_ticks=max_ticks,
             backend=backend,
-            scope_name=scope_name,
             scenario=scenario,
         )
 
@@ -390,7 +389,7 @@ def format_report(
     stats: AggregateStats,
     *,
     base_seed: int | None = None,
-    backend: str = "headless",
+    backend: str = "in_memory",
 ) -> str:
     """Format a markdown report for one Monte Carlo run.
 
@@ -457,7 +456,7 @@ def run_monte_carlo(
     defines: GameDefines | None = None,
     param_overrides: Mapping[str, float] | Iterable[str] | None = None,
     max_ticks: int = DEFAULT_MAX_TICKS,
-    backend: str = "headless",
+    backend: str = "in_memory",
     scope_name: str = "detroit-tri-county",
     scenario: str = "imperial_circuit",
     objective: Objective = carceral_objective,

@@ -92,18 +92,45 @@ fn family_rows(
         .collect()
 }
 
-fn vector_envelope(data: &Value) -> Result<CommittedTickEnvelopeV1, CommittedTickEnvelopeErrorV1> {
+#[derive(Debug)]
+enum VectorEnvelopeError {
+    Envelope(CommittedTickEnvelopeErrorV1),
+    MissingArchiveDirtyReceipt,
+    DuplicateArchiveDirtyReceipt,
+}
+
+impl From<CommittedTickEnvelopeErrorV1> for VectorEnvelopeError {
+    fn from(value: CommittedTickEnvelopeErrorV1) -> Self {
+        Self::Envelope(value)
+    }
+}
+
+fn archive_row(data: &Value) -> Result<CommittedTickRowV1, VectorEnvelopeError> {
+    let value = &data["families"]["archive_dirty_receipt"];
+    if value.is_null() {
+        return Err(VectorEnvelopeError::MissingArchiveDirtyReceipt);
+    }
+    if value.is_array() {
+        return Err(VectorEnvelopeError::DuplicateArchiveDirtyReceipt);
+    }
+    Ok(CommittedTickRowV1::compose(
+        hex_bytes(text(value, "key_hex")),
+        hex_bytes(text(value, "payload_hex")),
+    )?)
+}
+
+fn vector_envelope(data: &Value) -> Result<CommittedTickEnvelopeV1, VectorEnvelopeError> {
     let families = CommittedTickRowFamiliesV1 {
         graph: family_rows(data, "graph")?,
         state: family_rows(data, "state")?,
         event: family_rows(data, "event")?,
-        subsystem: family_rows(data, "subsystem")?,
-        conservation: family_rows(data, "conservation")?,
-        boundary_flow: family_rows(data, "boundary_flow")?,
         checkpoint: family_rows(data, "checkpoint")?,
-        archive_dirty_receipt: family_rows(data, "archive_dirty_receipt")?,
+        archive_dirty_receipt: archive_row(data)?,
     };
-    CommittedTickEnvelopeV1::compose(vector_claim(data), families)
+    Ok(CommittedTickEnvelopeV1::compose(
+        vector_claim(data),
+        families,
+    )?)
 }
 
 fn envelopes(rows: &[VectorRow]) -> BTreeMap<&str, CommittedTickEnvelopeV1> {
@@ -119,32 +146,42 @@ fn envelopes(rows: &[VectorRow]) -> BTreeMap<&str, CommittedTickEnvelopeV1> {
         .collect()
 }
 
-fn envelope_error_code(error: &CommittedTickEnvelopeErrorV1) -> &'static str {
+fn envelope_error_code(error: &VectorEnvelopeError) -> &'static str {
     match error {
-        CommittedTickEnvelopeErrorV1::EmptyRowKey => "invalid_row_hex",
-        CommittedTickEnvelopeErrorV1::DuplicateRowKey { .. } => "duplicate_row_key",
-        CommittedTickEnvelopeErrorV1::RowOrder { .. } => "row_order",
-        CommittedTickEnvelopeErrorV1::BatchBytes { .. } => "batch_bytes",
-        CommittedTickEnvelopeErrorV1::AggregateRows { .. } => "aggregate_rows",
-        CommittedTickEnvelopeErrorV1::BatchShape { .. } => "batch_shape",
-        CommittedTickEnvelopeErrorV1::EnvelopeBytes { .. } => "envelope_bytes",
-        CommittedTickEnvelopeErrorV1::CapacityOverflow { .. } => "capacity_overflow",
-        CommittedTickEnvelopeErrorV1::IntegerConversion { .. } => "integer_conversion",
-        CommittedTickEnvelopeErrorV1::Allocation { .. } => "allocation",
-        CommittedTickEnvelopeErrorV1::CanonicalLength { .. } => "canonical_length",
+        VectorEnvelopeError::MissingArchiveDirtyReceipt => "missing_archive_dirty_receipt",
+        VectorEnvelopeError::DuplicateArchiveDirtyReceipt => "duplicate_archive_dirty_receipt",
+        VectorEnvelopeError::Envelope(error) => match error {
+            CommittedTickEnvelopeErrorV1::MissingArchiveDirtyReceipt => {
+                "missing_archive_dirty_receipt"
+            }
+            CommittedTickEnvelopeErrorV1::DuplicateArchiveDirtyReceipt { .. } => {
+                "duplicate_archive_dirty_receipt"
+            }
+            CommittedTickEnvelopeErrorV1::EmptyRowKey => "invalid_row_hex",
+            CommittedTickEnvelopeErrorV1::DuplicateRowKey { .. } => "duplicate_row_key",
+            CommittedTickEnvelopeErrorV1::RowOrder { .. } => "row_order",
+            CommittedTickEnvelopeErrorV1::BatchBytes { .. } => "batch_bytes",
+            CommittedTickEnvelopeErrorV1::AggregateRows { .. } => "aggregate_rows",
+            CommittedTickEnvelopeErrorV1::BatchShape { .. } => "batch_shape",
+            CommittedTickEnvelopeErrorV1::EnvelopeBytes { .. } => "envelope_bytes",
+            CommittedTickEnvelopeErrorV1::CapacityOverflow { .. } => "capacity_overflow",
+            CommittedTickEnvelopeErrorV1::IntegerConversion { .. } => "integer_conversion",
+            CommittedTickEnvelopeErrorV1::Allocation { .. } => "allocation",
+            CommittedTickEnvelopeErrorV1::CanonicalLength { .. } => "canonical_length",
+        },
     }
 }
 
-fn usize_array(data: &Value, field: &str) -> [usize; 8] {
+fn usize_array(data: &Value, field: &str) -> [usize; 5] {
     data[field]
         .as_array()
         .expect("bound array")
         .iter()
-        .take(8)
+        .take(5)
         .map(|value| usize::try_from(value.as_u64().expect("bound u64")).expect("bound usize"))
         .collect::<Vec<_>>()
         .try_into()
-        .expect("exact eight bounds")
+        .expect("exact five bounds")
 }
 
 fn claim(campaign: u128, tick: u64, content: u8) -> TickCommitClaimV1 {
@@ -164,12 +201,26 @@ fn singleton_families(payload: u8) -> CommittedTickRowFamiliesV1 {
         graph: vec![row(0x01, payload)],
         state: vec![row(0x02, payload)],
         event: vec![row(0x03, payload)],
-        subsystem: vec![row(0x04, payload)],
-        conservation: vec![row(0x05, payload)],
-        boundary_flow: vec![row(0x06, payload)],
         checkpoint: vec![row(0x07, payload)],
-        archive_dirty_receipt: vec![row(0x08, payload)],
+        archive_dirty_receipt: row(0x17, payload),
     }
+}
+
+#[test]
+fn five_sparse_families_require_one_singular_archive_receipt() {
+    let families = CommittedTickRowFamiliesV1 {
+        graph: vec![],
+        state: vec![],
+        event: vec![],
+        checkpoint: vec![],
+        archive_dirty_receipt: row(0x17, 0xaa),
+    };
+    let envelope = CommittedTickEnvelopeV1::compose(claim(1, 1, 0xaa), families)
+        .expect("one mandatory campaign work receipt");
+
+    assert_eq!(ALL_COMMITTED_TICK_ROW_FAMILIES_V1.len(), 5);
+    assert_eq!(envelope.row_families().len(), 5);
+    assert_eq!(envelope.total_rows(), 1);
 }
 
 fn mutate_family(families: &mut CommittedTickRowFamiliesV1, family: CommittedTickRowFamilyV1) {
@@ -178,26 +229,29 @@ fn mutate_family(families: &mut CommittedTickRowFamiliesV1, family: CommittedTic
         CommittedTickRowFamilyV1::Graph => families.graph = replacement,
         CommittedTickRowFamilyV1::State => families.state = replacement,
         CommittedTickRowFamilyV1::Event => families.event = replacement,
-        CommittedTickRowFamilyV1::Subsystem => families.subsystem = replacement,
-        CommittedTickRowFamilyV1::Conservation => families.conservation = replacement,
-        CommittedTickRowFamilyV1::BoundaryFlow => families.boundary_flow = replacement,
         CommittedTickRowFamilyV1::Checkpoint => families.checkpoint = replacement,
         CommittedTickRowFamilyV1::ArchiveDirtyReceipt => {
-            families.archive_dirty_receipt = replacement;
+            families.archive_dirty_receipt = row(0x17, 0xff);
         }
     }
 }
 
 #[test]
-fn zero_row_tick_still_has_a_complete_eight_family_envelope() {
+fn sparse_tick_still_has_five_sections_and_one_archive_receipt() {
     let envelope = CommittedTickEnvelopeV1::compose(
         claim(0x0011_2233_4455_6677_8899_aabb_ccdd_eeff, 42, 0x11),
-        CommittedTickRowFamiliesV1::default(),
+        CommittedTickRowFamiliesV1 {
+            graph: vec![],
+            state: vec![],
+            event: vec![],
+            checkpoint: vec![],
+            archive_dirty_receipt: row(0x17, 0x11),
+        },
     )
-    .expect("zero-row envelope");
+    .expect("sparse live envelope");
 
-    assert_eq!(envelope.total_rows(), 0);
-    assert_eq!(envelope.row_families().len(), 8);
+    assert_eq!(envelope.total_rows(), 1);
+    assert_eq!(envelope.row_families().len(), 5);
     assert!(envelope.canonical_bytes().len() < MAX_COMMITTED_TICK_ENVELOPE_BYTES_V1);
 }
 
@@ -206,7 +260,7 @@ fn every_mandatory_row_family_moves_whole_payload_identity() {
     let base = CommittedTickEnvelopeV1::compose(claim(1, 42, 0x11), singleton_families(0xaa))
         .expect("base envelope");
 
-    for family in ALL_COMMITTED_TICK_ROW_FAMILIES_V1.iter().take(8).copied() {
+    for family in ALL_COMMITTED_TICK_ROW_FAMILIES_V1.iter().copied() {
         let mut mutated_rows = singleton_families(0xaa);
         mutate_family(&mut mutated_rows, family);
         let mutated = CommittedTickEnvelopeV1::compose(claim(1, 42, 0x11), mutated_rows)
@@ -261,19 +315,15 @@ fn row_keys_are_nonempty_unique_and_strictly_ordered() {
         Err(CommittedTickEnvelopeErrorV1::EmptyRowKey)
     ));
 
-    let duplicate = CommittedTickRowFamiliesV1 {
-        graph: vec![row(1, 1), row(1, 2)],
-        ..CommittedTickRowFamiliesV1::default()
-    };
+    let mut duplicate = singleton_families(1);
+    duplicate.graph = vec![row(1, 1), row(1, 2)];
     assert!(matches!(
         CommittedTickEnvelopeV1::compose(claim(1, 1, 1), duplicate),
         Err(CommittedTickEnvelopeErrorV1::DuplicateRowKey { .. })
     ));
 
-    let descending = CommittedTickRowFamiliesV1 {
-        graph: vec![row(2, 1), row(1, 2)],
-        ..CommittedTickRowFamiliesV1::default()
-    };
+    let mut descending = singleton_families(1);
+    descending.graph = vec![row(2, 1), row(1, 2)];
     assert!(matches!(
         CommittedTickEnvelopeV1::compose(claim(1, 1, 1), descending),
         Err(CommittedTickEnvelopeErrorV1::RowOrder { .. })
@@ -284,24 +334,26 @@ fn row_keys_are_nonempty_unique_and_strictly_ordered() {
 fn cumulative_bounds_accept_exact_maxima_and_refuse_maximum_plus_one() {
     assert_eq!(
         validate_committed_tick_envelope_bounds_v1(
-            [1; 8],
-            [MAX_COMMITTED_TICK_ROW_BATCH_BYTES_V1; 8],
+            [1; 5],
+            [MAX_COMMITTED_TICK_ROW_BATCH_BYTES_V1; 5],
         )
         .expect("exact byte maximum"),
         MAX_COMMITTED_TICK_ENVELOPE_BYTES_V1
     );
     assert!(matches!(
         validate_committed_tick_envelope_bounds_v1(
-            [1; 8],
-            [MAX_COMMITTED_TICK_ROW_BATCH_BYTES_V1 + 1; 8],
+            [1; 5],
+            [MAX_COMMITTED_TICK_ROW_BATCH_BYTES_V1 + 1; 5],
         ),
         Err(CommittedTickEnvelopeErrorV1::BatchBytes { .. })
     ));
 
-    let mut maximum_rows = [0_usize; 8];
-    maximum_rows[0] = MAX_COMMITTED_TICK_ROWS_V1;
-    let mut minimum_bodies = [0_usize; 8];
-    minimum_bodies[0] = MAX_COMMITTED_TICK_ROWS_V1 * 9;
+    let mut maximum_rows = [0_usize; 5];
+    maximum_rows[0] = MAX_COMMITTED_TICK_ROWS_V1 - 1;
+    maximum_rows[4] = 1;
+    let mut minimum_bodies = [0_usize; 5];
+    minimum_bodies[0] = (MAX_COMMITTED_TICK_ROWS_V1 - 1) * 9;
+    minimum_bodies[4] = 9;
     assert!(validate_committed_tick_envelope_bounds_v1(maximum_rows, minimum_bodies).is_ok());
     maximum_rows[0] += 1;
     minimum_bodies[0] += 9;
@@ -311,10 +363,7 @@ fn cumulative_bounds_accept_exact_maxima_and_refuse_maximum_plus_one() {
     ));
 
     assert!(matches!(
-        validate_committed_tick_envelope_bounds_v1(
-            [2, 0, 0, 0, 0, 0, 0, 0],
-            [9, 0, 0, 0, 0, 0, 0, 0]
-        ),
+        validate_committed_tick_envelope_bounds_v1([2, 0, 0, 0, 1], [9, 0, 0, 0, 9]),
         Err(CommittedTickEnvelopeErrorV1::BatchShape { .. })
     ));
 }
@@ -411,7 +460,10 @@ fn production_refusal_and_bound_operations_match_the_shared_contract() {
             );
             if let Some(expected) = row.data.get("expected_code") {
                 let error = result.expect_err("shared bound refusal");
-                assert_eq!(envelope_error_code(&error), expected.as_str().unwrap());
+                assert_eq!(
+                    envelope_error_code(&VectorEnvelopeError::Envelope(error)),
+                    expected.as_str().unwrap()
+                );
             } else {
                 assert_eq!(
                     result.expect("shared accepted bound"),

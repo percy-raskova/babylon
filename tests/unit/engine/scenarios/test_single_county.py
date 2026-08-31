@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from babylon.engine.scenarios import create_single_county_scenario
@@ -54,7 +56,57 @@ def test_financial_layer_fires_through_the_production_path() -> None:
     assert "26163" in county_states
     distribution = county_states["26163"].surplus_distribution
     assert distribution is not None
-    assert distribution.interest_payments > 0.0
+    for claim in (
+        distribution.total_surplus_produced,
+        distribution.interest_payments,
+        distribution.ground_rent,
+        distribution.taxes_on_surplus,
+    ):
+        assert math.isfinite(claim)
+        assert claim > 0.0
+    assert math.isfinite(distribution.profit_of_enterprise)
+
+    from babylon.domain.economics.tensor import NoDataSentinel
+
+    tensor = overrides["tensor_registry"].get("26163", 2010)
+    assert not isinstance(tensor, NoDataSentinel)
+    assert distribution.total_surplus_produced == pytest.approx(float(tensor.total_s), rel=1e-12)
+    assert distribution.total_surplus_produced == pytest.approx(
+        distribution.profit_of_enterprise
+        + distribution.interest_payments
+        + distribution.ground_rent
+        + distribution.taxes_on_surplus,
+        rel=1e-12,
+    )
     financial = context.get("_national_financial")
     assert financial, "national_financial never persisted (Task 7 regression)"
     assert financial["endogenous_interest"]["rate"] > 0.0
+
+
+def test_financial_crisis_threshold_is_read_by_the_production_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The county tick must reach the GameDefines-backed crisis predicate."""
+    from tools.regression_test import build_single_county_overrides
+
+    from babylon.domain.economics.financial_crisis import assessment
+    from babylon.engine.simulation_engine import step
+
+    calls = 0
+    original = assessment.credit_fragility_threshold
+
+    def counted_threshold(*args: object, **kwargs: object) -> float:
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(assessment, "credit_fragility_threshold", counted_threshold)
+    state, config, defines = create_single_county_scenario()
+    step(
+        state,
+        config,
+        {},
+        defines,
+        calculator_overrides=build_single_county_overrides(defines),
+    )
+    assert calls > 0

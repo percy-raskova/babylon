@@ -33,21 +33,25 @@ def _mise_task(name: str) -> str:
     raise AssertionError(f"missing Mise task: {name}")
 
 
-def test_db_bootstrap_preflights_target_and_owner_then_advances_after_legacy_ddl() -> None:
+def test_db_bootstrap_has_one_rust_owned_activation_root() -> None:
     task = _mise_task("db:bootstrap")
 
-    preflight = task.index("--locked -- --preflight")
-    legacy = task.index("executed = ensure_ddl_applied(conn, POSTGRES_SCHEMA_DDL)")
-    migrations = task.index("_apply_migrations(pool)")
-    rust_epoch = task.rindex("babylon-schema-epoch")
-    assert preflight < legacy < migrations < rust_epoch
-    assert task.count("babylon-schema-epoch") == 2
-    assert "BABYLON_SCHEMA_EPOCH_DSN" in task
+    build = task.index("cargo build -p babylon-persistence --bin babylon-runtime --locked")
+    activation = task.index("babylon-runtime bootstrap")
+    assert build < activation
+    assert task.count("babylon-runtime bootstrap") == 1
+    assert "BABYLON_RUNTIME_DSN" in task
     assert "host=127.0.0.1" in task
     assert "host=localhost" not in task
-    assert (
-        "CARGO_BUILD_JOBS=4 cargo run -p babylon-persistence --bin babylon-schema-epoch --locked"
-    ) in task
+    for retired_root in (
+        "BABYLON_SCHEMA_EPOCH_DSN",
+        "babylon-schema-epoch",
+        "POSTGRES_SCHEMA_DDL",
+        "ensure_ddl_applied",
+        "_apply_migrations",
+        "uv run python",
+    ):
+        assert retired_root not in task
 
 
 def test_db_bootstrap_clears_inherited_libpq_targets_before_any_database_access() -> None:
@@ -56,10 +60,9 @@ def test_db_bootstrap_clears_inherited_libpq_targets_before_any_database_access(
     unset_lines = [line.strip() for line in task.splitlines() if line.strip().startswith("unset ")]
     assert unset_lines == [f"unset {' '.join(LIBPQ_TARGET_ENV)}"]
     sanitization = task.index(unset_lines[0])
-    preflight = task.index("--locked -- --preflight")
-    python = task.index('uv run python -c "')
-    legacy = task.index("executed = ensure_ddl_applied(conn, POSTGRES_SCHEMA_DDL)")
-    assert sanitization < preflight < python < legacy
+    build = task.index("cargo build -p babylon-persistence --bin babylon-runtime --locked")
+    activation = task.index("babylon-runtime bootstrap")
+    assert sanitization < build < activation
 
 
 def test_repository_cargo_concurrency_matches_the_host_contract() -> None:
@@ -96,22 +99,30 @@ def test_default_nix_shell_conditions_the_linux_only_bevy_closure() -> None:
         assert flake.count(package) == 1
 
 
-def test_local_bootstrap_callers_run_rust_in_the_pinned_nix_shell() -> None:
+def test_local_bootstrap_callers_expose_the_single_rust_authority_root() -> None:
     setup = _mise_task("setup")
     assert "PostgreSQL 17" in setup
     assert "Postgres 16" not in setup
 
-    for task_name in ("setup", "clean:testdb", "test:int-pg"):
-        task_lines = {line.strip() for line in _mise_task(task_name).splitlines()}
-        assert (
-            f'BABYLON_SCHEMA_EPOCH_DSN="{LOCAL_BOOTSTRAP_DSN}" '
-            "mise run nix -- mise run db:bootstrap"
-        ) in task_lines
-        assert "mise run db:bootstrap" not in task_lines
+    for task_name in ("setup", "clean:testdb"):
+        task = _mise_task(task_name)
+        assert "cargo build -p babylon-persistence --bin babylon-runtime --locked" in task
+        assert f'BABYLON_RUNTIME_DSN="{LOCAL_BOOTSTRAP_DSN}" babylon-runtime bootstrap' in task
+        assert "mise run db:bootstrap" not in task
+
+    integration = _mise_task("test:int-pg")
+    assert f'export BABYLON_RUNTIME_DSN="{LOCAL_BOOTSTRAP_DSN}"' in integration
+    assert "babylon-runtime bootstrap" in integration
+    assert "babylon-runtime michigan-smoke" in integration
+    assert "uv run pytest" not in integration
+
+    michigan_smoke = _mise_task("qa:michigan-rollover-smoke")
+    assert 'export PATH="$PWD/rust/target/debug:$PATH"' in michigan_smoke
+    assert "babylon-runtime michigan-smoke" in michigan_smoke
 
     direct_bootstrap = _mise_task("db:bootstrap")
     assert (
-        f'export BABYLON_SCHEMA_EPOCH_DSN="${{BABYLON_SCHEMA_EPOCH_DSN:-{LOCAL_BOOTSTRAP_DSN}}}"'
+        f'export BABYLON_RUNTIME_DSN="${{BABYLON_RUNTIME_DSN:-{LOCAL_BOOTSTRAP_DSN}}}"'
     ) in direct_bootstrap
 
     for relative in ("README.md", "SETUP_GUIDE.md"):
@@ -119,20 +130,74 @@ def test_local_bootstrap_callers_run_rust_in_the_pinned_nix_shell() -> None:
         assert "`mise run setup` requires [Nix]" in guide
 
 
-def test_schema_epoch_cli_has_one_exact_connecting_schema_preflight_mode() -> None:
-    source = (ROOT / "rust/crates/babylon-persistence/src/bin/babylon-schema-epoch.rs").read_text(
+def test_runtime_cli_has_one_exact_connecting_schema_preflight_mode() -> None:
+    source = (ROOT / "rust/crates/babylon-persistence/src/bin/babylon-runtime.rs").read_text(
         encoding="utf-8"
     )
 
-    assert 'const DSN_ENV: &str = "BABYLON_SCHEMA_EPOCH_DSN";' in source
-    assert 'const PREFLIGHT_MODE: &str = "--preflight";' in source
-    assert "std::env::args_os()" in source
-    assert "Mode::Preflight => preflight_schema_epoch(&config)" in source
-    assert "migrate_schema_epoch(&config)" in source
-    assert "unexpected arguments; expected no arguments or" in source
-    assert "--validate-target-only" not in source
-    assert "ValidateTargetOnly" not in source
-    assert "validate_target_only" not in source
+    assert 'const DSN_ENV: &str = "BABYLON_RUNTIME_DSN";' in source
+    assert "std::env::args_os().skip(1)" in source
+    assert "Command::Preflight =>" in source
+    assert "preflight_schema_epoch(config)" in source
+    assert "Command::Activate | Command::Bootstrap =>" in source
+    assert "activate_rust_persistence_v1(config)" in source
+    assert "babylon-schema-epoch" not in source
+    assert "BABYLON_SCHEMA_EPOCH_DSN" not in source
+
+
+def test_runtime_cli_owns_one_restart_safe_activation_sequence() -> None:
+    persistence = ROOT / "rust/crates/babylon-persistence"
+    cli = (persistence / "src/bin/babylon-runtime.rs").read_text(encoding="utf-8")
+    lib = (persistence / "src/lib.rs").read_text(encoding="utf-8")
+    bootstrap = (persistence / "src/bootstrap.rs").read_text(encoding="utf-8")
+    runtime = (persistence / "src/runtime.rs").read_text(encoding="utf-8")
+    cohort = (persistence / "src/h3_reference_cohort.rs").read_text(encoding="utf-8")
+
+    assert "activate_rust_persistence_v1(config)" in cli
+    activation = runtime.split("pub fn activate_rust_persistence_v1", maxsplit=1)[1]
+    assert "bootstrap_h3_reader_epoch_v1(config)" in activation
+    assert "batch_execute(MIGRATION_0008_SQL)" in activation
+    assert "batch_execute(MIGRATION_0009_SQL)" in activation
+    assert (
+        activation.index("bootstrap_h3_reader_epoch_v1(config)")
+        < activation.index("batch_execute(MIGRATION_0008_SQL)")
+        < activation.index("batch_execute(MIGRATION_0009_SQL)")
+    )
+
+    for call in (
+        "representative_h3_reference_cohort_v1()",
+        "michigan_dynamic_hex_foundation_v1()",
+        "migrate_schema_epoch_to_h3_handoff(config)",
+        "install_michigan_h3_reference_bundle_v1(config, cohort, foundation)",
+        "backfill_legacy_h3_shadow_keys(config)",
+        "migrate_schema_epoch(config)",
+    ):
+        assert call in bootstrap
+    source_validation = bootstrap.index("representative_h3_reference_cohort_v1()")
+    foundation_validation = bootstrap.index("michigan_dynamic_hex_foundation_v1()")
+    handoff = bootstrap.index("migrate_schema_epoch_to_h3_handoff(config)")
+    install = bootstrap.index("install_michigan_h3_reference_bundle_v1(config, cohort, foundation)")
+    backfill = bootstrap.index("backfill_legacy_h3_shadow_keys(config)")
+    terminal = bootstrap.rindex("migrate_schema_epoch(config)")
+    assert source_validation < foundation_validation < handoff < install < backfill < terminal
+    assert "install_representative_h3_cohort" not in bootstrap
+    assert "pub fn bootstrap_h3_reader_epoch_v1" in bootstrap
+    assert "mod bootstrap;" in lib
+    assert "pub mod bootstrap;" not in lib
+    assert "bootstrap_h3_reader_epoch_v1" in lib
+
+    source_fixture = persistence / "src/fixtures/h3_reference_source_v1.bin"
+    retired_test_fixture = persistence / "tests/fixtures/h3_reference_source_v1.bin"
+    assert source_fixture.is_file()
+    assert not retired_test_fixture.exists()
+    assert 'include_bytes!("fixtures/h3_reference_source_v1.bin")' in cohort
+
+    include_sites = []
+    for path in persistence.rglob("*.rs"):
+        text = path.read_text(encoding="utf-8")
+        if 'include_bytes!("fixtures/h3_reference_source_v1.bin")' in text:
+            include_sites.append(path.relative_to(persistence).as_posix())
+    assert include_sites == ["src/h3_reference_cohort.rs"]
 
 
 def test_every_checked_in_bootstrap_caller_provisions_pinned_rust() -> None:
@@ -186,12 +251,10 @@ def test_disposable_pg_runner_proves_bootstrap_and_michigan_smoke() -> None:
     assert 'if [ "$LIVE_FOCUS" = "clean_bootstrap" ] || [ "$LIVE_FOCUS" = "pr" ]; then' in runner
     options_refusal = runner.index('HOSTILE_OPTIONS_DSN="${BOOTSTRAP_DSN}?options=')
     before_snapshot = runner.index('before_options_refusal="$(timeout', options_refusal)
-    refused_bootstrap = runner.index(
-        'BABYLON_SCHEMA_EPOCH_DSN="$HOSTILE_OPTIONS_DSN"', before_snapshot
-    )
+    refused_bootstrap = runner.index('BABYLON_RUNTIME_DSN="$HOSTILE_OPTIONS_DSN"', before_snapshot)
     after_snapshot = runner.index('after_options_refusal="$(timeout', refused_bootstrap)
     assert "mise run db:bootstrap" in runner
-    normal_bootstrap = runner.index('BABYLON_SCHEMA_EPOCH_DSN="$BOOTSTRAP_DSN"', after_snapshot)
+    normal_bootstrap = runner.index('BABYLON_RUNTIME_DSN="$BOOTSTRAP_DSN"', after_snapshot)
     assert options_refusal < before_snapshot < refused_bootstrap < after_snapshot < normal_bootstrap
     assert "options-bearing DSN unexpectedly passed schema preflight" in runner
     assert "options-bearing DSN changed the fresh database before refusal" in runner
@@ -210,10 +273,13 @@ def test_disposable_pg_runner_proves_bootstrap_and_michigan_smoke() -> None:
     ):
         assert assignment in bootstrap_prefix
     assert "mise run qa:michigan-rollover-smoke" in runner
-    assert '"6|bigint"' in runner
+    assert '"1:1:8,2:2:9|true|true"' in runner
+    assert "babylon_meta.persistence_authority_ledger" in runner
+    assert "pg_catalog.to_regclass('public.hex_spatial_map') IS NULL" in runner
+    assert "pg_catalog.to_regclass('babylon_state.campaign_foundation') IS NOT NULL" in runner
     smoke = runner.split("mise run qa:michigan-rollover-smoke", maxsplit=1)[0].rsplit(
         "timeout --signal=TERM --kill-after=30s 1800s", maxsplit=1
     )[1]
-    assert 'BABYLON_DSN="$BOOTSTRAP_DSN"' in smoke
+    assert 'BABYLON_RUNTIME_DSN="$BOOTSTRAP_DSN"' in smoke
     assert "BABYLON_PG_DSN=" not in smoke
     assert "BABYLON_TEST_PG_DSN=" not in smoke

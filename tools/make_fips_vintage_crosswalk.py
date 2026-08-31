@@ -116,7 +116,7 @@ from typing import NamedTuple
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO_ROOT / "src"))
 
-from babylon.engine.headless_runner.scopes import (  # noqa: E402
+from babylon.data.reference_scope import (  # noqa: E402
     DEFAULT_SQLITE_PATH,
     _load_national_fips,
 )

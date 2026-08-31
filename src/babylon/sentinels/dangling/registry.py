@@ -12,9 +12,8 @@ reference land on something real?"
 **Founding specimen** (task #43 audit, 2026-07-18):
 ``web/game/engine_bridge.py:10990`` —
 ``getattr(persistence, "persist_action_result", None)`` (SINGULAR). The
-``RuntimePersistence``/``PostgresRuntimeExtensions`` protocols and both
-concrete backends (``PostgresRuntime``, ``RuntimeDatabase``) only ever
-declare ``persist_action_results`` (PLURAL, batched — ``(tick, results:
+the former Python persistence protocols and concrete backends only ever
+declared ``persist_action_results`` (PLURAL, batched — ``(tick, results:
 list[dict], *, session_id)``). The guarded branch
 (``if persist_fn is not None: persist_fn(**result_data)``) is therefore
 **structurally dead** — ``persist_fn`` is always ``None`` and every call
@@ -154,27 +153,14 @@ class WatchedReceiver(BaseModel):
         return self
 
 
-#: The persistence-layer family: the ``RuntimePersistence``/
-#: ``PostgresRuntimeExtensions`` protocols plus both concrete backends. A
-#: dynamic reference against a receiver typed ``RuntimePersistence`` may
-#: legitimately land on either backend at runtime (duck typing across the
-#: protocol boundary is the whole point of Feature 037), so all four are
-#: watched and their members unioned.
+#: The retained local SQLite persistence family. Authoritative PostgreSQL
+#: writes moved to Rust at Gate 3, so the deleted Python protocol and backend
+#: rows cannot remain as alleged dynamic-reference targets.
 WATCHED_CLASSES: Final[tuple[WatchedClass, ...]] = (
     WatchedClass(
         name="runtime_persistence_protocol",
         def_file="src/babylon/persistence/protocols.py",
         class_name="RuntimePersistence",
-    ),
-    WatchedClass(
-        name="postgres_runtime_extensions_protocol",
-        def_file="src/babylon/persistence/protocols.py",
-        class_name="PostgresRuntimeExtensions",
-    ),
-    WatchedClass(
-        name="postgres_runtime_impl",
-        def_file="src/babylon/persistence/postgres_runtime/_legacy.py",
-        class_name="PostgresRuntime",
     ),
     WatchedClass(
         name="sqlite_runtime_impl",
@@ -192,8 +178,6 @@ WATCHED_RECEIVERS: Final[tuple[WatchedReceiver, ...]] = (
         annotation_names=("RuntimePersistence",),
         member_classes=(
             "runtime_persistence_protocol",
-            "postgres_runtime_extensions_protocol",
-            "postgres_runtime_impl",
             "sqlite_runtime_impl",
         ),
     ),

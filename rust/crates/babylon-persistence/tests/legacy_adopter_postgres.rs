@@ -1,9 +1,10 @@
 //! Ignored live tests for the PER-20 legacy adopter against disposable `PostgreSQL`.
 
 use babylon_persistence::{
-    adopt_legacy_schema, compiled_schema_migrations, legacy_adopter_sql_statements,
-    parse_legacy_census_fixture, validate_legacy_connection_target, validate_legacy_stamps,
-    LegacyAdopterError, LegacyAdopterOperation, LegacyAdopterSqlKind, LegacyBoundedResource,
+    adopt_legacy_schema, backfill_legacy_h3_shadow_keys, compiled_schema_migrations,
+    legacy_adopter_sql_statements, migrate_schema_epoch, parse_legacy_census_fixture,
+    validate_legacy_connection_target, validate_legacy_stamps, LegacyAdopterError,
+    LegacyAdopterOperation, LegacyAdopterSqlKind, LegacyBoundedResource,
     LegacyConnectionTargetRejection, LegacyObjectKey, LegacyObjectKind,
     LegacyOwnerAuthorityDisposition, LegacyStampClass, LegacyStampDefinition,
     LEGACY_ADOPTER_CONNECT_TIMEOUT, LEGACY_ADOPTER_STARTUP_OPTIONS,
@@ -15,18 +16,17 @@ use babylon_persistence::{
 };
 use postgres::config::Host;
 use postgres::error::SqlState;
-use postgres::{Client, Config, IsolationLevel, NoTls};
+use postgres::{Client, Config, GenericClient, IsolationLevel, NoTls};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::fs::OpenOptions;
 use std::io::Write as IoWrite;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::str::FromStr;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-#[path = "support/h3_cell_vectors.rs"]
+#[path = "../../babylon-kernel/tests/support/h3_cell_vectors.rs"]
 mod h3_cell_vectors;
 #[path = "support/h3_pg_oracle.rs"]
 mod h3_pg_oracle;
@@ -34,6 +34,8 @@ mod h3_pg_oracle;
 mod h3_reference_installer_postgres;
 #[path = "support/h3_shadow_backfill_postgres.rs"]
 mod h3_shadow_backfill_postgres;
+#[path = "support/legacy_epoch_fixture.rs"]
+mod legacy_epoch_fixture;
 #[path = "support/schema_epoch_postgres.rs"]
 mod schema_epoch_postgres;
 
@@ -226,6 +228,10 @@ fn live_adopter_contract_against_independent_builds_and_disposable_mutations() {
     live_phase!(phases, "final_residue", assert_no_scratch_residue(&base));
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "the closed focus dispatcher keeps every first-phase receipt in one match"
+)]
 fn run_first_live_phases(
     phases: &LivePhaseReceipts,
     base: &Config,
@@ -257,12 +263,22 @@ fn run_first_live_phases(
         return false;
     }
     if std::env::var_os(LIVE_FOCUS_ENV).as_deref()
+        == Some(std::ffi::OsStr::new("schema_epoch_v7_census"))
+    {
+        export_v7_epoch_censuses(base, template);
+        return false;
+    }
+    if std::env::var_os(LIVE_FOCUS_ENV).as_deref()
         == Some(std::ffi::OsStr::new("schema_epoch_fresh"))
     {
         schema_epoch_postgres::verify_fresh_migration(base);
         return false;
     }
-    live_phase!(phases, "repair_first", run_python_repair(first_config));
+    live_phase!(
+        phases,
+        "repair_first",
+        legacy_epoch_fixture::build_frozen_python_estate(first_config)
+    );
     live_phase!(
         phases,
         "repair_second",
@@ -359,7 +375,7 @@ fn run_focused_live_phase(
         Some("h3_reference_installer") => {
             h3_reference_installer_postgres::verify_h3_reference_installer(base, template, owner);
         }
-        Some("h3_shadow_backfill") => {
+        Some("h3_shadow_backfill" | "schema_epoch_rollback") => {
             h3_shadow_backfill_postgres::verify_h3_shadow_backfill(base, template);
         }
         Some("installed_mutation") => verify_h3_installed_mutations(phases, base),
@@ -441,7 +457,7 @@ fn export_v6_epoch_censuses(base: &Config, legacy_template: &str) {
 
     let legacy = ScratchDatabase::from_template(base, legacy_template, "epoch_v6_legacy_census");
     let legacy_config = legacy.config(base);
-    run_python_repair(&legacy_config);
+    legacy_epoch_fixture::build_frozen_python_estate(&legacy_config);
     adopt_legacy_schema(&legacy_config).expect("repaired legacy template must adopt exactly");
     let legacy_fixture = raw_v6_epoch_census(&legacy_config, true);
     eprintln!("PER279_V6_LEGACY_CENSUS_START\n{legacy_fixture}PER279_V6_LEGACY_CENSUS_END");
@@ -557,6 +573,150 @@ fn is_v6_epoch_census_entry(kind: &str, schema: &str, name: &str, legacy_origin:
                 | "tick_event"
         );
     owned_relation || owned_schema || fresh_meta || legacy_shadow
+}
+
+fn establish_fresh_v6_prefix(config: &Config) {
+    let compiled = compiled_schema_migrations().expect("compiled registry must validate");
+    let mut client = config.connect(NoTls).unwrap();
+    let mut transaction = client
+        .build_transaction()
+        .isolation_level(IsolationLevel::Serializable)
+        .read_only(false)
+        .start()
+        .unwrap();
+    for migration in compiled.iter().take(6) {
+        transaction.batch_execute(migration.sql()).unwrap();
+        let version = migration.version().as_i64();
+        let checksum = migration.checksum();
+        let checksum_bytes = checksum.as_bytes().as_slice();
+        transaction
+            .execute(
+                "INSERT INTO babylon_state.schema_migration (version, checksum) VALUES ($1, $2)",
+                &[&version, &checksum_bytes],
+            )
+            .unwrap();
+    }
+    transaction.commit().unwrap();
+}
+
+fn export_v7_epoch_censuses(base: &Config, legacy_template: &str) {
+    let fresh = ScratchDatabase::empty(base, "epoch_v7_fresh_census", database_user(base));
+    let fresh_config = fresh.config(base);
+    establish_fresh_v6_prefix(&fresh_config);
+    let fresh_fixture = candidate_v7_epoch_census(&fresh_config, false);
+    eprintln!("PER280_V7_FRESH_CENSUS_START\n{fresh_fixture}PER280_V7_FRESH_CENSUS_END");
+    fresh.cleanup();
+
+    let legacy = ScratchDatabase::from_template(base, legacy_template, "epoch_v7_legacy_census");
+    let legacy_config = legacy.config(base);
+    legacy_epoch_fixture::build_frozen_python_estate(&legacy_config);
+    adopt_legacy_schema(&legacy_config).expect("repaired legacy template must adopt exactly");
+    let prefix = migrate_schema_epoch(&legacy_config)
+        .expect("exact legacy database must stop at the additive H3 epoch");
+    assert_eq!(prefix.final_applied, 6);
+    let cohort = h3_reference_installer_postgres::representative_cohort();
+    h3_reference_installer_postgres::install_reference_bundle(&legacy_config, &cohort)
+        .expect("epoch-6 legacy prefix must accept the frozen H3 cohort");
+    backfill_legacy_h3_shadow_keys(&legacy_config)
+        .expect("epoch-6 legacy prefix must backfill every governed H3 identity");
+    let legacy_fixture = candidate_v7_epoch_census(&legacy_config, true);
+    eprintln!("PER280_V7_LEGACY_CENSUS_START\n{legacy_fixture}PER280_V7_LEGACY_CENSUS_END");
+    legacy.cleanup();
+}
+
+fn candidate_v7_epoch_census(config: &Config, legacy_origin: bool) -> String {
+    let compiled = compiled_schema_migrations().expect("compiled registry must validate");
+    let mut client = config.connect(NoTls).unwrap();
+    let before = bounded_catalog_snapshot(&mut client);
+    let mut transaction = client
+        .build_transaction()
+        .isolation_level(IsolationLevel::Serializable)
+        .read_only(false)
+        .start()
+        .unwrap();
+    transaction.batch_execute(compiled[6].sql()).unwrap();
+    let candidate = bounded_catalog_snapshot(&mut transaction);
+    let marker_count: i64 = transaction
+        .query_one(
+            "SELECT pg_catalog.count(*) FROM babylon_state.schema_migration",
+            &[],
+        )
+        .unwrap()
+        .get(0);
+    assert_eq!(marker_count, 6);
+    let fixture = v7_epoch_fixture(candidate.as_slice(), legacy_origin);
+    transaction.rollback().unwrap();
+    let after = bounded_catalog_snapshot(&mut client);
+    assert_eq!(
+        after, before,
+        "candidate epoch-7 census must roll back exactly"
+    );
+    fixture
+}
+
+fn bounded_catalog_snapshot(
+    client: &mut impl GenericClient,
+) -> Vec<(String, String, String, String)> {
+    const EXPORT_LIMITS: [i64; 6] = [513, 4097, 8193, 16385, 2, 8193];
+    let census_sql = legacy_adopter_sql_statements()
+        .iter()
+        .find(|statement| statement.kind() == LegacyAdopterSqlKind::CatalogCensus)
+        .unwrap()
+        .sql();
+    let rows = client
+        .query(
+            census_sql,
+            &[
+                &EXPORT_LIMITS[0],
+                &EXPORT_LIMITS[1],
+                &EXPORT_LIMITS[2],
+                &EXPORT_LIMITS[3],
+                &EXPORT_LIMITS[4],
+                &EXPORT_LIMITS[5],
+            ],
+        )
+        .unwrap();
+    rows.iter()
+        .take(513)
+        .map(|row| {
+            (
+                row.try_get(0).unwrap(),
+                row.try_get(1).unwrap(),
+                row.try_get(2).unwrap(),
+                row.try_get(3).unwrap(),
+            )
+        })
+        .collect()
+}
+
+fn v7_epoch_fixture(rows: &[(String, String, String, String)], legacy_origin: bool) -> String {
+    let mut fixture = String::new();
+    for (kind, schema, name, digest) in rows.iter().take(513) {
+        if is_v7_epoch_census_entry(kind.as_str(), schema.as_str(), name.as_str(), legacy_origin) {
+            writeln!(fixture, "{kind}|{schema}|{name}|{digest}").unwrap();
+        }
+    }
+    fixture
+}
+
+fn is_v7_epoch_census_entry(kind: &str, schema: &str, name: &str, legacy_origin: bool) -> bool {
+    let canonical_view = legacy_origin
+        && kind == "view"
+        && schema == "public"
+        && matches!(
+            name,
+            "v_county_value_aggregate"
+                | "v_hex_aid"
+                | "v_hex_economic"
+                | "v_hex_heat"
+                | "v_hex_intel"
+                | "v_hex_mobilize"
+                | "v_hex_state_asof"
+                | "v_national_value_aggregate"
+                | "v_state_value_aggregate"
+                | "view_runtime_trace_emission"
+        );
+    is_v6_epoch_census_entry(kind, schema, name, legacy_origin) || canonical_view
 }
 
 fn verify_h3_installed_mutations(phases: &LivePhaseReceipts, base: &Config) {
@@ -721,8 +881,8 @@ fn export_current_census_v2(
     let fresh_payloads =
         census_payloads_for_drift(first_config, &current_census_payload_keys(&fresh_drift));
 
-    run_python_repair(first_config);
-    run_python_repair(second_config);
+    legacy_epoch_fixture::build_frozen_python_estate(first_config);
+    legacy_epoch_fixture::build_frozen_python_estate(second_config);
     let legacy_first = hardened_authority_snapshot(first_config);
     let legacy_second = hardened_authority_snapshot(second_config);
     assert_eq!(legacy_first, legacy_second);
@@ -3297,70 +3457,14 @@ fn mutate(config: &Config, sql: &str) {
 }
 
 fn verify_partial_damage_then_separate_repair(config: &Config) {
-    run_python_damage(config);
+    legacy_epoch_fixture::damage_frozen_python_estate_before_stamp(config);
     assert_eq!(
         adopt_legacy_schema(config),
         Err(LegacyAdopterError::StampTableMissing)
     );
     assert_lock_released(config);
-    run_python_repair(config);
+    legacy_epoch_fixture::build_frozen_python_estate(config);
     assert_lock_released(config);
-}
-
-fn run_python_damage(config: &Config) {
-    let script = r#"
-import os
-import psycopg
-from babylon.persistence.postgres_schema import POSTGRES_SCHEMA_DDL
-
-dsn = os.environ['PER20_BUILD_DSN']
-with psycopg.connect(dsn, autocommit=True) as conn:
-    for statement in POSTGRES_SCHEMA_DDL[:8]:
-        conn.execute(statement)
-    assert conn.execute("SELECT pg_catalog.to_regclass('public._babylon_schema_stamp')").fetchone()[0] is None
-"#;
-    run_python_child(config, script, "partial autocommit damage");
-}
-
-fn run_python_repair(config: &Config) {
-    let script = r"
-import os
-import psycopg
-from psycopg_pool import ConnectionPool
-from babylon.engine.headless_runner.runner import _apply_migrations
-from babylon.persistence.postgres_schema import POSTGRES_SCHEMA_DDL, ensure_ddl_applied
-
-dsn = os.environ['PER20_BUILD_DSN']
-with psycopg.connect(dsn, autocommit=True) as conn:
-    ensure_ddl_applied(conn, POSTGRES_SCHEMA_DDL)
-with ConnectionPool(dsn, min_size=1, max_size=1, open=True) as pool:
-    _apply_migrations(pool)
-";
-    run_python_child(config, script, "surviving Python repair/build");
-}
-
-fn run_python_child(config: &Config, script: &str, description: &str) {
-    let status = Command::new("timeout")
-        .args([
-            "--signal=TERM",
-            "--kill-after=5s",
-            LIVE_TASK_SECONDS,
-            "uv",
-            "run",
-            "python",
-            "-c",
-            script,
-        ])
-        .current_dir(repository_root())
-        .env("PER20_BUILD_DSN", config_dsn(config))
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .unwrap_or_else(|error| panic!("{description} must launch: {error}"));
-    assert!(
-        status.success(),
-        "{description} must complete within its bound"
-    );
 }
 
 struct ScratchDatabase {
@@ -3843,19 +3947,6 @@ fn try_cluster_role_exists(admin: &Config, role_name: &str) -> Result<bool, ()> 
         .map_err(|_| ())?
         .try_get(0)
         .map_err(|_| ())
-}
-
-fn config_dsn(config: &Config) -> String {
-    let host = match config.get_hosts().first() {
-        Some(Host::Tcp(host)) => host.as_str(),
-        _ => panic!("live adopter test requires one TCP host"),
-    };
-    let port = config.get_ports().first().copied().unwrap_or(5432);
-    let user = config.get_user().expect("test config user");
-    let password = std::str::from_utf8(config.get_password().expect("test config password"))
-        .expect("test password must be UTF-8");
-    let dbname = config.get_dbname().expect("test config database");
-    format!("host={host} port={port} dbname={dbname} user={user} password={password}")
 }
 
 fn repository_root() -> PathBuf {

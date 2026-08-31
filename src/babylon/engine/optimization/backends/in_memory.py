@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from babylon.config.defines import GameDefines
+from babylon.config.defines import GameDefines, canonical_defines_hash
 from babylon.engine.optimization.backends.types import Result
 from babylon.models.entity_registry import PERIPHERY_WORKER_ID
 from babylon.models.enums.events import EventType
@@ -104,7 +104,6 @@ def run_in_memory(
     :param scenario: One of ``"imperial_circuit"`` or ``"two_node"``.
     :returns: Backend-normalized :class:`Result`.
     """
-    from babylon.engine.headless_runner.runner import _defines_hash
     from babylon.engine.simulation_engine import step
 
     state, sim_config, _base_defines = _build_scenario(scenario)
@@ -135,7 +134,7 @@ def run_in_memory(
         final_wealth=sum(float(e.wealth) for e in state.entities.values()),
         phase_milestones=phase_milestones,
         terminal_outcome=terminal_outcome,
-        defines_hash=_defines_hash(defines),
+        defines_hash=canonical_defines_hash(defines),
         rng_seed=seed,
         backend="in_memory",
         extra={"scenario": scenario},

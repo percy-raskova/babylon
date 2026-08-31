@@ -9,6 +9,7 @@ pub mod content_digest;
 pub mod currency;
 pub mod event_bus;
 pub mod grid;
+mod h3_cell_id;
 pub mod replay;
 pub mod rng;
 pub mod scalars;
@@ -22,6 +23,7 @@ pub use event_bus::{
     BlockedEvent, Event, EventBus, Handler, HandlerFailure, Intercept, Interceptor,
 };
 pub use grid::{quantize, GRID_PRECISION};
+pub use h3_cell_id::{H3CellId, H3CellIdError, H3ImmediateChildren};
 pub use rng::{seed_for, seed_for_v2, KernelRng, SEED_SALT};
 pub use scalars::{
     Balance, Coefficient, Ideology, Intensity, OutOfBoundsError, Probability, Ratio,

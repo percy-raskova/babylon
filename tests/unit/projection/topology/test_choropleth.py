@@ -29,7 +29,7 @@ import pytest
 from pydantic import ValidationError
 
 from babylon.persistence.hex_state import DynamicHexState
-from babylon.persistence.postgres_aggregation import CountyValueAggregate
+from babylon.projection.sql_rows import CountyValueAggregate
 from babylon.projection.topology.choropleth import ChoroplethCell, select_render_tier
 from babylon.projection.topology.choropleth_aggregation import (
     county_choropleth_cells,

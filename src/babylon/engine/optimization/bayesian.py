@@ -70,7 +70,7 @@ EARLY_DEATH_THRESHOLD: Final[int] = 5 * TICKS_PER_YEAR
 DEFAULT_STUDY_NAME: Final[str] = "babylon_carceral"
 DEFAULT_STORAGE: Final[str] = "sqlite:///optuna.db"
 DEFAULT_N_TRIALS: Final[int] = 100
-DEFAULT_BACKEND: Final[str] = "headless"
+DEFAULT_BACKEND: Final[str] = "in_memory"
 DEFAULT_SEED: Final[int] = 2010
 """RNG seed for simulation trials — matches ``runner_api.run``'s own default."""
 

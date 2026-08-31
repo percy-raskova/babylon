@@ -1,6 +1,3 @@
-use std::mem::size_of;
-
-use babylon_kernel::tick_content_hash::RefDigestV1;
 use postgres::{error::SqlState, Config, NoTls};
 
 use super::{
@@ -10,29 +7,25 @@ use super::{
     SpatialReferenceInstallError, SpatialReferenceRelation,
 };
 use crate::{
-    build_representative_h3_cohort_v1, install_representative_h3_cohort, H3CellId,
-    H3ReferenceCohort, H3ReferenceInstallDisposition,
+    install_michigan_h3_reference_bundle_v1, michigan_dynamic_hex_foundation_v1,
+    representative_h3_reference_cohort_v1, H3ReferenceCohort, H3ReferenceInstallDisposition,
 };
 
-const SOURCE_FIXTURE: &[u8] = include_bytes!("../tests/fixtures/h3_reference_source_v1.bin");
-const SOURCE_DOMAIN: &[u8] = b"babylon.h3.reference-source.v1\0";
-const SOURCE_COUNT: usize = 48_764;
 const BACKEND_TERMINATION_TIMEOUT_MILLIS: i64 = 5_000;
-const ARTIFACT_DIGEST: [u8; 32] = [
-    0xe6, 0x0d, 0x93, 0xa4, 0x3d, 0x6c, 0x66, 0xe8, 0x4f, 0x1e, 0x53, 0xec, 0xaf, 0x63, 0x3a, 0xf5,
-    0x91, 0x1b, 0xd5, 0xb4, 0x8b, 0x0e, 0xf0, 0xad, 0x6a, 0x01, 0x2f, 0x6d, 0x9f, 0x5b, 0x13, 0xa9,
-];
-const EXPECTED_COUNTS: [i64; 8] = [7, 3_285, 745, 45_572, 22_509, 11_833, 31_881, 4_813];
+const FOUNDATION_RECEIPT_COUNTS: [i64; 8] = [1, 0, 0, 0, 0, 0, 0, 0];
+const EXPECTED_COUNTS: [i64; 8] = [8, 3_285, 745, 45_572, 22_509, 11_833, 31_881, 4_813];
 
 pub(crate) fn verify_commit_protocol(config: &Config, admin: &Config) {
     let cohort = representative_cohort();
-    let h3_report = install_representative_h3_cohort(config, &cohort)
+    let foundation = michigan_dynamic_hex_foundation_v1()
+        .expect("the sole checked Michigan foundation fixture must validate");
+    let h3_report = install_michigan_h3_reference_bundle_v1(config, &cohort, foundation)
         .expect("the exact H3 cohort must install before its reference products");
     assert_eq!(
         h3_report.disposition(),
         H3ReferenceInstallDisposition::Installed
     );
-    assert_eq!(reference_counts(config), [0; 8]);
+    assert_eq!(reference_counts(config), FOUNDATION_RECEIPT_COUNTS);
 
     let mut forced_failure = |client: &mut postgres::Client, bundle: &_| {
         let transaction = prepare_install_transaction(client, bundle)?;
@@ -44,7 +37,7 @@ pub(crate) fn verify_commit_protocol(config: &Config, admin: &Config) {
             relation: SpatialReferenceRelation::Products,
         })
     );
-    assert_eq!(reference_counts(config), [0; 8]);
+    assert_eq!(reference_counts(config), FOUNDATION_RECEIPT_COUNTS);
 
     let mut first_attempt = true;
     let mut committed_ambiguity = |client: &mut postgres::Client, bundle: &_| {
@@ -187,30 +180,7 @@ fn reference_counts(config: &Config) -> [i64; 8] {
 }
 
 fn representative_cohort() -> H3ReferenceCohort {
-    build_representative_h3_cohort_v1(RefDigestV1::from_bytes(ARTIFACT_DIGEST), &source_cells())
-        .unwrap()
-}
-
-fn source_cells() -> Vec<H3CellId> {
-    assert!(SOURCE_FIXTURE.starts_with(SOURCE_DOMAIN));
-    let count_offset = SOURCE_DOMAIN.len();
-    let payload_offset = count_offset + size_of::<u64>();
-    let count = u64::from_be_bytes(
-        SOURCE_FIXTURE[count_offset..payload_offset]
-            .try_into()
-            .unwrap(),
-    );
-    assert_eq!(usize::try_from(count).unwrap(), SOURCE_COUNT);
-    assert_eq!(
-        SOURCE_FIXTURE.len(),
-        payload_offset + SOURCE_COUNT * size_of::<u64>()
-    );
-    SOURCE_FIXTURE[payload_offset..]
-        .chunks_exact(size_of::<u64>())
-        .take(SOURCE_COUNT)
-        .map(|chunk| {
-            let raw = u64::from_be_bytes(chunk.try_into().unwrap());
-            H3CellId::try_from(raw).unwrap()
-        })
-        .collect()
+    representative_h3_reference_cohort_v1()
+        .expect("the sole checked-in source fixture must validate")
+        .clone()
 }

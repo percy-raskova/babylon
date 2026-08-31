@@ -9,14 +9,14 @@ test enumerates all five + wall-clock leaks and passes" -- this module is
 that single, consolidated ledger, cutting ACROSS the individual per-check
 test modules (``test_seam_algebra.py``'s F-EC-1 test,
 ``test_seam_algebra_gate_satisfaction.py``'s F-1/F-2 tests,
-``test_seam_algebra_wallclock.py``'s six leak tests) that already prove each
+``test_seam_algebra_wallclock.py``'s four live leak tests) that already prove each
 finding's efficacy in isolation.
 
 Each ledger entry is EITHER:
 
 - a **red witness** — a live seam-algebra check that reds when the entry's
   exemption row is removed (F-EC-1 via ``check_disconnected_subsystems``,
-  F-1/F-2 via ``check_gate_satisfaction``, the six wall-clock leaks via
+  F-1/F-2 via ``check_gate_satisfaction``, the four wall-clock leaks via
   ``check_wallclock_call_sites``) -- these ALSO carry a declared exemption
   row (the "held open, not fixed" disposition every one of these five
   chose); or
@@ -42,9 +42,9 @@ executed (``GameSession.advance_tick`` stamps ``context["vol2_step"]`` from
 its ``TradeWiring`` seam), the exemption row was removed, and the gate now
 carries declared ``supplier_files``. Its regression witness moved from
 "exemption removal reds the check" to gate-satisfaction's OWN supplier
-grounding: if ``src/babylon/game/session.py`` ever stops referencing
-``vol2_step``, ``check_gate_satisfaction`` reds on the stale declaration --
-no ledger row needed. 11 items remain.
+grounding. The later Python runtime retirement removed that supplier row and
+the two headless-runner wall-clock rows. Nine live or dispositioned items
+remain.
 """
 
 from __future__ import annotations
@@ -94,9 +94,8 @@ class _CatchListEntry:
     red_witness: Callable[[tuple[SentinelExemption, ...]], list[str]] | None
 
 
-#: The full 12-item day-one catch list: 5 named F-* findings (design §3.3's
-#: table, F-2 contributing two rows -- one per silent-skip site) + the 6
-#: wall-clock leaks (T1.1 U7's own witnesses).
+#: The remaining catch list after the retired Python runtime removed one
+#: supplier-backed gate and two wall-clock producers.
 _LEDGER: Final[tuple[_CatchListEntry, ...]] = (
     _CatchListEntry(
         finding_id="F-EC-1",
@@ -155,29 +154,15 @@ _LEDGER: Final[tuple[_CatchListEntry, ...]] = (
         key=("wallclock", "tick_state_recorder_generated_at"),
         red_witness=lambda remaining: check_wallclock_call_sites(exemptions=remaining),
     ),
-    _CatchListEntry(
-        finding_id="wallclock: run_manifest_wallclock_start",
-        exemptions=WALLCLOCK_EXEMPTIONS,
-        key=("wallclock", "run_manifest_wallclock_start"),
-        red_witness=lambda remaining: check_wallclock_call_sites(exemptions=remaining),
-    ),
-    _CatchListEntry(
-        finding_id="wallclock: run_manifest_wallclock_end",
-        exemptions=WALLCLOCK_EXEMPTIONS,
-        key=("wallclock", "run_manifest_wallclock_end"),
-        red_witness=lambda remaining: check_wallclock_call_sites(exemptions=remaining),
-    ),
 )
 
 
 def test_the_ledger_covers_exactly_the_open_items() -> None:
     """WIRING: a deleted/renamed ledger entry above must fail this test even
-    though every OTHER assertion in this module is entry-scoped. 11 = the 12
-    day-one items minus F-2's vol2_circulation_vol2_step row, which
-    GRADUATED to a wired gate 2026-07-27 (P26 U2, ADR162 — see the module
-    docstring's LEDGER HISTORY note)."""
-    assert len(_LEDGER) == 11
-    assert len({entry.finding_id for entry in _LEDGER}) == 11
+    though every OTHER assertion in this module is entry-scoped. Nine rows
+    remain after the Python runtime retirement described above."""
+    assert len(_LEDGER) == 9
+    assert len({entry.finding_id for entry in _LEDGER}) == 9
 
 
 @pytest.mark.parametrize("entry", _LEDGER, ids=[entry.finding_id for entry in _LEDGER])

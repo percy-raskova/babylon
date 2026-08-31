@@ -92,7 +92,7 @@ from babylon.projection.view_models import (
 if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
     from babylon.models.world_state import WorldState
-    from babylon.persistence.postgres_aggregation import NationalValueAggregate
+    from babylon.projection.sql_rows import NationalValueAggregate
 
 __all__ = ["national_statblocks", "project_national"]
 

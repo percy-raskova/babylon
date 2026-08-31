@@ -5,7 +5,7 @@ See ``specs/056-causal-invariants/contracts/tick_persistence_monotonic.md``
 for the full predicate specification. Encodes Constitution II.6 (State is
 Data), II.10 World Runtime, and III.7 Determinism (replay from any tick) —
 once a tick is persisted, same-payload retries succeed (preserving
-existing UPSERT-retry callers in persistence_observer + session_recorder)
+the same-payload retry contract)
 and different-payload re-persists raise MonotonicityViolationError.
 
 Four predicates:

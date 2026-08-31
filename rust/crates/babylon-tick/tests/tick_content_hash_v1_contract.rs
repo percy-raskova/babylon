@@ -1,5 +1,10 @@
 use std::collections::{BTreeSet, HashMap};
 
+use babylon_bsl::evaluator::Value as BslValue;
+use babylon_bsl::identity_codec::{
+    encode_stable_bsl_value_v1, encode_value_v1, project_stable_value_v1, StableBslValueV1,
+};
+use babylon_bsl::query::EdgeKey;
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::stable_element::{StableElementKeyV1, StableElementResolverV1};
 use babylon_graph::stable_state::encode_stable_graph_state_v1;
@@ -10,7 +15,8 @@ use babylon_kernel::tick_content_hash::{
     StableWorldDigestV1, TickContentPartsV1, TickContentPreimageV1, TickPayloadDigestV1,
 };
 use babylon_kernel::{
-    seed_for, seed_for_v2, sha256_of, ContentDigest, Currency, KernelRng, SessionId,
+    seed_for, seed_for_v2, sha256_of, ContentDigest, Currency, H3CellId, H3CellIdError, KernelRng,
+    Ratio, SessionId,
 };
 use babylon_practice_contract::ordered_action_v1::OrderedPracticeActionBatchV1;
 use serde::Deserialize;
@@ -59,6 +65,27 @@ enum TagRefusal {
     Truncated,
     Trailing,
     Order,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FutureMaterialCellIdentity {
+    cell_id: H3CellId,
+}
+
+#[test]
+fn kernel_h3_identity_surface_is_available_to_tick_material_carriers() {
+    let raw = 0x0852_8347_3fff_ffff_u64;
+    let from_raw: Result<H3CellId, H3CellIdError> = H3CellId::try_from(raw);
+    let cell = from_raw.expect("checked raw H3 identity");
+    let sql = i64::try_from(cell).expect("fixture H3 identity fits PostgreSQL BIGINT");
+    let from_sql: Result<H3CellId, H3CellIdError> = H3CellId::try_from(sql);
+    let from_text: Result<H3CellId, H3CellIdError> = cell.to_string().parse();
+    let ancestor: Result<H3CellId, H3CellIdError> = cell.ancestor_at(4);
+    let carrier = FutureMaterialCellIdentity { cell_id: cell };
+
+    assert_eq!(from_sql, Ok(carrier.cell_id));
+    assert_eq!(from_text, Ok(carrier.cell_id));
+    assert_eq!(ancestor.expect("coarser H3 ancestor").resolution(), 4);
 }
 
 struct Cursor<'a> {
@@ -367,6 +394,99 @@ fn production_stable_graph_matches_cross_allocation_vectors() {
             ))
         );
     }
+}
+
+#[test]
+fn stable_bsl_projection_reuses_the_governed_stable_element_bytes() {
+    let vectors = rows();
+    let (graph, node_names, hyperedge_names) = corpus_graph(false);
+    let resolver = StableElementResolverV1::seal(
+        &graph,
+        "demo/cross-allocation",
+        &node_names,
+        &hyperedge_names,
+    )
+    .expect("sealed cross-allocation resolver");
+    let workers = *node_names
+        .iter()
+        .find(|(_, name)| name.as_str() == "workers")
+        .expect("workers")
+        .0;
+    let capital = *node_names
+        .iter()
+        .find(|(_, name)| name.as_str() == "capital")
+        .expect("capital")
+        .0;
+    let coalition = *hyperedge_names
+        .iter()
+        .find(|(_, name)| name.as_str() == "coalition-one")
+        .expect("coalition")
+        .0;
+    let cases = [
+        ("bsl-value-int", BslValue::Int(-9)),
+        (
+            "bsl-value-currency",
+            BslValue::Currency(Currency::from_micro_units(12_345_678_901_234_567_890)),
+        ),
+        ("bsl-value-real", BslValue::Real(-0.0)),
+        (
+            "bsl-value-ratio",
+            BslValue::Ratio {
+                value: Ratio::new(0.5).expect("governed ratio value"),
+                floor: None,
+                cap: Some(Ratio::new(1.0).expect("governed ratio cap")),
+            },
+        ),
+        ("bsl-value-bool", BslValue::Bool(false)),
+        (
+            "bsl-value-enum",
+            BslValue::Enum {
+                enum_type: "Status".to_owned(),
+                member: "ALPHA".to_owned(),
+            },
+        ),
+        ("bsl-value-node-ref", BslValue::NodeRef(workers)),
+        ("bsl-value-hyperedge-ref", BslValue::HyperedgeRef(coalition)),
+        (
+            "bsl-value-edge-ref",
+            BslValue::EdgeRef(EdgeKey {
+                source: capital,
+                target: workers,
+                edge_type: "OWNS".to_owned(),
+            }),
+        ),
+    ];
+
+    for (tick_id, runtime_value) in cases {
+        let projected = project_stable_value_v1(&runtime_value, &resolver)
+            .expect("runtime reference projects through the sealed resolver");
+        let mut projected_bytes = Vec::new();
+        encode_stable_bsl_value_v1(&projected, &mut projected_bytes).expect("stable value encodes");
+        let mut runtime_bytes = Vec::new();
+        encode_value_v1(&runtime_value, &resolver, &mut runtime_bytes)
+            .expect("runtime value encodes");
+        let tick_bytes = hex_bytes(text(&row_by_id(&vectors, tick_id).data, "canonical_hex"));
+
+        assert_eq!(projected_bytes, runtime_bytes);
+        assert_eq!(projected_bytes, tick_bytes);
+    }
+
+    let mut other_scenario_bytes = Vec::new();
+    encode_stable_bsl_value_v1(
+        &StableBslValueV1::Node(StableElementKeyV1::Node {
+            scenario: "demo/other-scenario".to_owned(),
+            local_name: "workers".to_owned(),
+        }),
+        &mut other_scenario_bytes,
+    )
+    .expect("the distinct scenario has its own stable identity");
+    assert_ne!(
+        other_scenario_bytes,
+        hex_bytes(text(
+            &row_by_id(&vectors, "bsl-value-node-ref").data,
+            "canonical_hex",
+        ))
+    );
 }
 
 #[test]

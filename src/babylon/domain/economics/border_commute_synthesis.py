@@ -36,11 +36,9 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
-from uuid import UUID
 
 if TYPE_CHECKING:
     from babylon.domain.economics.lodes_commute_matrix import LODESYearMatrix
-    from babylon.persistence.protocols import RuntimePersistence
 
 logger = logging.getLogger(__name__)
 
@@ -231,108 +229,6 @@ class BorderCommuteSynthesisLoader:
                     )
         return tuple(rows)
 
-    def persist_to_postgres(
-        self,
-        *,
-        runtime: RuntimePersistence,
-        session_id: UUID,
-        years: tuple[int, ...],
-    ) -> int:
-        """Persist synthesized rows for ``years`` to Postgres.
-
-        Returns total row count inserted across all years. When
-        ``is_enabled()`` is False, returns 0 without touching Postgres.
-        """
-        if not self.is_enabled():
-            return 0
-        all_rows: list[BorderCommuteFlow] = []
-        for year in years:
-            all_rows.extend(self.synthesize_year(year))
-        if not all_rows:
-            return 0
-
-        payload = [
-            (
-                session_id,
-                f.year,
-                f.week_of_year,
-                f.direction,
-                f.aggregate_origin,
-                f.aggregate_dest,
-                f.magnitude_workers,
-                f.source_anchor,
-            )
-            for f in all_rows
-        ]
-        with (
-            runtime._pool.connection() as pg,  # type: ignore[attr-defined]  # noqa: SLF001
-            pg.cursor() as cur,
-        ):
-            cur.executemany(
-                """
-                INSERT INTO immutable_reference_border_commute_synthesis
-                    (session_id, year, week_of_year, direction,
-                     aggregate_origin, aggregate_dest, magnitude_workers,
-                     source_anchor)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (session_id, year, week_of_year, direction)
-                DO NOTHING
-                """,
-                payload,
-            )
-        return len(payload)
-
-    def merge_into_postgres_lodes(
-        self,
-        *,
-        runtime: RuntimePersistence,
-        session_id: UUID,
-        year: int,
-    ) -> int:
-        """Merge the year's us_to_canada synthesis into the LODES OD matrix (FR-035).
-
-        The OD matrix is annual while synthesis is weekly; the 52 weekly
-        magnitudes collapse to their mean — the standing stock of weekly
-        cross-border commuters — as ``s000_workers`` for the single
-        ``(tri_county_aggregate_hex, 'canada')`` sparse entry.
-        ``canada_to_us`` rows have no LODES analog (matrix origins are
-        study-area hexes) and remain in the synthesis table only.
-
-        Args:
-            runtime: Postgres runtime whose pool receives the INSERT.
-            session_id: Owning session UUID.
-            year: Scenario year whose synthesis rows are merged.
-
-        Returns:
-            Number of OD rows inserted (0 or 1).
-        """
-        if not self.is_enabled():
-            return 0
-        weekly = [
-            flow.magnitude_workers
-            for flow in self.synthesize_year(year)
-            if flow.direction == "us_to_canada"
-        ]
-        if not weekly:
-            return 0
-        s000 = int(round(sum(weekly) / len(weekly)))
-        with (
-            runtime._pool.connection() as pg,  # type: ignore[attr-defined]  # noqa: SLF001
-            pg.cursor() as cur,
-        ):
-            cur.execute(
-                """
-                INSERT INTO immutable_reference_lodes_od_matrix
-                    (session_id, year, home_hex, workplace_dest,
-                     workplace_dest_kind, s000_workers)
-                VALUES (%s, %s, %s, 'canada', 'external', %s)
-                ON CONFLICT (session_id, year, home_hex, workplace_dest)
-                DO NOTHING
-                """,
-                (session_id, year, self.tri_county_aggregate_hex, s000),
-            )
-        return 1
-
     def _annual_us_to_canada_s000(self, year: int) -> int:
         """Mean-of-52-weeks annualized us_to_canada standing worker count.
 
@@ -354,9 +250,7 @@ class BorderCommuteSynthesisLoader:
     def merge_into_year_matrix(self, matrix: LODESYearMatrix, year: int) -> LODESYearMatrix:
         """Return a NEW matrix with the synthesized canada entry added (FR-035).
 
-        The in-memory half of the T042 merge (mirrors
-        :meth:`merge_into_postgres_lodes`, which lands the same row in
-        Postgres). Only the ``us_to_canada`` direction merges — OD-matrix
+        Only the ``us_to_canada`` direction merges — OD-matrix
         origins are in-area hexes by schema, so the ``canada_to_us``
         counterpart stays in ``immutable_reference_border_commute_synthesis``
         for future household-reproduction specs. The annual entry is the MEAN
@@ -386,7 +280,7 @@ class BorderCommuteSynthesisLoader:
         from babylon.domain.economics.node_kinds import NodeKind
 
         # Reconstruct the pair-counts + dest-kind maps from the frozen matrix
-        # (same (row, col, value) iteration as LODESCommuteMatrixLoader.persist_to_postgres).
+        # Reconstruct the exact sparse row/column iteration.
         pair_counts: dict[tuple[str, str], int] = {}
         boundary_dest_kind: dict[str, NodeKind] = {}
         coo = matrix.matrix.tocoo()

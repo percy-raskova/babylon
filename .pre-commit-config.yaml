@@ -142,15 +142,14 @@ repos:
         stages: [pre-push]
 
   # ==========================================================================
-  # RUST - the engine estate (Amendment AE). CI's Rust Gate is `mise run
-  # ci:rust`; these legs mirror it locally. fmt runs at commit time on any
-  # staged .rs (no build, seconds). The FULL gate runs at pre-push behind a
-  # range guard: when neither the push range nor the working tree touches
-  # rust/, the gate's inputs are unchanged and its result cannot differ —
+  # RUST - the engine estate (Amendment AE). Hosted CI's Rust Gate is `mise run
+  # ci:rust`; the local pre-push gate deliberately stops before Rustdoc because
+  # repository law prohibits local documentation generation. fmt runs at
+  # commit time on any staged .rs (no build, seconds). The no-docs gate runs at
+  # pre-push behind a range guard: when neither the push range nor the working
+  # tree touches Rust or a file defining the gate, its result cannot differ —
   # skipping loses no signal (unlike the ADR181 R4 staged-files blind spot;
-  # when it fires it runs FULL-TREE, exactly as CI does). When it does fire
-  # it is the complete CI mirror: fmt + clippy -D warnings
-  # -D clippy::cognitive_complexity + tests + pedantic legs + doc.
+  # when it fires it runs FULL-TREE). Hosted CI adds the Rustdoc proof.
   # ==========================================================================
   - repo: local
     hooks:
@@ -162,17 +161,19 @@ repos:
         files: '\.rs$'
 
       - id: rust-full-gate
-        name: ci:rust (full Rust gate, pre-push CI mirror)
+        name: rust:check-no-docs (full local Rust gate, pre-push)
         entry: >-
           bash -c 'set -euo pipefail;
           git fetch -q origin dev 2>/dev/null || true;
           base="$(git merge-base HEAD origin/dev 2>/dev/null || git merge-base HEAD dev 2>/dev/null || echo "")";
-          dirty="$(git status --porcelain -- rust/)";
-          if [ -n "$base" ] && [ -z "$(git diff --name-only "${base}..HEAD" -- rust/)" ] && [ -z "$dirty" ]; then
-            echo "ci:rust skipped — push range and working tree touch no rust/ paths";
+          dirty="$(git status --porcelain -- rust/ .mise.toml .pre-commit-config.yaml)";
+          if [ -n "$base" ] &&
+          [ -z "$(git diff --name-only "${base}..HEAD" -- rust/ .mise.toml .pre-commit-config.yaml)" ] &&
+          [ -z "$dirty" ]; then
+            echo "rust:check-no-docs skipped — push range and working tree touch no Rust-gate inputs";
             exit 0;
           fi;
-          mise run ci:rust'
+          mise run rust:check-no-docs'
         language: system
         pass_filenames: false
         always_run: true

@@ -2,7 +2,7 @@
 # https://mise.jdx.dev/
 #
 # Task Namespace Convention (ADR035):
-#   check         - Fast CI gate (lint + format + typecheck + unit tests)
+#   check         - Non-mutating local gate (hosted static leaves + local contracts + unit tests)
 #   ci:*          - Hosted-CI entry points and local runner adapters
 #   test:*        - Test runners by scope
 #   sim:*         - Simulation execution and analysis
@@ -129,11 +129,19 @@ echo "Setup complete. Smoke-test with: mise run test:int-pg"
 
 [tasks.lint]
 description = "Run ruff linter with auto-fix"
-run = "uv run ruff check src tests --fix"
+run = "uv run ruff check . --fix"
 
 [tasks.format]
 description = "Run ruff formatter"
-run = "uv run ruff format src tests"
+run = "uv run ruff format ."
+
+[tasks.fix]
+description = "Explicit sequential Python rewrite: apply Ruff lint fixes, then format"
+run = """
+set -e
+mise run lint
+mise run format
+"""
 
 [tasks.typecheck]
 description = "Run mypy type checker"
@@ -156,16 +164,28 @@ description = "Run complexity gate (xenon) - fails if CC > 15"
 run = "uv run xenon --max-absolute C src/"
 
 [tasks.check]
-description = "Fast CI gate: data-pathway + hygiene + governance budgets + ADR catalog + 16 static sentinels plus reference catalog + lint + imports + format + typecheck + unit tests"
-depends = ["data:doctor", "check:hygiene", "check:governance-mass", "check:adr-catalog", "check:dynamic-linking-fence", "check:sentinels", "lint", "lint:imports", "format", "typecheck", "test:unit"]
+description = "Canonical non-mutating local gate: hosted static checks plus governance, ADR catalog, and unit tests"
+depends = ["check:static", "check:governance-mass", "check:adr-catalog", "test:unit"]
+
+[tasks."check:static"]
+description = "Hosted Fast Gate leaves, reusable locally without source rewrites or reference data"
+depends = ["check:hygiene", "check:dynamic-linking-fence", "check:sentinels-static", "check:surface", "lint:check", "format:check", "lint:imports", "typecheck", "check:lock"]
+
+[tasks."check:full-local"]
+description = "Canonical check plus workstation data-path and reference-catalog probes"
+depends = ["check", "data:doctor", "check:catalog"]
 
 [tasks."data:doctor"]
 description = "Loud data-pathway gate: trove mount + repo symlinks + Postgres bind on the data drive (clean skip off the dev box); heal = sudo tools/heal_data_mount.sh"
 run = "tools/data_doctor.sh"
 
 [tasks."check:quick"]
-description = "Quality gate without the test leg: lint + format + typecheck"
-depends = ["lint", "format", "typecheck"]
+description = "Non-mutating quality gate without the test leg: lint + format + typecheck"
+depends = ["lint:check", "format:check", "typecheck"]
+
+[tasks."check:lock"]
+description = "Verify uv.lock matches project metadata without frozen-mode masking"
+run = "env -u UV_FROZEN uv lock --check"
 
 [tasks."check:hygiene"]
 description = "Repo-hygiene gate: root allowlist, ignore-consistency, blob sizes (program 14)"

@@ -505,7 +505,10 @@ python:
         mutate:* - Mutation testing
         midi:*   - Music generation
     key_tasks:
-      check: "Fast CI gate: lint + format + typecheck + test:unit"
+      check: "Non-mutating local gate: hosted static leaves + local contracts + test:unit"
+      "check:quick": "Non-mutating lint + format + typecheck"
+      "check:full-local": "Check plus workstation data-path and reference-catalog probes"
+      fix: "Apply Ruff lint fixes and formatting sequentially"
       "test:unit": "Run unit tests only (fast)"
       "test:int": "Run integration tests (mechanics & systems)"
       "test:scenario": "Run scenario tests (slow, full arcs)"

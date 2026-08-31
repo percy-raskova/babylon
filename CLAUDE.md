@@ -101,7 +101,7 @@ immutable. Python models use frozen Pydantic types.
 `model_copy(update=...)` skips validation. Pass dependencies explicitly.
 
 Do not run Sphinx, `cargo doc`, or a CI task that generates documentation unless the Director requests it. This includes local `mise run ci:rust` and its `rust:check` compatibility alias.
-Set `SKIP=rust-full-gate` for local pushes. Run `mise run rust:check-no-docs` for the canonical non-documentation Rust gate, and use only targeted Vale and format checks on changed prose.
+The pre-push hook runs `mise run rust:check-no-docs` when Rust or its gate definitions change. Use only targeted Vale and format checks on changed prose.
 
 ## Tests and behavior contracts
 

@@ -1,6 +1,6 @@
 meta:
-  version: 1.87.0
-  updated: '2026-08-26'
+  version: 1.88.0
+  updated: '2026-08-31'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
   # ADR NUMBER ALLOCATION (controller ruling 2026-07-21, v1.0.0 parallel lanes —
@@ -1145,3 +1145,8 @@ decisions:
     status: accepted
     date: '2026-08-28'
     file: ADR246_codex_rust_host_boundary.yaml
+  ADR247_dependabot_exact_head_only_automation:
+    title: 'Dependabot automation removes the unwritable actor-triggered label phase and retains one exact-head workflow-run authority'
+    status: accepted
+    date: '2026-08-31'
+    file: ADR247_dependabot_exact_head_only_automation.yaml

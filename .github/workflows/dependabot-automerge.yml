@@ -1,23 +1,15 @@
-# Dependabot automation has two trusted, event-driven phases.
-#
-# 1. `pull_request_target` manages one presentation label from trusted default-
-#    branch code. It never checks out PR code and grants no merge authority.
-# 2. `workflow_run` validates the native exact-head CI run, checks out trusted
-#    `dev`, and delegates eligibility and merging to the repository verifier.
+# Dependabot automation has one trusted, event-driven phase. `workflow_run`
+# validates the native exact-head CI run, checks out trusted `dev`, and
+# delegates eligibility and merging to the repository verifier. Dependabot-
+# authored events have read-only tokens and therefore own no write phase.
 
 name: Dependabot Auto-Merge
 
 run-name: >-
-  ${{ github.event_name == 'workflow_run' &&
-      format('Dependabot eligibility for CI run {0} at {1}',
-        github.event.workflow_run.id, github.event.workflow_run.head_sha) ||
-      format('Dependabot presentation for PR {0}',
-        github.event.pull_request.number) }}
+  ${{ format('Dependabot eligibility for CI run {0} at {1}',
+      github.event.workflow_run.id, github.event.workflow_run.head_sha) }}
 
 on:
-  pull_request_target:
-    branches: [dev]
-    types: [opened, reopened, synchronize]
   workflow_run:
     workflows: [CI]
     types: [completed]
@@ -26,107 +18,11 @@ permissions: {}
 
 concurrency:
   group: >-
-    dependabot-${{
-      github.event.pull_request.number ||
-      github.event.workflow_run.pull_requests[0].number ||
-      github.event.workflow_run.head_branch
-    }}
+    dependabot-${{ github.event.workflow_run.pull_requests[0].number ||
+      github.event.workflow_run.head_branch }}
   cancel-in-progress: false
 
 jobs:
-  classify:
-    name: Classify Dependabot update
-    if: >-
-      github.event_name == 'pull_request_target' &&
-      github.actor == 'dependabot[bot]' &&
-      github.event.sender.login == 'dependabot[bot]' &&
-      github.event.sender.id == 49699333 &&
-      github.event.sender.type == 'Bot' &&
-      github.event.pull_request.user.login == 'dependabot[bot]' &&
-      github.event.pull_request.user.id == 49699333 &&
-      github.event.pull_request.user.type == 'Bot'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-      issues: write
-      pull-requests: read
-    env:
-      ELIGIBILITY_LABEL: dependencies:automerge
-      ELIGIBILITY_LABEL_COLOR: 1f883d
-      ELIGIBILITY_LABEL_DESCRIPTION: >-
-        Patch/minor Dependabot update eligible for exact-head merge
-      ELIGIBLE_UPDATE_TYPES: >-
-        version-update:semver-patch version-update:semver-minor
-    steps:
-      - name: Fetch Dependabot metadata
-        id: metadata
-        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
-        with:
-          github-token: ${{ github.token }}
-
-      - name: Classify update
-        id: eligibility
-        shell: bash
-        env:
-          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
-        run: |
-          set -euo pipefail
-          eligible=false
-          case " $ELIGIBLE_UPDATE_TYPES " in
-            *" $UPDATE_TYPE "*)
-              eligible=true
-              ;;
-          esac
-          printf 'eligible=%s\n' "$eligible" >> "$GITHUB_OUTPUT"
-
-      - name: Set eligibility label
-        shell: bash
-        env:
-          ELIGIBLE: ${{ steps.eligibility.outputs.eligible }}
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          encoded_label="$(
-            jq -rn --arg label "$ELIGIBILITY_LABEL" '$label | @uri'
-          )"
-          label_json="$(
-            gh api --method GET \
-              "repos/$GITHUB_REPOSITORY/labels/$encoded_label"
-          )"
-          jq -e \
-            --arg name "$ELIGIBILITY_LABEL" \
-            --arg color "$ELIGIBILITY_LABEL_COLOR" \
-            --arg description "$ELIGIBILITY_LABEL_DESCRIPTION" \
-            '.name == $name and .color == $color and .description == $description' \
-            <<< "$label_json" >/dev/null
-
-          labels_json="$(
-            gh api --method GET \
-              "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/labels?per_page=100"
-          )"
-          jq -e 'type == "array"' <<< "$labels_json" >/dev/null
-          label_count="$(jq 'length' <<< "$labels_json")"
-          if [ "$label_count" -ge 100 ]; then
-            echo "Refusing a potentially truncated 100-label issue page."
-            exit 1
-          fi
-          has_label="$(
-            jq --arg label "$ELIGIBILITY_LABEL" \
-              'any(.[:100][]; .name == $label)' <<< "$labels_json"
-          )"
-          if [ "$ELIGIBLE" = true ] && [ "$has_label" = false ]; then
-            jq -nc --arg label "$ELIGIBILITY_LABEL" '{labels: [$label]}' \
-              | gh api --method POST \
-                "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/labels" \
-                --input - >/dev/null
-          elif [ "$ELIGIBLE" = false ] && [ "$has_label" = true ]; then
-            gh api --method DELETE \
-              "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/labels/$encoded_label" \
-              >/dev/null
-          fi
-
   merge:
     name: Dependabot Eligibility
     if: >-

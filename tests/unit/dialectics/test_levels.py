@@ -309,7 +309,7 @@ class TestCZTotalityOverCountyUniverse:
     """Requirement 1: totality over the modern county universe, correctly scoped."""
 
     def test_every_national_scope_county_resolves_except_the_documented_gap(self) -> None:
-        from babylon.engine.headless_runner.scopes import _load_national_fips
+        from babylon.data.reference_scope import _load_national_fips
 
         national = _load_national_fips(SQLITE_REF)
         scoped_universe = sorted(national - set(_AK_CT_CZ_GAP_FIPS))
@@ -320,7 +320,7 @@ class TestCZTotalityOverCountyUniverse:
     def test_documented_gap_counties_are_still_the_full_gap(self) -> None:
         # Sanity: the 19-county gap is exactly the AK/CT set today, not a
         # subset (i.e. this test's premise hasn't silently gone stale).
-        from babylon.engine.headless_runner.scopes import _load_national_fips
+        from babylon.data.reference_scope import _load_national_fips
 
         national = _load_national_fips(SQLITE_REF)
         mapping = cz_adjunction().mapping

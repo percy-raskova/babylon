@@ -27,8 +27,8 @@ Constitution III's "AI observes, never controls" boundary keeps that module
 import-free of ``babylon.*``, and it is legacy (web/ is superseded) — so the
 two functions are copied here, not reused via import.
 
-**Pagination ceiling, newest-first.** :func:`chronicle_stream` mirrors the
-``PostgresRuntime.query_session_events(limit=200)`` convention (spec-092):
+**Pagination ceiling, newest-first.** :func:`chronicle_stream` preserves the
+retired Python event-query convention's ``limit=200`` bound (spec-092):
 rows sort newest-first (``tick`` descending, then latest-emitted within a
 tick), then a hard :data:`CHRONICLE_ROW_CEILING` caps the total — a
 browsable stream is never an unbounded scroll.
@@ -54,9 +54,7 @@ __all__ = [
 ]
 
 CHRONICLE_ROW_CEILING: Final[int] = 200
-"""Newest-first pagination ceiling, matching
-``PostgresRuntime.query_session_events(limit=200)`` (spec-092): a browsable
-stream is never an unbounded scroll."""
+"""Newest-first pagination ceiling from the frozen spec-092 event contract."""
 
 
 class ChronicleEvent(BaseModel):
@@ -281,8 +279,8 @@ def chronicle_stream(
 ) -> tuple[TickBulletin, ...]:
     """Group a raw event stream into newest-tick-first dated bulletins.
 
-    Mirrors the ``PostgresRuntime.query_session_events(limit=200)``
-    convention: rows sort newest-first (highest tick, then latest-emitted
+    Preserves the frozen event-query convention: rows sort newest-first
+    (highest tick, then latest-emitted
     within a tick — the ``ORDER BY tick DESC, event_id DESC`` shape, with a
     fixture's list position standing in for ``event_id`` since fixtures
     carry no primary key), then the top ``limit`` rows are kept before

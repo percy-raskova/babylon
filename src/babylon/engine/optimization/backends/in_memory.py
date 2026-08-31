@@ -6,13 +6,11 @@ as ``tools/regression_test.py``'s ``_run_scenario_ticks`` — via
 :func:`babylon.engine.scenarios.create_two_node_scenario` +
 :func:`babylon.engine.simulation_engine.step`.
 
-Unlike the headless backend, this path genuinely honors injected
-``GameDefines`` today: ``step()`` accepts the caller's ``defines`` on every
+This path honors injected ``GameDefines``: ``step()`` accepts the caller's ``defines`` on every
 tick call, no coefficient plumbing is degraded. It also runs the full
 ``_DEFAULT_SYSTEMS`` chain internally (``simulation_engine._DEFAULT_ENGINE``)
-and returns each tick's typed Pydantic events on ``WorldState.events``, so
-Track-A phase-milestone detection is real here (not a documented gap as in
-the headless backend) — ``WorldState.events`` is per-tick, not cumulative
+and returns each tick's typed Pydantic events on ``WorldState.events``.
+``WorldState.events`` is per-tick, not cumulative
 (a tick with no events is ``[]``), so milestones are accumulated across the
 loop in this module, first-occurrence only.
 """
@@ -21,7 +19,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from babylon.config.defines import GameDefines
+from babylon.config.defines import GameDefines, canonical_defines_hash
 from babylon.engine.optimization.backends.types import Result
 from babylon.models.entity_registry import PERIPHERY_WORKER_ID
 from babylon.models.enums.events import EventType
@@ -97,14 +95,13 @@ def run_in_memory(
         ``SimulationConfig.rng_seed`` (Constitution III.7). Stochastic
         Systems resolve their RNG via
         :func:`babylon.kernel.system_base.resolve_rng`, which reads
-        ``services.rng`` (never populated on this path, same as the
-        headless backend) with a tick-derived fallback — never the
+        ``services.rng`` (never populated on this path) with a tick-derived
+        fallback — never the
         process-global ``random`` module either way.
     :param max_ticks: Maximum ticks to run before declaring survival.
     :param scenario: One of ``"imperial_circuit"`` or ``"two_node"``.
     :returns: Backend-normalized :class:`Result`.
     """
-    from babylon.engine.headless_runner.runner import _defines_hash
     from babylon.engine.simulation_engine import step
 
     state, sim_config, _base_defines = _build_scenario(scenario)
@@ -135,7 +132,7 @@ def run_in_memory(
         final_wealth=sum(float(e.wealth) for e in state.entities.values()),
         phase_milestones=phase_milestones,
         terminal_outcome=terminal_outcome,
-        defines_hash=_defines_hash(defines),
+        defines_hash=canonical_defines_hash(defines),
         rng_seed=seed,
         backend="in_memory",
         extra={"scenario": scenario},

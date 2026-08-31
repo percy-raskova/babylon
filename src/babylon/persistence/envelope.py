@@ -1,9 +1,8 @@
 """Per-tick atomic transaction envelope.
 
-Spec 062 — FR-008a + data-model.md §2.6. Every tick produces exactly one
-:class:`PerTickTransactionEnvelope`; the envelope is the atomic unit of
-persistence. :meth:`PostgresRuntime.persist_tick_atomic` writes the whole
-envelope in one Postgres transaction or rolls back if any insert fails.
+Spec 062 — FR-008a + data-model.md §2.6. The frozen Python contract produced
+one :class:`PerTickTransactionEnvelope` per tick. The Rust cutover retains this
+type only as replacement evidence; it is not a live PostgreSQL write path.
 
 See Also:
     ``specs/062-cross-scale-integration/contracts/persistence.yaml``.
@@ -47,9 +46,8 @@ class PerTickTransactionEnvelope(BaseModel):
        owner-queue item 31, now RESOLVED by rename:
 
        - This envelope's ``replay_identity_hash`` is the **replay-identity
-         stamp** — ``sha256(f"{session_id}:{tick}:{random_seed}")``, computed
-         in :func:`babylon.engine.headless_runner.runner.run_scenario` and
-         persisted to ``tick_commit.replay_identity_hash`` (migration 0044).
+         stamp** — ``sha256(f"{session_id}:{tick}:{random_seed}")`` from the
+         retired Python persistence contract.
          It depends only on session/tick/seed, not on any engine output —
          it proves lineage, never content.
        - Each ``ConservationAuditRow.hex_frame_hash`` is a **content hash**
@@ -61,8 +59,8 @@ class PerTickTransactionEnvelope(BaseModel):
        tick hash (:mod:`babylon.kernel.tick_hash`); see
        ``docs/reference/determinism-contract.rst`` for the three-hash map.
 
-    The envelope is frozen — once handed to
-    :meth:`PostgresRuntime.persist_tick_atomic` it cannot be mutated.
+    The envelope remains frozen as language-neutral replacement evidence. It
+    has no Python PostgreSQL writer after the Rust authority cutover.
     """
 
     model_config = ConfigDict(frozen=True)

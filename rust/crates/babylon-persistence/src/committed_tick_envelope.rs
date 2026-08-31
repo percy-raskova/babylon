@@ -12,7 +12,7 @@ use crate::tick_commit_claim::{
 /// Canonical `CommittedTickEnvelopeV1` layout version.
 pub const COMMITTED_TICK_ENVELOPE_LAYOUT_VERSION_V1: u32 = 1;
 /// Number of mandatory row families in every V1 envelope.
-pub const COMMITTED_TICK_ROW_FAMILY_COUNT_V1: usize = 8;
+pub const COMMITTED_TICK_ROW_FAMILY_COUNT_V1: usize = 5;
 /// Maximum aggregate rows across all mandatory families.
 pub const MAX_COMMITTED_TICK_ROWS_V1: usize = 1_048_576;
 /// Maximum canonical row-body bytes in one family.
@@ -42,12 +42,6 @@ pub enum CommittedTickRowFamilyV1 {
     State,
     /// Governed event rows.
     Event,
-    /// Typed subsystem output rows.
-    Subsystem,
-    /// Conservation evidence rows.
-    Conservation,
-    /// Cross-boundary flow rows.
-    BoundaryFlow,
     /// Complete or delta checkpoint rows.
     Checkpoint,
     /// Archive dirty-receipt outbox rows.
@@ -60,9 +54,6 @@ pub const ALL_COMMITTED_TICK_ROW_FAMILIES_V1: [CommittedTickRowFamilyV1;
     CommittedTickRowFamilyV1::Graph,
     CommittedTickRowFamilyV1::State,
     CommittedTickRowFamilyV1::Event,
-    CommittedTickRowFamilyV1::Subsystem,
-    CommittedTickRowFamilyV1::Conservation,
-    CommittedTickRowFamilyV1::BoundaryFlow,
     CommittedTickRowFamilyV1::Checkpoint,
     CommittedTickRowFamilyV1::ArchiveDirtyReceipt,
 ];
@@ -75,9 +66,6 @@ impl CommittedTickRowFamilyV1 {
             Self::Graph => 0x10,
             Self::State => 0x11,
             Self::Event => 0x12,
-            Self::Subsystem => 0x13,
-            Self::Conservation => 0x14,
-            Self::BoundaryFlow => 0x15,
             Self::Checkpoint => 0x16,
             Self::ArchiveDirtyReceipt => 0x17,
         }
@@ -90,9 +78,6 @@ impl CommittedTickRowFamilyV1 {
             Self::Graph => "graph",
             Self::State => "state",
             Self::Event => "event",
-            Self::Subsystem => "subsystem",
-            Self::Conservation => "conservation",
-            Self::BoundaryFlow => "boundary_flow",
             Self::Checkpoint => "checkpoint",
             Self::ArchiveDirtyReceipt => "archive_dirty_receipt",
         }
@@ -102,8 +87,8 @@ impl CommittedTickRowFamilyV1 {
 /// One exact, immutable row supplied by its owning canonical row codec.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommittedTickRowV1 {
-    key: Box<[u8]>,
-    payload: Box<[u8]>,
+    key: Vec<u8>,
+    payload: Vec<u8>,
 }
 
 impl CommittedTickRowV1 {
@@ -115,10 +100,7 @@ impl CommittedTickRowV1 {
         if key.is_empty() {
             return Err(CommittedTickEnvelopeErrorV1::EmptyRowKey);
         }
-        Ok(Self {
-            key: key.into_boxed_slice(),
-            payload: payload.into_boxed_slice(),
-        })
+        Ok(Self { key, payload })
     }
 
     /// Borrow the exact canonical logical row-key bytes.
@@ -135,7 +117,7 @@ impl CommittedTickRowV1 {
 }
 
 /// Raw family-owned rows consumed by the envelope composer.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct CommittedTickRowFamiliesV1 {
     /// Stable graph projection rows.
     pub graph: Vec<CommittedTickRowV1>,
@@ -143,23 +125,17 @@ pub struct CommittedTickRowFamiliesV1 {
     pub state: Vec<CommittedTickRowV1>,
     /// Governed event rows.
     pub event: Vec<CommittedTickRowV1>,
-    /// Typed subsystem output rows.
-    pub subsystem: Vec<CommittedTickRowV1>,
-    /// Conservation evidence rows.
-    pub conservation: Vec<CommittedTickRowV1>,
-    /// Cross-boundary flow rows.
-    pub boundary_flow: Vec<CommittedTickRowV1>,
     /// Complete or delta checkpoint rows.
     pub checkpoint: Vec<CommittedTickRowV1>,
-    /// Archive dirty-receipt outbox rows.
-    pub archive_dirty_receipt: Vec<CommittedTickRowV1>,
+    /// Mandatory singular campaign work receipt.
+    pub archive_dirty_receipt: CommittedTickRowV1,
 }
 
 /// One checked, strictly key-ordered family batch.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommittedTickRowBatchV1 {
     family: CommittedTickRowFamilyV1,
-    rows: Box<[CommittedTickRowV1]>,
+    rows: Vec<CommittedTickRowV1>,
     body_bytes: usize,
 }
 
@@ -204,7 +180,7 @@ pub struct CommittedTickEnvelopeV1 {
     claim: TickCommitClaimV1,
     row_families: [CommittedTickRowBatchV1; COMMITTED_TICK_ROW_FAMILY_COUNT_V1],
     total_rows: usize,
-    canonical_bytes: Box<[u8]>,
+    canonical_bytes: Vec<u8>,
     digest: CommittedTickEnvelopeDigestV1,
 }
 
@@ -236,6 +212,13 @@ pub enum CommittedTickEnvelopeConflictV1 {
 /// Checked envelope construction refusal.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CommittedTickEnvelopeErrorV1 {
+    /// The mandatory campaign work receipt was absent.
+    MissingArchiveDirtyReceipt,
+    /// More than one campaign work receipt was supplied.
+    DuplicateArchiveDirtyReceipt {
+        /// Received receipt count.
+        actual: usize,
+    },
     /// A canonical row key was empty.
     EmptyRowKey,
     /// Rows in one family were not strictly ascending by exact key bytes.
@@ -341,7 +324,7 @@ impl CommittedTickEnvelopeV1 {
             claim,
             row_families,
             total_rows,
-            canonical_bytes: canonical_bytes.into_boxed_slice(),
+            canonical_bytes,
             digest,
         })
     }
@@ -352,7 +335,7 @@ impl CommittedTickEnvelopeV1 {
         self.claim
     }
 
-    /// Borrow all eight batches in their governed order.
+    /// Borrow all five batches in their governed order.
     #[must_use]
     pub const fn row_families(
         &self,
@@ -415,6 +398,13 @@ pub fn validate_committed_tick_envelope_bounds_v1(
     row_counts: [usize; COMMITTED_TICK_ROW_FAMILY_COUNT_V1],
     batch_body_bytes: [usize; COMMITTED_TICK_ROW_FAMILY_COUNT_V1],
 ) -> Result<usize, CommittedTickEnvelopeErrorV1> {
+    match row_counts[COMMITTED_TICK_ROW_FAMILY_COUNT_V1 - 1] {
+        0 => return Err(CommittedTickEnvelopeErrorV1::MissingArchiveDirtyReceipt),
+        1 => {}
+        actual => {
+            return Err(CommittedTickEnvelopeErrorV1::DuplicateArchiveDirtyReceipt { actual });
+        }
+    }
     for index in 0..COMMITTED_TICK_ROW_FAMILY_COUNT_V1 {
         let family = ALL_COMMITTED_TICK_ROW_FAMILIES_V1[index];
         validate_batch_shape(family, row_counts[index], batch_body_bytes[index])?;
@@ -451,15 +441,22 @@ fn compose_row_families(
         compose_batch(CommittedTickRowFamilyV1::Graph, input.graph)?,
         compose_batch(CommittedTickRowFamilyV1::State, input.state)?,
         compose_batch(CommittedTickRowFamilyV1::Event, input.event)?,
-        compose_batch(CommittedTickRowFamilyV1::Subsystem, input.subsystem)?,
-        compose_batch(CommittedTickRowFamilyV1::Conservation, input.conservation)?,
-        compose_batch(CommittedTickRowFamilyV1::BoundaryFlow, input.boundary_flow)?,
         compose_batch(CommittedTickRowFamilyV1::Checkpoint, input.checkpoint)?,
-        compose_batch(
-            CommittedTickRowFamilyV1::ArchiveDirtyReceipt,
-            input.archive_dirty_receipt,
-        )?,
+        compose_singular_archive_receipt(input.archive_dirty_receipt)?,
     ])
+}
+
+fn compose_singular_archive_receipt(
+    row: CommittedTickRowV1,
+) -> Result<CommittedTickRowBatchV1, CommittedTickEnvelopeErrorV1> {
+    let mut rows = Vec::new();
+    rows.try_reserve_exact(1)
+        .map_err(|_| CommittedTickEnvelopeErrorV1::Allocation {
+            field: "archive dirty receipt rows",
+            requested: 1,
+        })?;
+    rows.push(row);
+    compose_batch(CommittedTickRowFamilyV1::ArchiveDirtyReceipt, rows)
 }
 
 fn compose_batch(
@@ -486,7 +483,7 @@ fn compose_batch(
     }
     Ok(CommittedTickRowBatchV1 {
         family,
-        rows: rows.into_boxed_slice(),
+        rows,
         body_bytes,
     })
 }
@@ -636,3 +633,28 @@ impl std::fmt::Display for CommittedTickEnvelopeErrorV1 {
 }
 
 impl std::error::Error for CommittedTickEnvelopeErrorV1 {}
+
+#[cfg(test)]
+mod allocation_store_tests {
+    use super::{CommittedTickEnvelopeV1, CommittedTickRowBatchV1, CommittedTickRowV1};
+
+    #[test]
+    fn private_owned_stores_remain_vec_backed_without_shrink_allocation() {
+        fn assert_row_store(row: &CommittedTickRowV1) {
+            let _: &Vec<u8> = &row.key;
+            let _: &Vec<u8> = &row.payload;
+        }
+        fn assert_batch_store(batch: &CommittedTickRowBatchV1) {
+            let _: &Vec<CommittedTickRowV1> = &batch.rows;
+        }
+        fn assert_envelope_store(envelope: &CommittedTickEnvelopeV1) {
+            let _: &Vec<u8> = &envelope.canonical_bytes;
+        }
+
+        let _ = (
+            assert_row_store as fn(&CommittedTickRowV1),
+            assert_batch_store as fn(&CommittedTickRowBatchV1),
+            assert_envelope_store as fn(&CommittedTickEnvelopeV1),
+        );
+    }
+}

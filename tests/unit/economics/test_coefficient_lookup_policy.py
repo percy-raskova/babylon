@@ -15,7 +15,7 @@ from babylon.persistence.postgres_reference import (
 
 
 class _StubRuntime:
-    """In-process stand-in for PostgresRuntime in policy-dispatch tests."""
+    """In-process stand-in for the coefficient store in policy-dispatch tests."""
 
     pass
 

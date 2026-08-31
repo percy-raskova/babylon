@@ -14,9 +14,8 @@ chain with an equality joint in the middle:
 3. ``baked page → rendered → snapshot golden`` — the SVG snapshot over the
    ArchiveApp rendering that baked page (``e2e_snapshot_app.py``).
 
-In-process engine, no Postgres, no live DB — the persist/commit seam's
-mechanics are separately pinned by
-``tests/unit/engine/headless_runner/test_tick_commit_observer.py``.
+In-process frozen-reference engine, no Postgres and no live database. This
+test does not make a claim about the Rust-owned persistence seam.
 """
 
 from __future__ import annotations

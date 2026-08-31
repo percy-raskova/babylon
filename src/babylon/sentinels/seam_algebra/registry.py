@@ -412,25 +412,9 @@ class GatedInput(BaseModel):
 #:   ``_build_economics_overrides``) is CONDITIONAL on a truthy
 #:   ``scope_fips`` -- not a supplier this check declares (see
 #:   :class:`GatedInput` docstring). Empty ``supplier_files``.
-#: - ``vol2_circulation_vol2_step`` is **F-2**'s other half: ``ImperialRent
-#:   System._invoke_vol2_circulation_if_wired`` returns silently when
-#:   ``context.get("vol2_step")`` is ``None`` (``engine/systems/
-#:   economic.py:174-178``). WIRED as of P26 U2 (2026-07-27, ADR162):
-#:   ``GameSession.advance_tick`` (``src/babylon/game/session.py``) stamps
-#:   ``context["vol2_step"]`` from its ``TradeWiring`` seam — the declared
-#:   ``supplier_files`` entry. The sibling
-#:   ``_invoke_phi_distribution_if_wired`` guard on the SAME line range
-#:   (``session_id``/``boundary_flow_register``/``external_nodes_phi``/
-#:   ``county_exposure_by_external``) now has BOTH the headless runner and
-#:   the interactive session as writers and remains correctly NOT flagged.
-#: - ``tick_dynamics_melt_calculator`` is the POSITIVE control: ``services.
-#:   melt_calculator is None`` (``domain/economics/tick/system/
-#:   __init__.py:174``) IS unconditionally wired by the headless runner's
-#:   ``_build_economics_overrides`` (``overrides["melt_calculator"] = melt``,
-#:   ``engine/headless_runner/runner.py:1055``, whenever a session factory is
-#:   supplied -- the one production path this sentinel's declared
-#:   ``supplier_files`` name) -- proves the check recognizes a genuinely
-#:   satisfied gate, not just a red-everything scanner.
+#: The former ``vol2_step`` and ``melt_calculator`` rows left this registry
+#: with the Python game/session and headless-runner retirement. A gate sensor
+#: cannot cite a deleted supplier as positive evidence.
 GATE_REGISTRY: Final[tuple[GatedInput, ...]] = (
     GatedInput(
         name="run_audit_session_id",
@@ -445,25 +429,6 @@ GATE_REGISTRY: Final[tuple[GatedInput, ...]] = (
         guard_shape="services_attr_none",
         gated_input="distribution_calculator",
         supplier_files=(),
-    ),
-    GatedInput(
-        name="vol2_circulation_vol2_step",
-        guard_file="src/babylon/engine/systems/economic.py",
-        guard_shape="context_get",
-        gated_input="vol2_step",
-        # P26 U2 (W-C motion, ADR162): GameSession.advance_tick stamps
-        # context["vol2_step"] from its TradeWiring seam — the first
-        # production supplier this gate has ever had (the interactive
-        # parity unit; the headless runner remains unwired by design,
-        # tracked in ai/wiring-doctrine.md).
-        supplier_files=("src/babylon/game/session.py",),
-    ),
-    GatedInput(
-        name="tick_dynamics_melt_calculator",
-        guard_file="src/babylon/domain/economics/tick/system/__init__.py",
-        guard_shape="services_attr_none",
-        gated_input="melt_calculator",
-        supplier_files=("src/babylon/engine/headless_runner/runner.py",),
     ),
 )
 
@@ -809,21 +774,8 @@ class WallclockCallSite(BaseModel):
 #:   separately register — the wall-clock read is the finding this check
 #:   owns), so the field cannot reach any comparison harness that does not
 #:   yet call it either.
-#: - ``run_manifest_wallclock_start`` / ``run_manifest_wallclock_end`` are
-#:   ``engine/headless_runner/runner.py`` lines 1132/1368 — "the run
-#:   manifest" witness: they populate ``build_manifest``'s (``engine/
-#:   headless_runner/manifest.py``) ``non_deterministic_inputs.wallclock_
-#:   start``/``wallclock_end``. ``manifest.py``'s own ``input_hash()`` takes
-#:   ONLY ``deterministic_inputs`` as its parameter — ``non_deterministic_
-#:   inputs`` (where these two fields live) is structurally unreachable from
-#:   it, and the module's own docstring already declares "two runs with the
-#:   same hash MUST produce byte-identical trace.csv and summary.json
-#:   (modulo declared wallclock / hostname fields)" — the exclusion is a
-#:   pre-existing, grounded, DECLARED design fact, not a gap this unit
-#:   discovers. Held open via :data:`WALLCLOCK_EXEMPTIONS` all the same
-#:   (uniform family discipline: every live wall-clock read in a P-tier
-#:   producer gets a dated row, whether the disposition is "hoist" or
-#:   "proven excluded, tolerated as-is").
+#: The former headless-runner manifest pair left this registry with that
+#: retired Python runtime. Only live producers remain registered.
 WALLCLOCK_REGISTRY: Final[tuple[WallclockCallSite, ...]] = (
     WallclockCallSite(
         name="jsonl_recorder_session_dir_timestamp",
@@ -852,20 +804,6 @@ WALLCLOCK_REGISTRY: Final[tuple[WallclockCallSite, ...]] = (
         line=209,
         wallclock_call="datetime.now",
         artifact="TickStateRecorder.to_json() 'generated_at' field",
-    ),
-    WallclockCallSite(
-        name="run_manifest_wallclock_start",
-        def_file="src/babylon/engine/headless_runner/runner.py",
-        line=1188,
-        wallclock_call="datetime.now",
-        artifact="build_manifest() non_deterministic_inputs.wallclock_start",
-    ),
-    WallclockCallSite(
-        name="run_manifest_wallclock_end",
-        def_file="src/babylon/engine/headless_runner/runner.py",
-        line=1433,
-        wallclock_call="datetime.now",
-        artifact="build_manifest() non_deterministic_inputs.wallclock_end",
     ),
 )
 
@@ -902,8 +840,7 @@ WALLCLOCK_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = (
             "vault_regression.py reads it; no committed golden pins its bytes today. "
             "RECOMMENDED FIX: if this summary.json is ever admitted into a byte-identity "
             "comparison, hoist 'ended_at' into a non_deterministic_inputs-shaped sibling "
-            "block excluded from that comparison, mirroring engine/headless_runner/"
-            "manifest.py's own wallclock/hostname exclusion pattern."
+            "block excluded from that comparison."
         ),
         owner="Persephone Raskova",
         date="2026-07-21",
@@ -944,40 +881,6 @@ WALLCLOCK_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = (
         date="2026-07-21",
         tracking_task="N/A (BD-owed hoist-vs-tolerate disposition per design "
         "ai/_inbox/t11-seam-severity-design.md §3.2 point 4; no tracking ticket opened)",
-    ),
-    SentinelExemption(
-        key=("wallclock", "run_manifest_wallclock_start"),
-        reason=(
-            "engine/headless_runner/runner.py:1188 reads datetime.now(UTC) into "
-            "wallclock_start, fed to build_manifest()'s non_deterministic_inputs (engine/"
-            "headless_runner/manifest.py). PROVEN excluded from the byte-identity "
-            "contract by construction: input_hash(deterministic_inputs) takes ONLY the "
-            "deterministic_inputs dict as its parameter -- non_deterministic_inputs "
-            "(where wallclock_start lives) is not reachable from it at all -- and "
-            "manifest.py's own module docstring already declares the exclusion ('modulo "
-            "declared wallclock / hostname fields'). Not a gap; a pre-existing, grounded "
-            "design fact. RECOMMENDED FIX: none required; if a future change ever widens "
-            "input_hash's own parameter to accept non_deterministic_inputs, this "
-            "exemption must be revisited immediately."
-        ),
-        owner="Persephone Raskova",
-        date="2026-07-21",
-        tracking_task="N/A (grounded exclusion, not a live gap; revisit only if "
-        "input_hash()'s own signature ever changes)",
-    ),
-    SentinelExemption(
-        key=("wallclock", "run_manifest_wallclock_end"),
-        reason=(
-            "engine/headless_runner/runner.py:1433 reads datetime.now(UTC) into "
-            "wallclock_end -- the sibling half of run_manifest_wallclock_start above; "
-            "same grounded exclusion (non_deterministic_inputs is unreachable from "
-            "input_hash's own parameter list, and manifest.py's docstring already "
-            "declares wallclock excluded)."
-        ),
-        owner="Persephone Raskova",
-        date="2026-07-21",
-        tracking_task="N/A (grounded exclusion, not a live gap; revisit only if "
-        "input_hash()'s own signature ever changes)",
     ),
 )
 

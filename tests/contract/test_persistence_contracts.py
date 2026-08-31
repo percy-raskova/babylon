@@ -70,24 +70,6 @@ class TestRuntimePersistenceCompliance:
 
 
 @pytest.mark.unit
-class TestPostgresRuntimeCompliance:
-    """Verify PostgresRuntime satisfies both protocols via isinstance()."""
-
-    def test_postgres_runtime_satisfies_runtime_persistence(self) -> None:
-        """PostgresRuntime satisfies RuntimePersistence protocol."""
-        from babylon.persistence.postgres_runtime import PostgresRuntime
-
-        assert issubclass(PostgresRuntime, RuntimePersistence)
-
-    def test_postgres_runtime_satisfies_extensions(self) -> None:
-        """PostgresRuntime satisfies PostgresRuntimeExtensions protocol."""
-        from babylon.persistence.postgres_runtime import PostgresRuntime
-        from babylon.persistence.protocols import PostgresRuntimeExtensions
-
-        assert issubclass(PostgresRuntime, PostgresRuntimeExtensions)
-
-
-@pytest.mark.unit
 class TestVectorStoreProtocolCompliance:
     """Verify VectorStoreProtocol implementations via isinstance()."""
 

@@ -22,15 +22,12 @@ MAX_VECTOR_OBJECT_FIELDS = 64
 MAX_VECTOR_FAMILY_ROWS = 64
 MAX_AGGREGATE_ROWS = 1_048_576
 MAX_FAMILY_BODY_BYTES = 67_108_864
-FIXED_ENVELOPE_BYTES = 209
-MAX_ENVELOPE_BYTES = 536_871_121
+FIXED_ENVELOPE_BYTES = 182
+MAX_ENVELOPE_BYTES = 335_544_502
 FAMILIES = (
     ("graph", 0x10),
     ("state", 0x11),
     ("event", 0x12),
-    ("subsystem", 0x13),
-    ("conservation", 0x14),
-    ("boundary_flow", 0x15),
     ("checkpoint", 0x16),
     ("archive_dirty_receipt", 0x17),
 )
@@ -46,7 +43,7 @@ COMPILED_CONSTANTS = {
     "layout_u32": 1,
     "claim_tag_u8": 1,
     "claim_bytes": 93,
-    "family_count": 8,
+    "family_count": 5,
     "row_length_field_bytes": 4,
     "fixed_envelope_bytes": FIXED_ENVELOPE_BYTES,
     "max_envelope_bytes": MAX_ENVELOPE_BYTES,
@@ -92,9 +89,6 @@ COMPILED_LAYOUTS = {
             "graph_section",
             "state_section",
             "event_section",
-            "subsystem_section",
-            "conservation_section",
-            "boundary_flow_section",
             "checkpoint_section",
             "archive_dirty_receipt_section",
         ],
@@ -106,6 +100,15 @@ COMPILED_RETRY = {
     "same_key_different_tick_content_hash": "content_identity_mismatch",
     "same_claim_same_exact_envelope_bytes": "idempotent",
     "same_claim_different_exact_envelope_bytes": "whole_payload_mismatch",
+}
+COMPILED_ARCHIVE_DIRTY_RECEIPT = {
+    "cardinality": "exactly_one",
+    "producer": "campaign_work",
+    "row_key": "fixed_archive_dirty_receipt_v1_prefix",
+    "payload": "IdentifiedTickReportV1.tick_content_hash_exact_32_bytes",
+    "typed_relation_primary_key": ["campaign_id", "resolve_tick"],
+    "caller_subject": "prohibited",
+    "empty_proof": "prohibited",
 }
 
 
@@ -204,6 +207,8 @@ def _verify_compiled_contract(contract: dict[str, Any]) -> None:
         raise EnvelopeContractRefusal("compiled_contract_drift", "retry_semantics")
     if contract.get("production_decoder") != "prohibited":
         raise EnvelopeContractRefusal("compiled_contract_drift", "production_decoder")
+    if contract.get("archive_dirty_receipt") != COMPILED_ARCHIVE_DIRTY_RECEIPT:
+        raise EnvelopeContractRefusal("compiled_contract_drift", "archive_dirty_receipt")
     required = contract.get("vector_families", {}).get("required")
     if not isinstance(required, list) or set(required) != REQUIRED_VECTOR_FAMILIES:
         raise EnvelopeContractRefusal("compiled_contract_drift", "vector_families")
@@ -332,10 +337,14 @@ def compose_envelope(data: dict[str, Any]) -> bytes:
     """Reconstruct exact envelope bytes from semantic vector inputs."""
     families = data.get("families")
     expected_order = tuple(name for name, _tag in FAMILIES)
-    if not isinstance(families, dict) or set(families) != set(expected_order):
-        raise EnvelopeContractRefusal("row_family_shape", "exact eight families")
+    if not isinstance(families, dict):
+        raise EnvelopeContractRefusal("row_family_shape", "exact five families")
+    if "archive_dirty_receipt" not in families:
+        raise EnvelopeContractRefusal("missing_archive_dirty_receipt", "archive_dirty_receipt")
+    if set(families) != set(expected_order):
+        raise EnvelopeContractRefusal("row_family_shape", "exact five families")
     if tuple(families) != expected_order:
-        raise EnvelopeContractRefusal("row_family_order", "exact eight families")
+        raise EnvelopeContractRefusal("row_family_order", "exact five families")
     claim = _compose_claim(data)
     output = bytearray(DOMAIN)
     output.extend((1).to_bytes(4, "big"))
@@ -345,7 +354,19 @@ def compose_envelope(data: dict[str, Any]) -> bytes:
     total_rows = 0
     for index in range(len(FAMILIES)):
         name, tag = FAMILIES[index]
-        section, row_count = _compose_family(name, tag, families[name])
+        family_input = families[name]
+        if name == "archive_dirty_receipt":
+            if isinstance(family_input, list):
+                code = (
+                    "missing_archive_dirty_receipt"
+                    if len(family_input) == 0
+                    else "duplicate_archive_dirty_receipt"
+                )
+                raise EnvelopeContractRefusal(code, name)
+            if not isinstance(family_input, dict):
+                raise EnvelopeContractRefusal("row_shape", name)
+            family_input = [family_input]
+        section, row_count = _compose_family(name, tag, family_input)
         total_rows += row_count
         if total_rows > MAX_AGGREGATE_ROWS:
             raise EnvelopeContractRefusal("aggregate_rows", str(total_rows))
@@ -363,7 +384,7 @@ def validate_bounds(row_counts: object, batch_body_bytes: object) -> int:
         or len(row_counts) != len(FAMILIES)
         or len(batch_body_bytes) != len(FAMILIES)
     ):
-        raise EnvelopeContractRefusal("bound_shape", "eight counts and sizes")
+        raise EnvelopeContractRefusal("bound_shape", "five counts and sizes")
     total_rows = 0
     total_body = 0
     for index in range(len(FAMILIES)):
@@ -380,6 +401,8 @@ def validate_bounds(row_counts: object, batch_body_bytes: object) -> int:
             raise EnvelopeContractRefusal("batch_shape", name)
         total_rows += rows
         total_body += body
+    if row_counts[4] != 1:
+        raise EnvelopeContractRefusal("bound_shape", "one archive dirty receipt")
     if total_rows > MAX_AGGREGATE_ROWS:
         raise EnvelopeContractRefusal("aggregate_rows", str(total_rows))
     envelope_bytes = FIXED_ENVELOPE_BYTES + total_body

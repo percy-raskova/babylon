@@ -532,8 +532,11 @@ def test_current_census_export_uses_independent_pairs_and_blocks_unexplained_dri
         assert receipt in exporter
     assert "JOIN pg_catalog.unnest(" not in exporter
     assert exporter.count("ScratchDatabase::empty(") == 2
-    assert exporter.count("run_python_repair(") == 2
-    assert exporter.index("let fresh_payloads =") < exporter.index("run_python_repair(")
+    assert exporter.count("legacy_epoch_fixture::build_frozen_python_estate(") == 2
+    assert exporter.index("let fresh_payloads =") < exporter.index(
+        "legacy_epoch_fixture::build_frozen_python_estate("
+    )
+    assert "run_python_repair(" not in exporter
     assert "std::fs::write" not in exporter
     assert "LEGACY_CENSUS_FIXTURE.find" not in exporter
 

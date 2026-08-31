@@ -9,16 +9,17 @@ const SQL_ONE: &str = "SELECT 1;\n";
 const SQL_TWO: &str = "SELECT 2;\n";
 
 #[test]
-fn compiled_registry_is_six_contiguous_exact_migrations() {
+fn compiled_registry_is_seven_contiguous_exact_migrations() {
     let compiled = compiled_schema_migrations().expect("checked-in migration bytes are valid");
 
-    assert_eq!(compiled.len(), 6);
+    assert_eq!(compiled.len(), 7);
     assert_eq!(compiled[0].version().as_i64(), 1);
     assert_eq!(compiled[1].version().as_i64(), 2);
     assert_eq!(compiled[2].version().as_i64(), 3);
     assert_eq!(compiled[3].version().as_i64(), 4);
     assert_eq!(compiled[4].version().as_i64(), 5);
     assert_eq!(compiled[5].version().as_i64(), 6);
+    assert_eq!(compiled[6].version().as_i64(), 7);
     assert_eq!(
         compiled[0].sql(),
         include_str!("../migrations/0001_owned_schema_epoch.sql")
@@ -53,6 +54,12 @@ fn compiled_registry_is_six_contiguous_exact_migrations() {
     ))
     .expect("epoch-6 H3 shadow-key migration must exist");
     assert_eq!(compiled[5].sql(), migration_six);
+    let migration_seven = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/migrations/0007_h3_canonical_readers.sql"
+    ))
+    .expect("epoch-7 canonical H3 reader migration must exist");
+    assert_eq!(compiled[6].sql(), migration_seven);
     assert_eq!(
         compiled[0].checksum().as_bytes(),
         &hex_checksum("4fc40761ed3b9a2bfab574d14ce65d24e828d1d51ca3f953a515b18f6f2667d4")
@@ -76,6 +83,10 @@ fn compiled_registry_is_six_contiguous_exact_migrations() {
     assert_eq!(
         compiled[5].checksum().as_bytes(),
         &hex_checksum("5d97424b4036a3648d49f1f388b0b6da387bb1082fd330eda9ae39cd80d1e249")
+    );
+    assert_eq!(
+        compiled[6].checksum().as_bytes(),
+        &hex_checksum("e32dd97fbc6ad1e1baeeb5bff7c00bce04fb6b0ee99a01bf7d99f5b4bab41604")
     );
 }
 
@@ -186,7 +197,10 @@ fn compiled_registry_itself_must_start_at_one_and_be_contiguous() {
 #[test]
 fn production_epoch_has_no_runtime_activation_or_caller_supplied_sql_path() {
     let source = include_str!("../src/schema_epoch.rs");
-    let production = source.split("#[cfg(test)]").next().unwrap();
+    let production = source
+        .split_once("#[cfg(test)]\n#[path = \"../tests/support/legacy_epoch_fixture.rs\"]")
+        .expect("shared test support follows the complete production epoch")
+        .0;
 
     assert!(production.contains("pub fn migrate_schema_epoch(config: &Config)"));
     assert!(production.contains("include_str!(\"../migrations/0001_owned_schema_epoch.sql\")"));
@@ -197,6 +211,7 @@ fn production_epoch_has_no_runtime_activation_or_caller_supplied_sql_path() {
         production.contains("include_str!(\"../migrations/0005_spatial_reference_products.sql\")")
     );
     assert!(production.contains("include_str!(\"../migrations/0006_h3_shadow_keys.sql\")"));
+    assert!(production.contains("include_str!(\"../migrations/0007_h3_canonical_readers.sql\")"));
     for stage in [
         "map_err(SchemaEpochError::ConnectionTarget)",
         "map_err(SchemaEpochError::Lock)",
@@ -334,6 +349,64 @@ fn v6_prefix_has_an_independent_shape_and_census_contract() {
 }
 
 #[test]
+fn v7_prefix_keeps_the_v6_shape_and_adds_an_independent_reader_contract() {
+    let source = include_str!("../src/schema_epoch.rs");
+    let v7_verifier = source
+        .split_once("fn verify_v7_prefix_client(")
+        .unwrap()
+        .1
+        .split_once("fn verify_post_epoch_census_client(")
+        .unwrap()
+        .0;
+
+    let v6_shape = v7_verifier.find("EPOCH_V6_SHAPE_SQL").unwrap();
+    let v7_shape = v7_verifier.find("EPOCH_V7_SHAPE_SQL").unwrap();
+    let census = v7_verifier.find("SchemaEpochPrefix::V7").unwrap();
+    assert!(v6_shape < v7_shape);
+    assert!(v7_shape < census);
+    assert!(!v7_verifier.contains("verify_v6_prefix"));
+}
+
+#[test]
+fn epoch_seven_census_dispatch_is_exact_for_both_origins() {
+    let source = include_str!("../src/schema_epoch.rs");
+    for required in [
+        "(SchemaEpochPrefix::V7, true) => EPOCH_OWNED_CENSUS_V7",
+        "(SchemaEpochPrefix::V7, false) => EPOCH_OWNED_FRESH_CENSUS_V7",
+    ] {
+        assert!(
+            source.contains(required),
+            "epoch-seven census dispatch omits {required:?}"
+        );
+    }
+    let capacity = source
+        .split_once("let epoch_capacity =")
+        .expect("epoch census must declare a bounded capacity")
+        .1
+        .split_once("let mut epoch =")
+        .expect("epoch census must allocate its bounded rows")
+        .0;
+    assert!(capacity.contains("prefix == SchemaEpochPrefix::V7 && legacy_origin"));
+    assert!(capacity.contains("49"));
+    assert!(capacity.contains("25"));
+    for view in [
+        "v_county_value_aggregate",
+        "v_hex_aid",
+        "v_hex_economic",
+        "v_hex_heat",
+        "v_hex_intel",
+        "v_hex_mobilize",
+        "v_hex_state_asof",
+        "v_national_value_aggregate",
+        "v_state_value_aggregate",
+        "view_runtime_trace_emission",
+    ] {
+        assert!(source.contains(view), "epoch-seven census omits {view}");
+    }
+    assert!(!source.contains("\"v_global_phi_balance\""));
+}
+
+#[test]
 fn fresh_and_owned_census_fixtures_are_bounded_and_exactly_sorted() {
     let fixtures = [
         include_str!("../src/fixtures/fresh_schema_epoch_census_v1.txt"),
@@ -350,8 +423,10 @@ fn fresh_and_owned_census_fixtures_are_bounded_and_exactly_sorted() {
         include_str!("../src/fixtures/schema_epoch_owned_fresh_census_v5.txt"),
         include_str!("../src/fixtures/schema_epoch_owned_census_v6.txt"),
         include_str!("../src/fixtures/schema_epoch_owned_fresh_census_v6.txt"),
+        include_str!("../src/fixtures/schema_epoch_owned_census_v7.txt"),
+        include_str!("../src/fixtures/schema_epoch_owned_fresh_census_v7.txt"),
     ];
-    let expected_counts = [7, 8, 3, 4, 4, 5, 6, 7, 16, 17, 24, 25, 39, 25];
+    let expected_counts = [7, 8, 3, 4, 4, 5, 6, 7, 16, 17, 24, 25, 39, 25, 49, 25];
     for (fixture, expected) in fixtures.iter().zip(expected_counts) {
         let parsed = babylon_persistence::parse_legacy_census_fixture(fixture).unwrap();
         assert_eq!(parsed.entries().len(), expected);

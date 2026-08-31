@@ -25,9 +25,9 @@ die() {
 
 case "$LIVE_FOCUS" in
   "" | clean_bootstrap | h3_atomicity | installed_mutation | schema_epoch_fresh | schema_epoch_matrix | \
-    schema_epoch_rollback | schema_epoch_v5_census | schema_epoch_v6_census | \
+    schema_epoch_rollback | schema_epoch_v5_census | schema_epoch_v6_census | schema_epoch_v7_census | \
     h3_pg_oracle | h3_reference_installer | h3_shadow_backfill | \
-    committed_tick_writer | runtime_census_v2 | pr) ;;
+    rust_persistence_runtime | runtime_census_v2 | pr) ;;
   *) die "unsupported live focus: $LIVE_FOCUS" ;;
 esac
 
@@ -236,14 +236,13 @@ if [ "$LIVE_FOCUS" = "clean_bootstrap" ] || [ "$LIVE_FOCUS" = "pr" ]; then
     hostile_options_status=0
     cd "$REPO_ROOT"
     timeout --signal=TERM --kill-after=30s 600s \
-      env BABYLON_SCHEMA_EPOCH_DSN="$HOSTILE_OPTIONS_DSN" \
+      env BABYLON_RUNTIME_DSN="$HOSTILE_OPTIONS_DSN" \
       mise run db:bootstrap || hostile_options_status=$?
     if [ "$hostile_options_status" -eq 0 ]; then
       printf 'options-bearing DSN unexpectedly passed schema preflight\n' >&2
       status=1
     fi
   fi
-
   if [ "$status" -eq 0 ]; then
     after_options_refusal="$(timeout --signal=TERM --kill-after=2s 10s \
       env PGPASSWORD=test PGCONNECT_TIMEOUT=2 PGSSLMODE=disable \
@@ -265,7 +264,7 @@ if [ "$LIVE_FOCUS" = "clean_bootstrap" ] || [ "$LIVE_FOCUS" = "pr" ]; then
   if [ "$status" -eq 0 ]; then
     cd "$REPO_ROOT"
     timeout --signal=TERM --kill-after=30s 600s \
-      env BABYLON_SCHEMA_EPOCH_DSN="$BOOTSTRAP_DSN" \
+      env BABYLON_RUNTIME_DSN="$BOOTSTRAP_DSN" \
       PGHOST="host.invalid" \
       PGHOSTADDR="203.0.113.1" \
       PGPORT="1" \
@@ -282,14 +281,15 @@ if [ "$LIVE_FOCUS" = "clean_bootstrap" ] || [ "$LIVE_FOCUS" = "pr" ]; then
       env PGPASSWORD=test PGCONNECT_TIMEOUT=2 PGSSLMODE=disable \
       psql -X -w -qAt -h 127.0.0.1 -p "$PORT" -U test -d babylon_test \
         -v ON_ERROR_STOP=1 \
-        -c "SELECT (SELECT pg_catalog.max(version)::text FROM babylon_state.schema_migration) \
-                   || '|' || \
-                   (SELECT data_type FROM information_schema.columns \
-                    WHERE table_schema = 'public' \
-                      AND table_name = 'hex_spatial_map' \
-                      AND column_name = 'cell_id')")" || status=$?
-    if [ "$status" -eq 0 ] && [ "$observation" != "6|bigint" ]; then
-      printf 'clean bootstrap observation mismatch: expected=6|bigint actual=%s\n' \
+        -c "SELECT \
+              (SELECT pg_catalog.string_agg(\
+                   ordinal::pg_catalog.text || ':' || state_tag::pg_catalog.text || ':' || \
+                   schema_epoch::pg_catalog.text, ',' ORDER BY ordinal\
+               ) FROM babylon_meta.persistence_authority_ledger) \
+              || '|' || (pg_catalog.to_regclass('public.hex_spatial_map') IS NULL)::pg_catalog.text \
+              || '|' || (pg_catalog.to_regclass('babylon_state.campaign_foundation') IS NOT NULL)::pg_catalog.text")" || status=$?
+    if [ "$status" -eq 0 ] && [ "$observation" != "1:1:8,2:2:9|true|true" ]; then
+      printf 'clean bootstrap observation mismatch: expected=1:1:8,2:2:9|true|true actual=%s\n' \
         "$observation" >&2
       status=1
     fi
@@ -297,14 +297,13 @@ if [ "$LIVE_FOCUS" = "clean_bootstrap" ] || [ "$LIVE_FOCUS" = "pr" ]; then
 
   if [ "$status" -eq 0 ]; then
     timeout --signal=TERM --kill-after=30s 1800s \
-      env BABYLON_DSN="$BOOTSTRAP_DSN" \
+      env BABYLON_RUNTIME_DSN="$BOOTSTRAP_DSN" \
       mise run qa:michigan-rollover-smoke || status=$?
   fi
 fi
-
 cd "$REPO_ROOT/rust"
 if [ "$LIVE_FOCUS" = "schema_epoch_rollback" ]; then
-  for migration in migration_four migration_five migration_six; do
+  for migration in migration_four migration_five migration_six migration_seven; do
     run_schema_epoch_rollback_test "$migration" || { status=$?; break; }
   done
 fi
@@ -322,16 +321,15 @@ if [ "$LIVE_FOCUS" = "h3_atomicity" ] || [ "$LIVE_FOCUS" = "pr" ]; then
 fi
 
 if [ "$status" -eq 0 ] &&
-    { [ "$LIVE_FOCUS" = "committed_tick_writer" ] || [ "$LIVE_FOCUS" = "pr" ]; }; then
-  timeout --signal=TERM --kill-after=10s 420s \
-    env \
-      BABYLON_LEGACY_ADOPTER_TEST_DSN="postgresql://test:test@127.0.0.1:$PORT/postgres" \
-      BABYLON_LEGACY_ADOPTER_DISPOSABLE_ACK="$TEST_HARNESS_ACK" \
-      BABYLON_LEGACY_ADOPTER_DISPOSABLE_CANARY="$CANARY" \
-      CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/rust/target}" \
-    cargo test -p babylon-persistence --lib \
-      committed_tick_writer::tests::live_ \
-      --locked -- --nocapture --ignored --test-threads=1 || status=$?
+    { [ "$LIVE_FOCUS" = "rust_persistence_runtime" ] || [ "$LIVE_FOCUS" = "pr" ]; }; then
+  env \
+    BABYLON_LEGACY_ADOPTER_TEST_DSN="postgresql://test:test@127.0.0.1:$PORT/postgres" \
+    BABYLON_LEGACY_ADOPTER_DISPOSABLE_ACK="$TEST_HARNESS_ACK" \
+    BABYLON_LEGACY_ADOPTER_DISPOSABLE_CANARY="$CANARY" \
+    CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/rust/target}" \
+  cargo test -p babylon-persistence --lib \
+    runtime::live_tests::live_ \
+    --locked -- --nocapture --ignored --test-threads=1 || status=$?
 fi
 
 if [ "$status" -eq 0 ] &&
@@ -363,8 +361,10 @@ fi
 if [ "$status" -eq 0 ] &&
     { [ "$LIVE_FOCUS" = "schema_epoch_fresh" ] ||
       [ "$LIVE_FOCUS" = "schema_epoch_matrix" ] ||
+      [ "$LIVE_FOCUS" = "schema_epoch_rollback" ] ||
       [ "$LIVE_FOCUS" = "schema_epoch_v5_census" ] ||
       [ "$LIVE_FOCUS" = "schema_epoch_v6_census" ] ||
+      [ "$LIVE_FOCUS" = "schema_epoch_v7_census" ] ||
       [ "$LIVE_FOCUS" = "runtime_census_v2" ] ||
       [ "$LIVE_FOCUS" = "h3_pg_oracle" ] ||
       [ "$LIVE_FOCUS" = "h3_shadow_backfill" ]; }; then
@@ -378,7 +378,6 @@ if [ "$status" -eq 0 ] &&
     cargo test -p babylon-persistence --test legacy_adopter_postgres --locked -- --nocapture \
       --ignored --test-threads=1 || status=$?
 fi
-
 if [ "$status" -eq 0 ] && [ -z "$LIVE_FOCUS" ]; then
   timeout --signal=TERM --kill-after=10s 900s \
     env \

@@ -217,8 +217,7 @@ class TestGraphPersistence:
     def test_persist_same_payload_is_idempotent(self) -> None:
         """Spec 056 (F7=B): re-persisting the same tick with the SAME
         payload succeeds idempotently — preserves the canonical
-        UPSERT-retry pattern used by ``persistence_observer.py:146``
-        and ``session_recorder.py:168``.
+        same-payload retry contract.
 
         Pre-spec-056 contract was "INSERT OR REPLACE" (silent upsert
         on any re-persist). The contract is now monotonic-idempotent:

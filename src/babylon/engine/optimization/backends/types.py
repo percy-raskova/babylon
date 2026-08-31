@@ -1,11 +1,8 @@
 """Backend-agnostic result type for the optimization package.
 
-:class:`Result` is the single shape every backend (headless Postgres-backed
-runner, fast in-memory legacy engine, future backends) must reshape its raw
-run output into. Algorithms (sweep, Monte Carlo, sensitivity, Bayesian
-search — added in a later phase) consume only :class:`Result`, never a
-backend-specific return type, so the backend is a swappable implementation
-detail behind one contract.
+:class:`Result` is the normalized shape produced by the retained in-memory
+optimizer. Sweep, Monte Carlo, sensitivity, and Bayesian search consume only
+this type.
 """
 
 from __future__ import annotations
@@ -14,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class Result(BaseModel):
-    """One trial's outcome, normalized across all optimization backends.
+    """One in-memory optimization trial's normalized outcome.
 
     :ivar ticks_survived: Number of ticks the run completed before death,
         early termination, or reaching ``max_ticks``.
@@ -37,8 +34,8 @@ class Result(BaseModel):
         ``GameDefines`` used for this trial (see
         ``docs/reference/determinism-contract.rst``).
     :ivar rng_seed: The RNG seed threaded through this trial.
-    :ivar backend: Name of the backend that produced this result
-        (``"headless"`` or ``"in_memory"``).
+    :ivar backend: Name of the backend that produced this result. The only
+        accepted value is ``"in_memory"``.
     :ivar extra: Backend-specific overflow fields not promoted to the core
         contract (e.g. artifact paths, session ids).
     """

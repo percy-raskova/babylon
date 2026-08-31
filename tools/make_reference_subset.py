@@ -366,7 +366,7 @@ TABLE: dict[str, TablePolicy] = {
     "fact_faf_commodity_flow": TablePolicy(
         "full",
         "Read by sqlite_hydrator.py — which IS the headless runner's "
-        "hydration path: qa:e2e-regression's strict 5-tick bundle dies "
+        "hydration path: the retired strict 5-tick Python bundle died "
         "ENGINE_FAILURE 'no such table: fact_faf_commodity_flow' without it "
         "(proven on the ci-data-v1 proving run, 2026-07-11). The original "
         "skip reasoning ('zero real-DB test coverage') missed that the "

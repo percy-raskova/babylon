@@ -8,11 +8,9 @@ quantification, global sensitivity analysis, and Bayesian search over
 
 .. note::
 
-   Looking for one-off manual parameter overrides, or the older single-trace
-   ``tools/parameter_analysis.py`` workflow? See :doc:`parameter-tuning` and
-   :doc:`analyze-parameter-sensitivity`. This guide covers the package that
-   powers systematic sweeps and search: ``sweep``, ``monte-carlo``,
-   ``sensitivity``, and ``bayesian``.
+   This guide covers the intentional in-memory Python periphery for systematic
+   sweeps and search: ``sweep``, ``monte-carlo``, ``sensitivity``, and
+   ``bayesian``. It does not exercise Rust persistence authority.
 
 Prerequisites
 -------------
@@ -22,53 +20,26 @@ Prerequisites
 - The dev dependency group installed for ``sensitivity`` (SALib) and
   ``bayesian`` (Optuna): ``uv sync``.
 
-Two backends, and when to use each
------------------------------------
+The retained in-memory backend
+------------------------------
 
-Every subcommand accepts ``--backend {headless,in-memory}``:
-
-``in-memory``
-   The fast legacy engine, run entirely in-process — no database. Use this
-   for iterating quickly, for CI-adjacent checks, and for any sweep where
-   you want dozens to hundreds of trials in seconds. Select a scenario with
-   ``--scenario`` (``imperial_circuit`` or ``two_node``).
-
-``headless``
-   The Postgres-backed runner (spec-064/065/066) — the realistic path,
-   scoped to a county set via ``--scope-name`` (default
-   ``detroit-tri-county``: Wayne/Oakland/Macomb). Use this when a result
-   needs to reflect the full persistence/hex/trade stack, not just the
-   in-memory approximation. It is slower and requires a reachable Postgres
-   instance.
-
-Each algorithm defaults to ``headless`` unless documented otherwise; pass
-``--backend in-memory`` explicitly to get the fast path. Both backends
-return the same normalized
-:class:`~babylon.engine.optimization.backends.types.Result`, so a sweep's
-CSV columns are identical regardless of which backend produced them.
+The optimizer runs the frozen Python engine in-process with no database.
+Select ``imperial_circuit`` or ``two_node`` with ``--scenario``. This is an
+intentional analysis periphery and does not exercise Rust persistence or make
+a claim about the playable runtime.
 
 Defines now actually reach the simulation
 ------------------------------------------
 
-Every trial in this package routes through
-:func:`babylon.engine.optimization.runner_api.run`, which threads the
-(possibly swept) ``GameDefines`` into the backend. Before commit
-``bd3772a9`` (*"fix(engine): headless runner honors caller-supplied
-GameDefines (inert-sweep bug)"*), the headless runner called
-``GameDefines.load_default()`` unconditionally — so every headless
-sweep/Monte Carlo/Optuna/Morris-Sobol trial silently ran bit-identical math
-regardless of the parameter override, a Constitution III.11 Loud-Failure
-violation. That is fixed: the headless runner now resolves
-``config.defines`` (in-process override) ahead of ``load_default()``, and a
-contract test (``tests/unit/engine/headless_runner/test_defines_resolution.py``)
-pins the precedence. If you swept parameters with this package before that
-fix, re-run — the earlier results did not reflect the parameter you thought
-you were varying.
+Every trial routes through :func:`babylon.engine.optimization.runner_api.run`.
+The in-memory backend passes the possibly swept ``GameDefines`` to
+``simulation_engine.step`` on every tick. The parameter-injection and
+reproducibility tests pin that path.
 
 The four subcommands
 ---------------------
 
-All four share ``--backend``, ``--scope-name``/``--scenario``,
+All four share ``--backend in-memory``, ``--scenario``,
 ``--objective {carceral,survival}`` (default ``carceral``, the Carceral
 Equilibrium phase-timing scorer — see
 :func:`~babylon.engine.optimization.objectives.carceral_objective`), and
@@ -222,10 +193,9 @@ Every trial run through ``runner_api.run`` produces a normalized
 builds a frozen
 :class:`~babylon.engine.optimization.reproducibility.ReproRecord` — the
 minimal receipt needed to replay a trial: ``defines_hash`` (a SHA-256 over
-the trial's canonical ``GameDefines.model_dump()`` — the same hash the
-headless runner's ``_defines_hash`` computes; see
+the trial's canonical ``GameDefines.model_dump()``; see
 :doc:`/reference/determinism-contract` for the canonical serialization),
-``rng_seed``, ``backend``, ``scope_name``, ``max_ticks``, and the outcome
+``rng_seed``, ``backend``, ``scenario``, ``max_ticks``, and the outcome
 summary (``ticks_survived``, ``outcome``, ``terminal_outcome``). Two trials
 with the same ``defines_hash`` and ``rng_seed`` ran against byte-identical
 coefficients and should reproduce byte-identically per Constitution III.7.
@@ -256,9 +226,8 @@ See Also
 - :doc:`modding-defines` — the ``GameDefines``/``defines.yaml`` schema these
   tools override.
 - :doc:`parameter-tuning` — manual, single-run parameter adjustment.
-- :doc:`analyze-parameter-sensitivity` — the earlier single-parameter
-  ``tools/parameter_analysis.py`` trace/sweep workflow and result
-  interpretation.
+- :doc:`analyze-parameter-sensitivity` — current sensitivity commands and the
+  authority boundary for their results.
 - :doc:`/reference/determinism-contract` — the canonical ``defines_hash``
   serialization contract and Constitution III.7.
 - :py:mod:`babylon.engine.optimization` — package API reference.

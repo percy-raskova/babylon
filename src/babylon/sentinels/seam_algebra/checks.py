@@ -87,14 +87,10 @@ existing unit test staying green. :func:`check_wallclock_call_sites` grounds
 each declared :class:`~babylon.sentinels.seam_algebra.registry.WallclockCallSite`
 row (the exact ``(line, symbol)`` pair is really present in ``def_file``, via
 :func:`~babylon.sentinels._ast.wallclock_call_lines`) and reds it unless
-exempted — the day-one witnesses are ``engine/observers/jsonl_recorder.py``
-(three call sites), ``engine/observers/metrics.py`` (one), and "the run
-manifest" (``engine/headless_runner/runner.py``'s ``wallclock_start``/
-``wallclock_end``, feeding ``engine/headless_runner/manifest.py``) — all six
-held open as dated exemptions (design §9 item 4); the manifest pair's
-exclusion from ``input_hash()`` is a pre-existing, grounded design fact
-(``manifest.py``'s own docstring already declares it), never a gap this unit
-discovers.
+exempted — the live witnesses are ``engine/observers/jsonl_recorder.py``
+(three call sites) and ``engine/observers/metrics.py`` (one), all four held
+open as dated exemptions (design §9 item 4). The former headless-runner
+manifest pair retired with that Python runtime.
 """
 
 from __future__ import annotations

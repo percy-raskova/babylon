@@ -36,9 +36,10 @@ class TestMiseTaskDiscoverability:
         assert match, "sim:e2e-michigan has no description"
         assert len(match[0].split()) >= 4
 
-    def test_sim_e2e_michigan_invokes_runner_module(self) -> None:
+    def test_sim_e2e_michigan_invokes_rust_runtime(self) -> None:
         block = self._e2e_block()
-        assert "babylon.engine.headless_runner" in block
+        assert "babylon-runtime run --ticks 520" in block
+        assert "babylon.engine.headless_runner" not in block
 
 
 @pytest.mark.skipif(not MISE_TOML.exists(), reason=".mise.toml not present")

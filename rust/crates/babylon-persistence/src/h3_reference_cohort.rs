@@ -1,11 +1,10 @@
 //! Bounded, provenance-pinned H3 reference-cohort construction.
 
 use std::collections::BTreeSet;
+use std::sync::OnceLock;
 
-use babylon_kernel::sha256_of;
 use babylon_kernel::tick_content_hash::RefDigestV1;
-
-use crate::{H3CellId, H3CellIdError};
+use babylon_kernel::{sha256_of, H3CellId, H3CellIdError};
 
 const SOURCE_DOMAIN: &[u8] = b"babylon.h3.reference-source.v1\0";
 const ROW_DOMAIN: &[u8] = b"babylon.h3.reference-rows.v1\0";
@@ -30,6 +29,8 @@ const EXPECTED_SOURCE_DIGEST: [u8; 32] = [
     0xa4, 0x68, 0x5e, 0x6a, 0xd8, 0x82, 0x93, 0x0e, 0x70, 0x64, 0xcb, 0x22, 0x5e, 0xe6, 0x49, 0x15,
     0x5f, 0xb7, 0x4e, 0x52, 0xef, 0x8b, 0x7d, 0x75, 0x50, 0x69, 0x1a, 0x70, 0xa6, 0x08, 0x7f, 0x5a,
 ];
+const SOURCE_FIXTURE: &[u8] = include_bytes!("fixtures/h3_reference_source_v1.bin");
+const SOURCE_COUNT_BYTES: usize = size_of::<u64>();
 
 /// Fixed v1 ceiling checked before any allocation or source traversal.
 pub const MAX_H3_REFERENCE_SOURCE_CELLS: usize = 65_536;
@@ -230,6 +231,23 @@ impl H3ReferenceCohort {
 /// Closed failures for representative H3 cohort construction.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum H3ReferenceCohortError {
+    /// The checked-in fixture did not begin with the sole v1 domain.
+    FixtureDomainMismatch,
+    /// The checked-in fixture ended before its governed payload boundary.
+    FixtureTruncated { expected: usize, actual: usize },
+    /// The checked-in fixture contained bytes after its governed payload.
+    FixtureTrailingBytes { expected: usize, actual: usize },
+    /// The checked-in fixture declared a source count other than the governed count.
+    FixtureCountMismatch { expected: u64, actual: u64 },
+    /// One checked-in raw identity was not a valid H3 cell.
+    FixtureInvalidCell { index: usize, source: H3CellIdError },
+    /// The checked-in fixture bytes did not match their source identity.
+    FixtureDigestMismatch {
+        expected: RefDigestV1,
+        actual: RefDigestV1,
+    },
+    /// The checked-in source identities could not be reserved fallibly.
+    FixtureAllocation,
     /// The artifact bytes did not match the governed release pin.
     ArtifactDigestMismatch {
         expected: RefDigestV1,
@@ -275,6 +293,103 @@ impl std::fmt::Display for H3ReferenceCohortError {
 }
 
 impl std::error::Error for H3ReferenceCohortError {}
+
+/// Return the sole checked-in representative H3 cohort after validating its exact bytes.
+///
+/// The fixture is parsed and constructed at most once. Every caller receives the same immutable
+/// typed cohort and therefore cannot introduce a second fixture parser or source identity.
+///
+/// # Errors
+/// Returns [`H3ReferenceCohortError`] when the embedded domain, count, length, H3 identities,
+/// digest, allocation, or resulting cohort receipt differs from the governed v1 source.
+pub fn representative_h3_reference_cohort_v1(
+) -> Result<&'static H3ReferenceCohort, H3ReferenceCohortError> {
+    static COHORT: OnceLock<Result<H3ReferenceCohort, H3ReferenceCohortError>> = OnceLock::new();
+    COHORT
+        .get_or_init(|| parse_representative_h3_reference_cohort_v1(SOURCE_FIXTURE))
+        .as_ref()
+        .map_err(Clone::clone)
+}
+
+fn parse_representative_h3_reference_cohort_v1(
+    fixture: &[u8],
+) -> Result<H3ReferenceCohort, H3ReferenceCohortError> {
+    if !fixture.starts_with(SOURCE_DOMAIN) {
+        return Err(H3ReferenceCohortError::FixtureDomainMismatch);
+    }
+    let payload_offset = SOURCE_DOMAIN
+        .len()
+        .checked_add(SOURCE_COUNT_BYTES)
+        .ok_or(H3ReferenceCohortError::CanonicalByteLengthOverflow)?;
+    if fixture.len() < payload_offset {
+        return Err(H3ReferenceCohortError::FixtureTruncated {
+            expected: payload_offset,
+            actual: fixture.len(),
+        });
+    }
+    let actual_count = u64::from_be_bytes(
+        fixture[SOURCE_DOMAIN.len()..payload_offset]
+            .try_into()
+            .expect("the guarded fixture count is exactly eight bytes"),
+    );
+    let expected_count =
+        u64::try_from(EXPECTED_SOURCE_CELLS).expect("the governed source count fits one u64");
+    if actual_count != expected_count {
+        return Err(H3ReferenceCohortError::FixtureCountMismatch {
+            expected: expected_count,
+            actual: actual_count,
+        });
+    }
+    let payload_bytes = EXPECTED_SOURCE_CELLS
+        .checked_mul(SOURCE_ROW_BYTES)
+        .ok_or(H3ReferenceCohortError::CanonicalByteLengthOverflow)?;
+    let expected_length = payload_offset
+        .checked_add(payload_bytes)
+        .ok_or(H3ReferenceCohortError::CanonicalByteLengthOverflow)?;
+    if fixture.len() < expected_length {
+        return Err(H3ReferenceCohortError::FixtureTruncated {
+            expected: expected_length,
+            actual: fixture.len(),
+        });
+    }
+    if fixture.len() > expected_length {
+        return Err(H3ReferenceCohortError::FixtureTrailingBytes {
+            expected: expected_length,
+            actual: fixture.len(),
+        });
+    }
+
+    let mut source_cells = Vec::new();
+    source_cells
+        .try_reserve_exact(EXPECTED_SOURCE_CELLS)
+        .map_err(|_| H3ReferenceCohortError::FixtureAllocation)?;
+    for (index, chunk) in fixture[payload_offset..]
+        .chunks_exact(SOURCE_ROW_BYTES)
+        .enumerate()
+    {
+        let raw = u64::from_be_bytes(
+            chunk
+                .try_into()
+                .expect("the exact fixture length yields eight-byte cells"),
+        );
+        let cell = H3CellId::try_from(raw)
+            .map_err(|source| H3ReferenceCohortError::FixtureInvalidCell { index, source })?;
+        source_cells.push(cell);
+    }
+
+    let expected_digest = RefDigestV1::from_bytes(EXPECTED_SOURCE_DIGEST);
+    let actual_digest = RefDigestV1::from_bytes(sha256_of(fixture));
+    if actual_digest != expected_digest {
+        return Err(H3ReferenceCohortError::FixtureDigestMismatch {
+            expected: expected_digest,
+            actual: actual_digest,
+        });
+    }
+    build_representative_h3_cohort_v1(
+        RefDigestV1::from_bytes(EXPECTED_ARTIFACT_DIGEST),
+        &source_cells,
+    )
+}
 
 /// Build the exact representative v1 H3 cohort from typed source identities.
 ///
@@ -608,4 +723,82 @@ fn push_count(bytes: &mut Vec<u8>, count: usize) -> Result<(), H3ReferenceCohort
 
 fn push_optional_cell(bytes: &mut Vec<u8>, cell: Option<H3CellId>) {
     bytes.extend_from_slice(&cell.map_or([0; 8], H3CellId::to_be_bytes));
+}
+
+#[cfg(test)]
+mod fixture_tests {
+    use super::*;
+
+    #[test]
+    fn checked_in_fixture_has_the_exact_governed_receipt() {
+        let cohort = representative_h3_reference_cohort_v1().unwrap();
+        assert_eq!(cohort.rows().len(), 59_849);
+        assert_eq!(cohort.receipt().source_cell_count(), EXPECTED_SOURCE_CELLS);
+        assert_eq!(
+            cohort.receipt().source_digest(),
+            RefDigestV1::from_bytes(EXPECTED_SOURCE_DIGEST)
+        );
+    }
+
+    #[test]
+    fn fixture_parser_refuses_every_closed_shape_and_identity_failure() {
+        let mut wrong_domain = SOURCE_FIXTURE.to_vec();
+        wrong_domain[0] ^= 1;
+        assert_eq!(
+            parse_representative_h3_reference_cohort_v1(&wrong_domain),
+            Err(H3ReferenceCohortError::FixtureDomainMismatch)
+        );
+
+        let truncated = &SOURCE_FIXTURE[..SOURCE_DOMAIN.len()];
+        assert_eq!(
+            parse_representative_h3_reference_cohort_v1(truncated),
+            Err(H3ReferenceCohortError::FixtureTruncated {
+                expected: SOURCE_DOMAIN.len() + SOURCE_COUNT_BYTES,
+                actual: SOURCE_DOMAIN.len(),
+            })
+        );
+
+        let mut wrong_count = SOURCE_FIXTURE.to_vec();
+        let count_end = SOURCE_DOMAIN.len() + SOURCE_COUNT_BYTES;
+        wrong_count[SOURCE_DOMAIN.len()..count_end]
+            .copy_from_slice(&(EXPECTED_SOURCE_CELLS as u64 - 1).to_be_bytes());
+        assert_eq!(
+            parse_representative_h3_reference_cohort_v1(&wrong_count),
+            Err(H3ReferenceCohortError::FixtureCountMismatch {
+                expected: EXPECTED_SOURCE_CELLS as u64,
+                actual: EXPECTED_SOURCE_CELLS as u64 - 1,
+            })
+        );
+
+        let mut trailing = SOURCE_FIXTURE.to_vec();
+        trailing.push(0);
+        assert_eq!(
+            parse_representative_h3_reference_cohort_v1(&trailing),
+            Err(H3ReferenceCohortError::FixtureTrailingBytes {
+                expected: SOURCE_FIXTURE.len(),
+                actual: SOURCE_FIXTURE.len() + 1,
+            })
+        );
+
+        let payload_offset = SOURCE_DOMAIN.len() + SOURCE_COUNT_BYTES;
+        let mut invalid_cell = SOURCE_FIXTURE.to_vec();
+        invalid_cell[payload_offset..payload_offset + SOURCE_ROW_BYTES].fill(0);
+        assert!(matches!(
+            parse_representative_h3_reference_cohort_v1(&invalid_cell),
+            Err(H3ReferenceCohortError::FixtureInvalidCell { index: 0, .. })
+        ));
+
+        let mut wrong_digest = SOURCE_FIXTURE.to_vec();
+        let second = payload_offset + SOURCE_ROW_BYTES;
+        let third = second + SOURCE_ROW_BYTES;
+        let first_cell: [u8; SOURCE_ROW_BYTES] =
+            wrong_digest[payload_offset..second].try_into().unwrap();
+        let second_cell: [u8; SOURCE_ROW_BYTES] = wrong_digest[second..third].try_into().unwrap();
+        wrong_digest[payload_offset..second].copy_from_slice(&second_cell);
+        wrong_digest[second..third].copy_from_slice(&first_cell);
+        assert!(matches!(
+            parse_representative_h3_reference_cohort_v1(&wrong_digest),
+            Err(H3ReferenceCohortError::FixtureDigestMismatch { .. })
+        ));
+    }
 }

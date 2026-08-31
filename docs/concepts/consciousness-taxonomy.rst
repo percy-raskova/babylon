@@ -417,8 +417,8 @@ stays dead:
   preserve-on-write fabrications.
 - ``src/babylon/models/entities/social_class.py:99`` — the model
   default ``ni = 0.5`` itself.
-- ``src/babylon/engine/headless_runner/bridge.py:93-100`` — the
-  ``BASELINE_IDEOLOGY`` placeholder (spec-066 T050/ADR043).
+- The retired Python Postgres bridge also carried a ``BASELINE_IDEOLOGY``
+  placeholder (spec-066 T050/ADR043). It is not a live authority path.
 - ``src/babylon/kernel/node_access.py:15-37`` — the twin disease on the
   cc axis: ``class_consciousness_from_node`` fabricates 0.0 on absence.
 

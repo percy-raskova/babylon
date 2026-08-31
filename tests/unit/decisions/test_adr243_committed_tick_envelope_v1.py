@@ -56,7 +56,7 @@ def test_adr243_binds_complete_payload_and_exact_exclusions() -> None:
     }
 
 
-def test_contract_keeps_semantics_database_and_writer_outside_the_slice() -> None:
+def test_historical_envelope_boundary_is_superseded_by_the_one_way_cutover() -> None:
     contract = _mapping(ROOT / "contracts" / "committed_tick_envelope_v1.yaml")
     design = (
         ROOT
@@ -65,24 +65,19 @@ def test_contract_keeps_semantics_database_and_writer_outside_the_slice() -> Non
         / "specs"
         / "2026-08-27-per-20-committed-tick-envelope-v1-design.md"
     ).read_text(encoding="utf-8")
-    cargo = (ROOT / "rust" / "crates" / "babylon-persistence" / "Cargo.toml").read_text(
+    writer_gate = ROOT / "rust" / "crates" / "babylon-persistence" / "src" / "writer_gate.rs"
+    runtime = (ROOT / "rust" / "crates" / "babylon-persistence" / "src" / "runtime.rs").read_text(
         encoding="utf-8"
     )
-    writer_gate = (
-        ROOT / "rust" / "crates" / "babylon-persistence" / "src" / "writer_gate.rs"
-    ).read_text(encoding="utf-8")
 
     assert [row["name"] for row in contract["row_families"]] == [
         "graph",
         "state",
         "event",
-        "subsystem",
-        "conservation",
-        "boundary_flow",
         "checkpoint",
         "archive_dirty_receipt",
     ]
     assert "This slice adds no semantic state" in design
-    assert "babylon-tick" not in cargo
-    assert "PythonAuthorityActive" in writer_gate
-    assert "Ok(RustWriterAuthority" not in writer_gate
+    assert not writer_gate.exists()
+    assert "activate_rust_persistence_v1" in runtime
+    assert "CommittedTickEnvelopeV1" in runtime

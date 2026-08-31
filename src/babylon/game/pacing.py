@@ -105,16 +105,12 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
-from babylon.engine.observers.endgame_detector import EndgameDetector
 from babylon.kernel.event_bus import Event
 from babylon.models.enums.events import GameOutcome
 from babylon.models.world_state import WorldState
 from babylon.projection.chronicle import ChronicleEvent
-
-if TYPE_CHECKING:
-    from babylon.game.session import GameSession
 
 __all__ = [
     "DriverBusyError",
@@ -128,7 +124,6 @@ __all__ = [
     "TickAdvancer",
     "TickOrderError",
     "TickOutcomeLike",
-    "paced_driver_for_session",
 ]
 
 
@@ -508,43 +503,3 @@ class PacedTickDriver:
             self._pending_pause = PauseNotice(tick=result.tick, events=result.events)
 
         return result
-
-
-def paced_driver_for_session(
-    session: GameSession,
-    *,
-    endgame_observer: EndgameObserver | None = None,
-    tick_delay: float = 0.0,
-    sleep: Callable[[float], None] = time.sleep,
-) -> PacedTickDriver:
-    """Wrap a real :class:`~babylon.game.session.GameSession` in a
-    :class:`PacedTickDriver`, wiring the endgame lock to a REAL
-    :class:`~babylon.engine.observers.endgame_detector.EndgameDetector` by
-    default (production callers should use this factory, not construct
-    :class:`PacedTickDriver` directly, so the endgame lock is never
-    silently absent).
-
-    :param session: the booted or resumed session (Unit C1) to pace.
-    :param endgame_observer: overrides the default
-        :class:`~babylon.engine.observers.endgame_detector.EndgameDetector`
-        (constructed with ``session``'s OWN :class:`~babylon.config.
-        defines.GameDefines` — the same thresholds the tick loop itself
-        runs under, not a mismatched fresh default set); tests inject a
-        double here.
-    :param tick_delay: forwarded to :class:`PacedTickDriver`.
-    :param sleep: forwarded to :class:`PacedTickDriver`.
-    :returns: a driver whose :attr:`~PacedTickDriver.last_tick` baseline is
-        ``session``'s own current tick.
-    """
-    observer = (
-        endgame_observer
-        if endgame_observer is not None
-        else EndgameDetector(defines=session.services.defines)
-    )
-    return PacedTickDriver(
-        session,
-        starting_tick=session.tick,
-        endgame_observer=observer,
-        tick_delay=tick_delay,
-        sleep=sleep,
-    )

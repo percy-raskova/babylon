@@ -3,6 +3,7 @@
 use std::collections::BTreeSet;
 use std::str::FromStr;
 
+use babylon_kernel::{H3CellId, H3CellIdError};
 use fallible_iterator::FallibleIterator;
 use postgres::{Client, Config, GenericClient, IsolationLevel, NoTls, Row, Transaction};
 use sha2::{Digest, Sha256};
@@ -13,10 +14,9 @@ use crate::legacy_adopter::{
 };
 use crate::schema_epoch::{
     bounded_config, inspect_schema_epoch_under_lock, SchemaEpochError, SchemaEpochOrigin,
-    CURRENT_SCHEMA_EPOCH,
 };
-use crate::{H3CellId, H3CellIdError};
-
+/// Exact additive schema epoch consumed by the one-time shadow backfill.
+const H3_SHADOW_SCHEMA_EPOCH: usize = 6;
 /// Number of frozen persistent H3-bearing relations.
 pub const H3_SHADOW_RELATION_COUNT: usize = 15;
 /// Number of H3-bearing legacy-to-shadow field mappings.
@@ -602,11 +602,11 @@ fn refuse_issues(inspection: &Inspection) -> Result<(), H3ShadowBackfillError> {
 fn require_exact_schema_epoch(client: &mut Client) -> Result<(), H3ShadowBackfillError> {
     let (origin, actual) =
         inspect_schema_epoch_under_lock(client).map_err(H3ShadowBackfillError::SchemaEpoch)?;
-    if origin == SchemaEpochOrigin::ExistingRustPrefix && actual == CURRENT_SCHEMA_EPOCH {
+    if origin == SchemaEpochOrigin::ExistingRustPrefix && actual == H3_SHADOW_SCHEMA_EPOCH {
         Ok(())
     } else {
         Err(H3ShadowBackfillError::ExactSchemaEpochRequired {
-            expected: CURRENT_SCHEMA_EPOCH,
+            expected: H3_SHADOW_SCHEMA_EPOCH,
             actual,
             origin,
         })

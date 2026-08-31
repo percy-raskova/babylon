@@ -21,9 +21,9 @@ from babylon.models.enums import SocialRole
 from babylon.models.enums.topology import EdgeType, NodeType
 from babylon.models.world_state import WorldState
 from babylon.persistence.county_aggregation import _ideology_to_ternary
-from babylon.persistence.postgres_aggregation import NationalValueAggregate
 from babylon.projection.fixtures.recorder import load_national_fixture, record_national_fixture
 from babylon.projection.national import national_statblocks, project_national
+from babylon.projection.sql_rows import NationalValueAggregate
 from babylon.topology import BabylonGraph
 
 WAYNE = "26163"

@@ -142,8 +142,7 @@ SYNTHETIC_SOURCES: tuple[SyntheticSource, ...] = (
             "inline comment naming the 100k literal as the documented Constitution III.11 "
             "graceful-degradation default. VERIFIED GAP (2026-07-16): unlike the gamma_basket/"
             "gamma_III fallbacks below, this default is NOT one of the counted fields in "
-            "EconomicsFallbackTally — it is documented-in-place, not tallied into the run "
-            "manifest's economics_fallbacks block."
+            "EconomicsFallbackTally — it is documented in place, not tallied."
         ),
         notes=(
             "The same 100_000.0 literal is mirrored at 3 further call sites kept byte-identical "
@@ -170,9 +169,8 @@ SYNTHETIC_SOURCES: tuple[SyntheticSource, ...] = (
             "Every substitution increments a named counter — record_gamma_basket_calculator_"
             "none() / record_gamma_iii_calculator_none() / record_gamma_iii_returned_none() / "
             "record_melt_unavailable() — plus a per-observation wired-vs-None snapshot "
-            "(observe_wiring). The headless runner surfaces EconomicsFallbackTally.to_dict() as "
-            "the run manifest's economics_fallbacks block (C.8 / spec 2.R), so a fully-unwired "
-            "run's defaulted gamma no longer reports as silently as computed data."
+            "(observe_wiring). EconomicsFallbackTally.to_dict() exposes the counters to "
+            "frozen-reference diagnostics and tests."
         ),
         notes=(
             "A calculator that is None at the TickDynamicsSystem.step() entry point (the "

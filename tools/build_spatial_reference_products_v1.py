@@ -140,8 +140,8 @@ PLACE_ROWS: Final = 745
 PREDECESSOR_CONTRACTS: Final = (
     (
         "contracts/h3_estate_contract_v1.yaml",
-        29_686,
-        "a674d334d37c4fe8a4064a47e1c6bb6fd257090313563c08c18ea1bc89acf78d",
+        28_263,
+        "1ea546e572c499424086d52bc62820626328c8336c38d57b6053c337c0b943b5",
     ),
     (
         "contracts/census_place_authority_v1.yaml",
@@ -150,8 +150,8 @@ PREDECESSOR_CONTRACTS: Final = (
     ),
     (
         "contracts/county_place_h3_overlap_v1.yaml",
-        6_876,
-        "098723ac16f1dcd48d51faf22ac1e327ecc88c1a577cbf880891aef7c8331b15",
+        6_871,
+        "e629d87e89175be4ff5a4d271f403f35736d8a413cf95181e2d00b5997a561fa",
     ),
 )
 

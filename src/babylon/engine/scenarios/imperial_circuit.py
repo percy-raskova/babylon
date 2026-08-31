@@ -1,4 +1,4 @@
-"""Workhorse imperial-circuit scenario (default for sim:trace + tools).
+"""Workhorse imperial-circuit scenario for regression and parameter tools.
 
 Subclass of :class:`Scenario` (ADR-006.1 / Spec 059 US4). Delegates ``build()``
 to the legacy free function ``_legacy.create_imperial_circuit_scenario`` to preserve byte-equality
@@ -22,7 +22,7 @@ class ImperialCircuitScenario(Scenario):
 
     name: ClassVar[str] = "imperial_circuit"
     description: ClassVar[str] = (
-        "Workhorse imperial-circuit scenario (default for sim:trace + tools)."
+        "Workhorse imperial-circuit scenario for regression and parameter tools."
     )
 
     def build(self, *args: Any, **kwargs: Any) -> tuple[WorldState, SimulationConfig, GameDefines]:

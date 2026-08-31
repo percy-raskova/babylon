@@ -469,7 +469,7 @@ class TestTensorAwareProduction:
 
     def test_tensor_lookup_year_stays_at_base_year_within_first_year(self) -> None:
         """Ticks 0..weeks_per_year-1 still resolve to the unadvanced base_year
-        (byte-identical for the 5-tick qa:e2e-regression window, since
+        (byte-identical for the frozen 5-tick regression window, since
         5 // 52 == 0)."""
         mock_registry = MagicMock()
         mock_registry.get.return_value = _make_tensor(total_v=520000.0)

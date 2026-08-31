@@ -1,17 +1,9 @@
 //! Pure contracts for the bounded PER-278 reference-product bundle.
 
-use babylon_kernel::tick_content_hash::RefDigestV1;
 use babylon_persistence::{
-    build_representative_h3_cohort_v1, michigan_spatial_reference_products_v1, CountyH3LandAreaRow,
-    CountyPlaceH3LandAreaRow, H3CellId, H3CountRow, ReferenceProduct,
+    michigan_spatial_reference_products_v1, representative_h3_reference_cohort_v1,
+    CountyH3LandAreaRow, CountyPlaceH3LandAreaRow, H3CountRow, ReferenceProduct,
 };
-
-const SOURCE_FIXTURE: &[u8] = include_bytes!("fixtures/h3_reference_source_v1.bin");
-const SOURCE_DOMAIN: &[u8] = b"babylon.h3.reference-source.v1\0";
-const ARTIFACT_DIGEST: [u8; 32] = [
-    0xe6, 0x0d, 0x93, 0xa4, 0x3d, 0x6c, 0x66, 0xe8, 0x4f, 0x1e, 0x53, 0xec, 0xaf, 0x63, 0x3a, 0xf5,
-    0x91, 0x1b, 0xd5, 0xb4, 0x8b, 0x0e, 0xf0, 0xad, 0x6a, 0x01, 0x2f, 0x6d, 0x9f, 0x5b, 0x13, 0xa9,
-];
 
 #[test]
 fn checked_bundle_has_exact_governed_products_and_counts() {
@@ -94,26 +86,7 @@ fn checked_bundle_preserves_measure_and_absence_law() {
 }
 
 fn cohort() -> babylon_persistence::H3ReferenceCohort {
-    build_representative_h3_cohort_v1(RefDigestV1::from_bytes(ARTIFACT_DIGEST), &source_cells())
-        .unwrap()
-}
-
-fn source_cells() -> Vec<H3CellId> {
-    assert!(SOURCE_FIXTURE.starts_with(SOURCE_DOMAIN));
-    let count_offset = SOURCE_DOMAIN.len();
-    let payload_offset = count_offset + 8;
-    let count = usize::try_from(u64::from_be_bytes(
-        SOURCE_FIXTURE[count_offset..payload_offset]
-            .try_into()
-            .expect("fixture count has exactly eight bytes"),
-    ))
-    .unwrap();
-    assert_eq!(SOURCE_FIXTURE.len(), payload_offset + count * 8);
-    SOURCE_FIXTURE[payload_offset..]
-        .chunks_exact(8)
-        .map(|chunk| {
-            let raw = u64::from_be_bytes(chunk.try_into().unwrap());
-            H3CellId::try_from(raw).expect("fixture identities must validate")
-        })
-        .collect()
+    representative_h3_reference_cohort_v1()
+        .expect("the sole checked-in source fixture must validate")
+        .clone()
 }

@@ -108,10 +108,10 @@ Persistence Layer (Feature 037)
 
    persistence
 
-Protocols (``RuntimePersistence``, ``VectorStoreProtocol``, ``TraceCollector``),
-concrete implementations (``PostgresRuntime``, ``RuntimeDatabase``,
-``PgVectorStore``, ``TraceRecorder``), database schema, and the
-``PersistenceObserver`` lifecycle hook.
+The Rust-owned Postgres boundary, schema activation, committed-tick envelope,
+H3 current-reader contract, restart behavior, and Archive dirty-receipt probe.
+The Python runtime databases are frozen or periphery and do not own
+game-managed persistence.
 
 Projection Registry (Program 24)
 --------------------------------

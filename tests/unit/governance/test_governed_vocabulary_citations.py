@@ -30,7 +30,6 @@ _ACTIVE_VOCABULARY_PATHS: Final[tuple[str, ...]] = (
     "src/babylon/game/actions/matrix.py",
     "src/babylon/game/actions/registry.py",
     "src/babylon/engine/actions/educate.py",
-    "src/babylon/game/session.py",
     "src/babylon/game/tutorial.py",
     "src/babylon/projection/verbs/__init__.py",
     "src/babylon/projection/verbs/preview.py",

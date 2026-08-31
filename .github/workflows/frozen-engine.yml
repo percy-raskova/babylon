@@ -77,7 +77,7 @@ jobs:
         working-directory: babylon
         env:
           UV_FROZEN: "1"
-        run: mise run qa:vault-regression-ci
+        run: mise run qa:vault-regression
 
       - name: Gate-coverage truth probe (declared evidence verified at gate cadence)
         working-directory: babylon

@@ -3,10 +3,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use babylon_kernel::sha256_of;
 use babylon_kernel::tick_content_hash::RefDigestV1;
+use babylon_kernel::{sha256_of, H3CellId};
 
-use crate::{H3CellId, H3ReferenceCohort, H3ReferenceOrigin};
+use crate::{H3ReferenceCohort, H3ReferenceOrigin};
 
 const FIXTURE_PARTS: [&[u8]; 3] = [
     include_bytes!("fixtures/spatial_reference_products_v1.part-00.bin"),

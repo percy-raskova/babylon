@@ -91,7 +91,9 @@ fn backfill_is_a_closed_maintenance_api_not_a_runtime_writer() {
         "validate_legacy_connection_target",
         "acquire_lock",
         "inspect_schema_epoch_under_lock",
-        "CURRENT_SCHEMA_EPOCH",
+        "const H3_SHADOW_SCHEMA_EPOCH: usize = 6",
+        "actual == H3_SHADOW_SCHEMA_EPOCH",
+        "expected: H3_SHADOW_SCHEMA_EPOCH",
         "IsolationLevel::Serializable",
         "synchronous_commit TO on",
         "MAX_H3_SHADOW_BACKFILL_BATCH_ROWS",
@@ -119,6 +121,7 @@ fn backfill_is_a_closed_maintenance_api_not_a_runtime_writer() {
         "RustWriterAuthority",
         "pg_catalog.bigint",
         "pg_catalog.coalesce",
+        "CURRENT_SCHEMA_EPOCH",
     ] {
         assert!(
             !backfill.contains(forbidden),
@@ -193,30 +196,6 @@ fn ordinary_batches_retain_progress_without_whole_relation_recounts() {
 }
 
 #[test]
-fn python_copy_shapes_carry_null_shadow_slots_without_becoming_dual_writers() {
-    let hydrator = std::fs::read_to_string(crate_path(
-        "../../../src/babylon/persistence/hex_hydrator.py",
-    ))
-    .unwrap();
-
-    let spatial = hydrator
-        .split_once("CREATE TEMP TABLE _hex_spatial_map_tmp")
-        .unwrap()
-        .1
-        .split_once("ON COMMIT DROP")
-        .unwrap()
-        .0;
-    let state = hydrator
-        .split_once("CREATE TEMP TABLE _hex_state_tmp")
-        .unwrap()
-        .1
-        .split_once("ON COMMIT DROP")
-        .unwrap()
-        .0;
-
-    assert!(spatial.contains("cell_id BIGINT"));
-    assert!(state.contains("cell_id BIGINT"));
-    assert!(hydrator.contains("cell_id) SELECT"));
-    assert!(!hydrator.contains("int(row.h3_index"));
-    assert!(!hydrator.contains("H3CellId"));
+fn terminal_cutover_removes_the_python_h3_copy_writer() {
+    assert!(!crate_path("../../../src/babylon/persistence/hex_hydrator.py").exists());
 }

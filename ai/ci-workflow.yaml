@@ -8,7 +8,8 @@ meta:
   related_files:
     - ".github/workflows/ci.yml"
     - ".github/workflows/docs.yml"
-    - ".github/workflows/extended-analysis.yml"
+    - ".github/workflows/weekly-py313.yml"
+    - ".github/workflows/weekly-sim-artifacts.yml"
     - ".github/workflows/release.yml"
     - ".github/workflows/dependabot-automerge.yml"
     - ".github/PULL_REQUEST_TEMPLATE.md"
@@ -110,11 +111,15 @@ triggers:
     paths: ["docs/**", "src/**", ".github/workflows/docs.yml"]
     purpose: "GitHub Pages deployment (releases only)"
 
-  extended_analysis_yml:
-    on_release: "published"
-    on_schedule: "weekly (Sunday midnight)"
+  weekly_py313_yml:
+    on_schedule: "weekly (Sunday 04:00 UTC)"
     on_workflow_dispatch: true
-    purpose: "Expensive tests that don't run on every PR"
+    purpose: "Python 3.13 forward-compatibility suite"
+
+  weekly_sim_artifacts_yml:
+    on_schedule: "weekly (Sunday 04:00 UTC)"
+    on_workflow_dispatch: true
+    purpose: "Intentional in-memory parameter sweep artifact"
 
 # =============================================================================
 # WORKFLOW FILES
@@ -169,19 +174,16 @@ workflows:
         purpose: "Publish to github.io"
     note: "Only runs on main - don't deploy dev docs"
 
-  extended_analysis_yml:
-    file: ".github/workflows/extended-analysis.yml"
-    triggers: ["release", "weekly schedule", "manual dispatch"]
-    jobs:
-      extended_tests:
-        matrix: ["3.12", "3.13"]
-        purpose: "Python version compatibility"
-      parameter_analysis:
-        commands: ["mise run analyze-trace", "mise run analyze-sweep"]
-        artifacts: "results/"
-      ai_evaluation:
-        condition: "release only"
-        command: "poetry run pytest -m 'ai' --tb=short -q"
+  weekly_py313_yml:
+    file: ".github/workflows/weekly-py313.yml"
+    triggers: ["weekly schedule", "manual dispatch"]
+    job: "Python 3.13 Suite (forward compat)"
+
+  weekly_sim_artifacts_yml:
+    file: ".github/workflows/weekly-sim-artifacts.yml"
+    triggers: ["weekly schedule", "manual dispatch"]
+    command: "mise run sim:sweep 200"
+    artifact: "results/sweep.csv"
 
   release_yml:
     file: ".github/workflows/release.yml"

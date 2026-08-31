@@ -344,7 +344,7 @@ class TestSetupLogging:
         and NEVER stdout — this is the headless runner's contract: stdout is
         reserved for the machine-readable artifact directory path printed by
         ``main_from_argv`` (command-substitution callers like
-        ``ARTIFACT_DIR=$(python -m babylon.engine.headless_runner ...)``
+        an artifact-producing subprocess
         would otherwise capture log text instead of a path)."""
         log_dir = tmp_path / "logs"
 

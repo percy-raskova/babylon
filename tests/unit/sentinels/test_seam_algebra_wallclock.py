@@ -14,7 +14,7 @@ Four tiers, mirroring ``test_seam_algebra_gate_satisfaction.py``'s /
   hashed artifact reds; (2) deleting a known-leak exemption row reds the
   REAL shipped registry.
 - **Liveness + CLI wiring** — the real, shipped registry is clean (with the
-  six dated exemptions), and the family's CLI dispatch still exits 0.
+  four dated exemptions), and the family's CLI dispatch still exits 0.
 """
 
 from __future__ import annotations
@@ -261,7 +261,7 @@ def test_mutation_removing_a_known_leak_exemption_reds_the_real_registry() -> No
 
 def test_removing_all_exemptions_reds_every_known_leak() -> None:
     findings = check_wallclock_call_sites(exemptions=())
-    assert len(findings) == len(WALLCLOCK_REGISTRY) == 6
+    assert len(findings) == len(WALLCLOCK_REGISTRY) == 4
 
 
 # ---------------------------------------------------------------------------
@@ -273,15 +273,13 @@ def test_real_registry_is_clean_with_the_shipped_exemptions() -> None:
     assert check_wallclock_call_sites() == []
 
 
-def test_shipped_exemptions_hold_exactly_the_six_known_leaks() -> None:
+def test_shipped_exemptions_hold_exactly_the_four_known_leaks() -> None:
     keys = {exemption.key for exemption in WALLCLOCK_EXEMPTIONS}
     assert keys == {
         ("wallclock", "jsonl_recorder_session_dir_timestamp"),
         ("wallclock", "jsonl_recorder_summary_ended_at"),
         ("wallclock", "jsonl_recorder_export_zip_timestamp"),
         ("wallclock", "tick_state_recorder_generated_at"),
-        ("wallclock", "run_manifest_wallclock_start"),
-        ("wallclock", "run_manifest_wallclock_end"),
     }
 
 

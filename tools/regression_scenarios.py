@@ -18,9 +18,8 @@ from pydantic import BaseModel, ConfigDict, model_validator
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 sys.path.insert(0, str(Path(__file__).parent))
 
-from shared import inject_parameter
-
 from babylon.config.defines import GameDefines
+from babylon.engine.optimization.params import inject_parameter
 from babylon.engine.scenarios import (
     create_bernie_valve_scenario,
     create_debs_scenario,
@@ -2009,8 +2008,8 @@ SCENARIO_COVERAGE_DATA: Final[tuple[dict[str, Any], ...]] = (
     },
     {
         # detroit_tri_county: not one of the five canonical qa:regression
-        # scenarios (it is the committed e2e headless-runner baseline, spec-102/
-        # spec-065), but its bundle is a real, verified fixture — used here ONLY
+        # scenarios. Its retired Python Postgres bundle is a verified historical
+        # fixture, used here ONLY
         # for bundle_event/bundle_field rows checked against the committed JSON,
         # per Task 3's controller resolution. Every candidate row was probed
         # against tests/baselines/detroit-tri-county-5t.json before being kept;
@@ -2027,8 +2026,8 @@ SCENARIO_COVERAGE_DATA: Final[tuple[dict[str, Any], ...]] = (
                 "kind": "bundle_field",
                 "key": "terminal_state.max_tension",
                 "claim": "the committed baseline's terminal max_tension (0.667728, "
-                "MAX(tension) over EXPLOITATION edges per "
-                "headless_runner.runner._query_max_tension) diverges from the "
+                "MAX(tension) over EXPLOITATION edges in the historical bundle) "
+                "diverges from the "
                 "bridge's static tick-0 EXPLOITATION seed (tension=0.1, "
                 "bridge._build_per_county_relationships), proving "
                 "ContradictionSystem._write_edge_tensions computed and "
@@ -2054,12 +2053,10 @@ SCENARIO_COVERAGE_DATA: Final[tuple[dict[str, Any], ...]] = (
         # Parameters/endogenous_interest for financial_*), which is gated
         # behind `if tick % WEEKS_PER_YEAR != 0: self._accrue_flows(graph);
         # return` (src/babylon/domain/economics/tick/system/__init__.py:161)
-        # -- _accrue_flows only carries forward per-tick FLOW quantities
+        # -- the retired runner only carried forward per-tick FLOW quantities
         # (imperial rent, wages), never surplus distribution or national
-        # financial state. The headless runner's tick loop feeds
-        # context.tick in {1, 2, 3, 4} for a `--ticks 5` run (tick 0 is a
-        # pre-engine persist-only row; `tick_range = range(1, config.ticks)`,
-        # src/babylon/engine/headless_runner/runner.py:1566) -- none of
+        # financial state. The historical five-tick bundle contains engine
+        # ticks {1, 2, 3, 4}; tick 0 is a pre-engine persist-only row. None of
         # which is a multiple of WEEKS_PER_YEAR (52), so the annual boundary
         # never crosses and these 13 columns stay at their Field-default
         # 0.0 for the whole run. The other 15 dense-trace columns

@@ -272,10 +272,9 @@ DEFERRED_DOMAINS: Final[dict[str, str]] = {
         "mis-attribution. Candidate for a later coefficient domain + gamma retrofit."
     ),
     "Gini": (
-        "[0,1] — the social_class.inequality field IS typed Gini, but its persisted "
-        "column (postgres_schema.py) is an UNCONSTRAINED float (no CHECK to lift). A "
-        "gini domain would ADD a new contract (retrofit territory, deliverable 4), "
-        "deferred as byte-safety-unproven."
+        "[0,1] — the frozen social_class.inequality field is typed Gini, but no "
+        "current Rust-owned relation persists that semantic value. A gini domain "
+        "would add a new contract, so it remains deferred."
     ),
     "Ideology": (
         "[-1,1] — no ledger column persists an ideology-semantic value in [-1,1]; the "

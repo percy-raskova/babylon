@@ -270,7 +270,7 @@ def _members_of(cls: ast.ClassDef) -> frozenset[str]:
     same as a concrete implementation's real one) and every
     ``Assign``/``AnnAssign`` target declared directly in the class body;
     plus every ``self.<attr> = ...`` instance attribute assigned ANYWHERE in
-    the class's own methods (e.g. ``PostgresRuntime.__init__``'s
+    the class's own methods (for example, ``__init__`` assigning
     ``self._pool = pool``) — a getattr against a plain data attribute is a
     real, valid reference, not just against a method.
 

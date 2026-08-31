@@ -412,6 +412,7 @@ name = "babylon-kernel"
 version = "0.1.0"
 dependencies = [
  "bnum",
+ "h3o",
  "libm",
  "pretty_assertions",
  "rand_chacha 0.10.0",
@@ -446,9 +447,12 @@ dependencies = [
 name = "babylon-persistence"
 version = "0.1.0"
 dependencies = [
+ "babylon-bsl",
+ "babylon-graph",
  "babylon-kernel",
+ "babylon-practice-contract",
+ "babylon-tick",
  "fallible-iterator",
- "h3o",
  "postgres",
  "serde",
  "serde_json",

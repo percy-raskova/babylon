@@ -2,33 +2,31 @@ Architecture Boundary
 =====================
 
 ``CONSTITUTION.md`` v4.0.0 governs the architecture. ``NORTH_STAR.md`` gives
-the game direction and the gate order. The page separates live parts from
-planned parts.
+the game direction and gate order. This page describes the live boundary after
+the one-way PostgreSQL authority cutover.
 
-System boundary
+System Boundary
 ---------------
 
 Babylon has these primary boundaries:
 
-#. A pure Rust engine makes one weekly tick.
-#. Live Rust BSL rules control causal changes. No executable shock vocabulary
-   or shock content exists.
-#. In the planned action slice, BSL will let actions run, charge costs, choose
-   targets, and encode political results.
-#. The frozen Python path has mutable SQLite and atomic Postgres persistence.
-#. Gate 3 will add the full v4 Rust commit and Archive boundary after game
-   judgment.
-#. Bevy is an administrative viewer.
-#. The planned action slice will make Bevy send player intent.
+#. A pure Rust engine judges one weekly tick.
+#. Live Rust BSL rules control causal changes. Executable shocks and player
+   actions do not exist yet.
+#. ``babylon-persistence`` owns authoritative game-managed PostgreSQL schema,
+   writes, restart, and durability.
+#. The frozen Python engine remains a behavioral reference. Python also owns
+   data, AI, document, external-API, optimization, and local SQLite periphery.
+#. Bevy remains an administrative viewer with no player action.
 
-A shock must not write its downstream result. Ordinary BSL rules derive and
-write world data through governed causal operations. AI can parse, retrieve, and
-narrate. AI does not judge a game rule.
+Ordinary BSL rules derive and write world data through governed causal
+operations. External shocks must not write downstream results directly.
+AI can parse, retrieve, and narrate. AI does not judge a game rule.
 
-Live Rust path
+Live Rust Path
 --------------
 
-The Rust workspace contains the shipping engine path:
+The shipping engine path is:
 
 ``babylon-kernel``
    Deterministic types and contracts.
@@ -40,134 +38,120 @@ The Rust workspace contains the shipping engine path:
    The BSL lexer, parser, checker, loader, and evaluator.
 
 ``babylon-tick``
-   The weekly tick, atomic ``TickSession``, and in-memory ``TickReport``.
+   The weekly tick, replay identity, material state, and atomic publication.
+
+``babylon-persistence``
+   Rust-owned PostgreSQL activation, campaign foundation, checkpoint restart,
+   typed semantic rows, commit markers, and Archive dirty receipts.
 
 ``babylon-client``
    The Bevy administrative viewer.
 
-Each weekly tick runs on a detached graph and buffers its events. The session
-publishes graph state, allocator cursors, events, and completed time only after
-all rules and hash boundaries succeed. ``GraphStateHash`` identifies graph
-bytes only. ``NominalWorldHash`` adds completed time, allocator cursors, and the
-governed phase-schedule digest. It is the hash the Bevy viewer shows after a
-committed tick.
+Each weekly tick runs on detached state and buffers its events. The tick becomes
+observable only after all rule, hash, and persistence boundaries succeed.
+``GraphStateHash`` identifies graph bytes only. ``NominalWorldHash`` also binds
+completed time, allocator cursors, and the governed phase-schedule digest.
+``TickContentHashV1`` binds the identified replay result.
+``ReplayTickSession`` publishes ``TickContentHashV1`` atomically. Replay
+identity and campaign durability identity are separate typed inputs.
 
-.. Vale: these paragraphs preserve literal graph and identity terms.
-.. vale ste.UnapprovedWords = NO
+Authoritative Persistence
+-------------------------
 
-The database-free ``ReplayTickSession`` adds the canonical replay identity. It
-requires ``ReplaySessionIdV1``, ``ReplaySeed``, RNG V2, content and reference
-digests, stable element names, and the exact empty accepted-action batch.
-``ReplayTickSession`` publishes ``TickContentHashV1`` atomically with the
-detached graph, events, completed time, and nested identity evidence. It never
-nests ``GraphStateHash`` or ``NominalWorldHash`` inside that replay hash.
+``babylon-runtime`` is the sole production composition root. It activates the
+Rust schema, creates or opens a durable replay runtime, advances a tick, and
+commits the prepared ``CommittedTickEnvelopeV1``. Callers cannot submit a
+pre-judged report for commit and cannot construct a second writer authority.
 
-.. vale ste.UnapprovedWords = YES
+The activation ledger is append-only:
 
-This boundary provides in-memory rollback. ``babylon-persistence`` defines the
-database-free ``CommittedTickEnvelopeV1`` byte contract and binds it to a
-marker-last Postgres transaction. The writer acknowledges only after ``COMMIT``
-or exact ambiguous-commit reconciliation, and the reader hydrates the last
-surviving marker plus a bounded checkpoint replay tail. No tick runtime composes
-the envelope, and the private ``RustWriterAuthority`` capability has no
-successful production construction path while Python remains authoritative.
+.. list-table::
+   :header-rows: 1
+   :widths: 20 25 55
 
-The Bevy client draws the county atlas and moves ticks forward.
-It has lenses, events, causal beats, and hash diagnostics. Committed BSL has no
-player action. The client remains on ``TickSession`` and does not complete a
-game decision cycle.
+   * - Ordinal
+     - State
+     - Meaning
+   * - 1
+     - ``prepared`` at epoch 8
+     - Additive Rust schema and reference preparation completed.
+   * - 2
+     - ``rust_active`` at epoch 9
+     - Legacy Python-managed relations were migrated or proved empty and
+       retired; Rust owns game-managed PostgreSQL.
 
-Frozen Python reference
------------------------
-
-ADR172 froze the engine in Python. The engine serves as a behavioral reference.
-Its scenarios, property tests, traces, and goldens specify frozen behavior and
-persisted replay.
-Rust ports must keep that behavior or record a replacement decision.
-
-Python also prepares reference data and runs selected periphery. The frozen
-engine uses Pydantic and ``rustworkx`` through ``BabylonGraph``. Python is not
-the shipping game engine.
-
-Data boundary now
------------------
+The ``rust_active`` row is the final activation statement before ``COMMIT``.
+Activation is forward-only and idempotent. A durable active row permits only
+the Rust composition root to reacquire write authority after restart.
 
 .. Vale: these paragraphs preserve literal persistence and schema identifiers.
 .. vale ste.UnapprovedWords = NO
 .. vale ste.NounClusters = NO
 
-Parquet sources and the deterministic reference SQLite database are build
-artifacts. The Python ``RuntimeDatabase`` is a separate, mutable SQLite store
-for per-run snapshots and replay.
-
-The Python Postgres path already has ``PerTickTransactionEnvelope`` and
-``persist_tick_atomic``. It writes graph state, events, envelope rows, and a
-``tick_commit`` marker in one transaction. A partial ``babylon_meta`` schema
-stores campaign and navigation state. Python also has an action pipeline. None
-of these predecessors is the full v4 Rust BSL-to-Bevy decision loop.
-
-.. vale ste.NounClusters = YES
-.. vale ste.UnapprovedWords = YES
-
-Planned Gate 3 boundary
------------------------
-
-Gate 3 plans the full v4 Rust persistence and Archive boundary with three owned
-schemas:
+The runtime owns three schemas:
 
 ``babylon_ref``
-   Fixed geography and taxonomy, with H3 cells and overlap weights.
+   Immutable geography, H3 cohorts, and exact reference artifacts.
 
 ``babylon_state``
-   Campaign data, tick commits, action receipts, events, and the Archive outbox.
+   Campaign foundation, typed graph and material rows, events, checkpoints,
+   ``tick_commit_v1``, and ``archive_dirty_receipt_v1``.
 
 ``babylon_meta``
-   Player knowledge, hidden facts, Archive pages, links, and retrieval chunks.
+   The authority ledger plus typed campaign and navigation metadata.
 
-.. Vale: this paragraph preserves literal Linear IDs and persistence terms.
-.. vale ste.UnapprovedWords = NO
-.. vale ste.NounClusters = NO
-
-The plan adds one bounded writer. One transaction will write the Rust commit
-envelope, campaign data, outbox rows, and ``tick_commit``. The client will
-change its durable tick only after a database acknowledgment.
-
-.. Vale: the accepted Linear status uses a passive state label.
-.. vale strunk.ActiveVoice = NO
-.. vale ste.PassiveVoice = NO
-
-PER-48 is decided.
-
-.. vale ste.PassiveVoice = YES
-.. vale strunk.ActiveVoice = YES
-
-Python remains the sole live writer until cutover. After the one-way cutover,
-Rust owns authoritative game-managed Postgres connections, migrations, and
-writes. Python continues to own data builds, AI, document and wiki transforms,
-external API work, and CLI periphery, with read-only transition observers.
+One marker-last transaction writes the complete typed tick estate, a full
+checkpoint when required, exactly one Archive dirty receipt, and the commit
+marker. The runtime acknowledges the tick only after ``COMMIT`` or exact
+ambiguous-commit reconciliation. Retry must reproduce the same envelope bytes.
 
 .. vale ste.NounClusters = YES
 .. vale ste.UnapprovedWords = YES
 
-An Archive worker will read outbox rows in tick order. Each query will include
-campaign and knowledge context. SQL will apply fog before retrieval.
+Restart loads the campaign foundation or latest complete full checkpoint, then
+replays a contiguous marker tail. A delta checkpoint is never a restore root.
+Missing, duplicate, out-of-order, or digest-mismatched sections refuse before
+the runtime resumes.
 
-.. Vale: this paragraph preserves literal schema and client-boundary terms.
-.. vale ste.UnapprovedWords = NO
-.. vale ste.NounClusters = NO
+H3 Reader Boundary
+------------------
 
-The first planned cycle starts with a county or city dossier and a decision. A
-new tick produces an effect and an updated dossier. The complete schema split,
-Rust commit envelope, Archive outbox worker, BSL-Bevy decision cycle, and Bevy
-player actions have not landed.
+Epoch 7 captured and proved the legacy H3 reader parity corpus. Epoch 9 has no
+Python game-state reader edge and no compatibility projection. Rust installs
+the exact reference cohort and Michigan dynamic foundation, then reads typed
+relations directly.
 
-.. vale ste.NounClusters = YES
-.. vale ste.UnapprovedWords = YES
+Frozen Python Reference and Periphery
+-------------------------------------
+
+PER-48 is decided. The one-way cutover is complete. Rust owns authoritative
+game-managed Postgres. Python continues only in the roles declared below.
+
+ADR172 froze the Python engine. Its scenarios, property tests, traces, and
+goldens remain behavioral contracts until a Rust or language-neutral contract
+replaces them. ``RuntimeDatabase`` remains a separate mutable SQLite reference
+store. The in-memory optimization package remains design-analysis periphery.
+
+Python has no game-managed PostgreSQL DDL, DML, writer credential, migration
+runner, compatibility adapter, or fallback after activation. Retained data and
+document tooling may use dedicated stores that cannot mutate the governed game
+schemas.
+
+Client and Archive Boundary
+---------------------------
+
+The Bevy client still reads an administrative world view and displays the
+nominal world hash. It does not submit a player intent.
+
+Each committed tick emits an Archive dirty receipt, and ``sim:archive`` inspects
+the durable receipt estate. A semantic Archive worker, fog-safe retrieval,
+and the replayable player decision loop remain later work. Those missing pieces
+cannot be inferred from the persistence cutover.
 
 Flow
 ----
 
-The solid arrows show the live path. Dashed arrows show Gate 3 plans.
+Solid arrows are live. Dashed arrows are later gate work.
 
 .. Vale: the Mermaid block contains literal crate and schema identifiers.
 .. vale off
@@ -175,74 +159,52 @@ The solid arrows show the live path. Dashed arrows show Gate 3 plans.
 .. mermaid::
 
    flowchart LR
-       REF["Reference data"] --> TICK["Rust weekly tick"]
+       REF["babylon_ref"] --> TICK["Rust replay tick"]
        BSL["BSL rules"] --> TICK
-       TICK --> REPORT["TickReport"]
-       REPORT --> VIEW["Bevy viewer"]
-       REF --> REPLAY["Rust replay tick"]
-       BSL --> REPLAY
-       EMPTY["Exact empty action batch"] --> REPLAY
-       REPLAY --> IDENTIFIED["IdentifiedTickReportV1"]
-       PY["Frozen Python tick"] --> OLDENV["PerTickTransactionEnvelope"]
-       OLDENV --> PG["Postgres tick_commit"]
-       PY --> SQLITE["RuntimeDatabase SQLite"]
-       IDENTIFIED -. "Gate 3" .-> ENV["CommittedTickEnvelope"]
-       ENV -.-> STATE["babylon_state"]
-       STATE -.-> OUTBOX["Archive outbox"]
-       OUTBOX -.-> ARCHIVE["Semantic Archive"]
-       ARCHIVE -.-> CHOICE["Player choice"]
+       EMPTY["Exact empty action batch"] --> TICK
+       TICK --> IDENTIFIED["IdentifiedTickReportV1"]
+       IDENTIFIED --> RUNTIME["DurableReplayRuntimeV1"]
+       RUNTIME --> STATE["babylon_state typed rows"]
+       STATE --> MARKER["tick_commit_v1"]
+       STATE --> DIRTY["archive_dirty_receipt_v1"]
+       MARKER --> VIEW["Bevy administrative viewer"]
+       PY["Frozen Python reference"] --> SQLITE["RuntimeDatabase SQLite"]
+       DIRTY -.-> ARCHIVE["Semantic Archive worker"]
+       ARCHIVE -.-> CHOICE["Player decision"]
 
 .. vale on
 
 Invariants
 ----------
 
-.. Vale: this invariant preserves literal graph and identity terms.
-.. vale ste.UnapprovedWords = NO
-.. vale ste.NounClusters = NO
-.. vale strunk.ActiveVoice = NO
-.. vale ste.PassiveVoice = NO
-
 Tick identity
-   Equal inputs produce equal graph, nominal-world, and replay-tick bytes and
-   hashes. Replay identity and campaign durability identity are separate typed
-   inputs. Gate 3 will persist the accepted replay evidence. It will not
-   redefine the bytes.
-
-.. vale ste.PassiveVoice = YES
-.. vale strunk.ActiveVoice = YES
-.. vale ste.UnapprovedWords = YES
-.. vale ste.NounClusters = YES
+   Equal inputs produce equal graph, nominal-world, replay-tick, envelope, and
+   typed semantic row bytes. Durability is established only by the marker.
 
 Pure judgment
-   The relation, BSL, and tick crates have no database dependency. Storage starts
-   after the tick copy passes its checks.
+   Relation, BSL, and tick crates have no database dependency. Storage begins
+   only after detached judgment succeeds.
+
+Single authority
+   No compatibility view, adapter, fallback, dual writer, dual storage, or
+   runnable midpoint exists.
 
 Native topology
-   Hyperedges are first-class public elements. Incidence data is an internal
+   Hyperedges remain first-class public elements. Incidence data is an internal
    storage method.
 
 Source honesty
    Each substantive value is ``Observed``, ``Derived``, ``Calibrated``, or
    ``Designed``.
 
-Knowledge boundary
-   Archive and narrative data must not change material truth. Retrieval must
-   not show facts that the campaign has not learned.
-
 Player relevance
-   Each game display must answer a decision question. An administrative display
-   cannot pass a game milestone.
+   An administrative display cannot pass a game milestone. The persistence
+   cutover is necessary infrastructure, not the playable decision loop.
 
-Related pages
+Related Pages
 -------------
 
-.. Vale: the following roles contain literal Sphinx document paths.
-.. vale ste.Ambiguity = NO
-
-- :doc:`/concepts/persistence-architecture`
 - :doc:`/reference/persistence`
+- :doc:`/concepts/persistence-architecture`
 - :doc:`/concepts/topology`
 - :doc:`/reference/bsl-language`
-
-.. vale ste.Ambiguity = YES

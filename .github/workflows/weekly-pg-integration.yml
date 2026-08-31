@@ -1,8 +1,9 @@
 name: Weekly — Postgres Integration
 
 # ADR181 R3(ii): per-leg split of the monolithic nightly. Weekly tempo.
-# The michigan rollover smoke that used to ride in this job now has its own
-# daily lane (nightly-michigan-smoke.yml) — R3(i).
+# The Michigan rollover smoke has its own daily lane
+# (nightly-michigan-smoke.yml). This workflow owns only the exhaustive Rust
+# live migration/adoption matrix.
 
 on:
   schedule:
@@ -25,35 +26,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: dev
-      - uses: ./.github/actions/bootstrap-python
       - uses: ./.github/actions/bootstrap-persistence
       - name: Exhaustive adopter matrix and rollback proof
         timeout-minutes: 31
-        run: mise run test:rust-legacy-adopter-pg
-
-  postgres-integration:
-    name: Postgres Integration (dev HEAD)
-    if: vars.CI_REFDB_READY == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 35
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: dev
-      - uses: ./.github/actions/bootstrap-python
-      - uses: ./.github/actions/bootstrap-persistence
-      - uses: ./.github/actions/postgres-up
-      - uses: ./.github/actions/fetch-reference-db
-      # Engine-runtime tables require the canonical DDL on fresh CI Postgres.
-      - name: Babylon runtime schema bootstrap (node_state et al.)
-        run: mise run db:bootstrap
-      # Advisory until noise is characterized (audit 2026-07-16): per-system
-      # wallclock vs the ratified spec-104 budget.
-      - name: qa:tick-budget (advisory — per-system wallclock vs ratified budget)
-        continue-on-error: true
-        env:
-          BABYLON_TEST_PG_DSN: "dbname=babylon_test host=localhost port=5433 user=test password=test"
-        run: mise run qa:tick-budget
-      - name: Stop Postgres
-        if: always()
-        run: tools/ci_postgres_compose.sh down
+        run: tools/run_rust_legacy_adopter_pg.sh

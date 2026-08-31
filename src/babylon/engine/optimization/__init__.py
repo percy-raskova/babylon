@@ -3,9 +3,8 @@
 Provides the foundation for tuning :class:`~babylon.config.defines.GameDefines`
 coefficients against simulation outcomes: parameter injection/introspection
 (:mod:`.params`, ADR038), a backend-agnostic trial result
-(:mod:`.backends.types`), two execution backends — the Postgres-backed
-headless runner and the fast in-memory legacy engine (:mod:`.backends`) —
-dispatched through one entry point (:mod:`.runner_api`), a unified
+(:mod:`.backends.types`), the retained in-memory periphery backend
+(:mod:`.backends`), one entry point (:mod:`.runner_api`), a unified
 override/range grammar (:mod:`.ranges`), objective functions including the
 Carceral Equilibrium scorer (:mod:`.objectives`), and a reproducibility
 receipt for replaying any trial (:mod:`.reproducibility`).

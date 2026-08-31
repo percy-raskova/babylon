@@ -37,8 +37,7 @@ class EconomicsFallbackTally:
     (``None``) or returns no data. Historically these substitutions were
     *silent* — a fully-unwired run reported gamma_III = 0.33 forever with no
     trace of why. This tally records each fallback and the wired-vs-None status
-    of every calculator so the run manifest can attest whether gamma was
-    genuinely computed or merely defaulted.
+    of every calculator for frozen-reference diagnostics.
 
     Pure instrumentation: recording a fallback NEVER changes a computed value.
     The caller selects the fallback constant first, then calls ``record_*``.
@@ -127,8 +126,7 @@ class EconomicsFallbackTally:
         """Serialize to a manifest-ready dict (stable key order).
 
         Returns:
-            Dict of counter/status fields for the manifest
-            ``economics_fallbacks`` block.
+            Dict of counter/status fields for diagnostics.
         """
         return {
             "national_params_observations": self.national_params_observations,
@@ -241,9 +239,8 @@ class ServiceContainer:
     cpi_source: Any = field(default=None)
 
     # C.8 (spec 2.R): loud economics-fallback observability. A fresh tally per
-    # container; TickDynamicsSystem records fallbacks + wired status into it,
-    # and the headless runner surfaces it as the manifest ``economics_fallbacks``
-    # block. Pure instrumentation — never affects a computed value.
+    # container; TickDynamicsSystem records fallbacks + wired status into it.
+    # Pure instrumentation — never affects a computed value.
     economics_fallbacks: EconomicsFallbackTally = field(default_factory=EconomicsFallbackTally)
 
     # Hypergraph community layer (Feature 022 - optional, default None)

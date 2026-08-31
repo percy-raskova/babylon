@@ -1,8 +1,7 @@
 """Shared JSON canonicalization helpers for persistence backends.
 
-Both :class:`~babylon.persistence.runtime_db.RuntimeDatabase` and
-:class:`~babylon.persistence.postgres_runtime.PostgresRuntime` persist
-per-tick event dicts and compare canonical payloads for the spec-056
+The frozen :class:`~babylon.persistence.runtime_db.RuntimeDatabase` contract
+persists per-tick event dicts and compares canonical payloads for the spec-056
 monotonic-idempotent contract. Event ``timestamp`` values are wall-clock
 (:class:`~babylon.models.events.SimulationEvent` uses
 ``default_factory=datetime.now``) and therefore differ across retries of

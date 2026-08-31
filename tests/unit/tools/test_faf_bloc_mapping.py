@@ -2,9 +2,8 @@
 (Program 26, Unit U3) — ``tools/make_faf_bloc_tons_artifact.py``.
 
 Pure-logic tests: no drive access, no real FAF CSV. The mapping-completeness
-test is the disclosure contract: every canonical
-:data:`~babylon.persistence.postgres_initialization.INTERNATIONAL_NODES`
-entry must be accounted for, either as a mapped node or a disclosed absence
+test is the disclosure contract: every canonical international node id must
+be accounted for, either as a mapped node or a disclosed absence
 — silent gaps are the bug class this test exists to catch.
 """
 
@@ -22,9 +21,18 @@ sys.path.insert(0, str(_TOOLS_DIR))
 
 import make_faf_bloc_tons_artifact as faf_tool  # type: ignore[import-not-found]  # noqa: E402
 
-from babylon.persistence.postgres_initialization import INTERNATIONAL_NODES  # noqa: E402
-
 pytestmark = [pytest.mark.unit]
+
+_EXPECTED_INTERNATIONAL_NODES = {
+    "canada",
+    "china",
+    "eu",
+    "india",
+    "sub_saharan_africa",
+    "latin_america",
+    "russia_csi",
+    "southeast_asia",
+}
 
 
 def test_every_international_node_accounted_for() -> None:
@@ -34,11 +42,11 @@ def test_every_international_node_accounted_for() -> None:
     uncovered = set(faf_tool.FAF_UNCOVERED_NODES)
     assert mapped & uncovered == set(), "a node cannot be both mapped and disclosed-uncovered"
     accounted = mapped | uncovered
-    missing = set(INTERNATIONAL_NODES) - accounted
+    missing = _EXPECTED_INTERNATIONAL_NODES - accounted
     assert not missing, (
-        f"INTERNATIONAL_NODES with no FAF disposition (mapped or disclosed): {missing}"
+        f"international nodes with no FAF disposition (mapped or disclosed): {missing}"
     )
-    extra = accounted - set(INTERNATIONAL_NODES)
+    extra = accounted - _EXPECTED_INTERNATIONAL_NODES
     assert not extra, f"FAF mapping references non-canonical node ids: {extra}"
 
 

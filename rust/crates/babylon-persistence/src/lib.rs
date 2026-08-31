@@ -2,32 +2,56 @@
 #![forbid(unsafe_code)]
 #![warn(clippy::pedantic)]
 
+mod bootstrap;
+mod checkpoint;
 pub mod committed_tick_envelope;
-pub mod committed_tick_storage;
-pub mod committed_tick_writer;
+mod cutover_vectors;
 pub mod error;
+mod foundation;
 pub mod h3_reference_cohort;
 mod h3_reference_installer;
 mod h3_shadow_backfill;
 pub mod hashes;
 pub mod identity;
 pub mod legacy_adopter;
+mod metadata;
+mod michigan_dynamic_hex_foundation;
 pub mod migration_manifest;
+mod runtime;
 pub mod schema_epoch;
 pub mod schema_migration;
+#[allow(
+    dead_code,
+    reason = "the stopped cutover composer remains private until Rust persistence activation"
+)]
+mod semantic_batches;
+mod semantic_codec;
 mod spatial_reference_installer;
 pub mod spatial_reference_products;
+mod stored_tick;
 pub mod tick_commit_claim;
-pub mod writer_gate;
 
+pub use bootstrap::{
+    bootstrap_h3_reader_epoch_v1, H3ReaderBootstrapErrorV1, H3ReaderBootstrapReportV1,
+};
+pub use checkpoint::{
+    ArchiveDirtyReceiptV1, CheckpointCompletenessV1, CheckpointRowsV1,
+    CommittedCheckpointSectionV1, CommittedFullCheckpointV1, CommittedResolveTickErrorV1,
+    CommittedResolveTickV1, FullCheckpointSectionTagV1,
+};
+pub use cutover_vectors::{
+    verify_rust_persistence_cutover_vector_row_v1, verify_rust_persistence_cutover_vectors_v1,
+    RustPersistenceVectorErrorV1, RustPersistenceVectorOutcomeV1, RustPersistenceVectorReportV1,
+};
 pub use error::{PersistenceError, PersistenceFailureKind};
+pub use foundation::{CampaignFoundationV1, FoundationContentBundleV1};
 pub use h3_reference_cohort::{
-    build_representative_h3_cohort_v1, H3ReferenceCellRow, H3ReferenceCohort,
-    H3ReferenceCohortError, H3ReferenceCohortReceipt, H3ReferenceOrigin,
+    build_representative_h3_cohort_v1, representative_h3_reference_cohort_v1, H3ReferenceCellRow,
+    H3ReferenceCohort, H3ReferenceCohortError, H3ReferenceCohortReceipt, H3ReferenceOrigin,
     MAX_H3_REFERENCE_SOURCE_CELLS,
 };
 pub use h3_reference_installer::{
-    install_representative_h3_cohort, H3ReferenceDatabaseDiagnostic,
+    install_michigan_h3_reference_bundle_v1, H3ReferenceDatabaseDiagnostic,
     H3ReferenceInstallBoundedResource, H3ReferenceInstallConflict, H3ReferenceInstallDisposition,
     H3ReferenceInstallError, H3ReferenceInstallOperation, H3ReferenceInstallReport,
     H3ReferenceMembershipReadContext,
@@ -42,7 +66,7 @@ pub use h3_shadow_backfill::{
     MAX_H3_SHADOW_TEXT_BYTES,
 };
 pub use hashes::{GraphStateHash, MigrationSetDigest, ReplayIdentityHash};
-pub use identity::{CampaignId, H3CellId, H3CellIdError};
+pub use identity::CampaignId;
 pub use legacy_adopter::{
     adopt_legacy_schema, compare_legacy_census, expected_legacy_census,
     legacy_adopter_sql_statements, parse_legacy_census_fixture, validate_legacy_connection_target,
@@ -58,9 +82,23 @@ pub use legacy_adopter::{
     MAX_LEGACY_EXTENSION_ROLE_IDENTITIES, MAX_LEGACY_PARTITIONS_PER_FAMILY,
     MAX_LEGACY_SEQUENCE_OWNERSHIP, MAX_LEGACY_STAMP_ROWS, POSTGRES_IDENTIFIER_MAX_BYTES,
 };
+pub use metadata::{
+    BreadcrumbRowV1, CampaignCatalogRowV1, CampaignCatalogStatusV1, JumplistRowV1,
+    RetainedMetadataStoreV1, WatchlistRowV1,
+};
+pub use michigan_dynamic_hex_foundation::{
+    decode_michigan_dynamic_hex_foundation_v1, michigan_dynamic_hex_foundation_fixture_parts_v1,
+    michigan_dynamic_hex_foundation_v1, MichiganDynamicHexFoundationDecodeErrorV1,
+};
 pub use migration_manifest::{
     ManifestError, MigrationManifest, MAX_MANIFEST_BYTES, MAX_MANIFEST_CHUNKS,
     SCHEMA_ADVISORY_LOCK_KEY,
+};
+pub use runtime::{
+    activate_rust_persistence_v1, hydrate_campaign_foundation_v1, prepare_committed_tick_v1,
+    ActivationReportV1, CommittedTickReceiptV1, DurableReplayRuntimeV1,
+    PersistenceAuthorityLedgerRowV1, PersistenceAuthorityStateV1, PreparedCommittedTickV1,
+    RustPersistenceActivationErrorV1, RustPersistenceRuntimeErrorV1,
 };
 pub use schema_epoch::{
     compiled_schema_migrations, migrate_schema_epoch, preflight_schema_epoch,
@@ -72,6 +110,7 @@ pub use schema_migration::{
     MigrationChecksum, MigrationVersion, SchemaMigration, SchemaMigrationError,
     MAX_SCHEMA_MIGRATION_SQL_BYTES, MIGRATION_CHECKSUM_BYTES,
 };
+pub use semantic_batches::{StableGraphRowsEmptyProofV1, SuccessfulEventBatchEmptyProofV1};
 pub use spatial_reference_installer::{
     install_michigan_spatial_reference_products, SpatialReferenceInstallDisposition,
     SpatialReferenceInstallError, SpatialReferenceInstallOperation, SpatialReferenceInstallReport,
@@ -81,7 +120,4 @@ pub use spatial_reference_products::{
     michigan_spatial_reference_products_v1, CountyH3LandAreaRow, CountyIdentityRow,
     CountyPlaceH3LandAreaRow, H3CountRow, H3LandFractionRow, PlaceIdentityRow, ReferenceProduct,
     ReferenceProductEvidenceClass, SpatialReferenceProducts, SpatialReferenceProductsError,
-};
-pub use writer_gate::{
-    request_rust_writer_authority, RustWriterAuthority, RustWriterAuthorityError,
 };

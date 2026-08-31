@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 if TYPE_CHECKING:
-    from babylon.persistence import PostgresRuntime
+    from babylon.persistence.protocols import ReadOnlyPostgres
 
 
 class LookupMethod(StrEnum):
@@ -70,7 +70,7 @@ class ImmutableReferenceLookup:
     warning at most once even across many ticks.
 
     Parameters:
-        runtime: Underlying PostgresRuntime.
+        runtime: Underlying enforced-read-only PostgreSQL interface.
         session_id: Session UUID.
         start_year: Earliest year the session has reference data for.
         end_year: Latest year the session has reference data for (inclusive).
@@ -78,7 +78,7 @@ class ImmutableReferenceLookup:
 
     def __init__(
         self,
-        runtime: PostgresRuntime,
+        runtime: ReadOnlyPostgres,
         session_id: UUID,
         start_year: int,
         end_year: int,

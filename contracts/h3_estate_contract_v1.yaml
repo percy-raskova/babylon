@@ -33,7 +33,7 @@ bounds:
   persistent_tables: 15
   current_views: 10
   temporary_shapes: 2
-  runtime_consumers: 41
+  runtime_consumers: 31
   artifacts: 6
   artifact_rows: 65536
   artifact_bytes: 67108864
@@ -56,9 +56,9 @@ conversion_policies:
     compatibility: reproduce the exact legacy workplace_dest text
 
 vectors:
-  path: rust/crates/babylon-persistence/tests/fixtures/h3_cell_id_vectors_v1.txt
-  bytes: 51745
-  sha256: c21599d911163db9d939c73f3d6f5d0218b7ee06c7a866f219413c412229863b
+  path: rust/crates/babylon-kernel/tests/fixtures/h3_cell_id_vectors_v1.txt
+  bytes: 51740
+  sha256: 079fd93db1cfb9b2aef79b7b32476f737689a91c194de912864bb3849e578487
   oracle: h3-py 4.5.0 backed by the Uber H3 C core
   consumers: [Rust, Python, SQL, h3-pg-test-oracle]
   counts:
@@ -113,18 +113,8 @@ estate:
     - path: src/babylon/persistence/postgres_initialization.py
       relation: immutable_reference_lodes_od_matrix
       access: write
-    - {path: src/babylon/persistence/postgres_runtime/_legacy.py, relation: hex_activity, access: read}
-    - {path: src/babylon/persistence/postgres_runtime/_legacy.py, relation: hex_activity, access: write}
-    - {path: src/babylon/persistence/postgres_runtime/_legacy.py, relation: hex_cell, access: read}
     - {path: src/babylon/persistence/postgres_runtime/_legacy.py, relation: hex_cell, access: write}
-    - {path: src/babylon/persistence/postgres_runtime/_legacy.py, relation: hex_latest, access: write}
-    - {path: src/babylon/persistence/postgres_runtime/_legacy.py, relation: hex_map, access: read}
     - {path: src/babylon/persistence/postgres_runtime/_legacy.py, relation: hex_map, access: write}
-    - {path: src/babylon/persistence/postgres_runtime/_legacy.py, relation: hex_state, access: read}
-    - {path: src/babylon/persistence/postgres_runtime/_legacy.py, relation: hex_state, access: write}
-    - {path: src/babylon/persistence/postgres_runtime/_legacy.py, relation: hex_terrain_state, access: write}
-    - {path: src/babylon/persistence/postgres_runtime/_legacy.py, relation: infrastructure_link_state, access: read}
-    - {path: src/babylon/persistence/postgres_runtime/_legacy.py, relation: infrastructure_link_state, access: write}
     - {path: src/babylon/persistence/postgres_runtime/_legacy.py, relation: org_snapshot, access: read}
     - {path: src/babylon/persistence/postgres_runtime/_legacy.py, relation: org_snapshot, access: write}
     - {path: src/babylon/persistence/postgres_runtime/_legacy.py, relation: tick_event, access: read}
@@ -167,7 +157,7 @@ estate:
           canonical_name: cell_id
           compatibility_name: h3_index
       compatibility_view: public.v_compat_hex_activity_v1
-      reader_owners: [src/babylon/persistence/postgres_runtime/_legacy.py]
+      reader_owners: []
       retirement_condition: hex_latest refresh and every observer read canonical cell_id
     - name: hex_cell
       source: src/babylon/persistence/postgres_schema.py
@@ -189,7 +179,7 @@ estate:
           canonical_name: ancestor_r6
           compatibility_name: res6_parent
       compatibility_view: public.v_compat_hex_cell_v1
-      reader_owners: [src/babylon/persistence/postgres_runtime/_legacy.py]
+      reader_owners: []
       retirement_condition: county duplication is retired and every cell resolves through babylon_ref.h3_cell
     - name: hex_latest
       source: src/babylon/persistence/postgres_schema.py
@@ -201,7 +191,7 @@ estate:
           canonical_name: cell_id
           compatibility_name: h3_index
       compatibility_view: public.v_compat_hex_latest_v1
-      reader_owners: [src/babylon/persistence/postgres_runtime/_legacy.py]
+      reader_owners: []
       retirement_condition: all five composition views and frontend readers use the canonical projection
     - name: hex_map
       source: src/babylon/persistence/postgres_schema.py
@@ -213,7 +203,7 @@ estate:
           canonical_name: cell_id
           compatibility_name: h3_index
       compatibility_view: public.v_compat_hex_map_v1
-      reader_owners: [src/babylon/persistence/hex_init.py, src/babylon/persistence/postgres_runtime/_legacy.py]
+      reader_owners: [src/babylon/persistence/hex_init.py]
       retirement_condition: repeated cell-to-county identity is replaced by the governed geography relation
     - name: hex_r8_linear_features_reference
       source: src/babylon/persistence/postgres_schema.py
@@ -267,7 +257,7 @@ estate:
           canonical_name: cell_id
           compatibility_name: h3_index
       compatibility_view: public.v_compat_hex_state_v1
-      reader_owners: [src/babylon/persistence/postgres_runtime/_legacy.py]
+      reader_owners: []
       retirement_condition: >-
         dense legacy state has a declared Port Adapt Replace or Retire disposition and no reader remains
     - name: hex_substrate
@@ -297,7 +287,7 @@ estate:
           canonical_name: cell_id
           compatibility_name: h3_index
       compatibility_view: public.v_compat_hex_terrain_state_v1
-      reader_owners: [src/babylon/persistence/postgres_runtime/_legacy.py]
+      reader_owners: []
       retirement_condition: terrain ownership has a declared disposition and no reader remains
     - name: immutable_reference_lodes_od_matrix
       source: src/babylon/persistence/migrations/0016_lodes_od_matrix.sql
@@ -338,7 +328,7 @@ estate:
           canonical_name: target_cell_id
           compatibility_name: target_h3
       compatibility_view: public.v_compat_infrastructure_link_state_v1
-      reader_owners: [src/babylon/persistence/postgres_runtime/_legacy.py]
+      reader_owners: []
       retirement_condition: both endpoints have canonical foreign keys and old/new link queries compare equal
     - name: org_snapshot
       source: src/babylon/persistence/postgres_schema.py

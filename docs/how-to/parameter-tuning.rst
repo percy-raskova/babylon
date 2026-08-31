@@ -95,26 +95,6 @@ Use with SimulationConfig
 Run Parameter Analysis
 ----------------------
 
-Single Trace Analysis
-^^^^^^^^^^^^^^^^^^^^^
-
-Run a simulation and export time-series data:
-
-.. code-block:: bash
-
-   mise run sim:trace
-
-This produces ``results/trace.csv`` with per-tick metrics:
-
-.. code-block:: text
-
-   tick,proletariat_wealth,bourgeoisie_wealth,ideology,tension,...
-   0,100.0,500.0,0.0,0.1,...
-   1,95.2,510.5,0.05,0.12,...
-   ...
-
-Use this to visualize how a single parameter set evolves over time.
-
 Parameter Sweep
 ^^^^^^^^^^^^^^^
 
@@ -138,21 +118,14 @@ Use this to find parameter values that produce desired outcomes.
 Sensitivity Analysis
 ^^^^^^^^^^^^^^^^^^^^
 
-Programmatically sweep a single parameter:
+Use the retained optimization package for global sensitivity analysis:
 
-.. code-block:: python
+.. code-block:: bash
 
-   from tools.parameter_analysis import sweep_parameter
+   uv run python -m babylon.engine.optimization sensitivity --method both
 
-   results = sweep_parameter(
-       param_path="solidarity.decay_base",
-       values=[0.90, 0.92, 0.94, 0.96, 0.98],
-       ticks=100,
-       initial_state=create_two_node_scenario()[0]
-   )
-
-   for result in results:
-       print(f"decay={result.param_value}: revolution at tick {result.revolution_tick}")
+This is in-memory design-analysis periphery. It does not establish behavior or
+authority for a Rust-owned durable campaign.
 
 Common Parameter Combinations
 -----------------------------

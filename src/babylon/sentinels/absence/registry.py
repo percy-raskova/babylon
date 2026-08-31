@@ -23,7 +23,7 @@ its repo-relative file path. :data:`Disposition` is a closed taxonomy:
   just ``reference/database.py`` — ``get_reference_session`` per part A).
 - ``"guarded"``: an explicit ``if not path.exists(): raise FileNotFoundError``
   precedes every connect in this file (model:
-  ``engine/headless_runner/scopes.py:170``).
+  ``data/reference_scope.py``).
 - ``"readonly_uri"``: every connect in this file opens a ``file:...?mode=ro``
   URI — SQLite refuses to create a database file under a read-only-mode URI,
   so an absent file fails loudly on its own even without an explicit guard.
@@ -126,7 +126,7 @@ _ROWS: Final[tuple[ConnectionDisposition, ...]] = (
         ),
     ),
     ConnectionDisposition(
-        file="src/babylon/engine/headless_runner/scopes.py",
+        file="src/babylon/data/reference_scope.py",
         disposition="guarded",
         reason=(
             "_load_national_fips raises FileNotFoundError at ~line 169 "
@@ -136,7 +136,7 @@ _ROWS: Final[tuple[ConnectionDisposition, ...]] = (
         ),
     ),
     ConnectionDisposition(
-        file="src/babylon/engine/headless_runner/reference_data_cache.py",
+        file="src/babylon/data/reference_data_cache.py",
         disposition="guarded",
         reason=(
             "Not in the original task census -- found by the rg sweep (task #64). "
@@ -170,23 +170,6 @@ _ROWS: Final[tuple[ConnectionDisposition, ...]] = (
         ),
     ),
     ConnectionDisposition(
-        file="src/babylon/persistence/postgres_initialization.py",
-        disposition="declared_debt",
-        reason=(
-            "Four sqlite3.connect calls (~lines 136, 217, 276, 398) use `file:...?mode=ro` "
-            "URIs -- safe, cannot auto-create. The bea_engine "
-            "`create_engine(f'sqlite:///{sqlite_path}')` at ~line 850 is an unguarded, "
-            "writable-mode read path (no existence check, no mode=ro) -- genuine debt. "
-            "Remediation: convert to a read-only URI, mirroring this file's own four "
-            "sqlite3.connect siblings."
-        ),
-    ),
-    ConnectionDisposition(
-        file="src/babylon/persistence/sqlite_hydrator.py",
-        disposition="readonly_uri",
-        reason="sqlite3.connect opens a `file:...?mode=ro` URI at ~line 45.",
-    ),
-    ConnectionDisposition(
         file="src/babylon/domain/economics/county_exposure.py",
         disposition="readonly_uri",
         reason="sqlite3.connect opens a `file:...?mode=ro` URI at ~line 105.",
@@ -195,18 +178,6 @@ _ROWS: Final[tuple[ConnectionDisposition, ...]] = (
         file="src/babylon/sentinels/coverage/db_probe.py",
         disposition="readonly_uri",
         reason="sqlite3.connect opens a `file:...?mode=ro` URI at ~line 75.",
-    ),
-    ConnectionDisposition(
-        file="src/babylon/persistence/hex_hydrator.py",
-        disposition="guarded",
-        reason=(
-            "Corrected from the original task census's 'declared_debt' (unguarded writable) "
-            "-- rg verification (task #64) found hydrate_hex_state raises FileNotFoundError "
-            "at ~line 161 (`if not sqlite_path_resolved.exists(): raise ...`) immediately "
-            "before sqlite3.connect at ~line 175, the same guard shape as scopes.py. Still "
-            "lacks a mode=ro URI (a real defense-in-depth gap), but the existence guard "
-            "already prevents the auto-create-masks-absence bug this sentinel targets."
-        ),
     ),
     ConnectionDisposition(
         file="src/babylon/persistence/county_aggregation.py",

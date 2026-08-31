@@ -433,7 +433,6 @@ tables:
       - src/babylon/domain/economics/adapters.py
       - tools/load_bea_io.py
     tests:
-      - tests/integration/test_sc005_bea_cv_stddev.py
       - tests/integration/test_tensor_hydration.py
       - tests/unit/reference/bea/test_share_lookup_service.py
       - tests/unit/reference/bea/test_stale_share_summary.py
@@ -462,13 +461,11 @@ tables:
       - src/babylon/domain/economics/tensor_hierarchy/production_chain_rent.py
       - src/babylon/reference/bea/share_lookup_service.py
       - src/babylon/reference/bea/shaikh_bands.py
-      - src/babylon/persistence/hex_hydrator.py
       - tools/load_bea_io.py
       - tools/validate_bea_io_against_shaikh.py
     tests:
       - tests/integration/economics/test_tensor_hierarchy.py
       - tests/unit/reference/bea/test_national_writer_upsert.py
-      - tests/unit/engine/headless_runner/test_gamma_wiring.py
       - tests/unit/economics/tensor_hierarchy/leontief_rent/test_production_chain_rent.py
     disposition: keep
     subset_policy: full
@@ -538,8 +535,6 @@ tables:
     extractor: "tools/ingest/ricci_unequal.py (retired 2026-07-17 with the R2 demotion;
       country rows persist in the DB)"
     consumers:
-      - src/babylon/persistence/postgres_initialization.py
-      - src/babylon/persistence/sqlite_hydrator.py
       - src/babylon/domain/economics/melt/gamma_hydration.py
     tests:
       - tests/unit/reference/test_exposure_schema.py
@@ -556,15 +551,13 @@ tables:
     extractor: deleted @ 4ce7c96a^ (src/babylon/data/census/cbsa_parser.py + census
       loader tree)
     consumers:
-      - src/babylon/engine/headless_runner/scopes.py
+      - src/babylon/data/reference_scope.py
       - src/babylon/engine/hydration/reference.py
-      - src/babylon/persistence/hex_hydrator.py
       - src/babylon/persistence/tiger_ingestion.py
       - src/babylon/domain/economics/county_exposure.py
       - src/babylon/domain/economics/adapters.py
       - src/babylon/domain/economics/tensor_registry.py
       - src/babylon/persistence/county_aggregation.py
-      - src/babylon/persistence/sqlite_hydrator.py
       - src/babylon/reference/bea/ingest/stale_share_summary.py
       - tools/ingest_tiger_geometry.py
       - tools/validate_detroit.py
@@ -575,7 +568,6 @@ tables:
       - tests/integration/test_db_initialization_queries.py
       - tests/integration/test_post_067_consumer_queries.py
       - tests/integration/test_tensor_hydration.py
-      - tests/integration/test_marx_identities.py
       - tests/integration/economics/conftest.py
       - tests/integration/tensors/conftest.py
       - tests/unit/engine/hydration/test_hydrate_industry.py
@@ -588,14 +580,12 @@ tables:
     source: TIGER
     extractor: tools/ingest_tiger_geometry.py
     consumers:
-      - src/babylon/persistence/hex_hydrator.py
       - src/babylon/persistence/tiger_ingestion.py
-      - src/babylon/persistence/postgres_initialization.py
+      - tools/build_county_atlas.py
       - tools/ingest_tiger_geometry.py
     tests:
       - tests/integration/test_michigan_reference_data.py
       - tests/integration/test_db_initialization_queries.py
-      - tests/unit/persistence/test_substrate_apportionment.py
       - tests/unit/tools/test_make_reference_subset.py
     disposition: keep
     subset_policy: full
@@ -643,7 +633,6 @@ tables:
     extractor: deleted @ 4ce7c96a^ (src/babylon/data/fred/loader_3nf.py + z1_loader.py)
     consumers:
       - src/babylon/domain/economics/factory.py
-      - src/babylon/persistence/sqlite_hydrator.py
       - src/babylon/domain/economics/melt/adapters.py
     tests:
       - tests/integration/economics/test_melt_adapters.py
@@ -713,7 +702,6 @@ tables:
     source: QCEW
     extractor: deleted @ 4ce7c96a^ (src/babylon/data/qcew/loader_3nf.py)
     consumers:
-      - src/babylon/persistence/sqlite_hydrator.py
       - src/babylon/domain/economics/adapters.py
       - src/babylon/domain/economics/throughput/adapters.py
       - src/babylon/reference/bea/share_lookup_service.py
@@ -783,7 +771,7 @@ tables:
     consumers:
       - src/babylon/domain/economics/throughput/adapters.py
     tests:
-      - tests/unit/engine/headless_runner/conftest.py
+      - tests/integration/economics/test_unemployment_adapter.py
     disposition: keep
     subset_policy: full
     material_relation: race/ethnicity classification — resolves the race_code='T' (Total)
@@ -818,7 +806,7 @@ tables:
     tests:
       - tests/integration/test_db_initialization_queries.py
       - tests/integration/test_michigan_reference_data.py
-      - tests/unit/engine/headless_runner/conftest.py
+      - tests/unit/tools/test_make_reference_subset.py
       - tests/unit/reference/qcew/test_schema_086.py
       - tests/unit/reference/test_exposure_schema.py
     disposition: keep
@@ -832,7 +820,6 @@ tables:
     consumers:
       - src/babylon/domain/economics/throughput/adapters.py
       - src/babylon/engine/hydration/reference.py
-      - src/babylon/persistence/sqlite_hydrator.py
       - src/babylon/domain/economics/tensor_hierarchy/inter_industry.py
       - src/babylon/reference/bea/ingest/io_matrix_parser.py
       - tools/load_bea_io.py
@@ -844,7 +831,6 @@ tables:
     tests:
       - tests/integration/test_db_initialization_queries.py
       - tests/integration/test_tensor_hydration.py
-      - tests/integration/test_marx_identities.py
       - tests/unit/engine/hydration/test_hydrate_industry.py
       - tests/unit/reference/bea/test_stale_share_summary.py
     disposition: keep
@@ -880,12 +866,9 @@ tables:
     source: BEA_GDP
     extractor: deleted @ 4ce7c96a^ (src/babylon/data/bea/loader_county.py)
     consumers:
-      - src/babylon/persistence/hex_hydrator.py
-      - src/babylon/persistence/postgres_initialization.py
+      - tools/make_reference_subset.py
     tests:
       - tests/integration/test_db_initialization_queries.py
-      - tests/integration/test_marx_identities.py
-      - tests/unit/persistence/test_hex_hydrator_marx.py
       - tests/unit/tools/test_make_reference_subset.py
     disposition: keep
     subset_policy: full
@@ -912,7 +895,6 @@ tables:
     source: BEA_IO_TOTAL_REQ
     extractor: tools/load_bea_io.py
     consumers:
-      - src/babylon/persistence/sqlite_hydrator.py
       - src/babylon/domain/economics/tensor_hierarchy/inter_industry.py
       - src/babylon/domain/economics/tensor_hierarchy/production_chain_rent.py
       - src/babylon/reference/bea/ingest/io_coefficient_writer.py
@@ -932,13 +914,10 @@ tables:
     extractor: tools/load_bea_io.py
     consumers:
       - src/babylon/reference/bea/share_lookup_service.py
-      - src/babylon/persistence/hex_hydrator.py
-      - src/babylon/persistence/postgres_initialization.py
       - src/babylon/reference/bea/ingest/national_writer.py
       - tools/load_bea_io.py
       - tools/validate_bea_io_against_shaikh.py
     tests:
-      - tests/integration/test_sc005_bea_cv_stddev.py
       - tests/unit/reference/bea/test_share_lookup_service.py
       - tests/unit/reference/bea/test_national_writer_upsert.py
       - tests/unit/reference/bea/test_stale_share_summary.py
@@ -950,10 +929,8 @@ tables:
     kind: table
     source: Comtrade
     consumers:
-      - src/babylon/persistence/postgres_initialization.py
       - src/babylon/domain/economics/melt/gamma_hydration.py
     tests:
-      - tests/unit/persistence/test_phi_attribution.py
       - tests/unit/reference/test_exposure_schema.py
       - tests/unit/economics/melt/test_gamma_hydration.py
     disposition: keep
@@ -968,7 +945,6 @@ tables:
     consumers:
       - src/babylon/domain/economics/throughput/adapters.py
       - src/babylon/domain/economics/tick/system/__init__.py
-      - src/babylon/engine/headless_runner/runner.py
     tests:
       - tests/integration/economics/test_unemployment_adapter.py
     disposition: keep
@@ -980,10 +956,8 @@ tables:
     source: FCC_BDC
     extractor: src/babylon_data/fcc/{loader,downloader,parser}.py
     consumers:
-      - src/babylon/persistence/hex_hydrator.py
       - src/babylon/domain/geography/internet.py
     tests:
-      - tests/unit/persistence/test_hex_hydrator_marx.py
       - tests/unit/tools/test_make_reference_subset.py
     disposition: keep
     subset_policy: michigan
@@ -1038,10 +1012,8 @@ tables:
     extractor: deleted @ 4ce7c96a^ (src/babylon/data/census/loader_3nf.py, table B19001)
     consumers:
       - src/babylon/domain/economics/throughput/adapters.py
-      - src/babylon/persistence/hex_hydrator.py
-      - src/babylon/persistence/postgres_initialization.py
       - src/babylon/persistence/county_aggregation.py
-      - src/babylon/engine/headless_runner/reference_data_cache.py
+      - src/babylon/data/reference_data_cache.py
       - src/babylon/domain/economics/tick/system/__init__.py
       - src/babylon/domain/economics/tick/types.py
       - src/babylon/domain/economics/tick/graph_bridge.py
@@ -1050,8 +1022,6 @@ tables:
     tests:
       - tests/integration/economics/test_unemployment_adapter.py
       - tests/unit/economics/tick/test_bracket_ratio_source.py
-      - tests/unit/engine/headless_runner/conftest.py
-      - tests/unit/persistence/test_substrate_apportionment.py
       - tests/integration/test_db_initialization_queries.py
       - tests/unit/tools/test_make_reference_subset.py
     disposition: keep
@@ -1108,13 +1078,13 @@ tables:
     source: Census_ACS
     extractor: deleted @ 4ce7c96a^ (src/babylon/data/census/loader_3nf.py)
     consumers:
-      - src/babylon/persistence/sqlite_hydrator.py
+      - tools/repair_rent_crisis_view.py
     tests:
       - tests/unit/tools/test_make_reference_subset.py
     disposition: keep
     subset_policy: michigan
-    material_relation: ACS median-gross-rent-by-county rows (BEA REIS proxy) — hydrated
-      into the runtime rent reference table for the headless-runner housing-cost path.
+    material_relation: ACS median-gross-rent-by-county rows (BEA REIS proxy) — the
+      rent input to the repaired analytical rent-crisis view.
   - name: fact_census_rent_burden
     kind: table
     source: Census_ACS
@@ -1142,9 +1112,8 @@ tables:
     source: HIFLD
     extractor: src/babylon_data/hifld/prisons.py
     consumers:
-      - src/babylon/persistence/hex_hydrator.py
+      - tools/make_reference_subset.py
     tests:
-      - tests/unit/persistence/test_hex_hydrator_marx.py
       - tests/unit/tools/test_make_reference_subset.py
     disposition: keep
     subset_policy: michigan
@@ -1205,7 +1174,6 @@ tables:
     extractor: deleted @ 4ce7c96a^ (src/babylon/data/bts/faf_loader.py); pre-populated
       in shipped DB
     consumers:
-      - src/babylon/persistence/sqlite_hydrator.py
       - src/babylon/domain/economics/tensor_hierarchy/geographic_flow.py
     tests:
       - tests/unit/tools/test_make_reference_subset.py
@@ -1230,9 +1198,7 @@ tables:
     extractor: deleted @ 4ce7c96a^ (src/babylon/data/fred/loader_3nf.py)
     consumers:
       - src/babylon/domain/economics/factory.py
-      - src/babylon/persistence/sqlite_hydrator.py
       - src/babylon/domain/economics/melt/adapters.py
-      - src/babylon/engine/headless_runner/runner.py
       - src/babylon/domain/economics/tick/system/__init__.py
     tests:
       - tests/integration/economics/test_melt_adapters.py
@@ -1270,13 +1236,10 @@ tables:
     extractor: tools/ingest/hickel_erdi.py
     consumers:
       - src/babylon/domain/economics/melt/gamma_hydration.py
-      - src/babylon/persistence/postgres_initialization.py
-      - src/babylon/persistence/sqlite_hydrator.py
       - src/babylon/domain/economics/tensor_hierarchy/leontief_rent/periphery_labor_coefficients.py
       - tools/ingest/hickel_erdi.py
     tests:
       - tests/unit/economics/melt/test_gamma_hydration.py
-      - tests/unit/persistence/test_phi_attribution.py
       - tests/unit/reference/test_unequal_exchange_artifacts.py
       - tests/unit/reference/test_unequal_exchange_refdb_sync.py
     disposition: keep
@@ -1360,17 +1323,13 @@ tables:
     source: QCEW
     extractor: babylon_data/src/babylon_data/qcew/writer.py
     consumers:
-      - src/babylon/persistence/sqlite_hydrator.py
       - src/babylon/persistence/county_aggregation.py
-      - src/babylon/persistence/hex_hydrator.py
       - src/babylon/domain/economics/adapters.py
-      - src/babylon/persistence/postgres_initialization.py
       - tools/normalize_qcew_rollups.py
       - tools/inspect_qcew_audit.py
     tests:
       - tests/integration/economics/throughput/test_adapters.py
       - tests/integration/test_qcew_provenance.py
-      - tests/unit/persistence/test_hex_hydrator_marx.py
       - tests/integration/test_tensor_hydration.py
     disposition: keep
     subset_policy: michigan
@@ -1418,23 +1377,21 @@ tables:
     source: USGS_MCS
     extractor: python -m babylon_data.materials (aggregates.load_state_minerals)
     consumers:
-      - src/babylon/persistence/hex_hydrator.py
+      - tools/generate_us_county_territories.py
     tests:
       - tests/unit/reference/test_minerals_tables.py
     disposition: keep
     subset_policy: full
-    material_relation: state-by-state mineral production values — hex_hydrator explicitly
-      branches on its emptiness pending a targeted USGS state-table pull (spec-065/ADR042).
+    material_relation: state-by-state mineral production values — the county-territory
+      artifact builder allocates them by county area within each state.
     notes: "FILLED 2026-07-17 (Program 22 Wave 1): 50 states from MCS2025_T3
-      (USGS 'Undistributed' remainder row skipped, reported). hex_hydrator only
-      MENTIONS this table in its docstring (stocks still use defines defaults);
-      per-county apportionment from it is Wave-2, baseline-moving."
+      (USGS 'Undistributed' remainder row skipped, reported)."
   - name: fact_trade_monthly
     kind: table
     source: Census_Trade
     extractor: deleted @ 4ce7c96a^ (src/babylon/data/trade/loader_3nf.py + parser.py)
     consumers:
-      - src/babylon/persistence/sqlite_hydrator.py
+      - tools/make_reference_subset.py
     disposition: keep
     subset_policy: full
     material_relation: monthly bilateral country import/export values — the trade-balance

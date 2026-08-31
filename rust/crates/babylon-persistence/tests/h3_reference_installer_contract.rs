@@ -1,11 +1,12 @@
-//! Public contract for the bounded representative H3 cohort installer.
+//! Public contract for the bounded Michigan H3 reference-bundle installer.
 
 use babylon_kernel::tick_content_hash::RefDigestV1;
 use babylon_persistence::{
-    install_representative_h3_cohort, H3ReferenceCohort, H3ReferenceDatabaseDiagnostic,
+    install_michigan_h3_reference_bundle_v1, H3ReferenceCohort, H3ReferenceDatabaseDiagnostic,
     H3ReferenceInstallDisposition, H3ReferenceInstallError, H3ReferenceInstallOperation,
     H3ReferenceInstallReport, H3ReferenceMembershipReadContext,
 };
+use babylon_tick::h3_runtime::MichiganDynamicHexFoundationV1;
 use postgres::Config;
 
 #[test]
@@ -13,8 +14,9 @@ fn installer_signature_cannot_accept_unvalidated_rows_or_caller_provenance() {
     let install: fn(
         &Config,
         &H3ReferenceCohort,
+        &MichiganDynamicHexFoundationV1,
     ) -> Result<H3ReferenceInstallReport, H3ReferenceInstallError> =
-        install_representative_h3_cohort;
+        install_michigan_h3_reference_bundle_v1;
 
     let _ = install;
 }
@@ -34,6 +36,11 @@ fn report_accessors_preserve_exact_provenance_and_bounded_count_types() {
     let _: fn(&H3ReferenceInstallReport) -> usize =
         H3ReferenceInstallReport::derived_ancestor_count;
     let _: fn(&H3ReferenceInstallReport) -> usize = H3ReferenceInstallReport::closure_cell_count;
+    let _: fn(&H3ReferenceInstallReport) -> usize = H3ReferenceInstallReport::r8_child_count;
+    let _: fn(&H3ReferenceInstallReport) -> RefDigestV1 =
+        H3ReferenceInstallReport::r8_child_parent_digest;
+    let _: fn(&H3ReferenceInstallReport) -> RefDigestV1 =
+        H3ReferenceInstallReport::reference_bundle_digest;
     let _: fn(&H3ReferenceInstallReport) -> usize = H3ReferenceInstallReport::commit_attempts;
 }
 
@@ -64,6 +71,14 @@ fn reference_read_operations_distinguish_query_and_lifecycle_context() {
     assert_ne!(
         H3ReferenceInstallOperation::ReadMembershipRows { context: initial },
         H3ReferenceInstallOperation::ReadCellRows { context: initial },
+    );
+    assert_ne!(
+        H3ReferenceInstallOperation::ReadCellRows { context: initial },
+        H3ReferenceInstallOperation::ReadR8CellRows { context: initial },
+    );
+    assert_ne!(
+        H3ReferenceInstallOperation::ReadR8CellRows { context: initial },
+        H3ReferenceInstallOperation::ReadR8Product { context: initial },
     );
 }
 

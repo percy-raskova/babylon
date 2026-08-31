@@ -3,11 +3,7 @@
 Drives :class:`~babylon.game.pacing.PacedTickDriver` with a fake engine
 callable (:class:`_FakeAdvancer`) — no real engine, Postgres, or WorldState
 required — per the unit's own test mandate: pause/ack/lock semantics and
-strict tick monotonicity. A single glue test at the bottom
-(``TestPacedDriverForSession``) proves :func:`~babylon.game.pacing.
-paced_driver_for_session` wires a REAL session (Unit C1) + a REAL
-``EndgameDetector`` correctly, mirroring ``tests/unit/game/test_session.py``'s
-own ``_FakeStore`` convention.
+strict tick monotonicity.
 """
 
 from __future__ import annotations
@@ -29,7 +25,6 @@ from babylon.game.pacing import (
     TickAdvancer,
     TickOrderError,
     TickOutcomeLike,
-    paced_driver_for_session,
 )
 from babylon.models.enums.events import GameOutcome
 from babylon.projection.chronicle import ChronicleEvent
@@ -485,116 +480,3 @@ class TestRunUntilPaused:
         driver.run_until_paused()
 
         assert sleeper.calls == []
-
-
-# --------------------------------------------------------------------------- #
-# paced_driver_for_session — the real Unit C1 glue, real EndgameDetector.     #
-# --------------------------------------------------------------------------- #
-
-
-class _MinimalFakeStore:
-    """Just enough of ``GameRuntimeStore`` for ``create_new_campaign`` +
-    a few ``advance_tick`` calls — see ``tests/unit/game/test_session.py``'s
-    own fuller ``_FakeStore`` for the complete structural double."""
-
-    def __init__(self) -> None:
-        self.sessions: dict[Any, dict[str, Any]] = {}
-        self._graphs: dict[Any, Any] = {}
-
-    def create_session(
-        self,
-        scenario: str,
-        config_json: dict[str, Any],
-        game_defines_json: dict[str, Any],
-        rng_seed: int,
-        *,
-        trace_level: str = "NONE",
-        player_id: int | None = None,
-        session_id: Any = None,
-    ) -> Any:
-        from uuid import uuid4
-
-        session_id = session_id if session_id is not None else uuid4()
-        self.sessions[session_id] = {"scenario": scenario}
-        return session_id
-
-    def get_session(self, session_id: Any) -> dict[str, Any] | None:
-        return self.sessions.get(session_id)
-
-    def get_pending_turns(self, session_id: Any, tick: int) -> list[dict[str, Any]]:
-        return []
-
-    def mark_turns_resolved(self, session_id: Any, tick: int) -> int:
-        return 0
-
-    def persist_tick(
-        self,
-        tick: int,
-        graph: Any,
-        events: list[dict[str, Any]] | None = None,
-        *,
-        session_id: Any = None,
-    ) -> None:
-        self._graphs[(session_id, tick)] = graph
-
-    def hydrate_graph(self, tick: int | None = None, *, session_id: Any = None) -> Any:
-        if tick is None:
-            tick = max(t for sid, t in self._graphs if sid == session_id)
-        return self._graphs[(session_id, tick)]
-
-    def persist_tick_summary(
-        self,
-        tick: int,
-        summary: dict[str, Any],
-        *,
-        session_id: Any,
-    ) -> None:
-        pass
-
-    def persist_tick_atomic(
-        self,
-        envelope: Any,
-        *,
-        write_commit_marker: bool = True,
-        graph: Any = None,
-        events: Any = None,
-    ) -> None:
-        pass
-
-    def get_last_committed_tick(self, session_id: Any) -> int | None:
-        return None
-
-
-class TestPacedDriverForSession:
-    def test_wires_a_real_endgame_detector_using_the_sessions_own_defines(self) -> None:
-        from babylon.engine.scenarios import WayneCountyScenario
-        from babylon.game.session import create_new_campaign
-
-        store = _MinimalFakeStore()
-        session = create_new_campaign(store, scenario=WayneCountyScenario())
-
-        driver = paced_driver_for_session(session)
-
-        assert driver.last_tick == 0
-        assert driver.locked is False
-        result = driver.advance_once()
-        assert result.tick == 1
-        assert driver.last_tick == 1
-        # The wired observer really is an EndgameDetector, not a stub —
-        # its own real (unrecognized-yet) state after one Wayne tick.
-        assert driver.locked is False
-        assert driver.lock_reason is None
-
-    def test_an_injected_endgame_observer_double_overrides_the_default(self) -> None:
-        from babylon.engine.scenarios import WayneCountyScenario
-        from babylon.game.session import create_new_campaign
-
-        store = _MinimalFakeStore()
-        session = create_new_campaign(store, scenario=WayneCountyScenario())
-        observer = _FakeEndgameObserver(pattern_at_tick={1: GameOutcome.RED_OGV})
-
-        driver = paced_driver_for_session(session, endgame_observer=observer)
-        driver.advance_once()
-
-        assert driver.locked is True
-        assert driver.lock_reason == GameOutcome.RED_OGV

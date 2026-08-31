@@ -15,7 +15,7 @@ TITLE = (
     "Migration 0004 stores every CommittedTickEnvelopeV1 family in one exact "
     "schema-qualified PostgreSQL relation without activating Rust writes"
 )
-FAMILIES = (
+HISTORICAL_EPOCH4_RELATIONS = (
     ("graph", 16, "babylon_state.tick_graph_row"),
     ("state", 17, "babylon_state.tick_state_row"),
     ("event", 18, "babylon_state.tick_event_row"),
@@ -28,6 +28,13 @@ FAMILIES = (
         23,
         "babylon_state.tick_archive_dirty_receipt_row",
     ),
+)
+LIVE_WRITER_TARGETS = (
+    ("graph", 16, "babylon_state.tick_graph_row"),
+    ("state", 17, "babylon_state.tick_state_row"),
+    ("event", 18, "babylon_state.tick_event_row"),
+    ("checkpoint", 22, "babylon_state.tick_checkpoint_row"),
+    ("archive_dirty_receipt", 23, "babylon_state.tick_archive_dirty_receipt_row"),
 )
 
 
@@ -67,17 +74,22 @@ def test_adr244_binds_the_migration_mapping_and_closed_authority() -> None:
     }
 
 
-def test_contract_pins_all_eight_relations_and_exact_migration_bytes() -> None:
+def test_contract_distinguishes_five_live_targets_from_eight_epoch4_relations() -> None:
     contract = _mapping(ROOT / "contracts" / "committed_tick_storage_v1.yaml")
     migration_path = ROOT / contract["migration"]["file"]
     migration = migration_path.read_bytes()
-    actual_families = tuple(
-        (row["family"], row["tag_u8"], row["relation"]) for row in contract["row_families"]
+    installed_relations = tuple(
+        (row["family"], row["tag_u8"], row["relation"])
+        for row in contract["historical_epoch4_relations"]
+    )
+    live_targets = tuple(
+        (row["family"], row["tag_u8"], row["relation"]) for row in contract["live_writer_targets"]
     )
 
     assert contract["migration"]["version"] == 4
     assert hashlib.sha256(migration).hexdigest() == contract["migration"]["sha256"]
-    assert actual_families == FAMILIES
+    assert installed_relations == HISTORICAL_EPOCH4_RELATIONS
+    assert live_targets == LIVE_WRITER_TARGETS
     assert contract["family_row_shape"]["primary_key"] == [
         "campaign_id",
         "resolve_tick",
@@ -88,5 +100,5 @@ def test_contract_pins_all_eight_relations_and_exact_migration_bytes() -> None:
         "DEFERRABLE_INITIALLY_DEFERRED"
     )
     assert "Runtime construction of RustWriterAuthority" in contract["excluded_authority"]
-    for _, _, relation in FAMILIES:
+    for _, _, relation in HISTORICAL_EPOCH4_RELATIONS:
         assert f"CREATE TABLE {relation} (".encode() in migration

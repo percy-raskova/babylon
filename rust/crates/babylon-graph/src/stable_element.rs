@@ -72,6 +72,99 @@ pub enum StableElementKeyV1 {
 }
 
 impl StableElementKeyV1 {
+    /// Decode one exact standalone binary stable-element key.
+    ///
+    /// # Errors
+    /// Returns a framing, UTF-8, semantic-string, arithmetic, or allocation
+    /// refusal. The decoded value must re-encode byte-for-byte.
+    pub fn from_canonical_bytes(input: &[u8]) -> Result<Self, StableIdentityError> {
+        let header = STABLE_ELEMENT_DOMAIN.len() + 1 + size_of::<u32>() + 1;
+        if input.len() < header
+            || !input.starts_with(STABLE_ELEMENT_DOMAIN)
+            || input.get(STABLE_ELEMENT_DOMAIN.len()) != Some(&0)
+            || input.get(STABLE_ELEMENT_DOMAIN.len() + 1..STABLE_ELEMENT_DOMAIN.len() + 5)
+                != Some(STABLE_ELEMENT_LAYOUT_VERSION_V1.to_be_bytes().as_slice())
+        {
+            return Err(StableIdentityError::CanonicalBytes {
+                field: "stable element header",
+            });
+        }
+        let mut cursor = STABLE_ELEMENT_DOMAIN.len() + 5;
+        let tag = *input
+            .get(cursor)
+            .ok_or(StableIdentityError::CanonicalBytes {
+                field: "stable element tag",
+            })?;
+        cursor += 1;
+        let key = match tag {
+            0x01 => Self::Node {
+                scenario: read_canonical_string(input, &mut cursor, "stable node scenario")?,
+                local_name: read_canonical_string(input, &mut cursor, "stable node local name")?,
+            },
+            0x02 => Self::Edge {
+                scenario: read_canonical_string(input, &mut cursor, "stable edge scenario")?,
+                edge_type: read_canonical_string(input, &mut cursor, "stable edge type")?,
+                source_local_name: read_canonical_string(input, &mut cursor, "stable edge source")?,
+                target_local_name: read_canonical_string(input, &mut cursor, "stable edge target")?,
+            },
+            0x03 => Self::Hyperedge {
+                scenario: read_canonical_string(input, &mut cursor, "stable hyperedge scenario")?,
+                local_name: read_canonical_string(
+                    input,
+                    &mut cursor,
+                    "stable hyperedge local name",
+                )?,
+            },
+            _ => {
+                return Err(StableIdentityError::CanonicalBytes {
+                    field: "stable element tag",
+                });
+            }
+        };
+        key.validate()?;
+        if cursor != input.len() || key.canonical_bytes()?.as_slice() != input {
+            return Err(StableIdentityError::CanonicalBytes {
+                field: "stable element trailing bytes",
+            });
+        }
+        Ok(key)
+    }
+
+    /// Copy this stable key using checked, fallible string allocation.
+    ///
+    /// # Errors
+    /// Returns [`StableIdentityError::Allocation`] before exposing a partial
+    /// key when any owned string cannot reserve its exact byte length.
+    pub fn try_owned(&self) -> Result<Self, StableIdentityError> {
+        Ok(match self {
+            Self::Node {
+                scenario,
+                local_name,
+            } => Self::Node {
+                scenario: copy_string("stable node scenario", scenario)?,
+                local_name: copy_string("stable node local name", local_name)?,
+            },
+            Self::Edge {
+                scenario,
+                edge_type,
+                source_local_name,
+                target_local_name,
+            } => Self::Edge {
+                scenario: copy_string("stable edge scenario", scenario)?,
+                edge_type: copy_string("stable edge type", edge_type)?,
+                source_local_name: copy_string("stable edge source", source_local_name)?,
+                target_local_name: copy_string("stable edge target", target_local_name)?,
+            },
+            Self::Hyperedge {
+                scenario,
+                local_name,
+            } => Self::Hyperedge {
+                scenario: copy_string("stable hyperedge scenario", scenario)?,
+                local_name: copy_string("stable hyperedge local name", local_name)?,
+            },
+        })
+    }
+
     /// Encode the exact standalone binary stable-element key.
     ///
     /// # Errors
@@ -281,6 +374,11 @@ pub struct StableElementResolverV1 {
 /// Checked stable identity, resolver, topology, or bounded-codec failure.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StableIdentityError {
+    /// Canonical stable-element bytes were truncated, malformed, or noncanonical.
+    CanonicalBytes {
+        /// Stable decoding field.
+        field: &'static str,
+    },
     /// A governed string failed its byte grammar or length bound.
     InvalidString {
         /// Stable semantic field name.
@@ -432,6 +530,34 @@ pub enum StableIdentityError {
     },
 }
 
+fn read_canonical_string(
+    input: &[u8],
+    cursor: &mut usize,
+    field: &'static str,
+) -> Result<String, StableIdentityError> {
+    let length_end = cursor
+        .checked_add(size_of::<u32>())
+        .ok_or(StableIdentityError::CanonicalBytes { field })?;
+    let length_bytes: [u8; 4] = input
+        .get(*cursor..length_end)
+        .ok_or(StableIdentityError::CanonicalBytes { field })?
+        .try_into()
+        .map_err(|_| StableIdentityError::CanonicalBytes { field })?;
+    let length = usize::try_from(u32::from_be_bytes(length_bytes))
+        .map_err(|_| StableIdentityError::CanonicalBytes { field })?;
+    let value_end = length_end
+        .checked_add(length)
+        .ok_or(StableIdentityError::CanonicalBytes { field })?;
+    let value = std::str::from_utf8(
+        input
+            .get(length_end..value_end)
+            .ok_or(StableIdentityError::CanonicalBytes { field })?,
+    )
+    .map_err(|_| StableIdentityError::CanonicalBytes { field })?;
+    *cursor = value_end;
+    copy_string(field, value)
+}
+
 impl StableElementResolverV1 {
     /// Seal one complete fixed topology against exact authored identities.
     ///
@@ -500,22 +626,19 @@ impl StableElementResolverV1 {
         validate_ascii_graphic("edge type", edge_type, 1, MAX_STRUCTURAL_TYPE_BYTES)?;
         let source_name = self.node_local_name(source)?;
         let target_name = self.node_local_name(target)?;
-        if !self
-            .sealed_topology
-            .edges
-            .contains(&(edge_type.to_owned(), source, target))
-        {
+        let owned_edge = (copy_string("stable edge type", edge_type)?, source, target);
+        if !self.sealed_topology.edges.contains(&owned_edge) {
             return Err(StableIdentityError::UnknownEdge {
-                edge_type: edge_type.to_owned(),
+                edge_type: owned_edge.0,
                 source,
                 target,
             });
         }
         Ok(StableElementKeyV1::Edge {
-            scenario: self.scenario_scope.clone(),
-            edge_type: edge_type.to_owned(),
-            source_local_name: source_name.to_owned(),
-            target_local_name: target_name.to_owned(),
+            scenario: copy_string("stable edge scenario", &self.scenario_scope)?,
+            edge_type: owned_edge.0,
+            source_local_name: copy_string("stable edge source", source_name)?,
+            target_local_name: copy_string("stable edge target", target_name)?,
         })
     }
 
@@ -589,7 +712,102 @@ impl StableElementResolverV1 {
         &self.manifest
     }
 
-    pub(crate) fn scenario_scope(&self) -> &str {
+    /// Check one sealed stable node against its authored structural type.
+    ///
+    /// # Errors
+    /// Returns a stable-key or sealed-membership refusal. A valid sealed node
+    /// with another authored type returns `Ok(false)`.
+    pub fn sealed_node_has_type(
+        &self,
+        key: &StableElementKeyV1,
+        expected: &str,
+    ) -> Result<bool, StableIdentityError> {
+        validate_ascii_graphic("expected node type", expected, 1, MAX_STRUCTURAL_TYPE_BYTES)?;
+        let StableElementKeyV1::Node {
+            scenario,
+            local_name,
+        } = key
+        else {
+            return Err(StableIdentityError::ElementNotSealed);
+        };
+        key.validate()?;
+        if scenario != &self.scenario_scope {
+            return Err(StableIdentityError::ElementNotSealed);
+        }
+        let handle = self
+            .node_by_name
+            .get(local_name)
+            .ok_or(StableIdentityError::ElementNotSealed)?;
+        let actual = self
+            .sealed_topology
+            .nodes
+            .get(handle)
+            .ok_or(StableIdentityError::ElementNotSealed)?;
+        Ok(actual == expected)
+    }
+
+    /// Check whether one exact directed edge belongs to the sealed topology.
+    ///
+    /// # Errors
+    /// Returns a stable-key, string, or allocation refusal. Valid sealed
+    /// endpoints without the requested edge return `Ok(false)`.
+    pub fn contains_sealed_edge(
+        &self,
+        edge_type: &str,
+        source: &StableElementKeyV1,
+        target: &StableElementKeyV1,
+    ) -> Result<bool, StableIdentityError> {
+        validate_ascii_graphic("edge type", edge_type, 1, MAX_STRUCTURAL_TYPE_BYTES)?;
+        let source = self.sealed_node_handle(source)?;
+        let target = self.sealed_node_handle(target)?;
+        let edge_type = copy_string("sealed edge type", edge_type)?;
+        Ok(self
+            .sealed_topology
+            .edges
+            .contains(&(edge_type, source, target)))
+    }
+
+    /// Validate that one stable key belongs to this exact sealed topology.
+    ///
+    /// # Errors
+    /// Returns a stable-key or sealed-membership refusal.
+    pub fn validate_sealed_key(&self, key: &StableElementKeyV1) -> Result<(), StableIdentityError> {
+        self.validate_sealed_element(key)
+    }
+
+    /// Resolve an authored node name inside this sealed scenario.
+    ///
+    /// # Errors
+    /// Returns [`StableIdentityError::ElementNotSealed`] when the name does
+    /// not belong to the exact sealed topology.
+    pub fn node_handle_by_local_name(
+        &self,
+        local_name: &str,
+    ) -> Result<NodeId, StableIdentityError> {
+        self.node_by_name
+            .get(local_name)
+            .copied()
+            .ok_or(StableIdentityError::ElementNotSealed)
+    }
+
+    /// Resolve an authored hyperedge name inside this sealed scenario.
+    ///
+    /// # Errors
+    /// Returns [`StableIdentityError::ElementNotSealed`] when the name does
+    /// not belong to the exact sealed topology.
+    pub fn hyperedge_handle_by_local_name(
+        &self,
+        local_name: &str,
+    ) -> Result<HyperedgeId, StableIdentityError> {
+        self.hyperedge_by_name
+            .get(local_name)
+            .copied()
+            .ok_or(StableIdentityError::ElementNotSealed)
+    }
+
+    /// Borrow the sealed scenario scope used by stable checkpoint rows.
+    #[must_use]
+    pub fn scenario_scope(&self) -> &str {
         &self.scenario_scope
     }
 
@@ -600,6 +818,24 @@ impl StableElementResolverV1 {
                 Err(StableIdentityError::ElementNotSealed)
             }
         }
+    }
+
+    fn sealed_node_handle(&self, key: &StableElementKeyV1) -> Result<NodeId, StableIdentityError> {
+        let StableElementKeyV1::Node {
+            scenario,
+            local_name,
+        } = key
+        else {
+            return Err(StableIdentityError::ElementNotSealed);
+        };
+        key.validate()?;
+        if scenario != &self.scenario_scope {
+            return Err(StableIdentityError::ElementNotSealed);
+        }
+        self.node_by_name
+            .get(local_name)
+            .copied()
+            .ok_or(StableIdentityError::ElementNotSealed)
     }
 
     fn validate_sealed_element(&self, key: &StableElementKeyV1) -> Result<(), StableIdentityError> {
@@ -1155,6 +1391,12 @@ fn reserve_string(field: &'static str, capacity: usize) -> Result<String, Stable
             field,
             requested: capacity,
         })?;
+    Ok(output)
+}
+
+fn copy_string(field: &'static str, source: &str) -> Result<String, StableIdentityError> {
+    let mut output = reserve_string(field, source.len())?;
+    output.push_str(source);
     Ok(output)
 }
 

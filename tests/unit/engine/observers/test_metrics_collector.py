@@ -876,22 +876,19 @@ class TestCsvExport:
         assert "wages_paid" in row
         assert "solidarity_strength" in row
 
-    def test_csv_rows_compatible_with_parameter_analysis(
+    def test_csv_rows_match_the_frozen_metrics_schema(
         self,
         four_node_state: WorldState,
         config: SimulationConfig,
     ) -> None:
-        """CSV rows have format compatible with parameter_analysis.py.
-
-        The column names should match those in collect_tick_data().
-        """
+        """CSV rows preserve the frozen metrics export column contract."""
         collector = TickStateRecorder()
         collector.on_simulation_start(four_node_state, config)
 
         rows = collector.to_csv_rows()
         row = rows[0]
 
-        # These are the exact columns from parameter_analysis.py
+        # These are the exact frozen metrics export columns.
         expected_columns = [
             "tick",
             "p_w_wealth",

@@ -172,10 +172,8 @@ def create_leontief_rent_services(
     :class:`~babylon.domain.economics.tensor_hierarchy.leontief_rent.industry_to_county_allocator.DefaultIndustryToCountyAllocator`)
     take an already-open ``db_session: Session`` rather than a
     ``session_factory`` — this function opens ONE session and returns it
-    alongside the overrides dict so the **caller** owns its lifetime (see
-    call sites in ``babylon.engine.headless_runner.runner`` and
-    ``web/game/engine_bridge.py``, which have different session-lifetime
-    requirements: once-per-run vs. once-per-tick).
+    alongside the overrides dict so the **caller** owns its lifetime. Retained
+    reference and integration callers close that session explicitly.
 
     Args:
         session_factory: Callable returning a SQLAlchemy Session for the

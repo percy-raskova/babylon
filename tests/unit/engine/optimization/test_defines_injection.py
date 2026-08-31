@@ -1,10 +1,6 @@
 """Anti-regression guard: injected GameDefines must actually reach the engine.
 
-Before commit ``bd3772a9`` (Phase 1 fix), ``headless_runner`` silently
-ignored the caller's injected ``GameDefines`` and always ran against the
-default coefficients — every sweep/Monte Carlo/sensitivity/Bayesian trial
-was therefore exploring a single point, not a parameter space. The
-``in_memory`` backend genuinely threads ``defines`` through ``step()`` on
+The ``in_memory`` backend threads ``defines`` through ``step()`` on
 every tick (see ``backends/in_memory.py`` module docstring), so it is the
 canary: if this test ever goes green-for-the-wrong-reason (i.e. starts
 failing because the two Results become equal again), the inert-defines bug

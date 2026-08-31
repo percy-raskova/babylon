@@ -3,17 +3,14 @@
 The vault is a deterministic materialization of the simulation: the same
 scenario, seed, and tick count must bake byte-identical page content and
 byte-identical dulwich commit history every time, on every machine. This
-tool pins that as a regression gate over two scenarios:
+tool pins that as a regression gate over two non-authoritative reference scenarios:
 
 * ``single_county`` — the in-process engine loop (no Postgres, no runner):
   ``create_single_county_scenario`` driven ``TICKS`` ticks with the
   per-kind :class:`~babylon.projection.vault.tick_baker.ArchiveTickBaker`
   baking every tick. Mirrors ``tools/record_projection_fixtures.py``'s
   loop mechanics exactly.
-* ``detroit_tri_county`` — the full headless runner with ``--vault-root``
-  (WO-44 wiring; Postgres + reference SQLite required), the same run
-  ``tests/integration/archive/test_vault_run_e2e.py`` proved
-  byte-identical.
+* ``org_probe`` — the in-process organization projection probe.
 
 Modes:
 
@@ -25,8 +22,7 @@ Modes:
   run2 HEAD == committed manifest HEAD and the per-page sha map matches,
   printing a per-file drift table on any mismatch (exit 1).
 
-Loud failure: a missing manifest, an unreachable Postgres (for the
-runner leg), or any drift is an error by default — never a silent skip.
+Loud failure: a missing manifest or any drift is an error.
 """
 
 from __future__ import annotations
@@ -46,10 +42,9 @@ if str(_REPO_ROOT / "src") not in sys.path:  # pragma: no cover - import shim
 BASELINE_ROOT: Final = _REPO_ROOT / "tests" / "baselines" / "vault"
 
 #: Scenario registry: name -> (bake callable name, tick count).
-SCENARIOS: Final = ("single_county", "detroit_tri_county", "org_probe")
+SCENARIOS: Final = ("single_county", "org_probe")
 
 SINGLE_COUNTY_TICKS: Final = 5
-DETROIT_TICKS: Final = 3
 ORG_PROBE_TICKS: Final = 5
 
 #: Per-scenario tick counts (Task 13, spec §11) — generalizes what used to be
@@ -57,33 +52,8 @@ ORG_PROBE_TICKS: Final = 5
 #: future) scenario doesn't need that function edited again.
 TICKS_BY_SCENARIO: Final[dict[str, int]] = {
     "single_county": SINGLE_COUNTY_TICKS,
-    "detroit_tri_county": DETROIT_TICKS,
     "org_probe": ORG_PROBE_TICKS,
 }
-
-_DSN_DEFAULT: Final = "dbname=babylon_test host=localhost port=5433 user=test password=test"
-
-
-def _resolve_detroit_pg_dsn() -> str:
-    """Resolve the ``detroit_tri_county`` runner-leg DSN via the ONE seam.
-
-    Mirrors :func:`babylon.engine.headless_runner.runner`'s own
-    ``resolve_dsn(legacy_env=("BABYLON_PG_DSN", "BABYLON_TEST_PG_DSN"))``
-    precedence exactly (canonical ``BABYLON_DSN`` wins, then the legacy
-    names, in order), so the reachability probe (:func:`_pg_reachable`) and
-    the actual bake (:func:`_bake_detroit_tri_county` -> ``runner_run``)
-    never disagree about which Postgres they're targeting (T1.2 K2 review
-    fix — previously each read ``BABYLON_TEST_PG_DSN``/``_DSN_DEFAULT``
-    directly, bypassing ``BABYLON_DSN``).
-
-    :returns: A libpq keyword DSN string.
-    """
-    from babylon.config.dsn import resolve_dsn
-
-    return resolve_dsn(
-        legacy_env=("BABYLON_PG_DSN", "BABYLON_TEST_PG_DSN"),
-        default=_DSN_DEFAULT,
-    )
 
 
 def _bake_single_county(vault_root: Path) -> bytes:
@@ -166,62 +136,6 @@ def _bake_org_probe(vault_root: Path) -> bytes:
         repo.close()
 
 
-def _bake_detroit_tri_county(vault_root: Path) -> bytes:
-    """Full-runner ``detroit_tri_county`` bake (Postgres + reference SQLite).
-
-    :param vault_root: Fresh directory the vault repository is created in.
-    :raises RuntimeError: If the reference SQLite is absent (loud, no skip).
-    :returns: The vault repository's final HEAD commit sha (bytes, hex).
-    """
-    import os
-
-    from dulwich.repo import Repo
-
-    from babylon.engine.headless_runner.models import ExitReason, SimulationRunConfig
-    from babylon.engine.headless_runner.runner import run as runner_run
-    from babylon.engine.headless_runner.scopes import resolve_scope
-
-    sqlite_path = _REPO_ROOT / "data" / "sqlite" / "marxist-data-3NF.sqlite"
-    if not sqlite_path.exists():
-        msg = f"reference SQLite absent: {sqlite_path} (the runner leg cannot bake)"
-        raise RuntimeError(msg)
-
-    os.environ.setdefault("BABYLON_TEST_PG_DSN", _resolve_detroit_pg_dsn())
-    scope = resolve_scope("detroit-tri-county", sqlite_path=sqlite_path)
-    config = SimulationRunConfig(
-        ticks=DETROIT_TICKS,
-        start_year=2010,
-        random_seed=2010,
-        scope_name="detroit-tri-county",
-        scope_fips=scope.scope_fips,
-        external_node_ids=scope.external_node_ids,
-        sqlite_reference_path=sqlite_path,
-        output_dir=Path(tempfile.mkdtemp(prefix="vault_gate_out_")),
-        vault_root=vault_root,
-    )
-    result = runner_run(config)
-    if result.exit_reason != ExitReason.COMPLETED:
-        msg = f"runner did not complete: {result.exit_reason}"
-        raise RuntimeError(msg)
-
-    repo = Repo(str(vault_root))
-    try:
-        return repo.head()
-    finally:
-        repo.close()
-
-
-def _pg_reachable() -> bool:
-    """Whether the local Postgres test database answers a connect."""
-    try:
-        import psycopg
-
-        psycopg.connect(_resolve_detroit_pg_dsn(), connect_timeout=3).close()
-    except Exception:  # noqa: BLE001 — reachability probe: any failure means unreachable
-        return False
-    return True
-
-
 def _bake(scenario: str, vault_root: Path) -> bytes:
     """Dispatch one bake.
 
@@ -231,8 +145,6 @@ def _bake(scenario: str, vault_root: Path) -> bytes:
     """
     if scenario == "single_county":
         return _bake_single_county(vault_root)
-    if scenario == "detroit_tri_county":
-        return _bake_detroit_tri_county(vault_root)
     if scenario == "org_probe":
         return _bake_org_probe(vault_root)
     msg = f"unknown scenario: {scenario!r} (known: {', '.join(SCENARIOS)})"
@@ -363,26 +275,9 @@ def main(argv: list[str] | None = None) -> int:
         choices=SCENARIOS,
         help="scenario to run (repeatable); default: all",
     )
-    parser.add_argument(
-        "--allow-missing-pg",
-        action="store_true",
-        help=(
-            "skip (loudly) the runner-backed detroit_tri_county leg when the local "
-            "Postgres test DB is unreachable, instead of failing — for environments "
-            "that genuinely lack Postgres; the single_county leg always runs"
-        ),
-    )
     args = parser.parse_args(argv)
 
     scenarios = list(args.scenario) if args.scenario else list(SCENARIOS)
-    if "detroit_tri_county" in scenarios and not _pg_reachable():
-        if args.allow_missing_pg:
-            print("[detroit_tri_county] SKIPPED — Postgres unreachable (--allow-missing-pg)")
-            scenarios = [s for s in scenarios if s != "detroit_tri_county"]
-        else:
-            print("[detroit_tri_county] FAIL — Postgres test DB unreachable (no silent skip)")
-            return 1
-
     if args.mode == "generate":
         return generate(scenarios)
     return compare(scenarios)

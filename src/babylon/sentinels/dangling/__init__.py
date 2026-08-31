@@ -8,12 +8,10 @@ rules identifying every typed-receiver ``getattr(x, "name", default)`` call
 and verifying ``"name"`` against the union of the receiver's real members.
 
 Founding incident: ``web/game/engine_bridge.py``'s ``_persist_action_result``
-reads ``getattr(persistence, "persist_action_result", None)`` (SINGULAR) —
-every real backend (``RuntimePersistence``/``PostgresRuntimeExtensions``
-protocols, ``PostgresRuntime``, ``RuntimeDatabase``) only ever declares
-``persist_action_results`` (PLURAL, batched) — so the guarded branch is
-structurally dead code with a heartbeat, silently falling through to the
-Django-ORM fallback on every call.
+read ``getattr(persistence, "persist_action_result", None)`` (SINGULAR) while
+the Python backends declared only the plural method. The retained sentinel
+now watches the local ``RuntimePersistence``/``RuntimeDatabase`` boundary;
+authoritative PostgreSQL writes belong to Rust.
 """
 
 from babylon.sentinels.dangling.checks import (

@@ -34,9 +34,6 @@ def test_shared_contract_verifies_independently() -> None:
         "graph",
         "state",
         "event",
-        "subsystem",
-        "conservation",
-        "boundary_flow",
         "checkpoint",
         "archive_dirty_receipt",
     ],
@@ -45,7 +42,11 @@ def test_each_row_family_mutation_refuses_stale_whole_payload_bytes(family: str)
     contract = load_contract(SCHEMA)
     vectors = copy.deepcopy(load_vectors(VECTORS))
     envelope = next(row for row in vectors if row["id"] == "envelope-all-families")
-    envelope["data"]["families"][family][0]["payload_hex"] = "ff"
+    selected = envelope["data"]["families"][family]
+    if family == "archive_dirty_receipt":
+        selected["payload_hex"] = "ff"
+    else:
+        selected[0]["payload_hex"] = "ff"
 
     errors = verify_all(contract, vectors)
 
@@ -216,6 +217,8 @@ def test_every_refusal_and_bound_vector_executes() -> None:
         "refusal-empty-key",
         "refusal-duplicate-key",
         "refusal-row-order",
+        "refusal-missing-archive-dirty-receipt",
+        "refusal-duplicate-archive-dirty-receipt",
     }
     assert {row["id"] for row in vectors if row["kind"] == "bound"} == {
         "bound-envelope-byte-maximum",
@@ -225,3 +228,29 @@ def test_every_refusal_and_bound_vector_executes() -> None:
         "bound-impossible-row-body",
     }
     assert verify_all(contract, vectors) == []
+
+
+def test_live_envelope_is_five_sparse_families_with_one_mandatory_archive_receipt() -> None:
+    contract = load_contract(SCHEMA)
+    vectors = load_vectors(VECTORS)
+
+    assert [(row["name"], row["tag_u8"]) for row in contract["row_families"]] == [
+        ("graph", 0x10),
+        ("state", 0x11),
+        ("event", 0x12),
+        ("checkpoint", 0x16),
+        ("archive_dirty_receipt", 0x17),
+    ]
+    assert contract["constants"]["family_count"] == 5
+    assert contract["constants"]["fixed_envelope_bytes"] == 182
+    assert contract["constants"]["max_envelope_bytes"] == 335_544_502
+    assert len(vectors) == 28
+    assert {
+        kind: sum(row["kind"] == kind for row in vectors)
+        for kind in {row["kind"] for row in vectors}
+    } == {"envelope": 9, "mutation": 5, "retry": 4, "refusal": 5, "bound": 5}
+    for row in vectors:
+        if row["kind"] != "envelope":
+            continue
+        archive = row["data"]["families"]["archive_dirty_receipt"]
+        assert set(archive) == {"key_hex", "payload_hex"}

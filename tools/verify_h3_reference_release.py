@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import math
 import os
 import stat
+import struct
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,6 +29,11 @@ SOURCE_FIXTURE_BYTES: Final = 390_151
 SOURCE_DIGEST: Final = "a4685e6ad882930e7064cb225ee649155fb74e52ef8b7d7550691a70a6087f5a"
 R5_DIGEST: Final = "83c093393bdf7a0e30ace8e208f3bcaa366fb7c6350abf7ff55d446322dcca87"
 R7_DIGEST: Final = "7f8d126ee81356a60605013b4b1c23942a77a4b2d6f890125d6c938dae70228b"
+P27_SESSION_IDS: Final = (
+    "5ef6b154-0fe8-44a1-ac12-58d40e69a75c",
+    "ccf3082d-f94d-41d8-9b2a-27d488585507",
+    "7f6599f0-2c56-4b91-a955-1bb50e0d8987",
+)
 
 
 class VerificationError(Exception):
@@ -62,6 +69,34 @@ class CanonicalCells:
     resolutions: tuple[int, ...]
     ordered: tuple[tuple[int, int], ...]
     identity_set: frozenset[int]
+
+
+@dataclass(frozen=True)
+class CheckedP27DynamicHexRow:
+    """One checked tick-zero H3 row with exact binary64 source bits."""
+
+    cell_id: int
+    value_bits: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class CheckedP27DynamicHexArchive:
+    """One byte-, schema-, session-, and identity-proved P27 archive."""
+
+    session_id: str
+    rows: tuple[CheckedP27DynamicHexRow, ...]
+
+
+@dataclass(frozen=True)
+class CheckedH3ReferenceRelease:
+    """All decoded facts from the single pinned H3 release authority."""
+
+    bridge: CanonicalCells
+    land_mask: CanonicalCells
+    p27_archives: tuple[CheckedP27DynamicHexArchive, ...]
+    source_fixture: bytes
+    r5: tuple[int, ...]
+    r7: tuple[int, ...]
 
 
 def _bridge_schema() -> pa.Schema:
@@ -132,30 +167,30 @@ def _artifact_specs(bridge: Path, land_mask: Path, p27_root: Path) -> tuple[Arti
         ),
         ArtifactSpec(
             "p27-seed-0",
-            p27_root / "5ef6b154-0fe8-44a1-ac12-58d40e69a75c/dynamic_hex_state.parquet",
+            p27_root / f"{P27_SESSION_IDS[0]}/dynamic_hex_state.parquet",
             247_073,
             "116e6f57fc4c8c0d907e0c50c07afb02b9c481e484a17f4c8c3213a7167e0764",
             R7_ROWS,
             p27,
-            "5ef6b154-0fe8-44a1-ac12-58d40e69a75c",
+            P27_SESSION_IDS[0],
         ),
         ArtifactSpec(
             "p27-seed-1",
-            p27_root / "ccf3082d-f94d-41d8-9b2a-27d488585507/dynamic_hex_state.parquet",
+            p27_root / f"{P27_SESSION_IDS[1]}/dynamic_hex_state.parquet",
             246_983,
             "3a11623705824e3d906caeee65fe2bc588a9017aa6f4aeee27b646437942a746",
             R7_ROWS,
             p27,
-            "ccf3082d-f94d-41d8-9b2a-27d488585507",
+            P27_SESSION_IDS[1],
         ),
         ArtifactSpec(
             "p27-seed-2",
-            p27_root / "7f6599f0-2c56-4b91-a955-1bb50e0d8987/dynamic_hex_state.parquet",
+            p27_root / f"{P27_SESSION_IDS[2]}/dynamic_hex_state.parquet",
             247_061,
             "6029aa7dbd618643e4502c99ccd71be1b5cd032298229c74def432ce5d68cd48",
             R7_ROWS,
             p27,
-            "7f6599f0-2c56-4b91-a955-1bb50e0d8987",
+            P27_SESSION_IDS[2],
         ),
     )
 
@@ -279,6 +314,80 @@ def _read_r7(artifact: PinnedArtifact, *, verify_session: bool) -> CanonicalCell
     return cells
 
 
+def _read_p27_dynamic_hex_archive(
+    artifact: PinnedArtifact,
+    expected_h3_cells: frozenset[int],
+) -> CheckedP27DynamicHexArchive:
+    """Decode one already hash-proved P27 archive through the canonical schema."""
+
+    spec = artifact.spec
+    if spec.session_id is None:
+        raise VerificationError(f"{spec.name} lacks its pinned session identity")
+    columns = [
+        "session_id",
+        "tick",
+        "h3_index",
+        "county_fips",
+        "state_fips",
+        "region_id",
+        "c",
+        "v",
+        "s",
+        "k",
+        "biocapacity_stock",
+        "energy_stock",
+        "raw_material_stock",
+        "internet_access_pct",
+        "surveillance_coupling",
+    ]
+    table = _read_columns(artifact, columns)
+    rows: list[CheckedP27DynamicHexRow] = []
+    identities: set[int] = set()
+    for index in range(spec.row_count):
+        session_id = table["session_id"][index].as_py()
+        tick = table["tick"][index].as_py()
+        if session_id != spec.session_id:
+            raise VerificationError(f"{spec.name} session drift at row {index}")
+        if tick != 0:
+            raise VerificationError(f"{spec.name} tick drift at row {index}")
+        if any(
+            table[field][index].as_py() is not None
+            for field in ("county_fips", "state_fips", "region_id")
+        ):
+            raise VerificationError(f"{spec.name} geography must be null at row {index}")
+
+        text = table["h3_index"][index].as_py()
+        if not isinstance(text, str) or not h3.is_valid_cell(text):
+            raise VerificationError(f"{spec.name} invalid H3 cell at row {index}")
+        cell_id = h3.str_to_int(text)
+        if h3.int_to_str(cell_id) != text or h3.get_resolution(text) != 7:
+            raise VerificationError(f"{spec.name} noncanonical R7 H3 cell at row {index}")
+        if cell_id in identities:
+            raise VerificationError(f"{spec.name} duplicate H3 cell at row {index}")
+        identities.add(cell_id)
+
+        value_bits: list[int] = []
+        for field in columns[6:]:
+            value = table[field][index].as_py()
+            if not isinstance(value, float) or not math.isfinite(value):
+                raise VerificationError(f"{spec.name} {field} must be finite at row {index}")
+            bits = struct.unpack(">Q", struct.pack(">d", value))[0]
+            if bits == 0x8000_0000_0000_0000:
+                raise VerificationError(f"{spec.name} {field} negative zero at row {index}")
+            if field in columns[6:13] and value < 0.0:
+                raise VerificationError(f"{spec.name} {field} must be nonnegative at row {index}")
+            if field in columns[13:] and not 0.0 <= value <= 1.0:
+                raise VerificationError(
+                    f"{spec.name} {field} must be in the unit interval at row {index}"
+                )
+            value_bits.append(bits)
+        rows.append(CheckedP27DynamicHexRow(cell_id, tuple(value_bits)))
+
+    if frozenset(identities) != expected_h3_cells:
+        raise VerificationError(f"{spec.name} H3 membership differs from the R7 authority")
+    return CheckedP27DynamicHexArchive(spec.session_id, tuple(rows))
+
+
 def _selected(ordered: tuple[tuple[int, int], ...], resolution: int) -> tuple[int, ...]:
     selected: list[int] = []
     for cell_resolution, raw in ordered[:MAX_SOURCE_ROWS]:
@@ -301,16 +410,21 @@ def _digest(raw_cells: tuple[int, ...]) -> str:
     return hashlib.sha256(_framed_source(raw_cells)).hexdigest()
 
 
-def verify(args: argparse.Namespace) -> str:
-    specs = _artifact_specs(args.bridge, args.land_mask, args.p27_archive_root)
+def _load_checked_release(
+    bridge_path: Path,
+    land_mask_path: Path,
+    p27_archive_root: Path,
+    source_fixture_path: Path,
+) -> CheckedH3ReferenceRelease:
+    specs = _artifact_specs(bridge_path, land_mask_path, p27_archive_root)
     artifacts = _verify_all_parquet_bytes(specs)
-    fixture = _verified_bytes(args.source_fixture, SOURCE_FIXTURE_BYTES, SOURCE_DIGEST)
+    fixture = _verified_bytes(source_fixture_path, SOURCE_FIXTURE_BYTES, SOURCE_DIGEST)
 
     bridge = _read_bridge(artifacts[0])
     land_mask = _read_r7(artifacts[1], verify_session=False)
-    p27_sets: list[CanonicalCells] = []
+    p27_archives: list[CheckedP27DynamicHexArchive] = []
     for artifact in artifacts[2 : 2 + MAX_P27_ARCHIVES]:
-        p27_sets.append(_read_r7(artifact, verify_session=True))
+        p27_archives.append(_read_p27_dynamic_hex_archive(artifact, land_mask.identity_set))
 
     r5 = _selected(bridge.ordered, 5)
     r7 = _selected(bridge.ordered, 7)
@@ -325,9 +439,40 @@ def verify(args: argparse.Namespace) -> str:
         raise VerificationError("land mask contains an identity absent from the bridge")
     if frozenset(r7) != land_mask.identity_set:
         raise VerificationError("bridge r7 set differs from the Phase 0D land mask")
-    for index, p27 in enumerate(p27_sets[:MAX_P27_ARCHIVES]):
-        if p27.identity_set != land_mask.identity_set:
-            raise VerificationError(f"P27 archive {index} differs from the land-mask identity set")
+    return CheckedH3ReferenceRelease(
+        bridge,
+        land_mask,
+        tuple(p27_archives),
+        fixture,
+        r5,
+        r7,
+    )
+
+
+def load_checked_p27_dynamic_hex_sources(
+    *,
+    bridge: Path,
+    land_mask: Path,
+    p27_archive_root: Path,
+    source_fixture: Path,
+) -> tuple[CheckedP27DynamicHexArchive, ...]:
+    """Return all three P27 tick-zero sources after the full pinned release proof."""
+
+    return _load_checked_release(
+        bridge,
+        land_mask,
+        p27_archive_root,
+        source_fixture,
+    ).p27_archives
+
+
+def verify(args: argparse.Namespace) -> str:
+    _load_checked_release(
+        args.bridge,
+        args.land_mask,
+        args.p27_archive_root,
+        args.source_fixture,
+    )
     return (
         "PER62_H3_EQUIVALENCE parquet_artifacts=5 source=48764 r5=3192 r7=45572 "
         f"source_digest={SOURCE_DIGEST} r5_digest={R5_DIGEST} r7_digest={R7_DIGEST} "

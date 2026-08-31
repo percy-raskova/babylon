@@ -3,8 +3,8 @@
 Loads the LEHD LODES JT00 (all jobs) S000 (all-workers aggregate) origin-
 destination commute matrix for the Detroit tri-county study area, builds an
 immutable :class:`scipy.sparse.csr_matrix` representation indexed by H3 res-7
-hex cells, and persists/retrieves the matrix via the Postgres
-``immutable_reference_lodes_od_matrix`` table for hot-restart resumption.
+hex cells. The reader can reconstruct a matrix from the Rust-owned reference
+relation, but this Python module cannot mutate that relation.
 
 Design constraints:
 
@@ -34,8 +34,7 @@ import gzip
 import logging
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
-from uuid import UUID
+from typing import Any
 
 import h3
 import numpy as np
@@ -43,9 +42,6 @@ import scipy.sparse as sp  # type: ignore[import-untyped]
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from babylon.domain.economics.node_kinds import NodeKind
-
-if TYPE_CHECKING:
-    from babylon.persistence.protocols import RuntimePersistence
 
 logger = logging.getLogger(__name__)
 
@@ -232,9 +228,8 @@ class LODESCommuteMatrixLoader:
     """Read on-disk LODES OD CSVs + serve year-scoped CSR matrices.
 
     Loader is constructed once per session. ``load_year`` is idempotent within
-    a process (cached). ``persist_to_postgres`` writes the matrix to the
-    ``immutable_reference_lodes_od_matrix`` table; ``load_year_from_postgres``
-    rebuilds the in-memory CSR from the persisted rows for hot-restart paths.
+    a process (cached). ``load_year_from_postgres`` rebuilds the in-memory CSR
+    from Rust-owned reference rows for read-only analysis paths.
 
     Per Constitution II.13 GATE-5: this is the *deterministic min-cost flow*
     component. Slime-mold conductivity routing is implemented in spec 064 as
@@ -351,92 +346,6 @@ class LODESCommuteMatrixLoader:
             return target_year
         # Choose nearest; ties → later year (better than older data for forward extrapolation)
         return min(years, key=lambda y: (abs(y - target_year), -y))
-
-    # ── Postgres I/O ────────────────────────────────────────────────────────
-
-    def persist_to_postgres(
-        self,
-        runtime: RuntimePersistence,
-        session_id: UUID,
-        year: int,
-    ) -> int:
-        """Insert this year's matrix into ``immutable_reference_lodes_od_matrix``.
-
-        Returns the row count inserted. Callers typically loop over scenario
-        years at session-init time, summing the per-year counts for the
-        ``InitializationReport.lodes_row_count`` field.
-        """
-        matrix = self.load_year(year)
-        rows: list[tuple[Any, ...]] = []
-        # Iterate CSR matrix as (row_idx, col_idx, value) triples.
-        coo = matrix.matrix.tocoo()
-        row_to_origin = {idx: hex_id for hex_id, idx in matrix.origin_hex_to_row.items()}
-        for r, c, v in zip(coo.row, coo.col, coo.data, strict=True):
-            origin = row_to_origin[int(r)]
-            dest_kind = matrix.dest_kind_by_col[int(c)]
-            dest_id = matrix.dest_node_id_by_col[int(c)]
-            rows.append((session_id, year, origin, dest_id, dest_kind.value, int(v)))
-        if not rows:
-            return 0
-        with (
-            runtime._pool.connection() as pg,  # type: ignore[attr-defined]  # noqa: SLF001
-            pg.cursor() as cur,
-        ):
-            cur.executemany(
-                """
-                INSERT INTO immutable_reference_lodes_od_matrix
-                    (session_id, year, home_hex, workplace_dest, workplace_dest_kind, s000_workers)
-                VALUES (%s, %s, %s, %s, %s, %s)
-                ON CONFLICT (session_id, year, home_hex, workplace_dest) DO NOTHING
-                """,
-                rows,
-            )
-        return len(rows)
-
-    def load_year_from_postgres(
-        self,
-        runtime: RuntimePersistence,
-        session_id: UUID,
-        year: int,
-    ) -> LODESYearMatrix:
-        """Rebuild a year matrix from previously-persisted Postgres rows.
-
-        Used by hot-restart paths so a resumed session does not pay the
-        on-disk LODES re-parse cost. The cached matrix is returned if present.
-        """
-        if year in self._year_cache:
-            return self._year_cache[year]
-
-        with (
-            runtime._pool.connection() as pg,  # type: ignore[attr-defined]  # noqa: SLF001
-            pg.cursor() as cur,
-        ):
-            cur.execute(
-                """
-                SELECT home_hex, workplace_dest, workplace_dest_kind, s000_workers
-                FROM immutable_reference_lodes_od_matrix
-                WHERE session_id = %s AND year = %s
-                """,
-                (session_id, year),
-            )
-            fetched = cur.fetchall()
-        if not fetched:
-            raise FileNotFoundError(
-                f"No persisted LODES matrix for session={session_id} year={year}"
-            )
-
-        pair_counts: dict[tuple[str, str], int] = {}
-        boundary_dest_kind: dict[str, NodeKind] = {}
-        for home_hex, workplace_dest, dest_kind_str, s000 in fetched:
-            pair_counts[(home_hex, workplace_dest)] = int(s000)
-            boundary_dest_kind[workplace_dest] = NodeKind(dest_kind_str)
-        matrix = self._build_csr_matrix(
-            pair_counts=pair_counts,
-            boundary_dest_kind=boundary_dest_kind,
-            year=year,
-        )
-        self._year_cache[year] = matrix
-        return matrix
 
     # ── Internal: file parsing + matrix assembly ────────────────────────────
 

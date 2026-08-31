@@ -383,9 +383,8 @@ def cz_adjunction() -> ScaleAdjunction:
     (3144 keys). It does NOT cover: Puerto Rico's 78 municipios (CZs are a
     CONUS+AK+HI concept; the 1990 ERS delineation never covered the
     territories), the 51 synthetic ``{state}999`` "rest-of-state" placeholder
-    rows the reference DB carries (excluded from "the county universe" the
-    same way ``engine.headless_runner.scopes._load_national_fips`` already
-    excludes them), and 19 counties created by post-1990 geography changes the
+    rows the reference DB carries (excluded from the county universe), and 19
+    counties created by post-1990 geography changes the
     crosswalk necessarily predates and that have no natural 1:1 predecessor to
     bridge to: Connecticut's 2022 county -> planning-region switch (9 regions,
     each spanning parts of the old counties) and Alaska's repeated borough/
@@ -446,8 +445,7 @@ def msa_adjunction() -> ScaleAdjunction:
 
     Built from the reference DB's ``bridge_county_metro`` / ``dim_metro_area``
     (OMB delineation, ``area_type='msa'``), keyed by ``cbsa_code`` (matches the
-    ``msa_code`` field the web layer already carries per territory,
-    ``web/game/models.py``/``postgres_schema.py``). Every MSA crosses state
+    ``msa_code`` field the frozen web layer carries per territory). Every MSA crosses state
     lines by construction (Amendment U) -- this rung is PARALLEL to
     ``county -> state``, never nested under it.
 

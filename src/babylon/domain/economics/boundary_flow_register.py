@@ -48,10 +48,9 @@ class BoundaryFlowRegister:
     """In-memory buffer + facade for the boundary_flow_register table.
 
     Rows are appended during the economics-stage of a tick. At end-of-tick
-    the buffer is folded into the :class:`PerTickTransactionEnvelope` and
-    cleared. The Postgres-side facade
-    (:meth:`PostgresRuntime.persist_tick_atomic`) commits the rows inside
-    the per-tick transaction (FR-008a).
+    the buffer is folded into the frozen :class:`PerTickTransactionEnvelope`
+    reference contract and cleared. The Rust runtime owns the authoritative
+    typed row and transaction boundary.
 
     The buffer is per-instance (not module-global) so multiple sessions
     advancing in parallel cannot leak rows into each other.

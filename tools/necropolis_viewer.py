@@ -40,13 +40,12 @@ from typing import Final
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 sys.path.insert(0, str(Path(__file__).parent))
 
-from shared import inject_parameters
-
 from babylon.config.defines import GameDefines
 from babylon.engine.optimization.objectives import (
     TICKS_PER_YEAR,
     format_phase_report,
 )
+from babylon.engine.optimization.params import inject_parameters
 from babylon.engine.scenarios import create_imperial_circuit_scenario
 from babylon.engine.simulation import Simulation
 from babylon.models.enums import EventType

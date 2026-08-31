@@ -15,8 +15,11 @@ Uses ``backend="in_memory"`` exclusively — no Postgres required.
 
 from __future__ import annotations
 
+import pytest
+
 from babylon.config.defines import GameDefines
 from babylon.engine.optimization import runner_api
+from babylon.engine.optimization.__main__ import build_parser
 from babylon.engine.optimization.backends.types import Result
 from babylon.engine.optimization.reproducibility import build_repro_record
 
@@ -78,7 +81,26 @@ class TestResultDeterminism:
     def test_repro_record_defines_hash_identical(self) -> None:
         defines = GameDefines()
         first, second = _run_twice(defines)
-        record_a = build_repro_record(first, scope_name=_SCENARIO, max_ticks=_MAX_TICKS)
-        record_b = build_repro_record(second, scope_name=_SCENARIO, max_ticks=_MAX_TICKS)
+        record_a = build_repro_record(first, scenario=_SCENARIO, max_ticks=_MAX_TICKS)
+        record_b = build_repro_record(second, scenario=_SCENARIO, max_ticks=_MAX_TICKS)
         assert record_a.defines_hash == record_b.defines_hash
         assert record_a == record_b
+        assert record_a.scenario == _SCENARIO
+        assert "scope_name" not in record_a.model_dump()
+
+    def test_retired_postgres_backend_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="Unknown backend 'headless'"):
+            runner_api.run(GameDefines(), backend="headless")
+
+    def test_cli_has_no_retired_postgres_scope_flag(self) -> None:
+        parser = build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(
+                [
+                    "sweep",
+                    "--param",
+                    "economy.base_subsistence=0.1:0.2:0.1",
+                    "--scope-name",
+                    "detroit-tri-county",
+                ]
+            )

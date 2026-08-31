@@ -1,8 +1,8 @@
 """Integration tests for spec-067 US3: downstream consumer query refactor.
 
-After spec-067 lands, ``hex_hydrator.py`` and ``county_aggregation.py`` must
-compute c/v/employment_proxy via ``SUM`` over the canonical leaves instead of
-``SELECT`` against the ``industry_id = 1 AND ownership_id = 1`` rollup row.
+The retained reference-data ``county_aggregation.py`` path computes
+c/v/employment_proxy via ``SUM`` over canonical leaves instead of selecting
+the ``industry_id = 1 AND ownership_id = 1`` rollup row.
 
 These tests verify:
   * No spec-066 hotfix filters remain in production paths (SC-004).
@@ -72,7 +72,7 @@ def wayne_county_2010_handle(post_067_session: Session) -> tuple[int, int]:
     return (row[0], row[1])
 
 
-# T038 — Wayne County 2010 via hex_hydrator (post-067 SUM-of-leaves path).
+# T038 — Wayne County 2010 via the post-067 SUM-of-leaves path.
 @pytest.mark.requires_reference_db
 def test_post_067_wayne_2010_via_hex_hydrator_within_bls_band(
     post_067_session: Session,
@@ -149,10 +149,7 @@ def test_post_067_no_filter_lines_remain_in_production_paths() -> None:
         r"AND\s+(?:fq\.)?ownership_id\s*=\s*1|AND\s+(?:fq\.)?industry_id\s*=\s*1"
     )
     repo_root = Path(__file__).resolve().parents[2]
-    target_files = [
-        repo_root / "src/babylon/persistence/hex_hydrator.py",
-        repo_root / "src/babylon/persistence/county_aggregation.py",
-    ]
+    target_files = [repo_root / "src/babylon/persistence/county_aggregation.py"]
     hits: list[str] = []
     for target in target_files:
         for lineno, line in enumerate(target.read_text().splitlines(), start=1):

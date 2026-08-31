@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.engine.headless_runner.scopes import (
+from babylon.data.reference_scope import (
     DETROIT_TRI_COUNTY_FIPS,
     MICHIGAN_FIPS,
     UnknownScopeError,

@@ -1,4 +1,4 @@
-//! Transactional installation of one exact representative H3 reference cohort.
+//! Transactional installation of the exact Michigan H3 reference bundle.
 
 #[cfg(test)]
 use std::io::Write as _;
@@ -6,6 +6,8 @@ use std::io::Write as _;
 use std::time::Duration;
 
 use babylon_kernel::tick_content_hash::RefDigestV1;
+use babylon_kernel::{sha256_of, H3CellId, H3CellIdError};
+use babylon_tick::h3_runtime::{MichiganDynamicHexFoundationV1, MichiganH3R8ChildParentV1};
 use postgres::{Client, Config, GenericClient, IsolationLevel, NoTls, Row, Transaction};
 
 use crate::h3_reference_cohort::MAX_H3_REFERENCE_CLOSURE_ROWS;
@@ -17,11 +19,15 @@ use crate::schema_epoch::{
     CURRENT_SCHEMA_EPOCH,
 };
 use crate::{
-    build_representative_h3_cohort_v1, H3CellId, H3CellIdError, H3ReferenceCellRow,
-    H3ReferenceCohort, H3ReferenceCohortError, H3ReferenceCohortReceipt, H3ReferenceOrigin,
+    build_representative_h3_cohort_v1, H3ReferenceCellRow, H3ReferenceCohort,
+    H3ReferenceCohortError, H3ReferenceCohortReceipt, H3ReferenceOrigin,
 };
 
 const H3_REFERENCE_COHORT_FORMAT_VERSION: i16 = 1;
+/// Sole verified pre-cutover prefix admitted before the terminal reader epoch.
+const H3_REFERENCE_INSTALLER_INPUT_EPOCH: usize = 6;
+const H3_REFERENCE_INSTALLER_ALLOWED_EPOCHS: [usize; 2] =
+    [H3_REFERENCE_INSTALLER_INPUT_EPOCH, CURRENT_SCHEMA_EPOCH];
 const H3_REFERENCE_ARTIFACT_NAME: &str = "bridge_county_h3.parquet";
 const H3_REFERENCE_ARTIFACT_MANIFEST_VERSION: &str = "2.0.0";
 const H3_REFERENCE_SESSION_SETTINGS_SQL: &str = "SET statement_timeout TO '30000ms'";
@@ -37,9 +43,16 @@ const H3_REFERENCE_SESSION_SETTINGS_QUERY: &str = "SELECT \
 const H3_REFERENCE_INSTALL_BATCH_ROWS: usize = 1_024;
 const MAX_H3_REFERENCE_INSTALL_BATCHES: usize =
     MAX_H3_REFERENCE_CLOSURE_ROWS.div_ceil(H3_REFERENCE_INSTALL_BATCH_ROWS);
+const MICHIGAN_R8_CHILD_ROWS: usize = 319_004;
+const MAX_MICHIGAN_R8_INSTALL_BATCHES: usize =
+    MICHIGAN_R8_CHILD_ROWS.div_ceil(H3_REFERENCE_INSTALL_BATCH_ROWS);
+const MICHIGAN_R8_PRODUCT_CODE: &str = "h3_res8_identity";
+const MICHIGAN_R8_SECTION_DOMAIN: &[u8] = b"babylon.h3.reference-r8-child-parent.v1\0";
+const MICHIGAN_REFERENCE_BUNDLE_DOMAIN: &[u8] = b"babylon.h3.reference-bundle-composite.v1\0";
 const MAX_H3_REFERENCE_CARDINALITY_QUERY_ROWS: usize = MAX_H3_REFERENCE_CLOSURE_ROWS + 1;
 const MAX_H3_REFERENCE_HEADER_ROWS: usize = 2;
 const H3_REFERENCE_HEADER_QUERY_LIMIT: i64 = 3;
+const H3_REFERENCE_PRODUCT_QUERY_LIMIT: i64 = 2;
 const MAX_H3_REFERENCE_INSTALL_COMMIT_ATTEMPTS: usize = 2;
 
 const READ_HEADER_SQL: &str = "SELECT ref_digest, format_version, artifact_name, \
@@ -58,6 +71,11 @@ const READ_CELLS_SQL: &str = "SELECT cell.cell_id, cell.resolution, \
     cell.ancestor_r7 FROM babylon_ref.h3_cell AS cell \
     WHERE cell.cell_id = ANY($1::bigint[]) \
     ORDER BY cell.cell_id LIMIT $2";
+const READ_R8_PRODUCT_SQL: &str = "SELECT product_code, artifact_sha256, semantic_sha256, \
+    row_count, evidence_class, measure_unit, denominator \
+    FROM babylon_ref.reference_product \
+    WHERE ref_digest = $1 AND product_code = $2 \
+    ORDER BY product_code LIMIT $3";
 const READ_MEMBERSHIP_CARDINALITY_SQL: &str = "SELECT pg_catalog.count(*) \
     FROM (SELECT 1 \
     FROM babylon_ref.h3_reference_membership AS membership \
@@ -84,6 +102,11 @@ const INSERT_MEMBERSHIP_SQL: &str = "INSERT INTO babylon_ref.h3_reference_member
     SELECT $1, input.cell_id, input.origin \
     FROM ROWS FROM (pg_catalog.unnest($2::bigint[]), pg_catalog.unnest($3::smallint[])) \
       AS input(cell_id, origin) \
+    ON CONFLICT DO NOTHING";
+const INSERT_R8_PRODUCT_SQL: &str = "INSERT INTO babylon_ref.reference_product \
+    (ref_digest, product_code, artifact_sha256, semantic_sha256, row_count, evidence_class, \
+     measure_unit, denominator) \
+    VALUES ($1, $2, $3, $3, $4, 'Derived', 'identity', NULL) \
     ON CONFLICT DO NOTHING";
 const WRITE_LOCAL_SETTINGS_SQL: &str = "SET LOCAL search_path TO pg_catalog; \
     SET LOCAL synchronous_commit TO on";
@@ -132,6 +155,16 @@ pub enum H3ReferenceInstallOperation {
         /// Lifecycle path that read the H3 cell rows.
         context: H3ReferenceMembershipReadContext,
     },
+    /// Read and verify the exact foundation-owned R8 child rows.
+    ReadR8CellRows {
+        /// Lifecycle path that read the R8 rows.
+        context: H3ReferenceMembershipReadContext,
+    },
+    /// Read and verify the exact foundation-owned R8 product receipt.
+    ReadR8Product {
+        /// Lifecycle path that read the product receipt.
+        context: H3ReferenceMembershipReadContext,
+    },
     /// Begin the serializable write transaction.
     BeginTransaction,
     /// Apply exact local transaction settings.
@@ -148,6 +181,10 @@ pub enum H3ReferenceInstallOperation {
     InsertHeader,
     /// Insert direct and derived membership rows.
     InsertMembership,
+    /// Insert the complete foundation-owned R8 child set.
+    InsertR8Cells,
+    /// Insert the exact foundation-owned R8 product receipt.
+    InsertR8Product,
     /// Commit the verified transaction.
     CommitTransaction,
     /// Roll back a failed transaction explicitly.
@@ -207,6 +244,10 @@ pub enum H3ReferenceInstallBoundedResource {
     MembershipRows,
     /// Batched canonical row insertions.
     InsertBatches,
+    /// Complete foundation-owned R8 child rows.
+    R8Rows,
+    /// Exact foundation product receipt rows.
+    ProductRows,
 }
 
 /// Exact equivalence surface which failed after an idempotent insert attempt.
@@ -220,6 +261,12 @@ pub enum H3ReferenceInstallConflict {
     Membership,
     /// Direct stored membership does not rebuild the supplied immutable cohort.
     RebuiltCohort,
+    /// The two typed static authorities do not form the governed Michigan bundle.
+    ReferenceBundleAuthority,
+    /// Stored foundation-owned R8 cells differ from the governed section.
+    R8Cells,
+    /// Stored foundation product provenance differs from the governed receipt.
+    R8ProductReceipt,
 }
 
 /// Closed installer refusal and failure states.
@@ -231,9 +278,9 @@ pub enum H3ReferenceInstallError {
     Lock(LegacyAdopterError),
     /// The existing schema epoch or owner contract failed inspection.
     SchemaEpoch(SchemaEpochError),
-    /// Installation requires one exact fully migrated Rust epoch.
+    /// Installation requires one of the exact verified cutover epochs.
     ExactSchemaEpochRequired {
-        expected: usize,
+        allowed: [usize; 2],
         actual: usize,
         origin: SchemaEpochOrigin,
     },
@@ -256,6 +303,10 @@ pub enum H3ReferenceInstallError {
         resource: H3ReferenceInstallBoundedResource,
         actual: usize,
         max: usize,
+    },
+    /// A bounded installer buffer could not be allocated.
+    Allocation {
+        resource: H3ReferenceInstallBoundedResource,
     },
     /// Existing durable rows differ from the exact supplied cohort.
     Conflict {
@@ -292,12 +343,15 @@ impl std::fmt::Display for H3ReferenceInstallError {
 
 impl std::error::Error for H3ReferenceInstallError {}
 
-/// Exact installation receipt for the durable representative cohort.
+/// Exact installation receipt for the durable Michigan reference bundle.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct H3ReferenceInstallReport {
     disposition: H3ReferenceInstallDisposition,
     receipt: H3ReferenceCohortReceipt,
     closure_cell_count: usize,
+    r8_child_count: usize,
+    r8_child_parent_digest: RefDigestV1,
+    reference_bundle_digest: RefDigestV1,
     commit_attempts: usize,
 }
 
@@ -356,6 +410,24 @@ impl H3ReferenceInstallReport {
         self.closure_cell_count
     }
 
+    /// Complete foundation-owned resolution-eight child count.
+    #[must_use]
+    pub fn r8_child_count(&self) -> usize {
+        self.r8_child_count
+    }
+
+    /// Digest of the exact self-framed R8 child-to-R7-parent section.
+    #[must_use]
+    pub fn r8_child_parent_digest(&self) -> RefDigestV1 {
+        self.r8_child_parent_digest
+    }
+
+    /// Digest joining the unchanged base cohort and the governed R8 section.
+    #[must_use]
+    pub fn reference_bundle_digest(&self) -> RefDigestV1 {
+        self.reference_bundle_digest
+    }
+
     /// Number of write-commit attempts made by this invocation.
     #[must_use]
     pub fn commit_attempts(&self) -> usize {
@@ -366,6 +438,7 @@ impl H3ReferenceInstallReport {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InstallPresence {
     Absent,
+    BaseOnly,
     Exact,
 }
 
@@ -389,38 +462,185 @@ trait InstallDriver {
     ) -> Result<InstallPresence, H3ReferenceInstallError>;
 }
 
-/// Install one already-validated representative H3 cohort into the exact current schema epoch.
+#[derive(Debug, Clone, Copy)]
+struct MichiganH3ReferenceBundleV1<'a> {
+    cohort: &'a H3ReferenceCohort,
+    foundation: &'a MichiganDynamicHexFoundationV1,
+    r8_child_parent_digest: RefDigestV1,
+    reference_bundle_digest: RefDigestV1,
+}
+
+impl<'a> MichiganH3ReferenceBundleV1<'a> {
+    fn validate(
+        cohort: &'a H3ReferenceCohort,
+        foundation: &'a MichiganDynamicHexFoundationV1,
+    ) -> Result<Self, H3ReferenceInstallError> {
+        let receipt = cohort.receipt();
+        if foundation.base_reference_cohort_digest() != *receipt.ref_digest().as_bytes()
+            || foundation.source_r7_digest() != *receipt.source_r7_digest().as_bytes()
+        {
+            return Err(conflict(
+                H3ReferenceInstallConflict::ReferenceBundleAuthority,
+            ));
+        }
+        let rows = foundation.r8_child_parent_rows();
+        if rows.len() != MICHIGAN_R8_CHILD_ROWS {
+            return Err(H3ReferenceInstallError::Bounds {
+                resource: H3ReferenceInstallBoundedResource::R8Rows,
+                actual: rows.len(),
+                max: MICHIGAN_R8_CHILD_ROWS,
+            });
+        }
+        validate_r8_child_parent_rows(cohort, rows)?;
+        let r8_child_parent_digest = digest_r8_child_parent_rows(rows)?;
+        if foundation.r8_section_digest() != *r8_child_parent_digest.as_bytes() {
+            return Err(conflict(
+                H3ReferenceInstallConflict::ReferenceBundleAuthority,
+            ));
+        }
+        let reference_bundle_digest =
+            digest_reference_bundle(receipt.ref_digest(), r8_child_parent_digest);
+        if foundation.reference_bundle_digest() != *reference_bundle_digest.as_bytes() {
+            return Err(conflict(
+                H3ReferenceInstallConflict::ReferenceBundleAuthority,
+            ));
+        }
+        Ok(Self {
+            cohort,
+            foundation,
+            r8_child_parent_digest,
+            reference_bundle_digest,
+        })
+    }
+
+    fn r8_rows(&self) -> &[MichiganH3R8ChildParentV1] {
+        self.foundation.r8_child_parent_rows()
+    }
+}
+
+fn validate_r8_child_parent_rows(
+    cohort: &H3ReferenceCohort,
+    rows: &[MichiganH3R8ChildParentV1],
+) -> Result<(), H3ReferenceInstallError> {
+    let mut previous = None;
+    for row in rows.iter().take(MICHIGAN_R8_CHILD_ROWS) {
+        let child = row.child_cell_id();
+        let parent = row.parent_r7_cell_id();
+        if child.resolution() != 8
+            || parent.resolution() != 7
+            || child.immediate_parent() != Some(parent)
+            || previous.is_some_and(|prior| prior >= child)
+            || cohort
+                .rows()
+                .binary_search_by_key(&child.as_u64(), |candidate| candidate.cell_id().as_u64())
+                .is_ok()
+        {
+            return Err(conflict(
+                H3ReferenceInstallConflict::ReferenceBundleAuthority,
+            ));
+        }
+        let parent_index = cohort
+            .rows()
+            .binary_search_by_key(&parent.as_u64(), |candidate| candidate.cell_id().as_u64())
+            .map_err(|_| conflict(H3ReferenceInstallConflict::ReferenceBundleAuthority))?;
+        let parent_row = &cohort.rows()[parent_index];
+        if parent_row.resolution() != 7 || parent_row.origin() != H3ReferenceOrigin::Direct {
+            return Err(conflict(
+                H3ReferenceInstallConflict::ReferenceBundleAuthority,
+            ));
+        }
+        previous = Some(child);
+    }
+    Ok(())
+}
+
+fn digest_r8_child_parent_rows(
+    rows: &[MichiganH3R8ChildParentV1],
+) -> Result<RefDigestV1, H3ReferenceInstallError> {
+    let capacity = rows
+        .len()
+        .checked_mul(16)
+        .and_then(|payload| {
+            MICHIGAN_R8_SECTION_DOMAIN
+                .len()
+                .checked_add(8)?
+                .checked_add(payload)
+        })
+        .ok_or(H3ReferenceInstallError::Bounds {
+            resource: H3ReferenceInstallBoundedResource::R8Rows,
+            actual: usize::MAX,
+            max: MICHIGAN_R8_CHILD_ROWS,
+        })?;
+    let mut framed = Vec::new();
+    framed
+        .try_reserve_exact(capacity)
+        .map_err(|_| H3ReferenceInstallError::Allocation {
+            resource: H3ReferenceInstallBoundedResource::R8Rows,
+        })?;
+    framed.extend_from_slice(MICHIGAN_R8_SECTION_DOMAIN);
+    framed.extend_from_slice(
+        &u64::try_from(rows.len())
+            .map_err(|_| H3ReferenceInstallError::Bounds {
+                resource: H3ReferenceInstallBoundedResource::R8Rows,
+                actual: rows.len(),
+                max: MICHIGAN_R8_CHILD_ROWS,
+            })?
+            .to_be_bytes(),
+    );
+    for row in rows.iter().take(MICHIGAN_R8_CHILD_ROWS) {
+        framed.extend_from_slice(&row.child_cell_id().to_be_bytes());
+        framed.extend_from_slice(&row.parent_r7_cell_id().to_be_bytes());
+    }
+    Ok(RefDigestV1::from_bytes(sha256_of(&framed)))
+}
+
+fn digest_reference_bundle(
+    base_ref_digest: RefDigestV1,
+    r8_child_parent_digest: RefDigestV1,
+) -> RefDigestV1 {
+    let mut framed = Vec::with_capacity(MICHIGAN_REFERENCE_BUNDLE_DOMAIN.len() + 64);
+    framed.extend_from_slice(MICHIGAN_REFERENCE_BUNDLE_DOMAIN);
+    framed.extend_from_slice(base_ref_digest.as_bytes());
+    framed.extend_from_slice(r8_child_parent_digest.as_bytes());
+    RefDigestV1::from_bytes(sha256_of(&framed))
+}
+
+/// Install the exact Michigan H3 reference bundle into the verified cutover epoch.
 ///
 /// This immutable reference-data maintenance entry point does not request runtime writer
-/// authority and never advances the schema epoch for the caller.
+/// authority and never advances the schema epoch for the caller. It admits only the exact
+/// additive H3 prefix (v6) or the terminal canonical-reader prefix (v7). The base cohort,
+/// complete R8 child section, and R8 product receipt commit through one transaction.
 ///
 /// # Errors
 /// Returns [`H3ReferenceInstallError`] before publication for any target, lock, owner, epoch,
 /// transaction, equivalence, reconciliation, or cleanup failure.
-pub fn install_representative_h3_cohort(
+pub fn install_michigan_h3_reference_bundle_v1(
     config: &Config,
     cohort: &H3ReferenceCohort,
+    foundation: &MichiganDynamicHexFoundationV1,
 ) -> Result<H3ReferenceInstallReport, H3ReferenceInstallError> {
+    let bundle = MichiganH3ReferenceBundleV1::validate(cohort, foundation)?;
     let mut attempt = attempt_install_transaction;
-    install_representative_h3_cohort_using(config, cohort, &mut attempt)
+    install_michigan_h3_reference_bundle_using(config, &bundle, &mut attempt)
 }
 
-fn install_representative_h3_cohort_using<Attempt>(
+fn install_michigan_h3_reference_bundle_using<Attempt>(
     config: &Config,
-    cohort: &H3ReferenceCohort,
+    bundle: &MichiganH3ReferenceBundleV1<'_>,
     attempt: &mut Attempt,
 ) -> Result<H3ReferenceInstallReport, H3ReferenceInstallError>
 where
     Attempt: FnMut(
         &mut Client,
-        &H3ReferenceCohort,
+        &MichiganH3ReferenceBundleV1<'_>,
         usize,
     ) -> Result<CommitAttempt, H3ReferenceInstallError>,
 {
     validate_legacy_connection_target(config).map_err(H3ReferenceInstallError::ConnectionTarget)?;
     let bounded = installer_config(config);
     let mut session = LockedInstallSession::connect(&bounded)?;
-    let primary = install_under_lock(&bounded, &mut session, cohort, attempt);
+    let primary = install_under_lock(&bounded, &mut session, bundle, attempt);
     session.finish(primary)
 }
 
@@ -431,13 +651,13 @@ fn installer_config(config: &Config) -> Config {
 fn install_under_lock<Attempt>(
     config: &Config,
     session: &mut LockedInstallSession,
-    cohort: &H3ReferenceCohort,
+    bundle: &MichiganH3ReferenceBundleV1<'_>,
     attempt: &mut Attempt,
 ) -> Result<H3ReferenceInstallReport, H3ReferenceInstallError>
 where
     Attempt: FnMut(
         &mut Client,
-        &H3ReferenceCohort,
+        &MichiganH3ReferenceBundleV1<'_>,
         usize,
     ) -> Result<CommitAttempt, H3ReferenceInstallError>,
 {
@@ -445,19 +665,19 @@ where
     prepare_installer_session(session.client())?;
     let initial = inspect_presence(
         session.client(),
-        cohort,
+        bundle,
         H3ReferenceMembershipReadContext::InitialInspection,
     )?;
     let resolution = {
         let mut driver = DatabaseInstallDriver {
             config,
             session,
-            cohort,
+            bundle,
             attempt,
         };
         drive_install(initial, &mut driver)?
     };
-    build_report(cohort, resolution)
+    build_report(bundle, resolution)
 }
 
 fn drive_install<Driver: InstallDriver>(
@@ -503,10 +723,10 @@ fn drive_install<Driver: InstallDriver>(
 }
 
 fn build_report(
-    cohort: &H3ReferenceCohort,
+    bundle: &MichiganH3ReferenceBundleV1<'_>,
     resolution: InstallResolution,
 ) -> Result<H3ReferenceInstallReport, H3ReferenceInstallError> {
-    let receipt = cohort.receipt().clone();
+    let receipt = bundle.cohort.receipt().clone();
     let closure_cell_count = receipt
         .direct_cell_count()
         .checked_add(receipt.derived_ancestor_count())
@@ -519,6 +739,9 @@ fn build_report(
         disposition: resolution.disposition,
         receipt,
         closure_cell_count,
+        r8_child_count: bundle.r8_rows().len(),
+        r8_child_parent_digest: bundle.r8_child_parent_digest,
+        reference_bundle_digest: bundle.reference_bundle_digest,
         commit_attempts: resolution.commit_attempts,
     })
 }
@@ -572,7 +795,7 @@ impl LockedInstallSession {
 struct DatabaseInstallDriver<'a, Attempt> {
     config: &'a Config,
     session: &'a mut LockedInstallSession,
-    cohort: &'a H3ReferenceCohort,
+    bundle: &'a MichiganH3ReferenceBundleV1<'a>,
     attempt: &'a mut Attempt,
 }
 
@@ -580,12 +803,12 @@ impl<Attempt> InstallDriver for DatabaseInstallDriver<'_, Attempt>
 where
     Attempt: FnMut(
         &mut Client,
-        &H3ReferenceCohort,
+        &MichiganH3ReferenceBundleV1<'_>,
         usize,
     ) -> Result<CommitAttempt, H3ReferenceInstallError>,
 {
     fn attempt_commit(&mut self, attempt: usize) -> Result<CommitAttempt, H3ReferenceInstallError> {
-        (self.attempt)(self.session.client(), self.cohort, attempt)
+        (self.attempt)(self.session.client(), self.bundle, attempt)
     }
 
     fn reconcile(
@@ -597,7 +820,7 @@ where
         prepare_installer_session(self.session.client())?;
         inspect_presence(
             self.session.client(),
-            self.cohort,
+            self.bundle,
             H3ReferenceMembershipReadContext::AmbiguousCommitReconciliation {
                 attempt: after_attempt,
             },
@@ -608,11 +831,13 @@ where
 fn require_exact_schema_epoch(client: &mut Client) -> Result<(), H3ReferenceInstallError> {
     let (origin, actual) =
         inspect_schema_epoch_under_lock(client).map_err(H3ReferenceInstallError::SchemaEpoch)?;
-    if origin == SchemaEpochOrigin::ExistingRustPrefix && actual == CURRENT_SCHEMA_EPOCH {
+    if origin == SchemaEpochOrigin::ExistingRustPrefix
+        && H3_REFERENCE_INSTALLER_ALLOWED_EPOCHS.contains(&actual)
+    {
         Ok(())
     } else {
         Err(H3ReferenceInstallError::ExactSchemaEpochRequired {
-            expected: CURRENT_SCHEMA_EPOCH,
+            allowed: H3_REFERENCE_INSTALLER_ALLOWED_EPOCHS,
             actual,
             origin,
         })
@@ -668,9 +893,10 @@ struct StoredReferenceRow {
 
 fn inspect_presence<ClientType: GenericClient>(
     client: &mut ClientType,
-    cohort: &H3ReferenceCohort,
+    bundle: &MichiganH3ReferenceBundleV1<'_>,
     context: H3ReferenceMembershipReadContext,
 ) -> Result<InstallPresence, H3ReferenceInstallError> {
+    let cohort = bundle.cohort;
     let receipt = cohort.receipt();
     let ref_digest = receipt.ref_digest();
     let artifact_digest = receipt.artifact_digest();
@@ -701,7 +927,14 @@ fn inspect_presence<ClientType: GenericClient>(
     let header = decode_header(row)?;
     validate_header(&header, receipt)?;
     verify_membership(client, cohort, context)?;
-    Ok(InstallPresence::Exact)
+    if read_r8_product(client, bundle, context)?.is_some() {
+        verify_r8_cells(client, bundle, context)?;
+        Ok(InstallPresence::Exact)
+    } else if any_r8_cells_present(client, bundle, context)? {
+        Err(conflict(H3ReferenceInstallConflict::R8ProductReceipt))
+    } else {
+        Ok(InstallPresence::BaseOnly)
+    }
 }
 
 fn decode_header(row: &Row) -> Result<CohortHeader, H3ReferenceInstallError> {
@@ -762,6 +995,152 @@ fn validate_header(
         return Err(conflict(H3ReferenceInstallConflict::CohortHeader));
     }
     Ok(())
+}
+
+fn read_r8_product<ClientType: GenericClient>(
+    client: &mut ClientType,
+    bundle: &MichiganH3ReferenceBundleV1<'_>,
+    context: H3ReferenceMembershipReadContext,
+) -> Result<Option<()>, H3ReferenceInstallError> {
+    let operation = H3ReferenceInstallOperation::ReadR8Product { context };
+    let ref_digest = bundle.cohort.receipt().ref_digest();
+    let rows = client
+        .query(
+            READ_R8_PRODUCT_SQL,
+            &[
+                &ref_digest.as_bytes().as_slice(),
+                &MICHIGAN_R8_PRODUCT_CODE,
+                &H3_REFERENCE_PRODUCT_QUERY_LIMIT,
+            ],
+        )
+        .map_err(|error| server_database_error(operation, &error))?;
+    if rows.is_empty() {
+        return Ok(None);
+    }
+    if rows.len() != 1 {
+        return Err(H3ReferenceInstallError::Bounds {
+            resource: H3ReferenceInstallBoundedResource::ProductRows,
+            actual: rows.len(),
+            max: 1,
+        });
+    }
+    let row = &rows[0];
+    let product_code: String = decode_value(row, 0, operation)?;
+    let artifact_digest = decode_digest(row, 1, operation)?;
+    let semantic_digest = decode_optional_digest(row, 2, operation)?;
+    let row_count = decode_count(row, 3, operation)?;
+    let evidence_class: String = decode_value(row, 4, operation)?;
+    let measure_unit: Option<String> = decode_value(row, 5, operation)?;
+    let denominator: Option<String> = decode_value(row, 6, operation)?;
+    let exact = product_code == MICHIGAN_R8_PRODUCT_CODE
+        && artifact_digest == bundle.r8_child_parent_digest
+        && semantic_digest == Some(bundle.r8_child_parent_digest)
+        && row_count == bundle.r8_rows().len()
+        && evidence_class == "Derived"
+        && measure_unit.as_deref() == Some("identity")
+        && denominator.is_none();
+    if exact {
+        Ok(Some(()))
+    } else {
+        Err(conflict(H3ReferenceInstallConflict::R8ProductReceipt))
+    }
+}
+
+fn any_r8_cells_present<ClientType: GenericClient>(
+    client: &mut ClientType,
+    bundle: &MichiganH3ReferenceBundleV1<'_>,
+    context: H3ReferenceMembershipReadContext,
+) -> Result<bool, H3ReferenceInstallError> {
+    let operation = H3ReferenceInstallOperation::ReadR8CellRows { context };
+    for batch in bundle.r8_rows().chunks(H3_REFERENCE_INSTALL_BATCH_ROWS) {
+        if !read_r8_cell_batch(client, batch, operation)?.is_empty() {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn verify_r8_cells<ClientType: GenericClient>(
+    client: &mut ClientType,
+    bundle: &MichiganH3ReferenceBundleV1<'_>,
+    context: H3ReferenceMembershipReadContext,
+) -> Result<(), H3ReferenceInstallError> {
+    let operation = H3ReferenceInstallOperation::ReadR8CellRows { context };
+    for batch in bundle.r8_rows().chunks(H3_REFERENCE_INSTALL_BATCH_ROWS) {
+        let stored = read_r8_cell_batch(client, batch, operation)?;
+        if stored.len() != batch.len() {
+            return Err(conflict(H3ReferenceInstallConflict::R8Cells));
+        }
+        for (row, expected) in stored.iter().zip(batch) {
+            verify_r8_cell_row(row, expected, operation)?;
+        }
+    }
+    Ok(())
+}
+
+fn read_r8_cell_batch<ClientType: GenericClient>(
+    client: &mut ClientType,
+    batch: &[MichiganH3R8ChildParentV1],
+    operation: H3ReferenceInstallOperation,
+) -> Result<Vec<Row>, H3ReferenceInstallError> {
+    let cell_ids = batch
+        .iter()
+        .map(|row| cell_to_sql(row.child_cell_id(), operation))
+        .collect::<Result<Vec<_>, _>>()?;
+    let bounded_limit = batch
+        .len()
+        .checked_add(1)
+        .filter(|limit| *limit <= H3_REFERENCE_INSTALL_BATCH_ROWS + 1)
+        .ok_or(H3ReferenceInstallError::Bounds {
+            resource: H3ReferenceInstallBoundedResource::R8Rows,
+            actual: batch.len(),
+            max: H3_REFERENCE_INSTALL_BATCH_ROWS,
+        })?;
+    let query_limit =
+        i64::try_from(bounded_limit).map_err(|_| H3ReferenceInstallError::Bounds {
+            resource: H3ReferenceInstallBoundedResource::R8Rows,
+            actual: batch.len(),
+            max: H3_REFERENCE_INSTALL_BATCH_ROWS,
+        })?;
+    let rows = client
+        .query(READ_CELLS_SQL, &[&cell_ids, &query_limit])
+        .map_err(|error| server_database_error(operation, &error))?;
+    if rows.len() > batch.len() {
+        return Err(H3ReferenceInstallError::Bounds {
+            resource: H3ReferenceInstallBoundedResource::R8Rows,
+            actual: rows.len(),
+            max: batch.len(),
+        });
+    }
+    Ok(rows)
+}
+
+fn verify_r8_cell_row(
+    row: &Row,
+    expected: &MichiganH3R8ChildParentV1,
+    operation: H3ReferenceInstallOperation,
+) -> Result<(), H3ReferenceInstallError> {
+    let child = expected.child_cell_id();
+    let parent = expected.parent_r7_cell_id();
+    let stored_cell = decode_cell(row, 0, operation)?;
+    let stored_resolution: i16 = decode_value(row, 1, operation)?;
+    let stored_immediate_parent = decode_optional_cell(row, 2, operation)?;
+    let stored_ancestor_r4 = decode_optional_cell(row, 3, operation)?;
+    let stored_ancestor_r5 = decode_optional_cell(row, 4, operation)?;
+    let stored_ancestor_r6 = decode_optional_cell(row, 5, operation)?;
+    let stored_ancestor_r7 = decode_optional_cell(row, 6, operation)?;
+    let exact = stored_cell == child
+        && stored_resolution == 8
+        && stored_immediate_parent == Some(parent)
+        && stored_ancestor_r4 == Some(ancestor_at(child, 4, operation)?)
+        && stored_ancestor_r5 == Some(ancestor_at(child, 5, operation)?)
+        && stored_ancestor_r6 == Some(ancestor_at(child, 6, operation)?)
+        && stored_ancestor_r7 == Some(parent);
+    if exact {
+        Ok(())
+    } else {
+        Err(conflict(H3ReferenceInstallConflict::R8Cells))
+    }
 }
 
 #[cfg(test)]
@@ -1073,13 +1452,13 @@ fn compare_stored_row(
 
 fn attempt_install_transaction(
     client: &mut Client,
-    cohort: &H3ReferenceCohort,
+    bundle: &MichiganH3ReferenceBundleV1<'_>,
     attempt: usize,
 ) -> Result<CommitAttempt, H3ReferenceInstallError> {
     debug_assert!(attempt > 0, "install attempts must be one-based");
     let transaction = prepare_install_transaction(
         client,
-        cohort,
+        bundle,
         H3ReferenceMembershipReadContext::CommitAttempt { attempt },
     )?;
     match transaction.commit() {
@@ -1093,7 +1472,7 @@ fn attempt_install_transaction(
 
 fn prepare_install_transaction<'client>(
     client: &'client mut Client,
-    cohort: &H3ReferenceCohort,
+    bundle: &MichiganH3ReferenceBundleV1<'_>,
     context: H3ReferenceMembershipReadContext,
 ) -> Result<Transaction<'client>, H3ReferenceInstallError> {
     let mut transaction = client
@@ -1102,7 +1481,7 @@ fn prepare_install_transaction<'client>(
         .read_only(false)
         .start()
         .map_err(|_| database_error(H3ReferenceInstallOperation::BeginTransaction))?;
-    let verification = install_and_verify(&mut transaction, cohort, context);
+    let verification = install_and_verify(&mut transaction, bundle, context);
     if let Err(primary) = verification {
         return rollback_preserving(transaction, primary);
     }
@@ -1111,16 +1490,20 @@ fn prepare_install_transaction<'client>(
 
 fn install_and_verify(
     transaction: &mut Transaction<'_>,
-    cohort: &H3ReferenceCohort,
+    bundle: &MichiganH3ReferenceBundleV1<'_>,
     context: H3ReferenceMembershipReadContext,
 ) -> Result<(), H3ReferenceInstallError> {
     prepare_transaction(transaction)?;
-    insert_cells(transaction, cohort.rows())?;
-    insert_header(transaction, cohort.receipt())?;
-    insert_membership(transaction, cohort)?;
-    match inspect_presence(transaction, cohort, context)? {
+    insert_cells(transaction, bundle.cohort.rows())?;
+    insert_r8_cells(transaction, bundle.r8_rows())?;
+    insert_header(transaction, bundle.cohort.receipt())?;
+    insert_membership(transaction, bundle.cohort)?;
+    insert_r8_product(transaction, bundle)?;
+    match inspect_presence(transaction, bundle, context)? {
         InstallPresence::Exact => Ok(()),
-        InstallPresence::Absent => Err(conflict(H3ReferenceInstallConflict::CohortHeader)),
+        InstallPresence::Absent | InstallPresence::BaseOnly => {
+            Err(conflict(H3ReferenceInstallConflict::R8ProductReceipt))
+        }
     }
 }
 
@@ -1229,6 +1612,76 @@ fn insert_cell_batch(
     Ok(())
 }
 
+fn insert_r8_cells(
+    transaction: &mut Transaction<'_>,
+    rows: &[MichiganH3R8ChildParentV1],
+) -> Result<(), H3ReferenceInstallError> {
+    let batch_count = rows.len().div_ceil(H3_REFERENCE_INSTALL_BATCH_ROWS);
+    if rows.len() != MICHIGAN_R8_CHILD_ROWS || batch_count > MAX_MICHIGAN_R8_INSTALL_BATCHES {
+        return Err(H3ReferenceInstallError::Bounds {
+            resource: H3ReferenceInstallBoundedResource::R8Rows,
+            actual: rows.len(),
+            max: MICHIGAN_R8_CHILD_ROWS,
+        });
+    }
+    for batch in rows
+        .chunks(H3_REFERENCE_INSTALL_BATCH_ROWS)
+        .take(MAX_MICHIGAN_R8_INSTALL_BATCHES)
+    {
+        insert_r8_cell_batch(transaction, batch)?;
+    }
+    Ok(())
+}
+
+fn insert_r8_cell_batch(
+    transaction: &mut Transaction<'_>,
+    rows: &[MichiganH3R8ChildParentV1],
+) -> Result<(), H3ReferenceInstallError> {
+    let operation = H3ReferenceInstallOperation::InsertR8Cells;
+    let mut cell_ids = Vec::with_capacity(rows.len());
+    let mut resolutions = Vec::with_capacity(rows.len());
+    let mut immediate_parents = Vec::with_capacity(rows.len());
+    let mut ancestors_r4 = Vec::with_capacity(rows.len());
+    let mut ancestors_r5 = Vec::with_capacity(rows.len());
+    let mut ancestors_r6 = Vec::with_capacity(rows.len());
+    let mut ancestors_r7 = Vec::with_capacity(rows.len());
+    for row in rows.iter().take(H3_REFERENCE_INSTALL_BATCH_ROWS) {
+        let child = row.child_cell_id();
+        let parent = row.parent_r7_cell_id();
+        cell_ids.push(cell_to_sql(child, operation)?);
+        resolutions.push(8_i16);
+        immediate_parents.push(Some(cell_to_sql(parent, operation)?));
+        ancestors_r4.push(Some(cell_to_sql(
+            ancestor_at(child, 4, operation)?,
+            operation,
+        )?));
+        ancestors_r5.push(Some(cell_to_sql(
+            ancestor_at(child, 5, operation)?,
+            operation,
+        )?));
+        ancestors_r6.push(Some(cell_to_sql(
+            ancestor_at(child, 6, operation)?,
+            operation,
+        )?));
+        ancestors_r7.push(Some(cell_to_sql(parent, operation)?));
+    }
+    transaction
+        .execute(
+            INSERT_CELLS_SQL,
+            &[
+                &cell_ids,
+                &resolutions,
+                &immediate_parents,
+                &ancestors_r4,
+                &ancestors_r5,
+                &ancestors_r6,
+                &ancestors_r7,
+            ],
+        )
+        .map_err(|error| server_database_error(operation, &error))?;
+    Ok(())
+}
+
 fn insert_header(
     transaction: &mut Transaction<'_>,
     receipt: &H3ReferenceCohortReceipt,
@@ -1305,6 +1758,32 @@ fn insert_membership_batch(
     Ok(())
 }
 
+fn insert_r8_product(
+    transaction: &mut Transaction<'_>,
+    bundle: &MichiganH3ReferenceBundleV1<'_>,
+) -> Result<(), H3ReferenceInstallError> {
+    let operation = H3ReferenceInstallOperation::InsertR8Product;
+    let ref_digest = bundle.cohort.receipt().ref_digest();
+    let row_count =
+        i64::try_from(bundle.r8_rows().len()).map_err(|_| H3ReferenceInstallError::Bounds {
+            resource: H3ReferenceInstallBoundedResource::R8Rows,
+            actual: bundle.r8_rows().len(),
+            max: MICHIGAN_R8_CHILD_ROWS,
+        })?;
+    transaction
+        .execute(
+            INSERT_R8_PRODUCT_SQL,
+            &[
+                &ref_digest.as_bytes().as_slice(),
+                &MICHIGAN_R8_PRODUCT_CODE,
+                &bundle.r8_child_parent_digest.as_bytes().as_slice(),
+                &row_count,
+            ],
+        )
+        .map_err(|error| server_database_error(operation, &error))?;
+    Ok(())
+}
+
 fn rollback_preserving<T>(
     transaction: Transaction<'_>,
     primary: H3ReferenceInstallError,
@@ -1351,6 +1830,20 @@ fn decode_digest(
     Ok(RefDigestV1::from_bytes(bytes))
 }
 
+fn decode_optional_digest(
+    row: &Row,
+    index: usize,
+    operation: H3ReferenceInstallOperation,
+) -> Result<Option<RefDigestV1>, H3ReferenceInstallError> {
+    let raw: Option<Vec<u8>> = decode_value(row, index, operation)?;
+    raw.map(|value| {
+        let bytes = <[u8; 32]>::try_from(value.as_slice())
+            .map_err(|_| H3ReferenceInstallError::Decode { operation })?;
+        Ok(RefDigestV1::from_bytes(bytes))
+    })
+    .transpose()
+}
+
 fn decode_count(
     row: &Row,
     index: usize,
@@ -1368,6 +1861,25 @@ fn decode_optional_cell(
     let raw: Option<i64> = decode_value(row, index, operation)?;
     raw.map(H3CellId::try_from)
         .transpose()
+        .map_err(|source| H3ReferenceInstallError::CellIdentity { operation, source })
+}
+
+fn decode_cell(
+    row: &Row,
+    index: usize,
+    operation: H3ReferenceInstallOperation,
+) -> Result<H3CellId, H3ReferenceInstallError> {
+    let raw: i64 = decode_value(row, index, operation)?;
+    H3CellId::try_from(raw)
+        .map_err(|source| H3ReferenceInstallError::CellIdentity { operation, source })
+}
+
+fn ancestor_at(
+    cell: H3CellId,
+    resolution: u8,
+    operation: H3ReferenceInstallOperation,
+) -> Result<H3CellId, H3ReferenceInstallError> {
+    cell.ancestor_at(resolution)
         .map_err(|source| H3ReferenceInstallError::CellIdentity { operation, source })
 }
 
@@ -1433,23 +1945,23 @@ fn conflict(component: H3ReferenceInstallConflict) -> H3ReferenceInstallError {
 #[cfg(test)]
 pub(crate) mod live_postgres_tests {
     use std::io::Write as _;
-    use std::mem::size_of;
     use std::time::Instant;
 
     use babylon_kernel::tick_content_hash::RefDigestV1;
     use postgres::{error::SqlState, Config, NoTls};
 
     use super::{
-        attempt_install_transaction, conflict, install_representative_h3_cohort,
-        install_representative_h3_cohort_using, prepare_install_transaction, CommitAttempt,
+        attempt_install_transaction, conflict, install_michigan_h3_reference_bundle_using,
+        install_michigan_h3_reference_bundle_v1, prepare_install_transaction, CommitAttempt,
         H3ReferenceInstallBoundedResource, H3ReferenceInstallConflict,
         H3ReferenceInstallDisposition, H3ReferenceInstallError, H3ReferenceMembershipReadContext,
+        MichiganH3ReferenceBundleV1,
     };
-    use crate::{build_representative_h3_cohort_v1, H3CellId, H3ReferenceCohort};
+    use crate::{
+        michigan_dynamic_hex_foundation_v1, representative_h3_reference_cohort_v1,
+        H3ReferenceCohort,
+    };
 
-    const SOURCE_FIXTURE: &[u8] = include_bytes!("../tests/fixtures/h3_reference_source_v1.bin");
-    const SOURCE_DOMAIN: &[u8] = b"babylon.h3.reference-source.v1\0";
-    const SOURCE_COUNT: usize = 48_764;
     const BACKEND_TERMINATION_TIMEOUT_MILLIS: i64 = 5_000;
     const CLOSURE_COUNT: usize = 59_849;
     const EXCESS_MEMBERSHIP_COUNT: usize = 2;
@@ -1467,12 +1979,6 @@ pub(crate) mod live_postgres_tests {
         0x080d_7fff_ffff_ffff,
         0x080e_bfff_ffff_ffff,
     ];
-    const ARTIFACT_DIGEST: [u8; 32] = [
-        0xe6, 0x0d, 0x93, 0xa4, 0x3d, 0x6c, 0x66, 0xe8, 0x4f, 0x1e, 0x53, 0xec, 0xaf, 0x63, 0x3a,
-        0xf5, 0x91, 0x1b, 0xd5, 0xb4, 0x8b, 0x0e, 0xf0, 0xad, 0x6a, 0x01, 0x2f, 0x6d, 0x9f, 0x5b,
-        0x13, 0xa9,
-    ];
-
     #[derive(Debug, Clone, Copy)]
     enum H3AtomicityPhase {
         ForcedRollback,
@@ -1520,29 +2026,33 @@ pub(crate) mod live_postgres_tests {
         suite_started: Instant,
     ) {
         let cohort = representative_cohort();
-        assert_eq!(reference_counts(config), (0, 0, 0));
+        let bundle = representative_bundle(&cohort);
+        assert_eq!(reference_counts(config), (0, 0, 0, 0));
         verify_membership_read_is_join_plan_independent(config, &cohort);
-        assert_eq!(reference_counts(config), (0, 0, 0));
+        assert_eq!(reference_counts(config), (0, 0, 0, 0));
+        install_base_only_prefix(config, &cohort);
+        assert_eq!(reference_counts(config), (59_849, 1, 59_849, 0));
         let forced_rollback_started = start_phase(H3AtomicityPhase::ForcedRollback, suite_started);
-        let mut forced_failure =
-            |client: &mut postgres::Client, cohort: &H3ReferenceCohort, attempt: usize| {
-                let transaction = prepare_install_transaction(
-                    client,
-                    cohort,
-                    H3ReferenceMembershipReadContext::CommitAttempt { attempt },
-                )?;
-                super::rollback_preserving(
-                    transaction,
-                    conflict(H3ReferenceInstallConflict::Membership),
-                )
-            };
+        let mut forced_failure = |client: &mut postgres::Client,
+                                  bundle: &MichiganH3ReferenceBundleV1<'_>,
+                                  attempt: usize| {
+            let transaction = prepare_install_transaction(
+                client,
+                bundle,
+                H3ReferenceMembershipReadContext::CommitAttempt { attempt },
+            )?;
+            super::rollback_preserving(
+                transaction,
+                conflict(H3ReferenceInstallConflict::Membership),
+            )
+        };
         assert!(matches!(
-            install_representative_h3_cohort_using(config, &cohort, &mut forced_failure),
+            install_michigan_h3_reference_bundle_using(config, &bundle, &mut forced_failure),
             Err(super::H3ReferenceInstallError::Conflict {
                 component: H3ReferenceInstallConflict::Membership
             })
         ));
-        assert_eq!(reference_counts(config), (0, 0, 0));
+        assert_eq!(reference_counts(config), (59_849, 1, 59_849, 0));
         finish_phase(
             H3AtomicityPhase::ForcedRollback,
             forced_rollback_started,
@@ -1551,23 +2061,25 @@ pub(crate) mod live_postgres_tests {
 
         let killed_retry_started = start_phase(H3AtomicityPhase::KilledRetry, suite_started);
         let mut first_attempt = true;
-        let mut killed_attempt =
-            |client: &mut postgres::Client, cohort: &H3ReferenceCohort, attempt: usize| {
-                if first_attempt {
-                    first_attempt = false;
-                    killed_before_commit(client, cohort, admin, attempt)
-                } else {
-                    attempt_install_transaction(client, cohort, attempt)
-                }
-            };
+        let mut killed_attempt = |client: &mut postgres::Client,
+                                  bundle: &MichiganH3ReferenceBundleV1<'_>,
+                                  attempt: usize| {
+            if first_attempt {
+                first_attempt = false;
+                killed_before_commit(client, bundle, admin, attempt)
+            } else {
+                attempt_install_transaction(client, bundle, attempt)
+            }
+        };
         let report =
-            install_representative_h3_cohort_using(config, &cohort, &mut killed_attempt).unwrap();
+            install_michigan_h3_reference_bundle_using(config, &bundle, &mut killed_attempt)
+                .unwrap();
         assert_eq!(
             report.disposition(),
             H3ReferenceInstallDisposition::Installed
         );
         assert_eq!(report.commit_attempts(), 2);
-        assert_eq!(reference_counts(config), (59_849, 1, 59_849));
+        assert_eq!(reference_counts(config), (378_853, 1, 59_849, 1));
         finish_phase(
             H3AtomicityPhase::KilledRetry,
             killed_retry_started,
@@ -1605,16 +2117,39 @@ pub(crate) mod live_postgres_tests {
         super::insert_cells(&mut transaction, cohort.rows()).unwrap();
         super::insert_header(&mut transaction, cohort.receipt()).unwrap();
         super::insert_membership(&mut transaction, cohort).unwrap();
-        assert_eq!(
-            super::inspect_presence(
-                &mut transaction,
-                cohort,
-                H3ReferenceMembershipReadContext::CommitAttempt { attempt: 1 },
-            )
-            .unwrap(),
-            super::InstallPresence::Exact
-        );
+        super::verify_membership(
+            &mut transaction,
+            cohort,
+            H3ReferenceMembershipReadContext::CommitAttempt { attempt: 1 },
+        )
+        .unwrap();
         transaction.rollback().unwrap();
+        session.finish(Ok(())).unwrap();
+    }
+
+    fn install_base_only_prefix(config: &Config, cohort: &H3ReferenceCohort) {
+        let bounded = super::installer_config(config);
+        let mut session = super::LockedInstallSession::connect(&bounded).unwrap();
+        super::require_exact_schema_epoch(session.client()).unwrap();
+        super::prepare_installer_session(session.client()).unwrap();
+        let mut transaction = session
+            .client()
+            .build_transaction()
+            .isolation_level(postgres::IsolationLevel::Serializable)
+            .read_only(false)
+            .start()
+            .unwrap();
+        super::prepare_transaction(&mut transaction).unwrap();
+        super::insert_cells(&mut transaction, cohort.rows()).unwrap();
+        super::insert_header(&mut transaction, cohort.receipt()).unwrap();
+        super::insert_membership(&mut transaction, cohort).unwrap();
+        super::verify_membership(
+            &mut transaction,
+            cohort,
+            H3ReferenceMembershipReadContext::CommitAttempt { attempt: 1 },
+        )
+        .unwrap();
+        transaction.commit().unwrap();
         session.finish(Ok(())).unwrap();
     }
 
@@ -1625,29 +2160,31 @@ pub(crate) mod live_postgres_tests {
     ) {
         let phase_started = start_phase(H3AtomicityPhase::CommittedReconciliation, suite_started);
         let cohort = representative_cohort();
+        let bundle = representative_bundle(&cohort);
         let mut first_attempt = true;
-        let mut ambiguous_attempt =
-            |client: &mut postgres::Client, cohort: &H3ReferenceCohort, attempt: usize| {
-                let backend_pid = backend_pid(client);
-                let outcome = attempt_install_transaction(client, cohort, attempt)?;
-                if first_attempt {
-                    first_attempt = false;
-                    assert_eq!(outcome, CommitAttempt::Committed);
-                    terminate_backend(admin, backend_pid);
-                    Ok(CommitAttempt::Ambiguous)
-                } else {
-                    Ok(outcome)
-                }
-            };
+        let mut ambiguous_attempt = |client: &mut postgres::Client,
+                                     bundle: &MichiganH3ReferenceBundleV1<'_>,
+                                     attempt: usize| {
+            let backend_pid = backend_pid(client);
+            let outcome = attempt_install_transaction(client, bundle, attempt)?;
+            if first_attempt {
+                first_attempt = false;
+                assert_eq!(outcome, CommitAttempt::Committed);
+                terminate_backend(admin, backend_pid);
+                Ok(CommitAttempt::Ambiguous)
+            } else {
+                Ok(outcome)
+            }
+        };
         let report =
-            install_representative_h3_cohort_using(config, &cohort, &mut ambiguous_attempt)
+            install_michigan_h3_reference_bundle_using(config, &bundle, &mut ambiguous_attempt)
                 .unwrap();
         assert_eq!(
             report.disposition(),
             H3ReferenceInstallDisposition::ReconciledAfterAmbiguousCommit
         );
         assert_eq!(report.commit_attempts(), 1);
-        assert_eq!(reference_counts(config), (59_849, 1, 59_849));
+        assert_eq!(reference_counts(config), (378_853, 1, 59_849, 1));
         finish_phase(
             H3AtomicityPhase::CommittedReconciliation,
             phase_started,
@@ -1702,16 +2239,25 @@ pub(crate) mod live_postgres_tests {
 
     pub(crate) fn verify_membership_cardinality_bound(config: &Config) {
         let cohort = representative_cohort();
-        let report = install_representative_h3_cohort(config, &cohort).unwrap();
+        let foundation = michigan_dynamic_hex_foundation_v1().unwrap();
+        let report = install_michigan_h3_reference_bundle_v1(config, &cohort, foundation).unwrap();
         assert_eq!(
             report.disposition(),
             H3ReferenceInstallDisposition::Installed
         );
         insert_excess_membership(config, cohort.receipt().ref_digest());
         let excess_count = i64::try_from(CLOSURE_COUNT + EXCESS_MEMBERSHIP_COUNT).unwrap();
-        assert_eq!(reference_counts(config), (excess_count, 1, excess_count));
         assert_eq!(
-            install_representative_h3_cohort(config, &cohort),
+            reference_counts(config),
+            (
+                378_853 + i64::try_from(EXCESS_MEMBERSHIP_COUNT).unwrap(),
+                1,
+                excess_count,
+                1
+            )
+        );
+        assert_eq!(
+            install_michigan_h3_reference_bundle_v1(config, &cohort, foundation),
             Err(H3ReferenceInstallError::Bounds {
                 resource: H3ReferenceInstallBoundedResource::MembershipRows,
                 actual: CLOSURE_COUNT + 1,
@@ -1763,14 +2309,14 @@ pub(crate) mod live_postgres_tests {
 
     fn killed_before_commit(
         client: &mut postgres::Client,
-        cohort: &H3ReferenceCohort,
+        bundle: &MichiganH3ReferenceBundleV1<'_>,
         admin: &Config,
         attempt: usize,
     ) -> Result<CommitAttempt, super::H3ReferenceInstallError> {
         let backend_pid = backend_pid(client);
         let transaction = prepare_install_transaction(
             client,
-            cohort,
+            bundle,
             H3ReferenceMembershipReadContext::CommitAttempt { attempt },
         )?;
         terminate_backend(admin, backend_pid);
@@ -1800,43 +2346,30 @@ pub(crate) mod live_postgres_tests {
         assert!(terminated);
     }
 
-    fn reference_counts(config: &Config) -> (i64, i64, i64) {
+    fn reference_counts(config: &Config) -> (i64, i64, i64, i64) {
         let mut client = config.connect(NoTls).unwrap();
         let row = client
             .query_one(
                 "SELECT (SELECT pg_catalog.count(*) FROM babylon_ref.h3_cell), \
                         (SELECT pg_catalog.count(*) FROM babylon_ref.h3_reference_cohort), \
                         (SELECT pg_catalog.count(*) \
-                         FROM babylon_ref.h3_reference_membership)",
+                         FROM babylon_ref.h3_reference_membership), \
+                        (SELECT pg_catalog.count(*) FROM babylon_ref.reference_product)",
                 &[],
             )
             .unwrap();
-        (row.get(0), row.get(1), row.get(2))
+        (row.get(0), row.get(1), row.get(2), row.get(3))
     }
 
     fn representative_cohort() -> H3ReferenceCohort {
-        build_representative_h3_cohort_v1(RefDigestV1::from_bytes(ARTIFACT_DIGEST), &source_cells())
-            .unwrap()
+        representative_h3_reference_cohort_v1()
+            .expect("the sole checked-in source fixture must validate")
+            .clone()
     }
 
-    fn source_cells() -> Vec<H3CellId> {
-        assert!(SOURCE_FIXTURE.starts_with(SOURCE_DOMAIN));
-        let count_offset = SOURCE_DOMAIN.len();
-        let payload_offset = count_offset + size_of::<u64>();
-        let count = u64::from_be_bytes(
-            SOURCE_FIXTURE[count_offset..payload_offset]
-                .try_into()
-                .unwrap(),
-        );
-        assert_eq!(usize::try_from(count).unwrap(), SOURCE_COUNT);
-        SOURCE_FIXTURE[payload_offset..]
-            .chunks_exact(size_of::<u64>())
-            .take(SOURCE_COUNT)
-            .map(|chunk| {
-                let raw = u64::from_be_bytes(chunk.try_into().unwrap());
-                H3CellId::try_from(raw).unwrap()
-            })
-            .collect()
+    fn representative_bundle(cohort: &H3ReferenceCohort) -> MichiganH3ReferenceBundleV1<'_> {
+        MichiganH3ReferenceBundleV1::validate(cohort, michigan_dynamic_hex_foundation_v1().unwrap())
+            .unwrap()
     }
 }
 
@@ -1844,8 +2377,8 @@ pub(crate) mod live_postgres_tests {
 mod tests {
     use super::{
         database_error, drive_install, installer_config, preserve_rollback_result, CommitAttempt,
-        InstallDriver, InstallPresence, H3_REFERENCE_SESSION_SETTINGS_SQL,
-        MAX_H3_REFERENCE_INSTALL_COMMIT_ATTEMPTS,
+        InstallDriver, InstallPresence, H3_REFERENCE_INSTALLER_ALLOWED_EPOCHS,
+        H3_REFERENCE_SESSION_SETTINGS_SQL, MAX_H3_REFERENCE_INSTALL_COMMIT_ATTEMPTS,
     };
     use crate::{
         H3ReferenceInstallConflict, H3ReferenceInstallDisposition, H3ReferenceInstallError,
@@ -1945,6 +2478,25 @@ mod tests {
     }
 
     #[test]
+    fn typed_epoch_refusal_names_both_exact_installer_epochs() {
+        assert_eq!(H3_REFERENCE_INSTALLER_ALLOWED_EPOCHS, [6, 7]);
+        let refusal = H3ReferenceInstallError::ExactSchemaEpochRequired {
+            allowed: H3_REFERENCE_INSTALLER_ALLOWED_EPOCHS,
+            actual: 2,
+            origin: crate::SchemaEpochOrigin::ExistingRustPrefix,
+        };
+
+        assert_eq!(
+            refusal,
+            H3ReferenceInstallError::ExactSchemaEpochRequired {
+                allowed: [6, 7],
+                actual: 2,
+                origin: crate::SchemaEpochOrigin::ExistingRustPrefix,
+            }
+        );
+    }
+
+    #[test]
     fn committed_install_reports_installed_after_one_attempt() {
         let mut driver = ScriptedDriver::new([Some(CommitAttempt::Committed), None], [None, None]);
         let resolution = drive_install(InstallPresence::Absent, &mut driver).unwrap();
@@ -1958,12 +2510,26 @@ mod tests {
         assert_eq!(&driver.received_attempts[..driver.attempt_calls], &[1]);
         assert_eq!(
             &driver.received_reconciliations[..driver.reconciliation_calls],
-            &[]
+            &[] as &[usize]
         );
     }
 
     #[test]
-    fn exact_preexisting_cohort_skips_commit() {
+    fn exact_base_only_prefix_attempts_the_finite_r8_extension() {
+        let mut driver = ScriptedDriver::new([Some(CommitAttempt::Committed), None], [None, None]);
+        let resolution = drive_install(InstallPresence::BaseOnly, &mut driver).unwrap();
+
+        assert_eq!(
+            resolution.disposition,
+            H3ReferenceInstallDisposition::Installed
+        );
+        assert_eq!(resolution.commit_attempts, 1);
+        assert_eq!((driver.attempt_calls, driver.reconciliation_calls), (1, 0));
+        assert_eq!(&driver.received_attempts[..driver.attempt_calls], &[1]);
+    }
+
+    #[test]
+    fn exact_preexisting_reference_bundle_skips_commit() {
         let mut driver = ScriptedDriver::new([None, None], [None, None]);
         let resolution = drive_install(InstallPresence::Exact, &mut driver).unwrap();
 
@@ -1976,7 +2542,7 @@ mod tests {
     }
 
     #[test]
-    fn ambiguous_commit_reconciles_exact_cohort_without_retry() {
+    fn ambiguous_commit_reconciles_exact_reference_bundle_without_retry() {
         let mut driver = ScriptedDriver::new(
             [Some(CommitAttempt::Ambiguous), None],
             [Some(InstallPresence::Exact), None],

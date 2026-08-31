@@ -1,4 +1,4 @@
-name: Weekly — Simulation Trace + Sweep Artifacts
+name: Weekly — Parameter Sweep Artifact
 
 # ADR181 R3(ii): per-leg split of the monolithic nightly (the Sunday leg).
 
@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   sim-artifacts:
-    name: Simulation Trace + Sweep Artifacts
+    name: Parameter Sweep Artifact
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -24,34 +24,12 @@ jobs:
         with:
           ref: dev
       - uses: ./.github/actions/bootstrap-python
-      - uses: ./.github/actions/bootstrap-persistence
-      # sim:trace's headless runner requires the reference DB at
-      # data/sqlite/marxist-data-3NF.sqlite — exactly where this action
-      # installs the pinned ci-data subset.
-      - uses: ./.github/actions/fetch-reference-db
-      # …and the Postgres RUNTIME (spec-087: the headless runner writes its
-      # dynamic_* tables through a psycopg pool; _open_pool hard-requires
-      # BABYLON_PG_DSN/BABYLON_TEST_PG_DSN).
-      - uses: ./.github/actions/postgres-up
-      - name: Babylon runtime schema bootstrap
-        run: mise run db:bootstrap
-      - name: Simulation trace
-        env:
-          BABYLON_TEST_PG_DSN: "dbname=babylon_test host=localhost port=5433 user=test password=test"
-        run: mise run sim:trace 200
       - name: Parameter sweep
-        env:
-          BABYLON_TEST_PG_DSN: "dbname=babylon_test host=localhost port=5433 user=test password=test"
         run: mise run sim:sweep 200
-      - name: Stop Postgres
-        if: always()
-        run: tools/ci_postgres_compose.sh down
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: sim-analysis-${{ github.run_id }}
-          path: |
-            results/trace.csv
-            results/sweep.csv
+          path: results/sweep.csv
           retention-days: 90

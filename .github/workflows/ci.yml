@@ -219,51 +219,28 @@ jobs:
         run: mise run qa:regression
 
       - name: qa:vault-regression (golden-vault byte-gate, in-process scenario — WO-53)
-        run: mise run qa:vault-regression-ci
+        run: mise run qa:vault-regression
 
       - name: Gate-coverage truth probe (declared evidence verified at gate cadence)
         run: mise run check:gate-coverage-truth
 
   pg-integration:
     name: Postgres Integration Tier (PG 17, pinned runtime)
-    # ADR176 ruling 33's un-gate: the PG-backed integration subset runs on
-    # every PR against the same pinned base/runtime/package contract + initdb
-    # the dev box uses, with the CI config fork (runner-sized memory).
-    # The subset is DECLARED in .mise.toml (test:integration-pg) — widen it
-    # only with green evidence; narrowing it is a gate change.
+    # The one-way cutover replaced the Python writer's integration subset with
+    # the task-owned Rust live matrix. The runner proves clean activation,
+    # atomicity, rollback, mutation refusal, restart, and legacy adoption.
     runs-on: ubuntu-latest
     timeout-minutes: 99
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: ./.github/actions/bootstrap-python
-
       - uses: ./.github/actions/bootstrap-persistence
-
-      - uses: ./.github/actions/fetch-reference-db
-
-      - name: Build + start the isolated Postgres (CI fork; pinned runtime/package contract)
-        # The shared wrapper selects BABYLON_PG_DATA=babylon-pg-ci. That bare
-        # name is a NAMED VOLUME (the base file's own convention), inherently
-        # fresh on an ephemeral runner. See docker-compose.ci.yml for why this
-        # replaced the tmpfs override.
-        uses: ./.github/actions/postgres-up
-
-      - name: Bootstrap the canonical schema (digest-stamped, idempotent)
-        run: mise run db:bootstrap
 
       - name: Rust PostgreSQL atomicity and installed-mutation contracts
         timeout-minutes: 69
         env:
           BABYLON_LEGACY_ADOPTER_LIVE_FOCUS: pr
-        run: mise run test:rust-legacy-adopter-pg
-
-      - name: PG-backed integration subset (declared, data-drive-free)
-        run: mise run test:integration-pg
-
-      - name: Stop Postgres
-        if: always()
-        run: tools/ci_postgres_compose.sh down
+        run: tools/run_rust_legacy_adopter_pg.sh
 
   security:
     # Blocking since 2026-07-11: item 41 closed the CVE wave (73 -> 5, the

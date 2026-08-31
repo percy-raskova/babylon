@@ -1,4 +1,4 @@
-//! Live `PostgreSQL` contracts for the representative H3 cohort installer.
+//! Live `PostgreSQL` contracts for the Michigan H3 reference-bundle installer.
 
 use super::{
     assert_lock_released, authority_snapshot, database_user, repository_root, AuthoritySnapshot,
@@ -6,28 +6,30 @@ use super::{
 };
 use babylon_kernel::tick_content_hash::RefDigestV1;
 use babylon_persistence::{
-    adopt_legacy_schema, build_representative_h3_cohort_v1, compiled_schema_migrations,
-    install_representative_h3_cohort, migrate_schema_epoch, request_rust_writer_authority,
-    H3CellId, H3ReferenceCohort, H3ReferenceInstallConflict, H3ReferenceInstallDisposition,
-    H3ReferenceInstallError, H3ReferenceInstallOperation, H3ReferenceInstallReport,
-    LegacyAdopterError, RustWriterAuthorityError, SchemaEpochError, SchemaEpochOrigin,
+    adopt_legacy_schema, compiled_schema_migrations, install_michigan_h3_reference_bundle_v1,
+    michigan_dynamic_hex_foundation_v1, migrate_schema_epoch,
+    representative_h3_reference_cohort_v1, H3ReferenceCohort, H3ReferenceInstallConflict,
+    H3ReferenceInstallDisposition, H3ReferenceInstallError, H3ReferenceInstallOperation,
+    H3ReferenceInstallReport, LegacyAdopterError, SchemaEpochError, SchemaEpochOrigin,
     SCHEMA_ADVISORY_LOCK_KEY,
 };
 use postgres::{Config, NoTls};
-use std::mem::size_of;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-const SOURCE_FIXTURE: &[u8] = include_bytes!("../fixtures/h3_reference_source_v1.bin");
-const SOURCE_DOMAIN: &[u8] = b"babylon.h3.reference-source.v1\0";
-const SOURCE_COUNT: usize = 48_764;
 const CLOSURE_COUNT: usize = 59_849;
+const SOURCE_COUNT: usize = 48_764;
+const R8_CHILD_COUNT: usize = 319_004;
 const MAX_COHORT_SNAPSHOT_ROWS: usize = 2;
 const MAX_EPOCH_CATALOG_ROWS: usize = 16;
 const MAX_LEDGER_ROWS: usize = 3;
 const ARTIFACT_DIGEST_HEX: &str =
     "e60d93a43d6c66e84f1e53ecaf633af5911bd5b48b0ef0ad6a012f6d9f5b13a9";
 const REF_DIGEST_HEX: &str = "92b21ff325bde67f26565f52882d3664daacd6d51423f2a588344da012fd4161";
+const R8_SECTION_DIGEST_HEX: &str =
+    "b5ebf405140f6f79ddbc44fa1005b195bed0bc28e0eacf2d8e1697cd9c839491";
+const REFERENCE_BUNDLE_DIGEST_HEX: &str =
+    "84bbffa9b2388aa168c065e710a61313fbd46522d2022b628f0919ecffec9831";
 const BRIDGE_PARQUET_ENV: &str = "BABYLON_PER62_BRIDGE_PARQUET";
 const LAND_MASK_PARQUET_ENV: &str = "BABYLON_PER62_LAND_MASK_PARQUET";
 const P27_ARCHIVE_ROOT_ENV: &str = "BABYLON_PER62_P27_ARCHIVE_ROOT";
@@ -39,7 +41,9 @@ struct ReferenceSnapshot {
     membership_count: i64,
     direct_membership_count: i64,
     derived_membership_count: i64,
+    product_count: i64,
     cohorts: Vec<CohortSnapshot>,
+    products: Vec<ProductSnapshot>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,6 +61,18 @@ struct CohortSnapshot {
     direct_cell_count: i64,
     derived_ancestor_count: i64,
     closure_cell_count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProductSnapshot {
+    ref_digest: String,
+    product_code: String,
+    artifact_sha256: String,
+    semantic_sha256: Option<String>,
+    row_count: i64,
+    evidence_class: String,
+    measure_unit: Option<String>,
+    denominator: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -90,8 +106,8 @@ pub(super) fn verify_h3_reference_release_equivalence(base: &Config) {
     let land_mask = required_path(LAND_MASK_PARQUET_ENV);
     let p27_root = required_path(P27_ARCHIVE_ROOT_ENV);
     let verifier = repository.join("tools/verify_h3_reference_release.py");
-    let fixture = repository
-        .join("rust/crates/babylon-persistence/tests/fixtures/h3_reference_source_v1.bin");
+    let fixture =
+        repository.join("rust/crates/babylon-persistence/src/fixtures/h3_reference_source_v1.bin");
     let status = Command::new("timeout")
         .args([
             "--signal=TERM",
@@ -121,12 +137,12 @@ pub(super) fn verify_h3_reference_release_equivalence(base: &Config) {
 
     let cohort = representative_cohort();
     let (database, config) = exact_epoch_database(base, "h3_release_equivalence");
-    let installed = install_representative_h3_cohort(&config, &cohort)
+    let installed = install_reference_bundle(&config, &cohort)
         .expect("release-proved cohort must install into the exact current epoch");
     assert_exact_report(&installed, H3ReferenceInstallDisposition::Installed, 1);
     let installed_snapshot = reference_snapshot(&config);
     assert_eq!(installed_snapshot, expected_installed_snapshot());
-    let retry = install_representative_h3_cohort(&config, &cohort)
+    let retry = install_reference_bundle(&config, &cohort)
         .expect("release-proved cohort retry must be idempotent");
     assert_exact_report(&retry, H3ReferenceInstallDisposition::AlreadyPresent, 0);
     assert_eq!(reference_snapshot(&config), installed_snapshot);
@@ -156,16 +172,11 @@ fn verify_frozen_legacy_migration_install(
     assert!(adoption.transaction_verified);
     let pre_migration_snapshot = frozen_legacy_snapshot(&config);
     assert!(pre_migration_snapshot.authority_schemas.is_empty());
-    assert_writer_authority_refused();
 
     let migration = migrate_schema_epoch(&config).expect("adopted legacy database must migrate");
     assert_eq!(migration.origin, SchemaEpochOrigin::ExactLegacy);
-    let current_epoch = current_schema_epoch();
-    assert_eq!(
-        (migration.prior_applied, migration.final_applied),
-        (0, current_epoch)
-    );
-    assert_eq!(migration.applied_versions.len(), current_epoch);
+    assert_eq!((migration.prior_applied, migration.final_applied), (0, 6));
+    assert_eq!(migration.applied_versions.len(), 6);
     assert_eq!(migration.legacy_adoption.as_ref(), Some(&adoption));
     // A successful migration has already run `verify_post_epoch_census`, which proves the
     // governed epoch-owned rows and the unchanged frozen legacy census before returning.
@@ -181,38 +192,35 @@ fn verify_frozen_legacy_migration_install(
     assert!(pre_migration_snapshot.census.len() <= MAX_LEGACY_CENSUS_ROWS);
     assert!(post_migration_snapshot.census.len() <= MAX_LEGACY_CENSUS_ROWS);
 
-    let installed = install_representative_h3_cohort(&config, cohort)
+    let installed = install_reference_bundle(&config, cohort)
         .expect("migrated frozen legacy database must install the exact cohort");
     assert_exact_report(&installed, H3ReferenceInstallDisposition::Installed, 1);
     let installed_snapshot = reference_snapshot(&config);
     assert_eq!(installed_snapshot, expected_installed_snapshot());
     assert_eq!(frozen_legacy_snapshot(&config), post_migration_snapshot);
 
-    let retry = install_representative_h3_cohort(&config, cohort)
+    let retry = install_reference_bundle(&config, cohort)
         .expect("identical legacy-migrated cohort install must be idempotent");
     assert_exact_report(&retry, H3ReferenceInstallDisposition::AlreadyPresent, 0);
     assert_eq!(reference_snapshot(&config), installed_snapshot);
     assert_eq!(frozen_legacy_snapshot(&config), post_migration_snapshot);
-    assert_writer_authority_refused();
     assert_lock_released(&config);
     database.cleanup();
 }
 
 fn verify_exact_epoch_install_and_retry(base: &Config, cohort: &H3ReferenceCohort) {
     let (database, config) = exact_epoch_database(base, "h3_installer_exact");
-    assert_writer_authority_refused();
 
-    let installed = install_representative_h3_cohort(&config, cohort)
-        .expect("the exact current epoch must install the representative cohort");
+    let installed = install_reference_bundle(&config, cohort)
+        .expect("the exact current epoch must install the Michigan H3 reference bundle");
     assert_exact_report(&installed, H3ReferenceInstallDisposition::Installed, 1);
     let before_retry = reference_snapshot(&config);
     assert_eq!(before_retry, expected_installed_snapshot());
 
-    let retry = install_representative_h3_cohort(&config, cohort)
-        .expect("an exact installed cohort must be idempotent");
+    let retry = install_reference_bundle(&config, cohort)
+        .expect("an exact installed reference bundle must be idempotent");
     assert_exact_report(&retry, H3ReferenceInstallDisposition::AlreadyPresent, 0);
     assert_eq!(reference_snapshot(&config), before_retry);
-    assert_writer_authority_refused();
     assert_lock_released(&config);
     database.cleanup();
 }
@@ -222,7 +230,7 @@ fn verify_connection_failure_redacts_credentials(cohort: &H3ReferenceCohort) {
 
     let mut unavailable = Config::new();
     unavailable.host("127.0.0.1").port(1).password(PASSWORD);
-    let error = install_representative_h3_cohort(&unavailable, cohort)
+    let error = install_reference_bundle(&unavailable, cohort)
         .expect_err("the unreachable loopback port must refuse the installer connection");
 
     match &error {
@@ -240,13 +248,13 @@ fn verify_fresh_refusal(base: &Config, cohort: &H3ReferenceCohort) {
     let database = ScratchDatabase::empty(base, "h3_installer_fresh", database_user(base));
     let config = database.config(base);
     let before = babylon_catalog_snapshot(&config);
-    match install_representative_h3_cohort(&config, cohort) {
+    match install_reference_bundle(&config, cohort) {
         Err(H3ReferenceInstallError::ExactSchemaEpochRequired {
-            expected,
+            allowed,
             actual,
             origin,
         }) => {
-            assert_eq!(expected, current_schema_epoch());
+            assert_eq!(allowed, [6, current_schema_epoch()]);
             assert_eq!(actual, 0);
             assert_eq!(origin, SchemaEpochOrigin::Fresh);
         }
@@ -262,13 +270,13 @@ fn verify_exact_vtwo_refusal(base: &Config, cohort: &H3ReferenceCohort) {
     let config = database.config(base);
     establish_vtwo_prefix(&config);
     let before = vtwo_snapshot(&config);
-    match install_representative_h3_cohort(&config, cohort) {
+    match install_reference_bundle(&config, cohort) {
         Err(H3ReferenceInstallError::ExactSchemaEpochRequired {
-            expected,
+            allowed,
             actual,
             origin,
         }) => {
-            assert_eq!(expected, current_schema_epoch());
+            assert_eq!(allowed, [6, current_schema_epoch()]);
             assert_eq!(actual, 2);
             assert_eq!(origin, SchemaEpochOrigin::ExistingRustPrefix);
         }
@@ -292,7 +300,7 @@ fn verify_lock_refusal(base: &Config, cohort: &H3ReferenceCohort) {
     assert!(locked);
     let before = reference_snapshot(&config);
     assert!(matches!(
-        install_representative_h3_cohort(&config, cohort),
+        install_reference_bundle(&config, cohort),
         Err(H3ReferenceInstallError::Lock(
             LegacyAdopterError::LockUnavailable
         ))
@@ -321,7 +329,7 @@ fn verify_non_owner_refusal(base: &Config, owner: &str, cohort: &H3ReferenceCoho
     let admin_config = database.config(base);
     let before = reference_snapshot(&admin_config);
     assert_eq!(
-        install_representative_h3_cohort(&admin_config, cohort),
+        install_reference_bundle(&admin_config, cohort),
         Err(H3ReferenceInstallError::SchemaEpoch(
             SchemaEpochError::CurrentUserIsNotDatabaseOwner,
         )),
@@ -338,7 +346,7 @@ fn verify_preflight_artifact_identity_conflict(base: &Config, cohort: &H3Referen
     let before = reference_snapshot(&config);
     assert_eq!((before.h3_cell_count, before.cohort_count), (0, 1));
     assert_eq!(
-        install_representative_h3_cohort(&config, cohort),
+        install_reference_bundle(&config, cohort),
         Err(H3ReferenceInstallError::Conflict {
             component: H3ReferenceInstallConflict::ArtifactIdentity,
         })
@@ -350,8 +358,8 @@ fn verify_preflight_artifact_identity_conflict(base: &Config, cohort: &H3Referen
 
 fn verify_installed_state_conflicts(base: &Config, cohort: &H3ReferenceCohort) {
     let (template, config) = exact_epoch_database(base, "h3_installer_mutation_template");
-    let installed = install_representative_h3_cohort(&config, cohort)
-        .expect("mutation template must contain the exact installed cohort");
+    let installed = install_reference_bundle(&config, cohort)
+        .expect("mutation template must contain the exact installed reference bundle");
     assert_exact_report(&installed, H3ReferenceInstallDisposition::Installed, 1);
     assert_eq!(reference_snapshot(&config), expected_installed_snapshot());
 
@@ -378,6 +386,30 @@ fn verify_installed_state_conflicts(base: &Config, cohort: &H3ReferenceCohort) {
         "h3_installer_missing_membership",
         mutate_missing_membership,
         H3ReferenceInstallConflict::Membership,
+    );
+    verify_installed_mutation_refusal(
+        base,
+        template.name(),
+        cohort,
+        "h3_installer_r8_cell",
+        mutate_r8_cell,
+        H3ReferenceInstallConflict::R8Cells,
+    );
+    verify_installed_mutation_refusal(
+        base,
+        template.name(),
+        cohort,
+        "h3_installer_r8_product",
+        mutate_r8_product,
+        H3ReferenceInstallConflict::R8ProductReceipt,
+    );
+    verify_installed_mutation_refusal(
+        base,
+        template.name(),
+        cohort,
+        "h3_installer_missing_r8_product",
+        mutate_missing_r8_product,
+        H3ReferenceInstallConflict::R8ProductReceipt,
     );
     verify_installed_mutation_refusal(
         base,
@@ -415,7 +447,7 @@ fn verify_installed_mutation_refusal(
     let conflicted = reference_snapshot(&config);
     assert_ne!(conflicted, exact);
     assert_eq!(
-        install_representative_h3_cohort(&config, cohort),
+        install_reference_bundle(&config, cohort),
         Err(H3ReferenceInstallError::Conflict {
             component: expected_component,
         }),
@@ -528,6 +560,44 @@ fn mutate_orphan_membership(config: &Config) {
     transaction.commit().unwrap();
 }
 
+fn mutate_r8_cell(config: &Config) {
+    let mut client = config.connect(NoTls).unwrap();
+    let changed = client
+        .execute(
+            "DELETE FROM babylon_ref.h3_cell \
+             WHERE cell_id = (SELECT cell_id FROM babylon_ref.h3_cell \
+             WHERE resolution = 8 ORDER BY cell_id LIMIT 1)",
+            &[],
+        )
+        .unwrap();
+    assert_eq!(changed, 1);
+}
+
+fn mutate_r8_product(config: &Config) {
+    let mut client = config.connect(NoTls).unwrap();
+    let changed = client
+        .execute(
+            "UPDATE babylon_ref.reference_product \
+             SET semantic_sha256 = pg_catalog.decode(pg_catalog.repeat('00', 32), 'hex') \
+             WHERE product_code = 'h3_res8_identity'",
+            &[],
+        )
+        .unwrap();
+    assert_eq!(changed, 1);
+}
+
+fn mutate_missing_r8_product(config: &Config) {
+    let mut client = config.connect(NoTls).unwrap();
+    let changed = client
+        .execute(
+            "DELETE FROM babylon_ref.reference_product \
+             WHERE product_code = 'h3_res8_identity'",
+            &[],
+        )
+        .unwrap();
+    assert_eq!(changed, 1);
+}
+
 fn frozen_legacy_snapshot(config: &Config) -> AuthoritySnapshot {
     let mut client = config.connect(NoTls).unwrap();
     authority_snapshot(&mut client)
@@ -547,6 +617,15 @@ fn assert_exact_report(
     assert_eq!(report.direct_cell_count(), SOURCE_COUNT);
     assert_eq!(report.derived_ancestor_count(), 11_085);
     assert_eq!(report.closure_cell_count(), CLOSURE_COUNT);
+    assert_eq!(report.r8_child_count(), R8_CHILD_COUNT);
+    assert_eq!(
+        report.r8_child_parent_digest(),
+        digest(R8_SECTION_DIGEST_HEX)
+    );
+    assert_eq!(
+        report.reference_bundle_digest(),
+        digest(REFERENCE_BUNDLE_DIGEST_HEX)
+    );
     assert_eq!(report.commit_attempts(), commit_attempts);
 }
 
@@ -620,7 +699,8 @@ fn reference_snapshot(config: &Config) -> ReferenceSnapshot {
                     (SELECT pg_catalog.count(*) FILTER (WHERE origin = 1) \
                      FROM babylon_ref.h3_reference_membership), \
                     (SELECT pg_catalog.count(*) FILTER (WHERE origin = 2) \
-                     FROM babylon_ref.h3_reference_membership)",
+                     FROM babylon_ref.h3_reference_membership), \
+                    (SELECT pg_catalog.count(*) FROM babylon_ref.reference_product)",
             &[],
         )
         .unwrap();
@@ -641,17 +721,32 @@ fn reference_snapshot(config: &Config) -> ReferenceSnapshot {
         )
         .unwrap();
     assert_eq!(i64::try_from(rows.len()).unwrap(), cohort_count);
+    let product_count: i64 = counts.get(5);
+    assert!(product_count <= 1);
+    let products = client
+        .query(
+            "SELECT pg_catalog.encode(ref_digest, 'hex'), product_code, \
+                    pg_catalog.encode(artifact_sha256, 'hex'), \
+                    pg_catalog.encode(semantic_sha256, 'hex'), row_count, evidence_class, \
+                    measure_unit, denominator \
+             FROM babylon_ref.reference_product ORDER BY product_code LIMIT 2",
+            &[],
+        )
+        .unwrap();
+    assert_eq!(i64::try_from(products.len()).unwrap(), product_count);
     ReferenceSnapshot {
         h3_cell_count: counts.get(0),
         cohort_count,
         membership_count: counts.get(2),
         direct_membership_count: counts.get(3),
         derived_membership_count: counts.get(4),
+        product_count,
         cohorts: rows
             .iter()
             .take(MAX_COHORT_SNAPSHOT_ROWS)
             .map(cohort_snapshot)
             .collect(),
+        products: products.iter().take(1).map(product_snapshot).collect(),
     }
 }
 
@@ -673,13 +768,27 @@ fn cohort_snapshot(row: &postgres::Row) -> CohortSnapshot {
     }
 }
 
+fn product_snapshot(row: &postgres::Row) -> ProductSnapshot {
+    ProductSnapshot {
+        ref_digest: row.get(0),
+        product_code: row.get(1),
+        artifact_sha256: row.get(2),
+        semantic_sha256: row.get(3),
+        row_count: row.get(4),
+        evidence_class: row.get(5),
+        measure_unit: row.get(6),
+        denominator: row.get(7),
+    }
+}
+
 fn expected_installed_snapshot() -> ReferenceSnapshot {
     ReferenceSnapshot {
-        h3_cell_count: 59_849,
+        h3_cell_count: 378_853,
         cohort_count: 1,
         membership_count: 59_849,
         direct_membership_count: 48_764,
         derived_membership_count: 11_085,
+        product_count: 1,
         cohorts: vec![CohortSnapshot {
             ref_digest: REF_DIGEST_HEX.into(),
             format_version: 1,
@@ -699,6 +808,16 @@ fn expected_installed_snapshot() -> ReferenceSnapshot {
             direct_cell_count: 48_764,
             derived_ancestor_count: 11_085,
             closure_cell_count: 59_849,
+        }],
+        products: vec![ProductSnapshot {
+            ref_digest: REF_DIGEST_HEX.into(),
+            product_code: "h3_res8_identity".into(),
+            artifact_sha256: R8_SECTION_DIGEST_HEX.into(),
+            semantic_sha256: Some(R8_SECTION_DIGEST_HEX.into()),
+            row_count: 319_004,
+            evidence_class: "Derived".into(),
+            measure_unit: Some("identity".into()),
+            denominator: None,
         }],
     }
 }
@@ -757,40 +876,19 @@ fn babylon_catalog_snapshot(config: &Config) -> Vec<(String, String)> {
         .collect()
 }
 
-fn assert_writer_authority_refused() {
-    assert_eq!(
-        request_rust_writer_authority().unwrap_err(),
-        RustWriterAuthorityError::PythonAuthorityActive
-    );
-}
-
 pub(super) fn representative_cohort() -> H3ReferenceCohort {
-    build_representative_h3_cohort_v1(digest(ARTIFACT_DIGEST_HEX), &source_cells())
-        .expect("pinned representative H3 fixture must build")
+    representative_h3_reference_cohort_v1()
+        .expect("the sole checked-in source fixture must validate")
+        .clone()
 }
 
-fn source_cells() -> Vec<H3CellId> {
-    assert!(SOURCE_FIXTURE.starts_with(SOURCE_DOMAIN));
-    let count_offset = SOURCE_DOMAIN.len();
-    let payload_offset = count_offset + size_of::<u64>();
-    let count = u64::from_be_bytes(
-        SOURCE_FIXTURE[count_offset..payload_offset]
-            .try_into()
-            .expect("fixture count is exactly eight bytes"),
-    );
-    assert_eq!(usize::try_from(count).unwrap(), SOURCE_COUNT);
-    assert_eq!(
-        SOURCE_FIXTURE.len(),
-        payload_offset + SOURCE_COUNT * size_of::<u64>()
-    );
-    SOURCE_FIXTURE[payload_offset..]
-        .chunks_exact(size_of::<u64>())
-        .take(SOURCE_COUNT)
-        .map(|chunk| {
-            let raw = u64::from_be_bytes(chunk.try_into().expect("cell is exactly eight bytes"));
-            H3CellId::try_from(raw).expect("fixture identities must validate")
-        })
-        .collect()
+pub(super) fn install_reference_bundle(
+    config: &Config,
+    cohort: &H3ReferenceCohort,
+) -> Result<H3ReferenceInstallReport, H3ReferenceInstallError> {
+    let foundation = michigan_dynamic_hex_foundation_v1()
+        .expect("the sole checked Michigan foundation fixture must validate");
+    install_michigan_h3_reference_bundle_v1(config, cohort, foundation)
 }
 
 fn digest(text: &str) -> RefDigestV1 {

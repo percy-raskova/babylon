@@ -1,23 +1,12 @@
 """1D range sweeps and 2D grid/landscape sweeps over :class:`GameDefines`.
 
-Migrates the sweep algorithms previously duplicated across three tools onto
-the optimization package core (:mod:`.params`, :mod:`.ranges`,
+Provides sweep algorithms on the optimization package core
+(:mod:`.params`, :mod:`.ranges`,
 :mod:`.objectives`, :mod:`.runner_api`, :mod:`.backends.types`,
-:mod:`.reproducibility`):
-
-* ``tools/parameter_analysis.py`` (the ``sweep`` subcommand) — 1D sweep +
-  summary CSV.
-* ``tools/tune_parameters.py`` — 1D sweep + the "Playable Boundary" report
-  (the highest swept value at which the periphery still survives at least
-  ``_PLAYABLE_BOUNDARY_TARGET_TICKS`` ticks).
-* ``tools/landscape_analysis.py`` — 2D grid sweep + matrix CSV.
-
-The three tools' overlapping helpers (``parse_param_arg``, three
-slightly-different ``start:end:step`` parsers, three copies of the
-parameter-injection loop) are retired here in favor of the shared
-:mod:`.ranges` grammar and :func:`~babylon.engine.optimization.runner_api.run`.
+:mod:`.reproducibility`). It supports a 1D summary, a "Playable Boundary"
+report, and a 2D landscape matrix through one shared range grammar.
 No argparse lives in this module — :func:`run_sweep` is the plain callable
-entry point a future ``__main__`` CLI dispatches to.
+entry point the package CLI dispatches to.
 """
 
 from __future__ import annotations
@@ -38,19 +27,17 @@ from babylon.engine.optimization.reproducibility import ReproRecord, build_repro
 from babylon.engine.optimization.runner_api import run as run_trial
 
 #: Default simulation length for a 1D sweep point: 5200 ticks = 100 years
-#: (1 tick = 1 week). Matches ``tools/shared.py::DEFAULT_MAX_TICKS`` — the
-#: default both ``tools/parameter_analysis.py`` and ``tools/tune_parameters.py``
-#: ultimately ran against.
+#: (1 tick = 1 week). This is the canonical long-horizon default for the
+#: retained in-memory optimizer.
 DEFAULT_MAX_TICKS_1D: Final[int] = 5200
 
 #: Default simulation length for a 2D grid cell: 52 ticks = 1 year.
-#: Matches ``tools/landscape_analysis.py::DEFAULT_MAX_TICKS`` — grid sweeps
-#: run ``len(values1) * len(values2)`` trials, so the per-cell budget is
-#: deliberately far smaller than the 1D default.
+#: Grid sweeps run ``len(values1) * len(values2)`` trials, so the per-cell
+#: budget is deliberately far smaller than the 1D default.
 DEFAULT_MAX_TICKS_2D: Final[int] = 52
 
 #: Minimum ``ticks_survived`` for a swept value to count toward the
-#: "Playable Boundary" (``tools/tune_parameters.py::format_results``).
+#: "Playable Boundary".
 _PLAYABLE_BOUNDARY_TARGET_TICKS: Final[int] = 25
 
 
@@ -89,25 +76,13 @@ def _validate_param_path(param_path: str) -> None:
         )
 
 
-def _scope_label(backend: str, scope_name: str, scenario: str) -> str:
-    """Pick the repro-record scope label matching what the backend actually used.
-
-    :param backend: ``"headless"`` or ``"in_memory"``.
-    :param scope_name: The headless scope label (ignored for ``in_memory``).
-    :param scenario: The in-memory scenario name (ignored for ``headless``).
-    :returns: Whichever label the selected backend actually consumed.
-    """
-    return scope_name if backend == "headless" else scenario
-
-
 def sweep_1d(
     param_path: str,
     values: Sequence[float],
     *,
     max_ticks: int = DEFAULT_MAX_TICKS_1D,
     seed: int = 2010,
-    backend: str = "headless",
-    scope_name: str = "detroit-tri-county",
+    backend: str = "in_memory",
     scenario: str = "imperial_circuit",
     base_defines: GameDefines | None = None,
     objective: Objective = carceral_objective,
@@ -115,12 +90,8 @@ def sweep_1d(
 ) -> list[SweepPoint]:
     """Sweep one parameter across ``values``, one trial per value.
 
-    Migrated from ``tools/tune_parameters.py::run_sweep`` and
-    ``tools/parameter_analysis.py::run_sweep`` — same one-trial-per-value
-    loop, now dispatched through
-    :func:`~babylon.engine.optimization.runner_api.run` instead of
-    ``tools/shared.py::run_simulation``, with an :class:`Objective` score
-    and a :class:`ReproRecord` attached to every sample.
+    Each trial uses :func:`~babylon.engine.optimization.runner_api.run` and
+    carries an :class:`Objective` score plus a :class:`ReproRecord`.
 
     :param param_path: Dot-separated parameter path, e.g.
         ``"economy.extraction_efficiency"``.
@@ -131,10 +102,8 @@ def sweep_1d(
     :param seed: RNG seed threaded through every trial (Constitution III.7
         — every trial in the sweep uses the *same* seed, so any survival
         difference is attributable to the swept parameter, not noise).
-    :param backend: ``"headless"`` or ``"in_memory"`` — forwarded to
-        :func:`~babylon.engine.optimization.runner_api.run`.
-    :param scope_name: Headless scope label. ``backend="headless"`` only.
-    :param scenario: In-memory scenario name. ``backend="in_memory"`` only.
+    :param backend: Must be ``"in_memory"``.
+    :param scenario: In-memory scenario name.
     :param base_defines: Base ``GameDefines`` to inject ``param_path`` into
         for each trial. Defaults to ``GameDefines()``.
     :param objective: Scores each trial's :class:`Result` into
@@ -150,8 +119,6 @@ def sweep_1d(
         _validate_param_path(param_path)
 
     base = base_defines if base_defines is not None else GameDefines()
-    scope_label = _scope_label(backend, scope_name, scenario)
-
     points: list[SweepPoint] = []
     for value in values:
         defines = inject_parameter(base, param_path, value)
@@ -160,10 +127,9 @@ def sweep_1d(
             seed=seed,
             max_ticks=max_ticks,
             backend=backend,
-            scope_name=scope_name,
             scenario=scenario,
         )
-        repro = build_repro_record(result, scope_name=scope_label, max_ticks=max_ticks)
+        repro = build_repro_record(result, scenario=scenario, max_ticks=max_ticks)
         points.append(
             SweepPoint(
                 value=value,
@@ -184,8 +150,7 @@ def sweep_2d(
     *,
     max_ticks: int = DEFAULT_MAX_TICKS_2D,
     seed: int = 2010,
-    backend: str = "headless",
-    scope_name: str = "detroit-tri-county",
+    backend: str = "in_memory",
     scenario: str = "imperial_circuit",
     base_defines: GameDefines | None = None,
     objective: Objective = carceral_objective,
@@ -194,9 +159,8 @@ def sweep_2d(
 ) -> list[list[SweepPoint]]:
     """Grid-sweep two parameters, one trial per ``(v1, v2)`` cell.
 
-    Migrated from ``tools/landscape_analysis.py::run_landscape_sweep`` — same
-    nested loop (``values1`` rows x ``values2`` columns), now dispatched
-    through :func:`~babylon.engine.optimization.runner_api.run`.
+    The nested loop uses ``values1`` rows and ``values2`` columns, with each
+    trial dispatched through :func:`~babylon.engine.optimization.runner_api.run`.
 
     :param param1: First (row) parameter path.
     :param values1: Row values.
@@ -206,9 +170,8 @@ def sweep_2d(
         :func:`sweep_1d` (``52`` vs ``5200``) because a grid runs
         ``len(values1) * len(values2)`` trials.
     :param seed: RNG seed threaded through every trial.
-    :param backend: ``"headless"`` or ``"in_memory"``.
-    :param scope_name: Headless scope label. ``backend="headless"`` only.
-    :param scenario: In-memory scenario name. ``backend="in_memory"`` only.
+    :param backend: Must be ``"in_memory"``.
+    :param scenario: In-memory scenario name.
     :param base_defines: Base ``GameDefines`` both parameters are injected
         into. Defaults to ``GameDefines()``.
     :param objective: Scores each trial's :class:`Result` into
@@ -228,7 +191,6 @@ def sweep_2d(
         _validate_param_path(param2)
 
     base = base_defines if base_defines is not None else GameDefines()
-    scope_label = _scope_label(backend, scope_name, scenario)
     total_runs = len(values1) * len(values2)
     run_count = 0
 
@@ -244,10 +206,9 @@ def sweep_2d(
                 seed=seed,
                 max_ticks=max_ticks,
                 backend=backend,
-                scope_name=scope_name,
                 scenario=scenario,
             )
-            repro = build_repro_record(result, scope_name=scope_label, max_ticks=max_ticks)
+            repro = build_repro_record(result, scenario=scenario, max_ticks=max_ticks)
             row.append(
                 SweepPoint(
                     value=v1,
@@ -279,9 +240,7 @@ def format_sweep_report(
 ) -> str:
     """Render the "Playable Boundary" report table for a 1D sweep.
 
-    Migrated verbatim (algorithm-wise) from
-    ``tools/tune_parameters.py::format_results``: the boundary is the
-    *highest* swept value at which the run still survives at least
+    The boundary is the *highest* swept value at which the run still survives at least
     ``target_ticks`` — i.e. the most extreme coefficient before the game
     becomes unwinnable.
 
@@ -333,8 +292,7 @@ def format_sweep_report(
 def write_sweep_csv(points: Sequence[SweepPoint], output_path: Path) -> None:
     """Write a 1D sweep's per-value summary CSV.
 
-    Migrated from ``tools/parameter_analysis.py::write_csv`` /
-    ``extract_sweep_summary``: one row per swept value, columns
+    Writes one row per swept value, with columns
     alphabetically sorted (``final_wealth``, ``max_tension``, ``outcome``,
     ``score``, ``ticks_survived``, ``value``) — the original tool's
     ``sorted(all_keys)`` behavior, extended with the ``score`` column this
@@ -376,8 +334,6 @@ def write_landscape_csv(
 ) -> None:
     """Write a 2D sweep's matrix CSV: rows=``param1``, cols=``param2``, cells=ticks survived.
 
-    Migrated verbatim from ``tools/landscape_analysis.py::write_matrix_csv``.
-
     :param param1: Row parameter's path (for the corner-cell label).
     :param values1: Row values, matching ``matrix``'s outer dimension.
     :param param2: Column parameter's path (for the corner-cell label).
@@ -401,8 +357,7 @@ def run_sweep(
     param2: str | None = None,
     max_ticks: int | None = None,
     seed: int = 2010,
-    backend: str = "headless",
-    scope_name: str = "detroit-tri-county",
+    backend: str = "in_memory",
     scenario: str = "imperial_circuit",
     base_defines: GameDefines | None = None,
     objective: Objective = carceral_objective,
@@ -425,9 +380,8 @@ def run_sweep(
         :data:`DEFAULT_MAX_TICKS_1D` for a 1D sweep or
         :data:`DEFAULT_MAX_TICKS_2D` for a 2D sweep when ``None``.
     :param seed: RNG seed threaded through every trial.
-    :param backend: ``"headless"`` or ``"in_memory"``.
-    :param scope_name: Headless scope label. ``backend="headless"`` only.
-    :param scenario: In-memory scenario name. ``backend="in_memory"`` only.
+    :param backend: Must be ``"in_memory"``.
+    :param scenario: In-memory scenario name.
     :param base_defines: Base ``GameDefines`` to inject swept values into.
     :param objective: Scores each trial's :class:`Result`.
     :param output_csv: If given, writes the sweep's CSV artifact here (1D:
@@ -450,7 +404,6 @@ def run_sweep(
             max_ticks=resolved_ticks,
             seed=seed,
             backend=backend,
-            scope_name=scope_name,
             scenario=scenario,
             base_defines=base_defines,
             objective=objective,
@@ -471,7 +424,6 @@ def run_sweep(
         max_ticks=resolved_ticks_2d,
         seed=seed,
         backend=backend,
-        scope_name=scope_name,
         scenario=scenario,
         base_defines=base_defines,
         objective=objective,

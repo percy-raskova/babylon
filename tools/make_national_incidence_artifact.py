@@ -39,7 +39,7 @@ neither of which is "derive the poverty measures from it":
    here instead. Run inside ``mise run nix -- ...``
    (``docs/how-to/reference-data-pipeline.rst:10-17``).
 2. The ``scopes`` universe (:func:`_scopes_universe`) reuses
-   ``babylon.engine.headless_runner.scopes._load_national_fips`` directly —
+   ``babylon.data.reference_scope._load_national_fips`` directly —
    the same call ``tools/make_fips_vintage_crosswalk.py`` (T1) already
    makes. This is universe-**membership** enumeration against
    ``dim_county`` (which FIPS codes exist), never a ``fact_census_poverty``
@@ -136,7 +136,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import make_data_artifacts  # type: ignore[import-not-found]  # noqa: E402
 from build_reference_db import PINNED_SQLITE_VERSION  # type: ignore[import-not-found]  # noqa: E402
 
-from babylon.engine.headless_runner.scopes import (  # noqa: E402
+from babylon.data.reference_scope import (  # noqa: E402
     DEFAULT_SQLITE_PATH,
     _load_national_fips,
 )

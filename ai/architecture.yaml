@@ -157,7 +157,8 @@ implementation_status:
       limitation: >-
         ExternalEvent and Intent roles have no governed effect allowances, so
         executable shocks and player intents remain absent until Gates 4 and 5.
-        Durable subject-level provenance and envelopes remain Gate 3 work.
+        Durable subject-level provenance beyond the committed typed state remains
+        part of the Gate 3 decision-loop work.
       absent_from_current_content:
         - executable_shocks
         - executable_player_actions
@@ -176,8 +177,9 @@ implementation_status:
         - atomic_audit_receipt_publication
         - tick_increment_after_success
       limitation: >-
-        Atomicity is in memory only. PostgreSQL durability, crash recovery, and
-        the CommittedTickEnvelope remain Gate 3 work.
+        This crate remains database-free and publishes atomically in memory.
+        babylon-persistence composes its identified result into the durable
+        marker-last transaction and restart boundary.
       evidence:
         - rust/crates/babylon-tick/src/session.rs
 
@@ -200,8 +202,9 @@ implementation_status:
         - versioned_tagged_big_endian_layout
       limitation: >-
         This covers every auxiliary register that currently exists in the Rust
-        tick. It is not the future TickContentHash and does not include content,
-        reference, seed, action, or durable campaign-envelope identity.
+        tick. It is not TickContentHashV1 and does not include content,
+        reference, seed, action, or durable campaign-envelope identity; the
+        replay and persistence layers add those distinct identities.
       evidence:
         - rust/crates/babylon-tick/src/world_hash.rs
         - rust/crates/babylon-tick/src/session.rs
@@ -228,38 +231,35 @@ implementation_status:
         - src/babylon/engine/simulation_engine.py
         - src/babylon/engine/actions/__init__.py
 
-    legacy_python_persistence:
+    rust_postgresql_persistence:
       status: implemented_current
-      estate: frozen_predecessor
+      estate: sole_game_managed_postgresql_authority
       scope:
-        - mutable_runtime_sqlite
-        - postgres_per_tick_transaction_envelope
-        - persist_tick_atomic
-        - tick_commit
-      not_v4_authority: true
+        - one_way_epoch_9_activation
+        - typed_semantic_tick_rows
+        - committed_tick_marker_last
+        - exact_restart_and_commit_ambiguity_reconciliation
+      evidence:
+        - rust/crates/babylon-persistence/src/runtime.rs
+        - rust/crates/babylon-persistence/migrations/0009_rust_persistence_activation.sql
+        - contracts/rust_persistence_cutover_v1.yaml
+
+    python_persistence_periphery:
+      status: implemented_current
+      estate: non_authoritative_periphery
+      scope:
+        - mutable_local_sqlite
+        - enforced_read_only_postgresql
+        - dedicated_vector_store
+      not_game_authority: true
       evidence:
         - src/babylon/persistence/runtime_db.py
-        - src/babylon/persistence/envelope.py
-        - src/babylon/persistence/postgres_runtime/__init__.py
-
-    partial_babylon_meta:
-      status: implemented_current
-      estate: legacy_partial_archive_predecessor
-      scope:
-        - campaign_profile
-        - watchlist
-        - jumplist
-        - breadcrumb_navigation
-      absent:
-        - semantic_pages_and_links
-        - fog_safe_retrieval
-        - archive_outbox_materialization
-      evidence:
-        - src/babylon/persistence/migrations/0037_babylon_meta.sql
+        - src/babylon/persistence/protocols.py
+        - src/babylon/persistence/postgres_reference.py
 
     legacy_h3_text_keys:
-      status: implemented_legacy
-      estate: frozen_python_and_postgresql_predecessor
+      status: retired_by_epoch_9
+      estate: frozen_migration_history
       inventory:
         hex_cell:
           h3_index: VARCHAR(15)
@@ -288,23 +288,21 @@ implementation_status:
           entity: str
           persistence: str
       evidence:
-        - src/babylon/persistence/postgres_schema.py
         - src/babylon/persistence/migrations/0011_dynamic_hex_state.sql
         - src/babylon/persistence/migrations/0027_hex_spatial_map.sql
         - src/babylon/persistence/migrations/0028_hex_spatial_map_session_scope.sql
-        - src/babylon/reference/schema.py
-        - src/babylon/models/snapshots.py
-        - src/babylon/models/entities/territory.py
-        - src/babylon/persistence/hex_state.py
-      planned_disposition:
-        owner: PER-21
+        - rust/crates/babylon-persistence/migrations/0007_h3_canonical_readers.sql
+        - rust/crates/babylon-persistence/migrations/0009_rust_persistence_activation.sql
+        - contracts/h3_reader_cutover_v1.yaml
+      realized_disposition:
+        owner: PER-280/PER-281
         target: positive BIGINT H3CellId(u64)
         consolidated_table: babylon_ref.h3_cell
+        terminal: zero Python game-state readers and zero compatibility views
         migration_sequence:
           - add_keys
           - backfill
           - prove_count_hash_query_equivalence
-          - add_compatibility_views
           - switch_readers_and_writers
           - forbid_legacy_writes
           - retire_duplicates
@@ -410,11 +408,11 @@ implementation_status:
         canonical_hash_coverage: true
 
 persistence_writer:
-  status: accepted_cutover_law
+  status: implemented_current
   decision:
     issue: PER-48
     adr: ADR220_rust_owned_postgresql_persistence_boundary
-    completion_commit: 9b4c9b2e
+    implementation_contract: contracts/rust_persistence_cutover_v1.yaml
   before_cutover:
     authoritative_writer: Python
     authority: sole_live_writer
@@ -433,15 +431,14 @@ persistence_writer:
       - checkpoint_hydration
       - runtime_writes
       - h3_codecs
-      - compatibility_views
   surviving_python_roles:
     - deterministic_data_acquisition_and_reference_builds
     - external_api_adapters
     - ai_and_document_periphery
+    - in_memory_optimization_periphery
     - cli_periphery
-    - read_only_transition_observers
   transition_observers:
-    access: versioned_views_only
+    access: none
     writes: forbidden
     ddl: forbidden
 
@@ -450,9 +447,10 @@ engine_boundary:
     status: binding_design_law
     rule: graph_bsl_and_tick_crates_remain_database_free
   durability:
-    status: planned
+    status: implemented_current
     gate: G3
     rule: durable_effects_begin_only_after_successful_adjudication
+    composition_root: babylon_persistence::runtime::DurableReplayRuntimeV1
   determinism_meaning: computational_identity_not_scientific_truth
 
 reference_data:

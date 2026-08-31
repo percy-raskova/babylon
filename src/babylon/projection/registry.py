@@ -24,7 +24,7 @@ from typing import Final
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from babylon.persistence.hex_state import DynamicHexState
-from babylon.persistence.postgres_aggregation import (
+from babylon.projection.sql_rows import (
     CountyValueAggregate,
     GlobalPhiBalance,
     NationalValueAggregate,

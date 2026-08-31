@@ -62,18 +62,18 @@ from regression_scenarios import (
     WAYNE_CALCULATOR_SCENARIOS,  # noqa: F401  (re-export)
     create_scenario,
 )
-from shared import (
-    COMPRADOR_ID,
-    CORE_BOURGEOISIE_ID,
-    LABOR_ARISTOCRACY_ID,
-    PERIPHERY_WORKER_ID,
-    is_dead,
-)
+from shared import is_dead
 
 from babylon.config.defines import GameDefines
 from babylon.engine.simulation_engine import step
 from babylon.engine.trace_format import format_trace_value, trace_rows_to_csv_bytes
 from babylon.kernel.tick_hash import compute_tick_hash
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    CORE_BOURGEOISIE_ID,
+    LABOR_ARISTOCRACY_ID,
+    PERIPHERY_WORKER_ID,
+)
 
 # Constants
 BASELINE_DIR: Final[Path] = Path(__file__).parent.parent / "tests" / "baselines"

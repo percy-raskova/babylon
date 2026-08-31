@@ -65,13 +65,13 @@ executable `phase_order.rs` causal spine. Five `EndgameDetector` labels remain
 reference facts, not promised outcomes. Python also owns data tools and periphery.
 
 Reference Parquet and deterministic SQLite are build artifacts. The Python
-`RuntimeDatabase` is separate mutable SQLite. Python also has
-`PerTickTransactionEnvelope`, atomic Postgres `persist_tick_atomic`,
-`tick_commit`, partial `babylon_meta`, and an action pipeline.
+`RuntimeDatabase` is separate mutable SQLite.
 
-Gate 3 will add the Rust three-schema boundary, `CommittedTickEnvelope`, Archive
-outbox, and fog-safe decision loop. Gate 4 adds governed external-event rows,
-and Gate 5 adds next-week intents and Bevy player actions.
+Gate 3 now has the Rust three-schema boundary, committed tick envelope,
+marker-last transaction, checkpoint restart, and Archive dirty receipts. The
+fog-safe decision loop and semantic Archive worker remain. Gate 4 adds
+governed external-event rows, and Gate 5 adds next-week intents and Bevy player
+actions.
 
 <!-- Vale: the accepted Linear status uses a passive state label. -->
 <!-- vale strunk.ActiveVoice = NO -->
@@ -79,9 +79,9 @@ and Gate 5 adds next-week intents and Bevy player actions.
 PER-48 is decided.
 <!-- vale ste.PassiveVoice = YES -->
 <!-- vale strunk.ActiveVoice = YES -->
-Python remains the sole live writer until cutover. After the one-way cutover,
-Rust owns authoritative game-managed Postgres. Python continues its declared
-data, AI, document, external-API, and CLI periphery. The legacy
+The one-way cutover is complete. Rust owns authoritative game-managed Postgres.
+Python continues its declared data, AI, document, external-API, optimization,
+and CLI periphery. It has no game-state writer or transition reader. The legacy
 Django browser client lives only in `web/` and does not gate v1.
 <!-- vale ste.NounClusters = YES -->
 <!-- vale ste.UnapprovedWords = YES -->
@@ -117,7 +117,7 @@ cd rust && cargo fmt --all -- --check
 cd rust && cargo test -p <changed-crate> --locked
 mise run rust:check-no-docs
 mise run qa:regression
-mise run qa:vault-regression-ci
+mise run qa:vault-regression
 mise run check:gate-coverage
 ```
 

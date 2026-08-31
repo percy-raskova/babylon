@@ -108,8 +108,8 @@ DECLARED_ASSUMPTIONS: tuple[Assumption, ...] = (
         owner="Persephone Raskova",
         code_ref="src/babylon/domain/economics/tick/initializer.py",
         expiry_condition=(
-            "Resolved when every economics tick entry point (headless runner AND web "
-            "bridge) always injects a real employment_source so the 100_000.0 literal is "
+            "Resolved when every frozen-reference economics tick entry point injects a "
+            "real employment_source so the 100_000.0 literal is "
             "unreachable in a production run — or, short of that, when the substitution is "
             "added to EconomicsFallbackTally so a defaulted run is at least counted (today "
             "it is documented in-place but NOT tallied)."

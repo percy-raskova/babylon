@@ -1145,3 +1145,8 @@ decisions:
     status: accepted
     date: '2026-08-28'
     file: ADR246_codex_rust_host_boundary.yaml
+  ADR247_dependabot_exact_head_only_automation:
+    title: 'Dependabot automation removes the unwritable actor-triggered label phase and retains one exact-head workflow-run authority'
+    status: accepted
+    date: '2026-08-31'
+    file: ADR247_dependabot_exact_head_only_automation.yaml

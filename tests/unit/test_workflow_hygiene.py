@@ -571,34 +571,18 @@ def _dependabot_update(config: dict[str, Any], ecosystem: str) -> dict[str, Any]
 class TestDependabotPolicy:
     """Dependabot metadata and merge authority stay separate and exact-head pinned."""
 
-    def test_workflow_uses_only_trusted_event_driven_phases(self) -> None:
-        """Untrusted PR code must never enter either privileged automation phase."""
+    def test_workflow_uses_only_the_trusted_exact_head_phase(self) -> None:
+        """Dependabot actor events must not own a write-capable automation phase."""
         workflow = yaml.safe_load(DEPENDABOT_AUTOMERGE_PATH.read_text())
         triggers = _triggers(workflow)
-        assert set(triggers) == {"pull_request_target", "workflow_run"}
-        assert triggers["pull_request_target"] == {
-            "branches": ["dev"],
-            "types": ["opened", "reopened", "synchronize"],
-        }
-        assert triggers["workflow_run"] == {
-            "workflows": ["CI"],
-            "types": ["completed"],
+        assert triggers == {
+            "workflow_run": {
+                "workflows": ["CI"],
+                "types": ["completed"],
+            }
         }
         assert workflow.get("permissions") == {}
-
-        classify = workflow["jobs"]["classify"]
-        assert classify["permissions"] == {
-            "contents": "read",
-            "issues": "write",
-            "pull-requests": "read",
-        }
-        assert "github.event.pull_request.user.login == 'dependabot[bot]'" in classify["if"]
-        assert "github.actor == 'dependabot[bot]'" in classify["if"]
-        assert "github.event.sender.login == 'dependabot[bot]'" in classify["if"]
-        assert "github.event.sender.id == 49699333" in classify["if"]
-        assert not any(
-            str(step.get("uses", "")).startswith("actions/checkout") for step in classify["steps"]
-        )
+        assert set(workflow["jobs"]) == {"merge"}
 
         merge = workflow["jobs"]["merge"]
         assert merge["name"] == "Dependabot Eligibility"
@@ -616,329 +600,24 @@ class TestDependabotPolicy:
         assert "github.event.workflow_run.id" in run_name
         assert "github.event.workflow_run.head_sha" in run_name
 
-    def test_non_dependabot_synchronizing_actor_cannot_classify(self) -> None:
-        """A branch update by any other actor must skip trusted metadata parsing."""
-        workflow = yaml.safe_load(DEPENDABOT_AUTOMERGE_PATH.read_text())
-        classify_if = str(workflow["jobs"]["classify"]["if"])
-
-        assert "github.actor == 'dependabot[bot]'" in classify_if
-        assert "github.event.sender.login == 'dependabot[bot]'" in classify_if
-        assert "github.event.sender.id == 49699333" in classify_if
-
     def test_workflow_has_per_pr_concurrency(self) -> None:
         """Duplicate completion events must serialize on the same Dependabot PR."""
         workflow = yaml.safe_load(DEPENDABOT_AUTOMERGE_PATH.read_text())
         concurrency = workflow["concurrency"]
         group = str(concurrency["group"])
-        assert "github.event.pull_request.number" in group
         assert "github.event.workflow_run.pull_requests[0].number" in group
         assert "github.event.workflow_run.head_branch" in group
         assert concurrency["cancel-in-progress"] is False
 
-    def test_eligibility_is_exactly_patch_or_minor_and_is_reversible(self) -> None:
-        """A major or malformed update must lose the dedicated eligibility label."""
-        workflow = yaml.safe_load(DEPENDABOT_AUTOMERGE_PATH.read_text())
-        classify = workflow["jobs"]["classify"]
-        assert set(classify["env"]["ELIGIBLE_UPDATE_TYPES"].split()) == {
-            "version-update:semver-patch",
-            "version-update:semver-minor",
-        }
-        assert classify["env"]["ELIGIBILITY_LABEL"] == "dependencies:automerge"
-
-        eligibility = next(step for step in classify["steps"] if step.get("id") == "eligibility")
-        assert eligibility["env"]["UPDATE_TYPE"] == "${{ steps.metadata.outputs.update-type }}"
-        eligibility_script = str(eligibility["run"])
-        assert "eligible=true" in eligibility_script
-        assert "conclusion=" not in eligibility_script
-        assert not any("check-runs" in str(step.get("run", "")) for step in classify["steps"])
-
-        assert workflow["jobs"]["merge"]["name"] == "Dependabot Eligibility"
-
-        label = next(
-            step for step in classify["steps"] if step.get("name") == "Set eligibility label"
-        )
-        script = str(label["run"])
-        assert "steps.eligibility.outputs.eligible" in label["env"]["ELIGIBLE"]
-        assert "--method GET" in script
-        assert "--method POST" in script
-        assert "--method DELETE" in script
-        assert "--input -" in script
-        assert "labels[]=" not in script
-        assert "issues/$PR_NUMBER/labels" in script
-        assert "gh pr edit" not in script
-
-    def test_eligibility_label_matches_the_transactional_repository_policy(self) -> None:
-        """Classification verifies managed metadata without becoming a second writer."""
-        workflow = yaml.safe_load(DEPENDABOT_AUTOMERGE_PATH.read_text())
-        policy = yaml.safe_load(PR_POLICY_PATH.read_text())
-        desired_label = policy["automerge_label"]
-        classify = workflow["jobs"]["classify"]
-        label_step = next(
-            step for step in classify["steps"] if step.get("name") == "Set eligibility label"
-        )
-        script = str(label_step["run"])
-
-        assert classify["env"]["ELIGIBILITY_LABEL"] == desired_label["name"]
-        assert desired_label["color"] in classify["env"]["ELIGIBILITY_LABEL_COLOR"]
-        assert desired_label["description"] in classify["env"]["ELIGIBILITY_LABEL_DESCRIPTION"]
-        assert "gh api" in script
-        assert "jq -e" in script
-        assert "gh label create" not in script
-        assert "--force" not in script
-
-    def test_eligibility_label_api_path_uses_the_url_encoded_declared_label(
-        self,
-        tmp_path: Path,
-    ) -> None:
-        """Repository metadata lookup must derive its URL path from the label variable."""
-        workflow = yaml.safe_load(DEPENDABOT_AUTOMERGE_PATH.read_text())
-        classify = workflow["jobs"]["classify"]
-        label_step = next(
-            step for step in classify["steps"] if step.get("name") == "Set eligibility label"
-        )
-        fake_bin = tmp_path / "bin"
-        fake_bin.mkdir()
-        calls_path = tmp_path / "gh-calls.jsonl"
-        fake_gh = fake_bin / "gh"
-        fake_gh.write_text(
-            """#!/usr/bin/env python3
-import json
-import os
-import sys
-from pathlib import Path
-
-args = sys.argv[1:]
-with Path(os.environ["GH_CALLS"]).open("a") as calls:
-    calls.write(json.dumps(args) + "\\n")
-endpoint = args[-1]
-if args[:3] == ["api", "--method", "GET"] and "/issues/" not in endpoint:
-    print(json.dumps({
-        "name": os.environ["ELIGIBILITY_LABEL"],
-        "color": os.environ["ELIGIBILITY_LABEL_COLOR"],
-        "description": os.environ["ELIGIBILITY_LABEL_DESCRIPTION"],
-    }))
-elif args[:3] == ["api", "--method", "GET"] and "/issues/" in endpoint:
-    print(json.dumps([{"name": os.environ["ELIGIBILITY_LABEL"]}]))
-else:
-    raise SystemExit(99)
-"""
-        )
-        fake_gh.chmod(0o755)
-        declared_label = "dependencies:automerge/next wave"
-        env = {
-            "PATH": f"{fake_bin}:{os.environ['PATH']}",
-            "ELIGIBILITY_LABEL": declared_label,
-            "ELIGIBILITY_LABEL_COLOR": str(classify["env"]["ELIGIBILITY_LABEL_COLOR"]),
-            "ELIGIBILITY_LABEL_DESCRIPTION": str(classify["env"]["ELIGIBILITY_LABEL_DESCRIPTION"]),
-            "ELIGIBLE": "true",
-            "GH_CALLS": str(calls_path),
-            "GH_TOKEN": "test-token",
-            "GITHUB_REPOSITORY": "example/babylon",
-            "PR_NUMBER": "742",
-        }
-
-        result = subprocess.run(  # noqa: S603,S607 - executes the trusted workflow step
-            ["bash", "-c", str(label_step["run"])],
-            capture_output=True,
-            env=env,
-            text=True,
-            check=False,
-            timeout=30,
-        )
-
-        assert result.returncode == 0, result.stderr
-        calls = [yaml.safe_load(line) for line in calls_path.read_text().splitlines()]
-        assert calls[0] == [
-            "api",
-            "--method",
-            "GET",
-            "repos/example/babylon/labels/dependencies%3Aautomerge%2Fnext%20wave",
-        ]
-        assert calls[1] == [
-            "api",
-            "--method",
-            "GET",
-            "repos/example/babylon/issues/742/labels?per_page=100",
-        ]
-
-    @pytest.mark.parametrize(
-        ("eligible", "has_label", "expected_method"),
-        [
-            ("true", False, "POST"),
-            ("false", True, "DELETE"),
-            ("true", True, None),
-            ("false", False, None),
-        ],
-        ids=["add", "remove", "keep", "stay-absent"],
-    )
-    def test_eligibility_label_mutation_uses_only_issues_rest(
-        self,
-        tmp_path: Path,
-        eligible: str,
-        has_label: bool,
-        expected_method: str | None,
-    ) -> None:
-        """Label classification uses bounded Issues endpoints, never GraphQL PR edits."""
-        workflow = yaml.safe_load(DEPENDABOT_AUTOMERGE_PATH.read_text())
-        classify = workflow["jobs"]["classify"]
-        label_step = next(
-            step for step in classify["steps"] if step.get("name") == "Set eligibility label"
-        )
-        fake_bin = tmp_path / "bin"
-        fake_bin.mkdir()
-        calls_path = tmp_path / "gh-calls.jsonl"
-        fake_gh = fake_bin / "gh"
-        fake_gh.write_text(
-            """#!/usr/bin/env python3
-import json
-import os
-import sys
-from pathlib import Path
-
-args = sys.argv[1:]
-request_body = sys.stdin.read() if args[:3] == ["api", "--method", "POST"] else ""
-with Path(os.environ["GH_CALLS"]).open("a") as calls:
-    calls.write(json.dumps({"args": args, "stdin": request_body}) + "\\n")
-endpoint = args[3]
-if args[:3] == ["api", "--method", "GET"] and "/issues/" not in endpoint:
-    print(json.dumps({
-        "name": os.environ["ELIGIBILITY_LABEL"],
-        "color": os.environ["ELIGIBILITY_LABEL_COLOR"],
-        "description": os.environ["ELIGIBILITY_LABEL_DESCRIPTION"],
-    }))
-elif args[:3] == ["api", "--method", "GET"] and "/issues/" in endpoint:
-    labels = [{"name": os.environ["ELIGIBILITY_LABEL"]}] if os.environ["HAS_LABEL"] == "true" else []
-    print(json.dumps(labels))
-elif args[:3] == ["api", "--method", "POST"]:
-    pass
-elif args[:3] == ["api", "--method", "DELETE"]:
-    pass
-else:
-    raise SystemExit(99)
-"""
-        )
-        fake_gh.chmod(0o755)
-        label = str(classify["env"]["ELIGIBILITY_LABEL"])
-        env = {
-            "PATH": f"{fake_bin}:{os.environ['PATH']}",
-            "ELIGIBILITY_LABEL": label,
-            "ELIGIBILITY_LABEL_COLOR": str(classify["env"]["ELIGIBILITY_LABEL_COLOR"]),
-            "ELIGIBILITY_LABEL_DESCRIPTION": str(classify["env"]["ELIGIBILITY_LABEL_DESCRIPTION"]),
-            "ELIGIBLE": eligible,
-            "HAS_LABEL": str(has_label).lower(),
-            "GH_CALLS": str(calls_path),
-            "GH_TOKEN": "test-token",
-            "GITHUB_REPOSITORY": "example/babylon",
-            "PR_NUMBER": "742",
-        }
-
-        result = subprocess.run(  # noqa: S603,S607 - executes the trusted workflow step
-            ["bash", "-c", str(label_step["run"])],
-            capture_output=True,
-            env=env,
-            text=True,
-            check=False,
-            timeout=30,
-        )
-
-        assert result.returncode == 0, result.stderr
-        requests = [yaml.safe_load(line) for line in calls_path.read_text().splitlines()]
-        mutation_requests = requests[2:]
-        if expected_method is None:
-            assert mutation_requests == []
-        else:
-            assert len(mutation_requests) == 1
-            mutation = mutation_requests[0]
-            assert mutation["args"][2] == expected_method
-            assert "repos/example/babylon/issues/742/labels" in mutation["args"][3]
-            if expected_method == "POST":
-                assert mutation["args"][4:] == ["--input", "-"]
-                assert mutation["stdin"] == f'{{"labels":["{label}"]}}\n'
-            else:
-                assert mutation["stdin"] == ""
-        assert not any(request["args"][:2] == ["pr", "edit"] for request in requests)
-
-    @pytest.mark.parametrize(
-        ("metadata_matches", "label_count", "expected_calls", "expected_message"),
-        [
-            (False, 0, 1, ""),
-            (True, 100, 2, "potentially truncated 100-label issue page"),
-        ],
-        ids=["metadata-mismatch", "full-label-page"],
-    )
-    def test_eligibility_label_reads_fail_closed_before_mutation(
-        self,
-        tmp_path: Path,
-        metadata_matches: bool,
-        label_count: int,
-        expected_calls: int,
-        expected_message: str,
-    ) -> None:
-        """Managed metadata drift and a full label page must stop without writes."""
-        workflow = yaml.safe_load(DEPENDABOT_AUTOMERGE_PATH.read_text())
-        classify = workflow["jobs"]["classify"]
-        label_step = next(
-            step for step in classify["steps"] if step.get("name") == "Set eligibility label"
-        )
-        fake_bin = tmp_path / "bin"
-        fake_bin.mkdir()
-        calls_path = tmp_path / "gh-calls.jsonl"
-        fake_gh = fake_bin / "gh"
-        fake_gh.write_text(
-            """#!/usr/bin/env python3
-import json
-import os
-import sys
-from pathlib import Path
-
-args = sys.argv[1:]
-with Path(os.environ["GH_CALLS"]).open("a") as calls:
-    calls.write(json.dumps(args) + "\\n")
-endpoint = args[3]
-if args[:3] == ["api", "--method", "GET"] and "/issues/" not in endpoint:
-    label = os.environ["ELIGIBILITY_LABEL"]
-    print(json.dumps({
-        "name": label if os.environ["METADATA_MATCHES"] == "true" else f"{label}-drift",
-        "color": os.environ["ELIGIBILITY_LABEL_COLOR"],
-        "description": os.environ["ELIGIBILITY_LABEL_DESCRIPTION"],
-    }))
-elif args[:3] == ["api", "--method", "GET"] and "/issues/" in endpoint:
-    count = int(os.environ["LABEL_COUNT"])
-    print(json.dumps([{"name": f"label-{index}"} for index in range(count)]))
-else:
-    raise SystemExit(98)
-"""
-        )
-        fake_gh.chmod(0o755)
-        env = {
-            "PATH": f"{fake_bin}:{os.environ['PATH']}",
-            "ELIGIBILITY_LABEL": str(classify["env"]["ELIGIBILITY_LABEL"]),
-            "ELIGIBILITY_LABEL_COLOR": str(classify["env"]["ELIGIBILITY_LABEL_COLOR"]),
-            "ELIGIBILITY_LABEL_DESCRIPTION": str(classify["env"]["ELIGIBILITY_LABEL_DESCRIPTION"]),
-            "ELIGIBLE": "true",
-            "METADATA_MATCHES": str(metadata_matches).lower(),
-            "LABEL_COUNT": str(label_count),
-            "GH_CALLS": str(calls_path),
-            "GH_TOKEN": "test-token",
-            "GITHUB_REPOSITORY": "example/babylon",
-            "PR_NUMBER": "742",
-        }
-
-        result = subprocess.run(  # noqa: S603,S607 - executes the trusted workflow step
-            ["bash", "-c", str(label_step["run"])],
-            capture_output=True,
-            env=env,
-            text=True,
-            check=False,
-            timeout=30,
-        )
-
-        assert result.returncode != 0
-        calls = [yaml.safe_load(line) for line in calls_path.read_text().splitlines()]
-        assert len(calls) == expected_calls
-        assert all(call[:3] == ["api", "--method", "GET"] for call in calls)
-        if expected_message:
-            assert expected_message in result.stdout
+    def test_update_classification_is_owned_only_by_the_exact_head_verifier(self) -> None:
+        """Presentation labels cannot become an actor-triggered write dependency."""
+        workflow_text = DEPENDABOT_AUTOMERGE_PATH.read_text()
+        assert "pull_request_target" not in workflow_text
+        assert "dependabot/fetch-metadata" not in workflow_text
+        assert "dependencies:automerge" not in workflow_text
+        assert "issues/" not in workflow_text
+        assert "--dependabot-source-run" in workflow_text
+        assert "--dependabot-classifier-run" in workflow_text
 
     def test_merge_uses_trusted_dev_tools_and_exact_candidate_head(self) -> None:
         """A moved, non-Dependabot, or ambiguous PR must never merge."""

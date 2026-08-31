@@ -223,6 +223,15 @@ def test_every_checked_in_bootstrap_caller_provisions_pinned_rust() -> None:
     assert "mise run test:rust-legacy-adopter-pg" not in weekly
 
 
+def test_persistence_bootstrap_provisions_mise_for_runtime_tasks() -> None:
+    action = (ROOT / ".github/actions/bootstrap-persistence/action.yml").read_text(encoding="utf-8")
+
+    mise_setup = action.index("uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518 # v4")
+    rust_setup = action.index("- name: Install pinned Rust toolchain")
+    assert mise_setup < rust_setup
+    assert "version: 2026.8.12" in action[mise_setup:rust_setup]
+
+
 def test_pr_pg_lane_runs_the_rust_live_matrix_without_python_reference_data() -> None:
     workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
     pg_lane = workflow.split("\n  pg-integration:", maxsplit=1)[1].split(

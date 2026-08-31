@@ -1,12 +1,20 @@
 # Shared Rust persistence bootstrap for PostgreSQL jobs that advance the
-# authoritative schema epoch. This stays separate from bootstrap-python so
-# Python-only jobs do not pay for a Rust toolchain or Cargo cache.
+# authoritative schema epoch. The live runner invokes repository-owned Mise
+# tasks for bootstrap and smoke proofs, so this action installs the same pinned
+# task runner as the other hosted lanes. It stays separate from bootstrap-python
+# so Python-only jobs do not pay for a Rust toolchain or Cargo cache.
 name: Bootstrap Rust Persistence
-description: Install the pinned Rust toolchain and load the persistence Cargo cache
+description: Install pinned Mise and Rust toolchains and load the persistence Cargo cache
 
 runs:
   using: composite
   steps:
+    - name: Set up tools with mise
+      uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518 # v4
+      with:
+        version: 2026.8.12
+        cache: true
+
     - name: Install pinned Rust toolchain
       shell: bash
       run: |

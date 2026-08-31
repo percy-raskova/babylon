@@ -154,8 +154,8 @@ fn verify_frozen_legacy_migration_install(
         (102, 102)
     );
     assert!(adoption.transaction_verified);
-    let legacy_before = frozen_legacy_snapshot(&config);
-    assert!(legacy_before.authority_schemas.is_empty());
+    let pre_migration_snapshot = frozen_legacy_snapshot(&config);
+    assert!(pre_migration_snapshot.authority_schemas.is_empty());
     assert_writer_authority_refused();
 
     let migration = migrate_schema_epoch(&config).expect("adopted legacy database must migrate");
@@ -167,20 +167,32 @@ fn verify_frozen_legacy_migration_install(
     );
     assert_eq!(migration.applied_versions.len(), current_epoch);
     assert_eq!(migration.legacy_adoption.as_ref(), Some(&adoption));
-    assert_frozen_legacy_retained(&config, &legacy_before);
+    // A successful migration has already run `verify_post_epoch_census`, which proves the
+    // governed epoch-owned rows and the unchanged frozen legacy census before returning.
+    let post_migration_snapshot = frozen_legacy_snapshot(&config);
+    assert_eq!(
+        post_migration_snapshot.stamps,
+        pre_migration_snapshot.stamps
+    );
+    assert_eq!(
+        post_migration_snapshot.authority_schemas,
+        vec!["babylon_ref".to_owned(), "babylon_state".to_owned()]
+    );
+    assert!(pre_migration_snapshot.census.len() <= MAX_LEGACY_CENSUS_ROWS);
+    assert!(post_migration_snapshot.census.len() <= MAX_LEGACY_CENSUS_ROWS);
 
     let installed = install_representative_h3_cohort(&config, cohort)
         .expect("migrated frozen legacy database must install the exact cohort");
     assert_exact_report(&installed, H3ReferenceInstallDisposition::Installed, 1);
     let installed_snapshot = reference_snapshot(&config);
     assert_eq!(installed_snapshot, expected_installed_snapshot());
-    assert_frozen_legacy_retained(&config, &legacy_before);
+    assert_eq!(frozen_legacy_snapshot(&config), post_migration_snapshot);
 
     let retry = install_representative_h3_cohort(&config, cohort)
         .expect("identical legacy-migrated cohort install must be idempotent");
     assert_exact_report(&retry, H3ReferenceInstallDisposition::AlreadyPresent, 0);
     assert_eq!(reference_snapshot(&config), installed_snapshot);
-    assert_frozen_legacy_retained(&config, &legacy_before);
+    assert_eq!(frozen_legacy_snapshot(&config), post_migration_snapshot);
     assert_writer_authority_refused();
     assert_lock_released(&config);
     database.cleanup();
@@ -519,27 +531,6 @@ fn mutate_orphan_membership(config: &Config) {
 fn frozen_legacy_snapshot(config: &Config) -> AuthoritySnapshot {
     let mut client = config.connect(NoTls).unwrap();
     authority_snapshot(&mut client)
-}
-
-fn assert_frozen_legacy_retained(config: &Config, expected: &AuthoritySnapshot) {
-    let actual = frozen_legacy_snapshot(config);
-    assert_eq!(actual.stamps, expected.stamps);
-    assert_eq!(
-        actual.authority_schemas,
-        vec!["babylon_ref".to_owned(), "babylon_state".to_owned()]
-    );
-    assert!(expected.census.len() <= MAX_LEGACY_CENSUS_ROWS);
-    assert!(actual.census.len() <= MAX_LEGACY_CENSUS_ROWS);
-    for expected_row in expected.census.iter().take(MAX_LEGACY_CENSUS_ROWS) {
-        assert!(
-            actual
-                .census
-                .iter()
-                .take(MAX_LEGACY_CENSUS_ROWS)
-                .any(|actual_row| actual_row == expected_row),
-            "migration or install changed frozen legacy object {expected_row:?}"
-        );
-    }
 }
 
 fn assert_exact_report(

@@ -24,6 +24,7 @@ import json
 import re
 import subprocess
 import sys
+from enum import IntEnum
 from pathlib import Path
 from typing import Final
 
@@ -31,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from tools.pr_policy import (  # noqa: E402
     DEV_CHECK_MANIFEST,
+    GITHUB_ACTIONS_PRODUCER,
     CheckRequirement,
     manifest_for_base,
 )
@@ -38,7 +40,19 @@ from tools.pr_policy import (  # noqa: E402
 MAX_GITHUB_ITEMS = 100
 GH_TIMEOUT_SECONDS: Final[int] = 30
 GH_ERROR_DETAIL_LIMIT: Final[int] = 400
-INDETERMINATE_EXIT_CODE: Final[int] = 2
+
+
+class MergeOutcome(IntEnum):
+    """Stable process outcomes consumed by humans and trusted automation."""
+
+    SUCCESS = 0
+    HARD_REFUSAL = 1
+    MUTATION_INDETERMINATE = 2
+    DEPENDABOT_MAJOR_REVIEW = 3
+    EXACT_HEAD_EVIDENCE_PENDING = 4
+
+
+INDETERMINATE_EXIT_CODE: Final[int] = MergeOutcome.MUTATION_INDETERMINATE
 
 COMPLETED_REVIEW_STATES = {"APPROVED", "CHANGES_REQUESTED", "COMMENTED"}
 COPILOT_GRAPHQL_LOGIN = "copilot-pull-request-reviewer"
@@ -58,8 +72,11 @@ DEPENDABOT_WORKFLOW_PATH = ".github/workflows/dependabot-automerge.yml"
 DEPENDABOT_WORKFLOW_ID = 214604133
 CI_WORKFLOW_PATH = ".github/workflows/ci.yml"
 CI_WORKFLOW_ID = 176131131
-GITHUB_ACTIONS_APP_ID = 15368
-GITHUB_ACTIONS_APP_SLUG = "github-actions"
+GITHUB_ACTIONS_APP_ID: Final[int] = GITHUB_ACTIONS_PRODUCER.integration_id
+GITHUB_ACTIONS_APP_SLUG: Final[str] = GITHUB_ACTIONS_PRODUCER.slug
+CHECK_RUNS_ENDPOINT: Final[str] = (
+    "repos/{{owner}}/{{repo}}/commits/{head_oid}/check-runs?filter=all&per_page=100"
+)
 
 _REVIEW_THREADS_QUERY = """
 query($owner: String!, $name: String!, $number: Int!) {
@@ -90,6 +107,36 @@ class MergeIndeterminateError(RuntimeError):
 
 class CopilotEvidenceReadError(RuntimeError):
     """A bounded Copilot-only evidence read failed without blocking merge."""
+
+
+class VerificationFindings:
+    """Separate permanent refusals from exact-head evidence still settling."""
+
+    def __init__(
+        self,
+        *,
+        hard: list[str] | None = None,
+        pending: list[str] | None = None,
+    ) -> None:
+        self.hard = [] if hard is None else hard
+        self.pending = [] if pending is None else pending
+
+    def extend(self, other: VerificationFindings) -> None:
+        self.hard.extend(other.hard)
+        self.pending.extend(other.pending)
+
+
+class DependabotModeResult:
+    """Dependabot provenance verdict plus its authenticated update class."""
+
+    def __init__(
+        self,
+        problems: tuple[str, ...] = (),
+        *,
+        semver_major: bool = False,
+    ) -> None:
+        self.problems = problems
+        self.semver_major = semver_major
 
 
 def _bounded_error_detail(value: object) -> str:
@@ -192,46 +239,164 @@ def _entry_sort_key(entry: dict[str, object]) -> tuple[str, int]:
     return ("", run_id)
 
 
-def _rollup_failures(
+def _rollup_findings(
     rollup: list[dict[str, object]],
     manifest: tuple[CheckRequirement, ...] = DEV_CHECK_MANIFEST,
-) -> list[str]:
-    """Return incomplete or disallowed latest check conclusions."""
+    *,
+    allow_pending: bool = False,
+) -> VerificationFindings:
+    """Classify disallowed unknown rollup conclusions.
+
+    GitHub's GraphQL union includes source-free ``StatusContext`` values, so
+    the REST check-run endpoint alone proves the producer-bound manifest.
+    The rollup remains useful for visibility into additional failing checks.
+    """
     if len(rollup) >= MAX_GITHUB_ITEMS:
         raise RuntimeError(f"status-check rollup reached the {MAX_GITHUB_ITEMS}-item safety bound")
     if len(manifest) >= MAX_GITHUB_ITEMS:
         raise RuntimeError(f"check manifest reached the {MAX_GITHUB_ITEMS}-item safety bound")
     latest: dict[str, dict[str, object]] = {}
+    expected = {requirement.context for requirement in manifest}
     for entry in rollup:
         name = str(entry.get("name") or entry.get("context") or "?")
+        if name in expected:
+            continue
         if name not in latest or _entry_sort_key(entry) >= _entry_sort_key(latest[name]):
             latest[name] = entry
-    expected = {requirement.context: requirement for requirement in manifest}
-    failures: list[str] = []
-    reported: set[str] = set()
+    findings = VerificationFindings()
     for entry in latest.values():
         name = str(entry.get("name") or entry.get("context") or "?")
         status = str(entry.get("status") or "")
         conclusion = str(entry.get("conclusion") or entry.get("state") or "")
-        requirement = expected.get(name)
         if status and status != "COMPLETED":
-            failures.append(f"{name}: still {status}")
-        elif (
-            requirement is None
-            and conclusion != "SUCCESS"
-            and not (conclusion == "SKIPPED" and name in OPTIONAL_SKIPPED_CHECKS)
+            target = findings.pending if allow_pending else findings.hard
+            target.append(f"{name}: still {status}")
+        elif not status and conclusion in {"EXPECTED", "PENDING"}:
+            target = findings.pending if allow_pending else findings.hard
+            target.append(f"{name}: still {conclusion}")
+        elif allow_pending and conclusion == "NEUTRAL":
+            findings.pending.append(f"{name}: {conclusion}")
+        elif conclusion != "SUCCESS" and not (
+            conclusion == "SKIPPED" and name in OPTIONAL_SKIPPED_CHECKS
         ):
-            failures.append(f"{name}: {conclusion}")
-        elif requirement is not None and conclusion not in requirement.allowed_conclusions:
-            failures.append(f"{name}: {conclusion}")
-        if requirement is not None:
-            reported.add(name)
-    failures.extend(
-        f"{requirement.context}: missing from complete {requirement.kind} manifest"
-        for requirement in manifest
-        if requirement.context not in reported
-    )
-    return failures
+            findings.hard.append(f"{name}: {conclusion}")
+    return findings
+
+
+def _rollup_failures(
+    rollup: list[dict[str, object]],
+    manifest: tuple[CheckRequirement, ...] = DEV_CHECK_MANIFEST,
+) -> list[str]:
+    """Compatibility surface returning every blocking rollup finding."""
+    findings = _rollup_findings(rollup, manifest)
+    return [*findings.hard, *findings.pending]
+
+
+def _manifest_check_run_findings(
+    head_oid: str,
+    manifest: tuple[CheckRequirement, ...],
+    *,
+    allow_pending: bool = False,
+) -> VerificationFindings:
+    """Classify canonical exact-head REST check-run evidence."""
+    if re.fullmatch(r"[0-9a-f]{40}", head_oid) is None:
+        raise RuntimeError("pull-request head is not one canonical 40-hex SHA")
+    if len(manifest) >= MAX_GITHUB_ITEMS:
+        raise RuntimeError(f"check manifest reached the {MAX_GITHUB_ITEMS}-item safety bound")
+    endpoint = CHECK_RUNS_ENDPOINT.format(head_oid=head_oid)
+    payload = _json_dict(_gh_json("api", endpoint), "exact-head check runs")
+    total_count = payload.get("total_count")
+    if type(total_count) is not int or total_count < 0 or total_count >= MAX_GITHUB_ITEMS:
+        raise RuntimeError(
+            f"exact-head check runs reached the {MAX_GITHUB_ITEMS}-item safety bound"
+        )
+    runs = _json_dicts(payload.get("check_runs"), "exact-head check runs")
+    if total_count != len(runs):
+        raise RuntimeError("exact-head check runs did not return one complete page")
+
+    expected = {requirement.context: requirement for requirement in manifest}
+    latest: dict[str, dict[str, object]] = {}
+    seen_ids: dict[str, set[int]] = {}
+    wrong_producer: set[str] = set()
+    for run in runs:
+        name = run.get("name")
+        if not isinstance(name, str) or not name:
+            raise RuntimeError("exact-head check run has no name")
+        requirement = expected.get(name)
+        if requirement is None:
+            continue
+        run_id = run.get("id")
+        if type(run_id) is not int or run_id <= 0:
+            raise RuntimeError(f"exact-head check run {name!r} has no positive integer id")
+        started_at = run.get("started_at")
+        if started_at is not None and not isinstance(started_at, str):
+            raise RuntimeError(f"exact-head check run {name!r} has malformed started_at")
+        run_head = run.get("head_sha")
+        if not isinstance(run_head, str) or run_head != head_oid:
+            raise RuntimeError(
+                f"exact-head check run {name!r} has wrong head: "
+                f"expected {head_oid}, found {run_head}"
+            )
+        app = _json_dict(run.get("app"), f"exact-head check run {name!r} app")
+        app_id = app.get("id")
+        app_slug = app.get("slug")
+        if type(app_id) is not int or not isinstance(app_slug, str) or not app_slug:
+            raise RuntimeError(f"exact-head check run {name!r} has malformed app identity")
+        if app_id != requirement.producer.integration_id or app_slug != requirement.producer.slug:
+            wrong_producer.add(name)
+            continue
+        context_ids = seen_ids.setdefault(name, set())
+        if run_id in context_ids:
+            raise RuntimeError(f"exact-head check run {name!r} repeats id {run_id}")
+        context_ids.add(run_id)
+        prior = latest.get(name)
+        prior_id = prior.get("id") if prior is not None else 0
+        if type(prior_id) is not int:
+            raise RuntimeError(f"exact-head check run {name!r} has malformed prior id")
+        # Check-run IDs are monotonic unique API identities; queued runs may have no started_at.
+        if prior is None or run_id > prior_id:
+            latest[name] = run
+
+    findings = VerificationFindings()
+    for requirement in manifest:
+        selected = latest.get(requirement.context)
+        if selected is None:
+            if requirement.context in wrong_producer:
+                findings.hard.append(
+                    f"{requirement.context}: missing required producer "
+                    f"{requirement.producer.slug} ({requirement.producer.integration_id})"
+                )
+            else:
+                target = findings.pending if allow_pending else findings.hard
+                target.append(
+                    f"{requirement.context}: missing from complete {requirement.kind} manifest"
+                )
+            continue
+        status = selected.get("status")
+        conclusion = selected.get("conclusion")
+        if not isinstance(status, str) or not status:
+            raise RuntimeError(f"exact-head check run {requirement.context!r} has malformed status")
+        if conclusion is not None and not isinstance(conclusion, str):
+            raise RuntimeError(
+                f"exact-head check run {requirement.context!r} has malformed conclusion"
+            )
+        normalized_status = status.upper()
+        normalized_conclusion = conclusion.upper() if isinstance(conclusion, str) else ""
+        if normalized_status != "COMPLETED":
+            target = findings.pending if allow_pending else findings.hard
+            target.append(f"{requirement.context}: still {normalized_status}")
+        elif normalized_conclusion not in requirement.allowed_conclusions:
+            findings.hard.append(f"{requirement.context}: {normalized_conclusion}")
+    return findings
+
+
+def _manifest_check_run_failures(
+    head_oid: str,
+    manifest: tuple[CheckRequirement, ...],
+) -> list[str]:
+    """Compatibility surface returning every blocking manifest finding."""
+    findings = _manifest_check_run_findings(head_oid, manifest)
+    return [*findings.hard, *findings.pending]
 
 
 def _unharvested_copilot_comments(pr: int) -> list[str]:
@@ -437,7 +602,7 @@ def _dependabot_pr_problems(
     head_oid: str,
     source_run_id: int,
     classifier_run_id: int,
-) -> list[str]:
+) -> DependabotModeResult:
     """Revalidate exact-head Dependabot authority from trusted GitHub records."""
     payload = _json_dict(
         _gh_json("api", f"repos/{{owner}}/{{repo}}/pulls/{pr}"),
@@ -456,14 +621,14 @@ def _dependabot_pr_problems(
     if rest_base != "dev":
         problems.append(f"Dependabot mode requires base dev, found {rest_base}")
     if problems:
-        return problems
+        return DependabotModeResult(tuple(problems))
     source_run = _json_dict(
         _gh_json("api", f"repos/{{owner}}/{{repo}}/actions/runs/{source_run_id}"),
         "Dependabot source CI run",
     )
     source_problems = _source_ci_run_problems(source_run, pr, head_oid, source_run_id)
     if source_problems:
-        return source_problems
+        return DependabotModeResult(tuple(source_problems))
     classifier_run = _json_dict(
         _gh_json("api", f"repos/{{owner}}/{{repo}}/actions/runs/{classifier_run_id}"),
         "Dependabot classifier run",
@@ -475,11 +640,11 @@ def _dependabot_pr_problems(
         classifier_run_id,
     )
     if classifier_problems:
-        return classifier_problems
+        return DependabotModeResult(tuple(classifier_problems))
     job_problems = _native_classifier_job_problems(classifier_run_id, classifier_run)
     if job_problems:
-        return job_problems
-    return _dependabot_update_problems(pr, head_oid)
+        return DependabotModeResult(tuple(job_problems))
+    return _dependabot_update_result(pr, head_oid)
 
 
 def _is_canonical_dependabot(actor: object) -> bool:
@@ -703,7 +868,7 @@ def _bounded_counted_items(
     return items
 
 
-def _dependabot_update_problems(pr: int, head_oid: str) -> list[str]:
+def _dependabot_update_result(pr: int, head_oid: str) -> DependabotModeResult:
     """Classify the sole exact-head commit after native actor provenance."""
     commits = _json_dicts(
         _gh_json(
@@ -714,21 +879,31 @@ def _dependabot_update_problems(pr: int, head_oid: str) -> list[str]:
         refuse_full_page=True,
     )
     if len(commits) != 1:
-        return [f"Dependabot mode requires exactly one current commit, found {len(commits)}"]
+        return DependabotModeResult(
+            (f"Dependabot mode requires exactly one current commit, found {len(commits)}",)
+        )
     commit = commits[0]
     if commit.get("sha") != head_oid:
-        return ["Dependabot commit does not match the exact PR head"]
+        return DependabotModeResult(("Dependabot commit does not match the exact PR head",))
     details = _json_dict(commit.get("commit"), "Dependabot commit details")
     message = details.get("message")
     if not isinstance(message, str):
         raise RuntimeError("Dependabot commit message must be a string")
     update_types = re.findall(r"(?m)^\s*update-type:\s*([^\s]+)\s*$", message)
     if not update_types or len(update_types) >= MAX_GITHUB_ITEMS:
-        return ["Dependabot update metadata is missing or exceeds the safety bound"]
-    allowed = {"version-update:semver-patch", "version-update:semver-minor"}
+        return DependabotModeResult(
+            ("Dependabot update metadata is missing or exceeds the safety bound",)
+        )
+    allowed = {
+        "version-update:semver-patch",
+        "version-update:semver-minor",
+        "version-update:semver-major",
+    }
     if any(update_type not in allowed for update_type in update_types):
-        return ["Dependabot mode permits only patch or minor updates"]
-    return []
+        return DependabotModeResult(("Dependabot update metadata is not a known semver class",))
+    return DependabotModeResult(
+        semver_major="version-update:semver-major" in update_types,
+    )
 
 
 def _base_policy_problems(
@@ -757,10 +932,12 @@ def _dependabot_mode_problems(
     head_oid: str,
     source_run_id: int | None,
     classifier_run_id: int | None,
-) -> list[str]:
+) -> DependabotModeResult:
     """Validate required run identifiers before Dependabot provenance reads."""
     if source_run_id is None or classifier_run_id is None:
-        return ["--dependabot requires source and classifier workflow run IDs"]
+        return DependabotModeResult(
+            ("--dependabot requires source and classifier workflow run IDs",)
+        )
     _positive_int(source_run_id, "Dependabot source run ID")
     _positive_int(classifier_run_id, "Dependabot classifier run ID")
     return _dependabot_pr_problems(pr, head_oid, source_run_id, classifier_run_id)
@@ -844,10 +1021,11 @@ def _main() -> int:
     head_ref = str(view.get("headRefName") or "")
     base_oid = str(view.get("baseRefOid") or "")
     base_ref = str(view.get("baseRefName") or "")
-    problems: list[str] = []
+    findings = VerificationFindings()
+    dependabot_result = DependabotModeResult()
     if view.get("state") != "OPEN" or view.get("isDraft"):
-        problems.append(f"PR #{args.pr} is {view.get('state')}, draft={view.get('isDraft')}")
-    problems.extend(
+        findings.hard.append(f"PR #{args.pr} is {view.get('state')}, draft={view.get('isDraft')}")
+    findings.hard.extend(
         _base_policy_problems(
             base_ref,
             head_ref,
@@ -856,29 +1034,40 @@ def _main() -> int:
         )
     )
     if args.expected_head is not None and args.expected_head != head_oid:
-        problems.append(f"expected head {args.expected_head}, found {head_oid}")
+        findings.hard.append(f"expected head {args.expected_head}, found {head_oid}")
     rollup = view.get("statusCheckRollup") or []
-    if not rollup:
-        problems.append("no checks reported on the head commit")
     manifest = manifest_for_base(base_ref) if base_ref in {"dev", "main"} else ()
-    problems.extend(_rollup_failures(_json_dicts(rollup, "status-check rollup"), manifest))
+    if manifest:
+        findings.extend(
+            _manifest_check_run_findings(
+                head_oid,
+                manifest,
+                allow_pending=args.dependabot,
+            )
+        )
+    findings.extend(
+        _rollup_findings(
+            _json_dicts(rollup, "status-check rollup"),
+            manifest,
+            allow_pending=args.dependabot,
+        )
+    )
     advisories = _copilot_advisories(args.pr, view.get("reviews"), head_oid)
-    problems.extend(_review_thread_problems(args.pr))
+    findings.hard.extend(_review_thread_problems(args.pr))
     if (alerts := _open_alert_count()) > 0:
-        problems.append(f"{alerts} open code-scanning alert(s) — the zero floor is a STOP")
+        findings.hard.append(f"{alerts} open code-scanning alert(s) — the zero floor is a STOP")
     if args.delete_branch and (children := _child_prs(head_ref)):
-        problems.append(
+        findings.hard.append(
             f"--delete-branch refused: open PR(s) {children} base on this branch (#193 class)"
         )
     if args.dependabot:
-        problems.extend(
-            _dependabot_mode_problems(
-                args.pr,
-                head_oid,
-                args.dependabot_source_run,
-                args.dependabot_classifier_run,
-            )
+        dependabot_result = _dependabot_mode_problems(
+            args.pr,
+            head_oid,
+            args.dependabot_source_run,
+            args.dependabot_classifier_run,
         )
+        findings.hard.extend(dependabot_result.problems)
 
     # Race guard: neither side may move after its verdict snapshot.
     refs_now = _json_dict(
@@ -886,24 +1075,38 @@ def _main() -> int:
         "pull-request ref re-read",
     )
     if refs_now.get("headRefOid") != head_oid:
-        problems.append("head moved while verifying — re-run against the new head")
+        findings.hard.append("head moved while verifying — re-run against the new head")
     if refs_now.get("baseRefOid") != base_oid:
-        problems.append("base moved while verifying — re-run against the new base")
+        findings.hard.append("base moved while verifying — re-run against the new base")
 
     for advisory in advisories:
         print(f"pr:merge ADVISORY — {advisory}", file=sys.stderr)
-    if problems:
-        for problem in problems:
+    if findings.hard:
+        for problem in findings.hard:
             print(f"pr:merge REFUSED — {problem}", file=sys.stderr)
-        return 1
+        for pending in findings.pending:
+            print(f"pr:merge PENDING — {pending}", file=sys.stderr)
+        return MergeOutcome.HARD_REFUSAL
+
+    if dependabot_result.semver_major:
+        print(
+            f"pr:merge MANUAL REVIEW — authenticated Dependabot semver-major PR #{args.pr}; "
+            "unattended merge skipped"
+        )
+        return MergeOutcome.DEPENDABOT_MAJOR_REVIEW
+
+    if findings.pending:
+        for pending in findings.pending:
+            print(f"pr:merge PENDING — {pending}", file=sys.stderr)
+        return MergeOutcome.EXACT_HEAD_EVIDENCE_PENDING
 
     if args.verify_only:
         print(f"pr:merge: PR #{args.pr} verified at {head_oid}")
-        return 0
+        return MergeOutcome.SUCCESS
 
     print(_merge_pr(args.pr, head_oid, delete_branch=args.delete_branch), end="")
     print(f"pr:merge: PR #{args.pr} merged at {head_oid}")
-    return 0
+    return MergeOutcome.SUCCESS
 
 
 def main() -> int:
@@ -912,10 +1115,10 @@ def main() -> int:
         return _main()
     except MergeIndeterminateError as error:
         print(f"pr:merge INDETERMINATE — {error}", file=sys.stderr)
-        return INDETERMINATE_EXIT_CODE
+        return MergeOutcome.MUTATION_INDETERMINATE
     except RuntimeError as error:
         print(f"pr:merge REFUSED — {error}", file=sys.stderr)
-        return 1
+        return MergeOutcome.HARD_REFUSAL
 
 
 if __name__ == "__main__":

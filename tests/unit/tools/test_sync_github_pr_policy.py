@@ -32,6 +32,8 @@ DEV_BLOCKING_CHECKS = (
     "Baseline Ceremony Gate (§6.5 provenance)",
     "Postgres Integration Tier (PG 17, pinned runtime)",
 )
+GITHUB_ACTIONS_APP_ID = 15368
+GITHUB_ACTIONS_APP_SLUG = "github-actions"
 
 MAIN_QUALIFICATION_CHECKS = (
     "Main Qualification / Event Contract",
@@ -39,8 +41,8 @@ MAIN_QUALIFICATION_CHECKS = (
     "Main Qualification / PostgreSQL Determinism Bundle",
     "Main Qualification / Reference-Data Contracts",
     "Main Qualification / Release Documentation",
+    "Main Qualification / Container Image Scan",
     "Main Qualification / AI Tests (advisory)",
-    "Main Qualification / Container Image Scan (advisory)",
 )
 
 
@@ -54,7 +56,7 @@ def _ruleset(
     contexts = (
         DEV_BLOCKING_CHECKS
         if branch == "dev"
-        else (*DEV_BLOCKING_CHECKS, *MAIN_QUALIFICATION_CHECKS[:5])
+        else (*DEV_BLOCKING_CHECKS, *MAIN_QUALIFICATION_CHECKS[:6])
     )
     return {
         "id": ruleset_id,
@@ -86,7 +88,13 @@ def _ruleset(
                 "parameters": {
                     "strict_required_status_checks_policy": strict,
                     "do_not_enforce_on_create": False,
-                    "required_status_checks": [{"context": context} for context in contexts],
+                    "required_status_checks": [
+                        {
+                            "context": context,
+                            "integration_id": GITHUB_ACTIONS_APP_ID,
+                        }
+                        for context in contexts
+                    ],
                 },
             },
         ],
@@ -159,9 +167,14 @@ class FakeApi:
             {
                 "id": index,
                 "name": context,
+                "head_sha": self.dev_sha,
                 "status": "completed",
                 "conclusion": "success",
                 "started_at": "2026-08-25T00:00:00Z",
+                "app": {
+                    "id": GITHUB_ACTIONS_APP_ID,
+                    "slug": GITHUB_ACTIONS_APP_SLUG,
+                },
             }
             for index, context in enumerate(DEV_BLOCKING_CHECKS, start=1)
         ]
@@ -169,9 +182,14 @@ class FakeApi:
             {
                 "id": index,
                 "name": context,
+                "head_sha": self.dev_sha,
                 "status": "completed",
                 "conclusion": "neutral" if "(advisory)" in context else "success",
                 "started_at": "2026-08-26T00:00:00Z",
+                "app": {
+                    "id": GITHUB_ACTIONS_APP_ID,
+                    "slug": GITHUB_ACTIONS_APP_SLUG,
+                },
             }
             for index, context in enumerate(MAIN_QUALIFICATION_CHECKS, start=50)
         )
@@ -181,11 +199,13 @@ class FakeApi:
         self.mutate_then_fail_method_endpoint: tuple[str, str] | None = None
         self.fail_ruleset_restore = False
         self.mismatch_ruleset_readback = False
+        self.mismatch_ruleset_producer_readback = False
         self.concurrent_ruleset_drift = False
         self.policy_error_ruleset_read: int | None = None
         self._ruleset_reads = 0
         self.move_dev_on_read: int | None = None
         self._dev_reads = 0
+        self.check_runs_total_count: int | None = None
 
     def get_json(self, endpoint: str) -> object:
         self.calls.append(("GET", endpoint, None))
@@ -205,6 +225,11 @@ class FakeApi:
                 value["name"] = "concurrent change"
             if self.mismatch_ruleset_readback and self._ruleset_reads == 3:
                 value["enforcement"] = "disabled"
+            if self.mismatch_ruleset_producer_readback and self._ruleset_reads == 3:
+                status_rule = next(
+                    rule for rule in value["rules"] if rule["type"] == "required_status_checks"
+                )
+                del status_rule["parameters"]["required_status_checks"][0]["integration_id"]
             return value
         if endpoint == policy_tool.MAIN_RULESET_ENDPOINT.format(ruleset_id=18807583):
             return deepcopy(self.main_ruleset)
@@ -215,7 +240,14 @@ class FakeApi:
         if endpoint == policy_tool.LABELS_LIST_ENDPOINT:
             return deepcopy(self.labels)
         if endpoint == policy_tool.CHECK_RUNS_ENDPOINT.format(sha=self.dev_sha):
-            return {"total_count": len(self.check_runs), "check_runs": deepcopy(self.check_runs)}
+            return {
+                "total_count": (
+                    len(self.check_runs)
+                    if self.check_runs_total_count is None
+                    else self.check_runs_total_count
+                ),
+                "check_runs": deepcopy(self.check_runs),
+            }
         raise AssertionError(f"unexpected GET {endpoint}")
 
     def send_json(self, method: str, endpoint: str, payload: dict[str, Any]) -> object:
@@ -359,6 +391,34 @@ def test_required_status_contexts_cannot_be_empty() -> None:
         policy_tool._required_contexts(policy)
 
 
+@pytest.mark.parametrize("producer", [None, 1, "15368", True])
+def test_desired_required_checks_require_the_exact_actions_integration(
+    producer: object,
+) -> None:
+    policy = _policy()
+    status_rule = next(
+        rule for rule in policy["dev_ruleset"]["rules"] if rule["type"] == "required_status_checks"
+    )
+    check = status_rule["parameters"]["required_status_checks"][0]
+    if producer is None:
+        del check["integration_id"]
+    else:
+        check["integration_id"] = producer
+
+    with pytest.raises(policy_tool.PolicyError, match="integration_id"):
+        policy_tool._validate_policy(policy)
+
+
+def test_ruleset_readback_compares_the_required_check_producer() -> None:
+    api = FakeApi()
+    status_rule = next(
+        rule for rule in api.ruleset["rules"] if rule["type"] == "required_status_checks"
+    )
+    del status_rule["parameters"]["required_status_checks"][0]["integration_id"]
+
+    assert "dev ruleset differs" in policy_tool.check_policy(api, _policy())
+
+
 def test_settings_policy_must_match_the_complete_typed_dev_manifest() -> None:
     policy = _policy()
     status_rule = next(
@@ -396,6 +456,107 @@ def test_malformed_check_run_id_is_rejected_at_the_json_boundary(tmp_path: Path)
     api.check_runs[0]["id"] = "not-an-integer"
 
     with pytest.raises(policy_tool.PolicyError, match="integer id"):
+        policy_tool.apply_policy(api, _policy(), api.dev_sha, tmp_path / "before.json")
+
+    assert all(method == "GET" for method, _endpoint, _payload in api.calls)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("app", None, "app"),
+        ("app_id", 1, "producer"),
+        ("app_slug", "attacker-actions", "producer"),
+        ("head_sha", "b" * 40, "head"),
+    ],
+)
+def test_preflight_refuses_untrusted_required_check_evidence_before_mutation(
+    tmp_path: Path,
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    api = FakeApi()
+    run = api.check_runs[0]
+    if field == "app":
+        run["app"] = value
+    elif field == "head_sha":
+        run["head_sha"] = value
+    else:
+        app = run["app"]
+        assert isinstance(app, dict)
+        app[field.removeprefix("app_")] = value
+
+    with pytest.raises(policy_tool.PolicyError, match=message):
+        policy_tool.apply_policy(api, _policy(), api.dev_sha, tmp_path / "before.json")
+
+    assert all(method == "GET" for method, _endpoint, _payload in api.calls)
+
+
+def test_preflight_refuses_an_incomplete_check_run_page_before_mutation(tmp_path: Path) -> None:
+    api = FakeApi()
+    api.check_runs_total_count = len(api.check_runs) + 1
+
+    with pytest.raises(policy_tool.PolicyError, match="complete page"):
+        policy_tool.apply_policy(api, _policy(), api.dev_sha, tmp_path / "before.json")
+
+    assert all(method == "GET" for method, _endpoint, _payload in api.calls)
+
+
+def test_later_wrong_app_duplicate_cannot_displace_the_canonical_run(tmp_path: Path) -> None:
+    api = FakeApi()
+    canonical = api.check_runs[0]
+    forged = deepcopy(canonical)
+    forged.update(
+        {
+            "id": 1000,
+            "started_at": "2026-08-29T00:00:00Z",
+            "conclusion": "failure",
+            "app": {"id": 1, "slug": "attacker-actions"},
+        }
+    )
+    api.check_runs.append(forged)
+
+    policy_tool.apply_policy(api, _policy(), api.dev_sha, tmp_path / "before.json")
+
+    assert policy_tool.check_policy(api, _policy()) == []
+
+
+def test_newer_queued_canonical_duplicate_with_no_started_at_blocks_preflight(
+    tmp_path: Path,
+) -> None:
+    api = FakeApi()
+    queued = deepcopy(api.check_runs[0])
+    queued.update(
+        {
+            "id": 1000,
+            "started_at": None,
+            "status": "queued",
+            "conclusion": None,
+        }
+    )
+    api.check_runs.append(queued)
+
+    with pytest.raises(policy_tool.PolicyError, match="status=queued, conclusion="):
+        policy_tool.apply_policy(api, _policy(), api.dev_sha, tmp_path / "before.json")
+
+    assert all(method == "GET" for method, _endpoint, _payload in api.calls)
+
+
+def test_repeated_lower_canonical_check_run_id_is_rejected_before_mutation(
+    tmp_path: Path,
+) -> None:
+    api = FakeApi()
+    newer = deepcopy(api.check_runs[0])
+    newer["id"] = 1000
+    api.check_runs.append(newer)
+    duplicate = deepcopy(api.check_runs[0])
+    duplicate["started_at"] = None
+    duplicate["status"] = "queued"
+    duplicate["conclusion"] = None
+    api.check_runs.append(duplicate)
+
+    with pytest.raises(policy_tool.PolicyError, match=f"repeats id {duplicate['id']}"):
         policy_tool.apply_policy(api, _policy(), api.dev_sha, tmp_path / "before.json")
 
     assert all(method == "GET" for method, _endpoint, _payload in api.calls)
@@ -476,7 +637,7 @@ def test_apply_accepts_the_pr_only_baseline_gate_skipped_on_dev_push(tmp_path: P
     assert policy_tool.check_policy(api, _policy()) == []
 
 
-@pytest.mark.parametrize("advisory_name", MAIN_QUALIFICATION_CHECKS[-2:])
+@pytest.mark.parametrize("advisory_name", MAIN_QUALIFICATION_CHECKS[-1:])
 def test_apply_accepts_an_explicit_qualification_advisory_failure(
     tmp_path: Path,
     advisory_name: str,
@@ -488,6 +649,25 @@ def test_apply_accepts_an_explicit_qualification_advisory_failure(
     policy_tool.apply_policy(api, _policy(), api.dev_sha, tmp_path / "before.json")
 
     assert policy_tool.check_policy(api, _policy()) == []
+
+
+@pytest.mark.parametrize("conclusion", [None, "failure"])
+def test_apply_requires_green_container_scan_before_ruleset_transition(
+    tmp_path: Path,
+    conclusion: str | None,
+) -> None:
+    api = FakeApi()
+    scan_name = "Main Qualification / Container Image Scan"
+    if conclusion is None:
+        api.check_runs = [run for run in api.check_runs if run["name"] != scan_name]
+    else:
+        scan = next(run for run in api.check_runs if run["name"] == scan_name)
+        scan["conclusion"] = conclusion
+
+    with pytest.raises(policy_tool.PolicyError, match=re.escape(scan_name)):
+        policy_tool.apply_policy(api, _policy(), api.dev_sha, tmp_path / "before.json")
+
+    assert all(method == "GET" for method, _endpoint, _payload in api.calls)
 
 
 def test_apply_refuses_any_other_skipped_dev_push_check(tmp_path: Path) -> None:
@@ -672,6 +852,20 @@ def test_readback_mismatch_rolls_back_every_mutation(tmp_path: Path) -> None:
     assert api.labels == []
 
 
+def test_required_check_producer_readback_mismatch_rolls_back(tmp_path: Path) -> None:
+    api = FakeApi()
+    api.mismatch_ruleset_producer_readback = True
+    original_ruleset = deepcopy(api.ruleset)
+
+    with pytest.raises(policy_tool.PolicyError, match="readback mismatch"):
+        policy_tool.apply_policy(api, _policy(), api.dev_sha, tmp_path / "before.json")
+
+    assert policy_tool.normalize_ruleset(api.ruleset) == policy_tool.normalize_ruleset(
+        original_ruleset
+    )
+    assert api.labels == []
+
+
 def test_recoverable_policy_error_during_rollback_read_uses_attempted_writes(
     tmp_path: Path,
 ) -> None:
@@ -758,6 +952,34 @@ def test_manual_rollback_preserves_actions_permissions_for_legacy_snapshot(
     )
 
 
+def test_manual_rollback_preserves_historical_unbound_required_checks(
+    tmp_path: Path,
+) -> None:
+    api = FakeApi()
+    snapshot_path = tmp_path / "before.json"
+    policy_tool.apply_policy(api, _policy(), api.dev_sha, snapshot_path)
+    historical_snapshot = policy_tool.load_snapshot(snapshot_path)
+    for branch in ("dev", "main"):
+        status_rule = next(
+            rule
+            for rule in historical_snapshot[f"{branch}_ruleset"]["rules"]
+            if rule["type"] == "required_status_checks"
+        )
+        for check in status_rule["parameters"]["required_status_checks"]:
+            del check["integration_id"]
+
+    policy_tool.rollback_policy(api, historical_snapshot)
+
+    for ruleset in (api.ruleset, api.main_ruleset):
+        status_rule = next(
+            rule for rule in ruleset["rules"] if rule["type"] == "required_status_checks"
+        )
+        assert all(
+            "integration_id" not in check
+            for check in status_rule["parameters"]["required_status_checks"]
+        )
+
+
 def test_manual_rollback_refuses_a_stale_dev_snapshot_without_mutation(tmp_path: Path) -> None:
     api = FakeApi()
     snapshot_path = tmp_path / "before.json"
@@ -795,6 +1017,27 @@ def test_manual_rollback_refuses_tampered_main_scope_before_mutation(tmp_path: P
     api.calls.clear()
 
     with pytest.raises(policy_tool.PolicyError, match="exact main-only branch scope"):
+        policy_tool.rollback_policy(api, snapshot)
+
+    assert api.calls == []
+
+
+def test_manual_rollback_refuses_a_malformed_saved_producer_before_mutation(
+    tmp_path: Path,
+) -> None:
+    api = FakeApi()
+    snapshot_path = tmp_path / "before.json"
+    policy_tool.apply_policy(api, _policy(), api.dev_sha, snapshot_path)
+    snapshot = policy_tool.load_snapshot(snapshot_path)
+    status_rule = next(
+        rule
+        for rule in snapshot["dev_ruleset"]["rules"]
+        if rule["type"] == "required_status_checks"
+    )
+    status_rule["parameters"]["required_status_checks"][0]["integration_id"] = "15368"
+    api.calls.clear()
+
+    with pytest.raises(policy_tool.PolicyError, match="malformed integration_id"):
         policy_tool.rollback_policy(api, snapshot)
 
     assert api.calls == []

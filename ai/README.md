@@ -119,7 +119,7 @@ See `epochs/epoch4/overview.md` for specifications.
 |------|---------|
 | `game-loop-architecture.yaml` | Engine/State separation, Systems, formulas |
 | `entities.yaml` | 17 game entity types and relationships |
-| `decisions/index.yaml` | Architecture Decision Records index (ADR001-ADR049; 021-025 were never assigned) |
+| `decisions/index.yaml` | Legacy ADR registry used by deterministic sentinels. Query with `mise run adr` |
 | `ontology.yaml` | Domain terms (MLM-TW, architecture, game) |
 | `patterns.yaml` | How to do things here |
 | `anti-patterns.yaml` | What NOT to do |
@@ -150,7 +150,8 @@ When starting a session, an AI assistant should:
 2. Read `ai/state.yaml` for current sprint status and test counts
 3. Reference `ai/ontology.yaml` when encountering domain terms
 4. Check `ai/patterns.yaml` before implementing new features
-5. Consult `ai/decisions/index.yaml` to understand why things are the way they are
+5. Run `mise run adr -- search "<topic>"`
+6. Run `mise run adr -- show ADRNNN` for one result. Read only its returned source at the root selector
 
 ## Maintenance
 

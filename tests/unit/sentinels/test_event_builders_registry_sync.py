@@ -244,6 +244,11 @@ class TestEventBuildersSubsetViolationsMechanism:
         assert violations == []
 
 
+@pytest.fixture(scope="module")
+def registry() -> EventSchemaRegistry:
+    return load_registry()
+
+
 class TestTheRealEstateSyncsToday:
     """Conformance half: the SHIPPED registry against the REAL EVENT_BUILDERS.
 
@@ -252,11 +257,6 @@ class TestTheRealEstateSyncsToday:
     failing-at-landing sync test means your registry or normalization is
     wrong, not the estate." A green run here is exactly that proof.
     """
-
-    @classmethod
-    @pytest.fixture(scope="class")
-    def registry(cls) -> EventSchemaRegistry:
-        return load_registry()
 
     def test_event_builders_is_a_subset_of_the_registry(
         self, registry: EventSchemaRegistry

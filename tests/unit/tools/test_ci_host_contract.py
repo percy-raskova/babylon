@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,7 @@ from tests.unit.test_workflow_hygiene import (
 REPO_ROOT = Path(__file__).resolve().parents[3]
 APT_INSTALLER = REPO_ROOT / "tools" / "install_ci_apt_packages.sh"
 POSTGRES_COMPOSE = REPO_ROOT / "tools" / "ci_postgres_compose.sh"
+MISE_CONFIG = REPO_ROOT / ".mise.toml"
 WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
 ACTIONS_DIR = REPO_ROOT / ".github" / "actions"
 
@@ -272,3 +274,33 @@ def test_scheduled_failure_artifacts_survive_failure() -> None:
         if str(step.get("uses", "")).startswith("actions/upload-artifact@")
     )
     assert str(upload.get("if", "")) == "always()"
+
+
+def test_sim_sweep_task_has_a_configurable_finite_tick_budget() -> None:
+    """The local sweep defaults to 100 years and forwards an explicit ceiling."""
+    task = tomllib.loads(MISE_CONFIG.read_text())["tasks"]["sim:sweep"]
+
+    assert task["usage"] == ('arg "[ticks]" help="Maximum ticks per trial" default="5200"')
+    assert "--max-ticks ${usage_ticks}" in task["run"]
+    assert '--param "economy.extraction_efficiency=0.05:0.50:0.05"' in task["run"]
+
+
+def test_weekly_simulation_uses_bounded_trials_and_exact_failure_artifacts() -> None:
+    """The hosted sweep stays within one hour without changing its ten-point range."""
+    weekly_sim = yaml.safe_load((WORKFLOWS_DIR / "weekly-sim-artifacts.yml").read_text())
+    job = weekly_sim["jobs"]["sim-artifacts"]
+    steps = job["steps"]
+    trace = next(step for step in steps if step.get("name") == "Simulation trace")
+    sweep = next(step for step in steps if step.get("name") == "Parameter sweep")
+    upload = next(
+        step for step in steps if str(step.get("uses", "")).startswith("actions/upload-artifact@")
+    )
+
+    assert job["timeout-minutes"] == 60
+    assert trace["run"] == "mise run sim:trace 200"
+    assert sweep["run"] == "mise run sim:sweep 200"
+    assert str(upload.get("if", "")) == "always()"
+    assert str(upload["with"]["path"]).splitlines() == [
+        "results/trace.csv",
+        "results/sweep.csv",
+    ]

@@ -12,6 +12,8 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 _SPEC = importlib.util.spec_from_file_location(
     "pr_merge", Path(__file__).resolve().parents[3] / "tools" / "pr_merge.py"
 )
@@ -82,6 +84,57 @@ class TestRollupFailuresLatestPerCheck:
         failures = pr_merge._rollup_failures(rollup)
         assert any("Unit Tests" in f and "IN_PROGRESS" in f for f in failures)
 
+    def test_in_progress_unknown_check_is_typed_as_pending(self) -> None:
+        findings = pr_merge._rollup_findings(
+            [_entry("Extension", "", "2026-08-21T18:21:15Z", status="IN_PROGRESS")],
+            allow_pending=True,
+        )
+
+        assert findings.hard == []
+        assert findings.pending == ["Extension: still IN_PROGRESS"]
+
+    @pytest.mark.parametrize("state", ["EXPECTED", "PENDING"])
+    def test_pending_status_context_is_typed_as_pending(self, state: str) -> None:
+        findings = pr_merge._rollup_findings(
+            [
+                {
+                    "context": "External status",
+                    "state": state,
+                    "startedAt": "2026-08-21T18:21:15Z",
+                }
+            ],
+            allow_pending=True,
+        )
+
+        assert findings.hard == []
+        assert findings.pending == [f"External status: still {state}"]
+
+    @pytest.mark.parametrize("with_status", [False, True], ids=["status-context", "check-run"])
+    def test_neutral_unknown_rollup_is_pending_only_for_dependabot(
+        self,
+        with_status: bool,
+    ) -> None:
+        entry = _entry("CodeQL aggregate", "NEUTRAL", "2026-08-21T18:21:15Z")
+        if not with_status:
+            entry.pop("status")
+            entry["state"] = entry.pop("conclusion")
+
+        dependabot = pr_merge._rollup_findings([entry], allow_pending=True)
+        ordinary = pr_merge._rollup_findings([entry])
+
+        assert dependabot.hard == []
+        assert dependabot.pending == ["CodeQL aggregate: NEUTRAL"]
+        assert ordinary.hard == ["CodeQL aggregate: NEUTRAL"]
+        assert ordinary.pending == []
+
+    def test_completed_unknown_failure_is_typed_as_hard(self) -> None:
+        findings = pr_merge._rollup_findings(
+            [_entry("Extension", "FAILURE", "2026-08-21T18:21:15Z")]
+        )
+
+        assert findings.hard == ["Extension: FAILURE"]
+        assert findings.pending == []
+
     def test_distinct_names_are_not_deduped_across(self) -> None:
         rollup = [
             _entry("Fast Gate", "FAILURE", "2026-08-21T17:30:44Z"),
@@ -108,15 +161,39 @@ class TestRollupFailuresLatestPerCheck:
         ]
         assert pr_merge._rollup_failures(rollup + _dev_manifest_green()) == []
 
-    def test_every_blocking_check_still_requires_explicit_pass(self) -> None:
-        """Dedupe must not weaken the complete manifest's explicit-success rule."""
+    def test_every_blocking_check_still_requires_explicit_pass(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Canonical REST evidence, not the source-free rollup, enforces explicit success."""
         critical = DEV_BLOCKING_CHECKS[0]
         rollup = [
             *[entry for entry in _dev_manifest_green() if entry["name"] != critical],
             _entry(critical, "SUCCESS", "2026-08-21T17:30:44Z"),
             _entry(critical, "SKIPPED", "2026-08-21T18:21:15Z"),
         ]
-        failures = pr_merge._rollup_failures(rollup)
+        assert pr_merge._rollup_failures(rollup) == []
+
+        head_sha = "a" * 40
+        check_runs = [
+            {
+                "id": index,
+                "name": requirement.context,
+                "head_sha": head_sha,
+                "status": "completed",
+                "conclusion": "skipped" if requirement.context == critical else "success",
+                "started_at": "2026-08-21T18:21:15Z",
+                "app": {
+                    "id": requirement.producer.integration_id,
+                    "slug": requirement.producer.slug,
+                },
+            }
+            for index, requirement in enumerate(pr_merge.DEV_CHECK_MANIFEST, start=1)
+        ]
+        payload = {"total_count": len(check_runs), "check_runs": check_runs}
+        monkeypatch.setattr(pr_merge, "_gh_json", lambda *_args: payload)
+
+        failures = pr_merge._manifest_check_run_failures(head_sha, pr_merge.DEV_CHECK_MANIFEST)
         assert any(critical in failure and "SKIPPED" in failure for failure in failures)
 
     def test_optional_dependabot_checks_may_skip_on_a_human_pr(self) -> None:

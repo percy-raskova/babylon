@@ -9,10 +9,10 @@ use postgres::{Config, IsolationLevel, NoTls, Row, Transaction};
 
 use crate::SCHEMA_ADVISORY_LOCK_KEY;
 
-/// Frozen census fixture text, with provenance comments.
-pub const LEGACY_CENSUS_FIXTURE: &str = include_str!("fixtures/legacy_adopter_census_v1.txt");
+/// Current census fixture text, with provenance comments.
+pub const LEGACY_CENSUS_FIXTURE: &str = include_str!("fixtures/legacy_adopter_census_v2.txt");
 /// Version of the canonical catalog census contract.
-pub const LEGACY_CENSUS_VERSION: u16 = 1;
+pub const LEGACY_CENSUS_VERSION: u16 = 2;
 /// Maximum expected catalog objects accepted from one census.
 pub const MAX_LEGACY_CENSUS_ROWS: usize = 512;
 /// Maximum bytes accepted by the fixture parser.

@@ -1135,3 +1135,13 @@ decisions:
     status: accepted
     date: '2026-08-27'
     file: ADR244_committed_tick_postgresql_storage_v1.yaml
+  ADR245_dependabot_bounded_retry_and_label_transport:
+    title: 'Dependabot automation uses typed merge outcomes, bounded exact-head evidence retries, and Issues REST label transport'
+    status: accepted
+    date: '2026-08-30'
+    file: ADR245_dependabot_bounded_retry_and_label_transport.yaml
+  ADR246_codex_rust_host_boundary:
+    title: 'Babylon adopts NNS-104 policy v11 as one byte-identical Codex Rust host boundary with repository-local build state and repository-specific budgets'
+    status: accepted
+    date: '2026-08-28'
+    file: ADR246_codex_rust_host_boundary.yaml

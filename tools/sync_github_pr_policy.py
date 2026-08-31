@@ -23,6 +23,7 @@ from tools.pr_policy import (  # noqa: E402
     MAIN_BLOCKING_CONTEXTS,
     MAIN_QUALIFICATION_CHECK_MANIFEST,
     CheckRequirement,
+    manifest_for_base,
 )
 
 REPOSITORY = "percy-raskova/babylon"
@@ -34,7 +35,7 @@ MAIN_RULESET_ENDPOINT = DEV_RULESET_ENDPOINT
 DEV_REF_ENDPOINT = f"{REPOSITORY_ENDPOINT}/git/ref/heads/dev"
 LABELS_ENDPOINT = f"{REPOSITORY_ENDPOINT}/labels"
 LABELS_LIST_ENDPOINT = f"{LABELS_ENDPOINT}?per_page=100"
-CHECK_RUNS_ENDPOINT = f"{REPOSITORY_ENDPOINT}/commits/{{sha}}/check-runs?per_page=100"
+CHECK_RUNS_ENDPOINT = f"{REPOSITORY_ENDPOINT}/commits/{{sha}}/check-runs?filter=all&per_page=100"
 DEFAULT_POLICY_PATH = Path(".github/settings/pr-policy.json")
 
 MAX_RULESETS = 100
@@ -50,6 +51,7 @@ DEV_PUSH_ATTESTATION_MANIFEST: Final[tuple[CheckRequirement, ...]] = tuple(
         frozenset({"success", "skipped"})
         if requirement.context == BASELINE_CEREMONY_CONTEXT
         else frozenset({"success"}),
+        requirement.producer,
     )
     for requirement in DEV_CHECK_MANIFEST
     if requirement.kind == "blocking"
@@ -59,6 +61,7 @@ MAIN_QUALIFICATION_ATTESTATION_MANIFEST: Final[tuple[CheckRequirement, ...]] = t
         requirement.context,
         requirement.kind,
         frozenset(conclusion.lower() for conclusion in requirement.allowed_conclusions),
+        requirement.producer,
     )
     for requirement in MAIN_QUALIFICATION_CHECK_MANIFEST
 )
@@ -178,6 +181,26 @@ def normalize_ruleset(payload: dict[str, object]) -> dict[str, object]:
     rule_types = [rule.get("type") for rule in rules]
     if not all(isinstance(rule_type, str) for rule_type in rule_types):
         raise PolicyError("ruleset rule has no string type")
+    for rule in rules:
+        if rule.get("type") != "required_status_checks":
+            continue
+        parameters = _object(rule.get("parameters"), "status-check parameters")
+        checks = _objects(
+            parameters.get("required_status_checks"),
+            "required checks",
+            MAX_CHECK_RUNS,
+        )
+        for check in checks:
+            context = check.get("context")
+            if not isinstance(context, str) or not context:
+                raise PolicyError("required status check has no context")
+            integration_id = check.get("integration_id", _UNKNOWN)
+            if (
+                integration_id is not _UNKNOWN
+                and integration_id is not None
+                and (type(integration_id) is not int or integration_id <= 0)
+            ):
+                raise PolicyError(f"required status check {context!r} has malformed integration_id")
     normalized["rules"] = sorted(rules, key=lambda rule: str(rule["type"]))
     return normalized
 
@@ -399,6 +422,24 @@ def _required_contexts(policy: dict[str, object], branch: str = "dev") -> list[s
         raise PolicyError("required status check has no context")
     if len(set(contexts)) != len(contexts):
         raise PolicyError("required status check contexts must be unique")
+    expected_producers = {
+        requirement.context: requirement.producer.integration_id
+        for requirement in manifest_for_base(branch)
+        if requirement.kind == "blocking"
+    }
+    for check in checks:
+        context = cast(str, check["context"])
+        integration_id = check.get("integration_id")
+        if type(integration_id) is not int:
+            raise PolicyError(
+                f"required status check {context!r} must declare an integer integration_id"
+            )
+        expected_integration_id = expected_producers.get(context)
+        if expected_integration_id is not None and integration_id != expected_integration_id:
+            raise PolicyError(
+                f"required status check {context!r} integration_id must be "
+                f"{expected_integration_id}"
+            )
     return cast(list[str], contexts)
 
 
@@ -443,39 +484,72 @@ def _verify_green_dev(api: Api, expected_sha: str) -> None:
         "dev check runs",
     )
     total_count = payload.get("total_count")
-    if type(total_count) is not int or total_count >= MAX_CHECK_RUNS:
+    if type(total_count) is not int or total_count < 0 or total_count >= MAX_CHECK_RUNS:
         raise PolicyError(f"dev check runs reached the {MAX_CHECK_RUNS}-item safety bound")
     runs = _objects(payload.get("check_runs"), "dev check runs", MAX_CHECK_RUNS)
+    if total_count != len(runs):
+        raise PolicyError("dev check runs did not return one complete page")
+    expected = {requirement.context: requirement for requirement in DEV_POLICY_ATTESTATION_MANIFEST}
     latest: dict[str, dict[str, object]] = {}
+    seen_ids: dict[str, set[int]] = {}
+    wrong_producer: set[str] = set()
     for candidate in runs:
         name = candidate.get("name")
-        if not isinstance(name, str):
+        if not isinstance(name, str) or not name:
             raise PolicyError("check run has no name")
         run_id = candidate.get("id")
-        if type(run_id) is not int:
-            raise PolicyError(f"check run {name!r} has no integer id")
+        if type(run_id) is not int or run_id <= 0:
+            raise PolicyError(f"check run {name!r} has no positive integer id")
         started_at = candidate.get("started_at")
         if started_at is not None and not isinstance(started_at, str):
             raise PolicyError(f"check run {name!r} has a non-string started_at")
+        requirement = expected.get(name)
+        if requirement is None:
+            continue
+        head_sha = candidate.get("head_sha")
+        if not isinstance(head_sha, str) or head_sha != expected_sha:
+            raise PolicyError(
+                f"check run {name!r} has wrong head: expected {expected_sha}, found {head_sha}"
+            )
+        app = _object(candidate.get("app"), f"check run {name!r} app")
+        app_id = app.get("id")
+        app_slug = app.get("slug")
+        if type(app_id) is not int or not isinstance(app_slug, str) or not app_slug:
+            raise PolicyError(f"check run {name!r} has malformed app identity")
+        if app_id != requirement.producer.integration_id or app_slug != requirement.producer.slug:
+            wrong_producer.add(name)
+            continue
+        context_ids = seen_ids.setdefault(name, set())
+        if run_id in context_ids:
+            raise PolicyError(f"check run {name!r} repeats id {run_id}")
+        context_ids.add(run_id)
         prior = latest.get(name)
-        current_key = (started_at or "", run_id)
         prior_id = prior.get("id") if prior is not None else 0
         if type(prior_id) is not int:
             raise PolicyError(f"prior check run {name!r} has no integer id")
-        prior_key = (
-            str(prior.get("started_at") or "") if prior is not None else "",
-            prior_id,
-        )
-        if prior is None or current_key >= prior_key:
+        # Check-run IDs are monotonic unique API identities; queued runs may have no started_at.
+        if prior is None or run_id > prior_id:
             latest[name] = candidate
     problems: list[str] = []
     for requirement in DEV_POLICY_ATTESTATION_MANIFEST:
         selected = latest.get(requirement.context)
         if selected is None:
-            problems.append(f"{requirement.context}: missing")
+            if requirement.context in wrong_producer:
+                problems.append(
+                    f"{requirement.context}: missing required producer "
+                    f"{requirement.producer.slug} ({requirement.producer.integration_id})"
+                )
+            else:
+                problems.append(f"{requirement.context}: missing")
             continue
-        status = str(selected.get("status") or "")
-        conclusion = str(selected.get("conclusion") or "")
+        status_value = selected.get("status")
+        conclusion_value = selected.get("conclusion")
+        if not isinstance(status_value, str) or not status_value:
+            raise PolicyError(f"check run {requirement.context!r} has malformed status")
+        if conclusion_value is not None and not isinstance(conclusion_value, str):
+            raise PolicyError(f"check run {requirement.context!r} has malformed conclusion")
+        status = status_value
+        conclusion = conclusion_value or ""
         if status != "completed" or conclusion not in requirement.allowed_conclusions:
             problems.append(f"{requirement.context}: status={status}, conclusion={conclusion}")
     if problems:

@@ -24,15 +24,12 @@ const MAX_INITDB_ENTRIES: usize = 64;
 fn postgres_test_image_pins_h3_pg_without_activating_it() {
     assert!(POSTGRES_DOCKERFILE.starts_with("# syntax=docker/dockerfile:1.6\n"));
     for required in [
-        "gcc:12.2.0-bullseye@sha256:a3e091325c0af43bc9c1c576ddd155351d5b16438124421188bb4b4fcacc1452",
-        "https://github.com/Kitware/CMake/releases/download/v3.31.12/cmake-3.31.12-linux-x86_64.tar.gz",
-        "sha256:0dc2e9a6860f06bf10bd8fadc03e35d9eeb4df46e33763a7e480e987758f385c",
-        "postgresql-server-dev-17_17.5-1.pgdg110+1_amd64.deb",
-        "sha256:9f43e428d4145d3212b68a70970cc5b736ce544b4bec2f1d6f010225787ddef4",
-        "https://github.com/zachasme/h3-pg/archive/ed9a09c834787abb5952318bccef1c4fee119f1d.tar.gz",
-        "sha256:b7e56fb90d486897be3ccd4fdc007c724fc48abe1ff9bbe24bf351d3b8accc57",
+        "postgis/postgis:17-3.5-alpine@sha256:08f4b1e1f4a571008c60272ceb9e0d1f9f8f643792d006b74a35b1bec44c2218",
+        "https://github.com/postgis/h3-pg/archive/refs/tags/v4.5.0.tar.gz",
+        "sha256:c54c119e1d9a578d5cbcce22f6c66dab2b5a45219fc2b260619807f7f061e53a",
         "https://github.com/uber/h3/archive/refs/tags/v4.5.0.tar.gz",
         "sha256:0da8a392a6ff77e76b60e6a331a49497d0935b6b7b6899da7a3e2786139b0441",
+        "-DFETCHCONTENT_SOURCE_DIR_H3=/tmp/h3-core-source",
         "--component h3-pg",
     ] {
         assert!(

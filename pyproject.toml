@@ -280,6 +280,7 @@ src = [
     "src",
 ]
 exclude = [
+    ".codex/host/",  # immutable shared Rust host-policy bytes have their own executable law
     "assets/music/",
     "specs/",
 ]

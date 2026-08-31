@@ -33,6 +33,7 @@ ALLOWED_TOP_LEVEL_DIRS: frozenset[str] = frozenset(
     {
         ".agents",  # AGENTS.md cross-tool standard config
         ".claude",  # Claude Code project settings/agents
+        ".codex",  # Codex worktree setup and shared Rust host policy (PER-286)
         ".design-sync",  # claude.ai/design converter durable inputs
         ".github",
         ".opencode",

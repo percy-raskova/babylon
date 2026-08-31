@@ -46,7 +46,17 @@ chromadb/
 .continue*
 .continuerules
 .continuerc.json
-/.codex/
+# PER-286 makes the Codex setup and shared Rust host policy repository law.
+# These negations also outrank older clone-local excludes from the era when
+# `.codex/` was deliberately local-only. Keep any other Codex-local state
+# ignored so a future UI feature cannot become source merely by appearing.
+!/.codex/
+/.codex/*
+!/.codex/environments/
+/.codex/environments/*
+!/.codex/environments/environment.toml
+!/.codex/host/
+!/.codex/host/**
 /.kimi-code/
 
 *.pyc

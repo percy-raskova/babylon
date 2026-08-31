@@ -131,11 +131,10 @@ jobs:
           -vv -ra -l --tb=long --durations=0
 
   trivy-image:
-    name: Main Qualification / Container Image Scan (advisory)
+    name: Main Qualification / Container Image Scan
     needs: [event-contract]
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4

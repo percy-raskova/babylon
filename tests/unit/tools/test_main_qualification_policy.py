@@ -15,6 +15,7 @@ from tools.check_main_qualification_event import (
 )
 from tools.pr_policy import (
     DEV_CHECK_MANIFEST,
+    GITHUB_ACTIONS_PRODUCER,
     MAIN_CHECK_MANIFEST,
     MAIN_QUALIFICATION_CHECK_MANIFEST,
 )
@@ -108,6 +109,37 @@ def test_only_explicit_advisories_accept_a_failure_conclusion() -> None:
             assert requirement.allowed_conclusions == frozenset({"SUCCESS"})
 
 
+def test_every_manifest_entry_declares_the_canonical_actions_producer() -> None:
+    assert GITHUB_ACTIONS_PRODUCER.integration_id == 15368
+    assert GITHUB_ACTIONS_PRODUCER.slug == "github-actions"
+    assert all(
+        requirement.producer == GITHUB_ACTIONS_PRODUCER for requirement in MAIN_CHECK_MANIFEST
+    )
+
+
+def test_container_image_scan_is_blocking_and_fail_closed() -> None:
+    workflow = _workflow()
+    job = workflow["jobs"]["trivy-image"]
+    requirement = next(
+        requirement
+        for requirement in MAIN_QUALIFICATION_CHECK_MANIFEST
+        if requirement.context == "Main Qualification / Container Image Scan"
+    )
+    scan = next(step for step in job["steps"] if step.get("name") == "Scan the built image")
+
+    assert job["name"] == requirement.context
+    assert "continue-on-error" not in job
+    assert requirement.kind == "blocking"
+    assert requirement.allowed_conclusions == frozenset({"SUCCESS"})
+    assert scan["with"] == {
+        "scan-type": "image",
+        "image-ref": "babylon-pg:ci",
+        "severity": "HIGH,CRITICAL",
+        "exit-code": "1",
+        "cache": "true",
+    }
+
+
 def test_ai_qualification_excludes_live_ollama_tests() -> None:
     ai_job = _workflow()["jobs"]["ai-tests"]
     test_step = next(step for step in ai_job["steps"] if step.get("name") == "Run AI unit tests")
@@ -135,9 +167,13 @@ def test_main_ruleset_requires_the_complete_blocking_manifest() -> None:
     rules = {rule["type"]: rule for rule in ruleset["rules"]}
     checks = rules["required_status_checks"]["parameters"]
     pull_request = rules["pull_request"]["parameters"]
-    configured = {entry["context"] for entry in checks["required_status_checks"]}
+    configured = {
+        (entry["context"], entry["integration_id"]) for entry in checks["required_status_checks"]
+    }
     expected = {
-        requirement.context for requirement in MAIN_CHECK_MANIFEST if requirement.kind == "blocking"
+        (requirement.context, requirement.producer.integration_id)
+        for requirement in MAIN_CHECK_MANIFEST
+        if requirement.kind == "blocking"
     }
 
     assert ruleset["conditions"] == {"ref_name": {"exclude": [], "include": ["refs/heads/main"]}}

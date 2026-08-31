@@ -192,7 +192,6 @@
             proj
             openblas
             pkg-config          # native dependency discovery for Bevy's Linux backends
-            sccache            # R1.1: shared compile cache across worktrees (see shellHook)
             fluidsynth
             mise                # task runner pinned here, not assumed on the host
             jq                  # post-tool-lint.sh dispatcher
@@ -207,20 +206,29 @@
             # Determinism + 2026-07-12 freeze fix (mirrors .mise.toml [env])
             export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
             export NUMEXPR_NUM_THREADS=1 RAYON_NUM_THREADS=1
-            # R1.1 (BSL refactor program, Director-approved 2026-08-18):
-            # sccache cuts redundant recompiles across the now-common
-            # multi-worktree Rust workspace (8 worktrees live at drafting
-            # time, one target dir each, mostly-identical dependency
-            # graphs). This shell's `cargo` is on PATH unconditionally, so
-            # the wrapper is safe to set unconditionally here — `sccache`
-            # itself is a devShell package a few lines up, always present
-            # when this hook runs. (`.mise.toml`'s own RUSTC_WRAPPER is
-            # CONDITIONAL instead: mise tasks also run on the bare host
-            # venv, outside this shell, where sccache is not guaranteed to
-            # exist.)
-            export RUSTC_WRAPPER=sccache
-            export SCCACHE_DIR="$HOME/.cache/sccache"
-            export SCCACHE_CACHE_SIZE=25G
+            # PER-286 retires the old shared cache exports. Codex worktrees
+            # enter Rust through the versioned PATH dispatcher, which owns a
+            # Babylon-only cache socket and child resource slice. Its dedicated
+            # directory contains only Cargo, so rustup remains authoritative for
+            # rustc, cargo-clippy, and rustfmt.
+            codex_rust_data_root="''${XDG_DATA_HOME:-$HOME/.local/share}"
+            codex_rust_dispatcher_bin="$codex_rust_data_root/codex-rust-host/bin"
+            codex_rust_cargo_shim="$codex_rust_dispatcher_bin/cargo"
+            codex_rust_cargo_target="$(readlink -f -- "$codex_rust_cargo_shim" 2>/dev/null || true)"
+            codex_rust_cargo_home="''${CARGO_HOME:-$HOME/.cargo}"
+            codex_rust_unexpected_shim="$(find "$codex_rust_dispatcher_bin" \
+              -mindepth 1 -maxdepth 1 ! -name cargo -print -quit 2>/dev/null || true)"
+            if [ "$codex_rust_cargo_target" = \
+              "$codex_rust_data_root/codex-rust-host/v11/cargo" ] && \
+              [ -z "$codex_rust_unexpected_shim" ]; then
+              export PATH="$codex_rust_dispatcher_bin:$codex_rust_cargo_home/bin:$PATH"
+            fi
+            unset codex_rust_data_root codex_rust_dispatcher_bin codex_rust_cargo_shim
+            unset codex_rust_cargo_target codex_rust_cargo_home codex_rust_unexpected_shim
+            # The same four-job ceiling protects a fresh clone before the
+            # account-wide dispatcher exists; managed Cargo accepts this exact
+            # value and enforces it again at its process boundary.
+            export CARGO_BUILD_JOBS=4
             # libpq for pure-python psycopg, PLUS the nix libstdc++ for
             # manylinux wheels (greenlet, pyarrow): the nix python's dynamic
             # linker cannot see host system libs, so every C++-linked wheel

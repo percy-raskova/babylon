@@ -29,8 +29,12 @@ repos:
       - id: ruff
         name: ruff (lint)
         args: [--fix, --exit-non-zero-on-fix]
+        # Policy v11 is an immutable cross-repository byte contract. Its exact
+        # inventory, hashes, syntax, and behavior have their own executable law.
+        exclude: ^\.codex/host/
       - id: ruff-format
         name: ruff (format)
+        exclude: ^\.codex/host/
 
   # ==========================================================================
   # MYPY - Type Checking
@@ -390,6 +394,10 @@ repos:
     hooks:
       - id: shellcheck
         files: '\.sh$'
+        # Policy v11 is an immutable cross-repository byte contract. Its exact
+        # inventory and hashes, POSIX syntax, and executable behavior are
+        # enforced by test_rust_host_policy_contract.py.
+        exclude: ^\.codex/host/
 
   - repo: https://github.com/hadolint/hadolint
     rev: v2.14.0

@@ -2120,8 +2120,8 @@ class TestEconomicsFallbackInstrumentation:
         assert tally.basket_calculator_wired is True
         assert tally.gamma_calculator_wired is True
 
-    def test_to_dict_shape_is_manifest_ready(self) -> None:
-        """to_dict() exposes the exact keys the manifest economics_fallbacks block needs."""
+    def test_to_dict_shape_is_stable(self) -> None:
+        """to_dict() exposes the exact diagnostic counter keys."""
         system = TickDynamicsSystem()
         services = _make_services(basket_calculator=None)
         system._compute_national_params(2015, services, prev_coefficients=None)

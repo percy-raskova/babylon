@@ -840,8 +840,7 @@ WALLCLOCK_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = (
             "vault_regression.py reads it; no committed golden pins its bytes today. "
             "RECOMMENDED FIX: if this summary.json is ever admitted into a byte-identity "
             "comparison, hoist 'ended_at' into a non_deterministic_inputs-shaped sibling "
-            "block excluded from that comparison, mirroring engine/headless_runner/"
-            "manifest.py's own wallclock/hostname exclusion pattern."
+            "block excluded from that comparison."
         ),
         owner="Persephone Raskova",
         date="2026-07-21",

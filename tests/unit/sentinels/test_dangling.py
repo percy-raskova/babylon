@@ -162,7 +162,7 @@ def test_class_members_finds_declared_methods(tmp_path: Path) -> None:
 
 
 def test_class_members_finds_self_attribute_instance_assignment(tmp_path: Path) -> None:
-    """`self._pool = pool` inside `__init__` -- the exact PostgresRuntime
+    """`self._pool = pool` inside `__init__` -- the exact runtime-object
     shape -- must be visible as a valid getattr target, not just methods."""
     _write(
         tmp_path,

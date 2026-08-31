@@ -22,6 +22,7 @@ from tools.pr_policy import (
 
 ROOT = Path(__file__).resolve().parents[3]
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "main.yml"
+CI_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "ci.yml"
 POLICY_PATH = ROOT / ".github" / "settings" / "pr-policy.json"
 PROMOTE_PATH = ROOT / "tools" / "promote.sh"
 MISE_PATH = ROOT / ".mise.toml"
@@ -187,10 +188,14 @@ def test_direct_push_promotion_script_is_retired() -> None:
     assert not PROMOTE_PATH.exists()
 
 
-def test_shared_pr_blocking_pg_subset_keeps_balkanization_contracts() -> None:
-    text = MISE_PATH.read_text(encoding="utf-8")
-    task = text.split('[tasks."test:integration-pg"]', maxsplit=1)[1].split("[tasks.", maxsplit=1)[
-        0
-    ]
+def test_shared_pr_blocking_pg_tier_is_rust_only_after_cutover() -> None:
+    """The PR gate cannot retain the deleted Python writer's test subset."""
+    assert '[tasks."test:integration-pg"]' not in MISE_PATH.read_text(encoding="utf-8")
 
-    assert "tests/integration/balkanization" in task
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["pg-integration"]["steps"]
+    assert [step.get("run") for step in steps if step.get("run")] == [
+        "tools/run_rust_legacy_adopter_pg.sh"
+    ]
+    assert not any(step.get("uses") == "./.github/actions/bootstrap-python" for step in steps)
+    assert not any(step.get("uses") == "./.github/actions/fetch-reference-db" for step in steps)

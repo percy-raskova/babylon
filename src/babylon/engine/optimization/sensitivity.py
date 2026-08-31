@@ -1,10 +1,7 @@
 """Global sensitivity analysis using SALib (Morris/Sobol methods).
 
-Migrated from ``tools/sensitivity_analysis.py`` (the pre-package
-implementation) onto the optimization core: trials execute through
-:func:`babylon.engine.optimization.runner_api.run` (backend-selectable,
-``"headless"`` or ``"in_memory"``) instead of ``tools/shared.py``'s
-``run_simulation``, parameter bounds come from
+Trials execute through :func:`babylon.engine.optimization.runner_api.run`.
+Parameter bounds come from
 :func:`babylon.engine.optimization.params.get_tunable_parameters` instead of
 a hand-maintained bounds dict, and scoring is
 :func:`babylon.engine.optimization.objectives.carceral_objective` (or any
@@ -82,8 +79,7 @@ DEFAULT_SOBOL_SAMPLES: Final[int] = 256
 DEFAULT_MAX_TICKS: Final[int] = 5200
 """Default simulation length: 5200 ticks = 100 years (1 tick = 1 week).
 
-Matches ``tools/shared.py::DEFAULT_MAX_TICKS`` — the default the pre-package
-tool ultimately ran against.
+This is the canonical long-horizon default for the retained optimizer.
 """
 
 DEFAULT_OUTPUT_DIR: Final[str] = "results"
@@ -256,7 +252,6 @@ def evaluate_simulation(
     max_ticks: int,
     seed: int = 2010,
     backend: str = "in_memory",
-    scope_name: str = "detroit-tri-county",
     scenario: str = "imperial_circuit",
     objective: Objective = carceral_objective,
     progress: bool = True,
@@ -271,10 +266,8 @@ def evaluate_simulation(
     :param seed: RNG seed threaded through every trial (Constitution III.7 —
         every trial uses the *same* seed, so output variance is attributable
         to the swept parameters, not noise).
-    :param backend: ``"headless"`` or ``"in_memory"`` — forwarded to
-        :func:`~babylon.engine.optimization.runner_api.run`.
-    :param scope_name: Headless scope label. ``backend="headless"`` only.
-    :param scenario: In-memory scenario name. ``backend="in_memory"`` only.
+    :param backend: Must be ``"in_memory"``.
+    :param scenario: In-memory scenario name.
     :param objective: Scores each trial's :class:`~babylon.engine.optimization.backends.types.Result`
         into the output SALib analyzes (default: the Carceral Equilibrium score).
     :param progress: Print a progress line to stdout.
@@ -286,7 +279,6 @@ def evaluate_simulation(
     n_samples = len(param_values)
     outputs: list[float] = []
     repro_records: list[ReproRecord] = []
-    scope_label = scope_name if backend == "headless" else scenario
 
     if progress:
         print(f"Evaluating {n_samples} parameter combinations...")
@@ -303,9 +295,7 @@ def evaluate_simulation(
             scenario=scenario,
         )
         outputs.append(objective(result))
-        repro_records.append(
-            build_repro_record(result, scope_name=scope_label, max_ticks=max_ticks)
-        )
+        repro_records.append(build_repro_record(result, scenario=scenario, max_ticks=max_ticks))
 
         if progress and ((i + 1) % max(1, n_samples // 20) == 0 or i == n_samples - 1):
             pct = 100 * (i + 1) // n_samples
@@ -329,7 +319,6 @@ def run_morris_analysis(
     *,
     seed: int = 2010,
     backend: str = "in_memory",
-    scope_name: str = "detroit-tri-county",
     scenario: str = "imperial_circuit",
     objective: Objective = carceral_objective,
     progress: bool = True,
@@ -340,9 +329,8 @@ def run_morris_analysis(
     :param trajectories: Number of Morris trajectories.
     :param max_ticks: Max ticks per simulation.
     :param seed: RNG seed threaded through every trial.
-    :param backend: ``"headless"`` or ``"in_memory"``.
-    :param scope_name: Headless scope label. ``backend="headless"`` only.
-    :param scenario: In-memory scenario name. ``backend="in_memory"`` only.
+    :param backend: Must be ``"in_memory"``.
+    :param scenario: In-memory scenario name.
     :param objective: Scores each trial's :class:`~babylon.engine.optimization.backends.types.Result`.
     :param progress: Print progress to stdout.
     :returns: ``(result, repro_records)``.
@@ -371,7 +359,6 @@ def run_morris_analysis(
         max_ticks=max_ticks,
         seed=seed,
         backend=backend,
-        scope_name=scope_name,
         scenario=scenario,
         objective=objective,
         progress=progress,
@@ -402,7 +389,6 @@ def run_sobol_analysis(
     *,
     seed: int = 2010,
     backend: str = "in_memory",
-    scope_name: str = "detroit-tri-county",
     scenario: str = "imperial_circuit",
     objective: Objective = carceral_objective,
     progress: bool = True,
@@ -413,9 +399,8 @@ def run_sobol_analysis(
     :param samples: Base sample size (total = ``samples * (2*D + 2)``).
     :param max_ticks: Max ticks per simulation.
     :param seed: RNG seed threaded through every trial.
-    :param backend: ``"headless"`` or ``"in_memory"``.
-    :param scope_name: Headless scope label. ``backend="headless"`` only.
-    :param scenario: In-memory scenario name. ``backend="in_memory"`` only.
+    :param backend: Must be ``"in_memory"``.
+    :param scenario: In-memory scenario name.
     :param objective: Scores each trial's :class:`~babylon.engine.optimization.backends.types.Result`.
     :param progress: Print progress to stdout.
     :returns: ``(result, repro_records)``.
@@ -446,7 +431,6 @@ def run_sobol_analysis(
         max_ticks=max_ticks,
         seed=seed,
         backend=backend,
-        scope_name=scope_name,
         scenario=scenario,
         objective=objective,
         progress=progress,
@@ -616,7 +600,6 @@ def run_sensitivity(
     max_ticks: int = DEFAULT_MAX_TICKS,
     seed: int = 2010,
     backend: str = "in_memory",
-    scope_name: str = "detroit-tri-county",
     scenario: str = "imperial_circuit",
     objective: Objective = carceral_objective,
     output_dir: Path | None = None,
@@ -641,10 +624,8 @@ def run_sensitivity(
     :param samples: Sobol base sample size. Ignored for ``method="morris"``.
     :param max_ticks: Maximum ticks per trial.
     :param seed: RNG seed threaded through every trial (Constitution III.7).
-    :param backend: ``"headless"`` or ``"in_memory"`` — forwarded to
-        :func:`~babylon.engine.optimization.runner_api.run`.
-    :param scope_name: Headless scope label. ``backend="headless"`` only.
-    :param scenario: In-memory scenario name. ``backend="in_memory"`` only.
+    :param backend: Must be ``"in_memory"``.
+    :param scenario: In-memory scenario name.
     :param objective: Scores each trial's :class:`~babylon.engine.optimization.backends.types.Result`
         (default: :func:`~babylon.engine.optimization.objectives.carceral_objective`).
     :param output_dir: Directory for ``morris.json`` / ``sobol.json`` when
@@ -683,7 +664,6 @@ def run_sensitivity(
             max_ticks,
             seed=seed,
             backend=backend,
-            scope_name=scope_name,
             scenario=scenario,
             objective=objective,
             progress=progress,
@@ -714,7 +694,6 @@ def run_sensitivity(
             max_ticks,
             seed=seed,
             backend=backend,
-            scope_name=scope_name,
             scenario=scenario,
             objective=objective,
             progress=progress,

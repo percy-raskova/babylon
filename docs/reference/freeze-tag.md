@@ -50,7 +50,7 @@ git checkout dc1c06abbbc7a3f8633d1561451e61e101ad2090
 cd ../babylon
 UV_FROZEN=1 uv sync --frozen
 UV_FROZEN=1 mise run qa:regression           # canon scenarios, byte-identical
-UV_FROZEN=1 mise run qa:vault-regression-ci  # golden-vault byte-gate
+UV_FROZEN=1 mise run qa:vault-regression     # golden-vault byte-gate
 ```
 
 ## The `frozen-engine` CI job

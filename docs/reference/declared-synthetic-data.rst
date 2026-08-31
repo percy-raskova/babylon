@@ -203,12 +203,9 @@ increments a named counter:
      - ``gamma_calculator`` is wired but returns no data (0.33 substituted)
 
 ``observe_wiring()`` additionally snapshots wired-vs-``None`` status for all
-three calculators on every observation. The headless runner surfaces
-``EconomicsFallbackTally.to_dict()`` as the run manifest's
-``economics_fallbacks`` block (C.8 / spec 2.R,
-``src/babylon/engine/headless_runner/manifest.py:326-327``) — so a
-fully-unwired run's defaulted gamma is visible in the manifest instead of
-reporting as silently as genuinely computed data.
+three calculators on every observation. ``EconomicsFallbackTally.to_dict()``
+exposes the counters to frozen-reference diagnostics and tests. It is not a
+Rust runtime or persistence-authority surface.
 
 Seed scenario fixtures
 --------------------------

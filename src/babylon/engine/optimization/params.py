@@ -1,9 +1,8 @@
 """Parameter injection and introspection for :class:`GameDefines` (ADR038).
 
-Moved verbatim from ``tools/shared.py`` (the pre-package single source of
-truth for this machinery). Behavior is unchanged: the Pydantic-introspection
-+ ``Field`` bounds-extraction logic that powers Monte Carlo, sensitivity
-analysis, and parameter sweeps all route through the four functions here.
+The Pydantic introspection and ``Field`` bounds extraction that power Monte
+Carlo, sensitivity analysis, and parameter sweeps route through the functions
+in this module.
 
 See Also:
     :doc:`/ai/decisions.yaml` ADR038 for the introspection rationale.

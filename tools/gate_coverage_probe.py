@@ -55,7 +55,9 @@ from tools.regression_scenarios import (  # noqa: E402
     ScenarioCoverage,
     create_scenario,
 )
-from tools.shared import PERIPHERY_WORKER_ID, is_dead  # noqa: E402
+from tools.shared import is_dead  # noqa: E402
+
+from babylon.models.entity_registry import PERIPHERY_WORKER_ID  # noqa: E402
 
 _DEFAULT_MAX_TICKS: Final[int] = 52
 _STATIC_KINDS: Final[tuple[str, ...]] = ("bundle_event", "bundle_field")

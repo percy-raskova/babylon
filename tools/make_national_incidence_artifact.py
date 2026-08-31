@@ -39,7 +39,7 @@ neither of which is "derive the poverty measures from it":
    here instead. Run inside ``mise run nix -- ...``
    (``docs/how-to/reference-data-pipeline.rst:10-17``).
 2. The ``scopes`` universe (:func:`_scopes_universe`) reuses
-   ``babylon.engine.headless_runner.scopes._load_national_fips`` directly —
+   ``babylon.data.reference_scope._load_national_fips`` directly —
    the same call ``tools/make_fips_vintage_crosswalk.py`` (T1) already
    makes. This is universe-**membership** enumeration against
    ``dim_county`` (which FIPS codes exist), never a ``fact_census_poverty``

@@ -67,13 +67,18 @@ Catalog of Constitutional Hashes
 .. Vale: this paragraph preserves literal identity and contract terms.
 .. vale ste.UnapprovedWords = NO
 
-The frozen Python estate has three identities in its live and reference paths.
-Rust adds a graph-only diagnostic, a current in-memory nominal-world identity,
-and the canonical replay-tick ``TickContentHashV1``. A future durable envelope
-can carry the replay evidence, but it does not redefine it. These values are
-not interchangeable. The Python entries specify their byte constructions. The
-PER-18 entry specifies the nominal hash's outer composition and names its two
-still-Rust-authoritative inputs.
+The frozen Python estate retains reference identities. Rust owns the graph-only
+diagnostic, the nominal-world identity, and the canonical replay-tick
+``TickContentHashV1``. The Rust runtime places that replay identity in a
+``CommittedTickEnvelopeV1`` and persists the envelope through the schema-epoch
+9 authority boundary. These values are not interchangeable. The Python
+entries below document retired byte constructions only.
+
+.. note::
+   Schema epochs 8 and 9 retired the Python Postgres writer, its
+   ``tick_commit.replay_identity_hash``, and its hex-frame content hash from
+   live authority. Their sections remain as historical reference. See
+   :doc:`persistence` for the current durable contract.
 
 .. vale ste.UnapprovedWords = YES
 
@@ -851,7 +856,9 @@ publication, allocator-exhaustion, and tick-exhaustion paths.
 A real multi-rule tick compares both graph hashes, both nominal-world hashes,
 total and per-rule firing, and exact typed event payloads in parent and child
 processes, under reversed insertion order and both graph backends. These tests
-prove computational identity, not scientific truth or PostgreSQL durability.
+prove computational identity, not scientific truth. The live Postgres contract
+separately exercises committed envelopes, retries, restart continuity, H3
+reads, and Archive dirty receipts.
 
 .. Vale: this section preserves literal contract names and technical terms.
 .. vale ste.UnapprovedWords = NO
@@ -863,8 +870,8 @@ prove computational identity, not scientific truth or PostgreSQL durability.
 Canonical Rust Replay Tick Content Hash (PER-60)
 -------------------------------------------------
 
-**Status: ``TickContentHashV1`` is implemented in the database-free Rust replay
-path.** ``ReplayTickSession`` publishes it only after detached adjudication.
+**Status: ``TickContentHashV1`` is implemented in the Rust replay and durable
+runtime paths.** ``ReplayTickSession`` publishes it only after detached adjudication.
 All nested identity encoders must also succeed. The hash binds the replay
 session, resolve tick, signed replay seed, RNG V2, content and reference
 digests, and prepared mechanics. It also binds the stable prior and result
@@ -894,8 +901,10 @@ second identity resolver connects the two encodings.
 The current runtime accepts only the exact empty
 ``OrderedPracticeActionBatchV1``. The nonempty form is structural contract
 evidence and confers no accepted-input provenance. PER-60 adds no Postgres
-I/O, durable envelope, Archive or outbox, Bevy behavior, BSL intent, or player
-action execution.
+I/O by itself. The later Rust persistence cutover adds the durable envelope,
+schema-epoch 9 write, and Archive dirty receipt. The semantic Archive worker,
+fog-safe decision surface, BSL intent, and player action execution remain
+outside this contract.
 
 ``ReplaySessionIdV1`` is material replay identity. Campaign identity is a
 distinct durability input. No conversion joins the types, and campaign
@@ -1110,11 +1119,10 @@ The Rust replay tick does not call it. ADR240 settles the open disposition: P27
 remains frozen reference evidence, and its bytes never enter
 ``TickContentHashV1``. No cutover reconciles or translates the two encodings.
 
-The other Python hashes keep their documented scopes. ``defines_hash`` remains
-a separate content input. ``tick_commit.replay_identity_hash`` remains a
-session, tick, and seed marker with no world state.
-``conservation_audit_log.hex_frame_hash`` remains the 15-field
-``DynamicHexState`` frame with ``default=str`` and no live actions. None is a
+``defines_hash`` remains a separate frozen-reference content input. The
+Python ``tick_commit.replay_identity_hash`` and
+``conservation_audit_log.hex_frame_hash`` survive only as historical layouts;
+schema epoch 9 removed their relations from live authority. Neither is a
 second name or fallback for the accepted Rust replay-tick identity.
 
 .. vale ste.UnapprovedWords = YES
@@ -1557,8 +1565,8 @@ goldens).
 See Also
 ------------
 
-- :doc:`/reference/persistence` — ``PostgresRuntime`` and the runtime-persistence
-  protocols; the schema this document's hashes are stored in.
+- :doc:`/reference/persistence` — the Rust runtime and durable
+  ``CommittedTickEnvelopeV1`` boundary.
 - :doc:`/reference/configuration` — ``GameDefines`` structure and
   ``defines.yaml`` modding surface.
 - :doc:`/reference/precision` — the quantization Gatekeeper Pattern, a

@@ -198,7 +198,7 @@ EXPECTED_SECTION_SHA256 = {
     "storage": "e16be924d06d4d8c0aad2a4f40b85f9ddb44e6f85254bbd0196f8ca040b78611",
     "reader_boundary": "e7df049ff4501f9da0f63a3e0adcd8b6af123950986cae476bdd3e4360832440",
     "data_disposition": "4916c0d2df1931f1478572fc70a4d088700b40137592652a4fd46f04511b158e",
-    "python_authority": "ef5508bdc8d2bb00a6ef24516aa00aa3a347e59378527ebd5e43d75ff4d80d36",
+    "python_authority": "af906300b7efd66187d6a73ab6df2c8c1926a8c52a28d32a7ada790bb86bcc8d",
     "vectors": "b3c1354b86093e89f8ef24e1139a1487f0573e1a95d59a92d0f56779a149e234",
     "proofs": "1a8ea6c6ccffdd089c6826cffde62148d105f07646187f897582d91e0af494d1",
     "non_goals": "8970b365f3ada9007519e3774238dacdebd1cf18ba415d597e97e9f93685291e",
@@ -2169,7 +2169,9 @@ def validate_cutover_contract(contract: dict[str, Any]) -> None:
         set(python),
         {
             "must_delete",
+            "must_delete_coupled_tests",
             "must_replace_entrypoints_without_python_adapter",
+            "must_retire_entrypoints",
             "census",
             "retain_as_non_authoritative_periphery",
             "tranche_law",
@@ -2178,13 +2180,22 @@ def validate_cutover_contract(contract: dict[str, Any]) -> None:
         "invalid_python_authority",
     )
     python_rows = _rows(python.get("must_delete"), "python_authority.must_delete")
+    coupled_test_values = _list(
+        python.get("must_delete_coupled_tests"),
+        "python_authority.must_delete_coupled_tests",
+    )
     refuse_rows = _rows(
         python.get("must_replace_entrypoints_without_python_adapter"),
         "python_authority.must_replace_entrypoints_without_python_adapter",
     )
-    if not python_rows or not refuse_rows:
+    retired_rows = _rows(
+        python.get("must_retire_entrypoints"),
+        "python_authority.must_retire_entrypoints",
+    )
+    if not python_rows or not coupled_test_values or not refuse_rows or not retired_rows:
         raise RustPersistenceCutoverRefusal(
-            "invalid_python_authority", "deletion and refusal inventories must be nonempty"
+            "invalid_python_authority",
+            "authority, coupled-test, replacement, and retirement inventories must be nonempty",
         )
     for row in python_rows:
         _expect_exact(set(row), {"path", "symbols"}, "must_delete row", "invalid_python_authority")
@@ -2193,6 +2204,14 @@ def validate_cutover_contract(contract: dict[str, Any]) -> None:
             raise RustPersistenceCutoverRefusal(
                 "invalid_python_authority", "must_delete.symbols must be nonempty"
             )
+    coupled_test_paths = [
+        _string(value, "must_delete_coupled_tests.path") for value in coupled_test_values
+    ]
+    if coupled_test_paths != sorted(set(coupled_test_paths)):
+        raise RustPersistenceCutoverRefusal(
+            "invalid_python_authority",
+            "must_delete_coupled_tests must be sorted and duplicate-free",
+        )
     for row in refuse_rows:
         allowed_keys = {"path", "entrypoint", "required_rust_command", "prohibited_fragments"}
         if (
@@ -2211,6 +2230,15 @@ def validate_cutover_contract(contract: dict[str, Any]) -> None:
             raise RustPersistenceCutoverRefusal(
                 "invalid_python_authority", "prohibited_fragments cannot be empty"
             )
+    for row in retired_rows:
+        _expect_exact(
+            set(row),
+            {"path", "entrypoint"},
+            "must_retire_entrypoints row",
+            "invalid_python_authority",
+        )
+        _string(row.get("path"), "must_retire_entrypoints.path")
+        _string(row.get("entrypoint"), "must_retire_entrypoints.entrypoint")
     census = _mapping(python.get("census"), "python_authority.census")
     _expect_exact(
         set(census),
@@ -2253,7 +2281,7 @@ def validate_cutover_contract(contract: dict[str, Any]) -> None:
     )
     _expect_exact(
         census.get("digest_preimage"),
-        "globally sorted UTF-8 union of path::symbol plus LF and path::entrypoint plus LF",
+        "globally sorted UTF-8 union of path::symbol plus LF and replacement-or-retired path::entrypoint plus LF",
         "python_authority.census.digest_preimage",
         "invalid_python_authority",
     )
@@ -2266,18 +2294,30 @@ def validate_cutover_contract(contract: dict[str, Any]) -> None:
         f"{_string(row['path'], 'replacement.path')}::{_string(row['entrypoint'], 'replacement.entrypoint')}"
         for row in refuse_rows
     )
+    retired_entrypoint_inventory = sorted(
+        f"{_string(row['path'], 'retirement.path')}::{_string(row['entrypoint'], 'retirement.entrypoint')}"
+        for row in retired_rows
+    )
+    if set(entrypoint_inventory) & set(retired_entrypoint_inventory):
+        raise RustPersistenceCutoverRefusal(
+            "invalid_python_authority",
+            "one entrypoint cannot be both replaced and retired",
+        )
     inventory_preimage = "".join(
-        f"{entry}\n" for entry in sorted([*delete_inventory, *entrypoint_inventory])
+        f"{entry}\n"
+        for entry in sorted(
+            [*delete_inventory, *entrypoint_inventory, *retired_entrypoint_inventory]
+        )
     ).encode("utf-8")
     _expect_exact(
         census.get("inventory_entries"),
-        124,
+        131,
         "python_authority.census.inventory_entries",
         "invalid_python_authority",
     )
     _expect_exact(
-        len(delete_inventory) + len(entrypoint_inventory),
-        124,
+        len(delete_inventory) + len(entrypoint_inventory) + len(retired_entrypoint_inventory),
+        131,
         "computed Python authority inventory entries",
         "invalid_python_authority",
     )
@@ -2289,7 +2329,7 @@ def validate_cutover_contract(contract: dict[str, Any]) -> None:
     )
     _expect_exact(
         census.get("inventory_sha256"),
-        "7393c6709c47ac4dff2dc7b8bde3be48a1ea8341c110e448dc48b5cc4d6fec65",
+        "8826af9c63af76eaa60055fe3997319c859d8feef181b15394167a5e7d3f91f5",
         "python_authority.census.inventory_sha256",
         "invalid_python_authority",
     )
@@ -3350,6 +3390,20 @@ def verify_cutover_contract(contract: dict[str, Any], root: Path) -> list[Cutove
                 )
             )
 
+    for value in _list(
+        python["must_delete_coupled_tests"],
+        "python_authority.must_delete_coupled_tests",
+    ):
+        relative = _string(value, "must_delete_coupled_tests.path")
+        if (root / relative).exists():
+            findings.add(
+                CutoverFinding(
+                    "python_coupled_test_survivor",
+                    relative,
+                    "test still exercises retired Python game or persistence authority",
+                )
+            )
+
     for row in _rows(
         python["must_replace_entrypoints_without_python_adapter"],
         "python_authority.must_replace_entrypoints_without_python_adapter",
@@ -3380,6 +3434,22 @@ def verify_cutover_contract(contract: dict[str, Any], root: Path) -> list[Cutove
                             f"{entrypoint}: {fragment}",
                         )
                     )
+
+    for row in _rows(
+        python["must_retire_entrypoints"],
+        "python_authority.must_retire_entrypoints",
+    ):
+        relative = _string(row["path"], "must_retire_entrypoints.path")
+        entrypoint = _string(row["entrypoint"], "must_retire_entrypoints.entrypoint")
+        source = _text(root, relative)
+        if _entrypoint_source(relative, source, entrypoint):
+            findings.add(
+                CutoverFinding(
+                    "retired_entrypoint_survivor",
+                    relative,
+                    entrypoint,
+                )
+            )
 
     for relative in sorted(capability_paths):
         if relative in inventoried_paths or relative in _RETAINED_SQL_PERIPHERY:

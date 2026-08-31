@@ -206,7 +206,7 @@ def test_joined_python_reader_retirement_has_no_surviving_api_or_edge_claim() ->
 
     assert contract["reader_boundary"]["projection_relations"] == []
     assert contract["reader_boundary"]["edges"] == 0
-    assert contract["python_authority"]["census"]["inventory_entries"] == 124
+    assert contract["python_authority"]["census"]["inventory_entries"] == 131
 
 
 def test_exact_rust_runtime_root_exists_and_absorbs_schema_epoch_cli() -> None:
@@ -261,6 +261,24 @@ def test_python_game_managed_authority_is_absent() -> None:
                 survivors.append(f"{row['path']}::{symbol}")
 
     assert survivors == [], "Python authority survivors: " + ", ".join(survivors)
+
+
+def test_python_coupled_tests_and_false_adapter_entrypoints_are_absent() -> None:
+    """The one-way cutover deletes coupled tests and does not leave command shims."""
+    authority = _contract()["python_authority"]
+
+    for relative in authority["must_delete_coupled_tests"]:
+        assert not (ROOT / relative).exists(), f"coupled Python test survived: {relative}"
+
+    for row in authority["must_retire_entrypoints"]:
+        path = ROOT / row["path"]
+        if not path.exists():
+            continue
+        source = path.read_text(encoding="utf-8")
+        if row["path"] == ".mise.toml":
+            assert f'[tasks."{row["entrypoint"]}"]' not in source
+        else:
+            assert f"def {row['entrypoint']}(" not in source
 
 
 def test_first_python_retirement_tranche_removes_only_caller_dead_authority() -> None:
@@ -958,7 +976,7 @@ def test_verifier_enforces_required_rust_command_in_the_exact_mise_task(
     )
 
 
-def test_verifier_ignores_python_docstrings_when_requiring_rust_command(
+def test_verifier_refuses_a_retired_python_adapter_even_when_it_executes_rust(
     tmp_path: Path,
 ) -> None:
     shared = tmp_path / "tools/shared.py"
@@ -972,9 +990,9 @@ def test_verifier_ignores_python_docstrings_when_requiring_rust_command(
 
     findings = verify_cutover_contract(_contract(), tmp_path)
     assert any(
-        finding.code == "missing_rust_entrypoint"
+        finding.code == "retired_entrypoint_survivor"
         and finding.path == "tools/shared.py"
-        and finding.detail.startswith("run_simulation:")
+        and finding.detail == "run_simulation"
         for finding in findings
     )
 
@@ -987,10 +1005,10 @@ def run_simulation() -> None:
         encoding="utf-8",
     )
     findings = verify_cutover_contract(_contract(), tmp_path)
-    assert not any(
-        finding.code == "missing_rust_entrypoint"
+    assert any(
+        finding.code == "retired_entrypoint_survivor"
         and finding.path == "tools/shared.py"
-        and finding.detail.startswith("run_simulation:")
+        and finding.detail == "run_simulation"
         for finding in findings
     )
 

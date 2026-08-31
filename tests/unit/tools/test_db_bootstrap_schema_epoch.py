@@ -10,7 +10,10 @@ BOOTSTRAP_CALLERS = (
     ".github/workflows/main.yml",
     ".github/workflows/nightly-michigan-smoke.yml",
     ".github/workflows/weekly-pg-integration.yml",
-    ".github/workflows/weekly-sim-artifacts.yml",
+)
+DIRECT_BOOTSTRAP_CALLERS = (
+    ".github/workflows/main.yml",
+    ".github/workflows/nightly-michigan-smoke.yml",
 )
 LIBPQ_TARGET_ENV = (
     "PGHOST",
@@ -207,19 +210,32 @@ def test_every_checked_in_bootstrap_caller_provisions_pinned_rust() -> None:
 
     for relative in BOOTSTRAP_CALLERS:
         workflow = (ROOT / relative).read_text(encoding="utf-8")
-        assert "mise run db:bootstrap" in workflow
         assert "uses: ./.github/actions/bootstrap-persistence" in workflow
 
+    for relative in DIRECT_BOOTSTRAP_CALLERS:
+        workflow = (ROOT / relative).read_text(encoding="utf-8")
+        assert "mise run db:bootstrap" in workflow
 
-def test_pr_pg_lane_fetches_reference_data_before_the_michigan_proof() -> None:
+    ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    weekly = (ROOT / ".github/workflows/weekly-pg-integration.yml").read_text(encoding="utf-8")
+    assert "tools/run_rust_legacy_adopter_pg.sh" in ci
+    assert "tools/run_rust_legacy_adopter_pg.sh" in weekly
+    assert "mise run test:rust-legacy-adopter-pg" not in weekly
+
+
+def test_pr_pg_lane_runs_the_rust_live_matrix_without_python_reference_data() -> None:
     workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
     pg_lane = workflow.split("\n  pg-integration:", maxsplit=1)[1].split(
         "\n  security:", maxsplit=1
     )[0]
 
-    reference_data = pg_lane.index("uses: ./.github/actions/fetch-reference-db")
+    bootstrap = pg_lane.index("uses: ./.github/actions/bootstrap-persistence")
     pr_focus = pg_lane.index("BABYLON_LEGACY_ADOPTER_LIVE_FOCUS: pr")
-    assert reference_data < pr_focus
+    runner = pg_lane.index("tools/run_rust_legacy_adopter_pg.sh")
+    assert bootstrap < pr_focus < runner
+    assert "fetch-reference-db" not in pg_lane
+    assert "bootstrap-python" not in pg_lane
+    assert "uv run pytest" not in pg_lane
 
 
 def test_nightly_michigan_job_covers_bootstrap_smoke_and_hosted_setup_cleanup() -> None:

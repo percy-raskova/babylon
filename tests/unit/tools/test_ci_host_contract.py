@@ -285,22 +285,20 @@ def test_sim_sweep_task_has_a_configurable_finite_tick_budget() -> None:
     assert '--param "economy.extraction_efficiency=0.05:0.50:0.05"' in task["run"]
 
 
-def test_weekly_simulation_uses_bounded_trials_and_exact_failure_artifacts() -> None:
-    """The hosted sweep stays within one hour without changing its ten-point range."""
+def test_weekly_parameter_sweep_uses_bounded_trials_and_exact_failure_artifact() -> None:
+    """The retained in-memory sweep stays bounded and has no retired trace dependency."""
     weekly_sim = yaml.safe_load((WORKFLOWS_DIR / "weekly-sim-artifacts.yml").read_text())
     job = weekly_sim["jobs"]["sim-artifacts"]
     steps = job["steps"]
-    trace = next(step for step in steps if step.get("name") == "Simulation trace")
     sweep = next(step for step in steps if step.get("name") == "Parameter sweep")
     upload = next(
         step for step in steps if str(step.get("uses", "")).startswith("actions/upload-artifact@")
     )
 
     assert job["timeout-minutes"] == 60
-    assert trace["run"] == "mise run sim:trace 200"
     assert sweep["run"] == "mise run sim:sweep 200"
+    assert not any(step.get("name") == "Simulation trace" for step in steps)
+    assert not any(step.get("uses") == "./.github/actions/bootstrap-persistence" for step in steps)
+    assert not any(step.get("uses") == "./.github/actions/postgres-up" for step in steps)
     assert str(upload.get("if", "")) == "always()"
-    assert str(upload["with"]["path"]).splitlines() == [
-        "results/trace.csv",
-        "results/sweep.csv",
-    ]
+    assert upload["with"]["path"] == "results/sweep.csv"

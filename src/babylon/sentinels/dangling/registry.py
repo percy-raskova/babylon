@@ -75,8 +75,8 @@ class WatchedClass(BaseModel):
     :ivar class_name: The bare class name to statically enumerate members of —
         every method (including private ``_foo``/dunder) declared directly in
         the class body, plus every ``self.<attr> = ...`` instance attribute
-        assigned anywhere in the class's own methods (e.g.
-        ``PostgresRuntime.__init__``'s ``self._pool = pool``), plus any
+        assigned anywhere in the class's own methods (for example,
+        ``__init__`` assigning ``self._pool = pool``), plus any
         class-body-level ``Assign``/``AnnAssign`` target.
     """
 

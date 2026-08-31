@@ -472,24 +472,24 @@ def test_live_orientation_does_not_route_to_pending_architecture_record() -> Non
     assert found == ()
 
 
-def test_architecture_reference_marks_live_predecessors_and_v4_plan() -> None:
-    """The detailed reference separates current Rust and Python seams from the v4 plan."""
+def test_architecture_reference_marks_current_cutover_and_remaining_gate_3_work() -> None:
+    """The detailed reference separates the landed cutover from the playable slice."""
     text = " ".join(_repository_text("docs/concepts/architecture.rst").lower().split())
     required = (
         "live rust bsl rules",
-        "no executable shock",
-        "tickreport",
+        "executable shocks",
+        "identifiedtickreportv1",
         "frozen python",
         "runtimedatabase",
-        "perticktransactionenvelope",
-        "persist_tick_atomic",
-        "tick_commit",
-        "partial ``babylon_meta``",
-        "full v4 rust",
-        "planned",
+        "committedtickenvelopev1",
+        "marker-last transaction",
+        "``tick_commit_v1``",
+        "``babylon_meta``",
+        "semantic archive worker",
         "per-48 is decided",
-        "python remains the sole live writer until cutover",
-        "after the one-way cutover, rust owns",
+        "the one-way cutover is complete",
+        "rust owns authoritative game-managed postgres",
+        "python continues",
     )
     missing = tuple(phrase for phrase in required if phrase not in text)
     assert missing == (), f"docs/concepts/architecture.rst is missing {missing}"
@@ -497,12 +497,12 @@ def test_architecture_reference_marks_live_predecessors_and_v4_plan() -> None:
 
 @pytest.mark.parametrize("relative_path", ("CLAUDE.md", "docs/concepts/architecture.rst"))
 def test_live_guidance_records_the_decided_postgres_cutover(relative_path: str) -> None:
-    """The accepted boundary keeps one writer while preserving Python periphery."""
+    """The implemented boundary keeps one writer and a bounded Python periphery."""
     text = " ".join(_repository_text(relative_path).lower().split())
     required = (
         "per-48 is decided",
-        "python remains the sole live writer until cutover",
-        "after the one-way cutover, rust owns",
+        "the one-way cutover is complete",
+        "rust owns authoritative game-managed postgres",
         "python continues",
     )
     prohibited = (
@@ -538,7 +538,7 @@ def test_live_architecture_limits_the_downstream_write_prohibition_to_shocks(
 def test_claude_keeps_gate_4_and_gate_5_work_out_of_gate_3() -> None:
     """The persistence slice cannot absorb later shock or player-action gates."""
     text = " ".join(_repository_text("CLAUDE.md").split())
-    gate_3_start = text.index("Gate 3 will add")
+    gate_3_start = text.index("Gate 3 now has")
     gate_3_end = text.index(".", gate_3_start)
     gate_3_sentence = text[gate_3_start:gate_3_end].lower()
     assert "executable shocks" not in gate_3_sentence

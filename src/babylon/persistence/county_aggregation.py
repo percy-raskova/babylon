@@ -12,8 +12,8 @@ WorldState-to-table serializer.
 
 Module is import-cycle-safe: depends on :mod:`babylon.models` (for
 ``WorldState`` + ``TernaryConsciousness``) and the stdlib ``sqlite3``.
-Does NOT import from :mod:`babylon.engine.headless_runner` — the
-bridge imports this module, not the other way around.
+The module remains database-light and does not import a runtime composition
+root.
 
 See Also:
     ``specs/065-engine-bridging/data-model.md §1.6``

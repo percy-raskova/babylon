@@ -46,9 +46,8 @@ from typing import Any
 # Constants
 # ---------------------------------------------------------------------------
 
-#: Detroit tri-county FIPS: Wayne, Oakland, Macomb. Mirrors the headless
-#: runner's ``DETROIT_TRI_COUNTY_FIPS`` (engine/headless_runner/scopes.py) —
-#: duplicated here because the data layer must not import the engine.
+#: Detroit tri-county FIPS: Wayne, Oakland, Macomb. The data layer owns this
+#: tuple and does not import the frozen engine.
 TRI_COUNTY_FIPS: tuple[str, ...] = ("26163", "26125", "26099")
 
 #: The committed census atom (county names/centroids) and the MIT Election

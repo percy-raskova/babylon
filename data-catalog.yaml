@@ -433,7 +433,6 @@ tables:
       - src/babylon/domain/economics/adapters.py
       - tools/load_bea_io.py
     tests:
-      - tests/integration/test_sc005_bea_cv_stddev.py
       - tests/integration/test_tensor_hydration.py
       - tests/unit/reference/bea/test_share_lookup_service.py
       - tests/unit/reference/bea/test_stale_share_summary.py
@@ -569,7 +568,6 @@ tables:
       - tests/integration/test_db_initialization_queries.py
       - tests/integration/test_post_067_consumer_queries.py
       - tests/integration/test_tensor_hydration.py
-      - tests/integration/test_marx_identities.py
       - tests/integration/economics/conftest.py
       - tests/integration/tensors/conftest.py
       - tests/unit/engine/hydration/test_hydrate_industry.py
@@ -833,7 +831,6 @@ tables:
     tests:
       - tests/integration/test_db_initialization_queries.py
       - tests/integration/test_tensor_hydration.py
-      - tests/integration/test_marx_identities.py
       - tests/unit/engine/hydration/test_hydrate_industry.py
       - tests/unit/reference/bea/test_stale_share_summary.py
     disposition: keep
@@ -872,7 +869,6 @@ tables:
       - tools/make_reference_subset.py
     tests:
       - tests/integration/test_db_initialization_queries.py
-      - tests/integration/test_marx_identities.py
       - tests/unit/tools/test_make_reference_subset.py
     disposition: keep
     subset_policy: full
@@ -922,7 +918,6 @@ tables:
       - tools/load_bea_io.py
       - tools/validate_bea_io_against_shaikh.py
     tests:
-      - tests/integration/test_sc005_bea_cv_stddev.py
       - tests/unit/reference/bea/test_share_lookup_service.py
       - tests/unit/reference/bea/test_national_writer_upsert.py
       - tests/unit/reference/bea/test_stale_share_summary.py

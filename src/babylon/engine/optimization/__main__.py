@@ -6,9 +6,8 @@ module's single ``run_*`` entry point (:func:`~babylon.engine.optimization.sweep
 :func:`~babylon.engine.optimization.monte_carlo.run_monte_carlo`,
 :func:`~babylon.engine.optimization.sensitivity.run_sensitivity`,
 :func:`~babylon.engine.optimization.bayesian.run_bayesian`). Every subcommand
-shares a ``--backend {headless,in-memory}`` flag (translated to the
-``"headless"``/``"in_memory"`` strings :func:`~babylon.engine.optimization.runner_api.run`
-expects); ``sweep``'s ``--param``/``--param2`` and ``monte-carlo``'s repeated
+shares the retained ``--backend in-memory`` choice. ``sweep``'s
+``--param``/``--param2`` and ``monte-carlo``'s repeated
 ``--param`` are validated eagerly through
 :mod:`~babylon.engine.optimization.ranges` so a malformed spec fails at the
 CLI boundary with a clean usage error, not deep inside a trial.
@@ -33,7 +32,7 @@ from babylon.engine.optimization import (
 from babylon.engine.optimization.objectives import Objective, carceral_objective, survival_objective
 from babylon.engine.optimization.ranges import parse_override, parse_range
 
-#: CLI-facing backend names, translated to runner_api's "headless"/"in_memory".
+#: CLI-facing backend name, translated to runner_api's canonical spelling.
 _BACKEND_CHOICES = ("in-memory",)
 _BACKEND_TRANSLATION = {"in-memory": "in_memory"}
 
@@ -97,22 +96,16 @@ def _add_backend_arg(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _add_scope_scenario_args(parser: argparse.ArgumentParser) -> None:
-    """Add the shared ``--scope-name``/``--scenario`` flags to a subcommand parser.
+def _add_scenario_arg(parser: argparse.ArgumentParser) -> None:
+    """Add the shared ``--scenario`` flag to a subcommand parser.
 
     :param parser: Subcommand parser to attach the flags to.
     """
     parser.add_argument(
-        "--scope-name",
-        type=str,
-        default=None,
-        help="Headless scope label (backend=headless only). Default: detroit-tri-county.",
-    )
-    parser.add_argument(
         "--scenario",
         type=str,
         default=None,
-        help="In-memory scenario name (backend=in-memory only). Default: imperial_circuit.",
+        help="In-memory scenario name. Default: imperial_circuit.",
     )
 
 
@@ -159,7 +152,7 @@ def _add_sweep_subparser(subparsers: argparse._SubParsersAction[argparse.Argumen
         "--seed", type=int, default=None, help="RNG seed threaded through every trial."
     )
     _add_backend_arg(parser)
-    _add_scope_scenario_args(parser)
+    _add_scenario_arg(parser)
     _add_objective_arg(parser)
     parser.add_argument(
         "--output-csv",
@@ -205,7 +198,7 @@ def _add_monte_carlo_subparser(
     )
     parser.add_argument("--max-ticks", type=int, default=None, help="Maximum ticks per sample.")
     _add_backend_arg(parser)
-    _add_scope_scenario_args(parser)
+    _add_scenario_arg(parser)
     _add_objective_arg(parser)
     parser.add_argument("--csv-path", type=Path, default=None, help="Output CSV path.")
     parser.add_argument(
@@ -259,7 +252,7 @@ def _add_sensitivity_subparser(
         "--seed", type=int, default=None, help="RNG seed threaded through every trial."
     )
     _add_backend_arg(parser)
-    _add_scope_scenario_args(parser)
+    _add_scenario_arg(parser)
     _add_objective_arg(parser)
     parser.add_argument(
         "--output-dir",
@@ -362,9 +355,7 @@ def _dispatch_sweep(args: argparse.Namespace) -> int:
     :param args: Parsed CLI namespace.
     :returns: Process exit code.
     """
-    kwargs = _kwargs_from(
-        args, "param2", "max_ticks", "seed", "scope_name", "scenario", "output_csv"
-    )
+    kwargs = _kwargs_from(args, "param2", "max_ticks", "seed", "scenario", "output_csv")
     if args.backend is not None:
         kwargs["backend"] = _BACKEND_TRANSLATION[args.backend]
     if args.objective is not None:
@@ -384,7 +375,6 @@ def _dispatch_monte_carlo(args: argparse.Namespace) -> int:
         "n_samples",
         "param_overrides",
         "max_ticks",
-        "scope_name",
         "scenario",
         "csv_path",
         "report_path",
@@ -417,7 +407,6 @@ def _dispatch_sensitivity(args: argparse.Namespace) -> int:
         "samples",
         "max_ticks",
         "seed",
-        "scope_name",
         "scenario",
         "output_dir",
         "morris_output",

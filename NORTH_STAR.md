@@ -60,7 +60,7 @@ general system has seven parts:
 - a language for causal rules
 - an ordered tick judge
 - an in-memory Rust tick report
-- persisted replay in the frozen Python reference
+- authoritative persisted replay in Rust
 - a projection limited by knowledge
 - a delayed decision cycle
 
@@ -69,8 +69,8 @@ does not judge mechanics.
 
 ## Live path and planned cycle
 
-The solid arrows show the live Rust and Bevy path. Dashed arrows show the Gate 3
-plan and the planned player-action slice.
+The solid arrows show the live Rust persistence and Bevy path. Dashed arrows
+show the planned Archive worker and player-action slice.
 
 <!-- Vale: the Mermaid block contains literal crate and schema identifiers. -->
 <!-- vale off -->
@@ -82,9 +82,9 @@ flowchart LR
     TICK --> HASH["Canonical world hash"]
     TICK --> AUDIT["Identity-free audit receipts"]
     HASH --> VIEW["Bevy administrative viewer"]
-    TICK -. "Gate 3" .-> ENV["CommittedTickEnvelope"]
-    ENV -.-> STATE["babylon_state"]
-    STATE -.-> OUTBOX["Archive outbox"]
+    TICK --> ENV["CommittedTickEnvelope"]
+    ENV --> STATE["babylon_state"]
+    STATE --> OUTBOX["Archive dirty receipt"]
     OUTBOX -.-> ARCHIVE["Knowledge-safe Archive"]
     ARCHIVE -.-> CHOICE["Player choice"]
     CHOICE -.-> INTENT
@@ -102,10 +102,10 @@ prepares data and runs selected periphery.
 <!-- Vale: this paragraph preserves literal persistence and schema identifiers. -->
 <!-- vale ste.UnapprovedWords = NO -->
 <!-- vale ste.NounClusters = NO -->
-The Python periphery has mutable SQLite replay, atomic Postgres tick
-persistence, `tick_commit`, partial `babylon_meta` navigation state, and an
-action pipeline. The full v4 Rust three-schema boundary, commit envelope,
-outbox, fog-safe Archive cycle, and BSL-Bevy player actions have not landed.
+The Python periphery has mutable SQLite replay, data and optimization tools,
+and dedicated document stores. The Rust three-schema boundary, committed tick
+envelope, checkpoint restart, and Archive dirty receipts are live. The fog-safe
+Archive worker and BSL-Bevy player actions have not landed.
 <!-- vale ste.NounClusters = YES -->
 <!-- vale ste.UnapprovedWords = YES -->
 

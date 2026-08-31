@@ -2214,27 +2214,15 @@ fn postgres_ci_and_sanctioned_merger_share_the_pinned_runtime_name() {
     assert!(sanctioned_merger.contains("from tools.pr_policy import"));
     assert!(sanctioned_merger.contains("manifest = manifest_for_base(base_ref)"));
     assert!(!sanctioned_merger.contains(&format!("\"{critical_check}\",")));
-    assert!(workflow.contains(
-        "- name: Build + start the isolated Postgres (CI fork; pinned runtime/package contract)"
-    ));
+    assert!(workflow.contains("- uses: ./.github/actions/bootstrap-persistence"));
+    assert!(workflow.contains("run: tools/run_rust_legacy_adopter_pg.sh"));
+    assert!(!workflow.contains("uses: ./.github/actions/fetch-reference-db"));
     assert!(!workflow.contains("digest-pinned base"));
-}
-
-fn assert_weekly_adopter_bootstrap_contract(bootstrap: &str, weekly_job: &str) {
-    assert!(weekly_job.contains("- uses: ./.github/actions/bootstrap-python"));
-    assert!(bootstrap.contains("  ops:\n    description:"));
-    assert!(bootstrap
-        .contains("if [ \"${{ inputs.ops }}\" = \"true\" ]; then EXTRA=\"--extra ops\"; fi"));
-    assert!(!bootstrap.contains("  gdal:"));
-    assert!(!bootstrap.contains("  server:"));
-    assert!(!weekly_job.contains("gdal:"));
-    assert!(!weekly_job.contains("server:"));
 }
 
 #[test]
 fn live_adopter_tests_are_split_between_pr_and_weekly_cadences() {
     let mise = include_str!("../../../../.mise.toml");
-    let bootstrap = include_str!("../../../../.github/actions/bootstrap-python/action.yml");
     let pr_workflow = include_str!("../../../../.github/workflows/ci.yml");
     let weekly_workflow = include_str!("../../../../.github/workflows/weekly-pg-integration.yml");
     let runner = include_str!("../../../../tools/run_rust_legacy_adopter_pg.sh");
@@ -2250,12 +2238,12 @@ fn live_adopter_tests_are_split_between_pr_and_weekly_cadences() {
     let pr_job = yaml_job(pr_workflow, "  pg-integration:");
     assert_eq!(
         pr_job
-            .matches("run: mise run test:rust-legacy-adopter-pg")
+            .matches("run: tools/run_rust_legacy_adopter_pg.sh")
             .count(),
         1
     );
     assert!(pr_job.contains(
-        "- name: Rust PostgreSQL atomicity and installed-mutation contracts\n        timeout-minutes: 69\n        env:\n          BABYLON_LEGACY_ADOPTER_LIVE_FOCUS: pr\n        run: mise run test:rust-legacy-adopter-pg"
+        "- name: Rust PostgreSQL atomicity and installed-mutation contracts\n        timeout-minutes: 69\n        env:\n          BABYLON_LEGACY_ADOPTER_LIVE_FOCUS: pr\n        run: tools/run_rust_legacy_adopter_pg.sh"
     ));
     assert!(!pr_job.contains("BABYLON_LEGACY_ADOPTER_TEST_DSN"));
     assert!(!pr_job.contains("cargo doc"));
@@ -2264,16 +2252,17 @@ fn live_adopter_tests_are_split_between_pr_and_weekly_cadences() {
     assert!(weekly_job.contains("name: Exhaustive Rust legacy adopter matrix (dev HEAD)"));
     assert!(weekly_job.contains("timeout-minutes: 40"));
     assert!(weekly_job.contains("ref: dev"));
-    assert_weekly_adopter_bootstrap_contract(bootstrap, weekly_job);
+    assert!(weekly_job.contains("- uses: ./.github/actions/bootstrap-persistence"));
+    assert!(!weekly_job.contains("- uses: ./.github/actions/bootstrap-python"));
     assert!(!weekly_job.contains("uses: jdx/mise-action"));
     assert!(weekly_job.contains(
-        "- name: Exhaustive adopter matrix and rollback proof\n        timeout-minutes: 31\n        run: mise run test:rust-legacy-adopter-pg"
+        "- name: Exhaustive adopter matrix and rollback proof\n        timeout-minutes: 31\n        run: tools/run_rust_legacy_adopter_pg.sh"
     ));
     assert!(!weekly_job.contains("BABYLON_LEGACY_ADOPTER_LIVE_FOCUS"));
     assert!(!weekly_job.contains("CI_REFDB_READY"));
 
-    let synthetic = "jobs:\n  pg-integration:\n    run: true\n  unrelated:\n    run: mise run test:rust-legacy-adopter-pg\n  security:\n    run: true\n";
-    assert!(!yaml_job(synthetic, "  pg-integration:").contains("test:rust-legacy-adopter-pg"));
+    let synthetic = "jobs:\n  pg-integration:\n    run: true\n  unrelated:\n    run: tools/run_rust_legacy_adopter_pg.sh\n  security:\n    run: true\n";
+    assert!(!yaml_job(synthetic, "  pg-integration:").contains("run_rust_legacy_adopter_pg"));
 }
 
 #[test]
@@ -2527,11 +2516,10 @@ fn ci_step_exceeds_the_focused_runner_envelope() {
         .parse::<u64>()
         .unwrap()
         * 60;
-    let pr_adopter_step = cte_slice(
-        pr_job,
-        "      - name: Rust PostgreSQL atomicity and installed-mutation contracts",
-        "      - name: PG-backed integration subset (declared, data-drive-free)",
-    );
+    let pr_adopter_step = pr_job
+        .split_once("      - name: Rust PostgreSQL atomicity and installed-mutation contracts")
+        .unwrap()
+        .1;
     let pr_step_seconds = pr_adopter_step
         .lines()
         .take(MAX_WORKFLOW_JOB_BOUNDARY_CANDIDATES)

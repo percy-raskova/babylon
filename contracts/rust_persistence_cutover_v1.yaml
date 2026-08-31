@@ -547,6 +547,40 @@ python_authority:
     - {path: src/babylon/domain/economics/lodes_commute_matrix.py, symbols: [persist_to_postgres]}
     - {path: src/babylon/domain/economics/border_commute_synthesis.py, symbols: [persist_to_postgres, merge_into_postgres_lodes]}
     - {path: src/babylon/persistence/tiger_ingestion.py, symbols: [_insert_tiger_rows, ingest_tiger_counties_from_shapefile, ingest_tiger_counties_from_sqlite, ingest_tiger_counties, _cli]}
+  must_delete_coupled_tests:
+    - tests/integration/archive/test_vault_run_e2e.py
+    - tests/integration/persistence/migration_healing.py
+    - tests/integration/persistence/test_migration_apply_healing.py
+    - tests/integration/persistence/test_per_tick_transaction_atomicity.py
+    - tests/integration/persistence/test_trace_view_columns.py
+    - tests/integration/persistence/test_trace_view_columns_v2.py
+    - tests/integration/test_atomicity_inheritance.py
+    - tests/integration/test_audit_log_round_trip.py
+    - tests/integration/test_ci_gate_baseline_compare.py
+    - tests/integration/test_ci_gate_clean.py
+    - tests/integration/test_consciousness_evolution.py
+    - tests/integration/test_conservation_audit_strict.py
+    - tests/integration/test_cross_scale_aggregation.py
+    - tests/integration/test_endgame_detection_round_trip.py
+    - tests/integration/test_engine_bridge.py
+    - tests/integration/test_events_capture.py
+    - tests/integration/test_external_node_flows.py
+    - tests/integration/test_five_flow_types.py
+    - tests/integration/test_headless_runner.py
+    - tests/integration/test_hex_spatial_map_isolation.py
+    - tests/integration/test_marx_identities.py
+    - tests/integration/test_phi_year_distribution_to_counties.py
+    - tests/integration/test_sc005_bea_cv_stddev.py
+    - tests/integration/test_substrate_pipeline_position.py
+    - tests/integration/test_tools_no_legacy_imports.py
+    - tests/integration/test_trade_circuit.py
+    - tests/integration/test_us3_tool_smokes.py
+    - tests/property/test_hex_to_county_conservation.py
+    - tests/scripts/verify_sc012_hex_to_county_sum.py
+    - tests/unit/tools/test_parameter_analysis.py
+    - tests/unit/tools/test_shared_signature.py
+    - tests/unit/tools/test_storage_budget.py
+    - tests/unit/tools/test_vault_regression_dsn.py
   must_replace_entrypoints_without_python_adapter:
     - {path: .mise.toml, entrypoint: setup, required_rust_command: babylon-runtime bootstrap}
     - {path: .mise.toml, entrypoint: clean:testdb, required_rust_command: babylon-runtime bootstrap}
@@ -554,23 +588,31 @@ python_authority:
     - {path: .mise.toml, entrypoint: db:bootstrap, required_rust_command: babylon-runtime bootstrap, prohibited_fragments: [POSTGRES_SCHEMA_DDL, ensure_ddl_applied, _apply_migrations]}
     - {path: .mise.toml, entrypoint: sim:e2e-michigan, required_rust_command: babylon-runtime}
     - {path: .mise.toml, entrypoint: sim:e2e-bg, required_rust_command: babylon-runtime}
-    - {path: .mise.toml, entrypoint: qa:e2e-regression, required_rust_command: babylon-runtime}
-    - {path: .mise.toml, entrypoint: qa:storage-budget, required_rust_command: babylon-runtime}
     - {path: .mise.toml, entrypoint: qa:michigan-rollover-smoke, required_rust_command: babylon-runtime michigan-smoke}
     - {path: .mise.toml, entrypoint: sim:probe, required_rust_command: babylon-runtime probe}
     - {path: .mise.toml, entrypoint: sim:archive, required_rust_command: babylon-runtime archive}
     - {path: .mise.toml, entrypoint: data:tiger-counties, required_rust_command: digest-pinned artifact builder only}
-    - {path: tools/shared.py, entrypoint: run_simulation, required_rust_command: babylon-runtime}
-    - {path: tools/vault_regression.py, entrypoint: _bake_detroit_tri_county, required_rust_command: babylon-runtime}
-    - {path: tools/tick_budget_check.py, entrypoint: check_budget, required_rust_command: babylon-runtime}
-    - {path: tools/parameter_analysis.py, entrypoint: run_trace, required_rust_command: babylon-runtime}
-    - {path: tools/profiler.py, entrypoint: profile_simulation, required_rust_command: babylon-runtime}
-    - {path: tools/audit_simulation.py, entrypoint: run_full_simulation, required_rust_command: babylon-runtime}
-    - {path: tools/tick_probe.py, entrypoint: main, required_rust_command: babylon-runtime}
+  must_retire_entrypoints:
+    - {path: .mise.toml, entrypoint: qa:audit}
+    - {path: .mise.toml, entrypoint: qa:e2e-regression}
+    - {path: .mise.toml, entrypoint: qa:storage-budget}
+    - {path: .mise.toml, entrypoint: qa:tick-budget}
+    - {path: .mise.toml, entrypoint: qa:vault-regression-ci}
+    - {path: .mise.toml, entrypoint: sim:profile}
+    - {path: .mise.toml, entrypoint: sim:trace}
+    - {path: .mise.toml, entrypoint: test:integration-pg}
+    - {path: tools/audit_simulation.py, entrypoint: run_full_simulation}
+    - {path: tools/parameter_analysis.py, entrypoint: run_trace}
+    - {path: tools/profiler.py, entrypoint: profile_simulation}
+    - {path: tools/shared.py, entrypoint: run_simulation}
+    - {path: tools/storage_budget.py, entrypoint: main}
+    - {path: tools/tick_budget_check.py, entrypoint: check_budget}
+    - {path: tools/tick_probe.py, entrypoint: main}
+    - {path: tools/vault_regression.py, entrypoint: _bake_detroit_tri_county}
   census:
-    inventory_entries: 124
-    inventory_sha256: 7393c6709c47ac4dff2dc7b8bde3be48a1ea8341c110e448dc48b5cc4d6fec65
-    digest_preimage: globally sorted UTF-8 union of path::symbol plus LF and path::entrypoint plus LF
+    inventory_entries: 131
+    inventory_sha256: 8826af9c63af76eaa60055fe3997319c859d8feef181b15394167a5e7d3f91f5
+    digest_preimage: globally sorted UTF-8 union of path::symbol plus LF and replacement-or-retired path::entrypoint plus LF
     symbol_rename_does_not_satisfy_retirement: true
     scan_roots: [src/babylon, tools, .mise.toml]
     forbidden_capabilities: [game_writer_connection, governed_relation_ddl, governed_relation_dml, copy_from, dynamic_sql, migration_execution, game_mutation_protocol, game_writer_credential]

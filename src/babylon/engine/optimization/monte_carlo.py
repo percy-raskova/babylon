@@ -1,12 +1,8 @@
 """Monte Carlo uncertainty quantification over N simulation replications.
 
-Migrated from ``tools/monte_carlo.py`` (the pre-package implementation) onto
-the optimization core: trials execute through
-:func:`babylon.engine.optimization.runner_api.run` (backend-selectable,
-``"headless"`` or ``"in_memory"``) instead of ``tools/shared.py``'s
-``run_simulation``, so the per-sample RNG seed genuinely reaches the
-simulation (see ``runner_api``/``backends.headless`` docstrings for the
-plumbing fix this depends on). The statistical core — a deterministic
+Trials execute through :func:`babylon.engine.optimization.runner_api.run`,
+so the per-sample RNG seed reaches the retained in-memory simulation. The
+statistical core uses a deterministic
 per-sample seed sequence drawn from one base seed, mean/std/95% CI
 aggregation with the scipy-optional t/z-distribution logic — is unchanged
 from the original tool.
@@ -248,7 +244,6 @@ def run_trials(
     max_ticks: int = DEFAULT_MAX_TICKS,
     base_seed: int | None = None,
     backend: str = "in_memory",
-    scope_name: str = "detroit-tri-county",
     scenario: str = "imperial_circuit",
     objective: Objective = carceral_objective,
     progress: bool = True,
@@ -266,10 +261,8 @@ def run_trials(
         overrides) shared across all samples; only the RNG seed varies.
     :param max_ticks: Maximum ticks per sample.
     :param base_seed: Base random seed for reproducibility (``None`` = random).
-    :param backend: ``"headless"`` or ``"in_memory"`` — forwarded to
-        :func:`runner_api.run`.
-    :param scope_name: Scope label. ``backend="headless"`` only.
-    :param scenario: Scenario name. ``backend="in_memory"`` only.
+    :param backend: Must be ``"in_memory"``.
+    :param scenario: In-memory scenario name.
     :param objective: Scoring function applied to each trial's :class:`Result`.
     :param progress: Print progress lines to stdout.
     :returns: ``(samples, repro_records)``, both in run order and the same length.
@@ -308,7 +301,7 @@ def run_trials(
                 objective_score=objective(result),
             )
         )
-        repro_records.append(build_repro_record(result, scope_name=scope_name, max_ticks=max_ticks))
+        repro_records.append(build_repro_record(result, scenario=scenario, max_ticks=max_ticks))
 
         if progress and ((i + 1) % max(1, n_samples // 10) == 0 or i == n_samples - 1):
             pct = 100 * (i + 1) // n_samples
@@ -457,7 +450,6 @@ def run_monte_carlo(
     param_overrides: Mapping[str, float] | Iterable[str] | None = None,
     max_ticks: int = DEFAULT_MAX_TICKS,
     backend: str = "in_memory",
-    scope_name: str = "detroit-tri-county",
     scenario: str = "imperial_circuit",
     objective: Objective = carceral_objective,
     csv_path: Path | None = None,
@@ -479,9 +471,8 @@ def run_monte_carlo(
         CLI layer would collect from repeated ``--param`` flags) — each
         parsed via :func:`~babylon.engine.optimization.ranges.parse_override`.
     :param max_ticks: Maximum ticks per sample.
-    :param backend: ``"headless"`` or ``"in_memory"``.
-    :param scope_name: Scope label. ``backend="headless"`` only.
-    :param scenario: Scenario name. ``backend="in_memory"`` only.
+    :param backend: Must be ``"in_memory"``.
+    :param scenario: In-memory scenario name.
     :param objective: Scoring function applied to each trial's :class:`Result`
         (default: :func:`~babylon.engine.optimization.objectives.carceral_objective`).
     :param csv_path: Output CSV path (default: :data:`DEFAULT_OUTPUT`).
@@ -514,7 +505,6 @@ def run_monte_carlo(
         max_ticks=max_ticks,
         base_seed=base_seed,
         backend=backend,
-        scope_name=scope_name,
         scenario=scenario,
         objective=objective,
         progress=progress,

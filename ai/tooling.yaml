@@ -42,24 +42,15 @@ cicd:
           steps:
             - "poetry run ruff format --check ."
 
-    extended_analysis_yml:
-      file: ".github/workflows/extended-analysis.yml"
-      triggers:
-        - "release (published)"
-        - "schedule (weekly Sunday midnight)"
-        - "workflow_dispatch (manual)"
-      jobs:
-        extended_tests:
-          matrix: ["3.12", "3.13"]
-          purpose: "Python version compatibility"
-        parameter_analysis:
-          commands:
-            - "mise run analyze-trace"
-            - "mise run analyze-sweep"
-          artifacts: "results/"
-        ai_evaluation:
-          condition: "release only"
-          command: "poetry run pytest -m 'ai' --tb=short -q"
+    weekly_py313_yml:
+      file: ".github/workflows/weekly-py313.yml"
+      triggers: ["weekly Sunday 04:00 UTC", "workflow_dispatch"]
+      purpose: "Python 3.13 forward-compatibility suite"
+    weekly_sim_artifacts_yml:
+      file: ".github/workflows/weekly-sim-artifacts.yml"
+      triggers: ["weekly Sunday 04:00 UTC", "workflow_dispatch"]
+      command: "mise run sim:sweep 200"
+      artifact: "results/sweep.csv"
 
   pr_template:
     file: ".github/PULL_REQUEST_TEMPLATE.md"
@@ -519,20 +510,19 @@ python:
       "test:int": "Run integration tests (mechanics & systems)"
       "test:scenario": "Run scenario tests (slow, full arcs)"
       "test:all": "Run all non-AI tests"
-      "sim:run": "Legacy in-memory smoke test (use sim:e2e-michigan for canonical run)"
-      "sim:e2e-michigan": "Headless Postgres-backed 520-tick (10-year) Michigan + Canada e2e — spec-065 canonical (rescoped from spec-064's 1000 ticks to fit the 2010-2020 real-data window)"
-      "sim:trace": "Time-series CSV + JSON output"
-      "sim:profile": "cProfile performance analysis (spec-064: routed through headless runner)"
-      "qa:e2e-regression": "Run headless e2e with --strict then compare to michigan-e2e baseline (spec-065: --strict default for CI hard-fail on critical conservation violations)"
-      # Spec-065 CLI flag additions:
-      #   --strict           : exit 1 on first severity='alarm' conservation_audit row
-      #   --endgame-detector : optional dotted import path to an EndgameDetector (e.g. babylon.engine.observer.ImperialCollapseDetector)
-      # See specs/065-engine-bridging/contracts/cli_contract.yaml.
+      "sim:run": "Frozen Python one-tick reference smoke; not a persistence-authority path"
+      "sim:sweep": "Intentional in-memory Python optimization periphery"
+      "sim:e2e-michigan": "Rust-owned PostgreSQL/H3 520-tick Michigan foundation run"
+      "sim:e2e-bg": "Run the Rust-owned Michigan campaign in the background"
+      "sim:status": "Show the background process and Rust authority/campaign-tail probe"
+      "sim:probe": "Probe Rust persistence authority and the durable campaign tail"
+      "sim:archive": "Inspect Rust-owned Archive dirty receipts"
       "tune:optuna": "Bayesian optimization (Optuna TPE)"
       "tune:landscape": "2D parameter grid search"
       "tune:dashboard": "Optuna Dashboard visualization"
-      "qa:audit": "Simulation health check"
       "qa:verify": "Formula correctness verification"
+      "qa:regression": "Frozen Python language-neutral behavior contract"
+      "qa:vault-regression": "Retained in-process projection-vault byte gate"
       "demo:slice": "Full pipeline demo (Engine->RAG->LLM)"
       "docs:live": "Live-reload documentation server"
       # Parquet-canonical reference-data pipeline (2026-07-19 plan): sources
@@ -597,20 +587,12 @@ parameter_tuning:
   retired_tools:
     note: |
       tune_agent.py, tune_parameters.py, landscape_analysis.py, monte_carlo.py,
-      and sensitivity_analysis.py were REMOVED once the babylon.engine.optimization
-      package superseded them (they silently ran bit-identical math — the injected
-      GameDefines never reached the sim). carceral_scoring.py moved to the package's
-      objectives.py. See the optimization-package ADR.
-
-    still_active:
-      - name: "parameter_analysis.py"
-        location: "tools/parameter_analysis.py"
-        status: "ACTIVE - Trace command (sim:trace)"
-        description: |
-          Single-run trace diagnostic: full per-tick CSV of all entity states.
-          Kept because it is a diagnostic, not a sweep (sim:sweep now uses the
-          optimization package).
-        recommendation: "Use for a detailed per-tick trace of a single run"
+      sensitivity_analysis.py, parameter_analysis.py, audit_simulation.py,
+      profiler.py, tick_budget_check.py, and tick_probe.py were removed after
+      their behavior moved to the optimization package or the Rust runtime, or
+      after review proved that their wrappers did not exercise the behavior they
+      advertised. carceral_scoring.py moved to the package's objectives.py. See
+      the optimization-package ADR and the Rust persistence cutover contract.
 
   dependencies:
     optuna:
@@ -657,67 +639,25 @@ parameter_tuning:
 # =============================================================================
 
 shared_utilities:
-  philosophy: "Single source of truth for simulation tooling utilities"
+  philosophy: "One strict entity-state helper for retained regression tooling"
   location: "tools/shared.py"
   added: "2026-01-01"
   adr: "ADR036"
 
   purpose: |
-    Centralizes reusable functions that multiple tools need. Eliminates
-    code duplication (parameter_analysis.py previously duplicated utilities).
-    All tools must import from shared.py, never re-implement.
+    Keeps the retained Python regression and gate-coverage tools aligned on
+    EntityProtocol death detection. Parameter injection and enumeration live
+    only in babylon.engine.optimization.params.
 
   functions:
-    inject_parameter:
-      signature: "(base_defines: GameDefines, param_path: str, value: float) -> GameDefines"
-      purpose: "Create immutable copy of GameDefines with single parameter override"
-      usage: "inject_parameter(defines, 'economy.extraction_efficiency', 0.5)"
-
-    inject_parameters:
-      signature: "(base_defines: GameDefines, params: dict[str, float]) -> GameDefines"
-      purpose: "Batch parameter injection for Monte Carlo / sensitivity analysis"
-      usage: "inject_parameters(defines, {'economy.extraction_efficiency': 0.5, 'economy.comprador_cut': 0.8})"
-
     is_dead:
       signature: "(entity: Any) -> bool"
       purpose: "Check VitalitySystem's active field (standard death detection)"
       aligns_with: "VitalitySystem sets active=False when wealth < consumption_needs"
 
-    is_dead_by_wealth:
-      signature: "(wealth: float) -> bool"
-      purpose: "Legacy wealth-threshold check (for compatibility)"
-      threshold: "DEATH_THRESHOLD = 0.001"
-
-    run_simulation:
-      signature: "(defines: GameDefines, max_ticks: int = 52) -> dict[str, Any]"
-      purpose: "Run single simulation, return metrics dict"
-      returns: "ticks_survived, max_tension, outcome, final_wealth, final_state"
-
-    run_simulation_with_collector:
-      signature: "(state, config, defines, max_ticks, mode='batch') -> MetricsCollector"
-      purpose: "Run simulation with MetricsCollector observer for detailed tracing"
-
-    get_tunable_parameters:
-      signature: "() -> dict[str, tuple[float, float]]"
-      purpose: "Enumerate all GameDefines parameters with (min, max) bounds"
-      usage: "For SALib problem specification and Optuna search space"
-
-  constants:
-    PERIPHERY_WORKER_ID: "C001"
-    COMPRADOR_ID: "C002"
-    CORE_BOURGEOISIE_ID: "C003"
-    LABOR_ARISTOCRACY_ID: "C004"
-    DEFAULT_MAX_TICKS: 52
-    DEATH_THRESHOLD: 0.001
-
   importers:
-    - "tools/parameter_analysis.py"
-    - "tools/audit_simulation.py"
-    - "tools/necropolis_viewer.py"
-    - "tools/profiler.py"
     - "tools/regression_test.py"
-    # NOTE: the params helpers (get_tunable_parameters/inject_parameter) also
-    # live in src/babylon/engine/optimization/params.py, used by the package.
+    - "tools/gate_coverage_probe.py"
 
 # =============================================================================
 # MONTE CARLO UNCERTAINTY QUANTIFICATION
@@ -1016,7 +956,7 @@ known_issues:
     problem: "Some tests fail on Python 3.13 due to timing differences"
     example: "timestamp collision in checkpoint tests"
     solution: "Add time.sleep(0.01) between time-sensitive operations"
-    note: "Python 3.13 tests run in extended-analysis, not main CI"
+    note: "Python 3.13 tests run in weekly-py313, not main CI"
 
 # hypergraph-rs (standalone Rust XGI port) is an external repository with its
 # own tooling and CI. Babylon's in-tree Rust graph consumes its full-SHA-pinned

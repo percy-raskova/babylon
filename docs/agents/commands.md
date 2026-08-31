@@ -32,10 +32,13 @@ mise run test:doctest   # Doctest examples in formulas
 ## Simulation
 
 ```bash
-mise run sim:run        # Main simulation entry point
-mise run sim:trace      # Time-series CSV + JSON output
-mise run sim:sweep      # Parameter sweep analysis
-mise run sim:profile    # cProfile performance analysis
+mise run sim:run           # Frozen Python one-tick reference smoke
+mise run sim:sweep         # Intentional in-memory parameter-analysis periphery
+mise run sim:e2e-michigan  # Rust-owned 520-tick PostgreSQL run
+mise run sim:e2e-bg        # Run the Rust-owned Michigan campaign in the background
+mise run sim:status        # Process plus Rust persistence-authority status
+mise run sim:probe         # Rust persistence-authority and campaign-tail probe
+mise run sim:archive       # Inspect Rust-owned Archive dirty receipts
 ```
 
 ## Tuning
@@ -50,11 +53,11 @@ mise run tune:dashboard   # Optuna Dashboard visualization
 ## QA
 
 ```bash
-mise run qa:audit               # Simulation health check (3 scenarios)
 mise run qa:verify              # Formula correctness verification
 mise run qa:schemas             # JSON schema validation
 mise run qa:security            # Dependency security audit
 mise run qa:regression          # Baseline comparison (CI)
+mise run qa:vault-regression    # Retained projection-vault byte gate
 mise run qa:regression-generate # Create regression baselines
 ```
 

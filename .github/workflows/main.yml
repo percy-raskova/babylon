@@ -58,23 +58,17 @@ jobs:
   postgres-determinism:
     name: Main Qualification / PostgreSQL Determinism Bundle
     needs: [event-contract]
-    if: ${{ vars.CI_REFDB_READY == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    env:
-      BABYLON_TEST_PG_DSN: "dbname=babylon_test host=localhost port=5433 user=test password=test"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/bootstrap-python
       - uses: ./.github/actions/bootstrap-persistence
       - uses: ./.github/actions/postgres-up
-      - uses: ./.github/actions/fetch-reference-db
-      - name: Apply engine schema (canonical DDL)
+      - name: Activate the Rust-owned canonical schema
         run: mise run db:bootstrap
-      - name: Strict five-tick bundle versus baseline
-        run: mise run qa:e2e-regression
-      - name: Rows-per-tick storage budget
-        run: mise run qa:storage-budget
+      - name: Rust Michigan rollover and restart determinism proof
+        run: mise run qa:michigan-rollover-smoke
       - name: Stop Postgres
         if: always()
         run: tools/ci_postgres_compose.sh down

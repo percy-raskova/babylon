@@ -104,8 +104,8 @@ updates:
       - "docker"
     # PG-major bumps (16 -> 17, alpine, etc.) are OWNER ITEM 45: a Postgres/
     # PostGIS major can alter geometry float behavior under the byte-identical
-    # determinism bundle and needs the full protocol (qa:e2e-regression on the
-    # new image + pg_upgrade path + testcontainers lockstep). Not a casual PR.
+    # determinism bundle and needs the full Rust adopter protocol on the new
+    # image plus its upgrade path and testcontainers lockstep. Not a casual PR.
     ignore:
       - dependency-name: "postgis/postgis"
         update-types: ["version-update:semver-major"]

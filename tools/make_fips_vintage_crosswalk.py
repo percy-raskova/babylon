@@ -7,7 +7,7 @@ small, hand-authored, checked-in crosswalk:
 
 - **The engine universe** — ``src/babylon/data/game/us_county_territories.json``
   (3,153 counties, current TIGER-vintage FIPS).
-- **The resolver universe** — ``babylon.engine.headless_runner.scopes.
+- **The resolver universe** — ``babylon.data.reference_scope.
   _load_national_fips`` against ``dim_county`` (3,156 counties; admits three
   retired FIPS the engine artifact does not: ``02261`` Valdez-Cordova,
   ``02270`` Wade Hampton, ``46113`` Shannon).

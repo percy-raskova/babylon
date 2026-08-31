@@ -57,7 +57,7 @@ from tests.unit.economics.tick.conftest import build_territory_graph
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_reference_db]
 
-# Detroit tri-county (src/babylon/engine/headless_runner/scopes.py:123)
+# Detroit tri-county: Wayne, Oakland, and Macomb.
 WAYNE_FIPS = "26163"
 OAKLAND_FIPS = "26125"
 MACOMB_FIPS = "26099"

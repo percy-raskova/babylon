@@ -364,15 +364,15 @@ def test_architecture_and_roadmap_publish_the_same_gate_triples() -> None:
     assert roadmap_delivery_roots == _GATE_DELIVERY_ROOTS
 
 
-def test_per_48_records_the_accepted_one_way_writer_cutover() -> None:
-    """Gate 3 mirrors the accepted PostgreSQL boundary without a dual-writer era."""
+def test_per_48_records_the_implemented_one_way_writer_cutover() -> None:
+    """Gate 3 records the implemented Postgres boundary without a dual-writer era."""
     architecture = _yaml_document(_ARCHITECTURE)
     writer = architecture["persistence_writer"]
-    assert writer["status"] == "accepted_cutover_law"
+    assert writer["status"] == "implemented_current"
     assert writer["decision"] == {
         "issue": "PER-48",
         "adr": _POSTGRESQL_ADR,
-        "completion_commit": "9b4c9b2e",
+        "implementation_contract": "contracts/rust_persistence_cutover_v1.yaml",
     }
     assert writer["before_cutover"] == {
         "authoritative_writer": "Python",
@@ -394,17 +394,16 @@ def test_per_48_records_the_accepted_one_way_writer_cutover() -> None:
         "checkpoint_hydration",
         "runtime_writes",
         "h3_codecs",
-        "compatibility_views",
     )
     assert tuple(writer["surviving_python_roles"]) == (
         "deterministic_data_acquisition_and_reference_builds",
         "external_api_adapters",
         "ai_and_document_periphery",
+        "in_memory_optimization_periphery",
         "cli_periphery",
-        "read_only_transition_observers",
     )
     assert writer["transition_observers"] == {
-        "access": "versioned_views_only",
+        "access": "none",
         "writes": "forbidden",
         "ddl": "forbidden",
     }

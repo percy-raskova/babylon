@@ -6,7 +6,7 @@ per-county population + geography, never fabricated numbers -- but the
 scenario builder (``engine/scenarios/_legacy.py::_create_us_territories``)
 must stay reference-DB-free at build/test time (measured cost: ~6.6s per
 national-scope population lookup via
-:class:`babylon.engine.headless_runner.reference_data_cache.ReferenceDataCache`,
+:class:`babylon.data.reference_data_cache.ReferenceDataCache`,
 paid at >130 call sites across the test suite if done live -- e.g.
 ``tests/unit/web/test_engine_bridge.py``'s ``_make_mock_persistence()``).
 Per the deterministic-data-artifacts doctrine (CI never touches the data
@@ -18,15 +18,15 @@ drive) -- the SAME doctrine that motivated
 artifact (``src/babylon/data/game/us_county_territories.json``) that
 ``babylon.engine.scenarios.us_county_data`` reads at runtime.
 
-**Scope**: the same national county universe the headless runner uses
-(:func:`babylon.engine.headless_runner.scopes._load_national_fips` --
+**Scope**: the canonical Python data-periphery county universe
+(:func:`babylon.data.reference_scope._load_national_fips` --
 state fips < '60', excludes the synthetic ``{state}999`` rest-of-state
 placeholders), FIPS-sorted.
 
 **Population policy (follows the house consumer, byte-for-byte)**: Census
 ``fact_census_income`` household-count SUM is primary; QCEW
 ``fact_qcew_annual`` employment SUM x 0.33 is the fallback -- this is
-literally :class:`~babylon.engine.headless_runner.reference_data_cache.
+literally :class:`~babylon.data.reference_data_cache.
 ReferenceDataCache`'s own resolution rule, reused directly (not
 reimplemented) so the artifact can never drift from what
 ``WorldStateBridge`` already treats as the real per-county population.
@@ -73,10 +73,9 @@ not inferred. Generic inference is deliberately out of scope -- e.g.
 deduped: both were legitimately separate entities at the 2010 reference year
 (Bedford city didn't merge into Bedford County until 2013), so a name- or
 geography-based heuristic would wrongly collapse two real counties into one.
-``engine.headless_runner.scopes._load_national_fips`` itself carries the
-same latent double/triple-count for the nationwide headless-runner path --
-that is a separate, pre-existing production defect, OUT of this script's
-scope (flagged for a follow-up task, not fixed here).
+The raw reference-scope universe carries the same latent double/triple count.
+That data-periphery concern remains outside this artifact's declared
+deduplication rule.
 
 Only the RAW reference-derived fields are baked into the artifact
 (``fips``, ``county_name``, ``state_abbrev``, ``centroid_lat``/``lon``,
@@ -423,7 +422,7 @@ def build_payload(
             ),
             "reference_db": "data/sqlite/marxist-data-3NF.sqlite",
             "scope_rule": (
-                "national (mirrors engine.headless_runner.scopes._load_national_fips: "
+                "national (mirrors data.reference_scope._load_national_fips: "
                 "state fips < '60', excludes {state}999 placeholders) minus the "
                 "retired-FIPS dedup (see 'exclusions')"
             ),

@@ -1,10 +1,7 @@
 """Bayesian (Optuna TPE + Hyperband) parameter tuning for the Carceral trajectory.
 
-Migrated from ``tools/tune_agent.py`` (the pre-package single source of truth
-for this algorithm) onto the optimization core package
-(:mod:`babylon.engine.optimization`): trials execute through
-:func:`babylon.engine.optimization.runner_api.run` (not
-``tools/shared.py::run_simulation``), the search space is introspected from
+Trials execute through :func:`babylon.engine.optimization.runner_api.run`.
+The search space is introspected from
 :func:`babylon.engine.optimization.params.get_tunable_parameters` instead of
 a hand-maintained, disconnected bounds dict, and scoring routes through
 :func:`babylon.engine.optimization.objectives.calculate_carceral_equilibrium_score`.
@@ -228,8 +225,7 @@ def create_objective(
     :param search_space: The space to sample from, as produced by
         :func:`_resolve_search_space`.
     :param max_ticks: Maximum simulation ticks per trial.
-    :param backend: ``"headless"`` or ``"in_memory"`` — threaded straight
-        into :func:`~babylon.engine.optimization.runner_api.run`.
+    :param backend: Must be ``"in_memory"``.
     :param seed: RNG seed threaded into every trial (Constitution III.7 —
         every trial is independently reproducible given its sampled
         parameters, this seed, and this backend).
@@ -304,9 +300,7 @@ def run_optimization(
         ``optuna-dashboard``-compatible).
     :param n_trials: Number of *new* optimization trials to run this call.
     :param max_ticks: Maximum simulation ticks per trial.
-    :param backend: ``"headless"`` (Postgres-backed) or ``"in_memory"``
-        (fast legacy engine) — see
-        :func:`babylon.engine.optimization.runner_api.run`.
+    :param backend: Must be ``"in_memory"``.
     :param seed: RNG seed threaded into every trial.
     :param categories: ``GameDefines`` categories to introspect for the
         search space (default: :data:`TUNING_CATEGORIES`).
@@ -417,7 +411,7 @@ def format_results(
         lines.append("   - Subsistence burn rate too high relative to income")
         lines.append("   - Initial wealth insufficient for survival")
         lines.append("   - Production/extraction balance broken")
-        lines.append("\n   Try running: mise run qa:audit")
+        lines.append("\n   Try a bounded diagnostic sweep: mise run sim:sweep 52")
     elif study.best_trial:
         lines.append(f"\nBest Carceral Equilibrium Score: {study.best_value:.2f}/100")
         lines.append("\nBest Parameters:")
@@ -490,7 +484,7 @@ def run_bayesian(
     :param storage: SQLite (or other Optuna-supported) storage URL.
     :param n_trials: Number of new trials to run (ignored if ``show_best``).
     :param max_ticks: Maximum simulation ticks per trial.
-    :param backend: ``"headless"`` or ``"in_memory"``.
+    :param backend: Must be ``"in_memory"``.
     :param seed: RNG seed threaded into every trial.
     :param categories: ``GameDefines`` categories to search over (default:
         :data:`TUNING_CATEGORIES`).

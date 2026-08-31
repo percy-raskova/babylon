@@ -15,8 +15,7 @@ Four predicates:
   Predicate B' — Same-payload re-persist succeeds idempotently (covers AS2) (T025)
   Predicate C — Back-in-time rewrite raises (covers AS4) (T026)
 
-Parametrized over RuntimeDatabase (default fast gate) and PostgresRuntime
-(integration only, T027).
+Parametrized over the non-authoritative in-memory ``RuntimeDatabase`` reference.
 """
 
 from __future__ import annotations
@@ -63,8 +62,7 @@ def _graph_payload(graph: BabylonGraph) -> dict:
     return attrs
 
 
-# Default-fast-gate parametrization: only RuntimeDatabase. PostgresRuntime
-# is added under pytest.mark.integration in T027.
+# The frozen in-memory reference remains the only Python implementation in scope.
 PERSISTENCE_FACTORIES: list[Any] = [
     pytest.param(_make_runtime_database, id="runtime_database"),
 ]

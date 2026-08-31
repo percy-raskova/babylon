@@ -1,20 +1,13 @@
 """Single Postgres DSN-resolution seam (T1.2 keel; ADR099 deployment guardrail).
 
-Three independent naming schemes for "which Postgres do I talk to" had
-accumulated across the codebase before this module existed:
-
-- the headless runner's ``BABYLON_PG_DSN`` (libpq keyword string, falling
-  back to ``BABYLON_TEST_PG_DSN``; :func:`babylon.engine.headless_runner.
-  runner._open_postgres_pool`);
-- Django's split ``POSTGRES_HOST``/``POSTGRES_PORT``/``POSTGRES_DB``/
-  ``POSTGRES_USER``/``POSTGRES_PASSWORD`` vars
-  (``web/babylon_web/settings/base.py``'s ``DATABASES["default"]``);
-- ``babylon doctor``'s ``BABYLON_DATABASE_URL`` (``babylon.cli.doctor``).
+Several historical periphery names for "which Postgres do I inspect" had
+accumulated before this module existed. The surviving consumer is
+``babylon doctor``; the older runner and browser names remain accepted only for
+environment diagnosis, not for game-state authority.
 
 This module is the ONE place that resolves a DSN from the environment.
-Every call site above (plus ``web/observatory/db.py``'s read-only "sim"
-alias, which already shared the runner's ``BABYLON_PG_DSN`` scheme) now
-calls :func:`resolve_dsn` instead of reading ``os.environ`` directly.
+Periphery callers use :func:`resolve_dsn` instead of reading ``os.environ``
+directly.
 
 Precedence (highest wins)
 -------------------------

@@ -418,9 +418,9 @@ class TestBifurcationEdgeCases:
 class TestRealProductionNodeShape:
     """SocialClass carries no ``territory`` field -- the real field production
     writes is ``county_fips`` (``WorldState.to_graph()`` dumps
-    ``entity.model_dump()`` verbatim; ``headless_runner/bridge.py``'s
-    per-county entity builder passes ``county_fips=`` to
-    ``create_labor_aristocracy``/``create_bourgeoisie``). No production writer
+    ``entity.model_dump()`` verbatim, and scenario builders pass
+    ``county_fips=`` to ``create_labor_aristocracy`` and
+    ``create_bourgeoisie``). No production writer
     anywhere in ``src/`` ever stamps a flat ``territory`` key onto a
     social_class node. Before this fix, ``_compute_solidarity_density`` /
     ``_compute_legitimation`` filtered on that fabricated key, so cross-class

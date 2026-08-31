@@ -120,7 +120,7 @@ if [ ! -f data/sqlite/marxist-data-3NF.sqlite ]; then
   echo "      (reference-data tooling needs it; see project/04-data-program-098.md)"
 fi
 echo ""
-echo "Setup complete. Smoke-test with: mise run qa:e2e-regression"
+echo "Setup complete. Smoke-test with: mise run test:int-pg"
 """
 
 # =============================================================================
@@ -741,17 +741,6 @@ if fails:
 description = "Self-contained in-memory smoke test (two-node Worker vs Owner, one tick) — verifies your install. For the full Postgres-backed run see sim:e2e-michigan."
 run = "uv run python -m babylon"
 
-[tasks."sim:trace"]
-description = "Run simulation trace with CSV + JSON output"
-usage = 'arg "[ticks]" help="Number of ticks to simulate" default="200"'
-run = """
-mkdir -p results
-uv run python tools/parameter_analysis.py trace \
-  --csv results/trace.csv \
-  --json results/trace.json \
-  --ticks ${usage_ticks}
-"""
-
 [tasks."sim:sweep"]
 description = "Run parameter sweep analysis"
 usage = 'arg "[ticks]" help="Maximum ticks per trial" default="5200"'
@@ -762,14 +751,6 @@ uv run python -m babylon.engine.optimization sweep \
   --max-ticks ${usage_ticks} \
   --output-csv results/sweep.csv --report
 """
-
-[tasks."sim:profile"]
-description = "Profile simulation with cProfile"
-usage = '''
-arg "[ticks]" help="Number of ticks to profile" default="100"
-arg "[scope]" help="Predefined scope name (default: detroit-tri-county)" default="detroit-tri-county"
-'''
-run = "uv run python tools/profiler.py --ticks ${usage_ticks} --scope ${usage_scope}"
 
 [tasks."sim:monte-carlo"]
 description = "Monte Carlo uncertainty quantification"
@@ -787,7 +768,11 @@ uv run python -m babylon.engine.optimization monte-carlo \
 
 [tasks."sim:e2e-michigan"]
 description = "Rust-owned 520-tick Michigan foundation persistence run"
-run = "babylon-runtime run --ticks 520"
+run = """
+export BABYLON_RUNTIME_DSN="${BABYLON_RUNTIME_DSN:-host=127.0.0.1 port=5433 dbname=babylon_test user=test password=test}"
+export PATH="$PWD/rust/target/debug:$PATH"
+babylon-runtime run --ticks 520
+"""
 
 [tasks."sim:e2e-bg"]
 description = "Daemonize sim:e2e-michigan with pidfile + log under .sim-pids/ (watch via sim:status)"
@@ -796,62 +781,24 @@ mkdir -p .sim-pids
 if [ -f .sim-pids/e2e.pid ] && kill -0 "$(cat .sim-pids/e2e.pid)" 2>/dev/null; then
   echo "already running: PID $(cat .sim-pids/e2e.pid)"; exit 1
 fi
+export BABYLON_RUNTIME_DSN="${BABYLON_RUNTIME_DSN:-host=127.0.0.1 port=5433 dbname=babylon_test user=test password=test}"
+export PATH="$PWD/rust/target/debug:$PATH"
 nohup babylon-runtime run --ticks 520 > .sim-pids/e2e.log 2>&1 &
 echo $! > .sim-pids/e2e.pid
 echo "started PID $(cat .sim-pids/e2e.pid) — log .sim-pids/e2e.log"
 '''
 
 [tasks."sim:status"]
-description = "One-shot status SCOPED to the most-recently-writing session: tick/520, session bytes/tick, dialectics signals — plus a whole-DB accumulation line (spec-089 5.4: no cross-session avg artifact)"
+description = "Show the daemon process and query Rust-owned authority and campaign-tail state"
 run = '''
 if [ -f .sim-pids/e2e.pid ] && kill -0 "$(cat .sim-pids/e2e.pid)" 2>/dev/null; then
   ps -o pid,pcpu,etime -p "$(cat .sim-pids/e2e.pid)" | tail -1
 else
-  echo "(no daemonized run; the tick/size numbers below are SCOPED to the most-recently-writing session)"
+  echo "(no daemonized run)"
 fi
-# The one session that most recently committed a tick. All per-session
-# lines key off this UUID so the readout can never divide the whole
-# multi-session DB by one session's tick count (the spec-101 P1 artifact).
-LAST=$(PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test -tAc \
-  "SELECT session_id FROM tick_commit ORDER BY created_at_utc DESC LIMIT 1;" 2>/dev/null)
-if [ -n "$LAST" ]; then
-  PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test -tc "
-  SELECT 'session ' || left('$LAST', 8) || ': tick ' || max(tick)
-         || '/520 (' || round(100.0*max(tick)/520, 1) || '%), session '
-         || pg_size_pretty((SELECT COALESCE(sum(pg_total_relation_size(c.oid)), 0)
-              FROM pg_class c WHERE c.relname LIKE '%_p_' || replace('$LAST','-',''))::bigint)
-         || ', ' || pg_size_pretty(((SELECT COALESCE(sum(pg_total_relation_size(c.oid)), 0)
-              FROM pg_class c WHERE c.relname LIKE '%_p_' || replace('$LAST','-',''))
-              / (max(tick)+1))::bigint) || '/tick (this session)'
-  FROM tick_commit WHERE session_id = '$LAST';" 2>/dev/null || true
-  PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test -tc "
-  SELECT 'live counties: ' ||
-         (SELECT count(*) FROM dynamic_consciousness_state
-          WHERE session_id = '$LAST'
-            AND tick=(SELECT max(tick) FROM dynamic_consciousness_state WHERE session_id = '$LAST')) ||
-         ', contradiction_field rows (this session): ' ||
-         (SELECT count(*) FROM contradiction_field WHERE session_id = '$LAST');" 2>/dev/null || true
-  PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test -tc "
-  SELECT 'max_tension t' || tick || ': ' || round(max(tension)::numeric, 4)
-  FROM dynamic_relationship_state
-  WHERE session_id = '$LAST'
-    AND tick IN (SELECT DISTINCT tick FROM dynamic_relationship_state
-                 WHERE session_id = '$LAST' ORDER BY tick DESC LIMIT 3)
-  GROUP BY tick ORDER BY tick;" 2>/dev/null || true
-else
-  echo "(no committed sessions in babylon_test)"
-fi
-# Loudness: surface accumulation instead of laundering it into an average.
-PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test -tc "
-SELECT 'sessions holding rows: ' || count(DISTINCT session_id)
-       || ' — db (ALL sessions) ' || pg_size_pretty(pg_database_size('babylon_test'))
-       || ' (run: mise run sim:archive -- list)'
-FROM tick_commit;" 2>/dev/null || true
-PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test -tc "
-SELECT '  ' || relname || ': ' || pg_size_pretty(pg_total_relation_size(relid)) || ', ' || n_live_tup || ' rows'
-FROM pg_stat_user_tables
-WHERE relname LIKE 'dynamic_%' OR relname IN ('boundary_flow_register','conservation_audit_log','contradiction_field')
-ORDER BY pg_total_relation_size(relid) DESC LIMIT 6;" 2>/dev/null || true
+export BABYLON_RUNTIME_DSN="${BABYLON_RUNTIME_DSN:-host=127.0.0.1 port=5433 dbname=babylon_test user=test password=test}"
+export PATH="$PWD/rust/target/debug:$PATH"
+babylon-runtime probe
 '''
 
 [tasks."sim:watch"]
@@ -860,11 +807,19 @@ run = "watch -n 30 mise run sim:status"
 
 [tasks."sim:probe"]
 description = "Probe Rust persistence authority and the durable campaign tail"
-run = "babylon-runtime probe"
+run = '''
+export BABYLON_RUNTIME_DSN="${BABYLON_RUNTIME_DSN:-host=127.0.0.1 port=5433 dbname=babylon_test user=test password=test}"
+export PATH="$PWD/rust/target/debug:$PATH"
+babylon-runtime probe
+'''
 
 [tasks."sim:archive"]
 description = "Inspect Rust-owned Archive dirty receipts without mutating campaigns"
-run = "babylon-runtime archive"
+run = '''
+export BABYLON_RUNTIME_DSN="${BABYLON_RUNTIME_DSN:-host=127.0.0.1 port=5433 dbname=babylon_test user=test password=test}"
+export PATH="$PWD/rust/target/debug:$PATH"
+babylon-runtime archive
+'''
 
 [tasks."sim:archived"]
 description = "Show the local archive root contents (one dir per archived session)"
@@ -960,17 +915,6 @@ uv run python -m babylon.engine.optimization sensitivity --method sobol \
 # QA (Namespaced)
 # =============================================================================
 
-[tasks."qa:audit"]
-description = "Simulation health check (100-year trajectory)"
-usage = 'arg "[ticks]" help="Max simulation ticks" default="5200"'
-run = """
-mkdir -p reports
-uv run python tools/audit_simulation.py \
-  --max-ticks ${usage_ticks} \
-  --output reports/audit_latest.md
-cat reports/audit_latest.md
-"""
-
 [tasks."qa:verify"]
 description = "Verify formula correctness"
 run = "uv run python tools/verify_math_divergence.py"
@@ -988,12 +932,8 @@ description = "Regression test against stored baselines"
 run = "uv run python tools/regression_test.py compare"
 
 [tasks."qa:vault-regression"]
-description = "Golden-vault byte-gate (WO-51/Amendment W): two independent bakes per scenario, byte-identical to the committed manifests"
+description = "Golden-vault byte-gate for the retained in-process single_county and org_probe projection scenarios"
 run = "uv run python tools/vault_regression.py compare"
-
-[tasks."qa:vault-regression-ci"]
-description = "CI lane of the golden-vault byte-gate: the in-process single_county + org_probe scenarios (CI has no Postgres — ADR064 two-tier; the runner-backed detroit leg runs in the dev-side qa:vault-regression)"
-run = "uv run python tools/vault_regression.py compare --scenario single_county --scenario org_probe"
 
 [tasks."qa:vault-regression-generate"]
 description = "Seed/regenerate golden-vault manifests (committing tests/baselines/vault/** is a §6.5 ceremony — Baselines: blessed(<slug>) trailer required)"
@@ -1014,14 +954,6 @@ run = "uv run python tools/record_projection_fixtures.py"
 [tasks."archive:record-fixtures-community"]
 description = "Program 24 P2 (WO-24): harvest the SETTLER community projection fixture from a small deterministic in-process run (honestly all-absent — no scenario wires a community_memberships producer)"
 run = "uv run python tools/record_community_fixture.py"
-
-[tasks."qa:e2e-regression"]
-description = "Run five ticks through the Rust-owned durable composition root"
-run = "babylon-runtime run --ticks 5"
-
-[tasks."qa:storage-budget"]
-description = "Verify bounded typed storage for a five-tick Rust run"
-run = "babylon-runtime run --ticks 5"
 
 [tasks."qa:hexagon-isolation"]
 description = "Verify hexagon UI isolation from database layer (SC-002)"
@@ -1248,13 +1180,10 @@ uv run python tools/ingest_tiger_geometry.py --h3-state ${usage_h3_state}
 description = "AST audit for direct .r/.l/.f mutations bypassing spec-043 routing formula."
 run = "uv run python tools/audit_simplex_bypasses.py"
 
-[tasks."qa:tick-budget"]
-description = "Spec-104: per-system wallclock budget gate (michigan-statewide 5-tick profile vs ratified budget)"
-run = "BABYLON_PG_DSN=${BABYLON_PG_DSN:-dbname=babylon_test host=localhost port=5433 user=test password=test} uv run python tools/tick_budget_check.py --ticks 5 --scope michigan-statewide-no-canada"
-
 [tasks."qa:michigan-rollover-smoke"]
 description = "Commit and restart the Rust Michigan foundation across 60 ticks"
 run = """
+export BABYLON_RUNTIME_DSN="${BABYLON_RUNTIME_DSN:-host=127.0.0.1 port=5433 dbname=babylon_test user=test password=test}"
 export PATH="$PWD/rust/target/debug:$PATH"
 babylon-runtime michigan-smoke
 """
@@ -1273,10 +1202,6 @@ echo "── babylon_test recycled:"
 docker exec babylon-pg-isolated psql -U test -d postgres -tc "SELECT pg_size_pretty(pg_database_size('babylon_test'));"
 df -h /var | tail -1
 """
-
-[tasks."test:integration-pg"]
-description = "The declared PG-backed integration subset CI's pg-integration job runs (data-drive-free, green-by-construction — ADR176 ruling 33's un-gate; widen ONLY with green evidence, never narrow without a declared skip)"
-run = "uv run pytest tests/integration/persistence tests/integration/balkanization tests/integration/test_tick_commit.py tests/integration/test_persistence_monotonic_postgres.py tests/integration/test_archival_integration.py -q"
 
 [tasks."test:rust-legacy-adopter-pg"]
 description = "Run the bounded PER-20 Rust legacy-adopter proof in a task-owned PostgreSQL runtime"

@@ -48,26 +48,25 @@ their documented examples. If tests fail, the bug is in formula implementation.
 
    :doc:`/reference/formulas` for the complete formula specification.
 
-Step 2: Run a Trace Analysis
-----------------------------
+Step 2: Inspect the Authoritative Runtime
+-----------------------------------------
 
-Capture full simulation state over time:
+Probe Rust persistence authority and the durable campaign tail:
 
 .. code-block:: bash
 
-   mise run sim:trace
+   mise run sim:probe
 
-This outputs a CSV to ``results/trace.csv`` with per-tick data:
+For a background Michigan run, inspect both its process state and runtime probe:
 
-- Entity wealth, consciousness, organization
-- Survival probabilities (P(S|A), P(S|R))
-- Edge tension and value flows
+.. code-block:: bash
 
-Open the CSV in a spreadsheet to identify:
+   mise run sim:status
+   tail -f .sim-pids/e2e.log
 
-- **Inflection points**: Where do values change direction?
-- **Correlations**: Do related values move together?
-- **Anomalies**: Any sudden jumps or flat periods?
+The probe reports the prepared and active schema epochs, persistence-authority
+ledger, and durable campaign tail. Treat the frozen Python tools below as
+reference diagnostics only, not as evidence about authoritative persistence.
 
 Step 3: Use Structured Logging
 ------------------------------
@@ -222,7 +221,7 @@ Getting Help
 If you've followed these steps and still can't identify the issue:
 
 1. Create a minimal reproduction script
-2. Include the trace CSV output
+2. Include the Rust probe and campaign-log output
 3. Note which tick the unexpected behavior occurs
 4. Check existing tests for similar scenarios
 

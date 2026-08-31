@@ -31,7 +31,7 @@ _MIN_CANONICAL_ROWS = 1000  # smoke-test runs (tri-county / 5-tick) have ~15-50 
 def _is_canonical_michigan(trace_csv: Path) -> bool:
     """Heuristic: canonical 520-tick michigan-canada runs have ≥ 1000 rows.
 
-    Smoke / qa:e2e-regression runs (detroit-tri-county, 5 ticks) have
+    Short Detroit tri-county diagnostic runs (5 ticks) have
     ~15-50 rows and should be excluded from the SC-006 epsilon check.
     """
 

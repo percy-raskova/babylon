@@ -118,23 +118,3 @@ class TestIsDeadTypeEnforcement:
             is_dead("C001")  # type: ignore[arg-type]
 
         assert "EntityProtocol" in str(exc_info.value)
-
-
-class TestIsDeadByWealthPreserved:
-    """Tests that is_dead_by_wealth() remains for legacy compatibility."""
-
-    def test_is_dead_by_wealth_accepts_float(self) -> None:
-        """is_dead_by_wealth() should accept float values.
-
-        This is the legacy function for wealth-threshold checks.
-        """
-        from shared import is_dead_by_wealth
-
-        # Wealth above threshold
-        assert is_dead_by_wealth(1.0) is False
-        assert is_dead_by_wealth(0.1) is False
-
-        # Wealth at/below threshold (0.001)
-        assert is_dead_by_wealth(0.001) is True
-        assert is_dead_by_wealth(0.0) is True
-        assert is_dead_by_wealth(-1.0) is True

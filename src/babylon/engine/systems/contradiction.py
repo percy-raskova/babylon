@@ -24,17 +24,14 @@ bugs of ``project/06-lawverian-dialectics.md`` §2). Each tick the system:
 
 Cross-tick + handoff channel.
     The registry snapshot is stashed on the **graph attribute**
-    ``opposition_states`` (not ``context.persistent_data``). The bridged
-    headless runner recreates a fresh ``TickContext`` every tick
-    (``engine/headless_runner/runner.py`` ``_advance_tick``), so
-    ``persistent_data`` is not a cross-tick channel there; the graph, by
-    contrast, persists in-place across ticks in both the bridged runner and
-    the in-memory ``Simulation`` facade. The graph attribute is therefore the
+    ``opposition_states`` (not ``context.persistent_data``). A caller can
+    recreate ``TickContext`` each tick, so ``persistent_data`` is not a
+    reliable cross-tick channel. The graph persists in-place across ticks in
+    the frozen in-memory facade. The graph attribute is therefore the
     reliable place to (a) recover the previous tick's gaps for rate/inertia,
     (b) hand the capital_labor gap to the pre-position-18 consumers
     (ImperialRent @9, Struggle @16, Consciousness @17 read *last* tick's
-    snapshot), and (c) let the bridge's ``persist_tick`` read the snapshot.
-    This is the same channel ``contradiction_frames`` already uses.
+    snapshot). This is the same channel ``contradiction_frames`` already uses.
 """
 
 from __future__ import annotations

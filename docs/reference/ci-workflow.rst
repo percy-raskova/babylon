@@ -127,31 +127,12 @@ docs.yml
 
 **Note**: Only runs on ``main``—development docs are not deployed.
 
-extended-analysis.yml
-~~~~~~~~~~~~~~~~~~~~~
+Weekly Python and simulation workflows
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-**File**: ``.github/workflows/extended-analysis.yml``
-
-**Triggers**:
-
-- Release published
-- Weekly schedule (Sunday midnight)
-- Manual dispatch
-
-**Jobs**:
-
-.. list-table::
-   :widths: 25 75
-   :header-rows: 1
-
-   * - Job
-     - Purpose
-   * - ``extended_tests``
-     - Python 3.12/3.13 matrix testing
-   * - ``parameter_analysis``
-     - Run ``mise run sim:trace`` and ``mise run sim:sweep``
-   * - ``ai_evaluation``
-     - Run AI tests (release only): ``pytest -m "ai"``
+``weekly-py313.yml`` runs the Python 3.13 forward-compatibility suite each
+Sunday and on manual dispatch. ``weekly-sim-artifacts.yml`` runs the intentional
+in-memory ``mise run sim:sweep 200`` analysis and uploads ``results/sweep.csv``.
 
 release.yml
 ~~~~~~~~~~~

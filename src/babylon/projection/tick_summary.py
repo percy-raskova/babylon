@@ -4,9 +4,8 @@ Port of ``web/game/engine_bridge.py::_build_tick_summary`` (lines ~9341-9420)
 and its ``_county_tick_series_aggregates`` helper (lines ~8660-8737) into a
 pure projection helper — same read logic, no redesign. The web bridge's
 ``persist_tick_summary`` caller (``_persist_snapshots_safe``,
-``web/game/engine_bridge.py:9486-9495``) is the only production caller of
-:meth:`~babylon.persistence.postgres_runtime.PostgresRuntime.
-persist_tick_summary` before this unit — a real Archive campaign
+``web/game/engine_bridge.py:9486-9495``) was the only production caller of
+the retired Python persistence method before this unit — an Archive campaign
 (:class:`~babylon.game.session.GameSession`) wrote nothing to ``tick_summary``
 at all, so every trend read over it was empty (the same dormant-construct
 pattern T3 closed for field-state). This module supplies the SAME kwargs
@@ -247,9 +246,7 @@ def build_tick_summary_kwargs(
         history threaded) keeps BOTH columns honestly ``None`` rather than
         a fabricated ``0`` (Constitution III.11) — a caller with no history
         is a different state from "zero events happened this tick".
-    :returns: Kwargs dict for
-        :meth:`~babylon.persistence.postgres_runtime.PostgresRuntime.
-        persist_tick_summary`.
+    :returns: Frozen keyword-value projection for replacement-contract tests.
     """
     consciousness_values = [
         float(sc.ideology.class_consciousness) for sc in world.entities.values()

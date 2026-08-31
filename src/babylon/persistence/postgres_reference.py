@@ -70,7 +70,7 @@ class ImmutableReferenceLookup:
     warning at most once even across many ticks.
 
     Parameters:
-        runtime: Underlying PostgresRuntime.
+        runtime: Underlying enforced-read-only PostgreSQL interface.
         session_id: Session UUID.
         start_year: Earliest year the session has reference data for.
         end_year: Latest year the session has reference data for (inclusive).

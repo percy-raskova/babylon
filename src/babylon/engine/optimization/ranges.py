@@ -1,29 +1,23 @@
 """One override/range grammar for the optimization package.
 
-Unifies three parallel, slightly-inconsistent grammars that previously lived
-in ``tools/parameter_analysis.py`` (``--param path=value``),
-``tools/tune_parameters.py`` (``--param``/``--start``/``--end``/``--step``
-as separate flags), and ``tools/landscape_analysis.py`` (``start:end:step``
-strings). All three expressed the same two ideas — "one value" and "a swept
-range" — with different syntax; this module is the single parser both
-concepts route through from here on.
+This module is the single parser for the optimizer's two input concepts:
+one fixed value and one swept range.
 
 Grammar:
 
 * Override: ``"category.field=VALUE"`` — one fixed value.
 * Range: ``"category.field=start:end:step"`` — a swept range, inclusive of
-  both endpoints (matching ``landscape_analysis.py``'s float-tolerance
-  behavior, not Python ``range()``'s exclusive-end convention).
+  both endpoints, unlike Python ``range()``'s exclusive-end convention.
 """
 
 from __future__ import annotations
 
 #: Tolerance fraction of ``step`` used for the inclusive-endpoint float
-#: comparison (matches ``tools/landscape_analysis.py::parse_range``).
+#: comparison.
 _ENDPOINT_TOLERANCE_FRACTION = 0.1
 
 #: Decimal places values are rounded to, avoiding float-accumulation drift
-#: across many additions of ``step`` (matches the source tools).
+#: across many additions of ``step``.
 _ROUND_NDIGITS = 6
 
 

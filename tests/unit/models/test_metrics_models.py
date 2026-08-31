@@ -9,8 +9,8 @@ The metrics models capture simulation state for analysis and visualization:
 - TickMetrics: Complete tick snapshot (all entities, all edges, global state)
 - SweepSummary: Aggregated statistics across a simulation run
 
-These models mirror the data structures in tools/parameter_analysis.py
-but with proper Pydantic validation for dashboard integration.
+These models preserve the frozen metrics export schema with Pydantic
+validation for dashboard integration.
 
 TDD GREEN Phase: All tests pass with implementation.
 """
@@ -49,7 +49,7 @@ class TestEntityMetrics:
     def test_can_instantiate_with_all_fields(self) -> None:
         """EntityMetrics accepts all required fields.
 
-        Expected fields (from parameter_analysis.py collect_tick_data):
+        Expected fields from the frozen entity-metrics export schema:
         - wealth: Currency >= 0
         - consciousness: Probability [0, 1] (class consciousness)
         - national_identity: Probability [0, 1]
@@ -275,7 +275,7 @@ class TestEdgeMetrics:
     def test_can_instantiate_with_all_fields(self) -> None:
         """EdgeMetrics accepts all edge-related fields.
 
-        Expected fields (from parameter_analysis.py collect_tick_data):
+        Expected fields from the frozen edge-metrics export schema:
         - exploitation_tension: Probability [0, 1]
         - exploitation_rent: Currency >= 0 (value_flow on EXPLOITATION)
         - tribute_flow: Currency >= 0 (value_flow on TRIBUTE)
@@ -380,7 +380,7 @@ class TestTickMetrics:
     def test_accepts_entity_metrics(self) -> None:
         """TickMetrics accepts optional EntityMetrics for each entity.
 
-        Entity slots (from parameter_analysis.py column prefixes):
+        Entity slots from the frozen metrics column prefixes:
         - p_w: Periphery Worker (C001)
         - p_c: Comprador (C002)
         - c_b: Core Bourgeoisie (C003)
@@ -550,7 +550,7 @@ class TestSweepSummary:
     def test_can_instantiate_with_all_fields(self) -> None:
         """SweepSummary accepts all summary fields.
 
-        Expected fields (from parameter_analysis.py extract_sweep_summary):
+        Expected fields from the frozen sweep-summary schema:
         - ticks_survived: int >= 0
         - outcome: str ("SURVIVED" | "DIED" | "ERROR")
         - final_p_w_wealth: Currency >= 0

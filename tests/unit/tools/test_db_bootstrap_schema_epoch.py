@@ -69,12 +69,17 @@ def test_repository_cargo_concurrency_matches_the_host_contract() -> None:
     assert 'CARGO_BUILD_JOBS = "8"' not in mise
 
 
-def test_sccache_uses_one_home_relative_cache_on_fresh_hosts() -> None:
+def test_sccache_uses_the_repository_local_policy_cache() -> None:
     mise = (ROOT / ".mise.toml").read_text(encoding="utf-8")
     flake = (ROOT / "flake.nix").read_text(encoding="utf-8")
+    policy = (ROOT / ".codex/host/policy.sh").read_text(encoding="utf-8")
 
-    assert 'SCCACHE_DIR = "{{env.HOME}}/.cache/sccache"' in mise
-    assert 'export SCCACHE_DIR="$HOME/.cache/sccache"' in flake
+    assert "SCCACHE_DIR" not in mise
+    assert "SCCACHE_DIR" not in flake
+    assert "codex_rust_dispatcher_bin" in flake
+    assert "codex-rust-host/v11/cargo" in flake
+    assert "CODEX_RUST_SCCACHE_POLICY_KEY=0.17.0-p2" in policy
+    assert "printf '%s/sccache/%s/%s\\n'" in policy
     assert "/media/user/data/sccache" not in mise
     assert "/media/user/data/sccache" not in flake
 

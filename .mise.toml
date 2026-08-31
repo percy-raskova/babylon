@@ -2,7 +2,7 @@
 # https://mise.jdx.dev/
 #
 # Task Namespace Convention (ADR035):
-#   check         - Fast CI gate (lint + format + typecheck + unit tests)
+#   check         - Non-mutating local gate (hosted static leaves + local contracts + unit tests)
 #   ci:*          - Hosted-CI entry points and local runner adapters
 #   test:*        - Test runners by scope
 #   sim:*         - Simulation execution and analysis
@@ -129,15 +129,23 @@ echo "Setup complete. Smoke-test with: mise run test:int-pg"
 
 [tasks.lint]
 description = "Run ruff linter with auto-fix"
-run = "uv run ruff check src tests --fix"
+run = "uv run ruff check . --fix"
 
 [tasks.format]
 description = "Run ruff formatter"
-run = "uv run ruff format src tests"
+run = "uv run ruff format ."
+
+[tasks.fix]
+description = "Explicit sequential Python rewrite: apply Ruff lint fixes, then format"
+run = """
+set -e
+mise run lint
+mise run format
+"""
 
 [tasks.typecheck]
 description = "Run mypy type checker"
-run = "uv run mypy src"
+run = "uv run --frozen mypy src"
 
 [tasks."lint:yaml"]
 description = "Lint YAML files"
@@ -156,20 +164,32 @@ description = "Run complexity gate (xenon) - fails if CC > 15"
 run = "uv run xenon --max-absolute C src/"
 
 [tasks.check]
-description = "Fast CI gate: data-pathway + hygiene + governance budgets + ADR catalog + 16 static sentinels plus reference catalog + lint + imports + format + typecheck + unit tests"
-depends = ["data:doctor", "check:hygiene", "check:governance-mass", "check:adr-catalog", "check:dynamic-linking-fence", "check:sentinels", "lint", "lint:imports", "format", "typecheck", "test:unit"]
+description = "Canonical non-mutating local gate: hosted static checks plus governance, ADR catalog, and unit tests"
+depends = ["check:static", "check:governance-mass", "check:adr-catalog", "test:unit"]
+
+[tasks."check:static"]
+description = "Hosted Fast Gate leaves, reusable locally without source rewrites or reference data"
+depends = ["check:hygiene", "check:dynamic-linking-fence", "check:sentinels-static", "check:surface", "lint:check", "format:check", "lint:imports", "typecheck", "check:lock"]
+
+[tasks."check:full-local"]
+description = "Canonical check plus workstation data-path and reference-catalog probes"
+depends = ["check", "data:doctor", "check:catalog"]
 
 [tasks."data:doctor"]
 description = "Loud data-pathway gate: trove mount + repo symlinks + Postgres bind on the data drive (clean skip off the dev box); heal = sudo tools/heal_data_mount.sh"
 run = "tools/data_doctor.sh"
 
 [tasks."check:quick"]
-description = "Quality gate without the test leg: lint + format + typecheck"
-depends = ["lint", "format", "typecheck"]
+description = "Non-mutating quality gate without the test leg: lint + format + typecheck"
+depends = ["lint:check", "format:check", "typecheck"]
+
+[tasks."check:lock"]
+description = "Verify uv.lock matches project metadata without frozen-mode masking"
+run = "env -u UV_FROZEN uv lock --check"
 
 [tasks."check:hygiene"]
 description = "Repo-hygiene gate: root allowlist, ignore-consistency, blob sizes (program 14)"
-run = "uv run python tools/check_repo_hygiene.py"
+run = "uv run --frozen python tools/check_repo_hygiene.py"
 
 [tasks.adr]
 description = "Rebuild and query the disposable local ADR catalog"
@@ -177,7 +197,7 @@ run = "uv run python tools/adr_catalog.py"
 
 [tasks."check:adr-catalog"]
 description = "Build and validate a temporary ADR catalog"
-run = "uv run python tools/adr_catalog.py check"
+run = "uv run --frozen python tools/adr_catalog.py check"
 
 [tasks."governance:mass"]
 description = "Report ADR, plan-history, and repo-skill context mass as bounded JSON"
@@ -185,7 +205,7 @@ run = "uv run python tools/check_governance_mass.py"
 
 [tasks."check:governance-mass"]
 description = "Enforce repo-skill discovery/body budgets and query-first ADR routing"
-run = "uv run python tools/check_governance_mass.py --check"
+run = "uv run --frozen python tools/check_governance_mass.py --check"
 
 [tasks."check:dynamic-linking-fence"]
 description = "R1.4 fence, static half: bevy/dynamic_linking never referenced in a workflow, never leaks out of the sanctioned rust:client-dev-dylib task, never a default feature (Director ruling 2026-08-18)"
@@ -205,43 +225,43 @@ run = "uv run python tools/generate_pr_body.py --base ${usage_base} --head ${usa
 
 [tasks."check:seam-algebra"]
 description = "Seam-algebra sentinel (T1.1 U3): static Lawvere co-Heyting boundary (dL) over the unified construct-to-expected-consumer registry -- disconnected-subsystem gate (static)"
-run = "uv run python tools/sentinel_check.py seam-algebra --check"
+run = "uv run --frozen python tools/sentinel_check.py seam-algebra --check"
 
 [tasks."check:coverage"]
 description = "Data-coverage sentinel: every declared reference-data source class exists (static gate)"
-run = "uv run python tools/sentinel_check.py coverage --check"
+run = "uv run --frozen python tools/sentinel_check.py coverage --check"
 
 [tasks."check:vocabulary"]
 description = "Node-type vocabulary sentinel: no invented _node_type strings; every production query has a producer"
-run = "uv run python tools/sentinel_check.py vocabulary --check"
+run = "uv run --frozen python tools/sentinel_check.py vocabulary --check"
 
 [tasks."check:reachability"]
 description = "Reachability sentinel (Standard §9 W.3.2): every EndgameDetector gate operand has a runtime writer or a cited ledger disposition (static gate)"
-run = "uv run python tools/sentinel_check.py reachability --check"
+run = "uv run --frozen python tools/sentinel_check.py reachability --check"
 
 [tasks."check:fallback-coverage"]
 description = "Fallback-coverage sentinel (ADR176 ruling 25): every EventType has a bus builder + bespoke chronicle summary, or a cited disposition row (static gate)"
-run = "uv run python tools/sentinel_check.py fallback-coverage --check"
+run = "uv run --frozen python tools/sentinel_check.py fallback-coverage --check"
 
 [tasks."check:inert"]
 description = "Inert-construct sentinel: every declared store's writer and every declared producer has a real production caller (static gate)"
-run = "uv run python tools/sentinel_check.py inert --check"
+run = "uv run --frozen python tools/sentinel_check.py inert --check"
 
 [tasks."check:dangling"]
 description = "Dangling-reference sentinel (dual of inert): every typed-receiver getattr() call names a real member of a watched class (static gate)"
-run = "uv run python tools/sentinel_check.py dangling --check"
+run = "uv run --frozen python tools/sentinel_check.py dangling --check"
 
 [tasks."check:unconsumed"]
 description = "Unconsumed-value sentinel: every declared computed dict key has a real production reader (static gate)"
-run = "uv run python tools/sentinel_check.py unconsumed --check"
+run = "uv run --frozen python tools/sentinel_check.py unconsumed --check"
 
 [tasks."check:formula-registration"]
 description = "Dead-formula-registration sentinel (Vol I U7): every declared FormulaRegistry entry has a real production caller other than its own registration call, or a cited exemption (static gate)"
-run = "uv run python tools/sentinel_check.py formula_registration --check"
+run = "uv run --frozen python tools/sentinel_check.py formula_registration --check"
 
 [tasks."check:defines-passthrough"]
 description = "Defines-passthrough sentinel (task #42): every formulas-layer call declaring an optional `defines` param must pass the run's live defines, not silently fall back to schema defaults (static gate)"
-run = "uv run python tools/sentinel_check.py defines_passthrough --check"
+run = "uv run --frozen python tools/sentinel_check.py defines_passthrough --check"
 
 [tasks."check:catalog"]
 description = "Data-catalog sentinel: reference-DB objects reconcile with data-catalog.yaml — no undeclared objects, phantom rows, or dark KEEP objects (DB probe)"
@@ -249,19 +269,19 @@ run = "uv run python tools/sentinel_check.py catalog --check"
 
 [tasks."check:partition"]
 description = "Partition sentinel (ADR070): seeded-vs-derived class evidence; hard violations gate, agreement metrics stay advisory (dynamic)"
-run = "uv run python tools/sentinel_check.py partition --check"
+run = "uv run --frozen python tools/sentinel_check.py partition --check"
 
 [tasks."check:synthetic"]
 description = "Synthetic-data sentinel: every declared synthetic source's source + guard symbols exist (static gate)"
-run = "uv run python tools/sentinel_check.py synthetic --check"
+run = "uv run --frozen python tools/sentinel_check.py synthetic --check"
 
 [tasks."check:superstructure"]
 description = "Superstructure-direction sentinel (I-ORD, P25 U9/ADR135): declared write ownership over the political-superstructure graph registers; no material-base file writes the superstructure (static gate)"
-run = "uv run python tools/sentinel_check.py superstructure --check"
+run = "uv run --frozen python tools/sentinel_check.py superstructure --check"
 
 [tasks."check:absence"]
 description = "Absence sentinel (task #64): every sqlite3.connect/create_engine(sqlite) site carries a cited disposition — auto-create must never mask a missing reference DB (static gate)"
-run = "uv run python tools/sentinel_check.py absence --check"
+run = "uv run --frozen python tools/sentinel_check.py absence --check"
 
 [tasks."check:sentinels"]
 description = "The 18 static sentinels plus the local reference-database catalog probe"
@@ -273,23 +293,23 @@ depends = ["check:seam-algebra", "check:coverage", "check:vocabulary", "check:re
 
 [tasks."check:h3-readers"]
 description = "PER-280 canonical H3 reader inventory: schema-qualified BIGINT reads only"
-run = "uv run python tools/verify_h3_reader_cutover_v1.py"
+run = "uv run --frozen python tools/verify_h3_reader_cutover_v1.py"
 
 [tasks."check:rust-persistence-cutover"]
 description = "PER-281 one-way Rust persistence authority, storage, and Python-retirement contract"
-run = "uv run python tools/verify_rust_persistence_cutover_v1.py"
+run = "uv run --frozen python tools/verify_rust_persistence_cutover_v1.py"
 
 [tasks."check:surface"]
 description = "Sentinel: __all__ vs its pinned baseline frozenset (public-surface baseline blindness gate)"
-run = "uv run python tools/sentinel_check.py surface --check"
+run = "uv run --frozen python tools/sentinel_check.py surface --check"
 
 [tasks."check:tutorial-coverage"]
 description = "Tutorial option-coverage sentinel (T6): every declared TUI Binding is exercised by an authored TutorialStep or carries a cited exemption (static gate)"
-run = "uv run python tools/sentinel_check.py tutorial-coverage --check"
+run = "uv run --frozen python tools/sentinel_check.py tutorial-coverage --check"
 
 [tasks."check:gate-coverage"]
 description = "Sentinel: qa:regression estate declaration is complete over all 30 engine systems (gate-blindness gate)"
-run = "uv run python tools/sentinel_check.py gate-coverage --check"
+run = "uv run --frozen python tools/sentinel_check.py gate-coverage --check"
 
 [tasks."check:gate-coverage-truth"]
 description = "Dynamic gate-coverage truth probe: every declared SystemEvidence actually occurs in its scenario (runs the engine, ~one gate-length)"
@@ -321,7 +341,7 @@ run = "tools/reap_chroma.sh"
 
 [tasks."lint:imports"]
 description = "Import-boundary contracts: kernel < models/formulas < domain < engine (program 14)"
-run = "uv run lint-imports"
+run = "uv run --frozen lint-imports"
 
 [tasks."ci:local"]
 description = "Run a GitHub Actions job locally via gh-act (program 15) — e.g. mise run ci:local -- -W .github/workflows/ci.yml -j fast-gate. Install once: gh extension install https://github.com/nektos/gh-act"
@@ -342,11 +362,11 @@ run = "bash tools/installer_smoke.sh"  # bash: the harness sets pipefail, dash r
 
 [tasks."lint:check"]
 description = "Ruff lint, no fixes (CI parity; the auto-fixing variant is tasks.lint)"
-run = "uv run ruff check ."
+run = "uv run --frozen ruff check ."
 
 [tasks."format:check"]
 description = "Ruff format check, no rewrites (CI parity; the rewriting variant is tasks.format)"
-run = "uv run ruff format --check ."
+run = "uv run --frozen ruff format --check ."
 
 # CI pytest flag rationale (both test:*-ci tasks):
 #   -o addopts="" is LOAD-BEARING: pyproject addopts inject --cov-report=html,
@@ -532,7 +552,7 @@ git status --short | grep -v "^??" || true
 description = "Unit tests (fast gate — excludes slow-marked; those run in test:slow locally and CI's test:rest-ci) → reports/test-results/unit/"
 run = """
 mkdir -p reports/test-results/unit
-uv run pytest tests/unit -m 'not red_phase and not slow and not requires_ollama' \
+uv run --frozen pytest tests/unit -m 'not red_phase and not slow and not requires_ollama' \
   -n 4 --dist loadscope --max-worker-restart=2 \
   -vv --tb=long --showlocals --show-capture=all --capture=tee-sys -r aR --durations=25 \
   --junit-xml=reports/test-results/unit/junit.xml \

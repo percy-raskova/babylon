@@ -10,12 +10,15 @@ uv run pre-commit install
 ## CI & Quality (Fast Gate)
 
 ```bash
-mise run check          # lint + format + typecheck + test:unit
-mise run ci             # Same as check
-mise run lint           # ruff linter
-mise run format         # ruff formatter
-mise run typecheck      # MyPy strict mode
-mise run clean          # Clean build artifacts
+mise run check            # Non-mutating static/local contracts + unit tests
+mise run check:quick      # Non-mutating lint + format + typecheck
+mise run check:full-local # Check plus workstation data/reference probes
+mise run fix              # Apply Ruff fixes, then format sequentially
+mise run ci               # Same as check
+mise run lint             # Apply Ruff lint fixes
+mise run format           # Apply Ruff formatting
+mise run typecheck        # MyPy strict mode
+mise run clean            # Clean build artifacts
 ```
 
 ## Testing

@@ -19,7 +19,7 @@
 # sha256:08f4b1e1f4a571008c60272ceb9e0d1f9f8f643792d006b74a35b1bec44c2218
 # (linux/amd64 manifest sha256:35d90a44f150ef26c1c734e86e3f888753ca7fd6e1321d85e73f66a7dbffb531,
 # Alpine Linux v3.24.1).
-FROM postgis/postgis:17-3.5-alpine@sha256:08f4b1e1f4a571008c60272ceb9e0d1f9f8f643792d006b74a35b1bec44c2218 AS extension-builder
+FROM postgis/postgis:17-3.5-alpine@sha256:894f570c0cf0664ed5576a8fd5d5bfb8fb1b19d592885b686c3a88c8bd90c41f AS extension-builder
 
 # Official release tags resolve to h3-pg ed9a09c834787abb5952318bccef1c4fee119f1d,
 # H3 core v4.5.0, and pgvector 159b79aaad5983fb7459c1e3df2897fbb2d11788.
@@ -68,7 +68,7 @@ RUN set -eux; \
     test -f \
         /tmp/extension-install/usr/local/share/postgresql/extension/vector--0.8.5.sql
 
-FROM postgis/postgis:17-3.5-alpine@sha256:08f4b1e1f4a571008c60272ceb9e0d1f9f8f643792d006b74a35b1bec44c2218
+FROM postgis/postgis:17-3.5-alpine@sha256:894f570c0cf0664ed5576a8fd5d5bfb8fb1b19d592885b686c3a88c8bd90c41f
 
 COPY --from=extension-builder \
     /tmp/extension-install/usr/local/lib/postgresql/ /usr/local/lib/postgresql/

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import tomllib
 from pathlib import Path
@@ -147,6 +148,19 @@ def test_check_is_non_mutating_and_keeps_dynamic_probes_explicit() -> None:
         "data:doctor",
         "check:catalog",
     ]
+
+
+def test_check_freezes_every_uv_verification_leaf() -> None:
+    """Verification must report lock drift before any uv command can repair it."""
+    tasks = _tasks()
+    unfrozen_tasks = [
+        task_name
+        for task_name in sorted(_dependency_closure("check"))
+        if re.search(r"\buv run(?! --frozen\b)", str(tasks[task_name].get("run", "")))
+    ]
+
+    assert unfrozen_tasks == []
+    assert tasks["check:lock"]["run"] == "env -u UV_FROZEN uv lock --check"
 
 
 def test_hosted_fast_gate_and_local_static_gate_share_tasks() -> None:

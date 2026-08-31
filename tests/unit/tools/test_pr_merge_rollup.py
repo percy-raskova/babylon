@@ -84,6 +84,57 @@ class TestRollupFailuresLatestPerCheck:
         failures = pr_merge._rollup_failures(rollup)
         assert any("Unit Tests" in f and "IN_PROGRESS" in f for f in failures)
 
+    def test_in_progress_unknown_check_is_typed_as_pending(self) -> None:
+        findings = pr_merge._rollup_findings(
+            [_entry("Extension", "", "2026-08-21T18:21:15Z", status="IN_PROGRESS")],
+            allow_pending=True,
+        )
+
+        assert findings.hard == []
+        assert findings.pending == ["Extension: still IN_PROGRESS"]
+
+    @pytest.mark.parametrize("state", ["EXPECTED", "PENDING"])
+    def test_pending_status_context_is_typed_as_pending(self, state: str) -> None:
+        findings = pr_merge._rollup_findings(
+            [
+                {
+                    "context": "External status",
+                    "state": state,
+                    "startedAt": "2026-08-21T18:21:15Z",
+                }
+            ],
+            allow_pending=True,
+        )
+
+        assert findings.hard == []
+        assert findings.pending == [f"External status: still {state}"]
+
+    @pytest.mark.parametrize("with_status", [False, True], ids=["status-context", "check-run"])
+    def test_neutral_unknown_rollup_is_pending_only_for_dependabot(
+        self,
+        with_status: bool,
+    ) -> None:
+        entry = _entry("CodeQL aggregate", "NEUTRAL", "2026-08-21T18:21:15Z")
+        if not with_status:
+            entry.pop("status")
+            entry["state"] = entry.pop("conclusion")
+
+        dependabot = pr_merge._rollup_findings([entry], allow_pending=True)
+        ordinary = pr_merge._rollup_findings([entry])
+
+        assert dependabot.hard == []
+        assert dependabot.pending == ["CodeQL aggregate: NEUTRAL"]
+        assert ordinary.hard == ["CodeQL aggregate: NEUTRAL"]
+        assert ordinary.pending == []
+
+    def test_completed_unknown_failure_is_typed_as_hard(self) -> None:
+        findings = pr_merge._rollup_findings(
+            [_entry("Extension", "FAILURE", "2026-08-21T18:21:15Z")]
+        )
+
+        assert findings.hard == ["Extension: FAILURE"]
+        assert findings.pending == []
+
     def test_distinct_names_are_not_deduped_across(self) -> None:
         rollup = [
             _entry("Fast Gate", "FAILURE", "2026-08-21T17:30:44Z"),

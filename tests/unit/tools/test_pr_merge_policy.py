@@ -60,6 +60,16 @@ MAIN_BLOCKING_CHECKS = (
 MAIN_ADVISORY_CHECKS = ("Main Qualification / AI Tests (advisory)",)
 
 
+def test_merge_outcomes_are_stable_for_trusted_workflow_consumers() -> None:
+    assert {outcome.name: outcome.value for outcome in pr_merge_tool.MergeOutcome} == {
+        "SUCCESS": 0,
+        "HARD_REFUSAL": 1,
+        "MUTATION_INDETERMINATE": 2,
+        "DEPENDABOT_MAJOR_REVIEW": 3,
+        "EXACT_HEAD_EVIDENCE_PENDING": 4,
+    }
+
+
 def test_gh_timeout_is_bounded_and_normalized(monkeypatch: pytest.MonkeyPatch) -> None:
     observed_timeout: object = None
 
@@ -1133,6 +1143,39 @@ def test_missing_expected_dev_check_blocks_registration_race(tmp_path: Path) -> 
     assert _merge_calls(calls) == []
 
 
+def test_hard_refusal_outranks_pending_exact_head_evidence(tmp_path: Path) -> None:
+    scenario = _default_scenario()
+    _manifest_runs(scenario).pop(0)
+    payload = scenario["manifest_check_runs"]
+    assert isinstance(payload, dict)
+    payload["total_count"] = len(_manifest_runs(scenario))
+    rollup = _view(scenario)["statusCheckRollup"]
+    assert isinstance(rollup, list)
+    rollup.append(_check("Unknown hard failure", conclusion="FAILURE"))
+
+    result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
+
+    assert result.returncode == 1
+    assert "pr:merge REFUSED — Unknown hard failure: FAILURE" in result.stderr
+    assert "pr:merge PENDING" in result.stderr
+    assert _merge_calls(calls) == []
+
+
+def test_dependabot_missing_exact_head_check_is_pending(tmp_path: Path) -> None:
+    scenario = _default_scenario()
+    _manifest_runs(scenario).pop(0)
+    payload = scenario["manifest_check_runs"]
+    assert isinstance(payload, dict)
+    payload["total_count"] = len(_manifest_runs(scenario))
+
+    result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
+
+    assert result.returncode == 4
+    assert "pr:merge PENDING" in result.stderr
+    assert DEV_BLOCKING_CHECKS[0] in result.stderr
+    assert _merge_calls(calls) == []
+
+
 def test_status_context_success_cannot_satisfy_a_required_check(tmp_path: Path) -> None:
     scenario = _default_scenario()
     missing_name = DEV_BLOCKING_CHECKS[0]
@@ -1254,6 +1297,18 @@ def test_newer_queued_canonical_duplicate_with_no_started_at_blocks_merge(
     assert _merge_calls(calls) == []
 
 
+def test_dependabot_queued_exact_head_check_is_pending(tmp_path: Path) -> None:
+    scenario = _default_scenario()
+    run = _manifest_runs(scenario)[0]
+    run.update({"status": "queued", "conclusion": None})
+
+    result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
+
+    assert result.returncode == 4
+    assert f"{DEV_BLOCKING_CHECKS[0]}: still QUEUED" in result.stderr
+    assert _merge_calls(calls) == []
+
+
 def test_repeated_lower_canonical_check_run_id_is_rejected(tmp_path: Path) -> None:
     scenario = _default_scenario()
     runs = _manifest_runs(scenario)
@@ -1335,6 +1390,54 @@ def test_unknown_non_successful_check_is_not_globally_advisory(
     assert _merge_calls(calls) == []
 
 
+def test_dependabot_unknown_neutral_rollup_is_pending(tmp_path: Path) -> None:
+    scenario = _default_scenario()
+    rollup = _view(scenario)["statusCheckRollup"]
+    assert isinstance(rollup, list)
+    rollup.append(_check("CodeQL aggregate", conclusion="NEUTRAL"))
+
+    result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
+
+    assert result.returncode == 4
+    assert "pr:merge PENDING — CodeQL aggregate: NEUTRAL" in result.stderr
+    assert _merge_calls(calls) == []
+
+
+def test_hard_refusal_outranks_dependabot_neutral_pending(tmp_path: Path) -> None:
+    scenario = _default_scenario()
+    rollup = _view(scenario)["statusCheckRollup"]
+    assert isinstance(rollup, list)
+    rollup.append(_check("CodeQL aggregate", conclusion="NEUTRAL"))
+    scenario["alerts"] = [{"number": 17, "state": "open"}]
+
+    result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
+
+    assert result.returncode == 1
+    assert "pr:merge REFUSED — 1 open code-scanning alert" in result.stderr
+    assert "pr:merge PENDING — CodeQL aggregate: NEUTRAL" in result.stderr
+    assert _merge_calls(calls) == []
+
+
+def test_main_unknown_neutral_rollup_remains_hard(tmp_path: Path) -> None:
+    scenario = _default_scenario()
+    _view(scenario).update({"baseRefName": "main", "headRefName": "dev"})
+    _use_main_manifest(scenario)
+    rollup = _view(scenario)["statusCheckRollup"]
+    assert isinstance(rollup, list)
+    rollup.append(_check("CodeQL aggregate", conclusion="NEUTRAL"))
+
+    result, calls = _run_pr_merge(
+        tmp_path,
+        "--director-main",
+        "--verify-only",
+        scenario=scenario,
+    )
+
+    assert result.returncode == 1
+    assert "pr:merge REFUSED — CodeQL aggregate: NEUTRAL" in result.stderr
+    assert _merge_calls(calls) == []
+
+
 def test_unknown_success_is_informational_after_complete_manifest(tmp_path: Path) -> None:
     scenario = _default_scenario()
     rollup = _view(scenario)["statusCheckRollup"]
@@ -1385,7 +1488,7 @@ def test_dependabot_mode_requires_native_ci_and_classifier_provenance(
     assert any(call[0] == "api" and "/pulls/742/commits?per_page=100" in call[1] for call in calls)
 
 
-def test_reviewed_major_update_uses_normal_path_but_dependabot_mode_refuses(
+def test_reviewed_major_update_uses_normal_path_and_dependabot_requests_review(
     tmp_path: Path,
 ) -> None:
     scenario = _default_scenario()
@@ -1404,9 +1507,36 @@ def test_reviewed_major_update_uses_normal_path_but_dependabot_mode_refuses(
 
     assert normal.returncode == 0, normal.stderr
     assert len(_merge_calls(normal_calls)) == 1
-    assert unattended.returncode == 1
-    assert "only patch or minor" in unattended.stderr
+    assert unattended.returncode == 3
+    assert "authenticated Dependabot semver-major" in unattended.stdout
     assert _merge_calls(unattended_calls) == []
+
+
+def test_semver_major_requires_authenticated_dependabot_provenance(tmp_path: Path) -> None:
+    scenario = _default_scenario()
+    scenario["dependabot_commits"] = [_dependabot_commit(update_type="version-update:semver-major")]
+    dependabot_pr = scenario["dependabot_pr"]
+    assert isinstance(dependabot_pr, dict)
+    dependabot_pr["user"] = {"login": "attacker", "id": 7, "type": "User"}
+
+    result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
+
+    assert result.returncode == 1
+    assert "exact Dependabot bot author" in result.stderr
+    assert "MANUAL REVIEW" not in result.stdout
+    assert not any(call[0] == "api" and "/pulls/742/commits?" in call[1] for call in calls)
+    assert _merge_calls(calls) == []
+
+
+def test_unknown_dependabot_update_class_is_a_hard_refusal(tmp_path: Path) -> None:
+    scenario = _default_scenario()
+    scenario["dependabot_commits"] = [_dependabot_commit(update_type="version-update:calendar")]
+
+    result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
+
+    assert result.returncode == 1
+    assert "not a known semver class" in result.stderr
+    assert _merge_calls(calls) == []
 
 
 def test_dependabot_synchronization_invalidates_old_head_classification(tmp_path: Path) -> None:

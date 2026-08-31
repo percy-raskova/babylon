@@ -622,8 +622,13 @@ class TestDependabotPolicy:
         )
         script = str(label["run"])
         assert "steps.eligibility.outputs.eligible" in label["env"]["ELIGIBLE"]
-        assert "--add-label" in script
-        assert "--remove-label" in script
+        assert "--method GET" in script
+        assert "--method POST" in script
+        assert "--method DELETE" in script
+        assert "--input -" in script
+        assert "labels[]=" not in script
+        assert "issues/$PR_NUMBER/labels" in script
+        assert "gh pr edit" not in script
 
     def test_eligibility_label_matches_the_transactional_repository_policy(self) -> None:
         """Classification verifies managed metadata without becoming a second writer."""
@@ -668,14 +673,15 @@ from pathlib import Path
 args = sys.argv[1:]
 with Path(os.environ["GH_CALLS"]).open("a") as calls:
     calls.write(json.dumps(args) + "\\n")
-if args[0] == "api":
+endpoint = args[-1]
+if args[:3] == ["api", "--method", "GET"] and "/issues/" not in endpoint:
     print(json.dumps({
         "name": os.environ["ELIGIBILITY_LABEL"],
         "color": os.environ["ELIGIBILITY_LABEL_COLOR"],
         "description": os.environ["ELIGIBILITY_LABEL_DESCRIPTION"],
     }))
-elif args[:2] == ["pr", "view"]:
-    print(json.dumps({"labels": [{"name": os.environ["ELIGIBILITY_LABEL"]}]}))
+elif args[:3] == ["api", "--method", "GET"] and "/issues/" in endpoint:
+    print(json.dumps([{"name": os.environ["ELIGIBILITY_LABEL"]}]))
 else:
     raise SystemExit(99)
 """
@@ -707,8 +713,195 @@ else:
         calls = [yaml.safe_load(line) for line in calls_path.read_text().splitlines()]
         assert calls[0] == [
             "api",
+            "--method",
+            "GET",
             "repos/example/babylon/labels/dependencies%3Aautomerge%2Fnext%20wave",
         ]
+        assert calls[1] == [
+            "api",
+            "--method",
+            "GET",
+            "repos/example/babylon/issues/742/labels?per_page=100",
+        ]
+
+    @pytest.mark.parametrize(
+        ("eligible", "has_label", "expected_method"),
+        [
+            ("true", False, "POST"),
+            ("false", True, "DELETE"),
+            ("true", True, None),
+            ("false", False, None),
+        ],
+        ids=["add", "remove", "keep", "stay-absent"],
+    )
+    def test_eligibility_label_mutation_uses_only_issues_rest(
+        self,
+        tmp_path: Path,
+        eligible: str,
+        has_label: bool,
+        expected_method: str | None,
+    ) -> None:
+        """Label classification uses bounded Issues endpoints, never GraphQL PR edits."""
+        workflow = yaml.safe_load(DEPENDABOT_AUTOMERGE_PATH.read_text())
+        classify = workflow["jobs"]["classify"]
+        label_step = next(
+            step for step in classify["steps"] if step.get("name") == "Set eligibility label"
+        )
+        fake_bin = tmp_path / "bin"
+        fake_bin.mkdir()
+        calls_path = tmp_path / "gh-calls.jsonl"
+        fake_gh = fake_bin / "gh"
+        fake_gh.write_text(
+            """#!/usr/bin/env python3
+import json
+import os
+import sys
+from pathlib import Path
+
+args = sys.argv[1:]
+request_body = sys.stdin.read() if args[:3] == ["api", "--method", "POST"] else ""
+with Path(os.environ["GH_CALLS"]).open("a") as calls:
+    calls.write(json.dumps({"args": args, "stdin": request_body}) + "\\n")
+endpoint = args[3]
+if args[:3] == ["api", "--method", "GET"] and "/issues/" not in endpoint:
+    print(json.dumps({
+        "name": os.environ["ELIGIBILITY_LABEL"],
+        "color": os.environ["ELIGIBILITY_LABEL_COLOR"],
+        "description": os.environ["ELIGIBILITY_LABEL_DESCRIPTION"],
+    }))
+elif args[:3] == ["api", "--method", "GET"] and "/issues/" in endpoint:
+    labels = [{"name": os.environ["ELIGIBILITY_LABEL"]}] if os.environ["HAS_LABEL"] == "true" else []
+    print(json.dumps(labels))
+elif args[:3] == ["api", "--method", "POST"]:
+    pass
+elif args[:3] == ["api", "--method", "DELETE"]:
+    pass
+else:
+    raise SystemExit(99)
+"""
+        )
+        fake_gh.chmod(0o755)
+        label = str(classify["env"]["ELIGIBILITY_LABEL"])
+        env = {
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "ELIGIBILITY_LABEL": label,
+            "ELIGIBILITY_LABEL_COLOR": str(classify["env"]["ELIGIBILITY_LABEL_COLOR"]),
+            "ELIGIBILITY_LABEL_DESCRIPTION": str(classify["env"]["ELIGIBILITY_LABEL_DESCRIPTION"]),
+            "ELIGIBLE": eligible,
+            "HAS_LABEL": str(has_label).lower(),
+            "GH_CALLS": str(calls_path),
+            "GH_TOKEN": "test-token",
+            "GITHUB_REPOSITORY": "example/babylon",
+            "PR_NUMBER": "742",
+        }
+
+        result = subprocess.run(  # noqa: S603,S607 - executes the trusted workflow step
+            ["bash", "-c", str(label_step["run"])],
+            capture_output=True,
+            env=env,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+
+        assert result.returncode == 0, result.stderr
+        requests = [yaml.safe_load(line) for line in calls_path.read_text().splitlines()]
+        mutation_requests = requests[2:]
+        if expected_method is None:
+            assert mutation_requests == []
+        else:
+            assert len(mutation_requests) == 1
+            mutation = mutation_requests[0]
+            assert mutation["args"][2] == expected_method
+            assert "repos/example/babylon/issues/742/labels" in mutation["args"][3]
+            if expected_method == "POST":
+                assert mutation["args"][4:] == ["--input", "-"]
+                assert mutation["stdin"] == f'{{"labels":["{label}"]}}\n'
+            else:
+                assert mutation["stdin"] == ""
+        assert not any(request["args"][:2] == ["pr", "edit"] for request in requests)
+
+    @pytest.mark.parametrize(
+        ("metadata_matches", "label_count", "expected_calls", "expected_message"),
+        [
+            (False, 0, 1, ""),
+            (True, 100, 2, "potentially truncated 100-label issue page"),
+        ],
+        ids=["metadata-mismatch", "full-label-page"],
+    )
+    def test_eligibility_label_reads_fail_closed_before_mutation(
+        self,
+        tmp_path: Path,
+        metadata_matches: bool,
+        label_count: int,
+        expected_calls: int,
+        expected_message: str,
+    ) -> None:
+        """Managed metadata drift and a full label page must stop without writes."""
+        workflow = yaml.safe_load(DEPENDABOT_AUTOMERGE_PATH.read_text())
+        classify = workflow["jobs"]["classify"]
+        label_step = next(
+            step for step in classify["steps"] if step.get("name") == "Set eligibility label"
+        )
+        fake_bin = tmp_path / "bin"
+        fake_bin.mkdir()
+        calls_path = tmp_path / "gh-calls.jsonl"
+        fake_gh = fake_bin / "gh"
+        fake_gh.write_text(
+            """#!/usr/bin/env python3
+import json
+import os
+import sys
+from pathlib import Path
+
+args = sys.argv[1:]
+with Path(os.environ["GH_CALLS"]).open("a") as calls:
+    calls.write(json.dumps(args) + "\\n")
+endpoint = args[3]
+if args[:3] == ["api", "--method", "GET"] and "/issues/" not in endpoint:
+    label = os.environ["ELIGIBILITY_LABEL"]
+    print(json.dumps({
+        "name": label if os.environ["METADATA_MATCHES"] == "true" else f"{label}-drift",
+        "color": os.environ["ELIGIBILITY_LABEL_COLOR"],
+        "description": os.environ["ELIGIBILITY_LABEL_DESCRIPTION"],
+    }))
+elif args[:3] == ["api", "--method", "GET"] and "/issues/" in endpoint:
+    count = int(os.environ["LABEL_COUNT"])
+    print(json.dumps([{"name": f"label-{index}"} for index in range(count)]))
+else:
+    raise SystemExit(98)
+"""
+        )
+        fake_gh.chmod(0o755)
+        env = {
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "ELIGIBILITY_LABEL": str(classify["env"]["ELIGIBILITY_LABEL"]),
+            "ELIGIBILITY_LABEL_COLOR": str(classify["env"]["ELIGIBILITY_LABEL_COLOR"]),
+            "ELIGIBILITY_LABEL_DESCRIPTION": str(classify["env"]["ELIGIBILITY_LABEL_DESCRIPTION"]),
+            "ELIGIBLE": "true",
+            "METADATA_MATCHES": str(metadata_matches).lower(),
+            "LABEL_COUNT": str(label_count),
+            "GH_CALLS": str(calls_path),
+            "GH_TOKEN": "test-token",
+            "GITHUB_REPOSITORY": "example/babylon",
+            "PR_NUMBER": "742",
+        }
+
+        result = subprocess.run(  # noqa: S603,S607 - executes the trusted workflow step
+            ["bash", "-c", str(label_step["run"])],
+            capture_output=True,
+            env=env,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+
+        assert result.returncode != 0
+        calls = [yaml.safe_load(line) for line in calls_path.read_text().splitlines()]
+        assert len(calls) == expected_calls
+        assert all(call[:3] == ["api", "--method", "GET"] for call in calls)
+        if expected_message:
+            assert expected_message in result.stdout
 
     def test_merge_uses_trusted_dev_tools_and_exact_candidate_head(self) -> None:
         """A moved, non-Dependabot, or ambiguous PR must never merge."""
@@ -760,13 +953,117 @@ else:
         )
         assert errors == ["future.yml:2: external action must use a 40-hex SHA"]
 
-    def test_workflow_never_polls_or_calls_gh_merge_directly(self) -> None:
-        """The old forty-minute waiter and bypass merge command must stay retired."""
+    def test_workflow_uses_only_the_bounded_typed_retry_contract(self) -> None:
+        """Only pending evidence retries; every other verifier outcome terminates."""
         workflow_text = DEPENDABOT_AUTOMERGE_PATH.read_text()
-        assert re.search(r"\bsleep\b", workflow_text) is None
         assert re.search(r"\bseq\b", workflow_text) is None
         assert "gh pr checks" not in workflow_text
         assert "gh pr merge" not in workflow_text
+        assert "gh pr edit" not in workflow_text
+
+        workflow = yaml.safe_load(workflow_text)
+        merge = workflow["jobs"]["merge"]
+        merge_step = next(step for step in merge["steps"] if step.get("name") == "Merge")
+        script = str(merge_step["run"])
+        assert "max_attempts=8" in script
+        assert "retry_delay_seconds=30" in script
+        assert "1|2)" in script
+        assert "3)" in script
+        assert "4)" in script
+        assert 'sleep "$retry_delay_seconds"' in script
+        assert script.count("python3 tools/pr_merge.py") == 1
+
+    @pytest.mark.parametrize(
+        ("outcomes", "expected_exit", "expected_calls", "expected_sleeps"),
+        [
+            ([0], 0, 1, 0),
+            ([3], 0, 1, 0),
+            ([1], 1, 1, 0),
+            ([2], 2, 1, 0),
+            ([9], 1, 1, 0),
+            ([4, 4, 0], 0, 3, 2),
+            ([4] * 8, 4, 8, 7),
+        ],
+        ids=[
+            "merged",
+            "major-review",
+            "hard-refusal",
+            "indeterminate",
+            "unexpected",
+            "pending-then-green",
+            "pending-exhausted",
+        ],
+    )
+    def test_merge_step_enforces_bounded_retry_outcomes(
+        self,
+        tmp_path: Path,
+        outcomes: list[int],
+        expected_exit: int,
+        expected_calls: int,
+        expected_sleeps: int,
+    ) -> None:
+        """The shell loop retries only outcome 4 and never exceeds eight calls."""
+        workflow = yaml.safe_load(DEPENDABOT_AUTOMERGE_PATH.read_text())
+        merge_step = next(
+            step for step in workflow["jobs"]["merge"]["steps"] if step.get("name") == "Merge"
+        )
+        fake_bin = tmp_path / "bin"
+        fake_bin.mkdir()
+        verifier_calls = tmp_path / "verifier-calls"
+        verifier_outcomes = tmp_path / "verifier-outcomes"
+        verifier_outcomes.write_text("\n".join(str(outcome) for outcome in outcomes) + "\n")
+        sleep_calls = tmp_path / "sleep-calls"
+        fake_python = fake_bin / "python3"
+        fake_python.write_text(
+            """#!/bin/sh
+calls=0
+if [ -f "$VERIFIER_CALLS" ]; then
+  calls="$(wc -l < "$VERIFIER_CALLS")"
+fi
+printf '%s\\n' "$*" >> "$VERIFIER_CALLS"
+line=$((calls + 1))
+outcome="$(sed -n "${line}p" "$VERIFIER_OUTCOMES")"
+if [ -z "$outcome" ]; then
+  exit 99
+fi
+exit "$outcome"
+"""
+        )
+        fake_python.chmod(0o755)
+        fake_sleep = fake_bin / "sleep"
+        fake_sleep.write_text(
+            """#!/bin/sh
+printf '%s\\n' "$1" >> "$SLEEP_CALLS"
+"""
+        )
+        fake_sleep.chmod(0o755)
+        env = os.environ.copy()
+        env.update(
+            {
+                "PATH": f"{fake_bin}:{env['PATH']}",
+                "VERIFIER_CALLS": str(verifier_calls),
+                "VERIFIER_OUTCOMES": str(verifier_outcomes),
+                "SLEEP_CALLS": str(sleep_calls),
+                "EXPECTED_HEAD": "a" * 40,
+                "SOURCE_RUN_ID": "123",
+                "CLASSIFIER_RUN_ID": "456",
+                "PR_NUMBER": "742",
+            }
+        )
+
+        result = subprocess.run(  # noqa: S603,S607 - executes the trusted workflow step
+            ["bash", "-c", str(merge_step["run"])],
+            capture_output=True,
+            env=env,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+
+        assert result.returncode == expected_exit, result.stderr
+        assert len(verifier_calls.read_text().splitlines()) == expected_calls
+        sleeps = sleep_calls.read_text().splitlines() if sleep_calls.exists() else []
+        assert sleeps == ["30"] * expected_sleeps
 
     def test_config_targets_default_branch_and_never_groups_majors(self) -> None:
         """Security settings must apply and grouped PRs must stay low-risk."""

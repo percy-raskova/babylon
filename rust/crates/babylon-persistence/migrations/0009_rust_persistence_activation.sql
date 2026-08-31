@@ -12,10 +12,6 @@ BEGIN
     FOR relation_name IN
         SELECT expected.relation_name
         FROM pg_catalog.unnest(ARRAY[
-            'babylon_meta.breadcrumb',
-            'babylon_meta.campaign',
-            'babylon_meta.jumplist',
-            'babylon_meta.watchlist',
             'public.action_result',
             'public.balkanization_claims_audit',
             'public.balkanization_influences_audit',
@@ -118,6 +114,59 @@ BEGIN
 END
 $rust_persistence_activation_preflight$;
 
+-- The client-owned campaign catalog and navigation lists survive the engine
+-- authority cutover in place. Widen the acknowledged tick to the Rust durable
+-- tick domain before the first Rust marker can advance it. A fresh Rust-owned
+-- database has no Python migration history, so this same epoch also creates
+-- the retained client tier when it is absent; existing rows remain untouched.
+CREATE SCHEMA IF NOT EXISTS babylon_meta;
+
+CREATE TABLE IF NOT EXISTS babylon_meta.campaign (
+    campaign_id UUID PRIMARY KEY,
+    slug TEXT NOT NULL UNIQUE,
+    engine_version TEXT NOT NULL,
+    defines_hash TEXT NOT NULL,
+    last_tick BIGINT NOT NULL DEFAULT 0 CHECK (last_tick >= 0),
+    status TEXT NOT NULL DEFAULT 'ACTIVE'
+        CHECK (status IN ('ACTIVE', 'ABANDONED')),
+    last_played_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT pg_catalog.now(),
+    rng_seed BIGINT,
+    content_digest TEXT
+);
+
+ALTER TABLE babylon_meta.campaign
+    ADD COLUMN IF NOT EXISTS rng_seed BIGINT;
+ALTER TABLE babylon_meta.campaign
+    ADD COLUMN IF NOT EXISTS content_digest TEXT;
+ALTER TABLE babylon_meta.campaign
+    ALTER COLUMN last_tick TYPE BIGINT;
+
+CREATE TABLE IF NOT EXISTS babylon_meta.watchlist (
+    campaign_id UUID NOT NULL REFERENCES babylon_meta.campaign(campaign_id)
+        ON DELETE CASCADE,
+    position INTEGER NOT NULL CHECK (position >= 0),
+    entity_id TEXT NOT NULL,
+    PRIMARY KEY (campaign_id, position),
+    UNIQUE (campaign_id, entity_id)
+);
+
+CREATE TABLE IF NOT EXISTS babylon_meta.jumplist (
+    campaign_id UUID NOT NULL REFERENCES babylon_meta.campaign(campaign_id)
+        ON DELETE CASCADE,
+    position INTEGER NOT NULL CHECK (position >= 0),
+    entity_id TEXT NOT NULL,
+    PRIMARY KEY (campaign_id, position)
+);
+
+CREATE TABLE IF NOT EXISTS babylon_meta.breadcrumb (
+    campaign_id UUID NOT NULL REFERENCES babylon_meta.campaign(campaign_id)
+        ON DELETE CASCADE,
+    position INTEGER NOT NULL CHECK (position >= 0),
+    entity_id TEXT NOT NULL,
+    PRIMARY KEY (campaign_id, position)
+);
+
 DROP VIEW IF EXISTS public.v_national_trend;
 DROP VIEW IF EXISTS public.v_global_phi_balance;
 DROP VIEW IF EXISTS public.v_county_value_aggregate;
@@ -132,10 +181,6 @@ DROP VIEW IF EXISTS public.v_state_value_aggregate;
 DROP VIEW IF EXISTS public.view_runtime_trace_emission;
 
 DROP TABLE IF EXISTS
-    babylon_meta.breadcrumb,
-    babylon_meta.jumplist,
-    babylon_meta.watchlist,
-    babylon_meta.campaign,
     public.action_result,
     public.balkanization_claims_audit,
     public.balkanization_influences_audit,

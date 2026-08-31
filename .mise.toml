@@ -1181,7 +1181,7 @@ description = "AST audit for direct .r/.l/.f mutations bypassing spec-043 routin
 run = "uv run python tools/audit_simplex_bypasses.py"
 
 [tasks."qa:michigan-rollover-smoke"]
-description = "Commit and restart the Rust Michigan foundation across 60 ticks"
+description = "Commit and restart the Rust Michigan Phi/class-accumulation path across tick 52"
 run = """
 export BABYLON_RUNTIME_DSN="${BABYLON_RUNTIME_DSN:-host=127.0.0.1 port=5433 dbname=babylon_test user=test password=test}"
 export PATH="$PWD/rust/target/debug:$PATH"

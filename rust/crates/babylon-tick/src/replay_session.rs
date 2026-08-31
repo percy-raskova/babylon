@@ -5,6 +5,7 @@ use std::collections::TryReserveError;
 use babylon_bsl::identity_codec::{project_stable_value_v1, IdentityCodecError, StableBslValueV1};
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::allocator_state::AllocatorState;
+use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::stable_element::{StableElementResolverV1, StableIdentityError};
 use babylon_graph::stable_state::{
     encode_stable_graph_state_v1, StableGraphStateHashV1, StableGraphStateV1,
@@ -117,6 +118,11 @@ pub enum ReplayTickError {
         /// Tick-content hash carried by the acknowledgement.
         actual: [u8; 32],
     },
+    /// A typed restart source did not reproduce one checkpoint section.
+    CheckpointMismatch {
+        /// Stable section name.
+        section: &'static str,
+    },
 }
 
 impl From<ReplayTickIdentityError> for ReplayTickError {
@@ -198,6 +204,9 @@ impl std::fmt::Display for ReplayTickError {
             ),
             Self::CommitAcknowledgementHashMismatch { .. } => {
                 formatter.write_str("commit acknowledgement tick-content hash mismatch")
+            }
+            Self::CheckpointMismatch { section } => {
+                write!(formatter, "checkpoint {section} bytes do not match")
             }
         }
     }
@@ -924,6 +933,70 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
     #[must_use]
     pub fn prepared_environment_bytes(&self) -> &[u8] {
         self.prepared_environment.canonical_bytes()
+    }
+}
+
+impl ReplayTickSession<HypergraphStore> {
+    /// Restore one already-prepared session from a complete typed checkpoint.
+    ///
+    /// Scenario and rule preparation still constructs the sealed topology and
+    /// execution environment. This method replaces only checkpoint-owned graph
+    /// values, material values, and the completed tick after reproducing the
+    /// exact graph, register, and aggregate material section bytes.
+    ///
+    /// # Errors
+    /// Returns the first tick, topology, material, or exact-section mismatch
+    /// without changing the live session.
+    pub fn restore_full_checkpoint(
+        &mut self,
+        completed_tick: i64,
+        graph_state: &StableGraphStateV1,
+        material_rows: &MaterialStateRowsV1,
+        expected_world_registers: &[u8],
+    ) -> Result<(), ReplayTickError> {
+        if completed_tick <= 0 {
+            return Err(ReplayTickError::TickCounterOverflow);
+        }
+        let mut graph = self.graph.detached_copy();
+        graph.restore_stable_state_v1(&self.resolver, graph_state)?;
+        let restored_graph = encode_stable_graph_state_v1(&graph, &self.resolver)?;
+        if restored_graph.canonical_bytes() != graph_state.canonical_bytes() {
+            return Err(ReplayTickError::CheckpointMismatch {
+                section: "stable graph",
+            });
+        }
+        let registers = encode_world_register_set_v1(&self.register_manifest, completed_tick)?;
+        if registers.canonical_bytes() != expected_world_registers {
+            return Err(ReplayTickError::CheckpointMismatch {
+                section: "world registers",
+            });
+        }
+        let material_state = self
+            .material_state
+            .try_restore_from_rows(material_rows)
+            .map_err(ReplayTickError::MaterialState)?;
+        let projected_material = material_state
+            .project_rows(
+                completed_tick,
+                &MaterialProjectionContextV1::new(
+                    &restored_graph,
+                    &self.prepared.scenario_scope,
+                    &self.prepared.types,
+                    &self.prepared.enums,
+                    &self.resolver,
+                    &ProductionMaterialAllocationGate,
+                ),
+            )
+            .map_err(ReplayTickError::MaterialState)?;
+        if projected_material.canonical_bytes() != material_rows.canonical_bytes() {
+            return Err(ReplayTickError::CheckpointMismatch {
+                section: "semantic state",
+            });
+        }
+        self.graph = graph;
+        self.material_state = material_state;
+        self.completed_tick = completed_tick;
+        Ok(())
     }
 }
 

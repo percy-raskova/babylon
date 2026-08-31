@@ -8,13 +8,14 @@ use babylon_kernel::replay::{ReplaySeed, ReplaySessionIdV1};
 use babylon_kernel::tick_content_hash::{RefDigestV1, TickContentHashV1};
 use babylon_persistence::{
     activate_rust_persistence_v1, hydrate_campaign_foundation_v1, prepare_committed_tick_v1,
-    ActivationReportV1, ArchiveDirtyReceiptV1, CampaignFoundationV1, CampaignId,
-    CheckpointCompletenessV1, CheckpointRowsV1, CommittedCheckpointSectionV1,
-    CommittedFullCheckpointV1, CommittedResolveTickErrorV1, CommittedResolveTickV1,
-    CommittedTickReceiptV1, DurableReplayRuntimeV1, FoundationContentBundleV1,
-    FullCheckpointSectionTagV1, PersistenceAuthorityLedgerRowV1, PersistenceAuthorityStateV1,
-    PreparedCommittedTickV1, RustPersistenceActivationErrorV1, RustPersistenceRuntimeErrorV1,
-    StableGraphRowsEmptyProofV1, SuccessfulEventBatchEmptyProofV1,
+    ActivationReportV1, ArchiveDirtyReceiptV1, BreadcrumbRowV1, CampaignCatalogRowV1,
+    CampaignFoundationV1, CampaignId, CheckpointCompletenessV1, CheckpointRowsV1,
+    CommittedCheckpointSectionV1, CommittedFullCheckpointV1, CommittedResolveTickErrorV1,
+    CommittedResolveTickV1, CommittedTickReceiptV1, DurableReplayRuntimeV1,
+    FoundationContentBundleV1, FullCheckpointSectionTagV1, JumplistRowV1,
+    PersistenceAuthorityLedgerRowV1, PersistenceAuthorityStateV1, PreparedCommittedTickV1,
+    RetainedMetadataStoreV1, RustPersistenceActivationErrorV1, RustPersistenceRuntimeErrorV1,
+    StableGraphRowsEmptyProofV1, SuccessfulEventBatchEmptyProofV1, WatchlistRowV1,
 };
 use babylon_practice_contract::ordered_action_v1::OrderedPracticeActionBatchV1;
 use babylon_tick::material_state::MaterialStateRowsV1;
@@ -290,4 +291,55 @@ fn the_separate_schema_epoch_binary_has_been_absorbed() {
         !old_binary.exists(),
         "the production runtime must own the sole migration command"
     );
+}
+
+#[test]
+fn retained_client_metadata_has_rust_types_and_is_not_dropped_at_activation() {
+    fn assert_metadata_store(store: &RetainedMetadataStoreV1, campaign_id: CampaignId) {
+        let _: Result<Option<CampaignCatalogRowV1>, RustPersistenceRuntimeErrorV1> =
+            store.campaign(campaign_id);
+        let _: Result<Vec<WatchlistRowV1>, RustPersistenceRuntimeErrorV1> =
+            store.watchlist(campaign_id);
+        let _: Result<Vec<JumplistRowV1>, RustPersistenceRuntimeErrorV1> =
+            store.jumplist(campaign_id);
+        let _: Result<Vec<BreadcrumbRowV1>, RustPersistenceRuntimeErrorV1> =
+            store.breadcrumbs(campaign_id);
+    }
+
+    assert_send::<CampaignCatalogRowV1>();
+    assert_send::<WatchlistRowV1>();
+    assert_send::<JumplistRowV1>();
+    assert_send::<BreadcrumbRowV1>();
+    assert_send::<RetainedMetadataStoreV1>();
+
+    let _ = assert_metadata_store;
+
+    let activation = include_str!("../migrations/0009_rust_persistence_activation.sql");
+    let drop_block = activation
+        .split_once("DROP TABLE IF EXISTS")
+        .expect("activation has one retired-table block")
+        .1;
+    for retained in [
+        "babylon_meta.campaign",
+        "babylon_meta.watchlist",
+        "babylon_meta.jumplist",
+        "babylon_meta.breadcrumb",
+    ] {
+        assert!(
+            !drop_block.contains(retained),
+            "{retained} must survive cutover"
+        );
+    }
+    for retained in ["campaign", "watchlist", "jumplist", "breadcrumb"] {
+        assert!(
+            activation.contains(&format!(
+                "CREATE TABLE IF NOT EXISTS babylon_meta.{retained}"
+            )),
+            "fresh Rust activation must create babylon_meta.{retained}"
+        );
+    }
+    assert!(activation.contains("ALTER TABLE babylon_meta.campaign"));
+    assert!(activation.contains("ADD COLUMN IF NOT EXISTS rng_seed BIGINT"));
+    assert!(activation.contains("ADD COLUMN IF NOT EXISTS content_digest TEXT"));
+    assert!(activation.contains("ALTER COLUMN last_tick TYPE BIGINT"));
 }

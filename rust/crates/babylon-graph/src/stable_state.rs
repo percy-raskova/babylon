@@ -62,6 +62,28 @@ pub struct StableGraphStateRowsV1 {
     hyperedge_f64: Vec<StableGraphHyperedgeF64RowV1>,
 }
 
+/// Owned stable graph rows loaded from an external typed store.
+///
+/// The constructor that consumes this value applies the same bounds,
+/// ordering, numeric, and canonical-byte rules as the live graph encoder.
+#[derive(Debug)]
+pub struct StableGraphStateRowsInputV1 {
+    /// Stable node rows.
+    pub nodes: Vec<StableGraphNodeRowV1>,
+    /// Stable binary64 node-attribute rows.
+    pub node_f64: Vec<StableGraphNodeF64RowV1>,
+    /// Stable dyadic-edge rows.
+    pub edges: Vec<StableGraphEdgeRowV1>,
+    /// Stable hyperedge rows.
+    pub hyperedges: Vec<StableGraphHyperedgeRowV1>,
+    /// Stable binary64 edge-attribute rows.
+    pub edge_f64: Vec<StableGraphEdgeF64RowV1>,
+    /// Stable Currency node-attribute rows.
+    pub node_currency: Vec<StableGraphNodeCurrencyRowV1>,
+    /// Stable binary64 hyperedge-attribute rows.
+    pub hyperedge_f64: Vec<StableGraphHyperedgeF64RowV1>,
+}
+
 impl StableGraphStateRowsV1 {
     /// Borrow stable node rows in canonical order.
     #[must_use]
@@ -127,12 +149,19 @@ impl StableGraphStateHashV1 {
 /// Exact canonical stable graph-state identity.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StableGraphStateV1 {
+    scenario_scope: String,
     canonical_bytes: Vec<u8>,
     digest: StableGraphStateHashV1,
     rows: StableGraphStateRowsV1,
 }
 
 impl StableGraphStateV1 {
+    /// Borrow the exact authored scenario scope encoded into this state.
+    #[must_use]
+    pub fn scenario_scope(&self) -> &str {
+        &self.scenario_scope
+    }
+
     /// Borrow the exact canonical bytes.
     #[must_use]
     pub fn canonical_bytes(&self) -> &[u8] {
@@ -165,15 +194,145 @@ pub fn encode_stable_graph_state_v1<G: CanonicalState>(
     validate_listing_bounds(&listings)?;
     resolver.validate_topology(graph)?;
     let rows = resolve_rows(&listings, resolver)?;
-    let capacity = stable_state_capacity(resolver.scenario_scope(), &rows)?;
+    let scenario_scope = copy_stable_string("stable graph scenario", resolver.scenario_scope())?;
+    let capacity = stable_state_capacity(&scenario_scope, &rows)?;
     validate_state_byte_size(capacity)?;
-    let canonical_bytes = encode_rows(resolver.scenario_scope(), &rows, capacity)?;
+    let canonical_bytes = encode_rows(&scenario_scope, &rows, capacity)?;
     let digest = StableGraphStateHashV1(sha256_of(&canonical_bytes));
     Ok(StableGraphStateV1 {
+        scenario_scope,
         canonical_bytes,
         digest,
         rows,
     })
+}
+
+/// Compose canonical stable graph state from typed, externally loaded rows.
+///
+/// This is the inverse boundary used by durable checkpoint readers. It does
+/// not trust database ordering: rows are sorted and duplicate semantic keys
+/// are refused before canonical bytes are exposed. A caller must still bind
+/// the resulting state to a sealed live topology before using it as runtime
+/// state.
+///
+/// # Errors
+/// Returns the first scenario, qname, numeric, ordering, bound, arithmetic,
+/// or allocation refusal.
+pub fn compose_stable_graph_state_from_rows_v1(
+    scenario: &str,
+    input: StableGraphStateRowsInputV1,
+) -> Result<StableGraphStateV1, StableIdentityError> {
+    validate_qname("stable graph scenario", scenario)?;
+    let mut rows = StableGraphStateRowsV1 {
+        nodes: input.nodes,
+        node_f64: input.node_f64,
+        edges: input.edges,
+        hyperedges: input.hyperedges,
+        edge_f64: input.edge_f64,
+        node_currency: input.node_currency,
+        hyperedge_f64: input.hyperedge_f64,
+    };
+    validate_loaded_rows(&mut rows)?;
+    let capacity = stable_state_capacity(scenario, &rows)?;
+    validate_state_byte_size(capacity)?;
+    let canonical_bytes = encode_rows(scenario, &rows, capacity)?;
+    let digest = StableGraphStateHashV1(sha256_of(&canonical_bytes));
+    Ok(StableGraphStateV1 {
+        scenario_scope: copy_stable_string("stable graph scenario", scenario)?,
+        canonical_bytes,
+        digest,
+        rows,
+    })
+}
+
+fn copy_stable_string(field: &'static str, source: &str) -> Result<String, StableIdentityError> {
+    let mut output = String::new();
+    output
+        .try_reserve_exact(source.len())
+        .map_err(|_: TryReserveError| StableIdentityError::Allocation {
+            field,
+            requested: source.len(),
+        })?;
+    output.push_str(source);
+    Ok(output)
+}
+
+fn validate_loaded_rows(rows: &mut StableGraphStateRowsV1) -> Result<(), StableIdentityError> {
+    validate_section("nodes", rows.nodes.len(), MAX_STABLE_GRAPH_ELEMENTS_V1)?;
+    validate_section(
+        "node f64 attributes",
+        rows.node_f64.len(),
+        MAX_STABLE_GRAPH_ATTRIBUTES_V1,
+    )?;
+    validate_section("edges", rows.edges.len(), MAX_STABLE_GRAPH_ELEMENTS_V1)?;
+    validate_section(
+        "hyperedges",
+        rows.hyperedges.len(),
+        MAX_STABLE_GRAPH_ELEMENTS_V1,
+    )?;
+    validate_section(
+        "edge f64 attributes",
+        rows.edge_f64.len(),
+        MAX_STABLE_GRAPH_ATTRIBUTES_V1,
+    )?;
+    validate_section(
+        "node Currency attributes",
+        rows.node_currency.len(),
+        MAX_STABLE_GRAPH_ATTRIBUTES_V1,
+    )?;
+    validate_section(
+        "hyperedge f64 attributes",
+        rows.hyperedge_f64.len(),
+        MAX_STABLE_GRAPH_ATTRIBUTES_V1,
+    )?;
+    let mut fact_units = [
+        rows.nodes.len(),
+        rows.node_f64.len(),
+        rows.edges.len(),
+        rows.hyperedges.len(),
+        rows.edge_f64.len(),
+        rows.node_currency.len(),
+        rows.hyperedge_f64.len(),
+    ]
+    .into_iter()
+    .try_fold(0_usize, |total, count| {
+        checked_add("stable graph fact units", total, count)
+    })?;
+    for (_, _, members) in &rows.hyperedges {
+        validate_section(
+            "hyperedge members",
+            members.len(),
+            MAX_STABLE_GRAPH_HYPEREDGE_MEMBERS_V1,
+        )?;
+        fact_units = checked_add("stable graph fact units", fact_units, members.len())?;
+    }
+    validate_fact_units(fact_units)?;
+    for (_, qname, bits) in &mut rows.node_f64 {
+        validate_qname("node attribute qname", qname)?;
+        *bits = finite_bits(f64::from_bits(*bits), "node f64 attributes")?;
+    }
+    for (_, _, _, bits) in &mut rows.edges {
+        *bits = finite_bits(f64::from_bits(*bits), "edges")?;
+    }
+    for (_, _, _, qname, bits) in &mut rows.edge_f64 {
+        validate_qname("edge attribute qname", qname)?;
+        if qname.ends_with("/strength") {
+            return Err(StableIdentityError::StrengthAttribute);
+        }
+        *bits = finite_bits(f64::from_bits(*bits), "edge f64 attributes")?;
+    }
+    for (_, qname, _) in &rows.node_currency {
+        validate_qname("Currency attribute qname", qname)?;
+    }
+    for (_, qname, bits) in &mut rows.hyperedge_f64 {
+        validate_qname("hyperedge attribute qname", qname)?;
+        *bits = finite_bits(f64::from_bits(*bits), "hyperedge f64 attributes")?;
+    }
+    for (_, _, members) in &mut rows.hyperedges {
+        members.sort_unstable();
+        ensure_unique("hyperedge members", members, |left, right| left == right)?;
+    }
+    sort_and_validate(rows)
 }
 
 fn collect_listings<G: CanonicalState>(graph: &G) -> Listings {

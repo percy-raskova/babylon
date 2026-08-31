@@ -30,22 +30,92 @@ const MICHIGAN_SMOKE_RESTART_TICKS: &[u64] = &[1, 51, 52, 60];
 const DEFINES: &[u8] = br#"{"alpha":1}"#;
 const REFERENCE_BUNDLE_DOMAIN: &[u8] = b"babylon.h3.reference-bundle-composite.v1\0";
 const SCENARIO: &str = r"
-(scenario production/rust-runtime
-  (defvocabulary NodeType (SOCIAL_CLASS))
-  (deffield social-class/draw coefficient extensive)
-  (node class-a NodeType/SOCIAL_CLASS (social-class/draw 0.0c)))
+(scenario production/michigan-rust-runtime
+  (defvocabulary NodeType (TERRITORY))
+  (deffield territory/median-wage real intensive)
+  (deffield territory/phi-hour real intensive)
+  (deffield territory/phi-savings-adjustment coefficient intensive)
+  (deffield territory/rate-accumulation probability intensive)
+  (deffield territory/dist-year int extensive)
+  (defconst class-dynamics/hours-per-year 2080)
+  (defconst class-dynamics/v-reproduction 12)
+  (defconst class-dynamics/accumulation-halt-floor-ratio 0.8c)
+  (defconst class-dynamics/phi-cap 0.05c)
+  (defconst class-dynamics/savings-proletariat 0.03c)
+  (defconst class-dynamics/wealth-threshold 142000)
+  (defconst class-dynamics/max-accumulation-rate 0.08c)
+  (node wayne NodeType/TERRITORY
+    (territory/median-wage 21.0r)
+    (territory/phi-hour 1.0r)
+    (territory/phi-savings-adjustment 0.0c)
+    (territory/rate-accumulation 0.0p)
+    (territory/dist-year 2010)))
 ";
 const RULE: &str = r#"
-(rule production/rust-runtime
+(rule class-dynamics/a01-rollover-accumulation-smoke
   :role mechanic
   :evidence derived
-  :material-basis "Rust persistence runtime exercise"
-  :fuel 32
-  (bindings (binding draw :field social-class/draw))
+  :material-basis "At the annual boundary, wage and imperial-rent-supported savings change class accumulation"
+  :fuel 128
+  (bindings
+    (binding phase-of-year :tick-in-cycle 52)
+    (binding median-wage :field territory/median-wage)
+    (binding phi-adjustment :field territory/phi-savings-adjustment)
+    (binding hours-per-year :const class-dynamics/hours-per-year)
+    (binding v-reproduction :const class-dynamics/v-reproduction)
+    (binding halt-floor-ratio :const class-dynamics/accumulation-halt-floor-ratio)
+    (binding savings-proletariat :const class-dynamics/savings-proletariat)
+    (binding wealth-threshold :const class-dynamics/wealth-threshold)
+    (binding max-rate :const class-dynamics/max-accumulation-rate)
+    (binding wage-floor :expr (* (- v-reproduction 0c) halt-floor-ratio))
+    (binding raw-annual-wage :expr (* median-wage hours-per-year))
+    (binding effective-wage :expr (if (< median-wage wage-floor)
+                                      (- 0 0c)
+                                      raw-annual-wage))
+    (binding savings-raw :expr (+ savings-proletariat phi-adjustment))
+    (binding savings :expr (if (< savings-raw 1) savings-raw (- 1 0c)))
+    (binding annual-accumulation :expr (* effective-wage savings))
+    (binding accumulation-ratio :expr (if (> annual-accumulation 0)
+                                          (/ annual-accumulation wealth-threshold)
+                                          (- 0 0c)))
+    (binding rate :expr (if (< accumulation-ratio max-rate)
+                            accumulation-ratio
+                            max-rate)))
+  (when (= phase-of-year 0))
+  (effects
+    (update-node self territory/rate-accumulation (set rate))
+    (update-node self territory/dist-year (add 1))
+    (emit EventType/MICHIGAN_YEAR_ROLLOVER
+      (subject self)
+      (phi-adjustment phi-adjustment)
+      (accumulation-rate rate))))
+
+(rule economics/phi-savings-coupling-smoke
+  :role mechanic
+  :evidence derived
+  :material-basis "Imperial rent purchases class entry by increasing the savings rate against annual wage"
+  :fuel 128
+  (bindings
+    (binding median-wage :field territory/median-wage)
+    (binding phi-hour :field territory/phi-hour)
+    (binding hours-per-year :const class-dynamics/hours-per-year)
+    (binding v-reproduction :const class-dynamics/v-reproduction)
+    (binding halt-floor-ratio :const class-dynamics/accumulation-halt-floor-ratio)
+    (binding phi-cap :const class-dynamics/phi-cap)
+    (binding wage-floor :expr (* (- v-reproduction 0c) halt-floor-ratio))
+    (binding raw-annual-wage :expr (* median-wage hours-per-year))
+    (binding effective-wage :expr (if (< median-wage wage-floor)
+                                      (- 0 0c)
+                                      raw-annual-wage))
+    (binding uncapped-adjustment :expr (if (or (= effective-wage 0) (= phi-hour 0))
+                                          (- 0 0c)
+                                          (/ (* phi-hour hours-per-year) effective-wage)))
+    (binding phi-adjustment :expr (if (< uncapped-adjustment phi-cap)
+                                      uncapped-adjustment
+                                      phi-cap)))
   (when #t)
   (effects
-    (update-node self social-class/draw (set 0.25c))
-    (emit EventType/CHECKPOINTED (subject self))))
+    (update-node self territory/phi-savings-adjustment (set phi-adjustment))))
 "#;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -182,10 +252,7 @@ fn run_to_tick(
             }
         }
     }
-    println!(
-        "Rust durable campaign {} is complete at tick {completed}.",
-        campaign.as_uuid(),
-    );
+    println!("Rust durable campaign is complete at tick {completed}.");
     Ok(())
 }
 
@@ -353,7 +420,79 @@ fn parse_command(mut args: impl Iterator<Item = OsString>) -> Result<Command, ()
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_command, Command, MICHIGAN_SMOKE_RESTART_TICKS, MICHIGAN_SMOKE_TICKS};
+    use babylon_bsl::structural_verbs::CollectingSink;
+    use babylon_graph::hypergraph_store::HypergraphStore;
+    use babylon_graph::substrate::{GraphSubstrate, NodeId};
+    use babylon_kernel::SessionId;
+    use babylon_tick::TickSession;
+
+    use super::{
+        parse_command, Command, MICHIGAN_SMOKE_RESTART_TICKS, MICHIGAN_SMOKE_TICKS, RULE, SCENARIO,
+    };
+
+    fn territory_value(session: &TickSession<HypergraphStore>, field: &str) -> f64 {
+        session
+            .graph()
+            .node_attribute(NodeId(0), field)
+            .unwrap_or_else(|error| panic!("Wayne {field}: {}", error.message))
+    }
+
+    #[test]
+    fn michigan_smoke_drives_phi_accumulation_on_the_tick_52_rollover() {
+        let session_id = SessionId::new("per281/michigan-rollover-contract")
+            .expect("the fixed smoke identity is nonempty");
+        let mut session = TickSession::new(SCENARIO, RULE, HypergraphStore::new(), session_id)
+            .expect("the production Michigan smoke content must load");
+
+        for tick in 1..=51 {
+            let report = session
+                .advance(&mut CollectingSink::default())
+                .unwrap_or_else(|error| panic!("Michigan pre-rollover tick {tick}: {error}"));
+            assert_eq!(
+                report
+                    .per_rule_fired
+                    .iter()
+                    .find(|(rule, _)| rule == "class-dynamics/a01-rollover-accumulation-smoke")
+                    .map(|(_, fired)| *fired),
+                Some(0),
+                "the annual mechanics stay inert before tick 52"
+            );
+            assert_eq!(
+                territory_value(&session, "territory/rate-accumulation").to_bits(),
+                0.0_f64.to_bits(),
+                "the annual accumulation rate stays at its seed before rollover"
+            );
+        }
+
+        let phi_adjustment = territory_value(&session, "territory/phi-savings-adjustment");
+        assert!(
+            phi_adjustment > 0.0 && phi_adjustment < 0.05,
+            "the uncapped Phi-to-savings gradient must be live before rollover"
+        );
+
+        let report = session
+            .advance(&mut CollectingSink::default())
+            .expect("Michigan tick 52 must cross the annual boundary");
+        assert_eq!(
+            report
+                .per_rule_fired
+                .iter()
+                .find(|(rule, _)| rule == "class-dynamics/a01-rollover-accumulation-smoke")
+                .map(|(_, fired)| *fired),
+            Some(1),
+            "the real class-dynamics accumulation path fires at tick 52"
+        );
+        assert_eq!(
+            territory_value(&session, "territory/dist-year").to_bits(),
+            2011.0_f64.to_bits(),
+            "the annual distribution year advances exactly once"
+        );
+        let rate = territory_value(&session, "territory/rate-accumulation");
+        assert!(
+            rate > 0.0 && rate < 0.08,
+            "wage, Phi, and savings must produce a bounded accumulation rate"
+        );
+    }
 
     #[test]
     fn michigan_smoke_restarts_at_the_initial_rollover_and_terminal_boundaries() {

@@ -149,6 +149,7 @@ pub(crate) fn compose_material_state_rows_v1(
             row,
         )?;
     }
+    rows.sort_unstable_by(|left, right| left.key().cmp(right.key()));
     Ok(rows)
 }
 
@@ -412,6 +413,7 @@ pub(crate) fn compose_graph_rows_with_encoder_v1(
             ))?,
         )?;
     }
+    rows.sort_unstable_by(|left, right| left.key().cmp(right.key()));
     Ok((rows, body_bytes))
 }
 
@@ -546,6 +548,17 @@ mod tests {
 (scenario demo/persistence-batches-empty
   (defvocabulary NodeType (SOCIAL_CLASS))
   (deffield social-class/draw coefficient extensive))
+";
+    const VARIABLE_KEY_LENGTH_SCENARIO: &str = r"
+(scenario demo/persistence-batches-variable-keys
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (deffield a/attribute-with-a-long-name coefficient extensive)
+  (deffield social-class/draw coefficient extensive)
+  (deffield z/x coefficient extensive)
+  (node class-a NodeType/SOCIAL_CLASS
+    (a/attribute-with-a-long-name 0.0c)
+    (social-class/draw 0.0c)
+    (z/x 0.0c)))
 ";
     const RULE: &str = r#"
 (rule production/typed-batch
@@ -734,6 +747,18 @@ mod tests {
             },
         )
         .expect("existing envelope laws accept both ordered families");
+    }
+
+    #[test]
+    fn encoded_graph_key_order_is_canonical_across_variable_text_lengths() {
+        let report = report_for(
+            VARIABLE_KEY_LENGTH_SCENARIO,
+            "per281/semantic-batches-variable-keys",
+        );
+        let batches = compose_graph_event_semantic_batches_v1(&report)
+            .expect("variable-length graph keys compose");
+        let (graph, _) = batches.graph.into_rows().expect("graph rows");
+        assert!(graph.windows(2).all(|rows| rows[0].key() < rows[1].key()));
     }
 
     fn row_body_bytes(row: &CommittedTickRowV1) -> usize {

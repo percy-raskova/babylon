@@ -35,6 +35,8 @@
 //! to the library.
 
 use crate::allocator_state::{AllocatorCursors, AllocatorState};
+use crate::stable_element::{StableElementResolverV1, StableIdentityError};
+use crate::stable_state::{encode_stable_graph_state_v1, StableGraphStateV1};
 use crate::state_hash::CanonicalState;
 use crate::substrate::{Direction, GraphError, GraphSubstrate, HyperedgeId, NodeId};
 use crate::working_copy::DetachedCopy;
@@ -161,6 +163,89 @@ impl HypergraphStore {
         Self::default()
     }
 
+    /// Replace every mutable numeric lane from one checkpoint-bound stable state.
+    ///
+    /// The scenario loader remains the sole topology constructor. This method
+    /// first proves that the checkpoint has exactly the sealed node, edge, and
+    /// hyperedge topology, then builds all replacement maps off to the side and
+    /// swaps them in together.
+    ///
+    /// # Errors
+    /// Returns the first topology, stable-identity, or allocation refusal
+    /// without changing the store.
+    pub fn restore_stable_state_v1(
+        &mut self,
+        resolver: &StableElementResolverV1,
+        state: &StableGraphStateV1,
+    ) -> Result<(), StableIdentityError> {
+        resolver.validate_topology(self)?;
+        let current = encode_stable_graph_state_v1(self, resolver)?;
+        let source = state.rows();
+        let live = current.rows();
+        let same_nodes = source.nodes() == live.nodes();
+        let same_edges = source.edges().len() == live.edges().len()
+            && source
+                .edges()
+                .iter()
+                .zip(live.edges())
+                .all(|(left, right)| left.0 == right.0 && left.1 == right.1 && left.2 == right.2);
+        let same_hyperedges = source.hyperedges() == live.hyperedges();
+        if !(same_nodes && same_edges && same_hyperedges) {
+            return Err(StableIdentityError::TopologyChanged);
+        }
+
+        let mut attributes = try_hash_map("restored node f64 attributes", source.node_f64().len())?;
+        for (local_name, qname, bits) in source.node_f64() {
+            let node = resolver.node_handle_by_local_name(local_name)?;
+            attributes.insert((node, qname.clone()), f64::from_bits(*bits));
+        }
+        let mut currency_attributes = try_hash_map(
+            "restored node Currency attributes",
+            source.node_currency().len(),
+        )?;
+        for (local_name, qname, micro_units) in source.node_currency() {
+            let node = resolver.node_handle_by_local_name(local_name)?;
+            currency_attributes.insert(
+                (node, qname.clone()),
+                Currency::from_micro_units(*micro_units),
+            );
+        }
+        let mut edges = try_hash_map("restored edges", source.edges().len())?;
+        for (edge_type, source_name, target_name, strength_bits) in source.edges() {
+            let from = resolver.node_handle_by_local_name(source_name)?;
+            let to = resolver.node_handle_by_local_name(target_name)?;
+            edges.insert(
+                (edge_type.clone(), from, to),
+                f64::from_bits(*strength_bits),
+            );
+        }
+        let mut edge_attributes =
+            try_hash_map("restored edge f64 attributes", source.edge_f64().len())?;
+        for (edge_type, source_name, target_name, qname, bits) in source.edge_f64() {
+            let from = resolver.node_handle_by_local_name(source_name)?;
+            let to = resolver.node_handle_by_local_name(target_name)?;
+            edge_attributes.insert(
+                (edge_type.clone(), from, to, qname.clone()),
+                f64::from_bits(*bits),
+            );
+        }
+        let mut hyperedge_attributes = try_hash_map(
+            "restored hyperedge f64 attributes",
+            source.hyperedge_f64().len(),
+        )?;
+        for (local_name, qname, bits) in source.hyperedge_f64() {
+            let hyperedge = resolver.hyperedge_handle_by_local_name(local_name)?;
+            hyperedge_attributes.insert((hyperedge, qname.clone()), f64::from_bits(*bits));
+        }
+
+        self.attributes = attributes;
+        self.currency_attributes = currency_attributes;
+        self.edges = edges;
+        self.edge_attributes = edge_attributes;
+        self.hyperedge_attributes = hyperedge_attributes;
+        Ok(())
+    }
+
     /// The frozen pre-check (delta §8 covenant 6, CD4) at the head of every
     /// one of the 8 mutating [`GraphSubstrate`] methods — `add_node`,
     /// `remove_node`, `add_edge`, `remove_edge`, `update_node`,
@@ -189,6 +274,20 @@ impl HypergraphStore {
             ids.retain(|existing| *existing != id);
         }
     }
+}
+
+fn try_hash_map<K: Eq + std::hash::Hash, V>(
+    field: &'static str,
+    capacity: usize,
+) -> Result<HashMap<K, V>, StableIdentityError> {
+    let mut values = HashMap::new();
+    values
+        .try_reserve(capacity)
+        .map_err(|_| StableIdentityError::Allocation {
+            field,
+            requested: capacity,
+        })?;
+    Ok(values)
 }
 
 impl GraphSubstrate for HypergraphStore {

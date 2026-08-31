@@ -28,12 +28,16 @@ use crate::committed_tick_envelope::{
 use crate::foundation::{CampaignFoundationV1, FoundationContentBundleV1};
 use crate::identity::CampaignId;
 use crate::legacy_adopter::{acquire_lock, release_lock, validate_legacy_connection_target};
+use crate::metadata::{
+    advance_campaign_catalog_tick_v1, ensure_campaign_catalog_row_v1, read_campaign_catalog_row_v1,
+};
 use crate::michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation_v1;
 use crate::semantic_batches::{
     compose_graph_event_semantic_batches_v1, compose_material_state_rows_v1,
     GraphEventSemanticBatchesV1, SemanticBatchErrorV1,
 };
 use crate::semantic_codec::SemanticCodecErrorV1;
+use crate::stored_tick::read_stored_typed_tick_v1;
 use crate::tick_commit_claim::TickCommitClaimV1;
 
 const MIGRATION_0008_SQL: &str =
@@ -643,11 +647,11 @@ impl DurableReplayRuntimeV1<HypergraphStore> {
         })
     }
 
-    /// Reconstruct a durable campaign from its exact foundation.
+    /// Reconstruct a durable campaign from its latest exact full checkpoint.
     ///
     /// # Errors
     /// Refuses absent authority or foundation, any exact replay-source mismatch, a database
-    /// failure, or a nonzero campaign until its full-checkpoint decoder has verified the root.
+    /// failure, or a full-checkpoint section that cannot reproduce typed state.
     pub fn open(
         config: &Config,
         campaign_id: CampaignId,
@@ -693,6 +697,7 @@ impl DurableReplayRuntimeV1<HypergraphStore> {
             return Err(RustPersistenceRuntimeErrorV1::CampaignConflict);
         }
         let (session, last_committed_tick) = replay_durable_tail_v1(config, campaign_id, session)?;
+        validate_campaign_catalog_tail_v1(config, campaign_id, last_committed_tick)?;
         Ok(Self {
             config: config.clone(),
             campaign_id,
@@ -984,6 +989,7 @@ fn insert_campaign_foundation_rows_v1(
     if stored_sha.as_slice() != foundation_sha256 {
         return Err(RustPersistenceRuntimeErrorV1::CampaignConflict);
     }
+    ensure_campaign_catalog_row_v1(client, campaign_id, foundation)?;
     Ok(())
 }
 
@@ -1035,6 +1041,27 @@ fn read_last_committed_tick_v1(
     .transpose()
 }
 
+fn validate_campaign_catalog_tail_v1(
+    config: &Config,
+    campaign_id: CampaignId,
+    last_committed_tick: Option<CommittedResolveTickV1>,
+) -> Result<(), RustPersistenceRuntimeErrorV1> {
+    let mut client =
+        config
+            .connect(NoTls)
+            .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
+                operation: "connect retained campaign catalog reader",
+            })?;
+    let catalog = read_campaign_catalog_row_v1(&mut client, campaign_id)?
+        .ok_or(RustPersistenceRuntimeErrorV1::CampaignConflict)?;
+    let expected = last_committed_tick.map_or(0, CommittedResolveTickV1::get);
+    if catalog.last_tick() == expected {
+        Ok(())
+    } else {
+        Err(RustPersistenceRuntimeErrorV1::CampaignConflict)
+    }
+}
+
 fn commit_typed_tick_v1(
     config: &Config,
     campaign_id: CampaignId,
@@ -1065,7 +1092,7 @@ fn commit_typed_tick_v1(
             .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
                 operation: "connect typed tick writer",
             })?;
-    if marker_matches_envelope_v1(&mut client, envelope)? {
+    if marker_matches_envelope_v1(&mut client, report, envelope)? {
         return Ok(ReplayCommitDispositionV1::ReconciledAfterAmbiguousCommit);
     }
     let mut transaction =
@@ -1115,7 +1142,14 @@ fn commit_typed_tick_v1(
         checkpoint,
         envelope,
     )?;
-    commit_marker_last_v1(config, transaction, campaign_id, resolve_tick, envelope)
+    commit_marker_last_v1(
+        config,
+        transaction,
+        campaign_id,
+        resolve_tick,
+        report,
+        envelope,
+    )
 }
 
 fn commit_marker_last_v1(
@@ -1123,6 +1157,7 @@ fn commit_marker_last_v1(
     mut transaction: postgres::Transaction<'_>,
     campaign_id: CampaignId,
     resolve_tick: i64,
+    report: &IdentifiedTickReportV1,
     envelope: &CommittedTickEnvelopeV1,
 ) -> Result<ReplayCommitDispositionV1, RustPersistenceRuntimeErrorV1> {
     #[cfg(test)]
@@ -1133,6 +1168,11 @@ fn commit_marker_last_v1(
             }
         })?;
     }
+
+    let predecessor = resolve_tick
+        .checked_sub(1)
+        .ok_or(RustPersistenceRuntimeErrorV1::CampaignConflict)?;
+    advance_campaign_catalog_tick_v1(&mut transaction, campaign_id, predecessor, resolve_tick)?;
 
     // Constitutional visibility point: no durable row may be inserted after this marker.
     require_single_insert_v1(
@@ -1158,7 +1198,7 @@ fn commit_marker_last_v1(
                     .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
                         operation: "reconnect ambiguous commit",
                     })?;
-            if marker_matches_envelope_v1(&mut reconciliation, envelope)? {
+            if marker_matches_envelope_v1(&mut reconciliation, report, envelope)? {
                 #[cfg(test)]
                 LIVE_RECONCILIATIONS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 Ok(ReplayCommitDispositionV1::ReconciledAfterAmbiguousCommit)
@@ -1243,32 +1283,35 @@ static LIVE_RECONCILIATIONS: std::sync::atomic::AtomicUsize =
 
 fn marker_matches_envelope_v1(
     client: &mut impl GenericClient,
+    report: &IdentifiedTickReportV1,
     envelope: &CommittedTickEnvelopeV1,
 ) -> Result<bool, RustPersistenceRuntimeErrorV1> {
     let claim = envelope.claim();
-    let resolve_tick = i64::try_from(claim.resolve_tick())
-        .map_err(|_| RustPersistenceRuntimeErrorV1::CampaignConflict)?;
-    let row = client
-        .query_opt(
-            "SELECT envelope_layout_version, tick_content_hash, envelope_digest \
-             FROM babylon_state.tick_commit WHERE campaign_id = $1::uuid AND resolve_tick = $2",
-            &[claim.campaign_id().as_uuid(), &resolve_tick],
-        )
-        .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-            operation: "inspect tick marker",
-        })?;
-    let Some(row) = row else {
+    let Some(stored) = read_stored_typed_tick_v1(
+        client,
+        claim.campaign_id(),
+        claim.resolve_tick(),
+        report.result_stable_graph().scenario_scope(),
+    )?
+    else {
         return Ok(false);
     };
-    let layout: i16 = decode_runtime_column(&row, 0)?;
-    let content_hash: Vec<u8> = decode_runtime_column(&row, 1)?;
-    let envelope_digest: Vec<u8> = decode_runtime_column(&row, 2)?;
-    if layout != 1
-        || content_hash.as_slice() != claim.tick_content_hash().as_bytes()
-        || envelope_digest.as_slice() != envelope.digest().as_bytes()
+    let catalog = read_campaign_catalog_row_v1(client, claim.campaign_id())?
+        .ok_or(RustPersistenceRuntimeErrorV1::CampaignConflict)?;
+    if catalog.last_tick() != claim.resolve_tick() {
+        return Err(RustPersistenceRuntimeErrorV1::CampaignConflict);
+    }
+    let action_layout = i16::try_from(report.action_batch_layout_version())
+        .map_err(|_| RustPersistenceRuntimeErrorV1::CampaignConflict)?;
+    if stored.action_layout() != action_layout
+        || stored.action_digest().as_slice() != report.action_batch_digest().as_bytes()
+        || stored.action_bytes() != report.action_batch_bytes()
     {
         return Err(RustPersistenceRuntimeErrorV1::CampaignConflict);
     }
+    envelope
+        .classify_retry_against(stored.envelope())
+        .map_err(|_| RustPersistenceRuntimeErrorV1::CampaignConflict)?;
     Ok(true)
 }
 
@@ -1289,66 +1332,149 @@ fn replay_durable_tail_v1(
             .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
                 operation: "connect restart reader",
             })?;
-    let rows = client
-        .query(
-            "SELECT marker.resolve_tick, marker.tick_content_hash, marker.envelope_digest, \
-                    actions.layout_version, actions.action_batch_digest, actions.exact_action_batch_bytes, \
-                    checkpoint.manifest_sha256, receipt.tick_content_hash \
+    let Some(root) = select_durable_restart_root_v1(&mut client, campaign_id)? else {
+        return Ok((session, None));
+    };
+    let scenario_scope =
+        restore_durable_restart_root_v1(&mut client, campaign_id, &mut session, &root)?;
+    let last = replay_ticks_after_restart_root_v1(
+        &mut client,
+        campaign_id,
+        &mut session,
+        &scenario_scope,
+        &root,
+    )?;
+    Ok((session, Some(last)))
+}
+
+struct DurableRestartRootV1 {
+    resolve_tick_sql: i64,
+    resolve_tick: u64,
+    marker_count: i64,
+}
+
+fn select_durable_restart_root_v1(
+    client: &mut impl GenericClient,
+    campaign_id: CampaignId,
+) -> Result<Option<DurableRestartRootV1>, RustPersistenceRuntimeErrorV1> {
+    let root_tick: Option<i64> = client
+        .query_one(
+            "SELECT pg_catalog.max(marker.resolve_tick) \
              FROM babylon_state.tick_commit AS marker \
-             JOIN babylon_state.tick_action_batch_v1 AS actions \
-               ON actions.campaign_id = marker.campaign_id AND actions.resolve_tick = marker.resolve_tick \
              JOIN babylon_state.checkpoint_manifest AS checkpoint \
-               ON checkpoint.campaign_id = marker.campaign_id AND checkpoint.resolve_tick = marker.resolve_tick \
+               ON checkpoint.campaign_id = marker.campaign_id \
+              AND checkpoint.resolve_tick = marker.resolve_tick \
               AND checkpoint.completeness_tag = 1 \
-             JOIN babylon_state.archive_dirty_receipt_v1 AS receipt \
-               ON receipt.campaign_id = marker.campaign_id AND receipt.resolve_tick = marker.resolve_tick \
-             WHERE marker.campaign_id = $1::uuid ORDER BY marker.resolve_tick",
+             WHERE marker.campaign_id = $1::uuid",
             &[campaign_id.as_uuid()],
         )
+        .and_then(|row| row.try_get(0))
         .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-            operation: "read restart tail",
+            operation: "select latest full checkpoint",
         })?;
     let marker_count: i64 = client
         .query_one(
-            "SELECT pg_catalog.count(*) FROM babylon_state.tick_commit WHERE campaign_id = $1::uuid",
+            "SELECT pg_catalog.count(*) FROM babylon_state.tick_commit \
+             WHERE campaign_id = $1::uuid",
             &[campaign_id.as_uuid()],
         )
         .and_then(|row| row.try_get(0))
         .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
             operation: "count restart markers",
         })?;
-    if usize::try_from(marker_count).ok() != Some(rows.len()) {
+    let Some(root_tick_sql) = root_tick else {
+        if marker_count == 0 {
+            return Ok(None);
+        }
+        return Err(RustPersistenceRuntimeErrorV1::DeltaCheckpointNotRestartRoot);
+    };
+    let root_tick = u64::try_from(root_tick_sql)
+        .map_err(|_| RustPersistenceRuntimeErrorV1::CampaignConflict)?;
+    let prefix_count: i64 = client
+        .query_one(
+            "SELECT pg_catalog.count(*) FROM babylon_state.tick_commit \
+             WHERE campaign_id = $1::uuid AND resolve_tick <= $2",
+            &[campaign_id.as_uuid(), &root_tick_sql],
+        )
+        .and_then(|row| row.try_get(0))
+        .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
+            operation: "count checkpoint prefix markers",
+        })?;
+    if u64::try_from(prefix_count).ok() != Some(root_tick) {
         return Err(RustPersistenceRuntimeErrorV1::CampaignConflict);
     }
+    Ok(Some(DurableRestartRootV1 {
+        resolve_tick_sql: root_tick_sql,
+        resolve_tick: root_tick,
+        marker_count,
+    }))
+}
 
-    let mut expected_tick = 1_u64;
+fn restore_durable_restart_root_v1(
+    client: &mut impl GenericClient,
+    campaign_id: CampaignId,
+    session: &mut ReplayTickSession<HypergraphStore>,
+    root: &DurableRestartRootV1,
+) -> Result<String, RustPersistenceRuntimeErrorV1> {
+    let scenario_scope = session
+        .stable_graph_state()
+        .map_err(|_| RustPersistenceRuntimeErrorV1::ReplayTick)?
+        .scenario_scope()
+        .to_owned();
+    let stored =
+        read_stored_typed_tick_v1(client, campaign_id, root.resolve_tick, &scenario_scope)?
+            .ok_or(RustPersistenceRuntimeErrorV1::CampaignConflict)?;
+    validate_stored_empty_actions_v1(&stored, session, root.resolve_tick)?;
+    validate_checkpoint_identity_sections_v1(&stored, session)?;
+    session
+        .restore_full_checkpoint(
+            root.resolve_tick_sql,
+            stored.graph_state(),
+            stored.material_rows(),
+            stored
+                .checkpoint_section(2)
+                .ok_or(RustPersistenceRuntimeErrorV1::CampaignConflict)?,
+        )
+        .map_err(|_| RustPersistenceRuntimeErrorV1::ReplayTick)?;
+    Ok(scenario_scope)
+}
+
+fn replay_ticks_after_restart_root_v1(
+    client: &mut impl GenericClient,
+    campaign_id: CampaignId,
+    session: &mut ReplayTickSession<HypergraphStore>,
+    scenario_scope: &str,
+    root: &DurableRestartRootV1,
+) -> Result<CommittedResolveTickV1, RustPersistenceRuntimeErrorV1> {
+    let tail_ticks = client
+        .query(
+            "SELECT resolve_tick FROM babylon_state.tick_commit \
+             WHERE campaign_id = $1::uuid AND resolve_tick > $2 ORDER BY resolve_tick",
+            &[campaign_id.as_uuid(), &root.resolve_tick_sql],
+        )
+        .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
+            operation: "read restart tail",
+        })?;
+    let mut expected_tick = root
+        .resolve_tick
+        .checked_add(1)
+        .ok_or(RustPersistenceRuntimeErrorV1::CampaignConflict)?;
     let mut sink = CollectingSink::default();
-    let mut last = None;
-    for row in rows {
+    let mut last = CommittedResolveTickV1::try_from(root.resolve_tick)
+        .map_err(|_| RustPersistenceRuntimeErrorV1::CampaignConflict)?;
+    for row in tail_ticks {
         let stored_tick: i64 = decode_runtime_column(&row, 0)?;
         let stored_tick = u64::try_from(stored_tick)
             .map_err(|_| RustPersistenceRuntimeErrorV1::CampaignConflict)?;
         if stored_tick != expected_tick {
             return Err(RustPersistenceRuntimeErrorV1::CampaignConflict);
         }
-        let stored_content_hash: Vec<u8> = decode_runtime_column(&row, 1)?;
-        let stored_envelope_digest: Vec<u8> = decode_runtime_column(&row, 2)?;
-        let action_layout: i16 = decode_runtime_column(&row, 3)?;
-        let stored_action_digest: Vec<u8> = decode_runtime_column(&row, 4)?;
-        let stored_action_bytes: Vec<u8> = decode_runtime_column(&row, 5)?;
-        let stored_checkpoint_digest: Vec<u8> = decode_runtime_column(&row, 6)?;
-        let stored_receipt_hash: Vec<u8> = decode_runtime_column(&row, 7)?;
-        if action_layout != 1 {
-            return Err(RustPersistenceRuntimeErrorV1::CampaignConflict);
-        }
+        let stored = read_stored_typed_tick_v1(client, campaign_id, expected_tick, scenario_scope)?
+            .ok_or(RustPersistenceRuntimeErrorV1::CampaignConflict)?;
+        validate_stored_empty_actions_v1(&stored, session, expected_tick)?;
         let actions =
             OrderedPracticeActionBatchV1::empty(session.session_identity().clone(), expected_tick)
                 .map_err(|_| RustPersistenceRuntimeErrorV1::ReplaySource)?;
-        if stored_action_bytes != actions.canonical_bytes()
-            || stored_action_digest.as_slice() != actions.digest().as_bytes()
-        {
-            return Err(RustPersistenceRuntimeErrorV1::ReplaySource);
-        }
         let candidate = session
             .prepare_advance(&actions)
             .map_err(|_| RustPersistenceRuntimeErrorV1::ReplayTick)?;
@@ -1361,14 +1487,10 @@ fn replay_durable_tail_v1(
             CommittedFullCheckpointV1::capture(campaign_id, resolve_tick, candidate.report())?;
         let tick_content_hash = prepared.tick_content_hash();
         let envelope = prepared.into_envelope(campaign_id)?;
-        if stored_content_hash.as_slice() != tick_content_hash.as_bytes()
-            || stored_receipt_hash.as_slice() != tick_content_hash.as_bytes()
-            || stored_envelope_digest.as_slice() != envelope.digest().as_bytes()
-            || stored_checkpoint_digest.as_slice() != checkpoint.manifest_sha256()
-        {
-            return Err(RustPersistenceRuntimeErrorV1::CampaignConflict);
-        }
-        verify_checkpoint_sections_v1(&mut client, campaign_id, resolve_tick, &checkpoint)?;
+        envelope
+            .classify_retry_against(stored.envelope())
+            .map_err(|_| RustPersistenceRuntimeErrorV1::CampaignConflict)?;
+        validate_stored_checkpoint_sections_v1(&stored, &checkpoint)?;
         let acknowledgement = ReplayCommitAcknowledgementV1::new(
             ReplayCommitDispositionV1::ReconciledAfterAmbiguousCommit,
             expected_tick,
@@ -1377,48 +1499,82 @@ fn replay_durable_tail_v1(
         session
             .acknowledge_prepared(&mut sink, candidate, acknowledgement)
             .map_err(|_| RustPersistenceRuntimeErrorV1::ReplayTick)?;
-        last = Some(resolve_tick);
+        last = resolve_tick;
         expected_tick = expected_tick
             .checked_add(1)
             .ok_or(RustPersistenceRuntimeErrorV1::CampaignConflict)?;
     }
-    Ok((session, last))
-}
-
-fn verify_checkpoint_sections_v1(
-    client: &mut impl GenericClient,
-    campaign_id: CampaignId,
-    resolve_tick: CommittedResolveTickV1,
-    checkpoint: &CommittedFullCheckpointV1,
-) -> Result<(), RustPersistenceRuntimeErrorV1> {
-    let resolve_tick = i64::try_from(resolve_tick.get())
-        .map_err(|_| RustPersistenceRuntimeErrorV1::CampaignConflict)?;
-    let stored = client
-        .query(
-            "SELECT section_tag, ordinal, exact_section_bytes \
-             FROM babylon_state.checkpoint_section_v1 \
-             WHERE campaign_id = $1::uuid AND resolve_tick = $2 ORDER BY section_tag, ordinal",
-            &[campaign_id.as_uuid(), &resolve_tick],
-        )
-        .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-            operation: "read checkpoint sections",
-        })?;
-    if stored.len() != checkpoint.sections().len()
-        || stored.len() != checkpoint.exact_section_bytes().len()
-    {
+    if u64::try_from(root.marker_count).ok() != Some(last.get()) {
         return Err(RustPersistenceRuntimeErrorV1::CampaignConflict);
     }
-    for ((stored, section), exact_bytes) in stored
-        .iter()
-        .zip(checkpoint.sections())
-        .zip(checkpoint.exact_section_bytes())
+    Ok(last)
+}
+
+fn validate_stored_empty_actions_v1(
+    stored: &crate::stored_tick::StoredTypedTickV1,
+    session: &ReplayTickSession<HypergraphStore>,
+    resolve_tick: u64,
+) -> Result<(), RustPersistenceRuntimeErrorV1> {
+    let actions =
+        OrderedPracticeActionBatchV1::empty(session.session_identity().clone(), resolve_tick)
+            .map_err(|_| RustPersistenceRuntimeErrorV1::ReplaySource)?;
+    if stored.action_layout() != 1
+        || stored.action_digest().as_slice() != actions.digest().as_bytes()
+        || stored.action_bytes() != actions.canonical_bytes()
     {
-        let tag: i16 = decode_runtime_column(stored, 0)?;
-        let ordinal: i64 = decode_runtime_column(stored, 1)?;
-        let bytes: Vec<u8> = decode_runtime_column(stored, 2)?;
-        if tag != i16::from(section.tag().tag()) || ordinal != 0 || bytes != *exact_bytes {
-            return Err(RustPersistenceRuntimeErrorV1::CampaignConflict);
+        return Err(RustPersistenceRuntimeErrorV1::ReplaySource);
+    }
+    Ok(())
+}
+
+fn validate_checkpoint_identity_sections_v1(
+    stored: &crate::stored_tick::StoredTypedTickV1,
+    session: &ReplayTickSession<HypergraphStore>,
+) -> Result<(), RustPersistenceRuntimeErrorV1> {
+    let mut content_digest = Vec::new();
+    content_digest.try_reserve_exact(64).map_err(|_| {
+        RustPersistenceRuntimeErrorV1::Allocation {
+            field: "restart content digest",
+            requested: 64,
         }
+    })?;
+    content_digest.extend_from_slice(&session.content_digest().defines_hash);
+    content_digest.extend_from_slice(&session.content_digest().rules_hash);
+    let seed = session.rng_seed().to_be_bytes();
+    let reference = session.reference_digest();
+    let expected = [
+        (3_u8, session.resolver_manifest_bytes()),
+        (4, session.prepared_environment_bytes()),
+        (5, session.session_identity().as_bytes()),
+        (6, seed.as_slice()),
+        (7, content_digest.as_slice()),
+        (8, reference.as_bytes().as_slice()),
+    ];
+    if expected.into_iter().any(|(tag, bytes)| {
+        stored
+            .checkpoint_section(tag)
+            .is_none_or(|stored| stored != bytes)
+    }) {
+        return Err(RustPersistenceRuntimeErrorV1::CampaignConflict);
+    }
+    Ok(())
+}
+
+fn validate_stored_checkpoint_sections_v1(
+    stored: &crate::stored_tick::StoredTypedTickV1,
+    checkpoint: &CommittedFullCheckpointV1,
+) -> Result<(), RustPersistenceRuntimeErrorV1> {
+    if checkpoint.exact_section_bytes().len() != 9
+        || checkpoint
+            .exact_section_bytes()
+            .iter()
+            .enumerate()
+            .any(|(index, expected)| {
+                let tag = u8::try_from(index + 1).ok();
+                tag.and_then(|tag| stored.checkpoint_section(tag)) != Some(expected.as_slice())
+            })
+    {
+        return Err(RustPersistenceRuntimeErrorV1::CampaignConflict);
     }
     Ok(())
 }
@@ -2190,6 +2346,57 @@ mod live_tests {
         let (session, bundle) = runtime_fixture();
         let mut runtime = DurableReplayRuntimeV1::create(&config, campaign_id, session, bundle)
             .expect("runtime constructs after activation");
+        let metadata = crate::metadata::RetainedMetadataStoreV1::new(&config);
+        let initial_catalog = metadata
+            .campaign(campaign_id)
+            .expect("catalog reads")
+            .expect("runtime creates the retained catalog row");
+        assert_eq!(initial_catalog.last_tick(), 0);
+        metadata
+            .replace_watchlist(
+                campaign_id,
+                &["social-class/C001".to_owned(), "territory/wayne".to_owned()],
+            )
+            .expect("watchlist replaces atomically");
+        metadata
+            .replace_jumplist(
+                campaign_id,
+                &["territory/wayne".to_owned(), "territory/wayne".to_owned()],
+            )
+            .expect("jumplist preserves legal duplicates");
+        metadata
+            .replace_breadcrumbs(
+                campaign_id,
+                &["world/michigan".to_owned(), "territory/wayne".to_owned()],
+            )
+            .expect("breadcrumbs replace atomically");
+        assert_eq!(
+            metadata
+                .watchlist(campaign_id)
+                .expect("watchlist reads")
+                .iter()
+                .map(crate::metadata::WatchlistRowV1::entity_id)
+                .collect::<Vec<_>>(),
+            ["social-class/C001", "territory/wayne"]
+        );
+        assert_eq!(
+            metadata
+                .jumplist(campaign_id)
+                .expect("jumplist reads")
+                .iter()
+                .map(crate::metadata::JumplistRowV1::entity_id)
+                .collect::<Vec<_>>(),
+            ["territory/wayne", "territory/wayne"]
+        );
+        assert_eq!(
+            metadata
+                .breadcrumbs(campaign_id)
+                .expect("breadcrumbs read")
+                .iter()
+                .map(crate::metadata::BreadcrumbRowV1::entity_id)
+                .collect::<Vec<_>>(),
+            ["world/michigan", "territory/wayne"]
+        );
         let actions = OrderedPracticeActionBatchV1::empty(
             runtime.foundation().replay_session_identity().clone(),
             1,
@@ -2215,6 +2422,14 @@ mod live_tests {
         assert_eq!(runtime.last_committed_tick(), Some(receipt.resolve_tick()));
         assert_eq!(sink.events.len(), 1);
         assert_eq!(marker_row_count(&config, campaign_id), 1);
+        assert_eq!(
+            metadata
+                .campaign(campaign_id)
+                .expect("advanced catalog reads")
+                .expect("campaign remains retained")
+                .last_tick(),
+            1
+        );
 
         let reopened = DurableReplayRuntimeV1::open(&config, campaign_id)
             .expect("marker-owned checkpoint restarts");
@@ -2246,7 +2461,7 @@ mod live_tests {
                 &[],
             )
             .expect("disposition proof");
-        assert_eq!(row.try_get::<_, i64>(0).expect("disposition count"), 65);
+        assert_eq!(row.try_get::<_, i64>(0).expect("disposition count"), 61);
         assert!(row.try_get::<_, bool>(1).expect("zero-row proof"));
         assert!(row.try_get::<_, bool>(2).expect("game authority retired"));
         assert!(row
@@ -2288,6 +2503,119 @@ mod live_tests {
         let reopened = DurableReplayRuntimeV1::open(&config, campaign_id)
             .expect("reconciled marker is the restart root");
         assert_eq!(reopened.last_committed_tick(), Some(receipt.resolve_tick()));
+        database.cleanup();
+    }
+
+    #[test]
+    #[ignore = "requires the task-owned disposable PER-20 PostgreSQL runtime"]
+    fn live_retry_and_restart_refuse_a_mutated_typed_payload() {
+        let base = validated_base_config();
+        let database = TestDatabase::create(&base, "runtimemutated");
+        let config = database.config(&base);
+        activate_rust_persistence_v1(&config).expect("fresh Rust activation");
+        let campaign_id =
+            CampaignId::from_uuid(Uuid::from_u128(0x2810_0000_0000_0000_0000_0000_0000_00a3));
+        let (session, bundle) = runtime_fixture();
+        let mut runtime = DurableReplayRuntimeV1::create(&config, campaign_id, session, bundle)
+            .expect("runtime constructs after activation");
+        let actions = OrderedPracticeActionBatchV1::empty(
+            runtime.foundation().replay_session_identity().clone(),
+            1,
+        )
+        .expect("first action batch");
+        runtime
+            .advance_and_commit(&mut CollectingSink::default(), &actions)
+            .expect("first tick commits");
+        config
+            .connect(NoTls)
+            .expect("mutation connection")
+            .execute(
+                "UPDATE babylon_state.graph_node_f64_v1 SET value_bits = 0 \
+                 WHERE campaign_id = $1::uuid AND resolve_tick = 1",
+                &[campaign_id.as_uuid()],
+            )
+            .expect("typed test row mutates");
+
+        assert_eq!(
+            DurableReplayRuntimeV1::open(&config, campaign_id).map(|_| ()),
+            Err(RustPersistenceRuntimeErrorV1::CampaignConflict)
+        );
+
+        let (retry_session, _) = runtime_fixture();
+        let candidate = retry_session
+            .prepare_advance(&actions)
+            .expect("retry candidate");
+        let prepared = prepare_committed_tick_v1(candidate.report()).expect("retry envelope input");
+        let envelope = prepared.into_envelope(campaign_id).expect("retry envelope");
+        assert_eq!(
+            marker_matches_envelope_v1(
+                &mut config.connect(NoTls).expect("retry connection"),
+                candidate.report(),
+                &envelope,
+            ),
+            Err(RustPersistenceRuntimeErrorV1::CampaignConflict)
+        );
+        database.cleanup();
+    }
+
+    #[test]
+    #[ignore = "requires the task-owned disposable PER-20 PostgreSQL runtime"]
+    fn live_restart_uses_the_latest_full_checkpoint_not_the_foundation_history() {
+        let base = validated_base_config();
+        let database = TestDatabase::create(&base, "runtimelatest");
+        let config = database.config(&base);
+        activate_rust_persistence_v1(&config).expect("fresh Rust activation");
+        let campaign_id =
+            CampaignId::from_uuid(Uuid::from_u128(0x2810_0000_0000_0000_0000_0000_0000_00a4));
+        let (session, bundle) = runtime_fixture();
+        let mut runtime = DurableReplayRuntimeV1::create(&config, campaign_id, session, bundle)
+            .expect("runtime constructs after activation");
+        for resolve_tick in 1..=3 {
+            let actions = OrderedPracticeActionBatchV1::empty(
+                runtime.foundation().replay_session_identity().clone(),
+                resolve_tick,
+            )
+            .expect("action batch");
+            runtime
+                .advance_and_commit(&mut CollectingSink::default(), &actions)
+                .expect("tick commits");
+        }
+        let next_actions = OrderedPracticeActionBatchV1::empty(
+            runtime.foundation().replay_session_identity().clone(),
+            4,
+        )
+        .expect("next action batch");
+        let uninterrupted_hash = runtime
+            .session
+            .prepare_advance(&next_actions)
+            .expect("uninterrupted candidate")
+            .report()
+            .tick_content_hash();
+        config
+            .connect(NoTls)
+            .expect("historical mutation connection")
+            .execute(
+                "DELETE FROM babylon_state.tick_action_batch_v1 \
+                 WHERE campaign_id = $1::uuid AND resolve_tick = 1",
+                &[campaign_id.as_uuid()],
+            )
+            .expect("old action row deletes");
+
+        let reopened = DurableReplayRuntimeV1::open(&config, campaign_id)
+            .expect("latest full checkpoint is a sufficient restart root");
+        assert_eq!(
+            reopened
+                .last_committed_tick()
+                .map(CommittedResolveTickV1::get),
+            Some(3)
+        );
+        let restored_hash = reopened
+            .session
+            .prepare_advance(&next_actions)
+            .expect("restored candidate")
+            .report()
+            .tick_content_hash();
+        assert_eq!(restored_hash, uninterrupted_hash);
         database.cleanup();
     }
 

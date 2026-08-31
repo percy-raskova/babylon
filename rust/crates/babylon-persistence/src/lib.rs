@@ -14,6 +14,7 @@ mod h3_shadow_backfill;
 pub mod hashes;
 pub mod identity;
 pub mod legacy_adopter;
+mod metadata;
 mod michigan_dynamic_hex_foundation;
 pub mod migration_manifest;
 mod runtime;
@@ -27,6 +28,7 @@ mod semantic_batches;
 mod semantic_codec;
 mod spatial_reference_installer;
 pub mod spatial_reference_products;
+mod stored_tick;
 pub mod tick_commit_claim;
 
 pub use bootstrap::{
@@ -79,6 +81,10 @@ pub use legacy_adopter::{
     MAX_LEGACY_EXTENSION_DEPENDENCY_ADDRESSES, MAX_LEGACY_EXTENSION_MEMBERS,
     MAX_LEGACY_EXTENSION_ROLE_IDENTITIES, MAX_LEGACY_PARTITIONS_PER_FAMILY,
     MAX_LEGACY_SEQUENCE_OWNERSHIP, MAX_LEGACY_STAMP_ROWS, POSTGRES_IDENTIFIER_MAX_BYTES,
+};
+pub use metadata::{
+    BreadcrumbRowV1, CampaignCatalogRowV1, CampaignCatalogStatusV1, JumplistRowV1,
+    RetainedMetadataStoreV1, WatchlistRowV1,
 };
 pub use michigan_dynamic_hex_foundation::{
     decode_michigan_dynamic_hex_foundation_v1, michigan_dynamic_hex_foundation_fixture_parts_v1,

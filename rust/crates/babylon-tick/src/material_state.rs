@@ -18,10 +18,12 @@ use babylon_graph::stable_element::{
 use babylon_graph::stable_state::{StableGraphEdgeRowV1, StableGraphStateV1};
 use babylon_kernel::{sha256_of, H3CellId};
 
-use crate::h3_runtime::{MichiganDynamicHexFoundationErrorV1, MichiganDynamicHexFoundationV1};
+use crate::h3_runtime::{
+    MichiganDynamicHexFoundationErrorV1, MichiganDynamicHexFoundationV1,
+    MichiganDynamicHexValueBitsV1, MichiganDynamicHexValuesV1,
+};
 #[cfg(test)]
 use crate::h3_runtime::{
-    MichiganDynamicHexValueBitsV1, MichiganDynamicHexValuesV1,
     MICHIGAN_DYNAMIC_HEX_FOUNDATION_ARTIFACT_SHA256_V1,
     MICHIGAN_DYNAMIC_HEX_REFERENCE_BUNDLE_DIGEST_V1, MICHIGAN_DYNAMIC_HEX_SOURCE_R7_DIGEST_V1,
 };
@@ -205,6 +207,28 @@ impl DynamicHexRuntimeV1 {
         })
     }
 
+    fn try_restore_from_rows(
+        &self,
+        stored: &[DynamicHexStateRowV1],
+        gate: &dyn MaterialAllocationGate,
+    ) -> Result<Self, MaterialStateErrorV1> {
+        if stored.len() != self.rows.len()
+            || stored
+                .iter()
+                .zip(&self.rows)
+                .any(|(left, right)| left.cell_id() != right.cell_id)
+        {
+            return Err(MaterialStateErrorV1::SourceRowOrder {
+                family: "dynamic hex checkpoint identity",
+            });
+        }
+        let mut restored = self.try_detached(gate)?;
+        for (stored_row, runtime_row) in stored.iter().zip(&mut restored.rows) {
+            runtime_row.value_bits = stored_row.value_bits();
+        }
+        Ok(restored)
+    }
+
     #[cfg(test)]
     fn try_fixture(
         rows: Vec<(H3CellId, MichiganDynamicHexValueBitsV1)>,
@@ -352,6 +376,22 @@ pub struct TerritoryStateRowV1 {
 }
 
 impl TerritoryStateRowV1 {
+    /// Construct one exact externally loaded territory row.
+    ///
+    /// # Errors
+    /// Returns the first stable identity, field-order, value, or allocation
+    /// refusal.
+    pub fn try_new(
+        territory_id: StableElementKeyV1,
+        ordered_fields: Vec<(String, StableBslValueV1)>,
+    ) -> Result<Self, MaterialStateErrorV1> {
+        Self::try_from_projection(
+            territory_id,
+            ordered_fields,
+            &ProductionMaterialAllocationGate,
+        )
+    }
+
     fn try_from_projection(
         territory_id: StableElementKeyV1,
         ordered_fields: Vec<(String, StableBslValueV1)>,
@@ -416,15 +456,40 @@ pub struct DynamicHexStateRowV1 {
 }
 
 impl DynamicHexStateRowV1 {
+    /// Construct one exact externally loaded dynamic-H3 row.
+    ///
+    /// # Errors
+    /// Returns a cell-domain, value-domain, or allocation refusal.
+    pub fn try_new(
+        cell_id: H3CellId,
+        value_bits: MichiganDynamicHexValueBitsV1,
+    ) -> Result<Self, MaterialStateErrorV1> {
+        let values = MichiganDynamicHexValuesV1::try_new(value_bits)
+            .map_err(MaterialStateErrorV1::DynamicFoundation)?;
+        Self::try_from_validated(
+            cell_id,
+            values.value_bits(),
+            &ProductionMaterialAllocationGate,
+        )
+    }
+
     fn try_from_runtime(
         source: &DynamicHexRuntimeRowV1,
         gate: &dyn MaterialAllocationGate,
     ) -> Result<Self, MaterialStateErrorV1> {
+        Self::try_from_validated(source.cell_id, source.value_bits, gate)
+    }
+
+    fn try_from_validated(
+        cell_id: H3CellId,
+        value_bits: [u64; 9],
+        gate: &dyn MaterialAllocationGate,
+    ) -> Result<Self, MaterialStateErrorV1> {
         gate.before_reserve("material dynamic row", 1)?;
         let [c, v, s, k, biocapacity_stock, energy_stock, raw_material_stock, internet_access_pct, surveillance_coupling] =
-            source.value_bits;
+            value_bits;
         let canonical_bytes = encode_dynamic_hex(
-            source.cell_id,
+            cell_id,
             [
                 c,
                 v,
@@ -439,7 +504,7 @@ impl DynamicHexStateRowV1 {
             gate,
         )?;
         Ok(Self {
-            cell_id: source.cell_id,
+            cell_id,
             c,
             v,
             s,
@@ -494,6 +559,26 @@ pub struct OrganizationStateRowV1 {
 }
 
 impl OrganizationStateRowV1 {
+    /// Construct one exact externally loaded organization row.
+    ///
+    /// # Errors
+    /// Returns the first stable identity, organization-kind, ordering, value,
+    /// or allocation refusal.
+    pub fn try_new(
+        organization_id: StableElementKeyV1,
+        organization_kind: StableBslValueV1,
+        ordered_territory_ids: Vec<StableElementKeyV1>,
+        ordered_fields: Vec<(String, StableBslValueV1)>,
+    ) -> Result<Self, MaterialStateErrorV1> {
+        Self::try_from_projection(
+            organization_id,
+            organization_kind,
+            ordered_territory_ids,
+            ordered_fields,
+            &ProductionMaterialAllocationGate,
+        )
+    }
+
     fn try_from_projection(
         organization_id: StableElementKeyV1,
         organization_kind: StableBslValueV1,
@@ -644,6 +729,16 @@ impl MaterialStateV1 {
         })
     }
 
+    pub(crate) fn try_restore_from_rows(
+        &self,
+        rows: &MaterialStateRowsV1,
+    ) -> Result<Self, MaterialStateErrorV1> {
+        Self::try_from_runtime(self.dynamic_hexes.try_restore_from_rows(
+            rows.dynamic_hexes().rows(),
+            &ProductionMaterialAllocationGate,
+        )?)
+    }
+
     pub(crate) fn project_rows(
         &self,
         resolve_tick: i64,
@@ -737,7 +832,72 @@ pub struct MaterialStateRowsV1 {
     source_count: usize,
 }
 
+/// Owned typed material rows loaded from an external durable store.
+#[derive(Debug)]
+pub struct MaterialStateRowsInputV1 {
+    /// Exact world-register rows.
+    pub world_registers: Vec<WorldRegisterRowV1>,
+    /// Exact territory rows.
+    pub territories: Vec<TerritoryStateRowV1>,
+    /// Exact dynamic-H3 rows.
+    pub dynamic_hexes: Vec<DynamicHexStateRowV1>,
+    /// Exact organization rows.
+    pub organizations: Vec<OrganizationStateRowV1>,
+}
+
 impl MaterialStateRowsV1 {
+    /// Compose the canonical material checkpoint section from typed stored rows.
+    ///
+    /// # Errors
+    /// Returns the first row-order, bound, arithmetic, or allocation refusal.
+    pub fn try_from_rows(input: MaterialStateRowsInputV1) -> Result<Self, MaterialStateErrorV1> {
+        validate_source_order(&input.world_registers, "world register", |row| {
+            row.qname().as_bytes()
+        })?;
+        validate_source_order(&input.territories, "territory", |row| &row.primary_key)?;
+        if input
+            .dynamic_hexes
+            .windows(2)
+            .any(|pair| pair[0].cell_id().as_u64() >= pair[1].cell_id().as_u64())
+        {
+            return Err(MaterialStateErrorV1::SourceRowOrder {
+                family: "dynamic hex",
+            });
+        }
+        validate_source_order(&input.organizations, "organization", |row| &row.primary_key)?;
+        let gate = &ProductionMaterialAllocationGate;
+        let world_registers = WorldRegisterRowsV1::compose(input.world_registers, gate)?;
+        let territories = TerritoryStateRowsV1::compose(input.territories, gate)?;
+        let dynamic_hexes = DynamicHexStateRowsV1::compose(input.dynamic_hexes, gate)?;
+        let organizations = OrganizationStateRowsV1::compose(input.organizations, gate)?;
+        let source_count = checked_sum(
+            "material row count",
+            [
+                world_registers.source_count(),
+                territories.source_count(),
+                dynamic_hexes.source_count(),
+                organizations.source_count(),
+            ],
+        )?;
+        let canonical_bytes = encode_material_batches(
+            &world_registers,
+            &territories,
+            &dynamic_hexes,
+            &organizations,
+            gate,
+        )?;
+        let source_digest = sha256_of(&canonical_bytes);
+        Ok(Self {
+            world_registers,
+            territories,
+            dynamic_hexes,
+            organizations,
+            canonical_bytes,
+            source_digest,
+            source_count,
+        })
+    }
+
     fn compose(
         source: &MaterialStateV1,
         resolve_tick: i64,

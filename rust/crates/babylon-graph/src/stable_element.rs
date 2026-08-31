@@ -72,6 +72,64 @@ pub enum StableElementKeyV1 {
 }
 
 impl StableElementKeyV1 {
+    /// Decode one exact standalone binary stable-element key.
+    ///
+    /// # Errors
+    /// Returns a framing, UTF-8, semantic-string, arithmetic, or allocation
+    /// refusal. The decoded value must re-encode byte-for-byte.
+    pub fn from_canonical_bytes(input: &[u8]) -> Result<Self, StableIdentityError> {
+        let header = STABLE_ELEMENT_DOMAIN.len() + 1 + size_of::<u32>() + 1;
+        if input.len() < header
+            || !input.starts_with(STABLE_ELEMENT_DOMAIN)
+            || input.get(STABLE_ELEMENT_DOMAIN.len()) != Some(&0)
+            || input.get(STABLE_ELEMENT_DOMAIN.len() + 1..STABLE_ELEMENT_DOMAIN.len() + 5)
+                != Some(STABLE_ELEMENT_LAYOUT_VERSION_V1.to_be_bytes().as_slice())
+        {
+            return Err(StableIdentityError::CanonicalBytes {
+                field: "stable element header",
+            });
+        }
+        let mut cursor = STABLE_ELEMENT_DOMAIN.len() + 5;
+        let tag = *input
+            .get(cursor)
+            .ok_or(StableIdentityError::CanonicalBytes {
+                field: "stable element tag",
+            })?;
+        cursor += 1;
+        let key = match tag {
+            0x01 => Self::Node {
+                scenario: read_canonical_string(input, &mut cursor, "stable node scenario")?,
+                local_name: read_canonical_string(input, &mut cursor, "stable node local name")?,
+            },
+            0x02 => Self::Edge {
+                scenario: read_canonical_string(input, &mut cursor, "stable edge scenario")?,
+                edge_type: read_canonical_string(input, &mut cursor, "stable edge type")?,
+                source_local_name: read_canonical_string(input, &mut cursor, "stable edge source")?,
+                target_local_name: read_canonical_string(input, &mut cursor, "stable edge target")?,
+            },
+            0x03 => Self::Hyperedge {
+                scenario: read_canonical_string(input, &mut cursor, "stable hyperedge scenario")?,
+                local_name: read_canonical_string(
+                    input,
+                    &mut cursor,
+                    "stable hyperedge local name",
+                )?,
+            },
+            _ => {
+                return Err(StableIdentityError::CanonicalBytes {
+                    field: "stable element tag",
+                });
+            }
+        };
+        key.validate()?;
+        if cursor != input.len() || key.canonical_bytes()?.as_slice() != input {
+            return Err(StableIdentityError::CanonicalBytes {
+                field: "stable element trailing bytes",
+            });
+        }
+        Ok(key)
+    }
+
     /// Copy this stable key using checked, fallible string allocation.
     ///
     /// # Errors
@@ -316,6 +374,11 @@ pub struct StableElementResolverV1 {
 /// Checked stable identity, resolver, topology, or bounded-codec failure.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StableIdentityError {
+    /// Canonical stable-element bytes were truncated, malformed, or noncanonical.
+    CanonicalBytes {
+        /// Stable decoding field.
+        field: &'static str,
+    },
     /// A governed string failed its byte grammar or length bound.
     InvalidString {
         /// Stable semantic field name.
@@ -465,6 +528,34 @@ pub enum StableIdentityError {
         /// Requested capacity or row count.
         requested: usize,
     },
+}
+
+fn read_canonical_string(
+    input: &[u8],
+    cursor: &mut usize,
+    field: &'static str,
+) -> Result<String, StableIdentityError> {
+    let length_end = cursor
+        .checked_add(size_of::<u32>())
+        .ok_or(StableIdentityError::CanonicalBytes { field })?;
+    let length_bytes: [u8; 4] = input
+        .get(*cursor..length_end)
+        .ok_or(StableIdentityError::CanonicalBytes { field })?
+        .try_into()
+        .map_err(|_| StableIdentityError::CanonicalBytes { field })?;
+    let length = usize::try_from(u32::from_be_bytes(length_bytes))
+        .map_err(|_| StableIdentityError::CanonicalBytes { field })?;
+    let value_end = length_end
+        .checked_add(length)
+        .ok_or(StableIdentityError::CanonicalBytes { field })?;
+    let value = std::str::from_utf8(
+        input
+            .get(length_end..value_end)
+            .ok_or(StableIdentityError::CanonicalBytes { field })?,
+    )
+    .map_err(|_| StableIdentityError::CanonicalBytes { field })?;
+    *cursor = value_end;
+    copy_string(field, value)
 }
 
 impl StableElementResolverV1 {
@@ -684,7 +775,39 @@ impl StableElementResolverV1 {
         self.validate_sealed_element(key)
     }
 
-    pub(crate) fn scenario_scope(&self) -> &str {
+    /// Resolve an authored node name inside this sealed scenario.
+    ///
+    /// # Errors
+    /// Returns [`StableIdentityError::ElementNotSealed`] when the name does
+    /// not belong to the exact sealed topology.
+    pub fn node_handle_by_local_name(
+        &self,
+        local_name: &str,
+    ) -> Result<NodeId, StableIdentityError> {
+        self.node_by_name
+            .get(local_name)
+            .copied()
+            .ok_or(StableIdentityError::ElementNotSealed)
+    }
+
+    /// Resolve an authored hyperedge name inside this sealed scenario.
+    ///
+    /// # Errors
+    /// Returns [`StableIdentityError::ElementNotSealed`] when the name does
+    /// not belong to the exact sealed topology.
+    pub fn hyperedge_handle_by_local_name(
+        &self,
+        local_name: &str,
+    ) -> Result<HyperedgeId, StableIdentityError> {
+        self.hyperedge_by_name
+            .get(local_name)
+            .copied()
+            .ok_or(StableIdentityError::ElementNotSealed)
+    }
+
+    /// Borrow the sealed scenario scope used by stable checkpoint rows.
+    #[must_use]
+    pub fn scenario_scope(&self) -> &str {
         &self.scenario_scope
     }
 

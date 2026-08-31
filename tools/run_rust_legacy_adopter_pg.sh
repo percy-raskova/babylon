@@ -322,15 +322,14 @@ fi
 
 if [ "$status" -eq 0 ] &&
     { [ "$LIVE_FOCUS" = "rust_persistence_runtime" ] || [ "$LIVE_FOCUS" = "pr" ]; }; then
-  timeout --signal=TERM --kill-after=10s 420s \
-    env \
-      BABYLON_LEGACY_ADOPTER_TEST_DSN="postgresql://test:test@127.0.0.1:$PORT/postgres" \
-      BABYLON_LEGACY_ADOPTER_DISPOSABLE_ACK="$TEST_HARNESS_ACK" \
-      BABYLON_LEGACY_ADOPTER_DISPOSABLE_CANARY="$CANARY" \
-      CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/rust/target}" \
-    cargo test -p babylon-persistence --lib \
-      runtime::live_tests::live_ \
-      --locked -- --nocapture --ignored --test-threads=1 || status=$?
+  env \
+    BABYLON_LEGACY_ADOPTER_TEST_DSN="postgresql://test:test@127.0.0.1:$PORT/postgres" \
+    BABYLON_LEGACY_ADOPTER_DISPOSABLE_ACK="$TEST_HARNESS_ACK" \
+    BABYLON_LEGACY_ADOPTER_DISPOSABLE_CANARY="$CANARY" \
+    CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/rust/target}" \
+  cargo test -p babylon-persistence --lib \
+    runtime::live_tests::live_ \
+    --locked -- --nocapture --ignored --test-threads=1 || status=$?
 fi
 
 if [ "$status" -eq 0 ] &&

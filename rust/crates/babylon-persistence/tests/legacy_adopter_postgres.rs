@@ -71,12 +71,6 @@ pg_catalog.sha256(pg_catalog.convert_to(objects.payload::pg_catalog.text, 'UTF8'
 'hex'\n        ) AS digest_hex";
 const OUTPUT_TAIL: &str = "FROM catalog_output AS output\n\
 ORDER BY output.kind, output.schema_name, output.object_name\nLIMIT $1";
-const FILTERED_OUTPUT_TAIL: &str = "FROM catalog_output AS output\n\
-JOIN ROWS FROM (\n    pg_catalog.unnest($7::pg_catalog.text[]),\n    \
-pg_catalog.unnest($8::pg_catalog.text[]),\n    \
-pg_catalog.unnest($9::pg_catalog.text[])\n) AS wanted(kind, schema_name, object_name)\n  ON wanted.kind = \
-output.kind\n AND wanted.schema_name = output.schema_name\n AND wanted.object_name = \
-output.object_name\nORDER BY output.kind, output.schema_name, output.object_name\nLIMIT $1";
 
 struct LivePhaseReceipts {
     suite_start: Instant,
@@ -1245,6 +1239,13 @@ fn census_payloads_for_drift(
     config: &Config,
     keys: &[CurrentCensusKey],
 ) -> BTreeMap<CurrentCensusKey, String> {
+    const FILTERED_OUTPUT_TAIL: &str = "FROM catalog_output AS output\n\
+JOIN ROWS FROM (\n    pg_catalog.unnest($7::pg_catalog.text[]),\n    \
+pg_catalog.unnest($8::pg_catalog.text[]),\n    \
+pg_catalog.unnest($9::pg_catalog.text[])\n) AS wanted(kind, schema_name, object_name)\n  ON wanted.kind = \
+output.kind\n AND wanted.schema_name = output.schema_name\n AND wanted.object_name = \
+output.object_name\nORDER BY output.kind, output.schema_name, output.object_name\nLIMIT $1";
+
     if keys.is_empty() {
         return BTreeMap::new();
     }

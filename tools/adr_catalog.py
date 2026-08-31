@@ -16,6 +16,7 @@ import json
 import os
 import re
 import sqlite3
+import stat
 import sys
 import tempfile
 from collections import deque
@@ -59,7 +60,15 @@ _ADR_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9_])ADR[-_ ]?[A-Za-z0-9_]+", re.IGNORE
 _DECLARED_ID_RE = re.compile(r"ADR[-_ ]?(?P<number>\d{1,3})(?!\d)", re.IGNORECASE)
 _WRAPPED_ID_RE = re.compile(r"ADR[-_ ]?(?P<number>\d{1,3})(?!\d)(?:_[A-Za-z0-9_]+)?", re.IGNORECASE)
 _QUERY_ID_RE = re.compile(r"(?:ADR[-_ ]?)?(?P<number>\d{1,3})", re.IGNORECASE)
-_SUPERSESSION_KEYS: Final = frozenset({"supersedes", "superseded_by"})
+_SUPERSESSION_KEYS: Final = frozenset(
+    {
+        "partially_supersedes",
+        "superseded_by",
+        "supersedes",
+        "supersedes_scope_of",
+    }
+)
+_OPTIONAL_TARGET_SUPERSESSION_KEYS: Final = frozenset({"partially_supersedes"})
 
 
 class AdrCatalogError(Exception):
@@ -84,6 +93,45 @@ class CacheIntegrityError(AdrCatalogError):
 
 class QueryError(AdrCatalogError):
     """A query violates the bounded output contract."""
+
+
+class _UniqueKeySafeLoader(yaml.SafeLoader):
+    """Safe YAML loader that rejects ambiguous duplicate mapping keys."""
+
+
+def _construct_unique_mapping(
+    loader: yaml.SafeLoader,
+    node: yaml.MappingNode,
+    deep: bool = False,
+) -> dict[object, object]:
+    loader.flatten_mapping(node)
+    mapping: dict[object, object] = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        try:
+            duplicate = key in mapping
+        except TypeError as error:
+            raise yaml.constructor.ConstructorError(
+                "while constructing a mapping",
+                node.start_mark,
+                "found an unhashable mapping key",
+                key_node.start_mark,
+            ) from error
+        if duplicate:
+            raise yaml.constructor.ConstructorError(
+                "while constructing a mapping",
+                node.start_mark,
+                f"found duplicate key {key!r}",
+                key_node.start_mark,
+            )
+        mapping[key] = loader.construct_object(value_node, deep=deep)
+    return mapping
+
+
+_UniqueKeySafeLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+    _construct_unique_mapping,
+)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -147,18 +195,34 @@ class BuildSummary:
 
 
 def _bounded_bytes(path: Path) -> bytes:
-    size = path.stat().st_size
-    if size > MAX_FILE_BYTES:
-        raise SourceParseError(f"{path}: {size} bytes exceeds {MAX_FILE_BYTES}")
-    return path.read_bytes()
+    if path.is_symlink():
+        raise SourceParseError(f"{path}: must be a non-symlink regular file")
+    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as error:
+        raise SourceParseError(f"{path}: must be a non-symlink regular file") from error
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise SourceParseError(f"{path}: must be a non-symlink regular file")
+        with os.fdopen(descriptor, "rb", closefd=False) as stream:
+            content = stream.read(MAX_FILE_BYTES + 1)
+    finally:
+        os.close(descriptor)
+    if len(content) > MAX_FILE_BYTES:
+        raise SourceParseError(f"{path}: source exceeds {MAX_FILE_BYTES} bytes")
+    return content
 
 
 def capture_snapshot(repo_root: Path) -> SourceSnapshot:
     """Read each authoritative byte sequence once for one build attempt."""
     root = repo_root.resolve()
     directory = root / "ai/decisions"
-    if not directory.is_dir():
-        raise SourceParseError(f"missing ADR directory: {directory}")
+    if not directory.is_dir() or directory.resolve() != directory:
+        raise SourceParseError(
+            f"ADR directory must be a non-symlink directory inside the repository: {directory}"
+        )
     entries = list(itertools.islice(directory.iterdir(), MAX_DIRECTORY_ENTRIES + 1))
     if len(entries) > MAX_DIRECTORY_ENTRIES:
         raise SourceParseError(f"{directory}: too many directory entries")
@@ -211,10 +275,13 @@ def capture_snapshot(repo_root: Path) -> SourceSnapshot:
 
 
 def _load_yaml(content: bytes, source_path: str) -> Any:
+    loader = _UniqueKeySafeLoader(content)
     try:
-        return yaml.safe_load(content)
+        return loader.get_single_data()
     except yaml.YAMLError as error:
         raise SourceParseError(f"{source_path}: invalid YAML: {error}") from error
+    finally:
+        loader.dispose()
 
 
 def _scalar(value: object, field: str, source_path: str) -> str | None:
@@ -383,6 +450,8 @@ def _supersession(record: Mapping[object, object], source: SourceFile) -> tuple[
                                 MAX_SUPERSESSION_PER_ADR + 1,
                             )
                         )
+                        if not tokens and key in _OPTIONAL_TARGET_SUPERSESSION_KEYS:
+                            continue
                         if not tokens:
                             raise SourceParseError(
                                 f"{source.relative_path}: {key} has no valid supersession target"
@@ -637,6 +706,18 @@ def build_cache(
     )
     diagnostics = _diagnostics(records, indexes)
     target = cache_path if cache_path.is_absolute() else captured.repo_root / cache_path
+    authority_root = (captured.repo_root / "ai/decisions").resolve()
+    lexical_target = Path(os.path.abspath(target))
+    resolved_target = target.resolve(strict=False)
+    if (
+        lexical_target == authority_root
+        or lexical_target.is_relative_to(authority_root)
+        or resolved_target == authority_root
+        or resolved_target.is_relative_to(authority_root)
+    ):
+        raise CacheIntegrityError(
+            f"cache target must be outside authoritative ADR sources: {target}"
+        )
     target.parent.mkdir(parents=True, exist_ok=True)
     handle = tempfile.NamedTemporaryFile(
         prefix=f".{target.name}.", suffix=".tmp", dir=target.parent, delete=False

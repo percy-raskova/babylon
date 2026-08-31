@@ -15,6 +15,7 @@ sys.path.insert(0, str(TOOLS_DIR))
 import adr_catalog  # type: ignore[import-not-found]  # noqa: E402
 from adr_catalog import (  # type: ignore[import-not-found]  # noqa: E402
     MAX_TITLE_JSON_BYTES,
+    CacheIntegrityError,
     DuplicateAdrError,
     SourceChangedError,
     SourceParseError,
@@ -213,6 +214,47 @@ def test_nested_and_partial_supersession_is_queryable(tmp_path: Path) -> None:
             "scope": "ADR002 only for the graph deferral",
         }
     ]
+
+
+def test_live_partial_supersession_keys_preserve_explicit_adr_edges(tmp_path: Path) -> None:
+    repo = _fixture_repo(tmp_path)
+    _write(
+        repo,
+        "ai/decisions/ADR003_alternate.yaml",
+        """ADR003:
+  status: proposed
+  title: Alternate wrapper
+  partially_supersedes:
+    - ADR002 only for the graph deferral
+    - the unnamed legacy encoder claim
+""",
+    )
+    _write(
+        repo,
+        "ai/decisions/ADR004_comments.yaml",
+        """status: accepted
+title: Scope handoff
+supersedes_scope_of: ADR001 only for the deferred implementation choice
+""",
+    )
+    cache = tmp_path / "adr.sqlite3"
+
+    build_cache(repo, cache)
+
+    assert show(cache, "ADR002")["supersession"] == [
+        {
+            "source_id": "ADR003",
+            "kind": "partially_supersedes",
+            "target_id": "ADR002",
+            "scope": "ADR002 only for the graph deferral",
+        }
+    ]
+    assert {
+        "source_id": "ADR004",
+        "kind": "supersedes_scope_of",
+        "target_id": "ADR001",
+        "scope": "ADR001 only for the deferred implementation choice",
+    } in show(cache, "ADR001")["supersession"]
 
 
 @pytest.mark.parametrize("target", ["ADR1000", "ADR002oops"])
@@ -432,6 +474,93 @@ def test_failed_rebuild_preserves_the_completed_cache(tmp_path: Path) -> None:
         build_cache(repo, cache)
 
     assert show(cache, "ADR002")["source_digest"] == original.source_digest
+
+
+@pytest.mark.parametrize(
+    "relative",
+    [
+        "ai/decisions/index.yaml",
+        "ai/decisions/ADR001_wrapper.yaml",
+    ],
+)
+def test_cache_target_cannot_replace_authoritative_adr_sources(
+    tmp_path: Path,
+    relative: str,
+) -> None:
+    repo = _fixture_repo(tmp_path)
+    target = repo / relative
+    original = target.read_bytes()
+
+    with pytest.raises(CacheIntegrityError, match="outside authoritative ADR sources"):
+        build_cache(repo, target)
+
+    assert target.read_bytes() == original
+
+
+def test_source_capture_rejects_symlinks_outside_the_adr_estate(tmp_path: Path) -> None:
+    repo = _fixture_repo(tmp_path)
+    outside = tmp_path / "outside.yaml"
+    _write(tmp_path, "outside.yaml", "id: ADR005\nstatus: accepted\ntitle: Outside\n")
+    (repo / "ai/decisions/ADR005_outside.yaml").symlink_to(outside)
+
+    with pytest.raises(SourceParseError, match="non-symlink regular file"):
+        capture_snapshot(repo)
+
+
+def test_source_capture_rejects_a_symlinked_authority_directory(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    outside = tmp_path / "outside-decisions"
+    _write(outside, "ADR001_outside.yaml", "id: ADR001\nstatus: accepted\n")
+    _write(outside, "index.yaml", "decisions: {}\n")
+    (repo / "ai").mkdir(parents=True)
+    (repo / "ai/decisions").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(SourceParseError, match="non-symlink directory"):
+        capture_snapshot(repo)
+
+
+def test_cache_symlink_inside_authority_cannot_bypass_lexical_boundary(
+    tmp_path: Path,
+) -> None:
+    repo = _fixture_repo(tmp_path)
+    outside = tmp_path / "outside-cache.sqlite3"
+    target = repo / "ai/decisions/cache.sqlite3"
+    target.symlink_to(outside)
+
+    with pytest.raises(CacheIntegrityError, match="outside authoritative ADR sources"):
+        build_cache(repo, target)
+
+    assert target.is_symlink()
+    assert not outside.exists()
+
+
+@pytest.mark.parametrize(
+    ("relative", "content"),
+    [
+        (
+            "ai/decisions/ADR002_flat.yaml",
+            "id: ADR002\nstatus: accepted\nstatus: proposed\ntitle: Duplicate status\n",
+        ),
+        (
+            "ai/decisions/index.yaml",
+            "decisions:\n"
+            "  ADR001_wrapper:\n"
+            "    status: accepted\n"
+            "  ADR001_wrapper:\n"
+            "    status: proposed\n",
+        ),
+    ],
+)
+def test_duplicate_yaml_keys_fail_instead_of_using_last_value(
+    tmp_path: Path,
+    relative: str,
+    content: str,
+) -> None:
+    repo = _fixture_repo(tmp_path)
+    _write(repo, relative, content)
+
+    with pytest.raises(SourceParseError, match="duplicate key"):
+        build_cache(repo, tmp_path / "adr.sqlite3")
 
 
 def test_cli_rebuild_discards_a_tampered_local_catalog(

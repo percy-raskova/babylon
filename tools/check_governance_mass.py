@@ -31,8 +31,15 @@ _NEGATED_INDEX_ACTION = re.compile(
     r"(?:\s+(?:or|and)\s+(?:read|consult|load|open|review)\b)*)",
     re.IGNORECASE,
 )
+_SHARED_OBJECT_NEGATION_GAP = re.compile(
+    r"^[\s,]*(?:(?:but|and|or)\s+)?"
+    r"(?:do\s+not|don't|never)\s+(?:need\s+to\s+)?$",
+    re.IGNORECASE,
+)
 _ROUTING_CLAUSE_BOUNDARY = re.compile(r"(?<=[.!?;])\s+")
-_LIVE_ROUTING_FILES: Final = (
+_REQUIRED_ROUTING_FILES: Final = (
+    "CLAUDE.md",
+    "AGENTS.md",
     "docs/agents/governance.md",
     "ai/README.md",
 )
@@ -120,8 +127,9 @@ def _skill_report(skill_files: list[Path]) -> tuple[dict[str, int], list[str]]:
     )
 
 
-def _normalized_index_windows(text: str) -> tuple[str, ...]:
-    lines = tuple(itertools.islice(text.splitlines(), MAX_ROUTING_LINES))
+def _normalized_index_windows(text: str) -> tuple[tuple[str, ...], bool]:
+    bounded_lines = tuple(itertools.islice(text.splitlines(), MAX_ROUTING_LINES + 1))
+    lines = bounded_lines[:MAX_ROUTING_LINES]
     windows: list[str] = []
     for index, line in enumerate(lines[:MAX_ROUTING_LINES]):
         if _INDEX_REFERENCE_PATTERN.search(line) is None:
@@ -130,7 +138,7 @@ def _normalized_index_windows(text: str) -> tuple[str, ...]:
         stop = min(len(lines), index + ROUTING_WINDOW_RADIUS_LINES + 1)
         normalized = " ".join(" ".join(part.split()) for part in lines[start:stop])
         windows.append(normalized)
-    return tuple(windows)
+    return tuple(windows), len(bounded_lines) > MAX_ROUTING_LINES
 
 
 def _negated_action_spans(clause: str) -> tuple[tuple[int, int], ...] | None:
@@ -188,6 +196,12 @@ def _clause_has_unnegated_index_action(clause: str) -> bool:
         nearest = min(actions, key=lambda action: _reference_gap(action, reference))
         if nearest.span() not in negated_spans:
             return True
+        for action in actions:
+            if action.start() >= nearest.start() or action.span() in negated_spans:
+                continue
+            gap = clause[action.end() : nearest.start()]
+            if _SHARED_OBJECT_NEGATION_GAP.fullmatch(gap) is not None:
+                return True
     return False
 
 
@@ -207,14 +221,24 @@ def _has_unnegated_index_action(window: str) -> bool:
     )
 
 
-def _routing_violations(repo_root: Path) -> list[str]:
+def _routing_violations(repo_root: Path, skill_files: list[Path]) -> list[str]:
     violations: list[str] = []
-    for relative in _LIVE_ROUTING_FILES:
-        path = repo_root / relative
+    routing_files = [(relative, repo_root / relative) for relative in _REQUIRED_ROUTING_FILES]
+    routing_files.extend(
+        (path.relative_to(repo_root).as_posix(), path) for path in skill_files[:MAX_FILES]
+    )
+    seen_targets: set[Path] = set()
+    for relative, path in routing_files:
         if not path.is_file():
             violations.append(f"routing-file-missing: {relative}")
             continue
-        windows = _normalized_index_windows(path.read_text(encoding="utf-8"))
+        resolved = path.resolve()
+        if resolved in seen_targets:
+            continue
+        seen_targets.add(resolved)
+        windows, lines_exceeded = _normalized_index_windows(path.read_text(encoding="utf-8"))
+        if lines_exceeded:
+            violations.append(f"routing-lines: {relative} exceeds {MAX_ROUTING_LINES} lines")
         directs_full_read = any(
             _has_unnegated_index_action(window) for window in windows[:MAX_ROUTING_LINES]
         )
@@ -234,7 +258,7 @@ def measure_governance(repo_root: Path, *, check: bool = False) -> dict[str, obj
     adr_mass = _mass(adr_files, root)
     plan_mass = _mass(plan_files, root)
     skill_report, violations = _skill_report(skill_files)
-    violations.extend(_routing_violations(root))
+    violations.extend(_routing_violations(root, skill_files))
     index_path = root / "ai/decisions/index.yaml"
     index_bytes = index_path.stat().st_size if index_path.is_file() else 0
     adr_bytes_value = adr_mass["bytes"]
@@ -254,6 +278,7 @@ def measure_governance(repo_root: Path, *, check: bool = False) -> dict[str, obj
             "max_repo_skills": MAX_REPO_SKILLS,
             "max_skill_body_bytes": MAX_SKILL_BODY_BYTES,
             "max_skill_discovery_chars": MAX_SKILL_DISCOVERY_CHARS,
+            "max_routing_lines": MAX_ROUTING_LINES,
         },
         "violations": violations,
     }

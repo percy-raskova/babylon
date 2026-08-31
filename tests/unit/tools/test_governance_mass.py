@@ -11,6 +11,7 @@ TOOLS_DIR = Path(__file__).resolve().parents[3] / "tools"
 sys.path.insert(0, str(TOOLS_DIR))
 
 from check_governance_mass import (  # type: ignore[import-not-found]  # noqa: E402
+    MAX_ROUTING_LINES,
     MAX_SKILL_BODY_BYTES,
     GovernanceBudgetError,
     measure_governance,
@@ -30,6 +31,8 @@ def _fixture_repo(tmp_path: Path) -> Path:
     _write(repo, "ai/decisions/ADR001_one.yaml", "status: accepted\n")
     _write(repo, "ai/decisions/index.yaml", "decisions: {}\n")
     _write(repo, "docs/superpowers/plans/old.md", "historical\n")
+    _write(repo, "CLAUDE.md", "Use the bounded repository instructions.\n")
+    _write(repo, "AGENTS.md", "Use the bounded repository instructions.\n")
     _write(
         repo,
         ".agents/skills/one/SKILL.md",
@@ -101,6 +104,65 @@ def test_live_instruction_to_read_full_index_fails(tmp_path: Path, directive: st
 
     assert str(error.value) == (
         "full-index-routing: docs/agents/governance.md directs agents to load the full index"
+    )
+
+
+@pytest.mark.parametrize(
+    ("relative", "content"),
+    [
+        ("CLAUDE.md", "Read ai/decisions/index.yaml before architecture work.\n"),
+        ("AGENTS.md", "Read ai/decisions/index.yaml before architecture work.\n"),
+        (
+            ".agents/skills/one/SKILL.md",
+            "---\nname: one\ndescription: bounded\n---\n"
+            "Read ai/decisions/index.yaml before architecture work.\n",
+        ),
+    ],
+)
+def test_every_recurring_instruction_surface_enforces_query_first_routing(
+    tmp_path: Path,
+    relative: str,
+    content: str,
+) -> None:
+    repo = _fixture_repo(tmp_path)
+    _write(repo, relative, content)
+
+    with pytest.raises(GovernanceBudgetError) as error:
+        measure_governance(repo, check=True)
+
+    assert str(error.value) == (
+        f"full-index-routing: {relative} directs agents to load the full index"
+    )
+
+
+def test_coordinated_affirmative_action_is_not_hidden_by_nearer_negation(
+    tmp_path: Path,
+) -> None:
+    repo = _fixture_repo(tmp_path)
+    _write(
+        repo,
+        "docs/agents/governance.md",
+        "Read, but do not review, ai/decisions/index.yaml for lookup.\n",
+    )
+
+    with pytest.raises(GovernanceBudgetError, match="full-index-routing"):
+        measure_governance(repo, check=True)
+
+
+def test_routing_file_over_the_scan_bound_fails_closed(tmp_path: Path) -> None:
+    repo = _fixture_repo(tmp_path)
+    _write(
+        repo,
+        "docs/agents/governance.md",
+        "\n".join(["bounded routing"] * MAX_ROUTING_LINES)
+        + "\nRead ai/decisions/index.yaml before architecture work.\n",
+    )
+
+    with pytest.raises(GovernanceBudgetError) as error:
+        measure_governance(repo, check=True)
+
+    assert str(error.value).startswith(
+        f"routing-lines: docs/agents/governance.md exceeds {MAX_ROUTING_LINES} lines"
     )
 
 

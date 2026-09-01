@@ -255,13 +255,26 @@ def test_rust_cache_is_source_keyed_bounded_and_published_only_by_dev() -> None:
 
     assert restore["id"] == "cargo-cache"
     assert restore["uses"].startswith("actions/cache/restore@")
-    assert "hashFiles('rust/**/*.rs', 'rust/**/Cargo.toml', '.mise.toml')" in restore["with"]["key"]
+    assert (
+        "hashFiles('rust/**/*.rs', 'rust/**/Cargo.toml', '.mise.toml', "
+        "'.github/workflows/ci.yml')" in restore["with"]["key"]
+    )
     assert restore["with"]["restore-keys"].splitlines() == [
-        "cargo-gate-${{ runner.os }}-v3-${{ "
+        "cargo-gate-${{ runner.os }}-v4-${{ "
         "hashFiles('rust/Cargo.lock', 'rust/rust-toolchain.toml') }}-"
     ]
+    cache_paths = restore["with"]["path"].splitlines()
+    assert cache_paths == save["with"]["path"].splitlines()
+    assert "rust/target" not in cache_paths
+    assert "rust/target/debug/incremental" not in cache_paths
+    assert "rust/target/debug/deps/*.rlib" in cache_paths
+    assert "rust/target/debug/deps/*.rmeta" in cache_paths
+    assert "rust/target/debug/deps/*.so" in cache_paths
+    assert "rust/target/doc" in cache_paths
     assert measure["id"] == "cargo-cache-size"
-    assert "max_bytes=$((4 * 1024 * 1024 * 1024))" in measure["run"]
+    assert "max_bytes=$((8 * 1024 * 1024 * 1024))" in measure["run"]
+    assert "rust/target/debug/deps" in measure["run"]
+    assert 'find "${find_roots[@]}" -maxdepth 1 -type f' in measure["run"]
     assert "cargo-cache exact_restore=" in measure["run"]
     assert "cargo-cache matched_key=" in measure["run"]
     assert "cargo-cache payload_bytes=" in measure["run"]

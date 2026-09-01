@@ -586,23 +586,165 @@ impl std::fmt::Display for RustPersistenceRuntimeErrorV1 {
 
 impl std::error::Error for RustPersistenceRuntimeErrorV1 {}
 
-/// Exact durable receipt returned only after marker-last acknowledgement.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Bounded durable observation returned only after marker-last acknowledgement.
+///
+/// This intentionally excludes write identities, values, database coordinates,
+/// and other detailed persistence evidence.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommittedTickReceiptV1 {
     resolve_tick: CommittedResolveTickV1,
+    commit_disposition: ReplayCommitDispositionV1,
+    graph_before: [u8; 32],
+    graph_after: [u8; 32],
+    world_before: [u8; 32],
+    world_after: [u8; 32],
+    considered: usize,
+    fired: usize,
+    per_rule_considered: Vec<(String, usize)>,
+    per_rule_fired: Vec<(String, usize)>,
+    event_count: usize,
+    event_digest: [u8; 32],
+    audit_receipt_count: usize,
+    material_row_count: usize,
+    material_row_digest: [u8; 32],
     tick_content_hash: TickContentHashV1,
 }
 
 impl CommittedTickReceiptV1 {
+    fn from_acknowledged(
+        resolve_tick: CommittedResolveTickV1,
+        commit_disposition: ReplayCommitDispositionV1,
+        acknowledged: IdentifiedTickReportV1,
+    ) -> Self {
+        let event_count = acknowledged.successful_event_batch().events().len();
+        let event_digest = acknowledged.successful_event_batch().source_digest();
+        let material_row_count = acknowledged.material_state_rows().source_count();
+        let material_row_digest = acknowledged.material_state_rows().source_digest();
+        let tick_content_hash = acknowledged.tick_content_hash();
+        let babylon_tick::TickReport {
+            before: graph_before,
+            after: graph_after,
+            world_before,
+            world_after,
+            considered,
+            fired,
+            per_rule_considered,
+            per_rule_fired,
+            audit_receipts,
+        } = acknowledged.into_report();
+        Self {
+            resolve_tick,
+            commit_disposition,
+            graph_before,
+            graph_after,
+            world_before,
+            world_after,
+            considered,
+            fired,
+            per_rule_considered,
+            per_rule_fired,
+            event_count,
+            event_digest,
+            audit_receipt_count: audit_receipts.len(),
+            material_row_count,
+            material_row_digest,
+            tick_content_hash,
+        }
+    }
+
     /// Return the one-based durable tick.
     #[must_use]
-    pub const fn resolve_tick(self) -> CommittedResolveTickV1 {
+    pub const fn resolve_tick(&self) -> CommittedResolveTickV1 {
         self.resolve_tick
+    }
+
+    /// Return how `PostgreSQL` acknowledgement was established.
+    #[must_use]
+    pub const fn commit_disposition(&self) -> ReplayCommitDispositionV1 {
+        self.commit_disposition
+    }
+
+    /// Return the graph-state hash before adjudication.
+    #[must_use]
+    pub const fn graph_before(&self) -> [u8; 32] {
+        self.graph_before
+    }
+
+    /// Return the graph-state hash after adjudication.
+    #[must_use]
+    pub const fn graph_after(&self) -> [u8; 32] {
+        self.graph_after
+    }
+
+    /// Return the nominal-world hash before adjudication.
+    #[must_use]
+    pub const fn world_before(&self) -> [u8; 32] {
+        self.world_before
+    }
+
+    /// Return the nominal-world hash after adjudication.
+    #[must_use]
+    pub const fn world_after(&self) -> [u8; 32] {
+        self.world_after
+    }
+
+    /// Return the total number of guard evaluations.
+    #[must_use]
+    pub const fn considered(&self) -> usize {
+        self.considered
+    }
+
+    /// Return the total number of subjects that fired.
+    #[must_use]
+    pub const fn fired(&self) -> usize {
+        self.fired
+    }
+
+    /// Borrow per-rule guard counts in governed causal order.
+    #[must_use]
+    pub fn per_rule_considered(&self) -> &[(String, usize)] {
+        &self.per_rule_considered
+    }
+
+    /// Borrow per-rule firing counts in governed causal order.
+    #[must_use]
+    pub fn per_rule_fired(&self) -> &[(String, usize)] {
+        &self.per_rule_fired
+    }
+
+    /// Return the number of retained successful events.
+    #[must_use]
+    pub const fn event_count(&self) -> usize {
+        self.event_count
+    }
+
+    /// Return the digest of the exact tick event section.
+    #[must_use]
+    pub const fn event_digest(&self) -> [u8; 32] {
+        self.event_digest
+    }
+
+    /// Return the number of identity-free causal audit receipts.
+    #[must_use]
+    pub const fn audit_receipt_count(&self) -> usize {
+        self.audit_receipt_count
+    }
+
+    /// Return the number of canonical material rows.
+    #[must_use]
+    pub const fn material_row_count(&self) -> usize {
+        self.material_row_count
+    }
+
+    /// Return the digest of the canonical material-row aggregate.
+    #[must_use]
+    pub const fn material_row_digest(&self) -> [u8; 32] {
+        self.material_row_digest
     }
 
     /// Return the constitutional content identity acknowledged by `PostgreSQL`.
     #[must_use]
-    pub const fn tick_content_hash(self) -> TickContentHashV1 {
+    pub const fn tick_content_hash(&self) -> TickContentHashV1 {
         self.tick_content_hash
     }
 }
@@ -740,14 +882,16 @@ impl DurableReplayRuntimeV1<HypergraphStore> {
         )?;
         let acknowledgement =
             ReplayCommitAcknowledgementV1::new(disposition, resolve_tick.get(), tick_content_hash);
-        self.session
+        let acknowledged = self
+            .session
             .acknowledge_prepared(sink, candidate, acknowledgement)
             .map_err(|_| RustPersistenceRuntimeErrorV1::ReplayTick)?;
         self.last_committed_tick = Some(resolve_tick);
-        Ok(CommittedTickReceiptV1 {
+        Ok(CommittedTickReceiptV1::from_acknowledged(
             resolve_tick,
-            tick_content_hash,
-        })
+            disposition,
+            acknowledged,
+        ))
     }
 
     /// Borrow the exact durable campaign foundation.
@@ -2348,6 +2492,60 @@ mod live_tests {
         let mut runtime = DurableReplayRuntimeV1::create(&config, campaign_id, session, bundle)
             .expect("runtime constructs after activation");
         let metadata = crate::metadata::RetainedMetadataStoreV1::new(&config);
+        seed_and_verify_navigation_metadata(&metadata, campaign_id);
+        let actions = OrderedPracticeActionBatchV1::empty(
+            runtime.foundation().replay_session_identity().clone(),
+            1,
+        )
+        .expect("first action batch");
+        let mut sink = CollectingSink::default();
+
+        LIVE_FAIL_BEFORE_MARKER.store(true, Ordering::SeqCst);
+        assert_eq!(
+            runtime.advance_and_commit(&mut sink, &actions),
+            Err(RustPersistenceRuntimeErrorV1::Database {
+                operation: "injected pre-marker refusal",
+            })
+        );
+        assert!(sink.events.is_empty());
+        assert_eq!(runtime.last_committed_tick(), None);
+        assert_eq!(committed_payload_row_count(&config, campaign_id), 0);
+
+        let receipt = runtime
+            .advance_and_commit(&mut sink, &actions)
+            .expect("identical retry commits");
+        assert_eq!(receipt.resolve_tick().get(), 1);
+        assert_eq!(
+            receipt.commit_disposition(),
+            ReplayCommitDispositionV1::Committed
+        );
+        assert_eq!(receipt.considered(), 1);
+        assert_eq!(receipt.fired(), 1);
+        assert_eq!(receipt.event_count(), 1);
+        assert_eq!(receipt.audit_receipt_count(), 2);
+        assert!(receipt.material_row_count() > 0);
+        assert_eq!(runtime.last_committed_tick(), Some(receipt.resolve_tick()));
+        assert_eq!(sink.events.len(), 1);
+        assert_eq!(marker_row_count(&config, campaign_id), 1);
+        assert_eq!(
+            metadata
+                .campaign(campaign_id)
+                .expect("advanced catalog reads")
+                .expect("campaign remains retained")
+                .last_tick(),
+            1
+        );
+
+        let reopened = DurableReplayRuntimeV1::open(&config, campaign_id)
+            .expect("marker-owned checkpoint restarts");
+        assert_eq!(reopened.last_committed_tick(), Some(receipt.resolve_tick()));
+        database.cleanup();
+    }
+
+    fn seed_and_verify_navigation_metadata(
+        metadata: &crate::metadata::RetainedMetadataStoreV1,
+        campaign_id: CampaignId,
+    ) {
         let initial_catalog = metadata
             .campaign(campaign_id)
             .expect("catalog reads")
@@ -2398,44 +2596,6 @@ mod live_tests {
                 .collect::<Vec<_>>(),
             ["world/michigan", "territory/wayne"]
         );
-        let actions = OrderedPracticeActionBatchV1::empty(
-            runtime.foundation().replay_session_identity().clone(),
-            1,
-        )
-        .expect("first action batch");
-        let mut sink = CollectingSink::default();
-
-        LIVE_FAIL_BEFORE_MARKER.store(true, Ordering::SeqCst);
-        assert_eq!(
-            runtime.advance_and_commit(&mut sink, &actions),
-            Err(RustPersistenceRuntimeErrorV1::Database {
-                operation: "injected pre-marker refusal",
-            })
-        );
-        assert!(sink.events.is_empty());
-        assert_eq!(runtime.last_committed_tick(), None);
-        assert_eq!(committed_payload_row_count(&config, campaign_id), 0);
-
-        let receipt = runtime
-            .advance_and_commit(&mut sink, &actions)
-            .expect("identical retry commits");
-        assert_eq!(receipt.resolve_tick().get(), 1);
-        assert_eq!(runtime.last_committed_tick(), Some(receipt.resolve_tick()));
-        assert_eq!(sink.events.len(), 1);
-        assert_eq!(marker_row_count(&config, campaign_id), 1);
-        assert_eq!(
-            metadata
-                .campaign(campaign_id)
-                .expect("advanced catalog reads")
-                .expect("campaign remains retained")
-                .last_tick(),
-            1
-        );
-
-        let reopened = DurableReplayRuntimeV1::open(&config, campaign_id)
-            .expect("marker-owned checkpoint restarts");
-        assert_eq!(reopened.last_committed_tick(), Some(receipt.resolve_tick()));
-        database.cleanup();
     }
 
     fn verify_frozen_python_estate_activation(base: &Config) {
@@ -2497,6 +2657,10 @@ mod live_tests {
             .advance_and_commit(&mut sink, &actions)
             .expect("committed ambiguity reconciles through the exact marker");
         assert_eq!(receipt.resolve_tick().get(), 1);
+        assert_eq!(
+            receipt.commit_disposition(),
+            ReplayCommitDispositionV1::ReconciledAfterAmbiguousCommit
+        );
         assert_eq!(LIVE_RECONCILIATIONS.load(Ordering::SeqCst), 1);
         assert_eq!(sink.events.len(), 1);
         assert_eq!(marker_row_count(&config, campaign_id), 1);
@@ -2858,11 +3022,11 @@ mod tests {
     use babylon_kernel::ContentDigest;
     use babylon_practice_contract::ordered_action_v1::OrderedPracticeActionBatchV1;
     use babylon_tick::material_state::MaterialStateV1;
-    use babylon_tick::replay_session::ReplayTickSession;
+    use babylon_tick::replay_session::{ReplayCommitDispositionV1, ReplayTickSession};
 
     use crate::michigan_dynamic_hex_foundation_v1;
 
-    use super::prepare_committed_tick_v1;
+    use super::{prepare_committed_tick_v1, CommittedResolveTickV1, CommittedTickReceiptV1};
 
     const SCENARIO: &str = r"
 (scenario demo/runtime-prepare
@@ -2931,5 +3095,73 @@ mod tests {
         let prohibited_run = ["run_prepared", "_replay_tick("].concat();
         assert!(!production.contains(&prohibited_prepare));
         assert!(!production.contains(&prohibited_run));
+    }
+
+    #[test]
+    fn bounded_receipt_preserves_only_report_aggregates_and_hashes() {
+        let (_, rules) = split_content(RULE).expect("rule parses");
+        let forms = rules.into_iter().map(|(_, form)| form).collect::<Vec<_>>();
+        let content = ContentDigest {
+            defines_hash: [0x52; 32],
+            rules_hash: rules_hash_of(&forms).expect("rule hashes"),
+        };
+        let session_id =
+            ReplaySessionIdV1::try_from("per304/runtime-observation").expect("session id");
+        let foundation = michigan_dynamic_hex_foundation_v1().expect("foundation decodes");
+        let mut session = ReplayTickSession::new(
+            SCENARIO,
+            None,
+            RULE,
+            HypergraphStore::new(),
+            session_id.clone(),
+            ReplaySeed::new(304),
+            content,
+            RefDigestV1::from_bytes(foundation.reference_bundle_digest()),
+            MaterialStateV1::try_new(foundation).expect("material state"),
+        )
+        .expect("session prepares");
+        let actions = OrderedPracticeActionBatchV1::empty(session_id, 1).expect("actions");
+        let report = session
+            .advance(&mut CollectingSink::default(), &actions)
+            .expect("tick succeeds");
+        let expected_graph_before = report.report().before;
+        let expected_graph_after = report.report().after;
+        let expected_world_before = report.report().world_before;
+        let expected_world_after = report.report().world_after;
+        let expected_event_digest = report.successful_event_batch().source_digest();
+        let expected_material_digest = report.material_state_rows().source_digest();
+        let expected_tick_content_hash = report.tick_content_hash();
+
+        let receipt = CommittedTickReceiptV1::from_acknowledged(
+            CommittedResolveTickV1::try_from(1).expect("positive tick"),
+            ReplayCommitDispositionV1::ReconciledAfterAmbiguousCommit,
+            report,
+        );
+
+        assert_eq!(receipt.resolve_tick().get(), 1);
+        assert_eq!(
+            receipt.commit_disposition(),
+            ReplayCommitDispositionV1::ReconciledAfterAmbiguousCommit
+        );
+        assert_eq!(receipt.graph_before(), expected_graph_before);
+        assert_eq!(receipt.graph_after(), expected_graph_after);
+        assert_eq!(receipt.world_before(), expected_world_before);
+        assert_eq!(receipt.world_after(), expected_world_after);
+        assert_eq!(receipt.considered(), 1);
+        assert_eq!(receipt.fired(), 1);
+        assert_eq!(
+            receipt.per_rule_considered(),
+            &[("production/runtime-prepare".to_owned(), 1)]
+        );
+        assert_eq!(
+            receipt.per_rule_fired(),
+            &[("production/runtime-prepare".to_owned(), 1)]
+        );
+        assert_eq!(receipt.event_count(), 1);
+        assert_eq!(receipt.event_digest(), expected_event_digest);
+        assert_eq!(receipt.audit_receipt_count(), 2);
+        assert!(receipt.material_row_count() > 0);
+        assert_eq!(receipt.material_row_digest(), expected_material_digest);
+        assert_eq!(receipt.tick_content_hash(), expected_tick_content_hash);
     }
 }

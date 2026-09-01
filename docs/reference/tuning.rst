@@ -205,7 +205,7 @@ Workflow
 
    .. code-block:: bash
 
-      mise run sim:sweep 1040
+      mise run analysis:sweep 1040
 
 3. **Verify Decay Curve:**
 

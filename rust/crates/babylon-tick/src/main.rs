@@ -102,7 +102,9 @@ mod tests {
             after: [0x11; 32],
             world_before: [0x22; 32],
             world_after: [0x33; 32],
+            considered: 3,
             fired: 2,
+            per_rule_considered: vec![("vitality/emit-only".to_owned(), 3)],
             per_rule_fired: vec![("vitality/emit-only".to_owned(), 2)],
             audit_receipts: Vec::new(),
         };
@@ -134,7 +136,9 @@ mod tests {
             after: [0x12; 32],
             world_before: [0x22; 32],
             world_after: [0x22; 32],
+            considered: 1,
             fired: 1,
+            per_rule_considered: Vec::new(),
             per_rule_fired: Vec::new(),
             audit_receipts: Vec::new(),
         };

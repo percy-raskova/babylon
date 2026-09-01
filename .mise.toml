@@ -4,9 +4,11 @@
 # Task Namespace Convention (ADR035):
 #   check         - Non-mutating local gate (hosted static leaves + local contracts + unit tests)
 #   ci:*          - Hosted-CI entry points and local runner adapters
+#   dev:*         - Development environment diagnostics and maintenance
 #   test:*        - Test runners by scope
-#   sim:*         - Simulation execution and analysis
-#   tune:*        - Parameter optimization
+#   sim:*         - Rust simulation execution and observability
+#   reference:*   - Frozen Python reference-engine tools
+#   analysis:*    - Development-only Python analysis
 #   qa:*          - Quality assurance and verification
 #   demo:*        - Integration demos and persona testing
 #   data:*        - Data pipeline operations
@@ -17,6 +19,9 @@
 # The vendored Nix shell currently provides this floor. Hosted CI installs the
 # exact current release separately through mise-action.
 min_version = "2025.11.7"
+
+[task_config]
+includes = [".mise/tasks"]
 
 [tools]
 python = "3.12"
@@ -145,7 +150,7 @@ mise run format
 
 [tasks.typecheck]
 description = "Run mypy type checker"
-run = "uv run --frozen mypy src"
+run = "uv run --frozen mypy src tools/devtools"
 
 [tasks."lint:yaml"]
 description = "Lint YAML files"
@@ -754,184 +759,6 @@ if fails:
 """
 
 # =============================================================================
-# SIMULATION (Namespaced)
-# =============================================================================
-
-[tasks."sim:run"]
-description = "Self-contained in-memory smoke test (two-node Worker vs Owner, one tick) — verifies your install. For the full Postgres-backed run see sim:e2e-michigan."
-run = "uv run python -m babylon"
-
-[tasks."sim:sweep"]
-description = "Run parameter sweep analysis"
-usage = 'arg "[ticks]" help="Maximum ticks per trial" default="5200"'
-run = """
-mkdir -p results
-uv run python -m babylon.engine.optimization sweep \
-  --param "economy.extraction_efficiency=0.05:0.50:0.05" \
-  --max-ticks ${usage_ticks} \
-  --output-csv results/sweep.csv --report
-"""
-
-[tasks."sim:monte-carlo"]
-description = "Monte Carlo uncertainty quantification"
-usage = '''
-arg "[samples]" help="Number of samples" default="100"
-arg "[seed]" help="Random seed (optional)"
-'''
-run = """
-mkdir -p results
-uv run python -m babylon.engine.optimization monte-carlo \
-  --n-samples ${usage_samples} \
-  ${usage_seed:+--seed ${usage_seed}} \
-  --csv-path results/monte_carlo.csv
-"""
-
-[tasks."sim:e2e-michigan"]
-description = "Rust-owned 520-tick Michigan foundation persistence run"
-run = """
-export BABYLON_RUNTIME_DSN="${BABYLON_RUNTIME_DSN:-host=127.0.0.1 port=5433 dbname=babylon_test user=test password=test}"
-export PATH="$PWD/rust/target/debug:$PATH"
-babylon-runtime run --ticks 520
-"""
-
-[tasks."sim:e2e-bg"]
-description = "Daemonize sim:e2e-michigan with pidfile + log under .sim-pids/ (watch via sim:status)"
-run = '''
-mkdir -p .sim-pids
-if [ -f .sim-pids/e2e.pid ] && kill -0 "$(cat .sim-pids/e2e.pid)" 2>/dev/null; then
-  echo "already running: PID $(cat .sim-pids/e2e.pid)"; exit 1
-fi
-export BABYLON_RUNTIME_DSN="${BABYLON_RUNTIME_DSN:-host=127.0.0.1 port=5433 dbname=babylon_test user=test password=test}"
-export PATH="$PWD/rust/target/debug:$PATH"
-nohup babylon-runtime run --ticks 520 > .sim-pids/e2e.log 2>&1 &
-echo $! > .sim-pids/e2e.pid
-echo "started PID $(cat .sim-pids/e2e.pid) — log .sim-pids/e2e.log"
-'''
-
-[tasks."sim:status"]
-description = "Show the daemon process and query Rust-owned authority and campaign-tail state"
-run = '''
-if [ -f .sim-pids/e2e.pid ] && kill -0 "$(cat .sim-pids/e2e.pid)" 2>/dev/null; then
-  ps -o pid,pcpu,etime -p "$(cat .sim-pids/e2e.pid)" | tail -1
-else
-  echo "(no daemonized run)"
-fi
-export BABYLON_RUNTIME_DSN="${BABYLON_RUNTIME_DSN:-host=127.0.0.1 port=5433 dbname=babylon_test user=test password=test}"
-export PATH="$PWD/rust/target/debug:$PATH"
-babylon-runtime probe
-'''
-
-[tasks."sim:watch"]
-description = "Live 30s refresh of sim:status"
-run = "watch -n 30 mise run sim:status"
-
-[tasks."sim:probe"]
-description = "Probe Rust persistence authority and the durable campaign tail"
-run = '''
-export BABYLON_RUNTIME_DSN="${BABYLON_RUNTIME_DSN:-host=127.0.0.1 port=5433 dbname=babylon_test user=test password=test}"
-export PATH="$PWD/rust/target/debug:$PATH"
-babylon-runtime probe
-'''
-
-[tasks."sim:archive"]
-description = "Inspect Rust-owned Archive dirty receipts without mutating campaigns"
-run = '''
-export BABYLON_RUNTIME_DSN="${BABYLON_RUNTIME_DSN:-host=127.0.0.1 port=5433 dbname=babylon_test user=test password=test}"
-export PATH="$PWD/rust/target/debug:$PATH"
-babylon-runtime archive
-'''
-
-[tasks."sim:archived"]
-description = "Show the local archive root contents (one dir per archived session)"
-run = '''
-ROOT="${BABYLON_ARCHIVE_ROOT:-/media/user/data/babylon-archives}"
-if [ -d "$ROOT" ]; then
-  echo "archive root: $ROOT"
-  du -sh "$ROOT"/*/ 2>/dev/null | sort -rh | head -25 || echo "(empty)"
-else
-  echo "archive root $ROOT does not exist yet (created on first sim:archive)"
-fi
-'''
-
-# =============================================================================
-# TUNING (Namespaced)
-# =============================================================================
-
-[tasks."tune:optuna"]
-description = "Run Carceral Equilibrium optimization (Optuna TPE, 100 years)"
-usage = '''
-arg "[trials]" help="Number of optimization trials" default="100"
-arg "[name]" help="Study name (for resumption)" default="babylon_carceral"
-'''
-run = """
-uv run python -m babylon.engine.optimization bayesian \
-  --n-trials ${usage_trials} \
-  --study-name ${usage_name} \
-  --storage sqlite:///optuna.db
-"""
-
-[tasks."tune:landscape"]
-description = "2D parameter grid search (100-year simulations)"
-usage = '''
-arg "[param1]" help="First parameter path" default="economy.extraction_efficiency"
-arg "[range1]" help="Range as start:end:step" default="0.1:0.9:0.1"
-arg "[param2]" help="Second parameter path" default="economy.comprador_cut"
-arg "[range2]" help="Range as start:end:step" default="0.5:1.0:0.1"
-arg "[ticks]" help="Max ticks per simulation" default="5200"
-'''
-run = """
-mkdir -p results
-uv run python -m babylon.engine.optimization sweep \
-  --param "${usage_param1}=${usage_range1}" \
-  --param2 "${usage_param2}=${usage_range2}" \
-  --max-ticks ${usage_ticks} \
-  --output-csv results/landscape.csv
-"""
-
-[tasks."tune:params"]
-description = "1D parameter sensitivity sweep"
-run = 'uv run python -m babylon.engine.optimization sweep --param "economy.extraction_efficiency=0.05:0.50:0.05" --report'
-
-[tasks."tune:params-custom"]
-description = "Run parameter sweep with custom range"
-run = 'uv run python -m babylon.engine.optimization sweep --param "economy.extraction_efficiency=${1:-0.05}:${2:-0.50}:${3:-0.05}" --report'
-
-[tasks."tune:dashboard"]
-description = "Launch Optuna Dashboard for visualization"
-run = "optuna-dashboard sqlite:///optuna.db"
-
-[tasks."tune:sensitivity"]
-description = "Global sensitivity analysis (Morris + Sobol)"
-run = """
-mkdir -p results
-echo "Running Morris screening..."
-uv run python -m babylon.engine.optimization sensitivity --method morris --trajectories 10 --morris-output results/morris.json
-echo ""
-echo "Running Sobol analysis..."
-uv run python -m babylon.engine.optimization sensitivity --method sobol --samples 256 --sobol-output results/sobol.json
-"""
-
-[tasks."tune:morris"]
-description = "Morris elementary effects screening (fast)"
-usage = 'arg "[trajectories]" help="Number of trajectories" default="10"'
-run = """
-mkdir -p results
-uv run python -m babylon.engine.optimization sensitivity --method morris \
-  --trajectories ${usage_trajectories} \
-  --morris-output results/morris.json
-"""
-
-[tasks."tune:sobol"]
-description = "Sobol variance decomposition (slow)"
-usage = 'arg "[samples]" help="Base sample size" default="256"'
-run = """
-mkdir -p results
-uv run python -m babylon.engine.optimization sensitivity --method sobol \
-  --samples ${usage_samples} \
-  --sobol-output results/sobol.json
-"""
-
-# =============================================================================
 # QA (Namespaced)
 # =============================================================================
 
@@ -1204,6 +1031,8 @@ run = "uv run python tools/audit_simplex_bypasses.py"
 description = "Commit and restart the Rust Michigan Phi/class-accumulation path across tick 52"
 run = """
 export BABYLON_RUNTIME_DSN="${BABYLON_RUNTIME_DSN:-host=127.0.0.1 port=5433 dbname=babylon_test user=test password=test}"
+smoke_campaign_id="$(python3 tools/devtools/worktree_campaign.py --purpose qa-michigan-rollover-smoke --fresh)" || exit
+export BABYLON_CAMPAIGN_ID="$smoke_campaign_id"
 export PATH="$PWD/rust/target/debug:$PATH"
 babylon-runtime michigan-smoke
 """
@@ -1244,6 +1073,8 @@ mise run db:up
 (cd rust && CARGO_BUILD_JOBS=4 cargo build -p babylon-persistence --bin babylon-runtime --locked)
 export PATH="$PWD/rust/target/debug:$PATH"
 export BABYLON_RUNTIME_DSN="host=127.0.0.1 port=5433 dbname=babylon_test user=test password=test"
+integration_campaign_id="$(python3 tools/devtools/worktree_campaign.py --purpose test-int-pg --fresh)" || exit
+export BABYLON_CAMPAIGN_ID="$integration_campaign_id"
 babylon-runtime bootstrap
 babylon-runtime michigan-smoke
 """
@@ -1270,7 +1101,8 @@ run = "rm -rf docs/_build docs/api/_autosummary"
 
 [tasks."docs:rebuild"]
 description = "Clean and rebuild documentation"
-depends = ["docs:clean", "docs:build"]
+depends = ["docs:clean"]
+run = "mise run docs:build"
 
 [tasks."docs:pdf"]
 description = "Build PDF documentation"
@@ -1592,7 +1424,3 @@ command -v tree-sitter >/dev/null 2>&1 || {
 tree-sitter generate
 tree-sitter test
 """
-
-[tasks."test:optimization"]
-description = "Ungated behavioral-contract tests for the optimization package (in_memory backend, no Postgres required) — NOT wired into mise run check"
-run = "uv run pytest tests/unit/engine/optimization -q"

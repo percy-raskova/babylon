@@ -529,7 +529,9 @@ mod tests {
         after: [u8; 32],
         world_before: [u8; 32],
         world_after: [u8; 32],
+        considered: usize,
         fired: usize,
+        per_rule_considered: Vec<(String, usize)>,
         per_rule_fired: Vec<(String, usize)>,
         events: Vec<EventRecord>,
     }
@@ -541,6 +543,12 @@ mod tests {
             bytes.extend_from_slice(&self.after);
             bytes.extend_from_slice(&self.world_before);
             bytes.extend_from_slice(&self.world_after);
+            push_usize(&mut bytes, self.considered);
+            push_count(&mut bytes, self.per_rule_considered.len());
+            for (id, considered) in &self.per_rule_considered {
+                push_str(&mut bytes, id);
+                push_usize(&mut bytes, *considered);
+            }
             push_usize(&mut bytes, self.fired);
             push_count(&mut bytes, self.per_rule_fired.len());
             for (id, fired) in &self.per_rule_fired {
@@ -720,6 +728,14 @@ mod tests {
                 ],
             ),
         ];
+        assert_eq!(report.considered, 2);
+        assert_eq!(
+            report.per_rule_considered,
+            vec![
+                ("vitality/envelope-material".to_owned(), 1),
+                ("ooda/envelope-action".to_owned(), 1),
+            ]
+        );
         assert_eq!(report.fired, 2);
         assert_eq!(
             report.per_rule_fired,
@@ -734,7 +750,9 @@ mod tests {
             after: report.after,
             world_before: report.world_before,
             world_after: report.world_after,
+            considered: report.considered,
             fired: report.fired,
+            per_rule_considered: report.per_rule_considered,
             per_rule_fired: report.per_rule_fired,
             events: sink.events,
         }

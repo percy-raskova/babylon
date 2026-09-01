@@ -1,4 +1,4 @@
-"""Objective functions for parameter optimization.
+"""Objective functions for development-only simulation analysis.
 
 The Carceral Equilibrium scoring (``PHASE_WINDOWS``,
 ``calculate_carceral_equilibrium_score``, ``format_phase_report``) is moved
@@ -7,7 +7,7 @@ of truth for this scoring logic. :class:`Objective` is the small ``Protocol``
 every algorithm (sweep, Monte Carlo, sensitivity, Bayesian search) optimizes
 against; :func:`carceral_objective` and :func:`survival_objective` are the
 two concrete, ready-to-use scorers built on
-:class:`~babylon.engine.optimization.backends.types.Result`.
+:class:`~tools.devtools.sim_analysis.backends.types.Result`.
 
 See Also:
     ai/carceral-equilibrium.md: Full Carceral Equilibrium theory specification.
@@ -19,7 +19,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final, Protocol
 
-from babylon.engine.optimization.backends.types import Result
+from tools.devtools.sim_analysis.backends.types import Result
+
 from babylon.models.enums import EventType
 
 # =============================================================================
@@ -247,7 +248,7 @@ class Objective(Protocol):
     """Structural contract every optimization algorithm scores trials against.
 
     An ``Objective`` is any callable that reduces one trial's
-    :class:`~babylon.engine.optimization.backends.types.Result` to a single
+    :class:`~tools.devtools.sim_analysis.backends.types.Result` to a single
     float. Higher is always better — algorithms (sweep, Monte Carlo,
     sensitivity, Bayesian search) maximize whatever ``Objective`` they are
     given.

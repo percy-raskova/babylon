@@ -20,6 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 APT_INSTALLER = REPO_ROOT / "tools" / "install_ci_apt_packages.sh"
 POSTGRES_COMPOSE = REPO_ROOT / "tools" / "ci_postgres_compose.sh"
 MISE_CONFIG = REPO_ROOT / ".mise.toml"
+ANALYSIS_TASKS_CONFIG = REPO_ROOT / ".mise" / "tasks" / "analysis.toml"
 WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
 ACTIONS_DIR = REPO_ROOT / ".github" / "actions"
 
@@ -276,29 +277,31 @@ def test_scheduled_failure_artifacts_survive_failure() -> None:
     assert str(upload.get("if", "")) == "always()"
 
 
-def test_sim_sweep_task_has_a_configurable_finite_tick_budget() -> None:
-    """The local sweep defaults to 100 years and forwards an explicit ceiling."""
-    task = tomllib.loads(MISE_CONFIG.read_text())["tasks"]["sim:sweep"]
+def test_analysis_sweep_task_has_a_configurable_finite_tick_budget() -> None:
+    """The Python analysis sweep stays bounded outside the Rust sim namespace."""
+    task = tomllib.loads(ANALYSIS_TASKS_CONFIG.read_text())["analysis:sweep"]
 
     assert task["usage"] == ('arg "[ticks]" help="Maximum ticks per trial" default="5200"')
     assert "--max-ticks ${usage_ticks}" in task["run"]
     assert '--param "economy.extraction_efficiency=0.05:0.50:0.05"' in task["run"]
 
 
-def test_weekly_parameter_sweep_uses_bounded_trials_and_exact_failure_artifact() -> None:
-    """The retained in-memory sweep stays bounded and has no retired trace dependency."""
+def test_weekly_rust_report_is_scoped_to_the_michigan_persistence_slice() -> None:
+    """The scheduled artifact observes the committed embedded Rust slice."""
     weekly_sim = yaml.safe_load((WORKFLOWS_DIR / "weekly-sim-artifacts.yml").read_text())
     job = weekly_sim["jobs"]["sim-artifacts"]
     steps = job["steps"]
-    sweep = next(step for step in steps if step.get("name") == "Parameter sweep")
+    report = next(
+        step for step in steps if step.get("name") == "Generate Rust Michigan persistence report"
+    )
     upload = next(
         step for step in steps if str(step.get("uses", "")).startswith("actions/upload-artifact@")
     )
 
     assert job["timeout-minutes"] == 60
-    assert sweep["run"] == "mise run sim:sweep 200"
-    assert not any(step.get("name") == "Simulation trace" for step in steps)
-    assert not any(step.get("uses") == "./.github/actions/bootstrap-persistence" for step in steps)
-    assert not any(step.get("uses") == "./.github/actions/postgres-up" for step in steps)
+    assert report["run"] == "mise run sim:report 520 3000"
+    assert any(step.get("uses") == "./.github/actions/bootstrap-persistence" for step in steps)
+    assert any(step.get("uses") == "./.github/actions/postgres-up" for step in steps)
+    assert any(step.get("run") == "mise run db:bootstrap" for step in steps)
     assert str(upload.get("if", "")) == "always()"
-    assert upload["with"]["path"] == "results/sweep.csv"
+    assert upload["with"]["path"] == "reports/sim-runs/"

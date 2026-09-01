@@ -28,6 +28,8 @@ See Also:
     ai/epoch1-mvp-complete.md: MVP milestone documentation
 """
 
+# ruff: noqa: E402 -- direct script mode establishes repository import roots first
+
 from __future__ import annotations
 
 import argparse
@@ -36,16 +38,20 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-sys.path.insert(0, str(Path(__file__).parent))
+# Make both the installable game package and development-only tooling importable
+# when this file is launched directly as ``python tools/necropolis_viewer.py``.
+_REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_REPOSITORY_ROOT))
+sys.path.insert(0, str(_REPOSITORY_ROOT / "src"))
+sys.path.insert(0, str(_REPOSITORY_ROOT / "tools"))
 
-from babylon.config.defines import GameDefines
-from babylon.engine.optimization.objectives import (
+from tools.devtools.sim_analysis.objectives import (
     TICKS_PER_YEAR,
     format_phase_report,
 )
-from babylon.engine.optimization.params import inject_parameters
+from tools.devtools.sim_analysis.params import inject_parameters
+
+from babylon.config.defines import GameDefines
 from babylon.engine.scenarios import create_imperial_circuit_scenario
 from babylon.engine.simulation import Simulation
 from babylon.models.enums import EventType

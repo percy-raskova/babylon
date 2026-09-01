@@ -127,12 +127,14 @@ docs.yml
 
 **Note**: Only runs on ``main``—development docs are not deployed.
 
-Weekly Python and simulation workflows
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Weekly Python and Rust persistence workflows
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``weekly-py313.yml`` runs the Python 3.13 forward-compatibility suite each
-Sunday and on manual dispatch. ``weekly-sim-artifacts.yml`` runs the intentional
-in-memory ``mise run sim:sweep 200`` analysis and uploads ``results/sweep.csv``.
+Sunday and on manual dispatch. ``weekly-sim-artifacts.yml`` runs the embedded
+Michigan persistence slice through ``mise run sim:report 520`` and uploads the
+resulting JSONL and summaries from ``reports/sim-runs/``. This report covers
+the runtime binary's two embedded smoke rules, not every Rust content pack.
 
 release.yml
 ~~~~~~~~~~~

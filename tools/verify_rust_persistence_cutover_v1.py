@@ -198,7 +198,7 @@ EXPECTED_SECTION_SHA256 = {
     "storage": "e16be924d06d4d8c0aad2a4f40b85f9ddb44e6f85254bbd0196f8ca040b78611",
     "reader_boundary": "e7df049ff4501f9da0f63a3e0adcd8b6af123950986cae476bdd3e4360832440",
     "data_disposition": "4916c0d2df1931f1478572fc70a4d088700b40137592652a4fd46f04511b158e",
-    "python_authority": "af906300b7efd66187d6a73ab6df2c8c1926a8c52a28d32a7ada790bb86bcc8d",
+    "python_authority": "b10440ee62d80b7e67cd5dec70b721469b8a981e71f4d5fc992151fb8aeb4c1d",
     "vectors": "b3c1354b86093e89f8ef24e1139a1487f0573e1a95d59a92d0f56779a149e234",
     "proofs": "1a8ea6c6ccffdd089c6826cffde62148d105f07646187f897582d91e0af494d1",
     "non_goals": "8970b365f3ada9007519e3774238dacdebd1cf18ba415d597e97e9f93685291e",
@@ -2260,7 +2260,7 @@ def validate_cutover_contract(contract: dict[str, Any]) -> None:
         )
     _expect_exact(
         census.get("scan_roots"),
-        ["src/babylon", "tools", ".mise.toml"],
+        ["src/babylon", "tools", ".mise.toml", ".mise/tasks"],
         "python_authority.census.scan_roots",
         "invalid_python_authority",
     )
@@ -2329,7 +2329,7 @@ def validate_cutover_contract(contract: dict[str, Any]) -> None:
     )
     _expect_exact(
         census.get("inventory_sha256"),
-        "8826af9c63af76eaa60055fe3997319c859d8feef181b15394167a5e7d3f91f5",
+        "1a41421e4707291a173d91a9322a808c8a56ddc3aff15e2e4ace1bcff8386f83",
         "python_authority.census.inventory_sha256",
         "invalid_python_authority",
     )
@@ -2638,13 +2638,24 @@ def _has_python_game_write_capability(
     return bool(_python_capability_paths({"<source>": source}, governed_relations or set()))
 
 
+def _is_mise_task_source(relative: str) -> bool:
+    return relative == ".mise.toml" or (
+        relative.startswith(".mise/tasks/") and relative.endswith(".toml")
+    )
+
+
 def _entrypoint_source(relative: str, source: str, entrypoint: str) -> str:
     """Select exactly one governed Mise task or Python entrypoint body."""
 
-    if relative == ".mise.toml":
-        quoted = re.escape(f'[tasks."{entrypoint}"]')
-        bare = re.escape(f"[tasks.{entrypoint}]")
-        match = re.search(rf"(?m)^(?:{quoted}|{bare})\s*$", source)
+    is_root_mise_config = relative == ".mise.toml"
+    is_standalone_mise_tasks = _is_mise_task_source(relative) and not is_root_mise_config
+    if is_root_mise_config or is_standalone_mise_tasks:
+        if is_root_mise_config:
+            headers = (f'[tasks."{entrypoint}"]', f"[tasks.{entrypoint}]")
+        else:
+            headers = (f'["{entrypoint}"]', f"[{entrypoint}]")
+        header_pattern = "|".join(re.escape(header) for header in headers)
+        match = re.search(rf"(?m)^(?:{header_pattern})\s*$", source)
         if match is None:
             return ""
         following = re.search(r"(?m)^\[", source[match.end() :])
@@ -2698,9 +2709,12 @@ def _mise_run_values(governed_source: str) -> list[str]:
     except tomllib.TOMLDecodeError:
         return []
     tasks = parsed.get("tasks")
-    if not isinstance(tasks, dict) or len(tasks) != 1:
+    if isinstance(tasks, dict) and len(tasks) == 1:
+        task = next(iter(tasks.values()))
+    elif len(parsed) == 1:
+        task = next(iter(parsed.values()))
+    else:
         return []
-    task = next(iter(tasks.values()))
     if not isinstance(task, dict):
         return []
     run = task.get("run")
@@ -2754,7 +2768,7 @@ def _python_executable_command_tokens(source: str) -> list[list[str]]:
 def _entrypoint_executes_required_command(
     relative: str, governed_source: str, required: str
 ) -> bool:
-    if relative == ".mise.toml":
+    if _is_mise_task_source(relative):
         return any(
             _tokens_in_order(_shell_executable_tokens(run), required)
             for run in _mise_run_values(governed_source)

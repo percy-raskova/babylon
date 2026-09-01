@@ -1,4 +1,4 @@
-"""Backend-agnostic result type for the optimization package.
+"""Backend-agnostic result type for development-only simulation analysis.
 
 :class:`Result` is the normalized shape produced by the retained in-memory
 optimizer. Sweep, Monte Carlo, sensitivity, and Bayesian search consume only

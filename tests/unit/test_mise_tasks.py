@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -15,6 +16,9 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 MISE_TOML = REPOSITORY_ROOT / ".mise.toml"
 PRE_COMMIT_CONFIG = REPOSITORY_ROOT / ".pre-commit-config.yaml"
 CI_WORKFLOW = REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml"
+SIMULATION_TASKS_TOML = REPOSITORY_ROOT / ".mise" / "tasks" / "simulation.toml"
+ANALYSIS_TASKS_TOML = REPOSITORY_ROOT / ".mise" / "tasks" / "analysis.toml"
+DEVTOOLS_TASKS_TOML = REPOSITORY_ROOT / ".mise" / "tasks" / "devtools.toml"
 
 HOSTED_STATIC_TASKS = [
     "check:hygiene",
@@ -69,33 +73,176 @@ def _local_hook(hook_id: str) -> dict[str, object]:
     )
 
 
+@pytest.fixture(scope="module")
+def mise_tasks() -> dict[str, dict[str, object]]:
+    """Return Mise's resolved task graph, including split task files."""
+    completed = subprocess.run(  # noqa: S603 -- repository-owned Mise config
+        ["mise", "tasks", "--json"],  # noqa: S607 -- pinned project tool
+        cwd=REPOSITORY_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return {task["name"]: task for task in json.loads(completed.stdout)}
+
+
+def _task_run(task: dict[str, object]) -> str:
+    run = task["run"]
+    assert isinstance(run, list)
+    assert all(isinstance(command, str) for command in run)
+    return "\n".join(run)
+
+
 @pytest.mark.skipif(not MISE_TOML.exists(), reason=".mise.toml not present")
 class TestMiseTaskDiscoverability:
     """Required mise tasks exist with non-empty descriptions."""
 
-    def test_sim_e2e_michigan_declared(self) -> None:
-        contents = MISE_TOML.read_text()
-        assert '[tasks."sim:e2e-michigan"]' in contents
+    def test_sim_e2e_michigan_declared_in_split_config(
+        self, mise_tasks: dict[str, dict[str, object]]
+    ) -> None:
+        task = mise_tasks["sim:e2e-michigan"]
+        assert Path(str(task["source"])).resolve() == SIMULATION_TASKS_TOML
+        assert len(str(task["description"]).split()) >= 4
+        assert "babylon-runtime run --ticks 520" in _task_run(task)
 
-    def _e2e_block(self) -> str:
-        contents = MISE_TOML.read_text()
-        header = '[tasks."sim:e2e-michigan"]'
-        block_start = contents.index(header) + len(header)
-        # Block runs until the next "[tasks." heading.
-        following = contents[block_start:]
-        next_heading = following.find("\n[tasks.")
-        return following[:next_heading] if next_heading != -1 else following
+    def test_foreground_e2e_is_fresh_while_background_and_probe_share_stable_purpose(
+        self, mise_tasks: dict[str, dict[str, object]]
+    ) -> None:
+        foreground = _task_run(mise_tasks["sim:e2e-michigan"])
+        assert (
+            "python3 tools/devtools/worktree_campaign.py --purpose michigan-e2e --fresh"
+            in foreground
+        )
+        assert 'export BABYLON_CAMPAIGN_ID="$sim_campaign_id"' in foreground
 
-    def test_sim_e2e_michigan_has_description(self) -> None:
-        block = self._e2e_block()
-        match = [line for line in block.splitlines() if line.startswith("description = ")]
-        assert match, "sim:e2e-michigan has no description"
-        assert len(match[0].split()) >= 4
+        for name in ("sim:e2e-bg", "sim:status", "sim:probe"):
+            run = _task_run(mise_tasks[name])
+            assert "python3 tools/devtools/worktree_campaign.py --purpose michigan-e2e" in run
+            assert "--fresh" not in run
+            assert 'export BABYLON_CAMPAIGN_ID="$sim_campaign_id"' in run
 
-    def test_sim_e2e_michigan_invokes_rust_runtime(self) -> None:
-        block = self._e2e_block()
-        assert "babylon-runtime run --ticks 520" in block
-        assert "babylon.engine.headless_runner" not in block
+        background = _task_run(mise_tasks["sim:e2e-bg"])
+        status = _task_run(mise_tasks["sim:status"])
+        assert "printf '%s\\n' \"$sim_campaign_id\" > .sim-pids/e2e.campaign-id" in background
+        assert 'stored_campaign_id="$(cat .sim-pids/e2e.campaign-id)"' in status
+        assert 'BABYLON_CAMPAIGN_ID="$stored_campaign_id" python3' in status
+
+    def test_one_shot_pg_tasks_use_fresh_campaigns_unless_explicitly_configured(
+        self, mise_tasks: dict[str, dict[str, object]]
+    ) -> None:
+        expected_purposes = {
+            "qa:michigan-rollover-smoke": "qa-michigan-rollover-smoke",
+            "test:int-pg": "test-int-pg",
+        }
+        for name, purpose in expected_purposes.items():
+            run = _task_run(mise_tasks[name])
+            assert (
+                f"python3 tools/devtools/worktree_campaign.py --purpose {purpose} --fresh"
+            ) in run
+            assert "export BABYLON_CAMPAIGN_ID=" in run
+
+    def test_sim_namespace_has_only_rust_authority_tasks(
+        self, mise_tasks: dict[str, dict[str, object]]
+    ) -> None:
+        sim_tasks = {name: task for name, task in mise_tasks.items() if name.startswith("sim:")}
+        assert set(sim_tasks) == {
+            "sim:archive",
+            "sim:e2e-bg",
+            "sim:e2e-michigan",
+            "sim:probe",
+            "sim:report",
+            "sim:status",
+            "sim:watch",
+        }
+        for task in sim_tasks.values():
+            run = _task_run(task)
+            assert "uv run" not in run
+            assert "-m babylon" not in run
+            assert "babylon.engine" not in run
+
+    def test_frozen_python_and_analysis_tasks_are_renamed_without_aliases(
+        self, mise_tasks: dict[str, dict[str, object]]
+    ) -> None:
+        retired = {
+            "sim:run",
+            "sim:sweep",
+            "sim:monte-carlo",
+            "sim:archived",
+            "test:optimization",
+        }
+        assert not retired & mise_tasks.keys()
+        assert not {name for name in mise_tasks if name.startswith("tune:")}
+        expected_analysis = {
+            "reference:python-smoke",
+            "analysis:sweep",
+            "analysis:sweep-custom",
+            "analysis:landscape",
+            "analysis:monte-carlo",
+            "analysis:optuna",
+            "analysis:dashboard",
+            "analysis:sensitivity",
+            "analysis:morris",
+            "analysis:sobol",
+            "analysis:test",
+        }
+        assert expected_analysis <= mise_tasks.keys()
+        for name in expected_analysis:
+            assert Path(str(mise_tasks[name]["source"])).resolve() == ANALYSIS_TASKS_TOML
+        assert "uv run python -m babylon" in _task_run(mise_tasks["reference:python-smoke"])
+        assert "tools.devtools.sim_analysis sweep" in _task_run(mise_tasks["analysis:sweep"])
+        assert "tools.devtools.sim_analysis monte-carlo" in _task_run(
+            mise_tasks["analysis:monte-carlo"]
+        )
+        assert _task_run(mise_tasks["analysis:dashboard"]) == (
+            "uv run optuna-dashboard sqlite:///optuna.db"
+        )
+        for name in ("analysis:sensitivity", "analysis:morris", "analysis:sobol"):
+            run = _task_run(mise_tasks[name])
+            assert '--param-names "${usage_parameters}"' in run
+            assert "--max-ticks ${usage_ticks}" in run
+            assert 'default="economy.base_subsistence,' in str(mise_tasks[name]["usage"])
+        combined = _task_run(mise_tasks["analysis:sensitivity"])
+        assert "sensitivity --method both" in combined
+        assert "--trajectories ${usage_trajectories}" in combined
+        assert "--samples ${usage_samples}" in combined
+
+    def test_sim_report_builds_only_runtime_and_uses_stdlib_reporter(
+        self, mise_tasks: dict[str, dict[str, object]]
+    ) -> None:
+        task = mise_tasks["sim:report"]
+        run = _task_run(task)
+        assert 'arg "[ticks]" help="Number of Rust simulation ticks" default="60"' in str(
+            task["usage"]
+        )
+        assert 'arg "[timeout_seconds]" help="Runtime wall-clock timeout" default="3000"' in str(
+            task["usage"]
+        )
+        assert (
+            "CARGO_BUILD_JOBS=4 cargo build -p babylon-persistence --bin babylon-runtime --locked"
+        ) in run
+        assert "cargo build --workspace" not in run
+        assert (
+            "python3 tools/devtools/sim_report.py "
+            "--runtime rust/target/debug/babylon-runtime "
+            "--ticks ${usage_ticks} --timeout-seconds ${usage_timeout_seconds} "
+            "--output-root reports/sim-runs"
+        ) in run
+        assert "export BABYLON_RUNTIME_DSN=" in run
+        assert "uv run" not in run
+
+    def test_dev_doctor_uses_plain_python(self, mise_tasks: dict[str, dict[str, object]]) -> None:
+        task = mise_tasks["dev:doctor"]
+        assert Path(str(task["source"])).resolve() == DEVTOOLS_TASKS_TOML
+        assert _task_run(task) == "python3 tools/devtools/doctor.py"
+
+
+def test_docs_rebuild_serializes_clean_before_build(
+    mise_tasks: dict[str, dict[str, object]],
+) -> None:
+    """Clean must finish before build rather than racing as sibling dependencies."""
+    rebuild = mise_tasks["docs:rebuild"]
+    assert rebuild["depends"] == ["docs:clean"]
+    assert _task_run(rebuild) == "mise run docs:build"
 
 
 @pytest.mark.skipif(not MISE_TOML.exists(), reason=".mise.toml not present")

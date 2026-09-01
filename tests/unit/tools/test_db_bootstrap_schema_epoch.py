@@ -115,12 +115,18 @@ def test_local_bootstrap_callers_expose_the_single_rust_authority_root() -> None
 
     integration = _mise_task("test:int-pg")
     assert f'export BABYLON_RUNTIME_DSN="{LOCAL_BOOTSTRAP_DSN}"' in integration
+    assert (
+        "python3 tools/devtools/worktree_campaign.py --purpose test-int-pg --fresh" in integration
+    )
     assert "babylon-runtime bootstrap" in integration
     assert "babylon-runtime michigan-smoke" in integration
     assert "uv run pytest" not in integration
 
     michigan_smoke = _mise_task("qa:michigan-rollover-smoke")
     assert 'export PATH="$PWD/rust/target/debug:$PATH"' in michigan_smoke
+    assert (
+        "python3 tools/devtools/worktree_campaign.py --purpose qa-michigan-rollover-smoke --fresh"
+    ) in michigan_smoke
     assert "babylon-runtime michigan-smoke" in michigan_smoke
 
     direct_bootstrap = _mise_task("db:bootstrap")

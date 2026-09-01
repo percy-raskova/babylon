@@ -1,6 +1,6 @@
-"""Monte Carlo uncertainty quantification over N simulation replications.
+"""Development-only Monte Carlo analysis of the frozen Python reference simulation.
 
-Trials execute through :func:`babylon.engine.optimization.runner_api.run`,
+Trials execute through :func:`tools.devtools.sim_analysis.runner_api.run`,
 so the per-sample RNG seed reaches the retained in-memory simulation. The
 statistical core uses a deterministic
 per-sample seed sequence drawn from one base seed, mean/std/95% CI
@@ -9,7 +9,7 @@ from the original tool.
 
 Usage (programmatic; argparse lives in the package ``__main__``, not here)::
 
-    from babylon.engine.optimization.monte_carlo import run_monte_carlo
+    from tools.devtools.sim_analysis.monte_carlo import run_monte_carlo
 
     artifact = run_monte_carlo(n_samples=100, base_seed=42)
     print(artifact.stats.survival_rate)
@@ -21,21 +21,22 @@ See Also:
 from __future__ import annotations
 
 import csv
+import json
 import random
 from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Final
+from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+from tools.devtools.sim_analysis import runner_api
+from tools.devtools.sim_analysis.backends.types import Result
+from tools.devtools.sim_analysis.objectives import Objective, carceral_objective
+from tools.devtools.sim_analysis.params import inject_parameters
+from tools.devtools.sim_analysis.ranges import parse_override
+from tools.devtools.sim_analysis.reproducibility import ReproRecord, build_repro_record
 
-from babylon.config.defines import GameDefines
-from babylon.engine.optimization import runner_api
-from babylon.engine.optimization.backends.types import Result
-from babylon.engine.optimization.objectives import Objective, carceral_objective
-from babylon.engine.optimization.params import inject_parameters
-from babylon.engine.optimization.ranges import parse_override
-from babylon.engine.optimization.reproducibility import ReproRecord, build_repro_record
+from babylon.config.defines import GameDefines, canonical_defines_hash
 
 # Try to import scipy for t-distribution CI, fall back to normal approximation.
 try:
@@ -55,6 +56,11 @@ DEFAULT_SAMPLES: Final[int] = 100
 
 DEFAULT_MAX_TICKS: Final[int] = 5200
 """Default simulation length: 5200 ticks = 100 years (1 tick = 1 week)."""
+
+MAX_SAMPLES: Final[int] = 10_000
+MAX_TICKS: Final[int] = 5_200
+MAX_TICK_EVALUATIONS: Final[int] = 52_000_000
+"""Hard preflight bounds for an explicitly requested Monte Carlo campaign."""
 
 DEFAULT_OUTPUT: Final[str] = "results/monte_carlo.csv"
 """Default CSV output path, relative to the invoking process's cwd."""
@@ -80,10 +86,10 @@ class SampleResult(BaseModel):
     :ivar outcome: ``"SURVIVED"`` or ``"DIED"``.
     :ivar max_tension: Maximum EXPLOITATION-edge tension observed.
     :ivar final_wealth: Terminal-tick wealth/value aggregate.
-    :ivar objective_score: This sample's score under the run's :class:`~babylon.engine.optimization.objectives.Objective`.
+    :ivar objective_score: This sample's score under the run's :class:`~tools.devtools.sim_analysis.objectives.Objective`.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     sample_id: int = Field(ge=1)
     seed: int
@@ -97,7 +103,7 @@ class SampleResult(BaseModel):
 class AggregateStats(BaseModel):
     """Aggregate statistics across all samples in one Monte Carlo run."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     n_samples: int = Field(ge=1)
     n_survived: int = Field(ge=0)
@@ -124,9 +130,10 @@ class MonteCarloArtifact(BaseModel):
 
     :ivar samples: Every sample's :class:`SampleResult`, in run order.
     :ivar stats: Cross-sample :class:`AggregateStats`.
-    :ivar repro_records: One :class:`~babylon.engine.optimization.reproducibility.ReproRecord`
-        per sample, in the same order as ``samples`` — replay any sample from
-        its receipt alone.
+    :ivar repro_records: One verification receipt per sample, in the same
+        order as ``samples``. The receipt hash is intentionally
+        non-invertible; ``manifest_path`` retains the full coefficient and
+        run-input payload needed to replay against the same source revision.
     :ivar csv_path: Where the per-sample + summary CSV was written.
     :ivar report_path: Where the markdown report was written, or ``None`` if
         no report was requested.
@@ -138,7 +145,30 @@ class MonteCarloArtifact(BaseModel):
     stats: AggregateStats
     repro_records: tuple[ReproRecord, ...]
     csv_path: Path
+    manifest_path: Path
     report_path: Path | None = None
+
+
+class MonteCarloManifest(BaseModel):
+    """Durable coefficient inputs and outputs for one Monte Carlo run."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    schema_id: Literal["babylon.sim-analysis.monte-carlo.v1"] = Field(
+        default="babylon.sim-analysis.monte-carlo.v1",
+        alias="schema",
+    )
+    base_defines: dict[str, object]
+    defines_hash: str
+    parameter_overrides: dict[str, int | float]
+    base_seed: int | None
+    backend: str
+    scenario: str
+    max_ticks: int = Field(ge=1)
+    objective: str
+    samples: tuple[SampleResult, ...]
+    stats: AggregateStats
+    repro_records: tuple[ReproRecord, ...]
 
 
 # =============================================================================
@@ -321,14 +351,21 @@ def run_trials(
 def write_csv(
     samples: list[SampleResult],
     stats: AggregateStats,
+    repro_records: list[ReproRecord],
     output_path: Path,
 ) -> None:
     """Write per-sample results + summary statistics to CSV.
 
     :param samples: Per-sample results.
     :param stats: Cross-sample :class:`AggregateStats`.
+    :param repro_records: Verification receipts in the same order as
+        ``samples``.
     :param output_path: Path to write the CSV.
+    :raises ValueError: If samples and receipts do not align.
     """
+    if len(samples) != len(repro_records):
+        raise ValueError("samples and repro_records must have identical lengths")
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(output_path, "w", newline="") as f:
@@ -338,6 +375,7 @@ def write_csv(
             [
                 "sample_id",
                 "seed",
+                "defines_hash",
                 "ticks_survived",
                 "outcome",
                 "max_tension",
@@ -346,11 +384,16 @@ def write_csv(
             ]
         )
 
-        for s in samples:
+        for s, record in zip(samples, repro_records, strict=True):
+            if s.seed != record.rng_seed:
+                raise ValueError(
+                    f"sample {s.sample_id} seed does not match its verification receipt"
+                )
             writer.writerow(
                 [
                     s.sample_id,
                     s.seed,
+                    record.defines_hash,
                     s.ticks_survived,
                     s.outcome,
                     f"{s.max_tension:.6f}",
@@ -376,6 +419,69 @@ def write_csv(
         writer.writerow(["wealth_std", f"{stats.wealth_std:.4f}"])
         writer.writerow(["objective_mean", f"{stats.objective_mean:.4f}"])
         writer.writerow(["objective_std", f"{stats.objective_std:.4f}"])
+
+
+def _objective_id(objective: Objective) -> str:
+    """Return an import-oriented identity for an objective callable."""
+    module = getattr(objective, "__module__", "<unknown>")
+    qualname = getattr(objective, "__qualname__", getattr(objective, "__name__", "<unknown>"))
+    return f"{module}:{qualname}"
+
+
+def write_manifest(
+    *,
+    defines: GameDefines,
+    overrides: Mapping[str, int | float],
+    base_seed: int | None,
+    backend: str,
+    scenario: str,
+    max_ticks: int,
+    objective: Objective,
+    samples: list[SampleResult],
+    stats: AggregateStats,
+    repro_records: list[ReproRecord],
+    output_path: Path,
+) -> None:
+    """Write the replay-input Monte Carlo JSON artifact.
+
+    The full validated ``GameDefines`` payload is stored once, while each
+    sample retains its exact derived seed and outcome. JSON encoding rejects
+    non-finite values rather than writing the non-standard ``NaN`` or
+    ``Infinity`` tokens.
+    """
+    if len(samples) != len(repro_records):
+        raise ValueError("samples and repro_records must have identical lengths")
+    if not repro_records:
+        raise ValueError("Monte Carlo manifests require at least one trial receipt")
+    defines_hashes = {record.defines_hash for record in repro_records}
+    if len(defines_hashes) != 1:
+        raise ValueError("Monte Carlo receipts must bind one coefficient snapshot")
+    defines_hash = next(iter(defines_hashes))
+    expected_hash = canonical_defines_hash(defines)
+    if defines_hash != expected_hash:
+        raise ValueError("Monte Carlo receipt hash does not match the retained defines payload")
+
+    manifest = MonteCarloManifest(
+        base_defines=defines.model_dump(mode="json"),
+        defines_hash=defines_hash,
+        parameter_overrides=dict(overrides),
+        base_seed=base_seed,
+        backend=backend,
+        scenario=scenario,
+        max_ticks=max_ticks,
+        objective=_objective_id(objective),
+        samples=tuple(samples),
+        stats=stats,
+        repro_records=tuple(repro_records),
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps(
+        manifest.model_dump(mode="json", by_alias=True),
+        indent=2,
+        sort_keys=True,
+        allow_nan=False,
+    )
+    output_path.write_text(f"{payload}\n", encoding="utf-8")
 
 
 def format_report(
@@ -453,6 +559,7 @@ def run_monte_carlo(
     scenario: str = "imperial_circuit",
     objective: Objective = carceral_objective,
     csv_path: Path | None = None,
+    manifest_path: Path | None = None,
     report_path: Path | None = None,
     progress: bool = True,
 ) -> MonteCarloArtifact:
@@ -469,23 +576,34 @@ def run_monte_carlo(
     :param param_overrides: Either a ``{param_path: value}`` mapping, or an
         iterable of raw ``"category.field=value"`` override strings (as a
         CLI layer would collect from repeated ``--param`` flags) — each
-        parsed via :func:`~babylon.engine.optimization.ranges.parse_override`.
+        parsed via :func:`~tools.devtools.sim_analysis.ranges.parse_override`.
     :param max_ticks: Maximum ticks per sample.
     :param backend: Must be ``"in_memory"``.
     :param scenario: In-memory scenario name.
     :param objective: Scoring function applied to each trial's :class:`Result`
-        (default: :func:`~babylon.engine.optimization.objectives.carceral_objective`).
+        (default: :func:`~tools.devtools.sim_analysis.objectives.carceral_objective`).
     :param csv_path: Output CSV path (default: :data:`DEFAULT_OUTPUT`).
+    :param manifest_path: Replay-input JSON artifact path. Defaults to the
+        CSV path with a ``.manifest.json`` suffix.
     :param report_path: Optional markdown report output path.
     :param progress: Print progress + report to stdout.
     :returns: The full :class:`MonteCarloArtifact` (samples, stats, repro
         records, and output paths).
     :raises ValueError: If a ``param_overrides`` entry is malformed (bubbled
-        up from :func:`~babylon.engine.optimization.ranges.parse_override`),
+        up from :func:`~tools.devtools.sim_analysis.ranges.parse_override`),
         or ``n_samples < 1``.
     """
-    if n_samples < 1:
-        raise ValueError(f"n_samples must be >= 1, got: {n_samples}")
+    if not 1 <= n_samples <= MAX_SAMPLES:
+        raise ValueError(f"n_samples must be 1..{MAX_SAMPLES}, got: {n_samples}")
+    if not 1 <= max_ticks <= MAX_TICKS:
+        raise ValueError(f"max_ticks must be 1..{MAX_TICKS}, got: {max_ticks}")
+    tick_evaluations = n_samples * max_ticks
+    if tick_evaluations > MAX_TICK_EVALUATIONS:
+        raise ValueError(
+            "Monte Carlo workload exceeds the tick budget: "
+            f"{n_samples} samples * {max_ticks} ticks = {tick_evaluations}, "
+            f"limit {MAX_TICK_EVALUATIONS}"
+        )
 
     base_defines = defines if defines is not None else GameDefines()
 
@@ -498,6 +616,23 @@ def run_monte_carlo(
 
     if overrides:
         base_defines = inject_parameters(base_defines, overrides)
+
+    resolved_csv_path = csv_path if csv_path is not None else Path(DEFAULT_OUTPUT)
+    resolved_manifest_path = (
+        manifest_path
+        if manifest_path is not None
+        else resolved_csv_path.with_suffix(".manifest.json")
+    )
+    output_paths = [resolved_csv_path, resolved_manifest_path]
+    if report_path is not None:
+        output_paths.append(report_path)
+    resolved_output_paths = [path.resolve() for path in output_paths]
+    if len(set(resolved_output_paths)) != len(resolved_output_paths):
+        raise ValueError("csv, manifest, and report output paths must be distinct")
+    for path in output_paths:
+        if path.exists() and path.is_dir():
+            raise ValueError(f"analysis output path is a directory: {path}")
+        path.parent.mkdir(parents=True, exist_ok=True)
 
     samples, repro_records = run_trials(
         n_samples,
@@ -512,10 +647,25 @@ def run_monte_carlo(
 
     stats = aggregate(samples)
 
-    resolved_csv_path = csv_path if csv_path is not None else Path(DEFAULT_OUTPUT)
-    write_csv(samples, stats, resolved_csv_path)
+    write_csv(samples, stats, repro_records, resolved_csv_path)
     if progress:
         print(f"\nResults written to: {resolved_csv_path}")
+
+    write_manifest(
+        defines=base_defines,
+        overrides=overrides,
+        base_seed=base_seed,
+        backend=backend,
+        scenario=scenario,
+        max_ticks=max_ticks,
+        objective=objective,
+        samples=samples,
+        stats=stats,
+        repro_records=repro_records,
+        output_path=resolved_manifest_path,
+    )
+    if progress:
+        print(f"Replay-input manifest written to: {resolved_manifest_path}")
 
     report = format_report(stats, base_seed=base_seed, backend=backend)
     if progress:
@@ -532,6 +682,7 @@ def run_monte_carlo(
         stats=stats,
         repro_records=tuple(repro_records),
         csv_path=resolved_csv_path,
+        manifest_path=resolved_manifest_path,
         report_path=report_path,
     )
 
@@ -539,16 +690,21 @@ def run_monte_carlo(
 __all__ = [
     "DEFAULT_SAMPLES",
     "DEFAULT_MAX_TICKS",
+    "MAX_SAMPLES",
+    "MAX_TICKS",
+    "MAX_TICK_EVALUATIONS",
     "DEFAULT_OUTPUT",
     "CONFIDENCE_LEVEL",
     "HAS_SCIPY",
     "SampleResult",
     "AggregateStats",
     "MonteCarloArtifact",
+    "MonteCarloManifest",
     "calculate_confidence_interval",
     "aggregate",
     "run_trials",
     "write_csv",
+    "write_manifest",
     "format_report",
     "run_monte_carlo",
 ]

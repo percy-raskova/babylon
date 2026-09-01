@@ -1,15 +1,15 @@
-"""``python -m babylon.engine.optimization`` entry point.
+"""``python -m tools.devtools.sim_analysis`` entry point.
 
-Argparse CLI over the optimization package's four algorithms — ``sweep``,
+Argparse CLI over the analysis package's four algorithms — ``sweep``,
 ``monte-carlo``, ``sensitivity``, and ``bayesian`` — each dispatching to its
-module's single ``run_*`` entry point (:func:`~babylon.engine.optimization.sweep.run_sweep`,
-:func:`~babylon.engine.optimization.monte_carlo.run_monte_carlo`,
-:func:`~babylon.engine.optimization.sensitivity.run_sensitivity`,
-:func:`~babylon.engine.optimization.bayesian.run_bayesian`). Every subcommand
+module's single ``run_*`` entry point (:func:`~tools.devtools.sim_analysis.sweep.run_sweep`,
+:func:`~tools.devtools.sim_analysis.monte_carlo.run_monte_carlo`,
+:func:`~tools.devtools.sim_analysis.sensitivity.run_sensitivity`,
+:func:`~tools.devtools.sim_analysis.bayesian.run_bayesian`). Every subcommand
 shares the retained ``--backend in-memory`` choice. ``sweep``'s
 ``--param``/``--param2`` and ``monte-carlo``'s repeated
 ``--param`` are validated eagerly through
-:mod:`~babylon.engine.optimization.ranges` so a malformed spec fails at the
+:mod:`~tools.devtools.sim_analysis.ranges` so a malformed spec fails at the
 CLI boundary with a clean usage error, not deep inside a trial.
 
 This module only builds the parser and maps parsed args to each ``run_*``
@@ -23,14 +23,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from babylon.engine.optimization import (
+from tools.devtools.sim_analysis import (
     run_bayesian,
     run_monte_carlo,
     run_sensitivity,
     run_sweep,
 )
-from babylon.engine.optimization.objectives import Objective, carceral_objective, survival_objective
-from babylon.engine.optimization.ranges import parse_override, parse_range
+from tools.devtools.sim_analysis.objectives import Objective, carceral_objective, survival_objective
+from tools.devtools.sim_analysis.ranges import parse_override, parse_range
 
 #: CLI-facing backend name, translated to runner_api's canonical spelling.
 _BACKEND_CHOICES = ("in-memory",)
@@ -49,9 +49,9 @@ _OBJECTIVE_CHOICES: dict[str, Objective] = {
 def _range_spec(spec: str) -> str:
     """Argparse ``type=`` validator for a ``"path=start:end:step"`` range spec.
 
-    Delegates to :func:`~babylon.engine.optimization.ranges.parse_range` for
+    Delegates to :func:`~tools.devtools.sim_analysis.ranges.parse_range` for
     validation only; the raw string (not the parsed tuple) is returned so it
-    can still be passed straight through to :func:`~babylon.engine.optimization.sweep.run_sweep`,
+    can still be passed straight through to :func:`~tools.devtools.sim_analysis.sweep.run_sweep`,
     which parses it again itself.
 
     :param spec: Raw ``--param``/``--param2`` value.
@@ -68,7 +68,7 @@ def _range_spec(spec: str) -> str:
 def _override_spec(spec: str) -> str:
     """Argparse ``type=`` validator for a ``"path=value"`` override spec.
 
-    Mirrors :func:`_range_spec` but for :func:`~babylon.engine.optimization.ranges.parse_override`,
+    Mirrors :func:`_range_spec` but for :func:`~tools.devtools.sim_analysis.ranges.parse_override`,
     used by ``monte-carlo``'s repeated ``--param`` flag.
 
     :param spec: Raw ``--param`` value.
@@ -161,6 +161,12 @@ def _add_sweep_subparser(subparsers: argparse._SubParsersAction[argparse.Argumen
         help="Write the sweep's CSV artifact here (1D: per-point; 2D: landscape grid).",
     )
     parser.add_argument(
+        "--manifest-path",
+        type=Path,
+        default=None,
+        help="Replay-input JSON path. Default: CSV path with a .manifest.json suffix.",
+    )
+    parser.add_argument(
         "--report",
         action="store_true",
         default=False,
@@ -202,6 +208,12 @@ def _add_monte_carlo_subparser(
     _add_objective_arg(parser)
     parser.add_argument("--csv-path", type=Path, default=None, help="Output CSV path.")
     parser.add_argument(
+        "--manifest-path",
+        type=Path,
+        default=None,
+        help="Replay-input JSON path. Default: CSV path with a .manifest.json suffix.",
+    )
+    parser.add_argument(
         "--report-path", type=Path, default=None, help="Optional markdown report output path."
     )
     parser.add_argument(
@@ -236,7 +248,7 @@ def _add_sensitivity_subparser(
         type=str,
         default=None,
         metavar="PATH,PATH,...",
-        help="Comma-separated parameter paths to analyze. Default: every known tunable parameter.",
+        help="Comma-separated parameter paths to analyze. Default: eight curated drivers.",
     )
     parser.add_argument(
         "--trajectories",
@@ -317,12 +329,12 @@ def _add_bayesian_subparser(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Construct the argparse parser for the optimization package CLI.
+    """Construct the argparse parser for the analysis package CLI.
 
     :returns: Parser with ``sweep``/``monte-carlo``/``sensitivity``/``bayesian`` subcommands.
     """
     parser = argparse.ArgumentParser(
-        prog="babylon.engine.optimization",
+        prog="tools.devtools.sim_analysis",
         description="Babylon GameDefines coefficient optimization: sweep, Monte Carlo, "
         "sensitivity analysis, and Bayesian search over simulation trials.",
     )
@@ -355,7 +367,15 @@ def _dispatch_sweep(args: argparse.Namespace) -> int:
     :param args: Parsed CLI namespace.
     :returns: Process exit code.
     """
-    kwargs = _kwargs_from(args, "param2", "max_ticks", "seed", "scenario", "output_csv")
+    kwargs = _kwargs_from(
+        args,
+        "param2",
+        "max_ticks",
+        "seed",
+        "scenario",
+        "output_csv",
+        "manifest_path",
+    )
     if args.backend is not None:
         kwargs["backend"] = _BACKEND_TRANSLATION[args.backend]
     if args.objective is not None:
@@ -377,6 +397,7 @@ def _dispatch_monte_carlo(args: argparse.Namespace) -> int:
         "max_ticks",
         "scenario",
         "csv_path",
+        "manifest_path",
         "report_path",
     )
     if args.seed is not None:
@@ -452,7 +473,7 @@ _DISPATCH = {
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Entry point for ``python -m babylon.engine.optimization``.
+    """Entry point for ``python -m tools.devtools.sim_analysis``.
 
     :param argv: Argument list to parse; defaults to ``sys.argv[1:]`` when ``None``.
     :returns: Process exit code (``0`` on success).

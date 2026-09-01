@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 import subprocess
 import tomllib
 from pathlib import Path
@@ -282,19 +283,34 @@ def test_rust_persistence_workflow_dsns_use_a_literal_loopback() -> None:
     runtime_dsns: list[tuple[Path, str]] = []
     for path in _workflow_paths():
         workflow = yaml.safe_load(path.read_text())
-        for job in workflow.get("jobs", {}).values():
+        jobs = workflow.get("jobs") or {}
+        assert isinstance(jobs, dict), path
+        for job in jobs.values():
+            assert isinstance(job, dict), path
+            steps = job.get("steps") or []
+            assert isinstance(steps, list), path
             environments = [
-                job.get("env", {}),
-                *(step.get("env", {}) for step in job.get("steps", [])),
+                job.get("env") or {},
+                *(step.get("env") or {} for step in steps),
             ]
             for environment in environments:
+                assert isinstance(environment, dict), path
                 if "BABYLON_RUNTIME_DSN" in environment:
                     runtime_dsns.append((path, str(environment["BABYLON_RUNTIME_DSN"])))
 
     assert runtime_dsns
     for path, dsn in runtime_dsns:
-        assert "host=127.0.0.1" in dsn, path
-        assert "host=localhost" not in dsn, path
+        parameters: dict[str, str] = {}
+        for token in shlex.split(dsn):
+            key, separator, value = token.partition("=")
+            assert separator and key, path
+            assert key not in parameters, path
+            parameters[key] = value
+
+        assert parameters.get("host") == "127.0.0.1", path
+        assert "," not in parameters.get("port", ""), path
+        assert "hostaddr" not in parameters, path
+        assert "options" not in parameters, path
 
 
 def test_analysis_sweep_task_has_a_configurable_finite_tick_budget() -> None:

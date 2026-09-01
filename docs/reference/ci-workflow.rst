@@ -216,8 +216,9 @@ authority.
 
 ``.github/dependabot.yml`` separates the weekly queues: Python updates run on
 Monday, GitHub Actions updates on Tuesday, and Rust updates on Thursday at
-09:00 ``America/New_York``. A YAML anchor owns that daylight-saving-aware
-timezone for all four ecosystem schedules. Docker image updates remain monthly.
+09:00 ``America/New_York``. Dependabot rejects YAML aliases and has no schedule
+variable, so all four schema fields remain explicit; a policy test enforces one
+daylight-saving-aware timezone across them. Docker image updates remain monthly.
 This cadence keeps three full validation batches from competing for the same
 runner window and avoids Wednesday's scheduled deep-validation workflows.
 

@@ -28,8 +28,8 @@ updates:
       interval: "weekly"
       day: "monday"
       time: "09:00"
-      # Canonical schedule timezone. Every later ecosystem aliases this value.
-      timezone: &dependabot_timezone "America/New_York"
+      # Dependabot rejects YAML aliases; the policy test keeps all four copies equal.
+      timezone: "America/New_York"
     open-pull-requests-limit: 10
     rebase-strategy: "auto"
     versioning-strategy: "increase-if-necessary"
@@ -71,7 +71,7 @@ updates:
       interval: "weekly"
       day: "tuesday"
       time: "09:00"
-      timezone: *dependabot_timezone
+      timezone: "America/New_York"
     open-pull-requests-limit: 5
     rebase-strategy: "auto"
     commit-message:
@@ -97,7 +97,7 @@ updates:
     schedule:
       interval: "monthly"
       time: "09:00"
-      timezone: *dependabot_timezone
+      timezone: "America/New_York"
     open-pull-requests-limit: 2
     commit-message:
       prefix: "ci(deps)"
@@ -126,7 +126,7 @@ updates:
       interval: "weekly"
       day: "thursday"
       time: "09:00"
-      timezone: *dependabot_timezone
+      timezone: "America/New_York"
     open-pull-requests-limit: 5
     rebase-strategy: "auto"
     commit-message:

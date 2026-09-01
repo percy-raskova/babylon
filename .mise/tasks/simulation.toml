@@ -77,10 +77,11 @@ babylon-runtime archive
 '''
 
 ["sim:report"]
-description = "Report the embedded Michigan Rust persistence slice with post-commit evidence"
+description = "Diagnose the embedded Michigan Rust persistence slice with post-commit evidence and resource telemetry"
 usage = '''
 arg "[ticks]" help="Number of Rust simulation ticks" default="60"
 arg "[timeout_seconds]" help="Runtime wall-clock timeout" default="3000"
+arg "[database_scope]" help="Database attribution scope: shared or exclusive" default="shared"
 '''
 run = """
 export BABYLON_RUNTIME_DSN="${BABYLON_RUNTIME_DSN:-host=127.0.0.1 port=5433 dbname=babylon_test user=test password=test}"
@@ -88,5 +89,6 @@ export BABYLON_RUNTIME_DSN="${BABYLON_RUNTIME_DSN:-host=127.0.0.1 port=5433 dbna
 python3 tools/devtools/sim_report.py \
   --runtime rust/target/debug/babylon-runtime \
   --ticks ${usage_ticks} --timeout-seconds ${usage_timeout_seconds} \
+  --database-scope ${usage_database_scope} \
   --output-root reports/sim-runs
 """

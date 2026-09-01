@@ -29,7 +29,12 @@ from tools.devtools.sim_analysis import (
     run_sensitivity,
     run_sweep,
 )
-from tools.devtools.sim_analysis.objectives import Objective, carceral_objective, survival_objective
+from tools.devtools.sim_analysis.objectives import (
+    Objective,
+    carceral_objective,
+    final_wealth_objective,
+    survival_objective,
+)
 from tools.devtools.sim_analysis.ranges import parse_override, parse_range
 
 #: CLI-facing backend name, translated to runner_api's canonical spelling.
@@ -43,6 +48,10 @@ _BACKEND_TRANSLATION = {"in-memory": "in_memory"}
 _OBJECTIVE_CHOICES: dict[str, Objective] = {
     "carceral": carceral_objective,
     "survival": survival_objective,
+}
+_SENSITIVITY_OBJECTIVE_CHOICES: dict[str, Objective] = {
+    **_OBJECTIVE_CHOICES,
+    "final-wealth": final_wealth_objective,
 }
 
 
@@ -109,7 +118,10 @@ def _add_scenario_arg(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _add_objective_arg(parser: argparse.ArgumentParser) -> None:
+def _add_objective_arg(
+    parser: argparse.ArgumentParser,
+    choices: dict[str, Objective] = _OBJECTIVE_CHOICES,
+) -> None:
     """Add the shared ``--objective`` flag to a subcommand parser.
 
     :param parser: Subcommand parser to attach the flag to.
@@ -118,7 +130,7 @@ def _add_objective_arg(parser: argparse.ArgumentParser) -> None:
         "--objective",
         type=str,
         default=None,
-        choices=sorted(_OBJECTIVE_CHOICES),
+        choices=sorted(choices),
         help="Trial scoring function. Default: carceral (Carceral Equilibrium phase-timing).",
     )
 
@@ -265,7 +277,7 @@ def _add_sensitivity_subparser(
     )
     _add_backend_arg(parser)
     _add_scenario_arg(parser)
-    _add_objective_arg(parser)
+    _add_objective_arg(parser, _SENSITIVITY_OBJECTIVE_CHOICES)
     parser.add_argument(
         "--output-dir",
         type=Path,
@@ -299,8 +311,15 @@ def _add_bayesian_subparser(
     parser.add_argument(
         "--study-name", type=str, default=None, help="Name for the optimization study."
     )
-    parser.add_argument(
+    storage_group = parser.add_mutually_exclusive_group()
+    storage_group.add_argument(
         "--storage", type=str, default=None, help="Secret-free local SQLite storage URL."
+    )
+    storage_group.add_argument(
+        "--output-dir",
+        type=Path,
+        default=None,
+        help="Create a fresh SQLite study and immutable CSV/JSON/Markdown exports here.",
     )
     parser.add_argument(
         "--n-trials",
@@ -432,7 +451,7 @@ def _dispatch_sensitivity(args: argparse.Namespace) -> int:
     if args.backend is not None:
         kwargs["backend"] = _BACKEND_TRANSLATION[args.backend]
     if args.objective is not None:
-        kwargs["objective"] = _OBJECTIVE_CHOICES[args.objective]
+        kwargs["objective"] = _SENSITIVITY_OBJECTIVE_CHOICES[args.objective]
     run_sensitivity(args.method, progress=not args.quiet, **kwargs)
     return 0
 
@@ -443,7 +462,15 @@ def _dispatch_bayesian(args: argparse.Namespace) -> int:
     :param args: Parsed CLI namespace.
     :returns: Process exit code.
     """
-    kwargs = _kwargs_from(args, "study_name", "storage", "n_trials", "max_ticks", "seed")
+    kwargs = _kwargs_from(
+        args,
+        "study_name",
+        "storage",
+        "output_dir",
+        "n_trials",
+        "max_ticks",
+        "seed",
+    )
     if args.backend is not None:
         kwargs["backend"] = _BACKEND_TRANSLATION[args.backend]
     if args.categories is not None:

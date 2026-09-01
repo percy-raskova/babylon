@@ -3,6 +3,7 @@
 use babylon_bsl::identity_codec::StableBslValueV1;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
+use babylon_graph::stable_state::StableGraphStateV1;
 use babylon_kernel::sha256_of;
 use babylon_kernel::tick_content_hash::TickContentHashV1;
 use babylon_practice_contract::ordered_action_v1::OrderedPracticeActionBatchV1;
@@ -506,6 +507,15 @@ pub enum RustPersistenceRuntimeErrorV1 {
     },
     /// The replay session refused preparation or acknowledgement.
     ReplayTick,
+    /// A post-ack observation receipt does not name this runtime's committed tail.
+    ObservationNotCurrentCommittedTail {
+        /// Exact tick named by the refused receipt.
+        receipt_tick: u64,
+        /// Current runtime tail, or `None` before the first acknowledgement.
+        current_tail: Option<u64>,
+    },
+    /// Recomposition did not reproduce the receipt-bound post-tick graph digest.
+    ObservationGraphDigestMismatch,
     /// The report's completed tick cannot be a durable `PostgreSQL` tick.
     ResolveTickOutOfRange {
         /// Exact refused completed tick.
@@ -596,6 +606,8 @@ pub struct CommittedTickReceiptV1 {
     commit_disposition: ReplayCommitDispositionV1,
     graph_before: [u8; 32],
     graph_after: [u8; 32],
+    prior_stable_graph_digest: [u8; 32],
+    result_stable_graph_digest: [u8; 32],
     world_before: [u8; 32],
     world_after: [u8; 32],
     considered: usize,
@@ -616,6 +628,8 @@ impl CommittedTickReceiptV1 {
         commit_disposition: ReplayCommitDispositionV1,
         acknowledged: IdentifiedTickReportV1,
     ) -> Self {
+        let prior_stable_graph_digest = acknowledged.prior_stable_graph_digest().into_bytes();
+        let result_stable_graph_digest = acknowledged.result_stable_graph_digest().into_bytes();
         let event_count = acknowledged.successful_event_batch().events().len();
         let event_digest = acknowledged.successful_event_batch().source_digest();
         let material_row_count = acknowledged.material_state_rows().source_count();
@@ -637,6 +651,8 @@ impl CommittedTickReceiptV1 {
             commit_disposition,
             graph_before,
             graph_after,
+            prior_stable_graph_digest,
+            result_stable_graph_digest,
             world_before,
             world_after,
             considered,
@@ -664,16 +680,28 @@ impl CommittedTickReceiptV1 {
         self.commit_disposition
     }
 
-    /// Return the graph-state hash before adjudication.
+    /// Return the administrative `GraphStateHash` before adjudication.
     #[must_use]
     pub const fn graph_before(&self) -> [u8; 32] {
         self.graph_before
     }
 
-    /// Return the graph-state hash after adjudication.
+    /// Return the administrative `GraphStateHash` after adjudication.
     #[must_use]
     pub const fn graph_after(&self) -> [u8; 32] {
         self.graph_after
+    }
+
+    /// Return the stable graph-state digest bound to the acknowledged prior.
+    #[must_use]
+    pub const fn prior_stable_graph_digest(&self) -> [u8; 32] {
+        self.prior_stable_graph_digest
+    }
+
+    /// Return the stable graph-state digest bound to the acknowledged result.
+    #[must_use]
+    pub const fn result_stable_graph_digest(&self) -> [u8; 32] {
+        self.result_stable_graph_digest
     }
 
     /// Return the nominal-world hash before adjudication.
@@ -892,6 +920,52 @@ impl DurableReplayRuntimeV1<HypergraphStore> {
             disposition,
             acknowledged,
         ))
+    }
+
+    /// Recompose the exact graph state bound to the current acknowledged receipt.
+    ///
+    /// This observation stays separate from the bounded receipt so persistence
+    /// acknowledgements remain identity- and value-free. The caller must present
+    /// the current runtime tail, and recomposition must reproduce its sealed
+    /// post-tick graph digest before any state is returned.
+    ///
+    /// # Errors
+    /// Refuses a receipt for any other tick, graph-state recomposition failure,
+    /// or a recomposed digest that differs from the acknowledged graph digest.
+    pub fn observe_committed_graph_state_v1(
+        &self,
+        receipt: &CommittedTickReceiptV1,
+    ) -> Result<StableGraphStateV1, RustPersistenceRuntimeErrorV1> {
+        if self.last_committed_tick != Some(receipt.resolve_tick()) {
+            return Err(
+                RustPersistenceRuntimeErrorV1::ObservationNotCurrentCommittedTail {
+                    receipt_tick: receipt.resolve_tick().get(),
+                    current_tail: self.last_committed_tick.map(CommittedResolveTickV1::get),
+                },
+            );
+        }
+        let observed = self.observe_current_stable_graph_state_v1()?;
+        if observed.digest().as_bytes() != &receipt.result_stable_graph_digest() {
+            return Err(RustPersistenceRuntimeErrorV1::ObservationGraphDigestMismatch);
+        }
+        Ok(observed)
+    }
+
+    /// Recompose the runtime's current stable graph without mutating it.
+    ///
+    /// This unbound observation supports capturing a pre-tick state. A caller
+    /// must bind its digest to the next acknowledged receipt before exposing
+    /// any derived values.
+    ///
+    /// # Errors
+    /// Refuses any stable-identity, topology, numeric, bound, or allocation
+    /// failure while recomposing the current graph.
+    pub fn observe_current_stable_graph_state_v1(
+        &self,
+    ) -> Result<StableGraphStateV1, RustPersistenceRuntimeErrorV1> {
+        self.session
+            .stable_graph_state()
+            .map_err(|_| RustPersistenceRuntimeErrorV1::ReplayTick)
     }
 
     /// Borrow the exact durable campaign foundation.
@@ -3019,14 +3093,18 @@ mod tests {
     use babylon_graph::hypergraph_store::HypergraphStore;
     use babylon_kernel::replay::{ReplaySeed, ReplaySessionIdV1};
     use babylon_kernel::tick_content_hash::RefDigestV1;
-    use babylon_kernel::ContentDigest;
+    use babylon_kernel::{sha256_of, ContentDigest};
     use babylon_practice_contract::ordered_action_v1::OrderedPracticeActionBatchV1;
     use babylon_tick::material_state::MaterialStateV1;
     use babylon_tick::replay_session::{ReplayCommitDispositionV1, ReplayTickSession};
 
     use crate::michigan_dynamic_hex_foundation_v1;
 
-    use super::{prepare_committed_tick_v1, CommittedResolveTickV1, CommittedTickReceiptV1};
+    use super::{
+        prepare_committed_tick_v1, CampaignFoundationV1, CampaignId, CommittedResolveTickV1,
+        CommittedTickReceiptV1, DurableReplayRuntimeV1, FoundationContentBundleV1,
+        PersistenceAuthorityLedgerRowV1, RustPersistenceRuntimeErrorV1,
+    };
 
     const SCENARIO: &str = r"
 (scenario demo/runtime-prepare
@@ -3046,6 +3124,68 @@ mod tests {
     (update-node self social-class/draw (set 0.25c))
     (emit EventType/RUNTIME_PREPARED (subject self))))
 "#;
+
+    fn committed_observation_fixture() -> (
+        DurableReplayRuntimeV1<HypergraphStore>,
+        CommittedTickReceiptV1,
+    ) {
+        const DEFINES: &[u8] = &[0x53];
+        const REFERENCE_BUNDLE_DOMAIN: &[u8] = b"babylon.h3.reference-bundle-composite.v1\0";
+        let (_, rules) = split_content(RULE).expect("rule parses");
+        let forms = rules.into_iter().map(|(_, form)| form).collect::<Vec<_>>();
+        let content = ContentDigest {
+            defines_hash: sha256_of(DEFINES),
+            rules_hash: rules_hash_of(&forms).expect("rule hashes"),
+        };
+        let session_id =
+            ReplaySessionIdV1::try_from("per304/runtime-observation-api").expect("session id");
+        let material_foundation = michigan_dynamic_hex_foundation_v1().expect("foundation decodes");
+        let mut reference_manifest = REFERENCE_BUNDLE_DOMAIN.to_vec();
+        reference_manifest.extend_from_slice(&material_foundation.base_reference_cohort_digest());
+        reference_manifest.extend_from_slice(&material_foundation.r8_section_digest());
+        assert_eq!(
+            sha256_of(&reference_manifest),
+            material_foundation.reference_bundle_digest()
+        );
+        let reference = RefDigestV1::from_bytes(material_foundation.reference_bundle_digest());
+        let mut session = ReplayTickSession::new(
+            SCENARIO,
+            None,
+            RULE,
+            HypergraphStore::new(),
+            session_id.clone(),
+            ReplaySeed::new(304),
+            content,
+            reference,
+            MaterialStateV1::try_new(material_foundation).expect("material state"),
+        )
+        .expect("session prepares");
+        let bundle =
+            FoundationContentBundleV1::try_new(SCENARIO, None, RULE, DEFINES, &reference_manifest)
+                .expect("content bundle");
+        let foundation = CampaignFoundationV1::capture(&session, bundle).expect("foundation");
+        let actions = OrderedPracticeActionBatchV1::empty(session_id, 1).expect("actions");
+        let report = session
+            .advance(&mut CollectingSink::default(), &actions)
+            .expect("tick succeeds");
+        let receipt = CommittedTickReceiptV1::from_acknowledged(
+            CommittedResolveTickV1::try_from(1).expect("positive tick"),
+            ReplayCommitDispositionV1::Committed,
+            report,
+        );
+        let prepared = PersistenceAuthorityLedgerRowV1::prepared().expect("prepared row");
+        let activation_row =
+            PersistenceAuthorityLedgerRowV1::rust_active(&prepared).expect("active row");
+        let runtime = DurableReplayRuntimeV1 {
+            config: postgres::Config::new(),
+            campaign_id: CampaignId::from_uuid(uuid::Uuid::from_u128(0x304)),
+            session,
+            foundation,
+            activation_row,
+            last_committed_tick: Some(receipt.resolve_tick()),
+        };
+        (runtime, receipt)
+    }
 
     #[test]
     fn prepared_tick_uses_one_identified_report_without_engine_authority() {
@@ -3126,6 +3266,8 @@ mod tests {
             .expect("tick succeeds");
         let expected_graph_before = report.report().before;
         let expected_graph_after = report.report().after;
+        let expected_prior_stable_graph_digest = report.prior_stable_graph_digest().into_bytes();
+        let expected_stable_graph_digest = report.result_stable_graph_digest().into_bytes();
         let expected_world_before = report.report().world_before;
         let expected_world_after = report.report().world_after;
         let expected_event_digest = report.successful_event_batch().source_digest();
@@ -3145,6 +3287,14 @@ mod tests {
         );
         assert_eq!(receipt.graph_before(), expected_graph_before);
         assert_eq!(receipt.graph_after(), expected_graph_after);
+        assert_eq!(
+            receipt.prior_stable_graph_digest(),
+            expected_prior_stable_graph_digest
+        );
+        assert_eq!(
+            receipt.result_stable_graph_digest(),
+            expected_stable_graph_digest
+        );
         assert_eq!(receipt.world_before(), expected_world_before);
         assert_eq!(receipt.world_after(), expected_world_after);
         assert_eq!(receipt.considered(), 1);
@@ -3163,5 +3313,41 @@ mod tests {
         assert!(receipt.material_row_count() > 0);
         assert_eq!(receipt.material_row_digest(), expected_material_digest);
         assert_eq!(receipt.tick_content_hash(), expected_tick_content_hash);
+    }
+
+    #[test]
+    fn committed_observation_is_bound_to_the_current_receipt_tick_and_digest() {
+        let (mut runtime, mut receipt) = committed_observation_fixture();
+
+        let current = runtime
+            .observe_current_stable_graph_state_v1()
+            .expect("current stable graph is observable without mutation");
+        let observed = runtime
+            .observe_committed_graph_state_v1(&receipt)
+            .expect("current acknowledged graph is observable");
+        assert_eq!(current, observed);
+        assert_eq!(
+            observed.digest().into_bytes(),
+            receipt.result_stable_graph_digest()
+        );
+
+        runtime.last_committed_tick =
+            Some(CommittedResolveTickV1::try_from(2).expect("positive committed tail"));
+        assert_eq!(
+            runtime.observe_committed_graph_state_v1(&receipt),
+            Err(
+                RustPersistenceRuntimeErrorV1::ObservationNotCurrentCommittedTail {
+                    receipt_tick: 1,
+                    current_tail: Some(2),
+                }
+            )
+        );
+
+        runtime.last_committed_tick = Some(receipt.resolve_tick());
+        receipt.result_stable_graph_digest = [0xff; 32];
+        assert_eq!(
+            runtime.observe_committed_graph_state_v1(&receipt),
+            Err(RustPersistenceRuntimeErrorV1::ObservationGraphDigestMismatch)
+        );
     }
 }

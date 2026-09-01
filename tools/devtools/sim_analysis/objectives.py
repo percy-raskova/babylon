@@ -306,6 +306,19 @@ def survival_objective(result: Result) -> float:
     return float(result.ticks_survived)
 
 
+def final_wealth_objective(result: Result) -> float:
+    """Score a trial by its normalized terminal wealth aggregate.
+
+    This objective is intentionally descriptive rather than authoritative:
+    ``Result.final_wealth`` is the frozen Python backend's terminal aggregate,
+    not a game-law verdict or a forecast.
+
+    :param result: The trial's normalized :class:`Result`.
+    :returns: ``result.final_wealth`` as a float.
+    """
+    return float(result.final_wealth)
+
+
 def endgame_objective(result: Result) -> float:
     """Track-B stub: score by :class:`~babylon.engine.observers.EndgameDetector` outcome.
 
@@ -340,5 +353,6 @@ __all__ = [
     "Objective",
     "carceral_objective",
     "survival_objective",
+    "final_wealth_objective",
     "endgame_objective",
 ]

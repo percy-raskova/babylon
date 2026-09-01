@@ -1,5 +1,6 @@
 //! Sole production command for Rust-owned `PostgreSQL` persistence.
 
+use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
 use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Write};
@@ -10,15 +11,16 @@ use babylon_bsl::rule_pipeline::split_content;
 use babylon_bsl::rules_hash_of;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
+use babylon_graph::stable_state::StableGraphStateV1;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionIdV1};
 use babylon_kernel::sha256_of;
 use babylon_kernel::tick_content_hash::RefDigestV1;
 use babylon_kernel::ContentDigest;
 use babylon_persistence::{
     activate_rust_persistence_v1, michigan_dynamic_hex_foundation_v1, preflight_schema_epoch,
-    representative_h3_reference_cohort_v1, CampaignId, CommittedResolveTickV1,
-    CommittedTickReceiptV1, DurableReplayRuntimeV1, FoundationContentBundleV1,
-    RustPersistenceRuntimeErrorV1,
+    representative_h3_reference_cohort_v1, CampaignFoundationV1, CampaignId,
+    CommittedResolveTickV1, CommittedTickReceiptV1, DurableReplayRuntimeV1,
+    FoundationContentBundleV1, RustPersistenceRuntimeErrorV1,
 };
 use babylon_practice_contract::ordered_action_v1::OrderedPracticeActionBatchV1;
 use babylon_tick::material_state::MaterialStateV1;
@@ -31,7 +33,17 @@ const CAMPAIGN_ENV: &str = "BABYLON_CAMPAIGN_ID";
 const DEFAULT_CAMPAIGN_UUID: u128 = 0x2810_0000_0000_0000_0000_0000_0000_0001;
 const MICHIGAN_SMOKE_TICKS: u64 = 60;
 const MICHIGAN_SMOKE_RESTART_TICKS: &[u64] = &[1, 51, 52, 60];
-const TICK_REPORT_SCHEMA_V1: &str = "babylon.simulation.tick-report.v1";
+const TICK_REPORT_SCHEMA_V2: &str = "babylon.simulation.tick-report.v2";
+const TICK_REPORT_SLICE_ID: &str = "michigan-persistence-slice";
+const FIXED_REPLAY_SEED: i64 = 281;
+const OBSERVED_ENTITY: &str = "wayne";
+const OBSERVABLE_ALLOWLIST_V2: &[(&str, &str)] = &[
+    ("territory/median-wage", "configured_input"),
+    ("territory/phi-hour", "configured_input"),
+    ("territory/phi-savings-adjustment", "dynamic"),
+    ("territory/rate-accumulation", "dynamic"),
+    ("territory/dist-year", "dynamic"),
+];
 const DEFINES: &[u8] = br#"{"alpha":1}"#;
 const REFERENCE_BUNDLE_DOMAIN: &[u8] = b"babylon.h3.reference-bundle-composite.v1\0";
 const SCENARIO: &str = r"
@@ -131,6 +143,7 @@ enum Command {
     Run {
         ticks: u64,
         report_jsonl: Option<PathBuf>,
+        restart_every: Option<u64>,
     },
     Probe,
     Archive,
@@ -142,7 +155,7 @@ enum Command {
 fn main() -> ExitCode {
     let Ok(command) = parse_command(std::env::args_os().skip(1)) else {
         eprintln!(
-            "babylon-runtime: expected activate, bootstrap, preflight, run --ticks N [--report-jsonl PATH], probe, archive, or michigan-smoke [--report-jsonl PATH]"
+            "babylon-runtime: expected activate, bootstrap, preflight, run --ticks N [--report-jsonl PATH] [--restart-every N], probe, archive, or michigan-smoke [--report-jsonl PATH]"
         );
         return ExitCode::from(2);
     };
@@ -189,13 +202,21 @@ fn execute(command: Command, config: &Config) -> Result<(), String> {
         Command::Run {
             ticks,
             report_jsonl,
+            restart_every,
         } => {
             let mut report_writer = report_jsonl
                 .as_deref()
                 .map(TickReportJsonlWriter::create)
                 .transpose()?;
             activate_rust_persistence_v1(config).map_err(|error| error.to_string())?;
-            run_to_tick(config, campaign_id()?, ticks, &[], report_writer.as_mut())?;
+            run_to_tick(
+                config,
+                campaign_id()?,
+                ticks,
+                &[],
+                restart_every,
+                report_writer.as_mut(),
+            )?;
         }
         Command::MichiganSmoke { report_jsonl } => {
             let mut report_writer = report_jsonl
@@ -208,6 +229,7 @@ fn execute(command: Command, config: &Config) -> Result<(), String> {
                 campaign_id()?,
                 MICHIGAN_SMOKE_TICKS,
                 MICHIGAN_SMOKE_RESTART_TICKS,
+                None,
                 report_writer.as_mut(),
             )?;
         }
@@ -241,6 +263,7 @@ fn run_to_tick(
     campaign: CampaignId,
     target_tick: u64,
     restart_ticks: &[u64],
+    restart_every: Option<u64>,
     mut report_writer: Option<&mut TickReportJsonlWriter>,
 ) -> Result<(), String> {
     let mut runtime = open_or_create_runtime(config, campaign)?;
@@ -253,6 +276,11 @@ fn run_to_tick(
         ));
     }
     while completed < target_tick {
+        let reporting = report_writer.is_some();
+        let before = reporting
+            .then(|| runtime.observe_current_stable_graph_state_v1())
+            .transpose()
+            .map_err(|error| error.to_string())?;
         let resolve_tick = completed
             .checked_add(1)
             .ok_or_else(|| "requested tick overflow".to_owned())?;
@@ -261,19 +289,19 @@ fn run_to_tick(
             resolve_tick,
         )
         .map_err(|_| "empty action batch refused".to_owned())?;
+        let mut sink = CollectingSink::default();
         let receipt = runtime
-            .advance_and_commit(&mut CollectingSink::default(), &actions)
+            .advance_and_commit(&mut sink, &actions)
             .map_err(|error| error.to_string())?;
         completed = receipt.resolve_tick().get();
-        if let Some(writer) = report_writer.as_deref_mut() {
-            writer.write_receipt(&receipt)?;
-        }
-        println!(
-            "Committed Rust tick {} (content_sha256={}).",
+        let reopened_after_commit = should_reopen_after_commit_v2(
             completed,
-            hex_digest(receipt.tick_content_hash().as_bytes()),
+            target_tick,
+            restart_ticks,
+            restart_every,
+            reporting,
         );
-        if restart_ticks.contains(&completed) {
+        if reopened_after_commit {
             runtime = DurableReplayRuntimeV1::open(config, campaign)
                 .map_err(|error| error.to_string())?;
             if runtime
@@ -284,39 +312,118 @@ fn run_to_tick(
                 return Err("restart did not recover the acknowledged tail".to_owned());
             }
         }
+        if let Some(writer) = report_writer.as_deref_mut() {
+            let after = runtime
+                .observe_committed_graph_state_v1(&receipt)
+                .map_err(|error| error.to_string())?;
+            writer.write_receipt(
+                &receipt,
+                before
+                    .as_ref()
+                    .ok_or_else(|| "tick report pre-state is absent".to_owned())?,
+                &after,
+                &sink,
+                reopened_after_commit,
+                foundation_identity_v2(runtime.foundation()),
+            )?;
+        }
+        println!(
+            "Committed Rust tick {} (content_sha256={}).",
+            completed,
+            hex_digest(receipt.tick_content_hash().as_bytes()),
+        );
     }
     println!("Rust durable campaign is complete at tick {completed}.");
     Ok(())
 }
 
+fn should_reopen_after_commit_v2(
+    completed: u64,
+    target_tick: u64,
+    restart_ticks: &[u64],
+    restart_every: Option<u64>,
+    reporting: bool,
+) -> bool {
+    restart_ticks.contains(&completed)
+        || restart_every.is_some_and(|interval| completed.is_multiple_of(interval))
+        || (reporting && completed == target_tick)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct RuleTickReportV1 {
+struct RuleTickReportV2 {
     rule_id: String,
     considered: usize,
     fired: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct SimulationTickReportV1 {
+struct EventTypeTickReportV2 {
+    event_type: String,
+    count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ObservableTickReportV2 {
+    name: String,
+    entity: String,
+    field: String,
+    role: &'static str,
+    before_value_bits: u64,
+    after_value_bits: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FoundationIdentityTickReportV2 {
+    foundation: [u8; 32],
+    defines: [u8; 32],
+    rules: [u8; 32],
+    reference: [u8; 32],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SimulationTickReportV2 {
+    scenario: String,
     resolve_tick: u64,
     commit_disposition: &'static str,
     graph_before: [u8; 32],
     graph_after: [u8; 32],
+    stable_graph_before: [u8; 32],
+    stable_graph_after: [u8; 32],
     world_before: [u8; 32],
     world_after: [u8; 32],
     considered: usize,
     fired: usize,
-    per_rule: Vec<RuleTickReportV1>,
+    per_rule: Vec<RuleTickReportV2>,
     event_count: usize,
     event_digest: [u8; 32],
+    event_per_type: Vec<EventTypeTickReportV2>,
+    observables: Vec<ObservableTickReportV2>,
+    persistence_reopened_after_commit: bool,
+    foundation: FoundationIdentityTickReportV2,
     audit_receipt_count: usize,
     material_row_count: usize,
     material_row_digest: [u8; 32],
     tick_content_hash: [u8; 32],
 }
 
-impl SimulationTickReportV1 {
-    fn try_from_receipt(receipt: &CommittedTickReceiptV1) -> Result<Self, String> {
+impl SimulationTickReportV2 {
+    fn try_from_receipt(
+        receipt: &CommittedTickReceiptV1,
+        before: &StableGraphStateV1,
+        after: &StableGraphStateV1,
+        sink: &CollectingSink,
+        reopened_after_commit: bool,
+        foundation: FoundationIdentityTickReportV2,
+    ) -> Result<Self, String> {
+        if before.digest().as_bytes() != &receipt.prior_stable_graph_digest() {
+            return Err("tick report pre-state is not bound to its receipt".to_owned());
+        }
+        if after.digest().as_bytes() != &receipt.result_stable_graph_digest() {
+            return Err("tick report post-state is not bound to its receipt".to_owned());
+        }
+        if before.scenario_scope() != after.scenario_scope() {
+            return Err("tick report stable-state scenarios are misaligned".to_owned());
+        }
         let considered = receipt.per_rule_considered();
         let fired = receipt.per_rule_fired();
         if considered.len() != fired.len() {
@@ -329,7 +436,7 @@ impl SimulationTickReportV1 {
             if considered_id != fired_id {
                 return Err("acknowledged tick report rule identities are misaligned".to_owned());
             }
-            per_rule.push(RuleTickReportV1 {
+            per_rule.push(RuleTickReportV2 {
                 rule_id: considered_id.clone(),
                 considered: *considered_count,
                 fired: *fired_count,
@@ -342,10 +449,13 @@ impl SimulationTickReportV1 {
             }
         };
         Ok(Self {
+            scenario: after.scenario_scope().to_owned(),
             resolve_tick: receipt.resolve_tick().get(),
             commit_disposition,
             graph_before: receipt.graph_before(),
             graph_after: receipt.graph_after(),
+            stable_graph_before: receipt.prior_stable_graph_digest(),
+            stable_graph_after: receipt.result_stable_graph_digest(),
             world_before: receipt.world_before(),
             world_after: receipt.world_after(),
             considered: receipt.considered(),
@@ -353,6 +463,10 @@ impl SimulationTickReportV1 {
             per_rule,
             event_count: receipt.event_count(),
             event_digest: receipt.event_digest(),
+            event_per_type: collect_event_type_counts_v2(sink, receipt.event_count())?,
+            observables: collect_observable_transitions_v2(before, after)?,
+            persistence_reopened_after_commit: reopened_after_commit,
+            foundation,
             audit_receipt_count: receipt.audit_receipt_count(),
             material_row_count: receipt.material_row_count(),
             material_row_digest: receipt.material_row_digest(),
@@ -360,7 +474,7 @@ impl SimulationTickReportV1 {
         })
     }
 
-    fn json_value(&self) -> serde_json::Value {
+    fn json_value(&self) -> Result<serde_json::Value, String> {
         let per_rule = self
             .per_rule
             .iter()
@@ -372,13 +486,36 @@ impl SimulationTickReportV1 {
                 })
             })
             .collect::<Vec<_>>();
-        serde_json::json!({
-            "schema": TICK_REPORT_SCHEMA_V1,
+        let event_per_type = self
+            .event_per_type
+            .iter()
+            .map(|event| {
+                serde_json::json!({
+                    "event_type": event.event_type.as_str(),
+                    "count": event.count,
+                })
+            })
+            .collect::<Vec<_>>();
+        let observables = observable_json_values_v2(&self.observables)?;
+        Ok(serde_json::json!({
+            "schema": TICK_REPORT_SCHEMA_V2,
             "resolve_tick": self.resolve_tick,
             "commit_disposition": self.commit_disposition,
+            "scope": {
+                "slice_id": TICK_REPORT_SLICE_ID,
+                "scenario": self.scenario.as_str(),
+                "fixed_replay_seed": FIXED_REPLAY_SEED,
+                "parameter_overrides": false,
+                "stochastic_draws": false,
+                "dynamic_h3_updates": false,
+            },
             "graph": {
                 "before_sha256": hex_digest(&self.graph_before),
                 "after_sha256": hex_digest(&self.graph_after),
+            },
+            "stable_graph": {
+                "before_sha256": hex_digest(&self.stable_graph_before),
+                "after_sha256": hex_digest(&self.stable_graph_after),
             },
             "world": {
                 "before_sha256": hex_digest(&self.world_before),
@@ -392,6 +529,17 @@ impl SimulationTickReportV1 {
             "events": {
                 "count": self.event_count,
                 "digest_sha256": hex_digest(&self.event_digest),
+                "per_type": event_per_type,
+            },
+            "observables": observables,
+            "persistence": {
+                "reopened_after_commit": self.persistence_reopened_after_commit,
+            },
+            "foundation": {
+                "foundation_sha256": hex_digest(&self.foundation.foundation),
+                "defines_sha256": hex_digest(&self.foundation.defines),
+                "rules_sha256": hex_digest(&self.foundation.rules),
+                "reference_sha256": hex_digest(&self.foundation.reference),
             },
             "audit_receipts": {
                 "count": self.audit_receipt_count,
@@ -401,7 +549,138 @@ impl SimulationTickReportV1 {
                 "digest_sha256": hex_digest(&self.material_row_digest),
             },
             "tick_content_hash": hex_digest(&self.tick_content_hash),
+        }))
+    }
+}
+
+fn observable_json_values_v2(
+    observables: &[ObservableTickReportV2],
+) -> Result<Vec<serde_json::Value>, String> {
+    observables
+        .iter()
+        .map(|observable| {
+            let before_value =
+                serde_json::Number::from_f64(f64::from_bits(observable.before_value_bits))
+                    .ok_or_else(|| {
+                        format!(
+                            "tick report observable {} pre-value is not finite",
+                            observable.name
+                        )
+                    })?;
+            let after_value =
+                serde_json::Number::from_f64(f64::from_bits(observable.after_value_bits))
+                    .ok_or_else(|| {
+                        format!(
+                            "tick report observable {} post-value is not finite",
+                            observable.name
+                        )
+                    })?;
+            Ok(serde_json::json!({
+                "name": observable.name.as_str(),
+                "entity": observable.entity.as_str(),
+                "field": observable.field.as_str(),
+                "role": observable.role,
+                "kind": "f64",
+                "before_value": before_value,
+                "before_bits_hex": format!("{:016x}", observable.before_value_bits),
+                "after_value": after_value,
+                "after_bits_hex": format!("{:016x}", observable.after_value_bits),
+            }))
         })
+        .collect()
+}
+
+fn collect_event_type_counts_v2(
+    sink: &CollectingSink,
+    expected_count: usize,
+) -> Result<Vec<EventTypeTickReportV2>, String> {
+    let mut counts = BTreeMap::<String, usize>::new();
+    for (event_type, _) in &sink.events {
+        let count = counts.entry(event_type.clone()).or_default();
+        *count = count
+            .checked_add(1)
+            .ok_or_else(|| "tick report event-type count overflow".to_owned())?;
+    }
+    let actual_count = counts.values().try_fold(0_usize, |total, count| {
+        total
+            .checked_add(*count)
+            .ok_or_else(|| "tick report event count overflow".to_owned())
+    })?;
+    if actual_count != expected_count {
+        return Err(format!(
+            "acknowledged event count {expected_count} differs from published event count {actual_count}"
+        ));
+    }
+    Ok(counts
+        .into_iter()
+        .map(|(event_type, count)| EventTypeTickReportV2 { event_type, count })
+        .collect())
+}
+
+fn collect_observable_transitions_v2(
+    before: &StableGraphStateV1,
+    after: &StableGraphStateV1,
+) -> Result<Vec<ObservableTickReportV2>, String> {
+    if before.scenario_scope() != after.scenario_scope() {
+        return Err("tick report observable scenarios are misaligned".to_owned());
+    }
+    let mut observables = Vec::with_capacity(OBSERVABLE_ALLOWLIST_V2.len());
+    for &(field, role) in OBSERVABLE_ALLOWLIST_V2 {
+        let (before_entity, before_value_bits) = observable_bits_v2(before, field, "pre")?;
+        let (after_entity, after_value_bits) = observable_bits_v2(after, field, "post")?;
+        if before_entity != after_entity {
+            return Err(format!(
+                "tick report observable {OBSERVED_ENTITY}::{field} identities are misaligned"
+            ));
+        }
+        observables.push(ObservableTickReportV2 {
+            name: format!("{}::{OBSERVED_ENTITY}::{field}", after.scenario_scope()),
+            entity: after_entity.to_owned(),
+            field: field.to_owned(),
+            role,
+            before_value_bits,
+            after_value_bits,
+        });
+    }
+    Ok(observables)
+}
+
+fn observable_bits_v2<'a>(
+    state: &'a StableGraphStateV1,
+    field: &str,
+    boundary: &str,
+) -> Result<(&'a str, u64), String> {
+    let mut matches = state
+        .rows()
+        .node_f64()
+        .iter()
+        .filter(|(entity, candidate_field, _)| {
+            entity == OBSERVED_ENTITY && candidate_field == field
+        });
+    let Some((entity, _, value_bits)) = matches.next() else {
+        return Err(format!(
+            "tick report {boundary}-observable {OBSERVED_ENTITY}::{field} is missing"
+        ));
+    };
+    if matches.next().is_some() {
+        return Err(format!(
+            "tick report {boundary}-observable {OBSERVED_ENTITY}::{field} is duplicated"
+        ));
+    }
+    if !f64::from_bits(*value_bits).is_finite() {
+        return Err(format!(
+            "tick report {boundary}-observable {OBSERVED_ENTITY}::{field} is not finite"
+        ));
+    }
+    Ok((entity.as_str(), *value_bits))
+}
+
+fn foundation_identity_v2(foundation: &CampaignFoundationV1) -> FoundationIdentityTickReportV2 {
+    FoundationIdentityTickReportV2 {
+        foundation: sha256_of(foundation.canonical_bytes()),
+        defines: foundation.content_digest().defines_hash,
+        rules: foundation.content_digest().rules_hash,
+        reference: *foundation.reference_digest().as_bytes(),
     }
 }
 
@@ -421,12 +700,28 @@ impl TickReportJsonlWriter {
         })
     }
 
-    fn write_receipt(&mut self, receipt: &CommittedTickReceiptV1) -> Result<(), String> {
-        self.write_report(&SimulationTickReportV1::try_from_receipt(receipt)?)
+    fn write_receipt(
+        &mut self,
+        receipt: &CommittedTickReceiptV1,
+        before: &StableGraphStateV1,
+        after: &StableGraphStateV1,
+        sink: &CollectingSink,
+        reopened_after_commit: bool,
+        foundation: FoundationIdentityTickReportV2,
+    ) -> Result<(), String> {
+        self.write_report(&SimulationTickReportV2::try_from_receipt(
+            receipt,
+            before,
+            after,
+            sink,
+            reopened_after_commit,
+            foundation,
+        )?)
     }
 
-    fn write_report(&mut self, report: &SimulationTickReportV1) -> Result<(), String> {
-        serde_json::to_writer(&mut self.output, &report.json_value()).map_err(|_| {
+    fn write_report(&mut self, report: &SimulationTickReportV2) -> Result<(), String> {
+        let value = report.json_value()?;
+        serde_json::to_writer(&mut self.output, &value).map_err(|_| {
             format!(
                 "tick report JSON serialization failed after durable tick {}",
                 report.resolve_tick
@@ -474,7 +769,7 @@ fn runtime_foundation() -> Result<
     };
     let session_id = ReplaySessionIdV1::try_from("per281/rust-runtime")
         .map_err(|_| "runtime replay identity refused".to_owned())?;
-    let seed = ReplaySeed::new(281);
+    let seed = ReplaySeed::new(FIXED_REPLAY_SEED);
     let foundation = michigan_dynamic_hex_foundation_v1()
         .map_err(|error| format!("Michigan foundation refused: {error}"))?;
     let mut reference_manifest = REFERENCE_BUNDLE_DOMAIN.to_vec();
@@ -614,6 +909,7 @@ fn parse_command(mut args: impl Iterator<Item = OsString>) -> Result<Command, ()
         value if value == OsStr::new("run") => {
             let mut ticks = None;
             let mut report_jsonl = None;
+            let mut restart_every = None;
             while let Some(flag) = args.next() {
                 if flag == OsStr::new("--ticks") {
                     if ticks.is_some() {
@@ -626,6 +922,12 @@ fn parse_command(mut args: impl Iterator<Item = OsString>) -> Result<Command, ()
                         return Err(());
                     }
                     report_jsonl = Some(parse_report_path(args.next().ok_or(())?)?);
+                } else if flag == OsStr::new("--restart-every") {
+                    if restart_every.is_some() {
+                        return Err(());
+                    }
+                    let value = args.next().ok_or(())?;
+                    restart_every = Some(value.to_str().ok_or(())?.parse::<u64>().map_err(|_| ())?);
                 } else {
                     return Err(());
                 }
@@ -634,9 +936,13 @@ fn parse_command(mut args: impl Iterator<Item = OsString>) -> Result<Command, ()
             if ticks == 0 || ticks > i64::MAX as u64 {
                 return Err(());
             }
+            if restart_every == Some(0) {
+                return Err(());
+            }
             Ok(Command::Run {
                 ticks,
                 report_jsonl,
+                restart_every,
             })
         }
         _ => Err(()),
@@ -676,11 +982,15 @@ mod tests {
     use babylon_graph::hypergraph_store::HypergraphStore;
     use babylon_graph::substrate::{GraphSubstrate, NodeId};
     use babylon_kernel::SessionId;
+    use babylon_practice_contract::ordered_action_v1::OrderedPracticeActionBatchV1;
     use babylon_tick::TickSession;
 
     use super::{
-        parse_command, Command, RuleTickReportV1, SimulationTickReportV1, TickReportJsonlWriter,
-        MICHIGAN_SMOKE_RESTART_TICKS, MICHIGAN_SMOKE_TICKS, RULE, SCENARIO, TICK_REPORT_SCHEMA_V1,
+        collect_event_type_counts_v2, collect_observable_transitions_v2, foundation_identity_v2,
+        parse_command, runtime_foundation, should_reopen_after_commit_v2, Command,
+        EventTypeTickReportV2, FoundationIdentityTickReportV2, ObservableTickReportV2,
+        RuleTickReportV2, SimulationTickReportV2, TickReportJsonlWriter,
+        MICHIGAN_SMOKE_RESTART_TICKS, MICHIGAN_SMOKE_TICKS, RULE, SCENARIO, TICK_REPORT_SCHEMA_V2,
     };
 
     static REPORT_PATH_SEQUENCE: AtomicU64 = AtomicU64::new(0);
@@ -693,23 +1003,26 @@ mod tests {
         ))
     }
 
-    fn report_fixture() -> SimulationTickReportV1 {
-        SimulationTickReportV1 {
+    fn report_fixture() -> SimulationTickReportV2 {
+        SimulationTickReportV2 {
+            scenario: "production/michigan-rust-runtime".to_owned(),
             resolve_tick: 7,
             commit_disposition: "reconciled_after_ambiguous_commit",
             graph_before: [0x11; 32],
             graph_after: [0x22; 32],
+            stable_graph_before: [0x23; 32],
+            stable_graph_after: [0x24; 32],
             world_before: [0x33; 32],
             world_after: [0x44; 32],
             considered: 5,
             fired: 3,
             per_rule: vec![
-                RuleTickReportV1 {
+                RuleTickReportV2 {
                     rule_id: "vitality/example".to_owned(),
                     considered: 2,
                     fired: 1,
                 },
-                RuleTickReportV1 {
+                RuleTickReportV2 {
                     rule_id: "lifecycle/example".to_owned(),
                     considered: 3,
                     fired: 2,
@@ -717,10 +1030,151 @@ mod tests {
             ],
             event_count: 1,
             event_digest: [0x55; 32],
+            event_per_type: vec![EventTypeTickReportV2 {
+                event_type: "EventType/EXAMPLE".to_owned(),
+                count: 1,
+            }],
+            observables: vec![
+                ObservableTickReportV2 {
+                    name: "production/michigan-rust-runtime::wayne::territory/median-wage"
+                        .to_owned(),
+                    entity: "wayne".to_owned(),
+                    field: "territory/median-wage".to_owned(),
+                    role: "configured_input",
+                    before_value_bits: 20.0_f64.to_bits(),
+                    after_value_bits: 21.0_f64.to_bits(),
+                },
+                ObservableTickReportV2 {
+                    name: "production/michigan-rust-runtime::wayne::territory/phi-hour".to_owned(),
+                    entity: "wayne".to_owned(),
+                    field: "territory/phi-hour".to_owned(),
+                    role: "configured_input",
+                    before_value_bits: 1.0_f64.to_bits(),
+                    after_value_bits: 1.0_f64.to_bits(),
+                },
+                ObservableTickReportV2 {
+                    name:
+                        "production/michigan-rust-runtime::wayne::territory/phi-savings-adjustment"
+                            .to_owned(),
+                    entity: "wayne".to_owned(),
+                    field: "territory/phi-savings-adjustment".to_owned(),
+                    role: "dynamic",
+                    before_value_bits: 0.0_f64.to_bits(),
+                    after_value_bits: 0.04_f64.to_bits(),
+                },
+                ObservableTickReportV2 {
+                    name: "production/michigan-rust-runtime::wayne::territory/rate-accumulation"
+                        .to_owned(),
+                    entity: "wayne".to_owned(),
+                    field: "territory/rate-accumulation".to_owned(),
+                    role: "dynamic",
+                    before_value_bits: 0.01_f64.to_bits(),
+                    after_value_bits: 0.02_f64.to_bits(),
+                },
+                ObservableTickReportV2 {
+                    name: "production/michigan-rust-runtime::wayne::territory/dist-year".to_owned(),
+                    entity: "wayne".to_owned(),
+                    field: "territory/dist-year".to_owned(),
+                    role: "dynamic",
+                    before_value_bits: 2010.0_f64.to_bits(),
+                    after_value_bits: 2011.0_f64.to_bits(),
+                },
+            ],
+            persistence_reopened_after_commit: true,
+            foundation: FoundationIdentityTickReportV2 {
+                foundation: [0x25; 32],
+                defines: [0x26; 32],
+                rules: [0x27; 32],
+                reference: [0x28; 32],
+            },
             audit_receipt_count: 2,
             material_row_count: 9,
             material_row_digest: [0x66; 32],
             tick_content_hash: [0x77; 32],
+        }
+    }
+
+    fn assert_report_core_json(row: &serde_json::Value) {
+        assert_eq!(row["schema"], TICK_REPORT_SCHEMA_V2);
+        assert_eq!(row["resolve_tick"], 7);
+        assert_eq!(
+            row["commit_disposition"],
+            "reconciled_after_ambiguous_commit"
+        );
+        assert_eq!(row["rules"]["considered"], 5);
+        assert_eq!(row["rules"]["fired"], 3);
+        assert_eq!(row["rules"]["per_rule"][0]["considered"], 2);
+        assert_eq!(row["rules"]["per_rule"][0]["fired"], 1);
+        assert_eq!(
+            row["stable_graph"]["before_sha256"],
+            "2323232323232323232323232323232323232323232323232323232323232323"
+        );
+        assert_eq!(
+            row["stable_graph"]["after_sha256"],
+            "2424242424242424242424242424242424242424242424242424242424242424"
+        );
+        assert_eq!(row["scope"]["slice_id"], "michigan-persistence-slice");
+        assert_eq!(row["scope"]["scenario"], "production/michigan-rust-runtime");
+        assert_eq!(row["scope"]["fixed_replay_seed"], 281);
+        assert_eq!(row["scope"]["parameter_overrides"], false);
+        assert_eq!(row["scope"]["stochastic_draws"], false);
+        assert_eq!(row["scope"]["dynamic_h3_updates"], false);
+    }
+
+    fn assert_report_event_and_observable_json(row: &serde_json::Value) {
+        assert_eq!(row["events"]["count"], 1);
+        assert_eq!(
+            row["events"]["per_type"][0]["event_type"],
+            "EventType/EXAMPLE"
+        );
+        assert_eq!(row["events"]["per_type"][0]["count"], 1);
+        assert_eq!(row["observables"].as_array().map(Vec::len), Some(5));
+        assert_eq!(
+            row["observables"][0]["name"],
+            "production/michigan-rust-runtime::wayne::territory/median-wage"
+        );
+        assert_eq!(row["observables"][0]["entity"], "wayne");
+        assert_eq!(row["observables"][0]["field"], "territory/median-wage");
+        assert_eq!(row["observables"][0]["role"], "configured_input");
+        assert_eq!(row["observables"][0]["kind"], "f64");
+        assert_eq!(row["observables"][0]["before_value"], 20.0);
+        assert_eq!(row["observables"][0]["before_bits_hex"], "4034000000000000");
+        assert_eq!(row["observables"][0]["after_value"], 21.0);
+        assert_eq!(row["observables"][0]["after_bits_hex"], "4035000000000000");
+        assert_eq!(row["observables"][4]["field"], "territory/dist-year");
+        assert_eq!(row["observables"][4]["role"], "dynamic");
+    }
+
+    fn assert_report_persistence_json(row: &serde_json::Value) {
+        assert_eq!(row["persistence"]["reopened_after_commit"], true);
+        assert_eq!(
+            row["foundation"]["foundation_sha256"],
+            "2525252525252525252525252525252525252525252525252525252525252525"
+        );
+        assert_eq!(
+            row["foundation"]["defines_sha256"],
+            "2626262626262626262626262626262626262626262626262626262626262626"
+        );
+        assert_eq!(
+            row["foundation"]["rules_sha256"],
+            "2727272727272727272727272727272727272727272727272727272727272727"
+        );
+        assert_eq!(
+            row["foundation"]["reference_sha256"],
+            "2828282828282828282828282828282828282828282828282828282828282828"
+        );
+        assert_eq!(row["audit_receipts"]["count"], 2);
+        assert_eq!(row["material_rows"]["count"], 9);
+    }
+
+    fn assert_report_is_secret_safe(rendered: &str) {
+        for forbidden in [
+            "BABYLON_RUNTIME_DSN",
+            "postgres://",
+            "hostname",
+            "timestamp",
+        ] {
+            assert!(!rendered.contains(forbidden), "leaked {forbidden}");
         }
     }
 
@@ -795,6 +1249,99 @@ mod tests {
     }
 
     #[test]
+    fn report_v2_captures_tick_one_observable_transitions_and_sorted_event_counts() {
+        let (mut session, _) = runtime_foundation().expect("Michigan runtime foundation");
+        let before = session
+            .stable_graph_state()
+            .expect("Michigan pre-tick graph state recomposes");
+        let actions = OrderedPracticeActionBatchV1::empty(session.session_identity().clone(), 1)
+            .expect("tick-one actions");
+        session
+            .advance(&mut CollectingSink::default(), &actions)
+            .expect("Michigan tick one succeeds");
+        let after = session
+            .stable_graph_state()
+            .expect("Michigan post-tick graph state recomposes");
+        let observables = collect_observable_transitions_v2(&before, &after)
+            .expect("paired observable allowlist is complete");
+        let fields = observables
+            .iter()
+            .map(|observable| observable.field.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            fields,
+            [
+                "territory/median-wage",
+                "territory/phi-hour",
+                "territory/phi-savings-adjustment",
+                "territory/rate-accumulation",
+                "territory/dist-year",
+            ]
+        );
+        assert_eq!(observables[0].before_value_bits, 21.0_f64.to_bits());
+        assert_eq!(observables[0].after_value_bits, 21.0_f64.to_bits());
+        assert_eq!(
+            observables[2].before_value_bits,
+            0.0_f64.to_bits(),
+            "tick one begins from the configured Phi-adjustment seed"
+        );
+        assert!(
+            f64::from_bits(observables[2].after_value_bits) > 0.0,
+            "tick one exposes the live Phi-to-savings change"
+        );
+
+        let mut sink = CollectingSink::default();
+        sink.events.push(("EventType/ZETA".to_owned(), Vec::new()));
+        sink.events.push(("EventType/ALPHA".to_owned(), Vec::new()));
+        sink.events.push(("EventType/ZETA".to_owned(), Vec::new()));
+        let per_type = collect_event_type_counts_v2(&sink, 3).expect("event total matches");
+        assert_eq!(
+            per_type,
+            [
+                EventTypeTickReportV2 {
+                    event_type: "EventType/ALPHA".to_owned(),
+                    count: 1,
+                },
+                EventTypeTickReportV2 {
+                    event_type: "EventType/ZETA".to_owned(),
+                    count: 2,
+                },
+            ]
+        );
+        assert!(collect_event_type_counts_v2(&sink, 2).is_err());
+    }
+
+    #[test]
+    fn persistence_readback_marks_intervals_smoke_boundaries_and_final_reports() {
+        assert!(!should_reopen_after_commit_v2(1, 520, &[], Some(52), true));
+        assert!(should_reopen_after_commit_v2(52, 520, &[], Some(52), true));
+        assert!(should_reopen_after_commit_v2(51, 60, &[51], None, false));
+        assert!(should_reopen_after_commit_v2(520, 520, &[], None, true));
+        assert!(!should_reopen_after_commit_v2(520, 520, &[], None, false));
+    }
+
+    #[test]
+    fn report_foundation_identity_is_derived_from_exact_runtime_sources() {
+        let (session, bundle) = runtime_foundation().expect("Michigan runtime foundation");
+        let foundation = babylon_persistence::CampaignFoundationV1::capture(&session, bundle)
+            .expect("tick-zero foundation captures");
+
+        let identity = foundation_identity_v2(&foundation);
+
+        assert_eq!(
+            identity.foundation,
+            babylon_kernel::sha256_of(foundation.canonical_bytes())
+        );
+        assert_eq!(identity.defines, foundation.content_digest().defines_hash);
+        assert_eq!(identity.rules, foundation.content_digest().rules_hash);
+        assert_eq!(
+            identity.reference,
+            *foundation.reference_digest().as_bytes()
+        );
+        assert_eq!(identity, foundation_identity_v2(&foundation));
+    }
+
+    #[test]
     fn report_jsonl_is_deterministic_flushed_and_secret_safe() {
         let first_path = report_path("first");
         let second_path = report_path("second");
@@ -811,28 +1358,11 @@ mod tests {
         assert_eq!(first_bytes.last(), Some(&b'\n'));
         let row: serde_json::Value =
             serde_json::from_slice(&first_bytes).expect("one valid JSON object");
-        assert_eq!(row["schema"], TICK_REPORT_SCHEMA_V1);
-        assert_eq!(row["resolve_tick"], 7);
-        assert_eq!(
-            row["commit_disposition"],
-            "reconciled_after_ambiguous_commit"
-        );
-        assert_eq!(row["rules"]["considered"], 5);
-        assert_eq!(row["rules"]["fired"], 3);
-        assert_eq!(row["rules"]["per_rule"][0]["considered"], 2);
-        assert_eq!(row["rules"]["per_rule"][0]["fired"], 1);
-        assert_eq!(row["events"]["count"], 1);
-        assert_eq!(row["audit_receipts"]["count"], 2);
-        assert_eq!(row["material_rows"]["count"], 9);
+        assert_report_core_json(&row);
+        assert_report_event_and_observable_json(&row);
+        assert_report_persistence_json(&row);
         let rendered = String::from_utf8(first_bytes).expect("report is UTF-8");
-        for forbidden in [
-            "BABYLON_RUNTIME_DSN",
-            "postgres://",
-            "hostname",
-            "timestamp",
-        ] {
-            assert!(!rendered.contains(forbidden), "leaked {forbidden}");
-        }
+        assert_report_is_secret_safe(&rendered);
 
         drop(first);
         drop(second);
@@ -887,6 +1417,7 @@ mod tests {
             Ok(Command::Run {
                 ticks: 5,
                 report_jsonl: None,
+                restart_every: None,
             })
         );
         assert_eq!(
@@ -903,6 +1434,7 @@ mod tests {
             Ok(Command::Run {
                 ticks: 5,
                 report_jsonl: Some("report.jsonl".into()),
+                restart_every: None,
             })
         );
         assert_eq!(
@@ -919,6 +1451,26 @@ mod tests {
             Ok(Command::Run {
                 ticks: 5,
                 report_jsonl: Some("report.jsonl".into()),
+                restart_every: None,
+            })
+        );
+        assert_eq!(
+            parse_command(
+                vec![
+                    "run".into(),
+                    "--restart-every".into(),
+                    "52".into(),
+                    "--ticks".into(),
+                    "520".into(),
+                    "--report-jsonl".into(),
+                    "report.jsonl".into(),
+                ]
+                .into_iter()
+            ),
+            Ok(Command::Run {
+                ticks: 520,
+                report_jsonl: Some("report.jsonl".into()),
+                restart_every: Some(52),
             })
         );
         assert_eq!(
@@ -962,8 +1514,36 @@ mod tests {
                     "run".into(),
                     "--ticks".into(),
                     "5".into(),
+                    "--restart-every".into(),
+                    "0".into(),
+                ]
+                .into_iter()
+            ),
+            Err(())
+        );
+        assert_eq!(
+            parse_command(
+                vec![
+                    "run".into(),
+                    "--ticks".into(),
+                    "5".into(),
                     "--ticks".into(),
                     "6".into(),
+                ]
+                .into_iter()
+            ),
+            Err(())
+        );
+        assert_eq!(
+            parse_command(
+                vec![
+                    "run".into(),
+                    "--ticks".into(),
+                    "5".into(),
+                    "--restart-every".into(),
+                    "2".into(),
+                    "--restart-every".into(),
+                    "3".into(),
                 ]
                 .into_iter()
             ),

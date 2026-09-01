@@ -186,14 +186,69 @@ docs.yml
 
 **Note**: Only runs on ``main``—development docs are not deployed.
 
-Weekly Python and Rust persistence workflows
+Weekly compatibility and simulation reports
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``weekly-py313.yml`` runs the Python 3.13 forward-compatibility suite each
-Sunday and on manual dispatch. ``weekly-sim-artifacts.yml`` runs the embedded
-Michigan persistence slice through ``mise run sim:report 520`` and uploads the
-resulting JSONL and summaries from ``reports/sim-runs/``. This report covers
-the runtime binary's two embedded smoke rules, not every Rust content pack.
+Sunday and on manual dispatch.
+
+``weekly-sim-artifacts.yml`` runs the authoritative embedded Michigan Rust
+persistence slice through ``mise run sim:report 520 3000 exclusive``. The
+fixed scope uses replay seed 281 and no parameter overrides. It uses no
+stochastic draws or dynamic H3 updates. The report covers the runtime binary's
+two embedded smoke rules, not every Rust content pack. The runner reopens
+Postgres at each 52-tick year boundary and at the last reported tick. It reads
+back the committed state instead of relying only on the in-process state.
+
+Each run writes a collision-safe directory below ``reports/sim-runs/``. The
+workflow retains the uploaded bundle for 90 days. It contains ``ticks.jsonl``,
+``ticks.csv``, ``diagnostics.json``, ``summary.json``, ``summary.txt``,
+``stdout.txt``, ``stderr.txt``, and ``resources.json``.
+
+The report assigns a separate role to each hash:
+
+``GraphStateHash``
+   The administrative graph-only hash.
+
+Stable named-graph digest
+   A canonical digest that uses authored stable identities.
+
+Nominal world hash
+   The stable graph plus governed world registers.
+
+Tick-content hash
+   The identity of the complete committed tick content.
+
+Summary and per-tick outputs label the administrative and stable graph roles
+separately.
+
+``resources.json`` records runtime wall, user CPU, system CPU, and peak RSS,
+plus host, artifact, database-size, Babylon-relation-size, and WAL snapshots.
+The process metrics cover the runtime process only: they exclude Cargo builds,
+the report wrapper, Postgres, artifact upload, and the rest of the job. The
+database and WAL values are coarse observations from before and after the run.
+``exclusive`` labels the expected attribution context. It does not make
+cluster-wide WAL or allocated database pages exact per-tick measurements.
+Deltas can include background activity, space reuse, or delayed reclamation
+and can be negative.
+
+``weekly-reference-analysis.yml`` is a separate, non-authoritative frozen
+Python reference campaign. It runs ``mise run analysis:campaign -- weekly``
+each Monday or accepts the allowlisted ``weekly``/``full`` choice on manual
+dispatch. Weekly runs Monte Carlo with 16 samples at 520 ticks and Optuna with
+8 trials at 5,200 ticks. The campaign explicitly skips sensitivity. Full runs
+Monte Carlo with 64 samples at 520 ticks and Optuna with 16 trials at 5,200
+ticks. It also runs Morris (4 trajectories) and Sobol (8 base samples) over
+four curated parameters at 520 ticks with the final-wealth objective.
+
+The workflow uploads ``reports/frozen-reference-analysis/`` for 90 days. Each
+collision-safe run directory contains ``campaign.json`` and separate
+``monte-carlo/``, ``optuna/``, and, for full runs, ``sensitivity/`` artifacts.
+The campaign's fresh ``optuna/study.sqlite3`` is separate from the root
+``optuna.db`` that ``mise run analysis:dashboard`` opens by default. Pass an
+absolute campaign SQLite path after ``--`` to inspect that database. Optuna's
+optional parameter importance is recorded as unavailable when scikit-learn is
+absent; trials, the CSV export, summary, and report remain valid.
 
 release.yml
 ~~~~~~~~~~~

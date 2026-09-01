@@ -248,6 +248,7 @@ class TestMiseTaskDiscoverability:
             "analysis:monte-carlo",
             "analysis:optuna",
             "analysis:dashboard",
+            "analysis:campaign",
             "analysis:sensitivity",
             "analysis:morris",
             "analysis:sobol",
@@ -262,7 +263,16 @@ class TestMiseTaskDiscoverability:
             mise_tasks["analysis:monte-carlo"]
         )
         assert _task_run(mise_tasks["analysis:dashboard"]) == (
-            "uv run optuna-dashboard sqlite:///optuna.db"
+            'uv run optuna-dashboard "sqlite:///${usage_database}"'
+        )
+        assert 'help="Local SQLite database path" default="optuna.db"' in str(
+            mise_tasks["analysis:dashboard"]["usage"]
+        )
+        campaign = mise_tasks["analysis:campaign"]
+        assert 'default="weekly"' in str(campaign["usage"])
+        assert _task_run(campaign) == (
+            "uv run python -m tools.devtools.reference_analysis_campaign "
+            '--profile "${usage_profile}"'
         )
         optuna_usage = mise_tasks["analysis:optuna"]["usage"]
         assert isinstance(optuna_usage, str)
@@ -289,6 +299,10 @@ class TestMiseTaskDiscoverability:
             task["usage"]
         )
         assert (
+            'arg "[database_scope]" help="Database attribution scope: shared or exclusive" '
+            'default="shared"'
+        ) in str(task["usage"])
+        assert (
             "CARGO_BUILD_JOBS=4 cargo build -p babylon-persistence --bin babylon-runtime --locked"
         ) in run
         assert "cargo build --workspace" not in run
@@ -296,6 +310,7 @@ class TestMiseTaskDiscoverability:
             "python3 tools/devtools/sim_report.py "
             "--runtime rust/target/debug/babylon-runtime "
             "--ticks ${usage_ticks} --timeout-seconds ${usage_timeout_seconds} "
+            "--database-scope ${usage_database_scope} "
             "--output-root reports/sim-runs"
         ) in run
         assert "export BABYLON_RUNTIME_DSN=" in run

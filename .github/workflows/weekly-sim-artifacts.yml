@@ -1,4 +1,4 @@
-name: Weekly — Rust Michigan Persistence Report
+name: Weekly — Rust Simulation Diagnostics
 
 # ADR181 R3(ii): per-leg split of the monolithic nightly (the Sunday leg).
 
@@ -11,12 +11,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: weekly-sim-artifacts
+  group: rust-simulation-diagnostics
   cancel-in-progress: false
 
 jobs:
   sim-artifacts:
-    name: Rust Michigan Persistence Report
+    name: Rust Michigan 520-Tick Diagnostics
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -29,13 +29,13 @@ jobs:
       - uses: ./.github/actions/postgres-up
       - name: Bootstrap Rust-owned schema
         run: mise run db:bootstrap
-      - name: Generate Rust Michigan persistence report
-        run: mise run sim:report 520 3000
+      - name: Generate Rust Michigan diagnostic report
+        run: mise run sim:report 520 3000 exclusive
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: rust-michigan-persistence-report-${{ github.run_id }}
+          name: rust-michigan-simulation-diagnostics-${{ github.run_id }}
           path: reports/sim-runs/
           retention-days: 90
       - name: Stop Postgres

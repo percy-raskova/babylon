@@ -171,7 +171,7 @@ create_runtime_template() {
                      ',' ORDER BY ordinal) \
              FROM babylon_meta.persistence_authority_ledger) \
             || '|' || (SELECT pg_catalog.count(*)::pg_catalog.text \
-                       FROM babylon_meta.campaign)")"
+                       FROM babylon_meta.campaign)")" || return
   [ "$source_observation" = "1:1:8,2:2:9|0" ] ||
     die "runtime template source was not clean and Rust-active: $source_observation"
   timeout --signal=TERM --kill-after=2s 10s \
@@ -190,7 +190,7 @@ create_runtime_template() {
                      ',' ORDER BY ordinal) \
              FROM babylon_meta.persistence_authority_ledger) \
             || '|' || (SELECT pg_catalog.count(*)::pg_catalog.text \
-                       FROM babylon_meta.campaign)")"
+                       FROM babylon_meta.campaign)")" || return
   [ "$template_observation" = "1:1:8,2:2:9|0" ] ||
     die "runtime template clone was not clean and Rust-active: $template_observation"
   printf 'PER-281 runtime template ready: database=%s authority=%s\n' \
@@ -229,7 +229,7 @@ drop_runtime_template() {
     env PGPASSWORD=test PGCONNECT_TIMEOUT=2 PGSSLMODE=disable \
     psql -X -w -qAt -h 127.0.0.1 -p "$PORT" -U test -d postgres \
       -v ON_ERROR_STOP=1 \
-      -c "DROP DATABASE IF EXISTS \"$RUNTIME_TEMPLATE\" WITH (FORCE)"
+      -c "DROP DATABASE IF EXISTS \"$RUNTIME_TEMPLATE\" WITH (FORCE)" || return
   RUNTIME_TEMPLATE_CREATED=0
 }
 

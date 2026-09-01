@@ -358,3 +358,21 @@ def test_pr_runtime_contracts_clone_one_clean_activated_template() -> None:
     ].split("\n    #[test]", maxsplit=1)[0]
     assert frozen_activation.count("activate_rust_persistence_v1(&config)") == 2
     assert r"CREATE DATABASE \"{name}\" OWNER test TEMPLATE \"{template}\"" in live_tests
+
+
+def test_runtime_template_helpers_return_psql_failures_to_checked_callers() -> None:
+    """Template failures reach status capture, bounded logs, and checked cleanup."""
+    runner = (ROOT / "tools/run_rust_legacy_adopter_pg.sh").read_text(encoding="utf-8")
+    create = runner.split("create_runtime_template() {", maxsplit=1)[1].split(
+        "\nverify_runtime_template_and_clone_cleanup()", maxsplit=1
+    )[0]
+    verify = runner.split("verify_runtime_template_and_clone_cleanup() {", maxsplit=1)[1].split(
+        "\ndrop_runtime_template()", maxsplit=1
+    )[0]
+    drop = runner.split("drop_runtime_template() {", maxsplit=1)[1].split(
+        "\n# shellcheck disable=SC2329", maxsplit=1
+    )[0]
+
+    assert create.count("|| return") == 3
+    assert verify.count("|| return") == 4
+    assert drop.count("|| return") == 1

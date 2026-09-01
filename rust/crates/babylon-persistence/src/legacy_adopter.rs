@@ -451,8 +451,17 @@ pub enum LegacyAdopterError {
         /// Primary refusal/failure, preserved without replacement.
         primary: Box<LegacyAdopterError>,
         /// Ordered rollback/unlock failures; at most two entries.
-        cleanup: Vec<LegacyAdopterOperation>,
+        cleanup: Vec<LegacyCleanupFailureV1>,
     },
+}
+
+/// One bounded cleanup failure retained alongside the primary adopter failure.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LegacyCleanupFailureV1 {
+    /// Exact rollback or unlock phase that failed.
+    pub operation: LegacyAdopterOperation,
+    /// Secret-safe `PostgreSQL` cause when the client supplied one.
+    pub diagnostic: Option<PostgresDiagnosticV1>,
 }
 
 /// Closed production SQL statement identity.
@@ -1182,8 +1191,16 @@ fn combine_primary_cleanup(
     primary: LegacyAdopterError,
     cleanup_error: &LegacyAdopterError,
 ) -> LegacyAdopterError {
-    let LegacyAdopterError::Cleanup { operation, .. } = cleanup_error else {
+    let LegacyAdopterError::Cleanup {
+        operation,
+        diagnostic,
+    } = cleanup_error
+    else {
         return primary;
+    };
+    let cleanup_failure = LegacyCleanupFailureV1 {
+        operation: *operation,
+        diagnostic: diagnostic.clone(),
     };
     if let LegacyAdopterError::VerificationAndCleanup {
         primary,
@@ -1193,13 +1210,13 @@ fn combine_primary_cleanup(
         let mut cleanup = Vec::with_capacity(2);
         cleanup.extend(prior_cleanup.into_iter().take(2));
         if cleanup.len() < 2 {
-            cleanup.push(*operation);
+            cleanup.push(cleanup_failure);
         }
         LegacyAdopterError::VerificationAndCleanup { primary, cleanup }
     } else {
         LegacyAdopterError::VerificationAndCleanup {
             primary: Box::new(primary),
-            cleanup: vec![*operation],
+            cleanup: vec![cleanup_failure],
         }
     }
 }
@@ -1578,10 +1595,29 @@ impl std::error::Error for LegacyAdopterError {}
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
+    use postgres::{Config, NoTls};
+
+    use crate::PostgresDiagnosticV1;
+
     use super::{
         check_row_bound, error_chain_has_timeout, preserve_primary, LegacyAdopterError,
-        LegacyAdopterOperation, LegacyBoundedResource, MAX_LEGACY_EXTENSION_DEPENDENCY_ADDRESSES,
+        LegacyAdopterOperation, LegacyBoundedResource, LegacyCleanupFailureV1,
+        MAX_LEGACY_EXTENSION_DEPENDENCY_ADDRESSES,
     };
+
+    fn unreachable_diagnostic() -> PostgresDiagnosticV1 {
+        let mut config = Config::new();
+        config
+            .host("127.0.0.1")
+            .port(1)
+            .connect_timeout(Duration::from_millis(100));
+        let Err(error) = config.connect(NoTls) else {
+            panic!("the reserved local endpoint must refuse the test connection");
+        };
+        PostgresDiagnosticV1::capture(&error)
+    }
 
     #[test]
     fn extension_dependency_address_bound_refuses_first_excess() {
@@ -1614,7 +1650,10 @@ mod tests {
             preserve_primary::<()>(Err(primary.clone()), Err(cleanup)),
             Err(LegacyAdopterError::VerificationAndCleanup {
                 primary: Box::new(primary),
-                cleanup: vec![LegacyAdopterOperation::Rollback],
+                cleanup: vec![LegacyCleanupFailureV1 {
+                    operation: LegacyAdopterOperation::Rollback,
+                    diagnostic: None,
+                }],
             })
         );
     }
@@ -1638,9 +1677,38 @@ mod tests {
             Err(LegacyAdopterError::VerificationAndCleanup {
                 primary: Box::new(primary),
                 cleanup: vec![
-                    LegacyAdopterOperation::Rollback,
-                    LegacyAdopterOperation::Unlock,
+                    LegacyCleanupFailureV1 {
+                        operation: LegacyAdopterOperation::Rollback,
+                        diagnostic: None,
+                    },
+                    LegacyCleanupFailureV1 {
+                        operation: LegacyAdopterOperation::Unlock,
+                        diagnostic: None,
+                    },
                 ],
+            })
+        );
+    }
+
+    #[test]
+    fn primary_failure_preserves_the_cleanup_postgres_diagnostic() {
+        let primary = LegacyAdopterError::Decode {
+            operation: LegacyAdopterOperation::Census,
+        };
+        let diagnostic = unreachable_diagnostic();
+        let cleanup = LegacyAdopterError::Cleanup {
+            operation: LegacyAdopterOperation::Rollback,
+            diagnostic: Some(diagnostic.clone()),
+        };
+
+        assert_eq!(
+            preserve_primary::<()>(Err(primary.clone()), Err(cleanup)),
+            Err(LegacyAdopterError::VerificationAndCleanup {
+                primary: Box::new(primary),
+                cleanup: vec![LegacyCleanupFailureV1 {
+                    operation: LegacyAdopterOperation::Rollback,
+                    diagnostic: Some(diagnostic),
+                }],
             })
         );
     }

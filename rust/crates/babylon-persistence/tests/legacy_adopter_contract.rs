@@ -3,9 +3,10 @@
 use babylon_persistence::{
     compare_legacy_census, expected_legacy_census, legacy_adopter_sql_statements,
     parse_legacy_census_fixture, validate_legacy_connection_target, validate_legacy_stamps,
-    LegacyAdopterError, LegacyAdopterSqlKind, LegacyBoundedResource, LegacyCensusEntry,
-    LegacyCensusParseError, LegacyConnectionTargetRejection, LegacyObjectKey, LegacyObjectKind,
-    LegacyStampClass, LegacyStampProvenance, MigrationManifest, LEGACY_ADOPTER_STARTUP_OPTIONS,
+    LegacyAdopterError, LegacyAdopterOperation, LegacyAdopterSqlKind, LegacyBoundedResource,
+    LegacyCensusEntry, LegacyCensusParseError, LegacyCleanupFailureV1,
+    LegacyConnectionTargetRejection, LegacyObjectKey, LegacyObjectKind, LegacyStampClass,
+    LegacyStampProvenance, MigrationManifest, LEGACY_ADOPTER_STARTUP_OPTIONS,
     LEGACY_CENSUS_FIXTURE, LEGACY_CENSUS_VERSION, LEGACY_STAMP_CATALOG,
     MAX_LEGACY_CENSUS_FIXTURE_BYTES, MAX_LEGACY_CENSUS_ROWS, MAX_LEGACY_STAMP_ROWS,
     POSTGRES_IDENTIFIER_MAX_BYTES, SCHEMA_ADVISORY_LOCK_KEY,
@@ -23,6 +24,17 @@ const EXPECTED_RUNNER_LINES: usize = 546;
 const MAX_WORKFLOW_JOB_BOUNDARY_CANDIDATES: usize = 128;
 const MAX_SQL_LITERAL_SEGMENTS: usize = 8_192;
 const MAX_SQL_STATEMENT_BYTES: usize = 262_144;
+
+#[test]
+fn cleanup_failure_evidence_is_a_public_structured_contract() {
+    let failure = LegacyCleanupFailureV1 {
+        operation: LegacyAdopterOperation::Rollback,
+        diagnostic: None,
+    };
+
+    assert_eq!(failure.operation, LegacyAdopterOperation::Rollback);
+    assert_eq!(failure.diagnostic, None);
+}
 
 #[test]
 fn checked_in_census_fixture_is_bounded_sorted_and_versioned() {

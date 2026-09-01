@@ -6,7 +6,11 @@ use postgres::error::SqlState;
 pub const MAX_POSTGRES_DIAGNOSTIC_MESSAGE_BYTES: usize = 256;
 
 const MAX_ERROR_SOURCE_DEPTH: usize = 16;
+const MAX_POSTGRES_DIAGNOSTIC_SCAN_BYTES: usize = MAX_POSTGRES_DIAGNOSTIC_MESSAGE_BYTES * 4;
 const REDACTED: &str = "<redacted>";
+const SENSITIVE_FIELD_NAMES: [&str; 10] = [
+    "password", "passwd", "pwd", "dsn", "uri", "url", "token", "secret", "sslkey", "sslcert",
+];
 
 /// Stable classification of one `PostgreSQL` client or server failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -170,20 +174,39 @@ fn error_chain_has(
 }
 
 fn sanitize_server_message(message: &str) -> String {
-    let mut normalized =
-        String::with_capacity(message.len().min(MAX_POSTGRES_DIAGNOSTIC_MESSAGE_BYTES));
+    let mut normalized = String::with_capacity(MAX_POSTGRES_DIAGNOSTIC_MESSAGE_BYTES);
     let mut quote = None;
     let mut prior_space = false;
+    let mut scanned_bytes = 0_usize;
 
     for character in message.chars() {
+        let character_bytes = character.len_utf8();
+        if scanned_bytes.saturating_add(character_bytes) > MAX_POSTGRES_DIAGNOSTIC_SCAN_BYTES {
+            break;
+        }
+        scanned_bytes += character_bytes;
+
         if let Some(active_quote) = quote {
             if character == active_quote {
+                if normalized.len().saturating_add(character_bytes)
+                    > MAX_POSTGRES_DIAGNOSTIC_MESSAGE_BYTES
+                {
+                    break;
+                }
                 normalized.push(active_quote);
                 quote = None;
             }
             continue;
         }
         if matches!(character, '\'' | '"') {
+            if normalized
+                .len()
+                .saturating_add(character_bytes)
+                .saturating_add(REDACTED.len())
+                > MAX_POSTGRES_DIAGNOSTIC_MESSAGE_BYTES
+            {
+                break;
+            }
             normalized.push(character);
             normalized.push_str(REDACTED);
             quote = Some(character);
@@ -192,51 +215,84 @@ fn sanitize_server_message(message: &str) -> String {
         }
         if character.is_control() || character.is_whitespace() {
             if !prior_space && !normalized.is_empty() {
+                if normalized.len() == MAX_POSTGRES_DIAGNOSTIC_MESSAGE_BYTES {
+                    break;
+                }
                 normalized.push(' ');
             }
             prior_space = true;
             continue;
         }
+        if normalized.len().saturating_add(character_bytes) > MAX_POSTGRES_DIAGNOSTIC_MESSAGE_BYTES
+        {
+            break;
+        }
         normalized.push(character);
         prior_space = false;
     }
     if let Some(active_quote) = quote {
-        normalized.push(active_quote);
+        if normalized.len().saturating_add(active_quote.len_utf8())
+            <= MAX_POSTGRES_DIAGNOSTIC_MESSAGE_BYTES
+        {
+            normalized.push(active_quote);
+        }
     }
 
+    redact_normalized_message(&normalized)
+}
+
+fn redact_normalized_message(normalized: &str) -> String {
+    let tokens: Vec<&str> = normalized.split_whitespace().collect();
     let mut redacted = String::with_capacity(normalized.len());
-    for (index, token) in normalized.split_whitespace().enumerate() {
-        if index != 0 {
-            redacted.push(' ');
-        }
+    let mut index = 0_usize;
+    while index < tokens.len() {
+        let token = tokens[index];
         let lowercase = token.to_ascii_lowercase();
-        if is_sensitive_assignment(&lowercase) {
-            redacted.push_str(REDACTED);
-        } else if token.contains("://") && token.contains('@') {
-            redacted.push_str("<redacted-uri>");
+        if token.contains("://") {
+            push_token(&mut redacted, "<redacted-uri>");
+            index += 1;
+        } else if is_sensitive_field_name(&lowercase)
+            && tokens
+                .get(index + 1)
+                .is_some_and(|next| next.starts_with('='))
+        {
+            push_token(&mut redacted, token);
+            push_token(&mut redacted, "=");
+            push_token(&mut redacted, REDACTED);
+            index += if tokens[index + 1] == "=" { 3 } else { 2 };
+        } else if is_sensitive_assignment(&lowercase) {
+            push_token(&mut redacted, REDACTED);
+            index += if lowercase.ends_with('=') && index + 1 < tokens.len() {
+                2
+            } else {
+                1
+            };
         } else {
-            redacted.push_str(token);
+            push_token(&mut redacted, token);
+            index += 1;
         }
     }
     truncate_utf8(&mut redacted, MAX_POSTGRES_DIAGNOSTIC_MESSAGE_BYTES);
     redacted
 }
 
+fn push_token(output: &mut String, token: &str) {
+    if !output.is_empty() {
+        output.push(' ');
+    }
+    output.push_str(token);
+}
+
+fn is_sensitive_field_name(token: &str) -> bool {
+    SENSITIVE_FIELD_NAMES.contains(&token)
+}
+
 fn is_sensitive_assignment(token: &str) -> bool {
-    [
-        "password=",
-        "passwd=",
-        "pwd=",
-        "dsn=",
-        "uri=",
-        "url=",
-        "token=",
-        "secret=",
-        "sslkey=",
-        "sslcert=",
-    ]
-    .iter()
-    .any(|prefix| token.starts_with(prefix))
+    SENSITIVE_FIELD_NAMES.iter().any(|field| {
+        token
+            .find(field)
+            .is_some_and(|offset| token[offset + field.len()..].starts_with('='))
+    })
 }
 
 fn truncate_utf8(value: &mut String, max_bytes: usize) {
@@ -264,11 +320,35 @@ mod tests {
     }
 
     #[test]
+    fn server_message_redacts_spaced_assignments_and_uris_without_userinfo() {
+        let message = "password = PER288_SPACED_CANARY dsn= PER288_DSN_CANARY \
+                       postgres://localhost/db?password=PER288_URI_CANARY";
+        let sanitized = sanitize_server_message(message);
+
+        assert_eq!(sanitized, "password = <redacted> <redacted> <redacted-uri>");
+        assert!(!sanitized.contains("PER288_SPACED_CANARY"));
+        assert!(!sanitized.contains("PER288_DSN_CANARY"));
+        assert!(!sanitized.contains("PER288_URI_CANARY"));
+    }
+
+    #[test]
     fn server_message_is_bounded_on_a_utf8_boundary() {
         let sanitized = sanitize_server_message(&"λ".repeat(MAX_POSTGRES_DIAGNOSTIC_MESSAGE_BYTES));
 
         assert!(sanitized.len() <= MAX_POSTGRES_DIAGNOSTIC_MESSAGE_BYTES);
         assert!(sanitized.is_char_boundary(sanitized.len()));
+    }
+
+    #[test]
+    fn server_message_scanning_is_bounded_before_redaction() {
+        let message = format!(
+            "{} password=PER288_BEYOND_SCAN_CANARY",
+            "x".repeat(MAX_POSTGRES_DIAGNOSTIC_MESSAGE_BYTES * 64)
+        );
+        let sanitized = sanitize_server_message(&message);
+
+        assert_eq!(sanitized.len(), MAX_POSTGRES_DIAGNOSTIC_MESSAGE_BYTES);
+        assert!(!sanitized.contains("PER288_BEYOND_SCAN_CANARY"));
     }
 
     #[test]

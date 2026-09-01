@@ -1,9 +1,9 @@
-"""Behavioral contract: determinism (Constitution III.7).
+"""Behavioral contract: deterministic frozen-reference analysis trials.
 
 Given identical ``(defines, seed, backend, scenario, max_ticks)``,
-:func:`babylon.engine.optimization.runner_api.run` must produce a
-byte-identical :class:`~babylon.engine.optimization.backends.types.Result`,
-and the derived :class:`~babylon.engine.optimization.reproducibility.ReproRecord`
+:func:`tools.devtools.sim_analysis.runner_api.run` must produce a
+byte-identical :class:`~tools.devtools.sim_analysis.backends.types.Result`,
+and the derived :class:`~tools.devtools.sim_analysis.reproducibility.ReproRecord`
 must carry an identical ``defines_hash``. This is the property that makes a
 trial replayable and a sweep/Monte Carlo/sensitivity result trustworthy — if
 two runs of the same inputs ever diverge, some System has picked up
@@ -16,12 +16,12 @@ Uses ``backend="in_memory"`` exclusively — no Postgres required.
 from __future__ import annotations
 
 import pytest
+from tools.devtools.sim_analysis import runner_api
+from tools.devtools.sim_analysis.__main__ import build_parser
+from tools.devtools.sim_analysis.backends.types import Result
+from tools.devtools.sim_analysis.reproducibility import build_repro_record
 
 from babylon.config.defines import GameDefines
-from babylon.engine.optimization import runner_api
-from babylon.engine.optimization.__main__ import build_parser
-from babylon.engine.optimization.backends.types import Result
-from babylon.engine.optimization.reproducibility import build_repro_record
 
 _SEED = 2010
 _MAX_TICKS = 5
@@ -72,7 +72,7 @@ class TestResultDeterminism:
         be internally non-reproducible even though the base-case test above
         is green.
         """
-        from babylon.engine.optimization.params import inject_parameter
+        from tools.devtools.sim_analysis.params import inject_parameter
 
         defines = inject_parameter(GameDefines(), "economy.base_subsistence", 0.1)
         first, second = _run_twice(defines)

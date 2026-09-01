@@ -1,4 +1,4 @@
-"""Anti-regression guard: injected GameDefines must actually reach the engine.
+"""Anti-regression guard: injected GameDefines reach the frozen reference engine.
 
 The ``in_memory`` backend threads ``defines`` through ``step()`` on
 every tick (see ``backends/in_memory.py`` module docstring), so it is the
@@ -13,10 +13,12 @@ trials produce genuinely different outcomes.
 
 from __future__ import annotations
 
+import pytest
+from tools.devtools.sim_analysis import runner_api
+from tools.devtools.sim_analysis.backends.types import Result
+from tools.devtools.sim_analysis.params import inject_parameter
+
 from babylon.config.defines import GameDefines
-from babylon.engine.optimization import runner_api
-from babylon.engine.optimization.backends.types import Result
-from babylon.engine.optimization.params import inject_parameter
 
 _SEED = 2010
 _MAX_TICKS = 5
@@ -72,3 +74,14 @@ class TestDefinesInjectionReachesEngine:
         low_result = _run_at(_LOW)
         high_result = _run_at(_HIGH)
         assert low_result.final_wealth != high_result.final_wealth
+
+
+@pytest.mark.parametrize("max_ticks", [0, -1, True])
+def test_runner_refuses_nonpositive_or_boolean_tick_limits(max_ticks: int) -> None:
+    with pytest.raises(ValueError, match="max_ticks must be a positive integer"):
+        runner_api.run(GameDefines(), max_ticks=max_ticks)
+
+
+def test_runner_refuses_boolean_seed() -> None:
+    with pytest.raises(ValueError, match="seed must be an integer"):
+        runner_api.run(GameDefines(), seed=True, max_ticks=1)

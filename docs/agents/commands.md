@@ -15,6 +15,8 @@ mise run check:quick      # Non-mutating lint + format + typecheck
 mise run check:full-local # Check plus workstation data/reference probes
 mise run fix              # Apply Ruff fixes, then format sequentially
 mise run ci               # Same as check
+mise run lint:check       # Ruff linter, no fixes
+mise run format:check     # Ruff formatter check, no rewrites
 mise run lint             # Apply Ruff lint fixes
 mise run format           # Apply Ruff formatting
 mise run typecheck        # MyPy strict mode
@@ -35,22 +37,31 @@ mise run test:doctest   # Doctest examples in formulas
 ## Simulation
 
 ```bash
-mise run sim:run           # Frozen Python one-tick reference smoke
-mise run sim:sweep         # Intentional in-memory parameter-analysis periphery
-mise run sim:e2e-michigan  # Rust-owned 520-tick PostgreSQL run
-mise run sim:e2e-bg        # Run the Rust-owned Michigan campaign in the background
-mise run sim:status        # Process plus Rust persistence-authority status
-mise run sim:probe         # Rust persistence-authority and campaign-tail probe
-mise run sim:archive       # Inspect Rust-owned Archive dirty receipts
+mise run sim:e2e-michigan     # Fresh 520-tick Rust run unless campaign ID is explicit
+mise run sim:e2e-bg           # Resume explicit campaign, or worktree default, in background
+mise run sim:status           # Process, its recorded campaign tail, and global totals
+mise run sim:probe            # Explicit campaign, or worktree default, plus global totals
+mise run sim:archive          # Inspect global Rust-owned Archive dirty receipts
+mise run sim:report           # Embedded Michigan Rust persistence report (60 ticks)
+mise run sim:report 520 3000  # Override tick target and timeout seconds
+mise run reference:python-smoke  # Frozen Python one-tick reference smoke
+mise run analysis:sweep          # Development-only Python parameter analysis
+mise run analysis:monte-carlo    # Development-only Python uncertainty analysis
 ```
 
-## Tuning
+## Development Tooling
 
 ```bash
-mise run tune:optuna      # Bayesian optimization (Optuna TPE)
-mise run tune:landscape   # 2D parameter grid search
-mise run tune:params      # 1D sensitivity sweep
-mise run tune:dashboard   # Optuna Dashboard visualization
+mise run dev:doctor  # Report worktree, Mise, and repository Rust host-policy facts
+```
+
+## Frozen-reference analysis
+
+```bash
+mise run analysis:optuna      # Bayesian optimization (Optuna TPE)
+mise run analysis:landscape   # 2D parameter grid search
+mise run analysis:sweep       # 1D sensitivity sweep
+mise run analysis:dashboard   # Optuna Dashboard visualization
 ```
 
 ## QA

@@ -87,10 +87,10 @@ Debugging & Analysis
    identify thresholds, and validate theoretical predictions.
 
 **Run Parameter Sweeps and Optimization**
-   Use the ``babylon.engine.optimization`` package for sweeps, Monte Carlo,
-   global sensitivity analysis, and Bayesian search over ``GameDefines``
-   coefficients, with both a fast in-memory backend and the realistic
-   Postgres-backed headless backend.
+   Use the development-only ``tools.devtools.sim_analysis`` package for
+   sweeps, Monte Carlo, global sensitivity analysis, and Bayesian search over
+   ``GameDefines`` coefficients in the frozen in-memory reference engine. Run
+   the separate ``sim:*`` tasks for Rust-owned PostgreSQL behavior.
 
 GUI Development
 ---------------

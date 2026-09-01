@@ -76,11 +76,12 @@ First run
    cd babylon
    mise trust
    mise run setup
-   mise run sim:run
+   mise run reference:python-smoke
    mise run check
 
-``mise run sim:run`` starts the frozen Python smoke test. It does not start a
-playable Bevy game. See the root ``SETUP_GUIDE.md`` for installation help.
+``mise run reference:python-smoke`` starts the frozen Python reference smoke
+test. It does not start a playable Bevy game. See the root ``SETUP_GUIDE.md``
+for installation help.
 
 Manual contents
 ---------------

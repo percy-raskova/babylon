@@ -271,8 +271,9 @@ class PauseNotice:
 
 #: Safety bound for :meth:`PacedTickDriver.run_until_paused` — the
 #: canonical 100-year/5200-tick campaign horizon (``EndgameDefines.
-#: campaign_horizon_years`` x 52 weeks/year; mirrors ``engine.optimization.
-#: sensitivity.DEFAULT_MAX_TICKS``). A run-until-paused call can, in the
+#: campaign_horizon_years`` x 52 weeks/year; mirrors the development-only
+#: sensitivity runner's ``MAX_TICKS`` hard bound, not its shorter exploratory
+#: default). A run-until-paused call can, in the
 #: limit, cover an entire un-paused campaign; Power-of-10 rule 2 requires
 #: every loop's upper bound be a fixed, statically-checkable constant —
 #: never an unbounded ``while True``.

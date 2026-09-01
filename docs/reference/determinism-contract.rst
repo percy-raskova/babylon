@@ -1298,7 +1298,7 @@ additively — ``random.Random(0xBA1AC1A + tick)`` — with **no ``session_id``
 input at all**, and its ``services.rng`` override path (the only place a
 session-scoped seed could enter) is verified, by reading every call site,
 to be **never populated in the live wired path**
-(``src/babylon/engine/optimization/backends/in_memory.py:99-100`` documents
+(``tools/devtools/sim_analysis/backends/in_memory.py:99-100`` documents
 this explicitly: *"never populated on this path"*). Concretely: today,
 ``SimulationConfig.random_seed`` reaches the tick-commit identity hash but
 **does not** reach the actual System-level PRNG stream — two runs with

@@ -182,8 +182,9 @@ workflows:
   weekly_sim_artifacts_yml:
     file: ".github/workflows/weekly-sim-artifacts.yml"
     triggers: ["weekly schedule", "manual dispatch"]
-    command: "mise run sim:sweep 200"
-    artifact: "results/sweep.csv"
+    scope: "Embedded two-rule Michigan Rust persistence slice; not full content-pack coverage"
+    command: "mise run sim:report 520"
+    artifact: "reports/sim-runs/"
 
   release_yml:
     file: ".github/workflows/release.yml"

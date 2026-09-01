@@ -74,7 +74,6 @@ ENGINE_HOT_PATH_LOGGING_BASELINE: frozenset[str] = frozenset(
         "engine/observers/causal.py",
         "engine/observers/economic.py",
         "engine/observers/endgame_detector.py",
-        "engine/optimization/bayesian.py",
         "engine/scenarios/_legacy.py",
         "engine/simulation_engine.py",
         "engine/simulation/_legacy.py",

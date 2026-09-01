@@ -92,10 +92,10 @@ mise trust
 mise run setup
 ```
 
-Run the frozen Python smoke test:
+Run the frozen Python reference smoke test:
 
 ```bash
-mise run sim:run
+mise run reference:python-smoke
 ```
 
 Run the repository check:

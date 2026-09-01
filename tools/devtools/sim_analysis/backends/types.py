@@ -1,4 +1,4 @@
-"""Backend-agnostic result type for the optimization package.
+"""Backend-agnostic result type for development-only simulation analysis.
 
 :class:`Result` is the normalized shape produced by the retained in-memory
 optimizer. Sweep, Monte Carlo, sensitivity, and Bayesian search consume only
@@ -40,7 +40,7 @@ class Result(BaseModel):
         contract (e.g. artifact paths, session ids).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     ticks_survived: int = Field(ge=0)
     outcome: str

@@ -72,7 +72,7 @@ first run can be slow.
 Run the frozen Python reference for one small tick:
 
 ```bash
-mise run sim:run
+mise run reference:python-smoke
 ```
 
 The command must show an initial tick, one simulation step, and a completed

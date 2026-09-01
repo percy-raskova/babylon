@@ -586,11 +586,11 @@ python_authority:
     - {path: .mise.toml, entrypoint: clean:testdb, required_rust_command: babylon-runtime bootstrap}
     - {path: .mise.toml, entrypoint: test:int-pg, required_rust_command: babylon-runtime bootstrap}
     - {path: .mise.toml, entrypoint: db:bootstrap, required_rust_command: babylon-runtime bootstrap, prohibited_fragments: [POSTGRES_SCHEMA_DDL, ensure_ddl_applied, _apply_migrations]}
-    - {path: .mise.toml, entrypoint: sim:e2e-michigan, required_rust_command: babylon-runtime}
-    - {path: .mise.toml, entrypoint: sim:e2e-bg, required_rust_command: babylon-runtime}
+    - {path: .mise/tasks/simulation.toml, entrypoint: sim:e2e-michigan, required_rust_command: babylon-runtime}
+    - {path: .mise/tasks/simulation.toml, entrypoint: sim:e2e-bg, required_rust_command: babylon-runtime}
     - {path: .mise.toml, entrypoint: qa:michigan-rollover-smoke, required_rust_command: babylon-runtime michigan-smoke}
-    - {path: .mise.toml, entrypoint: sim:probe, required_rust_command: babylon-runtime probe}
-    - {path: .mise.toml, entrypoint: sim:archive, required_rust_command: babylon-runtime archive}
+    - {path: .mise/tasks/simulation.toml, entrypoint: sim:probe, required_rust_command: babylon-runtime probe}
+    - {path: .mise/tasks/simulation.toml, entrypoint: sim:archive, required_rust_command: babylon-runtime archive}
     - {path: .mise.toml, entrypoint: data:tiger-counties, required_rust_command: digest-pinned artifact builder only}
   must_retire_entrypoints:
     - {path: .mise.toml, entrypoint: qa:audit}
@@ -611,10 +611,10 @@ python_authority:
     - {path: tools/vault_regression.py, entrypoint: _bake_detroit_tri_county}
   census:
     inventory_entries: 131
-    inventory_sha256: 8826af9c63af76eaa60055fe3997319c859d8feef181b15394167a5e7d3f91f5
+    inventory_sha256: 1a41421e4707291a173d91a9322a808c8a56ddc3aff15e2e4ace1bcff8386f83
     digest_preimage: globally sorted UTF-8 union of path::symbol plus LF and replacement-or-retired path::entrypoint plus LF
     symbol_rename_does_not_satisfy_retirement: true
-    scan_roots: [src/babylon, tools, .mise.toml]
+    scan_roots: [src/babylon, tools, .mise.toml, .mise/tasks]
     forbidden_capabilities: [game_writer_connection, governed_relation_ddl, governed_relation_dml, copy_from, dynamic_sql, migration_execution, game_mutation_protocol, game_writer_credential]
     required_evidence: Exact inventory plus an independent AST call graph, SQL-literal, dynamic-SQL, migration, and connection-constructor scan.
   retain_as_non_authoritative_periphery:

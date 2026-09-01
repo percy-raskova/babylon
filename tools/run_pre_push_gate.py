@@ -28,6 +28,7 @@ RUST_GATE_PATHS: Final = frozenset(
         ".mise.toml",
         ".pre-commit-config.yaml",
         CLASSIFIER_PATH,
+        "tools/rust_test_report.py",
     }
 )
 BSL_RETIRED_AUTHORITY_PATHS: Final = frozenset(

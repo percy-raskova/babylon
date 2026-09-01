@@ -107,7 +107,9 @@ ci.yml
      - Deterministic regression and vault evidence
    * - ``rust-gate``
      - Yes
-     - Rust formatting, lint, tests, BSL sentinels, and documentation checks
+     - Rust formatting, lint, agent-oriented reports from ``nextest`` in
+       ``JUnit`` format, separately
+       preserved ``doctests``, BSL sentinels, and documentation checks
    * - ``ceremony-gate``
      - Yes
      - Baseline-change provenance
@@ -186,8 +188,8 @@ docs.yml
 
 **Note**: Only runs on ``main``—development docs are not deployed.
 
-Weekly compatibility and simulation reports
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Weekly evidence workflows
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``weekly-py313.yml`` runs the Python 3.13 forward-compatibility suite each
 Sunday and on manual dispatch.
@@ -249,6 +251,15 @@ The campaign's fresh ``optuna/study.sqlite3`` is separate from the root
 absolute campaign SQLite path after ``--`` to inspect that database. Optuna's
 optional parameter importance is recorded as unavailable when scikit-learn is
 absent; trials, the CSV export, summary, and report remain valid.
+
+.. vale off
+
+``weekly-rust-coverage.yml`` runs one separately instrumented nextest pass on
+Thursday and retains compact JSON plus complete JSON/LCOV coverage receipts.
+It is advisory, has no coverage floor, and does not add instrumentation cost
+to the blocking pull-request Rust gate.
+
+.. vale on
 
 release.yml
 ~~~~~~~~~~~

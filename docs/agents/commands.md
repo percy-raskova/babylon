@@ -35,6 +35,26 @@ mise run test:cov       # Tests with coverage report
 mise run test:doctest   # Doctest examples in formulas
 ```
 
+<!-- vale off -->
+Rust has a failure-first agent interface separate from the verbose Python
+artifacts:
+
+```bash
+mise run rust:test:install-tools       # One-time exact nextest/llvm-cov install
+mise run rust:test                     # Complete non-doctest workspace + reports
+mise run rust:test:q -- -p CRATE       # Scoped inner-loop run + the same schema
+mise run rust:test:summary             # One-screen latest result
+mise run rust:test:failed              # Exact latest failure set; green is a no-op
+mise run rust:test:inventory           # Machine test census for parity audits
+mise run rust:coverage                 # Separate instrumented advisory coverage run
+```
+
+The explicit latest pointer is ``reports/test-results/rust/latest.json``.
+Read its compact JSON/Markdown first; follow its JUnit and log pointers only
+for full captured output. The canonical ``rust:check-no-docs`` task also runs
+the separately required Rust doctests because nextest does not execute them.
+<!-- vale on -->
+
 ## Simulation
 
 ```bash

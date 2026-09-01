@@ -6,7 +6,8 @@ This guide covers how to install Babylon and set up your development environment
 Requirements
 ------------
 
-- mise for the pinned Python, Rust, and uv toolchains
+- mise for the pinned Python and uv toolchain
+- Nix for the pinned Rust toolchain and system dependencies
 - Git
 
 Installation Steps
@@ -19,7 +20,7 @@ Installation Steps
       git clone https://github.com/percy-raskova/babylon.git
       cd babylon
 
-2. Install the pinned toolchain and locked dependencies:
+2. Install the pinned Python tools and locked dependencies:
 
    .. code-block:: bash
 
@@ -37,6 +38,12 @@ Installation Steps
    .. code-block:: bash
 
       mise run check
+
+   Run Rust commands inside the repository's pinned Nix shell, for example:
+
+   .. code-block:: bash
+
+      mise run nix -- mise run rust:check-no-docs
 
 Development Tools
 -----------------

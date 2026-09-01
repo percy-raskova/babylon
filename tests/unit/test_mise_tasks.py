@@ -477,18 +477,15 @@ def test_retired_cockpit_hooks_are_absent() -> None:
         assert "src/frontend" not in executable_policy
 
 
-def test_rust_pre_push_uses_native_push_range_for_every_gate_definition() -> None:
-    """The local hook must select exact push files without fetching or building docs."""
+def test_rust_pre_push_uses_exact_push_range_for_every_gate_definition() -> None:
+    """The local hook must preserve deleted paths without fetching or building docs."""
     hook = _local_hook("rust-full-gate")
     entry = str(hook["entry"])
 
-    assert entry == "mise run rust:check-no-docs"
-    assert hook["files"] == (
-        r"^(rust/|\.mise\.toml$|\.pre-commit-config\.yaml$|"
-        r"\.github/workflows/ci\.yml$)"
-    )
+    assert entry == "python3 tools/run_pre_push_gate.py rust-full-gate"
     assert hook["pass_filenames"] is False
-    assert "always_run" not in hook
+    assert hook["always_run"] is True
+    assert "files" not in hook
     assert "git fetch" not in entry
     assert "mise run ci:rust" not in entry
 
@@ -497,13 +494,10 @@ def test_bsl_repo_sentinels_cover_their_non_rust_inputs() -> None:
     """Governance and retired-authority changes must run the Rust-owned sentinels."""
     hook = _local_hook("bsl-repo-sentinels")
 
-    assert hook["entry"] == "mise run check:bsl-sentinels"
-    assert hook["files"] == (
-        r"^(ai/decisions/|src/babylon/contracts/(practice_contract_v1|"
-        r"practice_contract_v1_generated|relational_territory_dossier_v1|"
-        r"rtd_v1_generated)\.py$)"
-    )
+    assert hook["entry"] == "python3 tools/run_pre_push_gate.py bsl-repo-sentinels"
     assert hook["pass_filenames"] is False
+    assert hook["always_run"] is True
+    assert "files" not in hook
     assert hook["stages"] == ["pre-push"]
 
 

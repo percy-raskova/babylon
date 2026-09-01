@@ -7,7 +7,9 @@ direct commands and ``gh act`` for full workflow simulation.
 Prerequisites
 -------------
 
+- mise installed with pinned Python and uv tools: ``mise install``
 - Locked dependencies installed: ``mise run install``
+- Nix installed for pinned Rust checks: https://nixos.org/download/
 - All configured Git hooks installed: ``mise run hooks``
 - For ``gh act``: GitHub CLI with act extension (``gh extension install nektos/gh-act``)
 - For ``gh act``: Docker running
@@ -163,9 +165,9 @@ Pre-Commit Hooks
 
 ``mise run hooks`` installs all three governed stages: ``pre-commit``,
 ``commit-msg``, and ``pre-push``. The ordinary commit stage operates on the
-staged paths. The push stage operates on the exact remote-to-local range, so
-its Rust gate skips unrelated pushes without fetching ``dev`` or guessing a
-merge base.
+staged paths. Pre-commit supplies the exact remote-to-local refs to the push
+stage. The range classifier retains deletion-only changes while skipping an
+unrelated push without fetching ``dev`` or guessing a merge base.
 
 Run the hooks manually with:
 

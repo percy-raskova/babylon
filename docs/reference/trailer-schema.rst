@@ -228,14 +228,14 @@ CI job (if any) is the **authoritative** re-run of each local hook, per
      - pre-commit / pre-push
      - Rust Gate
      - Formatting runs on Rust source or formatter/toolchain policy. The push
-       hook uses pre-commit's exact remote-to-local file range and runs
-       ``rust:check-no-docs``; hosted CI adds the Rustdoc proof.
+       hook re-diffs pre-commit's exact remote-to-local refs so deleted paths
+       still select ``rust:check-no-docs``; hosted CI adds the Rustdoc proof.
    * - ``bsl-repo-sentinels``
      - pre-push
      - Rust Gate
      - Covers the non-Rust inputs to the Rust-owned repository sentinels:
-       ``ai/decisions`` and the exact retired Python authority paths. Rust
-       changes are already covered by ``rust-full-gate``.
+       ``ai/decisions`` and all eight exact retired Python authority paths.
+       The deletion-aware range classifier owns both hook selections.
    * - ``uv-lock-consistency``
      - pre-commit (files-scoped)
      - Fast Gate — "uv lock consistency"

@@ -155,10 +155,10 @@ repos:
   # ci:rust`; the local pre-push gate deliberately stops before Rustdoc because
   # repository law prohibits local documentation generation. fmt runs at
   # commit time on staged Rust source or formatter/toolchain policy. At
-  # pre-push, pre-commit itself supplies the exact remote..local file range, so
-  # the selector can skip an unrelated push without another fetch or a
-  # dev-specific merge-base guess. When selected, the gate still runs full-tree.
-  # Hosted CI adds the Rustdoc proof.
+  # pre-push, pre-commit supplies the exact remote..local refs. Its filename
+  # classifier removes deleted paths, so the range runner re-diffs those refs
+  # and keeps deletions without another fetch or a dev-specific merge-base
+  # guess. When selected, the gate still runs full-tree. Hosted CI adds Rustdoc.
   # ==========================================================================
   - repo: local
     hooks:
@@ -171,10 +171,10 @@ repos:
 
       - id: rust-full-gate
         name: rust:check-no-docs (full local Rust gate, pre-push)
-        entry: mise run rust:check-no-docs
+        entry: python3 tools/run_pre_push_gate.py rust-full-gate
         language: system
         pass_filenames: false
-        files: '^(rust/|\.mise\.toml$|\.pre-commit-config\.yaml$|\.github/workflows/ci\.yml$)'
+        always_run: true
         stages: [pre-push]
 
       # bsl-lint also owns two repository relationships outside rust/: ADR
@@ -183,10 +183,10 @@ repos:
       # only those non-Rust inputs without duplicating the full Cargo gate.
       - id: bsl-repo-sentinels
         name: bsl-lint repository sentinels (non-Rust inputs, pre-push)
-        entry: mise run check:bsl-sentinels
+        entry: python3 tools/run_pre_push_gate.py bsl-repo-sentinels
         language: system
         pass_filenames: false
-        files: '^(ai/decisions/|src/babylon/contracts/(practice_contract_v1|practice_contract_v1_generated|relational_territory_dossier_v1|rtd_v1_generated)\.py$)'
+        always_run: true
         stages: [pre-push]
 
   # ==========================================================================

@@ -3,6 +3,7 @@
 ## Setup
 
 ```bash
+mise install
 mise run install
 mise run hooks
 ```

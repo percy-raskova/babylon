@@ -112,11 +112,11 @@ Step 4: Clone and Set Up the Project
    git clone https://github.com/percy-raskova/babylon.git
    cd babylon
 
-   # Install dependencies (creates virtual environment automatically)
-   mise run install
+   # Install locked dependencies (creates virtual environment automatically)
+   uv sync --extra ops --frozen
 
-   # Install pre-commit hooks
-   mise run hooks
+   # Install pre-commit, commit-msg, and pre-push hooks
+   uv run --frozen pre-commit install
 
    # Verify everything works
    uv run pytest -m "not ai" -x -q
@@ -245,11 +245,11 @@ side. This ensures proper file permissions and much better performance.
    git clone https://github.com/percy-raskova/babylon.git
    cd babylon
 
-   # Install dependencies
-   mise run install
+   # Install locked dependencies
+   uv sync --extra ops --frozen
 
-   # Install pre-commit hooks
-   mise run hooks
+   # Install pre-commit, commit-msg, and pre-push hooks
+   uv run --frozen pre-commit install
 
    # Verify
    uv run pytest -m "not ai" -x -q
@@ -308,11 +308,12 @@ To share credentials between Windows and WSL:
 
    git config --global credential.helper "/mnt/c/Program\ Files/Git/mingw64/bin/git-credential-manager.exe"
 
-Using Mise (Optional)
----------------------
+Using Mise
+----------
 
-The project uses `mise <https://mise.jdx.dev/>`_ as a task runner for common
-operations. While optional, it provides convenient shortcuts.
+The project uses `mise <https://mise.jdx.dev/>`_ as the canonical task runner.
+The standalone walkthrough above remains valid, but contributors using the
+repository commands should install Mise and its pinned Python and uv tools:
 
 **Install mise:**
 
@@ -321,6 +322,7 @@ operations. While optional, it provides convenient shortcuts.
    curl https://mise.run | sh
    echo 'eval "$(~/.local/bin/mise activate bash)"' >> ~/.bashrc
    source ~/.bashrc
+   mise install
 
 **Common mise commands:**
 

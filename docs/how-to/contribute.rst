@@ -9,7 +9,8 @@ Prerequisites
 
 - Git installed and configured
 - Repository cloned: ``git clone https://github.com/percy-raskova/babylon.git``
-- uv installed: https://docs.astral.sh/uv/getting-started/installation/ (or via mise)
+- mise installed: https://mise.jdx.dev/getting-started.html
+- Pinned Python and uv tools installed: ``mise install``
 - Dependencies installed: ``mise run install``
 - All Git hooks installed: ``mise run hooks``
 

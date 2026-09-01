@@ -1,4 +1,4 @@
-name: Weekly — Parameter Sweep Artifact
+name: Weekly — Rust Michigan Persistence Report
 
 # ADR181 R3(ii): per-leg split of the monolithic nightly (the Sunday leg).
 
@@ -16,20 +16,28 @@ concurrency:
 
 jobs:
   sim-artifacts:
-    name: Parameter Sweep Artifact
+    name: Rust Michigan Persistence Report
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      BABYLON_RUNTIME_DSN: "dbname=babylon_test host=localhost port=5433 user=test password=test"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: dev
-      - uses: ./.github/actions/bootstrap-python
-      - name: Parameter sweep
-        run: mise run sim:sweep 200
+      - uses: ./.github/actions/bootstrap-persistence
+      - uses: ./.github/actions/postgres-up
+      - name: Bootstrap Rust-owned schema
+        run: mise run db:bootstrap
+      - name: Generate Rust Michigan persistence report
+        run: mise run sim:report 520 3000
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: sim-analysis-${{ github.run_id }}
-          path: results/sweep.csv
+          name: rust-michigan-persistence-report-${{ github.run_id }}
+          path: reports/sim-runs/
           retention-days: 90
+      - name: Stop Postgres
+        if: always()
+        run: tools/ci_postgres_compose.sh down

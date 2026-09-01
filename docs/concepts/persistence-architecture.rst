@@ -98,8 +98,9 @@ Operational Consequences
 ------------------------
 
 - ``db:bootstrap`` performs the idempotent Rust activation.
-- ``sim:e2e-michigan`` runs the Rust-owned durable campaign.
-- ``sim:probe`` reports authority and campaign-tail state.
+- ``sim:e2e-michigan`` runs a fresh Rust-owned durable campaign.
+- ``sim:probe`` reports the selected worktree campaign tail and labels
+  database-wide totals separately.
 - ``qa:michigan-rollover-smoke`` proves a 60-tick restart boundary.
 - The live adopter suite verifies rollback, lock refusal, ambiguous commit,
   installed mutations, and cleanup against a disposable pinned database.

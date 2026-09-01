@@ -1,4 +1,4 @@
-"""Objective functions for parameter optimization.
+"""Objective functions for development-only simulation analysis.
 
 The Carceral Equilibrium scoring (``PHASE_WINDOWS``,
 ``calculate_carceral_equilibrium_score``, ``format_phase_report``) is moved
@@ -7,7 +7,7 @@ of truth for this scoring logic. :class:`Objective` is the small ``Protocol``
 every algorithm (sweep, Monte Carlo, sensitivity, Bayesian search) optimizes
 against; :func:`carceral_objective` and :func:`survival_objective` are the
 two concrete, ready-to-use scorers built on
-:class:`~babylon.engine.optimization.backends.types.Result`.
+:class:`~tools.devtools.sim_analysis.backends.types.Result`.
 
 See Also:
     ai/carceral-equilibrium.md: Full Carceral Equilibrium theory specification.
@@ -19,7 +19,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final, Protocol
 
-from babylon.engine.optimization.backends.types import Result
+from tools.devtools.sim_analysis.backends.types import Result
+
 from babylon.models.enums import EventType
 
 # =============================================================================
@@ -247,7 +248,7 @@ class Objective(Protocol):
     """Structural contract every optimization algorithm scores trials against.
 
     An ``Objective`` is any callable that reduces one trial's
-    :class:`~babylon.engine.optimization.backends.types.Result` to a single
+    :class:`~tools.devtools.sim_analysis.backends.types.Result` to a single
     float. Higher is always better — algorithms (sweep, Monte Carlo,
     sensitivity, Bayesian search) maximize whatever ``Objective`` they are
     given.
@@ -266,21 +267,33 @@ def carceral_objective(result: Result) -> float:
     """Score a trial by Carceral Equilibrium phase-timing (0.0-100.0).
 
     Thin adapter over :func:`calculate_carceral_equilibrium_score`, reading
-    ``result.phase_milestones`` and ``result.terminal_outcome``.
+    ``result.phase_milestones``, ``result.terminal_outcome``, and the
+    configured trial horizon from ``result.extra["max_ticks"]``. The
+    configured horizon is required because replacing it with an early-death
+    trial's ``ticks_survived`` changes every late-window timing score.
 
     :param result: The trial's normalized :class:`Result`.
     :returns: Score from 0.0 to 100.0. Always 0.0 for a backend/scenario
         that cannot observe phase milestones (all ``None`` — honest
         degradation per Constitution III.11, not a fabricated score).
+    :raises ValueError: If the result does not carry a positive integer
+        configured horizon, or reports more survived ticks than that horizon.
     """
+    max_ticks = result.extra.get("max_ticks")
+    if isinstance(max_ticks, bool) or not isinstance(max_ticks, int) or max_ticks < 1:
+        raise ValueError(
+            "carceral_objective requires Result.extra['max_ticks'] "
+            f"to be a positive integer, got: {max_ticks!r}"
+        )
+    if result.ticks_survived > max_ticks:
+        raise ValueError(
+            "result.ticks_survived cannot exceed configured max_ticks: "
+            f"{result.ticks_survived} > {max_ticks}"
+        )
     return calculate_carceral_equilibrium_score(
         result.phase_milestones,
         result.terminal_outcome,
-        # ticks_survived (not a fixed configured max_ticks) is the best
-        # available proxy for "total simulation length in ticks" from a
-        # bare Result — a trial that died early has a shorter timing
-        # denominator than one that ran to the configured max_ticks.
-        max_ticks=max(result.ticks_survived, 1),
+        max_ticks=max_ticks,
     )
 
 

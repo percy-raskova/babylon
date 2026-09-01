@@ -72,7 +72,7 @@ The July 7 playtest found the core loop broken; the holistic review found silent
 |------|------------------|
 | [Architecture Snapshot](/openwiki/state/architecture.md) | 34 systems, Embedded Trinity status, client status (Rust/Ratatui = `babylon play`), Python freeze |
 | [Systems Order](/openwiki/state/systems-order.md) | 34 systems in materialist-causality order (Material Base → Action → Consequences) with rationale |
-| [Developer Commands](/openwiki/state/commands.md) | `mise run setup`, `mise run check`, `mise run sim:run`, `mise run web:dev`, simulation lab commands |
+| [Developer Commands](/openwiki/state/commands.md) | `mise run setup`, `mise run check`, `mise run sim:report`, `mise run reference:python-smoke`, analysis commands |
 | [CI Gates & Sentinels](/openwiki/state/gates.md) | C.1–C.13 gates, sentinel doctrine, ceremony gates, coverage requirements |
 | [Data Pipeline](/openwiki/state/data-pipeline.md) | Parquet canonical sources (ADR098), `marxist-data-3NF.sqlite` as build product, `tools/build_reference_db.py` |
 
@@ -92,8 +92,8 @@ The July 7 playtest found the core loop broken; the holistic review found silent
 mise trust
 mise run setup
 
-# Verify install with self-contained smoke test
-mise run sim:run
+# Verify the frozen Python reference with a self-contained smoke test
+mise run reference:python-smoke
 
 # Fast CI gate (lint + format + typecheck + unit tests)
 mise run check

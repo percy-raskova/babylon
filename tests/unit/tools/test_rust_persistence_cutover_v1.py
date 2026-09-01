@@ -14,6 +14,8 @@ import yaml
 from tools.verify_rust_persistence_cutover_v1 import (
     CutoverFinding,
     RustPersistenceCutoverRefusal,
+    _entrypoint_executes_required_command,
+    _entrypoint_source,
     _verify_vectors,
     load_cutover_contract,
     validate_cutover_contract,
@@ -207,6 +209,12 @@ def test_joined_python_reader_retirement_has_no_surviving_api_or_edge_claim() ->
     assert contract["reader_boundary"]["projection_relations"] == []
     assert contract["reader_boundary"]["edges"] == 0
     assert contract["python_authority"]["census"]["inventory_entries"] == 131
+    assert contract["python_authority"]["census"]["scan_roots"] == [
+        "src/babylon",
+        "tools",
+        ".mise.toml",
+        ".mise/tasks",
+    ]
 
 
 def test_exact_rust_runtime_root_exists_and_absorbs_schema_epoch_cli() -> None:
@@ -973,6 +981,32 @@ def test_verifier_enforces_required_rust_command_in_the_exact_mise_task(
         and finding.path == ".mise.toml"
         and finding.detail.startswith("setup:")
         for finding in findings
+    )
+
+
+def test_entrypoint_source_selects_one_standalone_mise_task() -> None:
+    source = """["sim:e2e-michigan"]
+description = "Run the governed Michigan smoke path"
+run = "babylon-runtime michigan-smoke"
+
+["sim:probe"]
+description = "Probe the governed runtime"
+run = "babylon-runtime probe"
+"""
+
+    selected = _entrypoint_source(".mise/tasks/simulation.toml", source, "sim:e2e-michigan")
+
+    assert 'run = "babylon-runtime michigan-smoke"' in selected
+    assert "sim:probe" not in selected
+    assert _entrypoint_executes_required_command(
+        ".mise/tasks/simulation.toml",
+        selected,
+        "babylon-runtime michigan-smoke",
+    )
+    assert not _entrypoint_executes_required_command(
+        ".mise/tasks/simulation.toml",
+        selected,
+        "babylon-runtime probe",
     )
 
 

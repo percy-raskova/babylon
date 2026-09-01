@@ -62,7 +62,7 @@ pub use session::TickSession;
 use replay_session::{IdentifiedTickReportV1, ReplayTickError};
 
 /// The result of running one or more rules over one scenario for one tick:
-/// graph and nominal-world hashes around the commit, plus firing counts.
+/// graph and nominal-world hashes around the commit, plus guard and firing counts.
 #[derive(Debug)]
 pub struct TickReport {
     /// Canonical graph-state hash before adjudication.
@@ -73,6 +73,8 @@ pub struct TickReport {
     pub world_before: [u8; 32],
     /// Nominal graph-plus-current-auxiliary world hash after commit.
     pub world_after: [u8; 32],
+    /// Total subjects whose guards were evaluated across every rule.
+    pub considered: usize,
     /// The TOTAL fired-subject count across every rule this tick ran —
     /// unchanged in meaning and type for a single-rule content set (today
     /// every existing caller: `run_once`, the CLI, B0's engine-link probe,
@@ -82,6 +84,8 @@ pub struct TickReport {
     /// this crate's `tests/*_conformance.rs` and `tests/floor_intrinsic_e2e.rs`
     /// keep compiling and keep passing unmodified.
     pub fired: usize,
+    /// Per-rule guard-evaluation detail in governed causal order.
+    pub per_rule_considered: Vec<(String, usize)>,
     /// Per-rule detail in governed causal order — `(rule_id, fired)`.
     /// Rules resolve through the 34-slot phase registry; rules sharing one
     /// position use D16's ascending rule-ID byte order. Declaration and file
@@ -985,6 +989,16 @@ fn checked_fired_total(per_rule_fired: &[(String, usize)]) -> Result<usize, Stri
     })
 }
 
+fn checked_considered_total(per_rule_considered: &[(String, usize)]) -> Result<usize, String> {
+    per_rule_considered
+        .iter()
+        .try_fold(0usize, |total, (_, considered)| {
+            total
+                .checked_add(*considered)
+                .ok_or_else(|| "tick considered-subject total overflowed usize".to_owned())
+        })
+}
+
 enum ExecutionIdentity<'a, C> {
     Current {
         rng_seed: RngSeedContext<'a>,
@@ -1033,7 +1047,9 @@ struct TransactionPrelude {
 struct ExecutedRules<G> {
     graph: G,
     sink: CollectingSink,
+    considered: usize,
     fired: usize,
+    per_rule_considered: Vec<(String, usize)>,
     per_rule_fired: Vec<(String, usize)>,
     audit_receipts: Vec<AuditReceipt>,
 }
@@ -1200,6 +1216,7 @@ where
 {
     let mut working_graph = graph.detached_copy();
     let mut working_sink = CollectingSink::default();
+    let mut per_rule_considered = Vec::with_capacity(prepared.rules.len());
     let mut per_rule_fired = Vec::with_capacity(prepared.rules.len());
     let mut audit_receipts = Vec::new();
     for (id, loaded) in &prepared.rules {
@@ -1241,14 +1258,19 @@ where
                     )
                 })?;
         audit_receipts.append(&mut rule_receipts);
+        per_rule_considered.push((id.clone(), outcome.considered));
         per_rule_fired.push((id.clone(), outcome.fired));
     }
+    let considered = checked_considered_total(&per_rule_considered)
+        .map_err(|error| transaction_error(identity, error))?;
     let fired =
         checked_fired_total(&per_rule_fired).map_err(|error| transaction_error(identity, error))?;
     Ok(ExecutedRules {
         graph: working_graph,
         sink: working_sink,
+        considered,
         fired,
+        per_rule_considered,
         per_rule_fired,
         audit_receipts,
     })
@@ -1289,7 +1311,9 @@ where
         after,
         world_before: prelude.world_before,
         world_after,
+        considered: executed.considered,
         fired: executed.fired,
+        per_rule_considered: executed.per_rule_considered,
         per_rule_fired: executed.per_rule_fired,
         audit_receipts: executed.audit_receipts,
     };
@@ -1722,10 +1746,18 @@ mod tests {
     }
 
     #[test]
-    fn single_rule_content_still_reports_fired_and_a_one_entry_per_rule_fired() {
+    fn single_rule_content_preserves_considered_and_fired_counts() {
         let report = run_once(SCENARIO, RULE).expect("single-rule run");
+        assert_eq!(report.considered, 2);
+        assert_eq!(report.per_rule_considered.len(), 1);
+        assert_eq!(
+            report.per_rule_considered[0].0,
+            "economics/fundamental-theorem"
+        );
+        assert_eq!(report.per_rule_considered[0].1, report.considered);
         assert_eq!(report.per_rule_fired.len(), 1);
         assert_eq!(report.per_rule_fired[0].1, report.fired);
+        assert!(report.considered >= report.fired);
     }
 
     // Task 3.3 (plan §3.4): proves `node_content_ids` reaches `PreparedRules`

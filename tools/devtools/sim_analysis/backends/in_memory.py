@@ -1,4 +1,4 @@
-"""Fast in-memory optimization trial backend (legacy engine path).
+"""Fast analysis backend over the frozen Python reference engine.
 
 Drives the pre-Postgres, pure in-memory engine — the same tick-loop shape
 as ``tools/regression_test.py``'s ``_run_scenario_ticks`` — via
@@ -19,8 +19,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from tools.devtools.sim_analysis.backends.types import Result
+
 from babylon.config.defines import GameDefines, canonical_defines_hash
-from babylon.engine.optimization.backends.types import Result
 from babylon.models.entity_registry import PERIPHERY_WORKER_ID
 from babylon.models.enums.events import EventType
 from babylon.models.events import TerminalDecisionEvent
@@ -87,7 +88,7 @@ def run_in_memory(
     max_ticks: int,
     scenario: str = "imperial_circuit",
 ) -> Result:
-    """Run one trial via the fast in-memory legacy engine path.
+    """Run one trial against the frozen in-memory Python reference engine.
 
     :param defines: The (possibly swept) ``GameDefines`` for this trial —
         passed to ``step()`` on every tick.
@@ -105,7 +106,9 @@ def run_in_memory(
     from babylon.engine.simulation_engine import step
 
     state, sim_config, _base_defines = _build_scenario(scenario)
-    sim_config = sim_config.model_copy(update={"rng_seed": seed})
+    config_values = sim_config.model_dump(mode="python")
+    config_values["rng_seed"] = seed
+    sim_config = type(sim_config).model_validate(config_values, strict=True)
     persistent_context: dict[str, Any] = {}
 
     phase_milestones: dict[str, int | None] = dict.fromkeys(_MILESTONE_EVENT_TYPES)
@@ -135,7 +138,7 @@ def run_in_memory(
         defines_hash=canonical_defines_hash(defines),
         rng_seed=seed,
         backend="in_memory",
-        extra={"scenario": scenario},
+        extra={"scenario": scenario, "max_ticks": max_ticks},
     )
 
 

@@ -1,4 +1,4 @@
-"""Behavioral contract: parameter introspection/injection (ADR038).
+"""Behavioral contract for analysis parameter introspection and injection.
 
 :func:`get_tunable_parameters` is the single source of truth every
 optimization algorithm (sweep, Monte Carlo, sensitivity, Bayesian) relies on
@@ -12,11 +12,17 @@ must be able to set.
 
 from __future__ import annotations
 
-from babylon.config.defines import GameDefines
-from babylon.engine.optimization.params import (
+import math
+
+import pytest
+from pydantic import ValidationError
+from tools.devtools.sim_analysis.params import (
+    get_parameter_type,
     get_tunable_parameters,
     inject_parameter,
 )
+
+from babylon.config.defines import GameDefines
 
 
 class TestGetTunableParameters:
@@ -72,6 +78,30 @@ class TestGetTunableParameters:
         assert lo == 0.0
         assert hi == 0.5
 
+    def test_integer_parameter_bounds_remain_native_integers(self) -> None:
+        lo, hi = get_tunable_parameters(categories=["crisis"])["crisis.crisis_period_ticks"]
+        assert type(lo) is int
+        assert type(hi) is int
+        assert (lo, hi) == (1, 52)
+
+    def test_strict_float_bounds_exclude_unsampleable_endpoints(self) -> None:
+        params = get_tunable_parameters(categories=["crisis"])
+
+        threshold_lo, threshold_hi = params["crisis.r_threshold"]
+        assert threshold_lo == math.nextafter(0.0, math.inf)
+        assert threshold_hi == 1.0
+
+        hysteresis_lo, hysteresis_hi = params["crisis.hysteresis_coefficient"]
+        assert hysteresis_lo == math.nextafter(0.0, math.inf)
+        assert hysteresis_hi == math.nextafter(1.0, -math.inf)
+
+        defines_at_lower = inject_parameter(GameDefines(), "crisis.r_threshold", threshold_lo)
+        defines_at_upper = inject_parameter(
+            GameDefines(), "crisis.hysteresis_coefficient", hysteresis_hi
+        )
+        assert defines_at_lower.crisis.r_threshold == threshold_lo
+        assert defines_at_upper.crisis.hysteresis_coefficient == hysteresis_hi
+
 
 class TestInjectParameter:
     """inject_parameter must round-trip for every path get_tunable_parameters names."""
@@ -88,36 +118,48 @@ class TestInjectParameter:
         assert base.economy.base_subsistence == original_value
 
     def test_round_trips_every_tunable_path(self) -> None:
-        """Inject the midpoint of each (lo, hi) bound and read it straight back.
+        """Reinject each field's valid current value and read it straight back.
 
         This is the contract that makes sweep/Monte Carlo/sensitivity safe to
         run over the *entire* enumerated surface: every path
         ``get_tunable_parameters`` promises must be settable via
-        ``inject_parameter``, and the value that comes back must be exactly
-        what was set (Pydantic ``model_copy`` semantics, no silent coercion
-        surprises beyond int/float).
+        ``inject_parameter``. Some fields participate in cross-field model
+        invariants, so an arbitrary independent midpoint is not necessarily a
+        valid whole-model configuration; reinjecting the current value proves
+        path/type support while retaining those invariants.
         """
         base = GameDefines()
         params = get_tunable_parameters()
-        for path, (lo, hi) in params.items():
-            midpoint = (lo + hi) / 2.0
-            updated = inject_parameter(base, path, midpoint)
+        for path in params:
             category, field = path.split(".")
+            current_value = getattr(getattr(base, category), field)
+            updated = inject_parameter(base, path, current_value)
             actual = getattr(getattr(updated, category), field)
-            assert actual == midpoint or actual == int(midpoint), (
-                f"{path}: injected {midpoint} but read back {actual}"
+            assert actual == current_value, (
+                f"{path}: injected {current_value} but read back {actual}"
             )
+            assert type(actual) is get_parameter_type(path)
+
+    def test_fractional_integer_parameter_is_refused(self) -> None:
+        with pytest.raises(ValidationError, match="crisis_period_ticks"):
+            inject_parameter(GameDefines(), "crisis.crisis_period_ticks", 7.5)
+
+    def test_integer_parameter_remains_an_integer(self) -> None:
+        updated = inject_parameter(GameDefines(), "crisis.crisis_period_ticks", 7)
+        assert updated.crisis.crisis_period_ticks == 7
+        assert type(updated.crisis.crisis_period_ticks) is int
+
+    def test_integral_float_is_normalized_before_strict_validation(self) -> None:
+        updated = inject_parameter(GameDefines(), "crisis.crisis_period_ticks", 7.0)
+        assert updated.crisis.crisis_period_ticks == 7
+        assert type(updated.crisis.crisis_period_ticks) is int
 
     def test_invalid_category_raises_value_error(self) -> None:
-        import pytest
-
         base = GameDefines()
         with pytest.raises(ValueError, match="Unknown category"):
             inject_parameter(base, "not_a_real_category.field", 1.0)
 
     def test_invalid_field_raises_value_error(self) -> None:
-        import pytest
-
         base = GameDefines()
         with pytest.raises(ValueError, match="Unknown field"):
             inject_parameter(base, "economy.not_a_real_field", 1.0)

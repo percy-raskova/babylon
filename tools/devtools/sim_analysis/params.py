@@ -1,4 +1,4 @@
-"""Parameter injection and introspection for :class:`GameDefines` (ADR038).
+"""GameDefines injection and introspection for development-only analysis.
 
 The Pydantic introspection and ``Field`` bounds extraction that power Monte
 Carlo, sensitivity analysis, and parameter sweeps route through the functions
@@ -10,24 +10,41 @@ See Also:
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from babylon.config.defines import GameDefines
+
+ParameterValue = int | float
+ParameterBounds = tuple[ParameterValue, ParameterValue]
+
+_RawBound = tuple[ParameterValue, bool]
 
 # =============================================================================
 # PARAMETER INJECTION
 # =============================================================================
 
 
+def _normalize_parameter_value(field_info: Any, value: ParameterValue) -> ParameterValue:
+    """Preserve schema-native numeric types before strict model validation."""
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError(f"Parameter value must be finite, got: {value!r}")
+        if field_info.annotation is int and value.is_integer():
+            return int(value)
+    return value
+
+
 def inject_parameter(
     base_defines: GameDefines,
     param_path: str,
-    value: float,
+    value: ParameterValue,
 ) -> GameDefines:
     """Create a new GameDefines with a nested parameter overridden.
 
-    Uses Pydantic's ``model_copy(update=...)`` to create an immutable copy
-    with the specified parameter changed.
+    Revalidates the complete candidate through Pydantic in strict mode. This
+    preserves the frozen model while refusing type coercion (for example, an
+    integer tick count cannot be supplied as ``7.5``).
 
     :param base_defines: Original GameDefines (not mutated).
     :param param_path: Dot-separated path like ``"economy.extraction_efficiency"``.
@@ -41,31 +58,12 @@ def inject_parameter(
         >>> defines.economy.extraction_efficiency
         0.5
     """
-    parts = param_path.split(".")
-    if len(parts) != 2:
-        raise ValueError(f"param_path must be 'category.field', got: {param_path}")
-
-    category, field = parts
-
-    # Get the current category model
-    category_model = getattr(base_defines, category, None)
-    if category_model is None:
-        raise ValueError(f"Unknown category: {category}")
-
-    # Verify the field exists
-    if not hasattr(category_model, field):
-        raise ValueError(f"Unknown field '{field}' in category '{category}'")
-
-    # Create new category model with updated field
-    new_category = category_model.model_copy(update={field: value})
-
-    # Create new GameDefines with updated category
-    return base_defines.model_copy(update={category: new_category})
+    return inject_parameters(base_defines, {param_path: value})
 
 
 def inject_parameters(
     base_defines: GameDefines,
-    params: dict[str, float],
+    params: dict[str, ParameterValue],
 ) -> GameDefines:
     """Create a new GameDefines with multiple parameters overridden.
 
@@ -86,10 +84,29 @@ def inject_parameters(
         ... }
         >>> defines = inject_parameters(GameDefines(), params)
     """
-    result = base_defines
+    candidate = base_defines.model_dump(mode="python")
     for param_path, value in params.items():
-        result = inject_parameter(result, param_path, value)
-    return result
+        parts = param_path.split(".")
+        if len(parts) != 2:
+            raise ValueError(f"param_path must be 'category.field', got: {param_path}")
+
+        category, field = parts
+        if category not in GameDefines.model_fields:
+            raise ValueError(f"Unknown category: {category}")
+
+        category_model = GameDefines.model_fields[category].annotation
+        if category_model is None or not hasattr(category_model, "model_fields"):
+            raise ValueError(f"Category {category} is not a Pydantic model")
+        if field not in category_model.model_fields:
+            raise ValueError(f"Unknown field '{field}' in category '{category}'")
+
+        category_values = candidate[category]
+        if not isinstance(category_values, dict):
+            raise TypeError(f"Expected dumped category {category!r} to be a mapping")
+        field_info = category_model.model_fields[field]
+        category_values[field] = _normalize_parameter_value(field_info, value)
+
+    return GameDefines.model_validate(candidate, strict=True)
 
 
 # =============================================================================
@@ -97,38 +114,65 @@ def inject_parameters(
 # =============================================================================
 
 
-def _extract_bounds(field_info: Any) -> tuple[float | None, float | None]:
+def _extract_bounds(field_info: Any) -> tuple[_RawBound | None, _RawBound | None]:
     """Extract min/max bounds from Pydantic ``FieldInfo`` metadata.
 
     Searches for ``Ge``, ``Gt`` (lower bounds) and ``Le``, ``Lt`` (upper
     bounds) in metadata.
 
     :param field_info: Pydantic ``FieldInfo`` object.
-    :returns: Tuple of ``(lower_bound, upper_bound)``, either may be ``None``
-        if not specified.
+    :returns: Tuple of ``(lower_bound, upper_bound)``. A present bound is a
+        ``(value, inclusive)`` pair; either side may be ``None``.
     """
-    lower: float | None = None
-    upper: float | None = None
+    lower: _RawBound | None = None
+    upper: _RawBound | None = None
 
     for constraint in field_info.metadata:
         constraint_name = type(constraint).__name__
         if constraint_name == "Ge" and hasattr(constraint, "ge"):
-            lower = constraint.ge
+            lower = (constraint.ge, True)
         elif constraint_name == "Gt" and hasattr(constraint, "gt"):
-            # For strict greater-than, use the value as lower bound
-            lower = constraint.gt
+            lower = (constraint.gt, False)
         elif constraint_name == "Le" and hasattr(constraint, "le"):
-            upper = constraint.le
+            upper = (constraint.le, True)
         elif constraint_name == "Lt" and hasattr(constraint, "lt"):
-            # For strict less-than, use the value as upper bound
-            upper = constraint.lt
+            upper = (constraint.lt, False)
 
     return lower, upper
 
 
+def _sampleable_bound(
+    raw_bound: _RawBound,
+    *,
+    parameter_type: type[int] | type[float],
+    lower: bool,
+) -> ParameterValue:
+    """Convert one schema constraint to an endpoint safe to sample.
+
+    Integer bounds use the nearest valid integer. Float bounds use the
+    adjacent representable float for strict ``gt``/``lt`` constraints, so a
+    sampler that includes both endpoints still cannot emit the forbidden
+    schema boundary.
+    """
+    value, inclusive = raw_bound
+    numeric = float(value)
+    if not math.isfinite(numeric):
+        raise ValueError(f"Non-finite parameter bound: {value!r}")
+
+    if parameter_type is int:
+        if lower:
+            return math.ceil(numeric) if inclusive else math.floor(numeric) + 1
+        return math.floor(numeric) if inclusive else math.ceil(numeric) - 1
+
+    if inclusive:
+        return numeric
+    direction = math.inf if lower else -math.inf
+    return math.nextafter(numeric, direction)
+
+
 def get_tunable_parameters(
     categories: list[str] | None = None,
-) -> dict[str, tuple[float, float]]:
+) -> dict[str, ParameterBounds]:
     """Introspect GameDefines for all tunable float/int fields.
 
     Recursively walks nested Pydantic models, extracting ``Field``
@@ -153,7 +197,7 @@ def get_tunable_parameters(
         >>> all(k.startswith("economy.") for k in params)
         True
     """
-    result: dict[str, tuple[float, float]] = {}
+    result: dict[str, ParameterBounds] = {}
 
     # Iterate over GameDefines categories (economy, consciousness, etc.)
     for category_name, category_field in GameDefines.model_fields.items():
@@ -172,20 +216,29 @@ def get_tunable_parameters(
             annotation = field_info.annotation
             if annotation not in (int, float):
                 continue
+            parameter_type = int if annotation is int else float
 
             # Extract bounds from metadata
-            lower, upper = _extract_bounds(field_info)
+            raw_lower, raw_upper = _extract_bounds(field_info)
             default = field_info.default
 
             # Apply fallback bounds
-            if lower is None:
-                lower = 0.0
-            if upper is None:
+            if raw_lower is None:
+                raw_lower = (0 if parameter_type is int else 0.0, True)
+            if raw_upper is None:
                 # Use 10x default as upper bound if no explicit constraint
-                upper = default * 10.0 if default > 0 else 10.0
+                fallback = default * 10 if default > 0 else 10
+                raw_upper = (fallback, True)
+
+            lower = _sampleable_bound(raw_lower, parameter_type=parameter_type, lower=True)
+            upper = _sampleable_bound(raw_upper, parameter_type=parameter_type, lower=False)
 
             param_path = f"{category_name}.{field_name}"
-            result[param_path] = (float(lower), float(upper))
+            if lower > upper:
+                raise ValueError(
+                    f"No sampleable values for {param_path}: lower={lower!r}, upper={upper!r}"
+                )
+            result[param_path] = (lower, upper)
 
     return result
 
@@ -232,6 +285,8 @@ def get_parameter_type(param_path: str) -> type[int] | type[float]:
 
 
 __all__ = [
+    "ParameterBounds",
+    "ParameterValue",
     "inject_parameter",
     "inject_parameters",
     "get_tunable_parameters",

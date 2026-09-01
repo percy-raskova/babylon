@@ -1,24 +1,22 @@
-"""Reproducibility record for optimization trials.
+"""Verification records for development-only analysis trials.
 
-Every trial run through :func:`babylon.engine.optimization.runner_api.run`
-should be replayable: given the same ``GameDefines``, RNG seed, backend, and
-run parameters, the same trial must reproduce byte-identically (Constitution
-III.7). :class:`ReproRecord` is the frozen, minimal receipt that captures
-exactly those inputs plus a summary of what the trial produced, so a trial
-can be logged, diffed, and replayed later without needing the full
-:class:`~babylon.engine.optimization.backends.types.Result` object kept
-around.
+Given the same ``GameDefines``, RNG seed, backend, scenario, maximum tick,
+and source revision, a trial should reproduce byte-identically
+(Constitution III.7). :class:`ReproRecord` binds a result summary to the
+canonical hash of those defines and the remaining run inputs. The hash is a
+fingerprint, not an invertible coefficient snapshot: a standalone replay
+also needs the base-defines payload or exact overrides stored by the parent
+analysis artifact.
 """
 
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
-
-from babylon.engine.optimization.backends.types import Result
+from tools.devtools.sim_analysis.backends.types import Result
 
 
 class ReproRecord(BaseModel):
-    """Minimal, frozen receipt for replaying one optimization trial.
+    """Frozen receipt for verifying one analysis trial's identity.
 
     :ivar defines_hash: SHA-256 over the canonical ``model_dump()`` of the
         trial's ``GameDefines`` — produced by
@@ -59,15 +57,15 @@ def build_repro_record(
     ``scenario`` and ``max_ticks`` are the caller's run parameters rather
     than fields on ``Result`` — the backend-agnostic ``Result`` contract
     intentionally does not carry them (see
-    :class:`~babylon.engine.optimization.backends.types.Result`), so the
+    :class:`~tools.devtools.sim_analysis.backends.types.Result`), so the
     caller (which already has them, having passed them to
     ``runner_api.run``) supplies them here.
 
     :param result: The trial's normalized :class:`Result`.
     :param scenario: The in-memory scenario the trial ran under.
     :param max_ticks: The configured maximum ticks for the trial.
-    :returns: A frozen :class:`ReproRecord` capturing the trial's replay
-        inputs and outcome summary.
+    :returns: A frozen :class:`ReproRecord` binding the trial inputs and
+        outcome summary to the non-invertible defines fingerprint.
     """
     return ReproRecord(
         defines_hash=result.defines_hash,

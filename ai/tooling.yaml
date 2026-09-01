@@ -49,8 +49,9 @@ cicd:
     weekly_sim_artifacts_yml:
       file: ".github/workflows/weekly-sim-artifacts.yml"
       triggers: ["weekly Sunday 04:00 UTC", "workflow_dispatch"]
-      command: "mise run sim:sweep 200"
-      artifact: "results/sweep.csv"
+      scope: "Embedded two-rule Michigan Rust persistence slice; not full content-pack coverage"
+      command: "mise run sim:report 520"
+      artifact: "reports/sim-runs/"
 
   pr_template:
     file: ".github/PULL_REQUEST_TEMPLATE.md"
@@ -496,8 +497,9 @@ python:
     convention: |
       Tasks use colon-namespaced naming for discoverability:
         test:*   - Testing by scope (unit, int, scenario)
-        sim:*    - Simulation execution and analysis
-        tune:*   - Parameter optimization
+        sim:*    - Rust simulation execution and observability
+        reference:* - Frozen reference-engine tools
+        analysis:*  - Development-only Python analysis
         qa:*     - Quality assurance and verification
         demo:*   - Integration demos
         data:*   - Data pipeline operations
@@ -513,16 +515,19 @@ python:
       "test:int": "Run integration tests (mechanics & systems)"
       "test:scenario": "Run scenario tests (slow, full arcs)"
       "test:all": "Run all non-AI tests"
-      "sim:run": "Frozen Python one-tick reference smoke; not a persistence-authority path"
-      "sim:sweep": "Intentional in-memory Python optimization periphery"
-      "sim:e2e-michigan": "Rust-owned PostgreSQL/H3 520-tick Michigan foundation run"
-      "sim:e2e-bg": "Run the Rust-owned Michigan campaign in the background"
-      "sim:status": "Show the background process and Rust authority/campaign-tail probe"
-      "sim:probe": "Probe Rust persistence authority and the durable campaign tail"
-      "sim:archive": "Inspect Rust-owned Archive dirty receipts"
-      "tune:optuna": "Bayesian optimization (Optuna TPE)"
-      "tune:landscape": "2D parameter grid search"
-      "tune:dashboard": "Optuna Dashboard visualization"
+      "reference:python-smoke": "Frozen Python one-tick reference smoke; not a persistence-authority path"
+      "analysis:sweep": "Intentional in-memory Python optimization periphery"
+      "analysis:monte-carlo": "Intentional in-memory Python uncertainty analysis"
+      "sim:e2e-michigan": "One-shot Rust PostgreSQL/H3 validation; fresh unless BABYLON_CAMPAIGN_ID is explicit"
+      "sim:e2e-bg": "Resume an explicit Rust Michigan campaign, or the worktree-local default, in the background"
+      "sim:status": "Show the background process, its recorded campaign tail, and labeled global totals"
+      "sim:probe": "Probe an explicit campaign, or the worktree-local default, plus labeled global totals"
+      "sim:archive": "Inspect global Rust-owned Archive dirty receipts"
+      "sim:report": "Generate post-commit evidence for the embedded two-rule Michigan Rust persistence slice"
+      "dev:doctor": "Report worktree and Rust simulation tooling readiness without mutation"
+      "analysis:optuna": "Development-only Bayesian optimization (Optuna TPE)"
+      "analysis:landscape": "Development-only 2D parameter grid search"
+      "analysis:dashboard": "Optuna Dashboard visualization"
       "qa:verify": "Formula correctness verification"
       "qa:regression": "Frozen Python language-neutral behavior contract"
       "qa:vault-regression": "Retained in-process projection-vault byte gate"
@@ -540,7 +545,7 @@ python:
       "data:subset": "Build the CI subset from the rebuilt product (subset drift dies by construction)"
 
 # =============================================================================
-# PARAMETER TUNING TOOLING
+# FROZEN-REFERENCE PARAMETER ANALYSIS TOOLING
 # =============================================================================
 
 parameter_tuning:
@@ -548,94 +553,115 @@ parameter_tuning:
   migration_date: "2025-12-30"
 
   primary_tool:
-    name: "babylon.engine.optimization"
-    location: "src/babylon/engine/optimization/ (engine-tier package)"
+    name: "tools.devtools.sim_analysis"
+    location: "tools/devtools/sim_analysis/ (development-only package)"
     status: "ACTIVE"
     description: |
-      Unified parameter sweep + optimization package (subcommands: sweep,
-      monte-carlo, sensitivity, bayesian). Migrated from the standalone tools/
-      scripts onto the fixed headless runner — an injected GameDefines now
-      actually reaches the simulation (the old tools silently ran bit-identical
-      math). The bayesian subcommand uses Optuna TPE + Hyperband pruning;
-      backend is selectable (headless Postgres scope or fast in-memory step()).
+      Unified parameter sweep and analysis package (subcommands: sweep,
+      monte-carlo, sensitivity, bayesian). It is intentional Python development
+      periphery over the frozen reference engine: an injected GameDefines reaches
+      that in-memory simulation, but the package neither observes nor controls
+      Rust-owned durable campaigns. Bayesian analysis uses Optuna TPE and
+      Hyperband pruning.
 
     algorithm: "TPE (Tree-structured Parzen Estimator)"
     pruning: "Hyperband (Successive Halving)"
 
     capabilities:
-      - "Multi-objective optimization (stability + complexity)"
-      - "Early termination of failing simulations"
+      - "Single-objective Carceral Equilibrium search"
+      - "Early pruning of failing frozen-reference trials"
       - "Parameter importance analysis"
-      - "Pareto front visualization via Optuna Dashboard"
+      - "Persistent study visualization via Optuna Dashboard"
+      - "Full-path parameter identities and persisted experiment fingerprints"
 
     usage: |
       # Bayesian optimization study
-      poetry run python -m babylon.engine.optimization bayesian --n-trials 200 --study-name imperial_circuit
+      uv run python -m tools.devtools.sim_analysis bayesian --n-trials 200 --study-name imperial_circuit
 
       # Report best trial of an existing study
-      poetry run python -m babylon.engine.optimization bayesian --study-name imperial_circuit --show-best
+      uv run python -m tools.devtools.sim_analysis bayesian --study-name imperial_circuit --show-best
 
       # 1D/2D sweep, Monte Carlo, sensitivity
-      poetry run python -m babylon.engine.optimization sweep --param "economy.extraction_efficiency=0.05:0.5:0.05" --report
-      poetry run python -m babylon.engine.optimization monte-carlo --n-samples 100
-      poetry run python -m babylon.engine.optimization sensitivity --method both
+      uv run python -m tools.devtools.sim_analysis sweep --param "economy.extraction_efficiency=0.05:0.5:0.05" --report
+      uv run python -m tools.devtools.sim_analysis monte-carlo --n-samples 100
+      uv run python -m tools.devtools.sim_analysis sensitivity --method both
 
       # Launch Optuna Dashboard
-      optuna-dashboard sqlite:///optuna.db
+      uv run optuna-dashboard sqlite:///optuna.db
 
     objective_function: |
-      Maximize: w1*ticks_survived + w2*rent_pool_health + w3*consciousness_variance
-      Subject to: No Comprador death before tick 10 (pruning constraint)
+      Maximize: weighted Carceral Equilibrium phase-timing score (0..100),
+      with a revolutionary terminal-outcome bonus and genocide penalty.
+      Prune trials that survive fewer than five years or that Hyperband judges
+      noncompetitive from their reported phase milestones.
 
   retired_tools:
     note: |
       tune_agent.py, tune_parameters.py, landscape_analysis.py, monte_carlo.py,
       sensitivity_analysis.py, parameter_analysis.py, audit_simulation.py,
       profiler.py, tick_budget_check.py, and tick_probe.py were removed after
-      their behavior moved to the optimization package or the Rust runtime, or
+      their behavior moved to the analysis package or the Rust runtime, or
       after review proved that their wrappers did not exercise the behavior they
       advertised. carceral_scoring.py moved to the package's objectives.py. See
-      the optimization-package ADR and the Rust persistence cutover contract.
+      the analysis-package history and the Rust persistence cutover contract.
 
   dependencies:
     optuna:
       package: "optuna"
-      version: "^3.6"
+      version: ">=4.9.0,<5.0.0"
       purpose: "Bayesian optimization framework"
       group: "dev"
 
     optuna_dashboard:
       package: "optuna-dashboard"
-      version: "^0.15"
+      version: ">=0.20.0,<0.21.0"
       purpose: "Web-based visualization of optimization studies"
       group: "dev"
-      usage: "optuna-dashboard sqlite:///optuna.db"
+      usage: "uv run optuna-dashboard sqlite:///optuna.db"
 
   storage:
     database: "sqlite:///optuna.db"
     location: "Project root (gitignored)"
-    purpose: "Persistent storage of optimization studies for resumption"
+    purpose: "Persistent storage of optimization studies for compatible resumption"
+    resume_contract: |
+      The study user attributes bind the search space, source-tree hash,
+      default-defines hash, simulation seed, backend, scenario, max ticks,
+      objective, sampler, and pruner. A mismatch or a legacy study without the
+      fingerprint fails before new trials run. Use a new study name or storage.
+      Optuna does not persist sampler RNG state, so resumed proposal order is
+      not claimed to equal one uninterrupted process.
 
   mise_tasks:
-    "tune:optuna":
-      command: "poetry run python -m babylon.engine.optimization bayesian"
+    "analysis:optuna":
+      command: "uv run python -m tools.devtools.sim_analysis bayesian"
       description: "Run Bayesian optimization (Optuna TPE)"
 
-    "tune:landscape":
-      command: "poetry run python -m babylon.engine.optimization sweep --param ... --param2 ..."
+    "analysis:landscape":
+      command: "uv run python -m tools.devtools.sim_analysis sweep --param ... --param2 ..."
       description: "2D parameter grid search"
 
-    "tune:params":
-      command: "poetry run python -m babylon.engine.optimization sweep --param ..."
+    "analysis:sweep":
+      command: "uv run python -m tools.devtools.sim_analysis sweep --param ..."
       description: "1D parameter sensitivity sweep"
 
-    "tune:sensitivity | tune:morris | tune:sobol":
-      command: "poetry run python -m babylon.engine.optimization sensitivity --method {morris,sobol,both}"
+    "analysis:sensitivity | analysis:morris | analysis:sobol":
+      command: "uv run python -m tools.devtools.sim_analysis sensitivity --method {morris,sobol,both}"
       description: "Global sensitivity analysis (SALib Morris/Sobol)"
 
-    "tune:dashboard":
-      command: "optuna-dashboard sqlite:///optuna.db"
+    "analysis:dashboard":
+      command: "uv run optuna-dashboard sqlite:///optuna.db"
       description: "Launch Optuna Dashboard for visualization"
+
+  sweep_artifacts:
+    max_evaluations: 2048
+    max_tick_evaluations: 5000000
+    one_dimensional:
+      csv: "Sorted per-point summary with defines hash and RNG seed"
+      manifest_schema: "babylon.sim-analysis.sweep-1d.v1"
+    two_dimensional:
+      csv: "Ticks-survived matrix for quick inspection"
+      manifest_schema: "babylon.sim-analysis.sweep-2d.v1"
+    manifest_contract: "Base defines and hash, native values or grid, run configuration, objective identity, every result, and aligned verification receipts"
 
 # =============================================================================
 # SHARED UTILITIES MODULE (ADR036)
@@ -650,7 +676,7 @@ shared_utilities:
   purpose: |
     Keeps the retained Python regression and gate-coverage tools aligned on
     EntityProtocol death detection. Parameter injection and enumeration live
-    only in babylon.engine.optimization.params.
+    only in tools.devtools.sim_analysis.params.
 
   functions:
     is_dead:
@@ -668,9 +694,9 @@ shared_utilities:
 
 monte_carlo:
   philosophy: "Capture stochastic variance via N-sample replication"
-  location: "src/babylon/engine/optimization/monte_carlo.py (subcommand: monte-carlo)"
+  location: "tools/devtools/sim_analysis/monte_carlo.py (subcommand: monte-carlo)"
   added: "2026-01-01"
-  mise_task: "sim:monte-carlo"
+  mise_task: "analysis:monte-carlo"
 
   purpose: |
     StruggleSystem has stochastic EXCESSIVE_FORCE probability. Single
@@ -682,12 +708,12 @@ monte_carlo:
     - "Sequential execution (simpler code per user preference)"
     - "Per-sample metrics: ticks_survived, outcome, max_tension, final_wealth"
     - "Aggregate statistics: mean, std, 95% CI via t-distribution"
-    - "CSV output + markdown report"
+    - "CSV output + strict-JSON replay-input manifest + markdown report"
 
   cli_usage:
-    basic: "mise run sim:monte-carlo 100"
-    with_seed: "mise run sim:monte-carlo 1000 42"
-    with_param: "poetry run python -m babylon.engine.optimization monte-carlo --param economy.extraction_efficiency=0.5"
+    basic: "mise run analysis:monte-carlo 100"
+    with_seed: "mise run analysis:monte-carlo 1000 42"
+    with_param: "uv run python -m tools.devtools.sim_analysis monte-carlo --param economy.extraction_efficiency=0.5"
 
   statistics:
     confidence_interval:
@@ -700,15 +726,18 @@ monte_carlo:
       - "ticks_mean, ticks_std, ticks_ci_lower, ticks_ci_upper"
       - "tension_mean, tension_std"
       - "wealth_mean, wealth_std"
+      - "objective_mean, objective_std"
 
   output:
     csv: "results/monte_carlo.csv"
-    columns: "sample_id, seed, ticks_survived, outcome, max_tension, final_wealth"
+    columns: "sample_id, seed, defines_hash, ticks_survived, outcome, max_tension, final_wealth, objective_score"
+    manifest: "results/monte_carlo.manifest.json"
+    manifest_contract: "Full validated defines once, overrides, seeds, outputs, aggregate statistics, and verification receipts"
 
   sample_size_guidance:
     exploratory: "100 samples (fast, rough estimate)"
     standard: "1000 samples (good precision)"
-    publication: "10000+ samples (NIST recommended)"
+    maximum: "10000 samples (the command's hard safety limit)"
 
   references:
     - "NIST Monte Carlo Guidelines"
@@ -720,12 +749,12 @@ monte_carlo:
 
 sensitivity_analysis:
   philosophy: "Quantify parameter importance via variance decomposition"
-  location: "src/babylon/engine/optimization/sensitivity.py (subcommand: sensitivity)"
+  location: "tools/devtools/sim_analysis/sensitivity.py (subcommand: sensitivity)"
   added: "2026-01-01"
   mise_tasks:
-    - "tune:sensitivity"
-    - "tune:morris"
-    - "tune:sobol"
+    - "analysis:sensitivity"
+    - "analysis:morris"
+    - "analysis:sobol"
 
   purpose: |
     Identify which GameDefines parameters most strongly affect simulation
@@ -740,8 +769,8 @@ sensitivity_analysis:
       outputs:
         mu_star: "Mean absolute elementary effect (importance)"
         sigma: "Std dev of effects (non-linearity/interaction indicator)"
-      samples: "~100-200 (fast)"
-      usage: "mise run tune:morris 20"
+      default_workload: "8 trajectories over 8 explicit parameters = 72 evaluations"
+      usage: "mise run analysis:morris"
       interpretation: |
         High mu* = important parameter
         High sigma / mu* = non-linear or interacts with others
@@ -753,40 +782,49 @@ sensitivity_analysis:
         S1: "First-order index (main effect of single parameter)"
         ST: "Total-order index (main + all interaction effects)"
         S2: "Second-order index (pairwise interactions)"
-      samples: "~1000-10000 (slow)"
-      usage: "mise run tune:sobol 512"
+      default_workload: "64 base samples over 8 explicit parameters = 1152 evaluations"
+      combined_workload: "64 base samples over the Morris top 4 = 640 evaluations"
+      usage: "mise run analysis:sobol"
       interpretation: |
         Sum(S1) = variance explained by main effects
         Sum(ST) - Sum(S1) = variance from interactions
 
   default_parameters:
+    - "economy.base_subsistence"
     - "economy.extraction_efficiency"
     - "economy.comprador_cut"
-    - "economy.base_subsistence"
     - "economy.super_wage_rate"
     - "economy.trpf_coefficient"
-    - "survival.steepness_k"
-    - "consciousness.drift_sensitivity_k"
-    - "solidarity.transmission_rate"
+    - "consciousness.sensitivity"
+    - "solidarity.scaling_factor"
+    - "carceral.enforcer_fraction"
+
+  safety_bounds:
+    max_parameters: 16
+    max_evaluations: 2048
+    max_evaluation_ticks: 5000000
+    max_artifact_bytes: 8388608
+    default_max_ticks: 2600
 
   workflow:
     discovery: |
-      1. Run Morris screening: mise run tune:morris 20
-      2. Identify top 5-10 parameters by mu*
-      3. Run Sobol on subset: modify DEFAULT_PARAMS, mise run tune:sobol 512
-      4. Use S1/ST to quantify main vs interaction effects
+      1. Run the bounded two-stage campaign: mise run analysis:sensitivity
+      2. Inspect the Morris mu* ranking and the top-four Sobol S1/ST results
+      3. Pass another explicit comma-separated parameter subset when needed
+      4. Use S1/ST to quantify main versus interaction effects
       5. Focus Optuna tuning on high-ST parameters
 
   output:
     morris: "results/morris.json"
     sobol: "results/sobol.json"
+    contract: "Versioned strict JSON with base defines, parameter bounds/types, exact sample vectors, native overrides, outputs, seeds, and verification receipts"
 
   dependencies:
     SALib:
       package: "SALib"
-      version: ">=1.4.7"
+      version: ">=1.5.2,<2.0.0"
       group: "dev"
-      methods_used: "morris.sample, saltelli.sample, morris.analyze, sobol.analyze"
+      methods_used: "morris.sample, sobol.sample, morris.analyze, sobol.analyze"
 
   references:
     - "SALib Documentation: https://salib.readthedocs.io/"
@@ -827,6 +865,27 @@ regression_testing:
     fascist_bifurcation:
       description: "Consciousness routing to national identity"
       file: "tests/baselines/fascist_bifurcation.json"
+    single_county:
+      description: "Wayne-seeded minimal county and Volume III financial layer"
+      file: "tests/baselines/single_county.json"
+    mitterrand:
+      description: "Reform-in-office forced-austerity scenario"
+      file: "tests/baselines/mitterrand.json"
+    syriza:
+      description: "Captured-governance capitulation scenario"
+      file: "tests/baselines/syriza.json"
+    weimar:
+      description: "Fascist consolidation through the ballot"
+      file: "tests/baselines/weimar.json"
+    debs:
+      description: "Independent-line FPTP scenario"
+      file: "tests/baselines/debs.json"
+    bernie_valve:
+      description: "Entryism and disillusion routing scenario"
+      file: "tests/baselines/bernie_valve.json"
+    org_probe:
+      description: "Two-organization byte-gate anchor"
+      file: "tests/baselines/org_probe.json"
 
   checkpointed_metrics:
     per_tick:

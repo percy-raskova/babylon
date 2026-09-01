@@ -6,6 +6,8 @@ AST-readable by ``babylon.sentinels.gate_coverage``, and shared with the
 coverage-truth probe without dragging in the whole harness.
 """
 
+# ruff: noqa: E402 -- direct script mode establishes repository import roots first
+
 from __future__ import annotations
 
 import sys
@@ -14,12 +16,15 @@ from typing import Any, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
-# Add src and tools to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-sys.path.insert(0, str(Path(__file__).parent))
+# Support both package imports and direct ``tools/regression_test.py`` launch.
+_REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_REPOSITORY_ROOT))
+sys.path.insert(0, str(_REPOSITORY_ROOT / "src"))
+sys.path.insert(0, str(_REPOSITORY_ROOT / "tools"))
+
+from tools.devtools.sim_analysis.params import inject_parameter
 
 from babylon.config.defines import GameDefines
-from babylon.engine.optimization.params import inject_parameter
 from babylon.engine.scenarios import (
     create_bernie_valve_scenario,
     create_debs_scenario,

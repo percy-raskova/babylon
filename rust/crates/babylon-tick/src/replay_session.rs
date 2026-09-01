@@ -432,6 +432,15 @@ impl IdentifiedTickReportV1 {
         &self.report
     }
 
+    /// Consume the identified evidence and return its administrative tick report.
+    ///
+    /// The durable runtime uses this after acknowledgement when a bounded
+    /// observation replaces the detailed persistence evidence.
+    #[must_use]
+    pub fn into_report(self) -> TickReport {
+        self.report
+    }
+
     /// Borrow the exact accepted-action batch bytes.
     #[must_use]
     pub fn action_batch_bytes(&self) -> &[u8] {

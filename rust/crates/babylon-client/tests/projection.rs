@@ -282,7 +282,12 @@ fn the_admin_panel_renders_the_per_rule_breakdown_from_a_seeded_tick_report() {
         after: [1u8; 32],
         world_before: [2u8; 32],
         world_after: [3u8; 32],
+        considered: 11,
         fired: 7,
+        per_rule_considered: vec![
+            ("lifecycle/dpd-circuit".to_owned(), 7),
+            ("vitality/subsistence-and-death".to_owned(), 4),
+        ],
         per_rule_fired: vec![
             ("lifecycle/dpd-circuit".to_owned(), 5),
             ("vitality/subsistence-and-death".to_owned(), 2),

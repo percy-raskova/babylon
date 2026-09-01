@@ -27,9 +27,11 @@ The binary accepts these commands:
      - Activate, open or create the Michigan durable campaign, and commit
        ``N`` Rust ticks.
    * - ``probe``
-     - Show the authority ledger and durable campaign tail.
+     - Show the authority ledger, selected campaign tail when configured, and
+       separately labeled database-wide totals.
    * - ``archive``
-     - Inspect durable Archive dirty receipts without mutating campaigns.
+     - Inspect database-wide durable Archive dirty receipts without mutating
+       campaigns.
    * - ``michigan-smoke``
      - Commit and restart the Michigan campaign across the 60-tick proof.
 

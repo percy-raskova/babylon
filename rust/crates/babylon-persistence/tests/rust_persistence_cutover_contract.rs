@@ -20,7 +20,7 @@ use babylon_persistence::{
 use babylon_practice_contract::ordered_action_v1::OrderedPracticeActionBatchV1;
 use babylon_tick::material_state::MaterialStateRowsV1;
 use babylon_tick::replay_session::{
-    IdentifiedTickReportV1, ReplayTickSession, SuccessfulEventBatchV1,
+    IdentifiedTickReportV1, ReplayCommitDispositionV1, ReplayTickSession, SuccessfulEventBatchV1,
 };
 use postgres::Config;
 
@@ -149,6 +149,20 @@ fn activation_ledger_and_runtime_receipts_are_typed_and_observable() {
 
     fn assert_receipt(receipt: &CommittedTickReceiptV1) {
         let _: CommittedResolveTickV1 = receipt.resolve_tick();
+        let _: ReplayCommitDispositionV1 = receipt.commit_disposition();
+        let _: [u8; 32] = receipt.graph_before();
+        let _: [u8; 32] = receipt.graph_after();
+        let _: [u8; 32] = receipt.world_before();
+        let _: [u8; 32] = receipt.world_after();
+        let _: usize = receipt.considered();
+        let _: usize = receipt.fired();
+        let _: &[(String, usize)] = receipt.per_rule_considered();
+        let _: &[(String, usize)] = receipt.per_rule_fired();
+        let _: usize = receipt.event_count();
+        let _: [u8; 32] = receipt.event_digest();
+        let _: usize = receipt.audit_receipt_count();
+        let _: usize = receipt.material_row_count();
+        let _: [u8; 32] = receipt.material_row_digest();
         let _: TickContentHashV1 = receipt.tick_content_hash();
     }
 

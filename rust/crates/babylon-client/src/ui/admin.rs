@@ -173,7 +173,12 @@ mod tests {
             after: [1u8; 32],
             world_before: [2u8; 32],
             world_after: [3u8; 32],
+            considered: 24,
             fired: 18,
+            per_rule_considered: vec![
+                ("lifecycle/dpd-circuit".to_owned(), 16),
+                ("vitality/subsistence-and-death".to_owned(), 8),
+            ],
             per_rule_fired: vec![
                 ("lifecycle/dpd-circuit".to_owned(), 12),
                 ("vitality/subsistence-and-death".to_owned(), 6),

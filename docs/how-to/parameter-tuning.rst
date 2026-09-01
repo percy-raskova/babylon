@@ -13,10 +13,10 @@ Prerequisites
 Load Configuration
 ------------------
 
-From Defaults
-^^^^^^^^^^^^^
+From Compiled Defaults
+^^^^^^^^^^^^^^^^^^^^^^
 
-Load default values (from ``pyproject.toml``):
+Construct the immutable Pydantic defaults compiled into ``GameDefines``:
 
 .. code-block:: python
 
@@ -24,21 +24,17 @@ Load default values (from ``pyproject.toml``):
 
    defines = GameDefines()
 
-From Environment Variables
-^^^^^^^^^^^^^^^^^^^^^^^^^^
+From the Repository YAML
+^^^^^^^^^^^^^^^^^^^^^^^^
 
-Environment variables override defaults:
-
-.. code-block:: bash
-
-   export BABYLON_ECONOMY_EXTRACTION_EFFICIENCY=0.9
-   export BABYLON_CONSCIOUSNESS_DRIFT_SENSITIVITY_K=0.15
+Load the canonical repository coefficient payload when it is present:
 
 .. code-block:: python
 
-   # Environment variables loaded automatically
-   defines = GameDefines()
-   assert defines.economy.extraction_efficiency == 0.9
+   defines = GameDefines.load_default()
+
+``GameDefines`` is a ``BaseModel``, not a settings model. It does not ingest
+``BABYLON_*`` environment variables implicitly.
 
 From Code
 ^^^^^^^^^
@@ -47,50 +43,42 @@ Override specific parameters programmatically:
 
 .. code-block:: python
 
-   from babylon.config.defines import GameDefines, EconomyDefines
+   from babylon.config.defines import EconomyDefines, GameDefines
 
    defines = GameDefines(
-       economy=EconomyDefines(
-           extraction_efficiency=0.9,
-           tribute_rate=0.15
-       )
+       economy=EconomyDefines(extraction_efficiency=0.9)
    )
 
-From pyproject.toml
-^^^^^^^^^^^^^^^^^^^
+From an Explicit YAML File
+^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Defaults are stored in ``pyproject.toml``:
-
-.. code-block:: toml
-
-   [tool.babylon]
-   [tool.babylon.economy]
-   extraction_efficiency = 0.8
-   tribute_rate = 0.1
-
-   [tool.babylon.consciousness]
-   drift_sensitivity_k = 0.1
-
-Use with SimulationConfig
--------------------------
-
-``SimulationConfig`` wraps ``GameDefines`` with simulation-specific options:
+Load and validate a complete YAML payload explicitly:
 
 .. code-block:: python
 
-   from babylon.models import SimulationConfig
+   from pathlib import Path
+
+   defines = GameDefines.load_from_yaml(Path("src/babylon/data/defines.yaml"))
+
+Run the Frozen Reference Backend
+--------------------------------
+
+``SimulationConfig`` now carries only its run-scoped RNG seed; it does not
+contain ``max_ticks`` or ``defines``. The development-only runner accepts those
+arguments explicitly:
+
+.. code-block:: python
+
    from babylon.config.defines import GameDefines
+   from tools.devtools.sim_analysis.runner_api import run
 
-   config = SimulationConfig(
+   result = run(
+       GameDefines(economy={"extraction_efficiency": 0.9}),
+       backend="in_memory",
+       scenario="imperial_circuit",
        max_ticks=100,
-       random_seed=42,
-       defines=GameDefines(
-           economy={"extraction_efficiency": 0.9}
-       )
+       seed=42,
    )
-
-   # Run simulation with custom parameters
-   simulation = Simulation(state=initial_state, config=config)
 
 Run Parameter Analysis
 ----------------------
@@ -102,75 +90,41 @@ Test multiple parameter values systematically:
 
 .. code-block:: bash
 
-   mise run sim:sweep
+   mise run analysis:sweep
 
-This produces ``results/sweep.csv`` with summary metrics:
+This produces ``results/sweep.csv`` with one row per point and the columns
+below, plus ``results/sweep.manifest.json`` with the base defines, exact
+values, run configuration, results, and verification receipts:
 
 .. code-block:: text
 
-   solidarity_decay,revolution_tick,final_ideology,final_tension
-   0.90,32,-0.85,0.95
-   0.95,None,0.12,0.45
-   0.99,None,0.78,0.22
+   defines_hash,final_wealth,max_tension,outcome,rng_seed,score,terminal_outcome,ticks_survived,value
 
-Use this to find parameter values that produce desired outcomes.
+Use these artifacts to compare bounded frozen-reference trials. They do not
+establish the behavior of a Rust-owned durable campaign.
 
 Sensitivity Analysis
 ^^^^^^^^^^^^^^^^^^^^
 
-Use the retained optimization package for global sensitivity analysis:
+Use the retained development-only analysis package for global sensitivity
+analysis:
 
 .. code-block:: bash
 
-   uv run python -m babylon.engine.optimization sensitivity --method both
+   uv run python -m tools.devtools.sim_analysis sensitivity --method both
 
 This is in-memory design-analysis periphery. It does not establish behavior or
-authority for a Rust-owned durable campaign.
+authority for a Rust-owned durable campaign. The safe default screens eight
+curated parameters with Morris and runs Sobol only on the top four; pass an
+explicit comma-separated ``--param-names`` subset for another bounded study.
 
-Common Parameter Combinations
------------------------------
+Prefer Explicit Paths
+---------------------
 
-High Exploitation Scenario
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Model aggressive imperial rent extraction:
-
-.. code-block:: python
-
-   defines = GameDefines(
-       economy={"extraction_efficiency": 0.95, "tribute_rate": 0.2}
-   )
-
-**Expected behavior:** Faster wealth transfer, quicker impoverishment of
-periphery, potentially faster radicalization.
-
-Strong Solidarity Scenario
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Model resilient organizational infrastructure:
-
-.. code-block:: python
-
-   defines = GameDefines(
-       solidarity={"decay_base": 0.98, "transmission_rate": 0.2}
-   )
-
-**Expected behavior:** Slower solidarity decay, faster consciousness spread,
-higher likelihood of revolutionary outcome.
-
-High Repression Scenario
-^^^^^^^^^^^^^^^^^^^^^^^^
-
-Model aggressive state response:
-
-.. code-block:: python
-
-   defines = GameDefines(
-       territory={"heat_threshold": 0.5, "displacement_priority": "ELIMINATION"}
-   )
-
-**Expected behavior:** Lower threshold for eviction, more aggressive
-displacement, but potential for backfire via StruggleSystem.
+Use full ``category.field`` paths in the analysis commands and change one
+coefficient at a time for an exploratory sweep. For multi-parameter designs,
+use the bounded sensitivity or Bayesian commands rather than maintaining
+hand-written scenario snippets in this guide.
 
 Debug Configuration
 -------------------

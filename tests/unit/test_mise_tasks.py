@@ -97,6 +97,17 @@ def _task_run(task: dict[str, object]) -> str:
 class TestMiseTaskDiscoverability:
     """Required mise tasks exist with non-empty descriptions."""
 
+    def test_split_task_files_use_pinned_mise_compatible_includes(self) -> None:
+        """This repository's declared Mise floor requires explicit task files."""
+        config = tomllib.loads(MISE_TOML.read_text())
+
+        assert config["min_version"] == "2025.11.7"
+        assert config["task_config"]["includes"] == [
+            ".mise/tasks/analysis.toml",
+            ".mise/tasks/devtools.toml",
+            ".mise/tasks/simulation.toml",
+        ]
+
     def test_sim_e2e_michigan_declared_in_split_config(
         self, mise_tasks: dict[str, dict[str, object]]
     ) -> None:

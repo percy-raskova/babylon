@@ -21,7 +21,11 @@
 min_version = "2025.11.7"
 
 [task_config]
-includes = [".mise/tasks"]
+includes = [
+  ".mise/tasks/analysis.toml",
+  ".mise/tasks/devtools.toml",
+  ".mise/tasks/simulation.toml",
+]
 
 [tools]
 python = "3.12"

@@ -9,7 +9,9 @@ use bevy::asset::AssetPlugin;
 use bevy::image::ImagePlugin;
 use bevy::prelude::*;
 use bevy::render::texture::TexturePlugin;
+use bevy::time::TimeUpdateStrategy;
 use std::collections::HashSet;
+use std::time::Duration;
 
 fn shipped_app() -> App {
     let mut app = App::new();
@@ -28,6 +30,7 @@ fn shipped_app() -> App {
     app.insert_resource(babylon_client::story::SelectedStory(
         babylon_client::story::counties(),
     ));
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
     app.finish();
     app.update(); // Startup.
     app.world_mut()
@@ -120,6 +123,85 @@ fn gameplay_contract_requires_every_decision_field() {
         assert!(omitted.validate().is_err());
         assert!(!omitted.satisfies_gameplay_gate());
     }
+}
+
+#[test]
+fn gameplay_contract_rejects_blank_entries_in_every_required_list() {
+    const PRESENT: &[&str] = &["declared"];
+    const CONTAINS_BLANK: &[&str] = &["declared", " \t\n"];
+    let complete = DecisionSurfaceContract {
+        id: SurfaceId::CountyMap,
+        role: DecisionSurfaceRole::Gameplay,
+        decision_question: Some("What should I do here next week?"),
+        visible_signals: PRESENT,
+        visible_uncertainty: PRESENT,
+        fog_requirements: PRESENT,
+        actions: PRESENT,
+        expected_receipts: PRESENT,
+        archive_subjects: PRESENT,
+        admin_debug_exempt: false,
+    };
+
+    let blank_entries = [
+        DecisionSurfaceContract {
+            visible_signals: CONTAINS_BLANK,
+            ..complete
+        },
+        DecisionSurfaceContract {
+            visible_uncertainty: CONTAINS_BLANK,
+            ..complete
+        },
+        DecisionSurfaceContract {
+            fog_requirements: CONTAINS_BLANK,
+            ..complete
+        },
+        DecisionSurfaceContract {
+            actions: CONTAINS_BLANK,
+            ..complete
+        },
+        DecisionSurfaceContract {
+            expected_receipts: CONTAINS_BLANK,
+            ..complete
+        },
+        DecisionSurfaceContract {
+            archive_subjects: CONTAINS_BLANK,
+            ..complete
+        },
+    ];
+
+    for contract in blank_entries {
+        assert!(contract.validate().is_err());
+        assert!(!contract.satisfies_gameplay_gate());
+    }
+}
+
+#[test]
+fn admin_inspector_manifest_matches_its_pre_tick_rendering() {
+    const PRE_TICK_REPORT: &str = "tick report \u{2014} not yet run";
+    const ROSTER_STATUS: &str = "roster \u{2014} no county selected";
+
+    let contract = contract_for(SurfaceId::AdminInspector);
+    assert!(contract.visible_signals.contains(&PRE_TICK_REPORT));
+    assert!(contract.visible_signals.contains(&ROSTER_STATUS));
+
+    let mut app = shipped_app();
+    app.world_mut()
+        .resource_mut::<babylon_client::map::SelectedCounty>()
+        .0 = None;
+    app.world_mut()
+        .resource_mut::<babylon_client::ui::admin::AdminPanelVisible>()
+        .0 = true;
+    app.update();
+
+    let world = app.world_mut();
+    let mut query =
+        world.query_filtered::<&Text, With<babylon_client::ui::admin::AdminPanelText>>();
+    let rendered = &query
+        .single(world)
+        .expect("exactly one admin inspector text entity")
+        .0;
+    assert!(rendered.contains(PRE_TICK_REPORT), "got {rendered:?}");
+    assert!(rendered.contains(ROSTER_STATUS), "got {rendered:?}");
 }
 
 #[test]

@@ -125,6 +125,10 @@ impl fmt::Display for DecisionSurfaceContractError {
 
 impl std::error::Error for DecisionSurfaceContractError {}
 
+fn has_only_declared_entries(entries: &[&str]) -> bool {
+    !entries.is_empty() && entries.iter().all(|entry| !entry.trim().is_empty())
+}
+
 impl DecisionSurfaceContract {
     /// Checks the structural requirements of the declared role.
     ///
@@ -151,22 +155,22 @@ impl DecisionSurfaceContract {
         {
             return Err(DecisionSurfaceContractError::MissingDecisionQuestion);
         }
-        if self.visible_signals.is_empty() {
+        if !has_only_declared_entries(self.visible_signals) {
             return Err(DecisionSurfaceContractError::MissingVisibleSignals);
         }
-        if self.visible_uncertainty.is_empty() {
+        if !has_only_declared_entries(self.visible_uncertainty) {
             return Err(DecisionSurfaceContractError::MissingVisibleUncertainty);
         }
-        if self.fog_requirements.is_empty() {
+        if !has_only_declared_entries(self.fog_requirements) {
             return Err(DecisionSurfaceContractError::MissingFogRequirements);
         }
-        if self.actions.is_empty() {
+        if !has_only_declared_entries(self.actions) {
             return Err(DecisionSurfaceContractError::MissingActions);
         }
-        if self.expected_receipts.is_empty() {
+        if !has_only_declared_entries(self.expected_receipts) {
             return Err(DecisionSurfaceContractError::MissingExpectedReceipts);
         }
-        if self.archive_subjects.is_empty() {
+        if !has_only_declared_entries(self.archive_subjects) {
             return Err(DecisionSurfaceContractError::MissingArchiveSubjects);
         }
         Ok(())
@@ -280,8 +284,13 @@ pub const SHIPPED_SURFACE_MANIFEST: &[DecisionSurfaceContract] = &[
     ),
     admin_surface(
         SurfaceId::AdminInspector,
-        &["raw selected-node attributes", "per-rule tick report"],
-        &["panel is empty before the first completed viewer tick"],
+        &[
+            "raw selected-node attributes",
+            "per-rule tick report after a completed viewer tick",
+            "tick report \u{2014} not yet run",
+            "roster \u{2014} no county selected",
+        ],
+        &["pre-tick and roster-selection status are explicit"],
     ),
 ];
 

@@ -14,6 +14,7 @@ use crate::h3_reference_cohort::MAX_H3_REFERENCE_CLOSURE_ROWS;
 use crate::legacy_adopter::{
     acquire_lock, release_lock, validate_legacy_connection_target, LegacyAdopterError,
 };
+use crate::postgres_diagnostic::PostgresDiagnosticV1;
 use crate::schema_epoch::{
     bounded_config, inspect_schema_epoch_under_lock, SchemaEpochError, SchemaEpochOrigin,
     CURRENT_SCHEMA_EPOCH,
@@ -208,33 +209,6 @@ pub enum H3ReferenceMembershipReadContext {
     },
 }
 
-/// Credential-safe server diagnostic retained from a membership read.
-#[derive(Clone, PartialEq, Eq)]
-pub struct H3ReferenceDatabaseDiagnostic {
-    server: Option<Box<postgres::error::DbError>>,
-}
-
-impl H3ReferenceDatabaseDiagnostic {
-    /// Server diagnostic retained from the membership-read boundary.
-    #[must_use]
-    pub fn server(&self) -> Option<&postgres::error::DbError> {
-        self.server.as_deref()
-    }
-}
-
-impl std::fmt::Debug for H3ReferenceDatabaseDiagnostic {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let (sqlstate, message) = self.server.as_deref().map_or((None, None), |server| {
-            (Some(server.code().code()), Some(server.message()))
-        });
-        formatter
-            .debug_struct("H3ReferenceDatabaseDiagnostic")
-            .field("sqlstate", &sqlstate)
-            .field("message", &message)
-            .finish()
-    }
-}
-
 /// Fixed installer resources with explicit row ceilings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum H3ReferenceInstallBoundedResource {
@@ -287,7 +261,7 @@ pub enum H3ReferenceInstallError {
     /// A database operation failed with a credential-safe server diagnostic boundary.
     Database {
         operation: H3ReferenceInstallOperation,
-        diagnostic: H3ReferenceDatabaseDiagnostic,
+        diagnostic: Option<PostgresDiagnosticV1>,
     },
     /// A database value could not be decoded into the governed type.
     Decode {
@@ -752,9 +726,9 @@ struct LockedInstallSession {
 
 impl LockedInstallSession {
     fn connect(config: &Config) -> Result<Self, H3ReferenceInstallError> {
-        let mut client = config
-            .connect(NoTls)
-            .map_err(|_| database_error(H3ReferenceInstallOperation::Connect))?;
+        let mut client = config.connect(NoTls).map_err(|error| {
+            postgres_database_error(H3ReferenceInstallOperation::Connect, &error)
+        })?;
         acquire_lock(&mut client).map_err(H3ReferenceInstallError::Lock)?;
         Ok(Self {
             client: Some(client),
@@ -847,11 +821,13 @@ fn require_exact_schema_epoch(client: &mut Client) -> Result<(), H3ReferenceInst
 fn prepare_installer_session(client: &mut Client) -> Result<(), H3ReferenceInstallError> {
     client
         .batch_execute(H3_REFERENCE_SESSION_SETTINGS_SQL)
-        .map_err(|_| database_error(H3ReferenceInstallOperation::SetSessionSettings))?;
+        .map_err(|error| {
+            postgres_database_error(H3ReferenceInstallOperation::SetSessionSettings, &error)
+        })?;
     let operation = H3ReferenceInstallOperation::VerifySessionSettings;
     let row = client
         .query_one(H3_REFERENCE_SESSION_SETTINGS_QUERY, &[])
-        .map_err(|_| database_error(operation))?;
+        .map_err(|error| postgres_database_error(operation, &error))?;
     let expected = ["on", "pg_catalog", "30s", "5s", "5s", "off", "off", "off"];
     for (index, wanted) in expected.iter().enumerate().take(8) {
         let actual: String = decode_value(&row, index, operation)?;
@@ -910,7 +886,9 @@ fn inspect_presence<ClientType: GenericClient>(
                 &H3_REFERENCE_HEADER_QUERY_LIMIT,
             ],
         )
-        .map_err(|_| database_error(H3ReferenceInstallOperation::ReadHeader))?;
+        .map_err(|error| {
+            postgres_database_error(H3ReferenceInstallOperation::ReadHeader, &error)
+        })?;
     if rows.len() > MAX_H3_REFERENCE_HEADER_ROWS {
         return Err(H3ReferenceInstallError::Bounds {
             resource: H3ReferenceInstallBoundedResource::HeaderRows,
@@ -1013,7 +991,7 @@ fn read_r8_product<ClientType: GenericClient>(
                 &H3_REFERENCE_PRODUCT_QUERY_LIMIT,
             ],
         )
-        .map_err(|error| server_database_error(operation, &error))?;
+        .map_err(|error| postgres_database_error(operation, &error))?;
     if rows.is_empty() {
         return Ok(None);
     }
@@ -1104,7 +1082,7 @@ fn read_r8_cell_batch<ClientType: GenericClient>(
         })?;
     let rows = client
         .query(READ_CELLS_SQL, &[&cell_ids, &query_limit])
-        .map_err(|error| server_database_error(operation, &error))?;
+        .map_err(|error| postgres_database_error(operation, &error))?;
     if rows.len() > batch.len() {
         return Err(H3ReferenceInstallError::Bounds {
             resource: H3ReferenceInstallBoundedResource::R8Rows,
@@ -1274,7 +1252,7 @@ fn verify_membership_cardinality<ClientType: GenericClient>(
         query.as_ref().ok().map(|_| 1),
         query.as_ref().err(),
     );
-    let row = query.map_err(|error| server_database_error(operation, &error))?;
+    let row = query.map_err(|error| postgres_database_error(operation, &error))?;
     let actual: i64 = decode_value(&row, 0, operation)?;
     let actual =
         usize::try_from(actual).map_err(|_| H3ReferenceInstallError::Decode { operation })?;
@@ -1324,7 +1302,7 @@ fn read_membership_rows<ClientType: GenericClient>(
         query.as_ref().ok().map(Vec::len),
         query.as_ref().err(),
     );
-    let rows = query.map_err(|error| server_database_error(operation, &error))?;
+    let rows = query.map_err(|error| postgres_database_error(operation, &error))?;
     if rows.len() > expected {
         return Err(H3ReferenceInstallError::Bounds {
             resource: H3ReferenceInstallBoundedResource::MembershipRows,
@@ -1368,7 +1346,7 @@ fn read_cell_rows<ClientType: GenericClient>(
         query.as_ref().ok().map(Vec::len),
         query.as_ref().err(),
     );
-    let rows = query.map_err(|error| server_database_error(operation, &error))?;
+    let rows = query.map_err(|error| postgres_database_error(operation, &error))?;
     if rows.len() > expected {
         return Err(H3ReferenceInstallError::Bounds {
             resource: H3ReferenceInstallBoundedResource::MembershipRows,
@@ -1463,8 +1441,9 @@ fn attempt_install_transaction(
     )?;
     match transaction.commit() {
         Ok(()) => Ok(CommitAttempt::Committed),
-        Err(error) if error.as_db_error().is_some() => Err(database_error(
+        Err(error) if error.as_db_error().is_some() => Err(postgres_database_error(
             H3ReferenceInstallOperation::CommitTransaction,
+            &error,
         )),
         Err(_) => Ok(CommitAttempt::Ambiguous),
     }
@@ -1480,7 +1459,9 @@ fn prepare_install_transaction<'client>(
         .isolation_level(IsolationLevel::Serializable)
         .read_only(false)
         .start()
-        .map_err(|_| database_error(H3ReferenceInstallOperation::BeginTransaction))?;
+        .map_err(|error| {
+            postgres_database_error(H3ReferenceInstallOperation::BeginTransaction, &error)
+        })?;
     let verification = install_and_verify(&mut transaction, bundle, context);
     if let Err(primary) = verification {
         return rollback_preserving(transaction, primary);
@@ -1510,11 +1491,13 @@ fn install_and_verify(
 fn prepare_transaction(transaction: &mut Transaction<'_>) -> Result<(), H3ReferenceInstallError> {
     transaction
         .batch_execute(WRITE_LOCAL_SETTINGS_SQL)
-        .map_err(|_| database_error(H3ReferenceInstallOperation::SetTransactionSettings))?;
+        .map_err(|error| {
+            postgres_database_error(H3ReferenceInstallOperation::SetTransactionSettings, &error)
+        })?;
     let operation = H3ReferenceInstallOperation::VerifyTransactionSettings;
     let row = transaction
         .query_one(WRITE_SETTINGS_SQL, &[])
-        .map_err(|_| database_error(operation))?;
+        .map_err(|error| postgres_database_error(operation, &error))?;
     let expected = [
         "serializable",
         "off",
@@ -1608,7 +1591,9 @@ fn insert_cell_batch(
                 &ancestors_r7,
             ],
         )
-        .map_err(|_| database_error(H3ReferenceInstallOperation::InsertCells))?;
+        .map_err(|error| {
+            postgres_database_error(H3ReferenceInstallOperation::InsertCells, &error)
+        })?;
     Ok(())
 }
 
@@ -1678,7 +1663,7 @@ fn insert_r8_cell_batch(
                 &ancestors_r7,
             ],
         )
-        .map_err(|error| server_database_error(operation, &error))?;
+        .map_err(|error| postgres_database_error(operation, &error))?;
     Ok(())
 }
 
@@ -1709,7 +1694,9 @@ fn insert_header(
                 &closure_count,
             ],
         )
-        .map_err(|_| database_error(H3ReferenceInstallOperation::InsertHeader))?;
+        .map_err(|error| {
+            postgres_database_error(H3ReferenceInstallOperation::InsertHeader, &error)
+        })?;
     Ok(())
 }
 
@@ -1754,7 +1741,9 @@ fn insert_membership_batch(
             INSERT_MEMBERSHIP_SQL,
             &[&ref_digest.as_bytes().as_slice(), &cell_ids, &origins],
         )
-        .map_err(|_| database_error(H3ReferenceInstallOperation::InsertMembership))?;
+        .map_err(|error| {
+            postgres_database_error(H3ReferenceInstallOperation::InsertMembership, &error)
+        })?;
     Ok(())
 }
 
@@ -1780,7 +1769,7 @@ fn insert_r8_product(
                 &row_count,
             ],
         )
-        .map_err(|error| server_database_error(operation, &error))?;
+        .map_err(|error| postgres_database_error(operation, &error))?;
     Ok(())
 }
 
@@ -1788,9 +1777,9 @@ fn rollback_preserving<T>(
     transaction: Transaction<'_>,
     primary: H3ReferenceInstallError,
 ) -> Result<T, H3ReferenceInstallError> {
-    let rollback = transaction
-        .rollback()
-        .map_err(|_| database_error(H3ReferenceInstallOperation::RollbackTransaction));
+    let rollback = transaction.rollback().map_err(|error| {
+        postgres_database_error(H3ReferenceInstallOperation::RollbackTransaction, &error)
+    });
     preserve_rollback_result(primary, rollback)
 }
 
@@ -1922,19 +1911,17 @@ fn count_to_sql(count: usize) -> Result<i64, H3ReferenceInstallError> {
 fn database_error(operation: H3ReferenceInstallOperation) -> H3ReferenceInstallError {
     H3ReferenceInstallError::Database {
         operation,
-        diagnostic: H3ReferenceDatabaseDiagnostic { server: None },
+        diagnostic: None,
     }
 }
 
-fn server_database_error(
+fn postgres_database_error(
     operation: H3ReferenceInstallOperation,
     error: &postgres::Error,
 ) -> H3ReferenceInstallError {
     H3ReferenceInstallError::Database {
         operation,
-        diagnostic: H3ReferenceDatabaseDiagnostic {
-            server: error.as_db_error().cloned().map(Box::new),
-        },
+        diagnostic: Some(PostgresDiagnosticV1::capture(error)),
     }
 }
 
@@ -2224,10 +2211,14 @@ pub(crate) mod live_postgres_tests {
                 diagnostic,
             } => {
                 let server = diagnostic
-                    .server()
+                    .as_ref()
                     .expect("the cell query must retain its server diagnostic");
-                assert_eq!(server.code(), &SqlState::LOCK_NOT_AVAILABLE);
-                assert!(!server.message().is_empty());
+                assert_eq!(server.sqlstate(), Some(SqlState::LOCK_NOT_AVAILABLE.code()));
+                assert_eq!(
+                    server.classification(),
+                    crate::PostgresFailureClassV1::Timeout
+                );
+                assert!(server.message().is_some_and(|message| !message.is_empty()));
             }
             other => panic!("unexpected cell lock-timeout error: {other:?}"),
         }

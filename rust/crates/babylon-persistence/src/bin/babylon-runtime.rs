@@ -20,7 +20,8 @@ use babylon_persistence::{
     activate_rust_persistence_v1, michigan_dynamic_hex_foundation_v1, preflight_schema_epoch,
     representative_h3_reference_cohort_v1, ArchiveSchemaDispositionV1, CampaignFoundationV1,
     CampaignId, CommittedResolveTickV1, CommittedTickReceiptV1, DurableReplayRuntimeV1,
-    FoundationContentBundleV1, RustPersistenceRuntimeErrorV1, SemanticArchiveStoreV1,
+    FoundationContentBundleV1, PostgresDiagnosticV1, RustPersistenceRuntimeErrorV1,
+    SemanticArchiveStoreV1,
 };
 use babylon_practice_contract::ordered_action_v1::OrderedPracticeActionBatchV1;
 use babylon_tick::material_state::MaterialStateV1;
@@ -801,14 +802,14 @@ fn runtime_foundation() -> Result<
 fn probe(config: &Config, selected_campaign: Option<CampaignId>) -> Result<(), String> {
     let mut client = config
         .connect(NoTls)
-        .map_err(|_| "database probe connection failed".to_owned())?;
+        .map_err(|error| postgres_failure("database probe connection", &error))?;
     let authority_rows: i64 = client
         .query_one(
             "SELECT pg_catalog.count(*) FROM babylon_meta.persistence_authority_ledger",
             &[],
         )
         .and_then(|row| row.try_get(0))
-        .map_err(|_| "authority probe failed".to_owned())?;
+        .map_err(|error| postgres_failure("authority probe", &error))?;
     let row = client
         .query_one(
             "SELECT pg_catalog.count(DISTINCT foundation.campaign_id), pg_catalog.max(marker.resolve_tick) \
@@ -817,13 +818,13 @@ fn probe(config: &Config, selected_campaign: Option<CampaignId>) -> Result<(), S
                ON marker.campaign_id = foundation.campaign_id",
             &[],
         )
-        .map_err(|_| "campaign-tail probe failed".to_owned())?;
+        .map_err(|error| postgres_failure("campaign-tail probe", &error))?;
     let campaigns: i64 = row
         .try_get(0)
-        .map_err(|_| "campaign count decode failed".to_owned())?;
+        .map_err(|error| postgres_failure("campaign count decode", &error))?;
     let tail: Option<i64> = row
         .try_get(1)
-        .map_err(|_| "campaign tail decode failed".to_owned())?;
+        .map_err(|error| postgres_failure("campaign tail decode", &error))?;
     let (selected_campaign_state, selected_tail_label) = match selected_campaign {
         Some(campaign) => {
             let selected_tail: Option<i64> = client
@@ -834,7 +835,7 @@ fn probe(config: &Config, selected_campaign: Option<CampaignId>) -> Result<(), S
                     &[campaign.as_uuid()],
                 )
                 .and_then(|row| row.try_get(0))
-                .map_err(|_| "selected campaign-tail probe failed".to_owned())?;
+                .map_err(|error| postgres_failure("selected campaign-tail probe", &error))?;
             (
                 "configured",
                 selected_tail.map_or_else(|| "none".to_owned(), |value| value.to_string()),
@@ -857,23 +858,23 @@ fn inspect_archive(config: &Config) -> Result<(), String> {
         .map_err(|error| format!("Archive schema refused: {error}"))?;
     let mut client = config
         .connect(NoTls)
-        .map_err(|_| "Archive probe connection failed".to_owned())?;
+        .map_err(|error| postgres_failure("Archive probe connection", &error))?;
     let row = client
         .query_one(
             "SELECT pg_catalog.count(*), pg_catalog.min(resolve_tick), pg_catalog.max(resolve_tick) \
              FROM babylon_state.archive_dirty_receipt_v1",
             &[],
         )
-        .map_err(|_| "Archive dirty-receipt probe failed".to_owned())?;
+        .map_err(|error| postgres_failure("Archive dirty-receipt probe", &error))?;
     let receipts: i64 = row
         .try_get(0)
-        .map_err(|_| "Archive receipt count decode failed".to_owned())?;
+        .map_err(|error| postgres_failure("Archive receipt count decode", &error))?;
     let first: Option<i64> = row
         .try_get(1)
-        .map_err(|_| "Archive first tick decode failed".to_owned())?;
+        .map_err(|error| postgres_failure("Archive first tick decode", &error))?;
     let last: Option<i64> = row
         .try_get(2)
-        .map_err(|_| "Archive last tick decode failed".to_owned())?;
+        .map_err(|error| postgres_failure("Archive last tick decode", &error))?;
     let meta = client
         .query_one(
             "SELECT \
@@ -882,16 +883,16 @@ fn inspect_archive(config: &Config) -> Result<(), String> {
                (SELECT pg_catalog.count(*) FROM babylon_meta.archive_page_v1)",
             &[],
         )
-        .map_err(|_| "semantic Archive probe failed".to_owned())?;
+        .map_err(|error| postgres_failure("semantic Archive probe", &error))?;
     let grants: i64 = meta
         .try_get(0)
-        .map_err(|_| "Archive grant count decode failed".to_owned())?;
+        .map_err(|error| postgres_failure("Archive grant count decode", &error))?;
     let consumptions: i64 = meta
         .try_get(1)
-        .map_err(|_| "Archive consumption count decode failed".to_owned())?;
+        .map_err(|error| postgres_failure("Archive consumption count decode", &error))?;
     let pages: i64 = meta
         .try_get(2)
-        .map_err(|_| "Archive page count decode failed".to_owned())?;
+        .map_err(|error| postgres_failure("Archive page count decode", &error))?;
     let schema = match schema {
         ArchiveSchemaDispositionV1::Installed => "installed",
         ArchiveSchemaDispositionV1::AlreadyCurrent => "current",
@@ -903,6 +904,13 @@ fn inspect_archive(config: &Config) -> Result<(), String> {
         last.map_or_else(|| "none".to_owned(), |value| value.to_string()),
     );
     Ok(())
+}
+
+fn postgres_failure(operation: &'static str, error: &postgres::Error) -> String {
+    format!(
+        "{operation} failed: {:?}",
+        PostgresDiagnosticV1::capture(error)
+    )
 }
 
 fn hex_digest(bytes: &[u8; 32]) -> String {

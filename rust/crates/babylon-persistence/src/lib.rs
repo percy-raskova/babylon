@@ -18,6 +18,7 @@ pub mod legacy_adopter;
 mod metadata;
 mod michigan_dynamic_hex_foundation;
 pub mod migration_manifest;
+mod postgres_diagnostic;
 mod runtime;
 pub mod schema_epoch;
 pub mod schema_migration;
@@ -53,10 +54,9 @@ pub use h3_reference_cohort::{
     MAX_H3_REFERENCE_SOURCE_CELLS,
 };
 pub use h3_reference_installer::{
-    install_michigan_h3_reference_bundle_v1, H3ReferenceDatabaseDiagnostic,
-    H3ReferenceInstallBoundedResource, H3ReferenceInstallConflict, H3ReferenceInstallDisposition,
-    H3ReferenceInstallError, H3ReferenceInstallOperation, H3ReferenceInstallReport,
-    H3ReferenceMembershipReadContext,
+    install_michigan_h3_reference_bundle_v1, H3ReferenceInstallBoundedResource,
+    H3ReferenceInstallConflict, H3ReferenceInstallDisposition, H3ReferenceInstallError,
+    H3ReferenceInstallOperation, H3ReferenceInstallReport, H3ReferenceMembershipReadContext,
 };
 pub use h3_shadow_backfill::{
     backfill_legacy_h3_shadow_keys, H3ShadowBackfillBoundedResource, H3ShadowBackfillDisposition,
@@ -74,9 +74,10 @@ pub use legacy_adopter::{
     legacy_adopter_sql_statements, parse_legacy_census_fixture, validate_legacy_connection_target,
     validate_legacy_stamps, LegacyAdopterError, LegacyAdopterOperation, LegacyAdopterSqlKind,
     LegacyAdopterSqlStatement, LegacyAdoptionReport, LegacyBoundedResource, LegacyCensus,
-    LegacyCensusEntry, LegacyCensusParseError, LegacyConnectionTargetRejection, LegacyObjectKey,
-    LegacyObjectKind, LegacyOwnerAuthorityDisposition, LegacyStampClass, LegacyStampDefinition,
-    LegacyStampMatch, LegacyStampProvenance, LegacyStampReport, LEGACY_ADOPTER_CONNECT_TIMEOUT,
+    LegacyCensusEntry, LegacyCensusParseError, LegacyCleanupFailureV1,
+    LegacyConnectionTargetRejection, LegacyObjectKey, LegacyObjectKind,
+    LegacyOwnerAuthorityDisposition, LegacyStampClass, LegacyStampDefinition, LegacyStampMatch,
+    LegacyStampProvenance, LegacyStampReport, LEGACY_ADOPTER_CONNECT_TIMEOUT,
     LEGACY_ADOPTER_STARTUP_OPTIONS, LEGACY_ADOPTER_TCP_USER_TIMEOUT, LEGACY_CENSUS_FIXTURE,
     LEGACY_CENSUS_VERSION, LEGACY_STAMP_CATALOG, MAX_LEGACY_CENSUS_FIXTURE_BYTES,
     MAX_LEGACY_CENSUS_FIXTURE_LINES, MAX_LEGACY_CENSUS_ROWS,
@@ -95,6 +96,9 @@ pub use michigan_dynamic_hex_foundation::{
 pub use migration_manifest::{
     ManifestError, MigrationManifest, MAX_MANIFEST_BYTES, MAX_MANIFEST_CHUNKS,
     SCHEMA_ADVISORY_LOCK_KEY,
+};
+pub use postgres_diagnostic::{
+    PostgresDiagnosticV1, PostgresFailureClassV1, MAX_POSTGRES_DIAGNOSTIC_MESSAGE_BYTES,
 };
 pub use runtime::{
     activate_rust_persistence_v1, hydrate_campaign_foundation_v1, prepare_committed_tick_v1,

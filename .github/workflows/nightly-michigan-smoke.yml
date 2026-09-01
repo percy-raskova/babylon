@@ -37,7 +37,7 @@ jobs:
         run: mise run db:bootstrap
       - name: qa:michigan-rollover-smoke (60 ticks across the rollover)
         env:
-          BABYLON_RUNTIME_DSN: "dbname=babylon_test host=localhost port=5433 user=test password=test"
+          BABYLON_RUNTIME_DSN: "dbname=babylon_test host=127.0.0.1 port=5433 user=test password=test"
         run: mise run qa:michigan-rollover-smoke
       - name: Stop Postgres
         if: always()

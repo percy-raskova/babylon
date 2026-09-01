@@ -277,6 +277,26 @@ def test_scheduled_failure_artifacts_survive_failure() -> None:
     assert str(upload.get("if", "")) == "always()"
 
 
+def test_rust_persistence_workflow_dsns_use_a_literal_loopback() -> None:
+    """Rust's local-target guard must accept every hosted workflow DSN."""
+    runtime_dsns: list[tuple[Path, str]] = []
+    for path in _workflow_paths():
+        workflow = yaml.safe_load(path.read_text())
+        for job in workflow.get("jobs", {}).values():
+            environments = [
+                job.get("env", {}),
+                *(step.get("env", {}) for step in job.get("steps", [])),
+            ]
+            for environment in environments:
+                if "BABYLON_RUNTIME_DSN" in environment:
+                    runtime_dsns.append((path, str(environment["BABYLON_RUNTIME_DSN"])))
+
+    assert runtime_dsns
+    for path, dsn in runtime_dsns:
+        assert "host=127.0.0.1" in dsn, path
+        assert "host=localhost" not in dsn, path
+
+
 def test_analysis_sweep_task_has_a_configurable_finite_tick_budget() -> None:
     """The Python analysis sweep stays bounded outside the Rust sim namespace."""
     task = tomllib.loads(ANALYSIS_TASKS_CONFIG.read_text())["analysis:sweep"]

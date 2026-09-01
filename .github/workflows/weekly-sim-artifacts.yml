@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
-      BABYLON_RUNTIME_DSN: "dbname=babylon_test host=localhost port=5433 user=test password=test"
+      BABYLON_RUNTIME_DSN: "dbname=babylon_test host=127.0.0.1 port=5433 user=test password=test"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:

@@ -16,6 +16,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 MISE_TOML = REPOSITORY_ROOT / ".mise.toml"
 PRE_COMMIT_CONFIG = REPOSITORY_ROOT / ".pre-commit-config.yaml"
 CI_WORKFLOW = REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml"
+RUST_NEXTEST_CONFIG = REPOSITORY_ROOT / "rust" / ".config" / "nextest.toml"
 SIMULATION_TASKS_TOML = REPOSITORY_ROOT / ".mise" / "tasks" / "simulation.toml"
 ANALYSIS_TASKS_TOML = REPOSITORY_ROOT / ".mise" / "tasks" / "analysis.toml"
 DEVTOOLS_TASKS_TOML = REPOSITORY_ROOT / ".mise" / "tasks" / "devtools.toml"
@@ -517,7 +518,7 @@ def test_bsl_repo_sentinels_cover_their_non_rust_inputs() -> None:
 
 
 def test_rust_gate_is_single_pass_with_explicit_repo_sentinel_exception() -> None:
-    """The canonical gate must not rerun package tests or Clippy passes."""
+    """The canonical gate has one non-doctest pass plus the preserved doctest proof."""
     script = str(_tasks()["rust:check-no-docs"]["run"])
     commands = [line for line in script.splitlines() if line.startswith("cargo ")]
 
@@ -525,12 +526,51 @@ def test_rust_gate_is_single_pass_with_explicit_repo_sentinel_exception() -> Non
         "cargo clippy --workspace --all-targets --locked -- "
         "-D warnings -D clippy::cognitive_complexity"
     ]
+    assert "python3 ../tools/rust_test_report.py run --profile ci --workspace" in script
     assert [line for line in commands if line.startswith("cargo test ")] == [
-        "cargo test --workspace --locked"
+        "cargo test --workspace --doc --locked"
     ]
     assert [line for line in commands if line.startswith("cargo run ")] == [
         "cargo run -p bsl-lint --locked -- all"
     ]
+
+
+def test_rust_reporter_tasks_and_nextest_profile_are_agent_first() -> None:
+    """Rust reports must be complete on failure without flooding agent context."""
+    tasks = _tasks()
+    assert {
+        "rust:test",
+        "rust:test:q",
+        "rust:test:failed",
+        "rust:test:summary",
+        "rust:test:inventory",
+        "rust:test:install-tools",
+        "rust:coverage",
+    } <= set(tasks)
+
+    config = tomllib.loads(RUST_NEXTEST_CONFIG.read_text())
+    assert config["nextest-version"]["required"] == "0.9.143"
+    profile = config["profile"]["ci"]
+    assert profile["fail-fast"] is False
+    assert profile["retries"] == 0
+    assert profile["failure-output"] == "final"
+    assert profile["success-output"] == "never"
+    assert profile["status-level"] == "fail"
+    assert profile["final-status-level"] == "slow"
+    assert profile["slow-timeout"] == "60s"
+    assert profile["junit"] == {
+        "path": "junit.xml",
+        "report-name": "babylon-rust",
+        "store-success-output": False,
+        "store-failure-output": True,
+        "report-skipped": "ignored",
+    }
+
+    assert "--version 0.9.143 cargo-nextest" in str(tasks["rust:test:install-tools"]["run"])
+    assert "--version 0.9.0 cargo-llvm-cov" in str(tasks["rust:test:install-tools"]["run"])
+    assert "rustup component add llvm-tools-preview" in str(tasks["rust:test:install-tools"]["run"])
+    assert "rust_test_report.py summarize" in str(tasks["rust:test:summary"]["run"])
+    assert "rust_test_report.py rerun-failed" in str(tasks["rust:test:failed"]["run"])
 
 
 def test_single_clippy_pass_preserves_the_existing_pedantic_package_boundary() -> None:

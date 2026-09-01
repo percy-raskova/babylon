@@ -1,0 +1,61 @@
+name: Weekly — Rust Coverage Receipts
+
+# PER-310 keeps coverage instrumentation out of the blocking PR loop. This
+# trusted dev-head lane measures execution only; no floor is inferred before a
+# durable baseline exists.
+on:
+  schedule:
+    - cron: "0 9 * * 4"  # Thursday 09:00 UTC, outside Wednesday's deep-leg burst
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: weekly-rust-coverage
+  cancel-in-progress: false
+
+jobs:
+  rust-coverage:
+    name: Rust coverage receipts (dev HEAD, advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: dev
+
+      - name: Install Bevy system dependencies (compile-time headers)
+        run: >-
+          tools/install_ci_apt_packages.sh
+          libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
+
+      - name: Set up tools with mise
+        uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518 # v4
+        with:
+          version: 2026.8.12
+          cache: true
+
+      - name: Install Rust toolchain
+        run: |
+          CHANNEL="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust/rust-toolchain.toml)"
+          rustup toolchain install "$CHANNEL" --profile minimal \
+            --component llvm-tools-preview --no-self-update
+
+      - name: Install Rust reporting tools
+        uses: taiki-e/install-action@1ed6d7be6168f6c9046541087ff549b6bc581fdf # v2.87.2
+        with:
+          tool: cargo-nextest@0.9.143,cargo-llvm-cov@0.9.0
+          fallback: none
+
+      - name: Generate Rust coverage receipts
+        run: mise run rust:coverage
+
+      - name: Upload Rust coverage receipts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: rust-coverage-${{ github.sha }}
+          path: reports/test-results/rust-coverage/
+          retention-days: 14
+          if-no-files-found: error

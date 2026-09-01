@@ -277,6 +277,53 @@ def test_scheduled_failure_artifacts_survive_failure() -> None:
     assert str(upload.get("if", "")) == "always()"
 
 
+def test_rust_ci_installs_and_retains_pinned_agent_reports() -> None:
+    """The blocking Rust gate must publish exact-head evidence even when red."""
+    workflow = yaml.safe_load((WORKFLOWS_DIR / "ci.yml").read_text())
+    steps = workflow["jobs"]["rust-gate"]["steps"]
+    install = next(step for step in steps if step.get("name") == "Install Rust test reporter")
+    upload = next(step for step in steps if step.get("name") == "Upload Rust test reports")
+
+    assert install["uses"] == ("taiki-e/install-action@1ed6d7be6168f6c9046541087ff549b6bc581fdf")
+    assert install["with"] == {"tool": "cargo-nextest@0.9.143", "fallback": "none"}
+    assert upload["if"] == "always()"
+    assert upload["uses"].startswith("actions/upload-artifact@")
+    assert upload["with"] == {
+        "name": "rust-test-results-${{ github.sha }}",
+        "path": "reports/test-results/rust/",
+        "retention-days": 14,
+        "if-no-files-found": "error",
+    }
+
+
+def test_weekly_rust_coverage_is_advisory_and_single_run() -> None:
+    """Coverage gets retained evidence without taxing or redefining the PR gate."""
+    workflow = yaml.safe_load((WORKFLOWS_DIR / "weekly-rust-coverage.yml").read_text())
+    triggers = workflow.get("on", workflow.get(True))
+    assert triggers["schedule"] == [{"cron": "0 9 * * 4"}]
+    assert "workflow_dispatch" in triggers
+
+    job = workflow["jobs"]["rust-coverage"]
+    steps = job["steps"]
+    checkout = next(
+        step for step in steps if str(step.get("uses", "")).startswith("actions/checkout@")
+    )
+    install = next(step for step in steps if step.get("name") == "Install Rust reporting tools")
+    run = next(step for step in steps if step.get("name") == "Generate Rust coverage receipts")
+    upload = next(step for step in steps if step.get("name") == "Upload Rust coverage receipts")
+
+    assert checkout["with"]["ref"] == "dev"
+    assert install["uses"] == ("taiki-e/install-action@1ed6d7be6168f6c9046541087ff549b6bc581fdf")
+    assert install["with"] == {
+        "tool": "cargo-nextest@0.9.143,cargo-llvm-cov@0.9.0",
+        "fallback": "none",
+    }
+    assert run["run"] == "mise run rust:coverage"
+    assert "fail-under" not in run["run"]
+    assert upload["if"] == "always()"
+    assert upload["with"]["path"] == "reports/test-results/rust-coverage/"
+
+
 def test_analysis_sweep_task_has_a_configurable_finite_tick_budget() -> None:
     """The Python analysis sweep stays bounded outside the Rust sim namespace."""
     task = tomllib.loads(ANALYSIS_TASKS_CONFIG.read_text())["analysis:sweep"]

@@ -76,3 +76,11 @@ def test_classifier_changes_run_both_owned_gates() -> None:
         run_pre_push_gate.Gate.BSL_REPO_SENTINELS,
         {path},
     )
+
+
+def test_rust_reporter_changes_run_the_full_rust_gate() -> None:
+    """The selected runner cannot change without exercising its owned gate."""
+    assert run_pre_push_gate.gate_applies(
+        run_pre_push_gate.Gate.RUST_FULL,
+        {"tools/rust_test_report.py"},
+    )

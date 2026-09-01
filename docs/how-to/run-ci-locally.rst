@@ -204,6 +204,44 @@ Local Rust validation stops before Rustdoc, as repository policy requires:
 
    mise run rust:check-no-docs
 
+.. vale off
+
+Rust test reports
+-----------------
+
+Install the exact reporting tools once, then use the scoped runner for the
+ordinary edit-test loop:
+
+.. code-block:: bash
+
+   mise run rust:test:install-tools
+   mise run rust:test:q -- -p babylon-kernel
+   mise run rust:test:summary
+   mise run rust:test:failed
+
+Each run writes a SHA- and run-qualified directory below
+``reports/test-results/rust/`` and updates the explicit ``latest.json``
+pointer. ``summary.json`` and ``summary.md`` are the bounded agent interface:
+they identify the exact command, source head, toolchain, exit class, outcome
+counts, the first 20 exceptional tests, bounded diagnostics, slowest tests,
+and rerun commands. ``failures.jsonl`` retains every exceptional test.
+``junit.xml`` and ``run.log`` retain complete drill-down evidence. The reporter
+still writes a classified summary when compilation or discovery fails before
+JUnit exists.
+
+The blocking Rust gate runs one nextest non-doctest pass and then a separate
+``cargo test --workspace --doc --locked`` proof. The second leg is required
+because nextest does not execute doctests, including compile-fail contracts.
+Ignored PostgreSQL tests remain outside the ordinary runner and retain their
+existing serial shell-owned execution.
+
+``mise run rust:coverage`` performs a separately instrumented advisory run and
+writes compact and full coverage receipts below
+``reports/test-results/rust-coverage/``. It is not part of the pull-request
+gate and defines no percentage floor until a measured baseline supports one.
+
+.. vale on
+
 CI Job Reference
 ----------------
 

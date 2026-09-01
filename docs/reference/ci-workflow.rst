@@ -148,7 +148,7 @@ dependabot-automerge.yml
 
 **File**: ``.github/workflows/dependabot-automerge.yml``
 
-**Trigger**: Successful completion of the ``CI`` workflow for a pull request.
+**Triggers**: Successful completion of the ``CI`` workflow for a pull request.
 
 **Purpose**: Revalidate the exact Dependabot candidate from trusted ``dev``
 tools, then merge only an eligible minor or patch update. The workflow has no

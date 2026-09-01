@@ -262,6 +262,11 @@ def test_rust_cache_is_source_keyed_bounded_and_published_only_by_dev() -> None:
     ]
     assert measure["id"] == "cargo-cache-size"
     assert "max_bytes=$((4 * 1024 * 1024 * 1024))" in measure["run"]
+    assert "cargo-cache exact_restore=" in measure["run"]
+    assert "cargo-cache matched_key=" in measure["run"]
+    assert "cargo-cache payload_bytes=" in measure["run"]
+    assert "cargo-cache publication_bound_bytes=" in measure["run"]
+    assert "cargo-cache within_publication_bound=" in measure["run"]
     assert save["uses"].startswith("actions/cache/save@")
     assert save["if"] == (
         "github.event_name == 'push' && github.ref == 'refs/heads/dev' && "

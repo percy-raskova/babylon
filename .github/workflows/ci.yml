@@ -176,6 +176,11 @@ jobs:
           else
             within_bound=false
           fi
+          echo "cargo-cache exact_restore=${CARGO_CACHE_HIT:-false}"
+          echo "cargo-cache matched_key=${CARGO_CACHE_MATCHED_KEY:-none}"
+          echo "cargo-cache payload_bytes=$cache_bytes"
+          echo "cargo-cache publication_bound_bytes=$max_bytes"
+          echo "cargo-cache within_publication_bound=$within_bound"
           echo "bytes=$cache_bytes" >> "$GITHUB_OUTPUT"
           echo "within-bound=$within_bound" >> "$GITHUB_OUTPUT"
           {

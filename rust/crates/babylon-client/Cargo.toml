@@ -9,6 +9,9 @@ publish = false
 # is 1.91.1, so 1.87 is what we support elsewhere, not what this crate needs.
 rust-version = "1.87"
 
+[lints]
+workspace = true
+
 [lib]
 name = "babylon_client"
 path = "src/lib.rs"

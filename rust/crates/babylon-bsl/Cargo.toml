@@ -7,6 +7,9 @@ rust-version.workspace = true
 license.workspace = true
 publish = false
 
+[lints]
+workspace = true
+
 [dependencies]
 babylon-graph = { path = "../babylon-graph" }
 babylon-kernel = { path = "../babylon-kernel" }

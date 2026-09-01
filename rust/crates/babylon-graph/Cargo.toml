@@ -7,6 +7,9 @@ rust-version.workspace = true
 license.workspace = true
 publish = false
 
+[lints]
+workspace = true
+
 [dependencies]
 babylon-kernel = { path = "../babylon-kernel" }
 # ADR179 T3: babylon-graph's storage consumes hypergraph-rs for the native-

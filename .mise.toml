@@ -1523,35 +1523,21 @@ uv run python tools/necropolis_viewer.py \
 # ── Rust client (the raster cutover, Amendment AC / ADR150) ──────────────────
 
 [tasks."rust:check-no-docs"]
-description = "Canonical non-documentation Rust gate: format:check + workspace clippy -D warnings -D clippy::cognitive_complexity + tests + scoped pedantic legs + bsl-lint repo-relationship sentinels. This is the local/agent gate and the non-doc prefix of rust:check; sequential because one cargo target directory has one file lock."
+description = "Canonical non-documentation Rust gate: format:check + one workspace Clippy pass + one workspace test pass + the bsl-lint repo-relationship sentinel. Selected manifests opt into the existing pedantic boundary. This is the local/agent gate and the non-doc prefix of rust:check; sequential because one cargo target directory has one file lock."
 dir = "rust"
 run = """
 set -e
 cargo fmt --all -- --check
 # cognitive_complexity (threshold owned in rust/clippy.toml, Director ruling
-# 2026-08-15) is the Rust radon-equivalent: denied workspace-wide here.
+# 2026-08-15) is the Rust radon-equivalent: denied workspace-wide here. The
+# six formerly scoped pedantic packages inherit workspace lint policy from
+# their manifests, so this single pass preserves that package boundary.
 cargo clippy --workspace --all-targets --locked -- -D warnings -D clippy::cognitive_complexity
 cargo test --workspace --locked
-cargo clippy -p babylon-kernel --all-targets --locked -- -D warnings -D clippy::pedantic
-cargo clippy -p babylon-persistence --all-targets --locked -- -D warnings -D clippy::pedantic
-cargo test -p babylon-kernel --locked
-cargo clippy -p babylon-bsl --all-targets --locked -- -D warnings -D clippy::pedantic
-cargo test -p babylon-bsl --locked
-cargo clippy -p babylon-graph --all-targets --locked -- -D warnings -D clippy::pedantic
+# Explicit non-Clippy/test exception: bsl-lint checks repository relationships
+# (frozen citations, namespaces, authority, and non-authorability) that Cargo's
+# workspace compilation cannot express.
 cargo run -p bsl-lint --locked -- all
-cargo clippy -p babylon-ls --all-targets --locked -- -D warnings -D clippy::pedantic
-cargo test -p babylon-ls --locked
-# --no-deps (B3 wave-1 Task 1, plan's Task 1 Step 1.1, adjudicated in
-# .superpowers/sdd/2026-08-17-b3-null-hypothesis-viewer/progress.md):
-# clippy -p X still lints every path-dependency crate needed to build X, and
-# babylon-tick (an ENGINE crate — B3's Global Constraint 6 forbids touching
-# it in this train) carries 4 pre-existing, unrelated pedantic findings of
-# its own (Task 0's measurement). Without --no-deps this gate would go red
-# on babylon-tick's debt before ever reaching babylon-client's own code.
-# --no-deps scopes the check to babylon-client itself, which is this task's
-# actual target; babylon-tick's 4 findings are tracked as a separate,
-# untouched hygiene item for a future train.
-cargo clippy -p babylon-client --all-targets --locked --no-deps -- -D warnings -D clippy::pedantic
 """
 
 [tasks."ci:rust"]

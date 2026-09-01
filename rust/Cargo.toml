@@ -61,3 +61,9 @@ edition = "2021"
 # a tested promise.
 rust-version = "1.87"
 license = "AGPL-3.0-or-later"   # in-tree = babylon's own license, not the sibling BSD
+
+# PER-306: these lints become active only in packages that declare
+# `[lints] workspace = true`. That preserves the six-package pedantic boundary
+# formerly implemented through repeated package-specific Clippy executions.
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }

@@ -283,7 +283,8 @@ def test_rust_cache_is_source_keyed_bounded_and_published_only_by_dev() -> None:
     assert save["uses"].startswith("actions/cache/save@")
     assert save["if"] == (
         "github.event_name == 'push' && github.ref == 'refs/heads/dev' && "
-        "success() && steps.cargo-cache-size.outputs.within-bound == 'true'"
+        "success() && steps.cargo-cache-size.outputs.within-bound == 'true' && "
+        "steps.cargo-cache.outputs.cache-hit != 'true'"
     )
     assert save["with"]["key"] == "${{ steps.cargo-cache.outputs.cache-primary-key }}"
 

@@ -19,7 +19,7 @@ use std::process::Command;
 
 const ZERO_DIGEST: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 const LEGACY_CENSUS_V1_ARCHIVE: &str = include_str!("../src/fixtures/legacy_adopter_census_v1.txt");
-const EXPECTED_RUNNER_LINES: usize = 515;
+const EXPECTED_RUNNER_LINES: usize = 546;
 const MAX_WORKFLOW_JOB_BOUNDARY_CANDIDATES: usize = 128;
 const MAX_SQL_LITERAL_SEGMENTS: usize = 8_192;
 const MAX_SQL_STATEMENT_BYTES: usize = 262_144;
@@ -1186,14 +1186,11 @@ fn sequence_payload_binds_one_bounded_owned_by_dependency() {
 
 #[test]
 fn event_trigger_startup_permission_has_a_dedicated_typed_refusal() {
-    assert_eq!(
-        LegacyAdopterError::EventTriggerSuppressionUnavailable,
-        LegacyAdopterError::EventTriggerSuppressionUnavailable
-    );
     let source = include_str!("../src/legacy_adopter.rs");
     let connection = cte_slice(source, "fn connection_error(", "fn query_error(");
     assert!(connection.contains("SqlState::INSUFFICIENT_PRIVILEGE"));
     assert!(connection.contains("EventTriggerSuppressionUnavailable"));
+    assert!(connection.contains("diagnostic"));
 }
 
 #[test]
@@ -2644,7 +2641,7 @@ fn live_runner_bounds_every_docker_control_plane_call() {
             "unbounded Docker call: {line}"
         );
     }
-    assert_eq!(docker_calls, 11);
+    assert_eq!(docker_calls, 12);
 }
 
 #[test]

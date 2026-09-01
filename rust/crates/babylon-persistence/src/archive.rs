@@ -11,6 +11,7 @@ use sha2::{Digest as _, Sha256};
 
 use crate::identity::CampaignId;
 use crate::migration_manifest::SCHEMA_ADVISORY_LOCK_KEY;
+use crate::postgres_diagnostic::PostgresDiagnosticV1;
 
 /// Exact additive schema used by the semantic Archive worker.
 pub const SEMANTIC_ARCHIVE_SCHEMA_V1_SQL: &str =
@@ -737,11 +738,11 @@ impl SemanticArchiveStoreV1 {
                 "SELECT pg_catalog.pg_advisory_lock($1)",
                 &[&SCHEMA_ADVISORY_LOCK_KEY],
             )
-            .map_err(|_| database("lock Archive schema installer"))?;
+            .map_err(|error| database("lock Archive schema installer", &error))?;
         let result = (|| {
             let row = client
                 .query_one(ARCHIVE_SCHEMA_MARKERS_SQL_V1, &[])
-                .map_err(|_| database("inspect Archive schema markers"))?;
+                .map_err(|error| database("inspect Archive schema markers", &error))?;
             let markers = [
                 decode::<bool>(&row, 0)?,
                 decode::<bool>(&row, 1)?,
@@ -753,18 +754,18 @@ impl SemanticArchiveStoreV1 {
                     .build_transaction()
                     .isolation_level(IsolationLevel::Serializable)
                     .start()
-                    .map_err(|_| database("begin Archive schema install"))?;
+                    .map_err(|error| database("begin Archive schema install", &error))?;
                 transaction
                     .batch_execute(
                         "SET LOCAL search_path TO pg_catalog; SET LOCAL synchronous_commit TO on",
                     )
-                    .map_err(|_| database("set Archive schema install settings"))?;
+                    .map_err(|error| database("set Archive schema install settings", &error))?;
                 transaction
                     .batch_execute(SEMANTIC_ARCHIVE_SCHEMA_V1_SQL)
-                    .map_err(|_| database("install Archive schema"))?;
+                    .map_err(|error| database("install Archive schema", &error))?;
                 transaction
                     .commit()
-                    .map_err(|_| database("commit Archive schema"))?;
+                    .map_err(|error| database("commit Archive schema", &error))?;
                 Ok(ArchiveSchemaDispositionV1::Installed)
             } else if markers == [true; 4] {
                 let row = client
@@ -772,7 +773,7 @@ impl SemanticArchiveStoreV1 {
                         "SELECT contract_id FROM babylon_meta.semantic_archive_schema_v1",
                         &[],
                     )
-                    .map_err(|_| database("read Archive schema contract"))?;
+                    .map_err(|error| database("read Archive schema contract", &error))?;
                 let contract_id: String = decode(&row, 0)?;
                 if contract_id != ARCHIVE_SCHEMA_CONTRACT_ID {
                     return Err(SemanticArchiveErrorV1::SchemaMismatch);
@@ -788,7 +789,7 @@ impl SemanticArchiveStoreV1 {
                 &[&SCHEMA_ADVISORY_LOCK_KEY],
             )
             .and_then(|row| row.try_get::<_, bool>(0))
-            .map_err(|_| database("unlock Archive schema installer"));
+            .map_err(|error| database("unlock Archive schema installer", &error));
         match (result, unlock) {
             (Err(error), _) | (Ok(_), Err(error)) => Err(error),
             (Ok(disposition), Ok(true)) => Ok(disposition),
@@ -825,7 +826,7 @@ impl SemanticArchiveStoreV1 {
                     &grant.citation.locator,
                 ],
             )
-            .map_err(|_| database("insert Archive knowledge grant"))?;
+            .map_err(|error| database("insert Archive knowledge grant", &error))?;
         if affected == 1 {
             return Ok(());
         }
@@ -842,7 +843,7 @@ impl SemanticArchiveStoreV1 {
                     &grant.grant_key,
                 ],
             )
-            .map_err(|_| database("reconcile Archive knowledge grant"))?;
+            .map_err(|error| database("reconcile Archive knowledge grant", &error))?;
         let exact = decode::<i64>(&row, 0)? == granted_tick
             && decode::<String>(&row, 1)? == grant.citation.source_id
             && decode::<String>(&row, 2)? == grant.citation.locator;
@@ -873,13 +874,13 @@ impl SemanticArchiveStoreV1 {
             .build_transaction()
             .isolation_level(IsolationLevel::Serializable)
             .start()
-            .map_err(|_| database("begin semantic Archive receipt"))?;
+            .map_err(|error| database("begin semantic Archive receipt", &error))?;
         let receipt = transaction
             .query_opt(
                 ARCHIVE_RECEIPT_SQL_V1,
                 &[campaign_id.as_uuid(), &resolve_tick],
             )
-            .map_err(|_| database("read committed Archive receipt"))?
+            .map_err(|error| database("read committed Archive receipt", &error))?
             .ok_or(SemanticArchiveErrorV1::MissingCommittedReceipt)?;
         let receipt_hash = decode_digest(&receipt, 0)?;
         if receipt_hash != batch.tick_content_hash {
@@ -903,7 +904,7 @@ impl SemanticArchiveStoreV1 {
                     &&knowledge_sha256[..],
                 ],
             )
-            .map_err(|_| database("claim Archive receipt"))?;
+            .map_err(|error| database("claim Archive receipt", &error))?;
         if claimed == 0 {
             let row = transaction
                 .query_one(
@@ -913,7 +914,7 @@ impl SemanticArchiveStoreV1 {
                      WHERE campaign_id = $1::uuid AND resolve_tick = $2",
                     &[campaign_id.as_uuid(), &resolve_tick],
                 )
-                .map_err(|_| database("reconcile Archive receipt"))?;
+                .map_err(|error| database("reconcile Archive receipt", &error))?;
             if decode_digest(&row, 0)? != batch.tick_content_hash
                 || decode_digest(&row, 1)? != batch_sha256
                 || decode_digest(&row, 2)? != worker_contract
@@ -923,7 +924,7 @@ impl SemanticArchiveStoreV1 {
             }
             transaction
                 .commit()
-                .map_err(|_| database("commit exact Archive retry"))?;
+                .map_err(|error| database("commit exact Archive retry", &error))?;
             return Ok(ArchiveMaterializeReportV1 {
                 disposition: ArchiveMaterializeDispositionV1::AlreadyConsumed,
                 pages: Vec::new(),
@@ -951,7 +952,7 @@ impl SemanticArchiveStoreV1 {
         }
         transaction
             .commit()
-            .map_err(|_| database("commit semantic Archive receipt"))?;
+            .map_err(|error| database("commit semantic Archive receipt", &error))?;
         Ok(ArchiveMaterializeReportV1 {
             disposition: ArchiveMaterializeDispositionV1::Applied,
             pages: materialized,
@@ -982,14 +983,16 @@ impl SemanticArchiveStoreV1 {
                 ARCHIVE_SEARCH_SQL_V1,
                 &[campaign_id.as_uuid(), &query, &limit],
             )
-            .map_err(|_| database("search known Archive pages"))?
+            .map_err(|error| database("search known Archive pages", &error))?
             .iter()
             .map(decode_search_hit)
             .collect()
     }
 
     fn connect(&self, operation: &'static str) -> Result<postgres::Client, SemanticArchiveErrorV1> {
-        self.config.connect(NoTls).map_err(|_| database(operation))
+        self.config
+            .connect(NoTls)
+            .map_err(|error| database(operation, &error))
     }
 }
 
@@ -1022,7 +1025,7 @@ fn read_knowledge(
                     .map_err(|_| SemanticArchiveErrorV1::CollectionBound)?,
             ],
         )
-        .map_err(|_| database("read Archive knowledge grants"))?;
+        .map_err(|error| database("read Archive knowledge grants", &error))?;
     if rows.len() > MAX_KNOWLEDGE_GRANTS {
         return Err(SemanticArchiveErrorV1::CollectionBound);
     }
@@ -1102,7 +1105,7 @@ fn persist_page(
             ],
         )
         .map(|affected| affected == 1)
-        .map_err(|_| database("upsert semantic Archive page"))
+        .map_err(|error| database("upsert semantic Archive page", &error))
 }
 
 fn decode_search_hit(row: &Row) -> Result<ArchiveSearchHitV1, SemanticArchiveErrorV1> {
@@ -1147,7 +1150,7 @@ fn decode_subject_kind(value: &str) -> Result<ArchiveSubjectKindV1, SemanticArch
 
 fn decode<T: FromSqlOwned>(row: &Row, index: usize) -> Result<T, SemanticArchiveErrorV1> {
     row.try_get(index)
-        .map_err(|_| database("decode semantic Archive row"))
+        .map_err(|error| database("decode semantic Archive row", &error))
 }
 
 fn decode_digest(row: &Row, index: usize) -> Result<[u8; 32], SemanticArchiveErrorV1> {
@@ -1157,8 +1160,11 @@ fn decode_digest(row: &Row, index: usize) -> Result<[u8; 32], SemanticArchiveErr
         .map_err(|_| SemanticArchiveErrorV1::StoredPageMismatch)
 }
 
-const fn database(operation: &'static str) -> SemanticArchiveErrorV1 {
-    SemanticArchiveErrorV1::Database { operation }
+fn database(operation: &'static str, error: &postgres::Error) -> SemanticArchiveErrorV1 {
+    SemanticArchiveErrorV1::Database {
+        operation,
+        diagnostic: PostgresDiagnosticV1::capture(error),
+    }
 }
 
 #[derive(Serialize)]
@@ -1185,7 +1191,7 @@ struct TemplateLinkV1<'a> {
 }
 
 /// Stable closed refusal taxonomy for semantic Archive inputs and rendering.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SemanticArchiveErrorV1 {
     /// County or place identity was malformed.
     InvalidIdentity,
@@ -1217,10 +1223,12 @@ pub enum SemanticArchiveErrorV1 {
     StoredPageMismatch,
     /// The pinned strict template failed to compile or render.
     Template,
-    /// One database operation failed without retaining driver text.
+    /// One database operation failed with a bounded secret-safe driver diagnostic.
     Database {
         /// Stable operation identity.
         operation: &'static str,
+        /// Secret-safe `PostgreSQL` classification, SQLSTATE, and message.
+        diagnostic: PostgresDiagnosticV1,
     },
 }
 

@@ -199,7 +199,7 @@ impl RetainedMetadataStoreV1 {
                 "UPDATE babylon_meta.campaign SET status = $2 WHERE campaign_id = $1::uuid",
                 &[campaign_id.as_uuid(), &status],
             )
-            .map_err(|_| database("set retained campaign status"))?;
+            .map_err(|error| database("set retained campaign status", &error))?;
         require_one(affected)
     }
 
@@ -218,7 +218,7 @@ impl RetainedMetadataStoreV1 {
                 &[campaign_id.as_uuid()],
             )
             .map(|affected| affected == 1)
-            .map_err(|_| database("delete retained campaign"))
+            .map_err(|error| database("delete retained campaign", &error))
     }
 
     /// Read the exact watchlist order.
@@ -306,7 +306,7 @@ impl RetainedMetadataStoreV1 {
     ) -> Result<postgres::Client, RustPersistenceRuntimeErrorV1> {
         self.config
             .connect(NoTls)
-            .map_err(|_| RustPersistenceRuntimeErrorV1::Database { operation })
+            .map_err(|error| RustPersistenceRuntimeErrorV1::postgres(operation, &error))
     }
 
     fn replace_navigation(
@@ -319,20 +319,20 @@ impl RetainedMetadataStoreV1 {
         let mut client = self.connect(table.connect_write_operation())?;
         let mut transaction = client
             .transaction()
-            .map_err(|_| database(table.begin_operation()))?;
+            .map_err(|error| database(table.begin_operation(), &error))?;
         if transaction
             .query_opt(
                 "SELECT 1 FROM babylon_meta.campaign WHERE campaign_id = $1::uuid FOR KEY SHARE",
                 &[campaign_id.as_uuid()],
             )
-            .map_err(|_| database("lock retained campaign for navigation replacement"))?
+            .map_err(|error| database("lock retained campaign for navigation replacement", &error))?
             .is_none()
         {
             return Err(RustPersistenceRuntimeErrorV1::CampaignConflict);
         }
         transaction
             .execute(table.delete_sql(), &[campaign_id.as_uuid()])
-            .map_err(|_| database(table.delete_operation()))?;
+            .map_err(|error| database(table.delete_operation(), &error))?;
         for row in rows {
             let position = i32::try_from(row.position)
                 .map_err(|_| RustPersistenceRuntimeErrorV1::ReplaySource)?;
@@ -341,11 +341,11 @@ impl RetainedMetadataStoreV1 {
                     table.insert_sql(),
                     &[campaign_id.as_uuid(), &position, &row.entity_id],
                 )
-                .map_err(|_| database(table.insert_operation()))?;
+                .map_err(|error| database(table.insert_operation(), &error))?;
         }
         transaction
             .commit()
-            .map_err(|_| database(table.commit_operation()))
+            .map_err(|error| database(table.commit_operation(), &error))
     }
 }
 
@@ -520,7 +520,7 @@ fn read_navigation_rows<RowType: NavigationRowV1>(
 ) -> Result<Vec<RowType>, RustPersistenceRuntimeErrorV1> {
     client
         .query(table.select_sql(), &[campaign_id.as_uuid()])
-        .map_err(|_| database(table.read_operation()))?
+        .map_err(|error| database(table.read_operation(), &error))?
         .iter()
         .enumerate()
         .map(|(expected, row)| {
@@ -568,8 +568,8 @@ pub(crate) fn ensure_campaign_catalog_row_v1(
                 &content_digest,
             ],
         )
-        .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-            operation: "bind retained campaign catalog",
+        .map_err(|error| {
+            RustPersistenceRuntimeErrorV1::postgres("bind retained campaign catalog", &error)
         })?;
     let row = read_campaign_catalog_row_v1(client, campaign_id)?
         .ok_or(RustPersistenceRuntimeErrorV1::CampaignConflict)?;
@@ -595,8 +595,8 @@ pub(crate) fn advance_campaign_catalog_tick_v1(
              WHERE campaign_id = $1::uuid AND last_tick = $3",
             &[campaign_id.as_uuid(), &resolve_tick, &predecessor],
         )
-        .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-            operation: "advance retained campaign catalog",
+        .map_err(|error| {
+            RustPersistenceRuntimeErrorV1::postgres("advance retained campaign catalog", &error)
         })?;
     if affected == 1 {
         Ok(())
@@ -616,8 +616,8 @@ pub(crate) fn read_campaign_catalog_row_v1(
              FROM babylon_meta.campaign WHERE campaign_id = $1::uuid",
             &[campaign_id.as_uuid()],
         )
-        .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-            operation: "read retained campaign catalog",
+        .map_err(|error| {
+            RustPersistenceRuntimeErrorV1::postgres("read retained campaign catalog", &error)
         })?
         .map(|row| decode_campaign_catalog_row(campaign_id, &row))
         .transpose()
@@ -674,8 +674,8 @@ fn require_one(affected: u64) -> Result<(), RustPersistenceRuntimeErrorV1> {
     }
 }
 
-const fn database(operation: &'static str) -> RustPersistenceRuntimeErrorV1 {
-    RustPersistenceRuntimeErrorV1::Database { operation }
+fn database(operation: &'static str, error: &postgres::Error) -> RustPersistenceRuntimeErrorV1 {
+    RustPersistenceRuntimeErrorV1::postgres(operation, error)
 }
 
 fn hex_digest(bytes: &[u8; 32]) -> Result<String, RustPersistenceRuntimeErrorV1> {

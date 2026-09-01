@@ -28,11 +28,14 @@ use crate::committed_tick_envelope::{
 };
 use crate::foundation::{CampaignFoundationV1, FoundationContentBundleV1};
 use crate::identity::CampaignId;
-use crate::legacy_adopter::{acquire_lock, release_lock, validate_legacy_connection_target};
+use crate::legacy_adopter::{
+    acquire_lock, release_lock, validate_legacy_connection_target, LegacyAdopterError,
+};
 use crate::metadata::{
     advance_campaign_catalog_tick_v1, ensure_campaign_catalog_row_v1, read_campaign_catalog_row_v1,
 };
 use crate::michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation_v1;
+use crate::postgres_diagnostic::PostgresDiagnosticV1;
 use crate::semantic_batches::{
     compose_graph_event_semantic_batches_v1, compose_material_state_rows_v1,
     GraphEventSemanticBatchesV1, SemanticBatchErrorV1,
@@ -218,13 +221,18 @@ pub enum RustPersistenceActivationErrorV1 {
     /// The target violated the local maintenance connection contract.
     ConnectionTarget,
     /// A bounded database operation failed.
-    Database { operation: &'static str },
+    Database {
+        operation: &'static str,
+        diagnostic: Option<PostgresDiagnosticV1>,
+    },
+    /// Advisory-lock acquisition failed with its typed database cause.
+    Lock(LegacyAdopterError),
     /// The durable ledger did not equal the exact two-row state machine.
     AuthorityLedgerMismatch,
     /// Exact ledger bytes could not be allocated or composed.
     LedgerEncoding,
     /// The advisory-lock cleanup failed after the primary operation.
-    Cleanup,
+    Cleanup(LegacyAdopterError),
 }
 
 impl std::fmt::Display for RustPersistenceActivationErrorV1 {
@@ -234,6 +242,15 @@ impl std::fmt::Display for RustPersistenceActivationErrorV1 {
 }
 
 impl std::error::Error for RustPersistenceActivationErrorV1 {}
+
+impl RustPersistenceActivationErrorV1 {
+    fn postgres(operation: &'static str, error: &postgres::Error) -> Self {
+        Self::Database {
+            operation,
+            diagnostic: Some(PostgresDiagnosticV1::capture(error)),
+        }
+    }
+}
 
 /// Reach the reader epoch, commit additive preparation, then commit one-way Rust authority.
 ///
@@ -256,16 +273,12 @@ pub fn activate_rust_persistence_v1(
         }
         return Err(RustPersistenceActivationErrorV1::ReaderBootstrap(error));
     }
-    let mut client =
-        config
-            .connect(NoTls)
-            .map_err(|_| RustPersistenceActivationErrorV1::Database {
-                operation: "connect",
-            })?;
-    acquire_lock(&mut client)
-        .map_err(|_| RustPersistenceActivationErrorV1::Database { operation: "lock" })?;
+    let mut client = config
+        .connect(NoTls)
+        .map_err(|error| RustPersistenceActivationErrorV1::postgres("connect", &error))?;
+    acquire_lock(&mut client).map_err(RustPersistenceActivationErrorV1::Lock)?;
     let result = activate_under_lock(&mut client);
-    let cleanup = release_lock(&mut client).map_err(|_| RustPersistenceActivationErrorV1::Cleanup);
+    let cleanup = release_lock(&mut client).map_err(RustPersistenceActivationErrorV1::Cleanup);
     match cleanup {
         Ok(()) => result,
         Err(error) => Err(error),
@@ -277,12 +290,9 @@ fn read_terminal_activation_report_v1(
 ) -> Result<Option<ActivationReportV1>, RustPersistenceActivationErrorV1> {
     let expected_prepared = PersistenceAuthorityLedgerRowV1::prepared()?;
     let expected_active = PersistenceAuthorityLedgerRowV1::rust_active(&expected_prepared)?;
-    let mut client =
-        config
-            .connect(NoTls)
-            .map_err(|_| RustPersistenceActivationErrorV1::Database {
-                operation: "connect for terminal authority check",
-            })?;
+    let mut client = config.connect(NoTls).map_err(|error| {
+        RustPersistenceActivationErrorV1::postgres("connect for terminal authority check", &error)
+    })?;
     let observed = read_authority_ledger(&mut client)?;
     if observed.is_empty() || observed.as_slice() == [expected_prepared.clone()] {
         return Ok(None);
@@ -303,61 +313,55 @@ fn activate_under_lock(
     let expected_active = PersistenceAuthorityLedgerRowV1::rust_active(&expected_prepared)?;
     let mut observed = read_authority_ledger(client)?;
     if observed.is_empty() {
-        let mut transaction =
-            client
-                .transaction()
-                .map_err(|_| RustPersistenceActivationErrorV1::Database {
-                    operation: "begin preparation",
-                })?;
+        let mut transaction = client.transaction().map_err(|error| {
+            RustPersistenceActivationErrorV1::postgres("begin preparation", &error)
+        })?;
         transaction
             .batch_execute(
                 "SET LOCAL search_path TO pg_catalog; SET LOCAL synchronous_commit TO on",
             )
-            .map_err(|_| RustPersistenceActivationErrorV1::Database {
-                operation: "prepare settings",
+            .map_err(|error| {
+                RustPersistenceActivationErrorV1::postgres("prepare settings", &error)
             })?;
-        transaction.batch_execute(MIGRATION_0008_SQL).map_err(|_| {
-            RustPersistenceActivationErrorV1::Database {
-                operation: "migration 8",
-            }
-        })?;
+        transaction
+            .batch_execute(MIGRATION_0008_SQL)
+            .map_err(|error| RustPersistenceActivationErrorV1::postgres("migration 8", &error))?;
         insert_authority_row(&mut transaction, &expected_prepared)?;
         let commit_result = transaction.commit();
         observed = read_authority_ledger(client)?;
-        if commit_result.is_err() && observed.as_slice() != [expected_prepared.clone()] {
-            return Err(RustPersistenceActivationErrorV1::Database {
-                operation: "unresolved preparation commit",
-            });
+        if observed.as_slice() != [expected_prepared.clone()] {
+            if let Err(error) = commit_result {
+                return Err(RustPersistenceActivationErrorV1::postgres(
+                    "unresolved preparation commit",
+                    &error,
+                ));
+            }
         }
     }
     if observed.as_slice() == [expected_prepared.clone()] {
-        let mut transaction =
-            client
-                .transaction()
-                .map_err(|_| RustPersistenceActivationErrorV1::Database {
-                    operation: "begin activation",
-                })?;
+        let mut transaction = client.transaction().map_err(|error| {
+            RustPersistenceActivationErrorV1::postgres("begin activation", &error)
+        })?;
         transaction
             .batch_execute(
                 "SET LOCAL search_path TO pg_catalog; SET LOCAL synchronous_commit TO on",
             )
-            .map_err(|_| RustPersistenceActivationErrorV1::Database {
-                operation: "activation settings",
+            .map_err(|error| {
+                RustPersistenceActivationErrorV1::postgres("activation settings", &error)
             })?;
-        transaction.batch_execute(MIGRATION_0009_SQL).map_err(|_| {
-            RustPersistenceActivationErrorV1::Database {
-                operation: "migration 9",
-            }
-        })?;
+        transaction
+            .batch_execute(MIGRATION_0009_SQL)
+            .map_err(|error| RustPersistenceActivationErrorV1::postgres("migration 9", &error))?;
         insert_authority_row(&mut transaction, &expected_active)?;
         let commit_result = transaction.commit();
         observed = read_authority_ledger(client)?;
-        if commit_result.is_err()
-            && observed.as_slice() != [expected_prepared.clone(), expected_active.clone()]
-        {
-            return Err(RustPersistenceActivationErrorV1::Database {
-                operation: "unresolved activation commit",
-            });
+        if observed.as_slice() != [expected_prepared.clone(), expected_active.clone()] {
+            if let Err(error) = commit_result {
+                return Err(RustPersistenceActivationErrorV1::postgres(
+                    "unresolved activation commit",
+                    &error,
+                ));
+            }
         }
     }
     if observed != [expected_prepared.clone(), expected_active.clone()] {
@@ -390,8 +394,8 @@ fn insert_authority_row(
                 &&row.row_sha256[..],
             ],
         )
-        .map_err(|_| RustPersistenceActivationErrorV1::Database {
-            operation: "insert authority ledger row",
+        .map_err(|error| {
+            RustPersistenceActivationErrorV1::postgres("insert authority ledger row", &error)
         })?;
     if affected != 1 {
         return Err(RustPersistenceActivationErrorV1::AuthorityLedgerMismatch);
@@ -408,8 +412,8 @@ fn read_authority_ledger(
             &[],
         )
         .and_then(|row| row.try_get(0))
-        .map_err(|_| RustPersistenceActivationErrorV1::Database {
-            operation: "locate authority ledger",
+        .map_err(|error| {
+            RustPersistenceActivationErrorV1::postgres("locate authority ledger", &error)
         })?;
     if !exists {
         return Ok(Vec::new());
@@ -421,8 +425,8 @@ fn read_authority_ledger(
              FROM babylon_meta.persistence_authority_ledger ORDER BY ordinal LIMIT 3",
             &[],
         )
-        .map_err(|_| RustPersistenceActivationErrorV1::Database {
-            operation: "read authority ledger",
+        .map_err(|error| {
+            RustPersistenceActivationErrorV1::postgres("read authority ledger", &error)
         })?;
     let mut decoded = Vec::new();
     decoded
@@ -493,8 +497,10 @@ pub enum RustPersistenceRuntimeErrorV1 {
     ActivationRequired,
     /// A local-only runtime connection or transaction operation failed.
     Database {
-        /// Stable operation name without driver or credential text.
+        /// Stable operation name without caller-supplied text.
         operation: &'static str,
+        /// Bounded secret-safe driver diagnostic, when the failure came from `PostgreSQL`.
+        diagnostic: Option<PostgresDiagnosticV1>,
     },
     /// A requested campaign foundation is absent.
     FoundationAbsent,
@@ -595,6 +601,22 @@ impl std::fmt::Display for RustPersistenceRuntimeErrorV1 {
 }
 
 impl std::error::Error for RustPersistenceRuntimeErrorV1 {}
+
+impl RustPersistenceRuntimeErrorV1 {
+    pub(crate) fn database(operation: &'static str) -> Self {
+        Self::Database {
+            operation,
+            diagnostic: None,
+        }
+    }
+
+    pub(crate) fn postgres(operation: &'static str, error: &postgres::Error) -> Self {
+        Self::Database {
+            operation,
+            diagnostic: Some(PostgresDiagnosticV1::capture(error)),
+        }
+    }
+}
 
 /// Bounded durable observation returned only after marker-last acknowledgement.
 ///
@@ -996,17 +1018,11 @@ pub fn hydrate_campaign_foundation_v1(
     campaign_id: CampaignId,
 ) -> Result<CampaignFoundationV1, RustPersistenceRuntimeErrorV1> {
     let _active = require_active_authority(config)?;
-    validate_legacy_connection_target(config).map_err(|_| {
-        RustPersistenceRuntimeErrorV1::Database {
-            operation: "validate foundation target",
-        }
+    validate_legacy_connection_target(config)
+        .map_err(|_| RustPersistenceRuntimeErrorV1::database("validate foundation target"))?;
+    let mut client = config.connect(NoTls).map_err(|error| {
+        RustPersistenceRuntimeErrorV1::postgres("connect foundation reader", &error)
     })?;
-    let mut client =
-        config
-            .connect(NoTls)
-            .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-                operation: "connect foundation reader",
-            })?;
     let row = client
         .query_opt(
             "SELECT stable_graph, world_registers, resolver_manifest, prepared_environment, \
@@ -1016,8 +1032,8 @@ pub fn hydrate_campaign_foundation_v1(
              FROM babylon_state.campaign_foundation WHERE campaign_id = $1::uuid",
             &[campaign_id.as_uuid()],
         )
-        .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-            operation: "read campaign foundation",
+        .map_err(|error| {
+            RustPersistenceRuntimeErrorV1::postgres("read campaign foundation", &error)
         })?
         .ok_or(RustPersistenceRuntimeErrorV1::FoundationAbsent)?;
     let stable_graph: Vec<u8> = decode_runtime_column(&row, 0)?;
@@ -1059,12 +1075,9 @@ fn require_active_authority(
 ) -> Result<PersistenceAuthorityLedgerRowV1, RustPersistenceRuntimeErrorV1> {
     validate_legacy_connection_target(config)
         .map_err(|_| RustPersistenceRuntimeErrorV1::ActivationRequired)?;
-    let mut client =
-        config
-            .connect(NoTls)
-            .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-                operation: "connect authority reader",
-            })?;
+    let mut client = config.connect(NoTls).map_err(|error| {
+        RustPersistenceRuntimeErrorV1::postgres("connect authority reader", &error)
+    })?;
     require_active_authority_client(&mut client)
 }
 
@@ -1075,8 +1088,16 @@ fn require_active_authority_client(
         .map_err(|_| RustPersistenceRuntimeErrorV1::ActivationRequired)?;
     let expected_active = PersistenceAuthorityLedgerRowV1::rust_active(&expected_prepared)
         .map_err(|_| RustPersistenceRuntimeErrorV1::ActivationRequired)?;
-    let observed = read_authority_ledger(client)
-        .map_err(|_| RustPersistenceRuntimeErrorV1::ActivationRequired)?;
+    let observed = read_authority_ledger(client).map_err(|error| match error {
+        RustPersistenceActivationErrorV1::Database {
+            operation,
+            diagnostic,
+        } => RustPersistenceRuntimeErrorV1::Database {
+            operation,
+            diagnostic,
+        },
+        _ => RustPersistenceRuntimeErrorV1::ActivationRequired,
+    })?;
     if observed != [expected_prepared, expected_active.clone()] {
         return Err(RustPersistenceRuntimeErrorV1::ActivationRequired);
     }
@@ -1089,33 +1110,23 @@ fn persist_campaign_foundation_v1(
     foundation: &CampaignFoundationV1,
 ) -> Result<(), RustPersistenceRuntimeErrorV1> {
     validate_legacy_connection_target(config).map_err(|_| {
-        RustPersistenceRuntimeErrorV1::Database {
-            operation: "validate foundation writer target",
-        }
+        RustPersistenceRuntimeErrorV1::database("validate foundation writer target")
     })?;
-    let mut client =
-        config
-            .connect(NoTls)
-            .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-                operation: "connect foundation writer",
-            })?;
-    let mut transaction =
-        client
-            .transaction()
-            .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-                operation: "begin foundation writer",
-            })?;
+    let mut client = config.connect(NoTls).map_err(|error| {
+        RustPersistenceRuntimeErrorV1::postgres("connect foundation writer", &error)
+    })?;
+    let mut transaction = client.transaction().map_err(|error| {
+        RustPersistenceRuntimeErrorV1::postgres("begin foundation writer", &error)
+    })?;
     transaction
         .batch_execute("SET LOCAL search_path TO pg_catalog; SET LOCAL synchronous_commit TO on")
-        .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-            operation: "foundation writer settings",
+        .map_err(|error| {
+            RustPersistenceRuntimeErrorV1::postgres("foundation writer settings", &error)
         })?;
     insert_campaign_foundation_rows_v1(&mut transaction, campaign_id, foundation)?;
-    transaction
-        .commit()
-        .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-            operation: "commit campaign foundation",
-        })?;
+    transaction.commit().map_err(|error| {
+        RustPersistenceRuntimeErrorV1::postgres("commit campaign foundation", &error)
+    })?;
     let hydrated = hydrate_campaign_foundation_v1(config, campaign_id)?;
     if hydrated.canonical_bytes() != foundation.canonical_bytes() {
         return Err(RustPersistenceRuntimeErrorV1::CampaignConflict);
@@ -1151,8 +1162,8 @@ fn insert_campaign_foundation_rows_v1(
                 &&base_reference_digest[..],
             ],
         )
-        .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-            operation: "insert campaign identity",
+        .map_err(|error| {
+            RustPersistenceRuntimeErrorV1::postgres("insert campaign identity", &error)
         })?;
     let scenario = std::str::from_utf8(bundle.scenario_source_bytes())
         .map_err(|_| RustPersistenceRuntimeErrorV1::ReplaySource)?;
@@ -1191,8 +1202,8 @@ fn insert_campaign_foundation_rows_v1(
                 &&foundation_sha256[..],
             ],
         )
-        .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-            operation: "insert campaign foundation",
+        .map_err(|error| {
+            RustPersistenceRuntimeErrorV1::postgres("insert campaign foundation", &error)
         })?;
     let stored_sha: Vec<u8> = client
         .query_one(
@@ -1201,8 +1212,8 @@ fn insert_campaign_foundation_rows_v1(
             &[campaign_id.as_uuid()],
         )
         .and_then(|row| row.try_get(0))
-        .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-            operation: "verify campaign foundation",
+        .map_err(|error| {
+            RustPersistenceRuntimeErrorV1::postgres("verify campaign foundation", &error)
         })?;
     if stored_sha.as_slice() != foundation_sha256 {
         return Err(RustPersistenceRuntimeErrorV1::CampaignConflict);
@@ -1234,21 +1245,16 @@ fn read_last_committed_tick_v1(
     config: &Config,
     campaign_id: CampaignId,
 ) -> Result<Option<CommittedResolveTickV1>, RustPersistenceRuntimeErrorV1> {
-    let mut client =
-        config
-            .connect(NoTls)
-            .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-                operation: "connect marker reader",
-            })?;
+    let mut client = config.connect(NoTls).map_err(|error| {
+        RustPersistenceRuntimeErrorV1::postgres("connect marker reader", &error)
+    })?;
     let row = client
         .query_opt(
             "SELECT resolve_tick FROM babylon_state.tick_commit \
              WHERE campaign_id = $1::uuid ORDER BY resolve_tick DESC LIMIT 1",
             &[campaign_id.as_uuid()],
         )
-        .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-            operation: "read last marker",
-        })?;
+        .map_err(|error| RustPersistenceRuntimeErrorV1::postgres("read last marker", &error))?;
     row.map(|row| {
         let raw: i64 = decode_runtime_column(&row, 0)?;
         let raw =
@@ -1264,12 +1270,9 @@ fn validate_campaign_catalog_tail_v1(
     campaign_id: CampaignId,
     last_committed_tick: Option<CommittedResolveTickV1>,
 ) -> Result<(), RustPersistenceRuntimeErrorV1> {
-    let mut client =
-        config
-            .connect(NoTls)
-            .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-                operation: "connect retained campaign catalog reader",
-            })?;
+    let mut client = config.connect(NoTls).map_err(|error| {
+        RustPersistenceRuntimeErrorV1::postgres("connect retained campaign catalog reader", &error)
+    })?;
     let catalog = read_campaign_catalog_row_v1(&mut client, campaign_id)?
         .ok_or(RustPersistenceRuntimeErrorV1::CampaignConflict)?;
     let expected = last_committed_tick.map_or(0, CommittedResolveTickV1::get);
@@ -1299,40 +1302,27 @@ fn commit_typed_tick_v1(
     }
     let resolve_tick = i64::try_from(claim.resolve_tick())
         .map_err(|_| RustPersistenceRuntimeErrorV1::CampaignConflict)?;
-    validate_legacy_connection_target(config).map_err(|_| {
-        RustPersistenceRuntimeErrorV1::Database {
-            operation: "validate typed tick target",
-        }
+    validate_legacy_connection_target(config)
+        .map_err(|_| RustPersistenceRuntimeErrorV1::database("validate typed tick target"))?;
+    let mut client = config.connect(NoTls).map_err(|error| {
+        RustPersistenceRuntimeErrorV1::postgres("connect typed tick writer", &error)
     })?;
-    let mut client =
-        config
-            .connect(NoTls)
-            .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-                operation: "connect typed tick writer",
-            })?;
     if marker_matches_envelope_v1(&mut client, report, envelope)? {
         return Ok(ReplayCommitDispositionV1::ReconciledAfterAmbiguousCommit);
     }
-    let mut transaction =
-        client
-            .transaction()
-            .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-                operation: "begin typed tick",
-            })?;
+    let mut transaction = client
+        .transaction()
+        .map_err(|error| RustPersistenceRuntimeErrorV1::postgres("begin typed tick", &error))?;
     transaction
         .batch_execute("SET LOCAL search_path TO pg_catalog; SET LOCAL synchronous_commit TO on")
-        .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-            operation: "typed tick settings",
-        })?;
+        .map_err(|error| RustPersistenceRuntimeErrorV1::postgres("typed tick settings", &error))?;
     let _active = require_active_authority_client(&mut transaction)?;
     let locked = transaction
         .query_opt(
             "SELECT campaign_id FROM babylon_state.campaign WHERE campaign_id = $1::uuid FOR UPDATE",
             &[campaign_id.as_uuid()],
         )
-        .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-            operation: "lock campaign",
-        })?;
+        .map_err(|error| RustPersistenceRuntimeErrorV1::postgres("lock campaign", &error))?;
     if locked.is_none() {
         return Err(RustPersistenceRuntimeErrorV1::FoundationAbsent);
     }
@@ -1342,8 +1332,8 @@ fn commit_typed_tick_v1(
             &[campaign_id.as_uuid()],
         )
         .and_then(|row| row.try_get(0))
-        .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-            operation: "read campaign marker tail",
+        .map_err(|error| {
+            RustPersistenceRuntimeErrorV1::postgres("read campaign marker tail", &error)
         })?;
     let expected_predecessor = resolve_tick
         .checked_sub(1)
@@ -1380,10 +1370,8 @@ fn commit_marker_last_v1(
 ) -> Result<ReplayCommitDispositionV1, RustPersistenceRuntimeErrorV1> {
     #[cfg(test)]
     if LIVE_FAIL_BEFORE_MARKER.swap(false, std::sync::atomic::Ordering::SeqCst) {
-        transaction.batch_execute("SELECT 1 / 0").map_err(|_| {
-            RustPersistenceRuntimeErrorV1::Database {
-                operation: "injected pre-marker refusal",
-            }
+        transaction.batch_execute("SELECT 1 / 0").map_err(|error| {
+            RustPersistenceRuntimeErrorV1::postgres("injected pre-marker refusal", &error)
         })?;
     }
 
@@ -1409,13 +1397,10 @@ fn commit_marker_last_v1(
     )?;
     match commit_transaction_v1(transaction) {
         TickCommitAttemptV1::Acknowledged => Ok(ReplayCommitDispositionV1::Committed),
-        TickCommitAttemptV1::Ambiguous => {
-            let mut reconciliation =
-                config
-                    .connect(NoTls)
-                    .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-                        operation: "reconnect ambiguous commit",
-                    })?;
+        TickCommitAttemptV1::Ambiguous { diagnostic } => {
+            let mut reconciliation = config.connect(NoTls).map_err(|error| {
+                RustPersistenceRuntimeErrorV1::postgres("reconnect ambiguous commit", &error)
+            })?;
             if marker_matches_envelope_v1(&mut reconciliation, report, envelope)? {
                 #[cfg(test)]
                 LIVE_RECONCILIATIONS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -1423,6 +1408,7 @@ fn commit_marker_last_v1(
             } else {
                 Err(RustPersistenceRuntimeErrorV1::Database {
                     operation: "unresolved ambiguous commit",
+                    diagnostic,
                 })
             }
         }
@@ -1472,19 +1458,23 @@ fn insert_typed_tick_pre_marker_rows_v1(
     )
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum TickCommitAttemptV1 {
     Acknowledged,
-    Ambiguous,
+    Ambiguous {
+        diagnostic: Option<PostgresDiagnosticV1>,
+    },
 }
 
 fn commit_transaction_v1(transaction: postgres::Transaction<'_>) -> TickCommitAttemptV1 {
-    if transaction.commit().is_err() {
-        return TickCommitAttemptV1::Ambiguous;
+    if let Err(error) = transaction.commit() {
+        return TickCommitAttemptV1::Ambiguous {
+            diagnostic: Some(PostgresDiagnosticV1::capture(&error)),
+        };
     }
     #[cfg(test)]
     if LIVE_COMMIT_AS_AMBIGUOUS.swap(false, std::sync::atomic::Ordering::SeqCst) {
-        return TickCommitAttemptV1::Ambiguous;
+        return TickCommitAttemptV1::Ambiguous { diagnostic: None };
     }
     TickCommitAttemptV1::Acknowledged
 }
@@ -1544,12 +1534,9 @@ fn replay_durable_tail_v1(
     ),
     RustPersistenceRuntimeErrorV1,
 > {
-    let mut client =
-        config
-            .connect(NoTls)
-            .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-                operation: "connect restart reader",
-            })?;
+    let mut client = config.connect(NoTls).map_err(|error| {
+        RustPersistenceRuntimeErrorV1::postgres("connect restart reader", &error)
+    })?;
     let Some(root) = select_durable_restart_root_v1(&mut client, campaign_id)? else {
         return Ok((session, None));
     };
@@ -1587,8 +1574,8 @@ fn select_durable_restart_root_v1(
             &[campaign_id.as_uuid()],
         )
         .and_then(|row| row.try_get(0))
-        .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-            operation: "select latest full checkpoint",
+        .map_err(|error| {
+            RustPersistenceRuntimeErrorV1::postgres("select latest full checkpoint", &error)
         })?;
     let marker_count: i64 = client
         .query_one(
@@ -1597,8 +1584,8 @@ fn select_durable_restart_root_v1(
             &[campaign_id.as_uuid()],
         )
         .and_then(|row| row.try_get(0))
-        .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-            operation: "count restart markers",
+        .map_err(|error| {
+            RustPersistenceRuntimeErrorV1::postgres("count restart markers", &error)
         })?;
     let Some(root_tick_sql) = root_tick else {
         if marker_count == 0 {
@@ -1615,8 +1602,8 @@ fn select_durable_restart_root_v1(
             &[campaign_id.as_uuid(), &root_tick_sql],
         )
         .and_then(|row| row.try_get(0))
-        .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-            operation: "count checkpoint prefix markers",
+        .map_err(|error| {
+            RustPersistenceRuntimeErrorV1::postgres("count checkpoint prefix markers", &error)
         })?;
     if u64::try_from(prefix_count).ok() != Some(root_tick) {
         return Err(RustPersistenceRuntimeErrorV1::CampaignConflict);
@@ -1670,9 +1657,7 @@ fn replay_ticks_after_restart_root_v1(
              WHERE campaign_id = $1::uuid AND resolve_tick > $2 ORDER BY resolve_tick",
             &[campaign_id.as_uuid(), &root.resolve_tick_sql],
         )
-        .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-            operation: "read restart tail",
-        })?;
+        .map_err(|error| RustPersistenceRuntimeErrorV1::postgres("read restart tail", &error))?;
     let mut expected_tick = root
         .resolve_tick
         .checked_add(1)
@@ -2020,8 +2005,8 @@ fn insert_dynamic_hex_rows_v1(
               biocapacity_stock_bits, energy_stock_bits, raw_material_stock_bits, \
               internet_access_pct_bits, surveillance_coupling_bits) FROM STDIN BINARY",
         )
-        .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-            operation: "begin dynamic hex state copy",
+        .map_err(|error| {
+            RustPersistenceRuntimeErrorV1::postgres("begin dynamic hex state copy", &error)
         })?;
     let mut writer = BinaryCopyInWriter::new(
         sink,
@@ -2059,19 +2044,17 @@ fn insert_dynamic_hex_rows_v1(
                 &values[7],
                 &values[8],
             ])
-            .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-                operation: "write dynamic hex state copy",
+            .map_err(|error| {
+                RustPersistenceRuntimeErrorV1::postgres("write dynamic hex state copy", &error)
             })?;
     }
-    let inserted = writer
-        .finish()
-        .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-            operation: "finish dynamic hex state copy",
-        })?;
+    let inserted = writer.finish().map_err(|error| {
+        RustPersistenceRuntimeErrorV1::postgres("finish dynamic hex state copy", &error)
+    })?;
     if inserted != expected {
-        return Err(RustPersistenceRuntimeErrorV1::Database {
-            operation: "count dynamic hex state copy",
-        });
+        return Err(RustPersistenceRuntimeErrorV1::database(
+            "count dynamic hex state copy",
+        ));
     }
     Ok(())
 }
@@ -2376,11 +2359,12 @@ fn require_single_insert_v1(
     result: Result<u64, postgres::Error>,
     operation: &'static str,
 ) -> Result<(), RustPersistenceRuntimeErrorV1> {
-    let affected = result.map_err(|_| RustPersistenceRuntimeErrorV1::Database { operation })?;
+    let affected =
+        result.map_err(|error| RustPersistenceRuntimeErrorV1::postgres(operation, &error))?;
     if affected == 1 {
         Ok(())
     } else {
-        Err(RustPersistenceRuntimeErrorV1::Database { operation })
+        Err(RustPersistenceRuntimeErrorV1::database(operation))
     }
 }
 
@@ -2575,12 +2559,14 @@ mod live_tests {
         let mut sink = CollectingSink::default();
 
         LIVE_FAIL_BEFORE_MARKER.store(true, Ordering::SeqCst);
-        assert_eq!(
-            runtime.advance_and_commit(&mut sink, &actions),
-            Err(RustPersistenceRuntimeErrorV1::Database {
-                operation: "injected pre-marker refusal",
-            })
-        );
+        let Err(RustPersistenceRuntimeErrorV1::Database {
+            operation: "injected pre-marker refusal",
+            diagnostic: Some(diagnostic),
+        }) = runtime.advance_and_commit(&mut sink, &actions)
+        else {
+            panic!("injected refusal must retain its server diagnostic");
+        };
+        assert_eq!(diagnostic.sqlstate(), Some("22012"));
         assert!(sink.events.is_empty());
         assert_eq!(runtime.last_committed_tick(), None);
         assert_eq!(committed_payload_row_count(&config, campaign_id), 0);

@@ -12,6 +12,7 @@ use crate::h3_reference_cohort::MAX_H3_REFERENCE_CLOSURE_ROWS;
 use crate::legacy_adopter::{
     acquire_lock, release_lock, validate_legacy_connection_target, LegacyAdopterError,
 };
+use crate::postgres_diagnostic::PostgresDiagnosticV1;
 use crate::schema_epoch::{
     bounded_config, inspect_schema_epoch_under_lock, SchemaEpochError, SchemaEpochOrigin,
 };
@@ -169,6 +170,7 @@ pub enum H3ShadowBackfillError {
     },
     Database {
         operation: H3ShadowBackfillOperation,
+        diagnostic: Option<PostgresDiagnosticV1>,
     },
     Bounds {
         resource: H3ShadowBackfillBoundedResource,
@@ -543,9 +545,7 @@ fn backfill_under_lock(
         .ne(after.fields.iter().map(field_source_shape))
         || before.relations != after.relations
     {
-        return Err(H3ShadowBackfillError::Database {
-            operation: H3ShadowBackfillOperation::VerifySession,
-        });
+        return Err(database_error(H3ShadowBackfillOperation::VerifySession));
     }
     if after
         .fields
@@ -559,9 +559,7 @@ fn backfill_under_lock(
     }
     for (report, semantics) in relation_reports.iter_mut().zip(&after.relations) {
         if report.relation != semantics.relation {
-            return Err(H3ShadowBackfillError::Database {
-                operation: H3ShadowBackfillOperation::VerifySession,
-            });
+            return Err(database_error(H3ShadowBackfillOperation::VerifySession));
         }
         report.row_count = semantics.row_count;
         report.distinct_semantic_group_count = semantics.distinct_group_count;
@@ -616,11 +614,13 @@ fn require_exact_schema_epoch(client: &mut Client) -> Result<(), H3ShadowBackfil
 fn prepare_session(client: &mut Client) -> Result<(), H3ShadowBackfillError> {
     client
         .batch_execute(SESSION_SETTINGS_SQL)
-        .map_err(|_| database_error(H3ShadowBackfillOperation::PrepareSession))?;
+        .map_err(|error| {
+            postgres_database_error(H3ShadowBackfillOperation::PrepareSession, &error)
+        })?;
     let operation = H3ShadowBackfillOperation::VerifySession;
     let row = client
         .query_one(SESSION_SETTINGS_QUERY, &[])
-        .map_err(|_| database_error(operation))?;
+        .map_err(|error| postgres_database_error(operation, &error))?;
     let expected = [
         "on",
         "pg_catalog",
@@ -644,7 +644,7 @@ fn has_legacy_origin(client: &mut Client) -> Result<bool, H3ShadowBackfillError>
     let operation = H3ShadowBackfillOperation::InspectLegacyOrigin;
     let row = client
         .query_one(LEGACY_ORIGIN_SQL, &[])
-        .map_err(|_| database_error(operation))?;
+        .map_err(|error| postgres_database_error(operation, &error))?;
     decode(&row, 0, operation)
 }
 
@@ -654,7 +654,7 @@ fn read_canonical_cells(client: &mut Client) -> Result<BTreeSet<i64>, H3ShadowBa
     let operation = H3ShadowBackfillOperation::ReadCanonicalCells;
     let rows = client
         .query(CANONICAL_CELLS_SQL, &[&limit])
-        .map_err(|_| database_error(operation))?;
+        .map_err(|error| postgres_database_error(operation, &error))?;
     if rows.len() > MAX_H3_REFERENCE_CLOSURE_ROWS {
         return Err(H3ShadowBackfillError::Bounds {
             resource: H3ShadowBackfillBoundedResource::CanonicalCells,
@@ -711,7 +711,7 @@ fn inspect_relation(
     let query_limit = i64::try_from(group_limit + 1).expect("distinct group bound fits i64");
     let mut rows = client
         .query_raw(&query, [&query_limit])
-        .map_err(|_| database_error(operation))?;
+        .map_err(|error| postgres_database_error(operation, &error))?;
 
     let report_start = reports.len();
     reports.extend(
@@ -736,7 +736,10 @@ fn inspect_relation(
     let mut distinct_group_count = 0_u64;
     let mut raw_group_count = 0_u64;
     let mut row_count = 0_u64;
-    while let Some(row) = rows.next().map_err(|_| database_error(operation))? {
+    while let Some(row) = rows
+        .next()
+        .map_err(|error| postgres_database_error(operation, &error))?
+    {
         raw_group_count = raw_group_count.saturating_add(1);
         if raw_group_count > group_limit {
             return Err(H3ShadowBackfillError::Bounds {
@@ -1298,7 +1301,7 @@ fn attempt_batch(
         .isolation_level(IsolationLevel::Serializable)
         .read_only(false)
         .start()
-        .map_err(|_| database_error(begin_operation))?;
+        .map_err(|error| postgres_database_error(begin_operation, &error))?;
     let prepared = prepare_batch_transaction(&mut transaction, specification);
     let updated = match prepared {
         Ok(updated) => updated,
@@ -1309,10 +1312,11 @@ fn attempt_batch(
             updated,
             outcome: CommitOutcome::Committed,
         }),
-        Err(error) if error.as_db_error().is_some() => Err(database_error(
+        Err(error) if error.as_db_error().is_some() => Err(postgres_database_error(
             H3ShadowBackfillOperation::CommitTransaction {
                 relation: specification.relation,
             },
+            &error,
         )),
         Err(_) => Ok(BatchAttempt {
             updated,
@@ -1330,10 +1334,10 @@ fn prepare_batch_transaction(
     };
     transaction
         .batch_execute(WRITE_LOCAL_SETTINGS_SQL)
-        .map_err(|_| database_error(settings_operation))?;
+        .map_err(|error| postgres_database_error(settings_operation, &error))?;
     let settings = transaction
         .query_one(WRITE_SETTINGS_QUERY, &[])
-        .map_err(|_| database_error(settings_operation))?;
+        .map_err(|error| postgres_database_error(settings_operation, &error))?;
     for (index, wanted) in [
         "serializable",
         "off",
@@ -1358,7 +1362,7 @@ fn prepare_batch_transaction(
     };
     let updated = transaction
         .execute(&batch_update_sql(specification), &[&batch_rows])
-        .map_err(|_| database_error(operation))?;
+        .map_err(|error| postgres_database_error(operation, &error))?;
     if updated == 0 || updated > u64::try_from(MAX_H3_SHADOW_BACKFILL_BATCH_ROWS).unwrap() {
         return Err(database_error(operation));
     }
@@ -1372,10 +1376,11 @@ fn rollback_preserving<T>(
 ) -> Result<T, H3ShadowBackfillError> {
     match transaction.rollback() {
         Ok(()) => Err(primary),
-        Err(_) => Err(H3ShadowBackfillError::FailureAndCleanup {
+        Err(error) => Err(H3ShadowBackfillError::FailureAndCleanup {
             primary: Box::new(primary),
-            cleanup: Box::new(database_error(
+            cleanup: Box::new(postgres_database_error(
                 H3ShadowBackfillOperation::RollbackTransaction { relation },
+                &error,
             )),
         }),
     }
@@ -1395,7 +1400,7 @@ fn pending_count(
     );
     let row = client
         .query_one(&query, &[])
-        .map_err(|_| database_error(operation))?;
+        .map_err(|error| postgres_database_error(operation, &error))?;
     let raw: i64 = decode(&row, 0, operation)?;
     let count = u64::try_from(raw).map_err(|_| database_error(operation))?;
     if count > MAX_H3_SHADOW_ROWS_PER_RELATION {
@@ -1483,7 +1488,7 @@ impl LockedBackfillSession {
     fn connect(config: &Config) -> Result<Self, H3ShadowBackfillError> {
         let mut client = config
             .connect(NoTls)
-            .map_err(|_| database_error(H3ShadowBackfillOperation::Connect))?;
+            .map_err(|error| postgres_database_error(H3ShadowBackfillOperation::Connect, &error))?;
         acquire_lock(&mut client).map_err(H3ShadowBackfillError::Lock)?;
         Ok(Self {
             client: Some(client),
@@ -1536,11 +1541,25 @@ fn decode<T: postgres::types::FromSqlOwned>(
     index: usize,
     operation: H3ShadowBackfillOperation,
 ) -> Result<T, H3ShadowBackfillError> {
-    row.try_get(index).map_err(|_| database_error(operation))
+    row.try_get(index)
+        .map_err(|error| postgres_database_error(operation, &error))
 }
 
 fn database_error(operation: H3ShadowBackfillOperation) -> H3ShadowBackfillError {
-    H3ShadowBackfillError::Database { operation }
+    H3ShadowBackfillError::Database {
+        operation,
+        diagnostic: None,
+    }
+}
+
+fn postgres_database_error(
+    operation: H3ShadowBackfillOperation,
+    error: &postgres::Error,
+) -> H3ShadowBackfillError {
+    H3ShadowBackfillError::Database {
+        operation,
+        diagnostic: Some(PostgresDiagnosticV1::capture(error)),
+    }
 }
 
 #[cfg(test)]
@@ -1589,9 +1608,9 @@ mod tests {
     fn impossible_updated_count_is_a_closed_commit_failure() {
         assert_eq!(
             reconcile_ambiguous_batch(RELATION, 2, 3, 0, 1),
-            Err(H3ShadowBackfillError::Database {
-                operation: H3ShadowBackfillOperation::CommitTransaction { relation: RELATION },
-            })
+            Err(database_error(
+                H3ShadowBackfillOperation::CommitTransaction { relation: RELATION }
+            ))
         );
     }
 }

@@ -18,6 +18,7 @@ pub mod legacy_adopter;
 mod metadata;
 mod michigan_dynamic_hex_foundation;
 pub mod migration_manifest;
+mod postgres_diagnostic;
 mod runtime;
 pub mod schema_epoch;
 pub mod schema_migration;
@@ -53,10 +54,9 @@ pub use h3_reference_cohort::{
     MAX_H3_REFERENCE_SOURCE_CELLS,
 };
 pub use h3_reference_installer::{
-    install_michigan_h3_reference_bundle_v1, H3ReferenceDatabaseDiagnostic,
-    H3ReferenceInstallBoundedResource, H3ReferenceInstallConflict, H3ReferenceInstallDisposition,
-    H3ReferenceInstallError, H3ReferenceInstallOperation, H3ReferenceInstallReport,
-    H3ReferenceMembershipReadContext,
+    install_michigan_h3_reference_bundle_v1, H3ReferenceInstallBoundedResource,
+    H3ReferenceInstallConflict, H3ReferenceInstallDisposition, H3ReferenceInstallError,
+    H3ReferenceInstallOperation, H3ReferenceInstallReport, H3ReferenceMembershipReadContext,
 };
 pub use h3_shadow_backfill::{
     backfill_legacy_h3_shadow_keys, H3ShadowBackfillBoundedResource, H3ShadowBackfillDisposition,
@@ -95,6 +95,9 @@ pub use michigan_dynamic_hex_foundation::{
 pub use migration_manifest::{
     ManifestError, MigrationManifest, MAX_MANIFEST_BYTES, MAX_MANIFEST_CHUNKS,
     SCHEMA_ADVISORY_LOCK_KEY,
+};
+pub use postgres_diagnostic::{
+    PostgresDiagnosticV1, PostgresFailureClassV1, MAX_POSTGRES_DIAGNOSTIC_MESSAGE_BYTES,
 };
 pub use runtime::{
     activate_rust_persistence_v1, hydrate_campaign_foundation_v1, prepare_committed_tick_v1,

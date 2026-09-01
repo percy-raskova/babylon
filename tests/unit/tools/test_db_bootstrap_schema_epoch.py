@@ -382,3 +382,19 @@ def test_runtime_template_helpers_return_psql_failures_to_checked_callers() -> N
     assert create.count("|| return") == 3
     assert verify.count("|| return") == 4
     assert drop.count("|| return") == 1
+
+
+def test_disposable_pg_runner_retains_bootstrap_logs_and_runtime_version() -> None:
+    """Bootstrap refusals retain bounded server evidence and the pinned runtime identity."""
+    runner = (ROOT / "tools/run_rust_legacy_adopter_pg.sh").read_text(encoding="utf-8")
+
+    assert "die_with_runtime_logs()" in runner
+    assert "emit_runtime_logs()" in runner
+    assert 'docker logs --timestamps --tail 200 "$CONTAINER"' in runner
+    assert (
+        'die_with_runtime_logs "pinned PostgreSQL runtime was not ready within 90 seconds"'
+        in runner
+    )
+    assert "current_setting('server_version_num')" in runner
+    assert "current_setting('server_version')" in runner
+    assert "PER-20 runtime PostgreSQL: major=%s version=%s" in runner

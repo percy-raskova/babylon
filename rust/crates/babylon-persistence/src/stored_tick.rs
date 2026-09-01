@@ -84,8 +84,8 @@ pub(crate) fn read_stored_typed_tick_v1(
              WHERE campaign_id = $1::uuid AND resolve_tick = $2",
             &[campaign_id.as_uuid(), &resolve_tick_sql],
         )
-        .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-            operation: "read stored tick marker",
+        .map_err(|error| {
+            RustPersistenceRuntimeErrorV1::postgres("read stored tick marker", &error)
         })?
     else {
         return Ok(None);
@@ -104,8 +104,8 @@ pub(crate) fn read_stored_typed_tick_v1(
              WHERE campaign_id = $1::uuid AND resolve_tick = $2",
             &[campaign_id.as_uuid(), &resolve_tick_sql],
         )
-        .map_err(|_| RustPersistenceRuntimeErrorV1::Database {
-            operation: "read stored action batch",
+        .map_err(|error| {
+            RustPersistenceRuntimeErrorV1::postgres("read stored action batch", &error)
         })?
         .ok_or(RustPersistenceRuntimeErrorV1::CampaignConflict)?;
     let action_layout: i16 = decode_column(&action, 0)?;
@@ -202,7 +202,7 @@ fn read_graph_nodes(
              WHERE campaign_id = $1::uuid AND resolve_tick = $2 ORDER BY local_name",
             &[campaign_id.as_uuid(), &resolve_tick],
         )
-        .map_err(|_| database("read stored graph nodes"))?
+        .map_err(|error| database("read stored graph nodes", &error))?
         .iter()
         .map(|row| Ok((decode_column(row, 0)?, decode_column(row, 1)?)))
         .collect()
@@ -219,7 +219,7 @@ fn read_graph_node_f64(
              WHERE campaign_id = $1::uuid AND resolve_tick = $2 ORDER BY local_name, qname",
             &[campaign_id.as_uuid(), &resolve_tick],
         )
-        .map_err(|_| database("read stored graph node f64"))?
+        .map_err(|error| database("read stored graph node f64", &error))?
         .iter()
         .map(|row| {
             let bits: i64 = decode_column(row, 2)?;
@@ -245,7 +245,7 @@ fn read_graph_edges(
              ORDER BY edge_type, source_local_name, target_local_name",
             &[campaign_id.as_uuid(), &resolve_tick],
         )
-        .map_err(|_| database("read stored graph edges"))?
+        .map_err(|error| database("read stored graph edges", &error))?
         .iter()
         .map(|row| {
             let bits: i64 = decode_column(row, 3)?;
@@ -279,7 +279,7 @@ fn read_graph_hyperedges(
              WHERE edge.campaign_id = $1::uuid AND edge.resolve_tick = $2 ORDER BY edge.local_name",
             &[campaign_id.as_uuid(), &resolve_tick],
         )
-        .map_err(|_| database("read stored graph hyperedges"))?
+        .map_err(|error| database("read stored graph hyperedges", &error))?
         .iter()
         .map(|row| {
             let positions: Vec<i32> = decode_column(row, 2)?;
@@ -314,7 +314,7 @@ fn read_graph_edge_f64(
              ORDER BY edge_type, source_local_name, target_local_name, qname",
             &[campaign_id.as_uuid(), &resolve_tick],
         )
-        .map_err(|_| database("read stored graph edge f64"))?
+        .map_err(|error| database("read stored graph edge f64", &error))?
         .iter()
         .map(|row| {
             let bits: i64 = decode_column(row, 4)?;
@@ -341,7 +341,7 @@ fn read_graph_node_currency(
              WHERE campaign_id = $1::uuid AND resolve_tick = $2 ORDER BY local_name, qname",
             &[campaign_id.as_uuid(), &resolve_tick],
         )
-        .map_err(|_| database("read stored graph Currency"))?
+        .map_err(|error| database("read stored graph Currency", &error))?
         .iter()
         .map(|row| {
             let value: String = decode_column(row, 2)?;
@@ -368,7 +368,7 @@ fn read_graph_hyperedge_f64(
              WHERE campaign_id = $1::uuid AND resolve_tick = $2 ORDER BY local_name, qname",
             &[campaign_id.as_uuid(), &resolve_tick],
         )
-        .map_err(|_| database("read stored graph hyperedge f64"))?
+        .map_err(|error| database("read stored graph hyperedge f64", &error))?
         .iter()
         .map(|row| {
             let bits: i64 = decode_column(row, 2)?;
@@ -394,7 +394,7 @@ fn read_material_rows(
              WHERE campaign_id = $1::uuid AND resolve_tick = $2 ORDER BY register_name",
             &[campaign_id.as_uuid(), &resolve_tick],
         )
-        .map_err(|_| database("read stored world registers"))?
+        .map_err(|error| database("read stored world registers", &error))?
         .iter()
         .map(|row| {
             WorldRegisterRowV1::try_new(decode_column(row, 0)?, decode_bsl_value(row, 1)?)
@@ -411,7 +411,7 @@ fn read_material_rows(
              WHERE campaign_id = $1::uuid AND resolve_tick = $2 ORDER BY cell_id",
             &[campaign_id.as_uuid(), &resolve_tick],
         )
-        .map_err(|_| database("read stored dynamic hex state"))?
+        .map_err(|error| database("read stored dynamic hex state", &error))?
         .iter()
         .map(|row| {
             let cell: i64 = decode_column(row, 0)?;
@@ -460,7 +460,7 @@ fn read_territories(
              ORDER BY territory_id, position",
             &[campaign_id.as_uuid(), &resolve_tick],
         )
-        .map_err(|_| database("read stored territory fields"))?
+        .map_err(|error| database("read stored territory fields", &error))?
     {
         let key: Vec<u8> = decode_column(&row, 0)?;
         let position: i32 = decode_column(&row, 1)?;
@@ -475,7 +475,7 @@ fn read_territories(
              WHERE campaign_id = $1::uuid AND resolve_tick = $2 ORDER BY territory_id",
             &[campaign_id.as_uuid(), &resolve_tick],
         )
-        .map_err(|_| database("read stored territory state"))?
+        .map_err(|error| database("read stored territory state", &error))?
     {
         let bytes: Vec<u8> = decode_column(&row, 0)?;
         let key = decode_stable_key(&bytes)?;
@@ -506,7 +506,7 @@ fn read_organizations(
              ORDER BY organization_id, position",
             &[campaign_id.as_uuid(), &resolve_tick],
         )
-        .map_err(|_| database("read stored organization territories"))?
+        .map_err(|error| database("read stored organization territories", &error))?
     {
         let owner: Vec<u8> = decode_column(&row, 0)?;
         let position: i32 = decode_column(&row, 1)?;
@@ -526,7 +526,7 @@ fn read_organizations(
              ORDER BY organization_id, position",
             &[campaign_id.as_uuid(), &resolve_tick],
         )
-        .map_err(|_| database("read stored organization fields"))?
+        .map_err(|error| database("read stored organization fields", &error))?
     {
         let owner: Vec<u8> = decode_column(&row, 0)?;
         let position: i32 = decode_column(&row, 1)?;
@@ -547,7 +547,7 @@ fn read_organizations(
              WHERE campaign_id = $1::uuid AND resolve_tick = $2 ORDER BY organization_id",
             &[campaign_id.as_uuid(), &resolve_tick],
         )
-        .map_err(|_| database("read stored organization state"))?
+        .map_err(|error| database("read stored organization state", &error))?
     {
         let bytes: Vec<u8> = decode_column(&row, 0)?;
         output.push(
@@ -581,7 +581,7 @@ fn read_event_rows(
              WHERE campaign_id = $1::uuid AND resolve_tick = $2 ORDER BY ordinal, position",
             &[campaign_id.as_uuid(), &resolve_tick],
         )
-        .map_err(|_| database("read stored event fields"))?
+        .map_err(|error| database("read stored event fields", &error))?
     {
         let ordinal: i64 = decode_column(&row, 0)?;
         let position: i32 = decode_column(&row, 1)?;
@@ -596,7 +596,7 @@ fn read_event_rows(
              WHERE campaign_id = $1::uuid AND resolve_tick = $2 ORDER BY ordinal",
             &[campaign_id.as_uuid(), &resolve_tick],
         )
-        .map_err(|_| database("read stored events"))?
+        .map_err(|error| database("read stored events", &error))?
     {
         let ordinal: i64 = decode_column(&row, 0)?;
         let ordinal_u32 =
@@ -636,7 +636,7 @@ fn read_checkpoint_rows(
              WHERE campaign_id = $1::uuid AND resolve_tick = $2",
             &[campaign_id.as_uuid(), &resolve_tick_sql],
         )
-        .map_err(|_| database("read stored checkpoint manifest"))?
+        .map_err(|error| database("read stored checkpoint manifest", &error))?
         .ok_or(RustPersistenceRuntimeErrorV1::CampaignConflict)?;
     let completeness: i16 = decode_column(&manifest, 0)?;
     let manifest_bytes: Vec<u8> = decode_column(&manifest, 1)?;
@@ -651,7 +651,7 @@ fn read_checkpoint_rows(
              WHERE campaign_id = $1::uuid AND resolve_tick = $2 ORDER BY section_tag, ordinal",
             &[campaign_id.as_uuid(), &resolve_tick_sql],
         )
-        .map_err(|_| database("read stored checkpoint sections"))?;
+        .map_err(|error| database("read stored checkpoint sections", &error))?;
     if stored.len() != 9 {
         return Err(RustPersistenceRuntimeErrorV1::CampaignConflict);
     }
@@ -702,7 +702,7 @@ fn read_archive_receipt(
              WHERE campaign_id = $1::uuid AND resolve_tick = $2",
             &[campaign_id.as_uuid(), &resolve_tick],
         )
-        .map_err(|_| database("read stored archive receipt"))?
+        .map_err(|error| database("read stored archive receipt", &error))?
         .ok_or(RustPersistenceRuntimeErrorV1::CampaignConflict)?;
     semantic_codec::encode_archive_dirty_receipt(&decode_digest(&row, 0)?).map_err(Into::into)
 }
@@ -810,6 +810,6 @@ fn decode_digest(row: &Row, index: usize) -> Result<[u8; 32], RustPersistenceRun
         .map_err(|_| RustPersistenceRuntimeErrorV1::CampaignConflict)
 }
 
-const fn database(operation: &'static str) -> RustPersistenceRuntimeErrorV1 {
-    RustPersistenceRuntimeErrorV1::Database { operation }
+fn database(operation: &'static str, error: &postgres::Error) -> RustPersistenceRuntimeErrorV1 {
+    RustPersistenceRuntimeErrorV1::postgres(operation, error)
 }

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import shlex
 import subprocess
 import tomllib
 from pathlib import Path
@@ -24,6 +23,7 @@ MISE_CONFIG = REPO_ROOT / ".mise.toml"
 ANALYSIS_TASKS_CONFIG = REPO_ROOT / ".mise" / "tasks" / "analysis.toml"
 WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
 ACTIONS_DIR = REPO_ROOT / ".github" / "actions"
+HOSTED_RUNTIME_DSN = "dbname=babylon_test host=127.0.0.1 port=5433 user=test password=test"
 
 
 def _write_executable(path: Path, content: str) -> None:
@@ -279,38 +279,36 @@ def test_scheduled_failure_artifacts_survive_failure() -> None:
 
 
 def test_rust_persistence_workflow_dsns_use_a_literal_loopback() -> None:
-    """Rust's local-target guard must accept every hosted workflow DSN."""
+    """Rust's local-target guard must accept every hosted workflow DSN.
+
+    Keep the hosted value exact instead of duplicating tokio-postgres parsing in
+    Python. A deliberate DSN change must update this contract alongside the
+    Rust guard.
+    """
     runtime_dsns: list[tuple[Path, str]] = []
     for path in _workflow_paths():
         workflow = yaml.safe_load(path.read_text())
+        assert isinstance(workflow, dict), path
         jobs = workflow.get("jobs") or {}
         assert isinstance(jobs, dict), path
+        environments = [workflow.get("env") or {}]
         for job in jobs.values():
             assert isinstance(job, dict), path
             steps = job.get("steps") or []
             assert isinstance(steps, list), path
-            environments = [
-                job.get("env") or {},
-                *(step.get("env") or {} for step in steps),
-            ]
-            for environment in environments:
-                assert isinstance(environment, dict), path
-                if "BABYLON_RUNTIME_DSN" in environment:
-                    runtime_dsns.append((path, str(environment["BABYLON_RUNTIME_DSN"])))
+            environments.append(job.get("env") or {})
+            for step in steps:
+                assert isinstance(step, dict), path
+                environments.append(step.get("env") or {})
+
+        for environment in environments:
+            assert isinstance(environment, dict), path
+            if "BABYLON_RUNTIME_DSN" in environment:
+                runtime_dsns.append((path, str(environment["BABYLON_RUNTIME_DSN"])))
 
     assert runtime_dsns
     for path, dsn in runtime_dsns:
-        parameters: dict[str, str] = {}
-        for token in shlex.split(dsn):
-            key, separator, value = token.partition("=")
-            assert separator and key, path
-            assert key not in parameters, path
-            parameters[key] = value
-
-        assert parameters.get("host") == "127.0.0.1", path
-        assert "," not in parameters.get("port", ""), path
-        assert "hostaddr" not in parameters, path
-        assert "options" not in parameters, path
+        assert dsn == HOSTED_RUNTIME_DSN, path
 
 
 def test_analysis_sweep_task_has_a_configurable_finite_tick_budget() -> None:

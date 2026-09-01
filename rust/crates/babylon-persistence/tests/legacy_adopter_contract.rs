@@ -19,7 +19,7 @@ use std::process::Command;
 
 const ZERO_DIGEST: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 const LEGACY_CENSUS_V1_ARCHIVE: &str = include_str!("../src/fixtures/legacy_adopter_census_v1.txt");
-const MAX_RUNNER_LINES: usize = 413;
+const EXPECTED_RUNNER_LINES: usize = 515;
 const MAX_WORKFLOW_JOB_BOUNDARY_CANDIDATES: usize = 128;
 const MAX_SQL_LITERAL_SEGMENTS: usize = 8_192;
 const MAX_SQL_STATEMENT_BYTES: usize = 262_144;
@@ -2235,19 +2235,39 @@ fn live_adopter_tests_are_split_between_pr_and_weekly_cadences() {
     assert!(runner.contains("--ignored --test-threads=1"));
     assert!(!runner.contains("--manifest-path"));
 
-    let pr_job = yaml_job(pr_workflow, "  pg-integration:");
+    assert_pr_live_cadence(pr_workflow);
+    assert_weekly_live_cadence(weekly_workflow);
+
+    let synthetic = "jobs:\n  pg-integration:\n    run: true\n  unrelated:\n    run: tools/run_rust_legacy_adopter_pg.sh\n  security:\n    run: true\n";
+    assert!(!yaml_job(synthetic, "  pg-integration:").contains("run_rust_legacy_adopter_pg"));
+}
+
+fn assert_pr_live_cadence(pr_workflow: &str) {
+    let pr_shards = yaml_job(pr_workflow, "  pg-integration-shards:");
     assert_eq!(
-        pr_job
+        pr_shards
             .matches("run: tools/run_rust_legacy_adopter_pg.sh")
             .count(),
         1
     );
-    assert!(pr_job.contains(
-        "- name: Rust PostgreSQL atomicity and installed-mutation contracts\n        timeout-minutes: 69\n        env:\n          BABYLON_LEGACY_ADOPTER_LIVE_FOCUS: pr\n        run: tools/run_rust_legacy_adopter_pg.sh"
+    assert!(pr_shards.contains(
+        "focus: [clean_bootstrap, h3_atomicity, rust_persistence_runtime, installed_mutation]"
     ));
-    assert!(!pr_job.contains("BABYLON_LEGACY_ADOPTER_TEST_DSN"));
-    assert!(!pr_job.contains("cargo doc"));
+    assert!(pr_shards.contains(
+        "- name: Rust PostgreSQL contract\n        timeout-minutes: 69\n        env:\n          BABYLON_LEGACY_ADOPTER_LIVE_FOCUS: ${{ matrix.focus }}\n        run: tools/run_rust_legacy_adopter_pg.sh"
+    ));
+    assert!(!pr_shards.contains("BABYLON_LEGACY_ADOPTER_TEST_DSN"));
+    assert!(!pr_shards.contains("cargo doc"));
+    let pr_aggregator = yaml_job(pr_workflow, "  pg-integration:");
+    assert!(pr_aggregator.contains("needs: pg-integration-shards"));
+    assert!(pr_aggregator.contains("if: always()"));
+    assert!(
+        pr_aggregator.contains("run: test '${{ needs.pg-integration-shards.result }}' = success")
+    );
+    assert!(!pr_aggregator.contains("run_rust_legacy_adopter_pg"));
+}
 
+fn assert_weekly_live_cadence(weekly_workflow: &str) {
     let weekly_job = yaml_job(weekly_workflow, "  exhaustive-legacy-adopter:");
     assert!(weekly_job.contains("name: Exhaustive Rust legacy adopter matrix (dev HEAD)"));
     assert!(weekly_job.contains("timeout-minutes: 40"));
@@ -2260,9 +2280,6 @@ fn live_adopter_tests_are_split_between_pr_and_weekly_cadences() {
     ));
     assert!(!weekly_job.contains("BABYLON_LEGACY_ADOPTER_LIVE_FOCUS"));
     assert!(!weekly_job.contains("CI_REFDB_READY"));
-
-    let synthetic = "jobs:\n  pg-integration:\n    run: true\n  unrelated:\n    run: tools/run_rust_legacy_adopter_pg.sh\n  security:\n    run: true\n";
-    assert!(!yaml_job(synthetic, "  pg-integration:").contains("run_rust_legacy_adopter_pg"));
 }
 
 #[test]
@@ -2504,10 +2521,8 @@ fn ci_step_exceeds_the_focused_runner_envelope() {
         + CLEANUP_ENVELOPE_SECONDS;
 
     let pr_workflow = include_str!("../../../../.github/workflows/ci.yml");
-    let pr_job = yaml_job(pr_workflow, "  pg-integration:");
-    assert!(pr_job.contains(
-        "- name: Rust PostgreSQL atomicity and installed-mutation contracts\n        timeout-minutes: 69"
-    ));
+    let pr_job = yaml_job(pr_workflow, "  pg-integration-shards:");
+    assert!(pr_job.contains("- name: Rust PostgreSQL contract\n        timeout-minutes: 69"));
     let pr_job_seconds = pr_job
         .lines()
         .take(MAX_WORKFLOW_JOB_BOUNDARY_CANDIDATES)
@@ -2517,7 +2532,7 @@ fn ci_step_exceeds_the_focused_runner_envelope() {
         .unwrap()
         * 60;
     let pr_adopter_step = pr_job
-        .split_once("      - name: Rust PostgreSQL atomicity and installed-mutation contracts")
+        .split_once("      - name: Rust PostgreSQL contract")
         .unwrap()
         .1;
     let pr_step_seconds = pr_adopter_step
@@ -2612,11 +2627,11 @@ fn live_runner_bounds_every_docker_control_plane_call() {
 
     let runner_lines = runner
         .lines()
-        .take(MAX_RUNNER_LINES + 1)
+        .take(EXPECTED_RUNNER_LINES + 1)
         .collect::<Vec<_>>();
-    assert!(runner_lines.len() <= MAX_RUNNER_LINES);
+    assert_eq!(runner_lines.len(), EXPECTED_RUNNER_LINES);
     let mut docker_calls = 0_usize;
-    for (line_index, line) in runner_lines.iter().enumerate().take(MAX_RUNNER_LINES) {
+    for (line_index, line) in runner_lines.iter().enumerate().take(EXPECTED_RUNNER_LINES) {
         if !line.contains("docker ") {
             continue;
         }

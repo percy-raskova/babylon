@@ -15,8 +15,10 @@ readonly CURRENT_CENSUS_V2_EXPORT_DIR="${BABYLON_CURRENT_CENSUS_V2_EXPORT_DIR:-}
 CANARY="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
 readonly CANARY
 readonly CONTAINER="babylon-per20-adopter-${CANARY:0:12}"
+readonly RUNTIME_TEMPLATE="per281_runtime_template_${CANARY:0:12}"
 VOLUME=""
 OWNED=0
+RUNTIME_TEMPLATE_CREATED=0
 
 die() {
   printf 'run_rust_legacy_adopter_pg: %s\n' "$*" >&2
@@ -153,6 +155,84 @@ run_schema_epoch_rollback_test() {
       --locked -- --nocapture --ignored --exact --test-threads=1
 }
 
+create_runtime_template() {
+  local bootstrap_dsn="$1"
+  local source_observation
+  local template_observation
+  [ "$bootstrap_dsn" = "postgresql://test:test@127.0.0.1:$PORT/babylon_test" ] ||
+    die "runtime template source DSN did not equal the task-owned bootstrap target"
+  source_observation="$(timeout --signal=TERM --kill-after=2s 10s \
+    env PGPASSWORD=test PGCONNECT_TIMEOUT=2 PGSSLMODE=disable \
+    psql -X -w -qAt -h 127.0.0.1 -p "$PORT" -U test -d babylon_test \
+      -v ON_ERROR_STOP=1 \
+      -c "SELECT \
+            (SELECT pg_catalog.string_agg(ordinal::pg_catalog.text || ':' || \
+                     state_tag::pg_catalog.text || ':' || schema_epoch::pg_catalog.text, \
+                     ',' ORDER BY ordinal) \
+             FROM babylon_meta.persistence_authority_ledger) \
+            || '|' || (SELECT pg_catalog.count(*)::pg_catalog.text \
+                       FROM babylon_meta.campaign)")" || return
+  [ "$source_observation" = "1:1:8,2:2:9|0" ] ||
+    die "runtime template source was not clean and Rust-active: $source_observation"
+  timeout --signal=TERM --kill-after=2s 10s \
+    env PGPASSWORD=test PGCONNECT_TIMEOUT=2 PGSSLMODE=disable \
+    psql -X -w -qAt -h 127.0.0.1 -p "$PORT" -U test -d postgres \
+      -v ON_ERROR_STOP=1 \
+      -c "CREATE DATABASE \"$RUNTIME_TEMPLATE\" OWNER test TEMPLATE babylon_test" || return
+  RUNTIME_TEMPLATE_CREATED=1
+  template_observation="$(timeout --signal=TERM --kill-after=2s 10s \
+    env PGPASSWORD=test PGCONNECT_TIMEOUT=2 PGSSLMODE=disable \
+    psql -X -w -qAt -h 127.0.0.1 -p "$PORT" -U test -d "$RUNTIME_TEMPLATE" \
+      -v ON_ERROR_STOP=1 \
+      -c "SELECT \
+            (SELECT pg_catalog.string_agg(ordinal::pg_catalog.text || ':' || \
+                     state_tag::pg_catalog.text || ':' || schema_epoch::pg_catalog.text, \
+                     ',' ORDER BY ordinal) \
+             FROM babylon_meta.persistence_authority_ledger) \
+            || '|' || (SELECT pg_catalog.count(*)::pg_catalog.text \
+                       FROM babylon_meta.campaign)")" || return
+  [ "$template_observation" = "1:1:8,2:2:9|0" ] ||
+    die "runtime template clone was not clean and Rust-active: $template_observation"
+  printf 'PER-281 runtime template ready: database=%s authority=%s\n' \
+    "$RUNTIME_TEMPLATE" "$template_observation"
+}
+
+verify_runtime_template_and_clone_cleanup() {
+  local template_observation
+  local clone_count
+  template_observation="$(timeout --signal=TERM --kill-after=2s 10s \
+    env PGPASSWORD=test PGCONNECT_TIMEOUT=2 PGSSLMODE=disable \
+    psql -X -w -qAt -h 127.0.0.1 -p "$PORT" -U test -d "$RUNTIME_TEMPLATE" \
+      -v ON_ERROR_STOP=1 \
+      -c "SELECT \
+            (SELECT pg_catalog.string_agg(ordinal::pg_catalog.text || ':' || \
+                     state_tag::pg_catalog.text || ':' || schema_epoch::pg_catalog.text, \
+                     ',' ORDER BY ordinal) \
+             FROM babylon_meta.persistence_authority_ledger) \
+            || '|' || (SELECT pg_catalog.count(*)::pg_catalog.text \
+                       FROM babylon_meta.campaign)")" || return
+  [ "$template_observation" = "1:1:8,2:2:9|0" ] || return 1
+  clone_count="$(timeout --signal=TERM --kill-after=2s 10s \
+    env PGPASSWORD=test PGCONNECT_TIMEOUT=2 PGSSLMODE=disable \
+    psql -X -w -qAt -h 127.0.0.1 -p "$PORT" -U test -d postgres \
+      -v ON_ERROR_STOP=1 \
+      -c "SELECT pg_catalog.count(*) FROM pg_catalog.pg_database \
+          WHERE datname LIKE 'per281_runtime_%' \
+            AND datname <> '$RUNTIME_TEMPLATE'")" || return
+  [ "$clone_count" = "0" ] || return 1
+  printf 'PER-281 runtime template isolated: database=%s authority=%s clones=%s\n' \
+    "$RUNTIME_TEMPLATE" "$template_observation" "$clone_count"
+}
+
+drop_runtime_template() {
+  timeout --signal=TERM --kill-after=2s 10s \
+    env PGPASSWORD=test PGCONNECT_TIMEOUT=2 PGSSLMODE=disable \
+    psql -X -w -qAt -h 127.0.0.1 -p "$PORT" -U test -d postgres \
+      -v ON_ERROR_STOP=1 \
+      -c "DROP DATABASE IF EXISTS \"$RUNTIME_TEMPLATE\" WITH (FORCE)" || return
+  RUNTIME_TEMPLATE_CREATED=0
+}
+
 # shellcheck disable=SC2329 # Invoked by the INT, TERM, and HUP traps below.
 on_signal() {
   local -r status="$1"
@@ -215,10 +295,10 @@ wait_for_runtime || die "pinned PostgreSQL runtime was not ready within 90 secon
 
 printf 'PER-20 runtime ready: container=%s volume=%s port=%s\n' \
   "$CONTAINER" "$VOLUME" "$PORT"
+BOOTSTRAP_DSN="postgresql://test:test@127.0.0.1:$PORT/babylon_test"
+readonly BOOTSTRAP_DSN
 status=0
 if [ "$LIVE_FOCUS" = "clean_bootstrap" ] || [ "$LIVE_FOCUS" = "pr" ]; then
-  BOOTSTRAP_DSN="postgresql://test:test@127.0.0.1:$PORT/babylon_test"
-  readonly BOOTSTRAP_DSN
   HOSTILE_OPTIONS_DSN="${BOOTSTRAP_DSN}?options=-c%20search_path%3Dredirected%2Cpublic"
   readonly HOSTILE_OPTIONS_DSN
   before_options_refusal="$(timeout --signal=TERM --kill-after=2s 10s \
@@ -295,10 +375,23 @@ if [ "$LIVE_FOCUS" = "clean_bootstrap" ] || [ "$LIVE_FOCUS" = "pr" ]; then
     fi
   fi
 
+  if [ "$status" -eq 0 ] && [ "$LIVE_FOCUS" = "pr" ]; then
+    create_runtime_template "$BOOTSTRAP_DSN" || status=$?
+  fi
+
   if [ "$status" -eq 0 ]; then
     timeout --signal=TERM --kill-after=30s 1800s \
       env BABYLON_RUNTIME_DSN="$BOOTSTRAP_DSN" \
       mise run qa:michigan-rollover-smoke || status=$?
+  fi
+fi
+if [ "$status" -eq 0 ] && [ "$LIVE_FOCUS" = "rust_persistence_runtime" ]; then
+  cd "$REPO_ROOT"
+  timeout --signal=TERM --kill-after=30s 600s \
+    env BABYLON_RUNTIME_DSN="$BOOTSTRAP_DSN" \
+    mise run db:bootstrap || status=$?
+  if [ "$status" -eq 0 ]; then
+    create_runtime_template "$BOOTSTRAP_DSN" || status=$?
   fi
 fi
 cd "$REPO_ROOT/rust"
@@ -326,6 +419,7 @@ if [ "$status" -eq 0 ] &&
     BABYLON_LEGACY_ADOPTER_TEST_DSN="postgresql://test:test@127.0.0.1:$PORT/postgres" \
     BABYLON_LEGACY_ADOPTER_DISPOSABLE_ACK="$TEST_HARNESS_ACK" \
     BABYLON_LEGACY_ADOPTER_DISPOSABLE_CANARY="$CANARY" \
+    BABYLON_RUNTIME_TEMPLATE_DB="$RUNTIME_TEMPLATE" \
     CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/rust/target}" \
   cargo test -p babylon-persistence --lib \
     runtime::live_tests::live_ \
@@ -399,6 +493,15 @@ if [ "$status" -eq 0 ] && [ -z "$LIVE_FOCUS" ]; then
     cargo test -p babylon-persistence --lib \
       schema_epoch::live_rollback_tests::rollback_and_ambiguous_commit_reconciliation_are_atomic \
       --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
+fi
+
+if [ "$RUNTIME_TEMPLATE_CREATED" -eq 1 ]; then
+  template_status=0
+  verify_runtime_template_and_clone_cleanup || template_status=$?
+  drop_runtime_template || template_status=$?
+  if [ "$status" -eq 0 ] && [ "$template_status" -ne 0 ]; then
+    status="$template_status"
+  fi
 fi
 
 if [ "$status" -ne 0 ]; then

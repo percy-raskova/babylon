@@ -2312,6 +2312,7 @@ mod live_tests {
     const ACK_ENV: &str = "BABYLON_LEGACY_ADOPTER_DISPOSABLE_ACK";
     const ACK: &str = "I_UNDERSTAND_PER20_DROPS_SCRATCH_DATABASES_ROLES_AND_CREATED_BABYLON_INTEL";
     const CANARY_ENV: &str = "BABYLON_LEGACY_ADOPTER_DISPOSABLE_CANARY";
+    const TEMPLATE_DB_ENV: &str = "BABYLON_RUNTIME_TEMPLATE_DB";
     const DEFINES: &[u8] = br#"{"alpha":1}"#;
     const REFERENCE_BUNDLE_DOMAIN: &[u8] = b"babylon.h3.reference-bundle-composite.v1\0";
     const SCENARIO: &str = r"
@@ -2338,9 +2339,9 @@ mod live_tests {
     fn live_marker_last_commit_and_restart_are_atomic() {
         let base = validated_base_config();
         verify_frozen_python_estate_activation(&base);
-        let database = TestDatabase::create(&base, "runtimeatomic");
+        let template = validated_template_name();
+        let database = TestDatabase::create_from_template(&base, &template, "runtimeatomic");
         let config = database.config(&base);
-        activate_rust_persistence_v1(&config).expect("fresh Rust activation");
         let campaign_id =
             CampaignId::from_uuid(Uuid::from_u128(0x2810_0000_0000_0000_0000_0000_0000_00a1));
         let (session, bundle) = runtime_fixture();
@@ -2475,9 +2476,9 @@ mod live_tests {
     #[ignore = "requires the task-owned disposable PER-20 PostgreSQL runtime"]
     fn live_commit_ambiguity_reconciliation_is_exact() {
         let base = validated_base_config();
-        let database = TestDatabase::create(&base, "runtimeambiguous");
+        let template = validated_template_name();
+        let database = TestDatabase::create_from_template(&base, &template, "runtimeambiguous");
         let config = database.config(&base);
-        activate_rust_persistence_v1(&config).expect("fresh Rust activation");
         let campaign_id =
             CampaignId::from_uuid(Uuid::from_u128(0x2810_0000_0000_0000_0000_0000_0000_00a2));
         let (session, bundle) = runtime_fixture();
@@ -2510,9 +2511,9 @@ mod live_tests {
     #[ignore = "requires the task-owned disposable PER-20 PostgreSQL runtime"]
     fn live_retry_and_restart_refuse_a_mutated_typed_payload() {
         let base = validated_base_config();
-        let database = TestDatabase::create(&base, "runtimemutated");
+        let template = validated_template_name();
+        let database = TestDatabase::create_from_template(&base, &template, "runtimemutated");
         let config = database.config(&base);
-        activate_rust_persistence_v1(&config).expect("fresh Rust activation");
         let campaign_id =
             CampaignId::from_uuid(Uuid::from_u128(0x2810_0000_0000_0000_0000_0000_0000_00a3));
         let (session, bundle) = runtime_fixture();
@@ -2562,9 +2563,9 @@ mod live_tests {
     #[ignore = "requires the task-owned disposable PER-20 PostgreSQL runtime"]
     fn live_restart_uses_the_latest_full_checkpoint_not_the_foundation_history() {
         let base = validated_base_config();
-        let database = TestDatabase::create(&base, "runtimelatest");
+        let template = validated_template_name();
+        let database = TestDatabase::create_from_template(&base, &template, "runtimelatest");
         let config = database.config(&base);
-        activate_rust_persistence_v1(&config).expect("fresh Rust activation");
         let campaign_id =
             CampaignId::from_uuid(Uuid::from_u128(0x2810_0000_0000_0000_0000_0000_0000_00a4));
         let (session, bundle) = runtime_fixture();
@@ -2679,6 +2680,22 @@ mod live_tests {
         config
     }
 
+    fn validated_template_name() -> String {
+        let template = std::env::var(TEMPLATE_DB_ENV)
+            .expect("runner supplies the validated Rust-active template database");
+        let suffix = template
+            .strip_prefix("per281_runtime_template_")
+            .expect("runtime template uses the task-owned prefix");
+        assert_eq!(suffix.len(), 12);
+        assert!(suffix
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)));
+        assert!(template
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_'));
+        template
+    }
+
     fn marker_row_count(config: &Config, campaign_id: CampaignId) -> i64 {
         config
             .connect(NoTls)
@@ -2748,6 +2765,54 @@ mod live_tests {
             let mut config = base.clone();
             config.dbname(&self.name);
             config
+        }
+
+        fn create_from_template(base: &Config, template: &str, label: &str) -> Self {
+            assert!(label.bytes().all(|byte| byte.is_ascii_lowercase()));
+            assert!(template
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_'));
+            let name = format!("per281_runtime_{label}_{}", std::process::id());
+            let mut admin = base.clone();
+            admin.dbname("postgres");
+            let sql = format!("CREATE DATABASE \"{name}\" OWNER test TEMPLATE \"{template}\"");
+            admin
+                .connect(NoTls)
+                .expect("admin connection")
+                .batch_execute(&sql)
+                .expect("runtime clone creation");
+            let database = Self {
+                name,
+                admin,
+                active: true,
+            };
+            let observation = database
+                .config(base)
+                .connect(NoTls)
+                .expect("runtime clone connection")
+                .query_one(
+                    "SELECT \
+                       (SELECT pg_catalog.string_agg(ordinal::pg_catalog.text || ':' || \
+                                state_tag::pg_catalog.text || ':' || schema_epoch::pg_catalog.text, \
+                                ',' ORDER BY ordinal) \
+                        FROM babylon_meta.persistence_authority_ledger), \
+                       (SELECT pg_catalog.count(*) FROM babylon_meta.campaign)",
+                    &[],
+                )
+                .expect("runtime clone observation");
+            assert_eq!(
+                observation
+                    .try_get::<_, String>(0)
+                    .expect("authority ledger decodes"),
+                "1:1:8,2:2:9"
+            );
+            assert_eq!(
+                observation
+                    .try_get::<_, i64>(1)
+                    .expect("campaign count decodes"),
+                0
+            );
+            database
         }
 
         fn cleanup(mut self) {

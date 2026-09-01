@@ -62,7 +62,7 @@ mise run sim:e2e-michigan     # Fresh 520-tick Rust run unless campaign ID is ex
 mise run sim:e2e-bg           # Resume explicit campaign, or worktree default, in background
 mise run sim:status           # Process, its recorded campaign tail, and global totals
 mise run sim:probe            # Explicit campaign, or worktree default, plus global totals
-mise run sim:archive          # Inspect global Rust-owned Archive dirty receipts
+mise run sim:archive          # Verify semantic Archive schema and report its estate
 mise run sim:report                    # Local 60-tick report; shared database attribution
 mise run sim:report 520 3000 exclusive # Canonical Rust Michigan diagnostic bundle
 mise run reference:python-smoke  # Frozen Python one-tick reference smoke

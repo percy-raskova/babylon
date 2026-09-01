@@ -30,8 +30,9 @@ The binary accepts these commands:
      - Show the authority ledger, selected campaign tail when configured, and
        separately labeled database-wide totals.
    * - ``archive``
-     - Inspect database-wide durable Archive dirty receipts without mutating
-       campaigns.
+     - Install the client-owned semantic Archive schema or check its marker and
+       relations. Then report durable receipts, grants, consumptions, and pages.
+       This command does not change campaign material state.
    * - ``michigan-smoke``
      - Commit and restart the Michigan campaign across the 60-tick proof.
 

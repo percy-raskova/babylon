@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 #![warn(clippy::pedantic)]
 
+mod archive;
 mod bootstrap;
 mod checkpoint;
 pub mod committed_tick_envelope;
@@ -31,6 +32,7 @@ pub mod spatial_reference_products;
 mod stored_tick;
 pub mod tick_commit_claim;
 
+pub use archive::*;
 pub use bootstrap::{
     bootstrap_h3_reader_epoch_v1, H3ReaderBootstrapErrorV1, H3ReaderBootstrapReportV1,
 };

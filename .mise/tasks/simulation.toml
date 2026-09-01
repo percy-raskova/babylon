@@ -69,7 +69,7 @@ babylon-runtime probe
 '''
 
 ["sim:archive"]
-description = "Inspect global Rust-owned Archive dirty receipts without mutation"
+description = "Install or verify the semantic Archive schema and report its global estate"
 run = '''
 export BABYLON_RUNTIME_DSN="${BABYLON_RUNTIME_DSN:-host=127.0.0.1 port=5433 dbname=babylon_test user=test password=test}"
 export PATH="$PWD/rust/target/debug:$PATH"

@@ -103,19 +103,42 @@ fn dirty_batch_has_an_explicit_page_limit() {
 }
 
 fn knowledge() -> ArchiveKnowledgeV1 {
-    ArchiveKnowledgeV1::try_new(
-        vec![
-            ArchivePageRefV1::try_new(ArchiveSubjectKindV1::County, "26163".to_owned())
-                .expect("county ref"),
+    knowledge_with_subject_locator("county/26163")
+}
+
+fn knowledge_with_subject_locator(subject_locator: &str) -> ArchiveKnowledgeV1 {
+    let county_ref = ArchivePageRefV1::try_new(ArchiveSubjectKindV1::County, "26163".to_owned())
+        .expect("county ref");
+    ArchiveKnowledgeV1::try_new(vec![
+        ArchiveKnowledgeGrantV1::try_new(
+            county_ref.clone(),
+            "subject".to_owned(),
+            42,
+            ArchiveCitationV1::try_new("archive-subject".to_owned(), subject_locator.to_owned())
+                .expect("subject citation"),
+        )
+        .expect("subject grant"),
+        ArchiveKnowledgeGrantV1::try_new(
+            county_ref,
+            "employment".to_owned(),
+            42,
+            ArchiveCitationV1::try_new(
+                "knowledge-event".to_owned(),
+                "employment@tick-42".to_owned(),
+            )
+            .expect("field grant citation"),
+        )
+        .expect("field grant"),
+        ArchiveKnowledgeGrantV1::try_new(
             ArchivePageRefV1::try_new(ArchiveSubjectKindV1::Place, "2684000".to_owned())
                 .expect("Detroit ref"),
-        ],
-        vec![(
-            ArchivePageRefV1::try_new(ArchiveSubjectKindV1::County, "26163".to_owned())
-                .expect("county ref"),
-            "employment".to_owned(),
-        )],
-    )
+            "subject".to_owned(),
+            42,
+            ArchiveCitationV1::try_new("archive-subject".to_owned(), "place/2684000".to_owned())
+                .expect("linked subject citation"),
+        )
+        .expect("linked subject grant"),
+    ])
     .expect("knowledge grants")
 }
 
@@ -146,24 +169,41 @@ fn pinned_strict_renderer_is_deterministic_and_preserves_unknown_redlinks() {
     assert!(first.markdown().contains("[[place/2684000|Detroit]]"));
     assert!(first.markdown().contains("[[place/2674900]]"));
     assert!(!first.markdown().contains("Riverview"));
+    assert_eq!(first.citations().len(), 2);
+    assert_eq!(first.citations()[0].source_id(), "archive-subject");
+    assert_eq!(first.citations()[1].source_id(), "qcew-2024");
+    assert!(first
+        .search_text()
+        .contains("Which neighboring place should organizers investigate next?"));
+}
+
+#[test]
+fn knowledge_snapshot_identity_includes_exact_grant_provenance() {
+    assert_ne!(
+        knowledge().sha256(),
+        knowledge_with_subject_locator("county/26163/revised").sha256()
+    );
+    assert!(SEMANTIC_ARCHIVE_SCHEMA_V1_SQL.contains("knowledge_sha256 BYTEA NOT NULL"));
 }
 
 #[test]
 fn subject_and_signal_grants_are_both_required() {
     let renderer = FogSafeArchiveRendererV1::new().expect("pinned template compiles");
-    let no_subject = ArchiveKnowledgeV1::try_new(Vec::new(), Vec::new()).expect("empty knowledge");
+    let no_subject = ArchiveKnowledgeV1::try_new(Vec::new()).expect("empty knowledge");
     assert_eq!(
         renderer.render(&page_input(), &no_subject),
         Err(SemanticArchiveErrorV1::UnknownSubject)
     );
 
-    let subject_only = ArchiveKnowledgeV1::try_new(
-        vec![
-            ArchivePageRefV1::try_new(ArchiveSubjectKindV1::County, "26163".to_owned())
-                .expect("county ref"),
-        ],
-        Vec::new(),
+    let subject_only = ArchiveKnowledgeV1::try_new(vec![ArchiveKnowledgeGrantV1::try_new(
+        ArchivePageRefV1::try_new(ArchiveSubjectKindV1::County, "26163".to_owned())
+            .expect("county ref"),
+        "subject".to_owned(),
+        42,
+        ArchiveCitationV1::try_new("archive-subject".to_owned(), "county/26163".to_owned())
+            .expect("subject citation"),
     )
+    .expect("subject grant")])
     .expect("subject-only grant");
     let page_without_signals = renderer
         .render(&page_input(), &subject_only)
@@ -193,6 +233,24 @@ fn validated_inputs_refuse_ambiguous_or_unbounded_identity() {
         ),
         Err(SemanticArchiveErrorV1::InvalidVerifiedTick)
     );
+    assert_eq!(
+        ArchiveKnowledgeGrantV1::try_new(
+            county().page_ref().clone(),
+            "-hidden".to_owned(),
+            42,
+            ArchiveCitationV1::try_new("source".to_owned(), "locator".to_owned())
+                .expect("valid citation"),
+        ),
+        Err(SemanticArchiveErrorV1::InvalidText)
+    );
+}
+
+#[test]
+fn serialized_citations_cannot_bypass_validation() {
+    assert!(
+        serde_json::from_str::<ArchiveCitationV1>(r#"{"source_id":"","locator":"locator"}"#)
+            .is_err()
+    );
 }
 
 #[test]
@@ -218,6 +276,8 @@ fn persistence_queries_enforce_grants_in_sql_and_hide_raw_ledgers() {
 
     assert!(ARCHIVE_KNOWLEDGE_SQL_V1.contains("babylon_meta.archive_knowledge_grant_v1"));
     assert!(ARCHIVE_KNOWLEDGE_SQL_V1.contains("granted_tick <= $2"));
+    assert!(ARCHIVE_KNOWLEDGE_SQL_V1.contains("provenance_source_id"));
+    assert!(ARCHIVE_KNOWLEDGE_SQL_V1.contains("provenance_locator"));
     assert!(ARCHIVE_SEARCH_SQL_V1.contains("JOIN babylon_meta.archive_knowledge_grant_v1"));
     assert!(ARCHIVE_SEARCH_SQL_V1.contains("knowledge.grant_key = 'subject'"));
     assert!(ARCHIVE_SEARCH_SQL_V1.contains("knowledge.granted_tick <= page.verified_tick"));
@@ -228,6 +288,67 @@ fn persistence_queries_enforce_grants_in_sql_and_hide_raw_ledgers() {
 #[test]
 #[ignore = "requires the task-owned disposable PostgreSQL runtime and one committed tick"]
 fn live_store_consumes_searches_and_reconciles_exact_receipt_retries() {
+    let (config, campaign_id, tick_content_hash) = live_contract_target();
+    let store = SemanticArchiveStoreV1::new(&config);
+    grant_live_county_knowledge(&store, campaign_id);
+    let batch = ArchiveDirtyBatchV1::try_new(
+        1,
+        tick_content_hash,
+        vec![page_input_at(
+            "Which neighboring place should organizers investigate next?",
+            1,
+            tick_content_hash,
+        )],
+    )
+    .expect("live batch");
+    let applied = store
+        .materialize_receipt(campaign_id, &batch)
+        .expect("live receipt materializes");
+    assert_eq!(
+        applied.disposition(),
+        ArchiveMaterializeDispositionV1::Applied
+    );
+    assert_eq!(applied.pages().len(), 1);
+    assert!(applied.pages()[0].persisted());
+
+    let hits = store
+        .search_known(campaign_id, "728576", 10)
+        .expect("known-only search");
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].verified_tick(), 1);
+    assert!(hits[0].markdown().contains("728576 jobs"));
+    assert!(!hits[0].markdown().contains("Riverview"));
+    assert_eq!(hits[0].citations().len(), 2);
+
+    let retry = store
+        .materialize_receipt(campaign_id, &batch)
+        .expect("exact retry reconciles");
+    assert_eq!(
+        retry.disposition(),
+        ArchiveMaterializeDispositionV1::AlreadyConsumed
+    );
+    grant_late_link_knowledge(&store, campaign_id);
+    assert_eq!(
+        store.materialize_receipt(campaign_id, &batch),
+        Err(SemanticArchiveErrorV1::ReceiptConflict)
+    );
+    let changed = ArchiveDirtyBatchV1::try_new(
+        1,
+        tick_content_hash,
+        vec![page_input_at(
+            "Which workplace should organizers investigate next?",
+            1,
+            tick_content_hash,
+        )],
+    )
+    .expect("changed live batch");
+    assert_eq!(
+        store.materialize_receipt(campaign_id, &changed),
+        Err(SemanticArchiveErrorV1::ReceiptConflict)
+    );
+}
+
+fn live_contract_target() -> (Config, CampaignId, [u8; 32]) {
     let dsn = std::env::var(LIVE_DSN_ENV).expect("disposable live DSN");
     let expected_canary = std::env::var(LIVE_CANARY_ENV).expect("disposable canary");
     let config = Config::from_str(&dsn).expect("live DSN parses");
@@ -259,8 +380,10 @@ fn live_store_consumes_searches_and_reconciles_exact_receipt_retries() {
         .try_get(0)
         .expect("dirty receipt digest");
     let tick_content_hash: [u8; 32] = receipt.try_into().expect("exact receipt digest width");
+    (config, campaign_id, tick_content_hash)
+}
 
-    let store = SemanticArchiveStoreV1::new(&config);
+fn grant_live_county_knowledge(store: &SemanticArchiveStoreV1, campaign_id: CampaignId) {
     for grant_key in ["subject", "employment"] {
         store
             .grant_knowledge(
@@ -279,54 +402,24 @@ fn live_store_consumes_searches_and_reconciles_exact_receipt_retries() {
             )
             .expect("knowledge grant persists");
     }
-    let batch = ArchiveDirtyBatchV1::try_new(
-        1,
-        tick_content_hash,
-        vec![page_input_at(
-            "Which neighboring place should organizers investigate next?",
-            1,
-            tick_content_hash,
-        )],
-    )
-    .expect("live batch");
-    let applied = store
-        .materialize_receipt(campaign_id, &batch)
-        .expect("live receipt materializes");
-    assert_eq!(
-        applied.disposition(),
-        ArchiveMaterializeDispositionV1::Applied
-    );
-    assert_eq!(applied.pages().len(), 1);
-    assert!(applied.pages()[0].persisted());
+}
 
-    let hits = store
-        .search_known(campaign_id, "728576", 10)
-        .expect("known-only search");
-    assert_eq!(hits.len(), 1);
-    assert_eq!(hits[0].verified_tick(), 1);
-    assert!(hits[0].markdown().contains("728576 jobs"));
-    assert!(!hits[0].markdown().contains("Riverview"));
-    assert_eq!(hits[0].citations().len(), 1);
-
-    let retry = store
-        .materialize_receipt(campaign_id, &batch)
-        .expect("exact retry reconciles");
-    assert_eq!(
-        retry.disposition(),
-        ArchiveMaterializeDispositionV1::AlreadyConsumed
-    );
-    let changed = ArchiveDirtyBatchV1::try_new(
-        1,
-        tick_content_hash,
-        vec![page_input_at(
-            "Which workplace should organizers investigate next?",
-            1,
-            tick_content_hash,
-        )],
-    )
-    .expect("changed live batch");
-    assert_eq!(
-        store.materialize_receipt(campaign_id, &changed),
-        Err(SemanticArchiveErrorV1::ReceiptConflict)
-    );
+fn grant_late_link_knowledge(store: &SemanticArchiveStoreV1, campaign_id: CampaignId) {
+    store
+        .grant_knowledge(
+            campaign_id,
+            &ArchiveKnowledgeGrantV1::try_new(
+                ArchivePageRefV1::try_new(ArchiveSubjectKindV1::Place, "2674900".to_owned())
+                    .expect("newly known place ref"),
+                "subject".to_owned(),
+                1,
+                ArchiveCitationV1::try_new(
+                    "live-contract".to_owned(),
+                    "subject@tick-1-after-consumption".to_owned(),
+                )
+                .expect("late subject citation"),
+            )
+            .expect("late subject grant"),
+        )
+        .expect("late knowledge grant persists");
 }

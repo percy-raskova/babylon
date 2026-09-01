@@ -30,6 +30,7 @@ CREATE TABLE babylon_meta.archive_receipt_consumption_v1 (
     worker_contract_sha256 BYTEA NOT NULL CHECK (
         pg_catalog.octet_length(worker_contract_sha256) = 32
     ),
+    knowledge_sha256 BYTEA NOT NULL CHECK (pg_catalog.octet_length(knowledge_sha256) = 32),
     PRIMARY KEY (campaign_id, resolve_tick),
     FOREIGN KEY (campaign_id, resolve_tick)
         REFERENCES babylon_state.archive_dirty_receipt_v1(campaign_id, resolve_tick)

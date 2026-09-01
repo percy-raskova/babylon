@@ -92,11 +92,14 @@ must refresh. ``sim:archive`` installs the additive client-owned Archive schema
 exactly once. Later calls check its marker and relations. The command reports
 receipts, knowledge grants, consumptions, and materialized pages.
 
-The first semantic worker slice binds an exact dirty batch to each marker-backed
-receipt. It applies subject and field knowledge grants in SQL. It renders pages
-with the pinned strict MiniJinja template and searches only granted pages. Later
-Gate 3 work adds broader dirty-subject producers, dossier coverage, and the
-playable retrieval loop. This slice alone does not pass a game milestone.
+The first semantic worker slice binds an exact dirty batch, worker contract,
+and ordered knowledge-grant snapshot to each marker-backed receipt. The
+snapshot includes grant provenance, so an exact retry refuses knowledge drift.
+It applies subject and field knowledge grants in SQL. It renders pages with the
+pinned strict MiniJinja template, persists subject and visible-signal
+citations, and searches only granted visible material. Later Gate 3 work adds
+broader dirty-subject producers, dossier coverage, and the playable retrieval
+loop. This slice alone does not pass a game milestone.
 
 Operational Consequences
 ------------------------

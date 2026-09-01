@@ -1,6 +1,6 @@
 //! Fog-safe semantic Archive page and knowledge contracts.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use babylon_kernel::sha256_of;
 use minijinja::{context, Environment, UndefinedBehavior};
@@ -26,6 +26,7 @@ const MAX_SEARCH_HITS: u32 = 100;
 const ARCHIVE_SCHEMA_CONTRACT_ID: &str = "babylon.semantic-archive-schema.v1";
 const ARCHIVE_WORKER_DOMAIN_V1: &[u8] = b"babylon.semantic-archive-worker.v1\0";
 const ARCHIVE_DIRTY_BATCH_DOMAIN_V1: &[u8] = b"babylon.semantic-archive-dirty-batch.v1\0";
+const ARCHIVE_KNOWLEDGE_DOMAIN_V1: &[u8] = b"babylon.semantic-archive-knowledge.v1\0";
 const ARCHIVE_SCHEMA_MARKERS_SQL_V1: &str = "SELECT \
     pg_catalog.to_regclass('babylon_meta.semantic_archive_schema_v1') IS NOT NULL, \
     pg_catalog.to_regclass('babylon_meta.archive_knowledge_grant_v1') IS NOT NULL, \
@@ -39,7 +40,8 @@ const ARCHIVE_RECEIPT_SQL_V1: &str = "SELECT dirty.tick_content_hash \
     WHERE dirty.campaign_id = $1::uuid AND dirty.resolve_tick = $2 \
     FOR SHARE OF dirty, marker";
 /// SQL-only knowledge boundary used before any template receives values.
-pub const ARCHIVE_KNOWLEDGE_SQL_V1: &str = "SELECT subject_kind, subject_id, grant_key \
+pub const ARCHIVE_KNOWLEDGE_SQL_V1: &str = "SELECT subject_kind, subject_id, grant_key, \
+    granted_tick, provenance_source_id, provenance_locator \
     FROM babylon_meta.archive_knowledge_grant_v1 \
     WHERE campaign_id = $1::uuid AND granted_tick <= $2 \
     ORDER BY subject_kind, subject_id, grant_key LIMIT $3";
@@ -164,10 +166,26 @@ impl ArchiveSubjectV1 {
 }
 
 /// One player-visible source locator.
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ArchiveCitationV1 {
     source_id: String,
     locator: String,
+}
+
+#[derive(Deserialize)]
+struct UnvalidatedArchiveCitationV1 {
+    source_id: String,
+    locator: String,
+}
+
+impl<'de> Deserialize<'de> for ArchiveCitationV1 {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let citation = UnvalidatedArchiveCitationV1::deserialize(deserializer)?;
+        Self::try_new(citation.source_id, citation.locator).map_err(serde::de::Error::custom)
+    }
 }
 
 impl ArchiveCitationV1 {
@@ -217,6 +235,8 @@ impl ArchiveSignalV1 {
         validate_key(&grant_key)?;
         validate_text(&label)?;
         validate_text(&value)?;
+        validate_text(citation.source_id())?;
+        validate_text(citation.locator())?;
         Ok(Self {
             grant_key,
             label,
@@ -306,39 +326,57 @@ impl ArchivePageInputV1 {
 /// Exact SQL-derived knowledge grants supplied to the pure renderer.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ArchiveKnowledgeV1 {
-    subjects: BTreeSet<ArchivePageRefV1>,
-    fields: BTreeSet<(ArchivePageRefV1, String)>,
+    grants: BTreeMap<(ArchivePageRefV1, String), ArchiveKnowledgeGrantV1>,
 }
 
 impl ArchiveKnowledgeV1 {
     /// Validate an exact SQL grant result.
     ///
     /// # Errors
-    /// Refuses duplicate subjects, fields, or invalid field keys.
-    pub fn try_new(
-        subjects: Vec<ArchivePageRefV1>,
-        fields: Vec<(ArchivePageRefV1, String)>,
-    ) -> Result<Self, SemanticArchiveErrorV1> {
-        for (_, field) in &fields {
-            validate_key(field)?;
+    /// Refuses duplicate rows or a malformed key or citation.
+    pub fn try_new(grants: Vec<ArchiveKnowledgeGrantV1>) -> Result<Self, SemanticArchiveErrorV1> {
+        let mut indexed = BTreeMap::new();
+        for grant in grants {
+            validate_key(&grant.grant_key)?;
+            validate_text(grant.citation.source_id())?;
+            validate_text(grant.citation.locator())?;
+            let key = (grant.page_ref.clone(), grant.grant_key.clone());
+            if indexed.insert(key, grant).is_some() {
+                return Err(SemanticArchiveErrorV1::DuplicateGrant);
+            }
         }
-        let subject_count = subjects.len();
-        let field_count = fields.len();
-        let subjects = subjects.into_iter().collect::<BTreeSet<_>>();
-        let fields = fields.into_iter().collect::<BTreeSet<_>>();
-        if subjects.len() != subject_count || fields.len() != field_count {
-            return Err(SemanticArchiveErrorV1::DuplicateGrant);
-        }
-        Ok(Self { subjects, fields })
+        Ok(Self { grants: indexed })
     }
 
     fn knows_subject(&self, page_ref: &ArchivePageRefV1) -> bool {
-        self.subjects.contains(page_ref)
+        self.grant(page_ref, "subject").is_some()
     }
 
     fn knows_field(&self, page_ref: &ArchivePageRefV1, grant_key: &str) -> bool {
-        self.fields
-            .contains(&(page_ref.clone(), grant_key.to_owned()))
+        self.grant(page_ref, grant_key).is_some()
+    }
+
+    fn grant(
+        &self,
+        page_ref: &ArchivePageRefV1,
+        grant_key: &str,
+    ) -> Option<&ArchiveKnowledgeGrantV1> {
+        self.grants.get(&(page_ref.clone(), grant_key.to_owned()))
+    }
+
+    /// Hash every exact, ordered knowledge-grant row in this snapshot.
+    #[must_use]
+    pub fn sha256(&self) -> [u8; 32] {
+        let mut hasher = Sha256::new();
+        hasher.update(ARCHIVE_KNOWLEDGE_DOMAIN_V1);
+        hash_len(&mut hasher, self.grants.len());
+        for ((page_ref, grant_key), grant) in &self.grants {
+            hash_page_ref(&mut hasher, page_ref);
+            hash_bytes(&mut hasher, grant_key.as_bytes());
+            hasher.update(grant.granted_tick.to_be_bytes());
+            hash_citation(&mut hasher, &grant.citation);
+        }
+        hasher.finalize().into()
     }
 }
 
@@ -347,6 +385,7 @@ impl ArchiveKnowledgeV1 {
 pub struct RenderedArchivePageV1 {
     markdown: String,
     search_text: String,
+    citations: Vec<ArchiveCitationV1>,
     sha256: [u8; 32],
 }
 
@@ -361,6 +400,12 @@ impl RenderedArchivePageV1 {
     #[must_use]
     pub fn search_text(&self) -> &str {
         &self.search_text
+    }
+
+    /// Borrow the exact provenance citations for the known page material.
+    #[must_use]
+    pub fn citations(&self) -> &[ArchiveCitationV1] {
+        &self.citations
     }
 
     /// Return SHA-256 of exact Markdown bytes.
@@ -434,6 +479,7 @@ impl FogSafeArchiveRendererV1 {
             })
             .map_err(|_| SemanticArchiveErrorV1::Template)?;
         let search_text = known_search_text(input, knowledge);
+        let citations = known_citations(input, knowledge);
         if markdown.len() > MAX_PAGE_BYTES || search_text.len() > MAX_PAGE_BYTES {
             return Err(SemanticArchiveErrorV1::CollectionBound);
         }
@@ -441,6 +487,7 @@ impl FogSafeArchiveRendererV1 {
         Ok(RenderedArchivePageV1 {
             markdown,
             search_text,
+            citations,
             sha256,
         })
     }
@@ -534,6 +581,8 @@ impl ArchiveKnowledgeGrantV1 {
         citation: ArchiveCitationV1,
     ) -> Result<Self, SemanticArchiveErrorV1> {
         validate_key(&grant_key)?;
+        validate_text(citation.source_id())?;
+        validate_text(citation.locator())?;
         if granted_tick > i64::MAX as u64 {
             return Err(SemanticArchiveErrorV1::InvalidVerifiedTick);
         }
@@ -560,7 +609,7 @@ pub enum ArchiveSchemaDispositionV1 {
 pub enum ArchiveMaterializeDispositionV1 {
     /// This invocation consumed and rendered the receipt.
     Applied,
-    /// The exact worker contract had already consumed the receipt.
+    /// The exact batch, worker, and knowledge snapshot already consumed the receipt.
     AlreadyConsumed,
 }
 
@@ -808,7 +857,7 @@ impl SemanticArchiveStoreV1 {
     ///
     /// # Errors
     /// Refuses an absent/mismatched receipt, unknown page subject, template failure,
-    /// conflicting prior consumption, or database failure.
+    /// conflicting prior batch, worker, or knowledge identity, or database failure.
     pub fn materialize_receipt(
         &self,
         campaign_id: CampaignId,
@@ -836,12 +885,14 @@ impl SemanticArchiveStoreV1 {
         if receipt_hash != batch.tick_content_hash {
             return Err(SemanticArchiveErrorV1::ReceiptMismatch);
         }
+        let knowledge = read_knowledge(&mut transaction, campaign_id, resolve_tick)?;
+        let knowledge_sha256 = knowledge.sha256();
         let claimed = transaction
             .execute(
                 "INSERT INTO babylon_meta.archive_receipt_consumption_v1 \
                  (campaign_id, resolve_tick, tick_content_hash, batch_sha256, \
-                  worker_contract_sha256) \
-                 VALUES ($1::uuid, $2, $3, $4, $5) \
+                  worker_contract_sha256, knowledge_sha256) \
+                 VALUES ($1::uuid, $2, $3, $4, $5, $6) \
                  ON CONFLICT (campaign_id, resolve_tick) DO NOTHING",
                 &[
                     campaign_id.as_uuid(),
@@ -849,13 +900,15 @@ impl SemanticArchiveStoreV1 {
                     &&batch.tick_content_hash[..],
                     &&batch_sha256[..],
                     &&worker_contract[..],
+                    &&knowledge_sha256[..],
                 ],
             )
             .map_err(|_| database("claim Archive receipt"))?;
         if claimed == 0 {
             let row = transaction
                 .query_one(
-                    "SELECT tick_content_hash, batch_sha256, worker_contract_sha256 \
+                    "SELECT tick_content_hash, batch_sha256, worker_contract_sha256, \
+                            knowledge_sha256 \
                      FROM babylon_meta.archive_receipt_consumption_v1 \
                      WHERE campaign_id = $1::uuid AND resolve_tick = $2",
                     &[campaign_id.as_uuid(), &resolve_tick],
@@ -864,6 +917,7 @@ impl SemanticArchiveStoreV1 {
             if decode_digest(&row, 0)? != batch.tick_content_hash
                 || decode_digest(&row, 1)? != batch_sha256
                 || decode_digest(&row, 2)? != worker_contract
+                || decode_digest(&row, 3)? != knowledge_sha256
             {
                 return Err(SemanticArchiveErrorV1::ReceiptConflict);
             }
@@ -875,12 +929,10 @@ impl SemanticArchiveStoreV1 {
                 pages: Vec::new(),
             });
         }
-        let knowledge = read_knowledge(&mut transaction, campaign_id, resolve_tick)?;
         let mut materialized = Vec::with_capacity(batch.pages.len());
         for input in &batch.pages {
             let page = renderer.render(input, &knowledge)?;
-            let citations = known_citations(input, &knowledge);
-            let provenance_json = serde_json::to_string(&citations)
+            let provenance_json = serde_json::to_string(page.citations())
                 .map_err(|_| SemanticArchiveErrorV1::InvalidText)?;
             let persisted = persist_page(
                 &mut transaction,
@@ -974,31 +1026,40 @@ fn read_knowledge(
     if rows.len() > MAX_KNOWLEDGE_GRANTS {
         return Err(SemanticArchiveErrorV1::CollectionBound);
     }
-    let mut subjects = Vec::with_capacity(rows.len());
-    let mut fields = Vec::with_capacity(rows.len());
+    let mut grants = Vec::with_capacity(rows.len());
     for row in rows {
         let kind = decode_subject_kind(&decode::<String>(&row, 0)?)?;
         let page_ref = ArchivePageRefV1::try_new(kind, decode(&row, 1)?)?;
         let grant_key: String = decode(&row, 2)?;
-        if grant_key == "subject" {
-            subjects.push(page_ref);
-        } else {
-            fields.push((page_ref, grant_key));
-        }
+        let granted_tick = u64::try_from(decode::<i64>(&row, 3)?)
+            .map_err(|_| SemanticArchiveErrorV1::StoredPageMismatch)?;
+        let citation = ArchiveCitationV1::try_new(decode(&row, 4)?, decode(&row, 5)?)?;
+        grants.push(ArchiveKnowledgeGrantV1::try_new(
+            page_ref,
+            grant_key,
+            granted_tick,
+            citation,
+        )?);
     }
-    ArchiveKnowledgeV1::try_new(subjects, fields)
+    ArchiveKnowledgeV1::try_new(grants)
 }
 
 fn known_citations(
     input: &ArchivePageInputV1,
     knowledge: &ArchiveKnowledgeV1,
 ) -> Vec<ArchiveCitationV1> {
-    input
-        .signals
-        .iter()
-        .filter(|signal| knowledge.knows_field(input.subject.page_ref(), &signal.grant_key))
-        .map(|signal| signal.citation.clone())
-        .collect()
+    let mut citations = Vec::with_capacity(input.signals.len() + 1);
+    if let Some(subject_grant) = knowledge.grant(input.subject.page_ref(), "subject") {
+        citations.push(subject_grant.citation.clone());
+    }
+    for signal in &input.signals {
+        if knowledge.knows_field(input.subject.page_ref(), &signal.grant_key)
+            && !citations.contains(&signal.citation)
+        {
+            citations.push(signal.citation.clone());
+        }
+    }
+    citations
 }
 
 fn persist_page(
@@ -1144,7 +1205,7 @@ pub enum SemanticArchiveErrorV1 {
     ReceiptMismatch,
     /// No marker-backed dirty receipt exists for the requested tick.
     MissingCommittedReceipt,
-    /// A different worker contract previously consumed the receipt.
+    /// A different batch, worker, or knowledge snapshot consumed the receipt.
     ReceiptConflict,
     /// An existing knowledge grant differs from the immutable retry.
     GrantConflict,
@@ -1179,11 +1240,13 @@ fn validate_text(value: &str) -> Result<(), SemanticArchiveErrorV1> {
 }
 
 fn validate_key(value: &str) -> Result<(), SemanticArchiveErrorV1> {
-    if value.is_empty()
-        || value.len() > MAX_ID_BYTES
-        || !value
-            .bytes()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+    let mut bytes = value.bytes();
+    let Some(first) = bytes.next() else {
+        return Err(SemanticArchiveErrorV1::InvalidText);
+    };
+    if value.len() > MAX_ID_BYTES
+        || !(first.is_ascii_lowercase() || first.is_ascii_digit())
+        || !bytes.all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
     {
         return Err(SemanticArchiveErrorV1::InvalidText);
     }
@@ -1236,6 +1299,7 @@ fn known_search_text(input: &ArchivePageInputV1, knowledge: &ArchiveKnowledgeV1)
     let mut parts = vec![
         input.subject.page_ref().page_key(),
         input.subject.title().to_owned(),
+        input.decision_question.clone(),
     ];
     for signal in &input.signals {
         if knowledge.knows_field(input.subject.page_ref(), &signal.grant_key) {

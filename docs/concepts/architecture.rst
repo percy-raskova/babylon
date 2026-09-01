@@ -145,12 +145,13 @@ nominal world hash. It does not submit a player intent.
 
 Each committed tick emits an Archive dirty receipt. ``sim:archive`` installs the
 client-owned semantic schema or checks its marker and relations. The Rust
-Archive store binds each receipt to an exact dirty batch. It applies knowledge
-grants in SQL, renders pages with the pinned strict template, and searches only
-pages that the player knows. Later work adds broader dossier producers, the
-player-facing retrieval surface, and a player decision loop that supports
-replay. The persistence cutover and this first Archive slice do not include
-those pieces.
+Archive store binds each receipt to an exact dirty batch, worker contract, and
+ordered knowledge-grant snapshot with provenance. It applies knowledge grants
+in SQL, renders pages with the pinned strict template, persists known
+citations, and searches only material visible to the player. Later work adds
+broader dossier producers, the player-facing retrieval surface, and a player
+decision loop that supports replay. The persistence cutover and this first
+Archive slice do not include those pieces.
 
 Flow
 ----

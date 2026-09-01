@@ -28,6 +28,15 @@ HOSTED_STATIC_TASKS = [
     "check:lock",
 ]
 
+PEDANTIC_RUST_PACKAGES = [
+    "babylon-kernel",
+    "babylon-persistence",
+    "babylon-bsl",
+    "babylon-graph",
+    "babylon-ls",
+    "babylon-client",
+]
+
 
 def _tasks() -> dict[str, dict[str, object]]:
     """Return the repository's parsed Mise task table."""
@@ -200,3 +209,99 @@ def test_rust_pre_push_uses_no_docs_gate_for_every_gate_definition() -> None:
         'git diff --name-only "${base}..HEAD" -- rust/ .mise.toml .pre-commit-config.yaml' in entry
     )
     assert "git status --porcelain -- rust/ .mise.toml .pre-commit-config.yaml" in entry
+
+
+def test_rust_gate_is_single_pass_with_explicit_repo_sentinel_exception() -> None:
+    """The canonical gate must not rerun package tests or Clippy passes."""
+    script = str(_tasks()["rust:check-no-docs"]["run"])
+    commands = [line for line in script.splitlines() if line.startswith("cargo ")]
+
+    assert [line for line in commands if line.startswith("cargo clippy ")] == [
+        "cargo clippy --workspace --all-targets --locked -- "
+        "-D warnings -D clippy::cognitive_complexity"
+    ]
+    assert [line for line in commands if line.startswith("cargo test ")] == [
+        "cargo test --workspace --locked"
+    ]
+    assert [line for line in commands if line.startswith("cargo run ")] == [
+        "cargo run -p bsl-lint --locked -- all"
+    ]
+
+
+def test_single_clippy_pass_preserves_the_existing_pedantic_package_boundary() -> None:
+    """Manifest lint policy must preserve every formerly scoped pedantic pass."""
+    workspace = tomllib.loads((REPOSITORY_ROOT / "rust" / "Cargo.toml").read_text())
+
+    assert workspace["workspace"]["lints"]["clippy"]["pedantic"] == {
+        "level": "warn",
+        "priority": -1,
+    }
+    opted_in = []
+    for manifest_path in sorted((REPOSITORY_ROOT / "rust" / "crates").glob("*/Cargo.toml")):
+        manifest = tomllib.loads(manifest_path.read_text())
+        if manifest.get("lints") == {"workspace": True}:
+            opted_in.append(manifest["package"]["name"])
+
+    assert opted_in == sorted(PEDANTIC_RUST_PACKAGES)
+
+
+def test_rust_cache_is_source_keyed_bounded_and_published_only_by_dev() -> None:
+    """PRs may restore the cache, while only successful dev pushes may save it."""
+    workflow = yaml.safe_load(CI_WORKFLOW.read_text())
+    steps = workflow["jobs"]["rust-gate"]["steps"]
+    restore = next(step for step in steps if step.get("name") == "Restore cargo cache")
+    measure = next(step for step in steps if step.get("name") == "Measure cargo cache payload")
+    save = next(step for step in steps if step.get("name") == "Publish trusted cargo cache")
+
+    assert restore["id"] == "cargo-cache"
+    assert restore["uses"].startswith("actions/cache/restore@")
+    assert (
+        "hashFiles('rust/**/*.rs', 'rust/**/Cargo.toml', '.mise.toml', "
+        "'.github/workflows/ci.yml')" in restore["with"]["key"]
+    )
+    assert restore["with"]["restore-keys"].splitlines() == [
+        "cargo-gate-${{ runner.os }}-v4-${{ "
+        "hashFiles('rust/Cargo.lock', 'rust/rust-toolchain.toml') }}-"
+    ]
+    cache_paths = restore["with"]["path"].splitlines()
+    assert cache_paths == save["with"]["path"].splitlines()
+    assert "rust/target" not in cache_paths
+    assert "rust/target/debug/incremental" not in cache_paths
+    assert "rust/target/debug/deps/*.rlib" in cache_paths
+    assert "rust/target/debug/deps/*.rmeta" in cache_paths
+    assert "rust/target/debug/deps/*.so" in cache_paths
+    assert "rust/target/doc" in cache_paths
+    assert measure["id"] == "cargo-cache-size"
+    assert "max_bytes=$((8 * 1024 * 1024 * 1024))" in measure["run"]
+    assert "rust/target/debug/deps" in measure["run"]
+    assert 'find "${find_roots[@]}" -maxdepth 1 -type f' in measure["run"]
+    assert "cargo-cache exact_restore=" in measure["run"]
+    assert "cargo-cache matched_key=" in measure["run"]
+    assert "cargo-cache payload_bytes=" in measure["run"]
+    assert "cargo-cache publication_bound_bytes=" in measure["run"]
+    assert "cargo-cache within_publication_bound=" in measure["run"]
+    assert save["uses"].startswith("actions/cache/save@")
+    assert save["if"] == (
+        "github.event_name == 'push' && github.ref == 'refs/heads/dev' && "
+        "success() && steps.cargo-cache-size.outputs.within-bound == 'true'"
+    )
+    assert save["with"]["key"] == "${{ steps.cargo-cache.outputs.cache-primary-key }}"
+
+
+def test_rustdoc_remains_hosted_and_blocking_after_single_pass_refactor() -> None:
+    """The local no-doc gate stays separate from the hosted Rustdoc contract."""
+    tasks = _tasks()
+    ci_script = str(tasks["ci:rust"]["run"])
+    workflow = yaml.safe_load(CI_WORKFLOW.read_text())
+    rust_job = workflow["jobs"]["rust-gate"]
+    hosted_step = next(
+        step
+        for step in rust_job["steps"]
+        if step.get("name") == "Rust full gate (canonical ci:rust task)"
+    )
+
+    assert "mise run rust:check-no-docs" in ci_script
+    assert "RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked" in ci_script
+    assert hosted_step["run"] == "mise run ci:rust"
+    assert "continue-on-error" not in hosted_step
+    assert "continue-on-error" not in rust_job

@@ -7,6 +7,9 @@ rust-version.workspace = true
 license.workspace = true
 publish = false
 
+[lints]
+workspace = true
+
 [dependencies]
 bnum = "0.14"
 h3o = { version = "=0.10.0", default-features = false }

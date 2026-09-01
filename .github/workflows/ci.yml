@@ -120,18 +120,39 @@ jobs:
           rustup toolchain install "$CHANNEL" --profile minimal \
             --component rustfmt --component clippy --no-self-update
 
-      - name: Load cargo caches
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      # Restore is intentionally separate from save. Pull requests can consume
+      # the newest compatible dev cache but cannot publish build output. The
+      # source hash prevents a lock/toolchain-only exact hit from going stale.
+      - name: Restore cargo cache
+        id: cargo-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            rust/target
+            rust/target/.rustc_info.json
+            rust/target/debug/.cargo-lock
+            rust/target/debug/.fingerprint
+            rust/target/debug/build
+            rust/target/debug/*.d
+            rust/target/debug/deps/*.d
+            rust/target/debug/deps/*.rlib
+            rust/target/debug/deps/*.rmeta
+            rust/target/debug/deps/*.so
+            rust/target/debug/deps/*.a
+            rust/target/debug/examples/*.d
+            rust/target/debug/examples/*.rlib
+            rust/target/debug/examples/*.rmeta
+            rust/target/debug/examples/*.so
+            rust/target/debug/examples/*.a
+            rust/target/doc
           key: >-
-            cargo-gate-${{ runner.os }}-v2-${{
-            hashFiles('rust/Cargo.lock', 'rust/rust-toolchain.toml') }}
+            cargo-gate-${{ runner.os }}-v4-${{
+            hashFiles('rust/Cargo.lock', 'rust/rust-toolchain.toml') }}-${{
+            hashFiles('rust/**/*.rs', 'rust/**/Cargo.toml', '.mise.toml',
+            '.github/workflows/ci.yml') }}
           restore-keys: |
-            cargo-gate-${{ runner.os }}-v2-
+            cargo-gate-${{ runner.os }}-v4-${{ hashFiles('rust/Cargo.lock', 'rust/rust-toolchain.toml') }}-
 
       - name: Rust full gate (canonical ci:rust task)
         run: mise run ci:rust
@@ -146,6 +167,102 @@ jobs:
         with:
           manifest-path: rust/Cargo.toml
           command: check advisories bans licenses sources
+
+      # Cache reusable compiler outputs, not multi-gigabyte test executables or
+      # incremental state. Oversized caches never weaken the gate: validation
+      # remains green or red on its own merits, but publication is skipped and
+      # the reason is visible in both the log and run summary.
+      - name: Measure cargo cache payload
+        id: cargo-cache-size
+        shell: bash
+        env:
+          CARGO_CACHE_HIT: ${{ steps.cargo-cache.outputs.cache-hit }}
+          CARGO_CACHE_MATCHED_KEY: ${{ steps.cargo-cache.outputs.cache-matched-key }}
+        run: |
+          set -euo pipefail
+          max_bytes=$((8 * 1024 * 1024 * 1024))
+          cache_bytes=0
+          for cache_path in \
+            "$HOME/.cargo/registry" \
+            "$HOME/.cargo/git" \
+            rust/target/debug/.fingerprint \
+            rust/target/debug/build \
+            rust/target/doc; do
+            if [[ -e "$cache_path" ]]; then
+              path_bytes="$(du -sb "$cache_path" | cut -f1)"
+              cache_bytes=$((cache_bytes + path_bytes))
+            fi
+          done
+          for cache_file in rust/target/.rustc_info.json rust/target/debug/.cargo-lock; do
+            if [[ -f "$cache_file" ]]; then
+              cache_bytes=$((cache_bytes + $(stat -c %s "$cache_file")))
+            fi
+          done
+          find_roots=()
+          for cache_root in \
+            rust/target/debug \
+            rust/target/debug/deps \
+            rust/target/debug/examples; do
+            if [[ -d "$cache_root" ]]; then
+              find_roots+=("$cache_root")
+            fi
+          done
+          if (( ${#find_roots[@]} > 0 )); then
+            while IFS= read -r -d '' cache_file; do
+              cache_bytes=$((cache_bytes + $(stat -c %s "$cache_file")))
+            done < <(
+              find "${find_roots[@]}" -maxdepth 1 -type f \
+                \( -name '*.d' -o -name '*.rlib' -o -name '*.rmeta' \
+                -o -name '*.so' -o -name '*.a' \) -print0
+            )
+          fi
+          if (( cache_bytes <= max_bytes )); then
+            within_bound=true
+          else
+            within_bound=false
+          fi
+          echo "cargo-cache exact_restore=${CARGO_CACHE_HIT:-false}"
+          echo "cargo-cache matched_key=${CARGO_CACHE_MATCHED_KEY:-none}"
+          echo "cargo-cache payload_bytes=$cache_bytes"
+          echo "cargo-cache publication_bound_bytes=$max_bytes"
+          echo "cargo-cache within_publication_bound=$within_bound"
+          echo "bytes=$cache_bytes" >> "$GITHUB_OUTPUT"
+          echo "within-bound=$within_bound" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Rust cargo cache"
+            echo "- exact restore: ${CARGO_CACHE_HIT:-false}"
+            echo "- matched key: ${CARGO_CACHE_MATCHED_KEY:-none}"
+            echo "- payload bytes: $cache_bytes"
+            echo "- publication bound bytes: $max_bytes"
+            echo "- within publication bound: $within_bound"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish trusted cargo cache
+        if: >-
+          github.event_name == 'push' && github.ref == 'refs/heads/dev' &&
+          success() && steps.cargo-cache-size.outputs.within-bound == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target/.rustc_info.json
+            rust/target/debug/.cargo-lock
+            rust/target/debug/.fingerprint
+            rust/target/debug/build
+            rust/target/debug/*.d
+            rust/target/debug/deps/*.d
+            rust/target/debug/deps/*.rlib
+            rust/target/debug/deps/*.rmeta
+            rust/target/debug/deps/*.so
+            rust/target/debug/deps/*.a
+            rust/target/debug/examples/*.d
+            rust/target/debug/examples/*.rlib
+            rust/target/debug/examples/*.rmeta
+            rust/target/debug/examples/*.so
+            rust/target/debug/examples/*.a
+            rust/target/doc
+          key: ${{ steps.cargo-cache.outputs.cache-primary-key }}
 
   # §6.5 Provenance & Ceremony (owner ruling 2026-07-20; doctrine in CLAUDE.md
   # "Baseline ceremonies"): every PR commit touching tests/baselines/** must

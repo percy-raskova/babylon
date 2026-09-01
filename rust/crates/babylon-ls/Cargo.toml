@@ -7,6 +7,9 @@ rust-version.workspace = true
 license.workspace = true
 publish = false
 
+[lints]
+workspace = true
+
 [dependencies]
 # 0.10 is the crate's own crates.io-published version (rust-analyzer's
 # lib/lsp-server); `Connection::initialize_start` is what gives us the

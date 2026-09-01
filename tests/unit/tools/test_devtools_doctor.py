@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -297,5 +296,4 @@ pathlib.Path(sys.argv[2]).write_text("not killed", encoding="utf-8")
     child_pid = int(pid_file.read_text(encoding="utf-8"))
     with pytest.raises(ProcessLookupError):
         os.kill(child_pid, 0)
-    time.sleep(0.05)
     assert not completed_marker.exists()

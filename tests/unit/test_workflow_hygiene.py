@@ -805,6 +805,38 @@ printf '%s\\n' "$1" >> "$SLEEP_CALLS"
         assert set(cargo_groups["rust-minor-patch"]["update-types"]) == {"minor", "patch"}
         assert set(cargo_groups["rust-security"]["update-types"]) == {"minor", "patch"}
 
+    def test_weekly_ecosystems_are_staggered_across_distinct_days(self) -> None:
+        """Weekly update batches must not enqueue three full CI runs together."""
+        config = yaml.safe_load(DEPENDABOT_CONFIG_PATH.read_text())
+        expected_schedules = {
+            "uv": {
+                "interval": "weekly",
+                "day": "monday",
+                "time": "09:00",
+                "timezone": "America/Chicago",
+            },
+            "github-actions": {
+                "interval": "weekly",
+                "day": "tuesday",
+                "time": "09:00",
+                "timezone": "America/Chicago",
+            },
+            "cargo": {
+                "interval": "weekly",
+                "day": "thursday",
+                "time": "09:00",
+                "timezone": "America/Chicago",
+            },
+        }
+
+        actual_schedules = {
+            ecosystem: _dependabot_update(config, ecosystem)["schedule"]
+            for ecosystem in expected_schedules
+        }
+
+        assert actual_schedules == expected_schedules
+        assert len({schedule["day"] for schedule in actual_schedules.values()}) == 3
+
     def test_config_uses_uv_and_retains_only_justified_major_ignores(self) -> None:
         """The live uv lock and explicit deferred-major rails must stay represented."""
         config = yaml.safe_load(DEPENDABOT_CONFIG_PATH.read_text())

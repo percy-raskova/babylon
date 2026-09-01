@@ -148,9 +148,18 @@ dependabot-automerge.yml
 
 **File**: ``.github/workflows/dependabot-automerge.yml``
 
-**Triggers**: Pull request from Dependabot
+**Trigger**: Successful completion of the ``CI`` workflow for a pull request.
 
-**Purpose**: Auto-merge minor/patch dependency updates after CI passes.
+**Purpose**: Revalidate the exact Dependabot candidate from trusted ``dev``
+tools, then merge only an eligible minor or patch update. The workflow has no
+actor-triggered write phase and does not treat presentation labels as merge
+authority.
+
+``.github/dependabot.yml`` separates the weekly queues: Python updates run on
+Monday, GitHub Actions updates on Tuesday, and Rust updates on Thursday at
+09:00 America/Chicago. Docker image updates remain monthly. This cadence keeps
+three full validation batches from competing for the same runner window and
+avoids Wednesday's scheduled deep-validation workflows.
 
 Branch Protection Rules
 -----------------------

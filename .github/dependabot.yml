@@ -62,12 +62,13 @@ updates:
 
   # ==========================================================================
   # GitHub Actions
+  # Run a day after the Python batch so each ecosystem gets its own CI queue.
   # ==========================================================================
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
-      day: "monday"
+      day: "tuesday"
       time: "09:00"
       timezone: "America/Chicago"
     open-pull-requests-limit: 5
@@ -115,12 +116,14 @@ updates:
   # proactive update PRs while the FROZEN Python stack got weekly bumps. The
   # git-dep (hypergraph-rs) is invisible to Dependabot by construction — its
   # rev-bump protocol is manual and deliberate (rust/deny.toml [sources]).
+  # Thursday avoids both the Monday/Tuesday dependency batches and Wednesday's
+  # scheduled deep-validation workflows.
   # ==========================================================================
   - package-ecosystem: "cargo"
     directory: "/rust"
     schedule:
       interval: "weekly"
-      day: "monday"
+      day: "thursday"
       time: "09:00"
       timezone: "America/Chicago"
     open-pull-requests-limit: 5

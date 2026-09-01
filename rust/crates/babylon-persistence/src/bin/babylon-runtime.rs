@@ -529,7 +529,7 @@ fn probe(config: &Config, selected_campaign: Option<CampaignId>) -> Result<(), S
     let tail: Option<i64> = row
         .try_get(1)
         .map_err(|_| "campaign tail decode failed".to_owned())?;
-    let (selected_campaign_label, selected_tail_label) = match selected_campaign {
+    let (selected_campaign_state, selected_tail_label) = match selected_campaign {
         Some(campaign) => {
             let selected_tail: Option<i64> = client
                 .query_one(
@@ -541,14 +541,14 @@ fn probe(config: &Config, selected_campaign: Option<CampaignId>) -> Result<(), S
                 .and_then(|row| row.try_get(0))
                 .map_err(|_| "selected campaign-tail probe failed".to_owned())?;
             (
-                campaign.as_uuid().to_string(),
+                "configured",
                 selected_tail.map_or_else(|| "none".to_owned(), |value| value.to_string()),
             )
         }
-        None => ("unset".to_owned(), "unqueried".to_owned()),
+        None => ("unset", "unqueried".to_owned()),
     };
     println!(
-        "Rust authority rows={authority_rows}; selected_campaign={selected_campaign_label}; \
+        "Rust authority rows={authority_rows}; selected_campaign={selected_campaign_state}; \
          selected_tail={selected_tail_label}; global_durable_campaigns={campaigns}; \
          global_highest_tick={}.",
         tail.map_or_else(|| "none".to_owned(), |value| value.to_string()),

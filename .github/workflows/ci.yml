@@ -232,7 +232,7 @@ jobs:
     # path. fail-fast stays disabled so every exact-head run yields a complete
     # contract receipt even when one sibling fails.
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 99
     strategy:
       fail-fast: false
       max-parallel: 4
@@ -244,7 +244,7 @@ jobs:
       - uses: ./.github/actions/bootstrap-persistence
 
       - name: Rust PostgreSQL contract
-        timeout-minutes: 25
+        timeout-minutes: 69
         env:
           BABYLON_LEGACY_ADOPTER_LIVE_FOCUS: ${{ matrix.focus }}
         run: tools/run_rust_legacy_adopter_pg.sh

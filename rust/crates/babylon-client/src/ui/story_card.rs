@@ -6,6 +6,7 @@
 //! `ui::time`/`ui::beats`/`ui::admin` already establish: a module of
 //! systems `TickLoopPlugin::build` wires in, not a nested plugin).
 
+use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::engine_link::EngineSession;
 use crate::severity::SeverityTier;
 use crate::story::{Story, STORIES};
@@ -39,6 +40,7 @@ pub fn spawn_story_card(mut commands: Commands) {
             left: px(200),
             ..default()
         },
+        DeclaredSurface::new(SurfaceId::StoryCard),
         StoryCardText,
     ));
 }
@@ -240,6 +242,7 @@ pub fn spawn_map_absence_banner(mut commands: Commands) {
             left: px(24),
             ..default()
         },
+        DeclaredSurface::new(SurfaceId::MapAbsenceNotice),
         MapAbsenceBannerText,
     ));
 }

@@ -28,6 +28,7 @@
 //! `..._steps_through_three_discrete_palette_colors...` row is the one
 //! that stayed red through 2.3 and only 2.4 makes pass).
 
+use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::engine_link::EngineSession;
 use crate::loop_ui::TickCounter;
 use bevy::prelude::*;
@@ -334,6 +335,7 @@ pub fn spawn_controls_readout(mut commands: Commands) {
             right: px(24),
             ..default()
         },
+        DeclaredSurface::new(SurfaceId::TickTransport),
         ControlsReadout,
     ));
 }

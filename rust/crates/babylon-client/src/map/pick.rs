@@ -16,6 +16,7 @@
 //! registering these systems on `MapPlugin` itself.
 
 use crate::atlas::CountyAtlas;
+use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::palette;
 use bevy::asset::RenderAssetUsages;
 use bevy::input::mouse::MouseButton;
@@ -288,6 +289,7 @@ pub(super) fn update_selection_outline(
         Mesh2d(meshes.add(mesh)),
         MeshMaterial2d(materials.add(ColorMaterial::from(palette::GOLD))),
         Transform::from_xyz(0.0, 0.0, 2.0),
+        DeclaredSurface::new(SurfaceId::CountyMap),
         SelectionOutline,
     ));
 }

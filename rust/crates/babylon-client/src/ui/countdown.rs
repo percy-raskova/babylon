@@ -34,6 +34,7 @@
 //! `after_class_decomposition_fires_its_row_retires_and_control_ratio_crisis_appears`
 //! (`tests/countdown.rs`).
 
+use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::projection::{Projector, Provenance, Reading};
 use crate::story::Story;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
@@ -292,6 +293,7 @@ pub fn spawn_countdown_pane(mut commands: Commands) {
             left: px(24),
             ..default()
         },
+        DeclaredSurface::new(SurfaceId::Countdown),
         CountdownPaneText,
     ));
 }

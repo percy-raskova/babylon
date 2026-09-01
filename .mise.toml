@@ -119,7 +119,7 @@ run = """
 set -e
 mise install
 uv sync --extra ops --frozen
-uv run pre-commit install --hook-type commit-msg --hook-type pre-commit --hook-type pre-push
+uv run --frozen pre-commit install
 mise run db:up
 (cd rust && CARGO_BUILD_JOBS=4 cargo build -p babylon-persistence --bin babylon-runtime --locked)
 export PATH="$PWD/rust/target/debug:$PATH"
@@ -1149,8 +1149,8 @@ description = "Legacy local aggregate (same as check); hosted CI jobs use explic
 depends = ["check"]
 
 [tasks.hooks]
-description = "Install pre-commit hooks"
-run = "uv run pre-commit install --hook-type commit-msg --hook-type pre-commit --hook-type pre-push"
+description = "Install the configured pre-commit, commit-msg, and pre-push hooks"
+run = "uv run --frozen pre-commit install"
 
 [tasks."hooks:run"]
 description = "Run all pre-commit hooks on all files"

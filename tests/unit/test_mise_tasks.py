@@ -73,6 +73,24 @@ def _local_hook(hook_id: str) -> dict[str, object]:
     )
 
 
+def _pre_commit_config() -> dict[str, object]:
+    """Return the parsed repository pre-commit configuration."""
+    config = yaml.safe_load(PRE_COMMIT_CONFIG.read_text())
+    assert isinstance(config, dict)
+    return config
+
+
+def _tracked_paths() -> tuple[str, ...]:
+    """Return the tracked path inventory used by hook-selector contracts."""
+    completed = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=REPOSITORY_ROOT,
+        check=True,
+        capture_output=True,
+    )
+    return tuple(path.decode() for path in completed.stdout.split(b"\0") if path)
+
+
 @pytest.fixture(scope="module")
 def mise_tasks() -> dict[str, dict[str, object]]:
     """Return Mise's resolved task graph, including split task files."""
@@ -399,16 +417,88 @@ def test_fixing_is_explicit_and_sequential() -> None:
     ]
 
 
-def test_rust_pre_push_uses_no_docs_gate_for_every_gate_definition() -> None:
-    """The local hook must obey the no-documentation rule and see task changes."""
-    entry = str(_local_hook("rust-full-gate")["entry"])
+def test_pre_commit_installs_every_governed_git_hook_by_default() -> None:
+    """A plain install must not silently omit commit-message or push gates."""
+    config = _pre_commit_config()
+    tasks = _tasks()
 
-    assert "mise run rust:check-no-docs" in entry
+    assert config["default_install_hook_types"] == [
+        "pre-commit",
+        "commit-msg",
+        "pre-push",
+    ]
+    assert tasks["hooks"]["run"] == "uv run --frozen pre-commit install"
+    assert "uv run --frozen pre-commit install" in str(tasks["setup"]["run"])
+
+
+def test_pre_commit_file_selectors_resolve_to_tracked_paths() -> None:
+    """A deleted estate must not leave hooks that can never execute."""
+    config = _pre_commit_config()
+    tracked_paths = _tracked_paths()
+    unresolved: list[str] = []
+
+    for repository in config["repos"]:
+        for hook in repository["hooks"]:
+            pattern = hook.get("files")
+            if pattern is not None and not any(
+                re.search(str(pattern), path) for path in tracked_paths
+            ):
+                unresolved.append(str(hook["id"]))
+
+    assert unresolved == []
+
+
+def test_pre_commit_uses_meta_guards_against_future_selector_drift() -> None:
+    """Pre-commit's own cheap policy checks must guard the hook estate."""
+    config = _pre_commit_config()
+    meta = next(repository for repository in config["repos"] if repository["repo"] == "meta")
+
+    assert [hook["id"] for hook in meta["hooks"]] == [
+        "check-hooks-apply",
+        "check-useless-excludes",
+    ]
+
+
+def test_retired_cockpit_hooks_are_absent() -> None:
+    """The Bevy cutover must not leave an inert Node hook environment."""
+    config = _pre_commit_config()
+    hooks = [hook for repository in config["repos"] for hook in repository["hooks"]]
+
+    assert {
+        "prettier",
+        "cockpit-typecheck",
+        "cockpit-eslint",
+        "cockpit-vitest",
+    }.isdisjoint(str(hook["id"]) for hook in hooks)
+    for hook in hooks:
+        executable_policy = " ".join(
+            str(hook.get(field, "")) for field in ("entry", "files", "exclude")
+        )
+        assert "src/frontend" not in executable_policy
+
+
+def test_rust_pre_push_uses_exact_push_range_for_every_gate_definition() -> None:
+    """The local hook must preserve deleted paths without fetching or building docs."""
+    hook = _local_hook("rust-full-gate")
+    entry = str(hook["entry"])
+
+    assert entry == "python3 tools/run_pre_push_gate.py rust-full-gate"
+    assert hook["pass_filenames"] is False
+    assert hook["always_run"] is True
+    assert "files" not in hook
+    assert "git fetch" not in entry
     assert "mise run ci:rust" not in entry
-    assert (
-        'git diff --name-only "${base}..HEAD" -- rust/ .mise.toml .pre-commit-config.yaml' in entry
-    )
-    assert "git status --porcelain -- rust/ .mise.toml .pre-commit-config.yaml" in entry
+
+
+def test_bsl_repo_sentinels_cover_their_non_rust_inputs() -> None:
+    """Governance and retired-authority changes must run the Rust-owned sentinels."""
+    hook = _local_hook("bsl-repo-sentinels")
+
+    assert hook["entry"] == "python3 tools/run_pre_push_gate.py bsl-repo-sentinels"
+    assert hook["pass_filenames"] is False
+    assert hook["always_run"] is True
+    assert "files" not in hook
+    assert hook["stages"] == ["pre-push"]
 
 
 def test_rust_gate_is_single_pass_with_explicit_repo_sentinel_exception() -> None:

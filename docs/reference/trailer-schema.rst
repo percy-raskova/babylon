@@ -196,6 +196,11 @@ CI job (if any) is the **authoritative** re-run of each local hook, per
      - Stage
      - Authoritative CI leg
      - Notes
+   * - ``worktree-contract`` / pre-commit meta checks
+     - pre-commit
+     - Unit Tests (selector-policy contract only)
+     - The local contract validates workstation state. The meta hooks and unit
+       contract reject selectors that no longer match any tracked path.
    * - ``ruff`` / ``ruff-format``
      - pre-commit
      - Fast Gate — "Lint (ruff check)" / "Format (ruff format --check)"
@@ -215,16 +220,32 @@ CI job (if any) is the **authoritative** re-run of each local hook, per
      - pre-push
      - Fast Gate — "Import-boundary contracts"
      - Same command (``lint-imports`` / ``mise run lint:imports``).
+   * - ``sentinels-static`` / ``surface-baseline``
+     - pre-push
+     - Fast Gate — static sentinels / public-surface baseline
+     - The local hooks run the same full-tree Mise tasks as hosted CI.
+   * - ``rust-fmt-check`` / ``rust-full-gate``
+     - pre-commit / pre-push
+     - Rust Gate
+     - Formatting runs on Rust source or formatter/toolchain policy. The push
+       hook re-diffs pre-commit's exact remote-to-local refs so deleted paths
+       still select ``rust:check-no-docs``; hosted CI adds the Rustdoc proof.
+   * - ``bsl-repo-sentinels``
+     - pre-push
+     - Rust Gate
+     - Covers the non-Rust inputs to the Rust-owned repository sentinels:
+       ``ai/decisions`` and all eight exact retired Python authority paths.
+       The deletion-aware range classifier owns both hook selections.
    * - ``uv-lock-consistency``
      - pre-commit (files-scoped)
      - Fast Gate — "uv lock consistency"
      - Both run ``uv lock --check``.
-   * - ``baseline-ceremony``
-     - commit-msg
+   * - ``baseline-ceremony`` / ``baseline-ceremony-range``
+     - commit-msg / pre-push
      - Baseline Ceremony Gate (§6.5 provenance)
      - Local leg is explicitly best-effort (``--amend``/pathspec commits can
-       slip past it, per the gate's own docstring); the CI ``--range`` leg
-       over the full PR range is authoritative.
+       slip past it, per the gate's own docstring); the local and CI range
+       legs close that gap over the full pushed or PR range.
    * - ``gitleaks``
      - pre-commit
      - Secret Scan (gitleaks, full history)
@@ -264,17 +285,12 @@ CI job (if any) is the **authoritative** re-run of each local hook, per
      - Local-only.
    * - trailing-whitespace / end-of-file-fixer / check-yaml / check-json /
        check-toml / check-added-large-files / check-merge-conflict /
-       no-commit-to-branch
+       check-case-conflict / forbid-new-submodules / no-commit-to-branch
      - pre-commit
      - Fast Gate — "Repo hygiene gate" (partial overlap only)
      - ``check:hygiene`` (``tools/check_repo_hygiene.py``) independently
        re-checks the root allowlist, tracked-ignored files, and blob size —
        overlapping concerns, not the same tool re-run.
-   * - Cockpit hooks (``cockpit-typecheck`` / ``cockpit-eslint`` /
-       ``cockpit-vitest`` / ``prettier``)
-     - pre-commit / pre-push
-     - Frontend (tsc, eslint, prettier, vitest, build)
-     - Same tools, same directory (``src/frontend``).
 
 **Reading this table**: "none found" means exactly that — a targeted search
 of every ``.github/workflows/*.yml`` job step for the tool's name found no

@@ -44,6 +44,15 @@ MAX_CHECK_RUNS = 100
 API_TIMEOUT_SECONDS = 30
 SHA_PATTERN = re.compile(r"[0-9a-f]{40}")
 CANONICAL_AUTOMERGE_LABEL = "dependencies:automerge"
+CODEQL_ZERO_ALERT_FLOOR: Final[dict[str, object]] = {
+    "code_scanning_tools": [
+        {
+            "tool": "CodeQL",
+            "alerts_threshold": "all",
+            "security_alerts_threshold": "all",
+        }
+    ]
+}
 DEV_PUSH_ATTESTATION_MANIFEST: Final[tuple[CheckRequirement, ...]] = tuple(
     CheckRequirement(
         requirement.context,
@@ -443,10 +452,24 @@ def _required_contexts(policy: dict[str, object], branch: str = "dev") -> list[s
     return cast(list[str], contexts)
 
 
+def _require_codeql_zero_alert_floor(ruleset: dict[str, object], branch: str) -> None:
+    rules = _objects(ruleset.get("rules"), f"{branch} rules", MAX_RULESETS)
+    code_scanning_rules = [rule for rule in rules if rule.get("type") == "code_scanning"]
+    if len(code_scanning_rules) != 1:
+        raise PolicyError(f"{branch} policy must contain exactly one CodeQL code-scanning rule")
+    parameters = _object(
+        code_scanning_rules[0].get("parameters"),
+        f"{branch} CodeQL code-scanning parameters",
+    )
+    if parameters != CODEQL_ZERO_ALERT_FLOOR:
+        raise PolicyError(f"{branch} CodeQL code-scanning rule must enforce the zero-alert floor")
+
+
 def _validate_policy(policy: dict[str, object]) -> None:
     dev_ruleset = normalize_ruleset(_object(policy.get("dev_ruleset"), "dev ruleset policy"))
     if not _exact_dev_scope(dev_ruleset):
         raise PolicyError("desired ruleset must have exact dev-only branch scope")
+    _require_codeql_zero_alert_floor(dev_ruleset, "dev")
     dev_contexts = _required_contexts(policy, "dev")
     if len(dev_contexts) != len(DEV_BLOCKING_CONTEXTS) or set(dev_contexts) != set(
         DEV_BLOCKING_CONTEXTS
@@ -455,6 +478,7 @@ def _validate_policy(policy: dict[str, object]) -> None:
     main_ruleset = normalize_ruleset(_object(policy.get("main_ruleset"), "main ruleset policy"))
     if not _exact_main_scope(main_ruleset):
         raise PolicyError("desired ruleset must have exact main-only branch scope")
+    _require_codeql_zero_alert_floor(main_ruleset, "main")
     main_contexts = _required_contexts(policy, "main")
     if len(main_contexts) != len(MAIN_BLOCKING_CONTEXTS) or set(main_contexts) != set(
         MAIN_BLOCKING_CONTEXTS

@@ -74,13 +74,41 @@ def test_codeql_covers_protected_branch_pull_requests_with_least_privilege() -> 
     workflow = _workflow("codeql.yml")
     triggers = _triggers(workflow)
     analyze = workflow["jobs"]["analyze"]
+    matrix = analyze["strategy"]["matrix"]["include"]
+    init = next(step for step in analyze["steps"] if step["name"] == "Initialize CodeQL")
+    upload = next(step for step in analyze["steps"] if step["name"] == "Perform CodeQL Analysis")
+    codeql_config = yaml.safe_load(init["with"]["config"])
+    ignored_paths = codeql_config["paths-ignore"]
 
     assert triggers["pull_request"] == {"branches": ["main", "dev"]}
+    assert triggers["push"] == {"branches": ["main", "dev"]}
     assert workflow["concurrency"]["cancel-in-progress"] is True
     assert analyze["permissions"] == {
         "actions": "read",
         "contents": "read",
         "security-events": "write",
+    }
+    assert matrix == [
+        {"language": "python", "build-mode": "none"},
+        {"language": "rust", "build-mode": "none"},
+        {"language": "actions", "build-mode": "none"},
+        {"language": "javascript-typescript", "build-mode": "none"},
+    ]
+    assert init["with"]["languages"] == "${{ matrix.language }}"
+    assert init["with"]["build-mode"] == "${{ matrix.build-mode }}"
+    assert init["with"]["queries"] == "security-extended"
+    assert "security-and-quality" not in str(init["with"])
+    assert ignored_paths == [
+        ".design-sync",
+        "design",
+        "rust/crates/bsl-lint/tests/fixtures/sfs_non_authorability/reserved-rust/rust",
+        "rust/crates/bsl-lint/tests/fixtures/sfs_non_authorability/reserved-two-hop-helper/rust",
+    ]
+    assert "src/frontend" not in ignored_paths
+    assert all((ROOT / path).exists() for path in ignored_paths)
+    assert upload["with"] == {
+        "category": "/language:${{ matrix.language }}",
+        "upload": "always",
     }
 
 

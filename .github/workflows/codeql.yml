@@ -1,13 +1,13 @@
 name: "CodeQL Security Scan"
 
-# ADR181 R5 (2026-07-30): the SAST budget follows the engine language.
-# - `rust` matrix leg added (Amendment AE: rust/ is the engine; the extractor
-#   is public-preview, build-mode none — findings are informational, never a
-#   required check, WND-4).
+# ADR181 R5 (2026-07-30): the SAST budget follows executable authority.
+# - Python and Rust cover the live engine and periphery.
+# - Actions covers the CI supply chain, and JavaScript/TypeScript covers the
+#   remaining executable repository tooling.
 # - Protected-branch pull requests run CodeQL before merge. Push + weekly cron
 #   keep the default-branch alert database fresh after integration.
-# - `paths-ignore` excludes the Amendment-V legacy frontend so the alert floor
-#   stays ZERO and any new alert on src/ or rust/ is news.
+# - `paths-ignore` excludes non-executable design material and two intentionally
+#   malformed nested Rust-workspace fixtures that cannot be extracted.
 
 on:
   pull_request:
@@ -41,6 +41,10 @@ jobs:
             build-mode: none
           - language: rust
             build-mode: none
+          - language: actions
+            build-mode: none
+          - language: javascript-typescript
+            build-mode: none
 
     steps:
       - name: Checkout repository
@@ -51,16 +55,20 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
-          # security-extended: catches SQL injection, XSS, command injection,
-          # path traversal, etc. Good balance of coverage vs noise.
+          # security-extended adds lower-precision security queries to the
+          # default suite without turning code-quality findings into blockers.
           queries: security-extended
           config: |
             paths-ignore:
-              - src/frontend
+              - .design-sync
+              - design
+              - rust/crates/bsl-lint/tests/fixtures/sfs_non_authorability/reserved-rust/rust
+              - rust/crates/bsl-lint/tests/fixtures/sfs_non_authorability/reserved-two-hop-helper/rust
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
         with:
           category: "/language:${{ matrix.language }}"
-          # Only fail on error/critical, not warnings
+          # Upload findings even if a prior step failed so GitHub can evaluate
+          # the repository's native zero-alert code-scanning protection rule.
           upload: always

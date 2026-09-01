@@ -96,17 +96,76 @@ ci.yml
    * - Job
      - Blocks
      - Steps
-   * - ``ci``
+   * - ``fast-gate``
      - Yes
-     - ``ruff check .``, ``mypy src``, ``pytest -m "not ai"``
-   * - ``docs``
+     - Hygiene, lint, formatting, import, type, and lock-file checks
+   * - ``test-unit``
      - Yes
-     - ``pytest --doctest-modules``, ``sphinx-build -b html``
-   * - ``style``
-     - No
-     - ``ruff format --check .`` (``continue-on-error: true``)
+     - Parallel unit tests and the coverage floor
+   * - ``qa-regression``
+     - Yes
+     - Deterministic regression and vault evidence
+   * - ``rust-gate``
+     - Yes
+     - Rust formatting, lint, tests, BSL sentinels, and documentation checks
+   * - ``ceremony-gate``
+     - Yes
+     - Baseline-change provenance
+   * - ``pg-integration``
+     - Yes
+     - Aggregate result for the PostgreSQL contract shards
+   * - ``security``
+     - Yes
+     - Python dependency audit with governed exceptions
+   * - ``gitleaks``
+     - Yes
+     - Full-history secret scan
+   * - ``trivy-config``
+     - Yes
+     - High- and critical-severity infrastructure configuration scan
 
-**Concurrency**: Cancels in-progress runs on same branch.
+**Concurrency**: Pull-request runs cancel when a newer head supersedes them.
+Integrated ``dev`` runs do not cancel one another, so each protected-branch
+commit retains a complete evidence record.
+
+codeql.yml
+~~~~~~~~~~
+
+**File**: ``.github/workflows/codeql.yml``
+
+**Triggers**:
+
+- Push and pull request for ``main`` or ``dev``
+- Weekly schedule on Sunday
+- Manual dispatch
+
+**Purpose**: Run semantic static application security testing over the live
+Python and Rust paths, the GitHub Actions supply chain, and executable
+JavaScript/TypeScript repository tooling. All four languages use CodeQL's
+``security-extended`` query suite. This adds lower-precision security queries
+to the default suite; it does not add the code-quality queries from
+``security-and-quality``.
+
+The path exclusions are deliberately narrow:
+
+- ``.design-sync`` and ``design`` are non-executable design material.
+- Two ``bsl-lint`` fixture roots are intentionally malformed nested Rust
+  workspaces used to test source-file-scope policy. CodeQL cannot extract
+  them as Cargo workspaces, while the surrounding production and fixture Rust
+  sources remain scanned.
+
+The workflow's ``upload: always`` setting controls whether analysis results are
+uploaded after an earlier step failure. It does not select an alert severity or
+make a warning advisory. The protected-branch rulesets require the ``CodeQL``
+tool at ``all`` for both alert thresholds, so any open CodeQL alert blocks a
+protected merge. The sanctioned merge command also queries the repository alert
+database and requires the same zero-alert floor.
+
+CodeQL complements, rather than replaces, the other security gates:
+``gitleaks`` finds committed secrets, ``pip-audit`` checks Python dependency
+advisories, and Trivy checks infrastructure configuration. Ruff, Clippy, tests,
+and the Rust gate enforce correctness and quality outside CodeQL's security
+scope.
 
 docs.yml
 ~~~~~~~~
@@ -164,7 +223,8 @@ avoids Wednesday's scheduled deep-validation workflows.
 Branch Protection Rules
 -----------------------
 
-Configured in GitHub Settings → Branches → Branch protection rules.
+Configured as repository rulesets and synchronized from
+``.github/settings/pr-policy.json`` by ``tools/sync_github_pr_policy.py``.
 
 dev Branch
 ~~~~~~~~~~
@@ -179,13 +239,16 @@ dev Branch
    * - Require PR before merging
      - ON
      - No direct pushes
-   * - Require status checks: ``ci``
+   * - Require the complete ``dev`` blocking-check manifest
      - ON
-     - Quality gate
-   * - Require branches up to date
-     - OFF
-     - Avoid rebase churn
-   * - Require review
+     - Exact GitHub Actions producer IDs; strict head qualification
+   * - Require resolved review threads
+     - ON
+     - A disposition is required for every review thread
+   * - Require CodeQL zero-alert floor
+     - ON
+     - Both CodeQL thresholds are ``all``
+   * - Require approving reviews
      - OFF
      - BD can self-merge
    * - Allow force push
@@ -208,15 +271,18 @@ main Branch
    * - Require PR before merging
      - ON
      - Even BD uses PRs
-   * - Require status checks: ``ci``, ``docs``
+   * - Require the complete ``main`` blocking-check manifest
      - ON
-     - Release quality
-   * - Require branches up to date
+     - Includes the release-qualification contexts
+   * - Require resolved review threads
      - ON
-     - No stale releases
-   * - Require review (Code Owners)
+     - A disposition is required for every review thread
+   * - Require CodeQL zero-alert floor
      - ON
-     - BD self-review as pause
+     - Both CodeQL thresholds are ``all``
+   * - Require approving reviews
+     - OFF
+     - Director authority does not depend on self-approval
    * - Allow force push
      - OFF
      - Immutable releases
@@ -253,33 +319,23 @@ Philosophy: Welcoming to beginners. Checklist is guidance, not gatekeeping.
 Required vs Advisory Checks
 ---------------------------
 
-**PRs to dev**:
+The exact blocking manifests live in ``tools/pr_policy.py`` and are synchronized
+to the repository rulesets from ``.github/settings/pr-policy.json``. The
+``dev`` manifest requires the nine aggregate checks produced by ``ci.yml``.
+The ``main`` manifest requires those checks plus the release-qualification
+contexts produced by ``main.yml``. CodeQL uses the native code-scanning ruleset
+rule instead of a status-check context, and its zero-alert floor is also a hard
+merge condition.
 
-- Required: ``ci`` (lint, types, tests)
-- Advisory: ``docs``, ``style``
-
-**PRs to main**:
-
-- Required: ``ci``, ``docs``
-- Advisory: ``style``
-
-The ``style`` job always has ``continue-on-error: true``—it shows warnings
-but never blocks merge.
+Copilot review state is advisory, but every review thread must be resolved.
 
 Merge Strategies
 ----------------
 
-**Feature → Dev**: Squash merge
-
-- Each PR becomes one atomic commit
-- Easy to revert
-- Clean history
-
-**Dev → Main**: Merge commit (no squash)
-
-- Preserves individual commits
-- Creates release boundary
-- Easy to diff between releases
+Both feature-to-``dev`` and ``dev``-to-``main`` pull requests use merge commits.
+The repository disables squash and rebase merges. Use only the sanctioned
+``mise run pr:merge -- N`` command after exact-head qualification; the Director
+controls merges to ``main``.
 
 Hotfix Workflow
 ---------------

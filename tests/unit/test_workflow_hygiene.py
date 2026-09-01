@@ -807,25 +807,26 @@ printf '%s\\n' "$1" >> "$SLEEP_CALLS"
 
     def test_weekly_ecosystems_are_staggered_across_distinct_days(self) -> None:
         """Weekly update batches must not enqueue three full CI runs together."""
-        config = yaml.safe_load(DEPENDABOT_CONFIG_PATH.read_text())
+        config_text = DEPENDABOT_CONFIG_PATH.read_text()
+        config = yaml.safe_load(config_text)
         expected_schedules = {
             "uv": {
                 "interval": "weekly",
                 "day": "monday",
                 "time": "09:00",
-                "timezone": "America/Chicago",
+                "timezone": "America/New_York",
             },
             "github-actions": {
                 "interval": "weekly",
                 "day": "tuesday",
                 "time": "09:00",
-                "timezone": "America/Chicago",
+                "timezone": "America/New_York",
             },
             "cargo": {
                 "interval": "weekly",
                 "day": "thursday",
                 "time": "09:00",
-                "timezone": "America/Chicago",
+                "timezone": "America/New_York",
             },
         }
 
@@ -836,6 +837,8 @@ printf '%s\\n' "$1" >> "$SLEEP_CALLS"
 
         assert actual_schedules == expected_schedules
         assert len({schedule["day"] for schedule in actual_schedules.values()}) == 3
+        assert config_text.count('timezone: &dependabot_timezone "America/New_York"') == 1
+        assert config_text.count("timezone: *dependabot_timezone") == 3
 
     def test_config_uses_uv_and_retains_only_justified_major_ignores(self) -> None:
         """The live uv lock and explicit deferred-major rails must stay represented."""

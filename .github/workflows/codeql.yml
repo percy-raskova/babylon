@@ -36,6 +36,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Keep build-mode explicit per language. All current extractors use
+        # no-build mode, and a future exception must be visible in this row.
         include:
           - language: python
             build-mode: none

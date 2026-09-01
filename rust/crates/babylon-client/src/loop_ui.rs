@@ -21,6 +21,7 @@
 //!    `TickLoopPlugin` is what actually provides — this plugin registers
 //!    both, re-exported `pub(crate)` from `map` for exactly this purpose.
 
+use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::engine_link::EngineSession;
 use bevy::prelude::*;
 
@@ -262,6 +263,7 @@ fn spawn_engine_session_and_hud(
             right: px(24),
             ..default()
         },
+        DeclaredSurface::new(SurfaceId::TickTransport),
         TickCounterReadout,
     ));
     commands.spawn((
@@ -273,6 +275,7 @@ fn spawn_engine_session_and_hud(
             right: px(24),
             ..default()
         },
+        DeclaredSurface::new(SurfaceId::TickTransport),
         HashReadout,
     ));
 }
@@ -326,6 +329,7 @@ fn spawn_state_panel(mut commands: Commands) {
             right: px(24),
             ..default()
         },
+        DeclaredSurface::new(SurfaceId::StatePanel),
         StatePanelText,
     ));
 }

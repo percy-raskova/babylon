@@ -113,10 +113,10 @@ Step 4: Clone and Set Up the Project
    cd babylon
 
    # Install dependencies (creates virtual environment automatically)
-   uv sync --extra server
+   mise run install
 
    # Install pre-commit hooks
-   uv run pre-commit install --hook-type commit-msg --hook-type pre-commit
+   mise run hooks
 
    # Verify everything works
    uv run pytest -m "not ai" -x -q
@@ -246,10 +246,10 @@ side. This ensures proper file permissions and much better performance.
    cd babylon
 
    # Install dependencies
-   uv sync --extra server
+   mise run install
 
    # Install pre-commit hooks
-   uv run pre-commit install --hook-type commit-msg --hook-type pre-commit
+   mise run hooks
 
    # Verify
    uv run pytest -m "not ai" -x -q
@@ -378,11 +378,11 @@ Ensure uv is in your PATH:
 
 **Tests fail with import errors:**
 
-Make sure you ran ``uv sync --extra server``:
+Make sure you installed the locked dependency set:
 
 .. code-block:: bash
 
-   uv sync --extra server
+   mise run install
 
 **WSL: "code" command not found:**
 

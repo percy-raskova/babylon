@@ -7,7 +7,8 @@ direct commands and ``gh act`` for full workflow simulation.
 Prerequisites
 -------------
 
-- uv installed with dependencies synced: ``uv sync --extra server``
+- Locked dependencies installed: ``mise run install``
+- All configured Git hooks installed: ``mise run hooks``
 - For ``gh act``: GitHub CLI with act extension (``gh extension install nektos/gh-act``)
 - For ``gh act``: Docker running
 
@@ -160,49 +161,53 @@ For most development purposes, dry-run validation is sufficient:
 Pre-Commit Hooks
 ----------------
 
-Pre-commit hooks run automatically on ``git commit``. To run manually:
+``mise run hooks`` installs all three governed stages: ``pre-commit``,
+``commit-msg``, and ``pre-push``. The ordinary commit stage operates on the
+staged paths. The push stage operates on the exact remote-to-local range, so
+its Rust gate skips unrelated pushes without fetching ``dev`` or guessing a
+merge base.
+
+Run the hooks manually with:
 
 .. code-block:: bash
 
-   # Run all hooks on staged files
+   # Commit-stage hooks on staged files
    uv run pre-commit run
 
-   # Run all hooks on all files
+   # Commit-stage hooks on every tracked file
    uv run pre-commit run --all-files
 
-   # Run specific hook
+   # One commit-stage hook
    uv run pre-commit run ruff
 
-Hooks configured (from ``.pre-commit-config.yaml``):
+   # Push-stage hooks for the current branch range
+   uv run pre-commit run --hook-stage pre-push \
+     --from-ref origin/dev --to-ref HEAD
 
-1. **ruff (lint)** - Catches bugs, style issues
-2. **ruff (format)** - Enforces formatting
-3. **mypy (typecheck)** - Type errors
-4. **pytest (fast tests)** - Quick sanity check
-5. **yamllint** - YAML syntax validation
-6. **commitizen** - Commit message format
+The configuration groups checks by feedback cost:
+
+- Commit time: worktree contract, Ruff, MyPy, lock consistency, text and
+  structured-file hygiene, documentation lint, actionlint, ShellCheck,
+  Hadolint, Gitleaks, and Rust formatting.
+- Commit-message time: Commitizen and the baseline-ceremony declaration.
+- Push time: the Python smoke and full-tree sentinel checks, Semgrep,
+  import boundaries, maintainability, LFS pointers, the baseline range check,
+  and the non-documentation Rust gate when its exact inputs changed.
+- Meta checks: hook selectors and exclusions must still apply to tracked
+  paths. This prevents a deleted estate from leaving inert hooks behind.
+
+Local Rust validation stops before Rustdoc, as repository policy requires:
+
+.. code-block:: bash
+
+   mise run rust:check-no-docs
 
 CI Job Reference
 ----------------
 
-The CI workflow (``.github/workflows/ci.yml``) runs three jobs:
-
-.. list-table::
-   :widths: 20 30 50
-   :header-rows: 1
-
-   * - Job
-     - Blocks Merge
-     - Purpose
-   * - ``ci``
-     - Yes
-     - Lint (Ruff), types (MyPy), tests (Pytest)
-   * - ``docs``
-     - Yes
-     - Doctest examples, Sphinx build
-   * - ``style``
-     - No (advisory)
-     - Formatting check (informational only)
+The authoritative workflow and required-check inventory changes more often
+than this how-to guide. See :doc:`/reference/ci-workflow` for the current
+ordinary CI, CodeQL, release-qualification, and branch-enforcement contracts.
 
 Troubleshooting
 ---------------

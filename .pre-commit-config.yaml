@@ -1,8 +1,9 @@
 # Pre-commit hooks for Babylon
-# Install: uv run pre-commit install --hook-type commit-msg --hook-type pre-commit --hook-type pre-push
+# Install: mise run hooks
 # Run manually: uv run pre-commit run --all-files
 
 default_stages: [pre-commit]
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
 repos:
   # ==========================================================================
@@ -20,11 +21,19 @@ repos:
         always_run: true
         fail_fast: true
 
+  # Keep path filters honest. These meta hooks would have rejected the four
+  # dead src/frontend hooks left behind by the Bevy cutover.
+  - repo: meta
+    hooks:
+      - id: check-hooks-apply
+      - id: check-useless-excludes
+
   # ==========================================================================
   # RUFF - Linting and Formatting
   # ==========================================================================
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.21
+    # Keep the commit hook on the same patch release as the uv-locked CI tool.
+    rev: v0.15.22
     hooks:
       - id: ruff
         name: ruff (lint)
@@ -123,7 +132,7 @@ repos:
   # SEMGREP - Architectural Pattern Enforcement
   # ==========================================================================
   - repo: https://github.com/returntocorp/semgrep
-    rev: v1.153.0
+    rev: v1.165.0
     hooks:
       - id: semgrep
         name: semgrep (patterns)
@@ -145,83 +154,46 @@ repos:
   # RUST - the engine estate (Amendment AE). Hosted CI's Rust Gate is `mise run
   # ci:rust`; the local pre-push gate deliberately stops before Rustdoc because
   # repository law prohibits local documentation generation. fmt runs at
-  # commit time on any staged .rs (no build, seconds). The no-docs gate runs at
-  # pre-push behind a range guard: when neither the push range nor the working
-  # tree touches Rust or a file defining the gate, its result cannot differ —
-  # skipping loses no signal (unlike the ADR181 R4 staged-files blind spot;
-  # when it fires it runs FULL-TREE). Hosted CI adds the Rustdoc proof.
+  # commit time on staged Rust source or formatter/toolchain policy. At
+  # pre-push, pre-commit itself supplies the exact remote..local file range, so
+  # the selector can skip an unrelated push without another fetch or a
+  # dev-specific merge-base guess. When selected, the gate still runs full-tree.
+  # Hosted CI adds the Rustdoc proof.
   # ==========================================================================
   - repo: local
     hooks:
       - id: rust-fmt-check
-        name: cargo fmt --check (Rust, staged .rs)
+        name: cargo fmt --check (Rust source and formatting policy)
         entry: bash -c 'cd rust && cargo fmt --all -- --check'
         language: system
         pass_filenames: false
-        files: '\.rs$'
+        files: '^(rust/.*\.rs|rust/rustfmt\.toml|rust/rust-toolchain\.toml)$'
 
       - id: rust-full-gate
         name: rust:check-no-docs (full local Rust gate, pre-push)
-        entry: >-
-          bash -c 'set -euo pipefail;
-          git fetch -q origin dev 2>/dev/null || true;
-          base="$(git merge-base HEAD origin/dev 2>/dev/null || git merge-base HEAD dev 2>/dev/null || echo "")";
-          dirty="$(git status --porcelain -- rust/ .mise.toml .pre-commit-config.yaml)";
-          if [ -n "$base" ] &&
-          [ -z "$(git diff --name-only "${base}..HEAD" -- rust/ .mise.toml .pre-commit-config.yaml)" ] &&
-          [ -z "$dirty" ]; then
-            echo "rust:check-no-docs skipped — push range and working tree touch no Rust-gate inputs";
-            exit 0;
-          fi;
-          mise run rust:check-no-docs'
+        entry: mise run rust:check-no-docs
         language: system
         pass_filenames: false
-        always_run: true
+        files: '^(rust/|\.mise\.toml$|\.pre-commit-config\.yaml$|\.github/workflows/ci\.yml$)'
         stages: [pre-push]
 
-  # ==========================================================================
-  # FRONTEND - src/frontend (the cockpit, spec-110; THE frontend since the
-  # spec-112 cutover deleted web/frontend)
-  # ==========================================================================
-  - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v3.1.0
-    hooks:
-      - id: prettier
-        name: prettier (cockpit format)
-        files: ^src/frontend/src/.*\.(ts|tsx|css)$
-        # Version must track src/frontend/package.json's prettier (CI checks
-        # with that one) — a mismatch makes this hook fight `npm run check`.
-        additional_dependencies: ["prettier@3.9.5"]
-
-  - repo: local
-    hooks:
-      - id: cockpit-typecheck
-        name: tsc (cockpit typecheck)
-        entry: bash -c 'cd src/frontend && npx tsc --noEmit'
-        language: node
+      # bsl-lint also owns two repository relationships outside rust/: ADR
+      # namespace uniqueness and the exact retired Python authority paths.
+      # Rust changes already select rust-full-gate, so this lighter hook covers
+      # only those non-Rust inputs without duplicating the full Cargo gate.
+      - id: bsl-repo-sentinels
+        name: bsl-lint repository sentinels (non-Rust inputs, pre-push)
+        entry: mise run check:bsl-sentinels
+        language: system
         pass_filenames: false
-        files: ^src/frontend/src/.*\.(ts|tsx)$
-
-      - id: cockpit-eslint
-        name: eslint (cockpit lint)
-        entry: bash -c 'cd src/frontend && npx eslint src/'
-        language: node
-        pass_filenames: false
-        files: ^src/frontend/src/.*\.(ts|tsx)$
-
-      - id: cockpit-vitest
-        name: vitest (cockpit tests)
-        entry: bash -c 'cd src/frontend && npx vitest run'
-        language: node
-        pass_filenames: false
-        files: ^src/frontend/src/.*\.(ts|tsx)$
+        files: '^(ai/decisions/|src/babylon/contracts/(practice_contract_v1|practice_contract_v1_generated|relational_territory_dossier_v1|rtd_v1_generated)\.py$)'
         stages: [pre-push]
 
   # ==========================================================================
   # COMMITIZEN - Conventional Commits
   # ==========================================================================
   - repo: https://github.com/commitizen-tools/commitizen
-    rev: v4.11.0
+    rev: v4.18.0
     hooks:
       - id: commitizen
         name: commitizen (commit message)
@@ -267,6 +239,7 @@ repos:
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
         # tests/**/__snapshots__/**/*.raw: pytest-textual-snapshot goldens are
         # Rich-exported SVG (ADR097/ADR099 snapshot lanes, III.13 determinism).
         # Rich's own SVG template bakes in a fixed blank-with-spaces line (the
@@ -288,15 +261,21 @@ repos:
         # openwiki/: generated by the OpenWiki engine (hand-editing prohibited,
         # CLAUDE.md) — normalizing its bytes makes every daily regen PR fight
         # this hook.
-        exclude: ^(tests/.*/__snapshots__/.*\.raw$|rust/crates/babylon-md/|openwiki/)
+        # reports/ is historical evidence and is not normalized in place.
+        exclude: ^(tests/.*/__snapshots__/.*\.raw$|rust/crates/babylon-md/|openwiki/|reports/)
       - id: end-of-file-fixer
         # Same vendored-fork + generated-openwiki rationale as above. The two
         # legacy vectors are NUL-framed byte contracts; appending a text newline
         # changes their digest and makes the Python source-drift guard fail.
-        exclude: ^(rust/crates/babylon-md/|openwiki/|rust/crates/babylon-persistence/tests/fixtures/legacy_(schema_ddl_v1|migrations_0010_0044_v1)\.bin$)
+        # Agent and host bundles are provider-managed, mounted read-only in
+        # governed worktrees, and validated by their own executable contracts.
+        exclude: ^(\.agents/|\.codex/|rust/crates/babylon-md/|openwiki/|reports/|rust/crates/babylon-persistence/tests/fixtures/legacy_(schema_ddl_v1|migrations_0010_0044_v1)\.bin$)
       - id: check-yaml
         args: [--unsafe]  # Allow custom tags in GitHub Actions
       - id: check-json
+        # These paths are tracked Git LFS pointers in an ordinary checkout, not
+        # materialized JSON. lfs-pointer-check owns their integrity pre-push.
+        exclude: ^\.understand-anything/(fingerprints|knowledge-graph)\.json$
       - id: check-toml
       - id: check-added-large-files
         args: ['--maxkb=1024']
@@ -313,6 +292,11 @@ repos:
         # geometry.
         exclude: ^tests/baselines/.*\.json$|^src/babylon/data/game/balkanization/seed_influences\.json$|^uv\.lock$|^rust/crates/babylon-client/assets/map/county_atlas\.bin$
       - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: forbid-new-submodules
+        # There is intentionally no current gitlink for check-hooks-apply to
+        # match; run the cheap guard so the first attempted one is refused.
+        always_run: true
       - id: no-commit-to-branch
         args: [--branch, main, --branch, dev]
 
@@ -340,7 +324,7 @@ repos:
   # YAML LINTING - Advanced YAML validation
   # ==========================================================================
   - repo: https://github.com/adrienverge/yamllint
-    rev: v1.37.1
+    rev: v1.38.0
     hooks:
       - id: yamllint
         name: yamllint (yaml lint)
@@ -365,16 +349,18 @@ repos:
         name: doc8 (rst style)
 
   - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.47.0
+    rev: v0.49.1
     hooks:
       - id: markdownlint
         name: markdownlint (md lint)
         args: [--config, .markdownlint.yaml]
         exclude: |
           (?x)^(
+            \.serena/.*|
             \.specify/.*|
             specs/.*|
             openwiki/.*|
+            design/mockups/SKILL\.md|
             CONSTITUTION\.md
           )$
 
@@ -387,17 +373,19 @@ repos:
       - id: actionlint
 
   - repo: https://github.com/shellcheck-py/shellcheck-py
-    rev: v0.11.0.1
+    rev: v0.11.0.1-1
     hooks:
       - id: shellcheck
         files: '\.sh$'
         # Policy v11 is an immutable cross-repository byte contract. Its exact
         # inventory and hashes, POSIX syntax, and executable behavior are
-        # enforced by test_rust_host_policy_contract.py.
-        exclude: ^\.codex/host/
+        # enforced by test_rust_host_policy_contract.py. The Spec Kit shell
+        # bundle is integration-managed and recorded in its manifest; audit it
+        # when its provider is updated, not as Babylon-owned shell.
+        exclude: '^(\.codex/host/|\.specify/scripts/bash/)'
 
   - repo: https://github.com/hadolint/hadolint
-    rev: v2.14.0
+    rev: v2.15.1
     hooks:
       - id: hadolint-docker
         files: 'Dockerfile'

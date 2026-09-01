@@ -38,7 +38,7 @@ jobs:
           install: true
 
       - name: Install pre-commit hooks
-        run: uv run pre-commit install --install-hooks
+        run: uv run --frozen pre-commit install --install-hooks
 
       - name: Verify environment
         run: |

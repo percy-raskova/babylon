@@ -3,8 +3,8 @@
 ## Setup
 
 ```bash
-uv sync --extra server
-uv run pre-commit install
+mise run install
+mise run hooks
 ```
 
 ## CI & Quality (Fast Gate)

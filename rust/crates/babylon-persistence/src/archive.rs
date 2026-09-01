@@ -461,6 +461,9 @@ pub struct ArchiveDirtyBatchV1 {
 }
 
 impl ArchiveDirtyBatchV1 {
+    /// Maximum number of dirty pages consumed from one committed receipt.
+    pub const MAX_PAGES: usize = 256;
+
     /// Validate an ordered dirty-subject batch.
     ///
     /// # Errors
@@ -473,7 +476,7 @@ impl ArchiveDirtyBatchV1 {
         if resolve_tick == 0 || resolve_tick > i64::MAX as u64 {
             return Err(SemanticArchiveErrorV1::InvalidVerifiedTick);
         }
-        if pages.len() > MAX_LINKS {
+        if pages.len() > Self::MAX_PAGES {
             return Err(SemanticArchiveErrorV1::CollectionBound);
         }
         let subjects = pages

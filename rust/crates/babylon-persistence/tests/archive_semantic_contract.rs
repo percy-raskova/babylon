@@ -92,6 +92,16 @@ fn receipt_retry_identity_includes_the_exact_dirty_batch() {
     assert!(SEMANTIC_ARCHIVE_SCHEMA_V1_SQL.contains("batch_sha256 BYTEA NOT NULL"));
 }
 
+#[test]
+fn dirty_batch_has_an_explicit_page_limit() {
+    let pages = vec![page_input(); ArchiveDirtyBatchV1::MAX_PAGES + 1];
+
+    assert_eq!(
+        ArchiveDirtyBatchV1::try_new(42, [0x11; 32], pages),
+        Err(SemanticArchiveErrorV1::CollectionBound)
+    );
+}
+
 fn knowledge() -> ArchiveKnowledgeV1 {
     ArchiveKnowledgeV1::try_new(
         vec![

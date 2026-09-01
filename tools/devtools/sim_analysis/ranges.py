@@ -13,6 +13,7 @@ Grammar:
 from __future__ import annotations
 
 import math
+from decimal import Decimal
 
 from tools.devtools.sim_analysis.params import (
     ParameterValue,
@@ -22,10 +23,6 @@ from tools.devtools.sim_analysis.params import (
 #: Tolerance fraction of ``step`` used for the inclusive-endpoint float
 #: comparison.
 _ENDPOINT_TOLERANCE_FRACTION = 0.1
-
-#: Decimal places values are rounded to, avoiding float-accumulation drift
-#: across many additions of ``step``.
-_ROUND_NDIGITS = 6
 
 #: Refuse accidental million-plus-point sweeps before allocating or running.
 _MAX_RANGE_VALUES = 1_000_000
@@ -90,7 +87,8 @@ def expand_range(
     :param end: Last value (included, subject to float tolerance).
     :param step: Increment; must be positive.
     :returns: Values from ``start`` to ``end`` inclusive, in fixed step
-        increments, each rounded to :data:`_ROUND_NDIGITS` places.
+        increments. Decimal index arithmetic avoids binary accumulation drift
+        without collapsing sub-micro coefficients.
     :raises ValueError: If any component is non-finite, ``step`` is not
         positive, the range is reversed, or adding ``step`` cannot advance
         the current float.
@@ -126,21 +124,23 @@ def expand_range(
     if value_count > _MAX_RANGE_VALUES:
         raise ValueError(f"range expands to {value_count} values; maximum is {_MAX_RANGE_VALUES}")
 
+    decimal_start = Decimal(str(float_start))
+    decimal_step = Decimal(str(float_step))
     values: list[ParameterValue] = []
-    current = float_start
+    previous: float | None = None
     for index in range(value_count):
-        values.append(round(current, _ROUND_NDIGITS))
-        if index + 1 == value_count:
-            break
-        next_value = current + float_step
-        if not math.isfinite(next_value):
-            raise ValueError(f"range expansion overflowed: current={current}, step={float_step}")
-        if next_value <= current:
+        value = float(decimal_start + Decimal(index) * decimal_step)
+        if not math.isfinite(value):
             raise ValueError(
-                f"range step does not advance at this magnitude: "
-                f"current={current}, step={float_step}"
+                f"range expansion overflowed: start={float_start}, step={float_step}, index={index}"
             )
-        current = next_value
+        if previous is not None and value <= previous:
+            raise ValueError(
+                "range step does not preserve distinct values at this magnitude: "
+                f"previous={previous}, next={value}, step={float_step}"
+            )
+        values.append(value)
+        previous = value
     return values
 
 

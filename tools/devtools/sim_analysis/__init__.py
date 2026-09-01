@@ -20,22 +20,17 @@ It also exports the four algorithm entry points built on that foundation —
 :func:`~tools.devtools.sim_analysis.bayesian.run_bayesian` — the same
 callables ``python -m tools.devtools.sim_analysis`` dispatches to.
 ``sensitivity`` and ``bayesian`` depend on optional heavy libraries (SALib,
-Optuna respectively); both modules already guard those imports internally
+Optuna respectively); both modules guard those specific imports internally
 (``HAS_SALIB`` / ``HAS_OPTUNA``) and raise a clean ``ImportError`` only when
-their ``run_*`` function is *called* without the dependency installed. The
-imports below add a second, defense-in-depth guard at the package boundary
-itself — mirroring that same try/except pattern — so that
-``import tools.devtools.sim_analysis`` can never hard-fail from a missing
-optional dependency, even if a future edit to one of those modules weakens
-its own guard.
+their ``run_*`` function is called without the dependency installed. Other
+import faults remain visible instead of being misreported as a missing
+optional dependency.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any
-
 from tools.devtools.sim_analysis.backends.types import Result
+from tools.devtools.sim_analysis.bayesian import run_bayesian
 from tools.devtools.sim_analysis.monte_carlo import run_monte_carlo
 from tools.devtools.sim_analysis.objectives import Objective, carceral_objective
 from tools.devtools.sim_analysis.params import (
@@ -46,19 +41,8 @@ from tools.devtools.sim_analysis.params import (
 )
 from tools.devtools.sim_analysis.reproducibility import ReproRecord
 from tools.devtools.sim_analysis.runner_api import run
+from tools.devtools.sim_analysis.sensitivity import run_sensitivity
 from tools.devtools.sim_analysis.sweep import run_sweep
-
-run_sensitivity: Callable[..., Any] | None
-try:
-    from tools.devtools.sim_analysis.sensitivity import run_sensitivity
-except ImportError:  # pragma: no cover - exercised only in SALib-less envs
-    run_sensitivity = None
-
-run_bayesian: Callable[..., Any] | None
-try:
-    from tools.devtools.sim_analysis.bayesian import run_bayesian
-except ImportError:  # pragma: no cover - exercised only without the dev group installed
-    run_bayesian = None
 
 __all__ = [
     "Result",

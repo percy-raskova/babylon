@@ -47,7 +47,7 @@ def test_morris_uses_seeded_current_salib_sample_and_analyze_apis(
 
     def sample(_problem: object, _trajectories: int, *, seed: int) -> np.ndarray:
         calls["sample_seed"] = seed
-        return np.array([[0.1], [0.9]])
+        return np.array([[0.1], [0.3], [0.7], [0.9]])
 
     def analyze(
         _problem: object,
@@ -71,7 +71,7 @@ def test_morris_uses_seeded_current_salib_sample_and_analyze_apis(
 
     result, records = sensitivity.run_morris_analysis(
         ["economy.extraction_efficiency"],
-        trajectories=1,
+        trajectories=2,
         max_ticks=1,
         seed=73,
         progress=False,
@@ -79,7 +79,7 @@ def test_morris_uses_seeded_current_salib_sample_and_analyze_apis(
 
     assert calls == {"sample_seed": 73, "analyze_seed": 73}
     assert result.ranking == ("economy.extraction_efficiency",)
-    assert len(records) == 2
+    assert len(records) == 4
     assert result.trials[0].sampled_values == (0.1,)
 
 

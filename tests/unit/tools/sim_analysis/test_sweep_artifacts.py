@@ -20,6 +20,7 @@ from tools.devtools.sim_analysis.sweep import (
     SweepManifest1D,
     SweepManifest2D,
     SweepPoint,
+    format_sweep_report,
     run_sweep,
     sweep_1d,
     sweep_2d,
@@ -56,6 +57,7 @@ def _point(
         defines_hash=canonical_defines_hash(defines),
         rng_seed=_SEED,
         backend="in_memory",
+        extra={"max_ticks": _MAX_TICKS},
     )
     receipt = ReproRecord(
         defines_hash=result.defines_hash,
@@ -158,6 +160,29 @@ def test_2d_manifest_retains_grid_results_and_aligned_receipts(tmp_path: Path) -
     assert validated.values2 == (0.3, 0.4)
 
 
+def test_2d_manifest_rejects_the_same_parameter_on_both_axes() -> None:
+    base = GameDefines()
+    manifest = SweepManifest2D(
+        base_defines=base,
+        base_defines_hash=canonical_defines_hash(base),
+        parameter1_path=_PARAM1,
+        values1=(0.1,),
+        parameter2_path=_PARAM2,
+        values2=(0.3,),
+        seed=_SEED,
+        backend="in_memory",
+        scenario=_SCENARIO,
+        max_ticks=_MAX_TICKS,
+        objective="tests:objective",
+        matrix=((_point(base, 0.1, value2=0.3),),),
+    )
+    replay_payload = manifest.model_dump()
+    replay_payload["parameter2_path"] = _PARAM1
+
+    with pytest.raises(ValueError, match="parameter paths must be distinct"):
+        SweepManifest2D.model_validate(replay_payload)
+
+
 def test_manifest_rejects_misaligned_lengths_and_hashes(tmp_path: Path) -> None:
     base = GameDefines()
     point = _point(base, 0.1)
@@ -233,6 +258,20 @@ def test_csv_binds_each_point_to_seed_and_defines_hash(tmp_path: Path) -> None:
     assert rows[0]["rng_seed"] == str(_SEED)
 
 
+def test_report_does_not_infer_a_boundary_from_non_monotonic_points() -> None:
+    base = GameDefines()
+    lower = _point(base, 0.1)
+    lower_result = lower.result.model_copy(update={"ticks_survived": 1, "outcome": "DIED"})
+    lower = lower.model_copy(update={"result": lower_result})
+    higher = _point(base, 0.2)
+
+    report = format_sweep_report(_PARAM1, [lower, higher], target_ticks=_MAX_TICKS)
+
+    assert f"Highest sampled value meeting target: {_PARAM1} = 0.2000" in report
+    assert "<=" not in report
+    assert "Playable Boundary" not in report
+
+
 def test_run_defaults_manifest_path_from_csv(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -285,6 +324,33 @@ def test_run_refuses_invalid_outputs_before_trials(
     assert trials_started is False
 
 
+def test_run_validates_all_outputs_before_creating_any_parent(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    trials_started = False
+
+    def fail_if_started(*args: object, **kwargs: object) -> list[SweepPoint]:
+        nonlocal trials_started
+        trials_started = True
+        raise AssertionError("invalid output paths must fail before trials")
+
+    monkeypatch.setattr(sweep_module, "sweep_1d", fail_if_started)
+    new_parent = tmp_path / "not-created"
+    existing_directory = tmp_path / "existing-directory"
+    existing_directory.mkdir()
+
+    with pytest.raises(ValueError, match="is a directory"):
+        run_sweep(
+            param=f"{_PARAM1}=0.1:0.1:0.1",
+            output_csv=new_parent / "sweep.csv",
+            manifest_path=existing_directory,
+        )
+
+    assert trials_started is False
+    assert not new_parent.exists()
+
+
 def test_grid_workload_cap_fails_before_trials(monkeypatch: pytest.MonkeyPatch) -> None:
     trials_started = False
 
@@ -301,6 +367,30 @@ def test_grid_workload_cap_fails_before_trials(monkeypatch: pytest.MonkeyPatch) 
             [0.1] * (MAX_SWEEP_EVALUATIONS + 1),
             _PARAM2,
             [0.3],
+            progress=False,
+        )
+
+    assert trials_started is False
+
+
+def test_2d_sweep_rejects_the_same_parameter_before_trials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    trials_started = False
+
+    def fail_if_started(*args: object, **kwargs: object) -> Result:
+        nonlocal trials_started
+        trials_started = True
+        raise AssertionError("same-axis grids must fail before trials")
+
+    monkeypatch.setattr(sweep_module, "run_trial", fail_if_started)
+
+    with pytest.raises(ValueError, match="parameter paths must be distinct"):
+        sweep_2d(
+            _PARAM1,
+            [0.1],
+            _PARAM1,
+            [0.2],
             progress=False,
         )
 

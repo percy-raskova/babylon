@@ -31,8 +31,10 @@ import hashlib
 import json
 import logging
 import math
+import shlex
 from pathlib import Path
 from typing import Any, Final
+from urllib.parse import urlsplit
 
 from tools.devtools.sim_analysis.objectives import (
     TICKS_PER_YEAR,
@@ -65,7 +67,10 @@ logger = logging.getLogger(__name__)
 # CONSTANTS
 # =============================================================================
 
-DEFAULT_MAX_TICKS: Final[int] = 5200
+MAX_N_TRIALS: Final[int] = 1_000
+MAX_TICKS: Final[int] = 5_200
+MAX_TICK_EVALUATIONS: Final[int] = 2_000_000
+DEFAULT_MAX_TICKS: Final[int] = MAX_TICKS
 """100 years at 52 ticks/year — matches ``runner_api.run``'s own default."""
 
 EARLY_DEATH_THRESHOLD: Final[int] = 5 * TICKS_PER_YEAR
@@ -95,6 +100,8 @@ _EXPERIMENT_SCHEMA: Final[str] = "babylon.sim-analysis.optuna-experiment.v1"
 _SOURCE_FILE_LIMIT: Final[int] = 5_000
 _SOURCE_BYTE_LIMIT: Final[int] = 64 * 1024 * 1024
 _SOURCE_READ_CHUNK_BYTES: Final[int] = 64 * 1024
+_CARCERAL_DRIVER_PATH: Final[str] = "carceral.enforcer_fraction"
+_CARCERAL_DERIVED_PATH: Final[str] = "carceral.proletariat_fraction"
 
 TUNING_CATEGORIES: Final[list[str]] = ["economy", "consciousness", "solidarity", "carceral"]
 """GameDefines categories relevant to Carceral Equilibrium trajectory timing."""
@@ -117,7 +124,7 @@ _NARROW_BOUNDS: Final[dict[str, ParameterBounds]] = {
     # Long-term decay drivers (affect when crises occur)
     "economy.trpf_coefficient": (0.0002, 0.002),
     "economy.trpf_efficiency_floor": (0.0, 0.1),
-    "economy.rent_pool_decay": (0.0, 0.02),
+    "economy.rent_pool_decay": (0.0, 0.01),
     # Consciousness and solidarity (affect terminal outcome)
     "consciousness.sensitivity": (0.2, 0.8),
     "solidarity.scaling_factor": (0.3, 0.9),
@@ -149,9 +156,11 @@ def _resolve_search_space(
         for all categories).
     :param narrow_bounds: Optional tighter ``(min, max)`` bounds for a
         curated subset of parameters. Falsy (``None`` or ``{}``) means no
-        narrowing — search every introspected parameter under
-        ``categories``. Every key must already be present in the
-        introspected space.
+        narrowing — search every independent introspected parameter under
+        ``categories``. The proletariat fraction is excluded whenever its
+        complementary enforcer fraction is present because it is derived,
+        not an independent Optuna dimension. Every explicit key must already
+        be present in the introspected space.
     :returns: Dict mapping ``"category.field"`` -> ``(min_value, max_value)``
         — either the full introspected space, or exactly ``narrow_bounds``
         once its keys are validated.
@@ -161,6 +170,8 @@ def _resolve_search_space(
     """
     full_space = get_tunable_parameters(categories=categories)
     if not narrow_bounds:
+        if _CARCERAL_DRIVER_PATH in full_space:
+            full_space.pop(_CARCERAL_DERIVED_PATH, None)
         return full_space
 
     unknown = sorted(set(narrow_bounds) - set(full_space))
@@ -168,6 +179,11 @@ def _resolve_search_space(
         raise ValueError(
             f"narrow_bounds keys are not valid GameDefines paths under "
             f"categories={categories!r}: {unknown}"
+        )
+    if {_CARCERAL_DRIVER_PATH, _CARCERAL_DERIVED_PATH} <= narrow_bounds.keys():
+        raise ValueError(
+            f"{_CARCERAL_DERIVED_PATH} is derived from {_CARCERAL_DRIVER_PATH}; "
+            "they cannot both be independent Optuna dimensions"
         )
 
     resolved: dict[str, ParameterBounds] = {}
@@ -206,6 +222,75 @@ def _resolve_search_space(
         resolved[param_path] = normalized
 
     return resolved
+
+
+def _resolve_experiment_search_space(
+    categories: list[str] | None,
+    narrow_bounds: dict[str, ParameterBounds] | None,
+) -> dict[str, ParameterBounds]:
+    """Resolve one experiment space with category-aware curated defaults."""
+    resolved_categories = categories if categories is not None else TUNING_CATEGORIES
+    if not resolved_categories:
+        raise ValueError("categories must contain at least one GameDefines category")
+    resolved_bounds = narrow_bounds
+    if resolved_bounds is None:
+        selected_categories = set(resolved_categories)
+        resolved_bounds = {
+            path: bounds
+            for path, bounds in _NARROW_BOUNDS.items()
+            if path.partition(".")[0] in selected_categories
+        }
+    search_space = _resolve_search_space(resolved_categories, resolved_bounds)
+    if not search_space:
+        raise ValueError(
+            f"categories={resolved_categories!r} contain no tunable GameDefines parameters"
+        )
+    return search_space
+
+
+def _validate_independent_search_space(search_space: dict[str, ParameterBounds]) -> None:
+    """Reject a driver and its derived complement as separate dimensions."""
+    if {_CARCERAL_DRIVER_PATH, _CARCERAL_DERIVED_PATH} <= search_space.keys():
+        raise ValueError(
+            f"{_CARCERAL_DERIVED_PATH} is derived from {_CARCERAL_DRIVER_PATH}; "
+            "they cannot both be independent Optuna dimensions"
+        )
+
+
+def _validate_max_ticks(max_ticks: int) -> None:
+    """Reject an invalid per-trial simulation horizon."""
+    if not 1 <= max_ticks <= MAX_TICKS:
+        raise ValueError(f"max_ticks must be 1..{MAX_TICKS}, got: {max_ticks}")
+
+
+def _validate_optimization_workload(n_trials: int, max_ticks: int) -> None:
+    """Reject unbounded Optuna campaigns before storage or simulation work."""
+    if not 1 <= n_trials <= MAX_N_TRIALS:
+        raise ValueError(f"n_trials must be 1..{MAX_N_TRIALS}, got: {n_trials}")
+    _validate_max_ticks(max_ticks)
+    tick_evaluations = n_trials * max_ticks
+    if tick_evaluations > MAX_TICK_EVALUATIONS:
+        raise ValueError(
+            "Optuna workload exceeds the tick budget: "
+            f"{n_trials} trials * {max_ticks} ticks = {tick_evaluations}, "
+            f"limit {MAX_TICK_EVALUATIONS}"
+        )
+
+
+def _validate_storage_url(storage: str) -> None:
+    """Allow only secret-free local SQLite storage for this development tool."""
+    try:
+        parsed = urlsplit(storage)
+    except ValueError as exc:
+        raise ValueError("Optuna storage must be a local SQLite URL") from exc
+    if (
+        parsed.scheme != "sqlite"
+        or parsed.netloc
+        or not parsed.path
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError("Optuna storage must be a local SQLite URL such as sqlite:///optuna.db")
 
 
 def _validate_sampled_value(
@@ -251,6 +336,7 @@ def _sample_params(
     :returns: Dict mapping ``"category.field"`` -> sampled value, ready for
         :func:`~tools.devtools.sim_analysis.params.inject_parameters`.
     """
+    _validate_independent_search_space(search_space)
     params: dict[str, ParameterValue] = {}
     for param_path, (min_val, max_val) in search_space.items():
         param_type = get_parameter_type(param_path)
@@ -283,6 +369,7 @@ def _map_best_params(
         :func:`_resolve_search_space`.
     :returns: Dict mapping ``"category.field"`` -> value.
     """
+    _validate_independent_search_space(search_space)
     unknown = sorted(set(best_params) - set(search_space))
     if unknown:
         raise ValueError(f"Optuna reported parameters outside this search space: {unknown}")
@@ -327,8 +414,7 @@ def create_objective(
         raise ImportError(
             "optuna is required for Bayesian tuning. Install the dev dependency group: `uv sync`."
         )
-    if max_ticks < 1:
-        raise ValueError(f"max_ticks must be >= 1, got: {max_ticks}")
+    _validate_max_ticks(max_ticks)
     if backend != DEFAULT_BACKEND:
         raise ValueError(f"backend must be {DEFAULT_BACKEND!r}, got: {backend!r}")
 
@@ -346,15 +432,9 @@ def create_objective(
         # simulations assigned a misleading zero score.
         defines = inject_parameters(GameDefines(), params)
 
-        # Infrastructure-layer boundary (project CLAUDE.md III): a crashed
-        # trial simulation must not crash the whole study — it is scored as
-        # a failed trial (0.0), not re-raised, mirroring
-        # tools/tune_agent.py's original behavior.
-        try:
-            result = run_trial(defines, seed=seed, max_ticks=max_ticks, backend=backend)
-        except Exception as exc:  # noqa: BLE001 - deliberate trial-failure boundary, see above
-            logger.warning("Trial %d: simulation crashed: %s", trial.number, exc)
-            return 0.0
+        # Unexpected simulation faults propagate so Optuna and the caller
+        # cannot mistake broken execution for a completed zero-score trial.
+        result = run_trial(defines, seed=seed, max_ticks=max_ticks, backend=backend)
 
         if result.ticks_survived < EARLY_DEATH_THRESHOLD:
             raise optuna.TrialPruned()
@@ -433,6 +513,7 @@ def _experiment_manifest(
     seed: int,
 ) -> dict[str, Any]:
     """Build the persisted identity that makes resumed trial scores comparable."""
+    _validate_independent_search_space(search_space)
     parameters = [
         {
             "name": name,
@@ -511,7 +592,7 @@ def run_optimization(
 
     :param study_name: Name for the study (enables resumption via
         ``load_if_exists``).
-    :param storage: Optuna storage URL (SQLite by default — resumable and
+    :param storage: Secret-free local SQLite URL (resumable and
         ``optuna-dashboard``-compatible).
     :param n_trials: Number of *new* optimization trials to run this call.
     :param max_ticks: Maximum simulation ticks per trial.
@@ -530,16 +611,12 @@ def run_optimization(
         raise ImportError(
             "optuna is required for Bayesian tuning. Install the dev dependency group: `uv sync`."
         )
-    if n_trials < 1:
-        raise ValueError(f"n_trials must be >= 1, got: {n_trials}")
-    if max_ticks < 1:
-        raise ValueError(f"max_ticks must be >= 1, got: {max_ticks}")
+    _validate_optimization_workload(n_trials, max_ticks)
+    _validate_storage_url(storage)
     if backend != DEFAULT_BACKEND:
         raise ValueError(f"backend must be {DEFAULT_BACKEND!r}, got: {backend!r}")
 
-    resolved_categories = categories if categories is not None else TUNING_CATEGORIES
-    resolved_narrow_bounds = narrow_bounds if narrow_bounds is not None else _NARROW_BOUNDS
-    search_space = _resolve_search_space(resolved_categories, resolved_narrow_bounds)
+    search_space = _resolve_experiment_search_space(categories, narrow_bounds)
     experiment_manifest = _experiment_manifest(
         search_space,
         max_ticks=max_ticks,
@@ -617,9 +694,9 @@ def format_results(
         built from (default: :data:`_NARROW_BOUNDS`; ``{}`` for unnarrowed).
     :returns: Multi-line report string.
     """
-    resolved_categories = categories if categories is not None else TUNING_CATEGORIES
-    resolved_narrow_bounds = narrow_bounds if narrow_bounds is not None else _NARROW_BOUNDS
-    search_space = _resolve_search_space(resolved_categories, resolved_narrow_bounds)
+    _validate_max_ticks(max_ticks)
+    _validate_storage_url(storage)
+    search_space = _resolve_experiment_search_space(categories, narrow_bounds)
 
     lines: list[str] = ["", "=" * 70, "CARCERAL EQUILIBRIUM OPTIMIZATION RESULTS", "=" * 70]
 
@@ -634,15 +711,17 @@ def format_results(
 
     if completed == 0:
         lines.append("\nWARNING: No trials completed!")
-        lines.append(
-            f"   All trials were pruned (entities died before year "
-            f"{EARLY_DEATH_THRESHOLD // TICKS_PER_YEAR})."
-        )
-        lines.append("   This indicates the simulation parameters are fundamentally broken.")
-        lines.append("\n   Likely causes:")
-        lines.append("   - Subsistence burn rate too high relative to income")
-        lines.append("   - Initial wealth insufficient for survival")
-        lines.append("   - Production/extraction balance broken")
+        if not study.trials:
+            lines.append("   The study contains no trials.")
+        else:
+            other = len(study.trials) - pruned - failed
+            lines.append(
+                f"   Observed terminal states: {pruned} pruned, {failed} failed, {other} other."
+            )
+            lines.append(
+                "   Inspect failed-trial exceptions and pruning reasons before "
+                "interpreting the parameter space."
+            )
         lines.append("\n   Try a bounded diagnostic sweep: mise run analysis:sweep 52")
     elif study.best_trial:
         lines.append(f"\nBest Carceral Equilibrium Score: {study.best_value:.2f}/100")
@@ -684,7 +763,7 @@ def format_results(
 
     lines.append("\n" + "=" * 70)
     lines.append("To visualize results, run:")
-    lines.append(f"  uv run optuna-dashboard {storage}")
+    lines.append(f"  uv run optuna-dashboard {shlex.quote(storage)}")
     lines.append("=" * 70)
 
     return "\n".join(lines)
@@ -713,7 +792,7 @@ def run_bayesian(
     lives in the package ``__main__``, not here).
 
     :param study_name: Name for the optimization study.
-    :param storage: SQLite (or other Optuna-supported) storage URL.
+    :param storage: Secret-free local SQLite storage URL.
     :param n_trials: Number of new trials to run (ignored if ``show_best``).
     :param max_ticks: Maximum simulation ticks per trial.
     :param backend: Must be ``"in_memory"``.
@@ -734,8 +813,11 @@ def run_bayesian(
         raise ImportError(
             "optuna is required for Bayesian tuning. Install the dev dependency group: `uv sync`."
         )
-    if max_ticks < 1:
-        raise ValueError(f"max_ticks must be >= 1, got: {max_ticks}")
+    if show_best:
+        _validate_max_ticks(max_ticks)
+    else:
+        _validate_optimization_workload(n_trials, max_ticks)
+    _validate_storage_url(storage)
     if backend != DEFAULT_BACKEND:
         raise ValueError(f"backend must be {DEFAULT_BACKEND!r}, got: {backend!r}")
 
@@ -744,9 +826,7 @@ def run_bayesian(
             study = optuna.load_study(study_name=study_name, storage=storage)
         except KeyError as exc:
             raise ValueError(f"Study {study_name!r} not found in {storage!r}") from exc
-        resolved_categories = categories if categories is not None else TUNING_CATEGORIES
-        resolved_narrow_bounds = narrow_bounds if narrow_bounds is not None else _NARROW_BOUNDS
-        search_space = _resolve_search_space(resolved_categories, resolved_narrow_bounds)
+        search_space = _resolve_experiment_search_space(categories, narrow_bounds)
         manifest = _experiment_manifest(
             search_space,
             max_ticks=max_ticks,
@@ -784,6 +864,9 @@ def run_bayesian(
 __all__ = [
     "HAS_OPTUNA",
     "DEFAULT_MAX_TICKS",
+    "MAX_N_TRIALS",
+    "MAX_TICKS",
+    "MAX_TICK_EVALUATIONS",
     "EARLY_DEATH_THRESHOLD",
     "DEFAULT_STUDY_NAME",
     "DEFAULT_STORAGE",

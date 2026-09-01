@@ -23,7 +23,7 @@ from __future__ import annotations
 import csv
 import json
 import random
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final, Literal
@@ -428,6 +428,28 @@ def _objective_id(objective: Objective) -> str:
     return f"{module}:{qualname}"
 
 
+def _preflight_output_paths(output_paths: Sequence[Path]) -> None:
+    """Reject colliding or invalid artifact paths without changing the filesystem."""
+    canonical_paths = [path.resolve() for path in output_paths]
+    if len(set(canonical_paths)) != len(canonical_paths):
+        raise ValueError("csv, manifest, and report output paths must be distinct")
+    for index, left in enumerate(canonical_paths):
+        for right in canonical_paths[index + 1 :]:
+            if left in right.parents or right in left.parents:
+                raise ValueError(
+                    "csv, manifest, and report output paths must not contain one another"
+                )
+
+    for output_path in output_paths:
+        if output_path.exists() and output_path.is_dir():
+            raise ValueError(f"analysis output path is a directory: {output_path}")
+        for parent in output_path.parents:
+            if parent.exists():
+                if not parent.is_dir():
+                    raise ValueError(f"analysis output parent is not a directory: {parent}")
+                break
+
+
 def write_manifest(
     *,
     defines: GameDefines,
@@ -626,13 +648,7 @@ def run_monte_carlo(
     output_paths = [resolved_csv_path, resolved_manifest_path]
     if report_path is not None:
         output_paths.append(report_path)
-    resolved_output_paths = [path.resolve() for path in output_paths]
-    if len(set(resolved_output_paths)) != len(resolved_output_paths):
-        raise ValueError("csv, manifest, and report output paths must be distinct")
-    for path in output_paths:
-        if path.exists() and path.is_dir():
-            raise ValueError(f"analysis output path is a directory: {path}")
-        path.parent.mkdir(parents=True, exist_ok=True)
+    _preflight_output_paths(output_paths)
 
     samples, repro_records = run_trials(
         n_samples,

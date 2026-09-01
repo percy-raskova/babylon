@@ -75,3 +75,12 @@ def test_range_size_is_bounded() -> None:
 def test_underflow_sized_step_is_refused_without_iterating() -> None:
     with pytest.raises(ValueError, match="range step count must be finite"):
         expand_range(0.0, 1.0, math.nextafter(0.0, math.inf))
+
+
+def test_submicro_float_range_preserves_distinct_schema_valid_values() -> None:
+    path, values = parse_range("economy.epsilon_conservation=1e-10:3e-10:1e-10")
+
+    assert path == "economy.epsilon_conservation"
+    assert values == [1e-10, 2e-10, 3e-10]
+    assert len(set(values)) == 3
+    assert all(value > 0 for value in values)

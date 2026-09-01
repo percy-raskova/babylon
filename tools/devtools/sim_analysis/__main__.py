@@ -170,7 +170,7 @@ def _add_sweep_subparser(subparsers: argparse._SubParsersAction[argparse.Argumen
         "--report",
         action="store_true",
         default=False,
-        help="Print the Playable Boundary report after a 1D sweep.",
+        help="Print the sampled-playability report after a 1D sweep.",
     )
 
 
@@ -300,7 +300,7 @@ def _add_bayesian_subparser(
         "--study-name", type=str, default=None, help="Name for the optimization study."
     )
     parser.add_argument(
-        "--storage", type=str, default=None, help="SQLite (or other Optuna-supported) storage URL."
+        "--storage", type=str, default=None, help="Secret-free local SQLite storage URL."
     )
     parser.add_argument(
         "--n-trials",
@@ -415,13 +415,7 @@ def _dispatch_sensitivity(args: argparse.Namespace) -> int:
 
     :param args: Parsed CLI namespace.
     :returns: Process exit code.
-    :raises SystemExit: If SALib is not installed (:data:`run_sensitivity` is ``None``).
     """
-    if run_sensitivity is None:
-        raise SystemExit(
-            "sensitivity analysis requires SALib, which is not installed. "
-            "Install the dev dependency group: `uv sync`."
-        )
     kwargs = _kwargs_from(
         args,
         "trajectories",
@@ -448,13 +442,7 @@ def _dispatch_bayesian(args: argparse.Namespace) -> int:
 
     :param args: Parsed CLI namespace.
     :returns: Process exit code.
-    :raises SystemExit: If Optuna is not installed (:data:`run_bayesian` is ``None``).
     """
-    if run_bayesian is None:
-        raise SystemExit(
-            "Bayesian tuning requires optuna, which is not installed. "
-            "Install the dev dependency group: `uv sync`."
-        )
     kwargs = _kwargs_from(args, "study_name", "storage", "n_trials", "max_ticks", "seed")
     if args.backend is not None:
         kwargs["backend"] = _BACKEND_TRANSLATION[args.backend]

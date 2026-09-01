@@ -1,6 +1,5 @@
 """Unit tests for the development-only simulation analysis suite.
 
-These are diagnostic-tool tests (not gated by ``mise run check``) — see
-``tests/unit/tools/sim_analysis/*`` docstrings and ``.mise.toml``'s
-``test:optimization`` task.
+These diagnostic-tool tests run in ``mise run check`` and through the focused
+``mise run analysis:test`` task.
 """

@@ -72,6 +72,53 @@ def test_oversized_sobol_is_rejected_before_sampling(
     assert sampled is False
 
 
+def test_one_morris_trajectory_is_rejected_before_sampling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sampled = False
+
+    def sample(*_args: object, **_kwargs: object) -> np.ndarray:
+        nonlocal sampled
+        sampled = True
+        return np.empty((0, 0))
+
+    monkeypatch.setattr(sensitivity.morris_sample, "sample", sample)
+
+    with pytest.raises(ValueError, match=r"2\.\."):
+        sensitivity.run_morris_analysis(
+            ["economy.extraction_efficiency"],
+            trajectories=1,
+            max_ticks=1,
+            progress=False,
+        )
+
+    assert sampled is False
+
+
+def test_combined_sensitivity_rejects_one_trajectory_before_analysis(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    analysis_started = False
+
+    def morris(*_args: object, **_kwargs: object) -> None:
+        nonlocal analysis_started
+        analysis_started = True
+
+    monkeypatch.setattr(sensitivity, "run_morris_analysis", morris)
+
+    with pytest.raises(ValueError, match=r"2\.\."):
+        sensitivity.run_sensitivity(
+            "both",
+            param_names=["economy.extraction_efficiency"],
+            trajectories=1,
+            samples=1,
+            max_ticks=1,
+            progress=False,
+        )
+
+    assert analysis_started is False
+
+
 def test_constant_objective_is_rejected_before_morris_analysis(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -80,12 +127,12 @@ def test_constant_objective_is_rejected_before_morris_analysis(
     monkeypatch.setattr(
         sensitivity.morris_sample,
         "sample",
-        lambda *_args, **_kwargs: np.array([[0.1], [0.9]]),
+        lambda *_args, **_kwargs: np.array([[0.1], [0.3], [0.7], [0.9]]),
     )
     monkeypatch.setattr(
         sensitivity,
         "evaluate_simulation",
-        lambda *_args, **_kwargs: ([2.0, 2.0], _records(2)),
+        lambda *_args, **_kwargs: ([2.0] * 4, _records(4)),
     )
 
     def analyze(*_args: object, **_kwargs: object) -> dict[str, np.ndarray]:
@@ -98,7 +145,7 @@ def test_constant_objective_is_rejected_before_morris_analysis(
     with pytest.raises(ValueError, match="zero variance"):
         sensitivity.run_morris_analysis(
             ["economy.extraction_efficiency"],
-            trajectories=1,
+            trajectories=2,
             max_ticks=1,
             progress=False,
         )
@@ -112,12 +159,12 @@ def test_nonfinite_morris_index_is_rejected(
     monkeypatch.setattr(
         sensitivity.morris_sample,
         "sample",
-        lambda *_args, **_kwargs: np.array([[0.1], [0.9]]),
+        lambda *_args, **_kwargs: np.array([[0.1], [0.3], [0.7], [0.9]]),
     )
     monkeypatch.setattr(
         sensitivity,
         "evaluate_simulation",
-        lambda *_args, **_kwargs: ([1.0, 2.0], _records(2)),
+        lambda *_args, **_kwargs: ([1.0, 2.0, 3.0, 4.0], _records(4)),
     )
     monkeypatch.setattr(
         sensitivity.morris_analyze,
@@ -133,7 +180,7 @@ def test_nonfinite_morris_index_is_rejected(
     with pytest.raises(ValueError, match="non-finite Morris mu_star"):
         sensitivity.run_morris_analysis(
             ["economy.extraction_efficiency"],
-            trajectories=1,
+            trajectories=2,
             max_ticks=1,
             progress=False,
         )
@@ -148,7 +195,7 @@ def test_integer_samples_are_native_and_artifact_is_replayable(
     monkeypatch.setattr(
         sensitivity.morris_sample,
         "sample",
-        lambda *_args, **_kwargs: np.array([[1.6], [2.6]]),
+        lambda *_args, **_kwargs: np.array([[1.6], [2.6], [3.6], [4.6]]),
     )
 
     def run(defines: Any, *, seed: int, **_kwargs: object) -> Result:
@@ -179,13 +226,13 @@ def test_integer_samples_are_native_and_artifact_is_replayable(
 
     result, _records_out = sensitivity.run_morris_analysis(
         ["crisis.crisis_period_ticks"],
-        trajectories=1,
+        trajectories=2,
         max_ticks=1,
         objective=lambda trial: trial.final_wealth + len(observed),
         progress=False,
     )
 
-    assert observed == [2, 3]
+    assert observed == [2, 3, 4, 5]
     assert result.parameter_definitions[0].native_type == "int"
     assert result.trials[0].sampled_values == (1.6,)
     assert result.trials[0].native_overrides == {"crisis.crisis_period_ticks": 2}
@@ -220,11 +267,11 @@ def test_both_refuses_colliding_output_paths_before_analysis(
     monkeypatch.setattr(sensitivity, "run_morris_analysis", morris)
     shared = tmp_path / "shared.json"
 
-    with pytest.raises(ValueError, match="output paths must be distinct"):
+    with pytest.raises(ValueError, match="must be distinct"):
         sensitivity.run_sensitivity(
             "both",
             param_names=["economy.extraction_efficiency"],
-            trajectories=1,
+            trajectories=2,
             samples=1,
             max_ticks=1,
             morris_output=shared,
@@ -235,6 +282,77 @@ def test_both_refuses_colliding_output_paths_before_analysis(
     assert analysis_started is False
 
 
+@pytest.mark.parametrize(
+    ("morris_relative", "sobol_relative"),
+    [
+        ("bundle", "bundle/sobol.json"),
+        ("bundle/morris.json", "bundle"),
+    ],
+)
+def test_both_refuses_nested_output_paths_without_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    morris_relative: str,
+    sobol_relative: str,
+) -> None:
+    analysis_started = False
+
+    def morris(*_args: object, **_kwargs: object) -> None:
+        nonlocal analysis_started
+        analysis_started = True
+        raise AssertionError("nested paths must fail before analysis")
+
+    monkeypatch.setattr(sensitivity, "run_morris_analysis", morris)
+    bundle_path = tmp_path / "bundle"
+
+    with pytest.raises(ValueError, match="must not contain one another"):
+        sensitivity.run_sensitivity(
+            "both",
+            param_names=["economy.extraction_efficiency"],
+            trajectories=2,
+            samples=1,
+            max_ticks=1,
+            morris_output=tmp_path / morris_relative,
+            sobol_output=tmp_path / sobol_relative,
+            progress=False,
+        )
+
+    assert analysis_started is False
+    assert not bundle_path.exists()
+
+
+def test_both_validates_all_outputs_before_analysis_or_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    analysis_started = False
+
+    def morris(*_args: object, **_kwargs: object) -> None:
+        nonlocal analysis_started
+        analysis_started = True
+        raise AssertionError("invalid paths must fail before analysis")
+
+    monkeypatch.setattr(sensitivity, "run_morris_analysis", morris)
+    new_parent = tmp_path / "not-created"
+    existing_directory = tmp_path / "existing-directory"
+    existing_directory.mkdir()
+
+    with pytest.raises(ValueError, match="is a directory"):
+        sensitivity.run_sensitivity(
+            "both",
+            param_names=["economy.extraction_efficiency"],
+            trajectories=2,
+            samples=1,
+            max_ticks=1,
+            morris_output=new_parent / "morris.json",
+            sobol_output=existing_directory,
+            progress=False,
+        )
+
+    assert analysis_started is False
+    assert not new_parent.exists()
+
+
 def test_both_promotes_only_top_morris_parameters_to_sobol(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -242,7 +360,7 @@ def test_both_promotes_only_top_morris_parameters_to_sobol(
     names = sensitivity.get_default_params()[:5]
     ranking = tuple(reversed(names))
     morris = sensitivity.MorrisResult(
-        trajectories=1,
+        trajectories=2,
         seed=7,
         max_ticks=1,
         backend="in_memory",
@@ -300,7 +418,7 @@ def test_both_promotes_only_top_morris_parameters_to_sobol(
     sensitivity.run_sensitivity(
         "both",
         param_names=names,
-        trajectories=1,
+        trajectories=2,
         samples=1,
         max_ticks=1,
         seed=7,

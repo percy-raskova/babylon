@@ -189,7 +189,7 @@ class MorrisResult(BaseModel):
         alias="schema",
     )
     method: Literal["morris"] = "morris"
-    trajectories: int = Field(ge=1)
+    trajectories: int = Field(ge=2)
     seed: int
     max_ticks: int = Field(ge=1)
     backend: str
@@ -553,6 +553,26 @@ def _write_strict_json(path: Path, result: BaseModel) -> None:
     path.write_text(f"{payload}\n", encoding="utf-8")
 
 
+def _preflight_output_paths(output_paths: Sequence[Path]) -> None:
+    """Reject colliding or invalid artifact paths without changing the filesystem."""
+    canonical_paths = [path.resolve() for path in output_paths]
+    if len(set(canonical_paths)) != len(canonical_paths):
+        raise ValueError("Morris and Sobol output paths must be distinct")
+    for index, left in enumerate(canonical_paths):
+        for right in canonical_paths[index + 1 :]:
+            if left in right.parents or right in left.parents:
+                raise ValueError("Morris and Sobol output paths must not contain one another")
+
+    for output_path in output_paths:
+        if output_path.exists() and output_path.is_dir():
+            raise ValueError(f"analysis output path is a directory: {output_path}")
+        for parent in output_path.parents:
+            if parent.exists():
+                if not parent.is_dir():
+                    raise ValueError(f"analysis output parent is not a directory: {parent}")
+                break
+
+
 # =============================================================================
 # TRIAL EXECUTION
 # =============================================================================
@@ -666,9 +686,9 @@ def run_morris_analysis(
     if not HAS_SALIB:
         raise ImportError("SALib not installed. Install the dev dependency group: `uv sync`.")
     _validate_run_metadata(backend=backend, scenario=scenario)
-    if not 1 <= trajectories <= MAX_MORRIS_TRAJECTORIES:
+    if not 2 <= trajectories <= MAX_MORRIS_TRAJECTORIES:
         raise ValueError(
-            f"Morris trajectories must be 1..{MAX_MORRIS_TRAJECTORIES}; received {trajectories}"
+            f"Morris trajectories must be 2..{MAX_MORRIS_TRAJECTORIES}; received {trajectories}"
         )
 
     problem = create_problem(param_names)
@@ -1042,9 +1062,9 @@ def run_sensitivity(
     resolved_param_names = list(param_names) if param_names is not None else get_default_params()
     _validate_run_metadata(backend=backend, scenario=scenario)
     parameter_count = len(_parameter_definitions(resolved_param_names))
-    if method in ("morris", "both") and not 1 <= trajectories <= MAX_MORRIS_TRAJECTORIES:
+    if method in ("morris", "both") and not 2 <= trajectories <= MAX_MORRIS_TRAJECTORIES:
         raise ValueError(
-            f"Morris trajectories must be 1..{MAX_MORRIS_TRAJECTORIES}; received {trajectories}"
+            f"Morris trajectories must be 2..{MAX_MORRIS_TRAJECTORIES}; received {trajectories}"
         )
     if method in ("sobol", "both") and not 1 <= samples <= MAX_SOBOL_BASE_SAMPLES:
         raise ValueError(
@@ -1072,8 +1092,12 @@ def run_sensitivity(
     resolved_sobol_path = (
         sobol_output if sobol_output is not None else resolved_output_dir / "sobol.json"
     )
-    if method == "both" and resolved_morris_path.resolve() == resolved_sobol_path.resolve():
-        raise ValueError("Morris and Sobol output paths must be distinct")
+    active_output_paths = []
+    if method in ("morris", "both"):
+        active_output_paths.append(resolved_morris_path)
+    if method in ("sobol", "both"):
+        active_output_paths.append(resolved_sobol_path)
+    _preflight_output_paths(active_output_paths)
 
     morris_result: MorrisResult | None = None
     sobol_result: SobolResult | None = None

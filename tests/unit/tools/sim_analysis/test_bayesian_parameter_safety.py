@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -68,6 +69,43 @@ def test_fractional_integer_proposal_fails_before_simulation(
     assert simulation_called is False
 
 
+def test_objective_propagates_unexpected_simulation_fault(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(bayesian, "HAS_OPTUNA", True)
+
+    def fail(*_args: Any, **_kwargs: Any) -> None:
+        raise RuntimeError("simulation contract broke")
+
+    monkeypatch.setattr(bayesian, "run_trial", fail)
+    objective = bayesian.create_objective(
+        {"economy.extraction_efficiency": (0.5, 0.95)},
+        max_ticks=52,
+        backend="in_memory",
+        seed=2010,
+    )
+
+    with pytest.raises(RuntimeError, match="simulation contract broke"):
+        objective(_StubTrial(float_value=0.7))
+
+
+def test_failed_trials_are_not_misreported_as_all_pruned() -> None:
+    failed_trial = SimpleNamespace(state=bayesian.optuna.trial.TrialState.FAIL)
+    study = _StubStudy(trials=[failed_trial])
+
+    report = bayesian.format_results(
+        study,  # type: ignore[arg-type] -- minimal Optuna study reporting protocol
+        max_ticks=52,
+        backend="in_memory",
+        seed=2010,
+        storage="sqlite:///optuna.db",
+    )
+
+    assert "Observed terminal states: 0 pruned, 1 failed, 0 other." in report
+    assert "All trials were pruned" not in report
+    assert "fundamentally broken" not in report
+
+
 def test_narrow_search_space_cannot_restore_strict_float_endpoint() -> None:
     with pytest.raises(ValueError, match="exceed its sampleable GameDefines bounds"):
         bayesian._resolve_search_space(
@@ -99,6 +137,116 @@ def test_optuna_uses_full_paths_for_colliding_leaf_names() -> None:
         "substrate.entropy_factor",
     ]
     assert set(params) == set(search_space)
+
+
+def test_full_carceral_space_omits_the_derived_fraction_from_optuna(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    search_space = bayesian._resolve_search_space(["carceral"], {})
+
+    assert "carceral.enforcer_fraction" in search_space
+    assert "carceral.proletariat_fraction" not in search_space
+
+    trial = _StubTrial(float_value=0.2)
+    params = bayesian._sample_params(trial, search_space)
+    assert "carceral.proletariat_fraction" not in trial.suggested_names
+    assert params["carceral.proletariat_fraction"] == pytest.approx(0.8)
+
+    monkeypatch.setattr(bayesian, "_source_tree_sha256", lambda: "c" * 64)
+    manifest = bayesian._experiment_manifest(
+        search_space,
+        max_ticks=52,
+        backend="in_memory",
+        seed=7,
+    )
+    parameter_names = {entry["name"] for entry in manifest["parameters"]}
+    assert "carceral.proletariat_fraction" not in parameter_names
+
+
+def test_explicit_search_space_rejects_driver_and_derived_fraction_together() -> None:
+    full_space = get_tunable_parameters(categories=["carceral"])
+
+    with pytest.raises(ValueError, match="derived"):
+        bayesian._resolve_search_space(
+            ["carceral"],
+            {
+                "carceral.enforcer_fraction": full_space["carceral.enforcer_fraction"],
+                "carceral.proletariat_fraction": full_space["carceral.proletariat_fraction"],
+            },
+        )
+
+
+def test_explicit_categories_filter_the_default_curated_space() -> None:
+    search_space = bayesian._resolve_experiment_search_space(["economy"], None)
+
+    assert search_space
+    assert set(search_space) == {
+        path for path in bayesian._NARROW_BOUNDS if path.startswith("economy.")
+    }
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"n_trials": bayesian.MAX_N_TRIALS + 1},
+        {"max_ticks": bayesian.MAX_TICKS + 1},
+        {
+            "n_trials": bayesian.MAX_N_TRIALS,
+            "max_ticks": bayesian.MAX_TICKS,
+        },
+    ],
+)
+def test_unbounded_optimization_is_rejected_before_storage(
+    monkeypatch: pytest.MonkeyPatch,
+    overrides: dict[str, int],
+) -> None:
+    monkeypatch.setattr(bayesian, "HAS_OPTUNA", True)
+    storage_opened = False
+
+    def create_study(**_kwargs: object) -> None:
+        nonlocal storage_opened
+        storage_opened = True
+
+    monkeypatch.setattr(bayesian.optuna, "create_study", create_study)
+
+    with pytest.raises(ValueError, match="n_trials|max_ticks|tick budget"):
+        bayesian.run_optimization(**overrides)
+
+    assert storage_opened is False
+
+
+@pytest.mark.parametrize("ignored_n_trials", [0, bayesian.MAX_N_TRIALS + 1])
+def test_show_best_ignores_new_trial_count(
+    ignored_n_trials: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(bayesian, "HAS_OPTUNA", True)
+    monkeypatch.setattr(bayesian, "_source_tree_sha256", lambda: "c" * 64)
+    study = _StubStudy()
+    monkeypatch.setattr(bayesian.optuna, "load_study", lambda **_kwargs: study)
+    monkeypatch.setattr(bayesian, "format_results", lambda *_args, **_kwargs: "report")
+
+    loaded = bayesian.run_bayesian(
+        show_best=True,
+        n_trials=ignored_n_trials,
+        max_ticks=52,
+    )
+
+    assert loaded is study
+
+
+def test_nonlocal_storage_is_rejected_without_rendering_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(bayesian, "HAS_OPTUNA", True)
+    storage = "postgresql://analysis:super-secret@db.example/babylon"
+
+    with pytest.raises(ValueError) as error:
+        bayesian.run_optimization(storage=storage)
+
+    assert "super-secret" not in str(error.value)
+    assert "super-secret" not in caplog.text
 
 
 def test_best_parameter_mapping_refuses_legacy_leaf_only_identity() -> None:

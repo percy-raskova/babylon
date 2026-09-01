@@ -206,6 +206,75 @@ def test_run_refuses_colliding_output_paths(
     assert trials_started is False
 
 
+@pytest.mark.parametrize(
+    ("csv_relative", "manifest_relative"),
+    [
+        ("bundle", "bundle/manifest.json"),
+        ("bundle/results.csv", "bundle"),
+    ],
+)
+def test_run_refuses_nested_output_paths_without_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    csv_relative: str,
+    manifest_relative: str,
+) -> None:
+    trials_started = False
+
+    def fake_run_trials(
+        *args: object, **kwargs: object
+    ) -> tuple[list[SampleResult], list[ReproRecord]]:
+        nonlocal trials_started
+        trials_started = True
+        raise AssertionError("nested paths must fail before trials")
+
+    monkeypatch.setattr(monte_carlo, "run_trials", fake_run_trials)
+    bundle_path = tmp_path / "bundle"
+
+    with pytest.raises(ValueError, match="must not contain one another"):
+        run_monte_carlo(
+            n_samples=1,
+            base_seed=41,
+            max_ticks=3,
+            csv_path=tmp_path / csv_relative,
+            manifest_path=tmp_path / manifest_relative,
+            progress=False,
+        )
+
+    assert trials_started is False
+    assert not bundle_path.exists()
+
+
+def test_run_validates_all_outputs_before_creating_parents(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    trials_started = False
+
+    def fake_run_trials(
+        *args: object, **kwargs: object
+    ) -> tuple[list[SampleResult], list[ReproRecord]]:
+        nonlocal trials_started
+        trials_started = True
+        raise AssertionError("invalid paths must fail before trials")
+
+    monkeypatch.setattr(monte_carlo, "run_trials", fake_run_trials)
+    new_parent = tmp_path / "not-created"
+    existing_directory = tmp_path / "existing-directory"
+    existing_directory.mkdir()
+
+    with pytest.raises(ValueError, match="is a directory"):
+        run_monte_carlo(
+            csv_path=new_parent / "run.csv",
+            manifest_path=new_parent / "run.manifest.json",
+            report_path=existing_directory,
+            progress=False,
+        )
+
+    assert trials_started is False
+    assert not new_parent.exists()
+
+
 def test_run_refuses_directory_output_before_trials(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

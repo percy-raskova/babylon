@@ -34,14 +34,18 @@ description = "Show the daemon and its recorded campaign tail plus global aggreg
 run = '''
 if [ -f .sim-pids/e2e.pid ] && kill -0 "$(cat .sim-pids/e2e.pid)" 2>/dev/null; then
   ps -o pid,pcpu,etime -p "$(cat .sim-pids/e2e.pid)" | tail -1
-  if [ ! -f .sim-pids/e2e.campaign-id ]; then
-    echo "background campaign identity is missing: .sim-pids/e2e.campaign-id" >&2
-    exit 2
-  fi
-  stored_campaign_id="$(cat .sim-pids/e2e.campaign-id)" || exit
-  sim_campaign_id="$(BABYLON_CAMPAIGN_ID="$stored_campaign_id" python3 tools/devtools/worktree_campaign.py --purpose michigan-e2e)" || exit
+  background_is_live=true
 else
   echo "(no daemonized run)"
+  background_is_live=false
+fi
+if [ -f .sim-pids/e2e.campaign-id ]; then
+  stored_campaign_id="$(cat .sim-pids/e2e.campaign-id)" || exit
+  sim_campaign_id="$(BABYLON_CAMPAIGN_ID="$stored_campaign_id" python3 tools/devtools/worktree_campaign.py --purpose michigan-e2e)" || exit
+elif [ "$background_is_live" = true ]; then
+  echo "background campaign identity is missing: .sim-pids/e2e.campaign-id" >&2
+  exit 2
+else
   sim_campaign_id="$(python3 tools/devtools/worktree_campaign.py --purpose michigan-e2e)" || exit
 fi
 export BABYLON_RUNTIME_DSN="${BABYLON_RUNTIME_DSN:-host=127.0.0.1 port=5433 dbname=babylon_test user=test password=test}"

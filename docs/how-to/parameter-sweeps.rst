@@ -60,8 +60,9 @@ Sweep one coefficient across a range, or two for a grid:
        --report
 
 Add ``--param2 "economy.comprador_cut=0.5:1.0:0.1"`` for a 2D grid instead
-of a 1D line. ``--report`` prints the Playable Boundary report after a 1D
-sweep.
+of a 1D line. ``--report`` prints a sampled-playability report after a 1D
+sweep. It reports the highest sampled value meeting the tick target without
+assuming that arbitrary parameter responses are monotonic.
 
 When ``--output-csv`` is present, the command also writes a sibling
 ``.manifest.json`` file unless ``--manifest-path`` chooses another location.
@@ -169,15 +170,22 @@ Search for coefficients maximizing the Carceral Equilibrium objective:
 Resume a study by reusing ``--study-name``/``--storage`` only with the same
 persisted experiment fingerprint. Inspect the best trial so far without
 running new ones via ``--show-best``; inspection enforces that fingerprint as
-well. Restrict the search space with ``--categories
-"economy,consciousness"`` (default: ``TUNING_CATEGORIES``). Parameter
+well. Storage is deliberately limited to a local secret-free SQLite URL; the
+tool rejects remote and credential-bearing URLs before Optuna can log them.
+Restrict the search space with ``--categories
+"economy,consciousness"`` (default: ``TUNING_CATEGORIES``); the curated
+default bounds are filtered to those categories rather than silently adding
+parameters from the other defaults. Parameter
 identities are full ``category.field`` paths so same-named fields cannot
 collide. Start a new study name or storage for any fingerprint mismatch,
 including a database created by the pre-consolidation leaf-name
 implementation.
 Optuna persists completed trials but not sampler RNG state, so a resumed study
 is durable without claiming the exact proposal order of one uninterrupted
-process. Requires the dev dependency group (Optuna).
+process. One invocation permits at most 1,000 trials, a 5,200-tick horizon,
+and two million aggregate simulated ticks. The Mise task fixes the horizon at
+5,200 ticks, so its effective trial maximum is 384. Requires the dev dependency
+group (Optuna).
 
 Via mise:
 
@@ -208,9 +216,9 @@ Range (a swept sequence) — used by ``sweep --param``/``--param2``:
    economy.extraction_efficiency=0.1:0.3:0.1   # -> [0.1, 0.2, 0.3]
 
 Ranges are inclusive of both endpoints (subject to a small float-tolerance
-window, not Python's exclusive-end ``range()``), and each expanded value is
-rounded to 6 decimal places to avoid float-accumulation drift across many
-additions of ``step``. ``category.field`` is any dot-separated path into
+window, not Python's exclusive-end ``range()``). Float ranges use decimal
+indexed arithmetic from the textual inputs, avoiding both cumulative binary
+float drift and lossy fixed-decimal rounding. ``category.field`` is any dot-separated path into
 ``GameDefines`` (see :doc:`modding-defines` for the schema); the CLI
 validates the spec eagerly, so a malformed grammar fails immediately with a
 usage error rather than deep inside a trial.

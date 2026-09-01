@@ -40,7 +40,7 @@ class Result(BaseModel):
         contract (e.g. artifact paths, session ids).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     ticks_survived: int = Field(ge=0)
     outcome: str

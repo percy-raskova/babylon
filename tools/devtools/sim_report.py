@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import BinaryIO, Final, cast
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 TICK_REPORT_SCHEMA: Final = "babylon.simulation.tick-report.v1"
 SUMMARY_SCHEMA: Final = "babylon.simulation.run-summary.v1"
@@ -165,20 +165,9 @@ def _create_artifact_dir(output_root: Path) -> Path:
         raise ReportError(f"cannot create output root: {output_root}") from error
 
 
-def _canonical_campaign_id(value: str) -> str:
-    try:
-        parsed = UUID(value)
-    except ValueError as error:
-        raise ReportError("BABYLON_CAMPAIGN_ID must be a canonical UUID") from error
-    if str(parsed) != value:
-        raise ReportError("BABYLON_CAMPAIGN_ID must be a canonical UUID")
-    return value
-
-
 def _child_environment() -> tuple[dict[str, str], str]:
     environment = dict(os.environ)
-    configured = environment.get("BABYLON_CAMPAIGN_ID")
-    campaign_id = str(uuid4()) if configured is None else _canonical_campaign_id(configured)
+    campaign_id = str(uuid4())
     environment["BABYLON_CAMPAIGN_ID"] = campaign_id
     return environment, campaign_id
 
@@ -1101,9 +1090,8 @@ def _parser() -> argparse.ArgumentParser:
             "Run babylon-runtime and retain a bounded, validated simulation report bundle."
         ),
         epilog=(
-            "BABYLON_CAMPAIGN_ID, when set, must be a canonical UUID naming "
-            "a fresh campaign. When absent, the wrapper supplies a fresh "
-            "child-only UUID."
+            "The wrapper always supplies a fresh child-only BABYLON_CAMPAIGN_ID; "
+            "an inherited value is ignored so report runs cannot resume an old campaign."
         ),
     )
     parser.add_argument(

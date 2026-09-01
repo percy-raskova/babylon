@@ -60,7 +60,7 @@ uv run python -m tools.devtools.sim_analysis monte-carlo \
 ["analysis:optuna"]
 description = "Run Carceral Equilibrium optimization with Optuna TPE"
 usage = '''
-arg "[trials]" help="Number of optimization trials" default="100"
+arg "[trials]" help="Number of optimization trials (maximum 384 at the fixed 5200-tick horizon)" default="100"
 arg "[name]" help="Study name for resumption" default="babylon_carceral"
 '''
 run = """
@@ -77,7 +77,7 @@ run = "uv run optuna-dashboard sqlite:///optuna.db"
 ["analysis:sensitivity"]
 description = "Screen 8 curated parameters with Morris, then run Sobol on its top 4"
 usage = '''
-arg "[trajectories]" help="Morris trajectories (maximum 64)" default="8"
+arg "[trajectories]" help="Morris trajectories (minimum 2, maximum 64)" default="8"
 arg "[samples]" help="Sobol base samples (bounded by total workload)" default="64"
 arg "[ticks]" help="Maximum ticks per trial (maximum 5200)" default="2600"
 arg "[parameters]" help="Comma-separated parameter paths (maximum 16)" default="economy.base_subsistence,economy.extraction_efficiency,economy.comprador_cut,economy.super_wage_rate,economy.trpf_coefficient,consciousness.sensitivity,solidarity.scaling_factor,carceral.enforcer_fraction"
@@ -93,7 +93,7 @@ uv run python -m tools.devtools.sim_analysis sensitivity --method both \
 ["analysis:morris"]
 description = "Run bounded Morris screening over an explicit parameter subset"
 usage = '''
-arg "[trajectories]" help="Number of trajectories (maximum 64)" default="8"
+arg "[trajectories]" help="Number of trajectories (minimum 2, maximum 64)" default="8"
 arg "[ticks]" help="Maximum ticks per trial (maximum 5200)" default="2600"
 arg "[parameters]" help="Comma-separated parameter paths (maximum 16)" default="economy.base_subsistence,economy.extraction_efficiency,economy.comprador_cut,economy.super_wage_rate,economy.trpf_coefficient,consciousness.sensitivity,solidarity.scaling_factor,carceral.enforcer_fraction"
 '''

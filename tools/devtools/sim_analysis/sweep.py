@@ -3,7 +3,7 @@
 Provides sweep algorithms on the development-only analysis package core
 (:mod:`.params`, :mod:`.ranges`,
 :mod:`.objectives`, :mod:`.runner_api`, :mod:`.backends.types`,
-:mod:`.reproducibility`). It supports a 1D summary, a "Playable Boundary"
+:mod:`.reproducibility`). It supports a 1D summary, a sampled-playability
 report, and a 2D landscape matrix through one shared range grammar.
 No argparse lives in this module — :func:`run_sweep` is the plain callable
 entry point the package CLI dispatches to.
@@ -51,8 +51,7 @@ MAX_SWEEP_EVALUATIONS: Final[int] = 2048
 #: alone is insufficient when callers can also choose an arbitrary horizon.
 MAX_SWEEP_TICK_EVALUATIONS: Final[int] = 5_000_000
 
-#: Minimum ``ticks_survived`` for a swept value to count toward the
-#: "Playable Boundary".
+#: Minimum ``ticks_survived`` for a swept value to count as a sampled survivor.
 _PLAYABLE_BOUNDARY_TARGET_TICKS: Final[int] = 25
 
 
@@ -162,6 +161,8 @@ class SweepManifest2D(BaseModel):
     def validate_replay_inputs(self) -> Self:
         """Bind every matrix coordinate to its retained coefficient inputs."""
         base = self.base_defines
+        if self.parameter1_path == self.parameter2_path:
+            raise ValueError("2D sweep parameter paths must be distinct")
         _validate_run_config(
             max_ticks=self.max_ticks,
             seed=self.seed,
@@ -416,8 +417,11 @@ def sweep_2d(
         :class:`SweepPoint` — ``matrix[i][j]`` is the trial for
         ``(values1[i], values2[j])``.
     :raises ValueError: If ``validate`` and either parameter path is
-        unknown, or if either path is invalid.
+        unknown, if either path is invalid, or if both axes name the same
+        parameter.
     """
+    if param1 == param2:
+        raise ValueError("2D sweep parameter paths must be distinct")
     if validate:
         _validate_param_path(param1)
         _validate_param_path(param2)
@@ -473,11 +477,11 @@ def format_sweep_report(
     *,
     target_ticks: int = _PLAYABLE_BOUNDARY_TARGET_TICKS,
 ) -> str:
-    """Render the "Playable Boundary" report table for a 1D sweep.
+    """Render the sampled-playability report table for a 1D sweep.
 
-    The boundary is the *highest* swept value at which the run still survives at least
-    ``target_ticks`` — i.e. the most extreme coefficient before the game
-    becomes unwinnable.
+    The report identifies the *highest sampled value* whose run survives at
+    least ``target_ticks``. It deliberately does not infer a monotonic boundary:
+    arbitrary parameters may produce non-monotonic responses.
 
     :param param_path: The swept parameter's path (for the report header).
     :param points: The sweep's :class:`SweepPoint` list, in swept order.
@@ -514,7 +518,8 @@ def format_sweep_report(
     if boundary_points:
         highest_surviving = max(boundary_points, key=lambda p: p.value)
         lines.append(
-            f"Playable Boundary: {param_path} <= {highest_surviving.value:.4f} "
+            f"Highest sampled value meeting target: {param_path} = "
+            f"{highest_surviving.value:.4f} "
             f"(survives {highest_surviving.result.ticks_survived} ticks)"
         )
     else:
@@ -602,11 +607,19 @@ def _objective_id(objective: Objective) -> str:
 
 def _prepare_output_file(output_path: Path) -> None:
     """Create an output parent while rejecting paths that name directories."""
+    _validate_output_file(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+
+def _validate_output_file(output_path: Path) -> None:
+    """Reject an invalid output target without changing the filesystem."""
     if output_path.exists() and output_path.is_dir():
         raise ValueError(f"analysis output path is a directory: {output_path}")
-    if output_path.parent.exists() and not output_path.parent.is_dir():
-        raise ValueError(f"analysis output parent is not a directory: {output_path.parent}")
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    for parent in output_path.parents:
+        if parent.exists():
+            if not parent.is_dir():
+                raise ValueError(f"analysis output parent is not a directory: {parent}")
+            break
 
 
 def _resolve_output_paths(
@@ -630,7 +643,7 @@ def _resolve_output_paths(
             if left in right.parents or right in left.parents:
                 raise ValueError("sweep output paths must not contain one another")
     for output_path in output_paths:
-        _prepare_output_file(output_path)
+        _validate_output_file(output_path)
     return output_csv, resolved_manifest
 
 
@@ -752,8 +765,8 @@ def run_sweep(
         ``.manifest.json`` suffix. May be supplied without a CSV for a
         manifest-only run.
     :param report: If ``True``, prints :func:`format_sweep_report` after a
-        1D sweep (ignored for a 2D sweep, which has no Playable Boundary
-        concept).
+        1D sweep (ignored for a 2D sweep, which has no sampled-playability
+        report).
     :returns: :func:`sweep_1d`'s or :func:`sweep_2d`'s result, so the caller
         can inspect trials beyond what was written to ``output_csv``.
     :raises ValueError: Propagated from :func:`~tools.devtools.sim_analysis.ranges.parse_range`

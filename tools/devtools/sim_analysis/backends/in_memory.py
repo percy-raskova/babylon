@@ -138,7 +138,7 @@ def run_in_memory(
         defines_hash=canonical_defines_hash(defines),
         rng_seed=seed,
         backend="in_memory",
-        extra={"scenario": scenario},
+        extra={"scenario": scenario, "max_ticks": max_ticks},
     )
 
 

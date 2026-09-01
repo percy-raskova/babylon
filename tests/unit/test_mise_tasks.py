@@ -126,6 +126,45 @@ class TestMiseTaskDiscoverability:
         assert "printf '%s\\n' \"$sim_campaign_id\" > .sim-pids/e2e.campaign-id" in background
         assert 'stored_campaign_id="$(cat .sim-pids/e2e.campaign-id)"' in status
         assert 'BABYLON_CAMPAIGN_ID="$stored_campaign_id" python3' in status
+        assert 'elif [ "$background_is_live" = true ]; then' in status
+        assert "background campaign identity is missing" in status
+
+    def test_status_uses_recorded_campaign_after_background_process_exits(
+        self,
+        mise_tasks: dict[str, dict[str, object]],
+        tmp_path: Path,
+    ) -> None:
+        campaign_id = "f487f780-9bc8-4a48-9fc4-da1d0f08943f"
+        pid_dir = tmp_path / ".sim-pids"
+        pid_dir.mkdir()
+        (pid_dir / "e2e.campaign-id").write_text(f"{campaign_id}\n")
+
+        capture_path = tmp_path / "runtime-campaign.txt"
+        fake_bin = tmp_path / "bin"
+        fake_bin.mkdir()
+        fake_python = fake_bin / "python3"
+        fake_python.write_text("#!/bin/sh\nprintf '%s\\n' \"${BABYLON_CAMPAIGN_ID-}\"\n")
+        fake_python.chmod(0o755)
+        fake_runtime = fake_bin / "babylon-runtime"
+        fake_runtime.write_text(
+            '#!/bin/sh\nprintf \'%s\\n\' "${BABYLON_CAMPAIGN_ID-}" > "$STATUS_CAPTURE"\n'
+        )
+        fake_runtime.chmod(0o755)
+
+        environment = os.environ.copy()
+        environment["PATH"] = f"{fake_bin}:{environment['PATH']}"
+        environment["STATUS_CAPTURE"] = str(capture_path)
+        completed = subprocess.run(  # noqa: S603 -- repository-owned task script
+            ["bash", "-euo", "pipefail", "-c", _task_run(mise_tasks["sim:status"])],
+            cwd=tmp_path,
+            env=environment,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        assert "(no daemonized run)" in completed.stdout
+        assert capture_path.read_text() == f"{campaign_id}\n"
 
     def test_one_shot_pg_tasks_use_fresh_campaigns_unless_explicitly_configured(
         self, mise_tasks: dict[str, dict[str, object]]
@@ -196,6 +235,9 @@ class TestMiseTaskDiscoverability:
         assert _task_run(mise_tasks["analysis:dashboard"]) == (
             "uv run optuna-dashboard sqlite:///optuna.db"
         )
+        optuna_usage = mise_tasks["analysis:optuna"]["usage"]
+        assert isinstance(optuna_usage, str)
+        assert "maximum 384 at the fixed 5200-tick horizon" in optuna_usage
         for name in ("analysis:sensitivity", "analysis:morris", "analysis:sobol"):
             run = _task_run(mise_tasks[name])
             assert '--param-names "${usage_parameters}"' in run

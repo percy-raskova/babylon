@@ -213,8 +213,17 @@ def test_success_creates_unique_secret_safe_artifacts_summary_and_csv(
     assert first_artifact.is_dir()
     assert second_artifact.is_dir()
 
-    assert _summary(first_artifact) == {
-        "campaign_id": CAMPAIGN_ID,
+    first_summary = _summary(first_artifact)
+    second_summary = _summary(second_artifact)
+    first_campaign = first_summary.pop("campaign_id")
+    second_campaign = second_summary.pop("campaign_id")
+    assert isinstance(first_campaign, str)
+    assert isinstance(second_campaign, str)
+    assert first_campaign != second_campaign
+    assert CAMPAIGN_ID not in {first_campaign, second_campaign}
+    assert uuid.UUID(first_campaign).version == 4
+    assert uuid.UUID(second_campaign).version == 4
+    assert first_summary == {
         "final": {
             "graph_sha256": _digest(3),
             "tick_content_hash": _digest(402),
@@ -241,7 +250,7 @@ def test_success_creates_unique_secret_safe_artifacts_summary_and_csv(
     assert "top-secret" not in stderr_log
     assert "[REDACTED]" in stderr_log
     assert "runtime stdout must stay" not in first_console.out
-    assert f"campaign: {CAMPAIGN_ID}" in first_console.out
+    assert f"campaign: {first_campaign}" in first_console.out
     assert "ticks: 2 reported / 2 requested" in first_console.out
     assert first_console.err == ""
 
@@ -619,7 +628,7 @@ def test_absent_campaign_id_generates_fresh_child_only_uuid_and_surfaces_it(
     assert "BABYLON_CAMPAIGN_ID" not in os.environ
 
 
-def test_explicit_campaign_id_is_preserved_and_surfaced(
+def test_inherited_campaign_id_is_replaced_before_the_runtime_starts(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -635,8 +644,10 @@ def test_explicit_campaign_id_is_preserved_and_surfaced(
     result = sim_report.run_report(runtime=runtime, ticks=1, output_root=tmp_path / "out")
 
     assert result.exit_code == 0
-    assert capture_path.read_text(encoding="utf-8") == CAMPAIGN_ID + "\n"
-    assert result.summary["campaign_id"] == CAMPAIGN_ID
+    child_campaign_id = capture_path.read_text(encoding="utf-8").strip()
+    assert child_campaign_id != CAMPAIGN_ID
+    assert uuid.UUID(child_campaign_id).version == 4
+    assert result.summary["campaign_id"] == child_campaign_id
 
 
 def test_help_explains_tick_count_and_fresh_campaign_semantics() -> None:
@@ -645,6 +656,7 @@ def test_help_explains_tick_count_and_fresh_campaign_semantics() -> None:
     assert "count of ticks" in help_text
     assert "BABYLON_CAMPAIGN_ID" in help_text
     assert "fresh campaign" in help_text
+    assert "inherited value is ignored" in help_text
     assert "maximum 10000" in help_text
 
 

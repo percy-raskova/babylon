@@ -389,6 +389,8 @@ def _tee(command: Sequence[str], cwd: Path, log_path: Path, *, append: bool = Fa
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             bufsize=1,
         )
     except OSError as error:
@@ -493,7 +495,7 @@ def run_nextest(
     _update_latest(report_root, run_id, report_dir, summary)
     _append_github_summary(report_dir / "summary.md")
     print(f"Rust test report: {report_dir.relative_to(REPOSITORY_ROOT)}")
-    return exit_code
+    return int(summary["exit_code"])
 
 
 def _load_latest(report_root: Path) -> tuple[dict[str, Any], Path]:
@@ -520,7 +522,7 @@ def summarize_latest(report_root: Path = DEFAULT_REPORT_ROOT) -> int:
 def rerun_failed(report_root: Path = DEFAULT_REPORT_ROOT) -> int:
     """Rerun exactly the failure identities from the explicit latest receipt."""
     try:
-        _, report_dir = _load_latest(report_root)
+        summary, report_dir = _load_latest(report_root)
         failures = [
             json.loads(line)
             for line in (report_dir / "failures.jsonl").read_text(encoding="utf-8").splitlines()
@@ -530,6 +532,14 @@ def rerun_failed(report_root: Path = DEFAULT_REPORT_ROOT) -> int:
         print(error, file=sys.stderr)
         return 1
     if not failures:
+        if summary.get("status") != "passed":
+            print(
+                "latest Rust run failed before test identities were recorded; "
+                "inspect `mise run rust:test:summary` and the retained run.log",
+                file=sys.stderr,
+            )
+            exit_code = summary.get("exit_code", 1)
+            return exit_code if isinstance(exit_code, int) and exit_code != 0 else 1
         print("(latest Rust report has no failed tests — nothing to re-run)")
         return 0
     predicates = [

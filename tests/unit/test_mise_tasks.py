@@ -568,7 +568,9 @@ def test_rust_reporter_tasks_and_nextest_profile_are_agent_first() -> None:
 
     assert "--version 0.9.143 cargo-nextest" in str(tasks["rust:test:install-tools"]["run"])
     assert "--version 0.9.0 cargo-llvm-cov" in str(tasks["rust:test:install-tools"]["run"])
-    assert "rustup component add llvm-tools-preview" in str(tasks["rust:test:install-tools"]["run"])
+    install_script = str(tasks["rust:test:install-tools"]["run"])
+    assert "rust/rust-toolchain.toml" in install_script
+    assert 'rustup component add --toolchain "$CHANNEL" llvm-tools-preview' in install_script
     assert "rust_test_report.py summarize" in str(tasks["rust:test:summary"]["run"])
     assert "rust_test_report.py rerun-failed" in str(tasks["rust:test:failed"]["run"])
 

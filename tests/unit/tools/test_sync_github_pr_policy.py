@@ -21,6 +21,8 @@ if _SPEC is None or _SPEC.loader is None:
 policy_tool = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(policy_tool)
 
+POLICY_PATH = Path(__file__).resolve().parents[3] / ".github" / "settings" / "pr-policy.json"
+
 DEV_BLOCKING_CHECKS = (
     "Fast Gate (hygiene, lint, format, imports, types, lock)",
     "Unit Tests (xdist, coverage gate)",
@@ -34,6 +36,15 @@ DEV_BLOCKING_CHECKS = (
 )
 GITHUB_ACTIONS_APP_ID = 15368
 GITHUB_ACTIONS_APP_SLUG = "github-actions"
+CODEQL_PROTECTION = {
+    "code_scanning_tools": [
+        {
+            "tool": "CodeQL",
+            "alerts_threshold": "all",
+            "security_alerts_threshold": "all",
+        }
+    ]
+}
 
 MAIN_QUALIFICATION_CHECKS = (
     "Main Qualification / Event Contract",
@@ -96,6 +107,10 @@ def _ruleset(
                         for context in contexts
                     ],
                 },
+            },
+            {
+                "type": "code_scanning",
+                "parameters": deepcopy(CODEQL_PROTECTION),
             },
         ],
         "node_id": "read-only",
@@ -449,6 +464,35 @@ def test_settings_policy_context_order_is_not_authoritative() -> None:
     status_rule["parameters"]["required_status_checks"].reverse()
 
     policy_tool._validate_policy(policy)
+
+
+def test_checked_in_settings_policy_satisfies_all_owned_contracts() -> None:
+    policy = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
+
+    policy_tool._validate_policy(policy)
+
+
+@pytest.mark.parametrize("branch", ["dev", "main"])
+def test_settings_policy_requires_codeql_at_the_zero_alert_floor(branch: str) -> None:
+    policy = _policy()
+    rules = policy[f"{branch}_ruleset"]["rules"]
+    code_scanning = next(rule for rule in rules if rule["type"] == "code_scanning")
+
+    assert code_scanning["parameters"] == CODEQL_PROTECTION
+
+    rules.remove(code_scanning)
+    with pytest.raises(policy_tool.PolicyError, match="CodeQL code-scanning rule"):
+        policy_tool._validate_policy(policy)
+
+
+@pytest.mark.parametrize("threshold", ["none", "errors", "errors_and_warnings"])
+def test_settings_policy_cannot_weaken_codeql_alert_protection(threshold: str) -> None:
+    policy = _policy()
+    rule = next(rule for rule in policy["dev_ruleset"]["rules"] if rule["type"] == "code_scanning")
+    rule["parameters"]["code_scanning_tools"][0]["alerts_threshold"] = threshold
+
+    with pytest.raises(policy_tool.PolicyError, match="zero-alert floor"):
+        policy_tool._validate_policy(policy)
 
 
 def test_malformed_check_run_id_is_rejected_at_the_json_boundary(tmp_path: Path) -> None:

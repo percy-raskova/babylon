@@ -9,8 +9,8 @@ each of which has already bitten:
 2. All checks green AND both PR refs unchanged across the verdict snapshot.
 3. Copilot review state and unreplied top-level comments are advisory; every
    review thread, regardless of author, must resolve.
-4. Any open code-scanning alert is a STOP (CodeQL no longer runs on PRs — R5b
-   — so the alert DB, not a PR check, is the source of truth).
+4. Any open code-scanning alert is a STOP. CodeQL also runs on pull requests;
+   the alert DB is the durable source of truth across all matrix languages.
 5. ``--delete-branch`` is refused for ``dev`` and while another open PR bases
    on the head (#193: deleting it closes-not-merges the child).
 

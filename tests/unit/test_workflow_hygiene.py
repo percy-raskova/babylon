@@ -49,6 +49,7 @@ FROZEN_ENGINE_PATH = WORKFLOWS_DIR / "frozen-engine.yml"
 WEEKLY_PY313_PATH = WORKFLOWS_DIR / "weekly-py313.yml"
 DEPENDABOT_AUTOMERGE_PATH = WORKFLOWS_DIR / "dependabot-automerge.yml"
 DEPENDABOT_CONFIG_PATH = Path(".github/dependabot.yml")
+DEPENDABOT_SCHEDULE_TIMEZONE = "America/New_York"
 PR_POLICY_PATH = Path(".github/settings/pr-policy.json")
 FROZEN_REF = "p27-python-freeze"
 HYPERGRAPH_REF = "dc1c06abbbc7a3f8633d1561451e61e101ad2090"
@@ -813,19 +814,19 @@ printf '%s\\n' "$1" >> "$SLEEP_CALLS"
                 "interval": "weekly",
                 "day": "monday",
                 "time": "09:00",
-                "timezone": "America/Chicago",
+                "timezone": DEPENDABOT_SCHEDULE_TIMEZONE,
             },
             "github-actions": {
                 "interval": "weekly",
                 "day": "tuesday",
                 "time": "09:00",
-                "timezone": "America/Chicago",
+                "timezone": DEPENDABOT_SCHEDULE_TIMEZONE,
             },
             "cargo": {
                 "interval": "weekly",
                 "day": "thursday",
                 "time": "09:00",
-                "timezone": "America/Chicago",
+                "timezone": DEPENDABOT_SCHEDULE_TIMEZONE,
             },
         }
 
@@ -836,6 +837,10 @@ printf '%s\\n' "$1" >> "$SLEEP_CALLS"
 
         assert actual_schedules == expected_schedules
         assert len({schedule["day"] for schedule in actual_schedules.values()}) == 3
+        assert {
+            _dependabot_update(config, ecosystem)["schedule"]["timezone"]
+            for ecosystem in ("uv", "github-actions", "docker", "cargo")
+        } == {DEPENDABOT_SCHEDULE_TIMEZONE}
 
     def test_config_uses_uv_and_retains_only_justified_major_ignores(self) -> None:
         """The live uv lock and explicit deferred-major rails must stay represented."""

@@ -168,6 +168,7 @@ def test_main_ruleset_requires_the_complete_blocking_manifest() -> None:
     rules = {rule["type"]: rule for rule in ruleset["rules"]}
     checks = rules["required_status_checks"]["parameters"]
     pull_request = rules["pull_request"]["parameters"]
+    code_scanning = rules["code_scanning"]["parameters"]
     configured = {
         (entry["context"], entry["integration_id"]) for entry in checks["required_status_checks"]
     }
@@ -182,6 +183,15 @@ def test_main_ruleset_requires_the_complete_blocking_manifest() -> None:
     assert configured == expected
     assert pull_request["allowed_merge_methods"] == ["merge"]
     assert pull_request["required_review_thread_resolution"] is True
+    assert code_scanning == {
+        "code_scanning_tools": [
+            {
+                "tool": "CodeQL",
+                "alerts_threshold": "all",
+                "security_alerts_threshold": "all",
+            }
+        ]
+    }
 
 
 def test_direct_push_promotion_script_is_retired() -> None:

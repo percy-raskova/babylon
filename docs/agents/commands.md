@@ -43,12 +43,14 @@ mise run sim:e2e-bg           # Resume explicit campaign, or worktree default, i
 mise run sim:status           # Process, its recorded campaign tail, and global totals
 mise run sim:probe            # Explicit campaign, or worktree default, plus global totals
 mise run sim:archive          # Inspect global Rust-owned Archive dirty receipts
-mise run sim:report           # Embedded Michigan Rust persistence report (60 ticks)
-mise run sim:report 520 3000  # Override tick target and timeout seconds
+mise run sim:report                    # Local 60-tick report; shared database attribution
+mise run sim:report 520 3000 exclusive # Canonical Rust Michigan diagnostic bundle
 mise run reference:python-smoke  # Frozen Python one-tick reference smoke
-mise run analysis:sweep          # Development-only Python parameter analysis
-mise run analysis:monte-carlo    # Development-only Python uncertainty analysis
 ```
+
+``sim:report`` is authoritative Rust persistence observability. The canonical
+520-tick run writes a collision-safe bundle below ``reports/sim-runs/`` and
+labels its Postgres database and WAL observations ``exclusive``.
 
 ## Development Tooling
 
@@ -62,8 +64,17 @@ mise run dev:doctor  # Report worktree, Mise, and repository Rust host-policy fa
 mise run analysis:optuna      # Bayesian optimization (Optuna TPE)
 mise run analysis:landscape   # 2D parameter grid search
 mise run analysis:sweep       # 1D sensitivity sweep
-mise run analysis:dashboard   # Optuna Dashboard visualization
+mise run analysis:monte-carlo # Monte Carlo uncertainty analysis
+mise run analysis:campaign    # Weekly frozen-Python reference profile
+mise run analysis:campaign -- full # Full MC + Optuna + Morris/Sobol profile
+mise run analysis:dashboard   # Root optuna.db by default
+mise run analysis:dashboard -- /absolute/campaign/study.sqlite3
 ```
+
+``analysis:campaign`` is non-authoritative frozen-Python analysis. Each run
+writes ``campaign.json`` and leg artifacts below
+``reports/frozen-reference-analysis/<run>/``. Pass a campaign's absolute
+``optuna/study.sqlite3`` path to ``analysis:dashboard`` to open that study.
 
 ## QA
 

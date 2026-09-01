@@ -28,6 +28,51 @@ Select ``imperial_circuit`` or ``two_node`` with ``--scenario``. This is an
 intentional analysis periphery and does not exercise Rust persistence or make
 a claim about the playable runtime.
 
+Run a bounded frozen-reference campaign
+----------------------------------------
+
+Use the allowlisted campaign profiles for a reproducible CI-sized analysis:
+
+.. code-block:: bash
+
+   mise run analysis:campaign          # weekly profile
+   mise run analysis:campaign -- full  # full profile
+
+Both profiles use deterministic seed 304 and write a collision-safe directory
+below ``reports/frozen-reference-analysis/<run>/``. They are explicitly
+``frozen_python_reference`` evidence, not authoritative game state.
+
+The weekly profile runs 16 Monte Carlo samples at 520 ticks and 8 fresh Optuna
+trials at 5,200 ticks. It records sensitivity as skipped. The full profile runs
+64 Monte Carlo samples at 520 ticks, 16 fresh Optuna trials at 5,200 ticks, and
+both sensitivity methods at 520 ticks with the final-wealth objective. That
+sensitivity leg uses 4 Morris trajectories and 8 Sobol base samples over these
+four curated coefficients:
+
+- ``economy.base_subsistence``
+- ``economy.extraction_efficiency``
+- ``economy.comprador_cut``
+- ``economy.super_wage_rate``
+
+Inspect ``campaign.json`` first. It records source and lockfile fingerprints,
+requested and actual workloads, leg status and resource measurements, and the
+size and SHA-256 of each artifact. Monte Carlo outputs live in
+``monte-carlo/``. Optuna writes a fresh ``optuna/study.sqlite3`` plus
+``trials.csv``, ``summary.json``, and ``report.md``; it does not resume the
+root ``optuna.db``. Full-profile sensitivity outputs live in ``sensitivity/``.
+
+``mise run analysis:dashboard`` opens the root ``optuna.db`` by default. To
+inspect a campaign study, pass that run's absolute SQLite path:
+
+.. code-block:: bash
+
+   mise run analysis:dashboard -- \
+       /absolute/campaign/study.sqlite3
+
+The summary records parameter importance as unavailable when optional
+scikit-learn support is absent; the study, CSV, summary, and report are still
+complete campaign artifacts.
+
 Defines now actually reach the simulation
 ------------------------------------------
 
@@ -39,12 +84,13 @@ reproducibility tests pin that path.
 The four subcommands
 --------------------
 
-``sweep``, ``monte-carlo``, and ``sensitivity`` expose ``--backend
-in-memory``, ``--scenario``, ``--objective {carceral,survival}``, and
-``--max-ticks``. Bayesian search exposes ``--backend`` and ``--max-ticks``;
-it deliberately fixes the imperial-circuit scenario and Carceral Equilibrium
-objective. Run ``uv run python -m tools.devtools.sim_analysis <subcommand>
---help`` for the authoritative flag list.
+``sweep`` and ``monte-carlo`` expose ``--backend in-memory``, ``--scenario``,
+``--objective {carceral,survival}``, and ``--max-ticks``. ``sensitivity`` also
+accepts ``final-wealth`` as an objective. Bayesian search exposes ``--backend``
+and ``--max-ticks``; it deliberately fixes the imperial-circuit scenario and
+Carceral Equilibrium objective. Run ``uv run python -m
+tools.devtools.sim_analysis <subcommand> --help`` for the authoritative flag
+list.
 
 sweep — 1D or 2D coefficient sweep
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -125,6 +171,10 @@ Rank coefficients by influence on the objective, via SALib:
        --samples 64 \
        --sobol-output results/sobol.json
 
+Add ``--objective final-wealth`` to rank the ending aggregate wealth rather
+than the Carceral Equilibrium score. The bounded full reference campaign uses
+that objective; ad hoc sensitivity runs still default to ``carceral``.
+
 Omitting ``--param-names`` selects eight curated Carceral Equilibrium drivers,
 not every numeric field in ``GameDefines``. ``--method both`` screens that
 explicit set with Morris and promotes only the top four ``mu*`` parameters to
@@ -192,7 +242,17 @@ Via mise:
 .. code-block:: bash
 
    mise run analysis:optuna -- 200 my_study   # trials, study name
-   mise run analysis:dashboard                # uv-managed Optuna Dashboard
+   mise run analysis:dashboard                # root optuna.db by default
+
+For a fresh, exportable study rather than a resumable root study, use
+``bayesian --output-dir PATH``. The directory may exist, but none of the four
+named artifacts may already be present. The command creates
+``study.sqlite3``, ``trials.csv``, ``summary.json``, and ``report.md`` there.
+The CSV uses the standard library and does not require pandas.
+``summary.json`` records the experiment manifest and fingerprint, trial
+counts, best trial, value and parameters, plus parameter importance when
+available. A missing optional scikit-learn dependency is recorded as an
+explicit unavailable reason rather than failing the export.
 
 The ``--param``/``--param2`` grammar
 --------------------------------------

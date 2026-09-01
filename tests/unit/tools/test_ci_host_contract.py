@@ -287,21 +287,60 @@ def test_analysis_sweep_task_has_a_configurable_finite_tick_budget() -> None:
 
 
 def test_weekly_rust_report_is_scoped_to_the_michigan_persistence_slice() -> None:
-    """The scheduled artifact observes the committed embedded Rust slice."""
+    """The scheduled artifact diagnoses the committed embedded Rust slice."""
     weekly_sim = yaml.safe_load((WORKFLOWS_DIR / "weekly-sim-artifacts.yml").read_text())
     job = weekly_sim["jobs"]["sim-artifacts"]
     steps = job["steps"]
     report = next(
-        step for step in steps if step.get("name") == "Generate Rust Michigan persistence report"
+        step for step in steps if step.get("name") == "Generate Rust Michigan diagnostic report"
     )
     upload = next(
         step for step in steps if str(step.get("uses", "")).startswith("actions/upload-artifact@")
     )
 
     assert job["timeout-minutes"] == 60
-    assert report["run"] == "mise run sim:report 520 3000"
+    checkout = next(
+        step for step in steps if str(step.get("uses", "")).startswith("actions/checkout@")
+    )
+    assert checkout["with"]["ref"] == "dev"
+    assert report["run"] == "mise run sim:report 520 3000 exclusive"
     assert any(step.get("uses") == "./.github/actions/bootstrap-persistence" for step in steps)
     assert any(step.get("uses") == "./.github/actions/postgres-up" for step in steps)
     assert any(step.get("run") == "mise run db:bootstrap" for step in steps)
     assert str(upload.get("if", "")) == "always()"
+    assert str(upload["with"]["name"]).startswith("rust-michigan-simulation-diagnostics-")
     assert upload["with"]["path"] == "reports/sim-runs/"
+
+
+def test_frozen_reference_campaign_is_separate_bounded_and_non_authoritative() -> None:
+    """The Python campaign cannot masquerade as the authoritative Rust report."""
+    workflow = yaml.safe_load((WORKFLOWS_DIR / "weekly-reference-analysis.yml").read_text())
+    job = workflow["jobs"]["reference-analysis"]
+    steps = job["steps"]
+    generate = next(
+        step
+        for step in steps
+        if step.get("name") == "Generate frozen Python reference-analysis artifacts"
+    )
+    upload = next(
+        step for step in steps if str(step.get("uses", "")).startswith("actions/upload-artifact@")
+    )
+
+    assert job["timeout-minutes"] == 60
+    checkout = next(
+        step for step in steps if str(step.get("uses", "")).startswith("actions/checkout@")
+    )
+    assert checkout["with"]["ref"] == "dev"
+    assert any(step.get("uses") == "./.github/actions/bootstrap-python" for step in steps)
+    assert not any(step.get("uses") == "./.github/actions/bootstrap-persistence" for step in steps)
+    assert not any(step.get("uses") == "./.github/actions/postgres-up" for step in steps)
+    assert "weekly|full" in generate["run"]
+    assert 'mise run analysis:campaign -- "$REFERENCE_ANALYSIS_PROFILE"' in generate["run"]
+    assert str(upload.get("if", "")) == "always()"
+    assert upload["with"]["path"] == "reports/frozen-reference-analysis/"
+    assert upload["with"]["retention-days"] == 90
+
+    rendered = (WORKFLOWS_DIR / "weekly-reference-analysis.yml").read_text()
+    assert "BABYLON_RUNTIME_DSN" not in rendered
+    assert "db:bootstrap" not in rendered
+    assert "cargo" not in rendered.lower()

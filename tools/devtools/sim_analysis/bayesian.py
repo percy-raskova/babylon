@@ -27,11 +27,13 @@ See Also:
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import json
 import logging
 import math
 import shlex
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Final
 from urllib.parse import urlsplit
@@ -97,6 +99,11 @@ _HYPERBAND_REDUCTION_FACTOR: Final[int] = 2
 
 _EXPERIMENT_ATTRIBUTE: Final[str] = "babylon.experiment-manifest.v1"
 _EXPERIMENT_SCHEMA: Final[str] = "babylon.sim-analysis.optuna-experiment.v1"
+_SUMMARY_SCHEMA: Final[str] = "babylon.sim-analysis.optuna-summary.v1"
+_FRESH_DATABASE_NAME: Final[str] = "study.sqlite3"
+_TRIALS_CSV_NAME: Final[str] = "trials.csv"
+_SUMMARY_JSON_NAME: Final[str] = "summary.json"
+_REPORT_MARKDOWN_NAME: Final[str] = "report.md"
 _SOURCE_FILE_LIMIT: Final[int] = 5_000
 _SOURCE_BYTE_LIMIT: Final[int] = 64 * 1024 * 1024
 _SOURCE_READ_CHUNK_BYTES: Final[int] = 64 * 1024
@@ -587,6 +594,7 @@ def run_optimization(
     seed: int = DEFAULT_SEED,
     categories: list[str] | None = None,
     narrow_bounds: dict[str, ParameterBounds] | None = None,
+    allow_resume: bool = True,
 ) -> optuna.Study:
     """Run (or resume) an Optuna study over the Carceral Equilibrium objective.
 
@@ -603,6 +611,8 @@ def run_optimization(
     :param narrow_bounds: Optional tighter bounds overlay (default:
         :data:`_NARROW_BOUNDS`); pass ``{}`` to search the full introspected
         space unnarrowed.
+    :param allow_resume: Whether an existing same-name study may be loaded.
+        Fresh CI artifact runs set this to ``False``.
     :returns: The (possibly resumed) Optuna ``Study`` after ``n_trials`` more
         trials.
     :raises ImportError: If Optuna is not installed.
@@ -624,7 +634,9 @@ def run_optimization(
         seed=seed,
     )
 
-    logger.info("Creating/loading study: %s", study_name)
+    logger.info(
+        "%s study: %s", "Creating/loading" if allow_resume else "Creating fresh", study_name
+    )
     logger.info("Storage: %s", storage)
     logger.info("Trials: %d", n_trials)
     logger.info("Max ticks per trial: %d (%d years)", max_ticks, max_ticks // TICKS_PER_YEAR)
@@ -641,12 +653,12 @@ def run_optimization(
             reduction_factor=_HYPERBAND_REDUCTION_FACTOR,
         ),
         direction="maximize",
-        load_if_exists=True,
+        load_if_exists=allow_resume,
     )
     _validate_or_record_experiment(study, experiment_manifest)
 
     existing_trials = len(study.trials)
-    if existing_trials > 0:
+    if existing_trials > 0 and allow_resume:
         logger.info("Resuming study with %d existing trials", existing_trials)
         logger.info(
             "Optuna storage preserves trials, not sampler RNG state; "
@@ -665,6 +677,200 @@ def run_optimization(
 # =============================================================================
 # REPORTING
 # =============================================================================
+
+
+def _trial_state_name(trial: Any) -> str:
+    """Return one stable uppercase Optuna trial-state name."""
+    name = getattr(trial.state, "name", None)
+    return str(name).upper() if name is not None else str(trial.state).upper()
+
+
+def _trial_counts(trials: list[Any]) -> dict[str, int]:
+    """Count all known Optuna terminal and in-flight trial states."""
+    counts = {
+        "total": len(trials),
+        "complete": 0,
+        "pruned": 0,
+        "failed": 0,
+        "running": 0,
+        "waiting": 0,
+        "other": 0,
+    }
+    state_keys = {
+        "COMPLETE": "complete",
+        "PRUNED": "pruned",
+        "FAIL": "failed",
+        "RUNNING": "running",
+        "WAITING": "waiting",
+    }
+    for trial in trials:
+        counts[state_keys.get(_trial_state_name(trial), "other")] += 1
+    return counts
+
+
+def _isoformat_or_empty(value: Any) -> str:
+    """Serialize an optional datetime-like value without locale dependence."""
+    return "" if value is None else str(value.isoformat())
+
+
+def _duration_seconds_or_empty(value: Any) -> str:
+    """Serialize an optional timedelta-like value for the CSV export."""
+    return "" if value is None else str(float(value.total_seconds()))
+
+
+def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
+    """Atomically write strict, stable JSON."""
+    encoded = json.dumps(
+        payload,
+        allow_nan=False,
+        indent=2,
+        sort_keys=True,
+    )
+    temporary = path.with_suffix(f"{path.suffix}.tmp")
+    temporary.write_text(f"{encoded}\n", encoding="utf-8")
+    temporary.replace(path)
+
+
+def _get_param_importances(study: optuna.Study) -> dict[str, float]:
+    """Compute optional importances behind a testable dependency boundary."""
+    return dict(optuna.importance.get_param_importances(study))
+
+
+def export_study_artifacts(
+    study: optuna.Study,
+    output_dir: Path,
+    *,
+    report: str,
+) -> dict[str, Path]:
+    """Export one fresh study without requiring pandas.
+
+    The experiment manifest recorded before optimization remains the source
+    identity. The JSON summary repeats it and its fingerprint, while the CSV
+    is a flat, stable trial table suitable for CI artifact inspection.
+
+    :raises ValueError: If the study lacks the required experiment manifest.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    experiment = study.user_attrs.get(_EXPERIMENT_ATTRIBUTE)
+    if not isinstance(experiment, Mapping):
+        raise ValueError("Optuna study is missing its Babylon experiment manifest")
+    fingerprint = experiment.get("fingerprint_sha256")
+    if not isinstance(fingerprint, str):
+        raise ValueError("Optuna experiment manifest has no fingerprint_sha256")
+
+    trials_csv = output_dir / _TRIALS_CSV_NAME
+    summary_json = output_dir / _SUMMARY_JSON_NAME
+    report_markdown = output_dir / _REPORT_MARKDOWN_NAME
+
+    with trials_csv.open("w", newline="", encoding="utf-8") as stream:
+        fieldnames = [
+            "number",
+            "state",
+            "value",
+            "params_json",
+            "datetime_start",
+            "datetime_complete",
+            "duration_seconds",
+        ]
+        writer = csv.DictWriter(stream, fieldnames=fieldnames, lineterminator="\n")
+        writer.writeheader()
+        for trial in sorted(study.trials, key=lambda item: item.number):
+            params_json = json.dumps(
+                trial.params,
+                allow_nan=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+            writer.writerow(
+                {
+                    "number": trial.number,
+                    "state": _trial_state_name(trial),
+                    "value": "" if trial.value is None else trial.value,
+                    "params_json": params_json,
+                    "datetime_start": _isoformat_or_empty(trial.datetime_start),
+                    "datetime_complete": _isoformat_or_empty(trial.datetime_complete),
+                    "duration_seconds": _duration_seconds_or_empty(trial.duration),
+                }
+            )
+
+    trials = list(study.trials)
+    counts = _trial_counts(trials)
+    best_trial_number: int | None = None
+    best_value: float | None = None
+    best_params: dict[str, Any] | None = None
+    if counts["complete"] > 0:
+        best_trial_number = int(study.best_trial.number)
+        best_value = float(study.best_value)
+        best_params = dict(study.best_params)
+
+    try:
+        importance_values = _get_param_importances(study)
+        parameter_importances: dict[str, Any] = {
+            "status": "available",
+            "values": dict(importance_values),
+        }
+    except ValueError as exc:
+        parameter_importances = {
+            "status": "unavailable",
+            "reason": "insufficient_completed_trials",
+            "detail": str(exc)[:500],
+        }
+    except ImportError as exc:
+        parameter_importances = {
+            "status": "unavailable",
+            "reason": "optional_dependency_unavailable",
+            "detail": str(exc)[:500],
+        }
+    except RuntimeError as exc:
+        if "zero total variance" not in str(exc).lower():
+            raise
+        parameter_importances = {
+            "status": "unavailable",
+            "reason": "zero_total_variance",
+            "detail": str(exc)[:500],
+        }
+
+    direction = getattr(study.direction, "name", str(study.direction)).lower()
+    summary: dict[str, Any] = {
+        "schema": _SUMMARY_SCHEMA,
+        "study_name": study.study_name,
+        "direction": direction,
+        "fresh_study": True,
+        "experiment_fingerprint_sha256": fingerprint,
+        "experiment_manifest": dict(experiment),
+        "trial_counts": counts,
+        "best_trial_number": best_trial_number,
+        "best_value": best_value,
+        "best_params": best_params,
+        "parameter_importances": parameter_importances,
+    }
+    _write_json(summary_json, summary)
+    report_markdown.write_text(report, encoding="utf-8")
+    return {
+        "trials_csv": trials_csv,
+        "summary_json": summary_json,
+        "report_markdown": report_markdown,
+    }
+
+
+def _fresh_storage_for_output(output_dir: Path) -> str:
+    """Reserve a new local SQLite path for one immutable artifact export."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    collisions = [
+        output_dir / name
+        for name in (
+            _FRESH_DATABASE_NAME,
+            _TRIALS_CSV_NAME,
+            _SUMMARY_JSON_NAME,
+            _REPORT_MARKDOWN_NAME,
+        )
+        if (output_dir / name).exists()
+    ]
+    if collisions:
+        names = ", ".join(path.name for path in collisions)
+        raise FileExistsError(f"fresh Optuna output would overwrite existing artifacts: {names}")
+    database = (output_dir / _FRESH_DATABASE_NAME).resolve()
+    return f"sqlite:///{database}"
 
 
 def format_results(
@@ -777,7 +983,8 @@ def format_results(
 def run_bayesian(
     *,
     study_name: str = DEFAULT_STUDY_NAME,
-    storage: str = DEFAULT_STORAGE,
+    storage: str | None = None,
+    output_dir: Path | None = None,
     n_trials: int = DEFAULT_N_TRIALS,
     max_ticks: int = DEFAULT_MAX_TICKS,
     backend: str = DEFAULT_BACKEND,
@@ -793,6 +1000,9 @@ def run_bayesian(
 
     :param study_name: Name for the optimization study.
     :param storage: Secret-free local SQLite storage URL.
+    :param output_dir: When provided, create a fresh ``study.sqlite3`` here
+        and export ``trials.csv``, ``summary.json``, and ``report.md``. This
+        mode never resumes an existing study.
     :param n_trials: Number of new trials to run (ignored if ``show_best``).
     :param max_ticks: Maximum simulation ticks per trial.
     :param backend: Must be ``"in_memory"``.
@@ -813,6 +1023,15 @@ def run_bayesian(
         raise ImportError(
             "optuna is required for Bayesian tuning. Install the dev dependency group: `uv sync`."
         )
+    if output_dir is not None and show_best:
+        raise ValueError("output_dir cannot be combined with show_best; fresh exports never resume")
+    if output_dir is not None and storage is not None:
+        raise ValueError("output_dir chooses its own fresh SQLite storage")
+    if output_dir is not None:
+        storage = _fresh_storage_for_output(output_dir)
+    elif storage is None:
+        storage = DEFAULT_STORAGE
+
     if show_best:
         _validate_max_ticks(max_ticks)
     else:
@@ -844,19 +1063,21 @@ def run_bayesian(
             seed=seed,
             categories=categories,
             narrow_bounds=narrow_bounds,
+            allow_resume=output_dir is None,
         )
 
-    print(
-        format_results(
-            study,
-            max_ticks=max_ticks,
-            backend=backend,
-            seed=seed,
-            storage=storage,
-            categories=categories,
-            narrow_bounds=narrow_bounds,
-        )
+    report = format_results(
+        study,
+        max_ticks=max_ticks,
+        backend=backend,
+        seed=seed,
+        storage=storage,
+        categories=categories,
+        narrow_bounds=narrow_bounds,
     )
+    print(report)
+    if output_dir is not None:
+        export_study_artifacts(study, output_dir, report=report)
 
     return study
 
@@ -877,5 +1098,6 @@ __all__ = [
     "create_objective",
     "run_optimization",
     "format_results",
+    "export_study_artifacts",
     "run_bayesian",
 ]

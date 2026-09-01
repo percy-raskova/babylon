@@ -11,6 +11,7 @@
 //! Task 14 keeps `HudTick` in sync alongside `TickCounter` when it lands.
 
 use crate::atlas::CountyAtlas;
+use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::lens::CurrentLensData;
 use crate::map::bands::{ActiveLens, LENSES};
 use crate::map::pick::{HoveredCounty, SelectedCounty};
@@ -162,6 +163,7 @@ pub(super) fn spawn_hud(mut commands: Commands) {
             left: px(24),
             ..default()
         },
+        DeclaredSurface::new(SurfaceId::CountyLensHud),
         CountyHudText,
     ));
     commands.spawn((
@@ -173,6 +175,7 @@ pub(super) fn spawn_hud(mut commands: Commands) {
             left: px(24),
             ..default()
         },
+        DeclaredSurface::new(SurfaceId::CountyLensHud),
         AbsenceBanner,
     ));
     commands.spawn((
@@ -184,6 +187,7 @@ pub(super) fn spawn_hud(mut commands: Commands) {
             left: px(24),
             ..default()
         },
+        DeclaredSurface::new(SurfaceId::CountyLensHud),
         LensFooter,
     ));
 }

@@ -224,23 +224,40 @@ jobs:
       - name: Gate-coverage truth probe (declared evidence verified at gate cadence)
         run: mise run check:gate-coverage-truth
 
-  pg-integration:
-    name: Postgres Integration Tier (PG 17, pinned runtime)
+  pg-integration-shards:
+    name: PostgreSQL Contract (${{ matrix.focus }})
     # The one-way cutover replaced the Python writer's integration subset with
-    # the task-owned Rust live matrix. The runner proves clean activation,
-    # atomicity, rollback, mutation refusal, restart, and legacy adoption.
+    # the task-owned Rust live matrix. The four focus boundaries preserve the
+    # complete PR contract while removing independent phases from the critical
+    # path. fail-fast stays disabled so every exact-head run yields a complete
+    # contract receipt even when one sibling fails.
     runs-on: ubuntu-latest
-    timeout-minutes: 99
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        focus: [clean_bootstrap, h3_atomicity, rust_persistence_runtime, installed_mutation]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: ./.github/actions/bootstrap-persistence
 
-      - name: Rust PostgreSQL atomicity and installed-mutation contracts
-        timeout-minutes: 69
+      - name: Rust PostgreSQL contract
+        timeout-minutes: 25
         env:
-          BABYLON_LEGACY_ADOPTER_LIVE_FOCUS: pr
+          BABYLON_LEGACY_ADOPTER_LIVE_FOCUS: ${{ matrix.focus }}
         run: tools/run_rust_legacy_adopter_pg.sh
+
+  pg-integration:
+    name: Postgres Integration Tier (PG 17, pinned runtime)
+    needs: pg-integration-shards
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Require every PostgreSQL contract shard
+        run: test '${{ needs.pg-integration-shards.result }}' = success
 
   security:
     # Blocking since 2026-07-11: item 41 closed the CVE wave (73 -> 5, the

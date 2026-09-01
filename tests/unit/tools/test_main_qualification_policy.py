@@ -193,9 +193,27 @@ def test_shared_pr_blocking_pg_tier_is_rust_only_after_cutover() -> None:
     assert '[tasks."test:integration-pg"]' not in MISE_PATH.read_text(encoding="utf-8")
 
     workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    steps = workflow["jobs"]["pg-integration"]["steps"]
+    shard = workflow["jobs"]["pg-integration-shards"]
+    assert shard["strategy"] == {
+        "fail-fast": False,
+        "max-parallel": 4,
+        "matrix": {
+            "focus": [
+                "clean_bootstrap",
+                "h3_atomicity",
+                "rust_persistence_runtime",
+                "installed_mutation",
+            ]
+        },
+    }
+    steps = shard["steps"]
     assert [step.get("run") for step in steps if step.get("run")] == [
         "tools/run_rust_legacy_adopter_pg.sh"
     ]
     assert not any(step.get("uses") == "./.github/actions/bootstrap-python" for step in steps)
     assert not any(step.get("uses") == "./.github/actions/fetch-reference-db" for step in steps)
+    aggregator = workflow["jobs"]["pg-integration"]
+    assert aggregator["name"] == "Postgres Integration Tier (PG 17, pinned runtime)"
+    assert aggregator["needs"] == "pg-integration-shards"
+    assert aggregator["if"] == "always()"
+    assert "needs.pg-integration-shards.result" in aggregator["steps"][0]["run"]

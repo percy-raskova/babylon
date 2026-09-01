@@ -88,11 +88,15 @@ Archive Boundary
 
 Every committed tick writes exactly one Archive dirty receipt carrying the
 tick-content identity. The receipt is durable evidence that semantic material
-must be refreshed. ``sim:archive`` currently inspects this estate.
+must refresh. ``sim:archive`` installs the additive client-owned Archive schema
+exactly once. Later calls check its marker and relations. The command reports
+receipts, knowledge grants, consumptions, and materialized pages.
 
-The knowledge-safe semantic worker and fog-filtered retrieval loop remain
-later Gate 3 work. Their absence does not weaken the completed writer cutover,
-but the dirty receipt alone is not a playable Archive.
+The first semantic worker slice binds an exact dirty batch to each marker-backed
+receipt. It applies subject and field knowledge grants in SQL. It renders pages
+with the pinned strict MiniJinja template and searches only granted pages. Later
+Gate 3 work adds broader dirty-subject producers, dossier coverage, and the
+playable retrieval loop. This slice alone does not pass a game milestone.
 
 Operational Consequences
 ------------------------
@@ -101,6 +105,8 @@ Operational Consequences
 - ``sim:e2e-michigan`` runs a fresh Rust-owned durable campaign.
 - ``sim:probe`` reports the selected worktree campaign tail and labels
   database-wide totals separately.
+- ``sim:archive`` installs the additive semantic Archive schema or checks its
+  marker and relations. It reports the Archive estate.
 - ``qa:michigan-rollover-smoke`` proves a 60-tick restart boundary.
 - The live adopter suite verifies rollback, lock refusal, ambiguous commit,
   installed mutations, and cleanup against a disposable pinned database.

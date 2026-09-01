@@ -18,9 +18,9 @@ use babylon_kernel::tick_content_hash::RefDigestV1;
 use babylon_kernel::ContentDigest;
 use babylon_persistence::{
     activate_rust_persistence_v1, michigan_dynamic_hex_foundation_v1, preflight_schema_epoch,
-    representative_h3_reference_cohort_v1, CampaignFoundationV1, CampaignId,
-    CommittedResolveTickV1, CommittedTickReceiptV1, DurableReplayRuntimeV1,
-    FoundationContentBundleV1, RustPersistenceRuntimeErrorV1,
+    representative_h3_reference_cohort_v1, ArchiveSchemaDispositionV1, CampaignFoundationV1,
+    CampaignId, CommittedResolveTickV1, CommittedTickReceiptV1, DurableReplayRuntimeV1,
+    FoundationContentBundleV1, RustPersistenceRuntimeErrorV1, SemanticArchiveStoreV1,
 };
 use babylon_practice_contract::ordered_action_v1::OrderedPracticeActionBatchV1;
 use babylon_tick::material_state::MaterialStateV1;
@@ -852,6 +852,9 @@ fn probe(config: &Config, selected_campaign: Option<CampaignId>) -> Result<(), S
 }
 
 fn inspect_archive(config: &Config) -> Result<(), String> {
+    let schema = SemanticArchiveStoreV1::new(config)
+        .install_schema()
+        .map_err(|error| format!("Archive schema refused: {error}"))?;
     let mut client = config
         .connect(NoTls)
         .map_err(|_| "Archive probe connection failed".to_owned())?;
@@ -871,8 +874,31 @@ fn inspect_archive(config: &Config) -> Result<(), String> {
     let last: Option<i64> = row
         .try_get(2)
         .map_err(|_| "Archive last tick decode failed".to_owned())?;
+    let meta = client
+        .query_one(
+            "SELECT \
+               (SELECT pg_catalog.count(*) FROM babylon_meta.archive_knowledge_grant_v1), \
+               (SELECT pg_catalog.count(*) FROM babylon_meta.archive_receipt_consumption_v1), \
+               (SELECT pg_catalog.count(*) FROM babylon_meta.archive_page_v1)",
+            &[],
+        )
+        .map_err(|_| "semantic Archive probe failed".to_owned())?;
+    let grants: i64 = meta
+        .try_get(0)
+        .map_err(|_| "Archive grant count decode failed".to_owned())?;
+    let consumptions: i64 = meta
+        .try_get(1)
+        .map_err(|_| "Archive consumption count decode failed".to_owned())?;
+    let pages: i64 = meta
+        .try_get(2)
+        .map_err(|_| "Archive page count decode failed".to_owned())?;
+    let schema = match schema {
+        ArchiveSchemaDispositionV1::Installed => "installed",
+        ArchiveSchemaDispositionV1::AlreadyCurrent => "current",
+    };
     println!(
-        "Rust Archive dirty receipts={receipts}; tick_range={}..{}.",
+        "Rust Archive schema={schema}; dirty_receipts={receipts}; tick_range={}..{}; \
+         knowledge_grants={grants}; consumed_receipts={consumptions}; pages={pages}.",
         first.map_or_else(|| "none".to_owned(), |value| value.to_string()),
         last.map_or_else(|| "none".to_owned(), |value| value.to_string()),
     );

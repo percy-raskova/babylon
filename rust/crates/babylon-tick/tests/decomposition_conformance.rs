@@ -236,10 +236,8 @@ use babylon_graph::substrate::{GraphSubstrate, NodeId};
 use babylon_kernel::SessionId;
 use babylon_tick::{run_once_into, TickSession};
 
-/// The `rng-draw` seam's session id (Task 4, #576 intrinsic-host train)
-/// for this file's own `TickSession` fixtures — none exercise `rng-draw`
-/// (Task 5 lands it), so a fixed literal is exactly as good as any other
-/// deterministic choice.
+/// Fixed deterministic V1 namespace for this file's non-kernel
+/// `TickSession` fixtures.
 fn test_session() -> SessionId {
     SessionId::new("decomposition-conformance-test").expect("literal is non-empty")
 }

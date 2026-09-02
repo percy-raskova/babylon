@@ -7,7 +7,7 @@ use postgres::{Config, GenericClient, NoTls, Row};
 
 use crate::foundation::CampaignFoundationV1;
 use crate::identity::CampaignId;
-use crate::runtime::RustPersistenceRuntimeErrorV1;
+use crate::runtime::RustPersistenceRuntimeErrorV2;
 
 /// Closed retained campaign status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -114,9 +114,9 @@ macro_rules! navigation_row {
                 campaign_id: CampaignId,
                 position: u32,
                 entity_id: String,
-            ) -> Result<Self, RustPersistenceRuntimeErrorV1> {
+            ) -> Result<Self, RustPersistenceRuntimeErrorV2> {
                 if entity_id.is_empty() || entity_id.as_bytes().contains(&0) {
-                    return Err(RustPersistenceRuntimeErrorV1::ReplaySource);
+                    return Err(RustPersistenceRuntimeErrorV2::ReplaySource);
                 }
                 Ok(Self {
                     campaign_id,
@@ -175,7 +175,7 @@ impl RetainedMetadataStoreV1 {
     pub fn campaign(
         &self,
         campaign_id: CampaignId,
-    ) -> Result<Option<CampaignCatalogRowV1>, RustPersistenceRuntimeErrorV1> {
+    ) -> Result<Option<CampaignCatalogRowV1>, RustPersistenceRuntimeErrorV2> {
         let mut client = self.connect("connect retained campaign reader")?;
         read_campaign_catalog_row_v1(&mut client, campaign_id)
     }
@@ -188,7 +188,7 @@ impl RetainedMetadataStoreV1 {
         &self,
         campaign_id: CampaignId,
         status: CampaignCatalogStatusV1,
-    ) -> Result<(), RustPersistenceRuntimeErrorV1> {
+    ) -> Result<(), RustPersistenceRuntimeErrorV2> {
         let status = match status {
             CampaignCatalogStatusV1::Active => "ACTIVE",
             CampaignCatalogStatusV1::Abandoned => "ABANDONED",
@@ -210,7 +210,7 @@ impl RetainedMetadataStoreV1 {
     pub fn delete_campaign(
         &self,
         campaign_id: CampaignId,
-    ) -> Result<bool, RustPersistenceRuntimeErrorV1> {
+    ) -> Result<bool, RustPersistenceRuntimeErrorV2> {
         let mut client = self.connect("connect retained campaign deleter")?;
         client
             .execute(
@@ -228,7 +228,7 @@ impl RetainedMetadataStoreV1 {
     pub fn watchlist(
         &self,
         campaign_id: CampaignId,
-    ) -> Result<Vec<WatchlistRowV1>, RustPersistenceRuntimeErrorV1> {
+    ) -> Result<Vec<WatchlistRowV1>, RustPersistenceRuntimeErrorV2> {
         let mut client = self.connect("connect retained watchlist reader")?;
         read_navigation_rows(&mut client, campaign_id, NavigationTableV1::Watchlist)
     }
@@ -242,10 +242,10 @@ impl RetainedMetadataStoreV1 {
         &self,
         campaign_id: CampaignId,
         entity_ids: &[String],
-    ) -> Result<(), RustPersistenceRuntimeErrorV1> {
+    ) -> Result<(), RustPersistenceRuntimeErrorV2> {
         let mut unique = BTreeSet::new();
         if entity_ids.iter().any(|entity_id| !unique.insert(entity_id)) {
-            return Err(RustPersistenceRuntimeErrorV1::ReplaySource);
+            return Err(RustPersistenceRuntimeErrorV2::ReplaySource);
         }
         self.replace_navigation(campaign_id, entity_ids, NavigationTableV1::Watchlist)
     }
@@ -257,7 +257,7 @@ impl RetainedMetadataStoreV1 {
     pub fn jumplist(
         &self,
         campaign_id: CampaignId,
-    ) -> Result<Vec<JumplistRowV1>, RustPersistenceRuntimeErrorV1> {
+    ) -> Result<Vec<JumplistRowV1>, RustPersistenceRuntimeErrorV2> {
         let mut client = self.connect("connect retained jumplist reader")?;
         read_navigation_rows(&mut client, campaign_id, NavigationTableV1::Jumplist)
     }
@@ -271,7 +271,7 @@ impl RetainedMetadataStoreV1 {
         &self,
         campaign_id: CampaignId,
         entity_ids: &[String],
-    ) -> Result<(), RustPersistenceRuntimeErrorV1> {
+    ) -> Result<(), RustPersistenceRuntimeErrorV2> {
         self.replace_navigation(campaign_id, entity_ids, NavigationTableV1::Jumplist)
     }
 
@@ -282,7 +282,7 @@ impl RetainedMetadataStoreV1 {
     pub fn breadcrumbs(
         &self,
         campaign_id: CampaignId,
-    ) -> Result<Vec<BreadcrumbRowV1>, RustPersistenceRuntimeErrorV1> {
+    ) -> Result<Vec<BreadcrumbRowV1>, RustPersistenceRuntimeErrorV2> {
         let mut client = self.connect("connect retained breadcrumb reader")?;
         read_navigation_rows(&mut client, campaign_id, NavigationTableV1::Breadcrumb)
     }
@@ -296,17 +296,17 @@ impl RetainedMetadataStoreV1 {
         &self,
         campaign_id: CampaignId,
         entity_ids: &[String],
-    ) -> Result<(), RustPersistenceRuntimeErrorV1> {
+    ) -> Result<(), RustPersistenceRuntimeErrorV2> {
         self.replace_navigation(campaign_id, entity_ids, NavigationTableV1::Breadcrumb)
     }
 
     fn connect(
         &self,
         operation: &'static str,
-    ) -> Result<postgres::Client, RustPersistenceRuntimeErrorV1> {
+    ) -> Result<postgres::Client, RustPersistenceRuntimeErrorV2> {
         self.config
             .connect(NoTls)
-            .map_err(|error| RustPersistenceRuntimeErrorV1::postgres(operation, &error))
+            .map_err(|error| RustPersistenceRuntimeErrorV2::postgres(operation, &error))
     }
 
     fn replace_navigation(
@@ -314,7 +314,7 @@ impl RetainedMetadataStoreV1 {
         campaign_id: CampaignId,
         entity_ids: &[String],
         table: NavigationTableV1,
-    ) -> Result<(), RustPersistenceRuntimeErrorV1> {
+    ) -> Result<(), RustPersistenceRuntimeErrorV2> {
         let rows = validate_navigation_input(campaign_id, entity_ids, table)?;
         let mut client = self.connect(table.connect_write_operation())?;
         let mut transaction = client
@@ -328,14 +328,14 @@ impl RetainedMetadataStoreV1 {
             .map_err(|error| database("lock retained campaign for navigation replacement", &error))?
             .is_none()
         {
-            return Err(RustPersistenceRuntimeErrorV1::CampaignConflict);
+            return Err(RustPersistenceRuntimeErrorV2::CampaignConflict);
         }
         transaction
             .execute(table.delete_sql(), &[campaign_id.as_uuid()])
             .map_err(|error| database(table.delete_operation(), &error))?;
         for row in rows {
             let position = i32::try_from(row.position)
-                .map_err(|_| RustPersistenceRuntimeErrorV1::ReplaySource)?;
+                .map_err(|_| RustPersistenceRuntimeErrorV2::ReplaySource)?;
             transaction
                 .execute(
                     table.insert_sql(),
@@ -457,17 +457,17 @@ fn validate_navigation_input(
     campaign_id: CampaignId,
     entity_ids: &[String],
     table: NavigationTableV1,
-) -> Result<Vec<NavigationInputRowV1<'_>>, RustPersistenceRuntimeErrorV1> {
+) -> Result<Vec<NavigationInputRowV1<'_>>, RustPersistenceRuntimeErrorV2> {
     let mut rows = Vec::new();
     rows.try_reserve_exact(entity_ids.len()).map_err(|_| {
-        RustPersistenceRuntimeErrorV1::Allocation {
+        RustPersistenceRuntimeErrorV2::Allocation {
             field: "retained navigation rows",
             requested: entity_ids.len(),
         }
     })?;
     for (position, entity_id) in entity_ids.iter().enumerate() {
         let position =
-            u32::try_from(position).map_err(|_| RustPersistenceRuntimeErrorV1::ReplaySource)?;
+            u32::try_from(position).map_err(|_| RustPersistenceRuntimeErrorV2::ReplaySource)?;
         match table {
             NavigationTableV1::Watchlist => {
                 WatchlistRowV1::try_new(campaign_id, position, entity_id.clone())?;
@@ -492,7 +492,7 @@ trait NavigationRowV1: Sized {
         campaign_id: CampaignId,
         position: u32,
         entity_id: String,
-    ) -> Result<Self, RustPersistenceRuntimeErrorV1>;
+    ) -> Result<Self, RustPersistenceRuntimeErrorV2>;
 }
 
 macro_rules! navigation_row_impl {
@@ -502,7 +502,7 @@ macro_rules! navigation_row_impl {
                 campaign_id: CampaignId,
                 position: u32,
                 entity_id: String,
-            ) -> Result<Self, RustPersistenceRuntimeErrorV1> {
+            ) -> Result<Self, RustPersistenceRuntimeErrorV2> {
                 Self::try_new(campaign_id, position, entity_id)
             }
         }
@@ -517,7 +517,7 @@ fn read_navigation_rows<RowType: NavigationRowV1>(
     client: &mut impl GenericClient,
     campaign_id: CampaignId,
     table: NavigationTableV1,
-) -> Result<Vec<RowType>, RustPersistenceRuntimeErrorV1> {
+) -> Result<Vec<RowType>, RustPersistenceRuntimeErrorV2> {
     client
         .query(table.select_sql(), &[campaign_id.as_uuid()])
         .map_err(|error| database(table.read_operation(), &error))?
@@ -526,16 +526,16 @@ fn read_navigation_rows<RowType: NavigationRowV1>(
         .map(|(expected, row)| {
             let position: i32 = row
                 .try_get(0)
-                .map_err(|_| RustPersistenceRuntimeErrorV1::CampaignConflict)?;
+                .map_err(|_| RustPersistenceRuntimeErrorV2::CampaignConflict)?;
             if usize::try_from(position).ok() != Some(expected) {
-                return Err(RustPersistenceRuntimeErrorV1::CampaignConflict);
+                return Err(RustPersistenceRuntimeErrorV2::CampaignConflict);
             }
             RowType::try_from_parts(
                 campaign_id,
                 u32::try_from(position)
-                    .map_err(|_| RustPersistenceRuntimeErrorV1::CampaignConflict)?,
+                    .map_err(|_| RustPersistenceRuntimeErrorV2::CampaignConflict)?,
                 row.try_get(1)
-                    .map_err(|_| RustPersistenceRuntimeErrorV1::CampaignConflict)?,
+                    .map_err(|_| RustPersistenceRuntimeErrorV2::CampaignConflict)?,
             )
         })
         .collect()
@@ -545,7 +545,7 @@ pub(crate) fn ensure_campaign_catalog_row_v1(
     client: &mut impl GenericClient,
     campaign_id: CampaignId,
     foundation: &CampaignFoundationV1,
-) -> Result<CampaignCatalogRowV1, RustPersistenceRuntimeErrorV1> {
+) -> Result<CampaignCatalogRowV1, RustPersistenceRuntimeErrorV2> {
     let defines_hash = hex_digest(&foundation.content_digest().defines_hash)?;
     let rules_hash = hex_digest(&foundation.content_digest().rules_hash)?;
     let content_digest = content_digest_json(&defines_hash, &rules_hash)?;
@@ -569,16 +569,16 @@ pub(crate) fn ensure_campaign_catalog_row_v1(
             ],
         )
         .map_err(|error| {
-            RustPersistenceRuntimeErrorV1::postgres("bind retained campaign catalog", &error)
+            RustPersistenceRuntimeErrorV2::postgres("bind retained campaign catalog", &error)
         })?;
     let row = read_campaign_catalog_row_v1(client, campaign_id)?
-        .ok_or(RustPersistenceRuntimeErrorV1::CampaignConflict)?;
+        .ok_or(RustPersistenceRuntimeErrorV2::CampaignConflict)?;
     if row.defines_hash() != defines_hash
         || row.last_tick() != 0
         || row.rng_seed() != Some(seed)
         || row.content_digest() != Some(content_digest.as_str())
     {
-        return Err(RustPersistenceRuntimeErrorV1::CampaignConflict);
+        return Err(RustPersistenceRuntimeErrorV2::CampaignConflict);
     }
     Ok(row)
 }
@@ -588,7 +588,7 @@ pub(crate) fn advance_campaign_catalog_tick_v1(
     campaign_id: CampaignId,
     predecessor: i64,
     resolve_tick: i64,
-) -> Result<(), RustPersistenceRuntimeErrorV1> {
+) -> Result<(), RustPersistenceRuntimeErrorV2> {
     let affected = client
         .execute(
             "UPDATE babylon_meta.campaign SET last_tick = $2, last_played_at = pg_catalog.clock_timestamp() \
@@ -596,19 +596,19 @@ pub(crate) fn advance_campaign_catalog_tick_v1(
             &[campaign_id.as_uuid(), &resolve_tick, &predecessor],
         )
         .map_err(|error| {
-            RustPersistenceRuntimeErrorV1::postgres("advance retained campaign catalog", &error)
+            RustPersistenceRuntimeErrorV2::postgres("advance retained campaign catalog", &error)
         })?;
     if affected == 1 {
         Ok(())
     } else {
-        Err(RustPersistenceRuntimeErrorV1::CampaignConflict)
+        Err(RustPersistenceRuntimeErrorV2::CampaignConflict)
     }
 }
 
 pub(crate) fn read_campaign_catalog_row_v1(
     client: &mut impl GenericClient,
     campaign_id: CampaignId,
-) -> Result<Option<CampaignCatalogRowV1>, RustPersistenceRuntimeErrorV1> {
+) -> Result<Option<CampaignCatalogRowV1>, RustPersistenceRuntimeErrorV2> {
     client
         .query_opt(
             "SELECT slug, engine_version, defines_hash, last_tick, status, last_played_at, \
@@ -617,7 +617,7 @@ pub(crate) fn read_campaign_catalog_row_v1(
             &[campaign_id.as_uuid()],
         )
         .map_err(|error| {
-            RustPersistenceRuntimeErrorV1::postgres("read retained campaign catalog", &error)
+            RustPersistenceRuntimeErrorV2::postgres("read retained campaign catalog", &error)
         })?
         .map(|row| decode_campaign_catalog_row(campaign_id, &row))
         .transpose()
@@ -626,64 +626,64 @@ pub(crate) fn read_campaign_catalog_row_v1(
 fn decode_campaign_catalog_row(
     campaign_id: CampaignId,
     row: &Row,
-) -> Result<CampaignCatalogRowV1, RustPersistenceRuntimeErrorV1> {
+) -> Result<CampaignCatalogRowV1, RustPersistenceRuntimeErrorV2> {
     let last_tick: i64 = row
         .try_get(3)
-        .map_err(|_| RustPersistenceRuntimeErrorV1::CampaignConflict)?;
+        .map_err(|_| RustPersistenceRuntimeErrorV2::CampaignConflict)?;
     let status: String = row
         .try_get(4)
-        .map_err(|_| RustPersistenceRuntimeErrorV1::CampaignConflict)?;
+        .map_err(|_| RustPersistenceRuntimeErrorV2::CampaignConflict)?;
     Ok(CampaignCatalogRowV1 {
         campaign_id,
         slug: row
             .try_get(0)
-            .map_err(|_| RustPersistenceRuntimeErrorV1::CampaignConflict)?,
+            .map_err(|_| RustPersistenceRuntimeErrorV2::CampaignConflict)?,
         engine_version: row
             .try_get(1)
-            .map_err(|_| RustPersistenceRuntimeErrorV1::CampaignConflict)?,
+            .map_err(|_| RustPersistenceRuntimeErrorV2::CampaignConflict)?,
         defines_hash: row
             .try_get(2)
-            .map_err(|_| RustPersistenceRuntimeErrorV1::CampaignConflict)?,
+            .map_err(|_| RustPersistenceRuntimeErrorV2::CampaignConflict)?,
         last_tick: u64::try_from(last_tick)
-            .map_err(|_| RustPersistenceRuntimeErrorV1::CampaignConflict)?,
+            .map_err(|_| RustPersistenceRuntimeErrorV2::CampaignConflict)?,
         status: match status.as_str() {
             "ACTIVE" => CampaignCatalogStatusV1::Active,
             "ABANDONED" => CampaignCatalogStatusV1::Abandoned,
-            _ => return Err(RustPersistenceRuntimeErrorV1::CampaignConflict),
+            _ => return Err(RustPersistenceRuntimeErrorV2::CampaignConflict),
         },
         last_played_at: row
             .try_get(5)
-            .map_err(|_| RustPersistenceRuntimeErrorV1::CampaignConflict)?,
+            .map_err(|_| RustPersistenceRuntimeErrorV2::CampaignConflict)?,
         created_at: row
             .try_get(6)
-            .map_err(|_| RustPersistenceRuntimeErrorV1::CampaignConflict)?,
+            .map_err(|_| RustPersistenceRuntimeErrorV2::CampaignConflict)?,
         rng_seed: row
             .try_get(7)
-            .map_err(|_| RustPersistenceRuntimeErrorV1::CampaignConflict)?,
+            .map_err(|_| RustPersistenceRuntimeErrorV2::CampaignConflict)?,
         content_digest: row
             .try_get(8)
-            .map_err(|_| RustPersistenceRuntimeErrorV1::CampaignConflict)?,
+            .map_err(|_| RustPersistenceRuntimeErrorV2::CampaignConflict)?,
     })
 }
 
-fn require_one(affected: u64) -> Result<(), RustPersistenceRuntimeErrorV1> {
+fn require_one(affected: u64) -> Result<(), RustPersistenceRuntimeErrorV2> {
     if affected == 1 {
         Ok(())
     } else {
-        Err(RustPersistenceRuntimeErrorV1::CampaignConflict)
+        Err(RustPersistenceRuntimeErrorV2::CampaignConflict)
     }
 }
 
-fn database(operation: &'static str, error: &postgres::Error) -> RustPersistenceRuntimeErrorV1 {
-    RustPersistenceRuntimeErrorV1::postgres(operation, error)
+fn database(operation: &'static str, error: &postgres::Error) -> RustPersistenceRuntimeErrorV2 {
+    RustPersistenceRuntimeErrorV2::postgres(operation, error)
 }
 
-fn hex_digest(bytes: &[u8; 32]) -> Result<String, RustPersistenceRuntimeErrorV1> {
+fn hex_digest(bytes: &[u8; 32]) -> Result<String, RustPersistenceRuntimeErrorV2> {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     let mut output = String::new();
     output
         .try_reserve_exact(64)
-        .map_err(|_| RustPersistenceRuntimeErrorV1::Allocation {
+        .map_err(|_| RustPersistenceRuntimeErrorV2::Allocation {
             field: "campaign catalog digest",
             requested: 64,
         })?;
@@ -697,12 +697,12 @@ fn hex_digest(bytes: &[u8; 32]) -> Result<String, RustPersistenceRuntimeErrorV1>
 fn content_digest_json(
     defines_hash: &str,
     rules_hash: &str,
-) -> Result<String, RustPersistenceRuntimeErrorV1> {
+) -> Result<String, RustPersistenceRuntimeErrorV2> {
     let capacity = 164;
     let mut output = String::new();
     output
         .try_reserve_exact(capacity)
-        .map_err(|_| RustPersistenceRuntimeErrorV1::Allocation {
+        .map_err(|_| RustPersistenceRuntimeErrorV2::Allocation {
             field: "campaign catalog content digest",
             requested: capacity,
         })?;

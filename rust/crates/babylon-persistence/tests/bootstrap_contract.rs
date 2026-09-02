@@ -28,7 +28,7 @@ fn runtime_cli_names_the_one_public_activation_composition() {
     let cli = include_str!("../src/bin/babylon-runtime.rs");
     let bootstrap = include_str!("../src/bootstrap.rs");
 
-    assert!(cli.contains("activate_rust_persistence_v1(config)"));
+    assert!(cli.contains("activate_rust_persistence_v2(config)"));
     assert!(bootstrap.contains("pub fn bootstrap_h3_reader_epoch_v1"));
     let _: fn(&postgres::Config) -> Result<H3ReaderBootstrapReportV1, H3ReaderBootstrapErrorV1> =
         bootstrap_h3_reader_epoch_v1;

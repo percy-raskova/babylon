@@ -113,6 +113,9 @@ pub enum Atom {
     Int(i64),
     /// A `$`-suffixed scaled literal, canonicalized to integer micro-units.
     Currency(Currency),
+    /// An exact unsigned `m` literal, canonicalized to nanounits.
+    /// `Mass` is transient finite-kernel allocation input, never a field.
+    Mass(crate::probability::Mass),
     /// A `p`/`i`/`c`-suffixed scaled literal in canonical minimal-scale form.
     Scaled(ScaledLit),
     /// `string` — after escape processing; NFC-checked (`E-LEX-002`).
@@ -957,7 +960,7 @@ fn classify_numeric(run: &str, start: usize) -> Result<Atom, ReadError> {
         return match &frac_and_suffix[frac_end..] {
             "" => Err(lex_error(
                 LexCode::BareFloat,
-                "a non-integer literal requires a kind suffix ($, p, i, c) — §1.5",
+                "a non-integer literal requires a kind suffix ($, p, i, c, r, m) — §1.5",
                 start,
             )),
             "$" => classify_currency(&int_digits, &frac_digits, negative, start),
@@ -969,6 +972,7 @@ fn classify_numeric(run: &str, start: usize) -> Result<Atom, ReadError> {
                 start,
             ),
             "r" => classify_ratio(&int_digits, &frac_digits, negative, start),
+            "m" => classify_mass(&int_digits, &frac_digits, negative, start),
             _ => Err(unclassifiable()),
         };
     }
@@ -978,8 +982,49 @@ fn classify_numeric(run: &str, start: usize) -> Result<Atom, ReadError> {
             classify_unit_interval(&int_digits, "", suffix_kind(rest), negative, start)
         }
         "r" => classify_ratio(&int_digits, "", negative, start),
+        "m" => classify_mass(&int_digits, "", negative, start),
         _ => Err(unclassifiable()),
     }
+}
+
+/// An exact `m` literal: unsigned, at most nine fractional digits, and
+/// represented as checked `u64` nanounits. Lexing never rounds.
+fn classify_mass(
+    int_digits: &str,
+    frac_digits: &str,
+    negative: bool,
+    start: usize,
+) -> Result<Atom, ReadError> {
+    if negative {
+        return Err(lex_error(
+            LexCode::UnclassifiableToken,
+            "a negative Mass literal is not expressible (including -0m)",
+            start,
+        ));
+    }
+    if frac_digits.len() > 9 {
+        return Err(lex_error(
+            LexCode::ExcessScale,
+            "Mass literals take at most 9 fractional digits and are never rounded at lex time",
+            start,
+        ));
+    }
+    let out_of_range = || {
+        lex_error(
+            LexCode::IntOutOfRange,
+            "Mass literal does not fit u64 nanounits",
+            start,
+        )
+    };
+    let unscaled: u64 = format!("{int_digits}{frac_digits}")
+        .parse()
+        .map_err(|_| out_of_range())?;
+    let padding = 9_usize - frac_digits.len();
+    let factor = u64::try_from(POW10[padding]).expect("10^0..10^9 fits u64");
+    let nanounits = unscaled.checked_mul(factor).ok_or_else(out_of_range)?;
+    Ok(Atom::Mass(crate::probability::Mass::from_nanounits(
+        nanounits,
+    )))
 }
 
 fn suffix_kind(suffix: &str) -> ScaledKind {

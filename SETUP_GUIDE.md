@@ -5,7 +5,7 @@ administrative viewer.
 
 Read [`NORTH_STAR.md`](NORTH_STAR.md) for the game purpose, client status,
 validation standard, and gate order. [`CONSTITUTION.md`](CONSTITUTION.md)
-v4.0.0 is the authority.
+v4.1.0 is the authority.
 
 The first simulation below is a frozen Python smoke test, not the Bevy play
 surface.

@@ -25,6 +25,133 @@ taxonomy or ADR240's accepted ``TickContentHashV1`` contract.
    :local:
    :depth: 2
 
+Amendment AJ finite-kernel identity
+------------------------------------
+
+**Status: normative for the live V2 tick boundary, 2026-09-01.** Constitution
+v4.1.0 and ADR248 add finite material transition kernels without changing the
+scope of ``GraphStateHash``, ``NominalWorldHash``, or the outer
+``TickContentHashV1`` encoding. This section supersedes only the older
+author-visible ``rng-draw`` and V1-envelope statements below.
+
+Exact allocation
+++++++++++++++++
+
+Each loaded kernel has enum-ordered exact nonnegative ``Mass`` values in
+unsigned units of ``10^-9``. Let ``T = 2^64`` and let ``M`` be their checked
+positive sum.
+
+Exact wide-integer division gives every branch
+``floor(mass * T / M)`` tickets. The remaining tickets go to branches in
+descending exact-remainder order, with enum order breaking ties. The resulting
+half-open intervals cover ``[0, T)`` once. A positive mass assigned zero
+tickets refuses. Counts and endpoints use an integer representation that can
+express ``T`` itself.
+
+Allocation uses no binary64 arithmetic and consumes no randomness. Its
+canonical input includes the outcome enum identity and order plus every exact
+mass. ``allocation_digest`` binds the versioned allocation layout, those
+inputs, ticket counts, and intervals. Decimal ``m`` spellings with the same
+value produce the same allocation bytes.
+
+Choice instance and draw
+++++++++++++++++++++++++
+
+A finite realization has one canonical instance key. It binds these
+semantic fields, with explicit version tags and length framing in the owning
+contract:
+
+#. replay session.
+#. signed replay seed.
+#. resolve tick.
+#. firing rule ID.
+#. sample QName.
+#. append-only literal ``u32`` slot.
+#. stable subject identity.
+#. ordered active element identities.
+
+``instance_digest`` binds that key and ``allocation_digest``. The evaluator
+constructs one private ``KernelRng`` stream from the complete key, calls
+``next_u64`` exactly once, and treats the returned ``u64`` as the ticket in
+``[0, T)``. No author-visible ``rng-draw`` remains. Adding or removing an
+unrelated rule or carrier cannot change another instance's key, draw, selected
+outcome, or receipt.
+
+Choice evidence and payload identity
+++++++++++++++++++++++++++++++++++++
+
+Every encountered finite realization produces ``ChoiceReceiptV1`` after its
+selected branch succeeds. This includes a branch with no material effect.
+
+The receipt records its encounter ordinal, rule, sample, and slot. It also
+records the stable subject and ordered active elements. Its enum-ordered branch
+data contains exact masses, ticket counts, and intervals. The remaining fields
+are the draw ticket, selected outcome, ``allocation_digest``, and
+``instance_digest``. ``ChoiceReceiptV1`` remains distinct from identity-free
+``AuditReceipt``.
+
+``TickPayloadV2`` canonically orders ``SuccessfulEventBatchV2``, its existing
+sections, and the complete choice-receipt section. ``TickContentHashV1`` remains
+the outer replay identity. Its unchanged input already binds a versioned
+payload digest. A receipt change moves the payload digest and outer tick hash
+without adding a second outer identity. ``GraphStateHash`` remains graph-only, and
+``NominalWorldHash`` retains its graph, completed-time, allocator, and schedule
+scope.
+
+``CommittedTickEnvelopeV2`` is the only live durability envelope. It inserts
+the ``ChoiceReceipt`` family between ``Event`` and ``Checkpoint`` in canonical
+family order. Event rows include the emitting rule and an optional
+automatically derived choice-receipt reference. Probability is never part of
+an authored event payload. Exact envelope equality, not semantic equivalence,
+governs retry, ambiguous-commit reconciliation, and restart.
+
+The post-activation reader and writer refuse any envelope layout other than
+V2. The live boundary has no V1 decoder, adapter, alias, fallback, or
+migration-on-read. Postgres ticket counts and endpoints use checked
+``NUMERIC(20,0)`` so the endpoint ``2^64`` is representable. The transaction
+stores choice receipts and projected events before checkpoint and Archive
+work. It places ``babylon_state.tick_commit`` last with
+``envelope_layout_version = 2``.
+
+The live Rust boundary names are ``IdentifiedTickReportV2``,
+``PreparedCommittedTickV2``, ``StoredTypedTickV2``,
+``CommittedTickReceiptV2``, and ``DurableReplayRuntimeV2``. Existing inner V1
+graph, state, checkpoint, and Archive row encodings keep their versioned
+semantics. They do not create an Envelope V1 compatibility path.
+
+Atomicity and observation
++++++++++++++++++++++++++
+
+Mass evaluation, allocation, draw, branch execution, recognizer projection,
+event emission, receipt construction, payload hashing, and envelope
+construction belong to one detached tick. Any failure publishes no graph,
+event, receipt, completed time, or identity. Durable publication occurs only
+after the system receives acknowledgement of the marker-last transaction. For
+an ambiguous commit, the system first proves byte-for-byte equality.
+
+Choice and event observation are causally inert. Removing an event sink or
+disabling opt-in detailed receipt logging cannot change graph, draw, selection,
+payload, or authoritative persistence bytes. The post-commit path creates
+detailed JSONL receipt output only after durable commit. The output never
+becomes replay input.
+
+Exact finite event likelihood
++++++++++++++++++++++++++++++
+
+For a linked deterministic recognizer ``R`` and kernel ``K``, the exact
+likelihood of event ``e`` is:
+
+.. code-block:: text
+
+   Pr(e | s) = sum_delta K(s, delta)
+               * [e in R(s, apply(s, delta))]
+
+The executable representation sums favorable ticket counts and returns that
+integer numerator over fixed denominator ``2^64``. It consumes no RNG. The
+evaluator refuses analysis outside one adjacent, subject-local, finite
+projection whose kernel Mechanic writes material state only on literal
+``self``. It does not sample, approximate, or assume independence.
+
 Scope: What "Deterministic" Guarantees
 ---------------------------------------
 
@@ -70,8 +197,8 @@ Catalog of Constitutional Hashes
 The frozen Python estate retains reference identities. Rust owns the graph-only
 diagnostic, the nominal-world identity, and the canonical replay-tick
 ``TickContentHashV1``. The Rust runtime places that replay identity in a
-``CommittedTickEnvelopeV1`` and persists the envelope through the schema-epoch
-9 authority boundary. These values are not interchangeable. The Python
+``CommittedTickEnvelopeV2`` and persists the envelope through the schema-epoch
+11 authority boundary. These values are not interchangeable. The Python
 entries below document retired byte constructions only.
 
 .. note::
@@ -901,10 +1028,10 @@ second identity resolver connects the two encodings.
 The current runtime accepts only the exact empty
 ``OrderedPracticeActionBatchV1``. The nonempty form is structural contract
 evidence and confers no accepted-input provenance. PER-60 adds no Postgres
-I/O by itself. The later Rust persistence cutover adds the durable envelope,
-schema-epoch 9 write, and Archive dirty receipt. The semantic Archive worker,
-fog-safe decision surface, BSL intent, and player action execution remain
-outside this contract.
+I/O by itself. The Rust persistence boundary now stores
+``CommittedTickEnvelopeV2`` through schema epoch 11 and includes the Archive
+dirty receipt. The semantic Archive worker, fog-safe decision surface, BSL
+intent, and player action execution remain outside this contract.
 
 ``ReplaySessionIdV1`` is material replay identity. Campaign identity is a
 distinct durability input. No conversion joins the types, and campaign
@@ -1566,7 +1693,7 @@ See Also
 ------------
 
 - :doc:`/reference/persistence` — the Rust runtime and durable
-  ``CommittedTickEnvelopeV1`` boundary.
+  ``CommittedTickEnvelopeV2`` boundary.
 - :doc:`/reference/configuration` — ``GameDefines`` structure and
   ``defines.yaml`` modding surface.
 - :doc:`/reference/precision` — the quantization Gatekeeper Pattern, a

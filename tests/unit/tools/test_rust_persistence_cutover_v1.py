@@ -217,7 +217,7 @@ def test_joined_python_reader_retirement_has_no_surviving_api_or_edge_claim() ->
     ]
 
 
-def test_exact_rust_runtime_root_exists_and_absorbs_schema_epoch_cli() -> None:
+def test_historical_v1_root_is_superseded_without_restoring_a_second_cli() -> None:
     authority = _contract()["authority"]
     module = ROOT / authority["composition_module"]
     binary = ROOT / authority["composition_binary"]
@@ -234,8 +234,14 @@ def test_exact_rust_runtime_root_exists_and_absorbs_schema_epoch_cli() -> None:
         authority["prepared_tick_type"],
         authority["activation_function"],
     ]:
+        assert symbol not in module_source
+    for symbol in [
+        "DurableReplayRuntimeV2",
+        "PreparedCommittedTickV2",
+        "activate_rust_persistence_v2",
+    ]:
         assert symbol in module_source
-    assert authority["composition_type"] in binary_source
+    assert "DurableReplayRuntimeV2" in binary_source
 
 
 def test_tick_and_client_do_not_gain_persistence_authority() -> None:

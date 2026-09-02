@@ -101,22 +101,23 @@ pub use postgres_diagnostic::{
     PostgresDiagnosticV1, PostgresFailureClassV1, MAX_POSTGRES_DIAGNOSTIC_MESSAGE_BYTES,
 };
 pub use runtime::{
-    activate_rust_persistence_v1, hydrate_campaign_foundation_v1, prepare_committed_tick_v1,
-    ActivationReportV1, CommittedTickReceiptV1, DurableReplayRuntimeV1,
-    PersistenceAuthorityLedgerRowV1, PersistenceAuthorityStateV1, PreparedCommittedTickV1,
-    RustPersistenceActivationErrorV1, RustPersistenceRuntimeErrorV1,
+    activate_rust_persistence_v2, hydrate_campaign_foundation_v1, prepare_committed_tick_v2,
+    ActivationReportV2, CommittedTickAuthorityLedgerRowV2, CommittedTickAuthorityStateV2,
+    CommittedTickReceiptV2, DurableReplayRuntimeV2, PreActivationIncompatibleRelationV2,
+    PreparedCommittedTickV2, RustPersistenceActivationErrorV2, RustPersistenceRuntimeErrorV2,
 };
 pub use schema_epoch::{
-    compiled_schema_migrations, migrate_schema_epoch, preflight_schema_epoch,
-    validate_migration_prefix, PersistedMigration, SchemaEpochError, SchemaEpochObservation,
-    SchemaEpochOperation, SchemaEpochOrigin, SchemaEpochRelation, SchemaEpochReport,
-    SchemaEpochSchemas, MAX_COMMIT_ATTEMPTS_PER_VERSION, MAX_SCHEMA_MIGRATIONS,
+    compiled_committed_tick_v2_activation_migrations, compiled_schema_migrations,
+    migrate_schema_epoch, preflight_schema_epoch, validate_migration_prefix, PersistedMigration,
+    SchemaEpochError, SchemaEpochObservation, SchemaEpochOperation, SchemaEpochOrigin,
+    SchemaEpochRelation, SchemaEpochReport, SchemaEpochSchemas, MAX_COMMIT_ATTEMPTS_PER_VERSION,
+    MAX_SCHEMA_MIGRATIONS,
 };
 pub use schema_migration::{
     MigrationChecksum, MigrationVersion, SchemaMigration, SchemaMigrationError,
     MAX_SCHEMA_MIGRATION_SQL_BYTES, MIGRATION_CHECKSUM_BYTES,
 };
-pub use semantic_batches::{StableGraphRowsEmptyProofV1, SuccessfulEventBatchEmptyProofV1};
+pub use semantic_batches::{StableGraphRowsEmptyProofV1, SuccessfulEventBatchEmptyProofV2};
 pub use spatial_reference_installer::{
     install_michigan_spatial_reference_products, SpatialReferenceInstallDisposition,
     SpatialReferenceInstallError, SpatialReferenceInstallOperation, SpatialReferenceInstallReport,

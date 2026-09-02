@@ -1,7 +1,7 @@
 # North Star
 
 This page explains the live game direction. It does not make law.
-[`CONSTITUTION.md`](CONSTITUTION.md) v4.0.0 governs Babylon. ADR221 records how
+[`CONSTITUTION.md`](CONSTITUTION.md) v4.1.0 governs Babylon. ADR221 records how
 the prior constitution moved into v4 without a rewrite of history.
 [`ai/mantras.yaml`](ai/mantras.yaml) carries the same orientation as structured
 data for repository tools.

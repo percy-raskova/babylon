@@ -43,12 +43,9 @@ use babylon_graph::substrate::{GraphSubstrate, NodeId};
 use babylon_kernel::SessionId;
 use std::collections::{HashMap, HashSet};
 
-/// The `rng-draw` seam's fixed conformance-driver session (Task 4, #576
-/// intrinsic-host train, plan §3.5) — this file's own analogue of
-/// `run_once`'s `SessionId::new("run-once")` literal, since every helper
-/// here is itself a one-shot tick driver. No content calls `rng-draw` yet
-/// (Task 5 lands it), so this file's own hard gate — the state hash stays
-/// BYTE-IDENTICAL — is unaffected either way.
+/// Fixed deterministic V1 namespace for these one-shot conformance drivers.
+/// They contain no finite kernel, so the byte-identical state-hash theorem
+/// remains independent of governed replay realization.
 fn fixture_session() -> SessionId {
     SessionId::new("fundamental-theorem-tick-fixture").expect("literal is non-empty")
 }
@@ -119,6 +116,7 @@ fn registries() -> Registries {
         vocabulary: BindingVocabulary {
             fields: declared.fields.keys().cloned().collect(),
             consts: HashSet::new(),
+            probability_consts: HashSet::new(),
             metrics: HashSet::new(),
         },
         types: declared,
@@ -141,6 +139,8 @@ fn run_one_tick() -> (MemoryGraph, usize, usize) {
     let ctx = LoadContext {
         vocabulary: &r.vocabulary,
         types: &r.types,
+        enums: &r.enums,
+        const_values: &loaded_scenario.consts,
         ceilings: &r.ceilings,
         intrinsics: &r.intrinsics,
         systems: &r.systems,
@@ -255,6 +255,8 @@ fn a_changed_scenario_changes_the_hash() {
     let ctx = LoadContext {
         vocabulary: &r.vocabulary,
         types: &r.types,
+        enums: &r.enums,
+        const_values: &loaded_scenario.consts,
         ceilings: &r.ceilings,
         intrinsics: &r.intrinsics,
         systems: &r.systems,
@@ -347,6 +349,7 @@ fn expr_registries() -> Registries {
         vocabulary: BindingVocabulary {
             fields: declared.fields.keys().cloned().collect(),
             consts: HashSet::from(["vitality/subsistence-cost".to_owned()]),
+            probability_consts: HashSet::new(),
             metrics: HashSet::from(["solidarity-density".to_owned()]),
         },
         types: declared,
@@ -368,6 +371,8 @@ fn run_expr_tick(rule: &str) -> Result<(MemoryGraph, usize), String> {
     let ctx = LoadContext {
         vocabulary: &r.vocabulary,
         types: &r.types,
+        enums: &r.enums,
+        const_values: &loaded_scenario.consts,
         ceilings: &r.ceilings,
         intrinsics: &r.intrinsics,
         systems: &r.systems,

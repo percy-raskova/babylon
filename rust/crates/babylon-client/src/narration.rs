@@ -246,7 +246,11 @@ fn format_value(value: &Value) -> String {
         Value::Bool(b) => b.to_string(),
         Value::Enum { member, .. } => member.clone(),
         Value::NodeRef(id) => format!("node #{}", id.0),
-        Value::Currency(_) | Value::Ratio { .. } | Value::HyperedgeRef(_) | Value::EdgeRef(_) => {
+        Value::Mass(_)
+        | Value::Currency(_)
+        | Value::Ratio { .. }
+        | Value::HyperedgeRef(_)
+        | Value::EdgeRef(_) => {
             format!("{value:?}")
         }
     }

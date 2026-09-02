@@ -33,25 +33,33 @@ use lsp_types::notification::{
     LogMessage, Notification as _, PublishDiagnostics,
 };
 use lsp_types::request::{
-    DocumentDiagnosticRequest, RegisterCapability, Request as _, WorkspaceDiagnosticRequest,
+    Completion, DocumentDiagnosticRequest, HoverRequest, RegisterCapability, Request as _,
+    SemanticTokensFullRequest, SignatureHelpRequest, WorkspaceDiagnosticRequest,
 };
 use lsp_types::{
-    ClientCapabilities, DidChangeTextDocumentParams, DidChangeWatchedFilesRegistrationOptions,
-    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DocumentDiagnosticParams,
-    DocumentDiagnosticReport, DocumentDiagnosticReportResult, FileSystemWatcher,
-    FullDocumentDiagnosticReport, GlobPattern, InitializeParams, LogMessageParams, MessageType,
-    PublishDiagnosticsParams, Registration, RegistrationParams,
-    RelatedFullDocumentDiagnosticReport, RelatedUnchangedDocumentDiagnosticReport,
-    UnchangedDocumentDiagnosticReport, Url, WorkspaceDiagnosticParams, WorkspaceDiagnosticReport,
-    WorkspaceDiagnosticReportResult, WorkspaceDocumentDiagnosticReport,
+    ClientCapabilities, CompletionParams, CompletionResponse, DidChangeTextDocumentParams,
+    DidChangeWatchedFilesRegistrationOptions, DidCloseTextDocumentParams,
+    DidOpenTextDocumentParams, DocumentDiagnosticParams, DocumentDiagnosticReport,
+    DocumentDiagnosticReportResult, FileSystemWatcher, FullDocumentDiagnosticReport, GlobPattern,
+    HoverParams, InitializeParams, LogMessageParams, MessageType, PublishDiagnosticsParams,
+    Registration, RegistrationParams, RelatedFullDocumentDiagnosticReport,
+    RelatedUnchangedDocumentDiagnosticReport, SemanticTokensParams, SemanticTokensResult,
+    SignatureHelpParams, UnchangedDocumentDiagnosticReport, Url, WorkspaceDiagnosticParams,
+    WorkspaceDiagnosticReport, WorkspaceDiagnosticReportResult, WorkspaceDocumentDiagnosticReport,
     WorkspaceFullDocumentDiagnosticReport, WorkspaceUnchangedDocumentDiagnosticReport,
 };
 
+use crate::authoring::{
+    completion_items, hover, semantic_tokens, signature_help, AuthoringSnapshot,
+};
 use crate::capabilities::server_capabilities;
 use crate::content_manifest::ContentSetManifest;
 use crate::diagnostics::compute_result_id;
 use crate::document_store::DocumentStore;
-use crate::pass::{content_relative_path, diagnose_bsl, LiveSourceReader, SourceReader};
+use crate::pass::{
+    analyze_probability_authoring, content_relative_path, diagnose_bsl, LiveSourceReader,
+    SourceReader,
+};
 
 /// Exit code for a clean `shutdown` -> `exit` sequence (the LSP spec:
 /// "exit should exit... with success code 0 if... shutdown request was
@@ -318,6 +326,12 @@ fn handle_request(
         m if m == WorkspaceDiagnosticRequest::METHOD => {
             handle_workspace_diagnostic(connection, state, req);
         }
+        m if m == Completion::METHOD => handle_completion(connection, state, req),
+        m if m == HoverRequest::METHOD => handle_hover(connection, state, req),
+        m if m == SignatureHelpRequest::METHOD => handle_signature_help(connection, state, req),
+        m if m == SemanticTokensFullRequest::METHOD => {
+            handle_semantic_tokens(connection, state, req);
+        }
         _ => {
             let resp = Response::new_err(
                 req.id.clone(),
@@ -328,6 +342,122 @@ fn handle_request(
         }
     }
     None
+}
+
+fn source_for_authoring(
+    state: &ServerState,
+    uri: &Url,
+) -> Option<(String, crate::line_index::LineIndex)> {
+    if let Some(document) = state.store.get(uri) {
+        return Some((document.text.clone(), document.line_index.clone()));
+    }
+    let path = uri.to_file_path().ok()?;
+    let text = std::fs::read_to_string(path).ok()?;
+    let line_index = crate::line_index::LineIndex::new(&text);
+    Some((text, line_index))
+}
+
+fn probability_snapshot(state: &ServerState, uri: &Url) -> AuthoringSnapshot {
+    let (Some(content_root), Some(manifest)) =
+        (state.content_root.as_ref(), state.manifest.as_ref())
+    else {
+        return AuthoringSnapshot::default();
+    };
+    let Some(path) = content_relative_path(content_root, uri) else {
+        return AuthoringSnapshot::default();
+    };
+    let reader = LiveSourceReader {
+        content_root,
+        store: &state.store,
+    };
+    analyze_probability_authoring(&path, manifest, &reader)
+}
+
+fn handle_completion(connection: &Connection, state: &ServerState, req: &RawRequest) {
+    let params: CompletionParams = match serde_json::from_value(req.params.clone()) {
+        Ok(params) => params,
+        Err(err) => {
+            respond_invalid_params(connection, req, &err.to_string());
+            return;
+        }
+    };
+    let uri = params.text_document_position.text_document.uri;
+    let result = source_for_authoring(state, &uri).and_then(|(text, line_index)| {
+        let offset =
+            line_index.position_to_offset(&text, params.text_document_position.position)?;
+        let snapshot = probability_snapshot(state, &uri);
+        Some(CompletionResponse::Array(completion_items(
+            &text,
+            &snapshot,
+            usize::try_from(offset).unwrap_or(usize::MAX),
+        )))
+    });
+    let response = Response::new_ok(req.id.clone(), result);
+    let _ = connection.sender.send(response.into());
+}
+
+fn handle_hover(connection: &Connection, state: &ServerState, req: &RawRequest) {
+    let params: HoverParams = match serde_json::from_value(req.params.clone()) {
+        Ok(params) => params,
+        Err(err) => {
+            respond_invalid_params(connection, req, &err.to_string());
+            return;
+        }
+    };
+    let uri = params.text_document_position_params.text_document.uri;
+    let result = source_for_authoring(state, &uri).and_then(|(text, line_index)| {
+        let offset =
+            line_index.position_to_offset(&text, params.text_document_position_params.position)?;
+        let snapshot = probability_snapshot(state, &uri);
+        hover(
+            &text,
+            &line_index,
+            &snapshot,
+            usize::try_from(offset).unwrap_or(usize::MAX),
+        )
+    });
+    let response = Response::new_ok(req.id.clone(), result);
+    let _ = connection.sender.send(response.into());
+}
+
+fn handle_signature_help(connection: &Connection, state: &ServerState, req: &RawRequest) {
+    let params: SignatureHelpParams = match serde_json::from_value(req.params.clone()) {
+        Ok(params) => params,
+        Err(err) => {
+            respond_invalid_params(connection, req, &err.to_string());
+            return;
+        }
+    };
+    let uri = params.text_document_position_params.text_document.uri;
+    let result = source_for_authoring(state, &uri).and_then(|(text, line_index)| {
+        let offset =
+            line_index.position_to_offset(&text, params.text_document_position_params.position)?;
+        let snapshot = probability_snapshot(state, &uri);
+        signature_help(
+            &text,
+            &snapshot,
+            usize::try_from(offset).unwrap_or(usize::MAX),
+        )
+    });
+    let response = Response::new_ok(req.id.clone(), result);
+    let _ = connection.sender.send(response.into());
+}
+
+fn handle_semantic_tokens(connection: &Connection, state: &ServerState, req: &RawRequest) {
+    let params: SemanticTokensParams = match serde_json::from_value(req.params.clone()) {
+        Ok(params) => params,
+        Err(err) => {
+            respond_invalid_params(connection, req, &err.to_string());
+            return;
+        }
+    };
+    let uri = params.text_document.uri;
+    let result = source_for_authoring(state, &uri).map(|(text, line_index)| {
+        let snapshot = probability_snapshot(state, &uri);
+        SemanticTokensResult::Tokens(semantic_tokens(&text, &line_index, &snapshot))
+    });
+    let response = Response::new_ok(req.id.clone(), result);
+    let _ = connection.sender.send(response.into());
 }
 
 fn dispatch_notification(connection: &Connection, state: &mut ServerState, note: &RawNotification) {
@@ -568,17 +698,24 @@ fn respond_invalid_params(connection: &Connection, req: &RawRequest, detail: &st
 
 #[cfg(test)]
 mod tests {
-    use super::{EXIT_CLEAN, EXIT_UNCLEAN};
+    use super::{ServerState, EXIT_CLEAN, EXIT_UNCLEAN};
+    use crate::content_manifest::ContentSetManifest;
+    use crate::document_store::DocumentStore;
     use lsp_server::{
         Connection, ErrorCode, Message, Notification as RawNotification, Request as RawRequest,
         RequestId,
     };
     use lsp_types::notification::{Exit, Initialized, LogMessage, Notification as _};
-    use lsp_types::request::{Initialize, RegisterCapability, Request as _, Shutdown};
+    use lsp_types::request::{
+        Completion, HoverRequest, Initialize, RegisterCapability, Request as _,
+        SemanticTokensFullRequest, Shutdown, SignatureHelpRequest,
+    };
     use lsp_types::{
         ClientCapabilities, DidChangeWatchedFilesClientCapabilities, InitializeParams,
-        InitializedParams, WorkspaceClientCapabilities,
+        InitializedParams, Url, WorkspaceClientCapabilities,
     };
+    use std::collections::HashMap;
+    use std::path::{Path, PathBuf};
     use std::thread;
     use std::time::Duration;
 
@@ -647,6 +784,132 @@ mod tests {
             .sender
             .send(RawNotification::new(Exit::METHOD.to_owned(), ()).into())
             .expect("send exit");
+    }
+
+    fn probability_authoring_state() -> (ServerState, Url, String) {
+        let manifest = ContentSetManifest::parse(
+            Path::new("content-sets.toml"),
+            r#"
+schema = 2
+[[kernel_slot]]
+ordinal = 0
+rule = "vitality/probe"
+sample = "struggle/spark"
+slot = 0
+[[set]]
+id = "probe/probability"
+scenario = "scenario.bscn"
+prelude = []
+rules = ["rules/probe.bsl"]
+consumers = []
+note = "LSP request fixture"
+"#,
+        )
+        .expect("valid manifest");
+        let scenario_uri = Url::parse("file:///virtual/scenario.bscn").expect("valid scenario URI");
+        let rule_uri = Url::parse("file:///virtual/rules/probe.bsl").expect("valid rule URI");
+        let source = "(rule vitality/probe :role mechanic :evidence designed \
+            :material-basis \"bounded spark\" :fuel 64 (bindings) (effects \
+            (choose :sample struggle/spark :slot 0 \
+              (branch SparkOutcome/YES :mass 1m (effects)) \
+              (branch SparkOutcome/NO :mass 3m (effects)))))"
+            .to_owned();
+        let mut store = DocumentStore::default();
+        store.open(
+            scenario_uri,
+            1,
+            "(scenario ft/probe (defenum SparkOutcome (YES NO)))".to_owned(),
+        );
+        store.open(rule_uri.clone(), 1, source.clone());
+        (
+            ServerState {
+                store,
+                manifest: Some(manifest),
+                content_root: Some(PathBuf::from("/virtual")),
+                result_ids: HashMap::new(),
+            },
+            rule_uri,
+            source,
+        )
+    }
+
+    fn response_value(client: &Connection) -> serde_json::Value {
+        let message = client
+            .receiver
+            .recv_timeout(TIMEOUT)
+            .expect("authoring response");
+        let Message::Response(response) = message else {
+            panic!("expected response")
+        };
+        response.response_result.expect("successful response")
+    }
+
+    #[test]
+    fn probability_authoring_requests_dispatch_loader_owned_results() {
+        let (server, client) = Connection::memory();
+        let (mut state, uri, source) = probability_authoring_state();
+        let choose = u32::try_from(source.find("choose").expect("choose token") + 1)
+            .expect("fixture offset fits u32");
+        let branch_position = u32::try_from(
+            source
+                .find("(branch")
+                .expect("first branch")
+                .saturating_sub(1),
+        )
+        .expect("fixture offset fits u32");
+
+        let completion = RawRequest::new(
+            RequestId::from(10),
+            Completion::METHOD.to_owned(),
+            serde_json::json!({
+                "textDocument": {"uri": uri.clone()},
+                "position": {"line": 0, "character": branch_position}
+            }),
+        );
+        assert!(super::handle_request(&server, &mut state, &completion).is_none());
+        let completion_value = response_value(&client);
+        assert!(completion_value
+            .as_array()
+            .is_some_and(|items| items.iter().any(|item| item["label"] == "branch")));
+
+        let hover_request = RawRequest::new(
+            RequestId::from(11),
+            HoverRequest::METHOD.to_owned(),
+            serde_json::json!({
+                "textDocument": {"uri": uri.clone()},
+                "position": {"line": 0, "character": choose}
+            }),
+        );
+        assert!(super::handle_request(&server, &mut state, &hover_request).is_none());
+        let hover_value = response_value(&client);
+        assert!(hover_value["contents"]["value"]
+            .as_str()
+            .is_some_and(|value| value.contains("4611686018427387904")));
+
+        let signature = RawRequest::new(
+            RequestId::from(12),
+            SignatureHelpRequest::METHOD.to_owned(),
+            serde_json::json!({
+                "textDocument": {"uri": uri.clone()},
+                "position": {"line": 0, "character": choose}
+            }),
+        );
+        assert!(super::handle_request(&server, &mut state, &signature).is_none());
+        let signature_value = response_value(&client);
+        assert!(signature_value["signatures"][0]["label"]
+            .as_str()
+            .is_some_and(|label| label.starts_with("(choose")));
+
+        let tokens = RawRequest::new(
+            RequestId::from(13),
+            SemanticTokensFullRequest::METHOD.to_owned(),
+            serde_json::json!({"textDocument": {"uri": uri}}),
+        );
+        assert!(super::handle_request(&server, &mut state, &tokens).is_none());
+        let token_value = response_value(&client);
+        assert!(token_value["data"]
+            .as_array()
+            .is_some_and(|data| !data.is_empty()));
     }
 
     #[test]

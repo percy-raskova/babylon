@@ -217,8 +217,8 @@ class TestRegistryFileItself:
         ("field", "current"),
         (
             ("python_event_type_total", "100"),
-            ("bsl_emit_site_total", "17"),
-            ("bsl_emit_name_total", "15"),
+            ("bsl_emit_site_total", "18"),
+            ("bsl_emit_name_total", "16"),
         ),
     )
     @pytest.mark.parametrize("replacement", ("-1", '"1"', "true", "1.5"))

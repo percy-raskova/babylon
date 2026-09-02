@@ -188,14 +188,21 @@ scaled-lit  ::= "-"? digits ( "." digits )? suffix            /* §1.4, §1.5 */
                    integer micro-units, so `0.50c` ≡ `0.5c` and `1000.5$`
                    ≡ `1000.500$` (D4). */
 
-suffix      ::= "$" | "p" | "i" | "c" | "r"                   /* §1.4, §1.5 */
+suffix      ::= "$" | "p" | "i" | "c" | "r" | "m"             /* §1.4, §1.5, AJ */
                 /* The kind suffix is MANDATORY on every non-integer
                    literal — a bare `0.5` is E-LEX-021, which is the
                    lexical enforcement of the house prohibition on bare
                    floats (D3). $ = Currency [0,∞), scale ≤ 6;
                    p/i/c = Probability/Intensity/Coefficient [0,1],
                    scale ≤ 9. r = Ratio (0,∞), scale ≤ 9, non-positive is
-                   E-LEX-027 (§1.5 addendum, D99, #492/ADR194). */
+                   E-LEX-027 (§1.5 addendum, D99, #492/ADR194).
+                   m = Mass [0,∞), exact unsigned nanounits at
+                   scale ≤ 9 (AJ). */
+
+mass-lit    ::= digits ( "." digits )? "m"                       /* AJ */
+                /* Exact, nonnegative Mass in unsigned nanounits. A
+                   negative spelling, scale above nine, or value above
+                   u64::MAX nanounits is rejected at read time. */
 
 string      ::= '"' string-char* '"'                          /* §1.4, §1.5 */
                 /* NFC-checked at load (E-LEX-002, D1); max 1024 bytes
@@ -317,6 +324,7 @@ rule        ::= "(" "rule" qname                              /* §2.3 */
                     ":evidence" evidence-class
                     ":material-basis" string
                     ":fuel" int-lit
+                    ( ":projects-kernel" qname )?
                     domain?
                     anchor?
                     bindings
@@ -453,6 +461,7 @@ expr        ::= literal | symbol | enum-ref                   /* §2.7 */
               | "(" arith expr expr ")"
               | "(" intrinsic-name expr* ")"
               | "(" "if" cond expr expr ")"
+              | "(" "quantize-mass" expr ")"
               | fold
               | accessor                                      /* §2.10 */
               | selection
@@ -507,11 +516,25 @@ intrinsic-decl ::= "(" "intrinsic" symbol                     /* §2.7 */
 effect-item ::= verb                                          /* §2.8 */
               | "(" "guard"    cond  effect-item+ ")"
               | "(" "for-each" query elem-name? effect-item+ ")"
+              | choose
                 /* `for-each` is bounded iteration in effect position
                    (D47): the query is materialized against the rule's
                    PRE-state before any effect applies (D48), the body
                    runs once per element in iteration order, and an empty
                    query applies nothing rather than erroring. */
+
+choose      ::= "(" "choose" ":sample" qname ":slot" int-lit   /* AJ */
+                    branch+ ")"
+                /* `:slot` is statically restricted to u32. A choose is a
+                   direct top-level Mechanic effect and is non-nestable;
+                   those are context conditions rather than productions. */
+
+branch      ::= "(" "branch" enum-ref ":mass" expr
+                    "(" "effects" effect-item* ")" ")"          /* AJ */
+                /* The mass expression is statically restricted to Mass.
+                   A branch body may be empty and is statically restricted
+                   to deterministic Mechanic effects: no `emit` and no
+                   nested `choose`. */
 
 verb        ::= "(" "update-node"  expr qname update-op ")"   /* §2.8 */
               | "(" "update-edge"  expr qname update-op ")"

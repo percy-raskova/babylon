@@ -25,7 +25,7 @@ This checkout implements Gate 2. These three executable gates follow:
 3. **Player agency**
 <!-- vale ste.NounClusters = YES -->
 
-Read `CONSTITUTION.md` v4.0.0 before a change to game law. ADR221 maps its predecessors and preserves history. `ai/mantras.yaml` is the canonical machine-readable orientation.
+Read `CONSTITUTION.md` v4.1.0 before a change to game law. ADR221 maps its predecessors and preserves history. `ai/mantras.yaml` is the canonical machine-readable orientation.
 
 ## Constitutional compact
 

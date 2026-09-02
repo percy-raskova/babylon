@@ -3,9 +3,10 @@
 //! deterministic implementations"). Phase 1 defined the trait only.
 //! `{exp, log}` now dispatch too (Task 2 of the #576 intrinsic-host train —
 //! R10/ADR176 r21, pinned soft-float libm + golden vectors, via
-//! `babylon_kernel::transcendental`); `rng-draw` dispatches as of Task 5
-//! (ADR188 Row 11, D69, plan §3.2/§3.3) — the kernel-seeded, KEYED (never
-//! streamed) deterministic draw, via `babylon_kernel::KernelRng`.
+//! `babylon_kernel::transcendental`). Amendment AJ keeps the ADR188 Row
+//! 11/D69 kernel-seeded, keyed draw engine-private: finite-kernel
+//! realization calls [`draw_finite_kernel_ticket`] directly, and no draw
+//! name dispatches through [`IntrinsicHost`].
 //! The ADR219 exact-arithmetic sextet (Director ruling 2026-08-22) —
 //! `sqrt`, `round-half-even`, `min`, `max`, `abs`, `clamp` — dispatches
 //! below: ADR188 Row 6's fallback rider taken, Row 3's ratified
@@ -36,7 +37,7 @@ use babylon_graph::stable_element::{
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionIdV1, RngDomainV2};
 use babylon_kernel::{KernelRng, SessionId};
 
-/// The typed identity inputs for one RNG draw.
+/// The typed identity inputs for one engine-private deterministic draw.
 pub enum DrawIdentityContext<'a> {
     /// Current V1 identity and string carriers.
     V1 {
@@ -77,7 +78,7 @@ pub struct DrawContext<'a> {
     pub tick: u64,
 }
 
-/// One active-element identity already resolved for the selected RNG layout.
+/// One active-element identity already resolved for the selected private draw layout.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DrawActiveElement {
     /// Current V1 content-id string or fixture fallback.
@@ -92,9 +93,9 @@ pub enum DrawActiveElement {
 /// their current resolved string representation. V2 entries are stable
 /// graph keys that the resolver validates again while composing the carrier.
 ///
-/// Every intrinsic that is not `rng-draw` ignores this entirely —
-/// `floor`/`exp`/`log` gain the parameter only because the trait's
-/// signature is shared, never because they read it.
+/// Every author-declarable intrinsic ignores this entirely. The engine-owned
+/// finite-kernel realization path consumes it directly rather than dispatching
+/// an author-callable intrinsic.
 pub struct IntrinsicCallCtx<'a> {
     /// `None` for a pure-expression caller (see this struct's own doc).
     pub draw_context: Option<&'a DrawContext<'a>>,
@@ -137,10 +138,10 @@ pub(crate) fn framed(segments: &[&str]) -> String {
 /// the evaluator's defense-in-depth, not the primary rejection point.
 pub trait IntrinsicHost {
     /// Dispatch `name` over already-evaluated positional args, with the
-    /// calling context (`ctx`, Task 4 of the #576 intrinsic-host train —
-    /// plan §3.5) available for an intrinsic that needs it (`rng-draw`,
-    /// Task 5). Every intrinsic implemented today (`floor`/`exp`/`log`) is
-    /// context-free and ignores `ctx` entirely.
+    /// calling context retained by the shared evaluator boundary. Every
+    /// author-declarable intrinsic implemented today is context-free and
+    /// ignores `ctx`; the private finite-kernel draw consumes the same typed
+    /// context outside intrinsic dispatch.
     ///
     /// # Errors
     ///
@@ -150,7 +151,7 @@ pub trait IntrinsicHost {
         &self,
         name: &str,
         args: &[Value],
-        ctx: IntrinsicCallCtx<'_>,
+        _ctx: IntrinsicCallCtx<'_>,
     ) -> Result<Value, EvalError>;
 }
 
@@ -175,9 +176,7 @@ impl IntrinsicHost for EmptyIntrinsicHost {
 /// The kernel's intrinsic table, as far as it is implemented today: `floor`
 /// (ADR188 Row 2), `{exp, log}` (R10/ADR176 r21, ADR188 cap, Task 2 of the
 /// #576 intrinsic-host train) — both cross via `babylon_kernel::
-/// transcendental`, pinned soft-float `libm 0.2.16` — `rng-draw`
-/// (ADR188 Row 11, D69, Task 5 of the same train) — the kernel-seeded,
-/// KEYED draw, via `babylon_kernel::KernelRng` — and the ADR219 sextet
+/// transcendental`, pinned soft-float `libm 0.2.16` — and the ADR219 sextet
 /// (Director ruling 2026-08-22): `sqrt`, `round-half-even`, `min`, `max`,
 /// `abs`, `clamp`, each crossing via an IEEE-754 exactly-specified
 /// operation (correctly-rounded `sqrt`, `roundTiesToEven`, comparison/
@@ -191,13 +190,12 @@ impl IntrinsicHost for KernelIntrinsicHost {
         &self,
         name: &str,
         args: &[Value],
-        ctx: IntrinsicCallCtx<'_>,
+        _ctx: IntrinsicCallCtx<'_>,
     ) -> Result<Value, EvalError> {
         match name {
             "floor" => eval_floor(args),
             "exp" => eval_exp(args),
             "log" => eval_log(args),
-            "rng-draw" => eval_rng_draw(args, &ctx),
             "sqrt" => eval_sqrt(args),
             "round-half-even" => eval_round_half_even(args),
             "min" => eval_min(args),
@@ -206,13 +204,83 @@ impl IntrinsicHost for KernelIntrinsicHost {
             "clamp" => eval_clamp(args),
             other => Err(EvalError::plain(format!(
                 "no intrinsic registered: {other} ('floor' — ADR188 Row 2 —, the \
-                 {{exp, log}} transcendental pair — R10/ADR176 r21 —, 'rng-draw' \
-                 — ADR188 Row 11, D69 —, and the six exact-arithmetic names \
+                 {{exp, log}} transcendental pair — R10/ADR176 r21 —, and the six exact-arithmetic names \
                  'sqrt'/'round-half-even'/'min'/'max'/'abs'/'clamp' — ADR219 — \
                  are implemented today; any other name is outside §3.10's cap)"
             ))),
         }
     }
+}
+
+/// Consume the one private `u64` draw for a finite-kernel realization.
+///
+/// This function is crate-private by design under Amendment AJ. The draw key
+/// binds the V2 replay session, signed seed, tick, firing rule, sample `QName`,
+/// append-only slot, stable subject, and ordered active elements. V1 has no
+/// signed replay seed and is refused rather than silently substituting one.
+pub(crate) fn draw_finite_kernel_ticket(
+    sample: &str,
+    slot: u32,
+    ctx: &IntrinsicCallCtx<'_>,
+) -> Result<u64, EvalError> {
+    let Some(draw_context) = ctx.draw_context else {
+        return Err(EvalError::plain(
+            "finite-kernel realization requires a V2 replay context".to_owned(),
+        ));
+    };
+    let DrawIdentityContext::V2 {
+        session,
+        seed,
+        domain,
+        resolver,
+        subject,
+    } = &draw_context.identity
+    else {
+        return Err(EvalError::plain(
+            "finite-kernel realization requires the sealed V2 replay path; V1 has no signed replay seed"
+                .to_owned(),
+        ));
+    };
+    if ctx.active_elements.len() > MAX_STABLE_CARRIER_ACTIVE_ELEMENTS_V2 {
+        return Err(EvalError::plain(format!(
+            "finite-kernel active-element count {} exceeds {}",
+            ctx.active_elements.len(),
+            MAX_STABLE_CARRIER_ACTIVE_ELEMENTS_V2
+        )));
+    }
+    let mut stable = Vec::with_capacity(ctx.active_elements.len());
+    for element in &ctx.active_elements {
+        let DrawActiveElement::V2(key) = element else {
+            return Err(EvalError::plain(
+                "finite-kernel V2 realization refused a V1 active-element identity".to_owned(),
+            ));
+        };
+        stable.push(key.clone());
+    }
+    let carrier = resolver
+        .carrier_key(subject, &stable, i64::from(slot))
+        .map_err(|error| {
+            EvalError::plain(format!(
+                "finite-kernel stable carrier identity refused: {error:?}"
+            ))
+        })?;
+    let sample_len = u32::try_from(sample.len())
+        .map_err(|_| EvalError::plain("finite-kernel sample QName is too long".to_owned()))?;
+    let carrier_len = u32::try_from(carrier.validated_bytes().len())
+        .map_err(|_| EvalError::plain("finite-kernel carrier is too long".to_owned()))?;
+    let mut keyed_carrier = b"babylon.finite-kernel-carrier.v1\0".to_vec();
+    keyed_carrier.extend_from_slice(&sample_len.to_be_bytes());
+    keyed_carrier.extend_from_slice(sample.as_bytes());
+    keyed_carrier.extend_from_slice(&carrier_len.to_be_bytes());
+    keyed_carrier.extend_from_slice(carrier.validated_bytes());
+    let mut rng =
+        KernelRng::for_carrier_v2(session, *seed, draw_context.tick, domain, &keyed_carrier)
+            .map_err(|error| {
+                EvalError::plain(format!(
+                    "finite-kernel V2 seed derivation refused: {error:?}"
+                ))
+            })?;
+    Ok(rng.next_u64())
 }
 
 /// `2^63` as an `f64` — the exact, exclusive upper bound a `floor` result
@@ -662,165 +730,12 @@ fn eval_clamp(args: &[Value]) -> Result<Value, EvalError> {
     Ok(Value::Real(pick_min(pick_max(x, lo), hi)))
 }
 
-/// The `rng-draw` intrinsic (ADR188 Row 11, D69, plan §3.2/§3.3, Task 5 of
-/// the #576 intrinsic-host train): `Int → Real`, the kernel-seeded, KEYED
-/// (never streamed) deterministic draw on `[0, 1)`.
-///
-/// **Not a transcendental.** No libm crossing, no golden vector — the
-/// crossing is `babylon_kernel::KernelRng::for_carrier(…).next_f64()`, which
-/// is already fully pinned and tested at the kernel layer (`rng.rs`'s own
-/// conformance vector). This function's only job is composing the carrier
-/// key and calling that crossing exactly once.
-///
-/// **The carrier key (plan §3.3):**
-///
-/// V1 builds the exact existing [`framed`] string over subject, active
-/// elements in outermost-first order, and decimal draw slot. V2 asks the
-/// graph resolver to compose that ordered carrier from stable element keys,
-/// then passes only the resolver-validated bytes to the seed-aware kernel
-/// entry point. **The host holds no state**: a fresh [`KernelRng`] is
-/// constructed for this call alone and discarded when it returns, so a
-/// skipped draw (a guard suppressing one subject's call) cannot shift any
-/// OTHER subject's draw — there is no shared stream position to perturb
-/// (D69's own load-bearing clause, preserved verbatim by this
-/// implementation, not merely by convention).
-///
-/// **The slot argument is refused, never coerced, if it is not `Int`** —
-/// same no-coercions rule as `eval_floor`/`eval_exp`/`eval_log` (§3.1,
-/// §3.3): `kernel_signature("rng-draw")` declares `:params (int)`, and this
-/// is the host's own defense-in-depth re-check, not the primary rejection
-/// point (no static typechecker exists yet to enforce a declared `:params`
-/// type against a call site's argument type — the same gap those three
-/// functions' own docs already name).
-///
-/// **A call with no [`DrawContext`] is a loud `Err`, never a silent
-/// `0.0`** (III.11) — `ctx.draw_context` is `None` for every pure-expression
-/// caller (`:expr` binding resolution, the arithmetic conformance vectors,
-/// every `EmptyIntrinsicHost` test path); a driver that never supplied a
-/// session/tick has no carrier key to compose, so this fails loud naming
-/// the missing session/tick rather than guessing one.
-///
-/// # Errors
-///
-/// [`EvalError::plain`] for a malformed call (wrong arity or a non-`Int`
-/// slot argument) or for a call reached with no [`DrawContext`] in scope.
-fn eval_rng_draw(args: &[Value], ctx: &IntrinsicCallCtx<'_>) -> Result<Value, EvalError> {
-    let [Value::Int(slot)] = args else {
-        return Err(EvalError::plain(format!(
-            "rng-draw takes exactly one Int-lane argument (the draw slot), got {args:?}"
-        )));
-    };
-    let Some(draw_context) = ctx.draw_context else {
-        return Err(EvalError::plain(
-            "rng-draw called with no DrawContext — missing session/tick \
-             (III.11: a driver that never supplied a session/tick fails \
-             loud, never silently draws 0.0)"
-                .to_owned(),
-        ));
-    };
-    let mut rng = match &draw_context.identity {
-        DrawIdentityContext::V1 {
-            session,
-            domain,
-            subject,
-            node_content_ids: _,
-        } => rng_v1(
-            session,
-            draw_context.tick,
-            domain,
-            subject,
-            &ctx.active_elements,
-            *slot,
-        )?,
-        DrawIdentityContext::V2 {
-            session,
-            seed,
-            domain,
-            resolver,
-            subject,
-        } => replay_rng(
-            session,
-            *seed,
-            draw_context.tick,
-            domain,
-            resolver,
-            subject,
-            &ctx.active_elements,
-            *slot,
-        )?,
-    };
-    Ok(Value::Real(rng.next_f64()))
-}
-
-fn rng_v1(
-    session: &SessionId,
-    tick: u64,
-    domain: &str,
-    subject: &str,
-    active: &[DrawActiveElement],
-    slot: i64,
-) -> Result<KernelRng, EvalError> {
-    let slot_text = slot.to_string();
-    let mut segments: Vec<&str> = Vec::with_capacity(active.len() + 2);
-    segments.push(subject);
-    for element in active {
-        let DrawActiveElement::V1(content_id) = element else {
-            return Err(EvalError::plain(
-                "rng-draw V1 received a V2 active-element identity".to_owned(),
-            ));
-        };
-        segments.push(content_id.as_str());
-    }
-    segments.push(&slot_text);
-    let stable_key = framed(&segments);
-    Ok(KernelRng::for_carrier(session, tick, domain, &stable_key))
-}
-
-#[allow(clippy::too_many_arguments)]
-fn replay_rng(
-    session: &ReplaySessionIdV1,
-    seed: ReplaySeed,
-    tick: u64,
-    domain: &RngDomainV2,
-    resolver: &StableElementResolverV1,
-    subject: &StableElementKeyV1,
-    active: &[DrawActiveElement],
-    slot: i64,
-) -> Result<KernelRng, EvalError> {
-    if active.len() > MAX_STABLE_CARRIER_ACTIVE_ELEMENTS_V2 {
-        return Err(EvalError::plain(format!(
-            "rng-draw V2 active-element count {} exceeds {}",
-            active.len(),
-            MAX_STABLE_CARRIER_ACTIVE_ELEMENTS_V2
-        )));
-    }
-    let mut stable = Vec::with_capacity(active.len());
-    for element in active
-        .iter()
-        .take(MAX_STABLE_CARRIER_ACTIVE_ELEMENTS_V2 + 1)
-    {
-        let DrawActiveElement::V2(key) = element else {
-            return Err(EvalError::plain(
-                "rng-draw V2 refused a V1 active-element identity".to_owned(),
-            ));
-        };
-        stable.push(key.clone());
-    }
-    let carrier = resolver
-        .carrier_key(subject, &stable, slot)
-        .map_err(|error| {
-            EvalError::plain(format!(
-                "rng-draw V2 stable carrier identity refused: {error:?}"
-            ))
-        })?;
-    KernelRng::for_carrier_v2(session, seed, tick, domain, carrier.validated_bytes()).map_err(
-        |error| EvalError::plain(format!("rng-draw V2 seed derivation refused: {error:?}")),
-    )
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{EvalCode, IntrinsicCallCtx, IntrinsicHost, KernelIntrinsicHost, Value};
+    use super::{
+        draw_finite_kernel_ticket, DrawActiveElement, DrawContext, DrawIdentityContext, EvalCode,
+        IntrinsicCallCtx, IntrinsicHost, KernelIntrinsicHost, Value,
+    };
 
     fn floor(x: f64) -> Result<Value, crate::evaluator::EvalError> {
         KernelIntrinsicHost.call("floor", &[Value::Real(x)], IntrinsicCallCtx::context_free())
@@ -1407,9 +1322,7 @@ mod tests {
     /// the same invariant for the declaration side). Arguments are shaped
     /// from the signature itself, so the loop needs no per-name table; a
     /// successful call proves the arm, and an `Err` proves it too as long
-    /// as it is NOT the fallthrough's "no intrinsic registered" — that is
-    /// how `rng-draw` (no `DrawContext` here) proves its arm by failing
-    /// for the RIGHT reason.
+    /// as it is NOT the fallthrough's "no intrinsic registered".
     #[test]
     fn every_declarable_intrinsic_has_a_signature_row_and_a_dispatch_arm() {
         use crate::declarations::{kernel_signature, IntrinsicTypeName, DECLARABLE_INTRINSICS};
@@ -1433,14 +1346,9 @@ mod tests {
         }
     }
 
-    // ---- Task 4.1 (#576 intrinsic-host train, plan §3.5): the `DrawContext`
-    // seam RED probe. `rng-draw` itself is Task 5's — this is NOT a
-    // production dispatcher, it is a minimal test double proving the
-    // `ctx: IntrinsicCallCtx` parameter really reaches `IntrinsicHost::call`,
-    // by refusing exactly the shape §3.6's error table names: "`rng-draw`
-    // with no `DrawContext`" is an uncoded `EvalError::plain`, "a driver
-    // that never supplied a session/tick" (III.11 — loud failure, never a
-    // silent `0.0`).
+    // The context-probe name is test-only: this checks that the generic
+    // `ctx: IntrinsicCallCtx` parameter reaches `IntrinsicHost::call` without
+    // reintroducing an author-visible draw intrinsic.
     struct DrawContextProbeHost;
 
     impl IntrinsicHost for DrawContextProbeHost {
@@ -1450,9 +1358,9 @@ mod tests {
             _args: &[Value],
             ctx: IntrinsicCallCtx<'_>,
         ) -> Result<Value, crate::evaluator::EvalError> {
-            if name == "rng-draw" && ctx.draw_context.is_none() {
+            if name == "context-probe" && ctx.draw_context.is_none() {
                 return Err(crate::evaluator::EvalError::plain(
-                    "rng-draw called with no DrawContext — missing session/tick \
+                    "context probe called with no DrawContext — missing session/tick \
                      (III.11: a driver that never supplied a session/tick fails \
                      loud, never silently draws 0.0)"
                         .to_owned(),
@@ -1463,11 +1371,176 @@ mod tests {
     }
 
     #[test]
-    fn a_host_call_for_rng_draw_with_no_draw_context_names_the_missing_session_and_tick() {
+    fn a_host_context_probe_with_no_draw_context_names_the_missing_session_and_tick() {
         let ctx = IntrinsicCallCtx::context_free();
-        let err = DrawContextProbeHost.call("rng-draw", &[], ctx).unwrap_err();
+        let err = DrawContextProbeHost
+            .call("context-probe", &[], ctx)
+            .unwrap_err();
         assert!(err.message.contains("session"), "{}", err.message);
         assert!(err.message.contains("tick"), "{}", err.message);
+    }
+
+    #[test]
+    #[allow(clippy::items_after_statements, clippy::too_many_lines)]
+    fn private_finite_draw_is_keyed_by_every_aj_identity_component_and_has_no_call_order_state() {
+        use babylon_graph::memory::MemoryGraph;
+        use babylon_graph::stable_element::{StableElementKeyV1, StableElementResolverV1};
+        use babylon_graph::substrate::GraphSubstrate as _;
+        use babylon_kernel::replay::{ReplaySeed, ReplaySessionIdV1, RngDomainV2};
+        use std::collections::HashMap;
+
+        let mut graph = MemoryGraph::new();
+        let subject_a = graph.add_node("class").unwrap();
+        let subject_b = graph.add_node("class").unwrap();
+        let active_a = graph.add_node("organization").unwrap();
+        let active_b = graph.add_node("organization").unwrap();
+        let resolver = StableElementResolverV1::seal(
+            &graph,
+            "demo/world",
+            &HashMap::from([
+                (subject_a, "subject-a".to_owned()),
+                (subject_b, "subject-b".to_owned()),
+                (active_a, "active-a".to_owned()),
+                (active_b, "active-b".to_owned()),
+            ]),
+            &HashMap::new(),
+        )
+        .unwrap();
+        let subject_a = resolver.node_key(subject_a).unwrap().clone();
+        let subject_b = resolver.node_key(subject_b).unwrap().clone();
+        let active_a = resolver.node_key(active_a).unwrap().clone();
+        let active_b = resolver.node_key(active_b).unwrap().clone();
+        let ordered_active = vec![active_a.clone(), active_b.clone()];
+        let reversed_active = vec![active_b, active_a];
+        let session_a = ReplaySessionIdV1::try_from("demo/session-a").unwrap();
+        let session_b = ReplaySessionIdV1::try_from("demo/session-b").unwrap();
+
+        #[derive(Clone, Copy)]
+        struct Key<'a> {
+            session: &'a ReplaySessionIdV1,
+            seed: ReplaySeed,
+            tick: u64,
+            domain: &'a str,
+            sample: &'a str,
+            slot: u32,
+            subject: &'a StableElementKeyV1,
+            active: &'a [StableElementKeyV1],
+        }
+        let draw = |key: Key<'_>| {
+            let draw_context = DrawContext {
+                identity: DrawIdentityContext::V2 {
+                    session: key.session,
+                    seed: key.seed,
+                    domain: RngDomainV2::try_from(key.domain).unwrap(),
+                    resolver: &resolver,
+                    subject: key.subject.clone(),
+                },
+                tick: key.tick,
+            };
+            draw_finite_kernel_ticket(
+                key.sample,
+                key.slot,
+                &IntrinsicCallCtx {
+                    draw_context: Some(&draw_context),
+                    active_elements: key
+                        .active
+                        .iter()
+                        .cloned()
+                        .map(DrawActiveElement::V2)
+                        .collect(),
+                },
+            )
+            .unwrap()
+        };
+
+        let base_key = Key {
+            session: &session_a,
+            seed: ReplaySeed::new(7),
+            tick: 11,
+            domain: "demo/rule-a",
+            sample: "demo/sample-a",
+            slot: 0,
+            subject: &subject_a,
+            active: &ordered_active,
+        };
+        let base = draw(base_key);
+        let _unrelated = draw(Key {
+            session: &session_b,
+            seed: ReplaySeed::new(-9),
+            tick: 99,
+            domain: "demo/unrelated",
+            sample: "demo/unrelated-sample",
+            slot: 8,
+            subject: &subject_b,
+            active: &reversed_active,
+        });
+        let after_unrelated = draw(base_key);
+        assert_eq!(
+            base, after_unrelated,
+            "an unrelated draw cannot advance hidden state"
+        );
+
+        let changed = [
+            (
+                "session",
+                Key {
+                    session: &session_b,
+                    ..base_key
+                },
+            ),
+            (
+                "signed seed",
+                Key {
+                    seed: ReplaySeed::new(-7),
+                    ..base_key
+                },
+            ),
+            (
+                "tick",
+                Key {
+                    tick: 12,
+                    ..base_key
+                },
+            ),
+            (
+                "firing rule domain",
+                Key {
+                    domain: "demo/rule-b",
+                    ..base_key
+                },
+            ),
+            (
+                "sample",
+                Key {
+                    sample: "demo/sample-b",
+                    ..base_key
+                },
+            ),
+            (
+                "slot",
+                Key {
+                    slot: 1,
+                    ..base_key
+                },
+            ),
+            (
+                "stable subject",
+                Key {
+                    subject: &subject_b,
+                    ..base_key
+                },
+            ),
+            (
+                "ordered active elements",
+                Key {
+                    active: &reversed_active,
+                    ..base_key
+                },
+            ),
+        ];
+        for (component, key) in changed {
+            assert_ne!(base, draw(key), "changing {component} must change the draw");
+        }
     }
 
     // ---- `framed` (plan §3.3): the length-prefix injectivity property

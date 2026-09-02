@@ -47,7 +47,7 @@ The planned decision cycle adds player and AI intent plus views limited by
 player knowledge.
 
 Read [`NORTH_STAR.md`](NORTH_STAR.md) for the full system model. Read
-[`CONSTITUTION.md`](CONSTITUTION.md) v4.0.0 for the constitutional law.
+[`CONSTITUTION.md`](CONSTITUTION.md) v4.1.0 for the constitutional law.
 
 ## Live system
 

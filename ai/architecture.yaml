@@ -4,7 +4,7 @@ meta:
   version: "4.3.0"
   updated: "2026-08-23"
   role: current_and_planned_architecture
-  authority: CONSTITUTION.md v4.0.0
+  authority: CONSTITUTION.md v4.1.0
   interpretation: >-
     Entries marked implemented_current describe evidence in this checkout.
     Entries marked planned describe acceptance-gated work, not shipped behavior.
@@ -235,14 +235,19 @@ implementation_status:
       status: implemented_current
       estate: sole_game_managed_postgresql_authority
       scope:
-        - one_way_epoch_9_activation
+        - locked_epoch_9_predecessor_activation
+        - epoch_10_v2_preparation
+        - one_way_epoch_11_v2_activation
         - typed_semantic_tick_rows
+        - choice_receipts_and_projected_event_provenance
         - committed_tick_marker_last
         - exact_restart_and_commit_ambiguity_reconciliation
       evidence:
         - rust/crates/babylon-persistence/src/runtime.rs
         - rust/crates/babylon-persistence/migrations/0009_rust_persistence_activation.sql
-        - contracts/rust_persistence_cutover_v1.yaml
+        - rust/crates/babylon-persistence/migrations/0010_committed_tick_v2_preparation.sql
+        - rust/crates/babylon-persistence/migrations/0011_committed_tick_v2_activation.sql
+        - contracts/rust_persistence_cutover_v2.yaml
 
     python_persistence_periphery:
       status: implemented_current
@@ -412,7 +417,7 @@ persistence_writer:
   decision:
     issue: PER-48
     adr: ADR220_rust_owned_postgresql_persistence_boundary
-    implementation_contract: contracts/rust_persistence_cutover_v1.yaml
+    implementation_contract: contracts/rust_persistence_cutover_v2.yaml
   before_cutover:
     authoritative_writer: Python
     authority: sole_live_writer
@@ -450,7 +455,7 @@ engine_boundary:
     status: implemented_current
     gate: G3
     rule: durable_effects_begin_only_after_successful_adjudication
-    composition_root: babylon_persistence::runtime::DurableReplayRuntimeV1
+    composition_root: babylon_persistence::runtime::DurableReplayRuntimeV2
   determinism_meaning: computational_identity_not_scientific_truth
 
 reference_data:

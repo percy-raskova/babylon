@@ -5,7 +5,7 @@
 //! R10/ADR176 r21, pinned soft-float libm + golden vectors, via
 //! `babylon_kernel::transcendental`). Amendment AJ keeps the ADR188 Row
 //! 11/D69 kernel-seeded, keyed draw engine-private: finite-kernel
-//! realization calls [`draw_finite_kernel_ticket`] directly, and no draw
+//! realization calls `draw_finite_kernel_ticket` directly, and no draw
 //! name dispatches through [`IntrinsicHost`].
 //! The ADR219 exact-arithmetic sextet (Director ruling 2026-08-22) —
 //! `sqrt`, `round-half-even`, `min`, `max`, `abs`, `clamp` — dispatches

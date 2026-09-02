@@ -289,6 +289,10 @@ variable, so all four schema fields remain explicit; a policy test enforces one
 daylight-saving-aware timezone across them. Docker image updates remain monthly.
 This cadence keeps three full validation batches from competing for the same
 runner window and avoids Wednesday's scheduled deep-validation workflows.
+Each weekly ecosystem also applies the PER-264 cooldown — three days for
+minor and patch releases, seven for majors — so fresh releases arrive as one
+batched group PR instead of a trickle of singletons, and the Python queue is
+capped at five open PRs like the Rust and Actions queues.
 
 Branch Protection Rules
 -----------------------

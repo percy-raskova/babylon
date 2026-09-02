@@ -30,7 +30,13 @@ updates:
       time: "09:00"
       # Dependabot rejects YAML aliases; the policy test keeps all four copies equal.
       timezone: "America/New_York"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
+    # Cooldown (PER-264): fresh releases batch instead of trickling in as
+    # singleton PRs, and majors get a week of upstream bake time before a
+    # candidate even opens. Docker stays uncooled: monthly is already slow.
+    cooldown:
+      default-days: 3
+      semver-major-days: 7
     rebase-strategy: "auto"
     versioning-strategy: "increase-if-necessary"
     commit-message:
@@ -73,6 +79,9 @@ updates:
       time: "09:00"
       timezone: "America/New_York"
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 3
+      semver-major-days: 7
     rebase-strategy: "auto"
     commit-message:
       prefix: "ci(deps)"
@@ -128,6 +137,9 @@ updates:
       time: "09:00"
       timezone: "America/New_York"
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 3
+      semver-major-days: 7
     rebase-strategy: "auto"
     commit-message:
       prefix: "fix(deps)"

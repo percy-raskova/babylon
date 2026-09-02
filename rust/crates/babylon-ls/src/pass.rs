@@ -93,7 +93,7 @@ impl SourceReader for FixtureSourceReader {
 }
 
 /// Diagnose one `.bsl` file (§6.3's own bullet): resolve its content
-/// set(s) from `manifest`, run [`diagnose_content_set`] against each, and
+/// set(s) from `manifest`, run `diagnose_content_set` against each, and
 /// map every resulting `PrepareError` to a `Diagnostic` located in THIS
 /// file's own `(forest, SpanTable)`. A path naming no manifest row at all
 /// gets exactly the Information notice (§6.3's own "declaration-

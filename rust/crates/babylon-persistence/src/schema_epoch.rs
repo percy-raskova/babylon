@@ -569,7 +569,7 @@ pub fn compiled_schema_migrations(
 
 /// Build the dedicated one-way committed-tick V2 activation pair.
 ///
-/// These migrations deliberately do not extend [`CURRENT_SCHEMA_EPOCH`]. Epochs 8 and 9 are the
+/// These migrations deliberately do not extend `CURRENT_SCHEMA_EPOCH`. Epochs 8 and 9 are the
 /// immutable historical Rust-persistence cutover, whose authority rows were written by the
 /// activation composition root rather than the ordinary schema migrator. The replacement V2
 /// activator executes this exact 10/11 pair and writes its corresponding authority row after each

@@ -846,8 +846,10 @@ printf '%s\\n' "$1" >> "$SLEEP_CALLS"
         """Fresh releases batch for 3 days; majors bake for 7 (PER-264)."""
         config = yaml.safe_load(DEPENDABOT_CONFIG_PATH.read_text())
         expected_cooldown = {"default-days": 3, "semver-major-days": 7}
-        for ecosystem in ("uv", "github-actions", "cargo"):
+        for ecosystem in ("uv", "cargo"):
             assert _dependabot_update(config, ecosystem)["cooldown"] == expected_cooldown
+        # Dependabot rejects semver-major-days for the github-actions ecosystem.
+        assert _dependabot_update(config, "github-actions")["cooldown"] == {"default-days": 3}
         assert "cooldown" not in _dependabot_update(config, "docker")
 
     def test_config_uses_uv_and_retains_only_justified_major_ignores(self) -> None:

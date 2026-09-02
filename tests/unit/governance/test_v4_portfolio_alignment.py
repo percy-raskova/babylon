@@ -107,7 +107,9 @@ _CURRENT_EVIDENCE: Final[dict[str, tuple[str, ...]]] = {
     "rust_postgresql_persistence": (
         "rust/crates/babylon-persistence/src/runtime.rs",
         "rust/crates/babylon-persistence/migrations/0009_rust_persistence_activation.sql",
-        "contracts/rust_persistence_cutover_v1.yaml",
+        "rust/crates/babylon-persistence/migrations/0010_committed_tick_v2_preparation.sql",
+        "rust/crates/babylon-persistence/migrations/0011_committed_tick_v2_activation.sql",
+        "contracts/rust_persistence_cutover_v2.yaml",
     ),
     "python_persistence_periphery": (
         "src/babylon/persistence/runtime_db.py",
@@ -372,7 +374,7 @@ def test_per_48_records_the_implemented_one_way_writer_cutover() -> None:
     assert writer["decision"] == {
         "issue": "PER-48",
         "adr": _POSTGRESQL_ADR,
-        "implementation_contract": "contracts/rust_persistence_cutover_v1.yaml",
+        "implementation_contract": "contracts/rust_persistence_cutover_v2.yaml",
     }
     assert writer["before_cutover"] == {
         "authoritative_writer": "Python",

@@ -19,7 +19,7 @@ const PATH_ENCODE_KEEP: &[u8] =
     b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~/";
 
 /// Build the `file:` URI for an absolute `path`: percent-encode every byte
-/// outside [`PATH_ENCODE_KEEP`] as `%XX` (uppercase hex, RFC 3986 §2.1's
+/// outside `PATH_ENCODE_KEEP` as `%XX` (uppercase hex, RFC 3986 §2.1's
 /// own consistency recommendation) and parse `file://` + the encoded path
 /// — the no-authority `file:///abs/path` form every LSP client sends.
 /// `None` for a relative path or a string the platform cannot losslessly

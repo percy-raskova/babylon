@@ -15,7 +15,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use lsp_types::{Diagnostic, DiagnosticSeverity, Url};
+use lsp_types::{Diagnostic, DiagnosticSeverity, Uri};
 
 use babylon_bsl::{compose_declaration_preludes, ContentSetAnalysisV1, FormPath};
 use babylon_tick::{
@@ -32,6 +32,7 @@ use crate::content_manifest::{ContentSetManifest, KernelSlotReservationMatch};
 use crate::diagnostics::{diagnostics_for_file, missing_manifest_row_diagnostic, Located};
 use crate::document_store::DocumentStore;
 use crate::line_index::LineIndex;
+use crate::uri::{file_path_from_uri, uri_from_file_path};
 
 /// Obtain a content-root-relative file's current text — open-document
 /// content when open, disk content otherwise (§6.1: "on-disk edits
@@ -70,7 +71,7 @@ pub struct LiveSourceReader<'a> {
 impl SourceReader for LiveSourceReader<'_> {
     fn read(&self, content_relative_path: &str) -> Option<String> {
         let absolute = self.content_root.join(content_relative_path);
-        if let Ok(uri) = Url::from_file_path(&absolute) {
+        if let Some(uri) = uri_from_file_path(&absolute) {
             if let Some(document) = self.store.get(&uri) {
                 return Some(document.text.clone());
             }
@@ -106,7 +107,7 @@ impl SourceReader for FixtureSourceReader {
 /// gets the union of every set's own diagnostics.
 #[must_use]
 pub fn diagnose_bsl(
-    uri: &Url,
+    uri: &Uri,
     content_relative_path: &str,
     manifest: &ContentSetManifest,
     source: &dyn SourceReader,
@@ -486,8 +487,8 @@ pub fn content_root_of(manifest_path: &Path) -> PathBuf {
 /// legitimate case, not a bug: a workspace can hold files `bsl-ls` never
 /// resolves to a content set at all).
 #[must_use]
-pub fn content_relative_path(content_root: &Path, uri: &Url) -> Option<String> {
-    let absolute = uri.to_file_path().ok()?;
+pub fn content_relative_path(content_root: &Path, uri: &Uri) -> Option<String> {
+    let absolute = file_path_from_uri(uri)?;
     let relative = absolute.strip_prefix(content_root).ok()?;
     // TOML paths use forward slashes (§4.1's own examples); this crate
     // only ever runs on Unix (the flake's own devshells), where `Path`'s
@@ -500,14 +501,16 @@ mod tests {
     use super::{analyze_probability_authoring, diagnose_bsl, FixtureSourceReader, SourceReader};
     use crate::authoring::{AuthoringKind, EventLikelihoodAnalysisFact, ForecastRefusalStage};
     use crate::content_manifest::ContentSetManifest;
-    use lsp_types::Url;
+    use lsp_types::Uri;
     use std::cell::RefCell;
     use std::collections::HashMap;
     use std::fmt::Write;
     use std::path::Path;
 
-    fn uri() -> Url {
-        Url::parse("file:///rules/probe.bsl").expect("valid test URI")
+    fn uri() -> Uri {
+        "file:///rules/probe.bsl"
+            .parse::<Uri>()
+            .expect("valid test URI")
     }
 
     const SCENARIO: &str = "(scenario ft/probe)";
@@ -752,7 +755,9 @@ slot = 0
         let source_text = kernel_source("struggle/spark", 0);
         let source = kernel_source_reader(&source_text);
         let diagnostics = diagnose_bsl(
-            &Url::parse("file:///rules/kernel.bsl").expect("valid test URI"),
+            &"file:///rules/kernel.bsl"
+                .parse::<Uri>()
+                .expect("valid test URI"),
             "rules/kernel.bsl",
             &manifest,
             &source,
@@ -765,7 +770,9 @@ slot = 0
         let manifest = kernel_manifest("");
         let source_text = kernel_source("struggle/spark", 0);
         let source = kernel_source_reader(&source_text);
-        let kernel_uri = Url::parse("file:///rules/kernel.bsl").expect("valid test URI");
+        let kernel_uri = "file:///rules/kernel.bsl"
+            .parse::<Uri>()
+            .expect("valid test URI");
 
         let first = diagnose_bsl(&kernel_uri, "rules/kernel.bsl", &manifest, &source);
         let second = diagnose_bsl(&kernel_uri, "rules/kernel.bsl", &manifest, &source);
@@ -786,7 +793,9 @@ slot = 0
         );
 
         let sibling = diagnose_bsl(
-            &Url::parse("file:///rules/sibling.bsl").expect("valid test URI"),
+            &"file:///rules/sibling.bsl"
+                .parse::<Uri>()
+                .expect("valid test URI"),
             "rules/sibling.bsl",
             &manifest,
             &source,
@@ -811,7 +820,9 @@ slot = 0
         let sample_source_text = kernel_source("struggle/live", 0);
         let sample_source = kernel_source_reader(&sample_source_text);
         let sample = diagnose_bsl(
-            &Url::parse("file:///rules/kernel.bsl").expect("valid test URI"),
+            &"file:///rules/kernel.bsl"
+                .parse::<Uri>()
+                .expect("valid test URI"),
             "rules/kernel.bsl",
             &sample_manifest,
             &sample_source,
@@ -845,7 +856,9 @@ slot = 0
         let slot_source_text = kernel_source("struggle/spark", 1);
         let slot_source = kernel_source_reader(&slot_source_text);
         let slot = diagnose_bsl(
-            &Url::parse("file:///rules/kernel.bsl").expect("valid test URI"),
+            &"file:///rules/kernel.bsl"
+                .parse::<Uri>()
+                .expect("valid test URI"),
             "rules/kernel.bsl",
             &slot_manifest,
             &slot_source,
@@ -881,7 +894,9 @@ slot = 0
         let source_text = kernel_source("struggle/spark", 0);
         let source = kernel_source_reader(&source_text);
         let diagnostics = diagnose_bsl(
-            &Url::parse("file:///rules/kernel.bsl").expect("valid test URI"),
+            &"file:///rules/kernel.bsl"
+                .parse::<Uri>()
+                .expect("valid test URI"),
             "rules/kernel.bsl",
             &manifest,
             &source,
@@ -1122,13 +1137,17 @@ note = "Mass declaration ownership fixture"
         };
 
         let good = diagnose_bsl(
-            &Url::parse("file:///rules/good.bsl").expect("valid test URI"),
+            &"file:///rules/good.bsl"
+                .parse::<Uri>()
+                .expect("valid test URI"),
             "rules/good.bsl",
             &manifest,
             &source,
         );
         let bad = diagnose_bsl(
-            &Url::parse("file:///rules/bad.bsl").expect("valid test URI"),
+            &"file:///rules/bad.bsl"
+                .parse::<Uri>()
+                .expect("valid test URI"),
             "rules/bad.bsl",
             &manifest,
             &source,

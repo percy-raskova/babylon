@@ -1,4 +1,4 @@
-//! The in-memory, [`Url`]-keyed document store (Task 5.3): the ONE place
+//! The in-memory, [`Uri`]-keyed document store (Task 5.3): the ONE place
 //! `babylon-ls` holds text a client has open, refreshed wholesale on every
 //! Full-sync `didChange` and dropped on `didClose`. Nothing here persists
 //! past the process's lifetime — global constraint 1 (observes-only): the
@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 
-use lsp_types::Url;
+use lsp_types::Uri;
 
 use crate::line_index::LineIndex;
 
@@ -23,16 +23,16 @@ pub struct Document {
 
 /// The document store. `HashMap` iteration order never feeds any output
 /// this crate produces (global constraint 2) — every access here is a
-/// point lookup by a specific [`Url`], never an iteration over the map.
+/// point lookup by a specific [`Uri`], never an iteration over the map.
 #[derive(Debug, Default)]
 pub struct DocumentStore {
-    documents: HashMap<Url, Document>,
+    documents: HashMap<Uri, Document>,
 }
 
 impl DocumentStore {
     /// `textDocument/didOpen`: inserts a fresh [`Document`], building its
     /// [`LineIndex`] once, here, from the just-received text.
-    pub fn open(&mut self, uri: Url, version: i32, text: String) {
+    pub fn open(&mut self, uri: Uri, version: i32, text: String) {
         let line_index = LineIndex::new(&text);
         self.documents.insert(
             uri,
@@ -49,7 +49,7 @@ impl DocumentStore {
     /// Returns `false` if `uri` was never opened (a client protocol
     /// violation; the caller decides how loud to be about it).
     #[must_use]
-    pub fn change_full(&mut self, uri: &Url, version: i32, text: String) -> bool {
+    pub fn change_full(&mut self, uri: &Uri, version: i32, text: String) -> bool {
         let Some(document) = self.documents.get_mut(uri) else {
             return false;
         };
@@ -66,13 +66,13 @@ impl DocumentStore {
     /// CAN inspect the final state if it ever needs to (today, nobody
     /// does — `lifecycle::apply_did_close` discards it explicitly).
     #[must_use]
-    pub fn close(&mut self, uri: &Url) -> Option<Document> {
+    pub fn close(&mut self, uri: &Uri) -> Option<Document> {
         self.documents.remove(uri)
     }
 
     /// Point lookup — the only read this crate's dispatch loop performs.
     #[must_use]
-    pub fn get(&self, uri: &Url) -> Option<&Document> {
+    pub fn get(&self, uri: &Uri) -> Option<&Document> {
         self.documents.get(uri)
     }
 
@@ -82,7 +82,7 @@ impl DocumentStore {
     /// crate produces on its own — `crate::lifecycle::workspace_diagnostic_paths`
     /// (private to that module) collects the result into a `BTreeSet`
     /// before using it.
-    pub fn open_uris(&self) -> impl Iterator<Item = lsp_types::Url> + '_ {
+    pub fn open_uris(&self) -> impl Iterator<Item = lsp_types::Uri> + '_ {
         self.documents.keys().cloned()
     }
 
@@ -101,10 +101,10 @@ impl DocumentStore {
 #[cfg(test)]
 mod tests {
     use super::DocumentStore;
-    use lsp_types::Url;
+    use lsp_types::Uri;
 
-    fn uri(s: &str) -> Url {
-        Url::parse(s).expect("valid test URI")
+    fn uri(s: &str) -> Uri {
+        s.parse::<Uri>().expect("valid test URI")
     }
 
     #[test]

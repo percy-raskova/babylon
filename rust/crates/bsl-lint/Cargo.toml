@@ -15,7 +15,7 @@ path = "src/main.rs"
 babylon-bsl = { path = "../babylon-bsl" }
 babylon-kernel = { path = "../babylon-kernel" }
 proc-macro2 = { version = "1", features = ["span-locations"] }
-syn = { version = "2", features = ["full"] }
+syn = { version = "3", features = ["full"] }
 toml = "1"
 
 [dependencies.regex]

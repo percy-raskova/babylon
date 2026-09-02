@@ -240,6 +240,8 @@ impl EnumRegistry {
 /// A BSL static type.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BslType {
+    /// Exact, non-storable finite-kernel allocation input.
+    Mass,
     /// The `[0, 1]` probability scalar.
     Probability,
     /// The `[0, 1]` intensity scalar.

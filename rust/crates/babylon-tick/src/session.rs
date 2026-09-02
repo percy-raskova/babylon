@@ -25,10 +25,10 @@ pub struct TickSession<G> {
     graph: G,
     prepared: PreparedRules,
     tick: i64,
-    /// The `rng-draw` seam's session id (Task 4, #576 intrinsic-host train,
-    /// plan §3.5) — constant for this session's whole lifetime, unlike
-    /// `tick`, which `advance()` increments. `advance()` passes `&session`
-    /// into every rule's `run_tick` call, unchanged, every call.
+    /// Deterministic identity for the legacy V1 non-replay execution path.
+    /// It is constant for this session's whole lifetime, unlike `tick`,
+    /// which `advance()` increments. Finite kernels require the governed V2
+    /// replay path and therefore refuse from this session type.
     session: SessionId,
 }
 
@@ -38,12 +38,10 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> TickSes
     /// into governed phase order before this returns — the caller's own
     /// concatenation order is never observable.
     ///
-    /// `session` is this session's `rng-draw` identity (plan §3.5) — a
-    /// caller-supplied, deterministic id (III.7: never a UUID, never a
-    /// wall-clock read). Picking the campaign's REAL session id (a
-    /// `ContentDigest` hex, or the scenario id) is a separate, small
-    /// recorded decision (plan §3.5, Task 6.5); this parameter is the seam
-    /// that decision lands through, not a policy of its own.
+    /// `session` is a caller-supplied deterministic namespace for the V1
+    /// execution context (III.7: never a UUID or wall-clock read). It does
+    /// not authorize a finite draw; content containing `choose` must run in
+    /// [`crate::replay_session::ReplayTickSession`].
     ///
     /// # Errors
     /// The same failure modes `run_once_into`'s load half has: an
@@ -151,7 +149,9 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> TickSes
 #[cfg(test)]
 mod tests {
     use crate::session::TickSession;
-    use crate::{run_prepared_tick_with, EventRecord, HashBoundary, PreparedEventBatchSink};
+    use crate::{
+        run_prepared_tick_with, EventRecord, HashBoundary, PreparedEventBatchSink, TickReport,
+    };
     use babylon_bsl::evaluator::Value;
     use babylon_bsl::structural_verbs::CollectingSink;
     use babylon_graph::allocator_state::AllocatorState;
@@ -170,6 +170,13 @@ mod tests {
         include_str!("../content/scenarios/vitality-lifecycle-combined-conformance.bscn");
     const VITALITY: &str = include_str!("../content/rules/vitality.bsl");
     const LIFECYCLE: &str = include_str!("../content/rules/lifecycle.bsl");
+    const STRUGGLE_SPARK_SCENARIO: &str =
+        include_str!("../content/scenarios/struggle-spark-conformance.bscn");
+    const STRUGGLE_SPARK_RULES: &str = include_str!("../content/rules/struggle-spark.bsl");
+    const STRUGGLE_SPARK_EXCESSIVE_FORCE_SEED: i64 = 2;
+    const STRUGGLE_SPARK_EXCESSIVE_FORCE_TICKET: u64 = 1_146_489_467_234_058_882;
+    const STRUGGLE_SPARK_NO_INCIDENT_SEED: i64 = 0;
+    const STRUGGLE_SPARK_NO_INCIDENT_TICKET: u64 = 17_919_240_830_411_110_681;
 
     const ATOMICITY_SCENARIO: &str = r"
 (scenario tick/atomicity-probe
@@ -305,10 +312,9 @@ mod tests {
         format!("{VITALITY}\n{LIFECYCLE}")
     }
 
-    /// The `rng-draw` seam's session id (Task 4, #576 intrinsic-host train)
-    /// for this module's own tests — a fixed literal, since none of them
-    /// exercise `rng-draw` (Task 5 lands it) and III.7 forbids a UUID/
-    /// wall-clock one anyway.
+    /// Fixed deterministic V1 execution namespace for this module's tests.
+    /// These fixtures contain no finite kernel; III.7 still forbids a UUID
+    /// or wall-clock identity.
     fn test_session() -> SessionId {
         SessionId::new("tick-session-test").expect("literal is non-empty")
     }
@@ -328,6 +334,221 @@ mod tests {
         fn commit_prepared(&mut self, _events: Vec<EventRecord>) {
             self.commit_attempts += 1;
         }
+    }
+
+    #[derive(Default)]
+    struct DiscardingBatchSink {
+        prepared_events: usize,
+        discarded_events: usize,
+    }
+
+    impl PreparedEventBatchSink for DiscardingBatchSink {
+        fn try_prepare(&mut self, additional: usize) -> Result<(), String> {
+            self.prepared_events = self
+                .prepared_events
+                .checked_add(additional)
+                .ok_or_else(|| "discarding event count overflowed".to_owned())?;
+            Ok(())
+        }
+
+        fn commit_prepared(&mut self, events: Vec<EventRecord>) {
+            self.discarded_events += events.len();
+        }
+    }
+
+    fn run_struggle_spark_with<B: PreparedEventBatchSink>(
+        seed: i64,
+        publisher: &mut B,
+    ) -> (TickReport, TickSession<HypergraphStore>) {
+        let mut session = TickSession::new(
+            STRUGGLE_SPARK_SCENARIO,
+            STRUGGLE_SPARK_RULES,
+            HypergraphStore::new(),
+            test_session(),
+        )
+        .expect("the governed Struggle spark pilot loads");
+        let resolver = StableElementResolverV1::seal(
+            &session.graph,
+            &session.prepared.scenario_scope,
+            &session.prepared.node_content_ids,
+            &session.prepared.hyperedge_content_ids,
+        )
+        .expect("the pilot topology has stable replay identities");
+        let replay_session =
+            ReplaySessionIdV1::try_from("per281/runtime-live").expect("fixed replay identity");
+        let report = run_prepared_tick_with(
+            &session.prepared,
+            &mut session.graph,
+            publisher,
+            RngSeedContext::V2 {
+                session: &replay_session,
+                seed: ReplaySeed::new(seed),
+            },
+            Some(&resolver),
+            1,
+            |_boundary, graph: &HypergraphStore| graph.state_hash(),
+        )
+        .expect("the pilot tick succeeds");
+        (report, session)
+    }
+
+    #[test]
+    fn struggle_spark_realizes_material_change_as_a_receipted_choice() {
+        let mut event_sink = CollectingSink::default();
+        let (excessive, excessive_session) =
+            run_struggle_spark_with(STRUGGLE_SPARK_EXCESSIVE_FORCE_SEED, &mut event_sink);
+        assert_ne!(excessive.before, excessive.after);
+        assert_eq!(excessive.choice_receipts.len(), 1);
+        let choice = &excessive.choice_receipts[0];
+        assert_eq!(choice.encounter_ordinal(), 0);
+        assert_eq!(choice.rule_id(), "struggle/spark-mechanic");
+        assert_eq!(choice.sample(), "struggle/spark");
+        assert_eq!(choice.slot(), 0);
+        assert_eq!(choice.selected_outcome(), "EXCESSIVE_FORCE");
+        assert_eq!(choice.draw_ticket(), STRUGGLE_SPARK_EXCESSIVE_FORCE_TICKET);
+        assert_eq!(choice.branches().len(), 2);
+        assert_eq!(choice.branches()[0].mass.nanounits(), 250_000_000);
+        assert_eq!(choice.branches()[1].mass.nanounits(), 750_000_000);
+        assert_eq!(excessive.committed_events.len(), 1);
+        let event = &excessive.committed_events[0];
+        assert_eq!(event.emitting_rule(), "struggle/spark-recognizer");
+        assert_eq!(event.event_type(), "EXCESSIVE_FORCE");
+        assert_eq!(
+            event
+                .choice_receipt()
+                .map(crate::choice_receipt::ChoiceReceiptRefV1::encounter_ordinal),
+            Some(0)
+        );
+        assert_eq!(
+            event
+                .payload()
+                .iter()
+                .map(|(name, _)| name.as_str())
+                .collect::<Vec<_>>(),
+            ["subject", "repression", "backfire", "incident-tick"]
+        );
+        assert!(
+            event
+                .payload()
+                .iter()
+                .all(|(name, value)| !name.contains("probability")
+                    && !matches!(value, Value::Mass(_)))
+        );
+        assert_eq!(event_sink.events.len(), 1);
+        let worker = excessive_session.graph.nodes("SOCIAL_CLASS")[0];
+        assert_eq!(
+            excessive_session
+                .graph
+                .node_attribute(worker, "social-class/agitation-backfire")
+                .unwrap()
+                .to_bits(),
+            (0.1_f64 + 0.2_f64).to_bits()
+        );
+        assert_eq!(
+            excessive_session
+                .graph
+                .node_attribute(worker, "social-class/last-incident-known")
+                .unwrap(),
+            1.0
+        );
+        assert_eq!(
+            excessive_session
+                .graph
+                .node_attribute(worker, "social-class/last-incident-tick")
+                .unwrap(),
+            1.0
+        );
+    }
+
+    #[test]
+    fn struggle_spark_no_op_is_a_receipted_choice() {
+        let mut no_event_sink = CollectingSink::default();
+        let (no_incident, _) =
+            run_struggle_spark_with(STRUGGLE_SPARK_NO_INCIDENT_SEED, &mut no_event_sink);
+        assert_eq!(no_incident.before, no_incident.after);
+        assert_eq!(no_incident.choice_receipts.len(), 1);
+        assert_eq!(
+            no_incident.choice_receipts[0].selected_outcome(),
+            "NO_INCIDENT"
+        );
+        assert_eq!(
+            no_incident.choice_receipts[0].draw_ticket(),
+            STRUGGLE_SPARK_NO_INCIDENT_TICKET
+        );
+        assert!(no_incident.committed_events.is_empty());
+        assert!(no_event_sink.events.is_empty());
+    }
+
+    #[test]
+    fn removing_the_external_event_sink_cannot_change_the_material_trajectory() {
+        let mut retained = CollectingSink::default();
+        let (retained_report, retained_session) =
+            run_struggle_spark_with(STRUGGLE_SPARK_EXCESSIVE_FORCE_SEED, &mut retained);
+        let mut discarded = DiscardingBatchSink::default();
+        let (discarded_report, discarded_session) =
+            run_struggle_spark_with(STRUGGLE_SPARK_EXCESSIVE_FORCE_SEED, &mut discarded);
+
+        assert_eq!(retained_report.after, discarded_report.after);
+        assert_eq!(retained_report.world_after, discarded_report.world_after);
+        assert_eq!(
+            retained_session.graph.encode_state().unwrap().as_bytes(),
+            discarded_session.graph.encode_state().unwrap().as_bytes()
+        );
+        assert_eq!(
+            retained_report.choice_receipts,
+            discarded_report.choice_receipts
+        );
+        assert_eq!(
+            retained_report.committed_events,
+            discarded_report.committed_events
+        );
+        assert_eq!(retained.events.len(), 1);
+        assert_eq!(discarded.prepared_events, 1);
+        assert_eq!(discarded.discarded_events, 1);
+    }
+
+    #[test]
+    fn a_post_selection_publication_failure_exposes_no_state_event_or_receipt() {
+        let mut session = TickSession::new(
+            STRUGGLE_SPARK_SCENARIO,
+            STRUGGLE_SPARK_RULES,
+            HypergraphStore::new(),
+            test_session(),
+        )
+        .expect("the governed Struggle spark pilot loads");
+        let before = session.graph.encode_state().unwrap().as_bytes().to_vec();
+        let cursors = session.graph.allocator_cursors();
+        let resolver = StableElementResolverV1::seal(
+            &session.graph,
+            &session.prepared.scenario_scope,
+            &session.prepared.node_content_ids,
+            &session.prepared.hyperedge_content_ids,
+        )
+        .expect("the pilot topology has stable replay identities");
+        let replay_session =
+            ReplaySessionIdV1::try_from("per281/runtime-live").expect("fixed replay identity");
+        let mut publisher = RejectingBatchSink::default();
+
+        let error = run_prepared_tick_with(
+            &session.prepared,
+            &mut session.graph,
+            &mut publisher,
+            RngSeedContext::V2 {
+                session: &replay_session,
+                seed: ReplaySeed::new(STRUGGLE_SPARK_EXCESSIVE_FORCE_SEED),
+            },
+            Some(&resolver),
+            1,
+            |_boundary, graph: &HypergraphStore| graph.state_hash(),
+        )
+        .expect_err("event publication fails after the finite branch is selected");
+
+        assert_eq!(error, "injected event publication refusal");
+        assert_eq!(publisher.prepare_attempts, 1);
+        assert_eq!(publisher.commit_attempts, 0);
+        assert_eq!(session.tick, 0);
+        assert_eq!(session.graph.encode_state().unwrap().as_bytes(), before);
+        assert_eq!(session.graph.allocator_cursors(), cursors);
     }
 
     #[test]
@@ -645,6 +866,7 @@ mod tests {
                 bytes.extend_from_slice(&edge.target.0.to_be_bytes());
                 push_str(bytes, &edge.edge_type);
             }
+            Value::Mass(_) => panic!("Mass cannot enter an event payload"),
         }
     }
 
@@ -943,8 +1165,8 @@ mod tests {
         // The determinism guard this plan's own instructions require, at
         // the babylon-tick level — Phase E's test (tests/determinism.rs in
         // babylon-client) repeats this same property through the client's
-        // own seam end to end. Both sessions share the SAME session id —
-        // the replay contract the `rng-draw` seam is built for (D69).
+        // own seam end to end. Both sessions share the same deterministic
+        // V1 execution namespace.
         let mut a = TickSession::new(
             SCENARIO,
             &rule_src(),

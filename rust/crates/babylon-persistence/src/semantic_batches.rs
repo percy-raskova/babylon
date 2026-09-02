@@ -1,17 +1,18 @@
-//! Graph/event/archive semantic batch composition for the stopped Rust cutover.
+//! Graph/event/choice/archive semantic batch composition for the V2 runtime.
 
 use std::collections::TryReserveError;
 
 use babylon_graph::stable_state::{StableGraphStateRowsV1, StableGraphStateV1};
+use babylon_tick::choice_receipt::ChoiceReceiptV1;
 use babylon_tick::material_state::{MaterialStateRowRefV1, MaterialStateRowsV1};
 use babylon_tick::replay_session::{
-    IdentifiedTickReportV1, SuccessfulEventBatchV1, SuccessfulEventV1,
+    IdentifiedTickReportV2, SuccessfulEventBatchV2, SuccessfulEventV2,
 };
 
 use crate::committed_tick_envelope::{
-    validate_committed_tick_envelope_bounds_v1, CommittedTickEnvelopeErrorV1,
-    CommittedTickRowFamilyV1, CommittedTickRowV1, COMMITTED_TICK_ROW_FAMILY_COUNT_V1,
-    MAX_COMMITTED_TICK_ROW_BATCH_BYTES_V1,
+    validate_committed_tick_envelope_bounds_v2, CommittedTickEnvelopeErrorV2,
+    CommittedTickRowFamilyV2, CommittedTickRowV2, COMMITTED_TICK_ROW_FAMILY_COUNT_V2,
+    MAX_COMMITTED_TICK_ROW_BATCH_BYTES_V2,
 };
 use crate::semantic_codec::{self, SemanticCodecErrorV1};
 
@@ -26,14 +27,20 @@ pub struct StableGraphRowsEmptyProofV1 {
 
 /// Source-owned proof that the successful BSL event section contained no events.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SuccessfulEventBatchEmptyProofV1 {
+pub struct SuccessfulEventBatchEmptyProofV2 {
+    source_digest: [u8; 32],
+}
+
+/// Source-owned proof that the ordered choice-receipt section was empty.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChoiceReceiptBatchEmptyProofV1 {
     source_digest: [u8; 32],
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum SemanticBatchErrorV1 {
+pub(crate) enum SemanticBatchErrorV2 {
     Codec(SemanticCodecErrorV1),
-    Envelope(CommittedTickEnvelopeErrorV1),
+    Envelope(CommittedTickEnvelopeErrorV2),
     CapacityOverflow {
         field: &'static str,
     },
@@ -47,29 +54,29 @@ pub(crate) enum SemanticBatchErrorV1 {
     },
 }
 
-impl From<SemanticCodecErrorV1> for SemanticBatchErrorV1 {
+impl From<SemanticCodecErrorV1> for SemanticBatchErrorV2 {
     fn from(value: SemanticCodecErrorV1) -> Self {
         Self::Codec(value)
     }
 }
 
-impl From<CommittedTickEnvelopeErrorV1> for SemanticBatchErrorV1 {
-    fn from(value: CommittedTickEnvelopeErrorV1) -> Self {
+impl From<CommittedTickEnvelopeErrorV2> for SemanticBatchErrorV2 {
+    fn from(value: CommittedTickEnvelopeErrorV2) -> Self {
         Self::Envelope(value)
     }
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum SemanticFamilyBatchV1<P> {
+pub(crate) enum SemanticFamilyBatchV2<P> {
     Rows {
-        rows: Vec<CommittedTickRowV1>,
+        rows: Vec<CommittedTickRowV2>,
         body_bytes: usize,
     },
     Empty(P),
 }
 
-impl<P> SemanticFamilyBatchV1<P> {
-    fn into_rows(self) -> Option<(Vec<CommittedTickRowV1>, usize)> {
+impl<P> SemanticFamilyBatchV2<P> {
+    fn into_rows(self) -> Option<(Vec<CommittedTickRowV2>, usize)> {
         match self {
             Self::Rows { rows, body_bytes } => Some((rows, body_bytes)),
             Self::Empty(_) => None,
@@ -78,37 +85,55 @@ impl<P> SemanticFamilyBatchV1<P> {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct GraphEventSemanticBatchesV1 {
-    graph: SemanticFamilyBatchV1<StableGraphRowsEmptyProofV1>,
-    event: SemanticFamilyBatchV1<SuccessfulEventBatchEmptyProofV1>,
-    archive_dirty_receipt: CommittedTickRowV1,
+pub(crate) struct GraphEventChoiceSemanticBatchesV2 {
+    graph: SemanticFamilyBatchV2<StableGraphRowsEmptyProofV1>,
+    event: SemanticFamilyBatchV2<SuccessfulEventBatchEmptyProofV2>,
+    choice_receipt: SemanticFamilyBatchV2<ChoiceReceiptBatchEmptyProofV1>,
+    archive_dirty_receipt: CommittedTickRowV2,
 }
 
-impl GraphEventSemanticBatchesV1 {
+impl GraphEventChoiceSemanticBatchesV2 {
     pub(crate) fn graph_row_count(&self) -> usize {
         match &self.graph {
-            SemanticFamilyBatchV1::Rows { rows, .. } => rows.len(),
-            SemanticFamilyBatchV1::Empty(_) => 0,
+            SemanticFamilyBatchV2::Rows { rows, .. } => rows.len(),
+            SemanticFamilyBatchV2::Empty(_) => 0,
         }
     }
 
     pub(crate) fn event_row_count(&self) -> usize {
         match &self.event {
-            SemanticFamilyBatchV1::Rows { rows, .. } => rows.len(),
-            SemanticFamilyBatchV1::Empty(_) => 0,
+            SemanticFamilyBatchV2::Rows { rows, .. } => rows.len(),
+            SemanticFamilyBatchV2::Empty(_) => 0,
         }
     }
 
-    pub(crate) fn into_rows(self) -> (Vec<CommittedTickRowV1>, Vec<CommittedTickRowV1>) {
+    pub(crate) fn choice_receipt_row_count(&self) -> usize {
+        match &self.choice_receipt {
+            SemanticFamilyBatchV2::Rows { rows, .. } => rows.len(),
+            SemanticFamilyBatchV2::Empty(_) => 0,
+        }
+    }
+
+    pub(crate) fn into_rows(
+        self,
+    ) -> (
+        Vec<CommittedTickRowV2>,
+        Vec<CommittedTickRowV2>,
+        Vec<CommittedTickRowV2>,
+    ) {
         let graph = self.graph.into_rows().map_or_else(Vec::new, |rows| rows.0);
         let event = self.event.into_rows().map_or_else(Vec::new, |rows| rows.0);
-        (graph, event)
+        let choice_receipt = self
+            .choice_receipt
+            .into_rows()
+            .map_or_else(Vec::new, |rows| rows.0);
+        (graph, event, choice_receipt)
     }
 }
 
 pub(crate) fn compose_material_state_rows_v1(
     source: &MaterialStateRowsV1,
-) -> Result<Vec<CommittedTickRowV1>, SemanticBatchErrorV1> {
+) -> Result<Vec<CommittedTickRowV2>, SemanticBatchErrorV2> {
     let mut rows = reserve_rows_v1("material state semantic rows", source.source_count())?;
     let mut body_bytes = 0_usize;
     for source_row in source.rows() {
@@ -143,7 +168,7 @@ pub(crate) fn compose_material_state_rows_v1(
             }
         };
         push_encoded_row_v1(
-            CommittedTickRowFamilyV1::State,
+            CommittedTickRowFamilyV2::State,
             &mut rows,
             &mut body_bytes,
             row,
@@ -153,70 +178,94 @@ pub(crate) fn compose_material_state_rows_v1(
     Ok(rows)
 }
 
-pub(crate) fn compose_graph_event_semantic_batches_v1(
-    report: &IdentifiedTickReportV1,
-) -> Result<GraphEventSemanticBatchesV1, SemanticBatchErrorV1> {
-    compose_graph_event_sources_v1(
+pub(crate) fn compose_graph_event_choice_semantic_batches_v2(
+    report: &IdentifiedTickReportV2,
+) -> Result<GraphEventChoiceSemanticBatchesV2, SemanticBatchErrorV2> {
+    compose_graph_event_choice_sources_v2(
         report.result_stable_graph(),
         report.successful_event_batch(),
+        &report.report().choice_receipts,
+        report.choice_receipt_source_digest(),
         *report.tick_content_hash().as_bytes(),
     )
 }
 
-fn compose_graph_event_sources_v1(
+fn compose_graph_event_choice_sources_v2(
     graph_source: &StableGraphStateV1,
-    event_source: &SuccessfulEventBatchV1,
+    event_source: &SuccessfulEventBatchV2,
+    choice_source: &[ChoiceReceiptV1],
+    choice_source_digest: [u8; 32],
     tick_content_hash: [u8; 32],
-) -> Result<GraphEventSemanticBatchesV1, SemanticBatchErrorV1> {
+) -> Result<GraphEventChoiceSemanticBatchesV2, SemanticBatchErrorV2> {
     let graph_count = stable_graph_source_count_v1(graph_source.rows())?;
     let event_count = event_source.events().len();
+    let choice_count = choice_source.len();
     let archive_dirty_receipt = semantic_codec::encode_archive_dirty_receipt(&tick_content_hash)?;
     let archive_body_bytes = row_body_bytes_v1(&archive_dirty_receipt)?;
-    preflight_graph_event_counts_v1(graph_count, event_count, archive_body_bytes)?;
+    preflight_graph_event_choice_counts_v2(
+        graph_count,
+        event_count,
+        choice_count,
+        archive_body_bytes,
+    )?;
 
     let (graph_rows, graph_body_bytes) = compose_graph_rows_with_encoder_v1(
         graph_source.rows(),
         &mut |row: StableGraphRowRefV1<'_>| row.encode(),
     )?;
-    let (event_rows, event_body_bytes) = compose_event_rows_v1(event_source)?;
-    preflight_graph_event_bounds_v1(
+    let (event_rows, event_body_bytes) = compose_event_rows_v2(event_source)?;
+    let (choice_rows, choice_body_bytes) = compose_choice_receipt_rows_v1(choice_source)?;
+    preflight_graph_event_choice_bounds_v2(
         graph_rows.len(),
         graph_body_bytes,
         event_rows.len(),
         event_body_bytes,
+        choice_rows.len(),
+        choice_body_bytes,
         archive_body_bytes,
     )?;
 
     let graph = if graph_rows.is_empty() {
-        SemanticFamilyBatchV1::Empty(StableGraphRowsEmptyProofV1 {
+        SemanticFamilyBatchV2::Empty(StableGraphRowsEmptyProofV1 {
             source_digest: graph_source.digest().into_bytes(),
         })
     } else {
-        SemanticFamilyBatchV1::Rows {
+        SemanticFamilyBatchV2::Rows {
             rows: graph_rows,
             body_bytes: graph_body_bytes,
         }
     };
     let event = if event_rows.is_empty() {
-        SemanticFamilyBatchV1::Empty(SuccessfulEventBatchEmptyProofV1 {
+        SemanticFamilyBatchV2::Empty(SuccessfulEventBatchEmptyProofV2 {
             source_digest: event_source.source_digest(),
         })
     } else {
-        SemanticFamilyBatchV1::Rows {
+        SemanticFamilyBatchV2::Rows {
             rows: event_rows,
             body_bytes: event_body_bytes,
         }
     };
-    Ok(GraphEventSemanticBatchesV1 {
+    let choice_receipt = if choice_rows.is_empty() {
+        SemanticFamilyBatchV2::Empty(ChoiceReceiptBatchEmptyProofV1 {
+            source_digest: choice_source_digest,
+        })
+    } else {
+        SemanticFamilyBatchV2::Rows {
+            rows: choice_rows,
+            body_bytes: choice_body_bytes,
+        }
+    };
+    Ok(GraphEventChoiceSemanticBatchesV2 {
         graph,
         event,
+        choice_receipt,
         archive_dirty_receipt,
     })
 }
 
 fn stable_graph_source_count_v1(
     source: &StableGraphStateRowsV1,
-) -> Result<usize, SemanticBatchErrorV1> {
+) -> Result<usize, SemanticBatchErrorV2> {
     let counts = [
         source.nodes().len(),
         source.node_f64().len(),
@@ -229,54 +278,66 @@ fn stable_graph_source_count_v1(
     checked_sum_v1(&counts, "stable graph source rows")
 }
 
-fn preflight_graph_event_counts_v1(
+fn preflight_graph_event_choice_counts_v2(
     graph_rows: usize,
     event_rows: usize,
+    choice_rows: usize,
     archive_body_bytes: usize,
-) -> Result<(), SemanticBatchErrorV1> {
+) -> Result<(), SemanticBatchErrorV2> {
     let graph_minimum = graph_rows.checked_mul(MINIMUM_NONEMPTY_ROW_BYTES).ok_or(
-        SemanticBatchErrorV1::CapacityOverflow {
+        SemanticBatchErrorV2::CapacityOverflow {
             field: "stable graph minimum row bytes",
         },
     )?;
     let event_minimum = event_rows.checked_mul(MINIMUM_NONEMPTY_ROW_BYTES).ok_or(
-        SemanticBatchErrorV1::CapacityOverflow {
+        SemanticBatchErrorV2::CapacityOverflow {
             field: "successful event minimum row bytes",
         },
     )?;
-    preflight_graph_event_bounds_v1(
+    let choice_minimum = choice_rows.checked_mul(MINIMUM_NONEMPTY_ROW_BYTES).ok_or(
+        SemanticBatchErrorV2::CapacityOverflow {
+            field: "choice receipt minimum row bytes",
+        },
+    )?;
+    preflight_graph_event_choice_bounds_v2(
         graph_rows,
         graph_minimum,
         event_rows,
         event_minimum,
+        choice_rows,
+        choice_minimum,
         archive_body_bytes,
     )
     .map(|_| ())
 }
 
-pub(crate) fn preflight_graph_event_bounds_v1(
+pub(crate) fn preflight_graph_event_choice_bounds_v2(
     graph_rows: usize,
     graph_body_bytes: usize,
     event_rows: usize,
     event_body_bytes: usize,
+    choice_rows: usize,
+    choice_body_bytes: usize,
     archive_body_bytes: usize,
-) -> Result<usize, SemanticBatchErrorV1> {
-    let mut row_counts = [0_usize; COMMITTED_TICK_ROW_FAMILY_COUNT_V1];
+) -> Result<usize, SemanticBatchErrorV2> {
+    let mut row_counts = [0_usize; COMMITTED_TICK_ROW_FAMILY_COUNT_V2];
     row_counts[0] = graph_rows;
     row_counts[2] = event_rows;
-    row_counts[4] = 1;
-    let mut body_bytes = [0_usize; COMMITTED_TICK_ROW_FAMILY_COUNT_V1];
+    row_counts[3] = choice_rows;
+    row_counts[5] = 1;
+    let mut body_bytes = [0_usize; COMMITTED_TICK_ROW_FAMILY_COUNT_V2];
     body_bytes[0] = graph_body_bytes;
     body_bytes[2] = event_body_bytes;
-    body_bytes[4] = archive_body_bytes;
-    validate_committed_tick_envelope_bounds_v1(row_counts, body_bytes).map_err(Into::into)
+    body_bytes[3] = choice_body_bytes;
+    body_bytes[5] = archive_body_bytes;
+    validate_committed_tick_envelope_bounds_v2(row_counts, body_bytes).map_err(Into::into)
 }
 
-fn row_body_bytes_v1(row: &CommittedTickRowV1) -> Result<usize, SemanticBatchErrorV1> {
+fn row_body_bytes_v1(row: &CommittedTickRowV2) -> Result<usize, SemanticBatchErrorV2> {
     ROW_LENGTH_BYTES
         .checked_add(row.key().len())
         .and_then(|value| value.checked_add(row.payload().len()))
-        .ok_or(SemanticBatchErrorV1::CapacityOverflow {
+        .ok_or(SemanticBatchErrorV2::CapacityOverflow {
             field: "semantic batch row body",
         })
 }
@@ -292,7 +353,7 @@ pub(crate) enum StableGraphRowRefV1<'a> {
 }
 
 impl StableGraphRowRefV1<'_> {
-    pub(crate) fn encode(self) -> Result<CommittedTickRowV1, SemanticCodecErrorV1> {
+    pub(crate) fn encode(self) -> Result<CommittedTickRowV2, SemanticCodecErrorV1> {
         match self {
             Self::Node(local_name, node_type) => {
                 semantic_codec::encode_stable_graph_node(local_name, node_type)
@@ -325,14 +386,14 @@ impl StableGraphRowRefV1<'_> {
 
 pub(crate) fn compose_graph_rows_with_encoder_v1(
     source: &StableGraphStateRowsV1,
-    encode: &mut impl FnMut(StableGraphRowRefV1<'_>) -> Result<CommittedTickRowV1, SemanticCodecErrorV1>,
-) -> Result<(Vec<CommittedTickRowV1>, usize), SemanticBatchErrorV1> {
+    encode: &mut impl FnMut(StableGraphRowRefV1<'_>) -> Result<CommittedTickRowV2, SemanticCodecErrorV1>,
+) -> Result<(Vec<CommittedTickRowV2>, usize), SemanticBatchErrorV2> {
     let count = stable_graph_source_count_v1(source)?;
     let mut rows = reserve_rows_v1("stable graph semantic rows", count)?;
     let mut body_bytes = 0_usize;
     for (local_name, node_type) in source.nodes() {
         push_encoded_row_v1(
-            CommittedTickRowFamilyV1::Graph,
+            CommittedTickRowFamilyV2::Graph,
             &mut rows,
             &mut body_bytes,
             encode(StableGraphRowRefV1::Node(local_name, node_type))?,
@@ -340,7 +401,7 @@ pub(crate) fn compose_graph_rows_with_encoder_v1(
     }
     for (local_name, qname, bits) in source.node_f64() {
         push_encoded_row_v1(
-            CommittedTickRowFamilyV1::Graph,
+            CommittedTickRowFamilyV2::Graph,
             &mut rows,
             &mut body_bytes,
             encode(StableGraphRowRefV1::NodeF64(
@@ -352,7 +413,7 @@ pub(crate) fn compose_graph_rows_with_encoder_v1(
     }
     for (edge_type, source, target, strength_bits) in source.edges() {
         push_encoded_row_v1(
-            CommittedTickRowFamilyV1::Graph,
+            CommittedTickRowFamilyV2::Graph,
             &mut rows,
             &mut body_bytes,
             encode(StableGraphRowRefV1::Edge(
@@ -365,7 +426,7 @@ pub(crate) fn compose_graph_rows_with_encoder_v1(
     }
     for (local_name, hyperedge_type, members) in source.hyperedges() {
         push_encoded_row_v1(
-            CommittedTickRowFamilyV1::Graph,
+            CommittedTickRowFamilyV2::Graph,
             &mut rows,
             &mut body_bytes,
             encode(StableGraphRowRefV1::Hyperedge(
@@ -377,7 +438,7 @@ pub(crate) fn compose_graph_rows_with_encoder_v1(
     }
     for (edge_type, source, target, qname, bits) in source.edge_f64() {
         push_encoded_row_v1(
-            CommittedTickRowFamilyV1::Graph,
+            CommittedTickRowFamilyV2::Graph,
             &mut rows,
             &mut body_bytes,
             encode(StableGraphRowRefV1::EdgeF64(
@@ -391,7 +452,7 @@ pub(crate) fn compose_graph_rows_with_encoder_v1(
     }
     for (local_name, qname, micro_units) in source.node_currency() {
         push_encoded_row_v1(
-            CommittedTickRowFamilyV1::Graph,
+            CommittedTickRowFamilyV2::Graph,
             &mut rows,
             &mut body_bytes,
             encode(StableGraphRowRefV1::NodeCurrency(
@@ -403,7 +464,7 @@ pub(crate) fn compose_graph_rows_with_encoder_v1(
     }
     for (local_name, qname, bits) in source.hyperedge_f64() {
         push_encoded_row_v1(
-            CommittedTickRowFamilyV1::Graph,
+            CommittedTickRowFamilyV2::Graph,
             &mut rows,
             &mut body_bytes,
             encode(StableGraphRowRefV1::HyperedgeF64(
@@ -417,20 +478,20 @@ pub(crate) fn compose_graph_rows_with_encoder_v1(
     Ok((rows, body_bytes))
 }
 
-fn compose_event_rows_v1(
-    source: &SuccessfulEventBatchV1,
-) -> Result<(Vec<CommittedTickRowV1>, usize), SemanticBatchErrorV1> {
+fn compose_event_rows_v2(
+    source: &SuccessfulEventBatchV2,
+) -> Result<(Vec<CommittedTickRowV2>, usize), SemanticBatchErrorV2> {
     let mut rows = reserve_rows_v1("successful event semantic rows", source.events().len())?;
     let mut body_bytes = 0_usize;
     for (index, event) in source.events().iter().enumerate() {
         let ordinal =
-            u32::try_from(index).map_err(|_| SemanticBatchErrorV1::IntegerConversion {
+            u32::try_from(index).map_err(|_| SemanticBatchErrorV2::IntegerConversion {
                 field: "successful event ordinal",
                 value: index,
             })?;
-        let row = encode_successful_event_v1(ordinal, event)?;
+        let row = encode_successful_event_v2(ordinal, event)?;
         push_encoded_row_v1(
-            CommittedTickRowFamilyV1::Event,
+            CommittedTickRowFamilyV2::Event,
             &mut rows,
             &mut body_bytes,
             row,
@@ -439,31 +500,82 @@ fn compose_event_rows_v1(
     Ok((rows, body_bytes))
 }
 
-fn encode_successful_event_v1(
+fn encode_successful_event_v2(
     ordinal: u32,
-    event: &SuccessfulEventV1,
-) -> Result<CommittedTickRowV1, SemanticBatchErrorV1> {
+    event: &SuccessfulEventV2,
+) -> Result<CommittedTickRowV2, SemanticBatchErrorV2> {
     let mut fields = Vec::new();
     fields
         .try_reserve_exact(event.fields().len())
-        .map_err(|_: TryReserveError| SemanticBatchErrorV1::Allocation {
+        .map_err(|_: TryReserveError| SemanticBatchErrorV2::Allocation {
             field: "successful event semantic fields",
             requested: event.fields().len(),
         })?;
     for (name, value) in event.fields() {
         fields.push((name.as_str(), value));
     }
-    semantic_codec::encode_successful_event(ordinal, event.event_type(), &fields)
-        .map_err(Into::into)
+    semantic_codec::encode_successful_event(
+        ordinal,
+        event.emitting_rule(),
+        event
+            .choice_receipt()
+            .map(babylon_tick::choice_receipt::ChoiceReceiptRefV1::encounter_ordinal),
+        event.event_type(),
+        &fields,
+    )
+    .map_err(Into::into)
+}
+
+fn compose_choice_receipt_rows_v1(
+    source: &[ChoiceReceiptV1],
+) -> Result<(Vec<CommittedTickRowV2>, usize), SemanticBatchErrorV2> {
+    let mut rows = reserve_rows_v1("choice receipt semantic rows", source.len())?;
+    let mut body_bytes = 0_usize;
+    for receipt in source {
+        let branches = receipt
+            .branches()
+            .iter()
+            .map(|branch| semantic_codec::ChoiceReceiptSemanticBranchV1 {
+                outcome_member: branch.member.clone(),
+                mass_nanounits: branch.mass.nanounits(),
+                ticket_start: branch.tickets.start,
+                ticket_end_exclusive: branch.tickets.end,
+                ticket_count: branch.tickets.count,
+            })
+            .collect();
+        let semantic = semantic_codec::ChoiceReceiptSemanticRowV1 {
+            encounter_ordinal: receipt.encounter_ordinal(),
+            rule_id: receipt.rule_id().to_owned(),
+            sample: receipt.sample().to_owned(),
+            slot: receipt.slot(),
+            outcome_enum: receipt.outcome_enum().to_owned(),
+            stable_carrier: receipt.stable_carrier().clone(),
+            active_elements: receipt.active_elements().to_vec(),
+            branches,
+            draw_ticket: receipt.draw_ticket(),
+            selected_outcome: receipt.selected_outcome().to_owned(),
+            allocation_digest: receipt.allocation_digest(),
+            instance_digest: receipt.instance_digest(),
+        };
+        let row = semantic_codec::encode_choice_receipt(&semantic)?;
+        push_encoded_row_v1(
+            CommittedTickRowFamilyV2::ChoiceReceipt,
+            &mut rows,
+            &mut body_bytes,
+            row,
+        )?;
+    }
+    rows.sort_unstable_by(|left, right| left.key().cmp(right.key()));
+    Ok((rows, body_bytes))
 }
 
 fn reserve_rows_v1(
     field: &'static str,
     count: usize,
-) -> Result<Vec<CommittedTickRowV1>, SemanticBatchErrorV1> {
+) -> Result<Vec<CommittedTickRowV2>, SemanticBatchErrorV2> {
     let mut rows = Vec::new();
     rows.try_reserve_exact(count)
-        .map_err(|_: TryReserveError| SemanticBatchErrorV1::Allocation {
+        .map_err(|_: TryReserveError| SemanticBatchErrorV2::Allocation {
             field,
             requested: count,
         })?;
@@ -471,24 +583,24 @@ fn reserve_rows_v1(
 }
 
 fn push_encoded_row_v1(
-    family: CommittedTickRowFamilyV1,
-    rows: &mut Vec<CommittedTickRowV1>,
+    family: CommittedTickRowFamilyV2,
+    rows: &mut Vec<CommittedTickRowV2>,
     body_bytes: &mut usize,
-    row: CommittedTickRowV1,
-) -> Result<(), SemanticBatchErrorV1> {
+    row: CommittedTickRowV2,
+) -> Result<(), SemanticBatchErrorV2> {
     let next_body_bytes = body_bytes
         .checked_add(ROW_LENGTH_BYTES)
         .and_then(|value| value.checked_add(row.key().len()))
         .and_then(|value| value.checked_add(row.payload().len()))
-        .ok_or(SemanticBatchErrorV1::CapacityOverflow {
+        .ok_or(SemanticBatchErrorV2::CapacityOverflow {
             field: "semantic batch row body",
         })?;
-    if next_body_bytes > MAX_COMMITTED_TICK_ROW_BATCH_BYTES_V1 {
-        return Err(SemanticBatchErrorV1::Envelope(
-            CommittedTickEnvelopeErrorV1::BatchBytes {
+    if next_body_bytes > MAX_COMMITTED_TICK_ROW_BATCH_BYTES_V2 {
+        return Err(SemanticBatchErrorV2::Envelope(
+            CommittedTickEnvelopeErrorV2::BatchBytes {
                 family,
                 actual: next_body_bytes,
-                maximum: MAX_COMMITTED_TICK_ROW_BATCH_BYTES_V1,
+                maximum: MAX_COMMITTED_TICK_ROW_BATCH_BYTES_V2,
             },
         ));
     }
@@ -497,11 +609,11 @@ fn push_encoded_row_v1(
     Ok(())
 }
 
-fn checked_sum_v1(values: &[usize], field: &'static str) -> Result<usize, SemanticBatchErrorV1> {
+fn checked_sum_v1(values: &[usize], field: &'static str) -> Result<usize, SemanticBatchErrorV2> {
     values.iter().try_fold(0_usize, |total, value| {
         total
             .checked_add(*value)
-            .ok_or(SemanticBatchErrorV1::CapacityOverflow { field })
+            .ok_or(SemanticBatchErrorV2::CapacityOverflow { field })
     })
 }
 
@@ -518,12 +630,12 @@ mod tests {
     use babylon_kernel::ContentDigest;
     use babylon_practice_contract::ordered_action_v1::OrderedPracticeActionBatchV1;
     use babylon_tick::material_state::MaterialStateV1;
-    use babylon_tick::replay_session::{IdentifiedTickReportV1, ReplayTickSession};
+    use babylon_tick::replay_session::{IdentifiedTickReportV2, ReplayTickSession};
 
     use crate::committed_tick_envelope::{
-        CommittedTickEnvelopeErrorV1, CommittedTickEnvelopeV1, CommittedTickRowFamiliesV1,
-        CommittedTickRowFamilyV1, CommittedTickRowV1, MAX_COMMITTED_TICK_ROWS_V1,
-        MAX_COMMITTED_TICK_ROW_BATCH_BYTES_V1,
+        CommittedTickEnvelopeErrorV2, CommittedTickEnvelopeV2, CommittedTickRowFamiliesV2,
+        CommittedTickRowFamilyV2, CommittedTickRowV2, MAX_COMMITTED_TICK_ROWS_V2,
+        MAX_COMMITTED_TICK_ROW_BATCH_BYTES_V2,
     };
     use crate::identity::CampaignId;
     use crate::michigan_dynamic_hex_foundation_v1;
@@ -531,10 +643,10 @@ mod tests {
     use crate::tick_commit_claim::TickCommitClaimV1;
 
     use super::{
-        compose_graph_event_semantic_batches_v1, compose_graph_rows_with_encoder_v1,
-        preflight_graph_event_bounds_v1, push_encoded_row_v1, SemanticBatchErrorV1,
-        SemanticFamilyBatchV1, StableGraphRowRefV1, StableGraphRowsEmptyProofV1,
-        SuccessfulEventBatchEmptyProofV1,
+        compose_graph_event_choice_semantic_batches_v2, compose_graph_rows_with_encoder_v1,
+        preflight_graph_event_choice_bounds_v2, push_encoded_row_v1, SemanticBatchErrorV2,
+        SemanticFamilyBatchV2, StableGraphRowRefV1, StableGraphRowsEmptyProofV1,
+        SuccessfulEventBatchEmptyProofV2,
     };
 
     const SCENARIO: &str = r"
@@ -573,9 +685,9 @@ mod tests {
     (emit EventType/PERSISTENCE_BATCH (subject self))))
 "#;
 
-    fn report_for(scenario: &str, session_name: &str) -> IdentifiedTickReportV1 {
+    fn report_for(scenario: &str, session_name: &str) -> IdentifiedTickReportV2 {
         let (_, rules) = split_content(RULE).expect("test rule parses");
-        let forms = rules.into_iter().map(|(_, form)| form).collect::<Vec<_>>();
+        let forms = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
         let content = ContentDigest {
             defines_hash: [0x21; 32],
             rules_hash: rules_hash_of(&forms).expect("test rule hashes"),
@@ -603,7 +715,7 @@ mod tests {
             .expect("test replay advances")
     }
 
-    fn report() -> IdentifiedTickReportV1 {
+    fn report() -> IdentifiedTickReportV2 {
         report_for(SCENARIO, "per281/semantic-batches")
     }
 
@@ -611,19 +723,19 @@ mod tests {
     fn proof_types_are_send_and_only_true_empty_sources_produce_them() {
         fn assert_send<T: Send>() {}
         assert_send::<StableGraphRowsEmptyProofV1>();
-        assert_send::<SuccessfulEventBatchEmptyProofV1>();
+        assert_send::<SuccessfulEventBatchEmptyProofV2>();
 
         let empty_report = report_for(EMPTY_SCENARIO, "per281/semantic-batches-empty");
-        let empty = compose_graph_event_semantic_batches_v1(&empty_report)
+        let empty = compose_graph_event_choice_semantic_batches_v2(&empty_report)
             .expect("true typed empty sources compose");
-        let SemanticFamilyBatchV1::Empty(graph_proof) = empty.graph else {
+        let SemanticFamilyBatchV2::Empty(graph_proof) = empty.graph else {
             panic!("true empty graph source must produce its typed proof")
         };
         assert_eq!(
             graph_proof.source_digest,
             empty_report.result_stable_graph().digest().into_bytes()
         );
-        let SemanticFamilyBatchV1::Empty(event_proof) = empty.event else {
+        let SemanticFamilyBatchV2::Empty(event_proof) = empty.event else {
             panic!("true empty event source must produce its typed proof")
         };
         assert_eq!(
@@ -631,29 +743,61 @@ mod tests {
             empty_report.successful_event_batch().source_digest()
         );
 
-        let nonempty = compose_graph_event_semantic_batches_v1(&report())
+        let nonempty = compose_graph_event_choice_semantic_batches_v2(&report())
             .expect("real report composes graph and event rows");
-        assert!(matches!(nonempty.graph, SemanticFamilyBatchV1::Rows { .. }));
-        assert!(matches!(nonempty.event, SemanticFamilyBatchV1::Rows { .. }));
+        assert!(matches!(nonempty.graph, SemanticFamilyBatchV2::Rows { .. }));
+        assert!(matches!(nonempty.event, SemanticFamilyBatchV2::Rows { .. }));
     }
 
     #[test]
     fn preflight_accepts_exact_count_body_and_aggregate_bounds_and_refuses_plus_one() {
-        let minimum_body = MAX_COMMITTED_TICK_ROWS_V1 * 9;
-        preflight_graph_event_bounds_v1(MAX_COMMITTED_TICK_ROWS_V1 - 1, minimum_body - 9, 0, 0, 9)
-            .expect("exact aggregate row ceiling");
+        let minimum_body = MAX_COMMITTED_TICK_ROWS_V2 * 9;
+        preflight_graph_event_choice_bounds_v2(
+            MAX_COMMITTED_TICK_ROWS_V2 - 1,
+            minimum_body - 9,
+            0,
+            0,
+            0,
+            0,
+            9,
+        )
+        .expect("exact aggregate row ceiling");
         assert!(matches!(
-            preflight_graph_event_bounds_v1(MAX_COMMITTED_TICK_ROWS_V1, minimum_body, 0, 0, 9),
-            Err(SemanticBatchErrorV1::Envelope(
-                CommittedTickEnvelopeErrorV1::AggregateRows { .. }
+            preflight_graph_event_choice_bounds_v2(
+                MAX_COMMITTED_TICK_ROWS_V2,
+                minimum_body,
+                0,
+                0,
+                0,
+                0,
+                9,
+            ),
+            Err(SemanticBatchErrorV2::Envelope(
+                CommittedTickEnvelopeErrorV2::AggregateRows { .. }
             ))
         ));
-        preflight_graph_event_bounds_v1(1, MAX_COMMITTED_TICK_ROW_BATCH_BYTES_V1, 0, 0, 9)
-            .expect("exact graph body ceiling");
+        preflight_graph_event_choice_bounds_v2(
+            1,
+            MAX_COMMITTED_TICK_ROW_BATCH_BYTES_V2,
+            0,
+            0,
+            0,
+            0,
+            9,
+        )
+        .expect("exact graph body ceiling");
         assert!(matches!(
-            preflight_graph_event_bounds_v1(1, MAX_COMMITTED_TICK_ROW_BATCH_BYTES_V1 + 1, 0, 0, 9,),
-            Err(SemanticBatchErrorV1::Envelope(
-                CommittedTickEnvelopeErrorV1::BatchBytes { .. }
+            preflight_graph_event_choice_bounds_v2(
+                1,
+                MAX_COMMITTED_TICK_ROW_BATCH_BYTES_V2 + 1,
+                0,
+                0,
+                0,
+                0,
+                9,
+            ),
+            Err(SemanticBatchErrorV2::Envelope(
+                CommittedTickEnvelopeErrorV2::BatchBytes { .. }
             ))
         ));
     }
@@ -663,22 +807,22 @@ mod tests {
         let row = crate::semantic_codec::encode_stable_graph_node("class-a", "SOCIAL_CLASS")
             .expect("small graph row encodes");
         let row_bytes = row_body_bytes(&row);
-        let mut body_bytes = MAX_COMMITTED_TICK_ROW_BATCH_BYTES_V1 - row_bytes + 1;
+        let mut body_bytes = MAX_COMMITTED_TICK_ROW_BATCH_BYTES_V2 - row_bytes + 1;
         let body_before = body_bytes;
         let mut rows = Vec::new();
 
         assert_eq!(
             push_encoded_row_v1(
-                CommittedTickRowFamilyV1::Graph,
+                CommittedTickRowFamilyV2::Graph,
                 &mut rows,
                 &mut body_bytes,
                 row,
             ),
-            Err(SemanticBatchErrorV1::Envelope(
-                CommittedTickEnvelopeErrorV1::BatchBytes {
-                    family: CommittedTickRowFamilyV1::Graph,
-                    actual: MAX_COMMITTED_TICK_ROW_BATCH_BYTES_V1 + 1,
-                    maximum: MAX_COMMITTED_TICK_ROW_BATCH_BYTES_V1,
+            Err(SemanticBatchErrorV2::Envelope(
+                CommittedTickEnvelopeErrorV2::BatchBytes {
+                    family: CommittedTickRowFamilyV2::Graph,
+                    actual: MAX_COMMITTED_TICK_ROW_BATCH_BYTES_V2 + 1,
+                    maximum: MAX_COMMITTED_TICK_ROW_BATCH_BYTES_V2,
                 }
             ))
         );
@@ -704,7 +848,7 @@ mod tests {
         assert_eq!(calls.get(), 2);
         assert_eq!(
             result,
-            Err(SemanticBatchErrorV1::Codec(SemanticCodecErrorV1::Invalid(
+            Err(SemanticBatchErrorV2::Codec(SemanticCodecErrorV1::Invalid(
                 "injected second row"
             )))
         );
@@ -713,8 +857,8 @@ mod tests {
     #[test]
     fn real_report_rows_are_vector_compatible_ordered_and_envelope_accepted() {
         let report = report();
-        let batches =
-            compose_graph_event_semantic_batches_v1(&report).expect("real report semantic batches");
+        let batches = compose_graph_event_choice_semantic_batches_v2(&report)
+            .expect("real report semantic batches");
         let (graph, graph_body_bytes) = batches.graph.into_rows().expect("graph rows");
         let (event, event_body_bytes) = batches.event.into_rows().expect("event rows");
         let archive_dirty_receipt = batches.archive_dirty_receipt;
@@ -736,12 +880,13 @@ mod tests {
             1,
             TickContentHashV1::from_bytes([0x33; 32]),
         );
-        CommittedTickEnvelopeV1::compose(
+        CommittedTickEnvelopeV2::compose(
             claim,
-            CommittedTickRowFamiliesV1 {
+            CommittedTickRowFamiliesV2 {
                 graph,
                 state: vec![],
                 event,
+                choice_receipt: vec![],
                 checkpoint: vec![],
                 archive_dirty_receipt,
             },
@@ -755,13 +900,13 @@ mod tests {
             VARIABLE_KEY_LENGTH_SCENARIO,
             "per281/semantic-batches-variable-keys",
         );
-        let batches = compose_graph_event_semantic_batches_v1(&report)
+        let batches = compose_graph_event_choice_semantic_batches_v2(&report)
             .expect("variable-length graph keys compose");
         let (graph, _) = batches.graph.into_rows().expect("graph rows");
         assert!(graph.windows(2).all(|rows| rows[0].key() < rows[1].key()));
     }
 
-    fn row_body_bytes(row: &CommittedTickRowV1) -> usize {
+    fn row_body_bytes(row: &CommittedTickRowV2) -> usize {
         8 + row.key().len() + row.payload().len()
     }
 }

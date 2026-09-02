@@ -120,6 +120,12 @@ jobs:
           rustup toolchain install "$CHANNEL" --profile minimal \
             --component rustfmt --component clippy --no-self-update
 
+      - name: Install Rust test reporter
+        uses: taiki-e/install-action@1ed6d7be6168f6c9046541087ff549b6bc581fdf # v2.87.2
+        with:
+          tool: cargo-nextest@0.9.143
+          fallback: none
+
       # Restore is intentionally separate from save. Pull requests can consume
       # the newest compatible dev cache but cannot publish build output. The
       # source hash prevents a lock/toolchain-only exact hit from going stale.
@@ -156,6 +162,15 @@ jobs:
 
       - name: Rust full gate (canonical ci:rust task)
         run: mise run ci:rust
+
+      - name: Upload Rust test reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: rust-test-results-${{ github.sha }}
+          path: reports/test-results/rust/
+          retention-days: 14
+          if-no-files-found: error
 
       # ADR181 R6: supply-chain gate for the engine language — advisories,
       # bans, licenses, and a [sources] allowlist covering the rev-pinned

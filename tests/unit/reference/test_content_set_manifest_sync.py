@@ -114,6 +114,15 @@ def _orphans() -> dict[str, str]:
     return orphans
 
 
+def _kernel_slots() -> list[dict[str, object]]:
+    data = _read_manifest()
+    rows = data.get("kernel_slot", [])
+    assert isinstance(rows, list), (
+        "content-sets.toml's `kernel_slot` key must be an array of tables"
+    )
+    return rows
+
+
 def _row_content_paths(row: dict[str, object]) -> set[str]:
     """A row's own claimed content paths: its scenario, prelude, and rules."""
     scenario = row["scenario"]
@@ -301,7 +310,17 @@ class TestTheManifestHasRowsAtAll:
 
     def test_the_schema_version_is_declared(self) -> None:
         data = _read_manifest()
-        assert data.get("schema") == 1, "content-sets.toml must declare `schema = 1`"
+        assert data.get("schema") == 2, "content-sets.toml must declare `schema = 2`"
+
+    def test_official_kernel_slot_ledger_is_pinned(self) -> None:
+        assert _kernel_slots() == [
+            {
+                "ordinal": 0,
+                "rule": "struggle/spark-mechanic",
+                "sample": "struggle/spark",
+                "slot": 0,
+            }
+        ]
 
 
 class TestOrganizationPracticePreludePromotion:

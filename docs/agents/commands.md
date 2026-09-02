@@ -3,8 +3,9 @@
 ## Setup
 
 ```bash
-uv sync --extra server
-uv run pre-commit install
+mise install
+mise run install
+mise run hooks
 ```
 
 ## CI & Quality (Fast Gate)
@@ -34,6 +35,26 @@ mise run test:cov       # Tests with coverage report
 mise run test:doctest   # Doctest examples in formulas
 ```
 
+<!-- vale off -->
+Rust has a failure-first agent interface separate from the verbose Python
+artifacts:
+
+```bash
+mise run rust:test:install-tools       # One-time exact nextest/llvm-cov install
+mise run rust:test                     # Complete non-doctest workspace + reports
+mise run rust:test:q -- -p CRATE       # Scoped inner-loop run + the same schema
+mise run rust:test:summary             # One-screen latest result
+mise run rust:test:failed              # Exact latest failure set; green is a no-op
+mise run rust:test:inventory           # Machine test census for parity audits
+mise run rust:coverage                 # Separate instrumented advisory coverage run
+```
+
+The explicit latest pointer is ``reports/test-results/rust/latest.json``.
+Read its compact JSON/Markdown first; follow its JUnit and log pointers only
+for full captured output. The canonical ``rust:check-no-docs`` task also runs
+the separately required Rust doctests because nextest does not execute them.
+<!-- vale on -->
+
 ## Simulation
 
 ```bash
@@ -41,13 +62,15 @@ mise run sim:e2e-michigan     # Fresh 520-tick Rust run unless campaign ID is ex
 mise run sim:e2e-bg           # Resume explicit campaign, or worktree default, in background
 mise run sim:status           # Process, its recorded campaign tail, and global totals
 mise run sim:probe            # Explicit campaign, or worktree default, plus global totals
-mise run sim:archive          # Inspect global Rust-owned Archive dirty receipts
-mise run sim:report           # Embedded Michigan Rust persistence report (60 ticks)
-mise run sim:report 520 3000  # Override tick target and timeout seconds
+mise run sim:archive          # Verify semantic Archive schema and report its estate
+mise run sim:report                    # Local 60-tick report; shared database attribution
+mise run sim:report 520 3000 exclusive # Canonical Rust Michigan diagnostic bundle
 mise run reference:python-smoke  # Frozen Python one-tick reference smoke
-mise run analysis:sweep          # Development-only Python parameter analysis
-mise run analysis:monte-carlo    # Development-only Python uncertainty analysis
 ```
+
+``sim:report`` is authoritative Rust persistence observability. The canonical
+520-tick run writes a collision-safe bundle below ``reports/sim-runs/`` and
+labels its Postgres database and WAL observations ``exclusive``.
 
 ## Development Tooling
 
@@ -61,8 +84,17 @@ mise run dev:doctor  # Report worktree, Mise, and repository Rust host-policy fa
 mise run analysis:optuna      # Bayesian optimization (Optuna TPE)
 mise run analysis:landscape   # 2D parameter grid search
 mise run analysis:sweep       # 1D sensitivity sweep
-mise run analysis:dashboard   # Optuna Dashboard visualization
+mise run analysis:monte-carlo # Monte Carlo uncertainty analysis
+mise run analysis:campaign    # Weekly frozen-Python reference profile
+mise run analysis:campaign -- full # Full MC + Optuna + Morris/Sobol profile
+mise run analysis:dashboard   # Root optuna.db by default
+mise run analysis:dashboard -- /absolute/campaign/study.sqlite3
 ```
+
+``analysis:campaign`` is non-authoritative frozen-Python analysis. Each run
+writes ``campaign.json`` and leg artifacts below
+``reports/frozen-reference-analysis/<run>/``. Pass a campaign's absolute
+``optuna/study.sqlite3`` path to ``analysis:dashboard`` to open that study.
 
 ## QA
 

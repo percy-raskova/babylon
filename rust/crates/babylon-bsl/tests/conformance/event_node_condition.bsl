@@ -9,4 +9,4 @@
     (binding agitation :field social-class/agitation))
   (when (exists (nodes NodeType/SOCIAL_CLASS) (>= agitation 0.6p)))
   (effects
-    (emit EventType/CONSCIOUSNESS_SHIFT (threshold 0.6p))))
+    (emit EventType/CONSCIOUSNESS_SHIFT (threshold agitation))))

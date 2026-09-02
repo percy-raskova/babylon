@@ -4,7 +4,7 @@
 <!-- vale ste.NounClusters = NO -->
 <!-- vale Vale.Spelling = NO -->
 
-**Version 4.0.0**
+**Version 4.1.0**
 
 **Ratified:** 2026-08-22
 
@@ -162,12 +162,26 @@ governs ordered membership, effect-only mutation, and weighted aggregation of
 intensive fields. Dyadic relations, hyperedges, compact registers, and
 transport substrate records must keep their distinct semantics.
 
+Amendment AJ adds one closed mathematical kind subordinate to the dialectic:
+the finite material transition kernel
+`K : C -> D_f(Delta)`. Its carrier is a bounded, typed set of material effect
+bundles. A deterministic mechanic is the Dirac case. A kernel cannot range
+over event names, terminal routes, historical outcomes, or undeclared world
+mutations. Scheduled kernels compose through the same sequential causal order
+as deterministic mechanics. No declaration of parallel independence exists.
+
 Behavioral contracts must outlive any implementation. Canonical byte layouts,
 golden traces, schemas, property laws, replay checks, scenario tests, and
 boundary contracts form the durable criteria for a rewrite.
 
 Every materialized projection must be deterministic for the same committed
 state, knowledge, definitions, templates, and projection version.
+
+Random realization is part of the canonical input and evidence boundary. Every
+finite-kernel choice must use the governed replay key, consume one exact
+integer ticket draw, and publish a hash-bound transactional choice receipt.
+The receipt records both the selected and unselected alternatives. This
+separate record cannot influence later mechanics or widen `AuditReceipt`.
 
 ## Article VI — Political-Economy Circuit
 
@@ -283,10 +297,62 @@ clauses, named sections, and amendment references resolve against the pinned
 v3.2.0 snapshot through ADR221. Post-AH living authority cites the named v4
 article or its stable heading.
 
+### Amendment AJ — Finite Material Transition Kernels
+
+Amendment AJ ratifies a finite material transition kernel
+`K : C -> D_f(Delta)` as a new closed mathematical kind. The dialectic remains
+Babylon's irreducible ontological primitive. A kernel is subordinate machinery
+for bounded material contingency within that ontology, never a peer or a
+replacement. Existing deterministic mechanics embed as one-outcome Dirac
+kernels, and scheduled rules continue to compose sequentially.
+
+A kernel distributes exact mass over a finite, typed enumeration of bounded
+material effect bundles. It cannot distribute over events, victory or defeat,
+terminal routes, historical outcomes, or a hidden downstream result. A shared
+cause requires one joint kernel over its whole governed carrier. Babylon does
+not infer independence between separately authored quantities, and v1 adds no
+tensor or parallel-independence declaration. A kernel paired with a finite
+projection keeps all material writes carrier-local: it can update only its
+literal `self` node. A write to another node, an edge, a hyperedge, or graph
+shape requires a joint carrier kernel and is not exactly enumerable in v1.
+
+`Mass`, `Probability`, `Intensity`, and dialectical weight are distinct.
+`Mass` is exact allocation input for a finite kernel. `Probability` remains a
+bounded material scalar. `Intensity` remains a state level. Dialectical
+weight remains part of `D = (A, Ā, w, T, σ)`. No implicit coercion joins
+these kinds.
+
+Events remain deterministic observations. A recognizer can observe a
+post-transition state but cannot draw randomness. An event declaration owns no
+probability. For deterministic recognizer `R`, event likelihood is the measure
+of its preimage under the kernel:
+
+`Pr(e | s) = sum_delta K(s, delta) [e in R(s, apply(s, delta))]`.
+
+Only an exact finite, subject-local projection can compute that value. An
+implementation must refuse analysis outside the enumerable boundary rather
+than sample, approximate, assume independence, or attach an authored
+likelihood to an event.
+
+Every realization is replay-keyed, hash-bound, transactional,
+evidence-classified, and receipted. The realization key binds replay session,
+seed, tick, rule, sample, append-only slot, stable subject, and ordered active
+elements. A failed tick publishes no state, event, choice receipt, completed
+time, or identity. Event observation and receipt observation must not alter a
+material trajectory.
+
+AJ grants no stochastic authority to `Recognizer`, `ExternalEvent`, or
+`Intent`. It adds no universal sigmoid, empirical-distribution sampler,
+alternate RNG, arbitrary event forecast, or authored terminal branch. The
+kernel RNG remains a private realization seam. Exact language, ticket,
+projection, receipt, persistence, and migration rules live in
+`ai/decisions/ADR248_finite_material_transition_kernels.yaml` and the governed
+BSL and determinism references.
+
 ---
 
-**Version:** 4.0.0
+**Version:** 4.1.0
 
 **Originally ratified:** 2026-01-30
 
-**Last amended:** 2026-08-22
+**Last amended:** 2026-09-01

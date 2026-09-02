@@ -90,6 +90,7 @@ reports/test-results/
 # Ingest audit reports + per-run sim artifacts (regenerable byproducts)
 reports/ingest/
 reports/sim-runs/
+reports/frozen-reference-analysis/
 # qa:regression first-divergence attribution (E4; transient — rewritten/removed
 # every compare run, only present while a dense-gate FAIL is being diagnosed)
 reports/qa-first-divergence.json

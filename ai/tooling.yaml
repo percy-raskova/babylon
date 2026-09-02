@@ -2,8 +2,8 @@
 # How tools are configured and why
 
 meta:
-  version: "1.3.0"
-  updated: "2026-01-01"
+  version: "1.4.0"
+  updated: "2026-09-01"
   purpose: "Document tooling decisions to avoid re-investigation"
 
 # =============================================================================
@@ -49,9 +49,18 @@ cicd:
     weekly_sim_artifacts_yml:
       file: ".github/workflows/weekly-sim-artifacts.yml"
       triggers: ["weekly Sunday 04:00 UTC", "workflow_dispatch"]
-      scope: "Embedded two-rule Michigan Rust persistence slice; not full content-pack coverage"
-      command: "mise run sim:report 520"
+      authority: "Authoritative Rust game-managed PostgreSQL path"
+      scope: "Fixed-seed embedded two-rule Michigan Rust persistence slice; not full content-pack coverage"
+      command: "mise run sim:report 520 3000 exclusive"
       artifact: "reports/sim-runs/"
+      retention_days: 90
+    weekly_reference_analysis_yml:
+      file: ".github/workflows/weekly-reference-analysis.yml"
+      triggers: ["weekly Monday 04:00 UTC", "workflow_dispatch: weekly or full"]
+      authority: "Non-authoritative frozen Python reference at p27-python-freeze"
+      command: "mise run analysis:campaign -- {weekly|full}"
+      artifact: "reports/frozen-reference-analysis/"
+      retention_days: 90
 
   pr_template:
     file: ".github/PULL_REQUEST_TEMPLATE.md"
@@ -518,16 +527,17 @@ python:
       "reference:python-smoke": "Frozen Python one-tick reference smoke; not a persistence-authority path"
       "analysis:sweep": "Intentional in-memory Python optimization periphery"
       "analysis:monte-carlo": "Intentional in-memory Python uncertainty analysis"
+      "analysis:campaign": "Bounded non-authoritative frozen-Python reference campaign; weekly by default"
       "sim:e2e-michigan": "One-shot Rust PostgreSQL/H3 validation; fresh unless BABYLON_CAMPAIGN_ID is explicit"
       "sim:e2e-bg": "Resume an explicit Rust Michigan campaign, or the worktree-local default, in the background"
       "sim:status": "Show the background process, its recorded campaign tail, and labeled global totals"
       "sim:probe": "Probe an explicit campaign, or the worktree-local default, plus labeled global totals"
       "sim:archive": "Inspect global Rust-owned Archive dirty receipts"
-      "sim:report": "Generate post-commit evidence for the embedded two-rule Michigan Rust persistence slice"
+      "sim:report": "Generate authoritative Rust Michigan observability and persistence evidence"
       "dev:doctor": "Report worktree and Rust simulation tooling readiness without mutation"
       "analysis:optuna": "Development-only Bayesian optimization (Optuna TPE)"
       "analysis:landscape": "Development-only 2D parameter grid search"
-      "analysis:dashboard": "Optuna Dashboard visualization"
+      "analysis:dashboard": "Optuna Dashboard; root optuna.db by default or an explicit campaign SQLite path"
       "qa:verify": "Formula correctness verification"
       "qa:regression": "Frozen Python language-neutral behavior contract"
       "qa:vault-regression": "Retained in-process projection-vault byte gate"
@@ -543,6 +553,55 @@ python:
       "data:verify-build": "Build the reference DB twice from sources and prove byte-identity (dev box only)"
       "data:verify-roundtrip": "Content-compare the live reference DB against the rebuilt product"
       "data:subset": "Build the CI subset from the rebuilt product (subset drift dies by construction)"
+
+# =============================================================================
+# AUTHORITATIVE RUST SIMULATION OBSERVABILITY
+# =============================================================================
+
+rust_simulation_observability:
+  authority: "Authoritative Rust Michigan game-state and PostgreSQL persistence path"
+  command: "mise run sim:report 520 3000 exclusive"
+  workflow: ".github/workflows/weekly-sim-artifacts.yml"
+  artifact_root: "reports/sim-runs/<run>/"
+  fixed_scope:
+    replay_seed: 281
+    parameter_overrides: false
+    stochastic_draws: false
+    dynamic_h3_updates: false
+    content: "Embedded two-rule Michigan persistence slice, not all Rust content packs"
+  persistence_readback: |
+    Reopen PostgreSQL and read back committed state at each 52-tick annual
+    boundary and at the final reported tick. In-process state alone does not
+    satisfy the report contract.
+  bundle:
+    files:
+      - "ticks.jsonl"
+      - "ticks.csv"
+      - "diagnostics.json"
+      - "summary.json"
+      - "summary.txt"
+      - "stdout.txt"
+      - "stderr.txt"
+      - "resources.json"
+    hash_roles:
+      administrative_graph: "GraphStateHash; graph-only administrative persistence identity"
+      stable_named_graph: "Canonical digest over authored stable graph identities"
+      nominal_world: "Stable graph plus governed world registers"
+      tick_content: "Identity of the complete committed tick content"
+  resource_observation:
+    runtime: "Wall, user CPU, and system CPU nanoseconds plus peak RSS bytes for the runtime process only"
+    excluded_runtime_costs:
+      - "Cargo build"
+      - "Report wrapper"
+      - "PostgreSQL"
+      - "Artifact upload"
+      - "Other job processes"
+    database: "Before/after database, Babylon-relation, and cluster-wide WAL size observations"
+    limitations: |
+      The exclusive label states the expected attribution context, not exact
+      per-tick byte accounting. WAL can include background activity, and
+      database allocation, reuse, or delayed reclamation can produce coarse or
+      negative deltas.
 
 # =============================================================================
 # FROZEN-REFERENCE PARAMETER ANALYSIS TOOLING
@@ -570,7 +629,7 @@ parameter_tuning:
     capabilities:
       - "Single-objective Carceral Equilibrium search"
       - "Early pruning of failing frozen-reference trials"
-      - "Parameter importance analysis"
+      - "Optional parameter importance analysis when scikit-learn is installed"
       - "Persistent study visualization via Optuna Dashboard"
       - "Full-path parameter identities and persisted experiment fingerprints"
 
@@ -586,6 +645,10 @@ parameter_tuning:
       uv run python -m tools.devtools.sim_analysis monte-carlo --n-samples 100
       uv run python -m tools.devtools.sim_analysis sensitivity --method both
 
+      # Bounded frozen-reference profiles
+      mise run analysis:campaign
+      mise run analysis:campaign -- full
+
       # Launch Optuna Dashboard
       uv run optuna-dashboard sqlite:///optuna.db
 
@@ -594,6 +657,48 @@ parameter_tuning:
       with a revolutionary terminal-outcome bonus and genocide penalty.
       Prune trials that survive fewer than five years or that Hyperband judges
       noncompetitive from their reported phase milestones.
+
+  reference_campaign:
+    authority: "frozen_python_reference"
+    game_state_authoritative: false
+    frozen_ref: "p27-python-freeze"
+    task: "mise run analysis:campaign [weekly|full]"
+    workflow: ".github/workflows/weekly-reference-analysis.yml"
+    artifact_root: "reports/frozen-reference-analysis/<run>/"
+    seed: 304
+    profiles:
+      weekly:
+        monte_carlo: "16 samples x 520 ticks"
+        optuna: "8 fresh Carceral Equilibrium trials x 5200 ticks"
+        sensitivity: "Skipped with an explicit profile reason"
+      full:
+        monte_carlo: "64 samples x 520 ticks"
+        optuna: "16 fresh Carceral Equilibrium trials x 5200 ticks"
+        sensitivity: |
+          Morris 4 trajectories plus Sobol 8 base samples, max 520 ticks,
+          final-wealth objective
+        sensitivity_parameters:
+          - "economy.base_subsistence"
+          - "economy.extraction_efficiency"
+          - "economy.comprador_cut"
+          - "economy.super_wage_rate"
+    artifacts:
+      manifest: "campaign.json"
+      monte_carlo: "monte-carlo/samples.csv, manifest.json, report.md, and bounded logs"
+      optuna: "optuna/study.sqlite3, trials.csv, summary.json, report.md, and bounded logs"
+      sensitivity: "sensitivity/morris.json, sobol.json, and bounded logs (full only)"
+      manifest_contract: |
+        Source and lock hashes, requested and actual workloads, deterministic
+        seeds, per-leg status and integer resources, artifact schemas, bytes,
+        and SHA-256
+    optuna_storage: |
+      Each campaign creates a fresh optuna/study.sqlite3 and makes no resumption
+      claim. analysis:dashboard opens root optuna.db by default; pass an explicit
+      SQLite path to inspect a campaign database.
+    parameter_importance: |
+      The default Optuna importance evaluator needs optional scikit-learn.
+      Without it, summary.json records an explicit unavailable reason while the
+      study, standard-library CSV export, summary, and report remain valid.
 
   retired_tools:
     note: |
@@ -604,6 +709,7 @@ parameter_tuning:
       after review proved that their wrappers did not exercise the behavior they
       advertised. carceral_scoring.py moved to the package's objectives.py. See
       the analysis-package history and the Rust persistence cutover contract.
+      This is historical inventory, not a list of scripts to restore.
 
   dependencies:
     optuna:
@@ -623,6 +729,7 @@ parameter_tuning:
     database: "sqlite:///optuna.db"
     location: "Project root (gitignored)"
     purpose: "Persistent storage of optimization studies for compatible resumption"
+    dashboard: "analysis:dashboard opens this database by default and accepts an explicit campaign SQLite path"
     resume_contract: |
       The study user attributes bind the search space, source-tree hash,
       default-defines hash, simulation seed, backend, scenario, max ticks,
@@ -648,9 +755,13 @@ parameter_tuning:
       command: "uv run python -m tools.devtools.sim_analysis sensitivity --method {morris,sobol,both}"
       description: "Global sensitivity analysis (SALib Morris/Sobol)"
 
+    "analysis:campaign":
+      command: "uv run python -m tools.devtools.reference_analysis_campaign --profile {weekly|full}"
+      description: "Bounded non-authoritative frozen-Python reference campaign"
+
     "analysis:dashboard":
-      command: "uv run optuna-dashboard sqlite:///optuna.db"
-      description: "Launch Optuna Dashboard for visualization"
+      command: "uv run optuna-dashboard sqlite:///${usage_database}"
+      description: "Launch Optuna Dashboard for root or explicit campaign SQLite storage"
 
   sweep_artifacts:
     max_evaluations: 2048

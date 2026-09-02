@@ -8,6 +8,7 @@ from tools.devtools.sim_analysis.backends.types import Result
 from tools.devtools.sim_analysis.objectives import (
     calculate_carceral_equilibrium_score,
     carceral_objective,
+    final_wealth_objective,
 )
 
 from babylon.config.defines import GameDefines
@@ -65,3 +66,9 @@ def test_in_memory_result_carries_configured_horizon() -> None:
     result = runner_api.run(GameDefines(), max_ticks=1)
 
     assert result.extra["max_ticks"] == 1
+
+
+def test_final_wealth_objective_returns_the_normalized_terminal_value() -> None:
+    result = _early_death_result(extra={}).model_copy(update={"final_wealth": 123.5})
+
+    assert final_wealth_objective(result) == 123.5

@@ -13,7 +13,7 @@
 
 <!-- V4-BSL-ADDENDUM:START -->
 
-## v4 governing addendum — 2026-08-22
+## v4 governing addendum — amended 2026-09-01
 
 This addendum controls current architecture and authority claims. The original
 Program 27 investigation, diagrams, rulings, and evidence below remain the
@@ -29,13 +29,15 @@ historical record against their stated baseline.
 - D5/D16 phase-ordering status: implemented_executable_PER-17
 - PER-18 rollback and combined-world-hash status: implemented_current
 - PER-19 causal-composition and outcome-write-contract status: implemented_current
-- Persistence writer status: accepted_cutover_law
+- Persistence writer status: implemented_current_V2_only
+- PostgreSQL runtime status: PostgreSQL_17_only
+- PER-20 durable boundary status: implemented_current
 - PER-48 status: Done
 - PostgreSQL boundary ADR: ADR220_rust_owned_postgresql_persistence_boundary
 - Attributed membership identity status: implemented_current
 - Attributed membership payload status: planned_research_PER-44
 
-Constitution v4 governs the primitive as `D = (A, Ā, w, T, σ)`. The former
+Constitution v4.1.0 governs the primitive as `D = (A, Ā, w, T, σ)`. The former
 notation with `s` remains readable only as historical notation below. Article
 VIII reserves constitutional amendments for new mathematics. New content
 vocabulary instead uses its governed ceremony, schema, conformance evidence,
@@ -120,6 +122,79 @@ It carries no graph-element ID and no written value. Gate 3 owns the durable
 envelope and dirty subject/H3 identities; Gates 4 and 5 own the first governed
 external-event and intent allowance rows.
 
+### Amendment AJ finite material probability
+
+Amendment AJ and ADR248 add one closed mathematical kind subordinate to the
+dialectic: a finite material transition kernel
+`K : C -> D_f(Delta)`. `Delta` is one declared enum of bounded typed material
+effect bundles. A deterministic mechanic is the Dirac case. A kernel never
+ranges over an event name, historical outcome, winner, or terminal route.
+Rules at one schedule position keep their sequential composition law.
+
+BSL adds exact non-storable `Mass`, explicit `quantize-mass`, one direct
+`choose` per Mechanic rule, and one adjacent deterministic
+`:projects-kernel` Recognizer. The loader compiles those forms once into
+`FiniteKernelV1`, `KernelBranchV1`, and `FiniteProjectionV1`, retaining form
+paths and spans. The evaluator, read-only analysis and forecast APIs, and
+`bsl-ls` consume that typed product. No separate raw-form walker or
+compatibility grammar exists.
+
+```mermaid
+flowchart LR
+  SRC["BSL source"] --> LOAD["one typed content-set analysis"]
+  LOAD --> K["FiniteKernelV1"]
+  LOAD --> P["FiniteProjectionV1"]
+  K --> MASS["exact Mass evaluation"]
+  MASS --> ALLOC["2^64 ticket allocation"]
+  ALLOC --> DRAW["one private KernelRng::next_u64"]
+  DRAW --> APPLY["selected material branch"]
+  APPLY --> REC["real deterministic Recognizer"]
+  REC --> EVT["observational event"]
+  ALLOC --> FORECAST["exact preimage forecast"]
+  P --> REC
+  P --> FORECAST
+```
+
+Every branch mass evaluates before selection. The allocator uses exact floors,
+largest exact remainders, and enum-order tie-breaking to partition all `2^64`
+tickets. Only the selected branch body evaluates. Static fuel includes draw
+cost, every mass cost, and the maximum branch-body cost. Branches cannot emit
+or nest a choice. A shared cause uses one joint kernel; the language declares
+no implicit independence. A kernel that participates in a finite projection
+can write material state only through `update-node self`. Cross-node, edge,
+hyperedge, and graph-shape writes require one joint carrier kernel and refuse
+V1 enumeration.
+
+Event probability is the exact ticket measure of the deterministic
+recognizer's preimage. `EventLikelihoodV1` reports favorable enum outcomes and
+an integer numerator over fixed denominator `2^64`. The analyzer refuses an
+arbitrary recognizer, cross-sample join, sequence, conjunction, payload
+distribution, or whole-tick enumeration. It never samples or approximates.
+An event declaration and payload contain no probability.
+
+The author-visible `rng-draw` intrinsic is retired. `KernelRng` remains only
+the private realization seam. Its instance binds replay session and seed,
+tick, rule, sample, append-only slot, stable subject, and ordered active
+elements. One encounter emits a separate `ChoiceReceiptV1` containing every
+mass and ticket interval, the draw and selected enum member, and allocation and
+instance digests. A no-change outcome is still a realized choice and still has
+a receipt. Receipt observation cannot feed mechanics.
+
+`TickPayloadV2` binds ordered choice receipts. `CommittedTickEnvelopeV2` adds
+the `ChoiceReceipt` family between Event and Checkpoint, while the unchanged
+outer `TickContentHashV1` continues to bind the self-versioned payload digest.
+Graph-only identity remains graph-only. Committed event metadata adds emitting
+rule and an optional engine-derived choice-receipt reference. The live durable
+reader and writer are V2-only; no V1 decoder, adapter, alias, or fallback is
+authorized.
+
+`bsl-ls` advertises the Amendment AJ authoring slice: loader-owned exact
+diagnostics, contextual completion, hover, signature help, and semantic
+tokens. Hover shows canonical Mass and allocation or linked exact likelihood
+when the supplied scenario determines them; otherwise it says the value is
+state-dependent. Navigation, rename, formatting, actions, and the remaining
+PER-240 charter stay open.
+
 ### Durability and client boundary
 
 The Ratatui glyph and renderer rule in S-25 is retired. Bevy is the current
@@ -132,13 +207,18 @@ S-32's indefinite Python writer assignment and any diagram that repeats it have
 no live force. Graph, BSL, and tick adjudication remain database-free, and
 durability begins after adjudication. PER-48 is Done;
 `ADR220_rust_owned_postgresql_persistence_boundary` records the accepted
-one-way cutover. Python remains the sole live PostgreSQL writer before that
-cutover. Python migration and runtime-write entry points must be disabled before
-Rust assumes game-managed PostgreSQL connections, migrations, the typed tick
-transaction, hydration, H3 codecs, and compatibility views. Surviving Python
-data-build, API, AI, document, and CLI roles remain. Transition observers may
-read versioned views but cannot write or run DDL. This law does not claim that
-PER-20 has implemented the cutover.
+one-way cutover, and PER-20 implements it. Rust is the sole live game-managed
+PostgreSQL 17 authority. It owns game-managed connections, migrations, the
+typed V2 tick transaction, hydration, and H3 codecs. Its durable reader and
+writer are V2-only. Python retains its declared data-build, API, AI, document,
+optimization, and CLI periphery, but it has no game-state writer, transition
+reader, migration, DDL, or game-managed connection authority.
+
+Historical cutover rationale: before activation, Python was the sole live
+PostgreSQL writer, and its game-managed migration and runtime-write entry
+points had to be disabled before Rust assumed authority. That requirement
+governed the one-way transition, is now satisfied, and has no current runtime
+force.
 
 The current Rust graph carries base membership identity. Its attributed
 membership payload is empty, absent from canonical hashing, unwritten, and

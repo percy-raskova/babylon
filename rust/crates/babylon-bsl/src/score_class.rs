@@ -32,6 +32,8 @@ pub enum ScoreClass {
     /// A comparable scalar: `Int`, `Currency`, `Probability`, `Intensity`,
     /// `Coefficient` or `Real`.
     Scalar,
+    /// Exact finite-kernel Mass: deliberately not comparable.
+    Mass,
     /// `Bool` — the result type of every `<cond>`.
     Bool,
     /// A member of a closed enum.
@@ -81,6 +83,7 @@ pub struct ClassEnv<'a> {
 
 fn of_type(ty: &BslType) -> ScoreClass {
     match ty {
+        BslType::Mass => ScoreClass::Mass,
         BslType::Bool => ScoreClass::Bool,
         BslType::Enum(_) => ScoreClass::Enum,
         BslType::NodeSet(_) | BslType::EdgeSet(_) => ScoreClass::Set,
@@ -113,6 +116,7 @@ pub fn classify(expr: &SExpr, env: &ClassEnv<'_>) -> ScoreClass {
 
 fn classify_atom(atom: &Atom, env: &ClassEnv<'_>) -> ScoreClass {
     match atom {
+        Atom::Mass(_) => ScoreClass::Mass,
         Atom::Int(_) | Atom::Currency(_) | Atom::Scaled(_) => ScoreClass::Scalar,
         Atom::Bool(_) => ScoreClass::Bool,
         Atom::EnumRef { .. } => ScoreClass::Enum,

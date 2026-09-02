@@ -38,7 +38,7 @@ echo "Output dir: $AUDIO_OUTPUT_DIR"
 echo ""
 
 TEMP_WAV=$(mktemp --suffix=.wav)
-trap "rm -f $TEMP_WAV" EXIT
+trap 'rm -f "$TEMP_WAV"' EXIT
 
 # Store file list in array to avoid subshell issues
 mapfile -t MIDI_FILES < <(find "$MUSIC_DIR" -name "*.mid" -type f | sort)

@@ -119,7 +119,7 @@ run = """
 set -e
 mise install
 uv sync --extra ops --frozen
-uv run pre-commit install --hook-type commit-msg --hook-type pre-commit --hook-type pre-push
+uv run --frozen pre-commit install
 mise run db:up
 (cd rust && CARGO_BUILD_JOBS=4 cargo build -p babylon-persistence --bin babylon-runtime --locked)
 export PATH="$PWD/rust/target/debug:$PATH"
@@ -305,8 +305,8 @@ description = "PER-280 canonical H3 reader inventory: schema-qualified BIGINT re
 run = "uv run --frozen python tools/verify_h3_reader_cutover_v1.py"
 
 [tasks."check:rust-persistence-cutover"]
-description = "PER-281 one-way Rust persistence authority, storage, and Python-retirement contract"
-run = "uv run --frozen python tools/verify_rust_persistence_cutover_v1.py"
+description = "PER-311 active PostgreSQL 17 persistence V2 authority, envelope, and receipt contract"
+run = "uv run --frozen python tools/verify_rust_persistence_cutover_v2.py"
 
 [tasks."check:surface"]
 description = "Sentinel: __all__ vs its pinned baseline frozenset (public-surface baseline blindness gate)"
@@ -1149,8 +1149,8 @@ description = "Legacy local aggregate (same as check); hosted CI jobs use explic
 depends = ["check"]
 
 [tasks.hooks]
-description = "Install pre-commit hooks"
-run = "uv run pre-commit install --hook-type commit-msg --hook-type pre-commit --hook-type pre-push"
+description = "Install the configured pre-commit, commit-msg, and pre-push hooks"
+run = "uv run --frozen pre-commit install"
 
 [tasks."hooks:run"]
 description = "Run all pre-commit hooks on all files"
@@ -1276,7 +1276,7 @@ description = "Flush leaked test Postgres containers + anonymous volumes + build
 run = """
 {% raw %}
 echo "── leaked ephemeral postgis test containers (testcontainers pattern):"
-LEAKED=$(docker ps -a --filter ancestor=postgis/postgis:16-3.4-alpine --format '{{.Names}}' | grep -v '^babylon-' || true)
+LEAKED=$(docker ps -a --filter ancestor=postgis/postgis:17-3.5-alpine --format '{{.Names}}' | grep -v '^babylon-' || true)
 if [ -n "$LEAKED" ]; then
   echo "$LEAKED" | xargs docker rm -f
 else
@@ -1359,7 +1359,7 @@ uv run python tools/necropolis_viewer.py \
 # ── Rust client (the raster cutover, Amendment AC / ADR150) ──────────────────
 
 [tasks."rust:check-no-docs"]
-description = "Canonical non-documentation Rust gate: format:check + one workspace Clippy pass + one workspace test pass + the bsl-lint repo-relationship sentinel. Selected manifests opt into the existing pedantic boundary. This is the local/agent gate and the non-doc prefix of rust:check; sequential because one cargo target directory has one file lock."
+description = "Canonical non-documentation Rust gate: format:check + one workspace Clippy pass + one reported non-doctest pass + the preserved doctest pass + the bsl-lint repo-relationship sentinel. Selected manifests opt into the existing pedantic boundary. This is the local/agent gate and the non-doc prefix of rust:check; sequential because one cargo target directory has one file lock."
 dir = "rust"
 run = """
 set -e
@@ -1369,12 +1369,54 @@ cargo fmt --all -- --check
 # six formerly scoped pedantic packages inherit workspace lint policy from
 # their manifests, so this single pass preserves that package boundary.
 cargo clippy --workspace --all-targets --locked -- -D warnings -D clippy::cognitive_complexity
-cargo test --workspace --locked
+# nextest owns ordinary test execution and stable JUnit. It cannot execute
+# doctests, so the following Cargo leg is a distinct compile-fail/doc contract,
+# not a duplicate package test pass.
+python3 ../tools/rust_test_report.py run --profile ci --workspace
+cargo test --workspace --doc --locked
 # Explicit non-Clippy/test exception: bsl-lint checks repository relationships
 # (frozen citations, namespaces, authority, and non-authorability) that Cargo's
 # workspace compilation cannot express.
 cargo run -p bsl-lint --locked -- all
 """
+
+[tasks."rust:test"]
+description = "Run the complete non-doctest Rust workspace with compact agent JSON/Markdown and full JUnit"
+run = "python3 tools/rust_test_report.py run --profile ci --workspace"
+
+[tasks."rust:test:q"]
+description = "Run a scoped nextest selection with the same structured report; use: mise run rust:test:q -- -p <crate> -E '<filter>'"
+run = "python3 tools/rust_test_report.py run --profile ci --"
+
+[tasks."rust:test:failed"]
+description = "Rerun every failure identity in the explicit latest Rust report (no-op when green)"
+run = "python3 tools/rust_test_report.py rerun-failed"
+
+[tasks."rust:test:summary"]
+description = "Print the one-screen Markdown summary from reports/test-results/rust/latest.json"
+run = "python3 tools/rust_test_report.py summarize"
+
+[tasks."rust:test:inventory"]
+description = "Write stable nextest list JSON for Cargo/nextest parity audits without taxing every test run"
+run = "python3 tools/rust_test_report.py inventory"
+
+[tasks."rust:test:install-tools"]
+description = "Install the exact local Rust reporting tools and the coverage component for the pinned toolchain"
+run = """
+set -e
+if ! cargo nextest --version 2>/dev/null | grep -F 'cargo-nextest 0.9.143' >/dev/null; then
+  cargo install --locked --version 0.9.143 cargo-nextest
+fi
+if ! cargo llvm-cov --version 2>/dev/null | grep -F 'cargo-llvm-cov 0.9.0' >/dev/null; then
+  cargo install --locked --version 0.9.0 cargo-llvm-cov
+fi
+CHANNEL="$(sed -n 's/^channel = "\\(.*\\)"$/\\1/p' rust/rust-toolchain.toml)"
+rustup component add --toolchain "$CHANNEL" llvm-tools-preview
+"""
+
+[tasks."rust:coverage"]
+description = "Run one separately instrumented nextest workspace pass and emit advisory JSON/LCOV coverage receipts"
+run = "python3 tools/rust_test_report.py coverage"
 
 [tasks."ci:rust"]
 description = "Exact hosted Rust CI job: reuse rust:check-no-docs, then build workspace documentation with warnings denied. Do not run locally when repository guidance prohibits documentation generation."

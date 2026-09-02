@@ -633,7 +633,7 @@ fn check_one_verbs_field_inits(
 /// The closed terminal sets §2 fixes, and the arities its productions do.
 /// `min`/`max` are operand counts **after** an optional `:as <symbol>` is
 /// stripped; `usize::MAX` means "no upper bound" (a variadic body).
-const ARITIES: [(&str, usize, usize, &str); 20] = [
+const ARITIES: [(&str, usize, usize, &str); 21] = [
     ("nodes", 1, 2, "1 (or 2 with a predicate)"),
     ("edges", 1, 2, "1 (or 2 with a predicate)"),
     ("hyperedges", 1, 2, "1 (or 2 with a predicate)"),
@@ -649,6 +649,7 @@ const ARITIES: [(&str, usize, usize, &str); 20] = [
     ("domain", 1, 1, "exactly 1"),
     ("if", 3, 3, "exactly 3"),
     ("not", 1, 1, "exactly 1"),
+    ("quantize-mass", 1, 1, "exactly 1"),
     ("forall", 2, 2, "exactly 2"),
     ("exists", 1, 2, "1 (or 2 with a body)"),
     ("select-max", 2, 2, "exactly 2"),

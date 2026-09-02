@@ -1,14 +1,25 @@
-//! §6.1's exact server capabilities (the wave-1 plan,
-//! `docs/superpowers/plans/2026-08-17-652-bsl-ls.md`): what `initialize`
-//! advertises. This module's own test asserts the serialized JSON against
-//! the spec's literal, so any future accidental capability drift shows up
-//! as a failing diff, not a silent behavior change.
+//! The exact server capabilities `initialize` advertises: the diagnostic
+//! baseline plus the finite-probability authoring surface. This module's own
+//! test pins the serialized JSON so accidental capability drift is a failing
+//! diff, not a silent behavior change.
 
 use lsp_types::{
-    DiagnosticOptions, DiagnosticServerCapabilities, OneOf, ServerCapabilities,
-    TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
-    WorkDoneProgressOptions, WorkspaceFoldersServerCapabilities, WorkspaceServerCapabilities,
+    CompletionOptions, DiagnosticOptions, DiagnosticServerCapabilities, HoverProviderCapability,
+    OneOf, SemanticTokenModifier, SemanticTokenType, SemanticTokensFullOptions,
+    SemanticTokensLegend, SemanticTokensOptions, SemanticTokensServerCapabilities,
+    ServerCapabilities, SignatureHelpOptions, TextDocumentSyncCapability, TextDocumentSyncKind,
+    TextDocumentSyncOptions, WorkDoneProgressOptions, WorkspaceFoldersServerCapabilities,
+    WorkspaceServerCapabilities,
 };
+
+/// Stable semantic-token type indices returned by the probability authoring
+/// surface. Changing this order changes every token response, so the exact
+/// serialized legend is pinned below.
+pub const TOKEN_TYPE_KEYWORD: u32 = 0;
+pub const TOKEN_TYPE_FUNCTION: u32 = 1;
+pub const TOKEN_TYPE_NUMBER: u32 = 2;
+pub const TOKEN_TYPE_ENUM_MEMBER: u32 = 3;
+pub const TOKEN_TYPE_VARIABLE: u32 = 4;
 
 /// The [`ServerCapabilities`] `initialize` advertises.
 ///
@@ -47,6 +58,34 @@ pub fn server_capabilities() -> ServerCapabilities {
                 work_done_progress: None,
             },
         })),
+        completion_provider: Some(CompletionOptions {
+            resolve_provider: Some(false),
+            trigger_characters: Some(vec!["(".to_owned(), ":".to_owned(), " ".to_owned()]),
+            ..CompletionOptions::default()
+        }),
+        hover_provider: Some(HoverProviderCapability::Simple(true)),
+        signature_help_provider: Some(SignatureHelpOptions {
+            trigger_characters: Some(vec!["(".to_owned(), " ".to_owned()]),
+            retrigger_characters: Some(vec![" ".to_owned()]),
+            work_done_progress_options: WorkDoneProgressOptions::default(),
+        }),
+        semantic_tokens_provider: Some(SemanticTokensServerCapabilities::SemanticTokensOptions(
+            SemanticTokensOptions {
+                work_done_progress_options: WorkDoneProgressOptions::default(),
+                legend: SemanticTokensLegend {
+                    token_types: vec![
+                        SemanticTokenType::KEYWORD,
+                        SemanticTokenType::FUNCTION,
+                        SemanticTokenType::NUMBER,
+                        SemanticTokenType::ENUM_MEMBER,
+                        SemanticTokenType::VARIABLE,
+                    ],
+                    token_modifiers: vec![SemanticTokenModifier::READONLY],
+                },
+                range: None,
+                full: Some(SemanticTokensFullOptions::Bool(true)),
+            },
+        )),
         workspace: Some(WorkspaceServerCapabilities {
             workspace_folders: Some(WorkspaceFoldersServerCapabilities {
                 supported: Some(true),
@@ -62,13 +101,28 @@ pub fn server_capabilities() -> ServerCapabilities {
 mod tests {
     use super::server_capabilities;
 
-    /// Golden JSON, transcribed verbatim from plan §6.1 — this is the
-    /// regression test for capability drift, not just a smoke test.
+    /// Exact golden JSON for capability drift, not just a smoke test.
     #[test]
-    fn matches_section_6_1_exactly() {
+    fn capability_advertisement_is_pinned_exactly() {
         let value = serde_json::to_value(server_capabilities()).expect("capabilities serialize");
         let expected = serde_json::json!({
             "textDocumentSync": { "openClose": true, "change": 1 },
+            "hoverProvider": true,
+            "completionProvider": {
+                "resolveProvider": false,
+                "triggerCharacters": ["(", ":", " "]
+            },
+            "signatureHelpProvider": {
+                "triggerCharacters": ["(", " "],
+                "retriggerCharacters": [" "]
+            },
+            "semanticTokensProvider": {
+                "legend": {
+                    "tokenTypes": ["keyword", "function", "number", "enumMember", "variable"],
+                    "tokenModifiers": ["readonly"]
+                },
+                "full": true
+            },
             "diagnosticProvider": {
                 "identifier": "bsl",
                 "interFileDependencies": true,

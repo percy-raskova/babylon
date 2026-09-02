@@ -40,6 +40,7 @@ fn database_checksum_bytes_require_the_exact_sha256_width() {
         .expect("32 database bytes are one SHA-256 value");
     database_bytes[0] = 0;
 
+    assert_eq!(database_bytes[0], 0);
     assert_eq!(checksum.as_bytes(), &[0x5a; MIGRATION_CHECKSUM_BYTES]);
     assert_eq!(
         MigrationChecksum::from_database_bytes(&[0; MIGRATION_CHECKSUM_BYTES - 1]),

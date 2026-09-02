@@ -236,8 +236,11 @@ fn verify_connection_failure_redacts_credentials(cohort: &H3ReferenceCohort) {
     match &error {
         H3ReferenceInstallError::Database {
             operation: H3ReferenceInstallOperation::Connect,
-            diagnostic,
-        } => assert!(diagnostic.server().is_none()),
+            diagnostic: Some(diagnostic),
+        } => assert_eq!(
+            diagnostic.classification(),
+            babylon_persistence::PostgresFailureClassV1::Reachability
+        ),
         _ => panic!("connection refusal must remain a redacted typed database error"),
     }
     assert!(!format!("{error:?}").contains(PASSWORD));

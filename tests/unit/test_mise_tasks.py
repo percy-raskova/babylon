@@ -16,6 +16,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 MISE_TOML = REPOSITORY_ROOT / ".mise.toml"
 PRE_COMMIT_CONFIG = REPOSITORY_ROOT / ".pre-commit-config.yaml"
 CI_WORKFLOW = REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml"
+RUST_NEXTEST_CONFIG = REPOSITORY_ROOT / "rust" / ".config" / "nextest.toml"
 SIMULATION_TASKS_TOML = REPOSITORY_ROOT / ".mise" / "tasks" / "simulation.toml"
 ANALYSIS_TASKS_TOML = REPOSITORY_ROOT / ".mise" / "tasks" / "analysis.toml"
 DEVTOOLS_TASKS_TOML = REPOSITORY_ROOT / ".mise" / "tasks" / "devtools.toml"
@@ -71,6 +72,24 @@ def _local_hook(hook_id: str) -> dict[str, object]:
         for hook in repository["hooks"]
         if hook["id"] == hook_id
     )
+
+
+def _pre_commit_config() -> dict[str, object]:
+    """Return the parsed repository pre-commit configuration."""
+    config = yaml.safe_load(PRE_COMMIT_CONFIG.read_text())
+    assert isinstance(config, dict)
+    return config
+
+
+def _tracked_paths() -> tuple[str, ...]:
+    """Return the tracked path inventory used by hook-selector contracts."""
+    completed = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=REPOSITORY_ROOT,
+        check=True,
+        capture_output=True,
+    )
+    return tuple(path.decode() for path in completed.stdout.split(b"\0") if path)
 
 
 @pytest.fixture(scope="module")
@@ -230,6 +249,7 @@ class TestMiseTaskDiscoverability:
             "analysis:monte-carlo",
             "analysis:optuna",
             "analysis:dashboard",
+            "analysis:campaign",
             "analysis:sensitivity",
             "analysis:morris",
             "analysis:sobol",
@@ -244,7 +264,16 @@ class TestMiseTaskDiscoverability:
             mise_tasks["analysis:monte-carlo"]
         )
         assert _task_run(mise_tasks["analysis:dashboard"]) == (
-            "uv run optuna-dashboard sqlite:///optuna.db"
+            'uv run optuna-dashboard "sqlite:///${usage_database}"'
+        )
+        assert 'help="Local SQLite database path" default="optuna.db"' in str(
+            mise_tasks["analysis:dashboard"]["usage"]
+        )
+        campaign = mise_tasks["analysis:campaign"]
+        assert 'default="weekly"' in str(campaign["usage"])
+        assert _task_run(campaign) == (
+            "uv run python -m tools.devtools.reference_analysis_campaign "
+            '--profile "${usage_profile}"'
         )
         optuna_usage = mise_tasks["analysis:optuna"]["usage"]
         assert isinstance(optuna_usage, str)
@@ -271,6 +300,10 @@ class TestMiseTaskDiscoverability:
             task["usage"]
         )
         assert (
+            'arg "[database_scope]" help="Database attribution scope: shared or exclusive" '
+            'default="shared"'
+        ) in str(task["usage"])
+        assert (
             "CARGO_BUILD_JOBS=4 cargo build -p babylon-persistence --bin babylon-runtime --locked"
         ) in run
         assert "cargo build --workspace" not in run
@@ -278,6 +311,7 @@ class TestMiseTaskDiscoverability:
             "python3 tools/devtools/sim_report.py "
             "--runtime rust/target/debug/babylon-runtime "
             "--ticks ${usage_ticks} --timeout-seconds ${usage_timeout_seconds} "
+            "--database-scope ${usage_database_scope} "
             "--output-root reports/sim-runs"
         ) in run
         assert "export BABYLON_RUNTIME_DSN=" in run
@@ -399,20 +433,92 @@ def test_fixing_is_explicit_and_sequential() -> None:
     ]
 
 
-def test_rust_pre_push_uses_no_docs_gate_for_every_gate_definition() -> None:
-    """The local hook must obey the no-documentation rule and see task changes."""
-    entry = str(_local_hook("rust-full-gate")["entry"])
+def test_pre_commit_installs_every_governed_git_hook_by_default() -> None:
+    """A plain install must not silently omit commit-message or push gates."""
+    config = _pre_commit_config()
+    tasks = _tasks()
 
-    assert "mise run rust:check-no-docs" in entry
+    assert config["default_install_hook_types"] == [
+        "pre-commit",
+        "commit-msg",
+        "pre-push",
+    ]
+    assert tasks["hooks"]["run"] == "uv run --frozen pre-commit install"
+    assert "uv run --frozen pre-commit install" in str(tasks["setup"]["run"])
+
+
+def test_pre_commit_file_selectors_resolve_to_tracked_paths() -> None:
+    """A deleted estate must not leave hooks that can never execute."""
+    config = _pre_commit_config()
+    tracked_paths = _tracked_paths()
+    unresolved: list[str] = []
+
+    for repository in config["repos"]:
+        for hook in repository["hooks"]:
+            pattern = hook.get("files")
+            if pattern is not None and not any(
+                re.search(str(pattern), path) for path in tracked_paths
+            ):
+                unresolved.append(str(hook["id"]))
+
+    assert unresolved == []
+
+
+def test_pre_commit_uses_meta_guards_against_future_selector_drift() -> None:
+    """Pre-commit's own cheap policy checks must guard the hook estate."""
+    config = _pre_commit_config()
+    meta = next(repository for repository in config["repos"] if repository["repo"] == "meta")
+
+    assert [hook["id"] for hook in meta["hooks"]] == [
+        "check-hooks-apply",
+        "check-useless-excludes",
+    ]
+
+
+def test_retired_cockpit_hooks_are_absent() -> None:
+    """The Bevy cutover must not leave an inert Node hook environment."""
+    config = _pre_commit_config()
+    hooks = [hook for repository in config["repos"] for hook in repository["hooks"]]
+
+    assert {
+        "prettier",
+        "cockpit-typecheck",
+        "cockpit-eslint",
+        "cockpit-vitest",
+    }.isdisjoint(str(hook["id"]) for hook in hooks)
+    for hook in hooks:
+        executable_policy = " ".join(
+            str(hook.get(field, "")) for field in ("entry", "files", "exclude")
+        )
+        assert "src/frontend" not in executable_policy
+
+
+def test_rust_pre_push_uses_exact_push_range_for_every_gate_definition() -> None:
+    """The local hook must preserve deleted paths without fetching or building docs."""
+    hook = _local_hook("rust-full-gate")
+    entry = str(hook["entry"])
+
+    assert entry == "python3 tools/run_pre_push_gate.py rust-full-gate"
+    assert hook["pass_filenames"] is False
+    assert hook["always_run"] is True
+    assert "files" not in hook
+    assert "git fetch" not in entry
     assert "mise run ci:rust" not in entry
-    assert (
-        'git diff --name-only "${base}..HEAD" -- rust/ .mise.toml .pre-commit-config.yaml' in entry
-    )
-    assert "git status --porcelain -- rust/ .mise.toml .pre-commit-config.yaml" in entry
+
+
+def test_bsl_repo_sentinels_cover_their_non_rust_inputs() -> None:
+    """Governance and retired-authority changes must run the Rust-owned sentinels."""
+    hook = _local_hook("bsl-repo-sentinels")
+
+    assert hook["entry"] == "python3 tools/run_pre_push_gate.py bsl-repo-sentinels"
+    assert hook["pass_filenames"] is False
+    assert hook["always_run"] is True
+    assert "files" not in hook
+    assert hook["stages"] == ["pre-push"]
 
 
 def test_rust_gate_is_single_pass_with_explicit_repo_sentinel_exception() -> None:
-    """The canonical gate must not rerun package tests or Clippy passes."""
+    """The canonical gate has one non-doctest pass plus the preserved doctest proof."""
     script = str(_tasks()["rust:check-no-docs"]["run"])
     commands = [line for line in script.splitlines() if line.startswith("cargo ")]
 
@@ -420,12 +526,53 @@ def test_rust_gate_is_single_pass_with_explicit_repo_sentinel_exception() -> Non
         "cargo clippy --workspace --all-targets --locked -- "
         "-D warnings -D clippy::cognitive_complexity"
     ]
+    assert "python3 ../tools/rust_test_report.py run --profile ci --workspace" in script
     assert [line for line in commands if line.startswith("cargo test ")] == [
-        "cargo test --workspace --locked"
+        "cargo test --workspace --doc --locked"
     ]
     assert [line for line in commands if line.startswith("cargo run ")] == [
         "cargo run -p bsl-lint --locked -- all"
     ]
+
+
+def test_rust_reporter_tasks_and_nextest_profile_are_agent_first() -> None:
+    """Rust reports must be complete on failure without flooding agent context."""
+    tasks = _tasks()
+    assert {
+        "rust:test",
+        "rust:test:q",
+        "rust:test:failed",
+        "rust:test:summary",
+        "rust:test:inventory",
+        "rust:test:install-tools",
+        "rust:coverage",
+    } <= set(tasks)
+
+    config = tomllib.loads(RUST_NEXTEST_CONFIG.read_text())
+    assert config["nextest-version"]["required"] == "0.9.143"
+    profile = config["profile"]["ci"]
+    assert profile["fail-fast"] is False
+    assert profile["retries"] == 0
+    assert profile["failure-output"] == "final"
+    assert profile["success-output"] == "never"
+    assert profile["status-level"] == "fail"
+    assert profile["final-status-level"] == "slow"
+    assert profile["slow-timeout"] == "60s"
+    assert profile["junit"] == {
+        "path": "junit.xml",
+        "report-name": "babylon-rust",
+        "store-success-output": False,
+        "store-failure-output": True,
+        "report-skipped": "ignored",
+    }
+
+    assert "--version 0.9.143 cargo-nextest" in str(tasks["rust:test:install-tools"]["run"])
+    assert "--version 0.9.0 cargo-llvm-cov" in str(tasks["rust:test:install-tools"]["run"])
+    install_script = str(tasks["rust:test:install-tools"]["run"])
+    assert "rust/rust-toolchain.toml" in install_script
+    assert 'rustup component add --toolchain "$CHANNEL" llvm-tools-preview' in install_script
+    assert "rust_test_report.py summarize" in str(tasks["rust:test:summary"]["run"])
+    assert "rust_test_report.py rerun-failed" in str(tasks["rust:test:failed"]["run"])
 
 
 def test_single_clippy_pass_preserves_the_existing_pedantic_package_boundary() -> None:

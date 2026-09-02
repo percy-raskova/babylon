@@ -11,7 +11,7 @@ use babylon_kernel::tick_content_hash::RefDigestV1;
 use babylon_kernel::ContentDigest;
 use babylon_tick::replay_session::ReplayTickSession;
 
-use crate::runtime::RustPersistenceRuntimeErrorV1;
+use crate::runtime::RustPersistenceRuntimeErrorV2;
 use crate::semantic_codec;
 
 /// Exact bounded mechanics and reference-manifest bytes needed to rebuild a session.
@@ -39,7 +39,7 @@ impl FoundationContentBundleV1 {
         rule_source: &str,
         defines: &[u8],
         reference_manifest: &[u8],
-    ) -> Result<Self, RustPersistenceRuntimeErrorV1> {
+    ) -> Result<Self, RustPersistenceRuntimeErrorV2> {
         let canonical_bytes = semantic_codec::encode_foundation_content(
             scenario_source,
             prelude_source,
@@ -48,12 +48,12 @@ impl FoundationContentBundleV1 {
             reference_manifest,
         )?;
         let (_, rules) =
-            split_content(rule_source).map_err(|_| RustPersistenceRuntimeErrorV1::ReplaySource)?;
-        let rule_forms = rules.into_iter().map(|(_, form)| form).collect::<Vec<_>>();
+            split_content(rule_source).map_err(|_| RustPersistenceRuntimeErrorV2::ReplaySource)?;
+        let rule_forms = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
         let content_digest = ContentDigest {
             defines_hash: sha256_of(defines),
             rules_hash: rules_hash_of(&rule_forms)
-                .map_err(|_| RustPersistenceRuntimeErrorV1::ReplaySource)?,
+                .map_err(|_| RustPersistenceRuntimeErrorV2::ReplaySource)?,
         };
         let reference_digest = RefDigestV1::from_bytes(sha256_of(reference_manifest));
         let scenario_source_bytes = copy_bytes(
@@ -153,18 +153,18 @@ impl CampaignFoundationV1 {
     pub fn capture(
         session: &ReplayTickSession<HypergraphStore>,
         content_bundle: FoundationContentBundleV1,
-    ) -> Result<Self, RustPersistenceRuntimeErrorV1> {
+    ) -> Result<Self, RustPersistenceRuntimeErrorV2> {
         if session.completed_tick() != 0 {
-            return Err(RustPersistenceRuntimeErrorV1::FoundationAfterTickZero {
+            return Err(RustPersistenceRuntimeErrorV2::FoundationAfterTickZero {
                 actual: session.completed_tick(),
             });
         }
         let stable_graph = session
             .stable_graph_state()
-            .map_err(|_| RustPersistenceRuntimeErrorV1::ReplaySource)?;
+            .map_err(|_| RustPersistenceRuntimeErrorV2::ReplaySource)?;
         let world_registers = session
             .world_registers()
-            .map_err(|_| RustPersistenceRuntimeErrorV1::ReplaySource)?;
+            .map_err(|_| RustPersistenceRuntimeErrorV2::ReplaySource)?;
         let stable_graph_bytes = copy_bytes(
             "campaign foundation stable graph bytes",
             stable_graph.canonical_bytes(),
@@ -183,17 +183,17 @@ impl CampaignFoundationV1 {
         )?;
         let replay_session_identity =
             ReplaySessionIdV1::try_from(session.session_identity().as_bytes())
-                .map_err(|_| RustPersistenceRuntimeErrorV1::ReplaySource)?;
+                .map_err(|_| RustPersistenceRuntimeErrorV2::ReplaySource)?;
         let rng_seed = session.rng_seed();
         let content_digest = session.content_digest().clone();
         let reference_digest = session.reference_digest();
         if content_bundle.content_digest() != &content_digest
             || content_bundle.reference_digest() != reference_digest
         {
-            return Err(RustPersistenceRuntimeErrorV1::ReplaySource);
+            return Err(RustPersistenceRuntimeErrorV2::ReplaySource);
         }
         let replay_session_text = std::str::from_utf8(replay_session_identity.as_bytes())
-            .map_err(|_| RustPersistenceRuntimeErrorV1::ReplaySource)?;
+            .map_err(|_| RustPersistenceRuntimeErrorV2::ReplaySource)?;
         let canonical_bytes = semantic_codec::encode_foundation(
             &stable_graph_bytes,
             &world_register_bytes,
@@ -240,7 +240,7 @@ impl CampaignFoundationV1 {
         defines_bytes: &[u8],
         reference_manifest: &[u8],
         expected_foundation_sha256: [u8; 32],
-    ) -> Result<Self, RustPersistenceRuntimeErrorV1> {
+    ) -> Result<Self, RustPersistenceRuntimeErrorV2> {
         let content_bundle = FoundationContentBundleV1::try_new(
             scenario_source,
             prelude_source,
@@ -256,17 +256,17 @@ impl CampaignFoundationV1 {
         if content_bundle.content_digest() != &content_digest
             || content_bundle.reference_digest() != reference_digest
         {
-            return Err(RustPersistenceRuntimeErrorV1::ReplaySource);
+            return Err(RustPersistenceRuntimeErrorV2::ReplaySource);
         }
         let replay_session_identity = ReplaySessionIdV1::try_from(replay_session_identity)
-            .map_err(|_| RustPersistenceRuntimeErrorV1::ReplaySource)?;
+            .map_err(|_| RustPersistenceRuntimeErrorV2::ReplaySource)?;
         let canonical_bytes = semantic_codec::encode_foundation(
             &stable_graph_bytes,
             &world_register_bytes,
             &resolver_manifest_bytes,
             &prepared_environment_bytes,
             std::str::from_utf8(replay_session_identity.as_bytes())
-                .map_err(|_| RustPersistenceRuntimeErrorV1::ReplaySource)?,
+                .map_err(|_| RustPersistenceRuntimeErrorV2::ReplaySource)?,
             rng_seed,
             &content_digest.defines_hash,
             &content_digest.rules_hash,
@@ -274,7 +274,7 @@ impl CampaignFoundationV1 {
             content_bundle.canonical_bytes(),
         )?;
         if sha256_of(&canonical_bytes) != expected_foundation_sha256 {
-            return Err(RustPersistenceRuntimeErrorV1::ReplaySource);
+            return Err(RustPersistenceRuntimeErrorV2::ReplaySource);
         }
         Ok(Self {
             stable_graph_bytes,
@@ -354,12 +354,12 @@ impl CampaignFoundationV1 {
 fn copy_bytes(
     field: &'static str,
     source: &[u8],
-) -> Result<Vec<u8>, RustPersistenceRuntimeErrorV1> {
+) -> Result<Vec<u8>, RustPersistenceRuntimeErrorV2> {
     let mut bytes = Vec::new();
     bytes
         .try_reserve_exact(source.len())
         .map_err(
-            |_: TryReserveError| RustPersistenceRuntimeErrorV1::Allocation {
+            |_: TryReserveError| RustPersistenceRuntimeErrorV2::Allocation {
                 field,
                 requested: source.len(),
             },

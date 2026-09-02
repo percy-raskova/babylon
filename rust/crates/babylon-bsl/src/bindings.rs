@@ -86,6 +86,15 @@ pub struct BindingVocabulary {
     pub fields: HashSet<String>,
     /// Defines-environment coefficient keys.
     pub consts: HashSet<String>,
+    /// The exact subset of `consts` declared by a `p`-suffixed
+    /// [`crate::reader::ScaledKind::Probability`] literal.
+    ///
+    /// `Value::Real` deliberately erases the scaled literal kind at
+    /// evaluation time. Retaining this declaration identity lets later
+    /// governed boundaries distinguish an authored Probability from an
+    /// Intensity or Coefficient with the same numeric value without
+    /// inferring a type from that value.
+    pub probability_consts: HashSet<String>,
     /// Registered graph-level metric names.
     pub metrics: HashSet<String>,
 }
@@ -239,7 +248,7 @@ fn malformed(message: impl Into<String>) -> BindingError {
 fn is_literal(atom: &Atom) -> bool {
     matches!(
         atom,
-        Atom::Int(_) | Atom::Currency(_) | Atom::Scaled(_) | Atom::Bool(_)
+        Atom::Int(_) | Atom::Currency(_) | Atom::Mass(_) | Atom::Scaled(_) | Atom::Bool(_)
     )
 }
 
@@ -702,6 +711,7 @@ mod tests {
         BindingVocabulary {
             fields: HashSet::from(["social-class/wealth".to_owned()]),
             consts: HashSet::from(["survival/subsistence-floor".to_owned()]),
+            probability_consts: HashSet::new(),
             metrics: HashSet::from(["mean-tension".to_owned()]),
         }
     }

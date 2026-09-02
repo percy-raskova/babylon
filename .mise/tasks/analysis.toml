@@ -71,8 +71,14 @@ uv run python -m tools.devtools.sim_analysis bayesian \
 """
 
 ["analysis:dashboard"]
-description = "Launch the Optuna Dashboard for the local analysis database"
-run = "uv run optuna-dashboard sqlite:///optuna.db"
+description = "Launch the Optuna Dashboard for a local SQLite study, including a campaign study.sqlite3"
+usage = 'arg "[database]" help="Local SQLite database path" default="optuna.db"'
+run = 'uv run optuna-dashboard "sqlite:///${usage_database}"'
+
+["analysis:campaign"]
+description = "Generate a bounded, non-authoritative frozen-Python reference-analysis report"
+usage = 'arg "[profile]" help="Exact workload profile: weekly or full" default="weekly"'
+run = 'uv run python -m tools.devtools.reference_analysis_campaign --profile "${usage_profile}"'
 
 ["analysis:sensitivity"]
 description = "Screen 8 curated parameters with Morris, then run Sobol on its top 4"

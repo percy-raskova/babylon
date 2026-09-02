@@ -23,6 +23,7 @@ MISE_CONFIG = REPO_ROOT / ".mise.toml"
 ANALYSIS_TASKS_CONFIG = REPO_ROOT / ".mise" / "tasks" / "analysis.toml"
 WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
 ACTIONS_DIR = REPO_ROOT / ".github" / "actions"
+HOSTED_RUNTIME_DSN = "dbname=babylon_test host=127.0.0.1 port=5433 user=test password=test"
 
 
 def _write_executable(path: Path, content: str) -> None:
@@ -277,6 +278,86 @@ def test_scheduled_failure_artifacts_survive_failure() -> None:
     assert str(upload.get("if", "")) == "always()"
 
 
+def test_rust_ci_installs_and_retains_pinned_agent_reports() -> None:
+    """The blocking Rust gate must publish exact-head evidence even when red."""
+    workflow = yaml.safe_load((WORKFLOWS_DIR / "ci.yml").read_text())
+    steps = workflow["jobs"]["rust-gate"]["steps"]
+    install = next(step for step in steps if step.get("name") == "Install Rust test reporter")
+    upload = next(step for step in steps if step.get("name") == "Upload Rust test reports")
+
+    assert install["uses"] == ("taiki-e/install-action@1ed6d7be6168f6c9046541087ff549b6bc581fdf")
+    assert install["with"] == {"tool": "cargo-nextest@0.9.143", "fallback": "none"}
+    assert upload["if"] == "always()"
+    assert upload["uses"].startswith("actions/upload-artifact@")
+    assert upload["with"] == {
+        "name": "rust-test-results-${{ github.sha }}",
+        "path": "reports/test-results/rust/",
+        "retention-days": 14,
+        "if-no-files-found": "error",
+    }
+
+
+def test_weekly_rust_coverage_is_advisory_and_single_run() -> None:
+    """Coverage gets retained evidence without taxing or redefining the PR gate."""
+    workflow = yaml.safe_load((WORKFLOWS_DIR / "weekly-rust-coverage.yml").read_text())
+    triggers = workflow.get("on", workflow.get(True))
+    assert triggers["schedule"] == [{"cron": "0 9 * * 4"}]
+    assert "workflow_dispatch" in triggers
+
+    job = workflow["jobs"]["rust-coverage"]
+    steps = job["steps"]
+    checkout = next(
+        step for step in steps if str(step.get("uses", "")).startswith("actions/checkout@")
+    )
+    install = next(step for step in steps if step.get("name") == "Install Rust reporting tools")
+    run = next(step for step in steps if step.get("name") == "Generate Rust coverage receipts")
+    upload = next(step for step in steps if step.get("name") == "Upload Rust coverage receipts")
+
+    assert checkout["with"]["ref"] == "dev"
+    assert install["uses"] == ("taiki-e/install-action@1ed6d7be6168f6c9046541087ff549b6bc581fdf")
+    assert install["with"] == {
+        "tool": "cargo-nextest@0.9.143,cargo-llvm-cov@0.9.0",
+        "fallback": "none",
+    }
+    assert run["run"] == "mise run rust:coverage"
+    assert "fail-under" not in run["run"]
+    assert upload["if"] == "always()"
+    assert upload["with"]["path"] == "reports/test-results/rust-coverage/"
+
+
+def test_rust_persistence_workflow_dsns_use_a_literal_loopback() -> None:
+    """Rust's local-target guard must accept every hosted workflow DSN.
+
+    Keep the hosted value exact instead of duplicating tokio-postgres parsing in
+    Python. A deliberate DSN change must update this contract alongside the
+    Rust guard.
+    """
+    runtime_dsns: list[tuple[Path, str]] = []
+    for path in _workflow_paths():
+        workflow = yaml.safe_load(path.read_text())
+        assert isinstance(workflow, dict), path
+        jobs = workflow.get("jobs") or {}
+        assert isinstance(jobs, dict), path
+        environments = [workflow.get("env") or {}]
+        for job in jobs.values():
+            assert isinstance(job, dict), path
+            steps = job.get("steps") or []
+            assert isinstance(steps, list), path
+            environments.append(job.get("env") or {})
+            for step in steps:
+                assert isinstance(step, dict), path
+                environments.append(step.get("env") or {})
+
+        for environment in environments:
+            assert isinstance(environment, dict), path
+            if "BABYLON_RUNTIME_DSN" in environment:
+                runtime_dsns.append((path, str(environment["BABYLON_RUNTIME_DSN"])))
+
+    assert runtime_dsns
+    for path, dsn in runtime_dsns:
+        assert dsn == HOSTED_RUNTIME_DSN, path
+
+
 def test_analysis_sweep_task_has_a_configurable_finite_tick_budget() -> None:
     """The Python analysis sweep stays bounded outside the Rust sim namespace."""
     task = tomllib.loads(ANALYSIS_TASKS_CONFIG.read_text())["analysis:sweep"]
@@ -287,21 +368,60 @@ def test_analysis_sweep_task_has_a_configurable_finite_tick_budget() -> None:
 
 
 def test_weekly_rust_report_is_scoped_to_the_michigan_persistence_slice() -> None:
-    """The scheduled artifact observes the committed embedded Rust slice."""
+    """The scheduled artifact diagnoses the committed embedded Rust slice."""
     weekly_sim = yaml.safe_load((WORKFLOWS_DIR / "weekly-sim-artifacts.yml").read_text())
     job = weekly_sim["jobs"]["sim-artifacts"]
     steps = job["steps"]
     report = next(
-        step for step in steps if step.get("name") == "Generate Rust Michigan persistence report"
+        step for step in steps if step.get("name") == "Generate Rust Michigan diagnostic report"
     )
     upload = next(
         step for step in steps if str(step.get("uses", "")).startswith("actions/upload-artifact@")
     )
 
     assert job["timeout-minutes"] == 60
-    assert report["run"] == "mise run sim:report 520 3000"
+    checkout = next(
+        step for step in steps if str(step.get("uses", "")).startswith("actions/checkout@")
+    )
+    assert checkout["with"]["ref"] == "dev"
+    assert report["run"] == "mise run sim:report 520 3000 exclusive"
     assert any(step.get("uses") == "./.github/actions/bootstrap-persistence" for step in steps)
     assert any(step.get("uses") == "./.github/actions/postgres-up" for step in steps)
     assert any(step.get("run") == "mise run db:bootstrap" for step in steps)
     assert str(upload.get("if", "")) == "always()"
+    assert str(upload["with"]["name"]).startswith("rust-michigan-simulation-diagnostics-")
     assert upload["with"]["path"] == "reports/sim-runs/"
+
+
+def test_frozen_reference_campaign_is_separate_bounded_and_non_authoritative() -> None:
+    """The Python campaign cannot masquerade as the authoritative Rust report."""
+    workflow = yaml.safe_load((WORKFLOWS_DIR / "weekly-reference-analysis.yml").read_text())
+    job = workflow["jobs"]["reference-analysis"]
+    steps = job["steps"]
+    generate = next(
+        step
+        for step in steps
+        if step.get("name") == "Generate frozen Python reference-analysis artifacts"
+    )
+    upload = next(
+        step for step in steps if str(step.get("uses", "")).startswith("actions/upload-artifact@")
+    )
+
+    assert job["timeout-minutes"] == 60
+    checkout = next(
+        step for step in steps if str(step.get("uses", "")).startswith("actions/checkout@")
+    )
+    assert checkout["with"]["ref"] == "dev"
+    assert any(step.get("uses") == "./.github/actions/bootstrap-python" for step in steps)
+    assert not any(step.get("uses") == "./.github/actions/bootstrap-persistence" for step in steps)
+    assert not any(step.get("uses") == "./.github/actions/postgres-up" for step in steps)
+    assert "weekly|full" in generate["run"]
+    assert 'mise run analysis:campaign -- "$REFERENCE_ANALYSIS_PROFILE"' in generate["run"]
+    assert str(upload.get("if", "")) == "always()"
+    assert upload["with"]["path"] == "reports/frozen-reference-analysis/"
+    assert upload["with"]["retention-days"] == 90
+
+    rendered = (WORKFLOWS_DIR / "weekly-reference-analysis.yml").read_text()
+    assert "BABYLON_RUNTIME_DSN" not in rendered
+    assert "db:bootstrap" not in rendered
+    assert "cargo" not in rendered.lower()

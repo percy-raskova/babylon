@@ -7,6 +7,7 @@ use postgres::{Client, Config, GenericClient, IsolationLevel, NoTls, Row, Transa
 use crate::legacy_adopter::{
     acquire_lock, release_lock, validate_legacy_connection_target, LegacyAdopterError,
 };
+use crate::postgres_diagnostic::PostgresDiagnosticV1;
 use crate::schema_epoch::{
     bounded_config, inspect_schema_epoch_under_lock, SchemaEpochError, SchemaEpochOrigin,
     CURRENT_SCHEMA_EPOCH,
@@ -185,6 +186,7 @@ pub enum SpatialReferenceInstallError {
     },
     Database {
         operation: SpatialReferenceInstallOperation,
+        diagnostic: Option<PostgresDiagnosticV1>,
     },
     Decode {
         operation: SpatialReferenceInstallOperation,
@@ -399,9 +401,9 @@ struct LockedInstallSession {
 
 impl LockedInstallSession {
     fn connect(config: &Config) -> Result<Self, SpatialReferenceInstallError> {
-        let mut client = config
-            .connect(NoTls)
-            .map_err(|_| database_error(SpatialReferenceInstallOperation::Connect))?;
+        let mut client = config.connect(NoTls).map_err(|error| {
+            postgres_database_error(SpatialReferenceInstallOperation::Connect, &error)
+        })?;
         acquire_lock(&mut client).map_err(SpatialReferenceInstallError::Lock)?;
         Ok(Self {
             client: Some(client),
@@ -458,11 +460,13 @@ fn require_exact_schema_epoch(client: &mut Client) -> Result<(), SpatialReferenc
 fn prepare_session(client: &mut Client) -> Result<(), SpatialReferenceInstallError> {
     client
         .batch_execute(SESSION_SETTINGS_SQL)
-        .map_err(|_| database_error(SpatialReferenceInstallOperation::SetSessionSettings))?;
+        .map_err(|error| {
+            postgres_database_error(SpatialReferenceInstallOperation::SetSessionSettings, &error)
+        })?;
     let operation = SpatialReferenceInstallOperation::VerifySessionSettings;
     let row = client
         .query_one(SESSION_SETTINGS_QUERY, &[])
-        .map_err(|_| database_error(operation))?;
+        .map_err(|error| postgres_database_error(operation, &error))?;
     let expected = ["on", "pg_catalog", "2min", "5s", "5s", "off", "off", "off"];
     for (index, wanted) in expected.iter().enumerate() {
         let actual: String = decode(&row, index, operation)?;
@@ -480,8 +484,9 @@ fn attempt_install_transaction(
     let transaction = prepare_install_transaction(client, bundle)?;
     match transaction.commit() {
         Ok(()) => Ok(CommitAttempt::Committed),
-        Err(error) if error.as_db_error().is_some() => Err(database_error(
+        Err(error) if error.as_db_error().is_some() => Err(postgres_database_error(
             SpatialReferenceInstallOperation::CommitTransaction,
+            &error,
         )),
         Err(_) => Ok(CommitAttempt::Ambiguous),
     }
@@ -496,7 +501,9 @@ fn prepare_install_transaction<'client>(
         .isolation_level(IsolationLevel::Serializable)
         .read_only(false)
         .start()
-        .map_err(|_| database_error(SpatialReferenceInstallOperation::BeginTransaction))?;
+        .map_err(|error| {
+            postgres_database_error(SpatialReferenceInstallOperation::BeginTransaction, &error)
+        })?;
     let installed = install_and_verify(&mut transaction, bundle);
     if let Err(primary) = installed {
         return rollback_preserving(transaction, primary);
@@ -510,10 +517,11 @@ fn rollback_preserving<T>(
 ) -> Result<T, SpatialReferenceInstallError> {
     match transaction.rollback() {
         Ok(()) => Err(primary),
-        Err(_) => Err(SpatialReferenceInstallError::FailureAndRollback {
+        Err(error) => Err(SpatialReferenceInstallError::FailureAndRollback {
             primary: Box::new(primary),
-            rollback: Box::new(database_error(
+            rollback: Box::new(postgres_database_error(
                 SpatialReferenceInstallOperation::RollbackTransaction,
+                &error,
             )),
         }),
     }
@@ -551,11 +559,16 @@ fn prepare_transaction(
 ) -> Result<(), SpatialReferenceInstallError> {
     transaction
         .batch_execute(WRITE_LOCAL_SETTINGS_SQL)
-        .map_err(|_| database_error(SpatialReferenceInstallOperation::SetTransactionSettings))?;
+        .map_err(|error| {
+            postgres_database_error(
+                SpatialReferenceInstallOperation::SetTransactionSettings,
+                &error,
+            )
+        })?;
     let operation = SpatialReferenceInstallOperation::VerifyTransactionSettings;
     let row = transaction
         .query_one(WRITE_SETTINGS_SQL, &[])
-        .map_err(|_| database_error(operation))?;
+        .map_err(|error| postgres_database_error(operation, &error))?;
     let expected = [
         "serializable",
         "off",
@@ -604,7 +617,7 @@ fn insert_products(
                     &product.denominator(),
                 ],
             )
-            .map_err(|_| database_error(operation))?;
+            .map_err(|error| postgres_database_error(operation, &error))?;
     }
     Ok(())
 }
@@ -649,7 +662,7 @@ fn insert_counties(
                     &names,
                 ],
             )
-            .map_err(|_| database_error(operation))?;
+            .map_err(|error| postgres_database_error(operation, &error))?;
     }
     Ok(())
 }
@@ -690,7 +703,7 @@ fn insert_places(
                     &status,
                 ],
             )
-            .map_err(|_| database_error(operation))?;
+            .map_err(|error| postgres_database_error(operation, &error))?;
     }
     Ok(())
 }
@@ -729,7 +742,7 @@ fn insert_land_fractions(
                     &fractions,
                 ],
             )
-            .map_err(|_| database_error(operation))?;
+            .map_err(|error| postgres_database_error(operation, &error))?;
     }
     Ok(())
 }
@@ -758,7 +771,7 @@ fn insert_counts(
             .collect::<Result<Vec<_>, _>>()?;
         transaction
             .execute(sql, &[&ref_digest.as_bytes().as_slice(), &cells, &counts])
-            .map_err(|_| database_error(operation))?;
+            .map_err(|error| postgres_database_error(operation, &error))?;
     }
     Ok(())
 }
@@ -785,7 +798,7 @@ fn insert_county_land(
                 INSERT_COUNTY_LAND_SQL,
                 &[&ref_digest.as_bytes().as_slice(), &cells, &counties, &areas],
             )
-            .map_err(|_| database_error(operation))?;
+            .map_err(|error| postgres_database_error(operation, &error))?;
     }
     Ok(())
 }
@@ -839,7 +852,7 @@ fn insert_county_place_land(
                     &shares,
                 ],
             )
-            .map_err(|_| database_error(operation))?;
+            .map_err(|error| postgres_database_error(operation, &error))?;
     }
     Ok(())
 }
@@ -871,7 +884,7 @@ fn inspect_presence<ClientType: GenericClient>(
             READ_PRODUCTS_SQL,
             &[&ref_digest.as_bytes().as_slice(), &product_codes, &limit],
         )
-        .map_err(|_| database_error(operation))?;
+        .map_err(|error| postgres_database_error(operation, &error))?;
     if rows.is_empty() {
         return Ok(InstallPresence::Absent);
     }
@@ -1114,7 +1127,7 @@ fn read_rows<ClientType: GenericClient>(
     let ref_digest = bundle.ref_digest();
     let rows = client
         .query(sql, &[&ref_digest.as_bytes().as_slice(), &limit])
-        .map_err(|_| database_error(operation))?;
+        .map_err(|error| postgres_database_error(operation, &error))?;
     require_row_count(rows.len(), expected, relation)?;
     Ok(rows)
 }
@@ -1171,7 +1184,20 @@ fn numeric_range(relation: SpatialReferenceRelation) -> SpatialReferenceInstallE
 }
 
 fn database_error(operation: SpatialReferenceInstallOperation) -> SpatialReferenceInstallError {
-    SpatialReferenceInstallError::Database { operation }
+    SpatialReferenceInstallError::Database {
+        operation,
+        diagnostic: None,
+    }
+}
+
+fn postgres_database_error(
+    operation: SpatialReferenceInstallOperation,
+    error: &postgres::Error,
+) -> SpatialReferenceInstallError {
+    SpatialReferenceInstallError::Database {
+        operation,
+        diagnostic: Some(PostgresDiagnosticV1::capture(error)),
+    }
 }
 
 #[cfg(test)]

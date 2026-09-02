@@ -76,7 +76,7 @@ fn value_input(bits: [u64; 9]) -> MichiganDynamicHexValueBitsV1 {
 
 fn replay_content() -> ContentDigest {
     let (_, rules) = split_content(REPLAY_RULE).unwrap();
-    let forms = rules.into_iter().map(|(_, form)| form).collect::<Vec<_>>();
+    let forms = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
     ContentDigest {
         defines_hash: [0x71; 32],
         rules_hash: rules_hash_of(&forms).unwrap(),

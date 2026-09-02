@@ -12,6 +12,7 @@
 //! the whole point of a raw admin dump is showing what the graph actually
 //! holds, unfiltered by any provenance classification.
 
+use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::engine_link::EngineSession;
 use babylon_graph::state_hash::CanonicalState;
 use bevy::prelude::*;
@@ -38,6 +39,7 @@ pub fn spawn_admin_banner(mut commands: Commands) {
             left: px(24),
             ..default()
         },
+        DeclaredSurface::new(SurfaceId::AdminDisclosure),
         AdminBanner,
     ));
 }
@@ -73,6 +75,7 @@ pub fn spawn_admin_panel(mut commands: Commands) {
             left: px(24),
             ..default()
         },
+        DeclaredSurface::new(SurfaceId::AdminInspector),
         AdminPanelText,
     ));
 }
@@ -184,6 +187,8 @@ mod tests {
                 ("vitality/subsistence-and-death".to_owned(), 6),
             ],
             audit_receipts: Vec::new(),
+            choice_receipts: Vec::new(),
+            committed_events: Vec::new(),
         };
         let rendered = format_tick_report(&report);
         assert_eq!(

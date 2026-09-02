@@ -43,7 +43,7 @@ dependencies = [
     # Amendment Y / ADR100: pydantic-ai is the canonical LLM SDK for the
     # generation lane (slim + openai extra: the wire seam stays OpenAI-compatible
     # /v1; the stock openai client above carries embeddings and health probes).
-    "pydantic-ai-slim[openai]>=2.14.0,<3.0.0",
+    "pydantic-ai-slim[openai]>=2.36.0,<3.0.0",
     "tokenizers>=0.23.1",
     "aiohttp>=3.13.3,<4.0.0",
     "backoff>=2.2.1",
@@ -107,7 +107,7 @@ dev = [
     "pre-commit>=4.6.2,<5.0.0",
     "commitizen>=4.18.0,<5.0.0",
     "types-jsonschema>=4.25.1.20251009,<5.0.0",
-    "types-pyyaml>=6.0.12.20250915,<7.0.0",
+    "types-pyyaml>=6.0.12.20260815,<7.0.0",
     "types-ratelimit>=2.2.0.20250501,<3.0.0",
     "midiutil>=1.2.1,<2.0.0",
     "markdownify>=1.2.2,<2.0.0",

@@ -19,6 +19,7 @@
 
 pub mod atlas;
 pub mod coverage;
+pub mod decision_surface;
 pub mod engine_link;
 pub mod lens;
 pub mod logging;

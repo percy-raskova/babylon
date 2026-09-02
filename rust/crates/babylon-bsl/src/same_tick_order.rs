@@ -1480,6 +1480,9 @@ mod tests {
         crate::rule_pipeline::split_content_unchecked(source)
             .expect("test fixture must be a legal content set")
             .1
+            .into_iter()
+            .map(|rule| (rule.rule_id, rule.form))
+            .collect()
     }
 
     fn diagnose_source_with<F>(source: &str, rank_for: F) -> Diagnosis

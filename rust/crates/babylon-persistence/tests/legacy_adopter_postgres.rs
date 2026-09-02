@@ -1738,7 +1738,13 @@ fn verify_hostile_caller_and_connection_redaction(config: &Config) {
         .password("do-not-leak-password")
         .dbname("missing");
     let error = adopt_legacy_schema(&unreachable).unwrap_err();
-    assert_eq!(error, LegacyAdopterError::Connection);
+    let LegacyAdopterError::Connection { diagnostic } = &error else {
+        panic!("unreachable target must retain a connection diagnostic");
+    };
+    assert_eq!(
+        diagnostic.classification(),
+        babylon_persistence::PostgresFailureClassV1::Reachability
+    );
     assert!(!format!("{error}").contains("do-not-leak-password"));
 }
 
@@ -1777,11 +1783,16 @@ fn verify_blocking_table_lock_timeout(base: &Config, template: &str) {
     blocker
         .batch_execute("BEGIN; LOCK TABLE public._babylon_schema_stamp IN ACCESS EXCLUSIVE MODE")
         .unwrap();
+    let Err(LegacyAdopterError::Timeout {
+        operation: LegacyAdopterOperation::Census,
+        diagnostic,
+    }) = adopt_legacy_schema(&config)
+    else {
+        panic!("blocked census must retain a timeout diagnostic");
+    };
     assert_eq!(
-        adopt_legacy_schema(&config),
-        Err(LegacyAdopterError::Timeout {
-            operation: LegacyAdopterOperation::Census,
-        })
+        diagnostic.classification(),
+        babylon_persistence::PostgresFailureClassV1::Timeout
     );
     blocker.batch_execute("ROLLBACK").unwrap();
     drop(blocker);
@@ -2662,10 +2673,12 @@ fn verify_login_event_trigger_suppression(base: &Config, template: &str) {
     install_login_event_trigger(&mut restricted_setup);
     let restricted_observer = event_triggers_disabled_config(&restricted_admin);
     let restricted_config = restricted.config_as(base, restricted_role.name(), OWNER_PASSWORD);
-    assert_eq!(
-        adopt_legacy_schema(&restricted_config),
-        Err(LegacyAdopterError::EventTriggerSuppressionUnavailable)
-    );
+    let Err(LegacyAdopterError::EventTriggerSuppressionUnavailable { diagnostic }) =
+        adopt_legacy_schema(&restricted_config)
+    else {
+        panic!("event-trigger startup refusal must retain a server diagnostic");
+    };
+    assert_eq!(diagnostic.sqlstate(), Some("42501"));
     assert_login_canary_unchanged(&restricted_observer);
     assert_lock_released(&restricted_observer);
     drop(restricted_setup);

@@ -9,6 +9,7 @@ use crate::legacy_adopter::{
     LegacyObjectKind, LEGACY_ADOPTER_CONNECT_TIMEOUT, LEGACY_ADOPTER_STARTUP_OPTIONS,
     LEGACY_ADOPTER_TCP_USER_TIMEOUT, MAX_LEGACY_CENSUS_ROWS,
 };
+use crate::postgres_diagnostic::PostgresDiagnosticV1;
 use crate::schema_migration::{
     MigrationChecksum, MigrationVersion, SchemaMigration, SchemaMigrationError,
 };
@@ -27,6 +28,10 @@ const MIGRATION_0004_SQL: &str = include_str!("../migrations/0004_committed_tick
 const MIGRATION_0005_SQL: &str = include_str!("../migrations/0005_spatial_reference_products.sql");
 const MIGRATION_0006_SQL: &str = include_str!("../migrations/0006_h3_shadow_keys.sql");
 const MIGRATION_0007_SQL: &str = include_str!("../migrations/0007_h3_canonical_readers.sql");
+const MIGRATION_0010_SQL: &str =
+    include_str!("../migrations/0010_committed_tick_v2_preparation.sql");
+const MIGRATION_0011_SQL: &str =
+    include_str!("../migrations/0011_committed_tick_v2_activation.sql");
 const FRESH_CENSUS: &str = include_str!("fixtures/fresh_schema_epoch_census_v2.txt");
 const FRESH_CENSUS_WITH_INTEL: &str =
     include_str!("fixtures/fresh_schema_epoch_census_with_intel_v2.txt");
@@ -227,8 +232,11 @@ pub enum SchemaEpochError {
     Census(LegacyAdopterError),
     /// Explicit schema-lock release failed.
     Unlock(LegacyAdopterError),
-    /// A database operation failed without retaining driver text.
-    Database { operation: SchemaEpochOperation },
+    /// A database operation failed with an optional secret-safe driver diagnostic.
+    Database {
+        operation: SchemaEpochOperation,
+        diagnostic: Option<PostgresDiagnosticV1>,
+    },
     /// The connected principal is not exactly the current database owner.
     CurrentUserIsNotDatabaseOwner,
     /// Marker presence selected no complete supported epoch.
@@ -309,12 +317,9 @@ impl PersistedMigration {
 /// fails, or the connected principal is not exactly the current database owner.
 pub fn preflight_schema_epoch(config: &Config) -> Result<(), SchemaEpochError> {
     validate_legacy_connection_target(config).map_err(SchemaEpochError::ConnectionTarget)?;
-    let mut client =
-        bounded_config(config)
-            .connect(NoTls)
-            .map_err(|_| SchemaEpochError::Database {
-                operation: SchemaEpochOperation::Connect,
-            })?;
+    let mut client = bounded_config(config)
+        .connect(NoTls)
+        .map_err(|error| postgres_database_error(SchemaEpochOperation::Connect, &error))?;
     verify_database_owner(&mut client)
 }
 
@@ -360,11 +365,15 @@ pub(crate) fn migrate_schema_epoch_to_h3_handoff(
 }
 
 pub(crate) fn bounded_config(config: &Config) -> Config {
+    bounded_config_with_options(config, LEGACY_ADOPTER_STARTUP_OPTIONS)
+}
+
+fn bounded_config_with_options(config: &Config, startup_options: &str) -> Config {
     let mut bounded = config.clone();
     bounded
         .connect_timeout(LEGACY_ADOPTER_CONNECT_TIMEOUT)
         .tcp_user_timeout(LEGACY_ADOPTER_TCP_USER_TIMEOUT)
-        .options(LEGACY_ADOPTER_STARTUP_OPTIONS);
+        .options(startup_options);
     bounded
 }
 
@@ -376,9 +385,7 @@ impl LockedSession {
     fn connect(config: &Config) -> Result<Self, SchemaEpochError> {
         let mut client = config
             .connect(NoTls)
-            .map_err(|_| SchemaEpochError::Database {
-                operation: SchemaEpochOperation::Connect,
-            })?;
+            .map_err(|error| postgres_database_error(SchemaEpochOperation::Connect, &error))?;
         acquire_lock(&mut client).map_err(SchemaEpochError::Lock)?;
         Ok(Self {
             client: Some(client),
@@ -558,6 +565,24 @@ pub fn compiled_schema_migrations(
         compiled[5].migration,
         compiled[6].migration,
     ])
+}
+
+/// Build the dedicated one-way committed-tick V2 activation pair.
+///
+/// These migrations deliberately do not extend `CURRENT_SCHEMA_EPOCH`. Epochs 8 and 9 are the
+/// immutable historical Rust-persistence cutover, whose authority rows were written by the
+/// activation composition root rather than the ordinary schema migrator. The replacement V2
+/// activator executes this exact 10/11 pair and writes its corresponding authority row after each
+/// migration SQL body.
+///
+/// # Errors
+/// Returns [`SchemaMigrationError`] if either checked-in SQL file violates the bounded migration
+/// byte contract.
+pub fn compiled_committed_tick_v2_activation_migrations(
+) -> Result<[SchemaMigration; 2], SchemaMigrationError> {
+    let preparation = SchemaMigration::new(MigrationVersion::try_from(10)?, MIGRATION_0010_SQL)?;
+    let activation = SchemaMigration::new(MigrationVersion::try_from(11)?, MIGRATION_0011_SQL)?;
+    Ok([preparation, activation])
 }
 
 /// Verify that persisted rows are an exact prefix of contiguous migrations.
@@ -931,11 +956,11 @@ fn verify_recorded_prefix_client(
 fn verify_database_owner(client: &mut Client) -> Result<(), SchemaEpochError> {
     let row = client
         .query_opt(OWNER_SQL, &[])
-        .map_err(|_| database_error(SchemaEpochOperation::VerifyOwner))?
+        .map_err(|error| postgres_database_error(SchemaEpochOperation::VerifyOwner, &error))?
         .ok_or_else(|| database_error(SchemaEpochOperation::VerifyOwner))?;
     let is_owner = row
         .try_get::<_, bool>(0)
-        .map_err(|_| database_error(SchemaEpochOperation::VerifyOwner))?;
+        .map_err(|error| postgres_database_error(SchemaEpochOperation::VerifyOwner, &error))?;
     if is_owner {
         Ok(())
     } else {
@@ -946,7 +971,7 @@ fn verify_database_owner(client: &mut Client) -> Result<(), SchemaEpochError> {
 fn read_observation(client: &mut Client) -> Result<SchemaEpochObservation, SchemaEpochError> {
     let row = client
         .query_one(MARKERS_SQL, &[])
-        .map_err(|_| database_error(SchemaEpochOperation::Classify))?;
+        .map_err(|error| postgres_database_error(SchemaEpochOperation::Classify, &error))?;
     Ok(SchemaEpochObservation {
         schemas: SchemaEpochSchemas {
             babylon_ref: decode_bool(&row, 0, SchemaEpochOperation::Classify)?,
@@ -1375,7 +1400,7 @@ fn is_canonical_reader_epoch_entry(
 fn verify_authority_sentinels_client(client: &mut Client) -> Result<(), SchemaEpochError> {
     let row = client
         .query_one(FRESH_SENTINELS_SQL, &[])
-        .map_err(|_| database_error(SchemaEpochOperation::FreshSentinels))?;
+        .map_err(|error| postgres_database_error(SchemaEpochOperation::FreshSentinels, &error))?;
     require_authority_sentinels(&row)
 }
 
@@ -1384,7 +1409,7 @@ fn verify_authority_sentinels_transaction(
 ) -> Result<(), SchemaEpochError> {
     let row = transaction
         .query_one(FRESH_SENTINELS_SQL, &[])
-        .map_err(|_| database_error(SchemaEpochOperation::FreshSentinels))?;
+        .map_err(|error| postgres_database_error(SchemaEpochOperation::FreshSentinels, &error))?;
     require_authority_sentinels(&row)
 }
 
@@ -1411,7 +1436,7 @@ fn read_ledger(
     let limit = i64::try_from(query_count).expect("ledger bound fits i64");
     let rows = client
         .query(LEDGER_SQL, &[&limit])
-        .map_err(|_| database_error(SchemaEpochOperation::ReadLedger))?;
+        .map_err(|error| postgres_database_error(SchemaEpochOperation::ReadLedger, &error))?;
     decode_ledger_rows(rows.as_slice(), query_count)
 }
 
@@ -1423,10 +1448,10 @@ fn decode_ledger_rows(
     for row in rows.iter().take(query_count) {
         let version = row
             .try_get::<_, i64>(0)
-            .map_err(|_| database_error(SchemaEpochOperation::ReadLedger))?;
+            .map_err(|error| postgres_database_error(SchemaEpochOperation::ReadLedger, &error))?;
         let checksum = row
             .try_get::<_, Vec<u8>>(1)
-            .map_err(|_| database_error(SchemaEpochOperation::ReadLedger))?;
+            .map_err(|error| postgres_database_error(SchemaEpochOperation::ReadLedger, &error))?;
         let decoded = PersistedMigration::from_database(version, checksum.as_slice())
             .map_err(|_| database_error(SchemaEpochOperation::ReadLedger))?;
         persisted.push(decoded);
@@ -1448,9 +1473,10 @@ fn attempt_migration(
 fn commit_migration(transaction: Transaction<'_>) -> Result<MigrationAttempt, SchemaEpochError> {
     match transaction.commit() {
         Ok(()) => Ok(MigrationAttempt::Committed),
-        Err(error) if error.as_db_error().is_some() => {
-            Err(database_error(SchemaEpochOperation::CommitMigration))
-        }
+        Err(error) if error.as_db_error().is_some() => Err(postgres_database_error(
+            SchemaEpochOperation::CommitMigration,
+            &error,
+        )),
         Err(_) => Ok(MigrationAttempt::Ambiguous),
     }
 }
@@ -1461,7 +1487,7 @@ fn begin_migration_transaction(client: &mut Client) -> Result<Transaction<'_>, S
         .isolation_level(IsolationLevel::Serializable)
         .read_only(false)
         .start()
-        .map_err(|_| database_error(SchemaEpochOperation::BeginMigration))
+        .map_err(|error| postgres_database_error(SchemaEpochOperation::BeginMigration, &error))
 }
 
 fn execute_migration_before_marker(
@@ -1472,7 +1498,7 @@ fn execute_migration_before_marker(
     prepare_migration_transaction(transaction)?;
     transaction
         .batch_execute(migration.migration.sql())
-        .map_err(|_| database_error(SchemaEpochOperation::ExecuteMigration))?;
+        .map_err(|error| postgres_database_error(SchemaEpochOperation::ExecuteMigration, &error))?;
     (migration.prefix_contract.verify_transaction)(transaction, legacy_origin)
 }
 
@@ -1481,15 +1507,19 @@ fn prepare_migration_transaction(
 ) -> Result<(), SchemaEpochError> {
     transaction
         .batch_execute(WRITE_LOCAL_SETTINGS_SQL)
-        .map_err(|_| database_error(SchemaEpochOperation::SetMigrationSettings))?;
+        .map_err(|error| {
+            postgres_database_error(SchemaEpochOperation::SetMigrationSettings, &error)
+        })?;
     let row = transaction
         .query_one(WRITE_SETTINGS_SQL, &[])
-        .map_err(|_| database_error(SchemaEpochOperation::VerifyMigrationSettings))?;
+        .map_err(|error| {
+            postgres_database_error(SchemaEpochOperation::VerifyMigrationSettings, &error)
+        })?;
     let expected = ["serializable", "off", "pg_catalog", "on", "5s", "5s", "5s"];
     for (index, value) in expected.iter().enumerate().take(7) {
-        let actual = row
-            .try_get::<_, String>(index)
-            .map_err(|_| database_error(SchemaEpochOperation::VerifyMigrationSettings))?;
+        let actual = row.try_get::<_, String>(index).map_err(|error| {
+            postgres_database_error(SchemaEpochOperation::VerifyMigrationSettings, &error)
+        })?;
         if actual != *value {
             return Err(database_error(
                 SchemaEpochOperation::VerifyMigrationSettings,
@@ -1508,7 +1538,7 @@ fn insert_ledger_marker(
     let checksum: &[u8] = migration_checksum.as_bytes();
     let affected = transaction
         .execute(INSERT_LEDGER_SQL, &[&version, &checksum])
-        .map_err(|_| database_error(SchemaEpochOperation::InsertLedger))?;
+        .map_err(|error| postgres_database_error(SchemaEpochOperation::InsertLedger, &error))?;
     if affected == 1 {
         Ok(())
     } else {
@@ -1523,7 +1553,7 @@ fn insert_ledger_marker(
 fn verify_epoch_shape_client(client: &mut Client, shape_sql: &str) -> Result<(), SchemaEpochError> {
     let row = client
         .query_one(shape_sql, &[])
-        .map_err(|_| database_error(SchemaEpochOperation::VerifyEpochShape))?;
+        .map_err(|error| postgres_database_error(SchemaEpochOperation::VerifyEpochShape, &error))?;
     require_epoch_shape(&row)
 }
 
@@ -1533,7 +1563,7 @@ fn verify_epoch_shape_transaction(
 ) -> Result<(), SchemaEpochError> {
     let row = transaction
         .query_one(shape_sql, &[])
-        .map_err(|_| database_error(SchemaEpochOperation::VerifyEpochShape))?;
+        .map_err(|error| postgres_database_error(SchemaEpochOperation::VerifyEpochShape, &error))?;
     require_epoch_shape(&row)
 }
 
@@ -1550,11 +1580,25 @@ fn decode_bool(
     index: usize,
     operation: SchemaEpochOperation,
 ) -> Result<bool, SchemaEpochError> {
-    row.try_get(index).map_err(|_| database_error(operation))
+    row.try_get(index)
+        .map_err(|error| postgres_database_error(operation, &error))
 }
 
 fn database_error(operation: SchemaEpochOperation) -> SchemaEpochError {
-    SchemaEpochError::Database { operation }
+    SchemaEpochError::Database {
+        operation,
+        diagnostic: None,
+    }
+}
+
+fn postgres_database_error(
+    operation: SchemaEpochOperation,
+    error: &postgres::Error,
+) -> SchemaEpochError {
+    SchemaEpochError::Database {
+        operation,
+        diagnostic: Some(PostgresDiagnosticV1::capture(error)),
+    }
 }
 
 #[cfg(test)]
@@ -1771,6 +1815,7 @@ mod live_rollback_tests {
     #[ignore = "requires the task-owned disposable PER-20 PostgreSQL runtime"]
     fn rollback_and_ambiguous_commit_reconciliation_are_atomic() {
         let base = validated_base_config();
+        verify_unsupported_startup_setting_diagnostic(&base);
         verify_post_ddl_rollback(&base);
         verify_definite_commit_failure(&base);
         verify_killed_commit_retry(&base);
@@ -1801,10 +1846,72 @@ mod live_rollback_tests {
         verify_h3_installer_commit_protocol(&base);
     }
 
+    fn verify_unsupported_startup_setting_diagnostic(base: &Config) {
+        const SETTING_CANARY: &str = "per288_unsupported_setting_canary";
+        const VALUE_CANARY: &str = "PER288_OPTION_VALUE_CANARY";
+        let options = format!("-c {SETTING_CANARY}={VALUE_CANARY}");
+        let config = bounded_config_with_options(base, &options);
+        let Err(error) = LockedSession::connect(&config) else {
+            panic!("the unsupported startup setting must be rejected");
+        };
+        let rendered = error.to_string();
+        let SchemaEpochError::Database {
+            operation: SchemaEpochOperation::Connect,
+            diagnostic: Some(diagnostic),
+        } = error
+        else {
+            panic!("startup refusal must retain its connect diagnostic");
+        };
+
+        assert_eq!(
+            diagnostic.classification(),
+            crate::PostgresFailureClassV1::UnsupportedStartupSetting
+        );
+        assert!(diagnostic.sqlstate().is_some_and(|code| code.len() == 5));
+        assert_eq!(
+            diagnostic.message(),
+            Some("unrecognized configuration parameter <redacted>")
+        );
+        assert!(rendered.contains("UnsupportedStartupSetting"));
+        assert!(!rendered.contains(SETTING_CANARY));
+        assert!(!rendered.contains(VALUE_CANARY));
+    }
+
+    fn verify_authentication_diagnostic(base: &Config) {
+        const PASSWORD_CANARY: &str = "PER288_WRONG_PASSWORD_CANARY";
+        let mut config = base.clone();
+        config.password(PASSWORD_CANARY);
+        let Err(error) = LockedSession::connect(&config) else {
+            panic!("the wrong password must be rejected");
+        };
+        let rendered = error.to_string();
+        let SchemaEpochError::Database {
+            operation: SchemaEpochOperation::Connect,
+            diagnostic: Some(diagnostic),
+        } = error
+        else {
+            panic!("authentication refusal must retain its connect diagnostic");
+        };
+
+        assert_eq!(
+            diagnostic.classification(),
+            crate::PostgresFailureClassV1::Authentication
+        );
+        assert_eq!(
+            diagnostic.sqlstate(),
+            Some(SqlState::INVALID_PASSWORD.code())
+        );
+        assert_eq!(diagnostic.message(), Some("authentication rejected"));
+        assert!(rendered.contains("Authentication"));
+        assert!(!rendered.contains(PASSWORD_CANARY));
+    }
+
     #[test]
     #[ignore = "requires the task-owned disposable PER-20 PostgreSQL runtime"]
     fn migration_four_rollback_and_ambiguous_commit_reconciliation_are_atomic() {
         let base = validated_base_config();
+        verify_unsupported_startup_setting_diagnostic(&base);
+        verify_authentication_diagnostic(&base);
         verify_v4_pre_marker_rollback(&base);
         verify_v4_marker_rollback(&base);
         verify_v4_killed_commit_retry(&base);
@@ -1947,11 +2054,17 @@ mod live_rollback_tests {
             )
             .unwrap();
         insert_ledger_marker(&mut transaction, compiled[0].migration).unwrap();
+        let Err(SchemaEpochError::Database {
+            operation: SchemaEpochOperation::CommitMigration,
+            diagnostic: Some(diagnostic),
+        }) = commit_migration(transaction)
+        else {
+            panic!("definite commit failure must retain its server diagnostic");
+        };
+        assert_eq!(diagnostic.sqlstate(), Some("23505"));
         assert_eq!(
-            commit_migration(transaction),
-            Err(SchemaEpochError::Database {
-                operation: SchemaEpochOperation::CommitMigration,
-            })
+            diagnostic.classification(),
+            crate::PostgresFailureClassV1::ServerRejected
         );
         session.finish(Ok(())).unwrap();
 

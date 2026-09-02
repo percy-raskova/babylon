@@ -1,6 +1,7 @@
 //! Production title and story-banner presentation backed by embedded assets.
 
 use super::VisualAssets;
+use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use bevy::prelude::*;
 
 /// Marks the Babylon title image.
@@ -27,6 +28,7 @@ fn spawn_title_lockup(mut commands: Commands, assets: Res<VisualAssets>) {
             height: px(36),
             ..default()
         },
+        DeclaredSurface::new(SurfaceId::TitleLockup),
         TitleMark,
     ));
     commands.spawn((
@@ -42,6 +44,7 @@ fn spawn_title_lockup(mut commands: Commands, assets: Res<VisualAssets>) {
             left: px(24),
             ..default()
         },
+        DeclaredSurface::new(SurfaceId::TitleLockup),
         ReadableTitle,
     ));
 }
@@ -80,6 +83,7 @@ fn spawn_story_banner(
         },
         visibility,
         GlobalZIndex(-1),
+        DeclaredSurface::new(SurfaceId::StoryBanner),
         StoryBanner,
     ));
 }

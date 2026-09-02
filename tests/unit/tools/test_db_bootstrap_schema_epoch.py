@@ -149,7 +149,10 @@ def test_runtime_cli_has_one_exact_connecting_schema_preflight_mode() -> None:
     assert "Command::Preflight =>" in source
     assert "preflight_schema_epoch(config)" in source
     assert "Command::Activate | Command::Bootstrap =>" in source
-    assert "activate_rust_persistence_v1(config)" in source
+    assert "activate_rust_persistence_v2(config)" in source
+    assert "DurableReplayRuntimeV2" in source
+    assert "activate_rust_persistence_v1" not in source
+    assert "DurableReplayRuntimeV1" not in source
     assert "babylon-schema-epoch" not in source
     assert "BABYLON_SCHEMA_EPOCH_DSN" not in source
 
@@ -162,15 +165,35 @@ def test_runtime_cli_owns_one_restart_safe_activation_sequence() -> None:
     runtime = (persistence / "src/runtime.rs").read_text(encoding="utf-8")
     cohort = (persistence / "src/h3_reference_cohort.rs").read_text(encoding="utf-8")
 
-    assert "activate_rust_persistence_v1(config)" in cli
-    activation = runtime.split("pub fn activate_rust_persistence_v1", maxsplit=1)[1]
-    assert "bootstrap_h3_reader_epoch_v1(config)" in activation
-    assert "batch_execute(MIGRATION_0008_SQL)" in activation
-    assert "batch_execute(MIGRATION_0009_SQL)" in activation
+    assert "activate_rust_persistence_v2(config)" in cli
+    assert "activate_rust_persistence_v1" not in cli
+    activation = runtime.split("pub fn activate_rust_persistence_v2", maxsplit=1)[1].split(
+        "\nfn activate_v2_under_lock", maxsplit=1
+    )[0]
     assert (
-        activation.index("bootstrap_h3_reader_epoch_v1(config)")
-        < activation.index("batch_execute(MIGRATION_0008_SQL)")
-        < activation.index("batch_execute(MIGRATION_0009_SQL)")
+        activation.index("preflight_v2_activation_before_mutation(config)")
+        < activation.index("establish_predecessor_authority_v2(config)")
+        < activation.index("acquire_lock(&mut client)")
+        < activation.index("activate_v2_under_lock(&mut client)")
+    )
+
+    predecessor = runtime.split("fn establish_predecessor_authority_v2", maxsplit=1)[1].split(
+        "\nconst SERIALIZABLE_ACTIVATION_SETTINGS_V2", maxsplit=1
+    )[0]
+    assert (
+        predecessor.index("bootstrap_h3_reader_epoch_v1(config)")
+        < predecessor.index("MIGRATION_0008_SQL")
+        < predecessor.index("MIGRATION_0009_SQL")
+    )
+
+    v2_activation = runtime.split("fn activate_v2_under_lock", maxsplit=1)[1].split(
+        "\nfn execute_v2_activation_migration", maxsplit=1
+    )[0]
+    assert v2_activation.count("execute_v2_activation_migration(") == 2
+    assert (
+        v2_activation.index("compiled_committed_tick_v2_activation_migrations()")
+        < v2_activation.index("migrations[0]")
+        < v2_activation.index("migrations[1]")
     )
 
     for call in (
@@ -357,12 +380,13 @@ def test_pr_runtime_contracts_clone_one_clean_activated_template() -> None:
     assert "pg_catalog.pg_database" in runner[template_check_body:template_drop_body]
 
     assert 'const TEMPLATE_DB_ENV: &str = "BABYLON_RUNTIME_TEMPLATE_DB";' in live_tests
-    assert live_tests.count("TestDatabase::create_from_template") == 4
-    assert live_tests.count("activate_rust_persistence_v1(&config)") == 2
+    assert live_tests.count("TestDatabase::create_from_template") == 5
+    assert live_tests.count("activate_rust_persistence_v2(&config)") == 6
+    assert "activate_rust_persistence_v1" not in live_tests
     frozen_activation = live_tests.split("fn verify_frozen_python_estate_activation", maxsplit=1)[
         1
     ].split("\n    #[test]", maxsplit=1)[0]
-    assert frozen_activation.count("activate_rust_persistence_v1(&config)") == 2
+    assert frozen_activation.count("activate_rust_persistence_v2(&config)") == 2
     assert r"CREATE DATABASE \"{name}\" OWNER test TEMPLATE \"{template}\"" in live_tests
 
 
@@ -382,3 +406,19 @@ def test_runtime_template_helpers_return_psql_failures_to_checked_callers() -> N
     assert create.count("|| return") == 3
     assert verify.count("|| return") == 4
     assert drop.count("|| return") == 1
+
+
+def test_disposable_pg_runner_retains_bootstrap_logs_and_runtime_version() -> None:
+    """Bootstrap refusals retain bounded server evidence and the pinned runtime identity."""
+    runner = (ROOT / "tools/run_rust_legacy_adopter_pg.sh").read_text(encoding="utf-8")
+
+    assert "die_with_runtime_logs()" in runner
+    assert "emit_runtime_logs()" in runner
+    assert 'docker logs --timestamps --tail 200 "$CONTAINER"' in runner
+    assert (
+        'die_with_runtime_logs "pinned PostgreSQL runtime was not ready within 90 seconds"'
+        in runner
+    )
+    assert "current_setting('server_version_num')" in runner
+    assert "current_setting('server_version')" in runner
+    assert "PER-20 runtime PostgreSQL: major=%s version=%s" in runner

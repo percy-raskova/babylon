@@ -1,7 +1,7 @@
 Babylon Architecture Rationale
 ==============================
 
-``CONSTITUTION.md`` v4.0.0 is the live authority. ``NORTH_STAR.md`` gives the
+``CONSTITUTION.md`` v4.1.0 is the live authority. ``NORTH_STAR.md`` gives the
 game direction and gate order. This commentary explains the rationale behind
 that direction.
 

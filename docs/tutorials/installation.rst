@@ -6,8 +6,8 @@ This guide covers how to install Babylon and set up your development environment
 Requirements
 ------------
 
-- Python 3.12 or higher
-- uv for dependency management
+- mise for the pinned Python and uv toolchain
+- Nix for the pinned Rust toolchain and system dependencies
 - Git
 
 Installation Steps
@@ -20,23 +20,30 @@ Installation Steps
       git clone https://github.com/percy-raskova/babylon.git
       cd babylon
 
-2. Install dependencies using uv:
+2. Install the pinned Python tools and locked dependencies:
 
    .. code-block:: bash
 
-      uv sync --extra server
+      mise install
+      mise run install
 
 3. Install pre-commit hooks:
 
    .. code-block:: bash
 
-      uv run pre-commit install --hook-type commit-msg --hook-type pre-commit
+      mise run hooks
 
 4. Verify the installation:
 
    .. code-block:: bash
 
-      uv run pytest -m "not ai" --tb=short -q
+      mise run check
+
+   Run Rust commands inside the repository's pinned Nix shell, for example:
+
+   .. code-block:: bash
+
+      mise run nix -- mise run rust:check-no-docs
 
 Development Tools
 -----------------
@@ -46,6 +53,7 @@ The project uses several development tools:
 - **Ruff**: Linting and formatting
 - **MyPy**: Static type checking
 - **Pytest**: Testing framework
+- **Cargo**: Rust formatting, linting, and tests
 - **Commitizen**: Conventional commit messages
 
 Running Tests

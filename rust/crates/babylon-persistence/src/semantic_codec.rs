@@ -1,11 +1,9 @@
-//! Closed, database-free semantic oracle for the Rust persistence cutover vectors.
-//!
-//! This module is not production runtime authority. Production activation remains
-//! prohibited until the runtime owns aggregate bounds and fallible allocation.
+//! Closed, database-free semantic codec shared by the live Rust persistence
+//! writer, restart reconstruction, and exact contract vectors.
 
 use crate::committed_tick_envelope::{
-    CommittedTickEnvelopeErrorV1, CommittedTickEnvelopeV1, CommittedTickRowFamiliesV1,
-    CommittedTickRowFamilyV1, CommittedTickRowV1,
+    CommittedTickEnvelopeErrorV2, CommittedTickEnvelopeV2, CommittedTickRowFamiliesV2,
+    CommittedTickRowFamilyV2, CommittedTickRowV2,
 };
 use crate::identity::CampaignId;
 use crate::tick_commit_claim::TickCommitClaimV1;
@@ -27,6 +25,33 @@ const EMPTY_PROOF_DOMAIN: &[u8] = b"babylon.semantic-empty-proof.v1\0";
 const MAX_UTF8_BYTES: usize = 65_535;
 const MAX_BYTES: usize = 67_108_864;
 const MAX_ITEMS: usize = 1_048_576;
+
+/// One enum-ordered branch in a canonical choice-receipt semantic row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ChoiceReceiptSemanticBranchV1 {
+    pub(crate) outcome_member: String,
+    pub(crate) mass_nanounits: u64,
+    pub(crate) ticket_start: u128,
+    pub(crate) ticket_end_exclusive: u128,
+    pub(crate) ticket_count: u128,
+}
+
+/// Exact aggregate input to the V2 envelope's `ChoiceReceipt` family.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ChoiceReceiptSemanticRowV1 {
+    pub(crate) encounter_ordinal: u32,
+    pub(crate) rule_id: String,
+    pub(crate) sample: String,
+    pub(crate) slot: u32,
+    pub(crate) outcome_enum: String,
+    pub(crate) stable_carrier: StableElementKeyV1,
+    pub(crate) active_elements: Vec<StableElementKeyV1>,
+    pub(crate) branches: Vec<ChoiceReceiptSemanticBranchV1>,
+    pub(crate) draw_ticket: u64,
+    pub(crate) selected_outcome: String,
+    pub(crate) allocation_digest: [u8; 32],
+    pub(crate) instance_digest: [u8; 32],
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SemanticRefusalCodeV1 {
@@ -251,9 +276,9 @@ pub(crate) fn encode_stable_bsl(value: &StableBslValueV1) -> Result<Vec<u8>, Sem
 pub(crate) fn encode_stable_graph_node(
     local_name: &str,
     node_type: &str,
-) -> Result<CommittedTickRowV1, SemanticCodecErrorV1> {
+) -> Result<CommittedTickRowV2, SemanticCodecErrorV1> {
     compose_row(
-        CommittedTickRowFamilyV1::Graph,
+        CommittedTickRowFamilyV2::Graph,
         1,
         |key| append_utf8(key, local_name),
         |payload| append_utf8(payload, node_type),
@@ -263,9 +288,9 @@ pub(crate) fn encode_stable_graph_node_f64(
     local_name: &str,
     qname: &str,
     value: f64,
-) -> Result<CommittedTickRowV1, SemanticCodecErrorV1> {
+) -> Result<CommittedTickRowV2, SemanticCodecErrorV1> {
     compose_row(
-        CommittedTickRowFamilyV1::Graph,
+        CommittedTickRowFamilyV2::Graph,
         2,
         |key| {
             append_utf8(key, local_name)?;
@@ -279,9 +304,9 @@ pub(crate) fn encode_stable_graph_edge(
     source: &str,
     target: &str,
     strength: f64,
-) -> Result<CommittedTickRowV1, SemanticCodecErrorV1> {
+) -> Result<CommittedTickRowV2, SemanticCodecErrorV1> {
     compose_row(
-        CommittedTickRowFamilyV1::Graph,
+        CommittedTickRowFamilyV2::Graph,
         3,
         |key| {
             append_utf8(key, edge_type)?;
@@ -295,9 +320,9 @@ pub(crate) fn encode_stable_graph_hyperedge(
     local_name: &str,
     hyperedge_type: &str,
     ordered_members: &[String],
-) -> Result<CommittedTickRowV1, SemanticCodecErrorV1> {
+) -> Result<CommittedTickRowV2, SemanticCodecErrorV1> {
     compose_row(
-        CommittedTickRowFamilyV1::Graph,
+        CommittedTickRowFamilyV2::Graph,
         4,
         |key| append_utf8(key, local_name),
         |payload| {
@@ -312,9 +337,9 @@ pub(crate) fn encode_stable_graph_edge_f64(
     target: &str,
     qname: &str,
     value: f64,
-) -> Result<CommittedTickRowV1, SemanticCodecErrorV1> {
+) -> Result<CommittedTickRowV2, SemanticCodecErrorV1> {
     compose_row(
-        CommittedTickRowFamilyV1::Graph,
+        CommittedTickRowFamilyV2::Graph,
         5,
         |key| {
             append_utf8(key, edge_type)?;
@@ -329,9 +354,9 @@ pub(crate) fn encode_stable_graph_node_currency(
     local_name: &str,
     qname: &str,
     micro_units: i128,
-) -> Result<CommittedTickRowV1, SemanticCodecErrorV1> {
+) -> Result<CommittedTickRowV2, SemanticCodecErrorV1> {
     compose_row(
-        CommittedTickRowFamilyV1::Graph,
+        CommittedTickRowFamilyV2::Graph,
         6,
         |key| {
             append_utf8(key, local_name)?;
@@ -347,9 +372,9 @@ pub(crate) fn encode_stable_graph_hyperedge_f64(
     local_name: &str,
     qname: &str,
     value: f64,
-) -> Result<CommittedTickRowV1, SemanticCodecErrorV1> {
+) -> Result<CommittedTickRowV2, SemanticCodecErrorV1> {
     compose_row(
-        CommittedTickRowFamilyV1::Graph,
+        CommittedTickRowFamilyV2::Graph,
         7,
         |key| {
             append_utf8(key, local_name)?;
@@ -361,9 +386,9 @@ pub(crate) fn encode_stable_graph_hyperedge_f64(
 pub(crate) fn encode_world_register(
     register_name: &str,
     value: &StableBslValueV1,
-) -> Result<CommittedTickRowV1, SemanticCodecErrorV1> {
+) -> Result<CommittedTickRowV2, SemanticCodecErrorV1> {
     compose_row(
-        CommittedTickRowFamilyV1::State,
+        CommittedTickRowFamilyV2::State,
         1,
         |key| append_utf8(key, register_name),
         |payload| {
@@ -375,9 +400,9 @@ pub(crate) fn encode_world_register(
 pub(crate) fn encode_territory_state(
     territory_id: &StableElementKeyV1,
     ordered_fields: &[(&str, &StableBslValueV1)],
-) -> Result<CommittedTickRowV1, SemanticCodecErrorV1> {
+) -> Result<CommittedTickRowV2, SemanticCodecErrorV1> {
     compose_row(
-        CommittedTickRowFamilyV1::State,
+        CommittedTickRowFamilyV2::State,
         2,
         |key| append_stable_key(key, territory_id),
         |payload| append_named_stable(payload, ordered_fields),
@@ -386,9 +411,9 @@ pub(crate) fn encode_territory_state(
 pub(crate) fn encode_dynamic_hex_state(
     cell_id: u64,
     values: &[f64; 9],
-) -> Result<CommittedTickRowV1, SemanticCodecErrorV1> {
+) -> Result<CommittedTickRowV2, SemanticCodecErrorV1> {
     compose_row(
-        CommittedTickRowFamilyV1::State,
+        CommittedTickRowFamilyV2::State,
         3,
         |key| append_h3(key, cell_id),
         |payload| {
@@ -404,9 +429,9 @@ pub(crate) fn encode_organization_state(
     organization_kind: &StableBslValueV1,
     ordered_territory_ids: &[StableElementKeyV1],
     ordered_fields: &[(&str, &StableBslValueV1)],
-) -> Result<CommittedTickRowV1, SemanticCodecErrorV1> {
+) -> Result<CommittedTickRowV2, SemanticCodecErrorV1> {
     compose_row(
-        CommittedTickRowFamilyV1::State,
+        CommittedTickRowFamilyV2::State,
         8,
         |key| append_stable_key(key, organization_id),
         |payload| {
@@ -418,11 +443,43 @@ pub(crate) fn encode_organization_state(
 }
 pub(crate) fn encode_successful_event(
     ordinal: u32,
+    emitting_rule: &str,
+    choice_receipt_ordinal: Option<u32>,
     event_type: &str,
     ordered_fields: &[(&str, &StableBslValueV1)],
-) -> Result<CommittedTickRowV1, SemanticCodecErrorV1> {
+) -> Result<CommittedTickRowV2, SemanticCodecErrorV1> {
     compose_row(
-        CommittedTickRowFamilyV1::Event,
+        CommittedTickRowFamilyV2::Event,
+        1,
+        |key| {
+            key.write_all(&ordinal.to_be_bytes())?;
+            Ok(())
+        },
+        |payload| {
+            append_utf8(payload, emitting_rule)?;
+            match choice_receipt_ordinal {
+                None => payload.write_byte(0)?,
+                Some(ordinal) => {
+                    payload.write_byte(1)?;
+                    payload.write_all(&ordinal.to_be_bytes())?;
+                }
+            }
+            append_utf8(payload, event_type)?;
+            append_named_stable(payload, ordered_fields)
+        },
+    )
+}
+
+/// Reconstruct the frozen PER-281 event-row bytes for its offline contract
+/// vectors. The live writer and restart path call only
+/// [`encode_successful_event`]; they have no V1 event-row read/write path.
+pub(crate) fn encode_historical_successful_event_v1_vector(
+    ordinal: u32,
+    event_type: &str,
+    ordered_fields: &[(&str, &StableBslValueV1)],
+) -> Result<CommittedTickRowV2, SemanticCodecErrorV1> {
+    compose_row(
+        CommittedTickRowFamilyV2::Event,
         1,
         |key| {
             key.write_all(&ordinal.to_be_bytes())?;
@@ -434,16 +491,48 @@ pub(crate) fn encode_successful_event(
         },
     )
 }
+
+pub(crate) fn encode_choice_receipt(
+    receipt: &ChoiceReceiptSemanticRowV1,
+) -> Result<CommittedTickRowV2, SemanticCodecErrorV1> {
+    compose_row(
+        CommittedTickRowFamilyV2::ChoiceReceipt,
+        1,
+        |key| key.write_all(&receipt.encounter_ordinal.to_be_bytes()),
+        |payload| {
+            append_utf8(payload, &receipt.rule_id)?;
+            append_utf8(payload, &receipt.sample)?;
+            payload.write_all(&receipt.slot.to_be_bytes())?;
+            append_utf8(payload, &receipt.outcome_enum)?;
+            append_stable_key(payload, &receipt.stable_carrier)?;
+            append_stable_key_sequence(payload, &receipt.active_elements)?;
+            payload.write_all(
+                &checked_u32(receipt.branches.len(), "choice receipt branch count")?.to_be_bytes(),
+            )?;
+            for branch in &receipt.branches {
+                append_utf8(payload, &branch.outcome_member)?;
+                payload.write_all(&branch.mass_nanounits.to_be_bytes())?;
+                payload.write_all(&branch.ticket_start.to_be_bytes())?;
+                payload.write_all(&branch.ticket_end_exclusive.to_be_bytes())?;
+                payload.write_all(&branch.ticket_count.to_be_bytes())?;
+            }
+            payload.write_all(&receipt.draw_ticket.to_be_bytes())?;
+            append_utf8(payload, &receipt.selected_outcome)?;
+            payload.write_all(&receipt.allocation_digest)?;
+            payload.write_all(&receipt.instance_digest)
+        },
+    )
+}
 pub(crate) fn encode_checkpoint_row(
     section_tag: u8,
     ordinal: u32,
     completeness_tag: u8,
     exact_section_bytes: &[u8],
-) -> Result<CommittedTickRowV1, SemanticCodecErrorV1> {
+) -> Result<CommittedTickRowV2, SemanticCodecErrorV1> {
     validate_closed_checkpoint_tag(section_tag)?;
     validate_completeness_tag(completeness_tag)?;
     compose_row(
-        CommittedTickRowFamilyV1::Checkpoint,
+        CommittedTickRowFamilyV2::Checkpoint,
         1,
         |key| {
             key.write_byte(section_tag)?;
@@ -458,15 +547,15 @@ pub(crate) fn encode_checkpoint_row(
 }
 pub(crate) fn encode_archive_dirty_receipt(
     tick_content_hash: &[u8; 32],
-) -> Result<CommittedTickRowV1, SemanticCodecErrorV1> {
+) -> Result<CommittedTickRowV2, SemanticCodecErrorV1> {
     let key = row_prefix(
         ROW_KEY_DOMAIN,
-        CommittedTickRowFamilyV1::ArchiveDirtyReceipt,
+        CommittedTickRowFamilyV2::ArchiveDirtyReceipt,
         1,
     )?;
     let mut payload = SemanticWriterV1::new("archive dirty receipt payload", 32);
     payload.write_all(tick_content_hash)?;
-    CommittedTickRowV1::compose(key.finish(), payload.finish())
+    CommittedTickRowV2::compose(key.finish(), payload.finish())
         .map_err(|_| SemanticCodecErrorV1::Invalid("archive dirty receipt row"))
 }
 
@@ -577,14 +666,15 @@ pub(crate) fn validate_duplicate_row_keys(key_ids: &[String]) -> Result<(), Sema
         key_writer.write_all(key.as_bytes())?;
         let payload_writer = SemanticWriterV1::new("duplicate row fixture payload", MAX_BYTES);
         rows.push(
-            CommittedTickRowV1::compose(key_writer.finish(), payload_writer.finish())
+            CommittedTickRowV2::compose(key_writer.finish(), payload_writer.finish())
                 .map_err(|_| SemanticCodecErrorV1::Invalid("duplicate row fixture"))?,
         );
     }
-    let input = CommittedTickRowFamiliesV1 {
+    let input = CommittedTickRowFamiliesV2 {
         graph: Vec::new(),
         state: Vec::new(),
         event: rows,
+        choice_receipt: Vec::new(),
         checkpoint: Vec::new(),
         archive_dirty_receipt: encode_archive_dirty_receipt(&[0; 32])?,
     };
@@ -593,8 +683,8 @@ pub(crate) fn validate_duplicate_row_keys(key_ids: &[String]) -> Result<(), Sema
         1,
         TickContentHashV1::from_bytes([0; 32]),
     );
-    match CommittedTickEnvelopeV1::compose(claim, input) {
-        Err(CommittedTickEnvelopeErrorV1::DuplicateRowKey { .. }) => Err(
+    match CommittedTickEnvelopeV2::compose(claim, input) {
+        Err(CommittedTickEnvelopeErrorV2::DuplicateRowKey { .. }) => Err(
             SemanticCodecErrorV1::Refusal(SemanticRefusalCodeV1::DuplicateRowKey),
         ),
         Ok(_) => Ok(()),
@@ -603,7 +693,7 @@ pub(crate) fn validate_duplicate_row_keys(key_ids: &[String]) -> Result<(), Sema
 }
 
 pub(crate) fn validate_producer_tag(tag: u8) -> Result<(), SemanticCodecErrorV1> {
-    if matches!(tag, 1 | 16 | 32 | 96 | 112) {
+    if matches!(tag, 1 | 16 | 24 | 32 | 96 | 112) {
         Ok(())
     } else {
         Err(SemanticCodecErrorV1::Refusal(
@@ -631,7 +721,8 @@ pub(crate) fn validate_empty_family(
     proof_producer: Option<&str>,
 ) -> Result<(), SemanticCodecErrorV1> {
     let expected = match family {
-        "event" => "successful_event_batch_v1",
+        "event" => "successful_event_batch_v2",
+        "choice_receipt" => "choice_receipt_batch_v1",
         _ => return Err(SemanticCodecErrorV1::Invalid("empty family")),
     };
     match proof_producer {
@@ -708,7 +799,7 @@ pub(crate) fn digest(bytes: &[u8]) -> [u8; 32] {
 
 fn row_prefix(
     domain: &[u8],
-    family: CommittedTickRowFamilyV1,
+    family: CommittedTickRowFamilyV2,
     tag: u8,
 ) -> Result<SemanticWriterV1, SemanticCodecErrorV1> {
     let mut output = SemanticWriterV1::new("semantic row", MAX_BYTES);
@@ -720,13 +811,14 @@ fn row_prefix(
     Ok(output)
 }
 
-const fn producer_tag(family: CommittedTickRowFamilyV1) -> u8 {
+const fn producer_tag(family: CommittedTickRowFamilyV2) -> u8 {
     match family {
-        CommittedTickRowFamilyV1::Graph => 1,
-        CommittedTickRowFamilyV1::State => 16,
-        CommittedTickRowFamilyV1::Event => 32,
-        CommittedTickRowFamilyV1::Checkpoint => 96,
-        CommittedTickRowFamilyV1::ArchiveDirtyReceipt => 112,
+        CommittedTickRowFamilyV2::Graph => 1,
+        CommittedTickRowFamilyV2::State => 16,
+        CommittedTickRowFamilyV2::Event => 32,
+        CommittedTickRowFamilyV2::ChoiceReceipt => 24,
+        CommittedTickRowFamilyV2::Checkpoint => 96,
+        CommittedTickRowFamilyV2::ArchiveDirtyReceipt => 112,
     }
 }
 
@@ -792,6 +884,24 @@ fn append_ordered_stable_keys(
     }
     output.write_all(&checked_u32(encoded.len(), "ordered stable key row count")?.to_be_bytes())?;
     for bytes in encoded {
+        output.write_all(&checked_u32(bytes.len(), "stable key byte length")?.to_be_bytes())?;
+        output.write_all(&bytes)?;
+    }
+    Ok(())
+}
+
+fn append_stable_key_sequence(
+    output: &mut SemanticWriterV1,
+    values: &[StableElementKeyV1],
+) -> Result<(), SemanticCodecErrorV1> {
+    if values.len() > MAX_ITEMS {
+        return Err(SemanticCodecErrorV1::Invalid("stable key sequence rows"));
+    }
+    output.write_all(&checked_u32(values.len(), "stable key sequence row count")?.to_be_bytes())?;
+    for value in values {
+        let bytes = value
+            .canonical_bytes()
+            .map_err(|_| SemanticCodecErrorV1::Invalid("stable element key"))?;
         output.write_all(&checked_u32(bytes.len(), "stable key byte length")?.to_be_bytes())?;
         output.write_all(&bytes)?;
     }
@@ -876,16 +986,16 @@ fn checked_u32(value: usize, field: &'static str) -> Result<u32, SemanticCodecEr
 }
 
 fn compose_row(
-    family: CommittedTickRowFamilyV1,
+    family: CommittedTickRowFamilyV2,
     tag: u8,
     encode_key: impl FnOnce(&mut SemanticWriterV1) -> Result<(), SemanticCodecErrorV1>,
     encode_payload: impl FnOnce(&mut SemanticWriterV1) -> Result<(), SemanticCodecErrorV1>,
-) -> Result<CommittedTickRowV1, SemanticCodecErrorV1> {
+) -> Result<CommittedTickRowV2, SemanticCodecErrorV1> {
     let mut key = row_prefix(ROW_KEY_DOMAIN, family, tag)?;
     let mut payload = row_prefix(ROW_PAYLOAD_DOMAIN, family, tag)?;
     encode_key(&mut key)?;
     encode_payload(&mut payload)?;
-    CommittedTickRowV1::compose(key.finish(), payload.finish())
+    CommittedTickRowV2::compose(key.finish(), payload.finish())
         .map_err(|_| SemanticCodecErrorV1::Invalid("row"))
 }
 

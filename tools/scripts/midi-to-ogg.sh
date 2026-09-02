@@ -28,7 +28,7 @@ else
 fi
 
 TEMP_WAV=$(mktemp --suffix=.wav)
-trap "rm -f $TEMP_WAV" EXIT
+trap 'rm -f "$TEMP_WAV"' EXIT
 
 echo "Converting: $INPUT -> WAV (temp)"
 # -g 1.0 = gain boost (default 0.2 is too quiet)

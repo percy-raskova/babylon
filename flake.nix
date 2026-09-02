@@ -186,7 +186,7 @@
             uv                  # package/venv manager (pure uv/PEP-621 since PR #236)
             nodejs_22
             git-lfs
-            postgresql_16.lib   # libpq for pure-python psycopg
+            postgresql_17.lib   # libpq for pure-python psycopg
             gdal                # geospatial CLI/headers (ogr2ogr, gdal-config)
             geos
             proj
@@ -235,7 +235,7 @@
             # needs the store's libstdc++ on the loader path.
             export LD_LIBRARY_PATH=${lib.makeLibraryPath ([
               pkgs.stdenv.cc.cc.lib
-              pkgs.postgresql_16.lib
+              pkgs.postgresql_17.lib
             ] ++ linuxBevyPackages)}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
             # Environment contract: this shell provides TOOLS, not python
             # imports. nixpkgs' python setup hooks export python-built

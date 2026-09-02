@@ -3614,15 +3614,14 @@ mod live_tests {
         let database = TestDatabase::create(&base, "vopaquelock");
         let config = database.config(&base);
         bootstrap_h3_reader_epoch_v1(&config).expect("reader predecessor bootstraps");
-        let expected_prepared =
-            PredecessorAuthorityLedgerRowV2::prepared().expect("predecessor prepared row composes");
-        let expected_active = PredecessorAuthorityLedgerRowV2::active(&expected_prepared)
-            .expect("predecessor active row composes");
+        let prepared = PredecessorAuthorityLedgerRowV2::prepared().expect("prepared row composes");
+        let active =
+            PredecessorAuthorityLedgerRowV2::active(&prepared).expect("active row composes");
         let mut preparation = config.connect(NoTls).expect("preparation connection");
         execute_predecessor_migration_v2(
             &mut preparation,
             MIGRATION_0008_SQL,
-            &expected_prepared,
+            &prepared,
             "migration 8 opaque-lock fixture",
         )
         .expect("epoch 8 preparation commits");
@@ -3666,7 +3665,7 @@ mod live_tests {
             execute_predecessor_migration_v2(
                 &mut client,
                 MIGRATION_0009_SQL,
-                &expected_active,
+                &active,
                 "migration 9 opaque lock race",
             )
         });

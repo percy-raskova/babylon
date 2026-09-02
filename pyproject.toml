@@ -541,7 +541,7 @@ asyncio = "WARNING"
 # uv_build for explicit src-layout packages= control and longer-proven
 # pyproject-build-systems support in the uv2nix lane.
 requires = [
-    "hatchling>=1.27.0",
+    "hatchling>=1.32.0",
 ]
 build-backend = "hatchling.build"
 

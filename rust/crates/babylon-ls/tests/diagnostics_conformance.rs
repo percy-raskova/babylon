@@ -27,7 +27,7 @@ use babylon_bsl::{
 };
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_tick::diagnose_content_set;
-use lsp_types::{DiagnosticSeverity, NumberOrString, Url};
+use lsp_types::{DiagnosticSeverity, NumberOrString, Uri};
 
 use babylon_ls::content_manifest::ContentSetManifest;
 use babylon_ls::diagnostics::{diagnostics_for_file, Located};
@@ -39,8 +39,10 @@ use babylon_ls::pass::{diagnose_bsl, FixtureSourceReader};
 /// duplicate.
 const EMPTY_WHEN: &str = include_str!("../../babylon-bsl/tests/conformance/empty_when.bsl");
 
-fn uri(path: &str) -> Url {
-    Url::parse(&format!("file:///{path}")).expect("valid test URI")
+fn uri(path: &str) -> Uri {
+    format!("file:///{path}")
+        .parse::<Uri>()
+        .expect("valid test URI")
 }
 
 fn code_of(d: &lsp_types::Diagnostic) -> Option<&str> {

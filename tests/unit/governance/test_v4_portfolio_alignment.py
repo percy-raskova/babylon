@@ -156,8 +156,7 @@ _PER_19_EVIDENCE: Final[tuple[str, ...]] = (
     "rust/crates/babylon-tick/tests/causal_contract_conformance.rs",
     "ai/decisions/ADR224_bsl_causal_composition_contract.yaml",
 )
-_GATE_3_ISSUES: Final[tuple[str, ...]] = (
-    "PER-20",
+_PLANNED_GATE_3_ISSUES: Final[tuple[str, ...]] = (
     "PER-21",
     "PER-22",
     "PER-23",
@@ -242,7 +241,12 @@ def test_architecture_records_current_components_and_gate_delivery_status() -> N
     architecture = _yaml_document(_ARCHITECTURE)
     status = architecture["implementation_status"]
     assert isinstance(status, dict)
-    assert {"implemented_current", "gate_2_delivery", "planned_gate_3"} <= set(status)
+    assert {
+        "implemented_current",
+        "gate_2_delivery",
+        "gate_3_delivery",
+        "planned_gate_3",
+    } <= set(status)
     current = status["implemented_current"]
     assert isinstance(current, dict)
     for component in _CURRENT_COMPONENTS:
@@ -252,16 +256,19 @@ def test_architecture_records_current_components_and_gate_delivery_status() -> N
         assert tuple(record["evidence"]) == expected_evidence
         assert all((_ROOT / evidence).is_file() for evidence in expected_evidence)
     gate_2 = status["gate_2_delivery"]
-    gate_3 = status["planned_gate_3"]
+    gate_3_delivery = status["gate_3_delivery"]
+    planned_gate_3 = status["planned_gate_3"]
     assert tuple(gate_2) == tuple(_GATE_2_STATUSES)
-    assert tuple(gate_3) == _GATE_3_ISSUES
+    assert tuple(gate_3_delivery) == ("PER-20",)
+    assert gate_3_delivery["PER-20"]["status"] == "implemented_current"
+    assert tuple(planned_gate_3) == _PLANNED_GATE_3_ISSUES
     assert {issue: gate_2[issue]["status"] for issue in _GATE_2_STATUSES} == _GATE_2_STATUSES
     assert {issue: gate_2[issue]["component"] for issue in _GATE_2_COMPONENTS} == _GATE_2_COMPONENTS
     assert tuple(gate_2["PER-18"]["evidence"]) == _PER_18_EVIDENCE
     assert all((_ROOT / evidence).is_file() for evidence in _PER_18_EVIDENCE)
     assert tuple(gate_2["PER-19"]["evidence"]) == _PER_19_EVIDENCE
     assert all((_ROOT / evidence).is_file() for evidence in _PER_19_EVIDENCE)
-    assert all(gate_3[issue]["status"] == "planned" for issue in _GATE_3_ISSUES)
+    assert all(planned_gate_3[issue]["status"] == "planned" for issue in _PLANNED_GATE_3_ISSUES)
 
 
 def test_control_surface_routes_status_to_linear_and_delivery_to_github() -> None:
@@ -409,8 +416,9 @@ def test_per_48_records_the_implemented_one_way_writer_cutover() -> None:
         "writes": "forbidden",
         "ddl": "forbidden",
     }
-    gate_3 = architecture["implementation_status"]["planned_gate_3"]
-    per_20 = gate_3["PER-20"]
+    gate_3_delivery = architecture["implementation_status"]["gate_3_delivery"]
+    per_20 = gate_3_delivery["PER-20"]
+    assert per_20["status"] == "implemented_current"
     assert "blocked_by" not in per_20
     assert per_20["writer_boundary"] == {
         "issue": "PER-48",
@@ -418,8 +426,29 @@ def test_per_48_records_the_implemented_one_way_writer_cutover() -> None:
         "adr": _POSTGRESQL_ADR,
     }
     assert tuple(per_20["schemas"]) == ("babylon_ref", "babylon_state", "babylon_meta")
-    assert "persistence_writer" not in gate_3
-    assert gate_3["PER-24"] == {
+    assert per_20["runtime_authority"] == {
+        "estate": "rust",
+        "database": "PostgreSQL",
+        "major": 17,
+        "reader_writer": "v2_only",
+        "historical_v1_decoder": "prohibited",
+    }
+    assert tuple(per_20["includes"]) == (
+        "TickPayloadV2",
+        "CommittedTickEnvelopeV2",
+        "six_family_choice_receipt_envelope",
+        "transactional_archive_outbox",
+        "marker_last_tick_commit",
+        "exact_retry_restart_reconstruction",
+    )
+    assert per_20["historical_pre_cutover_foundation"]["status"] == (
+        "superseded_implementation_record"
+    )
+    assert per_20["historical_pre_cutover_foundation"]["current_runtime_authority"] == "none"
+    assert "persistence_writer" not in gate_3_delivery
+    planned_gate_3 = architecture["implementation_status"]["planned_gate_3"]
+    assert "PER-20" not in planned_gate_3
+    assert planned_gate_3["PER-24"] == {
         "status": "planned",
         "gate": "G3",
         "owner": "PER-24",
@@ -684,7 +713,9 @@ def test_standard_addenda_classify_current_and_superseded_surfaces() -> None:
         "D5/D16 phase-ordering status: implemented_executable_PER-17",
         "PER-18 rollback and combined-world-hash status: implemented_current",
         "PER-19 causal-composition and outcome-write-contract status: implemented_current",
-        "Persistence writer status: accepted_cutover_law",
+        "Persistence writer status: implemented_current_V2_only",
+        "PostgreSQL runtime status: PostgreSQL_17_only",
+        "PER-20 durable boundary status: implemented_current",
         "PER-48 status: Done",
         _POSTGRESQL_ADR,
         "Attributed membership identity status: implemented_current",

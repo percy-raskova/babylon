@@ -52,7 +52,14 @@ pub struct BranchAllocationFact {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AllocationFact {
     Exact(Vec<BranchAllocationFact>),
-    Unavailable { reason: String },
+    Unavailable {
+        reason: String,
+    },
+    /// The same written kernel resolves to different executable allocations
+    /// through multiple content sets. No manifest-order result is selected.
+    Ambiguous {
+        content_sets: Vec<String>,
+    },
 }
 
 /// One exactly enumerable event likelihood, supplied by forecasting.
@@ -114,6 +121,7 @@ pub enum AuthoringKind {
         outcome: String,
         mass_nanounits: Option<u64>,
         tickets: Option<(u128, u128, u128)>,
+        allocation_ambiguity: Option<Vec<String>>,
         argument_spans: Vec<ByteSpan>,
     },
     QuantizeMass {
@@ -185,58 +193,166 @@ impl AuthoringSnapshot {
 }
 
 /// Merge loader snapshots for one source shared by one or more content sets.
-/// Identical projection facts collapse. Conflicting same-span projection
-/// analyses become one explicit, set-identified ambiguity, independent of
-/// manifest row order.
+/// Identical facts collapse. Conflicting same-span kernel allocations and
+/// projection analyses become one explicit, set-identified ambiguity,
+/// independent of manifest row order.
 #[must_use]
 pub fn merge_content_set_snapshots(
     snapshots: impl IntoIterator<Item = (String, AuthoringSnapshot)>,
 ) -> AuthoringSnapshot {
-    type ProjectionKey = (ByteSpan, ByteSpan, String);
+    type FactKey = (ByteSpan, ByteSpan, String);
+    type Candidates = Vec<(String, AuthoringFact)>;
 
     let mut facts = Vec::new();
-    let mut projections: BTreeMap<ProjectionKey, Vec<(String, AuthoringFact)>> = BTreeMap::new();
+    let mut choices: BTreeMap<FactKey, Candidates> = BTreeMap::new();
+    let mut branches: BTreeMap<FactKey, Candidates> = BTreeMap::new();
+    let mut projections: BTreeMap<FactKey, Candidates> = BTreeMap::new();
     for (content_set, snapshot) in snapshots {
         for fact in snapshot.facts {
-            let AuthoringKind::ProjectsKernel { sample, .. } = &fact.kind else {
-                facts.push(fact);
-                continue;
-            };
-            projections
-                .entry((fact.token_span, fact.form_span, sample.clone()))
-                .or_default()
-                .push((content_set.clone(), fact));
+            match &fact.kind {
+                AuthoringKind::Choose { sample, .. } => choices
+                    .entry((fact.token_span, fact.form_span, sample.clone()))
+                    .or_default()
+                    .push((content_set.clone(), fact)),
+                AuthoringKind::Branch { outcome, .. } => branches
+                    .entry((fact.token_span, fact.form_span, outcome.clone()))
+                    .or_default()
+                    .push((content_set.clone(), fact)),
+                AuthoringKind::ProjectsKernel { sample, .. } => projections
+                    .entry((fact.token_span, fact.form_span, sample.clone()))
+                    .or_default()
+                    .push((content_set.clone(), fact)),
+                _ => facts.push(fact),
+            }
         }
     }
 
-    for mut candidates in projections.into_values() {
-        candidates.sort_by(|left, right| left.0.cmp(&right.0));
-        let all_identical = candidates
-            .windows(2)
-            .all(|pair| pair[0].1.kind == pair[1].1.kind);
-        let Some((_, mut selected)) = candidates.first().cloned() else {
-            continue;
-        };
-        if !all_identical {
-            let mut content_sets = candidates
-                .into_iter()
-                .map(|(content_set, _)| content_set)
-                .collect::<Vec<_>>();
-            content_sets.sort();
-            content_sets.dedup();
-            if let AuthoringKind::ProjectsKernel {
-                linkage,
-                likelihood,
-                ..
-            } = &mut selected.kind
-            {
-                *linkage = None;
-                *likelihood = Some(EventLikelihoodAnalysisFact::Ambiguous { content_sets });
-            }
-        }
-        facts.push(selected);
-    }
+    facts.extend(choices.into_values().filter_map(merge_choose_candidates));
+    facts.extend(branches.into_values().filter_map(merge_branch_candidates));
+    facts.extend(
+        projections
+            .into_values()
+            .filter_map(merge_projection_candidates),
+    );
     AuthoringSnapshot::new(facts)
+}
+
+fn merge_choose_candidates(mut candidates: Vec<(String, AuthoringFact)>) -> Option<AuthoringFact> {
+    candidates.sort_by(|left, right| left.0.cmp(&right.0));
+    let allocations_identical = candidates.windows(2).all(|pair| {
+        let AuthoringKind::Choose {
+            allocation: left, ..
+        } = &pair[0].1.kind
+        else {
+            unreachable!("choose map contains only choose facts")
+        };
+        let AuthoringKind::Choose {
+            allocation: right, ..
+        } = &pair[1].1.kind
+        else {
+            unreachable!("choose map contains only choose facts")
+        };
+        left == right
+    });
+    let linkages_identical = candidates.windows(2).all(|pair| {
+        let AuthoringKind::Choose { linkage: left, .. } = &pair[0].1.kind else {
+            unreachable!("choose map contains only choose facts")
+        };
+        let AuthoringKind::Choose { linkage: right, .. } = &pair[1].1.kind else {
+            unreachable!("choose map contains only choose facts")
+        };
+        left == right
+    });
+    let content_sets = candidate_content_sets(&candidates);
+    let (_, mut selected) = candidates.into_iter().next()?;
+    if let AuthoringKind::Choose {
+        allocation,
+        linkage,
+        ..
+    } = &mut selected.kind
+    {
+        if !allocations_identical {
+            *allocation = Some(AllocationFact::Ambiguous { content_sets });
+        }
+        if !linkages_identical {
+            *linkage = None;
+        }
+    }
+    Some(selected)
+}
+
+fn merge_branch_candidates(mut candidates: Vec<(String, AuthoringFact)>) -> Option<AuthoringFact> {
+    candidates.sort_by(|left, right| left.0.cmp(&right.0));
+    let allocations_identical = candidates.windows(2).all(|pair| {
+        let AuthoringKind::Branch {
+            mass_nanounits: left_mass,
+            tickets: left_tickets,
+            allocation_ambiguity: left_ambiguity,
+            ..
+        } = &pair[0].1.kind
+        else {
+            unreachable!("branch map contains only branch facts")
+        };
+        let AuthoringKind::Branch {
+            mass_nanounits: right_mass,
+            tickets: right_tickets,
+            allocation_ambiguity: right_ambiguity,
+            ..
+        } = &pair[1].1.kind
+        else {
+            unreachable!("branch map contains only branch facts")
+        };
+        (left_mass, left_tickets, left_ambiguity) == (right_mass, right_tickets, right_ambiguity)
+    });
+    let content_sets = candidate_content_sets(&candidates);
+    let (_, mut selected) = candidates.into_iter().next()?;
+    if !allocations_identical {
+        if let AuthoringKind::Branch {
+            mass_nanounits,
+            tickets,
+            allocation_ambiguity,
+            ..
+        } = &mut selected.kind
+        {
+            *mass_nanounits = None;
+            *tickets = None;
+            *allocation_ambiguity = Some(content_sets);
+        }
+    }
+    Some(selected)
+}
+
+fn merge_projection_candidates(
+    mut candidates: Vec<(String, AuthoringFact)>,
+) -> Option<AuthoringFact> {
+    candidates.sort_by(|left, right| left.0.cmp(&right.0));
+    let all_identical = candidates
+        .windows(2)
+        .all(|pair| pair[0].1.kind == pair[1].1.kind);
+    let mut selected = candidates.first()?.1.clone();
+    if !all_identical {
+        let content_sets = candidate_content_sets(&candidates);
+        if let AuthoringKind::ProjectsKernel {
+            linkage,
+            likelihood,
+            ..
+        } = &mut selected.kind
+        {
+            *linkage = None;
+            *likelihood = Some(EventLikelihoodAnalysisFact::Ambiguous { content_sets });
+        }
+    }
+    Some(selected)
+}
+
+fn candidate_content_sets(candidates: &[(String, AuthoringFact)]) -> Vec<String> {
+    let mut content_sets = candidates
+        .iter()
+        .map(|(content_set, _)| content_set.clone())
+        .collect::<Vec<_>>();
+    content_sets.sort();
+    content_sets.dedup();
+    content_sets
 }
 
 fn path_child(path: &[u32], index: u32) -> Vec<u32> {
@@ -313,7 +429,7 @@ fn branch_facts(
     let mut facts = Vec::new();
     let exact = match allocation {
         Some(AllocationFact::Exact(rows)) => Some(rows.as_slice()),
-        Some(AllocationFact::Unavailable { .. }) | None => None,
+        Some(AllocationFact::Unavailable { .. } | AllocationFact::Ambiguous { .. }) | None => None,
     };
     let tickets = exact.and_then(|rows| {
         usize::try_from(branch.ordinal)
@@ -337,6 +453,7 @@ fn branch_facts(
             outcome: branch.member.clone(),
             mass_nanounits: branch.static_mass.map(babylon_bsl::Mass::nanounits),
             tickets,
+            allocation_ambiguity: None,
             argument_spans: arguments,
         },
     ) {
@@ -907,6 +1024,16 @@ fn allocation_markdown(
                 "**Finite material kernel** `{sample}`{linked}\n\nExact ticket allocation is **unavailable at load time**: {reason}."
             );
         }
+        AllocationFact::Ambiguous { content_sets } => {
+            let sets = content_sets
+                .iter()
+                .map(|content_set| format!("`{content_set}`"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            return format!(
+                "**Finite material kernel** `{sample}`{linked}\n\nExecutable ticket allocation is **ambiguous across content sets** {sets}; no manifest-order result was selected."
+            );
+        }
     };
     let mut value = format!(
         "**Finite material kernel** `{sample}`{linked}\n\nExecutable allocation over `{}` tickets:",
@@ -1015,23 +1142,37 @@ pub fn hover(
             outcome,
             mass_nanounits,
             tickets,
+            allocation_ambiguity,
             ..
-        } => match (mass_nanounits, tickets) {
-            (Some(mass), Some((start, end, count))) => format!(
-                "**Kernel branch** `{outcome}`\n\nExact mass `{}`; exact tickets `[{start}, {end})` (`{count}` tickets).",
-                canonical_mass(*mass)
-            ),
-            (Some(mass), None) => format!(
-                "**Kernel branch** `{outcome}`\n\nExact static mass `{}`; ticket interval is **not statically determined**.",
-                canonical_mass(*mass)
-            ),
-            (None, Some((start, end, count))) => format!(
-                "**Kernel branch** `{outcome}`\n\nMass expression is **not statically determined**; exact tickets `[{start}, {end})` (`{count}` tickets)."
-            ),
-            (None, None) => format!(
-                "**Kernel branch** `{outcome}`\n\nMass expression and ticket interval are **not statically determined**."
-            ),
-        },
+        } => {
+            if let Some(content_sets) = allocation_ambiguity {
+                let sets = content_sets
+                    .iter()
+                    .map(|content_set| format!("`{content_set}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!(
+                    "**Kernel branch** `{outcome}`\n\nMass and ticket allocation are **ambiguous across content sets** {sets}; no manifest-order result was selected."
+                )
+            } else {
+                match (mass_nanounits, tickets) {
+                    (Some(mass), Some((start, end, count))) => format!(
+                        "**Kernel branch** `{outcome}`\n\nExact mass `{}`; exact tickets `[{start}, {end})` (`{count}` tickets).",
+                        canonical_mass(*mass)
+                    ),
+                    (Some(mass), None) => format!(
+                        "**Kernel branch** `{outcome}`\n\nExact static mass `{}`; ticket interval is **not statically determined**.",
+                        canonical_mass(*mass)
+                    ),
+                    (None, Some((start, end, count))) => format!(
+                        "**Kernel branch** `{outcome}`\n\nMass expression is **not statically determined**; exact tickets `[{start}, {end})` (`{count}` tickets)."
+                    ),
+                    (None, None) => format!(
+                        "**Kernel branch** `{outcome}`\n\nMass expression and ticket interval are **not statically determined**."
+                    ),
+                }
+            }
+        }
         AuthoringKind::QuantizeMass { .. } => "**`quantize-mass`**\n\nThe sole explicit numeric-to-Mass conversion. It rounds to the nearest nanounit, ties to even, and refuses negative or non-finite input.".to_owned(),
         AuthoringKind::ProjectsKernel {
             sample,
@@ -1283,6 +1424,144 @@ mod tests {
         ByteSpan { start, end }
     }
 
+    fn kernel_snapshot(first_ticket_count: u128) -> AuthoringSnapshot {
+        let denominator = babylon_bsl::TICKET_DENOMINATOR;
+        let second_ticket_count = denominator - first_ticket_count;
+        let allocation = vec![
+            BranchAllocationFact {
+                outcome: "YES".to_owned(),
+                mass_nanounits: 1_000_000_000,
+                ticket_start: 0,
+                ticket_end: first_ticket_count,
+                ticket_count: first_ticket_count,
+            },
+            BranchAllocationFact {
+                outcome: "NO".to_owned(),
+                mass_nanounits: if first_ticket_count == denominator / 2 {
+                    1_000_000_000
+                } else {
+                    3_000_000_000
+                },
+                ticket_start: first_ticket_count,
+                ticket_end: denominator,
+                ticket_count: second_ticket_count,
+            },
+        ];
+        AuthoringSnapshot::new(vec![
+            AuthoringFact {
+                token_span: span(1, 7),
+                form_span: span(0, 80),
+                kind: AuthoringKind::Choose {
+                    sample: "struggle/spark".to_owned(),
+                    allocation: Some(AllocationFact::Exact(allocation.clone())),
+                    linkage: None,
+                    argument_spans: Vec::new(),
+                },
+            },
+            AuthoringFact {
+                token_span: span(20, 26),
+                form_span: span(19, 45),
+                kind: AuthoringKind::Branch {
+                    outcome: "YES".to_owned(),
+                    mass_nanounits: Some(allocation[0].mass_nanounits),
+                    tickets: Some((
+                        allocation[0].ticket_start,
+                        allocation[0].ticket_end,
+                        allocation[0].ticket_count,
+                    )),
+                    allocation_ambiguity: None,
+                    argument_spans: Vec::new(),
+                },
+            },
+            AuthoringFact {
+                token_span: span(50, 56),
+                form_span: span(49, 75),
+                kind: AuthoringKind::Branch {
+                    outcome: "NO".to_owned(),
+                    mass_nanounits: Some(allocation[1].mass_nanounits),
+                    tickets: Some((
+                        allocation[1].ticket_start,
+                        allocation[1].ticket_end,
+                        allocation[1].ticket_count,
+                    )),
+                    allocation_ambiguity: None,
+                    argument_spans: Vec::new(),
+                },
+            },
+        ])
+    }
+
+    #[test]
+    fn conflicting_kernel_facts_are_manifest_order_independent() {
+        let quarter = kernel_snapshot(babylon_bsl::TICKET_DENOMINATOR / 4);
+        let half = kernel_snapshot(babylon_bsl::TICKET_DENOMINATOR / 2);
+        let normal = merge_content_set_snapshots([
+            ("probe/quarter".to_owned(), quarter.clone()),
+            ("probe/half".to_owned(), half.clone()),
+        ]);
+        let reversed = merge_content_set_snapshots([
+            ("probe/half".to_owned(), half),
+            ("probe/quarter".to_owned(), quarter),
+        ]);
+
+        assert_eq!(normal, reversed);
+        assert_eq!(normal.facts.len(), 3, "one fact per shared source span");
+
+        let expected_sets = vec!["probe/half".to_owned(), "probe/quarter".to_owned()];
+        let choose_allocation = normal.facts.iter().find_map(|fact| match &fact.kind {
+            AuthoringKind::Choose { allocation, .. } => allocation.as_ref(),
+            _ => None,
+        });
+        assert_eq!(
+            choose_allocation,
+            Some(&AllocationFact::Ambiguous {
+                content_sets: expected_sets.clone(),
+            })
+        );
+
+        let branches = normal
+            .facts
+            .iter()
+            .filter_map(|fact| match &fact.kind {
+                AuthoringKind::Branch {
+                    mass_nanounits,
+                    tickets,
+                    allocation_ambiguity,
+                    ..
+                } => Some((mass_nanounits, tickets, allocation_ambiguity)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(branches.len(), 2);
+        for (mass, tickets, ambiguity) in branches {
+            assert_eq!(*mass, None, "must not expose one set's exact mass");
+            assert_eq!(*tickets, None, "must not expose one set's ticket interval");
+            assert_eq!(ambiguity.as_ref(), Some(&expected_sets));
+        }
+
+        let identical = merge_content_set_snapshots([
+            (
+                "probe/quarter".to_owned(),
+                kernel_snapshot(babylon_bsl::TICKET_DENOMINATOR / 4),
+            ),
+            (
+                "probe/same-quarter".to_owned(),
+                kernel_snapshot(babylon_bsl::TICKET_DENOMINATOR / 4),
+            ),
+        ]);
+        assert_eq!(identical.facts.len(), 3, "identical facts must deduplicate");
+        assert!(identical.facts.iter().all(|fact| match &fact.kind {
+            AuthoringKind::Choose { allocation, .. } => {
+                matches!(allocation, Some(AllocationFact::Exact(_)))
+            }
+            AuthoringKind::Branch {
+                allocation_ambiguity,
+                ..
+            } => allocation_ambiguity.is_none(),
+            _ => true,
+        }));
+    }
+
     #[test]
     fn mass_is_canonical_at_fixed_nanounit_precision() {
         assert_eq!(canonical_mass(0), "0.000000000m");
@@ -1399,6 +1678,7 @@ mod tests {
                 outcome: "YES".to_owned(),
                 mass_nanounits: None,
                 tickets: None,
+                allocation_ambiguity: None,
                 argument_spans: Vec::new(),
             },
         }]);
@@ -1416,6 +1696,7 @@ mod tests {
                 outcome: "YES".to_owned(),
                 mass_nanounits: None,
                 tickets: None,
+                allocation_ambiguity: None,
                 argument_spans: vec![span(8, 11), span(18, 20), span(21, 29)],
             },
         }]);
@@ -1556,13 +1837,42 @@ mod tests {
         };
         assert!(dynamic_markup.value.contains("unavailable at load time"));
         assert!(dynamic_markup.value.contains("mass reads material state"));
+
+        let ambiguous = AuthoringSnapshot::new(vec![AuthoringFact {
+            token_span: span(1, 7),
+            form_span: span(0, 20),
+            kind: AuthoringKind::Choose {
+                sample: "spark/sample".to_owned(),
+                allocation: Some(AllocationFact::Ambiguous {
+                    content_sets: vec!["probe/half".to_owned(), "probe/quarter".to_owned()],
+                }),
+                linkage: None,
+                argument_spans: Vec::new(),
+            },
+        }]);
+        let ambiguous_hover = hover(text, &index, &ambiguous, 2).expect("hover");
+        let HoverContents::Markup(ambiguous_markup) = ambiguous_hover.contents else {
+            panic!("markdown hover")
+        };
+        assert!(ambiguous_markup
+            .value
+            .contains("ambiguous across content sets"));
+        assert!(ambiguous_markup
+            .value
+            .contains("`probe/half`, `probe/quarter`"));
+        assert!(ambiguous_markup
+            .value
+            .contains("no manifest-order result was selected"));
+        assert!(!ambiguous_markup
+            .value
+            .contains("Executable allocation over"));
     }
 
     #[test]
     fn branch_hover_reports_mass_and_ticket_knowledge_independently() {
         let text = "branch";
         let index = LineIndex::new(text);
-        let hover_value = |mass_nanounits, tickets| {
+        let hover_value = |mass_nanounits, tickets, allocation_ambiguity| {
             let snapshot = AuthoringSnapshot::new(vec![AuthoringFact {
                 token_span: span(0, text.len()),
                 form_span: span(0, text.len()),
@@ -1570,6 +1880,7 @@ mod tests {
                     outcome: "YES".to_owned(),
                     mass_nanounits,
                     tickets,
+                    allocation_ambiguity,
                     argument_spans: Vec::new(),
                 },
             }]);
@@ -1580,25 +1891,36 @@ mod tests {
             markup.value
         };
 
-        let exact = hover_value(Some(500_000_000), Some((0, 12, 12)));
+        let exact = hover_value(Some(500_000_000), Some((0, 12, 12)), None);
         assert!(exact.contains("Exact mass `0.500000000m`"));
         assert!(exact.contains("exact tickets `[0, 12)` (`12` tickets)"));
 
-        let static_mass_unknown_tickets = hover_value(Some(500_000_000), None);
+        let static_mass_unknown_tickets = hover_value(Some(500_000_000), None, None);
         assert!(static_mass_unknown_tickets.contains("Exact static mass `0.500000000m`"));
         assert!(static_mass_unknown_tickets
             .contains("ticket interval is **not statically determined**"));
         assert!(!static_mass_unknown_tickets.contains("Exact mass and ticket interval"));
 
-        let unknown_mass_exact_tickets = hover_value(None, Some((7, 19, 12)));
+        let unknown_mass_exact_tickets = hover_value(None, Some((7, 19, 12)), None);
         assert!(
             unknown_mass_exact_tickets.contains("Mass expression is **not statically determined**")
         );
         assert!(unknown_mass_exact_tickets.contains("exact tickets `[7, 19)` (`12` tickets)"));
 
-        let unknown = hover_value(None, None);
+        let unknown = hover_value(None, None, None);
         assert!(unknown
             .contains("Mass expression and ticket interval are **not statically determined**"));
+
+        let ambiguous = hover_value(
+            None,
+            None,
+            Some(vec!["probe/half".to_owned(), "probe/quarter".to_owned()]),
+        );
+        assert!(ambiguous.contains("ambiguous across content sets"));
+        assert!(ambiguous.contains("`probe/half`, `probe/quarter`"));
+        assert!(ambiguous.contains("no manifest-order result was selected"));
+        assert!(!ambiguous.contains("Exact mass"));
+        assert!(!ambiguous.contains("exact tickets"));
     }
 
     #[test]

@@ -2,7 +2,7 @@
 meta:
   name: Babylon v4 architecture truth record
   version: "4.3.0"
-  updated: "2026-08-23"
+  updated: "2026-09-01"
   role: current_and_planned_architecture
   authority: CONSTITUTION.md v4.1.0
   interpretation: >-
@@ -234,6 +234,11 @@ implementation_status:
     rust_postgresql_persistence:
       status: implemented_current
       estate: sole_game_managed_postgresql_authority
+      database:
+        product: PostgreSQL
+        major: 17
+        reader_writer: v2_only
+        historical_v1_decoder: prohibited
       scope:
         - locked_epoch_9_predecessor_activation
         - epoch_10_v2_preparation
@@ -345,9 +350,9 @@ implementation_status:
         - rust/crates/babylon-tick/tests/causal_contract_conformance.rs
         - ai/decisions/ADR224_bsl_causal_composition_contract.yaml
 
-  planned_gate_3:
+  gate_3_delivery:
     PER-20:
-      status: planned
+      status: implemented_current
       gate: G3
       component: durable_state_and_transactional_commit_boundary
       writer_boundary:
@@ -358,19 +363,35 @@ implementation_status:
         - babylon_ref
         - babylon_state
         - babylon_meta
+      runtime_authority:
+        estate: rust
+        database: PostgreSQL
+        major: 17
+        reader_writer: v2_only
+        historical_v1_decoder: prohibited
       includes:
-        - CommittedTickEnvelope
+        - TickPayloadV2
+        - CommittedTickEnvelopeV2
+        - six_family_choice_receipt_envelope
         - transactional_archive_outbox
-        - crash_safe_tick_commit
-      implemented_foundation:
-        - exact_schema_epoch_v4
-        - committed_tick_envelope_v1
-        - typed_eight_family_postgresql_storage_map
+        - marker_last_tick_commit
+        - exact_retry_restart_reconstruction
+      historical_pre_cutover_foundation:
+        status: superseded_implementation_record
+        current_runtime_authority: none
+        artifacts:
+          - exact_schema_epoch_v4
+          - committed_tick_envelope_v1
+          - typed_eight_family_postgresql_storage_map
       evidence:
-        - rust/crates/babylon-persistence/migrations/0004_committed_tick_storage.sql
-        - rust/crates/babylon-persistence/src/committed_tick_storage.rs
-        - contracts/committed_tick_storage_v1.yaml
-        - ai/decisions/ADR244_committed_tick_postgresql_storage_v1.yaml
+        - rust/crates/babylon-persistence/src/runtime.rs
+        - rust/crates/babylon-persistence/src/committed_tick_envelope.rs
+        - rust/crates/babylon-persistence/migrations/0009_rust_persistence_activation.sql
+        - rust/crates/babylon-persistence/migrations/0010_committed_tick_v2_preparation.sql
+        - rust/crates/babylon-persistence/migrations/0011_committed_tick_v2_activation.sql
+        - contracts/rust_persistence_cutover_v2.yaml
+
+  planned_gate_3:
     PER-21:
       status: planned
       gate: G3

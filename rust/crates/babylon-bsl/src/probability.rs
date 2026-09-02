@@ -1720,7 +1720,6 @@ pub fn compile_rule_probability(
                 "only a Mechanic rule may contain choose",
             ));
         }
-        validate_kernel_carrier_locality(rule, &root)?;
     }
     if let Some(compiled_projection) = &projection {
         if contract.role != RuleRole::Recognizer {
@@ -1866,7 +1865,9 @@ pub fn compile_rule_probability(
 /// Returns [`ProbabilityError::DuplicateSample`] for a repeated sample,
 /// [`ProbabilityError::ProjectionNotAdjacent`] for a nonadjacent projection,
 /// or [`ProbabilityError::SubjectCarrierMismatch`] when an adjacent pair
-/// resolves different runtime populations.
+/// resolves different runtime populations. An adjacent, carrier-matched pair
+/// also returns a located [`ProbabilityError::InvalidForm`] when the kernel's
+/// material effects are not carrier-local enough for exact V1 projection.
 pub fn validate_probability_content_set(
     rules: &[crate::rule_pipeline::LoadedRule],
 ) -> Result<(), ProbabilityError> {
@@ -1930,6 +1931,7 @@ pub fn validate_probability_content_set(
                 },
             )));
         }
+        validate_kernel_carrier_locality(&kernel_rule.rule, &kernel_rule.root_path)?;
     }
     Ok(())
 }

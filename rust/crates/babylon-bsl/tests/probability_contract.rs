@@ -239,7 +239,7 @@ fn multi_top_form_kernel_paths_retain_the_original_source_coordinate_space() {
   (bindings) (effects))
 (rule demo/spark :role mechanic :evidence designed
   :material-basis "second rule owns the kernel paths" :fuel 64
-  (bindings)
+  (bindings (binding current :field social-class/value))
   (effects
     (choose :sample struggle/spark :slot 0
       (branch SparkOutcome/EXCESSIVE_FORCE :mass 1m (effects))
@@ -249,9 +249,21 @@ fn multi_top_form_kernel_paths_retain_the_original_source_coordinate_space() {
     assert_eq!(second.rule_id, "demo/spark");
     assert_eq!(second.root_path, vec![2]);
 
-    let vocabulary = BindingVocabulary::default();
+    let fields = HashMap::from([(
+        "social-class/value".to_owned(),
+        FieldDecl {
+            ty: BslType::Int,
+            kind: FieldKind::Extensive,
+        },
+    )]);
+    let vocabulary = BindingVocabulary {
+        fields: fields.keys().cloned().collect(),
+        consts: HashSet::new(),
+        probability_consts: HashSet::new(),
+        metrics: HashSet::new(),
+    };
     let types = TypeEnv {
-        fields: HashMap::new(),
+        fields,
         exemptions: &[],
     };
     let enums = spark_enums();
@@ -388,13 +400,13 @@ fn choose_requires_exact_enum_exhaustiveness_and_direct_placement() {
 }
 
 #[test]
-fn finite_projection_kernel_refuses_cross_carrier_material_writes() {
+fn standalone_kernels_accept_otherwise_governed_cross_carrier_material_writes() {
     let cross_node_branch = kernel_rule(
         "(branch SparkOutcome/EXCESSIVE_FORCE :mass 1m
            (effects (update-node other demo/x (set 1))))
          (branch SparkOutcome/NO_INCIDENT :mass 1m (effects))",
     );
-    let error = compile_rule_probability(
+    let (kernel, projection) = compile_rule_probability(
         &cross_node_branch,
         &[0],
         &contract(RuleRole::Mechanic),
@@ -402,15 +414,16 @@ fn finite_projection_kernel_refuses_cross_carrier_material_writes() {
         &[],
         &HashMap::new(),
     )
-    .expect_err("one subject's draw cannot write another carrier");
-    assert!(error.to_string().contains("carrier-local"), "{error}");
+    .expect("carrier locality applies only when an exact projection is linked");
+    assert!(kernel.is_some());
+    assert!(projection.is_none());
 
     let shared_edge_branch = kernel_rule(
         "(branch SparkOutcome/EXCESSIVE_FORCE :mass 1m
            (effects (update-edge shared-edge demo/x (set 1))))
          (branch SparkOutcome/NO_INCIDENT :mass 1m (effects))",
     );
-    let error = compile_rule_probability(
+    let (kernel, projection) = compile_rule_probability(
         &shared_edge_branch,
         &[0],
         &contract(RuleRole::Mechanic),
@@ -418,8 +431,9 @@ fn finite_projection_kernel_refuses_cross_carrier_material_writes() {
         &[],
         &HashMap::new(),
     )
-    .expect_err("independent subject draws cannot write one shared carrier");
-    assert!(error.to_string().contains("carrier-local"), "{error}");
+    .expect("a standalone joint kernel may govern a shared carrier");
+    assert!(kernel.is_some());
+    assert!(projection.is_none());
 }
 
 #[test]
@@ -729,9 +743,21 @@ fn a_mass_binding_declaration_name_is_not_mistaken_for_a_value_use() {
 
 #[test]
 fn content_set_linking_refuses_duplicate_samples_and_nonadjacent_projections() {
-    let vocabulary = BindingVocabulary::default();
+    let fields = HashMap::from([(
+        "social-class/value".to_owned(),
+        FieldDecl {
+            ty: BslType::Int,
+            kind: FieldKind::Extensive,
+        },
+    )]);
+    let vocabulary = BindingVocabulary {
+        fields: fields.keys().cloned().collect(),
+        consts: HashSet::new(),
+        probability_consts: HashSet::new(),
+        metrics: HashSet::new(),
+    };
     let types = TypeEnv {
-        fields: HashMap::new(),
+        fields,
         exemptions: &[],
     };
     let enums = spark_enums();
@@ -751,7 +777,8 @@ fn content_set_linking_refuses_duplicate_samples_and_nonadjacent_projections() {
         rule_file: "demo/kernel.bsl",
     };
     let source = "(rule demo/ID :role mechanic :evidence designed \
-        :material-basis \"duplicate sample\" :fuel 64 (bindings) \
+        :material-basis \"duplicate sample\" :fuel 64 \
+        (bindings (binding current :field social-class/value)) \
         (effects (choose :sample struggle/spark :slot 0 \
           (branch SparkOutcome/EXCESSIVE_FORCE :mass 1m (effects)) \
           (branch SparkOutcome/NO_INCIDENT :mass 1m (effects)))))";
@@ -761,6 +788,108 @@ fn content_set_linking_refuses_duplicate_samples_and_nonadjacent_projections() {
         validate_probability_content_set(&[first, second]),
         Err(ProbabilityError::DuplicateSample { .. })
     ));
+}
+
+#[test]
+fn kernels_and_projections_require_a_stable_subject_carrier_at_load() {
+    let fields = HashMap::from([
+        (
+            "social-class/value".to_owned(),
+            FieldDecl {
+                ty: BslType::Int,
+                kind: FieldKind::Extensive,
+            },
+        ),
+        (
+            "organization/value".to_owned(),
+            FieldDecl {
+                ty: BslType::Int,
+                kind: FieldKind::Extensive,
+            },
+        ),
+    ]);
+    let vocabulary = BindingVocabulary {
+        fields: fields.keys().cloned().collect(),
+        consts: HashSet::new(),
+        probability_consts: HashSet::new(),
+        metrics: HashSet::new(),
+    };
+    let types = TypeEnv {
+        fields,
+        exemptions: &[],
+    };
+    let enums = spark_enums();
+    let const_values = HashMap::new();
+    let ceilings = CardinalityCeilings::default();
+    let intrinsics = IntrinsicCosts::default();
+    let systems = HashSet::from(["demo".to_owned(), "struggle".to_owned()]);
+    let context = LoadContext {
+        vocabulary: &vocabulary,
+        types: &types,
+        enums: &enums,
+        const_values: &const_values,
+        ceilings: &ceilings,
+        intrinsics: &intrinsics,
+        systems: &systems,
+        vocabulary_registry: None,
+        rule_file: "demo/probability.bsl",
+    };
+    let cases = [
+        (
+            "(rule demo/kernel :role mechanic :evidence designed \
+             :material-basis \"bounded material alternatives\" :fuel 64 \
+             (bindings) (effects \
+               (choose :sample struggle/spark :slot 0 \
+                 (branch SparkOutcome/EXCESSIVE_FORCE :mass 1m (effects)) \
+                 (branch SparkOutcome/NO_INCIDENT :mass 1m (effects)))))",
+            "finite kernel requires a stable subject carrier",
+            "no :field binding",
+        ),
+        (
+            "(rule struggle/spark-recognizer :role recognizer :evidence derived \
+             :projects-kernel struggle/spark \
+             :material-basis \"deterministic observation\" :fuel 64 \
+             (bindings) (effects (emit EventType/EXCESSIVE_FORCE)))",
+            "finite projection requires a stable subject carrier",
+            "no :field binding",
+        ),
+        (
+            "(rule demo/kernel :role mechanic :evidence designed \
+             :material-basis \"ambiguous material alternatives\" :fuel 64 \
+             (bindings \
+               (binding current :field social-class/value) \
+               (binding organization :field organization/value)) \
+             (effects (choose :sample struggle/spark :slot 0 \
+               (branch SparkOutcome/EXCESSIVE_FORCE :mass 1m (effects)) \
+               (branch SparkOutcome/NO_INCIDENT :mass 1m (effects)))))",
+            "finite kernel requires a stable subject carrier",
+            "span 2 namespaces",
+        ),
+        (
+            "(rule struggle/spark-recognizer :role recognizer :evidence derived \
+             :projects-kernel struggle/spark \
+             :material-basis \"ambiguous deterministic observation\" :fuel 64 \
+             (bindings \
+               (binding current :field social-class/value) \
+               (binding organization :field organization/value)) \
+             (effects (emit EventType/EXCESSIVE_FORCE)))",
+            "finite projection requires a stable subject carrier",
+            "span 2 namespaces",
+        ),
+    ];
+    for (source, expected, carrier_detail) in cases {
+        let error = load_rule(source, &context)
+            .expect_err("finite probability rules without carriers must fail at load");
+        let LoadError::Probability(ProbabilityError::InvalidForm { message, form_path }) = error
+        else {
+            panic!("expected a located probability refusal, got {error:?}");
+        };
+        assert!(message.contains(expected), "{message}");
+        assert!(message.contains(carrier_detail), "{message}");
+        let (_, spans) = read_all_spanned(source.as_bytes()).unwrap();
+        let span = spans.span_of(&form_path).unwrap();
+        assert_eq!(&source[span.start..span.end], "struggle/spark");
+    }
 }
 
 #[test]
@@ -793,7 +922,10 @@ fn adjacent_projection_requires_the_kernel_subject_carrier_at_its_sample_path() 
     };
     let enums = spark_enums();
     let const_values = HashMap::new();
-    let ceilings = CardinalityCeilings::default();
+    let ceilings = CardinalityCeilings::new(
+        HashMap::from([("NodeType/SOCIAL_CLASS".to_owned(), 1)]),
+        HashMap::new(),
+    );
     let intrinsics = IntrinsicCosts::default();
     let systems = HashSet::from(["demo".to_owned(), "struggle".to_owned()]);
     let context = LoadContext {
@@ -838,7 +970,32 @@ fn adjacent_projection_requires_the_kernel_subject_carrier_at_its_sample_path() 
 
     let matching_source = projection_source.replace("organization/value", "social-class/value");
     let matching = load_rule(&matching_source, &context).unwrap();
-    validate_probability_content_set(&[kernel, matching]).unwrap();
+    validate_probability_content_set(&[kernel.clone(), matching.clone()]).unwrap();
+
+    let cross_carrier_source = "(rule struggle/spark-mechanic :role mechanic \
+        :evidence designed :material-basis \"joint singleton carrier\" :fuel 64 \
+        (bindings (binding current :field social-class/value)) \
+        (effects (choose :sample struggle/spark :slot 0 \
+          (branch SparkOutcome/EXCESSIVE_FORCE :mass 1m \
+            (effects (update-node (the NodeType/SOCIAL_CLASS) \
+              social-class/value (set 1)))) \
+          (branch SparkOutcome/NO_INCIDENT :mass 1m (effects)))))";
+    let cross_carrier_kernel = load_rule(cross_carrier_source, &context)
+        .expect("an otherwise-governed standalone joint-carrier kernel loads");
+    validate_probability_content_set(std::slice::from_ref(&cross_carrier_kernel))
+        .expect("standalone kernels are not constrained by projection enumerability");
+    let error = validate_probability_content_set(&[cross_carrier_kernel, matching])
+        .expect_err("an established finite projection requires carrier-local kernel effects");
+    let ProbabilityError::InvalidForm { message, form_path } = error else {
+        panic!("expected a located carrier-locality refusal, got {error:?}");
+    };
+    assert!(message.contains("carrier-local"), "{message}");
+    let (_, spans) = read_all_spanned(cross_carrier_source.as_bytes()).unwrap();
+    let span = spans.span_of(&form_path).unwrap();
+    assert_eq!(
+        &cross_carrier_source[span.start..span.end],
+        "(the NodeType/SOCIAL_CLASS)"
+    );
 }
 
 #[test]
@@ -892,9 +1049,21 @@ fn a_finite_projection_refuses_graph_global_metric_bindings_at_load() {
 }
 
 fn load_mass_probe(source: &str) -> Result<babylon_bsl::LoadedRule, LoadError> {
-    let vocabulary = BindingVocabulary::default();
+    let fields = HashMap::from([(
+        "social-class/value".to_owned(),
+        FieldDecl {
+            ty: BslType::Int,
+            kind: FieldKind::Extensive,
+        },
+    )]);
+    let vocabulary = BindingVocabulary {
+        fields: fields.keys().cloned().collect(),
+        consts: HashSet::new(),
+        probability_consts: HashSet::new(),
+        metrics: HashSet::new(),
+    };
     let types = TypeEnv {
-        fields: HashMap::new(),
+        fields,
         exemptions: &[],
     };
     let enums = EnumRegistry::default();
@@ -999,7 +1168,7 @@ fn loader_refuses_mass_in_payload_write_comparison_fold_and_scalar_contexts_at_i
 fn projection_probability_analysis_treats_payload_labels_as_data_and_values_as_expressions() {
     let labels_are_data = "(rule struggle/spark-recognizer :role recognizer :evidence derived \
         :projects-kernel demo/kernel :material-basis \"payload labels are observations\" \
-        :fuel 64 (bindings) (effects \
+        :fuel 64 (bindings (binding current :field social-class/value)) (effects \
           (emit EventType/EXCESSIVE_FORCE \
             (choose 1) (nodes 2) (quantize-mass 3))))";
     let loaded = load_mass_probe(labels_are_data)
@@ -1014,7 +1183,7 @@ fn projection_probability_analysis_treats_payload_labels_as_data_and_values_as_e
 
     let nonlocal_value = "(rule struggle/spark-recognizer :role recognizer :evidence derived \
         :projects-kernel demo/kernel :material-basis \"payload values are expressions\" \
-        :fuel 64 (bindings) (effects \
+        :fuel 64 (bindings (binding current :field social-class/value)) (effects \
           (emit EventType/EXCESSIVE_FORCE \
             (choose (fold count (nodes NodeType/X) 1)))))";
     let error = load_mass_probe(nonlocal_value)

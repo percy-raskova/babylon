@@ -29,7 +29,9 @@ historical record against their stated baseline.
 - D5/D16 phase-ordering status: implemented_executable_PER-17
 - PER-18 rollback and combined-world-hash status: implemented_current
 - PER-19 causal-composition and outcome-write-contract status: implemented_current
-- Persistence writer status: accepted_cutover_law
+- Persistence writer status: implemented_current_V2_only
+- PostgreSQL runtime status: PostgreSQL_17_only
+- PER-20 durable boundary status: implemented_current
 - PER-48 status: Done
 - PostgreSQL boundary ADR: ADR220_rust_owned_postgresql_persistence_boundary
 - Attributed membership identity status: implemented_current
@@ -205,13 +207,18 @@ S-32's indefinite Python writer assignment and any diagram that repeats it have
 no live force. Graph, BSL, and tick adjudication remain database-free, and
 durability begins after adjudication. PER-48 is Done;
 `ADR220_rust_owned_postgresql_persistence_boundary` records the accepted
-one-way cutover. Python remains the sole live PostgreSQL writer before that
-cutover. Python migration and runtime-write entry points must be disabled before
-Rust assumes game-managed PostgreSQL connections, migrations, the typed tick
-transaction, hydration, H3 codecs, and compatibility views. Surviving Python
-data-build, API, AI, document, and CLI roles remain. Transition observers may
-read versioned views but cannot write or run DDL. This law does not claim that
-PER-20 has implemented the cutover.
+one-way cutover, and PER-20 implements it. Rust is the sole live game-managed
+PostgreSQL 17 authority. It owns game-managed connections, migrations, the
+typed V2 tick transaction, hydration, and H3 codecs. Its durable reader and
+writer are V2-only. Python retains its declared data-build, API, AI, document,
+optimization, and CLI periphery, but it has no game-state writer, transition
+reader, migration, DDL, or game-managed connection authority.
+
+Historical cutover rationale: before activation, Python was the sole live
+PostgreSQL writer, and its game-managed migration and runtime-write entry
+points had to be disabled before Rust assumed authority. That requirement
+governed the one-way transition, is now satisfied, and has no current runtime
+force.
 
 The current Rust graph carries base membership identity. Its attributed
 membership payload is empty, absent from canonical hashing, unwritten, and

@@ -296,6 +296,28 @@ pub fn load_rule(source: &str, ctx: &LoadContext<'_>) -> Result<LoadedRule, Load
     load_rule_form(rule, vec![0], ctx)
 }
 
+fn resolve_probability_carrier(
+    kernel: Option<&FiniteKernelV1>,
+    projection: Option<&FiniteProjectionV1>,
+    bindings: &[BindingDecl],
+    vocabulary: Option<&crate::vocabulary::ClosedVocabulary>,
+) -> Result<Option<String>, LoadError> {
+    let probability_form = kernel
+        .map(|kernel| ("kernel", &kernel.sample_path))
+        .or_else(|| projection.map(|projection| ("projection", &projection.sample_path)));
+    let Some((kind, sample_path)) = probability_form else {
+        return Ok(None);
+    };
+    crate::tick::subject_type_of_bindings(bindings, vocabulary)
+        .map(Some)
+        .map_err(|error| {
+            LoadError::Probability(ProbabilityError::InvalidForm {
+                message: format!("finite {kind} requires a stable subject carrier: {error}"),
+                form_path: sample_path.clone(),
+            })
+        })
+}
+
 /// [`load_rule`]'s body, taking an already-parsed rule form instead of
 /// re-reading one from source — the seam a multi-top-form content set
 /// (§2.2) needs: its `(intrinsic …)` declarations are split out and parsed
@@ -418,11 +440,12 @@ pub fn load_rule_form(
     resolve_bindings(&bindings, ctx.vocabulary).map_err(LoadError::Binding)?;
     check_free_variables(&rule, &bindings, &declared_element_names(&rule))
         .map_err(LoadError::Binding)?;
-    let probability_carrier = if kernel.is_some() || projection.is_some() {
-        crate::tick::subject_type_of_bindings(&bindings, ctx.vocabulary_registry).ok()
-    } else {
-        None
-    };
+    let probability_carrier = resolve_probability_carrier(
+        kernel.as_ref(),
+        projection.as_ref(),
+        &bindings,
+        ctx.vocabulary_registry,
+    )?;
     let static_bound = crate::bound_checker::check_rule_with_kernel(
         &rule,
         kernel.as_ref(),

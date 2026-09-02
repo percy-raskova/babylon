@@ -517,6 +517,11 @@ mod tests {
     // anchor default check that `diagnose_content_set` actually runs.
     const RULE: &str = "(rule vitality/probe :role mechanic :evidence derived :material-basis \"x\" :fuel 16 (bindings) \
                          (effects (emit EventType/CONSCIOUSNESS_SHIFT (gate 0))))";
+    const KERNEL_SCENARIO: &str = "(scenario ft/probe \
+        (defvocabulary NodeType (SOCIAL_CLASS)) \
+        (defenum SparkOutcome (YES NO)) \
+        (deffield social-class/value int extensive) \
+        (node worker NodeType/SOCIAL_CLASS (social-class/value 0)))";
 
     const PROJECTION_SCENARIO: &str = r"
 (scenario struggle/spark-projection-contract
@@ -691,7 +696,9 @@ note = "kernel slot governance fixture"
     fn kernel_source(sample: &str, slot: u32) -> String {
         format!(
             "(rule vitality/probe :role mechanic :evidence designed \
-             :material-basis \"bounded spark\" :fuel 64 (bindings) (effects \
+             :material-basis \"bounded spark\" :fuel 64 \
+             (domain NodeType/SOCIAL_CLASS) \
+             (bindings (binding current :field social-class/value)) (effects \
              (choose :sample {sample} :slot {slot} \
                (branch SparkOutcome/YES :mass 1m (effects)) \
                (branch SparkOutcome/NO :mass 3m (effects)))))"
@@ -701,14 +708,14 @@ note = "kernel slot governance fixture"
     fn kernel_source_reader(source_text: &str) -> FixtureSourceReader {
         FixtureSourceReader {
             files: [
-                (
-                    "scenario.bscn".to_owned(),
-                    "(scenario ft/probe (defenum SparkOutcome (YES NO)))".to_owned(),
-                ),
+                ("scenario.bscn".to_owned(), KERNEL_SCENARIO.to_owned()),
                 ("rules/kernel.bsl".to_owned(), source_text.to_owned()),
                 (
                     "rules/sibling.bsl".to_owned(),
-                    RULE.replace("vitality/probe", "vitality/sibling"),
+                    RULE.replace("vitality/probe", "vitality/sibling").replace(
+                        ":fuel 16 (bindings)",
+                        ":fuel 16 (domain NodeType/SOCIAL_CLASS) (bindings)",
+                    ),
                 ),
             ]
             .into_iter()
@@ -907,14 +914,13 @@ slot = 0
         let manifest = manifest_with_one_set();
         let source = FixtureSourceReader {
             files: [
-                (
-                    "scenario.bscn".to_owned(),
-                    "(scenario ft/probe (defenum SparkOutcome (YES NO)))".to_owned(),
-                ),
+                ("scenario.bscn".to_owned(), KERNEL_SCENARIO.to_owned()),
                 (
                     "rules/probe.bsl".to_owned(),
                     "(rule vitality/probe :role mechanic :evidence designed \
-                     :material-basis \"bounded spark\" :fuel 64 (bindings) (effects \
+                     :material-basis \"bounded spark\" :fuel 64 \
+                     (domain NodeType/SOCIAL_CLASS) \
+                     (bindings (binding current :field social-class/value)) (effects \
                      (choose :sample struggle/spark :slot 0 \
                        (branch SparkOutcome/YES :mass 1m (effects)) \
                        (branch SparkOutcome/NO :mass 3m (effects)))))"
@@ -947,19 +953,19 @@ slot = 0
     fn probability_authoring_preserves_a_later_top_form_span() {
         let manifest = manifest_with_one_set();
         let source_text = "(rule vitality/first :role mechanic :evidence derived \
-            :material-basis \"first top form\" :fuel 16 (bindings) \
+            :material-basis \"first top form\" :fuel 16 \
+            (domain NodeType/SOCIAL_CLASS) (bindings) \
             (effects (emit EventType/CONSCIOUSNESS_SHIFT (gate 0))))\n\
             (rule vitality/second :role mechanic :evidence designed \
-            :material-basis \"second top form\" :fuel 64 (bindings) (effects \
+            :material-basis \"second top form\" :fuel 64 \
+            (domain NodeType/SOCIAL_CLASS) \
+            (bindings (binding current :field social-class/value)) (effects \
             (choose :sample struggle/later :slot 0 \
               (branch SparkOutcome/YES :mass 1m (effects)) \
               (branch SparkOutcome/NO :mass 3m (effects)))))";
         let source = FixtureSourceReader {
             files: [
-                (
-                    "scenario.bscn".to_owned(),
-                    "(scenario ft/probe (defenum SparkOutcome (YES NO)))".to_owned(),
-                ),
+                ("scenario.bscn".to_owned(), KERNEL_SCENARIO.to_owned()),
                 ("rules/probe.bsl".to_owned(), source_text.to_owned()),
             ]
             .into_iter()
@@ -986,19 +992,19 @@ slot = 0
     fn probability_diagnostic_preserves_a_later_top_form_span() {
         let manifest = manifest_with_one_set();
         let source_text = "(rule vitality/first :role mechanic :evidence derived \
-            :material-basis \"first top form\" :fuel 16 (bindings) \
+            :material-basis \"first top form\" :fuel 16 \
+            (domain NodeType/SOCIAL_CLASS) (bindings) \
             (effects (emit EventType/CONSCIOUSNESS_SHIFT (gate 0))))\n\
             (rule vitality/second :role mechanic :evidence designed \
-            :material-basis \"invalid later enum order\" :fuel 64 (bindings) (effects \
+            :material-basis \"invalid later enum order\" :fuel 64 \
+            (domain NodeType/SOCIAL_CLASS) \
+            (bindings (binding current :field social-class/value)) (effects \
             (choose :sample struggle/later :slot 0 \
               (branch SparkOutcome/NO :mass 1m (effects)) \
               (branch SparkOutcome/YES :mass 1m (effects)))))";
         let source = FixtureSourceReader {
             files: [
-                (
-                    "scenario.bscn".to_owned(),
-                    "(scenario ft/probe (defenum SparkOutcome (YES NO)))".to_owned(),
-                ),
+                ("scenario.bscn".to_owned(), KERNEL_SCENARIO.to_owned()),
                 ("rules/probe.bsl".to_owned(), source_text.to_owned()),
             ]
             .into_iter()
@@ -1091,15 +1097,20 @@ note = "Mass declaration ownership fixture"
         let manifest = manifest_with_two_rule_sources();
         let source = FixtureSourceReader {
             files: [
+                ("scenario.bscn".to_owned(), KERNEL_SCENARIO.to_owned()),
                 (
-                    "scenario.bscn".to_owned(),
-                    "(scenario ft/probe (defenum SparkOutcome (YES NO)))".to_owned(),
+                    "rules/good.bsl".to_owned(),
+                    RULE.replace(
+                        ":fuel 16 (bindings)",
+                        ":fuel 16 (domain NodeType/SOCIAL_CLASS) (bindings)",
+                    ),
                 ),
-                ("rules/good.bsl".to_owned(), RULE.to_owned()),
                 (
                     "rules/bad.bsl".to_owned(),
                     "(rule vitality/bad :role mechanic :evidence designed \
-                     :material-basis \"invalid enum order\" :fuel 64 (bindings) (effects \
+                     :material-basis \"invalid enum order\" :fuel 64 \
+                     (domain NodeType/SOCIAL_CLASS) \
+                     (bindings (binding current :field social-class/value)) (effects \
                      (choose :sample struggle/bad :slot 0 \
                        (branch SparkOutcome/NO :mass 1m (effects)) \
                        (branch SparkOutcome/YES :mass 1m (effects)))))"

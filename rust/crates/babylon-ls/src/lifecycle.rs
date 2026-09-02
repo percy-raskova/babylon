@@ -809,7 +809,9 @@ note = "LSP request fixture"
         let scenario_uri = Url::parse("file:///virtual/scenario.bscn").expect("valid scenario URI");
         let rule_uri = Url::parse("file:///virtual/rules/probe.bsl").expect("valid rule URI");
         let source = "(rule vitality/probe :role mechanic :evidence designed \
-            :material-basis \"bounded spark\" :fuel 64 (bindings) (effects \
+            :material-basis \"bounded spark\" :fuel 64 \
+            (domain NodeType/SOCIAL_CLASS) \
+            (bindings (binding current :field social-class/value)) (effects \
             (choose :sample struggle/spark :slot 0 \
               (branch SparkOutcome/YES :mass 1m (effects)) \
               (branch SparkOutcome/NO :mass 3m (effects)))))"
@@ -818,7 +820,12 @@ note = "LSP request fixture"
         store.open(
             scenario_uri,
             1,
-            "(scenario ft/probe (defenum SparkOutcome (YES NO)))".to_owned(),
+            "(scenario ft/probe \
+                (defvocabulary NodeType (SOCIAL_CLASS)) \
+                (defenum SparkOutcome (YES NO)) \
+                (deffield social-class/value int extensive) \
+                (node worker NodeType/SOCIAL_CLASS (social-class/value 0)))"
+                .to_owned(),
         );
         store.open(rule_uri.clone(), 1, source.clone());
         (

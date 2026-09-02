@@ -33,6 +33,7 @@ MAX_VECTOR_OBJECT_FIELDS = 64
 KIND_TAGS = {"county": 1, "place": 2}
 ID_WIDTHS = {"county": 5, "place": 7}
 REQUIRED_VECTOR_KINDS = {"render", "refusal", "batch", "identity"}
+REQUIRED_BATCH_ROW_IDS = ("batch-empty", "batch-one-page")
 COMPILED_META = {
     "contract": "ArchivePageV1",
     "version": 1,
@@ -69,6 +70,83 @@ COMPILED_BOUNDS = {
     "links_per_page": MAX_LINKS,
     "pages_per_batch": MAX_PAGES,
     "knowledge_grants_per_snapshot": MAX_KNOWLEDGE_GRANTS,
+}
+# Normative layouts mirrored from the compiled hashing and rendering
+# implementation (rust/crates/babylon-persistence/src/archive.rs): the exact
+# field order of hash_page_input, the dirty-batch digest composition, the
+# worker contract concatenation, and the pinned template link forms.
+COMPILED_LAYOUTS = {
+    "hash_primitives_v1": {
+        "length_prefix": "u64 big-endian exact byte count before every variable byte field"
+    },
+    "page_ref_v1": {
+        "fields": ["kind_tag_u8", "length_prefixed_exact_id_ascii"],
+        "county_tag_u8": 1,
+        "place_tag_u8": 2,
+        "county_id_bytes": 5,
+        "place_id_bytes": 7,
+    },
+    "page_input_v1": {
+        "fields": [
+            "page_ref_v1",
+            "length_prefixed_title",
+            "verified_tick_u64",
+            "tick_content_hash_exact_32_bytes",
+            "length_prefixed_decision_question",
+            "signal_count_u64",
+            "per_signal_grant_key_label_value_citation",
+            "link_count_u64",
+            "per_link_page_ref_v1_and_length_prefixed_known_label",
+        ],
+        "order": "exact input order",
+        "duplicate_signal_keys": "prohibited",
+        "duplicate_link_targets": "prohibited",
+    },
+    "dirty_batch_v1": {
+        "fields": [
+            "dirty_batch_domain_ascii_nul",
+            "resolve_tick_u64",
+            "tick_content_hash_exact_32_bytes",
+            "page_count_u64",
+            "exact_ordered_page_input_v1_fields",
+        ],
+        "duplicate_subjects": "prohibited",
+        "receipt_mismatch": "prohibited",
+    },
+    "worker_contract_v1": {
+        "fields": [
+            "worker_domain_ascii_nul",
+            "exact_schema_sql_bytes",
+            "template_sha256_exact_32_bytes",
+        ],
+        "digest": "SHA-256 over the concatenation",
+    },
+    "page_markdown_v1": {
+        "front_matter": [
+            "schema_front_matter_contract_id",
+            "subject_page_key",
+            "verified_tick_decimal",
+            "tick_content_hash_hex",
+        ],
+        "known_link_form": "[[{kind}/{id}|{known_label}]]",
+        "redlink_form": "[[{kind}/{id}]]",
+    },
+    "search_text_v1": {
+        "join": "single ASCII space",
+        "parts": [
+            "subject_page_key",
+            "subject_title",
+            "decision_question",
+            "per_known_signal_label_then_value",
+            "per_known_link_page_key_then_known_label",
+        ],
+    },
+    "citations_v1": {
+        "order": [
+            "subject_grant_citation_first",
+            "distinct_known_signal_citations_in_signal_order",
+        ],
+    },
 }
 
 
@@ -151,6 +229,8 @@ def _verify_compiled_contract(contract: dict[str, Any]) -> None:
         raise ArchivePageContractRefusal("compiled_contract_drift", "constants")
     if contract.get("bounds") != COMPILED_BOUNDS:
         raise ArchivePageContractRefusal("compiled_contract_drift", "bounds")
+    if contract.get("layouts") != COMPILED_LAYOUTS:
+        raise ArchivePageContractRefusal("compiled_contract_drift", "layouts")
     if contract.get("production_decoder") != "prohibited":
         raise ArchivePageContractRefusal("compiled_contract_drift", "production_decoder")
     required = contract.get("vector_kinds", {}).get("required")
@@ -220,18 +300,25 @@ def _page_key(ref: tuple[str, str]) -> str:
     return f"{ref[0]}/{ref[1]}"
 
 
+_LOWER_HEX = frozenset("0123456789abcdef")
+
+
 def _digest32(value: object, field: str) -> str:
-    if not isinstance(value, str) or len(value) != 64 or value.lower() != value:
+    if (
+        not isinstance(value, str)
+        or len(value) != 64
+        or any(char not in _LOWER_HEX for char in value)
+    ):
         raise ArchivePageContractRefusal("invalid_digest", field)
-    try:
-        bytes.fromhex(value)
-    except ValueError as error:
-        raise ArchivePageContractRefusal("invalid_digest", field) from error
+    if len(bytes.fromhex(value)) != 32:
+        raise ArchivePageContractRefusal("invalid_digest", field)
     return value
 
 
-def _tick(value: object, field: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0 or value > MAX_I64:
+def _tick(value: object, field: str, *, allow_zero: bool = False) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ArchivePageContractRefusal("invalid_tick", field)
+    if value < 0 or (value == 0 and not allow_zero) or value > MAX_I64:
         raise ArchivePageContractRefusal("invalid_tick", field)
     return value
 
@@ -268,7 +355,7 @@ def _signals(value: object, field: str) -> list[dict[str, Any]]:
                 "grant_key": grant_key,
                 "label": _text(signal.get("label"), f"{path}.label"),
                 "value": _text(signal.get("value"), f"{path}.value"),
-                "citation": _citation(signal.get("citation"), path),
+                "citation": _citation(signal.get("citation"), f"{path}.citation"),
             }
         )
     return signals
@@ -287,7 +374,9 @@ def _links(value: object, field: str) -> list[dict[str, Any]]:
         if target in seen:
             raise ArchivePageContractRefusal("duplicate_link_target", path)
         seen.add(target)
-        links.append({"target": target, "known_label": _text(link.get("known_label"), path)})
+        links.append(
+            {"target": target, "known_label": _text(link.get("known_label"), f"{path}.known_label")}
+        )
     return links
 
 
@@ -315,14 +404,18 @@ def _knowledge(value: object, field: str) -> list[dict[str, Any]]:
             {
                 "page_ref": page_ref,
                 "grant_key": grant_key,
-                "granted_tick": _tick(grant.get("granted_tick"), f"{path}.granted_tick"),
-                "citation": _citation(grant.get("citation"), path),
+                "granted_tick": _tick(
+                    grant.get("granted_tick"), f"{path}.granted_tick", allow_zero=True
+                ),
+                "citation": _citation(grant.get("citation"), f"{path}.citation"),
             }
         )
     return grants
 
 
-def _page_input(data: dict[str, Any], field: str) -> dict[str, Any]:
+def _page_input(data: Any, field: str) -> dict[str, Any]:
+    if not isinstance(data, dict):
+        raise ArchivePageContractRefusal("invalid_pages", field)
     subject = data.get("subject")
     if not isinstance(subject, dict) or set(subject) != {"kind", "id", "title"}:
         raise ArchivePageContractRefusal("invalid_identity", f"{field}.subject")
@@ -490,8 +583,24 @@ def _verify_render(row: dict[str, Any]) -> str | None:
             granted += 1
             if bullet not in markdown:
                 return f"{row['id']}: known signal drift: {signal['grant_key']}"
-        elif f"**{signal['label']}:**" in markdown:
-            return f"{row['id']}: ungranted signal rendered: {signal['grant_key']}"
+        else:
+            if f"**{signal['label']}:**" in markdown:
+                return f"{row['id']}: ungranted signal rendered: {signal['grant_key']}"
+            leaked_material = next(
+                (
+                    material_name
+                    for material_name, material in (
+                        ("value", signal["value"]),
+                        ("locator", signal["citation"]["locator"]),
+                    )
+                    if material in markdown
+                ),
+                None,
+            )
+            if leaked_material is not None:
+                return (
+                    f"{row['id']}: ungranted signal {leaked_material} leaked: {signal['grant_key']}"
+                )
     if ("## Signals" in markdown) != (granted > 0):
         return f"{row['id']}: signals section presence drift"
     if page["links"] and "## Related" not in markdown:
@@ -502,9 +611,11 @@ def _verify_render(row: dict[str, Any]) -> str | None:
             if f"[[{target_key}|{link['known_label']}]]" not in markdown:
                 return f"{row['id']}: known link drift: {target_key}"
         else:
-            if f"[[{target_key}]]" not in markdown:
+            redlink_token = f"[[{target_key}]]"
+            known_link_token = f"[[{target_key}|{link['known_label']}]]"
+            if redlink_token not in markdown:
                 return f"{row['id']}: redlink drift: {target_key}"
-            if f"[[{target_key}|" in markdown or link["known_label"] in markdown:
+            if f"[[{target_key}|" in markdown or known_link_token in markdown:
                 return f"{row['id']}: redlink leaked the known label: {target_key}"
     if _derived_search_text(page, grants) != data.get("search_text"):
         return f"{row['id']}: search_text derivation mismatch"
@@ -545,6 +656,8 @@ def _verify_identity(row: dict[str, Any], root: Path) -> str | None:
     template_bytes = _bounded_file_bytes(root / TEMPLATE_PATH, MAX_PAGE_BYTES, "file_read")
     schema_bytes = _bounded_file_bytes(root / SCHEMA_PATH, MAX_CONTRACT_BYTES, "file_read")
     template_sha256 = hashlib.sha256(template_bytes).hexdigest()
+    if template_sha256 != TEMPLATE_SHA256:
+        return f"{row['id']}: template SHA-256 drift from contract constant"
     if template_sha256 != data.get("template_sha256_hex"):
         return f"{row['id']}: template SHA-256 mismatch"
     worker = hashlib.sha256()
@@ -563,6 +676,9 @@ def verify_all(contract: dict[str, Any], vectors: list[dict[str, Any]], root: Pa
     kinds = {row["kind"] for row in rows}
     if kinds != REQUIRED_VECTOR_KINDS:
         raise ArchivePageContractRefusal("vector_kind_drift", repr(kinds))
+    batch_ids = {row["id"] for row in rows if row["kind"] == "batch"}
+    if batch_ids != set(REQUIRED_BATCH_ROW_IDS):
+        raise ArchivePageContractRefusal("vector_id_drift", repr(sorted(batch_ids)))
     errors: list[str] = []
     for row in rows:
         kind = row["kind"]
@@ -594,7 +710,7 @@ def main() -> int:
         default=Path("contracts/archive_page_v1_vectors.jsonl"),
     )
     arguments = parser.parse_args()
-    root = arguments.vectors.resolve().parent.parent
+    root = Path(__file__).resolve().parents[1]
     try:
         errors = verify_all(load_contract(arguments.schema), load_vectors(arguments.vectors), root)
     except ArchivePageContractRefusal as error:

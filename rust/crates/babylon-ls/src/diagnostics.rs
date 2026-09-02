@@ -18,6 +18,7 @@
 //! | Family | Wave-1 precision | Mechanism |
 //! |---|---|---|
 //! | `E-LEX` (13 codes) | **Exact** | `ReadError`'s own `position`, expanded to the enclosing token's byte range by [`token_span_at`] — a local re-scan over `text`, not `SpanTable::innermost_at`: a read failure never produces a `SpanTable` at all (`read_all_spanned` discards its partial `entries` on the `?` that propagates the error, `reader.rs:383-397`), so there is no table to query for the one error this tier exists to locate. |
+//! | Finite-probability refusals carrying a [`FormPath`] | **Exact** | Resolve the loader-owned path directly through this source's [`SpanTable`]; no semantic locator or message scan. |
 //! | Any error carrying an [`ErrorIdentity`] (§2.3) | **Form** | One of [`crate::locator`]'s four strategies, dispatched by [`crate::locator::locate`]. Unique match ⇒ that span. Ambiguous ⇒ file-level range plus one `relatedInformation` entry per candidate, sorted into document order. Absent ⇒ file-level, no `relatedInformation`. `data.precision` reads `"form"` regardless of which of the three outcomes the search landed on — it names the error's own CLASS (it carries typed identity at all), not the search's runtime luck. |
 //! | `E-TYPE` (15 codes) | **File** | `TypeError` is `{code, message}` with no struct variants (`typecheck.rs:81-85`) — nothing to locate. Wave 2 gives it identity at the raise site. |
 //! | Prose-only variants (`Malformed{message}` in six modules; `DomainError::Undeterminable{candidates}`) | **File** (`Undeterminable` ⇒ file + `relatedInformation`, via [`ErrorIdentity::Ambiguous`]) | By construction: the loader names no single token. |
@@ -30,7 +31,8 @@ use lsp_types::{
 
 use babylon_bsl::rule_pipeline::LoadError;
 use babylon_bsl::scenario::ScenarioError;
-use babylon_bsl::{read_all_spanned, ErrorIdentity, SExpr, SpanTable};
+use babylon_bsl::{read_all_spanned, ErrorIdentity, FormPath, SExpr, SpanTable};
+use babylon_tick::kernel_slot::KernelSlotLedgerErrorV1;
 use babylon_tick::PrepareError;
 
 use crate::line_index::LineIndex;
@@ -39,7 +41,7 @@ use crate::locator::{locate, LocateOutcome};
 /// `data.precision` (§6.2's own three wave-1 tiers).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Precision {
-    /// `E-LEX`: the exact offending token's span.
+    /// The exact offending token or loader-owned form span.
     Exact,
     /// Any error carrying an [`ErrorIdentity`]: a located form's span, or a
     /// documented fallback to file level (ambiguous/absent).
@@ -77,6 +79,10 @@ pub struct Located {
     pub identity: Option<ErrorIdentity>,
     /// The byte offset a `ReadError` (`E-LEX`) detected the failure at.
     pub position: Option<usize>,
+    /// The loader-owned AST node that raised a structured refusal. Unlike
+    /// [`ErrorIdentity`], this locates one exact occurrence without a second
+    /// semantic search in the language server.
+    pub form_path: Option<FormPath>,
     /// Human-readable detail (the loader's own `Display`).
     pub message: String,
     /// Error for a refusal — every wave-1 producer is one (§6.2).
@@ -91,11 +97,16 @@ impl Located {
             LoadError::Read(read_error) => Some(read_error.position),
             _ => None,
         };
+        let form_path = match err {
+            LoadError::Probability(error) => error.form_path().map(<[u32]>::to_vec),
+            _ => None,
+        };
         Self {
             code: err.spec_code(),
             family: family_of_load_error(err),
             identity: babylon_bsl::identity_of(err),
             position,
+            form_path,
             message: err.to_string(),
             severity: DiagnosticSeverity::ERROR,
         }
@@ -110,6 +121,7 @@ impl Located {
             family: family_of_scenario_error(err),
             identity: err.identity.clone(),
             position: err.position,
+            form_path: None,
             message: err.to_string(),
             severity: DiagnosticSeverity::ERROR,
         }
@@ -137,7 +149,40 @@ impl Located {
                     family: family_of_load_error(&wrapped),
                     identity: babylon_bsl::identity_of(&wrapped),
                     position: None,
+                    form_path: None,
                     message: err.to_string(),
+                    severity: DiagnosticSeverity::ERROR,
+                }
+            }
+            PrepareError::Probability { error, .. } => {
+                let wrapped = LoadError::Probability(error.clone());
+                let mut located = Self::from_load_error(&wrapped);
+                located.message = err.to_string();
+                located
+            }
+            PrepareError::KernelSlot(error) => {
+                let rule = match error {
+                    KernelSlotLedgerErrorV1::MissingLiveReservation { rule, .. }
+                    | KernelSlotLedgerErrorV1::LiveSampleMismatch { rule, .. }
+                    | KernelSlotLedgerErrorV1::LiveSlotMismatch { rule, .. } => Some(rule),
+                    KernelSlotLedgerErrorV1::LiveSampleMoved { actual_rule, .. } => {
+                        Some(actual_rule)
+                    }
+                    KernelSlotLedgerErrorV1::OrdinalCapacity { .. }
+                    | KernelSlotLedgerErrorV1::Ordinal { .. }
+                    | KernelSlotLedgerErrorV1::Collision { .. }
+                    | KernelSlotLedgerErrorV1::Rebind { .. }
+                    | KernelSlotLedgerErrorV1::SampleCollision { .. }
+                    | KernelSlotLedgerErrorV1::RuleSlotSequence { .. }
+                    | KernelSlotLedgerErrorV1::InvalidQName { .. } => None,
+                };
+                Self {
+                    code: None,
+                    family: "E-LOAD",
+                    identity: rule.cloned().map(ErrorIdentity::RuleId),
+                    position: None,
+                    form_path: None,
+                    message: error.to_string(),
                     severity: DiagnosticSeverity::ERROR,
                 }
             }
@@ -155,6 +200,7 @@ impl Located {
                 family: code.map_or("E-LOAD", family_from_code),
                 identity: identity.clone(),
                 position: None,
+                form_path: None,
                 message: message.clone(),
                 severity: DiagnosticSeverity::ERROR,
             },
@@ -214,6 +260,7 @@ pub fn family_of_load_error(err: &LoadError) -> &'static str {
         | LoadError::Content(_)
         | LoadError::DuplicateRuleId { .. }
         | LoadError::DeferredShapeVerb(_)
+        | LoadError::Probability(_)
         // E-LOAD-058/059 return through `spec_code()` above. The bounded
         // same-tick AST-walk refusal is intentionally uncoded but still
         // belongs to the load family, so this arm also classifies that path.
@@ -276,7 +323,7 @@ pub fn family_of_scenario_error(err: &ScenarioError) -> &'static str {
 /// table: `data.precision` is a static fact about the error CLASS).
 #[must_use]
 pub fn precision_of(located: &Located) -> Precision {
-    if located.position.is_some() {
+    if located.position.is_some() || located.form_path.is_some() {
         Precision::Exact
     } else if located.identity.is_some() {
         Precision::Form
@@ -349,38 +396,47 @@ pub fn map_to_diagnostic(
     located: &Located,
 ) -> Diagnostic {
     let precision = precision_of(located);
-    let (range, related_information) = match (precision, located.position, &located.identity) {
-        (Precision::Exact, Some(position), _) => {
-            let (start, end) = token_span_at(text, position);
-            (byte_range_to_lsp_range(text, line_index, start, end), None)
-        }
-        (Precision::Form, _, Some(identity)) => match parsed {
-            Some((forest, spans)) => match locate(identity, forest, spans) {
-                LocateOutcome::Unique(span) => (
-                    byte_range_to_lsp_range(text, line_index, span.start, span.end),
-                    None,
-                ),
-                LocateOutcome::Ambiguous(candidates) => {
-                    let related = candidates
-                        .iter()
-                        .map(|span| DiagnosticRelatedInformation {
-                            location: Location {
-                                uri: uri.clone(),
-                                range: byte_range_to_lsp_range(
-                                    text, line_index, span.start, span.end,
-                                ),
-                            },
-                            message: "another declaration of the same name".to_owned(),
-                        })
-                        .collect();
-                    (file_range(text, line_index), Some(related))
-                }
-                LocateOutcome::Absent => (file_range(text, line_index), None),
+    let direct_span = located
+        .form_path
+        .as_deref()
+        .and_then(|path| parsed.and_then(|(_, spans)| spans.span_of(path)));
+    let (range, related_information) =
+        match (precision, direct_span, located.position, &located.identity) {
+            (Precision::Exact, Some(span), _, _) => (
+                byte_range_to_lsp_range(text, line_index, span.start, span.end),
+                None,
+            ),
+            (Precision::Exact, None, Some(position), _) => {
+                let (start, end) = token_span_at(text, position);
+                (byte_range_to_lsp_range(text, line_index, start, end), None)
+            }
+            (Precision::Form, _, _, Some(identity)) => match parsed {
+                Some((forest, spans)) => match locate(identity, forest, spans) {
+                    LocateOutcome::Unique(span) => (
+                        byte_range_to_lsp_range(text, line_index, span.start, span.end),
+                        None,
+                    ),
+                    LocateOutcome::Ambiguous(candidates) => {
+                        let related = candidates
+                            .iter()
+                            .map(|span| DiagnosticRelatedInformation {
+                                location: Location {
+                                    uri: uri.clone(),
+                                    range: byte_range_to_lsp_range(
+                                        text, line_index, span.start, span.end,
+                                    ),
+                                },
+                                message: "another declaration of the same name".to_owned(),
+                            })
+                            .collect();
+                        (file_range(text, line_index), Some(related))
+                    }
+                    LocateOutcome::Absent => (file_range(text, line_index), None),
+                },
+                None => (file_range(text, line_index), None),
             },
-            None => (file_range(text, line_index), None),
-        },
-        _ => (file_range(text, line_index), None),
-    };
+            _ => (file_range(text, line_index), None),
+        };
     Diagnostic {
         range,
         severity: Some(located.severity),
@@ -517,6 +573,7 @@ mod tests {
             family: "E-LEX",
             identity: None,
             position: Some(3),
+            form_path: None,
             message: "bad token".to_owned(),
             severity: DiagnosticSeverity::ERROR,
         };
@@ -530,6 +587,7 @@ mod tests {
             family: "E-LOAD",
             identity: Some(ErrorIdentity::Name("foo".to_owned())),
             position: None,
+            form_path: None,
             message: "duplicate".to_owned(),
             severity: DiagnosticSeverity::ERROR,
         };
@@ -543,10 +601,30 @@ mod tests {
             family: "E-PARSE",
             identity: None,
             position: None,
+            form_path: None,
             message: "malformed".to_owned(),
             severity: DiagnosticSeverity::ERROR,
         };
         assert_eq!(precision_of(&located), Precision::File);
+    }
+
+    #[test]
+    fn loader_probability_form_path_maps_to_the_exact_form_span() {
+        let text = "(foo bar)";
+        let line_index = LineIndex::new(text);
+        let error = LoadError::Probability(babylon_bsl::ProbabilityError::InvalidForm {
+            message: "probability refusal".to_owned(),
+            form_path: vec![0, 1],
+        });
+        let located = Located::from_load_error(&error);
+        let diagnostics = diagnostics_for_file(&uri(), text, &line_index, &[located]);
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].range.start.character, 5);
+        assert_eq!(diagnostics[0].range.end.character, 8);
+        assert_eq!(
+            diagnostics[0].data,
+            Some(serde_json::json!({"family": "E-LOAD", "precision": "exact"}))
+        );
     }
 
     // ---------------------------------------------------------- family_*
@@ -720,6 +798,7 @@ mod tests {
             family: "E-LEX",
             identity: None,
             position: Some(err.position),
+            form_path: None,
             message: err.message.clone(),
             severity: DiagnosticSeverity::ERROR,
         };
@@ -752,6 +831,7 @@ mod tests {
                 family: "E-LOAD",
                 identity: Some(ErrorIdentity::Name("floor".to_owned())),
                 position: None,
+                form_path: None,
                 message: "duplicate intrinsic".to_owned(),
                 severity: DiagnosticSeverity::ERROR,
             },
@@ -760,6 +840,7 @@ mod tests {
                 family: "E-PARSE",
                 identity: None,
                 position: None,
+                form_path: None,
                 message: "aaa file-level comes first alphabetically among equal ranges".to_owned(),
                 severity: DiagnosticSeverity::ERROR,
             },
@@ -806,7 +887,7 @@ mod tests {
     fn compute_result_id_is_deterministic_and_order_sensitive() {
         let uri_a = Url::parse("file:///a.bsl").unwrap();
         let uri_b = Url::parse("file:///b.bsl").unwrap();
-        let manifest = b"schema = 1";
+        let manifest = b"schema = 2";
         let ab = compute_result_id(&[(&uri_a, b"one"), (&uri_b, b"two")], manifest);
         let ab_again = compute_result_id(&[(&uri_a, b"one"), (&uri_b, b"two")], manifest);
         let ba = compute_result_id(&[(&uri_b, b"two"), (&uri_a, b"one")], manifest);

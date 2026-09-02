@@ -45,19 +45,25 @@ gate meets its acceptance contract; elapsed time does not open it.
 - Delivery roots: PER-7, PER-12
 - Delivery detail: this is a cross-root gate. PER-7 carries the PostgreSQL,
   H3, and Archive foundation; PER-12 carries the first decision-linked Archive
-  surface. PER-20 through PER-24 remain the bounded delivery issues.
+  surface. PER-20 implements the durable boundary; PER-21 through PER-24 remain
+  the bounded delivery issues.
 - Acceptance: a clean campaign can tick, commit, restart, search only known
   Archive material, and complete a county/place dossier-to-decision-to-
   consequence loop.
-- Persistence writer status: accepted_cutover_law
+- Persistence writer status: implemented_current_V2_only
+- PostgreSQL runtime status: PostgreSQL_17_only
+- PER-20 durable boundary status: implemented_current
 - PER-48 status: Done
 - PostgreSQL boundary ADR:
   ADR220_rust_owned_postgresql_persistence_boundary
-- Cutover law: Python remains the sole live writer before cutover. The one-way
-  cutover disables its migration and runtime-write paths before Rust assumes
-  game-managed PostgreSQL connections, migrations, the typed tick transaction,
-  hydration, H3 codecs, and compatibility views. Surviving Python roles and
-  transition observers remain outside authoritative writes.
+- Cutover law: the one-way cutover is complete. Rust is the sole live
+  game-managed PostgreSQL 17 authority and owns the V2-only durable reader and
+  writer. Python retains its declared periphery but has no game-state writer,
+  transition reader, migration, DDL, or game-managed connection authority.
+- Historical cutover sequencing: before activation, Python was the sole live
+  writer, and its game-managed migration and runtime-write paths had to be
+  disabled before Rust assumed authority. That requirement is satisfied and
+  has no current runtime force.
 - Decision surfaces: executable `DecisionSurfaceContract` belongs to PER-24 in
   this gate. It is design law now and planned implementation work here.
 

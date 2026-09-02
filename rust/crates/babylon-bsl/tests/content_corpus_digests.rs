@@ -11,14 +11,12 @@
 //! own conformance fixtures (`tests/conformance/*.bsl`), and the shipped
 //! scenario corpus (`babylon-tick/content/scenarios/*.bscn` plus the
 //! declaration preludes in `babylon-tick/content/declarations/*.bscn`). The plan
-//! quoted 25/37/1 = 63 files, counted at planning time; re-deriving the
-//! same command against this tree finds 30/37/1 = 68 — five conformance
-//! `.bsl` fixtures (`rng_edge_type_draw`, `rng_expr_draw`, `rng_fold_draw`,
-//! `rng_keyed_draw`, `rng_keyed_draw_guarded`) landed via #576 the same
-//! day, after the plan's snapshot but before this branch point. Walking
-//! the directories (sorted, for determinism — `read_dir` order is not
-//! guaranteed) rather than hand-listing files means that kind of drift is
-//! caught here instead of silently under-covering the corpus again.
+//! quoted 25/37/1 = 63 files, counted at planning time. Walking the
+//! directories (sorted, for determinism — `read_dir` order is not
+//! guaranteed) rather than hand-listing files means corpus drift is caught
+//! here instead of silently under-covering the corpus again. Amendment AJ
+//! retired the five author-visible `rng-draw` conformance fixtures; the
+//! private finite-kernel draw boundary has typed contracts instead.
 use babylon_bsl::reader::read_all;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
@@ -117,7 +115,11 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     ),
     (
         "solidarity.bsl",
-        "3f9e147898d9189b9f300a97a7df6513d5d3acb5cb5b7fbd3e9652a5e295ff37",
+        "b6083aa048431ea1b9dedaf5ed9624595a366f8ee7afd0865c4766f2c9ca50d4",
+    ),
+    (
+        "struggle-spark.bsl",
+        "402a06d3c603537512c046c69a62e4a7aa1679c9f7ea6099bba6aa60d140ade0",
     ),
     (
         "territory.bsl",
@@ -161,7 +163,7 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     ),
     (
         "event_forall.bsl",
-        "06588b95cddab8c6a8b37bf73c90fd14a6aa069165248cc88880a29db1a707d9",
+        "0db00c3affbbcde3b174acbdc14eee5d242967be297f45e8b5d2306cecd89a09",
     ),
     (
         "event_metric_conditions.bsl",
@@ -169,31 +171,11 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     ),
     (
         "event_node_condition.bsl",
-        "fb27d3189c4d1abd9f75a72ba822ee4961fbb53a65b81cf74bcf34ff0a4556eb",
+        "61e5e16fabe20e48f96216382c5440c101ddb6065f7b8bee189ecc4e16ebe6c5",
     ),
     (
         "event_wealth_aggregates.bsl",
         "85c63b8d7ebf694ee9c49e4ee67eb60f6203d4d933fdb37b22b7162d5a713ce7",
-    ),
-    (
-        "rng_edge_type_draw.bsl",
-        "b14b719eb112e9128a66328f71505a489d0039feace2a9278f67c16bdb78965d",
-    ),
-    (
-        "rng_expr_draw.bsl",
-        "232d22fae23d79aeb8c807761aae875012f61fb2ef6113109a9b9a5ec7a68ade",
-    ),
-    (
-        "rng_fold_draw.bsl",
-        "ba06e999ae8bb1086c8ded9b7e3a1b78947ce016becd0179426a79cfc65a00be",
-    ),
-    (
-        "rng_keyed_draw.bsl",
-        "d70f46f6e646fbea48fe96c6aedbdfc991aa5868a7ec692879fabe557fa501f2",
-    ),
-    (
-        "rng_keyed_draw_guarded.bsl",
-        "cebdabe5589b128285deed8fb2e17a7574cb687eb5a02cbe39e32f423f50b105",
     ),
     (
         "unconditional.bsl",
@@ -382,6 +364,10 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     (
         "solidarity-conformance.bscn",
         "251b7bf2843f2a6d3db25bb79c822be177903bc4258cfd48c8caa56cd46d6223",
+    ),
+    (
+        "struggle-spark-conformance.bscn",
+        "25876a9eb6c5c83288022535100035c9c9a993cb8fa9b64675283bc9957ce825",
     ),
     (
         "territory-conformance.bscn",

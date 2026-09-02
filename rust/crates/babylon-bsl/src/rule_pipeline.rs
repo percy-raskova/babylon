@@ -31,7 +31,7 @@ use crate::bindings::{
     check_free_variables, parse_bindings, resolve_bindings, BindingDecl, BindingError,
     BindingVocabulary,
 };
-use crate::bound_checker::{check_rule, BoundError};
+use crate::bound_checker::BoundError;
 use crate::causal_contract::{
     authorize_rule_effects, parse_rule_contract, validate_ast_walk_bounds,
     validate_governed_attribution, ContractError, RuleContract, AST_WALK_LIMITS,
@@ -48,7 +48,11 @@ use crate::grammar::{
 };
 use crate::material_basis::{check_rule_surface, SurfaceError};
 use crate::mod_anchors::{check_anchor, AnchorDecl, AnchorError};
-use crate::reader::{read, read_all, Atom, ReadError, SExpr};
+use crate::probability::{
+    compile_rule_probability, CompiledProbabilityFactsV1, FiniteKernelV1, FiniteProjectionV1,
+    ProbabilityError,
+};
+use crate::reader::{read, read_all, Atom, FormPath, ReadError, SExpr};
 use crate::same_tick_order::SameTickOrderError;
 use crate::scope::{
     check_element_names, check_foreign_field_scoping, declared_element_names, ElementNameError,
@@ -69,6 +73,11 @@ pub struct LoadContext<'a> {
     pub vocabulary: &'a BindingVocabulary,
     /// Declared field types and kinds (§3.4).
     pub types: &'a TypeEnv,
+    /// Scenario-declared closed enums used by finite-kernel branch exhaustiveness.
+    pub enums: &'a EnumRegistry,
+    /// Scenario constants with their evaluated semantic values. Finite-kernel
+    /// Mass typing consults this rather than assuming every `:const` is Mass.
+    pub const_values: &'a HashMap<String, crate::evaluator::Value>,
     /// Declared cardinality ceilings (§3.7).
     pub ceilings: &'a CardinalityCeilings,
     /// Declared intrinsic costs (§2.7).
@@ -87,6 +96,10 @@ pub struct LoadContext<'a> {
 /// A rule that survived every load-time gate.
 #[derive(Debug, Clone)]
 pub struct LoadedRule {
+    /// Source identity supplied by the loader, retained for typed authoring analysis.
+    pub source_id: String,
+    /// Exact root path of this rule in its original source forest.
+    pub root_path: FormPath,
     /// The parsed rule form.
     pub rule: SExpr,
     /// Its declared bindings.
@@ -99,6 +112,15 @@ pub struct LoadedRule {
     pub domain: Option<RuleDomain>,
     /// The rule's governed causal role and constitutional evidence class.
     pub contract: RuleContract,
+    /// The rule's one compiled finite material kernel, when present.
+    pub kernel: Option<FiniteKernelV1>,
+    /// The rule's exact finite recognizer projection, when declared.
+    pub projection: Option<FiniteProjectionV1>,
+    /// Probability authoring facts retained by the one loader compilation.
+    pub probability_facts: CompiledProbabilityFactsV1,
+    /// Runtime-resolved subject population for a kernel or projection.
+    /// Retained so schedule linkage cannot drift from tick execution.
+    pub probability_carrier: Option<String>,
     /// The §3.7 static bound `check_rule` computed and accepted — the
     /// load-time PROOF that the rule fits its budget.
     pub static_bound: u64,
@@ -124,6 +146,8 @@ pub enum LoadError {
     Binding(BindingError),
     /// §3.4 aggregation law.
     Type(TypeError),
+    /// Amendment AJ finite-kernel/projection analysis.
+    Probability(ProbabilityError),
     /// §2's static shape rules — D74's enum-ref operand class rule and
     /// D37's field-init owner rule — plus, since Task 8 (Organization
     /// foundation plan, #534 fix round item 7), §3.6's closed-vocabulary
@@ -210,7 +234,11 @@ impl LoadError {
             Self::Intrinsic(e) => e.spec_code(),
             Self::SameTickOrder(e) => e.spec_code(),
             Self::DuplicateRuleId { .. } => Some("E-LOAD-001"),
-            Self::Content(_) | Self::DeferredShapeVerb(_) | Self::MintingTypeOperand(_) => None,
+            // ADR248 names no numbered probability code; do not invent one.
+            Self::Probability(_)
+            | Self::Content(_)
+            | Self::DeferredShapeVerb(_)
+            | Self::MintingTypeOperand(_) => None,
         }
     }
 }
@@ -222,6 +250,7 @@ impl std::fmt::Display for LoadError {
             Self::Surface(e) => write!(f, "{e}"),
             Self::Binding(e) => write!(f, "{e}"),
             Self::Type(e) => write!(f, "{}", e.message),
+            Self::Probability(e) => write!(f, "{e}"),
             Self::Grammar(e) => write!(f, "{e}"),
             Self::Anchor(e) => write!(f, "{e}"),
             Self::Domain(e) => write!(f, "{e}"),
@@ -264,7 +293,29 @@ impl std::error::Error for LoadError {}
 /// partially-loaded rules.
 pub fn load_rule(source: &str, ctx: &LoadContext<'_>) -> Result<LoadedRule, LoadError> {
     let (rule, _) = read(source).map_err(LoadError::Read)?;
-    load_rule_form(rule, ctx)
+    load_rule_form(rule, vec![0], ctx)
+}
+
+fn resolve_probability_carrier(
+    kernel: Option<&FiniteKernelV1>,
+    projection: Option<&FiniteProjectionV1>,
+    bindings: &[BindingDecl],
+    vocabulary: Option<&crate::vocabulary::ClosedVocabulary>,
+) -> Result<Option<String>, LoadError> {
+    let probability_form = kernel
+        .map(|kernel| ("kernel", &kernel.sample_path))
+        .or_else(|| projection.map(|projection| ("projection", &projection.sample_path)));
+    let Some((kind, sample_path)) = probability_form else {
+        return Ok(None);
+    };
+    crate::tick::subject_type_of_bindings(bindings, vocabulary)
+        .map(Some)
+        .map_err(|error| {
+            LoadError::Probability(ProbabilityError::InvalidForm {
+                message: format!("finite {kind} requires a stable subject carrier: {error}"),
+                form_path: sample_path.clone(),
+            })
+        })
 }
 
 /// [`load_rule`]'s body, taking an already-parsed rule form instead of
@@ -278,7 +329,11 @@ pub fn load_rule(source: &str, ctx: &LoadContext<'_>) -> Result<LoadedRule, Load
 ///
 /// The first-failing stage's [`LoadError`]; a loaded content set has no
 /// partially-loaded rules.
-pub fn load_rule_form(rule: SExpr, ctx: &LoadContext<'_>) -> Result<LoadedRule, LoadError> {
+pub fn load_rule_form(
+    rule: SExpr,
+    root_path: FormPath,
+    ctx: &LoadContext<'_>,
+) -> Result<LoadedRule, LoadError> {
     check_rule_surface(&rule).map_err(LoadError::Surface)?;
     let contract = parse_rule_contract(&rule).map_err(LoadError::Causal)?;
     // The reader is iterative, while several older semantic passes below are
@@ -325,6 +380,20 @@ pub fn load_rule_form(rule: SExpr, ctx: &LoadContext<'_>) -> Result<LoadedRule, 
             .map_err(LoadError::Scope)?;
         domain = Some(resolved);
     }
+    let compiled_probability = compile_rule_probability(
+        &rule,
+        &root_path,
+        &contract,
+        ctx.enums,
+        ctx.types,
+        &bindings,
+        ctx.const_values,
+        &ctx.vocabulary.probability_consts,
+    )
+    .map_err(LoadError::Probability)?;
+    let kernel = compiled_probability.kernel;
+    let projection = compiled_probability.projection;
+    let probability_facts = compiled_probability.facts;
     typecheck_rule_folds(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
     check_selection_scores(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
     check_reference_comparisons(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
@@ -371,7 +440,19 @@ pub fn load_rule_form(rule: SExpr, ctx: &LoadContext<'_>) -> Result<LoadedRule, 
     resolve_bindings(&bindings, ctx.vocabulary).map_err(LoadError::Binding)?;
     check_free_variables(&rule, &bindings, &declared_element_names(&rule))
         .map_err(LoadError::Binding)?;
-    let static_bound = check_rule(&rule, ctx.ceilings, ctx.intrinsics).map_err(LoadError::Bound)?;
+    let probability_carrier = resolve_probability_carrier(
+        kernel.as_ref(),
+        projection.as_ref(),
+        &bindings,
+        ctx.vocabulary_registry,
+    )?;
+    let static_bound = crate::bound_checker::check_rule_with_kernel(
+        &rule,
+        kernel.as_ref(),
+        ctx.ceilings,
+        ctx.intrinsics,
+    )
+    .map_err(LoadError::Bound)?;
     let default_findings = lint_defaults(ctx.rule_file, &bindings);
     let SExpr::List(rule_items) = &rule else {
         unreachable!("check_rule_surface accepted a non-list rule form")
@@ -379,15 +460,36 @@ pub fn load_rule_form(rule: SExpr, ctx: &LoadContext<'_>) -> Result<LoadedRule, 
     let declared_fuel =
         crate::bound_checker::declared_fuel(rule_items).map_err(LoadError::Bound)?;
     Ok(LoadedRule {
+        source_id: ctx.rule_file.to_owned(),
+        root_path,
         rule,
         bindings,
         anchor,
         domain,
         contract,
+        kernel,
+        projection,
+        probability_facts,
+        probability_carrier,
         static_bound,
         declared_fuel,
         default_findings,
     })
+}
+
+/// One rule split from a source forest, retaining its original top-form path.
+///
+/// `form` is deliberately not reparsed in the loading pipeline: `root_path`
+/// remains the canonical coordinate space for loader diagnostics and typed
+/// authoring analysis over the source's [`crate::reader::SpanTable`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct SplitRuleFormV1 {
+    /// Declared rule id.
+    pub rule_id: String,
+    /// Parsed rule form.
+    pub form: SExpr,
+    /// Exact top-form path in the original source forest.
+    pub root_path: FormPath,
 }
 
 /// Split one content source into its `(intrinsic …)` top-forms and its one
@@ -422,12 +524,7 @@ pub fn load_rule_form(rule: SExpr, ctx: &LoadContext<'_>) -> Result<LoadedRule, 
 /// when the source contains zero `(rule …)` top-forms; or
 /// [`LoadError::DuplicateRuleId`] (`E-LOAD-001`) when two rule forms share
 /// the same id.
-// The return type is a plain, un-nested pair of vecs — flagged only because
-// its second element is itself a `Vec` of pairs; a type alias would be one
-// more name to chase for a shape this crate already spells out in the doc
-// comment above. Same precedent as `structural_verbs.rs`'s test helper.
-#[allow(clippy::type_complexity)]
-pub fn split_content(source: &str) -> Result<(Vec<SExpr>, Vec<(String, SExpr)>), LoadError> {
+pub fn split_content(source: &str) -> Result<(Vec<SExpr>, Vec<SplitRuleFormV1>), LoadError> {
     split_content_unchecked(source)
 }
 
@@ -442,18 +539,29 @@ pub fn split_content(source: &str) -> Result<(Vec<SExpr>, Vec<(String, SExpr)>),
 ///
 /// Same as [`split_content`]. This function cannot produce
 /// [`LoadError::SameTickOrder`] because it has no execution ranks.
-#[allow(clippy::type_complexity)]
 pub(crate) fn split_content_unchecked(
     source: &str,
-) -> Result<(Vec<SExpr>, Vec<(String, SExpr)>), LoadError> {
+) -> Result<(Vec<SExpr>, Vec<SplitRuleFormV1>), LoadError> {
     let forms = read_all(source.as_bytes()).map_err(LoadError::Read)?;
     let mut intrinsic_forms = Vec::new();
     let mut rule_forms = Vec::new();
-    for form in forms {
+    for (top_index, form) in forms.into_iter().enumerate() {
         if is_intrinsic_form(&form) {
             intrinsic_forms.push(form);
         } else {
-            rule_forms.push(form);
+            let rule_id = crate::canonical_ast::rule_id(&form)
+                .map_err(|e| LoadError::Content(e.message))?
+                .to_owned();
+            let root_index = u32::try_from(top_index).map_err(|_| {
+                LoadError::Content(
+                    "a content source has more top-forms than FormPath can address".to_owned(),
+                )
+            })?;
+            rule_forms.push(SplitRuleFormV1 {
+                rule_id,
+                form,
+                root_path: vec![root_index],
+            });
         }
     }
     if rule_forms.is_empty() {
@@ -464,15 +572,8 @@ pub(crate) fn split_content_unchecked(
                 .to_owned(),
         ));
     }
-    let mut paired = Vec::with_capacity(rule_forms.len());
-    for form in rule_forms {
-        let id = crate::canonical_ast::rule_id(&form)
-            .map_err(|e| LoadError::Content(e.message))?
-            .to_owned();
-        paired.push((id, form));
-    }
-    check_unique_rule_ids(&paired)?;
-    Ok((intrinsic_forms, paired))
+    check_unique_rule_id_refs(rule_forms.iter().map(|rule| rule.rule_id.as_str()))?;
+    Ok((intrinsic_forms, rule_forms))
 }
 
 /// Refuse a duplicate rule id across an aggregate content set.
@@ -487,7 +588,11 @@ pub(crate) fn split_content_unchecked(
 /// [`LoadError::DuplicateRuleId`] (`E-LOAD-001`) for the byte-least repeated
 /// id.
 pub fn check_unique_rule_ids(rules: &[(String, SExpr)]) -> Result<(), LoadError> {
-    let mut ids: Vec<&str> = rules.iter().map(|(id, _)| id.as_str()).collect();
+    check_unique_rule_id_refs(rules.iter().map(|(id, _)| id.as_str()))
+}
+
+fn check_unique_rule_id_refs<'a>(ids: impl Iterator<Item = &'a str>) -> Result<(), LoadError> {
+    let mut ids: Vec<&str> = ids.collect();
     ids.sort_unstable_by(|left, right| left.as_bytes().cmp(right.as_bytes()));
     let duplicate = ids
         .windows(2)
@@ -570,20 +675,13 @@ pub fn bind_environment<S: std::hash::BuildHasher>(
 /// for those two; this parameter joins the same discipline rather than
 /// reopening it.
 ///
-/// `draw_context`: **`rng-draw` is uniformly available in `:expr` binding
-/// position as of review round 2 (#576 I3).** Review round 1 refused it
-/// there with a rationale the whole-branch review showed false: every
-/// component of a subject's `DrawContext` (`session`, `tick`, `domain`,
-/// `subject`) is fully determined at `tick.rs::collect_pass`'s loop head,
-/// BEFORE `resolve_expr_bindings` ever runs — the old restriction was an
-/// artifact of construction ORDER, not of meaning (`DrawContext` used to be
-/// built four lines after this function's call site, not before it). "A
-/// draw is a pure function of its key" (plan §3.3) has no clause
-/// distinguishing `:expr` position from guard/effect position, so
-/// `collect_pass` now constructs `DrawContext` before calling this
-/// function and threads it through here — `None` for the pure-expression
-/// callers that build no `DrawContext` at all (the R9 chapters' arithmetic
-/// conformance vectors), `Some(&draw_context)` from `collect_pass`.
+/// `draw_context`: `collect_pass` constructs the subject's typed replay
+/// identity before resolving expressions and threads it through the shared
+/// evaluator environment. Amendment AJ permits only the engine-private
+/// finite-kernel realization path to consume a draw; author expressions and
+/// every declarable intrinsic remain context-free. Graph-free conformance
+/// callers pass `None`, while `collect_pass` passes `Some(&draw_context)` so
+/// the later compiled `choose` sees exactly the same subject identity.
 ///
 /// # Errors
 ///
@@ -615,11 +713,9 @@ pub fn resolve_expr_bindings<S: std::hash::BuildHasher + Clone>(
             types: Some(types),
             enums: Some(enums),
             elements: Vec::new(),
-            // `Some(&draw_context)` from `collect_pass` (review round 2,
-            // #576 I3) — `rng-draw` is reachable here now, keyed the same
-            // way it is in guard/effect position. `None` only for callers
-            // that never build a `DrawContext` (see this function's own
-            // doc).
+            // `Some(&draw_context)` from `collect_pass` retains the subject's
+            // replay identity for the later private finite-kernel seam. `None`
+            // is reserved for callers that never construct a `DrawContext`.
             draw_context,
         };
         let value = evaluate(expr, &scope, host, fuel)?;
@@ -898,7 +994,8 @@ mod split_content_tests {
         let (intrinsics, rules) = split_content(&source).unwrap();
         assert_eq!(intrinsics.len(), 1);
         assert_eq!(rules.len(), 1);
-        assert!(matches!(rules[0].1, crate::reader::SExpr::List(_)));
+        assert!(matches!(rules[0].form, crate::reader::SExpr::List(_)));
+        assert_eq!(rules[0].root_path, vec![1]);
     }
 
     #[test]
@@ -907,7 +1004,8 @@ mod split_content_tests {
         let (intrinsics, rules) = split_content(&source).unwrap();
         assert_eq!(intrinsics.len(), 1);
         assert_eq!(rules.len(), 1);
-        assert!(matches!(rules[0].1, crate::reader::SExpr::List(_)));
+        assert!(matches!(rules[0].form, crate::reader::SExpr::List(_)));
+        assert_eq!(rules[0].root_path, vec![0]);
     }
 
     #[test]
@@ -957,8 +1055,10 @@ mod split_content_tests {
 "#;
         let (_intrinsics, rules) = split_content(source).expect("two distinct rule ids load");
         assert_eq!(rules.len(), 2);
-        assert_eq!(rules[0].0, "a/first");
-        assert_eq!(rules[1].0, "b/second");
+        assert_eq!(rules[0].rule_id, "a/first");
+        assert_eq!(rules[0].root_path, vec![0]);
+        assert_eq!(rules[1].rule_id, "b/second");
+        assert_eq!(rules[1].root_path, vec![1]);
     }
 
     #[test]
@@ -1041,12 +1141,15 @@ mod deferred_shape_verb_tests {
             vocabulary: Box::leak(Box::new(BindingVocabulary {
                 fields: HashSet::new(),
                 consts: HashSet::new(),
+                probability_consts: HashSet::new(),
                 metrics: HashSet::new(),
             })),
             types: Box::leak(Box::new(TypeEnv {
                 fields: HashMap::new(),
                 exemptions: &[],
             })),
+            enums: Box::leak(Box::new(crate::types::EnumRegistry::default())),
+            const_values: Box::leak(Box::new(HashMap::new())),
             ceilings: Box::leak(Box::new(CardinalityCeilings::new(
                 HashMap::new(),
                 HashMap::new(),
@@ -1267,7 +1370,8 @@ mod enum_fold_body_tests {
         // only needs `TypeEnv`'s `BslType::Enum(id)` + `FieldKind::
         // NotApplicable` kind, so the registry can be dropped right after
         // minting `ty` (`EnumTypeId` is `Copy`, no borrow survives it).
-        let ty = EnumRegistry::default()
+        let mut enums = EnumRegistry::default();
+        let ty = enums
             .declare(
                 "OrgKind",
                 &["STATE_APPARATUS".to_owned(), "BUSINESS".to_owned()],
@@ -1284,12 +1388,15 @@ mod enum_fold_body_tests {
             vocabulary: Box::leak(Box::new(BindingVocabulary {
                 fields: HashSet::from(["organization/kind".to_owned()]),
                 consts: HashSet::new(),
+                probability_consts: HashSet::new(),
                 metrics: HashSet::new(),
             })),
             types: Box::leak(Box::new(TypeEnv {
                 fields,
                 exemptions: &[],
             })),
+            enums: Box::leak(Box::new(enums)),
+            const_values: Box::leak(Box::new(HashMap::new())),
             ceilings: Box::leak(Box::new(CardinalityCeilings::new(
                 HashMap::from([("NodeType/ORGANIZATION".to_owned(), 100)]),
                 HashMap::new(),
@@ -1410,12 +1517,15 @@ mod vocabulary_membership_tests {
             vocabulary: Box::leak(Box::new(BindingVocabulary {
                 fields: HashSet::new(),
                 consts: HashSet::new(),
+                probability_consts: HashSet::new(),
                 metrics: HashSet::new(),
             })),
             types: Box::leak(Box::new(TypeEnv {
                 fields: HashMap::new(),
                 exemptions: &[],
             })),
+            enums: Box::leak(Box::new(crate::types::EnumRegistry::default())),
+            const_values: Box::leak(Box::new(HashMap::new())),
             ceilings: Box::leak(Box::new(CardinalityCeilings::new(
                 HashMap::new(),
                 HashMap::new(),
@@ -1523,12 +1633,15 @@ mod kind_mixing_wiring_tests {
                     "organization/share".to_owned(),
                 ]),
                 consts: HashSet::new(),
+                probability_consts: HashSet::new(),
                 metrics: HashSet::new(),
             })),
             types: Box::leak(Box::new(TypeEnv {
                 fields,
                 exemptions: &[],
             })),
+            enums: Box::leak(Box::new(crate::types::EnumRegistry::default())),
+            const_values: Box::leak(Box::new(HashMap::new())),
             ceilings: Box::leak(Box::new(CardinalityCeilings::new(
                 HashMap::new(),
                 HashMap::new(),

@@ -64,13 +64,14 @@
  * can accept them all and `generic_form` can reject them all. */
 const RESERVED_WORDS = [
   'add', 'add-edge', 'add-hyperedge', 'add-node', 'adjunction', 'anchor',
-  'and', 'binding', 'bindings', 'ceiling', 'deffield', 'defenum',
-  'defvocabulary', 'domain',
+  'and', 'binding', 'bindings', 'branch', 'ceiling', 'choose', 'deffield',
+  'defenum', 'defvocabulary', 'domain',
   'edge-between', 'edges', 'effects', 'emit', 'exists', 'field-of', 'fold',
   'for-each', 'forall', 'guard', 'hyperedges', 'hyperedges-of', 'if',
   'intrinsic', 'manifest', 'member', 'members', 'members-of',
   'membership-field-of', 'metric', 'metric-of', 'neighbors', 'nodes', 'not',
-  'or', 'remove-edge', 'remove-hyperedge', 'remove-node', 'rule', 'rung',
+  'or', 'quantize-mass', 'remove-edge', 'remove-hyperedge', 'remove-node',
+  'rule', 'rung',
   'scale', 'select-max', 'select-min', 'set', 'sub', 'the', 'update-edge',
   'update-hyperedge', 'update-membership', 'update-node', 'when',
 ];
@@ -111,7 +112,9 @@ module.exports = grammar({
         '(',
         'rule',
         field('id', $.qname),
-        repeat(choice($.rule_role, $.evidence, $.material_basis, $.fuel)),
+        repeat(
+          choice($.rule_role, $.evidence, $.material_basis, $.fuel, $.projects_kernel),
+        ),
         optional($.domain),
         optional($.anchor),
         $.bindings,
@@ -129,6 +132,7 @@ module.exports = grammar({
       seq(':evidence', choice('observed', 'derived', 'calibrated', 'designed')),
     material_basis: ($) => seq(':material-basis', $.string),
     fuel: ($) => seq(':fuel', $.int_lit),
+    projects_kernel: ($) => seq(':projects-kernel', $.qname),
 
     domain: ($) => seq('(', 'domain', choice($.enum_ref, $.graph_flag), ')'),
     graph_flag: (_$) => ':graph',
@@ -210,6 +214,7 @@ module.exports = grammar({
         $.enum_ref,
         $.arith_expr,
         $.if_expr,
+        $.quantize_mass,
         $.fold,
         $._accessor,
         $.selection,
@@ -220,6 +225,8 @@ module.exports = grammar({
     arith: (_$) => choice(...ARITH),
 
     if_expr: ($) => seq('(', 'if', $._cond, $._expr, $._expr, ')'),
+
+    quantize_mass: ($) => seq('(', 'quantize-mass', $._expr, ')'),
 
     fold: ($) =>
       seq(
@@ -266,11 +273,31 @@ module.exports = grammar({
 
     /* --- §2.8 effects --------------------------------------------------- */
 
-    _effect_item: ($) => choice($._verb, $.guard, $.for_each),
+    _effect_item: ($) => choice($._verb, $.guard, $.for_each, $.choose),
 
     guard: ($) => seq('(', 'guard', $._cond, repeat1($._effect_item), ')'),
     for_each: ($) =>
       seq('(', 'for-each', $._query, optional($.elem_name), repeat1($._effect_item), ')'),
+
+    choose: ($) =>
+      seq(
+        '(',
+        'choose',
+        ':sample',
+        $.qname,
+        ':slot',
+        $.u32_lit,
+        repeat1($.branch),
+        ')',
+      ),
+
+    branch: ($) =>
+      seq('(', 'branch', $.enum_ref, ':mass', $._expr, $.branch_effects, ')'),
+
+    /* A branch may make no material change. The reference loader enforces
+     * the AJ context restriction that every nested item is deterministic:
+     * no `emit` and no nested `choose`. */
+    branch_effects: ($) => seq('(', 'effects', repeat($._effect_item), ')'),
 
     _verb: ($) =>
       choice(
@@ -464,7 +491,7 @@ module.exports = grammar({
 
     /* --- §1.4 / §1.5 atoms ------------------------------------------------ */
 
-    literal: ($) => choice($.int_lit, $.scaled_lit, $.bool_lit),
+    literal: ($) => choice($.int_lit, $.scaled_lit, $.mass_lit, $.bool_lit),
 
     /* A symbol in VALUE position may be spelled like a §5.2 form tag: D33
      * reserves those names against the intrinsic namespace only. */
@@ -489,6 +516,10 @@ module.exports = grammar({
 
     int_lit: (_$) => token(/-?[0-9](_?[0-9])*/),
 
+    /* AJ's slot is syntactically nonnegative; the u32 upper bound is a
+     * reference-loader check. */
+    u32_lit: (_$) => token(/[0-9](_?[0-9])*/),
+
     /* §1.5: the kind suffix is mandatory; a bare `0.5` is E-LEX-021 and is
      * therefore not a token of this grammar at all. `r` (Ratio) joins
      * `$`/`p`/`i`/`c` per the §1.5 addendum (D99, #492/ADR194) — this
@@ -496,6 +527,11 @@ module.exports = grammar({
      * lex-time domain checks the reference reader makes semantically, not
      * something this tokenizer can express), only its lexical SHAPE. */
     scaled_lit: (_$) => token(/-?[0-9](_?[0-9])*(\.[0-9](_?[0-9])*)?[$picr]/),
+
+    /* AJ Mass is its own nonnegative exact literal class, not another
+     * binary64 scalar lane. Scale and u64-nanounit bounds are checked by the
+     * reference reader. */
+    mass_lit: (_$) => token(/[0-9](_?[0-9])*(\.[0-9](_?[0-9])*)?m/),
 
     /* §1.5: the only four escapes; strings are single-line. */
     string: (_$) => token(/"([^"\\\n]|\\["\\nt])*"/),

@@ -6,6 +6,7 @@
 
 use super::bands::PANEL;
 use crate::atlas::CountyAtlas;
+use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::palette;
 use crate::tessellate::{self, Tessellation};
 use bevy::asset::RenderAssetUsages;
@@ -73,6 +74,7 @@ pub fn spawn_map_surface(
         MeshMaterial2d(materials.add(ColorMaterial::default())),
         Transform::from_xyz(0.0, 0.0, 0.0),
         Visibility::Inherited,
+        DeclaredSurface::new(SurfaceId::CountyMap),
         MapFill,
     ));
     commands.spawn((
@@ -80,6 +82,7 @@ pub fn spawn_map_surface(
         MeshMaterial2d(materials.add(ColorMaterial::from(palette::DIM))),
         Transform::from_xyz(0.0, 0.0, 1.0),
         Visibility::Inherited,
+        DeclaredSurface::new(SurfaceId::CountyMap),
         MapBorders,
     ));
 

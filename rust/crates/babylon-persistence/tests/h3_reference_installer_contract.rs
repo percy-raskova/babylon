@@ -2,9 +2,9 @@
 
 use babylon_kernel::tick_content_hash::RefDigestV1;
 use babylon_persistence::{
-    install_michigan_h3_reference_bundle_v1, H3ReferenceCohort, H3ReferenceDatabaseDiagnostic,
-    H3ReferenceInstallDisposition, H3ReferenceInstallError, H3ReferenceInstallOperation,
-    H3ReferenceInstallReport, H3ReferenceMembershipReadContext,
+    install_michigan_h3_reference_bundle_v1, H3ReferenceCohort, H3ReferenceInstallDisposition,
+    H3ReferenceInstallError, H3ReferenceInstallOperation, H3ReferenceInstallReport,
+    H3ReferenceMembershipReadContext, PostgresDiagnosticV1, PostgresFailureClassV1,
 };
 use babylon_tick::h3_runtime::MichiganDynamicHexFoundationV1;
 use postgres::Config;
@@ -83,10 +83,13 @@ fn reference_read_operations_distinguish_query_and_lifecycle_context() {
 }
 
 #[test]
-fn database_diagnostic_exposes_a_typed_server_error_boundary() {
-    let _: for<'diagnostic> fn(
-        &'diagnostic H3ReferenceDatabaseDiagnostic,
-    ) -> Option<&'diagnostic postgres::error::DbError> = H3ReferenceDatabaseDiagnostic::server;
+fn database_diagnostic_exposes_only_secret_safe_fields() {
+    let _: fn(&PostgresDiagnosticV1) -> PostgresFailureClassV1 =
+        PostgresDiagnosticV1::classification;
+    let _: for<'diagnostic> fn(&'diagnostic PostgresDiagnosticV1) -> Option<&'diagnostic str> =
+        PostgresDiagnosticV1::sqlstate;
+    let _: for<'diagnostic> fn(&'diagnostic PostgresDiagnosticV1) -> Option<&'diagnostic str> =
+        PostgresDiagnosticV1::message;
 }
 
 #[test]

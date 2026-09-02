@@ -104,7 +104,7 @@ fn finish(mut spans: Vec<Span>) -> LocateOutcome {
 
 /// The textual content of an atom a locator strategy can search by text —
 /// `None` for atoms with no name-shaped text (`Int`, `Bool`, `Currency`,
-/// `Scaled`, `Str`, `Operator`, `EnumRef` — the last has its own dedicated
+/// `Mass`, `Scaled`, `Str`, `Operator`, `EnumRef` — the last has its own dedicated
 /// [`by_enum_ref`] search, since it carries TWO components, not one).
 /// Reads the atom's own typed field, never `Display`/message text
 /// (sentinel 7.2).
@@ -116,6 +116,7 @@ fn atom_text(atom: &Atom) -> Option<&str> {
         | Atom::Operator(_)
         | Atom::Int(_)
         | Atom::Currency(_)
+        | Atom::Mass(_)
         | Atom::Scaled(_)
         | Atom::Str(_) => None,
     }

@@ -40,6 +40,7 @@ use crate::fuel::{cost, IntrinsicCosts};
 use crate::intrinsic_host::{
     DrawActiveElement, DrawContext, DrawIdentityContext, IntrinsicCallCtx, IntrinsicHost,
 };
+use crate::probability::{Mass, QUANTIZE_MASS_BASE};
 use crate::query::{EdgeKey, Element};
 use crate::reader::{Atom, SExpr, ScaledKind};
 use crate::typecheck::TypeEnv;
@@ -56,6 +57,8 @@ use std::collections::HashMap;
 /// promote-to-`Real` ruling.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
+    /// Exact, non-storable finite-kernel allocation input.
+    Mass(Mass),
     /// `Int` — `i64`, checked arithmetic (§4.3).
     Int(i64),
     /// `Currency` — i128 micro-units, the §3.2 operator table.
@@ -326,14 +329,10 @@ pub struct EvalEnv<'a> {
     /// later task) — the paired `Option<String>` is that declared name,
     /// `None` for an iterating form with no `:as`.
     pub elements: Vec<(Option<String>, Element)>,
-    /// The `rng-draw` seam (Task 4, #576 intrinsic-host train, plan §3.5):
-    /// the current subject's [`DrawContext`], or `None` for a
-    /// pure-expression caller (`:expr` binding resolution,
-    /// `resolve_expr_bindings`; the arithmetic conformance vectors) — a
-    /// call to `rng-draw` reached with no context fails loud (III.11),
-    /// never silently draws `0.0`. `eval_intrinsic` is the only reader:
-    /// every OTHER intrinsic implemented today (`floor`/`exp`/`log`) is
-    /// context-free.
+    /// Engine-owned deterministic draw context for the current subject, or
+    /// `None` for a graph-free expression caller. Amendment AJ makes finite
+    /// kernel drawing private: author-declarable intrinsics are context-free,
+    /// while the typed kernel realization path consumes this context directly.
     pub draw_context: Option<&'a DrawContext<'a>>,
 }
 
@@ -389,6 +388,7 @@ fn atom_charge(atom: &Atom) -> u64 {
 
 fn atom_value(atom: &Atom, env: &EvalEnv<'_>) -> Result<Value, EvalError> {
     match atom {
+        Atom::Mass(mass) => Ok(Value::Mass(*mass)),
         Atom::Int(n) => Ok(Value::Int(*n)),
         Atom::Currency(c) => Ok(Value::Currency(*c)),
         Atom::Scaled(s) if s.kind == ScaledKind::Ratio => {
@@ -515,12 +515,14 @@ pub(crate) fn require_graph<'a>(
 /// alternatives: the ten structural verbs (`update-node`, `update-edge`,
 /// `update-hyperedge`, `update-membership`, `add-node`, `remove-node`,
 /// `add-edge`, `remove-edge`, `add-hyperedge`, `remove-hyperedge`) plus
-/// `emit`. Those eleven, plus `guard` and `for-each`, the four update-ops
+/// `emit`. Those eleven, plus the probability kernel's `choose`, `guard` and
+/// `for-each`, the four update-ops
 /// (`add`/`sub`/`set`/`scale`), and the two list forms (`members`,
-/// `member`) — 19 in all. (`update-membership`/`member` are Amendment-AG-era
+/// `member`) — 20 in all. (`update-membership`/`member` are Amendment-AG-era
 /// heads absent from `RESERVED_FORM_TAGS`; that reservation gap is a filed
 /// follow-up, not this table's concern.)
-const EFFECT_POSITION_ONLY: [&str; 19] = [
+const EFFECT_POSITION_ONLY: [&str; 20] = [
+    "choose",
     "guard",
     "for-each",
     "update-node",
@@ -626,6 +628,7 @@ fn eval_form(
         "select-max" | "select-min" => eval_selection(head, items, env, host, fuel),
         "field-of" => eval_field_of(items, env, host, fuel),
         "edge-between" => eval_edge_between(items, env, host, fuel),
+        "quantize-mass" => eval_quantize_mass(items, env, host, fuel),
         name => {
             if EFFECT_POSITION_ONLY.contains(&name) {
                 return Err(EvalError::plain(format!(
@@ -657,6 +660,36 @@ fn eval_form(
             eval_intrinsic(name, &items[1..], env, host, fuel)
         }
     }
+}
+
+fn eval_quantize_mass(
+    items: &[SExpr],
+    env: &EvalEnv<'_>,
+    host: &dyn IntrinsicHost,
+    fuel: &mut u64,
+) -> Result<Value, EvalError> {
+    charge(fuel, QUANTIZE_MASS_BASE)?;
+    let [_, operand] = items else {
+        return Err(EvalError::plain(
+            "(quantize-mass <numeric-expr>) takes exactly one operand",
+        ));
+    };
+    let evaluated = evaluate(operand, env, host, fuel)?;
+    let numeric = match evaluated {
+        Value::Real(value) => value,
+        // `quantize-mass` is the explicit governed binary64 crossing; exact
+        // nanounit rounding begins from the represented f64 value afterward.
+        #[allow(clippy::cast_precision_loss)]
+        Value::Int(value) => value as f64,
+        other => {
+            return Err(EvalError::plain(format!(
+                "quantize-mass requires an Int or Real-lane operand, found {other:?}"
+            )))
+        }
+    };
+    Mass::quantize(numeric)
+        .map(Value::Mass)
+        .map_err(|error| EvalError::plain(error.to_string()))
 }
 
 fn eval_operator(
@@ -1647,13 +1680,12 @@ fn eval_intrinsic(
     host.call(name, &values, ctx)
 }
 
-/// Build the [`IntrinsicCallCtx`] every intrinsic call carries (Task 4,
-/// #576 intrinsic-host train, plan §3.5). `None` `env.draw_context` (a
-/// pure-expression caller) renders an empty, context-free ctx — there is
-/// no [`crate::intrinsic_host::DrawContext`] to resolve `env.elements`
-/// against, and nothing needs one: a `rng-draw` call reached this way
-/// fails loud on the missing `DrawContext` itself, never on a missing
-/// element chain.
+/// Build the [`IntrinsicCallCtx`] every intrinsic call carries. `None`
+/// `env.draw_context` (a pure-expression caller) renders an empty,
+/// context-free ctx because there is no
+/// [`crate::intrinsic_host::DrawContext`] against which to resolve
+/// `env.elements`. Author-declarable intrinsics do not consume draw context;
+/// the engine-private finite-kernel realization path does.
 ///
 /// `Some(draw_context)` resolves the chapter C8 element stack in the same
 /// outermost-first order `env.elements` keeps. V1 uses its current content-id
@@ -1701,7 +1733,7 @@ fn stable_element_key(
     };
     result.map_err(|error| {
         EvalError::plain(format!(
-            "rng-draw V2 active element has no sealed stable identity: {error:?}"
+            "finite-kernel V2 active element has no sealed stable identity: {error:?}"
         ))
     })
 }
@@ -1753,8 +1785,8 @@ fn stable_element_key(
 /// also update `node_content_ids` for any node minted mid-tick, or this
 /// hard error is exactly the trip wire that catches the gap** — the
 /// alternative (an unconditional fallback) would have silently injected
-/// the raw, insertion-order-dependent `NodeId` handle into `rng-draw`'s
-/// `stable_key` via `framed(...)`, precisely the ADR176 r20 butterfly
+/// the raw, insertion-order-dependent `NodeId` handle into the private
+/// finite-kernel draw key via `framed(...)`, precisely the ADR176 r20 butterfly
 /// plan §3.4's whole content-id design exists to prevent — with no error,
 /// no failing test, only a downstream, hard-to-attribute divergence.
 ///
@@ -1837,6 +1869,17 @@ fn real_lane(value: &Value) -> Option<f64> {
 
 fn apply_arith(op: &str, lhs: &Value, rhs: &Value) -> Result<Value, EvalError> {
     match (lhs, rhs) {
+        (Value::Mass(a), Value::Mass(b)) if op == "+" => a
+            .checked_add(*b)
+            .map(Value::Mass)
+            .map_err(|error| EvalError::plain(error.to_string())),
+        (Value::Mass(a), Value::Mass(b)) if op == "-" => a
+            .checked_sub(*b)
+            .map(Value::Mass)
+            .map_err(|error| EvalError::plain(error.to_string())),
+        (Value::Mass(_), _) | (_, Value::Mass(_)) => Err(EvalError::plain(
+            "Mass permits checked Mass + Mass and Mass - Mass only; it has no implicit coercion",
+        )),
         (Value::Int(a), Value::Int(b)) => arith_int(op, *a, *b),
         (Value::Currency(a), Value::Currency(b)) => arith_currency(op, *a, *b),
         (Value::Currency(c), Value::Int(divisor)) if op == "/" => {
@@ -2888,7 +2931,7 @@ mod tests {
     /// rows (a filed reservation-gap follow-up).
     #[test]
     fn every_seam_head_is_classified() {
-        const EVALUATOR_SERVED: [&str; 11] = [
+        const EVALUATOR_SERVED: [&str; 12] = [
             "and",
             "or",
             "not",
@@ -2900,13 +2943,15 @@ mod tests {
             "forall",
             "select-max",
             "select-min",
+            "quantize-mass",
         ];
         // Tags that are declaration/top-form/clause vocabulary, never
         // expression-position heads — the load layer owns them.
-        const DECLARATION_LEVEL: [&str; 13] = [
+        const DECLARATION_LEVEL: [&str; 14] = [
             "anchor",
             "binding",
             "bindings",
+            "branch",
             "ceiling",
             "deffield",
             "domain",

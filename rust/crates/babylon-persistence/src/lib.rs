@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 #![warn(clippy::pedantic)]
 
+mod archive;
 mod bootstrap;
 mod checkpoint;
 pub mod committed_tick_envelope;
@@ -17,6 +18,7 @@ pub mod legacy_adopter;
 mod metadata;
 mod michigan_dynamic_hex_foundation;
 pub mod migration_manifest;
+mod postgres_diagnostic;
 mod runtime;
 pub mod schema_epoch;
 pub mod schema_migration;
@@ -31,6 +33,7 @@ pub mod spatial_reference_products;
 mod stored_tick;
 pub mod tick_commit_claim;
 
+pub use archive::*;
 pub use bootstrap::{
     bootstrap_h3_reader_epoch_v1, H3ReaderBootstrapErrorV1, H3ReaderBootstrapReportV1,
 };
@@ -51,10 +54,9 @@ pub use h3_reference_cohort::{
     MAX_H3_REFERENCE_SOURCE_CELLS,
 };
 pub use h3_reference_installer::{
-    install_michigan_h3_reference_bundle_v1, H3ReferenceDatabaseDiagnostic,
-    H3ReferenceInstallBoundedResource, H3ReferenceInstallConflict, H3ReferenceInstallDisposition,
-    H3ReferenceInstallError, H3ReferenceInstallOperation, H3ReferenceInstallReport,
-    H3ReferenceMembershipReadContext,
+    install_michigan_h3_reference_bundle_v1, H3ReferenceInstallBoundedResource,
+    H3ReferenceInstallConflict, H3ReferenceInstallDisposition, H3ReferenceInstallError,
+    H3ReferenceInstallOperation, H3ReferenceInstallReport, H3ReferenceMembershipReadContext,
 };
 pub use h3_shadow_backfill::{
     backfill_legacy_h3_shadow_keys, H3ShadowBackfillBoundedResource, H3ShadowBackfillDisposition,
@@ -72,9 +74,10 @@ pub use legacy_adopter::{
     legacy_adopter_sql_statements, parse_legacy_census_fixture, validate_legacy_connection_target,
     validate_legacy_stamps, LegacyAdopterError, LegacyAdopterOperation, LegacyAdopterSqlKind,
     LegacyAdopterSqlStatement, LegacyAdoptionReport, LegacyBoundedResource, LegacyCensus,
-    LegacyCensusEntry, LegacyCensusParseError, LegacyConnectionTargetRejection, LegacyObjectKey,
-    LegacyObjectKind, LegacyOwnerAuthorityDisposition, LegacyStampClass, LegacyStampDefinition,
-    LegacyStampMatch, LegacyStampProvenance, LegacyStampReport, LEGACY_ADOPTER_CONNECT_TIMEOUT,
+    LegacyCensusEntry, LegacyCensusParseError, LegacyCleanupFailureV1,
+    LegacyConnectionTargetRejection, LegacyObjectKey, LegacyObjectKind,
+    LegacyOwnerAuthorityDisposition, LegacyStampClass, LegacyStampDefinition, LegacyStampMatch,
+    LegacyStampProvenance, LegacyStampReport, LEGACY_ADOPTER_CONNECT_TIMEOUT,
     LEGACY_ADOPTER_STARTUP_OPTIONS, LEGACY_ADOPTER_TCP_USER_TIMEOUT, LEGACY_CENSUS_FIXTURE,
     LEGACY_CENSUS_VERSION, LEGACY_STAMP_CATALOG, MAX_LEGACY_CENSUS_FIXTURE_BYTES,
     MAX_LEGACY_CENSUS_FIXTURE_LINES, MAX_LEGACY_CENSUS_ROWS,
@@ -94,23 +97,27 @@ pub use migration_manifest::{
     ManifestError, MigrationManifest, MAX_MANIFEST_BYTES, MAX_MANIFEST_CHUNKS,
     SCHEMA_ADVISORY_LOCK_KEY,
 };
+pub use postgres_diagnostic::{
+    PostgresDiagnosticV1, PostgresFailureClassV1, MAX_POSTGRES_DIAGNOSTIC_MESSAGE_BYTES,
+};
 pub use runtime::{
-    activate_rust_persistence_v1, hydrate_campaign_foundation_v1, prepare_committed_tick_v1,
-    ActivationReportV1, CommittedTickReceiptV1, DurableReplayRuntimeV1,
-    PersistenceAuthorityLedgerRowV1, PersistenceAuthorityStateV1, PreparedCommittedTickV1,
-    RustPersistenceActivationErrorV1, RustPersistenceRuntimeErrorV1,
+    activate_rust_persistence_v2, hydrate_campaign_foundation_v1, prepare_committed_tick_v2,
+    ActivationReportV2, CommittedTickAuthorityLedgerRowV2, CommittedTickAuthorityStateV2,
+    CommittedTickReceiptV2, DurableReplayRuntimeV2, PreActivationIncompatibleRelationV2,
+    PreparedCommittedTickV2, RustPersistenceActivationErrorV2, RustPersistenceRuntimeErrorV2,
 };
 pub use schema_epoch::{
-    compiled_schema_migrations, migrate_schema_epoch, preflight_schema_epoch,
-    validate_migration_prefix, PersistedMigration, SchemaEpochError, SchemaEpochObservation,
-    SchemaEpochOperation, SchemaEpochOrigin, SchemaEpochRelation, SchemaEpochReport,
-    SchemaEpochSchemas, MAX_COMMIT_ATTEMPTS_PER_VERSION, MAX_SCHEMA_MIGRATIONS,
+    compiled_committed_tick_v2_activation_migrations, compiled_schema_migrations,
+    migrate_schema_epoch, preflight_schema_epoch, validate_migration_prefix, PersistedMigration,
+    SchemaEpochError, SchemaEpochObservation, SchemaEpochOperation, SchemaEpochOrigin,
+    SchemaEpochRelation, SchemaEpochReport, SchemaEpochSchemas, MAX_COMMIT_ATTEMPTS_PER_VERSION,
+    MAX_SCHEMA_MIGRATIONS,
 };
 pub use schema_migration::{
     MigrationChecksum, MigrationVersion, SchemaMigration, SchemaMigrationError,
     MAX_SCHEMA_MIGRATION_SQL_BYTES, MIGRATION_CHECKSUM_BYTES,
 };
-pub use semantic_batches::{StableGraphRowsEmptyProofV1, SuccessfulEventBatchEmptyProofV1};
+pub use semantic_batches::{StableGraphRowsEmptyProofV1, SuccessfulEventBatchEmptyProofV2};
 pub use spatial_reference_installer::{
     install_michigan_spatial_reference_products, SpatialReferenceInstallDisposition,
     SpatialReferenceInstallError, SpatialReferenceInstallOperation, SpatialReferenceInstallReport,

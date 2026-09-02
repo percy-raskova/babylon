@@ -203,14 +203,18 @@ fn assert_allowed_fixture_loads_through_declaration_and_type_gates() {
             "synthetic/minimum-link-strength".to_owned(),
             "synthetic/transfer-quantum".to_owned(),
         ]),
+        probability_consts: HashSet::new(),
         metrics: HashSet::new(),
     };
     let ceilings = fixture_cardinality_ceilings();
     let costs = IntrinsicCosts::default();
     let systems = HashSet::from(["synthetic-source".to_owned()]);
+    let enums = babylon_bsl::types::EnumRegistry::default();
     let context = LoadContext {
         vocabulary: &binding_vocabulary,
         types: &types,
+        enums: &enums,
+        const_values: &declared.consts,
         ceilings: &ceilings,
         intrinsics: &costs,
         systems: &systems,

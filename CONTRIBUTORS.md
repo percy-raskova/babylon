@@ -22,7 +22,7 @@ The three executable gates are:
 3. **Player agency**
 <!-- vale ste.NounClusters = YES -->
 
-Read [`CONSTITUTION.md`](CONSTITUTION.md) v4.0.0 for the law. Read
+Read [`CONSTITUTION.md`](CONSTITUTION.md) v4.1.0 for the law. Read
 [`NORTH_STAR.md`](NORTH_STAR.md) for the game direction. Read
 [`CLAUDE.md`](CLAUDE.md) for repository commands and live technical facts.
 

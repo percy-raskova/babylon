@@ -293,6 +293,8 @@ fn the_admin_panel_renders_the_per_rule_breakdown_from_a_seeded_tick_report() {
             ("vitality/subsistence-and-death".to_owned(), 2),
         ],
         audit_receipts: Vec::new(),
+        choice_receipts: Vec::new(),
+        committed_events: Vec::new(),
     });
 
     press_key_via_real_event(&mut app, KeyCode::F3);

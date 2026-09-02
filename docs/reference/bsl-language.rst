@@ -119,6 +119,241 @@ contract defines *what that hash is combined with and compared against*.
    :local:
    :depth: 2
 
+Amendment AJ finite probability addendum
+------------------------------------------
+
+**Status: ratified and normative, 2026-09-01.** Constitution v4.1.0 and
+ADR248 add finite material transition kernels. This addendum is the current
+language law where older sections below describe ``rng-draw`` as
+author-visible, close the suffix set without ``m``, or say BSL has exactly two
+numeric lanes. Historical text remains readable, but it grants no alternate
+path.
+
+AJ keeps four categories separate:
+
+``Mass``
+   Exact, nonnegative allocation input for one finite kernel.
+
+``Probability``
+   The existing bounded binary64 material scalar.
+
+``Intensity``
+   A bounded state measure.
+
+dialectical weight
+   The ``w`` of ``D = (A, Ā, w, T, σ)``.
+
+No implicit conversion joins them. A kernel is subordinate to the dialectic
+and ranges over material effect bundles, not events or outcomes of history.
+
+Lexis and surface grammar
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The scaled-literal suffix production gains ``m``:
+
+.. code-block:: text
+
+   suffix      ::= "$" | "p" | "i" | "c" | "r" | "m"
+   mass-lit    ::= digits ( "." digits )? "m"
+
+.. vale Vale.Spelling = NO
+
+An ``m`` literal has static type ``Mass`` and cannot be negative. It permits at
+most nine fractional decimal digits. The reader converts it without loss to an
+unsigned nanounit integer:
+
+.. vale Vale.Spelling = YES
+
+.. code-block:: text
+
+   mass_units = unscaled * 10^(9 - scale)
+
+Leading zeros and digit separators follow the other numeric literals. A
+negative literal, excess scale, or value above ``u64::MAX`` nanounits refuses
+at read time. Equivalent spellings such as ``1m``, ``1.0m``, and
+``1.000000000m`` have the same canonical value and bytes. No read-time
+rounding occurs.
+
+Expressions gain one built-in language form, not an intrinsic:
+
+.. code-block:: text
+
+   <expr> ::= ...
+            | "(" "quantize-mass" <expr> ")"
+
+``quantize-mass`` accepts an ordinary numeric expression in the binary64 lane.
+It refuses a negative, nonfinite, or overflowing result. It multiplies the
+exact represented binary64 value by ``10^9`` and rounds to the nearest integer,
+breaking an exact tie toward the even integer. It returns ``Mass``. This is the
+only dynamic conversion to ``Mass``. No implicit conversion exists from
+``Probability``, ``Intensity``, ``Coefficient``, ``Real``, ``Ratio``,
+``Currency``, or ``Int``.
+
+The rule and effect grammar gains the following forms:
+
+.. code-block:: text
+
+   <u32-lit> ::= <digits>
+   <rule> ::= "(" "rule" <qname>
+                  ":role" <rule-role>
+                  ":evidence" <evidence-class>
+                  ":material-basis" <string>
+                  ":fuel" <int-lit>
+                  ( ":projects-kernel" <qname> )?
+                  <domain>? <anchor>? <bindings> <when>? <effects> ")"
+
+   <effect-item> ::= ... | <choose>
+   <choose> ::= "(" "choose" ":sample" <qname> ":slot" <u32-lit>
+                    <branch>+ ")"
+   <branch> ::= "(" "branch" <enum-ref> ":mass" <mass-expr>
+                    "(" "effects" <deterministic-effect-item>* ")" ")"
+
+``<u32-lit>`` is a nonnegative integer literal no greater than
+``4294967295``. ``<mass-expr>`` is a ``Mass`` literal, binding, constant,
+checked addition or subtraction, or ``quantize-mass`` result.
+``<deterministic-effect-item>`` is an existing bounded Mechanic effect item
+whose complete tree contains neither ``choose`` nor ``emit``.
+
+Mass semantics
+~~~~~~~~~~~~~~
+
+``Mass`` is deliberately non-storable. It can occur only as a literal, a
+constant, a binding, a branch mass, the result of ``quantize-mass``, or an
+operand or result of checked ``Mass + Mass`` and ``Mass - Mass``. Subtraction
+below zero refuses. Addition above ``u64::MAX`` also refuses.
+
+``Mass`` cannot be a ``deffield`` or metric type. It cannot be a graph value,
+update value, or event-payload value. It cannot be a fold accumulator,
+comparison operand,
+intrinsic parameter or result, or serialized campaign scalar. Multiplication
+and division on ``Mass`` do not exist.
+
+``Mass`` is not normalized at authoring time. Branch masses need not sum to
+``1m``. Their ratios set the executable measure. This permits exact
+relative weights without conflating mass with the existing ``Probability``
+scalar.
+
+Finite kernel static semantics
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A loaded ``choose`` compiles once into ``FiniteKernelV1`` with
+``KernelBranchV1`` children. The typed structures keep their source path,
+form path, and spans. Evaluation, forecasting, diagnostics, and tooling use
+that structure. These consumers do not rediscover kernels by independently
+walking raw s-expressions.
+
+The complete content set must meet these conditions:
+
+* Only a ``mechanic`` rule can contain ``choose``.
+* A rule has at most one ``choose``. It must be a direct child of that rule's
+   top-level ``effects`` form, never under ``guard``, ``for-each``, or another
+   ``choose``.
+* ``:sample`` is a QName unique across the whole content set. ``:slot`` is a
+   literal ``u32``. Once shipped, a slot remains assigned to that semantic
+   choice. Later samples use a new slot rather than renumbering an old one.
+* All branches name members of one declared enum. They contain every member
+   exactly once and in the enum declaration order. Source order becomes the
+   canonical outcome order.
+* Each branch independently passes ordinary Mechanic authority, type,
+  footprint, structural, and fuel checks. A branch cannot contain ``emit`` or
+  another ``choose`` at any depth.
+* A kernel Mechanic paired with a finite projection keeps all branch and
+  sibling material writes carrier-local. Only ``update-node self`` is legal.
+  A cross-node, edge, hyperedge, or graph-shape write requires one joint
+  carrier kernel and refuses V1 enumeration.
+* The finite kernel grants no stochastic authority to ``recognizer``,
+   ``external-event``, or ``intent``. Those roles remain deterministic and
+   exact-allowlist.
+
+One material cause uses one kernel over its joint carrier. The language does
+not infer independence and has no tensor, parallel-choice, or
+independent-sample declaration.
+
+Evaluation and ticket allocation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For one firing, every branch mass evaluates in enum order before a draw. No
+branch body evaluates during that step. A zero total, arithmetic overflow, or
+invalid dynamic quantization aborts the tick before material effects.
+
+.. vale Vale.Spelling = NO
+
+Let ``m_i`` be the exact nanounits for branch ``i``, ``M = sum(m_i)``, and
+``T = 2^64``. Allocation uses exact wide integer arithmetic:
+
+.. vale Vale.Spelling = YES
+
+.. code-block:: text
+
+   floor_i     = floor(m_i * T / M)
+   remainder_i = (m_i * T) mod M
+   left        = T - sum(floor_i)
+
+The allocator awards one more ticket to the ``left`` branches with the largest
+``remainder_i`` values. The enum order breaks ties between equal values. A
+positive mass that would receive zero tickets refuses. A zero mass can own an
+empty interval. The enum-ordered, half-open intervals partition
+``[0, 2^64)`` exactly. Counts and endpoints use an integer representation that
+can express ``2^64``.
+
+Realization calls ``KernelRng::next_u64`` exactly once and selects the interval
+containing that ticket. Only the selected branch body then evaluates. Its
+effects retain their ordinary source order. A no-change branch still realizes
+an outcome and produces a choice receipt.
+
+The evaluator charges fuel conservatively and independently of the selected
+outcome:
+
+.. code-block:: text
+
+   cost(choose) = draw_cost
+                + sum(cost(branch_mass_i))
+                + max(cost(branch_body_i))
+
+This keeps the load-time bound valid without evaluating unselected branch
+bodies.
+
+Finite event projections
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+``:projects-kernel <sample-qname>`` is legal only on an ordinary
+``recognizer`` rule. It compiles into ``FiniteProjectionV1``. The referenced
+kernel must resolve immediately before that recognizer in schedule order. The
+recognizer must be subject-local, deterministic, and emit-only. It cannot write
+a latch, mutate graph shape, inspect another sample, or contain a
+``choose``. Its existing restricted-role event allowance remains mandatory.
+
+Forecasting evaluates exact alternatives, not random samples. For each branch,
+the forecaster clones the relevant detached state and applies that branch's
+deterministic effects. It runs the real linked recognizer and records whether
+the requested event appears. It sums the favorable branch ticket counts. The
+public ``EventLikelihoodV1`` result contains event type, enum-ordered favorable
+outcomes, an exact numerator in ``[0, 2^64]``, and the fixed denominator
+``2^64``.
+
+The read-only ``analyze_content_set`` and ``forecast_event_likelihoods``
+boundaries refuse a recognizer outside this exact projection shape. They do not
+approximate arbitrary recognizers, cross-sample joins, sequences,
+conjunctions, payload distributions, or whole ticks. Where state does not
+yield exact branch masses, tooling reports that the likelihood is
+state-dependent rather than inventing a number.
+
+Canonical identity and deliberate absences
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``FiniteKernelV1``, its branches, exact mass atoms, ``quantize-mass``, and
+``FiniteProjectionV1`` enter canonical BSL serialization with explicit
+versioned tags, lengths, and enum order. File boundaries do not affect their
+bytes. The implementation's cross-language vectors own the exact tag values
+and asymmetric byte examples.
+
+The author-visible ``rng-draw`` intrinsic is removed. No content declaration,
+binding, guard, or effect may call it. ``KernelRng`` remains private to finite
+kernel realization. BSL has no stochastic recognizer, stochastic event,
+empirical-distribution sampler, universal sigmoid, authored event probability,
+or terminal-outcome branch. Those absences enforce Amendment AJ rather than
+postpone a second stochastic API.
+
 Design intent (non-normative)
 -------------------------------
 
@@ -1289,7 +1524,7 @@ implementations. The names this document has used to illustrate that
 **illustrative of the class, not a table of intrinsics that exist** — a
 reading the R9 gap analysis found this document inviting. What is declarable is
 governed by §3.10: the ``{exp, log}`` transcendental cap (R10), the separately
-authorized ``floor``/``rng-draw``, the ADR219 exact-arithmetic sextet
+authorized ``floor``, the ADR219 exact-arithmetic sextet
 (``sqrt``, ``round-half-even``, ``min``, ``max``, ``abs``, ``clamp``) — and
 ``sigmoid`` ruled prohibited outright. BSL cannot define an intrinsic;
 ``intrinsic`` forms only
@@ -1700,13 +1935,14 @@ it is never silently deduplicated.
 
 **Prohibited.** There is no I/O, no time source other than a ``:tick``
 binding, no
-randomness primitive (RNG draws are kernel intrinsics with the kernel's
-per-(session, tick, salt) seeding, specified in
-:doc:`/reference/determinism-contract`), no graph mutation outside this verb
-set, no reflection, and nothing unbounded. In particular there is **no clique
-expansion**: no verb in this set converts a member list into pairwise edges, so
-the combinatorial object Anti-Pattern VIII.9 bans has no BSL representation
-(Amendment D, D-1).
+general randomness primitive. Chance enters BSL only through the governed
+finite ``choose`` effect with the private realization key that the
+:doc:`/reference/determinism-contract` specifies. BSL permits no graph mutation
+outside this verb set, no reflection, and nothing unbounded. In particular,
+BSL has **no clique
+expansion**. The verb set has no member-list-to-pairwise-edge conversion, so
+BSL cannot represent the object that Anti-Pattern VIII.9 bans (Amendment D,
+D-1).
 
 2.9 Field and manifest declarations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -3424,8 +3660,8 @@ lattice with the same first error. Nothing about them is evaluated during a
 tick, so none of it reaches a tick hash; the ``manifest`` bytes that carry them
 reach ``ContentDigest`` exactly as the ceiling rows do (§5.5).
 
-3.10 The intrinsic cap, the rider slate, and RNG keys
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+3.10 The intrinsic cap and the rider slate
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 §2.7 fixes the *calling convention* for intrinsics and says their contents are
 Phase-2 work. This section fixes what that leaves dangerous: how many
@@ -3441,20 +3677,24 @@ rendering of it. **R10 is operative** for R9 and R10 purposes and this document
 is written to it. The discrepancy is recorded rather than resolved, because
 resolving it is the Director's.
 
-Concretely, as of this revision: **ten names are declarable.** ``exp`` and
-``log`` are the transcendental pair R10 caps; ``floor`` is not a
-transcendental and joins under a separate, later authority — ADR188 Row 2
-(below) — without moving R10's ``{exp, log}`` enumeration; ``rng-draw``
-joins under ADR188 Row 11 (the RNG carrier-key convention below). The
-**ADR219 exact-arithmetic sextet** (Director ruling 2026-08-22) completes
-the set: ``sqrt`` takes Row 6's fallback rider; ``round-half-even`` lands
-Row 3's ratified housekeeping rider, resolving D70's "recorded, not
-resolved"; and ``min``/``max``/``abs``/``clamp`` supersede Rows 4/5's
-"no rider" dispositions on #591 item 2's accumulated port evidence. Like
-``floor``, each of the six crosses via an IEEE-754 exactly-specified
-operation — no pinned soft-float libm, no §4.3 golden-vector family; the
-normative paragraphs below record that disposition per name. The
-transcendental roster stays the R10 pair alone.
+Concretely, as of this revision, **nine names are declarable**.
+
+R10 caps the transcendental pair ``exp`` and ``log``. ADR188 Row 2 separately
+authorizes the ``floor`` intrinsic. That authority leaves R10's
+``{exp, log}`` enumeration unchanged.
+
+The **ADR219 exact-arithmetic sextet** (Director ruling 2026-08-22) completes
+the set. ``sqrt`` takes Row 6's fallback rider. ``round-half-even`` lands Row
+3's ratified housekeeping rider and resolves D70's "recorded, not resolved."
+``min``/``max``/``abs``/``clamp`` supersede Rows 4/5's "no rider"
+dispositions on #591 item 2's accumulated port evidence. Like ``floor``, all
+six cross via IEEE-754 exactly-specified operations. They use neither pinned
+soft-float libm nor a §4.3 golden-vector family. The normative paragraphs below
+record each disposition.
+
+The transcendental roster stays the R10 pair alone. Amendment AJ removes the
+former ``rng-draw`` declaration. The historical carrier-key record below
+grants no current authoring authority.
 
 **Cap-legality is not doctrine-legality, and this is the load-bearing
 sentence.** ``exp`` sits inside the cap. Three of the five ``exp`` call sites
@@ -3739,6 +3979,12 @@ three positions is ``E-EVAL-044``.
 first-declarer-sets-the-number per the ``:cost`` provenance paragraph
 below — the sextet's arrival changes nothing about fuel accounting.
 
+.. note::
+   The following RNG carrier-key discussion records the retired D69/D176
+   author-visible path. Amendment AJ and ADR248 supersede it: ``rng-draw`` is
+   no longer declarable, and finite-kernel realization is the only private RNG
+   seam.
+
 **[draft ruling — Phase 1 review, R9 chapter C13]** *The RNG carrier-key
 convention.* §2.8 sanctions RNG as a kernel intrinsic with per-(session, tick,
 salt) seeding and stops there; the rst never showed the convention, and five
@@ -3777,18 +4023,17 @@ this note only gestures at.
 promised "the two ratified riders get normative intrinsic-table rows" (the
 ``floor`` prose above is that promise kept in long form); this table is the
 same promise kept as an at-a-glance reference, extended to the transcendental
-pair R10 caps, to ``rng-draw``'s already-ratified key convention (D69,
-above), and — under ADR219 (2026-08-22) — to the exact-arithmetic sextet.
-It is normative for all ten names alike —
-``declarations::kernel_signature`` checks every one of their ``:params``/
-``:returns`` at load (``rng-draw``'s own arm landed with #576 Task 5).
-Every ``:cost`` cell below except ``floor``'s and ``log``'s stays
-"author-declared" for the same reason it always has: ``fuel.rs`` hard-codes
-no per-intrinsic cost — the first pack to declare each one sets its number,
-pinned by its own conformance vector thereafter. ``log``'s first
-declaration landed with the Community port's c07 (``:cost 40``,
-``community.bsl``, D210's divisor note); ``exp``, ``rng-draw`` and the
-sextet await theirs.
+pair R10 caps and — under ADR219 (2026-08-22) — to the exact-arithmetic sextet.
+The table is normative for all nine names.
+``declarations::kernel_signature`` checks each name's ``:params`` and
+``:returns`` at load.
+
+Except for ``floor`` and ``log``, every ``:cost`` cell below stays
+"author-declared." ``fuel.rs`` hard-codes no per-intrinsic cost. The first pack
+to declare a name sets its number, and its conformance vector then pins that
+number. The Community port's c07 first declared ``log`` with ``:cost 40``
+(``community.bsl``, D210's divisor note). ``exp`` and the sextet await their
+first declarations.
 
 .. list-table::
    :header-rows: 1
@@ -3821,27 +4066,6 @@ sextet await theirs.
      - As ``exp``, via ``babylon_kernel::transcendental::ln``; natural log; domain
        ``(0, ∞)`` — a non-finite argument or ``x <= 0.0`` (``-0.0`` included) is
        ``E-EVAL-043``, a non-finite result is ``E-EVAL-014``.
-   * - ``rng-draw``
-     - ``(int)``
-     - ``real``
-     - author-declared; the first pack sets it, pinned by vector thereafter
-     - Kernel seam, not a transcendental: ``KernelRng::for_carrier(…).next_f64()``
-       on ``[0, 1)``; the ``int`` operand is the DRAW SLOT, discriminating
-       independent draws inside one ``(rule, subject, element-chain, tick)``,
-       never a stream position; carrier key ``(session, tick, domain,
-       stable_key)`` per D69, above (``domain`` = the firing rule's own id
-       string, superseding D69's enum-operand reading — see the note above);
-       ADR188 Row 11. No libm crossing, no golden vector. **Legal in EVERY
-       binding/guard/effect position uniformly** (review round 2, #576 I3):
-       an ``:expr`` binding may call ``rng-draw`` exactly as a guard or an
-       effect can, keyed identically — every ``DrawContext`` component
-       (``session``/``tick``/``domain``/``subject``) is fixed at
-       ``collect_pass``'s per-subject loop head, before ANY binding
-       resolves, so there is no principled position where the draw's key is
-       unavailable. (A round-1 refusal at ``:expr`` position, keyed on a
-       construction-ORDER accident rather than a meaning distinction, was
-       corrected — see this document's own commit history and ADR213
-       decision point 6 for the full record.)
    * - ``sqrt``
      - ``(real)``
      - ``real``
@@ -3910,12 +4134,11 @@ and ``log`` — ``(intrinsic log :params (real) :returns real :cost 40)``,
 divisor note). The ``floor`` declarations are also the proof that the whole
 intrinsic path is production-wired end to end, not merely
 unit-tested. ``floor``'s row reads **5** and ``log``'s **40**, quoted from
-content. ``fuel.rs`` hard-codes no per-intrinsic cost for any intrinsic, so
-``exp``/``rng-draw`` and the ADR219 sextet carry no kernel-fixed number to
-quote: the first content pack to declare each one sets its ``:cost``, and
-that number is then
-pinned by its own conformance vector — never a kernel constant this table
-could state in advance.
+content.
+
+``fuel.rs`` hard-codes no per-intrinsic cost. No kernel-fixed number
+exists for ``exp`` or the ADR219 sextet. The first content pack to declare each
+name sets its ``:cost``. Its conformance vector then pins that number.
 
 4. Dynamic semantics
 ----------------------
@@ -4464,7 +4687,7 @@ AST — a property implementations should exercise as a round-trip property test
 ``exists``, ``forall``, ``nodes``, ``edges``, ``neighbors``, ``hyperedges``,
 ``members-of``, ``hyperedges-of``, ``field-of``, ``edge-between``, ``the``,
 ``domain``, ``select-max``, ``select-min``, ``metric``, ``metric-of``,
-``guard``, ``for-each``,
+``quantize-mass``, ``guard``, ``for-each``, ``choose``, ``branch``,
 ``update-node``, ``update-edge``,
 ``add-node``, ``remove-node``, ``add-edge``, ``remove-edge``,
 ``add-hyperedge``, ``update-hyperedge``, ``remove-hyperedge``, ``members``,
@@ -4947,34 +5170,9 @@ At minimum, an implementation claiming conformance passes:
     declaration named ``sigmoid`` (``E-LOAD-024``); ``:year``,
     ``:tick-of-year`` and ``:tick-in-cycle`` at a known tick, with a boundary
     case at each cycle wrap; ``:tick-in-cycle 0`` and a negative length (both
-    ``E-PARSE-014``); and — for the RNG, landed as the fourth declarable
-    intrinsic by #576 Task 5 (chapter C14, ADR188 Row 11) — ``rng-draw``'s
-    own cap check and its ``kernel_signature`` (``(int) -> real``; any other
-    ``:params``/``:returns`` is ``E-LOAD-020``); **two vectors with the same
-    carrier key whose draws must be equal**, and a pair of rules differing
-    only in a guard that skips a draw, whose other draws must be unchanged,
-    pinning that a draw is keyed rather than streamed; a different **slot**
-    operand drawing a different value; a different **subject**, and a
-    different **fold element**, each drawing a different value; **two
-    parallel edges of DIFFERENT types between the SAME node pair**, drawn
-    through a real ``for-each (edges …)`` end to end, must draw DIFFERENT
-    values — the ``Element::Edge`` chain entry's ``edge_type`` component
-    (review round 2, #576 I1); an ``:expr`` binding calling ``rng-draw``
-    must both LOAD and RUN, drawing the identical value a direct call with
-    the same carrier key would (review round 2, #576 I3); a different
-    **tick** and a different **session**, each drawing a different value; the
-    result confined to ``[0, 1)`` and an exact multiple of ``2⁻⁵³`` over at
-    least 1000 draws (``rng.rs``'s own guarantee, re-asserted at the BSL
-    boundary); key-framing **injectivity** — the chains ``("ab","c")`` and
-    ``("a","bc")`` rendering to different ``stable_key``s, the mirror of the
-    kernel RNG's own framing test; a call reached with no ``DrawContext`` in
-    scope, a loud ``Err``, never a silent ``0.0``; a call to ``rng-draw``
-    with no declared ``:cost``, ``E-LOAD-021`` at the bound checker exactly
-    like any other undeclared intrinsic, independent of its own cap
-    membership; a non-``Int`` slot, a missing slot, and two slots, all
-    refused; and ``seed_for``'s own pinned four-``u64`` conformance vector
-    (``rng.rs:193-198``), re-asserted unchanged from the BSL crate side, so
-    this train cannot silently re-derive the kernel seed. **The** ``floor``
+    ``E-PARSE-014``). The retired ``rng-draw`` vectors remain historical
+    implementation evidence only; they do not belong to the current language
+    acceptance set. **The** ``floor``
     **intrinsic** (ADR188 Row 2, D97) — a zero argument, an exact-integer
     argument, and a fractional argument, proving the round-toward-zero
     result on the ratified ``[0, ∞)`` domain (a wrong-direction
@@ -5306,6 +5504,11 @@ Draft-Ruling Register
 
 Every decision this document made where the design document under-determined
 the language. Each is a Phase-1 review item.
+
+.. note::
+   Amendment AJ supersedes the register's D69 and D176–D179 ``rng-draw``
+   decisions. Those rows remain historical rationale only; the ratified finite
+   kernel addendum above is the complete current randomness surface.
 
 **Resolved — the Amendment D question (was open question 3 on this document's
 first revision).** That question read: *"Amendment D is unratified, so*
@@ -9945,7 +10148,7 @@ one above it.
      :role mechanic
      :evidence derived
      :material-basis "..."
-     :fuel 3502
+     :fuel 4114
      ...
 
 ``solidarity.bsl``'s own header records the workflow run twice against the
@@ -9962,7 +10165,14 @@ revisiting only if a future rule needs three or more emits per edge. A
 report mode that prints the computed bound directly, without the
 declare-low round-trip, is landing separately.
 
-Sources: ``solidarity.bsl:150-164``, ``solidarity.bsl:170-172``,
+Later language work brought the live bound to ``4079``. Amendment AJ then
+required the three direct
+Probability observations in those emits to become explicitly derived Real
+values. The same refusal measured the current ``4114`` bound. The historical
+ADR211 measurement remains 1126 → 3502, while ``4114`` is the executable
+declaration now shown above.
+
+Sources: ``solidarity.bsl:153-172``, ``solidarity.bsl:193-200``,
 ``decomposition_conformance.rs:148,222`` and
 ``control_ratio_conformance.rs:134,197,307`` (the same declare-low-and-
 read-back technique used elsewhere in the estate), ADR211, §3.7 of this

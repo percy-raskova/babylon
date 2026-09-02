@@ -9,15 +9,15 @@ use babylon_kernel::sha256_of;
 use babylon_kernel::tick_content_hash::RefDigestV1;
 use babylon_kernel::ContentDigest;
 use babylon_persistence::{
-    michigan_dynamic_hex_foundation_v1, prepare_committed_tick_v1, ArchiveDirtyReceiptV1,
+    michigan_dynamic_hex_foundation_v1, prepare_committed_tick_v2, ArchiveDirtyReceiptV1,
     CampaignFoundationV1, CampaignId, CheckpointCompletenessV1, CheckpointRowsV1,
     CommittedCheckpointSectionV1, CommittedFullCheckpointV1, CommittedResolveTickErrorV1,
     CommittedResolveTickV1, FoundationContentBundleV1, FullCheckpointSectionTagV1,
-    RustPersistenceRuntimeErrorV1,
+    RustPersistenceRuntimeErrorV2,
 };
 use babylon_practice_contract::ordered_action_v1::OrderedPracticeActionBatchV1;
 use babylon_tick::material_state::MaterialStateV1;
-use babylon_tick::replay_session::{IdentifiedTickReportV1, ReplayTickSession};
+use babylon_tick::replay_session::{IdentifiedTickReportV2, ReplayTickSession};
 use uuid::Uuid;
 
 const SCENARIO: &str = r"
@@ -51,7 +51,7 @@ fn fixture() -> (
     Vec<u8>,
 ) {
     let (_, rules) = split_content(RULE).expect("rule parses");
-    let forms = rules.into_iter().map(|(_, form)| form).collect::<Vec<_>>();
+    let forms = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
     let content = ContentDigest {
         defines_hash: sha256_of(DEFINES),
         rules_hash: rules_hash_of(&forms).expect("rules hash"),
@@ -93,7 +93,7 @@ fn fixture() -> (
 fn first_report(
     session: &mut ReplayTickSession<HypergraphStore>,
     session_id: &ReplaySessionIdV1,
-) -> IdentifiedTickReportV1 {
+) -> IdentifiedTickReportV2 {
     let actions =
         OrderedPracticeActionBatchV1::empty(session_id.clone(), 1).expect("empty actions");
     session
@@ -209,7 +209,7 @@ fn foundation_bundle_is_cryptographically_bound_to_session_identities() {
     ] {
         assert_eq!(
             CampaignFoundationV1::capture(&session, bundle),
-            Err(RustPersistenceRuntimeErrorV1::ReplaySource)
+            Err(RustPersistenceRuntimeErrorV2::ReplaySource)
         );
     }
 
@@ -220,7 +220,7 @@ fn foundation_bundle_is_cryptographically_bound_to_session_identities() {
             .expect("alternate reference still forms a bounded bundle");
     assert_eq!(
         CampaignFoundationV1::capture(&session, bundle),
-        Err(RustPersistenceRuntimeErrorV1::ReplaySource)
+        Err(RustPersistenceRuntimeErrorV2::ReplaySource)
     );
 
     let bundle =
@@ -241,7 +241,7 @@ fn foundation_refuses_nonzero_sessions_and_unbounded_content() {
             .expect("bounded bundle");
     assert_eq!(
         CampaignFoundationV1::capture(&session, bundle),
-        Err(RustPersistenceRuntimeErrorV1::FoundationAfterTickZero { actual: 1 })
+        Err(RustPersistenceRuntimeErrorV2::FoundationAfterTickZero { actual: 1 })
     );
 
     let embedded_nul = FoundationContentBundleV1::try_new(
@@ -253,12 +253,12 @@ fn foundation_refuses_nonzero_sessions_and_unbounded_content() {
     );
     assert_eq!(
         embedded_nul,
-        Err(RustPersistenceRuntimeErrorV1::SemanticCodec)
+        Err(RustPersistenceRuntimeErrorV2::SemanticCodec)
     );
     let oversized = "x".repeat(65_536);
     assert_eq!(
         FoundationContentBundleV1::try_new(&oversized, None, RULE, DEFINES, &reference_manifest,),
-        Err(RustPersistenceRuntimeErrorV1::SemanticCodec)
+        Err(RustPersistenceRuntimeErrorV2::SemanticCodec)
     );
 }
 
@@ -266,7 +266,7 @@ fn foundation_refuses_nonzero_sessions_and_unbounded_content() {
 fn prepared_tick_owns_full_checkpoint_rows_and_exact_archive_receipt() {
     let (mut session, session_id, seed, content, reference, _) = fixture();
     let report = first_report(&mut session, &session_id);
-    let prepared = prepare_committed_tick_v1(&report).expect("single report composes");
+    let prepared = prepare_committed_tick_v2(&report).expect("single report composes");
 
     let checkpoint: &CheckpointRowsV1 = prepared.checkpoint_rows();
     assert_eq!(checkpoint.row_count(), 9);
@@ -306,7 +306,7 @@ fn restart_root_is_one_exact_nine_section_full_checkpoint() {
     let wrong_tick = CommittedResolveTickV1::try_from(2).expect("tick two");
     assert_eq!(
         CommittedFullCheckpointV1::capture(campaign, wrong_tick, &report),
-        Err(RustPersistenceRuntimeErrorV1::ReplaySource)
+        Err(RustPersistenceRuntimeErrorV2::ReplaySource)
     );
     let checkpoint =
         CommittedFullCheckpointV1::capture(campaign, tick, &report).expect("full checkpoint");
@@ -382,7 +382,7 @@ fn restart_root_is_one_exact_nine_section_full_checkpoint() {
             CheckpointCompletenessV1::Full,
             &checkpoint.sections()[..8],
         ),
-        Err(RustPersistenceRuntimeErrorV1::SemanticCodec)
+        Err(RustPersistenceRuntimeErrorV2::SemanticCodec)
     );
 
     assert_eq!(
@@ -390,7 +390,7 @@ fn restart_root_is_one_exact_nine_section_full_checkpoint() {
             CheckpointCompletenessV1::Delta,
             checkpoint.sections(),
         ),
-        Err(RustPersistenceRuntimeErrorV1::DeltaCheckpointNotRestartRoot)
+        Err(RustPersistenceRuntimeErrorV2::DeltaCheckpointNotRestartRoot)
     );
 
     let source = include_str!("../src/checkpoint.rs");
@@ -408,7 +408,7 @@ fn checkpoint_rows_are_always_the_exact_nine_required_sections() {
 
     let (mut session, session_id, _, _, _, _) = fixture();
     let report = first_report(&mut session, &session_id);
-    let prepared = prepare_committed_tick_v1(&report).expect("report composes");
+    let prepared = prepare_committed_tick_v2(&report).expect("report composes");
     assert_eq!(prepared.checkpoint_rows().row_count(), 9);
 
     let source = include_str!("../src/checkpoint.rs");

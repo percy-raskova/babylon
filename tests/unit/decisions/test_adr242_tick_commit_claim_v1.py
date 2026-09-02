@@ -65,5 +65,7 @@ def test_historical_slice_boundary_is_superseded_by_the_one_way_cutover() -> Non
 
     assert "This slice adds no migration, SQL, database connection" in design
     assert not writer_gate.exists()
-    assert "activate_rust_persistence_v1" in runtime
-    assert "PersistenceAuthorityStateV1::RustActive" in runtime
+    assert "activate_rust_persistence_v2" in runtime
+    assert "DurableReplayRuntimeV2" in runtime
+    assert "activate_rust_persistence_v1" not in runtime
+    assert "DurableReplayRuntimeV1" not in runtime

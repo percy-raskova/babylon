@@ -266,7 +266,7 @@ class TestTheRealEstateSyncsToday:
         )
         assert violations == [], "\n".join(violations)
 
-    def test_the_entity_death_and_superwage_crisis_divergences_are_the_only_builder_only_keys(
+    def test_every_live_builder_only_divergence_is_pinned(
         self, registry: EventSchemaRegistry
     ) -> None:
         """Pins the REAL divergences this check exists to catch (found
@@ -279,7 +279,12 @@ class TestTheRealEstateSyncsToday:
         reads `source_id`/`target_id`, and `mechanism` is a string no BSL
         payload can carry (§2.8). Each key carries a note in the registry
         row; renaming the BSL keys was rejected at integration time as a
-        non-minimal rewrite of the port's conformance pins."""
+        non-minimal rewrite of the port's conformance pins.
+
+        Amendment AJ adds one deliberate Struggle divergence: the projection
+        observes its carrier as `subject`, while the frozen builder reads
+        `node_id`, and exact likelihood replaces the authored
+        `spark_probability` key."""
         builder_only_by_type = {
             row.event_type: sorted(k.name for k in row.keys if k.source == "builder-only")
             for row in registry.tier1
@@ -287,6 +292,7 @@ class TestTheRealEstateSyncsToday:
         }
         assert builder_only_by_type == {
             "ENTITY_DEATH": ["cause"],
+            "EXCESSIVE_FORCE": ["node-id", "spark-probability"],
             "SUPERWAGE_CRISIS": ["payer-id", "receiver-id"],
             "SURPLUS_EXTRACTION": ["mechanism", "source-id", "target-id"],
         }

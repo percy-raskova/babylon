@@ -21,6 +21,7 @@
 //! that operand.
 
 use crate::fuel::{cost, CardinalityCeilings, IntrinsicCosts};
+use crate::probability::{FINITE_KERNEL_DRAW_BASE, QUANTIZE_MASS_BASE};
 use crate::reader::{Atom, SExpr};
 
 /// The nine typed structural verbs plus `emit` (§2.8) — `update-edge` and
@@ -276,6 +277,14 @@ pub fn expr_cost(
             intrinsics,
         )?)),
         "if" => if_cost(items, ceilings, intrinsics),
+        "quantize-mass" => {
+            let [_, operand] = items.as_slice() else {
+                return Err(malformed(
+                    "(quantize-mass <numeric-expr>) takes exactly one operand",
+                ));
+            };
+            Ok(QUANTIZE_MASS_BASE.saturating_add(expr_cost(operand, ceilings, intrinsics)?))
+        }
         "exists" | "forall" => exists_forall_cost(items, ceilings, intrinsics),
         "fold" => fold_cost(items, ceilings, intrinsics),
         "select-max" | "select-min" => selection_cost(items, ceilings, intrinsics),
@@ -321,6 +330,7 @@ fn atom_cost(atom: &Atom) -> Result<u64, BoundError> {
     match atom {
         Atom::Int(_)
         | Atom::Currency(_)
+        | Atom::Mass(_)
         | Atom::Scaled(_)
         | Atom::Bool(_)
         | Atom::Str(_)
@@ -806,6 +816,75 @@ pub fn check_rule(
         }
     }
     let computed = rule_bound(rule, ceilings, intrinsics)?;
+    if computed > budget {
+        return Err(BoundError::BoundExceeded {
+            rule_id: rule_id(items),
+            computed_bound: computed,
+            declared_budget: budget,
+        });
+    }
+    Ok(computed)
+}
+
+fn replace_at_path(expr: &mut SExpr, path: &[u32]) -> Result<(), BoundError> {
+    // Finite-kernel paths retain the rule's original top-form index. This
+    // checker owns only the isolated rule form, so it skips that forest root
+    // coordinate and follows the remaining child coordinates unchanged.
+    let mut current = expr;
+    for component in path.iter().skip(1) {
+        let SExpr::List(items) = current else {
+            return Err(malformed("finite-kernel FormPath crossed an atom"));
+        };
+        let index = usize::try_from(*component)
+            .map_err(|_| malformed("finite-kernel FormPath index does not fit usize"))?;
+        current = items
+            .get_mut(index)
+            .ok_or_else(|| malformed("finite-kernel FormPath is outside the rule"))?;
+    }
+    *current = SExpr::Atom(Atom::Int(0));
+    Ok(())
+}
+
+/// Check one rule using its already compiled finite-kernel IR.
+///
+/// The deterministic remainder goes through [`check_rule`] unchanged. The
+/// typed kernel contributes one fixed private draw, every branch-mass cost,
+/// and only the maximum branch-body cost. This is the sole kernel fuel path;
+/// the bound checker never reparses `(choose ...)` from raw S-expressions.
+///
+/// # Errors
+///
+/// Returns [`BoundError`] when either the deterministic rule or any typed
+/// kernel expression exceeds or violates the configured static bounds.
+pub fn check_rule_with_kernel(
+    rule: &SExpr,
+    kernel: Option<&crate::probability::FiniteKernelV1>,
+    ceilings: &CardinalityCeilings,
+    intrinsics: &IntrinsicCosts,
+) -> Result<u64, BoundError> {
+    let Some(kernel) = kernel else {
+        return check_rule(rule, ceilings, intrinsics);
+    };
+    for branch in &kernel.branches {
+        for effect in &branch.effects {
+            check_member_lists(effect, ceilings)?;
+        }
+    }
+    let mut deterministic = rule.clone();
+    replace_at_path(&mut deterministic, &kernel.form_path)?;
+    let base = check_rule(&deterministic, ceilings, intrinsics)?;
+    let mass_cost = kernel.branches.iter().try_fold(0_u64, |total, branch| {
+        Ok::<u64, BoundError>(total.saturating_add(expr_cost(&branch.mass, ceilings, intrinsics)?))
+    })?;
+    let branch_cost = kernel.branches.iter().try_fold(0_u64, |worst, branch| {
+        Ok::<u64, BoundError>(worst.max(sum_costs(&branch.effects, ceilings, intrinsics)?))
+    })?;
+    let computed = base
+        .saturating_add(FINITE_KERNEL_DRAW_BASE)
+        .saturating_add(mass_cost)
+        .saturating_add(branch_cost);
+    let items = rule_items(rule)?;
+    let budget = declared_fuel(items)?;
     if computed > budget {
         return Err(BoundError::BoundExceeded {
             rule_id: rule_id(items),

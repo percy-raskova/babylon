@@ -412,7 +412,7 @@ fn execute_valid_row<'a>(
             let refs = stable_refs(&values);
             semantic_result(
                 id,
-                semantic_codec::encode_successful_event(
+                semantic_codec::encode_historical_successful_event_v1_vector(
                     integer_u32(field(data, "ordinal")?, "event ordinal")?,
                     string(data, "event_type")?,
                     &refs,
@@ -472,7 +472,7 @@ fn execute_valid_row<'a>(
 fn execute_dynamic_hex(
     id: &str,
     data: &Map<String, Value>,
-) -> Result<crate::committed_tick_envelope::CommittedTickRowV1, RustPersistenceVectorErrorV1> {
+) -> Result<crate::committed_tick_envelope::CommittedTickRowV2, RustPersistenceVectorErrorV1> {
     exact_keys(
         data,
         &[
@@ -519,7 +519,7 @@ fn execute_dynamic_hex(
 fn execute_organization(
     id: &str,
     data: &Map<String, Value>,
-) -> Result<crate::committed_tick_envelope::CommittedTickRowV1, RustPersistenceVectorErrorV1> {
+) -> Result<crate::committed_tick_envelope::CommittedTickRowV2, RustPersistenceVectorErrorV1> {
     exact_keys(
         data,
         &[
@@ -877,7 +877,9 @@ fn execute_refusal(
             exact_keys(value, &["ordered_fields"])?;
             let fields = parse_named_stable(field(value, "ordered_fields")?)?;
             let refs = stable_refs(&fields);
-            capture_refusal(semantic_codec::encode_successful_event(0, "vector", &refs))
+            capture_refusal(
+                semantic_codec::encode_historical_successful_event_v1_vector(0, "vector", &refs),
+            )
         }
         "compose_family" => {
             if object.contains_key("producer") {

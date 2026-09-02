@@ -117,6 +117,7 @@ fn vocabulary() -> BindingVocabulary {
             "doctrine/co-optive-liquidation-threshold".to_owned(),
             "doctrine/petty-bourgeois-liquidation-threshold".to_owned(),
         ]),
+        probability_consts: HashSet::new(),
         metrics: HashSet::from([
             // The six Python metrics (event_evaluator.py:301-310), as the
             // registered metric set.
@@ -167,6 +168,8 @@ fn load(source: &str, rule_file: &str) -> Result<LoadedRule, LoadError> {
     let ctx = LoadContext {
         vocabulary: &r.vocabulary,
         types: &r.types,
+        enums: &r.enums,
+        const_values: Box::leak(Box::new(HashMap::new())),
         ceilings: &r.ceilings,
         intrinsics: &r.intrinsics,
         systems: &r.systems,

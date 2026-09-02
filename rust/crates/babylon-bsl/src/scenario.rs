@@ -31,8 +31,7 @@
 //! handle is hydration-order-dependent (inserting a node earlier in the file
 //! shifts every later one), which is unusable as a stable identity for
 //! anything computed FROM the scenario's content rather than its insertion
-//! order — the future `rng-draw` intrinsic's key chief among them (plan
-//! `docs/superpowers/plans/2026-08-17-576-intrinsic-host.md` §3.4). So the
+//! order — the private finite-kernel draw carrier chief among them. So the
 //! loader retains the inverse of its load-time local-name table on
 //! [`LoadedScenario`], keyed by the [`NodeId`] each name resolved to. This is
 //! content identity, not the substrate's — `babylon-graph` gains no stable-id
@@ -93,7 +92,10 @@
 
 use crate::error_identity::{decl_identity, vocabulary_identity, ErrorIdentity};
 use crate::evaluator::Value;
-use crate::reader::{read_all, Atom, ReadError, ReadErrorKind, SExpr, ScaledKind};
+use crate::probability::MassDeclarationAnalysisV1;
+use crate::reader::{
+    read_all, Atom, FormPath, LexCode, ReadError, ReadErrorKind, SExpr, ScaledKind,
+};
 use crate::types::{BslType, EnumRegistry, EnumTypeId, FieldDecl, FieldKind};
 use crate::vocabulary::{ClosedVocabulary, EnumKind, VocabularyError};
 use babylon_graph::substrate::{GraphError, GraphSubstrate, HyperedgeId, NodeId};
@@ -109,6 +111,8 @@ const MAX_SCENARIO_AST_NODES: usize = 1_048_576;
 const MAX_SCENARIO_WALKER_DEPTH: usize = 256;
 const MAX_SCENARIO_WALKER_STACK: usize = 65_536;
 const MAX_SCENARIO_LOCAL_NAMES: usize = 65_536;
+const UNNAMED_SCENARIO_SOURCE_ID: &str = "<scenario>";
+const UNNAMED_PRELUDE_SOURCE_ID: &str = "<prelude>";
 
 /// Why a scenario would not load.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -384,6 +388,21 @@ pub struct LoadedScenario {
     /// coefficient discipline forbids — so the scenario declares it and
     /// cites the `defines.yaml` line it was taken from.
     pub consts: HashMap<String, Value>,
+    /// The exact qualified names in `consts` whose declaration used a
+    /// `p`-suffixed Probability literal.
+    ///
+    /// Scaled `p`, `i`, and `c` literals all evaluate through
+    /// [`Value::Real`], so their numeric carrier cannot recover this authored
+    /// type identity later. The loader retains it at the declaration
+    /// boundary instead; values never determine types by inference.
+    pub probability_consts: HashSet<String>,
+    /// Loader-confirmed exact Mass constants with source-local parser paths.
+    ///
+    /// The named multi-source load path retains these facts during the same
+    /// semantic pass that admits each `defconst`; authoring tools therefore
+    /// never reparse scenario or prelude source to rediscover them. Facts are
+    /// ordered scenario-first, followed by preludes in caller order.
+    pub mass_declarations: Vec<MassDeclarationAnalysisV1>,
     /// **§2.13 addendum (D101, Organization spec §1 Q12).** Every
     /// `defenum` type the scenario declared — the registry `enum`-typed
     /// `deffield`s resolve against, and the read path (`tick.rs::
@@ -419,6 +438,19 @@ pub struct LoadedScenario {
     pub hyperedge_content_ids: HashMap<HyperedgeId, String>,
 }
 
+/// One caller-named declaration prelude for a multi-source scenario load.
+///
+/// `source_id` is authoring identity only. It does not enter graph state or
+/// mechanics, and exists so retained [`FormPath`] values resolve against the
+/// correct source buffer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NamedDeclarationPreludeV1<'a> {
+    /// Caller-owned stable source identity.
+    pub source_id: &'a str,
+    /// Exact decoded source text.
+    pub source: &'a str,
+}
+
 /// The registries a **prelude** may pre-seed (§2.13 addendum, Train B item
 /// 4, issue #591, D157) before a scenario loads against them.
 /// [`load_scenario`] passes [`Self::default`] (no prelude: every field
@@ -441,6 +473,14 @@ struct PreludeRegistries {
     fields: HashMap<String, FieldDecl>,
     /// The DEFINES ENVIRONMENT a `:const` binding reads (§2.5, §4.2).
     consts: HashMap<String, Value>,
+    /// Exact qnames of `consts` declared with a Probability literal. This
+    /// travels beside `consts` so prelude declarations keep their authored
+    /// type identity when the scenario load continues.
+    probability_consts: HashSet<String>,
+    /// Mass declarations admitted while loading named preludes, retained in
+    /// caller source order until the scenario load publishes them after its
+    /// own declarations.
+    mass_declarations: Vec<MassDeclarationAnalysisV1>,
     /// §2.13 (D101): every `defenum` type declared so far, top to bottom —
     /// a `deffield ... enum <Type>` resolves against this AS IT IS AT THAT
     /// POINT, the same "declaration must precede use" discipline
@@ -787,7 +827,12 @@ pub fn load_scenario(
     source: &str,
     graph: &mut dyn GraphSubstrate,
 ) -> Result<LoadedScenario, ScenarioError> {
-    load_scenario_inner(source, graph, PreludeRegistries::default())
+    load_scenario_inner(
+        UNNAMED_SCENARIO_SOURCE_ID,
+        source,
+        graph,
+        PreludeRegistries::default(),
+    )
 }
 
 /// Read `prelude_src` as a **declaration prelude**, then read
@@ -828,8 +873,35 @@ pub fn load_scenario_with_prelude(
     scenario_src: &str,
     graph: &mut dyn GraphSubstrate,
 ) -> Result<LoadedScenario, ScenarioError> {
-    let registries = load_prelude(prelude_src)?;
-    load_scenario_inner(scenario_src, graph, registries)
+    let registries = load_prelude(UNNAMED_PRELUDE_SOURCE_ID, prelude_src)?;
+    load_scenario_inner(UNNAMED_SCENARIO_SOURCE_ID, scenario_src, graph, registries)
+}
+
+/// Load one named scenario against ordered, caller-named declaration preludes.
+///
+/// Each source is parsed exactly once. Prelude registries accumulate in caller
+/// order, and exact Mass declarations are retained by the same semantic pass
+/// that admits their `defconst` forms. The returned facts use paths local to
+/// their own source and are ordered scenario-first, then by prelude source.
+///
+/// The prelude byte-shape and count checks are exactly
+/// [`compose_declaration_preludes`]'s checks and run before parsing. An
+/// offset-zero BOM remains legal only for the first prelude: in the historical
+/// composed byte stream, a BOM beginning any later source was misplaced.
+///
+/// # Errors
+///
+/// [`ScenarioError`] for the same source-shape, declaration, registry, and
+/// scenario hydration refusals as composing the preludes and calling
+/// [`load_scenario_with_prelude`].
+pub fn load_scenario_with_named_preludes(
+    scenario_source_id: &str,
+    scenario_src: &str,
+    prelude_sources: &[NamedDeclarationPreludeV1<'_>],
+    graph: &mut dyn GraphSubstrate,
+) -> Result<LoadedScenario, ScenarioError> {
+    let registries = load_named_preludes(prelude_sources)?;
+    load_scenario_inner(scenario_source_id, scenario_src, graph, registries)
 }
 
 /// Compose ordered declaration preludes without changing any admitted byte.
@@ -905,10 +977,46 @@ pub fn compose_declaration_preludes(sources: &[&str]) -> Result<String, Scenario
 /// [`ScenarioError`] if `prelude_src` does not read, a top-level form is not
 /// a list, or a form's head is not `defenum` / `defvocabulary` / `defconst`
 /// / `deffield`.
-fn load_prelude(prelude_src: &str) -> Result<PreludeRegistries, ScenarioError> {
+fn load_prelude(source_id: &str, prelude_src: &str) -> Result<PreludeRegistries, ScenarioError> {
     let forms = bounded_scenario_read(prelude_src)?;
     let mut registries = PreludeRegistries::default();
-    for form in &forms {
+    load_prelude_forms(source_id, &forms, &mut registries)?;
+    Ok(registries)
+}
+
+fn load_named_preludes(
+    sources: &[NamedDeclarationPreludeV1<'_>],
+) -> Result<PreludeRegistries, ScenarioError> {
+    let source_texts = sources
+        .iter()
+        .map(|source| source.source)
+        .collect::<Vec<_>>();
+    let _validated_composition = compose_declaration_preludes(&source_texts)?;
+    let mut registries = PreludeRegistries::default();
+    let mut preceding_bytes = 0_usize;
+    for (source_index, source) in sources.iter().enumerate() {
+        if source_index != 0 && source.source.starts_with('\u{feff}') {
+            return Err(ScenarioError::from(ReadError {
+                kind: ReadErrorKind::Lex(LexCode::InvalidUtf8OrBom),
+                message: "a BOM is only accepted at offset 0 (§1.1)".to_owned(),
+                position: preceding_bytes,
+            }));
+        }
+        let forms = bounded_scenario_read(source.source)?;
+        load_prelude_forms(source.source_id, &forms, &mut registries)?;
+        preceding_bytes = preceding_bytes
+            .checked_add(source.source.len())
+            .ok_or_else(|| err("declaration prelude combined byte count overflow"))?;
+    }
+    Ok(registries)
+}
+
+fn load_prelude_forms(
+    source_id: &str,
+    forms: &[SExpr],
+    registries: &mut PreludeRegistries,
+) -> Result<(), ScenarioError> {
+    for (form_index, form) in forms.iter().enumerate() {
         let SExpr::List(parts) = form else {
             return Err(err("a prelude form must be a list — (defenum ...), \
                  (defvocabulary ...), (deffield ...) or (defconst ...)"));
@@ -931,7 +1039,17 @@ fn load_prelude(prelude_src: &str) -> Result<PreludeRegistries, ScenarioError> {
                 load_deffield(parts, &mut registries.fields, &registries.enums)?;
             }
             Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "defconst" => {
-                load_defconst(parts, &mut registries.consts)?;
+                load_defconst(
+                    parts,
+                    &mut registries.consts,
+                    &mut registries.probability_consts,
+                )?;
+                retain_mass_declaration(
+                    source_id,
+                    parts,
+                    vec![checked_form_index(form_index)?, 2],
+                    &mut registries.mass_declarations,
+                );
             }
             Some(SExpr::Atom(Atom::Symbol(tag))) => {
                 return Err(err(format!(
@@ -949,15 +1067,32 @@ fn load_prelude(prelude_src: &str) -> Result<PreludeRegistries, ScenarioError> {
             }
         }
     }
-    Ok(registries)
+    Ok(())
 }
 
-/// The shared load core [`load_scenario`] and [`load_scenario_with_prelude`]
-/// both call: read `source` as one `(scenario <qname> <form>*)` form and
-/// populate `graph`, starting from `registries`' pre-seeded declarations
-/// rather than empty ones — `load_scenario`'s own call passes
-/// [`PreludeRegistries::default`], so its behavior is byte-for-byte
-/// unchanged.
+fn checked_form_index(index: usize) -> Result<u32, ScenarioError> {
+    u32::try_from(index).map_err(|_| err("source has too many forms for a parser-stable path"))
+}
+
+fn retain_mass_declaration(
+    source_id: &str,
+    parts: &[SExpr],
+    literal_path: FormPath,
+    declarations: &mut Vec<MassDeclarationAnalysisV1>,
+) {
+    let [_, SExpr::Atom(Atom::QName(qname)), SExpr::Atom(Atom::Mass(mass)), ..] = parts else {
+        return;
+    };
+    declarations.push(MassDeclarationAnalysisV1 {
+        source_id: source_id.to_owned(),
+        qname: qname.clone(),
+        form_path: literal_path,
+        mass: *mass,
+    });
+}
+
+/// The shared load core used by all scenario entry points: read `source` once
+/// and hydrate its already parsed forms against `registries`.
 ///
 /// # Errors
 ///
@@ -977,15 +1112,25 @@ fn load_prelude(prelude_src: &str) -> Result<PreludeRegistries, ScenarioError> {
 // body, so the "smaller pieces" argument above is untouched by it;
 // `load_scenario` itself dropped back under the cap by this move and now
 // carries no attribute of its own.
-#[allow(clippy::too_many_lines)]
 fn load_scenario_inner(
+    source_id: &str,
     source: &str,
     graph: &mut dyn GraphSubstrate,
     registries: PreludeRegistries,
 ) -> Result<LoadedScenario, ScenarioError> {
     let forms = bounded_scenario_read(source)?;
-    check_scenario_ast_bounds(&forms)?;
-    let [SExpr::List(items)] = forms.as_slice() else {
+    load_scenario_forms(source_id, &forms, graph, registries)
+}
+
+#[allow(clippy::too_many_lines)]
+fn load_scenario_forms(
+    source_id: &str,
+    forms: &[SExpr],
+    graph: &mut dyn GraphSubstrate,
+    registries: PreludeRegistries,
+) -> Result<LoadedScenario, ScenarioError> {
+    check_scenario_ast_bounds(forms)?;
+    let [SExpr::List(items)] = forms else {
         return Err(err(format!(
             "a scenario file holds exactly one (scenario ...) form; found {}",
             forms.len()
@@ -1019,11 +1164,14 @@ fn load_scenario_inner(
     let PreludeRegistries {
         mut fields,
         mut consts,
+        mut probability_consts,
+        mass_declarations: prelude_mass_declarations,
         mut enums,
         mut vocabulary_members,
         mut vocabulary_kinds_declared,
         mut vocabulary_so_far,
     } = registries;
+    let mut scenario_mass_declarations = Vec::new();
 
     // Local name -> minted id. Load-time only; it does not outlive this call.
     let mut named: HashMap<String, NodeId> = HashMap::new();
@@ -1061,7 +1209,7 @@ fn load_scenario_inner(
     // file carrying two values for one datum with only the later surviving.
     let mut seeded_attrs: HashSet<(String, NodeId, NodeId, String)> = HashSet::new();
 
-    for form in body {
+    for (body_index, form) in body.iter().enumerate() {
         let SExpr::List(parts) = form else {
             return Err(err(
                 "a scenario body holds only (defenum ...), (defvocabulary ...), \
@@ -1085,7 +1233,16 @@ fn load_scenario_inner(
                 load_deffield(parts, &mut fields, &enums)?;
             }
             Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "defconst" => {
-                load_defconst(parts, &mut consts)?;
+                load_defconst(parts, &mut consts, &mut probability_consts)?;
+                let form_index = body_index
+                    .checked_add(2)
+                    .ok_or_else(|| err("scenario form path index overflow"))?;
+                retain_mass_declaration(
+                    source_id,
+                    parts,
+                    vec![0, checked_form_index(form_index)?, 2],
+                    &mut scenario_mass_declarations,
+                );
             }
             Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "node" => {
                 let minted = load_node(
@@ -1169,6 +1326,7 @@ fn load_scenario_inner(
     // the load-time local-name table before it goes out of scope.
     let node_content_ids = invert_content_ids(&named);
     let hyperedge_content_ids = invert_hyperedge_content_ids(&seeded_hyperedge_names);
+    scenario_mass_declarations.extend(prelude_mass_declarations);
 
     Ok(LoadedScenario {
         id,
@@ -1180,6 +1338,8 @@ fn load_scenario_inner(
         max_members_seen,
         fields,
         consts,
+        probability_consts,
+        mass_declarations: scenario_mass_declarations,
         enums,
         vocabulary,
         node_content_ids,
@@ -1280,6 +1440,7 @@ fn invert_hyperedge_content_ids(
 fn load_defconst(
     parts: &[SExpr],
     consts: &mut HashMap<String, Value>,
+    probability_consts: &mut HashSet<String>,
 ) -> Result<(), ScenarioError> {
     let [_, SExpr::Atom(Atom::QName(qname)), SExpr::Atom(literal), rest @ ..] = parts else {
         return Err(err(
@@ -1288,6 +1449,10 @@ fn load_defconst(
     };
     let (floor_literal, cap_literal) = parse_bound_keywords(qname, rest)?;
     let value = match literal {
+        Atom::Mass(mass) => {
+            reject_stray_bounds(qname, floor_literal, cap_literal, "a Mass literal")?;
+            Value::Mass(*mass)
+        }
         Atom::Int(value) => {
             reject_stray_bounds(qname, floor_literal, cap_literal, "an Int")?;
             Value::Int(*value)
@@ -1325,7 +1490,7 @@ fn load_defconst(
         }
         other => {
             return Err(err(format!(
-                "defconst `{qname}`: expected an int, scaled or boolean \
+                "defconst `{qname}`: expected an int, Mass, scaled or boolean \
                  literal, found {other:?}"
             )))
         }
@@ -1340,6 +1505,12 @@ fn load_defconst(
              declaration order"
         ))
         .with_identity(ErrorIdentity::Name(qname.clone())));
+    }
+    if matches!(
+        literal,
+        Atom::Scaled(scaled) if scaled.kind == ScaledKind::Probability
+    ) {
+        probability_consts.insert(qname.clone());
     }
     Ok(())
 }
@@ -2658,12 +2829,14 @@ fn load_hyperedge_attr(
 #[cfg(test)]
 mod tests {
     use super::{
-        invert_content_ids, load_scenario, load_scenario_with_prelude, BslType, EnumKind,
-        EnumRegistry, ErrorIdentity, FieldDecl, FieldKind,
+        invert_content_ids, load_scenario, load_scenario_with_named_preludes,
+        load_scenario_with_prelude, BslType, EnumKind, EnumRegistry, ErrorIdentity, FieldDecl,
+        FieldKind, NamedDeclarationPreludeV1,
     };
     use crate::bindings::BindingVocabulary;
     use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
     use crate::intrinsic_host::EmptyIntrinsicHost;
+    use crate::reader::read_all_spanned;
     use crate::rule_pipeline::{load_rule, LoadContext};
     use crate::structural_verbs::CollectingSink;
     use crate::tick::{run_tick, DefinesEnv};
@@ -2754,9 +2927,9 @@ mod tests {
     // ADR176 r20's "adding a single carrier shifts every later draw")
     // produces. Every pre-existing `NodeId` handle shifts by one in `S'`;
     // the whole point of a content id is that the shift must not touch it.
-    // A future `rng-draw` intrinsic keying its determinism off `NodeId`
-    // instead of this content id would be exactly the insertion-order
-    // dependence D69 forbids.
+    // A private deterministic draw key built from `NodeId` instead of this
+    // content id would be exactly the insertion-order dependence D69
+    // forbids.
     #[test]
     fn shared_nodes_keep_their_content_id_across_an_inserted_earlier_node_even_though_the_node_id_handles_move(
     ) {
@@ -3131,6 +3304,7 @@ mod tests {
             let vocabulary = BindingVocabulary {
                 fields: types.fields.keys().cloned().collect(),
                 consts: HashSet::new(),
+                probability_consts: HashSet::new(),
                 metrics: HashSet::new(),
             };
             let ceilings = CardinalityCeilings::new(
@@ -3139,9 +3313,13 @@ mod tests {
             );
             let intrinsics = IntrinsicCosts::default();
             let systems = HashSet::from(["ft".to_owned()]);
+            let enums = EnumRegistry::default();
+            let const_values = HashMap::new();
             let ctx = LoadContext {
                 vocabulary: &vocabulary,
                 types: &types,
+                enums: &enums,
+                const_values: &const_values,
                 ceilings: &ceilings,
                 intrinsics: &intrinsics,
                 systems: &systems,
@@ -3237,6 +3415,7 @@ mod tests {
             let vocabulary = BindingVocabulary {
                 fields: types.fields.keys().cloned().collect(),
                 consts: HashSet::new(),
+                probability_consts: HashSet::new(),
                 metrics: HashSet::new(),
             };
             let ceilings = CardinalityCeilings::new(
@@ -3245,9 +3424,13 @@ mod tests {
             );
             let intrinsics = IntrinsicCosts::default();
             let systems = HashSet::from(["ft".to_owned()]);
+            let enums = EnumRegistry::default();
+            let const_values = HashMap::new();
             let ctx = LoadContext {
                 vocabulary: &vocabulary,
                 types: &types,
+                enums: &enums,
+                const_values: &const_values,
                 ceilings: &ceilings,
                 intrinsics: &intrinsics,
                 systems: &systems,
@@ -3663,6 +3846,25 @@ mod tests {
         assert_eq!(
             loaded.consts["economy/tick-budget"],
             crate::evaluator::Value::Int(12)
+        );
+    }
+
+    #[test]
+    fn probability_defconst_identity_is_retained_without_numeric_inference() {
+        let source = r"
+(scenario ft/typed-const-identities
+  (defconst event/likelihood 0.5p)
+  (defconst event/intensity 0.5i)
+  (defconst event/coefficient 0.5c)
+  (defconst event/ticket-mass 0.5m))
+";
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario(source, &mut graph).unwrap();
+
+        assert_eq!(loaded.consts.len(), 4);
+        assert_eq!(
+            loaded.probability_consts,
+            HashSet::from(["event/likelihood".to_owned()])
         );
     }
 
@@ -5220,6 +5422,7 @@ mod tests {
 (deffield social-class/agitation intensity intensive)
 (deffield solidarity/tension intensity intensive)
 (defconst t/coeff 0.5c)
+(defconst t/likelihood 0.25p)
 (defvocabulary NodeType (SOCIAL_CLASS))
 (defvocabulary EdgeType (SOLIDARITY))
 ";
@@ -5255,6 +5458,11 @@ mod tests {
             loaded.consts.get("t/coeff"),
             Some(&crate::evaluator::Value::Real(0.5))
         );
+        assert_eq!(
+            loaded.probability_consts,
+            HashSet::from(["t/likelihood".to_owned()]),
+            "the prelude must retain Probability declaration identity without classifying the numerically equal coefficient"
+        );
 
         // defvocabulary: threaded into `LoadedScenario.vocabulary` — the
         // SAME registry the node/edge minting above checked against BEFORE
@@ -5272,6 +5480,176 @@ mod tests {
             vocabulary.check_enum_ref("EdgeType", "SOLIDARITY").unwrap(),
             EnumKind::EdgeType
         );
+    }
+
+    #[test]
+    fn a_probability_defconst_duplicate_across_prelude_and_scenario_remains_loud() {
+        let prelude = "(defconst event/likelihood 0.25p)\n";
+        let source = r"
+(scenario org/duplicate-probability-const
+  (defconst event/likelihood 0.25p))
+";
+        let mut graph = MemoryGraph::new();
+        let error = load_scenario_with_prelude(prelude, source, &mut graph).unwrap_err();
+
+        assert!(error.message.contains("duplicate defconst"), "{error}");
+        assert_eq!(
+            error.identity,
+            Some(ErrorIdentity::Name("event/likelihood".to_owned()))
+        );
+    }
+
+    #[test]
+    fn named_multi_prelude_mass_facts_are_scenario_first_and_source_local() {
+        let scenario = "(scenario org/named-mass (defconst demo/scenario-mass 3m))";
+        let prelude_a = "(defenum Mood (CALM ANGRY))\n(defconst demo/prelude-a-mass 2m)\n";
+        let prelude_b = "(defconst demo/prelude-b-mass 4m)\n";
+        let preludes = [
+            NamedDeclarationPreludeV1 {
+                source_id: "content/a.bsl",
+                source: prelude_a,
+            },
+            NamedDeclarationPreludeV1 {
+                source_id: "content/b.bsl",
+                source: prelude_b,
+            },
+        ];
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario_with_named_preludes(
+            "content/scenario.bscn",
+            scenario,
+            &preludes,
+            &mut graph,
+        )
+        .unwrap();
+
+        let facts = &loaded.mass_declarations;
+        assert_eq!(facts.len(), 3);
+        assert_eq!(facts[0].source_id, "content/scenario.bscn");
+        assert_eq!(facts[0].qname, "demo/scenario-mass");
+        assert_eq!(facts[0].form_path, [0, 2, 2]);
+        assert_eq!(facts[1].source_id, "content/a.bsl");
+        assert_eq!(facts[1].qname, "demo/prelude-a-mass");
+        assert_eq!(facts[1].form_path, [1, 2]);
+        assert_eq!(facts[2].source_id, "content/b.bsl");
+        assert_eq!(facts[2].qname, "demo/prelude-b-mass");
+        assert_eq!(facts[2].form_path, [0, 2]);
+
+        for (source, fact, expected_literal) in [
+            (scenario, &facts[0], "3m"),
+            (prelude_a, &facts[1], "2m"),
+            (prelude_b, &facts[2], "4m"),
+        ] {
+            let (_, spans) = read_all_spanned(source.as_bytes()).unwrap();
+            let span = spans.span_of(&fact.form_path).unwrap();
+            assert_eq!(&source[span.start..span.end], expected_literal);
+        }
+    }
+
+    #[test]
+    fn named_preludes_share_one_registry_in_manifest_order() {
+        let preludes = [
+            NamedDeclarationPreludeV1 {
+                source_id: "content/types.bsl",
+                source: "(defenum Mood (CALM ANGRY))\n",
+            },
+            NamedDeclarationPreludeV1 {
+                source_id: "content/fields.bsl",
+                source: "(deffield social-class/mood enum Mood)\n",
+            },
+        ];
+        let scenario = r"
+(scenario org/named-registry
+  (node workers NodeType/SOCIAL_CLASS (social-class/mood Mood/ANGRY)))
+";
+        let mut graph = MemoryGraph::new();
+        load_scenario_with_named_preludes("content/scenario.bscn", scenario, &preludes, &mut graph)
+            .expect("the second prelude must resolve the first prelude's enum");
+        assert_eq!(
+            graph
+                .node_attribute(NodeId(0), "social-class/mood")
+                .unwrap()
+                .to_bits(),
+            1.0_f64.to_bits()
+        );
+    }
+
+    #[test]
+    fn named_prelude_duplicate_and_composition_refusals_remain_loud() {
+        let duplicate = [
+            NamedDeclarationPreludeV1 {
+                source_id: "content/first.bsl",
+                source: "(defconst demo/mass 1m)\n",
+            },
+            NamedDeclarationPreludeV1 {
+                source_id: "content/second.bsl",
+                source: "(defconst demo/mass 1m)\n",
+            },
+        ];
+        let mut graph = MemoryGraph::new();
+        let error = load_scenario_with_named_preludes(
+            "content/scenario.bscn",
+            "(scenario org/duplicate)",
+            &duplicate,
+            &mut graph,
+        )
+        .unwrap_err();
+        assert!(error.message.contains("duplicate defconst"), "{error}");
+
+        let too_many = [NamedDeclarationPreludeV1 {
+            source_id: "content/repeated.bsl",
+            source: "(defconst demo/mass 1m)\n",
+        }; 17];
+        let mut graph = MemoryGraph::new();
+        let error = load_scenario_with_named_preludes(
+            "content/scenario.bscn",
+            "(scenario org/too-many)",
+            &too_many,
+            &mut graph,
+        )
+        .unwrap_err();
+        assert_eq!(
+            error.message,
+            "a content set may compose at most 16 declaration preludes"
+        );
+    }
+
+    #[test]
+    fn named_prelude_bom_behavior_matches_the_historical_composed_stream() {
+        let first_bom = [NamedDeclarationPreludeV1 {
+            source_id: "content/first.bsl",
+            source: "\u{feff}(defconst demo/mass 1m)\n",
+        }];
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario_with_named_preludes(
+            "content/scenario.bscn",
+            "(scenario org/first-bom)",
+            &first_bom,
+            &mut graph,
+        )
+        .expect("an offset-zero BOM in the first composed source remains legal");
+        assert_eq!(loaded.mass_declarations[0].source_id, "content/first.bsl");
+
+        let second_bom = [
+            NamedDeclarationPreludeV1 {
+                source_id: "content/first.bsl",
+                source: "(defconst demo/first 1m)\n",
+            },
+            NamedDeclarationPreludeV1 {
+                source_id: "content/second.bsl",
+                source: "\u{feff}(defconst demo/second 2m)\n",
+            },
+        ];
+        let mut graph = MemoryGraph::new();
+        let error = load_scenario_with_named_preludes(
+            "content/scenario.bscn",
+            "(scenario org/second-bom)",
+            &second_bom,
+            &mut graph,
+        )
+        .unwrap_err();
+        assert_eq!(error.code, Some("E-LEX-001"));
+        assert_eq!(error.position, Some(second_bom[0].source.len()));
     }
 
     #[test]

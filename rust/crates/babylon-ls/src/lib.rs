@@ -27,6 +27,7 @@
 #![forbid(unsafe_code)]
 #![warn(clippy::pedantic)]
 
+pub mod authoring;
 pub mod capabilities;
 pub mod content_manifest;
 pub mod diagnostics;

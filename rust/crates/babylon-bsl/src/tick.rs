@@ -75,17 +75,24 @@
 //! the rule.
 
 use crate::bindings::{BindSource, BindingDecl};
-use crate::evaluator::{evaluate, EvalEnv, EvalError, Value};
-use crate::intrinsic_host::{DrawContext, DrawIdentityContext, IntrinsicHost};
+use crate::evaluator::{charge, evaluate, EvalEnv, EvalError, Value};
+use crate::intrinsic_host::{
+    draw_finite_kernel_ticket, DrawContext, DrawIdentityContext, IntrinsicCallCtx, IntrinsicHost,
+};
+use crate::probability::{
+    evaluate_kernel_masses, forecast_event_likelihoods as exact_pushforward, BranchProjectionV1,
+    EventLikelihoodV1, KernelInstanceIdentityV1, KernelRealizationV1, FINITE_KERNEL_DRAW_BASE,
+};
 use crate::reader::{Atom, SExpr};
 use crate::rule_pipeline::LoadedRule;
 use crate::structural_verbs::{EffectExecutor, EventSink};
 use crate::typecheck::TypeEnv;
 use crate::types::{BslType, EnumRegistry};
 use crate::write_log::WriteObserver;
-use babylon_graph::stable_element::StableElementResolverV1;
+use babylon_graph::stable_element::{StableElementKeyV1, StableElementResolverV1};
 use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use babylon_graph::working_copy::DetachedCopy;
 use babylon_kernel::replay::{RngDomainV2, RngSeedContext};
 use babylon_kernel::SessionId;
 use std::collections::HashMap;
@@ -128,6 +135,35 @@ pub struct TickOutcome {
     pub considered: usize,
     /// How many passed the guard and had their effects executed.
     pub fired: usize,
+    /// Successful choices in subject encounter order.
+    pub kernel_realizations: Vec<KernelRealizationV1>,
+    /// Stable subject provenance aligned one-for-one with emitted events.
+    pub event_provenance: Vec<EmittedEventProvenanceV1>,
+}
+
+/// Stable carrier provenance for one emitted event.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmittedEventProvenanceV1 {
+    /// Graph-owned stable subject identity; never inferred from payload.
+    pub subject: StableElementKeyV1,
+}
+
+/// Read-only dependencies for one bounded detached-state forecast.
+pub struct ForecastContextV1<'a> {
+    /// Declared field types.
+    pub types: &'a TypeEnv,
+    /// Closed enum declarations.
+    pub enums: &'a EnumRegistry,
+    /// Deterministic named intrinsic host.
+    pub host: &'a dyn IntrinsicHost,
+    /// Declared intrinsic costs.
+    pub costs: &'a crate::fuel::IntrinsicCosts,
+    /// Constant values.
+    pub defines: &'a DefinesEnv,
+    /// Tick whose calendar bindings are evaluated.
+    pub tick: i64,
+    /// Closed vocabulary, when the content set declares one.
+    pub vocabulary: Option<&'a crate::vocabulary::ClosedVocabulary>,
 }
 
 /// The defines environment §4.2 names — coefficients by qualified name, the
@@ -176,7 +212,7 @@ pub(crate) fn namespace_to_node_type(namespace: &str) -> String {
 /// (`no_field_binding_uses_the_community_namespace` quotes this function).
 /// Without a vocabulary (`None` — the registry-free unit-test lane) the
 /// owner kind is unknowable and every namespace counts, exactly as before.
-fn subject_type_of(
+pub(crate) fn subject_type_of_bindings(
     bindings: &[BindingDecl],
     vocabulary: Option<&crate::vocabulary::ClosedVocabulary>,
 ) -> Result<String, TickError> {
@@ -215,6 +251,24 @@ fn subject_type_of(
             many.join(", ")
         ))),
     }
+}
+
+/// Resolve the runtime subject population for a loaded rule using the same
+/// closed-vocabulary filtering as authoritative tick execution.
+///
+/// This read-only seam exists for source analysis and detached forecasting;
+/// callers must not re-infer a carrier from `LoadedRule::domain`, because the
+/// runtime also supports the registry-free namespace inference used here.
+///
+/// # Errors
+///
+/// Returns the same [`TickError`] as tick execution when the rule names no
+/// node-scoped field population or names more than one population.
+pub fn subject_type_of_rule(
+    loaded: &LoadedRule,
+    vocabulary: Option<&crate::vocabulary::ClosedVocabulary>,
+) -> Result<String, TickError> {
+    subject_type_of_bindings(&loaded.bindings, vocabulary)
 }
 
 /// Pull `(when …)` and `(effects …)` out of a loaded rule form.
@@ -598,15 +652,15 @@ fn check_sources_servable(bindings: &[BindingDecl], defines: &DefinesEnv) -> Res
 /// the guard does not evaluate to a `Bool`, evaluation or collection fails,
 /// or a collected write fails to apply.
 ///
-/// # The `rng-draw` seam (Task 4, #576 intrinsic-host train)
+/// # Private deterministic draw context
 ///
 /// The loaded contract's governed rule id, `node_content_ids`, and `session`
 /// carry no weight of their own here — `run_tick` only forwards the latter
 /// two to `collect_pass`, which builds one
-/// [`crate::intrinsic_host::DrawContext`] per subject (plan §3.3: `domain` =
-/// `loaded.contract.rule_id`, `subject` = that subject's Task-3 content id
-/// out of `node_content_ids`). The rule identity has no parallel caller-
-/// supplied seam: the loaded contract also owns observed write attribution.
+/// [`crate::intrinsic_host::DrawContext`] per subject. Amendment AJ permits
+/// only a compiled finite kernel to consume that context; BSL authors cannot
+/// invoke a draw. The rule identity has no parallel caller-supplied seam:
+/// the loaded contract also owns observed write attribution.
 ///
 /// `node_content_ids: Option<&HashMap<NodeId, String>>` fixes the standard
 /// hasher rather than generalizing over `S: BuildHasher` (`clippy::
@@ -698,11 +752,13 @@ where
 {
     if matches!(rng_seed, RngSeedContext::V2 { .. }) {
         let resolver = stable_resolver.ok_or_else(|| {
-            err("rng-draw V2 requires a sealed StableElementResolverV1".to_owned())
+            err("finite-kernel V2 requires a sealed StableElementResolverV1".to_owned())
         })?;
-        resolver
-            .validate_topology(graph)
-            .map_err(|error| err(format!("rng-draw V2 sealed topology refused: {error:?}")))?;
+        resolver.validate_topology(graph).map_err(|error| {
+            err(format!(
+                "finite-kernel V2 sealed topology refused: {error:?}"
+            ))
+        })?;
     }
     run_tick_with_observer(
         loaded,
@@ -740,7 +796,7 @@ fn run_tick_with_observer(
     observer: Option<&mut dyn WriteObserver>,
 ) -> Result<TickOutcome, TickError> {
     check_sources_servable(&loaded.bindings, defines)?;
-    let subject_type = subject_type_of(&loaded.bindings, vocabulary)?;
+    let subject_type = subject_type_of_bindings(&loaded.bindings, vocabulary)?;
     let (guard, effects) = guard_and_effects(&loaded.rule)?;
     let subjects = graph.nodes(&subject_type);
 
@@ -749,7 +805,7 @@ fn run_tick_with_observer(
     // borrow checker, not a convention, is what stops any subject in this
     // pass from observing another subject's write (A1, CT4P hardening
     // train, issue #525; see this function's own doc for the repair).
-    let (all_pending, fired) = collect_pass(
+    let (all_pending, fired, kernel_realizations, event_provenance) = collect_pass(
         &*graph,
         &subjects,
         loaded,
@@ -792,6 +848,8 @@ fn run_tick_with_observer(
         subject_type,
         considered: subjects.len(),
         fired,
+        kernel_realizations,
+        event_provenance,
     })
 }
 
@@ -835,7 +893,12 @@ fn run_tick_with_observer(
 /// `node_content_ids`'s fixed (non-generalized) hasher: see [`run_tick`]'s
 /// own doc — the same reasoning applies verbatim, one level down the call
 /// stack.
-#[allow(clippy::too_many_arguments, clippy::implicit_hasher)]
+#[allow(
+    clippy::too_many_arguments,
+    clippy::implicit_hasher,
+    clippy::too_many_lines,
+    clippy::type_complexity
+)]
 fn collect_pass(
     graph: &dyn GraphSubstrate,
     subjects: &[NodeId],
@@ -849,8 +912,8 @@ fn collect_pass(
     costs: &crate::fuel::IntrinsicCosts,
     defines: &DefinesEnv,
     tick: i64,
-    // The `rng-draw` seam (Task 4, #576 intrinsic-host train, plan §3.3/
-    // §3.5): `loaded.contract.rule_id` is `domain`, `node_content_ids`
+    // Private deterministic draw context: `loaded.contract.rule_id` is
+    // `domain`, `node_content_ids`
     // resolves `subject` (and any `it`/`:as` element `eval_intrinsic` meets)
     // to a Task-3 content id, and `session` is `DrawContext`'s own non-
     // operand half (D69). All three are constant for the whole rule; only
@@ -858,9 +921,20 @@ fn collect_pass(
     node_content_ids: Option<&HashMap<NodeId, String>>,
     rng_seed: RngSeedContext<'_>,
     stable_resolver: Option<&StableElementResolverV1>,
-) -> Result<(Vec<crate::structural_verbs::PendingWrite>, usize), TickError> {
+) -> Result<
+    (
+        Vec<crate::structural_verbs::PendingWrite>,
+        usize,
+        Vec<KernelRealizationV1>,
+        Vec<EmittedEventProvenanceV1>,
+    ),
+    TickError,
+> {
     let mut fired = 0_usize;
     let mut all_pending: Vec<crate::structural_verbs::PendingWrite> = Vec::new();
+    let mut kernel_realizations = Vec::new();
+    let mut event_provenance = Vec::new();
+    let mut collected_events = crate::structural_verbs::CollectingSink::default();
     // D69: never negative in practice (`run_tick`'s own callers start at
     // tick 1 and only ever increment), but checked rather than cast blind
     // — a silently wrapped tick would corrupt every draw key this rule's
@@ -895,8 +969,8 @@ fn collect_pass(
         // happened to exist, which is not a property of the rule.
         let mut fuel = loaded.declared_fuel;
 
-        // The `rng-draw` seam (Task 4, plan §3.3): `subject` is THIS
-        // subject's Task-3 content id, never its `NodeId` handle — keying
+        // The private draw carrier uses THIS subject's stable content
+        // identity, never its `NodeId` handle — keying
         // on the handle would be replay-deterministic but insertion-
         // history-dependent (plan §3.4), the exact butterfly ADR176 r20
         // forbids.
@@ -919,7 +993,7 @@ fn collect_pass(
         // mid-tick-minted node, or this hard error is the trip wire that
         // catches the gap — the alternative (an unconditional fallback)
         // would have silently fed a raw, insertion-order-dependent
-        // `NodeId` handle into `rng-draw`'s `stable_key`, precisely the
+        // `NodeId` handle into the finite-kernel draw key, precisely the
         // ADR176 r20 butterfly the content-id design exists to prevent.
         //
         // `Cow` (review round 2, #576 M2): the found-in-map arm BORROWS
@@ -929,6 +1003,24 @@ fn collect_pass(
         let v1_subject = match rng_seed {
             RngSeedContext::V1 { .. } => Some(v1_subject_identity(*subject, node_content_ids)?),
             RngSeedContext::V2 { .. } => None,
+        };
+        let stable_subject = match rng_seed {
+            RngSeedContext::V1 { .. } => None,
+            RngSeedContext::V2 { .. } => {
+                let (_, resolver) = replay_rule
+                    .as_ref()
+                    .expect("V2 rule identity checked before subject loop");
+                Some(
+                    resolver
+                        .node_key(*subject)
+                        .map_err(|error| {
+                            err(format!(
+                                "V2 subject has no sealed stable identity: {error:?}"
+                            ))
+                        })?
+                        .clone(),
+                )
+            }
         };
         let identity = match rng_seed {
             RngSeedContext::V1 { session } => DrawIdentityContext::V1 {
@@ -943,17 +1035,15 @@ fn collect_pass(
                 let (domain, resolver) = replay_rule
                     .as_ref()
                     .expect("V2 rule identity checked before subject loop");
-                let stable_subject = resolver.node_key(*subject).map_err(|error| {
-                    err(format!(
-                        "rng-draw V2 subject has no sealed stable identity: {error:?}"
-                    ))
-                })?;
                 DrawIdentityContext::V2 {
                     session,
                     seed,
                     domain: domain.clone(),
                     resolver,
-                    subject: stable_subject.clone(),
+                    subject: stable_subject
+                        .as_ref()
+                        .expect("V2 stable subject resolved above")
+                        .clone(),
                 }
             }
         };
@@ -977,11 +1067,9 @@ fn collect_pass(
         // through the same substrate the guard/effects environment below
         // uses — never a graph-less environment silently missing it.
         //
-        // `Some(&draw_context)` (review round 2, #576 I3): `draw_context`
-        // is now constructed BEFORE this call, not four lines after it —
-        // every component (`session`/`tick`/`domain`/`subject`) is fixed
-        // at this loop's head, so `rng-draw` is reachable from an `:expr`
-        // binding's body the same way it is from a guard or an effect.
+        // `draw_context` is constructed before expression resolution so the
+        // same subject identity is available to the later engine-private
+        // finite-kernel realization. No author expression can consume a draw.
         crate::rule_pipeline::resolve_expr_bindings(
             &loaded.bindings,
             &mut values,
@@ -1033,12 +1121,107 @@ fn collect_pass(
         // nothing observable (Task 8, Organization foundation plan — see
         // `EffectExecutor`'s own field doc).
         let mut executor = EffectExecutor::new(types, enums, None);
-        let pending = executor.collect_effects(effects, &env, host, sink, &mut fuel)?;
+        let events_before = collected_events.events.len();
+        let pending = if let Some(kernel) = &loaded.kernel {
+            charge(&mut fuel, FINITE_KERNEL_DRAW_BASE)?;
+            let masses = evaluate_kernel_masses(kernel, &env, host, &mut fuel)?;
+            let call_context = IntrinsicCallCtx {
+                draw_context: Some(&draw_context),
+                active_elements: Vec::new(),
+            };
+            let draw = draw_finite_kernel_ticket(&kernel.sample, kernel.slot, &call_context)?;
+            let (session, seed) = match rng_seed {
+                RngSeedContext::V2 { session, seed } => (session, seed),
+                RngSeedContext::V1 { .. } => {
+                    return Err(err(
+                        "finite-kernel realization requires the sealed V2 replay path; V1 has no signed replay seed",
+                    ));
+                }
+            };
+            let instance = KernelInstanceIdentityV1 {
+                replay_session: session.as_bytes().to_vec(),
+                replay_seed: seed.to_be_bytes(),
+                tick,
+                rule_id: loaded.contract.rule_id.clone(),
+                subject: stable_subject
+                    .as_ref()
+                    .expect("a V2 choice has a stable subject")
+                    .clone(),
+                active_elements: Vec::new(),
+            };
+            let realization = crate::probability::realize_kernel(&instance, kernel, &masses, draw)
+                .map_err(|error| err(error.to_string()))?;
+            let selected = kernel
+                .branches
+                .iter()
+                .position(|branch| branch.member == realization.selected_outcome)
+                .ok_or_else(|| err("realized outcome is absent from its compiled kernel"))?;
+            let pending = collect_selected_kernel_effects(
+                &mut executor,
+                effects,
+                kernel,
+                selected,
+                &env,
+                host,
+                &mut collected_events,
+                &mut fuel,
+            )?;
+            kernel_realizations.push(realization);
+            pending
+        } else {
+            executor.collect_effects(effects, &env, host, &mut collected_events, &mut fuel)?
+        };
+        if let Some(subject_identity) = stable_subject {
+            for _ in events_before..collected_events.events.len() {
+                event_provenance.push(EmittedEventProvenanceV1 {
+                    subject: subject_identity.clone(),
+                });
+            }
+        }
         all_pending.extend(pending);
         fired += 1;
     }
 
-    Ok((all_pending, fired))
+    for (event_type, payload) in collected_events.events {
+        sink.emit(&event_type, payload);
+    }
+    Ok((all_pending, fired, kernel_realizations, event_provenance))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn collect_selected_kernel_effects(
+    executor: &mut EffectExecutor<'_>,
+    effects: &[SExpr],
+    kernel: &crate::probability::FiniteKernelV1,
+    selected: usize,
+    env: &EvalEnv<'_>,
+    host: &dyn IntrinsicHost,
+    sink: &mut dyn EventSink,
+    fuel: &mut u64,
+) -> Result<Vec<crate::structural_verbs::PendingWrite>, EvalError> {
+    let choose_component =
+        kernel.form_path.last().copied().ok_or_else(|| {
+            EvalError::plain("compiled choose has no effect-list path".to_owned())
+        })?;
+    let choose_index = usize::try_from(choose_component)
+        .ok()
+        .and_then(|index| index.checked_sub(1))
+        .ok_or_else(|| {
+            EvalError::plain("compiled choose path does not name an effect item".to_owned())
+        })?;
+    let branch = kernel.branches.get(selected).ok_or_else(|| {
+        EvalError::plain("selected finite-kernel ordinal is outside its branch list".to_owned())
+    })?;
+    let mut pending = Vec::new();
+    for (index, effect) in effects.iter().enumerate() {
+        let items = if index == choose_index {
+            branch.effects.as_slice()
+        } else {
+            std::slice::from_ref(effect)
+        };
+        pending.extend(executor.collect_effects(items, env, host, sink, fuel)?);
+    }
+    Ok(pending)
 }
 
 fn replay_rule_identity<'a>(
@@ -1050,10 +1233,12 @@ fn replay_rule_identity<'a>(
         RngSeedContext::V1 { .. } => Ok(None),
         RngSeedContext::V2 { .. } => {
             let domain = RngDomainV2::try_from(rule_id).map_err(|error| {
-                err(format!("rng-draw V2 firing-rule domain refused: {error:?}"))
+                err(format!(
+                    "finite-kernel V2 firing-rule domain refused: {error:?}"
+                ))
             })?;
             let stable = resolver.ok_or_else(|| {
-                err("rng-draw V2 requires a sealed StableElementResolverV1".to_owned())
+                err("finite-kernel V2 requires a sealed StableElementResolverV1".to_owned())
             })?;
             Ok(Some((domain, stable)))
         }
@@ -1081,11 +1266,213 @@ fn v1_subject_identity(
         })
 }
 
+/// Forecast one adjacent finite kernel/projection pair for one subject by
+/// exact detached-state enumeration.
+///
+/// `kernel_index` addresses the mechanic in the already resolved schedule;
+/// the projection must be the immediately following rule and name the same
+/// sample. Each branch starts from an independent [`DetachedCopy`], applies
+/// the real deterministic effect path, runs the real recognizer for the same
+/// subject, and then uses exact ticket pushforward. This API cannot express a
+/// cross-sample join, sequence, conjunction, payload distribution, or
+/// whole-tick path enumeration.
+///
+/// # Errors
+///
+/// Refuses malformed/nonadjacent pairs, a guard-false mechanic (no choice
+/// instance exists), any evaluator/effect failure, or a projection that
+/// produces a material write despite its loader proof.
+#[allow(clippy::too_many_lines)]
+pub fn forecast_event_likelihoods<G>(
+    resolved_rules: &[LoadedRule],
+    kernel_index: usize,
+    pre_choice: &G,
+    subject: NodeId,
+    context: &ForecastContextV1<'_>,
+) -> Result<Vec<EventLikelihoodV1>, TickError>
+where
+    G: GraphSubstrate + DetachedCopy,
+{
+    crate::probability::analyze_content_set(resolved_rules)
+        .map_err(|error| err(error.to_string()))?;
+    let mechanic = resolved_rules
+        .get(kernel_index)
+        .ok_or_else(|| err("forecast kernel index is outside the resolved schedule"))?;
+    let projection = resolved_rules
+        .get(kernel_index + 1)
+        .ok_or_else(|| err("forecast requires an immediately adjacent projection rule"))?;
+    let kernel = mechanic
+        .kernel
+        .as_ref()
+        .ok_or_else(|| err("forecast target rule has no compiled finite kernel"))?;
+    let projected = projection
+        .projection
+        .as_ref()
+        .ok_or_else(|| err("the immediately following rule is not a finite projection"))?;
+    if projected.sample != kernel.sample {
+        return Err(err(format!(
+            "adjacent projection sample `{}` does not match kernel sample `{}`",
+            projected.sample, kernel.sample
+        )));
+    }
+
+    check_sources_servable(&mechanic.bindings, context.defines)?;
+    let (mechanic_guard, mechanic_effects) = guard_and_effects(&mechanic.rule)?;
+    let mut mechanic_values = bind_subject(
+        subject,
+        &mechanic.bindings,
+        pre_choice,
+        context.defines,
+        context.tick,
+        context.types,
+        context.enums,
+    )?;
+    let mut mechanic_fuel = mechanic.declared_fuel;
+    crate::rule_pipeline::resolve_expr_bindings(
+        &mechanic.bindings,
+        &mut mechanic_values,
+        context.costs,
+        context.types,
+        context.enums,
+        Some(pre_choice),
+        None,
+        context.host,
+        &mut mechanic_fuel,
+    )?;
+    let mechanic_env = EvalEnv {
+        bindings: mechanic_values,
+        intrinsic_costs: context.costs,
+        graph: Some(pre_choice),
+        types: Some(context.types),
+        enums: Some(context.enums),
+        elements: Vec::new(),
+        draw_context: None,
+    };
+    if let Some(guard) = mechanic_guard {
+        match evaluate(guard, &mechanic_env, context.host, &mut mechanic_fuel)? {
+            Value::Bool(true) => {}
+            Value::Bool(false) => {
+                return Err(err(
+                    "forecast subject does not fire the kernel mechanic in the pre-choice state",
+                ));
+            }
+            other => {
+                return Err(err(format!(
+                    "a (when …) guard must evaluate to Bool, got {other:?}"
+                )));
+            }
+        }
+    }
+    charge(&mut mechanic_fuel, FINITE_KERNEL_DRAW_BASE)?;
+    let masses = evaluate_kernel_masses(kernel, &mechanic_env, context.host, &mut mechanic_fuel)?;
+
+    check_sources_servable(&projection.bindings, context.defines)?;
+    let (projection_guard, projection_effects) = guard_and_effects(&projection.rule)?;
+    let mut branch_projections = Vec::with_capacity(kernel.branches.len());
+    for (selected, branch) in kernel.branches.iter().enumerate() {
+        let mut branch_state = pre_choice.detached_copy();
+        let mut branch_fuel = mechanic_fuel;
+        // A mechanic may emit an ordinary deterministic observation beside
+        // its one `choose`.  Forecasting needs the mechanic's material
+        // writes, but that sibling observation is not the adjacent
+        // projection whose preimage we are measuring.  Execute it through a
+        // real sink so payload evaluation and fuel remain faithful, then
+        // deliberately discard it.  Emits inside a branch are already a
+        // loader refusal.
+        let mut ignored_mechanic_events = crate::structural_verbs::CollectingSink::default();
+        let mut mechanic_executor = EffectExecutor::new(context.types, context.enums, None);
+        let pending = collect_selected_kernel_effects(
+            &mut mechanic_executor,
+            mechanic_effects,
+            kernel,
+            selected,
+            &mechanic_env,
+            context.host,
+            &mut ignored_mechanic_events,
+            &mut branch_fuel,
+        )?;
+        for write in &pending {
+            mechanic_executor.apply_pending_write(write, &mut branch_state)?;
+        }
+
+        let mut projection_values = bind_subject(
+            subject,
+            &projection.bindings,
+            &branch_state,
+            context.defines,
+            context.tick,
+            context.types,
+            context.enums,
+        )?;
+        let mut projection_fuel = projection.declared_fuel;
+        crate::rule_pipeline::resolve_expr_bindings(
+            &projection.bindings,
+            &mut projection_values,
+            context.costs,
+            context.types,
+            context.enums,
+            Some(&branch_state),
+            None,
+            context.host,
+            &mut projection_fuel,
+        )?;
+        let projection_env = EvalEnv {
+            bindings: projection_values,
+            intrinsic_costs: context.costs,
+            graph: Some(&branch_state),
+            types: Some(context.types),
+            enums: Some(context.enums),
+            elements: Vec::new(),
+            draw_context: None,
+        };
+        let emits = if let Some(guard) = projection_guard {
+            match evaluate(guard, &projection_env, context.host, &mut projection_fuel)? {
+                Value::Bool(true) => true,
+                Value::Bool(false) => false,
+                other => {
+                    return Err(err(format!(
+                        "a projection (when …) guard must evaluate to Bool, got {other:?}"
+                    )));
+                }
+            }
+        } else {
+            true
+        };
+        let mut event_sink = crate::structural_verbs::CollectingSink::default();
+        if emits {
+            let mut projection_executor =
+                EffectExecutor::new(context.types, context.enums, context.vocabulary);
+            let writes = projection_executor.collect_effects(
+                projection_effects,
+                &projection_env,
+                context.host,
+                &mut event_sink,
+                &mut projection_fuel,
+            )?;
+            if !writes.is_empty() {
+                return Err(err(
+                    "a finite projection produced a material write despite its emit-only loader proof",
+                ));
+            }
+        }
+        branch_projections.push(BranchProjectionV1 {
+            outcome: branch.member.clone(),
+            event_types: event_sink
+                .events
+                .into_iter()
+                .map(|(event_type, _)| event_type)
+                .collect(),
+        });
+    }
+    exact_pushforward(kernel, projected, &masses, &branch_projections)
+        .map_err(|error| err(error.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        bind_field_value, check_sources_servable, run_tick, run_tick_observed, subject_type_of,
-        DefinesEnv,
+        bind_field_value, check_sources_servable, run_tick, run_tick_observed,
+        subject_type_of_bindings, DefinesEnv,
     };
     use crate::bindings::{BindSource, BindingDecl};
     use crate::evaluator::Value;
@@ -1095,8 +1482,8 @@ mod tests {
     use babylon_kernel::SessionId;
     use std::collections::HashMap;
 
-    /// The `rng-draw` seam's session/content-id parameters (Task 4, #576
-    /// intrinsic-host train), for this module's own hand-built `MemoryGraph`
+    /// The private draw seam's session/content-id parameters for this
+    /// module's own hand-built `MemoryGraph`
     /// fixtures — none of them go through scenario hydration, so there is
     /// no Task-3 `node_content_ids` map to thread; `None` exercises
     /// `element_content_id`/`collect_pass`'s documented NodeId-Debug
@@ -1181,7 +1568,10 @@ mod tests {
             field("wages", "social-class/wages"),
             field("value-produced", "social-class/value-produced"),
         ];
-        assert_eq!(subject_type_of(&bindings, None).unwrap(), "SOCIAL_CLASS");
+        assert_eq!(
+            subject_type_of_bindings(&bindings, None).unwrap(),
+            "SOCIAL_CLASS"
+        );
     }
 
     #[test]
@@ -1192,13 +1582,13 @@ mod tests {
             field("wages", "social-class/wages"),
             field("budget", "organization/budget"),
         ];
-        let err = subject_type_of(&bindings, None).unwrap_err();
+        let err = subject_type_of_bindings(&bindings, None).unwrap_err();
         assert!(err.message.contains("ambiguous"), "{}", err.message);
     }
 
     #[test]
     fn a_rule_with_no_field_binding_names_no_population() {
-        let err = subject_type_of(&[], None).unwrap_err();
+        let err = subject_type_of_bindings(&[], None).unwrap_err();
         assert!(
             err.message.contains("names no subject type"),
             "{}",
@@ -1238,7 +1628,7 @@ mod tests {
     fn a_hyperedge_owned_field_binding_names_no_subject_type() {
         let vocabulary = d29_vocabulary();
         let bindings = vec![field("heat", "community/heat")];
-        let err = subject_type_of(&bindings, Some(&vocabulary)).unwrap_err();
+        let err = subject_type_of_bindings(&bindings, Some(&vocabulary)).unwrap_err();
         assert!(
             err.message.contains("names no subject type"),
             "a hyperedge-owned :field binding is invisible to subject \
@@ -1253,7 +1643,7 @@ mod tests {
         // keeps both kinds out of subject derivation.
         let vocabulary = d29_vocabulary();
         let bindings = vec![field("strength", "solidarity/strength")];
-        let err = subject_type_of(&bindings, Some(&vocabulary)).unwrap_err();
+        let err = subject_type_of_bindings(&bindings, Some(&vocabulary)).unwrap_err();
         assert!(
             err.message.contains("names no subject type"),
             "{}",
@@ -1269,7 +1659,7 @@ mod tests {
             field("heat", "community/heat"),
         ];
         assert_eq!(
-            subject_type_of(&bindings, Some(&vocabulary)).unwrap(),
+            subject_type_of_bindings(&bindings, Some(&vocabulary)).unwrap(),
             "SOCIAL_CLASS",
             "the node-owned binding alone derives the subject type — the \
              hyperedge-owned one must not make the derivation ambiguous"
@@ -1283,7 +1673,10 @@ mod tests {
         // subject type rather than being filtered. Content drivers always
         // pass `Some`, so this lane is unit-test-only.
         let bindings = vec![field("heat", "community/heat")];
-        assert_eq!(subject_type_of(&bindings, None).unwrap(), "COMMUNITY");
+        assert_eq!(
+            subject_type_of_bindings(&bindings, None).unwrap(),
+            "COMMUNITY"
+        );
     }
 
     // ============================================= Task 12 — the pre-state
@@ -1319,6 +1712,7 @@ mod tests {
             let vocabulary = crate::bindings::BindingVocabulary {
                 fields: types.fields.keys().cloned().collect(),
                 consts: std::collections::HashSet::new(),
+                probability_consts: std::collections::HashSet::new(),
                 metrics: std::collections::HashSet::new(),
             };
             Self {
@@ -1349,6 +1743,8 @@ mod tests {
             let ctx = crate::rule_pipeline::LoadContext {
                 vocabulary: &self.vocabulary,
                 types: &self.types,
+                enums: &self.enums,
+                const_values: Box::leak(Box::new(HashMap::new())),
                 ceilings: &self.ceilings,
                 intrinsics: &self.intrinsics,
                 systems: &self.systems,

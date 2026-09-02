@@ -14,6 +14,7 @@
 //! absent" RED-commit precedent); GREEN since this module landed — the
 //! items below are the production beat feed those tests guard.
 
+use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::engine_link::EngineSession;
 use crate::narration;
 use crate::severity::{self, EventKind, SeverityTier};
@@ -366,6 +367,7 @@ pub fn spawn_beat_feed(mut commands: Commands) {
             right: px(24),
             ..default()
         },
+        DeclaredSurface::new(SurfaceId::BeatFeed),
         BeatFeedText,
     ));
 }
@@ -476,6 +478,7 @@ pub fn spawn_latch_card(mut commands: Commands) {
             left: px(24),
             ..default()
         },
+        DeclaredSurface::new(SurfaceId::TerminalLatch),
         LatchCardText,
     ));
 }

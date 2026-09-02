@@ -29,7 +29,7 @@ The next three executable gates are:
 
 .. vale ste.NounClusters = YES
 
-Read the repository ``CONSTITUTION.md`` v4.0.0 for the law. Read
+Read the repository ``CONSTITUTION.md`` v4.1.0 for the law. Read
 ``NORTH_STAR.md`` for the game direction and gate contracts.
 
 System overview

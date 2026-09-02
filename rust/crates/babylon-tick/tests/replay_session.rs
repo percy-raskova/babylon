@@ -35,14 +35,15 @@ use babylon_practice_contract::{
     PracticeTargetIdentityV2, PracticeTargetTagV2, ProposalNonceV2, ResolvedPracticeBatchItemV2,
     ResolvedPracticeBatchV2, TaggedPracticeTargetV2,
 };
+use babylon_tick::committed_event::CommittedEventV2;
 use babylon_tick::material_state::{
     MaterialStateErrorV1, MaterialStateRowRefV1, MaterialStateRowsV1, MaterialStateV1,
     WorldRegisterRowV1,
 };
 use babylon_tick::replay_identity::{
-    encode_stable_world_v1, encode_tick_payload_v1, encode_world_register_set_v1,
+    encode_stable_world_v1, encode_tick_payload_v2, encode_world_register_set_v1,
     world_register_manifest_v1, ReplayTickIdentityError, STABLE_WORLD_LAYOUT_VERSION_V1,
-    TICK_PAYLOAD_LAYOUT_VERSION_V1, WORLD_REGISTER_MANIFEST_LAYOUT_VERSION_V1,
+    TICK_PAYLOAD_LAYOUT_VERSION_V2, WORLD_REGISTER_MANIFEST_LAYOUT_VERSION_V1,
     WORLD_REGISTER_SET_LAYOUT_VERSION_V1,
 };
 use babylon_tick::replay_session::{
@@ -51,13 +52,16 @@ use babylon_tick::replay_session::{
 use michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation_v1;
 
 const REPLAY_SCENARIO: &str = r"
-(scenario demo/rng-two-classes
+(scenario demo/finite-choice-two-classes
+  (defenum ReplayOutcome (LOW HIGH))
   (deffield social-class/needs-roll int extensive)
   (deffield social-class/draw coefficient extensive)
   (node class-a NodeType/SOCIAL_CLASS
-    (social-class/needs-roll 0))
+    (social-class/needs-roll 0)
+    (social-class/draw 0.25c))
   (node class-b NodeType/SOCIAL_CLASS
-    (social-class/needs-roll 1)))
+    (social-class/needs-roll 1)
+    (social-class/draw 0.25c)))
 ";
 const MATERIAL_SCENARIO: &str = r"
 (scenario demo/material-state
@@ -154,17 +158,37 @@ const DERIVED_ORGANIZATION_RULE: &str = r#"
     (update-node self organization/members (add 5))))
 "#;
 const REPLAY_RULE: &str = r#"
-(intrinsic rng-draw :params (int) :returns real :cost 12)
-(rule vitality/rng-keyed-draw
+(rule struggle/spark-mechanic
   :role mechanic
-  :evidence derived
-  :material-basis "replay identity test exercises the real seed-aware draw path"
-  :fuel 64
+  :evidence designed
+  :material-basis "replay identity test exercises bounded finite material alternatives"
+  :fuel 128
   (bindings
     (binding needs-roll :field social-class/needs-roll))
   (when #t)
   (effects
-    (update-node self social-class/draw (set (rng-draw 0)))))
+    (choose :sample struggle/spark :slot 0
+      (branch ReplayOutcome/LOW
+        :mass 1m
+        (effects
+          (update-node self social-class/draw (set 0.25c))))
+      (branch ReplayOutcome/HIGH
+        :mass 1m
+        (effects
+          (update-node self social-class/draw (set 0.75c)))))))
+
+(rule struggle/spark-recognizer
+  :role recognizer
+  :evidence derived
+  :projects-kernel struggle/spark
+  :material-basis "adjacent observation of the realized replay alternative"
+  :fuel 64
+  (bindings
+    (binding draw :field social-class/draw))
+  (when (= draw 0.75c))
+  (effects
+    (emit EventType/EXCESSIVE_FORCE
+      (subject self))))
 "#;
 const RETAINED_OUTPUT_RULE: &str = r#"
 (rule vitality/retained-replay-output
@@ -198,6 +222,8 @@ const DUPLICATE_RETAINED_OUTPUT_RULE: &str = r#"
 "#;
 const PROCESS_CHILD_ENV: &str = "BABYLON_PER60_REPLAY_CHILD";
 const PROCESS_MARKER: &str = "PER60_REPLAY=";
+const REPLAY_VECTOR_SEED: i64 = 811;
+const CHANGED_REPLAY_VECTOR_SEED: i64 = 812;
 const FAILURE_SCENARIO: &str = r"
 (scenario tick/replay-failure
   (defvocabulary NodeType (SOCIAL_CLASS))
@@ -228,7 +254,7 @@ fn str32(value: &str) -> Vec<u8> {
 
 fn content_for(rule_src: &str) -> ContentDigest {
     let (_, rules) = split_content(rule_src).unwrap();
-    let forms = rules.into_iter().map(|(_, form)| form).collect::<Vec<_>>();
+    let forms = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
     ContentDigest {
         defines_hash: [0x2d; 32],
         rules_hash: rules_hash_of(&forms).unwrap(),
@@ -418,7 +444,10 @@ struct ReplayRun {
     result: String,
     payload: String,
     actions: String,
-    draw_bits: u64,
+    choice_receipt_digest: [u8; 32],
+    selected_outcomes: Vec<String>,
+    draw_tickets: Vec<u64>,
+    result_bits: Vec<u64>,
 }
 
 fn run_replay<G>(seed: i64) -> ReplayRun
@@ -441,6 +470,7 @@ where
     let actions = OrderedPracticeActionBatchV1::empty(replay_id, 1).unwrap();
     let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
     let report = session.advance(&mut sink, &actions).unwrap();
+    let choice_receipts = &report.report().choice_receipts;
     ReplayRun {
         outer: report.tick_content_hash().to_hex(),
         prepared: report.prepared_environment_digest().to_hex(),
@@ -448,11 +478,25 @@ where
         result: report.result_world().digest().to_hex(),
         payload: report.payload().digest().to_hex(),
         actions: report.action_batch_digest().to_hex(),
-        draw_bits: session
-            .graph()
-            .node_attribute(NodeId(0), "social-class/draw")
-            .unwrap()
-            .to_bits(),
+        choice_receipt_digest: report.choice_receipt_source_digest(),
+        selected_outcomes: choice_receipts
+            .iter()
+            .map(|receipt| receipt.selected_outcome().to_owned())
+            .collect(),
+        draw_tickets: choice_receipts
+            .iter()
+            .map(|receipt| receipt.draw_ticket())
+            .collect(),
+        result_bits: [NodeId(0), NodeId(1)]
+            .into_iter()
+            .map(|node| {
+                session
+                    .graph()
+                    .node_attribute(node, "social-class/draw")
+                    .unwrap()
+                    .to_bits()
+            })
+            .collect(),
     }
 }
 
@@ -502,7 +546,30 @@ fn replay_session_publishes_exact_identity_and_retains_static_bytes_once() {
         identified.tick_content_hash(),
         identified.outer_preimage().digest()
     );
-    assert_eq!(identified.report().fired, 2);
+    assert_eq!(identified.report().choice_receipts.len(), 2);
+    let selected_high_count = identified
+        .report()
+        .choice_receipts
+        .iter()
+        .filter(|receipt| receipt.selected_outcome() == "HIGH")
+        .count();
+    assert_eq!(identified.report().fired, 2 + selected_high_count);
+    assert_eq!(
+        identified.report().committed_events.len(),
+        selected_high_count
+    );
+    for event in &identified.report().committed_events {
+        assert_eq!(event.emitting_rule(), "struggle/spark-recognizer");
+        assert_eq!(event.event_type(), "EXCESSIVE_FORCE");
+        let receipt_ordinal = event
+            .choice_receipt()
+            .expect("projected replay event must retain its choice provenance")
+            .encounter_ordinal();
+        assert_eq!(
+            identified.report().choice_receipts[receipt_ordinal as usize].selected_outcome(),
+            "HIGH"
+        );
+    }
 
     let independently_composed = TickContentPreimageV1::compose(&TickContentPartsV1 {
         session: &replay_id,
@@ -595,7 +662,7 @@ fn completed_replay_retains_typed_graph_rows_and_successful_event_batch() {
             (
                 "subject".to_owned(),
                 StableBslValueV1::Node(StableElementKeyV1::Node {
-                    scenario: "demo/rng-two-classes".to_owned(),
+                    scenario: "demo/finite-choice-two-classes".to_owned(),
                     local_name: "class-a".to_owned(),
                 },),
             ),
@@ -612,7 +679,7 @@ fn completed_replay_retains_typed_graph_rows_and_successful_event_batch() {
             (
                 "subject".to_owned(),
                 StableBslValueV1::Node(StableElementKeyV1::Node {
-                    scenario: "demo/rng-two-classes".to_owned(),
+                    scenario: "demo/finite-choice-two-classes".to_owned(),
                     local_name: "class-b".to_owned(),
                 },),
             ),
@@ -1155,17 +1222,33 @@ fn duplicate_retained_event_field_refuses_without_publication() {
 }
 
 #[test]
-fn replay_identity_agrees_across_substrates_and_seed_moves_real_draws() {
-    let memory = run_replay::<MemoryGraph>(811);
-    let hypergraph = run_replay::<HypergraphStore>(811);
+fn replay_identity_agrees_across_substrates_and_seed_moves_finite_choices() {
+    let memory = run_replay::<MemoryGraph>(REPLAY_VECTOR_SEED);
+    let hypergraph = run_replay::<HypergraphStore>(REPLAY_VECTOR_SEED);
     assert_eq!(memory, hypergraph);
+    assert_eq!(hypergraph.selected_outcomes, ["LOW", "LOW"]);
+    assert_eq!(
+        hypergraph.draw_tickets,
+        [6_210_590_038_642_615_346, 4_297_492_488_788_804_740]
+    );
 
-    let changed_seed = run_replay::<HypergraphStore>(812);
+    let changed_seed = run_replay::<HypergraphStore>(CHANGED_REPLAY_VECTOR_SEED);
+    assert_eq!(changed_seed.selected_outcomes, ["HIGH", "LOW"]);
+    assert_eq!(
+        changed_seed.draw_tickets,
+        [12_032_564_276_218_344_752, 2_494_123_929_480_873_784]
+    );
     assert_eq!(hypergraph.prepared, changed_seed.prepared);
     assert_eq!(hypergraph.prior, changed_seed.prior);
     assert_eq!(hypergraph.actions, changed_seed.actions);
-    assert_eq!(hypergraph.payload, changed_seed.payload);
-    assert_ne!(hypergraph.draw_bits, changed_seed.draw_bits);
+    assert_ne!(
+        hypergraph.choice_receipt_digest,
+        changed_seed.choice_receipt_digest
+    );
+    assert_ne!(hypergraph.selected_outcomes, changed_seed.selected_outcomes);
+    assert_ne!(hypergraph.draw_tickets, changed_seed.draw_tickets);
+    assert_ne!(hypergraph.result_bits, changed_seed.result_bits);
+    assert_ne!(hypergraph.payload, changed_seed.payload);
     assert_ne!(hypergraph.result, changed_seed.result);
     assert_ne!(hypergraph.outer, changed_seed.outer);
 }
@@ -1173,7 +1256,10 @@ fn replay_identity_agrees_across_substrates_and_seed_moves_real_draws() {
 #[test]
 fn replay_identity_is_exact_across_fresh_processes() {
     if std::env::var_os(PROCESS_CHILD_ENV).is_some() {
-        println!("{PROCESS_MARKER}{:?}", run_replay::<HypergraphStore>(811));
+        println!(
+            "{PROCESS_MARKER}{:?}",
+            run_replay::<HypergraphStore>(REPLAY_VECTOR_SEED)
+        );
         return;
     }
     let executable = std::env::current_exe().unwrap();
@@ -1358,7 +1444,7 @@ fn register_tick_domain_is_checked() {
 }
 
 #[test]
-fn tick_payload_is_exact_and_order_sensitive_without_reencoding_fired() {
+fn tick_payload_v2_is_exact_and_order_sensitive_without_reencoding_fired() {
     let mut graph = MemoryGraph::new();
     let node = graph.add_node("class").unwrap();
     let resolver = StableElementResolverV1::seal(
@@ -1371,14 +1457,18 @@ fn tick_payload_is_exact_and_order_sensitive_without_reencoding_fired() {
     let order = vec!["demo/a".to_owned(), "demo/b".to_owned()];
     let outcomes = vec![("demo/a".to_owned(), 1), ("demo/b".to_owned(), 2)];
     let events = vec![
-        (
+        CommittedEventV2::new(
+            "demo/a".to_owned(),
+            None,
             "FIRST".to_owned(),
             vec![
                 ("value".to_owned(), Value::Int(1)),
                 ("value".to_owned(), Value::Int(2)),
             ],
         ),
-        (
+        CommittedEventV2::new(
+            "demo/b".to_owned(),
+            None,
             "SECOND".to_owned(),
             vec![("value".to_owned(), Value::Int(3))],
         ),
@@ -1400,21 +1490,22 @@ fn tick_payload_is_exact_and_order_sensitive_without_reencoding_fired() {
         },
     ];
     let payload =
-        encode_tick_payload_v1(&order, &outcomes, 3, &events, &receipts, &resolver).unwrap();
+        encode_tick_payload_v2(&order, &outcomes, 3, &events, &[], &receipts, &resolver).unwrap();
     assert!(payload.canonical_bytes().starts_with(
         &[
-            b"babylon.tick-payload\0".as_slice(),
-            &TICK_PAYLOAD_LAYOUT_VERSION_V1.to_be_bytes(),
+            b"babylon.tick-payload.v2\0".as_slice(),
+            &TICK_PAYLOAD_LAYOUT_VERSION_V2.to_be_bytes(),
             &[0x01],
         ]
         .concat()
     ));
     assert_eq!(payload.canonical_bytes().last(), Some(&0));
-    let reversed = encode_tick_payload_v1(
+    let reversed = encode_tick_payload_v2(
         &order,
         &outcomes,
         3,
         &events.iter().cloned().rev().collect::<Vec<_>>(),
+        &[],
         &receipts,
         &resolver,
     )
@@ -1424,37 +1515,71 @@ fn tick_payload_is_exact_and_order_sensitive_without_reencoding_fired() {
         ("value".to_owned(), Value::Int(2)),
         ("value".to_owned(), Value::Int(1)),
     ];
-    let pair_reordered_events = vec![("FIRST".to_owned(), reversed_pairs), events[1].clone()];
-    let pair_reordered = encode_tick_payload_v1(
+    let pair_reordered_events = vec![
+        CommittedEventV2::new(
+            "demo/a".to_owned(),
+            None,
+            "FIRST".to_owned(),
+            reversed_pairs,
+        ),
+        events[1].clone(),
+    ];
+    let pair_reordered = encode_tick_payload_v2(
         &order,
         &outcomes,
         3,
         &pair_reordered_events,
+        &[],
         &receipts,
         &resolver,
     )
     .unwrap();
     assert_ne!(payload.digest(), pair_reordered.digest());
-    let receipt_reordered = encode_tick_payload_v1(
+    let provenance_changed_events = vec![
+        CommittedEventV2::new(
+            "demo/b".to_owned(),
+            None,
+            "FIRST".to_owned(),
+            vec![
+                ("value".to_owned(), Value::Int(1)),
+                ("value".to_owned(), Value::Int(2)),
+            ],
+        ),
+        events[1].clone(),
+    ];
+    let provenance_changed = encode_tick_payload_v2(
+        &order,
+        &outcomes,
+        3,
+        &provenance_changed_events,
+        &[],
+        &receipts,
+        &resolver,
+    )
+    .unwrap();
+    assert_ne!(payload.digest(), provenance_changed.digest());
+    let receipt_reordered = encode_tick_payload_v2(
         &order,
         &outcomes,
         3,
         &events,
+        &[],
         &receipts.iter().cloned().rev().collect::<Vec<_>>(),
         &resolver,
     )
     .unwrap();
     assert_ne!(payload.digest(), receipt_reordered.digest());
     assert!(matches!(
-        encode_tick_payload_v1(&order, &outcomes, 4, &events, &receipts, &resolver),
+        encode_tick_payload_v2(&order, &outcomes, 4, &events, &[], &receipts, &resolver),
         Err(ReplayTickIdentityError::FiredTotalMismatch { .. })
     ));
     assert!(matches!(
-        encode_tick_payload_v1(
+        encode_tick_payload_v2(
             &["demo/b".to_owned(), "demo/a".to_owned()],
             &outcomes,
             3,
             &events,
+            &[],
             &receipts,
             &resolver,
         ),

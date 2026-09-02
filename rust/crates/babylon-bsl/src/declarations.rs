@@ -29,7 +29,7 @@ use std::collections::HashMap;
 /// are excluded because an `intrinsic` name is a `symbol` (§1.4) and cannot
 /// spell them, so no collision is expressible there. `opt` — the synthetic
 /// keyword-option tag — is included: it is a §5.2 tag like any other.
-pub const RESERVED_FORM_TAGS: [&str; 49] = [
+pub const RESERVED_FORM_TAGS: [&str; 52] = [
     "add",
     "add-edge",
     "add-hyperedge",
@@ -38,7 +38,9 @@ pub const RESERVED_FORM_TAGS: [&str; 49] = [
     "anchor",
     "binding",
     "bindings",
+    "branch",
     "ceiling",
+    "choose",
     "deffield",
     "domain",
     "edge-between",
@@ -65,6 +67,7 @@ pub const RESERVED_FORM_TAGS: [&str; 49] = [
     "not",
     "opt",
     "or",
+    "quantize-mass",
     "remove-edge",
     "remove-hyperedge",
     "remove-node",
@@ -100,14 +103,10 @@ pub const RESERVED_FORM_TAGS: [&str; 49] = [
 /// without needing r21's golden-vector machinery. See `bsl-language.rst`
 /// §3.10 and Draft-Ruling Register D97 for the ratified name/domain.
 ///
-/// `rng-draw` joins the set under a **fourth, separate** authority: ADR188
-/// Row 11 ("RNG draw — NOT A RIDER: §2.8's kernel-seeded per-(session,
-/// tick, salt) seam stands as specced") plus `bsl-language.rst` §3.10's
-/// already-ratified carrier-key convention (D69) — not a transcendental
-/// (no libm crossing, R10 does not govern it) and not the mechanical
-/// `floor` rider either. Its signature is `(int) → real` (the draw slot,
-/// §3.5): `declarations::kernel_signature`'s own `"rng-draw"` arm is the
-/// checked shape.
+/// Amendment AJ retires the former author-callable draw name. ADR188 Row
+/// 11 and D69 still govern the deterministic engine seam, but a finite
+/// kernel consumes that one draw privately: it is neither a member of this
+/// set nor a row in [`kernel_signature`].
 ///
 /// **ADR219 (Director ruling 2026-08-22): the exact-arithmetic rider
 /// train** grows the set by six. `sqrt` takes ADR188 Row 6's fallback
@@ -127,11 +126,10 @@ pub const RESERVED_FORM_TAGS: [&str; 49] = [
 /// **transcendental** roster stays the R10 pair alone: `tanh`, `entropy`,
 /// `renormalize`, `trunc` remain outside, and `sigmoid` remains
 /// prohibited outright (below).
-pub const DECLARABLE_INTRINSICS: [&str; 10] = [
+pub const DECLARABLE_INTRINSICS: [&str; 9] = [
     "exp",
     "log",
     "floor",
-    "rng-draw",
     "sqrt",
     "round-half-even",
     "min",
@@ -770,11 +768,12 @@ pub fn check_intrinsic_cap(name: &str) -> Result<(), DeclError> {
     Err(malformed(format!(
         "'{name}' is outside the declarable intrinsic set {DECLARABLE_INTRINSICS:?} \
          (§3.10) — {{exp, log}} capped by R10/ADR176 r21, 'floor' added separately \
-         by ADR188 Row 2/D97, 'rng-draw' added separately again by ADR188 \
-         Row 11 (§3.10's RNG carrier-key convention, D69), and the six \
+         by ADR188 Row 2/D97, and the six \
          exact-arithmetic names ('sqrt', 'round-half-even', 'min', 'max', 'abs', \
          'clamp') added by ADR219 (Director ruling 2026-08-22 — Row 6's fallback \
-         rider taken, Row 3 landed, Rows 4/5 superseded). Adding a name is a \
+         rider taken, Row 3 landed, Rows 4/5 superseded). Amendment AJ keeps \
+         finite-kernel drawing engine-private; 'rng-draw' is not declarable. \
+         Adding a name is a \
          Director ruling, not an authoring decision"
     )))
 }
@@ -879,18 +878,6 @@ pub fn kernel_signature(name: &str) -> Option<(Vec<IntrinsicTypeName>, Intrinsic
             IntrinsicTypeName::Scalar(BslType::Int),
         )),
         "exp" | "log" => Some((vec![IntrinsicTypeName::Real], IntrinsicTypeName::Real)),
-        // `rng-draw` (ADR188 Row 11, D69, plan §3.2): `(int) -> real` — the
-        // sole operand is the DRAW SLOT (an `Int` discriminating independent
-        // draws inside one `(rule, subject, element-chain, tick)`, never a
-        // stream position), the result is the §3.3 unbounded binary64
-        // intermediate `KernelRng::next_f64()` produces on `[0, 1)` — never
-        // `probability`, so a store into a bounded field still runs that
-        // field's own `E-EVAL-020` range check rather than pretending the
-        // intrinsic itself returns a bounded type.
-        "rng-draw" => Some((
-            vec![IntrinsicTypeName::Scalar(BslType::Int)],
-            IntrinsicTypeName::Real,
-        )),
         // The ADR219 sextet — see this function's doc above. Unary first,
         // then binary, then the one ternary.
         "sqrt" | "round-half-even" | "abs" => {
@@ -1270,7 +1257,6 @@ mod tests {
                 "exp",
                 "log",
                 "floor",
-                "rng-draw",
                 "sqrt",
                 "round-half-even",
                 "min",
@@ -1281,20 +1267,14 @@ mod tests {
         );
     }
 
-    /// ADR188 Row 11 (D69, plan §3.2, #576 Task 5): `rng-draw` joins the
-    /// declarable set under its own, fourth authority — not a transcendental
-    /// (R10 does not govern it) and not the mechanical `floor` rider either.
+    /// Amendment AJ retires the author-visible RNG path. The identifier is
+    /// lexically valid, but it is outside the declaration cap and has no
+    /// kernel signature.
     #[test]
-    fn rng_draw_is_declarable_under_adr188_row_11() {
+    fn rng_draw_is_not_author_visible_after_amendment_aj() {
         assert_eq!(check_intrinsic_name("rng-draw"), Ok(()));
-        assert_eq!(check_intrinsic_cap("rng-draw"), Ok(()));
-        assert_eq!(
-            kernel_signature("rng-draw"),
-            Some((
-                vec![IntrinsicTypeName::Scalar(BslType::Int)],
-                IntrinsicTypeName::Real
-            ))
-        );
+        assert!(check_intrinsic_cap("rng-draw").is_err());
+        assert_eq!(kernel_signature("rng-draw"), None);
     }
 
     /// The rider ratifies `floor`, not a second `trunc` intrinsic — ADR188

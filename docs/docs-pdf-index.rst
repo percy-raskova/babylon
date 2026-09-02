@@ -9,7 +9,7 @@ deterministic simulation engine.
    This PDF contains the complete Babylon documentation: tutorials, how-to
    guides, concepts, and reference material.
 
-   ``CONSTITUTION.md`` v4.0.0 is the authority. ``NORTH_STAR.md`` gives the
+   ``CONSTITUTION.md`` v4.1.0 is the authority. ``NORTH_STAR.md`` gives the
    ``product promise``, honest ``Bevy admin/viewer`` status, behavioral
    validation standard, and ordered executable gates.
 

@@ -10,10 +10,9 @@ publish = false
 [dependencies]
 babylon-bsl = { path = "../babylon-bsl" }
 babylon-graph = { path = "../babylon-graph" }
-# The `rng-draw` seam's `SessionId` (Task 4, #576 intrinsic-host train,
-# plan §3.5): `TickSession::new` and `run_once`/`run_once_into` construct
-# one. Promoted from dev-only to a real dependency — it was already
-# transitive via babylon-bsl, this makes production code's own use direct.
+# TickSession's deterministic V1 execution namespace and ReplayTickSession's
+# governed V2 replay identity are direct production dependencies. Finite
+# choices are legal only through the latter; BSL has no author-visible draw.
 babylon-kernel = { path = "../babylon-kernel" }
 babylon-practice-contract = { path = "../babylon-practice-contract" }
 

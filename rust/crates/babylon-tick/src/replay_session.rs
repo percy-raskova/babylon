@@ -23,14 +23,16 @@ use babylon_practice_contract::ordered_action_v1::{
     OrderedPracticeActionBatchV1, ORDERED_PRACTICE_ACTION_BATCH_V1_LAYOUT_VERSION,
 };
 
+use crate::choice_receipt::ChoiceReceiptRefV1;
+use crate::committed_event::CommittedEventV2;
 use crate::material_state::{
     MaterialAllocationGate, MaterialProjectionContextV1, MaterialStateErrorV1, MaterialStateRowsV1,
     MaterialStateV1, ProductionMaterialAllocationGate,
 };
 use crate::replay_identity::{
-    encode_prepared_environment_v1, encode_stable_world_v1, encode_tick_payload_for_prepared_v1,
+    encode_prepared_environment_v1, encode_stable_world_v1, encode_tick_payload_for_prepared_v2,
     encode_world_register_set_v1, world_register_manifest_v1, PreparedEnvironmentV1,
-    ReplayTickIdentityError, StableWorldV1, TickPayloadV1, WorldRegisterManifestV1,
+    ReplayTickIdentityError, StableWorldV1, TickPayloadV2, WorldRegisterManifestV1,
     WorldRegisterSetV1,
 };
 use crate::{prepare_rules, EventRecord, PreparedRules, TickReport};
@@ -223,6 +225,15 @@ pub enum ReplayCommitDispositionV1 {
     ReconciledAfterAmbiguousCommit,
 }
 
+/// A prepared replay tick refused before durability or its commit operation failed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PreparedReplayCommitErrorV1<E> {
+    /// Candidate validation or event-publication capacity refused before the commit operation ran.
+    Preflight(ReplayTickError),
+    /// The caller-owned durable commit operation failed before publication.
+    Commit(E),
+}
+
 /// Exact durable identity supplied before a prepared replay tick may publish.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReplayCommitAcknowledgementV1 {
@@ -267,12 +278,26 @@ impl ReplayCommitAcknowledgementV1 {
 
 /// One typed event retained from a successfully published replay tick.
 #[derive(Debug, Clone, PartialEq)]
-pub struct SuccessfulEventV1 {
+pub struct SuccessfulEventV2 {
+    emitting_rule: String,
+    choice_receipt: Option<ChoiceReceiptRefV1>,
     event_type: String,
     fields: Vec<(String, StableBslValueV1)>,
 }
 
-impl SuccessfulEventV1 {
+impl SuccessfulEventV2 {
+    /// Borrow the rule that emitted this observation.
+    #[must_use]
+    pub fn emitting_rule(&self) -> &str {
+        &self.emitting_rule
+    }
+
+    /// Return the adjacent realized-choice reference, when present.
+    #[must_use]
+    pub const fn choice_receipt(&self) -> Option<ChoiceReceiptRefV1> {
+        self.choice_receipt
+    }
+
     /// Borrow the declared event type.
     #[must_use]
     pub fn event_type(&self) -> &str {
@@ -292,8 +317,8 @@ impl SuccessfulEventV1 {
 
 /// Exact typed events from one successfully published replay tick.
 #[derive(Debug, Clone, PartialEq)]
-pub struct SuccessfulEventBatchV1 {
-    events: Vec<SuccessfulEventV1>,
+pub struct SuccessfulEventBatchV2 {
+    events: Vec<SuccessfulEventV2>,
     source_digest: [u8; 32],
 }
 
@@ -331,21 +356,21 @@ impl SuccessfulEventRetention for ProductionSuccessfulEventRetention {
     }
 }
 
-impl SuccessfulEventBatchV1 {
+impl SuccessfulEventBatchV2 {
     /// Borrow retained events in executable order.
     #[must_use]
-    pub fn events(&self) -> &[SuccessfulEventV1] {
+    pub fn events(&self) -> &[SuccessfulEventV2] {
         &self.events
     }
 
-    /// Return SHA-256 of the exact BSL-owned tick event-section bytes.
+    /// Return SHA-256 of the exact V2 tick event-section bytes.
     #[must_use]
     pub const fn source_digest(&self) -> [u8; 32] {
         self.source_digest
     }
 
-    fn try_from_records<R: SuccessfulEventRetention>(
-        source: &[EventRecord],
+    fn try_from_committed_events<R: SuccessfulEventRetention>(
+        source: &[CommittedEventV2],
         resolver: &StableElementResolverV1,
         retention: &R,
         source_digest: [u8; 32],
@@ -357,16 +382,19 @@ impl SuccessfulEventBatchV1 {
                 field: "successful event batch",
                 requested: source.len(),
             })?;
-        for (event_type, fields) in source {
-            let retained_event_type = retention.copy_string("successful event type", event_type)?;
+        for event in source {
+            let emitting_rule =
+                retention.copy_string("successful event emitting rule", event.emitting_rule())?;
+            let retained_event_type =
+                retention.copy_string("successful event type", event.event_type())?;
             let mut retained_fields = Vec::new();
             retained_fields
-                .try_reserve_exact(fields.len())
+                .try_reserve_exact(event.payload().len())
                 .map_err(|_: TryReserveError| ReplayTickError::Allocation {
                     field: "successful event fields",
-                    requested: fields.len(),
+                    requested: event.payload().len(),
                 })?;
-            for (name, value) in fields {
+            for (name, value) in event.payload() {
                 retained_fields.push((
                     retention.copy_string("successful event field name", name)?,
                     retention.project_value(value, resolver)?,
@@ -384,7 +412,9 @@ impl SuccessfulEventBatchV1 {
                     field,
                 });
             }
-            events.push(SuccessfulEventV1 {
+            events.push(SuccessfulEventV2 {
+                emitting_rule,
+                choice_receipt: event.choice_receipt(),
                 event_type: retained_event_type,
                 fields: retained_fields,
             });
@@ -398,7 +428,7 @@ impl SuccessfulEventBatchV1 {
 
 /// Non-durable evidence returned by one successful identified replay tick.
 #[derive(Debug)]
-pub struct IdentifiedTickReportV1 {
+pub struct IdentifiedTickReportV2 {
     report: TickReport,
     action_batch_bytes: Vec<u8>,
     action_batch_layout_version: u32,
@@ -408,7 +438,7 @@ pub struct IdentifiedTickReportV1 {
     result_registers: WorldRegisterSetV1,
     result_world: StableWorldV1,
     result_stable_graph: StableGraphStateV1,
-    successful_event_batch: SuccessfulEventBatchV1,
+    successful_event_batch: SuccessfulEventBatchV2,
     material_state_rows: MaterialStateRowsV1,
     resolver_manifest_bytes: Vec<u8>,
     prepared_environment_bytes: Vec<u8>,
@@ -416,7 +446,7 @@ pub struct IdentifiedTickReportV1 {
     rng_seed: ReplaySeed,
     content_digest: ContentDigest,
     reference_digest: RefDigestV1,
-    payload: TickPayloadV1,
+    payload: TickPayloadV2,
     outer_preimage: TickContentPreimageV1,
     resolver_manifest_digest: [u8; 32],
     prepared_environment_digest: PreparedEnvironmentDigestV1,
@@ -425,7 +455,7 @@ pub struct IdentifiedTickReportV1 {
     tick_content_hash: TickContentHashV1,
 }
 
-impl IdentifiedTickReportV1 {
+impl IdentifiedTickReportV2 {
     /// Borrow the existing administrative tick evidence.
     #[must_use]
     pub const fn report(&self) -> &TickReport {
@@ -491,8 +521,14 @@ impl IdentifiedTickReportV1 {
 
     /// Borrow the exact typed events from the successful tick.
     #[must_use]
-    pub const fn successful_event_batch(&self) -> &SuccessfulEventBatchV1 {
+    pub const fn successful_event_batch(&self) -> &SuccessfulEventBatchV2 {
         &self.successful_event_batch
+    }
+
+    /// Return SHA-256 of the exact ordered choice-receipt payload section.
+    #[must_use]
+    pub const fn choice_receipt_source_digest(&self) -> [u8; 32] {
+        self.payload.choice_receipt_section_digest()
     }
 
     /// Borrow the detached typed material projection for this completed tick.
@@ -539,7 +575,7 @@ impl IdentifiedTickReportV1 {
 
     /// Borrow the exact governed tick payload.
     #[must_use]
-    pub const fn payload(&self) -> &TickPayloadV1 {
+    pub const fn payload(&self) -> &TickPayloadV2 {
         &self.payload
     }
 
@@ -580,7 +616,7 @@ impl IdentifiedTickReportV1 {
     }
 }
 
-/// One loaded replay environment advanced through RNG V2 only.
+/// One loaded replay environment advanced through the sealed V2 identity path.
 pub struct ReplayTickSession<G> {
     graph: G,
     prepared: PreparedRules,
@@ -597,9 +633,9 @@ pub struct ReplayTickSession<G> {
 
 /// One fully adjudicated replay tick held outside every live session owner.
 ///
-/// Dropping this value abandons the candidate. Only
-/// [`ReplayTickSession::acknowledge_prepared`] may move its graph, material
-/// state, event batch, and tick counter into the live session.
+/// Dropping this value abandons the candidate. Only [`ReplayTickSession::acknowledge_prepared`]
+/// or [`ReplayTickSession::commit_prepared_and_publish`] may move its graph, material state, event
+/// batch, and tick counter into the live session.
 pub struct PreparedReplayTickV1<G> {
     source_session: ReplaySessionIdV1,
     prepared_after: i64,
@@ -607,13 +643,30 @@ pub struct PreparedReplayTickV1<G> {
     graph: G,
     material_state: MaterialStateV1,
     events: Vec<EventRecord>,
-    report: IdentifiedTickReportV1,
+    report: IdentifiedTickReportV2,
+}
+
+trait ReplayPublicationAllocationGate {
+    fn reserve(&self, sink: &mut CollectingSink, additional: usize) -> Result<(), ReplayTickError>;
+}
+
+struct ProductionReplayPublicationAllocationGate;
+
+impl ReplayPublicationAllocationGate for ProductionReplayPublicationAllocationGate {
+    fn reserve(&self, sink: &mut CollectingSink, additional: usize) -> Result<(), ReplayTickError> {
+        sink.events
+            .try_reserve_exact(additional)
+            .map_err(|_: TryReserveError| ReplayTickError::Allocation {
+                field: "acknowledged replay event publication",
+                requested: additional,
+            })
+    }
 }
 
 impl<G> PreparedReplayTickV1<G> {
     /// Borrow the sole identified report from which persistence rows derive.
     #[must_use]
-    pub const fn report(&self) -> &IdentifiedTickReportV1 {
+    pub const fn report(&self) -> &IdentifiedTickReportV2 {
         &self.report
     }
 }
@@ -688,7 +741,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
         &mut self,
         sink: &mut CollectingSink,
         actions: &OrderedPracticeActionBatchV1,
-    ) -> Result<IdentifiedTickReportV1, ReplayTickError> {
+    ) -> Result<IdentifiedTickReportV2, ReplayTickError> {
         self.advance_with_boundaries(
             sink,
             actions,
@@ -760,18 +813,8 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
         sink: &mut CollectingSink,
         prepared: PreparedReplayTickV1<G>,
         acknowledgement: ReplayCommitAcknowledgementV1,
-    ) -> Result<IdentifiedTickReportV1, ReplayTickError> {
-        if self.session != prepared.source_session {
-            return Err(ReplayTickError::PreparedSessionMismatch);
-        }
-        if self.completed_tick != prepared.prepared_after {
-            return Err(ReplayTickError::StalePreparedTick {
-                prepared_after: prepared.prepared_after,
-                live_completed: self.completed_tick,
-            });
-        }
-        let resolve_tick = u64::try_from(prepared.resolve_tick)
-            .map_err(|_| ReplayTickError::TickCounterOverflow)?;
+    ) -> Result<IdentifiedTickReportV2, ReplayTickError> {
+        let resolve_tick = self.validate_prepared_publication(&prepared)?;
         if acknowledgement.resolve_tick != resolve_tick {
             return Err(ReplayTickError::CommitAcknowledgementTickMismatch {
                 expected: resolve_tick,
@@ -786,17 +829,84 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
                 actual: actual_hash,
             });
         }
-        sink.events
-            .try_reserve_exact(prepared.events.len())
-            .map_err(|_: TryReserveError| ReplayTickError::Allocation {
-                field: "acknowledged replay event publication",
-                requested: prepared.events.len(),
-            })?;
+        ProductionReplayPublicationAllocationGate.reserve(sink, prepared.events.len())?;
+        Ok(self.publish_prepared_infallibly(sink, prepared))
+    }
+
+    /// Preflight one detached candidate, run its durable commit operation, then publish it.
+    ///
+    /// Candidate identity, session freshness, tick conversion, and exact event-buffer capacity are
+    /// checked before `commit` runs. A successful commit closure is followed only by moves into the
+    /// already-reserved live owners, so durable success has no fallible acknowledgement tail.
+    ///
+    /// # Errors
+    /// Returns [`PreparedReplayCommitErrorV1::Preflight`] without invoking `commit` when candidate
+    /// validation or event reservation refuses. Returns [`PreparedReplayCommitErrorV1::Commit`]
+    /// without publishing when the caller-owned durable operation refuses.
+    pub fn commit_prepared_and_publish<E, F>(
+        &mut self,
+        sink: &mut CollectingSink,
+        prepared: PreparedReplayTickV1<G>,
+        commit: F,
+    ) -> Result<(IdentifiedTickReportV2, ReplayCommitDispositionV1), PreparedReplayCommitErrorV1<E>>
+    where
+        F: FnOnce(&IdentifiedTickReportV2) -> Result<ReplayCommitDispositionV1, E>,
+    {
+        self.commit_prepared_and_publish_with_allocation(
+            sink,
+            prepared,
+            commit,
+            &ProductionReplayPublicationAllocationGate,
+        )
+    }
+
+    fn commit_prepared_and_publish_with_allocation<E, F, A>(
+        &mut self,
+        sink: &mut CollectingSink,
+        prepared: PreparedReplayTickV1<G>,
+        commit: F,
+        allocation: &A,
+    ) -> Result<(IdentifiedTickReportV2, ReplayCommitDispositionV1), PreparedReplayCommitErrorV1<E>>
+    where
+        F: FnOnce(&IdentifiedTickReportV2) -> Result<ReplayCommitDispositionV1, E>,
+        A: ReplayPublicationAllocationGate,
+    {
+        self.validate_prepared_publication(&prepared)
+            .map_err(PreparedReplayCommitErrorV1::Preflight)?;
+        allocation
+            .reserve(sink, prepared.events.len())
+            .map_err(PreparedReplayCommitErrorV1::Preflight)?;
+        let disposition = commit(&prepared.report).map_err(PreparedReplayCommitErrorV1::Commit)?;
+        let report = self.publish_prepared_infallibly(sink, prepared);
+        Ok((report, disposition))
+    }
+
+    fn validate_prepared_publication(
+        &self,
+        prepared: &PreparedReplayTickV1<G>,
+    ) -> Result<u64, ReplayTickError> {
+        if self.session != prepared.source_session {
+            return Err(ReplayTickError::PreparedSessionMismatch);
+        }
+        if self.completed_tick != prepared.prepared_after {
+            return Err(ReplayTickError::StalePreparedTick {
+                prepared_after: prepared.prepared_after,
+                live_completed: self.completed_tick,
+            });
+        }
+        u64::try_from(prepared.resolve_tick).map_err(|_| ReplayTickError::TickCounterOverflow)
+    }
+
+    fn publish_prepared_infallibly(
+        &mut self,
+        sink: &mut CollectingSink,
+        prepared: PreparedReplayTickV1<G>,
+    ) -> IdentifiedTickReportV2 {
         self.graph = prepared.graph;
         self.material_state = prepared.material_state;
         self.completed_tick = prepared.resolve_tick;
         sink.events.extend(prepared.events);
-        Ok(prepared.report)
+        prepared.report
     }
 
     #[cfg(test)]
@@ -805,7 +915,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
         sink: &mut CollectingSink,
         actions: &OrderedPracticeActionBatchV1,
         composer: &C,
-    ) -> Result<IdentifiedTickReportV1, ReplayTickError> {
+    ) -> Result<IdentifiedTickReportV2, ReplayTickError> {
         self.advance_with_boundaries(sink, actions, composer, &ProductionMaterialAllocationGate)
     }
 
@@ -815,7 +925,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
         sink: &mut CollectingSink,
         actions: &OrderedPracticeActionBatchV1,
         material_allocation: &dyn MaterialAllocationGate,
-    ) -> Result<IdentifiedTickReportV1, ReplayTickError> {
+    ) -> Result<IdentifiedTickReportV2, ReplayTickError> {
         self.advance_with_boundaries(
             sink,
             actions,
@@ -830,7 +940,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
         actions: &OrderedPracticeActionBatchV1,
         composer: &C,
         material_allocation: &dyn MaterialAllocationGate,
-    ) -> Result<IdentifiedTickReportV1, ReplayTickError> {
+    ) -> Result<IdentifiedTickReportV2, ReplayTickError> {
         let next_tick = self
             .completed_tick
             .checked_add(1)
@@ -1043,7 +1153,7 @@ pub(crate) trait ReplayIdentityComposer {
     fn compose<G: CanonicalState>(
         &self,
         inputs: ReplayIdentityInputs<'_, G, Self>,
-    ) -> Result<ReplayIdentityArtifactsV1, ReplayTickError>
+    ) -> Result<ReplayIdentityArtifactsV2, ReplayTickError>
     where
         Self: Sized;
 }
@@ -1054,12 +1164,12 @@ impl ReplayIdentityComposer for ProductionReplayIdentityComposer {
     fn compose<G: CanonicalState>(
         &self,
         inputs: ReplayIdentityInputs<'_, G, Self>,
-    ) -> Result<ReplayIdentityArtifactsV1, ReplayTickError> {
+    ) -> Result<ReplayIdentityArtifactsV2, ReplayTickError> {
         compose_replay_identity_with_retention(inputs, &ProductionSuccessfulEventRetention)
     }
 }
 
-pub(crate) struct ReplayIdentityArtifactsV1 {
+pub(crate) struct ReplayIdentityArtifactsV2 {
     action_batch_bytes: Vec<u8>,
     action_batch_layout_version: u32,
     action_batch_digest: OrderedPracticeActionBatchDigestV1,
@@ -1068,7 +1178,7 @@ pub(crate) struct ReplayIdentityArtifactsV1 {
     result_registers: WorldRegisterSetV1,
     result_world: StableWorldV1,
     result_stable_graph: StableGraphStateV1,
-    successful_event_batch: SuccessfulEventBatchV1,
+    successful_event_batch: SuccessfulEventBatchV2,
     material_state_rows: MaterialStateRowsV1,
     resolver_manifest_bytes: Vec<u8>,
     prepared_environment_bytes: Vec<u8>,
@@ -1076,7 +1186,7 @@ pub(crate) struct ReplayIdentityArtifactsV1 {
     rng_seed: ReplaySeed,
     content_digest: ContentDigest,
     reference_digest: RefDigestV1,
-    payload: TickPayloadV1,
+    payload: TickPayloadV2,
     outer_preimage: TickContentPreimageV1,
     resolver_manifest_digest: [u8; 32],
     prepared_environment_digest: PreparedEnvironmentDigestV1,
@@ -1136,23 +1246,25 @@ pub(crate) fn compose_replay_prior<G: CanonicalState, C>(
 fn compose_replay_identity_with_retention<G: CanonicalState, C, R: SuccessfulEventRetention>(
     inputs: ReplayIdentityInputs<'_, G, C>,
     retention: &R,
-) -> Result<ReplayIdentityArtifactsV1, ReplayTickError> {
+) -> Result<ReplayIdentityArtifactsV2, ReplayTickError> {
     let result_graph =
         encode_stable_graph_state_v1(inputs.result_graph, inputs.execution.resolver)?;
     let result_stable_graph_digest = result_graph.digest();
     let result_registers =
         encode_world_register_set_v1(inputs.execution.register_manifest, inputs.resolve_tick)?;
     let result_world = encode_stable_world_v1(&result_graph, &result_registers)?;
-    let payload = encode_tick_payload_for_prepared_v1(
+    validate_committed_event_sink(inputs.report, inputs.events)?;
+    let payload = encode_tick_payload_for_prepared_v2(
         inputs.prepared,
         &inputs.report.per_rule_fired,
         inputs.report.fired,
-        inputs.events,
+        &inputs.report.committed_events,
+        &inputs.report.choice_receipts,
         &inputs.report.audit_receipts,
         inputs.execution.resolver,
     )?;
-    let successful_event_batch = SuccessfulEventBatchV1::try_from_records(
-        inputs.events,
+    let successful_event_batch = SuccessfulEventBatchV2::try_from_committed_events(
+        &inputs.report.committed_events,
         inputs.execution.resolver,
         retention,
         payload.event_section_digest(),
@@ -1185,7 +1297,7 @@ fn compose_replay_identity_with_retention<G: CanonicalState, C, R: SuccessfulEve
     )?;
     let replay_session_identity = ReplaySessionIdV1::try_from(inputs.execution.session.as_bytes())
         .map_err(ReplayTickError::ReplaySessionIdentity)?;
-    Ok(ReplayIdentityArtifactsV1 {
+    Ok(ReplayIdentityArtifactsV2 {
         action_batch_bytes,
         action_batch_layout_version: ORDERED_PRACTICE_ACTION_BATCH_V1_LAYOUT_VERSION,
         action_batch_digest: inputs.execution.actions.digest(),
@@ -1212,10 +1324,29 @@ fn compose_replay_identity_with_retention<G: CanonicalState, C, R: SuccessfulEve
     })
 }
 
+fn validate_committed_event_sink(
+    report: &TickReport,
+    sink_events: &[EventRecord],
+) -> Result<(), ReplayTickError> {
+    if report.committed_events.len() != sink_events.len() {
+        return Err(ReplayTickIdentityError::CommittedEventSinkMismatch {
+            ordinal: report.committed_events.len().min(sink_events.len()),
+        }
+        .into());
+    }
+    for (ordinal, (committed, sink)) in report.committed_events.iter().zip(sink_events).enumerate()
+    {
+        if committed.event_type() != sink.0 || committed.payload() != sink.1 {
+            return Err(ReplayTickIdentityError::CommittedEventSinkMismatch { ordinal }.into());
+        }
+    }
+    Ok(())
+}
+
 fn compose_outer_preimage<G, C>(
     inputs: &ReplayIdentityInputs<'_, G, C>,
     result_world: &StableWorldV1,
-    payload: &TickPayloadV1,
+    payload: &TickPayloadV2,
 ) -> Result<TickContentPreimageV1, ReplayTickError> {
     let resolve_tick =
         u64::try_from(inputs.resolve_tick).map_err(|_| ReplayTickError::TickCounterOverflow)?;
@@ -1259,9 +1390,9 @@ fn copy_report_bytes(source: &[u8], field: &'static str) -> Result<Vec<u8>, Repl
 
 pub(crate) fn identified_report(
     report: TickReport,
-    artifacts: ReplayIdentityArtifactsV1,
-) -> IdentifiedTickReportV1 {
-    IdentifiedTickReportV1 {
+    artifacts: ReplayIdentityArtifactsV2,
+) -> IdentifiedTickReportV2 {
+    IdentifiedTickReportV2 {
         report,
         action_batch_bytes: artifacts.action_batch_bytes,
         action_batch_layout_version: artifacts.action_batch_layout_version,
@@ -1322,8 +1453,9 @@ mod tests {
     };
 
     use super::{
-        ProductionSuccessfulEventRetention, ReplayExecutionInputs, ReplayIdentityArtifactsV1,
-        ReplayIdentityComposer, ReplayIdentityInputs, ReplayTickError, ReplayTickSession,
+        PreparedReplayCommitErrorV1, ProductionSuccessfulEventRetention, ReplayCommitDispositionV1,
+        ReplayExecutionInputs, ReplayIdentityArtifactsV2, ReplayIdentityComposer,
+        ReplayIdentityInputs, ReplayPublicationAllocationGate, ReplayTickError, ReplayTickSession,
         SuccessfulEventRetention,
     };
     use crate::h3_runtime::{
@@ -1374,7 +1506,7 @@ mod tests {
     fn session_for_rule(rule: &str) -> ReplayTickSession<MemoryGraph> {
         let replay = ReplaySessionIdV1::try_from("per60/atomic").unwrap();
         let (_, rules) = split_content(rule).unwrap();
-        let forms = rules.into_iter().map(|(_, form)| form).collect::<Vec<_>>();
+        let forms = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
         ReplayTickSession::new(
             SCENARIO,
             None,
@@ -1421,7 +1553,7 @@ mod tests {
     fn dynamic_allocation_session() -> ReplayTickSession<MemoryGraph> {
         let replay = ReplaySessionIdV1::try_from("per281/dynamic-allocation").unwrap();
         let (_, rules) = split_content(EVENT_RULE).unwrap();
-        let forms = rules.into_iter().map(|(_, form)| form).collect::<Vec<_>>();
+        let forms = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
         ReplayTickSession::new(
             MATERIAL_ATOMIC_SCENARIO,
             None,
@@ -1446,7 +1578,7 @@ mod tests {
     fn material_session_for_scenario(scenario: &str) -> ReplayTickSession<MemoryGraph> {
         let replay = ReplaySessionIdV1::try_from("per281/material-allocation").unwrap();
         let (_, rules) = split_content(EVENT_RULE).unwrap();
-        let forms = rules.into_iter().map(|(_, form)| form).collect::<Vec<_>>();
+        let forms = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
         ReplayTickSession::new(
             scenario,
             None,
@@ -1466,11 +1598,26 @@ mod tests {
 
     struct RefusingComposer;
 
+    struct RefusingPublicationAllocation;
+
+    impl ReplayPublicationAllocationGate for RefusingPublicationAllocation {
+        fn reserve(
+            &self,
+            _sink: &mut babylon_bsl::structural_verbs::CollectingSink,
+            additional: usize,
+        ) -> Result<(), ReplayTickError> {
+            Err(ReplayTickError::Allocation {
+                field: "injected acknowledged replay event publication",
+                requested: additional,
+            })
+        }
+    }
+
     impl ReplayIdentityComposer for RefusingComposer {
         fn compose<G: CanonicalState>(
             &self,
             _inputs: ReplayIdentityInputs<'_, G, Self>,
-        ) -> Result<ReplayIdentityArtifactsV1, ReplayTickError> {
+        ) -> Result<ReplayIdentityArtifactsV2, ReplayTickError> {
             Err(ReplayTickError::Composer {
                 message: "injected identity reservation refusal".to_owned(),
             })
@@ -1509,7 +1656,7 @@ mod tests {
         fn compose<G: CanonicalState>(
             &self,
             inputs: ReplayIdentityInputs<'_, G, Self>,
-        ) -> Result<ReplayIdentityArtifactsV1, ReplayTickError> {
+        ) -> Result<ReplayIdentityArtifactsV2, ReplayTickError> {
             super::compose_replay_identity_with_retention(inputs, &RefusingEventRetention)
         }
     }
@@ -1686,6 +1833,49 @@ mod tests {
         assert_eq!(sink.events, before_events);
         assert_eq!(session.graph.encode_state().unwrap().as_bytes(), before);
         assert_eq!(session.graph.allocator_cursors(), before_cursors);
+    }
+
+    #[test]
+    fn durable_commit_never_runs_when_publication_allocation_preflight_refuses() {
+        let mut session = dynamic_allocation_session();
+        let actions = OrderedPracticeActionBatchV1::empty(session.session.clone(), 1).unwrap();
+        let prepared = session.prepare_advance(&actions).unwrap();
+        assert!(!prepared.events.is_empty());
+        let before_graph = session.graph.encode_state().unwrap().as_bytes().to_vec();
+        let before_material = dynamic_allocation_material_state();
+        let mut sink = babylon_bsl::structural_verbs::CollectingSink {
+            events: vec![("EventType/PRIOR".to_owned(), Vec::new())],
+        };
+        let before_events = sink.events.clone();
+        let commit_called = Cell::new(false);
+
+        let error = session
+            .commit_prepared_and_publish_with_allocation(
+                &mut sink,
+                prepared,
+                |_report| {
+                    commit_called.set(true);
+                    Ok::<ReplayCommitDispositionV1, ()>(ReplayCommitDispositionV1::Committed)
+                },
+                &RefusingPublicationAllocation,
+            )
+            .unwrap_err();
+
+        assert_eq!(
+            error,
+            PreparedReplayCommitErrorV1::Preflight(ReplayTickError::Allocation {
+                field: "injected acknowledged replay event publication",
+                requested: 1,
+            })
+        );
+        assert!(!commit_called.get());
+        assert_eq!(session.completed_tick, 0);
+        assert_eq!(
+            session.graph.encode_state().unwrap().as_bytes(),
+            before_graph
+        );
+        assert_eq!(session.material_state, before_material);
+        assert_eq!(sink.events, before_events);
     }
 
     #[test]

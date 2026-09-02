@@ -140,6 +140,12 @@ const SOLO_PACKS: &[(&str, &str, &[&str], &str)] = &[
         include_str!("../../content/rules/solidarity.bsl"),
     ),
     (
+        "struggle-spark",
+        include_str!("../../content/scenarios/struggle-spark-conformance.bscn"),
+        NO_PRELUDES,
+        include_str!("../../content/rules/struggle-spark.bsl"),
+    ),
+    (
         "decomposition",
         include_str!("../../content/scenarios/decomposition-conformance.bscn"),
         NO_PRELUDES,

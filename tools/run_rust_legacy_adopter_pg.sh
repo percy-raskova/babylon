@@ -25,6 +25,18 @@ die() {
   exit 2
 }
 
+emit_runtime_logs() {
+  [ "$OWNED" -eq 1 ] || return 0
+  printf 'PER-20 runtime PostgreSQL log excerpt follows (last 200 lines):\n' >&2
+  timeout --signal=TERM --kill-after=2s 10s \
+    docker logs --timestamps --tail 200 "$CONTAINER" >&2 || true
+}
+
+die_with_runtime_logs() {
+  emit_runtime_logs
+  die "$@"
+}
+
 case "$LIVE_FOCUS" in
   "" | clean_bootstrap | h3_atomicity | installed_mutation | schema_epoch_fresh | schema_epoch_matrix | \
     schema_epoch_rollback | schema_epoch_v5_census | schema_epoch_v6_census | schema_epoch_v7_census | \
@@ -275,26 +287,46 @@ created_container_id="$(timeout --signal=TERM --kill-after=5s 30s docker run --d
   -c config_file=/etc/postgresql/postgresql.conf \
   -c "babylon.per20_disposable=$CANARY")" || run_status="$?"
 if [ "$run_status" -eq 0 ]; then
-  claim_task_container "$created_container_id" || die "created container identity was not proved"
+  claim_task_container "$created_container_id" ||
+    die_with_runtime_logs "created container identity was not proved"
 else
   claim_task_container "" || true
-  die "task-owned container did not start"
+  die_with_runtime_logs "task-owned container did not start"
 fi
 
+inspect_status=0
 VOLUME="$(timeout --signal=TERM --kill-after=2s 10s \
-  docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}' "$CONTAINER")"
-[ -n "$VOLUME" ] || die "anonymous data volume identity was not resolved"
+  docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}' "$CONTAINER")" ||
+  inspect_status="$?"
+[ "$inspect_status" -eq 0 ] && [ -n "$VOLUME" ] ||
+  die_with_runtime_logs "anonymous data volume identity was not resolved"
+port_status=0
 published="$(timeout --signal=TERM --kill-after=2s 10s \
-  docker port "$CONTAINER" 5432/tcp)"
+  docker port "$CONTAINER" 5432/tcp)" || port_status="$?"
+[ "$port_status" -eq 0 ] || die_with_runtime_logs "dynamic loopback port was not resolved"
 readonly PORT="${published##*:}"
 case "$PORT" in
-  ''|*[!0-9]*) die "dynamic loopback port was not numeric" ;;
+  ''|*[!0-9]*) die_with_runtime_logs "dynamic loopback port was not numeric" ;;
 esac
 
-wait_for_runtime || die "pinned PostgreSQL runtime was not ready within 90 seconds"
+wait_for_runtime || die_with_runtime_logs "pinned PostgreSQL runtime was not ready within 90 seconds"
+
+runtime_metadata="$(timeout --signal=TERM --kill-after=2s 10s \
+  docker exec "$CONTAINER" psql -X -qAt -U test -d template1 -c \
+    "SELECT (pg_catalog.current_setting('server_version_num')::pg_catalog.int4 / 10000)::pg_catalog.text \
+      || '|' || pg_catalog.current_setting('server_version')")" ||
+  die_with_runtime_logs "PostgreSQL runtime version was not observed"
+readonly RUNTIME_MAJOR="${runtime_metadata%%|*}"
+readonly RUNTIME_VERSION="${runtime_metadata#*|}"
+case "$RUNTIME_MAJOR" in
+  ''|*[!0-9]*) die_with_runtime_logs "PostgreSQL runtime major version was not numeric" ;;
+esac
+[ -n "$RUNTIME_VERSION" ] || die_with_runtime_logs "PostgreSQL runtime version was empty"
 
 printf 'PER-20 runtime ready: container=%s volume=%s port=%s\n' \
   "$CONTAINER" "$VOLUME" "$PORT"
+printf 'PER-20 runtime PostgreSQL: major=%s version=%s\n' \
+  "$RUNTIME_MAJOR" "$RUNTIME_VERSION"
 BOOTSTRAP_DSN="postgresql://test:test@127.0.0.1:$PORT/babylon_test"
 readonly BOOTSTRAP_DSN
 status=0
@@ -505,8 +537,7 @@ if [ "$RUNTIME_TEMPLATE_CREATED" -eq 1 ]; then
 fi
 
 if [ "$status" -ne 0 ]; then
-  timeout --signal=TERM --kill-after=2s 10s \
-    docker logs --timestamps --tail 200 "$CONTAINER" >&2 || true
+  emit_runtime_logs
 fi
 
 cleanup_checked

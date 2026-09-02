@@ -22,6 +22,7 @@ pub mod manifest;
 pub mod material_basis;
 pub mod metrics;
 pub mod mod_anchors;
+pub mod probability;
 pub mod query;
 pub mod reader;
 pub mod rule_pipeline;
@@ -41,7 +42,7 @@ pub use bindings::{
     check_free_variables, parse_bindings, resolve_bindings, BindSource, BindingDecl, BindingError,
     BindingVocabulary,
 };
-pub use bound_checker::{check_rule, expr_cost, rule_bound, BoundError};
+pub use bound_checker::{check_rule, check_rule_with_kernel, expr_cost, rule_bound, BoundError};
 pub use canonical_ast::{canonical_bytes, rules_hash_of, CasError};
 pub use declarations::{
     check_intrinsic_cap, check_intrinsic_name, DeclError, FieldRegistry, OwnedFieldDecl,
@@ -62,6 +63,18 @@ pub use manifest::{check_rule_against_manifest, CeilingRow, Manifest, ManifestEr
 pub use material_basis::{check_rule_surface, SurfaceError, MAX_FUEL};
 pub use metrics::{MetricDecl, MetricDomain, MetricError, MetricRegistry};
 pub use mod_anchors::{check_anchor, AnchorDecl, AnchorError, AnchorPosition};
+pub use probability::{
+    allocate_tickets, analyze_content_set, compile_rule_probability, evaluate_kernel_masses,
+    forecast_event_likelihoods as pushforward_event_likelihoods, realize_kernel, selected_branch,
+    validate_kernel_realization, validate_probability_content_set, AllocationAnalysisV1,
+    BranchProjectionV1, CompiledProbabilityFactsV1, CompiledRuleProbabilityV1,
+    ContentSetAnalysisV1, EventLikelihoodV1, ExactKernelAllocationV1, FiniteKernelV1,
+    FiniteProjectionV1, KernelBranchV1, KernelInstanceIdentityV1, KernelProjectionLinkV1,
+    KernelRealizationV1, LikelihoodAnalysisV1, Mass, MassDeclarationAnalysisV1, MassLiteralFactV1,
+    ProbabilityAnalysisNodeKindV1, ProbabilityAnalysisNodeV1, ProbabilityError, RealizedBranchV1,
+    RuleProbabilityAnalysisV1, SubjectCarrierMismatchV1, TicketIntervalV1, MASS_NANOUNITS_PER_UNIT,
+    TICKET_DENOMINATOR,
+};
 pub use query::Element;
 pub use reader::{
     read, read_all, read_all_spanned, read_spanned, Atom, FormPath, LexCode, ReadError,
@@ -69,7 +82,7 @@ pub use reader::{
 };
 pub use rule_pipeline::{
     bind_environment, check_unique_rule_ids, load_rule, load_rule_form, resolve_expr_bindings,
-    split_content, LoadContext, LoadError, LoadedRule,
+    split_content, LoadContext, LoadError, LoadedRule, SplitRuleFormV1,
 };
 // `diagnose` re-exported under a qualified name (W2 fix round 1, review
 // Minor 4): `babylon_bsl::diagnose` unqualified reads as "diagnose
@@ -82,7 +95,9 @@ pub use same_tick_order::{
     diagnose as diagnose_same_tick_order, Diagnosis, RankedRuleInputError, SameTickOrderError,
     StaleDefaultRead, UnresetFanIn, ENFORCE_RANK_AWARE_AGGREGATE_ORDERING,
 };
-pub use scenario::compose_declaration_preludes;
+pub use scenario::{
+    compose_declaration_preludes, load_scenario_with_named_preludes, NamedDeclarationPreludeV1,
+};
 pub use scope::{
     check_element_names, check_foreign_field_scoping, declared_element_names, ElementNameError,
     ScopeError,
@@ -95,6 +110,6 @@ pub use sfs_profile::{
 };
 pub use structural_verbs::{CollectingSink, EffectExecutor, EventSink};
 pub use typecheck::{check_selection_scores, typecheck_aggregation, TypeCode, TypeEnv, TypeError};
-pub use types::{BslType, FieldDecl, FieldKind};
+pub use types::{BslType, EnumRegistry, EnumTypeId, FieldDecl, FieldKind};
 pub use vocabulary::{render_member, ClosedVocabulary, EnumKind, VocabularyError};
 pub use write_log::{CollectingWriteLog, Write, WriteObserver, WriteRecord};

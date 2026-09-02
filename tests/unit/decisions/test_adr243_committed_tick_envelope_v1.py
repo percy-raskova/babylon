@@ -66,9 +66,9 @@ def test_historical_envelope_boundary_is_superseded_by_the_one_way_cutover() -> 
         / "2026-08-27-per-20-committed-tick-envelope-v1-design.md"
     ).read_text(encoding="utf-8")
     writer_gate = ROOT / "rust" / "crates" / "babylon-persistence" / "src" / "writer_gate.rs"
-    runtime = (ROOT / "rust" / "crates" / "babylon-persistence" / "src" / "runtime.rs").read_text(
-        encoding="utf-8"
-    )
+    persistence = ROOT / "rust" / "crates" / "babylon-persistence" / "src"
+    runtime = (persistence / "runtime.rs").read_text(encoding="utf-8")
+    live_envelope = (persistence / "committed_tick_envelope.rs").read_text(encoding="utf-8")
 
     assert [row["name"] for row in contract["row_families"]] == [
         "graph",
@@ -79,5 +79,10 @@ def test_historical_envelope_boundary_is_superseded_by_the_one_way_cutover() -> 
     ]
     assert "This slice adds no semantic state" in design
     assert not writer_gate.exists()
-    assert "activate_rust_persistence_v1" in runtime
-    assert "CommittedTickEnvelopeV1" in runtime
+    assert "activate_rust_persistence_v2" in runtime
+    assert "DurableReplayRuntimeV2" in runtime
+    assert "CommittedTickEnvelopeV2" in runtime
+    assert "activate_rust_persistence_v1" not in runtime
+    assert "CommittedTickEnvelopeV1" not in runtime
+    assert "CommittedTickEnvelopeV1" not in live_envelope
+    assert "babylon.committed-tick-envelope.v1" not in live_envelope

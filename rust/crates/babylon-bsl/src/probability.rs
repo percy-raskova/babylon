@@ -312,6 +312,25 @@ pub struct ProbabilityAnalysisNodeV1 {
     pub form_path: FormPath,
 }
 
+/// Whole-rule material-effect locality retained for finite projection linking.
+///
+/// A standalone kernel may lawfully require a joint carrier. The retained
+/// refusal becomes active only when an adjacent recognizer asks the finite
+/// projection boundary to enumerate that kernel exactly.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum KernelProjectionLocalityV1 {
+    /// Every material effect in the kernel rule is local to its firing subject.
+    CarrierLocal,
+    /// Exact V1 projection cannot enumerate a material effect over another or
+    /// shared carrier.
+    RequiresJointCarrier {
+        /// Stable author-facing explanation retained at compile time.
+        message: String,
+        /// Exact source path of the material effect that establishes refusal.
+        form_path: FormPath,
+    },
+}
+
 /// Rule-local authoring facts retained by the probability compiler.
 ///
 /// These facts are produced while the loader owns the raw rule form. Later
@@ -323,6 +342,8 @@ pub struct CompiledProbabilityFactsV1 {
     pub nodes: Vec<ProbabilityAnalysisNodeV1>,
     /// Every exact Mass literal in the rule, including Mass bindings.
     pub mass_literals: Vec<MassLiteralFactV1>,
+    /// Whole-rule kernel locality, when this rule compiled a finite kernel.
+    pub kernel_projection_locality: Option<KernelProjectionLocalityV1>,
 }
 
 /// Complete probability product of compiling one loaded rule.
@@ -1289,10 +1310,10 @@ fn projection_is_subject_local(rule: &SExpr, root_path: &[u32]) -> Result<bool, 
     Ok(true)
 }
 
-fn validate_kernel_carrier_locality(
+fn classify_kernel_projection_locality(
     rule: &SExpr,
     root_path: &[u32],
-) -> Result<(), ProbabilityError> {
+) -> Result<KernelProjectionLocalityV1, ProbabilityError> {
     const SHARED_MATERIAL_EFFECTS: [&str; 8] = [
         "update-edge",
         "update-hyperedge",
@@ -1312,16 +1333,16 @@ fn validate_kernel_carrier_locality(
             if form == "update-node"
                 && !matches!(items.get(1), Some(SExpr::Atom(Atom::Symbol(target))) if target == "self")
             {
-                return Err(invalid(
-                    &child_path(&path, 1)?,
-                    "finite-projection kernel material effects must be carrier-local; update-node target must be literal `self`",
-                ));
+                return Ok(KernelProjectionLocalityV1::RequiresJointCarrier {
+                    message: "finite-projection kernel material effects must be carrier-local; update-node target must be literal `self`".to_owned(),
+                    form_path: child_path(&path, 1)?,
+                });
             }
             if SHARED_MATERIAL_EFFECTS.contains(&form.as_str()) {
-                return Err(invalid(
-                    &child_path(&path, 0)?,
-                    "finite-projection kernel material effects must be carrier-local; shared or graph-shape writes require one joint kernel over that carrier and are not exactly enumerable in V1",
-                ));
+                return Ok(KernelProjectionLocalityV1::RequiresJointCarrier {
+                    message: "finite-projection kernel material effects must be carrier-local; shared or graph-shape writes require one joint kernel over that carrier and are not exactly enumerable in V1".to_owned(),
+                    form_path: child_path(&path, 0)?,
+                });
             }
         }
         stack.extend(
@@ -1330,7 +1351,7 @@ fn validate_kernel_carrier_locality(
                 .rev(),
         );
     }
-    Ok(())
+    Ok(KernelProjectionLocalityV1::CarrierLocal)
 }
 
 fn path_is_within(path: &[u32], root: &[u32]) -> bool {
@@ -1782,6 +1803,10 @@ pub fn compile_rule_probability(
         .map(|(form, path)| parse_choose(form, path, enums, types, bindings, consts))
         .transpose()?;
     validate_mass_usage(rule, &root, kernel.as_ref(), types, bindings, consts)?;
+    let kernel_projection_locality = kernel
+        .as_ref()
+        .map(|_| classify_kernel_projection_locality(rule, &root))
+        .transpose()?;
 
     // Retain every authoring fact now, while the loader owns the one raw
     // form. `analyze_content_set` consumes this record and never performs a
@@ -1853,6 +1878,7 @@ pub fn compile_rule_probability(
         facts: CompiledProbabilityFactsV1 {
             nodes,
             mass_literals,
+            kernel_projection_locality,
         },
     })
 }
@@ -1931,7 +1957,19 @@ pub fn validate_probability_content_set(
                 },
             )));
         }
-        validate_kernel_carrier_locality(&kernel_rule.rule, &kernel_rule.root_path)?;
+        let locality = kernel_rule
+            .probability_facts
+            .kernel_projection_locality
+            .as_ref()
+            .ok_or_else(|| {
+                invalid(
+                    &kernel.sample_path,
+                    "compiled finite kernel has no retained projection-locality result",
+                )
+            })?;
+        if let KernelProjectionLocalityV1::RequiresJointCarrier { message, form_path } = locality {
+            return Err(invalid(form_path, message.clone()));
+        }
     }
     Ok(())
 }

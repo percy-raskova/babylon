@@ -892,6 +892,28 @@ fn kernels_and_projections_require_a_stable_subject_carrier_at_load() {
     }
 }
 
+fn assert_carrier_locality_refusal(error: ProbabilityError, source: &str) {
+    let ProbabilityError::InvalidForm { message, form_path } = error else {
+        panic!("expected a located carrier-locality refusal, got {error:?}");
+    };
+    assert!(message.contains("carrier-local"), "{message}");
+    let (_, spans) = read_all_spanned(source.as_bytes()).unwrap();
+    let span = spans.span_of(&form_path).unwrap();
+    assert_eq!(&source[span.start..span.end], "(the NodeType/SOCIAL_CLASS)");
+}
+
+fn assert_compiled_locality_survives_raw_rule_mutation(
+    mut cross_carrier_kernel: babylon_bsl::LoadedRule,
+    replacement_rule: SExpr,
+    matching_projection: babylon_bsl::LoadedRule,
+    cross_carrier_source: &str,
+) {
+    cross_carrier_kernel.rule = replacement_rule;
+    let error = validate_probability_content_set(&[cross_carrier_kernel, matching_projection])
+        .expect_err("compiled carrier-locality evidence must survive raw-rule mutation");
+    assert_carrier_locality_refusal(error, cross_carrier_source);
+}
+
 #[test]
 fn adjacent_projection_requires_the_kernel_subject_carrier_at_its_sample_path() {
     let fields = HashMap::from([
@@ -984,17 +1006,17 @@ fn adjacent_projection_requires_the_kernel_subject_carrier_at_its_sample_path() 
         .expect("an otherwise-governed standalone joint-carrier kernel loads");
     validate_probability_content_set(std::slice::from_ref(&cross_carrier_kernel))
         .expect("standalone kernels are not constrained by projection enumerability");
-    let error = validate_probability_content_set(&[cross_carrier_kernel, matching])
+    let error = validate_probability_content_set(&[cross_carrier_kernel.clone(), matching.clone()])
         .expect_err("an established finite projection requires carrier-local kernel effects");
-    let ProbabilityError::InvalidForm { message, form_path } = error else {
-        panic!("expected a located carrier-locality refusal, got {error:?}");
-    };
-    assert!(message.contains("carrier-local"), "{message}");
-    let (_, spans) = read_all_spanned(cross_carrier_source.as_bytes()).unwrap();
-    let span = spans.span_of(&form_path).unwrap();
-    assert_eq!(
-        &cross_carrier_source[span.start..span.end],
-        "(the NodeType/SOCIAL_CLASS)"
+    assert_carrier_locality_refusal(error, cross_carrier_source);
+
+    // Replacing the raw rule after load cannot erase or relocate the compiled
+    // whole-rule locality result used by projection linking.
+    assert_compiled_locality_survives_raw_rule_mutation(
+        cross_carrier_kernel,
+        kernel.rule,
+        matching,
+        cross_carrier_source,
     );
 }
 

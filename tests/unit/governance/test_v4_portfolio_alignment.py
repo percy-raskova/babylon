@@ -697,15 +697,28 @@ def test_standard_addenda_classify_current_and_superseded_surfaces() -> None:
         "Article V vocabulary authority status: superseded",
         "NarrationEnvelope status: superseded_proposal",
         "In-memory whole-tick rollback status: implemented_current_PER-18",
-        "CommittedTickEnvelope status: planned",
+        "CommittedTickEnvelope status: implemented_current_V2_only",
         "DecisionSurfaceContract executable status: planned",
-        "Persistence writer status: accepted_cutover_law",
+        "Persistence writer status: implemented_current_V2_only",
+        "PostgreSQL runtime status: PostgreSQL_17_only",
+        "PER-20 durable boundary status: implemented_current",
         "PER-48 status: Done",
         _POSTGRESQL_ADR,
         "Attributed membership identity status: implemented_current",
         "Attributed membership payload status: planned_research_PER-44",
     ):
         assert phrase in game_design
+    game_design_folded = " ".join(game_design.split())
+    for stale in (
+        "CommittedTickEnvelope status: planned",
+        "Persistence writer status: accepted_cutover_law",
+        "Gate 3 still plans",
+        "Python remains the sole live PostgreSQL writer",
+        "compatibility views",
+        "Transition observers may read",
+        "not a claim that PER-20 has implemented",
+    ):
+        assert stale not in game_design_folded
     for phrase in (
         "S-11 whole-tick rollback status: implemented_current_PER-18",
         "S-25 renderer requirement status: retired",
@@ -725,8 +738,19 @@ def test_standard_addenda_classify_current_and_superseded_surfaces() -> None:
 
     roadmap = _active_region("project/roadmap.md", "V4-ROADMAP-MIRROR")
     for phrase in (
-        "Persistence writer status: accepted_cutover_law",
+        "Persistence writer status: implemented_current_V2_only",
+        "PostgreSQL runtime status: PostgreSQL_17_only",
+        "PER-20 durable boundary status: implemented_current",
         "PER-48 status: Done",
         _POSTGRESQL_ADR,
     ):
         assert phrase in roadmap
+    roadmap_folded = " ".join(roadmap.split())
+    for stale in (
+        "PER-20 through PER-24 remain",
+        "Persistence writer status: accepted_cutover_law",
+        "Python remains the sole live writer before cutover",
+        "compatibility views",
+        "transition observers remain outside authoritative writes",
+    ):
+        assert stale not in roadmap_folded

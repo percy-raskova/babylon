@@ -1570,6 +1570,27 @@ def test_cargo_zero_x_patch_auto_merges(tmp_path: Path) -> None:
     assert len(_merge_calls(calls)) == 1
 
 
+def test_cargo_zero_x_prerelease_suffix_still_requires_manual_review(
+    tmp_path: Path,
+) -> None:
+    scenario = _cargo_zero_x_scenario("fix(deps): bump h3o from 0.10.0-alpha.1 to 0.11.0 in /rust")
+
+    result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
+
+    assert result.returncode == 3
+    assert "Cargo 0.x minor" in result.stdout
+    assert _merge_calls(calls) == []
+
+
+def test_cargo_zero_x_build_suffix_patch_auto_merges(tmp_path: Path) -> None:
+    scenario = _cargo_zero_x_scenario("fix(deps): bump h3o from 0.10.0+vendor to 0.10.2 in /rust")
+
+    result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
+
+    assert result.returncode == 0, result.stderr
+    assert len(_merge_calls(calls)) == 1
+
+
 def test_cargo_stable_minor_auto_merges(tmp_path: Path) -> None:
     scenario = _cargo_zero_x_scenario("fix(deps): bump serde from 1.2.3 to 1.4.0 in /rust")
 

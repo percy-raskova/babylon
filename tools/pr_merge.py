@@ -876,8 +876,15 @@ def _bounded_counted_items(
 
 
 _CARGO_DEPENDABOT_REF_PREFIX: Final = "dependabot/cargo/"
+# SemVer token: numeric core plus optional -prerelease and +build suffixes so
+# suffixed versions (e.g. 0.10.0-alpha.1) cannot escape the 0.x guard.
+_CARGO_SEMVER_PATTERN: Final = (
+    r"(\d+)\.(\d+)\.(\d+)"
+    r"(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
+    r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
+)
 _CARGO_VERSION_BUMP_RE: Final = re.compile(
-    r"\bfrom\s+(\d+)\.(\d+)\.(\d+)\s+to\s+(\d+)\.(\d+)\.(\d+)\b"
+    rf"\bfrom\s+{_CARGO_SEMVER_PATTERN}\s+to\s+{_CARGO_SEMVER_PATTERN}\b"
 )
 
 

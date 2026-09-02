@@ -134,9 +134,11 @@ class DependabotModeResult:
         problems: tuple[str, ...] = (),
         *,
         semver_major: bool = False,
+        semver_major_reason: str = "authenticated Dependabot semver-major",
     ) -> None:
         self.problems = problems
         self.semver_major = semver_major
+        self.semver_major_reason = semver_major_reason
 
 
 def _bounded_error_detail(value: object) -> str:
@@ -616,6 +618,7 @@ def _dependabot_pr_problems(
     rest_head = head.get("sha") if isinstance(head, dict) else None
     if rest_head != head_oid:
         problems.append(f"Dependabot head moved: expected {head_oid}, found {rest_head}")
+    head_ref = head.get("ref") if isinstance(head, dict) else None
     base = payload.get("base")
     rest_base = base.get("ref") if isinstance(base, dict) else None
     if rest_base != "dev":
@@ -644,7 +647,11 @@ def _dependabot_pr_problems(
     job_problems = _native_classifier_job_problems(classifier_run_id, classifier_run)
     if job_problems:
         return DependabotModeResult(tuple(job_problems))
-    return _dependabot_update_result(pr, head_oid)
+    return _dependabot_update_result(
+        pr,
+        head_oid,
+        head_ref if isinstance(head_ref, str) else "",
+    )
 
 
 def _is_canonical_dependabot(actor: object) -> bool:
@@ -868,7 +875,33 @@ def _bounded_counted_items(
     return items
 
 
-def _dependabot_update_result(pr: int, head_oid: str) -> DependabotModeResult:
+_CARGO_DEPENDABOT_REF_PREFIX: Final = "dependabot/cargo/"
+_CARGO_VERSION_BUMP_RE: Final = re.compile(
+    r"\bfrom\s+(\d+)\.(\d+)\.(\d+)\s+to\s+(\d+)\.(\d+)\.(\d+)\b"
+)
+
+
+def _cargo_zero_x_minor(subject: str) -> bool:
+    """Cargo 0.y → 0.(y+1) is breaking-class even when Dependabot tags it minor.
+
+    Dependabot's update-type trailer compares only the leading version
+    component, so 0.10.0 → 0.11.0 arrives as ``semver-minor`` (#874). Group
+    PRs carry no per-entry before-version in the commit subject, so this guard
+    covers the single-dependency bump subject only.
+    """
+    match = _CARGO_VERSION_BUMP_RE.search(subject)
+    if match is None:
+        return False
+    before_major, before_minor = int(match.group(1)), int(match.group(2))
+    after_major, after_minor = int(match.group(4)), int(match.group(5))
+    return before_major == 0 and after_major == 0 and after_minor > before_minor
+
+
+def _dependabot_update_result(
+    pr: int,
+    head_oid: str,
+    head_ref: str,
+) -> DependabotModeResult:
     """Classify the sole exact-head commit after native actor provenance."""
     commits = _json_dicts(
         _gh_json(
@@ -901,6 +934,12 @@ def _dependabot_update_result(pr: int, head_oid: str) -> DependabotModeResult:
     }
     if any(update_type not in allowed for update_type in update_types):
         return DependabotModeResult(("Dependabot update metadata is not a known semver class",))
+    subject = message.split("\n", 1)[0]
+    if head_ref.startswith(_CARGO_DEPENDABOT_REF_PREFIX) and _cargo_zero_x_minor(subject):
+        return DependabotModeResult(
+            semver_major=True,
+            semver_major_reason="Cargo 0.x minor (breaking-class) Dependabot",
+        )
     return DependabotModeResult(
         semver_major="version-update:semver-major" in update_types,
     )
@@ -1090,8 +1129,8 @@ def _main() -> int:
 
     if dependabot_result.semver_major:
         print(
-            f"pr:merge MANUAL REVIEW — authenticated Dependabot semver-major PR #{args.pr}; "
-            "unattended merge skipped"
+            f"pr:merge MANUAL REVIEW — {dependabot_result.semver_major_reason} "
+            f"PR #{args.pr}; unattended merge skipped"
         )
         return MergeOutcome.DEPENDABOT_MAJOR_REVIEW
 

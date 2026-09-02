@@ -253,6 +253,7 @@ def _dependabot_commit(
     *,
     head_sha: str = HEAD_SHA,
     update_type: str = "version-update:semver-minor",
+    subject: str = "Bump dependencies",
 ) -> dict[str, object]:
     return {
         "sha": head_sha,
@@ -260,7 +261,7 @@ def _dependabot_commit(
         "committer": {"login": "web-flow", "id": 19864447, "type": "User"},
         "commit": {
             "message": (
-                "Bump dependencies\n\n---\nupdated-dependencies:\n"
+                f"{subject}\n\n---\nupdated-dependencies:\n"
                 "- dependency-name: example\n"
                 f"  update-type: {update_type}\n..."
             ),
@@ -428,7 +429,7 @@ def _default_scenario() -> dict[str, object]:
             "mergeCommit": {"oid": MERGE_COMMIT_SHA},
         },
         "dependabot_pr": {
-            "head": {"sha": HEAD_SHA},
+            "head": {"sha": HEAD_SHA, "ref": "dependabot/uv/example-1.2.3"},
             "base": {"ref": "dev"},
             "user": {
                 "login": "dependabot[bot]",
@@ -1537,6 +1538,57 @@ def test_unknown_dependabot_update_class_is_a_hard_refusal(tmp_path: Path) -> No
     assert result.returncode == 1
     assert "not a known semver class" in result.stderr
     assert _merge_calls(calls) == []
+
+
+def _cargo_zero_x_scenario(subject: str) -> dict[str, object]:
+    scenario = _default_scenario()
+    dependabot_pr = scenario["dependabot_pr"]
+    assert isinstance(dependabot_pr, dict)
+    dependabot_pr["head"] = {"sha": HEAD_SHA, "ref": "dependabot/cargo/rust/h3o-0.11.0"}
+    scenario["dependabot_commits"] = [_dependabot_commit(subject=subject)]
+    return scenario
+
+
+def test_cargo_zero_x_minor_requires_manual_review_despite_semver_minor_trailer(
+    tmp_path: Path,
+) -> None:
+    scenario = _cargo_zero_x_scenario("fix(deps): bump h3o from 0.10.0 to 0.11.0 in /rust")
+
+    result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
+
+    assert result.returncode == 3
+    assert "Cargo 0.x minor" in result.stdout
+    assert _merge_calls(calls) == []
+
+
+def test_cargo_zero_x_patch_auto_merges(tmp_path: Path) -> None:
+    scenario = _cargo_zero_x_scenario("fix(deps): bump h3o from 0.10.0 to 0.10.2 in /rust")
+
+    result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
+
+    assert result.returncode == 0, result.stderr
+    assert len(_merge_calls(calls)) == 1
+
+
+def test_cargo_stable_minor_auto_merges(tmp_path: Path) -> None:
+    scenario = _cargo_zero_x_scenario("fix(deps): bump serde from 1.2.3 to 1.4.0 in /rust")
+
+    result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
+
+    assert result.returncode == 0, result.stderr
+    assert len(_merge_calls(calls)) == 1
+
+
+def test_non_cargo_zero_x_minor_auto_merges(tmp_path: Path) -> None:
+    scenario = _default_scenario()
+    scenario["dependabot_commits"] = [
+        _dependabot_commit(subject="chore(deps-dev): bump example from 0.10.0 to 0.11.0")
+    ]
+
+    result, calls = _run_pr_merge(tmp_path, "--dependabot", scenario=scenario)
+
+    assert result.returncode == 0, result.stderr
+    assert len(_merge_calls(calls)) == 1
 
 
 def test_dependabot_synchronization_invalidates_old_head_classification(tmp_path: Path) -> None:

@@ -71,7 +71,7 @@ _V3_1_BLOB = "a265b85120ed2a90be40c72e63ee5bf27fc6e703"
 _V3_2_COMMIT = "cbfc67921283ccb6e00c4b0278288a232281440a"
 _V3_2_BLOB = "e905e90d66bddc6e4eca36a3896428f5ce63de5b"
 _CONSTITUTION_FETCH_STEP = "Fetch pinned Constitution predecessors (bounded)"
-_MISE_ACTION = "jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518"
+_MISE_ACTION = "jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c"
 _PY313_SYNC = "uv sync --frozen --extra ops --python 3.13"
 _ACTION_USES_LINE = re.compile(
     r"^\s*(?:-\s+)?uses:\s+(?P<reference>[^\s#]+)(?:\s+#\s*(?P<tag>\S+))?\s*$"

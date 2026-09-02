@@ -842,8 +842,10 @@ printf '%s\\n' "$1" >> "$SLEEP_CALLS"
             for ecosystem in ("uv", "github-actions", "docker", "cargo")
         } == {DEPENDABOT_SCHEDULE_TIMEZONE}
 
-    def test_weekly_ecosystems_share_one_cooldown_policy(self) -> None:
-        """Fresh releases batch for 3 days; majors bake for 7 (PER-264)."""
+    def test_weekly_ecosystems_apply_the_cooldown_within_schema_limits(self) -> None:
+        """Fresh releases batch for 3 days; majors bake for 7 where Dependabot
+        supports semver cooldown keys — github-actions gets default-days only
+        (PER-264)."""
         config = yaml.safe_load(DEPENDABOT_CONFIG_PATH.read_text())
         expected_cooldown = {"default-days": 3, "semver-major-days": 7}
         for ecosystem in ("uv", "cargo"):

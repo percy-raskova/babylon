@@ -131,6 +131,66 @@ impl ArchiveDossierProducerV1 for FailAtTickProducer {
     }
 }
 
+/// Stub producer that returns a well-formed batch bound to the wrong tick
+/// identity, proving the worker refuses identity drift before the store.
+struct WrongTickProducer;
+
+impl ArchiveDossierProducerV1 for WrongTickProducer {
+    fn produce(
+        &self,
+        _campaign_id: Uuid,
+        receipt: &PendingArchiveReceiptV1,
+    ) -> Result<ArchiveDirtyBatchV1, SemanticArchiveErrorV1> {
+        let wrong = PendingArchiveReceiptV1::try_new(
+            receipt.resolve_tick() + 1,
+            *receipt.tick_content_hash(),
+        )
+        .expect("wrong-tick receipt boundary");
+        ArchiveDirtyBatchV1::try_new(
+            wrong.resolve_tick(),
+            *wrong.tick_content_hash(),
+            vec![stub_page_input(&wrong)],
+        )
+    }
+}
+
+/// Insert one dirty receipt row with no `tick_commit` marker, as a crash
+/// residue or partial rollback would leave behind.
+fn insert_orphan_dirty_receipt(
+    config: &Config,
+    campaign_id: CampaignId,
+    resolve_tick: i64,
+    tick_content_hash: [u8; 32],
+) {
+    config
+        .connect(NoTls)
+        .expect("orphan insert connection")
+        .execute(
+            "INSERT INTO babylon_state.archive_dirty_receipt_v1 \
+             (campaign_id, resolve_tick, tick_content_hash) VALUES ($1::uuid, $2, $3)",
+            &[
+                campaign_id.as_uuid(),
+                &resolve_tick,
+                &&tick_content_hash[..],
+            ],
+        )
+        .expect("orphan dirty receipt inserts without a marker");
+}
+
+fn dirty_receipt_count(config: &Config, campaign_id: CampaignId) -> i64 {
+    config
+        .connect(NoTls)
+        .expect("dirty receipt count connection")
+        .query_one(
+            "SELECT pg_catalog.count(*) FROM babylon_state.archive_dirty_receipt_v1 \
+             WHERE campaign_id = $1::uuid",
+            &[campaign_id.as_uuid()],
+        )
+        .expect("dirty receipt count query")
+        .try_get(0)
+        .expect("dirty receipt count decodes")
+}
+
 fn validated_base_config() -> Config {
     assert_eq!(std::env::var(ACK_ENV).as_deref(), Ok(ACK));
     let canary = std::env::var(CANARY_ENV).expect("runner supplies the disposable canary");
@@ -481,7 +541,11 @@ fn live_worker_rerun_reconciles_without_duplicate_publication() {
     assert_eq!(second.applied_count(), 0);
     assert_eq!(second.already_consumed_count(), 0);
     assert_eq!(second.deferred_count(), 0);
-    assert_eq!(second.verified_tick(), 0);
+    assert_eq!(
+        second.verified_tick(),
+        2,
+        "an empty sweep reports the persisted contiguous watermark, not zero"
+    );
     assert_eq!(archive_page_count(&target.config, target.campaign_id), 2);
     assert_eq!(
         receipt_consumption_count(&target.config, target.campaign_id),
@@ -523,6 +587,11 @@ fn live_worker_crash_between_receipts_resumes_exactly() {
             (2, ArchiveReceiptDispositionV1::Deferred),
             (3, ArchiveReceiptDispositionV1::Deferred),
         ]
+    );
+    assert_eq!(
+        pending.verified_tick(),
+        1,
+        "the deferred tick 2 caps the watermark at the contiguous prefix even though tick 1 applied"
     );
     assert_eq!(
         receipt_consumption_count(&target.config, target.campaign_id),
@@ -607,6 +676,70 @@ fn live_worker_defers_empty_batches_without_consuming() {
     assert_eq!(
         receipt_consumption_count(&target.config, target.campaign_id),
         2
+    );
+    target.finish();
+}
+
+#[test]
+#[ignore = "requires the task-owned disposable PostgreSQL runtime and committed ticks"]
+fn live_worker_refuses_batch_identity_mismatch_without_consuming() {
+    let target = LiveWorkerTarget::create(
+        "archiveworkeridentity",
+        0x2200_0000_0000_0000_0000_0000_0000_00a5,
+        2,
+    );
+
+    let mut worker = ArchiveWorkerV1::new(&target.config);
+    let failure = worker.sweep_once(target.campaign_id, &WrongTickProducer);
+    assert_eq!(
+        failure,
+        Err(SemanticArchiveErrorV1::ReceiptMismatch),
+        "a batch bound to another tick must stop the sweep before any consumption"
+    );
+    assert_eq!(
+        receipt_consumption_count(&target.config, target.campaign_id),
+        0
+    );
+    assert_eq!(archive_page_count(&target.config, target.campaign_id), 0);
+    target.finish();
+}
+
+#[test]
+#[ignore = "requires the task-owned disposable PostgreSQL runtime and committed ticks"]
+fn live_worker_skips_orphan_dirty_receipt_without_marker() {
+    let target = LiveWorkerTarget::create(
+        "archiveworkerorphan",
+        0x2200_0000_0000_0000_0000_0000_0000_00a6,
+        2,
+    );
+    insert_orphan_dirty_receipt(&target.config, target.campaign_id, 3, [0xee; 32]);
+
+    let mut worker = ArchiveWorkerV1::new(&target.config);
+    let report = worker
+        .sweep_once(target.campaign_id, &StubPageProducer)
+        .expect("orphan rows never reach the producer or stop the ordered sweep");
+    let applied = report
+        .dispositions()
+        .iter()
+        .map(|(tick, disposition)| (*tick, *disposition))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        applied,
+        vec![
+            (1, ArchiveReceiptDispositionV1::Applied),
+            (2, ArchiveReceiptDispositionV1::Applied),
+        ]
+    );
+    assert_eq!(report.verified_tick(), 2);
+    assert_eq!(
+        receipt_consumption_count(&target.config, target.campaign_id),
+        2
+    );
+    assert_eq!(archive_page_count(&target.config, target.campaign_id), 2);
+    assert_eq!(
+        dirty_receipt_count(&target.config, target.campaign_id),
+        3,
+        "the orphan row stays dirty, unconsumed, and out of the sweep's view"
     );
     target.finish();
 }

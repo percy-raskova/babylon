@@ -1,12 +1,13 @@
 use std::str::FromStr;
 
 use babylon_persistence::{
-    classify_archive_receipt_v1, classify_archive_sweep_v1, ArchiveCitationV1, ArchiveDirtyBatchV1,
-    ArchiveDossierProducerV1, ArchiveLinkV1, ArchivePageInputV1, ArchivePageRefV1,
-    ArchiveReceiptDispositionV1, ArchiveReceiptPlanV1, ArchiveSignalV1, ArchiveSubjectKindV1,
-    ArchiveSubjectV1, ArchiveWorkerSweepReportV1, NullArchiveDossierProducerV1,
-    PendingArchiveReceiptV1, SemanticArchiveErrorV1, SemanticArchiveStoreV1,
-    ARCHIVE_PENDING_RECEIPTS_SQL_V1,
+    archive_batch_matches_receipt_v1, archive_contiguous_watermark_v1, classify_archive_receipt_v1,
+    classify_archive_sweep_v1, ArchiveCitationV1, ArchiveDirtyBatchV1, ArchiveDossierProducerV1,
+    ArchiveLinkV1, ArchivePageInputV1, ArchivePageRefV1, ArchiveReceiptDispositionV1,
+    ArchiveReceiptPlanV1, ArchiveSignalV1, ArchiveSubjectKindV1, ArchiveSubjectV1,
+    ArchiveWorkerSweepReportV1, NullArchiveDossierProducerV1, PendingArchiveReceiptV1,
+    SemanticArchiveErrorV1, SemanticArchiveStoreV1, ARCHIVE_PENDING_RECEIPTS_SQL_V1,
+    ARCHIVE_SWEEP_MAX_RECEIPTS_V1, ARCHIVE_SWEEP_WATERMARK_SQL_V1,
 };
 use postgres::{Config, NoTls};
 use uuid::Uuid;
@@ -67,12 +68,33 @@ fn non_empty_batch(resolve_tick: u64, tick_content_hash: [u8; 32]) -> ArchiveDir
 fn pending_receipts_sql_finds_unconsumed_receipts_in_order_without_locking() {
     assert!(ARCHIVE_PENDING_RECEIPTS_SQL_V1
         .contains("LEFT JOIN babylon_meta.archive_receipt_consumption_v1"));
+    assert!(ARCHIVE_PENDING_RECEIPTS_SQL_V1.contains("JOIN babylon_state.tick_commit AS marker"));
+    assert!(ARCHIVE_PENDING_RECEIPTS_SQL_V1.contains("marker.campaign_id = d.campaign_id"));
+    assert!(ARCHIVE_PENDING_RECEIPTS_SQL_V1.contains("marker.resolve_tick = d.resolve_tick"));
     assert!(ARCHIVE_PENDING_RECEIPTS_SQL_V1.contains("IS NULL"));
     assert!(ARCHIVE_PENDING_RECEIPTS_SQL_V1.contains("d.campaign_id = $1"));
     assert!(ARCHIVE_PENDING_RECEIPTS_SQL_V1.contains("ORDER BY d.resolve_tick ASC"));
+    assert!(
+        ARCHIVE_PENDING_RECEIPTS_SQL_V1.contains("LIMIT $2"),
+        "the pending sweep must be a bounded chunk, not unbounded history"
+    );
     assert!(!ARCHIVE_PENDING_RECEIPTS_SQL_V1.contains("FOR UPDATE"));
     assert!(!ARCHIVE_PENDING_RECEIPTS_SQL_V1.contains("SKIP LOCKED"));
     assert!(!ARCHIVE_PENDING_RECEIPTS_SQL_V1.contains("NOWAIT"));
+}
+
+#[test]
+fn pending_receipts_sweep_chunk_is_a_positive_bounded_constant() {
+    assert_eq!(ARCHIVE_SWEEP_MAX_RECEIPTS_V1, 256);
+}
+
+#[test]
+fn watermark_sql_derives_the_contiguous_consumed_prefix_from_durable_state() {
+    assert!(ARCHIVE_SWEEP_WATERMARK_SQL_V1.contains("JOIN babylon_state.tick_commit AS marker"));
+    assert!(ARCHIVE_SWEEP_WATERMARK_SQL_V1.contains("MIN(d.resolve_tick)"));
+    assert!(ARCHIVE_SWEEP_WATERMARK_SQL_V1.contains("MAX(d.resolve_tick)"));
+    assert!(ARCHIVE_SWEEP_WATERMARK_SQL_V1.contains("c.campaign_id IS NULL"));
+    assert!(ARCHIVE_SWEEP_WATERMARK_SQL_V1.contains("d.campaign_id = $1::uuid"));
 }
 
 #[test]
@@ -128,19 +150,57 @@ fn empty_sweep_report_has_zero_counts_and_verified_tick() {
 }
 
 #[test]
-fn sweep_report_aggregates_dispositions_and_verified_tick() {
-    let report = ArchiveWorkerSweepReportV1::new(vec![
-        (1, ArchiveReceiptDispositionV1::Deferred),
-        (2, ArchiveReceiptDispositionV1::Applied),
-        (3, ArchiveReceiptDispositionV1::AlreadyConsumed),
-        (4, ArchiveReceiptDispositionV1::Deferred),
-    ]);
+fn sweep_report_aggregates_dispositions_and_carries_the_persisted_watermark() {
+    let report = ArchiveWorkerSweepReportV1::new(
+        vec![
+            (1, ArchiveReceiptDispositionV1::Deferred),
+            (2, ArchiveReceiptDispositionV1::Applied),
+            (3, ArchiveReceiptDispositionV1::AlreadyConsumed),
+            (4, ArchiveReceiptDispositionV1::Deferred),
+        ],
+        7,
+    );
 
     assert_eq!(report.deferred_count(), 2);
     assert_eq!(report.applied_count(), 1);
     assert_eq!(report.already_consumed_count(), 1);
-    assert_eq!(report.verified_tick(), 3);
+    assert_eq!(report.verified_tick(), 7);
     assert_eq!(report.dispositions().len(), 4);
+}
+
+#[test]
+fn batch_identity_must_match_the_receipt_exactly() {
+    let receipt = PendingArchiveReceiptV1::try_new(2, [0x22; 32]).expect("valid receipt");
+    let matching = non_empty_batch(2, [0x22; 32]);
+    let wrong_tick = non_empty_batch(3, [0x22; 32]);
+    let wrong_hash = non_empty_batch(2, [0x33; 32]);
+
+    assert_eq!(
+        archive_batch_matches_receipt_v1(&matching, &receipt),
+        Ok(())
+    );
+    assert_eq!(
+        archive_batch_matches_receipt_v1(&wrong_tick, &receipt),
+        Err(SemanticArchiveErrorV1::ReceiptMismatch)
+    );
+    assert_eq!(
+        archive_batch_matches_receipt_v1(&wrong_hash, &receipt),
+        Err(SemanticArchiveErrorV1::ReceiptMismatch)
+    );
+}
+
+#[test]
+fn contiguous_watermark_never_advances_past_a_pending_tick() {
+    // No receipts at all: the watermark stays at zero.
+    assert_eq!(archive_contiguous_watermark_v1(None, 0), 0);
+    // Everything consumed: the watermark is the highest committed receipt.
+    assert_eq!(archive_contiguous_watermark_v1(None, 7), 7);
+    // Nothing consumed yet: an empty sweep still reports zero, not the backlog max.
+    assert_eq!(archive_contiguous_watermark_v1(Some(1), 5), 0);
+    // A deferred earlier tick caps the watermark even though later ticks applied.
+    assert_eq!(archive_contiguous_watermark_v1(Some(3), 5), 2);
+    // A single pending receipt at the backlog tail leaves the prefix before it.
+    assert_eq!(archive_contiguous_watermark_v1(Some(5), 5), 4);
 }
 
 #[test]

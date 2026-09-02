@@ -7,7 +7,7 @@
 
 > This prompt records the retired Python/Django proposal. It is not current
 > architecture. The live boundary is defined by
-> `contracts/rust_persistence_cutover_v1.yaml`,
+> `contracts/rust_persistence_cutover_v2.yaml`,
 > `contracts/h3_estate_contract_v1.yaml`, and `docs/reference/persistence.rst`.
 
 ---

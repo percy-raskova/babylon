@@ -17,13 +17,14 @@ use babylon_kernel::sha256_of;
 use babylon_kernel::tick_content_hash::RefDigestV1;
 use babylon_kernel::ContentDigest;
 use babylon_persistence::{
-    activate_rust_persistence_v1, michigan_dynamic_hex_foundation_v1, preflight_schema_epoch,
+    activate_rust_persistence_v2, michigan_dynamic_hex_foundation_v1, preflight_schema_epoch,
     representative_h3_reference_cohort_v1, ArchiveSchemaDispositionV1, CampaignFoundationV1,
-    CampaignId, CommittedResolveTickV1, CommittedTickReceiptV1, DurableReplayRuntimeV1,
-    FoundationContentBundleV1, PostgresDiagnosticV1, RustPersistenceRuntimeErrorV1,
+    CampaignId, CommittedResolveTickV1, CommittedTickReceiptV2, DurableReplayRuntimeV2,
+    FoundationContentBundleV1, PostgresDiagnosticV1, RustPersistenceRuntimeErrorV2,
     SemanticArchiveStoreV1,
 };
 use babylon_practice_contract::ordered_action_v1::OrderedPracticeActionBatchV1;
+use babylon_tick::choice_receipt::ChoiceReceiptV1;
 use babylon_tick::material_state::MaterialStateV1;
 use babylon_tick::replay_session::{ReplayCommitDispositionV1, ReplayTickSession};
 use postgres::{Config, NoTls};
@@ -35,6 +36,7 @@ const DEFAULT_CAMPAIGN_UUID: u128 = 0x2810_0000_0000_0000_0000_0000_0000_0001;
 const MICHIGAN_SMOKE_TICKS: u64 = 60;
 const MICHIGAN_SMOKE_RESTART_TICKS: &[u64] = &[1, 51, 52, 60];
 const TICK_REPORT_SCHEMA_V2: &str = "babylon.simulation.tick-report.v2";
+const CHOICE_RECEIPT_REPORT_SCHEMA_V1: &str = "babylon.simulation.choice-receipts.v1";
 const TICK_REPORT_SLICE_ID: &str = "michigan-persistence-slice";
 const FIXED_REPLAY_SEED: i64 = 281;
 const OBSERVED_ENTITY: &str = "wayne";
@@ -144,19 +146,21 @@ enum Command {
     Run {
         ticks: u64,
         report_jsonl: Option<PathBuf>,
+        choice_receipts_jsonl: Option<PathBuf>,
         restart_every: Option<u64>,
     },
     Probe,
     Archive,
     MichiganSmoke {
         report_jsonl: Option<PathBuf>,
+        choice_receipts_jsonl: Option<PathBuf>,
     },
 }
 
 fn main() -> ExitCode {
     let Ok(command) = parse_command(std::env::args_os().skip(1)) else {
         eprintln!(
-            "babylon-runtime: expected activate, bootstrap, preflight, run --ticks N [--report-jsonl PATH] [--restart-every N], probe, archive, or michigan-smoke [--report-jsonl PATH]"
+            "babylon-runtime: expected activate, bootstrap, preflight, run --ticks N [--report-jsonl PATH] [--choice-receipts-jsonl PATH] [--restart-every N], probe, archive, or michigan-smoke [--report-jsonl PATH] [--choice-receipts-jsonl PATH]"
         );
         return ExitCode::from(2);
     };
@@ -193,23 +197,28 @@ fn execute(command: Command, config: &Config) -> Result<(), String> {
             println!("Rust schema target and owner preflight complete.");
         }
         Command::Activate | Command::Bootstrap => {
-            let report = activate_rust_persistence_v1(config).map_err(|error| error.to_string())?;
+            let report = activate_rust_persistence_v2(config).map_err(|error| error.to_string())?;
             println!(
                 "Rust persistence authority active (prepared_epoch={}, active_epoch={}).",
-                report.prepared_row().schema_epoch(),
-                report.rust_active_row().schema_epoch(),
+                report.prepared_row().activation_epoch(),
+                report.active_row().activation_epoch(),
             );
         }
         Command::Run {
             ticks,
             report_jsonl,
+            choice_receipts_jsonl,
             restart_every,
         } => {
             let mut report_writer = report_jsonl
                 .as_deref()
                 .map(TickReportJsonlWriter::create)
                 .transpose()?;
-            activate_rust_persistence_v1(config).map_err(|error| error.to_string())?;
+            let mut choice_receipt_writer = choice_receipts_jsonl
+                .as_deref()
+                .map(ChoiceReceiptJsonlWriter::create)
+                .transpose()?;
+            activate_rust_persistence_v2(config).map_err(|error| error.to_string())?;
             run_to_tick(
                 config,
                 campaign_id()?,
@@ -217,14 +226,22 @@ fn execute(command: Command, config: &Config) -> Result<(), String> {
                 &[],
                 restart_every,
                 report_writer.as_mut(),
+                choice_receipt_writer.as_mut(),
             )?;
         }
-        Command::MichiganSmoke { report_jsonl } => {
+        Command::MichiganSmoke {
+            report_jsonl,
+            choice_receipts_jsonl,
+        } => {
             let mut report_writer = report_jsonl
                 .as_deref()
                 .map(TickReportJsonlWriter::create)
                 .transpose()?;
-            activate_rust_persistence_v1(config).map_err(|error| error.to_string())?;
+            let mut choice_receipt_writer = choice_receipts_jsonl
+                .as_deref()
+                .map(ChoiceReceiptJsonlWriter::create)
+                .transpose()?;
+            activate_rust_persistence_v2(config).map_err(|error| error.to_string())?;
             run_to_tick(
                 config,
                 campaign_id()?,
@@ -232,6 +249,7 @@ fn execute(command: Command, config: &Config) -> Result<(), String> {
                 MICHIGAN_SMOKE_RESTART_TICKS,
                 None,
                 report_writer.as_mut(),
+                choice_receipt_writer.as_mut(),
             )?;
         }
         Command::Probe => probe(config, configured_campaign_id()?)?,
@@ -266,6 +284,7 @@ fn run_to_tick(
     restart_ticks: &[u64],
     restart_every: Option<u64>,
     mut report_writer: Option<&mut TickReportJsonlWriter>,
+    mut choice_receipt_writer: Option<&mut ChoiceReceiptJsonlWriter>,
 ) -> Result<(), String> {
     let mut runtime = open_or_create_runtime(config, campaign)?;
     let mut completed = runtime
@@ -295,6 +314,12 @@ fn run_to_tick(
             .advance_and_commit(&mut sink, &actions)
             .map_err(|error| error.to_string())?;
         completed = receipt.resolve_tick().get();
+        if let Some(writer) = choice_receipt_writer.as_deref_mut() {
+            let choices = runtime
+                .observe_committed_choice_receipts_v1(&receipt)
+                .map_err(|error| error.to_string())?;
+            writer.write_receipt(&receipt, choices)?;
+        }
         let reopened_after_commit = should_reopen_after_commit_v2(
             completed,
             target_tick,
@@ -303,7 +328,7 @@ fn run_to_tick(
             reporting,
         );
         if reopened_after_commit {
-            runtime = DurableReplayRuntimeV1::open(config, campaign)
+            runtime = DurableReplayRuntimeV2::open(config, campaign)
                 .map_err(|error| error.to_string())?;
             if runtime
                 .last_committed_tick()
@@ -397,6 +422,8 @@ struct SimulationTickReportV2 {
     per_rule: Vec<RuleTickReportV2>,
     event_count: usize,
     event_digest: [u8; 32],
+    choice_receipt_count: usize,
+    choice_receipt_digest: [u8; 32],
     event_per_type: Vec<EventTypeTickReportV2>,
     observables: Vec<ObservableTickReportV2>,
     persistence_reopened_after_commit: bool,
@@ -409,7 +436,7 @@ struct SimulationTickReportV2 {
 
 impl SimulationTickReportV2 {
     fn try_from_receipt(
-        receipt: &CommittedTickReceiptV1,
+        receipt: &CommittedTickReceiptV2,
         before: &StableGraphStateV1,
         after: &StableGraphStateV1,
         sink: &CollectingSink,
@@ -464,6 +491,8 @@ impl SimulationTickReportV2 {
             per_rule,
             event_count: receipt.event_count(),
             event_digest: receipt.event_digest(),
+            choice_receipt_count: receipt.choice_receipt_count(),
+            choice_receipt_digest: receipt.choice_receipt_digest(),
             event_per_type: collect_event_type_counts_v2(sink, receipt.event_count())?,
             observables: collect_observable_transitions_v2(before, after)?,
             persistence_reopened_after_commit: reopened_after_commit,
@@ -531,6 +560,10 @@ impl SimulationTickReportV2 {
                 "count": self.event_count,
                 "digest_sha256": hex_digest(&self.event_digest),
                 "per_type": event_per_type,
+            },
+            "choice_receipts": {
+                "count": self.choice_receipt_count,
+                "digest_sha256": hex_digest(&self.choice_receipt_digest),
             },
             "observables": observables,
             "persistence": {
@@ -703,7 +736,7 @@ impl TickReportJsonlWriter {
 
     fn write_receipt(
         &mut self,
-        receipt: &CommittedTickReceiptV1,
+        receipt: &CommittedTickReceiptV2,
         before: &StableGraphStateV1,
         after: &StableGraphStateV1,
         sink: &CollectingSink,
@@ -740,15 +773,133 @@ impl TickReportJsonlWriter {
     }
 }
 
+/// Optional, non-authoritative detail log for exact realized choices.
+///
+/// The runtime invokes this writer only after `advance_and_commit` has returned
+/// an acknowledged receipt. The file is create-new, flushed per durable tick,
+/// and deliberately excludes database coordinates, replay-session bytes, and
+/// replay-seed bytes.
+struct ChoiceReceiptJsonlWriter {
+    output: BufWriter<File>,
+}
+
+impl ChoiceReceiptJsonlWriter {
+    fn create(path: &Path) -> Result<Self, String> {
+        let file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
+            .map_err(|_| "choice receipt report path must be new and writable".to_owned())?;
+        Ok(Self {
+            output: BufWriter::new(file),
+        })
+    }
+
+    fn write_receipt(
+        &mut self,
+        receipt: &CommittedTickReceiptV2,
+        choices: &[ChoiceReceiptV1],
+    ) -> Result<(), String> {
+        let resolve_tick = receipt.resolve_tick().get();
+        if choices.len() != receipt.choice_receipt_count() {
+            return Err(format!(
+                "choice receipt detail count differs from acknowledged count after durable tick {resolve_tick}"
+            ));
+        }
+        self.write_tick(resolve_tick, receipt.choice_receipt_digest(), choices)
+    }
+
+    fn write_tick(
+        &mut self,
+        resolve_tick: u64,
+        choice_receipt_digest: [u8; 32],
+        choices: &[ChoiceReceiptV1],
+    ) -> Result<(), String> {
+        let value = choice_receipt_json_value_v1(resolve_tick, choice_receipt_digest, choices)?;
+        serde_json::to_writer(&mut self.output, &value).map_err(|_| {
+            format!("choice receipt JSON serialization failed after durable tick {resolve_tick}")
+        })?;
+        self.output
+            .write_all(b"\n")
+            .and_then(|()| self.output.flush())
+            .map_err(|_| {
+                format!("choice receipt JSONL write failed after durable tick {resolve_tick}")
+            })
+    }
+}
+
+fn choice_receipt_json_value_v1(
+    resolve_tick: u64,
+    choice_receipt_digest: [u8; 32],
+    choices: &[ChoiceReceiptV1],
+) -> Result<serde_json::Value, String> {
+    let mut receipts = Vec::with_capacity(choices.len());
+    for choice in choices {
+        let stable_carrier = choice.stable_carrier().canonical_bytes().map_err(|_| {
+            format!(
+                "choice receipt stable carrier serialization failed after durable tick {resolve_tick}"
+            )
+        })?;
+        let active_elements = choice
+            .active_elements()
+            .iter()
+            .map(|element| {
+                element.canonical_bytes().map(|bytes| hex_bytes(&bytes)).map_err(|_| {
+                    format!(
+                        "choice receipt active element serialization failed after durable tick {resolve_tick}"
+                    )
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let branches = choice
+            .branches()
+            .iter()
+            .enumerate()
+            .map(|(position, branch)| {
+                serde_json::json!({
+                    "position": position,
+                    "member": branch.member.as_str(),
+                    "mass_nanounits": branch.mass.nanounits().to_string(),
+                    "ticket_start": branch.tickets.start.to_string(),
+                    "ticket_end": branch.tickets.end.to_string(),
+                    "ticket_count": branch.tickets.count.to_string(),
+                })
+            })
+            .collect::<Vec<_>>();
+        receipts.push(serde_json::json!({
+            "encounter_ordinal": choice.encounter_ordinal(),
+            "rule_id": choice.rule_id(),
+            "sample": choice.sample(),
+            "slot": choice.slot(),
+            "outcome_enum": choice.outcome_enum(),
+            "stable_carrier_hex": hex_bytes(&stable_carrier),
+            "active_elements_hex": active_elements,
+            "branches": branches,
+            "draw_ticket": choice.draw_ticket().to_string(),
+            "selected_outcome": choice.selected_outcome(),
+            "allocation_digest_sha256": hex_digest(&choice.allocation_digest()),
+            "instance_digest_sha256": hex_digest(&choice.instance_digest()),
+        }));
+    }
+    Ok(serde_json::json!({
+        "schema": CHOICE_RECEIPT_REPORT_SCHEMA_V1,
+        "authority": "post_commit_operational_observation_only",
+        "resolve_tick": resolve_tick,
+        "choice_receipt_count": choices.len(),
+        "choice_receipt_digest_sha256": hex_digest(&choice_receipt_digest),
+        "receipts": receipts,
+    }))
+}
+
 fn open_or_create_runtime(
     config: &Config,
     campaign: CampaignId,
-) -> Result<DurableReplayRuntimeV1<HypergraphStore>, String> {
-    match DurableReplayRuntimeV1::open(config, campaign) {
+) -> Result<DurableReplayRuntimeV2<HypergraphStore>, String> {
+    match DurableReplayRuntimeV2::open(config, campaign) {
         Ok(runtime) => Ok(runtime),
-        Err(RustPersistenceRuntimeErrorV1::FoundationAbsent) => {
+        Err(RustPersistenceRuntimeErrorV2::FoundationAbsent) => {
             let (session, bundle) = runtime_foundation()?;
-            DurableReplayRuntimeV1::create(config, campaign, session, bundle)
+            DurableReplayRuntimeV2::create(config, campaign, session, bundle)
                 .map_err(|error| error.to_string())
         }
         Err(error) => Err(error.to_string()),
@@ -763,7 +914,7 @@ fn runtime_foundation() -> Result<
     String,
 > {
     let (_, rules) = split_content(RULE).map_err(|_| "runtime rule parse refused".to_owned())?;
-    let forms = rules.into_iter().map(|(_, form)| form).collect::<Vec<_>>();
+    let forms = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
     let content = ContentDigest {
         defines_hash: sha256_of(DEFINES),
         rules_hash: rules_hash_of(&forms).map_err(|_| "runtime rule hash refused".to_owned())?,
@@ -803,13 +954,22 @@ fn probe(config: &Config, selected_campaign: Option<CampaignId>) -> Result<(), S
     let mut client = config
         .connect(NoTls)
         .map_err(|error| postgres_failure("database probe connection", &error))?;
-    let authority_rows: i64 = client
+    let authority_row = client
         .query_one(
-            "SELECT pg_catalog.count(*) FROM babylon_meta.persistence_authority_ledger",
+            "SELECT \
+               (SELECT pg_catalog.count(*) \
+                FROM babylon_meta.committed_tick_v2_authority_ledger), \
+               (SELECT pg_catalog.count(*) \
+                FROM babylon_meta.persistence_authority_ledger)",
             &[],
         )
-        .and_then(|row| row.try_get(0))
         .map_err(|error| postgres_failure("authority probe", &error))?;
+    let v2_authority_rows: i64 = authority_row
+        .try_get(0)
+        .map_err(|error| postgres_failure("V2 authority probe decode", &error))?;
+    let predecessor_authority_rows: i64 = authority_row
+        .try_get(1)
+        .map_err(|error| postgres_failure("predecessor authority probe decode", &error))?;
     let row = client
         .query_one(
             "SELECT pg_catalog.count(DISTINCT foundation.campaign_id), pg_catalog.max(marker.resolve_tick) \
@@ -844,9 +1004,10 @@ fn probe(config: &Config, selected_campaign: Option<CampaignId>) -> Result<(), S
         None => ("unset", "unqueried".to_owned()),
     };
     println!(
-        "Rust authority rows={authority_rows}; selected_campaign={selected_campaign_state}; \
-         selected_tail={selected_tail_label}; global_durable_campaigns={campaigns}; \
-         global_highest_tick={}.",
+        "Rust V2 authority rows={v2_authority_rows}; \
+         predecessor epoch-9 authority rows={predecessor_authority_rows}; \
+         selected_campaign={selected_campaign_state}; selected_tail={selected_tail_label}; \
+         global_durable_campaigns={campaigns}; global_highest_tick={}.",
         tail.map_or_else(|| "none".to_owned(), |value| value.to_string()),
     );
     Ok(())
@@ -914,7 +1075,11 @@ fn postgres_failure(operation: &'static str, error: &postgres::Error) -> String 
 }
 
 fn hex_digest(bytes: &[u8; 32]) -> String {
-    let mut encoded = String::with_capacity(64);
+    hex_bytes(bytes)
+}
+
+fn hex_bytes(bytes: &[u8]) -> String {
+    let mut encoded = String::with_capacity(bytes.len().saturating_mul(2));
     for byte in bytes {
         use std::fmt::Write as _;
         write!(&mut encoded, "{byte:02x}").expect("writing to String cannot fail");
@@ -937,12 +1102,16 @@ fn parse_command(mut args: impl Iterator<Item = OsString>) -> Result<Command, ()
         value if value == OsStr::new("probe") && args.next().is_none() => Ok(Command::Probe),
         value if value == OsStr::new("archive") && args.next().is_none() => Ok(Command::Archive),
         value if value == OsStr::new("michigan-smoke") => {
-            let report_jsonl = parse_report_jsonl_only(args)?;
-            Ok(Command::MichiganSmoke { report_jsonl })
+            let (report_jsonl, choice_receipts_jsonl) = parse_jsonl_options(args)?;
+            Ok(Command::MichiganSmoke {
+                report_jsonl,
+                choice_receipts_jsonl,
+            })
         }
         value if value == OsStr::new("run") => {
             let mut ticks = None;
             let mut report_jsonl = None;
+            let mut choice_receipts_jsonl = None;
             let mut restart_every = None;
             while let Some(flag) = args.next() {
                 if flag == OsStr::new("--ticks") {
@@ -956,6 +1125,11 @@ fn parse_command(mut args: impl Iterator<Item = OsString>) -> Result<Command, ()
                         return Err(());
                     }
                     report_jsonl = Some(parse_report_path(args.next().ok_or(())?)?);
+                } else if flag == OsStr::new("--choice-receipts-jsonl") {
+                    if choice_receipts_jsonl.is_some() {
+                        return Err(());
+                    }
+                    choice_receipts_jsonl = Some(parse_report_path(args.next().ok_or(())?)?);
                 } else if flag == OsStr::new("--restart-every") {
                     if restart_every.is_some() {
                         return Err(());
@@ -976,6 +1150,7 @@ fn parse_command(mut args: impl Iterator<Item = OsString>) -> Result<Command, ()
             Ok(Command::Run {
                 ticks,
                 report_jsonl,
+                choice_receipts_jsonl,
                 restart_every,
             })
         }
@@ -983,20 +1158,27 @@ fn parse_command(mut args: impl Iterator<Item = OsString>) -> Result<Command, ()
     }
 }
 
-fn parse_report_jsonl_only(
+fn parse_jsonl_options(
     mut args: impl Iterator<Item = OsString>,
-) -> Result<Option<PathBuf>, ()> {
-    let Some(flag) = args.next() else {
-        return Ok(None);
-    };
-    if flag != OsStr::new("--report-jsonl") {
-        return Err(());
+) -> Result<(Option<PathBuf>, Option<PathBuf>), ()> {
+    let mut report_jsonl = None;
+    let mut choice_receipts_jsonl = None;
+    while let Some(flag) = args.next() {
+        if flag == OsStr::new("--report-jsonl") {
+            if report_jsonl.is_some() {
+                return Err(());
+            }
+            report_jsonl = Some(parse_report_path(args.next().ok_or(())?)?);
+        } else if flag == OsStr::new("--choice-receipts-jsonl") {
+            if choice_receipts_jsonl.is_some() {
+                return Err(());
+            }
+            choice_receipts_jsonl = Some(parse_report_path(args.next().ok_or(())?)?);
+        } else {
+            return Err(());
+        }
     }
-    let path = parse_report_path(args.next().ok_or(())?)?;
-    if args.next().is_some() {
-        return Err(());
-    }
-    Ok(Some(path))
+    Ok((report_jsonl, choice_receipts_jsonl))
 }
 
 fn parse_report_path(value: OsString) -> Result<PathBuf, ()> {
@@ -1012,17 +1194,24 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
 
+    use babylon_bsl::probability::{
+        realize_kernel, FiniteKernelV1, KernelBranchV1, KernelInstanceIdentityV1, Mass,
+    };
+    use babylon_bsl::reader::{Atom, SExpr};
     use babylon_bsl::structural_verbs::CollectingSink;
+    use babylon_bsl::types::EnumTypeId;
     use babylon_graph::hypergraph_store::HypergraphStore;
+    use babylon_graph::stable_element::StableElementKeyV1;
     use babylon_graph::substrate::{GraphSubstrate, NodeId};
     use babylon_kernel::SessionId;
     use babylon_practice_contract::ordered_action_v1::OrderedPracticeActionBatchV1;
+    use babylon_tick::choice_receipt::ChoiceReceiptV1;
     use babylon_tick::TickSession;
 
     use super::{
         collect_event_type_counts_v2, collect_observable_transitions_v2, foundation_identity_v2,
-        parse_command, runtime_foundation, should_reopen_after_commit_v2, Command,
-        EventTypeTickReportV2, FoundationIdentityTickReportV2, ObservableTickReportV2,
+        parse_command, runtime_foundation, should_reopen_after_commit_v2, ChoiceReceiptJsonlWriter,
+        Command, EventTypeTickReportV2, FoundationIdentityTickReportV2, ObservableTickReportV2,
         RuleTickReportV2, SimulationTickReportV2, TickReportJsonlWriter,
         MICHIGAN_SMOKE_RESTART_TICKS, MICHIGAN_SMOKE_TICKS, RULE, SCENARIO, TICK_REPORT_SCHEMA_V2,
     };
@@ -1064,6 +1253,8 @@ mod tests {
             ],
             event_count: 1,
             event_digest: [0x55; 32],
+            choice_receipt_count: 2,
+            choice_receipt_digest: [0x56; 32],
             event_per_type: vec![EventTypeTickReportV2 {
                 event_type: "EventType/EXAMPLE".to_owned(),
                 count: 1,
@@ -1126,6 +1317,56 @@ mod tests {
             material_row_digest: [0x66; 32],
             tick_content_hash: [0x77; 32],
         }
+    }
+
+    fn choice_receipt_fixture() -> ChoiceReceiptV1 {
+        let stable_carrier = StableElementKeyV1::Node {
+            scenario: "pilot/struggle".to_owned(),
+            local_name: "worker".to_owned(),
+        };
+        let identity = KernelInstanceIdentityV1 {
+            replay_session: b"must-not-appear-in-operational-json".to_vec(),
+            replay_seed: 17_i64.to_be_bytes(),
+            tick: 7,
+            rule_id: "struggle/spark-mechanic".to_owned(),
+            subject: stable_carrier,
+            active_elements: Vec::new(),
+        };
+        let kernel = FiniteKernelV1 {
+            sample: "struggle/spark".to_owned(),
+            sample_path: vec![0, 1, 1],
+            slot: 0,
+            slot_path: Vec::new(),
+            enum_type: EnumTypeId(0),
+            enum_type_name: "StruggleSparkOutcome".to_owned(),
+            branches: ["EXCESSIVE_FORCE", "NO_INCIDENT"]
+                .into_iter()
+                .enumerate()
+                .map(|(ordinal, member)| KernelBranchV1 {
+                    enum_type: "StruggleSparkOutcome".to_owned(),
+                    member: member.to_owned(),
+                    ordinal: u32::try_from(ordinal).expect("two branches"),
+                    mass: SExpr::Atom(Atom::Mass(Mass::from_nanounits(1))),
+                    effects: Vec::new(),
+                    form_path: vec![0, 1, u32::try_from(ordinal).expect("two branches")],
+                    head_path: vec![0, 1, u32::try_from(ordinal).expect("two branches"), 0],
+                    mass_path: vec![0, 1, u32::try_from(ordinal).expect("two branches"), 3],
+                    mass_literals: Vec::new(),
+                    quantize_mass_paths: Vec::new(),
+                    static_mass: Some(Mass::from_nanounits(1)),
+                })
+                .collect(),
+            form_path: vec![0, 1],
+            head_path: vec![0, 1, 0],
+        };
+        let realization = realize_kernel(
+            &identity,
+            &kernel,
+            &[Mass::from_nanounits(1), Mass::from_nanounits(3)],
+            0,
+        )
+        .expect("valid finite realization");
+        ChoiceReceiptV1::try_new(0, &identity, realization).expect("valid choice receipt")
     }
 
     fn assert_report_core_json(row: &serde_json::Value) {
@@ -1433,7 +1674,78 @@ mod tests {
     }
 
     #[test]
-    fn production_commands_accept_the_closed_supported_surface() {
+    fn choice_receipt_jsonl_is_exact_deterministic_and_secret_safe() {
+        let first_path = report_path("choice-first");
+        let second_path = report_path("choice-second");
+        let choices = [choice_receipt_fixture()];
+        let mut first =
+            ChoiceReceiptJsonlWriter::create(&first_path).expect("new first choice path");
+        first
+            .write_tick(7, [0x55; 32], &choices)
+            .expect("first choice row");
+        let first_bytes = std::fs::read(&first_path).expect("flushed first choice row");
+        let mut second =
+            ChoiceReceiptJsonlWriter::create(&second_path).expect("new second choice path");
+        second
+            .write_tick(7, [0x55; 32], &choices)
+            .expect("second choice row");
+        let second_bytes = std::fs::read(&second_path).expect("flushed second choice row");
+
+        assert_eq!(first_bytes, second_bytes);
+        assert_eq!(first_bytes.last(), Some(&b'\n'));
+        let row: serde_json::Value =
+            serde_json::from_slice(&first_bytes).expect("one valid choice JSON object");
+        assert_eq!(
+            row["schema"],
+            serde_json::Value::String(super::CHOICE_RECEIPT_REPORT_SCHEMA_V1.to_owned())
+        );
+        assert_eq!(row["authority"], "post_commit_operational_observation_only");
+        assert_eq!(row["resolve_tick"], 7);
+        assert_eq!(row["choice_receipt_count"], 1);
+        assert_eq!(row["receipts"][0]["encounter_ordinal"], 0);
+        assert_eq!(row["receipts"][0]["rule_id"], "struggle/spark-mechanic");
+        assert_eq!(row["receipts"][0]["sample"], "struggle/spark");
+        assert_eq!(row["receipts"][0]["selected_outcome"], "EXCESSIVE_FORCE");
+        assert_eq!(row["receipts"][0]["draw_ticket"], "0");
+        assert_eq!(row["receipts"][0]["branches"][0]["mass_nanounits"], "1");
+        assert_eq!(row["receipts"][0]["branches"][1]["mass_nanounits"], "3");
+        let rendered = String::from_utf8(first_bytes).expect("choice report is UTF-8");
+        assert!(!rendered.contains("must-not-appear-in-operational-json"));
+        assert!(!rendered.contains(super::DSN_ENV));
+        assert!(!rendered.contains("replay_seed"));
+        assert!(!rendered.contains("replay_session"));
+
+        drop(first);
+        drop(second);
+        std::fs::remove_file(first_path).expect("remove first choice fixture");
+        std::fs::remove_file(second_path).expect("remove second choice fixture");
+    }
+
+    #[test]
+    fn choice_receipt_jsonl_refuses_overwrite_and_names_post_commit_write_failure() {
+        let path = report_path("choice-existing");
+        let writer = ChoiceReceiptJsonlWriter::create(&path).expect("new choice report path");
+        assert!(ChoiceReceiptJsonlWriter::create(&path).is_err());
+        drop(writer);
+        std::fs::remove_file(&path).expect("remove create-new fixture");
+
+        std::fs::write(&path, b"").expect("create read-only choice fixture");
+        let read_only = std::fs::File::open(&path).expect("open fixture without write access");
+        let mut writer = ChoiceReceiptJsonlWriter {
+            output: std::io::BufWriter::new(read_only),
+        };
+        let error = writer
+            .write_tick(7, [0x55; 32], &[])
+            .expect_err("read-only choice report must refuse the acknowledged row");
+        assert_eq!(
+            error,
+            "choice receipt JSONL write failed after durable tick 7"
+        );
+        std::fs::remove_file(path).expect("remove read-only choice fixture");
+    }
+
+    #[test]
+    fn production_run_commands_accept_the_closed_supported_surface() {
         assert_eq!(
             parse_command(vec!["activate".into()].into_iter()),
             Ok(Command::Activate)
@@ -1451,6 +1763,7 @@ mod tests {
             Ok(Command::Run {
                 ticks: 5,
                 report_jsonl: None,
+                choice_receipts_jsonl: None,
                 restart_every: None,
             })
         );
@@ -1468,6 +1781,7 @@ mod tests {
             Ok(Command::Run {
                 ticks: 5,
                 report_jsonl: Some("report.jsonl".into()),
+                choice_receipts_jsonl: None,
                 restart_every: None,
             })
         );
@@ -1485,6 +1799,7 @@ mod tests {
             Ok(Command::Run {
                 ticks: 5,
                 report_jsonl: Some("report.jsonl".into()),
+                choice_receipts_jsonl: None,
                 restart_every: None,
             })
         );
@@ -1498,15 +1813,22 @@ mod tests {
                     "520".into(),
                     "--report-jsonl".into(),
                     "report.jsonl".into(),
+                    "--choice-receipts-jsonl".into(),
+                    "choices.jsonl".into(),
                 ]
                 .into_iter()
             ),
             Ok(Command::Run {
                 ticks: 520,
                 report_jsonl: Some("report.jsonl".into()),
+                choice_receipts_jsonl: Some("choices.jsonl".into()),
                 restart_every: Some(52),
             })
         );
+    }
+
+    #[test]
+    fn production_nonrun_commands_accept_the_closed_supported_surface() {
         assert_eq!(
             parse_command(vec!["probe".into()].into_iter()),
             Ok(Command::Probe)
@@ -1517,7 +1839,10 @@ mod tests {
         );
         assert_eq!(
             parse_command(vec!["michigan-smoke".into()].into_iter()),
-            Ok(Command::MichiganSmoke { report_jsonl: None })
+            Ok(Command::MichiganSmoke {
+                report_jsonl: None,
+                choice_receipts_jsonl: None,
+            })
         );
         assert_eq!(
             parse_command(
@@ -1530,6 +1855,23 @@ mod tests {
             ),
             Ok(Command::MichiganSmoke {
                 report_jsonl: Some("report.jsonl".into()),
+                choice_receipts_jsonl: None,
+            })
+        );
+        assert_eq!(
+            parse_command(
+                vec![
+                    "michigan-smoke".into(),
+                    "--choice-receipts-jsonl".into(),
+                    "choices.jsonl".into(),
+                    "--report-jsonl".into(),
+                    "report.jsonl".into(),
+                ]
+                .into_iter()
+            ),
+            Ok(Command::MichiganSmoke {
+                report_jsonl: Some("report.jsonl".into()),
+                choice_receipts_jsonl: Some("choices.jsonl".into()),
             })
         );
     }

@@ -145,7 +145,10 @@
 ; `new-consciousness`, `triggering-source`. Both emits read `self`/`it` as
 ; `Value::NodeRef` directly — `emit`'s payload items are ordinary exprs
 ; (`structural_verbs.rs::emit`), so no extra plumbing is needed beyond what
-; the write already computes.
+; the write already computes. Amendment AJ forbids a Probability-typed value
+; in an authored event payload. The two direct consciousness observations are
+; therefore explicitly derived as Real values with `(- value 0)`, preserving
+; their exact binary64 observation without making Probability an event fact.
 ;
 ; FUEL: `:fuel` below is not a guess — no per-iteration binding form exists
 ; (plan §4.3), so every per-target quantity (the target's `revolutionary`
@@ -162,6 +165,9 @@
 ; 1126` (the old, now-too-low value) and reading the checker's own refusal
 ; (`E-LOAD-040: ... static bound 3502 exceeds its declared :fuel 1126`) back
 ; verbatim, not guessed or rounded up.
+; Amendment AJ's three explicit Probability-to-Real observations raise the
+; executable bound from the subsequently current 4079 to 4114, again read
+; directly from E-LOAD-040 rather than estimated.
 ;
 ; "solidarity" is a REGISTERED system namespace as of Task 1
 ; (`babylon-tick/src/lib.rs`'s `systems` HashSet) — this pack changes no
@@ -191,7 +197,7 @@
   :role mechanic
   :evidence derived
   :material-basis "SolidaritySystem.step (solidarity.py:97-202): skip inactive source/target (:126-130), strength <= 0 (:132-136, Fascist Bifurcation), source at/below activation_threshold (:142-144); delta = solidarity_strength * (source_consciousness - target_consciousness) (formulas/solidarity.py:36); skip |delta| < negligible_transmission (:159-161); write target (re-pointed to social-class/revolutionary, D-record 1) to max(0.0, min(1.0, target + delta)) (:164-169), the update RE-EXPRESSED as a convex combination for kind-coherence — see the preceding comment, #491 T1 S1; emit CONSCIOUSNESS_TRANSMISSION with the raw delta and the clamped new value (:171-187); emit MASS_AWAKENING when old_consciousness < mass_awakening_threshold <= new_consciousness (:190-202, asymmetric <, <= arms, both against the clamped new value). Push form (plan §2.2). set not add: E-EVAL-020 forbids unclamped accumulation (plan §2.3). Multi-inbound last-write-wins diverges from frozen's sequential apply (D-record 2)."
-  :fuel 4079
+  :fuel 4114
   (bindings
     (binding active :field social-class/active :optional :default 1)
     (binding r :field social-class/revolutionary :optional :default 0.0p)
@@ -313,8 +319,9 @@
                 (- r (field-of it social-class/revolutionary))))
             (solidarity-strength
               (field-of (edge-between EdgeType/SOLIDARITY self it) solidarity/strength))
-            (source-consciousness r)
-            (old-target-consciousness (field-of it social-class/revolutionary))
+            (source-consciousness (- r 0))
+            (old-target-consciousness
+              (- (field-of it social-class/revolutionary) 0))
             (new-target-consciousness
               (if
                 (<
@@ -462,7 +469,8 @@
             (emit
               EventType/MASS_AWAKENING
               (target-id it)
-              (old-consciousness (field-of it social-class/revolutionary))
+              (old-consciousness
+                (- (field-of it social-class/revolutionary) 0))
               (new-consciousness
                 (if
                   (<

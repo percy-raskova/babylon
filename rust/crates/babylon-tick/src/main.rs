@@ -107,6 +107,8 @@ mod tests {
             per_rule_considered: vec![("vitality/emit-only".to_owned(), 3)],
             per_rule_fired: vec![("vitality/emit-only".to_owned(), 2)],
             audit_receipts: Vec::new(),
+            choice_receipts: Vec::new(),
+            committed_events: Vec::new(),
         };
 
         let output = format_report(&report);
@@ -141,6 +143,8 @@ mod tests {
             per_rule_considered: Vec::new(),
             per_rule_fired: Vec::new(),
             audit_receipts: Vec::new(),
+            choice_receipts: Vec::new(),
+            committed_events: Vec::new(),
         };
 
         assert!(!format_report(&report).contains("graph state unchanged"));

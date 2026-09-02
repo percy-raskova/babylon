@@ -34,9 +34,11 @@ service of play. It must never masquerade as an empirical observation.
 - Article V vocabulary authority status: superseded
 - NarrationEnvelope status: superseded_proposal
 - In-memory whole-tick rollback status: implemented_current_PER-18
-- CommittedTickEnvelope status: planned
+- CommittedTickEnvelope status: implemented_current_V2_only
 - DecisionSurfaceContract executable status: planned
-- Persistence writer status: accepted_cutover_law
+- Persistence writer status: implemented_current_V2_only
+- PostgreSQL runtime status: PostgreSQL_17_only
+- PER-20 durable boundary status: implemented_current
 - PER-48 status: Done
 - PostgreSQL boundary ADR: ADR220_rust_owned_postgresql_persistence_boundary
 - Attributed membership identity status: implemented_current
@@ -63,17 +65,20 @@ and surface inventory at Gate 3; this addendum does not claim that code exists.
 
 The historical `NarrationEnvelope` proposal below is not an implemented v4
 boundary. PER-18 implements detached in-memory adjudication and publishes a
-tick only after rules, event preparation, and hashes succeed. Gate 3 still
-plans `CommittedTickEnvelope`, durable state, and the Archive outbox.
-Durability begins after deterministic adjudication. PER-48 is Done;
-`ADR220_rust_owned_postgresql_persistence_boundary` records the accepted law.
-Python remains the sole live PostgreSQL writer before cutover. The one-way
-cutover disables Python migration and runtime-write entry points before Rust
-assumes game-managed PostgreSQL connections, migrations, the typed tick
-transaction, hydration, H3 codecs, and compatibility views. Surviving Python
-data-build, API, AI, document, and CLI roles remain. Transition observers may
-read versioned views but cannot write or run DDL. This is accepted boundary law,
-not a claim that PER-20 has implemented the cutover.
+tick only after rules, event preparation, and hashes succeed. PER-20 implements
+the Gate 3 `CommittedTickEnvelopeV2`, durable state, and transactional Archive
+outbox. Durability begins after deterministic adjudication. PER-48 is Done;
+`ADR220_rust_owned_postgresql_persistence_boundary` records the accepted
+one-way cutover. Rust is the sole live game-managed PostgreSQL 17 authority,
+and its durable reader and writer are V2-only. Python retains its declared
+data-build, API, AI, document, optimization, and CLI periphery, but it has no
+game-state writer, transition reader, migration, DDL, or game-managed
+connection authority.
+
+Historical cutover sequencing: before activation, Python was the sole live
+PostgreSQL writer, and its game-managed migration and runtime-write entry
+points had to be disabled before Rust assumed authority. That requirement is
+satisfied and has no current runtime force.
 
 The current Rust graph carries base membership identity. Its attributed
 membership payload is empty, absent from canonical hashing, unwritten, and

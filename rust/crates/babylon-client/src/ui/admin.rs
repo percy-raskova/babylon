@@ -187,6 +187,8 @@ mod tests {
                 ("vitality/subsistence-and-death".to_owned(), 6),
             ],
             audit_receipts: Vec::new(),
+            choice_receipts: Vec::new(),
+            committed_events: Vec::new(),
         };
         let rendered = format_tick_report(&report);
         assert_eq!(

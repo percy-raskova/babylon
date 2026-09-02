@@ -98,6 +98,7 @@ fn encode_atom(atom: &Atom, out: &mut Vec<u8>) -> Result<(), CasError> {
     let (kind, payload): (&str, Vec<u8>) = match atom {
         Atom::Int(v) => ("int", v.to_be_bytes().to_vec()),
         Atom::Currency(c) => ("cur", c.micro_units().to_be_bytes().to_vec()),
+        Atom::Mass(mass) => ("mass", mass.nanounits().to_be_bytes().to_vec()),
         Atom::Scaled(s) => {
             let kind = match s.kind {
                 ScaledKind::Probability => "prob",
@@ -210,6 +211,8 @@ fn fixed_positionals(tag: &str) -> Option<usize> {
     match tag {
         "neighbors" => Some(4),
         "metric" => Some(2),
+        "choose" => Some(0),
+        "branch" => Some(1),
         _ => None,
     }
 }

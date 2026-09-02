@@ -90,6 +90,12 @@ BEGIN
                 relation_name,
                 relation_kind;
         END IF;
+        -- Hold the strongest relation lock through the empty census, disposition receipt, and
+        -- later DROP. This closes the writer race between observing zero rows and retiring the
+        -- exact legacy authority table.
+        EXECUTE pg_catalog.format(
+            'LOCK TABLE %s IN ACCESS EXCLUSIVE MODE', relation_oid
+        );
         EXECUTE pg_catalog.format(
             'SELECT pg_catalog.count(*) FROM %s', relation_oid
         ) INTO row_count;
@@ -244,6 +250,21 @@ DROP TABLE IF EXISTS
     public.game_session;
 
 DROP TABLE IF EXISTS public._babylon_schema_stamp;
+
+-- These opaque predecessor tables are fixed epoch-8 relations, so lock the
+-- entire closed set before its aggregate empty census. The locks remain held
+-- through every DROP and prevent a writer from entering the count-to-drop
+-- window.
+LOCK TABLE
+    babylon_state.tick_graph_row,
+    babylon_state.tick_state_row,
+    babylon_state.tick_event_row,
+    babylon_state.tick_subsystem_row,
+    babylon_state.tick_conservation_row,
+    babylon_state.tick_boundary_flow_row,
+    babylon_state.tick_checkpoint_row,
+    babylon_state.tick_archive_dirty_receipt_row
+IN ACCESS EXCLUSIVE MODE;
 
 DO $rust_persistence_opaque_preflight$
 DECLARE

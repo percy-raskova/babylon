@@ -24,20 +24,20 @@
 
 # Version 2 adds the required fresh-parse site and distinct-name totals.
 schema_version = 2
-measured_at = "2026-08-25"
+measured_at = "2026-09-01"
 # The fresh AST count of `babylon.models.enums.events.EventType` members —
 # tier1 + tier2 + tier3 must sum to exactly this (CLAUDE.md's "100",
 # AST-verified, corrects the BSL-refactor-program survey's stale "98").
 python_event_type_total = 100
 # Fresh parse totals across every `(emit …)` form and distinct event name.
 # The registry test re-measures both values on every run.
-bsl_emit_site_total = 17
-bsl_emit_name_total = 15
+bsl_emit_site_total = 18
+bsl_emit_name_total = 16
 bsl_content_glob = "rust/crates/babylon-tick/content/rules/*.bsl"
 
 # =============================================================================
-# TIER 1 — verified-bsl (14 members; 14 real `(emit …)` distinct EventTypes
-# out of the 17 total `(emit …)` sites and 15 distinct event names a fresh scan
+# TIER 1 — verified-bsl (15 members; 15 real `(emit …)` distinct EventTypes
+# out of the 18 total `(emit …)` sites and 16 distinct event names a fresh scan
 # of content/rules/*.bsl finds; the one remaining BSL-only name is in
 # `unminted_bsl_only` below).
 # =============================================================================
@@ -56,7 +56,7 @@ keys = [
 
 [[tier1]]
 event_type = "CONSCIOUSNESS_TRANSMISSION"
-citations = ["rust/crates/babylon-tick/content/rules/solidarity.bsl:306"]
+citations = ["rust/crates/babylon-tick/content/rules/solidarity.bsl:312"]
 keys = [
   { name = "source-id", required = true, source = "bsl" },
   { name = "target-id", required = true, source = "bsl" },
@@ -69,12 +69,24 @@ keys = [
 
 [[tier1]]
 event_type = "MASS_AWAKENING"
-citations = ["rust/crates/babylon-tick/content/rules/solidarity.bsl:462"]
+citations = ["rust/crates/babylon-tick/content/rules/solidarity.bsl:469"]
 keys = [
   { name = "target-id", required = true, source = "bsl" },
   { name = "old-consciousness", required = true, source = "bsl" },
   { name = "new-consciousness", required = true, source = "bsl" },
   { name = "triggering-source", required = true, source = "bsl" },
+]
+
+[[tier1]]
+event_type = "EXCESSIVE_FORCE"
+citations = ["rust/crates/babylon-tick/content/rules/struggle-spark.bsl:50"]
+keys = [
+  { name = "subject", required = true, source = "bsl" },
+  { name = "repression", required = true, source = "bsl" },
+  { name = "backfire", required = true, source = "bsl" },
+  { name = "incident-tick", required = true, source = "bsl" },
+  { name = "node-id", required = false, source = "builder-only", note = "The frozen Python EVENT_BUILDERS entry reads node_id, while Amendment AJ's BSL projection emits the observed carrier under subject. This spelling and identity-shape divergence is recorded rather than hidden." },
+  { name = "spark-probability", required = false, source = "builder-only", note = "The frozen Python builder still reads spark_probability defensively. Amendment AJ forbids authored event probability: BSL derives likelihood from the kernel recognizer preimage and never emits this key." },
 ]
 
 [[tier1]]
@@ -234,8 +246,8 @@ keys = [
 ]
 
 # =============================================================================
-# TIER 2 — verified-python-builder (68 members: every EVENT_BUILDERS entry
-# minus the 12 Tier 1 EventTypes above — 80 total builder entries, AST-
+# TIER 2 — verified-python-builder (65 members: every EVENT_BUILDERS entry
+# minus the 15 Tier 1 EventTypes above — 80 total builder entries, AST-
 # counted). Keys are transcribed VERBATIM in EVENT_BUILDERS' own snake_case
 # (never converted to kebab — that would misrepresent an un-cited spelling as
 # BSL-native). No completeness claim: this is what the builder currently
@@ -436,14 +448,6 @@ keys = [
   { name = "winning_coalition", required = true, source = "builder" },
   { name = "spoiler_target", required = true, source = "builder" },
   { name = "spoiler_shift", required = true, source = "builder" },
-]
-
-[[tier2]]
-event_type = "EXCESSIVE_FORCE"
-keys = [
-  { name = "node_id", required = true, source = "builder" },
-  { name = "repression", required = true, source = "builder" },
-  { name = "spark_probability", required = true, source = "builder" },
 ]
 
 [[tier2]]

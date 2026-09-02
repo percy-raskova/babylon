@@ -348,6 +348,13 @@ pub fn identity_of(err: &LoadError) -> Option<ErrorIdentity> {
         LoadError::ElementName(e) => Some(element_name_identity(e)),
         LoadError::Bound(e) => bound_identity(e),
         LoadError::Causal(e) => causal_identity(e),
+        LoadError::Probability(e) => match e {
+            crate::probability::ProbabilityError::DuplicateSample { sample, .. }
+            | crate::probability::ProbabilityError::ProjectionNotAdjacent { sample, .. } => {
+                Some(ErrorIdentity::Field(sample.clone()))
+            }
+            _ => None,
+        },
         LoadError::Intrinsic(e) => decl_identity(e),
         LoadError::DuplicateRuleId { rule_id } => Some(ErrorIdentity::RuleId(rule_id.clone())),
         // `Read`: E-LEX is located via `ReadError.position` ->

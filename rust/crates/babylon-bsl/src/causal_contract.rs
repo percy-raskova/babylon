@@ -255,6 +255,9 @@ pub struct GovernedRuleAttribution {
 const ATTRIBUTION_OWNER: &str = "Director";
 const ATTRIBUTION_DATE: &str = "2026-08-23";
 const ATTRIBUTION_ADR: &str = "ADR224";
+const PROBABILITY_OWNER: &str = "Director";
+const PROBABILITY_DATE: &str = "2026-09-01";
+const PROBABILITY_ADR: &str = "ADR248";
 
 const fn governed_attribution(rule_id: &'static str, role: RuleRole) -> GovernedRuleAttribution {
     GovernedRuleAttribution {
@@ -333,6 +336,22 @@ pub const GOVERNED_RULE_ATTRIBUTIONS: &[GovernedRuleAttribution] = &[
     governed_attribution("production/p3-employed-fallback", RuleRole::Mechanic),
     governed_attribution("production/p4-extraction-intensity", RuleRole::Mechanic),
     governed_attribution("solidarity/p0-transmit", RuleRole::Mechanic),
+    GovernedRuleAttribution {
+        rule_id: "struggle/spark-mechanic",
+        role: RuleRole::Mechanic,
+        evidence: EvidenceClass::Designed,
+        owner: PROBABILITY_OWNER,
+        date: PROBABILITY_DATE,
+        adr: PROBABILITY_ADR,
+    },
+    GovernedRuleAttribution {
+        rule_id: "struggle/spark-recognizer",
+        role: RuleRole::Recognizer,
+        evidence: EvidenceClass::Derived,
+        owner: PROBABILITY_OWNER,
+        date: PROBABILITY_DATE,
+        adr: PROBABILITY_ADR,
+    },
     governed_attribution("territory/p1-heat-dynamics", RuleRole::Mechanic),
     governed_attribution("territory/p2-eviction-pipeline", RuleRole::Mechanic),
     governed_attribution("territory/p3-spillover", RuleRole::Mechanic),
@@ -456,8 +475,8 @@ const RECOGNITION_OWNER: &str = "Director";
 const RECOGNITION_DATE: &str = "2026-08-23";
 const RECOGNITION_ADR: &str = "ADR224";
 
-/// The complete ADR224 allowance table. External-event and intent roles have
-/// no rows and therefore cannot produce effects yet.
+/// The complete governed allowance table. External-event and intent roles
+/// have no rows and therefore cannot produce effects yet.
 pub const GOVERNED_EFFECT_ALLOWANCES: &[GovernedEffectAllowance] = &[
     GovernedEffectAllowance {
         rule_id: "control-ratio/c03-crisis",
@@ -508,6 +527,16 @@ pub const GOVERNED_EFFECT_ALLOWANCES: &[GovernedEffectAllowance] = &[
         owner: RECOGNITION_OWNER,
         date: RECOGNITION_DATE,
         adr: RECOGNITION_ADR,
+    },
+    GovernedEffectAllowance {
+        rule_id: "struggle/spark-recognizer",
+        role: RuleRole::Recognizer,
+        effect: AllowedEffect::Event("EventType/EXCESSIVE_FORCE"),
+        kind: AllowanceKind::RecognitionEvent,
+        reason: "announce the projected excessive-force outcome of the adjacent struggle kernel",
+        owner: PROBABILITY_OWNER,
+        date: PROBABILITY_DATE,
+        adr: PROBABILITY_ADR,
     },
 ];
 
@@ -1089,12 +1118,15 @@ mod tests {
             vocabulary: Box::leak(Box::new(BindingVocabulary {
                 fields: HashSet::new(),
                 consts: HashSet::new(),
+                probability_consts: HashSet::new(),
                 metrics: HashSet::new(),
             })),
             types: Box::leak(Box::new(TypeEnv {
                 fields: HashMap::new(),
                 exemptions: &[],
             })),
+            enums: Box::leak(Box::new(crate::types::EnumRegistry::default())),
+            const_values: Box::leak(Box::new(HashMap::new())),
             ceilings: Box::leak(Box::new(CardinalityCeilings::new(
                 HashMap::new(),
                 HashMap::new(),
@@ -1324,13 +1356,32 @@ mod tests {
              (emit EventType/TERMINAL_DECISION) \
              (update-node self institution/terminal-decision-emitted (set 1))))",
         );
+        let spark = rule(
+            "(rule struggle/spark-recognizer :role recognizer :evidence derived \
+             :material-basis \"recognized excessive force\" :fuel 64 (bindings) \
+             (effects (emit EventType/EXCESSIVE_FORCE)))",
+        );
         assert!(check_rule_contract(&c03).is_ok());
         assert!(check_rule_contract(&c04).is_ok());
+        assert!(check_rule_contract(&spark).is_ok());
+        let spark_allowances: Vec<AllowedEffect> = GOVERNED_EFFECT_ALLOWANCES
+            .iter()
+            .filter(|row| row.rule_id == "struggle/spark-recognizer")
+            .map(|row| row.effect)
+            .collect();
+        assert_eq!(
+            spark_allowances,
+            vec![AllowedEffect::Event("EventType/EXCESSIVE_FORCE")]
+        );
     }
 
     #[test]
     fn governed_recognizers_cannot_escalate_themselves_to_mechanic() {
-        for rule_id in ["control-ratio/c03-crisis", "control-ratio/c04-terminal"] {
+        for rule_id in [
+            "control-ratio/c03-crisis",
+            "control-ratio/c04-terminal",
+            "struggle/spark-recognizer",
+        ] {
             let ast = rule(&format!(
                 "(rule {rule_id} :role mechanic :evidence derived \
                  :material-basis \"role escalation probe\" :fuel 8 (bindings) (effects))"
@@ -1487,34 +1538,56 @@ mod tests {
     }
 
     #[test]
-    fn governed_rows_carry_the_required_provenance() {
-        assert_eq!(GOVERNED_EFFECT_ALLOWANCES.len(), 5);
+    fn governed_allowance_rows_carry_the_required_provenance() {
+        assert_eq!(GOVERNED_EFFECT_ALLOWANCES.len(), 6);
         for row in GOVERNED_EFFECT_ALLOWANCES {
             assert!(!row.reason.is_empty());
             assert_eq!(row.owner, "Director");
-            assert_eq!(row.date, "2026-08-23");
-            assert_eq!(row.adr, "ADR224");
+            if row.rule_id.starts_with("struggle/") {
+                assert_eq!(row.date, "2026-09-01");
+                assert_eq!(row.adr, "ADR248");
+            } else {
+                assert_eq!(row.date, "2026-08-23");
+                assert_eq!(row.adr, "ADR224");
+            }
         }
-        assert_eq!(GOVERNED_RULE_ATTRIBUTIONS.len(), 65);
+    }
+
+    #[test]
+    fn governed_attribution_rows_carry_the_required_provenance() {
+        assert_eq!(GOVERNED_RULE_ATTRIBUTIONS.len(), 67);
         assert_eq!(
             GOVERNED_RULE_ATTRIBUTIONS
                 .iter()
                 .filter(|row| row.role == RuleRole::Mechanic)
                 .count(),
-            63
+            64
         );
         assert_eq!(
             GOVERNED_RULE_ATTRIBUTIONS
                 .iter()
                 .filter(|row| row.role == RuleRole::Recognizer)
                 .count(),
-            2
+            3
         );
+        assert!(GOVERNED_RULE_ATTRIBUTIONS
+            .windows(2)
+            .all(|rows| rows[0].rule_id < rows[1].rule_id));
         for row in GOVERNED_RULE_ATTRIBUTIONS {
-            assert_eq!(row.evidence, EvidenceClass::Derived);
             assert_eq!(row.owner, "Director");
-            assert_eq!(row.date, "2026-08-23");
-            assert_eq!(row.adr, "ADR224");
+            if row.rule_id == "struggle/spark-mechanic" {
+                assert_eq!(row.evidence, EvidenceClass::Designed);
+                assert_eq!(row.date, "2026-09-01");
+                assert_eq!(row.adr, "ADR248");
+            } else if row.rule_id == "struggle/spark-recognizer" {
+                assert_eq!(row.evidence, EvidenceClass::Derived);
+                assert_eq!(row.date, "2026-09-01");
+                assert_eq!(row.adr, "ADR248");
+            } else {
+                assert_eq!(row.evidence, EvidenceClass::Derived);
+                assert_eq!(row.date, "2026-08-23");
+                assert_eq!(row.adr, "ADR224");
+            }
         }
     }
 

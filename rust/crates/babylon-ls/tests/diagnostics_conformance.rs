@@ -22,7 +22,9 @@ use std::collections::{HashMap, HashSet};
 
 use babylon_bsl::rule_pipeline::{load_rule, LoadContext, LoadError};
 use babylon_bsl::scenario::load_scenario;
-use babylon_bsl::{BindingVocabulary, CardinalityCeilings, DeclError, IntrinsicCosts, TypeEnv};
+use babylon_bsl::{
+    BindingVocabulary, CardinalityCeilings, DeclError, EnumRegistry, IntrinsicCosts, TypeEnv, Value,
+};
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_tick::diagnose_content_set;
 use lsp_types::{DiagnosticSeverity, NumberOrString, Url};
@@ -74,6 +76,8 @@ fn family_of(d: &lsp_types::Diagnostic) -> String {
 struct Minimal {
     vocabulary: BindingVocabulary,
     types: TypeEnv,
+    enums: EnumRegistry,
+    const_values: HashMap<String, Value>,
     ceilings: CardinalityCeilings,
     intrinsics: IntrinsicCosts,
     systems: HashSet<String>,
@@ -87,6 +91,8 @@ impl Minimal {
                 fields: HashMap::new(),
                 exemptions: &[],
             },
+            enums: EnumRegistry::default(),
+            const_values: HashMap::new(),
             ceilings: CardinalityCeilings::default(),
             intrinsics: IntrinsicCosts::default(),
             systems: systems.iter().map(|s| (*s).to_owned()).collect(),
@@ -97,6 +103,8 @@ impl Minimal {
         LoadContext {
             vocabulary: &self.vocabulary,
             types: &self.types,
+            enums: &self.enums,
+            const_values: &self.const_values,
             ceilings: &self.ceilings,
             intrinsics: &self.intrinsics,
             systems: &self.systems,
@@ -153,7 +161,7 @@ const PROBE_SCENARIO: &str = "(scenario ft/probe)";
 
 fn duplicate_intrinsic_manifest() -> ContentSetManifest {
     let toml = r#"
-schema = 1
+schema = 2
 [[set]]
 id = "probe/duplicate-intrinsic"
 scenario = "scenario.bscn"
@@ -276,7 +284,7 @@ fn row_5_a_bsl_with_no_manifest_row_gets_the_information_notice() {
 #[test]
 fn determinism_row_repeat_and_reversed_order_are_byte_identical() {
     let toml = r#"
-schema = 1
+schema = 2
 [[set]]
 id = "probe/determinism"
 scenario = "scenario.bscn"

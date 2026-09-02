@@ -1,7 +1,7 @@
 Architecture Boundary
 =====================
 
-``CONSTITUTION.md`` v4.0.0 governs the architecture. ``NORTH_STAR.md`` gives
+``CONSTITUTION.md`` v4.1.0 governs the architecture. ``NORTH_STAR.md`` gives
 the game direction and gate order. This page describes the live boundary after
 the one-way PostgreSQL authority cutover.
 
@@ -11,8 +11,9 @@ System Boundary
 Babylon has these primary boundaries:
 
 #. A pure Rust engine judges one weekly tick.
-#. Live Rust BSL rules control causal changes. Executable shocks and player
-   actions do not exist yet.
+#. Live Rust BSL rules control causal changes and finite material kernels.
+#. Recognizers and events remain deterministic.
+#. Executable shocks and player actions do not exist yet.
 #. ``babylon-persistence`` owns authoritative game-managed PostgreSQL schema,
    writes, restart, and durability.
 #. The frozen Python engine remains a behavioral reference. Python also owns
@@ -35,7 +36,8 @@ The shipping engine path is:
    Native relations, hyperedges, and canonical hashes.
 
 ``babylon-bsl``
-   The BSL lexer, parser, checker, loader, and evaluator.
+   The BSL lexer, parser, checker, typed finite-kernel analysis, exact
+   forecasting, loader, and evaluator.
 
 ``babylon-tick``
    The weekly tick, replay identity, material state, and atomic publication.
@@ -55,15 +57,27 @@ completed time, allocator cursors, and the governed phase-schedule digest.
 ``ReplayTickSession`` publishes ``TickContentHashV1`` atomically. Replay
 identity and campaign durability identity are separate typed inputs.
 
+A finite kernel distributes exact ``Mass`` over one enum-ordered family of
+bounded material effect bundles. It consumes one replay-keyed integer ticket
+draw and applies only the selected bundle. The choice produces a separate
+``ChoiceReceiptV1`` even when the selected bundle changes no material state.
+Deterministic mechanics are the one-outcome case. Events own no authored
+probability. The language assumes no independence between choices.
+
 Authoritative Persistence
 -------------------------
 
 ``babylon-runtime`` is the sole production composition root. It activates the
-Rust schema, creates or opens a durable replay runtime, advances a tick, and
-commits the prepared ``CommittedTickEnvelopeV1``. Callers cannot submit a
-pre-judged report for commit and cannot construct a second writer authority.
+Rust schema, creates or opens ``DurableReplayRuntimeV2``, advances a tick, and
+commits ``PreparedCommittedTickV2`` as ``CommittedTickEnvelopeV2``. Callers
+cannot submit a pre-judged report or construct a second writer authority.
 
-The activation ledger is append-only:
+The live reader and writer are V2-only after Amendment AJ activation. This
+path has no V1 decoder, compatibility projection, adapter, or fallback. The
+Director must approve deletion after an inventory of prior development data.
+Source and the Lawvere archive are never cleanup targets.
+
+The epoch 8/9 predecessor ledger is append-only historical cutover evidence:
 
 .. list-table::
    :header-rows: 1
@@ -78,11 +92,20 @@ The activation ledger is append-only:
    * - 2
      - ``rust_active`` at epoch 9
      - Legacy Python-managed relations were migrated or proved empty and
-       retired; Rust owns game-managed PostgreSQL.
+       retired. This row is the predecessor for the V2 authority transition.
 
-The ``rust_active`` row is the final activation statement before ``COMMIT``.
-Activation is forward-only and idempotent. A durable active row permits only
-the Rust composition root to reacquire write authority after restart.
+The active authority ledger is
+``babylon_meta.committed_tick_v2_authority_ledger``. Its only legal history is
+``Prepared`` at epoch 10 followed by ``Active`` at epoch 11. Both rows bind the
+active V2 cutover contract and epoch 11 reader migration. The active row also
+binds the prepared-row digest, and the prepared row binds the epoch 9
+predecessor-row digest.
+
+The epoch 11 ``Active`` row is the final activation statement before
+``COMMIT``. Activation is forward-only and idempotent. Runtime authority
+reacquisition requires the exact two-row V2 ledger and its bound contract,
+reader migration, and predecessor digests. The epoch 9 ``rust_active`` row
+alone cannot reopen the writer.
 
 .. Vale: these paragraphs preserve literal persistence and schema identifiers.
 .. vale ste.UnapprovedWords = NO
@@ -95,15 +118,23 @@ The runtime owns three schemas:
 
 ``babylon_state``
    Campaign foundation, typed graph and material rows, events, checkpoints,
-   ``tick_commit_v1``, and ``archive_dirty_receipt_v1``.
+   ``tick_event_v2`` and ``tick_event_field_v2``,
+   ``tick_choice_receipt_v1`` with ``tick_choice_receipt_branch_v1`` and
+   ``tick_choice_receipt_carrier_element_v1`` children, the commit marker
+   ``tick_commit``, and
+   ``archive_dirty_receipt_v1``.
 
 ``babylon_meta``
    The authority ledger plus typed campaign and navigation metadata.
 
-One marker-last transaction writes the complete typed tick estate, a full
-checkpoint when required, exactly one Archive dirty receipt, and the commit
-marker. The runtime acknowledges the tick only after ``COMMIT`` or exact
-ambiguous-commit reconciliation. Retry must reproduce the same envelope bytes.
+One marker-last transaction writes the complete typed tick estate. It writes
+choice receipts and choice-linked event metadata before a required full
+checkpoint and one Archive dirty receipt. It then writes the commit marker.
+
+The runtime acknowledges the tick only after ``COMMIT`` or exact
+ambiguous-commit reconciliation. Retry and restart must reproduce the same
+Envelope V2 bytes. The marker records ``envelope_layout_version = 2``. The
+V2-only reader refuses every other value.
 
 .. vale ste.NounClusters = YES
 .. vale ste.UnapprovedWords = YES
@@ -153,6 +184,12 @@ broader dossier producers, the player-facing retrieval surface, and a player
 decision loop that supports replay. The persistence cutover and this first
 Archive slice do not include those pieces.
 
+Event payloads contain observed or derived material facts, never probability.
+Committed event metadata records the emitting rule and can carry an
+automatically derived reference to the ``ChoiceReceiptV1`` that a finite
+projection observed. Removing an event sink cannot change a material
+trajectory.
+
 Flow
 ----
 
@@ -166,11 +203,13 @@ Solid arrows are live. Dashed arrows are later gate work.
    flowchart LR
        REF["babylon_ref"] --> TICK["Rust replay tick"]
        BSL["BSL rules"] --> TICK
+       KERNEL["Finite material kernel"] --> TICK
        EMPTY["Exact empty action batch"] --> TICK
-       TICK --> IDENTIFIED["IdentifiedTickReportV1"]
-       IDENTIFIED --> RUNTIME["DurableReplayRuntimeV1"]
+       TICK --> IDENTIFIED["IdentifiedTickReportV2"]
+       IDENTIFIED --> RUNTIME["DurableReplayRuntimeV2"]
        RUNTIME --> STATE["babylon_state typed rows"]
-       STATE --> MARKER["tick_commit_v1"]
+       STATE --> RECEIPT["ChoiceReceiptV1 rows"]
+       STATE --> MARKER["tick_commit"]
        STATE --> DIRTY["archive_dirty_receipt_v1"]
        MARKER --> VIEW["Bevy administrative viewer"]
        PY["Frozen Python reference"] --> SQLITE["RuntimeDatabase SQLite"]
@@ -184,7 +223,8 @@ Invariants
 
 Tick identity
    Equal inputs produce equal graph, nominal-world, replay-tick, envelope, and
-   typed semantic row bytes. Durability is established only by the marker.
+   typed semantic row bytes. Equal kernel instances produce equal allocation,
+   draw, selection, and receipt bytes. Only the marker establishes durability.
 
 Pure judgment
    Relation, BSL, and tick crates have no database dependency. Storage begins
@@ -201,6 +241,11 @@ Native topology
 Source honesty
    Each substantive value is ``Observed``, ``Derived``, ``Calibrated``, or
    ``Designed``.
+
+Finite contingency
+   Kernels select bounded material effects. Recognizers deterministically
+   observe post-state. Exact event likelihood sums the branches that make the
+   recognizer emit that event. Events never own probability.
 
 Player relevance
    An administrative display cannot pass a game milestone. The persistence

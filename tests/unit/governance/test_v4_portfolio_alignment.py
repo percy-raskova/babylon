@@ -107,7 +107,9 @@ _CURRENT_EVIDENCE: Final[dict[str, tuple[str, ...]]] = {
     "rust_postgresql_persistence": (
         "rust/crates/babylon-persistence/src/runtime.rs",
         "rust/crates/babylon-persistence/migrations/0009_rust_persistence_activation.sql",
-        "contracts/rust_persistence_cutover_v1.yaml",
+        "rust/crates/babylon-persistence/migrations/0010_committed_tick_v2_preparation.sql",
+        "rust/crates/babylon-persistence/migrations/0011_committed_tick_v2_activation.sql",
+        "contracts/rust_persistence_cutover_v2.yaml",
     ),
     "python_persistence_periphery": (
         "src/babylon/persistence/runtime_db.py",
@@ -154,8 +156,7 @@ _PER_19_EVIDENCE: Final[tuple[str, ...]] = (
     "rust/crates/babylon-tick/tests/causal_contract_conformance.rs",
     "ai/decisions/ADR224_bsl_causal_composition_contract.yaml",
 )
-_GATE_3_ISSUES: Final[tuple[str, ...]] = (
-    "PER-20",
+_PLANNED_GATE_3_ISSUES: Final[tuple[str, ...]] = (
     "PER-21",
     "PER-22",
     "PER-23",
@@ -240,7 +241,12 @@ def test_architecture_records_current_components_and_gate_delivery_status() -> N
     architecture = _yaml_document(_ARCHITECTURE)
     status = architecture["implementation_status"]
     assert isinstance(status, dict)
-    assert {"implemented_current", "gate_2_delivery", "planned_gate_3"} <= set(status)
+    assert {
+        "implemented_current",
+        "gate_2_delivery",
+        "gate_3_delivery",
+        "planned_gate_3",
+    } <= set(status)
     current = status["implemented_current"]
     assert isinstance(current, dict)
     for component in _CURRENT_COMPONENTS:
@@ -250,16 +256,19 @@ def test_architecture_records_current_components_and_gate_delivery_status() -> N
         assert tuple(record["evidence"]) == expected_evidence
         assert all((_ROOT / evidence).is_file() for evidence in expected_evidence)
     gate_2 = status["gate_2_delivery"]
-    gate_3 = status["planned_gate_3"]
+    gate_3_delivery = status["gate_3_delivery"]
+    planned_gate_3 = status["planned_gate_3"]
     assert tuple(gate_2) == tuple(_GATE_2_STATUSES)
-    assert tuple(gate_3) == _GATE_3_ISSUES
+    assert tuple(gate_3_delivery) == ("PER-20",)
+    assert gate_3_delivery["PER-20"]["status"] == "implemented_current"
+    assert tuple(planned_gate_3) == _PLANNED_GATE_3_ISSUES
     assert {issue: gate_2[issue]["status"] for issue in _GATE_2_STATUSES} == _GATE_2_STATUSES
     assert {issue: gate_2[issue]["component"] for issue in _GATE_2_COMPONENTS} == _GATE_2_COMPONENTS
     assert tuple(gate_2["PER-18"]["evidence"]) == _PER_18_EVIDENCE
     assert all((_ROOT / evidence).is_file() for evidence in _PER_18_EVIDENCE)
     assert tuple(gate_2["PER-19"]["evidence"]) == _PER_19_EVIDENCE
     assert all((_ROOT / evidence).is_file() for evidence in _PER_19_EVIDENCE)
-    assert all(gate_3[issue]["status"] == "planned" for issue in _GATE_3_ISSUES)
+    assert all(planned_gate_3[issue]["status"] == "planned" for issue in _PLANNED_GATE_3_ISSUES)
 
 
 def test_control_surface_routes_status_to_linear_and_delivery_to_github() -> None:
@@ -372,7 +381,7 @@ def test_per_48_records_the_implemented_one_way_writer_cutover() -> None:
     assert writer["decision"] == {
         "issue": "PER-48",
         "adr": _POSTGRESQL_ADR,
-        "implementation_contract": "contracts/rust_persistence_cutover_v1.yaml",
+        "implementation_contract": "contracts/rust_persistence_cutover_v2.yaml",
     }
     assert writer["before_cutover"] == {
         "authoritative_writer": "Python",
@@ -407,8 +416,9 @@ def test_per_48_records_the_implemented_one_way_writer_cutover() -> None:
         "writes": "forbidden",
         "ddl": "forbidden",
     }
-    gate_3 = architecture["implementation_status"]["planned_gate_3"]
-    per_20 = gate_3["PER-20"]
+    gate_3_delivery = architecture["implementation_status"]["gate_3_delivery"]
+    per_20 = gate_3_delivery["PER-20"]
+    assert per_20["status"] == "implemented_current"
     assert "blocked_by" not in per_20
     assert per_20["writer_boundary"] == {
         "issue": "PER-48",
@@ -416,8 +426,29 @@ def test_per_48_records_the_implemented_one_way_writer_cutover() -> None:
         "adr": _POSTGRESQL_ADR,
     }
     assert tuple(per_20["schemas"]) == ("babylon_ref", "babylon_state", "babylon_meta")
-    assert "persistence_writer" not in gate_3
-    assert gate_3["PER-24"] == {
+    assert per_20["runtime_authority"] == {
+        "estate": "rust",
+        "database": "PostgreSQL",
+        "major": 17,
+        "reader_writer": "v2_only",
+        "historical_v1_decoder": "prohibited",
+    }
+    assert tuple(per_20["includes"]) == (
+        "TickPayloadV2",
+        "CommittedTickEnvelopeV2",
+        "six_family_choice_receipt_envelope",
+        "transactional_archive_outbox",
+        "marker_last_tick_commit",
+        "exact_retry_restart_reconstruction",
+    )
+    assert per_20["historical_pre_cutover_foundation"]["status"] == (
+        "superseded_implementation_record"
+    )
+    assert per_20["historical_pre_cutover_foundation"]["current_runtime_authority"] == "none"
+    assert "persistence_writer" not in gate_3_delivery
+    planned_gate_3 = architecture["implementation_status"]["planned_gate_3"]
+    assert "PER-20" not in planned_gate_3
+    assert planned_gate_3["PER-24"] == {
         "status": "planned",
         "gate": "G3",
         "owner": "PER-24",
@@ -666,15 +697,28 @@ def test_standard_addenda_classify_current_and_superseded_surfaces() -> None:
         "Article V vocabulary authority status: superseded",
         "NarrationEnvelope status: superseded_proposal",
         "In-memory whole-tick rollback status: implemented_current_PER-18",
-        "CommittedTickEnvelope status: planned",
+        "CommittedTickEnvelope status: implemented_current_V2_only",
         "DecisionSurfaceContract executable status: planned",
-        "Persistence writer status: accepted_cutover_law",
+        "Persistence writer status: implemented_current_V2_only",
+        "PostgreSQL runtime status: PostgreSQL_17_only",
+        "PER-20 durable boundary status: implemented_current",
         "PER-48 status: Done",
         _POSTGRESQL_ADR,
         "Attributed membership identity status: implemented_current",
         "Attributed membership payload status: planned_research_PER-44",
     ):
         assert phrase in game_design
+    game_design_folded = " ".join(game_design.split())
+    for stale in (
+        "CommittedTickEnvelope status: planned",
+        "Persistence writer status: accepted_cutover_law",
+        "Gate 3 still plans",
+        "Python remains the sole live PostgreSQL writer",
+        "compatibility views",
+        "Transition observers may read",
+        "not a claim that PER-20 has implemented",
+    ):
+        assert stale not in game_design_folded
     for phrase in (
         "S-11 whole-tick rollback status: implemented_current_PER-18",
         "S-25 renderer requirement status: retired",
@@ -682,7 +726,9 @@ def test_standard_addenda_classify_current_and_superseded_surfaces() -> None:
         "D5/D16 phase-ordering status: implemented_executable_PER-17",
         "PER-18 rollback and combined-world-hash status: implemented_current",
         "PER-19 causal-composition and outcome-write-contract status: implemented_current",
-        "Persistence writer status: accepted_cutover_law",
+        "Persistence writer status: implemented_current_V2_only",
+        "PostgreSQL runtime status: PostgreSQL_17_only",
+        "PER-20 durable boundary status: implemented_current",
         "PER-48 status: Done",
         _POSTGRESQL_ADR,
         "Attributed membership identity status: implemented_current",
@@ -692,8 +738,19 @@ def test_standard_addenda_classify_current_and_superseded_surfaces() -> None:
 
     roadmap = _active_region("project/roadmap.md", "V4-ROADMAP-MIRROR")
     for phrase in (
-        "Persistence writer status: accepted_cutover_law",
+        "Persistence writer status: implemented_current_V2_only",
+        "PostgreSQL runtime status: PostgreSQL_17_only",
+        "PER-20 durable boundary status: implemented_current",
         "PER-48 status: Done",
         _POSTGRESQL_ADR,
     ):
         assert phrase in roadmap
+    roadmap_folded = " ".join(roadmap.split())
+    for stale in (
+        "PER-20 through PER-24 remain",
+        "Persistence writer status: accepted_cutover_law",
+        "Python remains the sole live writer before cutover",
+        "compatibility views",
+        "transition observers remain outside authoritative writes",
+    ):
+        assert stale not in roadmap_folded

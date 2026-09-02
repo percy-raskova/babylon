@@ -28,6 +28,10 @@ const MIGRATION_0004_SQL: &str = include_str!("../migrations/0004_committed_tick
 const MIGRATION_0005_SQL: &str = include_str!("../migrations/0005_spatial_reference_products.sql");
 const MIGRATION_0006_SQL: &str = include_str!("../migrations/0006_h3_shadow_keys.sql");
 const MIGRATION_0007_SQL: &str = include_str!("../migrations/0007_h3_canonical_readers.sql");
+const MIGRATION_0010_SQL: &str =
+    include_str!("../migrations/0010_committed_tick_v2_preparation.sql");
+const MIGRATION_0011_SQL: &str =
+    include_str!("../migrations/0011_committed_tick_v2_activation.sql");
 const FRESH_CENSUS: &str = include_str!("fixtures/fresh_schema_epoch_census_v2.txt");
 const FRESH_CENSUS_WITH_INTEL: &str =
     include_str!("fixtures/fresh_schema_epoch_census_with_intel_v2.txt");
@@ -561,6 +565,24 @@ pub fn compiled_schema_migrations(
         compiled[5].migration,
         compiled[6].migration,
     ])
+}
+
+/// Build the dedicated one-way committed-tick V2 activation pair.
+///
+/// These migrations deliberately do not extend `CURRENT_SCHEMA_EPOCH`. Epochs 8 and 9 are the
+/// immutable historical Rust-persistence cutover, whose authority rows were written by the
+/// activation composition root rather than the ordinary schema migrator. The replacement V2
+/// activator executes this exact 10/11 pair and writes its corresponding authority row after each
+/// migration SQL body.
+///
+/// # Errors
+/// Returns [`SchemaMigrationError`] if either checked-in SQL file violates the bounded migration
+/// byte contract.
+pub fn compiled_committed_tick_v2_activation_migrations(
+) -> Result<[SchemaMigration; 2], SchemaMigrationError> {
+    let preparation = SchemaMigration::new(MigrationVersion::try_from(10)?, MIGRATION_0010_SQL)?;
+    let activation = SchemaMigration::new(MigrationVersion::try_from(11)?, MIGRATION_0011_SQL)?;
+    Ok([preparation, activation])
 }
 
 /// Verify that persisted rows are an exact prefix of contiguous migrations.

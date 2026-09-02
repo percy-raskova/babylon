@@ -270,3 +270,110 @@ A graph-domain rule with an explicit anchor (§2.3, D43)
         (update_op
           (literal
             (int_lit)))))))
+
+==================================================
+Amendment AJ finite kernel and projection (struggle-spark.bsl — ABRIDGED)
+==================================================
+
+(rule struggle/spark-mechanic
+  :role mechanic
+  :evidence designed
+  :material-basis "repression supplies bounded pressure for a finite material transition"
+  :fuel 384
+  (bindings
+    (binding repression-faced :field social-class/repression-faced)
+    (binding spark-scale :const struggle/spark-scale)
+    (binding spark-mass :expr
+      (quantize-mass (* repression-faced spark-scale)))
+    (binding no-incident-mass :expr (- 1m spark-mass)))
+  (effects
+    (choose :sample struggle/spark :slot 0
+      (branch StruggleSparkOutcome/EXCESSIVE_FORCE
+        :mass spark-mass
+        (effects
+          (update-node self social-class/last-incident-known (set 1))))
+      (branch StruggleSparkOutcome/NO_INCIDENT
+        :mass no-incident-mass
+        (effects)))))
+
+(rule struggle/spark-recognizer
+  :role recognizer
+  :evidence derived
+  :projects-kernel struggle/spark
+  :material-basis "the adjacent recognizer observes the selected material branch"
+  :fuel 192
+  (bindings)
+  (effects
+    (emit EventType/EXCESSIVE_FORCE (subject self))))
+
+---
+
+(source_file
+  (rule
+    (qname)
+    (rule_role)
+    (evidence)
+    (material_basis
+      (string))
+    (fuel
+      (int_lit))
+    (bindings
+      (binding
+        (symbol)
+        (bind_src
+          (qname)))
+      (binding
+        (symbol)
+        (bind_src
+          (qname)))
+      (binding
+        (symbol)
+        (bind_src
+          (quantize_mass
+            (arith_expr
+              (arith)
+              (symbol)
+              (symbol)))))
+      (binding
+        (symbol)
+        (bind_src
+          (arith_expr
+            (arith)
+            (literal
+              (mass_lit))
+            (symbol)))))
+    (effects
+      (choose
+        (qname)
+        (u32_lit)
+        (branch
+          (enum_ref)
+          (symbol)
+          (branch_effects
+            (update_node
+              (symbol)
+              (qname)
+              (update_op
+                (literal
+                  (int_lit))))))
+        (branch
+          (enum_ref)
+          (symbol)
+          (branch_effects)))))
+  (rule
+    (qname)
+    (rule_role)
+    (evidence)
+    (projects_kernel
+      (qname))
+    (material_basis
+      (string))
+    (fuel
+      (int_lit))
+    (bindings)
+    (effects
+      (emit
+        (enum_ref)
+        (payload_item
+          (symbol)
+          (symbol))))))

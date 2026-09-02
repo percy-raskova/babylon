@@ -208,6 +208,7 @@ pub fn project_stable_value_v1(
     resolver: &StableElementResolverV1,
 ) -> Result<StableBslValueV1, IdentityCodecError> {
     Ok(match value {
+        Value::Mass(_) => return Err(IdentityCodecError::InvalidConstantKind),
         Value::Int(value) => StableBslValueV1::Int(*value),
         Value::Currency(value) => StableBslValueV1::CurrencyMicroUnits(value.micro_units()),
         Value::Real(value) => StableBslValueV1::RealBits(canonical_f64_bits(*value)?),
@@ -258,6 +259,7 @@ pub fn project_stored_field_value_v1(
     enums: &EnumRegistry,
 ) -> Result<StableBslValueV1, IdentityCodecError> {
     match (&declaration.ty, binary64_bits, currency_micro_units) {
+        (BslType::Mass, _, _) => Err(IdentityCodecError::UnsupportedStoredFieldType),
         (BslType::Currency, None, Some(value)) => Ok(StableBslValueV1::CurrencyMicroUnits(value)),
         (BslType::Probability | BslType::Intensity | BslType::Coefficient, Some(bits), None) => {
             let value = f64::from_bits(canonical_f64_bits(f64::from_bits(bits))?);
@@ -514,6 +516,7 @@ fn encode_value(
     output: &mut IdentityWriter,
 ) -> Result<(), IdentityCodecError> {
     match value {
+        Value::Mass(_) => Err(IdentityCodecError::InvalidConstantKind),
         Value::Int(value) => encode_int(*value, output),
         Value::Currency(value) => encode_currency(value.micro_units(), output),
         Value::Real(value) => encode_real(*value, output),
@@ -624,7 +627,7 @@ fn append_stable_key(
     output.extend(&key.canonical_bytes()?)
 }
 
-/// Encode one constant, restricted to the five live scalar forms.
+/// Encode one constant, restricted to the six live scalar forms.
 ///
 /// # Errors
 /// Returns [`IdentityCodecError::InvalidConstantKind`] for enum or graph
@@ -635,6 +638,10 @@ pub fn encode_const_value_v1(
 ) -> Result<(), IdentityCodecError> {
     let mut writer = IdentityWriter::new("ConstValueV1");
     match value {
+        Value::Mass(value) => {
+            writer.push(0x0a)?;
+            writer.extend(&value.nanounits().to_be_bytes())?;
+        }
         Value::Int(value) => encode_int(*value, &mut writer)?,
         Value::Currency(value) => encode_currency(value.micro_units(), &mut writer)?,
         Value::Real(value) => encode_real(*value, &mut writer)?,
@@ -666,6 +673,7 @@ pub fn encode_bsl_type_v1(
 ) -> Result<(), IdentityCodecError> {
     let mut writer = IdentityWriter::new("BslTypeV1");
     match value {
+        BslType::Mass => return Err(IdentityCodecError::UnsupportedStoredFieldType),
         BslType::Probability => writer.push(0x01)?,
         BslType::Intensity => writer.push(0x02)?,
         BslType::Coefficient => writer.push(0x03)?,

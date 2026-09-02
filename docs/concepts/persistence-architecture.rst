@@ -13,8 +13,9 @@ That made authority depend on the selected adapter and allowed two game-state
 storage paths to survive. Gate 3 replaces that model with an explicit split:
 
 **Rust PostgreSQL authority**
-   Owns campaign foundation, typed state, commit markers, restart, and Archive
-   dirty receipts. It is the only production game-state writer.
+   Owns campaign foundation, typed state, V2 events, choice receipts, commit
+   markers, restart, and Archive dirty receipts. This boundary makes Rust the
+   only production game-state writer.
 
 **Python SQLite reference**
    ``RuntimeDatabase`` supports frozen behavioral tests and local reference
@@ -36,40 +37,74 @@ The sequence for one durable tick is:
 
 #. ``ReplayTickSession`` judges the next tick on detached in-memory state.
 #. The runtime prepares exact typed semantic rows and envelope bytes.
-#. One PostgreSQL transaction writes graph, material state, events, checkpoint
-   rows, and one Archive dirty receipt.
-#. ``tick_commit_v1`` is inserted last.
+#. One Postgres transaction writes the action source and all six envelope
+   families.
+#. The transaction inserts ``babylon_state.tick_commit`` last with envelope
+   layout 2.
 #. Only an acknowledged ``COMMIT`` or exact ambiguity reconciliation publishes
    the receipt and caller sink.
 
+``CommittedTickEnvelopeV2`` orders its families as graph, material state, event,
+choice receipt, checkpoint, and Archive dirty receipt.
+
 A rollback leaves no commit marker. An unresolved commit ambiguity leaves the
-caller sink unchanged. Retry must reconstruct byte-identical rows and envelope
-identity.
+caller sink unchanged. Retry must reconstruct the same rows and envelope
+identity. V2 event metadata records the emitting rule and an optional
+engine-derived choice-receipt reference for a finite projection. Probability is
+not part of an authored event payload, and event provenance cannot feed back
+into mechanics.
 
 Authority State Machine
 -----------------------
 
-The append-only authority ledger admits exactly two rows: ``prepared`` at
-schema epoch 8 and ``rust_active`` at epoch 9. The active row binds the prepared
-row digest and commits last during activation. Once active, only
+The historical predecessor ledger admits ``prepared`` at schema epoch 8 and
+``rust_active`` at epoch 9. The current
+``babylon_meta.committed_tick_v2_authority_ledger`` then admits exactly two
+rows: ``Prepared`` at activation epoch 10 and ``Active`` at epoch 11. The
+prepared row binds the exact epoch 9 predecessor. The active row binds the
+prepared-row digest and commits last during activation. Once active, only
 ``babylon-runtime`` can reacquire writer authority.
 
-Epoch 9 retires the Python-managed relations only after their data is migrated
-with ordered count and semantic hash parity or proved unreachable and empty.
-The terminal reader boundary contains no Python game-state edge and no
-compatibility projection.
+Epoch 9 retired the Python-managed relations only after ordered counts and
+semantic hashes proved migration parity. Reachability analysis can instead
+prove that the relations were empty.
+
+Its destructive transaction uses
+``READ COMMITTED``. Each present legacy relation and the closed opaque
+predecessor set take ``ACCESS EXCLUSIVE`` locks before a fresh post-wait census.
+Those locks stay held through disposition recording, deletion, the active
+authority row, and commit. The census counts a writer that commits while
+activation waits. The entire transaction then refuses without deleting the
+writer's row.
+
+Epoch 10 inventories every V1-incompatible campaign and tick relation and
+refuses activation unless each is empty. Epoch 11 remains ``SERIALIZABLE``: its
+top-level ``ACCESS EXCLUSIVE`` lock precedes every query and data modification,
+so the runtime acquires its inventory snapshot after any lock wait. Epoch 11
+removes the obsolete event relations and activates the V2-only reader and
+writer. The terminal reader boundary contains no Python game-state edge, V1
+envelope reader, or compatibility projection.
 
 Restart Model
 -------------
 
 The runtime captures immutable foundation bytes for each campaign. A complete
-full checkpoint contains the nine required state and identity sections. Restart
-loads the foundation or latest full checkpoint, validates every section, then
-replays a contiguous marker tail.
+full checkpoint contains the nine required state and identity sections. With no
+committed marker, open starts from the foundation.
+
+When committed ticks exist, restart loads the latest full checkpoint. It
+reconstructs the six-family V2 envelope from typed rows and compares its digest
+with the marker. Then it restores the nine checkpoint sections. It re-executes
+each later marker-backed tick in a contiguous tail and compares the newly
+prepared envelope with the stored envelope exactly.
 
 Delta checkpoints reduce write volume but never act as restart roots. A gap,
 duplicate, digest mismatch, or incomplete manifest refuses recovery rather than
 guessing.
+
+The Archive dirty receipt is one envelope family. The downstream semantic
+Archive is not restart state: restart does not scan historical pages, grants,
+consumptions, or citations and does not assert their historical integrity.
 
 Reference Data and H3
 ---------------------
@@ -88,9 +123,12 @@ Archive Boundary
 
 Every committed tick writes exactly one Archive dirty receipt carrying the
 tick-content identity. The receipt is durable evidence that semantic material
-must refresh. ``sim:archive`` installs the additive client-owned Archive schema
-exactly once. Later calls check its marker and relations. The command reports
-receipts, knowledge grants, consumptions, and materialized pages.
+must refresh. Choice receipts separately preserve finite-realization evidence,
+and V2 event metadata records its emitting rule and optional adjacent
+choice-receipt provenance. ``sim:archive`` installs the additive client-owned
+Archive schema exactly once. Later calls check its marker and relations. The
+command reports receipts, knowledge grants, consumptions, and materialized
+pages.
 
 The first semantic worker slice binds an exact dirty batch, worker contract,
 and ordered knowledge-grant snapshot to each marker-backed receipt. The
@@ -111,8 +149,9 @@ Operational Consequences
 - ``sim:archive`` installs the additive semantic Archive schema or checks its
   marker and relations. It reports the Archive estate.
 - ``qa:michigan-rollover-smoke`` proves a 60-tick restart boundary.
-- The live adopter suite verifies rollback, lock refusal, ambiguous commit,
-  installed mutations, and cleanup against a disposable pinned database.
+- The live adopter suite uses disposable pinned Postgres 17 and PostGIS 3.5.
+- The suite verifies rollback, lock refusal, ambiguous commit, installed
+  mutations, and cleanup.
 
 See Also
 --------

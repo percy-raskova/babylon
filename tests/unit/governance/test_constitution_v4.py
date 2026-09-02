@@ -1,4 +1,4 @@
-"""Executable structure and continuity contract for Constitution v4.0.0.
+"""Executable structure and continuity contract for Constitution v4.1.0.
 
 The live constitution stays short.  The transition ledger in ADR221 carries
 the exhaustive historical mapping from the two pinned predecessor snapshots.
@@ -404,7 +404,7 @@ def test_mantras_publish_machine_readable_v4_orientation() -> None:
     """One canonical data record exposes purpose, validation, status, and gates."""
     document = yaml.safe_load(_repository_text(_MACHINE_ORIENTATION_PATH))
     meta = document["meta"]
-    assert meta["authority"] == "CONSTITUTION.md v4.0.0"
+    assert meta["authority"] == "CONSTITUTION.md v4.1.0"
     assert meta["product"] == "entertainment-first emergent political-economy game"
     assert meta["forecast"] is False
     assert meta["scientific_reproduction"] is False
@@ -478,12 +478,12 @@ def test_architecture_reference_marks_current_cutover_and_remaining_gate_3_work(
     required = (
         "live rust bsl rules",
         "executable shocks",
-        "identifiedtickreportv1",
+        "identifiedtickreportv2",
         "frozen python",
         "runtimedatabase",
-        "committedtickenvelopev1",
+        "committedtickenvelopev2",
         "marker-last transaction",
-        "``tick_commit_v1``",
+        "``tick_commit``",
         "``babylon_meta``",
         "semantic archive worker",
         "per-48 is decided",
@@ -790,7 +790,7 @@ def test_constitution_states_the_game_first_promise_and_evidence_classes() -> No
     """A fresh reader can recover purpose, method, and the validation standard."""
     text = " ".join(_constitution_text().split())
     required = (
-        "Version 4.0.0",
+        "Version 4.1.0",
         "entertainment",
         "expressive",
         "emergent",
@@ -808,6 +808,7 @@ def test_constitution_states_the_game_first_promise_and_evidence_classes() -> No
         "hysteresis",
         "counterfactual responsiveness",
         "Amendment AH — Game-First Refoundation",
+        "Amendment AJ — Finite Material Transition Kernels",
     )
     missing = tuple(phrase for phrase in required if phrase not in text)
     assert missing == ()

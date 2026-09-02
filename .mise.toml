@@ -77,7 +77,7 @@ description = "the ONE sanctioned merge path: all-green + head-pin + Copilot adv
 run = "python3 tools/pr_merge.py"
 
 [tasks."deps:conveyor"]
-description = "serial Dependabot merge conveyor: merge CLEAN PRs via pr:merge, update BEHIND branches, exit when queue empties"
+description = "serial Dependabot merge conveyor: classify + merge CLEAN PRs via pr:merge, request dependabot rebase for BEHIND branches, exit when queue empties"
 run = "python3 tools/dependabot_conveyor.py"
 
 [tasks."check:worktree-contract"]

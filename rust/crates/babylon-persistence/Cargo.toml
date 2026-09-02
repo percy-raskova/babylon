@@ -16,7 +16,7 @@ babylon-graph = { path = "../babylon-graph" }
 babylon-kernel = { path = "../babylon-kernel" }
 babylon-practice-contract = { path = "../babylon-practice-contract" }
 babylon-tick = { path = "../babylon-tick" }
-fallible-iterator = "0.2"
+fallible-iterator = "0.3"
 minijinja = { version = "=2.24.0", default-features = false, features = ["builtins", "serde"] }
 postgres = { version = "=0.19.14", features = ["with-uuid-1"] }
 serde = { version = "1", features = ["derive"] }

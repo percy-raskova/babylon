@@ -36,5 +36,6 @@ pub mod lifecycle;
 pub mod line_index;
 pub mod locator;
 pub mod pass;
+pub mod uri;
 
 pub use lifecycle::serve;

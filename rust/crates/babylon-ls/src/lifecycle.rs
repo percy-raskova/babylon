@@ -44,7 +44,7 @@ use lsp_types::{
     HoverParams, InitializeParams, LogMessageParams, MessageType, PublishDiagnosticsParams,
     Registration, RegistrationParams, RelatedFullDocumentDiagnosticReport,
     RelatedUnchangedDocumentDiagnosticReport, SemanticTokensParams, SemanticTokensResult,
-    SignatureHelpParams, UnchangedDocumentDiagnosticReport, Url, WorkspaceDiagnosticParams,
+    SignatureHelpParams, UnchangedDocumentDiagnosticReport, Uri, WorkspaceDiagnosticParams,
     WorkspaceDiagnosticReport, WorkspaceDiagnosticReportResult, WorkspaceDocumentDiagnosticReport,
     WorkspaceFullDocumentDiagnosticReport, WorkspaceUnchangedDocumentDiagnosticReport,
 };
@@ -60,6 +60,7 @@ use crate::pass::{
     analyze_probability_authoring, content_relative_path, diagnose_bsl, LiveSourceReader,
     SourceReader,
 };
+use crate::uri::{file_path_from_uri, uri_from_file_path};
 
 /// Exit code for a clean `shutdown` -> `exit` sequence (the LSP spec:
 /// "exit should exit... with success code 0 if... shutdown request was
@@ -86,7 +87,7 @@ struct ServerState {
     store: DocumentStore,
     manifest: Option<ContentSetManifest>,
     content_root: Option<PathBuf>,
-    result_ids: HashMap<Url, String>,
+    result_ids: HashMap<Uri, String>,
 }
 
 /// A bounded, wave-1 heuristic for finding `content-sets.toml` from a
@@ -117,13 +118,10 @@ fn discover_state(params: &InitializeParams) -> (Option<ContentSetManifest>, Opt
         .workspace_folders
         .as_ref()
         .and_then(|folders| folders.first())
-        .and_then(|folder| folder.uri.to_file_path().ok())
+        .and_then(|folder| file_path_from_uri(&folder.uri))
         .or_else(|| {
             #[allow(deprecated)]
-            params
-                .root_uri
-                .as_ref()
-                .and_then(|uri| uri.to_file_path().ok())
+            params.root_uri.as_ref().and_then(file_path_from_uri)
         });
     let Some(workspace_root) = workspace_root else {
         return (None, None);
@@ -346,18 +344,18 @@ fn handle_request(
 
 fn source_for_authoring(
     state: &ServerState,
-    uri: &Url,
+    uri: &Uri,
 ) -> Option<(String, crate::line_index::LineIndex)> {
     if let Some(document) = state.store.get(uri) {
         return Some((document.text.clone(), document.line_index.clone()));
     }
-    let path = uri.to_file_path().ok()?;
+    let path = file_path_from_uri(uri)?;
     let text = std::fs::read_to_string(path).ok()?;
     let line_index = crate::line_index::LineIndex::new(&text);
     Some((text, line_index))
 }
 
-fn probability_snapshot(state: &ServerState, uri: &Url) -> AuthoringSnapshot {
+fn probability_snapshot(state: &ServerState, uri: &Uri) -> AuthoringSnapshot {
     let (Some(content_root), Some(manifest)) =
         (state.content_root.as_ref(), state.manifest.as_ref())
     else {
@@ -498,7 +496,10 @@ fn apply_did_change(connection: &Connection, state: &mut ServerState, note: &Raw
                 if known {
                     push_diagnostics_for(connection, state, &uri);
                 } else {
-                    eprintln!("babylon-ls: didChange for a document never opened: {uri}");
+                    eprintln!(
+                        "babylon-ls: didChange for a document never opened: {}",
+                        uri.as_str()
+                    );
                 }
             }
         }
@@ -522,7 +523,7 @@ fn apply_did_close(state: &mut ServerState, note: &RawNotification) {
 /// `resultId`, cache the id, and return `(diagnostics, resultId)` — the
 /// one computation push (`push_diagnostics_for`) and pull (`handle_
 /// document_diagnostic`/`handle_workspace_diagnostic`) both call through.
-fn compute_diagnostics(state: &mut ServerState, uri: &Url) -> (Vec<lsp_types::Diagnostic>, String) {
+fn compute_diagnostics(state: &mut ServerState, uri: &Uri) -> (Vec<lsp_types::Diagnostic>, String) {
     let Some(content_root) = state.content_root.clone() else {
         return (Vec::new(), compute_result_id(&[], &[]));
     };
@@ -554,7 +555,7 @@ fn compute_diagnostics(state: &mut ServerState, uri: &Url) -> (Vec<lsp_types::Di
 /// empty array, so "newly pushed diagnostics always replace" (§6.5): a
 /// fix that clears every diagnostic still needs a push, or the client's
 /// stale list never clears.
-fn push_diagnostics_for(connection: &Connection, state: &mut ServerState, uri: &Url) {
+fn push_diagnostics_for(connection: &Connection, state: &mut ServerState, uri: &Uri) {
     let version = state.store.get(uri).map(|doc| doc.version);
     let (diagnostics, result_id) = compute_diagnostics(state, uri);
     state.result_ids.insert(uri.clone(), result_id);
@@ -641,7 +642,11 @@ fn handle_workspace_diagnostic(connection: &Connection, state: &mut ServerState,
         let _ = connection.sender.send(response.into());
         return;
     };
-    let previous: HashMap<Url, String> = params
+    // `Uri`'s interior `Cell` is parse-laziness bookkeeping, not key
+    // semantics: lsp-types defines `Eq`/`Hash` over `as_str()`, so it is a
+    // sound, stable map key despite the lint's interior-mutability heuristics.
+    #[allow(clippy::mutable_key_type)]
+    let previous: HashMap<Uri, String> = params
         .previous_result_ids
         .into_iter()
         .map(|p| (p.uri, p.value))
@@ -651,7 +656,7 @@ fn handle_workspace_diagnostic(connection: &Connection, state: &mut ServerState,
     let paths = workspace_diagnostic_paths(state, &content_root);
     let mut items = Vec::with_capacity(paths.len());
     for path in paths {
-        let Ok(uri) = Url::from_file_path(content_root.join(&path)) else {
+        let Some(uri) = uri_from_file_path(&content_root.join(&path)) else {
             continue;
         };
         let (diagnostics, result_id) = compute_diagnostics(state, &uri);
@@ -712,7 +717,7 @@ mod tests {
     };
     use lsp_types::{
         ClientCapabilities, DidChangeWatchedFilesClientCapabilities, InitializeParams,
-        InitializedParams, Url, WorkspaceClientCapabilities,
+        InitializedParams, Uri, WorkspaceClientCapabilities,
     };
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
@@ -786,7 +791,7 @@ mod tests {
             .expect("send exit");
     }
 
-    fn probability_authoring_state() -> (ServerState, Url, String) {
+    fn probability_authoring_state() -> (ServerState, Uri, String) {
         let manifest = ContentSetManifest::parse(
             Path::new("content-sets.toml"),
             r#"
@@ -806,8 +811,12 @@ note = "LSP request fixture"
 "#,
         )
         .expect("valid manifest");
-        let scenario_uri = Url::parse("file:///virtual/scenario.bscn").expect("valid scenario URI");
-        let rule_uri = Url::parse("file:///virtual/rules/probe.bsl").expect("valid rule URI");
+        let scenario_uri = "file:///virtual/scenario.bscn"
+            .parse::<Uri>()
+            .expect("valid scenario URI");
+        let rule_uri = "file:///virtual/rules/probe.bsl"
+            .parse::<Uri>()
+            .expect("valid rule URI");
         let source = "(rule vitality/probe :role mechanic :evidence designed \
             :material-basis \"bounded spark\" :fuel 64 \
             (domain NodeType/SOCIAL_CLASS) \

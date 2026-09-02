@@ -26,7 +26,7 @@
 
 use lsp_types::{
     Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, Location, NumberOrString, Range,
-    Url,
+    Uri,
 };
 
 use babylon_bsl::rule_pipeline::LoadError;
@@ -389,7 +389,7 @@ fn file_range(text: &str, line_index: &LineIndex) -> Range {
 /// there is no tree left to search).
 #[must_use]
 pub fn map_to_diagnostic(
-    uri: &Url,
+    uri: &Uri,
     text: &str,
     line_index: &LineIndex,
     parsed: Option<&(Vec<SExpr>, SpanTable)>,
@@ -508,7 +508,7 @@ pub fn sort_key(d: &Diagnostic) -> (u32, u32, u32, u32, String, String) {
 /// order. Bounded by `located.len()` (Power-of-10 rule 2).
 #[must_use]
 pub fn diagnostics_for_file(
-    uri: &Url,
+    uri: &Uri,
     text: &str,
     line_index: &LineIndex,
     located: &[Located],
@@ -529,7 +529,7 @@ pub fn diagnostics_for_file(
 /// caller controls the ordering source, e.g. a `BTreeMap` walk, keeping
 /// the sort visible at the call site rather than hidden in here).
 #[must_use]
-pub fn compute_result_id(entries: &[(&Url, &[u8])], manifest_bytes: &[u8]) -> String {
+pub fn compute_result_id(entries: &[(&Uri, &[u8])], manifest_bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     use std::fmt::Write as _;
     let mut hasher = Sha256::new();
@@ -560,10 +560,10 @@ mod tests {
     use babylon_bsl::scenario::{load_scenario, ScenarioError};
     use babylon_bsl::{read, DeclError, ErrorIdentity};
     use babylon_graph::hypergraph_store::HypergraphStore;
-    use lsp_types::{DiagnosticSeverity, Url};
+    use lsp_types::{DiagnosticSeverity, Uri};
 
-    fn uri() -> Url {
-        Url::parse("file:///a.bsl").expect("valid test URI")
+    fn uri() -> Uri {
+        "file:///a.bsl".parse::<Uri>().expect("valid test URI")
     }
 
     #[test]
@@ -885,8 +885,8 @@ mod tests {
 
     #[test]
     fn compute_result_id_is_deterministic_and_order_sensitive() {
-        let uri_a = Url::parse("file:///a.bsl").unwrap();
-        let uri_b = Url::parse("file:///b.bsl").unwrap();
+        let uri_a = "file:///a.bsl".parse::<Uri>().unwrap();
+        let uri_b = "file:///b.bsl".parse::<Uri>().unwrap();
         let manifest = b"schema = 2";
         let ab = compute_result_id(&[(&uri_a, b"one"), (&uri_b, b"two")], manifest);
         let ab_again = compute_result_id(&[(&uri_a, b"one"), (&uri_b, b"two")], manifest);

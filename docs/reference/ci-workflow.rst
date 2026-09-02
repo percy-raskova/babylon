@@ -280,7 +280,11 @@ dependabot-automerge.yml
 **Purpose**: Revalidate the exact Dependabot candidate from trusted ``dev``
 tools, then merge only an eligible minor or patch update. The workflow has no
 actor-triggered write phase and does not treat presentation labels as merge
-authority.
+authority. Because Dependabot's ``update-type`` trailer compares only the
+leading version component, ``tools/pr_merge.py`` additionally treats Cargo
+0.y → 0.(y+1) bumps (breaking-class under 0.x semantics) as manual-review
+updates; group PR subjects carry no per-entry before-version, so the guard
+covers single-dependency cargo bumps.
 
 ``.github/dependabot.yml`` separates the weekly queues: Python updates run on
 Monday, GitHub Actions updates on Tuesday, and Rust updates on Thursday at

@@ -79,9 +79,10 @@ updates:
       time: "09:00"
       timezone: "America/New_York"
     open-pull-requests-limit: 5
+    # Cooldown (PER-264): Dependabot supports only default-days for the
+    # github-actions ecosystem; semver-major-days is rejected there.
     cooldown:
       default-days: 3
-      semver-major-days: 7
     rebase-strategy: "auto"
     commit-message:
       prefix: "ci(deps)"

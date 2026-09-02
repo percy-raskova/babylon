@@ -31,7 +31,7 @@ path = "src/main.rs"
 dynamic_linking = ["bevy/dynamic_linking"]
 
 [dependencies]
-bevy = { version = "0.18", features = ["pan_camera", "webp"] }
+bevy = { version = "0.19", features = ["pan_camera", "webp"] }
 babylon-kernel = { path = "../babylon-kernel" }
 babylon-tick = { path = "../babylon-tick" }
 babylon-graph = { path = "../babylon-graph" }

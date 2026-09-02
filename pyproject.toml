@@ -283,6 +283,7 @@ exclude = [
     ".codex/host/",  # immutable shared Rust host-policy bytes have their own executable law
     "assets/music/",
     "specs/",
+    "**/*.md",  # ruff 0.16 formats Python blocks in Markdown by default; docs keep their own style
 ]
 
 [tool.ruff.lint]

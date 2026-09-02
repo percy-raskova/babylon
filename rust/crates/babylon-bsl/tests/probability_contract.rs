@@ -582,6 +582,49 @@ fn quantize_mass_requires_an_ordinary_numeric_operand_at_load() {
 }
 
 #[test]
+fn quantize_mass_refuses_int_division_at_load() {
+    for (bindings_source, division) in [
+        (
+            "(binding spark-mass :expr (quantize-mass (/ 4 2)))",
+            "(/ 4 2)",
+        ),
+        (
+            "(binding numerator :expr 4) \
+             (binding denominator :expr 2) \
+             (binding spark-mass :expr (quantize-mass (/ numerator denominator)))",
+            "(/ numerator denominator)",
+        ),
+    ] {
+        let source = format!(
+            "(rule demo/spark :role mechanic :evidence designed \
+             :material-basis \"Int division has no runtime semantics\" :fuel 64 \
+             (bindings {bindings_source}) \
+             (effects (choose :sample struggle/spark :slot 0 \
+               (branch SparkOutcome/EXCESSIVE_FORCE :mass spark-mass (effects)) \
+               (branch SparkOutcome/NO_INCIDENT :mass 1m (effects)))))"
+        );
+        let rule = read(&source).unwrap().0;
+        let bindings = parse_bindings(&rule).unwrap();
+        let error = compile_rule_probability(
+            &rule,
+            &[0],
+            &contract(RuleRole::Mechanic),
+            &spark_enums(),
+            &bindings,
+            &HashMap::new(),
+        )
+        .expect_err("quantize-mass must not load an Int / Int expression the evaluator refuses");
+        let ProbabilityError::InvalidForm { message, form_path } = error else {
+            panic!("expected a located quantize-mass refusal, got {error:?}");
+        };
+        assert!(message.contains("statically Int/Real-lane"), "{message}");
+        let (_, spans) = read_all_spanned(source.as_bytes()).unwrap();
+        let span = spans.span_of(&form_path).unwrap();
+        assert_eq!(&source[span.start..span.end], division);
+    }
+}
+
+#[test]
 #[allow(clippy::too_many_lines)]
 fn quantize_mass_uses_declared_types_for_fields_metrics_and_accessors() {
     let mut enums = spark_enums();
@@ -915,6 +958,7 @@ fn assert_compiled_locality_survives_raw_rule_mutation(
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn adjacent_projection_requires_the_kernel_subject_carrier_at_its_sample_path() {
     let fields = HashMap::from([
         (
@@ -1009,6 +1053,47 @@ fn adjacent_projection_requires_the_kernel_subject_carrier_at_its_sample_path() 
     let error = validate_probability_content_set(&[cross_carrier_kernel.clone(), matching.clone()])
         .expect_err("an established finite projection requires carrier-local kernel effects");
     assert_carrier_locality_refusal(error, cross_carrier_source);
+
+    let membership_source = "(rule struggle/spark-mechanic :role mechanic \
+        :evidence designed :material-basis \"shared membership carrier\" :fuel 64 \
+        (bindings (binding current :field social-class/value)) \
+        (effects (choose :sample struggle/spark :slot 0 \
+          (branch SparkOutcome/EXCESSIVE_FORCE :mass 1m \
+            (effects (update-membership self self (set social-class/value 1)))) \
+          (branch SparkOutcome/NO_INCIDENT :mass 1m (effects)))))";
+    let membership_rule = read(membership_source).unwrap().0;
+    let membership_bindings = parse_bindings(&membership_rule).unwrap();
+    let membership_probability = compile_rule_probability_with_types(
+        &membership_rule,
+        &[0],
+        &kernel.contract,
+        &enums,
+        &types,
+        &membership_bindings,
+        &const_values,
+        &HashSet::new(),
+    )
+    .expect("a standalone membership kernel may compile before projection linking");
+    let mut membership_kernel = kernel.clone();
+    membership_kernel.rule = membership_rule;
+    membership_kernel.bindings = membership_bindings;
+    membership_kernel.kernel = membership_probability.kernel;
+    membership_kernel.probability_facts = membership_probability.facts;
+    let error = validate_probability_content_set(&[membership_kernel, matching.clone()])
+        .expect_err("a paired finite projection cannot enumerate a shared membership write");
+    let ProbabilityError::InvalidForm { message, form_path } = error else {
+        panic!("expected a located membership-locality refusal, got {error:?}");
+    };
+    assert!(
+        message.contains("shared or graph-shape writes"),
+        "{message}"
+    );
+    let (_, spans) = read_all_spanned(membership_source.as_bytes()).unwrap();
+    let span = spans.span_of(&form_path).unwrap();
+    assert_eq!(
+        &membership_source[span.start..span.end],
+        "update-membership"
+    );
 
     // Replacing the raw rule after load cannot erase or relocate the compiled
     // whole-rule locality result used by projection linking.

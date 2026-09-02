@@ -193,6 +193,7 @@ The rule and effect grammar gains the following forms:
 
 .. code-block:: text
 
+   <u32-lit> ::= <digits>
    <rule> ::= "(" "rule" <qname>
                   ":role" <rule-role>
                   ":evidence" <evidence-class>

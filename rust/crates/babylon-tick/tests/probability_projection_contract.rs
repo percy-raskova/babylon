@@ -1,6 +1,8 @@
 use babylon_bsl::probability::{ProbabilityError, TICKET_DENOMINATOR};
+use babylon_graph::stable_element::StableElementKeyV1;
 use babylon_tick::{
-    analyze_content_set_sources, forecast_scenario_determined_event_likelihoods,
+    analyze_content_set_sources, forecast_event_likelihoods,
+    forecast_scenario_determined_event_likelihoods,
     forecast_scenario_determined_event_likelihoods_with_kernel_slots,
     kernel_slot::KernelSlotReservationV1, ContentRuleSourceV1, ForecastErrorV1, PrepareError,
 };
@@ -25,6 +27,16 @@ const MULTI_CARRIER_SCENARIO: &str = r#"
     (social-class/last-incident 0))
   (node second NodeType/SOCIAL_CLASS
     (social-class/last-incident 0)))
+"#;
+
+const WRONG_SUBJECT_TYPE_SCENARIO: &str = r#"
+(scenario struggle/spark-projection-contract
+  (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
+  (defenum StruggleSparkOutcome (EXCESSIVE_FORCE NO_INCIDENT))
+  (deffield social-class/last-incident int extensive)
+  (node worker NodeType/SOCIAL_CLASS
+    (social-class/last-incident 0))
+  (node outsider NodeType/INSTITUTION))
 "#;
 
 const PREFIX_DEPENDENT_SCENARIO: &str = r#"
@@ -219,6 +231,30 @@ fn paired_scenario_forecast_refuses_to_guess_between_multiple_carriers() {
         "{error:?}"
     );
     assert!(error.to_string().contains("not exactly one"), "{error}");
+}
+
+#[test]
+fn named_forecast_refuses_a_stable_node_outside_the_mechanic_subject_population() {
+    let error = forecast_event_likelihoods(
+        WRONG_SUBJECT_TYPE_SCENARIO,
+        None,
+        &sources(),
+        "struggle/spark",
+        &StableElementKeyV1::Node {
+            scenario: "struggle/spark-projection-contract".to_owned(),
+            local_name: "outsider".to_owned(),
+        },
+        1,
+    )
+    .expect_err("an institution is not a social-class mechanic carrier");
+
+    assert!(
+        matches!(error, ForecastErrorV1::NotExactlyEnumerable { .. }),
+        "{error:?}"
+    );
+    assert!(error.to_string().contains("INSTITUTION"), "{error}");
+    assert!(error.to_string().contains("SOCIAL_CLASS"), "{error}");
+    assert!(error.to_string().contains("struggle/spark"), "{error}");
 }
 
 #[test]

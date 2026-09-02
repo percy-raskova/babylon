@@ -182,6 +182,9 @@ digits      ::= DIGIT ( "_"? DIGIT )*                         /* §1.4 */
 int-lit     ::= "-"? digits                                   /* §1.4, §1.5 */
                 /* Must fit i64 (E-LEX-020). Static type Int. */
 
+u32-lit     ::= digits                                         /* AJ */
+                /* Must fit u32. Used for append-only kernel slots. */
+
 scaled-lit  ::= "-"? digits ( "." digits )? suffix            /* §1.4, §1.5 */
                 /* A leading digit is mandatory: `.5c` is E-LEX-003.
                    Canonicalized to minimal scale; Currency further to
@@ -523,7 +526,7 @@ effect-item ::= verb                                          /* §2.8 */
                    runs once per element in iteration order, and an empty
                    query applies nothing rather than erroring. */
 
-choose      ::= "(" "choose" ":sample" qname ":slot" int-lit   /* AJ */
+choose      ::= "(" "choose" ":sample" qname ":slot" u32-lit   /* AJ */
                     branch+ ")"
                 /* `:slot` is statically restricted to u32. A choose is a
                    direct top-level Mechanic effect and is non-nestable;

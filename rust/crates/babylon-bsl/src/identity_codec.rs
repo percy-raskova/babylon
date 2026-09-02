@@ -627,7 +627,7 @@ fn append_stable_key(
     output.extend(&key.canonical_bytes()?)
 }
 
-/// Encode one constant, restricted to the five live scalar forms.
+/// Encode one constant, restricted to the six live scalar forms.
 ///
 /// # Errors
 /// Returns [`IdentityCodecError::InvalidConstantKind`] for enum or graph

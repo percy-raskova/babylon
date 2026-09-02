@@ -768,8 +768,18 @@ fn ordinary_numeric_expression_is_typed(
             [SExpr::Atom(Atom::Operator(op)), lhs, rhs]
                 if matches!(op.as_str(), "+" | "-" | "*" | "/") =>
             {
-                ordinary_numeric_expression_is_typed(lhs, types, bindings, consts, resolving)
-                    && ordinary_numeric_expression_is_typed(rhs, types, bindings, consts, resolving)
+                let operands_are_numeric =
+                    ordinary_numeric_expression_is_typed(lhs, types, bindings, consts, resolving)
+                        && ordinary_numeric_expression_is_typed(
+                            rhs, types, bindings, consts, resolving,
+                        );
+                operands_are_numeric
+                    && (op != "/"
+                        || !(ordinary_numeric_expression_is_statically_int(
+                            lhs, types, bindings, consts, resolving,
+                        ) && ordinary_numeric_expression_is_statically_int(
+                            rhs, types, bindings, consts, resolving,
+                        )))
             }
             [SExpr::Atom(Atom::Symbol(form)), _, then_value, else_value] if form == "if" => {
                 ordinary_numeric_expression_is_typed(then_value, types, bindings, consts, resolving)
@@ -840,6 +850,100 @@ fn ordinary_numeric_expression_is_typed(
             | Atom::Str(_)
             | Atom::Operator(_),
         ) => false,
+    }
+}
+
+fn ordinary_numeric_expression_is_statically_int(
+    expr: &SExpr,
+    types: &TypeEnv,
+    bindings: &[BindingDecl],
+    consts: &std::collections::HashMap<String, Value>,
+    resolving: &mut Vec<String>,
+) -> bool {
+    match expr {
+        SExpr::Atom(Atom::Int(_)) => true,
+        SExpr::Atom(Atom::Symbol(name)) => {
+            if resolving.contains(name) {
+                return false;
+            }
+            let Some(binding) = bindings.iter().find(|binding| binding.name == *name) else {
+                return false;
+            };
+            resolving.push(name.clone());
+            let is_int = match &binding.source {
+                BindSource::Const(qname) => matches!(consts.get(qname), Some(Value::Int(_))),
+                BindSource::Expr(source) => ordinary_numeric_expression_is_statically_int(
+                    source, types, bindings, consts, resolving,
+                ),
+                BindSource::Field(qname) | BindSource::Metric(qname) => types
+                    .fields
+                    .get(qname)
+                    .is_some_and(|declaration| declaration.ty == BslType::Int),
+                BindSource::Tick
+                | BindSource::Year
+                | BindSource::TickOfYear
+                | BindSource::TickInCycle(_) => true,
+            };
+            resolving.pop();
+            is_int
+        }
+        SExpr::List(items) => match items.as_slice() {
+            [SExpr::Atom(Atom::Operator(op)), lhs, rhs]
+                if matches!(op.as_str(), "+" | "-" | "*") =>
+            {
+                ordinary_numeric_expression_is_statically_int(
+                    lhs, types, bindings, consts, resolving,
+                ) && ordinary_numeric_expression_is_statically_int(
+                    rhs, types, bindings, consts, resolving,
+                )
+            }
+            [SExpr::Atom(Atom::Symbol(form)), _, then_value, else_value] if form == "if" => {
+                ordinary_numeric_expression_is_statically_int(
+                    then_value, types, bindings, consts, resolving,
+                ) && ordinary_numeric_expression_is_statically_int(
+                    else_value, types, bindings, consts, resolving,
+                )
+            }
+            [SExpr::Atom(Atom::Symbol(form)), _, SExpr::Atom(Atom::QName(qname))]
+                if form == "field-of" =>
+            {
+                types
+                    .fields
+                    .get(qname)
+                    .is_some_and(|declaration| declaration.ty == BslType::Int)
+            }
+            [SExpr::Atom(Atom::Symbol(form)), _, SExpr::Atom(Atom::Symbol(metric))]
+                if form == "metric-of" =>
+            {
+                types
+                    .fields
+                    .get(metric)
+                    .is_some_and(|declaration| declaration.ty == BslType::Int)
+            }
+            [SExpr::Atom(Atom::Symbol(form)), SExpr::Atom(Atom::Symbol(op)), tail @ ..]
+                if form == "fold" =>
+            {
+                if op == "count" {
+                    true
+                } else if matches!(op.as_str(), "sum" | "min" | "max") {
+                    let body = if matches!(tail.get(1), Some(SExpr::Atom(Atom::Keyword(keyword))) if keyword == "as")
+                    {
+                        tail.get(3)
+                    } else {
+                        tail.get(1)
+                    };
+                    body.is_some_and(|body| {
+                        ordinary_numeric_expression_is_statically_int(
+                            body, types, bindings, consts, resolving,
+                        )
+                    })
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        },
+        SExpr::Atom(_) => false,
     }
 }
 
@@ -1314,9 +1418,10 @@ fn classify_kernel_projection_locality(
     rule: &SExpr,
     root_path: &[u32],
 ) -> Result<KernelProjectionLocalityV1, ProbabilityError> {
-    const SHARED_MATERIAL_EFFECTS: [&str; 8] = [
+    const SHARED_MATERIAL_EFFECTS: [&str; 9] = [
         "update-edge",
         "update-hyperedge",
+        "update-membership",
         "add-node",
         "remove-node",
         "add-edge",

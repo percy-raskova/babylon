@@ -1313,6 +1313,24 @@ pub fn forecast_event_likelihoods_with_kernel_slots(
             ),
         });
     }
+    let mechanic_subject_type =
+        babylon_bsl::tick::subject_type_of_rule(&rules[kernel_index], prepared.vocabulary.as_ref())
+            .map_err(ForecastErrorV1::Execution)?;
+    let actual_subject_type = graph.node_type_of(subject_node).map_err(|error| {
+        ForecastErrorV1::NotExactlyEnumerable {
+            reason: format!(
+                "stable subject `{local_name}` has no resolvable node type: {}",
+                error.message
+            ),
+        }
+    })?;
+    if actual_subject_type != mechanic_subject_type {
+        return Err(ForecastErrorV1::NotExactlyEnumerable {
+            reason: format!(
+                "stable subject `{local_name}` has node type `{actual_subject_type}`, but finite kernel `{sample}` mechanic runs over `{mechanic_subject_type}`"
+            ),
+        });
+    }
     let resolver = StableElementResolverV1::seal(
         &graph,
         &prepared.scenario_scope,

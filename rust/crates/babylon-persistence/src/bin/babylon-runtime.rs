@@ -57,6 +57,9 @@ const SCENARIO: &str = r"
   (deffield territory/phi-savings-adjustment coefficient intensive)
   (deffield territory/rate-accumulation probability intensive)
   (deffield territory/dist-year int extensive)
+  ; Governed geography identity (PER-22 ruling D1): write-prohibited to every
+  ; rule role at load (GOVERNED_WRITE_PROHIBITED_NODE_FIELDS); county identity
+  ; is frozen at campaign foundation.
   (deffield territory/county-fips int extensive)
   (defconst class-dynamics/hours-per-year 2080)
   (defconst class-dynamics/v-reproduction 12)

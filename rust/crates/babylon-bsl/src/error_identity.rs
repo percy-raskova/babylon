@@ -316,6 +316,9 @@ fn causal_identity(err: &ContractError) -> Option<ErrorIdentity> {
         ContractError::MismatchedRuleContract { ast_contract, .. } => {
             Some(ErrorIdentity::RuleId(ast_contract.rule_id.clone()))
         }
+        ContractError::GovernedFieldWriteProhibited { field, .. } => {
+            Some(ErrorIdentity::Field(field.clone()))
+        }
         ContractError::MalformedRule
         | ContractError::AstWalkLimit(_)
         | ContractError::MismatchedWriteOrdinal { .. }

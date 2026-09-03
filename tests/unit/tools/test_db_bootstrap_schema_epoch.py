@@ -380,8 +380,8 @@ def test_pr_runtime_contracts_clone_one_clean_activated_template() -> None:
     assert "pg_catalog.pg_database" in runner[template_check_body:template_drop_body]
 
     assert 'const TEMPLATE_DB_ENV: &str = "BABYLON_RUNTIME_TEMPLATE_DB";' in live_tests
-    # Five PER-281 runtime proofs plus three PER-22 declared-mapping proofs.
-    assert live_tests.count("TestDatabase::create_from_template") == 8
+    # Five PER-281 runtime proofs plus five PER-22 declared-mapping proofs.
+    assert live_tests.count("TestDatabase::create_from_template") == 10
     assert live_tests.count("activate_rust_persistence_v2(&config)") == 6
     assert "activate_rust_persistence_v1" not in live_tests
     frozen_activation = live_tests.split("fn verify_frozen_python_estate_activation", maxsplit=1)[

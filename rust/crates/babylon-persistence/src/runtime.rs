@@ -1138,6 +1138,8 @@ pub enum RustPersistenceRuntimeErrorV2 {
     FoundationAbsent,
     /// Durable campaign bytes differ from the requested exact foundation.
     CampaignConflict,
+    /// The content bundle's scenario does not reproduce the session's captured graph.
+    FoundationScenarioMismatch,
     /// This binary cannot yet reconstruct the named nonzero durable tick.
     RestartUnavailable {
         /// Exact acknowledged tick which requires reconstruction.
@@ -1549,6 +1551,17 @@ impl DurableReplayRuntimeV2<HypergraphStore> {
         if verification.canonical_bytes() != foundation.canonical_bytes() {
             return Err(RustPersistenceRuntimeErrorV2::CampaignConflict);
         }
+        // Upgrade path for campaigns founded before the declared mapping
+        // existed: install the additive schema and reconcile the rows
+        // idempotently. Divergence between stored and declared rows refuses
+        // loudly; durable rows are never overwritten.
+        crate::territory_county_map::reconcile_territory_county_map_v1(
+            config,
+            campaign_id,
+            scenario,
+            prelude,
+        )
+        .map_err(RustPersistenceRuntimeErrorV2::TerritoryCountyMap)?;
         let (session, last_committed_tick) = replay_durable_tail_v1(config, campaign_id, session)?;
         validate_campaign_catalog_tail_v1(config, campaign_id, last_committed_tick)?;
         Ok(Self {
@@ -1890,7 +1903,7 @@ fn insert_campaign_foundation_rows_v1(
     let rules = std::str::from_utf8(bundle.rule_source_bytes())
         .map_err(|_| RustPersistenceRuntimeErrorV2::ReplaySource)?;
     let territory_county_map =
-        crate::territory_county_map::extract_declared_territory_county_map_v1(scenario)
+        crate::territory_county_map::extract_declared_territory_county_map_v1(scenario, prelude)
             .map_err(RustPersistenceRuntimeErrorV2::TerritoryCountyMap)?;
     let foundation_sha256 = sha256_of(foundation.canonical_bytes());
     client
@@ -4434,6 +4447,117 @@ mod live_tests {
             .try_get(0)
             .expect("campaign count decodes");
         assert_eq!(campaign_rows, 0);
+        database.cleanup();
+    }
+
+    fn county_map_rows(config: &Config, campaign_id: CampaignId) -> Vec<(String, String)> {
+        config
+            .connect(NoTls)
+            .expect("county map read connection")
+            .query(
+                "SELECT territory_local_name, county_geoid \
+                 FROM babylon_meta.territory_county_map_v1 \
+                 WHERE campaign_id = $1::uuid ORDER BY territory_local_name",
+                &[campaign_id.as_uuid()],
+            )
+            .expect("county map rows read")
+            .into_iter()
+            .map(|row| {
+                (
+                    row.try_get(0).expect("local name decodes"),
+                    row.try_get(1).expect("county geoid decodes"),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    #[ignore = "requires the task-owned disposable PG17 runtime"]
+    fn live_territory_county_map_backfills_when_opening_a_pre_feature_campaign() {
+        // An already-founded campaign whose mapping rows are absent (a
+        // pre-feature foundation) must gain them idempotently on open,
+        // without overwriting any existing row.
+        let base = validated_base_config();
+        let template = validated_template_name();
+        let database = TestDatabase::create_from_template(&base, &template, "countymapbackfill");
+        let config = database.config(&base);
+        let campaign_id =
+            CampaignId::from_uuid(Uuid::from_u128(0x2810_0000_0000_0000_0000_0000_0000_00c4));
+        let (session, bundle) = county_map_fixture(COUNTY_MAP_SCENARIO);
+        let runtime = DurableReplayRuntimeV2::create(&config, campaign_id, session, bundle)
+            .expect("runtime constructs after activation");
+        drop(runtime);
+        // Simulate the pre-feature state: the campaign exists, the rows do not.
+        let deleted = config
+            .connect(NoTls)
+            .expect("pre-feature simulation connection")
+            .execute(
+                "DELETE FROM babylon_meta.territory_county_map_v1 WHERE campaign_id = $1::uuid",
+                &[campaign_id.as_uuid()],
+            )
+            .expect("pre-feature rows removed");
+        assert_eq!(deleted, 1);
+        assert!(county_map_rows(&config, campaign_id).is_empty());
+
+        let reopened = DurableReplayRuntimeV2::open(&config, campaign_id)
+            .expect("open backfills the declared mapping");
+        assert_eq!(reopened.last_committed_tick(), None);
+        assert_eq!(
+            county_map_rows(&config, campaign_id),
+            [("wayne".to_owned(), "26163".to_owned())]
+        );
+        // A second open reconciles against identical rows without writing or
+        // refusing.
+        let reopened_again = DurableReplayRuntimeV2::open(&config, campaign_id)
+            .expect("a second open reconciles idempotently");
+        assert_eq!(reopened_again.last_committed_tick(), None);
+        assert_eq!(
+            county_map_rows(&config, campaign_id),
+            [("wayne".to_owned(), "26163".to_owned())]
+        );
+        database.cleanup();
+    }
+
+    #[test]
+    #[ignore = "requires the task-owned disposable PG17 runtime"]
+    fn live_territory_county_map_open_refuses_divergent_stored_rows() {
+        // Stored rows are never overwritten: when they disagree with the
+        // scenario-declared mapping, open refuses loudly.
+        let base = validated_base_config();
+        let template = validated_template_name();
+        let database = TestDatabase::create_from_template(&base, &template, "countymapdiverge");
+        let config = database.config(&base);
+        let campaign_id =
+            CampaignId::from_uuid(Uuid::from_u128(0x2810_0000_0000_0000_0000_0000_0000_00c5));
+        let (session, bundle) = county_map_fixture(COUNTY_MAP_SCENARIO);
+        let runtime = DurableReplayRuntimeV2::create(&config, campaign_id, session, bundle)
+            .expect("runtime constructs after activation");
+        drop(runtime);
+        let updated = config
+            .connect(NoTls)
+            .expect("divergence simulation connection")
+            .execute(
+                "UPDATE babylon_meta.territory_county_map_v1 SET county_geoid = '26099' \
+                 WHERE campaign_id = $1::uuid",
+                &[campaign_id.as_uuid()],
+            )
+            .expect("divergent row installed");
+        assert_eq!(updated, 1);
+
+        let Err(error) = DurableReplayRuntimeV2::open(&config, campaign_id) else {
+            panic!("divergent stored mapping rows refuse open");
+        };
+        assert!(matches!(
+            error,
+            RustPersistenceRuntimeErrorV2::TerritoryCountyMap(
+                crate::TerritoryCountyMapErrorV1::StoredMappingDiverged { .. }
+            )
+        ));
+        // The durable rows were not overwritten by the refused open.
+        assert_eq!(
+            county_map_rows(&config, campaign_id),
+            [("wayne".to_owned(), "26099".to_owned())]
+        );
         database.cleanup();
     }
 

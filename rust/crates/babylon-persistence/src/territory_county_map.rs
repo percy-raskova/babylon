@@ -1,9 +1,16 @@
 //! Declared territory→county mapping persisted once at campaign foundation (PER-22,
 //! Director ruling D1, 2026-09-02).
+//!
+//! The mapping field `territory/county-fips` is governed geography identity:
+//! [`babylon_bsl::causal_contract::GOVERNED_WRITE_PROHIBITED_NODE_FIELDS`]
+//! refuses every rule write to it at load, so the graph can never rewrite
+//! county identity after foundation. Reopening an already-founded campaign
+//! reconciles the rows idempotently (insert-if-absent; divergence refuses
+//! loudly rather than overwriting).
 
 use std::collections::BTreeMap;
 
-use babylon_bsl::scenario::load_scenario;
+use babylon_bsl::scenario::{load_scenario, load_scenario_with_prelude};
 use babylon_bsl::types::{BslType, FieldKind};
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::GraphSubstrate;
@@ -80,8 +87,9 @@ impl TerritoryCountyMapRowV1 {
 pub enum TerritoryCountyMapErrorV1 {
     /// The scenario source could not be re-read for extraction.
     ScenarioLoad,
-    /// The scenario declared the mapping field with a non-`int` type.
-    FieldNotInt,
+    /// The scenario declared the mapping field with anything but an `int`
+    /// type AND an `extensive` kind; both axes are mandatory.
+    FieldDeclRefused,
     /// A `TERRITORY` node did not seed the declared mapping field.
     MissingCountyFips {
         /// Refused scenario-local node name.
@@ -109,6 +117,14 @@ pub enum TerritoryCountyMapErrorV1 {
     InvalidCountyGeoid,
     /// The additive schema is partially installed or names another contract.
     SchemaMismatch,
+    /// Stored mapping rows diverge from the scenario-declared mapping. The
+    /// durable rows are never overwritten; a human must reconcile.
+    StoredMappingDiverged {
+        /// Exact number of rows already stored for the campaign.
+        stored_rows: usize,
+        /// Exact number of rows the scenario declares today.
+        declared_rows: usize,
+    },
     /// A local-only schema or row operation failed.
     Database {
         /// Stable operation name without caller-supplied text.
@@ -150,27 +166,38 @@ pub enum TerritoryCountyMapSchemaDispositionV1 {
 
 /// Extract the declared territory→county mapping from one scenario source.
 ///
-/// The scenario is re-read through the sole BSL loader into a disposable graph, so
-/// the extraction observes exactly the seeded content identity the campaign
-/// foundation persists. A scenario that does not declare
-/// [`TERRITORY_COUNTY_MAP_FIELD_V1`] extracts no rows and is never refused;
-/// once declared, every `TERRITORY` node must seed an integer in
-/// `0..=99999`, and no two territory nodes may share a county GEOID.
+/// The scenario is re-read through the sole BSL loader — with the campaign's
+/// declaration prelude when one exists, exactly as session hydration does —
+/// into a disposable graph, so the extraction observes exactly the seeded
+/// content identity the campaign foundation persists. A scenario that does
+/// not declare [`TERRITORY_COUNTY_MAP_FIELD_V1`] extracts no rows and is
+/// never refused; once declared, the declaration must be `int` AND
+/// `extensive`, and every `TERRITORY` node must seed an integer in
+/// `0..=99999`. No two territory nodes may share a county GEOID.
+///
+/// The extracted rows are a pure function of the scenario content; the
+/// caller is responsible for binding them to the session graph before
+/// persisting (see `CampaignFoundationV1::capture`'s scenario bind).
 ///
 /// # Errors
-/// Returns [`TerritoryCountyMapErrorV1`] for a load failure, a non-`int`
-/// declaration, a missing seed, an out-of-range seed, or a duplicate GEOID.
+/// Returns [`TerritoryCountyMapErrorV1`] for a load failure, a refused
+/// field declaration (anything but `int` + `extensive`), a missing seed,
+/// an out-of-range seed, or a duplicate GEOID.
 pub fn extract_declared_territory_county_map_v1(
     scenario_source: &str,
+    prelude_source: Option<&str>,
 ) -> Result<Vec<TerritoryCountyMapRowV1>, TerritoryCountyMapErrorV1> {
     let mut graph = HypergraphStore::new();
-    let loaded = load_scenario(scenario_source, &mut graph)
-        .map_err(|_| TerritoryCountyMapErrorV1::ScenarioLoad)?;
+    let loaded = match prelude_source {
+        Some(prelude) => load_scenario_with_prelude(prelude, scenario_source, &mut graph),
+        None => load_scenario(scenario_source, &mut graph),
+    }
+    .map_err(|_| TerritoryCountyMapErrorV1::ScenarioLoad)?;
     let Some(declaration) = loaded.fields.get(TERRITORY_COUNTY_MAP_FIELD_V1) else {
         return Ok(Vec::new());
     };
     if declaration.ty != BslType::Int || declaration.kind != FieldKind::Extensive {
-        return Err(TerritoryCountyMapErrorV1::FieldNotInt);
+        return Err(TerritoryCountyMapErrorV1::FieldDeclRefused);
     }
     let mut geoid_owner: BTreeMap<String, String> = BTreeMap::new();
     for node_id in graph.nodes(TERRITORY_NODE_TYPE_V1) {
@@ -326,5 +353,95 @@ pub(crate) fn insert_territory_county_map_rows_v1(
             )
             .map_err(|error| database("insert territory county map row", &error))?;
     }
+    Ok(())
+}
+
+/// Read one campaign's stored mapping rows in a deterministic order.
+///
+/// # Errors
+/// Returns [`TerritoryCountyMapErrorV1`] for a database failure or a stored
+/// row that violates the row shape the schema pins.
+fn read_territory_county_map_rows_v1(
+    client: &mut impl GenericClient,
+    campaign_id: CampaignId,
+) -> Result<Vec<TerritoryCountyMapRowV1>, TerritoryCountyMapErrorV1> {
+    let rows = client
+        .query(
+            "SELECT territory_local_name, county_geoid \
+             FROM babylon_meta.territory_county_map_v1 \
+             WHERE campaign_id = $1::uuid ORDER BY territory_local_name, county_geoid",
+            &[campaign_id.as_uuid()],
+        )
+        .map_err(|error| database("read territory county map rows", &error))?;
+    rows.iter()
+        .map(|row| {
+            let local: String = row
+                .try_get(0)
+                .map_err(|error| database("decode territory county map local name", &error))?;
+            let geoid: String = row
+                .try_get(1)
+                .map_err(|error| database("decode territory county map geoid", &error))?;
+            TerritoryCountyMapRowV1::try_new(local, geoid)
+        })
+        .collect()
+}
+
+/// Reconcile one campaign's stored mapping rows against its declared
+/// scenario mapping — the upgrade path for campaigns founded before this
+/// feature existed.
+///
+/// Idempotent and exact: when no rows are stored the declared rows are
+/// inserted (insert-if-absent through the primary key); when stored rows
+/// exist they must equal the freshly extracted mapping, compared as an
+/// order-free set, or the call refuses with
+/// [`TerritoryCountyMapErrorV1::StoredMappingDiverged`] — durable rows are
+/// never overwritten. A campaign whose scenario does not declare the field
+/// reconciles as a no-op.
+///
+/// # Errors
+/// Returns [`TerritoryCountyMapErrorV1`] for a schema, load, divergence, or
+/// database failure.
+pub(crate) fn reconcile_territory_county_map_v1(
+    config: &Config,
+    campaign_id: CampaignId,
+    scenario_source: &str,
+    prelude_source: Option<&str>,
+) -> Result<(), TerritoryCountyMapErrorV1> {
+    install_territory_county_map_schema_v1(config)?;
+    let declared = extract_declared_territory_county_map_v1(scenario_source, prelude_source)?;
+    let mut client = config
+        .connect(NoTls)
+        .map_err(|error| database("connect territory county map reconciler", &error))?;
+    let mut transaction = client
+        .build_transaction()
+        .isolation_level(IsolationLevel::Serializable)
+        .start()
+        .map_err(|error| database("begin territory county map reconcile", &error))?;
+    let stored = read_territory_county_map_rows_v1(&mut transaction, campaign_id)?;
+    if stored.is_empty() {
+        insert_territory_county_map_rows_v1(&mut transaction, campaign_id, &declared)?;
+    } else {
+        let mut stored_sorted = stored.clone();
+        stored_sorted.sort_by(|left, right| {
+            left.territory_local_name
+                .cmp(&right.territory_local_name)
+                .then_with(|| left.county_geoid.cmp(&right.county_geoid))
+        });
+        let mut declared_sorted = declared.clone();
+        declared_sorted.sort_by(|left, right| {
+            left.territory_local_name
+                .cmp(&right.territory_local_name)
+                .then_with(|| left.county_geoid.cmp(&right.county_geoid))
+        });
+        if stored_sorted != declared_sorted {
+            return Err(TerritoryCountyMapErrorV1::StoredMappingDiverged {
+                stored_rows: stored.len(),
+                declared_rows: declared.len(),
+            });
+        }
+    }
+    transaction
+        .commit()
+        .map_err(|error| database("commit territory county map reconcile", &error))?;
     Ok(())
 }

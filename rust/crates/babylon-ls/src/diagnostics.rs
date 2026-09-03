@@ -272,6 +272,7 @@ pub fn family_of_load_error(err: &LoadError) -> &'static str {
             | babylon_bsl::causal_contract::ContractError::UnknownMetadataValue { .. }
             | babylon_bsl::causal_contract::ContractError::MalformedRule => "E-PARSE",
             babylon_bsl::causal_contract::ContractError::UnauthorizedEffect { .. }
+            | babylon_bsl::causal_contract::ContractError::GovernedFieldWriteProhibited { .. }
             | babylon_bsl::causal_contract::ContractError::GovernedAttributionMismatch { .. }
             | babylon_bsl::causal_contract::ContractError::MismatchedRuleContract { .. }
             | babylon_bsl::causal_contract::ContractError::AstWalkLimit(_)

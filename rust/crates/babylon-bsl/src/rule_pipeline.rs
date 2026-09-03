@@ -1342,6 +1342,119 @@ mod deferred_shape_verb_tests {
 }
 
 #[cfg(test)]
+mod governed_field_write_prohibition_tests {
+    // PER-22 ruling D1 (Director, 2026-09-02): `territory/county-fips` is
+    // governed geography identity. The declared territory→county mapping is
+    // frozen at campaign foundation, so a rule writing the field could
+    // rewrite county identity after foundation and contradict the durable
+    // mapping. Before this gate a MECHANIC rule — the role whose write
+    // surface is otherwise unrestricted — loaded such a write clean and
+    // executed it mid-tick; the refusal must happen at load, for every
+    // role, through the ordinary `load_rule` entry point.
+    use super::{load_rule, LoadContext, LoadError};
+    use crate::bindings::BindingVocabulary;
+    use crate::causal_contract::{ContractError, GOVERNED_WRITE_PROHIBITED_NODE_FIELDS};
+    use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
+    use crate::typecheck::TypeEnv;
+    use std::collections::{HashMap, HashSet};
+
+    fn load_ctx() -> LoadContext<'static> {
+        // Same leaked-fixture convention as `deferred_shape_verb_tests::
+        // load_ctx`: the empty `TypeEnv` skips later field-declaration
+        // checks, so the rule reaches effect authorization and only the
+        // governed prohibition can refuse it.
+        LoadContext {
+            vocabulary: Box::leak(Box::new(BindingVocabulary {
+                fields: HashSet::new(),
+                consts: HashSet::new(),
+                probability_consts: HashSet::new(),
+                metrics: HashSet::new(),
+            })),
+            types: Box::leak(Box::new(TypeEnv {
+                fields: HashMap::new(),
+                exemptions: &[],
+            })),
+            enums: Box::leak(Box::new(crate::types::EnumRegistry::default())),
+            const_values: Box::leak(Box::new(HashMap::new())),
+            ceilings: Box::leak(Box::new(CardinalityCeilings::new(
+                HashMap::new(),
+                HashMap::new(),
+            ))),
+            intrinsics: Box::leak(Box::new(IntrinsicCosts::default())),
+            systems: Box::leak(Box::new(HashSet::from([
+                "control-ratio".to_owned(),
+                "geography".to_owned(),
+            ]))),
+            vocabulary_registry: None,
+            rule_file: "x.bsl",
+        }
+    }
+
+    #[test]
+    fn the_governed_table_names_the_county_mapping_field() {
+        assert_eq!(
+            GOVERNED_WRITE_PROHIBITED_NODE_FIELDS,
+            &["territory/county-fips"]
+        );
+    }
+
+    #[test]
+    fn a_mechanic_rule_writing_governed_geography_identity_refuses_at_load() {
+        let ctx = load_ctx();
+        let err = load_rule(
+            r#"(rule geography/county-probe :role mechanic :evidence derived :material-basis "x" :fuel 64
+  (bindings)
+  (effects (update-node self territory/county-fips (set 26163))))"#,
+            &ctx,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(
+                err,
+                LoadError::Causal(ContractError::GovernedFieldWriteProhibited { .. })
+            ),
+            "expected a governed write prohibition, got {err:?}"
+        );
+        assert!(err.to_string().contains("territory/county-fips"), "{err}");
+    }
+
+    #[test]
+    fn a_governed_field_write_nested_in_a_guard_still_refuses_at_load() {
+        // The effect walk must recurse through guard nesting, exactly like
+        // the deferred-shape-verb gate it extends.
+        let ctx = load_ctx();
+        let err = load_rule(
+            r#"(rule geography/county-probe :role mechanic :evidence derived :material-basis "x" :fuel 64
+  (bindings)
+  (effects (guard #t (update-node self territory/county-fips (set 26163)))))"#,
+            &ctx,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(
+                err,
+                LoadError::Causal(ContractError::GovernedFieldWriteProhibited { .. })
+            ),
+            "expected a governed write prohibition, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn rules_writing_ordinary_fields_stay_legal_for_every_role_gate() {
+        // The regression guard: update-node on an ordinary field must not
+        // trip the prohibition — mechanic write surface stays intact.
+        let ctx = load_ctx();
+        load_rule(
+            r#"(rule geography/heat-probe :role mechanic :evidence derived :material-basis "x" :fuel 64
+  (bindings)
+  (effects (update-node self geography/heat (set 1))))"#,
+            &ctx,
+        )
+        .expect("ordinary field writes must stay legal");
+    }
+}
+
+#[cfg(test)]
 mod enum_fold_body_tests {
     // #551 closure (Task 2, P27 territory-port train): `(fold <op> <query>
     // <enum-declared body>)` used to pass the §3.4 kind law silently,

@@ -540,6 +540,16 @@ pub const GOVERNED_EFFECT_ALLOWANCES: &[GovernedEffectAllowance] = &[
     },
 ];
 
+/// Director-governed node fields that NO rule — mechanic included — may
+/// write (PER-22 ruling D1, 2026-09-02). `territory/county-fips` is governed
+/// geography identity: the declared territory→county mapping is frozen at
+/// campaign foundation (`babylon_meta.territory_county_map_v1`), so a rule
+/// write could rewrite county identity after foundation and leave mechanics
+/// and Archive resolution with contradictory geography. The prohibition is
+/// name-exact and load-time, and it binds every role: the mechanic's
+/// otherwise-unrestricted write surface explicitly stops here.
+pub const GOVERNED_WRITE_PROHIBITED_NODE_FIELDS: &[&str] = &["territory/county-fips"];
+
 /// A causal-contract rejection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ContractError {
@@ -567,6 +577,15 @@ pub enum ContractError {
         rule_id: String,
         role: RuleRole,
         effect: EffectSignature,
+    },
+    /// A rule of any role tried to write a governed write-prohibited node
+    /// field (PER-22 ruling D1: county identity is frozen at campaign
+    /// foundation, so no mechanic or mod rule may rewrite it afterwards).
+    GovernedFieldWriteProhibited {
+        /// Exact refused rule identifier.
+        rule_id: String,
+        /// The governed field qualified name.
+        field: String,
     },
     /// A caller paired a parsed contract with a different rule AST.
     MismatchedRuleContract {
@@ -596,6 +615,7 @@ impl ContractError {
             | Self::MalformedMetadata { .. }
             | Self::GovernedAttributionMismatch { .. }
             | Self::MalformedRule
+            | Self::GovernedFieldWriteProhibited { .. }
             | Self::MismatchedRuleContract { .. }
             | Self::AstWalkLimit(_)
             | Self::MismatchedWriteAttribution { .. }
@@ -638,6 +658,12 @@ impl std::fmt::Display for ContractError {
             } => write!(
                 formatter,
                 "E-LOAD-060: {rule_id} ({role:?}) is not allowed to perform {effect:?}"
+            ),
+            Self::GovernedFieldWriteProhibited { rule_id, field } => write!(
+                formatter,
+                "{rule_id} is not allowed to write {field}: the field is governed geography \
+                 identity frozen at campaign foundation (PER-22 ruling D1), and every role — \
+                 mechanic included — is refused a write to it at load"
             ),
             Self::MismatchedRuleContract {
                 ast_contract,
@@ -905,6 +931,17 @@ fn authorize_effect(
     contract: &RuleContract,
     effect: &EffectSignature,
 ) -> Result<(), ContractError> {
+    // The governed geography-identity prohibition binds EVERY role and
+    // therefore runs before the mechanic's otherwise-unrestricted early
+    // return: no rule may write a field the campaign foundation freezes.
+    if let EffectSignature::NodeField(field) = effect {
+        if GOVERNED_WRITE_PROHIBITED_NODE_FIELDS.contains(&field.as_str()) {
+            return Err(ContractError::GovernedFieldWriteProhibited {
+                rule_id: contract.rule_id.clone(),
+                field: field.clone(),
+            });
+        }
+    }
     if contract.role == RuleRole::Mechanic {
         return Ok(());
     }

@@ -360,7 +360,7 @@ jobs:
   pg-integration-shards:
     name: PostgreSQL Contract (${{ matrix.focus }})
     # The one-way cutover replaced the Python writer's integration subset with
-    # the task-owned Rust live matrix. The five focus boundaries preserve the
+    # the task-owned Rust live matrix. The six focus boundaries preserve the
     # complete PR contract while removing independent phases from the critical
     # path. fail-fast stays disabled so every exact-head run yields a complete
     # contract receipt even when one sibling fails.
@@ -370,7 +370,13 @@ jobs:
       fail-fast: false
       max-parallel: 4
       matrix:
-        focus: [clean_bootstrap, h3_atomicity, rust_persistence_runtime, installed_mutation, archive_worker]
+        focus:
+          - clean_bootstrap
+          - h3_atomicity
+          - rust_persistence_runtime
+          - installed_mutation
+          - archive_worker
+          - reader_role
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 

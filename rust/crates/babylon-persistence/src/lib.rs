@@ -22,6 +22,7 @@ mod michigan_dynamic_hex_foundation;
 pub mod migration_manifest;
 mod place_producer;
 mod postgres_diagnostic;
+mod reader;
 mod runtime;
 pub mod schema_epoch;
 pub mod schema_migration;
@@ -125,6 +126,7 @@ pub use place_producer::{
 pub use postgres_diagnostic::{
     PostgresDiagnosticV1, PostgresFailureClassV1, MAX_POSTGRES_DIAGNOSTIC_MESSAGE_BYTES,
 };
+pub use reader::*;
 pub use runtime::{
     activate_rust_persistence_v2, hydrate_campaign_foundation_v1, prepare_committed_tick_v2,
     ActivationReportV2, CommittedTickAuthorityLedgerRowV2, CommittedTickAuthorityStateV2,

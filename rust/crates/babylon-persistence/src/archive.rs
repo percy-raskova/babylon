@@ -23,7 +23,7 @@ const MAX_SIGNALS: usize = 256;
 const MAX_LINKS: usize = 256;
 const MAX_KNOWLEDGE_GRANTS: usize = 65_535;
 const MAX_PAGE_BYTES: usize = 1_048_576;
-const MAX_SEARCH_HITS: u32 = 100;
+pub(crate) const MAX_SEARCH_HITS: u32 = 100;
 const ARCHIVE_SCHEMA_CONTRACT_ID: &str = "babylon.semantic-archive-schema.v1";
 const ARCHIVE_WORKER_DOMAIN_V1: &[u8] = b"babylon.semantic-archive-worker.v1\0";
 const ARCHIVE_DIRTY_BATCH_DOMAIN_V1: &[u8] = b"babylon.semantic-archive-dirty-batch.v1\0";
@@ -1201,7 +1201,7 @@ fn persist_page(
         .map_err(|error| database("upsert semantic Archive page", &error))
 }
 
-fn decode_search_hit(row: &Row) -> Result<ArchiveSearchHitV1, SemanticArchiveErrorV1> {
+pub(crate) fn decode_search_hit(row: &Row) -> Result<ArchiveSearchHitV1, SemanticArchiveErrorV1> {
     let kind = decode_subject_kind(&decode::<String>(row, 0)?)?;
     let page_ref = ArchivePageRefV1::try_new(kind, decode(row, 1)?)?;
     let title: String = decode(row, 2)?;

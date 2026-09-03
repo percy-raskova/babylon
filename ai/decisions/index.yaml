@@ -1155,3 +1155,8 @@ decisions:
     status: accepted
     date: '2026-09-01'
     file: ADR248_finite_material_transition_kernels.yaml
+  ADR249_semantic_atom_content_architecture:
+    title: 'PER-23 Director design rulings 2026-09-03: semantic atoms (content-addressed, append-only, grant-keyed) as the atomic content unit with tables-for-invariants/views-for-compositions; Babylon Markdown = GFM 0.29 + subject: scheme links (bare empty-text fog redlinks, strikethrough known-but-pending); presentation-layer redlink placeholders, never stored; narrated wiki = append-only version chain bound to atom-set digests, Git as export only; read-only reader role + BABYLON_READER_DSN; Gameplay-role dossier with changelog strip and dual-tick honesty; agent-first headless CLI; foundation grant seeding (structure public, magnitudes earned)'
+    status: accepted
+    date: '2026-09-03'
+    file: ADR249_semantic_atom_content_architecture.yaml

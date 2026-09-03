@@ -515,6 +515,11 @@ fn live_worker_consumes_pending_receipts_in_tick_order() {
     assert_eq!(hits[0].citations().len(), 2);
     assert_eq!(hits[0].citations()[0].source_id(), "live-worker-subject");
     assert_eq!(hits[0].citations()[1].source_id(), "qcew-2024");
+    assert_eq!(hits[0].citations()[0].locator(), "subject@tick-1");
+    assert_eq!(
+        hits[0].citations()[1].locator(),
+        "fact_qcew_county_rollup county_fips=26163"
+    );
     target.finish();
 }
 

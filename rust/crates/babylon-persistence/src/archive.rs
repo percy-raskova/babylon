@@ -23,7 +23,8 @@ const MAX_SIGNALS: usize = 256;
 const MAX_LINKS: usize = 256;
 const MAX_KNOWLEDGE_GRANTS: usize = 65_535;
 const MAX_PAGE_BYTES: usize = 1_048_576;
-const MAX_SEARCH_HITS: u32 = 100;
+/// Inclusive ceiling for one `search_known` result set.
+pub const MAX_SEARCH_HITS: u32 = 100;
 const ARCHIVE_SCHEMA_CONTRACT_ID: &str = "babylon.semantic-archive-schema.v1";
 const ARCHIVE_WORKER_DOMAIN_V1: &[u8] = b"babylon.semantic-archive-worker.v1\0";
 const ARCHIVE_DIRTY_BATCH_DOMAIN_V1: &[u8] = b"babylon.semantic-archive-dirty-batch.v1\0";
@@ -1201,6 +1202,12 @@ fn persist_page(
         .map_err(|error| database("upsert semantic Archive page", &error))
 }
 
+/// Revalidate stored page bytes against the pinned content digest on read.
+#[must_use]
+pub fn archive_page_content_matches_digest_v1(markdown: &str, content_sha256: &[u8; 32]) -> bool {
+    sha256_of(markdown.as_bytes()) == *content_sha256
+}
+
 fn decode_search_hit(row: &Row) -> Result<ArchiveSearchHitV1, SemanticArchiveErrorV1> {
     let kind = decode_subject_kind(&decode::<String>(row, 0)?)?;
     let page_ref = ArchivePageRefV1::try_new(kind, decode(row, 1)?)?;
@@ -1213,7 +1220,7 @@ fn decode_search_hit(row: &Row) -> Result<ArchiveSearchHitV1, SemanticArchiveErr
         .ok_or(SemanticArchiveErrorV1::StoredPageMismatch)?;
     let markdown: String = decode(row, 4)?;
     let content_sha256 = decode_digest(row, 5)?;
-    if sha256_of(markdown.as_bytes()) != content_sha256 {
+    if !archive_page_content_matches_digest_v1(&markdown, &content_sha256) {
         return Err(SemanticArchiveErrorV1::StoredPageMismatch);
     }
     let provenance_json: String = decode(row, 6)?;

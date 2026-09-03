@@ -2220,7 +2220,7 @@ pub(crate) fn validate_text(value: &str) -> Result<(), SemanticArchiveErrorV1> {
     Ok(())
 }
 
-fn validate_key(value: &str) -> Result<(), SemanticArchiveErrorV1> {
+pub(crate) fn validate_key(value: &str) -> Result<(), SemanticArchiveErrorV1> {
     let mut bytes = value.bytes();
     let Some(first) = bytes.next() else {
         return Err(SemanticArchiveErrorV1::InvalidText);

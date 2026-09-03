@@ -15,12 +15,13 @@ use babylon_kernel::sha256_of;
 use babylon_kernel::tick_content_hash::RefDigestV1;
 use babylon_kernel::ContentDigest;
 use babylon_persistence::{
-    michigan_dynamic_hex_foundation_v1, validate_legacy_connection_target, ArchiveCitationV1,
-    ArchiveDirtyBatchV1, ArchiveDossierProducerV1, ArchiveKnowledgeGrantV1, ArchivePageInputV1,
-    ArchivePageRefV1, ArchiveReceiptDispositionV1, ArchiveSchemaDispositionV1, ArchiveSignalV1,
-    ArchiveSubjectKindV1, ArchiveSubjectV1, ArchiveWorkerV1, CampaignId, DurableReplayRuntimeV2,
-    FoundationContentBundleV1, NullArchiveDossierProducerV1, PendingArchiveReceiptV1,
-    SemanticArchiveErrorV1, SemanticArchiveStoreV1,
+    michigan_dynamic_hex_foundation_v1, seed_foundation_grants_v1,
+    validate_legacy_connection_target, ArchiveCitationV1, ArchiveDirtyBatchV1,
+    ArchiveDossierProducerV1, ArchiveKnowledgeGrantV1, ArchivePageInputV1, ArchivePageRefV1,
+    ArchiveReceiptDispositionV1, ArchiveSchemaDispositionV1, ArchiveSignalV1, ArchiveSubjectKindV1,
+    ArchiveSubjectV1, ArchiveWorkerV1, CampaignId, DurableReplayRuntimeV2,
+    FoundationContentBundleV1, FoundationGrantsErrorV1, NullArchiveDossierProducerV1,
+    PendingArchiveReceiptV1, SemanticArchiveErrorV1, SemanticArchiveStoreV1,
 };
 use babylon_practice_contract::ordered_action_v1::OrderedPracticeActionBatchV1;
 use babylon_tick::material_state::MaterialStateV1;
@@ -1053,5 +1054,130 @@ fn live_search_bounds_results_to_the_requested_limit() {
         .search_known(target.campaign_id, "728576", 10)
         .expect("unbounded known-only search");
     assert_eq!(unbounded.len(), 2);
+    target.finish();
+}
+
+/// Assert the seeded foundation grant census is exactly the digest-pinned
+/// grant-row set: 83 counties + 745 places + 8 concepts at tick 0 only, with
+/// no earned magnitude keys.
+fn assert_foundation_grant_census(client: &mut postgres::Client, campaign_id: CampaignId) {
+    let census = client
+        .query(
+            "SELECT subject_kind, grant_key, pg_catalog.count(*) \
+             FROM babylon_meta.archive_knowledge_grant_v1 \
+             WHERE campaign_id = $1::uuid \
+             GROUP BY subject_kind, grant_key ORDER BY subject_kind, grant_key",
+            &[campaign_id.as_uuid()],
+        )
+        .expect("foundation grant census query")
+        .iter()
+        .map(|row| {
+            (
+                row.try_get::<_, String>(0).expect("kind decodes"),
+                row.try_get::<_, String>(1).expect("key decodes"),
+                row.try_get::<_, i64>(2).expect("count decodes"),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        census,
+        [
+            ("concept".to_owned(), "identity".to_owned(), 8),
+            ("concept".to_owned(), "subject".to_owned(), 8),
+            ("county".to_owned(), "containment".to_owned(), 83),
+            ("county".to_owned(), "identity".to_owned(), 83),
+            ("county".to_owned(), "subject".to_owned(), 83),
+            ("place".to_owned(), "containment".to_owned(), 745),
+            ("place".to_owned(), "identity".to_owned(), 745),
+            ("place".to_owned(), "subject".to_owned(), 745),
+        ],
+        "the foundation census is exactly the digest-pinned grant-row set"
+    );
+    let total: i64 = client
+        .query_one(
+            "SELECT pg_catalog.count(*) FROM babylon_meta.archive_knowledge_grant_v1 \
+             WHERE campaign_id = $1::uuid",
+            &[campaign_id.as_uuid()],
+        )
+        .expect("total grant row query")
+        .try_get(0)
+        .expect("total grant row count decodes");
+    assert_eq!(total, 2_500);
+    let grant_ticks = client
+        .query(
+            "SELECT DISTINCT granted_tick FROM babylon_meta.archive_knowledge_grant_v1 \
+             WHERE campaign_id = $1::uuid",
+            &[campaign_id.as_uuid()],
+        )
+        .expect("grant tick census query")
+        .iter()
+        .map(|row| row.try_get::<_, i64>(0).expect("tick decodes"))
+        .collect::<Vec<_>>();
+    assert_eq!(grant_ticks, [0], "foundation knowledge predates every tick");
+    let earned: i64 = client
+        .query_one(
+            "SELECT pg_catalog.count(*) FROM babylon_meta.archive_knowledge_grant_v1 \
+             WHERE campaign_id = $1::uuid AND grant_key IN \
+             ('median-wage', 'phi-hour', 'class-composition', 'employment')",
+            &[campaign_id.as_uuid()],
+        )
+        .expect("earned-key census query")
+        .try_get(0)
+        .expect("earned-key count decodes");
+    assert_eq!(
+        earned, 0,
+        "magnitude keys are earned in play, never seeded at foundation"
+    );
+}
+
+#[test]
+#[ignore = "requires the task-owned disposable PostgreSQL runtime and committed ticks"]
+fn live_foundation_grants_seed_at_campaign_foundation_and_reconcile_exactly() {
+    let target = LiveWorkerTarget::create_with_grants(
+        "foundationgrants",
+        0x2200_0000_0000_0000_0000_0000_0000_00b1,
+        1,
+        &[],
+    );
+    let mut client = target
+        .config
+        .connect(NoTls)
+        .expect("foundation grant census connection");
+    assert_foundation_grant_census(&mut client, target.campaign_id);
+
+    // Exact retry: insert-if-absent reconciles every row to the same census.
+    let report = seed_foundation_grants_v1(&mut client, target.campaign_id)
+        .expect("the exact foundation retry reconciles");
+    assert_eq!(report.counties(), 83);
+    assert_eq!(report.places(), 745);
+    assert_eq!(report.concepts(), 8);
+    assert_eq!(report.grant_rows(), 2_500);
+    let retried_total: i64 = client
+        .query_one(
+            "SELECT pg_catalog.count(*) FROM babylon_meta.archive_knowledge_grant_v1 \
+             WHERE campaign_id = $1::uuid",
+            &[target.campaign_id.as_uuid()],
+        )
+        .expect("retried total query")
+        .try_get(0)
+        .expect("retried total decodes");
+    assert_eq!(retried_total, 2_500, "the retry mints no duplicate rows");
+
+    // Divergence: one drifted durable row refuses loudly, never rewrites.
+    client
+        .execute(
+            "UPDATE babylon_meta.archive_knowledge_grant_v1 \
+             SET provenance_locator = 'drifted' \
+             WHERE campaign_id = $1::uuid AND subject_kind = 'county' \
+               AND subject_id = '26001' AND grant_key = 'subject'",
+            &[target.campaign_id.as_uuid()],
+        )
+        .expect("divergence update applies");
+    let refusal = seed_foundation_grants_v1(&mut client, target.campaign_id)
+        .expect_err("a drifted grant row must refuse the foundation retry");
+    assert_eq!(
+        refusal,
+        FoundationGrantsErrorV1::Archive(SemanticArchiveErrorV1::GrantConflict)
+    );
     target.finish();
 }

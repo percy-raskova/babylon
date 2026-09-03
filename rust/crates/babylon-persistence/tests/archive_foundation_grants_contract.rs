@@ -1,18 +1,21 @@
 //! Pure contract checks for PER-23 foundation knowledge-grant seeding.
 
 use babylon_persistence::{
-    glossary_concepts_v1, seed_foundation_grants_v1, CampaignId, FoundationGrantsErrorV1,
+    foundation_grant_rows_v1, foundation_grants_semantic_sha256_v1, glossary_concepts_v1,
+    seed_foundation_grants_v1, ArchiveAtomSubjectKindV1, CampaignId, FoundationGrantsErrorV1,
     FOUNDATION_CONCEPT_GRANT_KEYS_V1, FOUNDATION_COUNTY_GRANT_KEYS_V1,
     FOUNDATION_COUNTY_LOCATOR_PREFIX_V1, FOUNDATION_COUNTY_SOURCE_ID_V1, FOUNDATION_GRANT_TICK_V1,
     FOUNDATION_PLACE_CONTAINMENT_LOCATOR_PREFIX_V1, FOUNDATION_PLACE_CONTAINMENT_SOURCE_ID_V1,
     FOUNDATION_PLACE_GRANT_KEYS_V1, FOUNDATION_PLACE_IDENTITY_LOCATOR_PREFIX_V1,
     FOUNDATION_PLACE_IDENTITY_SOURCE_ID_V1, GLOSSARY_CONCEPTS_FIXTURE_PATH_V1,
-    PINNED_GLOSSARY_CONCEPTS_SHA256_V1,
+    PINNED_FOUNDATION_GRANTS_SEMANTIC_SHA256_V1, PINNED_GLOSSARY_CONCEPTS_SHA256_V1,
 };
 
 const EXPECTED_COUNTIES: usize = 83;
 const EXPECTED_PLACES: usize = 745;
 const EXPECTED_CONCEPTS: usize = 8;
+const EXPECTED_GRANT_ROWS: usize =
+    3 * EXPECTED_COUNTIES + 3 * EXPECTED_PLACES + 2 * EXPECTED_CONCEPTS;
 
 #[test]
 fn glossary_concepts_parse_to_the_pinned_corpus() {
@@ -135,6 +138,75 @@ fn magnitude_grant_keys_stay_ungranted_at_foundation() {
         assert!(!FOUNDATION_PLACE_GRANT_KEYS_V1.contains(&key));
         assert!(!FOUNDATION_CONCEPT_GRANT_KEYS_V1.contains(&key));
     }
+}
+
+#[test]
+fn canonical_grant_rows_cover_exactly_the_public_reference_subjects() {
+    let rows = foundation_grant_rows_v1().expect("canonical grant rows build");
+    assert_eq!(rows.len(), EXPECTED_GRANT_ROWS);
+    let counties = rows
+        .iter()
+        .filter(|row| row.subject().kind() == ArchiveAtomSubjectKindV1::County)
+        .count();
+    let places = rows
+        .iter()
+        .filter(|row| row.subject().kind() == ArchiveAtomSubjectKindV1::Place)
+        .count();
+    let concepts = rows
+        .iter()
+        .filter(|row| row.subject().kind() == ArchiveAtomSubjectKindV1::Concept)
+        .count();
+    assert_eq!(counties, 3 * EXPECTED_COUNTIES);
+    assert_eq!(places, 3 * EXPECTED_PLACES);
+    assert_eq!(concepts, 2 * EXPECTED_CONCEPTS);
+    for row in &rows {
+        match row.subject().kind() {
+            ArchiveAtomSubjectKindV1::County => {
+                assert_eq!(row.citation().source_id(), FOUNDATION_COUNTY_SOURCE_ID_V1);
+                assert_eq!(
+                    row.citation().locator(),
+                    format!(
+                        "{FOUNDATION_COUNTY_LOCATOR_PREFIX_V1}{}",
+                        row.subject().id()
+                    )
+                );
+            }
+            ArchiveAtomSubjectKindV1::Place => {
+                let prefix = if row.grant_key() == "containment" {
+                    FOUNDATION_PLACE_CONTAINMENT_LOCATOR_PREFIX_V1
+                } else {
+                    FOUNDATION_PLACE_IDENTITY_LOCATOR_PREFIX_V1
+                };
+                let source = if row.grant_key() == "containment" {
+                    FOUNDATION_PLACE_CONTAINMENT_SOURCE_ID_V1
+                } else {
+                    FOUNDATION_PLACE_IDENTITY_SOURCE_ID_V1
+                };
+                assert_eq!(row.citation().source_id(), source);
+                assert_eq!(
+                    row.citation().locator(),
+                    format!("{prefix}{}", row.subject().id())
+                );
+            }
+            ArchiveAtomSubjectKindV1::Concept => {
+                assert_eq!(row.citation().source_id(), "glossary-concepts-v1");
+            }
+        }
+    }
+}
+
+#[test]
+fn canonical_grant_rows_recompute_the_pinned_semantic_digest() {
+    let rows = foundation_grant_rows_v1().expect("canonical grant rows build");
+    let digest = foundation_grants_semantic_sha256_v1(&rows);
+    assert_eq!(
+        digest, PINNED_FOUNDATION_GRANTS_SEMANTIC_SHA256_V1,
+        "the recomputed canonical grant-row digest must equal the contract pin"
+    );
+    assert_ne!(
+        digest, [0x00; 32],
+        "the digest pin must be harvested from failing-test output, not left as a placeholder"
+    );
 }
 
 #[test]

@@ -10,13 +10,17 @@
 
 use postgres::GenericClient;
 
-use crate::archive::{insert_grant_row_v1, ArchiveCitationV1, SemanticArchiveErrorV1};
+use crate::archive::{
+    insert_grant_row_v1, validate_key, ArchiveAtomSubjectKindV1, ArchiveAtomSubjectV1,
+    ArchiveCitationV1, SemanticArchiveErrorV1,
+};
 use crate::glossary_concepts::{glossary_concepts_v1, GlossaryConceptsErrorV1};
 use crate::h3_reference_cohort::{representative_h3_reference_cohort_v1, H3ReferenceCohortError};
 use crate::identity::CampaignId;
 use crate::spatial_reference_products::{
     michigan_spatial_reference_products_v1, SpatialReferenceProductsError,
 };
+use babylon_kernel::sha256_of;
 
 /// The foundation grant stamp: knowledge granted before any committed tick.
 pub const FOUNDATION_GRANT_TICK_V1: u64 = 0;
@@ -43,6 +47,175 @@ pub const FOUNDATION_PLACE_GRANT_KEYS_V1: [&str; 3] = ["subject", "identity", "c
 /// Cursory public-record keys granted to every glossary concept at foundation.
 pub const FOUNDATION_CONCEPT_GRANT_KEYS_V1: [&str; 2] = ["subject", "identity"];
 
+/// One canonical foundation grant row (ADR249 R3): the subject address, the
+/// grant key, and the pinned provenance citation. The granted tick is always
+/// [`FOUNDATION_GRANT_TICK_V1`] — knowledge granted before any committed tick.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FoundationGrantRowV1 {
+    subject: ArchiveAtomSubjectV1,
+    grant_key: String,
+    citation: ArchiveCitationV1,
+}
+
+impl FoundationGrantRowV1 {
+    /// Validate one canonical foundation grant row.
+    ///
+    /// # Errors
+    /// Refuses a malformed grant key; the subject and citation carry their
+    /// own exact validation.
+    pub fn try_new(
+        subject: ArchiveAtomSubjectV1,
+        grant_key: String,
+        citation: ArchiveCitationV1,
+    ) -> Result<Self, SemanticArchiveErrorV1> {
+        validate_key(&grant_key)?;
+        Ok(Self {
+            subject,
+            grant_key,
+            citation,
+        })
+    }
+
+    /// Borrow the exact grant subject.
+    #[must_use]
+    pub const fn subject(&self) -> &ArchiveAtomSubjectV1 {
+        &self.subject
+    }
+
+    /// Borrow the grant key.
+    #[must_use]
+    pub fn grant_key(&self) -> &str {
+        &self.grant_key
+    }
+
+    /// Borrow the pinned provenance citation.
+    #[must_use]
+    pub const fn citation(&self) -> &ArchiveCitationV1 {
+        &self.citation
+    }
+}
+
+/// Build the canonical foundation grant-row set from the pinned artifacts
+/// only: the 83 Michigan counties and 745 Michigan places of the pinned
+/// spatial reference products and the eight glossary concepts of the pinned
+/// fixture. No scenario or foundation argument enters (ADR249 R3).
+///
+/// # Errors
+/// Refuses pinned-fixture drift or a malformed derived identity.
+pub fn foundation_grant_rows_v1() -> Result<Vec<FoundationGrantRowV1>, FoundationGrantsErrorV1> {
+    let cohort = representative_h3_reference_cohort_v1()?;
+    let products = michigan_spatial_reference_products_v1(cohort)?;
+    let concepts = glossary_concepts_v1()?;
+    let mut rows = Vec::with_capacity(2_600);
+    for county in products
+        .counties()
+        .iter()
+        .filter(|county| michigan_public_reference_county(county))
+    {
+        let subject = ArchiveAtomSubjectV1::try_new(
+            ArchiveAtomSubjectKindV1::County,
+            county.county_geoid().to_owned(),
+        )?;
+        let citation = county_citation(county.county_geoid());
+        for key in FOUNDATION_COUNTY_GRANT_KEYS_V1 {
+            rows.push(FoundationGrantRowV1::try_new(
+                subject.clone(),
+                key.to_owned(),
+                citation.clone(),
+            )?);
+        }
+    }
+    for place in products.places() {
+        let subject = ArchiveAtomSubjectV1::try_new(
+            ArchiveAtomSubjectKindV1::Place,
+            place.place_geoid().to_owned(),
+        )?;
+        let identity = place_identity_citation(place.place_geoid());
+        let containment = place_containment_citation(place.place_geoid());
+        for key in FOUNDATION_PLACE_GRANT_KEYS_V1 {
+            let citation = if key == "containment" {
+                &containment
+            } else {
+                &identity
+            };
+            rows.push(FoundationGrantRowV1::try_new(
+                subject.clone(),
+                key.to_owned(),
+                citation.clone(),
+            )?);
+        }
+    }
+    for concept in concepts.concepts() {
+        let subject = ArchiveAtomSubjectV1::try_new(
+            ArchiveAtomSubjectKindV1::Concept,
+            concept.concept_id().to_owned(),
+        )?;
+        for key in FOUNDATION_CONCEPT_GRANT_KEYS_V1 {
+            rows.push(FoundationGrantRowV1::try_new(
+                subject.clone(),
+                key.to_owned(),
+                concept.citation().clone(),
+            )?);
+        }
+    }
+    Ok(rows)
+}
+
+fn michigan_public_reference_county(
+    county: &crate::spatial_reference_products::CountyIdentityRow,
+) -> bool {
+    county.county_geoid().starts_with(MICHIGAN_GEOID_PREFIX_V1)
+        && county.county_fips() != STATEWIDE_RESIDUAL_COUNTY_FIPS_V1
+}
+
+/// Recompute the canonical semantic digest of the foundation grant-row set:
+/// rows sorted by (subject kind, subject id, grant key), then the domain, the
+/// u64 big-endian row count, and per row the length-prefixed subject kind,
+/// subject id, grant key, citation source id, and citation locator, each in
+/// UTF-8, followed by the u64 big-endian foundation grant tick.
+///
+/// # Panics
+/// Panics only when a row count or field length exceeds u64, which the pinned
+/// artifact bounds make unrepresentable.
+#[must_use]
+pub fn foundation_grants_semantic_sha256_v1(rows: &[FoundationGrantRowV1]) -> [u8; 32] {
+    let mut canonical = rows.to_vec();
+    canonical.sort_by(|left, right| {
+        left.subject
+            .kind()
+            .as_str()
+            .cmp(right.subject.kind().as_str())
+            .then_with(|| left.subject.id().cmp(right.subject.id()))
+            .then_with(|| left.grant_key.cmp(&right.grant_key))
+    });
+    let mut bytes =
+        Vec::with_capacity(FOUNDATION_GRANTS_SEMANTIC_DOMAIN_V1.len() + 8 + canonical.len() * 64);
+    bytes.extend_from_slice(FOUNDATION_GRANTS_SEMANTIC_DOMAIN_V1);
+    bytes.extend_from_slice(
+        &u64::try_from(canonical.len())
+            .expect("foundation grant rows fit u64")
+            .to_be_bytes(),
+    );
+    for row in &canonical {
+        for field in [
+            row.subject.kind().as_str(),
+            row.subject.id(),
+            row.grant_key.as_str(),
+            row.citation.source_id(),
+            row.citation.locator(),
+        ] {
+            bytes.extend_from_slice(
+                &u64::try_from(field.len())
+                    .expect("foundation grant field fits u64")
+                    .to_be_bytes(),
+            );
+            bytes.extend_from_slice(field.as_bytes());
+        }
+        bytes.extend_from_slice(&FOUNDATION_GRANT_TICK_V1.to_be_bytes());
+    }
+    sha256_of(&bytes)
+}
+
 /// Census GEOID prefix of Michigan; only Michigan counties are
 /// public-reference subjects in the v1 game world.
 pub const MICHIGAN_GEOID_PREFIX_V1: &str = "26";
@@ -50,6 +223,20 @@ pub const MICHIGAN_GEOID_PREFIX_V1: &str = "26";
 /// The `999` county FIPS is a statewide residual pseudo-county in the pinned
 /// `dim_county` artifact, not a public-reference county subject.
 pub const STATEWIDE_RESIDUAL_COUNTY_FIPS_V1: &str = "999";
+
+/// Canonical semantic domain (with trailing NUL) of the foundation grant-row
+/// digest pinned by `contracts/archive_foundation_grants_v1.yaml`.
+pub const FOUNDATION_GRANTS_SEMANTIC_DOMAIN_V1: &[u8] = b"babylon.archive-foundation-grants.v1\0";
+
+/// Pinned SHA-256 of the canonical foundation grant-row encoding (ADR249 R3).
+/// The independent Python verifier recomputes the identical digest over the
+/// pinned spatial-products fixture and the glossary fixture; the value is
+/// pinned here from failing-test output (never hand-edited) and mirrored by
+/// `contracts/archive_foundation_grants_v1.yaml`.
+pub const PINNED_FOUNDATION_GRANTS_SEMANTIC_SHA256_V1: [u8; 32] = [
+    0xd1, 0xc5, 0x17, 0x55, 0xb3, 0x0f, 0x64, 0x06, 0x4a, 0x26, 0xb6, 0x6f, 0xd5, 0x26, 0x7e, 0x0a,
+    0x15, 0x13, 0x77, 0xf0, 0x23, 0xb9, 0x67, 0x34, 0xd1, 0xff, 0x5b, 0x9a, 0x7e, 0xef, 0xc2, 0x0d,
+];
 
 /// Closed refusal taxonomy for foundation grant seeding.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -157,10 +344,12 @@ fn place_containment_citation(place_geoid: &str) -> ArchiveCitationV1 {
 
 /// Seed the foundation knowledge grants for one campaign.
 ///
-/// Every insert is idempotent with an exact-reconcile refusal, so an exact
-/// retry reports the same census and a drifted row refuses loudly. The whole
-/// seed runs inside the caller's open transaction, preserving whole-tick
-/// atomic publication (ADR223).
+/// The canonical row set comes from [`foundation_grant_rows_v1`], so the
+/// seeded census is exactly the digest-pinned grant-row set. Every insert is
+/// idempotent with an exact-reconcile refusal, so an exact retry reports the
+/// same census and a drifted row refuses loudly. The whole seed runs inside
+/// the caller's open transaction, preserving whole-tick atomic publication
+/// (ADR223).
 ///
 /// # Errors
 /// Refuses pinned-fixture drift, a malformed subject, a conflicting prior
@@ -169,75 +358,39 @@ pub fn seed_foundation_grants_v1(
     client: &mut impl GenericClient,
     campaign_id: CampaignId,
 ) -> Result<FoundationGrantReportV1, FoundationGrantsErrorV1> {
-    let cohort = representative_h3_reference_cohort_v1()?;
-    let products = michigan_spatial_reference_products_v1(cohort)?;
-    let concepts = glossary_concepts_v1()?;
+    let rows = foundation_grant_rows_v1()?;
     let mut grant_rows = 0usize;
-    for county in products.counties().iter().filter(|county| {
-        county.county_geoid().starts_with(MICHIGAN_GEOID_PREFIX_V1)
-            && county.county_fips() != STATEWIDE_RESIDUAL_COUNTY_FIPS_V1
-    }) {
-        let citation = county_citation(county.county_geoid());
-        for key in FOUNDATION_COUNTY_GRANT_KEYS_V1 {
-            insert_grant_row_v1(
-                client,
-                campaign_id,
-                "county",
-                county.county_geoid(),
-                key,
-                FOUNDATION_GRANT_TICK_V1,
-                &citation,
-            )?;
-            grant_rows += 1;
-        }
+    for row in &rows {
+        insert_grant_row_v1(
+            client,
+            campaign_id,
+            row.subject().kind().as_str(),
+            row.subject().id(),
+            row.grant_key(),
+            FOUNDATION_GRANT_TICK_V1,
+            row.citation(),
+        )?;
+        grant_rows += 1;
     }
-    for place in products.places() {
-        let identity = place_identity_citation(place.place_geoid());
-        let containment = place_containment_citation(place.place_geoid());
-        for key in FOUNDATION_PLACE_GRANT_KEYS_V1 {
-            let citation = if key == "containment" {
-                &containment
-            } else {
-                &identity
-            };
-            insert_grant_row_v1(
-                client,
-                campaign_id,
-                "place",
-                place.place_geoid(),
-                key,
-                FOUNDATION_GRANT_TICK_V1,
-                citation,
-            )?;
-            grant_rows += 1;
-        }
-    }
-    for concept in concepts.concepts() {
-        for key in FOUNDATION_CONCEPT_GRANT_KEYS_V1 {
-            insert_grant_row_v1(
-                client,
-                campaign_id,
-                "concept",
-                concept.concept_id(),
-                key,
-                FOUNDATION_GRANT_TICK_V1,
-                concept.citation(),
-            )?;
-            grant_rows += 1;
-        }
-    }
-    let counties = products
-        .counties()
+    let counties = rows
         .iter()
-        .filter(|county| {
-            county.county_geoid().starts_with(MICHIGAN_GEOID_PREFIX_V1)
-                && county.county_fips() != STATEWIDE_RESIDUAL_COUNTY_FIPS_V1
-        })
-        .count();
+        .filter(|row| row.subject().kind() == ArchiveAtomSubjectKindV1::County)
+        .count()
+        / FOUNDATION_COUNTY_GRANT_KEYS_V1.len();
+    let places = rows
+        .iter()
+        .filter(|row| row.subject().kind() == ArchiveAtomSubjectKindV1::Place)
+        .count()
+        / FOUNDATION_PLACE_GRANT_KEYS_V1.len();
+    let concepts = rows
+        .iter()
+        .filter(|row| row.subject().kind() == ArchiveAtomSubjectKindV1::Concept)
+        .count()
+        / FOUNDATION_CONCEPT_GRANT_KEYS_V1.len();
     Ok(FoundationGrantReportV1 {
         counties,
-        places: products.places().len(),
-        concepts: concepts.concepts().len(),
+        places,
+        concepts,
         grant_rows,
     })
 }

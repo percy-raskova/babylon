@@ -149,6 +149,10 @@ const REAL_VALUE_TAG_V1: i16 = 3;
 
 /// Format one committed real with the Python statblock's `%.6f` discipline.
 ///
+/// Negative zero canonicalizes to positive zero before formatting so a
+/// sign-only bit difference never re-publishes a page; committed state
+/// hashing treats `-0.0 == 0.0` and the rendered page follows that identity.
+///
 /// # Errors
 /// Refuses a non-finite value; committed values are canonical finite binary64
 /// and any other input is a malformed committed state, never a display value.
@@ -156,7 +160,8 @@ pub fn format_county_statblock_value_v1(value: f64) -> Result<String, SemanticAr
     if !value.is_finite() {
         return Err(SemanticArchiveErrorV1::InvalidText);
     }
-    Ok(format!("{value:.6}"))
+    let canonical = if value == 0.0 { 0.0 } else { value };
+    Ok(format!("{canonical:.6}"))
 }
 
 /// One grant-keyed county signal with its pre-formatted statblock value.
@@ -731,6 +736,29 @@ fn parse_committed_locator(locator: &str, verified_tick: u64) -> Option<String> 
     Some(name.to_owned())
 }
 
+/// Keep only the desired county pages whose subject the grant snapshot knows.
+///
+/// The fog-safe renderer refuses an unknown subject, so an ungranted county
+/// must leave the batch before construction: it simply produces no page this
+/// sweep. When its subject grant arrives later the county has no stored page,
+/// so it is dirty and publishes then — the grant gate never fabricates pages.
+#[must_use]
+pub fn filter_granted_county_plans_v1<'a>(
+    desired: &'a [CountyPagePlanV1],
+    grants: &CountyGrantIndexV1,
+) -> Vec<&'a CountyPagePlanV1> {
+    desired
+        .iter()
+        .filter(|plan| {
+            let county_ref = ArchivePageRefV1::try_new(
+                ArchiveSubjectKindV1::County,
+                plan.county_geoid().to_owned(),
+            );
+            county_ref.is_ok_and(|page_ref| grants.knows_subject(&page_ref))
+        })
+        .collect()
+}
+
 /// Select the dirty desired pages, sorted by county GEOID, bounded by `limit`.
 ///
 /// A desired page is dirty when no stored projection exists for its subject
@@ -1090,8 +1118,12 @@ impl ArchiveDossierProducerV1 for CountyDossierProducerV1 {
         let desired = self.desired_pages(campaign_id, receipt.resolve_tick())?;
         let stored = self.read_stored_pages(campaign_id)?;
         let grants = self.read_grants(campaign_id, receipt.resolve_tick())?;
+        let granted: Vec<CountyPagePlanV1> = filter_granted_county_plans_v1(&desired, &grants)
+            .into_iter()
+            .cloned()
+            .collect();
         let dirty = select_dirty_county_pages_v1(
-            &desired,
+            &granted,
             &stored,
             &grants,
             ArchiveDirtyBatchV1::MAX_PAGES,

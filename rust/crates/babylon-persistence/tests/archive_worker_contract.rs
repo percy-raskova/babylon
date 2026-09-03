@@ -7,7 +7,8 @@ use babylon_persistence::{
     ArchiveReceiptPlanV1, ArchiveSignalV1, ArchiveSubjectKindV1, ArchiveSubjectV1,
     ArchiveWorkerSweepReportV1, CompositeArchiveDossierProducerV1, NullArchiveDossierProducerV1,
     PendingArchiveReceiptV1, SemanticArchiveErrorV1, SemanticArchiveStoreV1,
-    ARCHIVE_PENDING_RECEIPTS_SQL_V1, ARCHIVE_SWEEP_MAX_RECEIPTS_V1, ARCHIVE_SWEEP_WATERMARK_SQL_V1,
+    ARCHIVE_PENDING_RECEIPTS_SQL_V1, ARCHIVE_SWEEP_MAX_RECEIPTS_V1, ARCHIVE_SWEEP_MAX_SCAN_V1,
+    ARCHIVE_SWEEP_WATERMARK_SQL_V1,
 };
 use postgres::{Config, NoTls};
 use uuid::Uuid;
@@ -65,7 +66,7 @@ fn non_empty_batch(resolve_tick: u64, tick_content_hash: [u8; 32]) -> ArchiveDir
 }
 
 #[test]
-fn pending_receipts_sql_finds_unconsumed_receipts_in_order_without_locking() {
+fn pending_receipts_sql_finds_unconsumed_receipts_in_keyset_order_without_locking() {
     assert!(ARCHIVE_PENDING_RECEIPTS_SQL_V1
         .contains("LEFT JOIN babylon_meta.archive_receipt_consumption_v1"));
     assert!(ARCHIVE_PENDING_RECEIPTS_SQL_V1.contains("JOIN babylon_state.tick_commit AS marker"));
@@ -73,10 +74,15 @@ fn pending_receipts_sql_finds_unconsumed_receipts_in_order_without_locking() {
     assert!(ARCHIVE_PENDING_RECEIPTS_SQL_V1.contains("marker.resolve_tick = d.resolve_tick"));
     assert!(ARCHIVE_PENDING_RECEIPTS_SQL_V1.contains("IS NULL"));
     assert!(ARCHIVE_PENDING_RECEIPTS_SQL_V1.contains("d.campaign_id = $1"));
+    assert!(
+        ARCHIVE_PENDING_RECEIPTS_SQL_V1.contains("d.resolve_tick > $3"),
+        "the sweep pages past deferred receipts by keyset cursor, never OFFSET"
+    );
+    assert!(!ARCHIVE_PENDING_RECEIPTS_SQL_V1.contains("OFFSET"));
     assert!(ARCHIVE_PENDING_RECEIPTS_SQL_V1.contains("ORDER BY d.resolve_tick ASC"));
     assert!(
         ARCHIVE_PENDING_RECEIPTS_SQL_V1.contains("LIMIT $2"),
-        "the pending sweep must be a bounded chunk, not unbounded history"
+        "each pending page is a bounded chunk, not unbounded history"
     );
     assert!(!ARCHIVE_PENDING_RECEIPTS_SQL_V1.contains("FOR UPDATE"));
     assert!(!ARCHIVE_PENDING_RECEIPTS_SQL_V1.contains("SKIP LOCKED"));
@@ -84,8 +90,9 @@ fn pending_receipts_sql_finds_unconsumed_receipts_in_order_without_locking() {
 }
 
 #[test]
-fn pending_receipts_sweep_chunk_is_a_positive_bounded_constant() {
+fn pending_receipts_sweep_chunk_and_scan_bound_are_positive_bounded_constants() {
     assert_eq!(ARCHIVE_SWEEP_MAX_RECEIPTS_V1, 256);
+    assert_eq!(ARCHIVE_SWEEP_MAX_SCAN_V1, 4096);
 }
 
 #[test]

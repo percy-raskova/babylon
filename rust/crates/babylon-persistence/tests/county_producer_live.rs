@@ -478,7 +478,12 @@ fn live_county_producer_publishes_committed_signals_then_defers_unchanged_receip
         .expect("known-only search");
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].page_ref().id(), "26163");
-    assert_eq!(hits[0].citations().len(), 3);
+    assert_eq!(
+        hits[0].citations().len(),
+        2,
+        "the subject-grant citation plus one committed-tick citation: both signals share \
+         the same committed-tick provenance and the store dedupes identical citations"
+    );
     target.finish();
 }
 

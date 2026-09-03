@@ -11,11 +11,11 @@ use std::collections::BTreeMap;
 
 use babylon_persistence::{
     county_page_input_v1, county_page_semantic_sha256_v1, desired_county_projection_v1,
-    format_county_statblock_value_v1, parse_stored_county_page_v1, select_dirty_county_pages_v1,
-    ArchiveCitationV1, ArchiveDirtyBatchV1, ArchiveKnowledgeGrantV1, ArchiveKnowledgeV1,
-    ArchivePageInputV1, ArchivePageRefV1, ArchiveSubjectKindV1, CountyGrantIndexV1,
-    CountyPagePlanV1, CountyPageProjectionV1, CountyPlaceLinkV1, CountySignalProjectionV1,
-    CountySignalV1, FogSafeArchiveRendererV1, SemanticArchiveErrorV1,
+    filter_granted_county_plans_v1, format_county_statblock_value_v1, parse_stored_county_page_v1,
+    select_dirty_county_pages_v1, ArchiveCitationV1, ArchiveDirtyBatchV1, ArchiveKnowledgeGrantV1,
+    ArchiveKnowledgeV1, ArchivePageInputV1, ArchivePageRefV1, ArchiveSubjectKindV1,
+    CountyGrantIndexV1, CountyPagePlanV1, CountyPageProjectionV1, CountyPlaceLinkV1,
+    CountySignalProjectionV1, CountySignalV1, FogSafeArchiveRendererV1, SemanticArchiveErrorV1,
     ARCHIVE_COUNTY_FIELD_READ_SQL_V1, ARCHIVE_COUNTY_GRANTS_SQL_V1, ARCHIVE_COUNTY_MAP_READ_SQL_V1,
     ARCHIVE_COUNTY_PAGE_READ_SQL_V1, COMMITTED_TICK_SOURCE_ID_V1, COUNTY_DECISION_QUESTION_V1,
     COUNTY_MEDIAN_WAGE_GRANT_KEY_V1, COUNTY_MEDIAN_WAGE_LABEL_V1, COUNTY_PHI_HOUR_GRANT_KEY_V1,
@@ -211,6 +211,70 @@ fn committed_real_values_pin_python_statblock_formatting() {
     assert_eq!(
         format_county_statblock_value_v1(f64::INFINITY),
         Err(SemanticArchiveErrorV1::InvalidText)
+    );
+}
+
+#[test]
+fn negative_zero_canonicalizes_before_formatting() {
+    assert_eq!(
+        format_county_statblock_value_v1(-0.0).expect("format"),
+        "0.000000",
+        "negative zero canonicalizes to positive zero so the rendered page never drifts \
+         on a sign-only bit difference"
+    );
+}
+
+#[test]
+fn stored_parser_accepts_the_exact_pinned_template_whitespace() {
+    let plan = wayne_plan_full();
+    let knowledge = knowledge_for(&plan, true, true);
+    let markdown = render_markdown(&plan, 1, &knowledge);
+    let parsed = parse_stored_county_page_v1("26163", "Wayne County", &markdown)
+        .expect("template output parses");
+    let projection = desired_county_projection_v1(&plan, &grant_index_for(&plan, true, true))
+        .expect("desired projection");
+    assert_eq!(
+        county_page_semantic_sha256_v1("26163", &parsed),
+        county_page_semantic_sha256_v1("26163", &projection),
+        "the parser round-trips the renderer's exact whitespace, including the blank lines \
+         the pinned template emits after each section heading"
+    );
+
+    let redacted = render_markdown(&plan, 1, &knowledge_for(&plan, false, false));
+    let parsed_redacted =
+        parse_stored_county_page_v1("26163", "Wayne County", &redacted).expect("redacted parses");
+    assert!(
+        parsed_redacted.signals().is_empty(),
+        "a subject-only render carries no Signals section and no signals"
+    );
+}
+
+#[test]
+fn ungranted_county_is_filtered_before_batch_construction() {
+    let plan = wayne_plan_full();
+    let granted = grant_index_for(&plan, false, false);
+    let granted_only = filter_granted_county_plans_v1(std::slice::from_ref(&plan), &granted);
+    assert_eq!(
+        granted_only.len(),
+        1,
+        "the subject grant keeps the county in this sweep's batch construction"
+    );
+
+    let empty = CountyGrantIndexV1::try_from_rows(Vec::new()).expect("empty grant index");
+    let filtered = filter_granted_county_plans_v1(std::slice::from_ref(&plan), &empty);
+    assert!(
+        filtered.is_empty(),
+        "a county without the subject grant produces no page this sweep; the renderer would \
+         refuse the unknown subject and abort the whole sweep"
+    );
+
+    let stored = BTreeMap::new();
+    let filtered_owned: Vec<CountyPagePlanV1> = filtered.into_iter().cloned().collect();
+    let dirty = select_dirty_county_pages_v1(&filtered_owned, &stored, &empty, 256)
+        .expect("empty filtered selection");
+    assert!(
+        dirty.is_empty(),
+        "an all-ungranted sweep yields an empty batch and the receipt defers, never an error"
     );
 }
 

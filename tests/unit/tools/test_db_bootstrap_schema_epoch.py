@@ -275,7 +275,7 @@ def test_pr_pg_lane_runs_the_rust_live_matrix_without_python_reference_data() ->
     runner = pg_lane.index("tools/run_rust_legacy_adopter_pg.sh")
     assert bootstrap < matrix_focus < runner
     assert (
-        "focus: [clean_bootstrap, h3_atomicity, rust_persistence_runtime, installed_mutation]"
+        "focus: [clean_bootstrap, h3_atomicity, rust_persistence_runtime, installed_mutation, archive_worker]"
         in pg_lane
     )
     assert "fetch-reference-db" not in pg_lane

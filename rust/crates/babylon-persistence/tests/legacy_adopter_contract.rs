@@ -20,7 +20,7 @@ use std::process::Command;
 
 const ZERO_DIGEST: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 const LEGACY_CENSUS_V1_ARCHIVE: &str = include_str!("../src/fixtures/legacy_adopter_census_v1.txt");
-const EXPECTED_RUNNER_LINES: usize = 546;
+const EXPECTED_RUNNER_LINES: usize = 559;
 const MAX_WORKFLOW_JOB_BOUNDARY_CANDIDATES: usize = 128;
 const MAX_SQL_LITERAL_SEGMENTS: usize = 8_192;
 const MAX_SQL_STATEMENT_BYTES: usize = 262_144;
@@ -2260,7 +2260,7 @@ fn assert_pr_live_cadence(pr_workflow: &str) {
         1
     );
     assert!(pr_shards.contains(
-        "focus: [clean_bootstrap, h3_atomicity, rust_persistence_runtime, installed_mutation]"
+        "focus: [clean_bootstrap, h3_atomicity, rust_persistence_runtime, installed_mutation, archive_worker]"
     ));
     assert!(pr_shards.contains(
         "- name: Rust PostgreSQL contract\n        timeout-minutes: 69\n        env:\n          BABYLON_LEGACY_ADOPTER_LIVE_FOCUS: ${{ matrix.focus }}\n        run: tools/run_rust_legacy_adopter_pg.sh"
@@ -2304,7 +2304,7 @@ fn pr_focus_reuses_the_postgres_atomicity_and_installed_mutation_contracts() {
 
     assert!(runner.contains("BABYLON_LEGACY_ADOPTER_LIVE_FOCUS:-}"));
     assert!(runner.contains(
-        "\"\" | clean_bootstrap | h3_atomicity | installed_mutation | schema_epoch_fresh | schema_epoch_matrix | \\\n    schema_epoch_rollback | schema_epoch_v5_census | schema_epoch_v6_census | schema_epoch_v7_census | \\\n    h3_pg_oracle | h3_reference_installer | h3_shadow_backfill | \\\n    rust_persistence_runtime | runtime_census_v2 | pr)"
+        "\"\" | clean_bootstrap | h3_atomicity | installed_mutation | schema_epoch_fresh | schema_epoch_matrix | \\\n    schema_epoch_rollback | schema_epoch_v5_census | schema_epoch_v6_census | schema_epoch_v7_census | \\\n    h3_pg_oracle | h3_reference_installer | h3_shadow_backfill | \\\n    rust_persistence_runtime | archive_worker | runtime_census_v2 | pr)"
     ));
     assert!(runner.contains("[ \"$LIVE_FOCUS\" = \"h3_pg_oracle\" ]"));
     assert!(runner.contains("[ \"$LIVE_FOCUS\" = \"h3_reference_installer\" ]"));

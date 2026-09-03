@@ -512,6 +512,24 @@ impl ArchiveDirtyBatchV1 {
     /// Maximum number of dirty pages consumed from one committed receipt.
     pub const MAX_PAGES: usize = 256;
 
+    /// Borrow the ordered page inputs bound to this receipt.
+    #[must_use]
+    pub fn pages(&self) -> &[ArchivePageInputV1] {
+        &self.pages
+    }
+
+    /// Return the bound resolve tick.
+    #[must_use]
+    pub const fn resolve_tick(&self) -> u64 {
+        self.resolve_tick
+    }
+
+    /// Return the exact tick content hash for this receipt.
+    #[must_use]
+    pub const fn tick_content_hash(&self) -> &[u8; 32] {
+        &self.tick_content_hash
+    }
+
     /// Validate an ordered dirty-subject batch.
     ///
     /// # Errors
@@ -989,7 +1007,10 @@ impl SemanticArchiveStoreV1 {
             .collect()
     }
 
-    fn connect(&self, operation: &'static str) -> Result<postgres::Client, SemanticArchiveErrorV1> {
+    pub(crate) fn connect(
+        &self,
+        operation: &'static str,
+    ) -> Result<postgres::Client, SemanticArchiveErrorV1> {
         self.config
             .connect(NoTls)
             .map_err(|error| database(operation, &error))
@@ -1148,19 +1169,22 @@ fn decode_subject_kind(value: &str) -> Result<ArchiveSubjectKindV1, SemanticArch
     }
 }
 
-fn decode<T: FromSqlOwned>(row: &Row, index: usize) -> Result<T, SemanticArchiveErrorV1> {
+pub(crate) fn decode<T: FromSqlOwned>(
+    row: &Row,
+    index: usize,
+) -> Result<T, SemanticArchiveErrorV1> {
     row.try_get(index)
         .map_err(|error| database("decode semantic Archive row", &error))
 }
 
-fn decode_digest(row: &Row, index: usize) -> Result<[u8; 32], SemanticArchiveErrorV1> {
+pub(crate) fn decode_digest(row: &Row, index: usize) -> Result<[u8; 32], SemanticArchiveErrorV1> {
     let bytes: Vec<u8> = decode(row, index)?;
     bytes
         .try_into()
         .map_err(|_| SemanticArchiveErrorV1::StoredPageMismatch)
 }
 
-fn database(operation: &'static str, error: &postgres::Error) -> SemanticArchiveErrorV1 {
+pub(crate) fn database(operation: &'static str, error: &postgres::Error) -> SemanticArchiveErrorV1 {
     SemanticArchiveErrorV1::Database {
         operation,
         diagnostic: PostgresDiagnosticV1::capture(error),

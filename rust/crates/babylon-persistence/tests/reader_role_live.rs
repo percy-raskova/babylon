@@ -379,30 +379,30 @@ fn county_page_input(tick_content_hash: [u8; 32]) -> ArchivePageInputV1 {
     .expect("county page input")
 }
 
-/// Grant subject and employment knowledge, then materialize the tick-one
-/// receipt so `search_known` has one known page to find.
+/// Grant employment knowledge, then materialize the tick-one receipt so
+/// `search_known` has one known page to find. The county subject grant needs
+/// no explicit insert: foundation seeding granted every real Michigan county
+/// subject at tick zero, and a conflicting re-grant would refuse `GrantConflict`.
 fn materialize_county_page(config: &Config, campaign_id: CampaignId, tick_content_hash: [u8; 32]) {
     let store = SemanticArchiveStoreV1::new(config);
     let county_ref = ArchivePageRefV1::try_new(ArchiveSubjectKindV1::County, "26163".to_owned())
         .expect("county ref");
-    for (grant_key, source_id) in [
-        ("subject", "reader-live-subject"),
-        ("employment", "reader-live-employment"),
-    ] {
-        store
-            .grant_knowledge(
-                campaign_id,
-                &ArchiveKnowledgeGrantV1::try_new(
-                    county_ref.clone(),
-                    grant_key.to_owned(),
-                    1,
-                    ArchiveCitationV1::try_new(source_id.to_owned(), format!("{grant_key}@tick-1"))
-                        .expect("live grant citation"),
+    store
+        .grant_knowledge(
+            campaign_id,
+            &ArchiveKnowledgeGrantV1::try_new(
+                county_ref,
+                "employment".to_owned(),
+                1,
+                ArchiveCitationV1::try_new(
+                    "reader-live-employment".to_owned(),
+                    "employment@tick-1".to_owned(),
                 )
-                .expect("live knowledge grant"),
+                .expect("live grant citation"),
             )
-            .expect("knowledge grant persists");
-    }
+            .expect("live knowledge grant"),
+        )
+        .expect("knowledge grant persists");
     let batch = ArchiveDirtyBatchV1::try_new(
         1,
         tick_content_hash,

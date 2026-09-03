@@ -42,7 +42,10 @@ const RULE: &str = include_str!("../../babylon-tick/content/rules/struggle-spark
 const WORKER_SEED: i64 = 2;
 
 /// One distinct stub subject per receipt tick, because the Archive keeps one
-/// current page per subject and converges repeated receipts onto it.
+/// current page per subject and converges repeated receipts onto it. The
+/// county ids are synthetic: foundation grant seeding already covers every
+/// real Michigan county, and an explicit grant for a seeded subject refuses
+/// `GrantConflict` instead of shadowing the seeded row.
 struct StubSubjectSpec {
     page_ref: ArchivePageRefV1,
     title: &'static str,
@@ -50,9 +53,9 @@ struct StubSubjectSpec {
 
 fn stub_subject_spec(tick: u64) -> StubSubjectSpec {
     let (kind, id, title) = match tick % 3 {
-        1 => (ArchiveSubjectKindV1::County, "26163", "Wayne County"),
+        1 => (ArchiveSubjectKindV1::County, "99963", "Stub County One"),
         2 => (ArchiveSubjectKindV1::Place, "2684000", "Detroit"),
-        _ => (ArchiveSubjectKindV1::County, "26125", "Oakland County"),
+        _ => (ArchiveSubjectKindV1::County, "99925", "Stub County Two"),
     };
     StubSubjectSpec {
         page_ref: ArchivePageRefV1::try_new(kind, id.to_owned()).expect("stub subject ref"),

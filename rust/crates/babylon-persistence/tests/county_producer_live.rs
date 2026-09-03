@@ -326,10 +326,12 @@ fn grant(
         .expect("knowledge grant persists");
 }
 
-/// Grant the subject and both committed field keys every county page needs.
-fn grant_county_knowledge(store: &SemanticArchiveStoreV1, campaign_id: CampaignId) {
+/// Grant the committed field keys every county page needs. Foundation
+/// seeding already granted both counties' subject/identity/containment rows
+/// at tick zero, so re-granting `subject` would refuse `GrantConflict`.
+fn grant_county_fields(store: &SemanticArchiveStoreV1, campaign_id: CampaignId) {
     for geoid in ["26125", "26163"] {
-        for grant_key in ["subject", "median-wage", "phi-hour"] {
+        for grant_key in ["median-wage", "phi-hour"] {
             grant(
                 store,
                 campaign_id,
@@ -339,20 +341,6 @@ fn grant_county_knowledge(store: &SemanticArchiveStoreV1, campaign_id: CampaignI
                 1,
             );
         }
-    }
-}
-
-/// Grant only the subject key for both mapped counties.
-fn grant_county_subjects(store: &SemanticArchiveStoreV1, campaign_id: CampaignId) {
-    for geoid in ["26125", "26163"] {
-        grant(
-            store,
-            campaign_id,
-            ArchiveSubjectKindV1::County,
-            geoid,
-            "subject",
-            1,
-        );
     }
 }
 
@@ -419,7 +407,7 @@ fn live_county_producer_publishes_committed_signals_then_defers_unchanged_receip
 
     let producer = CountyDossierProducerV1::try_new(&target.config).expect("pinned products load");
     let store = SemanticArchiveStoreV1::new(&target.config);
-    grant_county_knowledge(&store, target.campaign_id);
+    grant_county_fields(&store, target.campaign_id);
 
     let mut worker = ArchiveWorkerV1::new(&target.config);
     let report = worker
@@ -462,8 +450,8 @@ fn live_county_producer_publishes_committed_signals_then_defers_unchanged_receip
         "the committed phi-hour signal pins the exact tick provenance"
     );
     assert!(
-        wayne.contains("[[place/2622000]]"),
-        "Detroit links as a redlink until a campaign grants the place subject"
+        wayne.contains("[[place/2622000|Detroit city]]"),
+        "the foundation-seeded place subject renders the known link label"
     );
     let oakland = county_page_markdown(&target.config, target.campaign_id, "26125");
     assert!(
@@ -498,7 +486,7 @@ fn live_county_producer_rerun_reconciles_without_duplicate_pages() {
 
     let producer = CountyDossierProducerV1::try_new(&target.config).expect("pinned products load");
     let store = SemanticArchiveStoreV1::new(&target.config);
-    grant_county_knowledge(&store, target.campaign_id);
+    grant_county_fields(&store, target.campaign_id);
 
     let mut worker = ArchiveWorkerV1::new(&target.config);
     let first = worker
@@ -568,12 +556,14 @@ fn live_county_producer_grant_refresh_republicates_revealed_page() {
     let producer = CountyDossierProducerV1::try_new(&target.config).expect("pinned products load");
     let store = SemanticArchiveStoreV1::new(&target.config);
 
-    // Publish redacted: only the county subject grants exist at receipt one.
-    grant_county_subjects(&store, target.campaign_id);
+    // Publish with seeded foundation knowledge only: county
+    // subject/identity/containment and every place subject were granted at
+    // tick zero, so the pages render with known place links but no signal
+    // section — the earned field keys stay ungranted until the refresh below.
     let mut worker = ArchiveWorkerV1::new(&target.config);
     let first = worker
         .sweep_once(target.campaign_id, &producer)
-        .expect("subject-only sweep publishes the redacted pages");
+        .expect("foundation-knowledge sweep publishes the partially revealed pages");
     assert_eq!(
         sweep_dispositions(&first),
         vec![
@@ -586,30 +576,22 @@ fn live_county_producer_grant_refresh_republicates_revealed_page() {
     assert!(wayne_redacted.contains("# Wayne County"));
     assert!(
         !wayne_redacted.contains("## Signals"),
-        "without the field grant the page publishes no signal"
+        "the earned field keys stay ungranted at foundation, so the page publishes no signal"
     );
     assert!(
-        wayne_redacted.contains("[[place/2622000]]"),
-        "without the place grant the link stays a redlink"
+        wayne_redacted.contains("[[place/2622000|Detroit city]]"),
+        "the seeded place subject reveals the link label"
     );
 
-    // Later grants arrive, visible from tick two: the wayne page re-dirties
-    // and the next pending receipt republishes it revealed; oakland stays
-    // published redacted and settles.
+    // A later field grant arrives, visible from tick two: the wayne page
+    // re-dirties and the next pending receipt republishes it with the median
+    // wage revealed; phi-hour stays hidden and oakland settles untouched.
     grant(
         &store,
         target.campaign_id,
         ArchiveSubjectKindV1::County,
         "26163",
         "median-wage",
-        2,
-    );
-    grant(
-        &store,
-        target.campaign_id,
-        ArchiveSubjectKindV1::Place,
-        "2622000",
-        "subject",
         2,
     );
     let second = worker
@@ -630,7 +612,7 @@ fn live_county_producer_grant_refresh_republicates_revealed_page() {
     );
     assert!(
         wayne.contains("[[place/2622000|Detroit city]]"),
-        "the place grant reveals the link label"
+        "the seeded place subject keeps the link label"
     );
     assert!(
         !wayne.contains("Imperial rent"),
@@ -639,7 +621,7 @@ fn live_county_producer_grant_refresh_republicates_revealed_page() {
     let oakland = county_page_markdown(&target.config, target.campaign_id, "26125");
     assert!(
         !oakland.contains("## Signals"),
-        "oakland stays published redacted and untouched"
+        "oakland stays published without signals and untouched"
     );
     assert_eq!(county_page_count(&target.config, target.campaign_id), 2);
     assert_eq!(

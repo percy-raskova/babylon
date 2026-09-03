@@ -475,9 +475,9 @@ fn assert_owner_side_privilege_matrix(client: &mut postgres::Client) {
         let view_write = client
             .query_one(
                 "SELECT pg_catalog.bool_or(priv) FROM (VALUES \
-                     (pg_catalog.has_table_privilege($1::text, 'INSERT')), \
-                     (pg_catalog.has_table_privilege($1::text, 'UPDATE')), \
-                     (pg_catalog.has_table_privilege($1::text, 'DELETE')) \
+                     (pg_catalog.has_table_privilege('babylon_reader', $1::text, 'INSERT')), \
+                     (pg_catalog.has_table_privilege('babylon_reader', $1::text, 'UPDATE')), \
+                     (pg_catalog.has_table_privilege('babylon_reader', $1::text, 'DELETE')) \
                  ) AS writes(priv)",
                 &[&view],
             )

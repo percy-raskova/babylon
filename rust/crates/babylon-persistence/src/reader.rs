@@ -137,9 +137,17 @@ const READER_FOOTPRINT_WITH_ATOMS_V1: [&str; 4] = [
 /// Atom-schema marker probe: the additive contract table
 /// `babylon_meta.archive_atom_schema_v1` exists exactly when the atom schema
 /// (tables and fog-safe views) is installed, so the expected footprint is
-/// existence-dependent on it.
+/// existence-dependent on it. The probe reads `pg_catalog` directly instead
+/// of resolving the schema-qualified name: `pg_catalog.to_regclass` needs
+/// `USAGE` on `babylon_meta`, which the confined reader role must never hold,
+/// and every role may read the catalog.
 const ATOM_SCHEMA_MARKER_SQL_V1: &str = "SELECT \
-    pg_catalog.to_regclass('babylon_meta.archive_atom_schema_v1') IS NOT NULL";
+    EXISTS (SELECT 1 FROM pg_catalog.pg_class AS relation \
+        JOIN pg_catalog.pg_namespace AS namespace \
+          ON namespace.oid = relation.relnamespace \
+        WHERE namespace.nspname = 'babylon_meta' \
+          AND relation.relname = 'archive_atom_schema_v1' \
+          AND relation.relkind = 'r')";
 /// Known-page search through the fog-safe page view only; the base
 /// page/grant tables stay revoked from the reader role. Column layout matches
 /// the store's `ARCHIVE_SEARCH_SQL_V1` so the shared hit decoder revalidates.

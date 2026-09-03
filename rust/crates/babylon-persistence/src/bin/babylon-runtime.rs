@@ -151,6 +151,7 @@ enum Command {
     },
     Probe,
     Archive,
+    ArchiveWorker,
     MichiganSmoke {
         report_jsonl: Option<PathBuf>,
         choice_receipts_jsonl: Option<PathBuf>,
@@ -160,7 +161,7 @@ enum Command {
 fn main() -> ExitCode {
     let Ok(command) = parse_command(std::env::args_os().skip(1)) else {
         eprintln!(
-            "babylon-runtime: expected activate, bootstrap, preflight, run --ticks N [--report-jsonl PATH] [--choice-receipts-jsonl PATH] [--restart-every N], probe, archive, or michigan-smoke [--report-jsonl PATH] [--choice-receipts-jsonl PATH]"
+            "babylon-runtime: expected activate, bootstrap, preflight, run --ticks N [--report-jsonl PATH] [--choice-receipts-jsonl PATH] [--restart-every N], probe, archive, archive-worker --once, or michigan-smoke [--report-jsonl PATH] [--choice-receipts-jsonl PATH]"
         );
         return ExitCode::from(2);
     };
@@ -254,6 +255,7 @@ fn execute(command: Command, config: &Config) -> Result<(), String> {
         }
         Command::Probe => probe(config, configured_campaign_id()?)?,
         Command::Archive => inspect_archive(config)?,
+        Command::ArchiveWorker => run_archive_worker_once(config)?,
     }
     Ok(())
 }
@@ -1013,6 +1015,29 @@ fn probe(config: &Config, selected_campaign: Option<CampaignId>) -> Result<(), S
     Ok(())
 }
 
+fn run_archive_worker_once(config: &Config) -> Result<(), String> {
+    let store = SemanticArchiveStoreV1::new(config);
+    store
+        .install_schema()
+        .map_err(|error| format!("Archive schema refused: {error}"))?;
+    let mut worker = babylon_persistence::ArchiveWorkerV1::new(config);
+    let report = worker
+        .sweep_once(
+            campaign_id()?,
+            &babylon_persistence::NullArchiveDossierProducerV1::new(),
+        )
+        .map_err(|error| format!("Archive worker sweep refused: {error}"))?;
+    println!(
+        "Archive worker sweep complete; verified_tick={}; deferred={}; applied={}; \
+         already_consumed={}.",
+        report.verified_tick(),
+        report.deferred_count(),
+        report.applied_count(),
+        report.already_consumed_count(),
+    );
+    Ok(())
+}
+
 fn inspect_archive(config: &Config) -> Result<(), String> {
     let schema = SemanticArchiveStoreV1::new(config)
         .install_schema()
@@ -1101,6 +1126,13 @@ fn parse_command(mut args: impl Iterator<Item = OsString>) -> Result<Command, ()
         }
         value if value == OsStr::new("probe") && args.next().is_none() => Ok(Command::Probe),
         value if value == OsStr::new("archive") && args.next().is_none() => Ok(Command::Archive),
+        value if value == OsStr::new("archive-worker") => {
+            let flag = args.next().ok_or(())?;
+            if flag != OsStr::new("--once") || args.next().is_some() {
+                return Err(());
+            }
+            Ok(Command::ArchiveWorker)
+        }
         value if value == OsStr::new("michigan-smoke") => {
             let (report_jsonl, choice_receipts_jsonl) = parse_jsonl_options(args)?;
             Ok(Command::MichiganSmoke {
@@ -1838,6 +1870,10 @@ mod tests {
             Ok(Command::Archive)
         );
         assert_eq!(
+            parse_command(vec!["archive-worker".into(), "--once".into()].into_iter()),
+            Ok(Command::ArchiveWorker)
+        );
+        assert_eq!(
             parse_command(vec!["michigan-smoke".into()].into_iter()),
             Ok(Command::MichiganSmoke {
                 report_jsonl: None,
@@ -1940,6 +1976,20 @@ mod tests {
         );
         assert_eq!(
             parse_command(vec!["michigan-smoke".into(), "--unknown".into()].into_iter()),
+            Err(())
+        );
+        assert_eq!(
+            parse_command(vec!["archive-worker".into()].into_iter()),
+            Err(())
+        );
+        assert_eq!(
+            parse_command(vec!["archive-worker".into(), "--unknown".into()].into_iter()),
+            Err(())
+        );
+        assert_eq!(
+            parse_command(
+                vec!["archive-worker".into(), "--once".into(), "--poll".into()].into_iter()
+            ),
             Err(())
         );
         assert_eq!(parse_command(vec!["unknown".into()].into_iter()), Err(()));

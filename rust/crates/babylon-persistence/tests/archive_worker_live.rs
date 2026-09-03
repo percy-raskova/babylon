@@ -611,6 +611,11 @@ fn live_worker_consumes_pending_receipts_in_tick_order() {
     assert_eq!(hits[0].citations().len(), 2);
     assert_eq!(hits[0].citations()[0].source_id(), "live-worker-subject");
     assert_eq!(hits[0].citations()[1].source_id(), "qcew-2024");
+    assert_eq!(hits[0].citations()[0].locator(), "subject@tick-1");
+    assert_eq!(
+        hits[0].citations()[1].locator(),
+        "fact_qcew_county_rollup county_fips=26163"
+    );
     target.finish();
 }
 
@@ -894,5 +899,72 @@ fn live_worker_skips_orphan_dirty_receipt_without_marker() {
         3,
         "the orphan row stays dirty, unconsumed, and out of the sweep's view"
     );
+    target.finish();
+}
+
+#[test]
+#[ignore = "requires the task-owned disposable PostgreSQL runtime and committed ticks"]
+fn live_search_refuses_tampered_page_content() {
+    let target = LiveWorkerTarget::create(
+        "archivetamper",
+        0x2200_0000_0000_0000_0000_0000_0000_00a7,
+        1,
+    );
+
+    let mut worker = ArchiveWorkerV1::new(&target.config);
+    worker
+        .sweep_once(target.campaign_id, &StubPageProducer)
+        .expect("sweep materializes the page");
+
+    let store = SemanticArchiveStoreV1::new(&target.config);
+    let hits = store
+        .search_known(target.campaign_id, "728576", 10)
+        .expect("untampered search returns the known page");
+    assert_eq!(hits.len(), 1);
+
+    target
+        .config
+        .connect(NoTls)
+        .expect("tamper connection")
+        .execute(
+            "UPDATE babylon_meta.archive_page_v1 SET markdown = \
+             pg_catalog.concat(markdown, ' tampered') WHERE campaign_id = $1::uuid",
+            &[target.campaign_id.as_uuid()],
+        )
+        .expect("stored markdown tampers");
+
+    assert_eq!(
+        store.search_known(target.campaign_id, "728576", 10),
+        Err(SemanticArchiveErrorV1::StoredPageMismatch),
+        "a stored page whose bytes no longer match its content digest refuses the read"
+    );
+    target.finish();
+}
+
+#[test]
+#[ignore = "requires the task-owned disposable PostgreSQL runtime and committed ticks"]
+fn live_search_bounds_results_to_the_requested_limit() {
+    let target =
+        LiveWorkerTarget::create("archivelimit", 0x2200_0000_0000_0000_0000_0000_0000_00a8, 2);
+
+    let mut worker = ArchiveWorkerV1::new(&target.config);
+    worker
+        .sweep_once(target.campaign_id, &StubPageProducer)
+        .expect("sweep materializes both pages");
+    assert_eq!(archive_page_count(&target.config, target.campaign_id), 2);
+
+    let store = SemanticArchiveStoreV1::new(&target.config);
+    let bounded = store
+        .search_known(target.campaign_id, "728576", 1)
+        .expect("bounded known-only search");
+    assert_eq!(
+        bounded.len(),
+        1,
+        "two pages match, so the requested limit of one must bound the result set"
+    );
+    let unbounded = store
+        .search_known(target.campaign_id, "728576", 10)
+        .expect("unbounded known-only search");
+    assert_eq!(unbounded.len(), 2);
     target.finish();
 }

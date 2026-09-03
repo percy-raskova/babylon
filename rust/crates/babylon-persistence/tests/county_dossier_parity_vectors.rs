@@ -28,6 +28,11 @@ const NEGATIVE_ZERO_BITS: u64 = 0x8000_0000_0000_0000;
 
 fn hex_decode_bits(text: &str) -> u64 {
     assert_eq!(text.len(), 16, "exact 16-char bit hex");
+    assert!(
+        text.bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)),
+        "lowercase bit hex"
+    );
     u64::from_str_radix(text, 16).expect("lowercase bit hex")
 }
 
@@ -278,7 +283,22 @@ fn assert_projection(row: &Value, plan: &CountyPagePlanV1, grants: &CountyGrantI
 #[test]
 fn shared_vectors_reproduce_the_oracle_pinned_display_values() {
     let rows = rows();
-    assert_eq!(rows.len(), 6, "pinned parity scenario count");
+    let ids: Vec<&str> = rows
+        .iter()
+        .map(|row| row["id"].as_str().expect("row id"))
+        .collect();
+    assert_eq!(
+        ids,
+        [
+            "parity-wayne-normal",
+            "parity-oakland-zero-wage",
+            "parity-wayne-negative-zero",
+            "parity-oakland-absent-phi",
+            "parity-wayne-field-grant-redacted",
+            "parity-wayne-place-redlink",
+        ],
+        "pinned parity scenario order"
+    );
     for row in &rows {
         let data = &row["data"];
         let fields = CommittedTerritoryFieldsV1::try_new(
@@ -338,13 +358,9 @@ fn negative_zero_committed_bits_canonicalize_like_the_oracle_boundary() {
 #[test]
 fn vector_links_and_titles_match_the_pinned_reference_products() {
     let rows = rows();
-    let mut checked: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     for row in &rows {
         let data = &row["data"];
         let geoid = data["county_geoid"].as_str().expect("county geoid");
-        if !checked.insert(geoid.to_owned()) {
-            continue;
-        }
         let cohort = representative_h3_reference_cohort_v1().expect("reference cohort");
         let products = michigan_spatial_reference_products_v1(cohort).expect("reference products");
         let county = products

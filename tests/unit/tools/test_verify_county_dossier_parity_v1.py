@@ -260,3 +260,126 @@ def test_unsorted_links_refuse_with_the_typed_code() -> None:
     errors = verify_all(contract, vectors)
 
     assert any("invalid_link_order" in error for error in errors)
+
+
+def test_missing_nullable_committed_member_refuses_not_null() -> None:
+    """A dropped nullable member is not an explicit JSON null."""
+    contract = load_contract(SCHEMA)
+    vectors = copy.deepcopy(load_vectors(VECTORS))
+    absent = next(item for item in vectors if item["id"] == "parity-oakland-absent-phi")
+    absent["data"]["committed"].pop("phi_hour_bits")
+
+    with pytest.raises(CountyDossierParityRefusal) as exc_info:
+        verify_all(contract, vectors)
+
+    assert exc_info.value.code == "invalid_key_set"
+
+
+def test_missing_d2_null_county_view_field_refuses_not_null() -> None:
+    """Every D2-null field must be present-and-null, never dropped."""
+    contract = load_contract(SCHEMA)
+    vectors = copy.deepcopy(load_vectors(VECTORS))
+    vectors[0]["data"]["expected"]["county_view"].pop("legitimacy")
+
+    with pytest.raises(CountyDossierParityRefusal) as exc_info:
+        verify_all(contract, vectors)
+
+    assert exc_info.value.code == "invalid_key_set"
+
+
+def test_extra_nested_member_refuses() -> None:
+    """A stray nested key is drift even when every required member matches."""
+    contract = load_contract(SCHEMA)
+    vectors = copy.deepcopy(load_vectors(VECTORS))
+    vectors[0]["data"]["committed"]["surplus"] = None
+
+    with pytest.raises(CountyDossierParityRefusal) as exc_info:
+        verify_all(contract, vectors)
+
+    assert exc_info.value.code == "invalid_key_set"
+
+
+def test_non_mapping_vector_kinds_refuses_typed() -> None:
+    contract = load_contract(SCHEMA)
+    vectors = load_vectors(VECTORS)
+    contract["vector_kinds"] = ["parity"]
+
+    with pytest.raises(CountyDossierParityRefusal) as exc_info:
+        verify_all(contract, vectors)
+
+    assert exc_info.value.code == "invalid_schema"
+
+
+def test_non_mapping_divergence_entry_refuses_typed() -> None:
+    contract = load_contract(SCHEMA)
+    vectors = load_vectors(VECTORS)
+    contract["known_divergences"] = ["oracle-snap-to-grid"]
+
+    with pytest.raises(CountyDossierParityRefusal) as exc_info:
+        verify_all(contract, vectors)
+
+    assert exc_info.value.code == "invalid_schema"
+
+
+def test_duplicate_yaml_key_refuses_invalid_schema(tmp_path: Path) -> None:
+    schema_path = tmp_path / "duplicate-key.yaml"
+    schema_path.write_text(
+        SCHEMA.read_text(encoding="utf-8").replace(
+            'statblock_format: "%.6f"',
+            'statblock_format: "%.6f"\n  statblock_format: "%.5f"',
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(CountyDossierParityRefusal) as exc_info:
+        load_contract(schema_path)
+
+    assert exc_info.value.code == "invalid_schema"
+
+
+def test_negative_median_wage_refuses_out_of_the_oracle_domain() -> None:
+    """CountyView.median_wage is the non-negative Currency type."""
+    contract = load_contract(SCHEMA)
+    vectors = copy.deepcopy(load_vectors(VECTORS))
+    row = vectors[0]
+    negative = struct.pack(">d", -21.0).hex()
+    row["data"]["committed"]["median_wage_bits"] = negative
+    row["data"]["expected"]["county_view"]["median_wage_bits"] = negative
+
+    with pytest.raises(CountyDossierParityRefusal) as exc_info:
+        verify_all(contract, vectors)
+
+    assert exc_info.value.code == "value_out_of_domain"
+
+
+def test_negative_phi_hour_remains_in_the_signed_domain() -> None:
+    """CountyView.imperial_rent_phi is SignedLaborHours: negative values are legal."""
+    contract = load_contract(SCHEMA)
+    vectors = copy.deepcopy(load_vectors(VECTORS))
+    row = vectors[0]
+    negative_phi = struct.pack(">d", -2.5).hex()
+    row["data"]["committed"]["phi_hour_bits"] = negative_phi
+    row["data"]["expected"]["county_view"]["phi_hour_bits"] = negative_phi
+    for signal in row["data"]["expected"]["plan_signals"]:
+        if signal["grant_key"] == "phi-hour":
+            signal["value"] = "-2.500000"
+    for signal in row["data"]["expected"]["signals"]:
+        if signal["grant_key"] == "phi-hour":
+            signal["value"] = "-2.500000"
+
+    assert verify_all(contract, vectors) == []
+
+
+def test_huge_finite_committed_value_refuses_typed_not_traceback() -> None:
+    """1e308 overflows the quantizer's *1e6; the refusal must stay typed."""
+    contract = load_contract(SCHEMA)
+    vectors = copy.deepcopy(load_vectors(VECTORS))
+    row = vectors[0]
+    huge = struct.pack(">d", 1e308).hex()
+    row["data"]["committed"]["median_wage_bits"] = huge
+    row["data"]["expected"]["county_view"]["median_wage_bits"] = huge
+
+    with pytest.raises(CountyDossierParityRefusal) as exc_info:
+        verify_all(contract, vectors)
+
+    assert exc_info.value.code == "value_out_of_domain"

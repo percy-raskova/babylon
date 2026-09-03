@@ -145,11 +145,37 @@ def _bounded_file_bytes(path: Path, maximum: int, code: str) -> bytes:
         raise CountyDossierParityRefusal("file_read", str(path)) from error
 
 
+class _UniqueKeySafeLoader(yaml.SafeLoader):
+    """SafeLoader that refuses duplicate mapping keys with a typed refusal."""
+
+
+def _construct_unique_mapping(loader: yaml.SafeLoader, node: yaml.MappingNode) -> dict[str, Any]:
+    mapping: dict[str, Any] = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node, deep=True)
+        try:
+            duplicate = key in mapping
+        except TypeError as error:
+            raise CountyDossierParityRefusal("invalid_schema", "unhashable key") from error
+        if duplicate:
+            raise CountyDossierParityRefusal("invalid_schema", f"duplicate key: {key}")
+        mapping[key] = loader.construct_object(value_node, deep=True)
+    return mapping
+
+
+_UniqueKeySafeLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+    _construct_unique_mapping,
+)
+
+
 def load_contract(path: Path) -> dict[str, Any]:
-    """Load one bounded YAML mapping."""
+    """Load one bounded YAML mapping, refusing duplicate keys as typed drift."""
     raw = _bounded_file_bytes(path, COMPILED_BOUNDS["contract_bytes"], "schema_too_large")
     try:
-        loaded = yaml.safe_load(raw)
+        loaded = yaml.load(raw, Loader=_UniqueKeySafeLoader)  # noqa: S506
+    except CountyDossierParityRefusal:
+        raise
     except yaml.YAMLError as error:
         raise CountyDossierParityRefusal("invalid_schema", str(path)) from error
     if not isinstance(loaded, dict):
@@ -210,15 +236,18 @@ def _verify_compiled_contract(contract: dict[str, Any]) -> None:
         raise CountyDossierParityRefusal("compiled_contract_drift", "layouts")
     if contract.get("production_decoder") != "prohibited":
         raise CountyDossierParityRefusal("compiled_contract_drift", "production_decoder")
-    required = contract.get("vector_kinds", {}).get("required")
-    if required != ["parity"]:
+    required = contract.get("vector_kinds")
+    if not isinstance(required, dict):
+        raise CountyDossierParityRefusal("invalid_schema", "vector_kinds")
+    if required.get("required") != ["parity"]:
         raise CountyDossierParityRefusal("compiled_contract_drift", "vector_kinds")
     divergences = contract.get("known_divergences")
-    if (
-        not isinstance(divergences, list)
-        or len(divergences) != 1
-        or divergences[0].get("id") != "oracle-snap-to-grid"
-    ):
+    if not isinstance(divergences, list) or len(divergences) != 1:
+        raise CountyDossierParityRefusal("compiled_contract_drift", "known_divergences")
+    divergence = divergences[0]
+    if not isinstance(divergence, dict):
+        raise CountyDossierParityRefusal("invalid_schema", "known_divergences[0]")
+    if divergence.get("id") != "oracle-snap-to-grid":
         raise CountyDossierParityRefusal("compiled_contract_drift", "known_divergences")
 
 
@@ -280,9 +309,14 @@ def oracle_snap(value: float) -> float:
     """
     if value == 0.0:
         return 0.0
+    scaled = value * 1_000_000
+    if not math.isfinite(scaled):
+        raise CountyDossierParityRefusal(
+            "value_out_of_domain", "committed value overflows the snap grid"
+        )
     if value > 0:
-        return math.floor(value * 1_000_000 + 0.5) / 1_000_000
-    return -math.floor(-value * 1_000_000 + 0.5) / 1_000_000
+        return math.floor(scaled + 0.5) / 1_000_000
+    return -math.floor(-scaled + 0.5) / 1_000_000
 
 
 def canonical_statblock(value: float) -> str:
@@ -326,27 +360,86 @@ def _data(data: Any, field: str) -> dict[str, Any]:
     return data
 
 
+HARD_REFUSAL_CODES = frozenset({"invalid_key_set", "value_out_of_domain"})
+
+
+def _exact_keys(value: Any, field: str, required: tuple[str, ...]) -> dict[str, Any]:
+    """Require one mapping whose key set equals the pinned key set exactly."""
+    if not isinstance(value, dict) or set(value) != set(required):
+        raise CountyDossierParityRefusal("invalid_key_set", field)
+    return value
+
+
 def _validate_row(row: dict[str, Any]) -> str | None:
-    """Re-derive one row's expectations from its inputs; None means parity held."""
+    """Re-derive one row's expectations from its inputs; None means parity held.
+
+    A missing member is not an explicit null and a stray nested key is drift
+    even when every required member matches, so every pinned key set is
+    enforced exactly; those refusals (and out-of-domain committed values)
+    propagate as typed hard refusals instead of row-scoped mismatch strings.
+    """
     row_id = row["id"]
     data = _data(row["data"], "data")
     try:
+        _exact_keys(
+            data,
+            "data",
+            (
+                "county_geoid",
+                "territory_local_name",
+                "title",
+                "tick",
+                "committed",
+                "grants",
+                "links",
+                "expected",
+            ),
+        )
         _geoid(data.get("county_geoid"), "county_geoid", COMPILED_BOUNDS["county_geoid_bytes"])
         _text(data.get("territory_local_name"), "territory_local_name")
         _text(data.get("title"), "title")
         tick = _tick(data.get("tick"), "tick")
-        committed = _data(data.get("committed"), "committed")
+        committed = _exact_keys(
+            data.get("committed"), "committed", ("median_wage_bits", "phi_hour_bits")
+        )
         median_bits = _bits(committed.get("median_wage_bits"), "committed.median_wage_bits")
         phi_bits = _bits(committed.get("phi_hour_bits"), "committed.phi_hour_bits")
         median = decode_bits(median_bits)
         phi = decode_bits(phi_bits)
-        grants = _data(data.get("grants"), "grants")
+        # Domain: CountyView.median_wage is the non-negative Currency type
+        # (src/babylon/projection/view_models.py); imperial_rent_phi is the
+        # signed SignedLaborHours type, so a negative phi stays in-domain.
+        if median is not None and median < 0.0:
+            raise CountyDossierParityRefusal("value_out_of_domain", "median_wage_bits")
+        grants = _exact_keys(
+            data.get("grants"), "grants", ("county_subject", "field_keys", "place_subjects")
+        )
         county_subject = grants.get("county_subject")
         field_keys = _string_list(grants.get("field_keys"), "grants.field_keys")
         place_subjects = _string_list(grants.get("place_subjects"), "grants.place_subjects")
         links = _links(data.get("links"))
-        expected = _data(data.get("expected"), "expected")
+        expected = _exact_keys(
+            data.get("expected"), "expected", ("county_view", "plan_signals", "signals", "places")
+        )
+        for field in ("places", "signals", "plan_signals"):
+            entries = expected.get(field)
+            if not isinstance(entries, list):
+                continue  # the parity comparison below reports the mismatch
+            entry_keys = (
+                ("place_geoid", "known_name")
+                if field == "places"
+                else ("grant_key", "label", "value")
+            )
+            for index, entry in enumerate(entries):
+                _exact_keys(entry, f"{field}[{index}]", entry_keys)
+        county_view = _exact_keys(
+            expected.get("county_view"),
+            "county_view",
+            ("verified_tick", "median_wage_bits", "phi_hour_bits", *COUNTY_VIEW_ABSENT_FIELDS),
+        )
     except CountyDossierParityRefusal as error:
+        if error.code in HARD_REFUSAL_CODES:
+            raise
         return f"{row_id}: {error.code} {error.detail}"
     if county_subject is not True:
         return f"{row_id}: parity vectors pin the county subject grant present"
@@ -403,10 +496,8 @@ def _validate_row(row: dict[str, Any]) -> str | None:
     # Oracle-side expectation: the oracle projects the SnapToGrid-quantized
     # value (both committed fields are SnapToGrid types), so county_view bits
     # follow quantize(committed); the grid fixed-point check above already
-    # refused the known off-grid divergence.
-    county_view = expected.get("county_view")
-    if not isinstance(county_view, dict):
-        return f"{row_id}: invalid county_view"
+    # refused the known off-grid divergence. The exact county_view key set
+    # (including every D2-null member) was enforced before this block.
     for name, value in (("median_wage", median), ("phi_hour", phi)):
         if value is None:
             if county_view.get(f"{name}_bits") is not None:
@@ -447,8 +538,7 @@ def _links(value: object) -> list[tuple[str, str]]:
     links = []
     seen: set[str] = set()
     for index, link in enumerate(value):
-        if not isinstance(link, dict) or set(link) != {"place_geoid", "place_name"}:
-            raise CountyDossierParityRefusal("invalid_links", f"links[{index}]")
+        _exact_keys(link, f"links[{index}]", ("place_geoid", "place_name"))
         geoid = _geoid(
             link.get("place_geoid"),
             f"links[{index}].place_geoid",
@@ -464,7 +554,11 @@ def _links(value: object) -> list[tuple[str, str]]:
 
 
 def verify_all(contract: dict[str, Any], vectors: list[dict[str, Any]]) -> list[str]:
-    """Verify all bounded rows and return exact row-scoped mismatches."""
+    """Verify all bounded rows, returning row-scoped mismatches.
+
+    Structural drift (a non-exact nested key set, an out-of-domain committed
+    value) refuses as a typed CountyDossierParityRefusal instead of a string.
+    """
     _verify_compiled_contract(contract)
     rows = _validated_rows(vectors)
     ids = [row["id"] for row in rows]

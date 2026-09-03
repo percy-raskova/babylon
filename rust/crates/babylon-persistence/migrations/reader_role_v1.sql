@@ -3,6 +3,11 @@
 -- public to PUBLIC, while babylon_meta is revoked from PUBLIC. A schema-level
 -- GRANT USAGE on babylon_meta would change the digest-pinned babylon_meta
 -- schema-grant census row, so the view stays where the reader can already reach.
+-- babylon_reader is NOLOGIN by design: a deployment provisions one confined
+-- LOGIN role as a member of babylon_reader (NOSUPERUSER NOCREATEDB
+-- NOCREATEROLE) and points BABYLON_READER_DSN at that credential. The reader
+-- handle refuses to operate unless the session privilege census is exactly
+-- SELECT on this view.
 CREATE VIEW public.v_committed_tick_status_v1 AS
 SELECT
     campaign_id,

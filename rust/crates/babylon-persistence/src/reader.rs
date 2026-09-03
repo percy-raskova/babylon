@@ -8,6 +8,18 @@
 //! privilege layer (`babylon_reader` holds `SELECT` on the fog-safe views
 //! only) and by the validated local-only connection target, not by client
 //! courtesy.
+//!
+//! The reader role is `NOLOGIN` by design. A deployment provisions one
+//! confined `LOGIN` role as a member of `babylon_reader`
+//! (`NOSUPERUSER NOCREATEDB NOCREATEROLE`) and points
+//! [`READER_DSN_ENV_V1`] at that credential. Because the bounded startup
+//! options pin `event_triggers=off`, that login also needs `GRANT SET ON
+//! PARAMETER event_triggers` (the parameter is grant-only under the runtime
+//! hardening). The handle refuses to operate on connect unless the session's
+//! effective privilege census over the restricted relations is exactly the
+//! reader footprint (`SELECT` on the tick-status view), so an owner or
+//! superuser DSN is a loud refusal, never a silent read with writer
+//! authority.
 
 use std::str::FromStr;
 
@@ -32,21 +44,81 @@ pub const READER_DSN_ENV_V1: &str = "BABYLON_READER_DSN";
 pub const READER_ROLE_NAME_V1: &str = "babylon_reader";
 /// Exact fog-safe acknowledged-commit tick-status relation.
 pub const COMMITTED_TICK_STATUS_VIEW_V1: &str = "public.v_committed_tick_status_v1";
-/// Exact role DDL. `CREATE ROLE` cannot run inside a transaction, so the
-/// installer executes this statement outside its view/grant transaction.
+/// Exact role DDL. `CREATE ROLE` is transactional in `PostgreSQL`, so the
+/// installer executes this statement inside the same Serializable transaction
+/// as the view and grants; a failed install leaves no cluster-wide partial
+/// state.
 pub const READER_ROLE_CREATE_SQL_V1: &str =
     "CREATE ROLE babylon_reader NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE";
 /// Transactional additive schema: the tick-status view, its exact SELECT
 /// grant, and the guarded archive-table revokes.
 pub const READER_ROLE_SCHEMA_V1_SQL: &str = include_str!("../migrations/reader_role_v1.sql");
+/// Canonical whitespace-normalized view definition the installed relation
+/// must store. `pg_get_viewdef` reconstructs the pinned `CREATE VIEW` body;
+/// both sides are canonicalized (whitespace collapsed, trailing statement
+/// separator trimmed) before comparison.
+pub const READER_VIEW_CANONICAL_DEF_V1: &str = "SELECT campaign_id, resolve_tick, \
+    envelope_layout_version, tick_content_hash, envelope_digest \
+    FROM babylon_state.tick_commit";
 
 const READER_ROLE_MARKERS_SQL_V1: &str = "SELECT \
     EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'babylon_reader'), \
     pg_catalog.to_regclass('public.v_committed_tick_status_v1') IS NOT NULL";
 const READER_ROLE_ATTRIBUTES_SQL_V1: &str = "SELECT rolsuper, rolcreatedb, rolcreaterole, \
     rolcanlogin FROM pg_catalog.pg_roles WHERE rolname = 'babylon_reader'";
-const READER_VIEW_GRANT_SQL_V1: &str = "SELECT pg_catalog.has_table_privilege(\
-    'babylon_reader', 'public.v_committed_tick_status_v1', 'SELECT')";
+/// Effective-privilege census over the restricted relations: relation-level
+/// and column-level ACL entries (`aclexplode`), ownership, and everything
+/// inherited through `pg_auth_members` role-membership recursion, including
+/// grants to `PUBLIC` (role oid `0`). Entries read `schema.relation:privilege`
+/// with a ` (grantable)` suffix when the grant carries `WITH GRANT OPTION`.
+pub(crate) const READER_PRIVILEGE_CENSUS_SQL_V1: &str = "WITH RECURSIVE role_closure(oid) AS (\
+    SELECT 0::pg_catalog.oid \
+    UNION \
+    SELECT pg_roles.oid FROM pg_catalog.pg_roles WHERE pg_roles.rolname = $1 \
+    UNION \
+    SELECT membership.roleid FROM pg_catalog.pg_auth_members membership \
+    JOIN role_closure ON role_closure.oid = membership.member), \
+    restricted AS (\
+    SELECT relation.oid, namespace.nspname, relation.relname, relation.relacl, relation.relowner \
+    FROM pg_catalog.pg_class relation \
+    JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace \
+    WHERE (namespace.nspname = 'babylon_state' AND relation.relkind IN ('r', 'p', 'v', 'm', 'f')) \
+    OR (namespace.nspname = 'babylon_meta' AND relation.relname IN ('archive_page_v1', \
+    'archive_knowledge_grant_v1', 'archive_receipt_consumption_v1')) \
+    OR (namespace.nspname = 'public' AND relation.relname = 'v_committed_tick_status_v1')), \
+    held AS (\
+    SELECT restricted.nspname || '.' || restricted.relname || ':' || acl.privilege_type || \
+    CASE WHEN acl.is_grantable THEN ' (grantable)' ELSE '' END AS entry \
+    FROM restricted \
+    CROSS JOIN LATERAL pg_catalog.aclexplode(restricted.relacl) acl \
+    JOIN role_closure ON role_closure.oid = acl.grantee \
+    UNION \
+    SELECT restricted.nspname || '.' || restricted.relname || ':OWNERSHIP' \
+    FROM restricted \
+    JOIN pg_catalog.pg_roles owner_role ON owner_role.oid = restricted.relowner \
+    WHERE owner_role.rolname = $1 \
+    UNION \
+    SELECT restricted.nspname || '.' || restricted.relname || ':' || acl.privilege_type || \
+    CASE WHEN acl.is_grantable THEN ' (grantable)' ELSE '' END \
+    FROM restricted \
+    CROSS JOIN LATERAL (\
+    SELECT attribute.attacl FROM pg_catalog.pg_attribute attribute \
+    WHERE attribute.attrelid = restricted.oid AND attribute.attnum > 0 \
+    AND NOT attribute.attisdropped \
+    ) attributes \
+    CROSS JOIN LATERAL pg_catalog.aclexplode(attributes.attacl) acl \
+    JOIN role_closure ON role_closure.oid = acl.grantee) \
+    SELECT entry FROM held ORDER BY entry";
+const READER_VIEW_IDENTITY_SQL_V1: &str = "SELECT relation.relkind::pg_catalog.text, \
+    pg_catalog.pg_get_viewdef(relation.oid) \
+    FROM pg_catalog.pg_class relation \
+    JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace \
+    WHERE namespace.nspname = 'public' AND relation.relname = 'v_committed_tick_status_v1'";
+const READER_SESSION_AUTHORITY_SQL_V1: &str = "SELECT current_user::pg_catalog.text, \
+    (SELECT pg_roles.rolsuper FROM pg_catalog.pg_roles WHERE pg_roles.rolname = current_user)";
+/// The one privilege entry constituting the exact reader footprint. Every
+/// census entry outside this set is drift or writer authority.
+const READER_FOOTPRINT_V1: [&str; 1] = ["public.v_committed_tick_status_v1:SELECT"];
 /// Known-acknowledged-commit tick status read. The read goes through the view
 /// only; `babylon_state.tick_commit` stays revoked from the reader role.
 pub const COMMITTED_TICK_STATUS_SQL_V1: &str = "SELECT campaign_id, resolve_tick, \
@@ -119,8 +191,18 @@ pub enum SemanticArchiveReaderErrorV1 {
     ConnectionTarget(LegacyConnectionTargetRejection),
     /// An existing `babylon_reader` role does not have the exact locked attributes.
     RoleMismatch,
-    /// The view exists without the exact reader `SELECT` grant.
+    /// The view exists without the exact pinned identity (plain-view relkind
+    /// and canonical definition) or is absent when required.
     ViewMismatch,
+    /// The effective-privilege census over the restricted relations diverges
+    /// from the exact reader footprint; the entries carry the observed drift.
+    PrivilegeDrift(Vec<String>),
+    /// The connected session carries authority beyond the reader footprint
+    /// (superuser, ownership, or extra effective privileges); the entries
+    /// carry the observed census.
+    WriterAuthorityRefused(Vec<String>),
+    /// One read crossed the store boundary and failed there.
+    Archive(SemanticArchiveErrorV1),
     /// The advisory lock did not release from this session.
     LockMismatch,
     /// One database operation failed with a bounded secret-safe driver diagnostic.
@@ -148,6 +230,42 @@ fn database_error(
         operation,
         diagnostic: PostgresDiagnosticV1::capture(error),
     }
+}
+
+fn archive_boundary(error: SemanticArchiveErrorV1) -> SemanticArchiveReaderErrorV1 {
+    SemanticArchiveReaderErrorV1::Archive(error)
+}
+
+/// Collapse whitespace and trim the trailing statement separator so a
+/// `pg_get_viewdef` reconstruction compares against the pinned canonical text.
+fn canonicalize_view_definition(definition: &str) -> String {
+    definition
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .trim_end_matches(';')
+        .trim()
+        .to_owned()
+}
+
+/// Census one role's effective privileges (including inherited, column-level,
+/// `PUBLIC`, and ownership entries) over the restricted relations.
+fn census_role_privileges(
+    client: &mut postgres::Client,
+    role: &str,
+    operation: &'static str,
+) -> Result<Vec<String>, SemanticArchiveReaderErrorV1> {
+    let rows = client
+        .query(READER_PRIVILEGE_CENSUS_SQL_V1, &[&role])
+        .map_err(|error| database_error(operation, &error))?;
+    rows.iter()
+        .map(|row| row.try_get::<_, String>(0))
+        .collect::<Result<_, _>>()
+        .map_err(|error| database_error(operation, &error))
+}
+
+fn exact_reader_footprint(held: &[String]) -> bool {
+    held == READER_FOOTPRINT_V1
 }
 
 fn connection_target_error(error: &LegacyAdopterError) -> SemanticArchiveReaderErrorV1 {
@@ -223,20 +341,21 @@ impl SemanticArchiveReaderV1 {
     /// views land, which is the intended fog behavior.
     ///
     /// # Errors
-    /// Refuses a limit above 100, malformed stored rows, or database failure.
+    /// Refuses a limit above 100, malformed stored rows, writer authority on
+    /// the session, or database failure.
     pub fn search_known(
         &self,
         campaign_id: CampaignId,
         query: &str,
         limit: u32,
-    ) -> Result<Vec<ArchiveSearchHitV1>, SemanticArchiveErrorV1> {
+    ) -> Result<Vec<ArchiveSearchHitV1>, SemanticArchiveReaderErrorV1> {
         if query.trim().is_empty() {
             return Ok(Vec::new());
         }
         if limit == 0 || limit > MAX_SEARCH_HITS {
-            return Err(SemanticArchiveErrorV1::CollectionBound);
+            return Err(archive_boundary(SemanticArchiveErrorV1::CollectionBound));
         }
-        validate_text(query)?;
+        validate_text(query).map_err(archive_boundary)?;
         let limit = i64::from(limit);
         let mut client = self.connect("connect known Archive reader search")?;
         client
@@ -244,10 +363,13 @@ impl SemanticArchiveReaderV1 {
                 ARCHIVE_SEARCH_SQL_V1,
                 &[campaign_id.as_uuid(), &query, &limit],
             )
-            .map_err(|error| database("search known Archive reader pages", &error))?
+            .map_err(|error| {
+                archive_boundary(database("search known Archive reader pages", &error))
+            })?
             .iter()
             .map(decode_search_hit)
-            .collect()
+            .collect::<Result<_, _>>()
+            .map_err(archive_boundary)
     }
 
     /// Read the acknowledged-commit tick status through the fog-safe view.
@@ -256,20 +378,25 @@ impl SemanticArchiveReaderV1 {
     /// from the reader role; `tick_commit`, not `MAX(tick)`, marks durability.
     ///
     /// # Errors
-    /// Refuses a malformed stored row or a database failure.
+    /// Refuses a malformed stored row, writer authority on the session, or a
+    /// database failure.
     pub fn committed_tick_status(
         &self,
         campaign_id: CampaignId,
-    ) -> Result<Option<CommittedTickStatusV1>, SemanticArchiveErrorV1> {
+    ) -> Result<Option<CommittedTickStatusV1>, SemanticArchiveReaderErrorV1> {
         let mut client = self.connect("connect committed tick status reader")?;
         client
             .query_opt(COMMITTED_TICK_STATUS_SQL_V1, &[campaign_id.as_uuid()])
-            .map_err(|error| database("read committed tick status view", &error))?
+            .map_err(|error| archive_boundary(database("read committed tick status view", &error)))?
             .map(|row| decode_committed_tick_status(campaign_id, &row))
             .transpose()
+            .map_err(archive_boundary)
     }
 
-    fn connect(&self, operation: &'static str) -> Result<postgres::Client, SemanticArchiveErrorV1> {
+    fn connect(
+        &self,
+        operation: &'static str,
+    ) -> Result<postgres::Client, SemanticArchiveReaderErrorV1> {
         // The stored config stays raw: validation must observe the caller's
         // exact target, not the bounded startup options added here.
         let mut bounded = self.config.clone();
@@ -277,23 +404,67 @@ impl SemanticArchiveReaderV1 {
             .connect_timeout(LEGACY_ADOPTER_CONNECT_TIMEOUT)
             .tcp_user_timeout(LEGACY_ADOPTER_TCP_USER_TIMEOUT)
             .options(LEGACY_ADOPTER_STARTUP_OPTIONS);
-        bounded
+        let mut client = bounded
             .connect(NoTls)
-            .map_err(|error| database(operation, &error))
+            .map_err(|error| database_error(operation, &error))?;
+        confine_reader_authority(&mut client)?;
+        Ok(client)
+    }
+}
+
+/// Refuse the connection unless the session carries exactly the reader
+/// footprint. `default_transaction_read_only` is user-changeable, so privilege
+/// confinement is re-censused here on every connect: a superuser session, an
+/// owner credential, or any inherited extra privilege is a loud refusal.
+fn confine_reader_authority(
+    client: &mut postgres::Client,
+) -> Result<(), SemanticArchiveReaderErrorV1> {
+    let row = client
+        .query_one(READER_SESSION_AUTHORITY_SQL_V1, &[])
+        .map_err(|error| database_error("census reader session authority", &error))?;
+    let session_role: String = row
+        .try_get(0)
+        .map_err(|error| database_error("decode reader session role", &error))?;
+    let is_superuser: bool = row
+        .try_get(1)
+        .map_err(|error| database_error("decode reader session superuser attribute", &error))?;
+    let mut held = Vec::new();
+    if is_superuser {
+        held.push(format!("{session_role}:SUPERUSER"));
+    }
+    held.extend(census_role_privileges(
+        client,
+        &session_role,
+        "census reader session privileges",
+    )?);
+    if exact_reader_footprint(&held) {
+        Ok(())
+    } else {
+        Err(SemanticArchiveReaderErrorV1::WriterAuthorityRefused(held))
     }
 }
 
 /// Install the additive reader role and fog-safe tick-status view idempotently.
 ///
-/// The installer mirrors the additive Archive pattern: one advisory lock, one
-/// role-DDL statement outside the transaction (`CREATE ROLE` is not
-/// transactional), and one transaction for the view, its exact grant, and the
-/// guarded archive-table revokes. The base `babylon_state` tables are never
-/// granted. This maintenance entry point does not advance the schema epoch.
+/// The installer mirrors the additive Archive pattern: one advisory lock and
+/// one Serializable transaction for the role DDL, the view, its exact grant,
+/// and the guarded archive-table revokes. `CREATE ROLE` is transactional in
+/// `PostgreSQL`, so a failed install leaves no cluster-wide partial state.
+/// The base `babylon_state` tables are never granted. This maintenance entry
+/// point does not advance the schema epoch.
+///
+/// The existing-state path is a census, not a courtesy: the view must be a
+/// plain view storing the pinned canonical definition, and the role's
+/// effective-privilege census over the restricted relations must be exactly
+/// `SELECT` on the view. Anything else refuses with
+/// [`SemanticArchiveReaderErrorV1::PrivilegeDrift`] (or
+/// [`SemanticArchiveReaderErrorV1::ViewMismatch`]); drift is never silently
+/// re-granted away.
 ///
 /// # Errors
 /// Refuses an out-of-contract target, an existing role with wrong attributes,
-/// a view without the exact grant, or database failure.
+/// a view without the exact pinned identity, privilege drift, or database
+/// failure.
 pub fn install_reader_role_v1(
     config: &Config,
 ) -> Result<ReaderRoleDispositionV1, SemanticArchiveReaderErrorV1> {
@@ -334,18 +505,18 @@ fn install_reader_role_locked(
     let view_exists: bool = row
         .try_get(1)
         .map_err(|error| database_error("decode reader view marker", &error))?;
-    let mut installed = false;
     if role_exists {
         verify_reader_role_attributes(client)?;
-    } else {
-        client
-            .batch_execute(READER_ROLE_CREATE_SQL_V1)
-            .map_err(|error| database_error("create reader role", &error))?;
-        installed = true;
     }
     if view_exists {
-        verify_reader_view_grant(client)?;
-    } else {
+        verify_reader_view_identity(client)?;
+        let held =
+            census_role_privileges(client, READER_ROLE_NAME_V1, "census reader role privileges")?;
+        if !exact_reader_footprint(&held) {
+            return Err(SemanticArchiveReaderErrorV1::PrivilegeDrift(held));
+        }
+    }
+    if !role_exists || !view_exists {
         let mut transaction = client
             .build_transaction()
             .isolation_level(postgres::IsolationLevel::Serializable)
@@ -356,19 +527,22 @@ fn install_reader_role_locked(
                 "SET LOCAL search_path TO pg_catalog; SET LOCAL synchronous_commit TO on",
             )
             .map_err(|error| database_error("set reader schema install settings", &error))?;
-        transaction
-            .batch_execute(READER_ROLE_SCHEMA_V1_SQL)
-            .map_err(|error| database_error("install reader schema", &error))?;
+        if !role_exists {
+            transaction
+                .batch_execute(READER_ROLE_CREATE_SQL_V1)
+                .map_err(|error| database_error("create reader role", &error))?;
+        }
+        if !view_exists {
+            transaction
+                .batch_execute(READER_ROLE_SCHEMA_V1_SQL)
+                .map_err(|error| database_error("install reader schema", &error))?;
+        }
         transaction
             .commit()
             .map_err(|error| database_error("commit reader schema install", &error))?;
-        installed = true;
+        return Ok(ReaderRoleDispositionV1::Installed);
     }
-    if installed {
-        Ok(ReaderRoleDispositionV1::Installed)
-    } else {
-        Ok(ReaderRoleDispositionV1::AlreadyCurrent)
-    }
+    Ok(ReaderRoleDispositionV1::AlreadyCurrent)
 }
 
 fn verify_reader_role_attributes(
@@ -394,15 +568,26 @@ fn verify_reader_role_attributes(
     }
 }
 
-fn verify_reader_view_grant(
+fn verify_reader_view_identity(
     client: &mut postgres::Client,
 ) -> Result<(), SemanticArchiveReaderErrorV1> {
-    let granted: bool = client
-        .query_one(READER_VIEW_GRANT_SQL_V1, &[])
-        .map_err(|error| database_error("inspect reader view grant", &error))?
+    let row = client
+        .query_opt(READER_VIEW_IDENTITY_SQL_V1, &[])
+        .map_err(|error| database_error("inspect reader view identity", &error))?
+        .ok_or(SemanticArchiveReaderErrorV1::ViewMismatch)?;
+    let relkind: String = row
         .try_get(0)
-        .map_err(|error| database_error("decode reader view grant", &error))?;
-    if granted {
+        .map_err(|error| database_error("decode reader view relkind", &error))?;
+    let definition: Option<String> = row
+        .try_get(1)
+        .map_err(|error| database_error("decode reader view definition", &error))?;
+    if relkind == "v"
+        && definition
+            .as_deref()
+            .map(canonicalize_view_definition)
+            .as_deref()
+            == Some(READER_VIEW_CANONICAL_DEF_V1)
+    {
         Ok(())
     } else {
         Err(SemanticArchiveReaderErrorV1::ViewMismatch)

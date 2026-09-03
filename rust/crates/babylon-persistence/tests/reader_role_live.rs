@@ -181,6 +181,81 @@ struct ReaderTarget {
     campaign_id: CampaignId,
 }
 
+/// One confined `LOGIN` role as a member of `babylon_reader`: the deployment
+/// credential shape the reader handle is designed for (the reader role itself
+/// is `NOLOGIN` by design).
+struct ConfinedLogin {
+    name: String,
+    admin: Config,
+    active: bool,
+}
+
+impl ConfinedLogin {
+    const PASSWORD: &'static str = "readerconfined";
+
+    fn create(base: &Config) -> Self {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock is after the epoch")
+            .as_nanos();
+        let name = format!("per281_reader_login_{}_{unique:024x}", std::process::id());
+        let mut admin = base.clone();
+        admin.dbname("postgres");
+        // The bounded startup options pin event_triggers=off; the runtime
+        // hardening makes that parameter grant-only (see ScratchRole).
+        admin
+            .connect(NoTls)
+            .expect("admin connection")
+            .batch_execute(&format!(
+                "CREATE ROLE {name} LOGIN PASSWORD '{}' \
+                 NOSUPERUSER NOCREATEDB NOCREATEROLE; \
+                 GRANT babylon_reader TO {name}; \
+                 GRANT SET ON PARAMETER event_triggers TO {name}",
+                Self::PASSWORD
+            ))
+            .expect("confined reader login creates");
+        Self {
+            name,
+            admin,
+            active: true,
+        }
+    }
+
+    fn dsn(&self, host: &str, port: u16, database: &str) -> String {
+        format!(
+            "postgresql://{}:{}@{host}:{port}/{database}",
+            self.name,
+            Self::PASSWORD
+        )
+    }
+
+    fn try_cleanup(&self) -> Result<(), postgres::Error> {
+        self.admin.connect(NoTls)?.batch_execute(&format!(
+            "REVOKE SET ON PARAMETER event_triggers FROM {role}; DROP ROLE IF EXISTS {role}",
+            role = self.name
+        ))
+    }
+
+    fn cleanup(mut self) {
+        self.try_cleanup().expect("confined reader login cleanup");
+        self.active = false;
+    }
+}
+
+impl Drop for ConfinedLogin {
+    fn drop(&mut self) {
+        if !self.active {
+            return;
+        }
+        if std::thread::panicking() {
+            let _cleanup = self.try_cleanup();
+            return;
+        }
+        self.try_cleanup().expect("confined reader login cleanup");
+        self.active = false;
+    }
+}
+
 impl ReaderTarget {
     /// Clone the template, commit `tick_count` real ticks for one campaign,
     /// install the additive Archive schema first (so the reader installer's
@@ -530,7 +605,7 @@ fn live_reader_role_reads_the_view_and_refuses_every_base_relation() {
 
 #[test]
 #[ignore = "requires the task-owned disposable PostgreSQL runtime and committed ticks"]
-fn live_reader_handle_reads_tick_status_and_search_through_validated_dsn() {
+fn live_reader_handle_reads_through_confined_login_and_refuses_writer_authority() {
     let target = ReaderTarget::create(
         "readerhandler",
         0x2300_0000_0000_0000_0000_0000_0000_00a2,
@@ -549,17 +624,17 @@ fn live_reader_handle_reads_tick_status_and_search_through_validated_dsn() {
         .first()
         .copied()
         .expect("runner DSN names a port");
-    let reader_dsn = format!(
-        "postgresql://test:test@{host}:{port}/{}",
-        target.database.name
+    let login = ConfinedLogin::create(&base);
+    std::env::set_var(
+        READER_DSN_ENV,
+        login.dsn(&host, port, &target.database.name),
     );
-    std::env::set_var(READER_DSN_ENV, &reader_dsn);
     let reader = SemanticArchiveReaderV1::from_env().expect("BABYLON_READER_DSN admits");
     std::env::remove_var(READER_DSN_ENV);
 
     let status = reader
         .committed_tick_status(target.campaign_id)
-        .expect("reader reads the committed-tick status")
+        .expect("confined login reads the committed-tick status")
         .expect("one committed tick exists");
     assert_eq!(status.resolve_tick(), 2);
     assert_eq!(status.campaign_id(), &target.campaign_id);
@@ -581,12 +656,99 @@ fn live_reader_handle_reads_tick_status_and_search_through_validated_dsn() {
         "the reader status preserves the acknowledged commit tail hash exactly"
     );
 
-    let hits = reader
-        .search_known(target.campaign_id, "728576", 10)
-        .expect("reader searches known pages");
-    assert_eq!(hits.len(), 1);
-    assert_eq!(hits[0].verified_tick(), 1);
-    assert!(hits[0].markdown().contains("728576 jobs"));
+    // Fog behavior: the confined credential holds no base-table privilege, so
+    // the store search boundary refuses until the Slice 2 fog-safe search
+    // views land — even though a known page exists.
+    let search = reader.search_known(target.campaign_id, "728576", 10);
+    assert!(
+        matches!(
+            search,
+            Err(babylon_persistence::SemanticArchiveReaderErrorV1::Archive(
+                babylon_persistence::SemanticArchiveErrorV1::Database { .. }
+            ))
+        ),
+        "the confined reader must hit the fog wall on base tables, got {search:?}"
+    );
+
+    // The owner credential carries writer authority: the handle must refuse
+    // to operate, not silently read with owner powers.
+    let owner_dsn = format!(
+        "postgresql://test:test@{host}:{port}/{}",
+        target.database.name
+    );
+    std::env::set_var(READER_DSN_ENV, &owner_dsn);
+    let owner_reader = SemanticArchiveReaderV1::from_env().expect("loopback owner DSN admits");
+    std::env::remove_var(READER_DSN_ENV);
+    let refused = owner_reader.committed_tick_status(target.campaign_id);
+    match refused {
+        Err(babylon_persistence::SemanticArchiveReaderErrorV1::WriterAuthorityRefused(held)) => {
+            assert!(
+                !held.is_empty(),
+                "the refusal must carry the observed census"
+            );
+        }
+        other => panic!("owner credentials must refuse with writer authority, got {other:?}"),
+    }
+
+    login.cleanup();
+    target.finish();
+}
+
+#[test]
+#[ignore = "requires the task-owned disposable PostgreSQL runtime and committed ticks"]
+fn live_reader_installer_refuses_privilege_drift_and_view_identity_mismatch() {
+    let target = ReaderTarget::create(
+        "readerroledrift",
+        0x2300_0000_0000_0000_0000_0000_0000_00a3,
+        1,
+    );
+    let mut client = target
+        .config
+        .connect(NoTls)
+        .expect("drift probe connection");
+
+    // Drift: one extra effective privilege outside the exact footprint. The
+    // installer must census and refuse, never silently re-grant.
+    client
+        .batch_execute("GRANT SELECT ON babylon_meta.archive_page_v1 TO babylon_reader")
+        .expect("drift grant applies");
+    let drift = install_reader_role_v1(&target.config).map(|_| ());
+    match drift {
+        Err(babylon_persistence::SemanticArchiveReaderErrorV1::PrivilegeDrift(held)) => assert!(
+            held.contains(&"babylon_meta.archive_page_v1:SELECT".to_owned()),
+            "the drift census names the offending entry, held={held:?}"
+        ),
+        other => panic!("privilege drift must refuse loudly, got {other:?}"),
+    }
+    client
+        .batch_execute("REVOKE SELECT ON babylon_meta.archive_page_v1 FROM babylon_reader")
+        .expect("drift revoke applies");
+    assert_eq!(
+        install_reader_role_v1(&target.config).map(|_| ()),
+        Ok(()),
+        "the census reconciles to AlreadyCurrent once the drift is revoked"
+    );
+
+    // Identity: a same-named base table is not the pinned view.
+    client
+        .batch_execute(
+            "DROP VIEW public.v_committed_tick_status_v1; \
+             CREATE TABLE public.v_committed_tick_status_v1(id bigint)",
+        )
+        .expect("impostor table replaces the view");
+    assert_eq!(
+        install_reader_role_v1(&target.config).map(|_| ()),
+        Err(babylon_persistence::SemanticArchiveReaderErrorV1::ViewMismatch),
+        "a non-view relation with the pinned name must refuse"
+    );
+    client
+        .batch_execute("DROP TABLE public.v_committed_tick_status_v1")
+        .expect("impostor table drops");
+    assert_eq!(
+        install_reader_role_v1(&target.config),
+        Ok(ReaderRoleDispositionV1::Installed),
+        "removal of the view reinstalls it transactionally"
+    );
 
     target.finish();
 }

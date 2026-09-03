@@ -2259,9 +2259,19 @@ fn assert_pr_live_cadence(pr_workflow: &str) {
             .count(),
         1
     );
-    assert!(pr_shards.contains(
-        "focus: [clean_bootstrap, h3_atomicity, rust_persistence_runtime, installed_mutation, archive_worker]"
-    ));
+    for focus in [
+        "clean_bootstrap",
+        "h3_atomicity",
+        "rust_persistence_runtime",
+        "installed_mutation",
+        "archive_worker",
+        "reader_role",
+    ] {
+        assert!(
+            pr_shards.contains(&format!("          - {focus}\n")),
+            "the PR matrix pins the {focus} focus"
+        );
+    }
     assert!(pr_shards.contains(
         "- name: Rust PostgreSQL contract\n        timeout-minutes: 69\n        env:\n          BABYLON_LEGACY_ADOPTER_LIVE_FOCUS: ${{ matrix.focus }}\n        run: tools/run_rust_legacy_adopter_pg.sh"
     ));

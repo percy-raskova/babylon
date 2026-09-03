@@ -214,6 +214,7 @@ def test_shared_pr_blocking_pg_tier_is_rust_only_after_cutover() -> None:
                 "rust_persistence_runtime",
                 "installed_mutation",
                 "archive_worker",
+                "reader_role",
             ]
         },
     }

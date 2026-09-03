@@ -849,10 +849,78 @@ pub fn county_page_input_v1(
 }
 
 /// Committed per-tick signal sources for one territory, absence-maximal.
+///
+/// Only the two D2-committed territory fields exist; a field missing at the
+/// resolve tick stays `None` and emits no signal.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-struct CommittedTerritoryFieldsV1 {
+pub struct CommittedTerritoryFieldsV1 {
     median_wage: Option<f64>,
     phi_hour: Option<f64>,
+}
+
+impl CommittedTerritoryFieldsV1 {
+    /// Construct the two committed field values, absence-maximal.
+    ///
+    /// # Errors
+    /// Refuses a non-finite value; committed values are canonical finite
+    /// binary64 and any other input is malformed committed state.
+    pub fn try_new(
+        median_wage: Option<f64>,
+        phi_hour: Option<f64>,
+    ) -> Result<Self, SemanticArchiveErrorV1> {
+        for value in [median_wage, phi_hour].into_iter().flatten() {
+            if !value.is_finite() {
+                return Err(SemanticArchiveErrorV1::StoredPageMismatch);
+            }
+        }
+        Ok(Self {
+            median_wage,
+            phi_hour,
+        })
+    }
+
+    /// Borrow the committed median-wage value, absent when not committed.
+    #[must_use]
+    pub fn median_wage(&self) -> Option<f64> {
+        self.median_wage
+    }
+
+    /// Borrow the committed phi-hour value, absent when not committed.
+    #[must_use]
+    pub fn phi_hour(&self) -> Option<f64> {
+        self.phi_hour
+    }
+}
+
+/// Build the two grant-keyed committed signals for one territory, absence-maximal.
+///
+/// A committed field that is missing emits no signal, never a fabricated
+/// value; each present value formats with the canonical `%.6f` statblock
+/// discipline. This is the exact signal construction [`CountyDossierProducerV1`]
+/// runs inside `desired_pages`, factored pure so the language-neutral parity
+/// vectors exercise it without a database.
+///
+/// # Errors
+/// Refuses a non-finite committed value or unsafe text.
+pub fn county_committed_signals_v1(
+    fields: &CommittedTerritoryFieldsV1,
+) -> Result<Vec<CountySignalV1>, SemanticArchiveErrorV1> {
+    let mut signals = Vec::new();
+    if let Some(value) = fields.median_wage {
+        signals.push(CountySignalV1::from_committed_real(
+            COUNTY_MEDIAN_WAGE_GRANT_KEY_V1.to_owned(),
+            COUNTY_MEDIAN_WAGE_LABEL_V1.to_owned(),
+            value,
+        )?);
+    }
+    if let Some(value) = fields.phi_hour {
+        signals.push(CountySignalV1::from_committed_real(
+            COUNTY_PHI_HOUR_GRANT_KEY_V1.to_owned(),
+            COUNTY_PHI_HOUR_LABEL_V1.to_owned(),
+            value,
+        )?);
+    }
+    Ok(signals)
 }
 
 /// Production county dossier producer over the checked reference products.
@@ -925,23 +993,10 @@ impl CountyDossierProducerV1 {
                     .get(county_geoid.as_str())
                     .ok_or(SemanticArchiveErrorV1::StoredPageMismatch)?)
                 .to_owned();
-                let mut signals = Vec::new();
-                if let Some(fields) = committed.get(&territory_local_name) {
-                    if let Some(value) = fields.median_wage {
-                        signals.push(CountySignalV1::from_committed_real(
-                            COUNTY_MEDIAN_WAGE_GRANT_KEY_V1.to_owned(),
-                            COUNTY_MEDIAN_WAGE_LABEL_V1.to_owned(),
-                            value,
-                        )?);
-                    }
-                    if let Some(value) = fields.phi_hour {
-                        signals.push(CountySignalV1::from_committed_real(
-                            COUNTY_PHI_HOUR_GRANT_KEY_V1.to_owned(),
-                            COUNTY_PHI_HOUR_LABEL_V1.to_owned(),
-                            value,
-                        )?);
-                    }
-                }
+                let signals = match committed.get(&territory_local_name) {
+                    Some(fields) => county_committed_signals_v1(fields)?,
+                    None => Vec::new(),
+                };
                 let place_links = overlaps
                     .get(county_geoid.as_str())
                     .into_iter()

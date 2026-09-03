@@ -134,10 +134,14 @@ def test_identity_pins_the_checked_in_template_and_schema_bytes() -> None:
     schema_bytes = (
         ROOT / "rust/crates/babylon-persistence/migrations/semantic_archive_v1.sql"
     ).read_bytes()
+    atom_schema_bytes = (
+        ROOT / "rust/crates/babylon-persistence/migrations/archive_atom_v1.sql"
+    ).read_bytes()
     template_sha256 = hashlib.sha256(template_bytes).hexdigest()
     worker = hashlib.sha256()
     worker.update(b"babylon.semantic-archive-worker.v1\x00")
     worker.update(schema_bytes)
+    worker.update(atom_schema_bytes)
     worker.update(bytes.fromhex(template_sha256))
 
     assert identity["data"]["template_sha256_hex"] == template_sha256

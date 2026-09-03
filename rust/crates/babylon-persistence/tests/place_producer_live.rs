@@ -3,7 +3,9 @@
 //!
 //! Each test clones the validated Rust-active runtime template, commits real
 //! ticks through `DurableReplayRuntimeV2`, and proves one place dossier
-//! acceptance property against the committed dirty receipts.
+//! acceptance property against the committed dirty receipts: loud truncation
+//! refusal, bounded allowlist drain with clean rerun, and grant-refresh
+//! republication.
 
 use std::str::FromStr;
 
@@ -20,7 +22,7 @@ use babylon_persistence::{
     ArchiveKnowledgeGrantV1, ArchivePageRefV1, ArchiveReceiptDispositionV1,
     ArchiveSchemaDispositionV1, ArchiveSubjectKindV1, ArchiveWorkerV1, CampaignId,
     DurableReplayRuntimeV2, FoundationContentBundleV1, PlaceDossierProducerV1,
-    SemanticArchiveStoreV1, PLACE_DECISION_QUESTION_V1,
+    SemanticArchiveErrorV1, SemanticArchiveStoreV1,
 };
 use babylon_practice_contract::ordered_action_v1::OrderedPracticeActionBatchV1;
 use babylon_tick::material_state::MaterialStateV1;
@@ -261,59 +263,71 @@ impl LivePlaceTarget {
     }
 }
 
-/// Grant the subject knowledge every place page needs to render, plus the
-/// identity field and Wayne County subject for the Detroit assertions.
-fn grant_place_knowledge(
+fn grant(
     store: &SemanticArchiveStoreV1,
     campaign_id: CampaignId,
+    kind: ArchiveSubjectKindV1,
+    id: &str,
+    grant_key: &str,
+    granted_tick: u64,
+) {
+    store
+        .grant_knowledge(
+            campaign_id,
+            &ArchiveKnowledgeGrantV1::try_new(
+                ArchivePageRefV1::try_new(kind, id.to_owned()).expect("page ref"),
+                grant_key.to_owned(),
+                granted_tick,
+                ArchiveCitationV1::try_new(
+                    "live-place-grant".to_owned(),
+                    format!("{}/{id}@{grant_key}", kind.as_str()),
+                )
+                .expect("grant citation"),
+            )
+            .expect("knowledge grant"),
+        )
+        .expect("knowledge grant persists");
+}
+
+/// Grant subject plus identity field for every given place and subject for
+/// every overlapping county, all visible from tick one.
+fn grant_full_place_knowledge(
+    store: &SemanticArchiveStoreV1,
+    campaign_id: CampaignId,
+    producer: &PlaceDossierProducerV1,
     geoids: &[String],
 ) {
-    for geoid in geoids {
-        store
-            .grant_knowledge(
+    let allowed: std::collections::BTreeSet<&str> = geoids.iter().map(String::as_str).collect();
+    for plan in producer.desired_pages().expect("desired pages build") {
+        if !allowed.contains(plan.place_geoid()) {
+            continue;
+        }
+        grant(
+            store,
+            campaign_id,
+            ArchiveSubjectKindV1::Place,
+            plan.place_geoid(),
+            "subject",
+            1,
+        );
+        grant(
+            store,
+            campaign_id,
+            ArchiveSubjectKindV1::Place,
+            plan.place_geoid(),
+            "identity",
+            1,
+        );
+        for slice in plan.county_links() {
+            grant(
+                store,
                 campaign_id,
-                &ArchiveKnowledgeGrantV1::try_new(
-                    ArchivePageRefV1::try_new(ArchiveSubjectKindV1::Place, geoid.clone())
-                        .expect("place ref"),
-                    "subject".to_owned(),
-                    1,
-                    ArchiveCitationV1::try_new(
-                        "live-place-subject".to_owned(),
-                        format!("place/{geoid}"),
-                    )
-                    .expect("subject citation"),
-                )
-                .expect("subject grant"),
-            )
-            .expect("place subject grant persists");
-    }
-    for (page_ref, grant_key, locator) in [
-        (
-            ArchivePageRefV1::try_new(ArchiveSubjectKindV1::Place, "2622000".to_owned())
-                .expect("Detroit ref"),
-            "identity".to_owned(),
-            "identity@tick-1".to_owned(),
-        ),
-        (
-            ArchivePageRefV1::try_new(ArchiveSubjectKindV1::County, "26163".to_owned())
-                .expect("Wayne ref"),
-            "subject".to_owned(),
-            "county/26163".to_owned(),
-        ),
-    ] {
-        store
-            .grant_knowledge(
-                campaign_id,
-                &ArchiveKnowledgeGrantV1::try_new(
-                    page_ref,
-                    grant_key,
-                    1,
-                    ArchiveCitationV1::try_new("live-place-field".to_owned(), locator)
-                        .expect("field citation"),
-                )
-                .expect("field grant"),
-            )
-            .expect("field grant persists");
+                ArchiveSubjectKindV1::County,
+                slice.county_geoid(),
+                "subject",
+                1,
+            );
+        }
     }
 }
 
@@ -366,88 +380,162 @@ fn place_page_rows(config: &Config, campaign_id: CampaignId) -> Vec<(String, i64
         .collect()
 }
 
+fn detroit_row(rows: &[(String, i64, String)]) -> &(String, i64, String) {
+    rows.iter()
+        .find(|row| row.0 == "2622000")
+        .expect("Detroit page published")
+}
+
+fn dispositions(
+    report: &babylon_persistence::ArchiveWorkerSweepReportV1,
+) -> Vec<(u64, ArchiveReceiptDispositionV1)> {
+    report
+        .dispositions()
+        .iter()
+        .map(|(tick, disposition)| (*tick, *disposition))
+        .collect()
+}
+
+fn assert_redacted_detroit(row: &(String, i64, String)) {
+    assert_eq!(row.1, 1);
+    assert!(
+        !row.2.contains("## Signals"),
+        "without the identity grant the page publishes no signal"
+    );
+    assert!(
+        row.2.contains("[[county/26163]]"),
+        "without the county grant the link stays a redlink"
+    );
+}
+
+fn assert_revealed_detroit(row: &(String, i64, String), verified_tick: i64) {
+    assert_eq!(row.1, verified_tick, "the page carries its receipt tick");
+    assert!(
+        row.2.contains(
+            "census-place-authority-v1; census_place_identity_mi_2023.csv.gz#place_geoid=2622000"
+        ),
+        "the identity grant reveals the signal citation"
+    );
+    assert!(
+        row.2.contains("[[county/26163|Wayne County]]"),
+        "the county grant reveals the link label"
+    );
+}
+
 #[test]
 #[ignore = "requires the task-owned disposable PostgreSQL runtime and committed ticks"]
-fn live_place_producer_drains_bootstrap_pages_across_receipts() {
+fn live_place_producer_refuses_truncated_bootstrap_drain() {
     let target = LivePlaceTarget::create(
-        "placeproducerdrain",
-        0x2200_0000_0000_0000_0000_0000_0000_00b1,
-        4,
+        "placeproduceroverflow",
+        0x2200_0000_0000_0000_0000_0000_0000_00b3,
+        1,
     );
 
     let producer = PlaceDossierProducerV1::try_new(&target.config).expect("pinned products load");
-    let plans = producer.desired_pages().expect("desired pages build");
-    assert_eq!(plans.len(), PLACE_COUNT);
-    let geoids = plans
-        .iter()
-        .map(|plan| plan.place_geoid().to_owned())
-        .collect::<Vec<_>>();
+    assert_eq!(
+        producer.desired_pages().expect("desired pages").len(),
+        PLACE_COUNT
+    );
+
+    let mut worker = ArchiveWorkerV1::new(&target.config);
+    let error = worker
+        .sweep_once(target.campaign_id, &producer)
+        .expect_err("a 745-page bootstrap backlog must not truncate into one receipt");
+    assert_eq!(
+        error,
+        SemanticArchiveErrorV1::PlaceDrainOverflow {
+            dirty: PLACE_COUNT,
+            limit: MAX_PAGES_PER_RECEIPT,
+        }
+    );
+    assert_eq!(
+        place_page_count(&target.config, target.campaign_id),
+        0,
+        "the refusal consumes nothing"
+    );
+    assert_eq!(
+        receipt_consumption_count(&target.config, target.campaign_id),
+        0,
+        "the receipt stays pending"
+    );
+
+    // The pending receipt refuses again on rerun: nothing was silently eaten.
+    let again = worker
+        .sweep_once(target.campaign_id, &producer)
+        .expect_err("the pending receipt refuses the same loud error");
+    assert_eq!(
+        again,
+        SemanticArchiveErrorV1::PlaceDrainOverflow {
+            dirty: PLACE_COUNT,
+            limit: MAX_PAGES_PER_RECEIPT,
+        }
+    );
+    assert_eq!(place_page_count(&target.config, target.campaign_id), 0);
+    assert_eq!(
+        receipt_consumption_count(&target.config, target.campaign_id),
+        0
+    );
+    target.finish();
+}
+
+#[test]
+#[ignore = "requires the task-owned disposable PostgreSQL runtime and committed ticks"]
+fn live_place_producer_drains_allowlisted_pages_and_reruns_clean() {
+    let target = LivePlaceTarget::create(
+        "placeproducerdrain",
+        0x2200_0000_0000_0000_0000_0000_0000_00b1,
+        2,
+    );
+
+    let allowlist = vec![
+        "2600380".to_owned(),
+        "2622000".to_owned(),
+        "2627760".to_owned(),
+        "2684000".to_owned(),
+        "2689320".to_owned(),
+    ];
+    let producer = PlaceDossierProducerV1::with_place_allowlist(&target.config, &allowlist)
+        .expect("sorted unique allowlist binds");
     let store = SemanticArchiveStoreV1::new(&target.config);
-    grant_place_knowledge(&store, target.campaign_id, &geoids);
+    grant_full_place_knowledge(&store, target.campaign_id, &producer, &allowlist);
 
     let mut worker = ArchiveWorkerV1::new(&target.config);
     let report = worker
         .sweep_once(target.campaign_id, &producer)
-        .expect("place sweep drains the bootstrap backlog");
-    let dispositions = report
-        .dispositions()
-        .iter()
-        .map(|(tick, disposition)| (*tick, *disposition))
-        .collect::<Vec<_>>();
+        .expect("allowlisted sweep drains the small backlog");
     assert_eq!(
-        dispositions,
+        report
+            .dispositions()
+            .iter()
+            .map(|(tick, disposition)| (*tick, *disposition))
+            .collect::<Vec<_>>(),
         vec![
             (1, ArchiveReceiptDispositionV1::Applied),
-            (2, ArchiveReceiptDispositionV1::Applied),
-            (3, ArchiveReceiptDispositionV1::Applied),
-            (4, ArchiveReceiptDispositionV1::Deferred),
+            (2, ArchiveReceiptDispositionV1::Deferred),
         ],
-        "three receipts drain every place; the fourth defers empty"
+        "one receipt publishes every allowlisted place; the next defers clean"
     );
-    assert_eq!(
-        report.verified_tick(),
-        3,
-        "the deferred tick 4 caps the watermark"
-    );
-    assert_eq!(place_page_count(&target.config, target.campaign_id), 745);
+    assert_eq!(report.verified_tick(), 1);
+    assert_eq!(place_page_count(&target.config, target.campaign_id), 5);
     assert_eq!(
         receipt_consumption_count(&target.config, target.campaign_id),
-        3
+        1
     );
 
     let rows = place_page_rows(&target.config, target.campaign_id);
-    assert_eq!(rows.len(), PLACE_COUNT);
-    let mut sorted = rows.clone();
-    sorted.sort_by(|left, right| left.0.cmp(&right.0));
-    assert_eq!(rows, sorted, "stored place pages follow sorted GEOID order");
-    for (tick, expected) in [
-        (1, MAX_PAGES_PER_RECEIPT),
-        (2, MAX_PAGES_PER_RECEIPT),
-        (3, 233),
-    ] {
-        assert_eq!(
-            rows.iter().filter(|row| row.1 == tick).count(),
-            expected,
-            "receipt {tick} published exactly {expected} bootstrap pages"
-        );
-    }
-
-    let detroit = rows
-        .iter()
-        .find(|row| row.0 == "2622000")
-        .expect("Detroit page published in the first receipt");
+    assert_eq!(rows.len(), 5);
+    let detroit = detroit_row(&rows);
     assert_eq!(detroit.1, 1);
     assert!(detroit.2.contains("# Detroit city"));
-    assert!(detroit.2.contains(PLACE_DECISION_QUESTION_V1));
-    assert!(
-        detroit.2.contains("[[county/26163|Wayne County]]"),
-        "a granted county subject renders its known label"
-    );
     assert!(
         detroit.2.contains(
             "census-place-authority-v1; census_place_identity_mi_2023.csv.gz#place_geoid=2622000"
         ),
-        "the granted identity signal pins the exact artifact row"
+        "a granted identity signal pins the exact artifact row"
+    );
+    assert!(
+        detroit.2.contains("[[county/26163|Wayne County]]"),
+        "a granted county subject renders its known label"
     );
 
     let fenton = rows
@@ -456,56 +544,121 @@ fn live_place_producer_drains_bootstrap_pages_across_receipts() {
         .expect("Fenton city published");
     for county in ["26049", "26093", "26125"] {
         assert!(
-            fenton.2.contains(&format!("[[county/{county}")),
+            fenton.2.contains(&format!("[[county/{county}|")),
             "cross-county place keeps every county slice, including {county}"
         );
+    }
+
+    // A rerun reconciles without duplicate or republished pages: the
+    // unconsumed deferred receipt re-defers, nothing is rewritten.
+    let rerun = worker
+        .sweep_once(target.campaign_id, &producer)
+        .expect("rerun sweep reconciles");
+    assert_eq!(
+        dispositions(&rerun),
+        vec![(2, ArchiveReceiptDispositionV1::Deferred)],
+        "the still-pending receipt re-defers clean instead of republishing"
+    );
+    assert_eq!(rerun.verified_tick(), 1);
+    assert_eq!(place_page_count(&target.config, target.campaign_id), 5);
+    assert_eq!(
+        receipt_consumption_count(&target.config, target.campaign_id),
+        1
+    );
+    for (_, verified_tick, _) in place_page_rows(&target.config, target.campaign_id) {
+        assert_eq!(verified_tick, 1, "rerun never republishes a clean page");
     }
     target.finish();
 }
 
 #[test]
 #[ignore = "requires the task-owned disposable PostgreSQL runtime and committed ticks"]
-fn live_place_producer_rerun_reconciles_without_duplicate_pages() {
+fn live_place_producer_grant_refresh_republicates_revealed_page() {
     let target = LivePlaceTarget::create(
-        "placeproducerrerun",
-        0x2200_0000_0000_0000_0000_0000_0000_00b2,
+        "placeproducerrefresh",
+        0x2200_0000_0000_0000_0000_0000_0000_00b4,
         3,
     );
 
-    let producer = PlaceDossierProducerV1::try_new(&target.config).expect("pinned products load");
+    let allowlist = vec!["2622000".to_owned()];
+    let producer = PlaceDossierProducerV1::with_place_allowlist(&target.config, &allowlist)
+        .expect("sorted unique allowlist binds");
     let store = SemanticArchiveStoreV1::new(&target.config);
-    let geoids = producer
-        .desired_pages()
-        .expect("desired pages build")
-        .iter()
-        .map(|plan| plan.place_geoid().to_owned())
-        .collect::<Vec<_>>();
-    grant_place_knowledge(&store, target.campaign_id, &geoids);
 
+    // Publish redacted: only the place subject grant exists at receipt one.
+    grant(
+        &store,
+        target.campaign_id,
+        ArchiveSubjectKindV1::Place,
+        "2622000",
+        "subject",
+        1,
+    );
     let mut worker = ArchiveWorkerV1::new(&target.config);
     let first = worker
         .sweep_once(target.campaign_id, &producer)
-        .expect("first sweep drains every place across the three receipts");
-    assert_eq!(first.applied_count(), 3);
-    assert_eq!(first.deferred_count(), 0);
-    assert_eq!(first.verified_tick(), 3);
-    assert_eq!(place_page_count(&target.config, target.campaign_id), 745);
+        .expect("subject-only sweep publishes the redacted page");
+    assert_eq!(
+        dispositions(&first),
+        vec![
+            (1, ArchiveReceiptDispositionV1::Applied),
+            (2, ArchiveReceiptDispositionV1::Deferred),
+            (3, ArchiveReceiptDispositionV1::Deferred),
+        ]
+    );
+    let rows = place_page_rows(&target.config, target.campaign_id);
+    assert_redacted_detroit(detroit_row(&rows));
 
+    // Later grants arrive, visible from tick two: the page re-dirties and
+    // the next pending receipt republishes it revealed.
+    grant(
+        &store,
+        target.campaign_id,
+        ArchiveSubjectKindV1::Place,
+        "2622000",
+        "identity",
+        2,
+    );
+    grant(
+        &store,
+        target.campaign_id,
+        ArchiveSubjectKindV1::County,
+        "26163",
+        "subject",
+        2,
+    );
     let second = worker
         .sweep_once(target.campaign_id, &producer)
-        .expect("rerun sweep reconciles");
-    assert!(second.dispositions().is_empty());
-    assert_eq!(second.verified_tick(), 3);
-    assert_eq!(place_page_count(&target.config, target.campaign_id), 745);
+        .expect("grant-refresh sweep republishes");
+    assert_eq!(
+        dispositions(&second),
+        vec![
+            (2, ArchiveReceiptDispositionV1::Applied),
+            (3, ArchiveReceiptDispositionV1::Deferred),
+        ],
+        "receipt two republishes the revealed page; receipt three defers clean"
+    );
+    let rows = place_page_rows(&target.config, target.campaign_id);
+    assert_revealed_detroit(detroit_row(&rows), 2);
+    assert_eq!(place_page_count(&target.config, target.campaign_id), 1);
     assert_eq!(
         receipt_consumption_count(&target.config, target.campaign_id),
-        3
+        2
     );
 
-    let rows = place_page_rows(&target.config, target.campaign_id);
-    let mut unique = std::collections::BTreeSet::new();
-    for (geoid, _, _) in &rows {
-        assert!(unique.insert(geoid.clone()), "no duplicate place pages");
-    }
+    // The revealed page settles: reruns reconcile without further writes.
+    let settled = worker
+        .sweep_once(target.campaign_id, &producer)
+        .expect("settled sweep reconciles");
+    assert_eq!(
+        dispositions(&settled),
+        vec![(3, ArchiveReceiptDispositionV1::Deferred)],
+        "the revealed page settles; the last receipt re-defers clean"
+    );
+    assert_eq!(place_page_count(&target.config, target.campaign_id), 1);
+    assert_eq!(
+        receipt_consumption_count(&target.config, target.campaign_id),
+        2
+    );
     target.finish();
 }

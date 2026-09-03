@@ -1,21 +1,23 @@
 //! Pure contracts for the PER-22 place dossier producer.
 //!
 //! These tests pin the producer's decision semantics without any database:
-//! GEOID validation, sorted enumeration, cross-county slice retention, the
-//! bounded bootstrap drain, receipt-stamp-insensitive dirty detection, and
+//! GEOID validation, sorted enumeration, cross-county slice retention, loud
+//! truncation refusal, grant-visibility dirty detection, receipt-stamp-
+//! insensitive hashing, hash completeness over signals and county names, and
 //! the contract-pinned artifact digests.
 
 use std::collections::BTreeMap;
 use std::str::FromStr;
 
 use babylon_persistence::{
-    parse_stored_place_page_v1, place_page_input_v1, place_page_semantic_sha256_v1,
-    select_dirty_place_pages_v1, ArchiveDirtyBatchV1, ArchiveKnowledgeGrantV1, ArchiveKnowledgeV1,
-    ArchivePageInputV1, ArchivePageRefV1, ArchiveSubjectKindV1, FogSafeArchiveRendererV1,
-    PlaceCountySliceV1, PlaceDossierProducerV1, PlacePagePlanV1, SemanticArchiveErrorV1,
-    StoredPlacePageV1, ARCHIVE_PLACE_PAGE_READ_SQL_V1,
+    desired_place_projection_v1, parse_stored_place_page_v1, place_page_input_v1,
+    place_page_semantic_sha256_v1, select_dirty_place_pages_v1, ArchiveCitationV1,
+    ArchiveDirtyBatchV1, ArchiveKnowledgeGrantV1, ArchiveKnowledgeV1, ArchivePageInputV1,
+    ArchivePageRefV1, ArchiveSubjectKindV1, FogSafeArchiveRendererV1, PlaceCountySliceV1,
+    PlaceDossierProducerV1, PlaceGrantIndexV1, PlacePagePlanV1, SemanticArchiveErrorV1,
+    ARCHIVE_PLACE_GRANTS_SQL_V1, ARCHIVE_PLACE_PAGE_READ_SQL_V1,
     PINNED_COUNTY_PLACE_OVERLAP_ARTIFACT_SHA256_V1, PINNED_PLACE_IDENTITY_ARTIFACT_SHA256_V1,
-    PLACE_DECISION_QUESTION_V1,
+    PLACE_DECISION_QUESTION_V1, PLACE_IDENTITY_GRANT_KEY_V1,
 };
 use postgres::Config;
 
@@ -35,6 +37,15 @@ fn contract_digest(hex: &str) -> [u8; 32] {
         *byte = u8::try_from((high << 4) | low).expect("two hex nibbles fit one byte");
     }
     digest
+}
+
+fn hex_digest(digest: [u8; 32]) -> String {
+    let mut hex = String::with_capacity(64);
+    for byte in digest {
+        use std::fmt::Write as _;
+        write!(hex, "{byte:02x}").expect("hex digest writes");
+    }
+    hex
 }
 
 fn producer() -> PlaceDossierProducerV1 {
@@ -65,7 +76,65 @@ fn plan(geoid: &str, title: &str, counties: &[(&str, &str)]) -> PlacePagePlanV1 
 }
 
 fn detroit_plan() -> PlacePagePlanV1 {
-    plan("2622000", "Detroit city", &[("26163", "Wayne")])
+    plan("2622000", "Detroit city", &[("26163", "Wayne County")])
+}
+
+fn grant_index(entries: &[(ArchiveSubjectKindV1, &str, &str)]) -> PlaceGrantIndexV1 {
+    PlaceGrantIndexV1::try_from_rows(
+        entries
+            .iter()
+            .map(|(kind, id, key)| (*kind, (*id).to_owned(), (*key).to_owned())),
+    )
+    .expect("grant index builds")
+}
+
+/// Every grant a fully revealed page needs: place subject, identity field,
+/// and one county subject per overlapping slice.
+fn full_grants(plan: &PlacePagePlanV1) -> PlaceGrantIndexV1 {
+    let mut entries = vec![
+        (
+            ArchiveSubjectKindV1::Place,
+            plan.place_geoid(),
+            PLACE_IDENTITY_GRANT_KEY_V1,
+        ),
+        (ArchiveSubjectKindV1::Place, plan.place_geoid(), "subject"),
+    ];
+    for slice in plan.county_links() {
+        entries.push((
+            ArchiveSubjectKindV1::County,
+            slice.county_geoid(),
+            "subject",
+        ));
+    }
+    grant_index(&entries)
+}
+
+fn full_grant_rows(plans: &[PlacePagePlanV1]) -> Vec<(ArchiveSubjectKindV1, String, String)> {
+    plans
+        .iter()
+        .flat_map(|plan| {
+            let mut rows = vec![
+                (
+                    ArchiveSubjectKindV1::Place,
+                    plan.place_geoid().to_owned(),
+                    "subject".to_owned(),
+                ),
+                (
+                    ArchiveSubjectKindV1::Place,
+                    plan.place_geoid().to_owned(),
+                    PLACE_IDENTITY_GRANT_KEY_V1.to_owned(),
+                ),
+            ];
+            for slice in plan.county_links() {
+                rows.push((
+                    ArchiveSubjectKindV1::County,
+                    slice.county_geoid().to_owned(),
+                    "subject".to_owned(),
+                ));
+            }
+            rows
+        })
+        .collect()
 }
 
 #[test]
@@ -147,165 +216,260 @@ fn cross_county_places_keep_every_county_slice() {
 }
 
 #[test]
-fn bootstrap_drain_bounds_each_receipt_to_max_pages_sorted() {
+fn place_allowlist_requires_sorted_unique_seven_digit_geoids() {
+    let config = Config::from_str("postgresql://unused:unused@127.0.0.1:1/unused")
+        .expect("idle producer config parses");
+    let allowlist = vec!["2622000".to_owned(), "2684000".to_owned()];
+    let producer = PlaceDossierProducerV1::with_place_allowlist(&config, &allowlist)
+        .expect("sorted unique allowlist binds");
+    let pages = producer.desired_pages().expect("allowlisted pages build");
+    assert_eq!(pages.len(), 2, "only allowlisted places enumerate");
+    assert_eq!(pages[0].place_geoid(), "2622000");
+    assert_eq!(pages[1].place_geoid(), "2684000");
+
+    for bad in [
+        vec!["2684000".to_owned(), "2622000".to_owned()],
+        vec!["2622000".to_owned(), "2622000".to_owned()],
+        vec!["26163".to_owned()],
+        vec!["262200A".to_owned()],
+    ] {
+        match PlaceDossierProducerV1::with_place_allowlist(&config, &bad) {
+            Err(SemanticArchiveErrorV1::InvalidIdentity) => {}
+            _ => panic!("unsorted, duplicate, or malformed GEOIDs must refuse: {bad:?}"),
+        }
+    }
+}
+
+#[test]
+fn dirty_drain_beyond_one_receipt_refuses_instead_of_truncating() {
     let pages = desired_pages();
-    let stored = BTreeMap::new();
-    let dirty = select_dirty_place_pages_v1(&pages, &stored, ArchiveDirtyBatchV1::MAX_PAGES);
-
-    assert_eq!(dirty.len(), ArchiveDirtyBatchV1::MAX_PAGES);
-    let geoids = dirty
-        .iter()
-        .map(|page| page.place_geoid().to_owned())
-        .collect::<Vec<_>>();
-    let mut sorted = geoids.clone();
-    sorted.sort_unstable();
-    assert_eq!(geoids, sorted, "the drain is sorted by place GEOID");
-    assert_eq!(geoids.first().map(String::as_str), Some("2600380"));
-    let batch_ceiling = geoids.last().expect("bounded batch is non-empty").clone();
-    let remainder = pages
-        .iter()
-        .find(|page| page.place_geoid() > batch_ceiling.as_str())
-        .expect("places beyond the first receipt exist");
-    assert!(
-        !geoids.iter().any(|geoid| geoid == remainder.place_geoid()),
-        "the remainder waits for a later receipt"
-    );
-
-    let continued = select_dirty_place_pages_v1(&pages, &stored, usize::MAX);
+    let grants =
+        PlaceGrantIndexV1::try_from_rows(full_grant_rows(&pages)).expect("full grant index builds");
+    let error = select_dirty_place_pages_v1(
+        &pages,
+        &BTreeMap::new(),
+        &grants,
+        ArchiveDirtyBatchV1::MAX_PAGES,
+    )
+    .expect_err("a 745-page bootstrap backlog must not truncate into one receipt");
     assert_eq!(
-        continued.len(),
-        745,
-        "the unbounded drain covers every place"
+        error,
+        SemanticArchiveErrorV1::PlaceDrainOverflow {
+            dirty: pages.len(),
+            limit: ArchiveDirtyBatchV1::MAX_PAGES,
+        }
     );
+
+    // An at-most-limit dirty set still drains whole.
+    let subset: Vec<PlacePagePlanV1> = pages
+        .iter()
+        .take(ArchiveDirtyBatchV1::MAX_PAGES)
+        .cloned()
+        .collect();
+    let drained = select_dirty_place_pages_v1(
+        &subset,
+        &BTreeMap::new(),
+        &grants,
+        ArchiveDirtyBatchV1::MAX_PAGES,
+    )
+    .expect("an at-limit dirty set drains");
+    assert_eq!(drained.len(), ArchiveDirtyBatchV1::MAX_PAGES);
 }
 
 #[test]
 fn dirty_diff_excludes_receipt_stamped_fields() {
-    let stamped_first =
-        place_page_input_v1(&detroit_plan(), 1, [0x11; 32]).expect("first receipt page input");
-    let stamped_second =
-        place_page_input_v1(&detroit_plan(), 2, [0x22; 32]).expect("second receipt page input");
-    assert_ne!(
-        stamped_first.verified_tick(),
-        stamped_second.verified_tick()
-    );
-    assert_ne!(
-        stamped_first.tick_content_hash(),
-        stamped_second.tick_content_hash()
-    );
-
-    let first_hash = place_page_semantic_sha256_v1(
-        detroit_plan().place_geoid(),
-        detroit_plan().title(),
-        PLACE_DECISION_QUESTION_V1,
-        &["26163".to_owned()],
-    );
-    let second_hash = place_page_semantic_sha256_v1(
-        detroit_plan().place_geoid(),
-        detroit_plan().title(),
-        PLACE_DECISION_QUESTION_V1,
-        &["26163".to_owned()],
-    );
+    let plan = detroit_plan();
+    let grants = full_grants(&plan);
+    let projection = desired_place_projection_v1(&plan, &grants).expect("desired projection");
+    let first_hash = place_page_semantic_sha256_v1(plan.place_geoid(), &projection);
+    let second_hash = place_page_semantic_sha256_v1(plan.place_geoid(), &projection);
     assert_eq!(
         first_hash, second_hash,
-        "the receipt stamp never dirties a page"
+        "the projection hash is deterministic"
     );
 
-    let changed_links = place_page_semantic_sha256_v1(
-        detroit_plan().place_geoid(),
-        detroit_plan().title(),
-        PLACE_DECISION_QUESTION_V1,
-        &["26163".to_owned(), "26125".to_owned()],
-    );
-    assert_ne!(first_hash, changed_links);
-    let changed_question = place_page_semantic_sha256_v1(
-        detroit_plan().place_geoid(),
-        detroit_plan().title(),
-        "Which overlapping county should organizers investigate first?",
-        &["26163".to_owned()],
-    );
-    assert_ne!(first_hash, changed_question);
-}
-
-#[test]
-fn dirty_diff_compares_stored_page_semantic_projection() {
+    // Receipt-stamped inputs render and parse back to the same projection.
     let renderer = FogSafeArchiveRendererV1::new().expect("pinned template compiles");
-    let input = place_page_input_v1(&detroit_plan(), 1, [0x11; 32]).expect("page input");
-    let knowledge = knowledge_for(&[&detroit_plan()]);
-    let first_page = renderer
-        .render(&input, &knowledge)
-        .expect("granted page renders");
-
-    let stored = parse_stored_place_page_v1("2622000", "Detroit city", first_page.markdown())
-        .expect("rendered page parses back");
-    assert_eq!(stored.question(), PLACE_DECISION_QUESTION_V1);
-    assert_eq!(stored.county_geoids(), &["26163".to_owned()]);
-
-    // An identical semantic projection at a later receipt stamp stays clean.
-    let stamped_later = renderer
+    let knowledge = knowledge_for(&[&plan], true);
+    let stamped_first = renderer
         .render(
-            &place_page_input_v1(&detroit_plan(), 2, [0x22; 32]).expect("later page input"),
+            &place_page_input_v1(&plan, 1, [0x11; 32]).expect("first page input"),
             &knowledge,
         )
-        .expect("later page renders");
-    let stored_later =
-        parse_stored_place_page_v1("2622000", "Detroit city", stamped_later.markdown())
-            .expect("later rendered page parses back");
+        .expect("first receipt page renders");
+    let stamped_second = renderer
+        .render(
+            &place_page_input_v1(&plan, 2, [0x22; 32]).expect("second page input"),
+            &knowledge,
+        )
+        .expect("second receipt page renders");
+    let stored_first =
+        parse_stored_place_page_v1("2622000", "Detroit city", stamped_first.markdown())
+            .expect("first page parses back");
+    let stored_second =
+        parse_stored_place_page_v1("2622000", "Detroit city", stamped_second.markdown())
+            .expect("second page parses back");
     assert_eq!(
-        stored.semantic_sha256("2622000"),
-        stored_later.semantic_sha256("2622000"),
-        "only the receipt stamp changed, so the projection is unchanged"
+        place_page_semantic_sha256_v1("2622000", &stored_first),
+        first_hash,
+        "the stored projection strips the first receipt stamp"
+    );
+    assert_eq!(
+        place_page_semantic_sha256_v1("2622000", &stored_second),
+        second_hash,
+        "a later receipt stamp alone never re-publishes an unchanged page"
     );
 
     let mut stored_map = BTreeMap::new();
-    stored_map.insert("2622000".to_owned(), stored);
+    stored_map.insert("2622000".to_owned(), stored_first);
     let pages = [detroit_plan()];
-    let dirty = select_dirty_place_pages_v1(&pages, &stored_map, usize::MAX);
+    let clean = select_dirty_place_pages_v1(&pages, &stored_map, &grants, usize::MAX)
+        .expect("clean selection");
     assert!(
-        dirty.is_empty(),
+        clean.is_empty(),
         "unchanged semantic content is not re-published"
     );
+}
 
-    // Grant drift (a redlink where a label was known) must not dirty either.
-    let pages = [detroit_plan()];
-    let redlink_only = ArchiveKnowledgeV1::try_new(vec![subject_grant("2622000")])
-        .expect("subject-only knowledge");
-    let redlink_rendered = renderer
+#[test]
+fn semantic_hash_covers_signal_citation_county_names_and_template_identity() {
+    let plan = detroit_plan();
+    let granted = desired_place_projection_v1(&plan, &full_grants(&plan))
+        .expect("fully granted desired projection");
+    assert_eq!(granted.signals().len(), 1);
+    assert_eq!(granted.signals()[0].label(), "Census identity");
+    assert_eq!(granted.signals()[0].value(), "Detroit city");
+    assert_eq!(
+        granted.signals()[0].source_id(),
+        "census-place-authority-v1"
+    );
+    assert!(granted.signals()[0]
+        .locator()
+        .ends_with("#place_geoid=2622000"));
+    assert_eq!(
+        granted.counties(),
+        &[("26163".to_owned(), Some("Wayne County".to_owned()))]
+    );
+
+    let baseline = place_page_semantic_sha256_v1(plan.place_geoid(), &granted);
+
+    // Losing the identity grant drops the signal and changes the hash.
+    let subject_and_county = grant_index(&[
+        (ArchiveSubjectKindV1::Place, "2622000", "subject"),
+        (ArchiveSubjectKindV1::County, "26163", "subject"),
+    ]);
+    let redacted = desired_place_projection_v1(&plan, &subject_and_county)
+        .expect("signal-redacted desired projection");
+    assert!(redacted.signals().is_empty());
+    assert_ne!(
+        place_page_semantic_sha256_v1(plan.place_geoid(), &redacted),
+        baseline,
+        "losing the identity grant changes the semantic hash"
+    );
+
+    // Losing the county subject grant drops the link name and changes the hash.
+    let no_county = grant_index(&[
+        (ArchiveSubjectKindV1::Place, "2622000", "subject"),
+        (
+            ArchiveSubjectKindV1::Place,
+            "2622000",
+            PLACE_IDENTITY_GRANT_KEY_V1,
+        ),
+    ]);
+    let redlinked =
+        desired_place_projection_v1(&plan, &no_county).expect("county-redlink desired projection");
+    assert_eq!(redlinked.counties(), &[("26163".to_owned(), None)]);
+    assert_ne!(
+        place_page_semantic_sha256_v1(plan.place_geoid(), &redlinked),
+        baseline,
+        "losing the county subject grant changes the semantic hash"
+    );
+    assert_ne!(
+        place_page_semantic_sha256_v1(plan.place_geoid(), &redacted),
+        place_page_semantic_sha256_v1(plan.place_geoid(), &redlinked),
+        "signal redaction and county redlink redaction hash differently"
+    );
+}
+
+#[test]
+fn semantic_hash_matches_the_pinned_place_page_vectors() {
+    let plan = detroit_plan();
+    let granted = desired_place_projection_v1(&plan, &full_grants(&plan))
+        .expect("fully granted desired projection");
+    assert_eq!(
+        hex_digest(place_page_semantic_sha256_v1(plan.place_geoid(), &granted)),
+        "933a21d2851a73a3f05de9480f14386f1f980ab5a7f48871dc05577bb49dc60c"
+    );
+    let subject_only = grant_index(&[(ArchiveSubjectKindV1::Place, "2622000", "subject")]);
+    let redacted =
+        desired_place_projection_v1(&plan, &subject_only).expect("subject-only projection");
+    assert_eq!(
+        hex_digest(place_page_semantic_sha256_v1(plan.place_geoid(), &redacted)),
+        "e43c63e3c785fe755c258c5b6c52f1eaf244ae237cc0497626b28565f2c8da90"
+    );
+}
+
+#[test]
+fn grant_refresh_republication_folds_grant_visibility_into_dirty_detection() {
+    let plan = detroit_plan();
+    let renderer = FogSafeArchiveRendererV1::new().expect("pinned template compiles");
+    let subject_only = grant_index(&[(ArchiveSubjectKindV1::Place, "2622000", "subject")]);
+
+    // Publish with only the subject grant: no signal section, county redlinks.
+    let redacted_render = renderer
         .render(
-            &place_page_input_v1(&detroit_plan(), 3, [0x33; 32]).expect("third page input"),
-            &redlink_only,
+            &place_page_input_v1(&plan, 1, [0x11; 32]).expect("page input"),
+            &knowledge_for(&[&plan], false),
         )
-        .expect("redlink page renders");
-    let redlink_stored =
-        parse_stored_place_page_v1("2622000", "Detroit city", redlink_rendered.markdown())
-            .expect("redlink page parses back");
-    let mut redlink_map = BTreeMap::new();
-    redlink_map.insert("2622000".to_owned(), redlink_stored);
-    assert!(
-        select_dirty_place_pages_v1(&pages, &redlink_map, usize::MAX).is_empty(),
-        "grant visibility is receipt-stamped state, not semantic content"
+        .expect("subject-granted page renders");
+    let redacted_stored =
+        parse_stored_place_page_v1("2622000", "Detroit city", redacted_render.markdown())
+            .expect("redacted page parses back");
+    assert!(redacted_stored.signals().is_empty());
+    assert_eq!(redacted_stored.counties(), &[("26163".to_owned(), None)]);
+
+    // Later identity and county grants arrive: the page re-dirties.
+    let mut stored_map = BTreeMap::new();
+    stored_map.insert("2622000".to_owned(), redacted_stored);
+    let pages = [detroit_plan()];
+    let refreshed =
+        select_dirty_place_pages_v1(&pages, &stored_map, &full_grants(&plan), usize::MAX)
+            .expect("grant-refresh selection");
+    assert_eq!(
+        refreshed.len(),
+        1,
+        "a grant refresh re-dirties the redacted page"
     );
 
-    // A missing subject is new and must be published.
-    let fresh = [detroit_plan()];
-    assert_eq!(
-        select_dirty_place_pages_v1(&fresh, &BTreeMap::new(), usize::MAX).len(),
-        1
+    // The same stale grant set stays clean.
+    let stale = select_dirty_place_pages_v1(&pages, &stored_map, &subject_only, usize::MAX)
+        .expect("stale-grant selection");
+    assert!(
+        stale.is_empty(),
+        "without a grant change the redacted page stays clean"
     );
-    // Drifted stored content is republished.
-    let drifted = StoredPlacePageV1::try_new(
-        "Detroit city".to_owned(),
-        PLACE_DECISION_QUESTION_V1.to_owned(),
-        vec!["26163".to_owned(), "26099".to_owned()],
-    )
-    .expect("drifted stored page");
-    let mut drifted_map = BTreeMap::new();
-    drifted_map.insert("2622000".to_owned(), drifted);
-    let drifted_pages = [detroit_plan()];
+
+    // The republished page, rendered with the refreshed grants, is clean.
+    let revealed_render = renderer
+        .render(
+            &place_page_input_v1(&plan, 2, [0x22; 32]).expect("republished page input"),
+            &knowledge_for(&[&plan], true),
+        )
+        .expect("revealed page renders");
+    let revealed_stored =
+        parse_stored_place_page_v1("2622000", "Detroit city", revealed_render.markdown())
+            .expect("revealed page parses back");
+    assert_eq!(revealed_stored.signals().len(), 1);
     assert_eq!(
-        select_dirty_place_pages_v1(&drifted_pages, &drifted_map, usize::MAX).len(),
-        1
+        revealed_stored.counties(),
+        &[("26163".to_owned(), Some("Wayne County".to_owned()))]
     );
+    let mut revealed_map = BTreeMap::new();
+    revealed_map.insert("2622000".to_owned(), revealed_stored);
+    let settled =
+        select_dirty_place_pages_v1(&pages, &revealed_map, &full_grants(&plan), usize::MAX)
+            .expect("settled selection");
+    assert!(settled.is_empty(), "the revealed page stays clean");
 }
 
 #[test]
@@ -313,18 +477,30 @@ fn malformed_stored_pages_are_dirty_not_fatal() {
     assert!(parse_stored_place_page_v1("2622000", "Detroit city", "not a page").is_none());
     assert!(parse_stored_place_page_v1("2622000", "Other title", "# Detroit city\n\nq").is_none());
 
-    let pages = vec![detroit_plan()];
-    let mut stored = BTreeMap::new();
     // A stored row whose title column disagrees with its markdown republishes.
-    let title_drift = render_markdown(&detroit_plan(), &[("26163", "Wayne")]);
+    let title_drift = render_markdown(&detroit_plan());
     assert!(parse_stored_place_page_v1("2622000", "Different city", &title_drift).is_none());
     let parsed = parse_stored_place_page_v1("2622000", "Detroit city", &title_drift)
         .expect("well-formed stored page parses");
-    stored.insert("2622000".to_owned(), parsed);
-    assert_eq!(
-        select_dirty_place_pages_v1(&pages, &stored, usize::MAX).len(),
-        0
+
+    // A drifted signal bullet line refuses to parse, so the page republishes.
+    let corrupted_signals = title_drift.replace(
+        "- **Census identity:** Detroit city — census-place-authority-v1; \
+         census_place_identity_mi_2023.csv.gz#place_geoid=2622000",
+        "- **Census identity:** Detroit city",
     );
+    assert!(
+        parse_stored_place_page_v1("2622000", "Detroit city", &corrupted_signals).is_none(),
+        "a signal bullet that lost its citation is drifted"
+    );
+
+    let pages = vec![detroit_plan()];
+    let grants = full_grants(&detroit_plan());
+    let mut stored = BTreeMap::new();
+    stored.insert("2622000".to_owned(), parsed);
+    let clean =
+        select_dirty_place_pages_v1(&pages, &stored, &grants, usize::MAX).expect("clean selection");
+    assert_eq!(clean.len(), 0);
 }
 
 #[test]
@@ -353,11 +529,27 @@ ORDER BY subject_id"
 }
 
 #[test]
+fn place_grants_sql_is_pinned() {
+    assert_eq!(
+        ARCHIVE_PLACE_GRANTS_SQL_V1,
+        "SELECT subject_kind, subject_id, grant_key \
+FROM babylon_meta.archive_knowledge_grant_v1 \
+WHERE campaign_id = $1::uuid AND granted_tick <= $2 \
+ORDER BY subject_kind, subject_id, grant_key"
+    );
+    assert!(ARCHIVE_PLACE_GRANTS_SQL_V1.contains("babylon_meta.archive_knowledge_grant_v1"));
+    assert!(ARCHIVE_PLACE_GRANTS_SQL_V1.contains("granted_tick <= $2"));
+}
+
+#[test]
 fn batch_from_produced_pages_matches_the_receipt() {
     let receipt = babylon_persistence::PendingArchiveReceiptV1::try_new(7, [0x77; 32])
         .expect("receipt boundary");
-    let pages = desired_pages();
-    let dirty = select_dirty_place_pages_v1(&pages, &BTreeMap::new(), 3);
+    let pages: Vec<PlacePagePlanV1> = desired_pages().iter().take(3).cloned().collect();
+    let grants = PlaceGrantIndexV1::try_from_rows(full_grant_rows(&pages))
+        .expect("subset grant index builds");
+    let dirty = select_dirty_place_pages_v1(&pages, &BTreeMap::new(), &grants, 3)
+        .expect("small dirty set drains");
     let inputs = dirty
         .iter()
         .map(|page| place_page_input_v1(page, receipt.resolve_tick(), *receipt.tick_content_hash()))
@@ -394,11 +586,8 @@ fn subject_grant(geoid: &str) -> ArchiveKnowledgeGrantV1 {
             .expect("place ref"),
         "subject".to_owned(),
         1,
-        babylon_persistence::ArchiveCitationV1::try_new(
-            "archive-subject".to_owned(),
-            format!("place/{geoid}"),
-        )
-        .expect("subject citation"),
+        ArchiveCitationV1::try_new("archive-subject".to_owned(), format!("place/{geoid}"))
+            .expect("subject citation"),
     )
     .expect("subject grant")
 }
@@ -409,11 +598,8 @@ fn field_grant(geoid: &str, key: &str) -> ArchiveKnowledgeGrantV1 {
             .expect("place ref"),
         key.to_owned(),
         1,
-        babylon_persistence::ArchiveCitationV1::try_new(
-            "archive-field".to_owned(),
-            format!("{key}@tick-1"),
-        )
-        .expect("field citation"),
+        ArchiveCitationV1::try_new("archive-field".to_owned(), format!("{key}@tick-1"))
+            .expect("field citation"),
     )
     .expect("field grant")
 }
@@ -424,7 +610,7 @@ fn county_subject_grant(county_geoid: &str) -> ArchiveKnowledgeGrantV1 {
             .expect("county ref"),
         "subject".to_owned(),
         1,
-        babylon_persistence::ArchiveCitationV1::try_new(
+        ArchiveCitationV1::try_new(
             "archive-subject".to_owned(),
             format!("county/{county_geoid}"),
         )
@@ -433,22 +619,24 @@ fn county_subject_grant(county_geoid: &str) -> ArchiveKnowledgeGrantV1 {
     .expect("county grant")
 }
 
-fn knowledge_for(plans: &[&PlacePagePlanV1]) -> ArchiveKnowledgeV1 {
+fn knowledge_for(plans: &[&PlacePagePlanV1], reveal_fields: bool) -> ArchiveKnowledgeV1 {
     let mut grants = Vec::new();
     for plan in plans {
         grants.push(subject_grant(plan.place_geoid()));
-        grants.push(field_grant(plan.place_geoid(), "identity"));
-        for slice in plan.county_links() {
-            grants.push(county_subject_grant(slice.county_geoid()));
+        if reveal_fields {
+            grants.push(field_grant(plan.place_geoid(), "identity"));
+            for slice in plan.county_links() {
+                grants.push(county_subject_grant(slice.county_geoid()));
+            }
         }
     }
     ArchiveKnowledgeV1::try_new(grants).expect("knowledge grants")
 }
 
-fn render_markdown(plan: &PlacePagePlanV1, _counties: &[(&str, &str)]) -> String {
+fn render_markdown(plan: &PlacePagePlanV1) -> String {
     let renderer = FogSafeArchiveRendererV1::new().expect("pinned template compiles");
     let input = place_page_input_v1(plan, 9, [0x99; 32]).expect("page input");
-    let knowledge = knowledge_for(&[plan]);
+    let knowledge = knowledge_for(&[plan], true);
     renderer
         .render(&input, &knowledge)
         .expect("page renders")

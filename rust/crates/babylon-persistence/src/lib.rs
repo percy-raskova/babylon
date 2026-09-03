@@ -102,9 +102,10 @@ pub use migration_manifest::{
     SCHEMA_ADVISORY_LOCK_KEY,
 };
 pub use place_producer::{
-    parse_stored_place_page_v1, place_page_input_v1, place_page_semantic_sha256_v1,
-    select_dirty_place_pages_v1, PlaceCountySliceV1, PlaceDossierProducerV1, PlacePagePlanV1,
-    StoredPlacePageV1, ARCHIVE_PLACE_PAGE_READ_SQL_V1,
+    desired_place_projection_v1, parse_stored_place_page_v1, place_page_input_v1,
+    place_page_semantic_sha256_v1, select_dirty_place_pages_v1, PlaceCountySliceV1,
+    PlaceDossierProducerV1, PlaceGrantIndexV1, PlacePagePlanV1, PlacePageProjectionV1,
+    PlaceSignalProjectionV1, ARCHIVE_PLACE_GRANTS_SQL_V1, ARCHIVE_PLACE_PAGE_READ_SQL_V1,
     PINNED_COUNTY_PLACE_OVERLAP_ARTIFACT_SHA256_V1, PINNED_PLACE_IDENTITY_ARTIFACT_SHA256_V1,
     PLACE_DECISION_QUESTION_V1, PLACE_IDENTITY_GRANT_KEY_V1, PLACE_IDENTITY_LOCATOR_PREFIX_V1,
     PLACE_IDENTITY_SIGNAL_LABEL_V1, PLACE_IDENTITY_SOURCE_ID_V1,

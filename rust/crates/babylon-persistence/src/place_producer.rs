@@ -16,27 +16,36 @@
 //! keep every slice — a place overlapping three counties links to all three,
 //! sorted by county GEOID, and never collapses to a dominant county. No
 //! committed place-level state exists (D2 absence-maximal ruling), so the
-//! page publishes no other signals; the renderer drops the identity signal
-//! anyway until a campaign grants it.
+//! page publishes no other signals.
 //!
 //! # Dirty detection
 //!
 //! A place is dirty when no stored page exists for it or when its semantic
-//! projection — `(place_geoid, title, decision question, sorted overlapping
-//! county GEOIDs)` — differs from the stored page's projection. Receipt-
-//! stamped fields (`verified_tick`, `tick_content_hash`) and grant-dependent
-//! label visibility never dirty a page: the projection is recomputed from the
-//! stored Markdown with the pinned `archive_page_v1.md.j2` shape, stripping
-//! the receipt-stamped frontmatter. Malformed stored pages are treated as
-//! dirty, which safely republishes drifted content.
+//! projection — `(place_geoid, title, decision question, grant-visible
+//! signals, county link names)` — differs from the stored page's projection.
+//! The projection folds the grant-visible rendering: the `identity` signal
+//! counts only while the campaign grants that field, and a county link name
+//! counts only while the campaign grants that county subject, both snapshotted
+//! at the receipt tick through [`ARCHIVE_PLACE_GRANTS_SQL_V1`]. A page
+//! published redacted therefore re-dirties the moment later grants reveal its
+//! signal or link names, and the next sweep republishes it. Receipt-stamped
+//! fields (`verified_tick`, `tick_content_hash`) never dirty a page: the
+//! projection is recomputed from the stored Markdown with the pinned
+//! `archive_page_v1.md.j2` shape ([`crate::ARCHIVE_PAGE_TEMPLATE_SHA256_V1`]
+//! bytes folded into the hash), stripping the receipt-stamped frontmatter.
+//! Malformed stored pages are treated as dirty, which safely republishes
+//! drifted content.
 //!
-//! # Bootstrap drain
+//! # Drain bound
 //!
-//! The first sweep after campaign creation sees every place as new. Each
-//! receipt therefore publishes at most [`ArchiveDirtyBatchV1::MAX_PAGES`]
-//! places, sorted by place GEOID, and the remainder waits for later receipts;
-//! once every place is published with unchanged semantic content, the
-//! producer returns an empty batch and the worker defers the receipt.
+//! The producer never truncates a dirty set. When more than
+//! [`ArchiveDirtyBatchV1::MAX_PAGES`] places are dirty for one receipt it
+//! returns [`SemanticArchiveErrorV1::PlaceDrainOverflow`], the sweep stops,
+//! the receipt stays pending, and nothing is consumed; the dirty set must be
+//! drained below the bound first. Full-campaign bootstrap across all 745
+//! pinned places is the declared follow-up slice — a bounded allowlist
+//! ([`PlaceDossierProducerV1::with_place_allowlist`]) covers the interim
+//! drain and rerun proofs.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -45,12 +54,15 @@ use postgres::{Config, NoTls};
 use sha2::{Digest as _, Sha256};
 use uuid::Uuid;
 
-use crate::archive::{database, decode};
+use crate::archive::{
+    database, decode, decode_subject_kind, validate_text, ARCHIVE_PAGE_TEMPLATE_SHA256_V1,
+};
 use crate::{
     michigan_spatial_reference_products_v1, representative_h3_reference_cohort_v1,
     ArchiveCitationV1, ArchiveDirtyBatchV1, ArchiveDossierProducerV1, ArchiveLinkV1,
     ArchivePageInputV1, ArchivePageRefV1, ArchiveSignalV1, ArchiveSubjectKindV1, ArchiveSubjectV1,
-    CampaignId, PendingArchiveReceiptV1, SemanticArchiveErrorV1, SpatialReferenceProducts,
+    CampaignId, PendingArchiveReceiptV1, PlaceIdentityRow, SemanticArchiveErrorV1,
+    SpatialReferenceProducts,
 };
 
 /// Stable decision question every place dossier page answers.
@@ -93,6 +105,19 @@ pub const ARCHIVE_PLACE_PAGE_READ_SQL_V1: &str = "SELECT subject_id, title, mark
 FROM babylon_meta.archive_page_v1 \
 WHERE campaign_id = $1::uuid AND subject_kind = 'place' \
 ORDER BY subject_id";
+
+/// Receipt-tick grant snapshot used by the dirty diff.
+///
+/// The query returns the exact campaign grant rows visible at the receipt
+/// tick (`granted_tick <= $2`), mirroring the renderer's knowledge snapshot
+/// semantics, and never joins material or raw event ledgers.
+pub const ARCHIVE_PLACE_GRANTS_SQL_V1: &str = "SELECT subject_kind, subject_id, grant_key \
+FROM babylon_meta.archive_knowledge_grant_v1 \
+WHERE campaign_id = $1::uuid AND granted_tick <= $2 \
+ORDER BY subject_kind, subject_id, grant_key";
+
+/// Grant key that establishes knowledge of a page subject.
+const PLACE_SUBJECT_GRANT_KEY_V1: &str = "subject";
 
 const PLACE_SEMANTIC_DOMAIN_V1: &[u8] = b"babylon.place-page-semantic.v1\0";
 const PLACE_PRODUCT_CODE_V1: &str = "census_place_identity_mi_2023";
@@ -195,44 +220,102 @@ impl PlacePagePlanV1 {
     pub fn county_links(&self) -> &[PlaceCountySliceV1] {
         &self.county_links
     }
+}
 
-    fn semantic_sha256(&self) -> [u8; 32] {
-        place_page_semantic_sha256_v1(
-            &self.place_geoid,
-            &self.title,
-            PLACE_DECISION_QUESTION_V1,
-            &self
-                .county_links
-                .iter()
-                .map(|slice| slice.county_geoid.clone())
-                .collect::<Vec<_>>(),
-        )
+/// One grant-visible signal in the place page semantic projection.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PlaceSignalProjectionV1 {
+    label: String,
+    value: String,
+    source_id: String,
+    locator: String,
+}
+
+impl PlaceSignalProjectionV1 {
+    /// Construct one signal projection.
+    ///
+    /// # Errors
+    /// Refuses unsafe text or a value that cannot round-trip through the
+    /// pinned `archive_page_v1.md.j2` signal bullet delimiters.
+    pub fn try_new(
+        label: String,
+        value: String,
+        source_id: String,
+        locator: String,
+    ) -> Result<Self, SemanticArchiveErrorV1> {
+        validate_text(&label)?;
+        validate_text(&value)?;
+        validate_text(&source_id)?;
+        validate_text(&locator)?;
+        if label.contains(":** ") || value.contains(" — ") || source_id.contains("; ") {
+            return Err(SemanticArchiveErrorV1::InvalidText);
+        }
+        Ok(Self {
+            label,
+            value,
+            source_id,
+            locator,
+        })
+    }
+
+    /// Borrow the player-facing signal label.
+    #[must_use]
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+
+    /// Borrow the signal value.
+    #[must_use]
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+
+    /// Borrow the citation source identity.
+    #[must_use]
+    pub fn source_id(&self) -> &str {
+        &self.source_id
+    }
+
+    /// Borrow the artifact locator.
+    #[must_use]
+    pub fn locator(&self) -> &str {
+        &self.locator
     }
 }
 
-/// Receipt-stamp-free semantic projection of one stored place page.
+/// Receipt-stamp-free, grant-visible semantic projection of one place page.
+///
+/// This is the single projection the dirty diff hashes: the desired side
+/// builds it from the plan plus the receipt-tick grant snapshot, and the
+/// stored side parses it back out of the rendered Markdown. County names are
+/// present only while the campaign grants the county subject.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct StoredPlacePageV1 {
+pub struct PlacePageProjectionV1 {
     title: String,
     question: String,
-    county_geoids: Vec<String>,
+    signals: Vec<PlaceSignalProjectionV1>,
+    counties: Vec<(String, Option<String>)>,
 }
 
-impl StoredPlacePageV1 {
-    /// Construct one stored-page projection.
+impl PlacePageProjectionV1 {
+    /// Construct one place page projection.
     ///
     /// # Errors
-    /// Refuses unsafe text or a malformed county GEOID.
+    /// Refuses unsafe text, a malformed county GEOID, or a repeated county.
     pub fn try_new(
         title: String,
         question: String,
-        county_geoids: Vec<String>,
+        signals: Vec<PlaceSignalProjectionV1>,
+        counties: Vec<(String, Option<String>)>,
     ) -> Result<Self, SemanticArchiveErrorV1> {
-        crate::archive::validate_text(&title)?;
-        crate::archive::validate_text(&question)?;
+        validate_text(&title)?;
+        validate_text(&question)?;
         let mut unique = BTreeSet::new();
-        for geoid in &county_geoids {
+        for (geoid, name) in &counties {
             ArchivePageRefV1::try_new(ArchiveSubjectKindV1::County, geoid.clone())?;
+            if let Some(name) = name {
+                validate_text(name)?;
+            }
             if !unique.insert(geoid.clone()) {
                 return Err(SemanticArchiveErrorV1::DuplicateKey);
             }
@@ -240,66 +323,163 @@ impl StoredPlacePageV1 {
         Ok(Self {
             title,
             question,
-            county_geoids,
+            signals,
+            counties,
         })
     }
 
-    /// Borrow the stored page title.
+    /// Borrow the page title.
     #[must_use]
     pub fn title(&self) -> &str {
         &self.title
     }
 
-    /// Borrow the stored decision question.
+    /// Borrow the decision question.
     #[must_use]
     pub fn question(&self) -> &str {
         &self.question
     }
 
-    /// Borrow the sorted overlapping county GEOIDs.
+    /// Borrow the grant-visible signals in rendered order.
     #[must_use]
-    pub fn county_geoids(&self) -> &[String] {
-        &self.county_geoids
+    pub fn signals(&self) -> &[PlaceSignalProjectionV1] {
+        &self.signals
     }
 
-    /// Hash the exact receipt-stamp-free projection for one place subject.
+    /// Borrow the sorted county links as `(geoid, known name)`.
     #[must_use]
-    pub fn semantic_sha256(&self, place_geoid: &str) -> [u8; 32] {
-        place_page_semantic_sha256_v1(
-            place_geoid,
-            &self.title,
-            &self.question,
-            &self.county_geoids,
-        )
+    pub fn counties(&self) -> &[(String, Option<String>)] {
+        &self.counties
     }
+}
+
+/// Receipt-tick snapshot of campaign knowledge grants for place pages.
+///
+/// The index answers exactly the two grant questions the place page
+/// projection depends on: whether a place field (the `identity` signal) is
+/// granted, and whether a county subject (the link name) is granted.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PlaceGrantIndexV1 {
+    grants: BTreeMap<ArchivePageRefV1, BTreeSet<String>>,
+}
+
+impl PlaceGrantIndexV1 {
+    /// Index exact SQL grant rows decoded from
+    /// [`ARCHIVE_PLACE_GRANTS_SQL_V1`].
+    ///
+    /// # Errors
+    /// Refuses a malformed page identity or grant key.
+    pub fn try_from_rows(
+        rows: impl IntoIterator<Item = (ArchiveSubjectKindV1, String, String)>,
+    ) -> Result<Self, SemanticArchiveErrorV1> {
+        let mut grants: BTreeMap<ArchivePageRefV1, BTreeSet<String>> = BTreeMap::new();
+        for (kind, id, grant_key) in rows {
+            let page_ref = ArchivePageRefV1::try_new(kind, id)?;
+            validate_text(&grant_key)?;
+            grants.entry(page_ref).or_default().insert(grant_key);
+        }
+        Ok(Self { grants })
+    }
+
+    /// Return whether the snapshot grants one field key on one page.
+    #[must_use]
+    pub fn knows_field(&self, page_ref: &ArchivePageRefV1, grant_key: &str) -> bool {
+        self.grants
+            .get(page_ref)
+            .is_some_and(|keys| keys.contains(grant_key))
+    }
+
+    /// Return whether the snapshot grants knowledge of one page subject.
+    #[must_use]
+    pub fn knows_subject(&self, page_ref: &ArchivePageRefV1) -> bool {
+        self.knows_field(page_ref, PLACE_SUBJECT_GRANT_KEY_V1)
+    }
+}
+
+/// Build the grant-visible desired projection for one place page plan.
+///
+/// The `identity` signal appears only while the snapshot grants that field on
+/// the place; each county link carries its governed name only while the
+/// snapshot grants that county subject.
+///
+/// # Errors
+/// Refuses any unsafe projected component.
+pub fn desired_place_projection_v1(
+    plan: &PlacePagePlanV1,
+    grants: &PlaceGrantIndexV1,
+) -> Result<PlacePageProjectionV1, SemanticArchiveErrorV1> {
+    let place_ref =
+        ArchivePageRefV1::try_new(ArchiveSubjectKindV1::Place, plan.place_geoid().to_owned())?;
+    let signals = if grants.knows_field(&place_ref, PLACE_IDENTITY_GRANT_KEY_V1) {
+        vec![PlaceSignalProjectionV1::try_new(
+            PLACE_IDENTITY_SIGNAL_LABEL_V1.to_owned(),
+            plan.title().to_owned(),
+            PLACE_IDENTITY_SOURCE_ID_V1.to_owned(),
+            format!("{PLACE_IDENTITY_LOCATOR_PREFIX_V1}{}", plan.place_geoid()),
+        )?]
+    } else {
+        Vec::new()
+    };
+    let counties = plan
+        .county_links()
+        .iter()
+        .map(|slice| {
+            let county_ref = ArchivePageRefV1::try_new(
+                ArchiveSubjectKindV1::County,
+                slice.county_geoid().to_owned(),
+            )?;
+            Ok((
+                slice.county_geoid().to_owned(),
+                grants
+                    .knows_subject(&county_ref)
+                    .then(|| slice.county_name().to_owned()),
+            ))
+        })
+        .collect::<Result<Vec<_>, SemanticArchiveErrorV1>>()?;
+    PlacePageProjectionV1::try_new(
+        plan.title().to_owned(),
+        PLACE_DECISION_QUESTION_V1.to_owned(),
+        signals,
+        counties,
+    )
 }
 
 /// Hash the exact receipt-stamp-free place page projection.
 ///
-/// The projection covers the place GEOID, title, decision question, and the
-/// sorted overlapping county GEOIDs. `verified_tick` and
+/// The projection covers the place GEOID, title, decision question, the
+/// pinned page template identity ([`ARCHIVE_PAGE_TEMPLATE_SHA256_V1`]), the
+/// ordered grant-visible signals with their full citations, and the sorted
+/// county links including whether each name is visible. `verified_tick` and
 /// `tick_content_hash` deliberately never enter the hash, so a later receipt
 /// alone never re-publishes an unchanged page.
 #[must_use]
 pub fn place_page_semantic_sha256_v1(
     place_geoid: &str,
-    title: &str,
-    question: &str,
-    county_geoids: &[String],
+    projection: &PlacePageProjectionV1,
 ) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(PLACE_SEMANTIC_DOMAIN_V1);
     hash_text(&mut hasher, place_geoid);
-    hash_text(&mut hasher, title);
-    hash_text(&mut hasher, question);
-    let sorted = county_geoids
-        .iter()
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect::<Vec<_>>();
-    hash_len(&mut hasher, sorted.len());
-    for geoid in sorted {
+    hash_text(&mut hasher, projection.title());
+    hash_text(&mut hasher, projection.question());
+    hasher.update(ARCHIVE_PAGE_TEMPLATE_SHA256_V1);
+    hash_len(&mut hasher, projection.signals().len());
+    for signal in projection.signals() {
+        hash_text(&mut hasher, signal.label());
+        hash_text(&mut hasher, signal.value());
+        hash_text(&mut hasher, signal.source_id());
+        hash_text(&mut hasher, signal.locator());
+    }
+    hash_len(&mut hasher, projection.counties().len());
+    for (geoid, name) in projection.counties() {
         hash_text(&mut hasher, geoid);
+        match name {
+            Some(name) => {
+                hasher.update([1]);
+                hash_text(&mut hasher, name);
+            }
+            None => hasher.update([0]),
+        }
     }
     hasher.finalize().into()
 }
@@ -308,14 +488,14 @@ pub fn place_page_semantic_sha256_v1(
 ///
 /// The parser is coupled to the pinned `archive_page_v1.md.j2` template
 /// ([`crate::ARCHIVE_PAGE_TEMPLATE_SHA256_V1`]) and returns `None` for any
-/// stored page whose frontmatter subject, title, question, or related-link
-/// shape drifted; callers treat `None` as dirty.
+/// stored page whose frontmatter subject, title, question, signal-bullet, or
+/// related-link shape drifted; callers treat `None` as dirty.
 #[must_use]
 pub fn parse_stored_place_page_v1(
     place_geoid: &str,
     title: &str,
     markdown: &str,
-) -> Option<StoredPlacePageV1> {
+) -> Option<PlacePageProjectionV1> {
     let mut lines = markdown.lines();
     if lines.next()? != "---" {
         return None;
@@ -337,22 +517,35 @@ pub fn parse_stored_place_page_v1(
         return None;
     }
     let mut question = None;
-    let mut county_geoids = Vec::new();
+    let mut signals = Vec::new();
+    let mut counties = Vec::new();
+    let mut in_signals = false;
     let mut in_related = false;
     for line in lines {
         if let Some(rest) = line.strip_prefix("## ") {
+            in_signals = rest == "Signals";
             in_related = rest == "Related";
+            continue;
+        }
+        if in_signals {
+            if line.is_empty() {
+                continue;
+            }
+            signals.push(parse_signal_bullet(line)?);
             continue;
         }
         if in_related {
             if let Some(entry) = line.strip_prefix("- [[") {
                 let inner = entry.strip_suffix("]]")?;
-                let key = inner.split('|').next()?;
+                let (key, label) = match inner.split_once('|') {
+                    Some((key, label)) => (key, Some(label.to_owned())),
+                    None => (inner, None),
+                };
                 let county = key.strip_prefix("county/")?;
                 if county.len() != 5 || !county.bytes().all(|byte| byte.is_ascii_digit()) {
                     return None;
                 }
-                county_geoids.push(county.to_owned());
+                counties.push((county.to_owned(), label));
             }
             continue;
         }
@@ -365,29 +558,59 @@ pub fn parse_stored_place_page_v1(
         }
         return None;
     }
-    StoredPlacePageV1::try_new(stored_title, question?, county_geoids).ok()
+    PlacePageProjectionV1::try_new(stored_title, question?, signals, counties).ok()
+}
+
+/// Parse one pinned-template signal bullet.
+fn parse_signal_bullet(line: &str) -> Option<PlaceSignalProjectionV1> {
+    let rest = line.strip_prefix("- **")?;
+    let (label, rest) = rest.split_once(":** ")?;
+    let (value, citation) = rest.split_once(" — ")?;
+    let (source_id, locator) = citation.split_once("; ")?;
+    PlaceSignalProjectionV1::try_new(
+        label.to_owned(),
+        value.to_owned(),
+        source_id.to_owned(),
+        locator.to_owned(),
+    )
+    .ok()
 }
 
 /// Select the dirty desired pages, sorted by place GEOID, bounded by `limit`.
 ///
 /// A desired page is dirty when no stored projection exists for its subject
-/// or when the stored projection hash differs. The bound drains at most
-/// `limit` places per receipt; the remainder waits for a later receipt.
-#[must_use]
+/// or when the grant-visible projection hash differs. The selection never
+/// truncates: when the dirty set exceeds `limit` it refuses with
+/// [`SemanticArchiveErrorV1::PlaceDrainOverflow`] so the caller leaves the
+/// receipt pending and consumes nothing.
+///
+/// # Errors
+/// Returns [`SemanticArchiveErrorV1::PlaceDrainOverflow`] when the dirty set
+/// exceeds `limit`, or any projection refusal.
 pub fn select_dirty_place_pages_v1<'a>(
     desired: &'a [PlacePagePlanV1],
-    stored: &BTreeMap<String, StoredPlacePageV1>,
+    stored: &BTreeMap<String, PlacePageProjectionV1>,
+    grants: &PlaceGrantIndexV1,
     limit: usize,
-) -> Vec<&'a PlacePagePlanV1> {
-    desired
-        .iter()
-        .filter(|plan| {
-            stored.get(plan.place_geoid()).is_none_or(|page| {
-                page.semantic_sha256(plan.place_geoid()) != plan.semantic_sha256()
-            })
-        })
-        .take(limit)
-        .collect()
+) -> Result<Vec<&'a PlacePagePlanV1>, SemanticArchiveErrorV1> {
+    let mut dirty = Vec::new();
+    for plan in desired {
+        let projection = desired_place_projection_v1(plan, grants)?;
+        let is_dirty = stored.get(plan.place_geoid()).is_none_or(|page| {
+            place_page_semantic_sha256_v1(plan.place_geoid(), page)
+                != place_page_semantic_sha256_v1(plan.place_geoid(), &projection)
+        });
+        if is_dirty {
+            dirty.push(plan);
+        }
+    }
+    if dirty.len() > limit {
+        return Err(SemanticArchiveErrorV1::PlaceDrainOverflow {
+            dirty: dirty.len(),
+            limit,
+        });
+    }
+    Ok(dirty)
 }
 
 /// Build the exact receipt-bound page input for one desired place page.
@@ -414,7 +637,7 @@ pub fn place_page_input_v1(
         )?,
     )?;
     let links = plan
-        .county_links
+        .county_links()
         .iter()
         .map(|slice| {
             ArchiveLinkV1::try_new(
@@ -440,6 +663,7 @@ pub fn place_page_input_v1(
 pub struct PlaceDossierProducerV1 {
     config: Config,
     products: SpatialReferenceProducts,
+    allowlist: Option<Vec<String>>,
 }
 
 impl PlaceDossierProducerV1 {
@@ -457,13 +681,55 @@ impl PlaceDossierProducerV1 {
         Ok(Self {
             config: config.clone(),
             products,
+            allowlist: None,
         })
+    }
+
+    /// Bind a test-facing producer over a sorted, unique place GEOID subset.
+    ///
+    /// The allowlist must be sorted ascending, unique, and seven-digit
+    /// numeric, and every member must be one of the pinned fixture places;
+    /// anything else refuses with
+    /// [`SemanticArchiveErrorV1::InvalidIdentity`]. Only allowlisted places
+    /// enumerate, which keeps a drain at or below
+    /// [`ArchiveDirtyBatchV1::MAX_PAGES`] for live proofs. Production keeps
+    /// the full fixture through [`PlaceDossierProducerV1::try_new`]; bulk
+    /// bootstrap of the full campaign is the declared follow-up slice.
+    ///
+    /// # Errors
+    /// Refuses unsorted, duplicated, malformed, or unknown GEOIDs, or any
+    /// pinned product divergence.
+    pub fn with_place_allowlist(
+        config: &Config,
+        geoids: &[String],
+    ) -> Result<Self, SemanticArchiveErrorV1> {
+        if geoids.is_empty()
+            || geoids.windows(2).any(|pair| pair[0] >= pair[1])
+            || geoids
+                .iter()
+                .any(|geoid| geoid.len() != 7 || !geoid.bytes().all(|byte| byte.is_ascii_digit()))
+        {
+            return Err(SemanticArchiveErrorV1::InvalidIdentity);
+        }
+        let mut producer = Self::try_new(config)?;
+        let known: BTreeSet<&str> = producer
+            .products
+            .places()
+            .iter()
+            .map(PlaceIdentityRow::place_geoid)
+            .collect();
+        if geoids.iter().any(|geoid| !known.contains(geoid.as_str())) {
+            return Err(SemanticArchiveErrorV1::InvalidIdentity);
+        }
+        producer.allowlist = Some(geoids.to_vec());
+        Ok(producer)
     }
 
     /// Resolve every desired place page from the pinned products.
     ///
     /// The result is sorted by place GEOID. Each place keeps every
-    /// overlapping county slice; no county membership is collapsed.
+    /// overlapping county slice; no county membership is collapsed. An
+    /// allowlist-bound producer enumerates only its allowlisted places.
     ///
     /// # Errors
     /// Refuses unsafe product text; the checked fixture already pinned every
@@ -488,6 +754,11 @@ impl PlaceDossierProducerV1 {
         self.products
             .places()
             .iter()
+            .filter(|place| {
+                self.allowlist
+                    .as_ref()
+                    .is_none_or(|allowlist| allowlist.contains(&place.place_geoid().to_owned()))
+            })
             .map(|place| {
                 let county_links = slices
                     .get(place.place_geoid())
@@ -519,7 +790,7 @@ impl PlaceDossierProducerV1 {
     fn read_stored_pages(
         &self,
         campaign_id: CampaignId,
-    ) -> Result<BTreeMap<String, StoredPlacePageV1>, SemanticArchiveErrorV1> {
+    ) -> Result<BTreeMap<String, PlacePageProjectionV1>, SemanticArchiveErrorV1> {
         let mut client = self
             .config
             .connect(NoTls)
@@ -538,6 +809,39 @@ impl PlaceDossierProducerV1 {
         }
         Ok(stored)
     }
+
+    /// Read the campaign grant snapshot visible at one receipt tick.
+    ///
+    /// # Errors
+    /// Returns any database or decode failure from the read-only query.
+    fn read_grants(
+        &self,
+        campaign_id: CampaignId,
+        receipt_tick: u64,
+    ) -> Result<PlaceGrantIndexV1, SemanticArchiveErrorV1> {
+        let mut client = self
+            .config
+            .connect(NoTls)
+            .map_err(|error| database("connect place grant reader", &error))?;
+        let receipt_tick =
+            i64::try_from(receipt_tick).map_err(|_| SemanticArchiveErrorV1::InvalidVerifiedTick)?;
+        let rows = client
+            .query(
+                ARCHIVE_PLACE_GRANTS_SQL_V1,
+                &[campaign_id.as_uuid(), &receipt_tick],
+            )
+            .map_err(|error| database("read place grant snapshot", &error))?;
+        let grants = rows
+            .iter()
+            .map(|row| {
+                let kind = decode_subject_kind(&decode::<String>(row, 0)?)?;
+                let id: String = decode(row, 1)?;
+                let grant_key: String = decode(row, 2)?;
+                Ok((kind, id, grant_key))
+            })
+            .collect::<Result<Vec<_>, SemanticArchiveErrorV1>>()?;
+        PlaceGrantIndexV1::try_from_rows(grants)
+    }
 }
 
 impl ArchiveDossierProducerV1 for PlaceDossierProducerV1 {
@@ -546,9 +850,16 @@ impl ArchiveDossierProducerV1 for PlaceDossierProducerV1 {
         campaign_id: Uuid,
         receipt: &PendingArchiveReceiptV1,
     ) -> Result<ArchiveDirtyBatchV1, SemanticArchiveErrorV1> {
+        let campaign = CampaignId::from_uuid(campaign_id);
         let desired = self.desired_pages()?;
-        let stored = self.read_stored_pages(CampaignId::from_uuid(campaign_id))?;
-        let dirty = select_dirty_place_pages_v1(&desired, &stored, ArchiveDirtyBatchV1::MAX_PAGES);
+        let stored = self.read_stored_pages(campaign)?;
+        let grants = self.read_grants(campaign, receipt.resolve_tick())?;
+        let dirty = select_dirty_place_pages_v1(
+            &desired,
+            &stored,
+            &grants,
+            ArchiveDirtyBatchV1::MAX_PAGES,
+        )?;
         let pages = dirty
             .iter()
             .map(|plan| {

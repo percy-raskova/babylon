@@ -1233,7 +1233,9 @@ fn decode_search_hit(row: &Row) -> Result<ArchiveSearchHitV1, SemanticArchiveErr
     })
 }
 
-fn decode_subject_kind(value: &str) -> Result<ArchiveSubjectKindV1, SemanticArchiveErrorV1> {
+pub(crate) fn decode_subject_kind(
+    value: &str,
+) -> Result<ArchiveSubjectKindV1, SemanticArchiveErrorV1> {
     match value {
         "county" => Ok(ArchiveSubjectKindV1::County),
         "place" => Ok(ArchiveSubjectKindV1::Place),
@@ -1321,6 +1323,14 @@ pub enum SemanticArchiveErrorV1 {
     ArtifactDigest,
     /// The pinned strict template failed to compile or render.
     Template,
+    /// The dirty place set exceeded one receipt page bound, so nothing was
+    /// selected and the receipt stays pending.
+    PlaceDrainOverflow {
+        /// Exact number of dirty place pages observed.
+        dirty: usize,
+        /// The one-receipt page bound that the dirty set exceeded.
+        limit: usize,
+    },
     /// One database operation failed with a bounded secret-safe driver diagnostic.
     Database {
         /// Stable operation identity.

@@ -245,6 +245,30 @@ impl ArchiveSignalV1 {
             citation,
         })
     }
+
+    /// Borrow the knowledge-grant address key.
+    #[must_use]
+    pub fn grant_key(&self) -> &str {
+        &self.grant_key
+    }
+
+    /// Borrow the player-facing signal label.
+    #[must_use]
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+
+    /// Borrow the player-facing signal value.
+    #[must_use]
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+
+    /// Borrow the pinned provenance citation.
+    #[must_use]
+    pub const fn citation(&self) -> &ArchiveCitationV1 {
+        &self.citation
+    }
 }
 
 /// One outbound semantic page link.
@@ -268,6 +292,18 @@ impl ArchiveLinkV1 {
             target,
             known_label,
         })
+    }
+
+    /// Borrow the exact link target identity.
+    #[must_use]
+    pub const fn target(&self) -> &ArchivePageRefV1 {
+        &self.target
+    }
+
+    /// Borrow the label shown only when the target subject is known.
+    #[must_use]
+    pub fn known_label(&self) -> &str {
+        &self.known_label
     }
 }
 
@@ -321,6 +357,42 @@ impl ArchivePageInputV1 {
             signals,
             links,
         })
+    }
+
+    /// Borrow the page subject.
+    #[must_use]
+    pub const fn subject(&self) -> &ArchiveSubjectV1 {
+        &self.subject
+    }
+
+    /// Return the receipt-stamped verified tick.
+    #[must_use]
+    pub const fn verified_tick(&self) -> u64 {
+        self.verified_tick
+    }
+
+    /// Borrow the receipt-stamped tick content hash.
+    #[must_use]
+    pub const fn tick_content_hash(&self) -> &[u8; 32] {
+        &self.tick_content_hash
+    }
+
+    /// Borrow the stable decision question.
+    #[must_use]
+    pub fn decision_question(&self) -> &str {
+        &self.decision_question
+    }
+
+    /// Borrow the ordered grant-keyed signals.
+    #[must_use]
+    pub fn signals(&self) -> &[ArchiveSignalV1] {
+        &self.signals
+    }
+
+    /// Borrow the ordered outbound links.
+    #[must_use]
+    pub fn links(&self) -> &[ArchiveLinkV1] {
+        &self.links
     }
 }
 
@@ -1245,6 +1317,8 @@ pub enum SemanticArchiveErrorV1 {
     SchemaMismatch,
     /// A stored page, digest, kind, tick, or provenance row was malformed.
     StoredPageMismatch,
+    /// A pinned reference-artifact digest diverged from its contract-pinned value.
+    ArtifactDigest,
     /// The pinned strict template failed to compile or render.
     Template,
     /// One database operation failed with a bounded secret-safe driver diagnostic.
@@ -1264,7 +1338,7 @@ impl std::fmt::Display for SemanticArchiveErrorV1 {
 
 impl std::error::Error for SemanticArchiveErrorV1 {}
 
-fn validate_text(value: &str) -> Result<(), SemanticArchiveErrorV1> {
+pub(crate) fn validate_text(value: &str) -> Result<(), SemanticArchiveErrorV1> {
     if value.is_empty() || value.len() > MAX_TEXT_BYTES || value.as_bytes().contains(&0) {
         return Err(SemanticArchiveErrorV1::InvalidText);
     }

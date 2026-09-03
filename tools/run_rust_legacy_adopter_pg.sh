@@ -467,8 +467,8 @@ if [ "$status" -eq 0 ] && [ "$LIVE_FOCUS" = "archive_worker" ]; then
       BABYLON_LEGACY_ADOPTER_DISPOSABLE_CANARY="$CANARY" \
       BABYLON_RUNTIME_TEMPLATE_DB="$RUNTIME_TEMPLATE" \
       CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/rust/target}" \
-    cargo test -p babylon-persistence --test archive_worker_live --locked -- --nocapture \
-      --ignored --test-threads=1 || status=$?
+    cargo test -p babylon-persistence --test archive_worker_live --test place_producer_live \
+      --locked -- --nocapture --ignored --test-threads=1 || status=$?
 fi
 
 if [ "$status" -eq 0 ] &&

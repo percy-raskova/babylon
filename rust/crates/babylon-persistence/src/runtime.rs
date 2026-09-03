@@ -1193,6 +1193,8 @@ pub enum RustPersistenceRuntimeErrorV2 {
         /// Exact requested capacity.
         requested: usize,
     },
+    /// The declared territory-county mapping refused extraction or persistence.
+    TerritoryCountyMap(crate::territory_county_map::TerritoryCountyMapErrorV1),
 }
 
 impl From<SemanticBatchErrorV2> for RustPersistenceRuntimeErrorV2 {
@@ -1823,6 +1825,8 @@ fn persist_campaign_foundation_v1(
     validate_legacy_connection_target(config).map_err(|_| {
         RustPersistenceRuntimeErrorV2::database("validate foundation writer target")
     })?;
+    crate::territory_county_map::install_territory_county_map_schema_v1(config)
+        .map_err(RustPersistenceRuntimeErrorV2::TerritoryCountyMap)?;
     let mut client = config.connect(NoTls).map_err(|error| {
         RustPersistenceRuntimeErrorV2::postgres("connect foundation writer", &error)
     })?;
@@ -1885,6 +1889,9 @@ fn insert_campaign_foundation_rows_v1(
         .map_err(|_| RustPersistenceRuntimeErrorV2::ReplaySource)?;
     let rules = std::str::from_utf8(bundle.rule_source_bytes())
         .map_err(|_| RustPersistenceRuntimeErrorV2::ReplaySource)?;
+    let territory_county_map =
+        crate::territory_county_map::extract_declared_territory_county_map_v1(scenario)
+            .map_err(RustPersistenceRuntimeErrorV2::TerritoryCountyMap)?;
     let foundation_sha256 = sha256_of(foundation.canonical_bytes());
     client
         .execute(
@@ -1930,6 +1937,12 @@ fn insert_campaign_foundation_rows_v1(
         return Err(RustPersistenceRuntimeErrorV2::CampaignConflict);
     }
     ensure_campaign_catalog_row_v1(client, campaign_id, foundation)?;
+    crate::territory_county_map::insert_territory_county_map_rows_v1(
+        client,
+        campaign_id,
+        &territory_county_map,
+    )
+    .map_err(RustPersistenceRuntimeErrorV2::TerritoryCountyMap)?;
     Ok(())
 }
 
@@ -4246,6 +4259,181 @@ mod live_tests {
         let reopened = DurableReplayRuntimeV2::open(&config, campaign_id)
             .expect("reconciled marker is the restart root");
         assert_eq!(reopened.last_committed_tick(), Some(receipt.resolve_tick()));
+        database.cleanup();
+    }
+
+    const COUNTY_MAP_RULE: &str = r#"(rule class-dynamics/territory-county-map-probe
+  :role mechanic
+  :evidence derived
+  :material-basis "PER-22: the declared territory-county mapping persists at campaign foundation"
+  :fuel 8
+  (bindings (binding fips :field territory/county-fips))
+  (when (> fips 99999))
+  (effects
+    (emit EventType/PER22_PROBE)))"#;
+
+    const COUNTY_MAP_SCENARIO: &str = r"
+(scenario per281/territory-county-map
+  (defvocabulary NodeType (TERRITORY))
+  (deffield territory/county-fips int extensive)
+  (node wayne NodeType/TERRITORY (territory/county-fips 26163)))
+";
+
+    fn county_map_fixture(
+        scenario: &str,
+    ) -> (
+        ReplayTickSession<HypergraphStore>,
+        FoundationContentBundleV1,
+    ) {
+        let (_, rules) = split_content(COUNTY_MAP_RULE).expect("county map rule parses");
+        let forms = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
+        let content = ContentDigest {
+            defines_hash: sha256_of(DEFINES),
+            rules_hash: rules_hash_of(&forms).expect("county map rule hashes"),
+        };
+        let foundation = michigan_dynamic_hex_foundation_v1().expect("foundation decodes");
+        let mut reference_manifest = REFERENCE_BUNDLE_DOMAIN.to_vec();
+        reference_manifest.extend_from_slice(&foundation.base_reference_cohort_digest());
+        reference_manifest.extend_from_slice(&foundation.r8_section_digest());
+        let reference = RefDigestV1::from_bytes(foundation.reference_bundle_digest());
+        let session = ReplayTickSession::new(
+            scenario,
+            None,
+            COUNTY_MAP_RULE,
+            HypergraphStore::new(),
+            ReplaySessionIdV1::try_from("per281/territory-county-map").expect("session id"),
+            ReplaySeed::new(281),
+            content,
+            reference,
+            MaterialStateV1::try_new(foundation).expect("material state"),
+        )
+        .expect("county map session prepares");
+        let bundle = FoundationContentBundleV1::try_new(
+            scenario,
+            None,
+            COUNTY_MAP_RULE,
+            DEFINES,
+            &reference_manifest,
+        )
+        .expect("county map content bundle");
+        (session, bundle)
+    }
+
+    #[test]
+    #[ignore = "requires the task-owned disposable PG17 runtime"]
+    fn live_territory_county_map_persists_at_campaign_foundation() {
+        let base = validated_base_config();
+        let template = validated_template_name();
+        let database = TestDatabase::create_from_template(&base, &template, "countymappersist");
+        let config = database.config(&base);
+        let campaign_id =
+            CampaignId::from_uuid(Uuid::from_u128(0x2810_0000_0000_0000_0000_0000_0000_00c1));
+        let (session, bundle) = county_map_fixture(COUNTY_MAP_SCENARIO);
+        let runtime = DurableReplayRuntimeV2::create(&config, campaign_id, session, bundle)
+            .expect("runtime constructs after activation");
+        assert_eq!(runtime.last_committed_tick(), None);
+        let rows: Vec<(String, String)> = config
+            .connect(NoTls)
+            .expect("county map read connection")
+            .query(
+                "SELECT territory_local_name, county_geoid \
+                 FROM babylon_meta.territory_county_map_v1 \
+                 WHERE campaign_id = $1::uuid ORDER BY territory_local_name",
+                &[campaign_id.as_uuid()],
+            )
+            .expect("county map rows read")
+            .into_iter()
+            .map(|row| {
+                (
+                    row.try_get(0).expect("local name decodes"),
+                    row.try_get(1).expect("county geoid decodes"),
+                )
+            })
+            .collect();
+        assert_eq!(rows, [("wayne".to_owned(), "26163".to_owned())]);
+        database.cleanup();
+    }
+
+    #[test]
+    #[ignore = "requires the task-owned disposable PG17 runtime"]
+    fn live_territory_county_map_refuses_missing_declared_county_fips() {
+        let base = validated_base_config();
+        let template = validated_template_name();
+        let database = TestDatabase::create_from_template(&base, &template, "countymapmissing");
+        let config = database.config(&base);
+        let campaign_id =
+            CampaignId::from_uuid(Uuid::from_u128(0x2810_0000_0000_0000_0000_0000_0000_00c2));
+        let scenario = r"
+(scenario per281/territory-county-map-missing
+  (defvocabulary NodeType (TERRITORY))
+  (deffield territory/county-fips int extensive)
+  (node wayne NodeType/TERRITORY))
+";
+        let (session, bundle) = county_map_fixture(scenario);
+        let Err(error) = DurableReplayRuntimeV2::create(&config, campaign_id, session, bundle)
+        else {
+            panic!("a territory node without the declared county-fips refuses");
+        };
+        assert!(matches!(
+            error,
+            RustPersistenceRuntimeErrorV2::TerritoryCountyMap(
+                crate::TerritoryCountyMapErrorV1::MissingCountyFips { .. }
+            )
+        ));
+        let campaign_rows: i64 = config
+            .connect(NoTls)
+            .expect("refusal proof connection")
+            .query_one(
+                "SELECT pg_catalog.count(*) FROM babylon_meta.campaign \
+                 WHERE campaign_id = $1::uuid",
+                &[campaign_id.as_uuid()],
+            )
+            .expect("campaign count")
+            .try_get(0)
+            .expect("campaign count decodes");
+        assert_eq!(campaign_rows, 0);
+        database.cleanup();
+    }
+
+    #[test]
+    #[ignore = "requires the task-owned disposable PG17 runtime"]
+    fn live_territory_county_map_refuses_duplicate_county_geoid() {
+        let base = validated_base_config();
+        let template = validated_template_name();
+        let database = TestDatabase::create_from_template(&base, &template, "countymapdupe");
+        let config = database.config(&base);
+        let campaign_id =
+            CampaignId::from_uuid(Uuid::from_u128(0x2810_0000_0000_0000_0000_0000_0000_00c3));
+        let scenario = r"
+(scenario per281/territory-county-map-duplicate
+  (defvocabulary NodeType (TERRITORY))
+  (deffield territory/county-fips int extensive)
+  (node wayne NodeType/TERRITORY (territory/county-fips 26163))
+  (node clone NodeType/TERRITORY (territory/county-fips 26163)))
+";
+        let (session, bundle) = county_map_fixture(scenario);
+        let Err(error) = DurableReplayRuntimeV2::create(&config, campaign_id, session, bundle)
+        else {
+            panic!("duplicate declared county geoid refuses");
+        };
+        assert!(matches!(
+            error,
+            RustPersistenceRuntimeErrorV2::TerritoryCountyMap(
+                crate::TerritoryCountyMapErrorV1::DuplicateCountyGeoid { .. }
+            )
+        ));
+        let campaign_rows: i64 = config
+            .connect(NoTls)
+            .expect("refusal proof connection")
+            .query_one(
+                "SELECT pg_catalog.count(*) FROM babylon_meta.campaign \
+                 WHERE campaign_id = $1::uuid",
+                &[campaign_id.as_uuid()],
+            )
+            .expect("campaign count")
+            .try_get(0)
+            .expect("campaign count decodes");
+        assert_eq!(campaign_rows, 0);
         database.cleanup();
     }
 

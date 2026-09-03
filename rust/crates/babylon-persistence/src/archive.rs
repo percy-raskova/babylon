@@ -1421,51 +1421,15 @@ impl SemanticArchiveStoreV1 {
         grant: &ArchiveKnowledgeGrantV1,
     ) -> Result<(), SemanticArchiveErrorV1> {
         let mut client = self.connect("connect Archive knowledge writer")?;
-        let granted_tick = i64::try_from(grant.granted_tick)
-            .map_err(|_| SemanticArchiveErrorV1::InvalidVerifiedTick)?;
-        let affected = client
-            .execute(
-                "INSERT INTO babylon_meta.archive_knowledge_grant_v1 \
-                 (campaign_id, subject_kind, subject_id, grant_key, granted_tick, \
-                  provenance_source_id, provenance_locator) \
-                 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7) \
-                 ON CONFLICT (campaign_id, subject_kind, subject_id, grant_key) DO NOTHING",
-                &[
-                    campaign_id.as_uuid(),
-                    &grant.page_ref.kind.as_str(),
-                    &grant.page_ref.id,
-                    &grant.grant_key,
-                    &granted_tick,
-                    &grant.citation.source_id,
-                    &grant.citation.locator,
-                ],
-            )
-            .map_err(|error| database("insert Archive knowledge grant", &error))?;
-        if affected == 1 {
-            return Ok(());
-        }
-        let row = client
-            .query_one(
-                "SELECT granted_tick, provenance_source_id, provenance_locator \
-                 FROM babylon_meta.archive_knowledge_grant_v1 \
-                 WHERE campaign_id = $1::uuid AND subject_kind = $2 \
-                   AND subject_id = $3 AND grant_key = $4",
-                &[
-                    campaign_id.as_uuid(),
-                    &grant.page_ref.kind.as_str(),
-                    &grant.page_ref.id,
-                    &grant.grant_key,
-                ],
-            )
-            .map_err(|error| database("reconcile Archive knowledge grant", &error))?;
-        let exact = decode::<i64>(&row, 0)? == granted_tick
-            && decode::<String>(&row, 1)? == grant.citation.source_id
-            && decode::<String>(&row, 2)? == grant.citation.locator;
-        if exact {
-            Ok(())
-        } else {
-            Err(SemanticArchiveErrorV1::GrantConflict)
-        }
+        insert_grant_row_v1(
+            &mut client,
+            campaign_id,
+            grant.page_ref.kind.as_str(),
+            &grant.page_ref.id,
+            &grant.grant_key,
+            grant.granted_tick,
+            &grant.citation,
+        )
     }
 
     /// Consume one committed receipt and materialize its dirty page batch atomically.
@@ -1636,6 +1600,86 @@ pub fn archive_worker_contract_sha256_v1() -> [u8; 32] {
     bytes.extend_from_slice(ARCHIVE_ATOM_SCHEMA_V1_SQL.as_bytes());
     bytes.extend_from_slice(&ARCHIVE_PAGE_TEMPLATE_SHA256_V1);
     sha256_of(&bytes)
+}
+
+/// Insert one immutable knowledge-grant row by exact subject kind and id.
+///
+/// Page subjects validate through [`ArchivePageRefV1`]; concept subjects
+/// validate through [`ArchiveAtomSubjectV1`] (ADR249 R12) because concepts
+/// are grant subjects without being page kinds. The insert is idempotent:
+/// an exact retry succeeds and any drifted row refuses `GrantConflict`.
+pub(crate) fn insert_grant_row_v1(
+    client: &mut impl GenericClient,
+    campaign_id: CampaignId,
+    subject_kind: &str,
+    subject_id: &str,
+    grant_key: &str,
+    granted_tick: u64,
+    citation: &ArchiveCitationV1,
+) -> Result<(), SemanticArchiveErrorV1> {
+    validate_key(grant_key)?;
+    validate_text(citation.source_id())?;
+    validate_text(citation.locator())?;
+    match subject_kind {
+        "county" => {
+            ArchivePageRefV1::try_new(ArchiveSubjectKindV1::County, subject_id.to_owned())?;
+        }
+        "place" => {
+            ArchivePageRefV1::try_new(ArchiveSubjectKindV1::Place, subject_id.to_owned())?;
+        }
+        "concept" => {
+            ArchiveAtomSubjectV1::try_new(
+                ArchiveAtomSubjectKindV1::Concept,
+                subject_id.to_owned(),
+            )?;
+        }
+        _ => return Err(SemanticArchiveErrorV1::InvalidIdentity),
+    }
+    let granted_tick =
+        i64::try_from(granted_tick).map_err(|_| SemanticArchiveErrorV1::InvalidVerifiedTick)?;
+    let affected = client
+        .execute(
+            "INSERT INTO babylon_meta.archive_knowledge_grant_v1 \
+             (campaign_id, subject_kind, subject_id, grant_key, granted_tick, \
+              provenance_source_id, provenance_locator) \
+             VALUES ($1::uuid, $2, $3, $4, $5, $6, $7) \
+             ON CONFLICT (campaign_id, subject_kind, subject_id, grant_key) DO NOTHING",
+            &[
+                campaign_id.as_uuid(),
+                &subject_kind,
+                &subject_id,
+                &grant_key,
+                &granted_tick,
+                &citation.source_id,
+                &citation.locator,
+            ],
+        )
+        .map_err(|error| database("insert Archive knowledge grant", &error))?;
+    if affected == 1 {
+        return Ok(());
+    }
+    let row = client
+        .query_one(
+            "SELECT granted_tick, provenance_source_id, provenance_locator \
+             FROM babylon_meta.archive_knowledge_grant_v1 \
+             WHERE campaign_id = $1::uuid AND subject_kind = $2 \
+               AND subject_id = $3 AND grant_key = $4",
+            &[
+                campaign_id.as_uuid(),
+                &subject_kind,
+                &subject_id,
+                &grant_key,
+            ],
+        )
+        .map_err(|error| database("reconcile Archive knowledge grant", &error))?;
+    let exact = decode::<i64>(&row, 0)? == granted_tick
+        && decode::<String>(&row, 1)? == citation.source_id
+        && decode::<String>(&row, 2)? == citation.locator;
+    if exact {
+        Ok(())
+    } else {
+        Err(SemanticArchiveErrorV1::GrantConflict)
+    }
 }
 
 fn read_knowledge(

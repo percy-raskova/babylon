@@ -42,9 +42,9 @@ const RULE: &str = include_str!("../../babylon-tick/content/rules/struggle-spark
 const WORKER_SEED: i64 = 2;
 
 /// One distinct stub subject per receipt tick, because the Archive keeps one
-/// current page per subject and converges repeated receipts onto it. The
-/// county ids are synthetic: foundation grant seeding already covers every
-/// real Michigan county, and an explicit grant for a seeded subject refuses
+/// current page per subject and converges repeated receipts onto it. The ids
+/// are synthetic: foundation grant seeding already covers every real Michigan
+/// county and place, and an explicit grant for a seeded subject refuses
 /// `GrantConflict` instead of shadowing the seeded row.
 struct StubSubjectSpec {
     page_ref: ArchivePageRefV1,
@@ -54,7 +54,7 @@ struct StubSubjectSpec {
 fn stub_subject_spec(tick: u64) -> StubSubjectSpec {
     let (kind, id, title) = match tick % 3 {
         1 => (ArchiveSubjectKindV1::County, "99963", "Stub County One"),
-        2 => (ArchiveSubjectKindV1::Place, "2684000", "Detroit"),
+        2 => (ArchiveSubjectKindV1::Place, "9990001", "Stub Place"),
         _ => (ArchiveSubjectKindV1::County, "99925", "Stub County Two"),
     };
     StubSubjectSpec {
@@ -63,9 +63,9 @@ fn stub_subject_spec(tick: u64) -> StubSubjectSpec {
     }
 }
 
-fn detroit_page_ref() -> ArchivePageRefV1 {
-    ArchivePageRefV1::try_new(ArchiveSubjectKindV1::Place, "2684000".to_owned())
-        .expect("Detroit ref")
+fn stub_place_page_ref() -> ArchivePageRefV1 {
+    ArchivePageRefV1::try_new(ArchiveSubjectKindV1::Place, "9990001".to_owned())
+        .expect("stub place ref")
 }
 
 fn stub_page_input(receipt: &PendingArchiveReceiptV1) -> ArchivePageInputV1 {
@@ -634,7 +634,7 @@ fn live_worker_consumes_pending_receipts_in_tick_order() {
         .search_known(target.campaign_id, "investigate at tick 2", 10)
         .expect("known-only search");
     assert_eq!(hits.len(), 1);
-    assert_eq!(hits[0].page_ref(), &detroit_page_ref());
+    assert_eq!(hits[0].page_ref(), &stub_place_page_ref());
     assert_eq!(hits[0].verified_tick(), 2);
     assert!(hits[0].markdown().contains("728576 jobs"));
     assert_eq!(hits[0].citations().len(), 2);

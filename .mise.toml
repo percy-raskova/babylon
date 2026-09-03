@@ -76,6 +76,10 @@ run = 'MISE_TRUSTED_CONFIG_PATHS="${MISE_PROJECT_ROOT:-$PWD}" nix develop "git+f
 description = "the ONE sanctioned merge path: all-green + head-pin + Copilot advisory + unresolved review thread block + zero alert floor + stacked-PR guard"
 run = "python3 tools/pr_merge.py"
 
+[tasks."deps:conveyor"]
+description = "serial Dependabot merge conveyor: classify + merge CLEAN PRs via pr:merge, request dependabot rebase for BEHIND branches, exit when queue empties"
+run = "python3 tools/dependabot_conveyor.py"
+
 [tasks."check:worktree-contract"]
 description = "worktree contract (ADR181 R9c): venv interpreter pin, ops extra, data/ symlinks, .env, uv.lock unmodified"
 run = "python3 tools/check_worktree_contract.py"

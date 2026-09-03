@@ -36,13 +36,16 @@ def test_every_vector_kind_is_present() -> None:
     vectors = load_vectors(VECTORS)
 
     assert {row["kind"] for row in vectors} == {"watermark", "match", "plan", "sweep", "identity"}
-    assert len(vectors) == 14
+    assert len(vectors) == 15
     assert [row["id"] for row in vectors if row["kind"] == "watermark"] == [
         "watermark-empty-state",
         "watermark-all-consumed",
         "watermark-gap-pending",
         "watermark-pending-first",
     ]
+    multi_page = next(row for row in vectors if row["id"] == "plan-multi-page-materializes")
+    assert multi_page["data"]["batch"]["page_count"] == 2
+    assert multi_page["data"]["expected"] == "Materialize"
 
 
 def test_pure_derivations_match_the_pinned_semantics() -> None:
@@ -375,3 +378,40 @@ def test_cli_derives_repo_root_independently_of_vectors_location(
     )
 
     assert main() == 0
+
+
+@pytest.mark.parametrize("expected", [True, False])
+def test_watermark_boolean_expected_refuses_with_the_typed_code(expected: bool) -> None:
+    vectors = copy.deepcopy(load_vectors(VECTORS))
+    row = next(item for item in vectors if item["id"] == "watermark-all-consumed")
+    row["data"]["expected"] = expected
+
+    with pytest.raises(ArchiveWorkerContractRefusal) as exc_info:
+        verify_all(load_contract(SCHEMA), vectors, ROOT)
+
+    assert exc_info.value.code == "invalid_tick"
+
+
+def test_unknown_vector_kind_refuses_before_indexing() -> None:
+    contract = load_contract(SCHEMA)
+    vectors = copy.deepcopy(load_vectors(VECTORS))
+    vectors[0]["kind"] = "mystery"
+
+    with pytest.raises(ArchiveWorkerContractRefusal) as exc_info:
+        verify_all(contract, vectors, ROOT)
+
+    assert exc_info.value.code == "unknown_vector_kind"
+    assert exc_info.value.detail == "mystery"
+
+
+def test_oversize_source_read_uses_the_size_specific_refusal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contract = load_contract(SCHEMA)
+    vectors = load_vectors(VECTORS)
+    monkeypatch.setattr("tools.verify_archive_worker_v1.MAX_CONTRACT_BYTES", 1)
+
+    with pytest.raises(ArchiveWorkerContractRefusal) as exc_info:
+        verify_all(contract, vectors, ROOT)
+
+    assert exc_info.value.code == "source_too_large"

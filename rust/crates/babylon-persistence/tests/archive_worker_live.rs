@@ -159,6 +159,31 @@ impl ArchiveDossierProducerV1 for DeferAllButProducer {
     }
 }
 
+/// Stub producer that materializes every receipt except one scripted
+/// deferral, proving the consume cap binds across keyset pages no matter how
+/// materializable the remaining backlog is.
+struct MaterializeAllButProducer {
+    defer_tick: u64,
+}
+
+impl ArchiveDossierProducerV1 for MaterializeAllButProducer {
+    fn produce(
+        &self,
+        campaign_id: Uuid,
+        receipt: &PendingArchiveReceiptV1,
+    ) -> Result<ArchiveDirtyBatchV1, SemanticArchiveErrorV1> {
+        if receipt.resolve_tick() == self.defer_tick {
+            ArchiveDirtyBatchV1::try_new(
+                receipt.resolve_tick(),
+                *receipt.tick_content_hash(),
+                Vec::new(),
+            )
+        } else {
+            StubPageProducer.produce(campaign_id, receipt)
+        }
+    }
+}
+
 impl ArchiveDossierProducerV1 for WrongTickProducer {
     fn produce(
         &self,
@@ -777,6 +802,68 @@ fn live_worker_sweep_pages_past_deferred_receipts_to_reach_a_materializable_one(
     assert_eq!(
         receipt_consumption_count(&target.config, target.campaign_id),
         1
+    );
+    target.finish();
+}
+
+#[test]
+#[ignore = "requires the task-owned disposable PostgreSQL runtime and committed ticks"]
+fn live_worker_stops_at_the_consume_cap_and_leaves_the_remainder_pending() {
+    // One real committed tick establishes the campaign; the remaining
+    // marker-backed dirty receipts insert directly, as the deferral-paging
+    // proof already does. Tick 256 defers inside the first 256-row page, so
+    // the page ends with 255 consumed; a sweep that enforces only the scan
+    // bound would then consume the whole second page and reach 299.
+    const TICKS: u64 = 300;
+    let target = LiveWorkerTarget::create_with_grants(
+        "archiveworkercap",
+        0x2200_0000_0000_0000_0000_0000_0000_00a9,
+        1,
+        &[1, 2, 3],
+    );
+    insert_marker_backed_dirty_receipts(&target.config, target.campaign_id, 2..=TICKS);
+
+    let mut worker = ArchiveWorkerV1::new(&target.config);
+    let report = worker
+        .sweep_once(
+            target.campaign_id,
+            &MaterializeAllButProducer { defer_tick: 256 },
+        )
+        .expect("one sweep stops at the consume cap");
+
+    assert_eq!(
+        report.applied_count(),
+        256,
+        "255 receipts of the first page plus exactly one of the second page"
+    );
+    assert_eq!(report.deferred_count(), 1);
+    assert_eq!(report.already_consumed_count(), 0);
+    assert_eq!(report.dispositions().len(), 257);
+    let last = report
+        .dispositions()
+        .last()
+        .expect("exactly one receipt past the deferred tail is consumed");
+    assert_eq!(*last, (257, ArchiveReceiptDispositionV1::Applied));
+    assert_eq!(
+        receipt_consumption_count(&target.config, target.campaign_id),
+        256,
+        "the consume cap is a hard per-sweep stop, whatever the page composition"
+    );
+    assert_eq!(
+        report.verified_tick(),
+        255,
+        "the deferred tick 256 caps the contiguous watermark even though 257 applied"
+    );
+
+    let mut resumed = ArchiveWorkerV1::new(&target.config);
+    let second = resumed
+        .sweep_once(target.campaign_id, &StubPageProducer)
+        .expect("the remainder stays pending for the next invocation");
+    assert_eq!(second.applied_count(), 44, "tick 256 plus ticks 258..=300");
+    assert_eq!(second.deferred_count(), 0);
+    assert_eq!(
+        receipt_consumption_count(&target.config, target.campaign_id),
+        i64::try_from(TICKS).expect("bounded tick count")
     );
     target.finish();
 }

@@ -62,11 +62,11 @@ fn batch_ref_json(resolve_tick: u64, hash_hex: &str, page_count: usize) -> Value
     })
 }
 
-fn page_input(resolve_tick: u64) -> ArchivePageInputV1 {
+fn page_input(resolve_tick: u64, index: u64) -> ArchivePageInputV1 {
     ArchivePageInputV1::try_new(
         ArchiveSubjectV1::try_new(
             ArchiveSubjectKindV1::County,
-            "26163".to_owned(),
+            format!("26{index:03}"),
             "Wayne County".to_owned(),
         )
         .expect("valid subject"),
@@ -84,8 +84,8 @@ fn batch_from_ref(data: &Value) -> ArchiveDirtyBatchV1 {
     let page_count =
         usize::try_from(data["page_count"].as_u64().expect("u64 page count")).expect("page count");
     let mut pages = Vec::with_capacity(page_count);
-    for _ in 0..page_count {
-        pages.push(page_input(resolve_tick));
+    for index in 0..page_count {
+        pages.push(page_input(resolve_tick, index as u64));
     }
     ArchiveDirtyBatchV1::try_new(
         resolve_tick,
@@ -203,21 +203,25 @@ fn match_rows() -> Vec<Value> {
 }
 
 fn plan_rows() -> Vec<Value> {
-    [("plan-empty-defers", 0), ("plan-nonempty-materializes", 1)]
-        .into_iter()
-        .map(|(id, page_count)| {
-            json!({
-                "id": id,
-                "kind": "plan",
-                "data": {
-                    "batch": batch_ref_json(42, TICK_CONTENT_HASH_HEX, page_count),
-                    "expected": plan_name(classify_archive_receipt_v1(
-                        &batch_from_ref(&batch_ref_json(42, TICK_CONTENT_HASH_HEX, page_count)),
-                    )),
-                },
-            })
+    [
+        ("plan-empty-defers", 0),
+        ("plan-nonempty-materializes", 1),
+        ("plan-multi-page-materializes", 2),
+    ]
+    .into_iter()
+    .map(|(id, page_count)| {
+        json!({
+            "id": id,
+            "kind": "plan",
+            "data": {
+                "batch": batch_ref_json(42, TICK_CONTENT_HASH_HEX, page_count),
+                "expected": plan_name(classify_archive_receipt_v1(
+                    &batch_from_ref(&batch_ref_json(42, TICK_CONTENT_HASH_HEX, page_count)),
+                )),
+            },
         })
-        .collect()
+    })
+    .collect()
 }
 
 fn sweep_rows() -> Vec<Value> {
@@ -388,7 +392,7 @@ fn shared_match_vectors_match_the_batch_identity_refusal() {
 fn shared_plan_vectors_match_the_receipt_classification() {
     let rows = rows();
     let plan_rows: Vec<&Value> = rows_of_kind(&rows, "plan").collect();
-    assert_eq!(plan_rows.len(), 2);
+    assert_eq!(plan_rows.len(), 3);
     for row in plan_rows {
         let data = &row["data"];
         let batch = batch_from_ref(&data["batch"]);

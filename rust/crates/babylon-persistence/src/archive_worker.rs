@@ -359,6 +359,95 @@ pub fn classify_archive_sweep_v1(
         .collect()
 }
 
+/// Pure paged-sweep outcome: the ordered per-receipt plans plus the scan and
+/// consume counts the production sweep reaches under the same bounds.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct ArchiveSweepPageModelV1 {
+    plans: Vec<ArchiveReceiptPlanV1>,
+    scanned: i64,
+    consumed: i64,
+}
+
+impl ArchiveSweepPageModelV1 {
+    /// Construct one model outcome from ordered plans and derived counts.
+    #[must_use]
+    pub fn new(plans: Vec<ArchiveReceiptPlanV1>, scanned: i64, consumed: i64) -> Self {
+        Self {
+            plans,
+            scanned,
+            consumed,
+        }
+    }
+
+    /// Borrow the ordered per-receipt plans across every scanned page.
+    #[must_use]
+    pub fn plans(&self) -> &[ArchiveReceiptPlanV1] {
+        &self.plans
+    }
+
+    /// Count receipts the sweep scanned, including deferred ones.
+    #[must_use]
+    pub const fn scanned(&self) -> i64 {
+        self.scanned
+    }
+
+    /// Count receipts the sweep consumed, capped by the consume bound.
+    #[must_use]
+    pub const fn consumed(&self) -> i64 {
+        self.consumed
+    }
+}
+
+/// Pure paged-sweep model over scripted producer pages under the production
+/// bounds ([`ARCHIVE_SWEEP_MAX_RECEIPTS_V1`] and [`ARCHIVE_SWEEP_MAX_SCAN_V1`]).
+///
+/// The model mirrors [`ArchiveWorkerV1::sweep_once`]: pages arrive in keyset
+/// order, each scanned receipt defers or consumes exactly as classified, and
+/// the sweep stops as soon as the consume cap or the scan cap is reached,
+/// leaving the remainder pending for the next invocation.
+///
+/// # Errors
+/// Propagates the first producer error unchanged.
+pub fn model_archive_sweep_pages_v1(
+    pages: Vec<Vec<Result<ArchiveDirtyBatchV1, SemanticArchiveErrorV1>>>,
+) -> Result<ArchiveSweepPageModelV1, SemanticArchiveErrorV1> {
+    model_archive_sweep_pages_with_bounds_v1(
+        pages,
+        ARCHIVE_SWEEP_MAX_RECEIPTS_V1,
+        ARCHIVE_SWEEP_MAX_SCAN_V1,
+    )
+}
+
+/// Pure paged-sweep model with explicit bounds for contract regression tests.
+///
+/// # Errors
+/// Propagates the first producer error unchanged.
+pub fn model_archive_sweep_pages_with_bounds_v1(
+    pages: Vec<Vec<Result<ArchiveDirtyBatchV1, SemanticArchiveErrorV1>>>,
+    max_receipts: i64,
+    max_scan: i64,
+) -> Result<ArchiveSweepPageModelV1, SemanticArchiveErrorV1> {
+    let mut model = ArchiveSweepPageModelV1::default();
+    'pages: for page in pages {
+        if model.consumed >= max_receipts || model.scanned >= max_scan {
+            break;
+        }
+        for step in page {
+            if model.scanned >= max_scan || model.consumed >= max_receipts {
+                break 'pages;
+            }
+            model.scanned += 1;
+            let batch = step?;
+            let plan = classify_archive_receipt_v1(&batch);
+            if plan == ArchiveReceiptPlanV1::Materialize {
+                model.consumed += 1;
+            }
+            model.plans.push(plan);
+        }
+    }
+    Ok(model)
+}
+
 /// Production Archive worker that composes a content producer with the
 /// semantic Archive store.
 pub struct ArchiveWorkerV1 {
@@ -383,7 +472,9 @@ impl ArchiveWorkerV1 {
     /// [`ARCHIVE_SWEEP_MAX_SCAN_V1`] receipts in total, or exhausted the
     /// pending set. Receipt claiming is delegated to
     /// [`SemanticArchiveStoreV1::materialize_receipt`], which binds the worker
-    /// identity via [`crate::archive_worker_contract_sha256_v1`].
+    /// identity via [`crate::archive_worker_contract_sha256_v1`]. The pure
+    /// [`model_archive_sweep_pages_v1`] mirrors this loop for contract
+    /// regression tests.
     ///
     /// # Errors
     /// Returns any producer refusal, batch-identity mismatch, or database
@@ -420,7 +511,8 @@ impl ArchiveWorkerV1 {
             let short_page = row_count < ARCHIVE_SWEEP_MAX_RECEIPTS_V1;
             let mut last_tick = cursor;
             for row in rows {
-                if scanned >= ARCHIVE_SWEEP_MAX_SCAN_V1 {
+                if scanned >= ARCHIVE_SWEEP_MAX_SCAN_V1 || consumed >= ARCHIVE_SWEEP_MAX_RECEIPTS_V1
+                {
                     break;
                 }
                 let resolve_tick = decode::<i64>(&row, 0)?;

@@ -33,7 +33,11 @@ REQUIRED_ROW_IDS = {
         "watermark-pending-first",
     },
     "match": {"match-exact-ok", "match-tick-mismatch", "match-hash-mismatch"},
-    "plan": {"plan-empty-defers", "plan-nonempty-materializes"},
+    "plan": {
+        "plan-empty-defers",
+        "plan-nonempty-materializes",
+        "plan-multi-page-materializes",
+    },
     "sweep": {
         "sweep-all-defer",
         "sweep-mixed-order",
@@ -221,6 +225,8 @@ def _validated_rows(vectors: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if row_id in seen_ids:
             raise ArchiveWorkerContractRefusal("duplicate_vector_id", row_id)
         seen_ids.add(row_id)
+        if row["kind"] not in REQUIRED_VECTOR_KINDS:
+            raise ArchiveWorkerContractRefusal("unknown_vector_kind", row["kind"])
     for kind, required_ids in REQUIRED_ROW_IDS.items():
         actual = {row["id"] for row in rows if row["kind"] == kind}
         if actual != required_ids:
@@ -368,7 +374,7 @@ def _rust_const_int(source: str, name: str) -> int:
 
 
 def _source_sql(root: Path) -> tuple[str, str, int, int]:
-    source = _bounded_file_bytes(root / SOURCE_PATH, MAX_CONTRACT_BYTES, "file_read").decode(
+    source = _bounded_file_bytes(root / SOURCE_PATH, MAX_CONTRACT_BYTES, "source_too_large").decode(
         "utf-8"
     )
     pending_sql = _rust_const_str(source, "ARCHIVE_PENDING_RECEIPTS_SQL_V1")
@@ -398,7 +404,8 @@ def _verify_watermark(row: dict[str, Any]) -> str | None:
     else:
         first_pending = None
     max_receipt = _tick(data.get("max_receipt_tick"), "max_receipt_tick", allow_zero=True)
-    if derive_watermark(first_pending, max_receipt) != data.get("expected"):
+    expected = _tick(data.get("expected"), "expected", allow_zero=True)
+    if derive_watermark(first_pending, max_receipt) != expected:
         return f"{row['id']}: watermark derivation mismatch"
     return None
 

@@ -57,6 +57,10 @@ const SCENARIO: &str = r"
   (deffield territory/phi-savings-adjustment coefficient intensive)
   (deffield territory/rate-accumulation probability intensive)
   (deffield territory/dist-year int extensive)
+  ; Governed geography identity (PER-22 ruling D1): write-prohibited to every
+  ; rule role at load (GOVERNED_WRITE_PROHIBITED_NODE_FIELDS); county identity
+  ; is frozen at campaign foundation.
+  (deffield territory/county-fips int extensive)
   (defconst class-dynamics/hours-per-year 2080)
   (defconst class-dynamics/v-reproduction 12)
   (defconst class-dynamics/accumulation-halt-floor-ratio 0.8c)
@@ -69,7 +73,8 @@ const SCENARIO: &str = r"
     (territory/phi-hour 1.0r)
     (territory/phi-savings-adjustment 0.0c)
     (territory/rate-accumulation 0.0p)
-    (territory/dist-year 2010)))
+    (territory/dist-year 2010)
+    (territory/county-fips 26163)))
 ";
 const RULE: &str = r#"
 (rule class-dynamics/a01-rollover-accumulation-smoke

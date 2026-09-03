@@ -232,6 +232,33 @@ fn foundation_bundle_is_cryptographically_bound_to_session_identities() {
 }
 
 #[test]
+fn foundation_refuses_a_bundle_whose_scenario_cannot_reproduce_the_session_graph() {
+    // The content digest binds defines + rules only, so a caller can pair a
+    // session built from scenario A with a bundle carrying scenario B. The
+    // declared county mapping would then persist B's geography while the
+    // runtime runs A's graph — capture must bind the bundle's scenario to
+    // the session's captured graph and refuse the mismatch.
+    let (session, _, _, content, reference, reference_manifest) = fixture();
+    let foreign_scenario = SCENARIO.replace("0.0c", "0.5c");
+    assert_ne!(foreign_scenario, SCENARIO);
+    let bundle = FoundationContentBundleV1::try_new(
+        &foreign_scenario,
+        None,
+        RULE,
+        DEFINES,
+        &reference_manifest,
+    )
+    .expect("foreign scenario still forms a bounded bundle");
+    // The legacy digest bind cannot see a scenario-only difference.
+    assert_eq!(bundle.content_digest(), &content);
+    assert_eq!(bundle.reference_digest(), reference);
+    assert_eq!(
+        CampaignFoundationV1::capture(&session, bundle),
+        Err(RustPersistenceRuntimeErrorV2::FoundationScenarioMismatch)
+    );
+}
+
+#[test]
 fn foundation_refuses_nonzero_sessions_and_unbounded_content() {
     let (mut session, session_id, _, _, _, reference_manifest) = fixture();
     let report = first_report(&mut session, &session_id);

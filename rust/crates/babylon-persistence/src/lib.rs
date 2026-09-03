@@ -32,6 +32,7 @@ mod semantic_codec;
 mod spatial_reference_installer;
 pub mod spatial_reference_products;
 mod stored_tick;
+mod territory_county_map;
 pub mod tick_commit_claim;
 
 pub use archive::*;
@@ -129,4 +130,10 @@ pub use spatial_reference_products::{
     michigan_spatial_reference_products_v1, CountyH3LandAreaRow, CountyIdentityRow,
     CountyPlaceH3LandAreaRow, H3CountRow, H3LandFractionRow, PlaceIdentityRow, ReferenceProduct,
     ReferenceProductEvidenceClass, SpatialReferenceProducts, SpatialReferenceProductsError,
+};
+pub use territory_county_map::{
+    extract_declared_territory_county_map_v1, install_territory_county_map_schema_v1,
+    TerritoryCountyMapErrorV1, TerritoryCountyMapRowV1, TerritoryCountyMapSchemaDispositionV1,
+    TERRITORY_COUNTY_MAP_FIELD_V1, TERRITORY_COUNTY_MAP_SCHEMA_CONTRACT_ID,
+    TERRITORY_COUNTY_MAP_SCHEMA_V1_SQL,
 };

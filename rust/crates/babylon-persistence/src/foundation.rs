@@ -4,7 +4,10 @@ use std::collections::TryReserveError;
 
 use babylon_bsl::rule_pipeline::split_content;
 use babylon_bsl::rules_hash_of;
+use babylon_bsl::scenario::{load_scenario, load_scenario_with_prelude};
 use babylon_graph::hypergraph_store::HypergraphStore;
+use babylon_graph::stable_element::StableElementResolverV1;
+use babylon_graph::stable_state::encode_stable_graph_state_v1;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionIdV1};
 use babylon_kernel::sha256_of;
 use babylon_kernel::tick_content_hash::RefDigestV1;
@@ -192,6 +195,7 @@ impl CampaignFoundationV1 {
         {
             return Err(RustPersistenceRuntimeErrorV2::ReplaySource);
         }
+        Self::verify_bundle_scenario_reproduces_session_graph(session, &content_bundle)?;
         let replay_session_text = std::str::from_utf8(replay_session_identity.as_bytes())
             .map_err(|_| RustPersistenceRuntimeErrorV2::ReplaySource)?;
         let canonical_bytes = semantic_codec::encode_foundation(
@@ -218,6 +222,53 @@ impl CampaignFoundationV1 {
             content_bundle,
             canonical_bytes,
         })
+    }
+
+    /// Refuse a content bundle whose scenario does not reproduce the
+    /// session's captured graph.
+    ///
+    /// The content digest binds defines + rules only, so a caller could
+    /// otherwise pair a session built from scenario A with a bundle carrying
+    /// scenario B and persist B's declared county mapping over A's live
+    /// graph (a later `open` would then fail rebuilding the stored
+    /// foundation). Re-loading the bundle's scenario — with its declaration
+    /// prelude, exactly as session hydration does — into a disposable graph
+    /// and sealing it with its own authored identities reproduces the
+    /// session's stable-graph canonical bytes if and only if the bundle
+    /// describes the session's world.
+    fn verify_bundle_scenario_reproduces_session_graph(
+        session: &ReplayTickSession<HypergraphStore>,
+        content_bundle: &FoundationContentBundleV1,
+    ) -> Result<(), RustPersistenceRuntimeErrorV2> {
+        let scenario = std::str::from_utf8(content_bundle.scenario_source_bytes())
+            .map_err(|_| RustPersistenceRuntimeErrorV2::ReplaySource)?;
+        let prelude = content_bundle
+            .prelude_source_bytes()
+            .map(std::str::from_utf8)
+            .transpose()
+            .map_err(|_| RustPersistenceRuntimeErrorV2::ReplaySource)?;
+        let mut graph = HypergraphStore::new();
+        let loaded = match prelude {
+            Some(prelude) => load_scenario_with_prelude(prelude, scenario, &mut graph),
+            None => load_scenario(scenario, &mut graph),
+        }
+        .map_err(|_| RustPersistenceRuntimeErrorV2::ReplaySource)?;
+        let resolver = StableElementResolverV1::seal(
+            &graph,
+            &loaded.id,
+            &loaded.node_content_ids,
+            &loaded.hyperedge_content_ids,
+        )
+        .map_err(|_| RustPersistenceRuntimeErrorV2::ReplaySource)?;
+        let reloaded = encode_stable_graph_state_v1(&graph, &resolver)
+            .map_err(|_| RustPersistenceRuntimeErrorV2::ReplaySource)?;
+        let captured = session
+            .stable_graph_state()
+            .map_err(|_| RustPersistenceRuntimeErrorV2::ReplaySource)?;
+        if reloaded.canonical_bytes() != captured.canonical_bytes() {
+            return Err(RustPersistenceRuntimeErrorV2::FoundationScenarioMismatch);
+        }
+        Ok(())
     }
 
     #[allow(

@@ -308,6 +308,19 @@ def test_nightly_michigan_job_covers_bootstrap_smoke_and_hosted_setup_cleanup() 
     )
 
 
+def test_archive_worker_focus_covers_place_producer_live_target() -> None:
+    """The archive_worker shard runs every Archive worker live test binary."""
+    runner = (ROOT / "tools/run_rust_legacy_adopter_pg.sh").read_text(encoding="utf-8")
+
+    focus = runner.split('[ "$LIVE_FOCUS" = "archive_worker" ]; then', maxsplit=1)[1]
+    invocation = focus.split("|| status=$?", maxsplit=1)[0]
+    assert "cargo test -p babylon-persistence" in invocation
+    assert "--test archive_worker_live" in invocation
+    assert "--test place_producer_live" in invocation
+    assert "--locked" in invocation
+    assert "--ignored --test-threads=1" in invocation
+
+
 def test_disposable_pg_runner_proves_bootstrap_and_michigan_smoke() -> None:
     runner = (ROOT / "tools/run_rust_legacy_adopter_pg.sh").read_text(encoding="utf-8")
 

@@ -319,7 +319,7 @@ fn composite_merges_producer_pages_sorted_and_refuses_duplicate_subjects() {
 }
 
 #[test]
-fn composite_caps_the_merge_at_one_batch_bound() {
+fn composite_refuses_merge_beyond_one_batch_bound() {
     let receipt = PendingArchiveReceiptV1::try_new(1, [0x11; 32]).expect("receipt");
     let county_pages = (0..ArchiveDirtyBatchV1::MAX_PAGES)
         .map(|index| {
@@ -348,10 +348,14 @@ fn composite_caps_the_merge_at_one_batch_bound() {
                 .expect("overflow batch"),
         )),
     ]);
-    let merged = single
-        .produce(Uuid::nil(), &receipt)
-        .expect("capped composite merge");
-    assert_eq!(merged.pages().len(), ArchiveDirtyBatchV1::MAX_PAGES);
+    assert_eq!(
+        single.produce(Uuid::nil(), &receipt),
+        Err(SemanticArchiveErrorV1::CountyDrainOverflow {
+            dirty: ArchiveDirtyBatchV1::MAX_PAGES + 1,
+            limit: ArchiveDirtyBatchV1::MAX_PAGES,
+        }),
+        "a merged dirty set beyond one receipt bound refuses loudly instead of truncating"
+    );
 }
 
 #[test]

@@ -299,30 +299,71 @@ impl LiveCountyTarget {
     }
 }
 
+/// Grant one knowledge grant row through the durable store API.
+fn grant(
+    store: &SemanticArchiveStoreV1,
+    campaign_id: CampaignId,
+    kind: ArchiveSubjectKindV1,
+    id: &str,
+    grant_key: &str,
+    granted_tick: u64,
+) {
+    store
+        .grant_knowledge(
+            campaign_id,
+            &ArchiveKnowledgeGrantV1::try_new(
+                ArchivePageRefV1::try_new(kind, id.to_owned()).expect("page ref"),
+                grant_key.to_owned(),
+                granted_tick,
+                ArchiveCitationV1::try_new(
+                    "live-county-grant".to_owned(),
+                    format!("{}/{id}@{grant_key}", kind.as_str()),
+                )
+                .expect("live grant citation"),
+            )
+            .expect("live knowledge grant"),
+        )
+        .expect("knowledge grant persists");
+}
+
 /// Grant the subject and both committed field keys every county page needs.
 fn grant_county_knowledge(store: &SemanticArchiveStoreV1, campaign_id: CampaignId) {
     for geoid in ["26125", "26163"] {
-        let page_ref = ArchivePageRefV1::try_new(ArchiveSubjectKindV1::County, geoid.to_owned())
-            .expect("county ref");
         for grant_key in ["subject", "median-wage", "phi-hour"] {
-            store
-                .grant_knowledge(
-                    campaign_id,
-                    &ArchiveKnowledgeGrantV1::try_new(
-                        page_ref.clone(),
-                        grant_key.to_owned(),
-                        1,
-                        ArchiveCitationV1::try_new(
-                            "live-county-subject".to_owned(),
-                            format!("{grant_key}@tick-1"),
-                        )
-                        .expect("live grant citation"),
-                    )
-                    .expect("live knowledge grant"),
-                )
-                .expect("knowledge grant persists");
+            grant(
+                store,
+                campaign_id,
+                ArchiveSubjectKindV1::County,
+                geoid,
+                grant_key,
+                1,
+            );
         }
     }
+}
+
+/// Grant only the subject key for both mapped counties.
+fn grant_county_subjects(store: &SemanticArchiveStoreV1, campaign_id: CampaignId) {
+    for geoid in ["26125", "26163"] {
+        grant(
+            store,
+            campaign_id,
+            ArchiveSubjectKindV1::County,
+            geoid,
+            "subject",
+            1,
+        );
+    }
+}
+
+fn sweep_dispositions(
+    report: &babylon_persistence::ArchiveWorkerSweepReportV1,
+) -> Vec<(u64, ArchiveReceiptDispositionV1)> {
+    report
+        .dispositions()
+        .iter()
+        .map(|(tick, disposition)| (*tick, *disposition))
+        .collect()
 }
 
 fn county_page_count(config: &Config, campaign_id: CampaignId) -> i64 {
@@ -465,7 +506,16 @@ fn live_county_producer_rerun_reconciles_without_duplicate_pages() {
     let second = worker
         .sweep_once(target.campaign_id, &producer)
         .expect("rerun sweep reconciles");
-    assert!(second.dispositions().is_empty());
+    let dispositions = second
+        .dispositions()
+        .iter()
+        .map(|(tick, disposition)| (*tick, *disposition))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        dispositions,
+        vec![(2, ArchiveReceiptDispositionV1::Deferred)],
+        "the still-pending receipt re-defers clean instead of republishing"
+    );
     assert_eq!(second.verified_tick(), 1);
     assert_eq!(county_page_count(&target.config, target.campaign_id), 2);
     assert_eq!(
@@ -497,6 +547,114 @@ fn live_county_producer_rerun_reconciles_without_duplicate_pages() {
         rows,
         vec![("26125".to_owned(), 1), ("26163".to_owned(), 1)],
         "every county keeps exactly one current page"
+    );
+    target.finish();
+}
+
+#[test]
+#[ignore = "requires the task-owned disposable PostgreSQL runtime and committed ticks"]
+fn live_county_producer_grant_refresh_republicates_revealed_page() {
+    let target = LiveCountyTarget::create(
+        "countyproducerrefresh",
+        0x2200_0000_0000_0000_0000_0000_0000_00c3,
+        3,
+    );
+
+    let producer = CountyDossierProducerV1::try_new(&target.config).expect("pinned products load");
+    let store = SemanticArchiveStoreV1::new(&target.config);
+
+    // Publish redacted: only the county subject grants exist at receipt one.
+    grant_county_subjects(&store, target.campaign_id);
+    let mut worker = ArchiveWorkerV1::new(&target.config);
+    let first = worker
+        .sweep_once(target.campaign_id, &producer)
+        .expect("subject-only sweep publishes the redacted pages");
+    assert_eq!(
+        sweep_dispositions(&first),
+        vec![
+            (1, ArchiveReceiptDispositionV1::Applied),
+            (2, ArchiveReceiptDispositionV1::Deferred),
+            (3, ArchiveReceiptDispositionV1::Deferred),
+        ]
+    );
+    let wayne_redacted = county_page_markdown(&target.config, target.campaign_id, "26163");
+    assert!(wayne_redacted.contains("# Wayne County"));
+    assert!(
+        !wayne_redacted.contains("## Signals"),
+        "without the field grant the page publishes no signal"
+    );
+    assert!(
+        wayne_redacted.contains("[[place/2622000]]"),
+        "without the place grant the link stays a redlink"
+    );
+
+    // Later grants arrive, visible from tick two: the wayne page re-dirties
+    // and the next pending receipt republishes it revealed; oakland stays
+    // published redacted and settles.
+    grant(
+        &store,
+        target.campaign_id,
+        ArchiveSubjectKindV1::County,
+        "26163",
+        "median-wage",
+        2,
+    );
+    grant(
+        &store,
+        target.campaign_id,
+        ArchiveSubjectKindV1::Place,
+        "2622000",
+        "subject",
+        2,
+    );
+    let second = worker
+        .sweep_once(target.campaign_id, &producer)
+        .expect("grant-refresh sweep republishes");
+    assert_eq!(
+        sweep_dispositions(&second),
+        vec![
+            (2, ArchiveReceiptDispositionV1::Applied),
+            (3, ArchiveReceiptDispositionV1::Deferred),
+        ],
+        "receipt two republishes the revealed page; receipt three defers clean"
+    );
+    let wayne = county_page_markdown(&target.config, target.campaign_id, "26163");
+    assert!(
+        wayne.contains("- **Median wage:** 21.000000 — committed-tick-v1; campaign/2/wayne"),
+        "the signal grant reveals the committed median wage with its provenance"
+    );
+    assert!(
+        wayne.contains("[[place/2622000|Detroit city]]"),
+        "the place grant reveals the link label"
+    );
+    assert!(
+        !wayne.contains("Imperial rent"),
+        "phi-hour stays hidden without its own field grant"
+    );
+    let oakland = county_page_markdown(&target.config, target.campaign_id, "26125");
+    assert!(
+        !oakland.contains("## Signals"),
+        "oakland stays published redacted and untouched"
+    );
+    assert_eq!(county_page_count(&target.config, target.campaign_id), 2);
+    assert_eq!(
+        receipt_consumption_count(&target.config, target.campaign_id),
+        2
+    );
+
+    // The revealed page settles: reruns reconcile without further writes.
+    let settled = worker
+        .sweep_once(target.campaign_id, &producer)
+        .expect("settled sweep reconciles");
+    assert_eq!(
+        sweep_dispositions(&settled),
+        vec![(3, ArchiveReceiptDispositionV1::Deferred)],
+        "the revealed page settles; the last receipt re-defers clean"
+    );
+    assert_eq!(county_page_count(&target.config, target.campaign_id), 2);
+    assert_eq!(
+        receipt_consumption_count(&target.config, target.campaign_id),
+        2
     );
     target.finish();
 }

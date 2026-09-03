@@ -2,18 +2,21 @@
 //!
 //! These tests pin the producer's semantic decisions without any database:
 //! mapping-driven enumeration order, `%.6f` statblock formatting, the D2
-//! absence-maximal signal discipline, the receipt-stamp-free dirty diff, the
-//! pinned read-only SQL, batch/receipt binding, sorted links, and the redlink
-//! form of unknown place targets.
+//! absence-maximal signal discipline, the grant-visible dirty projection, the
+//! receipt-stamp-free semantic hash, loud drain-bound refusal, the pinned
+//! read-only SQL, batch/receipt binding, sorted links, and the redlink form of
+//! unknown place targets.
 
 use std::collections::BTreeMap;
 
 use babylon_persistence::{
-    county_page_input_v1, county_page_semantic_sha256_v1, format_county_statblock_value_v1,
-    parse_stored_county_page_v1, select_dirty_county_pages_v1, ArchiveDirtyBatchV1,
-    ArchivePageInputV1, ArchivePageRefV1, ArchiveSubjectKindV1, CountyPagePlanV1,
-    CountyPlaceLinkV1, CountySignalV1, SemanticArchiveErrorV1, StoredCountyPageV1,
-    ARCHIVE_COUNTY_FIELD_READ_SQL_V1, ARCHIVE_COUNTY_MAP_READ_SQL_V1,
+    county_page_input_v1, county_page_semantic_sha256_v1, desired_county_projection_v1,
+    format_county_statblock_value_v1, parse_stored_county_page_v1, select_dirty_county_pages_v1,
+    ArchiveCitationV1, ArchiveDirtyBatchV1, ArchiveKnowledgeGrantV1, ArchiveKnowledgeV1,
+    ArchivePageInputV1, ArchivePageRefV1, ArchiveSubjectKindV1, CountyGrantIndexV1,
+    CountyPagePlanV1, CountyPageProjectionV1, CountyPlaceLinkV1, CountySignalProjectionV1,
+    CountySignalV1, FogSafeArchiveRendererV1, SemanticArchiveErrorV1,
+    ARCHIVE_COUNTY_FIELD_READ_SQL_V1, ARCHIVE_COUNTY_GRANTS_SQL_V1, ARCHIVE_COUNTY_MAP_READ_SQL_V1,
     ARCHIVE_COUNTY_PAGE_READ_SQL_V1, COMMITTED_TICK_SOURCE_ID_V1, COUNTY_DECISION_QUESTION_V1,
     COUNTY_MEDIAN_WAGE_GRANT_KEY_V1, COUNTY_MEDIAN_WAGE_LABEL_V1, COUNTY_PHI_HOUR_GRANT_KEY_V1,
     COUNTY_PHI_HOUR_LABEL_V1,
@@ -70,25 +73,113 @@ fn wayne_page_input_at(
     county_page_input_v1(plan, resolve_tick, tick_content_hash).expect("county page input")
 }
 
-fn wayne_markdown_at(verified_tick: u64, tick_content_hash: [u8; 32]) -> String {
-    let hex = tick_content_hash
-        .iter()
-        .fold(String::new(), |mut hex, byte| {
-            use std::fmt::Write as _;
-            write!(hex, "{byte:02x}").expect("writing to String cannot fail");
-            hex
-        });
-    format!(
-        "---\nschema: babylon.archive-page.v1\nsubject: county/26163\n\
-         verified_tick: {verified_tick}\ntick_content_hash: {hex}\n---\n\
-         # Wayne County\n\nWhich neighboring place should organizers investigate next?\n\
-         ## Signals\n\
-         - **Median wage:** 21.000000 — committed-tick-v1; campaign/1/wayne\n\
-         - **Imperial rent Φ:** 1.000000 — committed-tick-v1; campaign/1/wayne\n\
-         ## Related\n\
-         - [[place/2622000|Detroit city]]\n\
-         - [[place/2674900]]\n"
+fn knowledge_grant(
+    kind: ArchiveSubjectKindV1,
+    id: &str,
+    grant_key: &str,
+) -> ArchiveKnowledgeGrantV1 {
+    ArchiveKnowledgeGrantV1::try_new(
+        ArchivePageRefV1::try_new(kind, id.to_owned()).expect("page ref"),
+        grant_key.to_owned(),
+        1,
+        ArchiveCitationV1::try_new(
+            "archive-grant".to_owned(),
+            format!("{}/{id}@{grant_key}", kind.as_str()),
+        )
+        .expect("grant citation"),
     )
+    .expect("knowledge grant")
+}
+
+/// Renderer-side knowledge mirroring one campaign grant snapshot.
+fn knowledge_for(
+    plan: &CountyPagePlanV1,
+    reveal_fields: bool,
+    reveal_places: bool,
+) -> ArchiveKnowledgeV1 {
+    let mut grants = vec![knowledge_grant(
+        ArchiveSubjectKindV1::County,
+        plan.county_geoid(),
+        "subject",
+    )];
+    if reveal_fields {
+        for signal in plan.signals() {
+            grants.push(knowledge_grant(
+                ArchiveSubjectKindV1::County,
+                plan.county_geoid(),
+                signal.grant_key(),
+            ));
+        }
+    }
+    if reveal_places {
+        for link in plan.place_links() {
+            grants.push(knowledge_grant(
+                ArchiveSubjectKindV1::Place,
+                link.place_geoid(),
+                "subject",
+            ));
+        }
+    }
+    ArchiveKnowledgeV1::try_new(grants).expect("knowledge grants")
+}
+
+/// Producer-side grant index mirroring one campaign grant snapshot.
+fn grant_index_for(
+    plan: &CountyPagePlanV1,
+    reveal_fields: bool,
+    reveal_places: bool,
+) -> CountyGrantIndexV1 {
+    let mut rows = vec![(
+        ArchiveSubjectKindV1::County,
+        plan.county_geoid().to_owned(),
+        "subject".to_owned(),
+    )];
+    if reveal_fields {
+        for signal in plan.signals() {
+            rows.push((
+                ArchiveSubjectKindV1::County,
+                plan.county_geoid().to_owned(),
+                signal.grant_key().to_owned(),
+            ));
+        }
+    }
+    if reveal_places {
+        for link in plan.place_links() {
+            rows.push((
+                ArchiveSubjectKindV1::Place,
+                link.place_geoid().to_owned(),
+                "subject".to_owned(),
+            ));
+        }
+    }
+    CountyGrantIndexV1::try_from_rows(rows).expect("grant index")
+}
+
+fn render_markdown(
+    plan: &CountyPagePlanV1,
+    resolve_tick: u64,
+    knowledge: &ArchiveKnowledgeV1,
+) -> String {
+    let renderer = FogSafeArchiveRendererV1::new().expect("pinned template compiles");
+    let input = county_page_input_v1(plan, resolve_tick, [0x99; 32]).expect("page input");
+    renderer
+        .render(&input, knowledge)
+        .expect("page renders")
+        .markdown()
+        .to_owned()
+}
+
+fn stored_map(
+    geoid: &str,
+    title: &str,
+    markdown: &str,
+) -> BTreeMap<String, CountyPageProjectionV1> {
+    let mut stored = BTreeMap::new();
+    stored.insert(
+        geoid.to_owned(),
+        parse_stored_county_page_v1(geoid, title, markdown).expect("stored projection parses"),
+    );
+    stored
 }
 
 #[test]
@@ -124,6 +215,282 @@ fn committed_real_values_pin_python_statblock_formatting() {
 }
 
 #[test]
+fn grant_visible_projection_hides_ungranted_signals_and_link_names() {
+    let plan = wayne_plan_full();
+    let empty = CountyGrantIndexV1::try_from_rows(Vec::new()).expect("empty grant index");
+    let hidden = desired_county_projection_v1(&plan, &empty).expect("hidden projection");
+    assert!(
+        hidden.signals().is_empty(),
+        "no field grant means no grant-visible signal"
+    );
+    assert_eq!(
+        hidden.places(),
+        &[("2622000".to_owned(), None), ("2674900".to_owned(), None)],
+        "no place subject grant means every link stays a redlink"
+    );
+
+    let revealed = desired_county_projection_v1(&plan, &grant_index_for(&plan, true, true))
+        .expect("revealed projection");
+    assert_eq!(
+        revealed.signals(),
+        &[
+            CountySignalProjectionV1::try_new(
+                COUNTY_MEDIAN_WAGE_LABEL_V1.to_owned(),
+                "21.000000".to_owned(),
+                COMMITTED_TICK_SOURCE_ID_V1.to_owned(),
+                "wayne".to_owned(),
+            )
+            .expect("median projection"),
+            CountySignalProjectionV1::try_new(
+                COUNTY_PHI_HOUR_LABEL_V1.to_owned(),
+                "1.000000".to_owned(),
+                COMMITTED_TICK_SOURCE_ID_V1.to_owned(),
+                "wayne".to_owned(),
+            )
+            .expect("phi projection"),
+        ]
+    );
+    assert_eq!(
+        revealed.places(),
+        &[
+            ("2622000".to_owned(), Some("Detroit city".to_owned())),
+            ("2674900".to_owned(), Some("Riverview city".to_owned())),
+        ],
+        "granted place subjects reveal their governed labels"
+    );
+}
+
+#[test]
+fn grant_arrival_redirties_the_redacted_page_and_the_reveal_settles() {
+    let plan = wayne_plan_full();
+    let subject_only = grant_index_for(&plan, false, false);
+    let stored_markdown = render_markdown(&plan, 1, &knowledge_for(&plan, false, false));
+    assert!(
+        !stored_markdown.contains("## Signals"),
+        "the subject-only render omits the Signals section"
+    );
+    assert!(
+        stored_markdown.contains("[[place/2622000]]"),
+        "the subject-only render keeps redlinks"
+    );
+    let stored = stored_map("26163", "Wayne County", &stored_markdown);
+    let plans = [plan.clone()];
+    let clean = select_dirty_county_pages_v1(&plans, &stored, &subject_only, 256)
+        .expect("subject-only selection");
+    assert!(
+        clean.is_empty(),
+        "the redacted stored page matches the subject-only projection exactly"
+    );
+
+    let revealed = grant_index_for(&plan, true, true);
+    let dirty =
+        select_dirty_county_pages_v1(&plans, &stored, &revealed, 256).expect("revealed selection");
+    assert_eq!(
+        dirty.len(),
+        1,
+        "grant arrival re-dirties the page so the next receipt republishes it revealed"
+    );
+
+    let revealed_markdown = render_markdown(&plan, 2, &knowledge_for(&plan, true, true));
+    let settled = stored_map("26163", "Wayne County", &revealed_markdown);
+    let clean =
+        select_dirty_county_pages_v1(&plans, &settled, &revealed, 256).expect("settled selection");
+    assert!(
+        clean.is_empty(),
+        "the revealed page settles: receipt stamps alone never re-publish it"
+    );
+}
+
+#[test]
+fn semantic_hash_covers_every_receipt_independent_rendered_input() {
+    let plan = wayne_plan_full();
+    let grants = grant_index_for(&plan, true, true);
+    let base = desired_county_projection_v1(&plan, &grants).expect("base projection");
+    let base_hash = county_page_semantic_sha256_v1("26163", &base);
+
+    let same = desired_county_projection_v1(&plan, &grants).expect("same projection");
+    assert_eq!(
+        base_hash,
+        county_page_semantic_sha256_v1("26163", &same),
+        "an unchanged projection hashes identically"
+    );
+
+    let drifted_label = CountyPageProjectionV1::try_new(
+        base.title().to_owned(),
+        base.question().to_owned(),
+        vec![CountySignalProjectionV1::try_new(
+            "Median wages".to_owned(),
+            "21.000000".to_owned(),
+            COMMITTED_TICK_SOURCE_ID_V1.to_owned(),
+            "wayne".to_owned(),
+        )
+        .expect("drifted signal")],
+        base.places().to_vec(),
+    )
+    .expect("drifted projection");
+    assert_ne!(
+        base_hash,
+        county_page_semantic_sha256_v1("26163", &drifted_label),
+        "a pinned signal label change republishes"
+    );
+
+    let drifted_citation = CountyPageProjectionV1::try_new(
+        base.title().to_owned(),
+        base.question().to_owned(),
+        vec![CountySignalProjectionV1::try_new(
+            COUNTY_MEDIAN_WAGE_LABEL_V1.to_owned(),
+            "21.000000".to_owned(),
+            "committed-tick-v2".to_owned(),
+            "wayne".to_owned(),
+        )
+        .expect("drifted citation")],
+        base.places().to_vec(),
+    )
+    .expect("drifted projection");
+    assert_ne!(
+        base_hash,
+        county_page_semantic_sha256_v1("26163", &drifted_citation),
+        "a citation source identity change republishes"
+    );
+
+    let drifted_provenance = CountyPageProjectionV1::try_new(
+        base.title().to_owned(),
+        base.question().to_owned(),
+        vec![CountySignalProjectionV1::try_new(
+            COUNTY_MEDIAN_WAGE_LABEL_V1.to_owned(),
+            "21.000000".to_owned(),
+            COMMITTED_TICK_SOURCE_ID_V1.to_owned(),
+            "wayne-old".to_owned(),
+        )
+        .expect("drifted provenance")],
+        base.places().to_vec(),
+    )
+    .expect("drifted projection");
+    assert_ne!(
+        base_hash,
+        county_page_semantic_sha256_v1("26163", &drifted_provenance),
+        "a provenance name change republishes"
+    );
+
+    let redlinked = CountyPageProjectionV1::try_new(
+        base.title().to_owned(),
+        base.question().to_owned(),
+        base.signals().to_vec(),
+        vec![("2622000".to_owned(), None), ("2674900".to_owned(), None)],
+    )
+    .expect("redlinked projection");
+    assert_ne!(
+        base_hash,
+        county_page_semantic_sha256_v1("26163", &redlinked),
+        "link-label visibility is part of the projection"
+    );
+
+    let requestioned = CountyPageProjectionV1::try_new(
+        base.title().to_owned(),
+        "Which place needs organizers next?".to_owned(),
+        base.signals().to_vec(),
+        base.places().to_vec(),
+    )
+    .expect("requestioned projection");
+    assert_ne!(
+        base_hash,
+        county_page_semantic_sha256_v1("26163", &requestioned),
+        "a decision-question change republishes"
+    );
+}
+
+#[test]
+fn stored_page_parser_round_trips_exact_renderer_output() {
+    let plan = wayne_plan_full();
+    for (reveal_fields, reveal_places) in [(false, false), (true, false), (true, true)] {
+        let markdown = render_markdown(
+            &plan,
+            9,
+            &knowledge_for(&plan, reveal_fields, reveal_places),
+        );
+        let parsed = parse_stored_county_page_v1("26163", "Wayne County", &markdown)
+            .expect("exact renderer output parses");
+        let expected = desired_county_projection_v1(
+            &plan,
+            &grant_index_for(&plan, reveal_fields, reveal_places),
+        )
+        .expect("desired projection");
+        assert_eq!(
+            parsed, expected,
+            "renderer output round-trips at any grant level"
+        );
+    }
+}
+
+#[test]
+fn stored_page_parser_refuses_template_drift() {
+    assert!(
+        parse_stored_county_page_v1("26163", "Wayne County", "not a page").is_none(),
+        "malformed stored pages are treated as dirty"
+    );
+    let revealed = render_markdown(
+        &wayne_plan_full(),
+        9,
+        &knowledge_for(&wayne_plan_full(), true, true),
+    );
+    let wrong_subject = revealed.replace("subject: county/26163", "subject: county/26125");
+    assert!(parse_stored_county_page_v1("26163", "Wayne County", &wrong_subject).is_none());
+    let wrong_title = revealed.replace("# Wayne County", "# Wayne");
+    assert!(parse_stored_county_page_v1("26163", "Wayne County", &wrong_title).is_none());
+    let drifted_citation_tick = revealed.replace("campaign/9/wayne", "campaign/8/wayne");
+    assert!(
+        parse_stored_county_page_v1("26163", "Wayne County", &drifted_citation_tick).is_none(),
+        "a citation locator that disagrees with the receipt stamp is drift"
+    );
+    let deep_locator = revealed.replace("campaign/9/wayne", "campaign/9/wayne/extra");
+    assert!(
+        parse_stored_county_page_v1("26163", "Wayne County", &deep_locator).is_none(),
+        "a locator outside the pinned campaign/tick/name shape is drift"
+    );
+}
+
+#[test]
+fn grant_index_refuses_malformed_rows() {
+    assert!(
+        CountyGrantIndexV1::try_from_rows([(
+            ArchiveSubjectKindV1::County,
+            "26163".to_owned(),
+            String::new(),
+        )])
+        .is_err(),
+        "an empty grant key refuses"
+    );
+    assert!(
+        CountyGrantIndexV1::try_from_rows([(
+            ArchiveSubjectKindV1::County,
+            "x".to_owned(),
+            "subject".to_owned(),
+        )])
+        .is_err(),
+        "a malformed subject identity refuses"
+    );
+}
+
+#[test]
+fn signal_projection_refuses_round_trip_unsafe_text() {
+    for (label, value) in [
+        ("Median wage:** ", "21.000000"),
+        ("Median wage", "21.000000 — x"),
+    ] {
+        assert!(
+            CountySignalProjectionV1::try_new(
+                label.to_owned(),
+                value.to_owned(),
+                COMMITTED_TICK_SOURCE_ID_V1.to_owned(),
+                "wayne".to_owned(),
+            )
+            .is_err(),
+            "round-trip-unsafe text refuses: {label:?} {value:?}"
+        );
+    }
+}
+
+#[test]
 fn absent_committed_fields_emit_no_signal() {
     let plan = wayne_plan(Vec::new(), vec![detroit_link()]);
     let page = wayne_page_input_at(&plan, 1, [0x11; 32]);
@@ -134,107 +501,43 @@ fn absent_committed_fields_emit_no_signal() {
 
     let stored = BTreeMap::new();
     let plans = [plan.clone()];
-    let dirty = select_dirty_county_pages_v1(&plans, &stored, 256);
+    let dirty = select_dirty_county_pages_v1(&plans, &stored, &CountyGrantIndexV1::default(), 256)
+        .expect("absent-field selection");
     assert_eq!(dirty.len(), 1, "a brand-new county page is still dirty");
 }
 
 #[test]
-fn dirty_diff_excludes_receipt_stamps_but_catches_semantic_drift() {
-    let plan = wayne_plan_full();
-    let stored_page =
-        parse_stored_county_page_v1("26163", "Wayne County", &wayne_markdown_at(99, [0xee; 32]))
-            .expect("stored projection parses");
-    let mut stored = BTreeMap::new();
-    stored.insert("26163".to_owned(), stored_page);
-
-    let plans = [plan.clone()];
-    let dirty = select_dirty_county_pages_v1(&plans, &stored, 256);
-    assert!(
-        dirty.is_empty(),
-        "only the receipt stamps changed, so the page is not dirty"
-    );
-
-    let drifted = wayne_plan(
-        vec![signal(
-            COUNTY_MEDIAN_WAGE_GRANT_KEY_V1,
-            COUNTY_MEDIAN_WAGE_LABEL_V1,
-            "22.000000",
-        )],
-        vec![detroit_link()],
-    );
-    let drifted = [drifted];
-    let dirty = select_dirty_county_pages_v1(&drifted, &stored, 256);
-    assert_eq!(dirty.len(), 1, "a changed signal value dirties the page");
-
-    let requestioned = CountyPagePlanV1::try_new(
-        "26163".to_owned(),
-        "wayne".to_owned(),
-        "Wayne County".to_owned(),
-        Vec::new(),
-        Vec::new(),
-    )
-    .expect("requestioned plan");
-    let stored_page =
-        parse_stored_county_page_v1("26163", "Wayne County", &wayne_markdown_at(1, [0x11; 32]))
-            .expect("stored projection parses");
-    let mut stored = BTreeMap::new();
-    stored.insert("26163".to_owned(), stored_page);
-    let requestioned = [requestioned];
-    let dirty = select_dirty_county_pages_v1(&requestioned, &stored, 256);
+fn dirty_selection_refuses_overflow_beyond_the_batch_bound() {
+    let plans = ["26093", "26125", "26163"]
+        .into_iter()
+        .map(|geoid| {
+            CountyPagePlanV1::try_new(
+                geoid.to_owned(),
+                "territory".to_owned(),
+                "County".to_owned(),
+                Vec::new(),
+                Vec::new(),
+            )
+            .expect("plan")
+        })
+        .collect::<Vec<_>>();
+    let stored = BTreeMap::new();
+    let grants = CountyGrantIndexV1::default();
+    let dirty =
+        select_dirty_county_pages_v1(&plans, &stored, &grants, 3).expect("within-bound selection");
     assert_eq!(
-        dirty.len(),
-        1,
-        "a changed decision question dirties the page"
+        dirty
+            .iter()
+            .map(|plan| plan.county_geoid())
+            .collect::<Vec<_>>(),
+        vec!["26093", "26125", "26163"],
+        "selection follows GEOID order"
     );
-}
-
-#[test]
-fn stored_projection_parser_refuses_template_drift() {
-    assert!(
-        parse_stored_county_page_v1("26163", "Wayne County", "not a page").is_none(),
-        "malformed stored pages are treated as dirty"
+    assert_eq!(
+        select_dirty_county_pages_v1(&plans, &stored, &grants, 2),
+        Err(SemanticArchiveErrorV1::CountyDrainOverflow { dirty: 3, limit: 2 }),
+        "the dirty set beyond one receipt bound refuses loudly instead of truncating"
     );
-    let wrong_subject =
-        wayne_markdown_at(1, [0x11; 32]).replace("subject: county/26163", "subject: county/26125");
-    assert!(parse_stored_county_page_v1("26163", "Wayne County", &wrong_subject).is_none());
-    let wrong_title = wayne_markdown_at(1, [0x11; 32]).replace("# Wayne County", "# Wayne");
-    assert!(parse_stored_county_page_v1("26163", "Wayne County", &wrong_title).is_none());
-}
-
-#[test]
-fn semantic_hash_covers_links_independent_of_known_labels() {
-    let labeled = county_page_semantic_sha256_v1(
-        "26163",
-        "Wayne County",
-        COUNTY_DECISION_QUESTION_V1,
-        &[(
-            COUNTY_MEDIAN_WAGE_LABEL_V1.to_owned(),
-            "21.000000".to_owned(),
-        )],
-        &["2622000".to_owned()],
-    );
-    let redlink = county_page_semantic_sha256_v1(
-        "26163",
-        "Wayne County",
-        COUNTY_DECISION_QUESTION_V1,
-        &[(
-            COUNTY_MEDIAN_WAGE_LABEL_V1.to_owned(),
-            "21.000000".to_owned(),
-        )],
-        &["2622000".to_owned()],
-    );
-    assert_eq!(labeled, redlink);
-    let other = county_page_semantic_sha256_v1(
-        "26163",
-        "Wayne County",
-        COUNTY_DECISION_QUESTION_V1,
-        &[(
-            COUNTY_MEDIAN_WAGE_LABEL_V1.to_owned(),
-            "21.000000".to_owned(),
-        )],
-        &["2622000".to_owned(), "2674900".to_owned()],
-    );
-    assert_ne!(labeled, other);
 }
 
 #[test]
@@ -348,31 +651,6 @@ fn page_input_pins_committed_tick_provenance_citations() {
 }
 
 #[test]
-fn dirty_selection_drains_at_most_the_batch_bound() {
-    let plans = ["26093", "26125", "26163"]
-        .into_iter()
-        .map(|geoid| {
-            CountyPagePlanV1::try_new(
-                geoid.to_owned(),
-                "territory".to_owned(),
-                "County".to_owned(),
-                Vec::new(),
-                Vec::new(),
-            )
-            .expect("plan")
-        })
-        .collect::<Vec<_>>();
-    let stored = BTreeMap::new();
-    let dirty = select_dirty_county_pages_v1(&plans, &stored, 2);
-    assert_eq!(dirty.len(), 2, "one receipt drains at most 256 pages");
-    let geoids = dirty
-        .iter()
-        .map(|plan| plan.county_geoid())
-        .collect::<Vec<_>>();
-    assert_eq!(geoids, vec!["26093", "26125"], "drain follows GEOID order");
-}
-
-#[test]
 fn batch_refuses_pages_bound_to_another_receipt() {
     let plan = wayne_plan_full();
     let first = wayne_page_input_at(&plan, 1, [0x11; 32]);
@@ -394,41 +672,24 @@ fn pinned_read_sql_stays_read_only_and_scope_exact() {
     assert!(ARCHIVE_COUNTY_FIELD_READ_SQL_V1.contains("babylon_state.territory_state_v1"));
     assert!(ARCHIVE_COUNTY_FIELD_READ_SQL_V1.contains("babylon_state.territory_state_field_v1"));
     assert!(ARCHIVE_COUNTY_FIELD_READ_SQL_V1.contains("resolve_tick = $2"));
-    assert!(ARCHIVE_COUNTY_FIELD_READ_SQL_V1.contains("territory/median-wage"));
-    assert!(ARCHIVE_COUNTY_FIELD_READ_SQL_V1.contains("territory/phi-hour"));
+    assert!(ARCHIVE_COUNTY_FIELD_READ_SQL_V1.contains("'median-wage'"));
+    assert!(ARCHIVE_COUNTY_FIELD_READ_SQL_V1.contains("'phi-hour'"));
 
     assert!(ARCHIVE_COUNTY_PAGE_READ_SQL_V1.contains("babylon_meta.archive_page_v1"));
     assert!(ARCHIVE_COUNTY_PAGE_READ_SQL_V1.contains("subject_kind = 'county'"));
+
+    assert!(ARCHIVE_COUNTY_GRANTS_SQL_V1.contains("babylon_meta.archive_knowledge_grant_v1"));
+    assert!(ARCHIVE_COUNTY_GRANTS_SQL_V1.contains("granted_tick <= $2"));
+    assert!(ARCHIVE_COUNTY_GRANTS_SQL_V1.contains("ORDER BY"));
     for sql in [
         ARCHIVE_COUNTY_MAP_READ_SQL_V1,
         ARCHIVE_COUNTY_FIELD_READ_SQL_V1,
         ARCHIVE_COUNTY_PAGE_READ_SQL_V1,
+        ARCHIVE_COUNTY_GRANTS_SQL_V1,
     ] {
         assert!(!sql.contains("archive_dirty_receipt_v1"));
         assert!(!sql.contains("tick_event"));
         assert!(!sql.contains("INSERT"));
         assert!(!sql.contains("UPDATE"));
     }
-}
-
-#[test]
-fn stored_projection_validates_its_components() {
-    assert_eq!(
-        StoredCountyPageV1::try_new(
-            "Wayne County".to_owned(),
-            COUNTY_DECISION_QUESTION_V1.to_owned(),
-            vec![("Median wage".to_owned(), "21.000000".to_owned())],
-            vec!["2622000".to_owned()],
-        )
-        .expect("stored page")
-        .place_geoids(),
-        &["2622000".to_owned()]
-    );
-    assert!(StoredCountyPageV1::try_new(
-        "Wayne County".to_owned(),
-        COUNTY_DECISION_QUESTION_V1.to_owned(),
-        Vec::new(),
-        vec!["x".to_owned()],
-    )
-    .is_err());
 }

@@ -168,10 +168,11 @@ impl ArchiveDossierProducerV1 for NullArchiveDossierProducerV1 {
 ///
 /// Every producer sees the same pending receipt and returns its own bounded
 /// batch; the composite merges the pages into one deterministic batch sorted
-/// by page reference, refuses duplicate subjects across producers, and caps
-/// the merge at [`ArchiveDirtyBatchV1::MAX_PAGES`]. The per-receipt bound
-/// makes the merge a bootstrap drain: pages beyond the cap wait for a later
-/// receipt instead of blocking the sweep.
+/// by page reference and refuses duplicate subjects across producers. The
+/// merge never truncates: when the merged dirty set exceeds
+/// [`ArchiveDirtyBatchV1::MAX_PAGES`] it returns
+/// [`SemanticArchiveErrorV1::CountyDrainOverflow`], the sweep stops, the
+/// receipt stays pending, and nothing is consumed.
 ///
 /// Today the composite registers only the county dossier producer; the place
 /// dossier producer joins this composition when its PER-22 slice lands.
@@ -211,10 +212,13 @@ impl ArchiveDossierProducerV1 for CompositeArchiveDossierProducerV1 {
                 }
             }
         }
-        let pages = merged
-            .into_values()
-            .take(ArchiveDirtyBatchV1::MAX_PAGES)
-            .collect();
+        let pages: Vec<ArchivePageInputV1> = merged.into_values().collect();
+        if pages.len() > ArchiveDirtyBatchV1::MAX_PAGES {
+            return Err(SemanticArchiveErrorV1::CountyDrainOverflow {
+                dirty: pages.len(),
+                limit: ArchiveDirtyBatchV1::MAX_PAGES,
+            });
+        }
         ArchiveDirtyBatchV1::try_new(receipt.resolve_tick, receipt.tick_content_hash, pages)
     }
 }

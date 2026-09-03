@@ -139,6 +139,16 @@ citations, and searches only granted visible material. Later Gate 3 work adds
 broader dirty-subject producers, dossier coverage, and the playable retrieval
 loop. This slice alone does not pass a game milestone.
 
+PER-23 consumes one stable known-only retrieval boundary and must not re-read
+Archive, grant, or ledger tables to build its dossier view.
+``SemanticArchiveStoreV1::search_known`` is the only retrieval path, with no
+raw-ledger fallback. One hit is self-contained. It carries the rendered page
+and title, the honest ``verified_tick``, and the subject kind and identity.
+It also carries the visible-signal content rendered into the page and the
+page's provenance citations with exact source and locator. A read checks
+stored page bytes against their content digest, and one result set stays
+within the search bound.
+
 Operational Consequences
 ------------------------
 

@@ -14,6 +14,7 @@ import yaml
 FRONT_MATTER_CONTRACT_ID = "babylon.archive-page.v1"
 TEMPLATE_PATH = "rust/crates/babylon-persistence/src/archive_page_v1.md.j2"
 SCHEMA_PATH = "rust/crates/babylon-persistence/migrations/semantic_archive_v1.sql"
+ATOM_SCHEMA_PATH = "rust/crates/babylon-persistence/migrations/archive_atom_v1.sql"
 WORKER_DOMAIN_ASCII_NUL = "babylon.semantic-archive-worker.v1"
 DIRTY_BATCH_DOMAIN_ASCII_NUL = "babylon.semantic-archive-dirty-batch.v1"
 TEMPLATE_SHA256 = "f5561534e53924ac4f7970d9abfb19d032cf491e6d04dc2463d3b3bf25c4b539"
@@ -47,6 +48,7 @@ COMPILED_CONSTANTS = {
     "template_path": TEMPLATE_PATH,
     "template_sha256": TEMPLATE_SHA256,
     "worker_domain_ascii_nul": WORKER_DOMAIN_ASCII_NUL,
+    "atom_schema_path": ATOM_SCHEMA_PATH,
     "dirty_batch_domain_ascii_nul": DIRTY_BATCH_DOMAIN_ASCII_NUL,
     "knowledge_domain_ascii_nul": "babylon.semantic-archive-knowledge.v1",
     "county_kind_tag_u8": 1,
@@ -117,6 +119,7 @@ COMPILED_LAYOUTS = {
         "fields": [
             "worker_domain_ascii_nul",
             "exact_schema_sql_bytes",
+            "exact_atom_schema_sql_bytes",
             "template_sha256_exact_32_bytes",
         ],
         "digest": "SHA-256 over the concatenation",
@@ -655,6 +658,9 @@ def _verify_identity(row: dict[str, Any], root: Path) -> str | None:
         return f"{row['id']}: pinned source path drift"
     template_bytes = _bounded_file_bytes(root / TEMPLATE_PATH, MAX_PAGE_BYTES, "file_read")
     schema_bytes = _bounded_file_bytes(root / SCHEMA_PATH, MAX_CONTRACT_BYTES, "file_read")
+    atom_schema_bytes = _bounded_file_bytes(
+        root / ATOM_SCHEMA_PATH, MAX_CONTRACT_BYTES, "file_read"
+    )
     template_sha256 = hashlib.sha256(template_bytes).hexdigest()
     if template_sha256 != TEMPLATE_SHA256:
         return f"{row['id']}: template SHA-256 drift from contract constant"
@@ -663,6 +669,7 @@ def _verify_identity(row: dict[str, Any], root: Path) -> str | None:
     worker = hashlib.sha256()
     worker.update(WORKER_DOMAIN_ASCII_NUL.encode("ascii") + b"\x00")
     worker.update(schema_bytes)
+    worker.update(atom_schema_bytes)
     worker.update(bytes.fromhex(template_sha256))
     if worker.hexdigest() != data.get("worker_contract_sha256_hex"):
         return f"{row['id']}: worker contract SHA-256 mismatch"

@@ -125,10 +125,14 @@ ORDER BY subject_id";
 ///
 /// The query returns the exact campaign grant rows visible at the receipt
 /// tick (`granted_tick <= $2`), mirroring the renderer's knowledge snapshot
-/// semantics, and never joins material or raw event ledgers.
+/// semantics, and never joins material or raw event ledgers. Page-subject
+/// knowledge only: seeded concept grants widen the grant table's subject
+/// domain (ADR249 R3/R12) but never enter the page grant snapshot, which
+/// decodes through the page-domain subject kind.
 pub const ARCHIVE_COUNTY_GRANTS_SQL_V1: &str = "SELECT subject_kind, subject_id, grant_key \
 FROM babylon_meta.archive_knowledge_grant_v1 \
 WHERE campaign_id = $1::uuid AND granted_tick <= $2 \
+  AND subject_kind IN ('county', 'place') \
 ORDER BY subject_kind, subject_id, grant_key";
 
 /// Contract-pinned SHA-256 of the `dim_county` identity artifact that backs

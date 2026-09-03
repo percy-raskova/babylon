@@ -744,6 +744,12 @@ fn pinned_read_sql_stays_read_only_and_scope_exact() {
 
     assert!(ARCHIVE_COUNTY_GRANTS_SQL_V1.contains("babylon_meta.archive_knowledge_grant_v1"));
     assert!(ARCHIVE_COUNTY_GRANTS_SQL_V1.contains("granted_tick <= $2"));
+    assert!(
+        ARCHIVE_COUNTY_GRANTS_SQL_V1.contains("subject_kind IN ('county', 'place')"),
+        "page-subject knowledge only: seeded concept grants widen the grant \
+         table's subject domain (ADR249 R3/R12) but never enter the page grant \
+         snapshot, which decodes through the page-domain subject kind"
+    );
     assert!(ARCHIVE_COUNTY_GRANTS_SQL_V1.contains("ORDER BY"));
     for sql in [
         ARCHIVE_COUNTY_MAP_READ_SQL_V1,

@@ -535,10 +535,17 @@ fn place_grants_sql_is_pinned() {
         "SELECT subject_kind, subject_id, grant_key \
 FROM babylon_meta.archive_knowledge_grant_v1 \
 WHERE campaign_id = $1::uuid AND granted_tick <= $2 \
+  AND subject_kind IN ('county', 'place') \
 ORDER BY subject_kind, subject_id, grant_key"
     );
     assert!(ARCHIVE_PLACE_GRANTS_SQL_V1.contains("babylon_meta.archive_knowledge_grant_v1"));
     assert!(ARCHIVE_PLACE_GRANTS_SQL_V1.contains("granted_tick <= $2"));
+    assert!(
+        ARCHIVE_PLACE_GRANTS_SQL_V1.contains("subject_kind IN ('county', 'place')"),
+        "page-subject knowledge only: seeded concept grants widen the grant \
+         table's subject domain (ADR249 R3/R12) but never enter the page grant \
+         snapshot, which decodes through the page-domain subject kind"
+    );
 }
 
 #[test]

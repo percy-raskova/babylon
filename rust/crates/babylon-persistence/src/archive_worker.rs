@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::{
     database, decode, decode_digest, ArchiveDirtyBatchV1, ArchiveMaterializeDispositionV1,
-    CampaignId, SemanticArchiveErrorV1, SemanticArchiveStoreV1,
+    ArchivePageInputV1, CampaignId, SemanticArchiveErrorV1, SemanticArchiveStoreV1,
 };
 
 /// Exact pending-receipt query used by the production Archive worker.
@@ -161,6 +161,61 @@ impl ArchiveDossierProducerV1 for NullArchiveDossierProducerV1 {
         receipt: &PendingArchiveReceiptV1,
     ) -> Result<ArchiveDirtyBatchV1, SemanticArchiveErrorV1> {
         ArchiveDirtyBatchV1::try_new(receipt.resolve_tick, receipt.tick_content_hash, Vec::new())
+    }
+}
+
+/// Ordered production composition over several dossier producers.
+///
+/// Every producer sees the same pending receipt and returns its own bounded
+/// batch; the composite merges the pages into one deterministic batch sorted
+/// by page reference, refuses duplicate subjects across producers, and caps
+/// the merge at [`ArchiveDirtyBatchV1::MAX_PAGES`]. The per-receipt bound
+/// makes the merge a bootstrap drain: pages beyond the cap wait for a later
+/// receipt instead of blocking the sweep.
+///
+/// Today the composite registers only the county dossier producer; the place
+/// dossier producer joins this composition when its PER-22 slice lands.
+pub struct CompositeArchiveDossierProducerV1 {
+    producers: Vec<Box<dyn ArchiveDossierProducerV1>>,
+}
+
+impl CompositeArchiveDossierProducerV1 {
+    /// Construct one composite from the exact producer order it will query.
+    #[must_use]
+    pub fn new(producers: Vec<Box<dyn ArchiveDossierProducerV1>>) -> Self {
+        Self { producers }
+    }
+
+    /// Borrow the registered producers in query order.
+    #[must_use]
+    pub fn producers(&self) -> &[Box<dyn ArchiveDossierProducerV1>] {
+        &self.producers
+    }
+}
+
+impl ArchiveDossierProducerV1 for CompositeArchiveDossierProducerV1 {
+    fn produce(
+        &self,
+        campaign_id: Uuid,
+        receipt: &PendingArchiveReceiptV1,
+    ) -> Result<ArchiveDirtyBatchV1, SemanticArchiveErrorV1> {
+        let mut merged: std::collections::BTreeMap<_, ArchivePageInputV1> =
+            std::collections::BTreeMap::new();
+        for producer in &self.producers {
+            let batch = producer.produce(campaign_id, receipt)?;
+            archive_batch_matches_receipt_v1(&batch, receipt)?;
+            for page in batch.pages() {
+                let key = page.subject().page_ref().clone();
+                if merged.insert(key, page.clone()).is_some() {
+                    return Err(SemanticArchiveErrorV1::DuplicateKey);
+                }
+            }
+        }
+        let pages = merged
+            .into_values()
+            .take(ArchiveDirtyBatchV1::MAX_PAGES)
+            .collect();
+        ArchiveDirtyBatchV1::try_new(receipt.resolve_tick, receipt.tick_content_hash, pages)
     }
 }
 

@@ -7,6 +7,7 @@ mod archive_worker;
 mod bootstrap;
 mod checkpoint;
 pub mod committed_tick_envelope;
+mod county_producer;
 mod cutover_vectors;
 pub mod error;
 mod foundation;
@@ -45,6 +46,16 @@ pub use checkpoint::{
     ArchiveDirtyReceiptV1, CheckpointCompletenessV1, CheckpointRowsV1,
     CommittedCheckpointSectionV1, CommittedFullCheckpointV1, CommittedResolveTickErrorV1,
     CommittedResolveTickV1, FullCheckpointSectionTagV1,
+};
+pub use county_producer::{
+    county_page_input_v1, county_page_semantic_sha256_v1, format_county_statblock_value_v1,
+    parse_stored_county_page_v1, select_dirty_county_pages_v1, CountyDossierProducerV1,
+    CountyPagePlanV1, CountyPlaceLinkV1, CountySignalV1, StoredCountyPageV1,
+    ARCHIVE_COUNTY_FIELD_READ_SQL_V1, ARCHIVE_COUNTY_MAP_READ_SQL_V1,
+    ARCHIVE_COUNTY_PAGE_READ_SQL_V1, COMMITTED_TICK_SOURCE_ID_V1, COUNTY_DECISION_QUESTION_V1,
+    COUNTY_MEDIAN_WAGE_GRANT_KEY_V1, COUNTY_MEDIAN_WAGE_LABEL_V1, COUNTY_PHI_HOUR_GRANT_KEY_V1,
+    COUNTY_PHI_HOUR_LABEL_V1, PINNED_COUNTY_IDENTITY_ARTIFACT_SHA256_V1,
+    PINNED_COUNTY_PLACE_OVERLAP_ARTIFACT_SHA256_V1, PINNED_PLACE_IDENTITY_ARTIFACT_SHA256_V1,
 };
 pub use cutover_vectors::{
     verify_rust_persistence_cutover_vector_row_v1, verify_rust_persistence_cutover_vectors_v1,

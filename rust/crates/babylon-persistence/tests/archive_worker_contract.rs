@@ -5,9 +5,9 @@ use babylon_persistence::{
     classify_archive_sweep_v1, ArchiveCitationV1, ArchiveDirtyBatchV1, ArchiveDossierProducerV1,
     ArchiveLinkV1, ArchivePageInputV1, ArchivePageRefV1, ArchiveReceiptDispositionV1,
     ArchiveReceiptPlanV1, ArchiveSignalV1, ArchiveSubjectKindV1, ArchiveSubjectV1,
-    ArchiveWorkerSweepReportV1, NullArchiveDossierProducerV1, PendingArchiveReceiptV1,
-    SemanticArchiveErrorV1, SemanticArchiveStoreV1, ARCHIVE_PENDING_RECEIPTS_SQL_V1,
-    ARCHIVE_SWEEP_MAX_RECEIPTS_V1, ARCHIVE_SWEEP_WATERMARK_SQL_V1,
+    ArchiveWorkerSweepReportV1, CompositeArchiveDossierProducerV1, NullArchiveDossierProducerV1,
+    PendingArchiveReceiptV1, SemanticArchiveErrorV1, SemanticArchiveStoreV1,
+    ARCHIVE_PENDING_RECEIPTS_SQL_V1, ARCHIVE_SWEEP_MAX_RECEIPTS_V1, ARCHIVE_SWEEP_WATERMARK_SQL_V1,
 };
 use postgres::{Config, NoTls};
 use uuid::Uuid;
@@ -246,6 +246,112 @@ fn classify_sweep_stops_at_first_producer_error() {
     ]);
 
     assert_eq!(result, Err(SemanticArchiveErrorV1::InvalidText));
+}
+
+/// Stub producer returning one scripted batch per receipt.
+struct ScriptedProducer(ArchiveDirtyBatchV1);
+
+impl ArchiveDossierProducerV1 for ScriptedProducer {
+    fn produce(
+        &self,
+        _campaign_id: Uuid,
+        _receipt: &PendingArchiveReceiptV1,
+    ) -> Result<ArchiveDirtyBatchV1, SemanticArchiveErrorV1> {
+        Ok(self.0.clone())
+    }
+}
+
+fn place_page_input(resolve_tick: u64, tick_content_hash: [u8; 32]) -> ArchivePageInputV1 {
+    ArchivePageInputV1::try_new(
+        ArchiveSubjectV1::try_new(
+            ArchiveSubjectKindV1::Place,
+            "2622000".to_owned(),
+            "Detroit city".to_owned(),
+        )
+        .expect("place identity"),
+        resolve_tick,
+        tick_content_hash,
+        "Which overlapping county should organizers investigate next?".to_owned(),
+        Vec::new(),
+        Vec::new(),
+    )
+    .expect("place page input")
+}
+
+#[test]
+fn composite_merges_producer_pages_sorted_and_refuses_duplicate_subjects() {
+    let receipt = PendingArchiveReceiptV1::try_new(1, [0x11; 32]).expect("receipt");
+    let county_first = CompositeArchiveDossierProducerV1::new(vec![
+        Box::new(ScriptedProducer(non_empty_batch(1, [0x11; 32]))),
+        Box::new(ScriptedProducer(
+            ArchiveDirtyBatchV1::try_new(1, [0x11; 32], vec![place_page_input(1, [0x11; 32])])
+                .expect("place batch"),
+        )),
+    ]);
+    let batch = county_first
+        .produce(Uuid::nil(), &receipt)
+        .expect("composite merge");
+    let order = batch
+        .pages()
+        .iter()
+        .map(|page| page.subject().page_ref().clone())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        order,
+        vec![
+            ArchivePageRefV1::try_new(ArchiveSubjectKindV1::County, "26163".to_owned())
+                .expect("county ref"),
+            ArchivePageRefV1::try_new(ArchiveSubjectKindV1::Place, "2622000".to_owned())
+                .expect("place ref"),
+        ],
+        "merged pages follow deterministic page-reference order"
+    );
+
+    let duplicate = CompositeArchiveDossierProducerV1::new(vec![
+        Box::new(ScriptedProducer(non_empty_batch(1, [0x11; 32]))),
+        Box::new(ScriptedProducer(non_empty_batch(1, [0x11; 32]))),
+    ]);
+    assert_eq!(
+        duplicate.produce(Uuid::nil(), &receipt),
+        Err(SemanticArchiveErrorV1::DuplicateKey),
+        "two producers may not claim the same page subject"
+    );
+}
+
+#[test]
+fn composite_caps_the_merge_at_one_batch_bound() {
+    let receipt = PendingArchiveReceiptV1::try_new(1, [0x11; 32]).expect("receipt");
+    let county_pages = (0..ArchiveDirtyBatchV1::MAX_PAGES)
+        .map(|index| {
+            ArchivePageInputV1::try_new(
+                ArchiveSubjectV1::try_new(
+                    ArchiveSubjectKindV1::County,
+                    format!("26{index:03}"),
+                    "County".to_owned(),
+                )
+                .expect("full-bound identity"),
+                1,
+                [0x11; 32],
+                "Which neighboring place should organizers investigate next?".to_owned(),
+                Vec::new(),
+                Vec::new(),
+            )
+            .expect("full-bound page")
+        })
+        .collect::<Vec<_>>();
+    let single = CompositeArchiveDossierProducerV1::new(vec![
+        Box::new(ScriptedProducer(
+            ArchiveDirtyBatchV1::try_new(1, [0x11; 32], county_pages).expect("full-bound batch"),
+        )),
+        Box::new(ScriptedProducer(
+            ArchiveDirtyBatchV1::try_new(1, [0x11; 32], vec![place_page_input(1, [0x11; 32])])
+                .expect("overflow batch"),
+        )),
+    ]);
+    let merged = single
+        .produce(Uuid::nil(), &receipt)
+        .expect("capped composite merge");
+    assert_eq!(merged.pages().len(), ArchiveDirtyBatchV1::MAX_PAGES);
 }
 
 #[test]

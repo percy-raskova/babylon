@@ -19,9 +19,9 @@ use babylon_kernel::ContentDigest;
 use babylon_persistence::{
     activate_rust_persistence_v2, michigan_dynamic_hex_foundation_v1, preflight_schema_epoch,
     representative_h3_reference_cohort_v1, ArchiveSchemaDispositionV1, CampaignFoundationV1,
-    CampaignId, CommittedResolveTickV1, CommittedTickReceiptV2, DurableReplayRuntimeV2,
-    FoundationContentBundleV1, PostgresDiagnosticV1, RustPersistenceRuntimeErrorV2,
-    SemanticArchiveStoreV1,
+    CampaignId, CommittedResolveTickV1, CommittedTickReceiptV2, CompositeArchiveDossierProducerV1,
+    CountyDossierProducerV1, DurableReplayRuntimeV2, FoundationContentBundleV1,
+    PostgresDiagnosticV1, RustPersistenceRuntimeErrorV2, SemanticArchiveStoreV1,
 };
 use babylon_practice_contract::ordered_action_v1::OrderedPracticeActionBatchV1;
 use babylon_tick::choice_receipt::ChoiceReceiptV1;
@@ -1025,12 +1025,12 @@ fn run_archive_worker_once(config: &Config) -> Result<(), String> {
     store
         .install_schema()
         .map_err(|error| format!("Archive schema refused: {error}"))?;
+    let county = CountyDossierProducerV1::try_new(config)
+        .map_err(|error| format!("Archive county producer refused: {error}"))?;
+    let producer = CompositeArchiveDossierProducerV1::new(vec![Box::new(county)]);
     let mut worker = babylon_persistence::ArchiveWorkerV1::new(config);
     let report = worker
-        .sweep_once(
-            campaign_id()?,
-            &babylon_persistence::NullArchiveDossierProducerV1::new(),
-        )
+        .sweep_once(campaign_id()?, &producer)
         .map_err(|error| format!("Archive worker sweep refused: {error}"))?;
     println!(
         "Archive worker sweep complete; verified_tick={}; deferred={}; applied={}; \

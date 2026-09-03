@@ -124,8 +124,11 @@ JOIN babylon_meta.archive_knowledge_grant_v1 AS knowledge
 -- The known-only atom set (ADR249 R2): an atom is visible exactly while a
 -- grant row covers (campaign, subject, grant_key) at granted_tick <= the
 -- atom's valid_tick and the valid_tick is within the acknowledged-commit
--- horizon. The horizon is marker-backed through the fog-safe tick-status
--- view — never MAX(tick) over a raw ledger.
+-- horizon. The horizon reads the durable committed-tick marker relation
+-- directly — the same relation public.v_committed_tick_status_v1 publishes
+-- to readers — so this writer-side schema carries no install-order dependency
+-- on the reader publication view. The horizon is marker-backed, never
+-- MAX(tick) over a raw event ledger.
 CREATE VIEW public.v_archive_atom_visible AS
 SELECT
     atom.campaign_id,
@@ -156,7 +159,7 @@ JOIN babylon_meta.archive_knowledge_grant_v1 AS grant_row
  AND grant_row.granted_tick <= atom.valid_tick
 JOIN (
     SELECT campaign_id, pg_catalog.max(resolve_tick) AS horizon_tick
-    FROM public.v_committed_tick_status_v1
+    FROM babylon_state.tick_commit
     GROUP BY campaign_id
 ) AS horizon
   ON horizon.campaign_id = atom.campaign_id

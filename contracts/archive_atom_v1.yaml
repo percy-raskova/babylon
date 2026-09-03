@@ -33,8 +33,9 @@ authority:
     - An atom is visible exactly while a grant row covers
       (campaign, subject, grant_key) with granted_tick <= atom.valid_tick
       and atom.valid_tick sits inside the acknowledged-commit horizon.
-    - The visibility horizon is marker-backed through
-      public.v_committed_tick_status_v1, never MAX(tick) over a raw ledger.
+    - The visibility horizon is marker-backed over the durable committed-tick
+      relation (published to readers as public.v_committed_tick_status_v1),
+      never MAX(tick) over a raw event ledger.
     - Atoms never mutate; new ticks mint new atoms and pages re-assert
       their atom set through archive_page_atom_v1.
 

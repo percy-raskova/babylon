@@ -904,6 +904,21 @@ def _cargo_zero_x_minor(subject: str) -> bool:
     return before_major == 0 and after_major == 0 and after_minor > before_minor
 
 
+def _update_types_from_message(message: str) -> list[str]:
+    """Parse Dependabot update-type trailers from one commit message."""
+    update_types = re.findall(r"(?m)^\s*update-type:\s*([^\s]+)\s*$", message)
+    if not update_types or len(update_types) >= MAX_GITHUB_ITEMS:
+        raise RuntimeError("Dependabot update metadata is missing or exceeds the safety bound")
+    allowed = {
+        "version-update:semver-patch",
+        "version-update:semver-minor",
+        "version-update:semver-major",
+    }
+    if any(update_type not in allowed for update_type in update_types):
+        raise RuntimeError("Dependabot update metadata is not a known semver class")
+    return update_types
+
+
 def _dependabot_update_result(
     pr: int,
     head_oid: str,
@@ -929,18 +944,7 @@ def _dependabot_update_result(
     message = details.get("message")
     if not isinstance(message, str):
         raise RuntimeError("Dependabot commit message must be a string")
-    update_types = re.findall(r"(?m)^\s*update-type:\s*([^\s]+)\s*$", message)
-    if not update_types or len(update_types) >= MAX_GITHUB_ITEMS:
-        return DependabotModeResult(
-            ("Dependabot update metadata is missing or exceeds the safety bound",)
-        )
-    allowed = {
-        "version-update:semver-patch",
-        "version-update:semver-minor",
-        "version-update:semver-major",
-    }
-    if any(update_type not in allowed for update_type in update_types):
-        return DependabotModeResult(("Dependabot update metadata is not a known semver class",))
+    update_types = _update_types_from_message(message)
     subject = message.split("\n", 1)[0]
     if head_ref.startswith(_CARGO_DEPENDABOT_REF_PREFIX) and _cargo_zero_x_minor(subject):
         return DependabotModeResult(

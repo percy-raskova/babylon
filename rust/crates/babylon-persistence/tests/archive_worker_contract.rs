@@ -2,13 +2,14 @@ use std::str::FromStr;
 
 use babylon_persistence::{
     archive_batch_matches_receipt_v1, archive_contiguous_watermark_v1, classify_archive_receipt_v1,
-    classify_archive_sweep_v1, ArchiveCitationV1, ArchiveDirtyBatchV1, ArchiveDossierProducerV1,
-    ArchiveLinkV1, ArchivePageInputV1, ArchivePageRefV1, ArchiveReceiptDispositionV1,
-    ArchiveReceiptPlanV1, ArchiveSignalV1, ArchiveSubjectKindV1, ArchiveSubjectV1,
-    ArchiveWorkerSweepReportV1, CompositeArchiveDossierProducerV1, NullArchiveDossierProducerV1,
-    PendingArchiveReceiptV1, SemanticArchiveErrorV1, SemanticArchiveStoreV1,
-    ARCHIVE_PENDING_RECEIPTS_SQL_V1, ARCHIVE_SWEEP_MAX_RECEIPTS_V1, ARCHIVE_SWEEP_MAX_SCAN_V1,
-    ARCHIVE_SWEEP_WATERMARK_SQL_V1,
+    classify_archive_sweep_v1, model_archive_sweep_pages_v1,
+    model_archive_sweep_pages_with_bounds_v1, ArchiveCitationV1, ArchiveDirtyBatchV1,
+    ArchiveDossierProducerV1, ArchiveLinkV1, ArchivePageInputV1, ArchivePageRefV1,
+    ArchiveReceiptDispositionV1, ArchiveReceiptPlanV1, ArchiveSignalV1, ArchiveSubjectKindV1,
+    ArchiveSubjectV1, ArchiveWorkerSweepReportV1, CompositeArchiveDossierProducerV1,
+    NullArchiveDossierProducerV1, PendingArchiveReceiptV1, SemanticArchiveErrorV1,
+    SemanticArchiveStoreV1, ARCHIVE_PENDING_RECEIPTS_SQL_V1, ARCHIVE_SWEEP_MAX_RECEIPTS_V1,
+    ARCHIVE_SWEEP_MAX_SCAN_V1, ARCHIVE_SWEEP_WATERMARK_SQL_V1,
 };
 use postgres::{Config, NoTls};
 use uuid::Uuid;
@@ -253,6 +254,75 @@ fn classify_sweep_stops_at_first_producer_error() {
     ]);
 
     assert_eq!(result, Err(SemanticArchiveErrorV1::InvalidText));
+}
+
+#[test]
+fn paged_sweep_model_enforces_the_consume_cap_across_keyset_pages() {
+    // The reviewer's composition: one full 256-row page of 255 materializable
+    // receipts plus a deferred tail, then another page of materializable
+    // receipts. A sweep that checks only the scan bound inside the page loop
+    // consumes 511 receipts; the consume cap must stop it at 256.
+    let mut page_one: Vec<Result<ArchiveDirtyBatchV1, SemanticArchiveErrorV1>> = (1..=255)
+        .map(|tick| Ok(non_empty_batch(tick, [0x11; 32])))
+        .collect();
+    page_one.push(Ok(empty_batch(256, [0x11; 32])));
+    let page_two: Vec<Result<ArchiveDirtyBatchV1, SemanticArchiveErrorV1>> = (257..=258)
+        .map(|tick| Ok(non_empty_batch(tick, [0x22; 32])))
+        .collect();
+
+    let model = model_archive_sweep_pages_v1(vec![page_one, page_two]).expect("paged model");
+
+    assert_eq!(
+        model.consumed(),
+        ARCHIVE_SWEEP_MAX_RECEIPTS_V1,
+        "one sweep never consumes past the declared cap, whatever the page composition"
+    );
+    assert_eq!(
+        model.scanned(),
+        ARCHIVE_SWEEP_MAX_RECEIPTS_V1 + 1,
+        "the sweep scans the deferred tail and exactly one further receipt"
+    );
+    assert_eq!(
+        model.plans().len(),
+        usize::try_from(model.scanned()).unwrap()
+    );
+    assert_eq!(model.plans()[255], ArchiveReceiptPlanV1::Defer);
+    assert_eq!(model.plans()[256], ArchiveReceiptPlanV1::Materialize);
+    assert_eq!(model.plans().len(), 257, "the remainder stays pending");
+}
+
+#[test]
+fn paged_sweep_model_keeps_the_scan_bound_as_the_outer_bound() {
+    // An all-defer campaign scans up to the scan cap and consumes nothing,
+    // no matter how materializable the scripted backlog claims to be later.
+    let page: Vec<Result<ArchiveDirtyBatchV1, SemanticArchiveErrorV1>> = (1..=10)
+        .map(|tick| Ok(empty_batch(tick, [0x11; 32])))
+        .collect();
+
+    let model =
+        model_archive_sweep_pages_with_bounds_v1(vec![page], 256, 4).expect("bounded model");
+
+    assert_eq!(model.scanned(), 4);
+    assert_eq!(model.consumed(), 0);
+    assert!(
+        model
+            .plans()
+            .iter()
+            .all(|plan| *plan == ArchiveReceiptPlanV1::Defer),
+        "an all-defer page never consumes"
+    );
+}
+
+#[test]
+fn sweep_inner_loop_checks_the_consume_cap_before_each_receipt() {
+    let source = std::include_str!("../src/archive_worker.rs");
+    assert!(
+        source.contains(
+            "scanned >= ARCHIVE_SWEEP_MAX_SCAN_V1 || consumed >= ARCHIVE_SWEEP_MAX_RECEIPTS_V1"
+        ),
+        "the per-row sweep guard must enforce the consume cap before each receipt, not only \
+         the scan bound"
+    );
 }
 
 /// Stub producer returning one scripted batch per receipt.

@@ -1,0 +1,85 @@
+meta:
+  contract: ArchiveWorkerV1
+  version: 1
+  issue: PER-22
+  digest: SHA-256 diagnostic; exact bytes govern retry equality
+
+production_decoder: prohibited
+
+authority:
+  owner: Rust persistence boundary
+  purpose: Archive worker sweep selection, bounded consumption, batch-identity
+    refusal, and contiguous watermark derivation
+  classifications:
+    sweep_sql_identity: Designed
+    sweep_receipt_bound: Designed
+    receipt_plan_taxonomy: Designed
+    disposition_taxonomy: Designed
+    batch_identity_refusal: Designed
+    contiguous_watermark_derivation: Designed
+    stop_on_first_error: Designed
+    fixture_values: Designed
+  invariants:
+    - The sweep selects only marker-backed unconsumed receipts in ascending
+      resolve_tick order.
+    - The sweep pages by keyset cursor strictly after the last scanned tick,
+      so a run of deferred receipts never starves a later materializable one.
+    - One sweep consumes at most ARCHIVE_SWEEP_MAX_RECEIPTS_V1 receipts and
+      scans at most ARCHIVE_SWEEP_MAX_SCAN_V1 pending receipts.
+    - An empty producer batch defers without consuming the receipt.
+    - A batch-identity mismatch stops the sweep with an error.
+    - The first hard error stops the sweep; later scripted steps are never
+      consulted.
+    - verified_tick is the contiguous persisted consumption watermark derived
+      from durable state, never the sweep-local maximum and never past a
+      pending earlier tick.
+
+constants:
+  source_path: rust/crates/babylon-persistence/src/archive_worker.rs
+  pending_receipts_sql_sha256: e475c0c9c8148e60102a592f22c6749f686704a7a6911cd545257c59e50be13e
+  watermark_sql_sha256: a93cb9e0d2ff34e2ef58d6d4e5475ad44a313bb052e3d100df71e82521afe204
+  sweep_max_receipts: 256
+  sweep_max_scan: 4096
+  receipt_plans: [Defer, Materialize]
+  receipt_dispositions: [Deferred, Applied, AlreadyConsumed]
+  error_variants_used: [InvalidVerifiedTick, ReceiptMismatch, StoredPageMismatch]
+
+bounds:
+  contract_bytes: 131072
+  vector_rows: 32
+  vector_line_bytes: 16384
+  vector_object_fields: 64
+
+layouts:
+  watermark_input_v1:
+    fields: [first_pending_tick_nullable_u64, max_receipt_tick_u64]
+    derivation: first_pending present -> first_pending - 1; absent -> max_receipt_tick
+  batch_ref_v1:
+    fields:
+      - resolve_tick_u64
+      - tick_content_hash_exact_32_bytes_lower_hex
+      - page_count_u64
+    resolve_tick_domain: 1..=i64::MAX
+    page_count_domain: 0..=256
+  receipt_ref_v1:
+    fields: [resolve_tick_u64, tick_content_hash_exact_32_bytes_lower_hex]
+    resolve_tick_domain: 1..=i64::MAX
+  match_input_v1:
+    fields: [batch_ref_v1, receipt_ref_v1]
+  sweep_step_v1:
+    one_of:
+      - "batch: batch_ref_v1"
+      - "error: SemanticArchiveErrorV1 variant name"
+  sweep_output_v1:
+    one_of:
+      - "expected: ordered receipt plans"
+      - "expected_error: SemanticArchiveErrorV1 variant name"
+
+vector_kinds:
+  required: [watermark, match, plan, sweep, identity]
+
+excluded_authority:
+  - PostgreSQL execution, transactions, or receipt consumption
+  - Producer content derivation or page rendering
+  - Marker-last execution or Archive dirty-receipt replay
+  - Sweep report persistence or watermark writes

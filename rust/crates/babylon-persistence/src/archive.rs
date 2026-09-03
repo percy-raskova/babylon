@@ -1338,6 +1338,14 @@ pub enum SemanticArchiveErrorV1 {
         /// The one-receipt page bound that the dirty set exceeded.
         limit: usize,
     },
+    /// The dirty county set exceeded one receipt page bound, so nothing was
+    /// selected and the receipt stays pending.
+    CountyDrainOverflow {
+        /// Exact number of dirty county pages observed.
+        dirty: usize,
+        /// The one-receipt page bound that the dirty set exceeded.
+        limit: usize,
+    },
     /// One database operation failed with a bounded secret-safe driver diagnostic.
     Database {
         /// Stable operation identity.

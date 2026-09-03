@@ -135,6 +135,30 @@ impl ArchiveDossierProducerV1 for FailAtTickProducer {
 /// identity, proving the worker refuses identity drift before the store.
 struct WrongTickProducer;
 
+/// Stub producer that defers every receipt except one materializable tick,
+/// proving one sweep pages past accumulated deferrals under the scan bound.
+struct DeferAllButProducer {
+    materialize_tick: u64,
+}
+
+impl ArchiveDossierProducerV1 for DeferAllButProducer {
+    fn produce(
+        &self,
+        campaign_id: Uuid,
+        receipt: &PendingArchiveReceiptV1,
+    ) -> Result<ArchiveDirtyBatchV1, SemanticArchiveErrorV1> {
+        if receipt.resolve_tick() == self.materialize_tick {
+            StubPageProducer.produce(campaign_id, receipt)
+        } else {
+            ArchiveDirtyBatchV1::try_new(
+                receipt.resolve_tick(),
+                *receipt.tick_content_hash(),
+                Vec::new(),
+            )
+        }
+    }
+}
+
 impl ArchiveDossierProducerV1 for WrongTickProducer {
     fn produce(
         &self,
@@ -175,6 +199,47 @@ fn insert_orphan_dirty_receipt(
             ],
         )
         .expect("orphan dirty receipt inserts without a marker");
+}
+
+/// Insert marker-backed dirty receipts directly for a tick range, mirroring
+/// what a committed tick writes without paying the per-tick runtime cost.
+fn insert_marker_backed_dirty_receipts(
+    config: &Config,
+    campaign_id: CampaignId,
+    ticks: std::ops::RangeInclusive<u64>,
+) {
+    let mut client = config.connect(NoTls).expect("marker insert connection");
+    for tick in ticks {
+        let resolve_tick = i64::try_from(tick).expect("bounded test tick");
+        let mut tick_content_hash = [0u8; 32];
+        tick_content_hash[..8].copy_from_slice(&tick.to_be_bytes());
+        let envelope_digest = [0xEEu8; 32];
+        client
+            .execute(
+                "INSERT INTO babylon_state.tick_commit (\
+                     campaign_id, resolve_tick, envelope_layout_version, \
+                     tick_content_hash, envelope_digest\
+                 ) VALUES ($1::uuid, $2, 2, $3, $4)",
+                &[
+                    campaign_id.as_uuid(),
+                    &resolve_tick,
+                    &&tick_content_hash[..],
+                    &&envelope_digest[..],
+                ],
+            )
+            .expect("marker row inserts");
+        client
+            .execute(
+                "INSERT INTO babylon_state.archive_dirty_receipt_v1 \
+                 (campaign_id, resolve_tick, tick_content_hash) VALUES ($1::uuid, $2, $3)",
+                &[
+                    campaign_id.as_uuid(),
+                    &resolve_tick,
+                    &&tick_content_hash[..],
+                ],
+            )
+            .expect("dirty receipt row inserts");
+    }
 }
 
 fn dirty_receipt_count(config: &Config, campaign_id: CampaignId) -> i64 {
@@ -375,9 +440,9 @@ fn commit_ticks(runtime: &mut DurableReplayRuntimeV2<HypergraphStore>, count: u6
     }
 }
 
-fn grant_stub_knowledge(store: &SemanticArchiveStoreV1, campaign_id: CampaignId) {
-    for tick in 1..=3 {
-        let spec = stub_subject_spec(tick);
+fn grant_stub_knowledge(store: &SemanticArchiveStoreV1, campaign_id: CampaignId, ticks: &[u64]) {
+    for tick in ticks {
+        let spec = stub_subject_spec(*tick);
         for (grant_key, source_id) in [
             ("subject", "live-worker-subject"),
             ("employment", "live-worker-employment"),
@@ -453,7 +518,38 @@ impl LiveWorkerTarget {
         match store.install_schema().expect("Archive schema installs") {
             ArchiveSchemaDispositionV1::Installed | ArchiveSchemaDispositionV1::AlreadyCurrent => {}
         }
-        grant_stub_knowledge(&store, campaign_id);
+        grant_stub_knowledge(&store, campaign_id, &[1, 2, 3]);
+        Self {
+            database,
+            config,
+            campaign_id,
+        }
+    }
+
+    /// Create one campaign with `tick_count` committed receipts but grant
+    /// knowledge only for `granted_ticks`, for deferral-heavy sweep proofs.
+    fn create_with_grants(
+        label: &str,
+        campaign_uuid: u128,
+        tick_count: u64,
+        granted_ticks: &[u64],
+    ) -> Self {
+        assert!(tick_count > 0);
+        let base = validated_base_config();
+        let template = validated_template_name();
+        let database = TestDatabase::create_from_template(&base, &template, label);
+        let config = database.config(&base);
+        let campaign_id = CampaignId::from_uuid(Uuid::from_u128(campaign_uuid));
+        let (session, bundle) = runtime_fixture_with_seed(WORKER_SEED);
+        let mut runtime = DurableReplayRuntimeV2::create(&config, campaign_id, session, bundle)
+            .expect("runtime constructs after activation");
+        commit_ticks(&mut runtime, tick_count);
+        drop(runtime);
+        let store = SemanticArchiveStoreV1::new(&config);
+        match store.install_schema().expect("Archive schema installs") {
+            ArchiveSchemaDispositionV1::Installed | ArchiveSchemaDispositionV1::AlreadyCurrent => {}
+        }
+        grant_stub_knowledge(&store, campaign_id, granted_ticks);
         Self {
             database,
             config,
@@ -624,6 +720,63 @@ fn live_worker_crash_between_receipts_resumes_exactly() {
     assert_eq!(
         receipt_consumption_count(&target.config, target.campaign_id),
         3
+    );
+    target.finish();
+}
+
+#[test]
+#[ignore = "requires the task-owned disposable PostgreSQL runtime and committed ticks"]
+fn live_worker_sweep_pages_past_deferred_receipts_to_reach_a_materializable_one() {
+    // One real committed tick establishes the campaign; the remaining
+    // marker-backed dirty receipts insert directly, as the orphan-receipt
+    // proof already does, because committing hundreds of real ticks would
+    // exceed the disposable-runtime envelope without changing what the sweep
+    // semantics under test observe.
+    const TICKS: u64 = 300;
+    let target = LiveWorkerTarget::create_with_grants(
+        "archiveworkersweeppage",
+        0x2200_0000_0000_0000_0000_0000_0000_00a7,
+        1,
+        &[1, TICKS],
+    );
+    insert_marker_backed_dirty_receipts(&target.config, target.campaign_id, 2..=TICKS);
+
+    let mut worker = ArchiveWorkerV1::new(&target.config);
+    let report = worker
+        .sweep_once(
+            target.campaign_id,
+            &DeferAllButProducer {
+                materialize_tick: TICKS,
+            },
+        )
+        .expect("one sweep pages past the deferral backlog");
+
+    assert_eq!(
+        report.deferred_count(),
+        usize::try_from(TICKS - 1).expect("bounded deferral count"),
+        "every unchanged receipt defers and stays pending"
+    );
+    assert_eq!(report.applied_count(), 1);
+    assert_eq!(report.already_consumed_count(), 0);
+    let last = report
+        .dispositions()
+        .last()
+        .expect("the materializable receipt is reached in the same sweep");
+    assert_eq!(
+        *last,
+        (TICKS, ArchiveReceiptDispositionV1::Applied),
+        "a receipt beyond the first 256-pending window still materializes in one sweep"
+    );
+    assert_eq!(
+        report.verified_tick(),
+        0,
+        "every receipt including tick 1 defers, so the deferred backlog caps the contiguous \
+         watermark at zero even though the sweep reached tick 300"
+    );
+    assert_eq!(archive_page_count(&target.config, target.campaign_id), 1);
+    assert_eq!(
+        receipt_consumption_count(&target.config, target.campaign_id),
+        1
     );
     target.finish();
 }

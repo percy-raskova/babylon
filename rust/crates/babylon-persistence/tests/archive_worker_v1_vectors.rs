@@ -5,7 +5,7 @@ use babylon_persistence::{
     classify_archive_sweep_v1, ArchiveDirtyBatchV1, ArchivePageInputV1,
     ArchiveReceiptDispositionV1, ArchiveReceiptPlanV1, ArchiveSubjectKindV1, ArchiveSubjectV1,
     PendingArchiveReceiptV1, SemanticArchiveErrorV1, ARCHIVE_PENDING_RECEIPTS_SQL_V1,
-    ARCHIVE_SWEEP_MAX_RECEIPTS_V1, ARCHIVE_SWEEP_WATERMARK_SQL_V1,
+    ARCHIVE_SWEEP_MAX_RECEIPTS_V1, ARCHIVE_SWEEP_MAX_SCAN_V1, ARCHIVE_SWEEP_WATERMARK_SQL_V1,
 };
 use serde_json::{json, Value};
 use sha2::{Digest as _, Sha256};
@@ -304,6 +304,7 @@ fn identity_row() -> Value {
             "pending_receipts_sql_sha256_hex": sha256_hex(ARCHIVE_PENDING_RECEIPTS_SQL_V1.as_bytes()),
             "watermark_sql_sha256_hex": sha256_hex(ARCHIVE_SWEEP_WATERMARK_SQL_V1.as_bytes()),
             "max_receipts_per_sweep": ARCHIVE_SWEEP_MAX_RECEIPTS_V1,
+            "max_scan_per_sweep": ARCHIVE_SWEEP_MAX_SCAN_V1,
             "plans": plan_names,
             "dispositions": disposition_names,
             "error_variants": ERROR_VARIANTS_USED,
@@ -450,6 +451,17 @@ fn shared_identity_vectors_match_the_pinned_sql_and_taxonomy() {
     assert_eq!(
         data["max_receipts_per_sweep"].as_i64(),
         Some(ARCHIVE_SWEEP_MAX_RECEIPTS_V1)
+    );
+    assert_eq!(
+        data["max_scan_per_sweep"].as_i64(),
+        Some(ARCHIVE_SWEEP_MAX_SCAN_V1)
+    );
+    assert!(
+        data["max_scan_per_sweep"].as_i64().expect("scan bound")
+            >= data["max_receipts_per_sweep"]
+                .as_i64()
+                .expect("receipt bound"),
+        "one page always fits inside the scan bound"
     );
     assert_eq!(
         data["plans"].as_array().expect("plans").len(),

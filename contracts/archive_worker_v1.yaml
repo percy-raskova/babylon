@@ -22,7 +22,10 @@ authority:
   invariants:
     - The sweep selects only marker-backed unconsumed receipts in ascending
       resolve_tick order.
-    - One sweep consumes at most ARCHIVE_SWEEP_MAX_RECEIPTS_V1 receipts.
+    - The sweep pages by keyset cursor strictly after the last scanned tick,
+      so a run of deferred receipts never starves a later materializable one.
+    - One sweep consumes at most ARCHIVE_SWEEP_MAX_RECEIPTS_V1 receipts and
+      scans at most ARCHIVE_SWEEP_MAX_SCAN_V1 pending receipts.
     - An empty producer batch defers without consuming the receipt.
     - A batch-identity mismatch stops the sweep with an error.
     - The first hard error stops the sweep; later scripted steps are never
@@ -33,9 +36,10 @@ authority:
 
 constants:
   source_path: rust/crates/babylon-persistence/src/archive_worker.rs
-  pending_receipts_sql_sha256: c021dd82afecc82ed7f1f0b0b8b16bf2ca8f828690be4b75a1420c1f83aa6cb4
+  pending_receipts_sql_sha256: e475c0c9c8148e60102a592f22c6749f686704a7a6911cd545257c59e50be13e
   watermark_sql_sha256: a93cb9e0d2ff34e2ef58d6d4e5475ad44a313bb052e3d100df71e82521afe204
   sweep_max_receipts: 256
+  sweep_max_scan: 4096
   receipt_plans: [Defer, Materialize]
   receipt_dispositions: [Deferred, Applied, AlreadyConsumed]
   error_variants_used: [InvalidVerifiedTick, ReceiptMismatch, StoredPageMismatch]

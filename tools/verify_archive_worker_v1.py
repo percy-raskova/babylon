@@ -15,6 +15,7 @@ import yaml
 SOURCE_PATH = "rust/crates/babylon-persistence/src/archive_worker.rs"
 MAX_I64 = (1 << 63) - 1
 MAX_RECEIPTS_PER_SWEEP = 256
+MAX_SCAN_PER_SWEEP = 4096
 MAX_PAGE_COUNT = 256
 MAX_CONTRACT_BYTES = 131_072
 MAX_VECTOR_ROWS = 32
@@ -45,11 +46,12 @@ PENDING_SQL_REQUIRED_CLAUSES = [
     "JOIN babylon_state.tick_commit",
     "LEFT JOIN babylon_meta.archive_receipt_consumption_v1",
     "c.campaign_id IS NULL",
+    "d.resolve_tick > $3::bigint",
     "ORDER BY d.resolve_tick ASC",
     "LIMIT $2",
     "d.campaign_id = $1::uuid",
 ]
-PENDING_SQL_FORBIDDEN_CLAUSES = ["FOR UPDATE", "MAX("]
+PENDING_SQL_FORBIDDEN_CLAUSES = ["FOR UPDATE", "MAX(", "OFFSET"]
 WATERMARK_SQL_REQUIRED_CLAUSES = [
     "MIN(d.resolve_tick)",
     "COALESCE((SELECT MAX(d.resolve_tick)",
@@ -65,9 +67,10 @@ COMPILED_META = {
 }
 COMPILED_CONSTANTS = {
     "source_path": SOURCE_PATH,
-    "pending_receipts_sql_sha256": "c021dd82afecc82ed7f1f0b0b8b16bf2ca8f828690be4b75a1420c1f83aa6cb4",
+    "pending_receipts_sql_sha256": "e475c0c9c8148e60102a592f22c6749f686704a7a6911cd545257c59e50be13e",
     "watermark_sql_sha256": "a93cb9e0d2ff34e2ef58d6d4e5475ad44a313bb052e3d100df71e82521afe204",
     "sweep_max_receipts": MAX_RECEIPTS_PER_SWEEP,
+    "sweep_max_scan": MAX_SCAN_PER_SWEEP,
     "receipt_plans": PLANS,
     "receipt_dispositions": DISPOSITIONS,
     "error_variants_used": ERROR_VARIANTS_USED,
@@ -364,14 +367,15 @@ def _rust_const_int(source: str, name: str) -> int:
     return int(match.group(1))
 
 
-def _source_sql(root: Path) -> tuple[str, str, int]:
+def _source_sql(root: Path) -> tuple[str, str, int, int]:
     source = _bounded_file_bytes(root / SOURCE_PATH, MAX_CONTRACT_BYTES, "file_read").decode(
         "utf-8"
     )
     pending_sql = _rust_const_str(source, "ARCHIVE_PENDING_RECEIPTS_SQL_V1")
     watermark_sql = _rust_const_str(source, "ARCHIVE_SWEEP_WATERMARK_SQL_V1")
     max_receipts = _rust_const_int(source, "ARCHIVE_SWEEP_MAX_RECEIPTS_V1")
-    return pending_sql, watermark_sql, max_receipts
+    max_scan = _rust_const_int(source, "ARCHIVE_SWEEP_MAX_SCAN_V1")
+    return pending_sql, watermark_sql, max_receipts, max_scan
 
 
 def _require_clauses(sql: str, clauses: list[str], code: str) -> None:
@@ -455,9 +459,11 @@ def _verify_identity(row: dict[str, Any], root: Path, contract: dict[str, Any]) 
     if data.get("source_path") != SOURCE_PATH:
         return f"{row['id']}: pinned source path drift"
     constants = contract.get("constants", {})
-    pending_sql, watermark_sql, max_receipts = _source_sql(root)
+    pending_sql, watermark_sql, max_receipts, max_scan = _source_sql(root)
     if max_receipts != MAX_RECEIPTS_PER_SWEEP:
         return f"{row['id']}: sweep bound drift in pinned source"
+    if max_scan != MAX_SCAN_PER_SWEEP or max_scan < max_receipts:
+        return f"{row['id']}: sweep scan bound drift in pinned source"
     pending_sha256 = hashlib.sha256(pending_sql.encode("utf-8")).hexdigest()
     watermark_sha256 = hashlib.sha256(watermark_sql.encode("utf-8")).hexdigest()
     if pending_sha256 != constants.get("pending_receipts_sql_sha256"):
@@ -470,6 +476,13 @@ def _verify_identity(row: dict[str, Any], root: Path, contract: dict[str, Any]) 
         return f"{row['id']}: watermark SQL SHA-256 mismatch"
     if data.get("max_receipts_per_sweep") != max_receipts:
         return f"{row['id']}: sweep bound mismatch"
+    if data.get("max_scan_per_sweep") != max_scan:
+        return f"{row['id']}: sweep scan bound mismatch"
+    if (
+        constants.get("sweep_max_receipts") != max_receipts
+        or constants.get("sweep_max_scan") != max_scan
+    ):
+        return f"{row['id']}: sweep bound drift from contract constants"
     if data.get("plans") != PLANS or constants.get("receipt_plans") != PLANS:
         return f"{row['id']}: receipt plan taxonomy drift"
     if (

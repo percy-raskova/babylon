@@ -130,7 +130,38 @@ def test_identity_pins_the_checked_in_source_bytes() -> None:
         identity["data"]["watermark_sql_sha256_hex"]
         == contract["constants"]["watermark_sql_sha256"]
     )
+    assert identity["data"]["max_receipts_per_sweep"] == 256
+    assert identity["data"]["max_scan_per_sweep"] == 4096
+    assert contract["constants"]["sweep_max_scan"] == 4096
     assert verify_all(contract, vectors, ROOT) == []
+
+
+def test_identity_scan_bound_mutation_refuses() -> None:
+    contract = load_contract(SCHEMA)
+    vectors = copy.deepcopy(load_vectors(VECTORS))
+    identity = next(row for row in vectors if row["id"] == "identity-sql-and-bound")
+    identity["data"]["max_scan_per_sweep"] = 8192
+
+    errors = verify_all(contract, vectors, ROOT)
+
+    assert any("sweep scan bound mismatch" in error for error in errors)
+
+
+def test_identity_forbidding_the_keyset_cursor_clause_refuses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contract = load_contract(SCHEMA)
+    vectors = load_vectors(VECTORS)
+    monkeypatch.setattr(
+        "tools.verify_archive_worker_v1.PENDING_SQL_FORBIDDEN_CLAUSES",
+        ["d.resolve_tick > $3::bigint"],
+    )
+
+    with pytest.raises(ArchiveWorkerContractRefusal) as exc_info:
+        verify_all(contract, vectors, ROOT)
+
+    assert exc_info.value.code == "pending_sql_drift"
+    assert exc_info.value.detail == "d.resolve_tick > $3::bigint"
 
 
 def test_identity_source_drift_refuses(monkeypatch: pytest.MonkeyPatch) -> None:

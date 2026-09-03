@@ -841,6 +841,13 @@ impl ArchiveSearchHitV1 {
     pub fn atoms(&self) -> &[ArchiveAtomV1] {
         &self.atoms
     }
+
+    /// Attach the position-ordered structured atom composition decoded for
+    /// this hit. Reader-side decoders use this after their fog-safe view read;
+    /// the store path fills it inside the same module.
+    pub(crate) fn attach_atoms(&mut self, atoms: Vec<ArchiveAtomV1>) {
+        self.atoms = atoms;
+    }
 }
 
 /// Governed evidence classification carried by every semantic atom

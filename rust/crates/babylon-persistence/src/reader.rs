@@ -17,7 +17,8 @@
 //! PARAMETER event_triggers` (the parameter is grant-only under the runtime
 //! hardening). The handle refuses to operate on connect unless the session's
 //! effective privilege census over the restricted relations is exactly the
-//! reader footprint (`SELECT` on the tick-status view), so an owner or
+//! reader footprint — `SELECT` on the tick-status view before the atom
+//! schema, `SELECT` on the four fog-safe views after it — so an owner or
 //! superuser DSN is a loud refusal, never a silent read with writer
 //! authority.
 
@@ -26,8 +27,9 @@ use std::str::FromStr;
 use postgres::{Config, NoTls};
 
 use crate::archive::{
-    database, decode, decode_digest, decode_search_hit, validate_text, ArchiveSearchHitV1,
-    SemanticArchiveErrorV1, ARCHIVE_SEARCH_SQL_V1, MAX_SEARCH_HITS,
+    database, decode, decode_digest, decode_search_hit, decode_stored_atom, validate_text,
+    ArchiveAtomSubjectKindV1, ArchiveAtomSubjectV1, ArchiveAtomV1, ArchiveSearchHitV1,
+    SemanticArchiveErrorV1, MAX_SEARCH_HITS,
 };
 use crate::identity::CampaignId;
 use crate::legacy_adopter::{
@@ -84,8 +86,10 @@ pub(crate) const READER_PRIVILEGE_CENSUS_SQL_V1: &str = "WITH RECURSIVE role_clo
     JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace \
     WHERE (namespace.nspname = 'babylon_state' AND relation.relkind IN ('r', 'p', 'v', 'm', 'f')) \
     OR (namespace.nspname = 'babylon_meta' AND relation.relname IN ('archive_page_v1', \
-    'archive_knowledge_grant_v1', 'archive_receipt_consumption_v1')) \
-    OR (namespace.nspname = 'public' AND relation.relname = 'v_committed_tick_status_v1')), \
+    'archive_knowledge_grant_v1', 'archive_receipt_consumption_v1', 'archive_atom_v1', \
+    'archive_page_atom_v1')) \
+    OR (namespace.nspname = 'public' AND relation.relname IN ('v_committed_tick_status_v1', \
+    'v_archive_page_known_v1', 'v_archive_atom_visible', 'v_county_card_atoms'))), \
     held AS (\
     SELECT restricted.nspname || '.' || restricted.relname || ':' || acl.privilege_type || \
     CASE WHEN acl.is_grantable THEN ' (grantable)' ELSE '' END AS entry \
@@ -116,9 +120,52 @@ const READER_VIEW_IDENTITY_SQL_V1: &str = "SELECT relation.relkind::pg_catalog.t
     WHERE namespace.nspname = 'public' AND relation.relname = 'v_committed_tick_status_v1'";
 const READER_SESSION_AUTHORITY_SQL_V1: &str = "SELECT current_user::pg_catalog.text, \
     (SELECT pg_roles.rolsuper FROM pg_catalog.pg_roles WHERE pg_roles.rolname = current_user)";
-/// The one privilege entry constituting the exact reader footprint. Every
-/// census entry outside this set is drift or writer authority.
+/// The pre-atom reader footprint: the one privilege entry constituting the
+/// exact reader footprint before `migrations/archive_atom_v1.sql` installs.
+/// Every census entry outside this set is drift or writer authority.
 const READER_FOOTPRINT_V1: [&str; 1] = ["public.v_committed_tick_status_v1:SELECT"];
+/// The post-atom reader footprint: exactly `SELECT` on the four fog-safe
+/// views, sorted because the census emits entries `ORDER BY entry`. Entries
+/// beyond this set — any base-table grant, ownership, or a grantable entry —
+/// are drift or writer authority.
+const READER_FOOTPRINT_WITH_ATOMS_V1: [&str; 4] = [
+    "public.v_archive_atom_visible:SELECT",
+    "public.v_archive_page_known_v1:SELECT",
+    "public.v_committed_tick_status_v1:SELECT",
+    "public.v_county_card_atoms:SELECT",
+];
+/// Atom-schema marker probe: the additive contract table
+/// `babylon_meta.archive_atom_schema_v1` exists exactly when the atom schema
+/// (tables and fog-safe views) is installed, so the expected footprint is
+/// existence-dependent on it.
+const ATOM_SCHEMA_MARKER_SQL_V1: &str = "SELECT \
+    pg_catalog.to_regclass('babylon_meta.archive_atom_schema_v1') IS NOT NULL";
+/// Known-page search through the fog-safe page view only; the base
+/// page/grant tables stay revoked from the reader role. Column layout matches
+/// the store's `ARCHIVE_SEARCH_SQL_V1` so the shared hit decoder revalidates.
+pub const READER_KNOWN_SEARCH_SQL_V1: &str = "SELECT subject_kind, subject_id, title, \
+    verified_tick, markdown, content_sha256, provenance_json \
+    FROM public.v_archive_page_known_v1 \
+    WHERE campaign_id = $1::uuid \
+      AND pg_catalog.strpos(pg_catalog.lower(markdown), pg_catalog.lower($2)) > 0 \
+    ORDER BY subject_kind, subject_id LIMIT $3";
+/// Position-ordered visible atom composition for one known page, through the
+/// visibility view only. Column layout matches the writer's
+/// `ARCHIVE_PAGE_ATOMS_SQL_V1` so the shared atom decoder revalidates.
+pub const READER_PAGE_ATOMS_SQL_V1: &str = "SELECT campaign_id, subject_kind, subject_id, \
+    signal_key, grant_key, evidence_class, value_kind, value_text, value_f64, value_u64, \
+    value_bool, provenance_source_id, provenance_locator, valid_tick, atom_id \
+    FROM public.v_archive_atom_visible \
+    WHERE campaign_id = $1::uuid AND page_subject_kind = $2 AND page_subject_id = $3 \
+    ORDER BY position";
+/// County-dossier card atom projection: the visible atoms asserted by one
+/// county page, position-ordered, through the card view only.
+pub const COUNTY_CARD_ATOMS_SQL_V1: &str = "SELECT campaign_id, subject_kind, subject_id, \
+    signal_key, grant_key, evidence_class, value_kind, value_text, value_f64, value_u64, \
+    value_bool, provenance_source_id, provenance_locator, valid_tick, atom_id \
+    FROM public.v_county_card_atoms \
+    WHERE campaign_id = $1::uuid AND page_subject_id = $2 \
+    ORDER BY position";
 /// Known-acknowledged-commit tick status read. The read goes through the view
 /// only; `babylon_state.tick_commit` stays revoked from the reader role.
 pub const COMMITTED_TICK_STATUS_SQL_V1: &str = "SELECT campaign_id, resolve_tick, \
@@ -264,8 +311,24 @@ fn census_role_privileges(
         .map_err(|error| database_error(operation, &error))
 }
 
-fn exact_reader_footprint(held: &[String]) -> bool {
-    held == READER_FOOTPRINT_V1
+fn exact_reader_footprint(held: &[String], atom_schema_installed: bool) -> bool {
+    if atom_schema_installed {
+        held == READER_FOOTPRINT_WITH_ATOMS_V1
+    } else {
+        held == READER_FOOTPRINT_V1
+    }
+}
+
+/// Probe whether the additive atom schema is installed; the expected reader
+/// footprint is existence-dependent on that marker.
+fn atom_schema_installed(
+    client: &mut postgres::Client,
+) -> Result<bool, SemanticArchiveReaderErrorV1> {
+    client
+        .query_one(ATOM_SCHEMA_MARKER_SQL_V1, &[])
+        .map_err(|error| database_error("census atom schema marker", &error))?
+        .try_get(0)
+        .map_err(|error| database_error("decode atom schema marker", &error))
 }
 
 fn connection_target_error(error: &LegacyAdopterError) -> SemanticArchiveReaderErrorV1 {
@@ -332,13 +395,12 @@ impl SemanticArchiveReaderV1 {
         })
     }
 
-    /// Search only SQL-known materialized pages.
+    /// Search only SQL-known materialized pages through the fog-safe views.
     ///
-    /// This reuses the exact store search boundary
-    /// ([`ARCHIVE_SEARCH_SQL_V1`](crate::ARCHIVE_SEARCH_SQL_V1)); against a
-    /// bare `babylon_reader` credential the `PostgreSQL` privilege layer
-    /// refuses the base page/grant tables until the Slice 2 fog-safe search
-    /// views land, which is the intended fog behavior.
+    /// The page read goes through `public.v_archive_page_known_v1` and each
+    /// hit's structured atom composition through `public.v_archive_atom_visible`,
+    /// so a bare `babylon_reader` credential never names a base Archive table
+    /// (ADR249 R8 fog boundary).
     ///
     /// # Errors
     /// Refuses a limit above 100, malformed stored rows, writer authority on
@@ -358,17 +420,67 @@ impl SemanticArchiveReaderV1 {
         validate_text(query).map_err(archive_boundary)?;
         let limit = i64::from(limit);
         let mut client = self.connect("connect known Archive reader search")?;
-        client
+        let rows = client
             .query(
-                ARCHIVE_SEARCH_SQL_V1,
+                READER_KNOWN_SEARCH_SQL_V1,
                 &[campaign_id.as_uuid(), &query, &limit],
             )
             .map_err(|error| {
                 archive_boundary(database("search known Archive reader pages", &error))
-            })?
+            })?;
+        let mut hits = Vec::with_capacity(rows.len());
+        for row in rows {
+            let mut hit = decode_search_hit(&row).map_err(archive_boundary)?;
+            let atom_rows = client
+                .query(
+                    READER_PAGE_ATOMS_SQL_V1,
+                    &[
+                        campaign_id.as_uuid(),
+                        &hit.page_ref().kind().as_str(),
+                        &hit.page_ref().id(),
+                    ],
+                )
+                .map_err(|error| {
+                    archive_boundary(database("read known Archive reader page atoms", &error))
+                })?;
+            hit.attach_atoms(
+                atom_rows
+                    .iter()
+                    .map(decode_stored_atom)
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(archive_boundary)?,
+            );
+            hits.push(hit);
+        }
+        Ok(hits)
+    }
+
+    /// Read the position-ordered visible atom composition for one county
+    /// dossier card through `public.v_county_card_atoms`.
+    ///
+    /// # Errors
+    /// Refuses a malformed county identity, malformed stored rows, writer
+    /// authority on the session, or database failure.
+    pub fn county_card_atoms(
+        &self,
+        campaign_id: CampaignId,
+        county_geoid: &str,
+    ) -> Result<Vec<ArchiveAtomV1>, SemanticArchiveReaderErrorV1> {
+        let subject = ArchiveAtomSubjectV1::try_new(
+            ArchiveAtomSubjectKindV1::County,
+            county_geoid.to_owned(),
+        )
+        .map_err(archive_boundary)?;
+        let mut client = self.connect("connect county card atom reader")?;
+        client
+            .query(
+                COUNTY_CARD_ATOMS_SQL_V1,
+                &[campaign_id.as_uuid(), &subject.id()],
+            )
+            .map_err(|error| archive_boundary(database("read county card atoms view", &error)))?
             .iter()
-            .map(decode_search_hit)
-            .collect::<Result<_, _>>()
+            .map(decode_stored_atom)
+            .collect::<Result<Vec<_>, _>>()
             .map_err(archive_boundary)
     }
 
@@ -437,7 +549,7 @@ fn confine_reader_authority(
         &session_role,
         "census reader session privileges",
     )?);
-    if exact_reader_footprint(&held) {
+    if exact_reader_footprint(&held, atom_schema_installed(client)?) {
         Ok(())
     } else {
         Err(SemanticArchiveReaderErrorV1::WriterAuthorityRefused(held))
@@ -456,7 +568,9 @@ fn confine_reader_authority(
 /// The existing-state path is a census, not a courtesy: the view must be a
 /// plain view storing the pinned canonical definition, and the role's
 /// effective-privilege census over the restricted relations must be exactly
-/// `SELECT` on the view. Anything else refuses with
+/// the existence-dependent reader footprint (the tick-status view alone
+/// before the atom schema, the four fog-safe views after it). Anything else
+/// refuses with
 /// [`SemanticArchiveReaderErrorV1::PrivilegeDrift`] (or
 /// [`SemanticArchiveReaderErrorV1::ViewMismatch`]); drift is never silently
 /// re-granted away.
@@ -512,7 +626,7 @@ fn install_reader_role_locked(
         verify_reader_view_identity(client)?;
         let held =
             census_role_privileges(client, READER_ROLE_NAME_V1, "census reader role privileges")?;
-        if !exact_reader_footprint(&held) {
+        if !exact_reader_footprint(&held, atom_schema_installed(client)?) {
             return Err(SemanticArchiveReaderErrorV1::PrivilegeDrift(held));
         }
     }

@@ -87,7 +87,7 @@ ALTER TABLE babylon_meta.archive_knowledge_grant_v1
         subject_kind IN ('county', 'place', 'concept')
     );
 ALTER TABLE babylon_meta.archive_knowledge_grant_v1
-    DROP CONSTRAINT archive_knowledge_grant_v1_subject_id_check;
+    DROP CONSTRAINT archive_knowledge_grant_v1_check;
 ALTER TABLE babylon_meta.archive_knowledge_grant_v1
     ADD CONSTRAINT archive_knowledge_grant_v1_subject_id_check CHECK (
         (subject_kind = 'county' AND subject_id ~ '^[0-9]{5}$') OR

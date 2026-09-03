@@ -9,10 +9,11 @@
 
 use babylon_kernel::sha256_of;
 use babylon_persistence::{
-    ArchiveCitationV1, ArchiveKnowledgeGrantV1, ArchiveKnowledgeV1, ArchivePageInputV1,
-    ArchivePageRefV1, ArchiveSignalV1, ArchiveSubjectKindV1, ArchiveSubjectV1, CampaignId,
-    FogSafeArchiveRendererV1, SemanticArchiveErrorV1, SemanticArchiveStoreV1,
-    ARCHIVE_SEARCH_SQL_V1,
+    ArchiveAtomV1, ArchiveCitationV1, ArchiveKnowledgeGrantV1, ArchiveKnowledgeV1,
+    ArchivePageInputV1, ArchivePageRefV1, ArchiveSignalV1, ArchiveSubjectKindV1, ArchiveSubjectV1,
+    CampaignId, FogSafeArchiveRendererV1, SemanticArchiveErrorV1, SemanticArchiveStoreV1,
+    ARCHIVE_PAGE_ATOMS_SQL_V1, ARCHIVE_SEARCH_SQL_V1, COUNTY_CARD_ATOMS_SQL_V1,
+    READER_PAGE_ATOMS_SQL_V1,
 };
 use uuid::Uuid;
 
@@ -93,6 +94,7 @@ fn search_hit_carries_page_tick_subject_signal_and_provenance() {
         &str,
         [u8; 32],
         &[babylon_persistence::ArchiveCitationV1],
+        &[ArchiveAtomV1],
     ) {
         (
             hit.page_ref(),
@@ -101,6 +103,7 @@ fn search_hit_carries_page_tick_subject_signal_and_provenance() {
             hit.markdown(),
             hit.content_sha256(),
             hit.citations(),
+            hit.atoms(),
         )
     }
     let _ = hit_surface_is_complete;
@@ -119,9 +122,17 @@ fn search_hit_carries_page_tick_subject_signal_and_provenance() {
             "known-only search must select {column} so one hit is self-contained"
         );
     }
-    assert!(ARCHIVE_SEARCH_SQL_V1.contains("FROM babylon_meta.archive_page_v1 AS page"));
+    assert!(ARCHIVE_SEARCH_SQL_V1.contains("FROM babylon_meta.archive_page_v1 AS page"),);
     assert!(
         ARCHIVE_SEARCH_SQL_V1.contains("JOIN babylon_meta.archive_knowledge_grant_v1 AS knowledge")
+    );
+    assert!(
+        ARCHIVE_PAGE_ATOMS_SQL_V1.contains("FROM babylon_meta.archive_page_atom_v1 AS composition"),
+        "the writer composition query reads the join table as `composition`"
+    );
+    assert!(
+        ARCHIVE_PAGE_ATOMS_SQL_V1.contains("JOIN babylon_meta.archive_atom_v1 AS atom"),
+        "the writer composition query joins the immutable atom table as `atom`"
     );
 
     let renderer = FogSafeArchiveRendererV1::new().expect("pinned template compiles");
@@ -138,19 +149,99 @@ fn search_hit_carries_page_tick_subject_signal_and_provenance() {
 }
 
 #[test]
-fn search_sql_never_names_raw_ledger_tables() {
-    for raw_relation in [
-        "archive_dirty_receipt_v1",
-        "tick_commit",
-        "tick_event",
-        "hypergraph",
-        "material",
-        "babylon_state",
+fn atom_composition_sql_selects_the_full_atom_surface() {
+    for column in [
+        "atom.campaign_id",
+        "atom.subject_kind",
+        "atom.subject_id",
+        "atom.signal_key",
+        "atom.grant_key",
+        "atom.evidence_class",
+        "atom.value_kind",
+        "atom.value_text",
+        "atom.value_f64",
+        "atom.value_u64",
+        "atom.value_bool",
+        "atom.provenance_source_id",
+        "atom.provenance_locator",
+        "atom.valid_tick",
+        "atom.atom_id",
     ] {
         assert!(
-            !ARCHIVE_SEARCH_SQL_V1.contains(raw_relation),
-            "known-only search must not name {raw_relation}"
+            ARCHIVE_PAGE_ATOMS_SQL_V1.contains(column),
+            "the writer composition query must select {column} so one hit is self-contained"
         );
+    }
+    for (sql, view) in [
+        (READER_PAGE_ATOMS_SQL_V1, "public.v_archive_atom_visible"),
+        (COUNTY_CARD_ATOMS_SQL_V1, "public.v_county_card_atoms"),
+    ] {
+        for column in [
+            "campaign_id",
+            "subject_kind",
+            "subject_id",
+            "signal_key",
+            "grant_key",
+            "evidence_class",
+            "value_kind",
+            "value_text",
+            "value_f64",
+            "value_u64",
+            "value_bool",
+            "provenance_source_id",
+            "provenance_locator",
+            "valid_tick",
+            "atom_id",
+        ] {
+            assert!(
+                sql.contains(column),
+                "reader atom SQL must select {column} so the shared decoder revalidates"
+            );
+        }
+        assert!(
+            sql.contains(&format!("FROM {view}")),
+            "reader atom SQL must read the fog-safe view {view}, never a base table"
+        );
+    }
+}
+
+#[test]
+fn search_hit_atoms_are_filled_by_the_store_path() {
+    assert!(
+        ARCHIVE_SOURCE.contains("pub fn atoms(&self) -> &[ArchiveAtomV1]"),
+        "the hit surface must expose the position-ordered structured atom composition"
+    );
+    assert!(
+        ARCHIVE_SOURCE.contains("hit.atoms = "),
+        "known search must fill atoms in the store path so one hit stays self-contained"
+    );
+    assert!(
+        ARCHIVE_SOURCE.contains("pub(crate) fn attach_atoms"),
+        "atom attachment is crate-internal; callers receive a complete hit"
+    );
+}
+
+#[test]
+fn search_sql_never_names_raw_ledger_tables() {
+    for sql in [
+        ARCHIVE_SEARCH_SQL_V1,
+        ARCHIVE_PAGE_ATOMS_SQL_V1,
+        READER_PAGE_ATOMS_SQL_V1,
+        COUNTY_CARD_ATOMS_SQL_V1,
+    ] {
+        for raw_relation in [
+            "archive_dirty_receipt_v1",
+            "tick_commit",
+            "tick_event",
+            "hypergraph",
+            "material",
+            "babylon_state",
+        ] {
+            assert!(
+                !sql.contains(raw_relation),
+                "known-only retrieval must not name {raw_relation}"
+            );
+        }
     }
 }
 

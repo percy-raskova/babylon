@@ -19,6 +19,8 @@ authority:
     contiguous_watermark_derivation: Designed
     stop_on_first_error: Designed
     fixture_values: Designed
+    atom_materialization: Designed
+    composition_join: Designed
   invariants:
     - The sweep selects only marker-backed unconsumed receipts in ascending
       resolve_tick order.
@@ -33,6 +35,14 @@ authority:
     - verified_tick is the contiguous persisted consumption watermark derived
       from durable state, never the sweep-local maximum and never past a
       pending earlier tick.
+    - Atom mint refuses NaN and infinite f64 values before any write; the
+      canonical encoding normalizes negative zero to positive zero.
+    - Atoms are immutable content-addressed rows, so a re-mint of identical
+      bytes yields the identical atom_id and never mutates stored bytes.
+    - Composition join rows for a superseded page are replaced only inside the
+      monotonic-guarded upsert window; atom rows never mutate.
+    - A search hit carries the position-ordered atom composition without any
+      raw-ledger join, so one hit stays self-contained.
 
 constants:
   source_path: rust/crates/babylon-persistence/src/archive_worker.rs

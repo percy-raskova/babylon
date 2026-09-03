@@ -17,6 +17,7 @@ use postgres::binary_copy::BinaryCopyInWriter;
 use postgres::types::{ToSql, Type};
 use postgres::{Config, GenericClient, NoTls};
 
+use crate::archive::SemanticArchiveStoreV1;
 use crate::bootstrap::{bootstrap_h3_reader_epoch_v1, H3ReaderBootstrapErrorV1};
 use crate::checkpoint::{
     compose_archive_dirty_receipt_v1, compose_checkpoint_rows_v1, ArchiveDirtyReceiptV1,
@@ -1197,6 +1198,10 @@ pub enum RustPersistenceRuntimeErrorV2 {
     },
     /// The declared territory-county mapping refused extraction or persistence.
     TerritoryCountyMap(crate::territory_county_map::TerritoryCountyMapErrorV1),
+    /// The additive semantic Archive schema refused installation.
+    SemanticArchive(crate::SemanticArchiveErrorV1),
+    /// Foundation knowledge-grant seeding refused fixture drift or a grant conflict.
+    FoundationGrants(crate::archive_foundation_grants::FoundationGrantsErrorV1),
 }
 
 impl From<SemanticBatchErrorV2> for RustPersistenceRuntimeErrorV2 {
@@ -1840,6 +1845,9 @@ fn persist_campaign_foundation_v1(
     })?;
     crate::territory_county_map::install_territory_county_map_schema_v1(config)
         .map_err(RustPersistenceRuntimeErrorV2::TerritoryCountyMap)?;
+    SemanticArchiveStoreV1::new(config)
+        .install_schema()
+        .map_err(RustPersistenceRuntimeErrorV2::SemanticArchive)?;
     let mut client = config.connect(NoTls).map_err(|error| {
         RustPersistenceRuntimeErrorV2::postgres("connect foundation writer", &error)
     })?;
@@ -1956,6 +1964,8 @@ fn insert_campaign_foundation_rows_v1(
         &territory_county_map,
     )
     .map_err(RustPersistenceRuntimeErrorV2::TerritoryCountyMap)?;
+    crate::archive_foundation_grants::seed_foundation_grants_v1(client, campaign_id)
+        .map_err(RustPersistenceRuntimeErrorV2::FoundationGrants)?;
     Ok(())
 }
 

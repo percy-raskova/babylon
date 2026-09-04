@@ -3,9 +3,10 @@
 //!
 //! Each test clones the validated Rust-active runtime template, commits real
 //! ticks through `DurableReplayRuntimeV2`, and proves one place dossier
-//! acceptance property against the committed dirty receipts: loud truncation
-//! refusal, bounded allowlist drain with clean rerun, and foundation-seeded
-//! grants publishing the revealed page without any explicit grant insert.
+//! acceptance property against the committed dirty receipts: paged bootstrap
+//! drain with a pending-until-drained receipt, bounded allowlist drain with
+//! clean rerun, and foundation-seeded grants publishing the revealed page
+//! without any explicit grant insert.
 
 use std::str::FromStr;
 
@@ -19,9 +20,11 @@ use babylon_kernel::tick_content_hash::RefDigestV1;
 use babylon_kernel::ContentDigest;
 use babylon_persistence::{
     michigan_dynamic_hex_foundation_v1, validate_legacy_connection_target,
+    ArchiveDossierProducerV1, ArchiveMaterializeDispositionV1, ArchiveMaterializeModeV1,
     ArchiveReceiptDispositionV1, ArchiveSchemaDispositionV1, ArchiveWorkerV1, CampaignId,
-    DurableReplayRuntimeV2, FoundationContentBundleV1, PlaceDossierProducerV1,
-    SemanticArchiveErrorV1, SemanticArchiveStoreV1,
+    CompositeArchiveDossierProducerV1, CountyDossierProducerV1, DurableReplayRuntimeV2,
+    FoundationContentBundleV1, PendingArchiveReceiptV1, PlaceDossierProducerV1,
+    SemanticArchiveStoreV1,
 };
 use babylon_practice_contract::ordered_action_v1::OrderedPracticeActionBatchV1;
 use babylon_tick::material_state::MaterialStateV1;
@@ -262,18 +265,22 @@ impl LivePlaceTarget {
     }
 }
 
-fn place_page_count(config: &Config, campaign_id: CampaignId) -> i64 {
+fn archive_page_count(config: &Config, campaign_id: CampaignId, subject_kind: &str) -> i64 {
     config
         .connect(NoTls)
         .expect("page count connection")
         .query_one(
             "SELECT pg_catalog.count(*) FROM babylon_meta.archive_page_v1 \
-             WHERE campaign_id = $1::uuid AND subject_kind = 'place'",
-            &[campaign_id.as_uuid()],
+             WHERE campaign_id = $1::uuid AND subject_kind = $2::text",
+            &[campaign_id.as_uuid(), &subject_kind],
         )
         .expect("page count query")
         .try_get(0)
         .expect("page count decodes")
+}
+
+fn place_page_count(config: &Config, campaign_id: CampaignId) -> i64 {
+    archive_page_count(config, campaign_id, "place")
 }
 
 fn receipt_consumption_count(config: &Config, campaign_id: CampaignId) -> i64 {
@@ -341,12 +348,46 @@ fn assert_revealed_detroit(row: &(String, i64, String), verified_tick: i64) {
     );
 }
 
+/// Read the staged place-page GEOIDs, requiring the exact count and geoid order.
+fn staged_head_geoids(
+    config: &Config,
+    campaign_id: CampaignId,
+    expected_len: usize,
+) -> Vec<String> {
+    let geoids: Vec<String> = place_page_rows(config, campaign_id)
+        .iter()
+        .map(|row| row.0.clone())
+        .collect();
+    assert_eq!(geoids.len(), expected_len);
+    let mut sorted = geoids.clone();
+    sorted.sort_unstable();
+    assert_eq!(geoids, sorted, "the staged head keeps geoid order");
+    geoids
+}
+
+/// Require every newly staged GEOID to sort strictly after the prior head.
+fn assert_new_geoids_sort_after_head(
+    config: &Config,
+    campaign_id: CampaignId,
+    head_geoids: &[String],
+) {
+    let head_max = head_geoids.last().expect("head is nonempty").clone();
+    for (geoid, ..) in place_page_rows(config, campaign_id) {
+        if !head_geoids.iter().any(|stored| stored == &geoid) {
+            assert!(
+                geoid > head_max,
+                "the second prefix sorts strictly after the staged head: {geoid}"
+            );
+        }
+    }
+}
+
 #[test]
 #[ignore = "requires the task-owned disposable PostgreSQL runtime and committed ticks"]
-fn live_place_producer_refuses_truncated_bootstrap_drain() {
+fn live_place_producer_pages_the_bootstrap_drain_across_sweeps() {
     let target = LivePlaceTarget::create(
-        "placeproduceroverflow",
-        0x2200_0000_0000_0000_0000_0000_0000_00b3,
+        "placepageddrain",
+        0x2200_0000_0000_0000_0000_0000_0000_00c1,
         1,
     );
 
@@ -357,42 +398,396 @@ fn live_place_producer_refuses_truncated_bootstrap_drain() {
     );
 
     let mut worker = ArchiveWorkerV1::new(&target.config);
-    let error = worker
+    // Sweep one stages the leading 256-page head; the receipt stays pending
+    // and the watermark honestly stalls behind it.
+    let first = worker
         .sweep_once(target.campaign_id, &producer)
-        .expect_err("a 745-page bootstrap backlog must not truncate into one receipt");
+        .expect("first sweep stages the head batch");
     assert_eq!(
-        error,
-        SemanticArchiveErrorV1::PlaceDrainOverflow {
-            dirty: PLACE_COUNT,
-            limit: MAX_PAGES_PER_RECEIPT,
-        }
+        dispositions(&first),
+        vec![(1, ArchiveReceiptDispositionV1::Paged)]
     );
+    assert_eq!(first.paged_count(), 1);
+    assert_eq!(first.applied_count(), 0);
     assert_eq!(
-        place_page_count(&target.config, target.campaign_id),
+        first.verified_tick(),
         0,
-        "the refusal consumes nothing"
+        "a staged receipt never advances the watermark"
     );
+    assert_eq!(place_page_count(&target.config, target.campaign_id), 256);
     assert_eq!(
         receipt_consumption_count(&target.config, target.campaign_id),
         0,
-        "the receipt stays pending"
+        "staging claims nothing"
     );
+    let head_geoids = staged_head_geoids(&target.config, target.campaign_id, 256);
 
-    // The pending receipt refuses again on rerun: nothing was silently eaten.
-    let again = worker
+    // Sweep two stores the next 256-page prefix: every new geoid sorts after
+    // the stored head, which is what advances the drain without dropping pages.
+    let second = worker
         .sweep_once(target.campaign_id, &producer)
-        .expect_err("the pending receipt refuses the same loud error");
+        .expect("second sweep stages the next prefix");
     assert_eq!(
-        again,
-        SemanticArchiveErrorV1::PlaceDrainOverflow {
-            dirty: PLACE_COUNT,
-            limit: MAX_PAGES_PER_RECEIPT,
-        }
+        dispositions(&second),
+        vec![(1, ArchiveReceiptDispositionV1::Paged)]
     );
-    assert_eq!(place_page_count(&target.config, target.campaign_id), 0);
+    assert_eq!(place_page_count(&target.config, target.campaign_id), 512);
     assert_eq!(
         receipt_consumption_count(&target.config, target.campaign_id),
         0
+    );
+    assert_new_geoids_sort_after_head(&target.config, target.campaign_id, &head_geoids);
+
+    // Sweep three drains the 233-page tail whole and consumes the receipt
+    // exactly once, so the watermark converges.
+    let third = worker
+        .sweep_once(target.campaign_id, &producer)
+        .expect("third sweep drains the tail");
+    assert_eq!(
+        dispositions(&third),
+        vec![(1, ArchiveReceiptDispositionV1::Applied)]
+    );
+    assert_eq!(third.paged_count(), 0);
+    assert_eq!(third.verified_tick(), 1);
+    assert_eq!(
+        place_page_count(&target.config, target.campaign_id),
+        i64::try_from(PLACE_COUNT).expect("place count fits i64")
+    );
+    assert_eq!(
+        receipt_consumption_count(&target.config, target.campaign_id),
+        1
+    );
+
+    // A rerun reconciles clean: no pending receipts, no republished pages.
+    let rerun = worker
+        .sweep_once(target.campaign_id, &producer)
+        .expect("rerun sweep reconciles");
+    assert!(dispositions(&rerun).is_empty());
+    assert_eq!(rerun.verified_tick(), 1);
+    assert_eq!(
+        place_page_count(&target.config, target.campaign_id),
+        i64::try_from(PLACE_COUNT).expect("place count fits i64")
+    );
+    assert_eq!(
+        receipt_consumption_count(&target.config, target.campaign_id),
+        1
+    );
+    for (_, verified_tick, _) in place_page_rows(&target.config, target.campaign_id) {
+        assert_eq!(verified_tick, 1, "rerun never republishes a clean page");
+    }
+    target.finish();
+}
+
+#[test]
+#[ignore = "requires the task-owned disposable PostgreSQL runtime and committed ticks"]
+fn live_composite_producer_drains_the_backlog_county_first() {
+    let target = LivePlaceTarget::create("compdrain", 0x2200_0000_0000_0000_0000_0000_0000_00c2, 1);
+
+    // The place conformance scenario declares no `territory/county-fips`
+    // geography, so scenario reconciliation leaves the declared county mapping
+    // empty. Seed the two mapping rows directly — the exact rows a declaring
+    // scenario would extract — so the county dossier has a deterministic dirty
+    // set to thread ahead of the place head.
+    target
+        .config
+        .connect(NoTls)
+        .expect("county map seed connection")
+        .execute(
+            "INSERT INTO babylon_meta.territory_county_map_v1 \
+             (campaign_id, territory_local_name, county_geoid) \
+             VALUES ($1::uuid, 'wayne', '26163'), ($1::uuid, 'oakland', '26125')",
+            &[target.campaign_id.as_uuid()],
+        )
+        .expect("county map rows seed");
+
+    let county = CountyDossierProducerV1::try_new(&target.config).expect("county products load");
+    let place = PlaceDossierProducerV1::try_new(&target.config).expect("place products load");
+    let producer = CompositeArchiveDossierProducerV1::new(vec![Box::new(county), Box::new(place)]);
+
+    let mut worker = ArchiveWorkerV1::new(&target.config);
+    // Sweep one proves county-first threading: the shared 256-page budget
+    // publishes the county head plus the remaining place head (256 - county
+    // exactly), stages them without claiming, and leaves the head receipt
+    // pending.
+    let first = worker
+        .sweep_once(target.campaign_id, &producer)
+        .expect("first sweep stages the county pages plus the place head");
+    let first_dispositions = dispositions(&first);
+    assert_eq!(
+        first_dispositions.first(),
+        Some(&(1, ArchiveReceiptDispositionV1::Paged)),
+        "the head receipt stages its first page batch"
+    );
+    let staged_county = archive_page_count(&target.config, target.campaign_id, "county");
+    let staged_place = place_page_count(&target.config, target.campaign_id);
+    assert_eq!(
+        staged_county, 2,
+        "both declared counties publish in the first batch"
+    );
+    assert_eq!(
+        staged_county + staged_place,
+        i64::try_from(MAX_PAGES_PER_RECEIPT).expect("page budget fits i64"),
+        "the merged staged batch never exceeds the shared page budget"
+    );
+    assert_eq!(
+        staged_place,
+        i64::try_from(MAX_PAGES_PER_RECEIPT).expect("page budget fits i64") - staged_county,
+        "the composite threads the budget county-first: the place head is exactly the remainder"
+    );
+    assert_eq!(
+        receipt_consumption_count(&target.config, target.campaign_id),
+        0,
+        "staging claims nothing"
+    );
+
+    // The drain converges in a bounded loop: each pending receipt keeps its
+    // pages staged until its own dirty set drains, then consumes exactly once.
+    let mut sweeps = 1;
+    let mut latest = first;
+    while latest.paged_count() > 0 {
+        assert!(
+            sweeps < 8,
+            "the paged drain converges within the bounded loop"
+        );
+        latest = worker
+            .sweep_once(target.campaign_id, &producer)
+            .expect("sweep drains the backlog");
+        sweeps += 1;
+    }
+    assert_eq!(latest.paged_count(), 0, "nothing remains undrained");
+    assert_eq!(
+        place_page_count(&target.config, target.campaign_id),
+        i64::try_from(PLACE_COUNT).expect("place count fits i64"),
+        "every place page lands exactly once; nothing drops"
+    );
+    let settled_consumption = receipt_consumption_count(&target.config, target.campaign_id);
+    assert!(
+        settled_consumption >= 1,
+        "the head receipt settles exactly once"
+    );
+
+    // A rerun reconciles clean: no paged, no applied, no growth.
+    let rerun = worker
+        .sweep_once(target.campaign_id, &producer)
+        .expect("rerun sweep reconciles");
+    assert_eq!(rerun.paged_count(), 0);
+    assert!(
+        dispositions(&rerun)
+            .iter()
+            .all(|(_, disposition)| *disposition == ArchiveReceiptDispositionV1::Deferred),
+        "settled receipts never republish"
+    );
+    assert_eq!(
+        place_page_count(&target.config, target.campaign_id),
+        i64::try_from(PLACE_COUNT).expect("place count fits i64")
+    );
+    assert_eq!(
+        receipt_consumption_count(&target.config, target.campaign_id),
+        settled_consumption,
+        "rerun never re-consumes"
+    );
+    target.finish();
+}
+
+#[test]
+#[ignore = "requires the task-owned disposable PostgreSQL runtime and committed ticks"]
+fn live_staged_batch_restages_without_double_writes() {
+    let target =
+        LivePlaceTarget::create("stagerestage", 0x2200_0000_0000_0000_0000_0000_0000_00c3, 1);
+
+    let allowlist = vec!["2622000".to_owned()];
+    let producer = PlaceDossierProducerV1::with_place_allowlist(&target.config, &allowlist)
+        .expect("sorted unique allowlist binds");
+    let hash: Vec<u8> = target
+        .config
+        .connect(NoTls)
+        .expect("receipt hash connection")
+        .query_one(
+            "SELECT tick_content_hash FROM babylon_state.archive_dirty_receipt_v1 \
+             WHERE campaign_id = $1::uuid AND resolve_tick = 1",
+            &[target.campaign_id.as_uuid()],
+        )
+        .expect("one committed dirty receipt")
+        .try_get(0)
+        .expect("dirty receipt digest");
+    let receipt = PendingArchiveReceiptV1::try_new(1, hash.try_into().expect("exact digest width"))
+        .expect("pending receipt");
+    let outcome = producer
+        .produce(
+            *target.campaign_id.as_uuid(),
+            &receipt,
+            MAX_PAGES_PER_RECEIPT,
+        )
+        .expect("allowlisted produce drains whole");
+    assert_eq!(outcome.remaining(), 0);
+    assert_eq!(outcome.batch().pages().len(), 1);
+
+    let store = SemanticArchiveStoreV1::new(&target.config);
+    let first = store
+        .materialize_receipt(
+            target.campaign_id,
+            outcome.batch(),
+            ArchiveMaterializeModeV1::Stage,
+        )
+        .expect("first stage applies");
+    assert_eq!(
+        first.disposition(),
+        ArchiveMaterializeDispositionV1::Applied
+    );
+    assert_eq!(place_page_count(&target.config, target.campaign_id), 1);
+    assert_eq!(
+        receipt_consumption_count(&target.config, target.campaign_id),
+        0,
+        "staging writes pages without claiming the receipt"
+    );
+
+    // An exact restage — the same sweep crashing between stage and consume —
+    // is a no-op through the monotonic page guard and claims nothing.
+    let restage = store
+        .materialize_receipt(
+            target.campaign_id,
+            outcome.batch(),
+            ArchiveMaterializeModeV1::Stage,
+        )
+        .expect("restage reconciles");
+    assert_eq!(
+        restage.disposition(),
+        ArchiveMaterializeDispositionV1::Applied
+    );
+    assert_eq!(place_page_count(&target.config, target.campaign_id), 1);
+    assert_eq!(
+        receipt_consumption_count(&target.config, target.campaign_id),
+        0
+    );
+    let markdown = place_page_rows(&target.config, target.campaign_id)[0]
+        .2
+        .clone();
+
+    // A later sweep finishes the drain in Consume mode and claims exactly once.
+    let consumed = store
+        .materialize_receipt(
+            target.campaign_id,
+            outcome.batch(),
+            ArchiveMaterializeModeV1::Consume,
+        )
+        .expect("consume mode settles the drained receipt");
+    assert_eq!(
+        consumed.disposition(),
+        ArchiveMaterializeDispositionV1::Applied
+    );
+    assert_eq!(
+        receipt_consumption_count(&target.config, target.campaign_id),
+        1
+    );
+    assert_eq!(place_page_count(&target.config, target.campaign_id), 1);
+    assert_eq!(
+        place_page_rows(&target.config, target.campaign_id)[0].2,
+        markdown,
+        "settling never rewrites page bytes"
+    );
+
+    // After the claim, a stage-mode retry reconciles as AlreadyConsumed.
+    let settled = store
+        .materialize_receipt(
+            target.campaign_id,
+            outcome.batch(),
+            ArchiveMaterializeModeV1::Stage,
+        )
+        .expect("settled stage retry reconciles");
+    assert_eq!(
+        settled.disposition(),
+        ArchiveMaterializeDispositionV1::AlreadyConsumed
+    );
+    assert_eq!(place_page_count(&target.config, target.campaign_id), 1);
+    target.finish();
+}
+
+#[test]
+#[ignore = "requires the task-owned disposable PostgreSQL runtime and committed ticks"]
+fn live_installer_upgrades_the_legacy_page_provenance_anchor() {
+    let target = LivePlaceTarget::create(
+        "legacyfkupgrade",
+        0x2200_0000_0000_0000_0000_0000_0000_00c4,
+        1,
+    );
+
+    // Re-anchor the page provenance at the consumption marker, exactly the
+    // pre-PER-318 shape, to prove the installer upgrades an installed schema.
+    let legacy_fk_targets_consumption: bool = target
+        .config
+        .connect(NoTls)
+        .expect("legacy anchor connection")
+        .query_one(
+            "SELECT pg_catalog.pg_get_constraintdef(oid) LIKE '%archive_receipt_consumption_v1%' \
+             FROM pg_catalog.pg_constraint \
+             WHERE conname = 'archive_page_v1_campaign_id_source_resolve_tick_fkey' \
+               AND conrelid = 'babylon_meta.archive_page_v1'::pg_catalog.regclass",
+            &[],
+        )
+        .expect("legacy anchor lookup")
+        .try_get(0)
+        .expect("legacy anchor decodes");
+    assert!(
+        !legacy_fk_targets_consumption,
+        "a fresh template already anchors pages at the durable dirty receipt"
+    );
+    target
+        .config
+        .connect(NoTls)
+        .expect("legacy anchor connection")
+        .batch_execute(
+            "ALTER TABLE babylon_meta.archive_page_v1 \
+             DROP CONSTRAINT archive_page_v1_campaign_id_source_resolve_tick_fkey; \
+             ALTER TABLE babylon_meta.archive_page_v1 \
+             ADD CONSTRAINT archive_page_v1_campaign_id_source_resolve_tick_fkey \
+             FOREIGN KEY (campaign_id, source_resolve_tick) \
+             REFERENCES babylon_meta.archive_receipt_consumption_v1(campaign_id, resolve_tick) \
+             ON DELETE CASCADE",
+        )
+        .expect("legacy consumption anchor applies");
+
+    let store = SemanticArchiveStoreV1::new(&target.config);
+    assert_eq!(
+        store
+            .install_schema()
+            .expect("installer upgrades the legacy anchor"),
+        ArchiveSchemaDispositionV1::Installed,
+        "re-anchoring the page provenance reports an installed change"
+    );
+    let upgraded: bool = target
+        .config
+        .connect(NoTls)
+        .expect("upgrade check connection")
+        .query_one(
+            "SELECT confrelid = 'babylon_state.archive_dirty_receipt_v1'::pg_catalog.regclass \
+             FROM pg_catalog.pg_constraint \
+             WHERE conname = 'archive_page_v1_campaign_id_source_resolve_tick_fkey' \
+               AND conrelid = 'babylon_meta.archive_page_v1'::pg_catalog.regclass",
+            &[],
+        )
+        .expect("upgrade check lookup")
+        .try_get(0)
+        .expect("upgrade check decodes");
+    assert!(
+        upgraded,
+        "the upgraded schema anchors pages at the durable dirty receipt"
+    );
+
+    // The upgraded schema stages a paged drain batch the legacy anchor refused.
+    let producer = PlaceDossierProducerV1::try_new(&target.config).expect("pinned products load");
+    let mut worker = ArchiveWorkerV1::new(&target.config);
+    let report = worker
+        .sweep_once(target.campaign_id, &producer)
+        .expect("upgraded schema stages the bootstrap head");
+    assert_eq!(
+        dispositions(&report),
+        vec![(1, ArchiveReceiptDispositionV1::Paged)]
+    );
+    assert_eq!(place_page_count(&target.config, target.campaign_id), 256);
+    assert_eq!(
+        receipt_consumption_count(&target.config, target.campaign_id),
+        0,
+        "staging still claims nothing after the upgrade"
     );
     target.finish();
 }

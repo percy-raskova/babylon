@@ -38,14 +38,16 @@
 //!
 //! # Drain bound
 //!
-//! The producer never truncates a dirty set. When more than
-//! [`ArchiveDirtyBatchV1::MAX_PAGES`] places are dirty for one receipt it
-//! returns [`SemanticArchiveErrorV1::PlaceDrainOverflow`], the sweep stops,
-//! the receipt stays pending, and nothing is consumed; the dirty set must be
-//! drained below the bound first. Full-campaign bootstrap across all 745
-//! pinned places is the declared follow-up slice — a bounded allowlist
-//! ([`PlaceDossierProducerV1::with_place_allowlist`]) covers the interim
-//! drain and rerun proofs.
+//! The producer never truncates a dirty set and never refuses an over-bound
+//! one. When more than [`ArchiveDirtyBatchV1::MAX_PAGES`] places are dirty
+//! for one receipt it selects the leading `limit` entries in geoid order and
+//! reports the exact undrained tail count ([`ArchiveDirtySelectionV1`]), so
+//! the sweep stages one bounded batch, the receipt stays pending, and the
+//! next sweep continues the drain where the stored-current pages leave off.
+//! The full 745-place campaign therefore materializes across successive
+//! sweeps instead of dead-ending on the batch bound (PER-318). The bounded
+//! allowlist ([`PlaceDossierProducerV1::with_place_allowlist`]) still covers
+//! small fixture drains and rerun proofs.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -59,10 +61,10 @@ use crate::archive::{
 };
 use crate::{
     michigan_spatial_reference_products_v1, representative_h3_reference_cohort_v1,
-    ArchiveCitationV1, ArchiveDirtyBatchV1, ArchiveDossierProducerV1, ArchiveLinkV1,
-    ArchivePageInputV1, ArchivePageRefV1, ArchiveSignalV1, ArchiveSubjectKindV1, ArchiveSubjectV1,
-    CampaignId, PendingArchiveReceiptV1, PlaceIdentityRow, SemanticArchiveErrorV1,
-    SpatialReferenceProducts,
+    ArchiveCitationV1, ArchiveDirtyBatchV1, ArchiveDirtySelectionV1, ArchiveDossierProducerV1,
+    ArchiveLinkV1, ArchivePageInputV1, ArchivePageRefV1, ArchiveProducerOutcomeV1, ArchiveSignalV1,
+    ArchiveSubjectKindV1, ArchiveSubjectV1, CampaignId, PendingArchiveReceiptV1, PlaceIdentityRow,
+    SemanticArchiveErrorV1, SpatialReferenceProducts,
 };
 
 /// Stable decision question every place dossier page answers.
@@ -597,19 +599,19 @@ fn parse_signal_bullet(line: &str) -> Option<PlaceSignalProjectionV1> {
 ///
 /// A desired page is dirty when no stored projection exists for its subject
 /// or when the grant-visible projection hash differs. The selection never
-/// truncates: when the dirty set exceeds `limit` it refuses with
-/// [`SemanticArchiveErrorV1::PlaceDrainOverflow`] so the caller leaves the
-/// receipt pending and consumes nothing.
+/// truncates and never refuses: it takes the leading `limit` dirty entries
+/// and reports the exact undrained tail count, so an over-bound dirty set
+/// pages across successive sweeps — stored-current pages drop out of the
+/// dirty set automatically, which is what advances the head each sweep.
 ///
 /// # Errors
-/// Returns [`SemanticArchiveErrorV1::PlaceDrainOverflow`] when the dirty set
-/// exceeds `limit`, or any projection refusal.
+/// Returns any projection refusal.
 pub fn select_dirty_place_pages_v1<'a>(
     desired: &'a [PlacePagePlanV1],
     stored: &BTreeMap<String, PlacePageProjectionV1>,
     grants: &PlaceGrantIndexV1,
     limit: usize,
-) -> Result<Vec<&'a PlacePagePlanV1>, SemanticArchiveErrorV1> {
+) -> Result<ArchiveDirtySelectionV1<&'a PlacePagePlanV1>, SemanticArchiveErrorV1> {
     let mut dirty = Vec::new();
     for plan in desired {
         let projection = desired_place_projection_v1(plan, grants)?;
@@ -621,13 +623,9 @@ pub fn select_dirty_place_pages_v1<'a>(
             dirty.push(plan);
         }
     }
-    if dirty.len() > limit {
-        return Err(SemanticArchiveErrorV1::PlaceDrainOverflow {
-            dirty: dirty.len(),
-            limit,
-        });
-    }
-    Ok(dirty)
+    let remaining = dirty.len().saturating_sub(limit);
+    dirty.truncate(limit);
+    Ok(ArchiveDirtySelectionV1::new(dirty, remaining))
 }
 
 /// Build the exact receipt-bound page input for one desired place page.
@@ -708,10 +706,9 @@ impl PlaceDossierProducerV1 {
     /// numeric, and every member must be one of the pinned fixture places;
     /// anything else refuses with
     /// [`SemanticArchiveErrorV1::InvalidIdentity`]. Only allowlisted places
-    /// enumerate, which keeps a drain at or below
-    /// [`ArchiveDirtyBatchV1::MAX_PAGES`] for live proofs. Production keeps
-    /// the full fixture through [`PlaceDossierProducerV1::try_new`]; bulk
-    /// bootstrap of the full campaign is the declared follow-up slice.
+    /// enumerate, which keeps small drains single-sweep for live proofs.
+    /// Production keeps the full fixture through [`PlaceDossierProducerV1::try_new`];
+    /// larger dirty sets page across sweeps under the shared page budget.
     ///
     /// # Errors
     /// Refuses unsorted, duplicated, malformed, or unknown GEOIDs, or any
@@ -866,24 +863,26 @@ impl ArchiveDossierProducerV1 for PlaceDossierProducerV1 {
         &self,
         campaign_id: Uuid,
         receipt: &PendingArchiveReceiptV1,
-    ) -> Result<ArchiveDirtyBatchV1, SemanticArchiveErrorV1> {
+        page_budget: usize,
+    ) -> Result<ArchiveProducerOutcomeV1, SemanticArchiveErrorV1> {
         let campaign = CampaignId::from_uuid(campaign_id);
         let desired = self.desired_pages()?;
         let stored = self.read_stored_pages(campaign)?;
         let grants = self.read_grants(campaign, receipt.resolve_tick())?;
-        let dirty = select_dirty_place_pages_v1(
-            &desired,
-            &stored,
-            &grants,
-            ArchiveDirtyBatchV1::MAX_PAGES,
-        )?;
-        let pages = dirty
+        let selection = select_dirty_place_pages_v1(&desired, &stored, &grants, page_budget)?;
+        let pages = selection
+            .head()
             .iter()
             .map(|plan| {
                 place_page_input_v1(plan, receipt.resolve_tick(), *receipt.tick_content_hash())
             })
             .collect::<Result<Vec<_>, _>>()?;
-        ArchiveDirtyBatchV1::try_new(receipt.resolve_tick(), *receipt.tick_content_hash(), pages)
+        let batch = ArchiveDirtyBatchV1::try_new(
+            receipt.resolve_tick(),
+            *receipt.tick_content_hash(),
+            pages,
+        )?;
+        Ok(ArchiveProducerOutcomeV1::new(batch, selection.remaining()))
     }
 }
 

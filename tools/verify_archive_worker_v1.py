@@ -17,12 +17,13 @@ MAX_I64 = (1 << 63) - 1
 MAX_RECEIPTS_PER_SWEEP = 256
 MAX_SCAN_PER_SWEEP = 4096
 MAX_PAGE_COUNT = 256
+MAX_REMAINING_COUNT = 65_535
 MAX_CONTRACT_BYTES = 131_072
 MAX_VECTOR_ROWS = 32
 MAX_VECTOR_LINE_BYTES = 16_384
 MAX_VECTOR_OBJECT_FIELDS = 64
 PLANS = ["Defer", "Materialize"]
-DISPOSITIONS = ["Deferred", "Applied", "AlreadyConsumed"]
+DISPOSITIONS = ["Deferred", "Applied", "AlreadyConsumed", "Paged"]
 ERROR_VARIANTS_USED = ["InvalidVerifiedTick", "ReceiptMismatch", "StoredPageMismatch"]
 REQUIRED_VECTOR_KINDS = {"watermark", "match", "plan", "sweep", "identity"}
 REQUIRED_ROW_IDS = {
@@ -37,12 +38,18 @@ REQUIRED_ROW_IDS = {
         "plan-empty-defers",
         "plan-nonempty-materializes",
         "plan-multi-page-materializes",
+        "plan-paged-materializes-without-consuming",
+        "plan-empty-budget-exhausted-still-materializes",
     },
     "sweep": {
         "sweep-all-defer",
         "sweep-mixed-order",
         "sweep-stop-on-first-error",
         "sweep-error-first",
+        "sweep-foundation-drain-one",
+        "sweep-foundation-drain-two",
+        "sweep-foundation-drain-three",
+        "sweep-foundation-drain-four",
     },
     "identity": {"identity-sql-and-bound"},
 }
@@ -99,13 +106,27 @@ COMPILED_LAYOUTS = {
         "resolve_tick_domain": "1..=i64::MAX",
         "page_count_domain": "0..=256",
     },
+    "paged_batch_ref_v1": {
+        "fields": [
+            "resolve_tick_u64",
+            "tick_content_hash_exact_32_bytes_lower_hex",
+            "page_count_u64",
+            "remaining_u64",
+        ],
+        "resolve_tick_domain": "1..=i64::MAX",
+        "page_count_domain": "0..=256",
+        "remaining_domain": "0..=65535",
+    },
     "receipt_ref_v1": {
         "fields": ["resolve_tick_u64", "tick_content_hash_exact_32_bytes_lower_hex"],
         "resolve_tick_domain": "1..=i64::MAX",
     },
     "match_input_v1": {"fields": ["batch_ref_v1", "receipt_ref_v1"]},
     "sweep_step_v1": {
-        "one_of": ["batch: batch_ref_v1", "error: SemanticArchiveErrorV1 variant name"]
+        "one_of": [
+            "batch: paged_batch_ref_v1",
+            "error: SemanticArchiveErrorV1 variant name",
+        ]
     },
     "sweep_output_v1": {
         "one_of": [
@@ -265,6 +286,14 @@ def _page_count(value: object, field: str) -> int:
     return value
 
 
+def _remaining_count(value: object, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ArchiveWorkerContractRefusal("invalid_remaining_count", field)
+    if value < 0 or value > MAX_REMAINING_COUNT:
+        raise ArchiveWorkerContractRefusal("invalid_remaining_count", field)
+    return value
+
+
 def _batch_ref(value: object, field: str) -> dict[str, Any]:
     if not isinstance(value, dict) or set(value) != {
         "resolve_tick",
@@ -278,6 +307,24 @@ def _batch_ref(value: object, field: str) -> dict[str, Any]:
             value.get("tick_content_hash_hex"), f"{field}.tick_content_hash_hex"
         ),
         "page_count": _page_count(value.get("page_count"), f"{field}.page_count"),
+    }
+
+
+def _paged_batch_ref(value: object, field: str) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != {
+        "resolve_tick",
+        "tick_content_hash_hex",
+        "page_count",
+        "remaining",
+    }:
+        raise ArchiveWorkerContractRefusal("invalid_batch_ref", field)
+    return {
+        "resolve_tick": _tick(value.get("resolve_tick"), f"{field}.resolve_tick"),
+        "tick_content_hash_hex": _digest32(
+            value.get("tick_content_hash_hex"), f"{field}.tick_content_hash_hex"
+        ),
+        "page_count": _page_count(value.get("page_count"), f"{field}.page_count"),
+        "remaining": _remaining_count(value.get("remaining"), f"{field}.remaining"),
     }
 
 
@@ -299,9 +346,16 @@ def derive_watermark(first_pending_tick: int | None, max_receipt_tick: int) -> i
     return max_receipt_tick
 
 
-def classify_receipt(page_count: int) -> str:
-    """Recompute the pure per-receipt plan from the batch page count."""
-    return "Defer" if page_count == 0 else "Materialize"
+def classify_receipt(page_count: int, remaining: int) -> str:
+    """Recompute the pure per-receipt plan from the paged producer outcome.
+
+    A receipt defers only when the head batch is empty and nothing remains
+    undrained; an empty head with a nonzero undrained tail still materializes
+    (staged, not consumed) so nothing drops across sweeps.
+    """
+    if page_count == 0 and remaining == 0:
+        return "Defer"
+    return "Materialize"
 
 
 def match_batch_receipt(batch: dict[str, Any], receipt: dict[str, Any]) -> str | None:
@@ -320,7 +374,7 @@ def classify_sweep(steps: list[dict[str, Any]]) -> tuple[list[str], str | None]:
     for step in steps:
         if "error" in step:
             return plans, step["error"]
-        plans.append(classify_receipt(step["batch"]["page_count"]))
+        plans.append(classify_receipt(step["batch"]["page_count"], step["batch"]["remaining"]))
     return plans, None
 
 
@@ -426,8 +480,8 @@ def _verify_match(row: dict[str, Any]) -> str | None:
 
 def _verify_plan(row: dict[str, Any]) -> str | None:
     data = row["data"]
-    batch = _batch_ref(data.get("batch"), "data.batch")
-    if classify_receipt(batch["page_count"]) != data.get("expected"):
+    batch = _paged_batch_ref(data.get("batch"), "data.batch")
+    if classify_receipt(batch["page_count"], batch["remaining"]) != data.get("expected"):
         return f"{row['id']}: receipt plan mismatch"
     return None
 
@@ -450,7 +504,7 @@ def _verify_sweep(row: dict[str, Any]) -> str | None:
         else:
             if set(step) != {"batch"}:
                 raise ArchiveWorkerContractRefusal("invalid_sweep_steps", path)
-            steps.append({"batch": _batch_ref(step["batch"], f"{path}.batch")})
+            steps.append({"batch": _paged_batch_ref(step["batch"], f"{path}.batch")})
     plans, error = classify_sweep(steps)
     if error is not None:
         if data.get("expected_error") != error:

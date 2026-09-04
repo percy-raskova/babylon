@@ -21,10 +21,10 @@ use babylon_kernel::ContentDigest;
 use babylon_persistence::{
     install_reader_role_v1, michigan_dynamic_hex_foundation_v1, validate_legacy_connection_target,
     ArchiveAtomSubjectKindV1, ArchiveAtomSubjectV1, ArchiveCitationV1, ArchiveDirtyBatchV1,
-    ArchiveKnowledgeGrantV1, ArchivePageInputV1, ArchivePageRefV1, ArchiveSchemaDispositionV1,
-    ArchiveSignalV1, ArchiveSubjectKindV1, ArchiveSubjectV1, CampaignId, DurableReplayRuntimeV2,
-    FoundationContentBundleV1, ReaderRoleDispositionV1, SemanticArchiveReaderV1,
-    SemanticArchiveStoreV1,
+    ArchiveKnowledgeGrantV1, ArchiveMaterializeModeV1, ArchivePageInputV1, ArchivePageRefV1,
+    ArchiveSchemaDispositionV1, ArchiveSignalV1, ArchiveSubjectKindV1, ArchiveSubjectV1,
+    CampaignId, DurableReplayRuntimeV2, FoundationContentBundleV1, ReaderRoleDispositionV1,
+    SemanticArchiveReaderV1, SemanticArchiveStoreV1,
 };
 use babylon_practice_contract::ordered_action_v1::OrderedPracticeActionBatchV1;
 use babylon_tick::material_state::MaterialStateV1;
@@ -411,7 +411,7 @@ fn materialize_county_page(config: &Config, campaign_id: CampaignId, tick_conten
     )
     .expect("live dirty batch");
     store
-        .materialize_receipt(campaign_id, &batch)
+        .materialize_receipt(campaign_id, &batch, ArchiveMaterializeModeV1::Consume)
         .expect("live receipt materializes");
 }
 

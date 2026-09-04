@@ -730,6 +730,19 @@ pub enum ArchiveMaterializeDispositionV1 {
     AlreadyConsumed,
 }
 
+/// How one materialization pass relates to the receipt's consumption row.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ArchiveMaterializeModeV1 {
+    /// The receipt's full dirty set drained: write the pages and claim the
+    /// consumption row so `verified_tick` may advance past it.
+    Consume,
+    /// Dirty pages remain (PER-318 paged drain): write this bounded batch of
+    /// pages without claiming, leaving the receipt pending for the next
+    /// sweep. The monotonic page guard and content-addressed atoms make an
+    /// exact restage a no-op, so a re-sweep never double-writes.
+    Stage,
+}
+
 /// One persisted page result from an applied batch.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MaterializedArchivePageV1 {
@@ -1439,7 +1452,18 @@ impl SemanticArchiveStoreV1 {
         )
     }
 
-    /// Consume one committed receipt and materialize its dirty page batch atomically.
+    /// Materialize one committed receipt's bounded dirty page batch atomically.
+    ///
+    /// In [`ArchiveMaterializeModeV1::Consume`] mode the receipt's full dirty
+    /// set drained: the pages write and the consumption row claims the receipt
+    /// inside one serializable transaction. In [`ArchiveMaterializeModeV1::Stage`]
+    /// mode dirty pages remain (the PER-318 paged drain): the same atomic
+    /// transaction writes this bounded batch without claiming, so the receipt
+    /// stays pending, `verified_tick` honestly stalls behind it, and nothing
+    /// downstream may treat the receipt as settled. One sweep's page batch
+    /// always commits atomically (ADR223); the receipt's full drain converges
+    /// across successive sweeps, and an exact restage of a staged batch is a
+    /// no-op through the monotonic page guard and content-addressed atoms.
     ///
     /// # Errors
     /// Refuses an absent/mismatched receipt, unknown page subject, template failure,
@@ -1448,6 +1472,7 @@ impl SemanticArchiveStoreV1 {
         &self,
         campaign_id: CampaignId,
         batch: &ArchiveDirtyBatchV1,
+        mode: ArchiveMaterializeModeV1,
     ) -> Result<ArchiveMaterializeReportV1, SemanticArchiveErrorV1> {
         let renderer = FogSafeArchiveRendererV1::new()?;
         let resolve_tick = i64::try_from(batch.resolve_tick)
@@ -1473,23 +1498,49 @@ impl SemanticArchiveStoreV1 {
         }
         let knowledge = read_knowledge(&mut transaction, campaign_id, resolve_tick)?;
         let knowledge_sha256 = knowledge.sha256();
-        let claimed = transaction
-            .execute(
-                "INSERT INTO babylon_meta.archive_receipt_consumption_v1 \
-                 (campaign_id, resolve_tick, tick_content_hash, batch_sha256, \
-                  worker_contract_sha256, knowledge_sha256) \
-                 VALUES ($1::uuid, $2, $3, $4, $5, $6) \
-                 ON CONFLICT (campaign_id, resolve_tick) DO NOTHING",
-                &[
-                    campaign_id.as_uuid(),
-                    &resolve_tick,
-                    &&batch.tick_content_hash[..],
-                    &&batch_sha256[..],
-                    &&worker_contract[..],
-                    &&knowledge_sha256[..],
-                ],
-            )
-            .map_err(|error| database("claim Archive receipt", &error))?;
+        if mode == ArchiveMaterializeModeV1::Stage {
+            // A staged batch never claims: if a consumption row already
+            // exists, this receipt settled earlier and the exact retry
+            // reconciles without touching pages beyond the consumed batch.
+            let consumed = transaction
+                .query_opt(
+                    "SELECT tick_content_hash \
+                     FROM babylon_meta.archive_receipt_consumption_v1 \
+                     WHERE campaign_id = $1::uuid AND resolve_tick = $2",
+                    &[campaign_id.as_uuid(), &resolve_tick],
+                )
+                .map_err(|error| database("read Archive receipt consumption", &error))?;
+            if consumed.is_some() {
+                transaction
+                    .commit()
+                    .map_err(|error| database("commit exact Archive retry", &error))?;
+                return Ok(ArchiveMaterializeReportV1 {
+                    disposition: ArchiveMaterializeDispositionV1::AlreadyConsumed,
+                    pages: Vec::new(),
+                });
+            }
+        }
+        let claimed = if mode == ArchiveMaterializeModeV1::Consume {
+            transaction
+                .execute(
+                    "INSERT INTO babylon_meta.archive_receipt_consumption_v1 \
+                     (campaign_id, resolve_tick, tick_content_hash, batch_sha256, \
+                      worker_contract_sha256, knowledge_sha256) \
+                     VALUES ($1::uuid, $2, $3, $4, $5, $6) \
+                     ON CONFLICT (campaign_id, resolve_tick) DO NOTHING",
+                    &[
+                        campaign_id.as_uuid(),
+                        &resolve_tick,
+                        &&batch.tick_content_hash[..],
+                        &&batch_sha256[..],
+                        &&worker_contract[..],
+                        &&knowledge_sha256[..],
+                    ],
+                )
+                .map_err(|error| database("claim Archive receipt", &error))?
+        } else {
+            1
+        };
         if claimed == 0 {
             let row = transaction
                 .query_one(
@@ -2182,6 +2233,10 @@ pub enum SemanticArchiveErrorV1 {
     Template,
     /// The dirty place set exceeded one receipt page bound, so nothing was
     /// selected and the receipt stays pending.
+    ///
+    /// Defense-only after PER-318: producers page the head batch and report
+    /// the undrained tail instead of refusing, so this variant is unreachable
+    /// in normal operation and remains as the typed taxonomy backstop.
     PlaceDrainOverflow {
         /// Exact number of dirty place pages observed.
         dirty: usize,
@@ -2190,6 +2245,10 @@ pub enum SemanticArchiveErrorV1 {
     },
     /// The dirty county set exceeded one receipt page bound, so nothing was
     /// selected and the receipt stays pending.
+    ///
+    /// Defense-only after PER-318: producers page the head batch and report
+    /// the undrained tail instead of refusing, so this variant is unreachable
+    /// in normal operation and remains as the typed taxonomy backstop.
     CountyDrainOverflow {
         /// Exact number of dirty county pages observed.
         dirty: usize,

@@ -45,8 +45,8 @@ fn main() {
         std::process::exit(2);
     });
     let mode = match request {
-        CliRequest::Help(text) => {
-            print!("{text}");
+        CliRequest::Help(topic) => {
+            print!("{}", cli::render_help(topic));
             return;
         }
         CliRequest::Windowed { story } => AppMode::Windowed { story },

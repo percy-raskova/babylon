@@ -167,8 +167,31 @@ pub enum CliCommand {
     },
 }
 
+/// One recursively addressable help topic. Carried as a closed enum rather
+/// than text so the value that reaches `print!` is a static page selected
+/// by [`render_help`] — no parse-channel data flows to stdout.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HelpTopic {
+    /// `--headless help` — the top-level command roster.
+    Root,
+    /// `help dossier`.
+    Dossier,
+    /// `help dossier show`.
+    DossierShow,
+    /// `help dossier search`.
+    DossierSearch,
+    /// `help tick`.
+    Tick,
+    /// `help tick status`.
+    TickStatus,
+    /// `help changelog`.
+    Changelog,
+    /// `help help`.
+    Help,
+}
+
 /// The parsed command line: one windowed viewer run, one headless dossier
-/// command, or a help topic whose text `main` prints and exits 0.
+/// command, or a help topic that `main` renders and exits 0.
 #[derive(Clone, Debug)]
 pub enum CliRequest {
     /// Open the windowed viewer with the selected story.
@@ -183,8 +206,8 @@ pub enum CliRequest {
         /// The canonical campaign identity.
         campaign_id: CampaignId,
     },
-    /// A help topic's text; printed to stdout, exit 0.
-    Help(String),
+    /// A help topic; `main` renders it with [`render_help`].
+    Help(HelpTopic),
 }
 
 /// One loud CLI refusal. Every message carries the `file:line` of the site
@@ -259,7 +282,7 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<CliRequest, Cli
         return Ok(CliRequest::Windowed { story });
     }
     if rest.first().is_some_and(|word| word == "help") {
-        return Ok(CliRequest::Help(help_topic(&rest[1..])?));
+        return Ok(CliRequest::Help(parse_help_topic(&rest[1..])?));
     }
     let campaign_id = resolve_campaign(campaign)?;
     let command = parse_command(&rest)?;
@@ -386,25 +409,25 @@ fn unknown_word(word: &str, role: &str) -> CliError {
     )
 }
 
-/// Render the help text of one help topic, recursively addressable
-/// (`help`, `help dossier`, `help dossier show`, ...).
+/// Parse one help topic address (`help`, `help dossier`, `help dossier
+/// show`, ...) into its closed variant.
 ///
 /// # Errors
 /// Refuses an unknown topic with a did-you-mean, like any other word.
-pub fn help_topic(words: &[String]) -> Result<String, CliError> {
+pub fn parse_help_topic(words: &[String]) -> Result<HelpTopic, CliError> {
     match words {
-        [] => Ok(TOP_LEVEL_HELP.to_owned()),
+        [] => Ok(HelpTopic::Root),
         [topic] => match topic.as_str() {
-            "dossier" => Ok(DOSSIER_HELP.to_owned()),
-            "tick" => Ok(TICK_HELP.to_owned()),
-            "changelog" => Ok(CHANGELOG_HELP.to_owned()),
-            "help" => Ok(HELP_HELP.to_owned()),
+            "dossier" => Ok(HelpTopic::Dossier),
+            "tick" => Ok(HelpTopic::Tick),
+            "changelog" => Ok(HelpTopic::Changelog),
+            "help" => Ok(HelpTopic::Help),
             other => Err(unknown_word(other, "help topic")),
         },
         [topic, sub] => match (topic.as_str(), sub.as_str()) {
-            ("dossier", "show") => Ok(DOSSIER_SHOW_HELP.to_owned()),
-            ("dossier", "search") => Ok(DOSSIER_SEARCH_HELP.to_owned()),
-            ("tick", "status") => Ok(TICK_STATUS_HELP.to_owned()),
+            ("dossier", "show") => Ok(HelpTopic::DossierShow),
+            ("dossier", "search") => Ok(HelpTopic::DossierSearch),
+            ("tick", "status") => Ok(HelpTopic::TickStatus),
             (other, _) => Err(unknown_word(other, "help topic")),
         },
         _ => Err(CliError::at(
@@ -414,6 +437,22 @@ pub fn help_topic(words: &[String]) -> Result<String, CliError> {
                 words.join(" ")
             ),
         )),
+    }
+}
+
+/// Render a help topic. The returned page is always one of the pinned
+/// static texts, so nothing from the parse channel reaches stdout.
+#[must_use]
+pub const fn render_help(topic: HelpTopic) -> &'static str {
+    match topic {
+        HelpTopic::Root => TOP_LEVEL_HELP,
+        HelpTopic::Dossier => DOSSIER_HELP,
+        HelpTopic::DossierShow => DOSSIER_SHOW_HELP,
+        HelpTopic::DossierSearch => DOSSIER_SEARCH_HELP,
+        HelpTopic::Tick => TICK_HELP,
+        HelpTopic::TickStatus => TICK_STATUS_HELP,
+        HelpTopic::Changelog => CHANGELOG_HELP,
+        HelpTopic::Help => HELP_HELP,
     }
 }
 
@@ -655,13 +694,13 @@ mod tests {
             vec!["changelog".to_owned()],
             vec!["help".to_owned()],
         ] {
-            let text = help_topic(&words).expect("every topic renders");
+            let text = render_help(parse_help_topic(&words).expect("every topic parses"));
             assert!(
                 text.contains("use this command for"),
                 "topic '{words:?}' must say what it is for"
             );
         }
-        let top = help_topic(&[]).expect("top-level help renders");
+        let top = render_help(parse_help_topic(&[]).expect("top-level help parses"));
         for word in COMMAND_WORDS {
             assert!(top.contains(word), "top-level help lists '{word}'");
         }
@@ -671,15 +710,15 @@ mod tests {
     fn help_route_parses_through_the_cli() {
         let request =
             parse(os(&[HEADLESS_FLAG, "help", "dossier", "show"])).expect("help route admits");
-        let CliRequest::Help(text) = request else {
+        let CliRequest::Help(topic) = request else {
             panic!("help routes to the Help request");
         };
-        assert!(text.contains("dossier show <geoid>"));
+        assert!(render_help(topic).contains("dossier show <geoid>"));
     }
 
     #[test]
     fn unknown_help_topic_earns_a_did_you_mean() {
-        let error = help_topic(&["tickk".to_owned()]).expect_err("a near-miss topic refuses");
+        let error = parse_help_topic(&["tickk".to_owned()]).expect_err("a near-miss topic refuses");
         assert!(error.to_string().contains("did you mean 'tick'"));
     }
 

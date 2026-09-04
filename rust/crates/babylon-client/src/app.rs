@@ -55,11 +55,9 @@ pub fn build_app(mode: AppMode) -> App {
                     }),
             );
             // Nothing listens before LogPlugin::build installs the
-            // subscriber, so the startup line stays after add_plugins.
-            log::info!(
-                "babylon-client starting (story: {}, B3 tick loop)",
-                story.id
-            );
+            // subscriber, so the startup line stays after add_plugins. The
+            // line stays static: no parse-channel value is logged.
+            log::info!("babylon-client starting (B3 tick loop)");
             app.add_plugins(visual_assets::VisualAssetsPlugin)
                 .add_plugins(visual_assets::VisualPresentationPlugin)
                 .add_plugins(map::MapPlugin)

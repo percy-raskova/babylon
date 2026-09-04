@@ -10,7 +10,7 @@ use bevy::prelude::*;
 use crate::cli::CliCommand;
 use crate::dossier::{run_headless_command, HeadlessInvocation};
 use crate::story::{SelectedStory, Story};
-use crate::{logging, loop_ui, map, palette, ui, visual_assets};
+use crate::{logging, loop_ui, map, palette, session_log, ui, visual_assets};
 
 /// Which executable shape [`build_app`] assembles.
 #[derive(Clone, Debug)]
@@ -67,6 +67,10 @@ pub fn build_app(mode: AppMode) -> App {
                 // identically in windowed and headless compositions, so it
                 // rides its own plugin rather than TickLoopPlugin's wiring.
                 .add_plugins(ui::dossier_card::DossierCardPlugin)
+                // Session observers ride the same resource family (every
+                // observer tolerates its absence), so the session log sees
+                // exactly what the card renderer saw.
+                .add_plugins(session_log::SessionLogPlugin)
                 .insert_resource(SelectedStory(story))
                 .insert_resource(ClearColor(palette::FIELD));
         }

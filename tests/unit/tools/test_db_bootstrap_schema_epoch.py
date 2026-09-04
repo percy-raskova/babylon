@@ -281,7 +281,6 @@ def test_pr_pg_lane_runs_the_rust_live_matrix_without_python_reference_data() ->
         "installed_mutation",
         "archive_worker",
         "reader_role",
-        "client_dossier",
     ]:
         assert f"          - {focus}\n" in pg_lane
     assert "fetch-reference-db" not in pg_lane

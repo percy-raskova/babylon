@@ -215,7 +215,7 @@ impl fmt::Display for CliError {
 
 impl std::error::Error for CliError {}
 
-/// Parse the full argument vector (already excluding argv[0]) into one
+/// Parse the full argument vector (already excluding the program name) into one
 /// [`CliRequest`]. Refuses loudly — never guesses — on an unknown command
 /// word, a malformed campaign identity, a missing value, or a malformed
 /// county GEOID.

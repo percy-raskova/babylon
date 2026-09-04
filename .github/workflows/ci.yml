@@ -360,12 +360,17 @@ jobs:
   pg-integration-shards:
     name: PostgreSQL Contract (${{ matrix.focus }})
     # The one-way cutover replaced the Python writer's integration subset with
-    # the task-owned Rust live matrix. The seven focus boundaries preserve the
+    # the task-owned Rust live matrix. The six focus boundaries preserve the
     # complete PR contract while removing independent phases from the critical
     # path. fail-fast stays disabled so every exact-head run yields a complete
     # contract receipt even when one sibling fails.
+    # The seventh live focus, client_dossier, stays in the legacy-adopter
+    # runner script but leaves this matrix: Bevy compiles against system
+    # Wayland/X11/ALSA/udev headers, and the Director ruled (2026-09-04) that
+    # Bevy-dependent live lanes run on the dev box, not in CI. Its local
+    # exit-0 evidence rides in the PR body.
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 99
     strategy:
       fail-fast: false
       max-parallel: 4
@@ -377,14 +382,13 @@ jobs:
           - installed_mutation
           - archive_worker
           - reader_role
-          - client_dossier
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: ./.github/actions/bootstrap-persistence
 
       - name: Rust PostgreSQL contract
-        timeout-minutes: 90
+        timeout-minutes: 69
         env:
           BABYLON_LEGACY_ADOPTER_LIVE_FOCUS: ${{ matrix.focus }}
         run: tools/run_rust_legacy_adopter_pg.sh

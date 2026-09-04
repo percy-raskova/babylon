@@ -1728,9 +1728,11 @@ pub(crate) fn insert_grant_row_v1(
 /// Claim the receipt for one materialize pass.
 ///
 /// Stage mode never claims: an existing consumption row means the receipt
-/// settled earlier and the exact retry reconciles without touching pages.
-/// Consume mode inserts the exact conflict row; an identical prior claim
-/// reconciles as already consumed, a differing one refuses.
+/// settled earlier, and the exact retry reconciles the stored claim digests
+/// before reporting `AlreadyConsumed`; a differing row refuses with the same
+/// conflict Consume mode raises. Consume mode inserts the exact conflict row;
+/// an identical prior claim reconciles as already consumed, a differing one
+/// refuses.
 ///
 /// # Errors
 /// Returns a database failure or a conflicting prior claim.
@@ -1743,24 +1745,19 @@ fn claim_archive_receipt_v1(
     worker_contract_sha256: &[u8; 32],
     knowledge_sha256: &[u8; 32],
 ) -> Result<ArchiveMaterializeDispositionV1, SemanticArchiveErrorV1> {
+    if mode == ArchiveMaterializeModeV1::Stage {
+        return reconcile_archive_receipt_v1(
+            client,
+            campaign_id,
+            batch,
+            batch_sha256,
+            worker_contract_sha256,
+            knowledge_sha256,
+        );
+    }
     let resolve_tick = i64::try_from(batch.resolve_tick)
         .map_err(|_| SemanticArchiveErrorV1::InvalidVerifiedTick)?;
     let tick_content_hash = &batch.tick_content_hash;
-    if mode == ArchiveMaterializeModeV1::Stage {
-        let consumed = client
-            .query_opt(
-                "SELECT tick_content_hash \
-                 FROM babylon_meta.archive_receipt_consumption_v1 \
-                 WHERE campaign_id = $1::uuid AND resolve_tick = $2",
-                &[campaign_id.as_uuid(), &resolve_tick],
-            )
-            .map_err(|error| database("read Archive receipt consumption", &error))?;
-        return Ok(if consumed.is_some() {
-            ArchiveMaterializeDispositionV1::AlreadyConsumed
-        } else {
-            ArchiveMaterializeDispositionV1::Applied
-        });
-    }
     let claimed = client
         .execute(
             "INSERT INTO babylon_meta.archive_receipt_consumption_v1 \
@@ -1781,8 +1778,37 @@ fn claim_archive_receipt_v1(
     if claimed == 1 {
         return Ok(ArchiveMaterializeDispositionV1::Applied);
     }
+    reconcile_archive_receipt_v1(
+        client,
+        campaign_id,
+        batch,
+        batch_sha256,
+        worker_contract_sha256,
+        knowledge_sha256,
+    )
+}
+
+/// Reconcile an existing consumption row against the current claim digests.
+///
+/// A row identical to the current claim reconciles as already consumed; a
+/// differing row refuses with `ReceiptConflict`. An absent row — only
+/// reachable from Stage mode, which never inserts — reports the receipt is
+/// still pending.
+///
+/// # Errors
+/// Returns a database failure or a conflicting prior claim.
+fn reconcile_archive_receipt_v1(
+    client: &mut impl GenericClient,
+    campaign_id: CampaignId,
+    batch: &ArchiveDirtyBatchV1,
+    batch_sha256: &[u8; 32],
+    worker_contract_sha256: &[u8; 32],
+    knowledge_sha256: &[u8; 32],
+) -> Result<ArchiveMaterializeDispositionV1, SemanticArchiveErrorV1> {
+    let resolve_tick = i64::try_from(batch.resolve_tick)
+        .map_err(|_| SemanticArchiveErrorV1::InvalidVerifiedTick)?;
     let row = client
-        .query_one(
+        .query_opt(
             "SELECT tick_content_hash, batch_sha256, worker_contract_sha256, \
                     knowledge_sha256 \
              FROM babylon_meta.archive_receipt_consumption_v1 \
@@ -1790,7 +1816,10 @@ fn claim_archive_receipt_v1(
             &[campaign_id.as_uuid(), &resolve_tick],
         )
         .map_err(|error| database("reconcile Archive receipt", &error))?;
-    if decode_digest(&row, 0)? != *tick_content_hash
+    let Some(row) = row else {
+        return Ok(ArchiveMaterializeDispositionV1::Applied);
+    };
+    if decode_digest(&row, 0)? != batch.tick_content_hash
         || decode_digest(&row, 1)? != *batch_sha256
         || decode_digest(&row, 2)? != *worker_contract_sha256
         || decode_digest(&row, 3)? != *knowledge_sha256

@@ -24,7 +24,7 @@ use babylon_persistence::{
     ArchiveReceiptDispositionV1, ArchiveSchemaDispositionV1, ArchiveWorkerV1, CampaignId,
     CompositeArchiveDossierProducerV1, CountyDossierProducerV1, DurableReplayRuntimeV2,
     FoundationContentBundleV1, PendingArchiveReceiptV1, PlaceDossierProducerV1,
-    SemanticArchiveStoreV1,
+    SemanticArchiveErrorV1, SemanticArchiveStoreV1,
 };
 use babylon_practice_contract::ordered_action_v1::OrderedPracticeActionBatchV1;
 use babylon_tick::material_state::MaterialStateV1;
@@ -699,6 +699,82 @@ fn live_staged_batch_restages_without_double_writes() {
         ArchiveMaterializeDispositionV1::AlreadyConsumed
     );
     assert_eq!(place_page_count(&target.config, target.campaign_id), 1);
+    target.finish();
+}
+
+#[test]
+#[ignore = "requires the task-owned disposable PostgreSQL runtime and committed ticks"]
+fn live_staged_batch_refuses_tampered_consumption_claim() {
+    let target =
+        LivePlaceTarget::create("stagetamper", 0x2200_0000_0000_0000_0000_0000_0000_00c4, 1);
+
+    let allowlist = vec!["2622000".to_owned()];
+    let producer = PlaceDossierProducerV1::with_place_allowlist(&target.config, &allowlist)
+        .expect("sorted unique allowlist binds");
+    let hash: Vec<u8> = target
+        .config
+        .connect(NoTls)
+        .expect("receipt hash connection")
+        .query_one(
+            "SELECT tick_content_hash FROM babylon_state.archive_dirty_receipt_v1 \
+             WHERE campaign_id = $1::uuid AND resolve_tick = 1",
+            &[target.campaign_id.as_uuid()],
+        )
+        .expect("one committed dirty receipt")
+        .try_get(0)
+        .expect("dirty receipt digest");
+    let receipt = PendingArchiveReceiptV1::try_new(1, hash.try_into().expect("exact digest width"))
+        .expect("pending receipt");
+    let outcome = producer
+        .produce(
+            *target.campaign_id.as_uuid(),
+            &receipt,
+            MAX_PAGES_PER_RECEIPT,
+        )
+        .expect("allowlisted produce drains whole");
+
+    let store = SemanticArchiveStoreV1::new(&target.config);
+    store
+        .materialize_receipt(
+            target.campaign_id,
+            outcome.batch(),
+            ArchiveMaterializeModeV1::Stage,
+        )
+        .expect("stage applies the drained batch");
+    store
+        .materialize_receipt(
+            target.campaign_id,
+            outcome.batch(),
+            ArchiveMaterializeModeV1::Consume,
+        )
+        .expect("consume mode claims the receipt");
+
+    // Tamper with the stored claim. A stage retry must reconcile the stored
+    // claim digests and refuse the mismatch exactly like Consume mode,
+    // never masking it as an idempotent AlreadyConsumed.
+    let tampered = target
+        .config
+        .connect(NoTls)
+        .expect("tamper connection")
+        .execute(
+            "UPDATE babylon_meta.archive_receipt_consumption_v1 \
+             SET batch_sha256 = tick_content_hash \
+             WHERE campaign_id = $1::uuid AND resolve_tick = 1",
+            &[target.campaign_id.as_uuid()],
+        )
+        .expect("tamper applies");
+    assert_eq!(tampered, 1, "exactly one claim row exists");
+
+    let refused = store.materialize_receipt(
+        target.campaign_id,
+        outcome.batch(),
+        ArchiveMaterializeModeV1::Stage,
+    );
+    assert_eq!(
+        refused,
+        Err(SemanticArchiveErrorV1::ReceiptConflict),
+        "a stage retry reconciles the stored claim digests and refuses a mismatch"
+    );
     target.finish();
 }
 

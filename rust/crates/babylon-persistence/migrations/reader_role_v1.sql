@@ -8,7 +8,7 @@
 -- NOCREATEROLE) and points BABYLON_READER_DSN at that credential. The reader
 -- handle refuses to operate unless the session privilege census is exactly
 -- the footprint: SELECT on this view before the atom schema, SELECT on this
--- view plus the three atom views after it.
+-- view plus the four atom views after it.
 CREATE VIEW public.v_committed_tick_status_v1 AS
 SELECT
     campaign_id,
@@ -21,7 +21,7 @@ FROM babylon_state.tick_commit;
 GRANT SELECT ON public.v_committed_tick_status_v1 TO babylon_reader;
 
 -- Guarded atom-view grants: when the additive atom schema is already
--- installed, a fresh reader role must hold SELECT on its three fog-safe views
+-- installed, a fresh reader role must hold SELECT on its four fog-safe views
 -- too. When the atom schema is absent this block is a no-op, and when the
 -- atom schema installs later its own migration grants these views to an
 -- existing role, so either install order reconciles to the same footprint.
@@ -35,6 +35,9 @@ BEGIN
     END IF;
     IF pg_catalog.to_regclass('public.v_county_card_atoms') IS NOT NULL THEN
         GRANT SELECT ON public.v_county_card_atoms TO babylon_reader;
+    END IF;
+    IF pg_catalog.to_regclass('public.v_archive_subject_atoms') IS NOT NULL THEN
+        GRANT SELECT ON public.v_archive_subject_atoms TO babylon_reader;
     END IF;
 END
 $$;

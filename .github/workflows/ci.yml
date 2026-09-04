@@ -364,6 +364,11 @@ jobs:
     # complete PR contract while removing independent phases from the critical
     # path. fail-fast stays disabled so every exact-head run yields a complete
     # contract receipt even when one sibling fails.
+    # The seventh live focus, client_dossier, stays in the legacy-adopter
+    # runner script but leaves this matrix: Bevy compiles against system
+    # Wayland/X11/ALSA/udev headers, and the Director ruled (2026-09-04) that
+    # Bevy-dependent live lanes run on the dev box, not in CI. Its local
+    # exit-0 evidence rides in the PR body.
     runs-on: ubuntu-latest
     timeout-minutes: 99
     strategy:

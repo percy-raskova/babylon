@@ -175,6 +175,44 @@ SELECT *
 FROM public.v_archive_atom_visible
 WHERE page_subject_kind = 'county';
 
+-- R9 changelog history (PER-23 Slice 3 decision 1): subject-scoped atom
+-- history under the exact grant + acknowledged-horizon fog predicates of
+-- v_archive_atom_visible, WITHOUT the composition join — join rows are
+-- delete-replaced on supersession, so the live composition cannot answer
+-- "what changed across ticks". Views are rebuildable, never hashed
+-- (ADR249 R2): a wrong view is a rebuild, never an incident.
+CREATE VIEW public.v_archive_subject_atoms AS
+SELECT
+    atom.campaign_id,
+    atom.atom_id,
+    atom.subject_kind,
+    atom.subject_id,
+    atom.signal_key,
+    atom.grant_key,
+    atom.evidence_class,
+    atom.value_kind,
+    atom.value_text,
+    atom.value_f64,
+    atom.value_u64,
+    atom.value_bool,
+    atom.provenance_source_id,
+    atom.provenance_locator,
+    atom.valid_tick
+FROM babylon_meta.archive_atom_v1 AS atom
+JOIN babylon_meta.archive_knowledge_grant_v1 AS grant_row
+  ON grant_row.campaign_id = atom.campaign_id
+ AND grant_row.subject_kind = atom.subject_kind
+ AND grant_row.subject_id = atom.subject_id
+ AND grant_row.grant_key = atom.grant_key
+ AND grant_row.granted_tick <= atom.valid_tick
+JOIN (
+    SELECT campaign_id, pg_catalog.max(resolve_tick) AS horizon_tick
+    FROM babylon_state.tick_commit
+    GROUP BY campaign_id
+) AS horizon
+  ON horizon.campaign_id = atom.campaign_id
+ AND atom.valid_tick <= horizon.horizon_tick;
+
 INSERT INTO babylon_meta.archive_atom_schema_v1 (contract_id)
 VALUES ('babylon.archive-atom-schema.v1');
 
@@ -190,6 +228,7 @@ BEGIN
         GRANT SELECT ON public.v_archive_page_known_v1 TO babylon_reader;
         GRANT SELECT ON public.v_archive_atom_visible TO babylon_reader;
         GRANT SELECT ON public.v_county_card_atoms TO babylon_reader;
+        GRANT SELECT ON public.v_archive_subject_atoms TO babylon_reader;
         REVOKE ALL ON TABLE babylon_meta.archive_atom_v1 FROM babylon_reader;
         REVOKE ALL ON TABLE babylon_meta.archive_page_atom_v1 FROM babylon_reader;
     END IF;

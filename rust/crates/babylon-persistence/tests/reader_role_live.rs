@@ -20,10 +20,11 @@ use babylon_kernel::tick_content_hash::RefDigestV1;
 use babylon_kernel::ContentDigest;
 use babylon_persistence::{
     install_reader_role_v1, michigan_dynamic_hex_foundation_v1, validate_legacy_connection_target,
-    ArchiveCitationV1, ArchiveDirtyBatchV1, ArchiveKnowledgeGrantV1, ArchivePageInputV1,
-    ArchivePageRefV1, ArchiveSchemaDispositionV1, ArchiveSignalV1, ArchiveSubjectKindV1,
-    ArchiveSubjectV1, CampaignId, DurableReplayRuntimeV2, FoundationContentBundleV1,
-    ReaderRoleDispositionV1, SemanticArchiveReaderV1, SemanticArchiveStoreV1,
+    ArchiveAtomSubjectKindV1, ArchiveAtomSubjectV1, ArchiveCitationV1, ArchiveDirtyBatchV1,
+    ArchiveKnowledgeGrantV1, ArchivePageInputV1, ArchivePageRefV1, ArchiveSchemaDispositionV1,
+    ArchiveSignalV1, ArchiveSubjectKindV1, ArchiveSubjectV1, CampaignId, DurableReplayRuntimeV2,
+    FoundationContentBundleV1, ReaderRoleDispositionV1, SemanticArchiveReaderV1,
+    SemanticArchiveStoreV1,
 };
 use babylon_practice_contract::ordered_action_v1::OrderedPracticeActionBatchV1;
 use babylon_tick::material_state::MaterialStateV1;
@@ -462,6 +463,7 @@ fn assert_owner_side_privilege_matrix(client: &mut postgres::Client) {
         "public.v_archive_page_known_v1",
         "public.v_archive_atom_visible",
         "public.v_county_card_atoms",
+        "public.v_archive_subject_atoms",
     ] {
         let view_select = client
             .query_one(
@@ -673,6 +675,56 @@ fn assert_confined_reader_search_and_card(
         .county_card_atoms(campaign_id, "99901")
         .expect("ungranted county card reads empty");
     assert!(dark.is_empty(), "ungranted subjects mint no visible atoms");
+
+    // The changelog history view answers through the same fog predicates:
+    // every visible atom minted for the county, signal-keyed and tick-ordered.
+    let subject =
+        ArchiveAtomSubjectV1::try_new(ArchiveAtomSubjectKindV1::County, "26163".to_owned())
+            .expect("county atom subject identity admits");
+    let history = reader
+        .subject_atom_history(campaign_id, &subject)
+        .expect("confined reader reads the subject atom history");
+    assert_eq!(
+        history.len(),
+        card.len(),
+        "the subject history reads every visible atom minted for the county"
+    );
+    assert!(
+        history.windows(2).all(|pair| {
+            pair[0].signal_key() < pair[1].signal_key()
+                || (pair[0].signal_key() == pair[1].signal_key()
+                    && pair[0].valid_tick() <= pair[1].valid_tick())
+        }),
+        "history rows are signal-keyed then tick-ordered"
+    );
+    let history_employment = history
+        .iter()
+        .filter(|atom| atom.signal_key() == "employment")
+        .collect::<Vec<_>>();
+    assert_eq!(
+        history_employment.len(),
+        1,
+        "exactly one employment atom rides the history"
+    );
+    assert_eq!(history_employment[0].grant_key(), "employment");
+    assert!(
+        matches!(
+            history_employment[0].value(),
+            babylon_persistence::ArchiveAtomValueV1::Text(text) if text == "728576 jobs"
+        ),
+        "the history atom carries the exact signal value"
+    );
+    let dark_history = reader
+        .subject_atom_history(
+            campaign_id,
+            &ArchiveAtomSubjectV1::try_new(ArchiveAtomSubjectKindV1::County, "99901".to_owned())
+                .expect("ungranted county atom subject identity admits"),
+        )
+        .expect("ungranted subject history reads empty");
+    assert!(
+        dark_history.is_empty(),
+        "ungranted subjects mint no visible history rows"
+    );
 }
 
 #[test]

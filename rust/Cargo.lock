@@ -381,10 +381,15 @@ dependencies = [
  "babylon-bsl",
  "babylon-graph",
  "babylon-kernel",
+ "babylon-persistence",
+ "babylon-practice-contract",
  "babylon-tick",
  "bevy",
  "earcutr",
  "log",
+ "postgres",
+ "serde_json",
+ "uuid",
 ]
 
 [[package]]

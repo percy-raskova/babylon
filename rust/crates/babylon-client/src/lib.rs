@@ -1,7 +1,7 @@
 //! `babylon-client`'s library surface — the atlas, tessellate, map,
-//! palette and engine-link modules that both the binary (`main.rs`) and
-//! the integration tests (`tests/engine_link.rs`, `tests/map_mesh.rs`)
-//! consume. The Bevy `App` itself lives in `main.rs`; this crate is
+//! palette, engine-link, CLI, and headless-dossier modules that both the
+//! binary (`main.rs`, a pure dispatch shim) and the integration tests
+//! consume. The Bevy `App` construction lives in `app.rs`; this crate is
 //! otherwise a thin scaffold, not a reusable client-engine API.
 
 // Every Bevy system parameter (`Res<T>`, `ResMut<T>`, `Query<T>`,
@@ -17,9 +17,12 @@
 // positive is systemic to the ECS API shape, not confined to one file.
 #![allow(clippy::needless_pass_by_value)]
 
+pub mod app;
 pub mod atlas;
+pub mod cli;
 pub mod coverage;
 pub mod decision_surface;
+pub mod dossier;
 pub mod engine_link;
 pub mod lens;
 pub mod logging;
@@ -31,5 +34,7 @@ pub mod projection;
 pub mod severity;
 pub mod story;
 pub mod tessellate;
+#[cfg(test)]
+mod test_support;
 pub mod ui;
 pub mod visual_assets;

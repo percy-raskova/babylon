@@ -249,7 +249,18 @@ def test_tick_and_client_do_not_gain_persistence_authority() -> None:
     client_manifest = (ROOT / "rust/crates/babylon-client/Cargo.toml").read_text(encoding="utf-8")
 
     assert "babylon-persistence" not in tick_manifest
-    assert "babylon-persistence" not in client_manifest
+    # ADR249 R10 (PER-23 Slice 3) blesses the client's fog-safe reader
+    # dependency: the sole persistence surface is the exact path dependency
+    # (dependencies + dev-dependencies), never a version or feature demand.
+    blessed_line = 'babylon-persistence = { path = "../babylon-persistence" }'
+    client_persistence_lines = [
+        line
+        for line in client_manifest.splitlines()
+        if "babylon-persistence" in line and not line.lstrip().startswith("#")
+    ]
+    assert client_persistence_lines and all(
+        line == blessed_line for line in client_persistence_lines
+    )
 
 
 def test_old_opaque_rows_are_not_the_final_semantic_store() -> None:

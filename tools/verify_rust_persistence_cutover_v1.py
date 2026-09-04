@@ -3315,16 +3315,39 @@ def verify_cutover_contract(contract: dict[str, Any], root: Path) -> list[Cutove
             )
         )
 
+    # ADR249 R10 (PER-23 Slice 3) blesses babylon-client's read-only reader
+    # dependency: the v1 prohibition targets writer authority, and the
+    # fog-safe reader grants the client no writer pathway. The exception
+    # holds only while the manifest names exactly the one path dependency —
+    # any further persistence surface reopens the finding. babylon-tick
+    # stays unconditionally prohibited.
+    reader_dependent_packages_v1 = {
+        "babylon-client": 'babylon-persistence = { path = "../babylon-persistence" }'
+    }
     for package in authority["prohibited_owners"]:
         manifest = f"rust/crates/{package}/Cargo.toml"
-        if "babylon-persistence" in _text(root, manifest):
-            findings.add(
-                CutoverFinding(
-                    "wrong_dependency_direction",
-                    manifest,
-                    "tick adjudication and Bevy must not own persistence",
-                )
+        manifest_text = _text(root, manifest)
+        if "babylon-persistence" not in manifest_text:
+            continue
+        blessed_line = reader_dependent_packages_v1.get(package)
+        persistence_lines = [
+            line
+            for line in manifest_text.splitlines()
+            if "babylon-persistence" in line and not line.lstrip().startswith("#")
+        ]
+        if (
+            blessed_line is not None
+            and persistence_lines
+            and all(line == blessed_line for line in persistence_lines)
+        ):
+            continue
+        findings.add(
+            CutoverFinding(
+                "wrong_dependency_direction",
+                manifest,
+                "tick adjudication and Bevy must not own persistence",
             )
+        )
 
     boundary = _mapping(contract["reader_boundary"], "reader_boundary")
     reader_relative = _string(boundary["contract"], "reader_boundary.contract")

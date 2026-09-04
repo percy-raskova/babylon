@@ -216,6 +216,7 @@ class TestMiseTaskDiscoverability:
         sim_tasks = {name: task for name, task in mise_tasks.items() if name.startswith("sim:")}
         assert set(sim_tasks) == {
             "sim:archive",
+            "sim:dossier-demo",
             "sim:e2e-bg",
             "sim:e2e-michigan",
             "sim:probe",

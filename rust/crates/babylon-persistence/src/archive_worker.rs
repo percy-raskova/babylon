@@ -5,7 +5,8 @@ use uuid::Uuid;
 
 use crate::{
     database, decode, decode_digest, ArchiveDirtyBatchV1, ArchiveMaterializeDispositionV1,
-    ArchivePageInputV1, CampaignId, SemanticArchiveErrorV1, SemanticArchiveStoreV1,
+    ArchiveMaterializeModeV1, ArchivePageInputV1, CampaignId, SemanticArchiveErrorV1,
+    SemanticArchiveStoreV1,
 };
 
 /// Exact pending-receipt page query used by the production Archive worker.
@@ -133,11 +134,82 @@ pub enum ArchiveReceiptDispositionV1 {
     Applied,
     /// `materialize_receipt` observed an exact prior consumption.
     AlreadyConsumed,
+    /// `materialize_receipt` staged one bounded page batch; the receipt stays
+    /// pending with dirty pages remaining for the next sweep (PER-318).
+    Paged,
+}
+
+/// One bounded head of a dirty page set plus its exact undrained tail.
+///
+/// Producers select at most `limit` dirty pages in deterministic subject
+/// order and report how many dirty pages remain, so a receipt whose dirty
+/// set exceeds the per-sweep bound drains across successive sweeps instead
+/// of refusing. Nothing is ever dropped: stored-current pages fall out of
+/// the dirty set, so the head advances sweep over sweep until the tail
+/// reaches zero.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ArchiveDirtySelectionV1<T> {
+    head: Vec<T>,
+    remaining: usize,
+}
+
+impl<T> ArchiveDirtySelectionV1<T> {
+    /// Construct one bounded head selection with its undrained tail count.
+    #[must_use]
+    pub const fn new(head: Vec<T>, remaining: usize) -> Self {
+        Self { head, remaining }
+    }
+
+    /// Borrow the bounded head in deterministic subject order.
+    #[must_use]
+    pub fn head(&self) -> &[T] {
+        &self.head
+    }
+
+    /// Count the dirty pages left undrained for this receipt.
+    #[must_use]
+    pub const fn remaining(&self) -> usize {
+        self.remaining
+    }
+}
+
+/// One producer outcome: the bounded page batch plus the exact undrained
+/// dirty remainder for the same receipt.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ArchiveProducerOutcomeV1 {
+    batch: ArchiveDirtyBatchV1,
+    remaining: usize,
+}
+
+impl ArchiveProducerOutcomeV1 {
+    /// Bind one bounded batch to its undrained dirty remainder.
+    #[must_use]
+    pub const fn new(batch: ArchiveDirtyBatchV1, remaining: usize) -> Self {
+        Self { batch, remaining }
+    }
+
+    /// Borrow the bounded page batch bound to the receipt.
+    #[must_use]
+    pub const fn batch(&self) -> &ArchiveDirtyBatchV1 {
+        &self.batch
+    }
+
+    /// Count the dirty pages left undrained after this batch.
+    #[must_use]
+    pub const fn remaining(&self) -> usize {
+        self.remaining
+    }
 }
 
 /// Content producer that turns one pending receipt into a bounded dirty batch.
 pub trait ArchiveDossierProducerV1 {
-    /// Produce the exact page batch for one committed dirty receipt.
+    /// Produce the exact head batch for one committed dirty receipt.
+    ///
+    /// `page_budget` is the number of pages this producer may contribute to
+    /// the current sweep; the composite threads one shared budget so the
+    /// merged batch never exceeds [`ArchiveDirtyBatchV1::MAX_PAGES`]. The
+    /// outcome reports the exact undrained dirty remainder: a non-zero
+    /// remainder keeps the receipt pending for the next sweep.
     ///
     /// # Errors
     /// Returns any producer-side refusal as a `SemanticArchiveErrorV1`.
@@ -145,7 +217,8 @@ pub trait ArchiveDossierProducerV1 {
         &self,
         campaign_id: Uuid,
         receipt: &PendingArchiveReceiptV1,
-    ) -> Result<ArchiveDirtyBatchV1, SemanticArchiveErrorV1>;
+        page_budget: usize,
+    ) -> Result<ArchiveProducerOutcomeV1, SemanticArchiveErrorV1>;
 }
 
 /// Honest no-op producer: every pending receipt defers.
@@ -170,23 +243,34 @@ impl ArchiveDossierProducerV1 for NullArchiveDossierProducerV1 {
         &self,
         _campaign_id: Uuid,
         receipt: &PendingArchiveReceiptV1,
-    ) -> Result<ArchiveDirtyBatchV1, SemanticArchiveErrorV1> {
-        ArchiveDirtyBatchV1::try_new(receipt.resolve_tick, receipt.tick_content_hash, Vec::new())
+        _page_budget: usize,
+    ) -> Result<ArchiveProducerOutcomeV1, SemanticArchiveErrorV1> {
+        let batch = ArchiveDirtyBatchV1::try_new(
+            receipt.resolve_tick,
+            receipt.tick_content_hash,
+            Vec::new(),
+        )?;
+        Ok(ArchiveProducerOutcomeV1::new(batch, 0))
     }
 }
 
 /// Ordered production composition over several dossier producers.
 ///
-/// Every producer sees the same pending receipt and returns its own bounded
-/// batch; the composite merges the pages into one deterministic batch sorted
-/// by page reference and refuses duplicate subjects across producers. The
-/// merge never truncates: when the merged dirty set exceeds
-/// [`ArchiveDirtyBatchV1::MAX_PAGES`] it returns
-/// [`SemanticArchiveErrorV1::CountyDrainOverflow`], the sweep stops, the
-/// receipt stays pending, and nothing is consumed.
+/// Every producer sees the same pending receipt and the same shared page
+/// budget; the composite queries producers in registration order, shrinks
+/// the budget by each funded head, merges the pages into one deterministic
+/// batch sorted by page reference, and refuses duplicate subjects across
+/// producers. Each producer receives only the budget the earlier producers
+/// left, so the merged batch never exceeds
+/// [`ArchiveDirtyBatchV1::MAX_PAGES`] and the per-batch bound stays a typed
+/// defense behind the budget instead of a refusal. The composite remainder
+/// is the exact sum of every producer's undrained tail: the receipt stays
+/// pending until the whole merged dirty set drains across successive
+/// sweeps, and nothing is ever dropped or truncated.
 ///
-/// Today the composite registers only the county dossier producer; the place
-/// dossier producer joins this composition when its PER-22 slice lands.
+/// The composite registers the county dossier producer first and the place
+/// dossier producer second, so a foundation receipt drains every county
+/// page before the place head takes the remaining budget.
 pub struct CompositeArchiveDossierProducerV1 {
     producers: Vec<Box<dyn ArchiveDossierProducerV1>>,
 }
@@ -210,27 +294,28 @@ impl ArchiveDossierProducerV1 for CompositeArchiveDossierProducerV1 {
         &self,
         campaign_id: Uuid,
         receipt: &PendingArchiveReceiptV1,
-    ) -> Result<ArchiveDirtyBatchV1, SemanticArchiveErrorV1> {
+        page_budget: usize,
+    ) -> Result<ArchiveProducerOutcomeV1, SemanticArchiveErrorV1> {
+        let mut budget = page_budget;
+        let mut remaining = 0usize;
         let mut merged: std::collections::BTreeMap<_, ArchivePageInputV1> =
             std::collections::BTreeMap::new();
         for producer in &self.producers {
-            let batch = producer.produce(campaign_id, receipt)?;
-            archive_batch_matches_receipt_v1(&batch, receipt)?;
-            for page in batch.pages() {
+            let produced = producer.produce(campaign_id, receipt, budget)?;
+            archive_batch_matches_receipt_v1(produced.batch(), receipt)?;
+            remaining += produced.remaining();
+            for page in produced.batch().pages() {
                 let key = page.subject().page_ref().clone();
                 if merged.insert(key, page.clone()).is_some() {
                     return Err(SemanticArchiveErrorV1::DuplicateKey);
                 }
             }
+            budget = budget.saturating_sub(produced.batch().pages().len());
         }
         let pages: Vec<ArchivePageInputV1> = merged.into_values().collect();
-        if pages.len() > ArchiveDirtyBatchV1::MAX_PAGES {
-            return Err(SemanticArchiveErrorV1::CountyDrainOverflow {
-                dirty: pages.len(),
-                limit: ArchiveDirtyBatchV1::MAX_PAGES,
-            });
-        }
-        ArchiveDirtyBatchV1::try_new(receipt.resolve_tick, receipt.tick_content_hash, pages)
+        let batch =
+            ArchiveDirtyBatchV1::try_new(receipt.resolve_tick, receipt.tick_content_hash, pages)?;
+        Ok(ArchiveProducerOutcomeV1::new(batch, remaining))
     }
 }
 
@@ -276,6 +361,15 @@ impl ArchiveWorkerSweepReportV1 {
             .count()
     }
 
+    /// Count receipts staged with dirty pages remaining for the next sweep.
+    #[must_use]
+    pub fn paged_count(&self) -> usize {
+        self.dispositions
+            .iter()
+            .filter(|(_, disposition)| *disposition == ArchiveReceiptDispositionV1::Paged)
+            .count()
+    }
+
     /// Count receipts observed as exactly consumed by a prior run.
     #[must_use]
     pub fn already_consumed_count(&self) -> usize {
@@ -297,10 +391,15 @@ impl ArchiveWorkerSweepReportV1 {
     }
 }
 
-/// Pure per-receipt decision helper.
+/// Pure per-receipt decision helper over one producer outcome.
+///
+/// The receipt defers only when the outcome carries no pages and no
+/// undrained remainder; any dirty work at all — a bounded head batch, or a
+/// fully paged-out budget with pages still dirty — materializes (possibly
+/// without consuming, when `remaining` stays non-zero).
 #[must_use]
-pub fn classify_archive_receipt_v1(batch: &ArchiveDirtyBatchV1) -> ArchiveReceiptPlanV1 {
-    if batch.pages().is_empty() {
+pub fn classify_archive_receipt_v1(outcome: &ArchiveProducerOutcomeV1) -> ArchiveReceiptPlanV1 {
+    if outcome.batch().pages().is_empty() && outcome.remaining() == 0 {
         ArchiveReceiptPlanV1::Defer
     } else {
         ArchiveReceiptPlanV1::Materialize
@@ -344,18 +443,18 @@ pub const fn archive_contiguous_watermark_v1(
     }
 }
 
-/// Pure sweep planner over a scripted producer-result sequence.
+/// Pure sweep planner over a scripted producer-outcome sequence.
 ///
 /// Returns `Err` at the first producer failure and never skips past it.
 ///
 /// # Errors
 /// Propagates the first producer error unchanged.
 pub fn classify_archive_sweep_v1(
-    batches: Vec<Result<ArchiveDirtyBatchV1, SemanticArchiveErrorV1>>,
+    outcomes: Vec<Result<ArchiveProducerOutcomeV1, SemanticArchiveErrorV1>>,
 ) -> Result<Vec<ArchiveReceiptPlanV1>, SemanticArchiveErrorV1> {
-    batches
+    outcomes
         .into_iter()
-        .map(|batch| Ok(classify_archive_receipt_v1(&batch?)))
+        .map(|outcome| Ok(classify_archive_receipt_v1(&outcome?)))
         .collect()
 }
 
@@ -391,25 +490,27 @@ impl ArchiveSweepPageModelV1 {
         self.scanned
     }
 
-    /// Count receipts the sweep consumed, capped by the consume bound.
+    /// Count receipts the sweep materialized (consumed or paged), capped by
+    /// the consume bound.
     #[must_use]
     pub const fn consumed(&self) -> i64 {
         self.consumed
     }
 }
 
-/// Pure paged-sweep model over scripted producer pages under the production
-/// bounds ([`ARCHIVE_SWEEP_MAX_RECEIPTS_V1`] and [`ARCHIVE_SWEEP_MAX_SCAN_V1`]).
+/// Pure paged-sweep model over scripted producer outcome pages under the
+/// production bounds ([`ARCHIVE_SWEEP_MAX_RECEIPTS_V1`] and
+/// [`ARCHIVE_SWEEP_MAX_SCAN_V1`]).
 ///
 /// The model mirrors [`ArchiveWorkerV1::sweep_once`]: pages arrive in keyset
-/// order, each scanned receipt defers or consumes exactly as classified, and
-/// the sweep stops as soon as the consume cap or the scan cap is reached,
-/// leaving the remainder pending for the next invocation.
+/// order, each scanned receipt defers or materializes exactly as classified,
+/// and the sweep stops as soon as the consume cap or the scan cap is
+/// reached, leaving the remainder pending for the next invocation.
 ///
 /// # Errors
 /// Propagates the first producer error unchanged.
 pub fn model_archive_sweep_pages_v1(
-    pages: Vec<Vec<Result<ArchiveDirtyBatchV1, SemanticArchiveErrorV1>>>,
+    pages: Vec<Vec<Result<ArchiveProducerOutcomeV1, SemanticArchiveErrorV1>>>,
 ) -> Result<ArchiveSweepPageModelV1, SemanticArchiveErrorV1> {
     model_archive_sweep_pages_with_bounds_v1(
         pages,
@@ -423,7 +524,7 @@ pub fn model_archive_sweep_pages_v1(
 /// # Errors
 /// Propagates the first producer error unchanged.
 pub fn model_archive_sweep_pages_with_bounds_v1(
-    pages: Vec<Vec<Result<ArchiveDirtyBatchV1, SemanticArchiveErrorV1>>>,
+    pages: Vec<Vec<Result<ArchiveProducerOutcomeV1, SemanticArchiveErrorV1>>>,
     max_receipts: i64,
     max_scan: i64,
 ) -> Result<ArchiveSweepPageModelV1, SemanticArchiveErrorV1> {
@@ -437,8 +538,8 @@ pub fn model_archive_sweep_pages_with_bounds_v1(
                 break 'pages;
             }
             model.scanned += 1;
-            let batch = step?;
-            let plan = classify_archive_receipt_v1(&batch);
+            let outcome = step?;
+            let plan = classify_archive_receipt_v1(&outcome);
             if plan == ArchiveReceiptPlanV1::Materialize {
                 model.consumed += 1;
             }
@@ -468,12 +569,17 @@ impl ArchiveWorkerV1 {
     /// The sweep pages through the marker-backed pending set by keyset cursor
     /// ([`ARCHIVE_PENDING_RECEIPTS_SQL_V1`]), so a long run of deferred
     /// receipts never starves a later materializable one. It stops as soon as
-    /// it has consumed [`ARCHIVE_SWEEP_MAX_RECEIPTS_V1`] receipts, scanned
+    /// it has claimed [`ARCHIVE_SWEEP_MAX_RECEIPTS_V1`] receipts, scanned
     /// [`ARCHIVE_SWEEP_MAX_SCAN_V1`] receipts in total, or exhausted the
-    /// pending set. Receipt claiming is delegated to
+    /// pending set. Each claimed receipt delegates to
     /// [`SemanticArchiveStoreV1::materialize_receipt`], which binds the worker
-    /// identity via [`crate::archive_worker_contract_sha256_v1`]. The pure
-    /// [`model_archive_sweep_pages_v1`] mirrors this loop for contract
+    /// identity via [`crate::archive_worker_contract_sha256_v1`]: a receipt
+    /// whose producer reports an undrained remainder is staged in
+    /// [`ArchiveMaterializeModeV1::Stage`] mode — its pages write, its
+    /// consumption row stays absent, and the disposition reports
+    /// [`ArchiveReceiptDispositionV1::Paged`] — so the receipt stays pending
+    /// and `verified_tick` honestly stalls behind the draining backlog. The
+    /// pure [`model_archive_sweep_pages_v1`] mirrors this loop for contract
     /// regression tests.
     ///
     /// # Errors
@@ -523,20 +629,35 @@ impl ArchiveWorkerV1 {
                 last_tick = i64::try_from(resolve_tick)
                     .map_err(|_| SemanticArchiveErrorV1::StoredPageMismatch)?;
                 scanned += 1;
-                let batch = producer.produce(*campaign_id.as_uuid(), &receipt)?;
-                archive_batch_matches_receipt_v1(&batch, &receipt)?;
-                if classify_archive_receipt_v1(&batch) == ArchiveReceiptPlanV1::Defer {
+                let outcome = producer.produce(
+                    *campaign_id.as_uuid(),
+                    &receipt,
+                    ArchiveDirtyBatchV1::MAX_PAGES,
+                )?;
+                archive_batch_matches_receipt_v1(outcome.batch(), &receipt)?;
+                if classify_archive_receipt_v1(&outcome) == ArchiveReceiptPlanV1::Defer {
                     dispositions.push((resolve_tick, ArchiveReceiptDispositionV1::Deferred));
                     continue;
                 }
-                let report = self.store.materialize_receipt(campaign_id, &batch)?;
+                let mode = if outcome.remaining() == 0 {
+                    ArchiveMaterializeModeV1::Consume
+                } else {
+                    ArchiveMaterializeModeV1::Stage
+                };
+                let report = self
+                    .store
+                    .materialize_receipt(campaign_id, outcome.batch(), mode)?;
                 consumed += 1;
-                let disposition = match report.disposition() {
-                    ArchiveMaterializeDispositionV1::Applied => {
-                        ArchiveReceiptDispositionV1::Applied
-                    }
-                    ArchiveMaterializeDispositionV1::AlreadyConsumed => {
+                let disposition = match (mode, report.disposition()) {
+                    (_, ArchiveMaterializeDispositionV1::AlreadyConsumed) => {
                         ArchiveReceiptDispositionV1::AlreadyConsumed
+                    }
+                    (
+                        ArchiveMaterializeModeV1::Consume,
+                        ArchiveMaterializeDispositionV1::Applied,
+                    ) => ArchiveReceiptDispositionV1::Applied,
+                    (ArchiveMaterializeModeV1::Stage, ArchiveMaterializeDispositionV1::Applied) => {
+                        ArchiveReceiptDispositionV1::Paged
                     }
                 };
                 dispositions.push((resolve_tick, disposition));

@@ -36,7 +36,7 @@ def test_every_vector_kind_is_present() -> None:
     vectors = load_vectors(VECTORS)
 
     assert {row["kind"] for row in vectors} == {"watermark", "match", "plan", "sweep", "identity"}
-    assert len(vectors) == 15
+    assert len(vectors) == 21
     assert [row["id"] for row in vectors if row["kind"] == "watermark"] == [
         "watermark-empty-state",
         "watermark-all-consumed",
@@ -53,12 +53,18 @@ def test_pure_derivations_match_the_pinned_semantics() -> None:
     assert derive_watermark(None, 5) == 5
     assert derive_watermark(2, 3) == 1
     assert derive_watermark(1, 3) == 0
-    assert classify_receipt(0) == "Defer"
-    assert classify_receipt(1) == "Materialize"
-    plans, error = classify_sweep([{"batch": {"page_count": 0}}, {"batch": {"page_count": 1}}])
+    assert classify_receipt(0, 0) == "Defer"
+    assert classify_receipt(1, 0) == "Materialize"
+    assert classify_receipt(256, 316) == "Materialize"
+    assert classify_receipt(0, 4) == "Materialize"
+    plans, error = classify_sweep(
+        [{"batch": {"page_count": 0, "remaining": 0}}, {"batch": {"page_count": 1, "remaining": 0}}]
+    )
     assert plans == ["Defer", "Materialize"]
     assert error is None
-    plans, error = classify_sweep([{"batch": {"page_count": 1}}, {"error": "ReceiptMismatch"}])
+    plans, error = classify_sweep(
+        [{"batch": {"page_count": 1, "remaining": 0}}, {"error": "ReceiptMismatch"}]
+    )
     assert plans == ["Materialize"]
     assert error == "ReceiptMismatch"
 

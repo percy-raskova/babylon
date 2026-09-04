@@ -18,10 +18,11 @@ use babylon_persistence::{
     michigan_dynamic_hex_foundation_v1, seed_foundation_grants_v1,
     validate_legacy_connection_target, ArchiveCitationV1, ArchiveDirtyBatchV1,
     ArchiveDossierProducerV1, ArchiveKnowledgeGrantV1, ArchivePageInputV1, ArchivePageRefV1,
-    ArchiveReceiptDispositionV1, ArchiveSchemaDispositionV1, ArchiveSignalV1, ArchiveSubjectKindV1,
-    ArchiveSubjectV1, ArchiveWorkerV1, CampaignId, DurableReplayRuntimeV2,
-    FoundationContentBundleV1, FoundationGrantsErrorV1, NullArchiveDossierProducerV1,
-    PendingArchiveReceiptV1, SemanticArchiveErrorV1, SemanticArchiveStoreV1,
+    ArchiveProducerOutcomeV1, ArchiveReceiptDispositionV1, ArchiveSchemaDispositionV1,
+    ArchiveSignalV1, ArchiveSubjectKindV1, ArchiveSubjectV1, ArchiveWorkerV1, CampaignId,
+    DurableReplayRuntimeV2, FoundationContentBundleV1, FoundationGrantsErrorV1,
+    NullArchiveDossierProducerV1, PendingArchiveReceiptV1, SemanticArchiveErrorV1,
+    SemanticArchiveStoreV1,
 };
 use babylon_practice_contract::ordered_action_v1::OrderedPracticeActionBatchV1;
 use babylon_tick::material_state::MaterialStateV1;
@@ -108,12 +109,14 @@ impl ArchiveDossierProducerV1 for StubPageProducer {
         &self,
         _campaign_id: Uuid,
         receipt: &PendingArchiveReceiptV1,
-    ) -> Result<ArchiveDirtyBatchV1, SemanticArchiveErrorV1> {
-        ArchiveDirtyBatchV1::try_new(
+        _page_budget: usize,
+    ) -> Result<ArchiveProducerOutcomeV1, SemanticArchiveErrorV1> {
+        let batch = ArchiveDirtyBatchV1::try_new(
             receipt.resolve_tick(),
             *receipt.tick_content_hash(),
             vec![stub_page_input(receipt)],
-        )
+        )?;
+        Ok(ArchiveProducerOutcomeV1::new(batch, 0))
     }
 }
 
@@ -127,11 +130,12 @@ impl ArchiveDossierProducerV1 for FailAtTickProducer {
         &self,
         campaign_id: Uuid,
         receipt: &PendingArchiveReceiptV1,
-    ) -> Result<ArchiveDirtyBatchV1, SemanticArchiveErrorV1> {
+        page_budget: usize,
+    ) -> Result<ArchiveProducerOutcomeV1, SemanticArchiveErrorV1> {
         if receipt.resolve_tick() == self.fail_at_tick {
             return Err(SemanticArchiveErrorV1::InvalidText);
         }
-        StubPageProducer.produce(campaign_id, receipt)
+        StubPageProducer.produce(campaign_id, receipt, page_budget)
     }
 }
 
@@ -150,15 +154,17 @@ impl ArchiveDossierProducerV1 for DeferAllButProducer {
         &self,
         campaign_id: Uuid,
         receipt: &PendingArchiveReceiptV1,
-    ) -> Result<ArchiveDirtyBatchV1, SemanticArchiveErrorV1> {
+        page_budget: usize,
+    ) -> Result<ArchiveProducerOutcomeV1, SemanticArchiveErrorV1> {
         if receipt.resolve_tick() == self.materialize_tick {
-            StubPageProducer.produce(campaign_id, receipt)
+            StubPageProducer.produce(campaign_id, receipt, page_budget)
         } else {
-            ArchiveDirtyBatchV1::try_new(
+            let batch = ArchiveDirtyBatchV1::try_new(
                 receipt.resolve_tick(),
                 *receipt.tick_content_hash(),
                 Vec::new(),
-            )
+            )?;
+            Ok(ArchiveProducerOutcomeV1::new(batch, 0))
         }
     }
 }
@@ -175,15 +181,17 @@ impl ArchiveDossierProducerV1 for MaterializeAllButProducer {
         &self,
         campaign_id: Uuid,
         receipt: &PendingArchiveReceiptV1,
-    ) -> Result<ArchiveDirtyBatchV1, SemanticArchiveErrorV1> {
+        page_budget: usize,
+    ) -> Result<ArchiveProducerOutcomeV1, SemanticArchiveErrorV1> {
         if receipt.resolve_tick() == self.defer_tick {
-            ArchiveDirtyBatchV1::try_new(
+            let batch = ArchiveDirtyBatchV1::try_new(
                 receipt.resolve_tick(),
                 *receipt.tick_content_hash(),
                 Vec::new(),
-            )
+            )?;
+            Ok(ArchiveProducerOutcomeV1::new(batch, 0))
         } else {
-            StubPageProducer.produce(campaign_id, receipt)
+            StubPageProducer.produce(campaign_id, receipt, page_budget)
         }
     }
 }
@@ -193,17 +201,19 @@ impl ArchiveDossierProducerV1 for WrongTickProducer {
         &self,
         _campaign_id: Uuid,
         receipt: &PendingArchiveReceiptV1,
-    ) -> Result<ArchiveDirtyBatchV1, SemanticArchiveErrorV1> {
+        _page_budget: usize,
+    ) -> Result<ArchiveProducerOutcomeV1, SemanticArchiveErrorV1> {
         let wrong = PendingArchiveReceiptV1::try_new(
             receipt.resolve_tick() + 1,
             *receipt.tick_content_hash(),
         )
         .expect("wrong-tick receipt boundary");
-        ArchiveDirtyBatchV1::try_new(
+        let batch = ArchiveDirtyBatchV1::try_new(
             wrong.resolve_tick(),
             *wrong.tick_content_hash(),
             vec![stub_page_input(&wrong)],
-        )
+        )?;
+        Ok(ArchiveProducerOutcomeV1::new(batch, 0))
     }
 }
 

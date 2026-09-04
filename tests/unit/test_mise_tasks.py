@@ -654,3 +654,115 @@ def test_rustdoc_remains_hosted_and_blocking_after_single_pass_refactor() -> Non
     assert hosted_step["run"] == "mise run ci:rust"
     assert "continue-on-error" not in hosted_step
     assert "continue-on-error" not in rust_job
+
+
+# The play task's Archive sweep loop is executed by mise under a POSIX `sh`
+# (dash on the dev host), where the glob negation class is `[!0-9]`; the
+# bashism `[^0-9]` parses empty there and the loop broke after one sweep with
+# pages still pending (PER-318 live-fire finding, 2026-09-04).
+_PLAY_SWEEP_LOOP_BEGIN = "for sweep in 1 2 3 4 5 6 7 8; do"
+_PLAY_SWEEP_LINE = (
+    "Archive worker sweep complete; verified_tick=1; deferred=0; applied=0; "
+    "already_consumed=0; paged={paged}."
+)
+
+
+def _play_run_script() -> str:
+    """Return the play task's run script as one string."""
+    run = _tasks()["play"]["run"]
+    if isinstance(run, list):
+        return "\n".join(str(command) for command in run)
+    return str(run)
+
+
+def _play_sweep_loop_block() -> str:
+    """Extract the verbatim `for sweep ... done` block from the play task."""
+    script = _play_run_script()
+    begin = script.index(_PLAY_SWEEP_LOOP_BEGIN)
+    block = []
+    for line in script[begin:].splitlines():
+        block.append(line)
+        if line.strip() == "done":
+            return "\n".join(block)
+    raise AssertionError("play sweep loop has no closing `done`")
+
+
+_STUB_RUNTIME = """\
+#!/bin/sh
+# Stub `babylon-runtime`: shift one scripted `--once` report per archive-worker
+# call. A PATH stub is used because POSIX function names cannot contain "-".
+[ "$1" = "archive-worker" ] || exit 0
+sed -n '1p' "$PLAY_SWEEP_FIXTURE"
+sed -n '2,$p' "$PLAY_SWEEP_FIXTURE" > "$PLAY_SWEEP_FIXTURE.shifted"
+mv "$PLAY_SWEEP_FIXTURE.shifted" "$PLAY_SWEEP_FIXTURE"
+"""
+
+
+def _run_sweep_loop_under_posix_sh(outputs: list[str]) -> subprocess.CompletedProcess[str]:
+    """Execute the real loop block under `/bin/sh` with a stubbed runtime.
+
+    The stub shifts one scripted `--once` report line per archive-worker call,
+    so the test exercises the task's actual parse and break logic instead of
+    a hand-copied replica.
+    """
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        fixture = Path(tmp) / "sweep_outputs.txt"
+        fixture.write_text("".join(f"{line}\n" for line in outputs))
+        stub_bin = Path(tmp) / "bin"
+        stub_bin.mkdir()
+        (stub_bin / "babylon-runtime").write_text(_STUB_RUNTIME)
+        (stub_bin / "babylon-runtime").chmod(0o755)
+        script = Path(tmp) / "sweep_loop.sh"
+        script.write_text(_play_sweep_loop_block())
+        env = {
+            **os.environ,
+            "PATH": f"{stub_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+            "PLAY_SWEEP_FIXTURE": str(fixture),
+        }
+        return subprocess.run(  # noqa: S603 -- generated script, pinned interpreter
+            ["/bin/sh", str(script)],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+
+def _sweep_lines(result: subprocess.CompletedProcess[str]) -> list[str]:
+    return [line for line in result.stdout.splitlines() if "paged=" in line]
+
+
+@pytest.mark.skipif(not MISE_TOML.exists(), reason=".mise.toml not present")
+class TestPlaySweepLoopUnderPosixSh:
+    """The play drain loop parses `paged=N.` under dash semantics, not bash."""
+
+    def test_loop_uses_the_posix_negated_glob_class(self) -> None:
+        """`[^0-9]` is a bashism; dash reads it as a literal class member."""
+        assert "[!0-9]" in _play_sweep_loop_block()
+        assert "[^0-9]" not in _play_run_script()
+
+    def test_paged_parse_survives_the_trailing_period_under_posix_sh(self) -> None:
+        """A mid-drain report (`paged=2.`) must not settle the loop early.
+
+        Regression: under dash the bashism parsed empty, `${paged:-0}` became
+        0, and the loop broke after the first sweep with pages still pending.
+        """
+        result = _run_sweep_loop_under_posix_sh(
+            [_PLAY_SWEEP_LINE.format(paged=2), _PLAY_SWEEP_LINE.format(paged=0)]
+        )
+        assert result.returncode == 0, result.stderr
+        lines = _sweep_lines(result)
+        assert len(lines) == 2, f"loop must run both sweeps, got: {lines}"
+        assert lines[0].endswith("paged=2.")
+
+    def test_loop_breaks_immediately_on_a_settled_first_sweep(self) -> None:
+        result = _run_sweep_loop_under_posix_sh([_PLAY_SWEEP_LINE.format(paged=0)])
+        assert result.returncode == 0, result.stderr
+        assert len(_sweep_lines(result)) == 1
+
+    def test_loop_refuses_to_launch_when_the_drain_never_settles(self) -> None:
+        result = _run_sweep_loop_under_posix_sh([_PLAY_SWEEP_LINE.format(paged=2)] * 8)
+        assert result.returncode == 1
+        assert "still paged" in result.stderr

@@ -42,12 +42,14 @@
 //!
 //! # Drain bound
 //!
-//! The producer never truncates a dirty set. When more than
-//! [`ArchiveDirtyBatchV1::MAX_PAGES`] counties are dirty for one receipt it
-//! returns [`SemanticArchiveErrorV1::CountyDrainOverflow`], the sweep stops,
-//! the receipt stays pending, and nothing is consumed; the dirty set must be
-//! drained below the bound first. Michigan's 83 mapped counties keep the
-//! production drain a normal complete batch.
+//! The producer never truncates a dirty set and never refuses an over-bound
+//! one. When more than [`ArchiveDirtyBatchV1::MAX_PAGES`] counties are dirty
+//! for one receipt it selects the leading `limit` entries in geoid order and
+//! reports the exact undrained tail count ([`ArchiveDirtySelectionV1`]), so
+//! the sweep stages one bounded batch and the receipt stays pending until
+//! the tail drains across successive sweeps. Michigan's 83 mapped counties
+//! keep the production county drain a normal complete batch, leaving most of
+//! the shared page budget for the place producer (PER-318).
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -65,9 +67,10 @@ use crate::place_producer::{
 };
 use crate::{
     michigan_spatial_reference_products_v1, representative_h3_reference_cohort_v1,
-    ArchiveCitationV1, ArchiveDirtyBatchV1, ArchiveDossierProducerV1, ArchiveLinkV1,
-    ArchivePageInputV1, ArchivePageRefV1, ArchiveSignalV1, ArchiveSubjectKindV1, ArchiveSubjectV1,
-    CampaignId, PendingArchiveReceiptV1, SemanticArchiveErrorV1, SpatialReferenceProducts,
+    ArchiveCitationV1, ArchiveDirtyBatchV1, ArchiveDirtySelectionV1, ArchiveDossierProducerV1,
+    ArchiveLinkV1, ArchivePageInputV1, ArchivePageRefV1, ArchiveProducerOutcomeV1, ArchiveSignalV1,
+    ArchiveSubjectKindV1, ArchiveSubjectV1, CampaignId, PendingArchiveReceiptV1,
+    SemanticArchiveErrorV1, SpatialReferenceProducts,
 };
 
 /// Stable decision question every county dossier page answers.
@@ -780,19 +783,19 @@ pub fn filter_granted_county_plans_v1<'a>(
 ///
 /// A desired page is dirty when no stored projection exists for its subject
 /// or when the grant-visible projection hash differs. The selection never
-/// truncates: when the dirty set exceeds `limit` it refuses with
-/// [`SemanticArchiveErrorV1::CountyDrainOverflow`] so the caller leaves the
-/// receipt pending and consumes nothing.
+/// truncates silently and never refuses: it takes the leading `limit` dirty
+/// entries and reports the exact undrained tail count, so an over-bound dirty
+/// set pages across successive sweeps — stored-current pages drop out of the
+/// dirty set automatically, which is what advances the head each sweep.
 ///
 /// # Errors
-/// Returns [`SemanticArchiveErrorV1::CountyDrainOverflow`] when the dirty set
-/// exceeds `limit`, or any projection refusal.
+/// Returns any projection refusal.
 pub fn select_dirty_county_pages_v1<'a>(
     desired: &'a [CountyPagePlanV1],
     stored: &BTreeMap<String, CountyPageProjectionV1>,
     grants: &CountyGrantIndexV1,
     limit: usize,
-) -> Result<Vec<&'a CountyPagePlanV1>, SemanticArchiveErrorV1> {
+) -> Result<ArchiveDirtySelectionV1<&'a CountyPagePlanV1>, SemanticArchiveErrorV1> {
     let mut dirty = Vec::new();
     for plan in desired {
         let projection = desired_county_projection_v1(plan, grants)?;
@@ -804,13 +807,9 @@ pub fn select_dirty_county_pages_v1<'a>(
             dirty.push(plan);
         }
     }
-    if dirty.len() > limit {
-        return Err(SemanticArchiveErrorV1::CountyDrainOverflow {
-            dirty: dirty.len(),
-            limit,
-        });
-    }
-    Ok(dirty)
+    let remaining = dirty.len().saturating_sub(limit);
+    dirty.truncate(limit);
+    Ok(ArchiveDirtySelectionV1::new(dirty, remaining))
 }
 
 /// Build the exact receipt-bound page input for one desired county page.
@@ -1185,7 +1184,8 @@ impl ArchiveDossierProducerV1 for CountyDossierProducerV1 {
         &self,
         campaign_id: Uuid,
         receipt: &PendingArchiveReceiptV1,
-    ) -> Result<ArchiveDirtyBatchV1, SemanticArchiveErrorV1> {
+        page_budget: usize,
+    ) -> Result<ArchiveProducerOutcomeV1, SemanticArchiveErrorV1> {
         let campaign_id = CampaignId::from_uuid(campaign_id);
         let desired = self.desired_pages(campaign_id, receipt.resolve_tick())?;
         let stored = self.read_stored_pages(campaign_id)?;
@@ -1194,19 +1194,20 @@ impl ArchiveDossierProducerV1 for CountyDossierProducerV1 {
             .into_iter()
             .cloned()
             .collect();
-        let dirty = select_dirty_county_pages_v1(
-            &granted,
-            &stored,
-            &grants,
-            ArchiveDirtyBatchV1::MAX_PAGES,
-        )?;
-        let pages = dirty
+        let selection = select_dirty_county_pages_v1(&granted, &stored, &grants, page_budget)?;
+        let pages = selection
+            .head()
             .iter()
             .map(|plan| {
                 county_page_input_v1(plan, receipt.resolve_tick(), *receipt.tick_content_hash())
             })
             .collect::<Result<Vec<_>, _>>()?;
-        ArchiveDirtyBatchV1::try_new(receipt.resolve_tick(), *receipt.tick_content_hash(), pages)
+        let batch = ArchiveDirtyBatchV1::try_new(
+            receipt.resolve_tick(),
+            *receipt.tick_content_hash(),
+            pages,
+        )?;
+        Ok(ArchiveProducerOutcomeV1::new(batch, selection.remaining()))
     }
 }
 

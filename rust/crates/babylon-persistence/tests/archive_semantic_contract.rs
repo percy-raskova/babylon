@@ -3,10 +3,11 @@ use std::str::FromStr;
 use babylon_kernel::sha256_of;
 use babylon_persistence::{
     ArchiveCitationV1, ArchiveDirtyBatchV1, ArchiveKnowledgeGrantV1, ArchiveKnowledgeV1,
-    ArchiveLinkV1, ArchiveMaterializeDispositionV1, ArchivePageInputV1, ArchivePageRefV1,
-    ArchiveSignalV1, ArchiveSubjectKindV1, ArchiveSubjectV1, CampaignId, FogSafeArchiveRendererV1,
-    SemanticArchiveErrorV1, SemanticArchiveStoreV1, ARCHIVE_KNOWLEDGE_SQL_V1,
-    ARCHIVE_PAGE_TEMPLATE_SHA256_V1, ARCHIVE_SEARCH_SQL_V1, SEMANTIC_ARCHIVE_SCHEMA_V1_SQL,
+    ArchiveLinkV1, ArchiveMaterializeDispositionV1, ArchiveMaterializeModeV1, ArchivePageInputV1,
+    ArchivePageRefV1, ArchiveSignalV1, ArchiveSubjectKindV1, ArchiveSubjectV1, CampaignId,
+    FogSafeArchiveRendererV1, SemanticArchiveErrorV1, SemanticArchiveStoreV1,
+    ARCHIVE_KNOWLEDGE_SQL_V1, ARCHIVE_PAGE_TEMPLATE_SHA256_V1, ARCHIVE_SEARCH_SQL_V1,
+    SEMANTIC_ARCHIVE_SCHEMA_V1_SQL,
 };
 use postgres::{Config, NoTls};
 use uuid::Uuid;
@@ -304,7 +305,7 @@ fn live_store_consumes_searches_and_reconciles_exact_receipt_retries() {
     )
     .expect("live batch");
     let applied = store
-        .materialize_receipt(campaign_id, &batch)
+        .materialize_receipt(campaign_id, &batch, ArchiveMaterializeModeV1::Consume)
         .expect("live receipt materializes");
     assert_eq!(
         applied.disposition(),
@@ -323,7 +324,7 @@ fn live_store_consumes_searches_and_reconciles_exact_receipt_retries() {
     assert_eq!(hits[0].citations().len(), 2);
 
     let retry = store
-        .materialize_receipt(campaign_id, &batch)
+        .materialize_receipt(campaign_id, &batch, ArchiveMaterializeModeV1::Consume)
         .expect("exact retry reconciles");
     assert_eq!(
         retry.disposition(),
@@ -331,7 +332,7 @@ fn live_store_consumes_searches_and_reconciles_exact_receipt_retries() {
     );
     grant_late_link_knowledge(&store, campaign_id);
     assert_eq!(
-        store.materialize_receipt(campaign_id, &batch),
+        store.materialize_receipt(campaign_id, &batch, ArchiveMaterializeModeV1::Consume),
         Err(SemanticArchiveErrorV1::ReceiptConflict)
     );
     let changed = ArchiveDirtyBatchV1::try_new(
@@ -345,7 +346,7 @@ fn live_store_consumes_searches_and_reconciles_exact_receipt_retries() {
     )
     .expect("changed live batch");
     assert_eq!(
-        store.materialize_receipt(campaign_id, &changed),
+        store.materialize_receipt(campaign_id, &changed, ArchiveMaterializeModeV1::Consume),
         Err(SemanticArchiveErrorV1::ReceiptConflict)
     );
 }

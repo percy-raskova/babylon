@@ -37,7 +37,24 @@ const ARCHIVE_SCHEMA_MARKERS_SQL_V1: &str = "SELECT \
     pg_catalog.to_regclass('babylon_meta.semantic_archive_schema_v1') IS NOT NULL, \
     pg_catalog.to_regclass('babylon_meta.archive_knowledge_grant_v1') IS NOT NULL, \
     pg_catalog.to_regclass('babylon_meta.archive_receipt_consumption_v1') IS NOT NULL, \
-    pg_catalog.to_regclass('babylon_meta.archive_page_v1') IS NOT NULL";
+    pg_catalog.to_regclass('babylon_meta.archive_page_v1') IS NOT NULL, \
+    EXISTS (\
+        SELECT 1 FROM pg_catalog.pg_constraint \
+        WHERE conname = 'archive_page_v1_campaign_id_source_resolve_tick_fkey' \
+          AND conrelid = pg_catalog.to_regclass('babylon_meta.archive_page_v1') \
+          AND confrelid = pg_catalog.to_regclass('babylon_state.archive_dirty_receipt_v1')\
+    )";
+/// PER-318 upgrade: an installed base schema whose page provenance still
+/// anchors at the consumption marker cannot stage a paged drain batch, so
+/// the installer re-anchors the exact constraint at the durable dirty
+/// receipt before reporting the schema current.
+const ARCHIVE_SCHEMA_PAGE_FK_UPGRADE_SQL_V1: &str = "ALTER TABLE babylon_meta.archive_page_v1 \
+    DROP CONSTRAINT archive_page_v1_campaign_id_source_resolve_tick_fkey; \
+    ALTER TABLE babylon_meta.archive_page_v1 \
+    ADD CONSTRAINT archive_page_v1_campaign_id_source_resolve_tick_fkey \
+    FOREIGN KEY (campaign_id, source_resolve_tick) \
+    REFERENCES babylon_state.archive_dirty_receipt_v1(campaign_id, resolve_tick) \
+    ON DELETE CASCADE";
 const ARCHIVE_ATOM_SCHEMA_MARKERS_SQL_V1: &str = "SELECT \
     pg_catalog.to_regclass('babylon_meta.archive_atom_schema_v1') IS NOT NULL, \
     pg_catalog.to_regclass('babylon_meta.archive_atom_v1') IS NOT NULL, \
@@ -730,6 +747,19 @@ pub enum ArchiveMaterializeDispositionV1 {
     AlreadyConsumed,
 }
 
+/// How one materialization pass relates to the receipt's consumption row.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ArchiveMaterializeModeV1 {
+    /// The receipt's full dirty set drained: write the pages and claim the
+    /// consumption row so `verified_tick` may advance past it.
+    Consume,
+    /// Dirty pages remain (PER-318 paged drain): write this bounded batch of
+    /// pages without claiming, leaving the receipt pending for the next
+    /// sweep. The monotonic page guard and content-addressed atoms make an
+    /// exact restage a no-op, so a re-sweep never double-writes.
+    Stage,
+}
+
 /// One persisted page result from an applied batch.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MaterializedArchivePageV1 {
@@ -1289,7 +1319,8 @@ impl SemanticArchiveStoreV1 {
                 decode::<bool>(&row, 2)?,
                 decode::<bool>(&row, 3)?,
             ];
-            if markers == [false; 4] {
+            let page_fk_current = decode::<bool>(&row, 4)?;
+            if markers == [false; 4] && !page_fk_current {
                 let mut transaction = client
                     .build_transaction()
                     .isolation_level(IsolationLevel::Serializable)
@@ -1318,7 +1349,24 @@ impl SemanticArchiveStoreV1 {
                 if contract_id != ARCHIVE_SCHEMA_CONTRACT_ID {
                     return Err(SemanticArchiveErrorV1::SchemaMismatch);
                 }
-                Ok(ArchiveSchemaDispositionV1::AlreadyCurrent)
+                if page_fk_current {
+                    Ok(ArchiveSchemaDispositionV1::AlreadyCurrent)
+                } else {
+                    let mut transaction = client
+                        .build_transaction()
+                        .isolation_level(IsolationLevel::Serializable)
+                        .start()
+                        .map_err(|error| database("begin Archive schema upgrade", &error))?;
+                    transaction
+                        .batch_execute(ARCHIVE_SCHEMA_PAGE_FK_UPGRADE_SQL_V1)
+                        .map_err(|error| {
+                            database("upgrade Archive page provenance anchor", &error)
+                        })?;
+                    transaction
+                        .commit()
+                        .map_err(|error| database("commit Archive schema upgrade", &error))?;
+                    Ok(ArchiveSchemaDispositionV1::Installed)
+                }
             } else {
                 Err(SemanticArchiveErrorV1::PartialSchema)
             }
@@ -1439,7 +1487,18 @@ impl SemanticArchiveStoreV1 {
         )
     }
 
-    /// Consume one committed receipt and materialize its dirty page batch atomically.
+    /// Materialize one committed receipt's bounded dirty page batch atomically.
+    ///
+    /// In [`ArchiveMaterializeModeV1::Consume`] mode the receipt's full dirty
+    /// set drained: the pages write and the consumption row claims the receipt
+    /// inside one serializable transaction. In [`ArchiveMaterializeModeV1::Stage`]
+    /// mode dirty pages remain (the PER-318 paged drain): the same atomic
+    /// transaction writes this bounded batch without claiming, so the receipt
+    /// stays pending, `verified_tick` honestly stalls behind it, and nothing
+    /// downstream may treat the receipt as settled. One sweep's page batch
+    /// always commits atomically (ADR223); the receipt's full drain converges
+    /// across successive sweeps, and an exact restage of a staged batch is a
+    /// no-op through the monotonic page guard and content-addressed atoms.
     ///
     /// # Errors
     /// Refuses an absent/mismatched receipt, unknown page subject, template failure,
@@ -1448,6 +1507,7 @@ impl SemanticArchiveStoreV1 {
         &self,
         campaign_id: CampaignId,
         batch: &ArchiveDirtyBatchV1,
+        mode: ArchiveMaterializeModeV1,
     ) -> Result<ArchiveMaterializeReportV1, SemanticArchiveErrorV1> {
         let renderer = FogSafeArchiveRendererV1::new()?;
         let resolve_tick = i64::try_from(batch.resolve_tick)
@@ -1473,45 +1533,21 @@ impl SemanticArchiveStoreV1 {
         }
         let knowledge = read_knowledge(&mut transaction, campaign_id, resolve_tick)?;
         let knowledge_sha256 = knowledge.sha256();
-        let claimed = transaction
-            .execute(
-                "INSERT INTO babylon_meta.archive_receipt_consumption_v1 \
-                 (campaign_id, resolve_tick, tick_content_hash, batch_sha256, \
-                  worker_contract_sha256, knowledge_sha256) \
-                 VALUES ($1::uuid, $2, $3, $4, $5, $6) \
-                 ON CONFLICT (campaign_id, resolve_tick) DO NOTHING",
-                &[
-                    campaign_id.as_uuid(),
-                    &resolve_tick,
-                    &&batch.tick_content_hash[..],
-                    &&batch_sha256[..],
-                    &&worker_contract[..],
-                    &&knowledge_sha256[..],
-                ],
-            )
-            .map_err(|error| database("claim Archive receipt", &error))?;
-        if claimed == 0 {
-            let row = transaction
-                .query_one(
-                    "SELECT tick_content_hash, batch_sha256, worker_contract_sha256, \
-                            knowledge_sha256 \
-                     FROM babylon_meta.archive_receipt_consumption_v1 \
-                     WHERE campaign_id = $1::uuid AND resolve_tick = $2",
-                    &[campaign_id.as_uuid(), &resolve_tick],
-                )
-                .map_err(|error| database("reconcile Archive receipt", &error))?;
-            if decode_digest(&row, 0)? != batch.tick_content_hash
-                || decode_digest(&row, 1)? != batch_sha256
-                || decode_digest(&row, 2)? != worker_contract
-                || decode_digest(&row, 3)? != knowledge_sha256
-            {
-                return Err(SemanticArchiveErrorV1::ReceiptConflict);
-            }
+        let disposition = claim_archive_receipt_v1(
+            &mut transaction,
+            campaign_id,
+            mode,
+            batch,
+            &batch_sha256,
+            &worker_contract,
+            &knowledge_sha256,
+        )?;
+        if disposition == ArchiveMaterializeDispositionV1::AlreadyConsumed {
             transaction
                 .commit()
                 .map_err(|error| database("commit exact Archive retry", &error))?;
             return Ok(ArchiveMaterializeReportV1 {
-                disposition: ArchiveMaterializeDispositionV1::AlreadyConsumed,
+                disposition,
                 pages: Vec::new(),
             });
         }
@@ -1687,6 +1723,110 @@ pub(crate) fn insert_grant_row_v1(
     } else {
         Err(SemanticArchiveErrorV1::GrantConflict)
     }
+}
+
+/// Claim the receipt for one materialize pass.
+///
+/// Stage mode never claims: an existing consumption row means the receipt
+/// settled earlier, and the exact retry reconciles the stored claim digests
+/// before reporting `AlreadyConsumed`; a differing row refuses with the same
+/// conflict Consume mode raises. Consume mode inserts the exact conflict row;
+/// an identical prior claim reconciles as already consumed, a differing one
+/// refuses.
+///
+/// # Errors
+/// Returns a database failure or a conflicting prior claim.
+fn claim_archive_receipt_v1(
+    client: &mut impl GenericClient,
+    campaign_id: CampaignId,
+    mode: ArchiveMaterializeModeV1,
+    batch: &ArchiveDirtyBatchV1,
+    batch_sha256: &[u8; 32],
+    worker_contract_sha256: &[u8; 32],
+    knowledge_sha256: &[u8; 32],
+) -> Result<ArchiveMaterializeDispositionV1, SemanticArchiveErrorV1> {
+    if mode == ArchiveMaterializeModeV1::Stage {
+        return reconcile_archive_receipt_v1(
+            client,
+            campaign_id,
+            batch,
+            batch_sha256,
+            worker_contract_sha256,
+            knowledge_sha256,
+        );
+    }
+    let resolve_tick = i64::try_from(batch.resolve_tick)
+        .map_err(|_| SemanticArchiveErrorV1::InvalidVerifiedTick)?;
+    let tick_content_hash = &batch.tick_content_hash;
+    let claimed = client
+        .execute(
+            "INSERT INTO babylon_meta.archive_receipt_consumption_v1 \
+             (campaign_id, resolve_tick, tick_content_hash, batch_sha256, \
+              worker_contract_sha256, knowledge_sha256) \
+             VALUES ($1::uuid, $2, $3, $4, $5, $6) \
+             ON CONFLICT (campaign_id, resolve_tick) DO NOTHING",
+            &[
+                campaign_id.as_uuid(),
+                &resolve_tick,
+                &&tick_content_hash[..],
+                &&batch_sha256[..],
+                &&worker_contract_sha256[..],
+                &&knowledge_sha256[..],
+            ],
+        )
+        .map_err(|error| database("claim Archive receipt", &error))?;
+    if claimed == 1 {
+        return Ok(ArchiveMaterializeDispositionV1::Applied);
+    }
+    reconcile_archive_receipt_v1(
+        client,
+        campaign_id,
+        batch,
+        batch_sha256,
+        worker_contract_sha256,
+        knowledge_sha256,
+    )
+}
+
+/// Reconcile an existing consumption row against the current claim digests.
+///
+/// A row identical to the current claim reconciles as already consumed; a
+/// differing row refuses with `ReceiptConflict`. An absent row — only
+/// reachable from Stage mode, which never inserts — reports the receipt is
+/// still pending.
+///
+/// # Errors
+/// Returns a database failure or a conflicting prior claim.
+fn reconcile_archive_receipt_v1(
+    client: &mut impl GenericClient,
+    campaign_id: CampaignId,
+    batch: &ArchiveDirtyBatchV1,
+    batch_sha256: &[u8; 32],
+    worker_contract_sha256: &[u8; 32],
+    knowledge_sha256: &[u8; 32],
+) -> Result<ArchiveMaterializeDispositionV1, SemanticArchiveErrorV1> {
+    let resolve_tick = i64::try_from(batch.resolve_tick)
+        .map_err(|_| SemanticArchiveErrorV1::InvalidVerifiedTick)?;
+    let row = client
+        .query_opt(
+            "SELECT tick_content_hash, batch_sha256, worker_contract_sha256, \
+                    knowledge_sha256 \
+             FROM babylon_meta.archive_receipt_consumption_v1 \
+             WHERE campaign_id = $1::uuid AND resolve_tick = $2",
+            &[campaign_id.as_uuid(), &resolve_tick],
+        )
+        .map_err(|error| database("reconcile Archive receipt", &error))?;
+    let Some(row) = row else {
+        return Ok(ArchiveMaterializeDispositionV1::Applied);
+    };
+    if decode_digest(&row, 0)? != batch.tick_content_hash
+        || decode_digest(&row, 1)? != *batch_sha256
+        || decode_digest(&row, 2)? != *worker_contract_sha256
+        || decode_digest(&row, 3)? != *knowledge_sha256
+    {
+        return Err(SemanticArchiveErrorV1::ReceiptConflict);
+    }
+    Ok(ArchiveMaterializeDispositionV1::AlreadyConsumed)
 }
 
 fn read_knowledge(
@@ -2182,6 +2322,10 @@ pub enum SemanticArchiveErrorV1 {
     Template,
     /// The dirty place set exceeded one receipt page bound, so nothing was
     /// selected and the receipt stays pending.
+    ///
+    /// Defense-only after PER-318: producers page the head batch and report
+    /// the undrained tail instead of refusing, so this variant is unreachable
+    /// in normal operation and remains as the typed taxonomy backstop.
     PlaceDrainOverflow {
         /// Exact number of dirty place pages observed.
         dirty: usize,
@@ -2190,6 +2334,10 @@ pub enum SemanticArchiveErrorV1 {
     },
     /// The dirty county set exceeded one receipt page bound, so nothing was
     /// selected and the receipt stays pending.
+    ///
+    /// Defense-only after PER-318: producers page the head batch and report
+    /// the undrained tail instead of refusing, so this variant is unreachable
+    /// in normal operation and remains as the typed taxonomy backstop.
     CountyDrainOverflow {
         /// Exact number of dirty county pages observed.
         dirty: usize,

@@ -28,7 +28,9 @@ authority:
       so a run of deferred receipts never starves a later materializable one.
     - One sweep consumes at most ARCHIVE_SWEEP_MAX_RECEIPTS_V1 receipts and
       scans at most ARCHIVE_SWEEP_MAX_SCAN_V1 pending receipts.
-    - An empty producer batch defers without consuming the receipt.
+    - An empty producer batch defers without consuming the receipt; a batch
+      with an undrained tail (empty head, nonzero remaining) stages without
+      consuming, so nothing drops across sweeps.
     - A batch-identity mismatch stops the sweep with an error.
     - The first hard error stops the sweep; later scripted steps are never
       consulted.
@@ -51,7 +53,7 @@ constants:
   sweep_max_receipts: 256
   sweep_max_scan: 4096
   receipt_plans: [Defer, Materialize]
-  receipt_dispositions: [Deferred, Applied, AlreadyConsumed]
+  receipt_dispositions: [Deferred, Applied, AlreadyConsumed, Paged]
   error_variants_used: [InvalidVerifiedTick, ReceiptMismatch, StoredPageMismatch]
 
 bounds:
@@ -71,6 +73,15 @@ layouts:
       - page_count_u64
     resolve_tick_domain: 1..=i64::MAX
     page_count_domain: 0..=256
+  paged_batch_ref_v1:
+    fields:
+      - resolve_tick_u64
+      - tick_content_hash_exact_32_bytes_lower_hex
+      - page_count_u64
+      - remaining_u64
+    resolve_tick_domain: 1..=i64::MAX
+    page_count_domain: 0..=256
+    remaining_domain: 0..=65535
   receipt_ref_v1:
     fields: [resolve_tick_u64, tick_content_hash_exact_32_bytes_lower_hex]
     resolve_tick_domain: 1..=i64::MAX
@@ -78,7 +89,7 @@ layouts:
     fields: [batch_ref_v1, receipt_ref_v1]
   sweep_step_v1:
     one_of:
-      - "batch: batch_ref_v1"
+      - "batch: paged_batch_ref_v1"
       - "error: SemanticArchiveErrorV1 variant name"
   sweep_output_v1:
     one_of:
@@ -87,6 +98,18 @@ layouts:
 
 vector_kinds:
   required: [watermark, match, plan, sweep, identity]
+
+amendments:
+  - issue: PER-318
+    summary: The dossier drain pages across sweeps. A producer returns the
+      leading page head plus the exact undrained tail count; a receipt defers
+      only when the batch is empty and nothing remains undrained. Plan and
+      sweep vectors carry paged_batch_ref_v1 so an empty batch with a
+      nonzero remaining count still materializes (staged, not consumed).
+      The disposition taxonomy gains Paged for a staged-not-consumed sweep
+      step. CountyDrainOverflow and PlaceDrainOverflow stay in the error
+      taxonomy as defense-only; the merged composite head never exceeds the
+      shared 256-page batch bound.
 
 excluded_authority:
   - PostgreSQL execution, transactions, or receipt consumption

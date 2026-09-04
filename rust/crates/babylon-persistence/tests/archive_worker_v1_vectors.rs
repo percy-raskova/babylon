@@ -2,7 +2,7 @@
 
 use babylon_persistence::{
     archive_batch_matches_receipt_v1, archive_contiguous_watermark_v1, classify_archive_receipt_v1,
-    classify_archive_sweep_v1, ArchiveDirtyBatchV1, ArchivePageInputV1,
+    classify_archive_sweep_v1, ArchiveDirtyBatchV1, ArchivePageInputV1, ArchiveProducerOutcomeV1,
     ArchiveReceiptDispositionV1, ArchiveReceiptPlanV1, ArchiveSubjectKindV1, ArchiveSubjectV1,
     PendingArchiveReceiptV1, SemanticArchiveErrorV1, ARCHIVE_PENDING_RECEIPTS_SQL_V1,
     ARCHIVE_SWEEP_MAX_RECEIPTS_V1, ARCHIVE_SWEEP_MAX_SCAN_V1, ARCHIVE_SWEEP_WATERMARK_SQL_V1,
@@ -59,6 +59,21 @@ fn batch_ref_json(resolve_tick: u64, hash_hex: &str, page_count: usize) -> Value
         "resolve_tick": resolve_tick,
         "tick_content_hash_hex": hash_hex,
         "page_count": page_count,
+    })
+}
+
+/// One paged batch reference: the batch identity plus its undrained tail.
+fn paged_batch_ref_json(
+    resolve_tick: u64,
+    hash_hex: &str,
+    page_count: usize,
+    remaining: usize,
+) -> Value {
+    json!({
+        "resolve_tick": resolve_tick,
+        "tick_content_hash_hex": hash_hex,
+        "page_count": page_count,
+        "remaining": remaining,
     })
 }
 
@@ -119,12 +134,19 @@ fn plan_name(plan: ArchiveReceiptPlanV1) -> &'static str {
     }
 }
 
-fn sweep_step(value: &Value) -> Result<ArchiveDirtyBatchV1, SemanticArchiveErrorV1> {
+fn sweep_step(value: &Value) -> Result<ArchiveProducerOutcomeV1, SemanticArchiveErrorV1> {
     if let Some(error) = value.get("error") {
         assert_eq!(error.as_str(), Some("ReceiptMismatch"));
         return Err(SemanticArchiveErrorV1::ReceiptMismatch);
     }
-    Ok(batch_from_ref(&value["batch"]))
+    let batch = batch_from_ref(&value["batch"]);
+    let remaining = usize::try_from(
+        value["batch"]["remaining"]
+            .as_u64()
+            .expect("u64 remaining count"),
+    )
+    .expect("remaining count");
+    Ok(ArchiveProducerOutcomeV1::new(batch, remaining))
 }
 
 fn rows() -> Vec<Value> {
@@ -204,19 +226,24 @@ fn match_rows() -> Vec<Value> {
 
 fn plan_rows() -> Vec<Value> {
     [
-        ("plan-empty-defers", 0),
-        ("plan-nonempty-materializes", 1),
-        ("plan-multi-page-materializes", 2),
+        ("plan-empty-defers", 0, 0),
+        ("plan-nonempty-materializes", 1, 0),
+        ("plan-multi-page-materializes", 2, 0),
+        ("plan-paged-materializes-without-consuming", 256, 316),
+        ("plan-empty-budget-exhausted-still-materializes", 0, 4),
     ]
     .into_iter()
-    .map(|(id, page_count)| {
+    .map(|(id, page_count, remaining)| {
         json!({
             "id": id,
             "kind": "plan",
             "data": {
-                "batch": batch_ref_json(42, TICK_CONTENT_HASH_HEX, page_count),
+                "batch": paged_batch_ref_json(42, TICK_CONTENT_HASH_HEX, page_count, remaining),
                 "expected": plan_name(classify_archive_receipt_v1(
-                    &batch_from_ref(&batch_ref_json(42, TICK_CONTENT_HASH_HEX, page_count)),
+                    &ArchiveProducerOutcomeV1::new(
+                        batch_from_ref(&batch_ref_json(42, TICK_CONTENT_HASH_HEX, page_count)),
+                        remaining,
+                    ),
                 )),
             },
         })
@@ -229,26 +256,26 @@ fn sweep_rows() -> Vec<Value> {
         (
             "sweep-all-defer",
             json!([
-                {"batch": batch_ref_json(42, TICK_CONTENT_HASH_HEX, 0)},
-                {"batch": batch_ref_json(44, TICK_CONTENT_HASH_HEX, 0)},
+                {"batch": paged_batch_ref_json(42, TICK_CONTENT_HASH_HEX, 0, 0)},
+                {"batch": paged_batch_ref_json(44, TICK_CONTENT_HASH_HEX, 0, 0)},
             ]),
             json!({"expected": ["Defer", "Defer"]}),
         ),
         (
             "sweep-mixed-order",
             json!([
-                {"batch": batch_ref_json(42, TICK_CONTENT_HASH_HEX, 0)},
-                {"batch": batch_ref_json(43, TICK_CONTENT_HASH_HEX, 1)},
-                {"batch": batch_ref_json(44, TICK_CONTENT_HASH_HEX, 1)},
+                {"batch": paged_batch_ref_json(42, TICK_CONTENT_HASH_HEX, 0, 0)},
+                {"batch": paged_batch_ref_json(43, TICK_CONTENT_HASH_HEX, 1, 0)},
+                {"batch": paged_batch_ref_json(44, TICK_CONTENT_HASH_HEX, 1, 0)},
             ]),
             json!({"expected": ["Defer", "Materialize", "Materialize"]}),
         ),
         (
             "sweep-stop-on-first-error",
             json!([
-                {"batch": batch_ref_json(42, TICK_CONTENT_HASH_HEX, 0)},
+                {"batch": paged_batch_ref_json(42, TICK_CONTENT_HASH_HEX, 0, 0)},
                 {"error": "ReceiptMismatch"},
-                {"batch": batch_ref_json(44, TICK_CONTENT_HASH_HEX, 0)},
+                {"batch": paged_batch_ref_json(44, TICK_CONTENT_HASH_HEX, 0, 0)},
             ]),
             json!({"expected_error": "ReceiptMismatch"}),
         ),
@@ -256,9 +283,41 @@ fn sweep_rows() -> Vec<Value> {
             "sweep-error-first",
             json!([
                 {"error": "ReceiptMismatch"},
-                {"batch": batch_ref_json(42, TICK_CONTENT_HASH_HEX, 0)},
+                {"batch": paged_batch_ref_json(42, TICK_CONTENT_HASH_HEX, 0, 0)},
             ]),
             json!({"expected_error": "ReceiptMismatch"}),
+        ),
+        // The PER-318 foundation drain: one receipt dirties 745 place pages
+        // and 83 county pages. The shared 256-page budget publishes the 83
+        // county pages plus a 173-place head, then 256-place pages per sweep,
+        // until the final 60-page sweep leaves nothing undrained.
+        (
+            "sweep-foundation-drain-one",
+            json!([
+                {"batch": paged_batch_ref_json(42, TICK_CONTENT_HASH_HEX, 256, 572)},
+            ]),
+            json!({"expected": ["Materialize"]}),
+        ),
+        (
+            "sweep-foundation-drain-two",
+            json!([
+                {"batch": paged_batch_ref_json(42, TICK_CONTENT_HASH_HEX, 256, 316)},
+            ]),
+            json!({"expected": ["Materialize"]}),
+        ),
+        (
+            "sweep-foundation-drain-three",
+            json!([
+                {"batch": paged_batch_ref_json(42, TICK_CONTENT_HASH_HEX, 256, 60)},
+            ]),
+            json!({"expected": ["Materialize"]}),
+        ),
+        (
+            "sweep-foundation-drain-four",
+            json!([
+                {"batch": paged_batch_ref_json(42, TICK_CONTENT_HASH_HEX, 60, 0)},
+            ]),
+            json!({"expected": ["Materialize"]}),
         ),
     ]
     .into_iter()
@@ -281,6 +340,7 @@ fn disposition_name(disposition: ArchiveReceiptDispositionV1) -> &'static str {
         ArchiveReceiptDispositionV1::Deferred => "Deferred",
         ArchiveReceiptDispositionV1::Applied => "Applied",
         ArchiveReceiptDispositionV1::AlreadyConsumed => "AlreadyConsumed",
+        ArchiveReceiptDispositionV1::Paged => "Paged",
     }
 }
 
@@ -296,6 +356,7 @@ fn identity_row() -> Value {
         ArchiveReceiptDispositionV1::Deferred,
         ArchiveReceiptDispositionV1::Applied,
         ArchiveReceiptDispositionV1::AlreadyConsumed,
+        ArchiveReceiptDispositionV1::Paged,
     ]
     .into_iter()
     .map(disposition_name)
@@ -392,12 +453,12 @@ fn shared_match_vectors_match_the_batch_identity_refusal() {
 fn shared_plan_vectors_match_the_receipt_classification() {
     let rows = rows();
     let plan_rows: Vec<&Value> = rows_of_kind(&rows, "plan").collect();
-    assert_eq!(plan_rows.len(), 3);
+    assert_eq!(plan_rows.len(), 5);
     for row in plan_rows {
         let data = &row["data"];
-        let batch = batch_from_ref(&data["batch"]);
+        let produced = sweep_step(&json!({"batch": data["batch"]})).expect("plan outcome");
         assert_eq!(
-            plan_name(classify_archive_receipt_v1(&batch)),
+            plan_name(classify_archive_receipt_v1(&produced)),
             data["expected"].as_str().expect("expected plan"),
             "{}",
             row["id"]
@@ -409,10 +470,10 @@ fn shared_plan_vectors_match_the_receipt_classification() {
 fn shared_sweep_vectors_match_the_stop_on_first_error_planner() {
     let rows = rows();
     let sweep_rows: Vec<&Value> = rows_of_kind(&rows, "sweep").collect();
-    assert_eq!(sweep_rows.len(), 4);
+    assert_eq!(sweep_rows.len(), 8);
     for row in sweep_rows {
         let data = &row["data"];
-        let steps: Vec<Result<ArchiveDirtyBatchV1, SemanticArchiveErrorV1>> = data["steps"]
+        let steps: Vec<Result<ArchiveProducerOutcomeV1, SemanticArchiveErrorV1>> = data["steps"]
             .as_array()
             .expect("steps array")
             .iter()
@@ -474,7 +535,7 @@ fn shared_identity_vectors_match_the_pinned_sql_and_taxonomy() {
     );
     assert_eq!(
         data["dispositions"].as_array().expect("dispositions").len(),
-        3,
+        4,
         "disposition taxonomy stays pinned"
     );
     assert_eq!(

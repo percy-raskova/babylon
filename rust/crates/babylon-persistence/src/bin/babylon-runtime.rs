@@ -1037,11 +1037,12 @@ fn run_archive_worker_once(config: &Config) -> Result<(), String> {
         .map_err(|error| format!("Archive worker sweep refused: {error}"))?;
     println!(
         "Archive worker sweep complete; verified_tick={}; deferred={}; applied={}; \
-         already_consumed={}.",
+         already_consumed={}; paged={}.",
         report.verified_tick(),
         report.deferred_count(),
         report.applied_count(),
         report.already_consumed_count(),
+        report.paged_count(),
     );
     Ok(())
 }

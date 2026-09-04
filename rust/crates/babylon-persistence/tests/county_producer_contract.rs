@@ -273,7 +273,7 @@ fn ungranted_county_is_filtered_before_batch_construction() {
     let dirty = select_dirty_county_pages_v1(&filtered_owned, &stored, &empty, 256)
         .expect("empty filtered selection");
     assert!(
-        dirty.is_empty(),
+        dirty.head().is_empty(),
         "an all-ungranted sweep yields an empty batch and the receipt defers, never an error"
     );
 }
@@ -342,7 +342,7 @@ fn grant_arrival_redirties_the_redacted_page_and_the_reveal_settles() {
     let clean = select_dirty_county_pages_v1(&plans, &stored, &subject_only, 256)
         .expect("subject-only selection");
     assert!(
-        clean.is_empty(),
+        clean.head().is_empty(),
         "the redacted stored page matches the subject-only projection exactly"
     );
 
@@ -350,7 +350,7 @@ fn grant_arrival_redirties_the_redacted_page_and_the_reveal_settles() {
     let dirty =
         select_dirty_county_pages_v1(&plans, &stored, &revealed, 256).expect("revealed selection");
     assert_eq!(
-        dirty.len(),
+        dirty.head().len(),
         1,
         "grant arrival re-dirties the page so the next receipt republishes it revealed"
     );
@@ -360,7 +360,7 @@ fn grant_arrival_redirties_the_redacted_page_and_the_reveal_settles() {
     let clean =
         select_dirty_county_pages_v1(&plans, &settled, &revealed, 256).expect("settled selection");
     assert!(
-        clean.is_empty(),
+        clean.head().is_empty(),
         "the revealed page settles: receipt stamps alone never re-publish it"
     );
 }
@@ -567,11 +567,15 @@ fn absent_committed_fields_emit_no_signal() {
     let plans = [plan.clone()];
     let dirty = select_dirty_county_pages_v1(&plans, &stored, &CountyGrantIndexV1::default(), 256)
         .expect("absent-field selection");
-    assert_eq!(dirty.len(), 1, "a brand-new county page is still dirty");
+    assert_eq!(
+        dirty.head().len(),
+        1,
+        "a brand-new county page is still dirty"
+    );
 }
 
 #[test]
-fn dirty_selection_refuses_overflow_beyond_the_batch_bound() {
+fn dirty_selection_pages_the_head_batch_beyond_one_receipt_bound() {
     let plans = ["26093", "26125", "26163"]
         .into_iter()
         .map(|geoid| {
@@ -591,6 +595,7 @@ fn dirty_selection_refuses_overflow_beyond_the_batch_bound() {
         select_dirty_county_pages_v1(&plans, &stored, &grants, 3).expect("within-bound selection");
     assert_eq!(
         dirty
+            .head()
             .iter()
             .map(|plan| plan.county_geoid())
             .collect::<Vec<_>>(),
@@ -598,9 +603,26 @@ fn dirty_selection_refuses_overflow_beyond_the_batch_bound() {
         "selection follows GEOID order"
     );
     assert_eq!(
-        select_dirty_county_pages_v1(&plans, &stored, &grants, 2),
-        Err(SemanticArchiveErrorV1::CountyDrainOverflow { dirty: 3, limit: 2 }),
-        "the dirty set beyond one receipt bound refuses loudly instead of truncating"
+        dirty.remaining(),
+        0,
+        "a within-bound dirty set drains whole"
+    );
+
+    let paged = select_dirty_county_pages_v1(&plans, &stored, &grants, 2)
+        .expect("an over-bound dirty set pages instead of refusing");
+    assert_eq!(
+        paged
+            .head()
+            .iter()
+            .map(|plan| plan.county_geoid())
+            .collect::<Vec<_>>(),
+        vec!["26093", "26125"],
+        "the head batch keeps the leading GEOID prefix"
+    );
+    assert_eq!(
+        paged.remaining(),
+        1,
+        "the undrained tail count keeps the receipt pending across sweeps"
     );
 }
 

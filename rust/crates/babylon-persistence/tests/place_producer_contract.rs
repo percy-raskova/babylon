@@ -1,10 +1,10 @@
 //! Pure contracts for the PER-22 place dossier producer.
 //!
 //! These tests pin the producer's decision semantics without any database:
-//! GEOID validation, sorted enumeration, cross-county slice retention, loud
-//! truncation refusal, grant-visibility dirty detection, receipt-stamp-
-//! insensitive hashing, hash completeness over signals and county names, and
-//! the contract-pinned artifact digests.
+//! GEOID validation, sorted enumeration, cross-county slice retention, paged
+//! dirty selection that never truncates the drain bound, grant-visibility
+//! dirty detection, receipt-stamp-insensitive hashing, hash completeness
+//! over signals and county names, and the contract-pinned artifact digests.
 
 use std::collections::BTreeMap;
 use std::str::FromStr;
@@ -241,24 +241,83 @@ fn place_allowlist_requires_sorted_unique_seven_digit_geoids() {
 }
 
 #[test]
-fn dirty_drain_beyond_one_receipt_refuses_instead_of_truncating() {
+fn dirty_drain_beyond_one_receipt_pages_in_geoid_order_without_truncating() {
     let pages = desired_pages();
     let grants =
         PlaceGrantIndexV1::try_from_rows(full_grant_rows(&pages)).expect("full grant index builds");
-    let error = select_dirty_place_pages_v1(
+    let selection = select_dirty_place_pages_v1(
         &pages,
         &BTreeMap::new(),
         &grants,
         ArchiveDirtyBatchV1::MAX_PAGES,
     )
-    .expect_err("a 745-page bootstrap backlog must not truncate into one receipt");
+    .expect("a 745-page bootstrap backlog pages instead of refusing");
+
+    // The head batch is the first `limit` dirty plans in geoid order; the
+    // exact undrained tail count rides along so the receipt stays pending.
+    assert_eq!(selection.head().len(), ArchiveDirtyBatchV1::MAX_PAGES);
     assert_eq!(
-        error,
-        SemanticArchiveErrorV1::PlaceDrainOverflow {
-            dirty: pages.len(),
-            limit: ArchiveDirtyBatchV1::MAX_PAGES,
-        }
+        selection.remaining(),
+        pages.len() - ArchiveDirtyBatchV1::MAX_PAGES
     );
+    let head_geoids: Vec<&str> = selection
+        .head()
+        .iter()
+        .map(|plan| plan.place_geoid())
+        .collect();
+    let mut sorted = head_geoids.clone();
+    sorted.sort_unstable();
+    assert_eq!(head_geoids, sorted, "the head batch stays in geoid order");
+    assert_eq!(
+        head_geoids,
+        pages
+            .iter()
+            .take(ArchiveDirtyBatchV1::MAX_PAGES)
+            .map(PlacePagePlanV1::place_geoid)
+            .collect::<Vec<_>>(),
+        "the head batch is exactly the leading geoid prefix of the dirty set"
+    );
+
+    // A second pass over the tail plans takes the next prefix exactly, as
+    // the following sweep sees once the head pages are stored-current.
+    let tail: Vec<PlacePagePlanV1> = pages
+        .iter()
+        .skip(ArchiveDirtyBatchV1::MAX_PAGES)
+        .cloned()
+        .collect();
+    let tail_grants =
+        PlaceGrantIndexV1::try_from_rows(full_grant_rows(&tail)).expect("tail grant index builds");
+    let next = select_dirty_place_pages_v1(
+        &tail,
+        &BTreeMap::new(),
+        &tail_grants,
+        ArchiveDirtyBatchV1::MAX_PAGES,
+    )
+    .expect("the tail plans page in the next sweep");
+    assert_eq!(next.head().len(), ArchiveDirtyBatchV1::MAX_PAGES);
+    assert_eq!(
+        next.remaining(),
+        tail.len() - ArchiveDirtyBatchV1::MAX_PAGES,
+        "the undrained tail keeps shrinking by one batch per pass"
+    );
+
+    // The last pass, once the tail fits the batch bound, drains whole.
+    let last_plans: Vec<PlacePagePlanV1> = tail
+        .iter()
+        .skip(ArchiveDirtyBatchV1::MAX_PAGES)
+        .cloned()
+        .collect();
+    let last_grants = PlaceGrantIndexV1::try_from_rows(full_grant_rows(&last_plans))
+        .expect("last grant index builds");
+    let last = select_dirty_place_pages_v1(
+        &last_plans,
+        &BTreeMap::new(),
+        &last_grants,
+        ArchiveDirtyBatchV1::MAX_PAGES,
+    )
+    .expect("the last tail drains whole");
+    assert_eq!(last.head().len(), last_plans.len());
+    assert_eq!(last.remaining(), 0, "the tail drains whole once it fits");
 
     // An at-most-limit dirty set still drains whole.
     let subset: Vec<PlacePagePlanV1> = pages
@@ -273,7 +332,8 @@ fn dirty_drain_beyond_one_receipt_refuses_instead_of_truncating() {
         ArchiveDirtyBatchV1::MAX_PAGES,
     )
     .expect("an at-limit dirty set drains");
-    assert_eq!(drained.len(), ArchiveDirtyBatchV1::MAX_PAGES);
+    assert_eq!(drained.head().len(), ArchiveDirtyBatchV1::MAX_PAGES);
+    assert_eq!(drained.remaining(), 0);
 }
 
 #[test]
@@ -326,7 +386,7 @@ fn dirty_diff_excludes_receipt_stamped_fields() {
     let clean = select_dirty_place_pages_v1(&pages, &stored_map, &grants, usize::MAX)
         .expect("clean selection");
     assert!(
-        clean.is_empty(),
+        clean.head().is_empty(),
         "unchanged semantic content is not re-published"
     );
 }
@@ -436,7 +496,7 @@ fn grant_refresh_republication_folds_grant_visibility_into_dirty_detection() {
         select_dirty_place_pages_v1(&pages, &stored_map, &full_grants(&plan), usize::MAX)
             .expect("grant-refresh selection");
     assert_eq!(
-        refreshed.len(),
+        refreshed.head().len(),
         1,
         "a grant refresh re-dirties the redacted page"
     );
@@ -445,7 +505,7 @@ fn grant_refresh_republication_folds_grant_visibility_into_dirty_detection() {
     let stale = select_dirty_place_pages_v1(&pages, &stored_map, &subject_only, usize::MAX)
         .expect("stale-grant selection");
     assert!(
-        stale.is_empty(),
+        stale.head().is_empty(),
         "without a grant change the redacted page stays clean"
     );
 
@@ -469,7 +529,7 @@ fn grant_refresh_republication_folds_grant_visibility_into_dirty_detection() {
     let settled =
         select_dirty_place_pages_v1(&pages, &revealed_map, &full_grants(&plan), usize::MAX)
             .expect("settled selection");
-    assert!(settled.is_empty(), "the revealed page stays clean");
+    assert!(settled.head().is_empty(), "the revealed page stays clean");
 }
 
 #[test]
@@ -500,7 +560,7 @@ fn malformed_stored_pages_are_dirty_not_fatal() {
     stored.insert("2622000".to_owned(), parsed);
     let clean =
         select_dirty_place_pages_v1(&pages, &stored, &grants, usize::MAX).expect("clean selection");
-    assert_eq!(clean.len(), 0);
+    assert_eq!(clean.head().len(), 0);
 }
 
 #[test]
@@ -558,6 +618,7 @@ fn batch_from_produced_pages_matches_the_receipt() {
     let dirty = select_dirty_place_pages_v1(&pages, &BTreeMap::new(), &grants, 3)
         .expect("small dirty set drains");
     let inputs = dirty
+        .head()
         .iter()
         .map(|page| place_page_input_v1(page, receipt.resolve_tick(), *receipt.tick_content_hash()))
         .collect::<Result<Vec<ArchivePageInputV1>, _>>()

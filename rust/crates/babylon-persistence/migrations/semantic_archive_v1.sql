@@ -61,8 +61,11 @@ CREATE TABLE babylon_meta.archive_page_v1 (
         REFERENCES babylon_meta.archive_knowledge_grant_v1(
             campaign_id, subject_kind, subject_id, grant_key
         ),
+    -- PER-318: a page's provenance anchors at the durable dirty receipt, not
+    -- the consumption marker, so a staged batch writes pages while its
+    -- receipt stays pending and the drain pages across sweeps.
     FOREIGN KEY (campaign_id, source_resolve_tick)
-        REFERENCES babylon_meta.archive_receipt_consumption_v1(campaign_id, resolve_tick)
+        REFERENCES babylon_state.archive_dirty_receipt_v1(campaign_id, resolve_tick)
         ON DELETE CASCADE
 );
 

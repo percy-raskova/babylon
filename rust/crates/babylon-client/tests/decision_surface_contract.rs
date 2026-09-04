@@ -2,8 +2,8 @@
 //! keep administrative exemptions outside every gameplay gate.
 
 use babylon_client::decision_surface::{
-    contract_for, DecisionSurfaceContract, DecisionSurfaceRole, DeclaredSurface, SurfaceId,
-    SHIPPED_SURFACE_MANIFEST,
+    contract_for, DecisionSurfaceContract, DecisionSurfaceRole, DeclaredSurface, SurfaceActionV1,
+    SurfaceId, SHIPPED_SURFACE_MANIFEST,
 };
 use bevy::asset::AssetPlugin;
 use bevy::image::ImagePlugin;
@@ -73,6 +73,7 @@ fn manifest_is_unique_exhaustive_and_valid() {
 #[test]
 fn gameplay_contract_requires_every_decision_field() {
     const PRESENT: &[&str] = &["declared"];
+    const ACTIONS: &[SurfaceActionV1] = &[SurfaceActionV1::available("declared")];
     let complete = DecisionSurfaceContract {
         id: SurfaceId::CountyMap,
         role: DecisionSurfaceRole::Gameplay,
@@ -80,7 +81,7 @@ fn gameplay_contract_requires_every_decision_field() {
         visible_signals: PRESENT,
         visible_uncertainty: PRESENT,
         fog_requirements: PRESENT,
-        actions: PRESENT,
+        actions: ACTIONS,
         expected_receipts: PRESENT,
         archive_subjects: PRESENT,
         admin_debug_exempt: false,
@@ -128,7 +129,12 @@ fn gameplay_contract_requires_every_decision_field() {
 #[test]
 fn gameplay_contract_rejects_blank_entries_in_every_required_list() {
     const PRESENT: &[&str] = &["declared"];
+    const ACTIONS: &[SurfaceActionV1] = &[SurfaceActionV1::available("declared")];
     const CONTAINS_BLANK: &[&str] = &["declared", " \t\n"];
+    const CONTAINS_BLANK_ACTION: &[SurfaceActionV1] = &[
+        SurfaceActionV1::available("declared"),
+        SurfaceActionV1::available(" \t\n"),
+    ];
     let complete = DecisionSurfaceContract {
         id: SurfaceId::CountyMap,
         role: DecisionSurfaceRole::Gameplay,
@@ -136,7 +142,7 @@ fn gameplay_contract_rejects_blank_entries_in_every_required_list() {
         visible_signals: PRESENT,
         visible_uncertainty: PRESENT,
         fog_requirements: PRESENT,
-        actions: PRESENT,
+        actions: ACTIONS,
         expected_receipts: PRESENT,
         archive_subjects: PRESENT,
         admin_debug_exempt: false,
@@ -156,7 +162,7 @@ fn gameplay_contract_rejects_blank_entries_in_every_required_list() {
             ..complete
         },
         DecisionSurfaceContract {
-            actions: CONTAINS_BLANK,
+            actions: CONTAINS_BLANK_ACTION,
             ..complete
         },
         DecisionSurfaceContract {
@@ -207,6 +213,7 @@ fn admin_inspector_manifest_matches_its_pre_tick_rendering() {
 #[test]
 fn admin_exemptions_never_satisfy_gameplay_gates() {
     const PRESENT: &[&str] = &["declared"];
+    const ACTIONS: &[SurfaceActionV1] = &[SurfaceActionV1::available("declared")];
     let exempt_gameplay = DecisionSurfaceContract {
         id: SurfaceId::CountyMap,
         role: DecisionSurfaceRole::Gameplay,
@@ -214,7 +221,7 @@ fn admin_exemptions_never_satisfy_gameplay_gates() {
         visible_signals: PRESENT,
         visible_uncertainty: PRESENT,
         fog_requirements: PRESENT,
-        actions: PRESENT,
+        actions: ACTIONS,
         expected_receipts: PRESENT,
         archive_subjects: PRESENT,
         admin_debug_exempt: true,
@@ -229,7 +236,7 @@ fn admin_exemptions_never_satisfy_gameplay_gates() {
         visible_signals: PRESENT,
         visible_uncertainty: PRESENT,
         fog_requirements: PRESENT,
-        actions: PRESENT,
+        actions: ACTIONS,
         expected_receipts: PRESENT,
         archive_subjects: PRESENT,
         admin_debug_exempt: true,

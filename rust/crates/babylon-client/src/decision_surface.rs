@@ -77,6 +77,66 @@ pub enum DecisionSurfaceRole {
     AdminDebug,
 }
 
+/// Whether one surface action can be taken now, or is declared-but-sealed
+/// with the honest reason shown to the player (ADR249 R9: Investigate appears
+/// in the dossier's actions slot visibly unavailable until Gate 5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActionAvailabilityV1 {
+    /// The action can be taken on this surface today.
+    Available,
+    /// The action is declared but sealed; the carried reason is the
+    /// player-facing honesty line.
+    Unavailable(&'static str),
+}
+
+/// One player-facing action slot on a decision surface, with its typed
+/// availability. The slot stays visible even while sealed: a declared,
+/// honestly-unavailable action is presentation; an absent action slot is a
+/// hole in the decision loop.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SurfaceActionV1 {
+    name: &'static str,
+    availability: ActionAvailabilityV1,
+}
+
+impl SurfaceActionV1 {
+    /// Declare one actionable verb.
+    #[must_use]
+    pub const fn available(name: &'static str) -> Self {
+        Self {
+            name,
+            availability: ActionAvailabilityV1::Available,
+        }
+    }
+
+    /// Declare one sealed verb with its honest player-facing reason.
+    #[must_use]
+    pub const fn unavailable(name: &'static str, reason: &'static str) -> Self {
+        Self {
+            name,
+            availability: ActionAvailabilityV1::Unavailable(reason),
+        }
+    }
+
+    /// Borrow the stable verb name.
+    #[must_use]
+    pub const fn name(&self) -> &'static str {
+        self.name
+    }
+
+    /// Return the typed availability.
+    #[must_use]
+    pub const fn availability(&self) -> ActionAvailabilityV1 {
+        self.availability
+    }
+
+    /// Return whether the verb can be taken today.
+    #[must_use]
+    pub const fn is_available(&self) -> bool {
+        matches!(self.availability, ActionAvailabilityV1::Available)
+    }
+}
+
 /// One complete declaration of what a surface shows and what player loop it
 /// closes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,7 +147,7 @@ pub struct DecisionSurfaceContract {
     pub visible_signals: &'static [&'static str],
     pub visible_uncertainty: &'static [&'static str],
     pub fog_requirements: &'static [&'static str],
-    pub actions: &'static [&'static str],
+    pub actions: &'static [SurfaceActionV1],
     pub expected_receipts: &'static [&'static str],
     pub archive_subjects: &'static [&'static str],
     pub admin_debug_exempt: bool,
@@ -116,7 +176,7 @@ impl fmt::Display for DecisionSurfaceContractError {
             Self::MissingVisibleSignals => "gameplay surface has no visible signals",
             Self::MissingVisibleUncertainty => "gameplay surface has no visible uncertainty",
             Self::MissingFogRequirements => "gameplay surface has no fog requirements",
-            Self::MissingActions => "gameplay surface has no available actions",
+            Self::MissingActions => "gameplay surface declares no actions",
             Self::MissingExpectedReceipts => "gameplay surface has no expected receipts",
             Self::MissingArchiveSubjects => "gameplay surface has no Archive subjects",
         })
@@ -127,6 +187,13 @@ impl std::error::Error for DecisionSurfaceContractError {}
 
 fn has_only_declared_entries(entries: &[&str]) -> bool {
     !entries.is_empty() && entries.iter().all(|entry| !entry.trim().is_empty())
+}
+
+fn declares_actions(actions: &[SurfaceActionV1]) -> bool {
+    !actions.is_empty()
+        && actions
+            .iter()
+            .all(|action| !action.name().trim().is_empty())
 }
 
 impl DecisionSurfaceContract {
@@ -164,7 +231,7 @@ impl DecisionSurfaceContract {
         if !has_only_declared_entries(self.fog_requirements) {
             return Err(DecisionSurfaceContractError::MissingFogRequirements);
         }
-        if !has_only_declared_entries(self.actions) {
+        if !declares_actions(self.actions) {
             return Err(DecisionSurfaceContractError::MissingActions);
         }
         if !has_only_declared_entries(self.expected_receipts) {
@@ -176,12 +243,17 @@ impl DecisionSurfaceContract {
         Ok(())
     }
 
-    /// Returns true only for a valid, non-exempt gameplay declaration.
+    /// Returns true only for a valid, non-exempt gameplay declaration with at
+    /// least one action the player can actually take today. A surface whose
+    /// every action is declared-but-sealed renders a decision question it
+    /// cannot answer; it stays outside every gameplay gate (ADR249 R9) — the
+    /// dossier card is exactly that surface until Gate 5 enables Investigate.
     #[must_use]
     pub fn satisfies_gameplay_gate(&self) -> bool {
         self.role == DecisionSurfaceRole::Gameplay
             && !self.admin_debug_exempt
             && self.validate().is_ok()
+            && self.actions.iter().any(SurfaceActionV1::is_available)
     }
 }
 
@@ -199,6 +271,7 @@ impl DeclaredSurface {
 }
 
 const NONE: &[&str] = &[];
+const NO_ACTIONS: &[SurfaceActionV1] = &[];
 const UNFOGGED_ADMIN: &[&str] = &["unfogged material truth; no player knowledge state"];
 
 const fn admin_surface(
@@ -213,7 +286,7 @@ const fn admin_surface(
         visible_signals,
         visible_uncertainty,
         fog_requirements: UNFOGGED_ADMIN,
-        actions: NONE,
+        actions: NO_ACTIONS,
         expected_receipts: NONE,
         archive_subjects: NONE,
         admin_debug_exempt: true,
@@ -306,4 +379,78 @@ pub fn contract_for(id: SurfaceId) -> &'static DecisionSurfaceContract {
         .iter()
         .find(|contract| contract.id == id)
         .unwrap_or_else(|| panic!("surface {id} has no manifest contract"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SIGNAL: &[&str] = &["declared"];
+
+    fn gameplay_contract(actions: &'static [SurfaceActionV1]) -> DecisionSurfaceContract {
+        DecisionSurfaceContract {
+            id: SurfaceId::CountyMap,
+            role: DecisionSurfaceRole::Gameplay,
+            decision_question: Some("What is true here?"),
+            visible_signals: SIGNAL,
+            visible_uncertainty: SIGNAL,
+            fog_requirements: SIGNAL,
+            actions,
+            expected_receipts: SIGNAL,
+            archive_subjects: SIGNAL,
+            admin_debug_exempt: false,
+        }
+    }
+
+    #[test]
+    fn availability_constructors_pin_their_fields() {
+        let open = SurfaceActionV1::available("investigate");
+        assert_eq!(open.name(), "investigate");
+        assert!(open.is_available());
+        assert_eq!(open.availability(), ActionAvailabilityV1::Available);
+
+        let sealed = SurfaceActionV1::unavailable("investigate", "sealed until Gate 5");
+        assert_eq!(sealed.name(), "investigate");
+        assert!(!sealed.is_available());
+        assert_eq!(
+            sealed.availability(),
+            ActionAvailabilityV1::Unavailable("sealed until Gate 5")
+        );
+    }
+
+    /// ADR249 R9, pinned as executable policy: a structurally complete
+    /// gameplay declaration whose EVERY action is declared-but-sealed is
+    /// valid but cannot satisfy the gameplay gate — the contract test
+    /// `current_client_cannot_claim_a_gameplay_gate` depends on exactly this
+    /// rule staying false for the shipped dossier row.
+    #[test]
+    fn all_actions_unavailable_is_valid_but_never_satisfies_the_gate() {
+        const SEALED: &[SurfaceActionV1] = &[SurfaceActionV1::unavailable(
+            "investigate",
+            "sealed until Gate 5",
+        )];
+        let contract = gameplay_contract(SEALED);
+        assert!(contract.validate().is_ok());
+        assert!(!contract.satisfies_gameplay_gate());
+    }
+
+    #[test]
+    fn one_available_action_flips_the_gate_true() {
+        const MIXED: &[SurfaceActionV1] = &[
+            SurfaceActionV1::unavailable("investigate", "sealed until Gate 5"),
+            SurfaceActionV1::available("survey"),
+        ];
+        assert!(gameplay_contract(MIXED).satisfies_gameplay_gate());
+    }
+
+    #[test]
+    fn blank_action_names_fail_structural_validation() {
+        const BLANK: &[SurfaceActionV1] = &[SurfaceActionV1::available("  ")];
+        let contract = gameplay_contract(BLANK);
+        assert_eq!(
+            contract.validate(),
+            Err(DecisionSurfaceContractError::MissingActions)
+        );
+        assert!(!contract.satisfies_gameplay_gate());
+    }
 }

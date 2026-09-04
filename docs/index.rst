@@ -9,24 +9,23 @@ Determinism proves computational identity, not scientific truth. Historical
 cases test causal signatures and counterfactual behavior. The Bevy client is an
 administrative viewer with no player action.
 
-The next three executable gates are:
+The next four executable gates are:
 
 .. Vale: each protected item is a governed gate name.
 .. vale Vale.Terms = NO
 .. vale ste.UnapprovedWords = NO
+.. vale ste.NounClusters = NO
 
 #. **PostgreSQL/H3/Archive decision-loop slice**
 
-.. vale Vale.Terms = YES
-.. vale ste.UnapprovedWords = YES
-.. vale ste.NounClusters = NO
-
-#. **COVID E0 emergence proof**
-
-.. vale ste.UnapprovedWords = YES
+#. **Productive & distributive circuit**
 
 #. **Player agency**
 
+#. **COVID emergence benchmark**
+
+.. vale Vale.Terms = YES
+.. vale ste.UnapprovedWords = YES
 .. vale ste.NounClusters = YES
 
 Read the repository ``CONSTITUTION.md`` v4.1.0 for the law. Read

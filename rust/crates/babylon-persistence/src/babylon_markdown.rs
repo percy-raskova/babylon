@@ -16,11 +16,12 @@
 pub const BABYLON_MARKDOWN_PROFILE_ID_V1: &str = "babylon-markdown.v1";
 /// Pinned citation-line shape: `- **{label}:** {value} — {source_id}; {locator}`.
 pub const CITATION_LINE_REGEX_V1: &str =
-    r"^- \*\*(?P<label>[^*]+)\*\*: (?P<value>.+) — (?P<source_id>[^;]+); (?P<locator>.+)$";
+    r"^- \*\*(?P<label>[^*]+):\*\* (?P<value>.+) — (?P<source_id>[^;]+); (?P<locator>.+)$";
 /// Separator between the fog-chip kind word and the public subject id.
 pub const FOG_CHIP_SEPARATOR_V1: &str = " · ";
 const SUBJECT_SCHEME_PREFIX: &str = "subject:";
 const PENDING_MARK: &str = "~~";
+const CITATION_SEPARATOR_V1: &str = " — ";
 const MAX_MARKDOWN_BYTES_V1: usize = 1_048_576;
 
 /// One typed profile refusal.
@@ -201,6 +202,12 @@ pub fn fog_chip_v1(subject_kind: &str, subject_id: &str) -> String {
 
 /// Return whether one line matches the pinned citation-line format
 /// `- **{label}:** {value} — {source_id}; {locator}`.
+///
+/// The detection accepts exactly the language of [`CITATION_LINE_REGEX_V1`]:
+/// the label is one or more non-`*` bytes ending at the pinned `:** `
+/// boundary, the value is one or more bytes greedily ending at the last
+/// ` — ` that leaves a `[^;]+`; ` ` tail, and the locator is one or more
+/// bytes to the end.
 #[must_use]
 pub fn is_citation_line_v1(line: &str) -> bool {
     let Some(rest) = line.strip_prefix("- **") else {
@@ -209,16 +216,25 @@ pub fn is_citation_line_v1(line: &str) -> bool {
     let Some((label, rest)) = rest.split_once(":** ") else {
         return false;
     };
-    if label.is_empty() || label.contains("**") {
+    if label.is_empty() || label.contains('*') {
         return false;
     }
-    let Some((value, rest)) = rest.split_once(" — ") else {
-        return false;
-    };
-    let Some((source_id, locator)) = rest.split_once("; ") else {
-        return false;
-    };
-    !value.is_empty() && !source_id.is_empty() && !locator.is_empty()
+    let mut end = rest.len();
+    while let Some(position) = rest[..end].rfind(CITATION_SEPARATOR_V1) {
+        let (value, tail) = rest.split_at(position);
+        end = position;
+        if value.is_empty() {
+            continue;
+        }
+        let Some((source_id, locator)) = tail[CITATION_SEPARATOR_V1.len()..].split_once("; ")
+        else {
+            continue;
+        };
+        if !source_id.is_empty() && !source_id.contains(';') && !locator.is_empty() {
+            return true;
+        }
+    }
+    false
 }
 
 /// Rewrite one validated link token into its Git export form.

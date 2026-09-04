@@ -15,7 +15,7 @@ from markdown_it.token import Token
 
 PROFILE_ID = "babylon-markdown.v1"
 CITATION_LINE_REGEX = (
-    r"^- \*\*(?P<label>[^*]+)\*\*: (?P<value>.+) — (?P<source_id>[^;]+); (?P<locator>.+)$"
+    r"^- \*\*(?P<label>[^*]+):\*\* (?P<value>.+) — (?P<source_id>[^;]+); (?P<locator>.+)$"
 )
 CHIP_SEPARATOR = " · "
 GRANTED_LINK_FORM = "[{known_label}](subject:{kind}/{id})"
@@ -29,11 +29,11 @@ PLACE_ID_BYTES = 7
 GFM_VERSION = "0.29"
 MAX_MARKDOWN_BYTES = 1_048_576
 MAX_CONTRACT_BYTES = 32_768
-MAX_VECTOR_ROWS = 16
+MAX_VECTOR_ROWS = 24
 MAX_VECTOR_LINE_BYTES = 16_384
 MAX_VECTOR_OBJECT_FIELDS = 64
 SUBJECT_ID_WIDTHS = {COUNTY_KIND: COUNTY_ID_BYTES, PLACE_KIND: PLACE_ID_BYTES}
-REQUIRED_VECTOR_KINDS = {"valid", "refusal", "identity"}
+REQUIRED_VECTOR_KINDS = {"valid", "refusal", "identity", "citation"}
 VALID_ROW_IDS = (
     "valid-archive-page-granted-links",
     "valid-archive-page-bare-link",
@@ -46,6 +46,15 @@ REFUSAL_ROW_IDS = (
     "refusal-malformed-subject-link",
     "refusal-stray-open-bracket",
     "refusal-strikethrough-without-link",
+)
+CITATION_ROW_IDS = (
+    "citation-pinned-example",
+    "citation-label-star-refuses",
+    "citation-source-semicolon-refuses",
+    "citation-double-separator-backtracks",
+    "citation-double-separator-refuses",
+    "citation-empty-value-refuses",
+    "citation-locator-semicolon-accepted",
 )
 COMPILED_META = {
     "contract": "BabylonMarkdownV1",
@@ -101,6 +110,10 @@ COMPILED_LAYOUTS = {
         "form": "unknown {kind} · {id}",
         "label_bytes": 0,
         "separator": CHIP_SEPARATOR,
+    },
+    "citation_vector_v1": {
+        "fields": ["line", "recognized"],
+        "recognized": "the Rust byte-level detector and the pinned regex agree",
     },
 }
 CITATION_LINE = re.compile(CITATION_LINE_REGEX)
@@ -381,10 +394,15 @@ def _verify_valid(row: dict[str, Any]) -> str | None:
     if export.encode("utf-8") != _row_bytes(row, "export_hex"):
         return f"{row['id']}: git export rewrite mismatch"
     if row["id"] == "valid-archive-page-bare-link":
+        markdown = markdown_bytes.decode("utf-8")
+        if re.search(r"\[[^\]\[]+\]\(subject:place/2668880\)", markdown):
+            return f"{row['id']}: bare link row leaked a labeled subject link"
         if "unknown place · 2668880" not in export:
             return f"{row['id']}: bare link export misses the fog chip"
         if "Riverview" in export:
             return f"{row['id']}: bare link export leaked label bytes"
+        if "](./place/2668880.md)" in export:
+            return f"{row['id']}: bare link export leaked a labeled subject link"
     return None
 
 
@@ -416,6 +434,21 @@ def _verify_identity(row: dict[str, Any]) -> str | None:
     return None
 
 
+def _verify_citation(row: dict[str, Any]) -> str | None:
+    data = row["data"]
+    line = data.get("line")
+    recognized = data.get("recognized")
+    if not isinstance(line, str) or not line:
+        return f"{row['id']}: citation row lacks a line"
+    if type(recognized) is not bool:
+        return f"{row['id']}: citation row lacks a boolean recognized flag"
+    # The pinned regex is the independent oracle: the Rust byte-level detector
+    # must agree with it on every corpus row.
+    if (CITATION_LINE.match(line) is not None) != recognized:
+        return f"{row['id']}: citation detector disagrees with the pinned regex"
+    return None
+
+
 def verify_all(contract: dict[str, Any], vectors: list[dict[str, Any]]) -> list[str]:
     """Verify all bounded rows and return exact row-scoped mismatches."""
     _verify_compiled_contract(contract)
@@ -429,6 +462,9 @@ def verify_all(contract: dict[str, Any], vectors: list[dict[str, Any]]) -> list[
     refusal_ids = [row["id"] for row in rows if row["kind"] == "refusal"]
     if refusal_ids != list(REFUSAL_ROW_IDS):
         raise BabylonMarkdownContractRefusal("vector_id_drift", repr(refusal_ids))
+    citation_ids = [row["id"] for row in rows if row["kind"] == "citation"]
+    if citation_ids != list(CITATION_ROW_IDS):
+        raise BabylonMarkdownContractRefusal("vector_id_drift", repr(citation_ids))
     errors: list[str] = []
     for row in rows:
         kind = row["kind"]
@@ -439,6 +475,8 @@ def verify_all(contract: dict[str, Any], vectors: list[dict[str, Any]]) -> list[
             error = _verify_refusal(row)
         elif kind == "identity":
             error = _verify_identity(row)
+        elif kind == "citation":
+            error = _verify_citation(row)
         if error is not None:
             errors.append(error)
     return errors

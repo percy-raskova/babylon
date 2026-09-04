@@ -10,7 +10,7 @@ use babylon_persistence::{
 use serde_json::{json, Value};
 
 const VECTORS: &str = include_str!("../../../../contracts/babylon_markdown_v1_vectors.jsonl");
-const MAX_ROWS: usize = 16;
+const MAX_ROWS: usize = 24;
 const MAX_LINE_BYTES: usize = 16_384;
 const TICK_CONTENT_HASH_HEX: &str =
     "1111111111111111111111111111111111111111111111111111111111111111";
@@ -265,6 +265,48 @@ fn refusal_row(id: &str, markdown: &str, expected_code: &str) -> Value {
     })
 }
 
+/// The pinned citation corpus: each row pins one line and whether the
+/// byte-level detector and the pinned regex both recognize it.
+fn citation_fixtures() -> [(&'static str, &'static str, bool); 7] {
+    [
+        (
+            "citation-pinned-example",
+            "- **Median wage:** 25.000000 — committed-tick-v1; campaign/2/oakland",
+            true,
+        ),
+        (
+            "citation-label-star-refuses",
+            "- **Med*ian wage:** 25.000000 — committed-tick-v1; campaign/2/oakland",
+            false,
+        ),
+        (
+            "citation-source-semicolon-refuses",
+            "- **Median wage:** 25.000000 — committed-tick-v1;extra; campaign/2/oakland",
+            false,
+        ),
+        (
+            "citation-double-separator-backtracks",
+            "- **Median wage:** 25.000000 — committed-tick-v1; campaign/2 — east",
+            true,
+        ),
+        (
+            "citation-double-separator-refuses",
+            "- **Median wage:** 25.000000 — committed-tick-v1 — campaign/2/oakland",
+            false,
+        ),
+        (
+            "citation-empty-value-refuses",
+            "- **Median wage:**  — committed-tick-v1; campaign/2/oakland",
+            false,
+        ),
+        (
+            "citation-locator-semicolon-accepted",
+            "- **Median wage:** 25.000000 — committed-tick-v1; campaign/2; extra",
+            true,
+        ),
+    ]
+}
+
 fn generate_vectors() -> String {
     let mut lines = Vec::new();
     lines.push(valid_row(
@@ -317,6 +359,18 @@ fn generate_vectors() -> String {
             "fog_chip_place_2674900": SOUTHFIELD_CHIP_V1,
         },
     }));
+    for (id, line, recognized) in citation_fixtures() {
+        assert_eq!(
+            is_citation_line_v1(line),
+            recognized,
+            "{id}: the byte-level detector must match the pinned regex truth"
+        );
+        lines.push(json!({
+            "id": id,
+            "kind": "citation",
+            "data": {"line": line, "recognized": recognized},
+        }));
+    }
     let mut output = String::new();
     for line in lines {
         output.push_str(&serde_json::to_string(&line).expect("vector row serializes"));
@@ -392,10 +446,18 @@ fn shared_valid_vectors_validate_and_export_exact_bytes() {
         bare.contains("[](subject:place/2668880)"),
         "the bare fog form carries zero label bytes"
     );
-    assert!(
-        !bare.contains("[Riverview](subject:place/2668880)"),
-        "the fog bytes never contain the hidden label"
-    );
+    let mut link_cursor = 0;
+    while let Some(offset) = bare[link_cursor..].find("](subject:place/2668880)") {
+        let close = link_cursor + offset;
+        let open = bare[..close]
+            .rfind('[')
+            .expect("a label bracket opens the link");
+        assert!(
+            bare[open + 1..close].is_empty(),
+            "the fog bytes never carry a label for the ungranted place"
+        );
+        link_cursor = close + 1;
+    }
     assert!(
         bare_export.contains("unknown place · 2668880"),
         "the export renders the bare link as the synthesized fog chip"
@@ -403,6 +465,10 @@ fn shared_valid_vectors_validate_and_export_exact_bytes() {
     assert!(
         !bare_export.contains("Riverview"),
         "the export chip carries zero label bytes"
+    );
+    assert!(
+        !bare_export.contains("](./place/2668880.md)"),
+        "the export never carries a labeled link for the ungranted place"
     );
 }
 
@@ -443,6 +509,24 @@ fn shared_identity_vectors_match_the_pinned_profile_constants() {
         data["fog_chip_place_2674900"].as_str(),
         Some(SOUTHFIELD_CHIP_V1)
     );
+}
+
+#[test]
+fn shared_citation_vectors_match_the_pinned_regex_language() {
+    let rows = rows();
+    let citation_rows: Vec<&Value> = rows_of_kind(&rows, "citation").collect();
+    assert_eq!(citation_rows.len(), 7);
+    for row in citation_rows {
+        let data = &row["data"];
+        let line = data["line"].as_str().expect("citation line text");
+        let recognized = data["recognized"].as_bool().expect("recognized flag");
+        assert_eq!(
+            is_citation_line_v1(line),
+            recognized,
+            "{}: the byte-level detector must match the pinned regex truth",
+            row["id"]
+        );
+    }
 }
 
 #[test]

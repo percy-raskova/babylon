@@ -306,6 +306,20 @@ def test_redlink_known_label_substring_outside_the_link_token_is_not_a_leak() ->
     assert verify_all(contract, vectors, ROOT) == []
 
 
+def test_redlink_with_any_label_refuses_not_only_the_known_label() -> None:
+    contract = load_contract(SCHEMA)
+    vectors = copy.deepcopy(load_vectors(VECTORS))
+    sparse = next(row for row in vectors if row["id"] == "render-link-grant-absent")
+    markdown = bytearray.fromhex(sparse["data"]["markdown_hex"])
+    markdown.extend(b"\n\n- [Riviera](subject:place/2668880)\n")
+    sparse["data"]["markdown_hex"] = markdown.hex()
+    sparse["data"]["content_sha256_hex"] = hashlib.sha256(bytes(markdown)).hexdigest()
+
+    errors = verify_all(contract, vectors, ROOT)
+
+    assert any("redlink leaked a label for place/2668880" in error for error in errors)
+
+
 def test_cli_derives_repo_root_independently_of_vectors_location(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -138,9 +138,8 @@ def _bounded_text(value: Any, field: str, maximum: int) -> str:
     return value
 
 
-def load_concepts(path: Path) -> list[dict[str, Any]]:
-    """Load the bounded concept rows without an unbounded whole-file read."""
-    raw = _bounded_file_bytes(path, MAX_FIXTURE_BYTES, "fixture_too_large")
+def load_concepts(raw: bytes) -> list[dict[str, Any]]:
+    """Parse the bounded concept rows from already-loaded fixture bytes."""
     lines = raw.splitlines()
     if not lines or len(lines) > MAX_CONCEPT_ROWS:
         raise GlossaryConceptsRefusal("concept_row_count", str(len(lines)))
@@ -218,14 +217,24 @@ def _verify_compiled_contract(contract: dict[str, Any]) -> None:
         raise GlossaryConceptsRefusal("compiled_contract_drift", "vector_kinds")
 
 
-def verify_all(contract: dict[str, Any], concepts: list[dict[str, Any]], root: Path) -> list[str]:
-    """Verify all bounded rows and return exact row-scoped mismatches."""
+def verify_all(
+    contract: dict[str, Any],
+    concepts: list[dict[str, Any]],
+    fixture_bytes: bytes,
+    fixture_source: str,
+) -> list[str]:
+    """Verify all bounded rows and return exact row-scoped mismatches.
+
+    ``fixture_bytes`` must be the exact bytes ``concepts`` was parsed from;
+    the pinned digest census binds those bytes, never a repository default.
+    """
     _verify_compiled_contract(contract)
     constants = contract["constants"]
     errors: list[str] = []
-    fixture_bytes = _bounded_file_bytes(root / FIXTURE_PATH, MAX_FIXTURE_BYTES, "fixture_too_large")
+    if len(fixture_bytes) > MAX_FIXTURE_BYTES:
+        raise GlossaryConceptsRefusal("fixture_too_large", fixture_source)
     if hashlib.sha256(fixture_bytes).hexdigest() != constants["fixture_sha256"]:
-        raise GlossaryConceptsRefusal("fixture_digest", FIXTURE_PATH)
+        raise GlossaryConceptsRefusal("fixture_digest", fixture_source)
     ids = [row["concept_id"] for row in concepts]
     if ids != sorted(ids) or len(set(ids)) != len(ids):
         errors.append("fixture order: concepts must be sorted by concept_id without duplicates")
@@ -265,9 +274,16 @@ def main() -> int:
         default=Path(FIXTURE_PATH),
     )
     arguments = parser.parse_args()
-    root = Path(__file__).resolve().parents[1]
     try:
-        errors = verify_all(load_contract(arguments.schema), load_concepts(arguments.fixture), root)
+        fixture_bytes = _bounded_file_bytes(
+            arguments.fixture, MAX_FIXTURE_BYTES, "fixture_too_large"
+        )
+        errors = verify_all(
+            load_contract(arguments.schema),
+            load_concepts(fixture_bytes),
+            fixture_bytes,
+            str(arguments.fixture),
+        )
     except GlossaryConceptsRefusal as error:
         print(error)
         return 1

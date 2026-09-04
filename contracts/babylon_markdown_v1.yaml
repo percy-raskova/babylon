@@ -39,6 +39,11 @@ authority:
       [label](./{kind}/{id}.md) and renders a bare link as the fog chip
       "unknown {kind} · {id}" with zero label bytes.
     - Identical input bytes produce identical export bytes.
+    - "The citation corpus rows pin that the byte-level detector accepts
+      exactly the language of the pinned regex: a label containing '*', a
+      source_id containing ';' without the following space, and a value that
+      cannot satisfy the shape all refuse, while a locator containing the
+      pinned separators stays accepted."
 
 generation:
   tool: rust/crates/babylon-persistence/tests/babylon_markdown_v1_vectors.rs
@@ -49,7 +54,7 @@ generation:
 
 constants:
   profile_id: babylon-markdown.v1
-  citation_line_regex: '^- \*\*(?P<label>[^*]+)\*\*: (?P<value>.+) — (?P<source_id>[^;]+); (?P<locator>.+)$'
+  citation_line_regex: '^- \*\*(?P<label>[^*]+):\*\* (?P<value>.+) — (?P<source_id>[^;]+); (?P<locator>.+)$'
   chip_separator: ' · '
   granted_link_form: '[{known_label}](subject:{kind}/{id})'
   bare_link_form: '[](subject:{kind}/{id})'
@@ -63,7 +68,7 @@ constants:
 
 bounds:
   contract_bytes: 32768
-  vector_rows: 16
+  vector_rows: 24
   vector_line_bytes: 16384
   vector_object_fields: 64
   markdown_bytes: 1048576
@@ -77,7 +82,7 @@ layouts:
     id_width_bytes: {county: 5, place: 7}
     id_charset: ASCII digits
   citation_line_v1:
-    regex: '^- \*\*(?P<label>[^*]+)\*\*: (?P<value>.+) — (?P<source_id>[^;]+); (?P<locator>.+)$'
+    regex: '^- \*\*(?P<label>[^*]+):\*\* (?P<value>.+) — (?P<source_id>[^;]+); (?P<locator>.+)$'
     example: '- **Median wage:** 25.000000 — committed-tick-v1; campaign/2/oakland'
   git_export_v1:
     granted_rewrite: '[{known_label}](subject:{kind}/{id}) -> [{known_label}](./{kind}/{id}.md)'
@@ -87,9 +92,12 @@ layouts:
     form: 'unknown {kind} · {id}'
     label_bytes: 0
     separator: ' · '
+  citation_vector_v1:
+    fields: [line, recognized]
+    recognized: the Rust byte-level detector and the pinned regex agree
 
 vector_kinds:
-  required: [valid, refusal, identity]
+  required: [valid, refusal, identity, citation]
 
 excluded_authority:
   - pulldown-cmark or any full parser dependency in the Rust validator

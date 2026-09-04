@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -158,7 +159,7 @@ COMPILED_LAYOUTS = {
         "pending_display_form": "~~[{known_label}](subject:{kind}/{id})~~",
         "pending_form_note": "display-time synthesis only; never stored in page bytes",
         "citation_line_regex": (
-            r"^- \*\*(?P<label>[^*]+)\*\*: (?P<value>.+) — (?P<source_id>[^;]+); (?P<locator>.+)$"
+            r"^- \*\*(?P<label>[^*]+):\*\* (?P<value>.+) — (?P<source_id>[^;]+); (?P<locator>.+)$"
         ),
         "encoding": "UTF-8 with LF endings; the CR byte and the '<' byte refuse",
     },
@@ -627,11 +628,13 @@ def _verify_render(row: dict[str, Any]) -> str | None:
                 return f"{row['id']}: known link drift: {target_key}"
         else:
             redlink_token = f"[](subject:{target_key})"
-            known_link_token = f"[{link['known_label']}](subject:{target_key})"
             if redlink_token not in markdown:
                 return f"{row['id']}: redlink drift: {target_key}"
-            if known_link_token in markdown:
-                return f"{row['id']}: redlink leaked the known label: {target_key}"
+            labeled_link = re.search(
+                r"\[[^\]\[]+\]\(subject:" + re.escape(target_key) + r"\)", markdown
+            )
+            if labeled_link is not None:
+                return f"{row['id']}: redlink leaked a label for {target_key}"
     if _derived_search_text(page, grants) != data.get("search_text"):
         return f"{row['id']}: search_text derivation mismatch"
     if _derived_citations(page, grants) != _expected_citations(

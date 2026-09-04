@@ -33,12 +33,21 @@ def test_shared_contract_verifies_independently() -> None:
 def test_every_vector_kind_is_present() -> None:
     vectors = load_vectors(VECTORS)
 
-    assert {row["kind"] for row in vectors} == {"valid", "refusal", "identity"}
-    assert len(vectors) == 10
+    assert {row["kind"] for row in vectors} == {"valid", "refusal", "identity", "citation"}
+    assert len(vectors) == 17
     assert [row["id"] for row in vectors if row["kind"] == "valid"] == [
         "valid-archive-page-granted-links",
         "valid-archive-page-bare-link",
         "valid-assembled-profile-forms",
+    ]
+    assert [row["id"] for row in vectors if row["kind"] == "citation"] == [
+        "citation-pinned-example",
+        "citation-label-star-refuses",
+        "citation-source-semicolon-refuses",
+        "citation-double-separator-backtracks",
+        "citation-double-separator-refuses",
+        "citation-empty-value-refuses",
+        "citation-locator-semicolon-accepted",
     ]
 
 
@@ -53,6 +62,17 @@ def test_valid_row_mutation_refuses_stale_profile_bytes() -> None:
     errors = verify_all(contract, vectors)
 
     assert any("valid-assembled-profile-forms" in error for error in errors)
+
+
+def test_citation_row_that_disagrees_with_the_regex_is_flagged() -> None:
+    contract = load_contract(SCHEMA)
+    vectors = copy.deepcopy(load_vectors(VECTORS))
+    row = next(r for r in vectors if r["id"] == "citation-pinned-example")
+    row["data"]["recognized"] = not row["data"]["recognized"]
+
+    errors = verify_all(contract, vectors)
+
+    assert any("citation-pinned-example" in error for error in errors)
 
 
 def test_refusal_row_that_validates_is_flagged() -> None:

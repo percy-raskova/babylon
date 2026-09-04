@@ -238,16 +238,24 @@ fn fetch_county_dossier(
 // ---- Card chrome ----
 
 /// Which zone of the card one entity renders. One marker per zone so the
-/// repaint finds its targets and the structural test can assert the whole
-/// zone tree exists.
+/// repaint finds its targets and headless tests can assert the whole zone
+/// tree exists and renders the expected text (the same pub-marker pattern
+/// `ui::countdown::CountdownPaneText` and friends use).
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
-enum DossierZone {
+pub enum DossierZone {
+    /// The county title line.
     Title,
+    /// The ADR249 decision question, one per display.
     Question,
+    /// The durable/verified dual-tick honesty header (R9).
     DualTick,
+    /// The signal atom rows.
     Signals,
+    /// The place-link chips.
     Places,
+    /// The supersession feed.
     Chronicle,
+    /// The actions footer (the sealed Investigate chip).
     Actions,
 }
 
@@ -540,35 +548,40 @@ fn set_chips(commands: &mut Commands, zone: Entity, chips: &[PlaceChip]) {
             id: chip.geoid().to_owned(),
             label,
         };
-        commands
-            .entity(zone)
-            .with_child((
-                Node {
-                    padding: UiRect::axes(px(8), px(4)),
-                    border: UiRect::all(px(1)),
-                    border_radius: BorderRadius::all(px(4)),
-                    ..default()
-                },
-                BackgroundColor(palette::MUTED_DARK.with_alpha(0.85)),
-                BorderColor::all(base_border),
-                PlaceChipNode {
-                    request,
-                    base_border,
-                },
-                DeclaredSurface::new(CARD_SURFACE),
-            ))
-            .observe(on_place_chip_click)
-            .observe(on_place_chip_over)
-            .observe(on_place_chip_out)
-            .with_child((
-                Text::new(chip_text(chip)),
-                TextColor(text_color),
-                TextFont {
-                    font_size: 13.0,
-                    ..default()
-                },
-                DeclaredSurface::new(CARD_SURFACE),
-            ));
+        // `with_child` returns the PARENT, so the chip node is spawned inside
+        // a `with_children` closure: the observers and the label text must
+        // land on the CHIP, not the zone (the tree shape the hover/click
+        // observers and the headless harness both depend on).
+        commands.entity(zone).with_children(|parent| {
+            parent
+                .spawn((
+                    Node {
+                        padding: UiRect::axes(px(8), px(4)),
+                        border: UiRect::all(px(1)),
+                        border_radius: BorderRadius::all(px(4)),
+                        ..default()
+                    },
+                    BackgroundColor(palette::MUTED_DARK.with_alpha(0.85)),
+                    BorderColor::all(base_border),
+                    PlaceChipNode {
+                        request,
+                        base_border,
+                    },
+                    DeclaredSurface::new(CARD_SURFACE),
+                ))
+                .observe(on_place_chip_click)
+                .observe(on_place_chip_over)
+                .observe(on_place_chip_out)
+                .with_child((
+                    Text::new(chip_text(chip)),
+                    TextColor(text_color),
+                    TextFont {
+                        font_size: 13.0,
+                        ..default()
+                    },
+                    DeclaredSurface::new(CARD_SURFACE),
+                ));
+        });
     }
 }
 

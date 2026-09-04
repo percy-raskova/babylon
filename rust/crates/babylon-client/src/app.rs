@@ -92,8 +92,11 @@ mod tests {
     #[test]
     fn headless_mode_builds_a_minimal_app_that_exits_after_startup() {
         // Isolate the test from any ambient reader DSN: a live DSN would
-        // make the command succeed and defeat the exit-code assertion.
-        std::env::remove_var(babylon_persistence::READER_DSN_ENV_V1);
+        // make the command succeed and defeat the exit-code assertion. The
+        // guard serializes against other env-mutating tests and restores
+        // the ambient value on drop.
+        let env = crate::test_support::EnvVarGuard::lock(babylon_persistence::READER_DSN_ENV_V1);
+        env.remove();
         let mut app = build_app(AppMode::Headless {
             command: CliCommand::TickStatus,
             campaign_id: babylon_persistence::CampaignId::from_uuid(Uuid::nil()),

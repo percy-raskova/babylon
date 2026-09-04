@@ -87,6 +87,14 @@ export BABYLON_CAMPAIGN_ID="$sim_campaign_id"
 export PATH="$PWD/rust/target/debug:$PATH"
 babylon-runtime run --ticks 2
 sim_demo_password="${BABYLON_DOSSIER_DEMO_PASSWORD:-babylon_dossier_demo}"
+# The password is interpolated into SQL literals and a connection URI, so
+# anything outside a strict charset would break the heredoc or inject.
+case "$sim_demo_password" in
+    *[!A-Za-z0-9_-]*)
+        printf 'refusing BABYLON_DOSSIER_DEMO_PASSWORD %s: only ASCII letters, digits, "_" and "-" are admissible\n' "$sim_demo_password" >&2
+        exit 1
+        ;;
+esac
 psql "$BABYLON_RUNTIME_DSN" <<SQL
 DO \$\$
 BEGIN

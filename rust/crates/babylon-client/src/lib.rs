@@ -34,5 +34,7 @@ pub mod projection;
 pub mod severity;
 pub mod story;
 pub mod tessellate;
+#[cfg(test)]
+mod test_support;
 pub mod ui;
 pub mod visual_assets;

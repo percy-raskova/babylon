@@ -21,6 +21,9 @@ pub const CAMPAIGN_FLAG: &str = "--campaign";
 /// Environment fallback for the campaign identity when `--campaign` is
 /// absent.
 pub const CAMPAIGN_ENV: &str = "BABYLON_CAMPAIGN_ID";
+/// The `--story <id>` flag: windowed-only — the headless surface takes no
+/// story selection.
+pub const STORY_FLAG: &str = "--story";
 
 /// The closed set of command words the parser recognizes. Anything else
 /// earns a Levenshtein did-you-mean over exactly this list — never a
@@ -280,6 +283,12 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<CliRequest, Cli
         let story = select_story(&rest)
             .map_err(|message| CliError::at(concat!(file!(), ":", line!()), message))?;
         return Ok(CliRequest::Windowed { story });
+    }
+    if rest.iter().any(|word| word == STORY_FLAG) {
+        return Err(CliError::at(
+            concat!(file!(), ":", line!()),
+            format!("{STORY_FLAG} is windowed-only; headless commands take no story"),
+        ));
     }
     if rest.first().is_some_and(|word| word == "help") {
         return Ok(CliRequest::Help(parse_help_topic(&rest[1..])?));
@@ -555,9 +564,10 @@ mod tests {
 
     #[test]
     fn campaign_falls_back_to_the_environment() {
-        std::env::set_var(CAMPAIGN_ENV, CAMPAIGN);
+        let env = crate::test_support::EnvVarGuard::lock(CAMPAIGN_ENV);
+        env.set(CAMPAIGN);
         let request = parse(os(&[HEADLESS_FLAG, "tick", "status"])).expect("env fallback admits");
-        std::env::remove_var(CAMPAIGN_ENV);
+        drop(env);
         assert!(
             matches!(request, CliRequest::Headless { campaign_id, .. } if campaign_id == campaign()),
             "BABYLON_CAMPAIGN_ID admits when the flag is absent"
@@ -566,12 +576,30 @@ mod tests {
 
     #[test]
     fn missing_campaign_refuses_loudly() {
-        std::env::remove_var(CAMPAIGN_ENV);
+        let env = crate::test_support::EnvVarGuard::lock(CAMPAIGN_ENV);
+        env.remove();
         let error =
             parse(os(&[HEADLESS_FLAG, "tick", "status"])).expect_err("missing campaign refuses");
         assert!(
             error.to_string().contains("BABYLON_CAMPAIGN_ID"),
             "the refusal names both admission paths, got {error}"
+        );
+    }
+
+    #[test]
+    fn story_flag_in_headless_mode_refuses_as_windowed_only() {
+        let error = parse(os(&[
+            HEADLESS_FLAG,
+            STORY_FLAG,
+            "carceral",
+            "tick",
+            "status",
+        ]))
+        .expect_err("a story flag in headless mode refuses");
+        let message = error.to_string();
+        assert!(
+            message.contains(STORY_FLAG) && message.contains("windowed-only"),
+            "the refusal names the flag and its windowed-only estate, got {error}"
         );
     }
 

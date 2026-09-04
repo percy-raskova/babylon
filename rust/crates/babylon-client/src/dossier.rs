@@ -297,7 +297,7 @@ fn subject_history(
 }
 
 /// Extract the place GEOID from one link atom's `place/<geoid>` text value.
-fn place_link_geoid(atom: &ArchiveAtomV1) -> Option<String> {
+pub(crate) fn place_link_geoid(atom: &ArchiveAtomV1) -> Option<String> {
     match atom.value() {
         babylon_persistence::ArchiveAtomValueV1::Text(text)
             if text.starts_with("place/") && text.len() == 13 =>

@@ -2,8 +2,8 @@
 //! keep administrative exemptions outside every gameplay gate.
 
 use babylon_client::decision_surface::{
-    contract_for, DecisionSurfaceContract, DecisionSurfaceRole, DeclaredSurface, SurfaceId,
-    SHIPPED_SURFACE_MANIFEST,
+    contract_for, DecisionSurfaceContract, DecisionSurfaceRole, DeclaredSurface, SurfaceActionV1,
+    SurfaceId, SHIPPED_SURFACE_MANIFEST,
 };
 use bevy::asset::AssetPlugin;
 use bevy::image::ImagePlugin;
@@ -27,6 +27,10 @@ fn shipped_app() -> App {
     ));
     app.add_plugins(babylon_client::map::MapPlugin);
     app.add_plugins(babylon_client::loop_ui::TickLoopPlugin);
+    // PER-23 Slice 4: the dossier card is the 14th shipped surface; the
+    // production composition adds DossierCardPlugin beside TickLoopPlugin
+    // (app.rs), and this harness mirrors that composition.
+    app.add_plugins(babylon_client::ui::dossier_card::DossierCardPlugin);
     app.insert_resource(babylon_client::story::SelectedStory(
         babylon_client::story::counties(),
     ));
@@ -73,6 +77,7 @@ fn manifest_is_unique_exhaustive_and_valid() {
 #[test]
 fn gameplay_contract_requires_every_decision_field() {
     const PRESENT: &[&str] = &["declared"];
+    const ACTIONS: &[SurfaceActionV1] = &[SurfaceActionV1::available("declared")];
     let complete = DecisionSurfaceContract {
         id: SurfaceId::CountyMap,
         role: DecisionSurfaceRole::Gameplay,
@@ -80,7 +85,7 @@ fn gameplay_contract_requires_every_decision_field() {
         visible_signals: PRESENT,
         visible_uncertainty: PRESENT,
         fog_requirements: PRESENT,
-        actions: PRESENT,
+        actions: ACTIONS,
         expected_receipts: PRESENT,
         archive_subjects: PRESENT,
         admin_debug_exempt: false,
@@ -128,7 +133,12 @@ fn gameplay_contract_requires_every_decision_field() {
 #[test]
 fn gameplay_contract_rejects_blank_entries_in_every_required_list() {
     const PRESENT: &[&str] = &["declared"];
+    const ACTIONS: &[SurfaceActionV1] = &[SurfaceActionV1::available("declared")];
     const CONTAINS_BLANK: &[&str] = &["declared", " \t\n"];
+    const CONTAINS_BLANK_ACTION: &[SurfaceActionV1] = &[
+        SurfaceActionV1::available("declared"),
+        SurfaceActionV1::available(" \t\n"),
+    ];
     let complete = DecisionSurfaceContract {
         id: SurfaceId::CountyMap,
         role: DecisionSurfaceRole::Gameplay,
@@ -136,7 +146,7 @@ fn gameplay_contract_rejects_blank_entries_in_every_required_list() {
         visible_signals: PRESENT,
         visible_uncertainty: PRESENT,
         fog_requirements: PRESENT,
-        actions: PRESENT,
+        actions: ACTIONS,
         expected_receipts: PRESENT,
         archive_subjects: PRESENT,
         admin_debug_exempt: false,
@@ -156,7 +166,7 @@ fn gameplay_contract_rejects_blank_entries_in_every_required_list() {
             ..complete
         },
         DecisionSurfaceContract {
-            actions: CONTAINS_BLANK,
+            actions: CONTAINS_BLANK_ACTION,
             ..complete
         },
         DecisionSurfaceContract {
@@ -207,6 +217,7 @@ fn admin_inspector_manifest_matches_its_pre_tick_rendering() {
 #[test]
 fn admin_exemptions_never_satisfy_gameplay_gates() {
     const PRESENT: &[&str] = &["declared"];
+    const ACTIONS: &[SurfaceActionV1] = &[SurfaceActionV1::available("declared")];
     let exempt_gameplay = DecisionSurfaceContract {
         id: SurfaceId::CountyMap,
         role: DecisionSurfaceRole::Gameplay,
@@ -214,7 +225,7 @@ fn admin_exemptions_never_satisfy_gameplay_gates() {
         visible_signals: PRESENT,
         visible_uncertainty: PRESENT,
         fog_requirements: PRESENT,
-        actions: PRESENT,
+        actions: ACTIONS,
         expected_receipts: PRESENT,
         archive_subjects: PRESENT,
         admin_debug_exempt: true,
@@ -229,7 +240,7 @@ fn admin_exemptions_never_satisfy_gameplay_gates() {
         visible_signals: PRESENT,
         visible_uncertainty: PRESENT,
         fog_requirements: PRESENT,
-        actions: PRESENT,
+        actions: ACTIONS,
         expected_receipts: PRESENT,
         archive_subjects: PRESENT,
         admin_debug_exempt: true,
@@ -295,4 +306,50 @@ fn current_client_cannot_claim_a_gameplay_gate() {
             .all(|contract| !contract.satisfies_gameplay_gate()),
         "the current Bevy client is an administrative viewer with no player action"
     );
+}
+
+/// ADR249 R9, pinned as executable contract: the county dossier card is the
+/// first Gameplay-role row — structurally complete, not exempt — but its
+/// only action, Investigate, is declared visibly unavailable, so the row
+/// validates yet stays outside every gameplay gate until Gate 5 flips one
+/// action to `Available`. The sealed reason is the exact R6 placeholder
+/// sentence the rendered card seals with.
+#[test]
+fn county_dossier_is_gameplay_role_but_gate_ineligible_until_an_action_opens() {
+    use babylon_client::decision_surface::ActionAvailabilityV1;
+
+    const OPEN: &[SurfaceActionV1] = &[SurfaceActionV1::available("investigate")];
+
+    let contract = contract_for(SurfaceId::CountyDossier);
+    assert_eq!(contract.role, DecisionSurfaceRole::Gameplay);
+    assert!(!contract.admin_debug_exempt);
+    assert!(contract.validate().is_ok());
+    assert!(
+        !contract.satisfies_gameplay_gate(),
+        "every action sealed means no player agency: the row must not satisfy the gate"
+    );
+
+    let opened = DecisionSurfaceContract {
+        actions: OPEN,
+        ..*contract
+    };
+    assert!(
+        opened.satisfies_gameplay_gate(),
+        "flipping one action to Available is exactly the Gate 5 change"
+    );
+
+    let [investigate] = contract.actions else {
+        panic!("the dossier row declares exactly one action");
+    };
+    assert_eq!(investigate.name(), "investigate");
+    match investigate.availability() {
+        ActionAvailabilityV1::Unavailable(reason) => assert_eq!(
+            reason,
+            babylon_client::ui::dossier_compose::INVESTIGATE_UNAVAILABLE_REASON,
+            "the manifest seal and the card's R6 placeholder seal are one sentence"
+        ),
+        ActionAvailabilityV1::Available => {
+            panic!("investigate must be visibly unavailable until Gate 5")
+        }
+    }
 }

@@ -1024,7 +1024,7 @@ if [ "${usage_ticks}" != "0" ]; then
         sweep_output="$(babylon-runtime archive-worker --once)"
         printf '%s\n' "$sweep_output"
         paged="${sweep_output##*paged=}"
-        paged="${paged%%[^0-9]*}"
+        paged="${paged%%[!0-9]*}"
         if [ "${paged:-0}" = "0" ]; then
             break
         fi

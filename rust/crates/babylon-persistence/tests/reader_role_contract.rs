@@ -4,8 +4,9 @@
 use babylon_persistence::{
     CommittedTickStatusV1, LegacyConnectionTargetRejection, ReaderRoleDispositionV1,
     SemanticArchiveErrorV1, SemanticArchiveReaderErrorV1, SemanticArchiveReaderV1,
-    COMMITTED_TICK_STATUS_SQL_V1, READER_DSN_ENV_V1, READER_ROLE_CREATE_SQL_V1,
-    READER_ROLE_NAME_V1, READER_ROLE_SCHEMA_V1_SQL, READER_VIEW_CANONICAL_DEF_V1,
+    ARCHIVE_ATOM_SCHEMA_V1_SQL, COMMITTED_TICK_STATUS_SQL_V1, READER_DSN_ENV_V1,
+    READER_ROLE_CREATE_SQL_V1, READER_ROLE_NAME_V1, READER_ROLE_SCHEMA_V1_SQL,
+    READER_VIEW_CANONICAL_DEF_V1,
 };
 
 #[test]
@@ -39,8 +40,8 @@ fn reader_role_schema_grants_select_only_on_the_fog_safe_views() {
     }
     assert_eq!(
         READER_ROLE_SCHEMA_V1_SQL.matches("GRANT SELECT").count(),
-        4,
-        "one tick-view grant plus three guarded atom-view grants, nothing else"
+        5,
+        "one tick-view grant plus four guarded atom-view grants, nothing else"
     );
     assert!(READER_ROLE_SCHEMA_V1_SQL
         .contains("GRANT SELECT ON public.v_committed_tick_status_v1 TO babylon_reader"));
@@ -48,6 +49,7 @@ fn reader_role_schema_grants_select_only_on_the_fog_safe_views() {
         "public.v_archive_page_known_v1",
         "public.v_archive_atom_visible",
         "public.v_county_card_atoms",
+        "public.v_archive_subject_atoms",
     ] {
         assert!(
             READER_ROLE_SCHEMA_V1_SQL
@@ -72,6 +74,45 @@ fn reader_role_schema_grants_select_only_on_the_fog_safe_views() {
     assert!(
         READER_ROLE_SCHEMA_V1_SQL.contains("pg_catalog.to_regclass"),
         "archive-table revokes and atom-view grants must tolerate an absent Archive schema"
+    );
+}
+
+#[test]
+fn subject_atoms_history_view_carries_the_fog_predicates_without_the_composition_join() {
+    assert!(ARCHIVE_ATOM_SCHEMA_V1_SQL.contains("CREATE VIEW public.v_archive_subject_atoms"));
+    // The history view repeats the exact grant + acknowledged-horizon fog
+    // predicates of v_archive_atom_visible ...
+    let view = ARCHIVE_ATOM_SCHEMA_V1_SQL
+        .split("CREATE VIEW public.v_archive_subject_atoms")
+        .nth(1)
+        .expect("subject history view exists")
+        .split(';')
+        .next()
+        .expect("view statement terminates");
+    for predicate in [
+        "archive_knowledge_grant_v1",
+        "grant_row.grant_key = atom.grant_key",
+        "grant_row.granted_tick <= atom.valid_tick",
+        "babylon_state.tick_commit",
+        "atom.valid_tick <= horizon.horizon_tick",
+    ] {
+        assert!(
+            view.contains(predicate),
+            "subject history view must pin fog predicate {predicate}"
+        );
+    }
+    // ... and never touches the delete-replaced composition table.
+    assert!(!view.contains("archive_page_atom_v1"));
+    // The guarded reader grant covers the fifth view with the same
+    // role-existence guard as the other atom views.
+    assert!(ARCHIVE_ATOM_SCHEMA_V1_SQL
+        .contains("GRANT SELECT ON public.v_archive_subject_atoms TO babylon_reader"));
+    assert_eq!(
+        ARCHIVE_ATOM_SCHEMA_V1_SQL
+            .matches("GRANT SELECT ON public.")
+            .count(),
+        4,
+        "the migration grants exactly the three composition views plus the history view"
     );
 }
 
@@ -124,6 +165,7 @@ fn reader_privilege_census_pins_the_exact_restricted_relation_set() {
         "'v_archive_page_known_v1'",
         "'v_archive_atom_visible'",
         "'v_county_card_atoms'",
+        "'v_archive_subject_atoms'",
         ":OWNERSHIP",
         "is_grantable",
         "attacl",
@@ -189,10 +231,11 @@ fn reader_footprint_is_existence_dependent_on_the_atom_schema() {
         [
             "public.v_archive_atom_visible:SELECT",
             "public.v_archive_page_known_v1:SELECT",
+            "public.v_archive_subject_atoms:SELECT",
             "public.v_committed_tick_status_v1:SELECT",
             "public.v_county_card_atoms:SELECT",
         ],
-        "after the atom schema the footprint is exactly the four fog-safe views"
+        "after the atom schema the footprint is exactly the five fog-safe views"
     );
     let mut sorted = with_atoms.clone();
     sorted.sort_unstable();
@@ -209,6 +252,7 @@ fn reader_search_and_projection_reads_touch_only_fog_safe_views() {
         ),
         ("READER_PAGE_ATOMS_SQL_V1", "public.v_archive_atom_visible"),
         ("COUNTY_CARD_ATOMS_SQL_V1", "public.v_county_card_atoms"),
+        ("SUBJECT_ATOMS_SQL_V1", "public.v_archive_subject_atoms"),
     ] {
         let body = reader_constant_body(source, name);
         assert!(
@@ -236,10 +280,24 @@ fn reader_search_and_projection_reads_touch_only_fog_safe_views() {
     let county = reader_constant_body(source, "COUNTY_CARD_ATOMS_SQL_V1");
     assert!(county.contains("page_subject_id = $2"));
     assert!(county.contains("ORDER BY position"));
+    // The changelog history read is subject-scoped through the fifth
+    // fog-safe view: no composition join, ordered for the changelog strip.
+    let history = reader_constant_body(source, "SUBJECT_ATOMS_SQL_V1");
+    assert!(history.contains("subject_kind = $2"));
+    assert!(history.contains("subject_id = $3"));
+    assert!(history.contains("ORDER BY signal_key, valid_tick"));
+    assert!(
+        !history.contains("archive_page_atom_v1"),
+        "the history read must never join the delete-replaced composition table"
+    );
     // The atom reads carry the exact 15-column decode layout the shared
     // `decode_stored_atom` revalidator expects, `valid_tick` then `atom_id`
     // last. Continuation backslashes are whitespace-normalized first.
-    for name in ["READER_PAGE_ATOMS_SQL_V1", "COUNTY_CARD_ATOMS_SQL_V1"] {
+    for name in [
+        "READER_PAGE_ATOMS_SQL_V1",
+        "COUNTY_CARD_ATOMS_SQL_V1",
+        "SUBJECT_ATOMS_SQL_V1",
+    ] {
         let body = reader_constant_body(source, name).replace("\\\n", " ");
         let body = body.split_whitespace().collect::<Vec<_>>().join(" ");
         assert!(

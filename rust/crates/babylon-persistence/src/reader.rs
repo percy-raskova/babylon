@@ -18,7 +18,7 @@
 //! hardening). The handle refuses to operate on connect unless the session's
 //! effective privilege census over the restricted relations is exactly the
 //! reader footprint — `SELECT` on the tick-status view before the atom
-//! schema, `SELECT` on the four fog-safe views after it — so an owner or
+//! schema, `SELECT` on the five fog-safe views after it — so an owner or
 //! superuser DSN is a loud refusal, never a silent read with writer
 //! authority.
 
@@ -89,7 +89,8 @@ pub(crate) const READER_PRIVILEGE_CENSUS_SQL_V1: &str = "WITH RECURSIVE role_clo
     'archive_knowledge_grant_v1', 'archive_receipt_consumption_v1', 'archive_atom_v1', \
     'archive_page_atom_v1')) \
     OR (namespace.nspname = 'public' AND relation.relname IN ('v_committed_tick_status_v1', \
-    'v_archive_page_known_v1', 'v_archive_atom_visible', 'v_county_card_atoms'))), \
+    'v_archive_page_known_v1', 'v_archive_atom_visible', 'v_county_card_atoms', \
+    'v_archive_subject_atoms'))), \
     held AS (\
     SELECT restricted.nspname || '.' || restricted.relname || ':' || acl.privilege_type || \
     CASE WHEN acl.is_grantable THEN ' (grantable)' ELSE '' END AS entry \
@@ -124,13 +125,14 @@ const READER_SESSION_AUTHORITY_SQL_V1: &str = "SELECT current_user::pg_catalog.t
 /// exact reader footprint before `migrations/archive_atom_v1.sql` installs.
 /// Every census entry outside this set is drift or writer authority.
 const READER_FOOTPRINT_V1: [&str; 1] = ["public.v_committed_tick_status_v1:SELECT"];
-/// The post-atom reader footprint: exactly `SELECT` on the four fog-safe
+/// The post-atom reader footprint: exactly `SELECT` on the five fog-safe
 /// views, sorted because the census emits entries `ORDER BY entry`. Entries
 /// beyond this set — any base-table grant, ownership, or a grantable entry —
 /// are drift or writer authority.
-const READER_FOOTPRINT_WITH_ATOMS_V1: [&str; 4] = [
+const READER_FOOTPRINT_WITH_ATOMS_V1: [&str; 5] = [
     "public.v_archive_atom_visible:SELECT",
     "public.v_archive_page_known_v1:SELECT",
+    "public.v_archive_subject_atoms:SELECT",
     "public.v_committed_tick_status_v1:SELECT",
     "public.v_county_card_atoms:SELECT",
 ];
@@ -174,6 +176,17 @@ pub const COUNTY_CARD_ATOMS_SQL_V1: &str = "SELECT campaign_id, subject_kind, su
     FROM public.v_county_card_atoms \
     WHERE campaign_id = $1::uuid AND page_subject_id = $2 \
     ORDER BY position";
+/// Subject-scoped atom history for the changelog strip (ADR249 R9): every
+/// visible atom ever minted for one subject, signal-keyed and tick-ordered,
+/// through the history view only — no composition join, because join rows
+/// are delete-replaced on supersession and the live composition cannot
+/// answer history.
+pub const SUBJECT_ATOMS_SQL_V1: &str = "SELECT campaign_id, subject_kind, subject_id, \
+    signal_key, grant_key, evidence_class, value_kind, value_text, value_f64, value_u64, \
+    value_bool, provenance_source_id, provenance_locator, valid_tick, atom_id \
+    FROM public.v_archive_subject_atoms \
+    WHERE campaign_id = $1::uuid AND subject_kind = $2 AND subject_id = $3 \
+    ORDER BY signal_key, valid_tick";
 /// Known-acknowledged-commit tick status read. The read goes through the view
 /// only; `babylon_state.tick_commit` stays revoked from the reader role.
 pub const COMMITTED_TICK_STATUS_SQL_V1: &str = "SELECT campaign_id, resolve_tick, \
@@ -513,6 +526,37 @@ impl SemanticArchiveReaderV1 {
             .map_err(archive_boundary)
     }
 
+    /// Read the subject-scoped visible atom history through
+    /// `public.v_archive_subject_atoms`: every fog-visible atom minted for
+    /// one subject, ordered by signal key then valid tick, for the dossier
+    /// changelog strip (ADR249 R9). The history read never joins the
+    /// delete-replaced composition table.
+    ///
+    /// # Errors
+    /// Refuses a malformed stored row, writer authority on the session, or a
+    /// database failure.
+    pub fn subject_atom_history(
+        &self,
+        campaign_id: CampaignId,
+        subject: &ArchiveAtomSubjectV1,
+    ) -> Result<Vec<ArchiveAtomV1>, SemanticArchiveReaderErrorV1> {
+        let mut client = self.connect("connect subject atom history reader")?;
+        client
+            .query(
+                SUBJECT_ATOMS_SQL_V1,
+                &[
+                    campaign_id.as_uuid(),
+                    &subject.kind().as_str(),
+                    &subject.id(),
+                ],
+            )
+            .map_err(|error| archive_boundary(database("read subject atom history view", &error)))?
+            .iter()
+            .map(decode_stored_atom)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(archive_boundary)
+    }
+
     fn connect(
         &self,
         operation: &'static str,
@@ -577,7 +621,7 @@ fn confine_reader_authority(
 /// plain view storing the pinned canonical definition, and the role's
 /// effective-privilege census over the restricted relations must be exactly
 /// the existence-dependent reader footprint (the tick-status view alone
-/// before the atom schema, the four fog-safe views after it). Anything else
+/// before the atom schema, the five fog-safe views after it). Anything else
 /// refuses with
 /// [`SemanticArchiveReaderErrorV1::PrivilegeDrift`] (or
 /// [`SemanticArchiveReaderErrorV1::ViewMismatch`]); drift is never silently

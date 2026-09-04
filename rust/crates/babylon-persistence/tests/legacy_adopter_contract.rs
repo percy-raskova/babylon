@@ -20,7 +20,7 @@ use std::process::Command;
 
 const ZERO_DIGEST: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 const LEGACY_CENSUS_V1_ARCHIVE: &str = include_str!("../src/fixtures/legacy_adopter_census_v1.txt");
-const EXPECTED_RUNNER_LINES: usize = 572;
+const EXPECTED_RUNNER_LINES: usize = 588;
 const MAX_WORKFLOW_JOB_BOUNDARY_CANDIDATES: usize = 128;
 const MAX_SQL_LITERAL_SEGMENTS: usize = 8_192;
 const MAX_SQL_STATEMENT_BYTES: usize = 262_144;
@@ -2266,6 +2266,7 @@ fn assert_pr_live_cadence(pr_workflow: &str) {
         "installed_mutation",
         "archive_worker",
         "reader_role",
+        "client_dossier",
     ] {
         assert!(
             pr_shards.contains(&format!("          - {focus}\n")),
@@ -2273,7 +2274,7 @@ fn assert_pr_live_cadence(pr_workflow: &str) {
         );
     }
     assert!(pr_shards.contains(
-        "- name: Rust PostgreSQL contract\n        timeout-minutes: 69\n        env:\n          BABYLON_LEGACY_ADOPTER_LIVE_FOCUS: ${{ matrix.focus }}\n        run: tools/run_rust_legacy_adopter_pg.sh"
+        "- name: Rust PostgreSQL contract\n        timeout-minutes: 90\n        env:\n          BABYLON_LEGACY_ADOPTER_LIVE_FOCUS: ${{ matrix.focus }}\n        run: tools/run_rust_legacy_adopter_pg.sh"
     ));
     assert!(!pr_shards.contains("BABYLON_LEGACY_ADOPTER_TEST_DSN"));
     assert!(!pr_shards.contains("cargo doc"));
@@ -2314,7 +2315,7 @@ fn pr_focus_reuses_the_postgres_atomicity_and_installed_mutation_contracts() {
 
     assert!(runner.contains("BABYLON_LEGACY_ADOPTER_LIVE_FOCUS:-}"));
     assert!(runner.contains(
-        "\"\" | clean_bootstrap | h3_atomicity | installed_mutation | schema_epoch_fresh | schema_epoch_matrix | \\\n    schema_epoch_rollback | schema_epoch_v5_census | schema_epoch_v6_census | schema_epoch_v7_census | \\\n    h3_pg_oracle | h3_reference_installer | h3_shadow_backfill | \\\n    rust_persistence_runtime | archive_worker | reader_role | runtime_census_v2 | pr)"
+        "\"\" | clean_bootstrap | h3_atomicity | installed_mutation | schema_epoch_fresh | schema_epoch_matrix | \\\n    schema_epoch_rollback | schema_epoch_v5_census | schema_epoch_v6_census | schema_epoch_v7_census | \\\n    h3_pg_oracle | h3_reference_installer | h3_shadow_backfill | \\\n    rust_persistence_runtime | archive_worker | reader_role | client_dossier | runtime_census_v2 | pr)"
     ));
     assert!(runner.contains("[ \"$LIVE_FOCUS\" = \"h3_pg_oracle\" ]"));
     assert!(runner.contains("[ \"$LIVE_FOCUS\" = \"h3_reference_installer\" ]"));
@@ -2529,6 +2530,9 @@ fn ci_step_exceeds_the_focused_runner_envelope() {
     const BOOTSTRAP_ENVELOPE_SECONDS: u64 = 600 + 30;
     const MICHIGAN_ENVELOPE_SECONDS: u64 = 1800 + 30;
     const FOCUSED_CARGO_ENVELOPE_SECONDS: u64 = 2 * (300 + 10) + (420 + 10);
+    // The client_dossier leg builds the Bevy client stack from a cold CI
+    // cache, the widest single-focus cargo envelope in the runner.
+    const CLIENT_CARGO_ENVELOPE_SECONDS: u64 = 1200 + 10;
     const CLEANUP_ENVELOPE_SECONDS: u64 = 35 + 12 + 12 + 35;
     const FOCUSED_RUNNER_ENVELOPE_SECONDS: u64 = CONTROL_PLANE_ENVELOPE_SECONDS
         + BUILD_ENVELOPE_SECONDS
@@ -2537,11 +2541,12 @@ fn ci_step_exceeds_the_focused_runner_envelope() {
         + BOOTSTRAP_ENVELOPE_SECONDS
         + MICHIGAN_ENVELOPE_SECONDS
         + FOCUSED_CARGO_ENVELOPE_SECONDS
+        + CLIENT_CARGO_ENVELOPE_SECONDS
         + CLEANUP_ENVELOPE_SECONDS;
 
     let pr_workflow = include_str!("../../../../.github/workflows/ci.yml");
     let pr_job = yaml_job(pr_workflow, "  pg-integration-shards:");
-    assert!(pr_job.contains("- name: Rust PostgreSQL contract\n        timeout-minutes: 69"));
+    assert!(pr_job.contains("- name: Rust PostgreSQL contract\n        timeout-minutes: 90"));
     let pr_job_seconds = pr_job
         .lines()
         .take(MAX_WORKFLOW_JOB_BOUNDARY_CANDIDATES)
@@ -2562,8 +2567,8 @@ fn ci_step_exceeds_the_focused_runner_envelope() {
         .parse::<u64>()
         .unwrap()
         * 60;
-    assert_eq!(pr_job_seconds, 99 * 60);
-    assert_eq!(pr_step_seconds, 69 * 60);
+    assert_eq!(pr_job_seconds, 120 * 60);
+    assert_eq!(pr_step_seconds, 90 * 60);
     assert!(pr_step_seconds >= FOCUSED_RUNNER_ENVELOPE_SECONDS + 120);
     assert!(pr_job_seconds >= pr_step_seconds + 30 * 60);
 }

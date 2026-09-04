@@ -41,7 +41,7 @@ case "$LIVE_FOCUS" in
   "" | clean_bootstrap | h3_atomicity | installed_mutation | schema_epoch_fresh | schema_epoch_matrix | \
     schema_epoch_rollback | schema_epoch_v5_census | schema_epoch_v6_census | schema_epoch_v7_census | \
     h3_pg_oracle | h3_reference_installer | h3_shadow_backfill | \
-    rust_persistence_runtime | archive_worker | reader_role | runtime_census_v2 | pr) ;;
+    rust_persistence_runtime | archive_worker | reader_role | client_dossier | runtime_census_v2 | pr) ;;
   *) die "unsupported live focus: $LIVE_FOCUS" ;;
 esac
 
@@ -419,7 +419,7 @@ if [ "$LIVE_FOCUS" = "clean_bootstrap" ] || [ "$LIVE_FOCUS" = "pr" ]; then
 fi
 if [ "$status" -eq 0 ] &&
     { [ "$LIVE_FOCUS" = "rust_persistence_runtime" ] || [ "$LIVE_FOCUS" = "archive_worker" ] || \
-      [ "$LIVE_FOCUS" = "reader_role" ]; }; then
+      [ "$LIVE_FOCUS" = "reader_role" ] || [ "$LIVE_FOCUS" = "client_dossier" ]; }; then
   cd "$REPO_ROOT"
   timeout --signal=TERM --kill-after=30s 600s \
     env BABYLON_RUNTIME_DSN="$BOOTSTRAP_DSN" \
@@ -481,6 +481,22 @@ if [ "$status" -eq 0 ] && [ "$LIVE_FOCUS" = "reader_role" ]; then
       BABYLON_RUNTIME_TEMPLATE_DB="$RUNTIME_TEMPLATE" \
       CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/rust/target}" \
     cargo test -p babylon-persistence --test reader_role_live \
+      --locked -- --nocapture --ignored --test-threads=1 || status=$?
+fi
+
+# PER-23 Slice 3 (ADR249 R10-R11): the headless dossier CLI driven as a
+# real child process against a confined reader login. The first build of
+# the Bevy client stack is heavy, so this leg carries the widest cargo
+# envelope of any single focus.
+if [ "$status" -eq 0 ] && [ "$LIVE_FOCUS" = "client_dossier" ]; then
+  timeout --signal=TERM --kill-after=10s 1200s \
+    env \
+      BABYLON_LEGACY_ADOPTER_TEST_DSN="postgresql://test:test@127.0.0.1:$PORT/postgres" \
+      BABYLON_LEGACY_ADOPTER_DISPOSABLE_ACK="$TEST_HARNESS_ACK" \
+      BABYLON_LEGACY_ADOPTER_DISPOSABLE_CANARY="$CANARY" \
+      BABYLON_RUNTIME_TEMPLATE_DB="$RUNTIME_TEMPLATE" \
+      CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/rust/target}" \
+    cargo test -p babylon-client --test dossier_cli_live \
       --locked -- --nocapture --ignored --test-threads=1 || status=$?
 fi
 

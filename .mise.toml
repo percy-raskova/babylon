@@ -1018,7 +1018,21 @@ mise run db:bootstrap
 export PATH="$PWD/rust/target/debug:$PATH"
 if [ "${usage_ticks}" != "0" ]; then
     babylon-runtime run --ticks "${usage_ticks}"
-    babylon-runtime archive-worker --once
+    # PER-318: one receipt's dirty set can exceed one sweep's page budget, so
+    # the drain pages across sweeps until nothing remains undrained (paged=0).
+    for sweep in 1 2 3 4 5 6 7 8; do
+        sweep_output="$(babylon-runtime archive-worker --once)"
+        printf '%s\n' "$sweep_output"
+        paged="${sweep_output##*paged=}"
+        paged="${paged%%[^0-9]*}"
+        if [ "${paged:-0}" = "0" ]; then
+            break
+        fi
+        if [ "$sweep" = "8" ]; then
+            printf 'archive drain still paged after 8 sweeps; refusing to launch against an unsettled world\n' >&2
+            exit 1
+        fi
+    done
 fi
 # Reader provisioning, idempotent — the same block sim:dossier-demo runs.
 # It must follow the runtime: the fog-safe atom views are installed by the

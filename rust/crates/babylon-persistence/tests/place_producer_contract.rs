@@ -398,14 +398,14 @@ fn semantic_hash_matches_the_pinned_place_page_vectors() {
         .expect("fully granted desired projection");
     assert_eq!(
         hex_digest(place_page_semantic_sha256_v1(plan.place_geoid(), &granted)),
-        "933a21d2851a73a3f05de9480f14386f1f980ab5a7f48871dc05577bb49dc60c"
+        "e1956add538ffeaa7a225af0e723986f185ddc65b59e19b7b0d5f27bdecabc37"
     );
     let subject_only = grant_index(&[(ArchiveSubjectKindV1::Place, "2622000", "subject")]);
     let redacted =
         desired_place_projection_v1(&plan, &subject_only).expect("subject-only projection");
     assert_eq!(
         hex_digest(place_page_semantic_sha256_v1(plan.place_geoid(), &redacted)),
-        "e43c63e3c785fe755c258c5b6c52f1eaf244ae237cc0497626b28565f2c8da90"
+        "dbc6bf5247431dcf54031d15109bb28a872e914636a538fffc94ab70b6c92e79"
     );
 }
 

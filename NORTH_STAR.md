@@ -206,7 +206,7 @@ This discipline matters because agents can make a complete but disconnected
 subsystem quickly. Unit tests can prove local behavior while the game does not
 use it. Reachability and mutation tests find this defect.
 
-## The road after the first gates
+## The road after the four gates
 
 The productive and distributive circuit follows the decision-loop slice. Player
 agency follows the circuit. The COVID benchmark then checks the shock through

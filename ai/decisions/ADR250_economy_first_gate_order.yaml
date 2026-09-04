@@ -16,6 +16,11 @@ ADR250_economy_first_gate_order:
     - AGENTS.md and CLAUDE.md next-gates list and Gate 4/Gate 5 forward prose
     - README.md next-gates list
     - ai/mantras.yaml next_gates
+    - CONTRIBUTORS.md next-gates list
+    - docs/agents/governance.md next-gates list
+    - docs/index.rst next-gates list
+    - ai/architecture.yaml roadmap milestones G4-G9
+    - tests/unit/governance gate-order pins
   context: |
     The standing order ran the COVID E0 emergence proof (old G4) before the
     productive and distributive circuit (old G6), with a second full-circuit

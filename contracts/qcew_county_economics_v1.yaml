@@ -1,0 +1,68 @@
+meta:
+  contract: QcewCountyEconomicsV1
+  version: 1
+  issue: PER-319
+  parent: PER-10
+
+classifications:
+  source_filenames_bytes_and_vintage: Observed
+  artifact_bytes_rows_columns_and_values: Observed
+  semantic_digests: Derived
+  canonical_formats_ordering_and_column_names: Designed
+  bounds_refusals_absences_and_lineage: Designed
+
+bounds:
+  contract_bytes: 65536
+  source_manifest_bytes: 131072
+  source_file_bytes: 4194304
+  artifact_bytes: 1048576
+  artifact_uncompressed_bytes: 33554432
+  artifact_rows: 2048
+  csv_field_bytes: 4194304
+
+source:
+  manifest: tools/qcew_county_economics_v1_source_manifest.json
+  manifest_sha256: 048c02b5890115e655e0a61553472adf2cbf8ef5c016731c0ffc0bfd0f2f667e
+  vintage: 2024
+  state_fips: "26"
+  area_glob: "2024.annual 26* County, Michigan.csv"
+  agglvl_code: 70
+  own_code: "0"
+  files: 83
+
+artifact:
+  name: qcew_county_economics_mi_2024
+  path: src/babylon/data/reference/economy/qcew_county_economics_mi_2024.csv.gz
+  format: csv.gz
+  compression: gzip-mtime-0
+  rows: 83
+  columns:
+    - county_geoid
+    - annual_avg_estabs_count
+    - annual_avg_emplvl
+    - total_annual_wages
+    - annual_avg_wkly_wage
+  ordering: county_geoid-ascending
+  sha256: 116affb2998c6c0259d5bf14840f99f835d7e0733aa0b4f4c60a257b2723cd16
+  semantic_sha256: 481519fddbc52153d0de033316eac4f08dcd51255250361798dd8b4ad871a8ea
+
+declared_absences:
+  - disclosure_flag_rows
+  - suppressed_rows
+  - industry_detail
+  - ownership_splits
+  - derived_or_rounded_values
+  - postgresql_schema
+  - runtime_importer
+  - cutover_authority
+
+lineage:
+  issue: PER-319
+  parent: PER-10
+  rulings:
+    - ADR250-R3
+    - ADR250-R5
+    - ADR250-R6
+    - ADR250-R7
+  archive_tier: cursory
+  database_dependency_owner: PER-10

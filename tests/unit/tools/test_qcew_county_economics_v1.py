@@ -216,31 +216,13 @@ def test_canonicalizer_refuses_noncanonical_source_values(
 
 
 def test_builder_refuses_source_manifest_digest_mismatch(tmp_path: Path) -> None:
-    staged = tmp_path / "staged.csv"
-    staged.write_bytes(b"tampered")
+    document = json.loads(SOURCE_MANIFEST.read_text(encoding="utf-8"))
+    document["entries"][0]["sha256"] = "0" * 64
     manifest = tmp_path / "manifest.json"
-    manifest.write_text(
-        json.dumps(
-            {
-                "contract": "QcewCountyEconomicsV1",
-                "version": 1,
-                "entries": [
-                    {
-                        "file": "2024.annual 26001 Alcona County, Michigan.csv",
-                        "sha256": "0" * 64,
-                    }
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
+    manifest.write_text(json.dumps(document), encoding="utf-8")
 
     with pytest.raises(builder.QcewBuildError, match="source_sha256"):
-        builder.build(
-            source_dir=tmp_path,
-            out_path=tmp_path / "out.csv.gz",
-            source_manifest=manifest,
-        )
+        builder.build(out_path=tmp_path / "out.csv.gz", source_manifest=manifest)
 
 
 def test_contract_refuses_missing_substantive_value_classification() -> None:

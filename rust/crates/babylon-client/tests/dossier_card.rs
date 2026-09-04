@@ -38,10 +38,46 @@ use bevy::picking::pointer::{Location, PointerButton, PointerId};
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use serde_json::json;
+use std::ffi::OsString;
+use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 use uuid::Uuid;
 
 // ---- app composition (the production wiring, headless) ----
+
+/// Serializes this binary's `BABYLON_READER_DSN` mutations. Rust test
+/// threads share one process, so removing the variable without a lock lets
+/// a parallel test's fetch task observe the wrong environment.
+static READER_DSN_LOCK: Mutex<()> = Mutex::new(());
+
+/// Holds [`READER_DSN_LOCK`] and restores the ambient `BABYLON_READER_DSN`
+/// on drop. The guard is inserted into the App as a non-send resource so it
+/// lives exactly as long as the app whose fetch tasks must not see the
+/// restored value.
+struct ReaderDsnGuard {
+    _lock: MutexGuard<'static, ()>,
+    prior: Option<OsString>,
+}
+
+impl ReaderDsnGuard {
+    fn lock_and_remove() -> Self {
+        let lock = READER_DSN_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let prior = std::env::var_os("BABYLON_READER_DSN");
+        std::env::remove_var("BABYLON_READER_DSN");
+        Self { _lock: lock, prior }
+    }
+}
+
+impl Drop for ReaderDsnGuard {
+    fn drop(&mut self) {
+        match self.prior.take() {
+            Some(value) => std::env::set_var("BABYLON_READER_DSN", value),
+            None => std::env::remove_var("BABYLON_READER_DSN"),
+        }
+    }
+}
 
 /// Builds the real app: the same plugin trio `main.rs`'s windowed mode
 /// wires, minus the window. `SelectedStory(counties())` mirrors
@@ -50,10 +86,11 @@ fn new_app() -> App {
     // Determinism contract: this harness never has an Archive reader. A
     // developer's shell may export `BABYLON_READER_DSN` for the live foci;
     // left set, the fetch tasks this file spawns would race a real Postgres.
-    // Removing it keeps every spawned fetch the honest `ReaderAbsent` path
-    // (the CI reality). Process-local: the change dies with the test binary.
-    std::env::remove_var("BABYLON_READER_DSN");
+    // The guard serializes the removal against parallel tests and restores
+    // the ambient value only when the App (and its fetch tasks) drops.
+    let dsn_guard = ReaderDsnGuard::lock_and_remove();
     let mut app = App::new();
+    app.world_mut().insert_non_send_resource(dsn_guard);
     app.add_plugins((MinimalPlugins, AssetPlugin::default()));
     app.add_plugins(babylon_client::map::MapPlugin);
     app.add_plugins(babylon_client::loop_ui::TickLoopPlugin);

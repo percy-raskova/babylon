@@ -5,6 +5,7 @@
 mod archive;
 mod archive_foundation_grants;
 mod archive_worker;
+mod babylon_markdown;
 mod bootstrap;
 mod checkpoint;
 pub mod committed_tick_envelope;
@@ -53,6 +54,11 @@ pub use archive_foundation_grants::{
     PINNED_FOUNDATION_GRANTS_SEMANTIC_SHA256_V1, STATEWIDE_RESIDUAL_COUNTY_FIPS_V1,
 };
 pub use archive_worker::*;
+pub use babylon_markdown::{
+    fog_chip_v1, git_export_markdown_v1, is_citation_line_v1, validate_babylon_markdown_v1,
+    BabylonMarkdownErrorV1, BABYLON_MARKDOWN_PROFILE_ID_V1, CITATION_LINE_REGEX_V1,
+    FOG_CHIP_SEPARATOR_V1,
+};
 pub use bootstrap::{
     bootstrap_h3_reader_epoch_v1, H3ReaderBootstrapErrorV1, H3ReaderBootstrapReportV1,
 };

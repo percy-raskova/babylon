@@ -150,6 +150,18 @@ COMPILED_LAYOUTS = {
             "distinct_known_signal_citations_in_signal_order",
         ],
     },
+    "babylon_markdown_v1": {
+        "profile": "GFM 0.29 plus the subject URI scheme and nothing else",
+        "contract": "contracts/babylon_markdown_v1.yaml",
+        "granted_link_form": "[{known_label}](subject:{kind}/{id})",
+        "bare_link_form": "[](subject:{kind}/{id})",
+        "pending_display_form": "~~[{known_label}](subject:{kind}/{id})~~",
+        "pending_form_note": "display-time synthesis only; never stored in page bytes",
+        "citation_line_regex": (
+            r"^- \*\*(?P<label>[^*]+)\*\*: (?P<value>.+) — (?P<source_id>[^;]+); (?P<locator>.+)$"
+        ),
+        "encoding": "UTF-8 with LF endings; the CR byte and the '<' byte refuse",
+    },
 }
 
 

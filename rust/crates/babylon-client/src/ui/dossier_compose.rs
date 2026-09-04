@@ -10,7 +10,7 @@
 //!
 //! The chip rule (R5): a place link the acknowledged Archive resolves gets a
 //! labeled chip; a link with no acknowledged known page synthesizes the
-//! pinned `fog_chip_v1` string ("unknown place · <id>"), carrying zero label
+//! pinned `fog_chip_v1` string ("unknown place · 2674900" for that id), carrying zero label
 //! bytes. Strikethrough semantics from the Markdown profile
 //! (`~~[Detroit](subject:…)~~`) render as DIM text plus a "· pending" suffix
 //! (decision 2) — no combining-glyph tricks, testable headless.

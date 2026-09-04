@@ -67,13 +67,18 @@ gate meets its acceptance contract; elapsed time does not open it.
 - Decision surfaces: executable `DecisionSurfaceContract` belongs to PER-24 in
   this gate. It is design law now and planned implementation work here.
 
-### G4 — COVID E0 emergence proof
+### G4 — Productive & distributive circuit
 
 - Target: 2027-04-30
-- Delivery roots: PER-8
-- Acceptance: four 104-week control, shock, and capacity runs show downstream
-  divergence, heterogeneity, hysteresis, and counterfactual response without
-  direct outcome writes.
+- Delivery roots: PER-10, PER-11, PER-12
+- Delivery detail: PER-10 is the primary Political Economy Circuit root;
+  PER-11 carries slice-driven system dispositions, and PER-12 carries the
+  circuit decision surfaces assigned to this gate. ADR250 R3: one thin
+  per-county circuit lands first, visible and testable in the Bevy UI,
+  before the full scope.
+- Acceptance: county-by-NAICS production, inventories, realization, freight,
+  ReserveArmy, and class migration form one visible causal slice, with the
+  first thin slice observable in the UI ahead of the full scope.
 
 ### G5 — Player agency
 
@@ -84,29 +89,24 @@ gate meets its acceptance contract; elapsed time does not open it.
 - Acceptance: Investigate and one costed intervention create next-week intents,
   causal receipts, and Archive updates, with at least two viable strategies.
 
-### G6 — Productive & distributive circuit
+### G6 — COVID emergence benchmark
 
 - Target: 2027-10-31
-- Delivery roots: PER-10, PER-11, PER-12
-- Delivery detail: PER-10 is the primary Political Economy Circuit root;
-  PER-11 carries slice-driven system dispositions, and PER-12 carries the
-  circuit decision surfaces assigned to this gate.
-- Acceptance: county-by-NAICS production, inventories, realization, freight,
-  ReserveArmy, and class migration form one visible causal slice.
+- Delivery roots: PER-8, PER-10
+- Delivery detail: ADR250 R2 merges the E0 discipline and the full-circuit
+  scope into one benchmark; the historical benchmark and Political Economy
+  Circuit roots converge at this gate.
+- Acceptance: a 2019 control, a historical shock envelope, and strong- and
+  weak-capacity counterfactuals run 104 weekly ticks; shocks enter only as
+  governed external-event rows adding allowed pressure, burden, or capacity
+  effects; the runs show causal divergence, heterogeneity, hysteresis, and
+  counterfactual response through organization money, working capital,
+  freight, firms, class movement, and player counterfactuals, with no direct
+  outcome writes.
 
-### G7 — Full-circuit COVID
+### G7 — Systemic credit & 2008
 
 - Target: 2027-12-31
-- Delivery roots: PER-8, PER-10
-- Delivery detail: the historical benchmark and Political Economy Circuit
-  roots converge at this gate.
-- Acceptance: the same public-health shock propagates through organization
-  money, working capital, freight, firms, class movement, and player
-  counterfactuals without authored outcomes.
-
-### G8 — Systemic credit & 2008
-
-- Target: 2028-04-30
 - Delivery roots: PER-8, PER-10
 - Delivery detail: this is a cross-root gate. PER-8 carries the historical
   benchmark, and PER-10 carries banking topology and the credit circuit.
@@ -114,9 +114,9 @@ gate meets its acceptance contract; elapsed time does not open it.
   contraction and downstream production, employment, class, territory, and
   political effects through the normal action surface.
 
-### G9 — Representative-world v1
+### G8 — Representative-world v1
 
-- Target: 2028-09-30
+- Target: 2028-04-30
 - Delivery roots: PER-13
 - Acceptance: the proven circuit scales to representative US counties, key
   corridors, selected countries, residual blocs, decision-linked Archive pages,

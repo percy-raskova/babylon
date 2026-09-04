@@ -22,18 +22,18 @@ and show the null world, but the player cannot change that world.
 <!-- vale ste.UnapprovedWords = NO -->
 Gate 2 now gives the Rust engine executable phase order, whole-tick atomicity,
 combined current-world hashing, role-sensitive causal authority, and atomic
-in-memory audit receipts. The next three executable gates are:
+in-memory audit receipts. The next four executable gates are:
 
 <!-- Vale: each protected item is a governed gate name. -->
 <!-- vale Vale.Terms = NO -->
-1. **PostgreSQL/H3/Archive decision-loop slice**
-<!-- vale Vale.Terms = YES -->
-<!-- vale ste.UnapprovedWords = YES -->
 <!-- vale ste.UnapprovedWords = NO -->
 <!-- vale ste.NounClusters = NO -->
-1. **COVID E0 emergence proof**
-<!-- vale ste.UnapprovedWords = YES -->
+1. **PostgreSQL/H3/Archive decision-loop slice**
+1. **Productive & distributive circuit**
 1. **Player agency**
+1. **COVID emergence benchmark**
+<!-- vale Vale.Terms = YES -->
+<!-- vale ste.UnapprovedWords = YES -->
 <!-- vale ste.NounClusters = YES -->
 
 ## The system without political economy
@@ -169,15 +169,15 @@ does not complete a slice.
 
 ## Emergence proof
 
-A large event supplies pressure and timing, not downstream results. The first
-benchmark will use a 2019 control world and encode a public-health burden in
-BSL. The engine must derive the economic, geographic, class, and political
-effects.
+A large event supplies pressure and timing, not downstream results. The
+benchmark uses a 2019 control world and encodes a public-health burden in BSL
+after the productive circuit and player agency are live. The engine must derive
+the economic, geographic, class, and political effects.
 
-COVID E0 compares a control, a historical shock envelope, a strong-capacity
-counterfactual, and a weak-capacity counterfactual across 104 weekly ticks. The
-test asks for causal divergence, heterogeneity, hysteresis, and response to the
-counterfactual.
+The COVID benchmark compares a control, a historical shock envelope, a
+strong-capacity counterfactual, and a weak-capacity counterfactual across 104
+weekly ticks. The test asks for causal
+divergence, heterogeneity, hysteresis, and response to the counterfactual.
 
 Historical agreement is useful information. It does not turn Babylon into a
 forecast. A different policy or capacity must be free to produce a different
@@ -206,11 +206,11 @@ This discipline matters because agents can make a complete but disconnected
 subsystem quickly. Unit tests can prove local behavior while the game does not
 use it. Reachability and mutation tests find this defect.
 
-## The road after the first three gates
+## The road after the four gates
 
-Player agency follows COVID E0. Then productive circulation, freight, class
-effects, and organization money complete the first circuit. The full-circuit
-COVID benchmark checks the same shock again.
+The productive and distributive circuit follows the decision-loop slice. Player
+agency follows the circuit. The COVID benchmark then checks the shock through
+the completed circuit and the player's own counterfactual choices.
 
 The 2008 benchmark then tests credit contraction, production, jobs, class,
 territory, and politics. Only after those circuits pass their tests does Babylon

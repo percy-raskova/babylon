@@ -40,23 +40,21 @@ _GATES: Final[tuple[tuple[str, str, str], ...]] = (
     ("G1", "Governance & portfolio", "2026-09-30"),
     ("G2", "Executable causality", "2026-11-30"),
     ("G3", "PostgreSQL, H3 & Archive slice", "2027-02-28"),
-    ("G4", "COVID E0 emergence proof", "2027-04-30"),
+    ("G4", "Productive & distributive circuit", "2027-04-30"),
     ("G5", "Player agency", "2027-06-30"),
-    ("G6", "Productive & distributive circuit", "2027-10-31"),
-    ("G7", "Full-circuit COVID", "2027-12-31"),
-    ("G8", "Systemic credit & 2008", "2028-04-30"),
-    ("G9", "Representative-world v1", "2028-09-30"),
+    ("G6", "COVID emergence benchmark", "2027-10-31"),
+    ("G7", "Systemic credit & 2008", "2027-12-31"),
+    ("G8", "Representative-world v1", "2028-04-30"),
 )
 _GATE_DELIVERY_ROOTS: Final[tuple[tuple[str, tuple[str, ...]], ...]] = (
     ("G1", ("PER-5",)),
     ("G2", ("PER-6",)),
     ("G3", ("PER-7", "PER-12")),
-    ("G4", ("PER-8",)),
+    ("G4", ("PER-10", "PER-11", "PER-12")),
     ("G5", ("PER-9",)),
-    ("G6", ("PER-10", "PER-11", "PER-12")),
+    ("G6", ("PER-8", "PER-10")),
     ("G7", ("PER-8", "PER-10")),
-    ("G8", ("PER-8", "PER-10")),
-    ("G9", ("PER-13",)),
+    ("G8", ("PER-13",)),
 )
 _PORT_DISPOSITIONS: Final[tuple[str, ...]] = ("Port", "Adapt", "Replace", "Retire")
 _PROVENANCE_CLASSES: Final[tuple[str, ...]] = (
@@ -335,17 +333,17 @@ def test_architecture_records_the_retired_legacy_h3_migration_source() -> None:
 
 
 def test_architecture_and_roadmap_publish_the_same_gate_triples() -> None:
-    """Both repository mirrors preserve Linear's exact gate order and dates."""
+    """Both repository mirrors preserve the ADR250 gate order and dates."""
     architecture = _yaml_document(_ARCHITECTURE)
     milestones = architecture["roadmap"]["milestones"]
-    assert len(milestones) == 9
+    assert len(milestones) == 8
     architecture_gates = tuple(
         (
             milestones[index]["id"],
             milestones[index]["name"],
             milestones[index]["target"],
         )
-        for index in range(9)
+        for index in range(8)
     )
     assert architecture["roadmap"]["dates_are_provisional"] is True
     assert architecture_gates == _GATES
@@ -354,21 +352,21 @@ def test_architecture_and_roadmap_publish_the_same_gate_triples() -> None:
             milestones[index]["id"],
             tuple(milestones[index]["delivery_roots"]),
         )
-        for index in range(9)
+        for index in range(8)
     )
-    assert all("owner" not in milestones[index] for index in range(9))
+    assert all("owner" not in milestones[index] for index in range(8))
     assert architecture_delivery_roots == _GATE_DELIVERY_ROOTS
     roadmap_region = _active_region("project/roadmap.md", "V4-ROADMAP-MIRROR")
     roadmap_gates = tuple(_ROADMAP_GATE_PATTERN.findall(roadmap_region))
     assert roadmap_gates == _GATES
     delivery_root_matches = _ROADMAP_DELIVERY_ROOT_PATTERN.findall(roadmap_region)
-    assert len(delivery_root_matches) == 9
+    assert len(delivery_root_matches) == 8
     roadmap_delivery_roots = tuple(
         (
             delivery_root_matches[index][0],
             tuple(delivery_root_matches[index][1].split(", ")),
         )
-        for index in range(9)
+        for index in range(8)
     )
     assert roadmap_delivery_roots == _GATE_DELIVERY_ROOTS
 

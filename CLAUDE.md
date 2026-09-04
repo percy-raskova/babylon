@@ -10,19 +10,18 @@ results. Determinism proves computational identity, not scientific truth.
 Historical cases test causal signatures and counterfactual behavior. Bevy remains
 an administrative viewer with no player action.
 
-This checkout implements Gate 2. These three executable gates follow:
+This checkout implements Gate 2. These four executable gates follow:
 
 <!-- Vale: each protected item is a governed gate name. -->
 <!-- vale ste.UnapprovedWords = NO -->
 <!-- vale Vale.Terms = NO -->
+<!-- vale ste.NounClusters = NO -->
 1. **PostgreSQL/H3/Archive decision-loop slice**
+1. **Productive & distributive circuit**
+1. **Player agency**
+1. **COVID emergence benchmark**
 <!-- vale Vale.Terms = YES -->
 <!-- vale ste.UnapprovedWords = YES -->
-<!-- vale ste.UnapprovedWords = NO -->
-<!-- vale ste.NounClusters = NO -->
-2. **COVID E0 emergence proof**
-<!-- vale ste.UnapprovedWords = YES -->
-3. **Player agency**
 <!-- vale ste.NounClusters = YES -->
 
 Read `CONSTITUTION.md` v4.1.0 before a change to game law. ADR221 maps its predecessors and preserves history. `ai/mantras.yaml` is the canonical machine-readable orientation.
@@ -69,9 +68,10 @@ Reference Parquet and deterministic SQLite are build artifacts. The Python
 
 Gate 3 now has the Rust three-schema boundary, committed tick envelope,
 marker-last transaction, checkpoint restart, and Archive dirty receipts. The
-fog-safe decision loop and semantic Archive worker remain. Gate 4 adds
-governed external-event rows, and Gate 5 adds next-week intents and Bevy player
-actions.
+fog-safe decision loop and semantic Archive worker remain. ADR250 reordered the
+later gates: Gate 4 adds the productive and distributive circuit, and Gate 5
+adds next-week intents and Bevy player actions. Gate 6 adds governed
+external-event rows and the merged COVID benchmark.
 
 <!-- Vale: the accepted Linear status uses a passive state label. -->
 <!-- vale strunk.ActiveVoice = NO -->

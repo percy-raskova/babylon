@@ -95,10 +95,11 @@ _ORIENTATION_CONCEPTS: Final[tuple[tuple[str, ...], ...]] = (
     ("admin/viewer", "administrative viewer"),
     ("no player action", "no committed player action"),
 )
-_NEXT_THREE_GATES: Final[tuple[str, ...]] = (
+_NEXT_GATES: Final[tuple[str, ...]] = (
     "PostgreSQL/H3/Archive decision-loop slice",
-    "COVID E0 emergence proof",
+    "Productive & distributive circuit",
     "Player agency",
+    "COVID emergence benchmark",
 )
 _SUPERSEDED_PRODUCT_PHRASES: Final[tuple[str, ...]] = (
     "graph + math = history",
@@ -382,10 +383,10 @@ def test_human_orientation_states_the_v4_semantic_contract() -> None:
 
 
 @pytest.mark.parametrize("relative_path", _CANONICAL_ORIENTATION_PATHS)
-def test_canonical_entry_points_order_the_next_three_gates(relative_path: str) -> None:
-    """Canonical execution records state the next three gates in order."""
+def test_canonical_entry_points_order_the_next_gates(relative_path: str) -> None:
+    """Canonical execution records state the ADR250 next gates in order."""
     text = _repository_text(relative_path)
-    positions = tuple(text.find(gate) for gate in _NEXT_THREE_GATES)
+    positions = tuple(text.find(gate) for gate in _NEXT_GATES)
     assert all(position >= 0 for position in positions), (
         f"{relative_path} is missing gates at positions {positions}"
     )
@@ -415,7 +416,7 @@ def test_mantras_publish_machine_readable_v4_orientation() -> None:
         "counterfactual behavior",
     )
     assert meta["current_client"] == "Bevy admin/viewer; no player action"
-    assert tuple(meta["next_gates"]) == _NEXT_THREE_GATES
+    assert tuple(meta["next_gates"]) == _NEXT_GATES
 
 
 @pytest.mark.parametrize("relative_path", _CONTROL_SURFACE_PATHS)

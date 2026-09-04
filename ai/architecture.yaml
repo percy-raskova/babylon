@@ -61,37 +61,32 @@ roadmap:
         - PER-7
         - PER-12
     - id: G4
-      name: COVID E0 emergence proof
+      name: Productive & distributive circuit
       target: "2027-04-30"
       delivery_roots:
-        - PER-8
+        - PER-10
+        - PER-11
+        - PER-12
     - id: G5
       name: Player agency
       target: "2027-06-30"
       delivery_roots:
         - PER-9
     - id: G6
-      name: Productive & distributive circuit
+      name: COVID emergence benchmark
       target: "2027-10-31"
       delivery_roots:
+        - PER-8
         - PER-10
-        - PER-11
-        - PER-12
     - id: G7
-      name: Full-circuit COVID
+      name: Systemic credit & 2008
       target: "2027-12-31"
       delivery_roots:
         - PER-8
         - PER-10
     - id: G8
-      name: Systemic credit & 2008
-      target: "2028-04-30"
-      delivery_roots:
-        - PER-8
-        - PER-10
-    - id: G9
       name: Representative-world v1
-      target: "2028-09-30"
+      target: "2028-04-30"
       delivery_roots:
         - PER-13
 

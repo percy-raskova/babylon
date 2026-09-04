@@ -1001,6 +1001,84 @@ pg_isready -h localhost -p 5433 -q || { echo "babylon-pg-isolated not up (mise r
 PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test -c
 '''
 
+[tasks."play"]
+description = "One-command local loop (Director directive 2026-09-04): start Postgres, bootstrap, advance ticks, sweep the Archive, launch the windowed client"
+usage = '''
+arg "[ticks]" help="Ticks to commit and materialize before launch (0 = just reopen the world)" default="2"
+'''
+run = '''
+set -e
+export BABYLON_RUNTIME_DSN="${BABYLON_RUNTIME_DSN:-host=127.0.0.1 port=5433 dbname=babylon_test user=test password=test}"
+# The runtime's DEFAULT_CAMPAIGN_UUID (babylon-runtime.rs): overriding
+# BABYLON_CAMPAIGN_ID switches worlds; the default keeps one continuous one.
+export BABYLON_CAMPAIGN_ID="${BABYLON_CAMPAIGN_ID:-28100000-0000-0000-0000-000000000001}"
+mise run db:up
+mise run db:bootstrap
+(cd rust && cargo build -p babylon-persistence --bin babylon-runtime --locked && cargo build -p babylon-client --bin babylon-client --locked)
+export PATH="$PWD/rust/target/debug:$PATH"
+if [ "${usage_ticks}" != "0" ]; then
+    babylon-runtime run --ticks "${usage_ticks}"
+    babylon-runtime archive-worker --once
+fi
+# Reader provisioning, idempotent — the same block sim:dossier-demo runs.
+# It must follow the runtime: the fog-safe atom views are installed by the
+# campaign-foundation path, so on a fresh database they do not exist until
+# the first `run` commits them.
+play_reader_password="${BABYLON_DOSSIER_DEMO_PASSWORD:-babylon_dossier_demo}"
+# The password is interpolated into SQL literals and a connection URI, so
+# anything outside a strict charset would break the heredoc or inject.
+case "$play_reader_password" in
+    *[!A-Za-z0-9_-]*)
+        printf 'refusing BABYLON_DOSSIER_DEMO_PASSWORD %s: only ASCII letters, digits, "_" and "-" are admissible\n' "$play_reader_password" >&2
+        exit 1
+        ;;
+esac
+psql "$BABYLON_RUNTIME_DSN" <<SQL
+DO \$\$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'babylon_reader') THEN
+        CREATE ROLE babylon_reader NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE;
+    END IF;
+END
+\$\$;
+CREATE OR REPLACE VIEW public.v_committed_tick_status_v1 AS
+SELECT campaign_id, resolve_tick, envelope_layout_version, tick_content_hash, envelope_digest
+FROM babylon_state.tick_commit;
+DO \$\$
+BEGIN
+    IF pg_catalog.to_regclass('public.v_committed_tick_status_v1') IS NOT NULL THEN
+        GRANT SELECT ON public.v_committed_tick_status_v1 TO babylon_reader;
+    END IF;
+    IF pg_catalog.to_regclass('public.v_archive_page_known_v1') IS NOT NULL THEN
+        GRANT SELECT ON public.v_archive_page_known_v1 TO babylon_reader;
+    END IF;
+    IF pg_catalog.to_regclass('public.v_archive_atom_visible') IS NOT NULL THEN
+        GRANT SELECT ON public.v_archive_atom_visible TO babylon_reader;
+    END IF;
+    IF pg_catalog.to_regclass('public.v_county_card_atoms') IS NOT NULL THEN
+        GRANT SELECT ON public.v_county_card_atoms TO babylon_reader;
+    END IF;
+    IF pg_catalog.to_regclass('public.v_archive_subject_atoms') IS NOT NULL THEN
+        GRANT SELECT ON public.v_archive_subject_atoms TO babylon_reader;
+    END IF;
+END
+\$\$;
+DO \$\$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'babylon_dossier_demo') THEN
+        CREATE ROLE babylon_dossier_demo LOGIN PASSWORD '${play_reader_password}'
+          NOSUPERUSER NOCREATEDB NOCREATEROLE;
+    END IF;
+END
+\$\$;
+ALTER ROLE babylon_dossier_demo PASSWORD '${play_reader_password}';
+GRANT babylon_reader TO babylon_dossier_demo;
+GRANT SET ON PARAMETER event_triggers TO babylon_dossier_demo;
+SQL
+export BABYLON_READER_DSN="postgresql://babylon_dossier_demo:${play_reader_password}@127.0.0.1:5433/babylon_test"
+(cd rust && cargo run -p babylon-client --locked)
+'''
+
 [tasks."data:lodes-od"]
 description = "Download LODES OD commuter flow data (Michigan, current year). Tri-county minimum: --states mi"
 usage = '''

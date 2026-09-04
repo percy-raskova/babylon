@@ -63,7 +63,7 @@ class TestManifest:
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
             assert digest == entry["sha256"], f"{entry['name']} drifted from its manifest hash"
             checked += 1
-        assert checked == 26
+        assert checked == 27
         # the four registered canonical CSVs (R1 pair post-demotion, ricci,
         # county->CZ) plus the 13 Vol II Unit U2 hand-registered LODES
         # entries (1 tri-county crosswalk + 12 OD-matrix years, generator
@@ -86,7 +86,10 @@ class TestManifest:
         # tests/unit/tools/test_census_place_authority_v1.py) plus the two
         # PER-277 county/place/H3 land-overlap artifacts (generator
         # tools/make_county_place_h3_overlap_artifacts.py — tripwire:
-        # tests/unit/tools/test_county_place_h3_overlap_v1.py).
+        # tests/unit/tools/test_county_place_h3_overlap_v1.py) plus the
+        # PER-319 QCEW county-economics artifact (generator
+        # tools/make_qcew_county_economics_artifacts.py — tripwire:
+        # tests/unit/tools/test_qcew_county_economics_v1.py).
 
     def test_manifest_carries_all_registered_artifacts(self) -> None:
         # Post-cutover the manifest is FULL-COVERAGE: the registered

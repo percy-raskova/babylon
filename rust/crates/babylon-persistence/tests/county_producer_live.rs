@@ -450,7 +450,7 @@ fn live_county_producer_publishes_committed_signals_then_defers_unchanged_receip
         "the committed phi-hour signal pins the exact tick provenance"
     );
     assert!(
-        wayne.contains("[[place/2622000|Detroit city]]"),
+        wayne.contains("[Detroit city](subject:place/2622000)"),
         "the foundation-seeded place subject renders the known link label"
     );
     let oakland = county_page_markdown(&target.config, target.campaign_id, "26125");
@@ -579,7 +579,7 @@ fn live_county_producer_grant_refresh_republicates_revealed_page() {
         "the earned field keys stay ungranted at foundation, so the page publishes no signal"
     );
     assert!(
-        wayne_redacted.contains("[[place/2622000|Detroit city]]"),
+        wayne_redacted.contains("[Detroit city](subject:place/2622000)"),
         "the seeded place subject reveals the link label"
     );
 
@@ -611,7 +611,7 @@ fn live_county_producer_grant_refresh_republicates_revealed_page() {
         "the signal grant reveals the committed median wage with its provenance"
     );
     assert!(
-        wayne.contains("[[place/2622000|Detroit city]]"),
+        wayne.contains("[Detroit city](subject:place/2622000)"),
         "the seeded place subject keeps the link label"
     );
     assert!(

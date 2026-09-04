@@ -336,7 +336,7 @@ fn assert_revealed_detroit(row: &(String, i64, String), verified_tick: i64) {
         "the identity grant reveals the signal citation"
     );
     assert!(
-        row.2.contains("[[county/26163|Wayne County]]"),
+        row.2.contains("[Wayne County](subject:county/26163)"),
         "the county grant reveals the link label"
     );
 }
@@ -453,7 +453,7 @@ fn live_place_producer_drains_allowlisted_pages_and_reruns_clean() {
         "a granted identity signal pins the exact artifact row"
     );
     assert!(
-        detroit.2.contains("[[county/26163|Wayne County]]"),
+        detroit.2.contains("[Wayne County](subject:county/26163)"),
         "a granted county subject renders its known label"
     );
 
@@ -463,7 +463,7 @@ fn live_place_producer_drains_allowlisted_pages_and_reruns_clean() {
         .expect("Fenton city published");
     for county in ["26049", "26093", "26125"] {
         assert!(
-            fenton.2.contains(&format!("[[county/{county}|")),
+            fenton.2.contains(&format!("](subject:county/{county})")),
             "cross-county place keeps every county slice, including {county}"
         );
     }

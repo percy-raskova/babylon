@@ -44,7 +44,7 @@ fn county_page_input(resolve_tick: u64, tick_content_hash: [u8; 32]) -> ArchiveP
         )
         .expect("signal")],
         vec![ArchiveLinkV1::try_new(
-            ArchivePageRefV1::try_new(ArchiveSubjectKindV1::Place, "2684000".to_owned())
+            ArchivePageRefV1::try_new(ArchiveSubjectKindV1::Place, "2622000".to_owned())
                 .expect("Detroit ref"),
             "Detroit".to_owned(),
         )

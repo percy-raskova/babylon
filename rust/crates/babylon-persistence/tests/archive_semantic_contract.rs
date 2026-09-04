@@ -59,13 +59,13 @@ fn page_input_at(
         .expect("signal")],
         vec![
             ArchiveLinkV1::try_new(
-                ArchivePageRefV1::try_new(ArchiveSubjectKindV1::Place, "2684000".to_owned())
+                ArchivePageRefV1::try_new(ArchiveSubjectKindV1::Place, "2622000".to_owned())
                     .expect("Detroit ref"),
                 "Detroit".to_owned(),
             )
             .expect("Detroit link"),
             ArchiveLinkV1::try_new(
-                ArchivePageRefV1::try_new(ArchiveSubjectKindV1::Place, "2674900".to_owned())
+                ArchivePageRefV1::try_new(ArchiveSubjectKindV1::Place, "2668880".to_owned())
                     .expect("unknown place ref"),
                 "Riverview".to_owned(),
             )
@@ -130,11 +130,11 @@ fn knowledge_with_subject_locator(subject_locator: &str) -> ArchiveKnowledgeV1 {
         )
         .expect("field grant"),
         ArchiveKnowledgeGrantV1::try_new(
-            ArchivePageRefV1::try_new(ArchiveSubjectKindV1::Place, "2684000".to_owned())
+            ArchivePageRefV1::try_new(ArchiveSubjectKindV1::Place, "2622000".to_owned())
                 .expect("Detroit ref"),
             "subject".to_owned(),
             42,
-            ArchiveCitationV1::try_new("archive-subject".to_owned(), "place/2684000".to_owned())
+            ArchiveCitationV1::try_new("archive-subject".to_owned(), "place/2622000".to_owned())
                 .expect("linked subject citation"),
         )
         .expect("linked subject grant"),
@@ -155,9 +155,9 @@ fn pinned_strict_renderer_is_deterministic_and_preserves_unknown_redlinks() {
     assert_eq!(first.markdown(), second.markdown());
     assert_eq!(first.sha256(), sha256_of(first.markdown().as_bytes()));
     let expected_template_sha256 = [
-        0xf5, 0x56, 0x15, 0x34, 0xe5, 0x39, 0x24, 0xac, 0x4f, 0x79, 0x70, 0xd9, 0xab, 0xfb, 0x19,
-        0xd0, 0x32, 0xcf, 0x49, 0x1e, 0x6d, 0x04, 0xdc, 0x24, 0x63, 0xd3, 0xb3, 0xbf, 0x25, 0xc4,
-        0xb5, 0x39,
+        0xd7, 0x90, 0x43, 0x79, 0xcf, 0x09, 0xf4, 0x1d, 0xb6, 0xab, 0xea, 0x91, 0x46, 0x5b, 0x5f,
+        0xe6, 0xe8, 0x04, 0x86, 0x7c, 0xf8, 0x76, 0xbd, 0x44, 0xa0, 0x9f, 0xe6, 0x3b, 0xa9, 0x75,
+        0x51, 0x08,
     ];
     assert_eq!(ARCHIVE_PAGE_TEMPLATE_SHA256_V1, expected_template_sha256);
     assert_eq!(renderer.template_sha256(), expected_template_sha256);
@@ -166,8 +166,10 @@ fn pinned_strict_renderer_is_deterministic_and_preserves_unknown_redlinks() {
         "tick_content_hash: 1111111111111111111111111111111111111111111111111111111111111111"
     ));
     assert!(first.markdown().contains("728576 jobs"));
-    assert!(first.markdown().contains("[[place/2684000|Detroit]]"));
-    assert!(first.markdown().contains("[[place/2674900]]"));
+    assert!(first
+        .markdown()
+        .contains("[Detroit](subject:place/2622000)"));
+    assert!(first.markdown().contains("[](subject:place/2668880)"));
     assert!(!first.markdown().contains("Riverview"));
     assert_eq!(first.citations().len(), 2);
     assert_eq!(first.citations()[0].source_id(), "archive-subject");

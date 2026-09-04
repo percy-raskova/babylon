@@ -59,7 +59,7 @@ fn wayne_plan_full() -> CountyPagePlanV1 {
         ],
         vec![
             detroit_link(),
-            CountyPlaceLinkV1::try_new("2674900".to_owned(), "Riverview city".to_owned())
+            CountyPlaceLinkV1::try_new("2668880".to_owned(), "Riverview city".to_owned())
                 .expect("riverview link"),
         ],
     )
@@ -289,7 +289,7 @@ fn grant_visible_projection_hides_ungranted_signals_and_link_names() {
     );
     assert_eq!(
         hidden.places(),
-        &[("2622000".to_owned(), None), ("2674900".to_owned(), None)],
+        &[("2622000".to_owned(), None), ("2668880".to_owned(), None)],
         "no place subject grant means every link stays a redlink"
     );
 
@@ -318,7 +318,7 @@ fn grant_visible_projection_hides_ungranted_signals_and_link_names() {
         revealed.places(),
         &[
             ("2622000".to_owned(), Some("Detroit city".to_owned())),
-            ("2674900".to_owned(), Some("Riverview city".to_owned())),
+            ("2668880".to_owned(), Some("Riverview city".to_owned())),
         ],
         "granted place subjects reveal their governed labels"
     );
@@ -334,7 +334,7 @@ fn grant_arrival_redirties_the_redacted_page_and_the_reveal_settles() {
         "the subject-only render omits the Signals section"
     );
     assert!(
-        stored_markdown.contains("[[place/2622000]]"),
+        stored_markdown.contains("[](subject:place/2622000)"),
         "the subject-only render keeps redlinks"
     );
     let stored = stored_map("26163", "Wayne County", &stored_markdown);
@@ -440,7 +440,7 @@ fn semantic_hash_covers_every_receipt_independent_rendered_input() {
         base.title().to_owned(),
         base.question().to_owned(),
         base.signals().to_vec(),
-        vec![("2622000".to_owned(), None), ("2674900".to_owned(), None)],
+        vec![("2622000".to_owned(), None), ("2668880".to_owned(), None)],
     )
     .expect("redlinked projection");
     assert_ne!(
@@ -623,7 +623,7 @@ fn plans_sort_signals_and_links_and_refuse_duplicates() {
             ),
         ],
         vec![
-            CountyPlaceLinkV1::try_new("2674900".to_owned(), "Riverview city".to_owned())
+            CountyPlaceLinkV1::try_new("2668880".to_owned(), "Riverview city".to_owned())
                 .expect("riverview link"),
             detroit_link(),
         ],
@@ -646,7 +646,7 @@ fn plans_sort_signals_and_links_and_refuse_duplicates() {
         .iter()
         .map(CountyPlaceLinkV1::place_geoid)
         .collect::<Vec<_>>();
-    assert_eq!(geoids, vec!["2622000", "2674900"]);
+    assert_eq!(geoids, vec!["2622000", "2668880"]);
 
     assert_eq!(
         CountyPagePlanV1::try_new(
@@ -708,7 +708,7 @@ fn page_input_pins_committed_tick_provenance_citations() {
         vec![
             ArchivePageRefV1::try_new(ArchiveSubjectKindV1::Place, "2622000".to_owned())
                 .expect("detroit ref"),
-            ArchivePageRefV1::try_new(ArchiveSubjectKindV1::Place, "2674900".to_owned())
+            ArchivePageRefV1::try_new(ArchiveSubjectKindV1::Place, "2668880".to_owned())
                 .expect("riverview ref"),
         ]
     );

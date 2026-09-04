@@ -82,10 +82,10 @@ def test_redlink_grant_presence_is_semantically_forced() -> None:
     sparse = next(row for row in vectors if row["id"] == "render-link-grant-absent")
     sparse["data"]["knowledge"].append(
         {
-            "page_ref": {"kind": "place", "id": "2684000"},
+            "page_ref": {"kind": "place", "id": "2622000"},
             "grant_key": "subject",
             "granted_tick": 42,
-            "citation": {"source_id": "archive-subject", "locator": "place/2684000"},
+            "citation": {"source_id": "archive-subject", "locator": "place/2622000"},
         }
     )
 

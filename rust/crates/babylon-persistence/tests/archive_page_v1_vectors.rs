@@ -45,11 +45,11 @@ fn county_ref_json() -> Value {
 }
 
 fn detroit_ref_json() -> Value {
-    json!({"kind": "place", "id": "2684000"})
+    json!({"kind": "place", "id": "2622000"})
 }
 
 fn riverview_ref_json() -> Value {
-    json!({"kind": "place", "id": "2674900"})
+    json!({"kind": "place", "id": "2668880"})
 }
 
 fn page_input_json() -> Value {
@@ -92,7 +92,7 @@ fn full_knowledge_json() -> Value {
             "granted_tick": 42,
             "citation": citation_json("knowledge-event", "employment@tick-42"),
         },
-        subject_grant_json(&detroit_ref_json(), "place/2684000"),
+        subject_grant_json(&detroit_ref_json(), "place/2622000"),
     ])
 }
 
@@ -109,7 +109,7 @@ fn link_grant_absent_knowledge_json() -> Value {
 }
 
 fn unknown_subject_knowledge_json() -> Value {
-    json!([subject_grant_json(&detroit_ref_json(), "place/2684000")])
+    json!([subject_grant_json(&detroit_ref_json(), "place/2622000")])
 }
 
 fn parse_kind(value: &str) -> ArchiveSubjectKindV1 {

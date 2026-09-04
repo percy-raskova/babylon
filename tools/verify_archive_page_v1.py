@@ -17,7 +17,7 @@ SCHEMA_PATH = "rust/crates/babylon-persistence/migrations/semantic_archive_v1.sq
 ATOM_SCHEMA_PATH = "rust/crates/babylon-persistence/migrations/archive_atom_v1.sql"
 WORKER_DOMAIN_ASCII_NUL = "babylon.semantic-archive-worker.v1"
 DIRTY_BATCH_DOMAIN_ASCII_NUL = "babylon.semantic-archive-dirty-batch.v1"
-TEMPLATE_SHA256 = "f5561534e53924ac4f7970d9abfb19d032cf491e6d04dc2463d3b3bf25c4b539"
+TEMPLATE_SHA256 = "d7904379cf09f41db6abea91465b5fe6e804867cf876bd44a09fe63ba9755108"
 MAX_U64 = (1 << 64) - 1
 MAX_I64 = (1 << 63) - 1
 MAX_ID_BYTES = 128
@@ -131,8 +131,8 @@ COMPILED_LAYOUTS = {
             "verified_tick_decimal",
             "tick_content_hash_hex",
         ],
-        "known_link_form": "[[{kind}/{id}|{known_label}]]",
-        "redlink_form": "[[{kind}/{id}]]",
+        "known_link_form": "[{known_label}](subject:{kind}/{id})",
+        "redlink_form": "[](subject:{kind}/{id})",
     },
     "search_text_v1": {
         "join": "single ASCII space",
@@ -611,14 +611,14 @@ def _verify_render(row: dict[str, Any]) -> str | None:
     for link in page["links"]:
         target_key = _page_key(link["target"])
         if _known_subject(grants, link["target"]):
-            if f"[[{target_key}|{link['known_label']}]]" not in markdown:
+            if f"[{link['known_label']}](subject:{target_key})" not in markdown:
                 return f"{row['id']}: known link drift: {target_key}"
         else:
-            redlink_token = f"[[{target_key}]]"
-            known_link_token = f"[[{target_key}|{link['known_label']}]]"
+            redlink_token = f"[](subject:{target_key})"
+            known_link_token = f"[{link['known_label']}](subject:{target_key})"
             if redlink_token not in markdown:
                 return f"{row['id']}: redlink drift: {target_key}"
-            if f"[[{target_key}|" in markdown or known_link_token in markdown:
+            if known_link_token in markdown:
                 return f"{row['id']}: redlink leaked the known label: {target_key}"
     if _derived_search_text(page, grants) != data.get("search_text"):
         return f"{row['id']}: search_text derivation mismatch"

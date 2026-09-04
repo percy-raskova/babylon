@@ -7,7 +7,8 @@
 -- LOGIN role as a member of babylon_reader (NOSUPERUSER NOCREATEDB
 -- NOCREATEROLE) and points BABYLON_READER_DSN at that credential. The reader
 -- handle refuses to operate unless the session privilege census is exactly
--- SELECT on this view.
+-- the footprint: SELECT on this view before the atom schema, SELECT on this
+-- view plus the three atom views after it.
 CREATE VIEW public.v_committed_tick_status_v1 AS
 SELECT
     campaign_id,
@@ -18,6 +19,25 @@ SELECT
 FROM babylon_state.tick_commit;
 
 GRANT SELECT ON public.v_committed_tick_status_v1 TO babylon_reader;
+
+-- Guarded atom-view grants: when the additive atom schema is already
+-- installed, a fresh reader role must hold SELECT on its three fog-safe views
+-- too. When the atom schema is absent this block is a no-op, and when the
+-- atom schema installs later its own migration grants these views to an
+-- existing role, so either install order reconciles to the same footprint.
+DO $$
+BEGIN
+    IF pg_catalog.to_regclass('public.v_archive_page_known_v1') IS NOT NULL THEN
+        GRANT SELECT ON public.v_archive_page_known_v1 TO babylon_reader;
+    END IF;
+    IF pg_catalog.to_regclass('public.v_archive_atom_visible') IS NOT NULL THEN
+        GRANT SELECT ON public.v_archive_atom_visible TO babylon_reader;
+    END IF;
+    IF pg_catalog.to_regclass('public.v_county_card_atoms') IS NOT NULL THEN
+        GRANT SELECT ON public.v_county_card_atoms TO babylon_reader;
+    END IF;
+END
+$$;
 
 -- Defense in depth: these tables are already revoked from PUBLIC, and the role
 -- inherits nothing, but pin the refusal explicitly when the Archive schema is
@@ -32,6 +52,12 @@ BEGIN
     END IF;
     IF pg_catalog.to_regclass('babylon_meta.archive_receipt_consumption_v1') IS NOT NULL THEN
         REVOKE ALL ON TABLE babylon_meta.archive_receipt_consumption_v1 FROM babylon_reader;
+    END IF;
+    IF pg_catalog.to_regclass('babylon_meta.archive_atom_v1') IS NOT NULL THEN
+        REVOKE ALL ON TABLE babylon_meta.archive_atom_v1 FROM babylon_reader;
+    END IF;
+    IF pg_catalog.to_regclass('babylon_meta.archive_page_atom_v1') IS NOT NULL THEN
+        REVOKE ALL ON TABLE babylon_meta.archive_page_atom_v1 FROM babylon_reader;
     END IF;
 END
 $$;

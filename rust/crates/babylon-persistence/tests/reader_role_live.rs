@@ -379,30 +379,30 @@ fn county_page_input(tick_content_hash: [u8; 32]) -> ArchivePageInputV1 {
     .expect("county page input")
 }
 
-/// Grant subject and employment knowledge, then materialize the tick-one
-/// receipt so `search_known` has one known page to find.
+/// Grant employment knowledge, then materialize the tick-one receipt so
+/// `search_known` has one known page to find. The county subject grant needs
+/// no explicit insert: foundation seeding granted every real Michigan county
+/// subject at tick zero, and a conflicting re-grant would refuse `GrantConflict`.
 fn materialize_county_page(config: &Config, campaign_id: CampaignId, tick_content_hash: [u8; 32]) {
     let store = SemanticArchiveStoreV1::new(config);
     let county_ref = ArchivePageRefV1::try_new(ArchiveSubjectKindV1::County, "26163".to_owned())
         .expect("county ref");
-    for (grant_key, source_id) in [
-        ("subject", "reader-live-subject"),
-        ("employment", "reader-live-employment"),
-    ] {
-        store
-            .grant_knowledge(
-                campaign_id,
-                &ArchiveKnowledgeGrantV1::try_new(
-                    county_ref.clone(),
-                    grant_key.to_owned(),
-                    1,
-                    ArchiveCitationV1::try_new(source_id.to_owned(), format!("{grant_key}@tick-1"))
-                        .expect("live grant citation"),
+    store
+        .grant_knowledge(
+            campaign_id,
+            &ArchiveKnowledgeGrantV1::try_new(
+                county_ref,
+                "employment".to_owned(),
+                1,
+                ArchiveCitationV1::try_new(
+                    "reader-live-employment".to_owned(),
+                    "employment@tick-1".to_owned(),
                 )
-                .expect("live knowledge grant"),
+                .expect("live grant citation"),
             )
-            .expect("knowledge grant persists");
-    }
+            .expect("live knowledge grant"),
+        )
+        .expect("knowledge grant persists");
     let batch = ArchiveDirtyBatchV1::try_new(
         1,
         tick_content_hash,
@@ -429,8 +429,8 @@ fn tick_one_content_hash(config: &Config, campaign_id: CampaignId) -> [u8; 32] {
     receipt.try_into().expect("exact receipt digest width")
 }
 
-/// Run as the database owner: the role holds SELECT only on the view and no
-/// table privilege anywhere else.
+/// Run as the database owner: the role holds SELECT only on the fog-safe
+/// views and no table privilege anywhere else.
 fn assert_owner_side_privilege_matrix(client: &mut postgres::Client) {
     let held = client
         .query(
@@ -440,7 +440,9 @@ fn assert_owner_side_privilege_matrix(client: &mut postgres::Client) {
                  ('babylon_state.campaign'), \
                  ('babylon_meta.archive_page_v1'), \
                  ('babylon_meta.archive_knowledge_grant_v1'), \
-                 ('babylon_meta.archive_receipt_consumption_v1')) AS tables(relation) \
+                 ('babylon_meta.archive_receipt_consumption_v1'), \
+                 ('babylon_meta.archive_atom_v1'), \
+                 ('babylon_meta.archive_page_atom_v1')) AS tables(relation) \
              CROSS JOIN (VALUES \
                  ('SELECT'::pg_catalog.text), ('INSERT'), ('UPDATE'), ('DELETE'), \
                  ('TRUNCATE'), ('REFERENCES'), ('TRIGGER')) AS privileges(privilege) \
@@ -455,35 +457,38 @@ fn assert_owner_side_privilege_matrix(client: &mut postgres::Client) {
         held.is_empty(),
         "babylon_reader must hold no base-table privileges, held={held:?}"
     );
-    let view_select = client
-        .query_one(
-            "SELECT pg_catalog.has_table_privilege(\
-                 'babylon_reader', 'public.v_committed_tick_status_v1', 'SELECT')",
-            &[],
-        )
-        .expect("view SELECT privilege query")
-        .try_get::<_, bool>(0)
-        .expect("view SELECT privilege decodes");
-    assert!(view_select, "babylon_reader holds SELECT on the view");
-    let view_write = client
-        .query_one(
-            "SELECT pg_catalog.bool_or(priv) FROM (VALUES \
-                 (pg_catalog.has_table_privilege(\
-                     'babylon_reader', 'public.v_committed_tick_status_v1', 'INSERT')), \
-                 (pg_catalog.has_table_privilege(\
-                     'babylon_reader', 'public.v_committed_tick_status_v1', 'UPDATE')), \
-                 (pg_catalog.has_table_privilege(\
-                     'babylon_reader', 'public.v_committed_tick_status_v1', 'DELETE')) \
-             ) AS writes(priv)",
-            &[],
-        )
-        .expect("view write privilege query")
-        .try_get::<_, bool>(0)
-        .expect("view write privilege decodes");
-    assert!(
-        !view_write,
-        "babylon_reader must not hold INSERT, UPDATE, or DELETE on the view"
-    );
+    for view in [
+        "public.v_committed_tick_status_v1",
+        "public.v_archive_page_known_v1",
+        "public.v_archive_atom_visible",
+        "public.v_county_card_atoms",
+    ] {
+        let view_select = client
+            .query_one(
+                "SELECT pg_catalog.has_table_privilege('babylon_reader', $1::text, 'SELECT')",
+                &[&view],
+            )
+            .expect("view SELECT privilege query")
+            .try_get::<_, bool>(0)
+            .expect("view SELECT privilege decodes");
+        assert!(view_select, "babylon_reader holds SELECT on {view}");
+        let view_write = client
+            .query_one(
+                "SELECT pg_catalog.bool_or(priv) FROM (VALUES \
+                     (pg_catalog.has_table_privilege('babylon_reader', $1::text, 'INSERT')), \
+                     (pg_catalog.has_table_privilege('babylon_reader', $1::text, 'UPDATE')), \
+                     (pg_catalog.has_table_privilege('babylon_reader', $1::text, 'DELETE')) \
+                 ) AS writes(priv)",
+                &[&view],
+            )
+            .expect("view write privilege query")
+            .try_get::<_, bool>(0)
+            .expect("view write privilege decodes");
+        assert!(
+            !view_write,
+            "babylon_reader must not hold INSERT, UPDATE, or DELETE on {view}"
+        );
+    }
 }
 
 /// Every read a fog-safe reader must never reach, run under
@@ -503,6 +508,14 @@ fn assert_reader_query_refusals(client: &mut postgres::Client) {
         (
             "read archive receipt consumption",
             "SELECT pg_catalog.count(*) FROM babylon_meta.archive_receipt_consumption_v1",
+        ),
+        (
+            "read archive atoms",
+            "SELECT pg_catalog.count(*) FROM babylon_meta.archive_atom_v1",
+        ),
+        (
+            "read archive page atom composition",
+            "SELECT pg_catalog.count(*) FROM babylon_meta.archive_page_atom_v1",
         ),
         (
             "write through the tick-status view",
@@ -603,6 +616,65 @@ fn live_reader_role_reads_the_view_and_refuses_every_base_relation() {
     target.finish();
 }
 
+/// Slice 2A fog-safe reads: the confined credential searches known pages
+/// through the view, each hit carries its structured atom composition, the
+/// county-card projection agrees, and an ungranted county stays dark.
+fn assert_confined_reader_search_and_card(
+    reader: &SemanticArchiveReaderV1,
+    campaign_id: CampaignId,
+) {
+    let hits = reader
+        .search_known(campaign_id, "728576", 10)
+        .expect("confined reader searches known pages through the view");
+    assert_eq!(hits.len(), 1, "exactly one known page matches");
+    let hit = &hits[0];
+    assert_eq!(hit.page_ref().kind(), ArchiveSubjectKindV1::County);
+    assert_eq!(hit.page_ref().id(), "26163");
+    assert_eq!(hit.title(), "Wayne County");
+    assert!(
+        hit.atoms()
+            .iter()
+            .any(|atom| atom.signal_key() == "subject"),
+        "the subject atom rides on the search hit"
+    );
+    let employment = hit
+        .atoms()
+        .iter()
+        .filter(|atom| atom.signal_key() == "employment")
+        .collect::<Vec<_>>();
+    assert_eq!(
+        employment.len(),
+        1,
+        "exactly one employment atom is visible"
+    );
+    assert_eq!(employment[0].grant_key(), "employment");
+    assert!(
+        matches!(
+            employment[0].value(),
+            babylon_persistence::ArchiveAtomValueV1::Text(text) if text == "728576 jobs"
+        ),
+        "the atom carries the exact signal value"
+    );
+
+    let card = reader
+        .county_card_atoms(campaign_id, "26163")
+        .expect("confined reader reads the county card atoms");
+    assert_eq!(
+        card.len(),
+        hit.atoms().len(),
+        "the county card reads the page composition"
+    );
+    assert!(
+        card.iter().any(|atom| atom.signal_key() == "employment"),
+        "the county card exposes the employment atom"
+    );
+
+    let dark = reader
+        .county_card_atoms(campaign_id, "99901")
+        .expect("ungranted county card reads empty");
+    assert!(dark.is_empty(), "ungranted subjects mint no visible atoms");
+}
+
 #[test]
 #[ignore = "requires the task-owned disposable PostgreSQL runtime and committed ticks"]
 fn live_reader_handle_reads_through_confined_login_and_refuses_writer_authority() {
@@ -656,19 +728,7 @@ fn live_reader_handle_reads_through_confined_login_and_refuses_writer_authority(
         "the reader status preserves the acknowledged commit tail hash exactly"
     );
 
-    // Fog behavior: the confined credential holds no base-table privilege, so
-    // the store search boundary refuses until the Slice 2 fog-safe search
-    // views land — even though a known page exists.
-    let search = reader.search_known(target.campaign_id, "728576", 10);
-    assert!(
-        matches!(
-            search,
-            Err(babylon_persistence::SemanticArchiveReaderErrorV1::Archive(
-                babylon_persistence::SemanticArchiveErrorV1::Database { .. }
-            ))
-        ),
-        "the confined reader must hit the fog wall on base tables, got {search:?}"
-    );
+    assert_confined_reader_search_and_card(&reader, target.campaign_id);
 
     // The owner credential carries writer authority: the handle must refuse
     // to operate, not silently read with owner powers.
@@ -727,6 +787,27 @@ fn live_reader_installer_refuses_privilege_drift_and_view_identity_mismatch() {
         install_reader_role_v1(&target.config).map(|_| ()),
         Ok(()),
         "the census reconciles to AlreadyCurrent once the drift is revoked"
+    );
+
+    // Atom-schema drift: a base atom-table grant is privilege drift too.
+    client
+        .batch_execute("GRANT SELECT ON babylon_meta.archive_atom_v1 TO babylon_reader")
+        .expect("atom drift grant applies");
+    let atom_drift = install_reader_role_v1(&target.config).map(|_| ());
+    match atom_drift {
+        Err(babylon_persistence::SemanticArchiveReaderErrorV1::PrivilegeDrift(held)) => assert!(
+            held.contains(&"babylon_meta.archive_atom_v1:SELECT".to_owned()),
+            "the drift census names the atom-table entry, held={held:?}"
+        ),
+        other => panic!("atom-table privilege drift must refuse loudly, got {other:?}"),
+    }
+    client
+        .batch_execute("REVOKE SELECT ON babylon_meta.archive_atom_v1 FROM babylon_reader")
+        .expect("atom drift revoke applies");
+    assert_eq!(
+        install_reader_role_v1(&target.config).map(|_| ()),
+        Ok(()),
+        "the census reconciles once the atom-table drift is revoked"
     );
 
     // Identity: a same-named base table is not the pinned view.

@@ -4,8 +4,8 @@
 //! Each test clones the validated Rust-active runtime template, commits real
 //! ticks through `DurableReplayRuntimeV2`, and proves one place dossier
 //! acceptance property against the committed dirty receipts: loud truncation
-//! refusal, bounded allowlist drain with clean rerun, and grant-refresh
-//! republication.
+//! refusal, bounded allowlist drain with clean rerun, and foundation-seeded
+//! grants publishing the revealed page without any explicit grant insert.
 
 use std::str::FromStr;
 
@@ -18,9 +18,8 @@ use babylon_kernel::sha256_of;
 use babylon_kernel::tick_content_hash::RefDigestV1;
 use babylon_kernel::ContentDigest;
 use babylon_persistence::{
-    michigan_dynamic_hex_foundation_v1, validate_legacy_connection_target, ArchiveCitationV1,
-    ArchiveKnowledgeGrantV1, ArchivePageRefV1, ArchiveReceiptDispositionV1,
-    ArchiveSchemaDispositionV1, ArchiveSubjectKindV1, ArchiveWorkerV1, CampaignId,
+    michigan_dynamic_hex_foundation_v1, validate_legacy_connection_target,
+    ArchiveReceiptDispositionV1, ArchiveSchemaDispositionV1, ArchiveWorkerV1, CampaignId,
     DurableReplayRuntimeV2, FoundationContentBundleV1, PlaceDossierProducerV1,
     SemanticArchiveErrorV1, SemanticArchiveStoreV1,
 };
@@ -263,74 +262,6 @@ impl LivePlaceTarget {
     }
 }
 
-fn grant(
-    store: &SemanticArchiveStoreV1,
-    campaign_id: CampaignId,
-    kind: ArchiveSubjectKindV1,
-    id: &str,
-    grant_key: &str,
-    granted_tick: u64,
-) {
-    store
-        .grant_knowledge(
-            campaign_id,
-            &ArchiveKnowledgeGrantV1::try_new(
-                ArchivePageRefV1::try_new(kind, id.to_owned()).expect("page ref"),
-                grant_key.to_owned(),
-                granted_tick,
-                ArchiveCitationV1::try_new(
-                    "live-place-grant".to_owned(),
-                    format!("{}/{id}@{grant_key}", kind.as_str()),
-                )
-                .expect("grant citation"),
-            )
-            .expect("knowledge grant"),
-        )
-        .expect("knowledge grant persists");
-}
-
-/// Grant subject plus identity field for every given place and subject for
-/// every overlapping county, all visible from tick one.
-fn grant_full_place_knowledge(
-    store: &SemanticArchiveStoreV1,
-    campaign_id: CampaignId,
-    producer: &PlaceDossierProducerV1,
-    geoids: &[String],
-) {
-    let allowed: std::collections::BTreeSet<&str> = geoids.iter().map(String::as_str).collect();
-    for plan in producer.desired_pages().expect("desired pages build") {
-        if !allowed.contains(plan.place_geoid()) {
-            continue;
-        }
-        grant(
-            store,
-            campaign_id,
-            ArchiveSubjectKindV1::Place,
-            plan.place_geoid(),
-            "subject",
-            1,
-        );
-        grant(
-            store,
-            campaign_id,
-            ArchiveSubjectKindV1::Place,
-            plan.place_geoid(),
-            "identity",
-            1,
-        );
-        for slice in plan.county_links() {
-            grant(
-                store,
-                campaign_id,
-                ArchiveSubjectKindV1::County,
-                slice.county_geoid(),
-                "subject",
-                1,
-            );
-        }
-    }
-}
-
 fn place_page_count(config: &Config, campaign_id: CampaignId) -> i64 {
     config
         .connect(NoTls)
@@ -396,18 +327,6 @@ fn dispositions(
         .collect()
 }
 
-fn assert_redacted_detroit(row: &(String, i64, String)) {
-    assert_eq!(row.1, 1);
-    assert!(
-        !row.2.contains("## Signals"),
-        "without the identity grant the page publishes no signal"
-    );
-    assert!(
-        row.2.contains("[[county/26163]]"),
-        "without the county grant the link stays a redlink"
-    );
-}
-
 fn assert_revealed_detroit(row: &(String, i64, String), verified_tick: i64) {
     assert_eq!(row.1, verified_tick, "the page carries its receipt tick");
     assert!(
@@ -417,7 +336,7 @@ fn assert_revealed_detroit(row: &(String, i64, String), verified_tick: i64) {
         "the identity grant reveals the signal citation"
     );
     assert!(
-        row.2.contains("[[county/26163|Wayne County]]"),
+        row.2.contains("[Wayne County](subject:county/26163)"),
         "the county grant reveals the link label"
     );
 }
@@ -496,9 +415,9 @@ fn live_place_producer_drains_allowlisted_pages_and_reruns_clean() {
     ];
     let producer = PlaceDossierProducerV1::with_place_allowlist(&target.config, &allowlist)
         .expect("sorted unique allowlist binds");
-    let store = SemanticArchiveStoreV1::new(&target.config);
-    grant_full_place_knowledge(&store, target.campaign_id, &producer, &allowlist);
 
+    // No explicit grants: foundation seeding granted every allowlisted place
+    // subject and identity plus every overlapping county subject at tick zero.
     let mut worker = ArchiveWorkerV1::new(&target.config);
     let report = worker
         .sweep_once(target.campaign_id, &producer)
@@ -534,7 +453,7 @@ fn live_place_producer_drains_allowlisted_pages_and_reruns_clean() {
         "a granted identity signal pins the exact artifact row"
     );
     assert!(
-        detroit.2.contains("[[county/26163|Wayne County]]"),
+        detroit.2.contains("[Wayne County](subject:county/26163)"),
         "a granted county subject renders its known label"
     );
 
@@ -544,7 +463,7 @@ fn live_place_producer_drains_allowlisted_pages_and_reruns_clean() {
         .expect("Fenton city published");
     for county in ["26049", "26093", "26125"] {
         assert!(
-            fenton.2.contains(&format!("[[county/{county}|")),
+            fenton.2.contains(&format!("](subject:county/{county})")),
             "cross-county place keeps every county slice, including {county}"
         );
     }
@@ -573,7 +492,7 @@ fn live_place_producer_drains_allowlisted_pages_and_reruns_clean() {
 
 #[test]
 #[ignore = "requires the task-owned disposable PostgreSQL runtime and committed ticks"]
-fn live_place_producer_grant_refresh_republicates_revealed_page() {
+fn live_place_producer_foundation_grants_publish_revealed_page_and_rerun_defers_clean() {
     let target = LivePlaceTarget::create(
         "placeproducerrefresh",
         0x2200_0000_0000_0000_0000_0000_0000_00b4,
@@ -583,21 +502,14 @@ fn live_place_producer_grant_refresh_republicates_revealed_page() {
     let allowlist = vec!["2622000".to_owned()];
     let producer = PlaceDossierProducerV1::with_place_allowlist(&target.config, &allowlist)
         .expect("sorted unique allowlist binds");
-    let store = SemanticArchiveStoreV1::new(&target.config);
 
-    // Publish redacted: only the place subject grant exists at receipt one.
-    grant(
-        &store,
-        target.campaign_id,
-        ArchiveSubjectKindV1::Place,
-        "2622000",
-        "subject",
-        1,
-    );
+    // No explicit grants: foundation seeding granted the place subject and
+    // identity and the overlapping county subject at tick zero, so the first
+    // receipt already publishes the fully revealed page.
     let mut worker = ArchiveWorkerV1::new(&target.config);
     let first = worker
         .sweep_once(target.campaign_id, &producer)
-        .expect("subject-only sweep publishes the redacted page");
+        .expect("foundation-knowledge sweep publishes the revealed page");
     assert_eq!(
         dispositions(&first),
         vec![
@@ -607,43 +519,11 @@ fn live_place_producer_grant_refresh_republicates_revealed_page() {
         ]
     );
     let rows = place_page_rows(&target.config, target.campaign_id);
-    assert_redacted_detroit(detroit_row(&rows));
-
-    // Later grants arrive, visible from tick two: the page re-dirties and
-    // the next pending receipt republishes it revealed.
-    grant(
-        &store,
-        target.campaign_id,
-        ArchiveSubjectKindV1::Place,
-        "2622000",
-        "identity",
-        2,
-    );
-    grant(
-        &store,
-        target.campaign_id,
-        ArchiveSubjectKindV1::County,
-        "26163",
-        "subject",
-        2,
-    );
-    let second = worker
-        .sweep_once(target.campaign_id, &producer)
-        .expect("grant-refresh sweep republishes");
-    assert_eq!(
-        dispositions(&second),
-        vec![
-            (2, ArchiveReceiptDispositionV1::Applied),
-            (3, ArchiveReceiptDispositionV1::Deferred),
-        ],
-        "receipt two republishes the revealed page; receipt three defers clean"
-    );
-    let rows = place_page_rows(&target.config, target.campaign_id);
-    assert_revealed_detroit(detroit_row(&rows), 2);
+    assert_revealed_detroit(detroit_row(&rows), 1);
     assert_eq!(place_page_count(&target.config, target.campaign_id), 1);
     assert_eq!(
         receipt_consumption_count(&target.config, target.campaign_id),
-        2
+        1
     );
 
     // The revealed page settles: reruns reconcile without further writes.
@@ -652,13 +532,17 @@ fn live_place_producer_grant_refresh_republicates_revealed_page() {
         .expect("settled sweep reconciles");
     assert_eq!(
         dispositions(&settled),
-        vec![(3, ArchiveReceiptDispositionV1::Deferred)],
-        "the revealed page settles; the last receipt re-defers clean"
+        vec![
+            (2, ArchiveReceiptDispositionV1::Deferred),
+            (3, ArchiveReceiptDispositionV1::Deferred),
+        ],
+        "the revealed page settles; the pending receipts re-defer clean"
     );
+    assert_eq!(settled.verified_tick(), 1);
     assert_eq!(place_page_count(&target.config, target.campaign_id), 1);
     assert_eq!(
         receipt_consumption_count(&target.config, target.campaign_id),
-        2
+        1
     );
     target.finish();
 }

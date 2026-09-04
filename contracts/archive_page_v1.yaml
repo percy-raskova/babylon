@@ -32,8 +32,9 @@ constants:
   front_matter_contract_id: babylon.archive-page.v1
   archive_schema_contract_id: babylon.semantic-archive-schema.v1
   template_path: rust/crates/babylon-persistence/src/archive_page_v1.md.j2
-  template_sha256: f5561534e53924ac4f7970d9abfb19d032cf491e6d04dc2463d3b3bf25c4b539
+  template_sha256: d7904379cf09f41db6abea91465b5fe6e804867cf876bd44a09fe63ba9755108
   worker_domain_ascii_nul: babylon.semantic-archive-worker.v1
+  atom_schema_path: rust/crates/babylon-persistence/migrations/archive_atom_v1.sql
   dirty_batch_domain_ascii_nul: babylon.semantic-archive-dirty-batch.v1
   knowledge_domain_ascii_nul: babylon.semantic-archive-knowledge.v1
   county_kind_tag_u8: 1
@@ -94,6 +95,7 @@ layouts:
     fields:
       - worker_domain_ascii_nul
       - exact_schema_sql_bytes
+      - exact_atom_schema_sql_bytes
       - template_sha256_exact_32_bytes
     digest: SHA-256 over the concatenation
   page_markdown_v1:
@@ -102,8 +104,8 @@ layouts:
       - subject_page_key
       - verified_tick_decimal
       - tick_content_hash_hex
-    known_link_form: '[[{kind}/{id}|{known_label}]]'
-    redlink_form: '[[{kind}/{id}]]'
+    known_link_form: '[{known_label}](subject:{kind}/{id})'
+    redlink_form: '[](subject:{kind}/{id})'
   search_text_v1:
     join: single ASCII space
     parts:
@@ -116,6 +118,15 @@ layouts:
     order:
       - subject_grant_citation_first
       - distinct_known_signal_citations_in_signal_order
+  babylon_markdown_v1:
+    profile: GFM 0.29 plus the subject URI scheme and nothing else
+    contract: contracts/babylon_markdown_v1.yaml
+    granted_link_form: '[{known_label}](subject:{kind}/{id})'
+    bare_link_form: '[](subject:{kind}/{id})'
+    pending_display_form: '~~[{known_label}](subject:{kind}/{id})~~'
+    pending_form_note: display-time synthesis only; never stored in page bytes
+    citation_line_regex: '^- \*\*(?P<label>[^*]+):\*\* (?P<value>.+) — (?P<source_id>[^;]+); (?P<locator>.+)$'
+    encoding: UTF-8 with LF endings; the CR byte and the '<' byte refuse
 
 vector_kinds:
   required: [render, refusal, batch, identity]

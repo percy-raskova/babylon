@@ -3,7 +3,9 @@
 #![warn(clippy::pedantic)]
 
 mod archive;
+mod archive_foundation_grants;
 mod archive_worker;
+mod babylon_markdown;
 mod bootstrap;
 mod checkpoint;
 pub mod committed_tick_envelope;
@@ -11,6 +13,7 @@ mod county_producer;
 mod cutover_vectors;
 pub mod error;
 mod foundation;
+mod glossary_concepts;
 pub mod h3_reference_cohort;
 mod h3_reference_installer;
 mod h3_shadow_backfill;
@@ -39,7 +42,23 @@ mod territory_county_map;
 pub mod tick_commit_claim;
 
 pub use archive::*;
+pub use archive_foundation_grants::{
+    foundation_grant_rows_v1, foundation_grants_semantic_sha256_v1, seed_foundation_grants_v1,
+    FoundationGrantReportV1, FoundationGrantRowV1, FoundationGrantsErrorV1,
+    FOUNDATION_CONCEPT_GRANT_KEYS_V1, FOUNDATION_COUNTY_GRANT_KEYS_V1,
+    FOUNDATION_COUNTY_LOCATOR_PREFIX_V1, FOUNDATION_COUNTY_SOURCE_ID_V1,
+    FOUNDATION_GRANTS_SEMANTIC_DOMAIN_V1, FOUNDATION_GRANT_TICK_V1,
+    FOUNDATION_PLACE_CONTAINMENT_LOCATOR_PREFIX_V1, FOUNDATION_PLACE_CONTAINMENT_SOURCE_ID_V1,
+    FOUNDATION_PLACE_GRANT_KEYS_V1, FOUNDATION_PLACE_IDENTITY_LOCATOR_PREFIX_V1,
+    FOUNDATION_PLACE_IDENTITY_SOURCE_ID_V1, MICHIGAN_GEOID_PREFIX_V1,
+    PINNED_FOUNDATION_GRANTS_SEMANTIC_SHA256_V1, STATEWIDE_RESIDUAL_COUNTY_FIPS_V1,
+};
 pub use archive_worker::*;
+pub use babylon_markdown::{
+    fog_chip_v1, git_export_markdown_v1, is_citation_line_v1, validate_babylon_markdown_v1,
+    BabylonMarkdownErrorV1, BABYLON_MARKDOWN_PROFILE_ID_V1, CITATION_LINE_REGEX_V1,
+    FOG_CHIP_SEPARATOR_V1,
+};
 pub use bootstrap::{
     bootstrap_h3_reader_epoch_v1, H3ReaderBootstrapErrorV1, H3ReaderBootstrapReportV1,
 };
@@ -65,6 +84,10 @@ pub use cutover_vectors::{
 };
 pub use error::{PersistenceError, PersistenceFailureKind};
 pub use foundation::{CampaignFoundationV1, FoundationContentBundleV1};
+pub use glossary_concepts::{
+    glossary_concepts_v1, GlossaryConceptV1, GlossaryConceptsErrorV1, GlossaryConceptsV1,
+    GLOSSARY_CONCEPTS_FIXTURE_PATH_V1, PINNED_GLOSSARY_CONCEPTS_SHA256_V1,
+};
 pub use h3_reference_cohort::{
     build_representative_h3_cohort_v1, representative_h3_reference_cohort_v1, H3ReferenceCellRow,
     H3ReferenceCohort, H3ReferenceCohortError, H3ReferenceCohortReceipt, H3ReferenceOrigin,

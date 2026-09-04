@@ -17,9 +17,9 @@ tick_content_hash: {{ tick_content_hash }}
 ## Related
 {% for link in links %}
 {% if link.known_label %}
-- [[{{ link.page_key }}|{{ link.known_label }}]]
+- [{{ link.known_label }}](subject:{{ link.page_key }})
 {% else %}
-- [[{{ link.page_key }}]]
+- [](subject:{{ link.page_key }})
 {% endif %}
 {% endfor %}
 {% endif %}

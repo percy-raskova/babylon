@@ -82,10 +82,10 @@ def test_redlink_grant_presence_is_semantically_forced() -> None:
     sparse = next(row for row in vectors if row["id"] == "render-link-grant-absent")
     sparse["data"]["knowledge"].append(
         {
-            "page_ref": {"kind": "place", "id": "2684000"},
+            "page_ref": {"kind": "place", "id": "2622000"},
             "grant_key": "subject",
             "granted_tick": 42,
-            "citation": {"source_id": "archive-subject", "locator": "place/2684000"},
+            "citation": {"source_id": "archive-subject", "locator": "place/2622000"},
         }
     )
 
@@ -134,10 +134,14 @@ def test_identity_pins_the_checked_in_template_and_schema_bytes() -> None:
     schema_bytes = (
         ROOT / "rust/crates/babylon-persistence/migrations/semantic_archive_v1.sql"
     ).read_bytes()
+    atom_schema_bytes = (
+        ROOT / "rust/crates/babylon-persistence/migrations/archive_atom_v1.sql"
+    ).read_bytes()
     template_sha256 = hashlib.sha256(template_bytes).hexdigest()
     worker = hashlib.sha256()
     worker.update(b"babylon.semantic-archive-worker.v1\x00")
     worker.update(schema_bytes)
+    worker.update(atom_schema_bytes)
     worker.update(bytes.fromhex(template_sha256))
 
     assert identity["data"]["template_sha256_hex"] == template_sha256
@@ -300,6 +304,20 @@ def test_redlink_known_label_substring_outside_the_link_token_is_not_a_leak() ->
     sparse["data"]["content_sha256_hex"] = hashlib.sha256(bytes(markdown)).hexdigest()
 
     assert verify_all(contract, vectors, ROOT) == []
+
+
+def test_redlink_with_any_label_refuses_not_only_the_known_label() -> None:
+    contract = load_contract(SCHEMA)
+    vectors = copy.deepcopy(load_vectors(VECTORS))
+    sparse = next(row for row in vectors if row["id"] == "render-link-grant-absent")
+    markdown = bytearray.fromhex(sparse["data"]["markdown_hex"])
+    markdown.extend(b"\n\n- [Riviera](subject:place/2668880)\n")
+    sparse["data"]["markdown_hex"] = markdown.hex()
+    sparse["data"]["content_sha256_hex"] = hashlib.sha256(bytes(markdown)).hexdigest()
+
+    errors = verify_all(contract, vectors, ROOT)
+
+    assert any("redlink leaked a label for place/2668880" in error for error in errors)
 
 
 def test_cli_derives_repo_root_independently_of_vectors_location(

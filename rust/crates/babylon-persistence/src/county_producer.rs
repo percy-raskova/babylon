@@ -125,10 +125,14 @@ ORDER BY subject_id";
 ///
 /// The query returns the exact campaign grant rows visible at the receipt
 /// tick (`granted_tick <= $2`), mirroring the renderer's knowledge snapshot
-/// semantics, and never joins material or raw event ledgers.
+/// semantics, and never joins material or raw event ledgers. Page-subject
+/// knowledge only: seeded concept grants widen the grant table's subject
+/// domain (ADR249 R3/R12) but never enter the page grant snapshot, which
+/// decodes through the page-domain subject kind.
 pub const ARCHIVE_COUNTY_GRANTS_SQL_V1: &str = "SELECT subject_kind, subject_id, grant_key \
 FROM babylon_meta.archive_knowledge_grant_v1 \
 WHERE campaign_id = $1::uuid AND granted_tick <= $2 \
+  AND subject_kind IN ('county', 'place') \
 ORDER BY subject_kind, subject_id, grant_key";
 
 /// Contract-pinned SHA-256 of the `dim_county` identity artifact that backs
@@ -625,6 +629,23 @@ pub fn county_page_semantic_sha256_v1(
     hasher.finalize().into()
 }
 
+/// Reparse one `Related`-section subject-scheme link bullet (after the `- `
+/// prefix) into its label and page key. The known form is
+/// `[{label}](subject:{kind}/{id})`; the bare fog form is
+/// `[](subject:{kind}/{id})` and carries no label bytes, so its label is
+/// `None`. Any shape drift returns `None` so a stored page that no longer
+/// matches the pinned renderer refuses the dirty-diff read.
+fn parse_subject_scheme_link(entry: &str) -> Option<(Option<String>, &str)> {
+    let (label, target) = entry.split_once("](subject:")?;
+    let key = target.strip_suffix(')')?;
+    let label = if label.is_empty() {
+        None
+    } else {
+        Some(label.to_owned())
+    };
+    Some((label, key))
+}
+
 /// Parse the semantic projection out of one stored rendered county page.
 ///
 /// The parser is coupled to the pinned `archive_page_v1.md.j2` template
@@ -684,12 +705,8 @@ pub fn parse_stored_county_page_v1(
             continue;
         }
         if in_related {
-            if let Some(entry) = line.strip_prefix("- [[") {
-                let inner = entry.strip_suffix("]]")?;
-                let (key, label) = match inner.split_once('|') {
-                    Some((key, label)) => (key, Some(label.to_owned())),
-                    None => (inner, None),
-                };
+            if let Some(entry) = line.strip_prefix("- [") {
+                let (label, key) = parse_subject_scheme_link(entry)?;
                 let place = key.strip_prefix("place/")?;
                 if place.len() != 7 || !place.bytes().all(|byte| byte.is_ascii_digit()) {
                     return None;

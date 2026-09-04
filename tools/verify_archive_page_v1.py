@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -14,9 +15,10 @@ import yaml
 FRONT_MATTER_CONTRACT_ID = "babylon.archive-page.v1"
 TEMPLATE_PATH = "rust/crates/babylon-persistence/src/archive_page_v1.md.j2"
 SCHEMA_PATH = "rust/crates/babylon-persistence/migrations/semantic_archive_v1.sql"
+ATOM_SCHEMA_PATH = "rust/crates/babylon-persistence/migrations/archive_atom_v1.sql"
 WORKER_DOMAIN_ASCII_NUL = "babylon.semantic-archive-worker.v1"
 DIRTY_BATCH_DOMAIN_ASCII_NUL = "babylon.semantic-archive-dirty-batch.v1"
-TEMPLATE_SHA256 = "f5561534e53924ac4f7970d9abfb19d032cf491e6d04dc2463d3b3bf25c4b539"
+TEMPLATE_SHA256 = "d7904379cf09f41db6abea91465b5fe6e804867cf876bd44a09fe63ba9755108"
 MAX_U64 = (1 << 64) - 1
 MAX_I64 = (1 << 63) - 1
 MAX_ID_BYTES = 128
@@ -47,6 +49,7 @@ COMPILED_CONSTANTS = {
     "template_path": TEMPLATE_PATH,
     "template_sha256": TEMPLATE_SHA256,
     "worker_domain_ascii_nul": WORKER_DOMAIN_ASCII_NUL,
+    "atom_schema_path": ATOM_SCHEMA_PATH,
     "dirty_batch_domain_ascii_nul": DIRTY_BATCH_DOMAIN_ASCII_NUL,
     "knowledge_domain_ascii_nul": "babylon.semantic-archive-knowledge.v1",
     "county_kind_tag_u8": 1,
@@ -117,6 +120,7 @@ COMPILED_LAYOUTS = {
         "fields": [
             "worker_domain_ascii_nul",
             "exact_schema_sql_bytes",
+            "exact_atom_schema_sql_bytes",
             "template_sha256_exact_32_bytes",
         ],
         "digest": "SHA-256 over the concatenation",
@@ -128,8 +132,8 @@ COMPILED_LAYOUTS = {
             "verified_tick_decimal",
             "tick_content_hash_hex",
         ],
-        "known_link_form": "[[{kind}/{id}|{known_label}]]",
-        "redlink_form": "[[{kind}/{id}]]",
+        "known_link_form": "[{known_label}](subject:{kind}/{id})",
+        "redlink_form": "[](subject:{kind}/{id})",
     },
     "search_text_v1": {
         "join": "single ASCII space",
@@ -146,6 +150,18 @@ COMPILED_LAYOUTS = {
             "subject_grant_citation_first",
             "distinct_known_signal_citations_in_signal_order",
         ],
+    },
+    "babylon_markdown_v1": {
+        "profile": "GFM 0.29 plus the subject URI scheme and nothing else",
+        "contract": "contracts/babylon_markdown_v1.yaml",
+        "granted_link_form": "[{known_label}](subject:{kind}/{id})",
+        "bare_link_form": "[](subject:{kind}/{id})",
+        "pending_display_form": "~~[{known_label}](subject:{kind}/{id})~~",
+        "pending_form_note": "display-time synthesis only; never stored in page bytes",
+        "citation_line_regex": (
+            r"^- \*\*(?P<label>[^*]+):\*\* (?P<value>.+) — (?P<source_id>[^;]+); (?P<locator>.+)$"
+        ),
+        "encoding": "UTF-8 with LF endings; the CR byte and the '<' byte refuse",
     },
 }
 
@@ -608,15 +624,17 @@ def _verify_render(row: dict[str, Any]) -> str | None:
     for link in page["links"]:
         target_key = _page_key(link["target"])
         if _known_subject(grants, link["target"]):
-            if f"[[{target_key}|{link['known_label']}]]" not in markdown:
+            if f"[{link['known_label']}](subject:{target_key})" not in markdown:
                 return f"{row['id']}: known link drift: {target_key}"
         else:
-            redlink_token = f"[[{target_key}]]"
-            known_link_token = f"[[{target_key}|{link['known_label']}]]"
+            redlink_token = f"[](subject:{target_key})"
             if redlink_token not in markdown:
                 return f"{row['id']}: redlink drift: {target_key}"
-            if f"[[{target_key}|" in markdown or known_link_token in markdown:
-                return f"{row['id']}: redlink leaked the known label: {target_key}"
+            labeled_link = re.search(
+                r"\[[^\]\[]+\]\(subject:" + re.escape(target_key) + r"\)", markdown
+            )
+            if labeled_link is not None:
+                return f"{row['id']}: redlink leaked a label for {target_key}"
     if _derived_search_text(page, grants) != data.get("search_text"):
         return f"{row['id']}: search_text derivation mismatch"
     if _derived_citations(page, grants) != _expected_citations(
@@ -655,6 +673,9 @@ def _verify_identity(row: dict[str, Any], root: Path) -> str | None:
         return f"{row['id']}: pinned source path drift"
     template_bytes = _bounded_file_bytes(root / TEMPLATE_PATH, MAX_PAGE_BYTES, "file_read")
     schema_bytes = _bounded_file_bytes(root / SCHEMA_PATH, MAX_CONTRACT_BYTES, "file_read")
+    atom_schema_bytes = _bounded_file_bytes(
+        root / ATOM_SCHEMA_PATH, MAX_CONTRACT_BYTES, "file_read"
+    )
     template_sha256 = hashlib.sha256(template_bytes).hexdigest()
     if template_sha256 != TEMPLATE_SHA256:
         return f"{row['id']}: template SHA-256 drift from contract constant"
@@ -663,6 +684,7 @@ def _verify_identity(row: dict[str, Any], root: Path) -> str | None:
     worker = hashlib.sha256()
     worker.update(WORKER_DOMAIN_ASCII_NUL.encode("ascii") + b"\x00")
     worker.update(schema_bytes)
+    worker.update(atom_schema_bytes)
     worker.update(bytes.fromhex(template_sha256))
     if worker.hexdigest() != data.get("worker_contract_sha256_hex"):
         return f"{row['id']}: worker contract SHA-256 mismatch"

@@ -5,7 +5,10 @@ ADR250_economy_first_gate_order:
     Director gate-sequence ruling 2026-09-04: the productive and distributive
     circuit is built and UI-validated before any pandemic benchmark, the
     minimal-substrate COVID E0 gate is deleted, and COVID becomes one merged
-    full-circuit benchmark after player agency
+    full-circuit benchmark after player agency; thin-slice rulings make
+    observed public-record baselines cursory-tier public (refining ADR249
+    R3), amend D2 so all 83 counties commit QCEW economic fields, and put
+    one Michigan world in the Bevy window (PER-319)
   issue: PER-10
   supersedes_scope:
     - project/roadmap.md gates G4-G9 ordering and numbering
@@ -60,6 +63,24 @@ ADR250_economy_first_gate_order:
     events still cannot write downstream results, no authored response
     curves, evidence classes unchanged. PER-8 keeps benchmark-program
     ownership (now G6/G7); PER-10 keeps circuit ownership (now G4).
+
+    R5. OBSERVED BASELINE IS PUBLIC. Tick-0 observed public-record values
+    (QCEW county employment, wages, establishments) publish at the cursory
+    grant tier like identity and containment; engine-derived magnitudes
+    (production totals, savings adjustments) remain earned. This refines
+    ADR249 R3's application to observed reference baselines without opening
+    derived magnitudes.
+
+    R6. D2 AMENDED. The county producer's committed-field set (median-wage
+    and phi-hour only, all else absence-maximal) expands for the Michigan
+    slice: all 83 counties commit the QCEW-seeded economic fields named by
+    the slice contract. R3 is the authority.
+
+    R7. ONE WORLD IN THE WINDOW. The Bevy story hydrates the same Michigan
+    county scenario the runtime commits, so the map lens and the dossier
+    card present one world. The Alabama lifecycle demo retires from the
+    windowed path (its conformance coverage stays); lifecycle lenses return
+    when Michigan lifecycle fields are seeded.
   alternatives_rejected:
     - >-
       Keep the two-stage E0-then-circuit order. Rejected: with no live
@@ -77,6 +98,7 @@ ADR250_economy_first_gate_order:
   consequences: |
     Linear milestone names remain as historical labels per the Director's
     minimal-admin instruction; this ADR plus the roadmap carry the live
-    order. The first circuit slice is scoped under PER-10. Gate references in
-    superseded docs follow this ordering from its date.
+    order. The first circuit slice is PER-319 under PER-10, governed by
+    R5-R7. Gate references in superseded docs follow this ordering from its
+    date.
   evidence_class: Designed

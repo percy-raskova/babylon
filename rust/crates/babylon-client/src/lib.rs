@@ -31,6 +31,7 @@ pub mod map;
 pub mod narration;
 pub mod palette;
 pub mod projection;
+pub mod session_log;
 pub mod severity;
 pub mod story;
 pub mod tessellate;

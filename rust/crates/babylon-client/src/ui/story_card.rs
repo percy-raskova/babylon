@@ -180,7 +180,11 @@ pub fn recall_story_card_on_question_mark(
 /// `sync_map_to_story` (below) reacts to the `EngineSession` swap this
 /// system performs to flip the map's own visibility+banner for the new
 /// story — ordered `.after(this)` in `TickLoopPlugin::build`, not repeated
-/// here.
+/// here. The dossier card clears through the same signal (PER-23 Slice 4):
+/// this system's `selected_county.0 = None` write is the selection change
+/// `ui::dossier_card::drive_dossier_fetch` reacts to, dropping any in-flight
+/// fetch, clearing the projection and any placeholder view — the card
+/// renders nothing until the player selects a county again.
 ///
 /// # Panics
 /// If the next catalog story fails to start — cannot happen for either

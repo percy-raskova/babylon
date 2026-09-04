@@ -27,6 +27,10 @@ fn shipped_app() -> App {
     ));
     app.add_plugins(babylon_client::map::MapPlugin);
     app.add_plugins(babylon_client::loop_ui::TickLoopPlugin);
+    // PER-23 Slice 4: the dossier card is the 14th shipped surface; the
+    // production composition adds DossierCardPlugin beside TickLoopPlugin
+    // (app.rs), and this harness mirrors that composition.
+    app.add_plugins(babylon_client::ui::dossier_card::DossierCardPlugin);
     app.insert_resource(babylon_client::story::SelectedStory(
         babylon_client::story::counties(),
     ));
@@ -302,4 +306,50 @@ fn current_client_cannot_claim_a_gameplay_gate() {
             .all(|contract| !contract.satisfies_gameplay_gate()),
         "the current Bevy client is an administrative viewer with no player action"
     );
+}
+
+/// ADR249 R9, pinned as executable contract: the county dossier card is the
+/// first Gameplay-role row — structurally complete, not exempt — but its
+/// only action, Investigate, is declared visibly unavailable, so the row
+/// validates yet stays outside every gameplay gate until Gate 5 flips one
+/// action to `Available`. The sealed reason is the exact R6 placeholder
+/// sentence the rendered card seals with.
+#[test]
+fn county_dossier_is_gameplay_role_but_gate_ineligible_until_an_action_opens() {
+    use babylon_client::decision_surface::ActionAvailabilityV1;
+
+    const OPEN: &[SurfaceActionV1] = &[SurfaceActionV1::available("investigate")];
+
+    let contract = contract_for(SurfaceId::CountyDossier);
+    assert_eq!(contract.role, DecisionSurfaceRole::Gameplay);
+    assert!(!contract.admin_debug_exempt);
+    assert!(contract.validate().is_ok());
+    assert!(
+        !contract.satisfies_gameplay_gate(),
+        "every action sealed means no player agency: the row must not satisfy the gate"
+    );
+
+    let opened = DecisionSurfaceContract {
+        actions: OPEN,
+        ..*contract
+    };
+    assert!(
+        opened.satisfies_gameplay_gate(),
+        "flipping one action to Available is exactly the Gate 5 change"
+    );
+
+    let [investigate] = contract.actions else {
+        panic!("the dossier row declares exactly one action");
+    };
+    assert_eq!(investigate.name(), "investigate");
+    match investigate.availability() {
+        ActionAvailabilityV1::Unavailable(reason) => assert_eq!(
+            reason,
+            babylon_client::ui::dossier_compose::INVESTIGATE_UNAVAILABLE_REASON,
+            "the manifest seal and the card's R6 placeholder seal are one sentence"
+        ),
+        ActionAvailabilityV1::Available => {
+            panic!("investigate must be visibly unavailable until Gate 5")
+        }
+    }
 }

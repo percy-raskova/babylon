@@ -223,38 +223,35 @@ pub fn chronicle_row_segments(row: &ChangelogRow) -> Vec<DossierSegment> {
         DossierSegment::new(format!("t{} ", row.to_tick), DossierTone::Dim),
         DossierSegment::new(format!("{} ", row.signal_key), DossierTone::Bone),
     ];
-    match (&row.from_value, &row.from_tick) {
-        (Some(from), Some(_)) => {
-            segments.push(DossierSegment::new(
-                changelog_value_text(from),
-                DossierTone::Bone,
-            ));
-            segments.push(DossierSegment::new(" → ", DossierTone::Gold));
-            segments.push(DossierSegment::new(
-                changelog_value_text(&row.to_value),
-                DossierTone::Bone,
-            ));
-            segments.push(DossierSegment::new(
-                format!(
-                    " · verified {}→{}",
-                    row.from_tick
-                        .map_or_else(|| "—".to_owned(), |t| t.to_string()),
-                    row.to_tick
-                ),
-                DossierTone::Dim,
-            ));
-        }
-        _ => {
-            segments.push(DossierSegment::new("(new) ", DossierTone::Gold));
-            segments.push(DossierSegment::new(
-                changelog_value_text(&row.to_value),
-                DossierTone::Bone,
-            ));
-            segments.push(DossierSegment::new(
-                format!(" · new at t{}", row.to_tick),
-                DossierTone::Dim,
-            ));
-        }
+    if let (Some(from), Some(_)) = (&row.from_value, &row.from_tick) {
+        segments.push(DossierSegment::new(
+            changelog_value_text(from),
+            DossierTone::Bone,
+        ));
+        segments.push(DossierSegment::new(" → ", DossierTone::Gold));
+        segments.push(DossierSegment::new(
+            changelog_value_text(&row.to_value),
+            DossierTone::Bone,
+        ));
+        segments.push(DossierSegment::new(
+            format!(
+                " · verified {}→{}",
+                row.from_tick
+                    .map_or_else(|| "—".to_owned(), |t| t.to_string()),
+                row.to_tick
+            ),
+            DossierTone::Dim,
+        ));
+    } else {
+        segments.push(DossierSegment::new("(new) ", DossierTone::Gold));
+        segments.push(DossierSegment::new(
+            changelog_value_text(&row.to_value),
+            DossierTone::Bone,
+        ));
+        segments.push(DossierSegment::new(
+            format!(" · new at t{}", row.to_tick),
+            DossierTone::Dim,
+        ));
     }
     segments
 }
@@ -416,7 +413,7 @@ mod tests {
     #[test]
     fn f64_values_render_with_the_statblock_six_decimal_discipline() {
         assert_eq!(atom_value_text(&ArchiveAtomValueV1::F64(31.4)), "31.400000");
-        assert_eq!(atom_value_text(&ArchiveAtomValueV1::U64(728576)), "728576");
+        assert_eq!(atom_value_text(&ArchiveAtomValueV1::U64(728_576)), "728576");
         assert_eq!(atom_value_text(&ArchiveAtomValueV1::Bool(true)), "true");
     }
 

@@ -10,7 +10,7 @@ use bevy::prelude::*;
 use crate::cli::CliCommand;
 use crate::dossier::{run_headless_command, HeadlessInvocation};
 use crate::story::{SelectedStory, Story};
-use crate::{logging, loop_ui, map, palette, visual_assets};
+use crate::{logging, loop_ui, map, palette, ui, visual_assets};
 
 /// Which executable shape [`build_app`] assembles.
 #[derive(Clone, Debug)]
@@ -62,6 +62,11 @@ pub fn build_app(mode: AppMode) -> App {
                 .add_plugins(visual_assets::VisualPresentationPlugin)
                 .add_plugins(map::MapPlugin)
                 .add_plugins(loop_ui::TickLoopPlugin)
+                // PER-23 Slice 4 (ADR249 R9): the county dossier card — the
+                // first Gameplay-role surface. Its resource family must exist
+                // identically in windowed and headless compositions, so it
+                // rides its own plugin rather than TickLoopPlugin's wiring.
+                .add_plugins(ui::dossier_card::DossierCardPlugin)
                 .insert_resource(SelectedStory(story))
                 .insert_resource(ClearColor(palette::FIELD));
         }

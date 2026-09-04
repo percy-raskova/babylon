@@ -1,12 +1,16 @@
 //! The PER-24 contract for every shipped Bevy decision surface.
 //!
 //! A surface may enter a gameplay gate only when it asks a decision
-//! question and declares every input/output side of the player loop. The
-//! current client is still the explicitly unfogged administrative viewer, so
-//! each shipped row below carries an administrative exemption and is
-//! ineligible for gameplay gates. [`DeclaredSurface`] binds rendered entities
-//! back to this manifest so the production plugin composition can be checked
-//! as executable code rather than inferred from documentation.
+//! question and declares every input/output side of the player loop. Most
+//! shipped rows are still the explicitly unfogged administrative viewer's
+//! instruments, each carrying an administrative exemption and ineligible for
+//! gameplay gates. The exception is the county dossier card (PER-23, ADR249
+//! R9): the first Gameplay-role row — it declares the full decision loop but
+//! its only action, Investigate, is visibly unavailable until Gate 5, so
+//! [`DecisionSurfaceContract::satisfies_gameplay_gate`] still stays false for
+//! it. [`DeclaredSurface`] binds rendered entities back to this manifest so
+//! the production plugin composition can be checked as executable code rather
+//! than inferred from documentation.
 
 use bevy::prelude::Component;
 use std::fmt;
@@ -27,11 +31,12 @@ pub enum SurfaceId {
     Countdown,
     AdminDisclosure,
     AdminInspector,
+    CountyDossier,
 }
 
 impl SurfaceId {
     /// Complete closed set used by the manifest-exhaustiveness sentinel.
-    pub const ALL: [Self; 13] = [
+    pub const ALL: [Self; 14] = [
         Self::TitleLockup,
         Self::StoryBanner,
         Self::CountyMap,
@@ -45,6 +50,7 @@ impl SurfaceId {
         Self::Countdown,
         Self::AdminDisclosure,
         Self::AdminInspector,
+        Self::CountyDossier,
     ];
 }
 
@@ -64,6 +70,7 @@ impl fmt::Display for SurfaceId {
             Self::Countdown => "countdown",
             Self::AdminDisclosure => "admin-disclosure",
             Self::AdminInspector => "admin-inspector",
+            Self::CountyDossier => "county-dossier",
         })
     }
 }
@@ -293,13 +300,81 @@ const fn admin_surface(
     }
 }
 
+/// The Investigate action's honest unavailability reason. Spelled identically
+/// in `ui::dossier_compose::INVESTIGATE_UNAVAILABLE_REASON` (the R6
+/// placeholder seal); the contract test pins both spellings to each other so
+/// the manifest and the rendered card cannot drift.
+const INVESTIGATE_SEALED: &[SurfaceActionV1] = &[SurfaceActionV1::unavailable(
+    "investigate",
+    "Investigation opens this page — unavailable until Gate 5.",
+)];
+
+#[allow(clippy::too_many_arguments)]
+const fn gameplay_surface(
+    id: SurfaceId,
+    decision_question: &'static str,
+    visible_signals: &'static [&'static str],
+    visible_uncertainty: &'static [&'static str],
+    fog_requirements: &'static [&'static str],
+    actions: &'static [SurfaceActionV1],
+    expected_receipts: &'static [&'static str],
+    archive_subjects: &'static [&'static str],
+) -> DecisionSurfaceContract {
+    DecisionSurfaceContract {
+        id,
+        role: DecisionSurfaceRole::Gameplay,
+        decision_question: Some(decision_question),
+        visible_signals,
+        visible_uncertainty,
+        fog_requirements,
+        actions,
+        expected_receipts,
+        archive_subjects,
+        admin_debug_exempt: false,
+    }
+}
+
 /// Authoritative inventory of the surfaces composed by `main.rs`.
 ///
-/// Every row is administrative today because the client has no player action
-/// and renders an always-visible `ADMIN · MATERIAL TRUTH · UNFOGGED` banner.
-/// The manifest makes that limitation executable: rich visual output cannot
-/// become gameplay evidence merely by existing.
+/// Thirteen rows are the administrative viewer's own instruments, exempt and
+/// gate-ineligible; the county dossier card is the first Gameplay-role row
+/// (ADR249 R9). It declares the full decision loop — question, signals,
+/// uncertainty, fog requirements, receipts, Archive subjects — while its
+/// only action, Investigate, is declared visibly unavailable until Gate 5,
+/// so `satisfies_gameplay_gate()` stays false and the capstone sentinel
+/// `current_client_cannot_claim_a_gameplay_gate` holds. The manifest makes
+/// that limitation executable: rich visual output cannot become gameplay
+/// evidence merely by existing, and a gameplay-role row cannot claim player
+/// agency before Gate 5 enables the verb.
 pub const SHIPPED_SURFACE_MANIFEST: &[DecisionSurfaceContract] = &[
+    gameplay_surface(
+        SurfaceId::CountyDossier,
+        "What is true here, and what would Investigation reveal?",
+        &[
+            "county identity and containment",
+            "grant-visible signal atoms with provenance citations",
+            "place-link chips with fog and pending states",
+            "durable tick beside the page's verified tick",
+            "chronicle strip from atom supersession",
+        ],
+        &[
+            "earned-tier knowledge stays sealed pending until Gate 5",
+            "Archive materialization lag: verified tick behind the durable tail",
+            "uninvestigated place subjects render R6 placeholder pages",
+        ],
+        &[
+            "known-only Archive reads through the fog-safe reader role",
+            "unacknowledged place subjects render fog chips with zero label bytes",
+            "reader credentials carry no writer authority",
+        ],
+        INVESTIGATE_SEALED,
+        &[
+            "acknowledged-commit tick status",
+            "county card atoms through the fog-safe view",
+            "subject atom history for the chronicle strip",
+        ],
+        &["county/<geoid>", "place/<geoid>"],
+    ),
     admin_surface(SurfaceId::TitleLockup, &["application identity"], NONE),
     admin_surface(SurfaceId::StoryBanner, &["selected story identity"], NONE),
     admin_surface(

@@ -11,6 +11,7 @@
 pub mod admin;
 pub mod beats;
 pub mod countdown;
+pub mod dossier_card;
 pub mod dossier_compose;
 pub mod roster_panel;
 pub mod story_card;

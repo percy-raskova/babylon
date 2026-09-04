@@ -17,8 +17,9 @@ meta:
   current_client: "Bevy admin/viewer; no player action"
   next_gates:
     - "PostgreSQL/H3/Archive decision-loop slice"
-    - "COVID E0 emergence proof"
+    - "Productive & distributive circuit"
     - "Player agency"
+    - "COVID emergence benchmark"
 
 # =============================================================================
 # CORE MANTRAS

@@ -1160,3 +1160,8 @@ decisions:
     status: accepted
     date: '2026-09-03'
     file: ADR249_semantic_atom_content_architecture.yaml
+  ADR250_economy_first_gate_order:
+    title: 'Director gate-sequence ruling 2026-09-04: the productive and distributive circuit is built and UI-validated before any pandemic benchmark; the minimal-substrate COVID E0 gate is deleted; COVID becomes one merged full-circuit benchmark after player agency (G3, G4 circuit, G5 agency, G6 COVID, G7 2008, G8 representative world); thin per-county UI-visible economy slice first under PER-10'
+    status: accepted
+    date: '2026-09-04'
+    file: ADR250_economy_first_gate_order.yaml

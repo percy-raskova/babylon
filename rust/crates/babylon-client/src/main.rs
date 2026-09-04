@@ -22,56 +22,45 @@
 //! `engine_link::engine_link_probe` itself is untouched (B0's own pinned
 //! test, `tests/engine_link.rs`, still exercises it directly).
 //!
+//! PER-23 Slice 3 (ADR249 R10-R11) adds the headless dossier CLI:
+//! `main` is now a pure dispatch shim — parse the hand-rolled CLI
+//! (`cli::parse`), build the app for the requested mode (`app::build_app`),
+//! and map the Bevy `AppExit` onto the process exit code. All windowed
+//! construction lives in `app.rs`; all parsing lives in `cli.rs`.
+//!
 //! Logging rides Bevy's own `tracing` stack (Director-approved switch
 //! 2026-08-11, #503 item 7, replacing B2 Task 16's `log4rs` sink):
 //! `LogPlugin` is the ONE global subscriber, the rolling file sink
 //! attaches as its `custom_layer`, and the stderr formatter is capped at
 //! INFO so the file's DEBUG lane stays off the terminal. The filter
-//! grants this crate DEBUG on top of Bevy's default noise floor; the
-//! startup line moves AFTER `add_plugins` because nothing is listening
-//! before `LogPlugin::build` installs the subscriber.
+//! grants this crate DEBUG on top of Bevy's default noise floor.
 
-use babylon_client::story::{select_story, SelectedStory};
-use babylon_client::{logging, loop_ui, map, palette, visual_assets};
-use bevy::log::LogPlugin;
-use bevy::prelude::*;
+use babylon_client::app::{build_app, AppMode};
+use babylon_client::cli::{self, CliRequest};
+use bevy::app::AppExit;
 
 fn main() {
-    // B3 wave-1 Task 5 (plan §2.5): `--story <id>` via bare `std::env::args()`
-    // (no `clap` dependency exists in this workspace) — an unknown id is a
-    // LOUD exit listing the catalog, never a silent fallback to the default.
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let story = select_story(&args).unwrap_or_else(|e| {
-        eprintln!("{e}");
-        std::process::exit(1);
+    let request = cli::parse(std::env::args_os().skip(1)).unwrap_or_else(|error| {
+        eprintln!("{error}");
+        std::process::exit(2);
     });
-
-    let mut app = App::new();
-    app.add_plugins(
-        DefaultPlugins
-            .set(LogPlugin {
-                filter: format!("{},babylon_client=debug", bevy::log::DEFAULT_FILTER),
-                custom_layer: logging::file_layer,
-                fmt_layer: logging::stderr_fmt_layer,
-                ..default()
-            })
-            .set(WindowPlugin {
-                primary_window: Some(Window {
-                    title: "Babylon — The Fall of America".into(),
-                    ..default()
-                }),
-                ..default()
-            }),
-    );
-    log::info!(
-        "babylon-client starting (story: {}, B3 tick loop)",
-        story.id
-    );
-    app.add_plugins(visual_assets::VisualAssetsPlugin)
-        .add_plugins(visual_assets::VisualPresentationPlugin)
-        .add_plugins(map::MapPlugin)
-        .add_plugins(loop_ui::TickLoopPlugin)
-        .insert_resource(SelectedStory(story))
-        .insert_resource(ClearColor(palette::FIELD))
-        .run();
+    let mode = match request {
+        CliRequest::Help(text) => {
+            print!("{text}");
+            return;
+        }
+        CliRequest::Windowed { story } => AppMode::Windowed { story },
+        CliRequest::Headless {
+            command,
+            campaign_id,
+        } => AppMode::Headless {
+            command,
+            campaign_id,
+        },
+    };
+    let exit = build_app(mode).run();
+    std::process::exit(match exit {
+        AppExit::Success => 0,
+        AppExit::Error(code) => i32::from(code.get()),
+    });
 }

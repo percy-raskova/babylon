@@ -38,6 +38,7 @@ pub mod observer_io;
 pub(crate) mod observer_layout;
 pub(crate) mod observer_session_log;
 pub mod observer_ui;
+pub(crate) mod observer_warning;
 pub mod palette;
 pub mod projection;
 pub mod session_log;

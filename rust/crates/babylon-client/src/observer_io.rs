@@ -307,7 +307,11 @@ struct CommandContext<'w> {
 
 fn handle_commands(mut commands: MessageReader<ObserverCommand>, mut context: CommandContext) {
     for command in commands.read().copied() {
-        if context.ui.comparison_open {
+        if context.ui.splash_visible {
+            if command != ObserverCommand::Quit {
+                continue;
+            }
+        } else if context.ui.comparison_open {
             continue;
         }
         if let ControlAvailability::Disabled(reason) = availability(command, &context.state) {
@@ -586,6 +590,7 @@ fn install_observation(
 
 fn playback(
     time: Res<Time>,
+    ui: Res<ObserverUiState>,
     pipe: Option<Res<RuntimePipe>>,
     mut clock: ResMut<PlaybackClock>,
     mut state: ResMut<ObserverSession>,
@@ -596,7 +601,13 @@ fn playback(
     let Some(pipe) = pipe else {
         return;
     };
-    if state.month_advance_due() {
+    if ui.splash_visible {
+        if state.playing {
+            state.pause_month();
+        }
+        clock.elapsed = 0.0;
+    }
+    if !ui.splash_visible && state.month_advance_due() {
         clock.elapsed += time.delta_secs_f64();
         if clock.elapsed >= state.weeks_per_second.recip() {
             clock.elapsed = 0.0;
@@ -720,7 +731,10 @@ mod tests {
                 requests,
                 responses: Mutex::new(responses),
             })
-            .init_resource::<ObserverUiState>()
+            .insert_resource(ObserverUiState {
+                splash_visible: false,
+                ..default()
+            })
             .init_resource::<ObserverFrame>()
             .init_resource::<DossierRefresh>()
             .init_resource::<UiScale>()
@@ -757,6 +771,66 @@ mod tests {
 
     fn exit_count(app: &App) -> usize {
         app.world().resource::<Messages<AppExit>>().len()
+    }
+
+    #[test]
+    fn opening_warning_refuses_queued_gameplay_commands_but_allows_quit() {
+        let (mut app, requests) = command_app();
+        app.world_mut()
+            .resource_mut::<ObserverUiState>()
+            .splash_visible = true;
+        dispatch(
+            &mut app,
+            &[
+                ObserverCommand::TogglePlay,
+                ObserverCommand::Step,
+                ObserverCommand::Perspective,
+            ],
+        );
+        let state = app.world().resource::<ObserverSession>();
+        assert!(!state.playing);
+        assert!(!state.advance_pending());
+        assert_eq!(state.durable_tick, 3);
+        assert_eq!(state.perspective, Perspective::FullObserver);
+        assert!(requests.try_recv().is_err());
+        dispatch(&mut app, &[ObserverCommand::Quit]);
+        assert!(app.world().resource::<ObserverSession>().quit_requested);
+        assert!(matches!(
+            requests.try_recv().unwrap(),
+            RuntimeSessionRequestV2::Stop { .. }
+        ));
+    }
+
+    #[test]
+    fn opening_warning_pauses_scheduled_playback_without_sending_an_advance() {
+        let (mut app, requests) = command_app();
+        app.world_mut()
+            .resource_mut::<ObserverUiState>()
+            .splash_visible = true;
+        assert!(app
+            .world_mut()
+            .resource_mut::<ObserverSession>()
+            .run_or_resume_month());
+        app.insert_resource(PlaybackClock {
+            verified_tick: 3,
+            retention_ready: true,
+            elapsed: 10.0,
+            ..default()
+        })
+        .add_systems(Update, playback.after(handle_commands));
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(std::time::Duration::from_secs(2));
+        app.update();
+        let state = app.world().resource::<ObserverSession>();
+        assert!(!state.playing);
+        assert!(!state.advance_pending());
+        assert_eq!(state.durable_tick, 3);
+        assert!(requests.try_recv().is_err());
+        assert_eq!(
+            app.world().resource::<PlaybackClock>().elapsed.to_bits(),
+            0.0_f64.to_bits()
+        );
     }
 
     #[test]

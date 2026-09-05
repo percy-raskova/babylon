@@ -187,10 +187,6 @@ pub struct ObserverMenu;
 /// The saved-campaign browser occupies its own bounded menu column.
 #[derive(Component)]
 pub struct ObserverCampaignCatalog;
-#[derive(Component)]
-struct ObserverSplash;
-#[derive(Component)]
-struct SplashText;
 
 /// Full-window UI camera; the geography camera owns only the map viewport.
 #[derive(Component)]
@@ -665,38 +661,6 @@ fn menu_settings(panel: &mut ChildSpawnerCommands) {
     ));
 }
 
-fn spawn_splash(commands: &mut Commands) {
-    commands
-        .spawn((
-            Button,
-            Node {
-                position_type: PositionType::Absolute,
-                left: px(0),
-                right: px(0),
-                top: px(0),
-                bottom: px(0),
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                flex_direction: FlexDirection::Column,
-                row_gap: px(32),
-                ..default()
-            },
-            BackgroundColor(theme::INK),
-            ZIndex(100),
-            ObserverSplash,
-            DeclaredSurface::new(SurfaceId::TitleLockup),
-        ))
-        .with_children(|screen| {
-            screen.spawn((label("PERSEPHONE RASKOVA", 44.0, theme::PAPER), SplashText));
-            screen.spawn(label("A LIVING POLITICAL ECONOMY", 16.0, theme::YELLOW));
-            screen.spawn(label(
-                "Press any key or click to continue",
-                12.0,
-                theme::GRAY,
-            ));
-        });
-}
-
 fn spawn_shell(
     mut commands: Commands,
     atlas: Res<CountyAtlas>,
@@ -725,7 +689,6 @@ fn spawn_shell(
     spawn_footer(&mut commands);
     spawn_drawers(&mut commands);
     spawn_menu(&mut commands);
-    spawn_splash(&mut commands);
     commands.spawn((
         label("", 14.0, theme::PAPER),
         Node {
@@ -750,36 +713,6 @@ fn spawn_shell(
         ZIndex(30),
         ControlHint,
     ));
-}
-
-fn splash(
-    time: Res<Time>,
-    keys: Res<ButtonInput<KeyCode>>,
-    mouse: Res<ButtonInput<MouseButton>>,
-    mut ui: ResMut<ObserverUiState>,
-    mut elapsed: Local<f32>,
-    mut roots: Query<&mut Visibility, With<ObserverSplash>>,
-    mut titles: Query<&mut Text, With<SplashText>>,
-) {
-    if !ui.splash_visible {
-        return;
-    }
-    *elapsed += time.delta_secs();
-    if keys.get_just_pressed().next().is_some()
-        || mouse.get_just_pressed().next().is_some()
-        || *elapsed >= 2.4
-    {
-        ui.splash_visible = false;
-        for mut visibility in &mut roots {
-            *visibility = Visibility::Hidden;
-        }
-    } else if *elapsed >= 1.2 {
-        for mut title in &mut titles {
-            if title.0 != "GOLDEN MONKEY" {
-                title.0 = "GOLDEN MONKEY".into();
-            }
-        }
-    }
 }
 
 #[derive(EntityEvent)]
@@ -919,12 +852,15 @@ struct ShellFocusState<'w> {
 fn sync_focus_policy(
     state: ShellFocusState,
     menus: Query<Entity, With<ObserverMenu>>,
+    warnings: Query<Entity, With<crate::observer_warning::ObserverWarningRoot>>,
     comparisons: Query<Entity, With<crate::campaign_browser::ComparisonPanel>>,
     mut policy: ResMut<ObserverFocusPolicy>,
 ) {
     policy.set_if_neq(ObserverFocusPolicy {
         context: Some(state.session.context()),
-        modal: if state.ui.comparison_open {
+        modal: if state.ui.splash_visible {
+            warnings.single().ok()
+        } else if state.ui.comparison_open {
             comparisons.single().ok()
         } else if state.ui.menu_open && !state.ui.splash_visible {
             menus.single().ok()
@@ -1595,7 +1531,8 @@ fn reconcile_lens(
 pub struct ObserverShellPlugin;
 impl Plugin for ObserverShellPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<ObserverFrame>()
+        app.add_plugins(crate::observer_warning::ObserverWarningPlugin)
+            .init_resource::<ObserverFrame>()
             .init_resource::<ObserverUiState>()
             .init_resource::<ObserverViewport>()
             .init_resource::<ObserverFeedback>()
@@ -1604,13 +1541,7 @@ impl Plugin for ObserverShellPlugin {
             .add_systems(Startup, spawn_shell.after(crate::map::spawn_map_surface))
             .add_systems(
                 Update,
-                (
-                    pointer_buttons,
-                    keyboard,
-                    scroll_input,
-                    splash,
-                    expire_feedback,
-                )
+                (pointer_buttons, keyboard, scroll_input, expire_feedback)
                     .in_set(crate::observer_io::ObserverSet::Input),
             )
             .add_observer(scroll_panel)

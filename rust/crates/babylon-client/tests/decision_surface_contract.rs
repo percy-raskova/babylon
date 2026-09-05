@@ -19,6 +19,7 @@ fn conformance_app() -> App {
         MinimalPlugins,
         AssetPlugin::default(),
         ImagePlugin::default(),
+        bevy::text::TextPlugin,
         TexturePlugin,
     ));
     app.add_plugins((
@@ -60,6 +61,7 @@ fn observer_app() -> App {
         MinimalPlugins,
         AssetPlugin::default(),
         ImagePlugin::default(),
+        bevy::text::TextPlugin,
         TexturePlugin,
         WindowPlugin {
             primary_window: None,

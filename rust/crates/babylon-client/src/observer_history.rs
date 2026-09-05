@@ -105,6 +105,7 @@ fn label(value: impl Into<String>, size: f32, color: Color) -> impl Bundle {
             ..default()
         },
         TextColor(color),
+        crate::observer_ui::ObserverFontRole::Body,
         Node {
             flex_shrink: 0.0,
             min_width: px(0),
@@ -242,6 +243,8 @@ fn history_control_visibility(
         } else {
             Disabled("Open Trends to inspect a committed week")
         }
+    } else if !ui.history_open {
+        Disabled("Open History to inspect committed developments")
     } else if ui.archive_open || readings_panel_visible(view, navigation, ui, snapshot) {
         Disabled("Close the current readings to inspect the delivery log")
     } else {
@@ -371,6 +374,7 @@ fn focus_eligibility(
                         .context
                         .as_ref()
                         .is_some_and(|context| session.accepts(context))
+                        && ui.history_open
                         && !ui.menu_open
                         && !ui.splash_visible
                         && !ui.comparison_open,
@@ -719,7 +723,8 @@ fn paint_log(
         .for_session(&session)
         .and_then(|frame| frame.production.as_ref());
     visibility.set_if_neq(
-        if ui.menu_open
+        if !ui.history_open
+            || ui.menu_open
             || ui.splash_visible
             || ui.comparison_open
             || ui.archive_open
@@ -730,13 +735,19 @@ fn paint_log(
             Visibility::Visible
         },
     );
+    if !ui.history_open {
+        if ui.is_changed() {
+            commands.entity(entity).despawn_children();
+        }
+        return;
+    }
     if !(session.is_changed() || frame.is_changed() || history.is_changed() || ui.is_changed()) {
         return;
     }
     commands.entity(entity).despawn_children();
     let context = session.context();
     commands.entity(entity).with_children(|panel| {
-        panel.spawn(label("L O G", 22.0, theme::PAPER));
+        panel.spawn(label("COMMITTED DEVELOPMENTS", 24.0, theme::PAPER)).insert(crate::observer_ui::ObserverFontRole::Display);
         panel.spawn((label("", 11.0, theme::GRAY), HistoryHint, ObserverFocusTarget::reading(Some(context.clone()))));
         let Some(snapshot) = snapshot else {
             panel.spawn(label("No production developments are available in this observation.", 13.0, theme::GRAY));
@@ -1151,7 +1162,7 @@ mod tests {
         let (mut app, _) = history_app(event(week));
         app.world_mut()
             .resource_mut::<ObserverUiState>()
-            .history_open = false;
+            .history_open = true;
         let mut frame = app.world_mut().resource_mut::<ObserverFrame>();
         let snapshot = frame.0.as_mut().unwrap().production.as_mut().unwrap();
         snapshot.sites = vec![
@@ -1442,46 +1453,79 @@ mod tests {
         let mut app = delivery_app(1, 3);
         app.update();
         let (toggle, _) = delivery_toggle(&mut app);
+        let log = {
+            let world = app.world_mut();
+            world
+                .query_filtered::<Entity, With<LogPanel>>()
+                .single(world)
+                .unwrap()
+        };
         *app.world_mut().resource_mut::<PrimaryView>() = PrimaryView::Production;
         app.world_mut()
             .resource_mut::<ProductionNavigation>()
             .details_open = true;
         app.world_mut()
+            .resource_mut::<ObserverUiState>()
+            .history_open = false;
+        // The click was queued before the rail changed owners. Application must
+        // reject it even though its original event and observation still match.
+        app.world_mut()
             .entity_mut(toggle)
             .insert(Interaction::Pressed);
         app.update();
-        let world = app.world_mut();
         assert_eq!(
-            *world
-                .query_filtered::<&Visibility, With<LogPanel>>()
-                .single(world)
-                .unwrap(),
+            *app.world().get::<Visibility>(log).unwrap(),
             Visibility::Hidden
         );
-        assert!(world.resource::<HistoryState>().expanded_delivery.is_none());
+        assert!(app
+            .world()
+            .resource::<HistoryState>()
+            .expanded_delivery
+            .is_none());
         assert_eq!(
-            world.resource::<ObserverFeedback>().message,
-            Some("Close the current readings to inspect the delivery log")
+            app.world().resource::<ObserverFeedback>().message,
+            Some("Open History to inspect committed developments")
         );
+        {
+            let world = app.world();
+            let frame = world.resource::<ObserverFrame>();
+            let session = world.resource::<ObserverSession>();
+            assert!(readings_panel_visible(
+                PrimaryView::Production,
+                world.resource::<ProductionNavigation>(),
+                world.resource::<ObserverUiState>(),
+                frame
+                    .for_session(session)
+                    .and_then(|frame| frame.production.as_ref()),
+            ));
+        }
+        // Reopening History takes the rail without discarding the subject's
+        // reading preference, and only the newly visible control is admitted.
         app.world_mut()
-            .resource_mut::<ProductionNavigation>()
-            .details_open = false;
+            .resource_mut::<ObserverUiState>()
+            .history_open = true;
         app.update();
-        let world = app.world_mut();
         assert_eq!(
-            *world
-                .query_filtered::<&Visibility, With<LogPanel>>()
-                .single(world)
-                .unwrap(),
+            *app.world().get::<Visibility>(log).unwrap(),
             Visibility::Visible
         );
+        assert!(app.world().resource::<ProductionNavigation>().details_open);
+        let (current_toggle, _) = delivery_toggle(&mut app);
+        assert_ne!(current_toggle, toggle);
         app.world_mut()
-            .resource_mut::<ProductionNavigation>()
-            .details_open = true;
+            .entity_mut(current_toggle)
+            .insert(Interaction::Pressed);
+        app.update();
+        assert!(app
+            .world()
+            .resource::<HistoryState>()
+            .expanded_delivery
+            .is_some());
+        assert_eq!(app.world().resource::<ObserverSession>().viewed_tick, 3);
+        assert_eq!(app.world().resource::<DossierRefresh>().0, 0);
         app.world_mut().resource_mut::<ObserverFrame>().0 = None;
         app.update();
-        let world = app.world_mut();
-        assert_eq!(*world.query_filtered::<&Visibility, With<LogPanel>>().single(world).unwrap(), Visibility::Visible,
+        assert_eq!(*app.world().get::<Visibility>(log).unwrap(), Visibility::Visible,
             "a retained details flag without a validated reading must not obscure the unavailable log");
     }
 
@@ -1845,13 +1889,10 @@ mod tests {
     }
 
     #[test]
-    fn log_navigation_works_with_trends_closed_and_clears_on_perspective_change() {
+    fn log_navigation_requires_open_history_and_clears_on_perspective_change() {
         use bevy::ecs::system::RunSystemOnce;
         let event = event(2);
         let (mut app, _) = history_app(event.clone());
-        app.world_mut()
-            .resource_mut::<ObserverUiState>()
-            .history_open = false;
         app.world_mut().spawn((LogPanel, Visibility::Visible));
         app.world_mut().run_system_once(paint_log).unwrap();
         let mut query = app.world_mut().query::<(Entity, &HistoryButton)>();
@@ -1861,6 +1902,28 @@ mod tests {
                 matches!(button, HistoryButton::Event { .. }).then_some(entity)
             })
             .unwrap();
+        app.world_mut()
+            .resource_mut::<ObserverUiState>()
+            .history_open = false;
+        app.world_mut()
+            .entity_mut(button)
+            .insert(Interaction::Pressed);
+        app.update();
+        assert_eq!(app.world().resource::<ObserverSession>().viewed_tick, 3);
+        assert!(app
+            .world()
+            .resource::<HistoryState>()
+            .selected_event
+            .is_none());
+        assert_eq!(
+            app.world().resource::<ObserverFeedback>().message,
+            Some("Open History to inspect committed developments")
+        );
+        app.world_mut().entity_mut(button).insert(Interaction::None);
+        app.update();
+        app.world_mut()
+            .resource_mut::<ObserverUiState>()
+            .history_open = true;
         app.world_mut()
             .entity_mut(button)
             .insert(Interaction::Pressed);

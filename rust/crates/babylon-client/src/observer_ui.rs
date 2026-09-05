@@ -24,7 +24,7 @@ use crate::observer_layout::{ObserverLayout, ObserverRegion};
 use crate::observer_theme as theme;
 use crate::ui::dossier_card::{ActiveCountyDossier, DossierFetchState, DossierRefresh};
 
-pub(crate) const OBSERVER_PANEL_BOTTOM: f32 = 96.0;
+pub(crate) const OBSERVER_PANEL_BOTTOM: f32 = 56.0;
 
 #[derive(Resource, Default)]
 pub struct ObserverFrame(pub Option<ObserverEconomySnapshotV1>);
@@ -71,6 +71,7 @@ pub struct ObserverUiState {
     pub comparison_open: bool,
     pub disclosure: Option<ObserverDisclosure>,
     pub evidence_open: bool,
+    pub economic_details_open: bool,
 }
 impl Default for ObserverUiState {
     fn default() -> Self {
@@ -85,6 +86,7 @@ impl Default for ObserverUiState {
             comparison_open: false,
             disclosure: None,
             evidence_open: false,
+            economic_details_open: false,
         }
     }
 }
@@ -140,6 +142,8 @@ pub enum ObserverCommand {
     StopOnDelivery,
     Disclosure(ObserverDisclosure),
     Evidence,
+    EconomicDetails,
+    Relationships,
 }
 
 #[derive(Component, Clone, Copy)]
@@ -172,11 +176,14 @@ enum ObserverText {
     Evidence,
     EvidenceDetails,
     Production,
+    Developments,
     Source,
 }
 
 #[derive(Component)]
 struct ObserverInspector;
+#[derive(Component)]
+struct EconomicReadings;
 #[derive(Component)]
 struct MapLensControls;
 #[derive(Component)]
@@ -192,7 +199,41 @@ pub struct ObserverCampaignCatalog;
 #[derive(Component)]
 pub struct ObserverUiCamera;
 
+/// Explicit presentation roles; the native font resource is required, not optional.
+#[derive(Component, Clone, Copy)]
+pub(crate) enum ObserverFontRole {
+    Body,
+    Display,
+    Exact,
+}
+
+fn apply_fonts(
+    fonts: Res<crate::visual_assets::ObserverFonts>,
+    mut labels: Query<(&ObserverFontRole, &mut TextFont), Added<ObserverFontRole>>,
+) {
+    for (role, mut font) in &mut labels {
+        font.font = match role {
+            ObserverFontRole::Body => fonts.body.clone(),
+            ObserverFontRole::Display => fonts.display.clone(),
+            // Bevy's bundled Fira Mono remains the deliberate exact-value face.
+            ObserverFontRole::Exact => Handle::default(),
+        };
+        if matches!(role, ObserverFontRole::Display) {
+            font.weight = FontWeight::SEMIBOLD;
+        }
+    }
+}
+
 fn label(text: impl Into<String>, size: f32, color: Color) -> impl Bundle {
+    role_label(text, size, color, ObserverFontRole::Body)
+}
+
+fn role_label(
+    text: impl Into<String>,
+    size: f32,
+    color: Color,
+    role: ObserverFontRole,
+) -> impl Bundle {
     (
         Text::new(text),
         TextFont {
@@ -200,6 +241,8 @@ fn label(text: impl Into<String>, size: f32, color: Color) -> impl Bundle {
             ..default()
         },
         TextColor(color),
+        TextLayout::new_with_linebreak(bevy::text::LineBreak::WordOrCharacter),
+        role,
         DeclaredSurface::new(SurfaceId::ObserverShell),
     )
 }
@@ -270,7 +313,7 @@ fn scoped_button(
             DeclaredSurface::new(SurfaceId::ObserverShell),
         ))
         .with_child((
-            label(text, 13.0, theme::PAPER),
+            label(text, 15.0, theme::PAPER),
             ObserverButtonCaption(command),
         ));
 }
@@ -291,11 +334,11 @@ fn spawn_hud(commands: &mut Commands) {
                 position_type: PositionType::Absolute,
                 left: px(16),
                 right: px(16),
-                top: px(12),
-                height: px(76),
-                padding: UiRect::axes(px(16), px(10)),
+                top: px(8),
+                height: px(68),
+                padding: UiRect::axes(px(8), px(4)),
                 flex_direction: FlexDirection::Column,
-                row_gap: px(8),
+                row_gap: px(4),
                 ..default()
             },
             BackgroundColor(theme::INK),
@@ -305,7 +348,12 @@ fn spawn_hud(commands: &mut Commands) {
         ))
         .with_children(|hud| {
             hud.spawn(row()).with_children(|bar| {
-                bar.spawn(label("BABYLON", 23.0, theme::YELLOW));
+                bar.spawn(role_label(
+                    "BABYLON",
+                    26.0,
+                    theme::PAPER,
+                    ObserverFontRole::Display,
+                ));
                 bar.spawn((
                     label("Opening campaign", 16.0, theme::PAPER),
                     Node {
@@ -332,23 +380,23 @@ fn spawn_hud(commands: &mut Commands) {
                 });
                 crate::production::button(
                     bar,
-                    "WORK [P]",
+                    "Circuit [P]",
                     crate::production::ProductionCommand::Open,
                 );
                 crate::production::button(
                     bar,
-                    "WORLD [M]",
+                    "World [M]",
                     crate::production::ProductionCommand::Map,
                 );
                 button(bar, "Menu [Esc]", ObserverCommand::Menu);
             });
             hud.spawn(row()).with_children(|bar| {
-                bar.spawn((label("", 13.0, theme::YELLOW), ObserverText::Status));
+                bar.spawn((label("", 14.0, theme::YELLOW), ObserverText::Status));
                 bar.spawn(Node {
                     flex_grow: 1.0,
                     ..default()
                 });
-                bar.spawn((label("", 11.0, theme::GRAY), ObserverText::Identity));
+                bar.spawn((label("", 13.0, theme::GRAY), ObserverText::Identity));
             });
         });
 }
@@ -358,66 +406,98 @@ fn spawn_inspector(commands: &mut Commands) {
         .spawn((
             Node {
                 position_type: PositionType::Absolute,
-                padding: UiRect::all(px(12)),
-                column_gap: px(24),
-                border: UiRect::top(px(2)),
+                padding: UiRect::all(px(18)),
+                row_gap: px(18),
+                border: UiRect::left(px(2)),
+                flex_direction: FlexDirection::Column,
                 overflow: Overflow::scroll_y(),
                 ..default()
             },
             ObserverRegion::Context,
-            BackgroundColor(theme::INK.with_alpha(0.97)),
-            BorderColor::all(theme::PAPER.with_alpha(0.8)),
+            BackgroundColor(theme::PANEL),
+            BorderColor::all(theme::GRAY.with_alpha(0.35)),
             ZIndex(6),
             ObserverInspector,
             TabGroup::new(10),
             DeclaredSurface::new(SurfaceId::ObserverShell),
         ))
         .with_children(|panel| {
-            panel.spawn(context_column()).with_children(|local| {
-                local.spawn(row()).with_children(|heading| {
-                    heading.spawn((
-                        label("Select a county", 20.0, theme::PAPER),
-                        Node {
-                            min_width: px(0),
-                            flex_basis: px(0),
-                            flex_grow: 1.0,
-                            ..default()
-                        },
-                        ObserverText::County,
+            panel.spawn((
+                role_label(
+                    "Select a county",
+                    29.0,
+                    theme::PAPER,
+                    ObserverFontRole::Display,
+                ),
+                ObserverText::County,
+            ));
+            panel.spawn((
+                block_label("", 17.0, theme::PAPER),
+                ObserverText::Production,
+                ObserverFocusTarget::reading(None),
+            ));
+            crate::production::button(
+                panel,
+                "Follow its work [P]",
+                crate::production::ProductionCommand::Open,
+            );
+            panel.spawn((
+                block_label("", 15.0, theme::GRAY),
+                ObserverText::Developments,
+            ));
+            button(
+                panel,
+                "Economic readings +",
+                ObserverCommand::EconomicDetails,
+            );
+            panel
+                .spawn((context_column(), EconomicReadings))
+                .with_children(|detail| {
+                    detail.spawn((
+                        role_label("", 14.0, theme::PAPER, ObserverFontRole::Exact),
+                        ObserverText::Measures,
+                        ObserverFocusTarget::reading(None),
                     ));
-                    crate::production::button(
-                        heading,
-                        "Follow [P]",
-                        crate::production::ProductionCommand::Open,
+                    detail.spawn((block_label("", 14.0, theme::GRAY), ObserverText::Source));
+                    button(
+                        detail,
+                        "Choose a map lens",
+                        ObserverCommand::Disclosure(ObserverDisclosure::Lens),
                     );
                 });
-                local.spawn((
-                    block_label("", 13.0, theme::PAPER),
-                    ObserverText::Production,
-                    ObserverFocusTarget::reading(None),
-                ));
-            });
-            panel.spawn(context_column()).with_children(|detail| {
-                detail.spawn((
-                    block_label("", 16.0, theme::YELLOW),
-                    ObserverText::Measures,
-                    ObserverFocusTarget::reading(None),
-                ));
-                detail.spawn((block_label("", 11.0, theme::GRAY), ObserverText::Source));
-                button(detail, "Cited Archive [I]", ObserverCommand::Archive);
-                detail.spawn((block_label("", 11.0, theme::GRAY), ObserverText::Evidence));
-            });
+            button(
+                panel,
+                "Read the cited Archive [I]",
+                ObserverCommand::Archive,
+            );
+            panel.spawn((block_label("", 13.0, theme::GRAY), ObserverText::Evidence));
         });
 }
 
 pub(crate) fn context_column() -> Node {
     Node {
-        flex_basis: px(0),
-        flex_grow: 1.0,
+        width: percent(100),
+        flex_shrink: 0.0,
         min_width: px(0),
         flex_direction: FlexDirection::Column,
-        row_gap: px(8),
+        row_gap: px(12),
         ..default()
+    }
+}
+
+fn paint_economic_readings(
+    ui: Res<ObserverUiState>,
+    mut sections: Query<&mut Node, With<EconomicReadings>>,
+) {
+    for mut node in &mut sections {
+        let display = if ui.economic_details_open {
+            Display::Flex
+        } else {
+            Display::None
+        };
+        if node.display != display {
+            node.display = display;
+        }
     }
 }
 
@@ -426,7 +506,7 @@ fn spawn_footer(commands: &mut Commands) {
         .spawn((
             Node {
                 position_type: PositionType::Absolute,
-                padding: UiRect::all(px(8)),
+                padding: UiRect::axes(px(8), px(0)),
                 column_gap: px(12),
                 align_items: AlignItems::Center,
                 overflow: Overflow::scroll_x(),
@@ -459,7 +539,7 @@ fn spawn_footer(commands: &mut Commands) {
                 });
             bar.spawn((
                 label(
-                    "Tab: select controls. WORLD / WORK: return to navigation.",
+                    "Tab: controls. World / Circuit: return to navigation.",
                     13.0,
                     theme::GRAY,
                 ),
@@ -508,6 +588,7 @@ fn spawn_drawers(commands: &mut Commands) {
                 });
                 panel.spawn(block_label("Space: run / pause month     Enter: advance one week     H: inspect trends", 12.0, theme::GRAY));
             } else {
+                button(panel, "Relationships", ObserverCommand::Relationships);
                 panel.spawn(row()).with_children(|bar| {
                     for (kind, title) in [(MaterialLensKind::ProducedThisWeek,"Production [5]"), (MaterialLensKind::OnHand,"Inventory [6]"), (MaterialLensKind::InboundInTransit,"Inbound [7]")] {
                         button(bar, title, ObserverCommand::MaterialLens(kind));
@@ -796,7 +877,9 @@ fn button_visible(
         ObserverCommand::Step | ObserverCommand::Speed | ObserverCommand::StopOnDelivery => {
             ui.disclosure == Some(ObserverDisclosure::Time)
         }
-        ObserverCommand::Lens(_) | ObserverCommand::MaterialLens(_) => {
+        ObserverCommand::Relationships
+        | ObserverCommand::Lens(_)
+        | ObserverCommand::MaterialLens(_) => {
             map && ui.disclosure == Some(ObserverDisclosure::Lens)
         }
         ObserverCommand::CycleGood(_) => {
@@ -807,7 +890,10 @@ fn button_visible(
         ObserverCommand::PreviousWeek | ObserverCommand::NextWeek | ObserverCommand::Live => {
             ui.history_open || session.viewed_tick < session.durable_tick
         }
-        ObserverCommand::Archive | ObserverCommand::Disclosure(ObserverDisclosure::Lens) => map,
+        ObserverCommand::EconomicDetails | ObserverCommand::Archive => {
+            map && !ui.archive_open && !ui.history_open
+        }
+        ObserverCommand::Disclosure(ObserverDisclosure::Lens) => map,
         _ => true,
     }
 }
@@ -890,8 +976,9 @@ fn sync_focus_targets(
                     ObserverText::Clock => !state.ui.menu_open,
                     ObserverText::EvidenceDetails => state.ui.menu_open && state.ui.evidence_open,
                     ObserverText::Production | ObserverText::Measures => {
-                        !state.ui.menu_open
-                            && *state.view == crate::production::PrimaryView::Map
+                        inspector_visibility(&state.ui, *state.view) == Visibility::Visible
+                            && (!matches!(reading, ObserverText::Measures)
+                                || state.ui.economic_details_open)
                             && state.frame.for_session(&state.session).is_some()
                     }
                     _ => false,
@@ -966,6 +1053,10 @@ fn caption(
             format!("History {} [H]", if ui.history_open { "-" } else { "+" })
         }
         ObserverCommand::Perspective => state.perspective.label().to_owned(),
+        ObserverCommand::EconomicDetails => format!(
+            "Economic readings {}",
+            if ui.economic_details_open { "-" } else { "+" }
+        ),
         ObserverCommand::Evidence => format!(
             "Verification details {}",
             if ui.evidence_open { "-" } else { "+" }
@@ -1004,6 +1095,8 @@ fn paint_buttons(
             }
         }
         let selected = match (button.command, &ui.lens) {
+            (ObserverCommand::Relationships, MapLens::Relationships) => true,
+            (ObserverCommand::EconomicDetails, _) => ui.economic_details_open,
             (ObserverCommand::Lens(metric), MapLens::Qcew(current)) => metric == *current,
             (ObserverCommand::MaterialLens(kind), MapLens::Material { kind: current, .. }) => {
                 kind == *current
@@ -1288,15 +1381,44 @@ fn local_relationships(
         for (direction, other) in relations {
             lines.push(match direction {
                 crate::production_brief::DependencyDirection::Upstream => {
-                    format!("Industry {} relies on {}", site.industry_code, other.name)
+                    format!("{} depends on {}", site.name, other.name)
                 }
                 crate::production_brief::DependencyDirection::Downstream => {
-                    format!("Industry {} supplies {}", site.industry_code, other.name)
+                    format!("{} supplies {}", site.name, other.name)
                 }
             });
         }
     }
-    format!("DESIGNED COUNTY COHORTS\n{}", lines.join("\n"))
+    format!(
+        "SUPPLY RELATIONSHIPS\n{}\n\nDesigned county cohorts; schematic links.",
+        lines.join("\n\n")
+    )
+}
+
+fn county_developments(snapshot: Option<&ObserverEconomySnapshotV1>, county: &str) -> String {
+    let Some(snapshot) = snapshot else {
+        return "Awaiting this week's observation.".into();
+    };
+    let Some(production) = snapshot.production.as_ref() else {
+        return "Material developments are not disclosed in this observation.".into();
+    };
+    if snapshot.resolve_tick == 0 {
+        return "Opening week. No completed production week yet.".into();
+    }
+    let records = production
+        .events
+        .iter()
+        .filter(|event| {
+            event.week == snapshot.resolve_tick
+                && event.subject_site_ids.iter().any(|id| {
+                    production
+                        .sites
+                        .iter()
+                        .any(|site| site.id == *id && site.county_geoid == county)
+                })
+        })
+        .count();
+    format!("Week {}: {records} committed records for this county. Open History to inspect the evidence.", snapshot.resolve_tick)
 }
 
 #[derive(SystemParam)]
@@ -1414,12 +1536,15 @@ fn repaint(
             ObserverText::Identity => format!("{} | {}", state.perspective.label(), archive_status),
             ObserverText::Status => turn.status.clone(),
             ObserverText::Legend => match &ui.lens {
+                MapLens::Relationships => String::new(),
                 MapLens::Qcew(_) => format!("0..{} {}", lens.maximum().map_or_else(|| "-".into(), grouped), lens.unit),
                 MapLens::Material {..} => lens.good_label.as_ref().map_or_else(|| "Material unavailable".into(), |good|format!("{good} ({})", lens.unit)),
             },
             ObserverText::County => county.as_ref().map_or_else(|| "Select a county".into(), |county| county.name.to_owned()),
+            ObserverText::Measures if matches!(ui.lens, MapLens::Relationships) => "Choose an economic lens to inspect exact county readings.".into(),
             ObserverText::Measures => county.as_ref().map_or_else(|| "Select a county to inspect this lens.".into(), |county| format!("{}\n{}", lens.label, format_lens_reading(lens.county(county.fips), &lens.unit))),
             ObserverText::Hover if *view != crate::production::PrimaryView::Map => String::new(),
+            ObserverText::Hover if matches!(ui.lens, MapLens::Relationships) => hovered.0.and_then(|index| atlas.county(index)).map_or_else(String::new, |county| county.name.to_owned()),
             ObserverText::Hover => hovered.0.and_then(|index| atlas.county(index)).filter(|county| county.fips.starts_with("26")).map_or_else(String::new, |county| format!("{}\n{}\n{}", county.name, lens.label, format_lens_reading(lens.county(county.fips), &lens.unit))),
             ObserverText::Audio => format!("{} | music {:.0}% | effects {:.0}%\nReduced motion: {} | Stop on delivery: {}", if audio.track==0 {"PHI"}else{"PANOPTICON"},audio.music_volume*100.0,audio.effects_volume*100.0,if ui.reduced_motion {"ON"}else{"OFF"},if ui.stop_on_delivery {"ON"}else{"OFF"}),
             ObserverText::Evidence => format!("Viewing week {} / Archive processed through {}\n{}", state.viewed_tick, state.archive_verified_tick, archive_detail),
@@ -1431,9 +1556,11 @@ fn repaint(
                 evidence
             }),
             ObserverText::Source => match &ui.lens {
+                MapLens::Relationships => "County geography anchors aggregates. Supply links are schematic; they do not locate factories or physical routes.".into(),
                 MapLens::Qcew(_) => "OBSERVED | BLS QCEW | 2024 annual\nJobs are annual averages; weekly wages are means. Monetary values are dollars, not physical output.".into(),
                 MapLens::Material {kind, ..} => format!("{}\n{}\nZero is a measured account; unavailable and unmodeled counties have no numeric reading.", lens.evidence, match kind {MaterialLensKind::ProducedThisWeek => "Output in the selected week; foundation has no production receipt.",MaterialLensKind::OnHand => "Stock held at the end of the selected week. Terminal goods remain unsold on hand.",MaterialLensKind::InboundInTransit => "Actual lots destined for this county, counted once. This is not traffic passing through the county."}),
             },
+            ObserverText::Developments => county.as_ref().map_or_else(String::new, |county| county_developments(installed, county.fips)),
             ObserverText::Production => installed.and_then(|snapshot| snapshot.production.as_ref())
                 .map_or_else(|| "Production relationships are unavailable in this observation.".into(), |production|
                     local_relationships(production, county.as_ref().map(|county| county.fips))),
@@ -1539,6 +1666,11 @@ impl Plugin for ObserverShellPlugin {
             .init_resource::<ObserverKeyboardClaim>()
             .add_message::<ObserverCommand>()
             .add_systems(Startup, spawn_shell.after(crate::map::spawn_map_surface))
+            .add_systems(PostUpdate, apply_fonts.before(bevy::ui::UiSystems::Content))
+            .add_systems(
+                Update,
+                paint_economic_readings.in_set(crate::observer_io::ObserverSet::Paint),
+            )
             .add_systems(
                 Update,
                 (pointer_buttons, keyboard, scroll_input, expire_feedback)
@@ -1573,6 +1705,139 @@ mod tests {
     use bevy::input::keyboard::{Key, KeyboardInput, NativeKey};
     use bevy::input::{ButtonState, InputPlugin};
     use bevy::input_focus::InputFocus;
+
+    #[test]
+    fn explicit_font_roles_use_distinct_native_faces_and_preserve_exact_mono() {
+        let handles = Assets::<Font>::default();
+        let fonts = crate::visual_assets::ObserverFonts {
+            body: handles.reserve_handle(),
+            display: handles.reserve_handle(),
+        };
+        let mut app = App::new();
+        app.insert_resource(fonts.clone())
+            .add_systems(PostUpdate, apply_fonts.before(bevy::ui::UiSystems::Content));
+        let body = app
+            .world_mut()
+            .spawn((TextFont::default(), ObserverFontRole::Body))
+            .id();
+        let display = app
+            .world_mut()
+            .spawn((TextFont::default(), ObserverFontRole::Display))
+            .id();
+        let exact = app
+            .world_mut()
+            .spawn((
+                TextFont {
+                    weight: FontWeight::BOLD,
+                    ..default()
+                },
+                ObserverFontRole::Exact,
+            ))
+            .id();
+        app.update();
+        assert_eq!(app.world().get::<TextFont>(body).unwrap().font, fonts.body);
+        assert_eq!(
+            app.world().get::<TextFont>(display).unwrap().font,
+            fonts.display
+        );
+        assert_eq!(
+            app.world().get::<TextFont>(display).unwrap().weight,
+            FontWeight::SEMIBOLD
+        );
+        assert_eq!(
+            app.world().get::<TextFont>(exact).unwrap().font,
+            Handle::<Font>::default()
+        );
+        assert_eq!(
+            app.world().get::<TextFont>(exact).unwrap().weight,
+            FontWeight::BOLD,
+            "choosing an exact-value face must preserve evidence emphasis"
+        );
+    }
+
+    #[test]
+    fn economic_readings_start_collapsed_and_reveal_without_rebuilding_subject() {
+        let mut app = App::new();
+        app.init_resource::<ObserverUiState>()
+            .add_systems(Startup, |mut commands: Commands| {
+                spawn_inspector(&mut commands);
+            })
+            .add_systems(Update, paint_economic_readings);
+        app.update();
+        let world = app.world_mut();
+        let subject = world
+            .query_filtered::<Entity, With<ObserverInspector>>()
+            .single(world)
+            .unwrap();
+        let readings = world
+            .query_filtered::<Entity, With<EconomicReadings>>()
+            .single(world)
+            .unwrap();
+        assert!(matches!(
+            world.get::<ObserverRegion>(subject),
+            Some(ObserverRegion::Context)
+        ));
+        assert_eq!(
+            world.get::<Node>(subject).unwrap().flex_direction,
+            FlexDirection::Column
+        );
+        assert_eq!(world.get::<Node>(readings).unwrap().display, Display::None);
+        world
+            .resource_mut::<ObserverUiState>()
+            .economic_details_open = true;
+        app.update();
+        assert_eq!(
+            app.world().get::<Node>(readings).unwrap().display,
+            Display::Flex
+        );
+        app.world_mut()
+            .resource_mut::<ObserverUiState>()
+            .economic_details_open = false;
+        app.update();
+        assert_eq!(
+            app.world().get::<Node>(readings).unwrap().display,
+            Display::None
+        );
+        assert!(app.world().get::<ObserverInspector>(subject).is_some());
+    }
+
+    #[test]
+    fn selected_context_controls_yield_to_history_archive_and_warning() {
+        let session = ObserverSession::new(babylon_persistence::CampaignId::from_uuid(
+            uuid::Uuid::from_u128(1),
+        ));
+        for hidden in 0..3 {
+            let ui = ObserverUiState {
+                menu_open: false,
+                splash_visible: hidden == 0,
+                archive_open: hidden == 1,
+                history_open: hidden == 2,
+                ..default()
+            };
+            assert_eq!(
+                inspector_visibility(&ui, crate::production::PrimaryView::Map),
+                Visibility::Hidden
+            );
+            assert!(!button_visible(
+                ObserverButton {
+                    command: ObserverCommand::EconomicDetails,
+                    in_menu: false
+                },
+                &ui,
+                &session,
+                crate::production::PrimaryView::Map
+            ));
+            assert!(!button_visible(
+                ObserverButton {
+                    command: ObserverCommand::Archive,
+                    in_menu: false
+                },
+                &ui,
+                &session,
+                crate::production::PrimaryView::Map
+            ));
+        }
+    }
 
     #[test]
     fn archive_hud_certifies_only_the_scoped_ready_page() {

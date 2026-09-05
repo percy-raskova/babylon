@@ -435,14 +435,22 @@ fn apply_presentation_command(command: ObserverCommand, context: &mut CommandCon
         ..
     } = context;
     match command {
+        ObserverCommand::Relationships => {
+            ui.lens = crate::map_economy_lens::MapLens::Relationships;
+            ui.disclosure = None;
+        }
+        ObserverCommand::EconomicDetails => ui.economic_details_open = !ui.economic_details_open,
         ObserverCommand::Lens(metric) => {
+            ui.economic_details_open = true;
             ui.lens = crate::map_economy_lens::MapLens::Qcew(metric);
             ui.disclosure = None;
         }
         ObserverCommand::MaterialLens(kind) => {
+            ui.economic_details_open = true;
             let good = match &ui.lens {
                 crate::map_economy_lens::MapLens::Material { good, .. } => good.clone(),
-                crate::map_economy_lens::MapLens::Qcew(_) => None,
+                crate::map_economy_lens::MapLens::Relationships
+                | crate::map_economy_lens::MapLens::Qcew(_) => None,
             };
             ui.lens = crate::map_economy_lens::MapLens::Material { kind, good };
             ui.lens.reconcile(frame.for_session(state), false);
@@ -481,6 +489,8 @@ fn apply_presentation_command(command: ObserverCommand, context: &mut CommandCon
         ObserverCommand::History => {
             ui.history_open = !ui.history_open;
             if ui.history_open {
+                ui.archive_open = false;
+                ui.disclosure = None;
                 state.pause_month();
             }
         }
@@ -790,6 +800,60 @@ mod tests {
 
     fn exit_count(app: &App) -> usize {
         app.world().resource::<Messages<AppExit>>().len()
+    }
+
+    #[test]
+    fn opening_history_takes_the_subject_rail_from_archive_without_requesting_a_week() {
+        let (mut app, requests) = command_app();
+        {
+            let mut ui = app.world_mut().resource_mut::<ObserverUiState>();
+            ui.archive_open = true;
+            ui.disclosure = Some(ObserverDisclosure::Time);
+        }
+        dispatch(&mut app, &[ObserverCommand::History]);
+        let ui = app.world().resource::<ObserverUiState>();
+        assert!(ui.history_open);
+        assert!(!ui.archive_open);
+        assert!(ui.disclosure.is_none());
+        assert_eq!(app.world().resource::<ObserverSession>().durable_tick, 3);
+        assert!(requests.try_recv().is_err());
+    }
+
+    #[test]
+    fn relationship_lens_and_economic_disclosure_do_not_advance_the_campaign() {
+        let (mut app, requests) = command_app();
+        dispatch(&mut app, &[ObserverCommand::EconomicDetails]);
+        assert!(
+            app.world()
+                .resource::<ObserverUiState>()
+                .economic_details_open
+        );
+        dispatch(
+            &mut app,
+            &[ObserverCommand::Lens(
+                crate::map_economy_lens::EconomyMetric::Employment,
+            )],
+        );
+        assert!(matches!(
+            app.world().resource::<ObserverUiState>().lens,
+            crate::map_economy_lens::MapLens::Qcew(_)
+        ));
+        dispatch(&mut app, &[ObserverCommand::Relationships]);
+        assert_eq!(
+            app.world().resource::<ObserverUiState>().lens,
+            crate::map_economy_lens::MapLens::Relationships
+        );
+        assert_eq!(app.world().resource::<ObserverSession>().durable_tick, 3);
+        assert!(requests.try_recv().is_err());
+        app.world_mut()
+            .resource_mut::<ObserverUiState>()
+            .splash_visible = true;
+        dispatch(&mut app, &[ObserverCommand::EconomicDetails]);
+        assert!(
+            app.world()
+                .resource::<ObserverUiState>()
+                .economic_details_open
+        );
     }
 
     #[test]

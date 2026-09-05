@@ -22,7 +22,9 @@ use crate::observer_focus::{
 };
 use crate::observer_io::{ObserverSet, RuntimePipe, LAUNCHER_REQUIRED};
 use crate::observer_theme as theme;
-use crate::observer_ui::{ObserverCampaignCatalog, ObserverFrame, ObserverUiState};
+use crate::observer_ui::{
+    ObserverCampaignCatalog, ObserverFontRole, ObserverFrame, ObserverUiState,
+};
 
 const OPEN_SELECTED_EXIT: u8 = 23;
 
@@ -110,6 +112,7 @@ fn text(value: impl Into<String>, size: f32, color: Color) -> impl Bundle {
             ..default()
         },
         TextColor(color),
+        ObserverFontRole::Body,
         DeclaredSurface::new(SurfaceId::ObserverShell),
     )
 }
@@ -137,14 +140,16 @@ fn button(parent: &mut ChildSpawnerCommands, label: &str, command: CampaignBrows
 fn setup(mut commands: Commands, menu: Query<Entity, With<ObserverCampaignCatalog>>) {
     if let Ok(menu) = menu.single() {
         commands.entity(menu).with_children(|panel| {
-            panel.spawn((
-                text("SAVED CAMPAIGNS", 19.0, theme::YELLOW),
-                Node {
-                    flex_shrink: 0.0,
-                    min_width: px(0),
-                    ..default()
-                },
-            ));
+            panel
+                .spawn((
+                    text("SAVED CAMPAIGNS", 19.0, theme::YELLOW),
+                    Node {
+                        flex_shrink: 0.0,
+                        min_width: px(0),
+                        ..default()
+                    },
+                ))
+                .insert(ObserverFontRole::Display);
             panel.spawn((
                 text("Loading campaign catalog...", 13.0, theme::PAPER),
                 CatalogText,
@@ -199,31 +204,35 @@ fn setup(mut commands: Commands, menu: Query<Entity, With<ObserverCampaignCatalo
             DeclaredSurface::new(SurfaceId::ObserverShell),
         ))
         .with_children(|panel| {
-            panel.spawn((
-                text("COMMITTED CAMPAIGN COMPARISON", 22.0, theme::YELLOW),
-                Node {
-                    flex_shrink: 0.0,
-                    min_width: px(0),
-                    ..default()
-                },
-            ));
+            panel
+                .spawn((
+                    text("COMMITTED CAMPAIGN COMPARISON", 22.0, theme::YELLOW),
+                    Node {
+                        flex_shrink: 0.0,
+                        min_width: px(0),
+                        ..default()
+                    },
+                ))
+                .insert(ObserverFontRole::Display);
             button(
                 panel,
                 "Close comparison  [Escape]",
                 CampaignBrowserCommand::CloseComparison,
             );
-            panel.spawn((
-                text("", 15.0, theme::PAPER),
-                ComparisonText,
-                ObserverFocusTarget::reading(None),
-                Node {
-                    flex_shrink: 0.0,
-                    min_width: px(0),
-                    max_width: percent(100),
-                    ..default()
-                },
-                TextLayout::new_with_linebreak(bevy::text::LineBreak::AnyCharacter),
-            ));
+            panel
+                .spawn((
+                    text("", 15.0, theme::PAPER),
+                    ComparisonText,
+                    ObserverFocusTarget::reading(None),
+                    Node {
+                        flex_shrink: 0.0,
+                        min_width: px(0),
+                        max_width: percent(100),
+                        ..default()
+                    },
+                    TextLayout::new_with_linebreak(bevy::text::LineBreak::AnyCharacter),
+                ))
+                .insert(ObserverFontRole::Exact);
         });
 }
 

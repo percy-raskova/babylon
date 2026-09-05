@@ -220,7 +220,7 @@ fn setup(
             ..default()
         }),
         outbound: materials.add(StandardMaterial {
-            base_color: theme::YELLOW,
+            base_color: theme::COPPER,
             unlit: true,
             ..default()
         }),
@@ -273,6 +273,10 @@ fn segment(
     ));
 }
 
+fn dashed_segments(from: Vec3, to: Vec3) -> [(Vec3, Vec3); 3] {
+    [0.0, 1.0 / 3.0, 2.0 / 3.0].map(|start| (from.lerp(to, start), from.lerp(to, start + 0.23)))
+}
+
 fn spawn_connection(
     commands: &mut Commands,
     assets: &RelationshipAssets,
@@ -285,7 +289,9 @@ fn spawn_connection(
         &assets.inbound
     };
     for pair in points.windows(2) {
-        segment(commands, assets, material, pair[0], pair[1]);
+        for (from, to) in dashed_segments(pair[0], pair[1]) {
+            segment(commands, assets, material, from, to);
+        }
     }
     let direction = (points[4] - points[3]).normalize_or_zero();
     let tip = points[3].lerp(points[4], 0.7);
@@ -320,10 +326,11 @@ fn label_bundle(caption: String, anchor: Option<Vec3>, order: usize, color: Colo
         DeclaredSurface::new(SurfaceId::ObserverProduction),
         Text::new(caption),
         TextFont {
-            font_size: 12.0,
+            font_size: 15.0,
             ..default()
         },
         TextColor(theme::PAPER),
+        crate::observer_ui::ObserverFontRole::Body,
     )
 }
 
@@ -363,7 +370,11 @@ fn rebuild(
     } else if projection.total == 0 {
         "No disclosed supply links for this county.".to_owned()
     } else {
-        format!("County aggregates | schematic dependencies\nYellow: supplies | blue: relies on\n{} of {} links | not physical routes\nSelect a county link to follow it", projection.rows.len(), projection.total)
+        format!(
+            "Schematic links: {} of {}\nIN: inputs / OUT: supplies",
+            projection.rows.len(),
+            projection.total
+        )
     };
     commands.spawn((
         label_bundle(heading, None, 0, theme::PAPER),
@@ -374,14 +385,22 @@ fn rebuild(
         let caption = if relation.internal {
             format!("{}\nWithin this county | P for Work", relation.caption)
         } else {
-            relation.caption.clone()
+            format!(
+                "{}\n{}",
+                if relation.outbound {
+                    "OUT / SUPPLIES"
+                } else {
+                    "IN / DEPENDS ON"
+                },
+                relation.caption
+            )
         };
         let mut label = commands.spawn(label_bundle(
             caption,
             Some(anchor),
             index + 1,
             if relation.outbound {
-                theme::YELLOW
+                theme::COPPER
             } else {
                 theme::BLUE
             },
@@ -548,6 +567,18 @@ mod tests {
         CampaignId, ObserverEconomySnapshotV1, ObserverVisibilityV1, ProductionInputV1,
         ProductionSiteV1,
     };
+
+    #[test]
+    fn schematic_segments_have_visible_gaps_and_preserve_direction() {
+        let segments = dashed_segments(Vec3::ZERO, Vec3::X * 90.0);
+        for pair in segments.windows(2) {
+            assert!(pair[0].0.x < pair[0].1.x);
+            assert!(pair[0].1.x < pair[1].0.x);
+        }
+        assert!(segments[2].1.x < 90.0);
+        let reversed = dashed_segments(Vec3::X * 90.0, Vec3::ZERO);
+        assert!(reversed.iter().all(|(from, to)| from.x > to.x));
+    }
 
     fn site(id: &str, county: &str) -> ProductionSiteV1 {
         ProductionSiteV1 {

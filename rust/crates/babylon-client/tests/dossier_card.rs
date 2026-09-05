@@ -120,6 +120,13 @@ fn new_observer_app(window_size: (u32, u32)) -> (ReaderDsnGuard, App) {
     let mut session = ObserverSession::new(campaign);
     session.ready(12, Some("0c".repeat(32)));
     let mut app = App::new();
+    // This structural fixture runs no text renderer. Distinct reserved handles
+    // satisfy the shell's explicit font roles without a second asset loader.
+    let font_handles = Assets::<Font>::default();
+    app.insert_resource(babylon_client::visual_assets::ObserverFonts {
+        body: font_handles.reserve_handle(),
+        display: font_handles.reserve_handle(),
+    });
     app.add_plugins((MinimalPlugins, AssetPlugin::default()))
         .insert_resource(session)
         .insert_resource(DossierCampaignId(campaign))
@@ -1012,28 +1019,40 @@ fn assert_observer_archive_geometry(app: &mut App, root: Entity) {
         .0
         .expect("the real shell must calculate a world viewport");
     let world = Rect::from_corners(world.min / scale, world.max / scale);
-    let context = root_containing_text(app, "Cited Archive [I]");
+    let context_entity = root_containing_text(app, "Read the cited Archive [I]");
     let footer = root_containing_text(app, "Return Live");
-    let log = root_containing_text(app, "L O G");
     let archive = laid_out_rect(app, root);
-    let context = laid_out_rect(app, context);
+    let context = laid_out_rect(app, context_entity);
     let footer = laid_out_rect(app, footer);
-    assert_eq!(archive, laid_out_rect(app, log), "Archive replaces the log");
+    assert_eq!(
+        archive, context,
+        "Archive replaces the selected-subject rail"
+    );
+    let ui = app
+        .world()
+        .resource::<babylon_client::observer_ui::ObserverUiState>();
+    assert_eq!(
+        *app.world()
+            .get::<Visibility>(context_entity)
+            .expect("context visibility"),
+        if ui.archive_open || ui.history_open {
+            Visibility::Hidden
+        } else {
+            Visibility::Visible
+        },
+        "the shared rail must expose only its admitted panel",
+    );
     assert!(world.width() > 0.0 && world.height() > 0.0);
     assert!(
-        world.max.y < context.min.y,
-        "world must not cover the context panel"
+        world.max.y < footer.min.y,
+        "world and transport footer stay separate"
     );
-    assert!(
-        context.max.y < footer.min.y,
-        "context must not cover the footer"
-    );
-    for rect in [world, context, footer] {
+    for rect in [world, footer] {
         assert!(rect.min.cmpge(Vec2::ZERO).all());
         assert!(rect.max.cmple(size / scale).all());
         assert!(
             rect.max.x < archive.min.x,
-            "Archive must not cover the world or its lower panels"
+            "the subject rail must not cover the world or its footer"
         );
     }
     assert!(archive.min.cmpge(Vec2::ZERO).all());
@@ -1144,7 +1163,7 @@ fn observer_archive_layout_and_exact_historical_unavailability_are_explicit() {
         let (_dsn_guard, mut app) = new_observer_app(size);
         seize_card(&mut app, fixture_projection());
         let root = card_root(&mut app);
-        let log = root_containing_text(&mut app, "L O G");
+        let context = root_containing_text(&mut app, "Read the cited Archive [I]");
         assert_eq!(
             *app.world()
                 .get::<Visibility>(root)
@@ -1152,10 +1171,31 @@ fn observer_archive_layout_and_exact_historical_unavailability_are_explicit() {
             Visibility::Hidden
         );
         assert_eq!(
-            *app.world().get::<Visibility>(log).expect("log visibility"),
+            *app.world()
+                .get::<Visibility>(context)
+                .expect("context visibility"),
             Visibility::Visible
         );
         assert_observer_archive_geometry(&mut app, root);
+        app.world_mut()
+            .resource_mut::<ObserverUiState>()
+            .history_open = true;
+        app.update();
+        let log = root_containing_text(&mut app, "COMMITTED DEVELOPMENTS");
+        assert_eq!(laid_out_rect(&app, log), laid_out_rect(&app, root));
+        assert_eq!(
+            *app.world().get::<Visibility>(log).unwrap(),
+            Visibility::Visible
+        );
+        assert_observer_archive_geometry(&mut app, root);
+        app.world_mut()
+            .resource_mut::<ObserverUiState>()
+            .history_open = false;
+        app.update();
+        assert_eq!(
+            *app.world().get::<Visibility>(log).unwrap(),
+            Visibility::Hidden
+        );
         app.world_mut()
             .resource_mut::<ObserverUiState>()
             .archive_open = true;

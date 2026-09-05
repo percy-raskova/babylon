@@ -93,19 +93,16 @@ pub struct MaterialGoodChoice {
     pub unit: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum MapLens {
+    /// Schematic relationships, without a numeric county encoding.
+    #[default]
+    Relationships,
     Qcew(EconomyMetric),
     Material {
         kind: MaterialLensKind,
         good: Option<MaterialGoodKey>,
     },
-}
-
-impl Default for MapLens {
-    fn default() -> Self {
-        Self::Qcew(EconomyMetric::Employment)
-    }
 }
 
 impl MapLens {
@@ -114,6 +111,7 @@ impl MapLens {
     #[must_use]
     pub fn label_for_log(&self, snapshot: Option<&ObserverEconomySnapshotV1>) -> String {
         match self {
+            Self::Relationships => "Supply relationships".to_owned(),
             Self::Qcew(metric) => metric.label().to_owned(),
             Self::Material { kind, good } => snapshot
                 .and_then(|snapshot| material_choices(snapshot, *kind).ok())
@@ -353,6 +351,15 @@ pub fn project_map_lens(
         metric.unit().clone_into(&mut result.unit);
         result.evidence = "OBSERVED | BLS QCEW | 2024 annual baseline";
     }
+    if matches!(lens, MapLens::Relationships) {
+        result.evidence = "SCHEMATIC | county aggregates; no physical route geometry";
+        result.unavailable = if snapshot.is_some() {
+            LensUnavailable::NotModeled
+        } else {
+            LensUnavailable::Loading
+        };
+        return result;
+    }
     let Some(snapshot) = snapshot else {
         return result;
     };
@@ -503,6 +510,20 @@ fn project_material_counties(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn relationships_are_the_default_without_fabricating_numeric_county_readings() {
+        let lens = super::MapLens::default();
+        assert_eq!(lens, super::MapLens::Relationships);
+        let observation = snapshot();
+        for observation in [None, Some(&observation)] {
+            let projection = super::project_map_lens(observation, &lens);
+            assert!(projection.counties.is_empty());
+            assert_eq!(projection.maximum(), None);
+            assert!(projection.unit.is_empty());
+        }
+        assert_eq!(lens.label_for_log(None), "Supply relationships");
+    }
+
     use super::*;
     use babylon_persistence::{
         ObserverVisibilityV1, ProductionFreightV1, ProductionRouteV1, ProductionSiteV1,

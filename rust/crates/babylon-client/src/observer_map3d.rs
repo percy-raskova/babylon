@@ -31,7 +31,7 @@ const METRES_TO_SCENE: f32 = 0.001;
 const BASE_HEIGHT: f32 = 3.0;
 const DATA_HEIGHT: f32 = 125.0;
 
-pub(crate) const MAP_VIEW_HELP: &str = "County height compares the selected reading; it is not terrain, a building, or a factory location. Gray means unavailable or not modeled; inspect the county for its reason. Zero is a measured account.\nRight-drag orbit | middle-drag pan | wheel / +/- zoom | Home reset";
+pub(crate) const MAP_VIEW_HELP: &str = "Relationships keeps county slabs level. Dashed arrows are schematic dependencies, not physical route geometry. Economic lenses compare county readings by height; gray means unavailable or not modeled, while zero is a measured account. Heights never locate terrain, buildings or factories.\nRight-drag orbit | middle-drag pan | wheel / +/- zoom | Home reset";
 
 /// Identifies the observer's perspective map camera, separate from production.
 #[derive(Component)]
@@ -245,7 +245,7 @@ fn setup_map(
             .spawn((
                 Mesh3d(meshes.add(body)),
                 MeshMaterial3d(materials.add(StandardMaterial {
-                    base_color: theme::GRAY,
+                    base_color: theme::LAND,
                     perceptual_roughness: 0.78,
                     metallic: 0.08,
                     ..default()
@@ -340,10 +340,11 @@ fn spawn_map_scene(
     commands.spawn((
         Text::new("Michigan | 83 counties | geographic boundaries"),
         TextFont {
-            font_size: 11.0,
+            font_size: 14.0,
             ..default()
         },
         TextColor(theme::PAPER),
+        crate::observer_ui::ObserverFontRole::Body,
         Node {
             position_type: PositionType::Absolute,
             max_width: px(700),
@@ -439,14 +440,18 @@ fn update_observation(
         if data_changed && transform.scale.y.ne(&target_height) {
             transform.scale.y = target_height;
         }
-        let color = value.map_or(theme::GRAY, |value| {
-            let weight = maximum
-                .filter(|maximum| *maximum > 0)
-                .map_or(0.0, |maximum| {
-                    (value as f64 / maximum as f64).clamp(0.0, 1.0) as f32
-                });
-            theme::BLUE.mix(&theme::YELLOW, weight)
-        });
+        let color = if matches!(input.ui.lens, MapLens::Relationships) {
+            theme::LAND
+        } else {
+            value.map_or(theme::GRAY, |value| {
+                let weight = maximum
+                    .filter(|maximum| *maximum > 0)
+                    .map_or(0.0, |maximum| {
+                        (value as f64 / maximum as f64).clamp(0.0, 1.0) as f32
+                    });
+                theme::BLUE.mix(&theme::YELLOW, weight)
+            })
+        };
         if data_changed {
             if let Some(material) = materials.get_mut(&material.0) {
                 material.base_color = color;
@@ -454,15 +459,21 @@ fn update_observation(
         }
         if let Some(outline) = materials.get_mut(&county.outline) {
             outline.base_color = if input.selected.0 == Some(county.atlas_index) {
-                theme::YELLOW
-            } else if input.hovered.0 == Some(county.atlas_index) {
                 theme::PAPER
+            } else if input.hovered.0 == Some(county.atlas_index) {
+                theme::BLUE
             } else {
                 theme::INK
             };
         }
     }
     for mut text in &mut legend {
+        if matches!(input.ui.lens, MapLens::Relationships) {
+            text.set_if_neq(Text::new(
+                "County geography | schematic supply relationships",
+            ));
+            continue;
+        }
         text.set_if_neq(Text::new(format!(
             "{} | week {} | 0..{} {}\nCounty readings | gray: unavailable | controls and encoding: Lenses",
             projection.label, input.session.viewed_tick, maximum.map_or_else(|| "-".into(), grouped), projection.unit,
@@ -495,7 +506,8 @@ fn place_legend(
         && !ui.menu_open
         && !ui.splash_visible
         && !ui.comparison_open
-        && ui.disclosure.is_none();
+        && ui.disclosure.is_none()
+        && !matches!(ui.lens, MapLens::Relationships);
     for (computed, mut node, mut visibility) in &mut legends {
         let placement = viewport
             .0
@@ -890,6 +902,7 @@ mod tests {
             .insert_resource(ObserverUiState {
                 splash_visible: false,
                 menu_open: false,
+                lens: MapLens::Qcew(crate::map_economy_lens::EconomyMetric::Employment),
                 ..default()
             })
             .init_resource::<ObserverViewport>()
@@ -940,6 +953,14 @@ mod tests {
                 }
             }
         }
+        app.world_mut().resource_mut::<ObserverUiState>().lens = MapLens::Relationships;
+        app.update();
+        assert_eq!(
+            *app.world().get::<Visibility>(legend).unwrap(),
+            Visibility::Hidden
+        );
+        app.world_mut().resource_mut::<ObserverUiState>().lens =
+            MapLens::Qcew(crate::map_economy_lens::EconomyMetric::Employment);
         *app.world_mut().resource_mut::<PrimaryView>() = PrimaryView::Production;
         app.update();
         assert_eq!(

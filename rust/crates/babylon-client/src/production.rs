@@ -190,6 +190,7 @@ pub(crate) fn readings_panel_visible(
 ) -> bool {
     view == PrimaryView::Production
         && navigation.details_open
+        && !ui.history_open
         && ProductionControlAvailability::for_snapshot(snapshot, navigation).scene
         && !ui.archive_open
         && !ui.menu_open
@@ -267,6 +268,7 @@ fn text(value: impl Into<String>, size: f32, color: Color) -> impl Bundle {
             ..default()
         },
         TextColor(color),
+        crate::observer_ui::ObserverFontRole::Body,
         DeclaredSurface::new(SurfaceId::ObserverProduction),
     )
 }
@@ -292,7 +294,7 @@ fn button_node(command: ProductionCommand) -> impl Bundle {
 pub(crate) fn button(parent: &mut ChildSpawnerCommands, value: &str, command: ProductionCommand) {
     parent
         .spawn(button_node(command))
-        .with_child(text(value, 13.0, theme::PAPER));
+        .with_child(text(value, 15.0, theme::PAPER));
 }
 
 fn setup(mut commands: Commands) {
@@ -341,12 +343,13 @@ fn setup_panel(commands: &mut Commands) {
             Node {
                 position_type: PositionType::Absolute,
                 padding: UiRect::all(px(16)),
-                column_gap: px(24),
-                border: UiRect::top(px(2)),
+                flex_direction: FlexDirection::Column,
+                row_gap: px(20),
+                border: UiRect::left(px(2)),
                 overflow: Overflow::scroll_y(),
                 ..default()
             },
-            BackgroundColor(theme::INK),
+            BackgroundColor(theme::PANEL),
             BorderColor::all(theme::PAPER),
             ZIndex(7),
             Visibility::Hidden,
@@ -365,15 +368,17 @@ fn panel_contents(panel: &mut ChildSpawnerCommands) {
         .with_children(|panel| {
             panel
                 .spawn(Node {
-                    justify_content: JustifyContent::SpaceBetween,
-                    align_items: AlignItems::Center,
-                    column_gap: px(8),
+                    flex_direction: FlexDirection::Column,
+                    align_items: AlignItems::Start,
+                    row_gap: px(8),
                     flex_shrink: 0.0,
                     min_width: px(0),
                     ..default()
                 })
                 .with_children(|header| {
-                    header.spawn(text("WORK & DEPENDENCE", 17.0, theme::YELLOW));
+                    header
+                        .spawn(text("WORK & DEPENDENCE", 23.0, theme::PAPER))
+                        .insert(crate::observer_ui::ObserverFontRole::Display);
                     header
                         .spawn(button_node(ProductionCommand::Details))
                         .with_child((
@@ -1048,14 +1053,14 @@ fn spawn_sites(
         };
         let height = if navigation.flat { 12.0 } else { 86.0 };
         let selected = navigation.selected_site.as_ref() == Some(&site.id);
-        let color = if selected { theme::YELLOW } else { theme::BLUE };
+        let color = if selected { theme::PAPER } else { theme::LAND };
         block(
             commands,
             meshes,
             materials,
             Vec3::new(142.0, 8.0, 106.0),
             Transform::from_translation(origin),
-            if selected { theme::YELLOW } else { theme::GRAY },
+            if selected { theme::PAPER } else { theme::GRAY },
         );
         block(
             commands,
@@ -1095,7 +1100,7 @@ fn spawn_site_label(
             },
             UiTransform::IDENTITY,
             Visibility::Hidden,
-            BackgroundColor(if selected { theme::YELLOW } else { theme::GRAY }),
+            BackgroundColor(if selected { theme::PAPER } else { theme::GRAY }),
             ZIndex(3),
             Pickable::IGNORE,
             ChildOf(parent),
@@ -1159,11 +1164,15 @@ fn spawn_routes(
         else {
             continue;
         };
-        let incident = navigation
-            .selected_site
-            .as_ref()
-            .is_some_and(|site| site == supplier || site == buyer);
-        let color = if incident { theme::YELLOW } else { theme::GRAY };
+        let selected = navigation.selected_site.as_ref();
+        let incident = selected.is_some_and(|site| site == supplier || site == buyer);
+        let color = if selected == Some(supplier) {
+            theme::COPPER
+        } else if selected == Some(buyer) {
+            theme::BLUE
+        } else {
+            theme::GRAY
+        };
         let width = if incident { 7.0 } else { 4.0 };
         let path = relation_path(*from, *to);
         for segment in path.windows(2) {
@@ -1369,7 +1378,7 @@ fn describe(site: &ProductionSiteV1, snapshot: &ProductionSnapshotV1) -> String 
         )
         .expect("String write");
     }
-    value.push_str("\nRealization here records delivered quantities, not payment.\nSCENE KEY\nEqual-height structures identify county cohorts; height and spacing carry no quantity or geography. Arrows point from disclosed suppliers to buyers. Bright links touch the selection. Packets are actual in-transit lots at static schematic positions.\n");
+    value.push_str("\nRealization here records delivered quantities, not payment.\nSCENE KEY\nEqual-height structures identify county cohorts; height and spacing carry no quantity or geography. Arrows point from disclosed suppliers to buyers. Cyan links enter the selection; copper links leave it. Packets are actual in-transit lots at static schematic positions.\n");
     value
 }
 
@@ -1674,6 +1683,7 @@ fn paint_scene(
     orbit: Res<ProductionOrbit>,
     viewport: Res<ObserverViewport>,
     scene: ProductionScene,
+    observation: ProductionObservation,
 ) {
     let ProductionScene {
         windows,
@@ -1681,10 +1691,15 @@ fn paint_scene(
         mut panels,
     } = scene;
     let visible = *view == PrimaryView::Production;
+    let snapshot = observation
+        .frame
+        .for_session(&observation.state)
+        .and_then(|frame| frame.production.as_ref());
+    let readings = readings_panel_visible(*view, &navigation, &ui, snapshot);
     let blocked = ui.menu_open || ui.splash_visible || ui.comparison_open;
     for (mut panel, _) in &mut panels {
         panel.set_if_neq(
-            if visible && !ui.archive_open && !ui.history_open && !blocked {
+            if visible && !readings && !ui.archive_open && !ui.history_open && !blocked {
                 Visibility::Visible
             } else {
                 Visibility::Hidden
@@ -2198,6 +2213,10 @@ mod tests {
             .init_resource::<ProductionOrbit>()
             .init_resource::<ObserverViewport>()
             .init_resource::<UiScale>()
+            .init_resource::<ObserverFrame>()
+            .insert_resource(ObserverSession::new(CampaignId::from_uuid(
+                uuid::Uuid::nil(),
+            )))
             .add_systems(Update, paint_scene);
         let camera = app
             .world_mut()
@@ -2753,6 +2772,38 @@ mod tests {
     }
 
     #[test]
+    fn production_context_yields_its_rail_to_readings_and_returns_after_close() {
+        let mut app = production_panel_app();
+        app.init_resource::<ProductionOrbit>()
+            .init_resource::<ObserverViewport>()
+            .add_systems(Update, paint_scene.after(navigate));
+        send_command(&mut app, ProductionCommand::Open);
+        let world = app.world_mut();
+        let subject = world
+            .query_filtered::<Entity, With<ProductionPanel>>()
+            .single(world)
+            .unwrap();
+        assert_eq!(
+            world.get::<Node>(subject).unwrap().flex_direction,
+            FlexDirection::Column
+        );
+        assert_eq!(
+            *world.get::<Visibility>(subject).unwrap(),
+            Visibility::Visible
+        );
+        send_command(&mut app, ProductionCommand::Details);
+        assert_eq!(
+            *app.world().get::<Visibility>(subject).unwrap(),
+            Visibility::Hidden
+        );
+        send_command(&mut app, ProductionCommand::Details);
+        assert_eq!(
+            *app.world().get::<Visibility>(subject).unwrap(),
+            Visibility::Visible
+        );
+    }
+
+    #[test]
     fn expanded_readings_use_the_side_panel_and_yield_to_modal_views() {
         use crate::observer_layout::{ObserverLayout, ObserverRegion};
 
@@ -2779,6 +2830,25 @@ mod tests {
             assert!(reading.min.x > layout.world.max.x);
         }
         assert_eq!(world.get::<Node>(detail).unwrap().display, Display::Flex);
+        // History owns this same rail while open; closing it restores the
+        // current subject's existing reading preference without recreating it.
+        app.world_mut()
+            .resource_mut::<ObserverUiState>()
+            .history_open = true;
+        app.update();
+        assert_eq!(
+            app.world().get::<Node>(detail).unwrap().display,
+            Display::None
+        );
+        assert!(app.world().resource::<ProductionNavigation>().details_open);
+        app.world_mut()
+            .resource_mut::<ObserverUiState>()
+            .history_open = false;
+        app.update();
+        assert_eq!(
+            app.world().get::<Node>(detail).unwrap().display,
+            Display::Flex
+        );
         for modal in 0..4 {
             {
                 let mut ui = app.world_mut().resource_mut::<ObserverUiState>();

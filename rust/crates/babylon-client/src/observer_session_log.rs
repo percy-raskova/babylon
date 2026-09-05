@@ -87,6 +87,8 @@ fn observer_command_name(command: ObserverCommand) -> &'static str {
         ObserverCommand::Disclosure(ObserverDisclosure::Time) => "time_controls",
         ObserverCommand::Disclosure(ObserverDisclosure::Lens) => "lens_controls",
         ObserverCommand::Evidence => "evidence",
+        ObserverCommand::EconomicDetails => "economic_details",
+        ObserverCommand::Relationships => "relationships",
     }
 }
 
@@ -208,6 +210,7 @@ struct PresentationSnapshot {
     details: bool,
     disclosure: &'static str,
     evidence: bool,
+    economic_details: bool,
     site: Option<String>,
     county: Option<String>,
     archive: bool,
@@ -286,6 +289,7 @@ fn log_presentation(
             None => "none",
         },
         evidence: ui.evidence_open,
+        economic_details: ui.economic_details_open,
         site,
         county,
         archive: ui.archive_open,
@@ -304,7 +308,7 @@ fn log_presentation(
         return;
     }
     scoped_info!(session, lens = %next.lens, view = ?next.view, flat = next.flat,
-        details = next.details, disclosure = next.disclosure, evidence = next.evidence,
+        details = next.details, disclosure = next.disclosure, evidence = next.evidence, economic_details = next.economic_details,
         selected_site = next.site.as_deref().unwrap_or("none_or_undisclosed"),
         county = next.county.as_deref().unwrap_or("none"), archive = next.archive,
         menu = next.menu, splash = next.splash, history = next.history,

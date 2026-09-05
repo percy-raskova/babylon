@@ -20,7 +20,7 @@ use crate::dossier::{availability_label, observation_scope, retained_page, verif
 use crate::map::SelectedCounty;
 use crate::observer::{ObservationContext, ObserverSession};
 use crate::observer_focus::{ObserverFocusSystems, ObserverFocusTarget, ObserverKeyboardActivate};
-use crate::observer_ui::{ObserverFeedback, ObserverFrame, ObserverUiState};
+use crate::observer_ui::{ObserverFeedback, ObserverFontRole, ObserverFrame, ObserverUiState};
 use crate::palette;
 use crate::ui::dossier_compose::{
     chronicle_header, chronicle_row_segments, retained_signal_segments, DossierSegment,
@@ -280,6 +280,7 @@ fn section_header(text: &str) -> impl Bundle {
             font_size: 11.0,
             ..default()
         },
+        ObserverFontRole::Body,
         DeclaredSurface::new(CARD_SURFACE),
     )
 }
@@ -333,6 +334,7 @@ fn spawn_dossier_card(mut commands: Commands) {
                     font_size: 24.0,
                     ..default()
                 },
+                ObserverFontRole::Display,
                 zone(DossierZone::Title),
                 ObserverFocusTarget::reading(None),
             ));
@@ -343,11 +345,13 @@ fn spawn_dossier_card(mut commands: Commands) {
                     font_size: 13.0,
                     ..default()
                 },
+                ObserverFontRole::Body,
                 zone(DossierZone::Question),
             ));
             card.spawn((
                 Text::new(""),
                 TextFont::default(),
+                ObserverFontRole::Body,
                 zone(DossierZone::DualTick),
             ));
             card.spawn(gold_rule());
@@ -355,6 +359,7 @@ fn spawn_dossier_card(mut commands: Commands) {
             card.spawn((
                 Text::new(""),
                 TextFont::default(),
+                ObserverFontRole::Exact,
                 zone(DossierZone::Signals),
             ));
             card.spawn(gold_rule());
@@ -374,33 +379,40 @@ fn spawn_dossier_card(mut commands: Commands) {
             card.spawn((
                 Text::new(""),
                 TextFont::default(),
+                ObserverFontRole::Exact,
                 zone(DossierZone::Chronicle),
             ));
             card.spawn(gold_rule());
-            // Actions footer: the visibly-unavailable Investigate chip.
-            card.spawn((
-                Node {
-                    width: percent(100),
-                    flex_direction: FlexDirection::Column,
-                    row_gap: px(8),
-                    padding: UiRect::axes(px(8), px(4)),
-                    border: UiRect::all(px(1)),
-                    border_radius: BorderRadius::all(px(4)),
-                    ..default()
-                },
-                BorderColor::all(palette::DIM),
-                zone(DossierZone::Actions),
-            ))
-            .with_child((
-                Text::new(INVESTIGATE_SEALED_CHIP),
-                TextColor(palette::DIM),
-                TextFont {
-                    font_size: 11.0,
-                    ..default()
-                },
-                DeclaredSurface::new(CARD_SURFACE),
-            ));
+            spawn_sealed_actions(card);
         });
+}
+
+fn spawn_sealed_actions(card: &mut ChildSpawnerCommands) {
+    // Actions footer: the visibly-unavailable Investigate chip.
+    card.spawn((
+        Node {
+            width: percent(100),
+            flex_direction: FlexDirection::Column,
+            row_gap: px(8),
+            padding: UiRect::axes(px(8), px(4)),
+            border: UiRect::all(px(1)),
+            border_radius: BorderRadius::all(px(4)),
+            ..default()
+        },
+        BorderColor::all(palette::DIM),
+        DossierZone::Actions,
+        DeclaredSurface::new(CARD_SURFACE),
+    ))
+    .with_child((
+        Text::new(INVESTIGATE_SEALED_CHIP),
+        TextColor(palette::DIM),
+        TextFont {
+            font_size: 11.0,
+            ..default()
+        },
+        ObserverFontRole::Body,
+        DeclaredSurface::new(CARD_SURFACE),
+    ));
 }
 
 #[derive(SystemParam)]
@@ -624,13 +636,21 @@ fn set_segments(commands: &mut Commands, zone: Entity, segments: &[DossierSegmen
                 font_size: 14.0,
                 ..default()
             },
+            ObserverFontRole::Body,
             DeclaredSurface::new(CARD_SURFACE),
         ));
     }
 }
 
 /// Rebuilds one zone entity as a single styled line.
-fn set_line(commands: &mut Commands, zone: Entity, text: String, color: Color, font_size: f32) {
+fn set_line(
+    commands: &mut Commands,
+    zone: Entity,
+    text: String,
+    color: Color,
+    font_size: f32,
+    font_role: ObserverFontRole,
+) {
     commands.entity(zone).despawn_related::<Children>();
     commands.entity(zone).with_child((
         TextSpan::new(text),
@@ -639,6 +659,7 @@ fn set_line(commands: &mut Commands, zone: Entity, text: String, color: Color, f
             font_size,
             ..default()
         },
+        font_role,
         DeclaredSurface::new(CARD_SURFACE),
     ));
 }
@@ -676,6 +697,7 @@ fn set_segment_rows(commands: &mut Commands, zone: Entity, rows: &[Vec<DossierSe
                         flex_shrink: 0.0,
                         ..default()
                     },
+                    ObserverFontRole::Exact,
                     DeclaredSurface::new(CARD_SURFACE),
                 ))
                 .with_children(|text| {
@@ -691,6 +713,7 @@ fn set_segment_rows(commands: &mut Commands, zone: Entity, rows: &[Vec<DossierSe
                                 },
                                 ..default()
                             },
+                            ObserverFontRole::Exact,
                             DeclaredSurface::new(CARD_SURFACE),
                         ));
                     }
@@ -791,6 +814,7 @@ fn spawn_control(commands: &mut Commands, zone: Entity, label: String, control: 
                     font_size: 13.0,
                     ..default()
                 },
+                ObserverFontRole::Body,
                 DeclaredSurface::new(CARD_SURFACE),
             ));
     });
@@ -1169,6 +1193,7 @@ fn paint_zones(
                     page.map_or(fallback, |page| &page.title).into(),
                     palette::BONE,
                     24.0,
+                    ObserverFontRole::Display,
                 );
             }
             DossierZone::Question => set_line(
@@ -1186,6 +1211,7 @@ fn paint_zones(
                 ),
                 palette::GOLD,
                 13.0,
+                ObserverFontRole::Body,
             ),
             DossierZone::DualTick => {
                 set_segments(commands, entity, &status_segments(&context.fetch, read));
@@ -1371,6 +1397,7 @@ fn paint_actions(
             font_size: 11.0,
             ..default()
         },
+        ObserverFontRole::Body,
         DeclaredSurface::new(CARD_SURFACE),
     ));
 }

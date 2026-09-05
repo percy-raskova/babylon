@@ -8,7 +8,7 @@ use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::observer_focus::{ObserverFocusSystems, ObserverFocusTarget, ObserverKeyboardActivate};
 use crate::observer_io::ObserverSet;
 use crate::observer_theme as theme;
-use crate::observer_ui::{ObserverCommand, ObserverUiState};
+use crate::observer_ui::{ObserverCommand, ObserverFontRole, ObserverUiState};
 
 const FICTION: &str = "Babylon is a work of fiction built from real places, records and material relationships. Some of it may feel uncomfortably familiar.";
 const EMERGENCE: &str = "PROCEDURALLY EMERGENT. Most of your experience comes from game mechanics. It may behave in unexpected ways.";
@@ -38,6 +38,7 @@ fn text(value: &str, size: f32, color: Color) -> impl Bundle {
             ..default()
         },
         TextColor(color),
+        ObserverFontRole::Body,
         TextLayout::new_with_linebreak(bevy::text::LineBreak::WordOrCharacter),
         Node {
             max_width: percent(100),
@@ -71,7 +72,9 @@ fn spawn_warning(mut commands: Commands) {
             DeclaredSurface::new(SurfaceId::TitleLockup),
         ))
         .with_children(|screen| {
-            screen.spawn((text("WARNING", 104.0, theme::PAPER), WarningHeadline));
+            screen
+                .spawn((text("WARNING", 104.0, theme::PAPER), WarningHeadline))
+                .insert(ObserverFontRole::Display);
             screen.spawn(text(
                 "THIS FICTION IS BUILT FROM REALITY.",
                 20.0,

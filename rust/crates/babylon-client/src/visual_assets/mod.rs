@@ -1,6 +1,7 @@
 //! Embedded visual assets and their typed Bevy loading surface.
 
 mod catalog;
+mod fonts;
 mod gallery;
 mod presentation;
 
@@ -8,6 +9,7 @@ pub use catalog::{
     FrameKind, InterfaceIcon, MarkerIcon, ProvenanceIcon, SurfaceKind, VisualAssetDescriptor,
     VisualAssetId, VISUAL_ASSET_CATALOG,
 };
+pub use fonts::ObserverFonts;
 pub use gallery::{GalleryAssetLabel, GalleryScrollRoot, VisualAssetGalleryPlugin};
 pub use presentation::{ReadableTitle, StoryBanner, TitleMark, VisualPresentationPlugin};
 
@@ -147,6 +149,7 @@ pub struct VisualAssetsPlugin;
 impl Plugin for VisualAssetsPlugin {
     fn build(&self, app: &mut App) {
         app.init_asset::<TextureAtlasLayout>();
+        fonts::install(app);
 
         let registry = app.world().resource::<EmbeddedAssetRegistry>();
         for (name, bytes) in EMBEDDED_VISUALS {

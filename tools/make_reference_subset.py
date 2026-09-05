@@ -441,6 +441,12 @@ TABLE: dict[str, TablePolicy] = {
         "Transport Substrate (Program 11) staged data — not yet wired into "
         "any system as of this writing. " + _UNREFERENCED_REASON,
     ),
+    "fact_qwi_county_flow": TablePolicy(
+        "skip",
+        "PER-32 staged data (2026-09-05): LEHD QWI Michigan 2000Q3-2021Q4 "
+        "labor flows — staged for the Gate 4 circuit and COVID benchmark, "
+        "not yet read by any system or CI-relevant test. " + _UNREFERENCED_REASON,
+    ),
     "fact_mineral_employment": TablePolicy(
         "full",
         "Program 22 Wave 1 (2026-07-17): 25 rows (5 years x 5 sectors, T1 "

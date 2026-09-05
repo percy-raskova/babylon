@@ -59,15 +59,22 @@ inputs:
     # (sha 7e67f8cd..., 76 tables, 59,831,414 rows) as
     # reference-subset-20260904-v8.sqlite (double-build byte-identical).
     # tiger tarball unchanged from v3.
+    # v8 in-place refresh (2026-09-05, PER-31, PR #904): fact_hpms_road_segment
+    # populated (352,814 Michigan 2024 rows) — subset policy skip, so the only
+    # subset-visible delta is the full-scoped dim_data_source gaining its
+    # DOT_HPMS row (21 -> 22). Rebuilt from the restamped product (sha
+    # 180ba428..., 76 tables, 60,184,229 rows) as
+    # reference-subset-20260905-v8.sqlite (double-build byte-identical,
+    # 14,195,447 rows kept). tiger tarball unchanged from v3.
     default: ci-data-v8
   asset:
     description: Asset filename within the release
     required: false
-    default: reference-subset-20260904-v8.sqlite
+    default: reference-subset-20260905-v8.sqlite
   sha256:
     description: Expected sha256 of the asset (pin — bump with the tag)
     required: false
-    default: 2de97ec273f4cc40e271e7bf852b98e97a651286e7cbaf3284d3ce89d32335b4
+    default: 420550d352f6738fdf2b5352d6ef02105ff3740a5a70495804bc822ae7db9c40
   tiger-asset:
     description: TIGER county-shapefile tarball within the release (the
       headless runner reads data/tiger/county/tl_2024_us_county.shp — proving

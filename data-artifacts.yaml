@@ -1390,3 +1390,20 @@ artifacts:
       each row bound to the existing county-source filename and SHA-256 manifest.
       This foundation reference grants no runtime hydration, production recipes,
       worker allocation, ReserveArmy transitions, or completion of PER-29.
+  - name: ntad_detroit_windsor_rail_v1
+    format: json
+    source_table: null
+    generator: tools/make_ntad_border_rail_artifact.py
+    mode: register
+    rows: 2
+    sha256: ee00b4971fa70e4a2ca56810d45a4f5b107a68a611d328fb9b2eb32e8d723f24
+    home: src/babylon/data/reference/transport/ntad_detroit_windsor_rail_v1.json
+    material_relation: 'Part of PER-28/PER-31: two Observed NTAD North American Rail Network polylines
+      from the official July 21, 2026 service revision, preserving FRAARCID 489609/737940, original
+      FR/TO identities and vertex order, 29 EPSG:4326 vertices, shared node 441352, recorded lengths,
+      tracks, and ownership labels. Captured response and layer metadata have exact HTTP-body and
+      stored-file SHA-256 pins in contracts/ntad_border_rail_v1.yaml; the generator rebuilds offline.
+      Shared topology and semantic identity are Derived; selection and canonical representation are
+      Designed. This is source evidence only, with no HPMS replacement, freight capacity, border delay,
+      loss rate, H3 allocation, factory placement, Canadian actor, runtime hydration, campaign mutation,
+      or gate completion authority.'

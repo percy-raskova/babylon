@@ -1136,6 +1136,76 @@ class FactQcewCountyRollup(NormalizedBase):
     is_imputed: Mapped[bool] = mapped_column(nullable=False, server_default=text("0"))
 
 
+class FactQwiCountyFlow(NormalizedBase):
+    """LEHD QWI county labor flows (PER-32).
+
+    One row per county x NAICS (3/4-digit) x ownership x quarter, filtered to
+    the all-worker total (sex/age/race/ethnicity/education/firm-age/firm-size
+    total categories) from the R2026Q3 Michigan county files. Michigan's LEHD
+    coverage spans 2000Q3-2021Q4, so this table serves the 2019/2020 benchmark
+    baselines directly and carries no rows for the 2024 thin slice.
+
+    QWI cells are noise-infused and subject to suppression: an empty source
+    measure is stored NULL with its QWI status flag preserved in the companion
+    ``status_*`` column. Nothing is imputed.
+
+    Columns (QWI mnemonic in parentheses):
+        employment_begin / employment_end / employment_stable: employment
+            stocks (Emp / EmpEnd / EmpS)
+        hires_all / hires_new / separations: worker flows (HirA / HirN / Sep)
+        turnover_stable: stable-job turnover rate (TurnOvrS)
+        firm_job_gains / firm_job_losses / firm_job_change: firm job flows
+            (FrmJbGn / FrmJbLs / FrmJbC; FrmJbC is signed)
+        avg_monthly_earnings_stable_usd: mean monthly earnings of stable jobs
+            (EarnS) — an observed mean, not a median
+        payroll_usd: total quarterly payroll (Payroll); heavily suppressed at
+            this grain
+    """
+
+    __tablename__ = "fact_qwi_county_flow"
+
+    county_id: Mapped[int] = mapped_column(ForeignKey("dim_county.county_id"), primary_key=True)
+    industry_id: Mapped[int] = mapped_column(
+        ForeignKey("dim_industry.industry_id"), primary_key=True
+    )
+    ownership_id: Mapped[int] = mapped_column(
+        ForeignKey("dim_ownership.ownership_id"), primary_key=True
+    )
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), primary_key=True)
+    source_id: Mapped[int] = mapped_column(ForeignKey("dim_data_source.source_id"), nullable=False)
+
+    employment_begin: Mapped[int | None] = mapped_column()
+    employment_end: Mapped[int | None] = mapped_column()
+    employment_stable: Mapped[int | None] = mapped_column()
+    hires_all: Mapped[int | None] = mapped_column()
+    hires_new: Mapped[int | None] = mapped_column()
+    separations: Mapped[int | None] = mapped_column()
+    turnover_stable: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    firm_job_gains: Mapped[int | None] = mapped_column()
+    firm_job_losses: Mapped[int | None] = mapped_column()
+    firm_job_change: Mapped[int | None] = mapped_column()
+    avg_monthly_earnings_stable_usd: Mapped[int | None] = mapped_column()
+    payroll_usd: Mapped[int | None] = mapped_column()
+
+    status_employment_begin: Mapped[int | None] = mapped_column()
+    status_employment_end: Mapped[int | None] = mapped_column()
+    status_employment_stable: Mapped[int | None] = mapped_column()
+    status_hires_all: Mapped[int | None] = mapped_column()
+    status_hires_new: Mapped[int | None] = mapped_column()
+    status_separations: Mapped[int | None] = mapped_column()
+    status_turnover_stable: Mapped[int | None] = mapped_column()
+    status_firm_job_gains: Mapped[int | None] = mapped_column()
+    status_firm_job_losses: Mapped[int | None] = mapped_column()
+    status_firm_job_change: Mapped[int | None] = mapped_column()
+    status_avg_monthly_earnings_stable: Mapped[int | None] = mapped_column()
+    status_payroll: Mapped[int | None] = mapped_column()
+
+    __table_args__ = (
+        Index("idx_qwi_county_time", "county_id", "time_id"),
+        Index("idx_qwi_industry_time", "industry_id", "time_id"),
+    )
+
+
 class FactProductivityAnnual(NormalizedBase):
     """BLS productivity data for surplus value analysis."""
 

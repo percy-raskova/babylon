@@ -1256,14 +1256,19 @@ tables:
   - name: fact_hpms_road_segment
     kind: table
     source: HPMS
-    extractor: deleted @ 4ce7c96a^ (src/babylon/data/dot/loader_3nf.py)
-    disposition: investigate
+    extractor: babylon-data src/babylon_data/dot/ (2026-09-04, PER-31)
+    disposition: keep
     subset_policy: skip
     material_relation: FHWA Highway Performance Monitoring System road-segment rows
       — the Transport Substrate (Program 11, Constitution II.13) corridor-mesh raw material.
-    notes: 0 rows despite RATIFIED Program 11 status — triage matrix marks KEEP but
-      the table is empty; catalogued as investigate here pending the loader being run
-      (see report).
+    notes: "352,814 Michigan rows (all 83 counties) from the 2024 HPMS
+      spatial-sections export; every row YEAR_RECORD=2024. Observed per-section
+      AADT with single-unit/combination truck splits, lanes, speed limit,
+      NHS/NHFN flags, section length and WKT geometry. 1,477 source rows
+      skipped for missing FIPS; zero unresolved county keys. Loads idempotently
+      via python -m babylon_data.dot (delete+reload). subset_policy stays skip:
+      not yet wired into a system — corridor capacity/travel-time derivation
+      is a downstream consumer."
   - name: fact_lodes_commuter_flow
     kind: table
     source: LODES
@@ -1359,6 +1364,25 @@ tables:
     subset_policy: full
     material_relation: own_code='0' Total-Covered per-county employment rollup — the
       national employment total MELT's [100M,200M] sanity bound depends on.
+  - name: fact_qwi_county_flow
+    kind: table
+    source: LEHD_QWI
+    extractor: babylon-data src/babylon_data/lehd_qwi/ (2026-09-05, PER-32)
+    disposition: keep
+    subset_policy: skip
+    material_relation: LEHD Quarterly Workforce Indicators labor-flow rows — hires,
+      separations, employment stocks, turnover, firm job flows and payroll by county x
+      NAICS x quarter; the observed labor-demand/reserve-army movement substrate for
+      the Gate 4 circuit and the 2020-2021 COVID emergence benchmark.
+    notes: "All-worker totals (sex/age/race/ethnicity/education/firm-age/firm-size
+      total categories) from the R2026Q3 Michigan county files at NAICS 3- and
+      4-digit, private ownership, not seasonally adjusted. Michigan LEHD coverage
+      spans 2000Q3-2021Q4 (partnership lapsed), so the table serves the 2019/2020
+      benchmark baselines and carries NO rows for the 2024 thin slice. QWI cells
+      are noise-infused: empty measures are NULL with the QWI status flag kept in
+      the companion status_* column; nothing is imputed. subset_policy stays skip:
+      not yet wired into a system — labor-demand realization is a downstream
+      consumer."
   - name: fact_ricci_unequal_exchange_gvc
     kind: table
     source: Ricci_GVC

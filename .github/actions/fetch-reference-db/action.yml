@@ -53,15 +53,21 @@ inputs:
     # registry product sha 5e1e60fc... exactly (76 tables, 59,828,266 rows);
     # all 85 manifest-pinned dist artifacts sha-verified before upload.
     # tiger tarball unchanged from v3.
+    # v8 in-place refresh (2026-09-04, PER-31, PR #900): bridge_cfs_county
+    # populated — 3,148 FAF5 county-factor allocation rows. Its parquet was
+    # clobbered in place; the subset was rebuilt from the restamped product
+    # (sha 7e67f8cd..., 76 tables, 59,831,414 rows) as
+    # reference-subset-20260904-v8.sqlite (double-build byte-identical).
+    # tiger tarball unchanged from v3.
     default: ci-data-v8
   asset:
     description: Asset filename within the release
     required: false
-    default: reference-subset-20260730-v8.sqlite
+    default: reference-subset-20260904-v8.sqlite
   sha256:
     description: Expected sha256 of the asset (pin — bump with the tag)
     required: false
-    default: c139c39859dd0975910a187737c4ef3cb520a1789689a958a2aeb1343a2e57e2
+    default: 2de97ec273f4cc40e271e7bf852b98e97a651286e7cbaf3284d3ce89d32335b4
   tiger-asset:
     description: TIGER county-shapefile tarball within the release (the
       headless runner reads data/tiger/county/tl_2024_us_county.shp — proving

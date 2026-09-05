@@ -201,7 +201,9 @@ TABLE: dict[str, TablePolicy] = {
     "dim_wealth_class": TablePolicy("full", _DIM_BRIDGE_REASON),
     "dim_worker_class": TablePolicy("full", _DIM_BRIDGE_REASON),
     # -- bridge_* — full except bridge_lodes_block (deviation, see reason). --
-    "bridge_cfs_county": TablePolicy("full", "0 rows in source — trivially full."),
+    "bridge_cfs_county": TablePolicy(
+        "full", "3,148 rows since PER-31 (2026-09-04); still small — trivially full."
+    ),
     "bridge_county_h3": TablePolicy(
         "full",
         "OWNER'S CALL (documented per task): already 93.6% Michigan "
@@ -371,8 +373,9 @@ TABLE: dict[str, TablePolicy] = {
         "(proven on the ci-data-v1 proving run, 2026-07-11). The original "
         "skip reasoning ('zero real-DB test coverage') missed that the "
         "Determinism Bundle CI job exercises the real engine. Its county "
-        "bridge (bridge_cfs_county) is empty, so FAF-zone rows cannot be "
-        "Michigan-scoped — FULL copy (~97 MiB, 2.49M rows).",
+        "bridge (bridge_cfs_county) was empty when this policy was written, "
+        "so FAF-zone rows could not be Michigan-scoped — FULL copy "
+        "(~97 MiB, 2.49M rows).",
     ),
     # -- fact_* — default SKIP: not referenced by any src/ module or test. --
     "fact_bls_unemployment_decomposition": TablePolicy(

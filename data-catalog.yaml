@@ -390,7 +390,7 @@ categories:
 tables:
   - name: bridge_cfs_county
     kind: table
-    source: CFS
+    source: FAF5
     extractor: babylon-data src/babylon_data/faf_bridge/ (2026-09-04, PER-31)
     disposition: keep
     subset_policy: full

@@ -882,11 +882,14 @@ mod tests {
             visibility: ObserverVisibilityV1::FullObserver,
             counties: Vec::new(),
             production: Some(babylon_persistence::ProductionSnapshotV1 {
+                labor_accounts: Vec::new(),
                 scenario_label: "bounded observer fixture".into(),
                 horizon_week: 16,
                 sites: Vec::new(),
                 routes: Vec::new(),
                 freight: Vec::new(),
+                observed_contexts: Vec::new(),
+                process_attributions: Vec::new(),
                 provenance: Vec::new(),
                 events: vec![babylon_persistence::ProductionEventV1 {
                     id: "committed-event".into(),

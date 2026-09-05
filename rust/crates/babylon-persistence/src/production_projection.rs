@@ -1,5 +1,8 @@
 //! Projection of exact committed material registers and evidence, without adjudication.
 
+pub(crate) mod context;
+mod labor;
+
 use babylon_material_circuit::{MaterialCircuitStateV2, OrderIdV1, ProcessIdV1, SiteIdV1};
 use babylon_tick::material_world::{MaterialTickReceiptsV3, MaterialWorldRegisterV2};
 
@@ -19,11 +22,13 @@ pub(crate) enum ProductionProjectionErrorV1 {
     Content,
     State,
     History,
+    Arithmetic,
 }
 
 pub(crate) fn project_material_observation_v1(
     preset: MichiganDeliveryPresetV1,
     register: &MaterialWorldRegisterV2,
+    opening: Option<&MaterialWorldRegisterV2>,
     history: &[(MaterialTickReceiptsV3, [u8; 32])],
 ) -> Result<ProductionSnapshotV1, ProductionProjectionErrorV1> {
     let catalog =
@@ -38,6 +43,11 @@ pub(crate) fn project_material_observation_v1(
         }
     }
     let state = register.state();
+    let labor_accounts = labor::project_labor_accounts(
+        state,
+        opening.map(MaterialWorldRegisterV2::state),
+        history.last().map(|(receipt, _)| receipt),
+    )?;
     let sites = project_sites(catalog, state, history.last().map(|(receipt, _)| receipt))?;
     let routes = project_routes(catalog, state)?;
     let mut freight = Vec::new();
@@ -77,7 +87,8 @@ pub(crate) fn project_material_observation_v1(
             MichiganDeliveryPresetV1::Standard => "Michigan: standard delivery",
             MichiganDeliveryPresetV1::Delayed => "Michigan: delayed sheet delivery",
         }.to_owned(),
-        horizon_week: preset.horizon_ticks(), sites, routes, freight, events,
+        horizon_week: preset.horizon_ticks(), sites, routes, freight, events, labor_accounts,
+        observed_contexts: Vec::new(), process_attributions: Vec::new(),
         provenance: vec![
             "Designed 16-week physical demonstration: county-industry aggregates; no factory locations.".to_owned(),
             "Recipes, opening stock, orders, labor-hours, capacity and route delays are Designed.".to_owned(),
@@ -456,9 +467,14 @@ mod tests {
         let opening =
             MaterialWorldRegisterV2::try_new(0, michigan_material_foundation_v1(preset).unwrap())
                 .unwrap();
-        let initial = project_material_observation_v1(preset, &opening, &[]).unwrap();
+        let initial = project_material_observation_v1(preset, &opening, None, &[]).unwrap();
         assert!(initial.freight.is_empty());
         assert!(initial.events.is_empty());
+        assert_eq!(initial.labor_accounts.len(), 5);
+        assert!(initial
+            .labor_accounts
+            .iter()
+            .all(|row| { row.completed.is_none() && row.next_opening_week == 1 }));
         assert!(initial
             .sites
             .iter()
@@ -466,7 +482,9 @@ mod tests {
         let next = opening.prepare_next().unwrap();
         let receipt = decode_material_receipts_v3(next.receipt_bytes()).unwrap();
         let history = vec![(receipt, sha256_of(next.receipt_bytes()))];
-        let snapshot = project_material_observation_v1(preset, next.register(), &history).unwrap();
+        let snapshot =
+            project_material_observation_v1(preset, next.register(), Some(&opening), &history)
+                .unwrap();
         let starved = snapshot
             .sites
             .iter()
@@ -497,34 +515,34 @@ mod tests {
         );
         assert!(snapshot.events.iter().all(|event| event.week == 1));
         assert_eq!(
-            project_material_observation_v1(preset, &opening, &history),
+            project_material_observation_v1(preset, &opening, None, &history),
             Err(ProductionProjectionErrorV1::History)
         );
         assert_eq!(
-            project_material_observation_v1(preset, next.register(), &[]),
+            project_material_observation_v1(preset, next.register(), Some(&opening), &[]),
             Err(ProductionProjectionErrorV1::History)
         );
     }
 
+    fn week_three(preset: MichiganDeliveryPresetV1) -> ProductionSnapshotV1 {
+        let mut register =
+            MaterialWorldRegisterV2::try_new(0, michigan_material_foundation_v1(preset).unwrap())
+                .unwrap();
+        let mut history = Vec::new();
+        let mut opening = None;
+        for _ in 0..3 {
+            let next = register.prepare_next().unwrap();
+            history.push((
+                decode_material_receipts_v3(next.receipt_bytes()).unwrap(),
+                sha256_of(next.receipt_bytes()),
+            ));
+            opening = Some(std::mem::replace(&mut register, next.register().clone()));
+        }
+        project_material_observation_v1(preset, &register, opening.as_ref(), &history).unwrap()
+    }
+
     #[test]
     fn physical_projection_preserves_good_identity_and_delivery_delay_causality() {
-        fn week_three(preset: MichiganDeliveryPresetV1) -> ProductionSnapshotV1 {
-            let mut register = MaterialWorldRegisterV2::try_new(
-                0,
-                michigan_material_foundation_v1(preset).unwrap(),
-            )
-            .unwrap();
-            let mut history = Vec::new();
-            for _ in 0..3 {
-                let next = register.prepare_next().unwrap();
-                history.push((
-                    decode_material_receipts_v3(next.receipt_bytes()).unwrap(),
-                    sha256_of(next.receipt_bytes()),
-                ));
-                register = next.register().clone();
-            }
-            project_material_observation_v1(preset, &register, &history).unwrap()
-        }
         let standard = week_three(MichiganDeliveryPresetV1::Standard);
         let delayed = week_three(MichiganDeliveryPresetV1::Delayed);
         let macomb = |snapshot: &ProductionSnapshotV1| {
@@ -573,6 +591,39 @@ mod tests {
                 .iter()
                 .filter(|lot| lot.route_id == route.id)
                 .all(|lot| lot.good_id == route.good_id && lot.unit_id == route.unit_id));
+        }
+    }
+
+    #[test]
+    fn delivery_delay_changes_used_time_with_equal_budgets_and_unaffected_food() {
+        let standard = week_three(MichiganDeliveryPresetV1::Standard);
+        let delayed = week_three(MichiganDeliveryPresetV1::Delayed);
+        for account in &standard.labor_accounts {
+            let twin = delayed
+                .labor_accounts
+                .iter()
+                .find(|row| row.site_id == account.site_id && row.unit_id == account.unit_id)
+                .unwrap();
+            let a = account.completed.as_ref().unwrap();
+            let b = twin.completed.as_ref().unwrap();
+            assert_eq!(a.week, 3);
+            assert_eq!(a.opening, b.opening);
+            assert_eq!(account.next_opening_available, twin.next_opening_available);
+            assert_eq!(a.used.checked_add(a.unused), Some(a.opening));
+            assert_eq!(b.used.checked_add(b.unused), Some(b.opening));
+            let site = standard
+                .sites
+                .iter()
+                .find(|site| site.id == account.site_id)
+                .unwrap();
+            if site.industry_code == "332" {
+                assert_eq!(a.used, 8 * site.labor[0].quantity_per_batch);
+                assert!(a.used > b.used);
+                assert_eq!(b.used, 0);
+                assert!(a.unused < b.unused);
+            } else if site.industry_code == "311" {
+                assert_eq!(account, twin);
+            }
         }
     }
 }

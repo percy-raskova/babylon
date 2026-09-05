@@ -13,6 +13,7 @@ mod county_producer;
 mod cutover_vectors;
 pub mod error;
 mod foundation;
+mod foundation_content_schema;
 mod glossary_concepts;
 pub mod h3_reference_cohort;
 mod h3_reference_installer;
@@ -90,7 +91,10 @@ pub use cutover_vectors::{
     RustPersistenceVectorErrorV1, RustPersistenceVectorOutcomeV1, RustPersistenceVectorReportV1,
 };
 pub use error::{PersistenceError, PersistenceFailureKind};
-pub use foundation::{CampaignFoundationV1, FoundationContentBundleV1};
+pub use foundation::{
+    CampaignFoundationV1, FoundationContentBundle, FoundationContentBundleV1,
+    FoundationContentBundleV2, FoundationContentLayout,
+};
 pub use glossary_concepts::{
     glossary_concepts_v1, GlossaryConceptV1, GlossaryConceptsErrorV1, GlossaryConceptsV1,
     GLOSSARY_CONCEPTS_FIXTURE_PATH_V1, PINNED_GLOSSARY_CONCEPTS_SHA256_V1,
@@ -196,8 +200,11 @@ pub use territory_county_map::{
 };
 
 mod production_evidence;
-pub use production_evidence::ProductionEvidenceDigestV1;
+pub use production_evidence::ProductionEvidenceDigestV2;
 pub mod production_observation;
 pub use production_observation::*;
 
+pub mod michigan_cohorts;
+pub mod michigan_content;
 pub mod michigan_material;
+pub mod michigan_sectors;

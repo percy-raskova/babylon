@@ -17,8 +17,58 @@ pub struct ProductionSnapshotV1 {
     pub routes: Vec<ProductionRouteV1>,
     pub freight: Vec<ProductionFreightV1>,
     pub events: Vec<ProductionEventV1>,
+    /// Each exact site/unit labor principal occurs once, across all its processes.
+    pub labor_accounts: Vec<ProductionLaborAccountV1>,
+    /// Deduplicated public 2024 source cells, never current modeled employment.
+    pub observed_contexts: Vec<ObservedManufacturingContextV1>,
+    /// Designed attribution only; these are not supplier or employment relations.
+    pub process_attributions: Vec<DesignedProcessAttributionV1>,
     /// Declared assumptions and source artifact identifiers.
     pub provenance: Vec<String>,
+}
+
+/// The exact authored BUSINESS node in an admitted cohort foundation.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProductionBusinessSubjectV1 {
+    pub scenario: String,
+    pub local_name: String,
+}
+
+/// Observed private-industry county manufacturing totals from one source cell.
+/// Metrics have their QCEW units: establishments, annual-average jobs, USD annual
+/// payroll, and USD weekly mean wage. No metric allocates people to a process.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ObservedManufacturingContextV1 {
+    pub subject: ProductionBusinessSubjectV1,
+    pub county_geoid: String,
+    pub sector_code: String,
+    pub sector_title: String,
+    pub vintage: u16,
+    pub annual_avg_estabs_count: u64,
+    pub annual_avg_emplvl: Option<u64>,
+    pub total_annual_wages: Option<u64>,
+    pub annual_avg_wkly_wage: Option<u64>,
+    pub source_url: String,
+    pub source_file: String,
+    pub source_sha256: String,
+    pub artifact_sha256: String,
+    pub evidence_class: crate::ArchiveEvidenceClassV1,
+}
+
+/// A Designed process is set in this observed sector context. The link assigns
+/// no workers, ownership, factory coordinates, market share, or physical output.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesignedProcessAttributionV1 {
+    pub process_id: String,
+    pub site_id: String,
+    pub industry_code: String,
+    pub cohort_subject: ProductionBusinessSubjectV1,
+    pub scenario_artifact_sha256: String,
+    pub industry_artifact_sha256: String,
+    pub evidence_class: crate::ArchiveEvidenceClassV1,
 }
 
 /// An aggregate cohort at county resolution, never a factory coordinate.
@@ -76,6 +126,29 @@ pub struct ProductionLaborV1 {
     pub unit: String,
     pub available: u64,
     pub quantity_per_batch: u64,
+}
+
+/// Exact time accounting, distinct from employment, headcount, or paid wages.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProductionLaborAccountV1 {
+    pub site_id: String,
+    pub unit_id: String,
+    pub unit: String,
+    pub next_opening_week: u64,
+    pub next_opening_available: u64,
+    /// Absent at foundation; unused time expires within its completed week.
+    pub completed: Option<CompletedProductionLaborV1>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CompletedProductionLaborV1 {
+    pub week: u64,
+    pub opening: u64,
+    pub planned: u64,
+    pub used: u64,
+    pub unused: u64,
 }
 
 /// A real supplier relation with its declared physical route and order account.

@@ -1,7 +1,5 @@
 //! Separate full-observer material capability and exact historical projection.
 
-use std::sync::OnceLock;
-
 use babylon_kernel::sha256_of;
 use babylon_tick::{
     material_replay::IdentifiedMaterialTickV3,
@@ -12,11 +10,11 @@ use babylon_tick::{
 use postgres::{Config, GenericClient, NoTls};
 
 use crate::{
-    material_runtime::{
-        install_material_runtime_schema_v3, michigan_material_runtime_foundation_v2,
+    material_runtime::install_material_runtime_schema_v3,
+    michigan_content::{
+        admit_michigan_content_v1, MichiganContentAdmissionV1, MichiganPhysicalProjectionV1,
     },
     michigan_economy::digest_hex,
-    michigan_material::MichiganDeliveryPresetV1,
     observer_reader::{ObserverEconomyErrorV1, ObserverVisibilityV1},
     production_projection::project_material_observation_v1,
     CampaignId, ProductionSnapshotV1,
@@ -28,73 +26,39 @@ const VIEWS: [&str; 2] = [
     "v_observer_material_state_v1",
 ];
 
-struct ExpectedFoundation {
-    digest: [u8; 32],
-    content_digest: [u8; 32],
-    canonical_bytes: Vec<u8>,
-    register: MaterialWorldRegisterV2,
-}
-
-fn expected_foundation(
-    preset: MichiganDeliveryPresetV1,
-) -> Result<&'static ExpectedFoundation, ObserverEconomyErrorV1> {
-    static STANDARD: OnceLock<Result<ExpectedFoundation, ObserverEconomyErrorV1>> = OnceLock::new();
-    static DELAYED: OnceLock<Result<ExpectedFoundation, ObserverEconomyErrorV1>> = OnceLock::new();
-    let cache = match preset {
-        MichiganDeliveryPresetV1::Standard => &STANDARD,
-        MichiganDeliveryPresetV1::Delayed => &DELAYED,
-    };
-    cache
-        .get_or_init(|| {
-            let foundation = michigan_material_runtime_foundation_v2(preset)
-                .map_err(|_| ObserverEconomyErrorV1::Reference)?;
-            Ok(ExpectedFoundation {
-                digest: foundation.digest(),
-                content_digest: foundation.spec().content_digest,
-                canonical_bytes: foundation.canonical_bytes().to_vec(),
-                register: foundation.initial_register().clone(),
-            })
-        })
-        .as_ref()
-        .map_err(|error| *error)
-}
-
-pub(crate) fn validate_material_header(
-    preset_id: &str,
-    horizon: i64,
-    content: &[u8],
-    foundation: &[u8],
-    tick: u64,
-) -> Result<MichiganDeliveryPresetV1, ObserverEconomyErrorV1> {
-    let preset = MichiganDeliveryPresetV1::from_id(preset_id)
-        .ok_or(ObserverEconomyErrorV1::ScenarioMismatch)?;
-    let expected = expected_foundation(preset)?;
-    if u64::try_from(horizon).ok() != Some(preset.horizon_ticks())
-        || tick > preset.horizon_ticks()
-        || content != expected.content_digest
-        || foundation != expected.digest
-    {
-        return Err(ObserverEconomyErrorV1::ScenarioMismatch);
-    }
-    Ok(preset)
-}
-
 pub(crate) struct MaterialObservationV1 {
     pub(crate) foundation_digest: String,
     pub(crate) production: Option<ProductionSnapshotV1>,
     pub(crate) nominal_world_hash: Option<String>,
 }
 
-struct MaterialObservationHeader {
-    preset: MichiganDeliveryPresetV1,
-    expected: &'static ExpectedFoundation,
+struct MaterialObservationRow {
+    row_campaign: uuid::Uuid,
+    row_tick: i64,
+    register_bytes: Vec<u8>,
+    receipts: Option<Vec<u8>>,
+    identity: Option<Vec<u8>>,
+    content_hash: Option<Vec<u8>>,
+    foundation_bytes: Option<Vec<u8>>,
 }
 
-fn read_material_header(
+fn decode_material_row(row: &postgres::Row) -> Result<MaterialObservationRow, postgres::Error> {
+    Ok(MaterialObservationRow {
+        row_campaign: row.try_get(0)?,
+        row_tick: row.try_get(1)?,
+        register_bytes: row.try_get(2)?,
+        receipts: row.try_get(3)?,
+        identity: row.try_get(4)?,
+        content_hash: row.try_get(5)?,
+        foundation_bytes: row.try_get(6)?,
+    })
+}
+
+pub(crate) fn read_material_header(
     transaction: &mut impl GenericClient,
     campaign: CampaignId,
     tick: u64,
-) -> Result<Option<MaterialObservationHeader>, ObserverEconomyErrorV1> {
+) -> Result<Option<&'static MichiganContentAdmissionV1>, ObserverEconomyErrorV1> {
     let header = transaction.query_opt("SELECT campaign_id, preset_id, horizon_ticks, content_sha256, foundation_sha256 FROM public.v_material_campaign_identity_v1 WHERE campaign_id=$1", &[campaign.as_uuid()]).map_err(|_| ObserverEconomyErrorV1::Database)?;
     let Some(header) = header else {
         return Ok(None);
@@ -114,12 +78,13 @@ fn read_material_header(
     let foundation_digest: Vec<u8> = header
         .try_get(4)
         .map_err(|_| ObserverEconomyErrorV1::InvalidProjection)?;
-    let preset = validate_material_header(&preset_id, horizon, &content, &foundation_digest, tick)?;
-    let expected = expected_foundation(preset)?;
+    let expected =
+        admit_michigan_content_v1(&preset_id, horizon, &content, &foundation_digest, tick)
+            .map_err(|_| ObserverEconomyErrorV1::ScenarioMismatch)?;
     if &row_campaign != campaign.as_uuid() {
         return Err(ObserverEconomyErrorV1::ScenarioMismatch);
     }
-    Ok(Some(MaterialObservationHeader { preset, expected }))
+    Ok(Some(expected))
 }
 
 /// Header reads are safe for preview. Complete material reads are never issued for preview.
@@ -128,18 +93,14 @@ pub(crate) fn material_observation(
     campaign: CampaignId,
     tick: u64,
     visibility: ObserverVisibilityV1,
-) -> Result<Option<MaterialObservationV1>, ObserverEconomyErrorV1> {
-    let Some(MaterialObservationHeader { preset, expected }) =
-        read_material_header(transaction, campaign, tick)?
-    else {
-        return Ok(None);
-    };
+    expected: &MichiganContentAdmissionV1,
+) -> Result<MaterialObservationV1, ObserverEconomyErrorV1> {
     if visibility == ObserverVisibilityV1::KnownPreview {
-        return Ok(Some(MaterialObservationV1 {
+        return Ok(MaterialObservationV1 {
             foundation_digest: digest_hex(&expected.digest),
             production: None,
             nominal_world_hash: None,
-        }));
+        });
     }
     let tick_sql = i64::try_from(tick).map_err(|_| ObserverEconomyErrorV1::TickAbsent)?;
     let rows = transaction.query("SELECT campaign_id, resolve_tick, register_bytes, receipt_bytes, identity_bytes, tick_content_hash, foundation_bytes FROM public.v_observer_material_state_v1 WHERE campaign_id=$1 AND resolve_tick <= $2 ORDER BY resolve_tick LIMIT 18", &[campaign.as_uuid(), &tick_sql]).map_err(|_| ObserverEconomyErrorV1::Database)?;
@@ -147,30 +108,19 @@ pub(crate) fn material_observation(
         return Err(ObserverEconomyErrorV1::TickAbsent);
     }
     let mut register = expected.register.clone();
+    let mut opening = None;
     let mut history = Vec::new();
     let mut prior_world = None;
     for (index, row) in rows.into_iter().enumerate() {
-        let row_campaign: uuid::Uuid = row
-            .try_get(0)
-            .map_err(|_| ObserverEconomyErrorV1::InvalidProjection)?;
-        let row_tick: i64 = row
-            .try_get(1)
-            .map_err(|_| ObserverEconomyErrorV1::InvalidProjection)?;
-        let register_bytes: Vec<u8> = row
-            .try_get(2)
-            .map_err(|_| ObserverEconomyErrorV1::InvalidProjection)?;
-        let receipts: Option<Vec<u8>> = row
-            .try_get(3)
-            .map_err(|_| ObserverEconomyErrorV1::InvalidProjection)?;
-        let identity: Option<Vec<u8>> = row
-            .try_get(4)
-            .map_err(|_| ObserverEconomyErrorV1::InvalidProjection)?;
-        let content_hash: Option<Vec<u8>> = row
-            .try_get(5)
-            .map_err(|_| ObserverEconomyErrorV1::InvalidProjection)?;
-        let foundation_bytes: Option<Vec<u8>> = row
-            .try_get(6)
-            .map_err(|_| ObserverEconomyErrorV1::InvalidProjection)?;
+        let MaterialObservationRow {
+            row_campaign,
+            row_tick,
+            register_bytes,
+            receipts,
+            identity,
+            content_hash,
+            foundation_bytes,
+        } = decode_material_row(&row).map_err(|_| ObserverEconomyErrorV1::InvalidProjection)?;
         if &row_campaign != campaign.as_uuid() || usize::try_from(row_tick).ok() != Some(index) {
             return Err(ObserverEconomyErrorV1::InvalidProjection);
         }
@@ -218,15 +168,43 @@ pub(crate) fn material_observation(
             history.push((receipt, identity.receipt_digest()));
             prior_world = Some(identity.result_world_hash());
         }
-        register = next;
+        let previous = std::mem::replace(&mut register, next);
+        if index > 0 {
+            opening = Some(previous);
+        }
     }
-    let production = project_material_observation_v1(preset, &register, &history)
-        .map_err(|_| ObserverEconomyErrorV1::InvalidProjection)?;
-    Ok(Some(MaterialObservationV1 {
+    let production = match expected.physical_projection {
+        MichiganPhysicalProjectionV1::FiveProcessV1 => project_material_observation_v1(
+            expected.preset.delivery(),
+            &register,
+            opening.as_ref(),
+            &history,
+        ),
+    }
+    .map_err(|_| ObserverEconomyErrorV1::InvalidProjection)?;
+    Ok(MaterialObservationV1 {
         foundation_digest: digest_hex(&expected.digest),
-        production: Some(production),
+        production: Some(attribute_production(production, expected, visibility)?),
         nominal_world_hash: prior_world.map(|hash| digest_hex(&hash)),
-    }))
+    })
+}
+
+fn attribute_production(
+    mut production: ProductionSnapshotV1,
+    expected: &MichiganContentAdmissionV1,
+    visibility: ObserverVisibilityV1,
+) -> Result<ProductionSnapshotV1, ObserverEconomyErrorV1> {
+    expected
+        .preset
+        .label()
+        .clone_into(&mut production.scenario_label);
+    crate::production_projection::context::attach_observed_context_v1(
+        expected,
+        visibility,
+        &mut production,
+    )
+    .map_err(|_| ObserverEconomyErrorV1::InvalidProjection)?;
+    Ok(production)
 }
 
 /// Exact additive migration: the original economic schema identity remains stable.

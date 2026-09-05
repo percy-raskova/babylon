@@ -1,8 +1,8 @@
 //! PER-23 Slice 4 harness (ADR249 R5/R6/R9): the county dossier card's real
-//! headless proofs. Every test builds the production plugin set
-//! (`MapPlugin` + `TickLoopPlugin` + `DossierCardPlugin`) on
-//! `MinimalPlugins` and drives REAL resources, REAL messages, and REAL
-//! pointer events — the same composition discipline `tests/projection.rs`
+//! headless proofs. Legacy conformance uses `MapPlugin`, `TickLoopPlugin`,
+//! and `DossierCardPlugin`. The observer proof uses the shared shell, history,
+//! and dossier plugins. Both run on `MinimalPlugins` with real resources,
+//! messages, and pointer events — the composition discipline `tests/projection.rs`
 //! established (direct `ButtonInput::press` is wiped by `InputPlugin`'s
 //! `PreUpdate`, so key presses ride real `KeyboardInput` messages).
 //!
@@ -79,9 +79,8 @@ impl Drop for ReaderDsnGuard {
     }
 }
 
-/// Builds the real app: the same plugin trio `main.rs`'s windowed mode
-/// wires, minus the window. `SelectedStory(counties())` mirrors
-/// `tests/projection.rs::new_app`.
+/// Builds the legacy conformance app. `SelectedStory(counties())` mirrors
+/// `tests/projection.rs::new_app`; the durable observer uses its own fixture.
 fn new_app() -> (ReaderDsnGuard, App) {
     // Determinism contract: this harness never has an Archive reader. A
     // developer's shell may export `BABYLON_READER_DSN` for the live foci;
@@ -100,6 +99,62 @@ fn new_app() -> (ReaderDsnGuard, App) {
     // engine mid-assertion.
     app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
     app.update(); // Startup
+    (dsn_guard, app)
+}
+
+/// The observer uses the shared shell's real layout, without a transport or
+/// the legacy in-process tick engine. A headless window supplies its size.
+fn new_observer_app(window_size: (u32, u32)) -> (ReaderDsnGuard, App) {
+    use babylon_client::observer::ObserverSession;
+    use babylon_client::observer_io::ObserverSet;
+    use babylon_client::observer_ui::{ObserverShellPlugin, ObserverUiState};
+    use babylon_client::ui::dossier_card::DossierCampaignId;
+
+    let dsn_guard = ReaderDsnGuard::lock_and_remove();
+    let campaign = CampaignId::from_uuid(Uuid::nil());
+    let mut session = ObserverSession::new(campaign);
+    session.ready(12, None);
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default()))
+        .insert_resource(session)
+        .insert_resource(DossierCampaignId(campaign))
+        .insert_resource(ObserverUiState {
+            menu_open: false,
+            splash_visible: false,
+            ..default()
+        })
+        .init_resource::<UiScale>()
+        .init_resource::<bevy::picking::hover::HoverMap>()
+        .init_resource::<babylon_client::observer_audio::ObserverAudioSettings>()
+        .init_resource::<babylon_client::production::PrimaryView>()
+        .init_resource::<babylon_client::production::ProductionNavigation>()
+        .add_message::<babylon_client::production::ProductionCommand>()
+        .add_plugins((
+            babylon_client::map::MapPlugin,
+            ObserverShellPlugin,
+            babylon_client::observer_history::ObserverHistoryPlugin,
+            DossierCardPlugin,
+        ))
+        .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO))
+        .configure_sets(
+            Update,
+            (
+                ObserverSet::Input,
+                ObserverSet::Receive,
+                ObserverSet::Install,
+                ObserverSet::Paint,
+            )
+                .chain(),
+        );
+    app.world_mut().spawn((
+        Window {
+            resolution: bevy::window::WindowResolution::from(window_size)
+                .with_scale_factor_override(1.0),
+            ..default()
+        },
+        bevy::window::PrimaryWindow,
+    ));
+    app.update();
     (dsn_guard, app)
 }
 
@@ -803,47 +858,81 @@ fn unchanged_card_and_unfinished_task_preserve_the_rendered_subtree() {
     );
 }
 
-#[test]
-fn observer_archive_layout_and_historical_limitation_are_explicit() {
+fn root_containing_text(app: &mut App, text: &str) -> Entity {
+    let mut query = app
+        .world_mut()
+        .query_filtered::<Entity, (With<Node>, Without<ChildOf>)>();
+    let roots = query.iter(app.world()).collect::<Vec<_>>();
+    let matching = roots
+        .into_iter()
+        .filter(|root| find_entity_with_text(app, *root, text).is_some())
+        .collect::<Vec<_>>();
+    assert_eq!(matching.len(), 1, "one panel must contain {text:?}");
+    matching[0]
+}
+
+fn laid_out_rect(app: &App, entity: Entity) -> Rect {
+    let node = app.world().get::<Node>(entity).expect("panel Node");
+    let (Val::Px(left), Val::Px(top), Val::Px(width), Val::Px(height)) =
+        (node.left, node.top, node.width, node.height)
+    else {
+        panic!("the shared observer layout must assign logical pixel bounds")
+    };
+    assert!(width > 0.0 && height > 0.0, "panel must have positive area");
+    Rect::new(left, top, left + width, top + height)
+}
+
+fn assert_observer_archive_geometry(app: &mut App, root: Entity) {
+    use babylon_client::observer_ui::ObserverViewport;
+
+    let mut windows = app
+        .world_mut()
+        .query_filtered::<&Window, With<bevy::window::PrimaryWindow>>();
+    let window = windows.single(app.world()).expect("primary window");
+    let size = Vec2::new(window.width(), window.height());
+    let scale = app.world().resource::<UiScale>().0;
+    let world = app
+        .world()
+        .resource::<ObserverViewport>()
+        .0
+        .expect("the real shell must calculate a world viewport");
+    let world = Rect::from_corners(world.min / scale, world.max / scale);
+    let context = root_containing_text(app, "Cited Archive [I]");
+    let footer = root_containing_text(app, "Return Live");
+    let log = root_containing_text(app, "L O G");
+    let archive = laid_out_rect(app, root);
+    let context = laid_out_rect(app, context);
+    let footer = laid_out_rect(app, footer);
+    assert_eq!(archive, laid_out_rect(app, log), "Archive replaces the log");
+    assert!(world.width() > 0.0 && world.height() > 0.0);
+    assert!(
+        world.max.y < context.min.y,
+        "world must not cover the context panel"
+    );
+    assert!(
+        context.max.y < footer.min.y,
+        "context must not cover the footer"
+    );
+    for rect in [world, context, footer] {
+        assert!(rect.min.cmpge(Vec2::ZERO).all());
+        assert!(rect.max.cmple(size / scale).all());
+        assert!(
+            rect.max.x < archive.min.x,
+            "Archive must not cover the world or its lower panels"
+        );
+    }
+    assert!(archive.min.cmpge(Vec2::ZERO).all());
+    assert!(archive.max.cmple(size / scale).all());
+    let node = app.world().get::<Node>(root).expect("Archive Node");
+    assert_eq!((node.right, node.bottom), (Val::Auto, Val::Auto));
+    assert_eq!((node.min_width, node.max_width), (Val::Auto, Val::Auto));
+    assert_eq!(node.overflow.y, OverflowAxis::Scroll);
+}
+
+fn assert_historical_observer_archive(app: &mut App, root: Entity) {
     use babylon_client::observer::ObserverSession;
     use babylon_client::observer_ui::ObserverUiState;
-    use babylon_client::ui::dossier_card::DossierCampaignId;
 
-    let (_dsn_guard, mut app) = new_app();
-    seize_card(&mut app, fixture_projection());
-    let campaign = app.world().resource::<DossierCampaignId>().0;
-    let mut observer = ObserverSession::new(campaign);
-    observer.ready(12, None);
-    app.insert_resource(observer);
-    app.insert_resource(ObserverUiState {
-        menu_open: false,
-        splash_visible: false,
-        ..default()
-    });
-    app.update();
-    let root = card_root(&mut app);
-    assert_eq!(
-        *app.world().get::<Visibility>(root).expect("visibility"),
-        Visibility::Hidden
-    );
-    let node = app.world().get::<Node>(root).expect("layout");
-    assert_eq!(
-        (node.top, node.bottom, node.right),
-        (px(112), px(96), px(16))
-    );
-    assert_eq!(
-        (node.width, node.min_width, node.max_width),
-        (percent(27), px(320), px(440))
-    );
-    app.world_mut()
-        .resource_mut::<ObserverUiState>()
-        .archive_open = true;
-    app.update();
-    assert_eq!(
-        *app.world().get::<Visibility>(root).expect("visibility"),
-        Visibility::Visible
-    );
-    assert!(zone_text(&mut app, DossierZone::DualTick).contains("Content last changed at tick 11"));
     app.world_mut()
         .resource_mut::<ObserverSession>()
         .inspect_tick(10);
@@ -853,22 +942,16 @@ fn observer_archive_layout_and_historical_limitation_are_explicit() {
         app.world().resource::<DossierFetchState>(),
         DossierFetchState::HistoricalUnavailable
     ));
-    let text = zone_text(&mut app, DossierZone::DualTick);
+    let text = zone_text(app, DossierZone::DualTick);
     assert!(
         text.contains("Historical Archive pages are unavailable"),
         "{text}"
     );
-    assert!(!zone_text(&mut app, DossierZone::Signals).contains("728576 jobs"));
+    assert!(!zone_text(app, DossierZone::Signals).contains("728576 jobs"));
+    assert_eq!(zone_text(app, DossierZone::Title), "Autauga County, AL");
+    assert_eq!(zone_text(app, DossierZone::Actions), "READ-ONLY ARCHIVE");
     assert_eq!(
-        zone_text(&mut app, DossierZone::Title),
-        "Autauga County, AL"
-    );
-    assert_eq!(
-        zone_text(&mut app, DossierZone::Actions),
-        "READ-ONLY ARCHIVE"
-    );
-    assert_eq!(
-        zone_text(&mut app, DossierZone::Question),
+        zone_text(app, DossierZone::Question),
         "Which cited observations are available for this county?"
     );
     for modal in [0, 1, 2] {
@@ -881,5 +964,47 @@ fn observer_archive_layout_and_historical_limitation_are_explicit() {
             *app.world().get::<Visibility>(root).expect("visibility"),
             Visibility::Hidden
         );
+    }
+}
+
+#[test]
+fn observer_archive_layout_and_historical_limitation_are_explicit() {
+    use babylon_client::observer_ui::ObserverUiState;
+
+    for size in [(1366, 768), (1920, 1080)] {
+        let (_dsn_guard, mut app) = new_observer_app(size);
+        seize_card(&mut app, fixture_projection());
+        let root = card_root(&mut app);
+        let log = root_containing_text(&mut app, "L O G");
+        assert_eq!(
+            *app.world()
+                .get::<Visibility>(root)
+                .expect("Archive visibility"),
+            Visibility::Hidden
+        );
+        assert_eq!(
+            *app.world().get::<Visibility>(log).expect("log visibility"),
+            Visibility::Visible
+        );
+        assert_observer_archive_geometry(&mut app, root);
+        app.world_mut()
+            .resource_mut::<ObserverUiState>()
+            .archive_open = true;
+        app.update();
+        assert_eq!(
+            *app.world()
+                .get::<Visibility>(root)
+                .expect("Archive visibility"),
+            Visibility::Visible
+        );
+        assert_eq!(
+            *app.world().get::<Visibility>(log).expect("log visibility"),
+            Visibility::Hidden
+        );
+        assert_observer_archive_geometry(&mut app, root);
+        assert!(
+            zone_text(&mut app, DossierZone::DualTick).contains("Content last changed at tick 11")
+        );
+        assert_historical_observer_archive(&mut app, root);
     }
 }

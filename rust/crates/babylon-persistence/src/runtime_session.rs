@@ -8,9 +8,8 @@ use postgres::{Config, NoTls};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    material_runtime::{
-        michigan_material_runtime_foundation_v2, DurableMaterialRuntimeV3, MaterialRuntimeErrorV3,
-    },
+    material_runtime::{DurableMaterialRuntimeV3, MaterialRuntimeErrorV3},
+    michigan_content::{admit_michigan_content_v1, MichiganContentPresetV1},
     michigan_economy::digest_hex,
     michigan_material::MichiganDeliveryPresetV1,
     CampaignId, CompositeArchiveDossierProducerV1, CountyDossierProducerV1, PlaceDossierProducerV1,
@@ -379,7 +378,7 @@ fn emit_archive_progress(
 
 /// Run the parent-owned control protocol over explicit bounded byte streams.
 /// # Errors
-/// Refuses any foundation other than the exact current Michigan observer scenario,
+/// Refuses foundations outside the closed, versioned Michigan content catalog,
 /// runtime failures, invalid framing, or a closed response pipe.
 pub fn run_runtime_session_v1(
     config: &Config,
@@ -401,28 +400,17 @@ pub fn run_runtime_session_v1(
     let mut client = bounded
         .connect(NoTls)
         .map_err(|_| RuntimeSessionErrorCodeV1::StorageRefused)?;
-    let stored=client.query_opt("SELECT preset_id FROM babylon_state.material_campaign_foundation_v2 WHERE campaign_id=$1::uuid",&[campaign.as_uuid()]).map_err(|_|RuntimeSessionErrorCodeV1::StorageRefused)?;
-    let stored_preset = stored
-        .map(|row| row.try_get::<_, String>(0))
-        .transpose()
-        .map_err(|_| RuntimeSessionErrorCodeV1::StorageRefused)?
-        .map(|id| {
-            MichiganDeliveryPresetV1::from_id(&id)
-                .ok_or(RuntimeSessionErrorCodeV1::ScenarioMismatch)
-        })
-        .transpose()?;
-    if requested_preset.is_some() && stored_preset.is_some() && requested_preset != stored_preset {
-        return Err(RuntimeSessionErrorCodeV1::ScenarioMismatch);
-    }
-    let preset = stored_preset
-        .or(requested_preset)
-        .unwrap_or(MichiganDeliveryPresetV1::Standard);
-    let foundation = michigan_material_runtime_foundation_v2(preset)
+    let (preset, exists) = runtime_content(&mut client, campaign, requested_preset)?;
+    let admitted = preset
+        .admitted()
         .map_err(|_| RuntimeSessionErrorCodeV1::ScenarioMismatch)?;
-    let foundation_digest = digest_hex(&foundation.digest());
-    let runtime = if stored_preset.is_some() {
-        DurableMaterialRuntimeV3::open(config, campaign, foundation)
+    let foundation_digest = digest_hex(&admitted.digest());
+    let runtime = if exists {
+        DurableMaterialRuntimeV3::open(config, campaign, admitted.digest())
     } else {
+        let foundation = preset
+            .create_foundation()
+            .map_err(|_| RuntimeSessionErrorCodeV1::ScenarioMismatch)?;
         DurableMaterialRuntimeV3::create(config, campaign, foundation)
     }
     .map_err(|error| match error {
@@ -450,6 +438,63 @@ pub fn run_runtime_session_v1(
     )
 }
 
+// This single row read selects a version, never substitutes stored self-hashes
+// for the independently admitted expected identity passed to runtime reopen.
+fn runtime_content(
+    client: &mut impl postgres::GenericClient,
+    campaign: CampaignId,
+    requested: Option<MichiganDeliveryPresetV1>,
+) -> Result<(MichiganContentPresetV1, bool), RuntimeSessionErrorCodeV1> {
+    let row = client.query_opt("SELECT f.preset_id,f.horizon_ticks,f.content_sha256,f.foundation_sha256,g.foundation_sha256,pg_catalog.sha256(pg_catalog.convert_to(g.scenario_source,'UTF8')) FROM babylon_state.material_campaign_foundation_v2 f JOIN babylon_state.campaign_foundation g USING(campaign_id) WHERE campaign_id=$1::uuid", &[campaign.as_uuid()])
+        .map_err(|_| RuntimeSessionErrorCodeV1::StorageRefused)?;
+    let Some(row) = row else {
+        return Ok((select_content_preset(None, requested)?, false));
+    };
+    let id: String = row
+        .try_get(0)
+        .map_err(|_| RuntimeSessionErrorCodeV1::StorageRefused)?;
+    let horizon: i64 = row
+        .try_get(1)
+        .map_err(|_| RuntimeSessionErrorCodeV1::StorageRefused)?;
+    let content: Vec<u8> = row
+        .try_get(2)
+        .map_err(|_| RuntimeSessionErrorCodeV1::StorageRefused)?;
+    let foundation: Vec<u8> = row
+        .try_get(3)
+        .map_err(|_| RuntimeSessionErrorCodeV1::StorageRefused)?;
+    let graph: Vec<u8> = row
+        .try_get(4)
+        .map_err(|_| RuntimeSessionErrorCodeV1::StorageRefused)?;
+    let scenario: Vec<u8> = row
+        .try_get(5)
+        .map_err(|_| RuntimeSessionErrorCodeV1::StorageRefused)?;
+    let admitted = admit_michigan_content_v1(&id, horizon, &content, &foundation, 0)
+        .map_err(|_| RuntimeSessionErrorCodeV1::ScenarioMismatch)?;
+    admitted
+        .validate_graph(&graph, &scenario)
+        .map_err(|_| RuntimeSessionErrorCodeV1::ScenarioMismatch)?;
+    Ok((
+        select_content_preset(Some(admitted.preset()), requested)?,
+        true,
+    ))
+}
+
+fn select_content_preset(
+    stored: Option<MichiganContentPresetV1>,
+    requested: Option<MichiganDeliveryPresetV1>,
+) -> Result<MichiganContentPresetV1, RuntimeSessionErrorCodeV1> {
+    if let Some(stored) = stored {
+        if requested.is_some_and(|delivery| delivery != stored.delivery()) {
+            return Err(RuntimeSessionErrorCodeV1::ScenarioMismatch);
+        }
+        Ok(stored)
+    } else {
+        Ok(MichiganContentPresetV1::new_campaign(
+            requested.unwrap_or(MichiganDeliveryPresetV1::Standard),
+        ))
+    }
+}
+
 /// Bind the session protocol to the inherited standard streams.
 /// # Errors
 /// See [`run_runtime_session_v1`].
@@ -470,6 +515,33 @@ pub fn run_runtime_session_stdio_v1(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn resume_keeps_stored_revision_and_new_campaigns_choose_cohorts() {
+        for stored in crate::michigan_content::MICHIGAN_CONTENT_PRESETS_V1 {
+            assert_eq!(select_content_preset(Some(stored), None), Ok(stored));
+            assert_eq!(
+                select_content_preset(Some(stored), Some(stored.delivery())),
+                Ok(stored)
+            );
+            let other = match stored.delivery() {
+                MichiganDeliveryPresetV1::Standard => MichiganDeliveryPresetV1::Delayed,
+                MichiganDeliveryPresetV1::Delayed => MichiganDeliveryPresetV1::Standard,
+            };
+            assert_eq!(
+                select_content_preset(Some(stored), Some(other)),
+                Err(RuntimeSessionErrorCodeV1::ScenarioMismatch)
+            );
+        }
+        assert_eq!(
+            select_content_preset(None, None),
+            Ok(MichiganContentPresetV1::CohortsStandardV2)
+        );
+        assert_eq!(
+            select_content_preset(None, Some(MichiganDeliveryPresetV1::Delayed)),
+            Ok(MichiganContentPresetV1::CohortsDelayedV2)
+        );
+    }
+
     #[derive(Default)]
     struct Backend {
         tick: u64,

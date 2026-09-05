@@ -3,12 +3,13 @@
 use crate::{
     checkpoint::{CommittedFullCheckpointV1, CommittedResolveTickV1},
     committed_tick_envelope::CommittedTickRowFamiliesV2,
-    foundation::{CampaignFoundationV1, FoundationContentBundleV1},
+    foundation::{CampaignFoundationV1, FoundationContentBundleV1, FoundationContentBundleV2},
     identity::CampaignId,
     material_envelope::CommittedMaterialTickEnvelopeV3,
     runtime::{
         insert_campaign_foundation_rows_v1, insert_typed_tick_pre_marker_rows_v2,
-        prepare_committed_tick_v2, require_active_authority_client, RustPersistenceRuntimeErrorV2,
+        prepare_committed_tick_v2, reconstruct_graph_foundation_session_v1,
+        require_active_authority_client, RustPersistenceRuntimeErrorV2,
     },
     semantic_batches::{
         compose_graph_rows_with_encoder_v1, compose_material_state_rows_v1, StableGraphRowRefV1,
@@ -129,6 +130,21 @@ impl From<postgres::Error> for MaterialRuntimeErrorV3 {
     }
 }
 
+fn validate_foundation_spec(spec: &MaterialFoundationSpecV2) -> Result<(), MaterialRuntimeErrorV3> {
+    if spec.preset_id.is_empty()
+        || spec.preset_id.len() > 128
+        || !spec
+            .preset_id
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        || spec.horizon_ticks == 0
+        || spec.horizon_ticks > i64::MAX as u64
+    {
+        return Err(MaterialRuntimeErrorV3::Bounds);
+    }
+    Ok(())
+}
+
 impl MaterialRuntimeFoundationV2 {
     /// Capture a complete new foundation. Substantive source metadata is pinned in `spec`.
     /// # Errors
@@ -139,19 +155,39 @@ impl MaterialRuntimeFoundationV2 {
         state: MaterialCircuitStateV2,
         spec: MaterialFoundationSpecV2,
     ) -> Result<Self, MaterialRuntimeErrorV3> {
-        if spec.preset_id.is_empty()
-            || spec.preset_id.len() > 128
-            || !spec
-                .preset_id
-                .bytes()
-                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-            || spec.horizon_ticks == 0
-            || spec.horizon_ticks > i64::MAX as u64
-        {
-            return Err(MaterialRuntimeErrorV3::Bounds);
-        }
+        validate_foundation_spec(&spec)?;
         let graph_foundation = CampaignFoundationV1::capture(&graph, bundle)?;
         let register = MaterialWorldRegisterV2::try_new(0, state)?;
+        Self::from_parts(graph, graph_foundation, register, spec)
+    }
+
+    /// Capture a foundation whose content explicitly uses the V2 source encoding.
+    /// # Errors
+    /// Refuses invalid graph, material register, spec or aggregate bounds.
+    pub fn capture_v2(
+        graph: ReplayTickSession<HypergraphStore>,
+        bundle: FoundationContentBundleV2,
+        state: MaterialCircuitStateV2,
+        spec: MaterialFoundationSpecV2,
+    ) -> Result<Self, MaterialRuntimeErrorV3> {
+        validate_foundation_spec(&spec)?;
+        let graph_foundation = CampaignFoundationV1::capture_v2(&graph, bundle)?;
+        let register = MaterialWorldRegisterV2::try_new(0, state)?;
+        Self::from_parts(graph, graph_foundation, register, spec)
+    }
+
+    // Both initial capture and stored reconstruction use this exact encoder.
+    // Callers first prove that graph_foundation describes the prepared graph.
+    fn from_parts(
+        graph: ReplayTickSession<HypergraphStore>,
+        graph_foundation: CampaignFoundationV1,
+        register: MaterialWorldRegisterV2,
+        spec: MaterialFoundationSpecV2,
+    ) -> Result<Self, MaterialRuntimeErrorV3> {
+        validate_foundation_spec(&spec)?;
+        if graph.completed_tick() != 0 || register.completed_tick() != 0 {
+            return Err(MaterialRuntimeErrorV3::FoundationMismatch);
+        }
         let length = FOUNDATION_DOMAIN
             .len()
             .checked_add(4 + 8 + 32 + 3 * 8)
@@ -233,6 +269,7 @@ pub struct DurableMaterialRuntimeV3 {
     campaign: CampaignId,
     session: MaterialReplaySessionV3<HypergraphStore>,
     tail: Option<IdentifiedMaterialTickV3>,
+    content_layout: crate::FoundationContentLayout,
 }
 impl DurableMaterialRuntimeV3 {
     /// Install both foundation components in one transaction, without an implicit tick.
@@ -261,7 +298,10 @@ impl DurableMaterialRuntimeV3 {
         )?;
         let existed=tx.query_opt("SELECT campaign_id FROM babylon_state.campaign WHERE campaign_id=$1::uuid FOR UPDATE",&[campaign.as_uuid()])?.is_some();
         if existed {
-            verify_foundation(&mut tx, campaign, &foundation)?;
+            let stored = hydrate_material_foundation_v2(&mut tx, campaign, foundation.digest())?;
+            if stored.canonical_bytes() != foundation.canonical_bytes() {
+                return Err(MaterialRuntimeErrorV3::FoundationMismatch);
+            }
             if read_tail_tick(&mut tx, campaign)? != 0 {
                 return Err(MaterialRuntimeErrorV3::TailConflict);
             }
@@ -272,20 +312,24 @@ impl DurableMaterialRuntimeV3 {
             tx.execute("INSERT INTO babylon_state.material_campaign_foundation_v2 (campaign_id,preset_id,horizon_ticks,content_sha256,initial_register_bytes,foundation_bytes,foundation_sha256) VALUES ($1::uuid,$2,$3,$4,$5,$6,$7)",&[campaign.as_uuid(),&foundation.spec.preset_id,&horizon,&&foundation.spec.content_digest[..],&foundation.register.canonical_bytes(),&foundation.canonical_bytes(),&&foundation.digest[..]])?;
         }
         tx.commit()?;
+        let content_layout = foundation.graph_foundation.content_bundle().layout();
         Ok(Self {
             config: bounded,
             campaign,
             session: foundation.into_session()?,
             tail: None,
+            content_layout,
         })
     }
-    /// Verify the pinned foundation and hydrate the latest complete V3 checkpoint.
+    /// Reconstruct the stored foundation and hydrate the latest complete V3 checkpoint.
+    /// The expected digest is supplied by the caller's content-admission policy;
+    /// reopening never substitutes a newly constructed scenario or material state.
     /// # Errors
     /// Refuses old campaigns, gaps, altered component rows, identity mismatch or missing checkpoints.
     pub fn open(
         config: &Config,
         campaign: CampaignId,
-        foundation: MaterialRuntimeFoundationV2,
+        expected_foundation_digest: [u8; 32],
     ) -> Result<Self, MaterialRuntimeErrorV3> {
         let bounded = bounded_material_writer_config_v3(config)?;
         install_material_runtime_schema_v3(config)?;
@@ -295,8 +339,10 @@ impl DurableMaterialRuntimeV3 {
             .isolation_level(postgres::IsolationLevel::RepeatableRead)
             .read_only(true)
             .start()?;
-        verify_foundation(&mut tx, campaign, &foundation)?;
+        let foundation =
+            hydrate_material_foundation_v2(&mut tx, campaign, expected_foundation_digest)?;
         let tick = read_tail_tick(&mut tx, campaign)?;
+        let content_layout = foundation.graph_foundation.content_bundle().layout();
         let mut session = foundation.into_session()?;
         let tail = if tick == 0 {
             None
@@ -319,6 +365,7 @@ impl DurableMaterialRuntimeV3 {
             campaign,
             session,
             tail,
+            content_layout,
         })
     }
     #[must_use]
@@ -365,6 +412,11 @@ impl DurableMaterialRuntimeV3 {
         if locked.is_none() {
             return Err(MaterialRuntimeErrorV3::MissingCampaign);
         }
+        crate::foundation_content_schema::lock_foundation_content_layout_v2(
+            &mut tx,
+            self.campaign,
+            self.content_layout,
+        )?;
         let durable = read_tail_tick(&mut tx, self.campaign)?;
         if durable == identity.resolve_tick() {
             let stored = read_stored_material_tick(&mut tx, self.campaign, durable, &self.session)?;
@@ -405,6 +457,7 @@ impl DurableMaterialRuntimeV3 {
         )?;
         let config = &self.config;
         let campaign = self.campaign;
+        let content_layout = self.content_layout;
         let scope = candidate
             .graph_report()
             .result_stable_graph()
@@ -414,7 +467,9 @@ impl DurableMaterialRuntimeV3 {
             // The marker is the final durable statement. Publication capacity is already reserved.
             tx.execute("INSERT INTO babylon_state.tick_commit (campaign_id,resolve_tick,envelope_layout_version,tick_content_hash,envelope_digest) VALUES ($1::uuid,$2,3,$3,$4)",&[campaign.as_uuid(),&tick_sql,&&identity.tick_content_hash().as_bytes()[..],&&envelope.digest()[..]])?;
             match tx.commit() {Ok(())=>Ok(ReplayCommitDispositionV1::Committed),Err(error)=>{
-                let mut retry=config.connect(NoTls)?;
+                let mut retry_client=config.connect(NoTls)?;
+                let mut retry=retry_client.transaction()?;
+                crate::foundation_content_schema::lock_foundation_content_layout_v2(&mut retry,campaign,content_layout)?;
                 if !marker_matches(&mut retry,campaign,&identity,&envelope)? {return Err(error.into());}
                 let stored=read_stored_material_tick_rows(&mut retry,campaign,identity.resolve_tick(),&scope)?;
                 if stored.identity!=identity || stored.envelope.canonical_bytes()!=envelope.canonical_bytes(){return Err(MaterialRuntimeErrorV3::TailConflict);}
@@ -441,6 +496,7 @@ pub fn install_material_runtime_schema_v3(config: &Config) -> Result<(), Materia
     // The connection already passed target validation before trusted options
     // were added. Verify authority on this same bounded socket.
     require_active_authority_client(&mut client)?;
+    crate::foundation_content_schema::install_foundation_content_schema_v2(&mut client)?;
     let mut tx = client.transaction()?;
     tx.query_one(
         "SELECT pg_catalog.pg_advisory_xact_lock($1)",
@@ -473,11 +529,41 @@ pub fn install_material_runtime_schema_v3(config: &Config) -> Result<(), Materia
     tx.commit()?;
     Ok(())
 }
-fn verify_foundation(
+struct StoredMaterialFoundationV2 {
+    spec: MaterialFoundationSpecV2,
+    initial_register_bytes: Vec<u8>,
+    foundation_bytes: Vec<u8>,
+    foundation_digest: [u8; 32],
+    graph_foundation_digest: [u8; 32],
+}
+
+impl StoredMaterialFoundationV2 {
+    fn from_row(row: &postgres::Row) -> Result<Self, MaterialRuntimeErrorV3> {
+        let digest = |column: usize| -> Result<[u8; 32], MaterialRuntimeErrorV3> {
+            row.try_get::<_, Vec<u8>>(column)?
+                .try_into()
+                .map_err(|_| MaterialRuntimeErrorV3::FoundationMismatch)
+        };
+        Ok(Self {
+            spec: MaterialFoundationSpecV2 {
+                preset_id: row.try_get(0)?,
+                horizon_ticks: u64::try_from(row.try_get::<_, i64>(1)?)
+                    .map_err(|_| MaterialRuntimeErrorV3::FoundationMismatch)?,
+                content_digest: digest(2)?,
+            },
+            initial_register_bytes: row.try_get(3)?,
+            foundation_bytes: row.try_get(4)?,
+            foundation_digest: digest(5)?,
+            graph_foundation_digest: digest(6)?,
+        })
+    }
+}
+
+fn hydrate_material_foundation_v2(
     client: &mut impl GenericClient,
     campaign: CampaignId,
-    expected: &MaterialRuntimeFoundationV2,
-) -> Result<(), MaterialRuntimeErrorV3> {
+    expected_foundation_digest: [u8; 32],
+) -> Result<MaterialRuntimeFoundationV2, MaterialRuntimeErrorV3> {
     let row=client.query_opt("SELECT f.preset_id,f.horizon_ticks,f.content_sha256,f.initial_register_bytes,f.foundation_bytes,f.foundation_sha256,g.foundation_sha256 FROM babylon_state.material_campaign_foundation_v2 f JOIN babylon_state.campaign_foundation g USING(campaign_id) WHERE campaign_id=$1::uuid",&[campaign.as_uuid()])?;
     let Some(row) = row else {
         let exists = client
@@ -492,21 +578,38 @@ fn verify_foundation(
             MaterialRuntimeErrorV3::MissingCampaign
         });
     };
-    if row.try_get::<_, String>(0)? != expected.spec.preset_id
-        || u64::try_from(row.try_get::<_, i64>(1)?).ok() != Some(expected.spec.horizon_ticks)
-        || row.try_get::<_, Vec<u8>>(2)? != expected.spec.content_digest
-        || row.try_get::<_, Vec<u8>>(3)? != expected.register.canonical_bytes()
-        || row.try_get::<_, Vec<u8>>(4)? != expected.bytes
-        || row.try_get::<_, Vec<u8>>(5)? != expected.digest
-        || row.try_get::<_, Vec<u8>>(6)? != sha256_of(expected.graph_foundation.canonical_bytes())
-    {
+    let stored = StoredMaterialFoundationV2::from_row(&row)?;
+    if stored.foundation_digest != expected_foundation_digest {
         return Err(MaterialRuntimeErrorV3::FoundationMismatch);
     }
     let graph = crate::runtime::hydrate_campaign_foundation_client_v1(client, campaign)?;
-    if graph.canonical_bytes() != expected.graph_foundation.canonical_bytes() {
+    reconstruct_material_foundation_v2(stored, graph, expected_foundation_digest)
+}
+
+fn reconstruct_material_foundation_v2(
+    stored: StoredMaterialFoundationV2,
+    graph_foundation: CampaignFoundationV1,
+    expected_foundation_digest: [u8; 32],
+) -> Result<MaterialRuntimeFoundationV2, MaterialRuntimeErrorV3> {
+    if stored.foundation_digest != expected_foundation_digest
+        || sha256_of(&stored.foundation_bytes) != expected_foundation_digest
+        || sha256_of(graph_foundation.canonical_bytes()) != stored.graph_foundation_digest
+    {
         return Err(MaterialRuntimeErrorV3::FoundationMismatch);
     }
-    Ok(())
+    let register = MaterialWorldRegisterV2::decode(&stored.initial_register_bytes)?;
+    if register.completed_tick() != 0 {
+        return Err(MaterialRuntimeErrorV3::FoundationMismatch);
+    }
+    let graph = reconstruct_graph_foundation_session_v1(&graph_foundation)?;
+    let reconstructed =
+        MaterialRuntimeFoundationV2::from_parts(graph, graph_foundation, register, stored.spec)?;
+    if reconstructed.canonical_bytes() != stored.foundation_bytes
+        || reconstructed.digest() != expected_foundation_digest
+    {
+        return Err(MaterialRuntimeErrorV3::FoundationMismatch);
+    }
+    Ok(reconstructed)
 }
 fn read_tail_tick(
     client: &mut impl GenericClient,
@@ -683,6 +786,9 @@ pub fn michigan_material_runtime_foundation_v2(
         },
     )
 }
+
+#[cfg(test)]
+mod reconstruction_tests;
 
 #[cfg(test)]
 mod writer_bounds_tests {

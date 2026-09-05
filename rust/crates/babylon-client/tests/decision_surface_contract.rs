@@ -144,6 +144,7 @@ fn production_observation() -> babylon_persistence::ProductionSnapshotV1 {
         labor: Vec::new(),
     };
     ProductionSnapshotV1 {
+        labor_accounts: Vec::new(),
         scenario_label: "Read-only surface fixture".into(),
         horizon_week: 16,
         sites: vec![site("source"), site("destination")],
@@ -184,6 +185,8 @@ fn production_observation() -> babylon_persistence::ProductionSnapshotV1 {
             description: "Surface fixture dispatch".into(),
             receipt_digest: "e".repeat(64),
         }],
+        observed_contexts: Vec::new(),
+        process_attributions: Vec::new(),
         provenance: vec!["Designed read-only test fixture".into()],
     }
 }

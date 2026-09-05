@@ -1632,6 +1632,99 @@ mod tests {
     }
 
     #[test]
+    fn comparison_and_perspective_shortcuts_dispatch_independently_across_input_systems() {
+        use crate::campaign_browser::{CampaignBrowserCommand, CampaignBrowserPlugin};
+        use crate::observer_io::ObserverSet;
+
+        let atlas = CountyAtlas::parse(include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../assets/map/county_atlas.bin"
+        )))
+        .expect("atlas");
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, InputPlugin, CampaignBrowserPlugin))
+            .insert_resource(atlas)
+            .init_resource::<SelectedCounty>()
+            .init_resource::<crate::production::PrimaryView>()
+            .init_resource::<ObserverUiState>()
+            .add_message::<ObserverCommand>()
+            // Exercise the actual input systems without launching catalog reads or applying
+            // either request. In particular, a second consumer must not hide a collision.
+            .configure_sets(Update, ObserverSet::Install.run_if(|| false))
+            .configure_sets(Update, ObserverSet::Paint.run_if(|| false))
+            .add_systems(Update, keyboard.in_set(ObserverSet::Input));
+        app.world_mut().spawn(ObserverCampaignCatalog);
+
+        for (menu_open, splash_visible, comparison_open) in [
+            (true, false, false),
+            (false, false, false),
+            (true, true, false),
+            (false, false, true),
+        ] {
+            *app.world_mut().resource_mut::<ObserverUiState>() = ObserverUiState {
+                menu_open,
+                splash_visible,
+                comparison_open,
+                ..default()
+            };
+            for key_code in [KeyCode::KeyK, KeyCode::KeyX] {
+                app.world_mut()
+                    .resource_mut::<Messages<KeyboardInput>>()
+                    .write(KeyboardInput {
+                        key_code,
+                        logical_key: Key::Unidentified(NativeKey::Unidentified),
+                        state: ButtonState::Pressed,
+                        text: None,
+                        repeat: false,
+                        window: Entity::PLACEHOLDER,
+                    });
+                app.update();
+                let observer: Vec<_> = app
+                    .world_mut()
+                    .resource_mut::<Messages<ObserverCommand>>()
+                    .drain()
+                    .collect();
+                let browser: Vec<_> = app
+                    .world_mut()
+                    .resource_mut::<Messages<CampaignBrowserCommand>>()
+                    .drain()
+                    .collect();
+                let unobscured = !splash_visible && !comparison_open;
+                assert_eq!(
+                    observer,
+                    if unobscured && key_code == KeyCode::KeyK {
+                        vec![ObserverCommand::Perspective]
+                    } else {
+                        Vec::new()
+                    }
+                );
+                if unobscured && menu_open && key_code == KeyCode::KeyX {
+                    assert!(matches!(
+                        browser.as_slice(),
+                        [CampaignBrowserCommand::Compare]
+                    ));
+                } else {
+                    assert!(
+                        browser.is_empty(),
+                        "unexpected browser command: {browser:?}"
+                    );
+                }
+                app.world_mut()
+                    .resource_mut::<ButtonInput<KeyCode>>()
+                    .reset_all();
+            }
+        }
+        let world = app.world_mut();
+        let labels: Vec<_> = world
+            .query::<&Text>()
+            .iter(world)
+            .map(|text| &text.0)
+            .collect();
+        assert!(labels.iter().any(|text| text.as_str() == "Compare  [X]"));
+        assert!(!labels.iter().any(|text| text.as_str() == "Compare  [K]"));
+    }
+
+    #[test]
     fn quit_shortcut_is_only_available_inside_the_campaign_menu() {
         let atlas = CountyAtlas::parse(include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),

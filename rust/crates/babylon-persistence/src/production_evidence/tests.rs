@@ -45,7 +45,7 @@ fn published_observations() -> &'static [ObserverEconomySnapshotV1] {
             visibility: ObserverVisibilityV1::FullObserver,
             counties: vec![],
             production: Some(
-                project_material_observation_v1(preset, session.material(), &[]).unwrap(),
+                project_material_observation_v1(preset, session.material(), None, &[]).unwrap(),
             ),
         };
         let mut result = vec![observation.clone()];
@@ -57,6 +57,7 @@ fn published_observations() -> &'static [ObserverEconomySnapshotV1] {
                 tick,
             )
             .unwrap();
+            let opening = session.material().clone();
             let prepared = session.prepare_advance(&actions).unwrap();
             let identity = *prepared.identity();
             let receipt = decode_material_receipts_v3(prepared.material().receipt_bytes()).unwrap();
@@ -83,7 +84,13 @@ fn published_observations() -> &'static [ObserverEconomySnapshotV1] {
             observation.envelope_digest = Some(digest_hex(&envelope.digest()));
             observation.nominal_world_hash = Some(digest_hex(&ack.result_world_hash()));
             observation.production = Some(
-                project_material_observation_v1(preset, session.material(), &history).unwrap(),
+                project_material_observation_v1(
+                    preset,
+                    session.material(),
+                    Some(&opening),
+                    &history,
+                )
+                .unwrap(),
             );
             result.push(observation.clone());
         }
@@ -97,6 +104,9 @@ fn committed() -> ObserverEconomySnapshotV1 {
 
 fn reverse_unordered(snapshot: &mut ProductionSnapshotV1) {
     snapshot.sites.reverse();
+    snapshot.labor_accounts.reverse();
+    snapshot.observed_contexts.reverse();
+    snapshot.process_attributions.reverse();
     snapshot.routes.reverse();
     snapshot.freight.reverse();
     snapshot.provenance.reverse();
@@ -238,6 +248,20 @@ fn missing_production_and_foundation_absence_do_not_masquerade_as_zero() {
         foundation.production_evidence_digest(),
         invented_zero.production_evidence_digest()
     );
+    let mut invented_labor = foundation.clone();
+    invented_labor.production.as_mut().unwrap().labor_accounts[0].completed =
+        Some(crate::CompletedProductionLaborV1 {
+            week: 0,
+            opening: 0,
+            planned: 0,
+            used: 0,
+            unused: 0,
+        });
+    assert_ne!(
+        foundation.production_evidence_digest(),
+        invented_labor.production_evidence_digest(),
+        "an absent completed account is not a zero account"
+    );
     let mut invented_identity = foundation.clone();
     invented_identity.tick_content_hash = Some(String::new());
     assert_ne!(
@@ -271,6 +295,9 @@ fn every_disclosed_production_scalar_including_catalog_provenance_is_bound() {
     let mut paths = Vec::new();
     scalar_paths(&value, "", &mut paths);
     assert!(paths.iter().any(|path| path.starts_with("/freight/")));
+    assert!(paths
+        .iter()
+        .any(|path| path.starts_with("/labor_accounts/")));
     assert!(paths.iter().any(|path| path.starts_with("/provenance/")));
     for path in paths {
         let mut changed = value.clone();
@@ -311,7 +338,7 @@ fn digest_is_identical_in_two_fresh_processes() {
     const ENV: &str = "BABYLON_PRODUCTION_EVIDENCE_PROCESS";
     const MARKER: &str = "production-observation-evidence:";
     if let Some(order) = std::env::var_os(ENV) {
-        let mut observation = committed();
+        let mut observation = contextual_observation();
         if order == "reverse" {
             reverse_unordered(observation.production.as_mut().unwrap());
         }
@@ -343,6 +370,108 @@ fn digest_is_identical_in_two_fresh_processes() {
     assert_eq!(forward, run_child("reverse"));
     assert_eq!(
         forward,
-        committed().production_evidence_digest().unwrap().to_hex()
+        contextual_observation()
+            .production_evidence_digest()
+            .unwrap()
+            .to_hex()
     );
+}
+
+// The two graph revisions have byte-identical physical catalogs. Reuse the
+// actual committed physical reading above to isolate the added presentation
+// family's identity; live tests separately qualify V2 graph admission.
+fn contextual_observation() -> ObserverEconomySnapshotV1 {
+    let mut snapshot = committed();
+    let admitted = crate::michigan_content::MichiganContentPresetV1::CohortsStandardV2
+        .admitted()
+        .unwrap();
+    snapshot.foundation_digest = digest_hex(&admitted.digest());
+    crate::production_projection::context::attach_observed_context_v1(
+        admitted,
+        ObserverVisibilityV1::FullObserver,
+        snapshot.production.as_mut().unwrap(),
+    )
+    .unwrap();
+    snapshot
+}
+
+#[test]
+fn every_attribution_and_observed_context_scalar_is_bound() {
+    let original = contextual_observation();
+    let value = serde_json::to_value(original.production.as_ref().unwrap()).unwrap();
+    let mut paths = Vec::new();
+    for field in ["observed_contexts", "process_attributions"] {
+        scalar_paths(&value[field], &format!("/{field}"), &mut paths);
+    }
+    assert!(paths.iter().any(|path| path.ends_with("/subject/scenario")));
+    assert!(paths
+        .iter()
+        .any(|path| path.ends_with("/cohort_subject/local_name")));
+    assert!(paths.iter().any(|path| path.ends_with("/source_sha256")));
+    for path in paths {
+        let mut changed = value.clone();
+        let field = changed.pointer_mut(&path).unwrap();
+        *field = if path.ends_with("/evidence_class") {
+            Value::String(
+                if field.as_str() == Some("Observed") {
+                    "Designed"
+                } else {
+                    "Observed"
+                }
+                .to_owned(),
+            )
+        } else {
+            match &*field {
+                Value::String(text) => Value::String(format!("{text} altered")),
+                Value::Number(number) => Value::from(number.as_u64().unwrap() + 1),
+                Value::Null => Value::from(0),
+                other => panic!("unexpected context scalar {other:?}"),
+            }
+        };
+        let mut twin = original.clone();
+        twin.production = Some(serde_json::from_value(changed).unwrap());
+        assert_ne!(
+            original.production_evidence_digest(),
+            twin.production_evidence_digest(),
+            "{path}"
+        );
+    }
+}
+
+#[test]
+fn context_order_is_irrelevant_but_multiplicity_and_unknown_values_remain_distinct() {
+    let original = contextual_observation();
+    let mut twin = original.clone();
+    reverse_unordered(twin.production.as_mut().unwrap());
+    assert_eq!(
+        original.production_evidence_digest(),
+        twin.production_evidence_digest()
+    );
+    let decoded: ObserverEconomySnapshotV1 =
+        serde_json::from_slice(&serde_json::to_vec(&original).unwrap()).unwrap();
+    assert_eq!(
+        decoded.production_evidence_digest(),
+        original.production_evidence_digest()
+    );
+    let rows = twin.production.as_mut().unwrap();
+    rows.observed_contexts
+        .push(rows.observed_contexts[0].clone());
+    assert_ne!(
+        original.production_evidence_digest(),
+        twin.production_evidence_digest()
+    );
+    twin = original.clone();
+    let rows = twin.production.as_mut().unwrap();
+    rows.process_attributions
+        .push(rows.process_attributions[0].clone());
+    assert_ne!(
+        original.production_evidence_digest(),
+        twin.production_evidence_digest()
+    );
+    twin = original.clone();
+    twin.production.as_mut().unwrap().observed_contexts[0].annual_avg_emplvl = None;
+    let absent_digest = twin.production_evidence_digest();
+    assert_ne!(original.production_evidence_digest(), absent_digest);
+    twin.production.as_mut().unwrap().observed_contexts[0].annual_avg_emplvl = Some(0);
+    assert_ne!(twin.production_evidence_digest(), absent_digest);
 }

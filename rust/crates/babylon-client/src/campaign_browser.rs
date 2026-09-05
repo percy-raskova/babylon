@@ -162,7 +162,7 @@ fn setup(mut commands: Commands, menu: Query<Entity, With<ObserverCampaignCatalo
                     button(row, "<  [Left]", CampaignBrowserCommand::Previous);
                     button(row, ">  [Right]", CampaignBrowserCommand::Next);
                     button(row, "Open  [Enter]", CampaignBrowserCommand::Open);
-                    button(row, "Compare  [K]", CampaignBrowserCommand::Compare);
+                    button(row, "Compare  [X]", CampaignBrowserCommand::Compare);
                     button(row, "Refresh", CampaignBrowserCommand::Refresh);
                 });
         });
@@ -234,7 +234,7 @@ fn input(
             (KeyCode::ArrowLeft, CampaignBrowserCommand::Previous),
             (KeyCode::ArrowRight, CampaignBrowserCommand::Next),
             (KeyCode::Enter, CampaignBrowserCommand::Open),
-            (KeyCode::KeyK, CampaignBrowserCommand::Compare),
+            (KeyCode::KeyX, CampaignBrowserCommand::Compare),
         ] {
             if keyboard.just_pressed(key) {
                 messages.write(command);

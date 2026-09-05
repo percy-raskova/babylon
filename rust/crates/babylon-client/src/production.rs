@@ -1074,6 +1074,7 @@ fn describe(site: &ProductionSiteV1, snapshot: &ProductionSnapshotV1) -> String 
         )
         .expect("String write");
     }
+    describe_labor_accounts(&mut value, site, snapshot);
     value.push_str("\nLABOR BUDGET / DESIGNED\n");
     for labor in &site.labor {
         writeln!(
@@ -1093,6 +1094,7 @@ fn describe(site: &ProductionSiteV1, snapshot: &ProductionSnapshotV1) -> String 
         )
         .expect("String write");
     }
+    describe_sector_context(&mut value, site, snapshot);
     value.push_str("\nINVENTORY\n");
     for stock in &site.inventory {
         writeln!(
@@ -1134,6 +1136,114 @@ fn describe(site: &ProductionSiteV1, snapshot: &ProductionSnapshotV1) -> String 
     }
     value.push_str("\nRealization here records delivered quantities, not payment.\nSCENE KEY\nEqual-height structures identify county cohorts; height and spacing carry no quantity or geography. Arrows point from disclosed suppliers to buyers. Bright links touch the selection. Packets are actual in-transit lots at static schematic positions.\n");
     value
+}
+
+fn describe_sector_context(
+    value: &mut String,
+    site: &ProductionSiteV1,
+    snapshot: &ProductionSnapshotV1,
+) {
+    let subjects: std::collections::BTreeSet<_> = snapshot
+        .process_attributions
+        .iter()
+        .filter(|link| link.site_id == site.id)
+        .map(|link| &link.cohort_subject)
+        .collect();
+    for context in snapshot.observed_contexts.iter().filter(|context| {
+        context.county_geoid == site.county_geoid && subjects.contains(&context.subject)
+    }) {
+        writeln!(
+            value,
+            "\nSECTOR CONTEXT / OBSERVED {}\n{} | NAICS {}\n{} establishments",
+            context.vintage,
+            context.sector_title,
+            context.sector_code,
+            grouped(context.annual_avg_estabs_count),
+        )
+        .expect("String write");
+        for (metric, prefix, suffix, undisclosed) in [
+            (
+                context.annual_avg_emplvl,
+                "",
+                " annual-average jobs",
+                "Annual-average jobs: not disclosed",
+            ),
+            (
+                context.total_annual_wages,
+                "USD ",
+                " annual payroll",
+                "Annual payroll: not disclosed",
+            ),
+            (
+                context.annual_avg_wkly_wage,
+                "USD ",
+                " mean weekly wage",
+                "Mean weekly wage: not disclosed",
+            ),
+        ] {
+            match metric {
+                Some(metric) => writeln!(value, "{prefix}{}{suffix}", grouped(metric)),
+                None => writeln!(value, "{undisclosed}"),
+            }
+            .expect("String write");
+        }
+        let shared_ids: std::collections::BTreeSet<_> = snapshot
+            .process_attributions
+            .iter()
+            .filter(|link| link.cohort_subject == context.subject)
+            .map(|link| link.site_id.as_str())
+            .collect();
+        let mut names: Vec<_> = snapshot
+            .sites
+            .iter()
+            .filter(|other| shared_ids.contains(other.id.as_str()))
+            .map(|other| other.name.as_str())
+            .collect();
+        names.sort_unstable();
+        writeln!(
+            value,
+            "Modeled processes sharing this context: {}\nThis county-sector total does not assign workers to a process.\nSource: BLS QCEW / {}\n{}",
+            names.join("; "),
+            context.source_file,
+            context.source_url,
+        )
+        .expect("String write");
+    }
+}
+
+fn describe_labor_accounts(
+    value: &mut String,
+    site: &ProductionSiteV1,
+    snapshot: &ProductionSnapshotV1,
+) {
+    for account in snapshot
+        .labor_accounts
+        .iter()
+        .filter(|account| account.site_id == site.id)
+    {
+        if let Some(completed) = &account.completed {
+            writeln!(
+                value,
+                "\nCOMMITTED WORK TIME / WEEK {}\n{} used + {} unused = {} available\nPlanned: {} {}",
+                completed.week,
+                grouped(completed.used),
+                grouped(completed.unused),
+                grouped(completed.opening),
+                grouped(completed.planned),
+                account.unit,
+            )
+            .expect("String write");
+            value.push_str("Time accounts do not measure job losses.\n");
+        }
+        writeln!(
+            value,
+            "Next opening (week {}): {} {}",
+            account.next_opening_week,
+            grouped(account.next_opening_available),
+            account.unit,
+        )
+        .expect("String write");
+    }
 }
 
 fn rebuild_dependencies(
@@ -1546,6 +1656,9 @@ mod tests {
 
     fn snapshot() -> ProductionSnapshotV1 {
         ProductionSnapshotV1 {
+            labor_accounts: Vec::new(),
+            observed_contexts: Vec::new(),
+            process_attributions: Vec::new(),
             scenario_label: "Navigation fixture".into(),
             horizon_week: 8,
             sites: vec![
@@ -1573,6 +1686,135 @@ mod tests {
             events: Vec::new(),
             provenance: Vec::new(),
         }
+    }
+
+    #[test]
+    fn inspector_separates_committed_work_time_from_next_opening_and_other_sites() {
+        use babylon_persistence::{CompletedProductionLaborV1, ProductionLaborAccountV1};
+
+        let mut snapshot = snapshot();
+        snapshot.labor_accounts = vec![
+            ProductionLaborAccountV1 {
+                site_id: "a".into(),
+                unit_id: "hours".into(),
+                unit: "Designed labor-hours".into(),
+                next_opening_week: 6,
+                next_opening_available: 160,
+                completed: Some(CompletedProductionLaborV1 {
+                    week: 5,
+                    opening: 120,
+                    planned: 100,
+                    used: 80,
+                    unused: 40,
+                }),
+            },
+            ProductionLaborAccountV1 {
+                site_id: "b".into(),
+                unit_id: "other-hours".into(),
+                unit: "other site's private work time".into(),
+                next_opening_week: 6,
+                next_opening_available: 987,
+                completed: None,
+            },
+        ];
+        let text = describe(&snapshot.sites[0], &snapshot);
+        assert!(text.contains("COMMITTED WORK TIME / WEEK 5"));
+        assert!(text.contains("80 used + 40 unused = 120 available"));
+        assert!(text.contains("Planned: 100 Designed labor-hours"));
+        assert!(text.contains("Next opening (week 6): 160 Designed labor-hours"));
+        assert!(!text.contains("private work time"));
+        assert!(!text.contains("987"));
+        assert!(text.contains("Time accounts do not measure job losses."));
+    }
+
+    #[test]
+    fn foundation_labor_account_does_not_invent_a_completed_work_week() {
+        use babylon_persistence::ProductionLaborAccountV1;
+
+        let mut snapshot = snapshot();
+        snapshot.labor_accounts = vec![ProductionLaborAccountV1 {
+            site_id: "a".into(),
+            unit_id: "hours".into(),
+            unit: "Designed labor-hours".into(),
+            next_opening_week: 1,
+            next_opening_available: 120,
+            completed: None,
+        }];
+        let text = describe(&snapshot.sites[0], &snapshot);
+        assert!(!text.contains("COMMITTED WORK TIME"));
+        assert!(text.contains("Next opening (week 1): 120 Designed labor-hours"));
+    }
+
+    fn attributed_snapshot() -> ProductionSnapshotV1 {
+        use babylon_persistence::{
+            ArchiveEvidenceClassV1, DesignedProcessAttributionV1, ObservedManufacturingContextV1,
+            ProductionBusinessSubjectV1,
+        };
+        let mut snapshot = snapshot();
+        let subject = ProductionBusinessSubjectV1 {
+            scenario: "observed-fixture".into(),
+            local_name: "business-26163-31-33".into(),
+        };
+        snapshot
+            .observed_contexts
+            .push(ObservedManufacturingContextV1 {
+                subject: subject.clone(),
+                county_geoid: "26163".into(),
+                sector_code: "31-33".into(),
+                sector_title: "Manufacturing".into(),
+                vintage: 2024,
+                annual_avg_estabs_count: 11,
+                annual_avg_emplvl: Some(1_234),
+                total_annual_wages: Some(12_345_678),
+                annual_avg_wkly_wage: Some(987),
+                source_url: "https://www.bls.gov/cew/".into(),
+                source_file: "county-source.csv".into(),
+                source_sha256: "a".repeat(64),
+                artifact_sha256: "b".repeat(64),
+                evidence_class: ArchiveEvidenceClassV1::Observed,
+            });
+        for site in &snapshot.sites[..2] {
+            snapshot
+                .process_attributions
+                .push(DesignedProcessAttributionV1 {
+                    process_id: format!("process-{}", site.id),
+                    site_id: site.id.clone(),
+                    industry_code: site.industry_code.clone(),
+                    cohort_subject: subject.clone(),
+                    scenario_artifact_sha256: "c".repeat(64),
+                    industry_artifact_sha256: "d".repeat(64),
+                    evidence_class: ArchiveEvidenceClassV1::Designed,
+                });
+        }
+        snapshot
+    }
+
+    #[test]
+    fn inspector_distinguishes_shared_sector_context_from_process_workers() {
+        let snapshot = attributed_snapshot();
+        let text = describe(&snapshot.sites[0], &snapshot);
+        assert!(text.contains("SECTOR CONTEXT / OBSERVED 2024"));
+        assert!(text.contains("Manufacturing | NAICS 31-33"));
+        assert_eq!(text.matches("1,234 annual-average jobs").count(), 1);
+        assert!(text.contains("USD 12,345,678 annual payroll"));
+        assert!(text.contains("USD 987 mean weekly wage"));
+        assert!(text.contains("Modeled processes sharing this context: Cohort a; Cohort b"));
+        assert!(text.contains("This county-sector total does not assign workers to a process."));
+        assert!(!text.contains("2,468"));
+        assert!(!describe(&snapshot.sites[2], &snapshot).contains("SECTOR CONTEXT"));
+    }
+
+    #[test]
+    fn inspector_keeps_undisclosed_sector_metrics_distinct_from_zero() {
+        let mut snapshot = attributed_snapshot();
+        let context = &mut snapshot.observed_contexts[0];
+        context.annual_avg_emplvl = None;
+        context.total_annual_wages = Some(0);
+        context.annual_avg_wkly_wage = None;
+        let text = describe(&snapshot.sites[0], &snapshot);
+        assert!(text.contains("Annual-average jobs: not disclosed"));
+        assert!(text.contains("USD 0 annual payroll"));
+        assert!(text.contains("Mean weekly wage: not disclosed"));
     }
 
     #[test]

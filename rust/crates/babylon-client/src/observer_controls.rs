@@ -11,7 +11,7 @@ pub(crate) enum ControlAvailability {
     Disabled(&'static str),
 }
 
-pub(crate) const MONTH_ADVANCE_HELP: &str = "Campaign months are relative planning periods, not calendar dates: twelve periods span 52 weeks. Their ends round up to weekly commits (weeks 5, 9, 13, 18, and so on); lengths repeat 5, 4, 4 weeks. Run month stops at the next month boundary, or at the scenario horizon if earlier. Pause finishes the outstanding week; Resume month keeps the same target. Disclosed freight loss pauses a running month; Stop on delivery adds delivery pauses. Advance one week is a diagnostic control. Each week still uses opening inputs, then moves freight; arrivals feed the following week's production. Time changes only after a confirmed commit.";
+pub(crate) const MONTH_ADVANCE_HELP: &str = "Campaign months are relative planning periods, not calendar dates: twelve periods span 52 weeks. Their ends round up to weekly commits (weeks 5, 9, 13, 18, and so on); lengths repeat 5, 4, 4 weeks. Run month stops at the next month boundary, or at the scenario horizon if earlier. Pause finishes the outstanding week; Resume month keeps the same target. Disclosed freight loss pauses a running month; Stop on delivery adds delivery pauses. Advance one week is a diagnostic control. Production follows the previous week's committed plan. New deliveries enter planning for the following week. Time changes only after a confirmed commit.";
 
 const PENDING: ControlAvailability =
     ControlAvailability::Disabled("Wait for the current week to finish committing");

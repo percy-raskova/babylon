@@ -369,12 +369,15 @@ mod tests {
     }
     fn chain() -> ProductionSnapshotV1 {
         ProductionSnapshotV1 {
+            labor_accounts: Vec::new(),
             scenario_label: "Designed test chain".into(),
             horizon_week: 16,
             sites: vec![site("a", &[]), site("b", &["a"]), site("c", &["b"])],
             routes: Vec::new(),
             freight: Vec::new(),
             events: Vec::new(),
+            observed_contexts: Vec::new(),
+            process_attributions: Vec::new(),
             provenance: Vec::new(),
         }
     }

@@ -885,7 +885,7 @@ impl ArchiveSearchHitV1 {
 
 /// Governed evidence classification carried by every semantic atom
 /// (constitutional compact: Observed, Derived, Calibrated, Designed).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum ArchiveEvidenceClassV1 {
     /// A fact read from a pinned source.
     Observed,

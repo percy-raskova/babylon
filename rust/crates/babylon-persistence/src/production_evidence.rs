@@ -1,6 +1,6 @@
 //! Presentation identity for the already-authorized production observation.
 //!
-//! V1 uses a fixed domain/version, big-endian u64 quantities and lengths,
+//! V2 uses a fixed domain/version, big-endian u64 quantities and lengths,
 //! length-prefixed UTF-8, and explicit 0/1 option tags. Unordered rows sort by
 //! their complete typed fields (including exact good/unit identities), after
 //! nested collections have been sorted. Duplicates retain their multiplicity.
@@ -20,13 +20,13 @@ use crate::{
     ProductionStockV1,
 };
 
-const DOMAIN: &[u8] = b"babylon.production-observation-evidence.v1\0";
+const DOMAIN: &[u8] = b"babylon.production-observation-evidence.v2\0";
 
 /// SHA-256 of one scope-bound production presentation, distinct from world identity.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct ProductionEvidenceDigestV1([u8; 32]);
+pub struct ProductionEvidenceDigestV2([u8; 32]);
 
-impl ProductionEvidenceDigestV1 {
+impl ProductionEvidenceDigestV2 {
     #[must_use]
     pub const fn as_bytes(&self) -> &[u8; 32] {
         &self.0
@@ -47,11 +47,11 @@ impl ObserverEconomySnapshotV1 {
     /// session; the digest does not validate provenance or confer read authority.
     /// Compute on observation installation or evidence disclosure, not per frame.
     #[must_use]
-    pub fn production_evidence_digest(&self) -> Option<ProductionEvidenceDigestV1> {
+    pub fn production_evidence_digest(&self) -> Option<ProductionEvidenceDigestV2> {
         let production = canonical_production(self.production.as_ref()?);
         let mut encoder = EvidenceEncoder(Sha256::new());
         encoder.0.update(DOMAIN);
-        encoder.0.update(1_u32.to_be_bytes());
+        encoder.0.update(2_u32.to_be_bytes());
         encoder.text(&self.campaign_id);
         encoder.number(self.resolve_tick);
         encoder.text(&self.foundation_digest);
@@ -63,7 +63,7 @@ impl ObserverEconomySnapshotV1 {
             ObserverVisibilityV1::KnownPreview => 1,
         }]);
         encoder.production(&production);
-        Some(ProductionEvidenceDigestV1(encoder.0.finalize().into()))
+        Some(ProductionEvidenceDigestV2(encoder.0.finalize().into()))
     }
 }
 
@@ -78,6 +78,9 @@ fn canonical_production(source: &ProductionSnapshotV1) -> ProductionSnapshotV1 {
         site.labor.sort_unstable();
     }
     rows.sites.sort_unstable();
+    rows.labor_accounts.sort_unstable();
+    rows.observed_contexts.sort_unstable();
+    rows.process_attributions.sort_unstable();
     rows.routes.sort_unstable();
     rows.freight.sort_unstable();
     for event in &mut rows.events {
@@ -145,7 +148,59 @@ impl EvidenceEncoder {
         for event in &rows.events {
             self.event(event);
         }
+        self.count(rows.labor_accounts.len());
+        for account in &rows.labor_accounts {
+            self.text(&account.site_id);
+            self.text(&account.unit_id);
+            self.text(&account.unit);
+            self.number(account.next_opening_week);
+            self.number(account.next_opening_available);
+            self.0.update([u8::from(account.completed.is_some())]);
+            if let Some(completed) = &account.completed {
+                self.number(completed.week);
+                self.number(completed.opening);
+                self.number(completed.planned);
+                self.number(completed.used);
+                self.number(completed.unused);
+            }
+        }
+        self.count(rows.observed_contexts.len());
+        for context in &rows.observed_contexts {
+            self.observed_context(context);
+        }
+        self.count(rows.process_attributions.len());
+        for link in &rows.process_attributions {
+            self.text(&link.process_id);
+            self.text(&link.site_id);
+            self.text(&link.industry_code);
+            self.business_subject(&link.cohort_subject);
+            self.text(&link.scenario_artifact_sha256);
+            self.text(&link.industry_artifact_sha256);
+            self.text(link.evidence_class.as_str());
+        }
         self.strings(&rows.provenance);
+    }
+
+    fn business_subject(&mut self, subject: &crate::ProductionBusinessSubjectV1) {
+        self.text(&subject.scenario);
+        self.text(&subject.local_name);
+    }
+
+    fn observed_context(&mut self, context: &crate::ObservedManufacturingContextV1) {
+        self.business_subject(&context.subject);
+        self.text(&context.county_geoid);
+        self.text(&context.sector_code);
+        self.text(&context.sector_title);
+        self.number(u64::from(context.vintage));
+        self.number(context.annual_avg_estabs_count);
+        self.optional_number(context.annual_avg_emplvl);
+        self.optional_number(context.total_annual_wages);
+        self.optional_number(context.annual_avg_wkly_wage);
+        self.text(&context.source_url);
+        self.text(&context.source_file);
+        self.text(&context.source_sha256);
+        self.text(&context.artifact_sha256);
+        self.text(context.evidence_class.as_str());
     }
 
     fn site(&mut self, site: &ProductionSiteV1) {

@@ -623,12 +623,15 @@ mod tests {
             visibility: ObserverVisibilityV1::FullObserver,
             counties: vec![],
             production: Some(ProductionSnapshotV1 {
+                labor_accounts: Vec::new(),
                 scenario_label: "Designed test campaign".into(),
                 horizon_week: 16,
                 sites: vec![],
                 routes: vec![],
                 freight: vec![],
                 events: vec![event],
+                observed_contexts: Vec::new(),
+                process_attributions: Vec::new(),
                 provenance: vec![],
             }),
         }));

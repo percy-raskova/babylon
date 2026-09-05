@@ -214,7 +214,9 @@ fn assert_restart_drains_and_verifies_quiet_weeks(
     let mut runtime = DurableMaterialRuntimeV3::open(
         &target.writer,
         campaign,
-        michigan_material_runtime_foundation_v2(MichiganDeliveryPresetV1::Standard).unwrap(),
+        michigan_material_runtime_foundation_v2(MichiganDeliveryPresetV1::Standard)
+            .unwrap()
+            .digest(),
     )
     .unwrap();
     let mut worker = ArchiveWorkerV1::new(&target.writer);
@@ -270,7 +272,9 @@ fn assert_restart_drains_and_verifies_quiet_weeks(
         runtime = DurableMaterialRuntimeV3::open(
             &target.writer,
             campaign,
-            michigan_material_runtime_foundation_v2(MichiganDeliveryPresetV1::Standard).unwrap(),
+            michigan_material_runtime_foundation_v2(MichiganDeliveryPresetV1::Standard)
+                .unwrap()
+                .digest(),
         )
         .unwrap();
         assert_eq!(runtime.session().completed_tick(), tick);
@@ -420,7 +424,9 @@ fn live_material_observer_preserves_history_and_denies_preview_blob_authority() 
             runtime = DurableMaterialRuntimeV3::open(
                 &target.writer,
                 campaign,
-                michigan_material_runtime_foundation_v2(preset).unwrap(),
+                michigan_material_runtime_foundation_v2(preset)
+                    .unwrap()
+                    .digest(),
             )
             .unwrap();
             assert_eq!(runtime.session().completed_tick(), 3);
@@ -468,4 +474,779 @@ fn assert_corrupted_register_is_rejected(
         Err(ObserverEconomyErrorV1::InvalidProjection)
     );
     connection.execute("UPDATE babylon_state.material_tick_v3 SET register_bytes=$2 WHERE campaign_id=$1 AND resolve_tick=6", &[campaign.as_uuid(), &original]).unwrap();
+}
+
+#[test]
+#[ignore = "requires the existing disposable PostgreSQL harness and restricted reader roles"]
+fn live_content_revisions_resume_exactly_and_catalog_filters_before_its_limit() {
+    use babylon_persistence::michigan_content::MICHIGAN_CONTENT_PRESETS_V1;
+    let mut target = DisposableTarget::create();
+    let mut campaigns = Vec::new();
+    for (index, preset) in MICHIGAN_CONTENT_PRESETS_V1.into_iter().enumerate() {
+        let campaign =
+            CampaignId::from_uuid(Uuid::from_u128(10_000 + u128::try_from(index).unwrap()));
+        let mut runtime = DurableMaterialRuntimeV3::create(
+            &target.writer,
+            campaign,
+            preset.create_foundation().unwrap(),
+        )
+        .unwrap();
+        advance_material_week(&mut runtime);
+        advance_material_week(&mut runtime);
+        campaigns.push((campaign, preset, runtime));
+    }
+    install_reader_role_v1(&target.writer).unwrap();
+    install_observer_economy_schema_v1(&target.writer).unwrap();
+    let observer = ObserverEconomyReaderV1::connect(
+        &target.login("babylon_observer", "catalogobserver"),
+        ObserverVisibilityV1::FullObserver,
+    )
+    .unwrap();
+    let known_config = target.login("babylon_reader", "catalogknown");
+    let known = ObserverEconomyReaderV1::connect(&known_config, ObserverVisibilityV1::KnownPreview)
+        .unwrap();
+    for (campaign, preset, runtime) in &mut campaigns {
+        assert_revision_resume(
+            &target.writer,
+            *campaign,
+            *preset,
+            runtime,
+            &observer,
+            &known,
+        );
+    }
+    let before = observer.campaigns().unwrap();
+    assert_eq!(before.len(), 4);
+    assert!(before.iter().all(|row| row.durable_tick == 4));
+    assert_eq!(before, known.campaigns().unwrap());
+    let unknown = insert_unadmitted_catalog_rows(&target.writer, campaigns[0].0);
+    assert_eq!(observer.campaigns().unwrap(), before);
+    assert_eq!(known.campaigns().unwrap(), before);
+    assert_eq!(unknown.len(), 66);
+    for campaign in [unknown[0], unknown[65]] {
+        for reader in [&observer, &known] {
+            assert_eq!(
+                reader.snapshot(campaign, 0),
+                Err(ObserverEconomyErrorV1::ScenarioMismatch)
+            );
+        }
+    }
+    assert!(known_config
+        .connect(NoTls)
+        .unwrap()
+        .query(
+            "SELECT register_bytes FROM public.v_observer_material_state_v1",
+            &[]
+        )
+        .is_err());
+}
+
+fn assert_revision_resume(
+    config: &Config,
+    campaign: CampaignId,
+    preset: babylon_persistence::michigan_content::MichiganContentPresetV1,
+    runtime: &mut DurableMaterialRuntimeV3,
+    observer: &ObserverEconomyReaderV1,
+    known: &ObserverEconomyReaderV1,
+) {
+    let history = observer.snapshot(campaign, 1).unwrap();
+    assert_eq!(history.counties.len(), 83);
+    assert_eq!(history.production.as_ref().unwrap().sites.len(), 5);
+    let at_two = observer.snapshot(campaign, 2).unwrap();
+    let actions = OrderedPracticeActionBatchV1::empty(
+        runtime.session().graph_session().session_identity().clone(),
+        3,
+    )
+    .unwrap();
+    let uninterrupted = runtime.session().prepare_advance(&actions).unwrap();
+    let mut reopened =
+        DurableMaterialRuntimeV3::open(config, campaign, preset.admitted().unwrap().digest())
+            .unwrap();
+    assert_eq!(reopened.session().completed_tick(), 2);
+    let restored = reopened.session().prepare_advance(&actions).unwrap();
+    assert_eq!(uninterrupted.identity(), restored.identity());
+    assert_eq!(
+        uninterrupted.material().register().canonical_bytes(),
+        restored.material().register().canonical_bytes()
+    );
+    assert_eq!(
+        uninterrupted.material().receipt_bytes(),
+        restored.material().receipt_bytes()
+    );
+    assert_eq!(observer.snapshot(campaign, 2).unwrap(), at_two);
+    advance_material_week(&mut reopened);
+    assert_eq!(observer.snapshot(campaign, 1).unwrap(), history);
+    assert!(known.snapshot(campaign, 3).unwrap().production.is_none());
+    assert_session_admits_stored_revision(config, campaign, preset, observer);
+    assert_eq!(observer.snapshot(campaign, 1).unwrap(), history);
+    *runtime = reopened;
+}
+
+fn assert_session_admits_stored_revision(
+    config: &Config,
+    campaign: CampaignId,
+    preset: babylon_persistence::michigan_content::MichiganContentPresetV1,
+    observer: &ObserverEconomyReaderV1,
+) {
+    use babylon_persistence::runtime_session::{
+        run_runtime_session_v1, RuntimeSessionRequestV1, RuntimeSessionResponseV1,
+        RuntimeSessionTailV1, RUNTIME_SESSION_PROTOCOL_VERSION_V1,
+    };
+    let current = observer.snapshot(campaign, 3).unwrap();
+    let requests = [
+        RuntimeSessionRequestV1::Advance {
+            protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION_V1,
+            campaign_id: campaign.as_uuid().to_string(),
+            request_id: 1,
+            expected_tail: RuntimeSessionTailV1 {
+                resolve_tick: 3,
+                tick_content_hash: current.tick_content_hash,
+            },
+        },
+        RuntimeSessionRequestV1::Stop {
+            protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION_V1,
+            campaign_id: campaign.as_uuid().to_string(),
+            request_id: 2,
+        },
+    ];
+    let mut lines = Vec::new();
+    for request in &requests {
+        serde_json::to_writer(&mut lines, request).unwrap();
+        lines.push(b'\n');
+    }
+    let mut output = Vec::new();
+    run_runtime_session_v1(
+        config,
+        campaign,
+        Some(preset.delivery()),
+        &mut std::io::Cursor::new(lines),
+        &mut output,
+    )
+    .unwrap();
+    let responses = std::str::from_utf8(&output)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str::<RuntimeSessionResponseV1>(line).unwrap())
+        .collect::<Vec<_>>();
+    assert!(
+        matches!(&responses[0], RuntimeSessionResponseV1::Ready { foundation_digest, tail, .. }
+        if foundation_digest == &current.foundation_digest && tail.resolve_tick == 3)
+    );
+    assert!(responses.iter().any(|response| matches!(response, RuntimeSessionResponseV1::Committed { tail, .. } if tail.resolve_tick == 4)));
+    assert_eq!(
+        observer.snapshot(campaign, 4).unwrap().foundation_digest,
+        current.foundation_digest
+    );
+}
+
+// Deliberately malformed metadata is confined to this test's disposable clone.
+// The 65 unknown UUIDs sort before every admitted campaign, exposing LIMIT-before-
+// admission bugs. The final row mixes an admitted preset with a changed digest.
+fn insert_unadmitted_catalog_rows(config: &Config, source: CampaignId) -> Vec<CampaignId> {
+    let mut client = config.connect(NoTls).unwrap();
+    let mut tx = client.transaction().unwrap();
+    let mut ids = Vec::new();
+    for number in 1..=66_u128 {
+        let campaign = CampaignId::from_uuid(Uuid::from_u128(number));
+        tx.execute("INSERT INTO babylon_state.campaign (campaign_id,replay_layout_version,rng_layout_version,replay_session_id,rng_seed,defines_hash,rules_hash,ref_digest) SELECT $1,replay_layout_version,rng_layout_version,replay_session_id,rng_seed,defines_hash,rules_hash,ref_digest FROM babylon_state.campaign WHERE campaign_id=$2", &[campaign.as_uuid(), source.as_uuid()]).unwrap();
+        tx.execute("INSERT INTO babylon_state.campaign_foundation (campaign_id,stable_graph,world_registers,resolver_manifest,prepared_environment,replay_session_id,rng_seed,defines_hash,rules_hash,ref_digest,scenario_source,prelude_source,rule_source,defines_bytes,reference_manifest_bytes,foundation_sha256) SELECT $1,stable_graph,world_registers,resolver_manifest,prepared_environment,replay_session_id,rng_seed,defines_hash,rules_hash,ref_digest,scenario_source,prelude_source,rule_source,defines_bytes,reference_manifest_bytes,foundation_sha256 FROM babylon_state.campaign_foundation WHERE campaign_id=$2", &[campaign.as_uuid(), source.as_uuid()]).unwrap();
+        let preset = if number == 66 {
+            "michigan-material-standard-v1"
+        } else {
+            "unadmitted-fixture-v1"
+        };
+        tx.execute("INSERT INTO babylon_state.material_campaign_foundation_v2 (campaign_id,preset_id,horizon_ticks,content_sha256,initial_register_bytes,foundation_bytes,foundation_sha256) SELECT $1,$3,horizon_ticks,content_sha256,initial_register_bytes,foundation_bytes,pg_catalog.set_byte(foundation_sha256,0,(pg_catalog.get_byte(foundation_sha256,0)+1)%256) FROM babylon_state.material_campaign_foundation_v2 WHERE campaign_id=$2", &[campaign.as_uuid(), source.as_uuid(), &preset]).unwrap();
+        ids.push(campaign);
+    }
+    tx.commit().unwrap();
+    ids
+}
+
+/// Every deliberate metadata fault in this module is confined to `DisposableTarget`'s
+/// freshly created clone. Neither the template nor an existing user campaign is altered.
+mod foundation_content_layout {
+    use super::*;
+    use babylon_persistence::{
+        hydrate_campaign_foundation_v1,
+        material_runtime::{install_material_runtime_schema_v3, MaterialRuntimeErrorV3},
+        michigan_content::MichiganContentPresetV1,
+        FoundationContentLayout, RustPersistenceRuntimeErrorV2,
+    };
+
+    const LAYOUT_TABLE: &str = "babylon_state.campaign_foundation_content_layout_v2";
+
+    #[test]
+    #[ignore = "requires the existing disposable PostgreSQL harness; serial clone ownership"]
+    fn live_explicit_content_layout_preserves_old_saves_and_refuses_metadata_reinterpretation() {
+        let target = DisposableTarget::create();
+        let old = CampaignId::from_uuid(Uuid::from_u128(21_001));
+        let new = CampaignId::from_uuid(Uuid::from_u128(21_002));
+        let old_preset = MichiganContentPresetV1::BaselineStandardV1;
+        let new_preset = MichiganContentPresetV1::CohortsStandardV2;
+        let mut old_runtime = DurableMaterialRuntimeV3::create(
+            &target.writer,
+            old,
+            old_preset.create_foundation().unwrap(),
+        )
+        .unwrap();
+        advance_material_week(&mut old_runtime);
+        assert_historical_first_install(&target, old, old_preset);
+        let mut new_runtime = DurableMaterialRuntimeV3::create(
+            &target.writer,
+            new,
+            new_preset.create_foundation().unwrap(),
+        )
+        .unwrap();
+        advance_material_week(&mut new_runtime);
+        assert_missing_layout_is_not_healed(&target, old, old_preset, new, new_preset);
+        assert_unknown_layout_is_refused(&target, old, old_preset);
+        assert_valid_but_wrong_layout_is_refused(&target, old, old_preset, new, new_preset);
+        for (campaign, preset, runtime, layout) in [
+            (old, old_preset, &old_runtime, FoundationContentLayout::V1),
+            (new, new_preset, &new_runtime, FoundationContentLayout::V2),
+        ] {
+            assert_eq!(
+                hydrate_campaign_foundation_v1(&target.writer, campaign)
+                    .unwrap()
+                    .content_bundle()
+                    .layout(),
+                layout
+            );
+            assert_next_commit_survives_reopen(&target.writer, campaign, preset, runtime);
+        }
+    }
+
+    #[test]
+    #[ignore = "requires the existing disposable PostgreSQL harness; serial clone ownership"]
+    fn live_open_material_runtime_refuses_missing_or_changed_content_layout_before_ack() {
+        let target = DisposableTarget::create();
+        for (index, missing) in [true, false].into_iter().enumerate() {
+            let campaign =
+                CampaignId::from_uuid(Uuid::from_u128(22_001 + u128::try_from(index).unwrap()));
+            let mut runtime = DurableMaterialRuntimeV3::create(
+                &target.writer,
+                campaign,
+                MichiganContentPresetV1::BaselineStandardV1
+                    .create_foundation()
+                    .unwrap(),
+            )
+            .unwrap();
+            let world = runtime.session().current_world_hash().unwrap();
+            corrupt_open_layout(&target.writer, campaign, missing);
+            let actions = OrderedPracticeActionBatchV1::empty(
+                runtime.session().graph_session().session_identity().clone(),
+                1,
+            )
+            .unwrap();
+            let mut sink = CollectingSink::default();
+            let result = runtime.advance_and_commit(&mut sink, &actions);
+            assert!(result.is_err(), "an open material runtime must refuse missing={missing} layout before acknowledgement");
+            assert_eq!(runtime.session().completed_tick(), 0);
+            assert_eq!(runtime.session().current_world_hash().unwrap(), world);
+            assert!(runtime.tail().is_none());
+            assert!(sink.events.is_empty());
+            assert_no_committed_tick(&target.writer, campaign);
+        }
+    }
+
+    #[test]
+    #[ignore = "requires the existing disposable PostgreSQL harness; serial clone ownership"]
+    fn live_open_graph_runtime_refuses_missing_or_changed_content_layout_before_ack() {
+        use babylon_persistence::{
+            michigan_economy::michigan_observer_foundation_v1, DurableReplayRuntimeV2,
+        };
+        let target = DisposableTarget::create();
+        for (index, missing) in [true, false].into_iter().enumerate() {
+            let campaign =
+                CampaignId::from_uuid(Uuid::from_u128(23_001 + u128::try_from(index).unwrap()));
+            let (session, bundle) = michigan_observer_foundation_v1().unwrap();
+            let actions =
+                OrderedPracticeActionBatchV1::empty(session.session_identity().clone(), 1).unwrap();
+            let mut runtime =
+                DurableReplayRuntimeV2::create(&target.writer, campaign, session, bundle).unwrap();
+            let graph = runtime.observe_current_stable_graph_state_v1().unwrap();
+            corrupt_open_layout(&target.writer, campaign, missing);
+            let mut sink = CollectingSink::default();
+            let result = runtime.advance_and_commit(&mut sink, &actions);
+            assert!(
+                result.is_err(),
+                "an open graph runtime must refuse missing={missing} layout before acknowledgement"
+            );
+            assert!(runtime.last_committed_tick().is_none());
+            assert_eq!(
+                runtime
+                    .observe_current_stable_graph_state_v1()
+                    .unwrap()
+                    .canonical_bytes(),
+                graph.canonical_bytes()
+            );
+            assert!(sink.events.is_empty());
+            assert_no_committed_tick(&target.writer, campaign);
+        }
+    }
+
+    fn corrupt_open_layout(config: &Config, campaign: CampaignId, missing: bool) {
+        let command = if missing {
+            "DELETE FROM babylon_state.campaign_foundation_content_layout_v2 WHERE campaign_id=$1::uuid"
+        } else {
+            "UPDATE babylon_state.campaign_foundation_content_layout_v2 SET content_layout_version=2 WHERE campaign_id=$1::uuid"
+        };
+        assert_eq!(
+            config
+                .connect(NoTls)
+                .unwrap()
+                .execute(command, &[campaign.as_uuid()])
+                .unwrap(),
+            1
+        );
+    }
+
+    fn assert_no_committed_tick(config: &Config, campaign: CampaignId) {
+        let count: i64 = config
+            .connect(NoTls)
+            .unwrap()
+            .query_one(
+                "SELECT count(*) FROM babylon_state.tick_commit WHERE campaign_id=$1::uuid",
+                &[campaign.as_uuid()],
+            )
+            .unwrap()
+            .get(0);
+        assert_eq!(count, 0);
+    }
+
+    fn foundation_bytes(config: &Config, campaign: CampaignId) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+        let row = config
+            .connect(NoTls)
+            .unwrap()
+            .query_one(
+                "SELECT f.foundation_sha256, m.foundation_bytes, m.foundation_sha256 \
+             FROM babylon_state.campaign_foundation f \
+             JOIN babylon_state.material_campaign_foundation_v2 m USING (campaign_id) \
+             WHERE campaign_id = $1::uuid",
+                &[campaign.as_uuid()],
+            )
+            .unwrap();
+        (row.get(0), row.get(1), row.get(2))
+    }
+
+    fn assert_historical_first_install(
+        target: &DisposableTarget,
+        campaign: CampaignId,
+        preset: MichiganContentPresetV1,
+    ) {
+        let before = foundation_bytes(&target.writer, campaign);
+        let graph = hydrate_campaign_foundation_v1(&target.writer, campaign).unwrap();
+        // This recreates the exact pre-successor schema boundary in the owned clone;
+        // the historical foundation and its committed tick are never rewritten.
+        let mut sql = target.writer.connect(NoTls).unwrap();
+        assert_eq!(
+            sql.query_one("SELECT current_database()", &[])
+                .unwrap()
+                .get::<_, String>(0),
+            target.database
+        );
+        sql.batch_execute(
+            "DROP TABLE babylon_state.campaign_foundation_content_layout_v2; \
+             DROP TABLE babylon_meta.foundation_content_schema_v2",
+        )
+        .unwrap();
+        let reopened = DurableMaterialRuntimeV3::open(
+            &target.writer,
+            campaign,
+            preset.admitted().unwrap().digest(),
+        )
+        .unwrap();
+        assert_eq!(reopened.session().completed_tick(), 1);
+        let after = hydrate_campaign_foundation_v1(&target.writer, campaign).unwrap();
+        assert_eq!(after.content_bundle().layout(), FoundationContentLayout::V1);
+        assert_eq!(after.canonical_bytes(), graph.canonical_bytes());
+        assert_eq!(foundation_bytes(&target.writer, campaign), before);
+        install_material_runtime_schema_v3(&target.writer).unwrap();
+        install_material_runtime_schema_v3(&target.writer).unwrap();
+        let count: i64 = sql
+            .query_one(
+                "SELECT count(*) FROM babylon_state.campaign_foundation_content_layout_v2 \
+             WHERE campaign_id = $1::uuid AND content_layout_version = 1",
+                &[campaign.as_uuid()],
+            )
+            .unwrap()
+            .get(0);
+        assert_eq!(count, 1);
+    }
+
+    fn assert_missing_layout_is_not_healed(
+        target: &DisposableTarget,
+        old: CampaignId,
+        old_preset: MichiganContentPresetV1,
+        new: CampaignId,
+        new_preset: MichiganContentPresetV1,
+    ) {
+        let before = foundation_bytes(&target.writer, old);
+        let mut sql = target.writer.connect(NoTls).unwrap();
+        assert_eq!(
+            sql.execute(
+                &format!("DELETE FROM {LAYOUT_TABLE} WHERE campaign_id=$1::uuid"),
+                &[old.as_uuid()]
+            )
+            .unwrap(),
+            1
+        );
+        for _ in 0..2 {
+            install_material_runtime_schema_v3(&target.writer).unwrap();
+        }
+        assert!(matches!(
+            DurableMaterialRuntimeV3::open(
+                &target.writer,
+                old,
+                old_preset.admitted().unwrap().digest()
+            ),
+            Err(MaterialRuntimeErrorV3::Graph(
+                RustPersistenceRuntimeErrorV2::FoundationAbsent
+            ))
+        ));
+        assert!(matches!(
+            DurableMaterialRuntimeV3::create(
+                &target.writer,
+                old,
+                old_preset.create_foundation().unwrap()
+            ),
+            Err(MaterialRuntimeErrorV3::Graph(
+                RustPersistenceRuntimeErrorV2::FoundationAbsent
+            ))
+        ));
+        let missing: i64 = sql
+            .query_one(
+                &format!("SELECT count(*) FROM {LAYOUT_TABLE} WHERE campaign_id=$1::uuid"),
+                &[old.as_uuid()],
+            )
+            .unwrap()
+            .get(0);
+        assert_eq!(missing, 0);
+        assert_eq!(
+            DurableMaterialRuntimeV3::open(
+                &target.writer,
+                new,
+                new_preset.admitted().unwrap().digest()
+            )
+            .unwrap()
+            .session()
+            .completed_tick(),
+            1
+        );
+        assert_eq!(foundation_bytes(&target.writer, old), before);
+        sql.execute(
+            &format!("INSERT INTO {LAYOUT_TABLE} VALUES ($1::uuid, 1)"),
+            &[old.as_uuid()],
+        )
+        .unwrap();
+    }
+
+    fn assert_unknown_layout_is_refused(
+        target: &DisposableTarget,
+        campaign: CampaignId,
+        preset: MichiganContentPresetV1,
+    ) {
+        let mut sql = target.writer.connect(NoTls).unwrap();
+        let error = sql
+            .execute(
+                &format!(
+                    "UPDATE {LAYOUT_TABLE} SET content_layout_version=3 WHERE campaign_id=$1::uuid"
+                ),
+                &[campaign.as_uuid()],
+            )
+            .unwrap_err();
+        assert_eq!(
+            error.code(),
+            Some(&postgres::error::SqlState::CHECK_VIOLATION)
+        );
+        let constraint: String = sql
+            .query_one(
+                "SELECT conname FROM pg_catalog.pg_constraint \
+             WHERE conrelid = 'babylon_state.campaign_foundation_content_layout_v2'::regclass \
+             AND contype = 'c'",
+                &[],
+            )
+            .unwrap()
+            .get(0);
+        assert!(constraint
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_'));
+        // Check decoder default-deny even under deliberate schema corruption. The
+        // cloned database is dropped by DisposableTarget on either pass or panic.
+        sql.batch_execute(&format!(
+            "ALTER TABLE {LAYOUT_TABLE} DROP CONSTRAINT \"{constraint}\""
+        ))
+        .unwrap();
+        sql.execute(
+            &format!(
+                "UPDATE {LAYOUT_TABLE} SET content_layout_version=3 WHERE campaign_id=$1::uuid"
+            ),
+            &[campaign.as_uuid()],
+        )
+        .unwrap();
+        assert!(matches!(
+            DurableMaterialRuntimeV3::open(
+                &target.writer,
+                campaign,
+                preset.admitted().unwrap().digest()
+            ),
+            Err(MaterialRuntimeErrorV3::Graph(
+                RustPersistenceRuntimeErrorV2::ReplaySource
+            ))
+        ));
+        sql.execute(
+            &format!(
+                "UPDATE {LAYOUT_TABLE} SET content_layout_version=1 WHERE campaign_id=$1::uuid"
+            ),
+            &[campaign.as_uuid()],
+        )
+        .unwrap();
+        sql.batch_execute(&format!("ALTER TABLE {LAYOUT_TABLE} ADD CONSTRAINT \"{constraint}\" CHECK (content_layout_version IN (1,2))")).unwrap();
+    }
+
+    fn assert_valid_but_wrong_layout_is_refused(
+        target: &DisposableTarget,
+        old: CampaignId,
+        old_preset: MichiganContentPresetV1,
+        new: CampaignId,
+        new_preset: MichiganContentPresetV1,
+    ) {
+        let mut sql = target.writer.connect(NoTls).unwrap();
+        for (campaign, preset, wrong, actual) in
+            [(old, old_preset, 2_i16, 1_i16), (new, new_preset, 1, 2)]
+        {
+            let before = foundation_bytes(&target.writer, campaign);
+            sql.execute(&format!("UPDATE {LAYOUT_TABLE} SET content_layout_version=$2 WHERE campaign_id=$1::uuid"), &[campaign.as_uuid(), &wrong]).unwrap();
+            let refusal = DurableMaterialRuntimeV3::open(
+                &target.writer,
+                campaign,
+                preset.admitted().unwrap().digest(),
+            );
+            if wrong == 2 {
+                assert!(matches!(
+                    refusal,
+                    Err(MaterialRuntimeErrorV3::Graph(
+                        RustPersistenceRuntimeErrorV2::ReplaySource
+                    ))
+                ));
+            } else {
+                assert!(matches!(
+                    refusal,
+                    Err(MaterialRuntimeErrorV3::Graph(
+                        RustPersistenceRuntimeErrorV2::SemanticCodec
+                    ))
+                ));
+            }
+            assert_eq!(foundation_bytes(&target.writer, campaign), before);
+            sql.execute(&format!("UPDATE {LAYOUT_TABLE} SET content_layout_version=$2 WHERE campaign_id=$1::uuid"), &[campaign.as_uuid(), &actual]).unwrap();
+        }
+    }
+
+    fn assert_next_commit_survives_reopen(
+        config: &Config,
+        campaign: CampaignId,
+        preset: MichiganContentPresetV1,
+        uninterrupted: &DurableMaterialRuntimeV3,
+    ) {
+        let mut reopened =
+            DurableMaterialRuntimeV3::open(config, campaign, preset.admitted().unwrap().digest())
+                .unwrap();
+        assert_eq!(reopened.session().completed_tick(), 1);
+        let actions = OrderedPracticeActionBatchV1::empty(
+            uninterrupted
+                .session()
+                .graph_session()
+                .session_identity()
+                .clone(),
+            2,
+        )
+        .unwrap();
+        let expected = uninterrupted.session().prepare_advance(&actions).unwrap();
+        let actual = reopened.session().prepare_advance(&actions).unwrap();
+        assert_eq!(actual.identity(), expected.identity());
+        assert_eq!(
+            actual.material().register().canonical_bytes(),
+            expected.material().register().canonical_bytes()
+        );
+        assert_eq!(
+            actual.material().receipt_bytes(),
+            expected.material().receipt_bytes()
+        );
+        drop(actual);
+        advance_material_week(&mut reopened);
+        assert_eq!(reopened.session().completed_tick(), 2);
+        assert_eq!(
+            DurableMaterialRuntimeV3::open(config, campaign, preset.admitted().unwrap().digest())
+                .unwrap()
+                .session()
+                .completed_tick(),
+            2
+        );
+    }
+}
+
+mod campaign_writer_ownership {
+    use super::*;
+    use babylon_persistence::{
+        material_runtime::MaterialRuntimeErrorV3,
+        michigan_economy::michigan_observer_foundation_v1, DurableReplayRuntimeV2,
+    };
+    use std::{
+        thread,
+        time::{Duration, Instant},
+    };
+
+    #[test]
+    #[ignore = "requires the existing disposable PostgreSQL harness; serial clone ownership"]
+    fn live_graph_owner_is_refused_for_an_already_registered_material_campaign() {
+        let target = DisposableTarget::create();
+        let campaign = CampaignId::from_uuid(Uuid::from_u128(31_001));
+        let material = DurableMaterialRuntimeV3::create(
+            &target.writer,
+            campaign,
+            michigan_material_runtime_foundation_v2(MichiganDeliveryPresetV1::Standard).unwrap(),
+        )
+        .unwrap();
+        let (graph, bundle) = michigan_observer_foundation_v1().unwrap();
+        let graph_create = DurableReplayRuntimeV2::create(&target.writer, campaign, graph, bundle);
+        let graph_open = DurableReplayRuntimeV2::open(&target.writer, campaign);
+        assert_eq!(
+            (graph_create.is_err(), graph_open.is_err()),
+            (true, true),
+            "a registered material campaign must never expose a graph-only owner"
+        );
+        assert_eq!(material.session().completed_tick(), 0);
+        let markers: i64 = target
+            .writer
+            .connect(NoTls)
+            .unwrap()
+            .query_one(
+                "SELECT count(*) FROM babylon_state.tick_commit WHERE campaign_id=$1::uuid",
+                &[campaign.as_uuid()],
+            )
+            .unwrap()
+            .get(0);
+        assert_eq!(markers, 0);
+    }
+
+    #[test]
+    #[ignore = "requires the existing disposable PostgreSQL harness; serial clone ownership"]
+    fn live_graph_campaign_before_material_schema_still_creates_reopens_and_commits() {
+        let target = DisposableTarget::create();
+        let absent: bool = target.writer.connect(NoTls).unwrap().query_one(
+            "SELECT pg_catalog.to_regclass('babylon_state.material_campaign_foundation_v2') IS NULL", &[],
+        ).unwrap().get(0);
+        assert!(
+            absent,
+            "this predecessor fixture must not install material ownership"
+        );
+        let campaign = CampaignId::from_uuid(Uuid::from_u128(31_002));
+        let (graph, bundle) = michigan_observer_foundation_v1().unwrap();
+        let actions =
+            OrderedPracticeActionBatchV1::empty(graph.session_identity().clone(), 1).unwrap();
+        let original =
+            DurableReplayRuntimeV2::create(&target.writer, campaign, graph, bundle).unwrap();
+        let mut reopened = DurableReplayRuntimeV2::open(&target.writer, campaign).unwrap();
+        assert_eq!(
+            reopened.foundation().canonical_bytes(),
+            original.foundation().canonical_bytes()
+        );
+        let receipt = reopened
+            .advance_and_commit(&mut CollectingSink::default(), &actions)
+            .unwrap();
+        assert_eq!(receipt.resolve_tick().get(), 1);
+        assert_eq!(
+            DurableReplayRuntimeV2::open(&target.writer, campaign)
+                .unwrap()
+                .last_committed_tick()
+                .unwrap()
+                .get(),
+            1
+        );
+    }
+
+    #[test]
+    #[ignore = "requires the existing disposable PostgreSQL harness; serial clone ownership"]
+    fn live_concurrent_creation_cannot_promote_the_winning_graph_campaign_to_material() {
+        let target = DisposableTarget::create();
+        // Warm every additive schema before the controlled interleaving. No
+        // production hooks are used: a relation lock pauses the real catalog insert.
+        let warm = CampaignId::from_uuid(Uuid::from_u128(31_900));
+        drop(
+            DurableMaterialRuntimeV3::create(
+                &target.writer,
+                warm,
+                michigan_material_runtime_foundation_v2(MichiganDeliveryPresetV1::Standard)
+                    .unwrap(),
+            )
+            .unwrap(),
+        );
+        let campaign = CampaignId::from_uuid(Uuid::from_u128(31_003));
+        let (graph, bundle) = michigan_observer_foundation_v1().unwrap();
+        let material =
+            michigan_material_runtime_foundation_v2(MichiganDeliveryPresetV1::Standard).unwrap();
+        let mut graph_config = target.writer.clone();
+        graph_config.application_name("g4-owner-race-graph");
+        let mut material_config = target.writer.clone();
+        material_config.application_name("g4-owner-race-material");
+        let mut holder = target.writer.connect(NoTls).unwrap();
+        let mut blocker = holder.transaction().unwrap();
+        blocker
+            .batch_execute("LOCK TABLE babylon_meta.campaign IN SHARE MODE")
+            .unwrap();
+        let graph_worker = thread::spawn(move || {
+            DurableReplayRuntimeV2::create(&graph_config, campaign, graph, bundle).map(|_| ())
+        });
+        let graph_blocked = wait_for_writer_lock(&target.writer, "g4-owner-race-graph", true);
+        let material_worker = thread::spawn(move || {
+            DurableMaterialRuntimeV3::create(&material_config, campaign, material).map(|_| ())
+        });
+        let material_blocked =
+            wait_for_writer_lock(&target.writer, "g4-owner-race-material", false);
+        // Release before assertions or joins, including a failed observation, so
+        // no worker is stranded behind a test-owned relation lock.
+        blocker.rollback().unwrap();
+        let graph_result = graph_worker.join().unwrap();
+        let material_result = material_worker.join().unwrap();
+        assert!(
+            graph_blocked && material_blocked,
+            "both real writers reached the controlled lock boundary"
+        );
+        assert!(
+            graph_result.is_ok(),
+            "the graph campaign won its canonical insertion"
+        );
+        assert!(matches!(material_result, Err(MaterialRuntimeErrorV3::LegacyCampaign)),
+            "material creation must re-observe the winning graph owner instead of adopting it: {material_result:?}");
+        let mut sql = target.writer.connect(NoTls).unwrap();
+        let material_rows: i64 = sql.query_one(
+            "SELECT count(*) FROM babylon_state.material_campaign_foundation_v2 WHERE campaign_id=$1::uuid", &[campaign.as_uuid()],
+        ).unwrap().get(0);
+        assert_eq!(material_rows, 0);
+        assert!(DurableReplayRuntimeV2::open(&target.writer, campaign).is_ok());
+    }
+
+    fn wait_for_writer_lock(config: &Config, application: &str, catalog_insert: bool) -> bool {
+        let mut observer = config.connect(NoTls).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            let waiting: bool = observer
+                .query_one(
+                    "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_stat_activity a \
+                 WHERE a.datname=current_database() AND a.application_name=$1 \
+                 AND a.wait_event_type='Lock' \
+                 AND (NOT $2::boolean OR a.query LIKE '%INSERT INTO babylon_meta.campaign%'))",
+                    &[&application, &catalog_insert],
+                )
+                .unwrap()
+                .get(0);
+            if waiting {
+                return true;
+            }
+            if Instant::now() >= deadline {
+                return false;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
 }

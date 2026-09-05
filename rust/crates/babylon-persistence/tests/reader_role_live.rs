@@ -1256,7 +1256,9 @@ fn assert_material_restart_reconciliation(
     let mut reopened = DurableMaterialRuntimeV3::open(
         config,
         campaign,
-        michigan_material_runtime_foundation_v2(MichiganDeliveryPresetV1::Standard).unwrap(),
+        michigan_material_runtime_foundation_v2(MichiganDeliveryPresetV1::Standard)
+            .unwrap()
+            .digest(),
     )
     .unwrap();
     assert_eq!(
@@ -1281,7 +1283,9 @@ fn assert_material_restart_reconciliation(
         DurableMaterialRuntimeV3::open(
             config,
             campaign,
-            michigan_material_runtime_foundation_v2(MichiganDeliveryPresetV1::Delayed).unwrap()
+            michigan_material_runtime_foundation_v2(MichiganDeliveryPresetV1::Delayed)
+                .unwrap()
+                .digest()
         ),
         Err(MaterialRuntimeErrorV3::FoundationMismatch)
     ));
@@ -1303,7 +1307,9 @@ fn assert_material_corruption_refused(
     assert!(DurableMaterialRuntimeV3::open(
         config,
         campaign,
-        michigan_material_runtime_foundation_v2(MichiganDeliveryPresetV1::Standard).unwrap()
+        michigan_material_runtime_foundation_v2(MichiganDeliveryPresetV1::Standard)
+            .unwrap()
+            .digest()
     )
     .is_err());
     owner.execute("UPDATE babylon_state.material_tick_v3 SET register_bytes=$2 WHERE campaign_id=$1::uuid AND resolve_tick=2",&[campaign.as_uuid(),&exact]).unwrap();

@@ -70,8 +70,8 @@ Determinism proves computational identity, not scientific truth. Historical
 cases test causal signatures and counterfactual behavior. They do not dictate a
 historical path.
 
-The Bevy client is an administrative viewer with no player action. It can run
-and show the null world, but the player cannot change that world.
+The Bevy client observes the durable Michigan campaign. It has no player action.
+G4 observer acceptance remains incomplete.
 
 <!-- vale ste.UnapprovedWords = NO -->
 Gate 2 now gives the Rust engine executable phase order, whole-tick atomicity,
@@ -100,12 +100,13 @@ Today one weekly tick takes a typed world and governed rules. It produces a new
 world, events, identity-free causal audit receipts, a Rust `TickReport`, and a
 canonical hash. The receipts state which role and evidence class produced each
 actual event and write. They are not durable action receipts. Persisted replay
-remains in the frozen Python path.
+and campaign restart belong to Rust. The frozen Python engine remains a
+behavioral reference.
 <!-- vale ste.UnapprovedWords = YES -->
 
-The planned action cycle adds prior intent and durable action receipts. A
-knowledge layer will show only what the player has learned. The player will then
-make a choice that becomes intent for a future tick.
+The planned action cycle adds prior intent and durable action receipts. The
+current knowledge boundary restricts Archive reads to granted facts. G5 adds
+player choices that become intent for a future tick.
 
 Political economy supplies the entities, relations, and causal rules. The
 general system has seven parts:
@@ -124,7 +125,7 @@ does not judge mechanics.
 ## Live path and planned cycle
 
 The solid arrows show the live Rust persistence and Bevy path. Dashed arrows
-show the planned Archive worker and player-action slice.
+show the planned player-action slice.
 
 <!-- Vale: the Mermaid block contains literal crate and schema identifiers. -->
 <!-- vale off -->
@@ -135,19 +136,24 @@ flowchart LR
     INTENT["Prior intent"] -. "planned action cycle" .-> TICK
     TICK --> HASH["Canonical world hash"]
     TICK --> AUDIT["Identity-free audit receipts"]
-    HASH --> VIEW["Bevy administrative viewer"]
     TICK --> ENV["CommittedTickEnvelope"]
+    HASH --> ENV
     ENV --> STATE["babylon_state"]
+    STATE --> READ["Role-scoped observations"]
+    READ --> VIEW["Bevy administrative viewer"]
     STATE --> OUTBOX["Archive dirty receipt"]
-    OUTBOX -.-> ARCHIVE["Knowledge-safe Archive"]
+    OUTBOX --> WORKER["Rust Archive worker"]
+    WORKER --> ARCHIVE["Knowledge-safe Archive"]
+    ARCHIVE --> DOSSIER["Bevy dossiers"]
     ARCHIVE -.-> CHOICE["Player choice"]
     CHOICE -.-> INTENT
 ```
 <!-- vale on -->
 
 The live Rust path uses `babylon-kernel`, `babylon-graph`, `babylon-bsl`,
-`babylon-tick`, and `babylon-client`. The Bevy client draws the county atlas,
-moves ticks forward, and shows lenses, events, causal beats, and hash data.
+`babylon-tick`, `babylon-persistence`, and `babylon-client`.
+`babylon-runtime` owns campaign writes. Bevy requests week advances and reads
+the committed map, material views, history, and dossiers.
 
 The Python engine is a frozen behavioral reference. Its tests, traces, and
 goldens specify behavior for port and replacement decisions. Python also
@@ -156,10 +162,12 @@ prepares data and runs selected periphery.
 <!-- Vale: this paragraph preserves literal persistence and schema identifiers. -->
 <!-- vale ste.UnapprovedWords = NO -->
 <!-- vale ste.NounClusters = NO -->
-The Python periphery has mutable SQLite replay, data and optimization tools,
-and dedicated document stores. The Rust three-schema boundary, committed tick
-envelope, checkpoint restart, and Archive dirty receipts are live. The fog-safe
-Archive worker and BSL-Bevy player actions have not landed.
+Python keeps its separate mutable SQLite reference store, data and optimization
+tools, and dedicated document stores. Rust owns authoritative replay, checkpoint
+restart, and Archive dirty receipts. The Rust Archive worker and restricted
+reader supply cited county and place dossiers to Bevy. The card shows Archive
+verification lag and refuses historical pages. BSL-Bevy player actions remain
+unavailable.
 <!-- vale ste.NounClusters = YES -->
 <!-- vale ste.UnapprovedWords = YES -->
 

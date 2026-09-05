@@ -138,17 +138,30 @@ fn parse_csv(source: &str) -> Result<MichiganEconomyV1, MichiganEconomyErrorV1> 
         return Err(MichiganEconomyErrorV1::ArtifactShape);
     }
     let mut scenario_source = format!("(scenario {MICHIGAN_OBSERVER_SCENARIO_V1}\n  (defvocabulary NodeType (TERRITORY))\n  (deffield territory/county-fips int extensive)\n");
+    append_county_observations(&mut scenario_source, &counties);
+    scenario_source.push_str(")\n");
+    Ok(MichiganEconomyV1 {
+        counties,
+        scenario_source,
+    })
+}
+
+/// Append the same observed county declarations and rows to a versioned scenario.
+pub(crate) fn append_county_observations(
+    scenario_source: &mut String,
+    counties: &[MichiganCountyEconomyV1],
+) {
     for (index, key) in QCEW_ECONOMICS_FIELD_KEYS_V1.iter().enumerate() {
         writeln!(
-            &mut scenario_source,
+            scenario_source,
             "  (deffield territory/{key} int {})",
             if index == 3 { "intensive" } else { "extensive" }
         )
         .expect("String write");
     }
-    for county in &counties {
+    for county in counties {
         writeln!(
-            &mut scenario_source,
+            scenario_source,
             "  (node county-{} NodeType/TERRITORY\n    (territory/county-fips {})",
             county.county_geoid, county.county_geoid
         )
@@ -160,15 +173,10 @@ fn parse_csv(source: &str) -> Result<MichiganEconomyV1, MichiganEconomyErrorV1> 
             county.annual_avg_wkly_wage,
         ];
         for (key, value) in QCEW_ECONOMICS_FIELD_KEYS_V1.iter().zip(values) {
-            writeln!(&mut scenario_source, "    (territory/{key} {value})").expect("String write");
+            writeln!(scenario_source, "    (territory/{key} {value})").expect("String write");
         }
         scenario_source.push_str("  )\n");
     }
-    scenario_source.push_str(")\n");
-    Ok(MichiganEconomyV1 {
-        counties,
-        scenario_source,
-    })
 }
 
 /// Decode the bounded artifact once and verify its exact governed digest.
@@ -221,10 +229,31 @@ fn build_observer_foundation(
     ),
     MichiganEconomyErrorV1,
 > {
+    observer_foundation_from_source(
+        economy.scenario_source(),
+        "g4/michigan-observer-v1",
+        DEFINES,
+        FoundationContentBundleV1::try_new,
+    )
+}
+
+/// Shared construction; each pinned factory explicitly selects its content codec.
+pub(crate) fn observer_foundation_from_source<B>(
+    scenario_source: &str,
+    session_identity: &str,
+    defines: &[u8],
+    encode_bundle: impl FnOnce(
+        &str,
+        Option<&str>,
+        &str,
+        &[u8],
+        &[u8],
+    ) -> Result<B, crate::RustPersistenceRuntimeErrorV2>,
+) -> Result<(ReplayTickSession<HypergraphStore>, B), MichiganEconomyErrorV1> {
     let (_, rules) = split_content("").map_err(|_| MichiganEconomyErrorV1::Scenario)?;
     let forms = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
     let content = ContentDigest {
-        defines_hash: sha256_of(DEFINES),
+        defines_hash: sha256_of(defines),
         rules_hash: rules_hash_of(&forms).map_err(|_| MichiganEconomyErrorV1::Scenario)?,
     };
     let foundation =
@@ -238,11 +267,11 @@ fn build_observer_foundation(
     // Scenario bytes carry every exact economics input, so the foundation digest
     // covers the QCEW rows while the existing H3 reference identity stays intact.
     let session = ReplayTickSession::new(
-        economy.scenario_source(),
+        scenario_source,
         None,
         "",
         HypergraphStore::new(),
-        ReplaySessionIdV1::try_from("g4/michigan-observer-v1")
+        ReplaySessionIdV1::try_from(session_identity)
             .map_err(|_| MichiganEconomyErrorV1::Scenario)?,
         ReplaySeed::new(319),
         content,
@@ -250,9 +279,8 @@ fn build_observer_foundation(
         MaterialStateV1::try_new(foundation).map_err(|_| MichiganEconomyErrorV1::Foundation)?,
     )
     .map_err(|_| MichiganEconomyErrorV1::Foundation)?;
-    let bundle =
-        FoundationContentBundleV1::try_new(economy.scenario_source(), None, "", DEFINES, &manifest)
-            .map_err(|_| MichiganEconomyErrorV1::Foundation)?;
+    let bundle = encode_bundle(scenario_source, None, "", defines, &manifest)
+        .map_err(|_| MichiganEconomyErrorV1::Foundation)?;
     Ok((session, bundle))
 }
 

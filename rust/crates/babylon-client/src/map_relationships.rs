@@ -114,6 +114,11 @@ fn declared_relations(snapshot: &ProductionSnapshotV1) -> BTreeMap<RelationKey, 
     relations
 }
 
+fn county_label(name: &str) -> &str {
+    // Keep the public atlas name; omit only its known Michigan county suffix.
+    name.strip_suffix(" County, MI").unwrap_or(name)
+}
+
 fn project(
     frame: &ObserverFrame,
     session: &ObserverSession,
@@ -162,8 +167,11 @@ fn project(
             from: from.position,
             to: to.position,
             caption: format!(
-                "{} {} -> {} {}\n{} | {}",
-                from.name, supplier.industry_code, to.name, buyer.industry_code, good, unit
+                "{} -> {}\n{} | {}",
+                county_label(&from.name),
+                county_label(&to.name),
+                good,
+                unit
             ),
             target_county: if outbound { to.index } else { from.index },
             outbound,
@@ -589,12 +597,15 @@ mod tests {
             visibility: ObserverVisibilityV1::FullObserver,
             counties: Vec::new(),
             production: Some(ProductionSnapshotV1 {
+                labor_accounts: Vec::new(),
                 scenario_label: "fixture".into(),
                 horizon_week: 16,
                 sites: vec![supplier, buyer, site("unrelated", "26161")],
                 routes: Vec::new(),
                 freight: Vec::new(),
                 events: Vec::new(),
+                observed_contexts: Vec::new(),
+                process_attributions: Vec::new(),
                 provenance: Vec::new(),
             }),
         }));
@@ -604,7 +615,7 @@ mod tests {
                     "26163".into(),
                     CountyAnchor {
                         index: 1,
-                        name: "Wayne".into(),
+                        name: "Wayne County, MI".into(),
                         position: Vec3::new(0.0, CONNECTION_HEIGHT, 0.0),
                     },
                 ),
@@ -612,7 +623,7 @@ mod tests {
                     "26099".into(),
                     CountyAnchor {
                         index: 2,
-                        name: "Macomb".into(),
+                        name: "Macomb County, MI".into(),
                         position: Vec3::new(40.0, CONNECTION_HEIGHT, 10.0),
                     },
                 ),
@@ -620,7 +631,7 @@ mod tests {
                     "26161".into(),
                     CountyAnchor {
                         index: 3,
-                        name: "Washtenaw".into(),
+                        name: "Washtenaw County, MI".into(),
                         position: Vec3::new(-40.0, CONNECTION_HEIGHT, 5.0),
                     },
                 ),
@@ -639,8 +650,9 @@ mod tests {
             .rows
             .iter()
             .all(|row| row.outbound && row.target_county == 2));
-        assert_eq!(rows.rows[0].caption, "Wayne 331 -> Macomb 331\nore | tonne");
-        assert_eq!(rows.rows[1].caption, "Wayne 331 -> Macomb 331\nsteel | kg");
+        assert_eq!(rows.rows[0].caption, "Wayne -> Macomb\nore | tonne");
+        assert_eq!(rows.rows[1].caption, "Wayne -> Macomb\nsteel | kg");
+        assert!(rows.rows.iter().all(|row| row.caption.lines().count() == 2));
         let keys: Vec<_> = rows.rows.iter().map(|row| row.key.clone()).collect();
         frame
             .0
@@ -665,6 +677,17 @@ mod tests {
             .iter()
             .all(|row| !row.outbound && row.target_county == 1));
         assert_eq!(project(&frame, &session, Some(3), &anchors).total, 0);
+    }
+
+    #[test]
+    fn compact_labels_preserve_unrecognized_public_names_without_inference() {
+        let (session, frame, mut anchors) = fixture();
+        anchors.0.get_mut("26163").unwrap().name = "Disclosed district".into();
+        assert_eq!(
+            project(&frame, &session, Some(1), &anchors).rows[0].caption,
+            "Disclosed district -> Macomb\nore | tonne"
+        );
+        assert_eq!(county_label("Wayne County, NE"), "Wayne County, NE");
     }
 
     #[test]

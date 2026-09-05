@@ -539,6 +539,7 @@ mod tests {
             visibility: ObserverVisibilityV1::FullObserver,
             counties: Vec::new(),
             production: Some(ProductionSnapshotV1 {
+                labor_accounts: Vec::new(),
                 scenario_label: "Designed telemetry fixture".into(),
                 horizon_week: 16,
                 sites: vec![ProductionSiteV1 {
@@ -562,6 +563,8 @@ mod tests {
                 routes: Vec::new(),
                 freight: Vec::new(),
                 events: Vec::new(),
+                observed_contexts: Vec::new(),
+                process_attributions: Vec::new(),
                 provenance: Vec::new(),
             }),
         }

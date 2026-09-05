@@ -5,6 +5,10 @@ use postgres::{Config, IsolationLevel, NoTls};
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    michigan_content::{
+        admit_michigan_content_v1, MichiganContentAdmissionV1, MichiganContentPresetV1,
+        MICHIGAN_CONTENT_PRESETS_V1,
+    },
     michigan_economy::{digest_hex, michigan_economy_v1, MichiganCountyEconomyV1},
     validate_legacy_connection_target, CampaignId,
 };
@@ -145,54 +149,24 @@ impl ObserverEconomyReaderV1 {
             .read_only(true)
             .start()
             .map_err(|_| ObserverEconomyErrorV1::Database)?;
-        let rows = transaction.query("SELECT header.campaign_id, header.preset_id, header.horizon_ticks, header.content_sha256, header.foundation_sha256, COALESCE(max(marker.resolve_tick),0)::bigint AS durable_tick FROM public.v_material_campaign_identity_v1 AS header LEFT JOIN public.v_committed_tick_status_v1 AS marker USING(campaign_id) GROUP BY header.campaign_id, header.preset_id, header.horizon_ticks, header.content_sha256, header.foundation_sha256 ORDER BY header.campaign_id LIMIT 64", &[]).map_err(|_| ObserverEconomyErrorV1::Database)?;
-        let mut result = Vec::with_capacity(rows.len());
-        for row in rows {
-            let campaign: uuid::Uuid = row
-                .try_get(0)
-                .map_err(|_| ObserverEconomyErrorV1::InvalidProjection)?;
-            let preset_id: String = row
-                .try_get(1)
-                .map_err(|_| ObserverEconomyErrorV1::InvalidProjection)?;
-            let horizon: i64 = row
-                .try_get(2)
-                .map_err(|_| ObserverEconomyErrorV1::InvalidProjection)?;
-            let content: Vec<u8> = row
-                .try_get(3)
-                .map_err(|_| ObserverEconomyErrorV1::InvalidProjection)?;
-            let foundation: Vec<u8> = row
-                .try_get(4)
-                .map_err(|_| ObserverEconomyErrorV1::InvalidProjection)?;
-            let tick = u64::try_from(
-                row.try_get::<_, i64>(5)
-                    .map_err(|_| ObserverEconomyErrorV1::InvalidProjection)?,
+        let bindings = CampaignCatalogBindings::admitted()?;
+        let rows = transaction
+            .query(
+                CAMPAIGN_CATALOG_SQL,
+                &[
+                    &bindings.presets,
+                    &bindings.horizons,
+                    &bindings.content,
+                    &bindings.foundations,
+                    &bindings.graphs,
+                    &bindings.scenarios,
+                ],
             )
-            .map_err(|_| ObserverEconomyErrorV1::InvalidProjection)?;
-            let preset = crate::observer_material::validate_material_header(
-                &preset_id,
-                horizon,
-                &content,
-                &foundation,
-                tick,
-            )?;
-            if campaign.is_nil() {
-                return Err(ObserverEconomyErrorV1::InvalidProjection);
-            }
-            let label = match preset {
-                crate::michigan_material::MichiganDeliveryPresetV1::Standard => {
-                    "Michigan: standard delivery"
-                }
-                crate::michigan_material::MichiganDeliveryPresetV1::Delayed => {
-                    "Michigan: delayed sheet delivery"
-                }
-            };
-            result.push(CampaignSummaryV1 {
-                id: campaign.to_string(),
-                preset: preset_id,
-                label: label.to_owned(),
-                durable_tick: tick,
-            });
-        }
+            .map_err(|_| ObserverEconomyErrorV1::Database)?;
+        let result = rows
+            .iter()
+            .map(campaign_summary)
+            .collect::<Result<Vec<_>, _>>()?;
         transaction
             .commit()
             .map_err(|_| ObserverEconomyErrorV1::Database)?;
@@ -239,13 +213,12 @@ impl ObserverEconomyReaderV1 {
             .try_get(2)
             .map_err(|_| ObserverEconomyErrorV1::InvalidProjection)?;
         let economy = michigan_economy_v1().map_err(|_| ObserverEconomyErrorV1::Reference)?;
-        if foundation_hash.as_slice()
-            != crate::michigan_observer_foundation_digest_v1()
-                .map_err(|_| ObserverEconomyErrorV1::Reference)?
-            || scenario_hash.as_slice() != sha256_of(economy.scenario_source().as_bytes())
-        {
-            return Err(ObserverEconomyErrorV1::ScenarioMismatch);
-        }
+        let admission = crate::observer_material::read_material_header(
+            &mut transaction,
+            campaign,
+            expected_tick,
+        )?;
+        validate_observer_graph(admission, &foundation_hash, &scenario_hash)?;
         let (tick_content_hash, envelope_digest) = if expected_tick == 0 {
             (None, None)
         } else {
@@ -268,18 +241,23 @@ impl ObserverEconomyReaderV1 {
             self.visibility,
             economy.counties(),
         )?;
-        let material = crate::observer_material::material_observation(
-            &mut transaction,
-            campaign,
-            expected_tick,
-            self.visibility,
-        )?;
-        let material =
-            material.unwrap_or_else(|| crate::observer_material::MaterialObservationV1 {
+        let material = if let Some(admission) = admission {
+            crate::observer_material::material_observation(
+                &mut transaction,
+                campaign,
+                expected_tick,
+                self.visibility,
+                admission,
+            )?
+        } else {
+            // Explicitly admitted baseline-only V1 conformance campaigns have no
+            // material family. V2 graphs without a material header fail above.
+            crate::observer_material::MaterialObservationV1 {
                 foundation_digest: digest_hex(&foundation_hash),
                 production: None,
                 nominal_world_hash: None,
-            });
+            }
+        };
         transaction
             .commit()
             .map_err(|_| ObserverEconomyErrorV1::Database)?;
@@ -295,6 +273,104 @@ impl ObserverEconomyReaderV1 {
             production: material.production,
         })
     }
+}
+
+// The admission JOIN precedes the result limit. Unrelated or corrupt rows
+// cannot consume a catalog slot or force construction from database metadata.
+const CAMPAIGN_CATALOG_SQL: &str = "WITH admitted AS (
+ SELECT * FROM unnest($1::text[], $2::bigint[], $3::bytea[], $4::bytea[], $5::bytea[], $6::bytea[])
+ AS entry(preset_id,horizon_ticks,content_sha256,foundation_sha256,graph_sha256,scenario_sha256)
+)
+SELECT header.campaign_id, header.preset_id, header.horizon_ticks, header.content_sha256,
+ header.foundation_sha256, COALESCE(max(marker.resolve_tick),0)::bigint AS durable_tick
+FROM public.v_material_campaign_identity_v1 AS header
+JOIN admitted USING(preset_id,horizon_ticks,content_sha256,foundation_sha256)
+JOIN public.v_observer_economy_foundation_v1 AS graph ON graph.campaign_id=header.campaign_id
+ AND graph.foundation_sha256=admitted.graph_sha256 AND graph.scenario_sha256=admitted.scenario_sha256
+LEFT JOIN public.v_committed_tick_status_v1 AS marker ON marker.campaign_id=header.campaign_id
+WHERE header.campaign_id <> '00000000-0000-0000-0000-000000000000'::uuid
+GROUP BY header.campaign_id,header.preset_id,header.horizon_ticks,header.content_sha256,header.foundation_sha256
+HAVING COALESCE(max(marker.resolve_tick),0) BETWEEN 0 AND header.horizon_ticks
+ORDER BY header.campaign_id LIMIT 64";
+
+#[derive(Default)]
+struct CampaignCatalogBindings {
+    presets: Vec<String>,
+    horizons: Vec<i64>,
+    content: Vec<Vec<u8>>,
+    foundations: Vec<Vec<u8>>,
+    graphs: Vec<Vec<u8>>,
+    scenarios: Vec<Vec<u8>>,
+}
+impl CampaignCatalogBindings {
+    fn admitted() -> Result<Self, ObserverEconomyErrorV1> {
+        let mut bindings = Self::default();
+        for preset in MICHIGAN_CONTENT_PRESETS_V1 {
+            let entry = preset
+                .admitted()
+                .map_err(|_| ObserverEconomyErrorV1::Reference)?;
+            bindings.presets.push(preset.id().to_owned());
+            bindings.horizons.push(
+                i64::try_from(entry.horizon_ticks)
+                    .map_err(|_| ObserverEconomyErrorV1::Reference)?,
+            );
+            bindings.content.push(entry.content_digest.to_vec());
+            bindings.foundations.push(entry.digest.to_vec());
+            bindings.graphs.push(entry.graph_digest.to_vec());
+            bindings.scenarios.push(entry.scenario_digest.to_vec());
+        }
+        Ok(bindings)
+    }
+}
+
+fn campaign_summary(row: &postgres::Row) -> Result<CampaignSummaryV1, ObserverEconomyErrorV1> {
+    let campaign: uuid::Uuid = row
+        .try_get(0)
+        .map_err(|_| ObserverEconomyErrorV1::InvalidProjection)?;
+    let preset_id: String = row
+        .try_get(1)
+        .map_err(|_| ObserverEconomyErrorV1::InvalidProjection)?;
+    let horizon: i64 = row
+        .try_get(2)
+        .map_err(|_| ObserverEconomyErrorV1::InvalidProjection)?;
+    let content: Vec<u8> = row
+        .try_get(3)
+        .map_err(|_| ObserverEconomyErrorV1::InvalidProjection)?;
+    let foundation: Vec<u8> = row
+        .try_get(4)
+        .map_err(|_| ObserverEconomyErrorV1::InvalidProjection)?;
+    let tick = u64::try_from(
+        row.try_get::<_, i64>(5)
+            .map_err(|_| ObserverEconomyErrorV1::InvalidProjection)?,
+    )
+    .map_err(|_| ObserverEconomyErrorV1::InvalidProjection)?;
+    let entry = admit_michigan_content_v1(&preset_id, horizon, &content, &foundation, tick)
+        .map_err(|_| ObserverEconomyErrorV1::ScenarioMismatch)?;
+    if campaign.is_nil() {
+        return Err(ObserverEconomyErrorV1::InvalidProjection);
+    }
+    Ok(CampaignSummaryV1 {
+        id: campaign.to_string(),
+        preset: preset_id,
+        label: entry.preset.label().to_owned(),
+        durable_tick: tick,
+    })
+}
+
+fn validate_observer_graph(
+    material: Option<&MichiganContentAdmissionV1>,
+    graph: &[u8],
+    scenario: &[u8],
+) -> Result<(), ObserverEconomyErrorV1> {
+    let expected = match material {
+        Some(admitted) => admitted,
+        None => MichiganContentPresetV1::BaselineStandardV1
+            .admitted()
+            .map_err(|_| ObserverEconomyErrorV1::Reference)?,
+    };
+    expected
+        .validate_graph(graph, scenario)
+        .map_err(|_| ObserverEconomyErrorV1::ScenarioMismatch)
 }
 
 /// Read the complete county family through the admitted role's fixed view.
@@ -596,6 +672,64 @@ fn view_definitions(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn material_headers_bind_the_matching_graph_and_baseline_only_is_explicit_v1() {
+        for preset in MICHIGAN_CONTENT_PRESETS_V1 {
+            let entry = preset.admitted().unwrap();
+            assert!(validate_observer_graph(
+                Some(entry),
+                &entry.graph_digest,
+                &entry.scenario_digest
+            )
+            .is_ok());
+            let baseline_only =
+                validate_observer_graph(None, &entry.graph_digest, &entry.scenario_digest);
+            assert_eq!(
+                baseline_only.is_ok(),
+                matches!(
+                    preset,
+                    MichiganContentPresetV1::BaselineStandardV1
+                        | MichiganContentPresetV1::BaselineDelayedV1
+                )
+            );
+            for other in MICHIGAN_CONTENT_PRESETS_V1 {
+                let other = other.admitted().unwrap();
+                assert_eq!(
+                    validate_observer_graph(
+                        Some(entry),
+                        &other.graph_digest,
+                        &other.scenario_digest
+                    )
+                    .is_ok(),
+                    entry.graph_digest == other.graph_digest
+                );
+            }
+        }
+    }
+    #[test]
+    fn catalog_query_bindings_keep_each_complete_admission_tuple_aligned() {
+        let bindings = CampaignCatalogBindings::admitted().unwrap();
+        assert_eq!(bindings.presets.len(), 4);
+        assert_eq!(bindings.horizons.len(), 4);
+        assert_eq!(bindings.content.len(), 4);
+        assert_eq!(bindings.foundations.len(), 4);
+        assert_eq!(bindings.graphs.len(), 4);
+        assert_eq!(bindings.scenarios.len(), 4);
+        for index in 0..4 {
+            let entry = admit_michigan_content_v1(
+                &bindings.presets[index],
+                bindings.horizons[index],
+                &bindings.content[index],
+                &bindings.foundations[index],
+                0,
+            )
+            .unwrap();
+            entry
+                .validate_graph(&bindings.graphs[index], &bindings.scenarios[index])
+                .unwrap();
+        }
+    }
+
     #[test]
     fn foundation_grants_mask_individual_fields_before_values_exist() {
         let baseline = &michigan_economy_v1().unwrap().counties()[0];

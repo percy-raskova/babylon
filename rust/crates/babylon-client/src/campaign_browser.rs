@@ -16,6 +16,7 @@ use bevy::tasks::{block_on, AsyncComputeTaskPool, Task};
 
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::observer::{ObservationContext, ObserverSession, Perspective};
+use crate::observer_controls::{availability, ControlAvailability};
 use crate::observer_focus::{
     ObserverFocusPolicy, ObserverFocusSystems, ObserverFocusTarget, ObserverKeyboardActivate,
     ObserverKeyboardClaim,
@@ -23,7 +24,7 @@ use crate::observer_focus::{
 use crate::observer_io::{ObserverSet, RuntimePipe, LAUNCHER_REQUIRED};
 use crate::observer_theme as theme;
 use crate::observer_ui::{
-    ObserverCampaignCatalog, ObserverFontRole, ObserverFrame, ObserverUiState,
+    ObserverCampaignCatalog, ObserverCommand, ObserverFontRole, ObserverFrame, ObserverUiState,
 };
 
 const OPEN_SELECTED_EXIT: u8 = 23;
@@ -335,6 +336,8 @@ fn sync_focus_targets(
                     CampaignBrowserCommand::Open => {
                         browser.context.as_ref() == Some(&context)
                             && browser.catalog.get(browser.selected).is_some()
+                            && availability(ObserverCommand::NewCampaign, &session)
+                                == ControlAvailability::Enabled
                     }
                     CampaignBrowserCommand::Compare => {
                         browser.context.as_ref() == Some(&context)
@@ -482,6 +485,12 @@ fn open_selected_campaign(
     pipe: Option<&RuntimePipe>,
     exits: &mut MessageWriter<AppExit>,
 ) {
+    if let ControlAvailability::Disabled(reason) =
+        availability(ObserverCommand::NewCampaign, session)
+    {
+        reason.clone_into(&mut browser.status);
+        return;
+    }
     if pipe.is_none() {
         LAUNCHER_REQUIRED.clone_into(&mut browser.status);
         return;
@@ -758,25 +767,36 @@ fn paint(
 #[derive(QueryData)]
 #[query_data(mutable)]
 struct BrowserButtonAppearance {
-    interaction: &'static Interaction,
+    command: &'static BrowserButton,
+    interaction: Ref<'static, Interaction>,
     background: &'static mut BackgroundColor,
     border: &'static mut BorderColor,
 }
 
 fn paint_buttons(
-    mut buttons: Query<BrowserButtonAppearance, (With<BrowserButton>, Changed<Interaction>)>,
+    session: Res<ObserverSession>,
+    mut buttons: Query<BrowserButtonAppearance, With<BrowserButton>>,
 ) {
     for mut button in &mut buttons {
-        button.background.0 = if *button.interaction == Interaction::Pressed {
+        if !session.is_changed() && !button.interaction.is_changed() {
+            continue;
+        }
+        let disabled = matches!(button.command.0, CampaignBrowserCommand::Open)
+            && availability(ObserverCommand::NewCampaign, &session) != ControlAvailability::Enabled;
+        let background = if !disabled && *button.interaction == Interaction::Pressed {
             theme::BLUE
         } else {
             theme::PANEL
         };
-        *button.border = BorderColor::all(if *button.interaction == Interaction::None {
+        let border = if disabled {
+            theme::GRAY
+        } else if *button.interaction == Interaction::None {
             theme::PAPER
         } else {
             theme::YELLOW
-        });
+        };
+        button.background.set_if_neq(BackgroundColor(background));
+        button.border.set_if_neq(BorderColor::all(border));
     }
 }
 
@@ -955,6 +975,149 @@ mod tests {
             format!("{}\n", selected.as_uuid())
         );
         fs::remove_dir_all(directory).unwrap();
+    }
+
+    fn ready_catalog_handoff_app() -> (App, CampaignId) {
+        let (mut app, selected) = catalog_handoff_app(true);
+        let context = {
+            let mut session = app.world_mut().resource_mut::<ObserverSession>();
+            session.ready(3, None);
+            let context = session.context();
+            assert!(session.installed(&context));
+            context
+        };
+        app.world_mut()
+            .resource_mut::<CampaignBrowserState>()
+            .context = Some(context);
+        (app, selected)
+    }
+
+    #[test]
+    fn catalog_handoff_pending_commit_refuses_queued_and_stale_enabled_open() {
+        let environment = crate::test_support::EnvVarGuard::lock("XDG_STATE_HOME");
+        let directory =
+            std::env::temp_dir().join(format!("babylon-pending-handoff-{}", uuid::Uuid::new_v4()));
+        environment.set(directory.to_str().unwrap());
+        for (keyboard, failed) in [(false, false), (true, false), (true, true)] {
+            let (mut app, selected) = ready_catalog_handoff_app();
+            let active = app.world().resource::<ObserverSession>().campaign;
+            let context = app.world().resource::<ObserverSession>().context();
+            let path = preference_path().unwrap();
+            write_preference(&path, active, 0).unwrap();
+            app.add_observer(keyboard_button);
+            let mut target = ObserverFocusTarget::action(Some(context.clone()));
+            target.available = true;
+            let button = app
+                .world_mut()
+                .spawn((BrowserButton(CampaignBrowserCommand::Open), target))
+                .id();
+            let request = {
+                let mut session = app.world_mut().resource_mut::<ObserverSession>();
+                let request = session.begin_advance().unwrap();
+                if failed {
+                    session.fail("Commit acknowledgement lost".into());
+                }
+                request
+            };
+            if keyboard {
+                // The rendered control was enabled before this week began.
+                app.world_mut().trigger(ObserverKeyboardActivate {
+                    entity: button,
+                    context: Some(context.clone()),
+                });
+            } else {
+                app.world_mut()
+                    .resource_mut::<Messages<CampaignBrowserCommand>>()
+                    .write(CampaignBrowserCommand::Open);
+            }
+            app.update();
+            assert!(
+                app.world().resource::<Messages<AppExit>>().is_empty(),
+                "Saved-campaign handoff abandoned the pending commit"
+            );
+            let session = app.world().resource::<ObserverSession>();
+            assert!(session.advance_pending());
+            assert_eq!(session.context(), context);
+            assert_eq!(session.campaign, active);
+            assert_eq!(session.durable_tick, 3);
+            assert_eq!(
+                fs::read_to_string(&path).unwrap(),
+                format!("{}\n", active.as_uuid())
+            );
+            assert_eq!(fs::read_dir(path.parent().unwrap()).unwrap().count(), 1);
+            assert_eq!(
+                app.world().resource::<CampaignBrowserState>().status,
+                if failed {
+                    "Reopen the campaign to reconcile committed progress"
+                } else {
+                    "Wait for the current week to finish committing"
+                }
+            );
+            assert!(app
+                .world_mut()
+                .resource_mut::<ObserverSession>()
+                .acknowledge(request, 4, None));
+            app.world_mut()
+                .resource_mut::<Messages<CampaignBrowserCommand>>()
+                .write(CampaignBrowserCommand::Open);
+            app.update();
+            assert!(matches!(
+                app.world_mut().resource_mut::<Messages<AppExit>>().drain().collect::<Vec<_>>().as_slice(),
+                [AppExit::Error(code)] if code.get() == OPEN_SELECTED_EXIT
+            ));
+            assert_eq!(
+                fs::read_to_string(&path).unwrap(),
+                format!("{}\n", selected.as_uuid())
+            );
+        }
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn catalog_open_presentation_disables_pending_commit_without_pointer_motion() {
+        let (mut app, _) = ready_catalog_handoff_app();
+        app.add_systems(PreUpdate, sync_focus_targets)
+            .add_systems(Update, paint_buttons.after(commands));
+        let button = app
+            .world_mut()
+            .spawn((
+                BrowserButton(CampaignBrowserCommand::Open),
+                ObserverFocusTarget::action(None),
+                Interaction::Hovered,
+                BackgroundColor(theme::PANEL),
+                BorderColor::all(theme::PAPER),
+            ))
+            .id();
+        app.update();
+        assert!(
+            app.world()
+                .get::<ObserverFocusTarget>(button)
+                .unwrap()
+                .available
+        );
+        assert_eq!(
+            *app.world().get::<BorderColor>(button).unwrap(),
+            BorderColor::all(theme::YELLOW)
+        );
+        app.world_mut()
+            .resource_mut::<ObserverSession>()
+            .begin_advance()
+            .unwrap();
+        app.update();
+        assert!(
+            !app.world()
+                .get::<ObserverFocusTarget>(button)
+                .unwrap()
+                .available
+        );
+        assert_eq!(
+            *app.world().get::<BorderColor>(button).unwrap(),
+            BorderColor::all(theme::GRAY)
+        );
+        assert_eq!(
+            *app.world().get::<Interaction>(button).unwrap(),
+            Interaction::Hovered
+        );
     }
 
     #[test]

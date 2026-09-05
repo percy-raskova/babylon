@@ -7,13 +7,13 @@
 version: "2.0.0"
 schema:
   file: dist/data-artifacts/schema.sql
-  sha256: c02660cf784841e4cbee3483432c6f3f4ca06b8edc41d820fd2eeba0706f39ed
-  tables: 76
+  sha256: cb1e815b9085ccb6e0e5facf0463384cd1c2da185798e1875b70c4342efd496c
+  tables: 77
   views: 8
-  indexes: 101
+  indexes: 103
 product:
   name: marxist-data-3NF.sqlite
-  sha256: 180ba42868d5f34aafa58910f92aba51ba87cbd25e0528a6f9a42959e723c829
+  sha256: f4310cce01f64e603d6991ae9056173209f21ee3775090a91c357b4caf7f5b1f
   page_size: 4096
   application_id: 1111573068
   user_version: 1
@@ -290,8 +290,8 @@ artifacts:
     source_table: dim_data_source
     generator: tools/make_data_artifacts.py
     mode: generate
-    rows: 22
-    sha256: 3ad6eba44493882bb956632ed7a9760095fe64284276965839432baf2ca61069
+    rows: 23
+    sha256: fd0468f0b93e956930c0a186f845d0ce031753fb62c259c344d01c34752df66f
     home: dist/data-artifacts/dim_data_source.parquet
     material_relation: >-
       provenance registry (agency/dataset per fact table) — the traceability backbone every
@@ -500,8 +500,8 @@ artifacts:
     source_table: dim_time
     generator: tools/make_data_artifacts.py
     mode: generate
-    rows: 485
-    sha256: 6049f93d5686eea1aa954d831d19aad91320e449b284250b9dd7a61775ed849b
+    rows: 523
+    sha256: c3170f2279fd37fb11d5080a71fcd82b322e092b237585c50e37d0ae5f9c685e
     home: dist/data-artifacts/dim_time.parquet
     material_relation: >-
       the universal year/granularity time dimension every ingest pipeline
@@ -940,6 +940,19 @@ artifacts:
     material_relation: >-
       own_code='0' Total-Covered per-county employment rollup — the national employment total
       MELT's [100M,200M] sanity bound depends on.
+  - name: fact_qwi_county_flow
+    format: parquet
+    source_table: fact_qwi_county_flow
+    generator: tools/make_data_artifacts.py
+    mode: generate
+    rows: 1615751
+    sha256: e23ae015dddf9f9f928020ba800a1a121592c9fe2a6006bf8d8bc957017ed80e
+    home: dist/data-artifacts/fact_qwi_county_flow.parquet
+    material_relation: >-
+      LEHD Quarterly Workforce Indicators labor-flow rows — hires, separations, employment
+      stocks, turnover, firm job flows and payroll by county x NAICS x quarter; the observed
+      labor-demand/reserve-army movement substrate for the Gate 4 circuit and the 2020-2021
+      COVID emergence benchmark.
   - name: fact_ricci_unequal_exchange_gvc
     format: parquet
     source_table: fact_ricci_unequal_exchange_gvc

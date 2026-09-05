@@ -66,15 +66,22 @@ inputs:
     # 180ba428..., 76 tables, 60,184,229 rows) as
     # reference-subset-20260905-v8.sqlite (double-build byte-identical,
     # 14,195,447 rows kept). tiger tarball unchanged from v3.
+    # v8 in-place refresh (2026-09-05, PER-32): fact_qwi_county_flow populated
+    # (1,615,751 Michigan LEHD QWI rows, 2000Q3-2021Q4) — subset policy skip;
+    # subset-visible deltas are dim_data_source 22 -> 23 (LEHD_QWI row) and
+    # dim_time 485 -> 523 (quarterly rows extended back to 2000Q3). Rebuilt
+    # from the restamped product (sha f4310cce..., 77 tables, 61,800,019 rows)
+    # as reference-subset-20260905b-v8.sqlite (double-build byte-identical,
+    # 14,195,486 rows kept). tiger tarball unchanged from v3.
     default: ci-data-v8
   asset:
     description: Asset filename within the release
     required: false
-    default: reference-subset-20260905-v8.sqlite
+    default: reference-subset-20260905b-v8.sqlite
   sha256:
     description: Expected sha256 of the asset (pin — bump with the tag)
     required: false
-    default: 420550d352f6738fdf2b5352d6ef02105ff3740a5a70495804bc822ae7db9c40
+    default: 2cb7a6410256c8dd7e6a9f86bf61c2b3bb4f9bb06a93337ec5dbf7a0836ea657
   tiger-asset:
     description: TIGER county-shapefile tarball within the release (the
       headless runner reads data/tiger/county/tl_2024_us_county.shp — proving

@@ -17,6 +17,7 @@ use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::map::{HoveredCounty, MapBounds, SelectedCounty};
 use crate::map_economy_lens::{project_map_lens, MapLens};
 use crate::observer::ObserverSession;
+use crate::observer_focus::ObserverKeyboardClaim;
 use crate::observer_io::ObserverSet;
 use crate::observer_theme as theme;
 use crate::observer_ui::{grouped, ObserverFrame, ObserverUiState, ObserverViewport};
@@ -531,6 +532,7 @@ struct NavigationInput<'w, 's> {
     view: Res<'w, PrimaryView>,
     mouse: Res<'w, ButtonInput<MouseButton>>,
     keys: Res<'w, ButtonInput<KeyCode>>,
+    keyboard_claim: Option<Res<'w, ObserverKeyboardClaim>>,
     motion: Res<'w, AccumulatedMouseMotion>,
     scroll: Res<'w, AccumulatedMouseScroll>,
     time: Res<'w, Time>,
@@ -562,36 +564,23 @@ fn navigate(
             .iter()
             .any(|interaction| *interaction != Interaction::None);
     let dt = input.time.delta_secs().min(0.1);
-    let yaw_key = if input.keys.pressed(KeyCode::KeyD) {
-        1.0
-    } else {
-        0.0
-    } - if input.keys.pressed(KeyCode::KeyA) {
-        1.0
-    } else {
-        0.0
-    };
-    let pitch_key = if input.keys.pressed(KeyCode::KeyW) {
-        1.0
-    } else {
-        0.0
-    } - if input.keys.pressed(KeyCode::KeyS) {
-        1.0
-    } else {
-        0.0
-    };
-    if yaw_key != 0.0 || pitch_key != 0.0 {
-        orbit.yaw += yaw_key * dt;
-        orbit.pitch = (orbit.pitch + pitch_key * dt).clamp(0.25, 1.45);
-    }
-    if input.keys.just_pressed(KeyCode::Home) {
-        *orbit = MapOrbit::new(geometry.extent.max_element());
-    }
-    if input.keys.pressed(KeyCode::Equal) {
-        orbit.distance *= (-dt).exp();
-    }
-    if input.keys.pressed(KeyCode::Minus) {
-        orbit.distance *= dt.exp();
+    if !input
+        .keyboard_claim
+        .as_ref()
+        .is_some_and(|claim| claim.blocks_world_shortcuts())
+        && (input.keys.just_pressed(KeyCode::Home)
+            || [
+                KeyCode::KeyW,
+                KeyCode::KeyA,
+                KeyCode::KeyS,
+                KeyCode::KeyD,
+                KeyCode::Equal,
+                KeyCode::Minus,
+            ]
+            .iter()
+            .any(|key| input.keys.pressed(*key)))
+    {
+        keyboard_orbit(&input.keys, dt, &geometry, &mut orbit);
     }
     if over_map {
         if input.mouse.pressed(MouseButton::Right) && input.motion.delta != Vec2::ZERO {
@@ -628,6 +617,45 @@ fn navigate(
     }
     if orbit.target != bounded_target {
         orbit.target = bounded_target;
+    }
+}
+
+fn keyboard_orbit(
+    keys: &ButtonInput<KeyCode>,
+    dt: f32,
+    geometry: &MichiganMapGeometry,
+    orbit: &mut MapOrbit,
+) {
+    let yaw_key = if keys.pressed(KeyCode::KeyD) {
+        1.0
+    } else {
+        0.0
+    } - if keys.pressed(KeyCode::KeyA) {
+        1.0
+    } else {
+        0.0
+    };
+    let pitch_key = if keys.pressed(KeyCode::KeyW) {
+        1.0
+    } else {
+        0.0
+    } - if keys.pressed(KeyCode::KeyS) {
+        1.0
+    } else {
+        0.0
+    };
+    if yaw_key != 0.0 || pitch_key != 0.0 {
+        orbit.yaw += yaw_key * dt;
+        orbit.pitch = (orbit.pitch + pitch_key * dt).clamp(0.25, 1.45);
+    }
+    if keys.just_pressed(KeyCode::Home) {
+        *orbit = MapOrbit::new(geometry.extent.max_element());
+    }
+    if keys.pressed(KeyCode::Equal) {
+        orbit.distance *= (-dt).exp();
+    }
+    if keys.pressed(KeyCode::Minus) {
+        orbit.distance *= dt.exp();
     }
 }
 
@@ -686,8 +714,173 @@ impl Plugin for ObserverMap3dPlugin {
 mod tests {
     use super::*;
     use crate::observer::Perspective;
+    use crate::observer_focus::{ObserverFocusPlugin, ObserverFocusTarget, ObserverFocusWorld};
     use babylon_persistence::{ObserverEconomySnapshotV1, ObserverVisibilityV1};
+    use bevy::ecs::system::RunSystemOnce;
+    use bevy::input::keyboard::{Key, KeyboardInput, NativeKey};
+    use bevy::input::{ButtonState, InputPlugin};
+    use bevy::input_focus::tab_navigation::TabGroup;
+    use bevy::input_focus::InputFocus;
     use bevy::mesh::VertexAttributeValues;
+    use bevy::time::TimeUpdateStrategy;
+
+    fn focused_navigation_app() -> (App, Entity, Entity) {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, InputPlugin, ObserverFocusPlugin))
+            .insert_resource(TimeUpdateStrategy::ManualDuration(
+                std::time::Duration::from_millis(16),
+            ))
+            .insert_resource(PrimaryView::Map)
+            .insert_resource(ObserverUiState {
+                menu_open: false,
+                splash_visible: false,
+                ..default()
+            })
+            .insert_resource(ObserverViewport(Some(Rect::from_corners(
+                Vec2::ZERO,
+                Vec2::splat(500.0),
+            ))))
+            .insert_resource(MichiganMapGeometry {
+                extent: Vec2::splat(200.0),
+            })
+            .insert_resource(MapOrbit::new(200.0))
+            .add_systems(Update, navigate);
+        let mut window = Window::default();
+        window.set_cursor_position(Some(Vec2::splat(100.0)));
+        let window = app.world_mut().spawn((window, PrimaryWindow)).id();
+        let root = app
+            .world_mut()
+            .spawn((Node::default(), TabGroup::new(0)))
+            .id();
+        let mut target = ObserverFocusTarget::reading(None);
+        target.available = true;
+        let reading = app.world_mut().spawn((Node::default(), target)).id();
+        app.world_mut().entity_mut(root).add_child(reading);
+        app.update();
+        queue_camera_key(&mut app, window, KeyCode::Tab, ButtonState::Pressed);
+        app.update();
+        queue_camera_key(&mut app, window, KeyCode::Tab, ButtonState::Released);
+        app.update();
+        assert_eq!(app.world().resource::<InputFocus>().get(), Some(reading));
+        assert!(app
+            .world()
+            .resource::<ObserverKeyboardClaim>()
+            .blocks_world_shortcuts());
+        (app, window, reading)
+    }
+
+    fn queue_camera_key(app: &mut App, window: Entity, key_code: KeyCode, state: ButtonState) {
+        app.world_mut().write_message(KeyboardInput {
+            key_code,
+            logical_key: Key::Unidentified(NativeKey::Unidentified),
+            state,
+            text: None,
+            repeat: false,
+            window,
+        });
+    }
+
+    #[test]
+    fn focused_reading_blocks_each_camera_key_until_world_focus_returns() {
+        for key in [
+            KeyCode::Home,
+            KeyCode::KeyW,
+            KeyCode::KeyA,
+            KeyCode::KeyS,
+            KeyCode::KeyD,
+            KeyCode::Equal,
+            KeyCode::Minus,
+        ] {
+            let (mut app, window, reading) = focused_navigation_app();
+            app.world_mut().resource_mut::<MapOrbit>().yaw = 0.4;
+            let before = app.world().resource::<MapOrbit>().transform();
+            queue_camera_key(&mut app, window, key, ButtonState::Pressed);
+            app.update();
+            assert_eq!(app.world().resource::<InputFocus>().get(), Some(reading));
+            assert_eq!(
+                app.world().resource::<MapOrbit>().transform(),
+                before,
+                "{key:?}"
+            );
+            queue_camera_key(&mut app, window, key, ButtonState::Released);
+            app.update();
+            app.world_mut().trigger(ObserverFocusWorld);
+            app.update();
+            assert_eq!(app.world().resource::<InputFocus>().get(), Some(window));
+            queue_camera_key(&mut app, window, key, ButtonState::Pressed);
+            app.update();
+            assert_ne!(
+                app.world().resource::<MapOrbit>().transform(),
+                before,
+                "{key:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn first_tab_claims_same_frame_camera_keys_before_navigation() {
+        let (mut app, window, reading) = focused_navigation_app();
+        app.world_mut().trigger(ObserverFocusWorld);
+        app.update();
+        app.world_mut().resource_mut::<MapOrbit>().yaw = 0.4;
+        let before = app.world().resource::<MapOrbit>().transform();
+        for key in [KeyCode::Tab, KeyCode::Home, KeyCode::KeyD] {
+            queue_camera_key(&mut app, window, key, ButtonState::Pressed);
+        }
+        app.update();
+        assert_eq!(app.world().resource::<InputFocus>().get(), Some(reading));
+        assert_eq!(app.world().resource::<MapOrbit>().transform(), before);
+    }
+
+    #[test]
+    fn focused_reading_preserves_pointer_orbit_pan_and_wheel_over_map() {
+        for gesture in [Some(MouseButton::Right), Some(MouseButton::Middle), None] {
+            let (mut app, _, reading) = focused_navigation_app();
+            let before = app.world().resource::<MapOrbit>().transform();
+            if let Some(button) = gesture {
+                app.world_mut()
+                    .resource_mut::<ButtonInput<MouseButton>>()
+                    .press(button);
+                app.world_mut()
+                    .resource_mut::<AccumulatedMouseMotion>()
+                    .delta = Vec2::new(40.0, 10.0);
+            } else {
+                app.world_mut()
+                    .resource_mut::<AccumulatedMouseScroll>()
+                    .delta = Vec2::Y;
+            }
+            // Exercise the same navigator using Bevy's accumulated pointer
+            // input while the actual focused-reading claim remains active.
+            app.world_mut().run_system_once(navigate).unwrap();
+            assert_ne!(app.world().resource::<MapOrbit>().transform(), before);
+            assert_eq!(app.world().resource::<InputFocus>().get(), Some(reading));
+            assert!(app
+                .world()
+                .resource::<ObserverKeyboardClaim>()
+                .blocks_world_shortcuts());
+        }
+    }
+
+    #[derive(Resource, Default)]
+    struct OrbitChanged(bool);
+
+    fn record_orbit_change(orbit: Res<MapOrbit>, mut changed: ResMut<OrbitChanged>) {
+        changed.0 = orbit.is_changed();
+    }
+
+    #[test]
+    fn idle_camera_does_not_publish_changes_with_reading_or_world_focus() {
+        let (mut app, _, _) = focused_navigation_app();
+        app.init_resource::<OrbitChanged>()
+            .add_systems(Last, record_orbit_change);
+        app.update();
+        app.update();
+        assert!(!app.world().resource::<OrbitChanged>().0);
+        app.world_mut().trigger(ObserverFocusWorld);
+        app.update();
+        app.update();
+        assert!(!app.world().resource::<OrbitChanged>().0);
+    }
 
     #[test]
     fn legend_stays_inside_measured_world_across_layout_and_scope_changes() {

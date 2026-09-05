@@ -6,6 +6,7 @@ use std::fmt::Write as _;
 use babylon_persistence::{ProductionSiteV1, ProductionSnapshotV1};
 use bevy::camera::{visibility::RenderLayers, ScalingMode, Viewport};
 use bevy::ecs::system::SystemParam;
+use bevy::input_focus::tab_navigation::TabGroup;
 use bevy::light::CascadeShadowConfigBuilder;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
@@ -14,6 +15,10 @@ use crate::atlas::CountyAtlas;
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::map::SelectedCounty;
 use crate::observer::{ObservationContext, ObserverSession};
+use crate::observer_focus::{
+    ObserverFocusSystems, ObserverFocusTarget, ObserverFocusWorld, ObserverKeyboardActivate,
+    ObserverKeyboardClaim,
+};
 use crate::observer_io::ObserverSet;
 use crate::observer_theme as theme;
 use crate::observer_ui::{
@@ -267,9 +272,11 @@ fn text(value: impl Into<String>, size: f32, color: Color) -> impl Bundle {
 }
 
 fn button_node(command: ProductionCommand) -> impl Bundle {
+    let context = production_command_context(&command).cloned();
     (
         Button,
         ProductionButton(command),
+        ObserverFocusTarget::action(context),
         Node {
             padding: UiRect::axes(px(10), px(8)),
             border: UiRect::bottom(px(2)),
@@ -344,6 +351,7 @@ fn setup_panel(commands: &mut Commands) {
             ZIndex(7),
             Visibility::Hidden,
             ProductionPanel,
+            TabGroup::new(10),
             crate::observer_layout::ObserverRegion::Context,
             DeclaredSurface::new(SurfaceId::ObserverProduction),
         ))
@@ -388,6 +396,7 @@ fn panel_contents(panel: &mut ChildSpawnerCommands) {
             panel.spawn((
                 text("", 15.0, theme::PAPER),
                 ProductionBrief,
+                ObserverFocusTarget::reading(None),
                 Node {
                     flex_shrink: 0.0,
                     min_width: px(0),
@@ -417,6 +426,7 @@ fn setup_readings_panel(commands: &mut Commands) {
     commands
         .spawn((
             ProductionDetailGroup,
+            TabGroup::new(20),
             crate::observer_layout::ObserverRegion::Log,
             DeclaredSurface::new(SurfaceId::ObserverProduction),
             Node {
@@ -449,6 +459,7 @@ fn setup_readings_panel(commands: &mut Commands) {
             panel
                 .spawn((
                     ProductionReadingBody,
+                    ObserverFocusTarget::reading(None),
                     Node {
                         flex_direction: FlexDirection::Column,
                         row_gap: px(12),
@@ -518,20 +529,39 @@ fn orbit_input(
     }
 }
 
+#[derive(SystemParam)]
+struct ProductionInputContext<'w> {
+    observation: ProductionObservation<'w>,
+    navigation: Res<'w, ProductionNavigation>,
+    claim: Option<Res<'w, ObserverKeyboardClaim>>,
+}
+
 fn inputs(
     keys: Res<ButtonInput<KeyCode>>,
-    ui: Res<ObserverUiState>,
+    mut ui: ProductionUi,
     view: Res<PrimaryView>,
+    context: ProductionInputContext,
     buttons: Query<(&Interaction, &ProductionButton), Changed<Interaction>>,
     mut events: MessageWriter<ProductionCommand>,
 ) {
-    if ui.menu_open || ui.splash_visible || ui.comparison_open {
+    if ui.state.menu_open || ui.state.splash_visible || ui.state.comparison_open {
         return;
     }
+    let ProductionInputContext {
+        observation,
+        navigation,
+        claim,
+    } = context;
     for (interaction, button) in &buttons {
         if *interaction == Interaction::Pressed {
-            events.write(button.0.clone());
+            queue_production_button(&button.0, &observation, &navigation, &mut ui, &mut events);
         }
+    }
+    if claim
+        .as_ref()
+        .is_some_and(|claim| claim.blocks_world_shortcuts())
+    {
+        return;
     }
     if [
         KeyCode::Digit1,
@@ -561,15 +591,126 @@ fn inputs(
     }
 }
 
+fn production_command_context(command: &ProductionCommand) -> Option<&ObservationContext> {
+    match command {
+        ProductionCommand::Select { context, .. } => Some(context),
+        _ => None,
+    }
+}
+
+fn queue_production_button(
+    command: &ProductionCommand,
+    observation: &ProductionObservation,
+    navigation: &ProductionNavigation,
+    ui: &mut ProductionUi,
+    events: &mut MessageWriter<ProductionCommand>,
+) {
+    if ui.state.menu_open || ui.state.splash_visible || ui.state.comparison_open {
+        return;
+    }
+    let snapshot = observation
+        .frame
+        .for_session(&observation.state)
+        .and_then(|frame| frame.production.as_ref());
+    let available = ProductionControlAvailability::for_snapshot(snapshot, navigation);
+    if let Some(reason) = available.refusal(command, snapshot, navigation, &observation.state) {
+        ui.feedback.reject(reason, ui.time.elapsed_secs_f64());
+    } else {
+        events.write(command.clone());
+    }
+}
+
+fn keyboard_activate(
+    event: On<ObserverKeyboardActivate>,
+    buttons: Query<&ProductionButton>,
+    observation: ProductionObservation,
+    navigation: Res<ProductionNavigation>,
+    mut ui: ProductionUi,
+    mut events: MessageWriter<ProductionCommand>,
+) {
+    let Ok(button) = buttons.get(event.entity) else {
+        return;
+    };
+    if event.context.as_ref() != production_command_context(&button.0) {
+        ui.feedback.reject(
+            "This work control belongs to an older observation.",
+            ui.time.elapsed_secs_f64(),
+        );
+        return;
+    }
+    queue_production_button(&button.0, &observation, &navigation, &mut ui, &mut events);
+}
+
+type ProductionFocusOwners = Or<(
+    With<ProductionButton>,
+    With<ProductionReadingBody>,
+    With<ProductionBrief>,
+)>;
+
+fn focus_eligibility(
+    observation: ProductionObservation,
+    navigation: Res<ProductionNavigation>,
+    ui: Res<ObserverUiState>,
+    mut targets: Query<
+        (&mut ObserverFocusTarget, Option<&ProductionButton>),
+        ProductionFocusOwners,
+    >,
+) {
+    if !(observation.frame.is_changed()
+        || observation.state.is_changed()
+        || navigation.is_changed()
+        || ui.is_changed()
+        || targets.iter_mut().any(|(target, _)| target.is_added()))
+    {
+        return;
+    }
+    let snapshot = observation
+        .frame
+        .for_session(&observation.state)
+        .and_then(|frame| frame.production.as_ref());
+    let available = ProductionControlAvailability::for_snapshot(snapshot, &navigation);
+    for (mut target, button) in &mut targets {
+        let (context, admitted) = match button {
+            Some(button) => (
+                production_command_context(&button.0).cloned(),
+                available
+                    .refusal(&button.0, snapshot, &navigation, &observation.state)
+                    .is_none(),
+            ),
+            None => (
+                target.context.clone(),
+                target
+                    .context
+                    .as_ref()
+                    .is_some_and(|context| observation.state.accepts(context)),
+            ),
+        };
+        let mut next = target.clone();
+        next.context = context;
+        next.available = admitted && !ui.menu_open && !ui.splash_visible && !ui.comparison_open;
+        target.set_if_neq(next);
+    }
+}
+
+#[derive(SystemParam)]
+struct ProductionLocation<'w> {
+    atlas: Res<'w, CountyAtlas>,
+    selected: ResMut<'w, SelectedCounty>,
+}
+
 fn navigate(
+    mut commands: Commands,
     mut events: MessageReader<ProductionCommand>,
     mut view: ResMut<PrimaryView>,
     mut navigation: ResMut<ProductionNavigation>,
     observation: ProductionObservation,
-    atlas: Res<CountyAtlas>,
-    mut selected: ResMut<SelectedCounty>,
+    location: ProductionLocation,
     ui: ProductionUi,
 ) {
+    let ProductionLocation {
+        atlas,
+        mut selected,
+    } = location;
     let ProductionUi {
         state: mut ui,
         mut feedback,
@@ -638,6 +779,9 @@ fn navigate(
                 ui.archive_open = false;
                 ui.disclosure = None;
             }
+        }
+        if matches!(event, ProductionCommand::Open | ProductionCommand::Map) {
+            commands.trigger(ObserverFocusWorld);
         }
         if !sync_county {
             continue;
@@ -809,7 +953,7 @@ fn rebuild(
     mut commands: Commands,
     observation: ProductionObservation,
     navigation: Res<ProductionNavigation>,
-    old: Query<Entity, SceneGeometry>,
+    old: Query<Entity, (SceneGeometry, Without<ChildOf>)>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut last_context: Local<Option<(ObservationContext, bool, Option<String>)>>,
@@ -880,6 +1024,22 @@ fn spawn_sites(
     context: &ObservationContext,
     layout: &ProductionLayout,
 ) {
+    let labels = commands
+        .spawn((
+            ProductionGeometry,
+            TabGroup::new(10),
+            Node {
+                position_type: PositionType::Absolute,
+                left: px(0),
+                top: px(0),
+                width: percent(100),
+                height: percent(100),
+                ..default()
+            },
+            Pickable::IGNORE,
+            DeclaredSurface::new(SurfaceId::ObserverProduction),
+        ))
+        .id();
     for site in &snapshot.sites {
         let Some(&origin) = layout.positions.get(&site.id) else {
             continue;
@@ -910,6 +1070,7 @@ fn spawn_sites(
             origin + Vec3::Y * (height + 14.0),
             selected,
             color,
+            labels,
         );
     }
 }
@@ -921,6 +1082,7 @@ fn spawn_site_label(
     anchor: Vec3,
     selected: bool,
     color: Color,
+    parent: Entity,
 ) {
     let leader = commands
         .spawn((
@@ -934,6 +1096,7 @@ fn spawn_site_label(
             BackgroundColor(if selected { theme::YELLOW } else { theme::GRAY }),
             ZIndex(3),
             Pickable::IGNORE,
+            ChildOf(parent),
             DeclaredSurface::new(SurfaceId::ObserverProduction),
         ))
         .id();
@@ -944,6 +1107,8 @@ fn spawn_site_label(
                 site_id: site.id.clone(),
                 context: context.clone(),
             }),
+            ObserverFocusTarget::action(Some(context.clone())),
+            ChildOf(parent),
             ProductionLabel {
                 anchor,
                 site_id: site.id.clone(),
@@ -1656,16 +1821,29 @@ fn paint_labels(
     }
 }
 
+type ReadingFocusTargets<'w, 's> = Query<
+    'w,
+    's,
+    &'static mut ObserverFocusTarget,
+    Or<(With<ProductionBrief>, With<ProductionReadingBody>)>,
+>;
+
 fn paint_readings(
     observation: ProductionObservation,
     navigation: Res<ProductionNavigation>,
     mut details: Query<ReadingText, ReadingMarkers>,
+    mut reading_targets: ReadingFocusTargets,
     mut last_context: Local<Option<ObservationContext>>,
 ) {
     let ProductionObservation { frame, state } = observation;
     let context = state.context();
     if navigation.is_changed() || frame.is_changed() || last_context.as_ref() != Some(&context) {
-        *last_context = Some(context);
+        *last_context = Some(context.clone());
+        for mut target in &mut reading_targets {
+            let mut next = target.clone();
+            next.context = Some(context.clone());
+            target.set_if_neq(next);
+        }
         let snapshot = frame
             .for_session(&state)
             .and_then(|frame| frame.production.as_ref());
@@ -1695,6 +1873,11 @@ impl Plugin for ProductionPlugin {
             .init_resource::<ProductionOrbit>()
             .init_resource::<ObserverFeedback>()
             .add_message::<ProductionCommand>()
+            .add_observer(keyboard_activate)
+            .add_systems(
+                PreUpdate,
+                focus_eligibility.in_set(ObserverFocusSystems::Eligibility),
+            )
             .add_systems(Startup, setup)
             .add_systems(Update, (inputs, orbit_input).in_set(ObserverSet::Input))
             .add_systems(
@@ -2893,6 +3076,127 @@ mod tests {
         );
         assert!(panel_text::<ProductionDetails>(&mut app).is_empty());
         assert!(!panel_text::<ProductionBrief>(&mut app).contains("Cohort"));
+    }
+
+    #[test]
+    fn keyboard_dependency_activation_uses_the_pointer_queue_and_rejects_changed_scope() {
+        let mut app = dependency_navigation_app();
+        app.add_observer(keyboard_activate);
+        app.world_mut()
+            .resource_mut::<ProductionNavigation>()
+            .selected_site = Some("b".into());
+        app.update();
+        let context = app.world().resource::<ObserverSession>().context();
+        let button = app
+            .world_mut()
+            .spawn(button_node(ProductionCommand::Select {
+                site_id: "a".into(),
+                context: context.clone(),
+            }))
+            .id();
+        app.world_mut().trigger(ObserverKeyboardActivate {
+            entity: button,
+            context: Some(context.clone()),
+        });
+        assert_eq!(app.world().resource::<ProductionNavigation>().selected_site.as_deref(), Some("b"),
+            "keyboard activation queues the existing command; it does not mutate navigation in PreUpdate");
+        app.update();
+        assert_eq!(
+            app.world()
+                .resource::<ProductionNavigation>()
+                .selected_site
+                .as_deref(),
+            Some("a")
+        );
+        assert_eq!(
+            app.world().resource::<ProductionNavigation>().history,
+            ["b"]
+        );
+        app.world_mut().trigger(ObserverKeyboardActivate {
+            entity: button,
+            context: Some(context),
+        });
+        app.world_mut()
+            .resource_mut::<ObserverSession>()
+            .set_perspective(crate::observer::Perspective::PlayerKnowledge);
+        app.update();
+        assert!(app
+            .world()
+            .resource::<ProductionNavigation>()
+            .selected_site
+            .is_none());
+        assert!(app.world().resource::<ObserverFeedback>().message.is_some());
+    }
+
+    #[test]
+    fn accepted_world_buttons_release_focus_and_focused_keys_do_not_run_world_shortcuts() {
+        use crate::observer_focus::{ObserverFocusPlugin, ObserverFocusPolicy};
+        use bevy::input::{
+            keyboard::{Key, KeyboardInput, NativeKey},
+            ButtonState, InputPlugin,
+        };
+        use bevy::input_focus::InputFocus;
+        let mut app = dependency_navigation_app();
+        app.add_plugins((InputPlugin, ObserverFocusPlugin))
+            .add_observer(keyboard_activate)
+            .add_systems(
+                PreUpdate,
+                focus_eligibility.in_set(ObserverFocusSystems::Eligibility),
+            );
+        let window = app
+            .world_mut()
+            .spawn((Window::default(), PrimaryWindow))
+            .id();
+        let context = app.world().resource::<ObserverSession>().context();
+        app.world_mut()
+            .resource_mut::<ObserverFocusPolicy>()
+            .context = Some(context);
+        let group = app
+            .world_mut()
+            .spawn((Node::default(), TabGroup::new(10)))
+            .id();
+        let button = app
+            .world_mut()
+            .spawn((button_node(ProductionCommand::Open), ChildOf(group)))
+            .id();
+        app.update();
+        app.world_mut().resource_mut::<InputFocus>().set(button);
+        let key = |app: &mut App, key_code, state| {
+            app.world_mut().write_message(KeyboardInput {
+                key_code,
+                logical_key: Key::Unidentified(NativeKey::Unidentified),
+                state,
+                text: None,
+                repeat: false,
+                window,
+            });
+            app.update();
+        };
+        key(&mut app, KeyCode::KeyP, ButtonState::Pressed);
+        assert_eq!(
+            *app.world().resource::<PrimaryView>(),
+            PrimaryView::Map,
+            "focused controls own raw P, so it cannot also open the world"
+        );
+        key(&mut app, KeyCode::KeyP, ButtonState::Released);
+        key(&mut app, KeyCode::Enter, ButtonState::Pressed);
+        assert_eq!(
+            *app.world().resource::<PrimaryView>(),
+            PrimaryView::Production
+        );
+        assert_eq!(app.world().resource::<InputFocus>().get(), Some(window));
+        assert!(app
+            .world()
+            .resource::<ObserverKeyboardClaim>()
+            .claimed(KeyCode::Enter));
+        key(&mut app, KeyCode::Enter, ButtonState::Released);
+        app.world_mut().resource_mut::<InputFocus>().set(button);
+        key(&mut app, KeyCode::Enter, ButtonState::Pressed);
+        assert_eq!(
+            app.world().resource::<InputFocus>().get(),
+            Some(window),
+            "WORK releases focus even when work is already the active view"
+        );
     }
 
     #[test]

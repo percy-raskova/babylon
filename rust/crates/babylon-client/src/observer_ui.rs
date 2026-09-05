@@ -4,6 +4,7 @@ use std::fmt::Write as _;
 
 use babylon_persistence::ObserverEconomySnapshotV1;
 use bevy::ecs::system::SystemParam;
+use bevy::input_focus::tab_navigation::TabGroup;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
@@ -15,6 +16,10 @@ use crate::map_economy_lens::{
 };
 use crate::observer::ObserverSession;
 use crate::observer_controls::{availability, turn_presentation, ControlAvailability};
+use crate::observer_focus::{
+    ObserverFocusPolicy, ObserverFocusSystems, ObserverFocusTarget, ObserverKeyboardActivate,
+    ObserverKeyboardClaim,
+};
 use crate::observer_layout::{ObserverLayout, ObserverRegion};
 use crate::observer_theme as theme;
 
@@ -239,6 +244,7 @@ fn scoped_button(
     parent
         .spawn((
             Button,
+            ObserverFocusTarget::action(None),
             Node {
                 width: match command {
                     ObserverCommand::TogglePlay => px(200),
@@ -297,6 +303,7 @@ fn spawn_hud(commands: &mut Commands) {
             },
             BackgroundColor(theme::INK),
             ZIndex(8),
+            TabGroup::new(0),
             DeclaredSurface::new(SurfaceId::ObserverShell),
         ))
         .with_children(|hud| {
@@ -310,6 +317,7 @@ fn spawn_hud(commands: &mut Commands) {
                         ..default()
                     },
                     ObserverText::Clock,
+                    ObserverFocusTarget::reading(None),
                 ));
                 bar.spawn(Node {
                     flex_grow: 1.0,
@@ -364,6 +372,7 @@ fn spawn_inspector(commands: &mut Commands) {
             BorderColor::all(theme::PAPER.with_alpha(0.8)),
             ZIndex(6),
             ObserverInspector,
+            TabGroup::new(10),
             DeclaredSurface::new(SurfaceId::ObserverShell),
         ))
         .with_children(|panel| {
@@ -388,10 +397,15 @@ fn spawn_inspector(commands: &mut Commands) {
                 local.spawn((
                     block_label("", 13.0, theme::PAPER),
                     ObserverText::Production,
+                    ObserverFocusTarget::reading(None),
                 ));
             });
             panel.spawn(context_column()).with_children(|detail| {
-                detail.spawn((block_label("", 16.0, theme::YELLOW), ObserverText::Measures));
+                detail.spawn((
+                    block_label("", 16.0, theme::YELLOW),
+                    ObserverText::Measures,
+                    ObserverFocusTarget::reading(None),
+                ));
                 detail.spawn((block_label("", 11.0, theme::GRAY), ObserverText::Source));
                 button(detail, "Cited Archive [I]", ObserverCommand::Archive);
                 detail.spawn((block_label("", 11.0, theme::GRAY), ObserverText::Evidence));
@@ -423,6 +437,7 @@ fn spawn_footer(commands: &mut Commands) {
             },
             BackgroundColor(theme::INK),
             ObserverRegion::Footer,
+            TabGroup::new(40),
             ZIndex(8),
             DeclaredSurface::new(SurfaceId::ObserverShell),
         ))
@@ -447,7 +462,7 @@ fn spawn_footer(commands: &mut Commands) {
                 });
             bar.spawn((
                 label(
-                    "Trace suppliers and buyers. Inspect the log for consequences.",
+                    "Tab: select controls. WORLD / WORK: return to navigation.",
                     13.0,
                     theme::GRAY,
                 ),
@@ -480,7 +495,7 @@ fn spawn_drawers(commands: &mut Commands) {
             ..default()
         };
         commands.spawn((node, BackgroundColor(theme::INK), BorderColor::all(theme::YELLOW),
-            ZIndex(12), ControlDrawer(disclosure), DeclaredSurface::new(SurfaceId::ObserverShell),
+            ZIndex(12), TabGroup::new(50), ControlDrawer(disclosure), DeclaredSurface::new(SurfaceId::ObserverShell),
         )).with_children(|panel| {
             panel.spawn(row()).with_children(|bar| {
                 bar.spawn(label(if disclosure == ObserverDisclosure::Time { "CAMPAIGN TIME" } else { "MAP LENS" }, 17.0, theme::YELLOW));
@@ -534,6 +549,7 @@ fn spawn_menu(commands: &mut Commands) {
             ZIndex(20),
             Visibility::Hidden,
             ObserverMenu,
+            TabGroup::modal(),
             DeclaredSurface::new(SurfaceId::ObserverShell),
         ))
         .with_children(|panel| {
@@ -613,6 +629,11 @@ fn menu_campaign(panel: &mut ChildSpawnerCommands) {
 
 fn menu_settings(panel: &mut ChildSpawnerCommands) {
     panel.spawn(block_label("PRESENTATION / SOUND", 17.0, theme::YELLOW));
+    panel.spawn(block_label(
+        "Tab / Shift+Tab: select controls. Enter: activate. Page Up / Down: read. WORLD / WORK: return to navigation.",
+        12.0,
+        theme::GRAY,
+    ));
     for (title, command) in [
         ("Observer perspective [K]", ObserverCommand::Perspective),
         ("Interface size [U]", ObserverCommand::UiScale),
@@ -634,6 +655,7 @@ fn menu_settings(panel: &mut ChildSpawnerCommands) {
         block_label("", 11.0, theme::GRAY),
         ObserverText::EvidenceDetails,
         VerificationDetails,
+        ObserverFocusTarget::reading(None),
     ));
     panel.spawn(block_label(
         "OBSERVE / TRACE / COMPARE\nPlayer interventions are unavailable in observer mode.",
@@ -812,15 +834,136 @@ fn scroll_panel(
 fn pointer_buttons(
     buttons: Query<(&Interaction, &ObserverButton), Changed<Interaction>>,
     ui: Res<ObserverUiState>,
+    session: Res<ObserverSession>,
+    view: Res<crate::production::PrimaryView>,
     mut commands: MessageWriter<ObserverCommand>,
 ) {
-    if ui.splash_visible || ui.comparison_open {
-        return;
-    }
     for (interaction, button) in &buttons {
-        if *interaction == Interaction::Pressed && button.in_menu == ui.menu_open {
-            commands.write(button.command);
+        if *interaction == Interaction::Pressed {
+            dispatch_button(*button, &ui, &session, *view, &mut commands);
         }
+    }
+}
+
+fn button_visible(
+    button: ObserverButton,
+    ui: &ObserverUiState,
+    session: &ObserverSession,
+    view: crate::production::PrimaryView,
+) -> bool {
+    if ui.splash_visible || ui.comparison_open || button.in_menu != ui.menu_open {
+        return false;
+    }
+    if button.in_menu {
+        return true;
+    }
+    let map = view == crate::production::PrimaryView::Map;
+    match button.command {
+        ObserverCommand::Step | ObserverCommand::Speed | ObserverCommand::StopOnDelivery => {
+            ui.disclosure == Some(ObserverDisclosure::Time)
+        }
+        ObserverCommand::Lens(_) | ObserverCommand::MaterialLens(_) => {
+            map && ui.disclosure == Some(ObserverDisclosure::Lens)
+        }
+        ObserverCommand::CycleGood(_) => {
+            map && !ui.history_open
+                && session.viewed_tick == session.durable_tick
+                && matches!(ui.lens, MapLens::Material { .. })
+        }
+        ObserverCommand::PreviousWeek | ObserverCommand::NextWeek | ObserverCommand::Live => {
+            ui.history_open || session.viewed_tick < session.durable_tick
+        }
+        ObserverCommand::Archive | ObserverCommand::Disclosure(ObserverDisclosure::Lens) => map,
+        _ => true,
+    }
+}
+
+fn dispatch_button(
+    button: ObserverButton,
+    ui: &ObserverUiState,
+    session: &ObserverSession,
+    view: crate::production::PrimaryView,
+    commands: &mut MessageWriter<ObserverCommand>,
+) {
+    if button_visible(button, ui, session, view) {
+        // The canonical observer command handler still admits or refuses the request.
+        commands.write(button.command);
+    }
+}
+
+fn keyboard_button(
+    event: On<ObserverKeyboardActivate>,
+    buttons: Query<(&ObserverButton, &ObserverFocusTarget)>,
+    ui: Res<ObserverUiState>,
+    session: Res<ObserverSession>,
+    view: Res<crate::production::PrimaryView>,
+    mut commands: MessageWriter<ObserverCommand>,
+) {
+    let Ok((button, target)) = buttons.get(event.entity) else {
+        return;
+    };
+    if event.context == target.context {
+        dispatch_button(*button, &ui, &session, *view, &mut commands);
+    }
+}
+
+#[derive(SystemParam)]
+struct ShellFocusState<'w> {
+    ui: Res<'w, ObserverUiState>,
+    session: Res<'w, ObserverSession>,
+    view: Res<'w, crate::production::PrimaryView>,
+    frame: Res<'w, ObserverFrame>,
+}
+
+fn sync_focus_policy(
+    state: ShellFocusState,
+    menus: Query<Entity, With<ObserverMenu>>,
+    comparisons: Query<Entity, With<crate::campaign_browser::ComparisonPanel>>,
+    mut policy: ResMut<ObserverFocusPolicy>,
+) {
+    policy.set_if_neq(ObserverFocusPolicy {
+        context: Some(state.session.context()),
+        modal: if state.ui.comparison_open {
+            comparisons.single().ok()
+        } else if state.ui.menu_open && !state.ui.splash_visible {
+            menus.single().ok()
+        } else {
+            None
+        },
+    });
+}
+
+fn sync_focus_targets(
+    state: ShellFocusState,
+    mut targets: Query<(
+        &mut ObserverFocusTarget,
+        Option<&ObserverButton>,
+        Option<&ObserverText>,
+    )>,
+) {
+    for (mut target, button, reading) in &mut targets {
+        let mut next = target.clone();
+        if let Some(button) = button {
+            next.available = button_visible(*button, &state.ui, &state.session, *state.view)
+                && availability(button.command, &state.session) == ControlAvailability::Enabled;
+        } else if let Some(reading) = reading {
+            let scope_visible = !state.ui.splash_visible && !state.ui.comparison_open;
+            next.available = scope_visible
+                && match reading {
+                    ObserverText::Clock => !state.ui.menu_open,
+                    ObserverText::EvidenceDetails => state.ui.menu_open && state.ui.evidence_open,
+                    ObserverText::Production | ObserverText::Measures => {
+                        !state.ui.menu_open
+                            && *state.view == crate::production::PrimaryView::Map
+                            && state.frame.for_session(&state.session).is_some()
+                    }
+                    _ => false,
+                };
+            next.context = Some(state.session.context());
+        } else {
+            continue;
+        }
+        target.set_if_neq(next);
     }
 }
 
@@ -1043,6 +1186,7 @@ fn expire_feedback(time: Res<Time>, mut feedback: ResMut<ObserverFeedback>) {
 
 fn keyboard(
     keys: Res<ButtonInput<KeyCode>>,
+    claimed: Res<ObserverKeyboardClaim>,
     ui: Res<ObserverUiState>,
     view: Res<crate::production::PrimaryView>,
     atlas: Res<CountyAtlas>,
@@ -1075,10 +1219,13 @@ fn keyboard(
             (KeyCode::KeyE, ObserverCommand::StopOnDelivery),
             (KeyCode::KeyK, ObserverCommand::Perspective),
         ] {
-            if keys.just_pressed(key) {
+            if keys.just_pressed(key) && !claimed.claimed(key) {
                 commands.write(command);
             }
         }
+        return;
+    }
+    if claimed.blocks_world_shortcuts() {
         return;
     }
     for (key, command) in [
@@ -1128,25 +1275,34 @@ fn keyboard(
     if *view == crate::production::PrimaryView::Map
         && (keys.just_pressed(KeyCode::ArrowLeft) || keys.just_pressed(KeyCode::ArrowRight))
     {
-        let counties: Vec<usize> = (0..atlas.len())
-            .filter(|index| {
-                atlas
-                    .county(*index)
-                    .is_some_and(|county| county.fips.starts_with("26"))
-            })
-            .collect();
-        if !counties.is_empty() {
-            let current = counties.iter().position(|index| Some(*index) == selected.0);
-            let next = current.map_or(0, |index| {
-                if keys.just_pressed(KeyCode::ArrowRight) {
-                    (index + 1) % counties.len()
-                } else {
-                    (index + counties.len() - 1) % counties.len()
-                }
-            });
-            selected.0 = Some(counties[next]);
+        if let Some(next) =
+            adjacent_county(&atlas, selected.0, keys.just_pressed(KeyCode::ArrowRight))
+        {
+            selected.0 = Some(next);
         }
     }
+}
+
+fn adjacent_county(atlas: &CountyAtlas, selected: Option<usize>, forward: bool) -> Option<usize> {
+    let counties: Vec<usize> = (0..atlas.len())
+        .filter(|index| {
+            atlas
+                .county(*index)
+                .is_some_and(|county| county.fips.starts_with("26"))
+        })
+        .collect();
+    if counties.is_empty() {
+        return None;
+    }
+    let current = counties.iter().position(|index| Some(*index) == selected);
+    let next = current.map_or(0, |index| {
+        if forward {
+            (index + 1) % counties.len()
+        } else {
+            (index + counties.len() - 1) % counties.len()
+        }
+    });
+    Some(counties[next])
 }
 
 #[must_use]
@@ -1382,6 +1538,7 @@ impl Plugin for ObserverShellPlugin {
             .init_resource::<ObserverUiState>()
             .init_resource::<ObserverViewport>()
             .init_resource::<ObserverFeedback>()
+            .init_resource::<ObserverKeyboardClaim>()
             .add_message::<ObserverCommand>()
             .add_systems(Startup, spawn_shell.after(crate::map::spawn_map_surface))
             .add_systems(
@@ -1396,6 +1553,13 @@ impl Plugin for ObserverShellPlugin {
                     .in_set(crate::observer_io::ObserverSet::Input),
             )
             .add_observer(scroll_panel)
+            .add_observer(keyboard_button)
+            .add_systems(
+                PreUpdate,
+                (sync_focus_policy, sync_focus_targets)
+                    .in_set(ObserverFocusSystems::Eligibility)
+                    .run_if(resource_exists::<ObserverFocusPolicy>),
+            )
             .add_systems(
                 Update,
                 reconcile_lens
@@ -1413,8 +1577,171 @@ impl Plugin for ObserverShellPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::observer_focus::ObserverFocusPlugin;
     use bevy::input::keyboard::{Key, KeyboardInput, NativeKey};
     use bevy::input::{ButtonState, InputPlugin};
+    use bevy::input_focus::InputFocus;
+
+    fn focused_shell(menu_open: bool, command: ObserverCommand) -> (App, Entity, Entity) {
+        use crate::observer_io::ObserverSet;
+        let mut session = ObserverSession::new(babylon_persistence::CampaignId::from_uuid(
+            uuid::Uuid::from_u128(1),
+        ));
+        session.phase = crate::observer::SessionPhase::Ready;
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            InputPlugin,
+            ObserverFocusPlugin,
+            crate::campaign_browser::CampaignBrowserPlugin,
+        ))
+        .insert_resource(session)
+        .insert_resource(
+            CountyAtlas::parse(include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../../assets/map/county_atlas.bin"
+            )))
+            .unwrap(),
+        )
+        .insert_resource(ObserverUiState {
+            menu_open,
+            splash_visible: false,
+            disclosure: Some(ObserverDisclosure::Time),
+            ..default()
+        })
+        .init_resource::<ObserverFrame>()
+        .init_resource::<crate::production::PrimaryView>()
+        .init_resource::<SelectedCounty>()
+        .add_message::<ObserverCommand>()
+        .configure_sets(Update, ObserverSet::Install.run_if(|| false))
+        .configure_sets(Update, ObserverSet::Paint.run_if(|| false))
+        .add_systems(
+            PreUpdate,
+            (sync_focus_policy, sync_focus_targets).in_set(ObserverFocusSystems::Eligibility),
+        )
+        .add_systems(
+            Update,
+            (keyboard, pointer_buttons).in_set(ObserverSet::Input),
+        )
+        .add_observer(keyboard_button);
+        let window = app
+            .world_mut()
+            .spawn((Window::default(), PrimaryWindow))
+            .id();
+        let root = app
+            .world_mut()
+            .spawn((
+                Node::default(),
+                if menu_open {
+                    TabGroup::modal()
+                } else {
+                    TabGroup::new(0)
+                },
+            ))
+            .id();
+        if menu_open {
+            app.world_mut().entity_mut(root).insert(ObserverMenu);
+        }
+        let target = app
+            .world_mut()
+            .spawn((
+                Button,
+                Node::default(),
+                ObserverButton {
+                    command,
+                    in_menu: menu_open,
+                },
+                ObserverFocusTarget::action(None),
+            ))
+            .id();
+        app.world_mut().entity_mut(root).add_child(target);
+        app.update();
+        app.world_mut().resource_mut::<InputFocus>().0 = Some(target);
+        (app, window, target)
+    }
+
+    fn focus_key(app: &mut App, window: Entity, key_code: KeyCode) {
+        app.world_mut().write_message(KeyboardInput {
+            key_code,
+            logical_key: Key::Unidentified(NativeKey::Unidentified),
+            state: ButtonState::Pressed,
+            text: None,
+            repeat: false,
+            window,
+        });
+        app.update();
+    }
+
+    #[test]
+    fn focused_menu_enter_does_not_also_open_a_saved_campaign_or_advance() {
+        let (mut app, window, target) = focused_shell(true, ObserverCommand::Menu);
+        assert!(
+            app.world()
+                .get::<ObserverFocusTarget>(target)
+                .unwrap()
+                .available
+        );
+        focus_key(&mut app, window, KeyCode::Enter);
+        assert_eq!(
+            app.world_mut()
+                .resource_mut::<Messages<ObserverCommand>>()
+                .drain()
+                .collect::<Vec<_>>(),
+            [ObserverCommand::Menu]
+        );
+        assert!(app
+            .world()
+            .resource::<Messages<crate::campaign_browser::CampaignBrowserCommand>>()
+            .is_empty());
+        assert_eq!(app.world().resource::<ObserverSession>().durable_tick, 0);
+    }
+
+    #[test]
+    fn focused_drawer_space_only_activates_its_control() {
+        let command = ObserverCommand::Disclosure(ObserverDisclosure::Time);
+        let (mut app, window, _) = focused_shell(false, command);
+        focus_key(&mut app, window, KeyCode::Space);
+        assert_eq!(
+            app.world_mut()
+                .resource_mut::<Messages<ObserverCommand>>()
+                .drain()
+                .collect::<Vec<_>>(),
+            [command]
+        );
+        assert!(!app.world().resource::<ObserverSession>().playing);
+    }
+
+    #[test]
+    fn dismissed_time_drawer_refuses_both_late_pointer_and_keyboard_requests() {
+        let (mut app, _, target) = focused_shell(false, ObserverCommand::Step);
+        app.world_mut().resource_mut::<ObserverUiState>().disclosure = None;
+        app.world_mut().trigger(ObserverKeyboardActivate {
+            entity: target,
+            context: None,
+        });
+        app.world_mut()
+            .entity_mut(target)
+            .insert(Interaction::Pressed);
+        app.update();
+        assert!(app
+            .world()
+            .resource::<Messages<ObserverCommand>>()
+            .is_empty());
+        assert!(
+            !app.world()
+                .get::<ObserverFocusTarget>(target)
+                .unwrap()
+                .available
+        );
+    }
+
+    #[test]
+    fn focused_control_arrows_preserve_selected_county() {
+        let (mut app, window, _) = focused_shell(false, ObserverCommand::History);
+        app.world_mut().resource_mut::<SelectedCounty>().0 = Some(0);
+        focus_key(&mut app, window, KeyCode::ArrowRight);
+        assert_eq!(app.world().resource::<SelectedCounty>().0, Some(0));
+    }
 
     #[test]
     fn shell_startup_waits_for_the_map_atlas_before_selecting_detroit() {
@@ -1535,10 +1862,15 @@ mod tests {
     fn menu_clicks_do_not_activate_world_controls_behind_it() {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
+            .insert_resource(ObserverSession::new(
+                babylon_persistence::CampaignId::from_uuid(uuid::Uuid::nil()),
+            ))
+            .init_resource::<crate::production::PrimaryView>()
             .insert_resource(ObserverUiState {
                 splash_visible: false,
                 ..default()
             })
+            .init_resource::<ObserverKeyboardClaim>()
             .add_message::<ObserverCommand>()
             .add_systems(Update, pointer_buttons);
         app.world_mut().spawn((
@@ -1647,6 +1979,7 @@ mod tests {
             .init_resource::<SelectedCounty>()
             .init_resource::<crate::production::PrimaryView>()
             .init_resource::<ObserverUiState>()
+            .init_resource::<ObserverKeyboardClaim>()
             .add_message::<ObserverCommand>()
             // Exercise the actual input systems without launching catalog reads or applying
             // either request. In particular, a second consumer must not hide a collision.
@@ -1742,6 +2075,7 @@ mod tests {
                 menu_open: false,
                 ..default()
             })
+            .init_resource::<ObserverKeyboardClaim>()
             .add_message::<ObserverCommand>()
             .add_systems(Update, keyboard);
         for menu_open in [false, true] {
@@ -1789,6 +2123,7 @@ mod tests {
                 splash_visible: false,
                 ..default()
             })
+            .init_resource::<ObserverKeyboardClaim>()
             .add_message::<ObserverCommand>()
             .add_systems(Update, keyboard);
         for view in [

@@ -190,6 +190,28 @@ mod tests {
     }
 
     #[test]
+    fn observer_composition_does_not_run_legacy_tab_lens_shortcut() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default()))
+            .insert_resource(crate::observer::ObserverSession::new(
+                babylon_persistence::CampaignId::from_uuid(uuid::Uuid::nil()),
+            ))
+            .add_plugins(MapPlugin)
+            .init_resource::<LensChangedCount>()
+            .add_systems(Update, count_lens_changed.after(cycle_lens_on_tab));
+        app.update();
+        let before = *app.world().resource::<ActiveLens>();
+        // Tab belongs to observer focus. F3's historical admin panel is not
+        // part of this map plugin or the current observer composition.
+        for key in [KeyCode::Tab, KeyCode::F3] {
+            press_key_via_real_event(&mut app, key);
+            app.update();
+            assert_eq!(*app.world().resource::<ActiveLens>(), before);
+        }
+        assert_eq!(app.world().resource::<LensChangedCount>().0, 0);
+    }
+
+    #[test]
     fn tab_cycles_the_active_lens_and_fires_lens_changed_each_press() {
         let mut app = App::new();
         app.add_plugins((MinimalPlugins, AssetPlugin::default()));

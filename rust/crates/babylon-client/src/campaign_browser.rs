@@ -10,11 +10,16 @@ use babylon_persistence::{
     ObserverEconomySnapshotV1, ObserverVisibilityV1, ProductionSiteV1,
 };
 use bevy::ecs::{query::QueryData, system::SystemParam};
+use bevy::input_focus::tab_navigation::TabGroup;
 use bevy::prelude::*;
 use bevy::tasks::{block_on, AsyncComputeTaskPool, Task};
 
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::observer::{ObservationContext, ObserverSession, Perspective};
+use crate::observer_focus::{
+    ObserverFocusPolicy, ObserverFocusSystems, ObserverFocusTarget, ObserverKeyboardActivate,
+    ObserverKeyboardClaim,
+};
 use crate::observer_io::ObserverSet;
 use crate::observer_theme as theme;
 use crate::observer_ui::{ObserverCampaignCatalog, ObserverFrame, ObserverUiState};
@@ -93,7 +98,7 @@ struct BrowserButton(CampaignBrowserCommand);
 #[derive(Component)]
 struct CatalogText;
 #[derive(Component)]
-struct ComparisonPanel;
+pub(crate) struct ComparisonPanel;
 #[derive(Component)]
 struct ComparisonText;
 
@@ -114,6 +119,7 @@ fn button(parent: &mut ChildSpawnerCommands, label: &str, command: CampaignBrows
         .spawn((
             Button,
             BrowserButton(command),
+            ObserverFocusTarget::action(None),
             Node {
                 padding: UiRect::axes(px(10), px(8)),
                 border: UiRect::all(px(2)),
@@ -142,6 +148,7 @@ fn setup(mut commands: Commands, menu: Query<Entity, With<ObserverCampaignCatalo
             panel.spawn((
                 text("Loading campaign catalog...", 13.0, theme::PAPER),
                 CatalogText,
+                ObserverFocusTarget::reading(None),
                 Node {
                     flex_shrink: 0.0,
                     min_width: px(0),
@@ -188,6 +195,7 @@ fn setup(mut commands: Commands, menu: Query<Entity, With<ObserverCampaignCatalo
             ZIndex(21),
             Visibility::Hidden,
             ComparisonPanel,
+            TabGroup::modal(),
             DeclaredSurface::new(SurfaceId::ObserverShell),
         ))
         .with_children(|panel| {
@@ -207,6 +215,7 @@ fn setup(mut commands: Commands, menu: Query<Entity, With<ObserverCampaignCatalo
             panel.spawn((
                 text("", 15.0, theme::PAPER),
                 ComparisonText,
+                ObserverFocusTarget::reading(None),
                 Node {
                     flex_shrink: 0.0,
                     min_width: px(0),
@@ -221,12 +230,13 @@ fn setup(mut commands: Commands, menu: Query<Entity, With<ObserverCampaignCatalo
 fn input(
     buttons: Query<(&Interaction, &BrowserButton), Changed<Interaction>>,
     keyboard: Res<ButtonInput<KeyCode>>,
+    claimed: Res<ObserverKeyboardClaim>,
     ui: Res<ObserverUiState>,
     mut messages: MessageWriter<CampaignBrowserCommand>,
 ) {
     for (interaction, button) in &buttons {
         if *interaction == Interaction::Pressed {
-            messages.write(button.0);
+            dispatch_button(button.0, &ui, &mut messages);
         }
     }
     if ui.menu_open && !ui.splash_visible && !ui.comparison_open {
@@ -236,13 +246,107 @@ fn input(
             (KeyCode::Enter, CampaignBrowserCommand::Open),
             (KeyCode::KeyX, CampaignBrowserCommand::Compare),
         ] {
-            if keyboard.just_pressed(key) {
-                messages.write(command);
+            if keyboard.just_pressed(key) && !claimed.claimed(key) {
+                dispatch_button(command, &ui, &mut messages);
             }
         }
     }
     if ui.comparison_open && keyboard.just_pressed(KeyCode::Escape) {
         messages.write(CampaignBrowserCommand::CloseComparison);
+    }
+}
+
+fn button_visible(command: CampaignBrowserCommand, ui: &ObserverUiState) -> bool {
+    !ui.splash_visible
+        && match command {
+            CampaignBrowserCommand::CloseComparison => ui.comparison_open,
+            _ => ui.menu_open && !ui.comparison_open,
+        }
+}
+
+fn dispatch_button(
+    command: CampaignBrowserCommand,
+    ui: &ObserverUiState,
+    messages: &mut MessageWriter<CampaignBrowserCommand>,
+) {
+    if button_visible(command, ui) {
+        messages.write(command);
+    }
+}
+
+fn keyboard_button(
+    event: On<ObserverKeyboardActivate>,
+    buttons: Query<(&BrowserButton, &ObserverFocusTarget)>,
+    ui: Res<ObserverUiState>,
+    session: Res<ObserverSession>,
+    mut messages: MessageWriter<CampaignBrowserCommand>,
+) {
+    let Ok((button, target)) = buttons.get(event.entity) else {
+        return;
+    };
+    if event.context == target.context && event.context.as_ref() == Some(&session.context()) {
+        dispatch_button(button.0, &ui, &mut messages);
+    }
+}
+
+type BrowserFocusTargets<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static mut ObserverFocusTarget,
+        Option<&'static BrowserButton>,
+        Has<CatalogText>,
+        Has<ComparisonText>,
+    ),
+>;
+
+fn sync_focus_targets(
+    ui: Res<ObserverUiState>,
+    session: Res<ObserverSession>,
+    browser: Res<CampaignBrowserState>,
+    mut targets: BrowserFocusTargets,
+) {
+    let context = session.context();
+    for (mut target, button, catalog, comparison) in &mut targets {
+        if button.is_none() && !catalog && !comparison {
+            continue;
+        }
+        let mut next = target.clone();
+        next.context = Some(context.clone());
+        next.available = if let Some(button) = button {
+            button_visible(button.0, &ui)
+                && !session.quit_requested
+                && match button.0 {
+                    CampaignBrowserCommand::CloseComparison | CampaignBrowserCommand::Refresh => {
+                        true
+                    }
+                    CampaignBrowserCommand::Previous | CampaignBrowserCommand::Next => {
+                        browser.context.as_ref() == Some(&context) && browser.catalog.len() > 1
+                    }
+                    CampaignBrowserCommand::Open => {
+                        browser.context.as_ref() == Some(&context)
+                            && browser.catalog.get(browser.selected).is_some()
+                    }
+                    CampaignBrowserCommand::Compare => {
+                        browser.context.as_ref() == Some(&context)
+                            && browser
+                                .catalog
+                                .get(browser.selected)
+                                .is_some_and(|selected| {
+                                    selected.id != session.campaign.as_uuid().to_string()
+                                        && selected.durable_tick >= session.viewed_tick
+                                })
+                    }
+                }
+        } else {
+            !ui.splash_visible
+                && if comparison {
+                    ui.comparison_open
+                } else {
+                    ui.menu_open && !ui.comparison_open
+                }
+        };
+        target.set_if_neq(next);
     }
 }
 
@@ -288,7 +392,7 @@ fn commands(
                 .clone_into(&mut browser.status);
             continue;
         }
-        if ui.comparison_open && !matches!(command, CampaignBrowserCommand::CloseComparison) {
+        if !button_visible(*command, &ui) {
             continue;
         }
         match command {
@@ -724,9 +828,17 @@ pub struct CampaignBrowserPlugin;
 impl Plugin for CampaignBrowserPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<CampaignBrowserState>()
+            .init_resource::<ObserverKeyboardClaim>()
             .add_message::<CampaignBrowserCommand>()
             .add_systems(PostStartup, setup)
             .add_systems(Update, input.in_set(ObserverSet::Input))
+            .add_observer(keyboard_button)
+            .add_systems(
+                PreUpdate,
+                sync_focus_targets
+                    .in_set(ObserverFocusSystems::Eligibility)
+                    .run_if(resource_exists::<ObserverFocusPolicy>),
+            )
             .add_systems(
                 Update,
                 (refresh_scope, commands, collect)
@@ -740,6 +852,64 @@ impl Plugin for CampaignBrowserPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn browser_keyboard_request_revalidates_perspective_and_visible_menu() {
+        let session = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::from_u128(1)));
+        let original = session.context();
+        let mut app = App::new();
+        app.insert_resource(session)
+            .insert_resource(ObserverUiState {
+                splash_visible: false,
+                ..default()
+            })
+            .add_message::<CampaignBrowserCommand>()
+            .add_observer(keyboard_button);
+        let button = app
+            .world_mut()
+            .spawn((
+                BrowserButton(CampaignBrowserCommand::Refresh),
+                ObserverFocusTarget::action(Some(original.clone())),
+            ))
+            .id();
+        app.world_mut().trigger(ObserverKeyboardActivate {
+            entity: button,
+            context: Some(original.clone()),
+        });
+        assert!(matches!(
+            app.world_mut()
+                .resource_mut::<Messages<CampaignBrowserCommand>>()
+                .drain()
+                .collect::<Vec<_>>()
+                .as_slice(),
+            [CampaignBrowserCommand::Refresh]
+        ));
+        app.world_mut()
+            .resource_mut::<ObserverSession>()
+            .perspective = Perspective::PlayerKnowledge;
+        app.world_mut().trigger(ObserverKeyboardActivate {
+            entity: button,
+            context: Some(original),
+        });
+        assert!(app
+            .world()
+            .resource::<Messages<CampaignBrowserCommand>>()
+            .is_empty());
+        let current = app.world().resource::<ObserverSession>().context();
+        app.world_mut()
+            .get_mut::<ObserverFocusTarget>(button)
+            .unwrap()
+            .context = Some(current.clone());
+        app.world_mut().resource_mut::<ObserverUiState>().menu_open = false;
+        app.world_mut().trigger(ObserverKeyboardActivate {
+            entity: button,
+            context: Some(current),
+        });
+        assert!(app
+            .world()
+            .resource::<Messages<CampaignBrowserCommand>>()
+            .is_empty());
+    }
 
     #[test]
     fn shutdown_consumes_queued_browser_commands_without_changing_selection_or_exiting_again() {

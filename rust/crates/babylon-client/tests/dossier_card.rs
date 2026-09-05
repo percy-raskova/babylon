@@ -12,6 +12,7 @@
 //! windowed viewer renders from a real fetch — one resource family, one
 //! paint path (the rationale `ui::dossier_card`'s module doc commits to).
 
+use babylon_client::atlas::CountyAtlas;
 use babylon_client::decision_surface::{DeclaredSurface, SurfaceId};
 use babylon_client::dossier::ChangelogRow;
 use babylon_client::map::SelectedCounty;
@@ -341,7 +342,12 @@ fn find_entity_with_text(app: &mut App, root: Entity, wanted: &str) -> Option<En
 /// never overwrite the seeded projection, and one update repaints every
 /// zone from it.
 fn seize_card(app: &mut App, projection: CountyDossierCardProjection) {
-    app.world_mut().resource_mut::<SelectedCounty>().0 = Some(0); // atlas 0 = fips 01001
+    let county = app
+        .world()
+        .resource::<CountyAtlas>()
+        .index_of_fips(&projection.geoid)
+        .expect("the fixture county belongs to the committed atlas");
+    app.world_mut().resource_mut::<SelectedCounty>().0 = Some(county);
     app.update();
     assert!(
         matches!(

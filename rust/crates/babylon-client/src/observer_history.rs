@@ -4,6 +4,7 @@ mod delivery_groups;
 
 use babylon_persistence::{ObserverEconomyReaderV1, ProductionEventV1, ProductionSiteV1};
 use bevy::ecs::{query::QueryData, system::SystemParam};
+use bevy::input_focus::tab_navigation::TabGroup;
 use bevy::prelude::*;
 use bevy::tasks::{block_on, AsyncComputeTaskPool, Task};
 
@@ -11,6 +12,7 @@ use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::observer::{ObservationContext, ObserverSession, Perspective};
 use crate::observer_calendar::CampaignMonth;
 use crate::observer_controls::{inspection_availability, ControlAvailability};
+use crate::observer_focus::{ObserverFocusSystems, ObserverFocusTarget, ObserverKeyboardActivate};
 use crate::observer_io::ObserverSet;
 use crate::observer_layout::ObserverRegion;
 use crate::observer_theme as theme;
@@ -77,6 +79,8 @@ struct HistoryPanel;
 struct LogPanel;
 #[derive(Component)]
 struct HistoryHint;
+#[derive(Resource, Default)]
+struct HistoryKeyboardActions(Vec<HistoryButton>);
 #[derive(Component, Clone)]
 enum HistoryButton {
     Week {
@@ -127,6 +131,7 @@ fn setup(mut commands: Commands) {
         ZIndex(9),
         Visibility::Hidden,
         HistoryPanel,
+        TabGroup::new(30),
         ObserverRegion::History,
         DeclaredSurface::new(SurfaceId::ObserverProduction),
     ));
@@ -144,6 +149,7 @@ fn setup(mut commands: Commands) {
         BorderColor::all(theme::PAPER.with_alpha(0.6)),
         ZIndex(6),
         LogPanel,
+        TabGroup::new(20),
         Visibility::Visible,
         ObserverRegion::Log,
         DeclaredSurface::new(SurfaceId::ObserverProduction),
@@ -211,10 +217,69 @@ struct HistoryInput<'w> {
     view: Res<'w, PrimaryView>,
 }
 
+fn history_button_context(button: &HistoryButton) -> &ObservationContext {
+    match button {
+        HistoryButton::Week { context, .. }
+        | HistoryButton::Event { context, .. }
+        | HistoryButton::DeliveryEvidence { context, .. } => context,
+    }
+}
+
+fn history_control_visibility(
+    button: &HistoryButton,
+    ui: &ObserverUiState,
+    navigation: &ProductionNavigation,
+    view: PrimaryView,
+    snapshot: Option<&babylon_persistence::ProductionSnapshotV1>,
+) -> ControlAvailability {
+    use ControlAvailability::{Disabled, Enabled};
+    if ui.menu_open || ui.splash_visible || ui.comparison_open {
+        return Disabled("Close the menu to inspect history");
+    }
+    if matches!(button, HistoryButton::Week { .. }) {
+        if ui.history_open {
+            Enabled
+        } else {
+            Disabled("Open Trends to inspect a committed week")
+        }
+    } else if ui.archive_open || readings_panel_visible(view, navigation, ui, snapshot) {
+        Disabled("Close the current readings to inspect the delivery log")
+    } else {
+        Enabled
+    }
+}
+
+fn keyboard_activate(
+    event: On<ObserverKeyboardActivate>,
+    buttons: Query<&HistoryButton>,
+    mut queued: ResMut<HistoryKeyboardActions>,
+) {
+    let Ok(button) = buttons.get(event.entity) else {
+        return;
+    };
+    if event.context.as_ref() == Some(history_button_context(button)) {
+        // Keep the original payload. The Update application checks its exact
+        // observation again after other input has had an opportunity to change it.
+        queued.0.push(button.clone());
+    }
+}
+
 fn input(
     buttons: Query<(&Interaction, &HistoryButton), Changed<Interaction>>,
+    mut queued: ResMut<HistoryKeyboardActions>,
     mut context: HistoryInput,
 ) {
+    for button in std::mem::take(&mut queued.0) {
+        apply_history_action(&button, &mut context);
+    }
+    for (interaction, button) in &buttons {
+        if *interaction == Interaction::Pressed {
+            apply_history_action(button, &mut context);
+        }
+    }
+}
+
+fn apply_history_action(button: &HistoryButton, context: &mut HistoryInput) {
     let HistoryInput {
         session,
         frame,
@@ -225,69 +290,106 @@ fn input(
         time,
         navigation,
         view,
-    } = &mut context;
-    if ui.menu_open || ui.splash_visible || ui.comparison_open {
-        return;
-    }
+    } = context;
     let snapshot = frame
         .for_session(session)
         .and_then(|frame| frame.production.as_ref());
-    let log = buttons
-        .iter()
-        .any(|(interaction, button)| {
-            *interaction == Interaction::Pressed
-                && matches!(button, HistoryButton::DeliveryEvidence { .. })
-        })
-        .then(|| snapshot.map(|snapshot| delivery_log_entries(snapshot, LOG_ENTRIES)))
-        .flatten()
-        .and_then(Result::ok);
-    for (interaction, button) in &buttons {
-        if *interaction != Interaction::Pressed
-            || (!ui.history_open && matches!(button, HistoryButton::Week { .. }))
-        {
-            continue;
-        }
-        if !matches!(button, HistoryButton::Week { .. })
-            && (ui.archive_open || readings_panel_visible(**view, navigation, ui, snapshot))
-        {
-            feedback.reject(
-                "Close the current readings to inspect the delivery log",
-                time.elapsed_secs_f64(),
-            );
-            continue;
-        }
-        if let ControlAvailability::Disabled(reason) =
-            button_availability(button, session, frame, log.as_ref())
-        {
-            feedback.reject(reason, time.elapsed_secs_f64());
-            continue;
-        }
-        feedback.message = None;
-        if let HistoryButton::DeliveryEvidence { context, group } = button {
-            let expanded = (context.clone(), group.clone());
-            history.expanded_delivery = if history.expanded_delivery.as_ref() == Some(&expanded) {
-                None
-            } else {
-                Some(expanded)
-            };
-            continue;
-        }
-        let week = match button {
-            HistoryButton::Week { week, .. } => *week,
-            HistoryButton::Event { event, .. } => event.week,
-            HistoryButton::DeliveryEvidence { .. } => continue,
+    let visible = history_control_visibility(button, ui, navigation, **view, snapshot);
+    let log = matches!(button, HistoryButton::DeliveryEvidence { .. })
+        .then(|| snapshot.and_then(|snapshot| delivery_log_entries(snapshot, LOG_ENTRIES).ok()))
+        .flatten();
+    let available = if visible == ControlAvailability::Enabled {
+        button_availability(button, session, frame, log.as_ref())
+    } else {
+        visible
+    };
+    if let ControlAvailability::Disabled(reason) = available {
+        feedback.reject(reason, time.elapsed_secs_f64());
+        return;
+    }
+    feedback.message = None;
+    if let HistoryButton::DeliveryEvidence { context, group } = button {
+        let expanded = (context.clone(), group.clone());
+        history.expanded_delivery = if history.expanded_delivery.as_ref() == Some(&expanded) {
+            None
+        } else {
+            Some(expanded)
         };
-        session.pause_month();
-        if session.viewed_tick != week {
-            session.inspect_tick(week);
-            refresh.bump();
-        }
-        // The committed evidence is revalidated after this week loads.
-        history.selected_event = match button {
-            HistoryButton::Event { event, .. } => Some((session.context(), event.clone())),
-            HistoryButton::Week { .. } | HistoryButton::DeliveryEvidence { .. } => None,
-        };
-        history.focus_selected_event = history.selected_event.is_some();
+        return;
+    }
+    let week = match button {
+        HistoryButton::Week { week, .. } => *week,
+        HistoryButton::Event { event, .. } => event.week,
+        HistoryButton::DeliveryEvidence { .. } => return,
+    };
+    session.pause_month();
+    if session.viewed_tick != week {
+        session.inspect_tick(week);
+        refresh.bump();
+    }
+    // The committed evidence is revalidated after this week loads.
+    history.selected_event = match button {
+        HistoryButton::Event { event, .. } => Some((session.context(), event.clone())),
+        HistoryButton::Week { .. } | HistoryButton::DeliveryEvidence { .. } => None,
+    };
+    history.focus_selected_event = history.selected_event.is_some();
+}
+
+type HistoryFocusOwners = Or<(With<HistoryButton>, With<HistoryHint>)>;
+
+fn focus_eligibility(
+    presentation: LogPresentation,
+    mut targets: Query<(&mut ObserverFocusTarget, Option<&HistoryButton>), HistoryFocusOwners>,
+) {
+    let LogPresentation {
+        session,
+        frame,
+        history: _,
+        ui,
+        navigation,
+        view,
+    } = presentation;
+    if !(session.is_changed()
+        || frame.is_changed()
+        || ui.is_changed()
+        || navigation.is_changed()
+        || view.is_changed()
+        || targets.iter_mut().any(|(target, _)| target.is_added()))
+    {
+        return;
+    }
+    let snapshot = frame
+        .for_session(&session)
+        .and_then(|frame| frame.production.as_ref());
+    let log = snapshot.and_then(|snapshot| delivery_log_entries(snapshot, LOG_ENTRIES).ok());
+    for (mut target, button) in &mut targets {
+        let (context, available) = button.map_or_else(
+            || {
+                (
+                    target.context.clone(),
+                    target
+                        .context
+                        .as_ref()
+                        .is_some_and(|context| session.accepts(context))
+                        && !ui.menu_open
+                        && !ui.splash_visible
+                        && !ui.comparison_open,
+                )
+            },
+            |button| {
+                (
+                    Some(history_button_context(button).clone()),
+                    history_control_visibility(button, &ui, &navigation, *view, snapshot)
+                        == ControlAvailability::Enabled
+                        && button_availability(button, &session, &frame, log.as_ref())
+                            == ControlAvailability::Enabled,
+                )
+            },
+        );
+        let mut next = target.clone();
+        next.context = context;
+        next.available = available;
+        target.set_if_neq(next);
     }
 }
 
@@ -544,7 +646,7 @@ fn paint(
         .for_session(&session)
         .and_then(|frame| frame.production.as_ref());
     commands.entity(panel).with_children(|panel| {
-        panel.spawn((label("", 11.0, theme::GRAY), HistoryHint));
+        panel.spawn((label("", 11.0, theme::GRAY), HistoryHint, ObserverFocusTarget::reading(Some(context.clone()))));
         let Some(snapshot)=snapshot else {
             panel.spawn(label("HISTORY / production evidence unavailable in this observation",14.0,theme::GRAY));
             return;
@@ -563,7 +665,7 @@ fn paint(
                 let maximum=history.points.iter().flat_map(|point|[point.planned,point.produced]).flatten().max().unwrap_or(1);
                 panel.spawn(Node{column_gap:px(5),align_items:AlignItems::End,flex_shrink:0.0,overflow:Overflow::scroll_x(),..default()}).with_children(|chart| {
                     for point in &history.points {
-                        chart.spawn((Button,HistoryButton::Week{context:context.clone(),week:point.week},
+                        chart.spawn((Button, ObserverFocusTarget::action(Some(context.clone())), HistoryButton::Week{context:context.clone(),week:point.week},
                             Node{min_width:px(48),padding:UiRect::all(px(3)),row_gap:px(3),flex_direction:FlexDirection::Column,
                                 border:UiRect::bottom(px(2)),..default()},
                             BorderColor::all(if point.week==session.viewed_tick {theme::YELLOW}else{theme::GRAY}),
@@ -635,7 +737,7 @@ fn paint_log(
     let context = session.context();
     commands.entity(entity).with_children(|panel| {
         panel.spawn(label("L O G", 22.0, theme::PAPER));
-        panel.spawn((label("", 11.0, theme::GRAY), HistoryHint));
+        panel.spawn((label("", 11.0, theme::GRAY), HistoryHint, ObserverFocusTarget::reading(Some(context.clone()))));
         let Some(snapshot) = snapshot else {
             panel.spawn(label("No production developments are available in this observation.", 13.0, theme::GRAY));
             return;
@@ -709,6 +811,7 @@ fn spawn_event_entry(
     panel
         .spawn((
             Button,
+            ObserverFocusTarget::action(Some(context.clone())),
             HistoryButton::Event {
                 context: context.clone(),
                 event: event.clone(),
@@ -771,6 +874,7 @@ fn spawn_delivery_entry(
             entry
                 .spawn((
                     Button,
+                    ObserverFocusTarget::action(Some(context.clone())),
                     HistoryButton::DeliveryEvidence {
                         context: context.clone(),
                         group: group.key.clone(),
@@ -810,6 +914,12 @@ pub struct ObserverHistoryPlugin;
 impl Plugin for ObserverHistoryPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<HistoryState>()
+            .init_resource::<HistoryKeyboardActions>()
+            .add_observer(keyboard_activate)
+            .add_systems(
+                PreUpdate,
+                focus_eligibility.in_set(ObserverFocusSystems::Eligibility),
+            )
             .add_systems(Startup, setup)
             .add_systems(Update, input.in_set(ObserverSet::Input))
             .add_systems(
@@ -889,11 +999,13 @@ mod tests {
                 ..default()
             })
             .init_resource::<HistoryState>()
+            .init_resource::<HistoryKeyboardActions>()
             .init_resource::<ProductionNavigation>()
             .init_resource::<PrimaryView>()
             .init_resource::<DossierRefresh>()
             .init_resource::<ObserverFeedback>()
             .init_resource::<Time>()
+            .add_systems(PreUpdate, focus_eligibility)
             .add_systems(
                 Update,
                 (input, paint_buttons.run_if(history_buttons_need_paint)).chain(),
@@ -911,6 +1023,104 @@ mod tests {
                 BorderColor::all(theme::BLUE),
             ))
             .id()
+    }
+
+    #[test]
+    fn keyboard_history_queues_original_evidence_and_refuses_a_later_scope_change() {
+        let original = event(2);
+        let (mut app, _) = history_app(original.clone());
+        app.add_observer(keyboard_activate);
+        let context = app.world().resource::<ObserverSession>().context();
+        let button = spawn_button(
+            &mut app,
+            HistoryButton::Event {
+                context: context.clone(),
+                event: original.clone(),
+            },
+            Interaction::None,
+        );
+        app.world_mut().trigger(ObserverKeyboardActivate {
+            entity: button,
+            context: Some(context.clone()),
+        });
+        assert_eq!(app.world().resource::<ObserverSession>().viewed_tick, 3);
+        assert!(app
+            .world()
+            .resource::<HistoryState>()
+            .selected_event
+            .is_none());
+        app.world_mut()
+            .resource_mut::<ObserverSession>()
+            .set_perspective(Perspective::PlayerKnowledge);
+        app.update();
+        assert_eq!(app.world().resource::<ObserverSession>().viewed_tick, 3);
+        assert!(app
+            .world()
+            .resource::<HistoryState>()
+            .selected_event
+            .is_none());
+        assert_eq!(app.world().resource::<DossierRefresh>().0, 0);
+        assert!(app.world().resource::<ObserverFeedback>().message.is_some());
+
+        let (mut app, _) = history_app(original.clone());
+        app.add_observer(keyboard_activate);
+        let context = app.world().resource::<ObserverSession>().context();
+        let button = spawn_button(
+            &mut app,
+            HistoryButton::Event {
+                context: context.clone(),
+                event: original.clone(),
+            },
+            Interaction::None,
+        );
+        app.world_mut().trigger(ObserverKeyboardActivate {
+            entity: button,
+            context: Some(context),
+        });
+        app.update();
+        assert_eq!(app.world().resource::<ObserverSession>().viewed_tick, 2);
+        assert_eq!(app.world().resource::<DossierRefresh>().0, 1);
+        assert_eq!(
+            app.world()
+                .resource::<HistoryState>()
+                .selected_event
+                .as_ref()
+                .unwrap()
+                .1,
+            original
+        );
+    }
+
+    #[test]
+    fn keyboard_delivery_expansion_uses_current_group_without_advancing_time() {
+        let mut app = delivery_app(2, 3);
+        app.add_observer(keyboard_activate);
+        app.update();
+        let (entity, context) = {
+            let world = app.world_mut();
+            world
+                .query::<(Entity, &HistoryButton)>()
+                .iter(world)
+                .find_map(|(entity, button)| {
+                    matches!(button, HistoryButton::DeliveryEvidence { .. })
+                        .then(|| (entity, history_button_context(button).clone()))
+                })
+                .expect("a grouped delivery has an expansion control")
+        };
+        let week = app.world().resource::<ObserverSession>().viewed_tick;
+        let generation = app.world().resource::<DossierRefresh>().0;
+        app.world_mut().trigger(ObserverKeyboardActivate {
+            entity,
+            context: Some(context),
+        });
+        app.update();
+        assert!(app
+            .world()
+            .resource::<HistoryState>()
+            .expanded_delivery
+            .is_some());
+        assert_eq!(app.world().resource::<ObserverSession>().viewed_tick, week);
+        assert_eq!(app.world().resource::<DossierRefresh>().0, generation);
     }
 
     fn delivery_site(id: &str, name: &str) -> ProductionSiteV1 {

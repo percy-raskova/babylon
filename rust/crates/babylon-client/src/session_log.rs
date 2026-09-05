@@ -122,27 +122,16 @@ fn log_selection_changes(
     }
 }
 
-/// `Update`: place-chip clicks — one line per requested subject page, with the
-/// label only when the Archive acknowledged one (`None` carries zero label
-/// bytes below the fog, and the log honors that).
+/// A pending request is not an admitted observation. Record only its static
+/// action kind; the scope-checked page installation has its separate record.
 fn log_subject_page_requests(mut requests: MessageReader<SubjectPageRequest>) {
     for request in requests.read() {
-        if let Some(label) = &request.label {
-            bevy::log::info!(
-                target: "session",
-                "subject page requested kind={} id={} label={:?}",
-                request.kind,
-                request.id,
-                label
-            );
+        let kind = if request.kind == "place" {
+            "place"
         } else {
-            bevy::log::info!(
-                target: "session",
-                "subject page requested kind={} id={} label=<fog>",
-                request.kind,
-                request.id
-            );
-        }
+            "unrecognized"
+        };
+        bevy::log::info!(target: "session", "subject page requested kind={kind}");
     }
 }
 
@@ -399,15 +388,23 @@ mod tests {
                 .index_of_fips("26163")
                 .expect("the committed atlas carries Wayne County");
             app.world_mut().resource_mut::<SelectedCounty>().0 = Some(wayne);
+            let scope = crate::ui::dossier_card::DossierRequestScope {
+                campaign: DossierCampaignId::default().0,
+                county_geoid: "26163".into(),
+                refresh_generation: 0,
+                observer: None,
+            };
             app.world_mut()
                 .resource_mut::<Messages<SubjectPageRequest>>()
                 .write(SubjectPageRequest {
+                    scope: scope.clone(),
                     kind: "place".to_owned(),
                     id: "2674900".to_owned(),
                     label: None,
                 });
             *app.world_mut().resource_mut::<DossierPageView>() =
                 DossierPageView::Placeholder(SubjectPageRequest {
+                    scope,
                     kind: "place".to_owned(),
                     id: "2674900".to_owned(),
                     label: None,
@@ -430,7 +427,7 @@ mod tests {
             "selection: {log}"
         );
         assert!(
-            log.contains("subject page requested kind=place id=2674900 label=<fog>"),
+            log.contains("subject page requested kind=place"),
             "chip: {log}"
         );
         assert!(
@@ -442,6 +439,56 @@ mod tests {
             "install: {log}"
         );
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn pending_subject_log_never_emits_a_label_after_scope_changes() {
+        use crate::observer::{ObserverSession, Perspective};
+        use crate::ui::dossier_card::{DossierRefresh, DossierRequestScope};
+        let dir = temp_dir("pending-scope");
+        let sink = RotatingSink::open(&dir, 1024 * 1024, 2).unwrap();
+        let layer = bevy::log::tracing_subscriber::fmt::Layer::default()
+            .with_ansi(false)
+            .with_writer(sink);
+        let subscriber = bevy::log::tracing_subscriber::registry().with(layer);
+        let mut app = App::new();
+        app.add_message::<SubjectPageRequest>()
+            .init_resource::<DossierRefresh>()
+            .add_systems(Update, log_subject_page_requests);
+        let campaign = DossierCampaignId::default().0;
+        app.insert_resource(ObserverSession::new(campaign));
+        app.edit_schedule(Update, |schedule| {
+            schedule.set_executor_kind(bevy::ecs::schedule::ExecutorKind::SingleThreaded);
+        });
+        bevy::log::tracing::subscriber::with_default(subscriber, || {
+            for perspective_change in [false, true] {
+                let scope = DossierRequestScope {
+                    campaign,
+                    county_geoid: "26163".into(),
+                    refresh_generation: app.world().resource::<DossierRefresh>().0,
+                    observer: Some(app.world().resource::<ObserverSession>().context()),
+                };
+                app.world_mut().write_message(SubjectPageRequest {
+                    scope,
+                    kind: "place".into(),
+                    id: "private-place-id".into(),
+                    label: Some("withheld-place-label".into()),
+                });
+                if perspective_change {
+                    app.world_mut()
+                        .resource_mut::<ObserverSession>()
+                        .set_perspective(Perspective::PlayerKnowledge);
+                } else {
+                    app.world_mut().resource_mut::<DossierRefresh>().bump();
+                }
+                app.update();
+            }
+        });
+        let log = std::fs::read_to_string(dir.join("babylon-client.log")).unwrap();
+        assert_eq!(log.matches("subject page requested kind=place").count(), 2);
+        assert!(!log.contains("private-place-id"));
+        assert!(!log.contains("withheld-place-label"));
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

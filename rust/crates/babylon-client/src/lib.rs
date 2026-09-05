@@ -33,6 +33,7 @@ pub mod narration;
 pub mod observer;
 pub mod observer_calendar;
 pub(crate) mod observer_controls;
+pub(crate) mod observer_focus;
 pub mod observer_io;
 pub(crate) mod observer_layout;
 pub(crate) mod observer_session_log;

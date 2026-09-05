@@ -10,6 +10,7 @@ use bevy::prelude::*;
 use crate::cli::CliCommand;
 use crate::dossier::{run_headless_command, HeadlessInvocation};
 use crate::observer::ObserverSession;
+use crate::observer_focus::ObserverFocusPlugin;
 use crate::observer_io::ObserverIoPlugin;
 use crate::observer_ui::ObserverShellPlugin;
 use crate::{logging, map, session_log, ui, visual_assets};
@@ -66,6 +67,7 @@ pub fn build_app(mode: AppMode) -> App {
             log::info!("babylon-client starting (durable observer)");
             app.add_plugins(visual_assets::VisualAssetsPlugin)
                 .add_plugins(map::MapPlugin)
+                .add_plugins(ObserverFocusPlugin)
                 .add_plugins(ObserverShellPlugin)
                 .add_plugins(crate::observer_map3d::ObserverMap3dPlugin)
                 .add_plugins(ObserverIoPlugin)
@@ -127,6 +129,11 @@ mod tests {
             command: CliCommand::TickStatus,
             campaign_id: babylon_persistence::CampaignId::from_uuid(Uuid::nil()),
         });
+        assert!(!app.is_plugin_added::<ObserverFocusPlugin>());
+        assert!(app
+            .world()
+            .get_resource::<crate::observer_focus::ObserverFocusPolicy>()
+            .is_none());
         assert!(
             app.world().get_resource::<HeadlessInvocation>().is_some(),
             "the invocation resource is installed before Startup"

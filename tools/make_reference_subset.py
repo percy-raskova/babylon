@@ -289,7 +289,6 @@ TABLE: dict[str, TablePolicy] = {
         "(69,419 of 2,645,347 rows).",
         county_columns=("home_county_id", "work_county_id"),
     ),
-    # -- fact_* — BLOCKED-FULL (national test assertions). --
     "fact_asm_manufacturing_annual": TablePolicy(
         "skip",
         "PER-30 staged data (2026-09-05): ASM 2022-benchmark national x NAICS "
@@ -297,6 +296,7 @@ TABLE: dict[str, TablePolicy] = {
         "materials, hours) — staged for the Gate 4 productive circuit, not "
         "yet read by any system or CI-relevant test. " + _UNREFERENCED_REASON,
     ),
+    # -- fact_* — BLOCKED-FULL (national test assertions). --
     "fact_bea_county_gdp": TablePolicy(
         "full",
         "BLOCKED-FULL: tests/integration/economics/throughput/test_adapters.py"

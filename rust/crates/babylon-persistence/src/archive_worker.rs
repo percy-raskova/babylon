@@ -1,6 +1,10 @@
 //! Production dirty-receipt Archive worker composition.
 
 use postgres::Config;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use uuid::Uuid;
 
 use crate::{
@@ -353,8 +357,10 @@ impl ArchiveDossierProducerV1 for CompositeArchiveDossierProducerV1 {
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct ArchiveWorkerSweepReportV1 {
     dispositions: Vec<(u64, ArchiveReceiptDispositionV1)>,
+    durable_tick: u64,
     verified_tick: u64,
     retention_ready: bool,
+    pending_work: bool,
 }
 
 impl ArchiveWorkerSweepReportV1 {
@@ -363,14 +369,30 @@ impl ArchiveWorkerSweepReportV1 {
     #[must_use]
     pub fn new(
         dispositions: Vec<(u64, ArchiveReceiptDispositionV1)>,
+        durable_tick: u64,
         verified_tick: u64,
         retention_ready: bool,
+        pending_work: bool,
     ) -> Self {
         Self {
             dispositions,
+            durable_tick,
             verified_tick,
             retention_ready,
+            pending_work,
         }
+    }
+
+    /// Durable marker tail from the same snapshot as the verified prefix.
+    #[must_use]
+    pub const fn durable_tick(&self) -> u64 {
+        self.durable_tick
+    }
+
+    /// Whether another canonical ordered publication remains at that snapshot.
+    #[must_use]
+    pub const fn has_pending_work(&self) -> bool {
+        self.pending_work
     }
 
     /// Whether the retained adoption has completed exact cutover validation.
@@ -582,6 +604,31 @@ pub fn model_archive_sweep_pages_with_bounds_v1(
     Ok(model)
 }
 
+/// Shared cooperative stop token. It never cancels an acknowledged game tick.
+#[derive(Clone, Debug, Default)]
+pub struct ArchiveWorkerCancellationV1(Arc<AtomicBool>);
+
+impl ArchiveWorkerCancellationV1 {
+    /// Stop before the next publication; any uncommitted work rolls back.
+    pub fn request_stop(&self) {
+        self.0.store(true, Ordering::Release);
+    }
+
+    /// Whether the owner has requested stop.
+    #[must_use]
+    pub fn is_stopped(&self) -> bool {
+        self.0.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn check(&self) -> Result<(), SemanticArchiveErrorV1> {
+        if self.is_stopped() {
+            Err(SemanticArchiveErrorV1::WorkerCanceled)
+        } else {
+            Ok(())
+        }
+    }
+}
+
 /// Production Archive worker that composes a content producer with the
 /// semantic Archive store.
 pub struct ArchiveWorkerV1 {
@@ -623,6 +670,23 @@ impl ArchiveWorkerV1 {
         campaign_id: CampaignId,
         producer: &dyn ArchiveDossierProducerV1,
     ) -> Result<ArchiveWorkerSweepReportV1, SemanticArchiveErrorV1> {
-        crate::archive_revision::worker::sweep(&self.store, campaign_id, producer)
+        self.sweep_cancellable(
+            campaign_id,
+            producer,
+            &ArchiveWorkerCancellationV1::default(),
+        )
+    }
+
+    /// Run the same canonical sweep with cooperative publication-boundary stop.
+    ///
+    /// # Errors
+    /// Preserves producer/database refusals; returns `WorkerCanceled` on stop.
+    pub fn sweep_cancellable(
+        &mut self,
+        campaign_id: CampaignId,
+        producer: &dyn ArchiveDossierProducerV1,
+        cancellation: &ArchiveWorkerCancellationV1,
+    ) -> Result<ArchiveWorkerSweepReportV1, SemanticArchiveErrorV1> {
+        crate::archive_revision::worker::sweep(&self.store, campaign_id, producer, cancellation)
     }
 }

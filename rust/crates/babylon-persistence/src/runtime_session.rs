@@ -1,6 +1,6 @@
 //! Bounded parent-pipe runtime control. Only empty-action next-week commits exist.
 
-use std::io::{BufRead, Read as _, Write};
+use std::io::{BufRead, Write};
 
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_practice_contract::ordered_action_v1::OrderedPracticeActionBatchV1;
@@ -12,9 +12,11 @@ use crate::{
     michigan_content::{admit_michigan_content_v1, MichiganContentPresetV1},
     michigan_economy::digest_hex,
     michigan_material::MichiganDeliveryPresetV1,
-    CampaignId, CompositeArchiveDossierProducerV1, CountyDossierProducerV1, PlaceDossierProducerV1,
-    SemanticArchiveStoreV1,
+    CampaignId, SemanticArchiveStoreV1,
 };
+
+mod coordinator;
+mod input;
 
 pub const RUNTIME_SESSION_PROTOCOL_VERSION_V2: u16 = 2;
 pub const RUNTIME_SESSION_MAX_LINE_BYTES_V2: usize = 4096;
@@ -126,19 +128,12 @@ impl std::fmt::Display for RuntimeSessionErrorCodeV2 {
 }
 impl std::error::Error for RuntimeSessionErrorCodeV2 {}
 
-#[derive(Clone, Copy)]
-struct ArchiveMaintenanceProgress {
-    verified_tick: u64,
-    retention_ready: bool,
-}
-
 trait SessionBackend {
     fn tail(&self) -> RuntimeSessionTailV2;
     fn advance(
         &mut self,
         expected: &RuntimeSessionTailV2,
     ) -> Result<RuntimeSessionTailV2, RuntimeSessionErrorCodeV2>;
-    fn sweep(&mut self) -> Result<ArchiveMaintenanceProgress, RuntimeSessionErrorCodeV2>;
 }
 
 struct DurableBackend {
@@ -193,21 +188,6 @@ impl SessionBackend for DurableBackend {
         };
         Ok(self.tail.clone())
     }
-    fn sweep(&mut self) -> Result<ArchiveMaintenanceProgress, RuntimeSessionErrorCodeV2> {
-        let county = CountyDossierProducerV1::try_new(&self.config)
-            .map_err(|_| RuntimeSessionErrorCodeV2::ArchiveRefused)?;
-        let place = PlaceDossierProducerV1::try_new(&self.config)
-            .map_err(|_| RuntimeSessionErrorCodeV2::ArchiveRefused)?;
-        let producer =
-            CompositeArchiveDossierProducerV1::new(vec![Box::new(county), Box::new(place)]);
-        let report = crate::ArchiveWorkerV1::new(&self.config)
-            .sweep_once(self.campaign, &producer)
-            .map_err(|_| RuntimeSessionErrorCodeV2::ArchiveRefused)?;
-        Ok(ArchiveMaintenanceProgress {
-            verified_tick: report.verified_tick(),
-            retention_ready: report.retention_ready(),
-        })
-    }
 }
 
 fn durable_tail(
@@ -260,133 +240,6 @@ fn emit(
         .map_err(|_| RuntimeSessionErrorCodeV2::PipeFailure)
 }
 
-fn serve_session(
-    input: &mut impl BufRead,
-    output: &mut impl Write,
-    backend: &mut impl SessionBackend,
-    campaign: &str,
-    foundation_digest: String,
-) -> Result<(), RuntimeSessionErrorCodeV2> {
-    emit(
-        output,
-        &RuntimeSessionResponseV2::Ready {
-            protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION_V2,
-            campaign_id: campaign.to_owned(),
-            foundation_digest,
-            tail: backend.tail(),
-        },
-    )?;
-    loop {
-        let mut line = Vec::new();
-        let size = (&mut *input)
-            .take((RUNTIME_SESSION_MAX_LINE_BYTES_V2 + 1) as u64)
-            .read_until(b'\n', &mut line)
-            .map_err(|_| RuntimeSessionErrorCodeV2::PipeFailure)?;
-        if size == 0 {
-            return Ok(());
-        }
-        if size > RUNTIME_SESSION_MAX_LINE_BYTES_V2 || !line.ends_with(b"\n") {
-            emit(
-                output,
-                &RuntimeSessionResponseV2::Error {
-                    request_id: None,
-                    code: RuntimeSessionErrorCodeV2::InvalidRequest,
-                    tail: backend.tail(),
-                },
-            )?;
-            return Err(RuntimeSessionErrorCodeV2::InvalidRequest);
-        }
-        let Ok(request) = serde_json::from_slice::<RuntimeSessionRequestV2>(&line) else {
-            emit(
-                output,
-                &RuntimeSessionResponseV2::Error {
-                    request_id: None,
-                    code: RuntimeSessionErrorCodeV2::InvalidRequest,
-                    tail: backend.tail(),
-                },
-            )?;
-            continue;
-        };
-        let (version, selected_campaign, request_id) = request.header();
-        let refusal = if version != RUNTIME_SESSION_PROTOCOL_VERSION_V2 {
-            Some(RuntimeSessionErrorCodeV2::UnsupportedVersion)
-        } else if selected_campaign != campaign {
-            Some(RuntimeSessionErrorCodeV2::CampaignMismatch)
-        } else {
-            None
-        };
-        if let Some(code) = refusal {
-            emit(
-                output,
-                &RuntimeSessionResponseV2::Error {
-                    request_id: Some(request_id),
-                    code,
-                    tail: backend.tail(),
-                },
-            )?;
-            continue;
-        }
-        match request {
-            RuntimeSessionRequestV2::Stop { .. } => {
-                emit(output, &RuntimeSessionResponseV2::Stopped { request_id })?;
-                return Ok(());
-            }
-            RuntimeSessionRequestV2::Advance { expected_tail, .. } => {
-                match backend.advance(&expected_tail) {
-                    Ok(tail) => emit(
-                        output,
-                        &RuntimeSessionResponseV2::Committed {
-                            request_id,
-                            campaign_id: campaign.to_owned(),
-                            tail,
-                        },
-                    )?,
-                    Err(code) => {
-                        emit(
-                            output,
-                            &RuntimeSessionResponseV2::Error {
-                                request_id: Some(request_id),
-                                code,
-                                tail: backend.tail(),
-                            },
-                        )?;
-                        continue;
-                    }
-                }
-                // Ack is flushed before one bounded sweep. A dead parent cannot
-                // request a further tick; a committed in-flight tick stays durable.
-                emit_archive_progress(output, backend, campaign, Some(request_id))?;
-            }
-            RuntimeSessionRequestV2::RefreshArchive { .. } => {
-                emit_archive_progress(output, backend, campaign, Some(request_id))?;
-            }
-        }
-    }
-}
-
-fn emit_archive_progress(
-    output: &mut impl Write,
-    backend: &mut impl SessionBackend,
-    campaign: &str,
-    request_id: Option<u64>,
-) -> Result<(), RuntimeSessionErrorCodeV2> {
-    let response = match backend.sweep() {
-        Ok(progress) => RuntimeSessionResponseV2::ArchiveProgress {
-            request_id,
-            campaign_id: campaign.to_owned(),
-            durable_tick: backend.tail().resolve_tick,
-            verified_tick: progress.verified_tick,
-            retention_ready: progress.retention_ready,
-        },
-        Err(code) => RuntimeSessionResponseV2::Error {
-            request_id,
-            code,
-            tail: backend.tail(),
-        },
-    };
-    emit(output, &response)
-}
-
 /// Run the parent-owned control protocol over explicit bounded byte streams.
 /// # Errors
 /// Refuses foundations outside the closed, versioned Michigan content catalog,
@@ -395,7 +248,7 @@ pub fn run_runtime_session_v2(
     config: &Config,
     campaign: CampaignId,
     requested_preset: Option<MichiganDeliveryPresetV1>,
-    input: &mut impl BufRead,
+    input: impl BufRead + Send + 'static,
     output: &mut impl Write,
 ) -> Result<(), RuntimeSessionErrorCodeV2> {
     let bounded = crate::material_runtime::bounded_material_writer_config_v3(config)
@@ -440,12 +293,16 @@ pub fn run_runtime_session_v2(
         runtime,
         tail,
     };
-    serve_session(
+    coordinator::serve(
         input,
         output,
         &mut backend,
         &campaign.as_uuid().to_string(),
         foundation_digest,
+        |events| {
+            crate::archive_driver::ArchiveDriverV1::start(config, campaign, events)
+                .map_err(|_| RuntimeSessionErrorCodeV2::ArchiveRefused)
+        },
     )
 }
 
@@ -518,7 +375,7 @@ pub fn run_runtime_session_stdio_v2(
         config,
         campaign,
         requested_preset,
-        &mut std::io::stdin().lock(),
+        std::io::BufReader::new(std::io::stdin()),
         &mut std::io::stdout().lock(),
     )
 }
@@ -551,227 +408,5 @@ mod tests {
             select_content_preset(None, Some(MichiganDeliveryPresetV1::Delayed)),
             Ok(MichiganContentPresetV1::BundlesDelayedV3)
         );
-    }
-
-    #[derive(Default)]
-    struct Backend {
-        tick: u64,
-        fail_commit: bool,
-        sweeps: usize,
-    }
-    impl SessionBackend for Backend {
-        fn tail(&self) -> RuntimeSessionTailV2 {
-            RuntimeSessionTailV2 {
-                resolve_tick: self.tick,
-                tick_content_hash: (self.tick > 0).then(|| format!("{:064x}", self.tick)),
-            }
-        }
-        fn advance(
-            &mut self,
-            expected: &RuntimeSessionTailV2,
-        ) -> Result<RuntimeSessionTailV2, RuntimeSessionErrorCodeV2> {
-            if expected != &self.tail() {
-                return Err(RuntimeSessionErrorCodeV2::StaleExpectedTail);
-            }
-            if self.fail_commit {
-                return Err(RuntimeSessionErrorCodeV2::CommitRefused);
-            }
-            self.tick += 1;
-            Ok(self.tail())
-        }
-        fn sweep(&mut self) -> Result<ArchiveMaintenanceProgress, RuntimeSessionErrorCodeV2> {
-            self.sweeps += 1;
-            Ok(ArchiveMaintenanceProgress {
-                verified_tick: self.tick,
-                retention_ready: true,
-            })
-        }
-    }
-    fn advance() -> RuntimeSessionRequestV2 {
-        RuntimeSessionRequestV2::Advance {
-            protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION_V2,
-            campaign_id: "campaign".to_owned(),
-            request_id: 1,
-            expected_tail: RuntimeSessionTailV2 {
-                resolve_tick: 0,
-                tick_content_hash: None,
-            },
-        }
-    }
-    fn wire(request: &RuntimeSessionRequestV2) -> Vec<u8> {
-        let mut line = serde_json::to_vec(request).unwrap();
-        line.push(b'\n');
-        line
-    }
-    fn responses(output: &[u8]) -> Vec<RuntimeSessionResponseV2> {
-        output
-            .split(|byte| *byte == b'\n')
-            .filter(|line| !line.is_empty())
-            .map(|line| serde_json::from_slice(line).unwrap())
-            .collect()
-    }
-    #[test]
-    fn acknowledgement_follows_commit_and_precedes_archive_progress() {
-        let mut backend = Backend::default();
-        let mut output = Vec::new();
-        serve_session(
-            &mut std::io::Cursor::new(wire(&advance())),
-            &mut output,
-            &mut backend,
-            "campaign",
-            "digest".into(),
-        )
-        .unwrap();
-        let rows = responses(&output);
-        assert!(matches!(rows[0], RuntimeSessionResponseV2::Ready { .. }));
-        assert!(matches!(
-            rows[1],
-            RuntimeSessionResponseV2::Committed { .. }
-        ));
-        assert!(matches!(
-            rows[2],
-            RuntimeSessionResponseV2::ArchiveProgress { .. }
-        ));
-        assert_eq!(backend.tick, 1);
-    }
-
-    #[test]
-    fn queued_stop_finishes_current_commit_and_prevents_any_later_advance() {
-        let mut backend = Backend::default();
-        let mut output = Vec::new();
-        let mut input = wire(&advance());
-        input.extend(wire(&RuntimeSessionRequestV2::Stop {
-            protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION_V2,
-            campaign_id: "campaign".into(),
-            request_id: 0,
-        }));
-        input.extend(wire(&advance()));
-        serve_session(
-            &mut std::io::Cursor::new(input),
-            &mut output,
-            &mut backend,
-            "campaign",
-            "digest".into(),
-        )
-        .unwrap();
-        let rows = responses(&output);
-        assert_eq!(rows.len(), 4);
-        assert!(matches!(
-            rows[1],
-            RuntimeSessionResponseV2::Committed { .. }
-        ));
-        assert!(matches!(
-            rows[2],
-            RuntimeSessionResponseV2::ArchiveProgress { .. }
-        ));
-        assert!(matches!(
-            rows[3],
-            RuntimeSessionResponseV2::Stopped { request_id: 0 }
-        ));
-        assert_eq!(backend.tick, 1);
-        assert_eq!(backend.sweeps, 1);
-    }
-    #[test]
-    fn failed_commit_has_no_acknowledgement_or_archive_sweep() {
-        let mut backend = Backend {
-            fail_commit: true,
-            ..Backend::default()
-        };
-        let mut output = Vec::new();
-        serve_session(
-            &mut std::io::Cursor::new(wire(&advance())),
-            &mut output,
-            &mut backend,
-            "campaign",
-            "digest".into(),
-        )
-        .unwrap();
-        assert!(matches!(
-            responses(&output)[1],
-            RuntimeSessionResponseV2::Error {
-                code: RuntimeSessionErrorCodeV2::CommitRefused,
-                ..
-            }
-        ));
-        assert_eq!((backend.tick, backend.sweeps), (0, 0));
-    }
-    #[test]
-    fn duplicate_stale_command_advances_only_once_and_eof_does_not_tick() {
-        let mut commands = wire(&advance());
-        commands.extend(wire(&advance()));
-        let mut backend = Backend::default();
-        let mut output = Vec::new();
-        serve_session(
-            &mut std::io::Cursor::new(commands),
-            &mut output,
-            &mut backend,
-            "campaign",
-            "digest".into(),
-        )
-        .unwrap();
-        assert_eq!(backend.tick, 1);
-        assert!(matches!(
-            responses(&output)[3],
-            RuntimeSessionResponseV2::Error {
-                code: RuntimeSessionErrorCodeV2::StaleExpectedTail,
-                ..
-            }
-        ));
-    }
-    #[test]
-    fn extra_actions_and_unknown_version_cannot_reach_commit() {
-        assert!(serde_json::from_str::<RuntimeSessionRequestV2>(r#"{"type":"advance","protocol_version":2,"campaign_id":"campaign","request_id":1,"expected_tail":{"resolve_tick":0,"tick_content_hash":null},"actions":[1]}"#).is_err());
-        for rejected_version in [1, 3] {
-            let mut request = advance();
-            if let RuntimeSessionRequestV2::Advance {
-                protocol_version, ..
-            } = &mut request
-            {
-                *protocol_version = rejected_version;
-            }
-            let mut backend = Backend::default();
-            let mut output = Vec::new();
-            serve_session(
-                &mut std::io::Cursor::new(wire(&request)),
-                &mut output,
-                &mut backend,
-                "campaign",
-                "digest".into(),
-            )
-            .unwrap();
-            assert_eq!(backend.tick, 0);
-            let rows = responses(&output);
-            assert!(matches!(
-                rows[0],
-                RuntimeSessionResponseV2::Ready {
-                    protocol_version: 2,
-                    ..
-                }
-            ));
-            assert!(matches!(
-                rows[1],
-                RuntimeSessionResponseV2::Error {
-                    code: RuntimeSessionErrorCodeV2::UnsupportedVersion,
-                    ..
-                }
-            ));
-        }
-        assert!(serde_json::from_str::<RuntimeSessionResponseV2>(r#"{"type":"archive_progress","request_id":0,"campaign_id":"campaign","durable_tick":1,"verified_tick":1}"#).is_err());
-    }
-    #[test]
-    fn oversized_line_is_refused_before_parsing() {
-        let mut backend = Backend::default();
-        let mut output = Vec::new();
-        assert_eq!(
-            serve_session(
-                &mut std::io::Cursor::new(vec![b' '; RUNTIME_SESSION_MAX_LINE_BYTES_V2 + 1]),
-                &mut output,
-                &mut backend,
-                "campaign",
-                "digest".into()
-            ),
-            Err(RuntimeSessionErrorCodeV2::InvalidRequest)
-        );
-        assert_eq!(backend.tick, 0);
     }
 }

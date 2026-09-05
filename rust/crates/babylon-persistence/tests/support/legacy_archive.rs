@@ -24,6 +24,8 @@ pub fn restore_legacy_heads(config: &Config) {
         FROM (SELECT DISTINCT ON(campaign_id,subject_kind,subject_id) * FROM babylon_meta.archive_page_revision_v2 \
           ORDER BY campaign_id,subject_kind,subject_id,effective_tick DESC,origin DESC) page \
         JOIN babylon_meta.archive_revision_atom_v2 membership USING(campaign_id,subject_kind,subject_id,effective_tick,origin); \
+        DROP FUNCTION babylon_meta.archive_wakeup_v1() CASCADE; \
+        DROP TABLE babylon_meta.archive_wakeup_schema_v1; \
         DROP VIEW public.v_archive_revision_scope_v2,public.v_archive_revision_atom_v2, \
           public.v_archive_revision_grant_v2,public.v_archive_revision_known_v2, \
           public.v_archive_revision_index_v2,public.v_archive_retention_v2, \

@@ -69,10 +69,6 @@ struct PendingObservation(
 #[derive(Resource, Default)]
 struct PlaybackClock {
     elapsed: f64,
-    archive_elapsed: f64,
-    archive_pending: bool,
-    verified_tick: u64,
-    retention_ready: bool,
 }
 
 #[derive(Resource, Default)]
@@ -200,7 +196,6 @@ fn receive(
     pipe: Option<Res<RuntimePipe>>,
     mut state: ResMut<ObserverSession>,
     mut refresh: ResMut<DossierRefresh>,
-    mut clock: ResMut<PlaybackClock>,
 ) {
     if state.phase == SessionPhase::Closed {
         return;
@@ -260,29 +255,26 @@ fn receive(
                 campaign_id,
                 durable_tick,
                 verified_tick,
-                retention_ready,
                 ..
             } => {
                 if campaign_id != state.campaign.as_uuid().to_string()
                     || durable_tick != state.durable_tick
                     || verified_tick > durable_tick
+                    || verified_tick < state.archive_verified_tick
                 {
-                    state.fail("Archive acknowledgement identity mismatch".into());
+                    state.fail("Archive progress identity or watermark mismatch".into());
                     break;
                 }
-                clock.archive_pending = false;
                 if state.archive_verified_tick != verified_tick {
                     state.archive_verified_tick = verified_tick;
                 }
-                clock.verified_tick = verified_tick;
-                clock.retention_ready = retention_ready;
-                // Maintenance can validate retained pages without advancing the
-                // receipt prefix, including an adopted save at its horizon.
-                // The scoped reader, not this global watermark, certifies them.
+                // A pushed partial publication can change a held page without
+                // moving this prefix, including at foundation or the horizon.
+                // Neither progress nor its retention flag certifies that page:
+                // only the freshly scoped reader can do so.
                 refresh.bump();
             }
             RuntimeSessionResponseV2::Error { code, tail, .. } => {
-                clock.archive_pending = false;
                 if code == babylon_persistence::RuntimeSessionErrorCodeV2::HorizonComplete
                     && tail.resolve_tick == state.durable_tick
                     && tail.tick_content_hash == state.content_hash
@@ -645,23 +637,6 @@ fn playback(
     } else {
         clock.elapsed = 0.0;
     }
-    if matches!(state.phase, SessionPhase::Ready | SessionPhase::Complete)
-        && (state.durable_tick > clock.verified_tick || !clock.retention_ready)
-        && !clock.archive_pending
-    {
-        clock.archive_elapsed += time.delta_secs_f64();
-        if clock.archive_elapsed >= 0.5 {
-            clock.archive_elapsed = 0.0;
-            let request = RuntimeSessionRequestV2::RefreshArchive {
-                protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION_V2,
-                campaign_id: state.campaign.as_uuid().to_string(),
-                request_id: 0,
-            };
-            if pipe.requests.try_send(request).is_ok() {
-                clock.archive_pending = true;
-            }
-        }
-    }
 }
 
 fn finish_shutdown(
@@ -957,13 +932,8 @@ mod tests {
             .world_mut()
             .resource_mut::<ObserverSession>()
             .run_or_resume_month());
-        app.insert_resource(PlaybackClock {
-            verified_tick: 3,
-            retention_ready: true,
-            elapsed: 10.0,
-            ..default()
-        })
-        .add_systems(Update, playback.after(handle_commands));
+        app.insert_resource(PlaybackClock { elapsed: 10.0 })
+            .add_systems(Update, playback.after(handle_commands));
         app.world_mut()
             .resource_mut::<Time>()
             .advance_by(std::time::Duration::from_secs(2));
@@ -1050,7 +1020,7 @@ mod tests {
                 durable_tick: 3,
                 verified_tick: 1,
                 retention_ready: true,
-                request_id: Some(0),
+                request_id: None,
             }))
             .unwrap();
         app.update();
@@ -1069,7 +1039,7 @@ mod tests {
     }
 
     #[test]
-    fn archive_maintenance_validates_a_caught_up_foundation_or_horizon_without_advancing() {
+    fn archive_push_refreshes_foundation_and_horizon_without_client_polling() {
         for tick in [0, 16] {
             let (mut app, requests, responses) = quit_app();
             {
@@ -1083,35 +1053,31 @@ mod tests {
                     state.complete();
                 }
             }
-            app.world_mut()
-                .resource_mut::<PlaybackClock>()
-                .verified_tick = tick;
             app.add_systems(Update, playback.after(finish_shutdown));
             app.world_mut()
                 .resource_mut::<Time>()
-                .advance_by(std::time::Duration::from_secs(1));
+                .advance_by(std::time::Duration::from_secs(2));
             let campaign_id = app
                 .world()
                 .resource::<ObserverSession>()
                 .campaign
                 .as_uuid()
                 .to_string();
+            let context = app.world().resource::<ObserverSession>().context();
             let initial_refresh = app.world().resource::<DossierRefresh>().0;
-            app.update();
-            assert!(matches!(
-                requests.try_recv().unwrap(),
-                RuntimeSessionRequestV2::RefreshArchive { .. }
-            ));
-            app.update();
-            assert!(
-                requests.try_recv().is_err(),
-                "one maintenance request at a time"
-            );
-
-            for (index, retention_ready) in [false, true].into_iter().enumerate() {
+            for _ in 0..3 {
+                app.update();
+                assert!(
+                    requests.try_recv().is_err(),
+                    "Archive work is pushed; a paused client never polls"
+                );
+            }
+            // A partial publication can advance even when P and the retention
+            // flag are unchanged. Every genuine push invalidates the held read.
+            for (index, retention_ready) in [false, false, true].into_iter().enumerate() {
                 responses
                     .send(Ok(RuntimeSessionResponseV2::ArchiveProgress {
-                        request_id: Some(0),
+                        request_id: None,
                         campaign_id: campaign_id.clone(),
                         durable_tick: tick,
                         verified_tick: tick,
@@ -1121,41 +1087,204 @@ mod tests {
                 app.update();
                 assert_eq!(
                     app.world().resource::<DossierRefresh>().0,
-                    initial_refresh + u64::try_from(index).unwrap() + 1,
-                    "every completed maintenance response refreshes the scoped dossier"
+                    initial_refresh + u64::try_from(index).unwrap() + 1
                 );
                 let state = app.world().resource::<ObserverSession>();
+                assert_eq!(state.context(), context);
                 assert_eq!(state.durable_tick, tick);
-                assert_eq!(state.viewed_tick, tick);
                 assert_eq!(state.archive_verified_tick, tick);
                 assert!(!state.playing);
-                if retention_ready {
-                    assert!(requests.try_recv().is_err(), "validated maintenance stops");
-                } else {
-                    assert!(matches!(
-                        requests.try_recv().unwrap(),
-                        RuntimeSessionRequestV2::RefreshArchive { .. }
-                    ));
-                }
+                assert!(
+                    requests.try_recv().is_err(),
+                    "progress never requests another sweep or tick"
+                );
             }
             app.update();
             assert!(requests.try_recv().is_err());
             assert_eq!(
                 app.world().resource::<DossierRefresh>().0,
-                initial_refresh + 2
+                initial_refresh + 3
             );
         }
     }
 
     #[test]
+    fn archive_push_rejects_wrong_identity_future_tail_and_regressing_prefix() {
+        for (wrong_campaign, durable_tick, verified_tick) in [
+            (true, 3, 2),
+            (false, 2, 2),
+            (false, 4, 2),
+            (false, 3, 4),
+            (false, 3, 1),
+        ] {
+            let (mut app, requests, responses) = quit_app();
+            app.world_mut()
+                .resource_mut::<ObserverSession>()
+                .archive_verified_tick = 2;
+            let state = app.world().resource::<ObserverSession>();
+            let campaign_id = if wrong_campaign {
+                uuid::Uuid::from_u128(999).to_string()
+            } else {
+                state.campaign.as_uuid().to_string()
+            };
+            let context = state.context();
+            responses
+                .send(Ok(RuntimeSessionResponseV2::ArchiveProgress {
+                    request_id: None,
+                    campaign_id,
+                    durable_tick,
+                    verified_tick,
+                    retention_ready: true,
+                }))
+                .unwrap();
+            app.update();
+            let state = app.world().resource::<ObserverSession>();
+            assert_eq!(state.phase, SessionPhase::Failed);
+            assert_eq!(state.context(), context);
+            assert_eq!(state.durable_tick, 3);
+            assert_eq!(state.archive_verified_tick, 2);
+            assert_eq!(app.world().resource::<DossierRefresh>().0, 0);
+            assert!(requests.try_recv().is_err());
+        }
+    }
+
+    #[test]
+    fn archive_push_invalidates_a_held_read_without_certifying_its_page() {
+        use crate::ui::dossier_card::{ActiveCountyDossier, DossierRequestScope, InstalledDossier};
+        use babylon_persistence::archive_revision::{
+            ArchiveDossierPendingV2, ArchiveDossierReadV2, ArchiveDossierStateV2,
+            ArchiveReadScopeV2,
+        };
+        use babylon_persistence::{ArchivePageRefV1, ArchiveSubjectKindV1};
+        let (mut app, requests, responses) = quit_app();
+        {
+            let mut state = app.world_mut().resource_mut::<ObserverSession>();
+            state.content_hash = Some("a".repeat(64));
+            state.foundation_digest = Some("foundation".into());
+            state.archive_verified_tick = 2;
+        }
+        let state = app.world().resource::<ObserverSession>();
+        let campaign = state.campaign;
+        let context = state.context();
+        let frame = ObserverFrame(Some(snapshot_with_event(state, "production", 3)));
+        let scope = ArchiveReadScopeV2::committed(campaign, 3, [0xaa; 32]).unwrap();
+        let subject =
+            ArchivePageRefV1::try_new(ArchiveSubjectKindV1::County, "26163".into()).unwrap();
+        let read = ArchiveDossierReadV2 {
+            scope: scope.clone(),
+            subject: subject.clone(),
+            durable_tick: 3,
+            processed_tick: 2,
+            history_floor_tick: 0,
+            state: ArchiveDossierStateV2::Pending {
+                page: None,
+                reason: ArchiveDossierPendingV2::ReceiptProcessing,
+            },
+        };
+        let active = ActiveCountyDossier(Some(InstalledDossier {
+            scope: DossierRequestScope {
+                campaign,
+                county_geoid: "26163".into(),
+                refresh_generation: 0,
+                observer: Some(context.clone()),
+                read_scope: scope,
+                subject,
+            },
+            read: read.clone(),
+        }));
+        assert!(active.for_observer(state, &frame, 0, "26163").is_some());
+        app.insert_resource(frame).insert_resource(active);
+        responses
+            .send(Ok(RuntimeSessionResponseV2::ArchiveProgress {
+                request_id: None,
+                campaign_id: campaign.as_uuid().to_string(),
+                durable_tick: 3,
+                verified_tick: 2,
+                retention_ready: true,
+            }))
+            .unwrap();
+        app.update();
+        let world = app.world();
+        let active = world.resource::<ActiveCountyDossier>();
+        let state = world.resource::<ObserverSession>();
+        let refresh = world.resource::<DossierRefresh>().0;
+        assert_eq!(refresh, 1);
+        assert_eq!(state.context(), context);
+        assert!(active
+            .for_observer(state, world.resource::<ObserverFrame>(), refresh, "26163")
+            .is_none());
+        assert_eq!(
+            active.0.as_ref().unwrap().read,
+            read,
+            "a progress notification cannot replace or verify the scoped reader's page"
+        );
+        assert!(requests.try_recv().is_err());
+    }
+
+    #[test]
+    fn archive_push_during_an_advance_never_substitutes_for_its_commit_ack() {
+        let (mut app, requests, responses) = quit_app();
+        dispatch(&mut app, &[ObserverCommand::Step]);
+        let RuntimeSessionRequestV2::Advance {
+            request_id,
+            campaign_id,
+            ..
+        } = requests.try_recv().unwrap()
+        else {
+            panic!("one explicit advance request");
+        };
+        responses
+            .send(Ok(RuntimeSessionResponseV2::ArchiveProgress {
+                request_id: None,
+                campaign_id: campaign_id.clone(),
+                durable_tick: 3,
+                verified_tick: 2,
+                retention_ready: false,
+            }))
+            .unwrap();
+        app.update();
+        let state = app.world().resource::<ObserverSession>();
+        assert!(state.advance_pending());
+        assert_eq!(state.phase, SessionPhase::Advancing);
+        assert_eq!(state.durable_tick, 3);
+        responses
+            .send(Ok(RuntimeSessionResponseV2::Committed {
+                request_id,
+                campaign_id: campaign_id.clone(),
+                tail: RuntimeSessionTailV2 {
+                    resolve_tick: 4,
+                    tick_content_hash: Some("4".repeat(64)),
+                },
+            }))
+            .unwrap();
+        responses
+            .send(Ok(RuntimeSessionResponseV2::ArchiveProgress {
+                request_id: None,
+                campaign_id,
+                durable_tick: 4,
+                verified_tick: 3,
+                retention_ready: true,
+            }))
+            .unwrap();
+        app.update();
+        let state = app.world().resource::<ObserverSession>();
+        assert!(!state.advance_pending());
+        assert_eq!(state.phase, SessionPhase::Loading);
+        assert_eq!(state.durable_tick, 4);
+        assert_eq!(
+            state.content_hash.as_deref(),
+            Some("4".repeat(64)).as_deref()
+        );
+        assert_eq!(state.archive_verified_tick, 3);
+        assert_eq!(app.world().resource::<DossierRefresh>().0, 3);
+        assert!(requests.try_recv().is_err());
+    }
+
+    #[test]
     fn monthly_playback_waits_for_each_ack_and_observation_then_stops_at_its_boundary() {
         let (mut app, requests) = command_app();
-        app.insert_resource(PlaybackClock {
-            verified_tick: 16,
-            retention_ready: true,
-            ..default()
-        })
-        .add_systems(Update, playback.after(handle_commands));
+        app.init_resource::<PlaybackClock>()
+            .add_systems(Update, playback.after(handle_commands));
         app.world_mut()
             .resource_mut::<Time>()
             .advance_by(std::time::Duration::from_secs(1));

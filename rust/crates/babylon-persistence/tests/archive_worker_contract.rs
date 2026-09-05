@@ -183,7 +183,9 @@ fn sweep_report_aggregates_dispositions_and_carries_the_persisted_watermark() {
             (4, ArchiveReceiptDispositionV1::Paged),
             (5, ArchiveReceiptDispositionV1::Paged),
         ],
+        9,
         7,
+        true,
         true,
     );
 

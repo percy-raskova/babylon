@@ -10,6 +10,8 @@ use std::str::FromStr;
 mod archive_reader;
 #[path = "archive_worker_live/revisions.rs"]
 mod revisions;
+#[path = "archive_worker_live/wakeup.rs"]
+mod wakeup;
 use archive_reader::{scope_at, with_reader};
 use babylon_persistence::archive_revision::{ArchiveDossierBoundsV2, ArchiveDossierStateV2};
 

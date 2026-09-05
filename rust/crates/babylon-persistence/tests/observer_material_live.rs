@@ -850,7 +850,7 @@ fn assert_session_admits_stored_revision(
         config,
         campaign,
         Some(preset.delivery()),
-        &mut std::io::Cursor::new(lines),
+        std::io::Cursor::new(lines),
         &mut output,
     )
     .unwrap();
@@ -1481,3 +1481,6 @@ mod campaign_writer_ownership {
         }
     }
 }
+
+#[path = "observer_material_live/runtime_process.rs"]
+mod runtime_process;

@@ -533,6 +533,7 @@ fn assert_owner_side_privilege_matrix(client: &mut postgres::Client) {
 /// `SET ROLE babylon_reader` on a superuser connection.
 fn assert_reader_query_refusals(client: &mut postgres::Client) {
     for relation in [
+        "archive_wakeup_schema_v1",
         "archive_revision_schema_v2",
         "archive_retention_v2",
         "archive_revision_grant_v2",
@@ -1493,7 +1494,7 @@ fn assert_material_stdio_advance(
         config,
         campaign,
         None,
-        &mut std::io::Cursor::new(input),
+        std::io::Cursor::new(input),
         &mut output,
     )
     .unwrap();
@@ -1505,9 +1506,24 @@ fn assert_material_stdio_advance(
     assert!(
         matches!(&responses[0],RuntimeSessionResponseV2::Ready{tail,..} if tail.resolve_tick==2)
     );
-    assert!(
-        matches!(&responses[1],RuntimeSessionResponseV2::Committed{tail,..} if tail.resolve_tick==3)
-    );
+    assert!(responses.iter().any(|response| matches!(
+        response,
+        RuntimeSessionResponseV2::Committed { request_id: 7, tail, .. }
+            if tail.resolve_tick == 3
+    )));
+    let mut acknowledged_tick = 2;
+    for response in &responses {
+        match response {
+            RuntimeSessionResponseV2::Ready { tail, .. }
+            | RuntimeSessionResponseV2::Committed { tail, .. } => {
+                acknowledged_tick = tail.resolve_tick;
+            }
+            RuntimeSessionResponseV2::ArchiveProgress { durable_tick, .. } => {
+                assert_eq!(*durable_tick, acknowledged_tick);
+            }
+            RuntimeSessionResponseV2::Error { .. } | RuntimeSessionResponseV2::Stopped { .. } => {}
+        }
+    }
     assert_eq!(observer.snapshot(campaign, 3).unwrap().resolve_tick, 3);
 }
 

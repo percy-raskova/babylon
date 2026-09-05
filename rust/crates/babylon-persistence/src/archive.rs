@@ -1246,7 +1246,17 @@ impl SemanticArchiveStoreV1 {
     pub fn install_schema(&self) -> Result<ArchiveSchemaDispositionV1, SemanticArchiveErrorV1> {
         let mut client = self.connect("connect Archive revision installer")?;
         if crate::archive_revision::schema::installed(&mut client)? {
-            return crate::archive_revision::schema::install(&mut client);
+            let revisions = crate::archive_revision::schema::install(&mut client)?;
+            let wakeup = crate::archive_wakeup::install(&mut client)?;
+            return Ok(
+                if revisions == ArchiveSchemaDispositionV1::Installed
+                    || wakeup == ArchiveSchemaDispositionV1::Installed
+                {
+                    ArchiveSchemaDispositionV1::Installed
+                } else {
+                    ArchiveSchemaDispositionV1::AlreadyCurrent
+                },
+            );
         }
         let mut disposition = self.install_base_schema()?;
         if self.install_atom_schema()? == ArchiveSchemaDispositionV1::Installed {
@@ -1258,6 +1268,9 @@ impl SemanticArchiveStoreV1 {
         if crate::archive_revision::schema::install(&mut client)?
             == ArchiveSchemaDispositionV1::Installed
         {
+            disposition = ArchiveSchemaDispositionV1::Installed;
+        }
+        if crate::archive_wakeup::install(&mut client)? == ArchiveSchemaDispositionV1::Installed {
             disposition = ArchiveSchemaDispositionV1::Installed;
         }
         Ok(disposition)
@@ -2031,6 +2044,8 @@ pub enum SemanticArchiveErrorV1 {
         /// The one-receipt page bound that the dirty set exceeded.
         limit: usize,
     },
+    /// Cooperative stop refused a new publication or rolled back uncommitted work.
+    WorkerCanceled,
     /// One database operation failed with a bounded secret-safe driver diagnostic.
     Database {
         /// Stable operation identity.

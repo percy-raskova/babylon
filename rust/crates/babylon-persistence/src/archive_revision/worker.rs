@@ -7,8 +7,8 @@ use super::{
 use crate::archive::{database, decode};
 use crate::{
     ArchiveDossierProducerV1, ArchiveMaterializeDispositionV1, ArchiveMaterializeModeV1,
-    ArchiveReceiptDispositionV1, ArchiveWorkerSweepReportV1, CampaignId, SemanticArchiveErrorV1,
-    SemanticArchiveStoreV1,
+    ArchiveReceiptDispositionV1, ArchiveWorkerCancellationV1, ArchiveWorkerSweepReportV1,
+    CampaignId, SemanticArchiveErrorV1, SemanticArchiveStoreV1,
 };
 use postgres::{Client, IsolationLevel};
 
@@ -16,10 +16,12 @@ pub(crate) fn sweep(
     store: &SemanticArchiveStoreV1,
     campaign: CampaignId,
     producer: &dyn ArchiveDossierProducerV1,
+    cancellation: &ArchiveWorkerCancellationV1,
 ) -> Result<ArchiveWorkerSweepReportV1, SemanticArchiveErrorV1> {
+    cancellation.check()?;
     let mut client = store.connect("connect ordered Archive worker")?;
     publication::with_campaign_lock(&mut client, campaign, |client| {
-        sweep_locked(client, campaign, producer)
+        sweep_locked(client, campaign, producer, cancellation)
     })
 }
 
@@ -27,9 +29,11 @@ fn sweep_locked(
     client: &mut Client,
     campaign: CampaignId,
     producer: &dyn ArchiveDossierProducerV1,
+    cancellation: &ArchiveWorkerCancellationV1,
 ) -> Result<ArchiveWorkerSweepReportV1, SemanticArchiveErrorV1> {
     let mut dispositions = Vec::new();
     for _ in 0..crate::ARCHIVE_SWEEP_MAX_RECEIPTS_V1 {
+        cancellation.check()?;
         let mut tx = client
             .build_transaction()
             .isolation_level(IsolationLevel::Serializable)
@@ -55,6 +59,7 @@ fn sweep_locked(
         } else {
             ArchiveMaterializeModeV1::Stage
         };
+        cancellation.check()?;
         let report = publication::publish(
             &mut tx,
             campaign,
@@ -64,6 +69,7 @@ fn sweep_locked(
             &known,
             coverage.as_deref(),
         )?;
+        cancellation.check()?;
         tx.commit()
             .map_err(|error| database("commit ordered Archive producer transaction", &error))?;
         if let Work::Receipt(receipt) = work {
@@ -81,12 +87,38 @@ fn sweep_locked(
             break;
         }
     }
-    let row=client.query_one("SELECT COALESCE((SELECT processed_tick FROM public.v_archive_verification_v1 WHERE campaign_id=$1),0), \
-        sealed FROM public.v_archive_retention_v2 WHERE campaign_id=$1",&[campaign.as_uuid()])
+    read_progress(client, campaign, dispositions)
+}
+
+fn read_progress(
+    client: &mut Client,
+    campaign: CampaignId,
+    dispositions: Vec<(u64, ArchiveReceiptDispositionV1)>,
+) -> Result<ArchiveWorkerSweepReportV1, SemanticArchiveErrorV1> {
+    let mut tx = client
+        .build_transaction()
+        .isolation_level(IsolationLevel::RepeatableRead)
+        .start()
+        .map_err(|error| database("begin coherent Archive progress", &error))?;
+    // Admit the exact seal and pending receipt identities in this same snapshot.
+    let pending = publication::next_work(&mut tx, campaign)?.is_some();
+    let row=tx.query_one("SELECT COALESCE(v.durable_tick,0),COALESCE(v.processed_tick,0),r.sealed \
+        FROM public.v_archive_retention_v2 r LEFT JOIN public.v_archive_verification_v1 v USING(campaign_id) \
+        WHERE r.campaign_id=$1",&[campaign.as_uuid()])
         .map_err(|error|database("read ordered Archive maintenance progress",&error))?;
-    Ok(ArchiveWorkerSweepReportV1::new(
+    let durable = super::storage::unsigned(decode(&row, 0)?)?;
+    let processed = super::storage::unsigned(decode(&row, 1)?)?;
+    if processed > durable {
+        return Err(SemanticArchiveErrorV1::StoredPageMismatch);
+    }
+    let report = ArchiveWorkerSweepReportV1::new(
         dispositions,
-        super::storage::unsigned(decode(&row, 0)?)?,
-        decode(&row, 1)?,
-    ))
+        durable,
+        processed,
+        decode(&row, 2)?,
+        pending,
+    );
+    tx.commit()
+        .map_err(|error| database("finish coherent Archive progress", &error))?;
+    Ok(report)
 }

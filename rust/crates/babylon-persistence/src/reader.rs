@@ -84,7 +84,7 @@ pub(crate) const READER_PRIVILEGE_CENSUS_SQL_V1: &str = "WITH RECURSIVE role_clo
     'archive_page_atom_v1','archive_page_retired_v1','archive_page_atom_retired_v1', \
     'archive_revision_schema_v2','archive_retention_v2','archive_page_revision_v2', \
     'archive_revision_atom_v2','archive_revision_grant_v2','archive_retention_seal_v2', \
-    'archive_tick_knowledge_v2','archive_tick_knowledge_member_v2')) \
+    'archive_tick_knowledge_v2','archive_tick_knowledge_member_v2','archive_wakeup_schema_v1')) \
     OR (namespace.nspname = 'public' AND relation.relname IN ('v_committed_tick_status_v1', \
     'v_archive_page_known_v1', 'v_archive_atom_visible', 'v_county_card_atoms', \
     'v_archive_subject_atoms', 'v_archive_verification_v1', \

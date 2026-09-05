@@ -13,7 +13,7 @@ schema:
   indexes: 101
 product:
   name: marxist-data-3NF.sqlite
-  sha256: 7e67f8cd44cf37864c9d0d46003e1f2edd4379d9e864d05668c705e8bb8157db
+  sha256: 180ba42868d5f34aafa58910f92aba51ba87cbd25e0528a6f9a42959e723c829
   page_size: 4096
   application_id: 1111573068
   user_version: 1
@@ -138,8 +138,8 @@ artifacts:
     home: dist/data-artifacts/bridge_cfs_county.parquet
     material_relation: >-
       county-to-CFS-area allocation crosswalk — the geographic key needed to scope FAF/CFS
-      freight flows to counties; currently empty, blocking Michigan-scoping of commodity-flow
-      value.
+      freight flows to counties. 3,148 rows across all 132 zones, built from the held FAF5
+      county-disaggregation factor files.
   - name: bridge_county_h3
     format: parquet
     source_table: bridge_county_h3
@@ -290,8 +290,8 @@ artifacts:
     source_table: dim_data_source
     generator: tools/make_data_artifacts.py
     mode: generate
-    rows: 21
-    sha256: cf03d6be85ef94da5cee948896c9147993cabbfdf574be3eba30e0069379929f
+    rows: 22
+    sha256: 3ad6eba44493882bb956632ed7a9760095fe64284276965839432baf2ca61069
     home: dist/data-artifacts/dim_data_source.parquet
     material_relation: >-
       provenance registry (agency/dataset per fact table) — the traceability backbone every
@@ -866,8 +866,8 @@ artifacts:
     source_table: fact_hpms_road_segment
     generator: tools/make_data_artifacts.py
     mode: generate
-    rows: 0
-    sha256: d7ed3725edddd71881c9e5974aff21f5c0bbe4daec43d2b1e86ec2dfcacfad96
+    rows: 352814
+    sha256: fafd085a9f1729705ead42ea5c9f229296edc02d6759cba3296965017384085e
     home: dist/data-artifacts/fact_hpms_road_segment.parquet
     material_relation: >-
       FHWA Highway Performance Monitoring System road-segment rows — the Transport Substrate

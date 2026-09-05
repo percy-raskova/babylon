@@ -66,6 +66,13 @@ updates:
     ignore:
       - dependency-name: "mypy"
         update-types: ["version-update:semver-major"]
+      # pyarrow stays byte-pinned for artifact determinism (see pyproject.toml);
+      # every bump is a declared regeneration ceremony, never a grouped PR.
+      - dependency-name: "pyarrow"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
 
   # ==========================================================================
   # GitHub Actions

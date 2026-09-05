@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -257,7 +258,8 @@ def test_persistence_bootstrap_provisions_mise_for_runtime_tasks() -> None:
     mise_setup = action.index("uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518 # v4")
     rust_setup = action.index("- name: Install pinned Rust toolchain")
     assert mise_setup < rust_setup
-    assert "version: 2026.8.12" in action[mise_setup:rust_setup]
+    required = tomllib.loads((ROOT / ".mise.toml").read_text(encoding="utf-8"))["min_version"]
+    assert f"version: {required}" in action[mise_setup:rust_setup]
 
 
 def test_pr_pg_lane_runs_the_rust_live_matrix_without_python_reference_data() -> None:

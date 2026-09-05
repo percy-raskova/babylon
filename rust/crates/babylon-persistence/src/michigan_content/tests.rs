@@ -109,13 +109,15 @@ fn admission_refuses_mixed_headers_graphs_and_unadmitted_versions() {
                 assert!(expected
                     .validate_graph(&mixed.graph_digest, &expected.scenario_digest)
                     .is_err());
+            }
+            if expected.scenario_digest != mixed.scenario_digest {
                 assert!(expected
                     .validate_graph(&expected.graph_digest, &mixed.scenario_digest)
                     .is_err());
             }
         }
         assert!(admit_michigan_content_v1(
-            "michigan-material-standard-v3",
+            "michigan-material-standard-v4",
             16,
             &expected.content_digest,
             &expected.digest,
@@ -142,13 +144,64 @@ fn admission_refuses_mixed_headers_graphs_and_unadmitted_versions() {
 }
 
 #[test]
+fn executable_bundles_change_content_identity_without_rewriting_v2_sources_or_physics() {
+    use crate::sector_bundle::foundation::decode_stored_bundle_defines_v1;
+    for (previous, current) in [
+        (
+            MichiganContentPresetV1::CohortsStandardV2,
+            MichiganContentPresetV1::BundlesStandardV3,
+        ),
+        (
+            MichiganContentPresetV1::CohortsDelayedV2,
+            MichiganContentPresetV1::BundlesDelayedV3,
+        ),
+    ] {
+        let old = previous.create_foundation().unwrap();
+        let new = current.create_foundation().unwrap();
+        let old_bundle = old.graph_foundation().content_bundle();
+        let new_bundle = new.graph_foundation().content_bundle();
+        let decoded = decode_stored_bundle_defines_v1(
+            new_bundle.defines_bytes(),
+            new.graph_foundation().content_digest().defines_hash,
+        )
+        .unwrap();
+        assert_eq!(decoded.observed_defines(), old_bundle.defines_bytes());
+        assert_eq!(
+            new_bundle.scenario_source_bytes(),
+            old_bundle.scenario_source_bytes()
+        );
+        assert_eq!(
+            new_bundle.reference_bundle_manifest_bytes(),
+            old_bundle.reference_bundle_manifest_bytes()
+        );
+        assert_eq!(new.initial_register(), old.initial_register());
+        assert_ne!(new.digest(), old.digest());
+        assert_ne!(new.spec().content_digest, old.spec().content_digest);
+        assert_ne!(
+            new.graph_foundation().canonical_bytes(),
+            old.graph_foundation().canonical_bytes()
+        );
+        assert_eq!(decoded.bundles().len(), 4);
+        // The same observed scenario identifies every cohort in both revisions.
+        assert_eq!(
+            current.admitted().unwrap().scenario_digest,
+            previous.admitted().unwrap().scenario_digest
+        );
+        assert_eq!(
+            previous.create_foundation().unwrap().canonical_bytes(),
+            old.canonical_bytes()
+        );
+    }
+}
+
+#[test]
 fn new_creation_and_old_identity_are_distinct_from_logical_delivery() {
     for preset in MICHIGAN_CONTENT_PRESETS_V1 {
         assert_eq!(MichiganContentPresetV1::from_id(preset.id()), Some(preset));
         let new = MichiganContentPresetV1::new_campaign(preset.delivery());
         assert_eq!(new.delivery(), preset.delivery());
         assert_eq!(new.scenario(), MICHIGAN_COHORT_SCENARIO_V2);
-        assert!(new.id().ends_with("-v2"));
+        assert!(new.id().ends_with("-v3"));
     }
     assert_eq!(MichiganContentPresetV1::from_id("standard"), None);
     assert_eq!(

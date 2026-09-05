@@ -709,13 +709,23 @@ mod tests {
     #[test]
     fn catalog_query_bindings_keep_each_complete_admission_tuple_aligned() {
         let bindings = CampaignCatalogBindings::admitted().unwrap();
-        assert_eq!(bindings.presets.len(), 4);
-        assert_eq!(bindings.horizons.len(), 4);
-        assert_eq!(bindings.content.len(), 4);
-        assert_eq!(bindings.foundations.len(), 4);
-        assert_eq!(bindings.graphs.len(), 4);
-        assert_eq!(bindings.scenarios.len(), 4);
-        for index in 0..4 {
+        assert_eq!(
+            bindings.presets,
+            [
+                "michigan-material-standard-v1",
+                "michigan-material-delayed-v1",
+                "michigan-material-standard-v2",
+                "michigan-material-delayed-v2",
+                "michigan-material-standard-v3",
+                "michigan-material-delayed-v3",
+            ]
+        );
+        assert_eq!(bindings.horizons, [16; 6]);
+        assert_eq!(bindings.content.len(), 6);
+        assert_eq!(bindings.foundations.len(), 6);
+        assert_eq!(bindings.graphs.len(), 6);
+        assert_eq!(bindings.scenarios.len(), 6);
+        for index in 0..6 {
             let entry = admit_michigan_content_v1(
                 &bindings.presets[index],
                 bindings.horizons[index],

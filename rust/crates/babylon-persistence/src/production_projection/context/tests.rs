@@ -143,6 +143,8 @@ fn v1_and_preview_clear_context_and_cannot_borrow_v2_subjects() {
                     preset,
                     MichiganContentPresetV1::CohortsStandardV2
                         | MichiganContentPresetV1::CohortsDelayedV2
+                        | MichiganContentPresetV1::BundlesStandardV3
+                        | MichiganContentPresetV1::BundlesDelayedV3
                 );
             assert_eq!(
                 candidate.observed_contexts.len(),
@@ -153,6 +155,36 @@ fn v1_and_preview_clear_context_and_cannot_borrow_v2_subjects() {
                 if allowed { 5 } else { 0 }
             );
         }
+    }
+}
+
+#[test]
+fn executable_bundles_retain_the_exact_observed_context_without_allocating_jobs() {
+    for (previous, current) in [
+        (
+            MichiganContentPresetV1::CohortsStandardV2,
+            MichiganContentPresetV1::BundlesStandardV3,
+        ),
+        (
+            MichiganContentPresetV1::CohortsDelayedV2,
+            MichiganContentPresetV1::BundlesDelayedV3,
+        ),
+    ] {
+        let mut old = opening();
+        let mut new = old.clone();
+        attach_observed_context_v1(
+            previous.admitted().unwrap(),
+            ObserverVisibilityV1::FullObserver,
+            &mut old,
+        )
+        .unwrap();
+        attach_observed_context_v1(
+            current.admitted().unwrap(),
+            ObserverVisibilityV1::FullObserver,
+            &mut new,
+        )
+        .unwrap();
+        assert_eq!(new, old);
     }
 }
 

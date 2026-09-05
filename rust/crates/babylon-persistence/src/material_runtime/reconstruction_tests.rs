@@ -273,3 +273,104 @@ fn large_v2_stored_sources_reconstruct_the_same_circuit_without_factory_substitu
     );
     assert_eq!(left.identity(), right.identity());
 }
+
+#[test]
+fn admitted_bundle_foundations_reconstruct_exactly_through_dispatch_transit_and_arrival() {
+    use crate::michigan_content::MichiganContentPresetV1;
+    for preset in [
+        MichiganContentPresetV1::BundlesStandardV3,
+        MichiganContentPresetV1::BundlesDelayedV3,
+    ] {
+        let original = preset.create_foundation().unwrap();
+        let restored = reconstruct_material_foundation_v2(
+            stored_copy(&original),
+            persisted_graph_copy(original.graph_foundation()),
+            preset.admitted().unwrap().digest(),
+        )
+        .unwrap();
+        assert_eq!(restored.canonical_bytes(), original.canonical_bytes());
+        assert_eq!(
+            restored.graph_foundation().content_bundle().defines_bytes(),
+            original.graph_foundation().content_bundle().defines_bytes()
+        );
+        let mut continued = original.into_session().unwrap();
+        let mut reopened = restored.into_session().unwrap();
+        let mut left_sink = CollectingSink::default();
+        let mut right_sink = CollectingSink::default();
+        for week in 1..=6 {
+            let actions = OrderedPracticeActionBatchV1::empty(
+                continued.graph_session().session_identity().clone(),
+                week,
+            )
+            .unwrap();
+            let left = continued.prepare_advance(&actions).unwrap();
+            let right = reopened.prepare_advance(&actions).unwrap();
+            assert_eq!(left.identity(), right.identity());
+            assert_eq!(
+                left.material().register().canonical_bytes(),
+                right.material().register().canonical_bytes()
+            );
+            assert_eq!(
+                left.material().receipt_bytes(),
+                right.material().receipt_bytes()
+            );
+            continued
+                .commit_prepared_and_publish(&mut left_sink, left, |_| {
+                    Ok::<_, ()>(ReplayCommitDispositionV1::Committed)
+                })
+                .unwrap();
+            reopened
+                .commit_prepared_and_publish(&mut right_sink, right, |_| {
+                    Ok::<_, ()>(ReplayCommitDispositionV1::Committed)
+                })
+                .unwrap();
+        }
+    }
+}
+
+#[test]
+fn bundle_reconstruction_refuses_alternate_content_and_individually_valid_changed_stock() {
+    use crate::michigan_content::MichiganContentPresetV1;
+    let preset = MichiganContentPresetV1::BundlesStandardV3;
+    let original = preset.create_foundation().unwrap();
+    let expected = preset.admitted().unwrap().digest();
+    let previous = MichiganContentPresetV1::CohortsStandardV2
+        .create_foundation()
+        .unwrap();
+    // The old graph has the same subjects and opening material, but lacks the
+    // independently admitted executable bundle content and cannot replace it.
+    let mut changed = stored_copy(&original);
+    changed.graph_foundation_digest = sha256_of(previous.graph_foundation().canonical_bytes());
+    assert!(matches!(
+        reconstruct_material_foundation_v2(
+            changed,
+            persisted_graph_copy(previous.graph_foundation()),
+            expected
+        ),
+        Err(MaterialRuntimeErrorV3::FoundationMismatch)
+    ));
+    let mut changed = stored_copy(&original);
+    let mut state = original.initial_register().state().clone();
+    state.inventory[0].quantity += 1;
+    changed.initial_register_bytes = MaterialWorldRegisterV2::try_new(0, state)
+        .unwrap()
+        .canonical_bytes()
+        .to_vec();
+    assert!(matches!(
+        reconstruct_material_foundation_v2(
+            changed,
+            persisted_graph_copy(original.graph_foundation()),
+            expected
+        ),
+        Err(MaterialRuntimeErrorV3::FoundationMismatch)
+    ));
+    // A whole valid bundle successor cannot nominate its own trust anchor.
+    assert!(matches!(
+        reconstruct_material_foundation_v2(
+            stored_copy(&original),
+            persisted_graph_copy(original.graph_foundation()),
+            previous.digest()
+        ),
+        Err(MaterialRuntimeErrorV3::FoundationMismatch)
+    ));
+}

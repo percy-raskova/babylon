@@ -613,7 +613,17 @@ fn live_content_revisions_resume_exactly_and_catalog_filters_before_its_limit() 
         );
     }
     let before = observer.campaigns().unwrap();
-    assert_eq!(before.len(), 4);
+    assert_eq!(before.len(), 6);
+    assert_eq!(
+        before
+            .iter()
+            .map(|row| (row.id.clone(), row.preset.clone()))
+            .collect::<std::collections::BTreeSet<_>>(),
+        campaigns
+            .iter()
+            .map(|(campaign, preset, _)| (campaign.as_uuid().to_string(), preset.id().to_owned()))
+            .collect::<std::collections::BTreeSet<_>>()
+    );
     assert!(before.iter().all(|row| row.durable_tick == 4));
     assert_eq!(before, known.campaigns().unwrap());
     let unknown = insert_unadmitted_catalog_rows(&target.writer, campaigns[0].0);

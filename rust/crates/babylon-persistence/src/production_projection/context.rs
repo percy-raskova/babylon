@@ -76,7 +76,10 @@ pub(crate) fn attach_observed_context_v1(
     if visibility != ObserverVisibilityV1::FullObserver
         || !matches!(
             admitted.preset(),
-            MichiganContentPresetV1::CohortsStandardV2 | MichiganContentPresetV1::CohortsDelayedV2
+            MichiganContentPresetV1::CohortsStandardV2
+                | MichiganContentPresetV1::CohortsDelayedV2
+                | MichiganContentPresetV1::BundlesStandardV3
+                | MichiganContentPresetV1::BundlesDelayedV3
         )
     {
         snapshot.observed_contexts.clear();

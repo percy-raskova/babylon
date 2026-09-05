@@ -534,11 +534,11 @@ mod tests {
         }
         assert_eq!(
             select_content_preset(None, None),
-            Ok(MichiganContentPresetV1::CohortsStandardV2)
+            Ok(MichiganContentPresetV1::BundlesStandardV3)
         );
         assert_eq!(
             select_content_preset(None, Some(MichiganDeliveryPresetV1::Delayed)),
-            Ok(MichiganContentPresetV1::CohortsDelayedV2)
+            Ok(MichiganContentPresetV1::BundlesDelayedV3)
         );
     }
 

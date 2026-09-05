@@ -37,6 +37,7 @@ mod runtime;
 pub mod runtime_session;
 pub mod schema_epoch;
 pub mod schema_migration;
+pub mod sector_bundle;
 #[allow(
     dead_code,
     reason = "the stopped cutover composer remains private until Rust persistence activation"

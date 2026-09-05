@@ -278,7 +278,7 @@ fn execute(command: Command, config: &Config) -> Result<(), String> {
             )?;
         }
         Command::Session { preset } => {
-            babylon_persistence::run_runtime_session_stdio_v1(config, campaign_id()?, preset)
+            babylon_persistence::run_runtime_session_stdio_v2(config, campaign_id()?, preset)
                 .map_err(|error| error.to_string())?;
         }
         Command::ObserverSchema => {

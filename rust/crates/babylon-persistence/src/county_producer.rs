@@ -60,9 +60,7 @@ use postgres::{Config, NoTls};
 use sha2::{Digest as _, Sha256};
 use uuid::Uuid;
 
-use crate::archive::{
-    database, decode, decode_subject_kind, validate_text, ARCHIVE_PAGE_TEMPLATE_SHA256_V1,
-};
+use crate::archive::{database, decode, validate_text, ARCHIVE_PAGE_TEMPLATE_SHA256_V1};
 use crate::archive_foundation_grants::county_qcew_citation;
 use crate::michigan_economy::{
     QCEW_ECONOMICS_ARTIFACT_SHA256_V1, QCEW_ECONOMICS_FIELD_KEYS_V1, QCEW_ECONOMICS_SOURCE_ID_V1,
@@ -72,8 +70,8 @@ use crate::place_producer::{
 };
 use crate::{
     michigan_spatial_reference_products_v1, representative_h3_reference_cohort_v1,
-    ArchiveCitationV1, ArchiveDirtyBatchV1, ArchiveDirtySelectionV1, ArchiveDossierProducerV1,
-    ArchiveLinkV1, ArchivePageInputV1, ArchivePageRefV1, ArchiveProducerOutcomeV1, ArchiveSignalV1,
+    ArchiveCitationV1, ArchiveDirtySelectionV1, ArchiveDossierProducerV1, ArchiveLinkV1,
+    ArchivePageInputV1, ArchivePageRefV1, ArchiveProducerOutcomeV1, ArchiveSignalV1,
     ArchiveSubjectKindV1, ArchiveSubjectV1, CampaignId, PendingArchiveReceiptV1,
     SemanticArchiveErrorV1, SpatialReferenceProducts,
 };
@@ -1218,66 +1216,6 @@ impl CountyDossierProducerV1 {
         }
         Ok(committed)
     }
-
-    /// Read the stored county-page projections for one campaign.
-    ///
-    /// # Errors
-    /// Returns any database or decode failure from the read-only query.
-    fn read_stored_pages(
-        &self,
-        campaign_id: CampaignId,
-    ) -> Result<BTreeMap<String, CountyPageProjectionV1>, SemanticArchiveErrorV1> {
-        let mut client = self
-            .config
-            .connect(NoTls)
-            .map_err(|error| database("connect county page reader", &error))?;
-        let rows = client
-            .query(ARCHIVE_COUNTY_PAGE_READ_SQL_V1, &[campaign_id.as_uuid()])
-            .map_err(|error| database("read stored county pages", &error))?;
-        let mut stored = BTreeMap::new();
-        for row in &rows {
-            let subject_id: String = decode(row, 0)?;
-            let title: String = decode(row, 1)?;
-            let markdown: String = decode(row, 2)?;
-            if let Some(page) = parse_stored_county_page_v1(&subject_id, &title, &markdown) {
-                stored.insert(subject_id, page);
-            }
-        }
-        Ok(stored)
-    }
-
-    /// Read the campaign grant snapshot visible at one receipt tick.
-    ///
-    /// # Errors
-    /// Returns any database or decode failure from the read-only query.
-    fn read_grants(
-        &self,
-        campaign_id: CampaignId,
-        receipt_tick: u64,
-    ) -> Result<CountyGrantIndexV1, SemanticArchiveErrorV1> {
-        let mut client = self
-            .config
-            .connect(NoTls)
-            .map_err(|error| database("connect county grant reader", &error))?;
-        let receipt_tick =
-            i64::try_from(receipt_tick).map_err(|_| SemanticArchiveErrorV1::InvalidVerifiedTick)?;
-        let rows = client
-            .query(
-                ARCHIVE_COUNTY_GRANTS_SQL_V1,
-                &[campaign_id.as_uuid(), &receipt_tick],
-            )
-            .map_err(|error| database("read county grant snapshot", &error))?;
-        let grants = rows
-            .iter()
-            .map(|row| {
-                let kind = decode_subject_kind(&decode::<String>(row, 0)?)?;
-                let id: String = decode(row, 1)?;
-                let grant_key: String = decode(row, 2)?;
-                Ok((kind, id, grant_key))
-            })
-            .collect::<Result<Vec<_>, SemanticArchiveErrorV1>>()?;
-        CountyGrantIndexV1::try_from_rows(grants)
-    }
 }
 
 impl ArchiveDossierProducerV1 for CountyDossierProducerV1 {
@@ -1285,30 +1223,38 @@ impl ArchiveDossierProducerV1 for CountyDossierProducerV1 {
         &self,
         campaign_id: Uuid,
         receipt: &PendingArchiveReceiptV1,
+        knowledge: &crate::ArchiveKnowledgeV1,
         page_budget: usize,
     ) -> Result<ArchiveProducerOutcomeV1, SemanticArchiveErrorV1> {
-        let campaign_id = CampaignId::from_uuid(campaign_id);
-        let desired = self.desired_pages(campaign_id, receipt.resolve_tick())?;
-        let stored = self.read_stored_pages(campaign_id)?;
-        let grants = self.read_grants(campaign_id, receipt.resolve_tick())?;
-        let granted: Vec<CountyPagePlanV1> = filter_granted_county_plans_v1(&desired, &grants)
-            .into_iter()
-            .cloned()
-            .collect();
-        let selection = select_dirty_county_pages_v1(&granted, &stored, &grants, page_budget)?;
-        let pages = selection
-            .head()
-            .iter()
-            .map(|plan| {
-                county_page_input_v1(plan, receipt.resolve_tick(), *receipt.tick_content_hash())
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        let batch = ArchiveDirtyBatchV1::try_new(
-            receipt.resolve_tick(),
-            *receipt.tick_content_hash(),
-            pages,
-        )?;
-        Ok(ArchiveProducerOutcomeV1::new(batch, selection.remaining()))
+        let campaign = CampaignId::from_uuid(campaign_id);
+        let desired = self.desired_pages(campaign, receipt.resolve_tick())?;
+        crate::archive_revision::publication::select_dirty_pages(
+            &self.config,
+            campaign,
+            receipt,
+            knowledge,
+            &desired,
+            page_budget,
+            county_page_input_v1,
+        )
+    }
+    fn cutover_subjects(
+        &self,
+        campaign_id: Uuid,
+        receipt: &PendingArchiveReceiptV1,
+        knowledge: &crate::ArchiveKnowledgeV1,
+    ) -> Result<Vec<ArchivePageRefV1>, SemanticArchiveErrorV1> {
+        let campaign = CampaignId::from_uuid(campaign_id);
+        let desired = self.desired_pages(campaign, receipt.resolve_tick())?;
+        let mut subjects = std::collections::BTreeSet::new();
+        for plan in &desired {
+            let page =
+                county_page_input_v1(plan, receipt.resolve_tick(), *receipt.tick_content_hash())?;
+            if knowledge.knows_subject(page.subject().page_ref()) {
+                subjects.insert(page.subject().page_ref().clone());
+            }
+        }
+        Ok(subjects.into_iter().collect())
     }
 }
 

@@ -17,7 +17,8 @@ use crate::observer_ui::{
 };
 use crate::production::{PrimaryView, ProductionCamera, ProductionCommand, ProductionNavigation};
 use crate::ui::dossier_card::{
-    ActiveCountyDossier, DossierCampaignId, DossierFetchState, DossierPageView, SubjectPageRequest,
+    ActiveCountyDossier, DossierCampaignId, DossierFetchState, DossierPageView, DossierRefresh,
+    SubjectPageRequest,
 };
 
 macro_rules! scoped_info {
@@ -172,7 +173,7 @@ fn log_session(session: Res<ObserverSession>, mut last: Local<Option<SessionSnap
         }
     }
     scoped_info!(session, phase = ?next.phase, playing = next.playing,
-        month_target_week = ?next.month_target, speed = next.speed, archive_verified_week = next.archive, failed = next.failed,
+        month_target_week = ?next.month_target, speed = next.speed, archive_processed_week = next.archive, failed = next.failed,
         "observer session applied");
     *last = Some(next);
 }
@@ -319,8 +320,10 @@ fn log_presentation(
 struct DossierSnapshot {
     context: ObservationContext,
     county: Option<String>,
+    subject: Option<String>,
     content_tick: Option<u64>,
     verified_tick: Option<u64>,
+    history_floor_tick: Option<u64>,
     status: &'static str,
     page: &'static str,
 }
@@ -333,6 +336,8 @@ fn log_dossier(
     selected: Option<Res<SelectedCounty>>,
     atlas: Option<Res<CountyAtlas>>,
     view: Option<Res<DossierPageView>>,
+    frame: Option<Res<ObserverFrame>>,
+    refresh: Option<Res<DossierRefresh>>,
     mut last: Local<Option<DossierSnapshot>>,
 ) {
     let Some(fetch) = fetch else {
@@ -345,45 +350,65 @@ fn log_dossier(
         && !campaign.as_ref().is_some_and(DetectChanges::is_changed)
         && !view.as_ref().is_some_and(DetectChanges::is_changed)
         && !projection.as_ref().is_some_and(DetectChanges::is_changed)
+        && !frame.as_ref().is_some_and(DetectChanges::is_changed)
+        && !refresh.as_ref().is_some_and(DetectChanges::is_changed)
     {
         return;
     }
-    let card = projection
+    let county = selected
         .as_ref()
-        .and_then(|projection| projection.0.as_ref())
-        .filter(|card| {
-            session.viewed_tick == session.durable_tick
-                && card.durable_tick == Some(session.durable_tick)
-                && campaign
-                    .as_ref()
-                    .is_some_and(|campaign| campaign.0 == session.campaign)
-                && selected
-                    .as_ref()
-                    .and_then(|selected| atlas.as_ref()?.county(selected.0?))
-                    .is_some_and(|county| county.fips == card.geoid)
-                && matches!(*fetch, DossierFetchState::Idle)
-        });
-    let status = match &*fetch {
-        DossierFetchState::Idle if card.is_some() => "installed",
-        DossierFetchState::Idle => "empty",
-        DossierFetchState::InFlight { .. } => "reading",
-        DossierFetchState::HistoricalUnavailable => "historical_unavailable",
-        DossierFetchState::Failed(crate::ui::dossier_card::DossierFetchError::ReaderAbsent(_)) => {
-            "reader_unavailable"
+        .and_then(|selected| atlas.as_ref()?.county(selected.0?));
+    let card = projection.as_ref().and_then(|projection| {
+        if !matches!(*fetch, DossierFetchState::Idle) || campaign.as_ref()?.0 != session.campaign {
+            return None;
         }
-        DossierFetchState::Failed(_) => "read_failed",
+        projection.for_observer(
+            &session,
+            frame.as_ref()?,
+            refresh.as_ref()?.0,
+            county.as_ref()?.fips,
+        )
+    });
+    let status = match (&*fetch, card) {
+        (DossierFetchState::Idle, Some(read)) => match &read.state {
+            babylon_persistence::archive_revision::ArchiveDossierStateV2::Ready { .. } => "ready",
+            babylon_persistence::archive_revision::ArchiveDossierStateV2::Pending { .. } => {
+                "pending"
+            }
+            babylon_persistence::archive_revision::ArchiveDossierStateV2::Unavailable(_) => {
+                "unavailable"
+            }
+        },
+        (DossierFetchState::Idle, None) => "empty",
+        (DossierFetchState::InFlight { .. }, _) => "reading",
+        (DossierFetchState::WaitingForObservation, _) => "waiting_for_observation",
+        (
+            DossierFetchState::Failed(crate::ui::dossier_card::DossierFetchError::ReaderAbsent(_)),
+            _,
+        ) => "reader_unavailable",
+        (DossierFetchState::Failed(_), _) => "read_failed",
     };
     let next = DossierSnapshot {
         context: session.context(),
-        county: card.map(|card| card.geoid.clone()),
-        content_tick: card.and_then(|card| card.content_tick),
-        verified_tick: card.and_then(|card| card.verified_tick),
+        county: card
+            .and(county.as_ref())
+            .map(|county| county.fips.to_owned()),
+        // A requested identity is not itself a disclosure. Only a witnessed
+        // retained page authorizes a subject identity in the applied log.
+        subject: card
+            .filter(|read| crate::dossier::retained_page(read).is_some())
+            .map(|read| format!("{}:{}", read.subject.kind().as_str(), read.subject.id())),
+        content_tick: card
+            .and_then(crate::dossier::retained_page)
+            .map(|page| page.content_source.tick()),
+        verified_tick: card.and_then(crate::dossier::verified_tick),
+        history_floor_tick: card.map(|read| read.history_floor_tick),
         status,
         page: if view
             .as_deref()
-            .is_some_and(|view| matches!(view, DossierPageView::Placeholder(_)))
+            .is_some_and(|view| matches!(view, DossierPageView::Subject(_)))
         {
-            "subject_placeholder"
+            "subject"
         } else {
             "county"
         },
@@ -394,8 +419,10 @@ fn log_dossier(
     scoped_info!(
         session,
         county = next.county.as_deref().unwrap_or("none"),
+        subject = next.subject.as_deref().unwrap_or("none"),
         content_tick = next.content_tick,
         verified_tick = next.verified_tick,
+        history_floor_tick = next.history_floor_tick,
         status = next.status,
         page = next.page,
         "observer archive applied"
@@ -618,6 +645,66 @@ mod tests {
     }
 
     #[test]
+    fn a_scoped_undisclosed_archive_response_does_not_log_the_requested_identity() {
+        use crate::ui::dossier_card::{DossierRequestScope, InstalledDossier};
+        use babylon_persistence::archive_revision::{
+            ArchiveDossierReadV2, ArchiveDossierStateV2, ArchiveDossierUnavailableV2,
+            ArchiveReadScopeV2,
+        };
+        use babylon_persistence::{ArchivePageRefV1, ArchiveSubjectKindV1};
+
+        let log = captured(|app| {
+            {
+                let mut session = app.world_mut().resource_mut::<ObserverSession>();
+                session.ready(1, Some("01".repeat(32)));
+                let context = session.context();
+                assert!(session.installed(&context));
+            }
+            let session = app.world().resource::<ObserverSession>();
+            let campaign = session.campaign;
+            let observer = session.context();
+            let frame = snapshot(session);
+            let atlas = CountyAtlas::parse(include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../../assets/map/county_atlas.bin"
+            )))
+            .unwrap();
+            let wayne = atlas.index_of_fips("26163").unwrap();
+            let scope = ArchiveReadScopeV2::committed(campaign, 1, [1; 32]).unwrap();
+            let subject =
+                ArchivePageRefV1::try_new(ArchiveSubjectKindV1::Place, "2674900".into()).unwrap();
+            app.insert_resource(atlas)
+                .insert_resource(SelectedCounty(Some(wayne)))
+                .insert_resource(DossierCampaignId(campaign))
+                .insert_resource(ObserverFrame(Some(frame)))
+                .init_resource::<DossierRefresh>()
+                .insert_resource(ActiveCountyDossier(Some(InstalledDossier {
+                    scope: DossierRequestScope {
+                        campaign,
+                        county_geoid: "26163".into(),
+                        refresh_generation: 0,
+                        observer: Some(observer),
+                        read_scope: scope.clone(),
+                        subject: subject.clone(),
+                    },
+                    read: ArchiveDossierReadV2 {
+                        scope,
+                        subject,
+                        durable_tick: 1,
+                        processed_tick: 1,
+                        history_floor_tick: 0,
+                        state: ArchiveDossierStateV2::Unavailable(
+                            ArchiveDossierUnavailableV2::SubjectNotDisclosed,
+                        ),
+                    },
+                })));
+        });
+        assert!(log.contains("status=\"unavailable\""), "{log}");
+        assert!(log.contains("subject=\"none\""), "{log}");
+        assert!(!log.contains("2674900"), "{log}");
+    }
+
+    #[test]
     fn requested_controls_and_acknowledged_state_use_distinct_records() {
         let log = captured(|app| {
             app.world_mut()
@@ -661,7 +748,7 @@ mod tests {
         assert!(log.contains("command=\"step\""), "{log}");
         for field in [
             "durable_week=1",
-            "archive_verified_week=1",
+            "archive_processed_week=1",
             "playing=true",
             "speed=2",
             "history=true",

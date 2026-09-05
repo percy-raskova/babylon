@@ -7,7 +7,7 @@
 //! `dossier search`, `changelog`), the JSONL stdout contract, the restart
 //! proof (two separate processes answer the identical content hash), and
 //! the dual-tick pending state (a committed tick 3 the Archive has not
-//! materialized leaves the card honestly `archive-pending`).
+//! materialized leaves the scoped read honestly `pending`).
 
 use std::io::Write;
 use std::process::Command;
@@ -15,9 +15,10 @@ use std::process::Command;
 use babylon_bsl::rule_pipeline::split_content;
 use babylon_bsl::rules_hash_of;
 use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_client::dossier::{retained_page, verified_tick};
 use babylon_client::ui::dossier_card::{
-    ActiveCountyDossier, CountyDossierCardProjection, DossierCampaignId, DossierCardPlugin,
-    DossierFetchState, DossierRefresh,
+    ActiveCountyDossier, DossierCampaignId, DossierCardPlugin, DossierFetchState, DossierRefresh,
+    InstalledDossier,
 };
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionIdV1};
@@ -242,13 +243,22 @@ impl Drop for ConfinedLogin {
 
 impl ReaderTarget {
     /// Clone the template, commit `tick_count` real ticks for one campaign,
-    /// then install the additive Archive schema and the reader role.
+    /// with foundation-enrolled Archive history, then install the reader role.
     fn create(label: &str, campaign_uuid: u128, tick_count: u64) -> Self {
         assert!(tick_count > 0);
         let base = validated_base_config();
         let template = validated_template_name();
         let database = TestDatabase::create_from_template(&base, &template, label);
         let config = database.config(&base);
+        // Enroll this new campaign at foundation: history at weeks 1 and 2
+        // must be retained, not inferred from a later adopted head.
+        let store = SemanticArchiveStoreV1::new(&config);
+        match store
+            .install_schema()
+            .expect("Archive schema installs before campaign creation")
+        {
+            ArchiveSchemaDispositionV1::Installed | ArchiveSchemaDispositionV1::AlreadyCurrent => {}
+        }
         let campaign_id = CampaignId::from_uuid(Uuid::from_u128(campaign_uuid));
         let (session, bundle) = runtime_fixture_with_seed(READER_SEED);
         let mut runtime = DurableReplayRuntimeV2::create(&config, campaign_id, session, bundle)
@@ -266,10 +276,6 @@ impl ReaderTarget {
         }
         drop(runtime);
 
-        let store = SemanticArchiveStoreV1::new(&config);
-        match store.install_schema().expect("Archive schema installs") {
-            ArchiveSchemaDispositionV1::Installed | ArchiveSchemaDispositionV1::AlreadyCurrent => {}
-        }
         assert_eq!(
             install_reader_role_v1(&config).expect("reader role installs"),
             ReaderRoleDispositionV1::Installed
@@ -458,7 +464,7 @@ fn jsonl(stdout: &str) -> Vec<Value> {
 }
 
 /// `dossier show` against the two-materialized world answers the
-/// archive-current card; returns the card for the restart comparison.
+/// exact ready card; returns the card for the restart comparison.
 fn assert_archive_current_card(reader_dsn: &str, campaign: &str) -> Value {
     let run = run_cli(reader_dsn, campaign, &["dossier", "show", "26163"]);
     assert_eq!(run.code, 0, "dossier show exits 0");
@@ -466,14 +472,23 @@ fn assert_archive_current_card(reader_dsn: &str, campaign: &str) -> Value {
     assert_eq!(rows.len(), 1, "dossier show emits exactly one card");
     let card = &rows[0];
     assert_eq!(card["record"], "county-dossier");
+    assert_eq!(card["schema_version"], 2);
+    assert_eq!(card["scope"]["tick"], 2);
+    assert_eq!(card["scope"]["campaign_id"], campaign);
+    assert_eq!(
+        card["scope"]["tick_content_hash"].as_str().unwrap().len(),
+        64
+    );
+    assert_eq!(card["page"]["content_sha256"].as_str().unwrap().len(), 64);
+    assert_eq!(card["history_floor_tick"], 0);
     assert_eq!(card["geoid"], "26163");
-    assert_eq!(card["title"], "Wayne County");
+    assert_eq!(card["page"]["title"], "Wayne County");
     assert_eq!(card["durable_tick"], 2);
-    assert_eq!(card["content_tick"], 2);
+    assert_eq!(card["page"]["content_source"]["tick"], 2);
     assert_eq!(card["processed_tick"], 2);
     assert_eq!(card["verified_tick"], 2);
-    assert_eq!(card["freshness"], "archive-current");
-    let employment = card["atoms"]
+    assert_eq!(card["state"], "ready");
+    let employment = card["page"]["atoms"]
         .as_array()
         .expect("atoms array")
         .iter()
@@ -509,22 +524,22 @@ fn assert_changelog_feed(reader_dsn: &str, campaign: &str) {
         .find(|row| {
             row["record"] == "changelog-row"
                 && row["signal_key"] == "employment"
-                && row["from_tick"].is_null()
+                && row["before"].is_null()
         })
         .expect("the employment appearance row exists");
-    assert_eq!(appearance["to_tick"], 1);
-    assert_eq!(appearance["to_value"], "728576 jobs");
+    assert_eq!(appearance["publication_tick"], 1);
+    assert_eq!(appearance["after"]["value"], "728576 jobs");
     let employment_row = rows
         .iter()
         .find(|row| {
             row["record"] == "changelog-row"
                 && row["signal_key"] == "employment"
-                && row["from_tick"] == 1
+                && row["before"]["valid_tick"] == 1
         })
         .expect("the employment supersession row exists");
-    assert_eq!(employment_row["to_tick"], 2);
-    assert_eq!(employment_row["from_value"], "728576 jobs");
-    assert_eq!(employment_row["to_value"], "731000 jobs");
+    assert_eq!(employment_row["publication_tick"], 2);
+    assert_eq!(employment_row["before"]["value"], "728576 jobs");
+    assert_eq!(employment_row["after"]["value"], "731000 jobs");
     assert!(
         rows.iter()
             .any(|row| row["record"] == "changelog-row" && row["signal_key"] == "subject"),
@@ -533,7 +548,7 @@ fn assert_changelog_feed(reader_dsn: &str, campaign: &str) {
 }
 
 /// After a tick 3 commits without Archive materialization, the card stays
-/// honest: durable 3, verified 2, freshness archive-pending.
+/// honest: requested/durable 3, retained content 2, verification unavailable.
 fn assert_pending_card_after_tick_three(reader_dsn: &str, campaign: &str) {
     let run = run_cli(reader_dsn, campaign, &["dossier", "show", "26163"]);
     assert_eq!(run.code, 0, "dossier show still exits 0");
@@ -541,12 +556,15 @@ fn assert_pending_card_after_tick_three(reader_dsn: &str, campaign: &str) {
     assert_eq!(rows.len(), 1);
     let card = &rows[0];
     assert_eq!(card["durable_tick"], 3, "tick 3 is durably committed");
+    assert_eq!(card["scope"]["tick"], 3);
+    assert_eq!(card["page"]["content_source"]["tick"], 2);
     assert_eq!(
-        card["verified_tick"], 2,
-        "the page still answers the tick-2 materialization"
+        card["verified_tick"],
+        Value::Null,
+        "a retained tick-2 page cannot certify the pending tick-3 observation"
     );
     assert_eq!(
-        card["freshness"], "archive-pending",
+        card["state"], "pending",
         "the card is honest about the unmaterialized tick 3"
     );
 }
@@ -593,7 +611,7 @@ fn held_county_app(campaign: CampaignId) -> App {
     app
 }
 
-fn collect_held_card(app: &mut App) -> CountyDossierCardProjection {
+fn collect_held_card(app: &mut App) -> InstalledDossier {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     loop {
         app.update();
@@ -617,7 +635,11 @@ fn assert_restart_preserves_card(reader_dsn: &str, campaign: &str, card: &serde_
     let rerun_rows = jsonl(&rerun.stdout);
     assert_eq!(rerun_rows.len(), 1);
     assert_eq!(
-        rerun_rows[0]["content_sha256"], card["content_sha256"],
+        rerun_rows[0]["page"], card["page"],
+        "restart preserves the complete retained page and evidence"
+    );
+    assert_eq!(
+        rerun_rows[0]["page"]["content_sha256"], card["page"]["content_sha256"],
         "a separate process answers the identical content hash (restart proof)"
     );
     assert_eq!(
@@ -632,7 +654,7 @@ fn assert_quiet_sweep_refreshes_held_card(
     campaign: &str,
     card: &serde_json::Value,
     held_app: &mut App,
-    held_before: &CountyDossierCardProjection,
+    held_before: &InstalledDossier,
 ) {
     let sweep = ArchiveWorkerV1::new(&target.config)
         .sweep_once(target.campaign_id, &NullArchiveDossierProducerV1)
@@ -642,19 +664,26 @@ fn assert_quiet_sweep_refreshes_held_card(
     let settled = run_cli(reader_dsn, campaign, &["dossier", "show", "26163"]);
     assert_eq!(settled.code, 0);
     let settled = &jsonl(&settled.stdout)[0];
-    assert_eq!(settled["content_tick"], 2);
+    assert_eq!(settled["page"]["content_source"]["tick"], 2);
     assert_eq!(settled["processed_tick"], 3);
     assert_eq!(settled["verified_tick"], 3);
-    assert_eq!(settled["freshness"], "archive-current");
-    assert_eq!(settled["content_sha256"], card["content_sha256"]);
-    assert_eq!(settled["atoms"], card["atoms"]);
+    assert_eq!(settled["state"], "ready");
+    assert_eq!(
+        settled["page"]["content_sha256"],
+        card["page"]["content_sha256"]
+    );
+    assert_eq!(settled["page"]["atoms"], card["page"]["atoms"]);
     held_app.world_mut().resource_mut::<DossierRefresh>().bump();
     let held_settled = collect_held_card(held_app);
-    assert_eq!(held_settled.durable_tick, Some(3));
-    assert_eq!(held_settled.content_tick, Some(2));
-    assert_eq!(held_settled.verified_tick, Some(3));
-    assert_eq!(held_settled.atoms, held_before.atoms);
-    assert_eq!(held_settled.changelog, held_before.changelog);
+    assert_eq!(held_settled.read.durable_tick, 3);
+    assert_eq!(held_settled.read.scope.tick(), 3);
+    assert_eq!(verified_tick(&held_settled.read), Some(3));
+    let before_page = retained_page(&held_before.read).unwrap();
+    let settled_page = retained_page(&held_settled.read).unwrap();
+    assert_eq!(settled_page.content_source.tick(), 2);
+    assert_eq!(settled_page.atoms, before_page.atoms);
+    assert_eq!(settled_page.changes.changes, before_page.changes.changes);
+    assert_eq!(settled_page.content_sha256, before_page.content_sha256);
     let restart = ArchiveWorkerV1::new(&target.config)
         .sweep_once(target.campaign_id, &NullArchiveDossierProducerV1)
         .expect("restarted quiet worker is idle");
@@ -675,6 +704,21 @@ fn commit_third_tick(target: &ReaderTarget) {
         .expect("tick 3 commits");
     assert_eq!(receipt.resolve_tick().get(), 3);
     drop(runtime);
+}
+
+fn assert_pending_held_card(held_app: &mut App) {
+    held_app.world_mut().resource_mut::<DossierRefresh>().bump();
+    let held_pending = collect_held_card(held_app);
+    assert_eq!(held_pending.read.durable_tick, 3);
+    assert_eq!(held_pending.read.scope.tick(), 3);
+    assert_eq!(
+        retained_page(&held_pending.read)
+            .unwrap()
+            .content_source
+            .tick(),
+        2
+    );
+    assert_eq!(verified_tick(&held_pending.read), None);
 }
 
 #[test]
@@ -734,8 +778,14 @@ fn live_dossier_cli_reads_through_the_confined_reader_and_survives_restart() {
     let reader_env = ReaderEnvGuard::set(&reader_dsn);
     let mut held_app = held_county_app(target.campaign_id);
     let held_before = collect_held_card(&mut held_app);
-    assert_eq!(held_before.content_tick, Some(2));
-    assert_eq!(held_before.verified_tick, Some(2));
+    assert_eq!(
+        retained_page(&held_before.read)
+            .unwrap()
+            .content_source
+            .tick(),
+        2
+    );
+    assert_eq!(verified_tick(&held_before.read), Some(2));
 
     let _ = writeln!(sink, "dossier_cli_live: restart proof (second process)");
     assert_restart_preserves_card(&reader_dsn, &campaign, &card);
@@ -757,11 +807,7 @@ fn live_dossier_cli_reads_through_the_confined_reader_and_survives_restart() {
         "dossier_cli_live: dossier show under the dual-tick gap"
     );
     assert_pending_card_after_tick_three(&reader_dsn, &campaign);
-    held_app.world_mut().resource_mut::<DossierRefresh>().bump();
-    let held_pending = collect_held_card(&mut held_app);
-    assert_eq!(held_pending.durable_tick, Some(3));
-    assert_eq!(held_pending.content_tick, Some(2));
-    assert_eq!(held_pending.verified_tick, Some(2));
+    assert_pending_held_card(&mut held_app);
 
     assert_quiet_sweep_refreshes_held_card(
         &target,

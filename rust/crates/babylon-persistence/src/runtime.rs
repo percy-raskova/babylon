@@ -2028,6 +2028,8 @@ pub(crate) fn insert_campaign_foundation_rows_v1(
     .map_err(RustPersistenceRuntimeErrorV2::TerritoryCountyMap)?;
     crate::archive_foundation_grants::seed_foundation_grants_v1(client, campaign_id)
         .map_err(RustPersistenceRuntimeErrorV2::FoundationGrants)?;
+    crate::archive_revision::schema::enroll_foundation(client, campaign_id, inserted == 1)
+        .map_err(RustPersistenceRuntimeErrorV2::SemanticArchive)?;
     Ok(())
 }
 

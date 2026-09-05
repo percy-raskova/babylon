@@ -5,8 +5,8 @@ use std::sync::{mpsc, Mutex};
 
 use babylon_persistence::{
     ObserverEconomyReaderV1, ObserverEconomySnapshotV1, ObserverVisibilityV1,
-    RuntimeSessionRequestV1, RuntimeSessionResponseV1, RuntimeSessionTailV1,
-    RUNTIME_SESSION_MAX_LINE_BYTES_V1, RUNTIME_SESSION_PROTOCOL_VERSION_V1,
+    RuntimeSessionRequestV2, RuntimeSessionResponseV2, RuntimeSessionTailV2,
+    RUNTIME_SESSION_MAX_LINE_BYTES_V2, RUNTIME_SESSION_PROTOCOL_VERSION_V2,
 };
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
@@ -39,8 +39,8 @@ pub enum ObserverSet {
 
 #[derive(Resource)]
 struct RuntimePipe {
-    requests: mpsc::SyncSender<RuntimeSessionRequestV1>,
-    responses: Mutex<mpsc::Receiver<Result<RuntimeSessionResponseV1, String>>>,
+    requests: mpsc::SyncSender<RuntimeSessionRequestV2>,
+    responses: Mutex<mpsc::Receiver<Result<RuntimeSessionResponseV2, String>>>,
 }
 
 #[derive(Resource, Default)]
@@ -57,6 +57,7 @@ struct PlaybackClock {
     archive_elapsed: f64,
     archive_pending: bool,
     verified_tick: u64,
+    retention_ready: bool,
 }
 
 #[derive(Resource, Default)]
@@ -71,9 +72,9 @@ fn start_pipe(mut commands: Commands, mut state: ResMut<ObserverSession>) {
         state.fail("Open this campaign with mise run play to connect its durable runtime.".into());
         return;
     }
-    let (request_tx, request_rx) = mpsc::sync_channel::<RuntimeSessionRequestV1>(1);
+    let (request_tx, request_rx) = mpsc::sync_channel::<RuntimeSessionRequestV2>(1);
     let (response_tx, response_rx) =
-        mpsc::sync_channel::<Result<RuntimeSessionResponseV1, String>>(8);
+        mpsc::sync_channel::<Result<RuntimeSessionResponseV2, String>>(8);
     let errors = response_tx.clone();
     let writer = std::thread::Builder::new()
         .name("observer-control-writer".into())
@@ -83,7 +84,7 @@ fn start_pipe(mut commands: Commands, mut state: ResMut<ObserverSession>) {
                 let result = serde_json::to_vec(&request)
                     .map_err(|error| error.to_string())
                     .and_then(|mut bytes| {
-                        if bytes.len() >= RUNTIME_SESSION_MAX_LINE_BYTES_V1 {
+                        if bytes.len() >= RUNTIME_SESSION_MAX_LINE_BYTES_V2 {
                             return Err("Runtime request exceeds protocol bound".into());
                         }
                         bytes.push(b'\n');
@@ -109,7 +110,7 @@ fn start_pipe(mut commands: Commands, mut state: ResMut<ObserverSession>) {
             loop {
                 let mut line = Vec::new();
                 let result = (&mut input)
-                    .take((RUNTIME_SESSION_MAX_LINE_BYTES_V1 + 1) as u64)
+                    .take((RUNTIME_SESSION_MAX_LINE_BYTES_V2 + 1) as u64)
                     .read_until(b'\n', &mut line);
                 match result {
                     Ok(0) => {
@@ -120,7 +121,7 @@ fn start_pipe(mut commands: Commands, mut state: ResMut<ObserverSession>) {
                         break;
                     }
                     Ok(size)
-                        if size <= RUNTIME_SESSION_MAX_LINE_BYTES_V1 && line.ends_with(b"\n") =>
+                        if size <= RUNTIME_SESSION_MAX_LINE_BYTES_V2 && line.ends_with(b"\n") =>
                     {
                         let response = serde_json::from_slice(&line)
                             .map_err(|error| format!("Invalid runtime response: {error}"));
@@ -154,11 +155,11 @@ fn send_advance(pipe: &RuntimePipe, state: &mut ObserverSession) {
     let Some(request_id) = state.begin_advance() else {
         return;
     };
-    let request = RuntimeSessionRequestV1::Advance {
-        protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION_V1,
+    let request = RuntimeSessionRequestV2::Advance {
+        protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION_V2,
         campaign_id: state.campaign.as_uuid().to_string(),
         request_id,
-        expected_tail: RuntimeSessionTailV1 {
+        expected_tail: RuntimeSessionTailV2 {
             resolve_tick: state.durable_tick,
             tick_content_hash: state.content_hash.clone(),
         },
@@ -169,8 +170,8 @@ fn send_advance(pipe: &RuntimePipe, state: &mut ObserverSession) {
 }
 
 fn next_response(
-    receiver: &mpsc::Receiver<Result<RuntimeSessionResponseV1, String>>,
-) -> Result<Option<RuntimeSessionResponseV1>, String> {
+    receiver: &mpsc::Receiver<Result<RuntimeSessionResponseV2, String>>,
+) -> Result<Option<RuntimeSessionResponseV2>, String> {
     match receiver.try_recv() {
         Ok(response) => response.map(Some),
         Err(mpsc::TryRecvError::Disconnected) => {
@@ -211,13 +212,13 @@ fn receive(
             }
         };
         match response {
-            RuntimeSessionResponseV1::Ready {
+            RuntimeSessionResponseV2::Ready {
                 protocol_version,
                 campaign_id,
                 foundation_digest,
                 tail,
             } => {
-                if protocol_version != RUNTIME_SESSION_PROTOCOL_VERSION_V1
+                if protocol_version != RUNTIME_SESSION_PROTOCOL_VERSION_V2
                     || campaign_id != state.campaign.as_uuid().to_string()
                 {
                     state.fail("Runtime handshake identity/version mismatch".into());
@@ -227,7 +228,7 @@ fn receive(
                 state.ready(tail.resolve_tick, tail.tick_content_hash);
                 refresh.bump();
             }
-            RuntimeSessionResponseV1::Committed {
+            RuntimeSessionResponseV2::Committed {
                 request_id,
                 campaign_id,
                 tail,
@@ -240,10 +241,11 @@ fn receive(
                 }
                 refresh.bump();
             }
-            RuntimeSessionResponseV1::ArchiveProgress {
+            RuntimeSessionResponseV2::ArchiveProgress {
                 campaign_id,
                 durable_tick,
                 verified_tick,
+                retention_ready,
                 ..
             } => {
                 if campaign_id != state.campaign.as_uuid().to_string()
@@ -257,14 +259,16 @@ fn receive(
                 if state.archive_verified_tick != verified_tick {
                     state.archive_verified_tick = verified_tick;
                 }
-                if clock.verified_tick != verified_tick {
-                    clock.verified_tick = verified_tick;
-                    refresh.bump();
-                }
+                clock.verified_tick = verified_tick;
+                clock.retention_ready = retention_ready;
+                // Maintenance can validate retained pages without advancing the
+                // receipt prefix, including an adopted save at its horizon.
+                // The scoped reader, not this global watermark, certifies them.
+                refresh.bump();
             }
-            RuntimeSessionResponseV1::Error { code, tail, .. } => {
+            RuntimeSessionResponseV2::Error { code, tail, .. } => {
                 clock.archive_pending = false;
-                if code == babylon_persistence::RuntimeSessionErrorCodeV1::HorizonComplete
+                if code == babylon_persistence::RuntimeSessionErrorCodeV2::HorizonComplete
                     && tail.resolve_tick == state.durable_tick
                     && tail.tick_content_hash == state.content_hash
                 {
@@ -273,7 +277,7 @@ fn receive(
                     state.fail(code.to_string());
                 }
             }
-            RuntimeSessionResponseV1::Stopped { request_id } => {
+            RuntimeSessionResponseV2::Stopped { request_id } => {
                 if state.quit_requested && request_id == STOP_REQUEST_ID && !state.advance_pending()
                 {
                     state.playing = false;
@@ -602,14 +606,14 @@ fn playback(
         clock.elapsed = 0.0;
     }
     if matches!(state.phase, SessionPhase::Ready | SessionPhase::Complete)
-        && state.durable_tick > clock.verified_tick
+        && (state.durable_tick > clock.verified_tick || !clock.retention_ready)
         && !clock.archive_pending
     {
         clock.archive_elapsed += time.delta_secs_f64();
         if clock.archive_elapsed >= 0.5 {
             clock.archive_elapsed = 0.0;
-            let request = RuntimeSessionRequestV1::RefreshArchive {
-                protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION_V1,
+            let request = RuntimeSessionRequestV2::RefreshArchive {
+                protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION_V2,
                 campaign_id: state.campaign.as_uuid().to_string(),
                 request_id: 0,
             };
@@ -643,8 +647,8 @@ fn finish_shutdown(
     if shutdown.stop_sent {
         return;
     }
-    let request = RuntimeSessionRequestV1::Stop {
-        protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION_V1,
+    let request = RuntimeSessionRequestV2::Stop {
+        protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION_V2,
         campaign_id: state.campaign.as_uuid().to_string(),
         request_id: STOP_REQUEST_ID,
     };
@@ -704,7 +708,7 @@ mod tests {
     use crate::observer_ui::ObserverDisclosure;
     use babylon_persistence::CampaignId;
 
-    fn command_app() -> (App, mpsc::Receiver<RuntimeSessionRequestV1>) {
+    fn command_app() -> (App, mpsc::Receiver<RuntimeSessionRequestV2>) {
         let mut state = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::from_u128(1)));
         state.ready(3, None);
         assert!(state.installed(&state.context()));
@@ -740,9 +744,9 @@ mod tests {
         app.update();
     }
 
-    type ResponseSender = mpsc::Sender<Result<RuntimeSessionResponseV1, String>>;
+    type ResponseSender = mpsc::Sender<Result<RuntimeSessionResponseV2, String>>;
 
-    fn quit_app() -> (App, mpsc::Receiver<RuntimeSessionRequestV1>, ResponseSender) {
+    fn quit_app() -> (App, mpsc::Receiver<RuntimeSessionRequestV2>, ResponseSender) {
         let (mut app, requests) = command_app();
         let (responses, receiver) = mpsc::channel();
         app.world_mut().resource_mut::<RuntimePipe>().responses = Mutex::new(receiver);
@@ -753,6 +757,35 @@ mod tests {
 
     fn exit_count(app: &App) -> usize {
         app.world().resource::<Messages<AppExit>>().len()
+    }
+
+    #[test]
+    fn obsolete_runtime_handshake_is_refused_before_any_archive_or_advance_work() {
+        let (mut app, requests, responses) = quit_app();
+        let campaign_id = app
+            .world()
+            .resource::<ObserverSession>()
+            .campaign
+            .as_uuid()
+            .to_string();
+        responses
+            .send(Ok(RuntimeSessionResponseV2::Ready {
+                protocol_version: 1,
+                campaign_id,
+                foundation_digest: "obsolete-foundation".into(),
+                tail: RuntimeSessionTailV2 {
+                    resolve_tick: 3,
+                    tick_content_hash: None,
+                },
+            }))
+            .unwrap();
+        app.update();
+        let state = app.world().resource::<ObserverSession>();
+        assert_eq!(state.phase, SessionPhase::Failed);
+        assert!(state.foundation_digest.is_none());
+        assert_eq!(state.durable_tick, 3);
+        assert_eq!(app.world().resource::<DossierRefresh>().0, 0);
+        assert!(requests.try_recv().is_err());
     }
 
     #[derive(Resource, Default)]
@@ -792,10 +825,11 @@ mod tests {
             .as_uuid()
             .to_string();
         responses
-            .send(Ok(RuntimeSessionResponseV1::ArchiveProgress {
+            .send(Ok(RuntimeSessionResponseV2::ArchiveProgress {
                 campaign_id,
                 durable_tick: 3,
                 verified_tick: 1,
+                retention_ready: true,
                 request_id: Some(0),
             }))
             .unwrap();
@@ -815,10 +849,90 @@ mod tests {
     }
 
     #[test]
+    fn archive_maintenance_validates_a_caught_up_foundation_or_horizon_without_advancing() {
+        for tick in [0, 16] {
+            let (mut app, requests, responses) = quit_app();
+            {
+                let mut state = app.world_mut().resource_mut::<ObserverSession>();
+                state.horizon_tick = Some(16);
+                state.ready(tick, None);
+                let context = state.context();
+                assert!(state.installed(&context));
+                state.archive_verified_tick = tick;
+                if Some(tick) == state.horizon_tick {
+                    state.complete();
+                }
+            }
+            app.world_mut()
+                .resource_mut::<PlaybackClock>()
+                .verified_tick = tick;
+            app.add_systems(Update, playback.after(finish_shutdown));
+            app.world_mut()
+                .resource_mut::<Time>()
+                .advance_by(std::time::Duration::from_secs(1));
+            let campaign_id = app
+                .world()
+                .resource::<ObserverSession>()
+                .campaign
+                .as_uuid()
+                .to_string();
+            let initial_refresh = app.world().resource::<DossierRefresh>().0;
+            app.update();
+            assert!(matches!(
+                requests.try_recv().unwrap(),
+                RuntimeSessionRequestV2::RefreshArchive { .. }
+            ));
+            app.update();
+            assert!(
+                requests.try_recv().is_err(),
+                "one maintenance request at a time"
+            );
+
+            for (index, retention_ready) in [false, true].into_iter().enumerate() {
+                responses
+                    .send(Ok(RuntimeSessionResponseV2::ArchiveProgress {
+                        request_id: Some(0),
+                        campaign_id: campaign_id.clone(),
+                        durable_tick: tick,
+                        verified_tick: tick,
+                        retention_ready,
+                    }))
+                    .unwrap();
+                app.update();
+                assert_eq!(
+                    app.world().resource::<DossierRefresh>().0,
+                    initial_refresh + u64::try_from(index).unwrap() + 1,
+                    "every completed maintenance response refreshes the scoped dossier"
+                );
+                let state = app.world().resource::<ObserverSession>();
+                assert_eq!(state.durable_tick, tick);
+                assert_eq!(state.viewed_tick, tick);
+                assert_eq!(state.archive_verified_tick, tick);
+                assert!(!state.playing);
+                if retention_ready {
+                    assert!(requests.try_recv().is_err(), "validated maintenance stops");
+                } else {
+                    assert!(matches!(
+                        requests.try_recv().unwrap(),
+                        RuntimeSessionRequestV2::RefreshArchive { .. }
+                    ));
+                }
+            }
+            app.update();
+            assert!(requests.try_recv().is_err());
+            assert_eq!(
+                app.world().resource::<DossierRefresh>().0,
+                initial_refresh + 2
+            );
+        }
+    }
+
+    #[test]
     fn monthly_playback_waits_for_each_ack_and_observation_then_stops_at_its_boundary() {
         let (mut app, requests) = command_app();
         app.insert_resource(PlaybackClock {
             verified_tick: 16,
+            retention_ready: true,
             ..default()
         })
         .add_systems(Update, playback.after(handle_commands));
@@ -827,7 +941,7 @@ mod tests {
             .advance_by(std::time::Duration::from_secs(1));
         dispatch(&mut app, &[ObserverCommand::TogglePlay]);
         for expected_week in [4, 5] {
-            let RuntimeSessionRequestV1::Advance {
+            let RuntimeSessionRequestV2::Advance {
                 request_id,
                 expected_tail,
                 ..
@@ -970,12 +1084,12 @@ mod tests {
         dispatch(&mut app, &[ObserverCommand::Step]);
         assert!(matches!(
             requests.try_recv().unwrap(),
-            RuntimeSessionRequestV1::Advance { .. }
+            RuntimeSessionRequestV2::Advance { .. }
         ));
         dispatch(&mut app, &[ObserverCommand::Quit]);
         assert!(matches!(
             requests.try_recv().unwrap(),
-            RuntimeSessionRequestV1::Stop {
+            RuntimeSessionRequestV2::Stop {
                 request_id: STOP_REQUEST_ID,
                 ..
             }
@@ -989,7 +1103,7 @@ mod tests {
         assert!(!app.world().resource::<ObserverSession>().playing);
         assert!(requests.try_recv().is_err());
         responses
-            .send(Ok(RuntimeSessionResponseV1::Committed {
+            .send(Ok(RuntimeSessionResponseV2::Committed {
                 request_id: 1,
                 campaign_id: app
                     .world()
@@ -997,7 +1111,7 @@ mod tests {
                     .campaign
                     .as_uuid()
                     .to_string(),
-                tail: RuntimeSessionTailV1 {
+                tail: RuntimeSessionTailV2 {
                     resolve_tick: 4,
                     tick_content_hash: Some("committed".into()),
                 },
@@ -1007,7 +1121,7 @@ mod tests {
         assert_eq!(app.world().resource::<ObserverSession>().durable_tick, 4);
         assert_eq!(exit_count(&app), 0);
         responses
-            .send(Ok(RuntimeSessionResponseV1::Stopped {
+            .send(Ok(RuntimeSessionResponseV2::Stopped {
                 request_id: STOP_REQUEST_ID,
             }))
             .unwrap();
@@ -1030,12 +1144,12 @@ mod tests {
         assert!(!app.world().resource::<ShutdownProgress>().stop_sent);
         assert!(matches!(
             requests.try_recv().unwrap(),
-            RuntimeSessionRequestV1::Advance { .. }
+            RuntimeSessionRequestV2::Advance { .. }
         ));
         app.update();
         assert!(matches!(
             requests.try_recv().unwrap(),
-            RuntimeSessionRequestV1::Stop { .. }
+            RuntimeSessionRequestV2::Stop { .. }
         ));
         dispatch(&mut app, &[ObserverCommand::Quit]);
         assert!(requests.try_recv().is_err());
@@ -1086,9 +1200,9 @@ mod tests {
         dispatch(&mut app, &[ObserverCommand::Step, ObserverCommand::Step]);
         assert!(matches!(
             receiver.try_recv().unwrap(),
-            RuntimeSessionRequestV1::Advance {
+            RuntimeSessionRequestV2::Advance {
                 request_id: 1,
-                expected_tail: RuntimeSessionTailV1 {
+                expected_tail: RuntimeSessionTailV2 {
                     resolve_tick: 3,
                     ..
                 },

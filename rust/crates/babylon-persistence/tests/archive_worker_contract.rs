@@ -135,7 +135,13 @@ fn null_producer_returns_empty_but_valid_outcome() {
     let producer = NullArchiveDossierProducerV1::new();
     let receipt = PendingArchiveReceiptV1::try_new(1, [0x11; 32]).expect("valid receipt");
     let outcome = producer
-        .produce(Uuid::nil(), &receipt, ArchiveDirtyBatchV1::MAX_PAGES)
+        .produce(
+            Uuid::nil(),
+            &receipt,
+            &babylon_persistence::ArchiveKnowledgeV1::try_new(Vec::new())
+                .expect("empty scripted knowledge"),
+            ArchiveDirtyBatchV1::MAX_PAGES,
+        )
         .expect("null outcome is valid");
     let batch = outcome.batch();
 
@@ -178,6 +184,7 @@ fn sweep_report_aggregates_dispositions_and_carries_the_persisted_watermark() {
             (5, ArchiveReceiptDispositionV1::Paged),
         ],
         7,
+        true,
     );
 
     assert_eq!(report.applied_count(), 1);
@@ -395,15 +402,29 @@ fn foundation_receipt_pages_its_drain_until_the_tail_converges() {
 }
 
 #[test]
-fn sweep_inner_loop_checks_the_consume_cap_before_each_receipt() {
-    let source = std::include_str!("../src/archive_worker.rs");
+fn ordered_worker_bounds_every_receipt_evaluation_and_stops_at_stage() {
+    let source = include_str!("../src/archive_revision/worker.rs");
+    let loop_at = source
+        .find("for _ in 0..crate::ARCHIVE_SWEEP_MAX_RECEIPTS_V1")
+        .expect("the sole ordered worker caps the entire evaluation loop");
+    let next_at = source
+        .find("publication::next_work(&mut tx, campaign)")
+        .expect("each iteration selects only the earliest unsettled receipt");
+    let produce_at = source
+        .find("producer.produce(")
+        .expect("bounded producer evaluation");
+    let publish_at = source
+        .find("publication::publish(")
+        .expect("atomic publication");
     assert!(
-        source.contains(
-            "scanned >= ARCHIVE_SWEEP_MAX_SCAN_V1 || consumed >= ARCHIVE_SWEEP_MAX_RECEIPTS_V1"
-        ),
-        "the per-row sweep guard must enforce the consume cap before each receipt, not only \
-         the scan bound"
+        loop_at < next_at && next_at < produce_at && produce_at < publish_at,
+        "the cap encloses selection, evaluation and publication, including quiet receipts"
     );
+    assert!(
+        source.contains("if mode == ArchiveMaterializeModeV1::Stage {\n            break;"),
+        "no later receipt is evaluated against an incomplete earlier publication"
+    );
+    assert_eq!(ARCHIVE_SWEEP_MAX_RECEIPTS_V1, 256);
 }
 
 /// Stub producer returning one scripted outcome per receipt, honoring the
@@ -415,6 +436,7 @@ impl ArchiveDossierProducerV1 for ScriptedProducer {
         &self,
         _campaign_id: Uuid,
         _receipt: &PendingArchiveReceiptV1,
+        _knowledge: &babylon_persistence::ArchiveKnowledgeV1,
         page_budget: usize,
     ) -> Result<ArchiveProducerOutcomeV1, SemanticArchiveErrorV1> {
         let batch = self.0.batch();
@@ -465,7 +487,13 @@ fn composite_merges_producer_pages_sorted_and_refuses_duplicate_subjects() {
         )),
     ]);
     let produced = county_first
-        .produce(Uuid::nil(), &receipt, ArchiveDirtyBatchV1::MAX_PAGES)
+        .produce(
+            Uuid::nil(),
+            &receipt,
+            &babylon_persistence::ArchiveKnowledgeV1::try_new(Vec::new())
+                .expect("empty scripted knowledge"),
+            ArchiveDirtyBatchV1::MAX_PAGES,
+        )
         .expect("composite merge");
     let order = produced
         .batch()
@@ -494,7 +522,13 @@ fn composite_merges_producer_pages_sorted_and_refuses_duplicate_subjects() {
         Box::new(scripted(non_empty_batch(1, [0x11; 32]), 0)),
     ]);
     assert_eq!(
-        duplicate.produce(Uuid::nil(), &receipt, ArchiveDirtyBatchV1::MAX_PAGES),
+        duplicate.produce(
+            Uuid::nil(),
+            &receipt,
+            &babylon_persistence::ArchiveKnowledgeV1::try_new(Vec::new())
+                .expect("empty scripted knowledge"),
+            ArchiveDirtyBatchV1::MAX_PAGES
+        ),
         Err(SemanticArchiveErrorV1::DuplicateKey),
         "two producers may not claim the same page subject"
     );
@@ -533,7 +567,13 @@ fn composite_threads_the_page_budget_and_sums_the_undrained_remainder() {
         )),
     ]);
     let produced = composite
-        .produce(Uuid::nil(), &receipt, ArchiveDirtyBatchV1::MAX_PAGES)
+        .produce(
+            Uuid::nil(),
+            &receipt,
+            &babylon_persistence::ArchiveKnowledgeV1::try_new(Vec::new())
+                .expect("empty scripted knowledge"),
+            ArchiveDirtyBatchV1::MAX_PAGES,
+        )
         .expect("paged composite merge");
 
     assert_eq!(
@@ -546,7 +586,10 @@ fn composite_threads_the_page_budget_and_sums_the_undrained_remainder() {
         416,
         "the composite remainder is the exact sum of every producer's undrained tail"
     );
+    assert_composite_preserves_unfunded_pages(&receipt);
+}
 
+fn assert_composite_preserves_unfunded_pages(receipt: &PendingArchiveReceiptV1) {
     // A producer arriving after the budget is exhausted sees no room and
     // reports its whole dirty set as remainder, exactly like the county side
     // of a foundation receipt that the place head already filled.
@@ -585,7 +628,13 @@ fn composite_threads_the_page_budget_and_sums_the_undrained_remainder() {
         )),
     ]);
     let paged = exhausted
-        .produce(Uuid::nil(), &receipt, ArchiveDirtyBatchV1::MAX_PAGES)
+        .produce(
+            Uuid::nil(),
+            receipt,
+            &babylon_persistence::ArchiveKnowledgeV1::try_new(Vec::new())
+                .expect("empty scripted knowledge"),
+            ArchiveDirtyBatchV1::MAX_PAGES,
+        )
         .expect("the budget-exhausted composite pages instead of overflowing");
     assert_eq!(paged.batch().pages().len(), ArchiveDirtyBatchV1::MAX_PAGES);
     assert_eq!(
@@ -616,6 +665,7 @@ fn composite_still_refuses_a_producer_that_ignores_the_page_budget() {
             &self,
             _campaign_id: Uuid,
             receipt: &PendingArchiveReceiptV1,
+            _knowledge: &babylon_persistence::ArchiveKnowledgeV1,
             _page_budget: usize,
         ) -> Result<ArchiveProducerOutcomeV1, SemanticArchiveErrorV1> {
             let pages = (0..=ArchiveDirtyBatchV1::MAX_PAGES)
@@ -648,7 +698,13 @@ fn composite_still_refuses_a_producer_that_ignores_the_page_budget() {
     let receipt = PendingArchiveReceiptV1::try_new(1, [0x11; 32]).expect("receipt");
     let composite = CompositeArchiveDossierProducerV1::new(vec![Box::new(OverBoundProducer)]);
     assert_eq!(
-        composite.produce(Uuid::nil(), &receipt, ArchiveDirtyBatchV1::MAX_PAGES),
+        composite.produce(
+            Uuid::nil(),
+            &receipt,
+            &babylon_persistence::ArchiveKnowledgeV1::try_new(Vec::new())
+                .expect("empty scripted knowledge"),
+            ArchiveDirtyBatchV1::MAX_PAGES
+        ),
         Err(SemanticArchiveErrorV1::CollectionBound),
         "the batch bound refuses a budget-ignoring producer; paging never truncates"
     );

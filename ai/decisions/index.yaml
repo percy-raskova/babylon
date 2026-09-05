@@ -25,6 +25,11 @@ meta:
   # ADR160-169 = P26 international-trade lane block (101-trade-activation),
   # allocated by Director ruling 2026-07-27; ADR160 minted at its charter.
 decisions:
+  ADR253_immutable_archive_revisions_and_adoption:
+    title: Immutable Archive revisions and exact historical observations
+    status: proposed
+    date: '2026-09-05'
+    file: ADR253_immutable_archive_revisions_and_adoption.yaml
   ADR252_native_development_toolchain:
     title: Native development and release tooling without Nix
     status: accepted

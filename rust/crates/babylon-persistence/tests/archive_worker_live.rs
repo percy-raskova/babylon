@@ -6,6 +6,13 @@
 
 use std::str::FromStr;
 
+#[path = "support/archive_reader.rs"]
+mod archive_reader;
+#[path = "archive_worker_live/revisions.rs"]
+mod revisions;
+use archive_reader::{scope_at, with_reader};
+use babylon_persistence::archive_revision::{ArchiveDossierBoundsV2, ArchiveDossierStateV2};
+
 use babylon_bsl::rule_pipeline::split_content;
 use babylon_bsl::rules_hash_of;
 use babylon_bsl::structural_verbs::CollectingSink;
@@ -43,7 +50,7 @@ const RULE: &str = include_str!("../../babylon-tick/content/rules/struggle-spark
 const WORKER_SEED: i64 = 2;
 
 /// One distinct stub subject per receipt tick, because the Archive keeps one
-/// current page per subject and converges repeated receipts onto it. The ids
+/// latest page per subject while preserving each immutable revision. The ids
 /// are synthetic: foundation grant seeding already covers every real Michigan
 /// county and place, and an explicit grant for a seeded subject refuses
 /// `GrantConflict` instead of shadowing the seeded row.
@@ -109,6 +116,7 @@ impl ArchiveDossierProducerV1 for StubPageProducer {
         &self,
         _campaign_id: Uuid,
         receipt: &PendingArchiveReceiptV1,
+        _knowledge: &babylon_persistence::ArchiveKnowledgeV1,
         _page_budget: usize,
     ) -> Result<ArchiveProducerOutcomeV1, SemanticArchiveErrorV1> {
         let batch = ArchiveDirtyBatchV1::try_new(
@@ -130,12 +138,13 @@ impl ArchiveDossierProducerV1 for FailAtTickProducer {
         &self,
         campaign_id: Uuid,
         receipt: &PendingArchiveReceiptV1,
+        knowledge: &babylon_persistence::ArchiveKnowledgeV1,
         page_budget: usize,
     ) -> Result<ArchiveProducerOutcomeV1, SemanticArchiveErrorV1> {
         if receipt.resolve_tick() == self.fail_at_tick {
             return Err(SemanticArchiveErrorV1::InvalidText);
         }
-        StubPageProducer.produce(campaign_id, receipt, page_budget)
+        StubPageProducer.produce(campaign_id, receipt, knowledge, page_budget)
     }
 }
 
@@ -153,10 +162,11 @@ impl ArchiveDossierProducerV1 for QuietExceptProducer {
         &self,
         campaign_id: Uuid,
         receipt: &PendingArchiveReceiptV1,
+        knowledge: &babylon_persistence::ArchiveKnowledgeV1,
         page_budget: usize,
     ) -> Result<ArchiveProducerOutcomeV1, SemanticArchiveErrorV1> {
         if receipt.resolve_tick() == self.materialize_tick {
-            StubPageProducer.produce(campaign_id, receipt, page_budget)
+            StubPageProducer.produce(campaign_id, receipt, knowledge, page_budget)
         } else {
             let batch = ArchiveDirtyBatchV1::try_new(
                 receipt.resolve_tick(),
@@ -178,6 +188,7 @@ impl ArchiveDossierProducerV1 for ChangedExceptProducer {
         &self,
         campaign_id: Uuid,
         receipt: &PendingArchiveReceiptV1,
+        knowledge: &babylon_persistence::ArchiveKnowledgeV1,
         page_budget: usize,
     ) -> Result<ArchiveProducerOutcomeV1, SemanticArchiveErrorV1> {
         if receipt.resolve_tick() == self.quiet_tick {
@@ -188,7 +199,7 @@ impl ArchiveDossierProducerV1 for ChangedExceptProducer {
             )?;
             Ok(ArchiveProducerOutcomeV1::new(batch, 0))
         } else {
-            StubPageProducer.produce(campaign_id, receipt, page_budget)
+            StubPageProducer.produce(campaign_id, receipt, knowledge, page_budget)
         }
     }
 }
@@ -198,6 +209,7 @@ impl ArchiveDossierProducerV1 for WrongTickProducer {
         &self,
         _campaign_id: Uuid,
         receipt: &PendingArchiveReceiptV1,
+        _knowledge: &babylon_persistence::ArchiveKnowledgeV1,
         _page_budget: usize,
     ) -> Result<ArchiveProducerOutcomeV1, SemanticArchiveErrorV1> {
         let wrong = PendingArchiveReceiptV1::try_new(
@@ -221,6 +233,7 @@ impl ArchiveDossierProducerV1 for UndrainedProducer {
         &self,
         _campaign_id: Uuid,
         receipt: &PendingArchiveReceiptV1,
+        _knowledge: &babylon_persistence::ArchiveKnowledgeV1,
         _page_budget: usize,
     ) -> Result<ArchiveProducerOutcomeV1, SemanticArchiveErrorV1> {
         Ok(ArchiveProducerOutcomeV1::new(
@@ -528,7 +541,7 @@ fn archive_page_count(config: &Config, campaign_id: CampaignId) -> i64 {
         .connect(NoTls)
         .expect("page count connection")
         .query_one(
-            "SELECT pg_catalog.count(*) FROM babylon_meta.archive_page_v1 \
+            "SELECT pg_catalog.count(*) FROM babylon_meta.archive_page_revision_v2 \
              WHERE campaign_id = $1::uuid",
             &[campaign_id.as_uuid()],
         )
@@ -565,15 +578,15 @@ impl LiveWorkerTarget {
         let database = TestDatabase::create_from_template(&base, &template, label);
         let config = database.config(&base);
         let campaign_id = CampaignId::from_uuid(Uuid::from_u128(campaign_uuid));
+        let store = SemanticArchiveStoreV1::new(&config);
+        match store.install_schema().expect("Archive schema installs") {
+            ArchiveSchemaDispositionV1::Installed | ArchiveSchemaDispositionV1::AlreadyCurrent => {}
+        }
         let (session, bundle) = runtime_fixture_with_seed(WORKER_SEED);
         let mut runtime = DurableReplayRuntimeV2::create(&config, campaign_id, session, bundle)
             .expect("runtime constructs after activation");
         commit_ticks(&mut runtime, tick_count);
         drop(runtime);
-        let store = SemanticArchiveStoreV1::new(&config);
-        match store.install_schema().expect("Archive schema installs") {
-            ArchiveSchemaDispositionV1::Installed | ArchiveSchemaDispositionV1::AlreadyCurrent => {}
-        }
         grant_stub_knowledge(&store, campaign_id, &[1, 2, 3]);
         Self {
             database,
@@ -596,15 +609,15 @@ impl LiveWorkerTarget {
         let database = TestDatabase::create_from_template(&base, &template, label);
         let config = database.config(&base);
         let campaign_id = CampaignId::from_uuid(Uuid::from_u128(campaign_uuid));
+        let store = SemanticArchiveStoreV1::new(&config);
+        match store.install_schema().expect("Archive schema installs") {
+            ArchiveSchemaDispositionV1::Installed | ArchiveSchemaDispositionV1::AlreadyCurrent => {}
+        }
         let (session, bundle) = runtime_fixture_with_seed(WORKER_SEED);
         let mut runtime = DurableReplayRuntimeV2::create(&config, campaign_id, session, bundle)
             .expect("runtime constructs after activation");
         commit_ticks(&mut runtime, tick_count);
         drop(runtime);
-        let store = SemanticArchiveStoreV1::new(&config);
-        match store.install_schema().expect("Archive schema installs") {
-            ArchiveSchemaDispositionV1::Installed | ArchiveSchemaDispositionV1::AlreadyCurrent => {}
-        }
         grant_stub_knowledge(&store, campaign_id, granted_ticks);
         Self {
             database,
@@ -656,22 +669,38 @@ fn live_worker_consumes_pending_receipts_in_tick_order() {
     );
     assert_eq!(archive_page_count(&target.config, target.campaign_id), 3);
 
-    let store = SemanticArchiveStoreV1::new(&target.config);
-    let hits = store
-        .search_known(target.campaign_id, "investigate at tick 2", 10)
-        .expect("known-only search");
-    assert_eq!(hits.len(), 1);
-    assert_eq!(hits[0].page_ref(), &stub_place_page_ref());
-    assert_eq!(hits[0].verified_tick(), 2);
-    assert!(hits[0].markdown().contains("728576 jobs"));
-    assert_eq!(hits[0].citations().len(), 2);
-    assert_eq!(hits[0].citations()[0].source_id(), "live-worker-subject");
-    assert_eq!(hits[0].citations()[1].source_id(), "qcew-2024");
-    assert_eq!(hits[0].citations()[0].locator(), "subject@tick-1");
-    assert_eq!(
-        hits[0].citations()[1].locator(),
-        "fact_qcew_county_rollup county_fips=26163"
-    );
+    with_reader(&target.config, |reader| {
+        let scope = scope_at(&target.config, target.campaign_id, 3);
+        let hits = reader
+            .search_as_of(&scope, "investigate at tick 2", 10)
+            .expect("known-only scoped search");
+        assert_eq!(hits.hits.len(), 1);
+        assert_eq!(hits.hits[0].subject, stub_place_page_ref());
+        assert_eq!(hits.hits[0].content_source.tick(), 2);
+        let dossier = reader
+            .dossier_as_of(
+                &scope,
+                &stub_place_page_ref(),
+                &ArchiveDossierBoundsV2::default(),
+            )
+            .expect("exact retained dossier");
+        let ArchiveDossierStateV2::Ready {
+            page,
+            verified_through_tick: 3,
+        } = dossier.state
+        else {
+            panic!("settled scope must be ready");
+        };
+        assert!(page.markdown.contains("728576 jobs"));
+        assert_eq!(page.citations.len(), 2);
+        assert_eq!(page.citations[0].source_id(), "live-worker-subject");
+        assert_eq!(page.citations[1].source_id(), "qcew-2024");
+        assert_eq!(page.citations[0].locator(), "subject@tick-1");
+        assert_eq!(
+            page.citations[1].locator(),
+            "fact_qcew_county_rollup county_fips=26163"
+        );
+    });
     target.finish();
 }
 
@@ -740,10 +769,8 @@ fn live_worker_crash_between_receipts_resumes_exactly() {
         .collect::<Vec<_>>();
     assert_eq!(
         pending_dispositions,
-        vec![
-            (2, ArchiveReceiptDispositionV1::Paged),
-            (3, ArchiveReceiptDispositionV1::Paged),
-        ]
+        vec![(2, ArchiveReceiptDispositionV1::Paged)],
+        "an undrained receipt prevents every later producer evaluation"
     );
     assert_eq!(
         pending.verified_tick(),
@@ -985,28 +1012,30 @@ fn live_search_refuses_tampered_page_content() {
         .sweep_once(target.campaign_id, &StubPageProducer)
         .expect("sweep materializes the page");
 
-    let store = SemanticArchiveStoreV1::new(&target.config);
-    let hits = store
-        .search_known(target.campaign_id, "728576", 10)
-        .expect("untampered search returns the known page");
-    assert_eq!(hits.len(), 1);
-
-    target
-        .config
-        .connect(NoTls)
-        .expect("tamper connection")
-        .execute(
-            "UPDATE babylon_meta.archive_page_v1 SET markdown = \
+    with_reader(&target.config, |reader| {
+        let scope = scope_at(&target.config, target.campaign_id, 1);
+        let hits = reader
+            .search_as_of(&scope, "728576", 10)
+            .expect("untampered search returns the known page");
+        assert_eq!(hits.hits.len(), 1);
+        target
+            .config
+            .connect(NoTls)
+            .expect("tamper connection")
+            .execute(
+                "UPDATE babylon_meta.archive_page_revision_v2 SET markdown = \
              pg_catalog.concat(markdown, ' tampered') WHERE campaign_id = $1::uuid",
-            &[target.campaign_id.as_uuid()],
-        )
-        .expect("stored markdown tampers");
-
-    assert_eq!(
-        store.search_known(target.campaign_id, "728576", 10),
-        Err(SemanticArchiveErrorV1::StoredPageMismatch),
-        "a stored page whose bytes no longer match its content digest refuses the read"
-    );
+                &[target.campaign_id.as_uuid()],
+            )
+            .expect("stored markdown tampers");
+        assert_eq!(
+            reader.search_as_of(&scope, "728576", 10),
+            Err(babylon_persistence::SemanticArchiveReaderErrorV1::Archive(
+                SemanticArchiveErrorV1::StoredPageMismatch
+            )),
+            "bytes that disagree with their digest refuse the canonical read"
+        );
+    });
     target.finish();
 }
 
@@ -1022,19 +1051,23 @@ fn live_search_bounds_results_to_the_requested_limit() {
         .expect("sweep materializes both pages");
     assert_eq!(archive_page_count(&target.config, target.campaign_id), 2);
 
-    let store = SemanticArchiveStoreV1::new(&target.config);
-    let bounded = store
-        .search_known(target.campaign_id, "728576", 1)
-        .expect("bounded known-only search");
-    assert_eq!(
-        bounded.len(),
-        1,
-        "two pages match, so the requested limit of one must bound the result set"
-    );
-    let unbounded = store
-        .search_known(target.campaign_id, "728576", 10)
-        .expect("unbounded known-only search");
-    assert_eq!(unbounded.len(), 2);
+    with_reader(&target.config, |reader| {
+        let scope = scope_at(&target.config, target.campaign_id, 2);
+        let bounded = reader
+            .search_as_of(&scope, "728576", 1)
+            .expect("bounded search");
+        assert_eq!(
+            bounded.hits.len(),
+            1,
+            "the requested limit bounds matching subjects"
+        );
+        assert!(bounded.truncated, "the second match is reported honestly");
+        let complete = reader
+            .search_as_of(&scope, "728576", 10)
+            .expect("complete bounded search");
+        assert_eq!(complete.hits.len(), 2);
+        assert!(!complete.truncated);
+    });
     target.finish();
 }
 

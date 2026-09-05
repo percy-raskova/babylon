@@ -22,6 +22,7 @@ use crate::observer_focus::{
 };
 use crate::observer_layout::{ObserverLayout, ObserverRegion};
 use crate::observer_theme as theme;
+use crate::ui::dossier_card::{ActiveCountyDossier, DossierFetchState, DossierRefresh};
 
 pub(crate) const OBSERVER_PANEL_BOTTOM: f32 = 96.0;
 
@@ -1372,6 +1373,49 @@ struct ShellState<'w> {
     atlas: Res<'w, CountyAtlas>,
     selected: Res<'w, SelectedCounty>,
     hovered: Res<'w, HoveredCounty>,
+    dossier: Option<Res<'w, ActiveCountyDossier>>,
+    dossier_refresh: Option<Res<'w, DossierRefresh>>,
+    dossier_fetch: Option<Res<'w, DossierFetchState>>,
+}
+
+impl ShellState<'_> {
+    fn needs_repaint(&self) -> bool {
+        self.state.is_changed()
+            || self.frame.is_changed()
+            || self.ui.is_changed()
+            || self.selected.is_changed()
+            || self.hovered.is_changed()
+            || self.view.is_changed()
+            || self.audio.is_changed()
+            || self.dossier.as_ref().is_some_and(DetectChanges::is_changed)
+            || self
+                .dossier_refresh
+                .as_ref()
+                .is_some_and(DetectChanges::is_changed)
+            || self
+                .dossier_fetch
+                .as_ref()
+                .is_some_and(DetectChanges::is_changed)
+    }
+}
+
+fn archive_page_status(
+    read: Option<&babylon_persistence::archive_revision::ArchiveDossierReadV2>,
+    selected: bool,
+    read_failed: bool,
+) -> String {
+    use babylon_persistence::archive_revision::ArchiveDossierStateV2;
+    match read.map(|read| &read.state) {
+        Some(ArchiveDossierStateV2::Ready {
+            verified_through_tick,
+            ..
+        }) => format!("Archive verified for week {verified_through_tick}"),
+        Some(ArchiveDossierStateV2::Pending { .. }) => "Archive pending".into(),
+        Some(ArchiveDossierStateV2::Unavailable(_)) => "Archive unavailable".into(),
+        None if read_failed => "Archive read failed".into(),
+        None if selected => "Archive awaiting page".into(),
+        None => "Archive: select a county".into(),
+    }
 }
 
 fn repaint(
@@ -1380,6 +1424,9 @@ fn repaint(
     mut menus: Query<&mut Visibility, With<ObserverMenu>>,
     mut inspectors: Query<&mut Visibility, (With<ObserverInspector>, Without<ObserverMenu>)>,
 ) {
+    if !shell.needs_repaint() {
+        return;
+    }
     let ShellState {
         state,
         frame,
@@ -1389,19 +1436,31 @@ fn repaint(
         atlas,
         selected,
         hovered,
+        dossier,
+        dossier_refresh,
+        dossier_fetch,
     } = shell;
-    if !(state.is_changed()
-        || frame.is_changed()
-        || ui.is_changed()
-        || selected.is_changed()
-        || hovered.is_changed()
-        || view.is_changed()
-        || audio.is_changed())
-    {
-        return;
-    }
     let county = selected.0.and_then(|index| atlas.county(index));
     let installed = frame.for_session(&state);
+    let archive = dossier.as_ref().and_then(|dossier| {
+        dossier.for_observer(
+            &state,
+            &frame,
+            dossier_refresh.as_ref()?.0,
+            county.as_ref()?.fips,
+        )
+    });
+    let archive_status = archive_page_status(
+        archive,
+        county.is_some(),
+        dossier_fetch
+            .as_deref()
+            .is_some_and(|fetch| matches!(fetch, DossierFetchState::Failed(_))),
+    );
+    let archive_detail: &str = match archive {
+        Some(read) => crate::dossier::availability_label(read),
+        None => &archive_status,
+    };
     let lens = project_map_lens(installed, &ui.lens);
     let turn = turn_presentation(&state);
     for (kind, mut text) in &mut texts {
@@ -1416,7 +1475,7 @@ fn repaint(
         }
         let value = match kind {
             ObserverText::Clock => turn.period.clone(),
-            ObserverText::Identity => format!("{} | {}", state.perspective.label(), if state.archive_verified_tick < state.durable_tick { "Archive catching up" } else { "Archive verified" }),
+            ObserverText::Identity => format!("{} | {}", state.perspective.label(), archive_status),
             ObserverText::Status => turn.status.clone(),
             ObserverText::Legend => match &ui.lens {
                 MapLens::Qcew(_) => format!("0..{} {}", lens.maximum().map_or_else(|| "-".into(), grouped), lens.unit),
@@ -1427,7 +1486,7 @@ fn repaint(
             ObserverText::Hover if *view != crate::production::PrimaryView::Map => String::new(),
             ObserverText::Hover => hovered.0.and_then(|index| atlas.county(index)).filter(|county| county.fips.starts_with("26")).map_or_else(String::new, |county| format!("{}\n{}\n{}", county.name, lens.label, format_lens_reading(lens.county(county.fips), &lens.unit))),
             ObserverText::Audio => format!("{} | music {:.0}% | effects {:.0}%\nReduced motion: {} | Stop on delivery: {}", if audio.track==0 {"PHI"}else{"PANOPTICON"},audio.music_volume*100.0,audio.effects_volume*100.0,if ui.reduced_motion {"ON"}else{"OFF"},if ui.stop_on_delivery {"ON"}else{"OFF"}),
-            ObserverText::Evidence => format!("Viewing week {} / Archive verified through {}", state.viewed_tick, state.archive_verified_tick),
+            ObserverText::Evidence => format!("Viewing week {} / Archive processed through {}\n{}", state.viewed_tick, state.archive_verified_tick, archive_detail),
             ObserverText::EvidenceDetails => installed.map_or_else(String::new, |snapshot| {
                 let mut evidence = format!("CAMPAIGN\n{}\n\nCOMMITTED EVIDENCE / WEEK {}\n{}\n\nWORLD IDENTITY\n{}", wrapped_identity(&snapshot.campaign_id), snapshot.resolve_tick, wrapped_identity(snapshot.tick_content_hash.as_deref().unwrap_or(&snapshot.foundation_digest)), snapshot.nominal_world_hash.as_deref().map_or_else(|| "Unavailable in this observation".to_owned(), wrapped_identity));
                 if let Some(digest) = snapshot.production_evidence_digest() {
@@ -1453,19 +1512,21 @@ fn repaint(
         });
     }
     for mut visibility in &mut inspectors {
-        visibility.set_if_neq(
-            if ui.archive_open
-                || ui.history_open
-                || ui.menu_open
-                || ui.splash_visible
-                || ui.comparison_open
-                || *view == crate::production::PrimaryView::Production
-            {
-                Visibility::Hidden
-            } else {
-                Visibility::Visible
-            },
-        );
+        visibility.set_if_neq(inspector_visibility(&ui, *view));
+    }
+}
+
+fn inspector_visibility(ui: &ObserverUiState, view: crate::production::PrimaryView) -> Visibility {
+    if ui.archive_open
+        || ui.history_open
+        || ui.menu_open
+        || ui.splash_visible
+        || ui.comparison_open
+        || view == crate::production::PrimaryView::Production
+    {
+        Visibility::Hidden
+    } else {
+        Visibility::Visible
     }
 }
 
@@ -1581,6 +1642,71 @@ mod tests {
     use bevy::input::keyboard::{Key, KeyboardInput, NativeKey};
     use bevy::input::{ButtonState, InputPlugin};
     use bevy::input_focus::InputFocus;
+
+    #[test]
+    fn archive_hud_certifies_only_the_scoped_ready_page() {
+        use babylon_persistence::archive_revision::{
+            ArchiveChangePageV2, ArchiveDossierPageV2, ArchiveDossierPendingV2,
+            ArchiveDossierReadV2, ArchiveDossierStateV2, ArchiveDossierUnavailableV2,
+            ArchivePublicationOriginV2, ArchiveReadScopeV2,
+        };
+        use babylon_persistence::{ArchivePageRefV1, ArchiveSubjectKindV1, CampaignId};
+        let campaign = CampaignId::from_uuid(uuid::Uuid::from_u128(1));
+        let scope = ArchiveReadScopeV2::committed(campaign, 3, [3; 32]).unwrap();
+        let mut read = ArchiveDossierReadV2 {
+            scope,
+            subject: ArchivePageRefV1::try_new(ArchiveSubjectKindV1::County, "26163".into())
+                .unwrap(),
+            durable_tick: 16,
+            processed_tick: 16,
+            history_floor_tick: 0,
+            state: ArchiveDossierStateV2::Pending {
+                page: None,
+                reason: ArchiveDossierPendingV2::CutoverValidation,
+            },
+        };
+        assert_eq!(
+            archive_page_status(Some(&read), true, false),
+            "Archive pending"
+        );
+        read.state =
+            ArchiveDossierStateV2::Unavailable(ArchiveDossierUnavailableV2::HistoryNotRetained);
+        assert_eq!(
+            archive_page_status(Some(&read), true, false),
+            "Archive unavailable"
+        );
+        read.state = ArchiveDossierStateV2::Ready {
+            verified_through_tick: 3,
+            page: ArchiveDossierPageV2 {
+                revision_id: [1; 32],
+                effective_tick: 1,
+                origin: ArchivePublicationOriginV2::Materialized,
+                content_source: ArchiveReadScopeV2::committed(campaign, 1, [1; 32]).unwrap(),
+                title: "Wayne County".into(),
+                question: "What changed?".into(),
+                signals: Vec::new(),
+                markdown: String::new(),
+                content_sha256: [0; 32],
+                citations: Vec::new(),
+                atoms: Vec::new(),
+                links: Vec::new(),
+                changes: ArchiveChangePageV2 {
+                    coverage_from_tick: 0,
+                    changes: Vec::new(),
+                    next_cursor: None,
+                },
+            },
+        };
+        assert_eq!(
+            archive_page_status(Some(&read), true, false),
+            "Archive verified for week 3"
+        );
+        assert_eq!(
+            archive_page_status(None, true, false),
+            "Archive awaiting page"
+        );
+        assert_eq!(archive_page_status(None, true, true), "Archive read failed");
+    }
 
     fn focused_shell(menu_open: bool, command: ObserverCommand) -> (App, Entity, Entity) {
         use crate::observer_io::ObserverSet;

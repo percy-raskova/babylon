@@ -459,7 +459,6 @@ fn setup_readings_panel(commands: &mut Commands) {
             panel
                 .spawn((
                     ProductionReadingBody,
-                    ObserverFocusTarget::reading(None),
                     Node {
                         flex_direction: FlexDirection::Column,
                         row_gap: px(12),
@@ -476,6 +475,7 @@ fn setup_readings_panel(commands: &mut Commands) {
                     details.spawn((
                         text("", 14.0, theme::PAPER),
                         ProductionDetails,
+                        ObserverFocusTarget::reading(None),
                         Node {
                             flex_shrink: 0.0,
                             min_width: px(0),
@@ -643,7 +643,7 @@ fn keyboard_activate(
 
 type ProductionFocusOwners = Or<(
     With<ProductionButton>,
-    With<ProductionReadingBody>,
+    With<ProductionDetails>,
     With<ProductionBrief>,
 )>;
 
@@ -660,7 +660,9 @@ fn focus_eligibility(
         || observation.state.is_changed()
         || navigation.is_changed()
         || ui.is_changed()
-        || targets.iter_mut().any(|(target, _)| target.is_added()))
+        // Paint installs the reading's new scope after this PreUpdate pass.
+        // Admit that changed target on the following frame even if no control moved.
+        || targets.iter_mut().any(|(target, _)| target.is_changed()))
     {
         return;
     }
@@ -1825,7 +1827,7 @@ type ReadingFocusTargets<'w, 's> = Query<
     'w,
     's,
     &'static mut ObserverFocusTarget,
-    Or<(With<ProductionBrief>, With<ProductionReadingBody>)>,
+    Or<(With<ProductionBrief>, With<ProductionDetails>)>,
 >;
 
 fn paint_readings(
@@ -2652,6 +2654,12 @@ mod tests {
     }
 
     fn dependency_navigation_app() -> App {
+        let mut app = unstarted_dependency_navigation_app();
+        app.update();
+        app
+    }
+
+    fn unstarted_dependency_navigation_app() -> App {
         let campaign = CampaignId::from_uuid(uuid::Uuid::nil());
         let mut state = ObserverSession::new(campaign);
         state.ready(1, Some("a".repeat(64)));
@@ -2699,7 +2707,6 @@ mod tests {
             .splash_visible = false;
         app.world_mut()
             .spawn((Node::default(), ProductionDependencies));
-        app.update();
         app
     }
 
@@ -3197,6 +3204,213 @@ mod tests {
             Some(window),
             "WORK releases focus even when work is already the active view"
         );
+    }
+
+    struct ReadingsFocusFixture {
+        app: App,
+        window: Entity,
+        body: Entity,
+        reading: Entity,
+        close: Entity,
+        flat: Entity,
+        footer: Entity,
+    }
+
+    fn readings_focus_app() -> ReadingsFocusFixture {
+        use crate::observer_focus::{ObserverFocusPlugin, ObserverFocusPolicy};
+        use bevy::ecs::system::RunSystemOnce;
+        use bevy::input::InputPlugin;
+        let mut app = unstarted_dependency_navigation_app();
+        app.add_plugins((InputPlugin, ObserverFocusPlugin))
+            .add_observer(keyboard_activate)
+            .add_systems(
+                PreUpdate,
+                focus_eligibility.in_set(ObserverFocusSystems::Eligibility),
+            )
+            .add_systems(
+                Update,
+                (paint_readings, paint_disclosure).chain().after(navigate),
+            );
+        let window = app
+            .world_mut()
+            .spawn((Window::default(), PrimaryWindow))
+            .id();
+        let context = app.world().resource::<ObserverSession>().context();
+        app.world_mut()
+            .resource_mut::<ObserverFocusPolicy>()
+            .context = Some(context);
+        // The real TabNavigationPlugin attaches its window observer in Startup.
+        // Install it before the fixture's first update, as the windowed app does.
+        app.update();
+        *app.world_mut().resource_mut::<PrimaryView>() = PrimaryView::Production;
+        {
+            let mut navigation = app.world_mut().resource_mut::<ProductionNavigation>();
+            navigation.selected_site = Some("b".into());
+            navigation.details_open = true;
+        }
+        app.world_mut()
+            .run_system_once(|mut commands: Commands| setup_readings_panel(&mut commands))
+            .unwrap();
+        let body = app
+            .world_mut()
+            .query_filtered::<Entity, With<ProductionReadingBody>>()
+            .single(app.world())
+            .unwrap();
+        let reading = app
+            .world_mut()
+            .query_filtered::<Entity, With<ProductionDetails>>()
+            .single(app.world())
+            .unwrap();
+        let find_button = |world: &mut World, command: fn(&ProductionCommand) -> bool| {
+            world
+                .query::<(Entity, &ProductionButton)>()
+                .iter(world)
+                .find_map(|(entity, button)| command(&button.0).then_some(entity))
+                .unwrap()
+        };
+        let close = find_button(app.world_mut(), |command| {
+            matches!(command, ProductionCommand::Details)
+        });
+        let flat = find_button(app.world_mut(), |command| {
+            matches!(command, ProductionCommand::Flat)
+        });
+        let group = app
+            .world_mut()
+            .spawn((Node::default(), TabGroup::new(40)))
+            .id();
+        let mut target = ObserverFocusTarget::action(None);
+        target.available = true;
+        let footer = app
+            .world_mut()
+            .spawn((Node::default(), target, ChildOf(group)))
+            .id();
+        // Exercise the actual paging system with explicit overflow geometry;
+        // rendering/layout itself belongs to the native-window acceptance check.
+        app.world_mut().entity_mut(body).insert((
+            ComputedNode {
+                size: Vec2::new(300.0, 160.0),
+                content_size: Vec2::new(300.0, 1200.0),
+                inverse_scale_factor: 1.0,
+                ..default()
+            },
+            ScrollPosition::default(),
+        ));
+        app.world_mut().entity_mut(reading).insert((
+            ComputedNode {
+                size: Vec2::new(300.0, 1100.0),
+                content_size: Vec2::new(300.0, 1100.0),
+                inverse_scale_factor: 1.0,
+                ..default()
+            },
+            UiGlobalTransform::from_translation(Vec2::new(0.0, 470.0)),
+        ));
+        app.update();
+        app.update();
+        ReadingsFocusFixture {
+            app,
+            window,
+            body,
+            reading,
+            close,
+            flat,
+            footer,
+        }
+    }
+
+    fn readings_key(app: &mut App, window: Entity, key_code: KeyCode) {
+        use bevy::input::{
+            keyboard::{Key, KeyboardInput, NativeKey},
+            ButtonState,
+        };
+        for state in [ButtonState::Pressed, ButtonState::Released] {
+            app.world_mut().write_message(KeyboardInput {
+                key_code,
+                logical_key: Key::Unidentified(NativeKey::Unidentified),
+                state,
+                text: None,
+                repeat: false,
+                window,
+            });
+            app.update();
+        }
+    }
+
+    #[test]
+    fn readings_tab_order_reaches_the_text_after_controls_and_pages_its_scroll_ancestor() {
+        use bevy::input_focus::InputFocus;
+        let ReadingsFocusFixture {
+            mut app,
+            window,
+            body,
+            reading,
+            close,
+            flat,
+            footer,
+        } = readings_focus_app();
+        app.world_mut().resource_mut::<InputFocus>().set(close);
+        readings_key(&mut app, window, KeyCode::Tab);
+        assert_eq!(app.world().resource::<InputFocus>().get(), Some(flat));
+        readings_key(&mut app, window, KeyCode::Tab);
+        assert_eq!(
+            app.world().resource::<InputFocus>().get(),
+            Some(reading),
+            "the long readings follow their 3D/2D control before the next panel"
+        );
+        let week = app.world().resource::<ObserverSession>().viewed_tick;
+        readings_key(&mut app, window, KeyCode::PageDown);
+        assert!(app.world().get::<ScrollPosition>(body).unwrap().0.y > 0.0);
+        readings_key(&mut app, window, KeyCode::End);
+        assert_eq!(
+            app.world()
+                .get::<ScrollPosition>(body)
+                .unwrap()
+                .0
+                .y
+                .to_bits(),
+            1040.0_f32.to_bits()
+        );
+        readings_key(&mut app, window, KeyCode::Home);
+        assert_eq!(
+            app.world().get::<ScrollPosition>(body).unwrap().0,
+            Vec2::ZERO
+        );
+        readings_key(&mut app, window, KeyCode::Enter);
+        assert_eq!(app.world().resource::<ObserverSession>().viewed_tick, week);
+        assert!(app.world().resource::<ProductionNavigation>().details_open);
+        readings_key(&mut app, window, KeyCode::Tab);
+        assert_eq!(app.world().resource::<InputFocus>().get(), Some(footer));
+    }
+
+    #[test]
+    fn repainted_reading_scope_reenters_tab_order_after_a_committed_week_refresh() {
+        use crate::observer_focus::ObserverFocusPolicy;
+        use bevy::input_focus::tab_navigation::TabIndex;
+        let ReadingsFocusFixture {
+            mut app, reading, ..
+        } = readings_focus_app();
+        let hash = "b".repeat(64);
+        {
+            let mut session = app.world_mut().resource_mut::<ObserverSession>();
+            session.ready(2, Some(hash.clone()));
+            let context = session.context();
+            assert!(session.installed(&context));
+        }
+        {
+            let mut frame = app.world_mut().resource_mut::<ObserverFrame>();
+            let snapshot = frame.0.as_mut().unwrap();
+            snapshot.resolve_tick = 2;
+            snapshot.tick_content_hash = Some(hash);
+        }
+        let context = app.world().resource::<ObserverSession>().context();
+        app.world_mut()
+            .resource_mut::<ObserverFocusPolicy>()
+            .context = Some(context.clone());
+        app.update(); // old scope is removed, then the reading is repainted
+        app.update(); // the repainted target must be admitted without another UI action
+        let target = app.world().get::<ObserverFocusTarget>(reading).unwrap();
+        assert_eq!(target.context.as_ref(), Some(&context));
+        assert!(target.available);
+        assert!(app.world().get::<TabIndex>(reading).is_some());
     }
 
     #[test]

@@ -1,6 +1,10 @@
 //! Full material reads, historical identity, and SQL-denied preview on a disposable clone.
 
 use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_persistence::archive_revision::{
+    ArchiveDossierBoundsV2, ArchiveDossierPageV2, ArchiveDossierPendingV2, ArchiveDossierReadV2,
+    ArchiveDossierStateV2, ArchiveDossierUnavailableV2, ArchiveReadScopeV2, ArchiveSearchStateV2,
+};
 use babylon_persistence::{
     install_observer_economy_schema_v1, install_reader_role_v1,
     material_runtime::{michigan_material_runtime_foundation_v2, DurableMaterialRuntimeV3},
@@ -10,10 +14,10 @@ use babylon_persistence::{
     },
     michigan_material::MichiganDeliveryPresetV1,
     observer_reader::{ObserverEconomyErrorV1, ObserverEconomyReaderV1, ObserverVisibilityV1},
-    validate_legacy_connection_target, ArchiveAtomSubjectKindV1, ArchiveAtomSubjectV1,
-    ArchiveAtomV1, ArchiveAtomValueV1, ArchiveEvidenceClassV1, ArchiveReceiptDispositionV1,
-    ArchiveSearchHitV1, ArchiveWorkerV1, CampaignId, CompositeArchiveDossierProducerV1,
-    CountyDossierProducerV1, PlaceDossierProducerV1, SemanticArchiveReaderV1,
+    validate_legacy_connection_target, ArchiveAtomSubjectKindV1, ArchiveAtomValueV1,
+    ArchiveEvidenceClassV1, ArchivePageRefV1, ArchiveReceiptDispositionV1, ArchiveSubjectKindV1,
+    ArchiveWorkerV1, CampaignId, CompositeArchiveDossierProducerV1, CountyDossierProducerV1,
+    PlaceDossierProducerV1, SemanticArchiveReaderV1, SemanticArchiveStoreV1,
 };
 use babylon_practice_contract::ordered_action_v1::OrderedPracticeActionBatchV1;
 use babylon_tick::material_world::MaterialWorldRegisterV2;
@@ -66,8 +70,7 @@ fn assert_archive_progress(
 }
 
 fn assert_public_qcew_card(
-    atoms: &[ArchiveAtomV1],
-    page: &ArchiveSearchHitV1,
+    page: &ArchiveDossierPageV2,
     campaign: CampaignId,
     county: &MichiganCountyEconomyV1,
 ) {
@@ -93,18 +96,22 @@ fn assert_public_qcew_card(
             county.annual_avg_wkly_wage,
         ),
     ];
+    let atoms = &page.atoms;
     let signals: Vec<_> = atoms
         .iter()
         .filter(|atom| QCEW_ECONOMICS_FIELD_KEYS_V1.contains(&atom.signal_key()))
         .collect();
     assert_eq!(signals.len(), 4);
-    assert_eq!(page.page_ref().id(), county.county_geoid);
     assert_eq!(
-        page.verified_tick(),
+        page.content_source.tick(),
         1,
         "content remains sourced from week one"
     );
-    assert_eq!(page.atoms(), atoms);
+    assert_eq!(page.content_source.campaign_id(), campaign);
+    assert_eq!(
+        page.content_sha256,
+        babylon_kernel::sha256_of(page.markdown.as_bytes())
+    );
     let locator = format!(
         "qcew_county_economics_mi_2024.csv.gz#county_geoid={}&sha256={QCEW_ECONOMICS_ARTIFACT_SHA256_V1}",
         county.county_geoid
@@ -123,29 +130,121 @@ fn assert_public_qcew_card(
         assert_eq!(atom.valid_tick(), 1);
         assert_eq!(atom.citation().source_id(), QCEW_ECONOMICS_SOURCE_ID_V1);
         assert_eq!(atom.citation().locator(), locator);
-        assert!(page.citations().contains(atom.citation()));
-        assert!(page
-            .markdown()
-            .contains(&format!("- **{label}:** {value} —")));
+        assert!(page.citations.contains(atom.citation()));
+        assert!(page.markdown.contains(&format!("- **{label}:** {value} —")));
     }
     assert!(atoms
         .iter()
         .all(|atom| !matches!(atom.signal_key(), "median-wage" | "production" | "phi-hour")));
 }
 
-fn assert_all_county_cards(
+fn current_archive_scope(
     reader: &SemanticArchiveReaderV1,
     campaign: CampaignId,
-) -> Vec<ArchiveSearchHitV1> {
-    let pages = reader.search_known(campaign, "QCEW 2024", 100).unwrap();
-    assert_eq!(pages.len(), 83);
-    for (page, county) in pages.iter().zip(michigan_economy_v1().unwrap().counties()) {
-        let atoms = reader
-            .county_card_atoms(campaign, &county.county_geoid)
-            .unwrap();
-        assert_public_qcew_card(&atoms, page, campaign, county);
+) -> ArchiveReadScopeV2 {
+    let status = reader.committed_tick_status(campaign).unwrap().unwrap();
+    assert_eq!(*status.campaign_id(), campaign);
+    ArchiveReadScopeV2::committed(campaign, status.resolve_tick(), *status.tick_content_hash())
+        .unwrap()
+}
+
+fn read_county(
+    reader: &SemanticArchiveReaderV1,
+    scope: &ArchiveReadScopeV2,
+    geoid: &str,
+) -> ArchiveDossierReadV2 {
+    reader
+        .dossier_as_of(
+            scope,
+            &ArchivePageRefV1::try_new(ArchiveSubjectKindV1::County, geoid.to_owned()).unwrap(),
+            &ArchiveDossierBoundsV2::try_new(100, None).unwrap(),
+        )
+        .unwrap()
+}
+
+fn assert_scoped_page<'a>(
+    read: &'a ArchiveDossierReadV2,
+    scope: &ArchiveReadScopeV2,
+    expected: ArchiveSearchStateV2,
+) -> &'a ArchiveDossierPageV2 {
+    assert_eq!(&read.scope, scope);
+    assert_eq!(read.history_floor_tick, 0);
+    match (&read.state, expected) {
+        (
+            ArchiveDossierStateV2::Ready {
+                page,
+                verified_through_tick,
+            },
+            ArchiveSearchStateV2::Ready,
+        ) => {
+            assert_eq!(*verified_through_tick, scope.tick());
+            page
+        }
+        (
+            ArchiveDossierStateV2::Pending {
+                page: Some(page),
+                reason,
+            },
+            ArchiveSearchStateV2::Pending(expected),
+        ) => {
+            assert_eq!(*reason, expected);
+            assert!(page.changes.changes.is_empty());
+            assert!(page.changes.next_cursor.is_none());
+            page
+        }
+        other => panic!("unexpected scoped page state: {other:?}"),
     }
-    pages
+}
+
+fn assert_all_county_cards(
+    reader: &SemanticArchiveReaderV1,
+    scope: &ArchiveReadScopeV2,
+    expected: ArchiveSearchStateV2,
+) -> Vec<ArchiveDossierPageV2> {
+    let search = reader.search_as_of(scope, "QCEW 2024", 100).unwrap();
+    assert_eq!(&search.scope, scope);
+    assert_eq!(search.state, expected);
+    assert!(!search.truncated);
+    assert_eq!(search.hits.len(), 83);
+    search
+        .hits
+        .iter()
+        .zip(michigan_economy_v1().unwrap().counties())
+        .map(|(hit, county)| {
+            assert_eq!(hit.subject.kind(), ArchiveSubjectKindV1::County);
+            assert_eq!(hit.subject.id(), county.county_geoid);
+            let read = read_county(reader, scope, &county.county_geoid);
+            assert_eq!(read.subject, hit.subject);
+            let page = assert_scoped_page(&read, scope, expected);
+            assert_eq!(page.revision_id, hit.revision_id);
+            assert_eq!(page.content_source, hit.content_source);
+            assert_eq!(page.title, hit.title);
+            assert_public_qcew_card(page, scope.campaign_id(), county);
+            page.clone()
+        })
+        .collect()
+}
+
+fn assert_retained_content(actual: &ArchiveDossierPageV2, original: &ArchiveDossierPageV2) {
+    assert_eq!(actual.revision_id, original.revision_id);
+    assert_eq!(actual.effective_tick, original.effective_tick);
+    assert_eq!(actual.origin, original.origin);
+    assert_eq!(actual.content_source, original.content_source);
+    assert_eq!(actual.title, original.title);
+    assert_eq!(actual.question, original.question);
+    assert_eq!(actual.signals, original.signals);
+    assert_eq!(actual.markdown, original.markdown);
+    assert_eq!(actual.content_sha256, original.content_sha256);
+    assert_eq!(actual.citations, original.citations);
+    assert_eq!(actual.atoms, original.atoms);
+    // Target readiness and history coverage are scoped observations, not source bytes.
+    let labels = |page: &ArchiveDossierPageV2| {
+        page.links
+            .iter()
+            .map(|link| (link.target.clone(), link.retained_label.clone()))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(labels(actual), labels(original));
 }
 
 #[test]
@@ -154,6 +253,9 @@ fn live_michigan_all_county_cards_keep_public_source_and_quiet_restart_freshness
     let mut target = DisposableTarget::create();
     let campaign =
         CampaignId::from_uuid(Uuid::from_u128(0x0044_0000_0000_0000_0000_0000_0000_0002));
+    SemanticArchiveStoreV1::new(&target.writer)
+        .install_schema()
+        .unwrap();
     let preset = MichiganDeliveryPresetV1::Standard;
     let mut runtime = DurableMaterialRuntimeV3::create(
         &target.writer,
@@ -165,10 +267,11 @@ fn live_michigan_all_county_cards_keep_public_source_and_quiet_restart_freshness
     install_observer_economy_schema_v1(&target.writer).unwrap();
     let config = target.login("babylon_reader", "countycards");
     let reader = SemanticArchiveReaderV1::new(&config).unwrap();
-    assert!(reader
-        .county_card_atoms(campaign, "26163")
-        .unwrap()
-        .is_empty());
+    let foundation = read_county(&reader, &ArchiveReadScopeV2::foundation(campaign), "26163");
+    assert_eq!(
+        foundation.state,
+        ArchiveDossierStateV2::Unavailable(ArchiveDossierUnavailableV2::FoundationHasNoPage)
+    );
     for relation in [
         "babylon_meta.archive_knowledge_grant_v1",
         "babylon_state.territory_state_field_v1",
@@ -193,24 +296,23 @@ fn live_michigan_all_county_cards_keep_public_source_and_quiet_restart_freshness
         &[(1, ArchiveReceiptDispositionV1::Paged)]
     );
     assert_archive_progress(&reader, campaign, 1, 0);
-    let pages = assert_all_county_cards(&reader, campaign);
+    let scope = current_archive_scope(&reader, campaign);
+    let pages = assert_all_county_cards(
+        &reader,
+        &scope,
+        ArchiveSearchStateV2::Pending(ArchiveDossierPendingV2::ReceiptProcessing),
+    );
     drop((runtime, worker, producer));
-    assert_restart_drains_and_verifies_quiet_weeks(&target, &reader, campaign, &pages);
+    assert_restart_drains_and_verifies_quiet_weeks(&target, &reader, &scope, &pages);
 }
 
 fn assert_restart_drains_and_verifies_quiet_weeks(
     target: &DisposableTarget,
     reader: &SemanticArchiveReaderV1,
-    campaign: CampaignId,
-    pages: &[ArchiveSearchHitV1],
+    first_scope: &ArchiveReadScopeV2,
+    pages: &[ArchiveDossierPageV2],
 ) {
-    let held_county =
-        ArchiveAtomSubjectV1::try_new(ArchiveAtomSubjectKindV1::County, "26163".to_owned())
-            .unwrap();
-    let held_atoms = reader
-        .county_card_atoms(campaign, held_county.id())
-        .unwrap();
-
+    let campaign = first_scope.campaign_id();
     let mut runtime = DurableMaterialRuntimeV3::open(
         &target.writer,
         campaign,
@@ -232,24 +334,38 @@ fn assert_restart_drains_and_verifies_quiet_weeks(
         }
     }
     assert_archive_progress(reader, campaign, 1, 1);
-    assert_eq!(
-        reader.search_known(campaign, "QCEW 2024", 100).unwrap(),
-        pages
-    );
+    let ready_pages = assert_all_county_cards(reader, first_scope, ArchiveSearchStateV2::Ready);
+    assert_eq!(ready_pages.len(), pages.len());
+    for (ready, staged) in ready_pages.iter().zip(pages) {
+        assert_retained_content(ready, staged);
+    }
+    let held_read = read_county(reader, first_scope, "26163");
+    let held = assert_scoped_page(&held_read, first_scope, ArchiveSearchStateV2::Ready);
+    assert!(held.changes.next_cursor.is_none());
+    assert_eq!(held.changes.changes.len(), held.atoms.len());
+    for change in &held.changes.changes {
+        assert_eq!(change.publication_tick, 1);
+        assert!(change.before.is_none());
+        assert!(held.atoms.contains(change.after.as_ref().unwrap()));
+    }
     assert!(worker
         .sweep_once(campaign, &producer)
         .unwrap()
         .dispositions()
         .is_empty());
-
     for tick in 2..=3 {
         advance_material_week(&mut runtime);
+        let scope = current_archive_scope(reader, campaign);
+        assert_eq!(scope.tick(), tick);
         assert_archive_progress(reader, campaign, tick, tick - 1);
-        assert_eq!(
-            reader
-                .county_card_atoms(campaign, held_county.id())
-                .unwrap(),
-            held_atoms
+        let pending = read_county(reader, &scope, "26163");
+        assert_retained_content(
+            assert_scoped_page(
+                &pending,
+                &scope,
+                ArchiveSearchStateV2::Pending(ArchiveDossierPendingV2::ReceiptProcessing),
+            ),
+            held,
         );
         let quiet = worker.sweep_once(campaign, &producer).unwrap();
         assert_eq!(
@@ -257,16 +373,20 @@ fn assert_restart_drains_and_verifies_quiet_weeks(
             &[(tick, ArchiveReceiptDispositionV1::Applied)]
         );
         assert_archive_progress(reader, campaign, tick, tick);
+        let current_pages = assert_all_county_cards(reader, &scope, ArchiveSearchStateV2::Ready);
+        assert_eq!(current_pages.len(), pages.len());
+        for (current, original) in current_pages.iter().zip(pages) {
+            assert_retained_content(current, original);
+        }
+        let current = read_county(reader, &scope, "26163");
         assert_eq!(
-            reader.search_known(campaign, "QCEW 2024", 100).unwrap(),
-            pages
+            assert_scoped_page(&current, &scope, ArchiveSearchStateV2::Ready).changes,
+            held.changes
         );
+        let historical = read_county(reader, first_scope, "26163");
         assert_eq!(
-            reader
-                .subject_atom_history(campaign, &held_county)
-                .unwrap()
-                .len(),
-            held_atoms.len()
+            assert_scoped_page(&historical, first_scope, ArchiveSearchStateV2::Ready),
+            held
         );
         drop(runtime);
         runtime = DurableMaterialRuntimeV3::open(
@@ -278,6 +398,7 @@ fn assert_restart_drains_and_verifies_quiet_weeks(
         )
         .unwrap();
         assert_eq!(runtime.session().completed_tick(), tick);
+        assert_eq!(read_county(reader, &scope, "26163"), current);
     }
 }
 impl DisposableTarget {
@@ -699,22 +820,22 @@ fn assert_session_admits_stored_revision(
     observer: &ObserverEconomyReaderV1,
 ) {
     use babylon_persistence::runtime_session::{
-        run_runtime_session_v1, RuntimeSessionRequestV1, RuntimeSessionResponseV1,
-        RuntimeSessionTailV1, RUNTIME_SESSION_PROTOCOL_VERSION_V1,
+        run_runtime_session_v2, RuntimeSessionRequestV2, RuntimeSessionResponseV2,
+        RuntimeSessionTailV2, RUNTIME_SESSION_PROTOCOL_VERSION_V2,
     };
     let current = observer.snapshot(campaign, 3).unwrap();
     let requests = [
-        RuntimeSessionRequestV1::Advance {
-            protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION_V1,
+        RuntimeSessionRequestV2::Advance {
+            protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION_V2,
             campaign_id: campaign.as_uuid().to_string(),
             request_id: 1,
-            expected_tail: RuntimeSessionTailV1 {
+            expected_tail: RuntimeSessionTailV2 {
                 resolve_tick: 3,
                 tick_content_hash: current.tick_content_hash,
             },
         },
-        RuntimeSessionRequestV1::Stop {
-            protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION_V1,
+        RuntimeSessionRequestV2::Stop {
+            protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION_V2,
             campaign_id: campaign.as_uuid().to_string(),
             request_id: 2,
         },
@@ -725,7 +846,7 @@ fn assert_session_admits_stored_revision(
         lines.push(b'\n');
     }
     let mut output = Vec::new();
-    run_runtime_session_v1(
+    run_runtime_session_v2(
         config,
         campaign,
         Some(preset.delivery()),
@@ -736,13 +857,13 @@ fn assert_session_admits_stored_revision(
     let responses = std::str::from_utf8(&output)
         .unwrap()
         .lines()
-        .map(|line| serde_json::from_str::<RuntimeSessionResponseV1>(line).unwrap())
+        .map(|line| serde_json::from_str::<RuntimeSessionResponseV2>(line).unwrap())
         .collect::<Vec<_>>();
     assert!(
-        matches!(&responses[0], RuntimeSessionResponseV1::Ready { foundation_digest, tail, .. }
+        matches!(&responses[0], RuntimeSessionResponseV2::Ready { foundation_digest, tail, .. }
         if foundation_digest == &current.foundation_digest && tail.resolve_tick == 3)
     );
-    assert!(responses.iter().any(|response| matches!(response, RuntimeSessionResponseV1::Committed { tail, .. } if tail.resolve_tick == 4)));
+    assert!(responses.iter().any(|response| matches!(response, RuntimeSessionResponseV2::Committed { tail, .. } if tail.resolve_tick == 4)));
     assert_eq!(
         observer.snapshot(campaign, 4).unwrap().foundation_digest,
         current.foundation_digest

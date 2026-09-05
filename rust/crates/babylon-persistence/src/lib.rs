@@ -4,6 +4,7 @@
 
 mod archive;
 mod archive_foundation_grants;
+pub mod archive_revision;
 mod archive_worker;
 mod babylon_markdown;
 mod bootstrap;

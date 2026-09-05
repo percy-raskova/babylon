@@ -15,8 +15,8 @@ use crate::map::SelectedCounty;
 use crate::story::SelectedStory;
 use crate::ui::beats::BeatLog;
 use crate::ui::dossier_card::{
-    ActiveCountyDossier, CountyDossierCardProjection, DossierCampaignId, DossierFetchState,
-    DossierPageView, SubjectPageRequest,
+    ActiveCountyDossier, DossierCampaignId, DossierFetchState, DossierPageView, InstalledDossier,
+    SubjectPageRequest,
 };
 use crate::ui::time::{AutopauseMode, RunState, SPEEDS_PER_SECOND};
 
@@ -135,8 +135,7 @@ fn log_subject_page_requests(mut requests: MessageReader<SubjectPageRequest>) {
     }
 }
 
-/// `Update`: which page the card renders — the county card itself or one R6
-/// placeholder. The initial card view is the baseline.
+/// `Update`: county or linked-subject navigation within the same Archive panel.
 fn log_page_view_changes(view: Res<DossierPageView>, mut last: Local<Snapshot<DossierPageView>>) {
     let current = &*view;
     if matches!(&*last, Snapshot::Seen(previous) if previous == current) {
@@ -147,10 +146,10 @@ fn log_page_view_changes(view: Res<DossierPageView>, mut last: Local<Snapshot<Do
     if first {
         return;
     }
-    if let DossierPageView::Placeholder(request) = current {
+    if let DossierPageView::Subject(request) = current {
         bevy::log::info!(
             target: "session",
-            "page view: placeholder kind={} id={}",
+            "page view: subject kind={} id={}",
             request.kind,
             request.id
         );
@@ -164,7 +163,7 @@ fn log_page_view_changes(view: Res<DossierPageView>, mut last: Local<Snapshot<Do
 /// Archive; the log records that they arrived).
 fn log_dossier_projection_changes(
     projection: Res<ActiveCountyDossier>,
-    mut last: Local<Snapshot<Option<CountyDossierCardProjection>>>,
+    mut last: Local<Snapshot<Option<InstalledDossier>>>,
 ) {
     let current = &projection.0;
     if matches!(&*last, Snapshot::Seen(previous) if previous == current) {
@@ -175,17 +174,22 @@ fn log_dossier_projection_changes(
     if first {
         return;
     }
-    if let Some(card) = current {
+    if let Some(installed) = current {
+        let read = &installed.read;
+        let page = crate::dossier::retained_page(read);
         bevy::log::info!(
             target: "session",
-            "dossier installed geoid={} title={:?} atoms={} places={} changelog={} durable={:?} verified={:?}",
-            card.geoid,
-            card.title,
-            card.atoms.len(),
-            card.places.len(),
-            card.changelog.len(),
-            card.durable_tick,
-            card.verified_tick
+            "dossier installed geoid={} title={:?} atoms={} links={} changes={} requested={} durable={} processed={} verified={:?} availability={}",
+            installed.scope.county_geoid,
+            page.map(|page| page.title.as_str()),
+            page.map_or(0, |page| page.atoms.len()),
+            page.map_or(0, |page| page.links.len()),
+            page.map_or(0, |page| page.changes.changes.len()),
+            read.scope.tick(),
+            read.durable_tick,
+            read.processed_tick,
+            crate::dossier::verified_tick(read),
+            crate::dossier::availability_label(read)
         );
     } else {
         bevy::log::info!(target: "session", "dossier cleared");
@@ -200,8 +204,8 @@ fn log_dossier_projection_changes(
 fn log_fetch_state_changes(state: Res<DossierFetchState>, mut last: Local<Snapshot<String>>) {
     let current = match &*state {
         DossierFetchState::Idle => "idle".to_owned(),
-        DossierFetchState::HistoricalUnavailable => "historical-unavailable".to_owned(),
-        DossierFetchState::InFlight { fips, .. } => format!("in-flight:{fips}"),
+        DossierFetchState::WaitingForObservation => "waiting-for-observation".to_owned(),
+        DossierFetchState::InFlight { scope, .. } => format!("in-flight:{}", scope.county_geoid),
         DossierFetchState::Failed(crate::ui::dossier_card::DossierFetchError::ReaderAbsent(_)) => {
             "failed:ReaderAbsent".to_owned()
         }
@@ -222,7 +226,7 @@ fn log_fetch_state_changes(state: Res<DossierFetchState>, mut last: Local<Snapsh
     } else if let Some(fips) = current.strip_prefix("in-flight:") {
         bevy::log::info!(target: "session", "dossier fetch started fips={fips}");
     } else {
-        bevy::log::info!(target: "session", "dossier fetch: idle");
+        bevy::log::info!(target: "session", "dossier fetch: {current}");
     }
 }
 
@@ -328,6 +332,11 @@ mod tests {
     use crate::severity::SeverityTier;
     use crate::ui::beats::Beat;
     use crate::ui::dossier_card::DossierFetchError;
+    use babylon_persistence::archive_revision::{
+        ArchiveChangePageV2, ArchiveDossierPageV2, ArchiveDossierReadV2, ArchiveDossierStateV2,
+        ArchivePublicationOriginV2, ArchiveReadScopeV2,
+    };
+    use babylon_persistence::{ArchivePageRefV1, ArchiveSubjectKindV1};
     use bevy::log::tracing_subscriber::layer::SubscriberExt as _;
     use std::collections::VecDeque;
     use std::path::PathBuf;
@@ -393,6 +402,14 @@ mod tests {
                 county_geoid: "26163".into(),
                 refresh_generation: 0,
                 observer: None,
+                read_scope: ArchiveReadScopeV2::committed(
+                    DossierCampaignId::default().0,
+                    2,
+                    [2; 32],
+                )
+                .unwrap(),
+                subject: ArchivePageRefV1::try_new(ArchiveSubjectKindV1::County, "26163".into())
+                    .unwrap(),
             };
             app.world_mut()
                 .resource_mut::<Messages<SubjectPageRequest>>()
@@ -403,23 +420,49 @@ mod tests {
                     label: None,
                 });
             *app.world_mut().resource_mut::<DossierPageView>() =
-                DossierPageView::Placeholder(SubjectPageRequest {
-                    scope,
+                DossierPageView::Subject(Box::new(SubjectPageRequest {
+                    scope: scope.clone(),
                     kind: "place".to_owned(),
                     id: "2674900".to_owned(),
                     label: None,
-                });
-            app.world_mut().resource_mut::<ActiveCountyDossier>().0 =
-                Some(CountyDossierCardProjection {
-                    geoid: "26163".to_owned(),
-                    title: "Wayne County".to_owned(),
-                    durable_tick: Some(2),
-                    content_tick: Some(1),
-                    verified_tick: Some(1),
-                    atoms: Vec::new(),
-                    places: Vec::new(),
-                    changelog: Vec::new(),
-                });
+                }));
+            app.world_mut().resource_mut::<ActiveCountyDossier>().0 = Some(InstalledDossier {
+                read: ArchiveDossierReadV2 {
+                    scope: scope.read_scope.clone(),
+                    subject: scope.subject.clone(),
+                    durable_tick: 2,
+                    processed_tick: 2,
+                    history_floor_tick: 0,
+                    state: ArchiveDossierStateV2::Ready {
+                        verified_through_tick: 2,
+                        page: ArchiveDossierPageV2 {
+                            revision_id: [1; 32],
+                            effective_tick: 1,
+                            origin: ArchivePublicationOriginV2::Materialized,
+                            content_source: ArchiveReadScopeV2::committed(
+                                scope.campaign,
+                                1,
+                                [1; 32],
+                            )
+                            .unwrap(),
+                            title: "Wayne County".into(),
+                            question: "What changed?".into(),
+                            signals: Vec::new(),
+                            markdown: String::new(),
+                            content_sha256: [0; 32],
+                            citations: Vec::new(),
+                            atoms: Vec::new(),
+                            links: Vec::new(),
+                            changes: ArchiveChangePageV2 {
+                                coverage_from_tick: 0,
+                                changes: Vec::new(),
+                                next_cursor: None,
+                            },
+                        },
+                    },
+                },
+                scope,
+            });
         });
         assert!(log.contains("session start campaign="), "startup: {log}");
         assert!(
@@ -431,11 +474,11 @@ mod tests {
             "chip: {log}"
         );
         assert!(
-            log.contains("page view: placeholder kind=place id=2674900"),
+            log.contains("page view: subject kind=place id=2674900"),
             "view: {log}"
         );
         assert!(
-            log.contains("dossier installed geoid=26163 title=\"Wayne County\" atoms=0 places=0 changelog=0 durable=Some(2) verified=Some(1)"),
+            log.contains("dossier installed geoid=26163 title=Some(\"Wayne County\") atoms=0 links=0 changes=0 requested=2 durable=2 processed=2 verified=Some(2)"),
             "install: {log}"
         );
         std::fs::remove_dir_all(&dir).ok();
@@ -467,6 +510,12 @@ mod tests {
                     county_geoid: "26163".into(),
                     refresh_generation: app.world().resource::<DossierRefresh>().0,
                     observer: Some(app.world().resource::<ObserverSession>().context()),
+                    read_scope: ArchiveReadScopeV2::foundation(campaign),
+                    subject: ArchivePageRefV1::try_new(
+                        ArchiveSubjectKindV1::County,
+                        "26163".into(),
+                    )
+                    .unwrap(),
                 };
                 app.world_mut().write_message(SubjectPageRequest {
                     scope,

@@ -4,8 +4,7 @@ use postgres::Config;
 use uuid::Uuid;
 
 use crate::{
-    database, decode, decode_digest, ArchiveDirtyBatchV1, ArchiveMaterializeDispositionV1,
-    ArchiveMaterializeModeV1, ArchivePageInputV1, CampaignId, SemanticArchiveErrorV1,
+    ArchiveDirtyBatchV1, ArchivePageInputV1, CampaignId, SemanticArchiveErrorV1,
     SemanticArchiveStoreV1,
 };
 
@@ -212,8 +211,21 @@ pub trait ArchiveDossierProducerV1 {
         &self,
         campaign_id: Uuid,
         receipt: &PendingArchiveReceiptV1,
+        knowledge: &crate::ArchiveKnowledgeV1,
         page_budget: usize,
     ) -> Result<ArchiveProducerOutcomeV1, SemanticArchiveErrorV1>;
+
+    /// Declare the complete disclosed subject domain required to seal adoption.
+    /// # Errors
+    /// Unregistered diagnostic producers cannot certify cutover completeness.
+    fn cutover_subjects(
+        &self,
+        _campaign_id: Uuid,
+        _receipt: &PendingArchiveReceiptV1,
+        _knowledge: &crate::ArchiveKnowledgeV1,
+    ) -> Result<Vec<crate::ArchivePageRefV1>, SemanticArchiveErrorV1> {
+        Err(SemanticArchiveErrorV1::ArchiveCoverageUnavailable)
+    }
 }
 
 /// Producer for a scope with no pages: every successful receipt settles empty.
@@ -238,6 +250,7 @@ impl ArchiveDossierProducerV1 for NullArchiveDossierProducerV1 {
         &self,
         _campaign_id: Uuid,
         receipt: &PendingArchiveReceiptV1,
+        _knowledge: &crate::ArchiveKnowledgeV1,
         _page_budget: usize,
     ) -> Result<ArchiveProducerOutcomeV1, SemanticArchiveErrorV1> {
         let batch = ArchiveDirtyBatchV1::try_new(
@@ -289,6 +302,7 @@ impl ArchiveDossierProducerV1 for CompositeArchiveDossierProducerV1 {
         &self,
         campaign_id: Uuid,
         receipt: &PendingArchiveReceiptV1,
+        knowledge: &crate::ArchiveKnowledgeV1,
         page_budget: usize,
     ) -> Result<ArchiveProducerOutcomeV1, SemanticArchiveErrorV1> {
         let mut budget = page_budget;
@@ -296,9 +310,11 @@ impl ArchiveDossierProducerV1 for CompositeArchiveDossierProducerV1 {
         let mut merged: std::collections::BTreeMap<_, ArchivePageInputV1> =
             std::collections::BTreeMap::new();
         for producer in &self.producers {
-            let produced = producer.produce(campaign_id, receipt, budget)?;
+            let produced = producer.produce(campaign_id, receipt, knowledge, budget)?;
             archive_batch_matches_receipt_v1(produced.batch(), receipt)?;
-            remaining += produced.remaining();
+            remaining = remaining
+                .checked_add(produced.remaining())
+                .ok_or(SemanticArchiveErrorV1::CollectionBound)?;
             for page in produced.batch().pages() {
                 let key = page.subject().page_ref().clone();
                 if merged.insert(key, page.clone()).is_some() {
@@ -312,6 +328,25 @@ impl ArchiveDossierProducerV1 for CompositeArchiveDossierProducerV1 {
             ArchiveDirtyBatchV1::try_new(receipt.resolve_tick, receipt.tick_content_hash, pages)?;
         Ok(ArchiveProducerOutcomeV1::new(batch, remaining))
     }
+    fn cutover_subjects(
+        &self,
+        campaign: Uuid,
+        receipt: &PendingArchiveReceiptV1,
+        knowledge: &crate::ArchiveKnowledgeV1,
+    ) -> Result<Vec<crate::ArchivePageRefV1>, SemanticArchiveErrorV1> {
+        let mut subjects = std::collections::BTreeSet::new();
+        for producer in &self.producers {
+            for subject in producer.cutover_subjects(campaign, receipt, knowledge)? {
+                if !subjects.insert(subject) {
+                    return Err(SemanticArchiveErrorV1::DuplicateKey);
+                }
+            }
+        }
+        if subjects.len() > 65535 {
+            return Err(SemanticArchiveErrorV1::CollectionBound);
+        }
+        Ok(subjects.into_iter().collect())
+    }
 }
 
 /// Per-sweep worker report with ordered dispositions and derived aggregates.
@@ -319,17 +354,29 @@ impl ArchiveDossierProducerV1 for CompositeArchiveDossierProducerV1 {
 pub struct ArchiveWorkerSweepReportV1 {
     dispositions: Vec<(u64, ArchiveReceiptDispositionV1)>,
     verified_tick: u64,
+    retention_ready: bool,
 }
 
 impl ArchiveWorkerSweepReportV1 {
     /// Construct one report from ordered per-receipt dispositions and the
     /// campaign's persisted contiguous watermark observed after the sweep.
     #[must_use]
-    pub fn new(dispositions: Vec<(u64, ArchiveReceiptDispositionV1)>, verified_tick: u64) -> Self {
+    pub fn new(
+        dispositions: Vec<(u64, ArchiveReceiptDispositionV1)>,
+        verified_tick: u64,
+        retention_ready: bool,
+    ) -> Self {
         Self {
             dispositions,
             verified_tick,
+            retention_ready,
         }
+    }
+
+    /// Whether the retained adoption has completed exact cutover validation.
+    #[must_use]
+    pub const fn retention_ready(&self) -> bool {
+        self.retention_ready
     }
 
     /// Borrow the ordered per-receipt outcomes.
@@ -527,6 +574,9 @@ pub fn model_archive_sweep_pages_with_bounds_v1(
             let plan = classify_archive_receipt_v1(&outcome);
             model.consumed += 1;
             model.plans.push(plan);
+            if plan == ArchiveReceiptPlanV1::Stage {
+                break 'pages;
+            }
         }
     }
     Ok(model)
@@ -573,102 +623,6 @@ impl ArchiveWorkerV1 {
         campaign_id: CampaignId,
         producer: &dyn ArchiveDossierProducerV1,
     ) -> Result<ArchiveWorkerSweepReportV1, SemanticArchiveErrorV1> {
-        let mut client = self.store.connect("connect Archive worker sweep")?;
-        let mut dispositions = Vec::new();
-        let mut cursor: i64 = 0;
-        let mut scanned: i64 = 0;
-        let mut consumed: i64 = 0;
-        loop {
-            if consumed >= ARCHIVE_SWEEP_MAX_RECEIPTS_V1 || scanned >= ARCHIVE_SWEEP_MAX_SCAN_V1 {
-                break;
-            }
-            let rows = client
-                .query(
-                    ARCHIVE_PENDING_RECEIPTS_SQL_V1,
-                    &[
-                        campaign_id.as_uuid(),
-                        &ARCHIVE_SWEEP_MAX_RECEIPTS_V1,
-                        &cursor,
-                    ],
-                )
-                .map_err(|error| database("query pending Archive receipts", &error))?;
-            if rows.is_empty() {
-                break;
-            }
-            let row_count = i64::try_from(rows.len())
-                .map_err(|_| SemanticArchiveErrorV1::StoredPageMismatch)?;
-            let short_page = row_count < ARCHIVE_SWEEP_MAX_RECEIPTS_V1;
-            let mut last_tick = cursor;
-            for row in rows {
-                if scanned >= ARCHIVE_SWEEP_MAX_SCAN_V1 || consumed >= ARCHIVE_SWEEP_MAX_RECEIPTS_V1
-                {
-                    break;
-                }
-                let resolve_tick = decode::<i64>(&row, 0)?;
-                let resolve_tick = u64::try_from(resolve_tick)
-                    .map_err(|_| SemanticArchiveErrorV1::StoredPageMismatch)?;
-                let tick_content_hash = decode_digest(&row, 1)?;
-                let receipt = PendingArchiveReceiptV1::try_new(resolve_tick, tick_content_hash)?;
-                last_tick = i64::try_from(resolve_tick)
-                    .map_err(|_| SemanticArchiveErrorV1::StoredPageMismatch)?;
-                scanned += 1;
-                let outcome = producer.produce(
-                    *campaign_id.as_uuid(),
-                    &receipt,
-                    ArchiveDirtyBatchV1::MAX_PAGES,
-                )?;
-                archive_batch_matches_receipt_v1(outcome.batch(), &receipt)?;
-                let mode = match classify_archive_receipt_v1(&outcome) {
-                    ArchiveReceiptPlanV1::Consume => ArchiveMaterializeModeV1::Consume,
-                    ArchiveReceiptPlanV1::Stage => ArchiveMaterializeModeV1::Stage,
-                };
-                let report = self
-                    .store
-                    .materialize_receipt(campaign_id, outcome.batch(), mode)?;
-                consumed += 1;
-                let disposition = match (mode, report.disposition()) {
-                    (_, ArchiveMaterializeDispositionV1::AlreadyConsumed) => {
-                        ArchiveReceiptDispositionV1::AlreadyConsumed
-                    }
-                    (
-                        ArchiveMaterializeModeV1::Consume,
-                        ArchiveMaterializeDispositionV1::Applied,
-                    ) => ArchiveReceiptDispositionV1::Applied,
-                    (ArchiveMaterializeModeV1::Stage, ArchiveMaterializeDispositionV1::Applied) => {
-                        ArchiveReceiptDispositionV1::Paged
-                    }
-                };
-                dispositions.push((resolve_tick, disposition));
-            }
-            cursor = last_tick;
-            if short_page {
-                break;
-            }
-        }
-        let verified_tick = Self::persisted_verified_tick(&mut client, campaign_id)?;
-        Ok(ArchiveWorkerSweepReportV1::new(dispositions, verified_tick))
-    }
-
-    /// Read the campaign's contiguous persisted watermark from durable state.
-    ///
-    /// # Errors
-    /// Returns a decode or database failure from the read-only watermark query.
-    fn persisted_verified_tick(
-        client: &mut postgres::Client,
-        campaign_id: CampaignId,
-    ) -> Result<u64, SemanticArchiveErrorV1> {
-        let row = client
-            .query_one(ARCHIVE_SWEEP_WATERMARK_SQL_V1, &[campaign_id.as_uuid()])
-            .map_err(|error| database("query Archive sweep watermark", &error))?;
-        let first_pending = decode::<Option<i64>>(&row, 0)?
-            .map(u64::try_from)
-            .transpose()
-            .map_err(|_| SemanticArchiveErrorV1::StoredPageMismatch)?;
-        let max_receipt_tick = u64::try_from(decode::<i64>(&row, 1)?)
-            .map_err(|_| SemanticArchiveErrorV1::StoredPageMismatch)?;
-        Ok(archive_contiguous_watermark_v1(
-            first_pending,
-            max_receipt_tick,
-        ))
+        crate::archive_revision::worker::sweep(&self.store, campaign_id, producer)
     }
 }

@@ -22,8 +22,7 @@ use crate::{
 /// block later valid receipts. Each invocation returns one keyset page of at
 /// most [`ARCHIVE_SWEEP_MAX_RECEIPTS_V1`] unconsumed receipts strictly after
 /// the `$3` resolve-tick cursor, in ascending tick order; `sweep_once` pages
-/// forward so a long run of deferred receipts never starves a later
-/// materializable one.
+/// forward through the bounded pending backlog.
 pub const ARCHIVE_PENDING_RECEIPTS_SQL_V1: &str = "SELECT \
     d.resolve_tick, d.tick_content_hash \
     FROM babylon_state.archive_dirty_receipt_v1 d \
@@ -48,10 +47,8 @@ pub const ARCHIVE_SWEEP_MAX_RECEIPTS_V1: i64 = 256;
 
 /// Maximum number of pending receipts one sweep scans in total.
 ///
-/// A campaign whose receipts keep deferring (empty batches, per the Director
-/// ruling that an unchanged receipt is not consumed) no longer blocks later
-/// receipts: the sweep pages past deferrals, but this bound keeps one
-/// invocation finite on a pathological all-defer campaign.
+/// This independent scan bound limits how much pending history one invocation
+/// observes. Quiet evaluated receipts settle; undrained page sets stay pending.
 pub const ARCHIVE_SWEEP_MAX_SCAN_V1: i64 = 4096;
 
 /// Read-only contiguous-watermark query over durable Archive state.
@@ -119,17 +116,15 @@ impl PendingArchiveReceiptV1 {
 /// Pure decision made for one pending receipt before any database work.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ArchiveReceiptPlanV1 {
-    /// The producer returned an empty batch; leave the receipt pending.
-    Defer,
-    /// The producer returned a non-empty batch; invoke `materialize_receipt`.
-    Materialize,
+    /// The producer proved that no dirty pages remain, including a quiet tick.
+    Consume,
+    /// Dirty pages remain; stage the bounded head without consuming the receipt.
+    Stage,
 }
 
 /// Observed outcome for one processed receipt.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ArchiveReceiptDispositionV1 {
-    /// The producer returned an empty batch and the receipt stays pending.
-    Deferred,
     /// `materialize_receipt` consumed the receipt now.
     Applied,
     /// `materialize_receipt` observed an exact prior consumption.
@@ -221,7 +216,7 @@ pub trait ArchiveDossierProducerV1 {
     ) -> Result<ArchiveProducerOutcomeV1, SemanticArchiveErrorV1>;
 }
 
-/// Honest no-op producer: every pending receipt defers.
+/// Producer for a scope with no pages: every successful receipt settles empty.
 pub struct NullArchiveDossierProducerV1;
 
 impl NullArchiveDossierProducerV1 {
@@ -343,15 +338,6 @@ impl ArchiveWorkerSweepReportV1 {
         &self.dispositions
     }
 
-    /// Count receipts left pending because the producer returned an empty batch.
-    #[must_use]
-    pub fn deferred_count(&self) -> usize {
-        self.dispositions
-            .iter()
-            .filter(|(_, disposition)| *disposition == ArchiveReceiptDispositionV1::Deferred)
-            .count()
-    }
-
     /// Count receipts consumed by this sweep.
     #[must_use]
     pub fn applied_count(&self) -> usize {
@@ -382,7 +368,7 @@ impl ArchiveWorkerSweepReportV1 {
     /// The campaign's contiguous persisted watermark observed after the sweep.
     ///
     /// This is the largest tick whose every marker-backed dirty receipt is
-    /// consumed in durable state, never the sweep-local maximum: a deferred
+    /// consumed in durable state, never the sweep-local maximum: an undrained
     /// earlier tick caps it, and an empty sweep still reports the persisted
     /// watermark instead of zero.
     #[must_use]
@@ -393,16 +379,15 @@ impl ArchiveWorkerSweepReportV1 {
 
 /// Pure per-receipt decision helper over one producer outcome.
 ///
-/// The receipt defers only when the outcome carries no pages and no
-/// undrained remainder; any dirty work at all — a bounded head batch, or a
-/// fully paged-out budget with pages still dirty — materializes (possibly
-/// without consuming, when `remaining` stays non-zero).
+/// A successful producer proves the exact dirty remainder. Zero remaining
+/// settles the receipt even when no content changed. A nonzero remainder
+/// always stages, including an empty head after its page budget ran out.
 #[must_use]
 pub fn classify_archive_receipt_v1(outcome: &ArchiveProducerOutcomeV1) -> ArchiveReceiptPlanV1 {
-    if outcome.batch().pages().is_empty() && outcome.remaining() == 0 {
-        ArchiveReceiptPlanV1::Defer
+    if outcome.remaining() == 0 {
+        ArchiveReceiptPlanV1::Consume
     } else {
-        ArchiveReceiptPlanV1::Materialize
+        ArchiveReceiptPlanV1::Stage
     }
 }
 
@@ -484,7 +469,7 @@ impl ArchiveSweepPageModelV1 {
         &self.plans
     }
 
-    /// Count receipts the sweep scanned, including deferred ones.
+    /// Count receipts the sweep scanned, including staged ones.
     #[must_use]
     pub const fn scanned(&self) -> i64 {
         self.scanned
@@ -503,7 +488,7 @@ impl ArchiveSweepPageModelV1 {
 /// [`ARCHIVE_SWEEP_MAX_SCAN_V1`]).
 ///
 /// The model mirrors [`ArchiveWorkerV1::sweep_once`]: pages arrive in keyset
-/// order, each scanned receipt defers or materializes exactly as classified,
+/// order, each scanned receipt consumes or stages exactly as classified,
 /// and the sweep stops as soon as the consume cap or the scan cap is
 /// reached, leaving the remainder pending for the next invocation.
 ///
@@ -540,9 +525,7 @@ pub fn model_archive_sweep_pages_with_bounds_v1(
             model.scanned += 1;
             let outcome = step?;
             let plan = classify_archive_receipt_v1(&outcome);
-            if plan == ArchiveReceiptPlanV1::Materialize {
-                model.consumed += 1;
-            }
+            model.consumed += 1;
             model.plans.push(plan);
         }
     }
@@ -567,8 +550,8 @@ impl ArchiveWorkerV1 {
     /// Run one ordered sweep over the pending dirty receipts.
     ///
     /// The sweep pages through the marker-backed pending set by keyset cursor
-    /// ([`ARCHIVE_PENDING_RECEIPTS_SQL_V1`]), so a long run of deferred
-    /// receipts never starves a later materializable one. It stops as soon as
+    /// ([`ARCHIVE_PENDING_RECEIPTS_SQL_V1`]). Every successful producer result
+    /// either settles or stages its receipt. It stops as soon as
     /// it has claimed [`ARCHIVE_SWEEP_MAX_RECEIPTS_V1`] receipts, scanned
     /// [`ARCHIVE_SWEEP_MAX_SCAN_V1`] receipts in total, or exhausted the
     /// pending set. Each claimed receipt delegates to
@@ -635,14 +618,9 @@ impl ArchiveWorkerV1 {
                     ArchiveDirtyBatchV1::MAX_PAGES,
                 )?;
                 archive_batch_matches_receipt_v1(outcome.batch(), &receipt)?;
-                if classify_archive_receipt_v1(&outcome) == ArchiveReceiptPlanV1::Defer {
-                    dispositions.push((resolve_tick, ArchiveReceiptDispositionV1::Deferred));
-                    continue;
-                }
-                let mode = if outcome.remaining() == 0 {
-                    ArchiveMaterializeModeV1::Consume
-                } else {
-                    ArchiveMaterializeModeV1::Stage
+                let mode = match classify_archive_receipt_v1(&outcome) {
+                    ArchiveReceiptPlanV1::Consume => ArchiveMaterializeModeV1::Consume,
+                    ArchiveReceiptPlanV1::Stage => ArchiveMaterializeModeV1::Stage,
                 };
                 let report = self
                     .store

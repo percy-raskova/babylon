@@ -33,12 +33,12 @@ use bevy::tasks::{block_on, AsyncComputeTaskPool, Task};
 
 use crate::atlas::CountyAtlas;
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
-use crate::dossier::{changelog_rows, ChangelogRow};
+use crate::dossier::{changelog_rows, effective_verification_tick, ChangelogRow};
 use crate::map::SelectedCounty;
 use crate::palette;
 use crate::ui::dossier_compose::{
-    chip_text, chronicle_row_segments, compose_stub, compose_vague, dual_tick_segments,
-    signal_atoms, signal_row_segments, DossierSegment, DossierTone, PlaceChip,
+    atom_value_text, chip_text, chronicle_row_segments, compose_stub, compose_vague,
+    dual_tick_segments, signal_atoms, signal_row_segments, DossierSegment, DossierTone, PlaceChip,
     DOSSIER_DECISION_QUESTION, INVESTIGATE_SEALED_CHIP,
 };
 
@@ -107,7 +107,9 @@ pub struct CountyDossierCardProjection {
     pub title: String,
     /// The durable committed tick, or `None` before any commit.
     pub durable_tick: Option<u64>,
-    /// The county page's verified tick, or `None` while unmaterialized.
+    /// The last page content change, or `None` while unmaterialized.
+    pub content_tick: Option<u64>,
+    /// Effective verification from page content and the contiguous processed prefix.
     pub verified_tick: Option<u64>,
     /// The position-ordered visible atoms (subject, signals, links).
     pub atoms: Vec<ArchiveAtomV1>,
@@ -121,6 +123,22 @@ pub struct CountyDossierCardProjection {
 /// completed (or after a restart/selection clear).
 #[derive(Resource, Clone, Debug, Default, PartialEq)]
 pub struct ActiveCountyDossier(pub Option<CountyDossierCardProjection>);
+
+/// Acknowledged runtime/Archive progress refreshes a held selection.
+#[derive(Resource, Debug, Default)]
+pub struct DossierRefresh(pub u64);
+impl DossierRefresh {
+    /// Advances the held-selection refresh generation.
+    ///
+    /// # Panics
+    /// Panics if the refresh generation exhausts `u64`.
+    pub fn bump(&mut self) {
+        self.0 = self
+            .0
+            .checked_add(1)
+            .expect("dossier refresh generation exhausted");
+    }
+}
 
 /// Why one dossier fetch failed — the card renders each case honestly.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -150,10 +168,16 @@ pub enum DossierFetchState {
     /// No fetch running and none failed.
     #[default]
     Idle,
+    /// Current-page Archive queries cannot answer an older viewed week.
+    HistoricalUnavailable,
     /// One task running for `fips`; the projection is already cleared.
     InFlight {
         /// The county FIPS being fetched.
         fips: String,
+        /// Campaign identity captured when the request started.
+        campaign: CampaignId,
+        /// Refresh generation captured when the request started.
+        generation: u64,
         /// The reader task (dropping it cancels the fetch).
         task: Task<Result<CountyDossierCardProjection, DossierFetchError>>,
     },
@@ -178,6 +202,10 @@ fn fetch_county_dossier(
         .committed_tick_status(campaign)
         .map_err(read)?
         .map(|status| status.resolve_tick());
+    let processed_tick = reader
+        .archive_verification_status(campaign)
+        .map_err(read)?
+        .map(|status| status.processed_tick());
     let atoms = reader.county_card_atoms(campaign, fips).map_err(read)?;
     let title = atoms
         .iter()
@@ -192,12 +220,13 @@ fn fetch_county_dossier(
     // (verified tick) and the place titles behind the link atoms — the same
     // single-pass discipline as the Slice 3 JSONL path.
     let hits = reader.search_known(campaign, &title, 50).map_err(read)?;
-    let verified_tick = hits
+    let content_tick = hits
         .iter()
         .find(|hit| {
             hit.page_ref().kind() == ArchiveSubjectKindV1::County && hit.page_ref().id() == fips
         })
         .map(babylon_persistence::ArchiveSearchHitV1::verified_tick);
+    let verified_tick = effective_verification_tick(content_tick, processed_tick);
     let places = atoms
         .iter()
         .filter_map(crate::dossier::place_link_geoid)
@@ -212,7 +241,12 @@ fn fetch_county_dossier(
                     // Pending = the place page's verified tick sits behind
                     // the durable tail: the Archive is still materializing
                     // that page (decision 2's honest lag state).
-                    durable_tick.is_some_and(|durable| hit.verified_tick() < durable),
+                    durable_tick.is_some_and(|durable| {
+                        processed_tick
+                            .unwrap_or(hit.verified_tick())
+                            .max(hit.verified_tick())
+                            < durable
+                    }),
                 ),
                 None => PlaceChip::unknown(geoid),
             }
@@ -228,6 +262,7 @@ fn fetch_county_dossier(
         geoid: fips.to_owned(),
         title,
         durable_tick,
+        content_tick,
         verified_tick,
         atoms,
         places,
@@ -414,19 +449,36 @@ fn spawn_dossier_card(mut commands: Commands) {
 /// FIPS and starts exactly one fetch task; the projection and page view are
 /// cleared first so in-flight never renders stale data. `None` (deselect,
 /// restart) returns the fetch state to `Idle`.
+// Bevy injects the independent selection context and fetch outputs separately.
+#[allow(clippy::too_many_arguments)]
 fn drive_dossier_fetch(
     selected: Res<SelectedCounty>,
     atlas: Res<CountyAtlas>,
     campaign: Res<DossierCampaignId>,
+    refresh: Res<DossierRefresh>,
+    observer: Option<Res<crate::observer::ObserverSession>>,
+    mut historical: Local<bool>,
     mut state: ResMut<DossierFetchState>,
     mut projection: ResMut<ActiveCountyDossier>,
     mut view: ResMut<DossierPageView>,
 ) {
-    if !selected.is_changed() {
+    let is_historical = observer
+        .as_ref()
+        .is_some_and(|state| state.viewed_tick != state.durable_tick);
+    let history_changed = *historical != is_historical;
+    *historical = is_historical;
+    if !selected.is_changed() && !campaign.is_changed() && !refresh.is_changed() && !history_changed
+    {
         return;
     }
     *view = DossierPageView::Card;
     projection.0 = None;
+    // The current Archive reader has current-page semantics. Historical
+    // inspection must not install today's dossier beside an older map.
+    if is_historical {
+        *state = DossierFetchState::HistoricalUnavailable;
+        return;
+    }
     let Some(index) = selected.0 else {
         *state = DossierFetchState::Idle;
         return;
@@ -440,7 +492,12 @@ fn drive_dossier_fetch(
     let campaign_id = campaign.0;
     let task = AsyncComputeTaskPool::get()
         .spawn(async move { fetch_county_dossier(campaign_id, &fips_for_task) });
-    *state = DossierFetchState::InFlight { fips, task };
+    *state = DossierFetchState::InFlight {
+        fips,
+        campaign: campaign_id,
+        generation: refresh.0,
+        task,
+    };
 }
 
 /// `Update` system: polls the in-flight task once per frame; on completion
@@ -448,18 +505,48 @@ fn drive_dossier_fetch(
 fn collect_dossier_fetch(
     mut state: ResMut<DossierFetchState>,
     mut projection: ResMut<ActiveCountyDossier>,
+    campaign: Res<DossierCampaignId>,
+    refresh: Res<DossierRefresh>,
+    selected: Res<SelectedCounty>,
+    atlas: Res<CountyAtlas>,
 ) {
-    let DossierFetchState::InFlight { task, .. } = &mut *state else {
+    let DossierFetchState::InFlight {
+        fips,
+        campaign: requested_campaign,
+        generation,
+        ..
+    } = &*state
+    else {
         return;
     };
+    let selected_fips = selected
+        .0
+        .and_then(|index| atlas.county(index))
+        .map(|county| county.fips);
+    if *requested_campaign != campaign.0
+        || *generation != refresh.0
+        || selected_fips != Some(fips.as_str())
+    {
+        *state = DossierFetchState::Idle;
+        projection.0 = None;
+        return;
+    }
+    let expected_fips = fips.clone();
+    // Polling an unfinished task is not a UI state change.
+    let DossierFetchState::InFlight { task, .. } = state.bypass_change_detection() else {
+        unreachable!("validated in-flight state");
+    };
     let Some(result) = block_on(bevy::tasks::futures_lite::future::poll_once(task)) else {
-        return; // still running
+        return;
     };
     *state = match result {
-        Ok(card) => {
+        Ok(card) if card.geoid == expected_fips => {
             projection.0 = Some(card);
             DossierFetchState::Idle
         }
+        Ok(_) => DossierFetchState::Failed(DossierFetchError::ReadFailed(
+            "Archive returned a different county than requested".to_owned(),
+        )),
         Err(error) => DossierFetchState::Failed(error),
     };
 }
@@ -500,7 +587,18 @@ fn set_line(commands: &mut Commands, zone: Entity, text: String, color: Color, f
 /// (signal rows, chronicle rows) — each row a `Text` with `TextSpan`
 /// children.
 fn set_segment_rows(commands: &mut Commands, zone: Entity, rows: &[Vec<DossierSegment>]) {
-    commands.entity(zone).despawn_related::<Children>();
+    commands.entity(zone).despawn_related::<Children>().insert((
+        Node {
+            width: percent(100),
+            min_width: px(0),
+            max_width: percent(100),
+            flex_direction: FlexDirection::Column,
+            flex_shrink: 0.0,
+            row_gap: px(12),
+            ..default()
+        },
+        TextLayout::new_with_linebreak(bevy::text::LineBreak::WordOrCharacter),
+    ));
     for row in rows {
         commands.entity(zone).with_children(|parent| {
             parent
@@ -508,6 +606,14 @@ fn set_segment_rows(commands: &mut Commands, zone: Entity, rows: &[Vec<DossierSe
                     Text::new(""),
                     TextFont {
                         font_size: 14.0,
+                        ..default()
+                    },
+                    TextLayout::new_with_linebreak(bevy::text::LineBreak::WordOrCharacter),
+                    Node {
+                        width: percent(100),
+                        min_width: px(0),
+                        max_width: percent(100),
+                        flex_shrink: 0.0,
                         ..default()
                     },
                     DeclaredSurface::new(CARD_SURFACE),
@@ -518,7 +624,11 @@ fn set_segment_rows(commands: &mut Commands, zone: Entity, rows: &[Vec<DossierSe
                             TextSpan::new(segment.text.clone()),
                             TextColor(tone_color(segment.tone)),
                             TextFont {
-                                font_size: 14.0,
+                                font_size: if segment.tone == DossierTone::Dim {
+                                    11.0
+                                } else {
+                                    14.0
+                                },
                                 ..default()
                             },
                             DeclaredSurface::new(CARD_SURFACE),
@@ -611,8 +721,8 @@ fn on_place_chip_out(out: On<Pointer<Out>>, mut chips: Query<(&mut BorderColor, 
 }
 
 /// `Update` system: applies pending [`SubjectPageRequest`]s to the page view.
-/// Kept separate from [`repaint_dossier_card`] so the painter holds the Bevy
-/// 7-parameter system shape and stays a pure projection of resources.
+/// Kept separate from [`repaint_dossier_card`] so the painter stays a pure
+/// projection of resources.
 fn apply_page_requests(
     mut view: ResMut<DossierPageView>,
     mut requests: MessageReader<SubjectPageRequest>,
@@ -622,42 +732,117 @@ fn apply_page_requests(
     }
 }
 
+type DossierRoots<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        &'static mut Visibility,
+        &'static mut Node,
+        &'static mut BackgroundColor,
+        &'static mut BorderColor,
+        &'static mut BoxShadow,
+    ),
+    With<DossierCardRoot>,
+>;
+
 /// `Update` system: the pure repaint. Derives every zone's content from
 /// [`ActiveCountyDossier`], [`DossierFetchState`], and [`DossierPageView`]
 /// only — the same resources in windowed and headless compositions, which is
 /// the parity proof. Nothing here touches the reader.
+// Independent Bevy resources and disjoint root/zone queries are explicit here.
+#[allow(clippy::too_many_arguments)]
 fn repaint_dossier_card(
     mut commands: Commands,
     selected: Res<SelectedCounty>,
+    atlas: Option<Res<CountyAtlas>>,
     projection: Res<ActiveCountyDossier>,
     state: Res<DossierFetchState>,
     view: Res<DossierPageView>,
     zones: Query<(Entity, &DossierZone)>,
-    mut roots: Query<&mut Visibility, With<DossierCardRoot>>,
+    observer_ui: Option<Res<crate::observer_ui::ObserverUiState>>,
+    mut roots: DossierRoots,
 ) {
-    let Ok(mut root_visibility) = roots.single_mut() else {
+    let Ok((root, mut root_visibility, mut root_node, mut background, mut border, mut shadow)) =
+        roots.single_mut()
+    else {
         return;
     };
-    if selected.0.is_none() {
-        *root_visibility = Visibility::Hidden;
+    if let Some(ui) = &observer_ui {
+        if ui.is_added() {
+            commands
+                .entity(root)
+                .insert(crate::observer_layout::ObserverRegion::Log);
+            root_node.right = Val::Auto;
+            root_node.bottom = Val::Auto;
+            root_node.min_width = Val::Auto;
+            root_node.max_width = Val::Auto;
+            root_node.overflow = Overflow::scroll_y();
+            root_node.border = UiRect::all(px(2));
+            root_node.border_radius = BorderRadius::ZERO;
+            *background = BackgroundColor(crate::observer_theme::PANEL);
+            *border = BorderColor::all(crate::observer_theme::PAPER);
+            *shadow = BoxShadow::default();
+        }
+    }
+    if selected.0.is_none()
+        || observer_ui.as_ref().is_some_and(|ui| {
+            !ui.archive_open || ui.menu_open || ui.splash_visible || ui.comparison_open
+        })
+    {
+        root_visibility.set_if_neq(Visibility::Hidden);
         return;
     }
-    *root_visibility = Visibility::Visible;
+    let became_visible = *root_visibility != Visibility::Visible;
+    root_visibility.set_if_neq(Visibility::Visible);
+    if !became_visible
+        && !selected.is_changed()
+        && !projection.is_changed()
+        && !state.is_changed()
+        && !view.is_changed()
+    {
+        return;
+    }
 
+    let county_title = selected
+        .0
+        .and_then(|index| atlas.as_ref()?.county(index))
+        .map(|county| county.name);
     for (entity, zone) in &zones {
         match zone {
-            DossierZone::Title => paint_title(&mut commands, entity, &view, &projection),
-            DossierZone::Question => paint_question(&mut commands, entity, &view),
+            DossierZone::Title => {
+                paint_title(&mut commands, entity, &view, &projection, county_title);
+            }
+            DossierZone::Question => {
+                paint_question(&mut commands, entity, &view, observer_ui.is_some());
+            }
             DossierZone::DualTick => {
                 paint_dual_tick(&mut commands, entity, &view, &state, &projection);
             }
-            DossierZone::Signals => paint_signals(&mut commands, entity, &view, &projection),
+            DossierZone::Signals => paint_signals(
+                &mut commands,
+                entity,
+                &view,
+                &projection,
+                observer_ui.is_some(),
+            ),
             DossierZone::Places => paint_places(&mut commands, entity, &view, &projection),
             DossierZone::Chronicle => paint_chronicle(&mut commands, entity, &view, &projection),
             DossierZone::Actions => {
-                // The sealed Investigate chip is static chrome; nothing to
-                // repaint. Gate 5 (PER-26) swaps this zone's content when the
-                // verb opens.
+                if observer_ui.is_some() {
+                    commands.entity(entity).despawn_related::<Children>();
+                    commands.entity(entity).with_child((
+                        Text::new("READ-ONLY ARCHIVE"),
+                        TextColor(crate::observer_theme::PAPER),
+                        TextFont {
+                            font_size: 11.0,
+                            ..default()
+                        },
+                        DeclaredSurface::new(CARD_SURFACE),
+                    ));
+                }
+                // Conformance keeps the sealed action contract. Observer
+                // composition exposes only its actual read capability.
             }
         }
     }
@@ -668,13 +853,18 @@ fn paint_title(
     entity: Entity,
     view: &DossierPageView,
     projection: &ActiveCountyDossier,
+    county_title: Option<&str>,
 ) {
     match view {
         DossierPageView::Card => {
             let title = projection
                 .0
                 .as_ref()
-                .map_or_else(|| "…".to_owned(), |card| card.title.clone());
+                .filter(|card| !card.title.is_empty())
+                .map_or_else(
+                    || county_title.unwrap_or("County Archive").to_owned(),
+                    |card| card.title.clone(),
+                );
             set_line(commands, entity, title, palette::BONE, 24.0);
         }
         DossierPageView::Placeholder(request) => {
@@ -687,8 +877,11 @@ fn paint_title(
     }
 }
 
-fn paint_question(commands: &mut Commands, entity: Entity, view: &DossierPageView) {
+fn paint_question(commands: &mut Commands, entity: Entity, view: &DossierPageView, observer: bool) {
     let text = match view {
+        DossierPageView::Card if observer => {
+            "Which cited observations are available for this county?".to_owned()
+        }
         DossierPageView::Card => DOSSIER_DECISION_QUESTION.to_owned(),
         DossierPageView::Placeholder(request) => {
             format!("What is known about {} {}?", request.kind, request.id)
@@ -711,7 +904,7 @@ fn paint_dual_tick(
                 commands,
                 entity,
                 &[DossierSegment {
-                    text: "Fetching dossier…".to_owned(),
+                    text: "Reading cited observations...".to_owned(),
                     tone: DossierTone::Dim,
                 }],
             ),
@@ -731,10 +924,25 @@ fn paint_dual_tick(
                     tone: DossierTone::Crimson,
                 }],
             ),
+            DossierFetchState::HistoricalUnavailable => set_segments(
+                commands, entity, &[DossierSegment {
+                    text: "Historical Archive pages are unavailable. Return Live to inspect current knowledge.".to_owned(),
+                    tone: DossierTone::Dim,
+                }],
+            ),
             DossierFetchState::Idle => {
-                let segments = projection.0.as_ref().map_or_else(Vec::new, |card| {
+                let mut segments = projection.0.as_ref().map_or_else(Vec::new, |card| {
                     dual_tick_segments(card.durable_tick, card.verified_tick)
                 });
+                if let Some(content_tick) = projection.0.as_ref().and_then(|card| card.content_tick) {
+                    segments.push(DossierSegment {
+                        text: format!("\nContent last changed at tick {content_tick}"),
+                        tone: DossierTone::Dim,
+                    });
+                }
+                if projection.0.as_ref().is_none_or(|card| card.atoms.is_empty()) {
+                    segments.push(DossierSegment { text: "\nNo cited observations are available for this county.".into(), tone: DossierTone::Dim });
+                }
                 set_segments(commands, entity, &segments);
             }
         },
@@ -746,12 +954,19 @@ fn paint_signals(
     entity: Entity,
     view: &DossierPageView,
     projection: &ActiveCountyDossier,
+    observer: bool,
 ) {
     match view {
         DossierPageView::Card => {
             let rows = projection.0.as_ref().map_or_else(Vec::new, |card| {
                 signal_atoms(&card.atoms)
-                    .map(signal_row_segments)
+                    .map(|atom| {
+                        if observer {
+                            observer_signal_segments(atom)
+                        } else {
+                            signal_row_segments(atom)
+                        }
+                    })
                     .collect::<Vec<_>>()
             });
             set_segment_rows(commands, entity, &rows);
@@ -760,11 +975,17 @@ fn paint_signals(
             // R6(a): containment is the county the place links from —
             // public-record structure the dossier already carries.
             let containment = projection.0.as_ref().map(|card| card.title.clone());
-            let lines = match (&request.label, &containment) {
+            let mut lines = match (&request.label, &containment) {
                 (Some(label), Some(county)) => compose_stub(label, Some(county)),
                 (Some(label), None) => compose_stub(label, None),
                 (None, _) => compose_vague(&request.kind, &request.id),
             };
+            if observer {
+                if let Some(reason) = lines.last_mut() {
+                    "Further observations are unavailable in this read-only Archive."
+                        .clone_into(reason);
+                }
+            }
             let segments = lines
                 .iter()
                 .enumerate()
@@ -787,6 +1008,52 @@ fn paint_signals(
             set_segments(commands, entity, &segments);
         }
     }
+}
+
+/// Human labels describe only the governed QCEW source's four exact fields.
+/// Keep unknown fields verbatim and retain every citation and raw field key.
+fn observer_signal_segments(atom: &ArchiveAtomV1) -> Vec<DossierSegment> {
+    use crate::map_economy_lens::EconomyMetric;
+    let metric = if atom.citation().source_id()
+        == babylon_persistence::michigan_economy::QCEW_ECONOMICS_SOURCE_ID_V1
+    {
+        match atom.signal_key() {
+            "qcew-employment" => Some(EconomyMetric::Employment),
+            "qcew-total-annual-wages" => Some(EconomyMetric::Payroll),
+            "qcew-average-weekly-wage" => Some(EconomyMetric::WeeklyWage),
+            "qcew-establishments" => Some(EconomyMetric::Establishments),
+            _ => None,
+        }
+    } else {
+        None
+    };
+    let value = atom_value_text(atom.value());
+    let label = match metric {
+        Some(metric) => metric.label(),
+        None => atom.signal_key(),
+    };
+    vec![
+        DossierSegment {
+            text: format!("{label}\n"),
+            tone: DossierTone::BoneDim,
+        },
+        DossierSegment {
+            text: metric.map_or_else(
+                || value.clone(),
+                |metric| format!("{value} {}", metric.unit()),
+            ),
+            tone: DossierTone::Bone,
+        },
+        DossierSegment {
+            text: format!(
+                "\nSource: {}\nLocator: {}\nField: {}",
+                atom.citation().source_id(),
+                atom.citation().locator(),
+                atom.signal_key()
+            ),
+            tone: DossierTone::Dim,
+        },
+    ]
 }
 
 fn paint_places(
@@ -827,6 +1094,75 @@ fn paint_chronicle(
     }
 }
 
+type AddedCardNodes<'w, 's> = Query<
+    'w,
+    's,
+    (&'static DeclaredSurface, &'static mut Node),
+    (Added<Node>, Without<DossierCardRoot>),
+>;
+
+/// Apply observer typography to rendered card entities without changing the
+/// shared Archive composition or the player-action conformance contract.
+fn polish_observer_card(
+    mut texts: Query<(&DeclaredSurface, &mut TextColor), Changed<TextColor>>,
+    mut nodes: AddedCardNodes,
+    mut lines: Query<(&DeclaredSurface, &mut Text), Changed<Text>>,
+    mut spans: Query<(&DeclaredSurface, &mut TextSpan), Changed<TextSpan>>,
+) {
+    use crate::observer_theme as theme;
+    fn supported_glyphs(value: &str) -> String {
+        value
+            .replace('·', "|")
+            .replace('…', "...")
+            .replace(['—', '–'], "-")
+            .replace('→', ">")
+            .replace('←', "<")
+            .replace('φ', "phi")
+    }
+    for (surface, mut text) in &mut lines {
+        if surface.id == CARD_SURFACE && !text.0.is_ascii() {
+            let next = supported_glyphs(&text.0);
+            if text.0 != next {
+                text.0 = next;
+            }
+        }
+    }
+    for (surface, mut span) in &mut spans {
+        if surface.id == CARD_SURFACE && !span.0.is_ascii() {
+            let next = supported_glyphs(&span.0);
+            if span.0 != next {
+                span.0 = next;
+            }
+        }
+    }
+    for (surface, mut color) in &mut texts {
+        if surface.id != CARD_SURFACE {
+            continue;
+        }
+        let next = if color.0 == palette::DIM || color.0 == palette::BONE.with_alpha(0.7) {
+            theme::GRAY
+        } else if color.0 == palette::BONE {
+            theme::PAPER
+        } else if color.0 == palette::GOLD {
+            theme::YELLOW
+        } else if color.0 == palette::CRIMSON {
+            theme::RED
+        } else {
+            color.0
+        };
+        if color.0 != next {
+            color.0 = next;
+        }
+    }
+    for (surface, mut node) in &mut nodes {
+        if surface.id == CARD_SURFACE {
+            node.flex_shrink = 0.0;
+            node.min_width = px(0);
+            node.max_width = percent(100);
+        }
+    }
+}
+
 /// Wires the dossier card's resource family and systems into an `App`.
 pub struct DossierCardPlugin;
 
@@ -837,6 +1173,7 @@ impl Plugin for DossierCardPlugin {
             .init_resource::<ActiveCountyDossier>()
             .init_resource::<DossierPageView>()
             .init_resource::<DossierFetchState>()
+            .init_resource::<DossierRefresh>()
             .add_systems(Startup, spawn_dossier_card)
             .add_systems(
                 Update,
@@ -851,8 +1188,12 @@ impl Plugin for DossierCardPlugin {
                     collect_dossier_fetch,
                     apply_page_requests,
                     repaint_dossier_card,
+                    polish_observer_card
+                        .run_if(resource_exists::<crate::observer_ui::ObserverUiState>),
                 )
-                    .chain(),
+                    .chain()
+                    .after(crate::observer_io::ObserverSet::Install)
+                    .before(crate::observer_io::ObserverSet::Paint),
             );
     }
 }
@@ -860,6 +1201,108 @@ impl Plugin for DossierCardPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use babylon_persistence::{ArchiveAtomValueV1, ArchiveCitationV1, ArchiveEvidenceClassV1};
+
+    fn signal_fixture(key: &str, source: &str) -> ArchiveAtomV1 {
+        ArchiveAtomV1::try_new(
+            CampaignId::from_uuid(uuid::Uuid::nil()),
+            ArchiveAtomSubjectV1::try_new(ArchiveAtomSubjectKindV1::County, "26163".into())
+                .unwrap(),
+            key.into(),
+            key.into(),
+            ArchiveEvidenceClassV1::Observed,
+            &ArchiveAtomValueV1::U64(1469),
+            ArchiveCitationV1::try_new(
+                source.into(),
+                format!(
+                    "county-economics.csv.gz#county_geoid=26163&sha256={}",
+                    "a".repeat(64)
+                ),
+            )
+            .unwrap(),
+            1,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn observer_signal_labels_keep_exact_values_units_and_provenance() {
+        let source = babylon_persistence::michigan_economy::QCEW_ECONOMICS_SOURCE_ID_V1;
+        for (key, label, unit) in [
+            ("qcew-employment", "Employment", "annual average jobs"),
+            ("qcew-total-annual-wages", "Annual payroll", "USD / year"),
+            (
+                "qcew-average-weekly-wage",
+                "Mean weekly wage",
+                "USD / employee / week",
+            ),
+            (
+                "qcew-establishments",
+                "Establishments",
+                "annual average establishments",
+            ),
+        ] {
+            let atom = signal_fixture(key, source);
+            let row = observer_signal_segments(&atom);
+            assert_eq!(row[0].text, format!("{label}\n"));
+            assert_eq!(row[1].text, format!("1469 {unit}"));
+            assert!(row[2].text.contains(atom.citation().source_id()));
+            assert!(row[2].text.contains(atom.citation().locator()));
+            assert!(row[2].text.ends_with(&format!("Field: {key}")));
+        }
+        let foreign = signal_fixture("qcew-average-weekly-wage", "other-source");
+        let row = observer_signal_segments(&foreign);
+        assert_eq!(row[0].text, "qcew-average-weekly-wage\n");
+        assert_eq!(
+            row[1].text, "1469",
+            "a matching key alone cannot invent a unit"
+        );
+    }
+
+    #[test]
+    fn rendered_signal_rows_stack_and_wrap_without_losing_citation_bytes() {
+        let source = babylon_persistence::michigan_economy::QCEW_ECONOMICS_SOURCE_ID_V1;
+        let rows: Vec<_> = ["qcew-employment", "qcew-average-weekly-wage"]
+            .map(|key| observer_signal_segments(&signal_fixture(key, source)))
+            .into();
+        let expected: Vec<String> = rows
+            .iter()
+            .map(|row| row.iter().map(|part| part.text.as_str()).collect())
+            .collect();
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .add_systems(Startup, move |mut commands: Commands| {
+                let zone = commands.spawn((Text::new(""), DossierZone::Signals)).id();
+                set_segment_rows(&mut commands, zone, &rows);
+            });
+        app.update();
+        let world = app.world_mut();
+        let (_, container, children) = world
+            .query::<(&DossierZone, &Node, &Children)>()
+            .single(world)
+            .unwrap();
+        assert_eq!(container.flex_direction, FlexDirection::Column);
+        assert_eq!(container.width, percent(100));
+        assert_eq!(container.min_width, px(0));
+        assert_eq!(children.len(), expected.len());
+        for (entity, expected) in children.iter().zip(expected) {
+            let row = world.get::<Node>(entity).unwrap();
+            assert_eq!(row.width, percent(100));
+            assert_eq!(row.max_width, percent(100));
+            assert_eq!(row.min_width, px(0));
+            assert_eq!(row.flex_shrink.to_bits(), 0.0_f32.to_bits());
+            assert_eq!(
+                world.get::<TextLayout>(entity).unwrap().linebreak,
+                bevy::text::LineBreak::WordOrCharacter
+            );
+            let spans = world.get::<Children>(entity).unwrap();
+            let actual: String = spans
+                .iter()
+                .map(|span| world.get::<TextSpan>(span).unwrap().0.as_str())
+                .collect();
+            assert_eq!(actual, expected);
+        }
+    }
 
     #[test]
     fn campaign_default_uses_the_runtime_default_uuid_without_env() {

@@ -14,6 +14,7 @@ import struct
 import sys
 from collections.abc import Iterable, Sequence
 from pathlib import Path, PurePosixPath
+from tempfile import TemporaryDirectory
 from typing import Any, Final
 
 import yaml
@@ -41,6 +42,60 @@ COLUMNS: Final = (
     "total_annual_wages",
     "annual_avg_wkly_wage",
 )
+EXPECTED_CONSUMER_MAPPING: Final = {
+    "county_identity": {
+        "source_column": "county_geoid",
+        "target_field": "territory/county-fips",
+        "conversion": "exact-base10-int",
+    },
+    "conversion": "exact-nonnegative-i64-no-rounding",
+    "evidence_class": "Observed",
+    "time_policy": "fixed-2024-observed-baseline",
+    "consumers": ["ObserverEconomyReaderV1", "CountyDossierProducerV1"],
+    "mechanics_consumers": [],
+    "fields": [
+        {
+            "source_statistic": "annual_avg_estabs_count",
+            "unit": "establishments",
+            "time_basis": "annual-average-2024",
+            "target_field": "territory/qcew-establishments",
+            "grant_key": "qcew-establishments",
+            "map_label": "Establishments",
+            "map_unit": "annual average establishments",
+            "archive_label": "QCEW 2024 annual-average establishments",
+        },
+        {
+            "source_statistic": "annual_avg_emplvl",
+            "unit": "jobs",
+            "time_basis": "annual-average-2024",
+            "target_field": "territory/qcew-employment",
+            "grant_key": "qcew-employment",
+            "map_label": "Employment",
+            "map_unit": "annual average jobs",
+            "archive_label": "QCEW 2024 annual-average employment (jobs)",
+        },
+        {
+            "source_statistic": "total_annual_wages",
+            "unit": "USD",
+            "time_basis": "calendar-year-2024-total",
+            "target_field": "territory/qcew-total-annual-wages",
+            "grant_key": "qcew-total-annual-wages",
+            "map_label": "Annual payroll",
+            "map_unit": "USD / year",
+            "archive_label": "QCEW 2024 total annual wages (USD)",
+        },
+        {
+            "source_statistic": "annual_avg_wkly_wage",
+            "unit": "USD-per-employee-per-week",
+            "time_basis": "annual-average-weekly-rate-2024",
+            "target_field": "territory/qcew-average-weekly-wage",
+            "grant_key": "qcew-average-weekly-wage",
+            "map_label": "Mean weekly wage",
+            "map_unit": "USD / employee / week",
+            "archive_label": "QCEW 2024 average weekly wage (USD/week)",
+        },
+    ],
+}
 EXPECTED_ABSENCES: Final = {
     "disclosure_flag_rows",
     "suppressed_rows",
@@ -63,6 +118,8 @@ EXPECTED_BOUNDS: Final = {
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 ASCII_DIGITS = re.compile(r"^[0-9]+$")
 GEOID = re.compile(r"^26[0-1][0-9]{2}$")
+COUNTY_FILE = re.compile(r"^2024\.annual (26\d{3}) [^/\\]+ County, Michigan\.csv$")
+MICHIGAN_COUNTY_GEOIDS: Final = tuple(f"{fips:05d}" for fips in range(26_001, 26_166, 2))
 
 
 class QcewCountyEconomicsRefusal(ValueError):
@@ -147,6 +204,7 @@ def verify_contract(contract: dict[str, Any]) -> None:
         "bounds",
         "source",
         "artifact",
+        "consumer_mapping",
         "declared_absences",
         "lineage",
     }:
@@ -204,11 +262,14 @@ def verify_contract(contract: dict[str, Any]) -> None:
         or artifact.get("ordering") != "county_geoid-ascending"
         or isinstance(artifact.get("rows"), bool)
         or not isinstance(artifact.get("rows"), int)
-        or not 0 < artifact["rows"] <= EXPECTED_BOUNDS["artifact_rows"]
+        or artifact["rows"] != len(MICHIGAN_COUNTY_GEOIDS)
     ):
         raise QcewCountyEconomicsRefusal("contract_shape", "artifact")
     _require_sha256(artifact.get("sha256"), "artifact.sha256")
     _require_sha256(artifact.get("semantic_sha256"), "artifact.semantic_sha256")
+
+    if contract.get("consumer_mapping") != EXPECTED_CONSUMER_MAPPING:
+        raise QcewCountyEconomicsRefusal("contract_shape", "consumer_mapping")
 
     absences = contract.get("declared_absences")
     if (
@@ -256,11 +317,23 @@ def verify_source_manifest(contract: dict[str, Any], path: Path) -> None:
     entries = document.get("entries")
     if not isinstance(entries, list) or len(entries) != 83:
         raise QcewCountyEconomicsRefusal("source_manifest_shape", "entries")
+    files: list[str] = []
+    geoids: list[str] = []
     for entry in entries:
         if not isinstance(entry, dict) or set(entry) != {"file", "sha256"}:
             raise QcewCountyEconomicsRefusal("source_manifest_entry", repr(entry))
-        if SHA256.fullmatch(str(entry.get("sha256", ""))) is None:
+        if not isinstance(entry["sha256"], str) or SHA256.fullmatch(entry["sha256"]) is None:
             raise QcewCountyEconomicsRefusal("source_manifest_sha256", repr(entry))
+        name = entry["file"]
+        match = COUNTY_FILE.fullmatch(name) if isinstance(name, str) else None
+        if match is None:
+            raise QcewCountyEconomicsRefusal("source_manifest_file", repr(name))
+        files.append(name)
+        geoids.append(match.group(1))
+    if files != sorted(files) or len(files) != len(set(files)):
+        raise QcewCountyEconomicsRefusal("source_manifest_order", repr(files[:3]))
+    if tuple(geoids) != MICHIGAN_COUNTY_GEOIDS:
+        raise QcewCountyEconomicsRefusal("source_manifest_geoids", repr(geoids[:3]))
 
 
 def _artifact_path(root: Path, raw: object) -> Path:
@@ -333,12 +406,12 @@ def _verify_rows(rows: list[list[str]]) -> None:
             raise QcewCountyEconomicsRefusal("artifact_geoid", geoid)
         if any(ASCII_DIGITS.fullmatch(value) is None for value in values):
             raise QcewCountyEconomicsRefusal("artifact_value", geoid)
+    if tuple(keys) != MICHIGAN_COUNTY_GEOIDS:
+        raise QcewCountyEconomicsRefusal("artifact_geoids", "expected all 83 Michigan counties")
 
 
 def verify_artifacts(contract: dict[str, Any], root: Path) -> list[list[str]]:
-    """Regenerate from the staged CSVs, byte-check, and semantic-check the artifact."""
-    import make_qcew_county_economics_artifacts as builder
-
+    """Read and verify committed artifact bytes, values, coverage, and semantic identity."""
     spec = contract["artifact"]
     artifact_path = _artifact_path(root, spec["path"])
     rows = _read_gzip_rows(artifact_path, spec)
@@ -346,8 +419,25 @@ def verify_artifacts(contract: dict[str, Any], root: Path) -> list[list[str]]:
     semantic = _semantic_sha256(b"babylon.qcew-county-economics.v1", COLUMNS, rows)
     if semantic != spec["semantic_sha256"]:
         raise QcewCountyEconomicsRefusal("artifact_semantic_sha256", semantic)
-    regenerated = builder.build(out_path=root / ".verify-qcew-tmp.csv.gz")
-    try:
+    return rows
+
+
+def verify_acquisition(contract: dict[str, Any], root: Path, source_dir: Path) -> None:
+    """Explicitly reproduce the artifact from source CSVs outside the checkout."""
+    import make_qcew_county_economics_artifacts as builder
+
+    source_manifest = root / EXPECTED_SOURCE_MANIFEST
+    verify_source_manifest(contract, source_manifest)
+    spec = contract["artifact"]
+    with TemporaryDirectory(prefix="babylon-qcew-verification-") as temporary:
+        try:
+            regenerated = builder.build(
+                source_dir=source_dir,
+                source_manifest=source_manifest,
+                out_path=Path(temporary) / "qcew.csv.gz",
+            )
+        except builder.QcewBuildError as error:
+            raise QcewCountyEconomicsRefusal(error.code, error.detail) from error
         if regenerated.sha256 != spec["sha256"]:
             raise QcewCountyEconomicsRefusal(
                 "artifact_regeneration", f"expected {spec['sha256']}, got {regenerated.sha256}"
@@ -356,9 +446,6 @@ def verify_artifacts(contract: dict[str, Any], root: Path) -> list[list[str]]:
             raise QcewCountyEconomicsRefusal(
                 "artifact_regeneration_semantic", regenerated.semantic_sha256
             )
-    finally:
-        (root / ".verify-qcew-tmp.csv.gz").unlink(missing_ok=True)
-    return rows
 
 
 def verify_artifact_manifest(contract: dict[str, Any], path: Path) -> None:
@@ -401,15 +488,27 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--contract",
         type=Path,
-        default=Path("contracts/qcew_county_economics_v1.yaml"),
+        help="contract path (defaults to contracts/qcew_county_economics_v1.yaml in repo root)",
     )
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
+    parser.add_argument(
+        "--source-dir",
+        type=Path,
+        help="also verify acquisition by rebuilding from these staged CSVs",
+    )
     args = parser.parse_args(argv)
-    contract = load_contract(args.contract)
+    contract_path = (
+        args.contract
+        if args.contract is not None
+        else args.repo_root / "contracts/qcew_county_economics_v1.yaml"
+    )
+    contract = load_contract(contract_path)
     verify_contract(contract)
     verify_source_manifest(contract, args.repo_root / EXPECTED_SOURCE_MANIFEST)
     rows = verify_artifacts(contract, args.repo_root)
     verify_artifact_manifest(contract, args.repo_root / "data-artifacts.yaml")
+    if args.source_dir is not None:
+        verify_acquisition(contract, args.repo_root, args.source_dir)
     print(f"QcewCountyEconomicsV1 verified: {len(rows)} county rows")
     return 0
 

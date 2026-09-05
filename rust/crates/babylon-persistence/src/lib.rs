@@ -20,13 +20,20 @@ mod h3_shadow_backfill;
 pub mod hashes;
 pub mod identity;
 pub mod legacy_adopter;
+pub mod material_envelope;
+pub mod material_runtime;
 mod metadata;
 mod michigan_dynamic_hex_foundation;
+pub mod michigan_economy;
 pub mod migration_manifest;
+pub(crate) mod observer_material;
+pub mod observer_reader;
 mod place_producer;
 mod postgres_diagnostic;
+pub(crate) mod production_projection;
 mod reader;
 mod runtime;
+pub mod runtime_session;
 pub mod schema_epoch;
 pub mod schema_migration;
 #[allow(
@@ -133,10 +140,12 @@ pub use michigan_dynamic_hex_foundation::{
     decode_michigan_dynamic_hex_foundation_v1, michigan_dynamic_hex_foundation_fixture_parts_v1,
     michigan_dynamic_hex_foundation_v1, MichiganDynamicHexFoundationDecodeErrorV1,
 };
+pub use michigan_economy::*;
 pub use migration_manifest::{
     ManifestError, MigrationManifest, MAX_MANIFEST_BYTES, MAX_MANIFEST_CHUNKS,
     SCHEMA_ADVISORY_LOCK_KEY,
 };
+pub use observer_reader::*;
 pub use place_producer::{
     desired_place_projection_v1, parse_stored_place_page_v1, place_page_input_v1,
     place_page_semantic_sha256_v1, select_dirty_place_pages_v1, PlaceCountySliceV1,
@@ -156,6 +165,7 @@ pub use runtime::{
     CommittedTickReceiptV2, DurableReplayRuntimeV2, PreActivationIncompatibleRelationV2,
     PreparedCommittedTickV2, RustPersistenceActivationErrorV2, RustPersistenceRuntimeErrorV2,
 };
+pub use runtime_session::*;
 pub use schema_epoch::{
     compiled_committed_tick_v2_activation_migrations, compiled_schema_migrations,
     migrate_schema_epoch, preflight_schema_epoch, validate_migration_prefix, PersistedMigration,
@@ -184,3 +194,10 @@ pub use territory_county_map::{
     TERRITORY_COUNTY_MAP_FIELD_V1, TERRITORY_COUNTY_MAP_SCHEMA_CONTRACT_ID,
     TERRITORY_COUNTY_MAP_SCHEMA_V1_SQL,
 };
+
+mod production_evidence;
+pub use production_evidence::ProductionEvidenceDigestV1;
+pub mod production_observation;
+pub use production_observation::*;
+
+pub mod michigan_material;

@@ -12,6 +12,60 @@ Babylon is an entertainment-first emergent political-economy game. Babylon is
 not a forecast and not a scientific reproduction. Theory constrains the causal
 model but does not predetermine results.
 
+<!-- Vale: the Director's political game vocabulary and intended player freedom. -->
+<!-- vale ste.UnapprovedWords = NO -->
+The intended player leads a small political organization,
+responsible for its members and collective power.
+The MIM line supplies the analytical framework. The player can pursue an
+electoral, reformist, or revolutionary project. Political direction emerges
+from practice: campaigns, alliances, membership, and institutional commitments.
+These commitments also shape later choices and pressures.
+
+Reformism versus revolution is a central strategic tension. Adventurism and
+sectarianism are distinct tendencies that can also develop through practice.
+Decisions and material conditions explain these trajectories. Political labels
+do not predetermine success or failure.
+<!-- vale ste.UnapprovedWords = YES -->
+The intended first screen centers political forces: organizations,
+institutions, allies, and opponents. Economic panels explain their material
+relationships.
+The world must explain labor dependence, material needs, institutions, and
+collective relationships. Each visualization must answer a player question:
+where can I organize, and what sustains collective action?
+Who bears its costs, and what changes as a result?
+Statistical totals and citations belong in context views and the Archive.
+
+The player plans in months while the engine resolves individual weeks. The
+main control runs to a monthly boundary. The player can pause and resume the
+remaining period. Important developments also pause play for a closer look.
+A briefing explains what changed, why it matters to the organization,
+and links to records that the player can examine. The player makes the
+strategic judgment.
+
+Hearts of Iron IV and Victoria 3 are references for strategic scale and pace.
+Dwarf Fortress is a reference for systems that interact and produce histories.
+The game must make consequences clear at the level of organizations.
+
+The geographic world is the persistent home. A compact resource bar describes
+the organization as a whole. Selection reveals local availability, activities,
+and relationships. The log records developments, group communications, and
+completed activity, with links back to affected subjects.
+
+Portraits represent groups and organizations. Detailed individual simulation
+is not the focus.
+Support and opposition belong to distinct groups. Pressure directed at the
+organization stays separate from regional unrest and the repressive climate.
+
+The future language interface proposes a few concrete first steps for a broad
+intention. The player chooses an approach and confirms a reviewed action.
+Pinned plans preserve intentions. They do not silently execute them. G5 owns
+those actions. The engine determines their legality, costs, and consequences.
+
+G4's observer surface must make those relationships legible before G5 adds
+actions for the organizer. Physical dependence does not prove organization,
+solidarity, or readiness for collective action. The game must model those
+relations before it can display them as facts.
+
 Determinism proves computational identity, not scientific truth. Historical
 cases test causal signatures and counterfactual behavior. They do not dictate a
 historical path.

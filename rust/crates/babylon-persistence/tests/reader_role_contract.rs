@@ -23,6 +23,22 @@ fn reader_role_create_sql_pins_exact_locked_attributes() {
 }
 
 #[test]
+fn verification_read_separates_processing_from_page_content() {
+    let schema = babylon_persistence::ARCHIVE_VERIFICATION_SCHEMA_V1_SQL;
+    assert!(schema.contains("FROM babylon_state.tick_commit AS marker"));
+    assert!(schema.contains("consumed.tick_content_hash = marker.tick_content_hash"));
+    assert!(
+        schema.contains("MIN(marker.resolve_tick) FILTER (WHERE consumed.campaign_id IS NULL) - 1")
+    );
+    assert!(!schema.contains("UPDATE"));
+    assert!(!schema.contains("archive_page_v1"));
+    let query = babylon_persistence::ARCHIVE_VERIFICATION_STATUS_SQL_V1;
+    assert!(query.contains("public.v_archive_verification_v1"));
+    assert!(!query.contains("babylon_state"));
+    assert!(!query.contains("babylon_meta"));
+}
+
+#[test]
 fn reader_role_schema_grants_select_only_on_the_fog_safe_views() {
     assert!(READER_ROLE_SCHEMA_V1_SQL.contains("CREATE VIEW public.v_committed_tick_status_v1"));
     assert!(READER_ROLE_SCHEMA_V1_SQL.contains("FROM babylon_state.tick_commit"));
@@ -40,8 +56,8 @@ fn reader_role_schema_grants_select_only_on_the_fog_safe_views() {
     }
     assert_eq!(
         READER_ROLE_SCHEMA_V1_SQL.matches("GRANT SELECT").count(),
-        5,
-        "one tick-view grant plus four guarded atom-view grants, nothing else"
+        9,
+        "tick status, four atom views, verification, and two safe economy views"
     );
     assert!(READER_ROLE_SCHEMA_V1_SQL
         .contains("GRANT SELECT ON public.v_committed_tick_status_v1 TO babylon_reader"));
@@ -50,6 +66,9 @@ fn reader_role_schema_grants_select_only_on_the_fog_safe_views() {
         "public.v_archive_atom_visible",
         "public.v_county_card_atoms",
         "public.v_archive_subject_atoms",
+        "public.v_archive_verification_v1",
+        "public.v_known_county_economy_v1",
+        "public.v_observer_economy_foundation_v1",
     ] {
         assert!(
             READER_ROLE_SCHEMA_V1_SQL

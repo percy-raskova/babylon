@@ -398,7 +398,7 @@ fn county_page_markdown(config: &Config, campaign_id: CampaignId, geoid: &str) -
 
 #[test]
 #[ignore = "requires the task-owned disposable PostgreSQL runtime and committed ticks"]
-fn live_county_producer_publishes_committed_signals_then_defers_unchanged_receipts() {
+fn live_county_producer_publishes_committed_signals_then_verifies_quiet_receipts() {
     let target = LiveCountyTarget::create(
         "countyproducerdrain",
         0x2200_0000_0000_0000_0000_0000_0000_00c1,
@@ -422,20 +422,20 @@ fn live_county_producer_publishes_committed_signals_then_defers_unchanged_receip
         dispositions,
         vec![
             (1, ArchiveReceiptDispositionV1::Applied),
-            (2, ArchiveReceiptDispositionV1::Deferred),
-            (3, ArchiveReceiptDispositionV1::Deferred),
+            (2, ArchiveReceiptDispositionV1::Applied),
+            (3, ArchiveReceiptDispositionV1::Applied),
         ],
-        "receipt 1 publishes both county pages; unchanged later receipts defer empty"
+        "receipt 1 publishes both county pages; unchanged later receipts consume empty"
     );
     assert_eq!(
         report.verified_tick(),
-        1,
-        "the deferred tick 2 caps the watermark"
+        3,
+        "quiet ticks advance verification without changing page content"
     );
     assert_eq!(county_page_count(&target.config, target.campaign_id), 2);
     assert_eq!(
         receipt_consumption_count(&target.config, target.campaign_id),
-        1
+        3
     );
 
     let wayne = county_page_markdown(&target.config, target.campaign_id, "26163");
@@ -492,8 +492,8 @@ fn live_county_producer_rerun_reconciles_without_duplicate_pages() {
     let first = worker
         .sweep_once(target.campaign_id, &producer)
         .expect("first sweep applies the bootstrap receipt");
-    assert_eq!(first.applied_count(), 1);
-    assert_eq!(first.deferred_count(), 1);
+    assert_eq!(first.applied_count(), 2);
+    assert_eq!(first.paged_count(), 0);
     assert_eq!(county_page_count(&target.config, target.campaign_id), 2);
 
     let second = worker
@@ -506,14 +506,14 @@ fn live_county_producer_rerun_reconciles_without_duplicate_pages() {
         .collect::<Vec<_>>();
     assert_eq!(
         dispositions,
-        vec![(2, ArchiveReceiptDispositionV1::Deferred)],
-        "the still-pending receipt re-defers clean instead of republishing"
+        vec![],
+        "settled receipts need no further work"
     );
-    assert_eq!(second.verified_tick(), 1);
+    assert_eq!(second.verified_tick(), 2);
     assert_eq!(county_page_count(&target.config, target.campaign_id), 2);
     assert_eq!(
         receipt_consumption_count(&target.config, target.campaign_id),
-        1,
+        2,
         "no duplicate consumption rows appear on the rerun"
     );
 
@@ -544,6 +544,26 @@ fn live_county_producer_rerun_reconciles_without_duplicate_pages() {
     target.finish();
 }
 
+/// Fail after the first durable receipt so the test can add a later field grant.
+struct StopAfterFirst<'a>(&'a CountyDossierProducerV1);
+
+impl babylon_persistence::ArchiveDossierProducerV1 for StopAfterFirst<'_> {
+    fn produce(
+        &self,
+        campaign: Uuid,
+        receipt: &babylon_persistence::PendingArchiveReceiptV1,
+        budget: usize,
+    ) -> Result<
+        babylon_persistence::ArchiveProducerOutcomeV1,
+        babylon_persistence::SemanticArchiveErrorV1,
+    > {
+        if receipt.resolve_tick() > 1 {
+            return Err(babylon_persistence::SemanticArchiveErrorV1::InvalidText);
+        }
+        babylon_persistence::ArchiveDossierProducerV1::produce(self.0, campaign, receipt, budget)
+    }
+}
+
 #[test]
 #[ignore = "requires the task-owned disposable PostgreSQL runtime and committed ticks"]
 fn live_county_producer_grant_refresh_republicates_revealed_page() {
@@ -561,16 +581,13 @@ fn live_county_producer_grant_refresh_republicates_revealed_page() {
     // tick zero, so the pages render with known place links but no signal
     // section — the earned field keys stay ungranted until the refresh below.
     let mut worker = ArchiveWorkerV1::new(&target.config);
-    let first = worker
-        .sweep_once(target.campaign_id, &producer)
-        .expect("foundation-knowledge sweep publishes the partially revealed pages");
     assert_eq!(
-        sweep_dispositions(&first),
-        vec![
-            (1, ArchiveReceiptDispositionV1::Applied),
-            (2, ArchiveReceiptDispositionV1::Deferred),
-            (3, ArchiveReceiptDispositionV1::Deferred),
-        ]
+        worker.sweep_once(target.campaign_id, &StopAfterFirst(&producer)),
+        Err(babylon_persistence::SemanticArchiveErrorV1::InvalidText)
+    );
+    assert_eq!(
+        receipt_consumption_count(&target.config, target.campaign_id),
+        1
     );
     let wayne_redacted = county_page_markdown(&target.config, target.campaign_id, "26163");
     assert!(wayne_redacted.contains("# Wayne County"));
@@ -601,9 +618,9 @@ fn live_county_producer_grant_refresh_republicates_revealed_page() {
         sweep_dispositions(&second),
         vec![
             (2, ArchiveReceiptDispositionV1::Applied),
-            (3, ArchiveReceiptDispositionV1::Deferred),
+            (3, ArchiveReceiptDispositionV1::Applied),
         ],
-        "receipt two republishes the revealed page; receipt three defers clean"
+        "receipt two republishes; receipt three verifies unchanged content"
     );
     let wayne = county_page_markdown(&target.config, target.campaign_id, "26163");
     assert!(
@@ -626,7 +643,7 @@ fn live_county_producer_grant_refresh_republicates_revealed_page() {
     assert_eq!(county_page_count(&target.config, target.campaign_id), 2);
     assert_eq!(
         receipt_consumption_count(&target.config, target.campaign_id),
-        2
+        3
     );
 
     // The revealed page settles: reruns reconcile without further writes.
@@ -635,13 +652,13 @@ fn live_county_producer_grant_refresh_republicates_revealed_page() {
         .expect("settled sweep reconciles");
     assert_eq!(
         sweep_dispositions(&settled),
-        vec![(3, ArchiveReceiptDispositionV1::Deferred)],
-        "the revealed page settles; the last receipt re-defers clean"
+        vec![],
+        "settled receipts stay consumed"
     );
     assert_eq!(county_page_count(&target.config, target.campaign_id), 2);
     assert_eq!(
         receipt_consumption_count(&target.config, target.campaign_id),
-        2
+        3
     );
     target.finish();
 }

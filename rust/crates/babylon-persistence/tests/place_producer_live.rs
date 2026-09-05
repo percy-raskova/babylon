@@ -572,9 +572,7 @@ fn live_composite_producer_drains_the_backlog_county_first() {
         .expect("rerun sweep reconciles");
     assert_eq!(rerun.paged_count(), 0);
     assert!(
-        dispositions(&rerun)
-            .iter()
-            .all(|(_, disposition)| *disposition == ArchiveReceiptDispositionV1::Deferred),
+        dispositions(&rerun).is_empty(),
         "settled receipts never republish"
     );
     assert_eq!(
@@ -901,15 +899,15 @@ fn live_place_producer_drains_allowlisted_pages_and_reruns_clean() {
             .collect::<Vec<_>>(),
         vec![
             (1, ArchiveReceiptDispositionV1::Applied),
-            (2, ArchiveReceiptDispositionV1::Deferred),
+            (2, ArchiveReceiptDispositionV1::Applied),
         ],
-        "one receipt publishes every allowlisted place; the next defers clean"
+        "one receipt publishes every allowlisted place; the next verifies unchanged content"
     );
-    assert_eq!(report.verified_tick(), 1);
+    assert_eq!(report.verified_tick(), 2);
     assert_eq!(place_page_count(&target.config, target.campaign_id), 5);
     assert_eq!(
         receipt_consumption_count(&target.config, target.campaign_id),
-        1
+        2
     );
 
     let rows = place_page_rows(&target.config, target.campaign_id);
@@ -940,20 +938,20 @@ fn live_place_producer_drains_allowlisted_pages_and_reruns_clean() {
     }
 
     // A rerun reconciles without duplicate or republished pages: the
-    // unconsumed deferred receipt re-defers, nothing is rewritten.
+    // settled receipts remain consumed and no content is rewritten.
     let rerun = worker
         .sweep_once(target.campaign_id, &producer)
         .expect("rerun sweep reconciles");
     assert_eq!(
         dispositions(&rerun),
-        vec![(2, ArchiveReceiptDispositionV1::Deferred)],
-        "the still-pending receipt re-defers clean instead of republishing"
+        vec![],
+        "the settled receipts need no further work"
     );
-    assert_eq!(rerun.verified_tick(), 1);
+    assert_eq!(rerun.verified_tick(), 2);
     assert_eq!(place_page_count(&target.config, target.campaign_id), 5);
     assert_eq!(
         receipt_consumption_count(&target.config, target.campaign_id),
-        1
+        2
     );
     for (_, verified_tick, _) in place_page_rows(&target.config, target.campaign_id) {
         assert_eq!(verified_tick, 1, "rerun never republishes a clean page");
@@ -963,7 +961,7 @@ fn live_place_producer_drains_allowlisted_pages_and_reruns_clean() {
 
 #[test]
 #[ignore = "requires the task-owned disposable PostgreSQL runtime and committed ticks"]
-fn live_place_producer_foundation_grants_publish_revealed_page_and_rerun_defers_clean() {
+fn live_place_producer_foundation_grants_publish_revealed_page_and_rerun_is_idle() {
     let target = LivePlaceTarget::create(
         "placeproducerrefresh",
         0x2200_0000_0000_0000_0000_0000_0000_00b4,
@@ -985,8 +983,8 @@ fn live_place_producer_foundation_grants_publish_revealed_page_and_rerun_defers_
         dispositions(&first),
         vec![
             (1, ArchiveReceiptDispositionV1::Applied),
-            (2, ArchiveReceiptDispositionV1::Deferred),
-            (3, ArchiveReceiptDispositionV1::Deferred),
+            (2, ArchiveReceiptDispositionV1::Applied),
+            (3, ArchiveReceiptDispositionV1::Applied),
         ]
     );
     let rows = place_page_rows(&target.config, target.campaign_id);
@@ -994,7 +992,7 @@ fn live_place_producer_foundation_grants_publish_revealed_page_and_rerun_defers_
     assert_eq!(place_page_count(&target.config, target.campaign_id), 1);
     assert_eq!(
         receipt_consumption_count(&target.config, target.campaign_id),
-        1
+        3
     );
 
     // The revealed page settles: reruns reconcile without further writes.
@@ -1003,17 +1001,14 @@ fn live_place_producer_foundation_grants_publish_revealed_page_and_rerun_defers_
         .expect("settled sweep reconciles");
     assert_eq!(
         dispositions(&settled),
-        vec![
-            (2, ArchiveReceiptDispositionV1::Deferred),
-            (3, ArchiveReceiptDispositionV1::Deferred),
-        ],
-        "the revealed page settles; the pending receipts re-defer clean"
+        vec![],
+        "the revealed page and quiet receipt prefix stay settled"
     );
-    assert_eq!(settled.verified_tick(), 1);
+    assert_eq!(settled.verified_tick(), 3);
     assert_eq!(place_page_count(&target.config, target.campaign_id), 1);
     assert_eq!(
         receipt_consumption_count(&target.config, target.campaign_id),
-        1
+        3
     );
     target.finish();
 }

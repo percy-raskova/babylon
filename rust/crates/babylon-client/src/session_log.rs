@@ -1,34 +1,11 @@
-//! Session observability (Director ask 2026-09-04): structured `session`-target
-//! events at every player-visible interaction seam, so one play session can be
-//! reconstructed from the rotating file log ([`crate::logging`]) alone — what
-//! county was selected, what page was requested, what the card installed, how
-//! the clock was driven, and why a fetch failed.
+//! Conformance session and Archive interaction telemetry through the shared
+//! Bevy tracing sink. These legacy observers cover the in-process viewer's
+//! resources; they do not describe the durable observer clock or camera.
 //!
-//! **Why a plugin of observers, not log lines inside each system**: the
-//! interaction systems own Bevy's 7-parameter shape and stay pure projections
-//! (see `ui::dossier_card`); bolting `info!` into them would spend their
-//! parameter budget and mix presentation with telemetry. Observers read the
-//! same resources and messages the renderers consume, so the log can never lie
-//! about what the renderer saw.
-//!
-//! **Why value snapshots instead of `is_changed`**: producers like
-//! `collect_dossier_fetch` hold `ResMut` across a poll loop, so Bevy marks the
-//! resource changed every frame even when the value is identical — change
-//! detection alone would flood the log with per-frame repeats (Codex review
-//! 2026-09-04). Each observer diffs the current value against the last value
-//! it logged, so a spurious change mark costs one comparison, never a line.
-//!
-//! **Ordering**: the observers chain in causal order (selection → request →
-//! view → projection → fetch → controls → story → tick). A line can land one
-//! frame after its cause when the producer runs later in the same schedule —
-//! telemetry trades that frame for zero coupling to the renderers' internals;
-//! the per-line timestamps bound the lag.
-//!
-//! **Levels**: the session narrative (selections, pages, installs, control
-//! transitions, beats) is `INFO` — the file lane captures it and the stderr
-//! lane mirrors it. The per-tick heartbeat is `DEBUG` (file-only). **No
-//! wall-clock in events**: the fmt layer timestamps each line, exactly as
-//! [`crate::logging`] mandates.
+//! Observer composition uses [`crate::observer_session_log`] instead: scoped
+//! requests, applied state, acknowledgements and bounded camera checkpoints.
+//! Neither stream records every input or proves that a person understood it.
+//! Value snapshots suppress repeated events from spurious change marks.
 
 use bevy::prelude::*;
 
@@ -66,7 +43,10 @@ impl Plugin for SessionLogPlugin {
             .init_resource::<ActiveCountyDossier>()
             .init_resource::<DossierPageView>()
             .init_resource::<DossierFetchState>()
-            .add_systems(Startup, log_session_start)
+            .add_systems(
+                Startup,
+                log_session_start.run_if(not(resource_exists::<crate::observer::ObserverSession>)),
+            )
             .add_systems(
                 Update,
                 (
@@ -79,8 +59,10 @@ impl Plugin for SessionLogPlugin {
                     log_story_changes,
                     log_tick_and_beats,
                 )
-                    .chain(),
+                    .chain()
+                    .run_if(not(resource_exists::<crate::observer::ObserverSession>)),
             );
+        crate::observer_session_log::register(app);
     }
 }
 
@@ -224,14 +206,19 @@ fn log_dossier_projection_changes(
 /// `Update`: the fetch lifecycle, so a card that shows "Archive reader not
 /// configured" or a hard failure is explained by the log line that precedes
 /// it. Snapshots a descriptor string: `DossierFetchState` holds the in-flight
-/// `Task` (no `PartialEq`), and its producer marks it changed on every poll —
-/// the descriptor diff is what keeps an unchanged `Idle` from logging per
-/// frame.
+/// `Task` (no `PartialEq`); the descriptor diff suppresses unchanged lifecycle
+/// descriptions.
 fn log_fetch_state_changes(state: Res<DossierFetchState>, mut last: Local<Snapshot<String>>) {
     let current = match &*state {
         DossierFetchState::Idle => "idle".to_owned(),
+        DossierFetchState::HistoricalUnavailable => "historical-unavailable".to_owned(),
         DossierFetchState::InFlight { fips, .. } => format!("in-flight:{fips}"),
-        DossierFetchState::Failed(error) => format!("failed:{error:?}"),
+        DossierFetchState::Failed(crate::ui::dossier_card::DossierFetchError::ReaderAbsent(_)) => {
+            "failed:ReaderAbsent".to_owned()
+        }
+        DossierFetchState::Failed(crate::ui::dossier_card::DossierFetchError::ReadFailed(_)) => {
+            "failed:ReadFailed".to_owned()
+        }
     };
     if matches!(&*last, Snapshot::Seen(previous) if previous == &current) {
         return;
@@ -356,7 +343,10 @@ mod tests {
     use std::collections::VecDeque;
     use std::path::PathBuf;
 
-    const ATLAS_BYTES: &[u8] = include_bytes!("../assets/map/county_atlas.bin");
+    const ATLAS_BYTES: &[u8] = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../assets/map/county_atlas.bin"
+    ));
 
     fn temp_dir(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -427,6 +417,7 @@ mod tests {
                     geoid: "26163".to_owned(),
                     title: "Wayne County".to_owned(),
                     durable_tick: Some(2),
+                    content_tick: Some(1),
                     verified_tick: Some(1),
                     atoms: Vec::new(),
                     places: Vec::new(),

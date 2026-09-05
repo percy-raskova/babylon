@@ -25,8 +25,6 @@ from typing import Any, Final
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SOURCE_MANIFEST = REPO_ROOT / "tools" / "qcew_county_economics_v1_source_manifest.json"
-TROVE = Path("/media/user/data/babylon-data")
-SOURCE_DIR = TROVE / "employment_industry" / "2024.annual.by_area"
 ARTIFACT_OUT = (
     REPO_ROOT
     / "src"
@@ -90,7 +88,7 @@ EXPECTED_SOURCE_COLUMNS: Final = (
     "oty_avg_annual_pay_chg",
     "oty_avg_annual_pay_pct_chg",
 )
-COUNTY_FILE_RE = re.compile(r"^2024\.annual (26\d{3}) .+ County, Michigan\.csv$")
+COUNTY_FILE_RE = re.compile(r"^2024\.annual (26\d{3}) [^/\\]+ County, Michigan\.csv$")
 ASCII_DIGITS = re.compile(r"^[0-9]+$")
 MICHIGAN_COUNTY_GEOIDS: Final = tuple(f"{fips:05d}" for fips in range(26_001, 26_166, 2))
 
@@ -266,7 +264,7 @@ def _write_gzip_csv(
 
 def build(
     *,
-    source_dir: Path = SOURCE_DIR,
+    source_dir: Path,
     out_path: Path = ARTIFACT_OUT,
     source_manifest: Path = SOURCE_MANIFEST,
 ) -> ArtifactStats:
@@ -303,14 +301,16 @@ def make_data_artifacts_specs() -> tuple[Any, ...]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source-dir", type=Path, help="override the staged CSV directory")
+    parser.add_argument(
+        "--source-dir", type=Path, required=True, help="staged county CSV directory"
+    )
     parser.add_argument("--out", type=Path, help="override the artifact output path")
     parser.add_argument(
         "--source-manifest", type=Path, help="override the acquisition manifest path"
     )
     args = parser.parse_args(argv)
     stats = build(
-        source_dir=args.source_dir if args.source_dir is not None else SOURCE_DIR,
+        source_dir=args.source_dir,
         out_path=args.out if args.out is not None else ARTIFACT_OUT,
         source_manifest=args.source_manifest
         if args.source_manifest is not None

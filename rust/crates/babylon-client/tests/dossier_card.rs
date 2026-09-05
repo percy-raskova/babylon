@@ -51,9 +51,9 @@ use uuid::Uuid;
 static READER_DSN_LOCK: Mutex<()> = Mutex::new(());
 
 /// Holds [`READER_DSN_LOCK`] and restores the ambient `BABYLON_READER_DSN`
-/// on drop. The guard is inserted into the App as a non-send resource so it
-/// lives exactly as long as the app whose fetch tasks must not see the
-/// restored value.
+/// on drop. The fixture returns this guard before the App so callers bind it
+/// first: the App and its fetch tasks drop before the guard restores the env.
+/// Keeping the guard outside Bevy also releases it when an assertion unwinds.
 struct ReaderDsnGuard {
     _lock: MutexGuard<'static, ()>,
     prior: Option<OsString>,
@@ -82,7 +82,7 @@ impl Drop for ReaderDsnGuard {
 /// Builds the real app: the same plugin trio `main.rs`'s windowed mode
 /// wires, minus the window. `SelectedStory(counties())` mirrors
 /// `tests/projection.rs::new_app`.
-fn new_app() -> App {
+fn new_app() -> (ReaderDsnGuard, App) {
     // Determinism contract: this harness never has an Archive reader. A
     // developer's shell may export `BABYLON_READER_DSN` for the live foci;
     // left set, the fetch tasks this file spawns would race a real Postgres.
@@ -90,7 +90,6 @@ fn new_app() -> App {
     // the ambient value only when the App (and its fetch tasks) drops.
     let dsn_guard = ReaderDsnGuard::lock_and_remove();
     let mut app = App::new();
-    app.world_mut().insert_non_send_resource(dsn_guard);
     app.add_plugins((MinimalPlugins, AssetPlugin::default()));
     app.add_plugins(babylon_client::map::MapPlugin);
     app.add_plugins(babylon_client::loop_ui::TickLoopPlugin);
@@ -101,7 +100,7 @@ fn new_app() -> App {
     // engine mid-assertion.
     app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
     app.update(); // Startup
-    app
+    (dsn_guard, app)
 }
 
 /// Presses `key` through the REAL `KeyboardInput` message pipeline — the
@@ -154,6 +153,7 @@ fn fixture_projection() -> CountyDossierCardProjection {
         geoid: "01001".to_owned(),
         title: "Autauga County".to_owned(),
         durable_tick: Some(12),
+        content_tick: Some(11),
         verified_tick: Some(11),
         atoms: vec![
             atom("subject", "Autauga County", 1),
@@ -339,7 +339,7 @@ fn click_chip(app: &mut App, label: &str) {
 /// chip text.
 #[test]
 fn card_spawns_hidden_with_every_zone_and_the_surface_declaration() {
-    let mut app = new_app();
+    let (_dsn_guard, mut app) = new_app();
     let root = card_root(&mut app);
 
     assert_eq!(
@@ -379,12 +379,12 @@ fn card_spawns_hidden_with_every_zone_and_the_surface_declaration() {
 
 /// A selection change reveals the card and starts exactly one fetch. The
 /// first frame paints whichever honest line the task has reached: the
-/// in-flight "Fetching dossier…" while the task runs, or the
+/// in-flight "Reading cited observations..." while the task runs, or the
 /// reader-absent line if the pool already failed it — never stale data,
 /// never a panic, and the projection stays cleared.
 #[test]
 fn selection_reveals_the_card_and_paints_an_honest_fetch_line() {
-    let mut app = new_app();
+    let (_dsn_guard, mut app) = new_app();
     let root = card_root(&mut app);
     assert_eq!(
         app.world().get::<Visibility>(root),
@@ -405,7 +405,7 @@ fn selection_reveals_the_card_and_paints_an_honest_fetch_line() {
     );
     let state = app.world().resource::<DossierFetchState>();
     let expected = match state {
-        DossierFetchState::InFlight { .. } => "Fetching dossier…",
+        DossierFetchState::InFlight { .. } => "Reading cited observations...",
         DossierFetchState::Failed(DossierFetchError::ReaderAbsent(_)) => {
             "Archive reader not configured"
         }
@@ -423,7 +423,7 @@ fn selection_reveals_the_card_and_paints_an_honest_fetch_line() {
 /// renders the reader-absent line — never a panic, projection stays empty.
 #[test]
 fn reader_absent_is_the_terminal_honest_line_never_a_panic() {
-    let mut app = new_app();
+    let (_dsn_guard, mut app) = new_app();
     app.world_mut().resource_mut::<SelectedCounty>().0 = Some(0);
     for _ in 0..100 {
         app.update();
@@ -456,7 +456,7 @@ fn reader_absent_is_the_terminal_honest_line_never_a_panic() {
 /// values, and the sealed actions footer.
 #[test]
 fn seeded_projection_renders_the_whole_card_after_one_update() {
-    let mut app = new_app();
+    let (_dsn_guard, mut app) = new_app();
     seize_card(&mut app, fixture_projection());
 
     assert_eq!(zone_text(&mut app, DossierZone::Title), "Autauga County");
@@ -527,7 +527,7 @@ fn seeded_projection_renders_the_whole_card_after_one_update() {
 /// DIM border).
 #[test]
 fn place_chips_render_granted_pending_and_fog_states() {
-    let mut app = new_app();
+    let (_dsn_guard, mut app) = new_app();
     seize_card(&mut app, fixture_projection());
     let places = zone_entity(&mut app, DossierZone::Places);
 
@@ -575,7 +575,7 @@ fn place_chips_render_granted_pending_and_fog_states() {
 /// `STUB_SEALED_LINE` CRIMSON, and the data zones honestly emptied.
 #[test]
 fn granted_chip_click_replaces_the_card_with_the_r6a_stub() {
-    let mut app = new_app();
+    let (_dsn_guard, mut app) = new_app();
     seize_card(&mut app, fixture_projection());
 
     click_chip(&mut app, "Prattville");
@@ -615,7 +615,7 @@ fn granted_chip_click_replaces_the_card_with_the_r6a_stub() {
 /// vague placeholder — kind and public id only, no invented name.
 #[test]
 fn fog_chip_click_replaces_the_card_with_the_r6b_vague_placeholder() {
-    let mut app = new_app();
+    let (_dsn_guard, mut app) = new_app();
     seize_card(&mut app, fixture_projection());
 
     let fog_label = fog_chip_v1("place", "0199999");
@@ -653,7 +653,7 @@ fn fog_chip_click_replaces_the_card_with_the_r6b_vague_placeholder() {
 /// the root visibility all return to the resting state in the same frame.
 #[test]
 fn n_key_restart_clears_the_card_through_the_selection_signal() {
-    let mut app = new_app();
+    let (_dsn_guard, mut app) = new_app();
     seize_card(&mut app, fixture_projection());
     assert_eq!(zone_text(&mut app, DossierZone::Title), "Autauga County");
 
@@ -684,9 +684,202 @@ fn n_key_restart_clears_the_card_through_the_selection_signal() {
 /// `Unavailable` has a visible counterpart on every render of the card.
 #[test]
 fn sealed_actions_footer_survives_every_page_view() {
-    let mut app = new_app();
+    let (_dsn_guard, mut app) = new_app();
     seize_card(&mut app, fixture_projection());
     click_chip(&mut app, "Prattville");
     let actions = zone_text(&mut app, DossierZone::Actions);
     assert_eq!(actions, INVESTIGATE_SEALED_CHIP);
+}
+
+#[test]
+fn held_selection_refresh_clears_previous_card_and_starts_a_new_read() {
+    let (_dsn_guard, mut app) = new_app();
+    seize_card(&mut app, fixture_projection());
+    let selected = app.world().resource::<SelectedCounty>().0;
+    app.world_mut()
+        .resource_mut::<babylon_client::ui::dossier_card::DossierRefresh>()
+        .bump();
+    app.update();
+    assert_eq!(app.world().resource::<SelectedCounty>().0, selected);
+    assert!(app.world().resource::<ActiveCountyDossier>().0.is_none());
+    assert!(matches!(
+        app.world().resource::<DossierFetchState>(),
+        DossierFetchState::InFlight { .. } | DossierFetchState::Failed(_)
+    ));
+}
+
+#[test]
+fn obsolete_campaign_generation_and_county_results_cannot_install_or_report_errors() {
+    use babylon_client::ui::dossier_card::{DossierCampaignId, DossierRefresh};
+    use bevy::tasks::AsyncComputeTaskPool;
+
+    let (_dsn_guard, mut app) = new_app();
+    seize_card(&mut app, fixture_projection());
+    let campaign = app.world().resource::<DossierCampaignId>().0;
+    let generation = app.world().resource::<DossierRefresh>().0;
+    for (requested_campaign, requested_generation, fips, error) in [
+        (
+            CampaignId::from_uuid(Uuid::nil()),
+            generation,
+            "01001",
+            false,
+        ),
+        (campaign, generation + 1, "01001", false),
+        (campaign, generation, "26163", false),
+        (campaign, generation + 1, "01001", true),
+    ] {
+        let result = if error {
+            Err(DossierFetchError::ReadFailed("obsolete failure".to_owned()))
+        } else {
+            Ok(fixture_projection())
+        };
+        let task = AsyncComputeTaskPool::get().spawn(async move { result });
+        *app.world_mut().resource_mut::<DossierFetchState>() = DossierFetchState::InFlight {
+            fips: fips.to_owned(),
+            campaign: requested_campaign,
+            generation: requested_generation,
+            task,
+        };
+        app.update();
+        assert!(matches!(
+            app.world().resource::<DossierFetchState>(),
+            DossierFetchState::Idle
+        ));
+        assert!(app.world().resource::<ActiveCountyDossier>().0.is_none());
+        assert!(!zone_text(&mut app, DossierZone::DualTick).contains("obsolete failure"));
+    }
+}
+
+#[test]
+fn unchanged_card_and_unfinished_task_preserve_the_rendered_subtree() {
+    use babylon_client::ui::dossier_card::{DossierCampaignId, DossierRefresh};
+    use bevy::tasks::AsyncComputeTaskPool;
+
+    let (_dsn_guard, mut app) = new_app();
+    seize_card(&mut app, fixture_projection());
+    let title = zone_entity(&mut app, DossierZone::Title);
+    let initial = app
+        .world()
+        .get::<Children>(title)
+        .expect("painted title")
+        .iter()
+        .collect::<Vec<_>>();
+    app.update();
+    assert_eq!(
+        app.world()
+            .get::<Children>(title)
+            .expect("title remains")
+            .iter()
+            .collect::<Vec<_>>(),
+        initial
+    );
+
+    let campaign = app.world().resource::<DossierCampaignId>().0;
+    let generation = app.world().resource::<DossierRefresh>().0;
+    let task = AsyncComputeTaskPool::get().spawn(std::future::pending());
+    *app.world_mut().resource_mut::<DossierFetchState>() = DossierFetchState::InFlight {
+        fips: "01001".to_owned(),
+        campaign,
+        generation,
+        task,
+    };
+    app.update();
+    let pending = app
+        .world()
+        .get::<Children>(title)
+        .expect("pending title")
+        .iter()
+        .collect::<Vec<_>>();
+    for _ in 0..3 {
+        app.update();
+    }
+    assert_eq!(
+        app.world()
+            .get::<Children>(title)
+            .expect("pending title remains")
+            .iter()
+            .collect::<Vec<_>>(),
+        pending
+    );
+}
+
+#[test]
+fn observer_archive_layout_and_historical_limitation_are_explicit() {
+    use babylon_client::observer::ObserverSession;
+    use babylon_client::observer_ui::ObserverUiState;
+    use babylon_client::ui::dossier_card::DossierCampaignId;
+
+    let (_dsn_guard, mut app) = new_app();
+    seize_card(&mut app, fixture_projection());
+    let campaign = app.world().resource::<DossierCampaignId>().0;
+    let mut observer = ObserverSession::new(campaign);
+    observer.ready(12, None);
+    app.insert_resource(observer);
+    app.insert_resource(ObserverUiState {
+        menu_open: false,
+        splash_visible: false,
+        ..default()
+    });
+    app.update();
+    let root = card_root(&mut app);
+    assert_eq!(
+        *app.world().get::<Visibility>(root).expect("visibility"),
+        Visibility::Hidden
+    );
+    let node = app.world().get::<Node>(root).expect("layout");
+    assert_eq!(
+        (node.top, node.bottom, node.right),
+        (px(112), px(96), px(16))
+    );
+    assert_eq!(
+        (node.width, node.min_width, node.max_width),
+        (percent(27), px(320), px(440))
+    );
+    app.world_mut()
+        .resource_mut::<ObserverUiState>()
+        .archive_open = true;
+    app.update();
+    assert_eq!(
+        *app.world().get::<Visibility>(root).expect("visibility"),
+        Visibility::Visible
+    );
+    assert!(zone_text(&mut app, DossierZone::DualTick).contains("Content last changed at tick 11"));
+    app.world_mut()
+        .resource_mut::<ObserverSession>()
+        .inspect_tick(10);
+    app.update();
+    assert!(app.world().resource::<ActiveCountyDossier>().0.is_none());
+    assert!(matches!(
+        app.world().resource::<DossierFetchState>(),
+        DossierFetchState::HistoricalUnavailable
+    ));
+    let text = zone_text(&mut app, DossierZone::DualTick);
+    assert!(
+        text.contains("Historical Archive pages are unavailable"),
+        "{text}"
+    );
+    assert!(!zone_text(&mut app, DossierZone::Signals).contains("728576 jobs"));
+    assert_eq!(
+        zone_text(&mut app, DossierZone::Title),
+        "Autauga County, AL"
+    );
+    assert_eq!(
+        zone_text(&mut app, DossierZone::Actions),
+        "READ-ONLY ARCHIVE"
+    );
+    assert_eq!(
+        zone_text(&mut app, DossierZone::Question),
+        "Which cited observations are available for this county?"
+    );
+    for modal in [0, 1, 2] {
+        let mut ui = app.world_mut().resource_mut::<ObserverUiState>();
+        ui.menu_open = modal == 0;
+        ui.splash_visible = modal == 1;
+        ui.comparison_open = modal == 2;
+        app.update();
+        assert_eq!(
+            *app.world().get::<Visibility>(root).expect("visibility"),
+            Visibility::Hidden
+        );
+    }
 }

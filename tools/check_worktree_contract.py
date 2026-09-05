@@ -29,7 +29,7 @@ REFERENCE_DB = Path("data/sqlite/marxist-data-3NF.sqlite")
 
 
 def check_interpreter() -> str | None:
-    """Venv python must match the ``.python-version`` minor."""
+    """Venv Python must match the complete ``.python-version`` pin."""
     pin = Path(".python-version").read_text().strip()
     venv_python = Path(".venv/bin/python")
     if not venv_python.exists():
@@ -38,7 +38,7 @@ def check_interpreter() -> str | None:
         [str(venv_python), "--version"], capture_output=True, text=True, check=False
     )
     version = proc.stdout.strip().removeprefix("Python ")
-    if not version.startswith(pin):
+    if version != pin:
         return f"venv python {version} does not match .python-version pin {pin}"
     return None
 

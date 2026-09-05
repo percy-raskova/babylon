@@ -30,7 +30,7 @@ pub enum ArchiveFreshness {
     /// Ticks committed but the page is absent or verified behind the
     /// durable tail: the card answers an older week.
     ArchivePending,
-    /// The page's verified tick reaches the durable tail.
+    /// Page content or the contiguous processed watermark reaches the durable tail.
     ArchiveCurrent,
 }
 
@@ -129,6 +129,10 @@ fn execute(invocation: &HeadlessInvocation) -> Result<(), String> {
             write_jsonl(&mut out, &row)?;
         }
         CliCommand::DossierSearch { query } => {
+            let processed_tick = reader
+                .archive_verification_status(invocation.campaign_id)
+                .map_err(|error| error.to_string())?
+                .map(|status| status.processed_tick());
             for hit in reader
                 .search_known(invocation.campaign_id, query, 50)
                 .map_err(|error| error.to_string())?
@@ -140,7 +144,9 @@ fn execute(invocation: &HeadlessInvocation) -> Result<(), String> {
                         "subject_kind": hit.page_ref().kind().as_str(),
                         "geoid": hit.page_ref().id(),
                         "title": hit.title(),
-                        "verified_tick": hit.verified_tick(),
+                        "content_tick": hit.verified_tick(),
+                        "processed_tick": processed_tick,
+                        "verified_tick": effective_verification_tick(Some(hit.verified_tick()), processed_tick),
                         "atom_count": hit.atoms().len(),
                     }),
                 )?;
@@ -188,11 +194,16 @@ fn tick_status_row(
     let status = reader
         .committed_tick_status(campaign_id)
         .map_err(|error| error.to_string())?;
+    let processed_tick = reader
+        .archive_verification_status(campaign_id)
+        .map_err(|error| error.to_string())?
+        .map(|status| status.processed_tick());
     Ok(match status {
         Some(status) => json!({
             "record": "tick-status",
             "campaign_id": status.campaign_id().as_uuid().to_string(),
             "durable_tick": status.resolve_tick(),
+            "processed_tick": processed_tick,
             "envelope_layout_version": status.envelope_layout_version(),
             "tick_content_hash": hex_bytes(*status.tick_content_hash()),
             "envelope_digest": hex_bytes(*status.envelope_digest()),
@@ -201,6 +212,7 @@ fn tick_status_row(
             "record": "tick-status",
             "campaign_id": campaign_id.as_uuid().to_string(),
             "durable_tick": Value::Null,
+            "processed_tick": Value::Null,
             "envelope_layout_version": Value::Null,
             "tick_content_hash": Value::Null,
             "envelope_digest": Value::Null,
@@ -221,6 +233,10 @@ fn county_dossier_card(
         .committed_tick_status(campaign_id)
         .map_err(|error| error.to_string())?
         .map(|status| status.resolve_tick());
+    let processed_tick = reader
+        .archive_verification_status(campaign_id)
+        .map_err(|error| error.to_string())?
+        .map(|status| status.processed_tick());
     let atoms = reader
         .county_card_atoms(campaign_id, geoid)
         .map_err(|error| error.to_string())?;
@@ -242,7 +258,8 @@ fn county_dossier_card(
     let county_hit = hits.iter().find(|hit| {
         hit.page_ref().kind() == ArchiveSubjectKindV1::County && hit.page_ref().id() == geoid
     });
-    let verified_tick = county_hit.map(babylon_persistence::ArchiveSearchHitV1::verified_tick);
+    let content_tick = county_hit.map(babylon_persistence::ArchiveSearchHitV1::verified_tick);
+    let verified_tick = effective_verification_tick(content_tick, processed_tick);
     let content_sha256 = county_hit.map(|hit| hex_bytes(hit.content_sha256()));
     let place_title = |place_geoid: &str| {
         hits.iter()
@@ -273,6 +290,8 @@ fn county_dossier_card(
         "geoid": geoid,
         "title": title,
         "durable_tick": durable_tick,
+        "content_tick": content_tick,
+        "processed_tick": processed_tick,
         "verified_tick": verified_tick,
         "freshness": freshness.as_str(),
         "content_sha256": content_sha256,
@@ -282,6 +301,19 @@ fn county_dossier_card(
             .map(|place| json!({ "geoid": place.geoid, "name": place.name }))
             .collect::<Vec<_>>(),
     }))
+}
+
+/// Freshness can advance after a quiet receipt without rewriting page content.
+/// An absent page stays unknown even when the campaign has been processed.
+#[must_use]
+pub const fn effective_verification_tick(
+    content_tick: Option<u64>,
+    processed_tick: Option<u64>,
+) -> Option<u64> {
+    match (content_tick, processed_tick) {
+        (Some(content), Some(processed)) if processed > content => Some(processed),
+        (content, _) => content,
+    }
 }
 
 fn subject_history(
@@ -408,6 +440,14 @@ mod tests {
             valid_tick,
         )
         .expect("atom admits")
+    }
+
+    #[test]
+    fn quiet_processing_advances_verification_without_creating_page_content() {
+        assert_eq!(effective_verification_tick(Some(1), Some(3)), Some(3));
+        assert_eq!(effective_verification_tick(Some(3), Some(1)), Some(3));
+        assert_eq!(effective_verification_tick(Some(1), None), Some(1));
+        assert_eq!(effective_verification_tick(None, Some(3)), None);
     }
 
     #[test]

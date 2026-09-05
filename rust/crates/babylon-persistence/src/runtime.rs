@@ -1730,6 +1730,13 @@ pub fn hydrate_campaign_foundation_v1(
     let mut client = config.connect(NoTls).map_err(|error| {
         RustPersistenceRuntimeErrorV2::postgres("connect foundation reader", &error)
     })?;
+    hydrate_campaign_foundation_client_v1(&mut client, campaign_id)
+}
+
+pub(crate) fn hydrate_campaign_foundation_client_v1(
+    client: &mut impl GenericClient,
+    campaign_id: CampaignId,
+) -> Result<CampaignFoundationV1, RustPersistenceRuntimeErrorV2> {
     let row = client
         .query_opt(
             "SELECT stable_graph, world_registers, resolver_manifest, prepared_environment, \
@@ -1777,7 +1784,7 @@ pub fn hydrate_campaign_foundation_v1(
     )
 }
 
-fn require_active_authority(
+pub(crate) fn require_active_authority(
     config: &Config,
 ) -> Result<CommittedTickAuthorityLedgerRowV2, RustPersistenceRuntimeErrorV2> {
     validate_legacy_connection_target(config)
@@ -1788,7 +1795,7 @@ fn require_active_authority(
     require_active_authority_client(&mut client)
 }
 
-fn require_active_authority_client(
+pub(crate) fn require_active_authority_client(
     client: &mut impl GenericClient,
 ) -> Result<CommittedTickAuthorityLedgerRowV2, RustPersistenceRuntimeErrorV2> {
     let predecessor = read_predecessor_active_hash(client).map_err(runtime_authority_error_v2)?;
@@ -1870,7 +1877,7 @@ fn persist_campaign_foundation_v1(
     Ok(())
 }
 
-fn insert_campaign_foundation_rows_v1(
+pub(crate) fn insert_campaign_foundation_rows_v1(
     client: &mut impl GenericClient,
     campaign_id: CampaignId,
     foundation: &CampaignFoundationV1,
@@ -2110,7 +2117,7 @@ fn commit_typed_tick_v2(
         resolve_tick,
         report,
         checkpoint,
-        envelope,
+        envelope.claim().tick_content_hash(),
     )?;
     commit_marker_last_v2(
         config,
@@ -2177,13 +2184,13 @@ fn commit_marker_last_v2(
     }
 }
 
-fn insert_typed_tick_pre_marker_rows_v2(
+pub(crate) fn insert_typed_tick_pre_marker_rows_v2(
     client: &mut impl GenericClient,
     campaign_id: CampaignId,
     resolve_tick: i64,
     report: &IdentifiedTickReportV2,
     checkpoint: &CommittedFullCheckpointV1,
-    envelope: &CommittedTickEnvelopeV2,
+    tick_content_hash: TickContentHashV1,
 ) -> Result<(), RustPersistenceRuntimeErrorV2> {
     let action_layout = i16::try_from(report.action_batch_layout_version())
         .map_err(|_| RustPersistenceRuntimeErrorV2::CampaignConflict)?;
@@ -2214,7 +2221,7 @@ fn insert_typed_tick_pre_marker_rows_v2(
             &[
                 campaign_id.as_uuid(),
                 &resolve_tick,
-                &&envelope.claim().tick_content_hash().as_bytes()[..],
+                &&tick_content_hash.as_bytes()[..],
             ],
         ),
         "insert archive dirty receipt",
@@ -3314,6 +3321,23 @@ impl PreparedCommittedTickV2 {
             },
         )
         .map_err(RustPersistenceRuntimeErrorV2::SemanticEnvelope)
+    }
+
+    pub(crate) fn into_material_families(
+        self,
+        hash: TickContentHashV1,
+    ) -> Result<CommittedTickRowFamiliesV2, RustPersistenceRuntimeErrorV2> {
+        let (graph, event, choice_receipt) = self.graph_event_batches.into_rows();
+        Ok(CommittedTickRowFamiliesV2 {
+            graph,
+            state: self.material_state_rows,
+            event,
+            choice_receipt,
+            checkpoint: self.checkpoint_rows.into_rows(),
+            archive_dirty_receipt: crate::semantic_codec::encode_archive_dirty_receipt(
+                hash.as_bytes(),
+            )?,
+        })
     }
 
     #[cfg(test)]

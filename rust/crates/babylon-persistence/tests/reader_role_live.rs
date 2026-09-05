@@ -18,6 +18,17 @@ use babylon_kernel::replay::{ReplaySeed, ReplaySessionIdV1};
 use babylon_kernel::sha256_of;
 use babylon_kernel::tick_content_hash::RefDigestV1;
 use babylon_kernel::ContentDigest;
+use babylon_persistence::material_runtime::{
+    michigan_material_runtime_foundation_v2, DurableMaterialRuntimeV3, MaterialRuntimeErrorV3,
+};
+use babylon_persistence::michigan_material::MichiganDeliveryPresetV1;
+use babylon_persistence::runtime_session::{
+    run_runtime_session_v1, RuntimeSessionRequestV1, RuntimeSessionResponseV1, RuntimeSessionTailV1,
+};
+use babylon_persistence::{
+    install_observer_economy_schema_v1, michigan_observer_foundation_v1, ObserverEconomyErrorV1,
+    ObserverEconomyReaderV1, ObserverVisibilityV1,
+};
 use babylon_persistence::{
     install_reader_role_v1, michigan_dynamic_hex_foundation_v1, validate_legacy_connection_target,
     ArchiveAtomSubjectKindV1, ArchiveAtomSubjectV1, ArchiveCitationV1, ArchiveDirtyBatchV1,
@@ -27,6 +38,7 @@ use babylon_persistence::{
     SemanticArchiveReaderV1, SemanticArchiveStoreV1,
 };
 use babylon_practice_contract::ordered_action_v1::OrderedPracticeActionBatchV1;
+use babylon_tick::material_replay::IdentifiedMaterialTickV3;
 use babylon_tick::material_state::MaterialStateV1;
 use babylon_tick::replay_session::ReplayTickSession;
 use postgres::{Config, NoTls};
@@ -195,6 +207,11 @@ impl ConfinedLogin {
     const PASSWORD: &'static str = "readerconfined";
 
     fn create(base: &Config) -> Self {
+        Self::create_for_role(base, "babylon_reader")
+    }
+
+    fn create_for_role(base: &Config, group: &str) -> Self {
+        assert!(matches!(group, "babylon_reader" | "babylon_observer"));
         let unique = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("clock is after the epoch")
@@ -210,7 +227,7 @@ impl ConfinedLogin {
             .batch_execute(&format!(
                 "CREATE ROLE {name} LOGIN PASSWORD '{}' \
                  NOSUPERUSER NOCREATEDB NOCREATEROLE; \
-                 GRANT babylon_reader TO {name}; \
+                 GRANT {group} TO {name}; \
                  GRANT SET ON PARAMETER event_triggers TO {name}",
                 Self::PASSWORD
             ))
@@ -464,6 +481,7 @@ fn assert_owner_side_privilege_matrix(client: &mut postgres::Client) {
         "public.v_archive_atom_visible",
         "public.v_county_card_atoms",
         "public.v_archive_subject_atoms",
+        "public.v_archive_verification_v1",
     ] {
         let view_select = client
             .query_one(
@@ -727,6 +745,114 @@ fn assert_confined_reader_search_and_card(
     );
 }
 
+struct Undrained;
+impl babylon_persistence::ArchiveDossierProducerV1 for Undrained {
+    fn produce(
+        &self,
+        _campaign: Uuid,
+        receipt: &babylon_persistence::PendingArchiveReceiptV1,
+        _budget: usize,
+    ) -> Result<
+        babylon_persistence::ArchiveProducerOutcomeV1,
+        babylon_persistence::SemanticArchiveErrorV1,
+    > {
+        Ok(babylon_persistence::ArchiveProducerOutcomeV1::new(
+            ArchiveDirtyBatchV1::try_new(
+                receipt.resolve_tick(),
+                *receipt.tick_content_hash(),
+                Vec::new(),
+            )?,
+            1,
+        ))
+    }
+}
+
+fn assert_quiet_receipt_verification(
+    reader: &SemanticArchiveReaderV1,
+    target: &ReaderTarget,
+    owner_tail: Vec<u8>,
+) {
+    // PER-320: page content remains from tick one while verified processing
+    // reaches quiet tick two. Capture the whole self-contained hit, including
+    // Markdown bytes, hash, citations and atoms, before touching the receipt.
+    let before = reader
+        .search_known(target.campaign_id, "728576", 10)
+        .expect("page before quiet tick");
+    let pending = reader
+        .archive_verification_status(target.campaign_id)
+        .expect("verification view read")
+        .expect("campaign status");
+    assert_eq!((pending.durable_tick(), pending.processed_tick()), (2, 1));
+    let mut worker = babylon_persistence::ArchiveWorkerV1::new(&target.config);
+    let staged = worker
+        .sweep_once(target.campaign_id, &Undrained)
+        .expect("empty head stages");
+    assert_eq!(staged.paged_count(), 1);
+    assert_eq!(staged.verified_tick(), 1);
+    assert_eq!(
+        reader
+            .archive_verification_status(target.campaign_id)
+            .expect("pending status"),
+        Some(pending)
+    );
+    let settled = worker
+        .sweep_once(
+            target.campaign_id,
+            &babylon_persistence::NullArchiveDossierProducerV1::new(),
+        )
+        .expect("fully evaluated quiet receipt settles");
+    assert_eq!(settled.applied_count(), 1);
+    let verified = reader
+        .archive_verification_status(target.campaign_id)
+        .expect("verified status")
+        .expect("campaign status");
+    assert_eq!((verified.durable_tick(), verified.processed_tick()), (2, 2));
+    let empty_tick_two = ArchiveDirtyBatchV1::try_new(
+        2,
+        owner_tail.try_into().expect("exact committed hash"),
+        Vec::new(),
+    )
+    .expect("quiet receipt identity");
+    let retry = SemanticArchiveStoreV1::new(&target.config)
+        .materialize_receipt(
+            target.campaign_id,
+            &empty_tick_two,
+            ArchiveMaterializeModeV1::Consume,
+        )
+        .expect("exact empty receipt retry");
+    assert_eq!(
+        retry.disposition(),
+        babylon_persistence::ArchiveMaterializeDispositionV1::AlreadyConsumed
+    );
+    assert!(retry.pages().is_empty());
+    assert_eq!(
+        reader
+            .search_known(target.campaign_id, "728576", 10)
+            .expect("unchanged page"),
+        before
+    );
+    assert_eq!(
+        before[0].verified_tick(),
+        1,
+        "the content-source tick never advances fictitiously"
+    );
+    let mut restarted_worker = babylon_persistence::ArchiveWorkerV1::new(&target.config);
+    let idle = restarted_worker
+        .sweep_once(
+            target.campaign_id,
+            &babylon_persistence::NullArchiveDossierProducerV1::new(),
+        )
+        .expect("worker restart observes durable settlement");
+    assert!(idle.dispositions().is_empty());
+    assert_eq!(idle.verified_tick(), 2);
+    assert_eq!(
+        reader
+            .archive_verification_status(target.campaign_id)
+            .expect("restart status"),
+        Some(verified)
+    );
+}
+
 #[test]
 #[ignore = "requires the task-owned disposable PostgreSQL runtime and committed ticks"]
 fn live_reader_handle_reads_through_confined_login_and_refuses_writer_authority() {
@@ -781,6 +907,8 @@ fn live_reader_handle_reads_through_confined_login_and_refuses_writer_authority(
     );
 
     assert_confined_reader_search_and_card(&reader, target.campaign_id);
+
+    assert_quiet_receipt_verification(&reader, &target, owner_tail);
 
     // The owner credential carries writer authority: the handle must refuse
     // to operate, not silently read with owner powers.
@@ -884,4 +1012,413 @@ fn live_reader_installer_refuses_privilege_drift_and_view_identity_mismatch() {
     );
 
     target.finish();
+}
+
+fn assert_economic_grant_boundary(
+    config: &Config,
+    observer_config: &Config,
+    observer: &ObserverEconomyReaderV1,
+    preview: &ObserverEconomyReaderV1,
+    campaign: CampaignId,
+) {
+    let owner_reader =
+        ObserverEconomyReaderV1::connect(config, ObserverVisibilityV1::FullObserver).unwrap();
+    assert_eq!(
+        owner_reader.snapshot(campaign, 1),
+        Err(ObserverEconomyErrorV1::Authority)
+    );
+    config.connect(NoTls).unwrap().execute("DELETE FROM babylon_meta.archive_knowledge_grant_v1 WHERE campaign_id = $1 AND subject_kind = 'county' AND subject_id = '26163' AND grant_key = 'qcew-employment'", &[campaign.as_uuid()]).unwrap();
+    let known = preview
+        .snapshot(campaign, 1)
+        .expect("individually grant-filtered snapshot");
+    let hidden = known
+        .counties
+        .iter()
+        .find(|row| row.county_geoid == "26163")
+        .unwrap();
+    assert_eq!(hidden.annual_avg_emplvl, None);
+    assert_eq!(hidden.annual_avg_wkly_wage, Some(1469));
+    assert_eq!(
+        observer
+            .snapshot(campaign, 1)
+            .unwrap()
+            .counties
+            .iter()
+            .find(|row| row.county_geoid == "26163")
+            .unwrap()
+            .annual_avg_emplvl,
+        Some(725_504)
+    );
+    let ungranted = observer_config
+        .connect(NoTls)
+        .unwrap()
+        .query("SELECT * FROM public.v_known_county_economy_v1", &[]);
+    assert!(
+        ungranted.is_err(),
+        "observer credential is not a preview credential"
+    );
+}
+
+#[test]
+#[ignore = "requires task-owned disposable PostgreSQL runtime template"]
+fn live_observer_economics_reads_exact_foundation_commit_and_granted_preview() {
+    let base = validated_base_config();
+    let database =
+        TestDatabase::create_from_template(&base, &validated_template_name(), "observereconomics");
+    let config = database.config(&base);
+    let campaign =
+        CampaignId::from_uuid(Uuid::from_u128(0x3190_0000_0000_0000_0000_0000_0000_0001));
+    let (session, bundle) = michigan_observer_foundation_v1().expect("exact Michigan foundation");
+    let mut runtime = DurableReplayRuntimeV2::create(&config, campaign, session, bundle)
+        .expect("observer campaign");
+    SemanticArchiveStoreV1::new(&config)
+        .install_schema()
+        .expect("Archive schema");
+    install_reader_role_v1(&config).expect("reader role");
+    install_observer_economy_schema_v1(&config).expect("economic views and groups");
+    install_observer_economy_schema_v1(&config).expect("idempotent exact observer schema");
+    let observer_login = ConfinedLogin::create_for_role(&base, "babylon_observer");
+    let known_login = ConfinedLogin::create(&base);
+    let mut observer_config = config.clone();
+    observer_config
+        .user(&observer_login.name)
+        .password(ConfinedLogin::PASSWORD);
+    let mut known_config = config.clone();
+    known_config
+        .user(&known_login.name)
+        .password(ConfinedLogin::PASSWORD);
+    let observer =
+        ObserverEconomyReaderV1::connect(&observer_config, ObserverVisibilityV1::FullObserver)
+            .unwrap();
+    let preview =
+        ObserverEconomyReaderV1::connect(&known_config, ObserverVisibilityV1::KnownPreview)
+            .unwrap();
+    let foundation = observer
+        .snapshot(campaign, 0)
+        .expect("true foundation, without hidden tick");
+    assert_eq!(foundation.counties.len(), 83);
+    assert_eq!(foundation.tick_content_hash, None);
+    assert_eq!(runtime.last_committed_tick(), None);
+    assert_eq!(
+        preview.snapshot(campaign, 0).unwrap().counties,
+        foundation.counties
+    );
+    let actions = OrderedPracticeActionBatchV1::empty(
+        runtime.foundation().replay_session_identity().clone(),
+        1,
+    )
+    .unwrap();
+    let receipt = runtime
+        .advance_and_commit(&mut CollectingSink::default(), &actions)
+        .expect("actual quiet commit");
+    let committed = observer
+        .snapshot(campaign, 1)
+        .expect("exact committed baseline");
+    assert_eq!(committed.counties, foundation.counties);
+    assert_eq!(committed.resolve_tick, receipt.resolve_tick().get());
+    assert!(committed.tick_content_hash.is_some());
+    assert_eq!(
+        observer.snapshot(campaign, 2),
+        Err(ObserverEconomyErrorV1::TickAbsent)
+    );
+    assert_economic_grant_boundary(&config, &observer_config, &observer, &preview, campaign);
+    let other = CampaignId::from_uuid(Uuid::from_u128(0x3190_0000_0000_0000_0000_0000_0000_0002));
+    let (session, bundle) = runtime_fixture_with_seed(4);
+    let other_runtime = DurableReplayRuntimeV2::create(&config, other, session, bundle)
+        .expect("distinct other scenario");
+    assert_eq!(
+        observer.snapshot(other, 0),
+        Err(ObserverEconomyErrorV1::ScenarioMismatch)
+    );
+    drop(other_runtime);
+    drop(runtime);
+    observer_login.cleanup();
+    known_login.cleanup();
+    database.cleanup();
+}
+
+fn assert_material_lock_refusal(
+    config: &Config,
+    owner: &mut postgres::Client,
+    campaign: CampaignId,
+    runtime: &mut DurableMaterialRuntimeV3,
+    actions: &OrderedPracticeActionBatchV1,
+    sink: &mut CollectingSink,
+) {
+    let before = runtime.session().current_world_hash().unwrap();
+    let opening = runtime.session().material().canonical_bytes().to_vec();
+    // Negative control self-releases after ten seconds: an unbounded writer
+    // would eventually commit and fail the assertion instead of hanging CI.
+    let lock_config = config.clone();
+    let (locked_tx, locked_rx) = std::sync::mpsc::sync_channel(1);
+    let (release_tx, release_rx) = std::sync::mpsc::sync_channel(1);
+    let lock_holder = std::thread::spawn(move || {
+        let mut connection = lock_config.connect(NoTls).unwrap();
+        let mut transaction = connection.transaction().unwrap();
+        transaction
+            .query_one(
+                "SELECT campaign_id FROM babylon_state.material_campaign_foundation_v2 \
+             WHERE campaign_id=$1::uuid FOR UPDATE",
+                &[campaign.as_uuid()],
+            )
+            .unwrap();
+        locked_tx.send(()).unwrap();
+        let _ = release_rx.recv_timeout(std::time::Duration::from_secs(10));
+        transaction.rollback().unwrap();
+    });
+    locked_rx
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .unwrap();
+    let locked_result = runtime.advance_and_commit(sink, actions);
+    let _ = release_tx.send(());
+    lock_holder.join().unwrap();
+    assert!(matches!(
+        locked_result,
+        Err(MaterialRuntimeErrorV3::DatabaseLockRefused(_))
+    ));
+    assert_eq!(runtime.session().completed_tick(), 0);
+    assert_eq!(runtime.session().graph_session().completed_tick(), 0);
+    assert_eq!(runtime.session().current_world_hash().unwrap(), before);
+    assert_eq!(runtime.session().material().canonical_bytes(), opening);
+    assert!(runtime.tail().is_none());
+    assert!(sink.events.is_empty());
+    let durable: i64 = owner
+        .query_one(
+            "SELECT count(*) FROM babylon_state.tick_commit WHERE campaign_id=$1::uuid",
+            &[campaign.as_uuid()],
+        )
+        .unwrap()
+        .get(0);
+    assert_eq!(durable, 0);
+}
+
+fn assert_material_marker_rollback(
+    owner: &mut postgres::Client,
+    campaign: CampaignId,
+    runtime: &mut DurableMaterialRuntimeV3,
+    actions: &OrderedPracticeActionBatchV1,
+    sink: &mut CollectingSink,
+) {
+    let before = runtime.session().current_world_hash().unwrap();
+    let opening = runtime.session().material().canonical_bytes().to_vec();
+    owner.batch_execute("CREATE FUNCTION public.refuse_material_marker_v3() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected pre-marker refusal'; END $$; CREATE TRIGGER refuse_material_marker_v3 BEFORE INSERT ON babylon_state.tick_commit FOR EACH ROW EXECUTE FUNCTION public.refuse_material_marker_v3()").unwrap();
+    assert!(runtime.advance_and_commit(sink, actions).is_err());
+    assert_eq!(runtime.session().completed_tick(), 0);
+    assert_eq!(runtime.session().graph_session().completed_tick(), 0);
+    assert_eq!(runtime.session().current_world_hash().unwrap(), before);
+    assert_eq!(runtime.session().material().canonical_bytes(), opening);
+    assert!(sink.events.is_empty());
+    for table in [
+        "tick_commit",
+        "material_tick_v3",
+        "world_register_v1",
+        "archive_dirty_receipt_v1",
+    ] {
+        let count: i64 = owner
+            .query_one(
+                &format!("SELECT count(*) FROM babylon_state.{table} WHERE campaign_id=$1::uuid"),
+                &[campaign.as_uuid()],
+            )
+            .unwrap()
+            .get(0);
+        assert_eq!(count, 0, "rollback {table}");
+    }
+    owner.batch_execute("DROP TRIGGER refuse_material_marker_v3 ON babylon_state.tick_commit; DROP FUNCTION public.refuse_material_marker_v3()").unwrap();
+}
+
+fn assert_committed_material_visibility(
+    observer: &ObserverEconomyReaderV1,
+    known: &ObserverEconomyReaderV1,
+    campaign: CampaignId,
+    first: &IdentifiedMaterialTickV3,
+) {
+    let snapshot = observer.snapshot(campaign, 1).unwrap();
+    assert_eq!(
+        snapshot.nominal_world_hash,
+        Some(babylon_tick::hex(&first.result_world_hash()))
+    );
+    assert_ne!(snapshot.nominal_world_hash, snapshot.tick_content_hash);
+    assert!(known
+        .snapshot(campaign, 1)
+        .unwrap()
+        .nominal_world_hash
+        .is_none());
+    assert!(snapshot.production.is_some());
+    assert!(known.snapshot(campaign, 1).unwrap().production.is_none());
+}
+
+fn assert_material_restart_reconciliation(
+    config: &Config,
+    campaign: CampaignId,
+    runtime: &mut DurableMaterialRuntimeV3,
+    sink: &mut CollectingSink,
+) -> (DurableMaterialRuntimeV3, IdentifiedMaterialTickV3) {
+    let mut reopened = DurableMaterialRuntimeV3::open(
+        config,
+        campaign,
+        michigan_material_runtime_foundation_v2(MichiganDeliveryPresetV1::Standard).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        reopened.session().material().canonical_bytes(),
+        runtime.session().material().canonical_bytes()
+    );
+    assert_eq!(
+        reopened.session().current_world_hash().unwrap(),
+        runtime.session().current_world_hash().unwrap()
+    );
+    let second_actions = OrderedPracticeActionBatchV1::empty(
+        runtime.session().graph_session().session_identity().clone(),
+        2,
+    )
+    .unwrap();
+    let uninterrupted = runtime.advance_and_commit(sink, &second_actions).unwrap();
+    let reconciled = reopened
+        .advance_and_commit(&mut CollectingSink::default(), &second_actions)
+        .unwrap();
+    assert_eq!(uninterrupted, reconciled);
+    assert!(matches!(
+        DurableMaterialRuntimeV3::open(
+            config,
+            campaign,
+            michigan_material_runtime_foundation_v2(MichiganDeliveryPresetV1::Delayed).unwrap()
+        ),
+        Err(MaterialRuntimeErrorV3::FoundationMismatch)
+    ));
+    (reopened, uninterrupted)
+}
+
+fn assert_material_corruption_refused(
+    owner: &mut postgres::Client,
+    config: &Config,
+    campaign: CampaignId,
+    observer: &ObserverEconomyReaderV1,
+) {
+    let exact:Vec<u8>=owner.query_one("SELECT register_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1::uuid AND resolve_tick=2",&[campaign.as_uuid()]).unwrap().get(0);
+    let mut corrupted = exact.clone();
+    let last = corrupted.len() - 1;
+    corrupted[last] ^= 1;
+    owner.execute("UPDATE babylon_state.material_tick_v3 SET register_bytes=$2 WHERE campaign_id=$1::uuid AND resolve_tick=2",&[campaign.as_uuid(),&corrupted]).unwrap();
+    assert!(observer.snapshot(campaign, 2).is_err());
+    assert!(DurableMaterialRuntimeV3::open(
+        config,
+        campaign,
+        michigan_material_runtime_foundation_v2(MichiganDeliveryPresetV1::Standard).unwrap()
+    )
+    .is_err());
+    owner.execute("UPDATE babylon_state.material_tick_v3 SET register_bytes=$2 WHERE campaign_id=$1::uuid AND resolve_tick=2",&[campaign.as_uuid(),&exact]).unwrap();
+}
+
+fn assert_material_stdio_advance(
+    config: &Config,
+    campaign: CampaignId,
+    observer: &ObserverEconomyReaderV1,
+    uninterrupted: &IdentifiedMaterialTickV3,
+) {
+    let request = RuntimeSessionRequestV1::Advance {
+        protocol_version: 1,
+        campaign_id: campaign.as_uuid().to_string(),
+        request_id: 7,
+        expected_tail: RuntimeSessionTailV1 {
+            resolve_tick: 2,
+            tick_content_hash: Some(babylon_tick::hex(
+                uninterrupted.tick_content_hash().as_bytes(),
+            )),
+        },
+    };
+    let stop = RuntimeSessionRequestV1::Stop {
+        protocol_version: 1,
+        campaign_id: campaign.as_uuid().to_string(),
+        request_id: 8,
+    };
+    let mut input = serde_json::to_vec(&request).unwrap();
+    input.push(b'\n');
+    input.extend(serde_json::to_vec(&stop).unwrap());
+    input.push(b'\n');
+    let mut output = Vec::new();
+    run_runtime_session_v1(
+        config,
+        campaign,
+        None,
+        &mut std::io::Cursor::new(input),
+        &mut output,
+    )
+    .unwrap();
+    let responses: Vec<RuntimeSessionResponseV1> = output
+        .split(|byte| *byte == b'\n')
+        .filter(|line| !line.is_empty())
+        .map(|line| serde_json::from_slice(line).unwrap())
+        .collect();
+    assert!(
+        matches!(&responses[0],RuntimeSessionResponseV1::Ready{tail,..} if tail.resolve_tick==2)
+    );
+    assert!(
+        matches!(&responses[1],RuntimeSessionResponseV1::Committed{tail,..} if tail.resolve_tick==3)
+    );
+    assert_eq!(observer.snapshot(campaign, 3).unwrap().resolve_tick, 3);
+}
+
+#[test]
+#[ignore = "requires task-owned disposable PostgreSQL runtime template"]
+fn live_material_runtime_v3_atomic_restart_identity_and_observer_projection() {
+    let base = validated_base_config();
+    let database =
+        TestDatabase::create_from_template(&base, &validated_template_name(), "materialruntime");
+    let config = database.config(&base);
+    let campaign =
+        CampaignId::from_uuid(Uuid::from_u128(0x3190_0000_0000_0000_0000_0000_0000_0003));
+    let preset = MichiganDeliveryPresetV1::Standard;
+    let foundation = michigan_material_runtime_foundation_v2(preset).unwrap();
+    let digest = foundation.digest();
+    let mut runtime = DurableMaterialRuntimeV3::create(&config, campaign, foundation).unwrap();
+    install_reader_role_v1(&config).unwrap();
+    install_observer_economy_schema_v1(&config).unwrap();
+    let observer_login = ConfinedLogin::create_for_role(&base, "babylon_observer");
+    let known_login = ConfinedLogin::create(&base);
+    let mut observer_config = config.clone();
+    observer_config
+        .user(&observer_login.name)
+        .password(ConfinedLogin::PASSWORD);
+    let mut known_config = config.clone();
+    known_config
+        .user(&known_login.name)
+        .password(ConfinedLogin::PASSWORD);
+    let observer =
+        ObserverEconomyReaderV1::connect(&observer_config, ObserverVisibilityV1::FullObserver)
+            .unwrap();
+    let known = ObserverEconomyReaderV1::connect(&known_config, ObserverVisibilityV1::KnownPreview)
+        .unwrap();
+    let zero = observer.snapshot(campaign, 0).unwrap();
+    assert!(zero.production.is_some());
+    assert!(known.snapshot(campaign, 0).unwrap().production.is_none());
+    assert_eq!(zero.foundation_digest, babylon_tick::hex(&digest));
+    let mut owner = config.connect(NoTls).unwrap();
+    let actions = OrderedPracticeActionBatchV1::empty(
+        runtime.session().graph_session().session_identity().clone(),
+        1,
+    )
+    .unwrap();
+    let mut sink = CollectingSink::default();
+    assert_material_lock_refusal(
+        &config,
+        &mut owner,
+        campaign,
+        &mut runtime,
+        &actions,
+        &mut sink,
+    );
+    assert_material_marker_rollback(&mut owner, campaign, &mut runtime, &actions, &mut sink);
+    let first = runtime.advance_and_commit(&mut sink, &actions).unwrap();
+    assert_eq!(first.resolve_tick(), 1);
+    assert_committed_material_visibility(&observer, &known, campaign, &first);
+    let (reopened, uninterrupted) =
+        assert_material_restart_reconciliation(&config, campaign, &mut runtime, &mut sink);
+    assert_material_corruption_refused(&mut owner, &config, campaign, &observer);
+    assert_material_stdio_advance(&config, campaign, &observer, &uninterrupted);
+    drop(owner);
+    drop(runtime);
+    drop(reopened);
+    observer_login.cleanup();
+    known_login.cleanup();
+    database.cleanup();
 }

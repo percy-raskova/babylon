@@ -15,6 +15,10 @@ use std::process::Command;
 use babylon_bsl::rule_pipeline::split_content;
 use babylon_bsl::rules_hash_of;
 use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_client::ui::dossier_card::{
+    ActiveCountyDossier, CountyDossierCardProjection, DossierCampaignId, DossierCardPlugin,
+    DossierFetchState, DossierRefresh,
+};
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionIdV1};
 use babylon_kernel::sha256_of;
@@ -24,12 +28,14 @@ use babylon_persistence::{
     install_reader_role_v1, michigan_dynamic_hex_foundation_v1, validate_legacy_connection_target,
     ArchiveCitationV1, ArchiveDirtyBatchV1, ArchiveKnowledgeGrantV1, ArchiveMaterializeModeV1,
     ArchivePageInputV1, ArchivePageRefV1, ArchiveSchemaDispositionV1, ArchiveSignalV1,
-    ArchiveSubjectKindV1, ArchiveSubjectV1, CampaignId, DurableReplayRuntimeV2,
-    FoundationContentBundleV1, ReaderRoleDispositionV1, SemanticArchiveStoreV1,
+    ArchiveSubjectKindV1, ArchiveSubjectV1, ArchiveWorkerV1, CampaignId, DurableReplayRuntimeV2,
+    FoundationContentBundleV1, NullArchiveDossierProducerV1, ReaderRoleDispositionV1,
+    SemanticArchiveStoreV1,
 };
 use babylon_practice_contract::ordered_action_v1::OrderedPracticeActionBatchV1;
 use babylon_tick::material_state::MaterialStateV1;
 use babylon_tick::replay_session::ReplayTickSession;
+use bevy::prelude::*;
 use postgres::{Config, NoTls};
 use serde_json::Value;
 use uuid::Uuid;
@@ -463,6 +469,8 @@ fn assert_archive_current_card(reader_dsn: &str, campaign: &str) -> Value {
     assert_eq!(card["geoid"], "26163");
     assert_eq!(card["title"], "Wayne County");
     assert_eq!(card["durable_tick"], 2);
+    assert_eq!(card["content_tick"], 2);
+    assert_eq!(card["processed_tick"], 2);
     assert_eq!(card["verified_tick"], 2);
     assert_eq!(card["freshness"], "archive-current");
     let employment = card["atoms"]
@@ -543,6 +551,132 @@ fn assert_pending_card_after_tick_three(reader_dsn: &str, campaign: &str) {
     );
 }
 
+struct ReaderEnvGuard(Option<std::ffi::OsString>);
+impl ReaderEnvGuard {
+    fn set(dsn: &str) -> Self {
+        let prior = std::env::var_os(READER_DSN_ENV);
+        std::env::set_var(READER_DSN_ENV, dsn);
+        Self(prior)
+    }
+}
+impl Drop for ReaderEnvGuard {
+    fn drop(&mut self) {
+        match self.0.take() {
+            Some(prior) => std::env::set_var(READER_DSN_ENV, prior),
+            None => std::env::remove_var(READER_DSN_ENV),
+        }
+    }
+}
+
+fn held_county_app(campaign: CampaignId) -> App {
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, bevy::asset::AssetPlugin::default()));
+    app.add_plugins(babylon_client::map::MapPlugin);
+    app.add_plugins(babylon_client::loop_ui::TickLoopPlugin);
+    app.add_plugins(DossierCardPlugin);
+    app.insert_resource(DossierCampaignId(campaign));
+    app.insert_resource(babylon_client::story::SelectedStory(
+        babylon_client::story::counties(),
+    ));
+    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+        std::time::Duration::ZERO,
+    ));
+    app.update();
+    let index = app
+        .world()
+        .resource::<babylon_client::atlas::CountyAtlas>()
+        .index_of_fips("26163")
+        .expect("Wayne County is in the atlas");
+    app.world_mut()
+        .resource_mut::<babylon_client::map::SelectedCounty>()
+        .0 = Some(index);
+    app
+}
+
+fn collect_held_card(app: &mut App) -> CountyDossierCardProjection {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        app.update();
+        if let Some(card) = &app.world().resource::<ActiveCountyDossier>().0 {
+            return card.clone();
+        }
+        if let DossierFetchState::Failed(error) = app.world().resource::<DossierFetchState>() {
+            panic!("held county read failed: {error}");
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "held county read timed out"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
+fn assert_restart_preserves_card(reader_dsn: &str, campaign: &str, card: &serde_json::Value) {
+    let rerun = run_cli(reader_dsn, campaign, &["dossier", "show", "26163"]);
+    assert_eq!(rerun.code, 0, "the second dossier show exits 0");
+    let rerun_rows = jsonl(&rerun.stdout);
+    assert_eq!(rerun_rows.len(), 1);
+    assert_eq!(
+        rerun_rows[0]["content_sha256"], card["content_sha256"],
+        "a separate process answers the identical content hash (restart proof)"
+    );
+    assert_eq!(
+        rerun_rows[0]["verified_tick"], card["verified_tick"],
+        "a separate process answers the identical verified tick"
+    );
+}
+
+fn assert_quiet_sweep_refreshes_held_card(
+    target: &ReaderTarget,
+    reader_dsn: &str,
+    campaign: &str,
+    card: &serde_json::Value,
+    held_app: &mut App,
+    held_before: &CountyDossierCardProjection,
+) {
+    let sweep = ArchiveWorkerV1::new(&target.config)
+        .sweep_once(target.campaign_id, &NullArchiveDossierProducerV1)
+        .expect("evaluated quiet tick settles");
+    assert_eq!(sweep.applied_count(), 1);
+    assert_eq!(sweep.verified_tick(), 3);
+    let settled = run_cli(reader_dsn, campaign, &["dossier", "show", "26163"]);
+    assert_eq!(settled.code, 0);
+    let settled = &jsonl(&settled.stdout)[0];
+    assert_eq!(settled["content_tick"], 2);
+    assert_eq!(settled["processed_tick"], 3);
+    assert_eq!(settled["verified_tick"], 3);
+    assert_eq!(settled["freshness"], "archive-current");
+    assert_eq!(settled["content_sha256"], card["content_sha256"]);
+    assert_eq!(settled["atoms"], card["atoms"]);
+    held_app.world_mut().resource_mut::<DossierRefresh>().bump();
+    let held_settled = collect_held_card(held_app);
+    assert_eq!(held_settled.durable_tick, Some(3));
+    assert_eq!(held_settled.content_tick, Some(2));
+    assert_eq!(held_settled.verified_tick, Some(3));
+    assert_eq!(held_settled.atoms, held_before.atoms);
+    assert_eq!(held_settled.changelog, held_before.changelog);
+    let restart = ArchiveWorkerV1::new(&target.config)
+        .sweep_once(target.campaign_id, &NullArchiveDossierProducerV1)
+        .expect("restarted quiet worker is idle");
+    assert!(restart.dispositions().is_empty());
+    assert_eq!(restart.verified_tick(), 3);
+}
+
+fn commit_third_tick(target: &ReaderTarget) {
+    let mut runtime = DurableReplayRuntimeV2::open(&target.config, target.campaign_id)
+        .expect("the runtime reopens from its checkpoint");
+    let actions = OrderedPracticeActionBatchV1::empty(
+        runtime.foundation().replay_session_identity().clone(),
+        3,
+    )
+    .expect("empty action batch");
+    let receipt = runtime
+        .advance_and_commit(&mut CollectingSink::default(), &actions)
+        .expect("tick 3 commits");
+    assert_eq!(receipt.resolve_tick().get(), 3);
+    drop(runtime);
+}
+
 #[test]
 #[ignore = "requires the task-owned disposable PostgreSQL runtime and committed ticks"]
 fn live_dossier_cli_reads_through_the_confined_reader_and_survives_restart() {
@@ -597,20 +731,14 @@ fn live_dossier_cli_reads_through_the_confined_reader_and_survives_restart() {
 
     let _ = writeln!(sink, "dossier_cli_live: running dossier show");
     let card = assert_archive_current_card(&reader_dsn, &campaign);
+    let reader_env = ReaderEnvGuard::set(&reader_dsn);
+    let mut held_app = held_county_app(target.campaign_id);
+    let held_before = collect_held_card(&mut held_app);
+    assert_eq!(held_before.content_tick, Some(2));
+    assert_eq!(held_before.verified_tick, Some(2));
 
     let _ = writeln!(sink, "dossier_cli_live: restart proof (second process)");
-    let rerun = run_cli(&reader_dsn, &campaign, &["dossier", "show", "26163"]);
-    assert_eq!(rerun.code, 0, "the second dossier show exits 0");
-    let rerun_rows = jsonl(&rerun.stdout);
-    assert_eq!(rerun_rows.len(), 1);
-    assert_eq!(
-        rerun_rows[0]["content_sha256"], card["content_sha256"],
-        "a separate process answers the identical content hash (restart proof)"
-    );
-    assert_eq!(
-        rerun_rows[0]["verified_tick"], card["verified_tick"],
-        "a separate process answers the identical verified tick"
-    );
+    assert_restart_preserves_card(&reader_dsn, &campaign, &card);
 
     let _ = writeln!(sink, "dossier_cli_live: running dossier search");
     assert_search_finds_the_county(&reader_dsn, &campaign);
@@ -622,24 +750,29 @@ fn live_dossier_cli_reads_through_the_confined_reader_and_survives_restart() {
         sink,
         "dossier_cli_live: committing tick 3 without materializing"
     );
-    let mut runtime = DurableReplayRuntimeV2::open(&target.config, target.campaign_id)
-        .expect("the runtime reopens from its checkpoint");
-    let actions = OrderedPracticeActionBatchV1::empty(
-        runtime.foundation().replay_session_identity().clone(),
-        3,
-    )
-    .expect("empty action batch");
-    let receipt = runtime
-        .advance_and_commit(&mut CollectingSink::default(), &actions)
-        .expect("tick 3 commits");
-    assert_eq!(receipt.resolve_tick().get(), 3);
-    drop(runtime);
+    commit_third_tick(&target);
 
     let _ = writeln!(
         sink,
         "dossier_cli_live: dossier show under the dual-tick gap"
     );
     assert_pending_card_after_tick_three(&reader_dsn, &campaign);
+    held_app.world_mut().resource_mut::<DossierRefresh>().bump();
+    let held_pending = collect_held_card(&mut held_app);
+    assert_eq!(held_pending.durable_tick, Some(3));
+    assert_eq!(held_pending.content_tick, Some(2));
+    assert_eq!(held_pending.verified_tick, Some(2));
+
+    assert_quiet_sweep_refreshes_held_card(
+        &target,
+        &reader_dsn,
+        &campaign,
+        &card,
+        &mut held_app,
+        &held_before,
+    );
+    drop(held_app);
+    drop(reader_env);
 
     let _ = writeln!(
         sink,

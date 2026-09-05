@@ -39,6 +39,22 @@ BEGIN
     IF pg_catalog.to_regclass('public.v_archive_subject_atoms') IS NOT NULL THEN
         GRANT SELECT ON public.v_archive_subject_atoms TO babylon_reader;
     END IF;
+    IF pg_catalog.to_regclass('public.v_archive_verification_v1') IS NOT NULL THEN
+        GRANT SELECT ON public.v_archive_verification_v1 TO babylon_reader;
+    END IF;
+    IF pg_catalog.to_regclass('public.v_known_county_economy_v1') IS NOT NULL THEN
+        GRANT SELECT ON public.v_known_county_economy_v1 TO babylon_reader;
+        GRANT SELECT ON public.v_observer_economy_foundation_v1 TO babylon_reader;
+    END IF;
+END
+$$;
+
+-- The material identity header contains no unfiltered numeric state.
+DO $$
+BEGIN
+    IF pg_catalog.to_regclass('public.v_material_campaign_identity_v1') IS NOT NULL THEN
+        GRANT SELECT ON public.v_material_campaign_identity_v1 TO babylon_reader;
+    END IF;
 END
 $$;
 

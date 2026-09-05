@@ -85,7 +85,7 @@ fn pending_receipts_sql_finds_unconsumed_receipts_in_keyset_order_without_lockin
     assert!(ARCHIVE_PENDING_RECEIPTS_SQL_V1.contains("d.campaign_id = $1"));
     assert!(
         ARCHIVE_PENDING_RECEIPTS_SQL_V1.contains("d.resolve_tick > $3"),
-        "the sweep pages past deferred receipts by keyset cursor, never OFFSET"
+        "the sweep pages through pending receipts by keyset cursor, never OFFSET"
     );
     assert!(!ARCHIVE_PENDING_RECEIPTS_SQL_V1.contains("OFFSET"));
     assert!(ARCHIVE_PENDING_RECEIPTS_SQL_V1.contains("ORDER BY d.resolve_tick ASC"));
@@ -161,7 +161,6 @@ fn empty_sweep_report_has_zero_counts_and_verified_tick() {
     let report = ArchiveWorkerSweepReportV1::default();
 
     assert!(report.dispositions().is_empty());
-    assert_eq!(report.deferred_count(), 0);
     assert_eq!(report.applied_count(), 0);
     assert_eq!(report.paged_count(), 0);
     assert_eq!(report.already_consumed_count(), 0);
@@ -172,18 +171,17 @@ fn empty_sweep_report_has_zero_counts_and_verified_tick() {
 fn sweep_report_aggregates_dispositions_and_carries_the_persisted_watermark() {
     let report = ArchiveWorkerSweepReportV1::new(
         vec![
-            (1, ArchiveReceiptDispositionV1::Deferred),
+            (1, ArchiveReceiptDispositionV1::Paged),
             (2, ArchiveReceiptDispositionV1::Applied),
             (3, ArchiveReceiptDispositionV1::AlreadyConsumed),
             (4, ArchiveReceiptDispositionV1::Paged),
-            (5, ArchiveReceiptDispositionV1::Deferred),
+            (5, ArchiveReceiptDispositionV1::Paged),
         ],
         7,
     );
 
-    assert_eq!(report.deferred_count(), 2);
     assert_eq!(report.applied_count(), 1);
-    assert_eq!(report.paged_count(), 1);
+    assert_eq!(report.paged_count(), 3);
     assert_eq!(report.already_consumed_count(), 1);
     assert_eq!(report.verified_tick(), 7);
     assert_eq!(report.dispositions().len(), 5);
@@ -218,14 +216,14 @@ fn contiguous_watermark_never_advances_past_a_pending_tick() {
     assert_eq!(archive_contiguous_watermark_v1(None, 7), 7);
     // Nothing consumed yet: an empty sweep still reports zero, not the backlog max.
     assert_eq!(archive_contiguous_watermark_v1(Some(1), 5), 0);
-    // A deferred earlier tick caps the watermark even though later ticks applied.
+    // An undrained earlier tick caps the watermark even though later ticks applied.
     assert_eq!(archive_contiguous_watermark_v1(Some(3), 5), 2);
     // A single pending receipt at the backlog tail leaves the prefix before it.
     assert_eq!(archive_contiguous_watermark_v1(Some(5), 5), 4);
 }
 
 #[test]
-fn classify_receipt_defers_empty_batch_and_materializes_non_empty_batch() {
+fn classify_receipt_consumes_quiet_ticks_and_stages_undrained_pages() {
     let empty = outcome(empty_batch(1, [0x11; 32]), 0);
     let non_empty = full_outcome(2, [0x22; 32]);
     let empty_but_undrained = outcome(empty_batch(3, [0x33; 32]), 4);
@@ -233,28 +231,28 @@ fn classify_receipt_defers_empty_batch_and_materializes_non_empty_batch() {
 
     assert_eq!(
         classify_archive_receipt_v1(&empty),
-        ArchiveReceiptPlanV1::Defer
+        ArchiveReceiptPlanV1::Consume
     );
     assert_eq!(
         classify_archive_receipt_v1(&non_empty),
-        ArchiveReceiptPlanV1::Materialize
+        ArchiveReceiptPlanV1::Consume
     );
     assert_eq!(
         classify_archive_receipt_v1(&empty_but_undrained),
-        ArchiveReceiptPlanV1::Materialize,
+        ArchiveReceiptPlanV1::Stage,
         "an exhausted page budget with dirty pages left still materializes (a no-op stage) \
          instead of deferring forever"
     );
     assert_eq!(
         classify_archive_receipt_v1(&paged),
-        ArchiveReceiptPlanV1::Materialize,
+        ArchiveReceiptPlanV1::Stage,
         "a bounded head batch with an undrained tail materializes without consuming"
     );
     assert_eq!(paged.remaining(), 316);
 }
 
 #[test]
-fn classify_sweep_preserves_order_and_defers_or_materializes() {
+fn classify_sweep_preserves_order_and_consumes_complete_receipts() {
     let plans = classify_archive_sweep_v1(vec![
         Ok(outcome(empty_batch(1, [0x11; 32]), 0)),
         Ok(full_outcome(2, [0x22; 32])),
@@ -265,9 +263,9 @@ fn classify_sweep_preserves_order_and_defers_or_materializes() {
     assert_eq!(
         plans,
         vec![
-            ArchiveReceiptPlanV1::Defer,
-            ArchiveReceiptPlanV1::Materialize,
-            ArchiveReceiptPlanV1::Defer,
+            ArchiveReceiptPlanV1::Consume,
+            ArchiveReceiptPlanV1::Consume,
+            ArchiveReceiptPlanV1::Consume,
         ]
     );
 }
@@ -286,9 +284,8 @@ fn classify_sweep_stops_at_first_producer_error() {
 #[test]
 fn paged_sweep_model_enforces_the_consume_cap_across_keyset_pages() {
     // The reviewer's composition: one full 256-row page of 255 materializable
-    // receipts plus a deferred tail, then another page of materializable
-    // receipts. A sweep that checks only the scan bound inside the page loop
-    // consumes 511 receipts; the consume cap must stop it at 256.
+    // receipts plus a quiet tail, then another page. The quiet receipt also
+    // consumes; the cap must stop this pass at tick 256.
     let mut page_one: Vec<Result<ArchiveProducerOutcomeV1, SemanticArchiveErrorV1>> = (1..=255)
         .map(|tick| Ok(full_outcome(tick, [0x11; 32])))
         .collect();
@@ -306,22 +303,20 @@ fn paged_sweep_model_enforces_the_consume_cap_across_keyset_pages() {
     );
     assert_eq!(
         model.scanned(),
-        ARCHIVE_SWEEP_MAX_RECEIPTS_V1 + 1,
-        "the sweep scans the deferred tail and exactly one further receipt"
+        ARCHIVE_SWEEP_MAX_RECEIPTS_V1,
+        "the quiet tail consumes the final slot in this sweep"
     );
     assert_eq!(
         model.plans().len(),
         usize::try_from(model.scanned()).unwrap()
     );
-    assert_eq!(model.plans()[255], ArchiveReceiptPlanV1::Defer);
-    assert_eq!(model.plans()[256], ArchiveReceiptPlanV1::Materialize);
-    assert_eq!(model.plans().len(), 257, "the remainder stays pending");
+    assert_eq!(model.plans()[255], ArchiveReceiptPlanV1::Consume);
+    assert_eq!(model.plans().len(), 256, "the remainder stays pending");
 }
 
 #[test]
 fn paged_sweep_model_keeps_the_scan_bound_as_the_outer_bound() {
-    // An all-defer campaign scans up to the scan cap and consumes nothing,
-    // no matter how materializable the scripted backlog claims to be later.
+    // Even a fully quiet campaign stops at the independent scan bound.
     let page: Vec<Result<ArchiveProducerOutcomeV1, SemanticArchiveErrorV1>> = (1..=10)
         .map(|tick| Ok(outcome(empty_batch(tick, [0x11; 32]), 0)))
         .collect();
@@ -330,13 +325,13 @@ fn paged_sweep_model_keeps_the_scan_bound_as_the_outer_bound() {
         model_archive_sweep_pages_with_bounds_v1(vec![page], 256, 4).expect("bounded model");
 
     assert_eq!(model.scanned(), 4);
-    assert_eq!(model.consumed(), 0);
+    assert_eq!(model.consumed(), 4);
     assert!(
         model
             .plans()
             .iter()
-            .all(|plan| *plan == ArchiveReceiptPlanV1::Defer),
-        "an all-defer page never consumes"
+            .all(|plan| *plan == ArchiveReceiptPlanV1::Consume),
+        "every evaluated quiet receipt settles"
     );
 }
 
@@ -358,7 +353,7 @@ fn foundation_receipt_pages_its_drain_until_the_tail_converges() {
     let sweep_one = outcome(non_empty_batch(42, [0x11; 32]), 572);
     assert_eq!(
         classify_archive_receipt_v1(&sweep_one),
-        ArchiveReceiptPlanV1::Materialize
+        ArchiveReceiptPlanV1::Stage
     );
     assert_eq!(
         sweep_one.remaining(),
@@ -384,7 +379,11 @@ fn foundation_receipt_pages_its_drain_until_the_tail_converges() {
     ] {
         assert_eq!(
             classify_archive_receipt_v1(step),
-            ArchiveReceiptPlanV1::Materialize,
+            if step.remaining() == 0 {
+                ArchiveReceiptPlanV1::Consume
+            } else {
+                ArchiveReceiptPlanV1::Stage
+            },
             "{label} keeps materializing the pending receipt"
         );
     }
@@ -657,7 +656,7 @@ fn composite_still_refuses_a_producer_that_ignores_the_page_budget() {
 
 #[test]
 #[ignore = "requires the task-owned disposable PostgreSQL runtime and one committed tick"]
-fn live_worker_defers_every_pending_receipt_with_null_producer() {
+fn live_worker_consumes_every_evaluated_empty_receipt() {
     let (config, campaign_id) = live_contract_target();
     SemanticArchiveStoreV1::new(&config)
         .install_schema()
@@ -667,10 +666,10 @@ fn live_worker_defers_every_pending_receipt_with_null_producer() {
         .sweep_once(campaign_id, &NullArchiveDossierProducerV1::new())
         .expect("null sweep succeeds");
 
-    assert_eq!(report.applied_count(), 0);
+    assert_eq!(report.applied_count(), report.dispositions().len());
     assert_eq!(report.already_consumed_count(), 0);
     for (_, disposition) in report.dispositions() {
-        assert_eq!(*disposition, ArchiveReceiptDispositionV1::Deferred);
+        assert_eq!(*disposition, ArchiveReceiptDispositionV1::Applied);
     }
 }
 

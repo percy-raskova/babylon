@@ -12,8 +12,26 @@ TOOLS_DIR = Path(__file__).resolve().parents[3] / "tools"
 sys.path.insert(0, str(TOOLS_DIR))
 
 from check_worktree_contract import (  # type: ignore[import-not-found]  # noqa: E402
+    check_interpreter,
     check_lock_unmodified,
 )
+
+
+@pytest.mark.parametrize("version", ["3.12.12", "3.12.140", "3.13.14", "3.12.14"])
+def test_interpreter_contract_requires_the_exact_patch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, version: str
+) -> None:
+    (tmp_path / ".python-version").write_text("3.12.14\n")
+    binary = tmp_path / ".venv/bin/python"
+    binary.parent.mkdir(parents=True)
+    binary.touch()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, f"Python {version}\n", ""),
+    )
+    assert (check_interpreter() is None) == (version == "3.12.14")
 
 
 def _run_git(arguments: list[str], *, cwd: Path) -> None:

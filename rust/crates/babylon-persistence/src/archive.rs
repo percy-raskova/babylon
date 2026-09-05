@@ -19,6 +19,9 @@ pub const SEMANTIC_ARCHIVE_SCHEMA_V1_SQL: &str =
 /// Exact additive atom schema consumed by the semantic Archive worker
 /// (ADR249 R1/R2); these bytes fold into [`archive_worker_contract_sha256_v1`].
 pub const ARCHIVE_ATOM_SCHEMA_V1_SQL: &str = include_str!("../migrations/archive_atom_v1.sql");
+/// Receipt-processing status view; page bytes and their source ticks stay immutable.
+pub const ARCHIVE_VERIFICATION_SCHEMA_V1_SQL: &str =
+    include_str!("../migrations/archive_verification_v1.sql");
 const ARCHIVE_PAGE_TEMPLATE_V1: &str = include_str!("archive_page_v1.md.j2");
 const MAX_ID_BYTES: usize = 128;
 const MAX_TEXT_BYTES: usize = 4_096;
@@ -1291,7 +1294,45 @@ impl SemanticArchiveStoreV1 {
         if self.install_atom_schema()? == ArchiveSchemaDispositionV1::Installed {
             disposition = ArchiveSchemaDispositionV1::Installed;
         }
+        if self.install_verification_view()? == ArchiveSchemaDispositionV1::Installed {
+            disposition = ArchiveSchemaDispositionV1::Installed;
+        }
         Ok(disposition)
+    }
+
+    fn install_verification_view(
+        &self,
+    ) -> Result<ArchiveSchemaDispositionV1, SemanticArchiveErrorV1> {
+        let mut client = self.connect("connect Archive verification installer")?;
+        let mut transaction = client
+            .transaction()
+            .map_err(|error| database("begin Archive verification install", &error))?;
+        transaction
+            .query_one(
+                "SELECT pg_catalog.pg_advisory_xact_lock($1)",
+                &[&SCHEMA_ADVISORY_LOCK_KEY],
+            )
+            .map_err(|error| database("lock Archive verification install", &error))?;
+        let row = transaction
+            .query_one(
+                "SELECT pg_catalog.to_regclass('public.v_archive_verification_v1') IS NOT NULL",
+                &[],
+            )
+            .map_err(|error| database("inspect Archive verification view", &error))?;
+        let installed = decode::<bool>(&row, 0)?;
+        if !installed {
+            transaction
+                .batch_execute(ARCHIVE_VERIFICATION_SCHEMA_V1_SQL)
+                .map_err(|error| database("install Archive verification view", &error))?;
+        }
+        transaction
+            .commit()
+            .map_err(|error| database("commit Archive verification install", &error))?;
+        Ok(if installed {
+            ArchiveSchemaDispositionV1::AlreadyCurrent
+        } else {
+            ArchiveSchemaDispositionV1::Installed
+        })
     }
 
     /// Install the additive base semantic Archive schema under the shared
@@ -2000,11 +2041,7 @@ fn mint_page_atoms(
         if !knowledge.knows_field(page_ref, signal.grant_key()) {
             continue;
         }
-        let evidence_class = if signal.grant_key() == "identity" {
-            ArchiveEvidenceClassV1::Observed
-        } else {
-            ArchiveEvidenceClassV1::Derived
-        };
+        let evidence_class = signal_evidence_class(page_ref, signal, knowledge)?;
         atoms.push(ArchiveAtomV1::try_new(
             campaign_id,
             subject.clone(),
@@ -2032,6 +2069,53 @@ fn mint_page_atoms(
         )?);
     }
     Ok(atoms)
+}
+
+fn signal_evidence_class(
+    page_ref: &ArchivePageRefV1,
+    signal: &ArchiveSignalV1,
+    knowledge: &ArchiveKnowledgeV1,
+) -> Result<ArchiveEvidenceClassV1, SemanticArchiveErrorV1> {
+    use crate::archive_foundation_grants::county_qcew_citation;
+    use crate::michigan_economy::{michigan_economy_v1, QCEW_ECONOMICS_FIELD_KEYS_V1};
+
+    if signal.grant_key() == "identity" {
+        return Ok(ArchiveEvidenceClassV1::Observed);
+    }
+    let Some(index) = QCEW_ECONOMICS_FIELD_KEYS_V1
+        .iter()
+        .position(|key| *key == signal.grant_key())
+        .filter(|_| page_ref.kind() == ArchiveSubjectKindV1::County)
+    else {
+        return Ok(ArchiveEvidenceClassV1::Derived);
+    };
+    let citation = county_qcew_citation(page_ref.id());
+    if signal.citation() != &citation
+        || knowledge
+            .grant(page_ref, signal.grant_key())
+            .is_none_or(|grant| grant.citation != citation)
+    {
+        return Ok(ArchiveEvidenceClassV1::Derived);
+    }
+    let economy = michigan_economy_v1().map_err(|_| SemanticArchiveErrorV1::ArtifactDigest)?;
+    let Some(county) = economy
+        .counties()
+        .iter()
+        .find(|county| county.county_geoid == page_ref.id())
+    else {
+        return Ok(ArchiveEvidenceClassV1::Derived);
+    };
+    let observed = [
+        county.annual_avg_estabs_count,
+        county.annual_avg_emplvl,
+        county.total_annual_wages,
+        county.annual_avg_wkly_wage,
+    ][index];
+    Ok(if signal.value() == observed.to_string() {
+        ArchiveEvidenceClassV1::Observed
+    } else {
+        ArchiveEvidenceClassV1::Derived
+    })
 }
 
 /// Persist minted atoms idempotently and re-assert the page composition with
@@ -2457,6 +2541,102 @@ fn hex_digest(digest: &[u8; 32]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn public_qcew_page() -> (CampaignId, ArchivePageInputV1, ArchiveKnowledgeV1) {
+        let campaign = CampaignId::from_uuid(uuid::Uuid::from_u128(319));
+        let county = crate::michigan_economy::michigan_economy_v1()
+            .unwrap()
+            .counties()
+            .iter()
+            .find(|county| county.county_geoid == "26163")
+            .unwrap();
+        let fields = crate::CommittedTerritoryFieldsV1::try_from_qcew([
+            Some(i64::try_from(county.annual_avg_estabs_count).unwrap()),
+            Some(i64::try_from(county.annual_avg_emplvl).unwrap()),
+            Some(i64::try_from(county.total_annual_wages).unwrap()),
+            Some(i64::try_from(county.annual_avg_wkly_wage).unwrap()),
+        ])
+        .unwrap();
+        let plan = crate::CountyPagePlanV1::try_new(
+            county.county_geoid.clone(),
+            "county-26163".to_owned(),
+            "Wayne County".to_owned(),
+            crate::county_committed_signals_v1(&fields).unwrap(),
+            Vec::new(),
+        )
+        .unwrap();
+        let page = crate::county_page_input_v1(&plan, 1, [1; 32]).unwrap();
+        let grants = crate::foundation_grant_rows_v1()
+            .unwrap()
+            .into_iter()
+            .filter(|row| {
+                row.subject().kind() == ArchiveAtomSubjectKindV1::County
+                    && row.subject().id() == county.county_geoid
+            })
+            .map(|row| {
+                ArchiveKnowledgeGrantV1::try_new(
+                    page.subject().page_ref().clone(),
+                    row.grant_key().to_owned(),
+                    0,
+                    row.citation().clone(),
+                )
+                .unwrap()
+            })
+            .collect();
+        (campaign, page, ArchiveKnowledgeV1::try_new(grants).unwrap())
+    }
+
+    #[test]
+    fn pinned_public_qcew_atoms_retain_observed_classification() {
+        let (campaign, page, grants) = public_qcew_page();
+        let atoms = mint_page_atoms(campaign, 1, &page, &grants).unwrap();
+        let qcew: Vec<_> = atoms
+            .iter()
+            .filter(|atom| atom.signal_key() != "subject")
+            .collect();
+        assert_eq!(qcew.len(), 4);
+        for atom in qcew {
+            assert_eq!(atom.evidence_class(), ArchiveEvidenceClassV1::Observed);
+        }
+    }
+
+    #[test]
+    fn qcew_names_cannot_reclassify_unpinned_or_changed_values_as_observed() {
+        let (campaign, page, grants) = public_qcew_page();
+        for field in ["source", "county", "digest", "value", "grant"] {
+            let mut changed = page.clone();
+            let mut changed_grants = grants.clone();
+            let signal = &mut changed.signals[0];
+            match field {
+                "source" => signal.citation.source_id = "committed-tick-v1".to_owned(),
+                "county" => {
+                    signal.citation.locator = signal.citation.locator.replace("26163", "26125");
+                }
+                "digest" => signal.citation.locator.push('0'),
+                "value" => signal.value = "1".to_owned(),
+                "grant" => {
+                    changed_grants
+                        .grants
+                        .get_mut(&(
+                            changed.subject.page_ref().clone(),
+                            signal.grant_key().to_owned(),
+                        ))
+                        .unwrap()
+                        .citation
+                        .source_id = "uncited-local-claim".to_owned();
+                }
+                _ => unreachable!(),
+            }
+            let key = signal.grant_key().to_owned();
+            let atoms = mint_page_atoms(campaign, 1, &changed, &changed_grants).unwrap();
+            let atom = atoms.iter().find(|atom| atom.signal_key() == key).unwrap();
+            assert_eq!(
+                atom.evidence_class(),
+                ArchiveEvidenceClassV1::Derived,
+                "{field}"
+            );
+        }
+    }
 
     #[test]
     fn strict_mode_refuses_missing_template_names() {

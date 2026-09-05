@@ -49,7 +49,7 @@ fn main() {
             print!("{}", cli::render_help(topic));
             return;
         }
-        CliRequest::Windowed { story } => AppMode::Windowed { story },
+        CliRequest::Windowed { campaign_id } => AppMode::Windowed { campaign_id },
         CliRequest::Headless {
             command,
             campaign_id,

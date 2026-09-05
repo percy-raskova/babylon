@@ -38,6 +38,101 @@ def _run_git(arguments: list[str], *, cwd: Path) -> None:
     subprocess.run(["git", *arguments], cwd=cwd, check=True, capture_output=True, text=True)
 
 
+def _lock_repo(path: Path) -> None:
+    _run_git(["init", "-b", "main"], cwd=path)
+    _run_git(["config", "user.email", "test@example.invalid"], cwd=path)
+    _run_git(["config", "user.name", "Test User"], cwd=path)
+    (path / "uv.lock").write_bytes(b"version = 1\n")
+    _run_git(["add", "uv.lock"], cwd=path)
+    _run_git(["commit", "-m", "initial lock"], cwd=path)
+
+
+def _merge_lock_repo(path: Path, *, conflict: bool = False) -> None:
+    _lock_repo(path)
+    _run_git(["checkout", "-b", "incoming"], cwd=path)
+    (path / "uv.lock").write_bytes(b"version = 2\n")
+    _run_git(["commit", "-am", "accepted incoming lock"], cwd=path)
+    _run_git(["checkout", "main"], cwd=path)
+    if conflict:
+        (path / "uv.lock").write_bytes(b"version = 3\n")
+        _run_git(["commit", "-am", "divergent lock"], cwd=path)
+    result = subprocess.run(
+        ["git", "merge", "--no-ff", "--no-commit", "incoming"],
+        cwd=path,
+        check=False,
+        capture_output=True,
+    )
+    assert result.returncode == (1 if conflict else 0)
+
+
+@pytest.mark.unit
+def test_lock_contract_accepts_clean_head_and_exact_staged_merge_parent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _merge_lock_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    assert check_lock_unmodified() is None
+    _run_git(["merge", "--abort"], cwd=tmp_path)
+    assert check_lock_unmodified() is None
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("altered", ["index", "working", "both", "keep_head"])
+def test_merge_lock_contract_rejects_any_other_resolution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, altered: str
+) -> None:
+    _merge_lock_repo(tmp_path)
+    lock = tmp_path / "uv.lock"
+    if altered == "keep_head":
+        _run_git(["checkout", "HEAD", "--", "uv.lock"], cwd=tmp_path)
+    else:
+        lock.write_bytes(b"version = 99\n")
+        if altered in {"index", "both"}:
+            _run_git(["add", "uv.lock"], cwd=tmp_path)
+        if altered == "index":
+            lock.write_bytes(b"version = 2\n")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("UV_FROZEN", "1")
+    assert check_lock_unmodified() is not None
+
+
+@pytest.mark.unit
+def test_lock_contract_refuses_unmerged_index_even_with_exact_working_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _merge_lock_repo(tmp_path, conflict=True)
+    (tmp_path / "uv.lock").write_bytes(b"version = 2\n")
+    monkeypatch.chdir(tmp_path)
+    assert check_lock_unmodified() is not None
+    _run_git(["add", "uv.lock"], cwd=tmp_path)
+    assert check_lock_unmodified() is None
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("merge_head", ["", "HEAD\n", "f" * 40 + "\n", "multiple_commits"])
+def test_lock_contract_refuses_invalid_or_multiple_merge_heads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, merge_head: str
+) -> None:
+    _merge_lock_repo(tmp_path)
+    if merge_head == "multiple_commits":
+        merge_head = (tmp_path / ".git/MERGE_HEAD").read_text() * 2
+    (tmp_path / ".git/MERGE_HEAD").write_text(merge_head)
+    monkeypatch.chdir(tmp_path)
+    assert check_lock_unmodified() is not None
+
+
+@pytest.mark.unit
+def test_clean_working_lock_cannot_hide_a_different_staged_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _lock_repo(tmp_path)
+    (tmp_path / "uv.lock").write_bytes(b"version = 99\n")
+    _run_git(["add", "uv.lock"], cwd=tmp_path)
+    (tmp_path / "uv.lock").write_bytes(b"version = 1\n")
+    monkeypatch.chdir(tmp_path)
+    assert check_lock_unmodified() is not None
+
+
 @pytest.mark.unit
 def test_dirty_lock_guidance_scopes_frozen_commands_and_unsets_lock_check(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

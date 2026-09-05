@@ -854,12 +854,17 @@ printf '%s\\n' "$1" >> "$SLEEP_CALLS"
         assert _dependabot_update(config, "github-actions")["cooldown"] == {"default-days": 3}
         assert "cooldown" not in _dependabot_update(config, "docker")
 
-    def test_config_uses_uv_and_retains_only_justified_major_ignores(self) -> None:
-        """The live uv lock and explicit deferred-major rails must stay represented."""
+    def test_config_uses_uv_and_retains_only_justified_ignores(self) -> None:
+        """The deferred-major rails and the pyarrow byte-pin must stay represented."""
         config = yaml.safe_load(DEPENDABOT_CONFIG_PATH.read_text())
         uv = _dependabot_update(config, "uv")
         assert {entry["dependency-name"]: entry["update-types"] for entry in uv["ignore"]} == {
             "mypy": ["version-update:semver-major"],
+            "pyarrow": [
+                "version-update:semver-major",
+                "version-update:semver-minor",
+                "version-update:semver-patch",
+            ],
         }
         docker = _dependabot_update(config, "docker")
         assert docker["ignore"] == [

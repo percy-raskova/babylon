@@ -63,7 +63,7 @@ dependencies = [
     "scipy>=1.18.1",
     "xgi>=0.10.0,<0.11.0",
     "polars>=1.44.1,<2.0.0",
-    "psycopg>=3.3.3,<4.0.0",
+    "psycopg>=3.3.5,<4.0.0",
     "psycopg-pool>=3.3.0,<4.0.0",
     # Exact pin: dist-tier parquet shas in data-artifacts.yaml depend on the
     # pyarrow writer version, so any bump is a declared regeneration ceremony
@@ -141,7 +141,7 @@ docs = [
     "sphinx-autodoc-typehints<3.14",
     "myst-parser>=5.0.0,<6.0.0",
     "sphinx-autobuild>=2025.8,<2026.0.0",
-    "sphinxcontrib-mermaid>=2.0.0,<3.0.0",
+    "sphinxcontrib-mermaid>=2.1.1,<3.0.0",
 ]
 # Mutation testing is LOCAL-ONLY (owner ruling — never CI), and mutmut
 # itself depends on `textual`, which the M7 cutover ceremony retired from

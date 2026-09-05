@@ -2,6 +2,7 @@
 
 pub(crate) mod context;
 mod labor;
+pub(crate) mod material_balance;
 
 use babylon_material_circuit::{MaterialCircuitStateV2, OrderIdV1, ProcessIdV1, SiteIdV1};
 use babylon_tick::material_world::{MaterialTickReceiptsV3, MaterialWorldRegisterV2};
@@ -13,8 +14,9 @@ use crate::michigan_material::{
     MICHIGAN_MATERIAL_SCENARIO_SHA256_V1,
 };
 use crate::{
-    ProductionEventV1, ProductionFreightV1, ProductionInputV1, ProductionLaborV1,
-    ProductionRouteV1, ProductionSiteV1, ProductionSnapshotV1, ProductionStockV1,
+    ProductionDeliveryEvidenceV1, ProductionDeliveryStageV1, ProductionEventV1,
+    ProductionFreightV1, ProductionInputV1, ProductionLaborV1, ProductionRouteV1, ProductionSiteV1,
+    ProductionSnapshotV1, ProductionStockV1,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -44,6 +46,11 @@ pub(crate) fn project_material_observation_v1(
     }
     let state = register.state();
     let labor_accounts = labor::project_labor_accounts(
+        state,
+        opening.map(MaterialWorldRegisterV2::state),
+        history.last().map(|(receipt, _)| receipt),
+    )?;
+    let material_balance = material_balance::project_material_balance(
         state,
         opening.map(MaterialWorldRegisterV2::state),
         history.last().map(|(receipt, _)| receipt),
@@ -87,7 +94,7 @@ pub(crate) fn project_material_observation_v1(
             MichiganDeliveryPresetV1::Standard => "Michigan: standard delivery",
             MichiganDeliveryPresetV1::Delayed => "Michigan: delayed sheet delivery",
         }.to_owned(),
-        horizon_week: preset.horizon_ticks(), sites, routes, freight, events, labor_accounts,
+        horizon_week: preset.horizon_ticks(), sites, routes, freight, events, labor_accounts, material_balance,
         observed_contexts: Vec::new(), process_attributions: Vec::new(),
         provenance: vec![
             "Designed 16-week physical demonstration: county-industry aggregates; no factory locations.".to_owned(),
@@ -324,7 +331,7 @@ fn project_events(
     events: &mut Vec<ProductionEventV1>,
 ) -> Result<(), ProductionProjectionErrorV1> {
     let receipt_digest = digest_hex(&digest);
-    let mut emit = |kind: &str, subjects: Vec<String>, description: String| {
+    let mut emit = |kind: &str, subjects: Vec<String>, description: String, delivery_evidence| {
         events.push(ProductionEventV1 {
             id: format!("{receipt_digest}:{}", events.len()),
             week: receipts.resolve_tick,
@@ -332,38 +339,11 @@ fn project_events(
             kind: kind.to_owned(),
             description,
             receipt_digest: receipt_digest.clone(),
+            delivery_evidence,
         });
     };
     for production in &receipts.production {
-        let process = catalog
-            .processes()
-            .iter()
-            .find(|process| {
-                process.id() == production.process_id && process.site_id() == production.site_id
-            })
-            .ok_or(ProductionProjectionErrorV1::State)?;
-        let site = catalog
-            .site(&process.site_key)
-            .ok_or(ProductionProjectionErrorV1::Content)?;
-        let good = catalog
-            .good(&process.output_good_key)
-            .ok_or(ProductionProjectionErrorV1::Content)?;
-        let quantity = production
-            .produced_batches
-            .checked_mul(process.output_quantity_per_batch)
-            .ok_or(ProductionProjectionErrorV1::State)?;
-        emit(
-            "production",
-            vec![digest_hex(&site.id().as_bytes())],
-            format!(
-                "{}: {} of {} planned batches; {quantity} {} {} produced.",
-                site.label,
-                production.produced_batches,
-                production.planned_batches,
-                good.unit_key,
-                good.label
-            ),
-        );
+        emit_production_event(catalog, production, &mut emit)?;
     }
     for dispatch in &receipts.dispatches {
         let route = order_route(catalog, dispatch.order_id)?;
@@ -376,6 +356,7 @@ fn project_events(
             "dispatch",
             dispatch.quantity,
             Some(dispatch.final_arrival_week),
+            None,
             &mut emit,
         )?;
     }
@@ -385,6 +366,7 @@ fn project_events(
             order_route(catalog, loss.order_id)?,
             "freight loss",
             loss.quantity,
+            None,
             None,
             &mut emit,
         )?;
@@ -396,6 +378,7 @@ fn project_events(
             "arrival",
             arrival.quantity,
             None,
+            Some(ProductionDeliveryStageV1::Arrival),
             &mut emit,
         )?;
     }
@@ -406,6 +389,7 @@ fn project_events(
             "delivery",
             delivery.quantity,
             None,
+            Some(ProductionDeliveryStageV1::Delivery),
             &mut emit,
         )?;
     }
@@ -416,9 +400,48 @@ fn project_events(
             "quantity realization",
             realization.quantity,
             None,
+            Some(ProductionDeliveryStageV1::QuantityRealization),
             &mut emit,
         )?;
     }
+    Ok(())
+}
+
+fn emit_production_event(
+    catalog: &MichiganMaterialCatalogV1,
+    production: &babylon_material_circuit::ProductionReceiptV1,
+    emit: &mut impl FnMut(&str, Vec<String>, String, Option<ProductionDeliveryEvidenceV1>),
+) -> Result<(), ProductionProjectionErrorV1> {
+    let process = catalog
+        .processes()
+        .iter()
+        .find(|process| {
+            process.id() == production.process_id && process.site_id() == production.site_id
+        })
+        .ok_or(ProductionProjectionErrorV1::State)?;
+    let site = catalog
+        .site(&process.site_key)
+        .ok_or(ProductionProjectionErrorV1::Content)?;
+    let good = catalog
+        .good(&process.output_good_key)
+        .ok_or(ProductionProjectionErrorV1::Content)?;
+    let quantity = production
+        .produced_batches
+        .checked_mul(process.output_quantity_per_batch)
+        .ok_or(ProductionProjectionErrorV1::State)?;
+    emit(
+        "production",
+        vec![digest_hex(&site.id().as_bytes())],
+        format!(
+            "{}: {} of {} planned batches; {quantity} {} {} produced.",
+            site.label,
+            production.produced_batches,
+            production.planned_batches,
+            good.unit_key,
+            good.label
+        ),
+        None,
+    );
     Ok(())
 }
 
@@ -428,7 +451,8 @@ fn emit_route_event(
     kind: &str,
     quantity: u64,
     arrival: Option<u64>,
-    emit: &mut impl FnMut(&str, Vec<String>, String),
+    stage: Option<ProductionDeliveryStageV1>,
+    emit: &mut impl FnMut(&str, Vec<String>, String, Option<ProductionDeliveryEvidenceV1>),
 ) -> Result<(), ProductionProjectionErrorV1> {
     let supplier = catalog
         .site(&route.supplier_site_key)
@@ -450,6 +474,14 @@ fn emit_route_event(
             "{} -> {}: {quantity} {} {} {kind}.{suffix}",
             supplier.label, buyer.label, good.unit_key, good.label
         ),
+        stage.map(|stage| ProductionDeliveryEvidenceV1 {
+            stage,
+            order_id: digest_hex(&route.order_id().as_bytes()),
+            route_id: digest_hex(&route.id().as_bytes()),
+            good_id: digest_hex(&good.id().as_bytes()),
+            unit_id: digest_hex(&good.unit_id().as_bytes()),
+            quantity,
+        }),
     );
     Ok(())
 }
@@ -470,6 +502,7 @@ mod tests {
         let initial = project_material_observation_v1(preset, &opening, None, &[]).unwrap();
         assert!(initial.freight.is_empty());
         assert!(initial.events.is_empty());
+        assert!(initial.material_balance.is_none());
         assert_eq!(initial.labor_accounts.len(), 5);
         assert!(initial
             .labor_accounts
@@ -627,3 +660,6 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod events_tests;

@@ -882,6 +882,7 @@ mod tests {
             visibility: ObserverVisibilityV1::FullObserver,
             counties: Vec::new(),
             production: Some(babylon_persistence::ProductionSnapshotV1 {
+                material_balance: None,
                 labor_accounts: Vec::new(),
                 scenario_label: "bounded observer fixture".into(),
                 horizon_week: 16,
@@ -898,6 +899,7 @@ mod tests {
                     kind: kind.into(),
                     description: "disclosed committed development".into(),
                     receipt_digest: "receipt".into(),
+                    delivery_evidence: None,
                 }],
             }),
         }

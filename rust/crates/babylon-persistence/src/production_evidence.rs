@@ -1,11 +1,17 @@
 //! Presentation identity for the already-authorized production observation.
 //!
-//! V2 uses a fixed domain/version, big-endian u64 quantities and lengths,
+//! V3 uses a fixed domain/version, big-endian u64 quantities and lengths,
 //! length-prefixed UTF-8, and explicit 0/1 option tags. Unordered rows sort by
 //! their complete typed fields (including exact good/unit identities), after
 //! nested collections have been sorted. Duplicates retain their multiplicity.
 //! Events retain their supplied sequence; their subject sets and provenance
-//! declarations are unordered. Changing this layout requires a new version.
+//! declarations are unordered. V3 appends optional typed delivery evidence to
+//! each event (stage tags 1 arrival, 2 delivery, 3 quantity realization), and an
+//! optional completed material balance after provenance. Each balance encodes
+//! week, row count, then site/good/unit identities and labels followed by
+//! opening/arrivals/produced/consumed/dispatched/closing quantities. V1 and V2
+//! identities retain their historical meaning; V3 is the sole live encoder.
+//! Changing this layout requires a new version.
 //!
 //! This is neither a world hash nor an authorization proof. It commits to what
 //! the reader disclosed, including labels and assumptions, without fetching
@@ -20,13 +26,13 @@ use crate::{
     ProductionStockV1,
 };
 
-const DOMAIN: &[u8] = b"babylon.production-observation-evidence.v2\0";
+const DOMAIN: &[u8] = b"babylon.production-observation-evidence.v3\0";
 
 /// SHA-256 of one scope-bound production presentation, distinct from world identity.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct ProductionEvidenceDigestV2([u8; 32]);
+pub struct ProductionEvidenceDigestV3([u8; 32]);
 
-impl ProductionEvidenceDigestV2 {
+impl ProductionEvidenceDigestV3 {
     #[must_use]
     pub const fn as_bytes(&self) -> &[u8; 32] {
         &self.0
@@ -47,11 +53,11 @@ impl ObserverEconomySnapshotV1 {
     /// session; the digest does not validate provenance or confer read authority.
     /// Compute on observation installation or evidence disclosure, not per frame.
     #[must_use]
-    pub fn production_evidence_digest(&self) -> Option<ProductionEvidenceDigestV2> {
+    pub fn production_evidence_digest(&self) -> Option<ProductionEvidenceDigestV3> {
         let production = canonical_production(self.production.as_ref()?);
         let mut encoder = EvidenceEncoder(Sha256::new());
         encoder.0.update(DOMAIN);
-        encoder.0.update(2_u32.to_be_bytes());
+        encoder.0.update(3_u32.to_be_bytes());
         encoder.text(&self.campaign_id);
         encoder.number(self.resolve_tick);
         encoder.text(&self.foundation_digest);
@@ -63,7 +69,7 @@ impl ObserverEconomySnapshotV1 {
             ObserverVisibilityV1::KnownPreview => 1,
         }]);
         encoder.production(&production);
-        Some(ProductionEvidenceDigestV2(encoder.0.finalize().into()))
+        Some(ProductionEvidenceDigestV3(encoder.0.finalize().into()))
     }
 }
 
@@ -79,6 +85,9 @@ fn canonical_production(source: &ProductionSnapshotV1) -> ProductionSnapshotV1 {
     }
     rows.sites.sort_unstable();
     rows.labor_accounts.sort_unstable();
+    if let Some(balance) = &mut rows.material_balance {
+        balance.rows.sort_unstable();
+    }
     rows.observed_contexts.sort_unstable();
     rows.process_attributions.sort_unstable();
     rows.routes.sort_unstable();
@@ -179,6 +188,36 @@ impl EvidenceEncoder {
             self.text(link.evidence_class.as_str());
         }
         self.strings(&rows.provenance);
+        self.material_balance(rows.material_balance.as_ref());
+    }
+
+    fn material_balance(&mut self, balance: Option<&crate::CompletedMaterialBalanceV1>) {
+        self.0.update([u8::from(balance.is_some())]);
+        if let Some(balance) = balance {
+            self.number(balance.week);
+            self.count(balance.rows.len());
+            for row in &balance.rows {
+                for value in [
+                    &row.site_id,
+                    &row.good_id,
+                    &row.unit_id,
+                    &row.good,
+                    &row.unit,
+                ] {
+                    self.text(value);
+                }
+                for value in [
+                    row.opening,
+                    row.arrivals,
+                    row.produced,
+                    row.consumed,
+                    row.dispatched,
+                    row.closing,
+                ] {
+                    self.number(value);
+                }
+            }
+        }
     }
 
     fn business_subject(&mut self, subject: &crate::ProductionBusinessSubjectV1) {
@@ -301,6 +340,23 @@ impl EvidenceEncoder {
         self.text(&event.kind);
         self.text(&event.description);
         self.text(&event.receipt_digest);
+        self.0.update([u8::from(event.delivery_evidence.is_some())]);
+        if let Some(delivery) = &event.delivery_evidence {
+            self.0.update([match delivery.stage {
+                crate::ProductionDeliveryStageV1::Arrival => 1,
+                crate::ProductionDeliveryStageV1::Delivery => 2,
+                crate::ProductionDeliveryStageV1::QuantityRealization => 3,
+            }]);
+            for value in [
+                &delivery.order_id,
+                &delivery.route_id,
+                &delivery.good_id,
+                &delivery.unit_id,
+            ] {
+                self.text(value);
+            }
+            self.number(delivery.quantity);
+        }
     }
 }
 

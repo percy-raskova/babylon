@@ -383,7 +383,8 @@ fn live_material_observer_preserves_history_and_denies_preview_blob_authority() 
     let zero = observer.snapshot(campaign, 0).unwrap();
     assert_eq!(zero.counties.len(), 83);
     assert_eq!(zero.production.as_ref().unwrap().sites.len(), 5);
-    assert!(known.snapshot(campaign, 0).unwrap().production.is_none());
+    assert_material_accounts(&zero);
+    assert_known_material_absence(&known.snapshot(campaign, 0).unwrap());
     assert!(known_config
         .connect(NoTls)
         .unwrap()
@@ -396,26 +397,13 @@ fn live_material_observer_preserves_history_and_denies_preview_blob_authority() 
     assert_eq!(observer.campaigns().unwrap()[0].durable_tick, 0);
     let mut history_at_two = None;
     for tick in 1..=6 {
-        let actions = OrderedPracticeActionBatchV1::empty(
-            runtime.session().graph_session().session_identity().clone(),
-            tick,
-        )
-        .unwrap();
-        runtime
-            .advance_and_commit(&mut CollectingSink::default(), &actions)
-            .unwrap();
+        advance_material_week(&mut runtime);
         let snapshot = observer.snapshot(campaign, tick).unwrap();
         assert_eq!(snapshot.foundation_digest, zero.foundation_digest);
         assert_eq!(snapshot.resolve_tick, tick);
         assert_eq!(snapshot.counties.len(), 83);
-        assert!(snapshot
-            .production
-            .as_ref()
-            .unwrap()
-            .events
-            .iter()
-            .all(|event| event.week <= tick));
-        assert!(known.snapshot(campaign, tick).unwrap().production.is_none());
+        assert_material_accounts(&snapshot);
+        assert_known_material_absence(&known.snapshot(campaign, tick).unwrap());
         archive.committed_tick_status(campaign).unwrap();
         if tick == 2 {
             history_at_two = Some(snapshot);
@@ -430,6 +418,16 @@ fn live_material_observer_preserves_history_and_denies_preview_blob_authority() 
             )
             .unwrap();
             assert_eq!(runtime.session().completed_tick(), 3);
+            let fresh = ObserverEconomyReaderV1::connect(
+                &observer_config,
+                ObserverVisibilityV1::FullObserver,
+            )
+            .unwrap();
+            assert_eq!(
+                fresh.snapshot(campaign, 2).unwrap(),
+                history_at_two.clone().unwrap()
+            );
+            assert_material_accounts(&fresh.snapshot(campaign, 3).unwrap());
         }
     }
     assert_eq!(
@@ -455,6 +453,105 @@ fn live_material_observer_preserves_history_and_denies_preview_blob_authority() 
         known.snapshot(campaign, 6),
         Err(ObserverEconomyErrorV1::Authority)
     );
+}
+
+fn identity_hex(bytes: [u8; 32]) -> String {
+    use std::fmt::Write as _;
+    bytes
+        .iter()
+        .fold(String::with_capacity(64), |mut result, byte| {
+            write!(result, "{byte:02x}").unwrap();
+            result
+        })
+}
+
+fn assert_known_material_absence(snapshot: &babylon_persistence::ObserverEconomySnapshotV1) {
+    assert_eq!(snapshot.visibility, ObserverVisibilityV1::KnownPreview);
+    assert!(snapshot.production.is_none());
+    assert!(snapshot.production_evidence_digest().is_none());
+}
+
+fn assert_material_accounts(snapshot: &babylon_persistence::ObserverEconomySnapshotV1) {
+    use babylon_persistence::ProductionDeliveryStageV1;
+    use std::collections::{BTreeMap, BTreeSet};
+
+    let rows = snapshot.production.as_ref().unwrap();
+    assert!(rows
+        .events
+        .iter()
+        .all(|event| event.week <= snapshot.resolve_tick));
+    if snapshot.resolve_tick == 0 {
+        assert!(rows.material_balance.is_none());
+        assert!(rows.events.is_empty());
+        return;
+    }
+    let balance = rows.material_balance.as_ref().unwrap();
+    assert_eq!(balance.week, snapshot.resolve_tick);
+    assert!(!balance.rows.is_empty());
+    let mut principals = BTreeSet::new();
+    let mut arrivals = BTreeMap::new();
+    for event in &rows.events {
+        let expected_stage = match event.kind.as_str() {
+            "arrival" => Some(ProductionDeliveryStageV1::Arrival),
+            "delivery" => Some(ProductionDeliveryStageV1::Delivery),
+            "quantity realization" => Some(ProductionDeliveryStageV1::QuantityRealization),
+            _ => None,
+        };
+        assert_eq!(
+            event.delivery_evidence.as_ref().map(|row| row.stage),
+            expected_stage
+        );
+        let Some(evidence) = &event.delivery_evidence else {
+            continue;
+        };
+        let route = rows
+            .routes
+            .iter()
+            .find(|route| route.id == evidence.route_id)
+            .unwrap();
+        assert_eq!(evidence.good_id, route.good_id);
+        assert_eq!(evidence.unit_id, route.unit_id);
+        assert!(evidence.quantity > 0);
+        let catalog =
+            babylon_persistence::michigan_material::michigan_material_catalog_v1().unwrap();
+        let source = catalog
+            .routes()
+            .iter()
+            .find(|row| identity_hex(row.id().as_bytes()) == route.id)
+            .unwrap();
+        assert_eq!(
+            evidence.order_id,
+            identity_hex(source.order_id().as_bytes())
+        );
+        if event.week == balance.week && evidence.stage == ProductionDeliveryStageV1::Arrival {
+            let key = (&route.buyer_site_id, &evidence.good_id, &evidence.unit_id);
+            *arrivals.entry(key).or_insert(0_u128) += u128::from(evidence.quantity);
+        }
+    }
+    for row in &balance.rows {
+        let principal = (&row.site_id, &row.good_id, &row.unit_id);
+        assert!(principals.insert(principal));
+        assert_eq!(
+            u128::from(row.opening) + u128::from(row.arrivals) + u128::from(row.produced),
+            u128::from(row.consumed) + u128::from(row.dispatched) + u128::from(row.closing)
+        );
+        assert_eq!(
+            u128::from(row.arrivals),
+            arrivals.remove(&principal).unwrap_or(0)
+        );
+        let site = rows
+            .sites
+            .iter()
+            .find(|site| site.id == row.site_id)
+            .unwrap();
+        let closing = site
+            .inventory
+            .iter()
+            .find(|stock| stock.good_id == row.good_id && stock.unit_id == row.unit_id)
+            .map_or(0, |stock| stock.quantity);
+        assert_eq!(row.closing, closing);
+    }
+    assert!(arrivals.is_empty());
 }
 
 fn assert_corrupted_register_is_rejected(
@@ -553,6 +650,8 @@ fn assert_revision_resume(
     assert_eq!(history.counties.len(), 83);
     assert_eq!(history.production.as_ref().unwrap().sites.len(), 5);
     let at_two = observer.snapshot(campaign, 2).unwrap();
+    assert_material_accounts(&history);
+    assert_material_accounts(&at_two);
     let actions = OrderedPracticeActionBatchV1::empty(
         runtime.session().graph_session().session_identity().clone(),
         3,
@@ -575,8 +674,9 @@ fn assert_revision_resume(
     );
     assert_eq!(observer.snapshot(campaign, 2).unwrap(), at_two);
     advance_material_week(&mut reopened);
+    assert_material_accounts(&observer.snapshot(campaign, 3).unwrap());
     assert_eq!(observer.snapshot(campaign, 1).unwrap(), history);
-    assert!(known.snapshot(campaign, 3).unwrap().production.is_none());
+    assert_known_material_absence(&known.snapshot(campaign, 3).unwrap());
     assert_session_admits_stored_revision(config, campaign, preset, observer);
     assert_eq!(observer.snapshot(campaign, 1).unwrap(), history);
     *runtime = reopened;

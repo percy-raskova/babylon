@@ -539,6 +539,7 @@ mod tests {
             visibility: ObserverVisibilityV1::FullObserver,
             counties: Vec::new(),
             production: Some(ProductionSnapshotV1 {
+                material_balance: None,
                 labor_accounts: Vec::new(),
                 scenario_label: "Designed telemetry fixture".into(),
                 horizon_week: 16,

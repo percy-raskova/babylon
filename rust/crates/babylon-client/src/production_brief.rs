@@ -369,6 +369,7 @@ mod tests {
     }
     fn chain() -> ProductionSnapshotV1 {
         ProductionSnapshotV1 {
+            material_balance: None,
             labor_accounts: Vec::new(),
             scenario_label: "Designed test chain".into(),
             horizon_week: 16,

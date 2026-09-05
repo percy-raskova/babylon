@@ -19,6 +19,8 @@ pub struct ProductionSnapshotV1 {
     pub events: Vec<ProductionEventV1>,
     /// Each exact site/unit labor principal occurs once, across all its processes.
     pub labor_accounts: Vec<ProductionLaborAccountV1>,
+    /// Exact completed-week stock accounting; absent at foundation.
+    pub material_balance: Option<crate::CompletedMaterialBalanceV1>,
     /// Deduplicated public 2024 source cells, never current modeled employment.
     pub observed_contexts: Vec<ObservedManufacturingContextV1>,
     /// Designed attribution only; these are not supplier or employment relations.
@@ -197,4 +199,26 @@ pub struct ProductionEventV1 {
     pub kind: String,
     pub description: String,
     pub receipt_digest: String,
+    /// Typed receipt metadata, never inferred from the event's description.
+    pub delivery_evidence: Option<ProductionDeliveryEvidenceV1>,
+}
+
+/// Three distinct receipt stages for delivered material, never payment evidence.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum ProductionDeliveryStageV1 {
+    Arrival,
+    Delivery,
+    QuantityRealization,
+}
+
+/// Exact order, route and material identities for one original receipt row.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProductionDeliveryEvidenceV1 {
+    pub stage: ProductionDeliveryStageV1,
+    pub order_id: String,
+    pub route_id: String,
+    pub good_id: String,
+    pub unit_id: String,
+    pub quantity: u64,
 }

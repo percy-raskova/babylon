@@ -200,7 +200,10 @@ pub use territory_county_map::{
 };
 
 mod production_evidence;
-pub use production_evidence::ProductionEvidenceDigestV2;
+pub use production_evidence::ProductionEvidenceDigestV3;
+pub use production_projection::material_balance::{
+    CompletedMaterialBalanceV1, ProductionMaterialBalanceRowV1,
+};
 pub mod production_observation;
 pub use production_observation::*;
 

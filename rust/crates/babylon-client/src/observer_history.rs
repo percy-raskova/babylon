@@ -1,5 +1,7 @@
 //! Bounded, capability-scoped history. Charts never recompute a transition.
 
+mod delivery_groups;
+
 use babylon_persistence::{ObserverEconomyReaderV1, ProductionEventV1, ProductionSiteV1};
 use bevy::ecs::{query::QueryData, system::SystemParam};
 use bevy::prelude::*;
@@ -13,10 +15,16 @@ use crate::observer_io::ObserverSet;
 use crate::observer_layout::ObserverRegion;
 use crate::observer_theme as theme;
 use crate::observer_ui::{grouped, ObserverFeedback, ObserverFrame, ObserverUiState};
-use crate::production::{ProductionCommand, ProductionNavigation};
+use crate::production::{
+    readings_panel_visible, PrimaryView, ProductionCommand, ProductionNavigation,
+};
 use crate::ui::dossier_card::DossierRefresh;
+use delivery_groups::{
+    delivery_log_entries, DeliveryGroup, DeliveryGroupKey, DeliveryLog, DeliveryLogEntry,
+};
 
 const CHART_WEEKS: u64 = 12;
+const LOG_ENTRIES: usize = 160;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct HistoryScope {
@@ -60,6 +68,7 @@ struct HistoryState {
     error: Option<String>,
     selected_event: Option<(ObservationContext, ProductionEventV1)>,
     focus_selected_event: bool,
+    expanded_delivery: Option<(ObservationContext, DeliveryGroupKey)>,
 }
 
 #[derive(Component)]
@@ -77,6 +86,10 @@ enum HistoryButton {
     Event {
         context: ObservationContext,
         event: ProductionEventV1,
+    },
+    DeliveryEvidence {
+        context: ObservationContext,
+        group: DeliveryGroupKey,
     },
 }
 
@@ -141,11 +154,13 @@ fn button_availability(
     button: &HistoryButton,
     session: &ObserverSession,
     frame: &ObserverFrame,
+    delivery_log: Option<&DeliveryLog<'_>>,
 ) -> ControlAvailability {
     use ControlAvailability::{Disabled, Enabled};
     let (context, week) = match button {
         HistoryButton::Week { context, week } => (context, *week),
         HistoryButton::Event { context, event } => (context, event.week),
+        HistoryButton::DeliveryEvidence { context, group } => (context, group.week),
     };
     if !session.accepts(context) {
         return Disabled("History changed; wait for its current observation");
@@ -173,6 +188,13 @@ fn button_availability(
             }
         }
         HistoryButton::Week { .. } => Enabled,
+        HistoryButton::DeliveryEvidence { group, .. } => {
+            if delivery_log.is_some_and(|log| log.contains_group(group)) {
+                Enabled
+            } else {
+                Disabled("This delivery group is unavailable in the current observation")
+            }
+        }
     }
 }
 
@@ -185,6 +207,8 @@ struct HistoryInput<'w> {
     refresh: ResMut<'w, DossierRefresh>,
     feedback: ResMut<'w, ObserverFeedback>,
     time: Res<'w, Time>,
+    navigation: Res<'w, ProductionNavigation>,
+    view: Res<'w, PrimaryView>,
 }
 
 fn input(
@@ -199,24 +223,59 @@ fn input(
         refresh,
         feedback,
         time,
+        navigation,
+        view,
     } = &mut context;
     if ui.menu_open || ui.splash_visible || ui.comparison_open {
         return;
     }
+    let snapshot = frame
+        .for_session(session)
+        .and_then(|frame| frame.production.as_ref());
+    let log = buttons
+        .iter()
+        .any(|(interaction, button)| {
+            *interaction == Interaction::Pressed
+                && matches!(button, HistoryButton::DeliveryEvidence { .. })
+        })
+        .then(|| snapshot.map(|snapshot| delivery_log_entries(snapshot, LOG_ENTRIES)))
+        .flatten()
+        .and_then(Result::ok);
     for (interaction, button) in &buttons {
         if *interaction != Interaction::Pressed
             || (!ui.history_open && matches!(button, HistoryButton::Week { .. }))
         {
             continue;
         }
-        if let ControlAvailability::Disabled(reason) = button_availability(button, session, frame) {
+        if !matches!(button, HistoryButton::Week { .. })
+            && (ui.archive_open || readings_panel_visible(**view, navigation, ui, snapshot))
+        {
+            feedback.reject(
+                "Close the current readings to inspect the delivery log",
+                time.elapsed_secs_f64(),
+            );
+            continue;
+        }
+        if let ControlAvailability::Disabled(reason) =
+            button_availability(button, session, frame, log.as_ref())
+        {
             feedback.reject(reason, time.elapsed_secs_f64());
             continue;
         }
         feedback.message = None;
+        if let HistoryButton::DeliveryEvidence { context, group } = button {
+            let expanded = (context.clone(), group.clone());
+            history.expanded_delivery = if history.expanded_delivery.as_ref() == Some(&expanded) {
+                None
+            } else {
+                Some(expanded)
+            };
+            continue;
+        }
         let week = match button {
             HistoryButton::Week { week, .. } => *week,
             HistoryButton::Event { event, .. } => event.week,
+            HistoryButton::DeliveryEvidence { .. } => continue,
         };
         session.pause_month();
         if session.viewed_tick != week {
@@ -226,7 +285,7 @@ fn input(
         // The committed evidence is revalidated after this week loads.
         history.selected_event = match button {
             HistoryButton::Event { event, .. } => Some((session.context(), event.clone())),
-            HistoryButton::Week { .. } => None,
+            HistoryButton::Week { .. } | HistoryButton::DeliveryEvidence { .. } => None,
         };
         history.focus_selected_event = history.selected_event.is_some();
     }
@@ -266,6 +325,9 @@ fn update(
     mut history: ResMut<HistoryState>,
     mut links: MessageWriter<ProductionCommand>,
 ) {
+    if history.expanded_delivery.is_some() && (session.is_changed() || frame.is_changed()) {
+        reconcile_delivery_expansion(&session, &frame, &mut history);
+    }
     let scope = HistoryScope {
         context: session.context(),
         site: navigation.selected_site.clone(),
@@ -337,6 +399,25 @@ fn update(
     }
 }
 
+fn reconcile_delivery_expansion(
+    session: &ObserverSession,
+    frame: &ObserverFrame,
+    history: &mut HistoryState,
+) {
+    let Some((context, group)) = &history.expanded_delivery else {
+        return;
+    };
+    let valid = session.accepts(context)
+        && frame
+            .for_session(session)
+            .and_then(|frame| frame.production.as_ref())
+            .and_then(|snapshot| delivery_log_entries(snapshot, LOG_ENTRIES).ok())
+            .is_some_and(|log| log.contains_group(group));
+    if !valid {
+        history.expanded_delivery = None;
+    }
+}
+
 #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
 fn bar_height(value: Option<u64>, maximum: u64) -> f32 {
     value.map_or(0.0, |value| {
@@ -384,12 +465,22 @@ fn paint_buttons(
     if ui.menu_open || ui.splash_visible || ui.comparison_open {
         return;
     }
+    let log = buttons
+        .iter()
+        .any(|item| matches!(item.button, HistoryButton::DeliveryEvidence { .. }))
+        .then(|| {
+            frame
+                .for_session(&session)
+                .and_then(|frame| frame.production.as_ref())
+                .and_then(|snapshot| delivery_log_entries(snapshot, LOG_ENTRIES).ok())
+        })
+        .flatten();
     let mut hint = match inspection_availability(&session) {
         ControlAvailability::Enabled => "Select a committed week or event to inspect.",
         ControlAvailability::Disabled(reason) => reason,
     };
     for mut item in &mut buttons {
-        let available = button_availability(item.button, &session, &frame);
+        let available = button_availability(item.button, &session, &frame, log.as_ref());
         if *item.interaction != Interaction::None {
             if let ControlAvailability::Disabled(reason) = available {
                 hint = reason;
@@ -496,19 +587,42 @@ fn paint(
 
 /// The log reads the same committed observation as the map. It is independent
 /// of chart disclosure and never fabricates communications or player acts.
+#[derive(SystemParam)]
+struct LogPresentation<'w> {
+    session: Res<'w, ObserverSession>,
+    frame: Res<'w, ObserverFrame>,
+    history: Res<'w, HistoryState>,
+    ui: Res<'w, ObserverUiState>,
+    navigation: Res<'w, ProductionNavigation>,
+    view: Res<'w, PrimaryView>,
+}
+
 fn paint_log(
     mut commands: Commands,
-    session: Res<ObserverSession>,
-    frame: Res<ObserverFrame>,
-    history: Res<HistoryState>,
-    ui: Res<ObserverUiState>,
+    presentation: LogPresentation,
     mut panels: Query<(Entity, &mut Visibility), With<LogPanel>>,
 ) {
+    let LogPresentation {
+        session,
+        frame,
+        history,
+        ui,
+        navigation,
+        view,
+    } = presentation;
     let Ok((entity, mut visibility)) = panels.single_mut() else {
         return;
     };
+    let snapshot = frame
+        .for_session(&session)
+        .and_then(|frame| frame.production.as_ref());
     visibility.set_if_neq(
-        if ui.menu_open || ui.splash_visible || ui.comparison_open || ui.archive_open {
+        if ui.menu_open
+            || ui.splash_visible
+            || ui.comparison_open
+            || ui.archive_open
+            || readings_panel_visible(*view, &navigation, &ui, snapshot)
+        {
             Visibility::Hidden
         } else {
             Visibility::Visible
@@ -519,9 +633,6 @@ fn paint_log(
     }
     commands.entity(entity).despawn_children();
     let context = session.context();
-    let snapshot = frame
-        .for_session(&session)
-        .and_then(|frame| frame.production.as_ref());
     commands.entity(entity).with_children(|panel| {
         panel.spawn(label("L O G", 22.0, theme::PAPER));
         panel.spawn((label("", 11.0, theme::GRAY), HistoryHint));
@@ -539,29 +650,160 @@ fn paint_log(
             panel.spawn(label("No developments are recorded through this point in the campaign. Run a month from the live edge to follow production and deliveries.", 14.0, theme::PAPER));
             return;
         }
-        let shown = snapshot.events.len().min(160);
-        panel.spawn(label(format!("Latest {shown} of {} committed developments. Select an entry to locate its subjects and inspect that point in time.", snapshot.events.len()), 11.0, theme::GRAY));
-        let mut previous_month = None;
-        for event in snapshot.events.iter().rev().take(shown) {
-            let month = CampaignMonth::at_week(event.week).number;
-            if previous_month != Some(month) {
-                panel.spawn(label(format!("CAMPAIGN MONTH {month}"), 12.0, theme::YELLOW))
-                    .insert(Node { margin: UiRect::top(px(8)), flex_shrink: 0.0, ..default() });
-                previous_month = Some(month);
-            }
-            panel.spawn((Button, HistoryButton::Event { context: context.clone(), event: event.clone() },
-                Node { padding: UiRect::axes(px(10), px(9)), border: UiRect::left(px(2)),
-                    flex_direction: FlexDirection::Column, row_gap: px(5), flex_shrink: 0.0,
-                    min_width: px(0), ..default() },
-                BorderColor::all(theme::BLUE), BackgroundColor(theme::PANEL),
-                DeclaredSurface::new(SurfaceId::ObserverProduction)))
-                .with_children(|entry| {
-                    entry.spawn(label(event.kind.to_uppercase(), 11.0, theme::BLUE));
-                    entry.spawn(label(&event.description, 13.0, theme::PAPER));
-                    entry.spawn(label(format!("Week {} / inspect consequence", event.week), 10.0, theme::GRAY));
-                });
-        }
+        spawn_log_entries(panel, snapshot, &context, &history);
     });
+}
+
+fn spawn_log_entries(
+    panel: &mut ChildSpawnerCommands,
+    snapshot: &babylon_persistence::ProductionSnapshotV1,
+    context: &ObservationContext,
+    history: &HistoryState,
+) {
+    let log = match delivery_log_entries(snapshot, LOG_ENTRIES) {
+        Ok(log) => log,
+        Err(error) => {
+            panel.spawn(label(error.to_string(), 13.0, theme::RED));
+            return;
+        }
+    };
+    panel.spawn(label(format!(
+        "Latest {} of {} developments / {} original evidence entries. Expand a delivery to inspect its committed evidence.",
+        log.entries.len(), log.total_entries, log.evidence_entries
+    ), 11.0, theme::GRAY));
+    let mut previous_month = None;
+    for entry in log.entries {
+        let month = CampaignMonth::at_week(entry.week()).number;
+        if previous_month != Some(month) {
+            panel
+                .spawn(label(
+                    format!("CAMPAIGN MONTH {month}"),
+                    12.0,
+                    theme::YELLOW,
+                ))
+                .insert(Node {
+                    margin: UiRect::top(px(8)),
+                    flex_shrink: 0.0,
+                    ..default()
+                });
+            previous_month = Some(month);
+        }
+        match entry {
+            DeliveryLogEntry::Event(event) => spawn_event_entry(panel, event, context),
+            DeliveryLogEntry::Delivery(group) => {
+                let expanded = history
+                    .expanded_delivery
+                    .as_ref()
+                    .is_some_and(|(scope, key)| scope == context && *key == group.key);
+                spawn_delivery_entry(panel, &group, context, expanded);
+            }
+        }
+    }
+}
+
+fn spawn_event_entry(
+    panel: &mut ChildSpawnerCommands,
+    event: &ProductionEventV1,
+    context: &ObservationContext,
+) {
+    panel
+        .spawn((
+            Button,
+            HistoryButton::Event {
+                context: context.clone(),
+                event: event.clone(),
+            },
+            Node {
+                padding: UiRect::axes(px(10), px(9)),
+                border: UiRect::left(px(2)),
+                flex_direction: FlexDirection::Column,
+                row_gap: px(5),
+                flex_shrink: 0.0,
+                min_width: px(0),
+                ..default()
+            },
+            BorderColor::all(theme::BLUE),
+            BackgroundColor(theme::PANEL),
+            DeclaredSurface::new(SurfaceId::ObserverProduction),
+        ))
+        .with_children(|entry| {
+            entry.spawn(label(event.kind.to_uppercase(), 11.0, theme::BLUE));
+            entry.spawn(label(&event.description, 13.0, theme::PAPER));
+            entry.spawn(label(
+                format!("Week {} / inspect consequence", event.week),
+                10.0,
+                theme::GRAY,
+            ));
+        });
+}
+
+fn spawn_delivery_entry(
+    panel: &mut ChildSpawnerCommands,
+    group: &DeliveryGroup<'_>,
+    context: &ObservationContext,
+    expanded: bool,
+) {
+    panel
+        .spawn((
+            Node {
+                padding: UiRect::axes(px(10), px(9)),
+                border: UiRect::left(px(2)),
+                flex_direction: FlexDirection::Column,
+                row_gap: px(7),
+                flex_shrink: 0.0,
+                min_width: px(0),
+                ..default()
+            },
+            BorderColor::all(theme::BLUE),
+            BackgroundColor(theme::PANEL),
+            DeclaredSurface::new(SurfaceId::ObserverProduction),
+        ))
+        .with_children(|entry| {
+            entry.spawn(label(group.headline(), 14.0, theme::PAPER));
+            entry.spawn(label(
+                format!(
+                    "Week {} / {} -> {}",
+                    group.key.week, group.supplier.name, group.buyer.name
+                ),
+                11.0,
+                theme::GRAY,
+            ));
+            entry
+                .spawn((
+                    Button,
+                    HistoryButton::DeliveryEvidence {
+                        context: context.clone(),
+                        group: group.key.clone(),
+                    },
+                    Node {
+                        padding: UiRect::axes(px(7), px(5)),
+                        border: UiRect::bottom(px(1)),
+                        flex_shrink: 0.0,
+                        min_width: px(0),
+                        ..default()
+                    },
+                    BorderColor::all(theme::GRAY),
+                    BackgroundColor(theme::PANEL),
+                    DeclaredSurface::new(SurfaceId::ObserverProduction),
+                ))
+                .with_children(|button| {
+                    button.spawn(label(
+                        if expanded {
+                            "Collapse evidence".into()
+                        } else {
+                            format!("Expand {} evidence entries", group.events.len())
+                        },
+                        11.0,
+                        theme::BLUE,
+                    ));
+                });
+            if expanded {
+                entry.spawn(label(group.details(), 11.0, theme::PAPER));
+                for event in &group.events {
+                    spawn_event_entry(entry, event, context);
+                }
+            }
+        });
 }
 
 pub struct ObserverHistoryPlugin;
@@ -605,6 +847,7 @@ mod tests {
             kind: "delivery".into(),
             description: "Committed input delivery".into(),
             receipt_digest: "a".repeat(64),
+            delivery_evidence: None,
         }
     }
 
@@ -630,6 +873,7 @@ mod tests {
                 routes: vec![],
                 freight: vec![],
                 events: vec![event],
+                material_balance: None,
                 observed_contexts: Vec::new(),
                 process_attributions: Vec::new(),
                 provenance: vec![],
@@ -645,6 +889,8 @@ mod tests {
                 ..default()
             })
             .init_resource::<HistoryState>()
+            .init_resource::<ProductionNavigation>()
+            .init_resource::<PrimaryView>()
             .init_resource::<DossierRefresh>()
             .init_resource::<ObserverFeedback>()
             .init_resource::<Time>()
@@ -665,6 +911,368 @@ mod tests {
                 BorderColor::all(theme::BLUE),
             ))
             .id()
+    }
+
+    fn delivery_site(id: &str, name: &str) -> ProductionSiteV1 {
+        ProductionSiteV1 {
+            id: id.into(),
+            county_geoid: "26163".into(),
+            name: name.into(),
+            industry_code: "331".into(),
+            observed_employment: None,
+            output_good_id: "sheet".into(),
+            output_unit_id: "tonnes".into(),
+            output_good: "Sheet metal".into(),
+            output_unit: "tonnes".into(),
+            output_per_batch: 1,
+            available_batches: 1,
+            planned_batches: None,
+            produced_batches: None,
+            inventory: vec![],
+            inputs: vec![],
+            labor: vec![],
+        }
+    }
+
+    fn delivery_app(parts: usize, week: u64) -> App {
+        use babylon_persistence::{
+            ProductionDeliveryEvidenceV1, ProductionDeliveryStageV1, ProductionRouteV1,
+        };
+        let (mut app, _) = history_app(event(week));
+        app.world_mut()
+            .resource_mut::<ObserverUiState>()
+            .history_open = false;
+        let mut frame = app.world_mut().resource_mut::<ObserverFrame>();
+        let snapshot = frame.0.as_mut().unwrap().production.as_mut().unwrap();
+        snapshot.sites = vec![
+            delivery_site("supplier", "Wayne metal"),
+            delivery_site("buyer", "Macomb parts"),
+        ];
+        snapshot.routes = vec![ProductionRouteV1 {
+            id: "route".into(),
+            supplier_site_id: "supplier".into(),
+            buyer_site_id: "buyer".into(),
+            good_id: "sheet".into(),
+            unit_id: "tonnes".into(),
+            good: "Sheet metal".into(),
+            unit: "tonnes".into(),
+            travel_weeks: 1,
+            ordered: 10_000,
+            shipped: 999,
+            delivered: 333,
+            lost: 0,
+            realized: 333,
+            backlog: 9_001,
+        }];
+        snapshot.events = (0..parts)
+            .flat_map(|part| {
+                [
+                    ProductionDeliveryStageV1::Arrival,
+                    ProductionDeliveryStageV1::Delivery,
+                    ProductionDeliveryStageV1::QuantityRealization,
+                ]
+                .into_iter()
+                .enumerate()
+                .map(move |(index, stage)| ProductionEventV1 {
+                    id: format!("part-{part}-stage-{index}"),
+                    week,
+                    subject_site_ids: vec!["supplier".into(), "buyer".into()],
+                    kind: format!("Original stage {index}"),
+                    description: format!("Original part {part} stage {index}"),
+                    receipt_digest: "a".repeat(64),
+                    delivery_evidence: Some(ProductionDeliveryEvidenceV1 {
+                        stage,
+                        order_id: "order".into(),
+                        route_id: "route".into(),
+                        good_id: "sheet".into(),
+                        unit_id: "tonnes".into(),
+                        quantity: 2,
+                    }),
+                })
+            })
+            .collect();
+        app.add_message::<ProductionCommand>().add_systems(
+            Update,
+            (update, paint_log)
+                .chain()
+                .after(input)
+                .before(paint_buttons),
+        );
+        app.world_mut().spawn((LogPanel, Visibility::Visible));
+        app
+    }
+
+    fn delivery_toggle(app: &mut App) -> (Entity, HistoryButton) {
+        let world = app.world_mut();
+        world
+            .query::<(Entity, &HistoryButton)>()
+            .iter(world)
+            .find(|(_, button)| matches!(button, HistoryButton::DeliveryEvidence { .. }))
+            .map(|(entity, button)| (entity, button.clone()))
+            .expect("delivery expansion button")
+    }
+
+    fn log_text(app: &mut App) -> String {
+        let world = app.world_mut();
+        world
+            .query::<&Text>()
+            .iter(world)
+            .map(|text| text.0.as_str())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn delivery_summaries_group_before_display_limit_and_expand_exact_evidence_without_time_change()
+    {
+        let mut app = delivery_app(61, 3);
+        app.world_mut().resource_mut::<ObserverSession>().playing = true;
+        app.update();
+        assert_eq!(history_buttons(&mut app).len(), 1);
+        assert!(log_text(&mut app).contains("Expand 183 evidence entries"));
+        assert!(!log_text(&mut app).contains("Original part 0 stage 0"));
+        let context = app.world().resource::<ObserverSession>().context();
+        let (toggle, _) = delivery_toggle(&mut app);
+        app.world_mut()
+            .entity_mut(toggle)
+            .insert(Interaction::Pressed);
+        app.update();
+        let session = app.world().resource::<ObserverSession>();
+        assert_eq!(session.context(), context);
+        assert_eq!((session.durable_tick, session.viewed_tick), (3, 3));
+        assert!(session.playing, "expansion must not even pause the month");
+        assert_eq!(app.world().resource::<DossierRefresh>().0, 0);
+        assert!(app
+            .world()
+            .resource::<HistoryState>()
+            .selected_event
+            .is_none());
+        let texts = log_text(&mut app);
+        assert!(texts
+            .contains("Arrived: 122 tonnes\nDelivered: 122 tonnes\nQuantity realized: 122 tonnes"));
+        assert!(!texts.contains("366 tonnes"));
+        let originals = app
+            .world()
+            .resource::<ObserverFrame>()
+            .0
+            .as_ref()
+            .unwrap()
+            .production
+            .as_ref()
+            .unwrap()
+            .events
+            .clone();
+        let world = app.world_mut();
+        let shown = world
+            .query::<&HistoryButton>()
+            .iter(world)
+            .filter_map(|button| match button {
+                HistoryButton::Event {
+                    context: scope,
+                    event,
+                } => {
+                    assert_eq!(*scope, context);
+                    Some(event.clone())
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(shown.len(), originals.len());
+        for event in originals {
+            assert_eq!(shown.iter().filter(|row| **row == event).count(), 1);
+        }
+        let (toggle, _) = delivery_toggle(&mut app);
+        app.world_mut()
+            .entity_mut(toggle)
+            .insert(Interaction::Pressed);
+        app.update();
+        assert_eq!(history_buttons(&mut app).len(), 1);
+        assert!(app
+            .world()
+            .resource::<HistoryState>()
+            .expanded_delivery
+            .is_none());
+    }
+
+    #[test]
+    fn expanded_original_event_preserves_exact_navigation_and_receipt_scope() {
+        let mut app = delivery_app(1, 2);
+        app.update();
+        let (toggle, _) = delivery_toggle(&mut app);
+        app.world_mut()
+            .entity_mut(toggle)
+            .insert(Interaction::Pressed);
+        app.update();
+        let world = app.world_mut();
+        let (entity, event) = world
+            .query::<(Entity, &HistoryButton)>()
+            .iter(world)
+            .find_map(|(entity, button)| match button {
+                HistoryButton::Event { event, .. } => Some((entity, event.clone())),
+                _ => None,
+            })
+            .unwrap();
+        app.world_mut()
+            .entity_mut(entity)
+            .insert(Interaction::Pressed);
+        app.update();
+        let session = app.world().resource::<ObserverSession>();
+        assert_eq!(session.viewed_tick, 2);
+        assert_eq!(session.phase, SessionPhase::Loading);
+        assert_eq!(app.world().resource::<DossierRefresh>().0, 1);
+        assert_eq!(
+            app.world().resource::<HistoryState>().selected_event,
+            Some((session.context(), event.clone()))
+        );
+        assert!(app
+            .world()
+            .resource::<HistoryState>()
+            .expanded_delivery
+            .is_none());
+        {
+            let mut frame = app.world_mut().resource_mut::<ObserverFrame>();
+            frame.0.as_mut().unwrap().resolve_tick = 2;
+        }
+        let context = app.world().resource::<ObserverSession>().context();
+        assert!(app
+            .world_mut()
+            .resource_mut::<ObserverSession>()
+            .installed(&context));
+        app.update();
+        let selected = app
+            .world_mut()
+            .resource_mut::<Messages<ProductionCommand>>()
+            .drain()
+            .collect::<Vec<_>>();
+        assert!(
+            matches!(selected.as_slice(), [ProductionCommand::Select { site_id, context: actual }]
+            if site_id == "supplier" && *actual == context)
+        );
+        assert_eq!(
+            app.world()
+                .resource::<HistoryState>()
+                .selected_event
+                .as_ref()
+                .unwrap()
+                .1
+                .receipt_digest,
+            event.receipt_digest
+        );
+    }
+
+    #[test]
+    fn delivery_expansion_clears_on_context_or_evidence_loss_and_stale_controls_refuse() {
+        for change in ["campaign", "perspective", "tick", "absent", "removed"] {
+            let mut app = delivery_app(1, 3);
+            app.update();
+            let (toggle, old_button) = delivery_toggle(&mut app);
+            app.world_mut()
+                .entity_mut(toggle)
+                .insert(Interaction::Pressed);
+            app.update();
+            assert!(app
+                .world()
+                .resource::<HistoryState>()
+                .expanded_delivery
+                .is_some());
+            match change {
+                "campaign" => {
+                    app.world_mut().resource_mut::<ObserverSession>().campaign =
+                        CampaignId::from_uuid(uuid::Uuid::from_u128(2));
+                }
+                "perspective" => app
+                    .world_mut()
+                    .resource_mut::<ObserverSession>()
+                    .set_perspective(Perspective::PlayerKnowledge),
+                "tick" => {
+                    app.world_mut()
+                        .resource_mut::<ObserverSession>()
+                        .inspect_tick(2);
+                }
+                "removed" => {
+                    app.world_mut()
+                        .resource_mut::<ObserverFrame>()
+                        .0
+                        .as_mut()
+                        .unwrap()
+                        .production
+                        .as_mut()
+                        .unwrap()
+                        .events
+                        .clear();
+                }
+                _ => {
+                    app.world_mut().resource_mut::<ObserverFrame>().0 = None;
+                }
+            }
+            app.update();
+            assert!(
+                app.world()
+                    .resource::<HistoryState>()
+                    .expanded_delivery
+                    .is_none(),
+                "{change}"
+            );
+            let context = app.world().resource::<ObserverSession>().context();
+            spawn_button(&mut app, old_button, Interaction::Pressed);
+            app.update();
+            assert_eq!(app.world().resource::<ObserverSession>().context(), context);
+            assert!(app
+                .world()
+                .resource::<HistoryState>()
+                .expanded_delivery
+                .is_none());
+            assert!(app.world().resource::<ObserverFeedback>().message.is_some());
+            assert_eq!(app.world().resource::<DossierRefresh>().0, 0);
+        }
+    }
+
+    #[test]
+    fn readings_occupy_the_log_panel_and_block_its_hidden_controls() {
+        let mut app = delivery_app(1, 3);
+        app.update();
+        let (toggle, _) = delivery_toggle(&mut app);
+        *app.world_mut().resource_mut::<PrimaryView>() = PrimaryView::Production;
+        app.world_mut()
+            .resource_mut::<ProductionNavigation>()
+            .details_open = true;
+        app.world_mut()
+            .entity_mut(toggle)
+            .insert(Interaction::Pressed);
+        app.update();
+        let world = app.world_mut();
+        assert_eq!(
+            *world
+                .query_filtered::<&Visibility, With<LogPanel>>()
+                .single(world)
+                .unwrap(),
+            Visibility::Hidden
+        );
+        assert!(world.resource::<HistoryState>().expanded_delivery.is_none());
+        assert_eq!(
+            world.resource::<ObserverFeedback>().message,
+            Some("Close the current readings to inspect the delivery log")
+        );
+        app.world_mut()
+            .resource_mut::<ProductionNavigation>()
+            .details_open = false;
+        app.update();
+        let world = app.world_mut();
+        assert_eq!(
+            *world
+                .query_filtered::<&Visibility, With<LogPanel>>()
+                .single(world)
+                .unwrap(),
+            Visibility::Visible
+        );
+        app.world_mut()
+            .resource_mut::<ProductionNavigation>()
+            .details_open = true;
+        app.world_mut().resource_mut::<ObserverFrame>().0 = None;
+        app.update();
+        let world = app.world_mut();
+        assert_eq!(*world.query_filtered::<&Visibility, With<LogPanel>>().single(world).unwrap(), Visibility::Visible,
+            "a retained details flag without a validated reading must not obscure the unavailable log");
     }
 
     #[derive(Resource, Default, Debug, PartialEq, Eq)]
@@ -698,6 +1306,64 @@ mod tests {
             borders: borders.iter().count(),
             text: text.iter().count(),
         };
+    }
+
+    #[test]
+    fn expanded_delivery_log_keeps_entities_and_components_unchanged_while_idle() {
+        let mut app = delivery_app(61, 3);
+        app.init_resource::<HistoryPaintChanges>()
+            .add_systems(PostUpdate, record_paint_changes);
+        app.update();
+        let (toggle, _) = delivery_toggle(&mut app);
+        app.world_mut()
+            .entity_mut(toggle)
+            .insert(Interaction::Pressed);
+        app.update();
+        app.update();
+        let buttons = history_buttons(&mut app);
+        assert_eq!(buttons.len(), 184);
+        for _ in 0..3 {
+            app.update();
+            assert_eq!(history_buttons(&mut app), buttons);
+            assert_eq!(
+                *app.world().resource::<HistoryPaintChanges>(),
+                HistoryPaintChanges::default()
+            );
+        }
+    }
+
+    #[test]
+    fn contradictory_delivery_identity_refuses_rendering_and_clears_expansion() {
+        let mut app = delivery_app(1, 3);
+        app.update();
+        let (toggle, _) = delivery_toggle(&mut app);
+        app.world_mut()
+            .entity_mut(toggle)
+            .insert(Interaction::Pressed);
+        app.update();
+        app.world_mut()
+            .resource_mut::<ObserverFrame>()
+            .0
+            .as_mut()
+            .unwrap()
+            .production
+            .as_mut()
+            .unwrap()
+            .events[0]
+            .delivery_evidence
+            .as_mut()
+            .unwrap()
+            .good_id = "different-good".into();
+        app.update();
+        assert!(history_buttons(&mut app).is_empty());
+        assert!(app
+            .world()
+            .resource::<HistoryState>()
+            .expanded_delivery
+            .is_none());
+        let text = log_text(&mut app);
+        assert!(text.contains("Delivery evidence identities do not agree."));
+        assert!(!text.contains("Sheet metal delivered"));
     }
 
     fn history_buttons(app: &mut App) -> Vec<Entity> {
@@ -1061,6 +1727,7 @@ mod tests {
                 &button,
                 app.world().resource::<ObserverSession>(),
                 app.world().resource::<ObserverFrame>(),
+                None,
             ),
             ControlAvailability::Disabled("This event is unavailable in the current observation")
         );
@@ -1072,6 +1739,7 @@ mod tests {
                 &button,
                 app.world().resource::<ObserverSession>(),
                 app.world().resource::<ObserverFrame>(),
+                None,
             ),
             ControlAvailability::Disabled("History changed; wait for its current observation")
         );

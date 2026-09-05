@@ -554,6 +554,7 @@ mod tests {
             visibility: ObserverVisibilityV1::FullObserver,
             counties: vec![],
             production: Some(ProductionSnapshotV1 {
+                material_balance: None,
                 labor_accounts: Vec::new(),
                 scenario_label: "Designed lens fixture".into(),
                 horizon_week: 16,

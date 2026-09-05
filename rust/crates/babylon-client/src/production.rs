@@ -74,6 +74,8 @@ struct ProductionPanel;
 #[derive(Component)]
 struct ProductionDetailGroup;
 #[derive(Component)]
+struct ProductionReadingBody;
+#[derive(Component)]
 struct ProductionDisclosureLabel;
 #[derive(Component)]
 struct ProductionDetails;
@@ -172,6 +174,22 @@ impl ProductionControlAvailability {
             _ => None,
         }
     }
+}
+
+/// A disclosed inspector temporarily occupies the log's shared side panel.
+pub(crate) fn readings_panel_visible(
+    view: PrimaryView,
+    navigation: &ProductionNavigation,
+    ui: &ObserverUiState,
+    snapshot: Option<&ProductionSnapshotV1>,
+) -> bool {
+    view == PrimaryView::Production
+        && navigation.details_open
+        && ProductionControlAvailability::for_snapshot(snapshot, navigation).scene
+        && !ui.archive_open
+        && !ui.menu_open
+        && !ui.comparison_open
+        && !ui.splash_visible
 }
 
 #[derive(SystemParam)]
@@ -330,20 +348,31 @@ fn setup_panel(commands: &mut Commands) {
             DeclaredSurface::new(SurfaceId::ObserverProduction),
         ))
         .with_children(panel_contents);
+    setup_readings_panel(commands);
 }
 
 fn panel_contents(panel: &mut ChildSpawnerCommands) {
     panel
         .spawn(crate::observer_ui::context_column())
         .with_children(|panel| {
-            panel.spawn((
-                text("WORK & DEPENDENCE", 17.0, theme::YELLOW),
-                Node {
+            panel
+                .spawn(Node {
+                    justify_content: JustifyContent::SpaceBetween,
+                    align_items: AlignItems::Center,
+                    column_gap: px(8),
                     flex_shrink: 0.0,
                     min_width: px(0),
                     ..default()
-                },
-            ));
+                })
+                .with_children(|header| {
+                    header.spawn(text("WORK & DEPENDENCE", 17.0, theme::YELLOW));
+                    header
+                        .spawn(button_node(ProductionCommand::Details))
+                        .with_child((
+                            text("READINGS +", 13.0, theme::PAPER),
+                            ProductionDisclosureLabel,
+                        ));
+                });
             panel.spawn((
                 text(
                     "Whose work makes this possible? Who relies on its output?",
@@ -381,22 +410,53 @@ fn panel_contents(panel: &mut ChildSpawnerCommands) {
                 },
                 ProductionDependencies,
             ));
+        });
+}
+
+fn setup_readings_panel(commands: &mut Commands) {
+    commands
+        .spawn((
+            ProductionDetailGroup,
+            crate::observer_layout::ObserverRegion::Log,
+            DeclaredSurface::new(SurfaceId::ObserverProduction),
+            Node {
+                position_type: PositionType::Absolute,
+                display: Display::None,
+                flex_direction: FlexDirection::Column,
+                padding: UiRect::all(px(16)),
+                border: UiRect::left(px(2)),
+                row_gap: px(12),
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            BackgroundColor(theme::INK),
+            BorderColor::all(theme::PAPER),
+            ZIndex(8),
+        ))
+        .with_children(|panel| {
             panel
-                .spawn(button_node(ProductionCommand::Details))
-                .with_child((
-                    text("SHOW EXACT READINGS & DISPLAY", 13.0, theme::PAPER),
-                    ProductionDisclosureLabel,
-                ));
+                .spawn(Node {
+                    justify_content: JustifyContent::SpaceBetween,
+                    align_items: AlignItems::Center,
+                    column_gap: px(8),
+                    flex_shrink: 0.0,
+                    ..default()
+                })
+                .with_children(|header| {
+                    header.spawn(text("R E A D I N G S", 17.0, theme::YELLOW));
+                    button(header, "CLOSE", ProductionCommand::Details);
+                });
             panel
                 .spawn((
-                    ProductionDetailGroup,
+                    ProductionReadingBody,
                     Node {
-                        display: Display::None,
                         flex_direction: FlexDirection::Column,
                         row_gap: px(12),
-                        flex_shrink: 0.0,
+                        flex_grow: 1.0,
+                        min_height: px(0),
                         min_width: px(0),
                         max_width: percent(100),
+                        overflow: Overflow::scroll_y(),
                         ..default()
                     },
                 ))
@@ -680,11 +740,18 @@ fn focus_opening(
     });
 }
 
+type InspectorScrolls<'w, 's> = Query<
+    'w,
+    's,
+    &'static mut ScrollPosition,
+    Or<(With<ProductionPanel>, With<ProductionReadingBody>)>,
+>;
+
 /// New subjects start at their brief; a new week preserves the reader's place.
 fn reset_inspector_scroll(
     state: Res<ObserverSession>,
     navigation: Res<ProductionNavigation>,
-    mut panels: Query<&mut ScrollPosition, With<ProductionPanel>>,
+    mut panels: InspectorScrolls,
     mut previous: Local<
         Option<(
             babylon_persistence::CampaignId,
@@ -1074,6 +1141,7 @@ fn describe(site: &ProductionSiteV1, snapshot: &ProductionSnapshotV1) -> String 
         )
         .expect("String write");
     }
+    describe_material_balance(&mut value, site, snapshot);
     describe_labor_accounts(&mut value, site, snapshot);
     value.push_str("\nLABOR BUDGET / DESIGNED\n");
     for labor in &site.labor {
@@ -1136,6 +1204,42 @@ fn describe(site: &ProductionSiteV1, snapshot: &ProductionSnapshotV1) -> String 
     }
     value.push_str("\nRealization here records delivered quantities, not payment.\nSCENE KEY\nEqual-height structures identify county cohorts; height and spacing carry no quantity or geography. Arrows point from disclosed suppliers to buyers. Bright links touch the selection. Packets are actual in-transit lots at static schematic positions.\n");
     value
+}
+
+fn describe_material_balance(
+    value: &mut String,
+    site: &ProductionSiteV1,
+    snapshot: &ProductionSnapshotV1,
+) {
+    let Some(balance) = &snapshot.material_balance else {
+        value.push_str("\nNo completed stock-movement account at this point.\n");
+        return;
+    };
+    let mut rows = balance
+        .rows
+        .iter()
+        .filter(|row| row.site_id == site.id)
+        .peekable();
+    if rows.peek().is_none() {
+        value.push_str("\nNo stock-movement account disclosed for this subject.\n");
+        return;
+    }
+    writeln!(value, "\nSTOCK MOVEMENT / WEEK {}", balance.week).expect("String write");
+    for row in rows {
+        writeln!(
+            value,
+            "{} / {}\nOpened {} + arrived {} + produced {}\n= consumed {} + dispatched {} + closed {}",
+            row.good,
+            row.unit,
+            grouped(row.opening),
+            grouped(row.arrivals),
+            grouped(row.produced),
+            grouped(row.consumed),
+            grouped(row.dispatched),
+            grouped(row.closing),
+        )
+        .expect("String write");
+    }
 }
 
 fn describe_sector_context(
@@ -1315,6 +1419,8 @@ fn rebuild_dependencies(
 fn paint_disclosure(
     navigation: Res<ProductionNavigation>,
     observation: ProductionObservation,
+    view: Res<PrimaryView>,
+    ui: Res<ObserverUiState>,
     mut groups: Query<&mut Node, (With<ProductionDetailGroup>, Without<ProductionButton>)>,
     mut controls: Query<(&ProductionButton, &mut Node), Without<ProductionDetailGroup>>,
     mut labels: Query<&mut Text, With<ProductionDisclosureLabel>>,
@@ -1322,6 +1428,8 @@ fn paint_disclosure(
     if !navigation.is_changed()
         && !observation.frame.is_changed()
         && !observation.state.is_changed()
+        && !view.is_changed()
+        && !ui.is_changed()
     {
         return;
     }
@@ -1338,7 +1446,7 @@ fn paint_disclosure(
         }
     }
     for mut node in &mut groups {
-        let next = if available.scene && navigation.details_open {
+        let next = if readings_panel_visible(*view, &navigation, &ui, snapshot) {
             Display::Flex
         } else {
             Display::None
@@ -1349,9 +1457,9 @@ fn paint_disclosure(
     }
     for mut text in &mut labels {
         let next = if navigation.details_open {
-            "HIDE EXACT READINGS & DISPLAY"
+            "READINGS -"
         } else {
-            "SHOW EXACT READINGS & DISPLAY"
+            "READINGS +"
         };
         if text.0 != next {
             next.clone_into(&mut text.0);
@@ -1656,6 +1764,7 @@ mod tests {
 
     fn snapshot() -> ProductionSnapshotV1 {
         ProductionSnapshotV1 {
+            material_balance: None,
             labor_accounts: Vec::new(),
             observed_contexts: Vec::new(),
             process_attributions: Vec::new(),
@@ -1686,6 +1795,63 @@ mod tests {
             events: Vec::new(),
             provenance: Vec::new(),
         }
+    }
+
+    #[test]
+    fn stock_readings_keep_units_and_subjects_separate_and_do_not_invent_foundation_flows() {
+        use babylon_persistence::{CompletedMaterialBalanceV1, ProductionMaterialBalanceRowV1};
+
+        let mut snapshot = snapshot();
+        let selected = snapshot.sites[0].clone();
+        let mut value = String::new();
+        describe_material_balance(&mut value, &selected, &snapshot);
+        assert!(value.contains("No completed stock-movement account"));
+        assert!(!value.contains("Opened 0"));
+        let kilograms = ProductionMaterialBalanceRowV1 {
+            site_id: selected.id.clone(),
+            good_id: "ore".into(),
+            unit_id: "kg".into(),
+            good: "Ore".into(),
+            unit: "kg".into(),
+            opening: 10,
+            arrivals: 5,
+            produced: 4,
+            consumed: 3,
+            dispatched: 6,
+            closing: 10,
+        };
+        let tonnes = ProductionMaterialBalanceRowV1 {
+            unit_id: "tonne".into(),
+            unit: "tonne".into(),
+            opening: 1,
+            arrivals: 2,
+            produced: 0,
+            consumed: 0,
+            dispatched: 0,
+            closing: 3,
+            ..kilograms.clone()
+        };
+        let unrelated = ProductionMaterialBalanceRowV1 {
+            site_id: "b".into(),
+            good: "Unrelated stock".into(),
+            ..kilograms.clone()
+        };
+        snapshot.material_balance = Some(CompletedMaterialBalanceV1 {
+            week: 5,
+            rows: vec![kilograms, tonnes, unrelated],
+        });
+        value.clear();
+        describe_material_balance(&mut value, &selected, &snapshot);
+        assert!(value.contains("STOCK MOVEMENT / WEEK 5"));
+        assert!(value.contains(
+            "Ore / kg\nOpened 10 + arrived 5 + produced 4\n= consumed 3 + dispatched 6 + closed 10"
+        ));
+        assert!(value.contains("Ore / tonne\nOpened 1 + arrived 2 + produced 0\n= consumed 0 + dispatched 0 + closed 3"));
+        assert!(!value.contains("Unrelated stock"));
+        value.clear();
+        describe_material_balance(&mut value, &snapshot.sites[2], &snapshot);
+        assert!(value.contains("No stock-movement account disclosed for this subject"));
+        assert!(!value.contains("Opened"));
     }
 
     #[test]
@@ -2368,6 +2534,7 @@ mod tests {
         use bevy::ecs::system::RunSystemOnce;
 
         let mut app = dependency_navigation_app();
+        app.insert_resource(PrimaryView::Production);
         app.world_mut()
             .run_system_once(setup)
             .expect("production panel");
@@ -2393,6 +2560,64 @@ mod tests {
             .resource_mut::<Messages<ProductionCommand>>()
             .write(command);
         app.update();
+    }
+
+    #[test]
+    fn expanded_readings_use_the_side_panel_and_yield_to_modal_views() {
+        use crate::observer_layout::{ObserverLayout, ObserverRegion};
+
+        let mut app = production_panel_app();
+        send_command(&mut app, ProductionCommand::Open);
+        send_command(&mut app, ProductionCommand::Details);
+        let world = app.world_mut();
+        let detail = world
+            .query_filtered::<Entity, With<ProductionDetailGroup>>()
+            .single(world)
+            .expect("one inspector");
+        assert!(
+            matches!(
+                world.get::<ObserverRegion>(detail),
+                Some(ObserverRegion::Log)
+            ),
+            "expanded readings must use the full-height side panel"
+        );
+        assert!(world.get::<ChildOf>(detail).is_none());
+        for size in [Vec2::new(1366.0, 768.0), Vec2::new(1920.0, 1080.0)] {
+            let layout = ObserverLayout::new(size, 1.0, false);
+            let reading = layout.region(ObserverRegion::Log);
+            assert!(reading.height() > 600.0);
+            assert!(reading.min.x > layout.world.max.x);
+        }
+        assert_eq!(world.get::<Node>(detail).unwrap().display, Display::Flex);
+        for modal in 0..4 {
+            {
+                let mut ui = app.world_mut().resource_mut::<ObserverUiState>();
+                ui.menu_open = modal == 0;
+                ui.archive_open = modal == 1;
+                ui.comparison_open = modal == 2;
+                ui.splash_visible = modal == 3;
+            }
+            app.update();
+            assert_eq!(
+                app.world().get::<Node>(detail).unwrap().display,
+                Display::None
+            );
+        }
+        *app.world_mut().resource_mut::<ObserverUiState>() = ObserverUiState {
+            menu_open: false,
+            splash_visible: false,
+            ..default()
+        };
+        app.update();
+        assert_eq!(
+            app.world().get::<Node>(detail).unwrap().display,
+            Display::Flex
+        );
+        send_command(&mut app, ProductionCommand::Map);
+        assert_eq!(
+            app.world().get::<Node>(detail).unwrap().display,
+            Display::None
+        );
     }
 
     #[test]
@@ -2614,6 +2839,7 @@ mod tests {
         use bevy::ecs::system::RunSystemOnce;
 
         let mut app = dependency_navigation_app();
+        *app.world_mut().resource_mut::<PrimaryView>() = PrimaryView::Production;
         app.world_mut()
             .run_system_once(setup)
             .expect("production panel");
@@ -2638,24 +2864,10 @@ mod tests {
         );
         assert!(panel_text::<ProductionBrief>(&mut app).contains("Committed plan partly completed"));
         assert!(panel_text::<ProductionDetails>(&mut app).is_empty());
-        let panel = app.world().get::<ChildOf>(group).unwrap().parent();
-        let children = app.world().get::<Children>(panel).unwrap();
-        let world = app.world();
-        let links = children
-            .iter()
-            .position(|entity| world.get::<ProductionDependencies>(entity).is_some())
-            .unwrap();
-        let detail = children.iter().position(|entity| entity == group).unwrap();
-        assert!(links < detail);
-        let root = world.get::<ChildOf>(panel).unwrap().parent();
-        let columns = world.get::<Children>(root).unwrap();
-        assert_ne!(columns[0], panel);
-        assert!(world
-            .get::<Children>(columns[0])
-            .unwrap()
-            .iter()
-            .any(|entity| world.get::<ProductionBrief>(entity).is_some()));
-        assert_eq!(columns[1], panel);
+        assert_eq!(
+            panel_text::<ProductionDisclosureLabel>(&mut app),
+            "READINGS +"
+        );
         app.world_mut()
             .resource_mut::<Messages<ProductionCommand>>()
             .write(ProductionCommand::Details);

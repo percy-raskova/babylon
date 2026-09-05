@@ -20,7 +20,7 @@ use crate::observer_focus::{
     ObserverFocusPolicy, ObserverFocusSystems, ObserverFocusTarget, ObserverKeyboardActivate,
     ObserverKeyboardClaim,
 };
-use crate::observer_io::ObserverSet;
+use crate::observer_io::{ObserverSet, RuntimePipe, LAUNCHER_REQUIRED};
 use crate::observer_theme as theme;
 use crate::observer_ui::{ObserverCampaignCatalog, ObserverFrame, ObserverUiState};
 
@@ -385,6 +385,7 @@ fn commands(
     mut session: ResMut<ObserverSession>,
     mut ui: ResMut<ObserverUiState>,
     mut exits: MessageWriter<AppExit>,
+    pipe: Option<Res<RuntimePipe>>,
 ) {
     for command in messages.read() {
         if session.quit_requested {
@@ -410,28 +411,7 @@ fn commands(
                 browser.comparison_target = None;
             }
             CampaignBrowserCommand::Open => {
-                let Some(selected) = browser.catalog.get(browser.selected) else {
-                    continue;
-                };
-                let campaign = match parse_campaign(&selected.id) {
-                    Ok(campaign) => campaign,
-                    Err(error) => {
-                        browser.status = error;
-                        continue;
-                    }
-                };
-                session.playing = false;
-                match preference_path()
-                    .and_then(|path| write_preference(&path, campaign, browser.generation))
-                {
-                    Ok(()) => {
-                        exits.write(AppExit::Error(
-                            std::num::NonZeroU8::new(OPEN_SELECTED_EXIT)
-                                .expect("reserved launcher control"),
-                        ));
-                    }
-                    Err(error) => browser.status = error,
-                }
+                open_selected_campaign(&mut browser, &mut session, pipe.as_deref(), &mut exits);
             }
             CampaignBrowserCommand::Compare => {
                 let Some(selected) = browser.catalog.get(browser.selected) else {
@@ -484,6 +464,37 @@ fn commands(
             }
             CampaignBrowserCommand::Refresh => request_catalog(&mut browser, &session),
         }
+    }
+}
+
+fn open_selected_campaign(
+    browser: &mut CampaignBrowserState,
+    session: &mut ObserverSession,
+    pipe: Option<&RuntimePipe>,
+    exits: &mut MessageWriter<AppExit>,
+) {
+    if pipe.is_none() {
+        LAUNCHER_REQUIRED.clone_into(&mut browser.status);
+        return;
+    }
+    let Some(selected) = browser.catalog.get(browser.selected) else {
+        return;
+    };
+    let campaign = match parse_campaign(&selected.id) {
+        Ok(campaign) => campaign,
+        Err(error) => {
+            browser.status = error;
+            return;
+        }
+    };
+    session.playing = false;
+    match preference_path().and_then(|path| write_preference(&path, campaign, browser.generation)) {
+        Ok(()) => {
+            exits.write(AppExit::Error(
+                std::num::NonZeroU8::new(OPEN_SELECTED_EXIT).expect("reserved launcher control"),
+            ));
+        }
+        Err(error) => browser.status = error,
     }
 }
 
@@ -852,6 +863,90 @@ impl Plugin for CampaignBrowserPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn catalog_handoff_app(with_pipe: bool) -> (App, CampaignId) {
+        let campaign = CampaignId::from_uuid(uuid::Uuid::from_u128(1));
+        let selected = CampaignId::from_uuid(uuid::Uuid::from_u128(2));
+        let mut session = ObserverSession::new(campaign);
+        session.fail("Runtime disconnected".into());
+        let mut app = App::new();
+        app.insert_resource(session)
+            .insert_resource(CampaignBrowserState {
+                catalog: vec![CampaignSummaryV1 {
+                    id: selected.as_uuid().to_string(),
+                    preset: "standard".into(),
+                    label: "Saved campaign".into(),
+                    durable_tick: 3,
+                }],
+                ..default()
+            })
+            .insert_resource(ObserverUiState {
+                menu_open: true,
+                splash_visible: false,
+                ..default()
+            })
+            .add_message::<CampaignBrowserCommand>()
+            .add_message::<AppExit>()
+            .add_systems(Update, commands);
+        if with_pipe {
+            app.insert_resource(crate::observer_io::RuntimePipe::detached_fixture());
+        }
+        (app, selected)
+    }
+
+    #[test]
+    fn launcher_handoff_catalog_without_pipe_preserves_preferences_and_window() {
+        let environment = crate::test_support::EnvVarGuard::lock("XDG_STATE_HOME");
+        let directory =
+            std::env::temp_dir().join(format!("babylon-detached-handoff-{}", uuid::Uuid::new_v4()));
+        environment.set(directory.to_str().unwrap());
+        let path = preference_path().unwrap();
+        let original = CampaignId::from_uuid(uuid::Uuid::from_u128(1));
+        write_preference(&path, original, 0).unwrap();
+        let (mut app, _) = catalog_handoff_app(false);
+        app.world_mut()
+            .resource_mut::<Messages<CampaignBrowserCommand>>()
+            .write(CampaignBrowserCommand::Open);
+        app.update();
+        assert!(
+            app.world().resource::<Messages<AppExit>>().is_empty(),
+            "Opening a saved campaign closed a standalone window"
+        );
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            format!("{}\n", original.as_uuid())
+        );
+        assert_eq!(fs::read_dir(path.parent().unwrap()).unwrap().count(), 1);
+        assert_eq!(
+            app.world().resource::<CampaignBrowserState>().status,
+            "This window has no launcher connection. Close it and start Babylon through its launcher."
+        );
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn launcher_handoff_catalog_with_pipe_writes_selected_campaign_after_failure() {
+        let environment = crate::test_support::EnvVarGuard::lock("XDG_STATE_HOME");
+        let directory = std::env::temp_dir().join(format!(
+            "babylon-connected-handoff-{}",
+            uuid::Uuid::new_v4()
+        ));
+        environment.set(directory.to_str().unwrap());
+        let (mut app, selected) = catalog_handoff_app(true);
+        app.world_mut()
+            .resource_mut::<Messages<CampaignBrowserCommand>>()
+            .write(CampaignBrowserCommand::Open);
+        app.update();
+        assert!(matches!(
+            app.world_mut().resource_mut::<Messages<AppExit>>().drain().collect::<Vec<_>>().as_slice(),
+            [AppExit::Error(code)] if code.get() == OPEN_SELECTED_EXIT
+        ));
+        assert_eq!(
+            fs::read_to_string(preference_path().unwrap()).unwrap(),
+            format!("{}\n", selected.as_uuid())
+        );
+        fs::remove_dir_all(directory).unwrap();
+    }
 
     #[test]
     fn browser_keyboard_request_revalidates_perspective_and_visible_menu() {

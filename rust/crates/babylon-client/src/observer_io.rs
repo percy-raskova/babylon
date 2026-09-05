@@ -24,6 +24,9 @@ pub const REOPEN_CAMPAIGN_EXIT: u8 = 21;
 /// Start the separate delayed-delivery scenario without changing this campaign.
 pub const DELAYED_CAMPAIGN_EXIT: u8 = 22;
 
+pub(crate) const LAUNCHER_REQUIRED: &str =
+    "This window has no launcher connection. Close it and start Babylon through its launcher.";
+
 // Stop is a control request, separate from the monotonically numbered advances.
 const STOP_REQUEST_ID: u64 = 0;
 // Allows the bounded 120-second storage statement to finish before recovery cleanup.
@@ -38,9 +41,21 @@ pub enum ObserverSet {
 }
 
 #[derive(Resource)]
-struct RuntimePipe {
+pub(crate) struct RuntimePipe {
     requests: mpsc::SyncSender<RuntimeSessionRequestV2>,
     responses: Mutex<mpsc::Receiver<Result<RuntimeSessionResponseV2, String>>>,
+}
+
+#[cfg(test)]
+impl RuntimePipe {
+    pub(crate) fn detached_fixture() -> Self {
+        let (requests, _) = mpsc::sync_channel(1);
+        let (_, responses) = mpsc::channel();
+        Self {
+            requests,
+            responses: Mutex::new(responses),
+        }
+    }
 }
 
 #[derive(Resource, Default)]
@@ -392,6 +407,10 @@ fn apply_command(command: ObserverCommand, context: &mut CommandContext) {
         ObserverCommand::NewCampaign
         | ObserverCommand::ReopenCampaign
         | ObserverCommand::NewDelayedCampaign => {
+            if pipe.is_none() {
+                feedback.reject(LAUNCHER_REQUIRED, time.elapsed_secs_f64());
+                return;
+            }
             state.cancel_month();
             let code = match command {
                 ObserverCommand::NewCampaign => NEW_CAMPAIGN_EXIT,
@@ -771,6 +790,69 @@ mod tests {
 
     fn exit_count(app: &App) -> usize {
         app.world().resource::<Messages<AppExit>>().len()
+    }
+
+    #[test]
+    fn launcher_handoff_without_pipe_keeps_the_window_and_campaign_open() {
+        for command in [
+            ObserverCommand::NewCampaign,
+            ObserverCommand::NewDelayedCampaign,
+            ObserverCommand::ReopenCampaign,
+        ] {
+            let (mut app, _) = command_app();
+            app.world_mut().remove_resource::<RuntimePipe>();
+            app.world_mut()
+                .resource_mut::<ObserverSession>()
+                .fail("No runtime is connected".into());
+            let context = app.world().resource::<ObserverSession>().context();
+            dispatch(&mut app, &[command]);
+            assert_eq!(
+                exit_count(&app),
+                0,
+                "{command:?} closed a standalone window"
+            );
+            assert_eq!(app.world().resource::<ObserverSession>().context(), context);
+            assert_eq!(
+                app.world().resource::<ObserverFeedback>().message,
+                Some("This window has no launcher connection. Close it and start Babylon through its launcher.")
+            );
+        }
+    }
+
+    #[test]
+    fn launcher_handoff_with_pipe_preserves_recovery_exit_codes_after_failure() {
+        for (command, expected_code) in [
+            (ObserverCommand::NewCampaign, NEW_CAMPAIGN_EXIT),
+            (ObserverCommand::NewDelayedCampaign, DELAYED_CAMPAIGN_EXIT),
+            (ObserverCommand::ReopenCampaign, REOPEN_CAMPAIGN_EXIT),
+        ] {
+            let (mut app, _) = command_app();
+            let mut session = app.world_mut().resource_mut::<ObserverSession>();
+            if command == ObserverCommand::ReopenCampaign {
+                session.begin_advance().unwrap();
+            }
+            session.fail("Lost runtime acknowledgement".into());
+            dispatch(&mut app, &[command]);
+            assert!(matches!(
+                app.world_mut().resource_mut::<Messages<AppExit>>().drain().collect::<Vec<_>>().as_slice(),
+                [AppExit::Error(code)] if code.get() == expected_code
+            ));
+        }
+    }
+
+    #[test]
+    fn launcher_handoff_without_pipe_still_allows_explicit_quit() {
+        let (mut app, _) = command_app();
+        app.world_mut().remove_resource::<RuntimePipe>();
+        dispatch(&mut app, &[ObserverCommand::Quit]);
+        assert!(matches!(
+            app.world_mut()
+                .resource_mut::<Messages<AppExit>>()
+                .drain()
+                .collect::<Vec<_>>()
+                .as_slice(),
+            [AppExit::Success]
+        ));
     }
 
     #[test]

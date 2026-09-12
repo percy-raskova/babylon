@@ -1643,13 +1643,13 @@ mod tests {
 
     #[test]
     fn governed_attribution_rows_carry_the_required_provenance() {
-        assert_eq!(GOVERNED_RULE_ATTRIBUTIONS.len(), 68);
+        assert_eq!(GOVERNED_RULE_ATTRIBUTIONS.len(), 69);
         assert_eq!(
             GOVERNED_RULE_ATTRIBUTIONS
                 .iter()
                 .filter(|row| row.role == RuleRole::Mechanic)
                 .count(),
-            65
+            66
         );
         assert_eq!(
             GOVERNED_RULE_ATTRIBUTIONS

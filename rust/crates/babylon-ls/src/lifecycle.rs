@@ -54,7 +54,7 @@ use crate::authoring::{
 };
 use crate::capabilities::server_capabilities;
 use crate::content_manifest::ContentSetManifest;
-use crate::diagnostics::compute_result_id;
+use crate::diagnostics::{compute_result_id, missing_manifest_row_diagnostic};
 use crate::document_store::DocumentStore;
 use crate::pass::{
     analyze_probability_authoring, content_relative_path, diagnose_bsl, LiveSourceReader,
@@ -517,21 +517,20 @@ fn apply_did_close(state: &mut ServerState, note: &RawNotification) {
     }
 }
 
-/// Compute `uri`'s current diagnostics (empty when the server has no
-/// manifest/content-root, or `uri` names no content-root-relative path —
-/// both are legitimate "nothing to report" states, not errors) and its
+/// Compute `uri`'s current diagnostics (including an explicit unavailable-context
+/// notice for BSL/BSCN files outside the loaded manifest) and its
 /// `resultId`, cache the id, and return `(diagnostics, resultId)` — the
 /// one computation push (`push_diagnostics_for`) and pull (`handle_
 /// document_diagnostic`/`handle_workspace_diagnostic`) both call through.
 fn compute_diagnostics(state: &mut ServerState, uri: &Uri) -> (Vec<lsp_types::Diagnostic>, String) {
     let Some(content_root) = state.content_root.clone() else {
-        return (Vec::new(), compute_result_id(&[], &[]));
+        return unavailable_context_diagnostics(state, uri);
     };
     let Some(manifest) = state.manifest.as_ref() else {
-        return (Vec::new(), compute_result_id(&[], &[]));
+        return unavailable_context_diagnostics(state, uri);
     };
     let Some(path) = content_relative_path(&content_root, uri) else {
-        return (Vec::new(), compute_result_id(&[], &[]));
+        return unavailable_context_diagnostics(state, uri);
     };
     let reader = LiveSourceReader {
         content_root: &content_root,
@@ -549,6 +548,33 @@ fn compute_diagnostics(state: &mut ServerState, uri: &Uri) -> (Vec<lsp_types::Di
     let manifest_bytes = std::fs::read(content_root.join("content-sets.toml")).unwrap_or_default();
     let result_id = compute_result_id(&[(uri, bytes.as_bytes())], &manifest_bytes);
     (diagnostics, result_id)
+}
+
+fn unavailable_context_diagnostics(
+    state: &ServerState,
+    uri: &Uri,
+) -> (Vec<lsp_types::Diagnostic>, String) {
+    let path = file_path_from_uri(uri);
+    if !path.as_ref().is_some_and(|path| {
+        matches!(
+            path.extension().and_then(|extension| extension.to_str()),
+            Some("bsl" | "bscn")
+        )
+    }) {
+        return (Vec::new(), compute_result_id(&[], &[]));
+    }
+    let Some((text, line_index)) = source_for_authoring(state, uri) else {
+        return (Vec::new(), compute_result_id(&[], &[]));
+    };
+    let result_id = compute_result_id(&[(uri, text.as_bytes())], &[]);
+    (
+        vec![missing_manifest_row_diagnostic(
+            &text,
+            &line_index,
+            uri.as_str(),
+        )],
+        result_id,
+    )
 }
 
 /// Push `textDocument/publishDiagnostics` for `uri` — ALWAYS, even an
@@ -619,6 +645,10 @@ fn workspace_diagnostic_paths(
     for uri in state.store.open_uris() {
         if let Some(path) = content_relative_path(content_root, &uri) {
             paths.insert(path);
+        } else if let Some(path) = file_path_from_uri(&uri) {
+            // Path::join retains this absolute path in the workspace response.
+            // Its diagnostic still explicitly refuses to claim campaign context.
+            paths.insert(path.to_string_lossy().into_owned());
         }
     }
     paths
@@ -847,6 +877,45 @@ note = "LSP request fixture"
             rule_uri,
             source,
         )
+    }
+
+    #[test]
+    fn authored_campaign_sources_outside_the_manifest_report_unavailable_context() {
+        let (mut state, _, _) = probability_authoring_state();
+        for (name, source) in [
+            (
+                "material-cycle.bsl",
+                include_str!("../../../../content/scenarios/michigan/material-cycle.bsl"),
+            ),
+            (
+                "cohort-declarations.bscn",
+                include_str!("../../../../content/scenarios/michigan/cohort-declarations.bscn"),
+            ),
+        ] {
+            let uri = format!("file:///campaign/content/{name}")
+                .parse::<Uri>()
+                .unwrap();
+            state.store.open(uri.clone(), 1, source.to_owned());
+            assert!(
+                super::workspace_diagnostic_paths(&state, Path::new("/virtual"))
+                    .contains(&format!("/campaign/content/{name}"))
+            );
+            let (diagnostics, result_id) = super::compute_diagnostics(&mut state, &uri);
+            assert_eq!(
+                diagnostics.len(),
+                1,
+                "{name} must not appear silently validated"
+            );
+            assert_eq!(
+                diagnostics[0].severity,
+                Some(lsp_types::DiagnosticSeverity::INFORMATION)
+            );
+            assert!(diagnostics[0]
+                .message
+                .contains("campaign context is unavailable"));
+            assert!(!diagnostics[0].message.contains("checks run"));
+            assert!(!result_id.is_empty());
+        }
     }
 
     fn response_value(client: &Connection) -> serde_json::Value {

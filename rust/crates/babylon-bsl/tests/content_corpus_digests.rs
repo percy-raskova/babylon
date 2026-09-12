@@ -6,7 +6,7 @@
 //! §5.6/tick-golden spot checks.
 //!
 //! **Corpus scope, and why it is walked rather than `include_str!`ed.**
-//! Four directories hold every real BSL source file in this tree: the
+//! The authored corpus includes the live Michigan campaign sources and the
 //! shipped rule pack (`babylon-tick/content/rules/*.bsl`), this crate's
 //! own conformance fixtures (`tests/conformance/*.bsl`), and the shipped
 //! scenario corpus (`babylon-tick/content/scenarios/*.bscn` plus the
@@ -28,7 +28,55 @@ const CORPUS_DIRS: &[(&str, &str)] = &[
     ("tests/conformance", "bsl"),
     ("../babylon-tick/content/scenarios", "bscn"),
     ("../babylon-tick/content/declarations", "bscn"),
+    ("../../../content/scenarios/michigan", "bsl"),
+    ("../../../content/scenarios/michigan", "bscn"),
 ];
+
+#[test]
+fn live_michigan_rule_passes_the_native_loader_without_scenario_declarations() {
+    use babylon_bsl::{
+        bindings::BindingVocabulary,
+        fuel::{CardinalityCeilings, IntrinsicCosts, MATERIAL_CYCLE_INVOCATION_COST},
+        rule_pipeline::{load_rule, LoadContext, RuleExecution},
+        typecheck::TypeEnv,
+        types::EnumRegistry,
+        vocabulary::ClosedVocabulary,
+    };
+    use std::collections::{HashMap, HashSet};
+
+    let vocabulary = BindingVocabulary::default();
+    let types = TypeEnv {
+        fields: HashMap::new(),
+        exemptions: &[],
+    };
+    let enums = EnumRegistry::default();
+    let const_values = HashMap::new();
+    let ceilings = CardinalityCeilings::default();
+    let intrinsics = IntrinsicCosts::default();
+    let systems = HashSet::from(["metabolism".to_owned()]);
+    let closed_vocabulary = ClosedVocabulary::default();
+    let source = include_str!("../../../../content/scenarios/michigan/material-cycle.bsl");
+    let loaded = load_rule(
+        source,
+        &LoadContext {
+            vocabulary: &vocabulary,
+            types: &types,
+            enums: &enums,
+            const_values: &const_values,
+            ceilings: &ceilings,
+            intrinsics: &intrinsics,
+            systems: &systems,
+            vocabulary_registry: Some(&closed_vocabulary),
+            rule_file: "content/scenarios/michigan/material-cycle.bsl",
+        },
+    )
+    .expect(
+        "the live closed invocation must pass the actual loader without fabricated graph content",
+    );
+    assert_eq!(loaded.execution, RuleExecution::MaterialCycle);
+    assert_eq!(loaded.static_bound, MATERIAL_CYCLE_INVOCATION_COST);
+    assert_eq!(loaded.declared_fuel, MATERIAL_CYCLE_INVOCATION_COST);
+}
 
 fn sha256_hex(bytes: &[u8]) -> String {
     use std::fmt::Write as _;
@@ -404,6 +452,14 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     (
         "worldview.bscn",
         "23a650f0f3bdb33da8e8bc66f6aa8d27475ddc8422adbcb93637f66cf3d26ae0",
+    ),
+    (
+        "material-cycle.bsl",
+        "af07457d5577fed934159f2559a0f4b7c2b797c1cc2e5f5c47639f4eb72206ec",
+    ),
+    (
+        "cohort-declarations.bscn",
+        "4c0474bd2d16c85d5f5060a2abd87cd6983d7c8c50d2dbef9a66538481cb5990",
     ),
 ];
 

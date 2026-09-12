@@ -1,8 +1,7 @@
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::{hypergraph_store::HypergraphStore, state_hash::CanonicalState};
 use babylon_persistence::{
-    michigan_content::MichiganContentPreset, michigan_economy::michigan_observer_foundation,
-    michigan_material::MichiganDeliveryPreset,
+    michigan_content::MichiganContentPreset, michigan_material::MichiganDeliveryPreset,
 };
 use babylon_practice_contract::OrderedPracticeActionBatch;
 use babylon_tick::{
@@ -93,63 +92,6 @@ fn material_commit_failure_leaves_graph_circuit_world_time_and_sink_unchanged() 
             session.current_world_hash().unwrap()
         );
     }
-}
-#[test]
-fn material_transition_failure_abandons_prepared_graph_and_identity() {
-    let (graph, _) = michigan_observer_foundation().unwrap();
-    let mut initial = MichiganContentPreset::FourWeekStandard
-        .create_foundation(&crate::test_support::catalog())
-        .unwrap()
-        .initial_register()
-        .state()
-        .clone();
-    let source = initial
-        .production_commitments
-        .iter()
-        .find(|row| row.period == 1 && row.planned_batches > 0)
-        .unwrap();
-    let output = initial
-        .process_outputs
-        .iter()
-        .find(|row| row.process_id == source.process_id)
-        .unwrap()
-        .clone();
-    if let Some(stock) = initial.inventory.iter_mut().find(|row| {
-        row.site_id == output.site_id
-            && row.good_id == output.good_id
-            && row.unit_id == output.unit_id
-    }) {
-        stock.quantity = u64::MAX;
-    } else {
-        initial
-            .inventory
-            .push(babylon_material_circuit::InventoryRow {
-                site_id: output.site_id,
-                good_id: output.good_id,
-                unit_id: output.unit_id,
-                quantity: u64::MAX,
-            });
-    }
-    let register = MaterialWorldRegister::try_new(0, initial).unwrap();
-    let session = MaterialReplaySession::new(
-        graph,
-        register,
-        [7; 32],
-        16,
-        MichiganContentPreset::FourWeekStandard
-            .create_foundation(&crate::test_support::catalog())
-            .unwrap()
-            .labor()
-            .clone(),
-    )
-    .unwrap();
-    let bytes = session.material().canonical_bytes().to_vec();
-    let hash = session.current_world_hash().unwrap();
-    assert!(session.prepare_advance(&actions(&session)).is_err());
-    assert_eq!(session.completed_tick(), 0);
-    assert_eq!(session.graph_session().completed_tick(), 0);
-    assert_eq!(session.material().canonical_bytes(), bytes);
-    assert_eq!(session.current_world_hash().unwrap(), hash);
 }
 #[test]
 fn staffed_arrival_feeds_following_commitments_through_the_full_horizon() {

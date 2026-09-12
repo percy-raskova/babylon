@@ -115,11 +115,16 @@ module.exports = grammar({
         repeat(
           choice($.rule_role, $.evidence, $.material_basis, $.fuel, $.projects_kernel),
         ),
-        optional($.domain),
-        optional($.anchor),
-        $.bindings,
-        optional($.when),
-        $.effects,
+        choice(
+          seq($.anchor, $.material_cycle),
+          seq(
+            optional($.domain),
+            optional($.anchor),
+            $.bindings,
+            optional($.when),
+            $.effects,
+          ),
+        ),
         ')',
       ),
 
@@ -138,6 +143,8 @@ module.exports = grammar({
     graph_flag: (_$) => ':graph',
 
     anchor: ($) => seq('(', 'anchor', choice(':after', ':before'), $.symbol, ')'),
+
+    material_cycle: (_$) => seq('(', 'material-cycle', ')'),
 
     bindings: ($) => seq('(', 'bindings', repeat($.binding), ')'),
     when: ($) => seq('(', 'when', $._cond, ')'),

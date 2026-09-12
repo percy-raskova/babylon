@@ -141,7 +141,7 @@ fn exact_source_cells_are_not_duplicated_and_suppression_is_absence() {
             row.total_annual_wages(),
             row.annual_avg_wkly_wage(),
         ];
-        for ((key, _), value) in BUSINESS_FIELDS.iter().zip(values) {
+        for (key, value) in BUSINESS_FIELDS.iter().zip(values) {
             assert_eq!(
                 attributes
                     .get(&(name.as_str(), format!("organization/{key}").as_str()))

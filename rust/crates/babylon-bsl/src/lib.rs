@@ -20,6 +20,7 @@ pub mod identity_sections;
 pub mod intrinsic_host;
 pub mod manifest;
 pub mod material_basis;
+mod material_cycle;
 pub mod metrics;
 pub mod mod_anchors;
 pub mod probability;

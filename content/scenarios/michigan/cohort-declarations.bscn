@@ -1,0 +1,7 @@
+  (defenum OrgKind (STATE_APPARATUS BUSINESS POLITICAL_FACTION CIVIL_SOCIETY))
+  (deffield organization/kind enum OrgKind)
+  (deffield organization/county-fips int intensive)
+  (deffield organization/qcew-establishments int extensive)
+  (deffield organization/qcew-employment int extensive)
+  (deffield organization/qcew-total-annual-wages int extensive)
+  (deffield organization/qcew-average-weekly-wage int intensive)

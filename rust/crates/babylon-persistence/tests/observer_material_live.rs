@@ -1043,9 +1043,6 @@ mod runtime_process;
 #[path = "observer_material_live/tick_components.rs"]
 mod tick_components;
 
-#[path = "observer_material_live/staffing_admission.rs"]
-mod staffing_admission;
-
 #[path = "observer_material_live/staffing_history.rs"]
 mod staffing_history;
 

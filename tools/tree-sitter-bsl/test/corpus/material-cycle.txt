@@ -1,0 +1,23 @@
+==================================================
+Once-per-period material invocation
+==================================================
+
+(rule material/period
+  :role mechanic
+  :evidence designed
+  :material-basis "Close the existing Michigan material circuit once per period."
+  :fuel 1000000
+  (anchor :after metabolism)
+  (material-cycle))
+
+---
+
+(source_file
+  (rule
+    (qname)
+    (rule_role)
+    (evidence)
+    (material_basis (string))
+    (fuel (int_lit))
+    (anchor (symbol))
+    (material_cycle)))

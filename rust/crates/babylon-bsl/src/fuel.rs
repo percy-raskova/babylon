@@ -16,6 +16,12 @@ use crate::identity_codec::{validate_intrinsic_identity, IntrinsicIdentityViolat
 
 const MAX_SFS_IDENTITY_ROWS: usize = 64;
 
+/// Fixed full-budget admission charge for one indivisible material invocation.
+/// This meters the invocation, not CPU time or the number of material rows.
+/// The current material runtime independently enforces its typed row and
+/// checked-arithmetic bounds; this charge does not replace those limits.
+pub const MATERIAL_CYCLE_INVOCATION_COST: u64 = crate::material_basis::MAX_FUEL.unsigned_abs();
+
 /// A refusal while constructing a complete synthetic-audit fuel-table identity.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SfsFuelIdentityError {

@@ -65,6 +65,15 @@ const SCENARIO: &str = r"
     (social-class/probability 0.9p)))
 ";
 
+const MATERIAL_CYCLE: &str = r#"
+(rule material/period
+  :role mechanic :evidence designed
+  :material-basis "Close the existing physical circuit and conserved workforce once per period"
+  :fuel 1000000
+  (anchor :after metabolism)
+  (material-cycle))
+"#;
+
 // The common after-metabolism boundary orders this explicit later rule after
 // the native g4-workforce-staffing composition by the governed rule-ID bytes.
 const WITNESS: &str = r#"
@@ -256,7 +265,10 @@ fn staffed_labor() -> StaffingComposition {
         .unwrap()
 }
 
-fn try_session(rules: &str, labor: StaffingComposition) -> Result<Session, MaterialReplayError> {
+fn try_session_with_authored_rules(
+    rules: &str,
+    labor: StaffingComposition,
+) -> Result<Session, MaterialReplayError> {
     let foundation = michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation().unwrap();
     let (_, parsed) = split_content(rules).unwrap();
     let forms = parsed.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
@@ -286,6 +298,96 @@ fn try_session(rules: &str, labor: StaffingComposition) -> Result<Session, Mater
 
 fn session(rules: &str) -> Session {
     try_session(rules, staffed_labor()).unwrap()
+}
+
+fn try_session(
+    additional_rules: &str,
+    labor: StaffingComposition,
+) -> Result<Session, MaterialReplayError> {
+    try_session_with_authored_rules(&format!("{MATERIAL_CYCLE}\n{additional_rules}"), labor)
+}
+
+#[test]
+fn material_session_requires_an_authored_cycle() {
+    assert!(
+        try_session_with_authored_rules("", staffed_labor()).is_err(),
+        "a material campaign must not run an unauthored native fallback"
+    );
+}
+
+#[test]
+fn authored_cycle_fires_once_and_retains_the_current_physical_result() {
+    let session = try_session_with_authored_rules(MATERIAL_CYCLE, staffed_labor())
+        .expect("the authored cycle must bind to the current material runtime");
+    let candidate = prepare(&session);
+    let report = candidate.graph_report().report();
+    assert_eq!(
+        report.per_rule_considered,
+        [("material/period".to_owned(), 1)]
+    );
+    assert_eq!(report.per_rule_fired, [("material/period".to_owned(), 1)]);
+    assert_eq!(candidate.material().register().completed_tick(), 1);
+    assert_eq!(staffing_field(&candidate, "closing-employed"), 1);
+    assert_eq!(session.completed_tick(), 0, "preparation must not publish");
+}
+
+#[test]
+fn duplicate_authored_cycles_refuse_in_both_source_orders() {
+    let duplicate = MATERIAL_CYCLE.replace("material/period", "campaign/second-cycle");
+    for source in [
+        format!("{MATERIAL_CYCLE}\n{duplicate}"),
+        format!("{duplicate}\n{MATERIAL_CYCLE}"),
+    ] {
+        let error = try_session_with_authored_rules(&source, staffed_labor())
+            .err()
+            .expect("two authored invocations must not close two periods");
+        assert!(
+            error.to_string().contains("only one material-cycle"),
+            "{error}"
+        );
+    }
+}
+
+#[test]
+fn source_order_cannot_change_material_execution_or_joint_identity() {
+    let mut sessions = [
+        format!("{MATERIAL_CYCLE}\n{WITNESS}"),
+        format!("{WITNESS}\n{MATERIAL_CYCLE}"),
+    ]
+    .map(|rules| try_session_with_authored_rules(&rules, staffed_labor()).unwrap());
+    for _ in 0..4 {
+        let [first, second] = &mut sessions;
+        let left = prepare(first);
+        let right = prepare(second);
+        assert_eq!(left.identity(), right.identity());
+        assert_eq!(
+            left.graph_report().result_stable_graph(),
+            right.graph_report().result_stable_graph()
+        );
+        assert_eq!(
+            left.material().receipt_bytes(),
+            right.material().receipt_bytes()
+        );
+        assert_eq!(
+            left.graph_report().report().audit_receipts,
+            right.graph_report().report().audit_receipts
+        );
+        commit(first, &mut CollectingSink::default(), left);
+        commit(second, &mut CollectingSink::default(), right);
+    }
+}
+
+#[test]
+fn graph_diagnostic_refuses_material_execution_but_reports_its_fuel() {
+    let rows = babylon_tick::fuel_bound_report(SCENARIO, None, MATERIAL_CYCLE).unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!((rows[0].declared, rows[0].computed), (1_000_000, 1_000_000));
+    let error = babylon_tick::run_once(SCENARIO, MATERIAL_CYCLE)
+        .expect_err("a graph diagnostic has no material register");
+    assert!(
+        error.contains("requires one bound material host"),
+        "{error}"
+    );
 }
 
 fn prepare(session: &Session) -> Candidate {
@@ -566,7 +668,11 @@ fn successful_acknowledgement_publishes_stable_staffing_and_identity_free_audit_
         assert_eq!(staffing_field(&candidate, name), expected);
     }
     let audit = &report.report().audit_receipts;
-    assert_eq!(audit.len(), 4);
+    assert_eq!(audit.len(), 5);
+    assert_eq!(audit[0].rule_id, "material/period");
+    assert_eq!(audit[0].ordinal, 0);
+    assert_eq!(audit[0].effect, EffectSignature::MaterialCycle);
+    let audit = &audit[1..];
     assert!(audit
         .iter()
         .all(|row| row.rule_id == STAFFING_COMPOSITION_ID

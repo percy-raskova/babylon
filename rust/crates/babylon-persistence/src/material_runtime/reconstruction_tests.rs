@@ -36,16 +36,98 @@ fn stored_copy(original: &MaterialRuntimeFoundation) -> StoredMaterialFoundation
     }
 }
 
+#[test]
+fn material_campaign_captures_authored_cycle_and_fires_it_once_per_period() {
+    let foundation = crate::michigan_content::MichiganContentPreset::FourWeekStandard
+        .create_foundation(&crate::test_support::catalog())
+        .unwrap();
+    let rules = foundation
+        .graph_foundation()
+        .content_bundle()
+        .rule_source_bytes();
+    assert!(
+        !rules.is_empty(),
+        "a material campaign must capture its authored cycle rule"
+    );
+    let mut session = foundation.into_session().unwrap();
+    let mut sink = CollectingSink::default();
+    for tick in 1..=4 {
+        let actions = OrderedPracticeActionBatch::empty(
+            session.graph_session().session_identity().clone(),
+            tick,
+        )
+        .unwrap();
+        let candidate = session.prepare_advance(&actions).unwrap();
+        assert_eq!(
+            candidate.graph_report().report().per_rule_fired,
+            [("material/period".to_owned(), 1)],
+            "the authored material cycle must execute exactly once in period {tick}"
+        );
+        session
+            .commit_prepared_and_publish(&mut sink, candidate, |_| {
+                Ok::<_, ()>(ReplayCommitDisposition::Committed)
+            })
+            .unwrap();
+    }
+}
+
+#[test]
+fn material_foundation_refuses_a_rule_bundle_different_from_its_captured_catalog() {
+    let original = crate::michigan_content::MichiganContentPreset::FourWeekStandard
+        .create_foundation(&crate::test_support::catalog())
+        .unwrap();
+    let bundle = original.graph_foundation().content_bundle();
+    let source = std::str::from_utf8(bundle.scenario_source_bytes()).unwrap();
+    let changed_rules = format!(
+        "; This source was not captured in the catalog.\n{}",
+        std::str::from_utf8(bundle.rule_source_bytes()).unwrap()
+    );
+    let changed_bundle = FoundationContentBundle::try_new(
+        source,
+        None,
+        &changed_rules,
+        bundle.defines_bytes(),
+        bundle.reference_bundle_manifest_bytes(),
+    )
+    .unwrap();
+    assert_eq!(changed_bundle.content_digest(), bundle.content_digest());
+    let changed_graph = ReplayTickSession::new(
+        source,
+        None,
+        &changed_rules,
+        HypergraphStore::new(),
+        original
+            .graph_foundation()
+            .replay_session_identity()
+            .clone(),
+        original.graph_foundation().rng_seed(),
+        changed_bundle.content_digest().clone(),
+        changed_bundle.reference_digest(),
+        MaterialState::try_new(crate::michigan_dynamic_hex_foundation().unwrap()).unwrap(),
+    )
+    .unwrap();
+    assert!(matches!(
+        MaterialRuntimeFoundation::capture(
+            changed_graph,
+            changed_bundle,
+            original.initial_register().state().clone(),
+            original.spec().clone(),
+        ),
+        Err(MaterialRuntimeError::FoundationMismatch)
+    ));
+}
+
 fn alternate_foundation() -> MaterialRuntimeFoundation {
     let original = crate::michigan_content::MichiganContentPreset::FourWeekStandard
         .create_foundation(&crate::test_support::catalog())
         .unwrap();
     let bundle = original.graph_foundation.content_bundle();
     let source = std::str::from_utf8(bundle.scenario_source_bytes()).unwrap();
+    let rules = std::str::from_utf8(bundle.rule_source_bytes()).unwrap();
     let graph = ReplayTickSession::new(
         source,
         None,
-        "",
+        rules,
         HypergraphStore::new(),
         ReplaySessionId::try_from("fixture/stored-content-v2").unwrap(),
         ReplaySeed::new(9821),
@@ -57,7 +139,7 @@ fn alternate_foundation() -> MaterialRuntimeFoundation {
     let revised_bundle = FoundationContentBundle::try_new(
         source,
         None,
-        "",
+        rules,
         bundle.defines_bytes(),
         bundle.reference_bundle_manifest_bytes(),
     )
@@ -384,6 +466,7 @@ fn unwrapped_definitions_and_changed_opening_workforce_are_not_scheduled_fallbac
         .create_foundation(&crate::test_support::catalog())
         .unwrap();
     let original = current.graph_foundation().content_bundle();
+    let rules = std::str::from_utf8(original.rule_source_bytes()).unwrap();
     for change_seed in [false, true] {
         let source = std::str::from_utf8(original.scenario_source_bytes()).unwrap();
         let changed_source = source.replace(
@@ -403,7 +486,7 @@ fn unwrapped_definitions_and_changed_opening_workforce_are_not_scheduled_fallbac
         let bundle = FoundationContentBundle::try_new(
             source,
             None,
-            "",
+            rules,
             defines,
             original.reference_bundle_manifest_bytes(),
         )
@@ -411,7 +494,7 @@ fn unwrapped_definitions_and_changed_opening_workforce_are_not_scheduled_fallbac
         let graph = ReplayTickSession::new(
             source,
             None,
-            "",
+            rules,
             HypergraphStore::new(),
             ReplaySessionId::try_from("fixture/unsupported-authority").unwrap(),
             ReplaySeed::new(319),
@@ -485,4 +568,64 @@ fn assert_workforce_seed_evidence(
             )));
         }
     }
+}
+
+#[test]
+fn material_transition_failure_abandons_prepared_graph_and_identity() {
+    let foundation = crate::michigan_content::MichiganContentPreset::FourWeekStandard
+        .create_foundation(&crate::test_support::catalog())
+        .unwrap();
+    let mut initial = foundation.initial_register().state().clone();
+    let source = initial
+        .production_commitments
+        .iter()
+        .find(|row| row.period == 1 && row.planned_batches > 0)
+        .unwrap();
+    let output = initial
+        .process_outputs
+        .iter()
+        .find(|row| row.process_id == source.process_id)
+        .unwrap()
+        .clone();
+    if let Some(stock) = initial.inventory.iter_mut().find(|row| {
+        row.site_id == output.site_id
+            && row.good_id == output.good_id
+            && row.unit_id == output.unit_id
+    }) {
+        stock.quantity = u64::MAX;
+    } else {
+        initial
+            .inventory
+            .push(babylon_material_circuit::InventoryRow {
+                site_id: output.site_id,
+                good_id: output.good_id,
+                unit_id: output.unit_id,
+                quantity: u64::MAX,
+            });
+    }
+    let register = MaterialWorldRegister::try_new(0, initial).unwrap();
+    let session =
+        MaterialReplaySession::new(foundation.graph, register, [7; 32], 16, foundation.labor)
+            .unwrap();
+    let bytes = session.material().canonical_bytes().to_vec();
+    let hash = session.current_world_hash().unwrap();
+    let actions =
+        OrderedPracticeActionBatch::empty(session.graph_session().session_identity().clone(), 1)
+            .unwrap();
+    assert!(matches!(
+        session.prepare_advance(&actions),
+        Err(MaterialReplayError::Graph(
+            babylon_tick::replay_session::ReplayTickError::MaterialBase(
+                babylon_tick::material_replay::MaterialBaseError::World(
+                    MaterialWorldError::Circuit(
+                        babylon_material_circuit::MaterialCircuitError::Arithmetic
+                    )
+                )
+            )
+        ))
+    ));
+    assert_eq!(session.completed_tick(), 0);
+    assert_eq!(session.graph_session().completed_tick(), 0);
+    assert_eq!(session.material().canonical_bytes(), bytes);
+    assert_eq!(session.current_world_hash().unwrap(), hash);
 }

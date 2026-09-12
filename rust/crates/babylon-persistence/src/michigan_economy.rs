@@ -221,28 +221,22 @@ fn build_observer_foundation(
     let defines = format!(
         "{{\"qcew_vintage\":{QCEW_ECONOMICS_VINTAGE},\"tick_duration_days\":{DAYS_PER_TICK}}}"
     );
-    observer_foundation_from_source(
+    foundation_from_sources(
         economy.scenario_source(),
+        "",
         "g4/michigan-observer-v1",
         defines.as_bytes(),
-        FoundationContentBundle::try_new,
     )
 }
 
-/// Shared construction; each pinned factory explicitly selects its content codec.
-pub(crate) fn observer_foundation_from_source<B>(
+/// Prepare and capture the exact sources chosen by the observed or material catalog.
+pub(crate) fn foundation_from_sources(
     scenario_source: &str,
+    rule_source: &str,
     session_identity: &str,
     defines: &[u8],
-    encode_bundle: impl FnOnce(
-        &str,
-        Option<&str>,
-        &str,
-        &[u8],
-        &[u8],
-    ) -> Result<B, crate::RustPersistenceRuntimeError>,
-) -> Result<(ReplayTickSession<HypergraphStore>, B), MichiganEconomyError> {
-    let (_, rules) = split_content("").map_err(|_| MichiganEconomyError::Scenario)?;
+) -> Result<(ReplayTickSession<HypergraphStore>, FoundationContentBundle), MichiganEconomyError> {
+    let (_, rules) = split_content(rule_source).map_err(|_| MichiganEconomyError::Scenario)?;
     let forms = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
     let content = ContentDigest {
         defines_hash: sha256_of(defines),
@@ -261,7 +255,7 @@ pub(crate) fn observer_foundation_from_source<B>(
     let session = ReplayTickSession::new(
         scenario_source,
         None,
-        "",
+        rule_source,
         HypergraphStore::new(),
         ReplaySessionId::try_from(session_identity).map_err(|_| MichiganEconomyError::Scenario)?,
         ReplaySeed::new(319),
@@ -270,8 +264,9 @@ pub(crate) fn observer_foundation_from_source<B>(
         MaterialState::try_new(foundation).map_err(|_| MichiganEconomyError::Foundation)?,
     )
     .map_err(|_| MichiganEconomyError::Foundation)?;
-    let bundle = encode_bundle(scenario_source, None, "", defines, &manifest)
-        .map_err(|_| MichiganEconomyError::Foundation)?;
+    let bundle =
+        FoundationContentBundle::try_new(scenario_source, None, rule_source, defines, &manifest)
+            .map_err(|_| MichiganEconomyError::Foundation)?;
     Ok((session, bundle))
 }
 
@@ -327,11 +322,11 @@ mod tests {
             br#"{"qcew_vintage":2024,"tick_duration_days":7}"#.as_slice(),
             br#"{"qcew_vintage":2024,"tick_duration_days":29}"#.as_slice(),
         ] {
-            let (old_session, old_bundle) = observer_foundation_from_source(
+            let (old_session, old_bundle) = foundation_from_sources(
                 economy.scenario_source(),
+                "",
                 "g4/michigan-observer-v1",
                 incompatible,
-                FoundationContentBundle::try_new,
             )
             .unwrap();
             let old = CampaignFoundation::capture(&old_session, old_bundle).unwrap();

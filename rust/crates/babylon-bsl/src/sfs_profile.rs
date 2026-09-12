@@ -132,6 +132,10 @@ pub struct SfsAuditPolicy {
 /// A bounded footprint-audit refusal.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SfsProfileError {
+    /// This graph-AST audit cannot inspect the native material implementation
+    /// behind a material-cycle invocation. No synthetic-emergence footprint
+    /// is certified for that body.
+    NativeMaterialCycleUnsupported,
     /// The shared semantic AST bound was exceeded.
     AstWalkLimit,
     /// Existing static fuel/cardinality rejection.
@@ -621,6 +625,11 @@ fn preflight(
     let cardinality_digest = ceilings.sfs_identity_digest()?;
     let intrinsic_digest = intrinsic_costs.sfs_identity_digest()?;
     let computed_bound = check_rule(rule, ceilings, intrinsic_costs)?;
+    if crate::material_cycle::classify(rule).map_err(|_| SfsProfileError::CanonicalAst)?
+        == crate::rule_pipeline::RuleExecution::MaterialCycle
+    {
+        return Err(SfsProfileError::NativeMaterialCycleUnsupported);
+    }
     let declared_fuel = declared_fuel(rule_items(rule)?)?;
     Ok(Preflight {
         source_digest,
@@ -982,6 +991,7 @@ fn has_response_table(expr: &SExpr) -> bool {
 
 fn effect_row(effect: EffectSignature) -> String {
     match effect {
+        EffectSignature::MaterialCycle => "material-cycle".to_owned(),
         EffectSignature::NodeField(field) => format!("node:{field}"),
         EffectSignature::EdgeField(field) => format!("edge:{field}"),
         EffectSignature::HyperedgeField(field) => format!("hyperedge:{field}"),

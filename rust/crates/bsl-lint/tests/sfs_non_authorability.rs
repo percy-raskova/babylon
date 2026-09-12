@@ -83,6 +83,25 @@ fn the_clean_downstream_shape_passes() {
 }
 
 #[test]
+fn repository_level_michigan_content_is_checked_as_live_source() {
+    let scratch = ScratchRoot::new("michigan-content");
+    let workspace = scratch.0.join("rust");
+    write_minimal_workspace(&workspace, &["babylon-bsl", "babylon-evidence"]);
+    for name in ["rule.bsl", "declaration.bscn"] {
+        write_file(
+            &scratch.0.join("content/scenarios/michigan").join(name),
+            b"(deffield sfs/aggregate coefficient :owner NodeType/ORGANIZATION)",
+        );
+    }
+    let (code, report) = run_root(&workspace);
+    assert_eq!(code, 1, "{report}");
+    for name in ["rule.bsl", "declaration.bscn"] {
+        assert!(report.contains(name), "{report}");
+    }
+    assert!(report.contains("sfs/aggregate"), "{report}");
+}
+
+#[test]
 fn every_manifest_spelling_resolves_the_forbidden_package_edge() {
     let cases = [
         ("reversed-direct", "babylon-tick -> babylon-evidence"),

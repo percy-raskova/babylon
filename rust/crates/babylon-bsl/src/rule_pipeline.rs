@@ -66,6 +66,15 @@ use crate::typecheck::{
 use crate::types::EnumRegistry;
 use std::collections::{HashMap, HashSet};
 
+/// The authority that executes one fully checked rule body.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuleExecution {
+    /// The ordinary collect-and-apply graph evaluator.
+    Graph,
+    /// One unconditional current material period, supplied by the material runtime.
+    MaterialCycle,
+}
+
 /// Everything a rule loads against. Phase 1 takes each registry as an
 /// opaque input; their contents are Phase 2/3 content and engine data.
 pub struct LoadContext<'a> {
@@ -96,6 +105,8 @@ pub struct LoadContext<'a> {
 /// A rule that survived every load-time gate.
 #[derive(Debug, Clone)]
 pub struct LoadedRule {
+    /// Checked body kind; the graph evaluator refuses a material invocation.
+    pub execution: RuleExecution,
     /// Source identity supplied by the loader, retained for typed authoring analysis.
     pub source_id: String,
     /// Exact root path of this rule in its original source forest.
@@ -342,7 +353,11 @@ pub fn load_rule_form(
     // E-PARSE/E-TYPE-before-causal-authority ordering.
     validate_ast_walk_bounds(&rule, AST_WALK_LIMITS, "rule load preflight")
         .map_err(|error| LoadError::Causal(ContractError::AstWalkLimit(error)))?;
-    let bindings = parse_bindings(&rule).map_err(LoadError::Binding)?;
+    let execution = crate::material_cycle::classify(&rule).map_err(LoadError::Surface)?;
+    let bindings = match execution {
+        RuleExecution::Graph => parse_bindings(&rule).map_err(LoadError::Binding)?,
+        RuleExecution::MaterialCycle => Vec::new(),
+    };
     let binding_names: Vec<String> = bindings.iter().map(|d| d.name.clone()).collect();
     check_element_names(&rule, &binding_names).map_err(LoadError::ElementName)?;
     // §2's static shape rules run with the other E-TYPE-class checks: the
@@ -371,14 +386,17 @@ pub fn load_rule_form(
         check_field_init_owners(&rule, vocabulary).map_err(LoadError::Grammar)?;
         // The domain resolves BEFORE the scoping check, which needs the
         // subject node type to know which `:field` bindings are foreign.
-        let resolved = resolve_domain(&rule, &bindings, vocabulary).map_err(LoadError::Domain)?;
-        let subject = match &resolved {
-            RuleDomain::Node(segment) => Some(segment.clone()),
-            RuleDomain::Graph => None,
-        };
-        check_foreign_field_scoping(&rule, &bindings, subject.as_deref(), vocabulary)
-            .map_err(LoadError::Scope)?;
-        domain = Some(resolved);
+        if execution == RuleExecution::Graph {
+            let resolved =
+                resolve_domain(&rule, &bindings, vocabulary).map_err(LoadError::Domain)?;
+            let subject = match &resolved {
+                RuleDomain::Node(segment) => Some(segment.clone()),
+                RuleDomain::Graph => None,
+            };
+            check_foreign_field_scoping(&rule, &bindings, subject.as_deref(), vocabulary)
+                .map_err(LoadError::Scope)?;
+            domain = Some(resolved);
+        }
     }
     let compiled_probability = compile_rule_probability(
         &rule,
@@ -460,6 +478,7 @@ pub fn load_rule_form(
     let declared_fuel =
         crate::bound_checker::declared_fuel(rule_items).map_err(LoadError::Bound)?;
     Ok(LoadedRule {
+        execution,
         source_id: ctx.rule_file.to_owned(),
         root_path,
         rule,

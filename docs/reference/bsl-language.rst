@@ -909,11 +909,8 @@ content set are ``E-LOAD-001``.
                       ":evidence" <evidence-class>
                       ":material-basis" <string>
                       ":fuel" <int-lit>
-                      <domain>?
-                      <anchor>?
-                      <bindings>
-                      <when>?
-                      <effects>
+                      ( <domain>? <anchor>? <bindings> <when>? <effects>
+                      | <anchor> <material-cycle> )
                   ")"
 
    <rule-role> ::= "mechanic" | "recognizer" | "external-event" | "intent"
@@ -924,6 +921,37 @@ content set are ``E-LOAD-001``.
    <bindings> ::= "(" "bindings" <binding>* ")"
    <when>     ::= "(" "when" <cond> ")"
    <effects>  ::= "(" "effects" <effect-item>+ ")"
+   <material-cycle> ::= "(" "material-cycle" ")"
+
+``material-cycle`` is a closed invocation of the current native material
+period (ADR261). Its rule must be a Designed Mechanic, use the explicit
+``(anchor :after metabolism)``, and declare ``:fuel 1000000``. It has no
+domain, bindings, guard, ordinary effects, or circuit-name lookup. It cannot
+appear inside another expression, loop, or effect. The whole campaign is
+its execution scope, and a material session requires exactly one invocation.
+An ordinary graph session can load it for analysis but refuses to execute it
+without the material host.
+
+The invocation closes due freight, committed production, dispatch, local
+transfers and merchant fulfillment; derives feasible work; applies conserved
+staffing; and plans the next opening with that labor. Those exact operations
+remain in Rust. The fixed full fuel charge meters the indivisible invocation;
+the existing native row limits and checked arithmetic bound its material work
+separately. This charge is not a processor-time estimate or a per-row meter.
+
+The rule has one considered and fired outcome and a material-cycle audit
+receipt. Native staffing retains its existing event and field-write evidence.
+All effects share the detached tick and its atomic publication. Removing the
+invocation cannot silently reactivate a native fallback. The serialized rule
+belongs to the captured campaign authority and its replay identity.
+
+Michigan's ``content/scenarios/michigan/material-cycle.bsl`` and cohort
+declaration fragment are embedded when the runtime is built. New campaigns
+capture those shipped sources and the parsed TOML parameters; existing
+campaigns restore their captured content. Editing an embedded file therefore
+requires rebuilding before creating a new campaign. The editor reports
+unavailable campaign context for these files; the production loader, corpus
+and runtime integration checks validate their supported use.
 
 The four valued keyword options ``:role``, ``:evidence``,
 ``:material-basis``, and ``:fuel`` are mandatory and may appear in any source
@@ -4687,7 +4715,7 @@ AST — a property implementations should exercise as a round-trip property test
 ``exists``, ``forall``, ``nodes``, ``edges``, ``neighbors``, ``hyperedges``,
 ``members-of``, ``hyperedges-of``, ``field-of``, ``edge-between``, ``the``,
 ``domain``, ``select-max``, ``select-min``, ``metric``, ``metric-of``,
-``quantize-mass``, ``guard``, ``for-each``, ``choose``, ``branch``,
+``quantize-mass``, ``guard``, ``for-each``, ``choose``, ``branch``, ``material-cycle``,
 ``update-node``, ``update-edge``,
 ``add-node``, ``remove-node``, ``add-edge``, ``remove-edge``,
 ``add-hyperedge``, ``update-hyperedge``, ``remove-hyperedge``, ``members``,

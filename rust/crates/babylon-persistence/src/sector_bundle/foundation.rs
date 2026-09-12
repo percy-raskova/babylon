@@ -7,15 +7,14 @@ use super::{
 use crate::{
     material_runtime::{MaterialFoundationSpec, MaterialRuntimeFoundation},
     michigan_cohorts::MICHIGAN_COHORT_SESSION,
-    michigan_economy::observer_foundation_from_source,
+    michigan_economy::foundation_from_sources,
     michigan_material::{
         MichiganDeliveryPreset, MichiganMaterialCatalog, MAX_MICHIGAN_CAPTURED_CONTENT_BYTES,
     },
-    FoundationContentBundle,
 };
 use babylon_tick::material_staffing::StaffingComposition;
 const DEFINES_DOMAIN: &[u8] = b"babylon.sector-bundle-defines.v4\0";
-const CONTENT_DOMAIN: &[u8] = b"babylon.michigan-material-content.v7\0";
+const CONTENT_DOMAIN: &[u8] = b"babylon.michigan-material-content.v8\0";
 const MAX_DEFINES_BYTES: usize = 64 * 1024 * 1024;
 const MAX_BUNDLES: usize = 1024;
 const MAX_STAFFING_BYTES: usize = 1_048_576;
@@ -159,6 +158,7 @@ pub(crate) fn validate_stored_material_authority(
     if spec.horizon_ticks != decoded.catalog().horizon_ticks()
         || decoded.catalog().preset() != delivery
         || decoded.scenario().as_bytes() != graph.content_bundle().scenario_source_bytes()
+        || decoded.catalog().rule_source().as_bytes() != graph.content_bundle().rule_source_bytes()
         || &compile_sector_bundles(decoded.bundles(), delivery, decoded.catalog())?
             != register.state()
     {
@@ -167,6 +167,7 @@ pub(crate) fn validate_stored_material_authority(
     let mut identity = CONTENT_DOMAIN.to_vec();
     identity.extend_from_slice(&graph.content_digest().defines_hash);
     identity.extend_from_slice(&sha256_of(graph.content_bundle().scenario_source_bytes()));
+    identity.extend_from_slice(&graph.content_digest().rules_hash);
     if sha256_of(&identity) != spec.content_digest {
         return Err(SectorBundleError::Digest);
     }
@@ -191,16 +192,17 @@ pub(crate) fn create_bundle_foundation(
     let decoded = decode_stored_bundle_defines(&defines, sha256_of(&defines))?;
     let state = compile_sector_bundles(decoded.bundles(), delivery, decoded.catalog())?;
     let scenario = decoded.scenario();
-    let (graph, bundle) = observer_foundation_from_source(
+    let (graph, bundle) = foundation_from_sources(
         scenario,
+        decoded.catalog().rule_source(),
         MICHIGAN_COHORT_SESSION,
         &defines,
-        FoundationContentBundle::try_new,
     )
     .map_err(|_| SectorBundleError::Foundation)?;
     let mut identity = CONTENT_DOMAIN.to_vec();
     identity.extend_from_slice(&sha256_of(&defines));
     identity.extend_from_slice(&sha256_of(scenario.as_bytes()));
+    identity.extend_from_slice(&bundle.content_digest().rules_hash);
     MaterialRuntimeFoundation::capture(
         graph,
         bundle,

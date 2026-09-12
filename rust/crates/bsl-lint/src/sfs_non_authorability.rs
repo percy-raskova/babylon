@@ -1108,6 +1108,26 @@ fn source_findings(repo: &Repo, workspace: &Workspace) -> Result<Vec<Finding>, S
             ));
         }
     }
+    // The current runtime embeds these authored files from beside the Rust
+    // workspace. They are production sources even though they are outside a crate.
+    if workspace
+        .root
+        .file_name()
+        .is_some_and(|name| name == "rust")
+    {
+        let repository = workspace
+            .root
+            .parent()
+            .ok_or("Rust workspace has no parent")?;
+        let content = repository.join("content/scenarios/michigan");
+        if content
+            .try_exists()
+            .map_err(|error| format!("{}: {error}", content.display()))?
+        {
+            inspect_path_components(repository, &content)?;
+            source_paths.append(&mut enumerate_sources(&content, &mut walk_budget)?);
+        }
+    }
     sort_source_paths(&mut source_paths);
     dedup_source_paths(&mut source_paths);
     if source_paths.len() > MAX_SOURCE_PATHS {

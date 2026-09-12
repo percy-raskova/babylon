@@ -169,6 +169,7 @@ fn bounded_rule_pack_paths(paths: impl IntoIterator<Item = PathBuf>) -> Vec<Path
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum StaticEffect {
+    MaterialCycle,
     NodeField(String),
     EdgeField(String),
     HyperedgeField(String),
@@ -187,6 +188,7 @@ fn role_name(role: RuleRole) -> &'static str {
 
 fn footprint_effect(effect: &EffectSignature) -> StaticEffect {
     match effect {
+        EffectSignature::MaterialCycle => StaticEffect::MaterialCycle,
         EffectSignature::NodeField(field) => StaticEffect::NodeField(field.clone()),
         EffectSignature::EdgeField(field) => StaticEffect::EdgeField(field.clone()),
         EffectSignature::HyperedgeField(field) => StaticEffect::HyperedgeField(field.clone()),
@@ -418,7 +420,9 @@ fn every_production_rule_identity_is_governed_independently_of_its_content() {
     let paths = std::fs::read_dir(rules_dir)
         .unwrap_or_else(|error| panic!("cannot read {rules_dir}: {error}"))
         .map(|entry| entry.expect("production rule directory entry").path());
-    let files = bounded_rule_pack_paths(paths);
+    let michigan = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../content/scenarios/michigan/material-cycle.bsl");
+    let files = bounded_rule_pack_paths(paths.chain(std::iter::once(michigan)));
 
     let mut parsed_rule_count = 0_usize;
     let mut production_ids = BTreeSet::new();

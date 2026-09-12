@@ -473,9 +473,8 @@ pub fn missing_manifest_row_diagnostic(
         code_description: None,
         source: Some("bsl".to_owned()),
         message: format!(
-            "{path} names no row in content-sets.toml — only declaration-independent \
-             checks run (read, split_content, surface/:material-basis, static shape); \
-             this is also a manifest-drift alarm"
+            "{path} has no loaded content-set declaration; scenario/campaign context is unavailable. \
+             This editor has not validated the file against its campaign."
         ),
         related_information: None,
         tags: None,

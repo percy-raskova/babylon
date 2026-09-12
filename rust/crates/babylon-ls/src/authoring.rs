@@ -1615,6 +1615,7 @@ mod tests {
         )
         .expect("probability compiles");
         let loaded = LoadedRule {
+            execution: babylon_bsl::rule_pipeline::RuleExecution::Graph,
             source_id: "spark.bsl".to_owned(),
             root_path: vec![0],
             rule,

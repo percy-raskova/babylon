@@ -187,6 +187,9 @@ impl MaterialRuntimeFoundation {
         if graph.completed_tick() != 0 || register.completed_tick() != 0 {
             return Err(MaterialRuntimeError::FoundationMismatch);
         }
+        graph
+            .validate_material_cycle()
+            .map_err(|error| MaterialRuntimeError::Replay(MaterialReplayError::Graph(error)))?;
         let labor = crate::sector_bundle::foundation::validate_stored_material_authority(
             &graph_foundation,
             &register,

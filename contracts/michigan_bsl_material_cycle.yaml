@@ -1,0 +1,37 @@
+meta:
+  contract: MichiganBslMaterialCycle
+  version: 1
+  issue: PER-335
+  scope: Authoring connection for existing Michigan material behavior
+
+authority:
+  rule: material/period
+  role: mechanic
+  evidence: Designed
+  body: material-cycle
+  anchor: after metabolism
+  invocation_fuel: 1000000
+  native_limits: Existing material row bounds and checked integer arithmetic
+
+invariants:
+  - Exactly one authored invocation owns the existing material period.
+  - Missing, duplicate, nested, conditional, misplaced or unhosted invocations refuse.
+  - Ordinary BSL rules cannot overwrite native workforce stocks.
+  - Due freight, production, outbound allocation, staffing and next-period plans
+    retain their existing order, parameters, units and exact arithmetic.
+  - Bevy consumes the same authenticated committed projections.
+  - One invocation outcome and audit receipt identify the authored execution;
+    native staffing retains its existing events and stock-write receipts.
+  - A later rule failure publishes no graph, material, event, receipt or tick.
+  - Scenario, parameters and authored rules are captured together. Restart
+    reconstructs captured authority and refuses unsupported content.
+
+acceptance:
+  - Compare decoded economic state, material receipts and observations against
+    the pre-binding implementation for every current Michigan delivery preset.
+  - Repeated execution from identical captured inputs produces identical bytes
+    and hashes. Source-order permutations preserve canonical tick execution;
+    changing captured source bytes deliberately changes campaign identity.
+  - Restart during transit and at a completed period preserves continuation.
+  - Missing invocation fails instead of silently executing native mechanics.
+  - Authored parameter counterfactuals still change only their existing consequences.

@@ -36,9 +36,18 @@ or rerouting. Admission refuses older Michigan content and keeps its stored
 data. Development has no save migration or compatibility compiler.
 The interval contract is ``contracts/simulation_interval_v1.yaml``.
 
-The current Michigan material campaign admits an empty BSL rule set. Its
-production, freight, local transfers, merchant handling, and staffing run
-through the typed material transition.
+The current Michigan material campaign captures one BSL ``material/period``
+rule. Its ``material-cycle`` body invokes the existing typed production,
+freight, local transfers, merchant handling, and staffing transition at the
+after-metabolism boundary. A material campaign requires exactly one invocation;
+there is no unconditional native fallback. BSCN constructs the county,
+business, sector and workforce graph from captured sources and declarations.
+The existing TOML parameters supply the typed physical accounts. Rust keeps
+the exact accounting and allocation algorithms. The authored rule, parameters
+and scenario all participate in campaign identity and restart.
+The runtime embeds the Michigan BSL and BSCN declaration fragment at build
+time. New campaigns capture those shipped sources; reopening a campaign uses
+its saved sources.
 The built-in ``production.bsl`` annual labor calibration remains a conformance
 reference; it does not parameterize this campaign. Observed annual QCEW facts
 and source weekly wages keep their original units.
@@ -286,6 +295,7 @@ Dashed arrows are later gate work.
    flowchart LR
        REF["babylon_ref"] --> TICK["Rust material tick"]
        DEFINES["Saved authored parameters"] --> TICK
+       BSL["Saved BSL material-cycle invocation"] --> TICK
        MATERIAL["Production, circulation, staffing"] --> TICK
        EMPTY["Exact empty action batch"] --> TICK
        TICK --> IDENTIFIED["IdentifiedMaterialTick"]

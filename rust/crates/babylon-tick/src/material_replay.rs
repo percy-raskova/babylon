@@ -48,6 +48,10 @@ pub enum MaterialBaseError {
     Period,
     MissingCandidate,
     MissingResolver,
+    /// A material session must bind exactly one authored whole-period operation.
+    InvocationCount {
+        found: usize,
+    },
 }
 impl std::fmt::Display for MaterialBaseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -326,6 +330,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
         if horizon == 0 || horizon > i64::MAX as u64 {
             return Err(MaterialReplayError::Horizon);
         }
+        graph.validate_material_cycle()?;
         graph.validate_staffing_ownership()?;
         Ok(Self {
             graph,

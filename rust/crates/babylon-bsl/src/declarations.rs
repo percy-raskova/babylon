@@ -29,7 +29,7 @@ use std::collections::HashMap;
 /// are excluded because an `intrinsic` name is a `symbol` (§1.4) and cannot
 /// spell them, so no collision is expressible there. `opt` — the synthetic
 /// keyword-option tag — is included: it is a §5.2 tag like any other.
-pub const RESERVED_FORM_TAGS: [&str; 52] = [
+pub const RESERVED_FORM_TAGS: [&str; 53] = [
     "add",
     "add-edge",
     "add-hyperedge",
@@ -58,6 +58,7 @@ pub const RESERVED_FORM_TAGS: [&str; 52] = [
     "if",
     "intrinsic",
     "manifest",
+    "material-cycle",
     "members",
     "members-of",
     "metric",

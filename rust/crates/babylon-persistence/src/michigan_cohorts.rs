@@ -11,7 +11,7 @@ use babylon_tick::replay_session::ReplayTickSession;
 
 use crate::{
     michigan_economy::{
-        append_county_observations, michigan_economy, observer_foundation_from_source,
+        append_county_observations, foundation_from_sources, michigan_economy,
         MichiganEconomyError, QCEW_ECONOMICS_ARTIFACT_SHA256,
     },
     michigan_sectors::{
@@ -25,11 +25,11 @@ use crate::{
 pub const MICHIGAN_COHORT_SCENARIO: &str = "production/michigan-observer-v2";
 pub const MICHIGAN_COHORT_SESSION: &str = "g4/michigan-observer-v2";
 
-const BUSINESS_FIELDS: [(&str, &str); 4] = [
-    ("qcew-establishments", "extensive"),
-    ("qcew-employment", "extensive"),
-    ("qcew-total-annual-wages", "extensive"),
-    ("qcew-average-weekly-wage", "intensive"),
+const BUSINESS_FIELDS: [&str; 4] = [
+    "qcew-establishments",
+    "qcew-employment",
+    "qcew-total-annual-wages",
+    "qcew-average-weekly-wage",
 ];
 
 /// Deterministic source composition with immutable source identities.
@@ -112,7 +112,7 @@ fn append_business(
         row.total_annual_wages(),
         row.annual_avg_wkly_wage(),
     ];
-    for ((field, _), value) in BUSINESS_FIELDS.iter().zip(values) {
+    for (field, value) in BUSINESS_FIELDS.iter().zip(values) {
         if let Some(value) = value {
             // The graph stores these int fields through binary64. Refuse a
             // value that could lose its exact public-record integer identity.
@@ -176,14 +176,9 @@ fn build_cohorts_with_workforce(
     };
     let mut source = format!("(scenario {MICHIGAN_COHORT_SCENARIO}\n  (defvocabulary NodeType (TERRITORY ORGANIZATION{workforce_type}))\n  (defvocabulary HyperedgeType (ECONOMIC_SECTOR))\n  (deffield territory/county-fips int extensive)\n");
     append_county_observations(&mut source, economy.counties());
-    source.push_str("  (defenum OrgKind (STATE_APPARATUS BUSINESS POLITICAL_FACTION CIVIL_SOCIETY))\n  (deffield organization/kind enum OrgKind)\n  (deffield organization/county-fips int intensive)\n");
-    for (field, quantity) in BUSINESS_FIELDS {
-        writeln!(
-            &mut source,
-            "  (deffield organization/{field} int {quantity})"
-        )
-        .expect("String write");
-    }
+    source.push_str(include_str!(
+        "../../../../content/scenarios/michigan/cohort-declarations.bscn"
+    ));
     for row in sectors.rows() {
         append_business(&mut source, row)?;
     }
@@ -228,11 +223,11 @@ pub fn michigan_cohorts() -> Result<&'static MichiganCohorts, MichiganCohortsErr
 pub fn michigan_cohort_foundation(
 ) -> Result<(ReplayTickSession<HypergraphStore>, FoundationContentBundle), MichiganCohortsError> {
     let cohorts = michigan_cohorts()?;
-    observer_foundation_from_source(
+    foundation_from_sources(
         cohorts.scenario_source(),
+        "",
         MICHIGAN_COHORT_SESSION,
         cohorts.defines_bytes(),
-        FoundationContentBundle::try_new,
     )
     .map_err(MichiganCohortsError::Economy)
 }

@@ -734,9 +734,30 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
         })
     }
 
+    /// Require the sole authored invocation before binding the material register.
+    ///
+    /// # Errors
+    /// Refuses absent or repeated material-cycle rules. Graph-only analysis may
+    /// load a material rule, but it cannot supply the material execution host.
+    pub fn validate_material_cycle(&self) -> Result<(), ReplayTickError> {
+        let found = self
+            .prepared
+            .rules
+            .iter()
+            .filter(|(_, rule)| {
+                rule.execution == babylon_bsl::rule_pipeline::RuleExecution::MaterialCycle
+            })
+            .count();
+        if found != 1 {
+            return Err(ReplayTickError::MaterialBase(
+                crate::material_replay::MaterialBaseError::InvocationCount { found },
+            ));
+        }
+        Ok(())
+    }
+
     /// Admit the immutable prepared rules for native staffing ownership once.
-    /// The normal effect scanner includes every possible guarded/loop write;
-    /// scheduled labor does not call this additional composition check.
+    /// The normal effect scanner includes every possible guarded/loop write.
     pub(crate) fn validate_staffing_ownership(&self) -> Result<(), ReplayTickError> {
         use crate::material_replay::MaterialBaseError;
         use crate::material_staffing::STAFFING_FIELDS;

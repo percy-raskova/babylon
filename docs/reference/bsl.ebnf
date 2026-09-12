@@ -327,8 +327,8 @@ rule        ::= "(" "rule" qname                              /* §2.3 */
                     ":evidence" evidence-class
                     ":material-basis" string
                     ":fuel" int-lit
-                    ( ":projects-kernel" qname )?
-                    ( domain? anchor? bindings when? effects
+                    ( ( ":projects-kernel" qname )?
+                      domain? anchor? bindings when? effects
                     | anchor material-cycle )
                 ")"
                 /* The four valued keyword options may appear in ANY source

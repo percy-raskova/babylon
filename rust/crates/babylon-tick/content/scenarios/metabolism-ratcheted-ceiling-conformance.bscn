@@ -24,8 +24,8 @@
 ; See `metabolism_ratcheted_ceiling_conformance.py` for the provenance
 ; script.
 (scenario metabolism/ratcheted-ceiling-conformance
-  (deffield territory/biocapacity int extensive)
-  (deffield territory/max-biocapacity int extensive)
+  (deffield territory/biocapacity real extensive)
+  (deffield territory/max-biocapacity real extensive)
   (deffield territory/extraction-intensity int intensive)
 
   ; Legal maximum — see the header.

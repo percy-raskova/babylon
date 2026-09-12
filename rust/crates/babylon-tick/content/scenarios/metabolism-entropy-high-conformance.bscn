@@ -11,8 +11,8 @@
 ;
 ; See `metabolism_entropy_high_conformance.py` for the provenance script.
 (scenario metabolism/entropy-high-conformance
-  (deffield territory/biocapacity int extensive)
-  (deffield territory/max-biocapacity int extensive)
+  (deffield territory/biocapacity real extensive)
+  (deffield territory/max-biocapacity real extensive)
   (deffield territory/extraction-intensity int intensive)
 
   (defconst metabolism/regeneration-rate 0.02c)

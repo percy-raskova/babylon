@@ -1,5 +1,5 @@
 //! `bsl-fuel-report` — Task W3 (BSL Hygiene Knock-out train): the fuel-bound
-//! report mode. Prints, for every rule in every landed content set,
+//! report mode. Prints, for every rule in its explicitly listed content sets,
 //! `rule-id declared=<n> computed=<m> headroom=<n-m>` — the same numbers
 //! `bound_checker::check_rule` already computes on a successful load
 //! (`bound_checker.rs:757-769`, `LoadedRule::{declared_fuel, static_bound}`),
@@ -18,14 +18,11 @@
 //! content set exists) — see [`babylon_tick::any_over_budget`]'s own doc
 //! for the same documented redundancy on the library side.
 //!
-//! **Content-set enumeration.** No `content-sets.toml` exists on this
-//! branch (it lands with the #652 train — the controller addenda for this
-//! task names it explicitly) — this binary hardcodes the same 13-pack,
-//! one-scenario-per-pack SOLO pairing every dedicated
-//! `tests/*_conformance.rs` file (and `tick_goldens.rs`) already
-//! establishes as each pack's own canonical load, matching
-//! `w2-preaudit-table.md` §1's identical "13 packs, solo everywhere except
-//! two co-loads" finding for the same-tick-ordering checker.
+//! **Content-set enumeration.** This report uses an explicit subset of
+//! solo and combined loads. The canonical `content/content-sets.toml`
+//! manifest includes additional scenarios and combinations; this binary
+//! does not enumerate that manifest. Its output describes the listed loads,
+//! not complete corpus fuel coverage.
 //!
 //! **Fix round 1 correction (`task-w3-review.md`, Medium finding #1):** the
 //! original text here claimed the two committed co-loads
@@ -55,16 +52,11 @@
 //! no-amend convention that message is not rewritten — this doc comment
 //! and the fix-round commit are the correction of record.
 //!
-//! **Enumeration sentinel (Medium finding #2):** `SOLO_PACKS` is still a
-//! hand-maintained table with no runtime link to `content/rules/*.bsl` — a
-//! 14th landed pack this table forgets to add would previously make
-//! `bsl-fuel-report` silently under-report it (still exit 0, no warning).
+//! **Enumeration sentinel (Medium finding #2):**
 //! `tests::solo_packs_names_match_the_content_rules_directory_exactly`
-//! (bottom of this file) closes that gap: it reads the real directory
-//! listing at test time and fails loudly, by name, the moment the two
-//! diverge — `mise run bsl:fuel-check` staying green is no longer
-//! sufficient evidence that coverage is complete; `cargo test -p
-//! babylon-tick --locked --bin bsl-fuel-report` is.
+//! checks that the hand-maintained `SOLO_PACKS` names cover the rule-file
+//! directory. It catches a missing pack, but does not prove coverage of
+//! every scenario or combination in `content-sets.toml`.
 
 use babylon_bsl::scenario::compose_declaration_preludes;
 use babylon_tick::{any_over_budget, fuel_bound_report};

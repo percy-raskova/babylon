@@ -626,17 +626,65 @@ fn semantic_sexpr_depth_max_passes_and_plus_one_refuses() {
     }
 }
 
+// Check the surrounding rule syntax separately: the sentinel scans names and
+// must not appear to prove a prohibition merely by rejecting malformed input.
+fn assert_rule_syntax(source: &str) {
+    let (_, rules) = babylon_bsl::rule_pipeline::split_content(source)
+        .expect("sentinel example must contain a current rule");
+    assert_eq!(rules.len(), 1);
+    let rule = &rules[0].form;
+    babylon_bsl::material_basis::check_rule_surface(rule).expect("valid rule metadata");
+    babylon_bsl::causal_contract::parse_rule_contract(rule).expect("valid causal attribution");
+    babylon_bsl::grammar::check_arities_and_closed_sets(rule).expect("valid rule grammar");
+    babylon_bsl::bindings::parse_bindings(rule).expect("valid binding syntax");
+}
+
+#[test]
+fn binding_inspects_the_production_qname_operand() {
+    let source = std::fs::read_to_string(
+        fixtures_dir().join("reserved-bsl/rust/crates/babylon-bsl/src/classification.bsl"),
+    )
+    .expect("classification fixture must be readable");
+    let scratch = ScratchRoot::new("binding-qname");
+    write_minimal_workspace(&scratch.0, &["babylon-bsl", "babylon-evidence"]);
+    for (field, expected_code) in [("sfs/classification", 1), ("fixture/value", 0)] {
+        let source = source.replace("sfs/classification", field);
+        assert_rule_syntax(&source);
+        write_file(
+            &scratch.0.join("crates/babylon-bsl/src/classification.bsl"),
+            source.as_bytes(),
+        );
+        let (code, report) = run_root(&scratch.0);
+        assert_eq!(code, expected_code, "field {field}:\n{report}");
+        if expected_code == 1 {
+            assert!(report.contains(field), "{report}");
+        }
+    }
+}
+
 #[test]
 fn field_of_inspects_the_production_qname_operand() {
     let scratch = ScratchRoot::new("field-of-qname");
     write_minimal_workspace(&scratch.0, &["babylon-bsl", "babylon-evidence"]);
-    write_file(
-        &scratch.0.join("crates/babylon-bsl/src/query.bsl"),
-        b"(defrule query\n  (let ((value (field-of it sfs/aggregate)))\n    value))\n",
-    );
-    let (code, report) = run_root(&scratch.0);
-    assert_eq!(code, 1, "production-shaped field-of must fail:\n{report}");
-    assert!(report.contains("sfs/aggregate"), "{report}");
+    let source = r#"(rule fixture/query
+  :role mechanic :evidence derived :material-basis "fixture" :fuel 64
+  (bindings)
+  (when (exists (nodes NodeType/SOCIAL_CLASS)
+    (> (field-of it sfs/aggregate) 0)))
+  (effects))"#;
+    for (field, expected_code) in [("sfs/aggregate", 1), ("fixture/value", 0)] {
+        let source = source.replace("sfs/aggregate", field);
+        assert_rule_syntax(&source);
+        write_file(
+            &scratch.0.join("crates/babylon-bsl/src/query.bsl"),
+            source.as_bytes(),
+        );
+        let (code, report) = run_root(&scratch.0);
+        assert_eq!(code, expected_code, "field {field}:\n{report}");
+        if expected_code == 1 {
+            assert!(report.contains(field), "{report}");
+        }
+    }
 }
 
 #[test]

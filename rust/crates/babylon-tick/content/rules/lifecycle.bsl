@@ -222,28 +222,18 @@
 ; §1.5) cannot express in the first place.
 ;
 ; ============================================================================
-; ENGINE MACHINERY — the anchor's registered-system set, and one rule not three
+; ENGINE MACHINERY — registered systems and rule composition
 ; ============================================================================
 ;
-; `babylon-tick/src/lib.rs`'s `run_once_into` hardcodes the driver's
-; registered-system set at `{economics, vitality, consciousness}` (Vitality
-; landed the second of those). This port adds `lifecycle`, the same class
-; of minimal, precedented change Vitality made to `tick.rs` for `:const`
-; serving — driver scaffolding, not rule content, not BSL grammar.
+; `babylon-tick/src/phase_order.rs` owns the registered systems and causal
+; schedule. Content sets can contain multiple rules; same-position rules
+; execute sequentially in rule-id order, with earlier writes visible.
 ;
-; **One rule, not three — a slice-1 driver limit, not a modeling choice.**
-; `run_once`/`run_once_into`'s `split_content` accepts exactly one `(rule …)`
-; top-form per content set ("a content set needs exactly one (rule …)
-; top-form", `rule_pipeline.rs`); Vitality never tested the other case
-; because its own three phases already collapsed into one rule for an
-; independent reason (§4.2's same-pre-state rule). This pack's three
-; material processes ARE independent — none reads another's binding or
-; effect — so nothing here is a re-derivation the way Vitality's phases
-; were; they are grouped into one `(rule lifecycle/dpd-circuit …)` form
-; purely because slice 1 has no multi-rule pack runner yet. Each of the
-; three material processes below is commented as its own block and could
-; split back into separate rules the moment the driver supports more than
-; one per tick.
+; This pack retains one rule with three separately commented material
+; processes. The original slice-1 runner required that grouping; the
+; current runner does not. Keeping the existing form preserves this pack's
+; per-rule binding and effect-collection boundary. The original port's
+; one-rule limitation is historical provenance, not a current BSL limit.
 
 (rule lifecycle/dpd-circuit
   :role mechanic

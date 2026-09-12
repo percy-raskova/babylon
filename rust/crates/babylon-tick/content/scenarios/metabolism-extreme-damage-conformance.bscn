@@ -25,8 +25,8 @@
 ; `max-biocapacity`, not `biocapacity` — see
 ; `metabolism_extreme_damage_conformance.py` for the exact numbers.
 (scenario metabolism/extreme-damage-conformance
-  (deffield territory/biocapacity int extensive)
-  (deffield territory/max-biocapacity int extensive)
+  (deffield territory/biocapacity real extensive)
+  (deffield territory/max-biocapacity real extensive)
   (deffield territory/extraction-intensity int intensive)
 
   ; Production defaults — no boost needed, the SEED does the work here.

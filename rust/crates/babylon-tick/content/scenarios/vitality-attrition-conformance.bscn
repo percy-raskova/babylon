@@ -1,12 +1,11 @@
-; The K=16 rung-ladder wealth-mass carrier — Phase 1, INERT (#491 T4,
-; ADR194 R1). This world declares and seeds the carrier H1 names
-; (docs/superpowers/plans/2026-08-17-491-rung-ladder.md §6.2): sixteen
-; per-class wealth-mass shares, the fifteen grid cuts that will bound them,
-; the household->person crossing, and the subsistence horizon. NO RULE IN
-; THIS PACK READS THEM. Phase 3a (T5, the dual measure `clearing`/
-; `failing_certain` and the P(S|A)/H3 horizon identity) and Phase 3b (T6,
-; Grinding Attrition's kappa) are the tasks that give this carrier its
-; first consumer. Until then this is data alone — "the carrier, inert."
+; The K=16 rung-ladder wealth-mass conformance world. It seeds sixteen
+; per-class wealth-mass shares, fifteen grid cuts, the household->person
+; crossing and the subsistence horizon. The vitality-attrition pack reads
+; the masses, cuts and horizon for clearing/failing-certain measures and
+; mortality; `vitality_attrition_conformance.rs` exercises those consumers.
+; Household-person equivalence remains a declared normalization assumption.
+; This world began as the inert Phase-1 carrier (#491 T4, ADR194 R1;
+; docs/superpowers/plans/2026-08-17-491-rung-ladder.md §6.2).
 ;
 ; UNIT-SYSTEM AUTHORITY: every dimension and every construct named below is
 ; DEFINED in reports/subsistence-unit-reconciliation-2026-08-17.md (the
@@ -34,16 +33,15 @@
 ; `wealth_sketch_grid.csv` (design doc §5.3, T7/T8) is the actual derived,
 ; county-anchored universal grid, and it is GATED on DP-4 (the
 ; mean_county/midratio ruling), which has not sat. These fifteen values
-; exist only to exercise the K=16 carrier's own load-time contract --
-; strictly positive, monotone non-decreasing (§4.1's RED leg;
+; exercise the K=16 load contract and the measure/mortality calculations.
+; They are strictly positive and monotone non-decreasing (§4.1's RED leg;
 ; `wealth-sketch/cut-01` through `cut-15`, `Ratio` defconsts, `r` suffix,
-; ADR194 R1) -- and carry no claim to the real distribution's shape.
+; ADR194 R1), with no claim to the real distribution's shape.
 ;
 ; ETA (household-person-equivalence) and TAU (subsistence-horizon) are
-; BOTH `.bscn` defconsts precisely so neither one moves `defines_hash`
-; (reconciliation record §4.2, the same reasoning ADR210 R14 gives for
-; kappa) -- a `GameDefines` field would fail `qa:regression`'s 11-baseline
-; gate on the spot for a constant the frozen engine has no consumer for.
+; `.bscn` defconsts. The original placement kept them outside the frozen
+; Python `GameDefines` hash (reconciliation record §4.2, ADR210 R14).
+; Current prepared-environment identity includes scenario constants.
 ;
 ; ETA = 1.0r -- DP-7 RULED (posted on #491, 2026-08-18T02:42:38Z):
 ; "DP-7 = A: the eta = 1 crossing DECLARED (named defconst, published
@@ -98,11 +96,10 @@
 ; (reconciliation record §6 route 2 -- a hydrated `currency extensive`
 ; cost field, computed at load/seed time outside BSL arithmetic, with its
 ; own D-row for the association-order divergence) is T5/T6's to adopt,
-; not this task's. This pack's own probe rule
-; (content/rules/vitality-attrition.bsl) therefore does NOT attempt the
-; drain at all -- it is a load-only smoke, exactly as OQ-D's carrier-only
-; scope requires (§12 item 1: this train supplies the carrier, not the
-; C/G/P derivation under Axiom A0).
+; not the original carrier task's. The current rules in
+; content/rules/vitality-attrition.bsl compute measures and mortality;
+; they still do not attempt the Currency drain. The historical spike
+; above records that separate arithmetic constraint, not today's test scope.
 ;
 ; THE SIX CLASSES exercise the five cases §9/T4.4 names, one class each,
 ; plus a sixth (dissolved) exercising a mass spread across four

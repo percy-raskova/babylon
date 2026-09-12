@@ -150,20 +150,24 @@ Guarded effects (conformance/event_bifurcation.bsl — ABRIDGED: :material-basis
               (scaled_lit))))))))
 
 ==================================================
-Folds, aggregation and a weighted mean (conformance/event_wealth_aggregates.bsl — VERBATIM)
+Folds, aggregation and a weighted mean (conformance/event_wealth_aggregates.bsl — VERBATIM RULE)
 ==================================================
 
 (rule event/wealth-aggregates
+  :role mechanic
+  :evidence derived
   :material-basis "total and extremal wealth positions gate the conjuncture"
   :fuel 1024
   (bindings
     (binding wealth :field social-class/wealth)
     (binding agitation :field social-class/agitation)
     (binding population :field social-class/population))
-  (when (and (>= (fold sum (nodes NodeType/SOCIAL_CLASS) wealth) 550)
-             (>= (fold max (nodes NodeType/SOCIAL_CLASS) wealth) 500)
-             (<= (fold min (nodes NodeType/SOCIAL_CLASS) wealth) 50)
-             (>= (fold mean (nodes NodeType/SOCIAL_CLASS) agitation :weight population) 0.3i)))
+  (when (and (>= (fold sum (nodes NodeType/SOCIAL_CLASS) (field-of it social-class/wealth)) 550$)
+             (>= (fold max (nodes NodeType/SOCIAL_CLASS) (field-of it social-class/wealth)) 500$)
+             (<= (fold min (nodes NodeType/SOCIAL_CLASS) (field-of it social-class/wealth)) 50$)
+             (>= (fold mean (nodes NodeType/SOCIAL_CLASS)
+                   (field-of it social-class/agitation)
+                   :weight (field-of it social-class/population)) 0.3i)))
   (effects
     (emit EventType/CONSCIOUSNESS_SHIFT (gate 2))))
 
@@ -172,6 +176,8 @@ Folds, aggregation and a weighted mean (conformance/event_wealth_aggregates.bsl 
 (source_file
   (rule
     (qname)
+    (rule_role)
+    (evidence)
     (material_basis
       (string))
     (fuel
@@ -197,36 +203,46 @@ Folds, aggregation and a weighted mean (conformance/event_wealth_aggregates.bsl 
             (fold_op)
             (nodes
               (enum_ref))
-            (symbol))
+            (field_of
+              (symbol)
+              (qname)))
           (literal
-            (int_lit)))
+            (scaled_lit)))
         (comparison
           (cmp)
           (fold
             (fold_op)
             (nodes
               (enum_ref))
-            (symbol))
+            (field_of
+              (symbol)
+              (qname)))
           (literal
-            (int_lit)))
+            (scaled_lit)))
         (comparison
           (cmp)
           (fold
             (fold_op)
             (nodes
               (enum_ref))
-            (symbol))
+            (field_of
+              (symbol)
+              (qname)))
           (literal
-            (int_lit)))
+            (scaled_lit)))
         (comparison
           (cmp)
           (fold
             (fold_op)
             (nodes
               (enum_ref))
-            (symbol)
+            (field_of
+              (symbol)
+              (qname))
             (weight
-              (symbol)))
+              (field_of
+                (symbol)
+                (qname))))
           (literal
             (scaled_lit)))))
     (effects
@@ -238,32 +254,38 @@ Folds, aggregation and a weighted mean (conformance/event_wealth_aggregates.bsl 
             (int_lit)))))))
 
 ==================================================
-exists / forall over a node query (conformance/event_node_condition.bsl + event_forall.bsl — ABRIDGED: both :material-basis strings truncated)
+exists / forall over a node query (conformance/event_node_condition.bsl + event_forall.bsl — VERBATIM RULES)
 ==================================================
 
 (rule event/agitation-anywhere
-  :material-basis "any class fraction past the agitation threshold"
+  :role mechanic
+  :evidence derived
+  :material-basis "any class fraction past the agitation threshold marks the conjuncture"
   :fuel 512
   (bindings
     (binding agitation :field social-class/agitation))
-  (when (exists (nodes NodeType/SOCIAL_CLASS) (>= agitation 0.6p)))
+  (when (exists (nodes NodeType/SOCIAL_CLASS) (>= (field-of it social-class/agitation) 0.6p)))
   (effects
-    (emit EventType/CONSCIOUSNESS_SHIFT (threshold 0.6p))))
+    (emit EventType/CONSCIOUSNESS_SHIFT (threshold agitation))))
 
 (rule event/agitation-everywhere
-  :material-basis "a threshold held by every fraction"
+  :role mechanic
+  :evidence derived
+  :material-basis "a threshold held by every fraction, not just the vanguard"
   :fuel 512
   (bindings
     (binding agitation :field social-class/agitation))
-  (when (forall (nodes NodeType/SOCIAL_CLASS) (>= agitation 0.5p)))
+  (when (forall (nodes NodeType/SOCIAL_CLASS) (>= (field-of it social-class/agitation) 0.5p)))
   (effects
-    (emit EventType/CONSCIOUSNESS_SHIFT (threshold 0.5p))))
+    (emit EventType/CONSCIOUSNESS_SHIFT (threshold agitation))))
 
 ---
 
 (source_file
   (rule
     (qname)
+    (rule_role)
+    (evidence)
     (material_basis
       (string))
     (fuel
@@ -279,7 +301,9 @@ exists / forall over a node query (conformance/event_node_condition.bsl + event_
           (enum_ref))
         (comparison
           (cmp)
-          (symbol)
+          (field_of
+            (symbol)
+            (qname))
           (literal
             (scaled_lit)))))
     (effects
@@ -287,10 +311,11 @@ exists / forall over a node query (conformance/event_node_condition.bsl + event_
         (enum_ref)
         (payload_item
           (symbol)
-          (literal
-            (scaled_lit))))))
+          (symbol)))))
   (rule
     (qname)
+    (rule_role)
+    (evidence)
     (material_basis
       (string))
     (fuel
@@ -306,7 +331,9 @@ exists / forall over a node query (conformance/event_node_condition.bsl + event_
           (enum_ref))
         (comparison
           (cmp)
-          (symbol)
+          (field_of
+            (symbol)
+            (qname))
           (literal
             (scaled_lit)))))
     (effects
@@ -314,8 +341,7 @@ exists / forall over a node query (conformance/event_node_condition.bsl + event_
         (enum_ref)
         (payload_item
           (symbol)
-          (literal
-            (scaled_lit)))))))
+          (symbol))))))
 
 ==================================================
 Edge query with count, and an empty bindings list (conformance/event_edge_count.bsl — VERBATIM)

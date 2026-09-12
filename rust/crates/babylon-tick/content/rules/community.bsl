@@ -13,7 +13,7 @@
 ; anything CommunitySystem reads or writes. Nothing here touches it.
 ;
 ; §3.7a CARRIER DISCLOSURE: this pack mints NO carrier node. Its
-; carrier-subject rules (c00 here; c05-c08/c11 in later tasks) anchor on
+; carrier-subject rules (c00, c05-c08 and c11) anchor on
 ; the ONE `NodeType/INSTITUTION` node a world already has, via
 ; `institution/community-carrier` — a SUBJECT-TYPE ANCHOR ONLY, bound and
 ; never read again, never gating anything (the binding exists because
@@ -55,8 +55,9 @@
 ; non-monotone; a monotone-only port would be a different law, and
 ; port-as-is (ADR183) forbids it) all wait on the AG(i)
 ; attributed-membership ceremony — a Director act, never improvised. The
-; four repression helpers (:210-279) await a verb layer (D-NF+11). c07/c08
-; are DG-2-gated (Director question, unresolved at authoring).
+; four repression helpers (:210-279) await a verb layer (D-NF+11).
+; DG-2 was resolved as PUBLISH on 2026-08-18: c07/c08 and the `log`
+; intrinsic below are implemented, as their conformance tests exercise.
 ;
 ; THE EXPLICIT-DOMAIN NOTE (PR #688 review, Copilot finding 1 — a REAL
 ; latent engine gap, named here for the future pack reader): c00's carrier
@@ -89,13 +90,11 @@
 ; prints, this is why; it is recorded here and in the D-row register at
 ; this pack's landing, not discovered downstream.
 ;
-; LATENT REFUSAL, NAMED (not handled — the plan gates nothing here): c04
-; divides by `community/member-count`, the ACTIVE census. A community whose
-; members are ALL inactive has count 0, and its members' c04 pushes refuse
-; loudly (non-finite store, E-EVAL-014's discipline) rather than write a
-; lie. World 1 has no such community (every seeded community has >=1 active
-; member); the first world that seeds one owes the gate decision its own
-; task's D-row.
+; ACTIVE-MEMBER CENSUS: c01 counts active members and c04 contributes
+; only for active members. An all-inactive community therefore has a zero
+; census and makes no c04 division attempt. This does not establish that
+; arbitrary malformed census inputs are safe; the active-member guards
+; are part of the pack's calculation.
 ;
 ; Reserved D-N rows this task consumes: D-NF+3 (the per-class org-weight
 ; decomposition — frozen's per-org weight sum re-expressed as per-class

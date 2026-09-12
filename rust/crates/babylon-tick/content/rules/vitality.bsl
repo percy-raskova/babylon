@@ -4,10 +4,10 @@
 ; its numbers and to the standard of living its position requires, and a
 ; block that can no longer cover its own reproduction stops existing.
 ;
-; ONE rule, not three. §4.2: rules within one system position observe the
-; same pre-state, so a three-rule decomposition would have to restate the
-; drain algebra in each downstream rule. The `:expr` bindings of R9 chapter
-; C7 name the intermediates once instead.
+; One rule names the drain's intermediates once in `:expr` bindings.
+; Bindings and collected effects within this rule read its pre-state.
+; Distinct rules at the same system position execute sequentially: later
+; rules can observe earlier rules' applied writes.
 ;
 ; GRINDING ATTRITION, LANDED — this header's old "WHAT THIS RULE
 ; DELIBERATELY DOES NOT DO" block, rewritten as the record of what the

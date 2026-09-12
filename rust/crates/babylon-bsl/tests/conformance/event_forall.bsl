@@ -7,6 +7,6 @@
   :fuel 512
   (bindings
     (binding agitation :field social-class/agitation))
-  (when (forall (nodes NodeType/SOCIAL_CLASS) (>= agitation 0.5p)))
+  (when (forall (nodes NodeType/SOCIAL_CLASS) (>= (field-of it social-class/agitation) 0.5p)))
   (effects
     (emit EventType/CONSCIOUSNESS_SHIFT (threshold agitation))))

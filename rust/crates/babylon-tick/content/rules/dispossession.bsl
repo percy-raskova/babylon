@@ -26,25 +26,14 @@
 ; the identical claim about these five fields — the whole point of the
 ; frozen design is that they vary by county.
 ;
-; They become `:const` here anyway, for a reason that is a language
-; constraint rather than a material claim: `bsl-language.rst`'s known
-; constraint that "the slice-1 scenario loader seeds ONLY int-declared node
-; attributes" (`scenario.rs::attribute_value`) accepts an INTEGER literal
-; into an `int`-declared field and refuses every other combination outright —
-; there is no legal way to seed a genuinely fractional per-node value in
-; slice 1 at all, on any field, of any declared type. And unlike a
-; scaled-integer workaround, that would not even be an honest fiction here:
-; the gap report's own row for this system records it dormant on the
-; canonical run TODAY for exactly this reason — "Yes (zero-rate inputs)" —
-; nothing hydrates real per-county foreclosure/eviction/displacement data
-; yet, so there is no live per-territory variation this port could
-; misrepresent by flattening. When real per-county hydration lands (Phase 2's
-; Currency/Probability-typed field storage), these five become genuine
-; per-territory `:field` reads with NO OTHER CHANGE to the bindings below —
-; they slot into the SAME `foreclosure-rate-const`/etc. positions a `:field`
-; binding would occupy. (Adversarial-review correction: an earlier revision
-; of this note claimed restoring the per-input clamps below would be "no
-; change to the weighted-sum algebra" — false, and retracted; see D-2.)
+; The original slice-1 port used shared `:const` inputs because its
+; scenario loader could not seed fractional node fields. That restriction
+; is historical: the current loader supports fractional `real` fields.
+; This conformance pack retains the shared-input choice and has no
+; per-county foreclosure/eviction/displacement hydration. Activating it in
+; a campaign still requires an explicit source and unit for those inputs;
+; loader support alone does not supply per-territory variation.
+; The earlier algebra correction remains in the D-2 provenance below.
 ;
 ; Seven `:const` environments prove every branch this shared-input design
 ; still discriminates (learn from #493's verification round): the ACTIVE

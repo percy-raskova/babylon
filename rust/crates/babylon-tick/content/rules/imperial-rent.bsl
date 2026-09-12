@@ -1,9 +1,8 @@
 ; ImperialRentSystem (Material Base @9.0, NOT @10 — `economic.py:37`'s own
 ; `position: ClassVar[float] = 9.0`; "@10" was the 10th 0-indexed slot in
-; `_DEFAULT_SYSTEMS`, not the position value) — the five-phase Imperial
-; Circuit (Extraction -> Tribute -> Wages -> Subsidy -> Decision) that moves
-; wealth from the exploited periphery through the core bourgeoisie's pool and
-; back out as super-wages or repression. Frozen source:
+; `_DEFAULT_SYSTEMS`, not the position value). This pack implements the
+; reset, extraction and tribute stages of the frozen five-phase Imperial
+; Circuit. Wages, subsidy and decision are not implemented here. Frozen source:
 ; src/babylon/engine/systems/economic.py (836 lines, one step()). Port
 ; posture: ADR183 (structure/ordering contract, not a byte oracle) —
 ; conformance expecteds are measured from THIS engine, never copied from the
@@ -17,8 +16,9 @@
 ; pack ports ONLY the first:
 ;   1. `engine/systems/economic.py::ImperialRentSystem` (@9.0) — the 5-phase
 ;      pool-based Imperial Circuit (Extraction/Tribute/Wages/Subsidy/
-;      Decision). THIS FILE. Phases 1, 2, 3, 5 land; Phase 4 (Subsidy) does
-;      NOT (Director-RESERVED, Constitution IX.5, §6 below).
+;      Decision). THIS FILE implements Phases 1 and 2. The remaining
+;      phase descriptions below preserve the original port proposal;
+;      Phase 4 (Subsidy) remains Director-RESERVED (Constitution IX.5, §6).
 ;   2. `domain/economics/tick/system/imperial_rent.py` — the Leontief BEA
 ;      input-output pipeline invoked as Step 4 of TickDynamicsSystem (@4.0),
 ;      writing `CountyEconomicState.phi_hour`. NOT this pack — belongs to
@@ -29,10 +29,9 @@
 ;      landed as `fundamental-theorem.bsl` (12 lines, `economics/
 ;      fundamental-theorem`, the ONLY rule in the `economics` namespace).
 ;      THIS pack never calls or imports it and carries ZERO of its surface
-;      (§2.3's duplication verdict) — it becomes the SECOND input's producer
-;      only (`social-class/value-produced`, via r06, D195), never the first
-;      (`social-class/wages` stays `fundamental-theorem.bsl`'s own fixture-
-;      seeded input, B2, out of scope).
+;      (§2.3's duplication verdict). The proposed r06 would publish
+;      `social-class/value-produced` (D195), but is not implemented.
+;      `social-class/wages` remains a fixture-seeded input here (B2).
 ; A repo-wide rename of any of the three is OUT OF SCOPE for this train — a
 ; follow-on recommendation only.
 ;
@@ -59,7 +58,7 @@
 ; `decomposition.bsl`'s own Task-2 commit followed for its not-yet-landed
 ; p03-p06.
 ;
-; No `intrinsic` declaration in this file. Nothing in the four ported phases
+; No `intrinsic` declaration in this file. Nothing in the implemented phases
 ; needs `floor`/`exp`/`log` — the transcendentals verdict (plan §5) is
 ; PURE-ARITHMETIC, and `#576`'s DECLARABLE_INTRINSICS estate is NOT a
 ; dependency of this pack.

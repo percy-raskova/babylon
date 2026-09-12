@@ -41,14 +41,14 @@
 ; block's post-tick numbers are already-verified values, not new arithmetic
 ; to re-derive.
 (scenario lifecycle/crisis-conformance
-  (deffield territory/pop-d int extensive)
-  (deffield territory/pop-p int extensive)
-  (deffield territory/pop-d-prime int extensive)
-  (deffield territory/wealth-d-prime int extensive)
-  (deffield territory/dependency-ratio int intensive)
-  (deffield territory/legitimation-index int intensive)
+  (deffield territory/pop-d real extensive)
+  (deffield territory/pop-p real extensive)
+  (deffield territory/pop-d-prime real extensive)
+  (deffield territory/wealth-d-prime real extensive)
+  (deffield territory/dependency-ratio real intensive)
+  (deffield territory/legitimation-index real intensive)
   (deffield territory/legitimation-crisis int intensive)
-  (deffield territory/transmitted-ideology int intensive)
+  (deffield territory/transmitted-ideology real intensive)
 
   ; Rates: unchanged from defines.yaml (same as lifecycle-conformance.bscn).
   (defconst lifecycle/birth-rate 0.0107c)

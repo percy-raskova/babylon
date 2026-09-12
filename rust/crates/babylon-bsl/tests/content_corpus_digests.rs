@@ -163,7 +163,7 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     ),
     (
         "event_forall.bsl",
-        "0db00c3affbbcde3b174acbdc14eee5d242967be297f45e8b5d2306cecd89a09",
+        "41382b68109a337c1ffffd4a643d72b34cc37061b06a88a3a682170aa1254fb8",
     ),
     (
         "event_metric_conditions.bsl",
@@ -171,11 +171,11 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     ),
     (
         "event_node_condition.bsl",
-        "61e5e16fabe20e48f96216382c5440c101ddb6065f7b8bee189ecc4e16ebe6c5",
+        "43e84489a33ab629baf2f24d21d41b33102239442343e0fb698958b1c3894e13",
     ),
     (
         "event_wealth_aggregates.bsl",
-        "85c63b8d7ebf694ee9c49e4ee67eb60f6203d4d933fdb37b22b7162d5a713ce7",
+        "7ae6f5fa49c4fcafcd104e5ffc0948d4cefda93abf2d6139ba6f9d2ce11c3955",
     ),
     (
         "unconditional.bsl",
@@ -259,7 +259,7 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     ),
     (
         "dispossession-ceiling-matrix-conformance.bscn",
-        "f54909f01f5063f6484bbd4f91cd918a8e1db162d85af18b876046867fc04ef5",
+        "8a8febf896670cc1c75c3d961545a10aeac3141fad8446340215598c56f5344a",
     ),
     (
         "dispossession-conformance.bscn",
@@ -267,23 +267,23 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     ),
     (
         "dispossession-negative-input-conformance.bscn",
-        "d39cf58c3161ae6ffdce2d445fdc9e20794678f40192a862e48264cbbbb7bdc1",
+        "dbd04d91e2a328336891ea90ef6b5b8ae84e536ee973f4e7ac8b9642a03cbb05",
     ),
     (
         "dispossession-negative-weight-conformance.bscn",
-        "2a4e78aaa6ab5c3beee1c321239a0d9d463479be3e5336be4348b3fe77e10c4f",
+        "032d14172c146f1952b476b40c0105d15d8dddd6babb6dc107e3d49a1cdaab5c",
     ),
     (
         "dispossession-saturation-conformance.bscn",
-        "b99361f2442a5dea483bc50e64bd385f33e105a3ad751a8dd561b39346fd7676",
+        "3d8d8ce845ba5cf99ac5b27cef492ae8e8988d0e291d26b767726379be9ce086",
     ),
     (
         "dispossession-single-rate-conformance.bscn",
-        "561fdea375b900df8b4c12a2d39ada31e4cd57753b673d095ee2f06fa18fbc33",
+        "4a35bd61c1cbdfcb0fa1125398c2f2b797050a77019399b53ebc64feb07b3f48",
     ),
     (
         "dispossession-zero-rate-conformance.bscn",
-        "f51f85e92ef9acc659c9f10743562f28706f5d62662ce1a7a191bb176a08dcbc",
+        "df5d5753ffcd62bb8423aea0cf6fa884bd99ade58eec9efb340d0ffabd0d62a9",
     ),
     (
         "edge-lane-e2e.bscn",
@@ -307,7 +307,7 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     ),
     (
         "lifecycle-crisis-conformance.bscn",
-        "754295542d9aaa3df0ebb1c805e632ea2a892ecc156bd4e9b0a7d36dc5fb74a4",
+        "68ec8e723d514bd1c103cff4581858b4e28ea9e40b862e04c46fe9772b48d78f",
     ),
     (
         "lifecycle-zero-pop-p-conformance.bscn",
@@ -315,11 +315,11 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     ),
     (
         "metabolism-ceiling-conformance.bscn",
-        "a7dd2c1e19633a3ac1e9f76730f39d4362615b6e32c5089ce0ff832d08526468",
+        "5d4f068d1f75bf06d0b2794293d5a8fb586a147cd0822cc8389a2b13ce32bdab",
     ),
     (
         "metabolism-ceiling-suppression-conformance.bscn",
-        "2d4f0cb353ed980f10741a1c69d93cff4ba39698de64f7c2d8f892f73445e0ab",
+        "39363c07fff39a4010fc9d40aa326912ffca23bd074d9939512f850c0c1c6da8",
     ),
     (
         "metabolism-conformance.bscn",
@@ -327,23 +327,23 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     ),
     (
         "metabolism-entropy-high-conformance.bscn",
-        "5c7e0ed77f6c866036870d8e09f9777187c02bfee6404c199e6fe2033d7144ec",
+        "683280c52018219d24f8014adcb394578a90988d969fff02b4a94da93716fc7e",
     ),
     (
         "metabolism-entropy-low-conformance.bscn",
-        "bd08cdd45d41e4b44f38c13297232ddef0b0bcc6d10ec45282b185c2cf690a04",
+        "e6f50d41629eaf17f1faa5937d2ea98d92c618816fbddec08d7de99cff2467ac",
     ),
     (
         "metabolism-extreme-damage-conformance.bscn",
-        "b6995b06d7009056970b5dbc25eb3d246371c7326bb181fe308f4fc6d6dbf5ca",
+        "b8454de24505a94a2f02ad24f212853ccb9281464f5d0537ac51fa305357090b",
     ),
     (
         "metabolism-ratcheted-ceiling-conformance.bscn",
-        "996ed84bc534e80c93de5b0d8a91deed7bdf61cce9a23bcb15cb79abc512a9ce",
+        "98ae782c1126c0a7c49e6a0c64a1b380449bf9e3950e2b972d3f4554f45bd9cd",
     ),
     (
         "metabolism-rounding-divergence-conformance.bscn",
-        "04ae00c60aabb359788a2f96fa294b78cd5432300fef99495ae51dd2a0063615",
+        "8567b51aa32064783e07350c17da8debfe1216f0972167649c69c54701f124f6",
     ),
     (
         "organization-foundation.bscn",
@@ -379,7 +379,7 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     ),
     (
         "us-counties-lifecycle-demo.bscn",
-        "75af712c5d5562adf78c1d169852159c521732c4939333de5719fea58d8d6d17",
+        "b0e656f0bcf433baaeb12c7ca4fa5d3428639d5a906bfe0d3739c7f8b987de64",
     ),
     (
         "vitality-attrition-conformance.bscn",
@@ -391,7 +391,7 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     ),
     (
         "vitality-lifecycle-combined-conformance.bscn",
-        "bef48841b30fe8fd32a142fd316d6cf8a3e357ef7252ba0ce3e9d0867cf44a0f",
+        "d075611631b65695ea1547729038ad6d615fe3fbe46c829c9837c183659a9a87",
     ),
     (
         "worldview-foundation.bscn",

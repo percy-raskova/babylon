@@ -266,6 +266,9 @@ fn governed_type_and_contract_discriminants_are_exact() {
     )
     .unwrap();
     assert_eq!(effect, vec![0x05, 0x06]);
+    effect.clear();
+    encode_effect_signature(&EffectSignature::MaterialCycle, &mut effect).unwrap();
+    assert_eq!(effect, vec![0x06]);
     for (signature, tag, name) in [
         (
             EffectSignature::NodeField("class/power".to_owned()),

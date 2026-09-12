@@ -5,7 +5,8 @@ fn captured_authority_contains_normalized_content_instead_of_only_numeric_define
     let source = include_str!("../../../../../content/scenarios/michigan/defines.toml");
     let catalog = MichiganMaterialCatalog::from_defines_toml(source).unwrap();
     let stored: serde_json::Value = serde_json::from_slice(catalog.defines_bytes()).unwrap();
-    assert_eq!(stored["schema"], "MichiganCapturedContentV2");
+    assert_eq!(stored["schema"], "MichiganCapturedContentV3");
+    assert_eq!(stored["rule_source"], catalog.rule_source());
     assert_eq!(stored["normalized"]["sites"].as_array().unwrap().len(), 5);
     assert_eq!(
         stored["normalized"]["processes"].as_array().unwrap().len(),
@@ -15,6 +16,88 @@ fn captured_authority_contains_normalized_content_instead_of_only_numeric_define
 
 use super::*;
 use std::collections::BTreeMap;
+
+#[test]
+fn captured_rule_source_survives_restart_without_reopening_current_authored_rules() {
+    use crate::michigan_content::{admit_michigan_content, MichiganContentPreset};
+
+    let original = crate::test_support::catalog();
+    let mut changed = original.capture.clone();
+    changed.rule_source = format!("; Captured campaign source.\n{}", changed.rule_source);
+    let changed = MichiganMaterialCatalog::capture(changed).unwrap();
+    assert_ne!(original.defines_hash(), changed.defines_hash());
+    let restored = MichiganMaterialCatalog::from_stored_defines(changed.defines_bytes()).unwrap();
+    assert_eq!(restored, changed);
+
+    let preset = MichiganContentPreset::FourWeekStandard;
+    let original_foundation = preset.create_foundation(&original).unwrap();
+    let restored_foundation = preset.create_foundation(&restored).unwrap();
+    assert_ne!(original_foundation.digest(), restored_foundation.digest());
+    assert_ne!(
+        original_foundation.spec().content_digest,
+        restored_foundation.spec().content_digest
+    );
+    assert_eq!(
+        original_foundation
+            .graph_foundation()
+            .content_digest()
+            .rules_hash,
+        restored_foundation
+            .graph_foundation()
+            .content_digest()
+            .rules_hash,
+        "comments change captured bytes but not the canonical rule"
+    );
+    assert_eq!(
+        original_foundation.initial_register(),
+        restored_foundation.initial_register()
+    );
+    assert_eq!(
+        restored_foundation
+            .graph_foundation()
+            .content_bundle()
+            .rule_source_bytes(),
+        changed.rule_source().as_bytes()
+    );
+    assert!(admit_michigan_content(
+        preset.id(),
+        16,
+        &restored_foundation.spec().content_digest,
+        &restored_foundation.digest(),
+        0,
+        restored_foundation.canonical_bytes(),
+    )
+    .is_ok());
+}
+
+#[test]
+fn captured_material_content_refuses_missing_rules_and_a_graph_only_rule_set() {
+    use crate::michigan_content::{MichiganContentError, MichiganContentPreset};
+
+    let catalog = crate::test_support::catalog();
+    let mut capture: serde_json::Value = serde_json::from_slice(catalog.defines_bytes()).unwrap();
+    capture.as_object_mut().unwrap().remove("rule_source");
+    assert!(matches!(
+        MichiganMaterialCatalog::from_stored_defines(&serde_json::to_vec(&capture).unwrap()),
+        Err(MichiganDefinesError::Canonical)
+    ));
+    for rule_source in ["", "; no executable material cycle\n"] {
+        let mut capture = catalog.capture.clone();
+        capture.rule_source = rule_source.to_owned();
+        if rule_source.is_empty() {
+            assert!(matches!(
+                MichiganMaterialCatalog::capture(capture),
+                Err(MichiganDefinesError::Material(MichiganMaterialError::Bound))
+            ));
+        } else {
+            let graph_only = MichiganMaterialCatalog::capture(capture).unwrap();
+            assert!(matches!(
+                MichiganContentPreset::FourWeekStandard.create_foundation(&graph_only),
+                Err(MichiganContentError::Foundation)
+            ));
+        }
+    }
+}
 
 #[test]
 fn normalized_permutations_and_preset_round_trips_preserve_complete_authority() {

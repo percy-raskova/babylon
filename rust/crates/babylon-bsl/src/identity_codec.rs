@@ -762,6 +762,7 @@ pub fn encode_effect_signature(
 ) -> Result<(), IdentityCodecError> {
     let mut writer = IdentityWriter::new("EffectSignatureV1");
     match value {
+        EffectSignature::MaterialCycle => writer.push(0x06)?,
         EffectSignature::NodeField(qname) => encode_effect_field(0x01, qname, &mut writer)?,
         EffectSignature::EdgeField(qname) => encode_effect_field(0x02, qname, &mut writer)?,
         EffectSignature::HyperedgeField(qname) => encode_effect_field(0x03, qname, &mut writer)?,

@@ -639,6 +639,8 @@ fn verb_cost(
 /// condition. EXTERNAL bind-srcs never enter the bound — the §5.6 worked
 /// example (bound = 7 with a `:field` bindings form present) pins that;
 /// only `:expr` bindings do, per D50.
+/// A closed material-cycle body instead charges the fixed full invocation
+/// budget; its native host owns independent material-row and arithmetic limits.
 ///
 /// # Errors
 ///
@@ -650,6 +652,11 @@ pub fn rule_bound(
     intrinsics: &IntrinsicCosts,
 ) -> Result<u64, BoundError> {
     let items = rule_items(rule)?;
+    if crate::material_cycle::classify(rule).map_err(|error| malformed(error.to_string()))?
+        == crate::rule_pipeline::RuleExecution::MaterialCycle
+    {
+        return Ok(crate::fuel::MATERIAL_CYCLE_INVOCATION_COST);
+    }
     let mut bound: u64 = 0;
     let mut effects_seen = false;
     for child in &items[1..] {

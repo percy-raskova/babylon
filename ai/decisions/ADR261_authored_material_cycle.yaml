@@ -1,0 +1,50 @@
+ADR261_authored_material_cycle:
+  status: accepted
+  date: '2026-09-12'
+  issue: PER-335
+  title: BSL explicitly invokes the existing Michigan material cycle
+  evidence_class: Designed
+  authority:
+    - Director instruction to wire existing Michigan behavior through BSL and BSCN
+    - Director delegation of the balance between Rust operations and BSL authoring
+  partially_supersedes:
+    - ADR255 R3 unconditional composition and R4 absence of authored invocation counts
+  context: |
+    Michigan generates BSCN and captures typed physical parameters, but its
+    material session invoked the Rust cycle independently of an empty BSL
+    source. Historical production rules describe different graph economics.
+  decision: |
+    Add one closed material-cycle rule body. A Designed Mechanic explicitly
+    anchored after metabolism invokes the complete existing material close
+    once per period. Material sessions require exactly one such rule.
+    Graph-only execution refuses it without a material host. The body admits
+    no domain, conditional, bindings, sibling effects or generic host lookup.
+
+    Retain the current Rust inventory, allocation, freight, merchant and
+    staffing algorithms. Their existing order and exact units are unchanged.
+    BSCN supplies the existing graph composition; captured TOML supplies the
+    physical parameters. Do not translate exact integer accounting into
+    floating BSL expressions or activate unrelated historical rule packs.
+
+    Charge the full existing 1,000,000 fuel budget for the indivisible
+    invocation. This meters invocation, not CPU time or native row visits;
+    independent native row limits and checked arithmetic remain in force.
+    The authored rule contributes one considered/fired outcome and one
+    material-cycle audit receipt. Native staffing retains its child events
+    and stock-write evidence. All effects share one detached transaction.
+
+    Capture the rule source with scenario and physical authority, bind its
+    canonical hash, and reconstruct that source at restart. Refuse unsupported
+    content without migration, deletion, or a second implementation.
+  alternatives_rejected:
+    - Loading the historical wealth/biocapacity production pack as physical production.
+    - Adding observational or empty BSL rules while the economy bypasses them.
+    - Reimplementing exact allocation and conservation in a second engine.
+    - Dispatching material effects from emitted observation events.
+  verification:
+    - contracts/michigan_bsl_material_cycle.yaml
+    - Economic and observation equivalence, authored admission, rollback and restart.
+  consequences:
+    - Authored content and invocation evidence intentionally change replay identity.
+    - Existing physical economic results and Bevy meanings remain unchanged.
+    - This creates no mathematical primitive, gameplay mechanic, or player action.

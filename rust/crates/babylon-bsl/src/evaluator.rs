@@ -627,6 +627,9 @@ fn eval_form(
         "field-of" => eval_field_of(items, env, host, fuel),
         "edge-between" => eval_edge_between(items, env, host, fuel),
         "quantize-mass" => eval_quantize_mass(items, env, host, fuel),
+        "material-cycle" => Err(EvalError::plain(
+            "material-cycle requires the material runtime host as a sole rule body, not an expression or intrinsic call",
+        )),
         name => {
             if EFFECT_POSITION_ONLY.contains(&name) {
                 return Err(EvalError::plain(format!(
@@ -2825,7 +2828,7 @@ mod tests {
         ];
         // Tags that are declaration/top-form/clause vocabulary, never
         // expression-position heads — the load layer owns them.
-        const DECLARATION_LEVEL: [&str; 14] = [
+        const DECLARATION_LEVEL: [&str; 15] = [
             "anchor",
             "binding",
             "bindings",
@@ -2836,6 +2839,7 @@ mod tests {
             "effects",
             "intrinsic",
             "manifest",
+            "material-cycle",
             "metric",
             "opt",
             "rule",

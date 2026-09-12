@@ -78,25 +78,16 @@ pub struct TickReport {
     pub world_before: [u8; 32],
     /// Nominal graph-plus-current-auxiliary world hash after commit.
     pub world_after: [u8; 32],
-    /// Total subjects whose guards were evaluated across every rule.
+    /// Total considered subjects, including one whole-campaign material invocation.
     pub considered: usize,
-    /// The TOTAL fired-subject count across every rule this tick ran —
-    /// unchanged in meaning and type for a single-rule content set (today
-    /// every existing caller: `run_once`, the CLI, B0's engine-link probe,
-    /// every `*_conformance.rs` test). For a multi-rule tick this is the
-    /// SUM across rules — kept a plain `usize` rather than widened to
-    /// `Vec<usize>` specifically so `report.fired == N` assertions across
-    /// this crate's `tests/*_conformance.rs` and `tests/floor_intrinsic_e2e.rs`
-    /// keep compiling and keep passing unmodified.
+    /// Sum of per-rule firings. A successful material invocation contributes one.
     pub fired: usize,
-    /// Per-rule guard-evaluation detail in governed causal order.
+    /// Per-rule considered counts in governed causal order.
     pub per_rule_considered: Vec<(String, usize)>,
     /// Per-rule detail in governed causal order — `(rule_id, fired)`.
     /// Rules resolve through the 34-slot phase registry; rules sharing one
     /// position use D16's ascending rule-ID byte order. Declaration and file
-    /// order are never observable. Length 1 for every existing single-rule
-    /// content set (`fired == per_rule_fired[0].1` always holds); length N
-    /// for an N-rule content set.
+    /// order are never observable. There is one entry for each loaded rule.
     pub per_rule_fired: Vec<(String, usize)>,
     /// Identity-free events and writes observed from successful rule effects,
     /// in executable rule order. Failed ticks publish no receipts.
@@ -234,7 +225,6 @@ pub fn run_once_with_prelude(
 #[derive(Debug)]
 pub(crate) struct PreparedRules {
     pub rules: Vec<(String, LoadedRule)>,
-    material_base_index: usize,
     /// Parsed rule forms retained so replay preparation can independently
     /// recompute the canonical rules hash over what this engine loaded.
     pub rule_forms: Vec<SExpr>,
@@ -416,7 +406,7 @@ fn prepare_error_from_schedule(error: phase_order::ScheduleError) -> PrepareErro
 fn enforce_ranked_composition(
     plan: &phase_order::RuleOrderPlan,
     rule_forms: &[(String, SExpr)],
-) -> Result<usize, PrepareError> {
+) -> Result<(), PrepareError> {
     let ranked = plan
         .ranked_rules(rule_forms)
         .map_err(prepare_error_from_schedule)?;
@@ -428,10 +418,23 @@ fn enforce_ranked_composition(
                 error: LoadError::SameTickOrder(error),
             })?;
     }
-    // Keep diagnostics, probability loading and execution on the same
-    // schedule admission, including the native composition's identity.
-    plan.native_material_composition_index(material_staffing::STAFFING_COMPOSITION_ID)
-        .map_err(prepare_error_from_schedule)
+    Ok(())
+}
+
+fn validate_material_cycle_cardinality(rules: &[(String, LoadedRule)]) -> Result<(), PrepareError> {
+    let mut invocations = rules.iter().filter(|(_, rule)| {
+        rule.execution == babylon_bsl::rule_pipeline::RuleExecution::MaterialCycle
+    });
+    if invocations.next().is_some() {
+        if let Some((id, _)) = invocations.next() {
+            return Err(PrepareError::Composition {
+                code: None,
+                identity: Some(ErrorIdentity::RuleId(id.clone())),
+                message: "a content set admits only one material-cycle invocation".to_owned(),
+            });
+        }
+    }
+    Ok(())
 }
 
 fn hydrate_scenario<G: GraphSubstrate>(
@@ -879,6 +882,12 @@ pub fn diagnose_content_set_sources(
                 } else {
                     match plan.apply(admitted_rules) {
                         Ok(scheduled) => {
+                            if let Err(error) = validate_material_cycle_cardinality(&scheduled) {
+                                errors.push(SourcedPrepareError {
+                                    source_id: prepare_error_source_id(&error, &rule_source_by_id),
+                                    error,
+                                });
+                            }
                             let loaded = scheduled
                                 .into_iter()
                                 .map(|(_, rule)| rule)
@@ -1617,10 +1626,11 @@ fn prepare_rules_with_kernel_slots<G: GraphSubstrate + CanonicalState>(
         .map(|rule| (rule.rule_id.clone(), rule.form.clone()))
         .collect::<Vec<_>>();
     let rule_order = phase_order::compile(&phase_forms).map_err(prepare_error_from_schedule)?;
-    let material_base_index = enforce_ranked_composition(&rule_order, &phase_forms)?;
+    enforce_ranked_composition(&rule_order, &phase_forms)?;
     let rules = rule_order
         .apply(rules)
         .map_err(prepare_error_from_schedule)?;
+    validate_material_cycle_cardinality(&rules)?;
     let loaded_rules = rules
         .iter()
         .map(|(_, rule)| rule.clone())
@@ -1645,7 +1655,6 @@ fn prepare_rules_with_kernel_slots<G: GraphSubstrate + CanonicalState>(
 
     Ok(PreparedRules {
         rules,
-        material_base_index,
         rule_forms: rule_forms.into_iter().map(|rule| rule.form).collect(),
         types: inputs.types,
         intrinsics,
@@ -2015,36 +2024,59 @@ where
     let mut committed_events = Vec::new();
     let mut choice_by_sample_subject = HashMap::new();
     let mut material = None;
-    for position in 0..=prepared.rules.len() {
-        if position == prepared.material_base_index {
-            if let Some(inputs) = material_base.take() {
-                let resolver = identity.stable_resolver();
-                let context = material_staffing::StaffingEffectContext {
-                    types: &prepared.types,
-                    enums: &prepared.enums,
-                    resolver,
-                };
-                let (candidate, effects) = inputs
+    for (id, loaded) in &prepared.rules {
+        if loaded.execution == babylon_bsl::rule_pipeline::RuleExecution::MaterialCycle {
+            // The closed body spends its entire fixed invocation budget.
+            // Native material row limits remain independently enforced.
+            loaded
+                .declared_fuel
+                .checked_sub(babylon_bsl::fuel::MATERIAL_CYCLE_INVOCATION_COST)
+                .ok_or_else(|| {
+                    transaction_error(
+                        identity,
+                        format!("material-cycle invocation {id} exhausted its fuel budget"),
+                    )
+                })?;
+            let inputs = material_base.take().ok_or_else(|| {
+                transaction_error(
+                    identity,
+                    format!("material-cycle rule {id} requires one bound material host"),
+                )
+            })?;
+            let resolver = identity.stable_resolver();
+            let context = material_staffing::StaffingEffectContext {
+                types: &prepared.types,
+                enums: &prepared.enums,
+                resolver,
+            };
+            let (candidate, effects) =
+                inputs
                     .prepare(&mut working_graph, context, tick)
                     .map_err(|error| {
                         TickTransactionError::Replay(ReplayTickError::MaterialBase(error))
                     })?;
-                if let Some(effects) = effects {
-                    working_sink.events.extend(
-                        effects
-                            .committed_events()
-                            .iter()
-                            .map(committed_event::CommittedEvent::sink_record),
-                    );
-                    audit_receipts.extend_from_slice(effects.audit_receipts());
-                    committed_events.extend_from_slice(effects.committed_events());
-                }
-                material = Some(candidate);
+            audit_receipts.push(AuditReceipt {
+                rule_id: id.clone(),
+                role: loaded.contract.role,
+                evidence: loaded.contract.evidence,
+                ordinal: 0,
+                effect: babylon_bsl::causal_contract::EffectSignature::MaterialCycle,
+            });
+            if let Some(effects) = effects {
+                working_sink.events.extend(
+                    effects
+                        .committed_events()
+                        .iter()
+                        .map(committed_event::CommittedEvent::sink_record),
+                );
+                audit_receipts.extend_from_slice(effects.audit_receipts());
+                committed_events.extend_from_slice(effects.committed_events());
             }
+            material = Some(candidate);
+            per_rule_considered.push((id.clone(), 1));
+            per_rule_fired.push((id.clone(), 1));
+            continue;
         }
-        let Some((id, loaded)) = prepared.rules.get(position) else {
-            break;
-        };
         let event_start = working_sink.events.len();
         let mut write_log = CollectingWriteLog::new();
         let outcome = run_tick_observed(
@@ -2171,6 +2203,12 @@ where
         audit_receipts.append(&mut rule_receipts);
         per_rule_considered.push((id.clone(), outcome.considered));
         per_rule_fired.push((id.clone(), outcome.fired));
+    }
+    if material_base.is_some() {
+        return Err(transaction_error(
+            identity,
+            "a bound material register requires an authored material-cycle invocation".to_owned(),
+        ));
     }
     let considered = checked_considered_total(&per_rule_considered)
         .map_err(|error| transaction_error(identity, error))?;

@@ -328,11 +328,8 @@ rule        ::= "(" "rule" qname                              /* §2.3 */
                     ":material-basis" string
                     ":fuel" int-lit
                     ( ":projects-kernel" qname )?
-                    domain?
-                    anchor?
-                    bindings
-                    when?
-                    effects
+                    ( domain? anchor? bindings when? effects
+                    | anchor material-cycle )
                 ")"
                 /* The four valued keyword options may appear in ANY source
                    order (§2.3); the canonical serialization sorts them
@@ -342,6 +339,16 @@ rule        ::= "(" "rule" qname                              /* §2.3 */
                    (E-PARSE-011); `:fuel` must be > 0 and ≤ 1_000_000
                    (E-PARSE-012). Role and evidence values are closed sets;
                    an off-set value is E-PARSE-015. */
+
+material-cycle ::= "(" "material-cycle" ")"                  /* ADR261 */
+                /* The sole body of a Designed Mechanic, anchored after
+                   metabolism. It invokes the existing complete native
+                   material period once, without a subject/domain, guard,
+                   bindings or sibling effects. It consumes the full fixed
+                   1_000_000 invocation-fuel budget. Native row limits and
+                   checked arithmetic bound its independent material work.
+                   A material session requires exactly one invocation;
+                   graph-only execution refuses it without a material host. */
 
 rule-role   ::= "mechanic" | "recognizer" | "external-event" | "intent"
                                                                /* §2.3, ADR224 */

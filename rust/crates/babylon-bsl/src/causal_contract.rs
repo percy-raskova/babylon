@@ -332,6 +332,14 @@ pub const GOVERNED_RULE_ATTRIBUTIONS: &[GovernedRuleAttribution] = &[
     governed_attribution("imperial-rent/r03-tribute", RuleRole::Mechanic),
     governed_attribution("imperial-rent/r04-tribute-credit", RuleRole::Mechanic),
     governed_attribution("lifecycle/dpd-circuit", RuleRole::Mechanic),
+    GovernedRuleAttribution {
+        rule_id: "material/period",
+        role: RuleRole::Mechanic,
+        evidence: EvidenceClass::Designed,
+        owner: "Director",
+        date: "2026-09-12",
+        adr: "ADR261",
+    },
     governed_attribution("metabolism/biocapacity-update", RuleRole::Mechanic),
     governed_attribution("organization/p0-territory-inbox-reset", RuleRole::Mechanic),
     governed_attribution("organization/p1-presence-attribution", RuleRole::Mechanic),
@@ -405,6 +413,9 @@ impl ShapeVerb {
 /// A canonical, identity-free description of one rule effect.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum EffectSignature {
+    /// The closed invocation of the current material period. Only mechanics
+    /// can own it; child staffing writes keep their native field ownership.
+    MaterialCycle,
     /// A node attribute qualified name.
     NodeField(String),
     /// An edge attribute qualified name.
@@ -902,7 +913,9 @@ fn walk_effects_with_limits(
             }
             continue;
         }
-        if let Some(effect) = field_effect(items, head) {
+        if head == "material-cycle" {
+            effects.push(EffectSignature::MaterialCycle);
+        } else if let Some(effect) = field_effect(items, head) {
             effects.push(effect);
         } else if let Some(verb) = ShapeVerb::parse(head) {
             effects.push(EffectSignature::Shape(verb));
@@ -1650,22 +1663,18 @@ mod tests {
             .all(|rows| rows[0].rule_id < rows[1].rule_id));
         for row in GOVERNED_RULE_ATTRIBUTIONS {
             assert_eq!(row.owner, "Director");
-            if row.rule_id == "g4-workforce-staffing" {
-                assert_eq!(row.evidence, EvidenceClass::Designed);
-                assert_eq!(row.date, "2026-09-05");
-                assert_eq!(row.adr, "ADR255");
-            } else if row.rule_id == "struggle/spark-mechanic" {
-                assert_eq!(row.evidence, EvidenceClass::Designed);
-                assert_eq!(row.date, "2026-09-01");
-                assert_eq!(row.adr, "ADR248");
-            } else if row.rule_id == "struggle/spark-recognizer" {
-                assert_eq!(row.evidence, EvidenceClass::Derived);
-                assert_eq!(row.date, "2026-09-01");
-                assert_eq!(row.adr, "ADR248");
-            } else {
-                assert_eq!(row.evidence, EvidenceClass::Derived);
-                assert_eq!(row.date, "2026-08-23");
-                assert_eq!(row.adr, "ADR224");
+            let (evidence, date, adr) = match row.rule_id {
+                "g4-workforce-staffing" => (EvidenceClass::Designed, "2026-09-05", "ADR255"),
+                "material/period" => (EvidenceClass::Designed, "2026-09-12", "ADR261"),
+                "struggle/spark-mechanic" => (EvidenceClass::Designed, "2026-09-01", "ADR248"),
+                "struggle/spark-recognizer" => (EvidenceClass::Derived, "2026-09-01", "ADR248"),
+                _ => (EvidenceClass::Derived, "2026-08-23", "ADR224"),
+            };
+            assert_eq!(row.evidence, evidence);
+            assert_eq!(row.date, date);
+            assert_eq!(row.adr, adr);
+            if row.rule_id == "material/period" {
+                assert_eq!(row.role, RuleRole::Mechanic);
             }
         }
     }

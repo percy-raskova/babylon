@@ -1215,3 +1215,8 @@ decisions:
     status: accepted
     date: '2026-09-09'
     file: ADR260_statewide_commodity_circulation.yaml
+  ADR261_authored_material_cycle:
+    title: BSL explicitly invokes the existing Michigan material cycle
+    status: accepted
+    date: '2026-09-12'
+    file: ADR261_authored_material_cycle.yaml

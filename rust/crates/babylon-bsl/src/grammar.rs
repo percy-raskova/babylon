@@ -633,7 +633,8 @@ fn check_one_verbs_field_inits(
 /// The closed terminal sets §2 fixes, and the arities its productions do.
 /// `min`/`max` are operand counts **after** an optional `:as <symbol>` is
 /// stripped; `usize::MAX` means "no upper bound" (a variadic body).
-const ARITIES: [(&str, usize, usize, &str); 21] = [
+const ARITIES: [(&str, usize, usize, &str); 22] = [
+    ("material-cycle", 0, 0, "exactly 0"),
     ("nodes", 1, 2, "1 (or 2 with a predicate)"),
     ("edges", 1, 2, "1 (or 2 with a predicate)"),
     ("hyperedges", 1, 2, "1 (or 2 with a predicate)"),
@@ -778,14 +779,31 @@ pub fn check_arities_and_closed_sets(expr: &SExpr) -> Result<(), GrammarError> {
         }
         _ => {}
     }
-    for child in items {
-        check_arities_and_closed_sets(child)?;
+    if matches!(items.as_slice(), [SExpr::Atom(Atom::Symbol(head)), SExpr::Atom(Atom::EnumRef { .. }), ..] if head == "emit")
+    {
+        // Payload labels are not form heads. Keep checking all values;
+        // malformed emit type operands retain full traversal below.
+        for payload in items.iter().skip(2) {
+            if let SExpr::List(pair) = payload {
+                for value in pair.iter().skip(1) {
+                    check_arities_and_closed_sets(value)?;
+                }
+            }
+        }
+    } else {
+        for child in items {
+            check_arities_and_closed_sets(child)?;
+        }
     }
     Ok(())
 }
 
 fn check_head_arity(head: &str, items: &[SExpr]) -> Result<(), GrammarError> {
-    let count = operand_count(items);
+    let count = if head == "material-cycle" {
+        items.len() - 1
+    } else {
+        operand_count(items)
+    };
     if let Some((_, min, max, expected)) = ARITIES.iter().find(|(h, _, _, _)| *h == head) {
         if count < *min || count > *max {
             return Err(GrammarError::Arity {

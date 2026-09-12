@@ -105,6 +105,7 @@ fn identity(kind: &str, key: &str) -> [u8; 32] {
 struct MichiganCapturedContent {
     schema: String,
     graph_scenario_source: String,
+    rule_source: String,
     observed_defines: Vec<u8>,
     defines: MichiganDefines,
     base_preset: MichiganDeliveryPreset,
@@ -182,8 +183,10 @@ impl MichiganMaterialCatalog {
             crate::michigan_cohorts::michigan_staffed_scenario(&normalized.staffing.pools)
                 .map_err(|_| MichiganDefinesError::Material(MichiganMaterialError::ContentValue))?;
         Self::capture(MichiganCapturedContent {
-            schema: "MichiganCapturedContentV2".to_owned(),
+            schema: "MichiganCapturedContentV3".to_owned(),
             graph_scenario_source,
+            rule_source: include_str!("../../../../content/scenarios/michigan/material-cycle.bsl")
+                .to_owned(),
             observed_defines: observed.defines_bytes().to_vec(),
             defines,
             normalized,
@@ -196,12 +199,14 @@ impl MichiganMaterialCatalog {
         use MichiganDefinesError::Material;
         if capture.graph_scenario_source.is_empty()
             || capture.graph_scenario_source.len() > 1_048_576
+            || capture.rule_source.is_empty()
+            || capture.rule_source.len() > 1_048_576
             || capture.observed_defines.is_empty()
             || capture.observed_defines.len() > 65_536
         {
             return Err(Material(MichiganMaterialError::Bound));
         }
-        if capture.schema != "MichiganCapturedContentV2" {
+        if capture.schema != "MichiganCapturedContentV3" {
             return Err(MichiganDefinesError::Canonical);
         }
         validate::canonicalize(&mut capture.normalized, &mut capture.interventions);
@@ -255,6 +260,10 @@ impl MichiganMaterialCatalog {
     #[must_use]
     pub fn graph_scenario_source(&self) -> &str {
         &self.capture.graph_scenario_source
+    }
+    #[must_use]
+    pub fn rule_source(&self) -> &str {
+        &self.capture.rule_source
     }
     #[must_use]
     pub fn observed_defines(&self) -> &[u8] {

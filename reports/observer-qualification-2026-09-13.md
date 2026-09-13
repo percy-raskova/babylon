@@ -16,11 +16,15 @@ pins the 973-file inventory at 06:23:08 UTC and these executable hashes:
 - Runtime: `a7a1dfafed40af910b23b3821aced40ce571bf2237a21fe7a12215dce864a6bf`.
 - Inventory: `78024779521e8e2cb79bd12bb3307c61df860a5b263e34409292dcfe75473e7b`.
 
-The later SQL-injection repair changes only a live test. Every inventoried
-production source, asset, and captured content file still matches this build.
-Publication lint also wrapped three contract lines. The
+The later SQL-injection repair changes only a live test. Publication lint also
+wrapped three contract lines. The
 [parsed-YAML check](test-results/per293-observer/native-current/contract-format-only.json)
-proves their content stayed the same. These debug binaries are not a newly published release.
+proves their content stayed the same. A later source edit updates only the
+declared contract fingerprint to match those bytes. That constant has no runtime
+consumer.
+
+All other inventoried production source, assets, and captured content
+match the native build. These debug binaries are not a newly published release.
 
 The [final native log](test-results/per293-observer/logs/native-final-catalog-projection-fixed.log)
 and [capture index](test-results/per293-observer/native-current/native-evidence-final.json)
@@ -150,6 +154,15 @@ The separate three-test PostgreSQL History pass below covers the earlier reader
 run's single unfinished history test. This record keeps that timeout.
 No governed baseline changed. No documentation build ran.
 <!-- vale Vale.Terms = YES -->
+
+The first final-commit pre-push run passed 2,563 tests and failed one contract
+fingerprint assertion. YAML line wrapping changed the source bytes without
+updating their declared SHA. The freight permutation and continuation assertions
+passed before that check. The fingerprint repair changes no transition or wire
+encoding. The original [RED run](test-results/per293-observer/logs/final-push.log)
+remains retained. The [focused GREEN check](test-results/per293-observer/logs/contract-fingerprint-green.log)
+and [scoped Clippy check](test-results/per293-observer/logs/contract-fingerprint-clippy.log)
+passed after the fingerprint correction.
 
 ### Final frame behavior and held-read latency
 

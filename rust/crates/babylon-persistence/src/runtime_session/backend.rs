@@ -46,11 +46,14 @@ impl SessionBackend for DurableBackend {
         if expected != &self.tail || durable_tail(&self.config, self.campaign)? != self.tail {
             return Err(RuntimeSessionErrorCode::StaleExpectedTail);
         }
-        let actions = self.runtime.next_action_batch().map_err(advance_error)?;
+        let actions = self
+            .runtime
+            .next_action_batch()
+            .map_err(|error| advance_error(&error))?;
         let receipt = self
             .runtime
             .advance_and_commit(&mut CollectingSink::default(), &actions)
-            .map_err(advance_error)?;
+            .map_err(|error| advance_error(&error))?;
         self.tail = RuntimeSessionTail {
             resolve_tick: receipt.resolve_tick(),
             tick_content_hash: Some(digest_hex(receipt.tick_content_hash().as_bytes())),
@@ -59,7 +62,7 @@ impl SessionBackend for DurableBackend {
     }
 }
 
-fn advance_error(error: MaterialRuntimeError) -> RuntimeSessionErrorCode {
+fn advance_error(error: &MaterialRuntimeError) -> RuntimeSessionErrorCode {
     match error {
         MaterialRuntimeError::Replay(
             babylon_tick::material_replay::MaterialReplayError::Horizon,
@@ -328,7 +331,7 @@ mod defines_tests {
     #[test]
     fn action_batch_tail_conflict_requires_current_state() {
         assert_eq!(
-            advance_error(MaterialRuntimeError::TailConflict),
+            advance_error(&MaterialRuntimeError::TailConflict),
             RuntimeSessionErrorCode::StaleExpectedTail
         );
     }
@@ -339,7 +342,10 @@ mod defines_tests {
             MaterialRuntimeError::OrganizerStorage,
             MaterialRuntimeError::Bounds,
         ] {
-            assert_eq!(advance_error(error), RuntimeSessionErrorCode::CommitRefused);
+            assert_eq!(
+                advance_error(&error),
+                RuntimeSessionErrorCode::CommitRefused
+            );
         }
     }
 }

@@ -165,9 +165,9 @@ runs current repository and operator tools.
 <!-- vale ste.NounClusters = NO -->
 Reference SQLite and Parquet are data-build artifacts. Rust owns authoritative replay, checkpoint
 restart, and Archive dirty receipts. The Rust Archive worker and restricted
-reader supply cited county and place dossiers to Bevy. The card shows Archive
-verification lag and refuses historical pages. BSL-Bevy player actions remain
-unavailable.
+reader supply cited county and place dossiers to Bevy. The card reads retained
+pages for the selected committed period and shows verification lag or unavailable
+evidence. BSL-Bevy player actions remain unavailable.
 <!-- vale ste.NounClusters = YES -->
 <!-- vale ste.UnapprovedWords = YES -->
 

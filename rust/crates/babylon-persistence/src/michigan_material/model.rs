@@ -14,6 +14,7 @@ pub enum MichiganSiteRole {
     Production,
     Wholesale,
     Retail,
+    Maintenance,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -91,6 +92,7 @@ pub struct MichiganWorkforceSeed {
     pub site_key: String,
     pub process_keys: Vec<String>,
     pub merchant_handling: bool,
+    pub maintenance: bool,
     pub employed: u64,
     pub reserve: u64,
     pub previous_unretained_hours: u64,
@@ -316,6 +318,32 @@ pub struct MichiganIntervention {
     pub capacities: Vec<MichiganCapacityOverride>,
     pub opening_stocks: Vec<MichiganOpeningStockOverride>,
     pub routes: Vec<MichiganRouteOverride>,
+    pub maintenance: Option<MichiganMaintenanceOverride>,
+    pub graph_scenario_source: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct MichiganMaintenanceOverride {
+    pub opening_spare_parts: u64,
+    pub employed_people: u64,
+    pub reserve_people: u64,
+}
+
+/// One Designed service dependency, distinct from the reverse spare-parts order.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct MichiganMaintenance {
+    pub activity_key: String,
+    pub provider_site_key: String,
+    pub consumer_process_key: String,
+    pub spare_good_key: String,
+    pub spare_units_per_job: u64,
+    pub labor_units_per_job: u64,
+    pub enabled_batches_per_job: u64,
+    pub maximum_jobs_per_period: u64,
+    pub opening_service_batches: u64,
+    pub opening_spare_parts: u64,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -337,6 +365,7 @@ pub struct MichiganNormalizedContent {
     pub owners: Vec<MichiganOwnerSource>,
     pub industry: Vec<MichiganIndustryBaselineRow>,
     pub physical_network: Option<MichiganPhysicalNetwork>,
+    pub maintenance: Option<MichiganMaintenance>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]

@@ -1,6 +1,6 @@
 meta:
   contract: MaterialCircuitV3
-  schema_version: 3
+  schema_version: 4
   evidence_class: Designed
   rust_owner: babylon-material-circuit
 
@@ -12,6 +12,7 @@ scope:
   - explicit local inter-owner circulation without timed transport or a road
   - staffed wholesale and retail outbound handling without changing goods
   - finite county-local retail handoff orders with no road journey
+  - one bounded maintenance provider consumes parts and labor to enable next-period batches
   - no routing, household behavior, consumption, money, or payment decisions occur in this transition
 
 domains:
@@ -31,6 +32,9 @@ encoding:
   county_geoid: five ASCII decimal digits
   merchant_role_u8: {wholesale: 1, retail: 2}
   supplier_transport_u8: {local: 1, staged: 2}
+  optional_presence_u8: {absent: 0, present: 1}
+  maintenance_options: independent presence tags followed by fields; both present or both absent
+  unsupported_schema: refuse; no legacy decoding or migration
   row_count: u32
   noncanonical_order: forbidden
   trailing_bytes: forbidden
@@ -57,6 +61,8 @@ state_field_order:
   - handling_coefficients
   - final_demand_principals
   - final_demand_orders
+  - maintenance_binding
+  - maintenance_service
 
 row_field_order:
   site_logistics_nodes: [site_id, node_id]
@@ -81,6 +87,11 @@ row_field_order:
   handling_coefficients: [site_id, good_id, unit_id, hours_per_unit]
   final_demand_principals: [id, county_geoid]
   final_demand_orders: [order_id, retailer_site_id, demand_principal_id, good_id, unit_id, ordered, fulfilled]
+
+optional_field_order:
+  maintenance_binding: [provider_site_id, consumer_process_id, spare_good_id, spare_unit_id, labor_unit_id,
+                        spare_units_per_job, labor_units_per_job, enabled_batches_per_job, maximum_jobs_per_period]
+  maintenance_service: [period, available_batches]
 
 canonical_keys:
   site_logistics_nodes: [site_id]
@@ -147,7 +158,8 @@ allocation:
 period_close:
   - complete due stages and attribute stage-specific native-unit loss
   - credit retained final arrival to destination inventory once
-  - execute existing prior production commitments
+  - execute existing prior production commitments bounded by opening enabled maintenance batches
+  - expire unused opening service and perform whole maintenance jobs from inputs before outbound local credits
   - allocate routed and local outbound requests against shared stock, route mass and merchant handling mass
   - record merchant feasible quantities before current labor
   - constrain feasible handling with opening labor through the same resource reducer
@@ -181,7 +193,8 @@ conservation:
   - each route capacity debit equals actual dispatch grams for its unique membership
   - each merchant handling capacity debit equals routed plus local actual outbound grams
   - opening stock plus physical arrivals plus local transfer receipts plus production equals consumed inputs plus
-    staged dispatch plus local transfer outflow plus final fulfillment plus closing stock
+    maintenance spare consumption plus staged dispatch plus local transfer outflow plus final fulfillment plus
+    closing stock
   - local fulfilled cumulative quantity increments only by positive local fulfillment receipts
   - final-demand account totals are derived from finite order rows and do not assert actual consumption
 
@@ -214,6 +227,7 @@ error_codes:
   mass_invariant: 19
   merchant_invariant: 20
   final_demand_invariant: 21
+  maintenance_invariant: 22
 
 merchant_receipts:
   handling_fields: [site_id, outbound_order, feasible_quantity, handled_quantity, needed_hours, used_hours]
@@ -230,12 +244,42 @@ merchant_receipts:
 
 staffing:
   schema: StaffingV2
-  work_source_tags: {production: 1, merchant_handling: 2}
-  work_source_identity: process ID for production, site ID for merchant handling
+  work_source_tags: {production: 1, merchant_handling: 2, maintenance: 3}
+  work_source_identity: process ID for production, site ID for merchant handling and maintenance
   binding_membership: unique tagged work sources, one conserved site-unit person principal
-  production_request: next-period input and process-capacity feasible work
+  production_request: next-period input and process-capacity feasible work before service and employment constraints
+  maintenance_request: prospective requested whole jobs multiplied by hours per job before resource constraints
   merchant_request: recorded current-period nonlabor-feasible outbound handling hours
   complete_requests: one explicit request including zero per admitted work source
   retention: max(current unretained hours, previous unretained hours)
   employment: ceil(retained hours / hours per person), capped by conserved labor force
   execution: current opening hours only; subsequent hires supply next-period hours
+
+maintenance:
+  scope: one optional provider and one dependent process; no general service market
+  admission:
+    - binding and service are both present or both absent; zero service remains explicit
+    - every coefficient and maximum job count is positive; service belongs to the opening period
+    - spare quantity and labor time have distinct unit identities
+    - maximum jobs multiplied by enabled batches is checked and bounds opening service
+    - provider is a distinct known site without production or merchant work
+    - consumer is the sole process at its site and produces the bound spare good and unit
+    - consumer has material inputs distinct from its output; no consumer input is supplied to outbound orders
+    - provider has no outbound orders and only the bound labor unit
+  request: ceil(prospective next-period material and nameplate batches / enabled batches per job)
+  prospective: compute after arrivals and production, before maintenance and outbound local credits;
+    omit service and labor limits
+  completed: min(requested jobs, maximum jobs per period, floor(parts available / parts per job),
+    floor(hours available / hours per job))
+  parts_available: opening provider stock plus due freight arrivals; same-close local credits cannot be used
+  parts_debit: completed jobs multiplied by spare units per job
+  labor_debit: completed jobs multiplied by labor units per job
+  consumed_service: actual current-period consumer batches
+  expired_service: opening enabled batches minus consumed service; never carried forward
+  next_service: completed jobs multiplied by enabled batches per job, valid only next period
+  unused_capacity: expires each period; no accumulation
+  planning: constrain actual production and next-period commitments by service; preserve unconstrained staffing demand
+  receipt_optional: absent means no maintenance dependency; present zero records completed zero work
+  receipt_fields: [binding, period, opening_service_batches, consumed_service_batches, expired_service_batches,
+                   prospective_batches, requested_jobs, opening_spare_parts, arrived_spare_parts, available_spare_parts,
+                   available_labor_hours, completed_jobs, consumed_spare_parts, consumed_labor_hours, next_service]

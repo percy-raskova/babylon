@@ -2,6 +2,10 @@
 #![forbid(unsafe_code)]
 #![warn(clippy::pedantic)]
 
+// Share the integration fixture with private reconstruction tests in this crate.
+#[cfg(test)]
+extern crate self as babylon_persistence;
+
 mod archive;
 pub mod archive_driver;
 mod archive_foundation_grants;

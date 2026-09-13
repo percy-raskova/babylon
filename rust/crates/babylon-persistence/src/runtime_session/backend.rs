@@ -250,6 +250,10 @@ mod defines_tests {
             RuntimeSessionPreset::StatewideFreightConstraint,
             RuntimeSessionPreset::StatewidePackagingShortage,
             RuntimeSessionPreset::StatewideBoth,
+            RuntimeSessionPreset::StatewideMaintenanceBaseline,
+            RuntimeSessionPreset::StatewideMaintenanceLaborShortage,
+            RuntimeSessionPreset::StatewideMaintenancePartsShortage,
+            RuntimeSessionPreset::StatewideMaintenanceBoth,
         ] {
             let target = RuntimeSessionTarget::New {
                 campaign_id: uuid::Uuid::from_u128(31).to_string(),

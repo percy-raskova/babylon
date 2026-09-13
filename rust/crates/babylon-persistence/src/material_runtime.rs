@@ -1115,3 +1115,6 @@ mod writer_bounds_tests {
 
 #[cfg(test)]
 mod diagnostics_tests;
+
+#[cfg(test)]
+mod maintenance_tests;

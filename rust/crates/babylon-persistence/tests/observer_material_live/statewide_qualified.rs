@@ -1,6 +1,9 @@
 //! Opt-in qualification of the actual captured statewide sources on owned `PostgreSQL`.
 //! The ordinary reader focus excludes this full four-preset, sixteen-period run.
 
+#[path = "statewide_qualified/maintenance.rs"]
+mod maintenance;
+
 use super::{
     advance_material_period, identity_hex, install_reader_role, provision_observer_role,
     CampaignId, CollectingSink, DisposableTarget, DurableMaterialRuntime, MichiganContentPreset,
@@ -228,7 +231,7 @@ fn qualify_preset(delivery: MichiganDeliveryPreset, index: u128) {
         }
         eprintln!("actual statewide {}: period {period}/16", preset.id());
     }
-    assert_history_and_preview(&observer, &mut target, campaign, &held, &mut measured);
+    assert_history_and_preview(&observer, &mut target, campaign, &held, 16, &mut measured);
     assert_qualified_totals(&mut sql, campaign, preset.id(), &measured);
 }
 
@@ -337,7 +340,7 @@ fn observe(
     completed: Option<(&MaterialTickReceipts, &BTreeMap<String, u64>)>,
     measured: &mut Measurements,
     held: &mut Vec<(u64, ProductionEvidenceDigest)>,
-) {
+) -> ProductionSnapshot {
     let began = Instant::now();
     let snapshot = observer
         .snapshot(campaign, runtime.session().completed_tick())
@@ -392,6 +395,7 @@ fn observe(
     measured.maximum_family_rows = measured
         .maximum_family_rows
         .max(maximum_rows(register.state()));
+    rows.clone()
 }
 
 fn witnessed_output(
@@ -539,6 +543,7 @@ fn assert_stock(rows: &ProductionSnapshot, state: &MaterialCircuitState) {
                     + u128::from(row.local_received)
                     + u128::from(row.produced),
                 u128::from(row.consumed)
+                    + u128::from(row.maintenance_consumed)
                     + u128::from(row.dispatched)
                     + u128::from(row.local_transferred)
                     + u128::from(row.final_demand_fulfilled)
@@ -826,11 +831,16 @@ fn assert_goods_conserved(
             .entry((receipt.good_id, receipt.unit_id))
             .or_default() += u128::from(receipt.quantity);
     }
+    if let Some(receipt) = &receipts.maintenance {
+        *accounted
+            .entry((receipt.binding.spare_good_id, receipt.binding.spare_unit_id))
+            .or_default() += u128::from(receipt.consumed_spare_parts);
+    }
     available.retain(|_, quantity| *quantity > 0);
     accounted.retain(|_, quantity| *quantity > 0);
     assert_eq!(
         available, accounted,
-        "native stock + transit + output = closing + inputs + loss + receipted final handoff"
+        "native stock + transit + output = closing + inputs + maintenance spares + loss + receipted final handoff"
     );
 }
 
@@ -839,6 +849,7 @@ fn assert_history_and_preview(
     target: &mut DisposableTarget,
     campaign: CampaignId,
     held: &[(u64, ProductionEvidenceDigest)],
+    durable_tick: u64,
     measured: &mut Measurements,
 ) {
     let began = Instant::now();
@@ -853,11 +864,11 @@ fn assert_history_and_preview(
         );
     }
     measured.projection += began.elapsed();
-    assert_eq!(observer.campaigns().unwrap()[0].durable_tick, 16);
+    assert_eq!(observer.campaigns().unwrap()[0].durable_tick, durable_tick);
     let preview_config = target.login("babylon_reader", "actualpreview");
     let preview =
         ObserverEconomyReader::connect(&preview_config, ObserverVisibility::KnownPreview).unwrap();
-    let snapshot = preview.snapshot(campaign, 16).unwrap();
+    let snapshot = preview.snapshot(campaign, durable_tick).unwrap();
     assert!(snapshot.production.is_none());
     assert!(snapshot.production_evidence_digest().unwrap().is_none());
 }

@@ -33,6 +33,8 @@ fn merchant() -> MaterialCircuitState {
         }],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
+        maintenance_binding: None,
+        maintenance_service: None,
         period: 1,
         site_logistics_nodes: vec![
             SiteLogisticsNode {
@@ -583,9 +585,12 @@ fn multiple_merchants_and_county_accounts_preserve_identity_under_all_new_row_pe
 fn merchant_role_encoding_rejects_unknown_tags() {
     let state = local_store();
     let mut bytes = encode_material_circuit_state(&state).unwrap();
-    // Four appended families: counts plus one merchant(102), coefficient(104),
-    // county principal(37), and local order(176). Role follows site and county.
-    let role_offset = bytes.len() - (4 * 4 + 102 + 104 + 37 + 176) + 4 + 32 + 5;
+    // Four trailing row families plus absent binding/service tags: counts,
+    // merchant(102), coefficient(104), county principal(37), local order(176),
+    // and two zero option bytes. The merchant role follows its site and county.
+    assert!(state.maintenance_binding.is_none() && state.maintenance_service.is_none());
+    assert_eq!(&bytes[bytes.len() - 2..], &[0, 0]);
+    let role_offset = bytes.len() - (4 * 4 + 102 + 104 + 37 + 176 + 2) + 4 + 32 + 5;
     assert_eq!(bytes[role_offset], 2);
     bytes[role_offset] = 3;
     assert_eq!(

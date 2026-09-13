@@ -3,8 +3,10 @@
 mod delivery_groups;
 
 use babylon_persistence::{
-    observer_reader::ObserverEconomyReader, production_observation::ProductionEvent,
-    production_observation::ProductionProcess,
+    observer_reader::{
+        ObserverEconomyReader, ProductionHistoryTarget, ProductionOutputPoint as PeriodOutput,
+    },
+    production_observation::ProductionEvent,
 };
 use bevy::ecs::{query::QueryData, system::SystemParam};
 use bevy::input_focus::tab_navigation::TabGroup;
@@ -26,7 +28,6 @@ use delivery_groups::{
     delivery_log_entries, DeliveryGroup, DeliveryGroupKey, DeliveryLog, DeliveryLogEntry,
 };
 
-const CHART_PERIODS: u64 = babylon_kernel::clock::TICKS_PER_YEAR;
 const LOG_ENTRIES: usize = 160;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -34,32 +35,6 @@ struct HistoryScope {
     context: ObservationContext,
     site: Option<String>,
     process: Option<(String, String, String)>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct PeriodOutput {
-    period: u64,
-    planned: Option<u64>,
-    produced: Option<u64>,
-}
-
-impl PeriodOutput {
-    fn from_process(period: u64, site: &ProductionProcess) -> Result<Self, String> {
-        let quantity = |batches: Option<u64>| {
-            batches
-                .map(|batches| {
-                    batches.checked_mul(site.output_per_batch).ok_or_else(|| {
-                        "Output quantity exceeds its exact integer range.".to_owned()
-                    })
-                })
-                .transpose()
-        };
-        Ok(Self {
-            period,
-            planned: quantity(site.planned_batches)?,
-            produced: quantity(site.produced_batches)?,
-        })
-    }
 }
 
 type HistoryTask = Task<Result<Vec<PeriodOutput>, String>>;
@@ -400,31 +375,45 @@ fn focus_eligibility(
 }
 
 fn fetch(scope: &HistoryScope) -> Result<Vec<PeriodOutput>, String> {
+    let started = std::time::Instant::now();
+    let result = fetch_history(scope);
+    bevy::log::info!(target: "babylon_client::timing",
+        stage = "authenticated_production_history_read",
+        campaign = %scope.context.campaign.as_uuid(),
+        tick = scope.context.tick,
+        generation = scope.context.generation,
+        perspective = ?scope.context.perspective,
+        site_id = ?scope.site,
+        process_identity = ?scope.process,
+        elapsed_us = started.elapsed().as_micros(),
+        success = result.is_ok(),
+        points = result.as_ref().map_or(0, Vec::len),
+        "production history read completed");
+    result
+}
+
+fn fetch_history(scope: &HistoryScope) -> Result<Vec<PeriodOutput>, String> {
     let (Some(site_id), Some((process_id, good_id, unit_id))) = (&scope.site, &scope.process)
     else {
-        return Ok(Vec::new());
+        return Err("Select a disclosed productive process to read its history.".into());
     };
     let reader = match scope.context.perspective {
         Perspective::FullObserver => ObserverEconomyReader::from_observer_env(),
         Perspective::PlayerKnowledge => ObserverEconomyReader::from_known_env(),
     }
     .map_err(|error| error.to_string())?;
-    let mut points = Vec::new();
-    for period in scope.context.tick.saturating_sub(CHART_PERIODS - 1)..=scope.context.tick {
-        let frame = reader
-            .snapshot(scope.context.campaign, period)
-            .map_err(|error| error.to_string())?;
-        let Some(site) = frame
-            .production
-            .as_ref()
-            .and_then(|snapshot| snapshot.sites.iter().find(|site| site.id == *site_id))
-        else {
-            return Err("Production history is not disclosed by this read capability.".into());
-        };
-        let process = site.processes.iter().find(|process| process.id == *process_id && process.output_good_id == *good_id && process.output_unit_id == *unit_id).ok_or("The selected process/material identity is unavailable in this historical observation.")?;
-        points.push(PeriodOutput::from_process(period, process)?);
-    }
-    Ok(points)
+    reader
+        .production_history(
+            scope.context.campaign,
+            scope.context.tick,
+            &ProductionHistoryTarget {
+                site_id: site_id.clone(),
+                process_id: process_id.clone(),
+                output_good_id: good_id.clone(),
+                output_unit_id: unit_id.clone(),
+            },
+        )
+        .map_err(|error| error.to_string())
 }
 
 fn update(
@@ -506,7 +495,7 @@ fn update(
     if history.pending.is_none()
         && history.points.is_empty()
         && history.error.is_none()
-        && scope.site.is_some()
+        && scope.process.is_some()
     {
         history.pending = Some(AsyncComputeTaskPool::get().spawn(async move { fetch(&scope) }));
     }
@@ -1006,6 +995,7 @@ mod tests {
             visibility: ObserverVisibility::FullObserver,
             counties: vec![],
             production: Some(ProductionSnapshot {
+                maintenance_account: None,
                 content_authority_sha256: "a".repeat(64),
                 road_source: None,
                 physical_edges: Vec::new(),
@@ -2061,53 +2051,5 @@ mod tests {
             ),
             ControlAvailability::Disabled("History changed; wait for its current observation")
         );
-    }
-
-    #[test]
-    fn exact_history_distinguishes_foundation_zero_and_overflow() {
-        let mut site = ProductionSite {
-            id: "site".into(),
-            county_geoid: "26163".into(),
-            name: "cohort".into(),
-            industry_code: "331".into(),
-            observed_employment: None,
-            inventory: vec![],
-            role: babylon_persistence::production_observation::ProductionSiteRole::Production,
-            sector_code: "31-33".into(),
-            processes: vec![
-                babylon_persistence::production_observation::ProductionProcess {
-                    id: "fixture-process".into(),
-                    name: "Fixture process".into(),
-                    output_good_id: "a".repeat(64),
-                    output_unit_id: "b".repeat(64),
-                    output_good: "sheet".into(),
-                    output_unit: "kg".into(),
-                    output_per_batch: 10,
-                    available_batches: 8,
-                    planned_batches: None,
-                    produced_batches: None,
-                    inputs: vec![],
-                    labor: vec![],
-                },
-            ],
-        };
-        assert_eq!(
-            PeriodOutput::from_process(0, &site.processes[0])
-                .unwrap()
-                .produced,
-            None
-        );
-        site.processes[0].planned_batches = Some(8);
-        site.processes[0].produced_batches = Some(0);
-        assert_eq!(
-            PeriodOutput::from_process(1, &site.processes[0]).unwrap(),
-            PeriodOutput {
-                period: 1,
-                planned: Some(80),
-                produced: Some(0)
-            }
-        );
-        site.processes[0].produced_batches = Some(u64::MAX);
-        assert!(PeriodOutput::from_process(2, &site.processes[0]).is_err());
     }
 }

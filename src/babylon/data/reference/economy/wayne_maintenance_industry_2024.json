@@ -1,0 +1,30 @@
+{
+  "evidence_class": "Observed",
+  "row": {
+    "agglvl_code": "78",
+    "annual_avg_emplvl": 1480,
+    "annual_avg_estabs_count": 122,
+    "annual_avg_wkly_wage": 1556,
+    "area_fips": "26163",
+    "area_title": "Wayne County, Michigan",
+    "disclosure_code": "",
+    "industry_code": "811310",
+    "industry_title": "NAICS 811310 Commercial and industrial machinery and equipment (except automotive and electronic) repair and maintenance",
+    "own_code": "5",
+    "source_file": "2024.annual 26163 Wayne County, Michigan.csv",
+    "source_sha256": "1382b5821ac95ca6f344e50f76b6846f76f841b0bc32ebf69ee8fbadc545481a",
+    "total_annual_wages": 119725241
+  },
+  "schema": "MichiganMaintenanceIndustryV1",
+  "selection": {
+    "agglvl_code": "78",
+    "area_fips": "26163",
+    "industry_code": "811310",
+    "own_code": "5",
+    "qtr": "A",
+    "size_code": "0",
+    "year": "2024"
+  },
+  "source_url": "https://data.bls.gov/cew/data/files/2024/csv/2024_annual_by_area.zip",
+  "vintage": 2024
+}

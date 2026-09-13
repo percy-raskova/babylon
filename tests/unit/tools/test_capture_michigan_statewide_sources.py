@@ -34,7 +34,7 @@ def sha(path):
 
 def inputs(tmp_path):
     defines = tmp_path / "defines.toml"
-    defines.write_text("""SCHEMA_VERSION = 3
+    defines.write_text("""SCHEMA_VERSION = 4
 [statewide]
 EVIDENCE_CLASS = "Designed"
 TERMINAL_ATTACHMENT_LIMIT_METERS = 50000

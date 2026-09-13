@@ -211,6 +211,7 @@ fn initial_production_allocations(
     state: &MaterialCircuitState,
     commitments: &[crate::ProductionCommitment],
     period: u64,
+    resources: ProductionResources,
 ) -> Result<Vec<u64>, MaterialCircuitError> {
     let mut allocations = Vec::with_capacity(commitments.len());
     for commitment in commitments.iter().take(MAX_MATERIAL_CIRCUIT_ROWS + 1) {
@@ -219,12 +220,19 @@ fn initial_production_allocations(
         if output.site_id != commitment.site_id || commitment.period != period {
             return Err(MaterialCircuitError::ProcessInvariant);
         }
-        allocations.push(commitment.planned_batches.min(process_capacity(
+        let batches = commitment.planned_batches.min(process_capacity(
             state,
             commitment.process_id,
             commitment.site_id,
             period,
-        )));
+        ));
+        allocations.push(
+            if matches!(resources, ProductionResources::InputsAndLabor) {
+                crate::maintenance::limit_batches(state, commitment.process_id, period, batches)?
+            } else {
+                batches
+            },
+        );
     }
     Ok(allocations)
 }
@@ -380,7 +388,7 @@ fn allocate_production_batches(
     period: u64,
     resources: ProductionResources,
 ) -> Result<Vec<u64>, MaterialCircuitError> {
-    let mut allocations = initial_production_allocations(state, commitments, period)?;
+    let mut allocations = initial_production_allocations(state, commitments, period, resources)?;
     let groups = production_resource_groups(state, commitments, &allocations, resources)?;
     apply_production_resource_limits(state, inventory, period, &groups, &mut allocations)?;
     Ok(allocations)
@@ -604,6 +612,33 @@ pub(crate) fn derive_shared_labor_requests(
         .collect()
 }
 
+/// Material and nameplate demand excludes employment and enabled service.
+pub(crate) fn prospective_batches(
+    state: &MaterialCircuitState,
+    process: ProcessId,
+    period: u64,
+) -> Result<u64, MaterialCircuitError> {
+    let inventory = state
+        .inventory
+        .iter()
+        .map(|row| ((row.site_id, row.good_id, row.unit_id), row.quantity))
+        .collect();
+    let candidates = next_period_candidates(state, period);
+    let allocations = allocate_production_batches(
+        state,
+        &inventory,
+        &candidates,
+        period,
+        ProductionResources::InputsOnly,
+    )?;
+    candidates
+        .iter()
+        .zip(allocations)
+        .find(|(candidate, _)| candidate.process_id == process)
+        .map(|(_, batches)| batches)
+        .ok_or(MaterialCircuitError::MaintenanceInvariant)
+}
+
 pub(crate) fn derive_shared_production(
     state: &mut MaterialCircuitState,
     next_period: u64,
@@ -663,6 +698,8 @@ mod tests {
             handling_coefficients: Vec::new(),
             final_demand_principals: Vec::new(),
             final_demand_orders: Vec::new(),
+            maintenance_binding: None,
+            maintenance_service: None,
         }
     }
 

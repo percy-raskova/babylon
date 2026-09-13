@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Render the existing observer themes and cues to Ogg Vorbis; never synthesize at runtime.
+"""Render every authored music MIDI and the observer cues to Ogg Vorbis.
 
 Run ``uv run python tools/audio/render_observer_audio.py``. ``--check`` renders
 into temporary storage and verifies every committed output and provenance row.
-The soundfont stays an external build input, identified by SHA-256.
+The soundfont stays an external build input, checked against its pinned SHA-256.
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ import mido  # type: ignore[import-untyped]  # mido ships no typing metadata.
 ROOT = Path(__file__).resolve().parents[2]
 MANIFEST = ROOT / "assets" / "audio-renders.json"
 SOUNDFONT = Path("/usr/share/sounds/sf2/FluidR3_GM.sf2")
+SOUNDFONT_SHA256 = "74594e8f4250680adf590507a306655a299935343583256f3b722c48a1bc1cb0"
 
 
 @dataclass(frozen=True)
@@ -32,9 +33,10 @@ class Cue:
     kind: str
 
 
-CUES = (
-    Cue("music/babylon_theme_phi", "music"),
-    Cue("music/babylon_theme_panopticon", "music"),
+CUES = tuple(
+    Cue(path.relative_to(ROOT / "assets").with_suffix("").as_posix(), "music")
+    for path in sorted((ROOT / "assets/music").rglob("*.mid"))
+) + (
     Cue("sfx/ui/ui_select", "sfx"),
     Cue("sfx/ui/ui_tab", "sfx"),
     Cue("sfx/ui/ui_open", "sfx"),
@@ -192,6 +194,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args(argv)
     soundfont = args.soundfont.resolve(strict=True)
+    soundfont_sha256 = digest(soundfont)
+    if soundfont_sha256 != SOUNDFONT_SHA256:
+        raise ValueError(
+            f"soundfont SHA-256 mismatch: expected {SOUNDFONT_SHA256}, got {soundfont_sha256}"
+        )
     versions = {}
     for binary in ("fluidsynth", "ffmpeg", "ffprobe"):
         executable = shutil.which(binary)
@@ -225,7 +232,7 @@ def main(argv: list[str] | None = None) -> int:
         "renderer": "tools/audio/render_observer_audio.py",
         "soundfont": {
             "name": soundfont.name,
-            "sha256": digest(soundfont),
+            "sha256": soundfont_sha256,
             "license": "MIT",
             "notice": "assets/licenses/FluidR3-GM.txt",
         },
@@ -245,7 +252,14 @@ def main(argv: list[str] | None = None) -> int:
             "metadata": "removed",
             "ffmpeg_bitexact": True,
         },
-        "license_scope": "SFX MIDI is CC0. On 2026-09-06 the Director confirmed original authorship of Phi and Panopticon and authorized distribution of their MIDI and rendered forms with Babylon. This permission does not assign CC0 to the themes; see LICENSING.md.",
+        "license_scope": (
+            "SFX MIDI and the ambient, superstructure, periphery, rift, endgame and entity "
+            "music suites retain their CC0 dedication. On 2026-09-06 the Director confirmed "
+            "original authorship of Phi and Panopticon and authorized distribution of their "
+            "MIDI and rendered forms with Babylon. This permission does not assign CC0 to "
+            "the themes. Rendering the legacy crisis, fascist and revolutionary suites does "
+            "not assign a license or change their recorded unresolved status; see LICENSING.md."
+        ),
         "assets": rows,
     }
     encoded = json.dumps(manifest, indent=2, sort_keys=True) + "\n"

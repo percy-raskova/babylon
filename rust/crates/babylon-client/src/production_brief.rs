@@ -10,12 +10,16 @@ use babylon_persistence::{
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum DependencyDirection {
+    MaintenanceProvider,
+    ServiceConsumer,
     Upstream,
     Downstream,
 }
 impl DependencyDirection {
     pub(crate) fn label(self) -> &'static str {
         match self {
+            Self::MaintenanceProvider => "MAINTENANCE PROVIDER",
+            Self::ServiceConsumer => "SERVICE CONSUMER",
             Self::Upstream => "UPSTREAM / SUPPLIERS",
             Self::Downstream => "DOWNSTREAM / BUYERS",
         }
@@ -29,6 +33,19 @@ pub(crate) fn dependency_sites<'a>(
     snapshot: &'a ProductionSnapshot,
 ) -> Vec<(DependencyDirection, &'a ProductionSite)> {
     let mut links = BTreeSet::new();
+    if let Some(account) = crate::production::maintenance::account(snapshot, &site.id) {
+        if site.id == account.consumer_site_id {
+            links.insert((
+                DependencyDirection::MaintenanceProvider,
+                account.provider_site_id.as_str(),
+            ));
+        } else {
+            links.insert((
+                DependencyDirection::ServiceConsumer,
+                account.consumer_site_id.as_str(),
+            ));
+        }
+    }
     for relation in crate::material_relations::declared_material_relations(snapshot) {
         if relation.buyer == site.id {
             links.insert((DependencyDirection::Upstream, relation.supplier));
@@ -57,6 +74,14 @@ fn unfinished_plan(site: &ProductionSite) -> bool {
 /// An unfulfilled committed plan comes first; otherwise choose a visible
 /// link between suppliers and buyers, then the first stable site identity.
 pub(crate) fn opening_site(snapshot: &ProductionSnapshot) -> Option<&ProductionSite> {
+    if let Some(account) = snapshot.maintenance_account.as_ref().and_then(|account| {
+        crate::production::maintenance::account(snapshot, &account.consumer_site_id)
+    }) {
+        return snapshot
+            .sites
+            .iter()
+            .find(|site| site.id == account.consumer_site_id);
+    }
     let first = |predicate: &dyn Fn(&ProductionSite) -> bool| {
         snapshot
             .sites
@@ -91,6 +116,9 @@ pub(crate) fn committed_plan_status(site: &ProductionSite) -> &'static str {
             }
             babylon_persistence::production_observation::ProductionSiteRole::Production => {
                 "No productive process disclosed"
+            }
+            babylon_persistence::production_observation::ProductionSiteRole::Maintenance => {
+                "Maintenance / service jobs for a bound process"
             }
         };
     }
@@ -257,10 +285,28 @@ pub(crate) fn dependency_flow_summary(
     direction: DependencyDirection,
     snapshot: &ProductionSnapshot,
 ) -> String {
+    if matches!(
+        direction,
+        DependencyDirection::MaintenanceProvider | DependencyDirection::ServiceConsumer
+    ) {
+        let Some(account) = crate::production::maintenance::account(snapshot, &site.id) else {
+            return "Maintenance relationship unavailable".into();
+        };
+        return format!(
+            "Maintenance service → period {} / up to {} {}\nJobs use parts and hours; service expires.",
+            account.next_service_period,
+            crate::production::maintenance::next_output(account)
+                .map_or_else(|| "unavailable".into(), crate::observer_ui::grouped),
+            account.output_unit
+        );
+    }
     let relations = material_relations(snapshot);
     let relevant: Vec<_> = relations
         .values()
         .filter(|relation| match direction {
+            DependencyDirection::MaintenanceProvider | DependencyDirection::ServiceConsumer => {
+                false
+            }
             DependencyDirection::Upstream => {
                 relation.buyer.id == site.id && relation.supplier.id == other.id
             }
@@ -288,7 +334,7 @@ pub(crate) fn describe_brief(site: &ProductionSite, snapshot: &ProductionSnapsho
     let guidance = if dependency_sites(site, snapshot).is_empty() {
         "No material relationships disclosed."
     } else {
-        "Follow a supplier or buyer below."
+        "Follow a supplier, buyer or service relation below."
     };
     format!("{}\n{}\n{guidance}", site.name, committed_plan_status(site))
 }
@@ -372,6 +418,7 @@ mod tests {
     }
     fn chain() -> ProductionSnapshot {
         ProductionSnapshot {
+            maintenance_account: None,
             content_authority_sha256: "a".repeat(64),
             road_source: None,
             physical_edges: Vec::new(),
@@ -421,7 +468,7 @@ mod tests {
         for fact in [
             "Cohort b",
             "Committed plan partly completed",
-            "Follow a supplier or buyer below.",
+            "Follow a supplier, buyer or service relation below.",
         ] {
             assert!(text.contains(fact), "missing {fact}: {text}");
         }

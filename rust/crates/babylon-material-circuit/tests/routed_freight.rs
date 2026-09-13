@@ -57,6 +57,8 @@ fn base_state() -> MaterialCircuitState {
         handling_coefficients: vec![],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
+        maintenance_binding: None,
+        maintenance_service: None,
         freight_mass_coefficients: vec![FreightMassCoefficient {
             good_id: good(GOODS),
             unit_id: unit(GOODS_UNIT),
@@ -516,7 +518,7 @@ fn current_decoder_refuses_domain_version_truncation_and_trailing_bytes() {
 
     let version_index = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
     let mut wrong_version = bytes.clone();
-    wrong_version[version_index + 1] = 4;
+    wrong_version[version_index + 1] = 3;
     assert_eq!(
         decode_material_circuit_state(&wrong_version),
         Err(babylon_material_circuit::MaterialCircuitError::WireVersion)

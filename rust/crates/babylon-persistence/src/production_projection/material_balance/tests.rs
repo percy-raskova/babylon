@@ -20,6 +20,8 @@ type Pair = (
 
 fn empty_state() -> MaterialCircuitState {
     MaterialCircuitState {
+        maintenance_binding: None,
+        maintenance_service: None,
         period: 1,
         site_logistics_nodes: vec![],
         process_outputs: vec![],
@@ -72,6 +74,7 @@ fn conserved(balance: &CompletedMaterialBalance) {
                 + u128::from(row.local_received)
                 + u128::from(row.produced),
             u128::from(row.consumed)
+                + u128::from(row.maintenance_consumed)
                 + u128::from(row.dispatched)
                 + u128::from(row.local_transferred)
                 + u128::from(row.final_demand_fulfilled)
@@ -1026,4 +1029,57 @@ fn completed_local_fulfillment_and_handling_require_exact_receipt_identity() {
             Err(ProductionProjectionError::State)
         ));
     }
+}
+
+#[test]
+fn maintenance_spare_parts_close_as_their_own_exact_stock_debit() {
+    let mut state = production_state(&[(4, 1, 2, 2)], 10);
+    state.input_coefficients[0].good_id = GoodId::from_bytes([21; 32]);
+    state.inventory[0].good_id = GoodId::from_bytes([21; 32]);
+    let provider = SiteId::from_bytes([20; 32]);
+    let binding = babylon_material_circuit::MaintenanceBinding {
+        provider_site_id: provider,
+        consumer_process_id: ProcessId::from_bytes([4; 32]),
+        spare_good_id: GoodId::from_bytes([2; 32]),
+        spare_unit_id: UnitId::from_bytes([3; 32]),
+        labor_unit_id: UnitId::from_bytes([4; 32]),
+        spare_units_per_job: 1,
+        labor_units_per_job: 2,
+        enabled_batches_per_job: 1,
+        maximum_jobs_per_period: 2,
+    };
+    state.site_logistics_nodes.push(SiteLogisticsNode {
+        site_id: provider,
+        node_id: LogisticsNodeId::from_bytes([3; 32]),
+    });
+    state.inventory.push(stock(20, 2, 3, 3));
+    state.labor.push(LaborCapacityRow {
+        site_id: provider,
+        unit_id: binding.labor_unit_id,
+        period: 1,
+        available: 6,
+    });
+    state.maintenance_service = Some(babylon_material_circuit::MaintenanceService {
+        period: 1,
+        available_batches: 2,
+    });
+    state.maintenance_binding = Some(binding);
+    let mut future = state.capacities.clone();
+    for capacity in &mut future {
+        capacity.period = 2;
+    }
+    state.capacities.extend(future);
+    let pair = pair(state);
+    let balance = complete(&pair);
+    let row = balance
+        .rows
+        .iter()
+        .find(|row| row.site_id == digest_hex(&provider.as_bytes()))
+        .unwrap();
+    let encoded = serde_json::to_value(row).unwrap();
+    assert_eq!(encoded["maintenance_consumed"], 2);
+    assert_eq!((row.opening, row.consumed, row.closing), (3, 0, 1));
+    let mut damaged = pair.clone();
+    damaged.2.maintenance.as_mut().unwrap().consumed_spare_parts += 1;
+    assert!(project(&damaged).is_err());
 }

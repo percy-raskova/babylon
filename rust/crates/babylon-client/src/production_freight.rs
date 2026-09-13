@@ -576,6 +576,7 @@ pub(crate) mod tests {
         })
         .collect();
         ProductionSnapshot {
+            maintenance_account: None,
             content_authority_sha256: "a".repeat(64),
             road_source: None,
             physical_edges: Vec::new(),

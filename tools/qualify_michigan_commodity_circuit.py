@@ -188,11 +188,11 @@ def parse_defines(document: dict[str, Any], *, source_sha256: str = "") -> Autho
     """Read only the authored catalogue boundary needed for finite order quantities."""
     if (
         type(document.get("SCHEMA_VERSION")) is not int
-        or document.get("SCHEMA_VERSION") != 3
+        or document.get("SCHEMA_VERSION") != 4
         or type(document.get("TICK_DURATION_DAYS")) is not int
         or document.get("TICK_DURATION_DAYS") != 28
     ):
-        raise QualificationError("defines_version", "schema 3 and 28-day periods required")
+        raise QualificationError("defines_version", "schema 4 and 28-day periods required")
     horizon = _uint(document.get("HORIZON_PERIODS"), "HORIZON_PERIODS")
     statewide = _mapping(document.get("statewide"), "statewide")
     periods = _uint(statewide.get("FINITE_ORDER_PERIODS"), "FINITE_ORDER_PERIODS")

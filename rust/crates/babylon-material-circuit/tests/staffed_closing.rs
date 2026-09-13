@@ -57,6 +57,8 @@ fn opening() -> MaterialCircuitState {
         handling_coefficients: vec![],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
+        maintenance_binding: None,
+        maintenance_service: None,
         period: 1,
         site_logistics_nodes: Vec::new(),
         process_outputs: vec![ProcessOutput {

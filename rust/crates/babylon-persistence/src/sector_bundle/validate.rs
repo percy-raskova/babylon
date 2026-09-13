@@ -12,10 +12,12 @@ pub(super) fn bundle(value: &SectorBundle) -> Result<(), SectorBundleError> {
         || value.owner.county_geoid.len() != 5
         || !value.owner.county_geoid.starts_with("26")
         || !value.owner.county_geoid.bytes().all(|b| b.is_ascii_digit())
-        || !matches!(
+        || !(matches!(
             value.owner.sector_code.as_str(),
             "11" | "21" | "31-33" | "42" | "44-45"
-        )
+        ) || (value.owner.county_geoid == "26163"
+            && value.owner.sector_code == "81"
+            && value.maintenance_provider.is_some()))
     {
         return Err(SectorBundleError::Owner);
     }
@@ -42,12 +44,25 @@ pub(super) fn bundle(value: &SectorBundle) -> Result<(), SectorBundleError> {
         || !rows.corridor_capacities.is_empty()
         || !rows.final_demand_orders.is_empty()
         || !rows.final_demand_principals.is_empty()
+        || rows.maintenance_binding.is_some()
+        || rows.maintenance_service.is_some()
         || value.processes.len() > MAX_BUNDLE_PROCESSES
         || value.goods.is_empty()
         || value.goods.len() > MAX_BUNDLE_GOODS
-        || (value.processes.is_empty() && rows.merchants.is_empty())
+        || (value.processes.is_empty()
+            && rows.merchants.is_empty()
+            && value.maintenance_provider.is_none())
     {
         return Err(SectorBundleError::Bound);
+    }
+    if value.maintenance_provider.is_some()
+        && (value.owner.county_geoid != "26163"
+            || value.owner.sector_code != "81"
+            || !value.processes.is_empty()
+            || !rows.merchants.is_empty()
+            || rows.site_logistics_nodes.len() != 1)
+    {
+        return Err(SectorBundleError::Owner);
     }
     goods(value)?;
     ownership_and_resources(value)?;
@@ -100,6 +115,7 @@ fn ownership_and_resources(value: &SectorBundle) -> Result<(), SectorBundleError
         .iter()
         .map(|p| p.site_id)
         .chain(rows.merchants.iter().map(|m| m.site_id))
+        .chain(value.maintenance_provider)
         .collect();
     if sites
         != rows

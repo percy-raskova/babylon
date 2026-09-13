@@ -2,7 +2,7 @@ use super::*;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_tick::material_state::MaterialState;
 
-fn persisted_graph_copy(original: &CampaignFoundation) -> CampaignFoundation {
+pub(super) fn persisted_graph_copy(original: &CampaignFoundation) -> CampaignFoundation {
     let bundle = original.content_bundle();
     CampaignFoundation::from_persisted(
         original.stable_graph_bytes().to_vec(),
@@ -26,7 +26,7 @@ fn persisted_graph_copy(original: &CampaignFoundation) -> CampaignFoundation {
     .unwrap()
 }
 
-fn stored_copy(original: &MaterialRuntimeFoundation) -> StoredMaterialFoundation {
+pub(super) fn stored_copy(original: &MaterialRuntimeFoundation) -> StoredMaterialFoundation {
     StoredMaterialFoundation {
         spec: original.spec.clone(),
         initial_register_bytes: original.register.canonical_bytes().to_vec(),

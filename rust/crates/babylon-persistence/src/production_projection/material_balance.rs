@@ -41,6 +41,8 @@ pub struct ProductionMaterialBalanceRow {
     pub final_demand_fulfilled: u64,
     pub produced: u64,
     pub consumed: u64,
+    /// Spare parts used by maintenance, separate from productive recipe inputs.
+    pub maintenance_consumed: u64,
     pub dispatched: u64,
     pub closing: u64,
 }
@@ -60,6 +62,7 @@ struct Amounts {
     final_demand_fulfilled: u64,
     produced: u64,
     consumed: u64,
+    maintenance_consumed: u64,
     dispatched: u64,
     closing: u64,
 }
@@ -112,6 +115,7 @@ fn project_with_labels(
     receipt: Option<&MaterialTickReceipts>,
     labels: impl Fn(GoodId, UnitId) -> Option<(String, String)>,
 ) -> Result<Option<CompletedMaterialBalance>, ProductionProjectionError> {
+    let maintenance = super::maintenance::completed(current, prior, receipt)?;
     let (prior, receipt) = match (prior, receipt) {
         (None, None) if current.period == 1 => return Ok(None),
         (Some(prior), Some(receipt))
@@ -133,6 +137,20 @@ fn project_with_labels(
     add_production(prior, receipt, &processes, &mut ledger)?;
     add_transport(prior, current, receipt, &orders, &mut ledger)?;
     add_final_demand(prior, receipt, &mut ledger)?;
+    if let Some(done) = maintenance {
+        let binding = &done.binding;
+        add(
+            &mut ledger
+                .entry((
+                    binding.provider_site_id,
+                    binding.spare_good_id,
+                    binding.spare_unit_id,
+                ))
+                .or_default()
+                .maintenance_consumed,
+            done.consumed_spare_parts,
+        )?;
+    }
     let rows = ledger
         .into_iter()
         .map(|(key, amounts)| finish_row(key, &amounts, &labels))
@@ -569,6 +587,7 @@ fn finish_row(
         amounts.produced,
     ])? != total(&[
         amounts.consumed,
+        amounts.maintenance_consumed,
         amounts.dispatched,
         amounts.local_transferred,
         amounts.final_demand_fulfilled,
@@ -590,6 +609,7 @@ fn finish_row(
         final_demand_fulfilled: amounts.final_demand_fulfilled,
         produced: amounts.produced,
         consumed: amounts.consumed,
+        maintenance_consumed: amounts.maintenance_consumed,
         dispatched: amounts.dispatched,
         closing: amounts.closing,
     })

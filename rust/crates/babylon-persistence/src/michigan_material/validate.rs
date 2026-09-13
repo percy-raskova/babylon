@@ -79,7 +79,7 @@ fn path(path: &mut MichiganMaterialPath) {
 }
 pub(super) fn content(c: &MichiganNormalizedContent) -> Result<(), MichiganMaterialError> {
     use MichiganMaterialError::{ArtifactShape, ContentReference, ContentValue};
-    if c.schema != "MichiganNormalizedContentV2"
+    if c.schema != "MichiganNormalizedContentV3"
         || c.evidence_class != "Designed"
         || c.tick_duration_days != babylon_kernel::clock::DAYS_PER_TICK
         || !(1..=16).contains(&c.horizon_ticks)
@@ -124,6 +124,7 @@ pub(super) fn content(c: &MichiganNormalizedContent) -> Result<(), MichiganMater
     }
     workforce(c)?;
     merchants(c)?;
+    super::maintenance::validate(c)?;
     physical::validate(c)?;
     Ok(())
 }
@@ -165,8 +166,13 @@ fn workforce(c: &MichiganNormalizedContent) -> Result<(), MichiganMaterialError>
             .collect();
         if pool.process_keys.iter().collect::<BTreeSet<_>>() != expected
             || pool.process_keys.len() != expected.len()
-            || pool.merchant_handling != (site.role != MichiganSiteRole::Production)
-            || (expected.is_empty() && !pool.merchant_handling)
+            || pool.merchant_handling
+                != matches!(
+                    site.role,
+                    MichiganSiteRole::Wholesale | MichiganSiteRole::Retail
+                )
+            || pool.maintenance != (site.role == MichiganSiteRole::Maintenance)
+            || (expected.is_empty() && !pool.merchant_handling && !pool.maintenance)
         {
             return Err(ContentValue);
         }
@@ -191,7 +197,12 @@ fn merchants(c: &MichiganNormalizedContent) -> Result<(), MichiganMaterialError>
     let expected: BTreeSet<_> = c
         .sites
         .iter()
-        .filter(|s| s.role != MichiganSiteRole::Production)
+        .filter(|s| {
+            matches!(
+                s.role,
+                MichiganSiteRole::Wholesale | MichiganSiteRole::Retail
+            )
+        })
         .map(|s| s.key.as_str())
         .collect();
     if c.merchants
@@ -263,6 +274,9 @@ pub(super) fn interventions(
     base: MichiganDeliveryPreset,
     rows: &[MichiganIntervention],
 ) -> Result<(), MichiganMaterialError> {
+    if base.is_maintenance() != c.maintenance.is_some() {
+        return Err(MichiganMaterialError::Preset);
+    }
     let mut seen = BTreeSet::new();
     for row in rows {
         if row.preset == base
@@ -283,6 +297,15 @@ pub(super) fn interventions(
         let mut modified = c.clone();
         apply(&mut modified, row)?;
         content(&modified)?;
+        if row.preset.is_maintenance() != base.is_maintenance()
+            || row.graph_scenario_source.is_some() != (modified.staffing != c.staffing)
+            || row
+                .graph_scenario_source
+                .as_ref()
+                .is_some_and(|s| s.is_empty() || s.len() > 1_048_576)
+        {
+            return Err(MichiganMaterialError::Preset);
+        }
     }
     Ok(())
 }
@@ -316,6 +339,27 @@ pub(super) fn apply(
             .ok_or(ContentReference)?
             .path
             .clone_from(&item.path);
+    }
+    if let Some(item) = &row.maintenance {
+        let maintenance = c.maintenance.as_mut().ok_or(ContentReference)?;
+        let pool = c
+            .staffing
+            .pools
+            .iter_mut()
+            .find(|p| p.site_key == maintenance.provider_site_key)
+            .ok_or(ContentReference)?;
+        if pool.employed.checked_add(pool.reserve)
+            != item.employed_people.checked_add(item.reserve_people)
+        {
+            return Err(MichiganMaterialError::ContentValue);
+        }
+        pool.employed = item.employed_people;
+        pool.reserve = item.reserve_people;
+        pool.previous_unretained_hours = item
+            .employed_people
+            .checked_mul(c.staffing.hours_per_worker_period)
+            .ok_or(MichiganMaterialError::ContentValue)?;
+        maintenance.opening_spare_parts = item.opening_spare_parts;
     }
     Ok(())
 }
@@ -351,10 +395,12 @@ fn source_authority(c: &MichiganNormalizedContent) -> Result<(), MichiganMateria
             return Err(SourceValue);
         }
         if !county(&o.county_geoid)
-            || !matches!(
+            || !(matches!(
                 o.sector_code.as_str(),
                 "11" | "21" | "31-33" | "42" | "44-45"
-            )
+            ) || (o.county_geoid == "26163"
+                && o.sector_code == "81"
+                && c.maintenance.is_some()))
             || o.county_source_file.is_empty()
             || [
                 &o.county_source_sha256,

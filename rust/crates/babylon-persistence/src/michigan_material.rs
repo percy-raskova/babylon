@@ -1,6 +1,7 @@
 //! Captured, normalized Designed physical content with separate observed evidence.
 //! Both regional and statewide authoring feed the same material compiler.
 
+mod maintenance;
 mod model;
 #[cfg(test)]
 mod normalized_tests;
@@ -35,6 +36,10 @@ pub enum MichiganDeliveryPreset {
     StatewideFreightConstraint,
     StatewidePackagingShortage,
     StatewideBoth,
+    StatewideMaintenanceBaseline,
+    StatewideMaintenanceLaborShortage,
+    StatewideMaintenancePartsShortage,
+    StatewideMaintenanceBoth,
 }
 impl MichiganDeliveryPreset {
     #[must_use]
@@ -45,6 +50,20 @@ impl MichiganDeliveryPreset {
                 | Self::StatewideFreightConstraint
                 | Self::StatewidePackagingShortage
                 | Self::StatewideBoth
+                | Self::StatewideMaintenanceBaseline
+                | Self::StatewideMaintenanceLaborShortage
+                | Self::StatewideMaintenancePartsShortage
+                | Self::StatewideMaintenanceBoth
+        )
+    }
+    #[must_use]
+    pub const fn is_maintenance(self) -> bool {
+        matches!(
+            self,
+            Self::StatewideMaintenanceBaseline
+                | Self::StatewideMaintenanceLaborShortage
+                | Self::StatewideMaintenancePartsShortage
+                | Self::StatewideMaintenanceBoth
         )
     }
     #[must_use]
@@ -58,6 +77,16 @@ impl MichiganDeliveryPreset {
             Self::StatewideFreightConstraint => "michigan-material-statewide-freight-constraint-v7",
             Self::StatewidePackagingShortage => "michigan-material-statewide-packaging-shortage-v7",
             Self::StatewideBoth => "michigan-material-statewide-both-v7",
+            Self::StatewideMaintenanceBaseline => {
+                "michigan-material-statewide-maintenance-baseline-v8"
+            }
+            Self::StatewideMaintenanceLaborShortage => {
+                "michigan-material-statewide-maintenance-labor-shortage-v8"
+            }
+            Self::StatewideMaintenancePartsShortage => {
+                "michigan-material-statewide-maintenance-parts-shortage-v8"
+            }
+            Self::StatewideMaintenanceBoth => "michigan-material-statewide-maintenance-both-v8",
         }
     }
     #[must_use]
@@ -71,6 +100,10 @@ impl MichiganDeliveryPreset {
             Self::StatewideFreightConstraint,
             Self::StatewidePackagingShortage,
             Self::StatewideBoth,
+            Self::StatewideMaintenanceBaseline,
+            Self::StatewideMaintenanceLaborShortage,
+            Self::StatewideMaintenancePartsShortage,
+            Self::StatewideMaintenanceBoth,
         ]
         .into_iter()
         .find(|preset| preset.id() == id)
@@ -128,7 +161,11 @@ impl MichiganMaterialCatalog {
         path: &Path,
         preset: MichiganDeliveryPreset,
     ) -> Result<Self, MichiganDefinesError> {
-        if preset.is_statewide() {
+        if preset.is_maintenance() {
+            source::load_statewide(path)?
+                .with_bounded_maintenance()?
+                .with_preset(preset)
+        } else if preset.is_statewide() {
             source::load_statewide(path)
         } else {
             Self::load_defines(path)
@@ -156,6 +193,12 @@ impl MichiganMaterialCatalog {
     ) -> Result<Self, MichiganDefinesError> {
         statewide::compile(defines_toml, qualification, physical, interventions)
     }
+    /// Author only the bounded Wayne maintenance family from qualified baseline content.
+    /// # Errors
+    /// Refuses another starting preset, missing consumer, or changed pinned repair source.
+    pub fn with_bounded_maintenance(&self) -> Result<Self, MichiganDefinesError> {
+        maintenance::compile(self)
+    }
     pub(crate) fn from_stored_defines(bytes: &[u8]) -> Result<Self, MichiganDefinesError> {
         if bytes.len() > MAX_MICHIGAN_CAPTURED_CONTENT_BYTES {
             return Err(MichiganDefinesError::Material(MichiganMaterialError::Bound));
@@ -182,8 +225,22 @@ impl MichiganMaterialCatalog {
         let graph_scenario_source =
             crate::michigan_cohorts::michigan_staffed_scenario(&normalized.staffing.pools)
                 .map_err(|_| MichiganDefinesError::Material(MichiganMaterialError::ContentValue))?;
+        for intervention in &mut interventions {
+            let mut changed = normalized.clone();
+            validate::apply(&mut changed, intervention).map_err(MichiganDefinesError::Material)?;
+            intervention.graph_scenario_source = if changed.staffing == normalized.staffing {
+                None
+            } else {
+                Some(
+                    crate::michigan_cohorts::michigan_staffed_scenario(&changed.staffing.pools)
+                        .map_err(|_| {
+                            MichiganDefinesError::Material(MichiganMaterialError::ContentValue)
+                        })?,
+                )
+            };
+        }
         Self::capture(MichiganCapturedContent {
-            schema: "MichiganCapturedContentV3".to_owned(),
+            schema: "MichiganCapturedContentV4".to_owned(),
             graph_scenario_source,
             rule_source: include_str!("../../../../content/scenarios/michigan/material-cycle.bsl")
                 .to_owned(),
@@ -206,7 +263,7 @@ impl MichiganMaterialCatalog {
         {
             return Err(Material(MichiganMaterialError::Bound));
         }
-        if capture.schema != "MichiganCapturedContentV3" {
+        if capture.schema != "MichiganCapturedContentV4" {
             return Err(MichiganDefinesError::Canonical);
         }
         validate::canonicalize(&mut capture.normalized, &mut capture.interventions);
@@ -259,7 +316,12 @@ impl MichiganMaterialCatalog {
     }
     #[must_use]
     pub fn graph_scenario_source(&self) -> &str {
-        &self.capture.graph_scenario_source
+        self.capture
+            .interventions
+            .iter()
+            .find(|i| i.preset == self.capture.selected_preset)
+            .and_then(|i| i.graph_scenario_source.as_deref())
+            .unwrap_or(&self.capture.graph_scenario_source)
     }
     #[must_use]
     pub fn rule_source(&self) -> &str {
@@ -308,6 +370,10 @@ impl MichiganMaterialCatalog {
     #[must_use]
     pub fn merchants(&self) -> &[MichiganMerchant] {
         &self.scenario.merchants
+    }
+    #[must_use]
+    pub fn maintenance(&self) -> Option<&MichiganMaintenance> {
+        self.scenario.maintenance.as_ref()
     }
     #[must_use]
     pub fn final_demands(&self) -> &[MichiganFinalDemand] {

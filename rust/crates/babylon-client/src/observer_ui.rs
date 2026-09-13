@@ -73,15 +73,17 @@ pub enum NetworkSector {
     Agriculture,
     Mining,
     Manufacturing,
+    Maintenance,
     Wholesale,
     Retail,
     EndBuyers,
 }
 impl NetworkSector {
-    pub const GROUPS: [Self; 6] = [
+    pub const GROUPS: [Self; 7] = [
         Self::Agriculture,
         Self::Mining,
         Self::Manufacturing,
+        Self::Maintenance,
         Self::Wholesale,
         Self::Retail,
         Self::EndBuyers,
@@ -93,6 +95,7 @@ impl NetworkSector {
             Self::Agriculture => "Agriculture / forestry",
             Self::Mining => "Extraction",
             Self::Manufacturing => "Manufacturing",
+            Self::Maintenance => "Maintenance",
             Self::Wholesale => "Wholesale",
             Self::Retail => "Retail",
             Self::EndBuyers => "End buyers",
@@ -185,6 +188,10 @@ pub enum ObserverCommand {
     NewStatewideFreightConstraintCampaign,
     NewStatewidePackagingShortageCampaign,
     NewStatewideBothCampaign,
+    NewStatewideMaintenanceBaselineCampaign,
+    NewStatewideMaintenanceLaborShortageCampaign,
+    NewStatewideMaintenancePartsShortageCampaign,
+    NewStatewideMaintenanceBothCampaign,
 
     ReopenCampaign,
     Quit,
@@ -715,6 +722,7 @@ fn spawn_lens_controls(panel: &mut ChildSpawnerCommands) {
             NetworkSector::Wholesale,
             NetworkSector::Retail,
         ],
+        vec![NetworkSector::Maintenance],
     ] {
         panel.spawn(row()).with_children(|bar| {
             for sector in group {
@@ -846,6 +854,17 @@ fn menu_campaign(panel: &mut ChildSpawnerCommands) {
             true,
         );
     });
+    panel.spawn((
+        Node {
+            min_width: px(0),
+            flex_shrink: 0.0,
+            flex_direction: FlexDirection::Column,
+            row_gap: px(8),
+            margin: UiRect::top(px(10)),
+            ..default()
+        },
+        ObserverCampaignCatalog,
+    ));
     panel.spawn(block_label("Statewide Michigan", 14.0, theme::YELLOW));
     preset_grid(
         panel,
@@ -862,6 +881,28 @@ fn menu_campaign(panel: &mut ChildSpawnerCommands) {
             (
                 "Both constraints",
                 ObserverCommand::NewStatewideBothCampaign,
+            ),
+        ],
+    );
+    panel.spawn(block_label("Wayne maintenance", 14.0, theme::YELLOW));
+    preset_grid(
+        panel,
+        &[
+            (
+                "Baseline",
+                ObserverCommand::NewStatewideMaintenanceBaselineCampaign,
+            ),
+            (
+                "Labor shortage",
+                ObserverCommand::NewStatewideMaintenanceLaborShortageCampaign,
+            ),
+            (
+                "Parts shortage",
+                ObserverCommand::NewStatewideMaintenancePartsShortageCampaign,
+            ),
+            (
+                "Both constraints",
+                ObserverCommand::NewStatewideMaintenanceBothCampaign,
             ),
         ],
     );
@@ -886,17 +927,6 @@ fn menu_campaign(panel: &mut ChildSpawnerCommands) {
         12.0,
         theme::GRAY,
     ));
-    panel.spawn((
-        Node {
-            min_width: px(0),
-            flex_shrink: 0.0,
-            flex_direction: FlexDirection::Column,
-            row_gap: px(8),
-            margin: UiRect::top(px(10)),
-            ..default()
-        },
-        ObserverCampaignCatalog,
-    ));
 }
 
 fn preset_grid(panel: &mut ChildSpawnerCommands, presets: &[(&str, ObserverCommand)]) {
@@ -920,7 +950,7 @@ fn preset_grid(panel: &mut ChildSpawnerCommands, presets: &[(&str, ObserverComma
 fn menu_settings(panel: &mut ChildSpawnerCommands) {
     panel.spawn(block_label("PRESENTATION / SOUND", 17.0, theme::YELLOW));
     panel.spawn(block_label(
-        "Tab / Shift+Tab: select controls. Enter: activate. Page Up / Down: read. WORLD / WORK: return to navigation.",
+        "Tab / Shift+Tab: select controls. Enter: activate. Page Up / Down: read. WORLD / CIRCUIT: return to navigation.",
         12.0,
         theme::GRAY,
     ));
@@ -930,7 +960,7 @@ fn menu_settings(panel: &mut ChildSpawnerCommands) {
         ("Reduced motion [M]", ObserverCommand::ReducedMotion),
         ("Music volume / mute [B]", ObserverCommand::MusicVolume),
         ("Sound effects / mute [F]", ObserverCommand::EffectsVolume),
-        ("Change theme [J]", ObserverCommand::MusicTrack),
+        ("Next track [J]", ObserverCommand::MusicTrack),
     ] {
         scoped_button(panel, title, command, true);
     }
@@ -1745,7 +1775,7 @@ fn repaint(
             ObserverText::Hover if *view != crate::production::PrimaryView::Map => String::new(),
             ObserverText::Hover if matches!(ui.lens, MapLens::Relationships) => hovered.0.and_then(|index| atlas.county(index)).map_or_else(String::new, |county| county.name.to_owned()),
             ObserverText::Hover => hovered.0.and_then(|index| atlas.county(index)).filter(|county| county.fips.starts_with("26")).map_or_else(String::new, |county| format!("{}\n{}\n{}", county.name, lens.label, format_lens_reading(lens.county(county.fips), &lens.unit))),
-            ObserverText::Audio => format!("{} | music {:.0}% | effects {:.0}%\nReduced motion: {} | Stop on delivery: {}", if audio.track==0 {"PHI"}else{"PANOPTICON"},audio.music_volume*100.0,audio.effects_volume*100.0,if ui.reduced_motion {"ON"}else{"OFF"},if ui.stop_on_delivery {"ON"}else{"OFF"}),
+            ObserverText::Audio => format!("Soundtrack: {} ({}/{})\nMusic {:.0}% | effects {:.0}%\nReduced motion: {} | Stop on delivery: {}", audio.track_title(),audio.track+1,crate::observer_audio::ObserverAudioSettings::track_count(),audio.music_volume*100.0,audio.effects_volume*100.0,if ui.reduced_motion {"ON"}else{"OFF"},if ui.stop_on_delivery {"ON"}else{"OFF"}),
             ObserverText::Evidence => format!("Viewing period {} / Archive processed through {}\n{}", state.viewed_tick, state.archive_verified_tick, archive_detail),
             ObserverText::EvidenceDetails => installed.map_or_else(String::new, |snapshot| {
                 let mut evidence = format!("CAMPAIGN\n{}\n\nCOMMITTED EVIDENCE / PERIOD {}\n{}\n\nWORLD IDENTITY\n{}", wrapped_identity(&snapshot.campaign_id), snapshot.resolve_tick, wrapped_identity(snapshot.tick_content_hash.as_deref().unwrap_or(&snapshot.foundation_digest)), snapshot.nominal_world_hash.as_deref().map_or_else(|| "Unavailable in this observation".to_owned(), wrapped_identity));
@@ -2753,6 +2783,42 @@ mod tests {
                     .resource_mut::<ButtonInput<KeyCode>>()
                     .release(key);
             }
+        }
+    }
+    #[test]
+    fn maintenance_menu_keeps_four_distinct_short_presets_and_existing_families() {
+        let mut world = World::new();
+        let mut commands = world.commands();
+        commands.spawn(Node::default()).with_children(menu_campaign);
+        world.flush();
+        let texts = world
+            .query::<&Text>()
+            .iter(&world)
+            .map(|text| text.0.clone())
+            .collect::<Vec<_>>();
+        for label in [
+            "Wayne maintenance",
+            "Labor shortage",
+            "Parts shortage",
+            "Statewide Michigan",
+            "Regional proofs",
+        ] {
+            assert!(
+                texts.iter().any(|text| text == label),
+                "missing {label}: {texts:?}"
+            );
+        }
+        let buttons = world
+            .query::<&ObserverButton>()
+            .iter(&world)
+            .filter(|button| format!("{:?}", button.command).contains("NewStatewideMaintenance"))
+            .count();
+        assert_eq!(buttons, 4);
+        for text in texts.iter().filter(|text| text.contains("shortage")) {
+            assert!(
+                text.chars().count() <= 24,
+                "two-column menu titles must fit the 1366 layout: {text}"
+            );
         }
     }
 }

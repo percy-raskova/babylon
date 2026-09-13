@@ -11,6 +11,7 @@ crate::model::identity_type!(StaffingPoolId);
 pub enum StaffingWorkSource {
     Production(ProcessId),
     MerchantHandling(SiteId),
+    Maintenance(SiteId),
 }
 
 /// Closed refusals; no partial staffing transition is returned.

@@ -335,6 +335,49 @@ pub struct LocalRetailFulfillmentReceipt {
     pub quantity: u64,
 }
 
+/// One explicitly bound repair provider and dependent production process.
+/// Coefficients and nameplate service capacity are Designed content quantities.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MaintenanceBinding {
+    pub provider_site_id: SiteId,
+    pub consumer_process_id: ProcessId,
+    pub spare_good_id: GoodId,
+    pub spare_unit_id: UnitId,
+    pub labor_unit_id: UnitId,
+    pub spare_units_per_job: u64,
+    pub labor_units_per_job: u64,
+    pub enabled_batches_per_job: u64,
+    pub maximum_jobs_per_period: u64,
+}
+
+/// Nonbankable enabled batches valid only in the named opening period.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MaintenanceService {
+    pub period: u64,
+    pub available_batches: u64,
+}
+
+/// Complete whole-job accounting, including explicit zero completed work.
+/// Same-close local deliveries occur later and cannot supply these jobs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MaintenanceReceipt {
+    pub binding: MaintenanceBinding,
+    pub period: u64,
+    pub opening_service_batches: u64,
+    pub consumed_service_batches: u64,
+    pub expired_service_batches: u64,
+    pub prospective_batches: u64,
+    pub requested_jobs: u64,
+    pub opening_spare_parts: u64,
+    pub arrived_spare_parts: u64,
+    pub available_spare_parts: u64,
+    pub available_labor_hours: u64,
+    pub completed_jobs: u64,
+    pub consumed_spare_parts: u64,
+    pub consumed_labor_hours: u64,
+    pub next_service: MaintenanceService,
+}
+
 /// Complete opening state; stock and recipe quantities retain their native units.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaterialCircuitState {
@@ -359,6 +402,8 @@ pub struct MaterialCircuitState {
     pub handling_coefficients: Vec<MerchantHandlingCoefficient>,
     pub final_demand_principals: Vec<FinalDemandPrincipal>,
     pub final_demand_orders: Vec<FinalDemandOrder>,
+    pub maintenance_binding: Option<MaintenanceBinding>,
+    pub maintenance_service: Option<MaintenanceService>,
 }
 /// Exact V3 mass-weighted freight refusal classes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -385,6 +430,7 @@ pub enum MaterialCircuitError {
     MassInvariant = 19,
     MerchantInvariant = 20,
     FinalDemandInvariant = 21,
+    MaintenanceInvariant = 22,
 }
 
 /// Unknown language-neutral routed-material refusal code.
@@ -417,6 +463,7 @@ impl TryFrom<u16> for MaterialCircuitError {
             19 => Ok(Self::MassInvariant),
             20 => Ok(Self::MerchantInvariant),
             21 => Ok(Self::FinalDemandInvariant),
+            22 => Ok(Self::MaintenanceInvariant),
             _ => Err(UnknownMaterialCircuitErrorCode(value)),
         }
     }
@@ -450,4 +497,5 @@ pub struct MaterialCircuitTransition {
     pub handling: Vec<MerchantHandlingReceipt>,
     pub local_fulfillments: Vec<LocalRetailFulfillmentReceipt>,
     pub local_transfers: Vec<LocalTransferReceipt>,
+    pub maintenance: Option<MaintenanceReceipt>,
 }

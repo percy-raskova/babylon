@@ -89,6 +89,16 @@ fn observer_command_name(command: ObserverCommand) -> &'static str {
             "new_statewide_packaging_shortage"
         }
         ObserverCommand::NewStatewideBothCampaign => "new_statewide_both",
+        ObserverCommand::NewStatewideMaintenanceBaselineCampaign => {
+            "new_statewide_maintenance_baseline"
+        }
+        ObserverCommand::NewStatewideMaintenanceLaborShortageCampaign => {
+            "new_statewide_maintenance_labor_shortage"
+        }
+        ObserverCommand::NewStatewideMaintenancePartsShortageCampaign => {
+            "new_statewide_maintenance_parts_shortage"
+        }
+        ObserverCommand::NewStatewideMaintenanceBothCampaign => "new_statewide_maintenance_both",
         ObserverCommand::NewDelayedCampaign => "new_delayed_campaign",
         ObserverCommand::NewSharedFreightAmpleCampaign => "new_shared_freight_ample_campaign",
         ObserverCommand::NewSharedFreightConstrainedCampaign => {
@@ -165,6 +175,11 @@ fn log_requests(
             CampaignBrowserCommand::Next => "campaign_next",
             CampaignBrowserCommand::Open => "campaign_open",
             CampaignBrowserCommand::Compare => "campaign_compare",
+            CampaignBrowserCommand::ComparisonSection(section) => match section {
+                crate::campaign_browser::ComparisonSection::Cohorts => "comparison_cohorts",
+                crate::campaign_browser::ComparisonSection::SharedFreight => "comparison_freight",
+                crate::campaign_browser::ComparisonSection::CampaignTotals => "comparison_totals",
+            },
             CampaignBrowserCommand::CloseComparison => "comparison_close",
             CampaignBrowserCommand::Refresh => "campaign_refresh",
         };
@@ -606,6 +621,7 @@ mod tests {
             visibility: ObserverVisibility::FullObserver,
             counties: Vec::new(),
             production: Some(ProductionSnapshot {
+                maintenance_account: None,
                 content_authority_sha256: "a".repeat(64),
                 road_source: None,
                 physical_edges: Vec::new(),

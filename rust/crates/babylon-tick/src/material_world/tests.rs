@@ -3,10 +3,10 @@ use super::*;
 // A merchant's two physical handoffs share the same explicit handling account.
 // These bytes exercise the committed receipt boundary independently of its encoder.
 fn local_handoff_receipts() -> Vec<u8> {
-    let mut bytes = b"babylon.material-tick-receipts.v4\0".to_vec();
-    bytes.extend_from_slice(&4_u32.to_be_bytes());
+    let mut bytes = b"babylon.material-tick-receipts.v5\0".to_vec();
+    bytes.extend_from_slice(&5_u32.to_be_bytes());
     bytes.extend_from_slice(&1_u64.to_be_bytes());
-    for tag in 1..=9_u8 {
+    for tag in 1..=10_u8 {
         bytes.push(tag);
         bytes.extend_from_slice(&u64::from(matches!(tag, 7 | 8)).to_be_bytes());
         if tag == 7 {
@@ -76,7 +76,7 @@ fn receipt_version_and_local_delivery_quantity_are_strict() {
         Err(MaterialWorldError::Wire)
     );
     let mut zero_delivery = canonical;
-    let end = zero_delivery.len() - 9; // The empty local-transfer family follows.
+    let end = zero_delivery.len() - 18; // Empty local-transfer and maintenance families follow.
     zero_delivery[end - 8..end].copy_from_slice(&0_u64.to_be_bytes());
     assert_eq!(
         decode_material_receipts(&zero_delivery),
@@ -88,6 +88,7 @@ fn receipt_version_and_local_delivery_quantity_are_strict() {
 fn local_transfer_receipts_preserve_both_owners_without_freight() {
     use babylon_material_circuit::SiteId;
     let mut bytes = local_handoff_receipts();
+    let maintenance = bytes.split_off(bytes.len() - 9);
     let count = bytes.len() - 8;
     bytes[count..].copy_from_slice(&1_u64.to_be_bytes());
     let row_start = bytes.len();
@@ -95,6 +96,7 @@ fn local_transfer_receipts_preserve_both_owners_without_freight() {
         bytes.extend_from_slice(&[key; 32]);
     }
     bytes.extend_from_slice(&3_u64.to_be_bytes());
+    bytes.extend_from_slice(&maintenance);
     let receipts = decode_material_receipts(&bytes).unwrap();
     assert_eq!(receipts.local_transfers.len(), 1);
     let transfer = &receipts.local_transfers[0];
@@ -110,8 +112,8 @@ fn local_transfer_receipts_preserve_both_owners_without_freight() {
         decode_material_receipts(&self_transfer),
         Err(MaterialWorldError::Wire)
     );
-    let end = bytes.len();
-    bytes[end - 8..].fill(0);
+    let end = bytes.len() - 9;
+    bytes[end - 8..end].fill(0);
     assert_eq!(
         decode_material_receipts(&bytes),
         Err(MaterialWorldError::Wire)

@@ -388,6 +388,7 @@ dependencies = [
  "earcut",
  "log",
  "postgres",
+ "rodio",
  "serde_json",
  "uuid",
 ]

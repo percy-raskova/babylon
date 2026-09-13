@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Babylon · The threatened workplace · Design walkthrough</title>
+  <link rel="stylesheet" href="../mockups/colors_and_type.css">
+  <link rel="stylesheet" href="walkthrough.css">
+  <script src="walkthrough.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#screen">Skip to current situation</a>
+  <div class="fixture-banner"><strong>DESIGN FIXTURE</strong> · Local walkthrough. Political actions, reports, budgets and outcomes below are authored examples. No campaign is connected.</div>
+  <header class="masthead">
+    <div><span class="eyebrow">BABYLON / ORGANIZING WORKSPACE</span><h1>Wayne organizing collective</h1><p>Our project: protect livelihoods while building the ability to act together.</p></div>
+    <div class="clock"><strong id="period-label">PERIOD 1</strong><span>One period = 28 days</span><span id="lifecycle">Quiet period</span></div>
+  </header>
+  <div class="resource-bar" aria-label="Organization capacity and obligations"><span><strong>Local capacity</strong> 16 organizer-hours / period</span><span id="allocation"></span><span><strong>Obligation</strong> Report back to affected workers</span><span><strong>Funds</strong> Unmodeled here</span></div>
+  <nav id="journey" aria-label="Walkthrough stages"></nav>
+  <div class="workspace">
+    <aside aria-label="Our work and selected place">
+      <section><span class="eyebrow">OUR WORK</span><h2>Standing work</h2><strong>Maintain the neighborhood committee tie</strong><p>Existing relationship only. One practice slot; 8 organizer-hours per eligible period.</p><p id="routine-state" class="status"></p><button id="pause-routine" type="button"></button><p id="pause-help" class="muted"></p></section>
+      <section><span class="eyebrow">PINNED INTENTION · DOES NOT EXECUTE</span><p>Protect workplace incomes without promising a campaign on anyone else's behalf.</p></section>
+      <section class="place"><span class="eyebrow">GEOGRAPHIC HOME</span><h2>Michigan / Wayne County</h2><div class="map-placeholder" aria-label="Schematic location placeholder, not county geometry"><span>Wayne</span><span class="map-marker">Selected workplace</span></div><p id="selection"></p><button type="button" data-evidence="relationship">Inspect the existing relationship</button><p class="muted">Low-fi location placeholder. Reuse the native geographic map in implementation.</p></section>
+    </aside>
+    <main id="screen" tabindex="-1"></main>
+  </div>
+  <footer>
+    <details id="review-controls"><summary>Reviewer controls and implementation boundary</summary><div class="review-grid">
+      <label>Independent partner response for this example<select id="partner"><option value="limited">Offers private inquiry only</option><option value="declined">Declines cooperation</option><option value="pending">No reply received</option></select></label>
+      <label>Standing-work eligibility at next review<select id="eligibility"><option value="eligible">Eligible to resume</option><option value="ineligible">Authorized scope unavailable</option></select></label>
+      <label>Submission result for this example<select id="admission"><option value="accepted">Admitted attempt</option><option value="refused">Safe admission refusal</option></select></label>
+    </div><p>These controls author the example; they are not player powers. Hours are interface fixtures, not a conversion into engine CL. No success probability, hidden state or authoritative receipt is computed here. Submitted choices cannot be edited; restart the example to compare a different ruling.</p><p><a href="README.md">Design handoff and verification route</a> · <a href="https://linear.app/percy-raskova/document/organizer-first-ui-and-universal-two-line-struggle-design-direction-f7d8195319f2">Canonical organizer design</a></p><button id="reset" type="button">Restart example and clear draft</button></details>
+    <p id="announcement" role="status" aria-live="polite"></p>
+  </footer>
+  <dialog id="evidence" aria-labelledby="evidence-title"><div class="dialog-heading"><h2 id="evidence-title"></h2><button id="close-evidence" type="button" autofocus>Return to decision</button></div><div id="evidence-body"></div><p class="muted">Inspection does not change the draft, ruling, selected workplace or viewed period.</p></dialog>
+</body>
+</html>

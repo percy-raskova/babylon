@@ -39,3 +39,6 @@ mod production_layout;
 
 mod material_relations;
 mod workforce;
+
+#[cfg(test)]
+mod maintenance_fixture;

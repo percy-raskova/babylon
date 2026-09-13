@@ -1,13 +1,14 @@
 ---
 meta:
   name: Babylon v4 architecture truth record
-  version: "4.3.0"
-  updated: "2026-09-01"
+  version: "4.4.0"
+  updated: "2026-09-13"
   role: current_and_planned_architecture
   authority: CONSTITUTION.md v4.2.0
   interpretation: >-
     Entries marked implemented_current describe evidence in this checkout.
     Entries marked planned describe acceptance-gated work, not shipped behavior.
+    Implementation entries do not assign Linear status or certify gate acceptance.
 
 control_surface:
   portfolio_authority: Linear
@@ -150,10 +151,10 @@ implementation_status:
         allowance_keys: unique
         dead_permissions: refused_by_ci_sentinel
       limitation: >-
-        ExternalEvent and Intent roles have no governed effect allowances, so
-        executable shocks and player intents remain absent until Gates 4 and 5.
-        Durable subject-level provenance beyond the committed typed state remains
-        part of the Gate 3 decision-loop work.
+        ExternalEvent and Intent roles have no governed effect allowances.
+        Gate 5 adds player intents; Gate 6 adds governed external events.
+        The Archive already publishes cited county and place revisions.
+        These implementation capabilities do not establish gate acceptance.
       absent_from_current_content:
         - executable_shocks
         - executable_player_actions
@@ -176,7 +177,8 @@ implementation_status:
         babylon-persistence composes its identified result into the durable
         marker-last transaction and restart boundary.
       evidence:
-        - rust/crates/babylon-tick/src/session.rs
+        - rust/crates/babylon-tick/src/replay_session.rs
+        - rust/crates/babylon-tick/src/material_replay.rs
 
     canonical_graph_hash:
       status: implemented_current
@@ -202,18 +204,23 @@ implementation_status:
         replay and persistence layers add those distinct identities.
       evidence:
         - rust/crates/babylon-tick/src/world_hash.rs
-        - rust/crates/babylon-tick/src/session.rs
+        - rust/crates/babylon-tick/src/replay_session.rs
 
     bevy_admin_viewer:
       status: implemented_current
       scope:
-        - tick_loop
-        - lenses
-        - event_feed
-        - administrative_material_truth_view
-      limitation: no_player_decision_loop
+        - acknowledged_durable_michigan_campaign
+        - regional_and_statewide_material_presets
+        - county_map_and_economic_relationships
+        - production_freight_handling_and_workforce_readings
+        - held_history_and_saved_campaign_comparison
+        - separate_full_observer_and_known_preview_capabilities
+        - scoped_county_and_place_archive_dossiers
+      limitation: no_player_action_and_no_material_facts_in_known_preview
       evidence:
         - rust/crates/babylon-client/src/observer_ui.rs
+        - rust/crates/babylon-client/src/ui/dossier_card.rs
+        - rust/crates/babylon-persistence/src/michigan_content.rs
 
     rust_postgresql_persistence:
       status: implemented_current
@@ -316,7 +323,7 @@ implementation_status:
       evidence:
         - rust/crates/babylon-graph/src/working_copy.rs
         - rust/crates/babylon-tick/src/lib.rs
-        - rust/crates/babylon-tick/src/session.rs
+        - rust/crates/babylon-tick/src/replay_session.rs
         - rust/crates/babylon-tick/src/world_hash.rs
         - ai/decisions/ADR223_whole_tick_atomicity_world_hash.yaml
     PER-19:
@@ -371,11 +378,10 @@ implementation_status:
         - rust/crates/babylon-persistence/src/current_schema.rs
         - contracts/current_schema.yaml
 
-  planned_gate_3:
     PER-21:
-      status: planned
+      status: implemented_current
       gate: G3
-      component: h3_bigint_migration_and_geography_consolidation
+      component: canonical_h3_identity_and_rust_geography_readers
       contract:
         rust_identity: H3CellId(u64)
         postgresql_identity: positive BIGINT
@@ -384,19 +390,36 @@ implementation_status:
         signed_conversion: checked_never_as
         hierarchy: persisted_semantic_parents_not_gapless_numeric_ranges
         semantic_oracle: pinned_h3_pg_not_a_correctness_index_dependency
+      limitation: does_not_activate_h3_backed_rtd_facets
+      evidence:
+        - rust/crates/babylon-kernel/src/h3_cell_id.rs
+        - rust/crates/babylon-persistence/src/h3_reference_installer.rs
+        - rust/crates/babylon-persistence/migrations/current_schema.sql
     PER-22:
-      status: planned
+      status: implemented_current
       gate: G3
       component: fog_safe_semantic_archive_and_outbox_materializer
+      evidence:
+        - rust/crates/babylon-persistence/src/archive_revision/worker.rs
+        - rust/crates/babylon-persistence/src/archive_revision/read.rs
+        - rust/crates/babylon-persistence/src/archive_driver/run.rs
     PER-23:
-      status: planned
+      status: implemented_current
       gate: G3
-      component: county_place_archive_decision_consequence_loop
+      component: scoped_county_place_dossiers_and_retained_history
+      limitation: no_player_action
+      evidence:
+        - rust/crates/babylon-client/src/ui/dossier_card.rs
+        - rust/crates/babylon-client/tests/dossier_cli_live.rs
     PER-24:
-      status: planned
+      status: implemented_current
       gate: G3
       owner: PER-24
       component: DecisionSurfaceContract
+      limitation: shipped_surfaces_cannot_satisfy_a_gameplay_gate
+      evidence:
+        - rust/crates/babylon-client/src/decision_surface.rs
+        - rust/crates/babylon-client/tests/decision_surface_contract.rs
 
   planned_research:
     PER-44:

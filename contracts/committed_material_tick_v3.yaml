@@ -17,18 +17,18 @@ envelope:
     - {tag: 5, name: graph_full_checkpoint, codec: existing_nine_checkpoint_sections_v1}
     - {tag: 6, name: archive_dirty_receipt, count: 1, hash: combined_material_tick_content_v3}
     - {tag: 7, name: complete_material_register, count: 1, key: empty, payload: exact_material_world_register_v3_bytes}
-    - {tag: 8, name: material_receipts, count: 1, key: empty, payload: exact_material_tick_receipts_v4_bytes}
+    - {tag: 8, name: material_receipts, count: 1, key: empty, payload: exact_material_tick_receipts_v5_bytes}
   family_frame: u8_tag_then_u64_big_endian_count
   row_frame: u32_big_endian_key_length_then_key_then_u32_big_endian_payload_length_then_payload
   ordering: Existing six families preserve strict canonical key order; singular added families cannot reorder.
   digest: sha256_exact_complete_envelope_bytes
   maximum_complete_bytes: 67108864
 receipts:
-  version: 4
-  domain: "babylon.material-tick-receipts.v4\0"
-  header: u32_big_endian_version_4_then_u64_big_endian_positive_resolve_tick
+  version: 5
+  domain: "babylon.material-tick-receipts.v5\0"
+  header: u32_big_endian_version_5_then_u64_big_endian_positive_resolve_tick
   family_frame: u8_tag_then_u64_big_endian_count
-  family_count: 9
+  family_count: 10
   identities: exact_32_bytes
   quantities_periods_and_hours: u64_big_endian
   stage_index: u16_big_endian_less_than_16
@@ -55,8 +55,37 @@ receipts:
       fields: [order_id, supplier_site_id, buyer_site_id, good_id, unit_id, quantity]
       width: 168
       meaning: local_internal_transfer
+    - tag: 10
+      count: zero_or_one
+      fields:
+        - provider_site_id
+        - consumer_process_id
+        - spare_good_id
+        - spare_unit_id
+        - labor_unit_id
+        - spare_units_per_job
+        - labor_units_per_job
+        - enabled_batches_per_job
+        - maximum_jobs_per_period
+        - period
+        - opening_service_batches
+        - consumed_service_batches
+        - expired_service_batches
+        - prospective_batches
+        - requested_jobs
+        - opening_spare_parts
+        - arrived_spare_parts
+        - available_spare_parts
+        - available_labor_hours
+        - completed_jobs
+        - consumed_spare_parts
+        - consumed_labor_hours
+        - next_service_period
+        - next_service_available_batches
+      width: 312
+      meaning: bounded_maintenance_completion_and_expiring_service
   ordering:
-    families: Tags 1 through 9 appear exactly once in declared order, including empty families.
+    families: Tags 1 through 10 appear exactly once in declared order, including empty families.
     original_families: Preserve deterministic encounter order from babylon_material_circuit::advance_material_circuit.
     handling: Strict increasing unique site_id_and_tagged_outbound_order.
     local_fulfillment: Strict increasing unique order_id.
@@ -71,11 +100,21 @@ receipts:
     - Used hours cannot exceed needed hours and both quantity-hour pairs agree on zero.
     - The exact quantity-hour cross-products agree in u128 arithmetic.
     - Local internal supplier and buyer must be distinct.
+    - Maintenance is absent without a binding; a bound completed-zero close retains its row.
+    - Maintenance coefficients are positive and spare and labor units differ.
+    - The maintenance period equals the resolve tick and next service belongs to its checked successor.
+    - Opening service equals consumed plus expired service and does not exceed the checked ceiling.
+    - Available parts equal opening parts plus due freight arrivals; local credits are excluded.
+    - Requested jobs equal prospective batches divided by enabled batches with ceiling rounding.
+    - Completed jobs equal the minimum request, job ceiling, parts quotient and labor quotient.
+    - Checked products prove exact spare and labor debits and the following service grant.
+    - A maintenance request whose labor product overflows is refused even if parts or labor are absent.
   interpretation:
     native_quantity: Identified good-unit quantity; gram reservations use the captured mass coefficient.
     handling_need: Resource-feasible work before opening labor limits actual outbound movement.
     final_fulfillment: A finite demand-account credit, without a freight lot or claim of actual consumption.
     local_transfer: One supplier debit and buyer credit, without physical arrival or staged-dispatch receipts.
+    maintenance: Next-period service is neither a commodity shipment nor bankable inventory.
     authentication: Register and receipt identity, coefficient and account joins are verified before disclosure.
   maximum_rows_per_family: 65536
   maximum_complete_bytes: 67108864

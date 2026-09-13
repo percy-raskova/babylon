@@ -10,6 +10,8 @@ fn shared_opening() -> MaterialCircuitState {
     let site = SiteId::from_bytes([1; 32]);
     let labor_unit = UnitId::from_bytes([2; 32]);
     let mut state = MaterialCircuitState {
+        maintenance_binding: None,
+        maintenance_service: None,
         period: 1,
         site_logistics_nodes: vec![SiteLogisticsNode {
             site_id: site,
@@ -99,6 +101,8 @@ fn shared_principal_is_counted_once_and_time_closes_from_actual_receipts() {
     assert_eq!(
         rows[0].completed,
         Some(CompletedProductionLabor {
+            maintenance_needed: 0,
+            maintenance_used: 0,
             period: 1,
             opening: 12,
             planned: 13,
@@ -158,7 +162,7 @@ fn multiplication_and_shared_sum_overflow_refuse_without_mutating_inputs() {
     opening.labor_coefficients[0].quantity_per_batch = u64::MAX;
     let before = opening.clone();
     assert!(matches!(
-        completed_totals(&opening, &receipt),
+        completed_totals(&opening, &receipt, None),
         Err(ProductionProjectionError::Arithmetic)
     ));
     assert_eq!(opening, before);
@@ -173,7 +177,7 @@ fn multiplication_and_shared_sum_overflow_refuse_without_mutating_inputs() {
         row.produced_batches = 0;
     }
     assert!(matches!(
-        completed_totals(&opening, &receipt),
+        completed_totals(&opening, &receipt, None),
         Err(ProductionProjectionError::Arithmetic)
     ));
 }
@@ -209,4 +213,92 @@ fn inconsistent_accounts_refuse_instead_of_publishing_negative_or_unattributed_t
         budgets(&duplicate_budget),
         Err(ProductionProjectionError::State)
     );
+}
+
+#[test]
+fn maintenance_labor_is_debited_once_and_stays_separate_from_production_and_handling() {
+    let mut opening = shared_opening();
+    let consumer = ProcessId::from_bytes([4; 32]);
+    opening
+        .process_outputs
+        .retain(|row| row.process_id == consumer);
+    opening
+        .labor_coefficients
+        .retain(|row| row.process_id == consumer);
+    opening.capacities.retain(|row| row.process_id == consumer);
+    opening
+        .production_commitments
+        .retain(|row| row.process_id == consumer);
+    opening
+        .input_coefficients
+        .push(babylon_material_circuit::InputOutputCoefficient {
+            process_id: consumer,
+            good_id: GoodId::from_bytes([21; 32]),
+            unit_id: UnitId::from_bytes([6; 32]),
+            quantity_per_batch: 1,
+        });
+    opening
+        .inventory
+        .push(babylon_material_circuit::InventoryRow {
+            site_id: SiteId::from_bytes([1; 32]),
+            good_id: GoodId::from_bytes([21; 32]),
+            unit_id: UnitId::from_bytes([6; 32]),
+            quantity: 10,
+        });
+    let provider = SiteId::from_bytes([20; 32]);
+    let binding = babylon_material_circuit::MaintenanceBinding {
+        provider_site_id: provider,
+        consumer_process_id: ProcessId::from_bytes([4; 32]),
+        spare_good_id: GoodId::from_bytes([4; 32]),
+        spare_unit_id: UnitId::from_bytes([6; 32]),
+        labor_unit_id: UnitId::from_bytes([2; 32]),
+        spare_units_per_job: 1,
+        labor_units_per_job: 2,
+        enabled_batches_per_job: 1,
+        maximum_jobs_per_period: 2,
+    };
+    opening.site_logistics_nodes.push(SiteLogisticsNode {
+        site_id: provider,
+        node_id: LogisticsNodeId::from_bytes([22; 32]),
+    });
+    opening
+        .inventory
+        .push(babylon_material_circuit::InventoryRow {
+            site_id: provider,
+            good_id: binding.spare_good_id,
+            unit_id: binding.spare_unit_id,
+            quantity: 3,
+        });
+    opening.labor.push(LaborCapacityRow {
+        site_id: provider,
+        unit_id: binding.labor_unit_id,
+        period: 1,
+        available: 6,
+    });
+    opening.maintenance_service = Some(babylon_material_circuit::MaintenanceService {
+        period: 1,
+        available_batches: 2,
+    });
+    opening.maintenance_binding = Some(binding);
+    let mut future = opening.capacities.clone();
+    for capacity in &mut future {
+        capacity.period = 2;
+    }
+    opening.capacities.extend(future);
+    let (opening, next, receipt) = committed_pair(opening);
+    let rows = project_labor_accounts(&next, Some(&opening), Some(&receipt)).unwrap();
+    let provider = rows
+        .iter()
+        .find(|row| row.site_id == digest_hex(&provider.as_bytes()))
+        .unwrap();
+    let completed = serde_json::to_value(provider.completed.as_ref().unwrap()).unwrap();
+    assert_eq!(completed["maintenance_needed"], 4);
+    assert_eq!(completed["maintenance_used"], 4);
+    assert_eq!(completed["used"], 4);
+    assert_eq!(completed["unused"], 2);
+    assert_eq!(completed["planned"], 0);
+    assert_eq!(completed["handling_used"], 0);
+    let mut missing = receipt.clone();
+    missing.maintenance = None;
+    assert!(project_labor_accounts(&next, Some(&opening), Some(&missing)).is_err());
 }

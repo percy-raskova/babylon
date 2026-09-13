@@ -1,4 +1,4 @@
-//! The single compiler from captured normalized owners into V3 material rows.
+//! The single compiler from captured normalized owners into current material rows.
 use super::{
     sha256_of, validate, SectorBundle, SectorBundleError, SectorBundleGood, SectorBundleOwner,
     SectorBundleProcess, SectorBundleSources,
@@ -12,10 +12,10 @@ use crate::michigan_material::{
 use babylon_material_circuit::{
     decode_material_circuit_state, encode_material_circuit_state, BacklogRow, CapacityRow,
     CorridorCapacity, FinalDemandOrder, FinalDemandPrincipal, FreightMassCoefficient, GoodId,
-    InputOutputCoefficient, InventoryRow, LaborCapacityRow, LaborCoefficient, MaterialCircuitState,
-    MerchantHandling, MerchantHandlingCoefficient, MerchantRole, OrderAccessMode, OrderRow,
-    ProcessOutput, ProductionCommitment, RouteStage, RouteStageCapacity, SiteId, SiteLogisticsNode,
-    SupplierRoute, SupplierTransport, UnitId,
+    InputOutputCoefficient, InventoryRow, LaborCapacityRow, LaborCoefficient, MaintenanceBinding,
+    MaintenanceService, MaterialCircuitState, MerchantHandling, MerchantHandlingCoefficient,
+    MerchantRole, OrderAccessMode, OrderRow, ProcessOutput, ProductionCommitment, RouteStage,
+    RouteStageCapacity, SiteId, SiteLogisticsNode, SupplierRoute, SupplierTransport, UnitId,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -148,6 +148,7 @@ pub fn compile_sector_bundles(
         append_route(&mut state, catalog, route)?;
     }
     append_final_demand(&mut state, catalog)?;
+    append_maintenance(&mut state, catalog)?;
     let active: BTreeSet<_> = state
         .route_stage_capacities
         .iter()
@@ -258,6 +259,8 @@ fn empty_state() -> MaterialCircuitState {
         handling_coefficients: Vec::new(),
         final_demand_principals: Vec::new(),
         final_demand_orders: Vec::new(),
+        maintenance_binding: None,
+        maintenance_service: None,
     }
 }
 
@@ -267,6 +270,7 @@ struct OwnerRows {
     processes: Vec<SectorBundleProcess>,
     labor_unit: UnitId,
     inventory: BTreeMap<(SiteId, GoodId, UnitId), u64>,
+    maintenance_provider: Option<SiteId>,
 }
 impl OwnerRows {
     fn new() -> Self {
@@ -278,6 +282,7 @@ impl OwnerRows {
                 b"babylon.michigan-material.v1\0unit\0labor-hour",
             )),
             inventory: BTreeMap::new(),
+            maintenance_provider: None,
         }
     }
 
@@ -308,6 +313,23 @@ impl OwnerRows {
         let mut good_keys: BTreeSet<&str> = BTreeSet::new();
         self.append_production(catalog, site, &mut good_keys)?;
         self.append_merchants(catalog, site, &mut good_keys)?;
+        if site.role == MichiganSiteRole::Maintenance {
+            let m = catalog
+                .maintenance()
+                .filter(|m| m.provider_site_key == site.key)
+                .ok_or(SectorBundleError::Owner)?;
+            if self.maintenance_provider.replace(site.id()).is_some() {
+                return Err(SectorBundleError::Owner);
+            }
+            let good = catalog
+                .good(&m.spare_good_key)
+                .ok_or(SectorBundleError::GoodUnit)?;
+            good_keys.insert(&m.spare_good_key);
+            self.inventory.insert(
+                (site.id(), good.id(), good.unit_id()),
+                m.opening_spare_parts,
+            );
+        }
         for r in catalog
             .routes()
             .iter()
@@ -416,7 +438,9 @@ impl OwnerRows {
                 role: match site.role {
                     MichiganSiteRole::Wholesale => MerchantRole::Wholesale,
                     MichiganSiteRole::Retail => MerchantRole::Retail,
-                    MichiganSiteRole::Production => return Err(SectorBundleError::Owner),
+                    MichiganSiteRole::Production | MichiganSiteRole::Maintenance => {
+                        return Err(SectorBundleError::Owner)
+                    }
                 },
                 capacity_id: corridor(catalog, &merchant.capacity_key)?.id(),
                 labor_unit_id: self.labor_unit,
@@ -474,9 +498,50 @@ impl OwnerRows {
             self.goods.into_iter().collect(),
             self.processes,
             self.labor_unit,
+            self.maintenance_provider,
             &self.rows,
         )
     }
+}
+
+fn append_maintenance(
+    state: &mut MaterialCircuitState,
+    catalog: &MichiganMaterialCatalog,
+) -> Result<(), SectorBundleError> {
+    let Some(m) = catalog.maintenance() else {
+        return Ok(());
+    };
+    let provider = catalog
+        .site(&m.provider_site_key)
+        .ok_or(SectorBundleError::Owner)?;
+    let consumer = catalog
+        .processes()
+        .iter()
+        .find(|p| p.key == m.consumer_process_key)
+        .ok_or(SectorBundleError::ProcessOwnership)?;
+    let spare = catalog
+        .good(&m.spare_good_key)
+        .ok_or(SectorBundleError::GoodUnit)?;
+    // Cross-owner service appears only after every owner bundle is merged.
+    // It is not an order, a shipment, a good, or a second stock ledger.
+    state.maintenance_binding = Some(MaintenanceBinding {
+        provider_site_id: provider.id(),
+        consumer_process_id: consumer.id(),
+        spare_good_id: spare.id(),
+        spare_unit_id: spare.unit_id(),
+        labor_unit_id: UnitId::from_bytes(sha256_of(
+            b"babylon.michigan-material.v1\0unit\0labor-hour",
+        )),
+        spare_units_per_job: m.spare_units_per_job,
+        labor_units_per_job: m.labor_units_per_job,
+        enabled_batches_per_job: m.enabled_batches_per_job,
+        maximum_jobs_per_period: m.maximum_jobs_per_period,
+    });
+    state.maintenance_service = Some(MaintenanceService {
+        period: 1,
+        available_batches: m.opening_service_batches,
+    });
+    Ok(())
 }
 
 fn append_final_demand(

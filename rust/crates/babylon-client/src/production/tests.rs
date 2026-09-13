@@ -47,6 +47,7 @@ fn site(id: &str, suppliers: &[&str]) -> ProductionSite {
 
 fn snapshot() -> ProductionSnapshot {
     ProductionSnapshot {
+        maintenance_account: None,
         content_authority_sha256: "a".repeat(64),
         road_source: None,
         physical_edges: Vec::new(),
@@ -141,6 +142,7 @@ fn reading_headline_uses_exact_output_identity_and_keeps_absence_distinct_from_z
     snapshot.material_balance = Some(CompletedMaterialBalance {
         period: 5,
         rows: vec![ProductionMaterialBalanceRow {
+            maintenance_consumed: 0,
             local_received: 0,
             local_transferred: 0,
             final_demand_fulfilled: 0,
@@ -187,6 +189,7 @@ fn stock_readings_keep_units_and_subjects_separate_and_do_not_invent_foundation_
     assert!(value.contains("No completed stock-movement account"));
     assert!(!value.contains("Opened 0"));
     let kilograms = ProductionMaterialBalanceRow {
+        maintenance_consumed: 0,
         local_received: 0,
         local_transferred: 0,
         final_demand_fulfilled: 0,
@@ -203,6 +206,7 @@ fn stock_readings_keep_units_and_subjects_separate_and_do_not_invent_foundation_
         closing: 10,
     };
     let tonnes = ProductionMaterialBalanceRow {
+        maintenance_consumed: 0,
         unit_id: "tonne".into(),
         unit: "tonne".into(),
         opening: 1,
@@ -214,6 +218,7 @@ fn stock_readings_keep_units_and_subjects_separate_and_do_not_invent_foundation_
         ..kilograms.clone()
     };
     let unrelated = ProductionMaterialBalanceRow {
+        maintenance_consumed: 0,
         local_received: 0,
         local_transferred: 0,
         final_demand_fulfilled: 0,
@@ -257,6 +262,7 @@ fn merchant_reading_has_no_fake_production_and_separates_local_goods_from_arriva
     snapshot.material_balance = Some(CompletedMaterialBalance {
         period: 1,
         rows: vec![ProductionMaterialBalanceRow {
+            maintenance_consumed: 0,
             site_id: "b".into(),
             good_id: "meal".into(),
             unit_id: "kg".into(),
@@ -330,6 +336,8 @@ fn inspector_separates_committed_work_time_from_next_opening_and_other_sites() {
             next_opening_period: 6,
             next_opening_available: 160,
             completed: Some(CompletedProductionLabor {
+                maintenance_needed: 0,
+                maintenance_used: 0,
                 handling_needed: 0,
                 handling_used: 0,
                 period: 5,
@@ -436,6 +444,8 @@ fn workforce_readings_use_exact_people_and_retention_for_only_the_selected_site(
             next_opening_available: 80,
             completed: Some(
                 babylon_persistence::production_observation::CompletedProductionLabor {
+                    maintenance_needed: 0,
+                    maintenance_used: 0,
                     handling_needed: 0,
                     handling_used: 0,
                     period: 5,
@@ -517,6 +527,8 @@ fn workforce_foundation_absence_and_zero_completed_flows_remain_distinct() {
     snapshot.labor_accounts[0].next_opening_period = 6;
     snapshot.labor_accounts[0].completed = Some(
         babylon_persistence::production_observation::CompletedProductionLabor {
+            maintenance_needed: 0,
+            maintenance_used: 0,
             handling_needed: 0,
             handling_used: 0,
             period: 5,
@@ -2578,4 +2590,79 @@ fn only_actual_visible_in_transit_lots_get_static_markers() {
         snapshot.freight = vec![withheld];
         assert!(freight_markers(&snapshot, &layout, 1).is_empty());
     }
+}
+
+#[test]
+fn maintenance_readings_keep_service_jobs_expiry_and_output_ceiling_distinct() {
+    let snapshot = crate::maintenance_fixture::snapshot(&snapshot(), 1, Some(2));
+    let provider = snapshot.sites.last().unwrap();
+    let consumer = &snapshot.sites[0];
+    for site in [provider, consumer] {
+        let flow = describe_flow(site, &snapshot);
+        assert!(flow.contains("MAINTENANCE SERVICE"), "{flow}");
+        assert!(flow.contains("2 / 4 jobs completed / requested"), "{flow}");
+        assert!(
+            flow.contains("4 consumed + 2 expired = 6 opening batches"),
+            "{flow}"
+        );
+        assert!(flow.contains("up to 40 kg"), "{flow}");
+        assert!(
+            flow.contains("Actual output needs the following production receipt"),
+            "{flow}"
+        );
+    }
+    let work = describe_work(provider, &snapshot);
+    assert!(
+        work.contains("Maintenance: 20 used / 40 requested labor-hours"),
+        "{work}"
+    );
+    assert!(!work.contains("MERCHANT HANDLING"));
+    let sources = super::readings::describe(provider, &snapshot, ProductionReadingSection::Sources);
+    assert!(
+        sources.contains("2 kg parts + 10 labor-hours per job / Designed"),
+        "{sources}"
+    );
+}
+
+#[test]
+fn maintenance_foundation_missing_and_completed_zero_remain_different() {
+    let foundation = crate::maintenance_fixture::snapshot(&snapshot(), 0, None);
+    let zero = crate::maintenance_fixture::snapshot(&snapshot(), 1, Some(0));
+    let initial = describe_flow(foundation.sites.last().unwrap(), &foundation);
+    let done = describe_flow(zero.sites.last().unwrap(), &zero);
+    assert!(
+        initial.contains("Foundation; no completed maintenance receipt"),
+        "{initial}"
+    );
+    assert!(!initial.contains("0 / 4 jobs completed"));
+    assert!(done.contains("0 / 4 jobs completed / requested"), "{done}");
+    assert!(done.contains("up to 0 kg"), "{done}");
+}
+
+#[test]
+fn maintenance_is_navigable_both_ways_without_becoming_a_parts_route() {
+    let snapshot = crate::maintenance_fixture::snapshot(&snapshot(), 1, Some(2));
+    let provider = snapshot.sites.last().unwrap();
+    let consumer = &snapshot.sites[0];
+    let from_consumer = dependency_sites(consumer, &snapshot);
+    let from_provider = dependency_sites(provider, &snapshot);
+    assert!(from_consumer
+        .iter()
+        .any(|(direction, site)| site.id == provider.id
+            && direction.label() == "MAINTENANCE PROVIDER"));
+    assert!(
+        from_provider
+            .iter()
+            .any(|(direction, site)| site.id == consumer.id
+                && direction.label() == "SERVICE CONSUMER")
+    );
+    for selected in [consumer, provider] {
+        let layout = ProductionLayout::focused(&snapshot, Some(&selected.id), 0);
+        assert!(layout.positions.contains_key(&provider.id));
+        assert!(layout.positions.contains_key(&consumer.id));
+    }
+    assert!(
+        crate::material_relations::declared_material_relations(&snapshot)
+            .all(|row| row.supplier != provider.id)
+    );
 }

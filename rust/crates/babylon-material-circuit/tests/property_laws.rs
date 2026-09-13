@@ -37,6 +37,8 @@ fn allocation_state(available: u64, first: u64, second: u64) -> MaterialCircuitS
         handling_coefficients: vec![],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
+        maintenance_binding: None,
+        maintenance_service: None,
         site_logistics_nodes: vec![
             SiteLogisticsNode {
                 site_id: supplier,
@@ -149,6 +151,8 @@ fn production_state(input: u64, labor: u64, capacity: u64) -> MaterialCircuitSta
         handling_coefficients: vec![],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
+        maintenance_binding: None,
+        maintenance_service: None,
         site_logistics_nodes: vec![],
         freight_mass_coefficients: vec![],
         route_stages: vec![],

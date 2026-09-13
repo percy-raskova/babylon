@@ -4,7 +4,8 @@ use babylon_kernel::content_digest::sha256_of;
 use babylon_tick::{
     material_replay::IdentifiedMaterialTick,
     material_world::{
-        decode_material_receipts, nominal_material_world_hash, MaterialWorldRegister,
+        decode_material_receipts, nominal_material_world_hash, MaterialTickReceipts,
+        MaterialWorldRegister,
     },
 };
 use postgres::GenericClient;
@@ -17,9 +18,11 @@ use crate::{
         MichiganPhysicalProjection,
     },
     michigan_economy::digest_hex,
-    observer_reader::{ObserverEconomyError, ObserverVisibility},
+    observer_reader::{
+        ObserverEconomyError, ObserverVisibility, ProductionHistoryTarget, ProductionOutputPoint,
+    },
     production_observation::ProductionSnapshot,
-    production_projection::project_material_observation,
+    production_projection::{project_material_observation, project_process},
 };
 
 pub(crate) struct MaterialObservation {
@@ -114,31 +117,30 @@ pub(crate) fn read_material_header(
     }))
 }
 
-/// Header reads are safe for preview. Complete material reads are never issued for preview.
-pub(crate) fn material_observation(
-    transaction: &mut impl GenericClient,
-    campaign: CampaignId,
-    tick: u64,
-    visibility: ObserverVisibility,
-    expected: &MichiganContentAdmission,
-) -> Result<MaterialObservation, ObserverEconomyError> {
-    if visibility == ObserverVisibility::KnownPreview {
-        return Ok(MaterialObservation {
-            foundation_digest: digest_hex(&expected.digest),
-            production: None,
-            nominal_world_hash: None,
-        });
+struct MaterialHistory {
+    register: MaterialWorldRegister,
+    opening: Option<MaterialWorldRegister>,
+    history: Vec<(MaterialTickReceipts, [u8; 32])>,
+    prior_world: Option<[u8; 32]>,
+}
+
+impl MaterialHistory {
+    fn new(expected: &MichiganContentAdmission) -> Self {
+        Self {
+            register: expected.register.clone(),
+            opening: None,
+            history: Vec::new(),
+            prior_world: None,
+        }
     }
-    let tick_sql = i64::try_from(tick).map_err(|_| ObserverEconomyError::TickAbsent)?;
-    let rows = transaction.query("SELECT campaign_id, resolve_tick, register_bytes, receipt_bytes, identity_bytes, tick_content_hash, foundation_bytes FROM public.v_observer_material_state_v1 WHERE campaign_id=$1 AND resolve_tick <= $2 ORDER BY resolve_tick LIMIT 18", &[campaign.as_uuid(), &tick_sql]).map_err(|_| ObserverEconomyError::Database)?;
-    if u64::try_from(rows.len()).ok() != tick.checked_add(1) {
-        return Err(ObserverEconomyError::TickAbsent);
-    }
-    let mut register = expected.register.clone();
-    let mut opening = None;
-    let mut history = Vec::new();
-    let mut prior_world = None;
-    for (index, row) in rows.into_iter().enumerate() {
+
+    fn append(
+        &mut self,
+        campaign: CampaignId,
+        expected: &MichiganContentAdmission,
+        index: usize,
+        row: &postgres::Row,
+    ) -> Result<(), ObserverEconomyError> {
         let MaterialObservationRow {
             row_campaign,
             row_tick,
@@ -147,7 +149,7 @@ pub(crate) fn material_observation(
             identity,
             content_hash,
             foundation_bytes,
-        } = decode_material_row(&row).map_err(|_| ObserverEconomyError::InvalidProjection)?;
+        } = decode_material_row(row).map_err(|_| ObserverEconomyError::InvalidProjection)?;
         if &row_campaign != campaign.as_uuid() || usize::try_from(row_tick).ok() != Some(index) {
             return Err(ObserverEconomyError::InvalidProjection);
         }
@@ -181,9 +183,11 @@ pub(crate) fn material_observation(
                 || sha256_of(&receipt_bytes) != identity.receipt_digest()
                 || nominal_material_world_hash(identity.graph_world_after(), &next)
                     != identity.result_world_hash()
-                || nominal_material_world_hash(identity.graph_world_before(), &register)
+                || nominal_material_world_hash(identity.graph_world_before(), &self.register)
                     != identity.prior_world_hash()
-                || prior_world.is_some_and(|prior| prior != identity.prior_world_hash())
+                || self
+                    .prior_world
+                    .is_some_and(|prior| prior != identity.prior_world_hash())
             {
                 return Err(ObserverEconomyError::InvalidProjection);
             }
@@ -192,14 +196,58 @@ pub(crate) fn material_observation(
             if receipt.resolve_tick != identity.resolve_tick() {
                 return Err(ObserverEconomyError::InvalidProjection);
             }
-            history.push((receipt, identity.receipt_digest()));
-            prior_world = Some(identity.result_world_hash());
+            self.history.push((receipt, identity.receipt_digest()));
+            self.prior_world = Some(identity.result_world_hash());
         }
-        let previous = std::mem::replace(&mut register, next);
+        let previous = std::mem::replace(&mut self.register, next);
         if index > 0 {
-            opening = Some(previous);
+            self.opening = Some(previous);
         }
+        Ok(())
     }
+}
+
+fn material_rows(
+    transaction: &mut impl GenericClient,
+    campaign: CampaignId,
+    tick: u64,
+) -> Result<Vec<postgres::Row>, ObserverEconomyError> {
+    let tick_sql = i64::try_from(tick).map_err(|_| ObserverEconomyError::TickAbsent)?;
+    let rows = transaction.query("SELECT campaign_id, resolve_tick, register_bytes, receipt_bytes, identity_bytes, tick_content_hash, foundation_bytes FROM public.v_observer_material_state_v1 WHERE campaign_id=$1 AND resolve_tick <= $2 ORDER BY resolve_tick LIMIT 18", &[campaign.as_uuid(), &tick_sql]).map_err(|_| ObserverEconomyError::Database)?;
+    if u64::try_from(rows.len()).ok() != tick.checked_add(1) {
+        return Err(ObserverEconomyError::TickAbsent);
+    }
+    Ok(rows)
+}
+
+/// Header reads are safe for preview. Complete material reads are never issued for preview.
+pub(crate) fn material_observation(
+    transaction: &mut impl GenericClient,
+    campaign: CampaignId,
+    tick: u64,
+    visibility: ObserverVisibility,
+    expected: &MichiganContentAdmission,
+) -> Result<MaterialObservation, ObserverEconomyError> {
+    if visibility == ObserverVisibility::KnownPreview {
+        return Ok(MaterialObservation {
+            foundation_digest: digest_hex(&expected.digest),
+            production: None,
+            nominal_world_hash: None,
+        });
+    }
+    let mut history = MaterialHistory::new(expected);
+    for (index, row) in material_rows(transaction, campaign, tick)?
+        .iter()
+        .enumerate()
+    {
+        history.append(campaign, expected, index, row)?;
+    }
+    let MaterialHistory {
+        register,
+        opening,
+        history,
+        prior_world,
+    } = history;
     let MichiganPhysicalProjection::Normalized = expected.physical_projection;
     let mut production = project_material_observation(
         &expected.catalog,
@@ -222,6 +270,69 @@ pub(crate) fn material_observation(
         production: Some(attribute_production(production, expected, visibility)?),
         nominal_world_hash: prior_world.map(|hash| digest_hex(&hash)),
     })
+}
+
+pub(crate) fn production_history(
+    transaction: &mut impl GenericClient,
+    campaign: CampaignId,
+    tick: u64,
+    target: &ProductionHistoryTarget,
+    expected: &MichiganContentAdmission,
+) -> Result<Vec<ProductionOutputPoint>, ObserverEconomyError> {
+    let process = expected
+        .catalog
+        .processes()
+        .iter()
+        .find(|process| {
+            digest_hex(&process.id().as_bytes()) == target.process_id
+                && digest_hex(&process.site_id().as_bytes()) == target.site_id
+        })
+        .ok_or(ObserverEconomyError::ProductionHistoryUnavailable)?;
+    let start = tick.saturating_sub(babylon_kernel::clock::TICKS_PER_YEAR - 1);
+    let mut history = MaterialHistory::new(expected);
+    let mut points = Vec::new();
+    for (index, row) in material_rows(transaction, campaign, tick)?
+        .iter()
+        .enumerate()
+    {
+        history.append(campaign, expected, index, row)?;
+        let period = history.register.completed_tick();
+        if period > 0 {
+            // Authenticate the whole prefix once, even outside the display window.
+            // The shared history append also proves nominal before/after identity
+            // and continuity, which the envelope reader alone does not establish.
+            let stored = read_observer_material_tick(
+                transaction,
+                campaign,
+                period,
+                expected.foundation_graph.scenario_scope(),
+                expected.digest,
+                &expected.component_identity,
+            )
+            .map_err(|_| ObserverEconomyError::InvalidProjection)?;
+            if stored.register != history.register
+                || Some(stored.identity.result_world_hash()) != history.prior_world
+            {
+                return Err(ObserverEconomyError::InvalidProjection);
+            }
+        }
+        let projected = project_process(
+            &expected.catalog,
+            history.register.state(),
+            process,
+            history.history.last().map(|(receipt, _)| receipt),
+        )
+        .map_err(|_| ObserverEconomyError::InvalidProjection)?;
+        if projected.output_good_id != target.output_good_id
+            || projected.output_unit_id != target.output_unit_id
+        {
+            return Err(ObserverEconomyError::ProductionHistoryUnavailable);
+        }
+        if period >= start {
+            points.push(ProductionOutputPoint::from_process(period, &projected)?);
+        }
+    }
+    Ok(points)
 }
 
 fn authenticated_staffing(

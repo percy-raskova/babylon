@@ -39,6 +39,10 @@ admission:
     - michigan-material-statewide-freight-constraint-v7
     - michigan-material-statewide-packaging-shortage-v7
     - michigan-material-statewide-both-v7
+    - michigan-material-statewide-maintenance-baseline-v8
+    - michigan-material-statewide-maintenance-labor-shortage-v8
+    - michigan-material-statewide-maintenance-parts-shortage-v8
+    - michigan-material-statewide-maintenance-both-v8
   stored_defines_version: 4
   duration_days: 28
   duration_is_hashed_foundation_content: true
@@ -49,12 +53,14 @@ admission:
 causal_order:
   steps:
     - Credit due arrivals at the opening of the period.
-    - Execute only previously committed production through current resource limits.
+    - Execute only previously committed production through current resource and expiring service limits.
+    - Complete maintenance from post-production prospective inputs, current provider labor and parts.
+    - Expire unused opening service and grant completed maintenance service to the next period only.
     - Allocate outbound orders against native stock and shared gram capacity principals.
     - Charge actual merchant handling once against current opening labor and handling grams.
     - Credit finite retail final-demand accounts without physical freight or implied consumption.
     - Credit local internal buyers after all outbound grants and stock debits are fixed.
-    - Derive next-period production need and recorded feasible merchant work before staffing limits.
+    - Derive production need, recorded feasible merchant work and receipted maintenance requests before staffing limits.
     - Resolve staffing and its graph effects, then plan the next opening.
     - Publish all state, events, receipts, and time only after total success.
   note: >-
@@ -64,6 +70,9 @@ causal_order:
     Physical arrivals can supply current merchant handling. Local internal
     credits cannot feed another outbound order in the same close. Employment
     derived at this close supplies the next opening, including after zero work.
+    Local parts replenishment cannot fund maintenance earlier in this close.
+    Prospective production and maintenance requests ignore maintenance service
+    limits, so a temporary service shortage does not prevent later hiring.
 
 content_units:
   recurring_process_capacity: batches per period
@@ -72,6 +81,8 @@ content_units:
   merchant_handling_labor: positive exact hours per native outbound unit
   freight_mass: positive exact grams per native good-unit quantity
   labor_schedule: hours per person per period
+  maintenance_service: Expiring enabled batches for one opening period, never a commodity stock.
+  maintenance_jobs: Whole jobs using exact spare units and current person-hours per job.
   staffing_retention: current and previous unretained period work requests
   route_duration: positive whole periods per timed stage
   physical_edges: Ordered captured geometry; many edges may form one timed stage.

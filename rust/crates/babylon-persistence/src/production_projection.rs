@@ -3,6 +3,7 @@
 pub(crate) mod context;
 mod freight;
 mod labor;
+mod maintenance;
 pub(crate) mod material_balance;
 mod merchants;
 mod outbound;
@@ -52,6 +53,12 @@ pub(crate) fn project_material_observation(
         }
     }
     let state = register.state();
+    let maintenance_account = maintenance::project_maintenance(
+        catalog,
+        state,
+        opening.map(MaterialWorldRegister::state),
+        history.last().map(|(receipt, _)| receipt),
+    )?;
     let labor_accounts = labor::project_labor_accounts(
         state,
         opening.map(MaterialWorldRegister::state),
@@ -112,7 +119,7 @@ pub(crate) fn project_material_observation(
         scenario_label: scenario_label(preset).to_owned(),
         horizon_period: catalog.horizon_ticks(), content_authority_sha256: digest_hex(&catalog.defines_hash()),
         sites, routes, freight, events, labor_accounts, material_balance, freight_capacity_accounts,
-        merchant_handling_accounts, final_demand_accounts, physical_edges, road_source,
+        merchant_handling_accounts, final_demand_accounts, maintenance_account, physical_edges, road_source,
         staffing_accounts: Vec::new(), observed_contexts: Vec::new(), process_attributions: Vec::new(),
         provenance: vec![
             format!("Designed {}-period physical circuit at {} resolution.", catalog.horizon_ticks(), catalog.geographic_scale()),
@@ -185,6 +192,14 @@ fn scenario_label(preset: MichiganDeliveryPreset) -> &'static str {
         MichiganDeliveryPreset::StatewideBoth => {
             "Michigan statewide: freight and packaging constraints"
         }
+        MichiganDeliveryPreset::StatewideMaintenanceBaseline => "Wayne maintenance: baseline",
+        MichiganDeliveryPreset::StatewideMaintenanceLaborShortage => {
+            "Wayne maintenance: labor shortage"
+        }
+        MichiganDeliveryPreset::StatewideMaintenancePartsShortage => {
+            "Wayne maintenance: parts shortage"
+        }
+        MichiganDeliveryPreset::StatewideMaintenanceBoth => "Wayne maintenance: both constraints",
     }
 }
 
@@ -205,6 +220,7 @@ fn project_sites(
             MichiganSiteRole::Production => ProductionSiteRole::Production,
             MichiganSiteRole::Wholesale => ProductionSiteRole::Wholesale,
             MichiganSiteRole::Retail => ProductionSiteRole::Retail,
+            MichiganSiteRole::Maintenance => ProductionSiteRole::Maintenance,
         };
         if (role == ProductionSiteRole::Production) == processes.is_empty() {
             return Err(ProductionProjectionError::State);
@@ -231,7 +247,12 @@ fn project_sites(
         != state.process_outputs.len()
         || result
             .iter()
-            .filter(|site| site.role != ProductionSiteRole::Production)
+            .filter(|site| {
+                matches!(
+                    site.role,
+                    ProductionSiteRole::Wholesale | ProductionSiteRole::Retail
+                )
+            })
             .count()
             != state.merchants.len()
     {
@@ -240,7 +261,7 @@ fn project_sites(
     Ok(result)
 }
 
-fn project_process(
+pub(crate) fn project_process(
     catalog: &MichiganMaterialCatalog,
     state: &MaterialCircuitState,
     process: &crate::michigan_material::MichiganMaterialProcess,
@@ -590,9 +611,15 @@ fn emit_local_trade_events(
         {
             return Err(ProductionProjectionError::State);
         }
-        emit("end-buyer fulfillment", vec![digest_hex(&retailer.id().as_bytes())],
-            format!("{}: {} {} {} delivered to local end buyers; consumption and payment are not inferred.",
-                retailer.label, fulfillment.quantity, good.unit_key, good.label), None);
+        emit(
+            "end-buyer fulfillment",
+            vec![digest_hex(&retailer.id().as_bytes())],
+            format!(
+                "{}: {} {} {} delivered to local end buyers; consumption and payment are not inferred.",
+                retailer.label, fulfillment.quantity, good.unit_key, good.label
+            ),
+            None,
+        );
     }
     Ok(())
 }
@@ -712,10 +739,11 @@ mod tests {
             .labor_accounts
             .iter()
             .all(|row| { row.completed.is_none() && row.next_opening_period == 1 }));
-        assert!(initial.sites.iter().all(|site| site
-            .processes
-            .iter()
-            .all(|process| process.produced_batches.is_none())));
+        assert!(initial.sites.iter().all(|site| {
+            site.processes
+                .iter()
+                .all(|process| process.produced_batches.is_none())
+        }));
         let actions = OrderedPracticeActionBatch::empty(
             session.graph_session().session_identity().clone(),
             1,

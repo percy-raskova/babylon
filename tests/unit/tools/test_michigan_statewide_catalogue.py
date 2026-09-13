@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[3]
 
 def test_statewide_catalogue_has_exact_mass_and_two_binding_food_inputs() -> None:
     content = tomllib.loads((ROOT / "content/scenarios/michigan/defines.toml").read_text())
-    assert content["SCHEMA_VERSION"] == 3
+    assert content["SCHEMA_VERSION"] == 4
     goods = content["commodity"]
     templates = content["template"]
     assert len(templates) == 16

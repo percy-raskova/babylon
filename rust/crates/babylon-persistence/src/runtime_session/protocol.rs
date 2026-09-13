@@ -42,6 +42,14 @@ pub enum RuntimeSessionPreset {
     StatewidePackagingShortage,
     #[serde(rename = "statewide-both")]
     StatewideBoth,
+    #[serde(rename = "statewide-maintenance-baseline")]
+    StatewideMaintenanceBaseline,
+    #[serde(rename = "statewide-maintenance-labor-shortage")]
+    StatewideMaintenanceLaborShortage,
+    #[serde(rename = "statewide-maintenance-parts-shortage")]
+    StatewideMaintenancePartsShortage,
+    #[serde(rename = "statewide-maintenance-both")]
+    StatewideMaintenanceBoth,
 }
 impl RuntimeSessionPreset {
     pub(super) const fn delivery(self) -> MichiganDeliveryPreset {
@@ -54,6 +62,16 @@ impl RuntimeSessionPreset {
             Self::StatewideFreightConstraint => MichiganDeliveryPreset::StatewideFreightConstraint,
             Self::StatewidePackagingShortage => MichiganDeliveryPreset::StatewidePackagingShortage,
             Self::StatewideBoth => MichiganDeliveryPreset::StatewideBoth,
+            Self::StatewideMaintenanceBaseline => {
+                MichiganDeliveryPreset::StatewideMaintenanceBaseline
+            }
+            Self::StatewideMaintenanceLaborShortage => {
+                MichiganDeliveryPreset::StatewideMaintenanceLaborShortage
+            }
+            Self::StatewideMaintenancePartsShortage => {
+                MichiganDeliveryPreset::StatewideMaintenancePartsShortage
+            }
+            Self::StatewideMaintenanceBoth => MichiganDeliveryPreset::StatewideMaintenanceBoth,
         }
     }
 }

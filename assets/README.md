@@ -7,25 +7,46 @@ needs no source checkout or runtime synthesizer.
 - `map/`: the deterministic county atlas.
 - `visual/`: the interface rasters and illustration estate tracked by
   `design/bevy-assets/manifest.toml`.
-- `music/`: original MIDI masters and the rendered Phi and Panopticon themes.
+- `music/`: all 36 authored MIDI masters and their `Ogg Vorbis` renders.
 - `sfx/`: the original 58 MIDI cues and six rendered observer cues.
 
-Regenerate the eight Ogg Vorbis files with
-`mise run midi:render-observer`. Add `--check` to prove
-byte-identical rendering and provenance against `audio-renders.json`. The
-FluidR3 GM soundfont is a build input, never bundled or loaded by the game;
-its hash and MIT attribution are recorded in that manifest and
+Render the existing 36 music MIDI files and six observer cues with
+`mise run midi:render-observer`. Add `--check` to compare
+the rendered bytes and provenance with `audio-renders.json`. The
+FluidR3 GM instrument bank is a build input. The game does not bundle or load it.
+The renderer checks its pinned hash before invoking any audio tools. The hash
+and MIT attribution appear in that manifest and
 `licenses/FluidR3-GM.txt`.
 
-The SFX estate and the 17-track soundtrack in `music/{ambient,superstructure,
-periphery,rift,endgame,entity}` retain their CC0 dedication in `audio-LICENSE`.
-The Director confirmed original authorship of Phi and Panopticon on 2026-09-06
-and authorized distribution of both MIDI compositions and their rendered forms
-with Babylon. Their permission is recorded in [LICENSING.md](../LICENSING.md);
-it does not assign them CC0. The older crisis, fascist and revolutionary suites
-retain their unresolved status. Visuals retain their recorded AGPL-3.0-or-later attribution.
+The renderer reads the existing MIDI files without changing or regenerating
+them. It normalizes music to -20 LUFS with a -2 dB true-peak target and encodes
+stereo `Vorbis` at 44.1 kHz. The native music catalog embeds every track's title,
+path and rendered bytes. Playback needs no MIDI tools, downloads or checkout.
 
-Audio composition generators live in `tools/audio/`; MIDI masters stay here.
+Suite and track names are soundtrack labels. They do not describe current
+engine state or promise simulation outcomes. The native playlist has no
+engine-event bindings.
+
+Each viewer session starts with History Breathing and advances through all
+36 recordings, about 92 minutes of music. Open Menu and choose Next track,
+or press J there, to skip.
+The menu shows the current title and playlist position. Music and effects
+keep their separate volume and mute controls. Campaign changes keep the
+current recording and sound settings. Playback uses one music decoder.
+
+The two theme renders keep their 2 MiB limit. The other 34 named music renders
+have a 12 MiB limit each. The longest existing MIDI lasts about 435 seconds,
+before its render tail. Unrelated files keep the general 1 MiB limit.
+
+The SFX estate and the 17-track soundtrack in `music/{ambient,superstructure,
+periphery,rift,endgame,entity}` keep their CC0 dedication in `audio-LICENSE`.
+The Director confirmed original authorship of Phi and `Panopticon` on 2026-09-06
+and authorized distribution of both MIDI compositions and their rendered forms
+with Babylon. [LICENSING.md](../LICENSING.md) records their permission.
+It does not assign them CC0. The older crisis, fascist and revolutionary suites
+keep their unresolved status. Visuals keep their recorded AGPL-3.0-or-later attribution.
+
+Audio composition generators live in `tools/audio/`. MIDI masters stay here.
 The remaining sections describe the CC0 soundtrack and cue estate.
 
 ## Layout

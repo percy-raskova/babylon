@@ -1,6 +1,6 @@
 # Designed Michigan material parameters. Existing campaigns retain their stored values.
 # One simulation period is four weeks; weekly rates are multiplied once when a campaign starts.
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 TICK_DURATION_DAYS = 28 # Fixed supported interval.
 HORIZON_PERIODS = 16 # Campaign stop bound: 1..=16 four-week periods.
 
@@ -125,6 +125,24 @@ LABOR_HOURS_PER_KG = 1
 LABOR_HOURS_PER_ITEM = 10
 EMPLOYED_PEOPLE = 20
 RESERVE_PEOPLE = 4
+
+# One bounded Wayne service provider. QCEW qualifies activity, not these values.
+# Whole jobs grant expiring next-period batches; service is not a stored good.
+[maintenance]
+EVIDENCE_CLASS = "Designed"
+CONSUMER_OPENING_METAL_STOCK = 2560 # kg; common across all four maintenance runs.
+OPENING_SERVICE_BATCHES = 16
+PROVIDER_OPENING_SPARE_PARTS = 256 # kg metal_parts.
+SHORTAGE_OPENING_SPARE_PARTS = 0
+SPARE_UNITS_PER_JOB = 1 # kg per completed job.
+LABOR_UNITS_PER_JOB = 10 # current person-hours per completed job.
+ENABLED_BATCHES_PER_JOB = 1
+MAXIMUM_JOBS_PER_PERIOD = 16
+EMPLOYED_PEOPLE = 1
+RESERVE_PEOPLE = 0
+SHORTAGE_EMPLOYED_PEOPLE = 0
+SHORTAGE_RESERVE_PEOPLE = 1
+REPLENISHMENT_ORDER_UNITS = 256 # Finite local order, allocated after maintenance.
 
 [commodity.crop_feedstock]
 UNIT = "kg"

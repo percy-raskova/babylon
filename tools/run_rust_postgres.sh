@@ -44,7 +44,7 @@ if [ "${BABYLON_POSTGRES_IMAGE_ID+x}" = x ] &&
 fi
 
 case "$LIVE_FOCUS" in
-  runtime_smoke | reference_integrity | runtime | archive | reader | statewide_synthetic | statewide_qualified | client) ;;
+  runtime_smoke | reference_integrity | runtime | archive | reader | production_history | statewide_synthetic | statewide_qualified | client) ;;
   *) die "unsupported live focus: $LIVE_FOCUS" ;;
 esac
 
@@ -157,6 +157,11 @@ run_phase() {
   printf 'Rust PostgreSQL phase complete: focus=%s phase=%s elapsed_seconds=%s status=%s\n' \
     "$LIVE_FOCUS" "$label" "$((SECONDS - started))" "$status"
   return "$status"
+}
+
+production_history_tests() {
+  run_phase production_history 600 cargo test -p babylon-persistence --test observer_material_live \
+    staffing_history::production_history --locked -- --nocapture --ignored --test-threads=1
 }
 
 runtime_observation() {
@@ -405,9 +410,15 @@ if [ "$status" -eq 0 ]; then
         reader_threads=1
         [ "$reader_suite" != observer_material_live ] || reader_threads=4
         run_phase "$reader_suite" 600 cargo test -p babylon-persistence --test "$reader_suite" \
-          --locked -- --nocapture --ignored --skip statewide:: --skip statewide_qualified:: --test-threads="$reader_threads" || status=$?
+          --locked -- --nocapture --ignored --skip statewide:: --skip statewide_qualified:: \
+          --skip staffing_history::production_history --test-threads="$reader_threads" || status=$?
         [ "$status" -eq 0 ] || break
       done
+      # Full-prefix history corruption/reopen proofs get their own deadline.
+      # Sharing the ordinary reader deadline left the 16-period proof unfinished.
+      if [ "$status" -eq 0 ]; then
+        production_history_tests || status=$?
+      fi
       # The full synthetic campaign gets its own deadline after ordinary readers.
       ;&
     statewide_synthetic)
@@ -415,6 +426,9 @@ if [ "$status" -eq 0 ]; then
         run_phase statewide_synthetic 600 cargo test -p babylon-persistence --test observer_material_live \
           statewide:: --locked -- --nocapture --ignored --test-threads=1 || status=$?
       fi
+      ;;
+    production_history)
+      production_history_tests || status=$?
       ;;
     statewide_qualified)
       # Actual-source four-preset qualification is separate from routine reader checks.

@@ -164,6 +164,18 @@ remains retained. The [focused GREEN check](test-results/per293-observer/logs/co
 and [scoped Clippy check](test-results/per293-observer/logs/contract-fingerprint-clippy.log)
 passed after the fingerprint correction.
 
+Hosted repository hygiene then rejected the 34 newly committed music tracks.
+Its named size limits still covered only the original themes. The repair gives
+those exact 34 paths the same 12 MiB bound as the pre-commit hook. The original
+2 MiB theme limits and 1 MiB general limit remain.
+
+The [new regression](test-results/per293-observer/logs/audio-hygiene-red-proven.log)
+failed before the repair. The [focused checks](test-results/per293-observer/logs/audio-hygiene-green.log)
+then passed 24 tests, including exact boundaries and unrelated-path refusal.
+The full [Python and repository check](test-results/per293-observer/logs/final-python-check-green.log)
+passed 2,361 tests with 18 skips in 89.15 seconds. Hygiene, formatting, lint,
+type checks, locks, and governance checks passed in that same invocation.
+
 ### Final frame behavior and held-read latency
 
 [Final performance evidence](test-results/per293-observer/native-current/performance-final.json)

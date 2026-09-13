@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from tools import check_repo_hygiene as hygiene
 from tools.audio import render_observer_audio as renderer
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -30,6 +31,28 @@ SFX = {
     "assets/sfx/state/state_fault.ogg",
 }
 EXPECTED = MUSIC | SFX
+
+
+def test_repo_hygiene_bounds_only_the_named_authored_soundtrack() -> None:
+    assert {
+        path for path in hygiene.RUNTIME_ASSET_BLOB_LIMITS if path.startswith("assets/music/")
+    } == MUSIC
+    for path in sorted(MUSIC):
+        limit = 2_097_152 if path in THEMES else 12_582_912
+        assert hygiene.check_large_non_lfs_blobs([f"100644 blob abc123 {limit}\t{path}"]) == []
+        assert hygiene.check_large_non_lfs_blobs([f"100644 blob abc123 {limit + 1}\t{path}"]) == [
+            f"{path} ({limit + 1} bytes)"
+        ]
+    for path in [
+        "assets/music/unrelated.ogg",
+        "assets/music/revolutionary/other.ogg",
+        *(f"{path}.bak" for path in MUSIC),
+        *(f"other/{path}" for path in MUSIC),
+    ]:
+        size = hygiene.MAX_BLOB_BYTES + 1
+        assert hygiene.check_large_non_lfs_blobs([f"100644 blob abc123 {size}\t{path}"]) == [
+            f"{path} ({size} bytes)"
+        ]
 
 
 def test_shipped_observer_renders_are_not_ignored() -> None:

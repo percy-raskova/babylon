@@ -145,6 +145,43 @@ MAX_BLOB_BYTES: int = 1_048_576
 RUNTIME_ASSET_BLOB_LIMITS: dict[str, int] = {
     "assets/music/babylon_theme_phi.ogg": 2_097_152,
     "assets/music/babylon_theme_panopticon.ogg": 2_097_152,
+    # Ship the remaining 34 authored compositions requested for native playback.
+    # Their exact MIDI, recipe and render hashes are pinned in audio-renders.json.
+    # Match the per-track 12 MiB pre-commit bound for these exact paths only.
+    "assets/music/ambient/01_history_breathing.ogg": 12_582_912,
+    "assets/music/crisis/01_wages_falling.ogg": 12_582_912,
+    "assets/music/crisis/02_the_squeeze.ogg": 12_582_912,
+    "assets/music/crisis/03_material_disruption.ogg": 12_582_912,
+    "assets/music/endgame/01_red_dawn.ogg": 12_582_912,
+    "assets/music/endgame/02_the_long_winter.ogg": 12_582_912,
+    "assets/music/endgame/03_iron_consolidation.ogg": 12_582_912,
+    "assets/music/endgame/04_dual_power.ogg": 12_582_912,
+    "assets/music/endgame/05_shattered_map.ogg": 12_582_912,
+    "assets/music/entity/01_beast_engine.ogg": 12_582_912,
+    "assets/music/entity/02_tribute_bleed.ogg": 12_582_912,
+    "assets/music/entity/03_dissection.ogg": 12_582_912,
+    "assets/music/entity/04_the_mask.ogg": 12_582_912,
+    "assets/music/fascist/01_the_void.ogg": 12_582_912,
+    "assets/music/fascist/02_scapegoat.ogg": 12_582_912,
+    "assets/music/fascist/03_the_rally.ogg": 12_582_912,
+    "assets/music/fascist/04_blood_and_soil.ogg": 12_582_912,
+    "assets/music/fascist/05_the_purge.ogg": 12_582_912,
+    "assets/music/fascist/06_false_order.ogg": 12_582_912,
+    "assets/music/fascist/07_the_apparatus.ogg": 12_582_912,
+    "assets/music/fascist/08_economic_crisis.ogg": 12_582_912,
+    "assets/music/fascist/09_juggling_act.ogg": 12_582_912,
+    "assets/music/periphery/01_unequal_exchange.ogg": 12_582_912,
+    "assets/music/periphery/02_superwage.ogg": 12_582_912,
+    "assets/music/revolutionary/01_the_spark.ogg": 12_582_912,
+    "assets/music/revolutionary/02_solidarity_rising.ogg": 12_582_912,
+    "assets/music/revolutionary/03_class_awakening.ogg": 12_582_912,
+    "assets/music/revolutionary/04_the_internationale.ogg": 12_582_912,
+    "assets/music/revolutionary/05_rupture.ogg": 12_582_912,
+    "assets/music/rift/01_overshoot.ogg": 12_582_912,
+    "assets/music/rift/02_the_silent_spring.ogg": 12_582_912,
+    "assets/music/superstructure/01_the_ballot.ogg": 12_582_912,
+    "assets/music/superstructure/02_the_reform_ceiling.ogg": 12_582_912,
+    "assets/music/superstructure/03_officeholder.ogg": 12_582_912,
     # ADR260: New Campaign needs the captured 1.18 MB compressed road paths
     # without a source download. statewide-sources.json pins their exact bytes;
     # the content reader separately bounds decoded content. Match the named

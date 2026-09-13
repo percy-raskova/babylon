@@ -20,7 +20,7 @@ The later SQL-injection repair changes only a live test. Every inventoried
 production source, asset, and captured content file still matches this build.
 Publication lint also wrapped three contract lines. The
 [parsed-YAML check](test-results/per293-observer/native-current/contract-format-only.json)
-proves their content stayed identical. These debug binaries are not a newly published release.
+proves their content stayed the same. These debug binaries are not a newly published release.
 
 The [final native log](test-results/per293-observer/logs/native-final-catalog-projection-fixed.log)
 and [capture index](test-results/per293-observer/native-current/native-evidence-final.json)

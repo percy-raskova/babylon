@@ -6,7 +6,7 @@ use super::{
     SectorBundleSources, StableElementKey, UnitId, BUNDLE_DOMAIN, BUNDLE_VERSION, MAX_BUNDLE_BYTES,
     MAX_BUNDLE_GOODS, MAX_BUNDLE_PROCESSES, MAX_BUNDLE_TEXT_BYTES, MICHIGAN_MAX_HORIZON_PERIODS,
 };
-use babylon_material_circuit::GoodId;
+use babylon_material_circuit::{GoodId, SiteId};
 
 pub(super) fn encode(bundle: &SectorBundle) -> Result<Vec<u8>, SectorBundleError> {
     let mut bytes = BUNDLE_DOMAIN.to_vec();
@@ -38,6 +38,10 @@ pub(super) fn encode(bundle: &SectorBundle) -> Result<Vec<u8>, SectorBundleError
         bytes.extend_from_slice(&digest);
     }
     bytes.extend_from_slice(&bundle.labor_unit.as_bytes());
+    bytes.push(u8::from(bundle.maintenance_provider.is_some()));
+    if let Some(provider) = bundle.maintenance_provider {
+        bytes.extend_from_slice(&provider.as_bytes());
+    }
     count(&mut bytes, bundle.goods.len())?;
     for good in &bundle.goods {
         bytes.extend_from_slice(&good.good_id.as_bytes());
@@ -104,6 +108,11 @@ pub(super) fn decode(bytes: &[u8]) -> Result<SectorBundle, SectorBundleError> {
         designed_scenario_sha256: cursor.array()?,
     };
     let labor_unit = UnitId::from_bytes(cursor.array()?);
+    let maintenance_provider = match cursor.take(1)? {
+        [0] => None,
+        [1] => Some(SiteId::from_bytes(cursor.array()?)),
+        _ => return Err(SectorBundleError::Owner),
+    };
     let mut goods = Vec::new();
     for _ in 0..cursor.count(MAX_BUNDLE_GOODS)? {
         goods.push(SectorBundleGood {
@@ -124,7 +133,15 @@ pub(super) fn decode(bytes: &[u8]) -> Result<SectorBundle, SectorBundleError> {
     if cursor.offset != bytes.len() {
         return Err(SectorBundleError::WireTrailing);
     }
-    let result = SectorBundle::from_parts(owner, sources, goods, processes, labor_unit, &rows)?;
+    let result = SectorBundle::from_parts(
+        owner,
+        sources,
+        goods,
+        processes,
+        labor_unit,
+        maintenance_provider,
+        &rows,
+    )?;
     if result.canonical_bytes() != bytes {
         return Err(SectorBundleError::WireNoncanonical);
     }

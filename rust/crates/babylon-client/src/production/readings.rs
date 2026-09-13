@@ -66,6 +66,16 @@ pub(super) fn reading_headline(
     }
     if site.processes.is_empty() {
         writeln!(value, "{}", committed_plan_status(site)).expect("String write");
+        if let Some(account) = super::maintenance::account(snapshot, &site.id) {
+            if let Some(done) = &account.completed {
+                writeln!(
+                    value,
+                    "{} jobs completed / Derived",
+                    grouped(done.completed_jobs)
+                )
+                .expect("String write");
+            }
+        }
     }
     let accounts: Vec<_> = snapshot
         .staffing_accounts
@@ -94,6 +104,7 @@ pub(super) fn reading_headline(
 
 pub(super) fn describe_flow(site: &ProductionSite, snapshot: &ProductionSnapshot) -> String {
     let mut value = String::new();
+    super::maintenance::flow(&mut value, &site.id, snapshot);
     for process in &site.processes {
         writeln!(
             value,
@@ -215,6 +226,7 @@ pub(super) fn describe_work(site: &ProductionSite, snapshot: &ProductionSnapshot
     let mut value = String::new();
     describe_staffing_accounts(&mut value, site, snapshot);
     describe_labor_accounts(&mut value, site, snapshot);
+    super::maintenance::work(&mut value, &site.id, snapshot);
     value.push_str("\nLABOR BUDGET / DERIVED\n");
     for labor in site.processes.iter().flat_map(|process| &process.labor) {
         writeln!(
@@ -278,6 +290,7 @@ fn describe_sources(site: &ProductionSite, snapshot: &ProductionSnapshot) -> Str
     if let Some(jobs) = site.observed_employment {
         writeln!(value, "\nINDUSTRY EMPLOYMENT / OBSERVED 2024\n{} annual-average jobs (QCEW; separate from modeled people and hours)", grouped(jobs)).expect("String write");
     }
+    super::maintenance::sources(&mut value, &site.id, snapshot);
     describe_sector_context(&mut value, site, snapshot);
     writeln!(
         value,
@@ -297,7 +310,7 @@ fn describe_sources(site: &ProductionSite, snapshot: &ProductionSnapshot) -> Str
         .expect("String write");
         value.push_str("Road data © OpenStreetMap contributors, available under the Open Database License (ODbL).\nhttps://www.openstreetmap.org/copyright\n");
     }
-    value.push_str("\nSCENE KEY\nEqual-height structures identify county cohorts; height and spacing carry no quantity or geography. Arrows point from disclosed suppliers to buyers. Cyan links enter the selection; copper links leave it. Packets are actual in-transit lots at static schematic positions.\n");
+    value.push_str("\nSCENE KEY\nEqual-height structures identify county cohorts; height and spacing carry no quantity or geography. Arrows point from disclosed suppliers to buyers. Cyan links enter the selection; copper links leave it. Gold elevated links show maintenance service from provider to consumer, separate from the reverse parts shipment. Packets are actual in-transit lots at static schematic positions.\n");
     value
 }
 
@@ -321,6 +334,16 @@ pub(super) fn describe_material_balance(
     }
     writeln!(value, "\nSTOCK MOVEMENT / PERIOD {}", balance.period).expect("String write");
     for row in rows {
+        if row.maintenance_consumed != 0
+            || super::maintenance::account(snapshot, &site.id).is_some_and(|account| {
+                account.provider_site_id == site.id
+                    && account.spare_good_id == row.good_id
+                    && account.spare_unit_id == row.unit_id
+            })
+        {
+            writeln!(value, "{} / {}\nOpened {} + arrived {} + received locally {} + produced {}\n= production consumed {} + maintenance consumed {} + dispatched {} + transferred locally {} + final demand {} + closed {}", row.good, row.unit, grouped(row.opening), grouped(row.arrivals), grouped(row.local_received), grouped(row.produced), grouped(row.consumed), grouped(row.maintenance_consumed), grouped(row.dispatched), grouped(row.local_transferred), grouped(row.final_demand_fulfilled), grouped(row.closing)).expect("String write");
+            continue;
+        }
         if row.local_received != 0 || row.local_transferred != 0 || row.final_demand_fulfilled != 0
         {
             writeln!(value, "{} / {}\nOpened {} + arrived {} + received locally {} + produced {}\n= consumed {} + dispatched {} + transferred locally {} + final demand {} + closed {}", row.good, row.unit, grouped(row.opening), grouped(row.arrivals), grouped(row.local_received), grouped(row.produced), grouped(row.consumed), grouped(row.dispatched), grouped(row.local_transferred), grouped(row.final_demand_fulfilled), grouped(row.closing)).expect("String write");
@@ -354,7 +377,11 @@ fn describe_sector_context(
         .map(|link| &link.cohort_subject)
         .collect();
     for context in snapshot.observed_contexts.iter().filter(|context| {
-        context.county_geoid == site.county_geoid && subjects.contains(&context.subject)
+        context.county_geoid == site.county_geoid
+            && (subjects.contains(&context.subject)
+                || (site.role
+                    == babylon_persistence::production_observation::ProductionSiteRole::Maintenance
+                    && context.sector_code == site.sector_code))
     }) {
         writeln!(
             value,
@@ -489,8 +516,11 @@ fn describe_labor_accounts(
                 account.unit,
             )
             .expect("String write");
-            if site.processes.is_empty()
-                || completed.handling_needed != 0
+            if matches!(
+                site.role,
+                babylon_persistence::production_observation::ProductionSiteRole::Wholesale
+                    | babylon_persistence::production_observation::ProductionSiteRole::Retail
+            ) || completed.handling_needed != 0
                 || completed.handling_used != 0
             {
                 writeln!(
@@ -498,6 +528,20 @@ fn describe_labor_accounts(
                     "Handling: {} needed · {} used {}",
                     grouped(completed.handling_needed),
                     grouped(completed.handling_used),
+                    account.unit
+                )
+                .expect("String write");
+            }
+            if completed.maintenance_needed != 0
+                || completed.maintenance_used != 0
+                || site.role
+                    == babylon_persistence::production_observation::ProductionSiteRole::Maintenance
+            {
+                writeln!(
+                    value,
+                    "Maintenance: {} needed · {} used {}",
+                    grouped(completed.maintenance_needed),
+                    grouped(completed.maintenance_used),
                     account.unit
                 )
                 .expect("String write");

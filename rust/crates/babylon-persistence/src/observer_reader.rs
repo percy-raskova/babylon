@@ -1,5 +1,9 @@
 //! Separate read-only economic observer and per-signal granted preview capabilities.
 
+mod history;
+
+pub use history::{ProductionHistoryTarget, ProductionOutputPoint};
+
 use babylon_kernel::content_digest::sha256_of;
 use postgres::{Config, IsolationLevel, NoTls};
 use serde::{Deserialize, Serialize};
@@ -68,6 +72,7 @@ pub enum ObserverEconomyError {
     ScenarioMismatch,
     TickAbsent,
     InvalidProjection,
+    ProductionHistoryUnavailable,
     Reference,
 }
 impl std::fmt::Display for ObserverEconomyError {
@@ -184,40 +189,12 @@ impl ObserverEconomyReader {
                 .batch_execute("SET LOCAL idle_in_transaction_session_timeout = '120s'")
                 .map_err(|_| ObserverEconomyError::Database)?;
         }
-        let foundation = transaction.query_opt("SELECT campaign_id, foundation_sha256, scenario_sha256 FROM public.v_observer_economy_foundation_v1 WHERE campaign_id = $1", &[campaign.as_uuid()]).map_err(|_| ObserverEconomyError::Database)?.ok_or(ObserverEconomyError::CampaignAbsent)?;
-        let found_campaign: uuid::Uuid = foundation
-            .try_get(0)
-            .map_err(|_| ObserverEconomyError::InvalidProjection)?;
-        if &found_campaign != campaign.as_uuid() {
-            return Err(ObserverEconomyError::InvalidProjection);
-        }
-        let foundation_hash: Vec<u8> = foundation
-            .try_get(1)
-            .map_err(|_| ObserverEconomyError::InvalidProjection)?;
-        let scenario_hash: Vec<u8> = foundation
-            .try_get(2)
-            .map_err(|_| ObserverEconomyError::InvalidProjection)?;
+        let (foundation_hash, material_header) =
+            read_foundation(&mut transaction, campaign, expected_tick, self.visibility)?;
         let economy = michigan_economy().map_err(|_| ObserverEconomyError::Reference)?;
-        let material_header = crate::observer_material::read_material_header(
-            &mut transaction,
-            campaign,
-            expected_tick,
-            self.visibility,
-        )?;
         let admission = material_header
             .as_ref()
             .and_then(|header| header.admission.as_ref());
-        if material_header.is_some() && admission.is_none() {
-            if foundation_hash.len() != 32
-                || scenario_hash.len() != 32
-                || foundation_hash.iter().all(|b| *b == 0)
-                || scenario_hash.iter().all(|b| *b == 0)
-            {
-                return Err(ObserverEconomyError::ScenarioMismatch);
-            }
-        } else {
-            validate_observer_graph(admission, &foundation_hash, &scenario_hash)?;
-        }
         let (tick_content_hash, envelope_digest) =
             read_commit_identity(&mut transaction, campaign, tick, material_header.is_some())?;
         let counties = read_committed_counties(
@@ -265,6 +242,44 @@ impl ObserverEconomyReader {
             production: material.production,
         })
     }
+}
+
+fn read_foundation(
+    transaction: &mut impl postgres::GenericClient,
+    campaign: CampaignId,
+    tick: u64,
+    visibility: ObserverVisibility,
+) -> Result<(Vec<u8>, Option<crate::observer_material::MaterialHeader>), ObserverEconomyError> {
+    let foundation = transaction.query_opt("SELECT campaign_id, foundation_sha256, scenario_sha256 FROM public.v_observer_economy_foundation_v1 WHERE campaign_id = $1", &[campaign.as_uuid()]).map_err(|_| ObserverEconomyError::Database)?.ok_or(ObserverEconomyError::CampaignAbsent)?;
+    let found_campaign: uuid::Uuid = foundation
+        .try_get(0)
+        .map_err(|_| ObserverEconomyError::InvalidProjection)?;
+    if &found_campaign != campaign.as_uuid() {
+        return Err(ObserverEconomyError::InvalidProjection);
+    }
+    let foundation_hash: Vec<u8> = foundation
+        .try_get(1)
+        .map_err(|_| ObserverEconomyError::InvalidProjection)?;
+    let scenario_hash: Vec<u8> = foundation
+        .try_get(2)
+        .map_err(|_| ObserverEconomyError::InvalidProjection)?;
+    let material_header =
+        crate::observer_material::read_material_header(transaction, campaign, tick, visibility)?;
+    let admission = material_header
+        .as_ref()
+        .and_then(|header| header.admission.as_ref());
+    if material_header.is_some() && admission.is_none() {
+        if foundation_hash.len() != 32
+            || scenario_hash.len() != 32
+            || foundation_hash.iter().all(|b| *b == 0)
+            || scenario_hash.iter().all(|b| *b == 0)
+        {
+            return Err(ObserverEconomyError::ScenarioMismatch);
+        }
+    } else {
+        validate_observer_graph(admission, &foundation_hash, &scenario_hash)?;
+    }
+    Ok((foundation_hash, material_header))
 }
 
 fn read_commit_identity(

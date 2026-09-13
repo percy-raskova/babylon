@@ -1,10 +1,10 @@
-//! V6 identity of an already-authorized production presentation.
+//! V7 identity of an already-authorized production presentation.
 //!
 //! Scope and the complete typed DTO are serialized as canonical JSON after the
 //! fixed domain/version. True multisets sort; events, geometry vertices and each
 //! route's physical edge sequence retain their semantic order. Serialization
-//! streams into the hash with an explicit byte ceiling. This replaces the V5
-//! field-by-field encoder; historical digest bytes keep their historical meaning.
+//! streams into the hash with an explicit byte ceiling. V7 includes the maintenance
+//! service account and separate maintenance stock and labor debits.
 
 use crate::{
     observer_reader::ObserverEconomySnapshot, observer_reader::ObserverVisibility,
@@ -17,7 +17,7 @@ use std::{
     io::{self, Write},
 };
 
-const DOMAIN: &[u8] = b"babylon.production-observation-evidence.v6\0";
+const DOMAIN: &[u8] = b"babylon.production-observation-evidence.v7\0";
 const MAX_ROWS: usize = 65_536;
 const MAX_PHYSICAL_ROWS: usize = 1_114_112;
 const MAX_EVIDENCE_BYTES: usize = 128 * 1024 * 1024;
@@ -78,6 +78,7 @@ impl ObserverEconomySnapshot {
             return Err(ProductionEvidenceError::InvalidIdentity);
         }
         validate_identities(source)?;
+        validate_maintenance(source, self.resolve_tick)?;
         let production = canonical_production(source);
         let scope = EvidenceScope {
             campaign_id: &self.campaign_id,
@@ -95,7 +96,7 @@ impl ObserverEconomySnapshot {
             bound: false,
         };
         output.hash.update(DOMAIN);
-        output.hash.update(6_u32.to_be_bytes());
+        output.hash.update(7_u32.to_be_bytes());
         if serde_json::to_writer(&mut output, &scope).is_err() {
             return Err(if output.bound {
                 ProductionEvidenceError::Bound
@@ -266,6 +267,105 @@ fn validate_account_rows(rows: &ProductionSnapshot) -> Result<()> {
                 .iter()
                 .map(|row| (&row.site_id, &row.good_id, &row.unit_id)),
         )?;
+    }
+    Ok(())
+}
+
+fn validate_maintenance(rows: &ProductionSnapshot, period: u64) -> Result<()> {
+    use crate::production_observation::ProductionSiteRole;
+    let Some(account) = &rows.maintenance_account else {
+        if rows
+            .sites
+            .iter()
+            .any(|site| site.role == ProductionSiteRole::Maintenance)
+        {
+            return Err(ProductionEvidenceError::InvalidIdentity);
+        }
+        return Ok(());
+    };
+    let provider = rows
+        .sites
+        .iter()
+        .find(|site| site.id == account.provider_site_id);
+    let consumer = rows
+        .sites
+        .iter()
+        .find(|site| site.id == account.consumer_site_id);
+    let process = consumer.and_then(|site| {
+        site.processes
+            .iter()
+            .find(|process| process.id == account.consumer_process_id)
+    });
+    if !provider.is_some_and(|site| {
+        site.role == ProductionSiteRole::Maintenance && site.processes.is_empty()
+    }) || rows
+        .sites
+        .iter()
+        .filter(|site| site.role == ProductionSiteRole::Maintenance)
+        .count()
+        != 1
+        || account.provider_site_id == account.consumer_site_id
+        || !process.is_some_and(|process| {
+            process.output_good_id == account.output_good_id
+                && process.output_unit_id == account.output_unit_id
+                && process.output_per_batch == account.output_per_batch
+        })
+        || account.spare_good_id != account.output_good_id
+        || account.spare_unit_id != account.output_unit_id
+        || !rows.labor_accounts.iter().any(|labor| {
+            labor.site_id == account.provider_site_id && labor.unit_id == account.labor_unit_id
+        })
+        || account.spare_units_per_job == 0
+        || account.labor_units_per_job == 0
+        || account.enabled_batches_per_job == 0
+        || account.output_per_batch == 0
+        || period.checked_add(1) != Some(account.next_service_period)
+        || account
+            .next_service_batches
+            .checked_mul(account.output_per_batch)
+            .is_none()
+    {
+        return Err(ProductionEvidenceError::InvalidIdentity);
+    }
+    let Some(done) = &account.completed else {
+        return if period == 0 {
+            Ok(())
+        } else {
+            Err(ProductionEvidenceError::InvalidIdentity)
+        };
+    };
+    let requested = done.prospective_batches / account.enabled_batches_per_job
+        + u64::from(
+            !done
+                .prospective_batches
+                .is_multiple_of(account.enabled_batches_per_job),
+        );
+    let feasible = requested
+        .min(account.maximum_jobs_per_period)
+        .min(done.available_spare_parts / account.spare_units_per_job)
+        .min(done.available_labor_hours / account.labor_units_per_job);
+    if period == 0
+        || done.period != period
+        || done.requested_jobs != requested
+        || done.completed_jobs != feasible
+        || done
+            .opening_spare_parts
+            .checked_add(done.arrived_spare_parts)
+            != Some(done.available_spare_parts)
+        || done
+            .consumed_service_batches
+            .checked_add(done.expired_service_batches)
+            != Some(done.opening_service_batches)
+        || done.completed_jobs.checked_mul(account.spare_units_per_job)
+            != Some(done.consumed_spare_parts)
+        || done.completed_jobs.checked_mul(account.labor_units_per_job)
+            != Some(done.consumed_labor_hours)
+        || done
+            .completed_jobs
+            .checked_mul(account.enabled_batches_per_job)
+            != Some(account.next_service_batches)
+    {
+        return Err(ProductionEvidenceError::InvalidIdentity);
     }
     Ok(())
 }

@@ -73,7 +73,7 @@ options:
   --campaign    open an existing canonical campaign UUID; falls back to BABYLON_CAMPAIGN_ID.
   --new-campaign create an absent campaign with this canonical UUID.
   --preset      new campaign scenario: standard (default), delayed,
-                shared-freight-ample, shared-freight-constrained, statewide-baseline, statewide-freight-constraint, statewide-packaging-shortage or statewide-both.
+                shared-freight-ample, shared-freight-constrained, statewide-baseline, statewide-freight-constraint, statewide-packaging-shortage, statewide-both, statewide-maintenance-baseline, statewide-maintenance-labor-shortage, statewide-maintenance-parts-shortage or statewide-maintenance-both.
   Open the connected window with `mise run play`.
 ";
 
@@ -280,8 +280,12 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<CliRequest, Cli
     }
     if !headless {
         if !rest.is_empty() {
-            return Err(CliError::at(concat!(file!(), ":", line!()),
-                format!("windowed mode observes one durable campaign; use {HEADLESS_FLAG} for commands; demo stories are retired")));
+            return Err(CliError::at(
+                concat!(file!(), ":", line!()),
+                format!(
+                    "windowed mode observes one durable campaign; use {HEADLESS_FLAG} for commands; demo stories are retired"
+                ),
+            ));
         }
         return Ok(CliRequest::Windowed {
             initial_target: windowed_target(campaign, new_campaign, preset)?,
@@ -349,12 +353,16 @@ fn windowed_target(
             Some("statewide-freight-constraint") => RuntimeSessionPreset::StatewideFreightConstraint,
             Some("statewide-packaging-shortage") => RuntimeSessionPreset::StatewidePackagingShortage,
             Some("statewide-both") => RuntimeSessionPreset::StatewideBoth,
+            Some("statewide-maintenance-baseline") => RuntimeSessionPreset::StatewideMaintenanceBaseline,
+            Some("statewide-maintenance-labor-shortage") => RuntimeSessionPreset::StatewideMaintenanceLaborShortage,
+            Some("statewide-maintenance-parts-shortage") => RuntimeSessionPreset::StatewideMaintenancePartsShortage,
+            Some("statewide-maintenance-both") => RuntimeSessionPreset::StatewideMaintenanceBoth,
             Some("shared-freight-ample") => RuntimeSessionPreset::SharedFreightAmple,
             Some("shared-freight-constrained") => RuntimeSessionPreset::SharedFreightConstrained,
             Some(_) => {
                 return Err(CliError::at(
                     concat!(file!(), ":", line!()),
-                    "new campaign preset must be standard, delayed, shared-freight-ample, shared-freight-constrained, statewide-baseline, statewide-freight-constraint, statewide-packaging-shortage or statewide-both".into(),
+                    "new campaign preset must be standard, delayed, shared-freight-ample, shared-freight-constrained, statewide-baseline, statewide-freight-constraint, statewide-packaging-shortage, statewide-both, statewide-maintenance-baseline, statewide-maintenance-labor-shortage, statewide-maintenance-parts-shortage or statewide-maintenance-both".into(),
                 ))
             }
         };
@@ -634,6 +642,10 @@ mod tests {
             "statewide-freight-constraint",
             "statewide-packaging-shortage",
             "statewide-both",
+            "statewide-maintenance-baseline",
+            "statewide-maintenance-labor-shortage",
+            "statewide-maintenance-parts-shortage",
+            "statewide-maintenance-both",
         ] {
             let request = parse(os(&["--new-campaign", CAMPAIGN, "--preset", preset]));
             assert!(

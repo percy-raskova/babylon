@@ -518,10 +518,10 @@ def capture_sources(
     defines_bytes = defines.read_bytes()
     definitions = tomllib.loads(defines_bytes.decode("utf-8"))
     if (
-        definitions["SCHEMA_VERSION"] != 3
+        definitions["SCHEMA_VERSION"] != 4
         or definitions["statewide"]["EVIDENCE_CLASS"] != "Designed"
     ):
-        raise CaptureError("capture requires schema V3 Designed statewide definitions")
+        raise CaptureError("capture requires schema V4 Designed statewide definitions")
     limit = _uint(
         definitions["statewide"]["TERMINAL_ATTACHMENT_LIMIT_METERS"],
         "terminal attachment limit",

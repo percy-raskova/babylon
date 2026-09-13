@@ -82,6 +82,16 @@ fn catalog(inputs: &Inputs, candidate: &Candidate) -> Result<(MichiganMaterialCa
             "candidate must have the current sixteen-period horizon",
         ));
     }
+    let catalog = MichiganMaterialCatalog::from_statewide_qualification(
+        &inputs.defines,
+        &inputs.qualification,
+        inputs.physical.clone(),
+        interventions(candidate),
+    )?;
+    Ok((catalog, capacity, opening))
+}
+
+fn interventions(candidate: &Candidate) -> Vec<MichiganIntervention> {
     let freight = MichiganCapacityOverride {
         capacity_key: candidate.capacity_key.clone(),
         grams_per_period: candidate.constrained_grams,
@@ -91,33 +101,35 @@ fn catalog(inputs: &Inputs, candidate: &Candidate) -> Result<(MichiganMaterialCa
         good_key: "paper_packaging".to_owned(),
         quantity: candidate.shortage_opening,
     };
-    let interventions = vec![
-        MichiganIntervention {
-            preset: MichiganDeliveryPreset::StatewideFreightConstraint,
-            capacities: vec![freight.clone()],
-            opening_stocks: vec![],
+    [
+        (
+            MichiganDeliveryPreset::StatewideFreightConstraint,
+            vec![freight.clone()],
+            vec![],
+        ),
+        (
+            MichiganDeliveryPreset::StatewidePackagingShortage,
+            vec![],
+            vec![packaging.clone()],
+        ),
+        (
+            MichiganDeliveryPreset::StatewideBoth,
+            vec![freight],
+            vec![packaging],
+        ),
+    ]
+    .into_iter()
+    .map(
+        |(preset, capacities, opening_stocks)| MichiganIntervention {
+            preset,
+            capacities,
+            opening_stocks,
             routes: vec![],
+            maintenance: None,
+            graph_scenario_source: None,
         },
-        MichiganIntervention {
-            preset: MichiganDeliveryPreset::StatewidePackagingShortage,
-            capacities: vec![],
-            opening_stocks: vec![packaging.clone()],
-            routes: vec![],
-        },
-        MichiganIntervention {
-            preset: MichiganDeliveryPreset::StatewideBoth,
-            capacities: vec![freight],
-            opening_stocks: vec![packaging],
-            routes: vec![],
-        },
-    ];
-    let catalog = MichiganMaterialCatalog::from_statewide_qualification(
-        &inputs.defines,
-        &inputs.qualification,
-        inputs.physical.clone(),
-        interventions,
-    )?;
-    Ok((catalog, capacity, opening))
+    )
+    .collect()
 }
 fn run_case(
     catalog: &MichiganMaterialCatalog,

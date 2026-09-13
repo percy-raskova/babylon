@@ -1,4 +1,4 @@
-//! Canonical V3 routed-material state bytes for restart and replay.
+//! Canonical current routed-material state bytes for restart and replay.
 
 use crate::SupplierTransport;
 use crate::{
@@ -19,12 +19,12 @@ use crate::{
 
 /// Canonical domain for one complete routed material-circuit opening state.
 pub const MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES: &[u8] = b"babylon.material-circuit-state.v3";
-/// SHA-256 of the complete language-neutral Material Circuit V3 contract source.
+/// SHA-256 of the current language-neutral material circuit contract source.
 pub const MATERIAL_CIRCUIT_SOURCE_SHA256: [u8; 32] = [
-    197, 18, 133, 60, 241, 31, 36, 212, 29, 50, 104, 0, 70, 24, 192, 228, 56, 57, 91, 7, 64, 212,
-    220, 252, 147, 189, 223, 80, 190, 160, 19, 75,
+    32, 215, 20, 38, 174, 191, 251, 28, 83, 249, 198, 224, 235, 90, 69, 139, 107, 170, 210, 140,
+    240, 181, 72, 102, 11, 141, 131, 215, 204, 134, 85, 53,
 ];
-const SCHEMA_VERSION: u16 = 3;
+const SCHEMA_VERSION: u16 = 4;
 
 impl From<CursorError> for MaterialCircuitError {
     fn from(value: CursorError) -> Self {
@@ -586,7 +586,60 @@ fn decode_final_demand_orders(
     })
 }
 
-/// Encode one complete validated V3 state in canonical big-endian order.
+fn append_maintenance(output: &mut Vec<u8>, state: &MaterialCircuitState) {
+    output.push(u8::from(state.maintenance_binding.is_some()));
+    if let Some(binding) = &state.maintenance_binding {
+        output.extend_from_slice(&binding.provider_site_id.as_bytes());
+        output.extend_from_slice(&binding.consumer_process_id.as_bytes());
+        output.extend_from_slice(&binding.spare_good_id.as_bytes());
+        output.extend_from_slice(&binding.spare_unit_id.as_bytes());
+        output.extend_from_slice(&binding.labor_unit_id.as_bytes());
+        output.extend_from_slice(&binding.spare_units_per_job.to_be_bytes());
+        output.extend_from_slice(&binding.labor_units_per_job.to_be_bytes());
+        output.extend_from_slice(&binding.enabled_batches_per_job.to_be_bytes());
+        output.extend_from_slice(&binding.maximum_jobs_per_period.to_be_bytes());
+    }
+    output.push(u8::from(state.maintenance_service.is_some()));
+    if let Some(service) = state.maintenance_service {
+        output.extend_from_slice(&service.period.to_be_bytes());
+        output.extend_from_slice(&service.available_batches.to_be_bytes());
+    }
+}
+
+fn decode_maintenance_binding(
+    cursor: &mut Cursor<'_>,
+) -> Result<Option<crate::MaintenanceBinding>, MaterialCircuitError> {
+    match cursor.u8()? {
+        0 => Ok(None),
+        1 => Ok(Some(crate::MaintenanceBinding {
+            provider_site_id: SiteId::from_bytes(cursor.array()?),
+            consumer_process_id: ProcessId::from_bytes(cursor.array()?),
+            spare_good_id: GoodId::from_bytes(cursor.array()?),
+            spare_unit_id: UnitId::from_bytes(cursor.array()?),
+            labor_unit_id: UnitId::from_bytes(cursor.array()?),
+            spare_units_per_job: cursor.u64()?,
+            labor_units_per_job: cursor.u64()?,
+            enabled_batches_per_job: cursor.u64()?,
+            maximum_jobs_per_period: cursor.u64()?,
+        })),
+        _ => Err(MaterialCircuitError::WireEnum),
+    }
+}
+
+fn decode_maintenance_service(
+    cursor: &mut Cursor<'_>,
+) -> Result<Option<crate::MaintenanceService>, MaterialCircuitError> {
+    match cursor.u8()? {
+        0 => Ok(None),
+        1 => Ok(Some(crate::MaintenanceService {
+            period: cursor.u64()?,
+            available_batches: cursor.u64()?,
+        })),
+        _ => Err(MaterialCircuitError::WireEnum),
+    }
+}
+
+/// Encode one complete validated state in canonical big-endian order.
 ///
 /// # Errors
 /// Returns the first exact state, route, row-bound, or wire-bound refusal.
@@ -619,11 +672,12 @@ pub fn encode_material_circuit_state(
     append_handling_coefficients(&mut output, &canonical.handling_coefficients)?;
     append_final_demand_principals(&mut output, &canonical.final_demand_principals)?;
     append_final_demand_orders(&mut output, &canonical.final_demand_orders)?;
+    append_maintenance(&mut output, &canonical);
 
     Ok(output)
 }
 
-/// Decode one complete canonical V3 state.
+/// Decode one complete canonical state.
 ///
 /// # Errors
 /// Returns the first domain, version, enum, wire, order, or state refusal.
@@ -662,6 +716,8 @@ pub fn decode_material_circuit_state(
         handling_coefficients: decode_handling_coefficients(&mut cursor)?,
         final_demand_principals: decode_final_demand_principals(&mut cursor)?,
         final_demand_orders: decode_final_demand_orders(&mut cursor)?,
+        maintenance_binding: decode_maintenance_binding(&mut cursor)?,
+        maintenance_service: decode_maintenance_service(&mut cursor)?,
     };
     cursor.finish()?;
     let canonical = canonical_state(&state)?;
@@ -671,7 +727,7 @@ pub fn decode_material_circuit_state(
     Ok(state)
 }
 
-/// Hash one complete validated canonical V3 state.
+/// Hash one complete validated canonical state.
 ///
 /// # Errors
 /// Returns the exact encoding refusal without publishing a digest.

@@ -226,6 +226,7 @@ type ButtonVisuals = (
     &'static Interaction,
     &'static mut BackgroundColor,
     &'static mut BorderColor,
+    Has<ProductionLabel>,
 );
 
 #[derive(SystemParam)]
@@ -970,7 +971,7 @@ fn spawn_site_label(
                 border: UiRect::left(px(if selected { 3 } else { 1 })),
                 ..default()
             },
-            BackgroundColor(theme::INK.with_alpha(0.93)),
+            BackgroundColor(theme::INK),
             BorderColor::all(color),
             ZIndex(4),
             Visibility::Hidden,
@@ -1007,7 +1008,12 @@ fn spawn_routes(
         };
         let selected = navigation.selected_site.as_ref();
         let incident = selected.is_some_and(|site| site == supplier || site == buyer);
-        let color = if selected == Some(supplier) {
+        let service = layout
+            .maintenance_links
+            .contains(&(supplier.clone(), buyer.clone()));
+        let color = if service {
+            theme::YELLOW
+        } else if selected == Some(supplier) {
             theme::COPPER
         } else if selected == Some(buyer) {
             theme::BLUE
@@ -1015,7 +1021,8 @@ fn spawn_routes(
             theme::GRAY
         };
         let width = if incident { 7.0 } else { 4.0 };
-        let path = relation_path(*from, *to);
+        let lift = if service { Vec3::Y * 30.0 } else { Vec3::ZERO };
+        let path = relation_path(*from + lift, *to + lift);
         for segment in path.windows(2) {
             rail(
                 commands, meshes, materials, segment[0], segment[1], width, color,
@@ -1288,6 +1295,24 @@ fn spawn_freight_participants(
     }
 }
 
+fn visible_dependency_directions<'a>(
+    links: &'a [(DependencyDirection, &ProductionSite)],
+) -> impl Iterator<Item = DependencyDirection> + 'a {
+    [
+        DependencyDirection::MaintenanceProvider,
+        DependencyDirection::ServiceConsumer,
+        DependencyDirection::Upstream,
+        DependencyDirection::Downstream,
+    ]
+    .into_iter()
+    .filter(|direction| {
+        !matches!(
+            direction,
+            DependencyDirection::MaintenanceProvider | DependencyDirection::ServiceConsumer
+        ) || links.iter().any(|(candidate, _)| candidate == direction)
+    })
+}
+
 fn rebuild_dependencies(
     mut commands: Commands,
     roots: Query<Entity, With<ProductionDependencies>>,
@@ -1351,10 +1376,7 @@ fn rebuild_dependencies(
                 group_count,
                 &context,
             );
-            for direction in [
-                DependencyDirection::Upstream,
-                DependencyDirection::Downstream,
-            ] {
+            for direction in visible_dependency_directions(&links) {
                 panel.spawn(text(direction.label(), 13.0, theme::YELLOW));
                 let mut count = 0;
                 for (_, neighbor) in links.iter().filter(|(candidate, neighbor)| {
@@ -1467,7 +1489,7 @@ fn paint_buttons(
     view: Res<PrimaryView>,
     mut buttons: Query<ButtonVisuals>,
 ) {
-    for (button, interaction, mut background, mut border) in &mut buttons {
+    for (button, interaction, mut background, mut border, scene_label) in &mut buttons {
         let selected = match &button.0 {
             ProductionCommand::Open => *view == PrimaryView::Production,
             ProductionCommand::Map => *view == PrimaryView::Map,
@@ -1483,20 +1505,30 @@ fn paint_buttons(
             }
             ProductionCommand::Back | ProductionCommand::Page { .. } => false,
         };
-        let next = match interaction {
-            Interaction::Pressed => theme::RED.with_alpha(0.5),
-            Interaction::Hovered => theme::YELLOW.with_alpha(0.25),
-            Interaction::None if selected => theme::YELLOW.with_alpha(0.2),
-            Interaction::None => theme::PANEL,
+        // Labels can overlap bright geometry in the flat view. Keep their
+        // text surface opaque and carry interaction feedback in the border.
+        let next = if scene_label {
+            theme::INK
+        } else {
+            match interaction {
+                Interaction::Pressed => theme::RED.with_alpha(0.5),
+                Interaction::Hovered => theme::YELLOW.with_alpha(0.25),
+                Interaction::None if selected => theme::YELLOW.with_alpha(0.2),
+                Interaction::None => theme::PANEL,
+            }
         };
         if background.0 != next {
             background.0 = next;
         }
-        border.set_if_neq(BorderColor::all(if selected {
-            theme::YELLOW
-        } else {
-            theme::PAPER
-        }));
+        border.set_if_neq(BorderColor::all(
+            if scene_label && *interaction == Interaction::Pressed {
+                theme::RED
+            } else if selected || (scene_label && *interaction == Interaction::Hovered) {
+                theme::YELLOW
+            } else {
+                theme::PAPER
+            },
+        ));
     }
 }
 
@@ -1713,7 +1745,7 @@ fn paint_readings(
                 (Some(snapshot), Some(site), false) if navigation.details_open => describe(site, snapshot, navigation.reading_section),
                 (Some(snapshot), None, true) if navigation.county_open => format!("COUNTY {}\nChoose a commodity cohort to follow its circuit.\n{}", navigation.county_geoid.as_deref().unwrap_or("unavailable"), snapshot.scenario_label),
                 (Some(snapshot), None, true) => describe_overview(snapshot),
-                (None, _, true) => "No production relationships are disclosed at this period and perspective. Open Geography to explore the information available to you.".into(),
+                (None, _, true) => "No production relationships are disclosed at this period and perspective. Open World to explore the information available to you.".into(),
                 _ => String::new(),
             };
         }
@@ -1772,6 +1804,7 @@ impl Plugin for ProductionPlugin {
 #[cfg(test)]
 mod tests;
 
+pub(crate) mod maintenance;
 pub(crate) mod navigation;
 mod readings;
 

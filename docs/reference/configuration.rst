@@ -40,22 +40,23 @@ capabilities.
 The launcher accepts ``--campaign UUID``, ``--new``, ``--preset``,
 ``--defines PATH``, and ``--no-build``. Its ``--help`` output owns the exact
 combinations. A new campaign
-preserves existing worlds. V7 admission refuses older Michigan campaign content
-and retains those saves without rewriting them.
+preserves existing worlds. Current admission refuses unsupported Michigan
+campaign content and retains those saves without rewriting them.
 
 Regional campaign selections remain Standard, Delayed, Shared freight — ample,
 and Shared freight — constrained. The launcher accepts ``--preset standard``,
 ``delayed``, ``shared-freight-ample``, and ``shared-freight-constrained``, plus
-the four statewide labels described below. Accepted labels do not certify
+the eight statewide labels described below. Accepted labels do not certify
 qualified statewide content.
 
 Authored campaign values
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-``content/scenarios/michigan/defines.toml`` uses definitions schema V3.
+``content/scenarios/michigan/defines.toml`` uses definitions schema V4.
 It contains the regional recipes and routes plus statewide commodity,
-template, transport, and merchant tables. Operating quantities have the
-``Designed`` evidence class. Observed QCEW establishments qualify participation.
+template, transport, merchant, and maintenance tables. Operating quantities
+have the ``Designed`` evidence class. Observed QCEW establishments qualify
+participation.
 Observed jobs and wages do not supply physical quantities or modeled workers.
 
 The parser rejects unknown or missing fields and tables, fractional or
@@ -64,19 +65,21 @@ overflow. ``--defines PATH`` selects the numeric source for New. Canonical
 numeric values ignore comments, whitespace, and table order. Source and
 qualification pins also contribute to a statewide campaign's identity.
 
-``MichiganCapturedContentV2`` retains normalized owners, recipes, stocks,
-workforce, orders, explicit preset overrides, and observed source cells. It
-also retains the generated graph scenario and observed definitions. Statewide
+``MichiganCapturedContentV4`` retains ``MichiganNormalizedContentV3`` owners,
+recipes, stocks, workforce, orders, explicit preset overrides, and observed
+source cells. It also retains the material-cycle BSL, generated graph scenarios
+for the base and any workforce variants, and observed definitions. Maintenance
+content includes the provider, consumer binding, and opening service. Statewide
 capture includes selected physical paths, deduplicated edge geometry, county
 terminal attachments, vehicle profile, and network source identity. It excludes
 the full routing matrix and unselected road graph.
 
-``SectorBundleV2`` and ``StoredSectorBundleDefinesV4`` keep executable rows
+``SectorBundleV3`` and ``StoredSectorBundleDefinesV4`` keep executable rows
 and staffing authority around that capture. The captured-content and total
-definitions limits are each 64 MiB. The generated graph source has a 1 MiB
-limit. These are admission ceilings, not measured full-state performance
-claims. Open reconstructs admitted saved authority without rereading changed
-TOML, QCEW, or road files and without rerouting. Admission refuses unsupported
+definitions limits are each 64 MiB. Each generated graph source and the BSL
+source have a 1 MiB limit. These are admission ceilings, not measured full-state
+performance claims. Open reconstructs admitted saved authority without rereading
+changed TOML, QCEW, or road files and without rerouting. Admission refuses unsupported
 versions without deleting their stored data.
 
 Regional parameters
@@ -98,8 +101,8 @@ that value.
      - Constraints and four-week conversion
      - Consumer and consequence
    * - ``SCHEMA_VERSION``
-     - ``3``. Format version
-     - Exactly ``3``
+     - ``4``. Format version
+     - Exactly ``4``
      - Canonical content admission. Fixed contract
    * - ``TICK_DURATION_DAYS``
      - ``28`` days
@@ -287,9 +290,9 @@ recipe keeps its typed inputs.
      - Current primary templates seed eight employed and four reserve people.
        An added process uses the owner's existing pool
 
-``statewide``, ``transport``, ``merchant``, and ``regional_mass`` must declare
-``EVIDENCE_CLASS = "Designed"``. Goods keep their native identity through
-production, wholesale, retail, and final fulfillment. Merchant handling
+``statewide``, ``transport``, ``merchant``, ``maintenance``, and ``regional_mass``
+must declare ``EVIDENCE_CLASS = "Designed"``. Goods keep their native identity
+through production, wholesale, retail, and final fulfillment. Merchant handling
 consumes labor and mass capacity without manufacturing a new good. Local
 inter-owner transfers have no road stage or transit lot. Local retail
 fulfillment completes a finite end-buyer order without creating household
@@ -358,22 +361,113 @@ or absent interventions refuse creation. Open uses the captured content and
 does not enter this source loader.
 
 The shipped physical artifact has a separate 2 MiB compressed publication
-limit. The current capture uses 1,176,826 compressed bytes and 6,253,472 decoded
-bytes. Its 1,245 transport services and 166 merchant handling services produce
-22,576 opening period budgets across the 16-period horizon. The material
-runtime permits at most 65,536 rows per family and a 64 MiB register. The
-initial statewide register uses 2,170,588 bytes. Read these as representation
-bounds, separate from Designed economic capacities.
+limit. The material runtime permits at most 65,536 rows per family and a
+64 MiB register. These representation bounds are separate from Designed
+economic capacities.
 
-The four statewide protocol selections are ``statewide-baseline``,
+The configuration reference at Git revision ``e9d3918d15`` (September 9, 2026)
+recorded these historical measurements:
+
+* Physical artifact, SHA-256 prefix ``736bb9d368cd05ec``:
+  1,176,826 compressed bytes and 6,253,472 decoded bytes.
+* 1,245 transport services and 166 merchant handling services.
+* 22,576 opening period budgets across 16 periods.
+* 2,170,588 bytes for the initial statewide register.
+
+These measurements do not describe sizes for the current capture and register
+formats.
+
+The freight and packaging protocol selections are ``statewide-baseline``,
 ``statewide-freight-constraint``, ``statewide-packaging-shortage``, and
 ``statewide-both``. Their content identifiers end in ``-v7``. These selections
 use the same qualified physical paths, finite orders and production parameters.
-The launcher accepts all eight labels. Statewide creation requires the pinned
+The launcher accepts twelve labels. Statewide creation requires the pinned
 source siblings and explicit interventions. The source-backed engine experiment
 establishes the freight and packaging effects; PostgreSQL, hosted, native and
 Director acceptance require their separate evidence. ADR260 defines that
 acceptance boundary.
+
+Bounded maintenance
+^^^^^^^^^^^^^^^^^^^
+
+The maintenance family starts from the statewide baseline and adds one Wayne
+provider, ``owner-26163-81``, serving ``26163-31-33-metal_parts``. The pinned
+2024 private-industry QCEW row for NAICS ``811310`` qualifies the activity.
+Its 122 establishments and 1,480 jobs have the ``Observed`` evidence class.
+The modeled crew and every ``maintenance`` quantity below have the ``Designed``
+evidence class.
+
+All preset definitions must include ``[maintenance]``. Only this family adds a
+service binding.
+All four maintenance selections share the consumer's opening stock and service,
+the service coefficients, and one finite local replenishment order. They keep
+the baseline road capacities and packaging stocks.
+
+.. list-table:: Maintenance values, unscaled unless stated
+   :header-rows: 1
+   :widths: 55 45
+
+   * - Field within ``maintenance``
+     - Current authored value and meaning
+   * - ``CONSUMER_OPENING_METAL_STOCK``
+     - ``2560`` kg of consumer ``metal_stock``
+   * - ``OPENING_SERVICE_BATCHES``
+     - ``16`` batches enabled in period 1
+   * - ``PROVIDER_OPENING_SPARE_PARTS``, ``SHORTAGE_OPENING_SPARE_PARTS``
+     - ``256`` and ``0`` kg of provider ``metal_parts``
+   * - ``SPARE_UNITS_PER_JOB``, ``LABOR_UNITS_PER_JOB``
+     - ``1`` kg and ``10`` current person-hours per completed job
+   * - ``ENABLED_BATCHES_PER_JOB``, ``MAXIMUM_JOBS_PER_PERIOD``
+     - ``1`` next-period batch per job. At most ``16`` jobs per period
+   * - ``EMPLOYED_PEOPLE``, ``RESERVE_PEOPLE``
+     - ``1`` employed and ``0`` reserve. Employed labor uses the shared
+       weekly-hours conversion, currently 160 hours per person per period
+   * - ``SHORTAGE_EMPLOYED_PEOPLE``, ``SHORTAGE_RESERVE_PEOPLE``
+     - ``0`` employed and ``1`` reserve. The same total crew
+   * - ``REPLENISHMENT_ORDER_UNITS``
+     - ``256`` kg ordered once from the consumer's ``metal_parts`` output.
+       Shares local allocation with its existing wholesale order
+
+Job coefficients, the job ceiling, consumer opening stock, and replenishment
+must be positive. Opening service can be zero and cannot exceed the job ceiling
+times enabled batches per job. Shortage stock and employment cannot exceed
+their baseline values. Both crew totals must match and be positive. Crew hours
+and the maximal job labor budget must fit ``2^53``. Stock and service
+arithmetic must fit ``u64``.
+
+.. list-table:: Maintenance protocol selections
+   :header-rows: 1
+   :widths: 60 20 20
+
+   * - ``--preset`` label
+     - Provider employed / reserve
+     - Opening spares (kg)
+   * - ``statewide-maintenance-baseline``
+     - ``1 / 0``
+     - ``256``
+   * - ``statewide-maintenance-labor-shortage``
+     - ``0 / 1``
+     - ``256``
+   * - ``statewide-maintenance-parts-shortage``
+     - ``1 / 0``
+     - ``0``
+   * - ``statewide-maintenance-both``
+     - ``0 / 1``
+     - ``0``
+
+These content identifiers use ``michigan-material-`` followed by the protocol
+label and ``-v8``. The original eight content identifiers retain ``-v7``;
+all twelve use the current capture format.
+
+Current production uses opening service. Maintenance then requests whole jobs
+from the consumer's remaining inputs and next-period capacity, before labor or
+service limits. Completed jobs consume current provider labor and spares and
+enable only the next period. Unused opening service expires. Local replenishment
+occurs afterward. Service is neither a traded good nor accumulated inventory.
+
+Staffing uses the larger of the current and previous period's work requests.
+Hires supply later labor. The provider has no production process or merchant
+role. These presets introduce no recurring orders, payments, or extra road routing.
 
 Simulation Interval
 ~~~~~~~~~~~~~~~~~~~
@@ -398,8 +492,8 @@ are defined in ``babylon_kernel::clock`` and are not runtime overrides:
      - 13
      - Periods in a modeled 364-day year
 
-V7 Michigan content validates ``TICK_DURATION_DAYS = 28`` in its authored
-parameters and stores the duration in canonical foundation definitions.
+All current Michigan presets accept only ``TICK_DURATION_DAYS = 28`` in their
+authored parameters and store the duration in canonical foundation definitions.
 Admission refuses a different duration or
 an older weekly preset. Observed source units, including QCEW weekly wages,
 retain their original meanings. Four-week flow budgets do not multiply opening

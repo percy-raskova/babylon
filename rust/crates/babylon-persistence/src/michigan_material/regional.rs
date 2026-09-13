@@ -78,7 +78,7 @@ struct Corridor {
 
 pub(super) fn blank(defines: &MichiganDefines) -> MichiganNormalizedContent {
     MichiganNormalizedContent {
-        schema: "MichiganNormalizedContentV2".to_owned(),
+        schema: "MichiganNormalizedContentV3".to_owned(),
         evidence_class: "Designed".to_owned(),
         horizon_ticks: defines.horizon_periods,
         tick_duration_days: defines.tick_duration_days,
@@ -94,6 +94,7 @@ pub(super) fn blank(defines: &MichiganDefines) -> MichiganNormalizedContent {
         owners: Vec::new(),
         industry: Vec::new(),
         physical_network: None,
+        maintenance: None,
         staffing: MichiganStaffingDesign {
             composition_id: "g4-workforce-staffing".to_owned(),
             role: "Mechanic".to_owned(),
@@ -238,6 +239,7 @@ fn append_processes(
             site_key: site.key.clone(),
             process_keys: vec![process.key.clone()],
             merchant_handling: false,
+            maintenance: false,
             employed: value.employed_people,
             reserve: value.reserve_people,
             previous_unretained_hours: value
@@ -274,12 +276,16 @@ fn append_transport(
 ) -> Result<Vec<MichiganIntervention>, MichiganDefinesError> {
     use MichiganDefinesError::Material;
     let mut delayed = MichiganIntervention {
+        maintenance: None,
+        graph_scenario_source: None,
         preset: MichiganDeliveryPreset::Delayed,
         capacities: Vec::new(),
         opening_stocks: Vec::new(),
         routes: Vec::new(),
     };
     let mut ample = MichiganIntervention {
+        maintenance: None,
+        graph_scenario_source: None,
         preset: MichiganDeliveryPreset::SharedFreightAmple,
         capacities: Vec::new(),
         opening_stocks: Vec::new(),

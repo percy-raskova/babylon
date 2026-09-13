@@ -16,26 +16,31 @@ encoding:
     - u32_big_endian_version_3
     - u64_big_endian_completed_tick
     - u64_big_endian_state_byte_length
-    - exact_material_circuit_state_v3_bytes
+    - exact_material_circuit_state_bytes_schema_4
   digest: sha256_exact_bytes
   maximum_complete_bytes: 67108864
   decoder: reject_unknown_version_truncated_trailing_or_noncanonical_bytes
 transition:
   authority: MaterialCircuitV3
-  implementation: advance_material_circuit_v3_or_its_single_detached_close_and_finish
+  material_schema: 4
+  implementation: advance_material_circuit_or_its_single_detached_close_and_finish
   order:
     - Complete due transport stages, attribute native loss and credit final physical arrivals.
-    - Execute prior production commitments against current stock and opening labor.
+    - Execute prior production commitments against current stock, opening labor and expiring service.
+    - Complete bounded maintenance against post-production prospective inputs and current provider parts and labor.
     - Allocate delivery and final-demand orders against stock and shared mass capacities.
     - Constrain merchant handling with opening labor and debit only actual outbound quantities.
     - Publish local internal buyer credits after every outbound grant and debit is fixed.
-    - Derive next-period production work and recorded feasible merchant handling need.
+    - Derive next-period production work, recorded feasible merchant handling need and receipted maintenance requests.
     - Resolve staffing, replace next-period labor and form next-period production commitments.
   causal_barriers:
     - Arrivals cannot enlarge an existing production commitment.
     - Arrived goods may satisfy current merchant handling and dispatch.
     - Local internal buyer credits cannot feed another outbound order in the same close.
-    - New employment supplies the next period and cannot enlarge current handling work.
+    - New employment supplies the next period and cannot enlarge current handling or maintenance work.
+    - Unused opening service expires; completed jobs grant service only for the next period.
+    - Local parts replenishment arrives after maintenance and cannot repair the opening shortage.
+    - Production and maintenance staffing requests ignore unavailable maintenance service.
   capacity:
     principal: corridor_id_and_departure_period
     unit: grams

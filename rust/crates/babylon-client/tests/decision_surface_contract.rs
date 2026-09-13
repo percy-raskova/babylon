@@ -136,6 +136,7 @@ fn production_observation() -> babylon_persistence::production_observation::Prod
         ],
     };
     ProductionSnapshot {
+        maintenance_account: None,
         physical_edges: Vec::new(),
         content_authority_sha256: "a".repeat(64),
         road_source: None,

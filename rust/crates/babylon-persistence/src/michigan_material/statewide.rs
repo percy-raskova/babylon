@@ -361,6 +361,7 @@ fn append_owner_material(
         site_key: site,
         process_keys: Vec::new(),
         merchant_handling: owner.primary_family.is_none(),
+        maintenance: false,
         employed,
         reserve,
         previous_unretained_hours: employed

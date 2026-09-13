@@ -350,6 +350,7 @@ def test_heavy_children_and_enclosing_ci_have_truthful_deadlines() -> None:
         'run_phase "archive_$archive_group" 600 cargo test',
         'run_phase "$archive_producer" 600 cargo test',
         'run_phase "$reader_suite" 600 cargo test',
+        "run_phase production_history 600 cargo test",
         "run_phase client 900 cargo test",
     ):
         assert invocation in runner
@@ -367,15 +368,15 @@ def test_heavy_children_and_enclosing_ci_have_truthful_deadlines() -> None:
         if job_name == "pg-integration-shards":
             assert (
                 step["timeout-minutes"]
-                == "${{ matrix.focus == 'archive' && 85 || matrix.focus == 'reader' && 60 || 45 }}"
+                == "${{ matrix.focus == 'archive' && 85 || matrix.focus == 'reader' && 70 || 45 }}"
             )
             assert (
                 job["timeout-minutes"]
-                == "${{ matrix.focus == 'archive' && 95 || matrix.focus == 'reader' && 70 || 55 }}"
+                == "${{ matrix.focus == 'archive' && 95 || matrix.focus == 'reader' && 80 || 55 }}"
             )
             assert 600 + 180 + contract_seconds + 600 <= 45 * 60
-            # Reader roles, material observations and statewide synthetic proofs each get a phase.
-            assert 60 * 60 >= 600 + 180 + 3 * 600 + 600
+            # Reader roles, observations, history and statewide proofs each get a phase.
+            assert 70 * 60 >= 600 + 180 + 4 * 600 + 600
             # Six serial Archive groups retain separate ten-minute ceilings.
             assert 85 * 60 >= 600 + 180 + 6 * 600 + 600
         else:

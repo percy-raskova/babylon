@@ -7,6 +7,7 @@
 #![warn(clippy::pedantic)]
 
 mod inventory;
+mod maintenance;
 mod model;
 mod production;
 mod staffing;

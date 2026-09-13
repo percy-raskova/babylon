@@ -185,6 +185,7 @@ fn bundle_and_row_permutations_preserve_identity_and_changed_authority_refuses()
             goods,
             b.processes.clone(),
             b.labor_unit,
+            b.maintenance_provider,
             &rows,
         )
         .unwrap();
@@ -209,7 +210,7 @@ fn current_bundle_codec_refuses_version_digest_truncation_and_extra_bytes() {
     let original = b.canonical_bytes();
     assert_eq!(
         &original[..BUNDLE_DOMAIN.len()],
-        b"babylon.sector-bundle.v2\0"
+        b"babylon.sector-bundle.v3\0"
     );
     assert_eq!(
         SectorBundle::decode(original, [0; 32]),

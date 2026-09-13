@@ -8,6 +8,7 @@ use super::{
 };
 use babylon_graph::stable_element::StableElementKey;
 use babylon_persistence::observer_reader::ObserverEconomySnapshot;
+use babylon_persistence::observer_reader::{ProductionHistoryTarget, ProductionOutputPoint};
 use postgres::{
     types::{FromSqlOwned, ToSql},
     Client,
@@ -63,6 +64,223 @@ impl Fixture {
             advance_material_period(&mut self.runtime);
         }
     }
+}
+
+fn history_targets(snapshot: &ObserverEconomySnapshot) -> Vec<ProductionHistoryTarget> {
+    snapshot
+        .production
+        .as_ref()
+        .unwrap()
+        .sites
+        .iter()
+        .flat_map(|site| {
+            site.processes
+                .iter()
+                .map(|process| ProductionHistoryTarget {
+                    site_id: site.id.clone(),
+                    process_id: process.id.clone(),
+                    output_good_id: process.output_good_id.clone(),
+                    output_unit_id: process.output_unit_id.clone(),
+                })
+        })
+        .collect()
+}
+
+fn snapshot_point(
+    snapshot: &ObserverEconomySnapshot,
+    target: &ProductionHistoryTarget,
+) -> ProductionOutputPoint {
+    let process = snapshot
+        .production
+        .as_ref()
+        .unwrap()
+        .sites
+        .iter()
+        .find(|site| site.id == target.site_id)
+        .unwrap()
+        .processes
+        .iter()
+        .find(|process| {
+            process.id == target.process_id
+                && process.output_good_id == target.output_good_id
+                && process.output_unit_id == target.output_unit_id
+        })
+        .unwrap();
+    ProductionOutputPoint {
+        period: snapshot.resolve_tick,
+        planned: process
+            .planned_batches
+            .map(|batches| batches.checked_mul(process.output_per_batch).unwrap()),
+        produced: process
+            .produced_batches
+            .map(|batches| batches.checked_mul(process.output_per_batch).unwrap()),
+    }
+}
+
+#[test]
+#[ignore = "requires the task-owned disposable PostgreSQL harness; independent clone ownership"]
+fn production_history_matches_exact_snapshots_and_survives_reopen() {
+    let mut fixture = Fixture::new();
+    fixture.advance_to(4);
+    let snapshots: Vec<_> = (0..=4).map(|tick| fixture.read(tick)).collect();
+    let targets = history_targets(&snapshots[0]);
+    assert!(!targets.is_empty());
+    let mut held = Vec::new();
+    for target in &targets {
+        let expected: Vec<_> = snapshots
+            .iter()
+            .map(|snapshot| snapshot_point(snapshot, target))
+            .collect();
+        let actual = fixture
+            .observer
+            .production_history(fixture.campaign, 4, target)
+            .unwrap();
+        assert_eq!(actual, expected);
+        assert_eq!(actual[0].planned, None);
+        assert_eq!(actual[0].produced, None);
+        held.push(actual);
+    }
+    assert!(held.iter().flatten().any(|point| point.produced == Some(0)));
+    assert!(held
+        .iter()
+        .flatten()
+        .any(|point| point.produced.is_some_and(|quantity| quantity > 0)));
+
+    fixture.advance_to(6);
+    fixture.runtime = DurableMaterialRuntime::open(
+        &fixture.target.writer,
+        fixture.campaign,
+        fixture.foundation_digest,
+    )
+    .unwrap();
+    let reader =
+        ObserverEconomyReader::connect(&fixture.observer_config, ObserverVisibility::FullObserver)
+            .unwrap();
+    let tail = *fixture.runtime.tail().unwrap();
+    let world = fixture.runtime.session().current_world_hash().unwrap();
+    for (target, expected) in targets.iter().zip(held) {
+        assert_eq!(
+            reader
+                .production_history(fixture.campaign, 4, target)
+                .unwrap(),
+            expected
+        );
+    }
+    assert_eq!(fixture.runtime.tail(), Some(&tail));
+    assert_eq!(
+        fixture.runtime.session().current_world_hash().unwrap(),
+        world
+    );
+    assert_eq!(
+        reader.production_history(fixture.campaign, 7, &targets[0]),
+        Err(ObserverEconomyError::TickAbsent)
+    );
+    assert_eq!(
+        reader.production_history(
+            CampaignId::from_uuid(Uuid::from_u128(41_102)),
+            4,
+            &targets[0]
+        ),
+        Err(ObserverEconomyError::CampaignAbsent)
+    );
+    for field in 0..4 {
+        let mut wrong = targets[0].clone();
+        let identity = match field {
+            0 => &mut wrong.site_id,
+            1 => &mut wrong.process_id,
+            2 => &mut wrong.output_good_id,
+            _ => &mut wrong.output_unit_id,
+        };
+        *identity = "0".repeat(64);
+        assert_eq!(
+            reader.production_history(fixture.campaign, 4, &wrong),
+            Err(ObserverEconomyError::ProductionHistoryUnavailable)
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires the task-owned disposable PostgreSQL harness; independent clone ownership"]
+fn production_history_preview_refuses_without_target_or_campaign_disclosure() {
+    let mut fixture = Fixture::new();
+    fixture.advance_to(2);
+    let target = history_targets(&fixture.read(0)).remove(0);
+    let absent = CampaignId::from_uuid(Uuid::from_u128(41_103));
+    for campaign in [fixture.campaign, absent] {
+        for tick in [0, 2, u64::MAX] {
+            assert_eq!(
+                fixture.preview.production_history(campaign, tick, &target),
+                Err(ObserverEconomyError::ProductionHistoryUnavailable)
+            );
+        }
+    }
+    assert_known_material_absence(&fixture.preview.snapshot(fixture.campaign, 2).unwrap());
+}
+
+#[test]
+#[ignore = "requires the task-owned disposable PostgreSQL harness; independent clone ownership"]
+fn production_history_authenticates_corruption_before_the_displayed_suffix() {
+    let mut fixture = Fixture::new();
+    fixture.advance_to(16);
+    let target = history_targets(&fixture.read(0)).remove(0);
+    let healthy = fixture
+        .observer
+        .production_history(fixture.campaign, 16, &target)
+        .unwrap();
+    assert_eq!(healthy.len(), 13);
+    assert_eq!(healthy.first().unwrap().period, 4);
+    assert_eq!(healthy.last().unwrap().period, 16);
+    assert_eq!(
+        healthy.last().unwrap(),
+        &snapshot_point(&fixture.read(16), &target)
+    );
+    let mut writer = fixture.target.writer.connect(NoTls).unwrap();
+    for (relation, column, predicate) in [
+        ("material_tick_v3", "register_bytes", "true"),
+        ("material_tick_v3", "receipt_bytes", "true"),
+        ("material_tick_v3", "identity_bytes", "true"),
+        ("tick_commit", "envelope_digest", "true"),
+        ("tick_action_batch_v1", "exact_action_batch_bytes", "true"),
+        (
+            "checkpoint_section_v1",
+            "exact_section_bytes",
+            "section_tag=2",
+        ),
+    ] {
+        let row = writer.query_one(
+            &format!("SELECT ctid::text, {column} FROM babylon_state.{relation} WHERE campaign_id=$1::uuid AND resolve_tick=1 AND {predicate} ORDER BY ctid LIMIT 1"),
+            &[fixture.campaign.as_uuid()],
+        ).unwrap();
+        let location: String = row.get(0);
+        let original: Vec<u8> = row.get(1);
+        let update = format!("UPDATE babylon_state.{relation} SET {column}=$1 WHERE ctid=$2::text::tid RETURNING ctid::text");
+        let location: String = writer
+            .query_one(&update, &[&flipped(&original), &location])
+            .unwrap()
+            .get(0);
+        let refusal = fixture
+            .observer
+            .production_history(fixture.campaign, 16, &target);
+        assert_eq!(
+            writer
+                .query(&update, &[&original, &location])
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            refusal,
+            Err(ObserverEconomyError::InvalidProjection),
+            "{relation}.{column}"
+        );
+    }
+    assert_eq!(
+        fixture
+            .observer
+            .production_history(fixture.campaign, 16, &target)
+            .unwrap(),
+        healthy
+    );
 }
 
 fn assert_foundation(fixture: &Fixture) {

@@ -9,7 +9,9 @@ use babylon_kernel::clock::{DAYS_PER_TICK, WEEKS_PER_TICK};
 use serde::{Deserialize, Serialize};
 
 pub const MAX_MICHIGAN_DEFINES_BYTES: usize = 32_768;
+mod maintenance;
 mod statewide;
+pub(crate) use maintenance::MaintenanceDefines;
 pub(crate) use statewide::{
     CommodityDefines, CommodityDisposition, CommodityUnit, MerchantDefines, StatewideDefines,
     TemplateDefines, TransportDefines,
@@ -117,6 +119,8 @@ pub(crate) struct MichiganDefines {
     pub commodity: BTreeMap<String, CommodityDefines>,
     #[serde(rename = "template")]
     pub template: BTreeMap<String, TemplateDefines>,
+    #[serde(rename = "maintenance")]
+    pub maintenance: MaintenanceDefines,
 }
 impl MichiganDefines {
     pub fn load(path: &Path) -> Result<Self, MichiganDefinesError> {
@@ -159,8 +163,8 @@ impl MichiganDefines {
     }
     fn validate(&self) -> Result<(), MichiganDefinesError> {
         use MichiganDefinesError::Value;
-        if self.schema_version != 3 {
-            return Err(Value("SCHEMA_VERSION must equal 3"));
+        if self.schema_version != 4 {
+            return Err(Value("SCHEMA_VERSION must equal 4"));
         }
         if self.tick_duration_days != DAYS_PER_TICK {
             return Err(Value(
@@ -235,7 +239,8 @@ impl MichiganDefines {
                 "regional mass requires exact kilogram conversion and positive item masses",
             ));
         }
-        statewide::validate(self)
+        statewide::validate(self)?;
+        self.maintenance.validate(self.hours_per_period())
     }
 }
 
@@ -329,8 +334,8 @@ mod tests {
     #[test]
     fn missing_unknown_fractional_and_invalid_units_are_refused() {
         for changed in [
-            SOURCE.replace("SCHEMA_VERSION = 3", "UNUSED_COEFFICIENT = 1"),
-            SOURCE.replace("SCHEMA_VERSION = 3", "SCHEMA_VERSION = 1"),
+            SOURCE.replace("SCHEMA_VERSION = 4", "UNUSED_COEFFICIENT = 1"),
+            SOURCE.replace("SCHEMA_VERSION = 4", "SCHEMA_VERSION = 1"),
             SOURCE.replace("[route.sheet_transfer]", "[route.unknown_transfer]"),
             SOURCE.replace(
                 "CONSTRAINED_UNITS_PER_WEEK = 40",

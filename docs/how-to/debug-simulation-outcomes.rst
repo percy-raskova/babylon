@@ -48,7 +48,7 @@ For a background Michigan run, inspect its recorded process and campaign tail:
 
 ``sim:probe`` honors an explicit ``BABYLON_CAMPAIGN_ID`` or the worktree's
 recorded default. ``sim:report`` always creates a fresh campaign. Preserve
-existing campaign data when comparing source revisions. V7 content refuses
+existing campaign data when comparing source revisions. Current content refuses
 older presets without deleting or reinterpreting their saved state.
 
 Explain the material change
@@ -213,16 +213,23 @@ revisit an earlier period to distinguish its evidence from the current tail. Res
 preview does not expose these material or capacity accounts.
 
 Run the native discovery, comparison, and resume check at 1366×768 and
-1920×1080. Automated receipts prove the recorded operations. The Director's
-session supplies comprehension acceptance. This remains a partial PER-31
-delivery within Gate 4.
+1920×1080. Automated receipts prove the recorded operations. Record whether
+the inspection explains those operations through the game interface.
+This remains a partial PER-31 delivery within Gate 4.
 
 Inspect merchants and statewide comparisons
 -------------------------------------------
 
-The campaign menu groups the four Statewide Michigan presets and the four
-Regional proofs. Saved campaigns follow these groups. Choose Open to resume
+The campaign menu groups four Statewide Michigan presets, four Wayne
+maintenance presets, and four Regional proofs. Saved campaigns appear above
+these groups. Choose Open to resume
 the selected save, or Compare to read it beside the current campaign.
+
+Comparison opens in Cohorts, with the workplace selected in Circuit first.
+Choose Shared freight to compare capacity accounts, or Campaign totals for
+totals in the current World lens and the two campaign identities. Scroll the
+reading below these controls. The Close comparison button stays above it.
+Each section uses the same completed period without advancing either save.
 
 The statewide selections use the qualified physical road paths and frozen
 interventions in :doc:`/reference/configuration`. The Mackinac shared freight
@@ -233,8 +240,7 @@ They do not estimate real bridge throughput or industrial productivity.
 
 Check saved campaigns against these committed engine readings.
 
-The engine experiment alone does not certify saved campaigns
-or Director comprehension.
+The engine experiment alone does not certify the saved-campaign inspection.
 
 .. list-table:: Statewide comparison landmarks. Outcomes: Derived
    :header-rows: 1
@@ -340,16 +346,52 @@ match. Missing or incompatible accounts make a total unavailable.
 Open reconstructs the saved graph, source observations, recipes, paths, and
 parameters. Editing or moving current source files cannot supply new facts to
 that saved campaign. Check resume against its retained identities. Return Live
-to advance, then revisit the earlier reading. Production-evidence V6 binds
+to advance, then revisit the earlier reading. Production-evidence V7 binds
 the complete authorized reading, including absent versus completed-zero
 accounts and ordered physical paths. Restricted previews disclose none of
 these material accounts.
 
 Record the exact source revision, campaign identities, completed periods, and
 observations for a native session at 1366×768 and 1920×1080. Hosted and
-automated evidence supports the Director's discovery, comparison, and resume
-session. It does not supply comprehension acceptance. ADR260 records the
-statewide boundary.
+automated checks support the discovery, comparison, and resume inspection.
+Record its remaining limitations separately from broader Gate 3 and Gate 4
+acceptance. ADR260 records the statewide boundary.
+
+Inspect the Wayne maintenance dependency
+----------------------------------------
+
+Choose a Wayne maintenance preset and inspect Wayne manufacturing in Circuit.
+Follow its maintenance relationship to the provider. The service connection
+and the reverse metal-parts supply have separate readings. Maintenance does
+not reserve a freight route or create a bank of completed services.
+
+All four cases give the consumer 2,560 kg of opening metal stock and 16 enabled
+batches for the opening period. Baseline gives the provider one employed
+worker and 256 kg of spare metal parts. Labor shortage moves that worker to
+reserve. Parts shortage removes the opening spares. Both applies both changes.
+
+These quantities and the modeled crew have the Designed evidence class.
+The cited repair-industry
+observation establishes the provider's activity, not its productive capacity.
+
+Read requested and completed jobs in Flow. One whole job uses 1 kg of metal
+parts and 10 labor-hours. The provider can complete at most 16 jobs per period.
+Each completed job enables one consumer batch during the following period.
+Read the opening service, batches consumed, expired batches, and next-period
+service separately. Unused service expires at the close.
+
+Work separates maintenance labor from production and merchant handling.
+Requested jobs reflect prospective material and nameplate capacity before
+employment or maintenance limits production. A firm with idle workers can
+ask for work and recover. Reconcile the next opening workforce with
+the completed staffing account. Current work requests do not supply current labor.
+
+Compare the four saved cases at the same completed period. First inspect jobs
+and their separate parts and labor constraints. Then inspect the following
+period's consumer output. The enabled-output reading is a ceiling: actual
+output still requires material inputs and employed labor. A local parts
+delivery occurs after maintenance, so newly delivered parts support later work.
+Restricted knowledge preview withholds these maintenance accounts.
 
 Qualify a statewide intervention
 --------------------------------
@@ -400,8 +442,7 @@ They set only ``process.panel_forming.OPENING_INPUT_UNITS`` to zero or 320 kg
 of sheet.
 ``OPENING_PLANNED_BATCHES`` stays zero in all four cases.
 
-Coordinate Cargo compilation and execution with the release session. Compile
-from ``rust/`` when the host is available:
+Run heavy jobs one at a time. Compile from ``rust/``:
 
 .. code-block:: bash
 
@@ -422,7 +463,6 @@ cases of 16 four-week periods, with a 60-second execution limit after build
 and at most 4 MiB of output. Replay uses the admitted seed ``319``.
 It has no seed override or stochastic sweep. If the run fails or reaches a bound,
 keep its failure evidence and do not treat partial output as a comparison.
-Defer merging the exploration until release qualification finishes.
 
 Read the four output files together:
 
@@ -530,6 +570,9 @@ for the full-roster persistence regression. Once the canonical sources are
 qualified, ``BABYLON_POSTGRES_LIVE_FOCUS=statewide_qualified mise run test:rust-postgres``
 runs all four actual statewide presets through 16 periods in an owned disposable
 database. The ordinary reader focus excludes this longer source qualification.
+It runs the production-history checks in a separate timed phase. To repeat only
+those checks, use
+``BABYLON_POSTGRES_LIVE_FOCUS=production_history mise run test:rust-postgres``.
 For hosted evidence, dispatch ``weekly-pg-integration.yml`` at the exact lane
 revision with ``focus=statewide_qualified``. Manual runs check out that event's
 commit. Scheduled runs check current ``dev``. This path runs no documentation

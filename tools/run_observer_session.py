@@ -196,6 +196,10 @@ class NewCampaignTarget:
         "statewide-freight-constraint",
         "statewide-packaging-shortage",
         "statewide-both",
+        "statewide-maintenance-baseline",
+        "statewide-maintenance-labor-shortage",
+        "statewide-maintenance-parts-shortage",
+        "statewide-maintenance-both",
     ]
 
 
@@ -223,6 +227,14 @@ def _new_target(campaign: UUID, preset: str | None) -> NewCampaignTarget:
         return NewCampaignTarget(campaign, "statewide-packaging-shortage")
     if preset == "statewide-both":
         return NewCampaignTarget(campaign, "statewide-both")
+    if preset == "statewide-maintenance-baseline":
+        return NewCampaignTarget(campaign, "statewide-maintenance-baseline")
+    if preset == "statewide-maintenance-labor-shortage":
+        return NewCampaignTarget(campaign, "statewide-maintenance-labor-shortage")
+    if preset == "statewide-maintenance-parts-shortage":
+        return NewCampaignTarget(campaign, "statewide-maintenance-parts-shortage")
+    if preset == "statewide-maintenance-both":
+        return NewCampaignTarget(campaign, "statewide-maintenance-both")
     raise ObserverLaunchError("unknown material scenario preset")
 
 
@@ -736,6 +748,10 @@ def main(argv: list[str] | None = None) -> int:
             "statewide-freight-constraint",
             "statewide-packaging-shortage",
             "statewide-both",
+            "statewide-maintenance-baseline",
+            "statewide-maintenance-labor-shortage",
+            "statewide-maintenance-parts-shortage",
+            "statewide-maintenance-both",
         ),
         help="choose a new world's material preset; requires New rather than Open",
     )

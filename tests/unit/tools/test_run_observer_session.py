@@ -609,6 +609,10 @@ def test_provisioning_grants_only_distinct_reader_memberships(
         "statewide-freight-constraint",
         "statewide-packaging-shortage",
         "statewide-both",
+        "statewide-maintenance-baseline",
+        "statewide-maintenance-labor-shortage",
+        "statewide-maintenance-parts-shortage",
+        "statewide-maintenance-both",
     ],
 )
 def test_first_launch_has_an_explicit_new_preset_but_saved_resume_cannot_override_it(
@@ -815,6 +819,10 @@ def _smoke_transcript_children(
         "statewide-freight-constraint",
         "statewide-packaging-shortage",
         "statewide-both",
+        "statewide-maintenance-baseline",
+        "statewide-maintenance-labor-shortage",
+        "statewide-maintenance-parts-shortage",
+        "statewide-maintenance-both",
     ],
 )
 def test_smoke_request_preserves_selected_preset_through_new_restart_and_readback(

@@ -233,6 +233,7 @@ else:
         "runtime",
         "archive",
         "reader",
+        "production_history",
         "statewide_synthetic",
         "statewide_qualified",
         "client",
@@ -257,8 +258,12 @@ def test_current_runtime_focuses_finish_with_checked_owned_cleanup(
         in call["args"]
     ]
     assert len(writer_probes) == (1 if focus == "runtime" else 0)
-    if focus in {"statewide_synthetic", "statewide_qualified"}:
-        selected = "statewide::" if focus == "statewide_synthetic" else "statewide_qualified::"
+    if focus in {"statewide_synthetic", "statewide_qualified", "production_history"}:
+        selected = {
+            "statewide_synthetic": "statewide::",
+            "statewide_qualified": "statewide_qualified::",
+            "production_history": "staffing_history::production_history",
+        }[focus]
         tests = [
             call["args"] for call in calls if call["name"] == "cargo" and call["args"][0] == "test"
         ]
@@ -269,6 +274,19 @@ def test_current_runtime_focuses_finish_with_checked_owned_cleanup(
         assert any(
             "reference_integrity" in call["args"] for call in calls if call["name"] == "cargo"
         )
+    if focus == "reader":
+        material = [
+            call["args"]
+            for call in calls
+            if call["name"] == "cargo" and "observer_material_live" in call["args"]
+        ]
+        assert len(material) == 3
+        ordinary, history, statewide = material
+        history_filter = "staffing_history::production_history"
+        assert ordinary[ordinary.index(history_filter) - 1] == "--skip"
+        assert history_filter in history and "--skip" not in history
+        assert "statewide::" in statewide and "--skip" not in statewide
+        assert all("--ignored" in arguments for arguments in material)
 
 
 @pytest.mark.parametrize(

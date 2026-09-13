@@ -123,6 +123,8 @@ pub(super) fn load_statewide(path: &Path) -> Result<MichiganMaterialCatalog, Mic
     .into_iter()
     .map(
         |(preset, capacities, opening_stocks)| MichiganIntervention {
+            maintenance: None,
+            graph_scenario_source: None,
             preset,
             capacities,
             opening_stocks,

@@ -18,6 +18,7 @@ use crate::michigan_material::{MichiganMaterialCatalog, MichiganStaffingDesign};
 enum StoredWorkSource {
     Production([u8; 32]),
     MerchantHandling([u8; 32]),
+    Maintenance([u8; 32]),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -61,6 +62,9 @@ impl StoredStaffing {
                 .collect::<Result<Vec<_>, _>>()?;
             if seed.merchant_handling {
                 work_sources.push(StoredWorkSource::MerchantHandling(site.id().as_bytes()));
+            }
+            if seed.maintenance {
+                work_sources.push(StoredWorkSource::Maintenance(site.id().as_bytes()));
             }
             work_sources.sort();
             bindings.push(StoredPool {
@@ -135,6 +139,9 @@ impl StoredStaffing {
                             StoredWorkSource::MerchantHandling(id) => {
                                 StaffingWorkSource::MerchantHandling(SiteId::from_bytes(*id))
                             }
+                            StoredWorkSource::Maintenance(id) => {
+                                StaffingWorkSource::Maintenance(SiteId::from_bytes(*id))
+                            }
                         })
                         .collect(),
                 )
@@ -176,7 +183,9 @@ mod tests {
                 6 => changed.bindings[0].site_id[0] ^= 1,
                 7 => changed.bindings[0].unit_id[0] ^= 1,
                 8 => match &mut changed.bindings[0].work_sources[0] {
-                    StoredWorkSource::Production(id) | StoredWorkSource::MerchantHandling(id) => {
+                    StoredWorkSource::Production(id)
+                    | StoredWorkSource::MerchantHandling(id)
+                    | StoredWorkSource::Maintenance(id) => {
                         id[0] ^= 1;
                     }
                 },

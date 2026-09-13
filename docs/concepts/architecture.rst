@@ -252,6 +252,19 @@ Comparison reads the same committed period in saved campaigns. It does not
 advance either world. Restricted knowledge previews contain no material
 projection or production-evidence digest.
 
+The Wayne maintenance family adds one provider and one consumer binding to
+the typed material state. Current service limits consumer batches. Whole
+jobs use spare parts and current labor, then enable batches for the following
+period. Unused service expires.
+
+Prospective material and nameplate capacity set work requests before
+service or employment limits production. An idle workplace can ask for work
+and recover. The existing BSL material cycle,
+staffing, captured content, and atomic commit own these effects. Circuit
+readings distinguish service from parts deliveries and show its completion,
+expiry, and next-period output ceiling. These are administrative accounts.
+They supply no player action or earned knowledge.
+
 Each committed tick emits an Archive dirty receipt. The Rust Archive worker
 binds each receipt to an exact dirty batch, worker contract, and pinned
 knowledge-grant snapshot. It publishes immutable county and place dossiers

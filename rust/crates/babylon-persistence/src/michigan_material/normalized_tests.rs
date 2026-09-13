@@ -5,7 +5,7 @@ fn captured_authority_contains_normalized_content_instead_of_only_numeric_define
     let source = include_str!("../../../../../content/scenarios/michigan/defines.toml");
     let catalog = MichiganMaterialCatalog::from_defines_toml(source).unwrap();
     let stored: serde_json::Value = serde_json::from_slice(catalog.defines_bytes()).unwrap();
-    assert_eq!(stored["schema"], "MichiganCapturedContentV3");
+    assert_eq!(stored["schema"], "MichiganCapturedContentV4");
     assert_eq!(stored["rule_source"], catalog.rule_source());
     assert_eq!(stored["normalized"]["sites"].as_array().unwrap().len(), 5);
     assert_eq!(
@@ -292,6 +292,7 @@ fn complete_statewide_workforce_graph_stays_inside_the_source_bound() {
             site_key: format!("owner-{n}"),
             process_keys: Vec::new(),
             merchant_handling: true,
+            maintenance: false,
             employed: 20,
             reserve: 4,
             previous_unretained_hours: 3200,
@@ -339,6 +340,7 @@ fn append_fixture_merchants(c: &mut MichiganNormalizedContent) {
             site_key: key.clone(),
             process_keys: Vec::new(),
             merchant_handling: true,
+            maintenance: false,
             employed: 1,
             reserve: 0,
             previous_unretained_hours: 160,

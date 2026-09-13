@@ -21,6 +21,8 @@ struct LaborTotals {
     used: u64,
     handling_needed: u64,
     handling_used: u64,
+    maintenance_needed: u64,
+    maintenance_used: u64,
 }
 
 pub(super) fn project_labor_accounts(
@@ -28,6 +30,7 @@ pub(super) fn project_labor_accounts(
     opening: Option<&MaterialCircuitState>,
     receipt: Option<&MaterialTickReceipts>,
 ) -> Result<Vec<ProductionLaborAccount>, ProductionProjectionError> {
+    let maintenance = super::maintenance::completed(state, opening, receipt)?;
     let next = budgets(state)?;
     let (prior, totals) = match (opening, receipt) {
         (None, None) if state.period == 1 => (None, Totals::new()),
@@ -45,7 +48,10 @@ pub(super) fn project_labor_accounts(
             {
                 return Err(ProductionProjectionError::State);
             }
-            (Some(budgets(prior)?), completed_totals(prior, receipt)?)
+            (
+                Some(budgets(prior)?),
+                completed_totals(prior, receipt, maintenance)?,
+            )
         }
         _ => return Err(ProductionProjectionError::History),
     };
@@ -73,6 +79,8 @@ pub(super) fn project_labor_accounts(
                         unused,
                         handling_needed: account.handling_needed,
                         handling_used: account.handling_used,
+                        maintenance_needed: account.maintenance_needed,
+                        maintenance_used: account.maintenance_used,
                     })
                 })
                 .transpose()?;
@@ -114,12 +122,18 @@ fn budgets(state: &MaterialCircuitState) -> Result<Budgets, ProductionProjection
             .entry((merchant.site_id, merchant.labor_unit_id))
             .or_insert(0);
     }
+    if let Some(binding) = &state.maintenance_binding {
+        result
+            .entry((binding.provider_site_id, binding.labor_unit_id))
+            .or_insert(0);
+    }
     Ok(result)
 }
 
 fn completed_totals(
     opening: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
+    maintenance: Option<&babylon_material_circuit::MaintenanceReceipt>,
 ) -> Result<Totals, ProductionProjectionError> {
     let mut processes = BTreeMap::<ProcessId, (Principal, u64, u64)>::new();
     for plan in &opening.production_commitments {
@@ -164,6 +178,15 @@ fn completed_totals(
         return Err(ProductionProjectionError::State);
     }
     add_handling_time(opening, receipt, &mut totals)?;
+    if let Some(done) = maintenance {
+        let account = totals
+            .entry((done.binding.provider_site_id, done.binding.labor_unit_id))
+            .or_default();
+        account.maintenance_needed =
+            add_time(0, done.requested_jobs, done.binding.labor_units_per_job)?;
+        account.maintenance_used = done.consumed_labor_hours;
+        account.used = add_time(account.used, done.consumed_labor_hours, 1)?;
+    }
     Ok(totals)
 }
 

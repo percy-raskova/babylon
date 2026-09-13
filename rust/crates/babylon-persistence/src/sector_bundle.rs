@@ -14,13 +14,13 @@ use babylon_graph::stable_element::StableElementKey;
 use babylon_kernel::content_digest::sha256_of;
 use babylon_material_circuit::{
     decode_material_circuit_state, encode_material_circuit_state, MaterialCircuitError,
-    MaterialCircuitState, ProcessId, UnitId,
+    MaterialCircuitState, ProcessId, SiteId, UnitId,
 };
 
 pub use michigan::{compile_sector_bundles, michigan_sector_bundles};
 
-const BUNDLE_DOMAIN: &[u8] = b"babylon.sector-bundle.v2\0";
-const BUNDLE_VERSION: u16 = 2;
+const BUNDLE_DOMAIN: &[u8] = b"babylon.sector-bundle.v3\0";
+const BUNDLE_VERSION: u16 = 3;
 const MAX_BUNDLE_BYTES: usize = 1_048_576;
 const MAX_BUNDLE_TEXT_BYTES: usize = 4_096;
 const MAX_BUNDLE_GOODS: usize = 64;
@@ -153,6 +153,7 @@ pub struct SectorBundle {
     goods: Vec<SectorBundleGood>,
     processes: Vec<SectorBundleProcess>,
     labor_unit: UnitId,
+    maintenance_provider: Option<SiteId>,
     rows: MaterialCircuitState,
     bytes: Vec<u8>,
     digest: [u8; 32],
@@ -164,6 +165,7 @@ impl SectorBundle {
         mut goods: Vec<SectorBundleGood>,
         mut processes: Vec<SectorBundleProcess>,
         labor_unit: UnitId,
+        maintenance_provider: Option<SiteId>,
         rows: &MaterialCircuitState,
     ) -> Result<Self, SectorBundleError> {
         goods.sort_unstable();
@@ -175,6 +177,7 @@ impl SectorBundle {
             goods,
             processes,
             labor_unit,
+            maintenance_provider,
             rows,
             bytes: Vec::new(),
             digest: [0; 32],

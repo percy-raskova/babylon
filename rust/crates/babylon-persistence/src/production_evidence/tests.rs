@@ -500,3 +500,135 @@ fn native_requests_larger_than_u64_grams_are_hashed_without_narrowing() {
     assert!(writer.write_all(b"abc").is_err());
     assert!(writer.bound);
 }
+
+fn maintenance_value(mut value: Value, period: u64, jobs: Option<u64>) -> Value {
+    let process = value["sites"][0]["processes"][0].clone();
+    let consumer = value["sites"][0]["id"].clone();
+    let provider = "9".repeat(64);
+    value["sites"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({
+            "id": provider, "county_geoid": "26163", "name": "Wayne maintenance",
+            "industry_code": "811310", "observed_employment": null, "role": "Maintenance",
+            "sector_code": "81", "processes": [], "inventory": []
+        }));
+    value["labor_accounts"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({
+            "site_id": provider, "unit_id": "8".repeat(64), "unit": "labor-hours",
+            "next_opening_period": period + 1, "next_opening_available": 40,
+            "completed": jobs.map(|n| serde_json::json!({
+                "period": period, "opening": n * 10, "planned": 0, "used": n * 10,
+                "unused": 0, "handling_needed": 0, "handling_used": 0,
+                "maintenance_needed": 40, "maintenance_used": n * 10
+            }))
+        }));
+    value["maintenance_account"] = serde_json::json!({
+        "provider_site_id": provider, "consumer_site_id": consumer,
+        "consumer_process_id": process["id"], "spare_good_id": process["output_good_id"],
+        "spare_unit_id": process["output_unit_id"], "spare_good": process["output_good"],
+        "spare_unit": process["output_unit"], "labor_unit_id": "8".repeat(64), "labor_unit": "labor-hours",
+        "output_good_id": process["output_good_id"], "output_unit_id": process["output_unit_id"],
+        "output_good": process["output_good"], "output_unit": process["output_unit"],
+        "output_per_batch": process["output_per_batch"], "spare_units_per_job": 2,
+        "labor_units_per_job": 10, "enabled_batches_per_job": 2, "maximum_jobs_per_period": 4,
+        "next_service_period": period + 1, "next_service_batches": jobs.map_or(4, |n| n * 2),
+        "completed": jobs.map(|n| serde_json::json!({
+            "period": period, "opening_service_batches": 6, "consumed_service_batches": 4,
+            "expired_service_batches": 2, "prospective_batches": 8, "requested_jobs": 4,
+            "opening_spare_parts": 8, "arrived_spare_parts": 0, "available_spare_parts": 8,
+            "available_labor_hours": n * 10, "completed_jobs": n, "consumed_spare_parts": n * 2,
+            "consumed_labor_hours": n * 10
+        }))
+    });
+    value
+}
+
+#[test]
+fn maintenance_evidence_covers_every_account_field_and_refuses_fog_or_wrong_endpoint() {
+    let mut observation = committed();
+    observation.production = Some(
+        serde_json::from_value(maintenance_value(
+            serde_json::to_value(observation.production.as_ref().unwrap()).unwrap(),
+            1,
+            Some(2),
+        ))
+        .unwrap(),
+    );
+    let original = observation.production_evidence_digest().unwrap();
+    let encoded = serde_json::to_value(&observation).unwrap();
+    for path in [
+        "provider_site_id",
+        "consumer_site_id",
+        "consumer_process_id",
+        "spare_good_id",
+        "spare_unit_id",
+        "labor_unit_id",
+        "output_good_id",
+        "output_unit_id",
+        "output_per_batch",
+        "spare_units_per_job",
+        "labor_units_per_job",
+        "enabled_batches_per_job",
+        "maximum_jobs_per_period",
+        "next_service_period",
+        "next_service_batches",
+    ] {
+        let mut changed = encoded.clone();
+        let field = &mut changed["production"]["maintenance_account"][path];
+        *field = if let Some(n) = field.as_u64() {
+            serde_json::json!(n + 1)
+        } else {
+            serde_json::json!("mismatched")
+        };
+        let changed: ObserverEconomySnapshot = serde_json::from_value(changed).unwrap();
+        assert_ne!(
+            changed.production_evidence_digest(),
+            Ok(original),
+            "uncovered {path}"
+        );
+    }
+    for field in encoded["production"]["maintenance_account"]["completed"]
+        .as_object()
+        .unwrap()
+        .keys()
+    {
+        let mut changed = encoded.clone();
+        let number = changed["production"]["maintenance_account"]["completed"][field]
+            .as_u64()
+            .unwrap();
+        changed["production"]["maintenance_account"]["completed"][field] =
+            serde_json::json!(number + 1);
+        let changed: ObserverEconomySnapshot = serde_json::from_value(changed).unwrap();
+        assert_ne!(
+            changed.production_evidence_digest(),
+            Ok(original),
+            "uncovered {field}"
+        );
+    }
+    for field in [
+        "provider_site_id",
+        "consumer_site_id",
+        "consumer_process_id",
+        "spare_unit_id",
+        "labor_unit_id",
+    ] {
+        let mut invalid = encoded.clone();
+        invalid["production"]["maintenance_account"][field] = serde_json::json!("unbound-identity");
+        let invalid: ObserverEconomySnapshot = serde_json::from_value(invalid).unwrap();
+        assert_eq!(
+            invalid.production_evidence_digest(),
+            Err(ProductionEvidenceError::InvalidIdentity),
+            "{field}"
+        );
+    }
+    observation.visibility = ObserverVisibility::KnownPreview;
+    assert_eq!(
+        observation.production_evidence_digest(),
+        Err(ProductionEvidenceError::InvalidIdentity)
+    );
+    observation.production = None;
+    assert_eq!(observation.production_evidence_digest(), Ok(None));
+}

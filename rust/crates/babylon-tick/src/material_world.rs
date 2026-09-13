@@ -1,6 +1,6 @@
 //! Exact successor world-register ownership for the routed material circuit.
 //!
-//! An active register contains the complete V3 opening state, never an economic
+//! An active register contains the complete current opening state, never an economic
 //! summary or a second inventory ledger. The graph-only digest stays unchanged.
 
 use babylon_kernel::content_digest::sha256_of;
@@ -9,9 +9,11 @@ use babylon_material_circuit::{
     MaterialCircuitError, MaterialCircuitState, MaterialCircuitTransition,
 };
 
+mod maintenance_receipt;
+
 const REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v3\0";
 const NOMINAL_DOMAIN: &[u8] = b"babylon.nominal-material-world.v3\0";
-const RECEIPT_DOMAIN: &[u8] = b"babylon.material-tick-receipts.v4\0";
+const RECEIPT_DOMAIN: &[u8] = b"babylon.material-tick-receipts.v5\0";
 /// Shared identity ceiling inherited by the aggregate replay envelope.
 pub const MAX_MATERIAL_WORLD_REGISTER_BYTES: usize = 67_108_864;
 
@@ -236,9 +238,13 @@ fn encode_material_receipts(
         (transition.handling.len(), 97),
         (transition.local_fulfillments.len(), 168),
         (transition.local_transfers.len(), 168),
+        (
+            usize::from(transition.maintenance.is_some()),
+            maintenance_receipt::ROW_BYTES,
+        ),
     ];
     let length = families.iter().try_fold(
-        RECEIPT_DOMAIN.len() + 12 + 9 * 9,
+        RECEIPT_DOMAIN.len() + 12 + 10 * 9,
         |total, (count, width)| {
             total
                 .checked_add(
@@ -251,7 +257,7 @@ fn encode_material_receipts(
     )?;
     let mut bytes = bounded_bytes(length)?;
     bytes.extend_from_slice(RECEIPT_DOMAIN);
-    bytes.extend_from_slice(&4_u32.to_be_bytes());
+    bytes.extend_from_slice(&5_u32.to_be_bytes());
     bytes.extend_from_slice(&tick.to_be_bytes());
     for (tag, (count, _)) in families.iter().enumerate() {
         bytes.push(u8::try_from(tag + 1).map_err(|_| MaterialWorldError::Arithmetic)?);
@@ -345,14 +351,19 @@ fn encode_material_receipts(
                     bytes.extend_from_slice(&row.quantity.to_be_bytes());
                 }
             }
-            _ => unreachable!("the nine material receipt families are closed"),
+            9 => {
+                if let Some(row) = &transition.maintenance {
+                    maintenance_receipt::encode(row, tick, &mut bytes)?;
+                }
+            }
+            _ => unreachable!("the ten material receipt families are closed"),
         }
     }
     debug_assert_eq!(bytes.len(), length);
     Ok(bytes)
 }
 
-/// Typed material evidence decoded only from an exact committed V4 receipt family.
+/// Typed material evidence decoded only from an exact committed V5 receipt family.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaterialTickReceipts {
     pub resolve_tick: u64,
@@ -365,6 +376,7 @@ pub struct MaterialTickReceipts {
     pub handling: Vec<babylon_material_circuit::MerchantHandlingReceipt>,
     pub local_fulfillments: Vec<babylon_material_circuit::LocalRetailFulfillmentReceipt>,
     pub local_transfers: Vec<babylon_material_circuit::LocalTransferReceipt>,
+    pub maintenance: Option<babylon_material_circuit::MaintenanceReceipt>,
 }
 /// Decode a bounded receipt family. Hash/campaign binding belongs to its V3 envelope.
 /// # Errors
@@ -378,7 +390,7 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
         bytes,
         position: RECEIPT_DOMAIN.len(),
     };
-    if cursor.take::<4>()? != 4_u32.to_be_bytes() {
+    if cursor.take::<4>()? != 5_u32.to_be_bytes() {
         return Err(MaterialWorldError::Wire);
     }
     let resolve_tick = cursor.u64()?;
@@ -396,8 +408,9 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
         handling: Vec::new(),
         local_fulfillments: Vec::new(),
         local_transfers: Vec::new(),
+        maintenance: None,
     };
-    for tag in 1..=9 {
+    for tag in 1..=10 {
         if cursor.take::<1>()? != [tag] {
             return Err(MaterialWorldError::Wire);
         }
@@ -405,7 +418,21 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
         if count > MAX_MATERIAL_CIRCUIT_ROWS {
             return Err(MaterialWorldError::ByteLimit);
         }
-        let width = [80_usize, 112, 106, 40, 40, 40, 97, 168, 168][usize::from(tag - 1)];
+        if tag == 10 && count > 1 {
+            return Err(MaterialWorldError::Wire);
+        }
+        let width = [
+            80_usize,
+            112,
+            106,
+            40,
+            40,
+            40,
+            97,
+            168,
+            168,
+            maintenance_receipt::ROW_BYTES,
+        ][usize::from(tag - 1)];
         if count
             .checked_mul(width)
             .is_none_or(|length| length > bytes.len() - cursor.position)
@@ -422,6 +449,7 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
             7 => result.handling.try_reserve_exact(count),
             8 => result.local_fulfillments.try_reserve_exact(count),
             9 => result.local_transfers.try_reserve_exact(count),
+            10 => Ok(()),
             _ => return Err(MaterialWorldError::Wire),
         }
         .map_err(|_| MaterialWorldError::Allocation)?;
@@ -559,6 +587,10 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
                         return Err(MaterialWorldError::Wire);
                     }
                     result.local_transfers.push(row);
+                }
+                10 => {
+                    result.maintenance =
+                        Some(maintenance_receipt::decode(&mut cursor, resolve_tick)?);
                 }
                 _ => return Err(MaterialWorldError::Wire),
             }

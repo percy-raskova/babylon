@@ -516,7 +516,11 @@ fn apply_command(command: ObserverCommand, context: &mut CommandContext) {
         | ObserverCommand::NewStatewideBaselineCampaign
         | ObserverCommand::NewStatewideFreightConstraintCampaign
         | ObserverCommand::NewStatewidePackagingShortageCampaign
-        | ObserverCommand::NewStatewideBothCampaign => {
+        | ObserverCommand::NewStatewideBothCampaign
+        | ObserverCommand::NewStatewideMaintenanceBaselineCampaign
+        | ObserverCommand::NewStatewideMaintenanceLaborShortageCampaign
+        | ObserverCommand::NewStatewideMaintenancePartsShortageCampaign
+        | ObserverCommand::NewStatewideMaintenanceBothCampaign => {
             if pipe.is_none() {
                 feedback.reject(LAUNCHER_REQUIRED, time.elapsed_secs_f64());
                 return;
@@ -541,6 +545,18 @@ fn apply_command(command: ObserverCommand, context: &mut CommandContext) {
 
 fn campaign_preset(command: ObserverCommand) -> RuntimeSessionPreset {
     match command {
+        ObserverCommand::NewStatewideMaintenanceBaselineCampaign => {
+            RuntimeSessionPreset::StatewideMaintenanceBaseline
+        }
+        ObserverCommand::NewStatewideMaintenanceLaborShortageCampaign => {
+            RuntimeSessionPreset::StatewideMaintenanceLaborShortage
+        }
+        ObserverCommand::NewStatewideMaintenancePartsShortageCampaign => {
+            RuntimeSessionPreset::StatewideMaintenancePartsShortage
+        }
+        ObserverCommand::NewStatewideMaintenanceBothCampaign => {
+            RuntimeSessionPreset::StatewideMaintenanceBoth
+        }
         ObserverCommand::NewStatewideBaselineCampaign => RuntimeSessionPreset::StatewideBaseline,
         ObserverCommand::NewStatewideFreightConstraintCampaign => {
             RuntimeSessionPreset::StatewideFreightConstraint
@@ -1720,6 +1736,7 @@ pub(crate) mod tests {
             counties: Vec::new(),
             production: Some(
                 babylon_persistence::production_observation::ProductionSnapshot {
+                    maintenance_account: None,
                     content_authority_sha256: "a".repeat(64),
                     road_source: None,
                     physical_edges: Vec::new(),

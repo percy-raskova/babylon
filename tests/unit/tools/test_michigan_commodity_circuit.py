@@ -34,7 +34,7 @@ def catalogue() -> dict[str, Any]:
         "machinery": {"metal_parts": 2},
     }
     return {
-        "SCHEMA_VERSION": 3,
+        "SCHEMA_VERSION": 4,
         "TICK_DURATION_DAYS": 28,
         "HORIZON_PERIODS": 16,
         "statewide": {"EVIDENCE_CLASS": "Designed", "FINITE_ORDER_PERIODS": 4},

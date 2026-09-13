@@ -25,6 +25,10 @@ pub enum MichiganContentPreset {
     StatewideFreightConstraint,
     StatewidePackagingShortage,
     StatewideBoth,
+    StatewideMaintenanceBaseline,
+    StatewideMaintenanceLaborShortage,
+    StatewideMaintenancePartsShortage,
+    StatewideMaintenanceBoth,
 }
 
 /// All admitted presets use the same normalized physical projection.
@@ -48,7 +52,7 @@ impl std::fmt::Display for MichiganContentError {
 }
 impl std::error::Error for MichiganContentError {}
 
-pub const MICHIGAN_CONTENT_PRESETS: [MichiganContentPreset; 8] = [
+pub const MICHIGAN_CONTENT_PRESETS: [MichiganContentPreset; 12] = [
     MichiganContentPreset::FourWeekStandard,
     MichiganContentPreset::FourWeekDelayed,
     MichiganContentPreset::SharedFreightAmple,
@@ -57,6 +61,10 @@ pub const MICHIGAN_CONTENT_PRESETS: [MichiganContentPreset; 8] = [
     MichiganContentPreset::StatewideFreightConstraint,
     MichiganContentPreset::StatewidePackagingShortage,
     MichiganContentPreset::StatewideBoth,
+    MichiganContentPreset::StatewideMaintenanceBaseline,
+    MichiganContentPreset::StatewideMaintenanceLaborShortage,
+    MichiganContentPreset::StatewideMaintenancePartsShortage,
+    MichiganContentPreset::StatewideMaintenanceBoth,
 ];
 
 impl MichiganContentPreset {
@@ -71,6 +79,16 @@ impl MichiganContentPreset {
             MichiganDeliveryPreset::StatewideFreightConstraint => Self::StatewideFreightConstraint,
             MichiganDeliveryPreset::StatewidePackagingShortage => Self::StatewidePackagingShortage,
             MichiganDeliveryPreset::StatewideBoth => Self::StatewideBoth,
+            MichiganDeliveryPreset::StatewideMaintenanceBaseline => {
+                Self::StatewideMaintenanceBaseline
+            }
+            MichiganDeliveryPreset::StatewideMaintenanceLaborShortage => {
+                Self::StatewideMaintenanceLaborShortage
+            }
+            MichiganDeliveryPreset::StatewideMaintenancePartsShortage => {
+                Self::StatewideMaintenancePartsShortage
+            }
+            MichiganDeliveryPreset::StatewideMaintenanceBoth => Self::StatewideMaintenanceBoth,
         }
     }
     #[must_use]
@@ -94,6 +112,16 @@ impl MichiganContentPreset {
             Self::StatewideFreightConstraint => MichiganDeliveryPreset::StatewideFreightConstraint,
             Self::StatewidePackagingShortage => MichiganDeliveryPreset::StatewidePackagingShortage,
             Self::StatewideBoth => MichiganDeliveryPreset::StatewideBoth,
+            Self::StatewideMaintenanceBaseline => {
+                MichiganDeliveryPreset::StatewideMaintenanceBaseline
+            }
+            Self::StatewideMaintenanceLaborShortage => {
+                MichiganDeliveryPreset::StatewideMaintenanceLaborShortage
+            }
+            Self::StatewideMaintenancePartsShortage => {
+                MichiganDeliveryPreset::StatewideMaintenancePartsShortage
+            }
+            Self::StatewideMaintenanceBoth => MichiganDeliveryPreset::StatewideMaintenanceBoth,
         }
     }
     #[must_use]
@@ -111,6 +139,10 @@ impl MichiganContentPreset {
             Self::StatewideFreightConstraint => "Statewide Michigan — freight constraint",
             Self::StatewidePackagingShortage => "Statewide Michigan — packaging shortage",
             Self::StatewideBoth => "Statewide Michigan — both constraints",
+            Self::StatewideMaintenanceBaseline => "Wayne maintenance — baseline",
+            Self::StatewideMaintenanceLaborShortage => "Wayne maintenance — labor shortage",
+            Self::StatewideMaintenancePartsShortage => "Wayne maintenance — parts shortage",
+            Self::StatewideMaintenanceBoth => "Wayne maintenance — both constraints",
         }
     }
     /// # Errors

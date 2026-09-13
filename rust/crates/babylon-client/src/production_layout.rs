@@ -14,6 +14,7 @@ pub(crate) const RAIL_HEIGHT: f32 = 42.0;
 pub(crate) struct ProductionLayout {
     pub positions: BTreeMap<String, Vec3>,
     pub links: Vec<(String, String)>,
+    pub maintenance_links: BTreeSet<(String, String)>,
     pub platforms: Vec<(Vec3, Vec2)>,
 }
 
@@ -27,12 +28,21 @@ impl ProductionLayout {
         let neighbors = selected
             .map(|site| dependency_sites(site, snapshot))
             .unwrap_or_default();
-        let groups: Vec<_> = neighbors
+        let mut groups: Vec<_> = neighbors
             .iter()
             .map(|(_, site)| site.id.as_str())
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect();
+        let service = snapshot.maintenance_account.as_ref();
+        groups.sort_by_key(|id| {
+            (
+                !service.is_some_and(|account| {
+                    *id == account.provider_site_id || *id == account.consumer_site_id
+                }),
+                *id,
+            )
+        });
         let ids: Vec<_> = selected
             .into_iter()
             .map(|site| site.id.clone())
@@ -57,18 +67,35 @@ impl ProductionLayout {
                 continue;
             }
             for (direction, buyer) in dependency_sites(site, snapshot) {
-                if direction == DependencyDirection::Downstream
-                    && indices.contains_key(buyer.id.as_str())
+                if matches!(
+                    direction,
+                    DependencyDirection::Downstream | DependencyDirection::ServiceConsumer
+                ) && indices.contains_key(buyer.id.as_str())
                 {
                     edges.insert((indices[site.id.as_str()], indices[buyer.id.as_str()]));
                 }
             }
         }
+        let maintenance_links = snapshot
+            .maintenance_account
+            .iter()
+            .filter(|account| {
+                indices.contains_key(account.provider_site_id.as_str())
+                    && indices.contains_key(account.consumer_site_id.as_str())
+            })
+            .map(|account| {
+                (
+                    account.provider_site_id.clone(),
+                    account.consumer_site_id.clone(),
+                )
+            })
+            .collect();
         let ranks = stages(ids.len(), &edges);
         let groups = weak_components(ids.len(), &edges);
         let (positions, platforms) = place_groups(&ids, &ranks, &groups);
         Self {
             positions,
+            maintenance_links,
             links: edges
                 .into_iter()
                 .map(|(from, to)| (ids[from].clone(), ids[to].clone()))

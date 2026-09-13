@@ -30,8 +30,13 @@ struct NetworkNode {
 struct NetworkLink {
     from: NodeKey,
     to: NodeKey,
-    good: String,
-    unit: String,
+    kind: NetworkLinkKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum NetworkLinkKind {
+    Commodity { good: String, unit: String },
+    Maintenance,
 }
 
 #[derive(Default)]
@@ -47,6 +52,7 @@ fn site_sector(site: &ProductionSite) -> NetworkSector {
     match site.role {
         ProductionSiteRole::Wholesale => NetworkSector::Wholesale,
         ProductionSiteRole::Retail => NetworkSector::Retail,
+        ProductionSiteRole::Maintenance => NetworkSector::Maintenance,
         ProductionSiteRole::Production => match site.sector_code.as_str() {
             "11" => NetworkSector::Agriculture,
             "21" => NetworkSector::Mining,
@@ -140,15 +146,30 @@ fn project_network(
             result.links.insert(NetworkLink {
                 from,
                 to,
-                good: relation.good,
-                unit: relation.unit,
+                kind: NetworkLinkKind::Commodity {
+                    good: relation.good,
+                    unit: relation.unit,
+                },
+            });
+        }
+    }
+    if let Some(account) = snapshot.maintenance_account.as_ref().and_then(|account| {
+        crate::production::maintenance::account(snapshot, &account.provider_site_id)
+    }) {
+        let from = NodeKey::Site(account.provider_site_id.clone());
+        let to = NodeKey::Site(account.consumer_site_id.clone());
+        if result.nodes.contains_key(&from) && result.nodes.contains_key(&to) {
+            result.links.insert(NetworkLink {
+                from,
+                to,
+                kind: NetworkLinkKind::Maintenance,
             });
         }
     }
     project_final_demand(snapshot, anchors, &county_ranks, &mut result);
     result.total_links = result.links.len();
     result.links.retain(|link| {
-        good.is_none_or(|good| good.good_id == link.good && good.unit_id == link.unit)
+        good.is_none_or(|good| matches!(&link.kind, NetworkLinkKind::Commodity { good: id, unit } if good.good_id == *id && good.unit_id == *unit))
             && (sector == NetworkSector::All
                 || [&link.from, &link.to].into_iter().any(|key| {
                     result
@@ -210,8 +231,10 @@ fn project_final_demand(
             result.links.insert(NetworkLink {
                 from,
                 to: to.clone(),
-                good: account.good_id.clone(),
-                unit: account.unit_id.clone(),
+                kind: NetworkLinkKind::Commodity {
+                    good: account.good_id.clone(),
+                    unit: account.unit_id.clone(),
+                },
             });
         }
     }
@@ -241,6 +264,7 @@ fn sector_color(sector: NetworkSector) -> Color {
         NetworkSector::Agriculture => Color::srgb_u8(151, 190, 128),
         NetworkSector::Mining => theme::COPPER,
         NetworkSector::Manufacturing => theme::BLUE,
+        NetworkSector::Maintenance => Color::srgb_u8(221, 190, 109),
         NetworkSector::Wholesale => Color::srgb_u8(185, 155, 217),
         NetworkSector::Retail => theme::YELLOW,
         NetworkSector::All | NetworkSector::EndBuyers => theme::PAPER,
@@ -299,7 +323,12 @@ fn heading(projection: &NetworkProjection, filter: NetworkSector) -> String {
         .map(|node| &node.county)
         .collect::<BTreeSet<_>>()
         .len();
-    format!("ECONOMY NETWORK\n{cohorts} cohorts · {counties} counties\n{} / {} commodity links · {}\nArrows: supplier → buyer, not roads\nDots: county aggregates, not factories\nClick a dot to trace · Map lens to filter", projection.links.len(), projection.total_links, filter.label())
+    format!(
+        "ECONOMY NETWORK\n{cohorts} cohorts · {counties} counties\n{} / {} disclosed links · {}\nArrows: commodity supplier → buyer\nGold service: maintenance → consumer\nDots: county aggregates, not factories\nClick a dot to trace · Map lens to filter",
+        projection.links.len(),
+        projection.total_links,
+        filter.label()
+    )
 }
 
 fn spawn_legend(commands: &mut Commands) {
@@ -429,7 +458,11 @@ fn spawn_network_connections(
     for link in &projection.links {
         connections.insert(
             (link.from.clone(), link.to.clone()),
-            projection.nodes[&link.from].sector,
+            if link.kind == NetworkLinkKind::Maintenance {
+                NetworkSector::Maintenance
+            } else {
+                projection.nodes[&link.from].sector
+            },
         );
     }
     let mut batches = BTreeMap::<(NetworkSector, bool), RoadSegments>::new();
@@ -439,7 +472,12 @@ fn spawn_network_connections(
         let focused = [&from_key, &to_key]
             .into_iter()
             .any(|key| matches!(key, NodeKey::Site(id) if selected_site == Some(id.as_str())));
-        let points = [from, from.lerp(to, 0.5) + Vec3::Y * 4.0, to];
+        let lift = if sector == NetworkSector::Maintenance {
+            12.0
+        } else {
+            4.0
+        };
+        let points = [from, from.lerp(to, 0.5) + Vec3::Y * lift, to];
         let batch = batches.entry((sector, focused)).or_default();
         for (part, pair) in points.windows(2).enumerate() {
             // These integer keys only identify display segments, never infrastructure.
@@ -752,7 +790,7 @@ mod tests {
         assert!(only
             .links
             .iter()
-            .all(|link| link.good == "steel" && link.unit == "kg"));
+            .all(|link| matches!(&link.kind, NetworkLinkKind::Commodity { good, unit } if good == "steel" && unit == "kg")));
         let snapshot = frame.0.as_mut().unwrap().production.as_mut().unwrap();
         snapshot.sites.reverse();
         snapshot.final_demand_accounts.reverse();
@@ -798,5 +836,40 @@ mod tests {
             assert!(!hidden.available);
             assert!(hidden.nodes.is_empty() && hidden.links.is_empty());
         }
+    }
+    #[test]
+    fn maintenance_network_discloses_service_endpoints_only_to_the_current_full_observer() {
+        let (session, mut frame, anchors) = fixture();
+        let source = frame.0.as_ref().unwrap().production.as_ref().unwrap();
+        let snapshot = crate::maintenance_fixture::snapshot(source, 3, Some(2));
+        let provider = snapshot.sites.last().unwrap().id.clone();
+        let consumer = snapshot.sites[0].id.clone();
+        frame.0.as_mut().unwrap().production = Some(snapshot);
+        let full = project_network(&frame, &session, &anchors, NetworkSector::All, None);
+        assert_eq!(
+            full.nodes[&NodeKey::Site(provider.clone())].sector.label(),
+            "Maintenance"
+        );
+        assert!(full
+            .links
+            .iter()
+            .any(|link| link.from == NodeKey::Site(provider.clone())
+                && link.to == NodeKey::Site(consumer.clone())));
+        let goods_only = project_network(
+            &frame,
+            &session,
+            &anchors,
+            NetworkSector::All,
+            Some(&MaterialGoodKey {
+                good_id: "steel".into(),
+                unit_id: "kg".into(),
+            }),
+        );
+        assert!(!goods_only.nodes.contains_key(&NodeKey::Site(provider)));
+        frame.0.as_mut().unwrap().visibility =
+            babylon_persistence::observer_reader::ObserverVisibility::KnownPreview;
+        let hidden = project_network(&frame, &session, &anchors, NetworkSector::All, None);
+        assert!(!hidden.available);
+        assert!(hidden.nodes.is_empty() && hidden.links.is_empty());
     }
 }

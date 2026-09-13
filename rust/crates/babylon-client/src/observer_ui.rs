@@ -73,15 +73,17 @@ pub enum NetworkSector {
     Agriculture,
     Mining,
     Manufacturing,
+    Maintenance,
     Wholesale,
     Retail,
     EndBuyers,
 }
 impl NetworkSector {
-    pub const GROUPS: [Self; 6] = [
+    pub const GROUPS: [Self; 7] = [
         Self::Agriculture,
         Self::Mining,
         Self::Manufacturing,
+        Self::Maintenance,
         Self::Wholesale,
         Self::Retail,
         Self::EndBuyers,
@@ -93,6 +95,7 @@ impl NetworkSector {
             Self::Agriculture => "Agriculture / forestry",
             Self::Mining => "Extraction",
             Self::Manufacturing => "Manufacturing",
+            Self::Maintenance => "Maintenance",
             Self::Wholesale => "Wholesale",
             Self::Retail => "Retail",
             Self::EndBuyers => "End buyers",
@@ -185,6 +188,10 @@ pub enum ObserverCommand {
     NewStatewideFreightConstraintCampaign,
     NewStatewidePackagingShortageCampaign,
     NewStatewideBothCampaign,
+    NewStatewideMaintenanceBaselineCampaign,
+    NewStatewideMaintenanceLaborShortageCampaign,
+    NewStatewideMaintenancePartsShortageCampaign,
+    NewStatewideMaintenanceBothCampaign,
 
     ReopenCampaign,
     Quit,
@@ -715,6 +722,7 @@ fn spawn_lens_controls(panel: &mut ChildSpawnerCommands) {
             NetworkSector::Wholesale,
             NetworkSector::Retail,
         ],
+        vec![NetworkSector::Maintenance],
     ] {
         panel.spawn(row()).with_children(|bar| {
             for sector in group {
@@ -846,6 +854,17 @@ fn menu_campaign(panel: &mut ChildSpawnerCommands) {
             true,
         );
     });
+    panel.spawn((
+        Node {
+            min_width: px(0),
+            flex_shrink: 0.0,
+            flex_direction: FlexDirection::Column,
+            row_gap: px(8),
+            margin: UiRect::top(px(10)),
+            ..default()
+        },
+        ObserverCampaignCatalog,
+    ));
     panel.spawn(block_label("Statewide Michigan", 14.0, theme::YELLOW));
     preset_grid(
         panel,
@@ -862,6 +881,28 @@ fn menu_campaign(panel: &mut ChildSpawnerCommands) {
             (
                 "Both constraints",
                 ObserverCommand::NewStatewideBothCampaign,
+            ),
+        ],
+    );
+    panel.spawn(block_label("Wayne maintenance", 14.0, theme::YELLOW));
+    preset_grid(
+        panel,
+        &[
+            (
+                "Baseline",
+                ObserverCommand::NewStatewideMaintenanceBaselineCampaign,
+            ),
+            (
+                "Labor shortage",
+                ObserverCommand::NewStatewideMaintenanceLaborShortageCampaign,
+            ),
+            (
+                "Parts shortage",
+                ObserverCommand::NewStatewideMaintenancePartsShortageCampaign,
+            ),
+            (
+                "Both constraints",
+                ObserverCommand::NewStatewideMaintenanceBothCampaign,
             ),
         ],
     );
@@ -886,17 +927,6 @@ fn menu_campaign(panel: &mut ChildSpawnerCommands) {
         12.0,
         theme::GRAY,
     ));
-    panel.spawn((
-        Node {
-            min_width: px(0),
-            flex_shrink: 0.0,
-            flex_direction: FlexDirection::Column,
-            row_gap: px(8),
-            margin: UiRect::top(px(10)),
-            ..default()
-        },
-        ObserverCampaignCatalog,
-    ));
 }
 
 fn preset_grid(panel: &mut ChildSpawnerCommands, presets: &[(&str, ObserverCommand)]) {
@@ -920,7 +950,7 @@ fn preset_grid(panel: &mut ChildSpawnerCommands, presets: &[(&str, ObserverComma
 fn menu_settings(panel: &mut ChildSpawnerCommands) {
     panel.spawn(block_label("PRESENTATION / SOUND", 17.0, theme::YELLOW));
     panel.spawn(block_label(
-        "Tab / Shift+Tab: select controls. Enter: activate. Page Up / Down: read. WORLD / WORK: return to navigation.",
+        "Tab / Shift+Tab: select controls. Enter: activate. Page Up / Down: read. WORLD / CIRCUIT: return to navigation.",
         12.0,
         theme::GRAY,
     ));
@@ -2753,6 +2783,42 @@ mod tests {
                     .resource_mut::<ButtonInput<KeyCode>>()
                     .release(key);
             }
+        }
+    }
+    #[test]
+    fn maintenance_menu_keeps_four_distinct_short_presets_and_existing_families() {
+        let mut world = World::new();
+        let mut commands = world.commands();
+        commands.spawn(Node::default()).with_children(menu_campaign);
+        world.flush();
+        let texts = world
+            .query::<&Text>()
+            .iter(&world)
+            .map(|text| text.0.clone())
+            .collect::<Vec<_>>();
+        for label in [
+            "Wayne maintenance",
+            "Labor shortage",
+            "Parts shortage",
+            "Statewide Michigan",
+            "Regional proofs",
+        ] {
+            assert!(
+                texts.iter().any(|text| text == label),
+                "missing {label}: {texts:?}"
+            );
+        }
+        let buttons = world
+            .query::<&ObserverButton>()
+            .iter(&world)
+            .filter(|button| format!("{:?}", button.command).contains("NewStatewideMaintenance"))
+            .count();
+        assert_eq!(buttons, 4);
+        for text in texts.iter().filter(|text| text.contains("shortage")) {
+            assert!(
+                text.chars().count() <= 24,
+                "two-column menu titles must fit the 1366 layout: {text}"
+            );
         }
     }
 }

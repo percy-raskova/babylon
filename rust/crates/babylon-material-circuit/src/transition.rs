@@ -422,6 +422,7 @@ pub(crate) fn canonical_state(
     crate::production::validate_unique_rows(&canonical)?;
     crate::production::validate_processes(&canonical)?;
     crate::production::validate_periods(&canonical)?;
+    crate::maintenance::validate(&canonical)?;
     if canonical.period == 0
         || canonical
             .corridor_capacities
@@ -634,6 +635,17 @@ impl ClosedMaterialPeriod {
                 needed.get(&merchant.site_id).copied().unwrap_or(0),
             ));
         }
+        if let Some(receipt) = &self.transition.maintenance {
+            requests.push((
+                crate::StaffingWorkSource::Maintenance(receipt.binding.provider_site_id),
+                receipt.binding.provider_site_id,
+                receipt.binding.labor_unit_id,
+                receipt
+                    .requested_jobs
+                    .checked_mul(receipt.binding.labor_units_per_job)
+                    .ok_or(MaterialCircuitError::Arithmetic)?,
+            ));
+        }
         if owners.len() != requests.len() {
             return Err(MaterialCircuitError::ProcessInvariant);
         }
@@ -736,6 +748,9 @@ fn validate_next_labor(
             .iter()
             .map(|row| (row.site_id, row.labor_unit_id)),
     );
+    if let Some(binding) = &state.maintenance_binding {
+        expected.insert((binding.provider_site_id, binding.labor_unit_id));
+    }
     let mut actual = BTreeSet::new();
     for row in rows {
         if row.period != next_period {
@@ -789,6 +804,7 @@ pub fn close_material_period(
     )?;
     publish_inventory(&mut state, inventory);
     let production = execute_shared_production(&mut state)?;
+    let maintenance = crate::maintenance::execute(opening, &mut state, &production)?;
     let mut inventory = take_inventory(&mut state);
     let outbound = outbound::dispatch_orders(&mut state, &mut inventory, &mut dispatches)?;
     rebuild_backlog(&mut state);
@@ -810,6 +826,7 @@ pub fn close_material_period(
             handling: outbound.handling,
             local_fulfillments: outbound.local_fulfillments,
             local_transfers: outbound.local_transfers,
+            maintenance,
         },
     })
 }

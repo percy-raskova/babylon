@@ -138,6 +138,8 @@ baselines. The world map shows economic relationships and leads to county,
 owner, and Circuit readings. Regional presets use five Designed owner cohorts.
 Statewide presets add producers and merchants with source evidence, physical
 road paths, local transfers, and finite retail orders.
+The Wayne maintenance presets compare labor and spare-parts shortages, delayed
+production, and recovery through one service provider.
 
 The current source includes all 36 soundtrack recordings, about 92 minutes of
 music. Tracks advance automatically. Press **J** or choose **Next track** in

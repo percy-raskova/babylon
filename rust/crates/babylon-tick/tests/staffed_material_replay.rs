@@ -197,6 +197,8 @@ fn opening() -> MaterialCircuitState {
         handling_coefficients: Vec::new(),
         final_demand_principals: Vec::new(),
         final_demand_orders: Vec::new(),
+        maintenance_binding: None,
+        maintenance_service: None,
     };
     install_freight(&mut state);
     state

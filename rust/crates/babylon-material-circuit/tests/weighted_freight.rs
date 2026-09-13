@@ -13,6 +13,8 @@ fn competition() -> MaterialCircuitState {
         handling_coefficients: vec![],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
+        maintenance_binding: None,
+        maintenance_service: None,
         period: 1,
         site_logistics_nodes: Vec::new(),
         process_outputs: Vec::new(),
@@ -388,13 +390,17 @@ fn overflowing_mass_request_sum_and_period_refuse_without_mutating_opening() {
 }
 
 #[test]
-fn successor_refusal_registry_includes_mass_and_rejects_unknown_codes() {
-    for value in 1_u16..=19 {
+fn successor_refusal_registry_includes_maintenance_and_rejects_unknown_codes() {
+    for value in 1_u16..=22 {
         assert_eq!(
             u16::from(MaterialCircuitError::try_from(value).unwrap()),
             value
         );
     }
     assert!(MaterialCircuitError::try_from(0).is_err());
-    assert!(MaterialCircuitError::try_from(22).is_err());
+    assert_eq!(
+        MaterialCircuitError::try_from(22),
+        Ok(MaterialCircuitError::MaintenanceInvariant)
+    );
+    assert!(MaterialCircuitError::try_from(23).is_err());
 }

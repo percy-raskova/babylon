@@ -24,6 +24,8 @@ pub struct ProductionSnapshot {
     pub events: Vec<ProductionEvent>,
     pub merchant_handling_accounts: Vec<ProductionMerchantHandlingAccount>,
     pub final_demand_accounts: Vec<ProductionFinalDemandAccount>,
+    /// One exact service dependency; absent in campaigns without maintenance.
+    pub maintenance_account: Option<ProductionMaintenanceAccount>,
     /// Each exact site/unit labor principal occurs once, across all its processes.
     pub labor_accounts: Vec<ProductionLaborAccount>,
     /// Exact graph-owned modeled people and retained work requests at this scope.
@@ -104,6 +106,7 @@ pub enum ProductionSiteRole {
     Production,
     Wholesale,
     Retail,
+    Maintenance,
 }
 
 /// One process within an owner; inventory and workforce belong to its site.
@@ -182,6 +185,8 @@ pub struct CompletedProductionLabor {
     pub unused: u64,
     pub handling_needed: u64,
     pub handling_used: u64,
+    pub maintenance_needed: u64,
+    pub maintenance_used: u64,
 }
 
 /// Stable `SOCIAL_CLASS` subject of an admitted Designed workforce pool.
@@ -494,4 +499,52 @@ pub struct ProductionRoadSource {
     pub distance_version: String,
     pub routing_profile_version: String,
     pub graph_sha256: String,
+}
+
+/// One Designed provider/process binding and its current committed service account.
+/// Service enables at most the named batches in the named next period. It is not
+/// commodity stock, a productive process, or a promise of subsequent output.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProductionMaintenanceAccount {
+    pub provider_site_id: String,
+    pub consumer_site_id: String,
+    pub consumer_process_id: String,
+    pub spare_good_id: String,
+    pub spare_unit_id: String,
+    pub spare_good: String,
+    pub spare_unit: String,
+    pub labor_unit_id: String,
+    pub labor_unit: String,
+    pub output_good_id: String,
+    pub output_unit_id: String,
+    pub output_good: String,
+    pub output_unit: String,
+    pub output_per_batch: u64,
+    pub spare_units_per_job: u64,
+    pub labor_units_per_job: u64,
+    pub enabled_batches_per_job: u64,
+    pub maximum_jobs_per_period: u64,
+    pub next_service_period: u64,
+    pub next_service_batches: u64,
+    /// Missing only at foundation; Some with zero jobs is a completed reading.
+    pub completed: Option<CompletedProductionMaintenance>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CompletedProductionMaintenance {
+    pub period: u64,
+    pub opening_service_batches: u64,
+    pub consumed_service_batches: u64,
+    pub expired_service_batches: u64,
+    pub prospective_batches: u64,
+    pub requested_jobs: u64,
+    pub opening_spare_parts: u64,
+    pub arrived_spare_parts: u64,
+    pub available_spare_parts: u64,
+    pub available_labor_hours: u64,
+    pub completed_jobs: u64,
+    pub consumed_spare_parts: u64,
+    pub consumed_labor_hours: u64,
 }

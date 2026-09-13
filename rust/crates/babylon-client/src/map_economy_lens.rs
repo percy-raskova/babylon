@@ -662,6 +662,7 @@ mod tests {
             visibility: ObserverVisibility::FullObserver,
             counties: vec![],
             production: Some(ProductionSnapshot {
+                maintenance_account: None,
                 content_authority_sha256: "a".repeat(64),
                 road_source: None,
                 physical_edges: Vec::new(),

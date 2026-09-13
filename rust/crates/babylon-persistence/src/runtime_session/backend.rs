@@ -1,7 +1,6 @@
 //! Explicit New/Open admission reuses the single durable material runtime.
 
 use babylon_bsl::structural_verbs::CollectingSink;
-use babylon_practice_contract::OrderedPracticeActionBatch;
 use postgres::{Config, NoTls};
 
 use super::{RuntimeSessionErrorCode, RuntimeSessionTail, RuntimeSessionTarget, SessionBackend};
@@ -19,6 +18,24 @@ pub(super) struct DurableBackend {
     tail: RuntimeSessionTail,
 }
 impl SessionBackend for DurableBackend {
+    fn has_organizer(&self) -> bool {
+        self.runtime.has_organizer()
+    }
+    fn organizer_status(&self) -> Result<super::OrganizerSnapshot, RuntimeSessionErrorCode> {
+        self.runtime.organizer_snapshot()
+    }
+    fn organizer_preview(
+        &self,
+        command: &super::OrganizerCommand,
+    ) -> Result<super::OrganizerPreview, RuntimeSessionErrorCode> {
+        self.runtime.preview_organizer_command(command)
+    }
+    fn organizer_submit(
+        &self,
+        command: &super::OrganizerCommand,
+    ) -> Result<super::OrganizerCommitment, RuntimeSessionErrorCode> {
+        self.runtime.submit_organizer_command(command)
+    }
     fn tail(&self) -> RuntimeSessionTail {
         self.tail.clone()
     }
@@ -29,20 +46,10 @@ impl SessionBackend for DurableBackend {
         if expected != &self.tail || durable_tail(&self.config, self.campaign)? != self.tail {
             return Err(RuntimeSessionErrorCode::StaleExpectedTail);
         }
-        let tick = self
-            .tail
-            .resolve_tick
-            .checked_add(1)
-            .ok_or(RuntimeSessionErrorCode::CommitRefused)?;
-        let actions = OrderedPracticeActionBatch::empty(
-            self.runtime
-                .session()
-                .graph_session()
-                .session_identity()
-                .clone(),
-            tick,
-        )
-        .map_err(|_| RuntimeSessionErrorCode::CommitRefused)?;
+        let actions = self
+            .runtime
+            .next_action_batch()
+            .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)?;
         let receipt = self
             .runtime
             .advance_and_commit(&mut CollectingSink::default(), &actions)
@@ -130,7 +137,7 @@ pub(super) fn open(
                 .as_ref()
                 .ok_or(RuntimeSessionErrorCode::DefinesInvalid)?;
             let foundation = MichiganContentPreset::new_campaign(preset.delivery())
-                .create_foundation(catalog)
+                .create_foundation_for_campaign(catalog, campaign)
                 .map_err(|_| RuntimeSessionErrorCode::ScenarioMismatch)?;
             let digest = digest_hex(&foundation.digest());
             (

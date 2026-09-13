@@ -1127,7 +1127,11 @@ fn run_archive_worker_once(config: &Config) -> Result<(), String> {
         .map_err(|error| format!("Archive county producer refused: {error}"))?;
     let place = PlaceDossierProducer::try_new(config)
         .map_err(|error| format!("Archive place producer refused: {error}"))?;
-    let producer = CompositeArchiveDossierProducer::new(vec![Box::new(county), Box::new(place)]);
+    let producer = CompositeArchiveDossierProducer::new(vec![
+        Box::new(babylon_persistence::OrganizerDossierProducer::new(config)),
+        Box::new(county),
+        Box::new(place),
+    ]);
     let mut worker = babylon_persistence::ArchiveWorker::new(config);
     let report = worker
         .sweep_once(campaign_id()?, &producer)

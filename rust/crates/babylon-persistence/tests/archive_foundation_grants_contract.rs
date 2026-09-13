@@ -206,6 +206,11 @@ fn canonical_grant_rows_cover_exactly_the_public_reference_subjects() {
             ArchiveAtomSubjectKind::Concept => {
                 assert_eq!(row.citation().source_id(), "glossary-concepts-v1");
             }
+            ArchiveAtomSubjectKind::Workplace | ArchiveAtomSubjectKind::Organization => {
+                panic!(
+                    "campaign-specific organizer knowledge entered the public reference grant set"
+                );
+            }
         }
     }
 }

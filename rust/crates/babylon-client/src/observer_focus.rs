@@ -59,6 +59,7 @@ use crate::observer_theme as theme;
 pub(crate) enum ObserverFocusKind {
     Action,
     Reading,
+    TextInput,
 }
 
 /// Owner-supplied presentation eligibility. Actions always revalidate on use.
@@ -70,6 +71,15 @@ pub(crate) struct ObserverFocusTarget {
 }
 
 impl ObserverFocusTarget {
+    /// Editable presentation text consumes every keyboard shortcut while focused.
+    pub(crate) const fn text_input(context: Option<ObservationContext>) -> Self {
+        Self {
+            available: false,
+            context,
+            kind: ObserverFocusKind::TextInput,
+        }
+    }
+
     /// Starts unavailable; its owner admits it in the eligibility set.
     pub(crate) const fn action(context: Option<ObservationContext>) -> Self {
         Self {
@@ -511,6 +521,12 @@ fn keyboard_input(
     let target = focus
         .get()
         .and_then(|entity| tree.targets.get(entity).ok().map(|value| (entity, value)));
+    if target.is_some_and(|(_, target)| target.kind == ObserverFocusKind::TextInput) {
+        claim.blocks_world = true;
+        claim.claim(key);
+        event.propagate(false);
+        return;
+    }
     let owned = target.is_some() || policy.modal.is_some() || claim.suppress_activation;
     if !owned
         || (!matches!(key, KeyCode::Enter | KeyCode::Space)
@@ -934,6 +950,44 @@ mod tests {
     fn press(app: &mut App, window: Entity, code: KeyCode) {
         key(app, window, code, ButtonState::Pressed, false);
         key(app, window, code, ButtonState::Released, false);
+    }
+
+    #[test]
+    fn text_input_owns_typing_keys_without_activating_or_navigating() {
+        let (mut app, window) = app();
+        let root = group(&mut app, false);
+        let field = target(&mut app, root, None);
+        app.world_mut()
+            .get_mut::<ObserverFocusTarget>(field)
+            .unwrap()
+            .kind = ObserverFocusKind::TextInput;
+        let next = target(&mut app, root, None);
+        app.update();
+        press(&mut app, window, KeyCode::Tab);
+        assert_eq!(app.world().resource::<InputFocus>().get(), Some(field));
+        for code in [
+            KeyCode::Enter,
+            KeyCode::Space,
+            KeyCode::KeyK,
+            KeyCode::KeyP,
+            KeyCode::KeyM,
+            KeyCode::Escape,
+            KeyCode::BracketRight,
+            KeyCode::ArrowRight,
+        ] {
+            key(&mut app, window, code, ButtonState::Pressed, false);
+            assert!(app
+                .world()
+                .resource::<ObserverKeyboardClaim>()
+                .claimed(code));
+            key(&mut app, window, code, ButtonState::Released, false);
+        }
+        let actions = app.world().resource::<Actions>();
+        assert!(actions.accepted.is_empty());
+        assert_eq!(actions.world_steps, 0);
+        assert_eq!(actions.world_navigation, 0);
+        press(&mut app, window, KeyCode::Tab);
+        assert_eq!(app.world().resource::<InputFocus>().get(), Some(next));
     }
 
     #[test]

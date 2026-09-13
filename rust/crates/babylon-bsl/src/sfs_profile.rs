@@ -625,8 +625,8 @@ fn preflight(
     let cardinality_digest = ceilings.sfs_identity_digest()?;
     let intrinsic_digest = intrinsic_costs.sfs_identity_digest()?;
     let computed_bound = check_rule(rule, ceilings, intrinsic_costs)?;
-    if crate::material_cycle::classify(rule).map_err(|_| SfsProfileError::CanonicalAst)?
-        == crate::rule_pipeline::RuleExecution::MaterialCycle
+    if crate::native_cycle::classify(rule).map_err(|_| SfsProfileError::CanonicalAst)?
+        != crate::rule_pipeline::RuleExecution::Graph
     {
         return Err(SfsProfileError::NativeMaterialCycleUnsupported);
     }
@@ -992,6 +992,8 @@ fn has_response_table(expr: &SExpr) -> bool {
 fn effect_row(effect: EffectSignature) -> String {
     match effect {
         EffectSignature::MaterialCycle => "material-cycle".to_owned(),
+        EffectSignature::OrganizerProducts => "organizer-products".to_owned(),
+        EffectSignature::OrganizerPractice => "organizer-practice".to_owned(),
         EffectSignature::NodeField(field) => format!("node:{field}"),
         EffectSignature::EdgeField(field) => format!("edge:{field}"),
         EffectSignature::HyperedgeField(field) => format!("hyperedge:{field}"),

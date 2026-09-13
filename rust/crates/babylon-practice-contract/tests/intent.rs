@@ -260,12 +260,13 @@ fn intent_error_and_discriminant_tables_are_exact() {
         (6, PracticeId::Occupation),
         (7, PracticeId::Damage),
         (8, PracticeId::CapitalStrike),
+        (9, PracticeId::Investigate),
     ] {
         assert_eq!(PracticeId::try_from(code), Ok(practice));
         assert_eq!(practice as u8, code);
     }
     assert!(PracticeId::try_from(0_u8).is_err());
-    assert!(PracticeId::try_from(9_u8).is_err());
+    assert!(PracticeId::try_from(10_u8).is_err());
 
     for (code, tag) in [
         (1_u8, PracticeTargetTag::SocialClass),
@@ -280,12 +281,13 @@ fn intent_error_and_discriminant_tables_are_exact() {
         (10, PracticeTargetTag::CreditCommitment),
         (11, PracticeTargetTag::ProcurementCommitment),
         (12, PracticeTargetTag::ProductionCommitment),
+        (13, PracticeTargetTag::Organization),
     ] {
         assert_eq!(PracticeTargetTag::try_from(code), Ok(tag));
         assert_eq!(tag as u8, code);
     }
     assert!(PracticeTargetTag::try_from(0_u8).is_err());
-    assert!(PracticeTargetTag::try_from(13_u8).is_err());
+    assert!(PracticeTargetTag::try_from(14_u8).is_err());
 }
 
 #[test]

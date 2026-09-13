@@ -4,6 +4,14 @@ How-To Guides
 Task-oriented guides that help you accomplish specific goals. These assume
 you already understand the basics and need to solve a particular problem.
 
+Playing an organization
+-----------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   organize-in-wayne
+
 .. note::
 
    **Looking for tutorials?** See :doc:`/tutorials/index` for learning-oriented

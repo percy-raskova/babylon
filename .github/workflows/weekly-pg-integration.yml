@@ -11,12 +11,13 @@ on:
   workflow_dispatch:
     inputs:
       focus:
-        description: Run every database contract or only the actual statewide campaigns
+        description: Run every database contract or focus on statewide or organizer campaigns
         type: choice
         default: all
         options:
           - all
           - statewide_qualified
+          - organizer
 
 permissions:
   contents: read
@@ -36,8 +37,9 @@ jobs:
       matrix: >-
         ${{ fromJSON(inputs.focus == 'statewide_qualified' &&
           '{"focus":["statewide_qualified"]}' ||
+          inputs.focus == 'organizer' && '{"focus":["organizer"]}' ||
           '{"focus":["runtime_smoke","reference_integrity","runtime","archive",
-          "reader","client","statewide_qualified"]}') }}
+          "reader","client","statewide_qualified","organizer"]}') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:

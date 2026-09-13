@@ -1,0 +1,84 @@
+ADR262_native_organizer_practice:
+  status: accepted
+  date: '2026-09-13'
+  title: Native organizer practices consume committed time and produce earned reports and cooperation evidence
+  issue: PER-9
+  authority: Director instruction to implement the full native Wayne organizer plan on 13 September 2026
+  evidence_class: Designed
+  context: |
+    The Director selected the complete native workplace loop, a fictional Wayne
+    collective, and reinforcement as sustained cooperation. ADR232 forbids
+    activating the predecessor direct solidarity writes and solidarity-funded
+    ActionBudget. The browser walkthrough supplies design evidence only.
+  decision: |
+    Capture one player collective, a workplace committee and a neighborhood
+    contact group with explicit attributed participant bodies, input authority,
+    contributor time and existing communication agreements. These are Designed
+    actors and relations, not observed organizations or the entire workforce.
+
+    The player organization has 16 committed organizer-hours per period. Inquiry
+    uses 12 and contact uses 8. Each partner has 8 and uses 2 for a participating
+    response. Source commitments share the current resource allocator; the same
+    contributor time cannot be allocated twice and unused time does not accrue.
+    No conversion from jobs, industrial labor, money or ActionBudget is implied.
+
+    One practice executes per organization per period. A specific commitment
+    substitutes for the saved routine once. Hold retains routine work. Explicit
+    pause persists; an ineligible routine pauses without changing its scope.
+    The player supplies the final organizational ruling. Independent partners
+    use their own authority, permissions and finite resources through the same
+    practice contracts. A ruling does not grant agreement or successful effects.
+
+    The closed organizer-products mechanic executes before ooda and after the
+    material cycle. It consumes prior committed contact products; a product
+    completed in T can sustain the same reporting agreement in T+1 and T+2.
+    Initial report-sharing lasts through period 3. Expiry stops automatic
+    reports but does not delete the underlying contact relation. Current-period
+    material reports publish only with the transaction that closes those facts.
+
+    The closed organizer-practice intent executes after ooda. Its exact allowance
+    admits only the checked organizer operation under organizer/organizer-practice.
+    Inquiry targets one permitted workplace question and observes a particular
+    completed period. Contact records actual participation and consumed time.
+    Neither operation writes solidarity, membership, wage recovery, factory
+    output, political correctness or another actor's organizational ruling.
+
+    Durable accepted inputs bind the campaign, authority, expected tail, sealed
+    content, resources and stable nonce. Exact retry returns the same commitment;
+    conflicting reuse refuses. Admission changes no current material world.
+    Resolution joins the existing detached tick, complete committed envelope,
+    world identity, checkpoint and marker-last transaction. Knowledge and Archive
+    dirty records publish atomically with the action; no post-commit knowledge
+    writer can complete an action independently.
+
+    Earned reports bind actor, subject, source, observed period, acquired period,
+    and causal receipt. Learning a past field grants no access to future values.
+    The native organizer uses restricted projections throughout. Free-text drafts
+    and notes are presentation state and cannot encode executable parameters.
+  contract_disposition: |
+    The current practice identity/target surface extends Investigate and bounded
+    organization contact. Typed authority and allocation laws remain in use.
+    The current material-world register advances to v4 and captures organizer
+    configuration and state. Tick action-outcome rows contain canonical practice
+    receipts; identity-free audit signatures add organizer-products and
+    organizer-practice. Captured Michigan content and definitions advance to v5.
+    Unsupported prior active formats refuse before mutation; no compatibility
+    implementation or migration is introduced. Historical ADRs, V1 evidence and
+    previous saves remain recoverable records, not live fallback semantics.
+  alternatives_rejected:
+    - Native rendering of fixture outcomes without runtime admission and committed effects.
+    - Activating retired direct solidarity gains or solidarity-funded capacity.
+    - Giving the player the full administrative material projection.
+    - Resolving organizer effects outside the existing atomic tick or overriding the player with an NPC vote.
+  verification: |
+    Require native Inquiry, Reinforce, Hold and Pause, later contact-product
+    consumption, explicit costs, independent refusals, expired-scope recovery,
+    fog noninterference, controller parity, replay, pending and completed restart,
+    and failed-tick atomicity. Preserve the independent maintenance counterfactual.
+    An HTML artifact, isolated helper or unconsumed receipt cannot pass acceptance.
+  related:
+    - ADR232_neel_integration_program_architecture
+    - ADR250_economy_first_gate_order
+    - ADR257_four_week_simulation_interval
+    - ADR258_authored_campaign_parameters
+    - ADR261_authored_material_cycle

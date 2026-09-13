@@ -30,6 +30,7 @@ use crate::production_layout::{path_point, place_label, relation_path, Productio
 
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum PrimaryView {
+    Organizer,
     #[default]
     Map,
     Production,
@@ -607,6 +608,9 @@ fn inputs(
         (KeyCode::KeyM, ProductionCommand::Map),
         (KeyCode::Backspace, ProductionCommand::Back),
     ] {
+        if key == KeyCode::KeyP && *view == PrimaryView::Organizer {
+            continue; // The organizer shell opens its earned workplace evidence.
+        }
         if keys.just_pressed(key) {
             events.write(command);
         }

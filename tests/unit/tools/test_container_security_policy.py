@@ -236,6 +236,7 @@ else:
         "production_history",
         "statewide_synthetic",
         "statewide_qualified",
+        "organizer",
         "client",
     ],
 )
@@ -258,17 +259,20 @@ def test_current_runtime_focuses_finish_with_checked_owned_cleanup(
         in call["args"]
     ]
     assert len(writer_probes) == (1 if focus == "runtime" else 0)
-    if focus in {"statewide_synthetic", "statewide_qualified", "production_history"}:
+    if focus in {"statewide_synthetic", "statewide_qualified", "production_history", "organizer"}:
         selected = {
             "statewide_synthetic": "statewide::",
             "statewide_qualified": "statewide_qualified::",
             "production_history": "staffing_history::production_history",
+            "organizer": "organizer::",
         }[focus]
         tests = [
             call["args"] for call in calls if call["name"] == "cargo" and call["args"][0] == "test"
         ]
         assert len(tests) == 1
         assert selected in tests[0] and "--ignored" in tests[0]
+        assert tests[0][tests[0].index("--test") + 1] == "observer_material_live"
+        assert "--skip" not in tests[0] and "--test-threads=1" in tests[0]
     if focus == "reference_integrity":
         assert not any(call["name"] == "mise" for call in calls)
         assert any(
@@ -284,6 +288,7 @@ def test_current_runtime_focuses_finish_with_checked_owned_cleanup(
         ordinary, history, statewide = material
         history_filter = "staffing_history::production_history"
         assert ordinary[ordinary.index(history_filter) - 1] == "--skip"
+        assert ordinary[ordinary.index("organizer::") - 1] == "--skip"
         assert history_filter in history and "--skip" not in history
         assert "statewide::" in statewide and "--skip" not in statewide
         assert all("--ignored" in arguments for arguments in material)

@@ -17,6 +17,7 @@ use crate::{
 /// Graph content revisions are separate from the logical delivery choice.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MichiganContentPreset {
+    OrganizeInWayne,
     FourWeekStandard,
     FourWeekDelayed,
     SharedFreightAmple,
@@ -52,7 +53,8 @@ impl std::fmt::Display for MichiganContentError {
 }
 impl std::error::Error for MichiganContentError {}
 
-pub const MICHIGAN_CONTENT_PRESETS: [MichiganContentPreset; 12] = [
+pub const MICHIGAN_CONTENT_PRESETS: [MichiganContentPreset; 13] = [
+    MichiganContentPreset::OrganizeInWayne,
     MichiganContentPreset::FourWeekStandard,
     MichiganContentPreset::FourWeekDelayed,
     MichiganContentPreset::SharedFreightAmple,
@@ -71,6 +73,7 @@ impl MichiganContentPreset {
     #[must_use]
     pub const fn new_campaign(delivery: MichiganDeliveryPreset) -> Self {
         match delivery {
+            MichiganDeliveryPreset::OrganizeInWayne => Self::OrganizeInWayne,
             MichiganDeliveryPreset::Standard => Self::FourWeekStandard,
             MichiganDeliveryPreset::Delayed => Self::FourWeekDelayed,
             MichiganDeliveryPreset::SharedFreightAmple => Self::SharedFreightAmple,
@@ -104,6 +107,7 @@ impl MichiganContentPreset {
     #[must_use]
     pub const fn delivery(self) -> MichiganDeliveryPreset {
         match self {
+            Self::OrganizeInWayne => MichiganDeliveryPreset::OrganizeInWayne,
             Self::FourWeekStandard => MichiganDeliveryPreset::Standard,
             Self::FourWeekDelayed => MichiganDeliveryPreset::Delayed,
             Self::SharedFreightAmple => MichiganDeliveryPreset::SharedFreightAmple,
@@ -131,6 +135,7 @@ impl MichiganContentPreset {
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
+            Self::OrganizeInWayne => "Organize in Wayne",
             Self::FourWeekStandard => "Michigan: standard delivery (four active cohorts)",
             Self::FourWeekDelayed => "Michigan: delayed delivery (four active cohorts)",
             Self::SharedFreightAmple => "Shared freight — ample",
@@ -161,6 +166,19 @@ impl MichiganContentPreset {
         catalog: &MichiganMaterialCatalog,
     ) -> Result<MaterialRuntimeFoundation, MichiganContentError> {
         self.build_foundation(catalog)
+    }
+    /// Create a new campaign with explicitly captured player authority.
+    /// # Errors
+    /// Refuses invalid authored organizer content or material foundation.
+    pub fn create_foundation_for_campaign(
+        &self,
+        catalog: &MichiganMaterialCatalog,
+        campaign: crate::identity::CampaignId,
+    ) -> Result<MaterialRuntimeFoundation, MichiganContentError> {
+        let catalog = catalog
+            .with_organizer_campaign(campaign)
+            .map_err(|_| MichiganContentError::Foundation)?;
+        self.build_foundation(&catalog)
     }
     fn build_foundation(
         self,

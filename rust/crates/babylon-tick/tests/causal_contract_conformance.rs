@@ -170,6 +170,8 @@ fn bounded_rule_pack_paths(paths: impl IntoIterator<Item = PathBuf>) -> Vec<Path
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum StaticEffect {
     MaterialCycle,
+    OrganizerProducts,
+    OrganizerPractice,
     NodeField(String),
     EdgeField(String),
     HyperedgeField(String),
@@ -189,6 +191,8 @@ fn role_name(role: RuleRole) -> &'static str {
 fn footprint_effect(effect: &EffectSignature) -> StaticEffect {
     match effect {
         EffectSignature::MaterialCycle => StaticEffect::MaterialCycle,
+        EffectSignature::OrganizerProducts => StaticEffect::OrganizerProducts,
+        EffectSignature::OrganizerPractice => StaticEffect::OrganizerPractice,
         EffectSignature::NodeField(field) => StaticEffect::NodeField(field.clone()),
         EffectSignature::EdgeField(field) => StaticEffect::EdgeField(field.clone()),
         EffectSignature::HyperedgeField(field) => StaticEffect::HyperedgeField(field.clone()),
@@ -199,6 +203,7 @@ fn footprint_effect(effect: &EffectSignature) -> StaticEffect {
 
 fn allowed_effect(effect: AllowedEffect) -> StaticEffect {
     match effect {
+        AllowedEffect::OrganizerPractice => StaticEffect::OrganizerPractice,
         AllowedEffect::NodeField(field) => StaticEffect::NodeField(field.to_owned()),
         AllowedEffect::EdgeField(field) => StaticEffect::EdgeField(field.to_owned()),
         AllowedEffect::HyperedgeField(field) => StaticEffect::HyperedgeField(field.to_owned()),
@@ -420,9 +425,12 @@ fn every_production_rule_identity_is_governed_independently_of_its_content() {
     let paths = std::fs::read_dir(rules_dir)
         .unwrap_or_else(|error| panic!("cannot read {rules_dir}: {error}"))
         .map(|entry| entry.expect("production rule directory entry").path());
-    let michigan = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../content/scenarios/michigan/material-cycle.bsl");
-    let files = bounded_rule_pack_paths(paths.chain(std::iter::once(michigan)));
+    let michigan =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../content/scenarios/michigan");
+    let files = bounded_rule_pack_paths(paths.chain([
+        michigan.join("material-cycle.bsl"),
+        michigan.join("organizer-cycle.bsl"),
+    ]));
 
     let mut parsed_rule_count = 0_usize;
     let mut production_ids = BTreeSet::new();

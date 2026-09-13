@@ -73,6 +73,10 @@ pub enum RuleExecution {
     Graph,
     /// One unconditional current material period, supplied by the material runtime.
     MaterialCycle,
+    /// Consume committed organizer products and publish lawful reports.
+    OrganizerProducts,
+    /// Resolve admitted organizer practices in the typed action host.
+    OrganizerPractice,
 }
 
 /// Everything a rule loads against. Phase 1 takes each registry as an
@@ -353,10 +357,12 @@ pub fn load_rule_form(
     // E-PARSE/E-TYPE-before-causal-authority ordering.
     validate_ast_walk_bounds(&rule, AST_WALK_LIMITS, "rule load preflight")
         .map_err(|error| LoadError::Causal(ContractError::AstWalkLimit(error)))?;
-    let execution = crate::material_cycle::classify(&rule).map_err(LoadError::Surface)?;
+    let execution = crate::native_cycle::classify(&rule).map_err(LoadError::Surface)?;
     let bindings = match execution {
         RuleExecution::Graph => parse_bindings(&rule).map_err(LoadError::Binding)?,
-        RuleExecution::MaterialCycle => Vec::new(),
+        RuleExecution::MaterialCycle
+        | RuleExecution::OrganizerProducts
+        | RuleExecution::OrganizerPractice => Vec::new(),
     };
     let binding_names: Vec<String> = bindings.iter().map(|d| d.name.clone()).collect();
     check_element_names(&rule, &binding_names).map_err(LoadError::ElementName)?;

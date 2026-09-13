@@ -1220,3 +1220,8 @@ decisions:
     status: accepted
     date: '2026-09-12'
     file: ADR261_authored_material_cycle.yaml
+  ADR262_native_organizer_practice:
+    title: Native organizer practices consume committed time and produce earned reports and cooperation evidence
+    status: accepted
+    date: '2026-09-13'
+    file: ADR262_native_organizer_practice.yaml

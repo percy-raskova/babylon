@@ -129,6 +129,8 @@ fn parse_kind(value: &str) -> ArchiveSubjectKind {
     match value {
         "county" => ArchiveSubjectKind::County,
         "place" => ArchiveSubjectKind::Place,
+        "workplace" => ArchiveSubjectKind::Workplace,
+        "organization" => ArchiveSubjectKind::Organization,
         other => panic!("unknown subject kind: {other}"),
     }
 }

@@ -756,6 +756,26 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
         Ok(())
     }
 
+    /// The captured organizer register and its two role-separated operations agree exactly.
+    pub(crate) fn validate_organizer_cycle(&self, active: bool) -> Result<(), ReplayTickError> {
+        use babylon_bsl::rule_pipeline::RuleExecution;
+        for operation in [
+            RuleExecution::OrganizerProducts,
+            RuleExecution::OrganizerPractice,
+        ] {
+            let found = self
+                .prepared
+                .rules
+                .iter()
+                .filter(|(_, rule)| rule.execution == operation)
+                .count();
+            if found != usize::from(active) {
+                return Err(ReplayTickError::Execution { message: format!("organizer host requires exactly {} {operation:?} operations, found {found}", usize::from(active)) });
+            }
+        }
+        Ok(())
+    }
+
     /// Admit the immutable prepared rules for native staffing ownership once.
     /// The normal effect scanner includes every possible guarded/loop write.
     pub(crate) fn validate_staffing_ownership(&self) -> Result<(), ReplayTickError> {
@@ -851,7 +871,18 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
             .completed_tick
             .checked_add(1)
             .ok_or(ReplayTickError::TickCounterOverflow)?;
-        validate_replay_action_batch(&self.session, actions, next_tick)?;
+        let organizer_actions_admitted = material
+            .as_ref()
+            .map(|inputs| inputs.validate_actions(actions))
+            .transpose()
+            .map_err(ReplayTickError::MaterialBase)?
+            .unwrap_or(false);
+        validate_replay_action_batch(
+            &self.session,
+            actions,
+            next_tick,
+            organizer_actions_admitted,
+        )?;
         let candidate_material = self
             .material_state
             .try_detached(&ProductionMaterialAllocationGate)
@@ -867,6 +898,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
             register_manifest: &self.register_manifest,
             prepared_environment: &self.prepared_environment,
             actions,
+            organizer_actions_admitted,
             composer: &ProductionReplayIdentityComposer,
             material_state: &candidate_material,
             material_allocation: &ProductionMaterialAllocationGate,
@@ -1036,7 +1068,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
             .completed_tick
             .checked_add(1)
             .ok_or(ReplayTickError::TickCounterOverflow)?;
-        validate_replay_action_batch(&self.session, actions, next_tick)?;
+        validate_replay_action_batch(&self.session, actions, next_tick, false)?;
         let candidate_material = self
             .material_state
             .try_detached(material_allocation)
@@ -1050,6 +1082,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
             register_manifest: &self.register_manifest,
             prepared_environment: &self.prepared_environment,
             actions,
+            organizer_actions_admitted: false,
             composer,
             material_state: &candidate_material,
             material_allocation,
@@ -1225,6 +1258,7 @@ pub(crate) struct ReplayExecutionInputs<'a, C> {
     pub(crate) register_manifest: &'a WorldRegisterManifest,
     pub(crate) prepared_environment: &'a PreparedEnvironment,
     pub(crate) actions: &'a OrderedPracticeActionBatch,
+    pub(crate) organizer_actions_admitted: bool,
     pub(crate) composer: &'a C,
     pub(crate) material_state: &'a MaterialState,
     pub(crate) material_allocation: &'a dyn MaterialAllocationGate,
@@ -1237,6 +1271,7 @@ pub(crate) struct ReplayIdentityInputs<'a, G, C> {
     pub(crate) result_graph: &'a G,
     pub(crate) report: &'a TickReport,
     pub(crate) events: &'a [EventRecord],
+    pub(crate) action_outcomes: &'a [babylon_practice_contract::OrganizerReceipt],
     pub(crate) resolve_tick: i64,
 }
 
@@ -1290,17 +1325,23 @@ pub(crate) fn validate_replay_actions<C>(
     execution: &ReplayExecutionInputs<'_, C>,
     resolve_tick: i64,
 ) -> Result<u64, ReplayTickError> {
-    validate_replay_action_batch(execution.session, execution.actions, resolve_tick)
+    validate_replay_action_batch(
+        execution.session,
+        execution.actions,
+        resolve_tick,
+        execution.organizer_actions_admitted,
+    )
 }
 
 fn validate_replay_action_batch(
     session: &ReplaySessionId,
     actions: &OrderedPracticeActionBatch,
     resolve_tick: i64,
+    organizer_actions_admitted: bool,
 ) -> Result<u64, ReplayTickError> {
     let resolve_tick =
         u64::try_from(resolve_tick).map_err(|_| ReplayTickError::TickCounterOverflow)?;
-    if !actions.is_empty() {
+    if !actions.is_empty() && !organizer_actions_admitted {
         return Err(ReplayTickError::NonEmptyActionBatch {
             count: actions.items().len(),
         });
@@ -1346,11 +1387,8 @@ fn compose_replay_identity_with_retention<G: CanonicalState, C, R: SuccessfulEve
     validate_committed_event_sink(inputs.report, inputs.events)?;
     let payload = encode_tick_payload_for_prepared(
         inputs.prepared,
-        &inputs.report.per_rule_fired,
-        inputs.report.fired,
-        &inputs.report.committed_events,
-        &inputs.report.choice_receipts,
-        &inputs.report.audit_receipts,
+        inputs.report,
+        inputs.action_outcomes,
         inputs.execution.resolver,
     )?;
     let successful_event_batch = SuccessfulEventBatch::try_from_committed_events(
@@ -1876,6 +1914,7 @@ mod tests {
             register_manifest: &session.register_manifest,
             prepared_environment: &session.prepared_environment,
             actions: &actions,
+            organizer_actions_admitted: false,
             composer: &RefusingComposer,
             material_state: &session.material_state,
             material_allocation: &ProductionMaterialAllocationGate,
@@ -2288,6 +2327,7 @@ mod tests {
             register_manifest: &session.register_manifest,
             prepared_environment: &session.prepared_environment,
             actions: &actions,
+            organizer_actions_admitted: false,
             composer: &composer,
             material_state: &session.material_state,
             material_allocation: &ProductionMaterialAllocationGate,

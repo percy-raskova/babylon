@@ -4,7 +4,7 @@ use std::collections::VecDeque;
 
 fn stop_at(scope: RuntimeSessionScope) -> RuntimeSessionRequest {
     RuntimeSessionRequest::Stop {
-        protocol_version: 3,
+        protocol_version: 4,
         request_id: 99,
         scope,
     }
@@ -51,7 +51,7 @@ fn hello_and_initial_stop_need_no_campaign_or_database_admission() {
         rows,
         [
             RuntimeSessionResponse::Hello {
-                protocol_version: 3,
+                protocol_version: 4,
                 scope: RuntimeSessionScope::default(),
             },
             RuntimeSessionResponse::Stopped {
@@ -90,7 +90,7 @@ fn hello_and_switching_are_written_before_fallible_target_admission() {
                 wire_responses(&bytes).as_slice(),
                 [
                     RuntimeSessionResponse::Hello {
-                        protocol_version: 3,
+                        protocol_version: 4,
                         ..
                     },
                     RuntimeSessionResponse::Switching { request_id: 1, .. },
@@ -474,7 +474,7 @@ fn reused_or_lower_ids_cannot_advance_refresh_or_stop_a_current_scope() {
         &[
             switching(RuntimeSessionScope::default(), A, 1),
             RuntimeSessionRequest::Advance {
-                protocol_version: 3,
+                protocol_version: 4,
                 scope: scope(1, A),
                 request_id: 2,
                 expected_tail: RuntimeSessionTail {
@@ -483,18 +483,18 @@ fn reused_or_lower_ids_cannot_advance_refresh_or_stop_a_current_scope() {
                 },
             },
             RuntimeSessionRequest::Advance {
-                protocol_version: 3,
+                protocol_version: 4,
                 scope: scope(1, A),
                 request_id: 2,
                 expected_tail: advanced_tail.clone(),
             },
             RuntimeSessionRequest::RefreshArchive {
-                protocol_version: 3,
+                protocol_version: 4,
                 scope: scope(1, A),
                 request_id: 1,
             },
             RuntimeSessionRequest::Stop {
-                protocol_version: 3,
+                protocol_version: 4,
                 scope: scope(1, A),
                 request_id: 2,
             },

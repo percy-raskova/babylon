@@ -223,6 +223,48 @@ impl<'a, W: Write, B: SessionBackend, D: ArchiveControl> Coordinator<'a, W, B, D
                     Err(code) => self.refuse(Some(request_id), code)?,
                 }
             }
+            RuntimeSessionRequest::PreviewOrganizer { command, .. } => {
+                let result = self
+                    .active
+                    .as_ref()
+                    .ok_or(RuntimeSessionErrorCode::CampaignAbsent)
+                    .and_then(|active| active.backend.organizer_preview(&command));
+                match result {
+                    Ok(preview) => emit(
+                        self.output,
+                        &RuntimeSessionResponse::OrganizerPreview {
+                            request_id,
+                            scope: self.scope.clone(),
+                            preview,
+                        },
+                    )?,
+                    Err(code) => self.refuse(Some(request_id), code)?,
+                }
+            }
+            RuntimeSessionRequest::SubmitOrganizer { command, .. } => {
+                self.submit_organizer(request_id, &command, false)?;
+            }
+            RuntimeSessionRequest::ConfigureOrganizerStanding { command, .. } => {
+                self.submit_organizer(request_id, &command, true)?;
+            }
+            RuntimeSessionRequest::OrganizerStatus { .. } => {
+                let result = self
+                    .active
+                    .as_ref()
+                    .ok_or(RuntimeSessionErrorCode::CampaignAbsent)
+                    .and_then(|active| active.backend.organizer_status());
+                match result {
+                    Ok(snapshot) => emit(
+                        self.output,
+                        &RuntimeSessionResponse::OrganizerStatus {
+                            request_id,
+                            scope: self.scope.clone(),
+                            snapshot: Box::new(snapshot),
+                        },
+                    )?,
+                    Err(code) => self.refuse(Some(request_id), code)?,
+                }
+            }
             RuntimeSessionRequest::RefreshArchive { .. } => {
                 let result = self
                     .active
@@ -235,6 +277,37 @@ impl<'a, W: Write, B: SessionBackend, D: ArchiveControl> Coordinator<'a, W, B, D
             }
         }
         Ok(None)
+    }
+
+    fn submit_organizer(
+        &mut self,
+        request_id: u64,
+        command: &super::OrganizerCommand,
+        configure: bool,
+    ) -> Result<(), RuntimeSessionErrorCode> {
+        let control = matches!(
+            command.choice,
+            super::OrganizerChoice::PauseStanding | super::OrganizerChoice::ResumeStanding
+        );
+        if configure != control {
+            return self.refuse(Some(request_id), RuntimeSessionErrorCode::InvalidRequest);
+        }
+        let result = self
+            .active
+            .as_ref()
+            .ok_or(RuntimeSessionErrorCode::CampaignAbsent)
+            .and_then(|active| active.backend.organizer_submit(command));
+        match result {
+            Ok(commitment) => emit(
+                self.output,
+                &RuntimeSessionResponse::OrganizerAccepted {
+                    request_id,
+                    scope: self.scope.clone(),
+                    commitment,
+                },
+            ),
+            Err(code) => self.refuse(Some(request_id), code),
+        }
     }
 
     fn switch<F, G>(
@@ -290,6 +363,7 @@ impl<'a, W: Write, B: SessionBackend, D: ArchiveControl> Coordinator<'a, W, B, D
             Err(code) => return self.refuse(Some(request_id), code),
         };
         let tail = backend.tail();
+        let organizer = backend.has_organizer();
         self.active = Some(Active::new(backend, archive));
         // Driver reports can be queued, but this ACK is always flushed first.
         emit(
@@ -298,6 +372,7 @@ impl<'a, W: Write, B: SessionBackend, D: ArchiveControl> Coordinator<'a, W, B, D
                 request_id,
                 scope: self.scope.clone(),
                 foundation_digest,
+                organizer,
                 tail,
             },
         )

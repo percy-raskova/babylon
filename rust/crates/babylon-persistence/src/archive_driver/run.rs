@@ -278,6 +278,9 @@ fn maintain(
 
 fn producer(config: &Config) -> Result<CompositeArchiveDossierProducer, SemanticArchiveError> {
     Ok(CompositeArchiveDossierProducer::new(vec![
+        Box::new(crate::organizer_archive::OrganizerDossierProducer::new(
+            config,
+        )),
         Box::new(CountyDossierProducer::try_new(config)?),
         Box::new(PlaceDossierProducer::try_new(config)?),
     ]))

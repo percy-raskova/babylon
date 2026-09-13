@@ -910,7 +910,7 @@ content set are ``E-LOAD-001``.
                       ":material-basis" <string>
                       ":fuel" <int-lit>
                       ( <domain>? <anchor>? <bindings> <when>? <effects>
-                      | <anchor> <material-cycle> )
+                      | <anchor> ( <material-cycle> | <organizer-products> | <organizer-practice> ) )
                   ")"
 
    <rule-role> ::= "mechanic" | "recognizer" | "external-event" | "intent"
@@ -922,6 +922,8 @@ content set are ``E-LOAD-001``.
    <when>     ::= "(" "when" <cond> ")"
    <effects>  ::= "(" "effects" <effect-item>+ ")"
    <material-cycle> ::= "(" "material-cycle" ")"
+   <organizer-products> ::= "(" "organizer-products" ")"
+   <organizer-practice> ::= "(" "organizer-practice" ")"
 
 ``material-cycle`` is a closed invocation of the current native material
 period (ADR261). Its rule must be a Designed Mechanic, use the explicit
@@ -952,6 +954,22 @@ campaigns restore their captured content. Editing an embedded file therefore
 requires rebuilding before creating a new campaign. The editor reports
 unavailable campaign context for these files; the production loader, corpus
 and runtime integration checks validate their supported use.
+
+Organizer campaigns also capture ``organizer-cycle.bsl`` (ADR262).
+``organizer-products`` is a closed Designed Mechanic before ``ooda``. It
+consumes prior contact receipts and derives reports from committed workplace
+work. ``organizer-practice`` is the exact allowed Designed Intent after
+``ooda``. It resolves one admitted ruling or the saved routine through the
+shared participant-time allocator. Both use the full invocation fuel and
+require the organizer host, with no bindings, guard or sibling effects.
+They cannot run in a graph-only session or an observer campaign.
+
+The material close supplies candidate workplace facts before the report
+reducer. Reports publish only with that tick's atomic commit. Inquiry reads
+the opening completed period, while new contact products become available to
+the following period. These operations neither repair the workplace nor
+activate legacy solidarity budgets. ``contracts/organizer_practice_v1.yaml``
+defines the scoped state, input, knowledge and receipt contracts.
 
 The four valued keyword options ``:role``, ``:evidence``,
 ``:material-basis``, and ``:fuel`` are mandatory and may appear in any source
@@ -4715,7 +4733,8 @@ AST — a property implementations should exercise as a round-trip property test
 ``exists``, ``forall``, ``nodes``, ``edges``, ``neighbors``, ``hyperedges``,
 ``members-of``, ``hyperedges-of``, ``field-of``, ``edge-between``, ``the``,
 ``domain``, ``select-max``, ``select-min``, ``metric``, ``metric-of``,
-``quantize-mass``, ``guard``, ``for-each``, ``choose``, ``branch``, ``material-cycle``,
+``quantize-mass``, ``guard``, ``for-each``, ``choose``, ``branch``,
+``material-cycle``, ``organizer-products``, ``organizer-practice``,
 ``update-node``, ``update-edge``,
 ``add-node``, ``remove-node``, ``add-edge``, ``remove-edge``,
 ``add-hyperedge``, ``update-hyperedge``, ``remove-hyperedge``, ``members``,

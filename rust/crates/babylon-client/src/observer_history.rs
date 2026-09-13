@@ -626,8 +626,10 @@ fn paint_buttons(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn paint(
     mut commands: Commands,
+    organizer: Option<Res<crate::organizer::OrganizerClient>>,
     session: Res<ObserverSession>,
     frame: Res<ObserverFrame>,
     history: Res<HistoryState>,
@@ -644,6 +646,7 @@ fn paint(
         Visibility::Hidden
     });
     if !(history.is_changed()
+        || organizer.as_ref().is_some_and(DetectChanges::is_changed)
         || frame.is_changed()
         || ui.is_changed()
         || navigation.is_changed()
@@ -661,6 +664,21 @@ fn paint(
         .and_then(|frame| frame.production.as_ref());
     commands.entity(panel).with_children(|panel| {
         panel.spawn((label("", 11.0, theme::GRAY), HistoryHint, ObserverFocusTarget::reading(Some(context.clone()))));
+        if session.organizer_enabled {
+            panel.spawn(label("EARNED WORKPLACE HISTORY · choose when the report became known", 14.0, theme::YELLOW));
+            let view = organizer.as_ref().and_then(|client| client.view.as_ref());
+            if let Some(view) = view {
+                let observations: Vec<_> = view.observations.iter().filter(|item| item.acquired_period <= session.viewed_tick).collect();
+                if observations.is_empty() { panel.spawn(label("No report had been acquired at this period. Return Live to inspect later knowledge.", 13.0, theme::GRAY)); }
+                for item in observations.into_iter().rev() {
+                    panel.spawn((Button, ObserverFocusTarget::action(Some(context.clone())), HistoryButton::Period { context: context.clone(), period: item.acquired_period },
+                        Node { padding: UiRect::all(px(6)), flex_shrink: 0.0, border: UiRect::bottom(px(1)), ..default() },
+                        BackgroundColor(theme::PANEL), BorderColor::all(theme::GRAY), DeclaredSurface::new(SurfaceId::OrganizerWorkspace)))
+                        .with_child(label(crate::organizer::report_reading(view, item, session.viewed_tick), 13.0, theme::PAPER));
+                }
+            } else { panel.spawn(label("Reading the organization's committed knowledge…", 13.0, theme::GRAY)); }
+            return;
+        }
         let Some(snapshot)=snapshot else {
             panel.spawn(label("HISTORY / production evidence unavailable in this observation",14.0,theme::GRAY));
             return;
@@ -738,6 +756,7 @@ fn paint_log(
             || ui.splash_visible
             || ui.comparison_open
             || ui.archive_open
+            || *view == PrimaryView::Organizer
             || readings_panel_visible(*view, &navigation, &ui, snapshot)
         {
             Visibility::Hidden

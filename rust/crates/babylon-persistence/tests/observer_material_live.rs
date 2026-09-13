@@ -53,12 +53,7 @@ fn michigan_archive_producer(config: &Config) -> CompositeArchiveDossierProducer
 }
 
 fn advance_material_period(runtime: &mut DurableMaterialRuntime) {
-    let tick = runtime.session().completed_tick() + 1;
-    let actions = OrderedPracticeActionBatch::empty(
-        runtime.session().graph_session().session_identity().clone(),
-        tick,
-    )
-    .unwrap();
+    let actions = runtime.next_action_batch().unwrap();
     runtime
         .advance_and_commit(&mut CollectingSink::default(), &actions)
         .unwrap();
@@ -982,7 +977,7 @@ fn assert_session_admits_stored_revision(
         .map(|line| serde_json::from_str::<RuntimeSessionResponse>(line).unwrap())
         .collect::<Vec<_>>();
     assert!(
-        matches!(&responses[0], RuntimeSessionResponse::Hello { protocol_version: 3, scope }
+        matches!(&responses[0], RuntimeSessionResponse::Hello { protocol_version: 4, scope }
         if scope.epoch == 0 && scope.campaign_id.is_none())
     );
     assert!(
@@ -1255,3 +1250,6 @@ mod current_authority {
         );
     }
 }
+
+#[path = "observer_material_live/organizer.rs"]
+mod organizer;

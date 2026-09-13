@@ -259,6 +259,7 @@ pub const fn practice_machine_verb(practice: PracticeId) -> Option<MachineVerb> 
         | PracticeId::Blockade
         | PracticeId::Occupation
         | PracticeId::Damage
-        | PracticeId::CapitalStrike => None,
+        | PracticeId::CapitalStrike
+        | PracticeId::Investigate => None,
     }
 }

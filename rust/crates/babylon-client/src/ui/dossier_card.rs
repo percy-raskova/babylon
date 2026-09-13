@@ -417,10 +417,34 @@ struct DossierReadIdentity<'w> {
     selected: Res<'w, SelectedCounty>,
     atlas: Option<Res<'w, CountyAtlas>>,
     observer: Option<Res<'w, ObserverSession>>,
+    organizer: Option<Res<'w, crate::organizer::OrganizerClient>>,
     frame: Option<Res<'w, ObserverFrame>>,
 }
 
 impl DossierReadIdentity<'_> {
+    fn organizer_subject(&self, page: &DossierPageView) -> bool {
+        let DossierPageView::Subject(request) = page else {
+            return false;
+        };
+        let Some(session) = &self.observer else {
+            return false;
+        };
+        let Some(view) = self
+            .organizer
+            .as_ref()
+            .and_then(|client| client.view.as_ref())
+        else {
+            return false;
+        };
+        session.organizer_enabled
+            && request.scope.campaign == session.campaign
+            && match request.kind.as_str() {
+                "workplace" => request.id == view.workplace_id.to_string(),
+                "organization" => request.id == view.actor_id.to_string(),
+                _ => false,
+            }
+    }
+
     fn county(&self) -> Option<&str> {
         self.atlas
             .as_ref()?
@@ -486,6 +510,8 @@ impl SubjectPageRequest {
         let kind = match self.kind.as_str() {
             "county" => ArchiveSubjectKind::County,
             "place" => ArchiveSubjectKind::Place,
+            "workplace" => ArchiveSubjectKind::Workplace,
+            "organization" => ArchiveSubjectKind::Organization,
             _ => return None,
         };
         ArchivePageRef::try_new(kind, self.id.clone()).ok()
@@ -533,7 +559,9 @@ fn drive_dossier_fetch(
     let Some(mut scope) = identity.scope(&view) else {
         if last.take().is_some() || projection.0.is_some() {
             projection.0 = None;
-            *view = DossierPageView::Card;
+            if !identity.organizer_subject(&view) {
+                *view = DossierPageView::Card;
+            }
             *presentation = DossierPresentation::default();
         }
         let next = if identity.selected.0.is_some() {
@@ -556,6 +584,7 @@ fn drive_dossier_fetch(
     if last
         .as_ref()
         .is_some_and(|old| !same_navigation_scope(&old.scope, &scope))
+        && !identity.organizer_subject(&view)
     {
         *view = DossierPageView::Card;
         *presentation = DossierPresentation::default();
@@ -1044,6 +1073,58 @@ struct DossierWriteState<'w> {
     presentation: ResMut<'w, DossierPresentation>,
 }
 
+/// An earned organizer subject enters the same reader, period scope, and card pipeline.
+fn open_organizer_archive(
+    request: On<crate::organizer::ui::OrganizerArchiveRequested>,
+    organizer: Res<crate::organizer::OrganizerClient>,
+    identity: DossierReadIdentity,
+    mut outputs: DossierWriteState,
+) {
+    let Some(view) = &organizer.view else {
+        return;
+    };
+    let Some(session) = &identity.observer else {
+        return;
+    };
+    if !session.organizer_enabled || session.campaign != identity.campaign.0 {
+        return;
+    }
+    let Some(mut scope) = identity.scope(&DossierPageView::Card) else {
+        return;
+    };
+    let (kind, id, label) = if request.organization {
+        (
+            ArchiveSubjectKind::Organization,
+            view.actor_id,
+            view.organization_label.clone(),
+        )
+    } else {
+        (
+            ArchiveSubjectKind::Workplace,
+            view.workplace_id,
+            view.workplace_label.clone(),
+        )
+    };
+    let Ok(target) = ArchivePageRef::try_new(kind, id.to_string()) else {
+        return;
+    };
+    scope.subject = target;
+    *outputs.view = DossierPageView::Subject(Box::new(SubjectPageRequest {
+        scope,
+        kind: if request.organization {
+            "organization"
+        } else {
+            "workplace"
+        }
+        .into(),
+        id: id.to_string(),
+        label: Some(label),
+    }));
+    *outputs.presentation = DossierPresentation::default();
+    outputs.projection.0 = None;
+    *outputs.fetch = DossierFetchState::Idle;
+}
+
 fn apply_page_requests(
     mut requests: MessageReader<DossierControl>,
     identity: DossierReadIdentity,
@@ -1485,6 +1566,7 @@ impl Plugin for DossierCardPlugin {
             .add_message::<DossierControl>()
             .init_resource::<DossierPresentation>()
             .init_resource::<DossierCampaignId>()
+            .add_observer(open_organizer_archive)
             .init_resource::<ActiveCountyDossier>()
             .init_resource::<DossierPageView>()
             .init_resource::<DossierFetchState>()

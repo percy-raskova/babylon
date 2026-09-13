@@ -13,12 +13,13 @@ Babylon has these primary boundaries:
 #. A pure Rust engine judges one four-week tick.
 #. Live Rust BSL rules control causal changes and finite material kernels.
 #. Recognizers and events remain deterministic.
-#. Executable shocks and player actions do not exist yet.
+#. Executable shocks remain absent. The bounded Wayne organizer resolves
+   admitted player and independent policy practices through the BSL action phase.
 #. ``babylon-persistence`` owns authoritative game-managed PostgreSQL schema,
    writes, restart, and durability.
 #. Python builds reference data and supplies current repository and operator
    tools. The frozen simulation and its mutable SQLite runtime are retired.
-#. Bevy remains an administrative viewer with no player action.
+#. Bevy offers observer campaigns and a restricted native organizer workspace.
 
 One tick judges one fixed 28-day interval and produces one durable commit.
 There are 13 periods in a modeled year; this is a 364-day simulation calendar,
@@ -222,12 +223,38 @@ or read authoritative transition rows.
 Client and Archive Boundary
 ---------------------------
 
-The Bevy client still reads an administrative world view and displays the
-nominal world hash. It does not submit a player intent.
+The Bevy client offers administrative observer campaigns and **Organize in
+Wayne**, a restricted player campaign. The organizer workspace submits typed
+rulings and displays durable acknowledgement before calling them submitted.
+Each next 28-day tick resolves accepted work or the saved standing routine.
+Draft notes and selection are separate presentation state and cannot execute.
 
-World opens with the complete disclosed economy as a schematic network over
-level county geography. All admitted owner cohorts remain visible, including isolated
-cohorts. Commodity links preserve supplier and buyer identities; county-local
+The captured Designed collective, workplace committee and neighborhood group
+have independent authority and participant time commitments. Inquiry costs
+12 of the collective's 16 hours. Contact work costs 8. A participating partner
+uses 2 of its own 8 hours. The shared allocator prevents contributors from
+supplying the same hours twice. Unused hours expire.
+
+Factory conditions continue to follow the maintenance economy under every
+political choice. The model does not calculate shift schedules or wage losses.
+
+A contact product completed in period T can renew its report-sharing
+agreement for T+1 and T+2. The following period's reducer must consume its
+receipt first.
+
+Inquiry attempts to get a specific workplace report. Committed expenditure
+does not guarantee disclosure. An acquired report retains observed and acquired
+periods, source, and receipt. It grants no permanent access to future values
+or provider-private accounts.
+
+Circuit and held history in this campaign use
+those earned observations. Historical inspection cannot admit past actions.
+The scoped successor is ADR262 and ``contracts/organizer_practice_v1.yaml``.
+
+In observer campaigns, World opens with the complete disclosed economy as a
+schematic network over level county geography. All admitted owner cohorts remain
+visible, including isolated cohorts. Commodity links preserve supplier and buyer
+identities; county-local
 transfers and finite retail orders connect merchants to end buyers. Display
 offsets separate aggregate owners without claiming factory locations.
 Selecting a node highlights its direct links while retaining the wider network.
@@ -263,11 +290,14 @@ and recover. The existing BSL material cycle,
 staffing, captured content, and atomic commit own these effects. Circuit
 readings distinguish service from parts deliveries and show its completion,
 expiry, and next-period output ceiling. These are administrative accounts.
-They supply no player action or earned knowledge.
+
+Organizer inquiries can earn only the bounded workplace record projection.
+Provider-private maintenance accounts remain unavailable to the player.
 
 Each committed tick emits an Archive dirty receipt. The Rust Archive worker
 binds each receipt to an exact dirty batch, worker contract, and pinned
-knowledge-grant snapshot. It publishes immutable county and place dossiers
+knowledge-grant snapshot. It publishes immutable county, place, workplace
+and organizational report dossiers
 with validated content and known citations. The scoped reader admits the
 requested committed period, retained publication, and disclosed links together.
 Global Archive progress cannot certify a selected page.
@@ -286,7 +316,13 @@ its scoped read. It does not poll for Archive maintenance.
 Shutdown requests cooperative cancellation and observes actual worker
 completion. A database connection that stays open beyond the existing process
 deadline cannot claim successful shutdown.
-ADR254 records this scheduling boundary. G5 adds player actions separately.
+
+ADR254 records this scheduling boundary. Organizer admission persists before
+acknowledgement, and the existing resolving transaction writes action knowledge,
+contact products, receipts and Archive dirty records before its durable marker.
+Failed ticks preserve accepted commitments for retry. Checkpoint reconstruction
+verifies derived organizer rows against the complete authoritative register.
+Broader player-agency and organizational-struggle acceptance remains open.
 
 Event payloads contain observed or derived material facts, never probability.
 Committed event metadata records the emitting rule and can carry an

@@ -627,7 +627,7 @@ fn eval_form(
         "field-of" => eval_field_of(items, env, host, fuel),
         "edge-between" => eval_edge_between(items, env, host, fuel),
         "quantize-mass" => eval_quantize_mass(items, env, host, fuel),
-        "material-cycle" => Err(EvalError::plain(
+        "material-cycle" | "organizer-products" | "organizer-practice" => Err(EvalError::plain(
             "material-cycle requires the material runtime host as a sole rule body, not an expression or intrinsic call",
         )),
         name => {

@@ -3,10 +3,11 @@
 
 CREATE TABLE babylon_meta.archive_knowledge_grant_v1 (
     campaign_id UUID NOT NULL,
-    subject_kind TEXT NOT NULL CHECK (subject_kind IN ('county', 'place', 'concept')),
+    subject_kind TEXT NOT NULL CHECK (subject_kind IN ('county', 'place', 'concept', 'workplace', 'organization')),
     subject_id TEXT NOT NULL CHECK (
         (subject_kind = 'county' AND subject_id ~ '^[0-9]{5}$') OR
         (subject_kind = 'place' AND subject_id ~ '^[0-9]{7}$') OR
+        (subject_kind IN ('workplace','organization') AND subject_id ~ '^[1-9][0-9]{0,19}$') OR
         (subject_kind = 'concept' AND subject_id ~ '^[a-z0-9][a-z0-9-]{0,127}$')
     ),
     grant_key TEXT NOT NULL CHECK (grant_key ~ '^[a-z0-9][a-z0-9-]{0,127}$'),
@@ -43,10 +44,11 @@ CREATE TABLE babylon_meta.archive_atom_v1 (
     atom_id BYTEA PRIMARY KEY CHECK (pg_catalog.octet_length(atom_id) = 32),
     campaign_id UUID NOT NULL
         REFERENCES babylon_meta.campaign(campaign_id) ON DELETE CASCADE,
-    subject_kind TEXT NOT NULL CHECK (subject_kind IN ('county', 'place', 'concept')),
+    subject_kind TEXT NOT NULL CHECK (subject_kind IN ('county', 'place', 'concept', 'workplace', 'organization')),
     subject_id TEXT NOT NULL CHECK (
         (subject_kind = 'county' AND subject_id ~ '^[0-9]{5}$') OR
         (subject_kind = 'place' AND subject_id ~ '^[0-9]{7}$') OR
+        (subject_kind IN ('workplace','organization') AND subject_id ~ '^[1-9][0-9]{0,19}$') OR
         (subject_kind = 'concept' AND subject_id ~ '^[a-z0-9][a-z0-9-]{0,127}$')
     ),
     signal_key TEXT NOT NULL CHECK (signal_key ~ '^[a-z0-9][a-z0-9-]{0,127}$'),
@@ -93,7 +95,7 @@ CREATE TABLE babylon_meta.archive_tick_knowledge_v2 (
 CREATE TABLE babylon_meta.archive_tick_knowledge_member_v2 (
     campaign_id UUID NOT NULL,
     resolve_tick BIGINT NOT NULL,
-    subject_kind TEXT NOT NULL CHECK (subject_kind IN ('county','place')),
+    subject_kind TEXT NOT NULL CHECK (subject_kind IN ('county','place','workplace','organization')),
     subject_id TEXT NOT NULL,
     grant_key TEXT NOT NULL,
     PRIMARY KEY (campaign_id,resolve_tick,subject_kind,subject_id,grant_key),
@@ -104,10 +106,11 @@ CREATE TABLE babylon_meta.archive_tick_knowledge_member_v2 (
 
 CREATE TABLE babylon_meta.archive_page_revision_v2 (
     campaign_id UUID NOT NULL REFERENCES babylon_meta.campaign(campaign_id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
-    subject_kind TEXT NOT NULL CHECK (subject_kind IN ('county', 'place')),
+    subject_kind TEXT NOT NULL CHECK (subject_kind IN ('county', 'place', 'workplace', 'organization')),
     subject_id TEXT NOT NULL CHECK (
         (subject_kind = 'county' AND subject_id ~ '^[0-9]{5}$') OR
-        (subject_kind = 'place' AND subject_id ~ '^[0-9]{7}$')
+        (subject_kind = 'place' AND subject_id ~ '^[0-9]{7}$') OR
+        (subject_kind IN ('workplace','organization') AND subject_id ~ '^[1-9][0-9]{0,19}$')
     ),
     effective_tick BIGINT NOT NULL CHECK (effective_tick >= 1),
     source_tick BIGINT NOT NULL CHECK (source_tick >= 1 AND source_tick <= effective_tick),
@@ -147,7 +150,7 @@ CREATE TABLE babylon_meta.archive_revision_grant_v2 (
     subject_id TEXT NOT NULL,
     effective_tick BIGINT NOT NULL,
     position INTEGER NOT NULL CHECK (position BETWEEN 0 AND 512),
-    grant_subject_kind TEXT NOT NULL CHECK (grant_subject_kind IN ('county', 'place')),
+    grant_subject_kind TEXT NOT NULL CHECK (grant_subject_kind IN ('county', 'place', 'workplace', 'organization')),
     grant_subject_id TEXT NOT NULL,
     grant_key TEXT NOT NULL CHECK (grant_key ~ '^[a-z0-9][a-z0-9-]{0,127}$'),
     granted_tick BIGINT NOT NULL CHECK (granted_tick >= 0),
@@ -234,7 +237,7 @@ SELECT pin.campaign_id,pin.resolve_tick,pin.tick_content_hash,pin.worker_contrac
          pg_catalog.convert_to('babylon.semantic-archive-knowledge.v1','UTF8') || pg_catalog.decode('00','hex')
          || pg_catalog.int8send(members.count) || members.bytes)) AS valid,
     EXISTS(SELECT 1 FROM babylon_meta.archive_knowledge_grant_v1 grant_row
-        WHERE grant_row.campaign_id=pin.campaign_id AND grant_row.subject_kind IN ('county','place')
+        WHERE grant_row.campaign_id=pin.campaign_id AND grant_row.subject_kind IN ('county','place','workplace','organization')
         AND grant_row.granted_tick<=pin.resolve_tick
         AND NOT EXISTS(SELECT 1 FROM babylon_meta.archive_tick_knowledge_member_v2 member
             WHERE member.campaign_id=pin.campaign_id AND member.resolve_tick=pin.resolve_tick
@@ -246,7 +249,7 @@ CROSS JOIN LATERAL (
     SELECT count(*) AS count,
         count(*) FILTER (WHERE grant_row.campaign_id IS NULL OR grant_row.granted_tick>pin.resolve_tick) AS invalid,
         COALESCE(string_agg(
-            CASE member.subject_kind WHEN 'county' THEN pg_catalog.decode('01','hex') ELSE pg_catalog.decode('02','hex') END
+            CASE member.subject_kind WHEN 'county' THEN pg_catalog.decode('01','hex') WHEN 'place' THEN pg_catalog.decode('02','hex') WHEN 'workplace' THEN pg_catalog.decode('04','hex') ELSE pg_catalog.decode('05','hex') END
             || pg_catalog.int8send(octet_length(member.subject_id)::BIGINT) || pg_catalog.convert_to(member.subject_id,'UTF8')
             || pg_catalog.int8send(octet_length(member.grant_key)::BIGINT) || pg_catalog.convert_to(member.grant_key,'UTF8')
             || pg_catalog.int8send(grant_row.granted_tick)

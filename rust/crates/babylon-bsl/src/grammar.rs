@@ -633,8 +633,10 @@ fn check_one_verbs_field_inits(
 /// The closed terminal sets §2 fixes, and the arities its productions do.
 /// `min`/`max` are operand counts **after** an optional `:as <symbol>` is
 /// stripped; `usize::MAX` means "no upper bound" (a variadic body).
-const ARITIES: [(&str, usize, usize, &str); 22] = [
+const ARITIES: [(&str, usize, usize, &str); 24] = [
     ("material-cycle", 0, 0, "exactly 0"),
+    ("organizer-products", 0, 0, "exactly 0"),
+    ("organizer-practice", 0, 0, "exactly 0"),
     ("nodes", 1, 2, "1 (or 2 with a predicate)"),
     ("edges", 1, 2, "1 (or 2 with a predicate)"),
     ("hyperedges", 1, 2, "1 (or 2 with a predicate)"),
@@ -799,7 +801,10 @@ pub fn check_arities_and_closed_sets(expr: &SExpr) -> Result<(), GrammarError> {
 }
 
 fn check_head_arity(head: &str, items: &[SExpr]) -> Result<(), GrammarError> {
-    let count = if head == "material-cycle" {
+    let count = if matches!(
+        head,
+        "material-cycle" | "organizer-products" | "organizer-practice"
+    ) {
         items.len() - 1
     } else {
         operand_count(items)

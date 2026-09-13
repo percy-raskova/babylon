@@ -40,6 +40,15 @@ impl ProductionNavigation {
         }
     }
 
+    fn set_page(&mut self, kind: ProductionPage, page: usize) {
+        let target = match kind {
+            ProductionPage::Cohorts => &mut self.cohort_page,
+            ProductionPage::Relationships => &mut self.relationship_page,
+            ProductionPage::Competitors => &mut self.competitor_page,
+        };
+        *target = page;
+    }
+
     pub(super) fn select_site(&mut self, id: &str) {
         if let Some(previous) = self.selected_site.take() {
             if previous != id {
@@ -247,6 +256,10 @@ pub(super) fn navigate(
         if ui.menu_open || ui.splash_visible || ui.comparison_open {
             continue;
         }
+        if state.organizer_enabled && matches!(event, ProductionCommand::Open) {
+            commands.trigger(crate::organizer::ui::OrganizerEvidenceRequested);
+            continue;
+        }
         let available = ProductionControlAvailability::for_snapshot(snapshot, &navigation);
         if let Some(reason) = available.refusal(event, snapshot, &navigation, &state) {
             feedback.reject(reason, time.elapsed_secs_f64());
@@ -277,14 +290,7 @@ pub(super) fn navigate(
                 navigation.reading_section = *section;
                 navigation.details_open = true;
             }
-            ProductionCommand::Page { kind, page, .. } => {
-                let target = match kind {
-                    ProductionPage::Cohorts => &mut navigation.cohort_page,
-                    ProductionPage::Relationships => &mut navigation.relationship_page,
-                    ProductionPage::Competitors => &mut navigation.competitor_page,
-                };
-                *target = *page;
-            }
+            ProductionCommand::Page { kind, page, .. } => navigation.set_page(*kind, *page),
             ProductionCommand::Process { process_id, .. } => {
                 navigation.selected_process = Some(process_id.clone());
                 ui.history_open = true;

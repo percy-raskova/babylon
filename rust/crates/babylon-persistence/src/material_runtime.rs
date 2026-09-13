@@ -103,6 +103,8 @@ pub enum MaterialRuntimeError {
     TailConflict,
     InvalidCheckpoint,
     Bounds,
+    OrganizerStorage,
+    OrganizerObserverProjectionRefused,
     MichiganEconomy(crate::michigan_economy::MichiganEconomyError),
     MichiganMaterial(crate::michigan_material::MichiganMaterialError),
 }
@@ -172,6 +174,20 @@ impl MaterialRuntimeFoundation {
         validate_foundation_spec(&spec)?;
         let graph_foundation = CampaignFoundation::capture(&graph, bundle)?;
         let register = MaterialWorldRegister::try_new(0, state)?;
+        Self::from_parts(graph, graph_foundation, register, spec)
+    }
+
+    /// Capture an explicitly composed current register, including organizer authority.
+    /// # Errors
+    /// Refuses a non-foundation register or any invalid captured source identity.
+    pub(crate) fn capture_register(
+        graph: ReplayTickSession<HypergraphStore>,
+        bundle: FoundationContentBundle,
+        register: MaterialWorldRegister,
+        spec: MaterialFoundationSpec,
+    ) -> Result<Self, MaterialRuntimeError> {
+        validate_foundation_spec(&spec)?;
+        let graph_foundation = CampaignFoundation::capture(&graph, bundle)?;
         Self::from_parts(graph, graph_foundation, register, spec)
     }
 
@@ -315,6 +331,13 @@ impl DurableMaterialRuntime {
         foundation: MaterialRuntimeFoundation,
         require_absent: bool,
     ) -> Result<Self, MaterialRuntimeError> {
+        if foundation
+            .register
+            .organizer_config()
+            .is_some_and(|organizer| organizer.campaign_id != *campaign.canonical_bytes())
+        {
+            return Err(MaterialRuntimeError::FoundationMismatch);
+        }
         let bounded = bounded_material_writer_config(config)?;
         let mut client = bounded.connect(NoTls)?;
         verify_runtime_schema_client(&mut client)?;
@@ -346,6 +369,7 @@ impl DurableMaterialRuntime {
         }
         // Staffed rule ownership is fallible: refuse before any founding rows
         // become durable, so dropping this transaction also removes enrollment.
+        crate::organizer_archive::insert_projection(&mut tx, campaign, &foundation.register)?;
         let session = foundation.into_session()?;
         tx.commit()?;
         Ok(Self {
@@ -377,6 +401,13 @@ impl DurableMaterialRuntime {
             .start()?;
         let foundation =
             hydrate_material_foundation(&mut tx, campaign, expected_foundation_digest)?;
+        if foundation
+            .register
+            .organizer_config()
+            .is_some_and(|organizer| organizer.campaign_id != *campaign.canonical_bytes())
+        {
+            return Err(MaterialRuntimeError::FoundationMismatch);
+        }
         let tick = read_tail_tick(&mut tx, campaign)?;
         let mut session = foundation.into_session()?;
         let tail = if tick == 0 {
@@ -403,6 +434,11 @@ impl DurableMaterialRuntime {
             last_receipt: None,
             last_choice_receipts: Vec::new(),
         })
+    }
+    pub(crate) fn organizer_connection(&self) -> Result<postgres::Client, MaterialRuntimeError> {
+        self.config
+            .connect(NoTls)
+            .map_err(MaterialRuntimeError::from)
     }
     #[must_use]
     pub const fn session(&self) -> &MaterialReplaySession<HypergraphStore> {
@@ -504,13 +540,29 @@ impl DurableMaterialRuntime {
     /// Prepare both owners, durably commit all eight families, then publish both.
     /// # Errors
     /// Refuses stale state, adjudication, row bounds or database failures without live publication.
+    // Keep candidate preparation, marker-last ordering and ambiguous-commit
+    // reconciliation visible together as one authoritative transaction.
+    #[allow(clippy::too_many_lines)]
     pub fn advance_and_commit(
         &mut self,
         sink: &mut CollectingSink,
         actions: &OrderedPracticeActionBatch,
     ) -> Result<IdentifiedMaterialTick, MaterialRuntimeError> {
         let started = Instant::now();
-        let candidate = self.session.prepare_advance(actions)?;
+        let next_period = self
+            .session
+            .completed_tick()
+            .checked_add(1)
+            .ok_or(MaterialRuntimeError::Bounds)?;
+        let pending = if self.has_organizer() {
+            let mut client = self.organizer_connection()?;
+            crate::organizer_runtime::pending(&mut client, self.campaign, next_period)?
+        } else {
+            None
+        };
+        let candidate = self
+            .session
+            .prepare_advance_with_organizer(actions, pending.as_ref())?;
         let adjudicated = Instant::now();
         let identity = *candidate.identity();
         let mut diagnostic = crate::CommittedTickReceipt::from_material_candidate(&candidate)?;
@@ -565,6 +617,11 @@ impl DurableMaterialRuntime {
         if durable != self.session.completed_tick() {
             return Err(MaterialRuntimeError::TailConflict);
         }
+        if crate::organizer_runtime::pending(&mut tx, self.campaign, identity.resolve_tick())?
+            != pending
+        {
+            return Err(MaterialRuntimeError::TailConflict);
+        }
         let tick_sql =
             i64::try_from(identity.resolve_tick()).map_err(|_| MaterialRuntimeError::Bounds)?;
         insert_typed_tick_pre_marker_rows(
@@ -576,6 +633,17 @@ impl DurableMaterialRuntime {
             identity.tick_content_hash(),
         )?;
         tx.execute("INSERT INTO babylon_state.material_tick_v3 (campaign_id,resolve_tick,identity_bytes,register_bytes,receipt_bytes) VALUES ($1::uuid,$2,$3,$4,$5)",&[self.campaign.as_uuid(),&tick_sql,&identity.canonical_bytes(),&candidate.material().register().canonical_bytes(),&candidate.material().receipt_bytes()])?;
+        crate::organizer_archive::insert_projection(
+            &mut tx,
+            self.campaign,
+            candidate.material().register(),
+        )?;
+        if let Some(pending) = &pending {
+            let affected = tx.execute("UPDATE babylon_state.organizer_command_v1 SET consumed_period=$3 WHERE campaign_id=$1 AND nonce=$2 AND consumed_period IS NULL", &[self.campaign.as_uuid(), &&pending.command.nonce[..], &tick_sql])?;
+            if affected != 1 {
+                return Err(MaterialRuntimeError::TailConflict);
+            }
+        }
         crate::metadata::advance_campaign_catalog_tick(
             &mut tx,
             self.campaign,
@@ -915,6 +983,49 @@ fn read_stored_material_tick(
     )
 }
 
+/// Authenticate one requested Archive period against the existing committed
+/// envelope and captured foundation, without replaying or restoring history.
+pub(crate) fn read_archive_organizer_register(
+    client: &mut impl GenericClient,
+    campaign: CampaignId,
+    receipt: &crate::PendingArchiveReceipt,
+) -> Result<Option<MaterialWorldRegister>, MaterialRuntimeError> {
+    let Some(row) = client.query_opt(
+        "SELECT foundation_sha256 FROM babylon_state.material_campaign_foundation_v2 WHERE campaign_id=$1",
+        &[campaign.as_uuid()],
+    )? else {
+        return Ok(None);
+    };
+    let digest = row
+        .try_get::<_, Vec<u8>>(0)?
+        .try_into()
+        .map_err(|_| MaterialRuntimeError::FoundationMismatch)?;
+    let foundation = hydrate_material_foundation(client, campaign, digest)?;
+    if foundation.register.organizer_config().is_none() {
+        return Ok(None);
+    }
+    let scope = foundation
+        .graph
+        .stable_graph_state()
+        .map_err(MaterialReplayError::Graph)?
+        .scenario_scope()
+        .to_owned();
+    let components = MaterialComponentIdentity::from_foundation(&foundation.graph_foundation);
+    let stored = read_authenticated_material_tick(
+        client,
+        StoredTickReadSource::Runtime,
+        campaign,
+        receipt.resolve_tick(),
+        &scope,
+        digest,
+        &components,
+    )?;
+    if stored.identity.tick_content_hash().as_bytes() != receipt.tick_content_hash() {
+        return Err(MaterialRuntimeError::InvalidCheckpoint);
+    }
+    Ok(Some(stored.register))
+}
+
 fn read_authenticated_material_tick(
     client: &mut impl GenericClient,
     source: StoredTickReadSource,
@@ -928,7 +1039,10 @@ fn read_authenticated_material_tick(
     if stored.identity.foundation_digest() != foundation_digest {
         return Err(MaterialRuntimeError::InvalidCheckpoint);
     }
-    validate_component_identity(client, source, campaign, tick, components, &stored.sections)?;
+    validate_component_identity(client, source, campaign, tick, components, &stored)?;
+    if source == StoredTickReadSource::Runtime {
+        crate::organizer_archive::validate_projection(client, campaign, &stored.register)?;
+    }
     Ok(stored)
 }
 
@@ -984,15 +1098,91 @@ fn read_stored_material_tick_rows(
         events: events.decoded,
     })
 }
+// Only runtime authority can authenticate organizer inputs. The player uses
+// the restricted projection; no observer SQL view acquires private input access.
+fn authenticated_organizer_actions(
+    client: &mut impl GenericClient,
+    source: StoredTickReadSource,
+    campaign: CampaignId,
+    tick: u64,
+    components: &MaterialComponentIdentity,
+    stored: &StoredMaterialTick,
+) -> Result<Option<OrderedPracticeActionBatch>, MaterialRuntimeError> {
+    let register = &stored.register;
+    let Some(config) = register.organizer_config() else {
+        return Ok(None);
+    };
+    if source != StoredTickReadSource::Runtime {
+        return Err(MaterialRuntimeError::OrganizerObserverProjectionRefused);
+    }
+    let previous_tick = tick
+        .checked_sub(1)
+        .ok_or(MaterialRuntimeError::InvalidCheckpoint)?;
+    let opening = if previous_tick == 0 {
+        babylon_practice_contract::initial_organizer_state(config)
+            .map_err(|_| MaterialRuntimeError::InvalidCheckpoint)?
+    } else {
+        let previous = read_stored_material_tick_rows(
+            client,
+            source,
+            campaign,
+            previous_tick,
+            stored.graph.scenario_scope(),
+        )?;
+        components.validate_sections(&previous.sections)?;
+        if previous.identity.foundation_digest() != stored.identity.foundation_digest()
+            || previous.register.organizer_config() != Some(config)
+        {
+            return Err(MaterialRuntimeError::InvalidCheckpoint);
+        }
+        previous
+            .register
+            .organizer_state()
+            .cloned()
+            .ok_or(MaterialRuntimeError::InvalidCheckpoint)?
+    };
+    let commitment = crate::organizer_runtime::pending(client, campaign, tick)?;
+    if let Some(input) = &commitment {
+        let consumed: Option<i64> = client.query_one(
+            "SELECT consumed_period FROM babylon_state.organizer_command_v1 WHERE campaign_id=$1 AND nonce=$2",
+            &[campaign.as_uuid(), &&input.command.nonce[..]],
+        )?.get(0);
+        if consumed.and_then(|period| u64::try_from(period).ok()) != Some(tick) {
+            return Err(MaterialRuntimeError::InvalidCheckpoint);
+        }
+    }
+    let receipt = register
+        .organizer_state()
+        .and_then(|state| {
+            state.receipts.iter().find(|receipt| {
+                receipt.actor_id == config.controlled_actor_id && receipt.period == tick
+            })
+        })
+        .ok_or(MaterialRuntimeError::InvalidCheckpoint)?;
+    if receipt.commitment_id != commitment.as_ref().map(|input| input.commitment_id) {
+        return Err(MaterialRuntimeError::InvalidCheckpoint);
+    }
+    babylon_practice_contract::organizer_action_batch(
+        config,
+        &opening,
+        commitment.as_ref(),
+        components.session_id().clone(),
+    )
+    .map(Some)
+    .map_err(|_| MaterialRuntimeError::InvalidCheckpoint)
+}
+
 fn validate_component_identity(
     client: &mut impl GenericClient,
     source: StoredTickReadSource,
     campaign: CampaignId,
     tick: u64,
     components: &MaterialComponentIdentity,
-    sections: &[Vec<u8>],
+    stored: &StoredMaterialTick,
 ) -> Result<(), MaterialRuntimeError> {
-    components.validate_sections(sections)?;
+    components.validate_sections(&stored.sections)?;
+    let accepted =
+        authenticated_organizer_actions(client, source, campaign, tick, components, stored)?;
     let tick_sql = i64::try_from(tick).map_err(|_| MaterialRuntimeError::Bounds)?;
     let row = client
         .query_opt(
@@ -1009,6 +1199,7 @@ fn validate_component_identity(
         row.try_get(0)?,
         &row.try_get::<_, Vec<u8>>(1)?,
         &row.try_get::<_, Vec<u8>>(2)?,
+        accepted.as_ref(),
     )
 }
 

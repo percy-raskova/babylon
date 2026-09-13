@@ -8,10 +8,15 @@ use babylon_material_circuit::{
     advance_material_circuit, decode_material_circuit_state, encode_material_circuit_state,
     MaterialCircuitError, MaterialCircuitState, MaterialCircuitTransition,
 };
+use babylon_practice_contract::{
+    decode_organizer_config, decode_organizer_state, encode_organizer_config,
+    encode_organizer_state, OrganizerConfig, OrganizerError, OrganizerState,
+    OrganizerWorkplaceFacts,
+};
 
 mod maintenance_receipt;
 
-const REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v3\0";
+const REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v4\0";
 const NOMINAL_DOMAIN: &[u8] = b"babylon.nominal-material-world.v3\0";
 const RECEIPT_DOMAIN: &[u8] = b"babylon.material-tick-receipts.v5\0";
 /// Shared identity ceiling inherited by the aggregate replay envelope.
@@ -22,6 +27,7 @@ pub const MAX_MATERIAL_WORLD_REGISTER_BYTES: usize = 67_108_864;
 pub struct MaterialWorldRegister {
     completed_tick: u64,
     state: MaterialCircuitState,
+    organizer: Option<(OrganizerConfig, OrganizerState)>,
     canonical_bytes: Vec<u8>,
     digest: [u8; 32],
 }
@@ -35,6 +41,7 @@ pub enum MaterialWorldError {
     ByteLimit,
     Allocation,
     Wire,
+    Organizer(OrganizerError),
 }
 impl std::fmt::Display for MaterialWorldError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -47,6 +54,11 @@ impl From<MaterialCircuitError> for MaterialWorldError {
         Self::Circuit(error)
     }
 }
+impl From<OrganizerError> for MaterialWorldError {
+    fn from(error: OrganizerError) -> Self {
+        Self::Organizer(error)
+    }
+}
 
 impl MaterialWorldRegister {
     /// Own and validate the full opening state for the next four-week interval.
@@ -55,6 +67,14 @@ impl MaterialWorldRegister {
     pub fn try_new(
         completed_tick: u64,
         state: MaterialCircuitState,
+    ) -> Result<Self, MaterialWorldError> {
+        Self::build(completed_tick, state, None)
+    }
+
+    fn build(
+        completed_tick: u64,
+        state: MaterialCircuitState,
+        organizer: Option<(OrganizerConfig, OrganizerState)>,
     ) -> Result<Self, MaterialWorldError> {
         if completed_tick
             .checked_add(1)
@@ -65,14 +85,37 @@ impl MaterialWorldRegister {
         }
         let state_bytes = encode_material_circuit_state(&state)?;
         let state = decode_material_circuit_state(&state_bytes)?;
+        let mut organizer_bytes = Vec::new();
+        match &organizer {
+            None => organizer_bytes.push(0),
+            Some((config, state)) => {
+                babylon_practice_contract::validate_organizer_pair(config, state)?;
+                if state.period != completed_tick {
+                    return Err(MaterialWorldError::PeriodMismatch);
+                }
+                organizer_bytes.push(1);
+                for bytes in [
+                    encode_organizer_config(config)?,
+                    encode_organizer_state(state)?,
+                ] {
+                    organizer_bytes.extend_from_slice(
+                        &u64::try_from(bytes.len())
+                            .map_err(|_| MaterialWorldError::ByteLimit)?
+                            .to_be_bytes(),
+                    );
+                    organizer_bytes.extend_from_slice(&bytes);
+                }
+            }
+        }
         let length = REGISTER_DOMAIN
             .len()
             .checked_add(20)
             .and_then(|count| count.checked_add(state_bytes.len()))
+            .and_then(|count| count.checked_add(organizer_bytes.len()))
             .ok_or(MaterialWorldError::Arithmetic)?;
         let mut bytes = bounded_bytes(length)?;
         bytes.extend_from_slice(REGISTER_DOMAIN);
-        bytes.extend_from_slice(&3_u32.to_be_bytes());
+        bytes.extend_from_slice(&4_u32.to_be_bytes());
         bytes.extend_from_slice(&completed_tick.to_be_bytes());
         bytes.extend_from_slice(
             &u64::try_from(state_bytes.len())
@@ -80,13 +123,36 @@ impl MaterialWorldRegister {
                 .to_be_bytes(),
         );
         bytes.extend_from_slice(&state_bytes);
+        bytes.extend_from_slice(&organizer_bytes);
         let digest = sha256_of(&bytes);
         Ok(Self {
             completed_tick,
             state,
+            organizer,
             canonical_bytes: bytes,
             digest,
         })
+    }
+
+    /// Bind captured organizer content and complete state into this world identity.
+    /// # Errors
+    /// Refuses invalid content/state, mismatched periods, or aggregate byte limits.
+    pub fn with_organizer(
+        self,
+        config: OrganizerConfig,
+        state: OrganizerState,
+    ) -> Result<Self, MaterialWorldError> {
+        Self::build(self.completed_tick, self.state, Some((config, state)))
+    }
+
+    #[must_use]
+    pub fn organizer_config(&self) -> Option<&OrganizerConfig> {
+        self.organizer.as_ref().map(|(config, _)| config)
+    }
+
+    #[must_use]
+    pub fn organizer_state(&self) -> Option<&OrganizerState> {
+        self.organizer.as_ref().map(|(_, state)| state)
     }
     #[must_use]
     pub const fn completed_tick(&self) -> u64 {
@@ -117,7 +183,7 @@ impl MaterialWorldRegister {
             return Err(MaterialWorldError::Wire);
         }
         let start = REGISTER_DOMAIN.len();
-        if bytes[start..start + 4] != 3_u32.to_be_bytes() {
+        if bytes[start..start + 4] != 4_u32.to_be_bytes() {
             return Err(MaterialWorldError::Wire);
         }
         let tick = u64::from_be_bytes(
@@ -131,10 +197,27 @@ impl MaterialWorldRegister {
                 .map_err(|_| MaterialWorldError::Wire)?,
         ))
         .map_err(|_| MaterialWorldError::ByteLimit)?;
-        if header.checked_add(length) != Some(bytes.len()) {
-            return Err(MaterialWorldError::Wire);
-        }
-        let register = Self::try_new(tick, decode_material_circuit_state(&bytes[header..])?)?;
+        let state_end = header
+            .checked_add(length)
+            .ok_or(MaterialWorldError::ByteLimit)?;
+        let state_bytes = bytes
+            .get(header..state_end)
+            .ok_or(MaterialWorldError::Wire)?;
+        let mut remaining = bytes.get(state_end..).ok_or(MaterialWorldError::Wire)?;
+        let organizer = match remaining.split_first() {
+            Some((0, [])) => None,
+            Some((1, tail)) => {
+                remaining = tail;
+                let config = decode_organizer_config(take_organizer_section(&mut remaining)?)?;
+                let state = decode_organizer_state(take_organizer_section(&mut remaining)?)?;
+                if !remaining.is_empty() {
+                    return Err(MaterialWorldError::Wire);
+                }
+                Some((config, state))
+            }
+            _ => return Err(MaterialWorldError::Wire),
+        };
+        let register = Self::build(tick, decode_material_circuit_state(state_bytes)?, organizer)?;
         if register.canonical_bytes != bytes {
             return Err(MaterialWorldError::Wire);
         }
@@ -160,6 +243,10 @@ impl MaterialWorldRegister {
             return Err(MaterialWorldError::PeriodMismatch);
         }
         let receipts = encode_material_receipts(self.state.period, &transition)?;
+        let organizer_facts = self
+            .organizer_config()
+            .map(|config| organizer_workplace_facts(config, &self.state, &transition))
+            .transpose()?;
         let next = self
             .completed_tick
             .checked_add(1)
@@ -169,6 +256,7 @@ impl MaterialWorldRegister {
             prior_digest: self.digest,
             register,
             receipt_bytes: receipts,
+            organizer_facts,
         })
     }
 }
@@ -179,8 +267,26 @@ pub struct PreparedMaterialWorld {
     prior_digest: [u8; 32],
     register: MaterialWorldRegister,
     receipt_bytes: Vec<u8>,
+    organizer_facts: Option<OrganizerWorkplaceFacts>,
 }
 impl PreparedMaterialWorld {
+    #[must_use]
+    pub fn organizer_workplace_facts(&self) -> Option<&OrganizerWorkplaceFacts> {
+        self.organizer_facts.as_ref()
+    }
+
+    pub(crate) fn set_organizer(
+        &mut self,
+        config: OrganizerConfig,
+        state: OrganizerState,
+    ) -> Result<(), MaterialWorldError> {
+        self.register = MaterialWorldRegister::build(
+            self.register.completed_tick,
+            self.register.state.clone(),
+            Some((config, state)),
+        )?;
+        Ok(())
+    }
     #[must_use]
     pub const fn prior_digest(&self) -> [u8; 32] {
         self.prior_digest
@@ -197,6 +303,69 @@ impl PreparedMaterialWorld {
     pub fn into_register(self) -> MaterialWorldRegister {
         self.register
     }
+}
+
+fn take_organizer_section<'a>(remaining: &mut &'a [u8]) -> Result<&'a [u8], MaterialWorldError> {
+    let prefix = remaining.get(..8).ok_or(MaterialWorldError::Wire)?;
+    let length = usize::try_from(u64::from_be_bytes(
+        prefix.try_into().map_err(|_| MaterialWorldError::Wire)?,
+    ))
+    .map_err(|_| MaterialWorldError::ByteLimit)?;
+    let end = 8_usize
+        .checked_add(length)
+        .ok_or(MaterialWorldError::ByteLimit)?;
+    let section = remaining.get(8..end).ok_or(MaterialWorldError::Wire)?;
+    *remaining = remaining.get(end..).ok_or(MaterialWorldError::Wire)?;
+    Ok(section)
+}
+
+fn organizer_workplace_facts(
+    config: &OrganizerConfig,
+    opening: &MaterialCircuitState,
+    transition: &MaterialCircuitTransition,
+) -> Result<OrganizerWorkplaceFacts, MaterialWorldError> {
+    let process_id = babylon_material_circuit::ProcessId::from_bytes(config.workplace_process_id);
+    let output = opening
+        .process_outputs
+        .iter()
+        .find(|row| row.process_id == process_id)
+        .ok_or(MaterialWorldError::Wire)?;
+    let produced_batches = transition
+        .production
+        .iter()
+        .find(|row| row.process_id == process_id)
+        .map_or(0, |receipt| receipt.produced_batches);
+    let labor = opening
+        .labor_coefficients
+        .iter()
+        .find(|row| row.process_id == process_id)
+        .ok_or(MaterialWorldError::Wire)?;
+    let maintenance = transition
+        .maintenance
+        .as_ref()
+        .filter(|row| row.binding.consumer_process_id == process_id)
+        .ok_or(MaterialWorldError::Wire)?;
+    let mass = opening
+        .freight_mass_coefficients
+        .iter()
+        .find(|row| row.good_id == output.good_id && row.unit_id == output.unit_id)
+        .ok_or(MaterialWorldError::Wire)?;
+    if mass.grams_per_unit != 1_000 {
+        return Err(MaterialWorldError::Wire);
+    }
+    Ok(OrganizerWorkplaceFacts {
+        period: opening.period,
+        workplace_id: config.workplace_id,
+        performed_labor_hours: produced_batches
+            .checked_mul(labor.quantity_per_batch)
+            .ok_or(MaterialWorldError::Arithmetic)?,
+        output_kg: produced_batches
+            .checked_mul(output.quantity_per_batch)
+            .ok_or(MaterialWorldError::Arithmetic)?,
+        maintenance_enabled_batches: maintenance.opening_service_batches,
+        maintenance_consumed_batches: maintenance.consumed_service_batches,
+        maintenance_expired_batches: maintenance.expired_service_batches,
+    })
 }
 
 /// Successor nominal identity, binding both the graph world's identity and material state.

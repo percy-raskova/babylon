@@ -6,6 +6,7 @@
 
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
+use bevy::window::{PrimaryWindow, WindowCloseRequested};
 
 use crate::cli::CliCommand;
 use crate::dossier::{run_headless_command, HeadlessInvocation};
@@ -58,6 +59,7 @@ pub fn build_app(mode: AppMode) -> Result<App, String> {
                         ..default()
                     })
                     .set(WindowPlugin {
+                        close_when_requested: false,
                         primary_window: Some(Window {
                             title: "Babylon — The Fall of America".into(),
                             resolution: (1366, 768).into(),
@@ -80,6 +82,7 @@ pub fn build_app(mode: AppMode) -> Result<App, String> {
                 .add_plugins(crate::observer_audio::ObserverAudioPlugin)
                 .add_plugins(crate::campaign_browser::CampaignBrowserPlugin)
                 .add_plugins(crate::observer_history::ObserverHistoryPlugin)
+                .add_plugins(crate::organizer::OrganizerPlugin)
                 .add_plugins(crate::observer_performance::ObserverPerformancePlugin)
                 // The card and telemetry consume the same scoped Archive resources.
                 .add_plugins(ui::dossier_card::DossierCardPlugin)
@@ -87,7 +90,8 @@ pub fn build_app(mode: AppMode) -> Result<App, String> {
                 .insert_resource(crate::production::PrimaryView::Map)
                 .insert_resource(session)
                 .insert_resource(ui::dossier_card::DossierCampaignId(campaign_id))
-                .insert_resource(ClearColor(crate::observer_theme::INK));
+                .insert_resource(ClearColor(crate::observer_theme::INK))
+                .add_systems(PreUpdate, forward_native_close);
         }
         AppMode::Headless {
             command,
@@ -110,11 +114,52 @@ pub fn build_app(mode: AppMode) -> Result<App, String> {
     Ok(app)
 }
 
+// Closing the desktop window follows the same draft flush and acknowledged
+// runtime shutdown as Quit. The window stays alive until that path emits AppExit.
+fn forward_native_close(
+    mut requests: MessageReader<WindowCloseRequested>,
+    primary: Query<Entity, With<PrimaryWindow>>,
+    mut commands: MessageWriter<crate::observer_ui::ObserverCommand>,
+) {
+    let mut close_primary = false;
+    for request in requests.read() {
+        close_primary |= primary.contains(request.window);
+    }
+    if close_primary {
+        commands.write(crate::observer_ui::ObserverCommand::Quit);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::cli::CliCommand;
     use uuid::Uuid;
+
+    #[test]
+    fn native_close_forwards_one_quit_and_keeps_the_window_until_shutdown() {
+        use crate::observer_ui::ObserverCommand;
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .add_message::<WindowCloseRequested>()
+            .add_message::<ObserverCommand>()
+            .add_systems(PreUpdate, forward_native_close);
+        let window = app.world_mut().spawn(PrimaryWindow).id();
+        let other = app.world_mut().spawn_empty().id();
+        for target in [other, window, window] {
+            app.world_mut()
+                .write_message(WindowCloseRequested { window: target });
+        }
+        app.update();
+        assert_eq!(
+            app.world_mut()
+                .resource_mut::<Messages<ObserverCommand>>()
+                .drain()
+                .collect::<Vec<_>>(),
+            [ObserverCommand::Quit]
+        );
+        assert!(app.world().get_entity(window).is_ok());
+    }
 
     #[test]
     fn invalid_initial_target_refuses_before_window_construction() {

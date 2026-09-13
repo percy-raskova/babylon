@@ -6,6 +6,7 @@ mod budget;
 mod codec;
 mod intent;
 mod ordered_action;
+mod organizer;
 mod resource;
 #[allow(clippy::unreadable_literal)]
 mod schema;
@@ -19,6 +20,7 @@ pub use budget::{compute_budget_delta, read_action_budget, write_action_budget};
 pub use codec::{budget_delta_digest, decode_budget_delta, encode_budget_delta};
 pub use intent::*;
 pub use ordered_action::*;
+pub use organizer::*;
 pub use resource::*;
 pub use schema::*;
 pub use strike::*;

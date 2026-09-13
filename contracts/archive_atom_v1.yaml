@@ -45,6 +45,8 @@ constants:
   atom_domain_ascii_nul: babylon.semantic-archive-atom.v1
   county_kind_tag_u8: 1
   place_kind_tag_u8: 2
+  workplace_kind_tag_u8: 4
+  organization_kind_tag_u8: 5
   concept_kind_tag_u8: 3
   observed_tag_u8: 1
   derived_tag_u8: 2

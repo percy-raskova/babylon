@@ -32,6 +32,9 @@ fn observer_app() -> App {
     let mut app = App::new();
     app.add_plugins((
         MinimalPlugins,
+        bevy::input::InputPlugin,
+        bevy::input_focus::InputDispatchPlugin,
+        bevy::input_focus::tab_navigation::TabNavigationPlugin,
         AssetPlugin::default(),
         ImagePlugin::default(),
         bevy::text::TextPlugin,
@@ -43,7 +46,8 @@ fn observer_app() -> App {
         },
         bevy::picking::DefaultPickingPlugins,
     ));
-    // Mirror app.rs's visual composition. IO is supplied by an immutable,
+    // Mirror app.rs's visual composition and the Bevy focus plugins installed
+    // by ObserverFocusPlugin. IO is supplied by an immutable,
     // historical read fixture; audio settings need no device. There is no
     // runtime pipe, credential lookup, gameplay session, or database writer.
     app.add_plugins(babylon_client::visual_assets::VisualAssetsPlugin)
@@ -53,6 +57,7 @@ fn observer_app() -> App {
         .add_plugins(babylon_client::production::ProductionPlugin)
         .add_plugins(babylon_client::campaign_browser::CampaignBrowserPlugin)
         .add_plugins(babylon_client::observer_history::ObserverHistoryPlugin)
+        .add_plugins(babylon_client::organizer::OrganizerPlugin)
         .add_plugins(babylon_client::ui::dossier_card::DossierCardPlugin)
         .add_plugins(babylon_client::session_log::SessionLogPlugin)
         .init_resource::<babylon_client::observer_audio::ObserverAudioSettings>()
@@ -393,6 +398,7 @@ fn every_shipped_visual_entity_declares_a_manifest_surface() {
         SurfaceId::CountyDossier,
         SurfaceId::ObserverShell,
         SurfaceId::ObserverProduction,
+        SurfaceId::OrganizerWorkspace,
     ]);
     assert_eq!(observer_ids, observer_surfaces);
     assert_eq!(observer_ids, SurfaceId::ALL.into_iter().collect());
@@ -460,12 +466,13 @@ fn visual_surface_ids(world: &mut World) -> HashSet<SurfaceId> {
 }
 
 #[test]
-fn current_client_cannot_claim_a_gameplay_gate() {
+fn observer_surfaces_do_not_inherit_the_bounded_organizer_action_contract() {
     assert!(
         SHIPPED_SURFACE_MANIFEST
             .iter()
+            .filter(|contract| contract.id != SurfaceId::OrganizerWorkspace)
             .all(|contract| !contract.satisfies_gameplay_gate()),
-        "the current Bevy client is an administrative viewer with no player action"
+        "observer surfaces must remain distinct from the bounded organizer campaign"
     );
 }
 

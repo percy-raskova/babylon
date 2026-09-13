@@ -501,6 +501,7 @@ pub fn encode_tick_payload(
             committed_events,
             choice_receipts,
             audit_receipts,
+            action_outcomes: &[],
             resolver,
         },
     )
@@ -508,22 +509,20 @@ pub fn encode_tick_payload(
 
 pub(crate) fn encode_tick_payload_for_prepared(
     prepared: &PreparedRules,
-    outcomes: &[(String, usize)],
-    reported_fired: usize,
-    committed_events: &[CommittedEvent],
-    choice_receipts: &[ChoiceReceipt],
-    audit_receipts: &[AuditReceipt],
+    report: &crate::TickReport,
+    action_outcomes: &[babylon_practice_contract::OrganizerReceipt],
     resolver: &StableElementResolver,
 ) -> Result<TickPayload, ReplayTickIdentityError> {
     encode_tick_payload_with_order(
         prepared.rules.len(),
         prepared.rules.iter().map(|(rule_id, _)| rule_id.as_str()),
         TickPayloadEvidence {
-            outcomes,
-            reported_fired,
-            committed_events,
-            choice_receipts,
-            audit_receipts,
+            outcomes: &report.per_rule_fired,
+            reported_fired: report.fired,
+            committed_events: &report.committed_events,
+            choice_receipts: &report.choice_receipts,
+            audit_receipts: &report.audit_receipts,
+            action_outcomes,
             resolver,
         },
     )
@@ -535,6 +534,7 @@ struct TickPayloadEvidence<'a> {
     committed_events: &'a [CommittedEvent],
     choice_receipts: &'a [ChoiceReceipt],
     audit_receipts: &'a [AuditReceipt],
+    action_outcomes: &'a [babylon_practice_contract::OrganizerReceipt],
     resolver: &'a StableElementResolver,
 }
 
@@ -549,6 +549,7 @@ fn encode_tick_payload_with_order<'a>(
         committed_events,
         choice_receipts,
         audit_receipts,
+        action_outcomes,
         resolver,
     } = evidence;
     if expected_len != outcomes.len()
@@ -575,7 +576,8 @@ fn encode_tick_payload_with_order<'a>(
         .iter()
         .map(CommittedEvent::sink_record)
         .collect::<Vec<_>>();
-    let sections = encode_tick_payload_sections(outcomes, &sink_events, audit_receipts, resolver)?;
+    let sections = encode_tick_payload_sections(outcomes, &sink_events, audit_receipts, resolver)?
+        .with_action_outcomes(action_outcomes)?;
     let event_section = encode_committed_event_section(committed_events, sections.events())?;
     let choice_receipt_section = encode_choice_receipt_section(choice_receipts)?;
     let event_section_digest = sha256_of(&event_section);

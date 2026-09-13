@@ -38,6 +38,7 @@ DEV_INTEGRATION_TARGETS: Final = {
         "causal_contract_conformance",
         "replay_session",
         "staffed_material_replay",
+        "organizer_replay",
         "probability_projection_contract",
     ),
     "babylon-persistence": (

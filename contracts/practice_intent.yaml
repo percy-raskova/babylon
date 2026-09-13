@@ -3,7 +3,7 @@ meta:
   schema_version: 2
   status: accepted
   evidence_class: Designed
-  live_activation: false
+  live_activation: bounded_organizer_only_ADR262
   rust_owner: babylon-practice-contract
 
 depends_on:
@@ -66,6 +66,7 @@ practice_ids:
   OCCUPATION: 6
   DAMAGE: 7
   CAPITAL_STRIKE: 8
+  INVESTIGATE: 9
 
 target_tags:
   SOCIAL_CLASS: 1
@@ -80,10 +81,12 @@ target_tags:
   CREDIT_COMMITMENT: 10
   PROCUREMENT_COMMITMENT: 11
   PRODUCTION_COMMITMENT: 12
+  ORGANIZATION: 13
 
 target_allowlists:
   ORGANIZE:
     - SOCIAL_CLASS
+    - ORGANIZATION
   AGITATE:
     - SOCIAL_CLASS
   MUTUAL_AID:
@@ -107,15 +110,34 @@ target_allowlists:
     - PROCUREMENT_COMMITMENT
     - PRODUCTION_COMMITMENT
 
+  INVESTIGATE:
+    - FACILITY
+
 parameter_contract:
   representation_ceiling: 16
   value_byte_ceiling: 256
-  semantic_allowlists: empty
+  semantic_allowlists:
+    INVESTIGATE:
+      exact_count: 1
+      key: 1
+      value_kind: 1
+      value_length: 1
+      values: {work_lost: 1, maintenance_received: 2}
+    ORGANIZE:
+      empty: independent_contact_response_or_other_inactive_contract
+      organizer_command:
+        exact_count: 1
+        key: 2
+        value_kind: 1
+        value_length: 1
+        values: {reinforce: 1, hold: 2, pause_standing: 3, resume_standing: 4, saved_standing_contact: 5}
+    saved_standing_contact_origin: engine_derived_only_no_player_choice
+    other_practices: empty_only
   refusal: intent_parameter_unsupported
   rationale: >-
-    current proposals name a target, evidence, authority, content, and resource
-    contract. Material magnitudes and participant decisions belong to their
-    versioned resource and participant resolvers, not opaque intent values.
+    Inquiry selects one bounded workplace report; organizer control parameters
+    bind each ruling including zero-hour controls into canonical replay input.
+    Costs remain in captured content and the shared resource contract.
   strike_participation_or_withholding_parameter: forbidden
 
 limits:
@@ -185,13 +207,12 @@ excluded_surfaces:
   - material connection or practice eligibility
   - worker participation or labor withholding
   - BSL effect or graph mutation
-  - persistence, receipt, Archive, or Bevy action
-  - gameplay activation
+  - general intervention activation beyond the bounded organizer successor
 
 evidence_projection:
   parameter_digest_domain: babylon.practice-parameter-bytes.v1
-  parameter_preimage: domain_nul_then_canonical_parameter_count_u16_be
-  parameter_allowlist: empty_for_every_current_practice
+  parameter_preimage: domain_nul_then_count_u16_be_then_key_u8_kind_u8_length_u16_be_exact_value_bytes
+  parameter_allowlist: exact_semantic_allowlists_above
   fixed_target_digest_domain: babylon.fixed-target-selection.v2
   fixed_target_preimage: domain_nul_then_target_tag_u8_then_stable_identity_32_bytes
   preregistration: quoted_resource_contract_digest_must_equal_preregistered_digest

@@ -1,0 +1,19 @@
+  ; Designed fictional collective and independent contact groups. These bodies
+  ; are explicit participant commitments, not inferred industrial membership.
+  (node wayne-organizing-collective NodeType/ORGANIZATION
+    (organization/kind OrgKind/CIVIL_SOCIETY) (organization/county-fips 26163))
+  (node wayne-workplace-committee NodeType/ORGANIZATION
+    (organization/kind OrgKind/CIVIL_SOCIETY) (organization/county-fips 26163))
+  (node wayne-neighborhood-contact-group NodeType/ORGANIZATION
+    (organization/kind OrgKind/CIVIL_SOCIETY) (organization/county-fips 26163))
+  (node wayne-collective-contributors NodeType/PARTICIPANT_BODY)
+  (node wayne-workplace-contributors NodeType/PARTICIPANT_BODY)
+  (node wayne-neighborhood-contributors NodeType/PARTICIPANT_BODY)
+  (hyperedge collective-participant-body HyperedgeType/ORGANIZATION_BODY
+    (members wayne-organizing-collective wayne-collective-contributors))
+  (hyperedge workplace-participant-body HyperedgeType/ORGANIZATION_BODY
+    (members wayne-workplace-committee wayne-workplace-contributors))
+  (hyperedge neighborhood-participant-body HyperedgeType/ORGANIZATION_BODY
+    (members wayne-neighborhood-contact-group wayne-neighborhood-contributors))
+  (edge EdgeType/CONTACT wayne-organizing-collective wayne-workplace-committee 1)
+  (edge EdgeType/CONTACT wayne-organizing-collective wayne-neighborhood-contact-group 1)

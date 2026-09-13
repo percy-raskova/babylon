@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 import yaml
+from tools import ci_scope
 from tools.ci_scope import scope, verify_results
 from tools.pr_policy import DEV_CHECK_MANIFEST, MAIN_CHECK_MANIFEST
 
@@ -59,6 +61,63 @@ def test_release_events_emit_the_complete_database_matrix(tmp_path: Path, event_
         "archive",
         "reader",
         "client",
+        "organizer",
+    ]
+
+
+def test_dev_native_changes_keep_the_fast_database_smoke(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    event = tmp_path / "event.json"
+    event.write_text(
+        json.dumps(
+            {"pull_request": {"base": {"ref": "dev", "sha": "base"}, "head": {"sha": "head"}}}
+        )
+    )
+    output = tmp_path / "output"
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(event))
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    monkeypatch.setattr(sys, "argv", ["ci_scope.py"])
+    monkeypatch.setattr(
+        ci_scope.subprocess,
+        "run",
+        lambda *args, **_kwargs: subprocess.CompletedProcess(
+            args, 0, stdout=b"rust/crates/babylon-tick/tests/organizer_replay.rs\0"
+        ),
+    )
+
+    ci_scope.main()
+
+    emitted = dict(line.split("=", 1) for line in output.read_text().splitlines())
+    assert not json.loads(emitted["full"])
+    assert json.loads(emitted["rust"]) and json.loads(emitted["postgres"])
+    assert json.loads(emitted["pg-matrix"])["focus"] == ["runtime_smoke"]
+
+
+def test_weekly_database_matrix_includes_organizer_and_admits_focused_dispatch() -> None:
+    root = Path(__file__).resolve().parents[3]
+    workflow = yaml.safe_load((root / ".github/workflows/weekly-pg-integration.yml").read_text())
+    dispatch = workflow[True]["workflow_dispatch"]["inputs"]["focus"]
+    assert dispatch["default"] == "all"
+    assert dispatch["options"] == ["all", "statewide_qualified", "organizer"]
+    matrix = " ".join(workflow["jobs"]["runtime-contracts"]["strategy"]["matrix"].split())
+    focused_branches = re.findall(r"inputs.focus == '([^']+)' && '([^']+)'", matrix)
+    assert {focus: json.loads(value) for focus, value in focused_branches} == {
+        "statewide_qualified": {"focus": ["statewide_qualified"]},
+        "organizer": {"focus": ["organizer"]},
+    }
+    fallback = re.search(r"\|\| '([^']+)'\) \}\}$", matrix)
+    assert fallback is not None, "the scheduled workflow needs its complete default matrix"
+    assert json.loads(fallback.group(1))["focus"] == [
+        "runtime_smoke",
+        "reference_integrity",
+        "runtime",
+        "archive",
+        "reader",
+        "client",
+        "statewide_qualified",
+        "organizer",
     ]
 
 

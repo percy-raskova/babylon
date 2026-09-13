@@ -73,7 +73,7 @@ options:
   --campaign    open an existing canonical campaign UUID; falls back to BABYLON_CAMPAIGN_ID.
   --new-campaign create an absent campaign with this canonical UUID.
   --preset      new campaign scenario: standard (default), delayed,
-                shared-freight-ample, shared-freight-constrained, statewide-baseline, statewide-freight-constraint, statewide-packaging-shortage, statewide-both, statewide-maintenance-baseline, statewide-maintenance-labor-shortage, statewide-maintenance-parts-shortage or statewide-maintenance-both.
+                shared-freight-ample, shared-freight-constrained, statewide-baseline, statewide-freight-constraint, statewide-packaging-shortage, statewide-both, statewide-maintenance-baseline, statewide-maintenance-labor-shortage, statewide-maintenance-parts-shortage, statewide-maintenance-both or organize-in-wayne.
   Open the connected window with `mise run play`.
 ";
 
@@ -349,6 +349,7 @@ fn windowed_target(
         let preset = match preset.as_deref() {
             None | Some("standard") => RuntimeSessionPreset::Standard,
             Some("delayed") => RuntimeSessionPreset::Delayed,
+            Some("organize-in-wayne") => RuntimeSessionPreset::OrganizeInWayne,
             Some("statewide-baseline") => RuntimeSessionPreset::StatewideBaseline,
             Some("statewide-freight-constraint") => RuntimeSessionPreset::StatewideFreightConstraint,
             Some("statewide-packaging-shortage") => RuntimeSessionPreset::StatewidePackagingShortage,
@@ -362,7 +363,7 @@ fn windowed_target(
             Some(_) => {
                 return Err(CliError::at(
                     concat!(file!(), ":", line!()),
-                    "new campaign preset must be standard, delayed, shared-freight-ample, shared-freight-constrained, statewide-baseline, statewide-freight-constraint, statewide-packaging-shortage, statewide-both, statewide-maintenance-baseline, statewide-maintenance-labor-shortage, statewide-maintenance-parts-shortage or statewide-maintenance-both".into(),
+                    "new campaign preset must be standard, delayed, shared-freight-ample, shared-freight-constrained, statewide-baseline, statewide-freight-constraint, statewide-packaging-shortage, statewide-both, statewide-maintenance-baseline, statewide-maintenance-labor-shortage, statewide-maintenance-parts-shortage, statewide-maintenance-both or organize-in-wayne".into(),
                 ))
             }
         };
@@ -631,6 +632,37 @@ mod tests {
                 if campaign_id == CAMPAIGN && preset == expected
             ));
         }
+    }
+
+    #[test]
+    fn organize_in_wayne_preset_opens_the_selected_campaign() {
+        let request = parse(os(&[
+            NEW_CAMPAIGN_FLAG,
+            CAMPAIGN,
+            PRESET_FLAG,
+            "organize-in-wayne",
+        ]))
+        .expect("the native organizer preset must be selectable from the launcher");
+        assert!(matches!(
+            request,
+            CliRequest::Windowed {
+                initial_target: RuntimeSessionTarget::New {
+                    campaign_id,
+                    preset: RuntimeSessionPreset::OrganizeInWayne,
+                }
+            } if campaign_id == CAMPAIGN
+        ));
+        assert!(TOP_LEVEL_HELP.contains("organize-in-wayne"));
+        assert!(
+            parse(os(&[
+                CAMPAIGN_FLAG,
+                CAMPAIGN,
+                PRESET_FLAG,
+                "organize-in-wayne",
+            ]))
+            .is_err(),
+            "the preset cannot replace an existing campaign"
+        );
     }
 
     #[test]

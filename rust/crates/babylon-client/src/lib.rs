@@ -18,6 +18,7 @@ pub mod observer_io;
 pub(crate) mod observer_layout;
 pub mod observer_ui;
 pub(crate) mod observer_warning;
+pub mod organizer;
 pub mod palette;
 pub mod session_log;
 pub mod tessellate;

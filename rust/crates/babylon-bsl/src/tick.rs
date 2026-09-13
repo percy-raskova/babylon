@@ -755,7 +755,7 @@ fn run_tick_with_observer(
     vocabulary: Option<&crate::vocabulary::ClosedVocabulary>,
     observer: Option<&mut dyn WriteObserver>,
 ) -> Result<TickOutcome, TickError> {
-    if loaded.execution == crate::rule_pipeline::RuleExecution::MaterialCycle {
+    if loaded.execution != crate::rule_pipeline::RuleExecution::Graph {
         return Err(err(format!(
             "rule {} requires the material runtime host; the graph evaluator cannot execute material-cycle",
             loaded.contract.rule_id

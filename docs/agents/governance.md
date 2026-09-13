@@ -5,8 +5,9 @@ not a forecast and not a scientific reproduction. Theory constrains the causal m
 does not predetermine results.
 
 Determinism proves computational identity, not scientific truth. Historical
-cases test causal signatures and counterfactual behavior. The Bevy client is an
-administrative viewer with no player action.
+cases test causal signatures and counterfactual behavior. The Bevy client
+supports observer campaigns and the bounded Wayne organizer campaign. Broader
+player-agency acceptance remains open.
 
 The four executable gates are:
 

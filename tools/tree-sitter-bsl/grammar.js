@@ -68,9 +68,9 @@ const RESERVED_WORDS = [
   'defenum', 'defvocabulary', 'domain',
   'edge-between', 'edges', 'effects', 'emit', 'exists', 'field-of', 'fold',
   'for-each', 'forall', 'guard', 'hyperedges', 'hyperedges-of', 'if',
-  'intrinsic', 'manifest', 'member', 'members', 'members-of',
+  'intrinsic', 'manifest', 'material-cycle', 'member', 'members', 'members-of',
   'membership-field-of', 'metric', 'metric-of', 'neighbors', 'nodes', 'not',
-  'or', 'quantize-mass', 'remove-edge', 'remove-hyperedge', 'remove-node',
+  'or', 'organizer-products', 'organizer-practice', 'quantize-mass', 'remove-edge', 'remove-hyperedge', 'remove-node',
   'rule', 'rung',
   'scale', 'select-max', 'select-min', 'set', 'sub', 'the', 'update-edge',
   'update-hyperedge', 'update-membership', 'update-node', 'when',
@@ -116,7 +116,7 @@ module.exports = grammar({
           choice($.rule_role, $.evidence, $.material_basis, $.fuel, $.projects_kernel),
         ),
         choice(
-          seq($.anchor, $.material_cycle),
+          seq($.anchor, choice($.material_cycle, $.organizer_products, $.organizer_practice)),
           seq(
             optional($.domain),
             optional($.anchor),
@@ -145,6 +145,8 @@ module.exports = grammar({
     anchor: ($) => seq('(', 'anchor', choice(':after', ':before'), $.symbol, ')'),
 
     material_cycle: (_$) => seq('(', 'material-cycle', ')'),
+    organizer_products: (_$) => seq('(', 'organizer-products', ')'),
+    organizer_practice: (_$) => seq('(', 'organizer-practice', ')'),
 
     bindings: ($) => seq('(', 'bindings', repeat($.binding), ')'),
     when: ($) => seq('(', 'when', $._cond, ')'),

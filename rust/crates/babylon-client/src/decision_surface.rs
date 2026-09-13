@@ -15,15 +15,17 @@ pub enum SurfaceId {
     CountyDossier,
     ObserverShell,
     ObserverProduction,
+    OrganizerWorkspace,
 }
 
 impl SurfaceId {
     /// Complete closed set used by the manifest-exhaustiveness sentinel.
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 5] = [
         Self::TitleLockup,
         Self::CountyDossier,
         Self::ObserverShell,
         Self::ObserverProduction,
+        Self::OrganizerWorkspace,
     ];
 }
 
@@ -34,6 +36,7 @@ impl fmt::Display for SurfaceId {
             Self::CountyDossier => "county-dossier",
             Self::ObserverShell => "observer-shell",
             Self::ObserverProduction => "observer-production",
+            Self::OrganizerWorkspace => "organizer-workspace",
         })
     }
 }
@@ -305,6 +308,16 @@ const fn gameplay_surface(
 /// Authoritative inventory of the surfaces composed by `main.rs`.
 ///
 pub const SHIPPED_SURFACE_MANIFEST: &[DecisionSurfaceContract] = &[
+    gameplay_surface(
+        SurfaceId::OrganizerWorkspace,
+        "How should our organization use its committed time to understand lost work and sustain cooperation?",
+        &["earned period-specific reports", "committed organizer time", "attributed proposals and objections", "accepted ruling and actual practice receipts"],
+        &["partner cooperation is independent", "maintenance recovery is not political success", "report access expires", "missing knowledge is not zero"],
+        &["only the player's actor-scoped organizer projection", "historical views cannot submit", "local drafts never execute"],
+        &[SurfaceAction::available("inquiry"), SurfaceAction::available("reinforce"), SurfaceAction::available("hold"), SurfaceAction::available("configure-standing-work")],
+        &["immutable accepted commitment", "resolving-period time and partner response", "earned report provenance", "resumed or paused standing work"],
+        &["earned workplace report", "practice receipt", "county/<geoid>"],
+    ),
     DecisionSurfaceContract {
         id: SurfaceId::ObserverProduction,
         role: DecisionSurfaceRole::Observer,

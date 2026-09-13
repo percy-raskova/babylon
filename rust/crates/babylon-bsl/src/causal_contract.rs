@@ -347,6 +347,22 @@ pub const GOVERNED_RULE_ATTRIBUTIONS: &[GovernedRuleAttribution] = &[
     governed_attribution("organization/p2-territorial-relay", RuleRole::Mechanic),
     governed_attribution("organization/p3-rooted-capacity-apply", RuleRole::Mechanic),
     governed_attribution("organization/p5-command-response", RuleRole::Mechanic),
+    GovernedRuleAttribution {
+        rule_id: "organizer/organizer-practice",
+        role: RuleRole::Intent,
+        evidence: EvidenceClass::Designed,
+        owner: "Director",
+        date: "2026-09-13",
+        adr: "ADR262",
+    },
+    GovernedRuleAttribution {
+        rule_id: "organizer/organizer-products",
+        role: RuleRole::Mechanic,
+        evidence: EvidenceClass::Designed,
+        owner: "Director",
+        date: "2026-09-13",
+        adr: "ADR262",
+    },
     governed_attribution("production/p0-production-total-reset", RuleRole::Mechanic),
     governed_attribution("production/p1-direct-production", RuleRole::Mechanic),
     governed_attribution("production/p2-employed-routing", RuleRole::Mechanic),
@@ -416,6 +432,10 @@ pub enum EffectSignature {
     /// The closed invocation of the current material period. Only mechanics
     /// can own it; child staffing writes keep their native field ownership.
     MaterialCycle,
+    /// Endogenous consumption of committed contact products and lawful reports.
+    OrganizerProducts,
+    /// The bounded organizer commitment operation admitted for one exact rule.
+    OrganizerPractice,
     /// A node attribute qualified name.
     NodeField(String),
     /// An edge attribute qualified name.
@@ -448,6 +468,8 @@ pub enum AllowanceKind {
 /// A static effect key suitable for a governed constant table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AllowedEffect {
+    /// One typed operation with an independently checked organizer footprint.
+    OrganizerPractice,
     /// A node field.
     NodeField(&'static str),
     /// An edge field.
@@ -461,6 +483,7 @@ pub enum AllowedEffect {
 impl AllowedEffect {
     fn matches(self, actual: &EffectSignature) -> bool {
         match (self, actual) {
+            (Self::OrganizerPractice, EffectSignature::OrganizerPractice) => true,
             (Self::NodeField(expected), EffectSignature::NodeField(actual))
             | (Self::EdgeField(expected), EffectSignature::EdgeField(actual))
             | (Self::HyperedgeField(expected), EffectSignature::HyperedgeField(actual))
@@ -495,9 +518,19 @@ const RECOGNITION_OWNER: &str = "Director";
 const RECOGNITION_DATE: &str = "2026-08-23";
 const RECOGNITION_ADR: &str = "ADR224";
 
-/// The complete governed allowance table. External-event and intent roles
-/// have no rows and therefore cannot produce effects yet.
+/// The complete governed allowance table. External events remain default-deny;
+/// the sole intent allowance resolves the bounded organizer practice.
 pub const GOVERNED_EFFECT_ALLOWANCES: &[GovernedEffectAllowance] = &[
+    GovernedEffectAllowance {
+        rule_id: "organizer/organizer-practice",
+        role: RuleRole::Intent,
+        effect: AllowedEffect::OrganizerPractice,
+        kind: AllowanceKind::NextWeekIntent,
+        reason: "resolve one admitted practice using finite participant time and scoped earned observations",
+        owner: "Director",
+        date: "2026-09-13",
+        adr: "ADR262",
+    },
     GovernedEffectAllowance {
         rule_id: "control-ratio/c03-crisis",
         role: RuleRole::Recognizer,
@@ -915,6 +948,10 @@ fn walk_effects_with_limits(
         }
         if head == "material-cycle" {
             effects.push(EffectSignature::MaterialCycle);
+        } else if head == "organizer-products" {
+            effects.push(EffectSignature::OrganizerProducts);
+        } else if head == "organizer-practice" {
+            effects.push(EffectSignature::OrganizerPractice);
         } else if let Some(effect) = field_effect(items, head) {
             effects.push(effect);
         } else if let Some(verb) = ShapeVerb::parse(head) {
@@ -1516,7 +1553,14 @@ mod tests {
                 .expect("every allowance rule must have a governed attribution");
             assert_eq!(attribution.role, allowance.role);
             assert_ne!(attribution.role, RuleRole::Mechanic);
-            assert_eq!(attribution.evidence, EvidenceClass::Derived);
+            let expected_evidence = if allowance.rule_id == "organizer/organizer-practice" {
+                assert_eq!(allowance.effect, AllowedEffect::OrganizerPractice);
+                assert_eq!(allowance.role, RuleRole::Intent);
+                EvidenceClass::Designed
+            } else {
+                EvidenceClass::Derived
+            };
+            assert_eq!(attribution.evidence, expected_evidence);
         }
     }
 
@@ -1627,11 +1671,14 @@ mod tests {
 
     #[test]
     fn governed_allowance_rows_carry_the_required_provenance() {
-        assert_eq!(GOVERNED_EFFECT_ALLOWANCES.len(), 6);
+        assert_eq!(GOVERNED_EFFECT_ALLOWANCES.len(), 7);
         for row in GOVERNED_EFFECT_ALLOWANCES {
             assert!(!row.reason.is_empty());
             assert_eq!(row.owner, "Director");
-            if row.rule_id.starts_with("struggle/") {
+            if row.rule_id == "organizer/organizer-practice" {
+                assert_eq!(row.date, "2026-09-13");
+                assert_eq!(row.adr, "ADR262");
+            } else if row.rule_id.starts_with("struggle/") {
                 assert_eq!(row.date, "2026-09-01");
                 assert_eq!(row.adr, "ADR248");
             } else {
@@ -1643,13 +1690,13 @@ mod tests {
 
     #[test]
     fn governed_attribution_rows_carry_the_required_provenance() {
-        assert_eq!(GOVERNED_RULE_ATTRIBUTIONS.len(), 69);
+        assert_eq!(GOVERNED_RULE_ATTRIBUTIONS.len(), 71);
         assert_eq!(
             GOVERNED_RULE_ATTRIBUTIONS
                 .iter()
                 .filter(|row| row.role == RuleRole::Mechanic)
                 .count(),
-            66
+            67
         );
         assert_eq!(
             GOVERNED_RULE_ATTRIBUTIONS
@@ -1666,6 +1713,9 @@ mod tests {
             let (evidence, date, adr) = match row.rule_id {
                 "g4-workforce-staffing" => (EvidenceClass::Designed, "2026-09-05", "ADR255"),
                 "material/period" => (EvidenceClass::Designed, "2026-09-12", "ADR261"),
+                "organizer/organizer-practice" | "organizer/organizer-products" => {
+                    (EvidenceClass::Designed, "2026-09-13", "ADR262")
+                }
                 "struggle/spark-mechanic" => (EvidenceClass::Designed, "2026-09-01", "ADR248"),
                 "struggle/spark-recognizer" => (EvidenceClass::Derived, "2026-09-01", "ADR248"),
                 _ => (EvidenceClass::Derived, "2026-08-23", "ADR224"),

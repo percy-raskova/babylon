@@ -28,6 +28,7 @@ const ID_DOMAIN: &str = "babylon.michigan-material.v1";
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MichiganDeliveryPreset {
+    OrganizeInWayne,
     Standard,
     Delayed,
     SharedFreightAmple,
@@ -46,7 +47,8 @@ impl MichiganDeliveryPreset {
     pub const fn is_statewide(self) -> bool {
         matches!(
             self,
-            Self::StatewideBaseline
+            Self::OrganizeInWayne
+                | Self::StatewideBaseline
                 | Self::StatewideFreightConstraint
                 | Self::StatewidePackagingShortage
                 | Self::StatewideBoth
@@ -60,7 +62,8 @@ impl MichiganDeliveryPreset {
     pub const fn is_maintenance(self) -> bool {
         matches!(
             self,
-            Self::StatewideMaintenanceBaseline
+            Self::OrganizeInWayne
+                | Self::StatewideMaintenanceBaseline
                 | Self::StatewideMaintenanceLaborShortage
                 | Self::StatewideMaintenancePartsShortage
                 | Self::StatewideMaintenanceBoth
@@ -69,6 +72,7 @@ impl MichiganDeliveryPreset {
     #[must_use]
     pub const fn id(self) -> &'static str {
         match self {
+            Self::OrganizeInWayne => "michigan-organize-in-wayne-v1",
             Self::Standard => "michigan-material-standard-v7",
             Self::Delayed => "michigan-material-delayed-v7",
             Self::SharedFreightAmple => "michigan-material-shared-freight-ample-v7",
@@ -92,6 +96,7 @@ impl MichiganDeliveryPreset {
     #[must_use]
     pub fn from_id(id: &str) -> Option<Self> {
         [
+            Self::OrganizeInWayne,
             Self::Standard,
             Self::Delayed,
             Self::SharedFreightAmple,
@@ -137,6 +142,7 @@ fn identity(kind: &str, key: &str) -> [u8; 32] {
 #[serde(deny_unknown_fields)]
 struct MichiganCapturedContent {
     schema: String,
+    organizer: Option<babylon_practice_contract::OrganizerConfig>,
     graph_scenario_source: String,
     rule_source: String,
     observed_defines: Vec<u8>,
@@ -161,7 +167,11 @@ impl MichiganMaterialCatalog {
         path: &Path,
         preset: MichiganDeliveryPreset,
     ) -> Result<Self, MichiganDefinesError> {
-        if preset.is_maintenance() {
+        if preset == MichiganDeliveryPreset::OrganizeInWayne {
+            source::load_statewide(path)?
+                .with_bounded_maintenance()?
+                .with_wayne_organizer()
+        } else if preset.is_maintenance() {
             source::load_statewide(path)?
                 .with_bounded_maintenance()?
                 .with_preset(preset)
@@ -198,6 +208,46 @@ impl MichiganMaterialCatalog {
     /// Refuses another starting preset, missing consumer, or changed pinned repair source.
     pub fn with_bounded_maintenance(&self) -> Result<Self, MichiganDefinesError> {
         maintenance::compile(self)
+    }
+    pub(crate) fn with_wayne_organizer(&self) -> Result<Self, MichiganDefinesError> {
+        let both = self.with_preset(MichiganDeliveryPreset::StatewideMaintenanceBoth)?;
+        let mut result = Self::from_normalized(
+            both.capture.defines.clone(),
+            both.scenario.clone(),
+            MichiganDeliveryPreset::OrganizeInWayne,
+            Vec::new(),
+        )?;
+        let mut capture = result.capture.clone();
+        capture.graph_scenario_source =
+            crate::organizer_content::append_declarations(&capture.graph_scenario_source)?;
+        capture.rule_source.push_str(include_str!(
+            "../../../../content/scenarios/michigan/organizer-cycle.bsl"
+        ));
+        result = Self::capture(capture)?;
+        Ok(result)
+    }
+    pub(crate) fn with_organizer_campaign(
+        &self,
+        campaign: crate::identity::CampaignId,
+    ) -> Result<Self, MichiganDefinesError> {
+        if self.preset() != MichiganDeliveryPreset::OrganizeInWayne {
+            return Ok(self.clone());
+        }
+        let mut capture = self.capture.clone();
+        capture.organizer = Some(crate::organizer_content::config(
+            campaign,
+            &capture.defines.organizer,
+            self.processes()
+                .iter()
+                .find(|process| process.key == "26163-31-33-metal_parts")
+                .ok_or(MichiganDefinesError::Canonical)?
+                .id()
+                .as_bytes(),
+        )?);
+        Self::capture(capture)
+    }
+    pub(crate) fn organizer_config(&self) -> Option<&babylon_practice_contract::OrganizerConfig> {
+        self.capture.organizer.as_ref()
     }
     pub(crate) fn from_stored_defines(bytes: &[u8]) -> Result<Self, MichiganDefinesError> {
         if bytes.len() > MAX_MICHIGAN_CAPTURED_CONTENT_BYTES {
@@ -240,7 +290,8 @@ impl MichiganMaterialCatalog {
             };
         }
         Self::capture(MichiganCapturedContent {
-            schema: "MichiganCapturedContentV4".to_owned(),
+            schema: "MichiganCapturedContentV5".to_owned(),
+            organizer: None,
             graph_scenario_source,
             rule_source: include_str!("../../../../content/scenarios/michigan/material-cycle.bsl")
                 .to_owned(),
@@ -263,7 +314,7 @@ impl MichiganMaterialCatalog {
         {
             return Err(Material(MichiganMaterialError::Bound));
         }
-        if capture.schema != "MichiganCapturedContentV4" {
+        if capture.schema != "MichiganCapturedContentV5" {
             return Err(MichiganDefinesError::Canonical);
         }
         validate::canonicalize(&mut capture.normalized, &mut capture.interventions);

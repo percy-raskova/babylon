@@ -381,7 +381,7 @@ The freight and packaging protocol selections are ``statewide-baseline``,
 ``statewide-freight-constraint``, ``statewide-packaging-shortage``, and
 ``statewide-both``. Their content identifiers end in ``-v7``. These selections
 use the same qualified physical paths, finite orders and production parameters.
-The launcher accepts twelve labels. Statewide creation requires the pinned
+The launcher accepts thirteen labels. Statewide creation requires the pinned
 source siblings and explicit interventions. The source-backed engine experiment
 establishes the freight and packaging effects; PostgreSQL, hosted, native and
 Director acceptance require their separate evidence. ADR260 defines that
@@ -468,6 +468,43 @@ occurs afterward. Service is neither a traded good nor accumulated inventory.
 Staffing uses the larger of the current and previous period's work requests.
 Hires supply later labor. The provider has no production process or merchant
 role. These presets introduce no recurring orders, payments, or extra road routing.
+
+Designed organizer
+^^^^^^^^^^^^^^^^^^
+
+``organize-in-wayne`` uses the maintenance-both opening economy and adds the
+captured Wayne collective, workplace committee and neighborhood contact group.
+The campaign opens in the native organizer workspace. Observer selections keep
+their administrative views. All definitions require the ``[organizer]`` table;
+only the organizer selection activates these practices.
+
+.. list-table:: Organizer values, whole hours per period unless stated
+   :header-rows: 1
+   :widths: 60 40
+
+   * - Field within ``organizer``
+     - Designed value
+   * - ``PLAYER_HOURS_PER_PERIOD``
+     - ``16`` participant-hours committed to the collective
+   * - ``INQUIRY_HOURS``
+     - ``12`` hours for one bounded workplace inquiry
+   * - ``CONTACT_HOURS``
+     - ``8`` hours for workplace or neighborhood contact
+   * - ``PARTNER_HOURS_PER_PERIOD``
+     - ``8`` hours committed independently to each partner
+   * - ``PARTNER_RESPONSE_HOURS``
+     - ``2`` partner hours for a participating response
+   * - ``INITIAL_AGREEMENT_THROUGH_PERIOD``
+     - ``3``; initial report sharing includes this period
+   * - ``CONTACT_RENEWAL_PERIODS``
+     - ``2`` periods after completed contact
+
+These hours are separate participant commitments, with no conversion from
+observed jobs or industrial workforce hours. The shared allocator conserves
+contributors' time and unused hours expire. The selected inquiry question and
+standing-work command are typed; personal notes never determine effects.
+See :doc:`/how-to/organize-in-wayne` for the native route and
+``contracts/organizer_practice_v1.yaml`` for the bounded successor contract.
 
 Simulation Interval
 ~~~~~~~~~~~~~~~~~~~

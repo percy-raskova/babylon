@@ -1151,3 +1151,47 @@ CREATE TABLE babylon_meta.current_schema (
     schema_sha256 BYTEA NOT NULL CHECK (octet_length(schema_sha256) = 32)
 );
 REVOKE ALL ON babylon_meta.current_schema FROM PUBLIC;
+
+-- Immutable accepted organizer inputs. The marker transaction consumes one
+-- period's accepted input together with its authoritative register and reports.
+CREATE TABLE babylon_state.organizer_command_v1 (
+    campaign_id UUID NOT NULL REFERENCES babylon_state.campaign(campaign_id) ON DELETE CASCADE,
+    nonce BYTEA NOT NULL CHECK (octet_length(nonce)=16),
+    resolves_period BIGINT NOT NULL CHECK (resolves_period > 0),
+    command_bytes BYTEA NOT NULL CHECK (octet_length(command_bytes) BETWEEN 1 AND 8192),
+    commitment_bytes BYTEA NOT NULL CHECK (octet_length(commitment_bytes) BETWEEN 1 AND 8192),
+    commitment_sha256 BYTEA NOT NULL CHECK (octet_length(commitment_sha256)=32),
+    consumed_period BIGINT CHECK (consumed_period=resolves_period),
+    PRIMARY KEY (campaign_id,nonce),
+    UNIQUE (campaign_id,resolves_period),
+    FOREIGN KEY (campaign_id,consumed_period) REFERENCES babylon_state.tick_commit(campaign_id,resolve_tick) DEFERRABLE INITIALLY DEFERRED
+);
+CREATE TABLE babylon_state.organizer_subject_v1 (
+    campaign_id UUID NOT NULL REFERENCES babylon_state.campaign(campaign_id) ON DELETE CASCADE,
+    actor_id TEXT NOT NULL CHECK (actor_id ~ '^[1-9][0-9]{0,19}$'),
+    subject_kind TEXT NOT NULL CHECK (subject_kind IN ('workplace','organization')),
+    subject_id TEXT NOT NULL CHECK (subject_id ~ '^[1-9][0-9]{0,19}$'),
+    title TEXT NOT NULL CHECK (octet_length(title) BETWEEN 1 AND 4096),
+    PRIMARY KEY (campaign_id,actor_id,subject_kind,subject_id)
+);
+CREATE TABLE babylon_state.organizer_observation_v1 (
+    campaign_id UUID NOT NULL REFERENCES babylon_state.campaign(campaign_id) ON DELETE CASCADE,
+    observation_id BYTEA NOT NULL CHECK (octet_length(observation_id)=32),
+    actor_id TEXT NOT NULL CHECK (actor_id ~ '^[1-9][0-9]{0,19}$'),
+    subject_id TEXT NOT NULL CHECK (subject_id ~ '^[1-9][0-9]{0,19}$'),
+    observed_period BIGINT NOT NULL CHECK (observed_period >= 0),
+    acquired_period BIGINT NOT NULL CHECK (acquired_period >= observed_period),
+    observation_bytes BYTEA NOT NULL CHECK (octet_length(observation_bytes) BETWEEN 1 AND 8192),
+    PRIMARY KEY (campaign_id,observation_id)
+);
+CREATE TABLE babylon_state.organizer_receipt_v1 (
+    campaign_id UUID NOT NULL REFERENCES babylon_state.campaign(campaign_id) ON DELETE CASCADE,
+    receipt_id BYTEA NOT NULL CHECK (octet_length(receipt_id)=32),
+    actor_id TEXT NOT NULL CHECK (actor_id ~ '^[1-9][0-9]{0,19}$'),
+    resolve_tick BIGINT NOT NULL CHECK (resolve_tick >= 1),
+    receipt_bytes BYTEA NOT NULL CHECK (octet_length(receipt_bytes) BETWEEN 1 AND 8192),
+    PRIMARY KEY (campaign_id,receipt_id),
+    FOREIGN KEY (campaign_id,resolve_tick) REFERENCES babylon_state.tick_commit(campaign_id,resolve_tick) DEFERRABLE INITIALLY DEFERRED
+);
+REVOKE ALL ON babylon_state.organizer_command_v1, babylon_state.organizer_subject_v1,
+    babylon_state.organizer_observation_v1, babylon_state.organizer_receipt_v1 FROM PUBLIC;

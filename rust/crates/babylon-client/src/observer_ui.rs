@@ -112,6 +112,7 @@ pub struct ObserverUiState {
     pub network_sector: NetworkSector,
     pub archive_open: bool,
     pub reduced_motion: bool,
+    pub larger_interface: bool,
     pub menu_open: bool,
     pub splash_visible: bool,
     pub history_open: bool,
@@ -129,6 +130,7 @@ impl Default for ObserverUiState {
             network_sector: NetworkSector::default(),
             archive_open: false,
             reduced_motion: false,
+            larger_interface: false,
             menu_open: true,
             splash_visible: true,
             history_open: false,
@@ -181,6 +183,7 @@ pub enum ObserverCommand {
     Archive,
     Menu,
     NewCampaign,
+    NewOrganizerCampaign,
     NewDelayedCampaign,
     NewSharedFreightAmpleCampaign,
     NewSharedFreightConstrainedCampaign,
@@ -451,6 +454,11 @@ fn spawn_hud(commands: &mut Commands) {
                     bar,
                     "World [M]",
                     crate::production::ProductionCommand::Map,
+                );
+                crate::organizer::ui::button(
+                    bar,
+                    "Organize",
+                    crate::organizer::ui::OrganizerAction::Open,
                 );
                 button(bar, "Menu [Esc]", ObserverCommand::Menu);
             });
@@ -845,6 +853,14 @@ fn menu_column() -> Node {
 }
 
 fn menu_campaign(panel: &mut ChildSpawnerCommands) {
+    panel.spawn(block_label("Play an organization", 14.0, theme::YELLOW));
+    scoped_button(
+        panel,
+        "Organize in Wayne",
+        ObserverCommand::NewOrganizerCampaign,
+        true,
+    );
+
     panel.spawn(row()).with_children(|bar| {
         scoped_button(bar, "Continue [C]", ObserverCommand::Menu, true);
         scoped_button(
@@ -1185,6 +1201,8 @@ fn sync_focus_policy(
     menus: Query<Entity, With<ObserverMenu>>,
     warnings: Query<Entity, With<crate::observer_warning::ObserverWarningRoot>>,
     comparisons: Query<Entity, With<crate::campaign_browser::ComparisonPanel>>,
+    organizer: Option<Res<crate::organizer::OrganizerClient>>,
+    organizer_inspectors: Query<Entity, With<crate::organizer::ui::OrganizerInspectorRoot>>,
     mut policy: ResMut<ObserverFocusPolicy>,
 ) {
     policy.set_if_neq(ObserverFocusPolicy {
@@ -1195,6 +1213,12 @@ fn sync_focus_policy(
             comparisons.single().ok()
         } else if state.ui.menu_open && !state.ui.splash_visible {
             menus.single().ok()
+        } else if *state.view == crate::production::PrimaryView::Organizer
+            && organizer.as_ref().is_some_and(|client| {
+                client.inspector != crate::organizer::OrganizerInspector::Closed
+            })
+        {
+            organizer_inspectors.single().ok()
         } else {
             None
         },
@@ -1290,6 +1314,14 @@ fn caption(
         }
         .to_owned(),
         ObserverCommand::Speed => format!("Speed: {} period(s) / sec", state.periods_per_second),
+        ObserverCommand::UiScale => format!(
+            "Interface size: {} [U]",
+            if ui.larger_interface {
+                "Larger"
+            } else {
+                "Automatic"
+            }
+        ),
         ObserverCommand::StopOnDelivery => format!(
             "Stop on delivery: {}",
             if ui.stop_on_delivery { "ON" } else { "OFF" }
@@ -1352,6 +1384,7 @@ fn paint_buttons(
             (ObserverCommand::Disclosure(value), _) => ui.disclosure == Some(value),
             (ObserverCommand::History, _) => ui.history_open,
             (ObserverCommand::Archive, _) => ui.archive_open,
+            (ObserverCommand::UiScale, _) => ui.larger_interface,
             _ => false,
         };
         let enabled = active_scope && available == ControlAvailability::Enabled;
@@ -1462,50 +1495,33 @@ fn expire_feedback(time: Res<Time>, mut feedback: ResMut<ObserverFeedback>) {
     }
 }
 
-fn keyboard(
-    keys: Res<ButtonInput<KeyCode>>,
-    claimed: Res<ObserverKeyboardClaim>,
-    ui: Res<ObserverUiState>,
-    view: Res<crate::production::PrimaryView>,
-    atlas: Res<CountyAtlas>,
-    mut selected: ResMut<SelectedCounty>,
-    mut commands: MessageWriter<ObserverCommand>,
+fn menu_shortcuts(
+    keys: &ButtonInput<KeyCode>,
+    claimed: &ObserverKeyboardClaim,
+    commands: &mut MessageWriter<ObserverCommand>,
 ) {
-    if ui.splash_visible || ui.comparison_open {
-        return;
-    }
-    if !ui.menu_open && keys.just_pressed(KeyCode::Escape) {
-        commands.write(
-            ui.disclosure
-                .map_or(ObserverCommand::Menu, ObserverCommand::Disclosure),
-        );
-        return;
-    }
-    if ui.menu_open {
-        for (key, command) in [
-            (KeyCode::Escape, ObserverCommand::Menu),
-            (KeyCode::KeyC, ObserverCommand::Menu),
-            (KeyCode::KeyN, ObserverCommand::NewCampaign),
-            (KeyCode::KeyR, ObserverCommand::ReopenCampaign),
-            (KeyCode::KeyQ, ObserverCommand::Quit),
-            (KeyCode::KeyD, ObserverCommand::NewDelayedCampaign),
-            (KeyCode::KeyU, ObserverCommand::UiScale),
-            (KeyCode::KeyM, ObserverCommand::ReducedMotion),
-            (KeyCode::KeyB, ObserverCommand::MusicVolume),
-            (KeyCode::KeyF, ObserverCommand::EffectsVolume),
-            (KeyCode::KeyJ, ObserverCommand::MusicTrack),
-            (KeyCode::KeyE, ObserverCommand::StopOnDelivery),
-            (KeyCode::KeyK, ObserverCommand::Perspective),
-        ] {
-            if keys.just_pressed(key) && !claimed.claimed(key) {
-                commands.write(command);
-            }
+    for (key, command) in [
+        (KeyCode::Escape, ObserverCommand::Menu),
+        (KeyCode::KeyC, ObserverCommand::Menu),
+        (KeyCode::KeyN, ObserverCommand::NewCampaign),
+        (KeyCode::KeyR, ObserverCommand::ReopenCampaign),
+        (KeyCode::KeyQ, ObserverCommand::Quit),
+        (KeyCode::KeyD, ObserverCommand::NewDelayedCampaign),
+        (KeyCode::KeyU, ObserverCommand::UiScale),
+        (KeyCode::KeyM, ObserverCommand::ReducedMotion),
+        (KeyCode::KeyB, ObserverCommand::MusicVolume),
+        (KeyCode::KeyF, ObserverCommand::EffectsVolume),
+        (KeyCode::KeyJ, ObserverCommand::MusicTrack),
+        (KeyCode::KeyE, ObserverCommand::StopOnDelivery),
+        (KeyCode::KeyK, ObserverCommand::Perspective),
+    ] {
+        if keys.just_pressed(key) && !claimed.claimed(key) {
+            commands.write(command);
         }
-        return;
     }
-    if claimed.blocks_world_shortcuts() {
-        return;
-    }
+}
+
+fn world_shortcuts(keys: &ButtonInput<KeyCode>, commands: &mut MessageWriter<ObserverCommand>) {
     for (key, command) in [
         (KeyCode::Space, ObserverCommand::TogglePlay),
         (KeyCode::Enter, ObserverCommand::Step),
@@ -1550,6 +1566,79 @@ fn keyboard(
             commands.write(command);
         }
     }
+}
+
+#[derive(SystemParam)]
+pub(crate) struct KeyboardContext<'w> {
+    organizer: Option<Res<'w, crate::organizer::OrganizerClient>>,
+    keys: Res<'w, ButtonInput<KeyCode>>,
+    claimed: Res<'w, ObserverKeyboardClaim>,
+    ui: Res<'w, ObserverUiState>,
+    view: Res<'w, crate::production::PrimaryView>,
+    atlas: Res<'w, CountyAtlas>,
+    selected: ResMut<'w, SelectedCounty>,
+}
+
+pub(crate) fn keyboard(
+    context: KeyboardContext,
+    mut commands: MessageWriter<ObserverCommand>,
+    mut navigation: Commands,
+) {
+    let KeyboardContext {
+        organizer,
+        keys,
+        claimed,
+        ui,
+        view,
+        atlas,
+        mut selected,
+    } = context;
+    if ui.splash_visible || ui.comparison_open {
+        return;
+    }
+    if !ui.menu_open
+        && *view == crate::production::PrimaryView::Organizer
+        && organizer
+            .as_ref()
+            .is_some_and(|client| client.inspector != crate::organizer::OrganizerInspector::Closed)
+    {
+        return;
+    }
+    if !ui.menu_open && keys.just_pressed(KeyCode::Escape) && !claimed.claimed(KeyCode::Escape) {
+        commands.write(
+            ui.disclosure
+                .map_or(ObserverCommand::Menu, ObserverCommand::Disclosure),
+        );
+        return;
+    }
+    if ui.menu_open {
+        menu_shortcuts(&keys, &claimed, &mut commands);
+        return;
+    }
+    if *view == crate::production::PrimaryView::Organizer {
+        for (key, action) in [
+            (
+                KeyCode::KeyP,
+                crate::organizer::ui::OrganizerAction::Inspect(
+                    crate::organizer::OrganizerInspector::Evidence,
+                ),
+            ),
+            (
+                KeyCode::KeyI,
+                crate::organizer::ui::OrganizerAction::ArchiveWorkplace,
+            ),
+        ] {
+            // Reading and action focus retain navigation; editable notes claim their letters.
+            if keys.just_pressed(key) && !claimed.claimed(key) {
+                navigation.trigger(crate::organizer::ui::OrganizerActionRequested(action));
+                return;
+            }
+        }
+    }
+    if claimed.blocks_world_shortcuts() {
+        return;
+    }
+    world_shortcuts(&keys, &mut commands);
     if *view == crate::production::PrimaryView::Map
         && (keys.just_pressed(KeyCode::ArrowLeft) || keys.just_pressed(KeyCode::ArrowRight))
     {
@@ -1817,7 +1906,7 @@ fn inspector_visibility(ui: &ObserverUiState, view: crate::production::PrimaryVi
         || ui.menu_open
         || ui.splash_visible
         || ui.comparison_open
-        || view == crate::production::PrimaryView::Production
+        || view != crate::production::PrimaryView::Map
     {
         Visibility::Hidden
     } else {
@@ -1827,7 +1916,7 @@ fn inspector_visibility(ui: &ObserverUiState, view: crate::production::PrimaryVi
 
 fn fit_viewport(
     windows: Query<&Window, With<PrimaryWindow>>,
-    scale: Res<UiScale>,
+    mut scale: ResMut<UiScale>,
     ui: Res<ObserverUiState>,
     mut viewport: ResMut<ObserverViewport>,
     mut regions: Query<(&ObserverRegion, &mut Node)>,
@@ -1835,6 +1924,15 @@ fn fit_viewport(
     let Ok(window) = windows.single() else {
         return;
     };
+    // Use logical window dimensions so platform DPI is not counted twice.
+    // Keep the compact layout intact and enlarge the whole interface at Full HD.
+    let fitted = (window.width() / 1366.0)
+        .min(window.height() / 768.0)
+        .clamp(1.0, 1.25);
+    let next_scale = fitted * if ui.larger_interface { 1.15 } else { 1.0 };
+    if scale.0.to_bits() != next_scale.to_bits() {
+        scale.0 = next_scale;
+    }
     let layout = ObserverLayout::new(
         Vec2::new(window.width(), window.height()),
         scale.0,
@@ -1918,13 +2016,13 @@ impl Plugin for ObserverShellPlugin {
             )
             .add_systems(
                 Update,
-                reconcile_lens
+                (reconcile_lens, fit_viewport)
                     .after(crate::observer_io::ObserverSet::Install)
                     .before(crate::observer_io::ObserverSet::Paint),
             )
             .add_systems(
                 Update,
-                (fit_viewport, repaint, paint_buttons, paint_view_controls)
+                (repaint, paint_buttons, paint_view_controls)
                     .in_set(crate::observer_io::ObserverSet::Paint),
             );
     }
@@ -1937,6 +2035,70 @@ mod tests {
     use bevy::input::keyboard::{Key, KeyboardInput, NativeKey};
     use bevy::input::{ButtonState, InputPlugin};
     use bevy::input_focus::InputFocus;
+
+    #[test]
+    fn interface_scale_follows_window_resize_for_readable_full_hd() {
+        let mut app = App::new();
+        app.init_resource::<ObserverUiState>()
+            .init_resource::<ObserverViewport>()
+            .init_resource::<UiScale>()
+            .add_systems(Update, fit_viewport);
+        let window = app
+            .world_mut()
+            .spawn((
+                Window {
+                    resolution: (1366, 768).into(),
+                    ..default()
+                },
+                PrimaryWindow,
+            ))
+            .id();
+        app.update();
+        assert_eq!(
+            app.world().resource::<UiScale>().0.to_bits(),
+            1.0_f32.to_bits()
+        );
+
+        app.world_mut()
+            .get_mut::<Window>(window)
+            .unwrap()
+            .resolution
+            .set(1920.0, 1080.0);
+        app.update();
+        assert_eq!(
+            app.world().resource::<UiScale>().0.to_bits(),
+            1.25_f32.to_bits(),
+            "Full HD must enlarge the complete interface, including text and hit targets"
+        );
+
+        app.world_mut()
+            .resource_mut::<ObserverUiState>()
+            .larger_interface = true;
+        app.update();
+        assert_eq!(
+            app.world().resource::<UiScale>().0.to_bits(),
+            1.4375_f32.to_bits()
+        );
+
+        app.world_mut()
+            .get_mut::<Window>(window)
+            .unwrap()
+            .resolution
+            .set(1366.0, 768.0);
+        app.update();
+        assert_eq!(
+            app.world().resource::<UiScale>().0.to_bits(),
+            1.15_f32.to_bits()
+        );
+        app.world_mut()
+            .resource_mut::<ObserverUiState>()
+            .larger_interface = false;
+        app.update();
+        assert_eq!(
+            app.world().resource::<UiScale>().0.to_bits(),
+            1.0_f32.to_bits()
+        );
+    }
 
     #[test]
     fn explicit_font_roles_use_distinct_native_faces_and_preserve_exact_mono() {

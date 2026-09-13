@@ -108,6 +108,7 @@ pub(crate) fn availability(
     if matches!(
         command,
         NewCampaign
+            | ObserverCommand::NewOrganizerCampaign
             | NewDelayedCampaign
             | NewSharedFreightAmpleCampaign
             | NewSharedFreightConstrainedCampaign
@@ -136,6 +137,12 @@ pub(crate) fn availability(
         };
     }
     match command {
+        Perspective if state.organizer_enabled => {
+            Disabled("This campaign uses the organization's earned knowledge")
+        }
+        Step | TogglePlay if state.organizer_control_pending() => {
+            Disabled("Waiting for the organization's runtime response")
+        }
         Step | TogglePlay if state.lifecycle_pending() => {
             Disabled("Waiting for the selected campaign to open")
         }

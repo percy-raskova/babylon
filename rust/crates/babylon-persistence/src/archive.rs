@@ -33,7 +33,7 @@ pub const ARCHIVE_KNOWLEDGE_SQL: &str = "SELECT subject_kind, subject_id, grant_
     granted_tick, provenance_source_id, provenance_locator \
     FROM babylon_meta.archive_knowledge_grant_v1 \
     WHERE campaign_id = $1::uuid AND granted_tick <= $2 \
-      AND subject_kind IN ('county', 'place') \
+      AND subject_kind IN ('county', 'place', 'workplace', 'organization') \
     ORDER BY subject_kind, subject_id, grant_key LIMIT $3";
 /// SHA-256 of the pinned strict `MiniJinja` page template.
 pub const ARCHIVE_PAGE_TEMPLATE_SHA256: [u8; 32] = [
@@ -46,8 +46,12 @@ pub const ARCHIVE_PAGE_TEMPLATE_SHA256: [u8; 32] = [
 pub enum ArchiveSubjectKind {
     /// United States county identified by five-digit Census FIPS.
     County,
+    /// Authored organization report subject identified by stable graph identity.
+    Organization,
     /// Census-designated place identified by seven-digit place GEOID.
     Place,
+    /// Authored workplace report subject identified by stable graph identity.
+    Workplace,
 }
 
 impl ArchiveSubjectKind {
@@ -57,6 +61,8 @@ impl ArchiveSubjectKind {
         match self {
             Self::County => "county",
             Self::Place => "place",
+            Self::Workplace => "workplace",
+            Self::Organization => "organization",
         }
     }
 }
@@ -77,8 +83,15 @@ impl ArchivePageRef {
         let expected = match kind {
             ArchiveSubjectKind::County => 5,
             ArchiveSubjectKind::Place => 7,
+            ArchiveSubjectKind::Workplace | ArchiveSubjectKind::Organization => id.len(),
         };
-        if id.len() != expected
+        if id.is_empty()
+            || matches!(
+                kind,
+                ArchiveSubjectKind::Workplace | ArchiveSubjectKind::Organization
+            ) && (id.parse::<u64>().ok().filter(|value| *value > 0).is_none()
+                || id.starts_with('0'))
+            || id.len() != expected
             || id.len() > MAX_ID_BYTES
             || !id.bytes().all(|byte| byte.is_ascii_digit())
         {
@@ -835,6 +848,8 @@ pub enum ArchiveAtomSubjectKind {
     Place,
     /// Glossary concept identified by its concept key.
     Concept,
+    Workplace,
+    Organization,
 }
 
 impl ArchiveAtomSubjectKind {
@@ -844,6 +859,8 @@ impl ArchiveAtomSubjectKind {
         match self {
             Self::County => "county",
             Self::Place => "place",
+            Self::Workplace => "workplace",
+            Self::Organization => "organization",
             Self::Concept => "concept",
         }
     }
@@ -853,6 +870,8 @@ impl ArchiveAtomSubjectKind {
             Self::County => 1,
             Self::Place => 2,
             Self::Concept => 3,
+            Self::Workplace => 4,
+            Self::Organization => 5,
         }
     }
 }
@@ -878,6 +897,9 @@ impl ArchiveAtomSubject {
             ArchiveAtomSubjectKind::Place => {
                 id.len() == 7 && id.bytes().all(|byte| byte.is_ascii_digit())
             }
+            ArchiveAtomSubjectKind::Workplace | ArchiveAtomSubjectKind::Organization => {
+                id.parse::<u64>().ok().is_some_and(|value| value > 0) && !id.starts_with('0')
+            }
             ArchiveAtomSubjectKind::Concept => {
                 let mut bytes = id.bytes();
                 matches!(bytes.next(), Some(first) if first.is_ascii_lowercase() || first.is_ascii_digit())
@@ -901,6 +923,8 @@ impl ArchiveAtomSubject {
         let kind = match page_ref.kind() {
             ArchiveSubjectKind::County => ArchiveAtomSubjectKind::County,
             ArchiveSubjectKind::Place => ArchiveAtomSubjectKind::Place,
+            ArchiveSubjectKind::Workplace => ArchiveAtomSubjectKind::Workplace,
+            ArchiveSubjectKind::Organization => ArchiveAtomSubjectKind::Organization,
         };
         Self::try_new(kind, page_ref.id().to_owned())
     }
@@ -1303,6 +1327,12 @@ pub(crate) fn insert_grant_row(
         "place" => {
             ArchivePageRef::try_new(ArchiveSubjectKind::Place, subject_id.to_owned())?;
         }
+        "workplace" => {
+            ArchivePageRef::try_new(ArchiveSubjectKind::Workplace, subject_id.to_owned())?;
+        }
+        "organization" => {
+            ArchivePageRef::try_new(ArchiveSubjectKind::Organization, subject_id.to_owned())?;
+        }
         "concept" => {
             ArchiveAtomSubject::try_new(ArchiveAtomSubjectKind::Concept, subject_id.to_owned())?;
         }
@@ -1422,7 +1452,14 @@ pub(crate) fn mint_page_atoms(
             subject.clone(),
             "subject".to_owned(),
             "subject".to_owned(),
-            ArchiveEvidenceClass::Observed,
+            if matches!(
+                page_ref.kind(),
+                ArchiveSubjectKind::Organization | ArchiveSubjectKind::Workplace
+            ) {
+                ArchiveEvidenceClass::Designed
+            } else {
+                ArchiveEvidenceClass::Observed
+            },
             &ArchiveAtomValue::Text(input.subject.title().to_owned()),
             grant.citation.clone(),
             resolve_tick,
@@ -1576,6 +1613,8 @@ pub(crate) fn decode_subject_kind(value: &str) -> Result<ArchiveSubjectKind, Sem
     match value {
         "county" => Ok(ArchiveSubjectKind::County),
         "place" => Ok(ArchiveSubjectKind::Place),
+        "workplace" => Ok(ArchiveSubjectKind::Workplace),
+        "organization" => Ok(ArchiveSubjectKind::Organization),
         _ => Err(SemanticArchiveError::StoredPageMismatch),
     }
 }
@@ -1585,6 +1624,8 @@ fn decode_atom_subject_kind(value: &str) -> Result<ArchiveAtomSubjectKind, Seman
         "county" => Ok(ArchiveAtomSubjectKind::County),
         "place" => Ok(ArchiveAtomSubjectKind::Place),
         "concept" => Ok(ArchiveAtomSubjectKind::Concept),
+        "workplace" => Ok(ArchiveAtomSubjectKind::Workplace),
+        "organization" => Ok(ArchiveAtomSubjectKind::Organization),
         _ => Err(SemanticArchiveError::StoredPageMismatch),
     }
 }
@@ -1819,6 +1860,8 @@ fn hash_page_ref(hasher: &mut Sha256, page_ref: &ArchivePageRef) {
     hasher.update([match page_ref.kind {
         ArchiveSubjectKind::County => 1,
         ArchiveSubjectKind::Place => 2,
+        ArchiveSubjectKind::Workplace => 4,
+        ArchiveSubjectKind::Organization => 5,
     }]);
     hash_bytes(hasher, page_ref.id.as_bytes());
 }

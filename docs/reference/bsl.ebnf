@@ -329,7 +329,7 @@ rule        ::= "(" "rule" qname                              /* §2.3 */
                     ":fuel" int-lit
                     ( ( ":projects-kernel" qname )?
                       domain? anchor? bindings when? effects
-                    | anchor material-cycle )
+                    | anchor ( material-cycle | organizer-products | organizer-practice ) )
                 ")"
                 /* The four valued keyword options may appear in ANY source
                    order (§2.3); the canonical serialization sorts them
@@ -349,6 +349,14 @@ material-cycle ::= "(" "material-cycle" ")"                  /* ADR261 */
                    checked arithmetic bound its independent material work.
                    A material session requires exactly one invocation;
                    graph-only execution refuses it without a material host. */
+
+organizer-products ::= "(" "organizer-products" ")"           /* ADR262 */
+organizer-practice ::= "(" "organizer-practice" ")"           /* ADR262 */
+                /* Closed Designed operations, each with full invocation fuel.
+                   Products is a mechanic before ooda; practice is the exact
+                   allowed organizer/organizer-practice intent after ooda.
+                   An organizer campaign requires both once per period.
+                   No domain, bindings, guards or sibling effects are allowed. */
 
 rule-role   ::= "mechanic" | "recognizer" | "external-event" | "intent"
                                                                /* §2.3, ADR224 */

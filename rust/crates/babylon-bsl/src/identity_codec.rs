@@ -52,6 +52,8 @@ pub(crate) fn validate_intrinsic_identity(value: &str) -> Result<(), IntrinsicId
 /// A governed BSL identity-codec refusal.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IdentityCodecError {
+    /// A connected organizer receipt violates its canonical typed contract.
+    OrganizerReceipt(babylon_practice_contract::OrganizerError),
     /// A graph reference did not resolve through the sealed stable resolver.
     StableIdentity(StableIdentityError),
     /// A binary64 value was NaN or infinite.
@@ -763,6 +765,8 @@ pub fn encode_effect_signature(
     let mut writer = IdentityWriter::new("EffectSignatureV1");
     match value {
         EffectSignature::MaterialCycle => writer.push(0x06)?,
+        EffectSignature::OrganizerProducts => writer.push(0x07)?,
+        EffectSignature::OrganizerPractice => writer.push(0x08)?,
         EffectSignature::NodeField(qname) => encode_effect_field(0x01, qname, &mut writer)?,
         EffectSignature::EdgeField(qname) => encode_effect_field(0x02, qname, &mut writer)?,
         EffectSignature::HyperedgeField(qname) => encode_effect_field(0x03, qname, &mut writer)?,

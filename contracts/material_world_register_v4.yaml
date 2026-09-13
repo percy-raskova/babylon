@@ -1,22 +1,26 @@
-version: 3
-name: material_world_register_v3
-authority: [ADR251, ADR260]
+version: 4
+name: material_world_register_v4
+authority: [ADR251, ADR260, ADR262]
 purpose: Complete current material state owned by the explicit material replay session.
 related_contracts:
   - contracts/material_circuit_v3.yaml
   - contracts/simulation_interval_v1.yaml
+  - contracts/organizer_practice_v1.yaml
   - contracts/nominal_material_world_v3.yaml
 clock:
   completed_tick: unsigned_64_big_endian
   circuit_period: completed_tick_plus_one_checked
   days_per_period: 28
 encoding:
-  domain: "babylon.material-world-register.v3\0"
+  domain: "babylon.material-world-register.v4\0"
   fields:
-    - u32_big_endian_version_3
+    - u32_big_endian_version_4
     - u64_big_endian_completed_tick
     - u64_big_endian_state_byte_length
     - exact_material_circuit_state_bytes_schema_4
+    - organizer_presence_u8_zero_or_one
+    - if_present_u64_big_endian_config_length_then_canonical_organizer_config
+    - if_present_u64_big_endian_state_length_then_canonical_organizer_state
   digest: sha256_exact_bytes
   maximum_complete_bytes: 67108864
   decoder: reject_unknown_version_truncated_trailing_or_noncanonical_bytes

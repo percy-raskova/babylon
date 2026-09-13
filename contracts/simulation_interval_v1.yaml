@@ -110,7 +110,7 @@ content_units:
 
 current_contracts:
   - contracts/material_circuit_v3.yaml
-  - contracts/material_world_register_v3.yaml
+  - contracts/material_world_register_v4.yaml
   - contracts/committed_material_tick_v3.yaml
   - contracts/nominal_material_world_v3.yaml
 historical_contracts:

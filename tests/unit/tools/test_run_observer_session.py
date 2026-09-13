@@ -613,6 +613,7 @@ def test_provisioning_grants_only_distinct_reader_memberships(
         "statewide-maintenance-labor-shortage",
         "statewide-maintenance-parts-shortage",
         "statewide-maintenance-both",
+        "organize-in-wayne",
     ],
 )
 def test_first_launch_has_an_explicit_new_preset_but_saved_resume_cannot_override_it(
@@ -752,7 +753,7 @@ def _smoke_transcript_children(
             new = not calls
             calls.append(args)
             self.stdin = (tmp_path / f"requests-{len(calls)}.jsonl").open("wb")
-            rows: list[dict[str, Any]] = [{"type": "hello", "protocol_version": 3, "scope": scope}]
+            rows: list[dict[str, Any]] = [{"type": "hello", "protocol_version": 4, "scope": scope}]
             if refused:
                 rows.append({"type": "error", "request_id": 1, "code": "invalid_defines"})
             else:
@@ -823,6 +824,7 @@ def _smoke_transcript_children(
         "statewide-maintenance-labor-shortage",
         "statewide-maintenance-parts-shortage",
         "statewide-maintenance-both",
+        "organize-in-wayne",
     ],
 )
 def test_smoke_request_preserves_selected_preset_through_new_restart_and_readback(

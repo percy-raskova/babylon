@@ -164,6 +164,9 @@ pub(crate) fn validate_stored_material_authority(
     {
         return Err(SectorBundleError::Foundation);
     }
+    if register.organizer_config() != decoded.catalog().organizer_config() {
+        return Err(SectorBundleError::Foundation);
+    }
     let mut identity = CONTENT_DOMAIN.to_vec();
     identity.extend_from_slice(&graph.content_digest().defines_hash);
     identity.extend_from_slice(&sha256_of(graph.content_bundle().scenario_source_bytes()));
@@ -203,10 +206,23 @@ pub(crate) fn create_bundle_foundation(
     identity.extend_from_slice(&sha256_of(&defines));
     identity.extend_from_slice(&sha256_of(scenario.as_bytes()));
     identity.extend_from_slice(&bundle.content_digest().rules_hash);
-    MaterialRuntimeFoundation::capture(
+    let mut register = babylon_tick::material_world::MaterialWorldRegister::try_new(0, state)
+        .map_err(|_| SectorBundleError::Foundation)?;
+    if delivery == MichiganDeliveryPreset::OrganizeInWayne {
+        let config = catalog
+            .organizer_config()
+            .ok_or(SectorBundleError::Foundation)?
+            .clone();
+        let state = babylon_practice_contract::initial_organizer_state(&config)
+            .map_err(|_| SectorBundleError::Foundation)?;
+        register = register
+            .with_organizer(config, state)
+            .map_err(|_| SectorBundleError::Foundation)?;
+    }
+    MaterialRuntimeFoundation::capture_register(
         graph,
         bundle,
-        state,
+        register,
         MaterialFoundationSpec {
             preset_id: preset_id.to_owned(),
             horizon_ticks: catalog.horizon_ticks(),

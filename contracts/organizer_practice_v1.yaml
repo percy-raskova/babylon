@@ -1,0 +1,120 @@
+meta:
+  contract: OrganizerPracticeV1
+  schema_version: 1
+  authority: ADR262
+  evidence_class: Designed
+  owners: [babylon-practice-contract, babylon-tick, babylon-persistence]
+  scope: Captured Wayne collective, two independent partners, and one workplace
+
+encoding:
+  outer: exact_ASCII_domain_then_NUL_then_canonical_UTF8_JSON
+  version: schema_version_1_where_present
+  field_order: Rust_declared_struct_field_order
+  numbers: whole_unsigned_integers_only
+  byte_arrays: fixed_length_JSON_unsigned_integer_arrays
+  enums: snake_case_names_with_typed_payloads
+  maps: absent_from_authoritative_state
+  unknown_fields: refused
+  duplicate_fields: refused
+  canonicality: decode_validate_reencode_exact_bytes
+  maximum_bytes: 33554432
+  maximum_collection_rows: 65536
+  unsupported_versions: refuse_without_modifying_saved_data
+  digest: SHA256_of_exact_domain_prefixed_bytes
+
+captured_content:
+  campaign: exact_16_byte_identity
+  actors: controlled_organization_and_two_independent_partners
+  authority: distinct_saved_player_or_deterministic_policy_authority_rows
+  material_binding: public_workplace_node_u64_and_exact_process_id_32_bytes
+  contributors: attributed_participant_bodies_with_finite_whole_hours
+  promises: disjoint_actor_commitments_whose_sum_cannot_exceed_contributor_hours
+  communication: workplace_record_permissions_and_bounded_contact_scope
+  initial_knowledge: attributed_period_specific_observations
+  costs: captured_Michigan_defines_organizer_table
+  source_digest: authored_declarations_and_organizer_defines
+
+admission:
+  inputs:
+    - campaign_id
+    - actor_id
+    - input_authority_id
+    - expected_completed_period
+    - content_digest
+    - resource_contract_digest
+    - stable_submission_nonce
+    - typed_choice_and_inquiry_question
+  durable: accepted_commitment_persisted_before_acknowledgement
+  retry: exact_nonce_and_bytes_return_original_commitment
+  conflict: changed_bytes_for_existing_nonce_refuse
+  period: at_most_one_accepted_commitment_per_organization
+  effect: no_time_advance_or_material_mutation
+  immutable: accepted_commitment_cannot_be_revised
+  failure: failed_tick_leaves_pending_commitment_available_for_retry
+
+causal_order:
+  - Existing material-cycle closes the current physical period and staffing.
+  - organizer-products consumes only contact products in the opening committed state.
+  - The reducer may publish a newly closed workplace work-reduction report within the same transaction.
+  - organizer-practice resolves the admitted ruling or authorized routine after ooda.
+  - Inquiry acquires a permitted report about the opening completed period.
+  - New contact products are available only to the following period's reducer.
+  - Graph, material, organizer state, observations, receipts and marker publish atomically.
+
+practices:
+  inquiry: selected_work_lost_or_maintenance_received_report
+  reinforce: contact_and_accountability_through_existing_workplace_relationship
+  hold: authorized_neighborhood_contact_routine
+  pause_standing: retain_scope_and_disable_execution_until_explicit_resume
+  resume_standing: restore_authorization_and_execute_if_eligible
+  capacity: whole_organizer_hours_through_shared_resource_allocator
+  expiry: unused_hours_do_not_accumulate
+  substitution: specific_commitment_replaces_routine_for_one_period_only
+  failed_admission: does_not_replace_routine
+  partner_response: independent_permission_policy_and_capacity
+  player_ruling: no_subsequent_NPC_vote
+  no_material_privilege: no_factory_stock_staffing_production_or_maintenance_writes
+
+cooperation:
+  initial_report_access: [1, 2, 3]
+  contact_T: participating_response_creates_attributed_product_and_receipt
+  consumer_T_plus_1: validates_receipt_actor_partner_and_product_identity
+  renewal: same_agreement_for_T_plus_1_and_T_plus_2
+  expiry: automatic_report_access_stops_but_existing_contact_remains_attemptable
+  old_solidarity_bonuses: forbidden
+  solidarity_funded_budgets: forbidden
+
+knowledge:
+  observation_fields:
+    - observation_id
+    - actor_id
+    - subject_id
+    - source_actor_id
+    - observed_period
+    - acquired_period
+    - receipt_id
+    - typed_report
+  scope: one_report_not_permanent_future_field_access
+  private: provider_inventories_staffing_and_unrelated_accounts_remain_withheld
+  provenance: action_or_automatic_report_source_remains_inspectable
+  stale: prior_observations_retained_with_their_original_period
+  projection: player_preview_and_inspector_use_only_lawfully_acquired_observations
+
+replay_successor:
+  material_register: material_world_register_v4
+  action_inputs: existing_ordered_practice_batch_binds_all_accepted_commands_including_zero_hour_controls
+  tick_payload_layout: 2
+  action_outcome_section_tag: 4
+  action_outcome_body: count_u16_be_then_repeated_byte_length_u32_be_and_canonical_connected_receipt
+  outcome_cardinality: one_connected_receipt_per_ruling_with_separate_partner_response_and_attributed_time_use
+  audit_effect_tags: {material_cycle: 6, organizer_products: 7, organizer_practice: 8}
+  hash: resulting_organizer_config_and_state_in_complete_material_register_digest
+  restart: checkpoint_and_accepted_ledger_reconstruct_the_same_pending_and_completed_state
+  derived_rows: verify_against_authoritative_register_before_reuse
+
+excluded:
+  - wage_bargaining_recruitment_strikes_or_coalitions
+  - shift_schedules_or_wage_losses
+  - universal_faction_simulation
+  - political_choices_repairing_the_factory
+  - legacy_compatibility_or_save_migration

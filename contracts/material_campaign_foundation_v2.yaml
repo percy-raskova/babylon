@@ -25,6 +25,6 @@ storage:
   incompatible_campaign: Typed refusal without altering stored data; a new campaign identity is required.
   preset_comparison: Distinct campaign foundations; no in-session intervention.
 related_contracts:
-  - contracts/material_world_register_v3.yaml
+  - contracts/material_world_register_v4.yaml
   - contracts/material_circuit_v3.yaml
   - contracts/simulation_interval_v1.yaml

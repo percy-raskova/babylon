@@ -46,6 +46,26 @@ pub(crate) struct RuntimePipe {
     responses: Mutex<mpsc::Receiver<Result<RuntimeSessionResponse, String>>>,
 }
 
+#[derive(Debug)]
+pub(crate) enum RuntimeSendError {
+    Full,
+    Disconnected,
+}
+
+impl RuntimePipe {
+    pub(crate) fn send_request(
+        &self,
+        request: RuntimeSessionRequest,
+    ) -> Result<(), RuntimeSendError> {
+        self.requests
+            .try_send(request)
+            .map_err(|error| match error {
+                mpsc::TrySendError::Full(_) => RuntimeSendError::Full,
+                mpsc::TrySendError::Disconnected(_) => RuntimeSendError::Disconnected,
+            })
+    }
+}
+
 #[cfg(test)]
 impl RuntimePipe {
     pub(crate) fn detached_fixture() -> Self {
@@ -208,6 +228,10 @@ fn next_response(
 #[derive(SystemParam)]
 struct CampaignReset<'w> {
     preference: Option<Res<'w, ContinuationPreference>>,
+    organizer: Option<ResMut<'w, crate::organizer::OrganizerClient>>,
+    primary: Option<ResMut<'w, crate::production::PrimaryView>>,
+    atlas: Option<Res<'w, crate::atlas::CountyAtlas>>,
+    selected: Option<ResMut<'w, crate::map::SelectedCounty>>,
     frame: Option<ResMut<'w, ObserverFrame>>,
     pending: Option<ResMut<'w, PendingObservation>>,
     campaign: Option<ResMut<'w, DossierCampaignId>>,
@@ -218,7 +242,19 @@ struct CampaignReset<'w> {
 }
 
 impl CampaignReset<'_> {
+    fn organizer(&mut self) -> Result<&mut crate::organizer::OrganizerClient, String> {
+        self.organizer
+            .as_deref_mut()
+            .ok_or_else(|| "Organizer interface is not installed".into())
+    }
+
     fn clear(&mut self, state: &ObserverSession) {
+        if let Some(organizer) = &mut self.organizer {
+            organizer.reset();
+        }
+        if let Some(primary) = &mut self.primary {
+            **primary = crate::production::PrimaryView::Map;
+        }
         if let Some(frame) = &mut self.frame {
             frame.0 = None;
         }
@@ -286,7 +322,10 @@ fn response_scope(response: &RuntimeSessionResponse) -> &RuntimeSessionScope {
         | RuntimeSessionResponse::Committed { scope, .. }
         | RuntimeSessionResponse::ArchiveProgress { scope, .. }
         | RuntimeSessionResponse::Error { scope, .. }
-        | RuntimeSessionResponse::Stopped { scope, .. } => scope,
+        | RuntimeSessionResponse::Stopped { scope, .. }
+        | RuntimeSessionResponse::OrganizerPreview { scope, .. }
+        | RuntimeSessionResponse::OrganizerAccepted { scope, .. }
+        | RuntimeSessionResponse::OrganizerStatus { scope, .. } => scope,
     }
 }
 
@@ -308,6 +347,100 @@ fn admits_response_scope(
         return Err("Runtime did not begin with Hello".into());
     }
     Ok(true)
+}
+
+fn admit_campaign(
+    state: &mut ObserverSession,
+    refresh: &mut DossierRefresh,
+    reset: &mut CampaignReset,
+    request_id: u64,
+    foundation_digest: String,
+    tail: RuntimeSessionTail,
+    organizer: bool,
+) -> Result<(), String> {
+    state.admitted(request_id, foundation_digest, tail)?;
+    state.organizer_enabled = organizer;
+    state.set_organizer_control_pending(organizer);
+    if organizer {
+        state.set_perspective(Perspective::PlayerKnowledge);
+        if let (Some(atlas), Some(selected)) = (&reset.atlas, &mut reset.selected) {
+            selected.0 = atlas.index_of_fips("26163");
+        }
+        reset.organizer()?.admitted(*state.campaign.as_uuid());
+        if let Some(primary) = &mut reset.primary {
+            **primary = crate::production::PrimaryView::Organizer;
+        }
+        if let Some(ui) = &mut reset.ui {
+            ui.menu_open = false;
+            ui.splash_visible = false;
+            ui.archive_open = false;
+            ui.history_open = false;
+        }
+    }
+    refresh.bump();
+    if let Some(preference) = &reset.preference {
+        if let Err(error) = crate::campaign_browser::write_preference(
+            &preference.0,
+            state.campaign,
+            state.generation,
+        ) {
+            log::warn!(
+                "Campaign opened, but its continuation preference could not be saved: {error}"
+            );
+        }
+    }
+    Ok(())
+}
+
+fn refuse_runtime_request(
+    state: &mut ObserverSession,
+    reset: &mut CampaignReset,
+    request_id: Option<u64>,
+    code: babylon_persistence::runtime_session::RuntimeSessionErrorCode,
+    tail: Option<&RuntimeSessionTail>,
+) -> Result<(), String> {
+    let complete = code
+        == babylon_persistence::runtime_session::RuntimeSessionErrorCode::HorizonComplete
+        && tail.is_some_and(|tail| {
+            tail.resolve_tick == state.durable_tick && tail.tick_content_hash == state.content_hash
+        });
+    log::warn!("Runtime campaign request was refused: {code}");
+    let organizer_refused = reset.organizer.as_mut().is_some_and(|organizer| {
+        organizer.refused(
+            request_id,
+            format!(
+                "Runtime refused the organizer request: {code}. Refresh or reopen to reconcile."
+            ),
+            state,
+        )
+    });
+    if !organizer_refused && !state.refuse_request(request_id, code) {
+        return Err("Runtime refusal did not match an outstanding request".into());
+    }
+    if complete {
+        state.complete();
+    }
+    Ok(())
+}
+
+fn apply_archive_progress(
+    state: &mut ObserverSession,
+    refresh: &mut DossierRefresh,
+    durable_tick: u64,
+    verified_tick: u64,
+) -> Result<(), String> {
+    if state.foundation_digest.is_none()
+        || durable_tick != state.durable_tick
+        || verified_tick > durable_tick
+        || verified_tick < state.archive_verified_tick
+    {
+        return Err("Archive progress did not match the acknowledged campaign tail".into());
+    }
+    if state.archive_verified_tick != verified_tick {
+        state.archive_verified_tick = verified_tick;
+    }
+    refresh.bump();
+    Ok(())
 }
 
 fn apply_response(
@@ -342,21 +475,18 @@ fn apply_response(
             request_id,
             foundation_digest,
             tail,
+            organizer,
             ..
         } => {
-            state.admitted(request_id, foundation_digest, tail)?;
-            refresh.bump();
-            if let Some(preference) = &reset.preference {
-                if let Err(error) = crate::campaign_browser::write_preference(
-                    &preference.0,
-                    state.campaign,
-                    state.generation,
-                ) {
-                    log::warn!(
-                        "Campaign opened, but its continuation preference could not be saved: {error}"
-                    );
-                }
-            }
+            admit_campaign(
+                state,
+                refresh,
+                reset,
+                request_id,
+                foundation_digest,
+                tail,
+                organizer,
+            )?;
         }
         RuntimeSessionResponse::Committed {
             request_id, tail, ..
@@ -364,24 +494,40 @@ fn apply_response(
             if !state.acknowledge(request_id, tail.resolve_tick, tail.tick_content_hash) {
                 return Err("Unexpected committed acknowledgement; reopen the campaign.".into());
             }
+            if state.organizer_enabled {
+                state.pause_playback();
+                state.set_organizer_control_pending(true);
+                reset.organizer()?.committed();
+            }
             refresh.bump();
+        }
+        RuntimeSessionResponse::OrganizerStatus {
+            request_id,
+            snapshot,
+            ..
+        } => {
+            reset.organizer()?.status(request_id, *snapshot, state)?;
+        }
+        RuntimeSessionResponse::OrganizerPreview {
+            request_id,
+            preview,
+            ..
+        } => {
+            reset.organizer()?.previewed(request_id, preview, state)?;
+        }
+        RuntimeSessionResponse::OrganizerAccepted {
+            request_id,
+            commitment,
+            ..
+        } => {
+            reset.organizer()?.accepted(request_id, commitment, state)?;
         }
         RuntimeSessionResponse::ArchiveProgress {
             durable_tick,
             verified_tick,
             ..
         } => {
-            if state.foundation_digest.is_none()
-                || durable_tick != state.durable_tick
-                || verified_tick > durable_tick
-                || verified_tick < state.archive_verified_tick
-            {
-                return Err("Archive progress did not match the acknowledged campaign tail".into());
-            }
-            if state.archive_verified_tick != verified_tick {
-                state.archive_verified_tick = verified_tick;
-            }
-            refresh.bump();
+            apply_archive_progress(state, refresh, durable_tick, verified_tick)?;
         }
         RuntimeSessionResponse::Error {
             request_id,
@@ -389,19 +535,7 @@ fn apply_response(
             tail,
             ..
         } => {
-            let complete = code
-                == babylon_persistence::runtime_session::RuntimeSessionErrorCode::HorizonComplete
-                && tail.as_ref().is_some_and(|tail| {
-                    tail.resolve_tick == state.durable_tick
-                        && tail.tick_content_hash == state.content_hash
-                });
-            log::warn!("Runtime campaign request was refused: {code}");
-            if !state.refuse_request(request_id, code) {
-                return Err("Runtime refusal did not match an outstanding request".into());
-            }
-            if complete {
-                state.complete();
-            }
+            refuse_runtime_request(state, reset, request_id, code, tail.as_ref())?;
         }
         RuntimeSessionResponse::Stopped { request_id, .. } => {
             if !state.stopped(request_id) {
@@ -419,7 +553,6 @@ struct CommandContext<'w> {
     pipe: Option<Res<'w, RuntimePipe>>,
     frame: Res<'w, ObserverFrame>,
     refresh: ResMut<'w, DossierRefresh>,
-    ui_scale: ResMut<'w, UiScale>,
     audio: ResMut<'w, crate::observer_audio::ObserverAudioSettings>,
     feedback: ResMut<'w, ObserverFeedback>,
     time: Res<'w, Time>,
@@ -509,6 +642,7 @@ fn apply_command(command: ObserverCommand, context: &mut CommandContext) {
             refresh.bump();
         }
         ObserverCommand::NewCampaign
+        | ObserverCommand::NewOrganizerCampaign
         | ObserverCommand::ReopenCampaign
         | ObserverCommand::NewDelayedCampaign
         | ObserverCommand::NewSharedFreightAmpleCampaign
@@ -545,6 +679,7 @@ fn apply_command(command: ObserverCommand, context: &mut CommandContext) {
 
 fn campaign_preset(command: ObserverCommand) -> RuntimeSessionPreset {
     match command {
+        ObserverCommand::NewOrganizerCampaign => RuntimeSessionPreset::OrganizeInWayne,
         ObserverCommand::NewStatewideMaintenanceBaselineCampaign => {
             RuntimeSessionPreset::StatewideMaintenanceBaseline
         }
@@ -580,7 +715,6 @@ fn apply_presentation_command(command: ObserverCommand, context: &mut CommandCon
         state,
         ui,
         frame,
-        ui_scale,
         audio,
         ..
     } = context;
@@ -629,7 +763,7 @@ fn apply_presentation_command(command: ObserverCommand, context: &mut CommandCon
             ui.disclosure = None;
             state.pause_playback();
         }
-        ObserverCommand::UiScale => ui_scale.0 = if ui_scale.0 < 1.1 { 1.15 } else { 1.0 },
+        ObserverCommand::UiScale => ui.larger_interface = !ui.larger_interface,
         ObserverCommand::ReducedMotion => ui.reduced_motion = !ui.reduced_motion,
         ObserverCommand::MusicVolume => {
             audio.music_volume = if audio.music_volume < 0.2 {
@@ -2069,7 +2203,7 @@ pub(crate) mod tests {
         let ui = app.world().resource::<ObserverUiState>();
         assert_eq!(ui.disclosure, Some(ObserverDisclosure::Time));
         assert!(ui.reduced_motion && ui.archive_open && ui.stop_on_delivery && ui.evidence_open);
-        assert!((app.world().resource::<UiScale>().0 - 1.15).abs() < f32::EPSILON);
+        assert!(ui.larger_interface);
         assert!(app.world().resource::<ObserverSession>().playing);
         dispatch(
             &mut app,

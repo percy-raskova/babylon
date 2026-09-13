@@ -63,8 +63,9 @@ intention. The player chooses an approach and confirms a reviewed action.
 Pinned plans preserve intentions. They do not silently execute them. G5 owns
 those actions. The engine determines their legality, costs, and consequences.
 
-G4's observer surface must make those relationships legible before G5 adds
-actions for the organizer. Physical dependence does not prove organization,
+G4's observer surface makes those relationships legible. The bounded Wayne
+organizer now connects them to player choices. Physical dependence does not
+prove organization,
 solidarity, or readiness for collective action. The game must model those
 relations before it can display them as facts.
 
@@ -72,8 +73,9 @@ Determinism proves computational identity, not scientific truth. Historical
 cases test causal signatures and counterfactual behavior. They do not dictate a
 historical path.
 
-The Bevy client observes the durable Michigan campaign. It has no player action.
-G4 observer acceptance remains incomplete.
+The Bevy client observes durable Michigan campaigns and offers the bounded
+Wayne organizer loop. Broader G4 observer and G5 player-agency acceptance remain
+incomplete.
 
 <!-- vale ste.UnapprovedWords = NO -->
 Gate 2 now gives the Rust engine executable phase order, whole-tick atomicity,
@@ -105,9 +107,10 @@ actual event and write. They are not durable action receipts. Persisted replay
 and campaign restart belong to Rust. The removed Python engine remains available in Git history.
 <!-- vale ste.UnapprovedWords = YES -->
 
-The planned action cycle adds prior intent and durable action receipts. The
-current knowledge boundary restricts Archive reads to granted facts. G5 adds
-player choices that become intent for a future tick.
+The bounded Wayne action cycle admits player intent and resolves it during
+the next tick, producing durable practice receipts. Archive reads combine
+initially disclosed facts with specific earned reports. Broader G5 action
+acceptance remains open.
 
 Political economy supplies the entities, relations, and causal rules. The
 general system has seven parts:
@@ -153,8 +156,8 @@ flowchart LR
 
 The live Rust path uses `babylon-kernel`, `babylon-graph`, `babylon-bsl`,
 `babylon-tick`, `babylon-persistence`, and `babylon-client`.
-`babylon-runtime` owns campaign writes. Bevy requests period advances and reads
-the committed map, material views, history, and dossiers.
+`babylon-runtime` owns campaign writes. Bevy submits bounded organizer rulings,
+requests period advances and reads committed material views, history and dossiers.
 
 Rust contracts specify current behavior. Historical Python source and traces
 remain available at the frozen Git tag. Python prepares reference data and
@@ -165,9 +168,10 @@ runs current repository and operator tools.
 <!-- vale ste.NounClusters = NO -->
 Reference SQLite and Parquet are data-build artifacts. Rust owns authoritative replay, checkpoint
 restart, and Archive dirty receipts. The Rust Archive worker and restricted
-reader supply cited county and place dossiers to Bevy. The card reads retained
+reader supply cited county, place, workplace and organization dossiers to Bevy. The card reads retained
 pages for the selected committed period and shows verification lag or unavailable
-evidence. BSL-Bevy player actions remain unavailable.
+evidence. The Wayne organizer's inquiry and contact practices resolve through
+the same committed tick and earned-knowledge boundary.
 <!-- vale ste.NounClusters = YES -->
 <!-- vale ste.UnapprovedWords = YES -->
 

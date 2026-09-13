@@ -2024,6 +2024,15 @@ where
     let mut committed_events = Vec::new();
     let mut choice_by_sample_subject = HashMap::new();
     let mut material = None;
+    let organizer_opening = material_base.as_ref().and_then(|inputs| {
+        inputs
+            .opening
+            .organizer_config()
+            .zip(inputs.opening.organizer_state())
+            .map(|(config, state)| (config, state, inputs.commitment))
+    });
+    let mut organizer_reduced = None;
+    let mut organizer_completed = false;
     for (id, loaded) in &prepared.rules {
         if loaded.execution == babylon_bsl::rule_pipeline::RuleExecution::MaterialCycle {
             // The closed body spends its entire fixed invocation budget.
@@ -2073,6 +2082,96 @@ where
                 committed_events.extend_from_slice(effects.committed_events());
             }
             material = Some(candidate);
+            per_rule_considered.push((id.clone(), 1));
+            per_rule_fired.push((id.clone(), 1));
+            continue;
+        }
+        if matches!(
+            loaded.execution,
+            babylon_bsl::rule_pipeline::RuleExecution::OrganizerProducts
+                | babylon_bsl::rule_pipeline::RuleExecution::OrganizerPractice
+        ) {
+            loaded
+                .declared_fuel
+                .checked_sub(babylon_bsl::fuel::MATERIAL_CYCLE_INVOCATION_COST)
+                .ok_or_else(|| {
+                    transaction_error(
+                        identity,
+                        format!("organizer invocation {id} exhausted its fuel budget"),
+                    )
+                })?;
+            let (config, opening, commitment) = organizer_opening.ok_or_else(|| {
+                transaction_error(
+                    identity,
+                    format!("organizer rule {id} requires one bound organizer host"),
+                )
+            })?;
+            let candidate = material.as_mut().ok_or_else(|| {
+                transaction_error(
+                    identity,
+                    format!("organizer rule {id} must follow the material cycle"),
+                )
+            })?;
+            let facts = candidate.organizer_workplace_facts().ok_or_else(|| {
+                transaction_error(
+                    identity,
+                    format!("organizer rule {id} lacks workplace facts"),
+                )
+            })?;
+            let effect = match loaded.execution {
+                babylon_bsl::rule_pipeline::RuleExecution::OrganizerProducts => {
+                    if organizer_reduced.is_some() || organizer_completed {
+                        return Err(transaction_error(
+                            identity,
+                            "organizer products must execute once before practice".to_owned(),
+                        ));
+                    }
+                    organizer_reduced = Some(
+                        babylon_practice_contract::reduce_organizer_products(
+                            config, opening, facts,
+                        )
+                        .map_err(|error| {
+                            transaction_error(
+                                identity,
+                                format!("organizer product reduction refused: {error}"),
+                            )
+                        })?,
+                    );
+                    babylon_bsl::causal_contract::EffectSignature::OrganizerProducts
+                }
+                babylon_bsl::rule_pipeline::RuleExecution::OrganizerPractice => {
+                    let reduced = organizer_reduced.take().ok_or_else(|| {
+                        transaction_error(
+                            identity,
+                            "organizer practice requires the product reducer".to_owned(),
+                        )
+                    })?;
+                    let next = babylon_practice_contract::resolve_organizer_practice(
+                        config, opening, &reduced, facts, commitment,
+                    )
+                    .map_err(|error| {
+                        transaction_error(identity, format!("organizer practice refused: {error}"))
+                    })?;
+                    candidate
+                        .set_organizer(config.clone(), next)
+                        .map_err(|error| {
+                            transaction_error(
+                                identity,
+                                format!("organizer register refused: {error}"),
+                            )
+                        })?;
+                    organizer_completed = true;
+                    babylon_bsl::causal_contract::EffectSignature::OrganizerPractice
+                }
+                _ => unreachable!("guard admits only the two organizer operations"),
+            };
+            audit_receipts.push(AuditReceipt {
+                rule_id: id.clone(),
+                role: loaded.contract.role,
+                evidence: loaded.contract.evidence,
+                ordinal: 0,
+                effect,
+            });
             per_rule_considered.push((id.clone(), 1));
             per_rule_fired.push((id.clone(), 1));
             continue;
@@ -2204,6 +2303,12 @@ where
         per_rule_considered.push((id.clone(), outcome.considered));
         per_rule_fired.push((id.clone(), outcome.fired));
     }
+    if organizer_opening.is_some() && !organizer_completed {
+        return Err(transaction_error(
+            identity,
+            "a bound organizer register requires both authored organizer operations".to_owned(),
+        ));
+    }
     if material_base.is_some() {
         return Err(transaction_error(
             identity,
@@ -2271,6 +2376,19 @@ where
         choice_receipts: executed.choice_receipts,
         committed_events: executed.committed_events,
     };
+    let action_outcomes = executed
+        .material
+        .as_ref()
+        .and_then(|material| material.register().organizer_state())
+        .map(|state| {
+            state
+                .receipts
+                .iter()
+                .filter(|receipt| receipt.period == state.period)
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
     let replay = match (identity, prelude.replay_prior) {
         (ExecutionIdentity::Diagnostic { .. }, None) => None,
         (ExecutionIdentity::Replay(execution), Some(prior)) => Some(
@@ -2283,6 +2401,7 @@ where
                     result_graph: &executed.graph,
                     report: &report,
                     events: &executed.sink.events,
+                    action_outcomes: &action_outcomes,
                     resolve_tick: tick,
                 })
                 .map_err(TickTransactionError::Replay)?,

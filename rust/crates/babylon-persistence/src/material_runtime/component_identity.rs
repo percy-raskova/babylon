@@ -71,16 +71,24 @@ impl MaterialComponentIdentity {
         Ok(())
     }
 
+    pub(super) const fn session_id(&self) -> &ReplaySessionId {
+        &self.session_id
+    }
+
     pub(super) fn validate_actions(
         &self,
         tick: u64,
         layout: i16,
         digest: &[u8],
         bytes: &[u8],
+        accepted: Option<&OrderedPracticeActionBatch>,
     ) -> Result<(), MaterialRuntimeError> {
-        let expected = OrderedPracticeActionBatch::empty(self.session_id.clone(), tick)
+        let empty = OrderedPracticeActionBatch::empty(self.session_id.clone(), tick)
             .map_err(|_| MaterialRuntimeError::InvalidCheckpoint)?;
-        if layout != 1
+        let expected = accepted.unwrap_or(&empty);
+        if expected.session() != &self.session_id
+            || expected.resolve_tick() != tick
+            || layout != 1
             || digest != expected.digest().as_bytes()
             || bytes != expected.canonical_bytes()
         {

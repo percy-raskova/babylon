@@ -7,8 +7,7 @@
 Babylon is an entertainment-first emergent political-economy game, not a forecast
 or scientific reproduction. Theory constrains causes but does not predetermine
 results. Determinism proves computational identity, not scientific truth.
-Historical cases test causal signatures and counterfactual behavior. Bevy remains
-an administrative viewer with no player action.
+Historical cases test causal signatures and counterfactual behavior. Bevy offers observer campaigns and a bounded native Wayne organizer loop.
 
 This checkout implements Gate 2. These four executable gates follow:
 
@@ -52,7 +51,7 @@ The live Rust path is `babylon-kernel`, `babylon-graph`, `babylon-bsl`,
 and evidence class. Built-in declarations must match
 `GOVERNED_RULE_ATTRIBUTIONS`. Unknown mod and fixture IDs remain self-declared.
 
-Mechanics have typed effects. Recognizers, external events, and intents are exact-allowlist and default-deny. Restricted production footprints must equal their unique allowance rows, so CI rejects dead permissions. Executable shocks and intents do not exist.
+Mechanics have typed effects. Recognizers, external events, and intents are exact-allowlist and default-deny. Restricted production footprints must equal their unique allowance rows, so CI rejects dead permissions. Executable shocks remain absent. The bounded organizer intent is explicitly allowlisted.
 
 Same-rank rules compose sequentially. `MaterialReplaySession` publishes material state, graph, events, and event-then-write `AuditReceipt` rows,
 completed time, and `NominalWorldHash` only after the detached tick succeeds. `GraphStateHash` stays graph-only.
@@ -67,7 +66,8 @@ Python builds reference data and runs repository and operator tools.
 
 Rust owns the three-schema boundary, marker-last commits, checkpoint restart,
 and Archive dirty receipts. The semantic Archive worker and restricted reader
-supply cited county and place dossiers, including retained historical pages.
+supply cited county, place, workplace and organization dossiers, including
+retained historical pages.
 These capabilities leave Gate 3 acceptance open. ADR250 places the Gate 4
 economic circuit before Gate 5 player actions and next-period intents.
 Gate 6 adds governed events and COVID.

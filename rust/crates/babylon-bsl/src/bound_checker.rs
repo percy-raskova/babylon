@@ -652,8 +652,8 @@ pub fn rule_bound(
     intrinsics: &IntrinsicCosts,
 ) -> Result<u64, BoundError> {
     let items = rule_items(rule)?;
-    if crate::material_cycle::classify(rule).map_err(|error| malformed(error.to_string()))?
-        == crate::rule_pipeline::RuleExecution::MaterialCycle
+    if crate::native_cycle::classify(rule).map_err(|error| malformed(error.to_string()))?
+        != crate::rule_pipeline::RuleExecution::Graph
     {
         return Ok(crate::fuel::MATERIAL_CYCLE_INVOCATION_COST);
     }

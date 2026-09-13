@@ -113,6 +113,7 @@ def main() -> None:
             "archive",
             "reader",
             "client",
+            "organizer",
         ]
     outputs = {**plan, "plan": json.dumps(plan), "pg-matrix": json.dumps({"focus": focus})}
     with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:

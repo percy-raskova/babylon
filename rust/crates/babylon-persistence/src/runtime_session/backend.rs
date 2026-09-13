@@ -1,7 +1,6 @@
 //! Explicit New/Open admission reuses the single durable material runtime.
 
 use babylon_bsl::structural_verbs::CollectingSink;
-use babylon_practice_contract::OrderedPracticeActionBatch;
 use postgres::{Config, NoTls};
 
 use super::{RuntimeSessionErrorCode, RuntimeSessionTail, RuntimeSessionTarget, SessionBackend};
@@ -19,6 +18,24 @@ pub(super) struct DurableBackend {
     tail: RuntimeSessionTail,
 }
 impl SessionBackend for DurableBackend {
+    fn has_organizer(&self) -> bool {
+        self.runtime.has_organizer()
+    }
+    fn organizer_status(&self) -> Result<super::OrganizerSnapshot, RuntimeSessionErrorCode> {
+        self.runtime.organizer_snapshot()
+    }
+    fn organizer_preview(
+        &self,
+        command: &super::OrganizerCommand,
+    ) -> Result<super::OrganizerPreview, RuntimeSessionErrorCode> {
+        self.runtime.preview_organizer_command(command)
+    }
+    fn organizer_submit(
+        &self,
+        command: &super::OrganizerCommand,
+    ) -> Result<super::OrganizerCommitment, RuntimeSessionErrorCode> {
+        self.runtime.submit_organizer_command(command)
+    }
     fn tail(&self) -> RuntimeSessionTail {
         self.tail.clone()
     }
@@ -29,40 +46,33 @@ impl SessionBackend for DurableBackend {
         if expected != &self.tail || durable_tail(&self.config, self.campaign)? != self.tail {
             return Err(RuntimeSessionErrorCode::StaleExpectedTail);
         }
-        let tick = self
-            .tail
-            .resolve_tick
-            .checked_add(1)
-            .ok_or(RuntimeSessionErrorCode::CommitRefused)?;
-        let actions = OrderedPracticeActionBatch::empty(
-            self.runtime
-                .session()
-                .graph_session()
-                .session_identity()
-                .clone(),
-            tick,
-        )
-        .map_err(|_| RuntimeSessionErrorCode::CommitRefused)?;
+        let actions = self
+            .runtime
+            .next_action_batch()
+            .map_err(|error| advance_error(&error))?;
         let receipt = self
             .runtime
             .advance_and_commit(&mut CollectingSink::default(), &actions)
-            .map_err(|error| match error {
-                MaterialRuntimeError::Replay(
-                    babylon_tick::material_replay::MaterialReplayError::Horizon,
-                ) => RuntimeSessionErrorCode::HorizonComplete,
-                MaterialRuntimeError::DatabaseLockRefused(_) => {
-                    RuntimeSessionErrorCode::StorageBusy
-                }
-                MaterialRuntimeError::DatabaseStatementCanceled(_) => {
-                    RuntimeSessionErrorCode::StorageCanceled
-                }
-                _ => RuntimeSessionErrorCode::CommitRefused,
-            })?;
+            .map_err(|error| advance_error(&error))?;
         self.tail = RuntimeSessionTail {
             resolve_tick: receipt.resolve_tick(),
             tick_content_hash: Some(digest_hex(receipt.tick_content_hash().as_bytes())),
         };
         Ok(self.tail.clone())
+    }
+}
+
+fn advance_error(error: &MaterialRuntimeError) -> RuntimeSessionErrorCode {
+    match error {
+        MaterialRuntimeError::Replay(
+            babylon_tick::material_replay::MaterialReplayError::Horizon,
+        ) => RuntimeSessionErrorCode::HorizonComplete,
+        MaterialRuntimeError::DatabaseLockRefused(_) => RuntimeSessionErrorCode::StorageBusy,
+        MaterialRuntimeError::DatabaseStatementCanceled(_) => {
+            RuntimeSessionErrorCode::StorageCanceled
+        }
+        MaterialRuntimeError::TailConflict => RuntimeSessionErrorCode::StaleExpectedTail,
+        _ => RuntimeSessionErrorCode::CommitRefused,
     }
 }
 
@@ -130,7 +140,7 @@ pub(super) fn open(
                 .as_ref()
                 .ok_or(RuntimeSessionErrorCode::DefinesInvalid)?;
             let foundation = MichiganContentPreset::new_campaign(preset.delivery())
-                .create_foundation(catalog)
+                .create_foundation_for_campaign(catalog, campaign)
                 .map_err(|_| RuntimeSessionErrorCode::ScenarioMismatch)?;
             let digest = digest_hex(&foundation.digest());
             (
@@ -316,5 +326,26 @@ mod defines_tests {
         ));
         assert!(catalog_for_target(&open, &path).unwrap().is_none());
         std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn action_batch_tail_conflict_requires_current_state() {
+        assert_eq!(
+            advance_error(&MaterialRuntimeError::TailConflict),
+            RuntimeSessionErrorCode::StaleExpectedTail
+        );
+    }
+
+    #[test]
+    fn action_batch_corruption_and_bounds_are_commit_failures_not_ruling_refusals() {
+        for error in [
+            MaterialRuntimeError::OrganizerStorage,
+            MaterialRuntimeError::Bounds,
+        ] {
+            assert_eq!(
+                advance_error(&error),
+                RuntimeSessionErrorCode::CommitRefused
+            );
+        }
     }
 }

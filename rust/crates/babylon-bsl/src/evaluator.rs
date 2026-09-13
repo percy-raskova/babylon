@@ -627,9 +627,9 @@ fn eval_form(
         "field-of" => eval_field_of(items, env, host, fuel),
         "edge-between" => eval_edge_between(items, env, host, fuel),
         "quantize-mass" => eval_quantize_mass(items, env, host, fuel),
-        "material-cycle" => Err(EvalError::plain(
-            "material-cycle requires the material runtime host as a sole rule body, not an expression or intrinsic call",
-        )),
+        "material-cycle" | "organizer-products" | "organizer-practice" => Err(EvalError::plain(format!(
+            "{head} requires the material runtime host as a sole rule body, not an expression or intrinsic call",
+        ))),
         name => {
             if EFFECT_POSITION_ONLY.contains(&name) {
                 return Err(EvalError::plain(format!(
@@ -2069,6 +2069,20 @@ mod tests {
 
     fn costs() -> IntrinsicCosts {
         IntrinsicCosts::new(HashMap::from([("double".to_owned(), 4)]))
+    }
+
+    #[test]
+    fn native_expression_refusal_identifies_the_requested_operation() {
+        for operation in ["material-cycle", "organizer-products", "organizer-practice"] {
+            let error = eval_with(&format!("({operation})"), HashMap::new(), &mut 100).unwrap_err();
+            assert!(
+                error
+                    .message
+                    .starts_with(&format!("{operation} requires the material runtime host")),
+                "refusal must identify the unsupported invocation: {error}"
+            );
+            assert!(error.message.contains("sole rule body"));
+        }
     }
 
     fn eval_with(

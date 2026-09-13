@@ -176,6 +176,7 @@ fn project_in_transit_freight(
 
 fn scenario_label(preset: MichiganDeliveryPreset) -> &'static str {
     match preset {
+        MichiganDeliveryPreset::OrganizeInWayne => "Organize in Wayne",
         MichiganDeliveryPreset::Standard => "Michigan: standard delivery",
         MichiganDeliveryPreset::Delayed => "Michigan: delayed delivery",
         MichiganDeliveryPreset::SharedFreightAmple => "Michigan: shared freight — ample",

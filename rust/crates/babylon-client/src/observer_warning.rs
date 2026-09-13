@@ -13,8 +13,8 @@ use crate::observer_ui::{ObserverCommand, ObserverFontRole, ObserverUiState};
 const FICTION: &str = "Babylon is a work of fiction built from real places, records and material relationships. Some of it may feel uncomfortably familiar.";
 const EMERGENCE: &str = "PROCEDURALLY EMERGENT. Most of your experience comes from game mechanics. It may behave in unexpected ways.";
 const THEORY: &str = "The game draws on Marxist theory. It may hit close to home. It makes no claim about what you should or should not do. This is not an oracle. There is no computational scrying behind the curtain.";
-const OBSERVER: &str = "THIS BUILD: OBSERVER ONLY. Watch the simulation. Trace its dependencies. Player interventions are unavailable.";
-const AI: &str = "The planned full game will offer optional AI narration: local models first, or a service you configure. Playing without it will reduce narrative detail; the simulation will still run. AI narration is not connected in this observer build.";
+const OBSERVER: &str = "THIS BUILD: Organize in Wayne offers a bounded workplace decision loop. Observer campaigns let you trace the economy. Broader political practices remain in development.";
+const AI: &str = "The planned full game will offer optional AI narration: local models first, or a service you configure. Playing without it will reduce narrative detail; the simulation will still run. AI narration is not connected in this build.";
 
 #[derive(Component)]
 pub(crate) struct ObserverWarningRoot;

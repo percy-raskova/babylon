@@ -59,6 +59,7 @@ pub struct ObserverSession {
     pub foundation_digest: Option<String>,
     pub phase: SessionPhase,
     pub playing: bool,
+    pub organizer_enabled: bool,
     pub quit_requested: bool,
     pub periods_per_second: f64,
     pub error: Option<String>,
@@ -82,6 +83,7 @@ impl ObserverSession {
             foundation_digest: None,
             phase: SessionPhase::Connecting,
             playing: false,
+            organizer_enabled: false,
             quit_requested: false,
             periods_per_second: 1.0,
             error: None,
@@ -116,6 +118,7 @@ impl ObserverSession {
     /// Play one four-week period at a time, awaiting its commit and observation.
     pub fn start_playback(&mut self) -> bool {
         if self.quit_requested
+            || self.organizer_control_pending()
             || self.viewed_tick != self.durable_tick
             || self.lifecycle_pending()
             || self.durable_tick.checked_add(1).is_none()
@@ -144,6 +147,7 @@ impl ObserverSession {
             && !self.quit_requested
             && self.phase == SessionPhase::Ready
             && !self.advance_pending()
+            && !self.organizer_control_pending()
             && !self.lifecycle_pending()
             && self.viewed_tick == self.durable_tick
             && self.durable_tick.checked_add(1).is_some()
@@ -191,7 +195,8 @@ impl ObserverSession {
     }
 
     pub fn begin_advance(&mut self) -> Option<u64> {
-        if self.phase != SessionPhase::Ready
+        if self.organizer_control_pending()
+            || self.phase != SessionPhase::Ready
             || self.quit_requested
             || self.pending_request.is_some()
             || self.lifecycle_pending()

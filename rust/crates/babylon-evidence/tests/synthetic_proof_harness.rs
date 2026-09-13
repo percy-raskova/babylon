@@ -312,7 +312,7 @@ fn proof_header_pins_forbidden_audit_source_and_semantics_independently() {
     );
     assert_eq!(
         audit_source.to_hex(),
-        "19da32548c2736483c0999010e2358665985ada864b536f0ea4966f9281d73eb"
+        "981ed1a68e58275790376c5be2ca9218099ebd385452166420a94948e20a8a56"
     );
     let envelope = canonical_envelope(&proof_profile()).unwrap();
     let payload = SfsProofProfile::DOMAIN.len() + 7;

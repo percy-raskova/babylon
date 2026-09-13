@@ -25,6 +25,7 @@ pub(crate) struct LifecycleState {
     switching: Option<PendingSwitch>,
     stop: Option<(u64, bool)>,
     disconnected: bool,
+    organizer_control_pending: bool,
     last_error: Option<RuntimeSessionErrorCode>,
 }
 
@@ -36,6 +37,7 @@ impl LifecycleState {
             switching: None,
             stop: None,
             disconnected: false,
+            organizer_control_pending: false,
             last_error: None,
         }
     }
@@ -78,6 +80,14 @@ impl ObserverSession {
         }
         self.lifecycle.queued = Some(target);
         Ok(())
+    }
+
+    pub(crate) const fn organizer_control_pending(&self) -> bool {
+        self.lifecycle.organizer_control_pending
+    }
+
+    pub(crate) const fn set_organizer_control_pending(&mut self, pending: bool) {
+        self.lifecycle.organizer_control_pending = pending;
     }
 
     pub(crate) fn lifecycle_pending(&self) -> bool {
@@ -192,6 +202,8 @@ impl ObserverSession {
             .expect("validated switch")
             .accepted = true;
         self.lifecycle.scope = Some(scope);
+        self.organizer_enabled = false;
+        self.set_organizer_control_pending(false);
         self.campaign = campaign;
         self.generation = generation;
         self.durable_tick = 0;

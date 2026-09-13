@@ -3,10 +3,17 @@
 use serde::{Deserialize, Serialize};
 
 use super::RuntimeSessionErrorCode;
+pub use crate::organizer_runtime::OrganizerSnapshot;
 use crate::{identity::CampaignId, michigan_material::MichiganDeliveryPreset};
+pub use babylon_practice_contract::{
+    OrganizerAgreement, OrganizerChoice, OrganizerCommand, OrganizerCommitment, OrganizerInquiry,
+    OrganizerObservation, OrganizerOutcome, OrganizerPartnerResponse, OrganizerPauseReason,
+    OrganizerPosition, OrganizerPreview, OrganizerReceipt, OrganizerRefusal, OrganizerReport,
+    OrganizerStandingWork, OrganizerView,
+};
 
-pub const RUNTIME_SESSION_PROTOCOL_VERSION: u16 = 3;
-pub const RUNTIME_SESSION_MAX_LINE_BYTES: usize = 4096;
+pub const RUNTIME_SESSION_PROTOCOL_VERSION: u16 = 4;
+pub const RUNTIME_SESSION_MAX_LINE_BYTES: usize = 131_072;
 
 /// A lifecycle incarnation, distinct even when the same campaign is reopened.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -28,6 +35,8 @@ pub struct RuntimeSessionTail {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RuntimeSessionPreset {
+    #[serde(rename = "organize-in-wayne")]
+    OrganizeInWayne,
     Standard,
     Delayed,
     #[serde(rename = "shared-freight-ample")]
@@ -54,6 +63,7 @@ pub enum RuntimeSessionPreset {
 impl RuntimeSessionPreset {
     pub(super) const fn delivery(self) -> MichiganDeliveryPreset {
         match self {
+            Self::OrganizeInWayne => MichiganDeliveryPreset::OrganizeInWayne,
             Self::Standard => MichiganDeliveryPreset::Standard,
             Self::Delayed => MichiganDeliveryPreset::Delayed,
             Self::SharedFreightAmple => MichiganDeliveryPreset::SharedFreightAmple,
@@ -108,6 +118,29 @@ pub enum RuntimeSessionRequest {
         scope: RuntimeSessionScope,
         target: RuntimeSessionTarget,
     },
+    PreviewOrganizer {
+        protocol_version: u16,
+        request_id: u64,
+        scope: RuntimeSessionScope,
+        command: OrganizerCommand,
+    },
+    SubmitOrganizer {
+        protocol_version: u16,
+        request_id: u64,
+        scope: RuntimeSessionScope,
+        command: OrganizerCommand,
+    },
+    ConfigureOrganizerStanding {
+        protocol_version: u16,
+        request_id: u64,
+        scope: RuntimeSessionScope,
+        command: OrganizerCommand,
+    },
+    OrganizerStatus {
+        protocol_version: u16,
+        request_id: u64,
+        scope: RuntimeSessionScope,
+    },
     Advance {
         protocol_version: u16,
         request_id: u64,
@@ -128,7 +161,30 @@ pub enum RuntimeSessionRequest {
 impl RuntimeSessionRequest {
     pub(super) const fn header(&self) -> (u16, u64, &RuntimeSessionScope) {
         match self {
-            Self::Switch {
+            Self::PreviewOrganizer {
+                protocol_version,
+                request_id,
+                scope,
+                ..
+            }
+            | Self::SubmitOrganizer {
+                protocol_version,
+                request_id,
+                scope,
+                ..
+            }
+            | Self::ConfigureOrganizerStanding {
+                protocol_version,
+                request_id,
+                scope,
+                ..
+            }
+            | Self::OrganizerStatus {
+                protocol_version,
+                request_id,
+                scope,
+            }
+            | Self::Switch {
                 protocol_version,
                 request_id,
                 scope,
@@ -170,7 +226,23 @@ pub enum RuntimeSessionResponse {
         request_id: u64,
         scope: RuntimeSessionScope,
         foundation_digest: String,
+        organizer: bool,
         tail: RuntimeSessionTail,
+    },
+    OrganizerPreview {
+        request_id: u64,
+        scope: RuntimeSessionScope,
+        preview: OrganizerPreview,
+    },
+    OrganizerAccepted {
+        request_id: u64,
+        scope: RuntimeSessionScope,
+        commitment: OrganizerCommitment,
+    },
+    OrganizerStatus {
+        request_id: u64,
+        scope: RuntimeSessionScope,
+        snapshot: Box<OrganizerSnapshot>,
     },
     Committed {
         request_id: u64,

@@ -14,10 +14,10 @@ const SCHEMA_VERSION: u16 = 2;
 pub const PRACTICE_INTENT_DOMAIN_BYTES: &[u8] = b"babylon.practice-intent.v2";
 /// SHA-256 of the exact language-neutral current intent schema bytes.
 pub const PRACTICE_INTENT_SOURCE_SHA256: [u8; 32] = [
-    0xed, 0xe3, 0xc5, 0x5e, 0x1f, 0x62, 0xbb, 0x7b, 0xec, 0x0c, 0x4d, 0x89, 0xaa, 0xfa, 0x56, 0x44,
-    0x44, 0xfb, 0xbc, 0x0b, 0xa8, 0xc2, 0x75, 0x26, 0xad, 0x00, 0xef, 0xe4, 0xbe, 0x5a, 0x1e, 0xc5,
+    0x81, 0x9e, 0xef, 0x26, 0x71, 0x13, 0x9f, 0x5f, 0x21, 0x16, 0x28, 0x51, 0x91, 0x7b, 0x60, 0x97,
+    0xfd, 0x85, 0x06, 0x01, 0xa0, 0x28, 0xc9, 0x67, 0x16, 0xd7, 0xae, 0xe6, 0x82, 0xda, 0xab, 0xcd,
 ];
-/// Designed bound on parameters in one intent. current's semantic allowlists are empty.
+/// Designed bound on parameters in one intent; executable keys are exact-allowlist.
 pub const MAX_PRACTICE_PARAMETERS: usize = 16;
 /// Designed structural bound for one parameter value.
 pub const MAX_PRACTICE_PARAMETER_VALUE_BYTES: usize = 256;
@@ -97,6 +97,7 @@ pub enum PracticeId {
     Occupation = 6,
     Damage = 7,
     CapitalStrike = 8,
+    Investigate = 9,
 }
 
 impl TryFrom<u8> for PracticeId {
@@ -112,6 +113,7 @@ impl TryFrom<u8> for PracticeId {
             6 => Ok(Self::Occupation),
             7 => Ok(Self::Damage),
             8 => Ok(Self::CapitalStrike),
+            9 => Ok(Self::Investigate),
             _ => Err(PracticeIntentError::IntentEnumCode),
         }
     }
@@ -133,6 +135,7 @@ pub enum PracticeTargetTag {
     CreditCommitment = 10,
     ProcurementCommitment = 11,
     ProductionCommitment = 12,
+    Organization = 13,
 }
 
 impl TryFrom<u8> for PracticeTargetTag {
@@ -152,6 +155,7 @@ impl TryFrom<u8> for PracticeTargetTag {
             10 => Ok(Self::CreditCommitment),
             11 => Ok(Self::ProcurementCommitment),
             12 => Ok(Self::ProductionCommitment),
+            13 => Ok(Self::Organization),
             _ => Err(PracticeIntentError::IntentEnumCode),
         }
     }
@@ -198,7 +202,7 @@ pub struct TaggedPracticeTarget {
     pub identity: PracticeTargetIdentity,
 }
 
-/// Structurally framed parameter row. current semantic allowlists are empty.
+/// Structurally framed parameter row with practice-specific semantic validation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PracticeParameter {
     pub key_u8: u8,
@@ -279,9 +283,11 @@ fn validate_tick_pair(submit: u64, resolve: u64) -> Result<(), PracticeIntentErr
 
 pub(crate) fn target_is_valid(practice: PracticeId, tag: PracticeTargetTag) -> bool {
     match practice {
-        PracticeId::Organize | PracticeId::Agitate | PracticeId::MutualAid => {
-            tag == PracticeTargetTag::SocialClass
-        }
+        PracticeId::Organize => matches!(
+            tag,
+            PracticeTargetTag::SocialClass | PracticeTargetTag::Organization
+        ),
+        PracticeId::Agitate | PracticeId::MutualAid => tag == PracticeTargetTag::SocialClass,
         PracticeId::Strike => tag == PracticeTargetTag::LaborProcess,
         PracticeId::Blockade => matches!(
             tag,
@@ -303,6 +309,7 @@ pub(crate) fn target_is_valid(practice: PracticeId, tag: PracticeTargetTag) -> b
                 | PracticeTargetTag::ProcurementCommitment
                 | PracticeTargetTag::ProductionCommitment
         ),
+        PracticeId::Investigate => tag == PracticeTargetTag::Facility,
     }
 }
 
@@ -317,7 +324,36 @@ fn validate_parameters(value: &PracticeIntent) -> Result<(), PracticeIntentError
             return Err(PracticeIntentError::IntentParameterLength);
         }
     }
-    if value.parameters.is_empty() {
+    if value.practice_id == PracticeId::Investigate {
+        if value.parameters.len() == 1 {
+            let parameter = &value.parameters[0];
+            if parameter.key_u8 == 1
+                && parameter.value_kind_u8 == 1
+                && parameter.value_length_u16 == 1
+                && matches!(parameter.value_bytes.as_slice(), [1] | [2])
+            {
+                return Ok(());
+            }
+        }
+        Err(PracticeIntentError::IntentParameterUnsupported)
+    } else if value.practice_id == PracticeId::Organize
+        && value.target.tag == PracticeTargetTag::Organization
+        && value.parameters.len() == 1
+    {
+        let parameter = &value.parameters[0];
+        if parameter.key_u8 == 2
+            && parameter.value_kind_u8 == 1
+            && parameter.value_length_u16 == 1
+            && matches!(
+                parameter.value_bytes.as_slice(),
+                [1] | [2] | [3] | [4] | [5]
+            )
+        {
+            Ok(())
+        } else {
+            Err(PracticeIntentError::IntentParameterUnsupported)
+        }
+    } else if value.parameters.is_empty() {
         Ok(())
     } else {
         Err(PracticeIntentError::IntentParameterUnsupported)
@@ -364,6 +400,22 @@ fn append_domain(output: &mut Vec<u8>) {
     output.push(0);
 }
 
+fn append_parameters(
+    output: &mut Vec<u8>,
+    parameters: &[PracticeParameter],
+) -> Result<(), PracticeIntentError> {
+    let count =
+        u16::try_from(parameters.len()).map_err(|_| PracticeIntentError::IntentParameterLimit)?;
+    output.extend_from_slice(&count.to_be_bytes());
+    for parameter in parameters.iter().take(MAX_PRACTICE_PARAMETERS + 1) {
+        output.push(parameter.key_u8);
+        output.push(parameter.value_kind_u8);
+        output.extend_from_slice(&parameter.value_length_u16.to_be_bytes());
+        output.extend_from_slice(&parameter.value_bytes);
+    }
+    Ok(())
+}
+
 /// Encode one current intent in fixed big-endian field order.
 ///
 /// # Errors
@@ -383,7 +435,7 @@ pub fn encode_practice_intent(value: &PracticeIntent) -> Result<Vec<u8>, Practic
     output.extend_from_slice(&value.proposal_nonce.as_bytes());
     output.extend_from_slice(&value.quoted_content_digest);
     output.extend_from_slice(&value.quoted_resource_contract_digest);
-    output.extend_from_slice(&0_u16.to_be_bytes());
+    append_parameters(&mut output, &value.parameters)?;
     let evidence_count = u16::try_from(value.evidence_digests.len())
         .map_err(|_| PracticeIntentError::IntentEvidenceLimit)?;
     output.extend_from_slice(&evidence_count.to_be_bytes());
@@ -475,23 +527,25 @@ fn decode_parameters(
     if count > MAX_PRACTICE_PARAMETERS {
         return Err(PracticeIntentError::IntentParameterLimit);
     }
+    let mut output = Vec::with_capacity(count);
     for index in 0..=MAX_PRACTICE_PARAMETERS {
         if index == count {
             break;
         }
-        let _key = cursor.u8()?;
-        let _kind = cursor.u8()?;
-        let length = usize::from(cursor.u16()?);
-        if length > MAX_PRACTICE_PARAMETER_VALUE_BYTES {
+        let key_u8 = cursor.u8()?;
+        let value_kind_u8 = cursor.u8()?;
+        let value_length_u16 = cursor.u16()?;
+        if usize::from(value_length_u16) > MAX_PRACTICE_PARAMETER_VALUE_BYTES {
             return Err(PracticeIntentError::IntentParameterLength);
         }
-        cursor.take(length)?;
+        output.push(PracticeParameter {
+            key_u8,
+            value_kind_u8,
+            value_length_u16,
+            value_bytes: cursor.take(usize::from(value_length_u16))?.to_vec(),
+        });
     }
-    if count == 0 {
-        Ok(Vec::new())
-    } else {
-        Err(PracticeIntentError::IntentParameterUnsupported)
-    }
+    Ok(output)
 }
 
 fn decode_evidence(cursor: &mut Cursor<'_>) -> Result<Vec<[u8; 32]>, PracticeIntentError> {
@@ -613,8 +667,9 @@ pub fn practice_parameter_bytes_digest(
     value: &PracticeIntent,
 ) -> Result<[u8; 32], PracticeIntentError> {
     validate_parameters(value)?;
-    // Every current practice has an empty semantic parameter allowlist.
-    Ok(sha256_of(b"babylon.practice-parameter-bytes.v1\0\0\0"))
+    let mut preimage = Vec::from(&b"babylon.practice-parameter-bytes.v1\0"[..]);
+    append_parameters(&mut preimage, &value.parameters)?;
+    Ok(sha256_of(&preimage))
 }
 
 /// Hash a fixed selection of a stable, tagged material target.

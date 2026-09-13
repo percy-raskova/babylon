@@ -1,4 +1,4 @@
-//! Bounded lifecycle and empty-action four-week control over parent-owned pipes.
+//! Bounded campaign lifecycle and durable next-period rulings over parent-owned pipes.
 
 use postgres::Config;
 use serde::{Deserialize, Serialize};
@@ -31,6 +31,10 @@ pub enum RuntimeSessionErrorCode {
     DefinesInvalid,
     PipeFailure,
     HorizonComplete,
+    OrganizerUnavailable,
+    OrganizerRefused,
+    OrganizerNonceConflict,
+    OrganizerAlreadyCommitted,
 }
 impl std::fmt::Display for RuntimeSessionErrorCode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -41,6 +45,24 @@ impl std::error::Error for RuntimeSessionErrorCode {}
 
 trait SessionBackend {
     fn tail(&self) -> RuntimeSessionTail;
+    fn has_organizer(&self) -> bool {
+        false
+    }
+    fn organizer_status(&self) -> Result<OrganizerSnapshot, RuntimeSessionErrorCode> {
+        Err(RuntimeSessionErrorCode::OrganizerUnavailable)
+    }
+    fn organizer_preview(
+        &self,
+        _command: &OrganizerCommand,
+    ) -> Result<OrganizerPreview, RuntimeSessionErrorCode> {
+        Err(RuntimeSessionErrorCode::OrganizerUnavailable)
+    }
+    fn organizer_submit(
+        &self,
+        _command: &OrganizerCommand,
+    ) -> Result<OrganizerCommitment, RuntimeSessionErrorCode> {
+        Err(RuntimeSessionErrorCode::OrganizerUnavailable)
+    }
     fn advance(
         &mut self,
         expected: &RuntimeSessionTail,

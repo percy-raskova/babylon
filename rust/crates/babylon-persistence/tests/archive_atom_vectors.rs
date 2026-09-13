@@ -58,6 +58,8 @@ fn atom_from_data(data: &Value) -> ArchiveAtom {
         "county" => ArchiveAtomSubjectKind::County,
         "place" => ArchiveAtomSubjectKind::Place,
         "concept" => ArchiveAtomSubjectKind::Concept,
+        "workplace" => ArchiveAtomSubjectKind::Workplace,
+        "organization" => ArchiveAtomSubjectKind::Organization,
         other => panic!("unknown subject kind {other}"),
     };
     let subject = ArchiveAtomSubject::try_new(

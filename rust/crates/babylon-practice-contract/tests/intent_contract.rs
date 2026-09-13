@@ -67,7 +67,23 @@ fn intent_from_vector(data: &Value) -> PracticeIntent {
         )
         .try_into()
         .unwrap(),
-        parameters: Vec::new(),
+        parameters: data["parameters"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|parameter| babylon_practice_contract::PracticeParameter {
+                key_u8: u8::try_from(parameter["key_u8"].as_u64().unwrap()).unwrap(),
+                value_kind_u8: u8::try_from(parameter["value_kind_u8"].as_u64().unwrap()).unwrap(),
+                value_length_u16: u16::try_from(parameter["value_length_u16"].as_u64().unwrap())
+                    .unwrap(),
+                value_bytes: parameter["value_bytes"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|value| u8::try_from(value.as_u64().unwrap()).unwrap())
+                    .collect(),
+            })
+            .collect(),
         evidence_digests: data["evidence_digests_hex"]
             .as_array()
             .unwrap()
@@ -92,7 +108,7 @@ fn intent_schema_and_vectors_drive_the_rust_boundary() {
             serde_json::from_str(line).unwrap()
         })
         .collect();
-    assert_eq!(cases.len(), 15);
+    assert_eq!(cases.len(), 17);
 
     let intent_case = cases
         .iter()
@@ -130,6 +146,25 @@ fn intent_schema_and_vectors_drive_the_rust_boundary() {
         decode_practice_intent(&unsupported_domain),
         Err(PracticeIntentError::IntentDomain)
     );
+
+    for case in cases.iter().filter(|case| case["kind"] == "intent") {
+        let value = intent_from_vector(&case["data"]);
+        let bytes = hex_bytes(case["data"]["canonical_hex"].as_str().unwrap());
+        assert_eq!(encode_practice_intent(&value).unwrap(), bytes);
+        assert_eq!(decode_practice_intent(&bytes).unwrap(), value);
+        assert_eq!(
+            practice_intent_digest(&value).unwrap().as_slice(),
+            hex_bytes(case["data"]["digest_hex"].as_str().unwrap())
+        );
+        assert_eq!(
+            practice_parameter_bytes_digest(&value).unwrap().as_slice(),
+            hex_bytes(case["data"]["parameter_digest_hex"].as_str().unwrap())
+        );
+        assert_eq!(
+            fixed_practice_target_digest(value.target.tag, value.target.identity).as_slice(),
+            hex_bytes(case["data"]["fixed_target_digest_hex"].as_str().unwrap())
+        );
+    }
 
     for case in cases.iter().filter(|case| case["kind"] == "invalid_wire") {
         let payload = hex_bytes(case["data"]["payload_hex"].as_str().unwrap());

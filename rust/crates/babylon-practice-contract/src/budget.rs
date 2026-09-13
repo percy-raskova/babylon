@@ -54,7 +54,8 @@ fn governed_cost(
             | PracticeId::Blockade
             | PracticeId::Occupation
             | PracticeId::Damage
-            | PracticeId::CapitalStrike,
+            | PracticeId::CapitalStrike
+            | PracticeId::Investigate,
         ) => return Err(PracticeContractError::PracticeBudgetUnpriced),
     })
 }

@@ -16,7 +16,7 @@ envelope:
     - {tag: 4, name: choice_receipt, codec: existing_choice_receipt_rows_v1}
     - {tag: 5, name: graph_full_checkpoint, codec: existing_nine_checkpoint_sections_v1}
     - {tag: 6, name: archive_dirty_receipt, count: 1, hash: combined_material_tick_content_v3}
-    - {tag: 7, name: complete_material_register, count: 1, key: empty, payload: exact_material_world_register_v3_bytes}
+    - {tag: 7, name: complete_material_register, count: 1, key: empty, payload: exact_material_world_register_v4_bytes}
     - {tag: 8, name: material_receipts, count: 1, key: empty, payload: exact_material_tick_receipts_v5_bytes}
   family_frame: u8_tag_then_u64_big_endian_count
   row_frame: u32_big_endian_key_length_then_key_then_u32_big_endian_payload_length_then_payload
@@ -128,6 +128,6 @@ persistence:
   material_campaign: Cannot receive a graph-only V2 marker.
 related_contracts:
   - contracts/material_circuit_v3.yaml
-  - contracts/material_world_register_v3.yaml
+  - contracts/material_world_register_v4.yaml
   - contracts/nominal_material_world_v3.yaml
   - contracts/material_campaign_foundation_v2.yaml

@@ -458,8 +458,16 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
         "af07457d5577fed934159f2559a0f4b7c2b797c1cc2e5f5c47639f4eb72206ec",
     ),
     (
+        "organizer-cycle.bsl",
+        "d299761c44c5f365c10affb99f53b2d9162a1f4ca5be38e5ba0451bff46b6aef",
+    ),
+    (
         "cohort-declarations.bscn",
         "4c0474bd2d16c85d5f5060a2abd87cd6983d7c8c50d2dbef9a66538481cb5990",
+    ),
+    (
+        "organizer-declarations.bscn",
+        "f698078f504089fd9493505770b635d747f6b7488be25a7159a7cd1109dc9115",
     ),
 ];
 

@@ -38,6 +38,8 @@ constants:
   knowledge_domain_ascii_nul: babylon.semantic-archive-knowledge.v1
   county_kind_tag_u8: 1
   place_kind_tag_u8: 2
+  workplace_kind_tag_u8: 4
+  organization_kind_tag_u8: 5
   max_id_bytes: 128
   max_text_bytes: 4096
   max_signals_per_page: 256
@@ -65,8 +67,11 @@ layouts:
     fields: [kind_tag_u8, length_prefixed_exact_id_ascii]
     county_tag_u8: 1
     place_tag_u8: 2
+    workplace_tag_u8: 4
+    organization_tag_u8: 5
     county_id_bytes: 5
     place_id_bytes: 7
+    organizer_id_encoding: canonical_nonzero_u64_decimal
   page_input_v1:
     fields:
       - page_ref_v1

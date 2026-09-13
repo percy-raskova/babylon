@@ -1,0 +1,47 @@
+==================================================
+Consume prior organizer contact products
+==================================================
+
+(rule organizer/products
+  :role mechanic
+  :evidence designed
+  :material-basis "Consume committed contact evidence before the next practice."
+  :fuel 1000000
+  (anchor :before ooda)
+  (organizer-products))
+
+---
+
+(source_file
+  (rule
+    (qname)
+    (rule_role)
+    (evidence)
+    (material_basis (string))
+    (fuel (int_lit))
+    (anchor (symbol))
+    (organizer_products)))
+
+==================================================
+Resolve admitted organizer practice
+==================================================
+
+(rule organizer/organizer-practice
+  :role intent
+  :evidence designed
+  :material-basis "Resolve the admitted practice and its checked time allocation."
+  :fuel 1000000
+  (anchor :after ooda)
+  (organizer-practice))
+
+---
+
+(source_file
+  (rule
+    (qname)
+    (rule_role)
+    (evidence)
+    (material_basis (string))
+    (fuel (int_lit))
+    (anchor (symbol))
+    (organizer_practice)))

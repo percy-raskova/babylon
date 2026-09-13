@@ -95,7 +95,7 @@ pub struct TickPayloadSections {
     rule_outcomes: Vec<u8>,
     events: Vec<u8>,
     receipts: Vec<u8>,
-    accepted_action_outcomes: [u8; 2],
+    accepted_action_outcomes: Vec<u8>,
     aggregate_rows: u32,
 }
 
@@ -118,10 +118,56 @@ impl TickPayloadSections {
         &self.receipts
     }
 
-    /// Borrow tag `0x04`'s fixed zero count.
+    /// Borrow tag `0x04`'s connected organizer practice receipts.
     #[must_use]
-    pub const fn accepted_action_outcomes(&self) -> &[u8; 2] {
+    pub fn accepted_action_outcomes(&self) -> &[u8] {
         &self.accepted_action_outcomes
+    }
+
+    /// Bind canonical connected practice receipts to the action-outcome section.
+    ///
+    /// # Errors
+    /// Refuses invalid receipts or any row, aggregate, or byte limit violation.
+    pub fn with_action_outcomes(
+        mut self,
+        receipts: &[babylon_practice_contract::OrganizerReceipt],
+    ) -> Result<Self, IdentityCodecError> {
+        validate_rows(
+            "organizer action outcomes",
+            receipts.len(),
+            usize::from(u16::MAX),
+        )?;
+        let aggregate = checked_add(
+            "tick BSL aggregate rows",
+            self.aggregate_rows as usize,
+            receipts.len(),
+        )?;
+        validate_aggregate(aggregate, MAX_TICK_AGGREGATE_ROWS)?;
+        let mut output = IdentityWriter::new("organizer action outcomes");
+        let count =
+            u16::try_from(receipts.len()).map_err(|_| IdentityCodecError::IntegerConversion {
+                field: "organizer action outcomes",
+                value: receipts.len(),
+            })?;
+        output.extend(&count.to_be_bytes())?;
+        for receipt in receipts {
+            let bytes = babylon_practice_contract::encode_organizer_receipt(receipt)
+                .map_err(IdentityCodecError::OrganizerReceipt)?;
+            output.extend(&checked_u32("organizer receipt bytes", bytes.len())?.to_be_bytes())?;
+            output.extend(&bytes)?;
+        }
+        self.accepted_action_outcomes = output.finish();
+        validate_combined_bytes(
+            &[
+                &self.rule_outcomes,
+                &self.events,
+                &self.receipts,
+                &self.accepted_action_outcomes,
+            ],
+            MAX_TICK_COMBINED_BYTES,
+        )?;
+        self.aggregate_rows = checked_u32("tick BSL aggregate rows", aggregate)?;
+        Ok(self)
     }
 
     /// Return all rule, event, payload-item, and receipt rows.
@@ -403,7 +449,7 @@ pub fn encode_tick_payload_sections(
         rule_outcomes,
         events,
         receipts,
-        accepted_action_outcomes: [0, 0],
+        accepted_action_outcomes: vec![0, 0],
         aggregate_rows: checked_u32("tick BSL aggregate rows", aggregate)?,
     })
 }

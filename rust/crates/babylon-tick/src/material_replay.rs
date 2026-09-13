@@ -25,7 +25,9 @@ use babylon_graph::{
 };
 use babylon_kernel::{content_digest::sha256_of, tick_content_hash::TickContentHash};
 use babylon_material_circuit::{close_material_period, MaterialCircuitError};
-use babylon_practice_contract::OrderedPracticeActionBatch;
+use babylon_practice_contract::{
+    organizer_action_batch, OrderedPracticeActionBatch, OrganizerCommitment,
+};
 
 const TICK_DOMAIN: &[u8] = b"babylon.material-tick-content.v3\0";
 const TICK_IDENTITY_BYTES: usize = TICK_DOMAIN.len() + 12 + 7 * 32;
@@ -78,8 +80,34 @@ impl From<MaterialStaffingError> for MaterialBaseError {
 pub(crate) struct MaterialBaseInputs<'a> {
     pub(crate) opening: &'a MaterialWorldRegister,
     pub(crate) labor: &'a StaffingComposition,
+    pub(crate) commitment: Option<&'a OrganizerCommitment>,
 }
 impl MaterialBaseInputs<'_> {
+    pub(crate) fn validate_actions(
+        &self,
+        actions: &OrderedPracticeActionBatch,
+    ) -> Result<bool, MaterialBaseError> {
+        match (
+            self.opening.organizer_config(),
+            self.opening.organizer_state(),
+        ) {
+            (Some(config), Some(state)) => {
+                let expected = organizer_action_batch(
+                    config,
+                    state,
+                    self.commitment,
+                    actions.session().clone(),
+                )
+                .map_err(|error| MaterialBaseError::World(error.into()))?;
+                if expected.canonical_bytes() != actions.canonical_bytes() {
+                    return Err(MaterialBaseError::World(MaterialWorldError::Wire));
+                }
+                Ok(true)
+            }
+            (None, None) if self.commitment.is_none() => Ok(false),
+            _ => Err(MaterialBaseError::World(MaterialWorldError::Wire)),
+        }
+    }
     pub(crate) fn prepare(
         self,
         graph: &mut impl GraphSubstrate,
@@ -331,6 +359,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
             return Err(MaterialReplayError::Horizon);
         }
         graph.validate_material_cycle()?;
+        graph.validate_organizer_cycle(material.organizer_state().is_some())?;
         graph.validate_staffing_ownership()?;
         Ok(Self {
             graph,
@@ -385,6 +414,17 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
         &self,
         actions: &OrderedPracticeActionBatch,
     ) -> Result<PreparedMaterialTick<G>, MaterialReplayError> {
+        self.prepare_advance_with_organizer(actions, None)
+    }
+
+    /// Prepare the current action batch and optional admitted organizer ruling together.
+    /// # Errors
+    /// Refuses a foreign ruling, any mismatched canonical input, or a failed detached tick.
+    pub fn prepare_advance_with_organizer(
+        &self,
+        actions: &OrderedPracticeActionBatch,
+        commitment: Option<&OrganizerCommitment>,
+    ) -> Result<PreparedMaterialTick<G>, MaterialReplayError> {
         if self.completed_tick() >= self.horizon {
             return Err(MaterialReplayError::Horizon);
         }
@@ -393,6 +433,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
             MaterialBaseInputs {
                 opening: &self.material,
                 labor: &self.labor,
+                commitment,
             },
         )?;
         let identity = IdentifiedMaterialTick::compose(

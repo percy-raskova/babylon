@@ -135,7 +135,7 @@ fn advance() -> RuntimeSessionRequest {
 
 fn advance_numbered(request_id: u64) -> RuntimeSessionRequest {
     RuntimeSessionRequest::Advance {
-        protocol_version: 3,
+        protocol_version: 4,
         scope: scope(1, A),
         request_id,
         expected_tail: RuntimeSessionTail {
@@ -147,7 +147,7 @@ fn advance_numbered(request_id: u64) -> RuntimeSessionRequest {
 
 fn stop() -> RuntimeSessionRequest {
     RuntimeSessionRequest::Stop {
-        protocol_version: 3,
+        protocol_version: 4,
         scope: scope(1, A),
         request_id: 8,
     }
@@ -155,7 +155,7 @@ fn stop() -> RuntimeSessionRequest {
 
 fn refresh() -> RuntimeSessionRequest {
     RuntimeSessionRequest::RefreshArchive {
-        protocol_version: 3,
+        protocol_version: 4,
         scope: scope(1, A),
         request_id: 3,
     }
@@ -192,7 +192,7 @@ fn switching(
     request_id: u64,
 ) -> RuntimeSessionRequest {
     RuntimeSessionRequest::Switch {
-        protocol_version: 3,
+        protocol_version: 4,
         request_id,
         scope: previous,
         target: RuntimeSessionTarget::Open {
@@ -395,8 +395,9 @@ fn malformed_actions_versions_campaigns_and_overlong_frames_cannot_advance() {
     for (version, campaign, expected) in [
         (1, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
         (2, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
-        (4, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
-        (3, "other", RuntimeSessionErrorCode::SessionMismatch),
+        (3, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
+        (5, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
+        (4, "other", RuntimeSessionErrorCode::SessionMismatch),
     ] {
         let mut request = advance();
         if let RuntimeSessionRequest::Advance {

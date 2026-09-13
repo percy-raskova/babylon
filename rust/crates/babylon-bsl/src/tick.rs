@@ -755,9 +755,15 @@ fn run_tick_with_observer(
     vocabulary: Option<&crate::vocabulary::ClosedVocabulary>,
     observer: Option<&mut dyn WriteObserver>,
 ) -> Result<TickOutcome, TickError> {
-    if loaded.execution == crate::rule_pipeline::RuleExecution::MaterialCycle {
+    let native_operation = match loaded.execution {
+        crate::rule_pipeline::RuleExecution::Graph => None,
+        crate::rule_pipeline::RuleExecution::MaterialCycle => Some("material-cycle"),
+        crate::rule_pipeline::RuleExecution::OrganizerProducts => Some("organizer-products"),
+        crate::rule_pipeline::RuleExecution::OrganizerPractice => Some("organizer-practice"),
+    };
+    if let Some(operation) = native_operation {
         return Err(err(format!(
-            "rule {} requires the material runtime host; the graph evaluator cannot execute material-cycle",
+            "rule {} requires the material runtime host; the graph evaluator cannot execute {operation}",
             loaded.contract.rule_id
         )));
     }

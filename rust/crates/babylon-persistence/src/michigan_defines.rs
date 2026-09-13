@@ -93,6 +93,44 @@ pub(crate) struct RegionalMassDefines {
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "SCREAMING_SNAKE_CASE")]
+pub(crate) struct OrganizerDefines {
+    pub player_hours_per_period: u64,
+    pub inquiry_hours: u64,
+    pub contact_hours: u64,
+    pub partner_hours_per_period: u64,
+    pub partner_response_hours: u64,
+    pub initial_agreement_through_period: u64,
+    pub contact_renewal_periods: u64,
+}
+impl OrganizerDefines {
+    fn validate(&self) -> Result<(), MichiganDefinesError> {
+        if [
+            self.player_hours_per_period,
+            self.inquiry_hours,
+            self.contact_hours,
+            self.partner_hours_per_period,
+            self.partner_response_hours,
+        ]
+        .iter()
+        .any(|n| *n == 0 || *n > 672)
+            || self.inquiry_hours > self.player_hours_per_period
+            || self.contact_hours > self.player_hours_per_period
+            || self.partner_response_hours > self.partner_hours_per_period
+            || self.initial_agreement_through_period == 0
+            || self.initial_agreement_through_period > 16
+            || self.contact_renewal_periods == 0
+            || self.contact_renewal_periods > 16
+        {
+            return Err(MichiganDefinesError::Value(
+                "organizer participant commitments and costs",
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "SCREAMING_SNAKE_CASE")]
 pub(crate) struct MichiganDefines {
     #[serde(rename = "regional_mass")]
     pub regional_mass: RegionalMassDefines,
@@ -121,6 +159,8 @@ pub(crate) struct MichiganDefines {
     pub template: BTreeMap<String, TemplateDefines>,
     #[serde(rename = "maintenance")]
     pub maintenance: MaintenanceDefines,
+    #[serde(rename = "organizer")]
+    pub organizer: OrganizerDefines,
 }
 impl MichiganDefines {
     pub fn load(path: &Path) -> Result<Self, MichiganDefinesError> {
@@ -163,8 +203,8 @@ impl MichiganDefines {
     }
     fn validate(&self) -> Result<(), MichiganDefinesError> {
         use MichiganDefinesError::Value;
-        if self.schema_version != 4 {
-            return Err(Value("SCHEMA_VERSION must equal 4"));
+        if self.schema_version != 5 {
+            return Err(Value("SCHEMA_VERSION must equal 5"));
         }
         if self.tick_duration_days != DAYS_PER_TICK {
             return Err(Value(
@@ -240,6 +280,7 @@ impl MichiganDefines {
             ));
         }
         statewide::validate(self)?;
+        self.organizer.validate()?;
         self.maintenance.validate(self.hours_per_period())
     }
 }
@@ -334,8 +375,8 @@ mod tests {
     #[test]
     fn missing_unknown_fractional_and_invalid_units_are_refused() {
         for changed in [
-            SOURCE.replace("SCHEMA_VERSION = 4", "UNUSED_COEFFICIENT = 1"),
-            SOURCE.replace("SCHEMA_VERSION = 4", "SCHEMA_VERSION = 1"),
+            SOURCE.replace("SCHEMA_VERSION = 5", "UNUSED_COEFFICIENT = 1"),
+            SOURCE.replace("SCHEMA_VERSION = 5", "SCHEMA_VERSION = 1"),
             SOURCE.replace("[route.sheet_transfer]", "[route.unknown_transfer]"),
             SOURCE.replace(
                 "CONSTRAINED_UNITS_PER_WEEK = 40",

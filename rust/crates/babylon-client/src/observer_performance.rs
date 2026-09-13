@@ -17,6 +17,11 @@ enum RenderMode {
     Map3d,
     Production3d,
     Production2d,
+    OrganizerDecision,
+    OrganizerEvidence,
+    OrganizerRelationships,
+    OrganizerDirection,
+    OrganizerReceipts,
 }
 
 impl RenderMode {
@@ -25,6 +30,11 @@ impl RenderMode {
             Self::Map3d => "map3d",
             Self::Production3d => "production3d",
             Self::Production2d => "production2d",
+            Self::OrganizerDecision => "organizer-decision",
+            Self::OrganizerEvidence => "organizer-evidence",
+            Self::OrganizerRelationships => "organizer-relationships",
+            Self::OrganizerDirection => "organizer-direction",
+            Self::OrganizerReceipts => "organizer-receipts",
         }
     }
 }
@@ -35,6 +45,7 @@ impl RenderMode {
 struct SamplingScope {
     mode: RenderMode,
     campaign: CampaignId,
+    viewed_period: u64,
     perspective: Perspective,
     window_pixels: UVec2,
     viewport_origin: UVec2,
@@ -141,6 +152,7 @@ fn sample_frames(
     time: Res<Time<Real>>,
     view: Res<PrimaryView>,
     navigation: Res<ProductionNavigation>,
+    organizer: Option<Res<crate::organizer::OrganizerClient>>,
     session: Res<ObserverSession>,
     ui: Res<ObserverUiState>,
     viewport: Res<ObserverViewport>,
@@ -148,40 +160,57 @@ fn sample_frames(
     windows: Query<&Window, With<PrimaryWindow>>,
     mut sampler: ResMut<FrameSampler>,
 ) {
-    let scope = windows
-        .single()
-        .ok()
-        .zip(viewport.0)
-        .and_then(|(window, rect)| {
-            if !window.focused
-                || ui.menu_open
-                || ui.splash_visible
-                || ui.comparison_open
-                || ui.disclosure.is_some()
-                || rect.width() <= 0.0
-                || rect.height() <= 0.0
-            {
-                return None;
-            }
-            Some(SamplingScope {
-                mode: match (*view, navigation.flat) {
-                    (PrimaryView::Map, _) => RenderMode::Map3d,
-                    (PrimaryView::Production, false) => RenderMode::Production3d,
-                    (PrimaryView::Production, true) => RenderMode::Production2d,
+    let scope = windows.single().ok().and_then(|window| {
+        let rect = if *view == PrimaryView::Organizer {
+            Rect::from_corners(Vec2::ZERO, Vec2::new(window.width(), window.height()))
+        } else {
+            viewport.0?
+        };
+        if !window.focused
+            || ui.menu_open
+            || ui.splash_visible
+            || ui.comparison_open
+            || ui.disclosure.is_some()
+            || rect.width() <= 0.0
+            || rect.height() <= 0.0
+        {
+            return None;
+        }
+        Some(SamplingScope {
+            mode: match (*view, navigation.flat) {
+                (PrimaryView::Organizer, _) => match organizer
+                    .as_ref()
+                    .map_or(crate::organizer::OrganizerInspector::Closed, |client| {
+                        client.inspector
+                    }) {
+                    crate::organizer::OrganizerInspector::Closed => RenderMode::OrganizerDecision,
+                    crate::organizer::OrganizerInspector::Evidence => RenderMode::OrganizerEvidence,
+                    crate::organizer::OrganizerInspector::Relationships => {
+                        RenderMode::OrganizerRelationships
+                    }
+                    crate::organizer::OrganizerInspector::Direction => {
+                        RenderMode::OrganizerDirection
+                    }
+                    crate::organizer::OrganizerInspector::Receipts => RenderMode::OrganizerReceipts,
                 },
-                campaign: session.campaign,
-                perspective: session.perspective,
-                window_pixels: UVec2::new(window.physical_width(), window.physical_height()),
-                viewport_origin: (rect.min * window.scale_factor()).as_uvec2(),
-                viewport_pixels: (rect.size() * window.scale_factor()).as_uvec2(),
-                ui_scale_bits: scale.0.to_bits(),
-                history_open: ui.history_open,
-                archive_open: ui.archive_open,
-                details_open: navigation.details_open,
-                reduced_motion: ui.reduced_motion,
-                playing: session.playing,
-            })
-        });
+                (PrimaryView::Map, _) => RenderMode::Map3d,
+                (PrimaryView::Production, false) => RenderMode::Production3d,
+                (PrimaryView::Production, true) => RenderMode::Production2d,
+            },
+            campaign: session.campaign,
+            viewed_period: session.viewed_tick,
+            perspective: session.perspective,
+            window_pixels: UVec2::new(window.physical_width(), window.physical_height()),
+            viewport_origin: (rect.min * window.scale_factor()).as_uvec2(),
+            viewport_pixels: (rect.size() * window.scale_factor()).as_uvec2(),
+            ui_scale_bits: scale.0.to_bits(),
+            history_open: ui.history_open,
+            archive_open: ui.archive_open,
+            details_open: navigation.details_open,
+            reduced_motion: ui.reduced_motion,
+            playing: session.playing,
+        })
+    });
     let Some(report) = sampler.observe(scope, time.delta_secs_f64(), session.phase) else {
         return;
     };
@@ -193,8 +222,8 @@ fn sample_frames(
         Perspective::PlayerKnowledge => "known",
     };
     log::info!(
-        "frame_perf view={} perspective={} window={}x{} viewport={}x{}+{}+{} ui_scale={:.2} history={} archive={} details={} reduced_motion={} playing={} samples={} elapsed_s={:.3} median_ms={:.3} p95_ms={:.3} fps={:.2} phase_frames=connecting:{},loading:{},ready:{},advancing:{},complete:{},failed:{},closed:{}",
-        scope.mode.label(), perspective,
+        "frame_perf view={} period={} perspective={} window={}x{} viewport={}x{}+{}+{} ui_scale={:.2} history={} archive={} details={} reduced_motion={} playing={} samples={} elapsed_s={:.3} median_ms={:.3} p95_ms={:.3} fps={:.2} phase_frames=connecting:{},loading:{},ready:{},advancing:{},complete:{},failed:{},closed:{}",
+        scope.mode.label(), scope.viewed_period, perspective,
         scope.window_pixels.x, scope.window_pixels.y,
         scope.viewport_pixels.x, scope.viewport_pixels.y, scope.viewport_origin.x, scope.viewport_origin.y,
         f32::from_bits(scope.ui_scale_bits), scope.history_open, scope.archive_open, scope.details_open, scope.reduced_motion, scope.playing,
@@ -222,6 +251,7 @@ mod tests {
         SamplingScope {
             mode,
             campaign: CampaignId::from_uuid(uuid::Uuid::nil()),
+            viewed_period: 0,
             perspective: Perspective::FullObserver,
             window_pixels: UVec2::new(1366, 768),
             viewport_origin: UVec2::new(16, 96),

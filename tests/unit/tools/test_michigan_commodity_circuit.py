@@ -34,7 +34,7 @@ def catalogue() -> dict[str, Any]:
         "machinery": {"metal_parts": 2},
     }
     return {
-        "SCHEMA_VERSION": 4,
+        "SCHEMA_VERSION": 5,
         "TICK_DURATION_DAYS": 28,
         "HORIZON_PERIODS": 16,
         "statewide": {"EVIDENCE_CLASS": "Designed", "FINITE_ORDER_PERIODS": 4},
@@ -53,6 +53,20 @@ def catalogue() -> dict[str, Any]:
             for name, recipe in inputs.items()
         },
     }
+
+
+def test_current_authored_defines_remain_available_to_the_qualifier() -> None:
+    authored = circuit.read_defines(ROOT / "content/scenarios/michigan/defines.toml")
+    assert authored.goods
+    assert authored.recipes
+
+
+@pytest.mark.parametrize("version", [4, 6, True, 5.0])
+def test_unsupported_or_untyped_defines_versions_refuse(version: object) -> None:
+    document = catalogue()
+    document["SCHEMA_VERSION"] = version
+    with pytest.raises(circuit.QualificationError, match="defines_version"):
+        circuit.parse_defines(document)
 
 
 def scenario() -> tuple[list[circuit.Owner], dict[tuple[str, str], circuit.CountyPath | None]]:

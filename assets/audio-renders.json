@@ -1,13 +1,13 @@
 {
   "assets": [
     {
-      "duration_seconds": 101.6,
+      "duration_seconds": 247.0,
       "kind": "music",
-      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-27.58:measured_TP=-10.09:measured_LRA=12.00:measured_thresh=-37.81:offset=-0.67",
-      "output": "assets/music/babylon_theme_phi.ogg",
-      "output_sha256": "54f91118c3019ad3d8a634e44fd16b5b84e5791bfd1c4fe287a5ddc2413101bc",
-      "source": "assets/music/babylon_theme_phi.mid",
-      "source_sha256": "dba491b504fe1520d992506c7925623093fd3f7de919b0824ac6356c2fe98fed"
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-28.87:measured_TP=-14.25:measured_LRA=17.80:measured_thresh=-40.28:offset=0.41",
+      "output": "assets/music/ambient/01_history_breathing.ogg",
+      "output_sha256": "2365dcf860333da4e6827408eda70af3219eee0908308b6c31a0dd1125149798",
+      "source": "assets/music/ambient/01_history_breathing.mid",
+      "source_sha256": "97cd7cdec0e7ddab61834195c81ca34452a675a2b753e2c7568b4a8d4ade249b"
     },
     {
       "duration_seconds": 87.2,
@@ -17,6 +17,312 @@
       "output_sha256": "0ddbaf7300be9d1238a6089a4f738649d7ab03111ac401ee586fad4dbc21be00",
       "source": "assets/music/babylon_theme_panopticon.mid",
       "source_sha256": "5d21ba4c794ac622ac98a9e1eb712be123798dcf85ecd5dd127ea01592b6ebcd"
+    },
+    {
+      "duration_seconds": 101.6,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-27.58:measured_TP=-10.09:measured_LRA=12.00:measured_thresh=-37.81:offset=-0.67",
+      "output": "assets/music/babylon_theme_phi.ogg",
+      "output_sha256": "54f91118c3019ad3d8a634e44fd16b5b84e5791bfd1c4fe287a5ddc2413101bc",
+      "source": "assets/music/babylon_theme_phi.mid",
+      "source_sha256": "dba491b504fe1520d992506c7925623093fd3f7de919b0824ac6356c2fe98fed"
+    },
+    {
+      "duration_seconds": 122.1,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-33.54:measured_TP=-19.50:measured_LRA=9.00:measured_thresh=-43.92:offset=-0.85",
+      "output": "assets/music/crisis/01_wages_falling.ogg",
+      "output_sha256": "61be80f056ff1df2db438d6b51d74cce9f11412b5bedcd972c79ff7ed1afb492",
+      "source": "assets/music/crisis/01_wages_falling.mid",
+      "source_sha256": "d15bf5eb8832c9f641b562373b16995623bd97678043dd863c7e822926213b00"
+    },
+    {
+      "duration_seconds": 122.0,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-26.99:measured_TP=-10.94:measured_LRA=17.60:measured_thresh=-37.69:offset=-1.09",
+      "output": "assets/music/crisis/02_the_squeeze.ogg",
+      "output_sha256": "ef587c73904005d5757fc2a3b18ff0c4bce0af21459bb0bed05284b51d8b188a",
+      "source": "assets/music/crisis/02_the_squeeze.mid",
+      "source_sha256": "3dda0235bc149a964afe4f3584bd13f2f154ae77d30a2cb4fff974677e6bcafc"
+    },
+    {
+      "duration_seconds": 122.0,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-44.08:measured_TP=-28.67:measured_LRA=13.40:measured_thresh=-54.49:offset=-1.55",
+      "output": "assets/music/crisis/03_material_disruption.ogg",
+      "output_sha256": "08443825afbdabbb1fc1d72f8e957ec0236f8f159d5610e69051f2c78174647e",
+      "source": "assets/music/crisis/03_material_disruption.mid",
+      "source_sha256": "250fc9dc72ac5bdcc911c3900a7acef62974293feb060c47b951a926b4f4ac52"
+    },
+    {
+      "duration_seconds": 98.321383,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-15.06:measured_TP=-1.20:measured_LRA=9.10:measured_thresh=-25.48:offset=-1.44",
+      "output": "assets/music/endgame/01_red_dawn.ogg",
+      "output_sha256": "e15ae7c27f4b2f860adbbe60aaecf547c462b52b0b86f933515412fb65bb5159",
+      "source": "assets/music/endgame/01_red_dawn.mid",
+      "source_sha256": "68ece0e7584e9186f2d0099a2b2f6cc6aabdb81fcc889bee207ebd3e8ede3ff3"
+    },
+    {
+      "duration_seconds": 149.3,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-27.02:measured_TP=-12.06:measured_LRA=13.90:measured_thresh=-37.84:offset=2.74",
+      "output": "assets/music/endgame/02_the_long_winter.ogg",
+      "output_sha256": "fd80cadb1c3ecba1b00f76be6948c57117be9e79f79dc252ab9283591b3bf51e",
+      "source": "assets/music/endgame/02_the_long_winter.mid",
+      "source_sha256": "c7a4009c927f1f9481d22fdf917570baaaa5a0765b2be351561cc3ccf29b52e2"
+    },
+    {
+      "duration_seconds": 101.807687,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-16.79:measured_TP=-1.98:measured_LRA=10.00:measured_thresh=-27.97:offset=-0.48",
+      "output": "assets/music/endgame/03_iron_consolidation.ogg",
+      "output_sha256": "f6a8d62acef78909666c364f74011b891e9b77329638ff78827aa3614171ea01",
+      "source": "assets/music/endgame/03_iron_consolidation.mid",
+      "source_sha256": "835a60a68f2123289b938dbd642c8b58a402758a414cdf77a08701ee5027a0ee"
+    },
+    {
+      "duration_seconds": 118.9,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-14.39:measured_TP=-0.27:measured_LRA=21.00:measured_thresh=-26.65:offset=-1.37",
+      "output": "assets/music/endgame/04_dual_power.ogg",
+      "output_sha256": "adcd171297e67f5043afd6c37a0288cdec649912cc21e25410ed2cfd6decf047",
+      "source": "assets/music/endgame/04_dual_power.mid",
+      "source_sha256": "9de2c0722fd1f154b63a6aef6e602753c1ee6f5c6bfa489fada6f9faecac07c8"
+    },
+    {
+      "duration_seconds": 119.9,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-22.22:measured_TP=-8.03:measured_LRA=16.20:measured_thresh=-32.66:offset=-0.77",
+      "output": "assets/music/endgame/05_shattered_map.ogg",
+      "output_sha256": "ecbd6b17bb1c4cd5756fc3fb184ad47c15f57c5d7ef9ff04cc85c9ae71220e5c",
+      "source": "assets/music/endgame/05_shattered_map.mid",
+      "source_sha256": "1961344c3f4b7a4f214221b0196880f8a1bbd7b3adf8c37dd0a061e41767cf17"
+    },
+    {
+      "duration_seconds": 244.5,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-36.80:measured_TP=-18.06:measured_LRA=12.30:measured_thresh=-47.44:offset=0.24",
+      "output": "assets/music/entity/01_beast_engine.ogg",
+      "output_sha256": "ef5b465db6eb7265f8f80ed394ee45f7ba048b87039d4eccf9d5e0dbaeb0d3b2",
+      "source": "assets/music/entity/01_beast_engine.mid",
+      "source_sha256": "464d32a5fa27225161c22b3bb224da9a43046e9fce6427c9608a1e702f1e8720"
+    },
+    {
+      "duration_seconds": 162.9,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-27.55:measured_TP=-10.08:measured_LRA=11.50:measured_thresh=-37.73:offset=-0.04",
+      "output": "assets/music/entity/02_tribute_bleed.ogg",
+      "output_sha256": "601103813acdc464fb9775ae7b19e10c6e36783475e925a1d39209aebd3541f9",
+      "source": "assets/music/entity/02_tribute_bleed.mid",
+      "source_sha256": "a71bdf414dc6808c8445390697d29de7ecf4ff176b647c4bab79ca2f639775d9"
+    },
+    {
+      "duration_seconds": 209.0,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-34.19:measured_TP=-18.60:measured_LRA=17.50:measured_thresh=-45.19:offset=-0.87",
+      "output": "assets/music/entity/03_dissection.ogg",
+      "output_sha256": "c0db1e30ea16b6dbe1180375dd8850053ca7369d850c0d03642eb50fc6f3696c",
+      "source": "assets/music/entity/03_dissection.mid",
+      "source_sha256": "1a25aabfcfb085d5cf81c59bbf1a0ecc1c7cdeb881a0e9fae831b671d8cc16ad"
+    },
+    {
+      "duration_seconds": 135.499955,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-31.88:measured_TP=-18.98:measured_LRA=1.80:measured_thresh=-42.35:offset=0.05",
+      "output": "assets/music/entity/04_the_mask.ogg",
+      "output_sha256": "39b734ffff3c98c24a5639685c11511c3162c84444bb7f90d1c71b34da22cd53",
+      "source": "assets/music/entity/04_the_mask.mid",
+      "source_sha256": "b449c46ad2255039ccc8c7c3c7fcb792c00ccac37b130796c001cbc270b063d5"
+    },
+    {
+      "duration_seconds": 90.852902,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-37.66:measured_TP=-22.98:measured_LRA=9.50:measured_thresh=-47.70:offset=-0.26",
+      "output": "assets/music/fascist/01_the_void.ogg",
+      "output_sha256": "55526abab043baaa74461da0aed37817d112b325a820483bc6196d5a7403646f",
+      "source": "assets/music/fascist/01_the_void.mid",
+      "source_sha256": "61d18330a23dfad31b784b758e30c0a44a3ed67b7aed03f4aa13dfea9dd029f9"
+    },
+    {
+      "duration_seconds": 92.1,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-24.48:measured_TP=-6.95:measured_LRA=20.20:measured_thresh=-36.24:offset=-3.46",
+      "output": "assets/music/fascist/02_scapegoat.ogg",
+      "output_sha256": "579a6c464d5d63275068cd0227447b6959bf80bc4e42d7fd455b9510c9274bca",
+      "source": "assets/music/fascist/02_scapegoat.mid",
+      "source_sha256": "726a7f06cd38ce8a45c320dd2115815f0de8c30ef98db12e4f17c60b90de31c7"
+    },
+    {
+      "duration_seconds": 101.8,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-22.71:measured_TP=-7.00:measured_LRA=15.00:measured_thresh=-33.36:offset=-3.20",
+      "output": "assets/music/fascist/03_the_rally.ogg",
+      "output_sha256": "42a18d59f5605a8bdebc8076a71067925460c478182de7fa974db36588c99ba5",
+      "source": "assets/music/fascist/03_the_rally.mid",
+      "source_sha256": "203e818f6cc5b47524e96b4d74208ae132eddd3c42ab9deffd91e8d764af1ca2"
+    },
+    {
+      "duration_seconds": 91.5,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-23.72:measured_TP=-5.49:measured_LRA=18.20:measured_thresh=-34.74:offset=-3.74",
+      "output": "assets/music/fascist/04_blood_and_soil.ogg",
+      "output_sha256": "2c4d45db1390d96a2f567290102fe601eb54c2a14edc2eb9267c8f8d6a153d03",
+      "source": "assets/music/fascist/04_blood_and_soil.mid",
+      "source_sha256": "ef5812c24bb2f20084b19f36ccc0894c4e890191218960bb58a0b8e19f7be5d0"
+    },
+    {
+      "duration_seconds": 86.4,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-16.19:measured_TP=0.02:measured_LRA=17.80:measured_thresh=-27.46:offset=-3.91",
+      "output": "assets/music/fascist/05_the_purge.ogg",
+      "output_sha256": "9c53dec5f3a5410336df9a38c003e387f7f6fdfddad267433a145c83d767a591",
+      "source": "assets/music/fascist/05_the_purge.mid",
+      "source_sha256": "46db37de7d36edb99888a18b8da953946d9a3252721978bffcef745e0fa8c82b"
+    },
+    {
+      "duration_seconds": 101.3,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-38.08:measured_TP=-22.61:measured_LRA=9.10:measured_thresh=-48.18:offset=-0.03",
+      "output": "assets/music/fascist/06_false_order.ogg",
+      "output_sha256": "4257ac3e69247e22e5b003b4abd04541ef5e48b3f309ad85cf30e532974a10ea",
+      "source": "assets/music/fascist/06_false_order.mid",
+      "source_sha256": "5f9d2f14acb0924dfd6517c600391fb98137ad5f3156198f72db3874e59eb39d"
+    },
+    {
+      "duration_seconds": 300.5,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-25.12:measured_TP=-4.36:measured_LRA=10.20:measured_thresh=-35.52:offset=-2.04",
+      "output": "assets/music/fascist/07_the_apparatus.ogg",
+      "output_sha256": "41613ba76e7ff0708dc8b79d45790765af8b4bf7727e72aba008c84f0dcb6dd9",
+      "source": "assets/music/fascist/07_the_apparatus.mid",
+      "source_sha256": "ad8ebea9155476e630104be4c6a6178ebdacaa81911046ae8cbe71c0e633802d"
+    },
+    {
+      "duration_seconds": 332.136032,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-26.89:measured_TP=-11.92:measured_LRA=5.70:measured_thresh=-37.05:offset=-0.93",
+      "output": "assets/music/fascist/08_economic_crisis.ogg",
+      "output_sha256": "b81514630c4d74a8714c7da0ac0160e4d6fee6881e166c2f83f2f13b71587982",
+      "source": "assets/music/fascist/08_economic_crisis.mid",
+      "source_sha256": "a6f8fc453be8af960f41e9efd044ebd42c17f7f7bc791647d668752220ceb93d"
+    },
+    {
+      "duration_seconds": 330.5,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-24.62:measured_TP=-11.34:measured_LRA=7.50:measured_thresh=-34.62:offset=-1.83",
+      "output": "assets/music/fascist/09_juggling_act.ogg",
+      "output_sha256": "9e17f73728dda05753b2922ad0226ca7aaccfb05afcec1b86ddd82e1e47fb23a",
+      "source": "assets/music/fascist/09_juggling_act.mid",
+      "source_sha256": "29ec0a89fffd928b357264fcb8bd4a4f0a0684fb6ce7922468ddf0c684666e80"
+    },
+    {
+      "duration_seconds": 177.8,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-26.71:measured_TP=-6.01:measured_LRA=14.30:measured_thresh=-38.37:offset=-0.25",
+      "output": "assets/music/periphery/01_unequal_exchange.ogg",
+      "output_sha256": "3bb858166365e00ccbb87ac9255c23e76b8a23be869bc03f1efa713d69a24153",
+      "source": "assets/music/periphery/01_unequal_exchange.mid",
+      "source_sha256": "798125e13d6d535f6052d519216ed7b6c95b95cff272a98c388aa9d5b734342f"
+    },
+    {
+      "duration_seconds": 177.583265,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-19.88:measured_TP=-7.67:measured_LRA=1.50:measured_thresh=-30.06:offset=-0.16",
+      "output": "assets/music/periphery/02_superwage.ogg",
+      "output_sha256": "06548769dcde0723f1f2116995b4c821183b0c3d5b7753ae0f42a9a3e08e67a9",
+      "source": "assets/music/periphery/02_superwage.mid",
+      "source_sha256": "c2324eaa07c8d42039ede0db49986754c6c87c4e143a75e54aceeabb6e89d6ca"
+    },
+    {
+      "duration_seconds": 435.9,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-26.28:measured_TP=-11.06:measured_LRA=24.00:measured_thresh=-37.84:offset=-3.68",
+      "output": "assets/music/revolutionary/01_the_spark.ogg",
+      "output_sha256": "85d9543b55e063422d7480094700c45efdb5258dbfd75d1d5a05e293baa5343a",
+      "source": "assets/music/revolutionary/01_the_spark.mid",
+      "source_sha256": "86533f99e33e9c8baf2e1fb60e1bfbd3c446787fd8666e9a8f4d5925a972f5d3"
+    },
+    {
+      "duration_seconds": 102.3,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-20.43:measured_TP=-7.51:measured_LRA=12.20:measured_thresh=-31.75:offset=-2.98",
+      "output": "assets/music/revolutionary/02_solidarity_rising.ogg",
+      "output_sha256": "6c904a1ec3acea1fbd019a85295cf387d929b91982a065522b7739959b25abae",
+      "source": "assets/music/revolutionary/02_solidarity_rising.mid",
+      "source_sha256": "b90c2819103ecccae5ab5dd86699ca070dda96776eed39f19dc3ea8c95055602"
+    },
+    {
+      "duration_seconds": 91.5,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-19.59:measured_TP=-4.62:measured_LRA=15.40:measured_thresh=-30.34:offset=-3.53",
+      "output": "assets/music/revolutionary/03_class_awakening.ogg",
+      "output_sha256": "284a61810ad13584dbe9a7c6323088d7885e8440b27e752ac3a5cfbc73f0bda1",
+      "source": "assets/music/revolutionary/03_class_awakening.mid",
+      "source_sha256": "7c782c1342f411726d4db0d5e9cfec7fe6c1b8f8060af302da6aea07856360e0"
+    },
+    {
+      "duration_seconds": 101.576825,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-14.58:measured_TP=0.03:measured_LRA=9.40:measured_thresh=-24.85:offset=-2.84",
+      "output": "assets/music/revolutionary/04_the_internationale.ogg",
+      "output_sha256": "56f8197f7bf18e15db2b451cc38756597005f7ad885919a473201726c06635d2",
+      "source": "assets/music/revolutionary/04_the_internationale.mid",
+      "source_sha256": "4830e53ca9107262abdbf8c8d029af59997f620c3f5f73fa99d496239eb27323"
+    },
+    {
+      "duration_seconds": 84.5,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-14.57:measured_TP=0.05:measured_LRA=18.30:measured_thresh=-25.78:offset=-2.81",
+      "output": "assets/music/revolutionary/05_rupture.ogg",
+      "output_sha256": "be95a5c64de658f428f334a464cbb189c20ee4ab173852d3769000b1bd843c57",
+      "source": "assets/music/revolutionary/05_rupture.mid",
+      "source_sha256": "97b157c3460ac22e198d6b7c07effda2301c8db715088a514e1612279a095625"
+    },
+    {
+      "duration_seconds": 145.64,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-25.69:measured_TP=-9.03:measured_LRA=4.50:measured_thresh=-35.85:offset=0.41",
+      "output": "assets/music/rift/01_overshoot.ogg",
+      "output_sha256": "3a30f17f59c521422c84f76982a9e8b35aeb7a45e74864c5443dc9850968e985",
+      "source": "assets/music/rift/01_overshoot.mid",
+      "source_sha256": "6c7963f55bd26e846f6adade7e20514346816aa4f7fabad800df5235035dbf32"
+    },
+    {
+      "duration_seconds": 180.0,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-28.57:measured_TP=-15.65:measured_LRA=24.10:measured_thresh=-42.07:offset=2.47",
+      "output": "assets/music/rift/02_the_silent_spring.ogg",
+      "output_sha256": "0a4c22f235d6125a661c3796a31157dd821c7fea939eed9e5dd6a04eb651bee6",
+      "source": "assets/music/rift/02_the_silent_spring.mid",
+      "source_sha256": "ad2753d8f7b08ee19590b9ab5431f5171592e019c17a4f852d1e23a6190778ff"
+    },
+    {
+      "duration_seconds": 120.569002,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-22.83:measured_TP=-5.64:measured_LRA=3.10:measured_thresh=-33.02:offset=0.04",
+      "output": "assets/music/superstructure/01_the_ballot.ogg",
+      "output_sha256": "f31771f2893b9121902a1aafd3b97e1f35977e9cd0ffaeebd39a06ca75450ce6",
+      "source": "assets/music/superstructure/01_the_ballot.mid",
+      "source_sha256": "cff4010a7ea762891f58a6cf2d3f0dbafc5d1cc2a2436bb9e4d9988f1835039f"
+    },
+    {
+      "duration_seconds": 120.2,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-26.39:measured_TP=-6.16:measured_LRA=6.40:measured_thresh=-36.86:offset=-0.44",
+      "output": "assets/music/superstructure/02_the_reform_ceiling.ogg",
+      "output_sha256": "4eea01e3ad08866e1f5c9c328291d516ff6828daeaa2afd9cb460d448374c814",
+      "source": "assets/music/superstructure/02_the_reform_ceiling.mid",
+      "source_sha256": "1684a83544a5ae281d9aac277ba17f2b0d0230eae3c97f884829c1e57dfae4ea"
+    },
+    {
+      "duration_seconds": 127.605306,
+      "kind": "music",
+      "normalization": "loudnorm=I=-20:TP=-2:LRA=11:linear=true:measured_I=-24.87:measured_TP=-10.10:measured_LRA=3.10:measured_thresh=-34.91:offset=-0.83",
+      "output": "assets/music/superstructure/03_officeholder.ogg",
+      "output_sha256": "fceb98ecede180170516735bc9668ce1778b2e4dce657a6492ab2d41d393eec0",
+      "source": "assets/music/superstructure/03_officeholder.mid",
+      "source_sha256": "3d52a0359d2d6f402c92a6615b0bcec085e51bb163975e756ac55aaf53b227dc"
     },
     {
       "duration_seconds": 1.175011,
@@ -73,7 +379,7 @@
       "source_sha256": "de6f13ca8a0eddfe74172c84b13b5c24b91771c4df26ac0c0e6601bc5eaa772e"
     }
   ],
-  "license_scope": "SFX MIDI is CC0. On 2026-09-06 the Director confirmed original authorship of Phi and Panopticon and authorized distribution of their MIDI and rendered forms with Babylon. This permission does not assign CC0 to the themes; see LICENSING.md.",
+  "license_scope": "SFX MIDI and the ambient, superstructure, periphery, rift, endgame and entity music suites retain their CC0 dedication. On 2026-09-06 the Director confirmed original authorship of Phi and Panopticon and authorized distribution of their MIDI and rendered forms with Babylon. This permission does not assign CC0 to the themes. Rendering the legacy crisis, fascist and revolutionary suites does not assign a license or change their recorded unresolved status; see LICENSING.md.",
   "recipe": {
     "channels": 2,
     "codec": "vorbis",

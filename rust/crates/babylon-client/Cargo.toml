@@ -49,6 +49,8 @@ uuid = "1.24"
 log = "0.4"
 
 [dev-dependencies]
+# Construct decoder-completion sinks without a native audio device.
+rodio = { version = "0.20.1", default-features = false }
 babylon-tick = { path = "../babylon-tick" }
 babylon-graph = { path = "../babylon-graph" }
 babylon-bsl = { path = "../babylon-bsl" }

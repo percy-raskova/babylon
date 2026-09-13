@@ -139,6 +139,11 @@ owner, and Circuit readings. Regional presets use five Designed owner cohorts.
 Statewide presets add producers and merchants with source evidence, physical
 road paths, local transfers, and finite retail orders.
 
+The current source includes all 36 soundtrack recordings, about 92 minutes of
+music. Tracks advance automatically. Press **J** or choose **Next track** in
+the menu. The menu also controls music volume and mute. Campaign changes keep
+the current track playing.
+
 The supplied parameters cover 16 four-week periods (64 weeks).
 Each campaign can select a shorter horizon.
 The comparison shows the same committed period in two saved campaigns.

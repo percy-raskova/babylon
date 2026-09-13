@@ -930,7 +930,7 @@ fn menu_settings(panel: &mut ChildSpawnerCommands) {
         ("Reduced motion [M]", ObserverCommand::ReducedMotion),
         ("Music volume / mute [B]", ObserverCommand::MusicVolume),
         ("Sound effects / mute [F]", ObserverCommand::EffectsVolume),
-        ("Change theme [J]", ObserverCommand::MusicTrack),
+        ("Next track [J]", ObserverCommand::MusicTrack),
     ] {
         scoped_button(panel, title, command, true);
     }
@@ -1745,7 +1745,7 @@ fn repaint(
             ObserverText::Hover if *view != crate::production::PrimaryView::Map => String::new(),
             ObserverText::Hover if matches!(ui.lens, MapLens::Relationships) => hovered.0.and_then(|index| atlas.county(index)).map_or_else(String::new, |county| county.name.to_owned()),
             ObserverText::Hover => hovered.0.and_then(|index| atlas.county(index)).filter(|county| county.fips.starts_with("26")).map_or_else(String::new, |county| format!("{}\n{}\n{}", county.name, lens.label, format_lens_reading(lens.county(county.fips), &lens.unit))),
-            ObserverText::Audio => format!("{} | music {:.0}% | effects {:.0}%\nReduced motion: {} | Stop on delivery: {}", if audio.track==0 {"PHI"}else{"PANOPTICON"},audio.music_volume*100.0,audio.effects_volume*100.0,if ui.reduced_motion {"ON"}else{"OFF"},if ui.stop_on_delivery {"ON"}else{"OFF"}),
+            ObserverText::Audio => format!("Soundtrack: {} ({}/{})\nMusic {:.0}% | effects {:.0}%\nReduced motion: {} | Stop on delivery: {}", audio.track_title(),audio.track+1,crate::observer_audio::ObserverAudioSettings::track_count(),audio.music_volume*100.0,audio.effects_volume*100.0,if ui.reduced_motion {"ON"}else{"OFF"},if ui.stop_on_delivery {"ON"}else{"OFF"}),
             ObserverText::Evidence => format!("Viewing period {} / Archive processed through {}\n{}", state.viewed_tick, state.archive_verified_tick, archive_detail),
             ObserverText::EvidenceDetails => installed.map_or_else(String::new, |snapshot| {
                 let mut evidence = format!("CAMPAIGN\n{}\n\nCOMMITTED EVIDENCE / PERIOD {}\n{}\n\nWORLD IDENTITY\n{}", wrapped_identity(&snapshot.campaign_id), snapshot.resolve_tick, wrapped_identity(snapshot.tick_content_hash.as_deref().unwrap_or(&snapshot.foundation_digest)), snapshot.nominal_world_hash.as_deref().map_or_else(|| "Unavailable in this observation".to_owned(), wrapped_identity));

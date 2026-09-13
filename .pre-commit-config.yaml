@@ -221,19 +221,26 @@ repos:
         # `mise run data:county-atlas`; the Bevy client include_bytes!s it, so an
         # LFS pointer would hand the reader 130 bytes of text where it expects
         # geometry.
-        # The two embedded theme renders have a separate 2 MiB check below.
+        # The two embedded theme renders keep a separate 2 MiB check below.
         # Their exact source, render recipe and bytes are pinned in
         # assets/audio-renders.json; this changes no licensing decision.
+        # The other 34 authored music tracks have their own exact-path 12 MiB
+        # check. The longest MIDI lasts 435.337 seconds; at the existing Phi
+        # render rate it would need about 8.23 MB before musical density varies.
         # The captured statewide road paths are 1.18 MB compressed (6.26 MB
         # decoded). New Campaign needs their pinned bytes without an external
         # network fetch. The same 2 MiB publication bound below covers this
         # named artifact; the source manifest and runtime also verify its hash
         # and decoded-content bound.
-        exclude: ^tests/baselines/.*\.json$|^src/babylon/data/game/balkanization/seed_influences\.json$|^uv\.lock$|^assets/map/county_atlas\.bin$|^assets/music/babylon_theme_(phi|panopticon)\.ogg$|^content/scenarios/michigan/statewide-physical\.json\.gz$
+        exclude: ^tests/baselines/.*\.json$|^src/babylon/data/game/balkanization/seed_influences\.json$|^uv\.lock$|^assets/map/county_atlas\.bin$|^assets/music/babylon_theme_(phi|panopticon)\.ogg$|^content/scenarios/michigan/statewide-physical\.json\.gz$|^assets/music/(?:ambient/01_history_breathing|crisis/(?:01_wages_falling|02_the_squeeze|03_material_disruption)|endgame/(?:01_red_dawn|02_the_long_winter|03_iron_consolidation|04_dual_power|05_shattered_map)|entity/(?:01_beast_engine|02_tribute_bleed|03_dissection|04_the_mask)|fascist/(?:01_the_void|02_scapegoat|03_the_rally|04_blood_and_soil|05_the_purge|06_false_order|07_the_apparatus|08_economic_crisis|09_juggling_act)|periphery/(?:01_unequal_exchange|02_superwage)|revolutionary/(?:01_the_spark|02_solidarity_rising|03_class_awakening|04_the_internationale|05_rupture)|rift/(?:01_overshoot|02_the_silent_spring)|superstructure/(?:01_the_ballot|02_the_reform_ceiling|03_officeholder))\.ogg$
       - id: check-added-large-files
         name: check bounded game assets (2 MiB per named artifact)
         args: ['--maxkb=2048', '--enforce-all']
         files: ^assets/music/babylon_theme_(phi|panopticon)\.ogg$|^content/scenarios/michigan/statewide-physical\.json\.gz$
+      - id: check-added-large-files
+        name: check authored soundtrack renders (12 MiB per named track)
+        args: ['--maxkb=12288', '--enforce-all']
+        files: ^assets/music/(?:ambient/01_history_breathing|crisis/(?:01_wages_falling|02_the_squeeze|03_material_disruption)|endgame/(?:01_red_dawn|02_the_long_winter|03_iron_consolidation|04_dual_power|05_shattered_map)|entity/(?:01_beast_engine|02_tribute_bleed|03_dissection|04_the_mask)|fascist/(?:01_the_void|02_scapegoat|03_the_rally|04_blood_and_soil|05_the_purge|06_false_order|07_the_apparatus|08_economic_crisis|09_juggling_act)|periphery/(?:01_unequal_exchange|02_superwage)|revolutionary/(?:01_the_spark|02_solidarity_rising|03_class_awakening|04_the_internationale|05_rupture)|rift/(?:01_overshoot|02_the_silent_spring)|superstructure/(?:01_the_ballot|02_the_reform_ceiling|03_officeholder))\.ogg$
       - id: check-merge-conflict
       - id: check-case-conflict
       - id: forbid-new-submodules

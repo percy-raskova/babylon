@@ -73,13 +73,47 @@ chromadb/
 .hypothesis/
 
 # Compiled Audio (generated from MIDI via FluidSynth)
-# Keep local audio exports out of git; the eight pinned observer renders ship.
+# Keep local audio exports out of git; the 36 named music and six observer cue renders ship.
 assets/audio/
 *.wav
 *.mp3
 *.ogg
 !assets/music/babylon_theme_phi.ogg
 !assets/music/babylon_theme_panopticon.ogg
+!assets/music/ambient/01_history_breathing.ogg
+!assets/music/crisis/01_wages_falling.ogg
+!assets/music/crisis/02_the_squeeze.ogg
+!assets/music/crisis/03_material_disruption.ogg
+!assets/music/endgame/01_red_dawn.ogg
+!assets/music/endgame/02_the_long_winter.ogg
+!assets/music/endgame/03_iron_consolidation.ogg
+!assets/music/endgame/04_dual_power.ogg
+!assets/music/endgame/05_shattered_map.ogg
+!assets/music/entity/01_beast_engine.ogg
+!assets/music/entity/02_tribute_bleed.ogg
+!assets/music/entity/03_dissection.ogg
+!assets/music/entity/04_the_mask.ogg
+!assets/music/fascist/01_the_void.ogg
+!assets/music/fascist/02_scapegoat.ogg
+!assets/music/fascist/03_the_rally.ogg
+!assets/music/fascist/04_blood_and_soil.ogg
+!assets/music/fascist/05_the_purge.ogg
+!assets/music/fascist/06_false_order.ogg
+!assets/music/fascist/07_the_apparatus.ogg
+!assets/music/fascist/08_economic_crisis.ogg
+!assets/music/fascist/09_juggling_act.ogg
+!assets/music/periphery/01_unequal_exchange.ogg
+!assets/music/periphery/02_superwage.ogg
+!assets/music/revolutionary/01_the_spark.ogg
+!assets/music/revolutionary/02_solidarity_rising.ogg
+!assets/music/revolutionary/03_class_awakening.ogg
+!assets/music/revolutionary/04_the_internationale.ogg
+!assets/music/revolutionary/05_rupture.ogg
+!assets/music/rift/01_overshoot.ogg
+!assets/music/rift/02_the_silent_spring.ogg
+!assets/music/superstructure/01_the_ballot.ogg
+!assets/music/superstructure/02_the_reform_ceiling.ogg
+!assets/music/superstructure/03_officeholder.ogg
 !assets/sfx/ui/ui_select.ogg
 !assets/sfx/ui/ui_tab.ogg
 !assets/sfx/ui/ui_open.ogg

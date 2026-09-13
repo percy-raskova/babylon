@@ -633,7 +633,7 @@ fn apply_presentation_command(command: ObserverCommand, context: &mut CommandCon
                 0.0
             }
         }
-        ObserverCommand::MusicTrack => audio.track = (audio.track + 1) % 2,
+        ObserverCommand::MusicTrack => audio.next_track(),
         ObserverCommand::History => {
             ui.history_open = !ui.history_open;
             if ui.history_open {
@@ -2074,5 +2074,42 @@ pub(crate) mod tests {
             receiver.try_recv(),
             Err(mpsc::TryRecvError::Empty)
         ));
+    }
+
+    #[test]
+    fn next_music_track_reaches_all_authored_recordings_without_transport() {
+        let (mut app, receiver) = command_app();
+        let mut visited = std::collections::BTreeSet::new();
+        for _ in 0..36 {
+            visited.insert(app.world().resource::<ObserverAudioSettings>().track);
+            dispatch(&mut app, &[ObserverCommand::MusicTrack]);
+        }
+        assert_eq!(visited, (0..36).collect());
+        assert_eq!(app.world().resource::<ObserverAudioSettings>().track, 0);
+        assert_eq!(app.world().resource::<ObserverSession>().durable_tick, 3);
+        assert!(matches!(
+            receiver.try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
+    }
+
+    #[test]
+    fn campaign_handoff_keeps_music_selection_and_volume_preferences() {
+        let (mut app, receiver) = command_app();
+        {
+            let mut audio = app.world_mut().resource_mut::<ObserverAudioSettings>();
+            audio.track = 17;
+            audio.music_volume = 0.0;
+            audio.effects_volume = 0.75;
+        }
+        dispatch(&mut app, &[ObserverCommand::ReopenCampaign]);
+        assert!(matches!(
+            receiver.try_recv(),
+            Ok(RuntimeSessionRequest::Switch { .. })
+        ));
+        let audio = app.world().resource::<ObserverAudioSettings>();
+        assert_eq!(audio.track, 17);
+        assert_eq!(audio.music_volume.to_bits(), 0.0_f32.to_bits());
+        assert_eq!(audio.effects_volume.to_bits(), 0.75_f32.to_bits());
     }
 }

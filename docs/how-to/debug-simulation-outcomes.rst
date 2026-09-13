@@ -260,12 +260,12 @@ or Director comprehension.
      - 100
      - 400
      - 100
-   * - Period 3 Chippewa household wares, items
+   * - Period 3 household-wares production in Chippewa County, items
      - 8
      - 1
      - 8
      - 1
-   * - Period 2 Chippewa manufacturing employed / reserve
+   * - Period 2 Chippewa County manufacturing employed / reserve
      - 3 / 9
      - 1 / 11
      - 3 / 9

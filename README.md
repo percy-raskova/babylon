@@ -125,8 +125,8 @@ level, the live engine has:
 - committed Rust tick reports and checkpoints
 - reproducible reference-data artifacts
 
-The planned decision cycle adds player and AI intent plus views limited by
-player knowledge.
+Restricted views already limit facts by player knowledge. The planned decision
+cycle adds player and AI intent plus durable action receipts.
 
 Read [`NORTH_STAR.md`](NORTH_STAR.md) for the full system model. Read
 [`CONSTITUTION.md`](CONSTITUTION.md) v4.2.0 for the constitutional law.
@@ -134,14 +134,15 @@ Read [`NORTH_STAR.md`](NORTH_STAR.md) for the full system model. Read
 ## Live system
 
 The Bevy window observes one durable Michigan campaign with 83 county QCEW
-baselines. It has a county map, an inspector, and a production display with
-3D cohort columns and a compact 2D option. The physical scenario contains
-five Designed county-industry cohorts. The supplied parameters cover 16 four-week
-periods (64 weeks); each campaign can select a shorter horizon. Standard and
-delayed delivery use the route durations in that campaign's authored parameters.
-The comparison shows the same committed period in two saved campaigns. Each
-campaign retains its own parameters, so their differences can extend beyond
-route duration.
+baselines. The world map shows economic relationships and leads to county,
+owner, and Circuit readings. Regional presets use five Designed owner cohorts.
+Statewide presets add producers and merchants with source evidence, physical
+road paths, local transfers, and finite retail orders.
+
+The supplied parameters cover 16 four-week periods (64 weeks).
+Each campaign can select a shorter horizon.
+The comparison shows the same committed period in two saved campaigns.
+Each campaign retains its own authored parameters and captured sources.
 
 The runtime commits four-week changes to Postgres. The window receives read
 capabilities and controls pause, step, and speed through anonymous pipes.
@@ -165,9 +166,11 @@ preserve its evidence. Python prepares reference data and runs operator tools.
 <!-- Vale: this paragraph preserves literal persistence and schema identifiers. -->
 <!-- vale ste.UnapprovedWords = NO -->
 <!-- vale ste.NounClusters = NO -->
-Deterministic reference SQLite is a build artifact. Rust owns authoritative game-managed
-Postgres and marker-last committed envelopes. Archive verification can lag
-the durable period. The window shows that lag.
+Deterministic reference SQLite is a build artifact. Rust owns authoritative
+game-managed Postgres and marker-last committed envelopes. Its Archive worker
+publishes immutable county and place dossiers. The window reads the selected
+committed period through the restricted reader and shows verification lag,
+retained historical pages, or unavailable evidence.
 
 Python tooling does not write the campaign shown in Bevy.
 <!-- vale ste.NounClusters = YES -->

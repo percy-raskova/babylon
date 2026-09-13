@@ -2,8 +2,8 @@
 # Guiding principles for development decisions
 
 meta:
-  version: "2.0.1"
-  updated: "2026-09-04"
+  version: "2.0.2"
+  updated: "2026-09-13"
   purpose: "Capture recurring insights as memorable principles"
   authority: "CONSTITUTION.md v4.2.0"
   product: "entertainment-first emergent political-economy game"
@@ -14,7 +14,9 @@ meta:
   historical_cases_test:
     - "causal signatures"
     - "counterfactual behavior"
-  current_client: "Bevy admin/viewer; no player action"
+  current_client: >-
+    Durable Michigan observer with scoped Archive dossiers and historical
+    inspection; no player action
   next_gates:
     - "PostgreSQL/H3/Archive decision-loop slice"
     - "Productive & distributive circuit"
@@ -64,7 +66,7 @@ mantras:
     meaning: |
       The live Rust world types contain only data. Historical Python source
       is recoverable from Git and supplies no live authority.
-      TickSession holds the world, prepared rules, tick counter, and session
+      MaterialReplaySession holds the world, prepared rules, tick counter, and session
       identity across advances. It is a deliberate session boundary. Game
       judgment remains in typed transformations, not in data classes.
     applies_to:

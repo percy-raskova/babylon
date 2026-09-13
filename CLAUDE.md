@@ -65,12 +65,12 @@ Git tag. Historical detector labels are not promised outcomes.
 Reference Parquet and deterministic SQLite are build artifacts. Retained
 Python builds reference data and runs repository and operator tools.
 
-Gate 3 now has the Rust three-schema boundary, committed tick envelope,
-marker-last transaction, checkpoint restart, and Archive dirty receipts. The
-fog-safe decision loop and semantic Archive worker remain. ADR250 reordered the
-later gates: Gate 4 adds the productive and distributive circuit, and Gate 5
-adds next-period intents and Bevy player actions. Gate 6 adds governed
-external-event rows and the merged COVID benchmark.
+Rust owns the three-schema boundary, marker-last commits, checkpoint restart,
+and Archive dirty receipts. The semantic Archive worker and restricted reader
+supply cited county and place dossiers, including retained historical pages.
+These capabilities leave Gate 3 acceptance open. ADR250 places the Gate 4
+economic circuit before Gate 5 player actions and next-period intents.
+Gate 6 adds governed events and COVID.
 
 <!-- Vale: the accepted Linear status uses a passive state label. -->
 <!-- vale strunk.ActiveVoice = NO -->

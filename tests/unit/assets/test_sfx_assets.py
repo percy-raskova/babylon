@@ -23,7 +23,7 @@ EXPECTED_FAMILIES = {
     "ui": 10,
     "state": 8,
     "alert": 6,
-    "stinger": 10,
+    "stinger": 11,
     "endgame": 5,
     "entity": 6,
     "resistance": 13,

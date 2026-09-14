@@ -111,6 +111,7 @@ fn preview_dimensions(entry: &VisualAssetDescriptor) -> (Val, f32) {
         (256, 64) => (px(256), 4.0),
         (384, 128) => (px(256), 3.0),
         (1536, 864) => (px(640), 16.0 / 9.0),
+        (1672, 941) => (px(640), 1_672.0 / 941.0),
         (1536, 384) => (px(640), 4.0),
         _ => panic!("no gallery dimensions declared for a catalog asset"),
     }

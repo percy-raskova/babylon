@@ -19,6 +19,7 @@ node_modules
 .env.test
 .env.production
 .envrc
+/.mise.local.toml
 # The template is the one env file that MUST stay tracked (matched by .env* above)
 !.env.example
 
@@ -120,6 +121,7 @@ assets/audio/
 !assets/sfx/ui/ui_back.ogg
 !assets/sfx/state/tick_advance.ogg
 !assets/sfx/state/state_fault.ogg
+!assets/sfx/stinger/production_fanfare.ogg
 
 # Large image assets (use Git LFS for these)
 assets/images/*.png

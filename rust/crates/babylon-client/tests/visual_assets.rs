@@ -75,7 +75,7 @@ fn expected_interface_assets() -> [ExpectedVisualAsset; 6] {
     ]
 }
 
-fn expected_illustration_assets() -> [ExpectedVisualAsset; 10] {
+fn expected_illustration_assets() -> [ExpectedVisualAsset; 11] {
     use babylon_client::visual_assets::VisualAssetId;
 
     [
@@ -156,6 +156,14 @@ fn expected_illustration_assets() -> [ExpectedVisualAsset; 10] {
             "Collapse banner",
             1536,
             384,
+            1,
+            1,
+        ),
+        (
+            VisualAssetId::HeroLiberty,
+            "Liberty at dusk",
+            1672,
+            941,
             1,
             1,
         ),
@@ -272,7 +280,7 @@ fn gallery_labels_match_the_fixed_visual_asset_catalog() {
         world.query_filtered::<&Text, With<babylon_client::visual_assets::GalleryAssetLabel>>();
     let actual: Vec<_> = labels
         .iter(world)
-        .take(17)
+        .take(18)
         .map(|text| text.0.clone())
         .collect();
     let expected: Vec<_> = babylon_client::visual_assets::VISUAL_ASSET_CATALOG
@@ -280,7 +288,7 @@ fn gallery_labels_match_the_fixed_visual_asset_catalog() {
         .map(|descriptor| descriptor.label.to_owned())
         .collect();
 
-    assert_eq!(actual.len(), 16);
+    assert_eq!(actual.len(), 17);
     assert_eq!(actual, expected);
 }
 
@@ -349,14 +357,14 @@ fn gallery_cards_are_non_shrinking_and_require_scroll_at_1080p() {
 
     let mut labels =
         world.query_filtered::<Entity, With<babylon_client::visual_assets::GalleryAssetLabel>>();
-    let label_entities: [Entity; 16] = labels
+    let label_entities: [Entity; 17] = labels
         .iter(world)
-        .take(17)
+        .take(18)
         .collect::<Vec<_>>()
         .try_into()
         .unwrap_or_else(|entities: Vec<Entity>| {
             panic!(
-                "gallery must contain exactly 16 labeled cards, found {}",
+                "gallery must contain exactly 17 labeled cards, found {}",
                 entities.len()
             )
         });

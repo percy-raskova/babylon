@@ -33,6 +33,7 @@ _ILLUSTRATION_IDS = (
     "banner-carceral",
     "banner-topology",
     "banner-collapse",
+    "hero-liberty",
 )
 _EXPECTED_MANIFEST_METADATA = (
     (
@@ -259,6 +260,20 @@ _EXPECTED_MANIFEST_METADATA = (
         "fc7e5442580ad0bee6d6b856e9d1c0727628e6a915d45c5cdf32617c5bc6ce91",
         "AGPL-3.0-or-later",
     ),
+    (
+        "hero-liberty",
+        "illustration",
+        "design/bevy-assets/prompts/hero-liberty.md",
+        "assets/visual/hero-liberty.webp",
+        "webp",
+        1672,
+        941,
+        1,
+        1,
+        "linear",
+        "fd71508bf4f49e04f75a9386336291d23c64e422c373963321ba6a28fdacda99",
+        "AGPL-3.0-or-later",
+    ),
 )
 _PALETTE = {
     "#1a0000",
@@ -271,7 +286,7 @@ _PALETTE = {
     "#228b22",
 }
 _HEX_COLOR = re.compile(r"#[0-9a-fA-F]{6}")
-_MAX_MANIFEST_ASSETS = 16
+_MAX_MANIFEST_ASSETS = 17
 _MAX_SVG_COLOR_MATCHES = 32
 
 
@@ -280,7 +295,7 @@ def _bounded_manifest_rows(rows: object) -> tuple[dict[str, object], ...]:
         raise AssertionError("manifest asset rows must be a list")
     rows_with_sentinel = tuple(islice(rows, _MAX_MANIFEST_ASSETS + 1))
     if len(rows_with_sentinel) > _MAX_MANIFEST_ASSETS:
-        raise AssertionError("manifest must contain at most 16 asset rows")
+        raise AssertionError("manifest must contain at most 17 asset rows")
     bounded_rows = rows_with_sentinel[:_MAX_MANIFEST_ASSETS]
     for index in range(_MAX_MANIFEST_ASSETS):
         if index >= len(bounded_rows):
@@ -308,9 +323,9 @@ def _manifest_assets() -> tuple[dict[str, object], ...]:
     return _bounded_manifest_rows(data.get("asset"))
 
 
-def test_manifest_reader_rejects_a_seventeenth_row() -> None:
-    rows: list[object] = [{} for _ in range(17)]
-    with pytest.raises(AssertionError, match="at most 16 asset rows"):
+def test_manifest_reader_rejects_an_eighteenth_row() -> None:
+    rows: list[object] = [{} for _ in range(18)]
+    with pytest.raises(AssertionError, match="at most 17 asset rows"):
         _bounded_manifest_rows(rows)
 
 
@@ -339,14 +354,14 @@ def _manifest_metadata(asset: dict[str, object]) -> tuple[object, ...]:
 
 def test_manifest_pins_every_complete_metadata_tuple() -> None:
     assets = _manifest_assets()
-    assert len(assets) == 16
-    actual = tuple(_manifest_metadata(assets[index]) for index in range(16))
+    assert len(assets) == 17
+    actual = tuple(_manifest_metadata(assets[index]) for index in range(17))
     assert actual == _EXPECTED_MANIFEST_METADATA
 
 
 def test_interface_sources_and_rasters_match_the_manifest() -> None:
     manifest = _manifest_assets()
-    assert len(manifest) in (6, 16)
+    assert len(manifest) in (6, 17)
     assets = manifest[:6]
     assert tuple(assets[index]["id"] for index in range(6)) == _INTERFACE_IDS
     for index in range(6):
@@ -372,10 +387,10 @@ def test_interface_svg_colors_are_palette_roles() -> None:
 
 def test_illustrations_decode_and_match_the_manifest() -> None:
     manifest = _manifest_assets()
-    assert len(manifest) == 16
-    assets = manifest[6:16]
-    assert tuple(assets[index]["id"] for index in range(10)) == _ILLUSTRATION_IDS
-    for index in range(10):
+    assert len(manifest) == 17
+    assets = manifest[6:17]
+    assert tuple(assets[index]["id"] for index in range(11)) == _ILLUSTRATION_IDS
+    for index in range(11):
         asset = assets[index]
         assert (_ROOT / str(asset["source"])).is_file()
         runtime = _ROOT / str(asset["runtime"])
@@ -390,7 +405,7 @@ def test_illustrations_decode_and_match_the_manifest() -> None:
 
 def test_manifest_and_runtime_directory_have_exactly_the_same_files() -> None:
     assets = _manifest_assets()
-    assert len(assets) == 16
-    declared = {Path(str(assets[index]["runtime"])).name for index in range(16)}
-    actual = {path.name for path in islice(_RUNTIME.iterdir(), 17)}
+    assert len(assets) == 17
+    declared = {Path(str(assets[index]["runtime"])).name for index in range(17)}
+    actual = {path.name for path in islice(_RUNTIME.iterdir(), 18)}
     assert actual == declared

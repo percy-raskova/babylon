@@ -1,6 +1,6 @@
 schema_version = 1
 license = "SIL Open Font License 1.1"
-import = "Unmodified font binaries from the local Google Fonts fonts-main source cache. Repository whitespace hooks normalize the bundled license text. Upstream repositories are identified by that cache's metadata or description; an upstream commit has not been independently verified."
+import = "Unmodified font binaries from Google Fonts: body and display from the local fonts-main source cache, and Pinyon Script downloaded from google/fonts ofl/pinyonscript. Repository whitespace hooks normalize the bundled license text. Source repositories are recorded below; upstream commits have not been independently verified."
 
 [[font]]
 id = "body"
@@ -26,3 +26,15 @@ source_directory = "ofl/barlowcondensed"
 source_repository = "https://github.com/jpt/barlow"
 license_file = "BarlowCondensed-OFL.txt"
 license_sha256 = "10b0e6bb43166a50fbe7cde2895bd7f703738a5da843acb5c97c95dc9ea26817"
+
+[[font]]
+id = "script"
+family = "Pinyon Script"
+file = "PinyonScript-Regular.ttf"
+bytes = 151412
+sha256 = "4aab130a6ed27f8b8117738c84a5602edf9300cdcc0651a9a65bf96f451ac29a"
+weight = 400
+source_directory = "ofl/pinyonscript"
+source_repository = "https://github.com/google/fonts/tree/main/ofl/pinyonscript"
+license_file = "PinyonScript-OFL.txt"
+license_sha256 = "5b6456d2e1a11e06ba40ed52863a9de58eef6221c78005abba4182bb4810fc73"

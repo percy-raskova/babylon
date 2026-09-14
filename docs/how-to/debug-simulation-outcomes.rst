@@ -220,10 +220,10 @@ This remains a partial PER-31 delivery within Gate 4.
 Inspect merchants and statewide comparisons
 -------------------------------------------
 
-The campaign menu groups four Statewide Michigan presets, four Wayne
-maintenance presets, and four Regional proofs. Saved campaigns appear above
-these groups. Choose Open to resume
-the selected save, or Compare to read it beside the current campaign.
+Choose **Observer Campaigns** on the Liberty start menu for four Statewide
+Michigan presets, four Wayne maintenance presets, and four Regional proofs.
+Choose **Load Game** for saved campaigns. There, choose **Open** to resume
+the selected save, or **Compare** to read it beside the current campaign.
 
 Comparison opens in Cohorts, with the workplace selected in Circuit first.
 Choose Shared freight to compare capacity accounts, or Campaign totals for

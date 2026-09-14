@@ -103,44 +103,44 @@ fn new_observer_app(window_size: (u32, u32)) -> (ReaderDsnGuard, App) {
     let mut session = ObserverSession::new(campaign);
     session.ready(12, Some("0c".repeat(32)));
     let mut app = App::new();
-    // This structural fixture runs no text renderer. Distinct reserved handles
-    // satisfy the shell's explicit font roles without a second asset loader.
-    let font_handles = Assets::<Font>::default();
-    app.insert_resource(babylon_client::visual_assets::ObserverFonts {
-        body: font_handles.reserve_handle(),
-        display: font_handles.reserve_handle(),
-    });
-    app.add_plugins((MinimalPlugins, AssetPlugin::default()))
-        .insert_resource(session)
-        .insert_resource(DossierCampaignId(campaign))
-        .insert_resource(ObserverUiState {
-            menu_open: false,
-            splash_visible: false,
-            ..default()
-        })
-        .init_resource::<UiScale>()
-        .init_resource::<bevy::picking::hover::HoverMap>()
-        .init_resource::<babylon_client::observer_audio::ObserverAudioSettings>()
-        .init_resource::<babylon_client::production::PrimaryView>()
-        .init_resource::<babylon_client::production::ProductionNavigation>()
-        .add_message::<babylon_client::production::ProductionCommand>()
-        .add_plugins((
-            babylon_client::map::MapPlugin,
-            ObserverShellPlugin,
-            babylon_client::observer_history::ObserverHistoryPlugin,
-            DossierCardPlugin,
-        ))
-        .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO))
-        .configure_sets(
-            Update,
-            (
-                ObserverSet::Input,
-                ObserverSet::Receive,
-                ObserverSet::Install,
-                ObserverSet::Paint,
-            )
-                .chain(),
-        );
+    app.add_plugins((
+        MinimalPlugins,
+        AssetPlugin::default(),
+        ImagePlugin::default(),
+        bevy::text::TextPlugin,
+        bevy::render::texture::TexturePlugin,
+        babylon_client::visual_assets::VisualAssetsPlugin,
+    ))
+    .insert_resource(session)
+    .insert_resource(DossierCampaignId(campaign))
+    .insert_resource(ObserverUiState {
+        menu_open: false,
+        splash_visible: false,
+        ..default()
+    })
+    .init_resource::<UiScale>()
+    .init_resource::<bevy::picking::hover::HoverMap>()
+    .init_resource::<babylon_client::observer_audio::ObserverAudioSettings>()
+    .init_resource::<babylon_client::production::PrimaryView>()
+    .init_resource::<babylon_client::production::ProductionNavigation>()
+    .add_message::<babylon_client::production::ProductionCommand>()
+    .add_plugins((
+        babylon_client::map::MapPlugin,
+        ObserverShellPlugin,
+        babylon_client::observer_history::ObserverHistoryPlugin,
+        DossierCardPlugin,
+    ))
+    .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO))
+    .configure_sets(
+        Update,
+        (
+            ObserverSet::Input,
+            ObserverSet::Receive,
+            ObserverSet::Install,
+            ObserverSet::Paint,
+        )
+            .chain(),
+    );
     app.world_mut().spawn((
         Window {
             resolution: bevy::window::WindowResolution::from(window_size)
@@ -150,6 +150,8 @@ fn new_observer_app(window_size: (u32, u32)) -> (ReaderDsnGuard, App) {
         bevy::window::PrimaryWindow,
     ));
     install_observer_frame(&mut app);
+    app.finish();
+    app.cleanup();
     app.update();
     (dsn_guard, app)
 }

@@ -3,7 +3,7 @@
 
 # Bevy asset provenance
 
-This file is the authoritative provenance and license record for the sixteen assets in
+This file is the authoritative provenance and license record for the seventeen catalog assets in
 `manifest.toml`. Every asset in this estate uses `AGPL-3.0-or-later`.
 
 ## Original interface work
@@ -54,5 +54,27 @@ selected result at quality 82 with method 6. The committed WebP files record the
 ## License disposition
 
 The project distributes the SVG masters, prompt records, interface PNG files, and generated WebP
-files under `AGPL-3.0-or-later`. This disposition covers all sixteen manifest rows. It does not
+files under `AGPL-3.0-or-later`. This disposition covers all seventeen manifest rows. It does not
 change the separate CC0-1.0 classification of Babylon's shipped audio estates.
+
+## Liberty and the production entrance
+
+The Director selected Liberty on 13 September 2026 and asked to remove the
+floating torch. The edited hero retains the composition and lighting of that
+selected ChatGPT image. `prompts/hero-liberty.md` records the source and exact
+object-removal prompt. The runtime WebP uses quality 93 with no crop or resize.
+
+The separate production entrance uses Pinyon Script under SIL OFL 1.1; its font
+and bundled license are recorded in `assets/fonts/manifest.toml`. The generated
+signature coverage and pen trajectory derive from that font, not the hero art.
+`signature-ink.png` packs stroke times into linear RG16 channels and glyph
+coverage into alpha. `signature-pen.json` follows those strokes. The shader adds
+the quill and the gold/pink burst at the fanfare's 6.5-second impact.
+These are presentation assets and do not enter game hashes or mechanics.
+
+Regenerate the ink texture and synchronized pen path from the bundled font:
+
+```bash
+mise exec -- uv run --frozen python design/bevy-assets/sources/generate_signature.py \
+  --font assets/fonts/PinyonScript-Regular.ttf --output assets/opening
+```

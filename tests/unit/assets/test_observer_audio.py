@@ -29,6 +29,7 @@ SFX = {
     "assets/sfx/ui/ui_back.ogg",
     "assets/sfx/state/tick_advance.ogg",
     "assets/sfx/state/state_fault.ogg",
+    "assets/sfx/stinger/production_fanfare.ogg",
 }
 EXPECTED = MUSIC | SFX
 
@@ -120,7 +121,7 @@ def test_observer_audio_inventory_is_complete_and_pins_real_source_and_render_by
 
 def test_shipped_bytes_have_one_root_and_composition_code_is_tooling() -> None:
     assert (ROOT / "assets/map/county_atlas.bin").is_file()
-    assert len(list((ROOT / "assets/visual").iterdir())) == 16
+    assert len(list((ROOT / "assets/visual").iterdir())) == 17
     assert not (ROOT / "rust/crates/babylon-client/assets/map").exists()
     assert not (ROOT / "rust/crates/babylon-client/src/visual_assets/embedded").exists()
     assert not (ROOT / "src/assets").exists()

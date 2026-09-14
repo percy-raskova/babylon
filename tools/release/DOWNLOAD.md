@@ -1,9 +1,9 @@
 # Download and run the Linux preview
 
 Download `babylon-<version>-linux-x86_64.tar.gz` and its adjacent `.sha256`
-file from this release. This is the current Michigan economy observer: advance
-four-week periods, inspect production and staffing, revisit history, and compare
-saved campaigns. Player actions are not implemented yet.
+file from this release. This preview includes the Wayne organizer campaign and
+Michigan economy observer campaigns. Advance four-week periods, inspect
+production and staffing, revisit history, and compare saved campaigns.
 
 **Prerequisites:** Ubuntu 24.04 x86_64 desktop (glibc 2.39+), Python 3.12+,
 a working Vulkan graphics driver, and local Docker Engine with the Docker Compose
@@ -31,18 +31,34 @@ launches reuse that image and database. You need no checkout, Rust compiler,
 mise, uv, pip installation, raw datasets, or separate asset download. The small
 Python launcher dependency set is included; Rust owns simulation and persistence.
 
+Choose **Continue** on the warning, then watch or skip the production card to
+reach the Liberty start menu. **Continue** enters the campaign the launcher
+prepared or reopened when ready. **New Game** starts the Wayne organizer
+campaign. **Load Game** lists saves with **Open** and **Compare** controls.
+**Observer Campaigns** offers alternative scenarios.
+
+**Settings** controls audio, interface size, and reduced motion.
+**Quit** closes the game.
+
+The start menu loops **The Purge**. The production card plays its own fanfare.
+**Next in-game track** in Settings selects a recording for the campaign.
+The menu theme continues until you enter the campaign.
+
 | Key | Action |
 | --- | --- |
-| Enter / Space | Advance one four-week period / play or pause |
-| P / M | Production view / map |
-| H | History |
-| [ / ] | Previous / next committed period |
-| Escape | Campaign menu, including Open and Compare |
-| N / D | New standard / delayed-delivery campaign from the menu |
+| Enter / Space | During play: advance one four-week period / play or pause |
+| P / M | During play: production view / map |
+| H | During play: history |
+| [ / ] | During play: previous / next committed period |
+| Escape | During play: return to the start menu |
+| N on the title home page | New Game: Wayne organizer campaign |
+| N / D in Observer Campaigns | New standard / delayed-delivery observer campaign |
 | Q | Quit from the menu |
 
-The campaign menu separates Regional proofs from Statewide Michigan. Statewide
-offers baseline, freight constraint, packaging shortage, and both constraints.
+**Observer Campaigns** separates **Regional proofs**, **Statewide Michigan**, and
+**Wayne maintenance**. Statewide offers baseline, freight constraint, packaging
+shortage, and both constraints. Wayne maintenance offers baseline, labor
+shortage, parts shortage, and both constraints.
 New campaigns read `content/scenarios/michigan/defines.toml` and the adjacent
 pinned statewide source files; existing campaigns retain their saved parameters
 and routes. The initial window is 1366 × 768.

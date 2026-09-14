@@ -3,6 +3,8 @@
 /// A stable identifier for one embedded visual asset.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum VisualAssetId {
+    /// Liberty at dusk, the game title backdrop.
+    HeroLiberty,
     /// The Babylon title mark.
     TitleMark,
     /// The sixteen-cell interface icon atlas.
@@ -54,7 +56,7 @@ pub struct VisualAssetDescriptor {
 }
 
 /// The fixed, manifest-ordered catalog of all embedded visual images.
-pub const VISUAL_ASSET_CATALOG: [VisualAssetDescriptor; 16] = [
+pub const VISUAL_ASSET_CATALOG: [VisualAssetDescriptor; 17] = [
     VisualAssetDescriptor {
         id: VisualAssetId::TitleMark,
         label: "Title mark",
@@ -180,6 +182,14 @@ pub const VISUAL_ASSET_CATALOG: [VisualAssetDescriptor; 16] = [
         label: "Collapse banner",
         width: 1536,
         height: 384,
+        columns: 1,
+        rows: 1,
+    },
+    VisualAssetDescriptor {
+        id: VisualAssetId::HeroLiberty,
+        label: "Liberty at dusk",
+        width: 1672,
+        height: 941,
         columns: 1,
         rows: 1,
     },

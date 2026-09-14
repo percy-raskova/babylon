@@ -371,8 +371,6 @@ fn admit_campaign(
             **primary = crate::production::PrimaryView::Organizer;
         }
         if let Some(ui) = &mut reset.ui {
-            ui.menu_open = false;
-            ui.splash_visible = false;
             ui.archive_open = false;
             ui.history_open = false;
         }
@@ -548,6 +546,7 @@ fn apply_response(
 
 #[derive(SystemParam)]
 struct CommandContext<'w> {
+    opening: Option<ResMut<'w, crate::observer_opening::OpeningPresentation>>,
     state: ResMut<'w, ObserverSession>,
     ui: ResMut<'w, ObserverUiState>,
     pipe: Option<Res<'w, RuntimePipe>>,
@@ -655,25 +654,42 @@ fn apply_command(command: ObserverCommand, context: &mut CommandContext) {
         | ObserverCommand::NewStatewideMaintenanceLaborShortageCampaign
         | ObserverCommand::NewStatewideMaintenancePartsShortageCampaign
         | ObserverCommand::NewStatewideMaintenanceBothCampaign => {
-            if pipe.is_none() {
-                feedback.reject(LAUNCHER_REQUIRED, time.elapsed_secs_f64());
-                return;
-            }
-            state.pause_playback();
-            let target = match command {
-                ObserverCommand::ReopenCampaign => RuntimeSessionTarget::Open {
-                    campaign_id: state.campaign.as_uuid().to_string(),
-                },
-                _ => RuntimeSessionTarget::New {
-                    campaign_id: uuid::Uuid::new_v4().to_string(),
-                    preset: campaign_preset(command),
-                },
-            };
-            if let Err(error) = state.queue_campaign(target) {
-                state.fail(error);
-            }
+            queue_menu_campaign(command, context);
         }
         _ => apply_presentation_command(command, context),
+    }
+}
+
+fn queue_menu_campaign(command: ObserverCommand, context: &mut CommandContext) {
+    let CommandContext {
+        state,
+        pipe,
+        feedback,
+        time,
+        opening,
+        ..
+    } = context;
+    if pipe.is_none() {
+        feedback.reject(LAUNCHER_REQUIRED, time.elapsed_secs_f64());
+        return;
+    }
+    state.pause_playback();
+    let target = match command {
+        ObserverCommand::ReopenCampaign => RuntimeSessionTarget::Open {
+            campaign_id: state.campaign.as_uuid().to_string(),
+        },
+        _ => RuntimeSessionTarget::New {
+            campaign_id: uuid::Uuid::new_v4().to_string(),
+            preset: campaign_preset(command),
+        },
+    };
+    match state.queue_campaign(target) {
+        Ok(()) => {
+            if let Some(opening) = opening {
+                opening.launch_pending = true;
+            }
+        }
+        Err(error) => state.fail(error),
     }
 }
 
@@ -759,6 +775,9 @@ fn apply_presentation_command(command: ObserverCommand, context: &mut CommandCon
         }
         ObserverCommand::Archive => ui.archive_open = !ui.archive_open,
         ObserverCommand::Menu => {
+            if ui.menu_open && !crate::observer_title::can_continue(state) {
+                return;
+            }
             ui.menu_open = !ui.menu_open;
             ui.disclosure = None;
             state.pause_playback();
@@ -766,10 +785,8 @@ fn apply_presentation_command(command: ObserverCommand, context: &mut CommandCon
         ObserverCommand::UiScale => ui.larger_interface = !ui.larger_interface,
         ObserverCommand::ReducedMotion => ui.reduced_motion = !ui.reduced_motion,
         ObserverCommand::MusicVolume => {
-            audio.music_volume = if audio.music_volume < 0.2 {
-                0.25
-            } else if audio.music_volume < 0.4 {
-                0.5
+            audio.music_volume = if audio.music_volume < 1.0 {
+                (audio.music_volume + 0.25).min(1.0)
             } else {
                 0.0
             }
@@ -2221,6 +2238,28 @@ pub(crate) mod tests {
         assert!(!ui.menu_open);
         assert_eq!(ui.disclosure, None);
         assert!(!app.world().resource::<ObserverSession>().playing);
+        assert!(matches!(
+            receiver.try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
+    }
+
+    #[test]
+    fn music_volume_reaches_full_level_and_cycles_back_to_mute() {
+        let (mut app, receiver) = command_app();
+        app.world_mut()
+            .resource_mut::<ObserverAudioSettings>()
+            .music_volume = 0.0;
+        for expected in [0.25_f32, 0.5, 0.75, 1.0, 0.0] {
+            dispatch(&mut app, &[ObserverCommand::MusicVolume]);
+            assert_eq!(
+                app.world()
+                    .resource::<ObserverAudioSettings>()
+                    .music_volume
+                    .to_bits(),
+                expected.to_bits()
+            );
+        }
         assert!(matches!(
             receiver.try_recv(),
             Err(mpsc::TryRecvError::Empty)

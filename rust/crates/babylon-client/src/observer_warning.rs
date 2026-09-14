@@ -7,6 +7,7 @@ use bevy::window::PrimaryWindow;
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::observer_focus::{ObserverFocusSystems, ObserverFocusTarget, ObserverKeyboardActivate};
 use crate::observer_io::ObserverSet;
+use crate::observer_opening::{OpeningPresentation, OpeningStage};
 use crate::observer_theme as theme;
 use crate::observer_ui::{ObserverCommand, ObserverFontRole, ObserverUiState};
 
@@ -168,10 +169,11 @@ fn action_button(parent: &mut ChildSpawnerCommands, action: WarningAction, capti
 fn request_action(
     action: WarningAction,
     ui: &ObserverUiState,
+    opening: &OpeningPresentation,
     continues: &mut MessageWriter<ContinueWarning>,
     commands: &mut MessageWriter<ObserverCommand>,
 ) {
-    if !ui.splash_visible {
+    if !ui.splash_visible || opening.stage != OpeningStage::Warning {
         return;
     }
     match action {
@@ -189,12 +191,13 @@ fn pointer_action(
     ui: Res<ObserverUiState>,
     mut continues: MessageWriter<ContinueWarning>,
     mut commands: MessageWriter<ObserverCommand>,
+    opening: Res<OpeningPresentation>,
 ) {
     if event.button != bevy::picking::pointer::PointerButton::Primary {
         return;
     }
     if let Ok(action) = actions.get(event.entity) {
-        request_action(*action, &ui, &mut continues, &mut commands);
+        request_action(*action, &ui, &opening, &mut continues, &mut commands);
     }
 }
 fn focused_action(
@@ -203,12 +206,13 @@ fn focused_action(
     ui: Res<ObserverUiState>,
     mut continues: MessageWriter<ContinueWarning>,
     mut commands: MessageWriter<ObserverCommand>,
+    opening: Res<OpeningPresentation>,
 ) {
     if event.context.is_some() {
         return;
     }
     if let Ok(action) = actions.get(event.entity) {
-        request_action(*action, &ui, &mut continues, &mut commands);
+        request_action(*action, &ui, &opening, &mut continues, &mut commands);
     }
 }
 fn keyboard(
@@ -218,12 +222,19 @@ fn keyboard(
     ui: Res<ObserverUiState>,
     mut continues: MessageWriter<ContinueWarning>,
     mut commands: MessageWriter<ObserverCommand>,
+    opening: Res<OpeningPresentation>,
 ) {
-    if !ui.splash_visible {
+    if !ui.splash_visible || opening.stage != OpeningStage::Warning {
         return;
     }
     if keys.just_pressed(KeyCode::KeyQ) {
-        request_action(WarningAction::Quit, &ui, &mut continues, &mut commands);
+        request_action(
+            WarningAction::Quit,
+            &ui,
+            &opening,
+            &mut continues,
+            &mut commands,
+        );
     } else if keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::NumpadEnter) {
         // A focused Quit button owns Enter through the normal focus dispatcher.
         let quit_focused = focus
@@ -232,15 +243,24 @@ fn keyboard(
             .and_then(|entity| actions.get(entity).ok())
             == Some(&WarningAction::Quit);
         if !quit_focused {
-            request_action(WarningAction::Continue, &ui, &mut continues, &mut commands);
+            request_action(
+                WarningAction::Continue,
+                &ui,
+                &opening,
+                &mut continues,
+                &mut commands,
+            );
         }
     }
 }
 
-fn apply_continue(mut continues: MessageReader<ContinueWarning>, mut ui: ResMut<ObserverUiState>) {
-    if continues.read().count() > 0 && ui.splash_visible {
-        ui.splash_visible = false;
-        ui.menu_open = true;
+fn apply_continue(
+    mut continues: MessageReader<ContinueWarning>,
+    ui: Res<ObserverUiState>,
+    mut opening: ResMut<OpeningPresentation>,
+) {
+    if continues.read().count() > 0 && ui.splash_visible && opening.stage == OpeningStage::Warning {
+        opening.begin_production();
     }
 }
 
@@ -251,18 +271,24 @@ type WarningFocusTargets<'w, 's> = Query<
     Or<(With<WarningAction>, With<WarningReading>)>,
 >;
 
-fn eligibility(ui: Res<ObserverUiState>, mut targets: WarningFocusTargets) {
+fn eligibility(
+    ui: Res<ObserverUiState>,
+    opening: Res<OpeningPresentation>,
+    mut targets: WarningFocusTargets,
+) {
+    let available = ui.splash_visible && opening.stage == OpeningStage::Warning;
     for mut target in &mut targets {
-        if target.available != ui.splash_visible {
-            target.available = ui.splash_visible;
+        if target.available != available {
+            target.available = available;
         }
     }
 }
 fn visibility(
     ui: Res<ObserverUiState>,
     mut roots: Query<&mut Visibility, With<ObserverWarningRoot>>,
+    opening: Res<OpeningPresentation>,
 ) {
-    let next = if ui.splash_visible {
+    let next = if ui.splash_visible && opening.stage == OpeningStage::Warning {
         Visibility::Visible
     } else {
         Visibility::Hidden
@@ -311,6 +337,7 @@ pub(crate) struct ObserverWarningPlugin;
 impl Plugin for ObserverWarningPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ObserverUiState>()
+            .init_resource::<OpeningPresentation>()
             .init_resource::<UiScale>()
             .add_message::<ContinueWarning>()
             .add_message::<ObserverCommand>()
@@ -413,7 +440,10 @@ mod tests {
         key(&mut app, window, KeyCode::Space);
         assert!(app.world().resource::<ObserverUiState>().splash_visible);
         key(&mut app, window, KeyCode::Enter);
-        assert!(!app.world().resource::<ObserverUiState>().splash_visible);
+        assert!(
+            app.world().resource::<ObserverUiState>().splash_visible,
+            "the production entrance must still block gameplay after the warning"
+        );
         assert!(app.world().resource::<ObserverUiState>().menu_open);
         assert_eq!(
             app.world().resource::<InstallTrace>().0.last(),
@@ -453,7 +483,11 @@ mod tests {
         ));
         assert!(app.world().resource::<ObserverUiState>().splash_visible);
         app.update();
-        assert!(!app.world().resource::<ObserverUiState>().splash_visible);
+        assert!(app.world().resource::<ObserverUiState>().splash_visible);
+        assert_eq!(
+            app.world().resource::<OpeningPresentation>().stage,
+            OpeningStage::Production
+        );
         assert_eq!(app.world().resource::<InstallTrace>().0.last(), Some(&true));
         assert!(app
             .world()
@@ -496,7 +530,11 @@ mod tests {
         });
         assert!(app.world().resource::<ObserverUiState>().splash_visible);
         app.update();
-        assert!(!app.world().resource::<ObserverUiState>().splash_visible);
+        assert!(app.world().resource::<ObserverUiState>().splash_visible);
+        assert_eq!(
+            app.world().resource::<OpeningPresentation>().stage,
+            OpeningStage::Production
+        );
     }
 
     #[test]

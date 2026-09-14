@@ -25,7 +25,14 @@ fn linear_image_settings(settings: &mut ImageLoaderSettings) {
     settings.sampler = ImageSampler::linear();
 }
 
-const EMBEDDED_VISUALS: [(&str, &[u8]); 16] = [
+const EMBEDDED_VISUALS: [(&str, &[u8]); 17] = [
+    (
+        "hero-liberty.webp",
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../assets/visual/hero-liberty.webp"
+        )) as &[u8],
+    ),
     (
         "banner-carceral.webp",
         include_bytes!(concat!(
@@ -149,20 +156,11 @@ impl Plugin for VisualAssetsPlugin {
         app.init_asset::<TextureAtlasLayout>();
         fonts::install(app);
 
-        let registry = app.world().resource::<EmbeddedAssetRegistry>();
-        for (name, bytes) in EMBEDDED_VISUALS {
-            registry.insert_asset(
-                PathBuf::from(concat!(
-                    env!("CARGO_MANIFEST_DIR"),
-                    "/../../../assets/visual"
-                ))
-                .join(name),
-                &Path::new("visual").join(name),
-                bytes,
-            );
-        }
+        register_visuals(app.world().resource::<EmbeddedAssetRegistry>());
         let server = app.world().resource::<AssetServer>();
 
+        let hero_liberty =
+            server.load_with_settings("embedded://visual/hero-liberty.webp", linear_image_settings);
         let title_mark =
             server.load_with_settings("embedded://visual/title-mark.png", nearest_image_settings);
         let interface_atlas = server.load_with_settings(
@@ -226,6 +224,7 @@ impl Plugin for VisualAssetsPlugin {
             create_atlas_layouts(app);
 
         app.insert_resource(VisualAssets {
+            hero_liberty,
             hero_red_apparatus,
             hero_empire_anatomized,
             concept_bunker_oracle,
@@ -248,6 +247,20 @@ impl Plugin for VisualAssetsPlugin {
             frame_layout,
             surface_layout,
         });
+    }
+}
+
+fn register_visuals(registry: &EmbeddedAssetRegistry) {
+    for (name, bytes) in EMBEDDED_VISUALS {
+        registry.insert_asset(
+            PathBuf::from(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../../assets/visual"
+            ))
+            .join(name),
+            &Path::new("visual").join(name),
+            bytes,
+        );
     }
 }
 
@@ -308,6 +321,8 @@ fn create_atlas_layouts(app: &mut App) -> AtlasLayouts {
 /// Named image and layout handles for the complete visual-asset family.
 #[derive(Clone, Resource)]
 pub struct VisualAssets {
+    /// Liberty at dusk, the game title backdrop.
+    pub hero_liberty: Handle<Image>,
     /// The Red Apparatus hero illustration.
     pub hero_red_apparatus: Handle<Image>,
     /// The Empire Anatomized hero illustration.
@@ -357,6 +372,7 @@ impl VisualAssets {
     #[must_use]
     pub fn image(&self, id: VisualAssetId) -> Handle<Image> {
         match id {
+            VisualAssetId::HeroLiberty => self.hero_liberty.clone(),
             VisualAssetId::TitleMark => self.title_mark.clone(),
             VisualAssetId::InterfaceAtlas => self.interface_atlas.clone(),
             VisualAssetId::MarkerAtlas => self.marker_atlas.clone(),

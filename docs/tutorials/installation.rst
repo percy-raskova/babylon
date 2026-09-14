@@ -68,16 +68,28 @@ From the repository root:
 The launcher builds the runtime and Bevy client with native Cargo.
 It reuses a reachable local database. It reopens a supported save from the
 same campaign content version at its durable period.
-On first use it creates a new campaign at period zero. Each period advances four
-weeks in one simulation tick. The in-game menu provides new and saved campaigns.
-It compares the same committed period in two campaigns using each campaign's
-saved parameters. The supplied delayed-delivery parameters lengthen the
-``sheet-transfer`` route. The window observes the durable runtime.
+On first use it creates a new campaign at period zero. Acknowledge the opening
+warning, then watch or skip the production card to reach the Liberty start menu.
+Choose **Continue** to enter the campaign the launcher prepared or reopened.
+Each period advances four weeks in one simulation tick.
+
+**New Game** starts the Wayne organizer campaign. **Observer Campaigns** offers
+alternative scenarios. **Load Game** opens saved campaigns or compares the same
+committed period using each campaign's saved parameters. **Settings** controls
+audio, interface size, and reduced motion.
+
+The start menu loops **The Purge**.
+**Next in-game track** selects a recording for the campaign. The production card
+has its own fanfare.
+
+The supplied delayed-delivery parameters lengthen the ``sheet-transfer`` route.
+The window observes the durable runtime.
 
 The Michigan map has 83 county QCEW baselines. The production scenario
 has five Designed county-industry cohorts, with 3D and compact 2D views.
 The supplied horizon is 16 four-week periods (64 weeks); authored parameters can
-select a shorter horizon. Player interventions belong to Gate 5.
+select a shorter horizon. Observer campaigns have no player interventions.
+**New Game** opens the Wayne organizer campaign.
 
 To keep saved worlds and open a new campaign:
 

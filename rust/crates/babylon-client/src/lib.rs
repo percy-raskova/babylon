@@ -16,6 +16,8 @@ pub(crate) mod observer_controls;
 pub(crate) mod observer_focus;
 pub mod observer_io;
 pub(crate) mod observer_layout;
+pub(crate) mod observer_opening;
+pub(crate) mod observer_title;
 pub mod observer_ui;
 pub(crate) mod observer_warning;
 pub mod organizer;

@@ -8,12 +8,16 @@ use std::path::{Path, PathBuf};
 
 mod catalog;
 
-use catalog::{DEFAULT_TRACK_INDEX, MUSIC_TRACKS};
+use catalog::{DEFAULT_TRACK_INDEX, MUSIC_TRACKS, TITLE_TRACK_INDEX};
 
 use crate::map::SelectedCounty;
 use crate::observer::{ObserverSession, SessionPhase};
 use crate::observer_io::ObserverSet;
+use crate::observer_opening::{OpeningPresentation, OpeningStage};
 use crate::observer_ui::ObserverCommand;
+
+// +3 dB. The Purge's decoded -6.19 dBTP peak leaves headroom at full volume.
+const TITLE_GAIN: f32 = 1.412_537_6;
 
 #[derive(Resource)]
 pub struct ObserverAudioSettings {
@@ -58,16 +62,37 @@ struct AudioBank {
     back: Handle<AudioSource>,
     tick: Handle<AudioSource>,
     fault: Handle<AudioSource>,
+    production: Handle<AudioSource>,
+}
+#[derive(Component, Clone, Copy, Debug, Eq, PartialEq)]
+enum MusicDeck {
+    Title,
+    Gameplay(usize),
 }
 #[derive(Component)]
-struct MusicDeck(usize);
+struct ProductionFanfare;
 #[derive(Component)]
 struct EffectLifetime(Timer);
 
-fn start_music(commands: &mut Commands, server: &AssetServer, settings: &ObserverAudioSettings) {
-    let Some(track) = MUSIC_TRACKS.get(settings.track) else {
+fn desired_deck(
+    opening: Option<&OpeningPresentation>,
+    settings: &ObserverAudioSettings,
+) -> Option<MusicDeck> {
+    match opening.map(|opening| opening.stage) {
+        Some(OpeningStage::Warning | OpeningStage::Production) => None,
+        Some(OpeningStage::Title) => Some(MusicDeck::Title),
+        Some(OpeningStage::Game) | None => Some(MusicDeck::Gameplay(settings.track)),
+    }
+}
+
+fn start_music(commands: &mut Commands, server: &AssetServer, deck: MusicDeck) {
+    let index = match deck {
+        MusicDeck::Title => TITLE_TRACK_INDEX,
+        MusicDeck::Gameplay(index) => index,
+    };
+    let Some(track) = MUSIC_TRACKS.get(index) else {
         error!(
-            track = settings.track,
+            track = index,
             "Music selection is outside the embedded soundtrack"
         );
         return;
@@ -76,14 +101,24 @@ fn start_music(commands: &mut Commands, server: &AssetServer, settings: &Observe
         AudioPlayer::new(server.load(format!("embedded://{}", track.path))),
         PlaybackSettings {
             volume: Volume::SILENT,
-            ..PlaybackSettings::ONCE
+            ..match deck {
+                MusicDeck::Title => PlaybackSettings::LOOP,
+                MusicDeck::Gameplay(_) => PlaybackSettings::ONCE,
+            }
         },
-        MusicDeck(settings.track),
+        deck,
     ));
 }
 
-fn setup(mut commands: Commands, server: Res<AssetServer>, settings: Res<ObserverAudioSettings>) {
-    start_music(&mut commands, &server, &settings);
+fn setup(
+    mut commands: Commands,
+    server: Res<AssetServer>,
+    settings: Res<ObserverAudioSettings>,
+    opening: Option<Res<OpeningPresentation>>,
+) {
+    if let Some(deck) = desired_deck(opening.as_deref(), &settings) {
+        start_music(&mut commands, &server, deck);
+    }
     commands.insert_resource(AudioBank {
         select: server.load("embedded://sfx/ui/ui_select.ogg"),
         tab: server.load("embedded://sfx/ui/ui_tab.ogg"),
@@ -91,21 +126,59 @@ fn setup(mut commands: Commands, server: Res<AssetServer>, settings: Res<Observe
         back: server.load("embedded://sfx/ui/ui_back.ogg"),
         tick: server.load("embedded://sfx/state/tick_advance.ogg"),
         fault: server.load("embedded://sfx/state/state_fault.ogg"),
+        production: server.load("embedded://sfx/stinger/production_fanfare.ogg"),
     });
 }
 
-fn effect(commands: &mut Commands, source: Handle<AudioSource>, volume: f32) {
+fn effect(commands: &mut Commands, source: Handle<AudioSource>, volume: f32) -> Option<Entity> {
     if volume <= 0.0 {
+        return None;
+    }
+    Some(
+        commands
+            .spawn((
+                AudioPlayer::new(source),
+                PlaybackSettings {
+                    volume: Volume::Linear(volume),
+                    ..PlaybackSettings::DESPAWN
+                },
+                EffectLifetime(Timer::from_seconds(8.0, TimerMode::Once)),
+            ))
+            .id(),
+    )
+}
+
+fn opening_fanfare(
+    mut commands: Commands,
+    opening: Option<Res<OpeningPresentation>>,
+    bank: Res<AudioBank>,
+    settings: Res<ObserverAudioSettings>,
+    playing: Query<(Entity, Option<&AudioSink>), With<ProductionFanfare>>,
+    mut previous: Local<Option<OpeningStage>>,
+) {
+    let stage = opening.as_ref().map(|opening| opening.stage);
+    if *previous == stage {
         return;
     }
-    commands.spawn((
-        AudioPlayer::new(source),
-        PlaybackSettings {
-            volume: Volume::Linear(volume),
-            ..PlaybackSettings::DESPAWN
-        },
-        EffectLifetime(Timer::from_seconds(8.0, TimerMode::Once)),
-    ));
+    *previous = stage;
+    for (entity, sink) in &playing {
+        if let Some(sink) = sink {
+            sink.stop();
+        }
+        commands.entity(entity).despawn();
+    }
+    if stage == Some(OpeningStage::Production) {
+        if let Some(entity) = effect(
+            &mut commands,
+            bank.production.clone(),
+            settings.effects_volume,
+        ) {
+            commands.entity(entity).insert((
+                ProductionFanfare,
+                EffectLifetime(Timer::from_seconds(9.0, TimerMode::Once)),
+            ));
+        }
+    }
 }
 
 fn feedback(
@@ -142,40 +215,62 @@ fn feedback(
     }
     *last = Some((state.durable_tick, state.phase, selection.0));
     if let Some(cue) = cue {
-        effect(&mut commands, cue, settings.effects_volume);
+        let _ = effect(&mut commands, cue, settings.effects_volume);
     }
+}
+
+fn gameplay_audio(opening: Option<Res<OpeningPresentation>>) -> bool {
+    opening.is_none_or(|opening| opening.stage == OpeningStage::Game)
 }
 
 fn mix(
     time: Res<Time>,
     mut settings: ResMut<ObserverAudioSettings>,
-    deck: Single<(Entity, &MusicDeck, Option<&mut AudioSink>)>,
+    opening: Option<Res<OpeningPresentation>>,
+    mut decks: Query<(Entity, &MusicDeck, Option<&mut AudioSink>)>,
     mut effects: Query<(Entity, &mut EffectLifetime)>,
     server: Res<AssetServer>,
     mut commands: Commands,
 ) {
-    let (entity, playing, sink) = deck.into_inner();
-    let finished = sink.as_ref().is_some_and(|sink| sink.empty());
-    if playing.0 != settings.track || finished {
-        // A manual Next wins if the old recording finishes in the same frame.
-        if playing.0 == settings.track {
-            settings.next_track();
-        }
-        if let Some(sink) = sink {
-            sink.stop();
-        }
-        commands.entity(entity).despawn();
-        start_music(&mut commands, &server, &settings);
-    } else if let Some(mut sink) = sink {
-        let target = settings.music_volume;
-        let current = sink.volume().to_linear();
-        let step = time.delta_secs() * 0.35;
-        let volume = if current < target {
-            (current + step).min(target)
+    let mut desired = desired_deck(opening.as_deref(), &settings);
+    let mut active = false;
+    for (entity, playing, sink) in &mut decks {
+        let finished = matches!(playing, MusicDeck::Gameplay(_))
+            && sink.as_ref().is_some_and(|sink| sink.empty());
+        if Some(*playing) != desired || finished || active {
+            // A manual Next wins if the old recording finishes in the same frame.
+            if finished && Some(*playing) == desired {
+                settings.next_track();
+                desired = desired_deck(opening.as_deref(), &settings);
+            }
+            if let Some(sink) = sink {
+                sink.stop();
+            }
+            commands.entity(entity).despawn();
         } else {
-            (current - step).max(target)
-        };
-        sink.set_volume(Volume::Linear(volume));
+            active = true;
+            if let Some(mut sink) = sink {
+                let target = settings.music_volume
+                    * if *playing == MusicDeck::Title {
+                        TITLE_GAIN
+                    } else {
+                        1.0
+                    };
+                let current = sink.volume().to_linear();
+                let step = time.delta_secs() * 0.35;
+                let volume = if current < target {
+                    (current + step).min(target)
+                } else {
+                    (current - step).max(target)
+                };
+                sink.set_volume(Volume::Linear(volume));
+            }
+        }
+    }
+    if !active {
+        if let Some(deck) = desired {
+            start_music(&mut commands, &server, deck);
+        }
     }
     for (entity, mut ttl) in &mut effects {
         ttl.0.tick(time.delta());
@@ -243,12 +338,24 @@ impl Plugin for ObserverAudioPlugin {
                     "/../../../assets/sfx/state/state_fault.ogg"
                 )) as &[u8],
             ),
+            (
+                "sfx/stinger/production_fanfare.ogg",
+                include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../../assets/sfx/stinger/production_fanfare.ogg"
+                )) as &[u8],
+            ),
         ] {
             register_audio(registry, name, bytes);
         }
         app.init_resource::<ObserverAudioSettings>()
             .add_systems(Startup, setup)
-            .add_systems(Update, (feedback, mix).chain().after(ObserverSet::Install));
+            .add_systems(
+                Update,
+                (opening_fanfare, feedback.run_if(gameplay_audio), mix)
+                    .chain()
+                    .after(ObserverSet::Install),
+            );
     }
 }
 
@@ -262,12 +369,20 @@ mod tests {
     use std::time::Duration;
 
     fn music_app() -> App {
+        music_app_with_opening(None)
+    }
+
+    fn music_app_with_opening(stage: Option<OpeningStage>) -> App {
         let mut app = App::new();
+        if let Some(stage) = stage {
+            app.init_resource::<OpeningPresentation>();
+            app.world_mut().resource_mut::<OpeningPresentation>().stage = stage;
+        }
         app.add_plugins((MinimalPlugins, AssetPlugin::default()))
             .init_asset::<AudioSource>()
             .init_resource::<ObserverAudioSettings>()
             .add_systems(Startup, setup)
-            .add_systems(Update, mix);
+            .add_systems(Update, (opening_fanfare, mix).chain());
         app.finish();
         app.cleanup();
         app.update();
@@ -281,7 +396,7 @@ mod tests {
             .world_mut()
             .query::<(&MusicDeck, &PlaybackSettings, &AudioPlayer)>();
         let (deck, settings, player) = decks.single(app.world()).expect("one music decoder");
-        assert_eq!(deck.0, 0);
+        assert_eq!(*deck, MusicDeck::Gameplay(0));
         assert!(matches!(settings.mode, PlaybackMode::Once));
         assert_eq!(
             player.0.path().unwrap().path(),
@@ -295,7 +410,7 @@ mod tests {
         let mut decks = app.world_mut().query::<(Entity, &MusicDeck)>();
         let finished = decks
             .iter(app.world())
-            .find_map(|(entity, deck)| (deck.0 == 0).then_some(entity))
+            .find_map(|(entity, deck)| (*deck == MusicDeck::Gameplay(0)).then_some(entity))
             .unwrap();
         let (sink, _samples) = rodio::Sink::new_idle();
         app.world_mut()
@@ -304,7 +419,7 @@ mod tests {
         app.update();
         assert_eq!(app.world().resource::<ObserverAudioSettings>().track, 1);
         let (next, deck) = decks.single(app.world()).expect("one replacement decoder");
-        assert_eq!(deck.0, 1);
+        assert_eq!(*deck, MusicDeck::Gameplay(1));
         assert_ne!(next, finished);
         assert!(!app.world().entities().contains(finished));
         app.update();
@@ -322,7 +437,10 @@ mod tests {
             .insert(AudioSink::new(sink));
         app.update();
         assert_eq!(app.world().resource::<ObserverAudioSettings>().track, 2);
-        assert_eq!(decks.single(app.world()).unwrap().1 .0, 2);
+        assert_eq!(
+            *decks.single(app.world()).unwrap().1,
+            MusicDeck::Gameplay(2)
+        );
         assert!(!app.world().entities().contains(next));
     }
 
@@ -356,5 +474,128 @@ mod tests {
             assert_eq!(decks.single(app.world()).unwrap(), playing);
             assert_eq!(app.world().resource::<ObserverAudioSettings>().track, 0);
         }
+    }
+
+    #[test]
+    fn title_theme_boost_reaches_the_sink_and_mute_remains_silent() {
+        let mut app = music_app_with_opening(Some(OpeningStage::Title));
+        let playing = app
+            .world_mut()
+            .query_filtered::<Entity, With<MusicDeck>>()
+            .single(app.world())
+            .unwrap();
+        let (sink, _samples) = rodio::Sink::new_idle();
+        app.world_mut()
+            .entity_mut(playing)
+            .insert(AudioSink::new(sink));
+        app.world_mut()
+            .resource_mut::<ObserverAudioSettings>()
+            .music_volume = 1.0;
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(Duration::from_secs(8));
+        app.world_mut().run_system_once(mix).unwrap();
+        let volume = app
+            .world()
+            .get::<AudioSink>(playing)
+            .unwrap()
+            .volume()
+            .to_linear();
+        assert!((20.0 * volume.log10() - 3.0).abs() < 0.001);
+        app.world_mut()
+            .resource_mut::<ObserverAudioSettings>()
+            .music_volume = 0.0;
+        app.world_mut().run_system_once(mix).unwrap();
+        assert_eq!(
+            app.world()
+                .get::<AudioSink>(playing)
+                .unwrap()
+                .volume()
+                .to_linear()
+                .to_bits(),
+            0.0_f32.to_bits()
+        );
+    }
+
+    #[test]
+    fn title_loops_the_purge_then_game_starts_the_unchanged_playlist() {
+        let mut app = music_app_with_opening(Some(OpeningStage::Warning));
+        let mut decks = app
+            .world_mut()
+            .query::<(Entity, &MusicDeck, &PlaybackSettings, &AudioPlayer)>();
+        assert_eq!(decks.iter(app.world()).count(), 0);
+        app.world_mut().resource_mut::<OpeningPresentation>().stage = OpeningStage::Title;
+        app.update();
+        let (title, deck, settings, player) = decks.single(app.world()).expect("title music");
+        assert_eq!(*deck, MusicDeck::Title);
+        assert!(matches!(settings.mode, PlaybackMode::Loop));
+        assert_eq!(
+            player.0.path().unwrap().path(),
+            Path::new("music/fascist/05_the_purge.ogg")
+        );
+        let (sink, _samples) = rodio::Sink::new_idle();
+        app.world_mut()
+            .entity_mut(title)
+            .insert(AudioSink::new(sink));
+        app.update();
+        assert_eq!(decks.single(app.world()).unwrap().0, title);
+        assert_eq!(
+            app.world().resource::<ObserverAudioSettings>().track,
+            DEFAULT_TRACK_INDEX
+        );
+        app.world_mut().resource_mut::<OpeningPresentation>().stage = OpeningStage::Game;
+        app.update();
+        let (game, deck, settings, player) = decks.single(app.world()).expect("game music");
+        assert_ne!(game, title);
+        assert_eq!(*deck, MusicDeck::Gameplay(DEFAULT_TRACK_INDEX));
+        assert!(matches!(settings.mode, PlaybackMode::Once));
+        assert_eq!(
+            player.0.path().unwrap().path(),
+            Path::new("music/ambient/01_history_breathing.ogg")
+        );
+        assert!(!app.world().entities().contains(title));
+    }
+
+    #[test]
+    fn production_plays_one_fanfare_and_skip_stops_it_without_music_overlap() {
+        let mut app = music_app_with_opening(Some(OpeningStage::Warning));
+        app.world_mut().resource_mut::<OpeningPresentation>().stage = OpeningStage::Production;
+        app.update();
+        let mut fanfares = app
+            .world_mut()
+            .query_filtered::<(Entity, &PlaybackSettings), With<ProductionFanfare>>();
+        let (fanfare, settings) = fanfares.single(app.world()).expect("one production cue");
+        assert_eq!(
+            settings.volume.to_linear().to_bits(),
+            ObserverAudioSettings::default().effects_volume.to_bits()
+        );
+        let mut decks = app.world_mut().query_filtered::<Entity, With<MusicDeck>>();
+        assert_eq!(decks.iter(app.world()).count(), 0);
+        app.update();
+        assert_eq!(fanfares.single(app.world()).unwrap().0, fanfare);
+        app.world_mut().resource_mut::<OpeningPresentation>().stage = OpeningStage::Title;
+        app.update();
+        assert_eq!(fanfares.iter(app.world()).count(), 0);
+        assert!(!app.world().entities().contains(fanfare));
+        assert_eq!(decks.iter(app.world()).count(), 1);
+    }
+
+    #[test]
+    fn production_respects_effects_mute_and_does_not_retrigger_on_unmute() {
+        let mut app = music_app_with_opening(Some(OpeningStage::Warning));
+        app.world_mut()
+            .resource_mut::<ObserverAudioSettings>()
+            .effects_volume = 0.0;
+        app.world_mut().resource_mut::<OpeningPresentation>().stage = OpeningStage::Production;
+        app.update();
+        let mut fanfares = app
+            .world_mut()
+            .query_filtered::<Entity, With<ProductionFanfare>>();
+        assert_eq!(fanfares.iter(app.world()).count(), 0);
+        app.world_mut()
+            .resource_mut::<ObserverAudioSettings>()
+            .effects_volume = 0.5;
+        app.update();
+        assert_eq!(fanfares.iter(app.world()).count(), 0);
     }
 }

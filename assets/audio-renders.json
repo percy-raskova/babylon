@@ -377,6 +377,15 @@
       "output_sha256": "f008911abb97a28fef465b6e1f23e923c2158b7e076905618bf0bd709073e95c",
       "source": "assets/sfx/state/state_fault.mid",
       "source_sha256": "de6f13ca8a0eddfe74172c84b13b5c24b91771c4df26ac0c0e6601bc5eaa772e"
+    },
+    {
+      "duration_seconds": 8.3,
+      "kind": "sfx",
+      "normalization": "volume=-2.800000dB",
+      "output": "assets/sfx/stinger/production_fanfare.ogg",
+      "output_sha256": "6863bc3a228f7592b45176ea229c7623069c65fdf74adf2808656c784094dc28",
+      "source": "assets/sfx/stinger/production_fanfare.mid",
+      "source_sha256": "f79b40a31271e5f9a97a4edaa079037fd6d0e3923f3ede044ec6e5f083c286e7"
     }
   ],
   "license_scope": "SFX MIDI and the ambient, superstructure, periphery, rift, endgame and entity music suites retain their CC0 dedication. On 2026-09-06 the Director confirmed original authorship of Phi and Panopticon and authorized distribution of their MIDI and rendered forms with Babylon. This permission does not assign CC0 to the themes. Rendering the legacy crisis, fascist and revolutionary suites does not assign a license or change their recorded unresolved status; see LICENSING.md.",

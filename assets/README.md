@@ -8,9 +8,9 @@ needs no source checkout or runtime synthesizer.
 - `visual/`: the interface rasters and illustration estate tracked by
   `design/bevy-assets/manifest.toml`.
 - `music/`: all 36 authored MIDI masters and their `Ogg Vorbis` renders.
-- `sfx/`: the original 58 MIDI cues and six rendered observer cues.
+- `sfx/`: 59 MIDI cues, including the production fanfare, and seven rendered cues.
 
-Render the existing 36 music MIDI files and six observer cues with
+Render the existing 36 music MIDI files and seven observer cues with
 `mise run midi:render-observer`. Add `--check` to compare
 the rendered bytes and provenance with `audio-renders.json`. The
 FluidR3 GM instrument bank is a build input. The game does not bundle or load it.
@@ -23,16 +23,29 @@ them. It normalizes music to -20 LUFS with a -2 dB true-peak target and encodes
 stereo `Vorbis` at 44.1 kHz. The native music catalog embeds every track's title,
 path and rendered bytes. Playback needs no MIDI tools, downloads or checkout.
 
+The title menu gives **The Purge** a 3 dB playback boost. Its decoded recording
+measured -20.02 LUFS and -6.19 dBTP before that boost, leaving about 3.19 dB of
+peak headroom at full music volume. Music settings offer mute, 25%, 50%, 75%,
+and 100%. Other campaign recordings keep their authored playback gain.
+
 Suite and track names are soundtrack labels. They do not describe current
 engine state or promise simulation outcomes. The native playlist has no
 engine-event bindings.
 
-Each viewer session starts with History Breathing and advances through all
-36 recordings, about 92 minutes of music. Open Menu and choose Next track,
-or press J there, to skip.
-The menu shows the current title and playlist position. Music and effects
-keep their separate volume and mute controls. Campaign changes keep the
-current recording and sound settings. Playback uses one music decoder.
+The opening production credit plays the original `production_fanfare` once.
+Its harp enters at 0.70 seconds, the surname flourish at 3.70 seconds, and
+the orchestral reveal at 6.50 seconds. The 8.30-second render leaves room
+for a short silent hold. Skipping the credit stops the cue. The warning
+and production credit have no background music.
+
+The title screen loops The Purge. Entering a campaign plays the selected
+in-game track, initially History Breathing, then advances through all
+36 recordings, about 92 minutes of music. In Settings, choose
+**Next in-game track**, or press J, to change that selection.
+Settings shows the in-game title and playlist position. Music and effects
+keep their separate volume and mute controls. Returning to the title keeps
+the selected gameplay track and sound settings. Playback uses at most one
+music decoder.
 
 The two theme renders keep their 2 MiB limit. The other 34 named music renders
 have a 12 MiB limit each. The longest existing MIDI lasts about 435 seconds,
@@ -60,7 +73,7 @@ sfx/
                        order_committed, game_start/quit)
   alert/            6  notification ladder (info → favorable → warning → tritone klaxon,
                        event minor/major)
-  stinger/         10  dialectical punctuation (rupture, solidarity + its dark mirror
+  stinger/         11  production signature and dialectical punctuation (rupture, solidarity + its dark mirror
                        false_solidarity, atomization, repression, imperial_rent,
                        market_correction, election, policy pass/fail)
   endgame/          5  one terminal stinger per canonical outcome
@@ -127,7 +140,7 @@ CC93 chorus = solidarity, CC94 detune = atomization, CC71 resonance = repression
 ## Regenerate / verify
 
 ```sh
-mise run midi:generate-sfx        # manifest.toml → 58 .mid files (deterministic)
+mise run midi:generate-sfx        # manifest.toml → 59 .mid files (deterministic)
 mise run test:q -- tests/unit/assets/test_sfx_assets.py   # byte-identity contract
 ```
 

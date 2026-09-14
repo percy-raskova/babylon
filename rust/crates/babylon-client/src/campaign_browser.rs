@@ -10,6 +10,7 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use crate::observer_opening::OpeningPresentation;
 use babylon_persistence::{
     identity::CampaignId,
     observer_reader::CampaignSummary,
@@ -25,7 +26,7 @@ use bevy::tasks::{block_on, AsyncComputeTaskPool, Task};
 
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::observer::{ObservationContext, ObserverSession, Perspective};
-use crate::observer_controls::{availability, ControlAvailability};
+use crate::observer_controls::{availability, inspection_availability, ControlAvailability};
 use crate::observer_focus::{
     ObserverFocusPolicy, ObserverFocusSystems, ObserverFocusTarget, ObserverKeyboardActivate,
     ObserverKeyboardClaim,
@@ -381,13 +382,20 @@ fn input(
     claimed: Res<ObserverKeyboardClaim>,
     ui: Res<ObserverUiState>,
     mut messages: MessageWriter<CampaignBrowserCommand>,
+    opening: Option<Res<OpeningPresentation>>,
 ) {
     for (interaction, button) in &buttons {
         if *interaction == Interaction::Pressed {
-            dispatch_button(button.0, &ui, &mut messages);
+            dispatch_button(button.0, &ui, &mut messages, opening.as_deref());
         }
     }
-    if ui.menu_open && !ui.splash_visible && !ui.comparison_open {
+    if ui.menu_open
+        && !ui.splash_visible
+        && !ui.comparison_open
+        && opening
+            .as_deref()
+            .is_none_or(OpeningPresentation::saved_games_visible)
+    {
         for (key, command) in [
             (KeyCode::ArrowLeft, CampaignBrowserCommand::Previous),
             (KeyCode::ArrowRight, CampaignBrowserCommand::Next),
@@ -395,7 +403,7 @@ fn input(
             (KeyCode::KeyX, CampaignBrowserCommand::Compare),
         ] {
             if keyboard.just_pressed(key) && !claimed.claimed(key) {
-                dispatch_button(command, &ui, &mut messages);
+                dispatch_button(command, &ui, &mut messages, opening.as_deref());
             }
         }
     }
@@ -404,12 +412,20 @@ fn input(
     }
 }
 
-fn button_visible(command: CampaignBrowserCommand, ui: &ObserverUiState) -> bool {
+fn button_visible(
+    command: CampaignBrowserCommand,
+    ui: &ObserverUiState,
+    opening: Option<&OpeningPresentation>,
+) -> bool {
     !ui.splash_visible
         && match command {
             CampaignBrowserCommand::CloseComparison
             | CampaignBrowserCommand::ComparisonSection(_) => ui.comparison_open,
-            _ => ui.menu_open && !ui.comparison_open,
+            _ => {
+                ui.menu_open
+                    && !ui.comparison_open
+                    && opening.is_none_or(OpeningPresentation::saved_games_visible)
+            }
         }
 }
 
@@ -417,8 +433,9 @@ fn dispatch_button(
     command: CampaignBrowserCommand,
     ui: &ObserverUiState,
     messages: &mut MessageWriter<CampaignBrowserCommand>,
+    opening: Option<&OpeningPresentation>,
 ) {
-    if button_visible(command, ui) {
+    if button_visible(command, ui, opening) {
         messages.write(command);
     }
 }
@@ -429,12 +446,13 @@ fn keyboard_button(
     ui: Res<ObserverUiState>,
     session: Res<ObserverSession>,
     mut messages: MessageWriter<CampaignBrowserCommand>,
+    opening: Option<Res<OpeningPresentation>>,
 ) {
     let Ok((button, target)) = buttons.get(event.entity) else {
         return;
     };
     if event.context == target.context && event.context.as_ref() == Some(&session.context()) {
-        dispatch_button(button.0, &ui, &mut messages);
+        dispatch_button(button.0, &ui, &mut messages, opening.as_deref());
     }
 }
 
@@ -454,6 +472,7 @@ fn sync_focus_targets(
     session: Res<ObserverSession>,
     browser: Res<CampaignBrowserState>,
     mut targets: BrowserFocusTargets,
+    opening: Option<Res<OpeningPresentation>>,
 ) {
     let context = session.context();
     for (mut target, button, catalog, comparison) in &mut targets {
@@ -463,7 +482,7 @@ fn sync_focus_targets(
         let mut next = target.clone();
         next.context = Some(context.clone());
         next.available = if let Some(button) = button {
-            button_visible(button.0, &ui)
+            button_visible(button.0, &ui, opening.as_deref())
                 && !session.quit_requested
                 && match button.0 {
                     CampaignBrowserCommand::CloseComparison
@@ -479,7 +498,8 @@ fn sync_focus_targets(
                                 == ControlAvailability::Enabled
                     }
                     CampaignBrowserCommand::Compare => {
-                        browser.context.as_ref() == Some(&context)
+                        comparison_availability(&session) == ControlAvailability::Enabled
+                            && browser.context.as_ref() == Some(&context)
                             && browser.selected_campaign().is_some_and(|selected| {
                                 selected.id != session.campaign.as_uuid().to_string()
                                     && selected.durable_tick >= session.viewed_tick
@@ -491,7 +511,11 @@ fn sync_focus_targets(
                 && if comparison {
                     ui.comparison_open
                 } else {
-                    ui.menu_open && !ui.comparison_open
+                    ui.menu_open
+                        && !ui.comparison_open
+                        && opening
+                            .as_deref()
+                            .is_none_or(OpeningPresentation::saved_games_visible)
                 }
         };
         target.set_if_neq(next);
@@ -527,12 +551,21 @@ fn request_catalog(browser: &mut CampaignBrowserState, session: &ObserverSession
     browser.status = "Loading campaign catalog...".into();
 }
 
+fn comparison_availability(session: &ObserverSession) -> ControlAvailability {
+    if session.lifecycle_pending() || session.organizer_control_pending() {
+        ControlAvailability::Disabled("Wait for the current campaign operation to finish")
+    } else {
+        inspection_availability(session)
+    }
+}
+
 fn commands(
     mut messages: MessageReader<CampaignBrowserCommand>,
     mut browser: ResMut<CampaignBrowserState>,
     mut session: ResMut<ObserverSession>,
     mut ui: ResMut<ObserverUiState>,
     pipe: Option<Res<RuntimePipe>>,
+    mut opening: Option<ResMut<OpeningPresentation>>,
 ) {
     for command in messages.read() {
         if session.quit_requested {
@@ -540,7 +573,7 @@ fn commands(
                 .clone_into(&mut browser.status);
             continue;
         }
-        if !button_visible(*command, &ui) {
+        if !button_visible(*command, &ui, opening.as_deref()) {
             continue;
         }
         match command {
@@ -548,9 +581,17 @@ fn commands(
                 browser.step_selection(matches!(command, CampaignBrowserCommand::Previous));
             }
             CampaignBrowserCommand::Open => {
-                open_selected_campaign(&mut browser, &mut session, pipe.as_deref());
+                if open_selected_campaign(&mut browser, &mut session, pipe.as_deref()) {
+                    if let Some(opening) = &mut opening {
+                        opening.launch_pending = true;
+                    }
+                }
             }
             CampaignBrowserCommand::Compare => {
+                if let ControlAvailability::Disabled(reason) = comparison_availability(&session) {
+                    browser.status = reason.into();
+                    continue;
+                }
                 let Some(selected) = browser.selected_campaign() else {
                     continue;
                 };
@@ -599,6 +640,11 @@ fn commands(
             }
             CampaignBrowserCommand::CloseComparison => {
                 ui.comparison_open = false;
+                if opening.as_ref().is_some_and(|opening| {
+                    opening.stage == crate::observer_opening::OpeningStage::Title
+                }) {
+                    ui.menu_open = true;
+                }
                 browser.comparison_task = None;
                 browser.comparison = None;
                 browser.comparison_target = None;
@@ -615,25 +661,25 @@ fn open_selected_campaign(
     browser: &mut CampaignBrowserState,
     session: &mut ObserverSession,
     pipe: Option<&RuntimePipe>,
-) {
+) -> bool {
     if let ControlAvailability::Disabled(reason) =
         availability(ObserverCommand::NewCampaign, session)
     {
         reason.clone_into(&mut browser.status);
-        return;
+        return false;
     }
     if pipe.is_none() {
         LAUNCHER_REQUIRED.clone_into(&mut browser.status);
-        return;
+        return false;
     }
     let Some(selected) = browser.selected_campaign() else {
-        return;
+        return false;
     };
     let campaign = match parse_campaign(&selected.id) {
         Ok(campaign) => campaign,
         Err(error) => {
             browser.status = error;
-            return;
+            return false;
         }
     };
     match session.queue_campaign(
@@ -641,8 +687,14 @@ fn open_selected_campaign(
             campaign_id: campaign.as_uuid().to_string(),
         },
     ) {
-        Ok(()) => browser.status = "Opening the selected campaign...".into(),
-        Err(error) => browser.status = error,
+        Ok(()) => {
+            browser.status = "Opening the selected campaign...".into();
+            true
+        }
+        Err(error) => {
+            browser.status = error;
+            false
+        }
     }
 }
 
@@ -650,6 +702,7 @@ fn refresh_scope(
     session: Res<ObserverSession>,
     mut ui: ResMut<ObserverUiState>,
     mut browser: ResMut<CampaignBrowserState>,
+    opening: Option<Res<OpeningPresentation>>,
 ) {
     if session.quit_requested {
         return;
@@ -658,7 +711,12 @@ fn refresh_scope(
     if browser.context.as_ref() != Some(&context) {
         browser.invalidate(context, &mut ui);
     }
-    let menu_open = ui.menu_open && !ui.splash_visible && !ui.comparison_open;
+    let menu_open = ui.menu_open
+        && !ui.splash_visible
+        && !ui.comparison_open
+        && opening
+            .as_deref()
+            .is_none_or(OpeningPresentation::saved_games_visible);
     if menu_open && !browser.menu_was_open {
         request_catalog(&mut browser, &session);
     }
@@ -992,6 +1050,7 @@ struct BrowserPaintScope {
 
 #[derive(SystemParam)]
 struct BrowserPaintInput<'w> {
+    opening: Option<Res<'w, OpeningPresentation>>,
     session: Res<'w, ObserverSession>,
     ui: Res<'w, ObserverUiState>,
     browser: Res<'w, CampaignBrowserState>,
@@ -1041,6 +1100,7 @@ fn paint(
     mut readings: Query<&mut ScrollPosition, With<ComparisonReadingBody>>,
 ) {
     let BrowserPaintInput {
+        opening,
         session,
         ui,
         browser,
@@ -1053,7 +1113,13 @@ fn paint(
         .is_some_and(|context| session.accepts(context));
     let context = session.context();
     let context_changed = previous.context.as_ref() != Some(&context);
-    let catalog_visible = valid && ui.menu_open && !ui.splash_visible && !ui.comparison_open;
+    let catalog_visible = valid
+        && ui.menu_open
+        && !ui.splash_visible
+        && !ui.comparison_open
+        && opening
+            .as_deref()
+            .is_none_or(OpeningPresentation::saved_games_visible);
     let comparison_visible = valid && ui.comparison_open && !ui.menu_open;
     let selected_site = navigation
         .as_ref()
@@ -1152,7 +1218,10 @@ fn paint_buttons(
                     || availability(ObserverCommand::NewCampaign, &session)
                         != ControlAvailability::Enabled
             }
-            CampaignBrowserCommand::Compare => browser.selected_campaign().is_none(),
+            CampaignBrowserCommand::Compare => {
+                browser.selected_campaign().is_none()
+                    || comparison_availability(&session) != ControlAvailability::Enabled
+            }
             _ => false,
         };
         let selected = matches!(button.command.0, CampaignBrowserCommand::ComparisonSection(section) if section == browser.comparison_section);
@@ -2395,6 +2464,31 @@ mod tests {
     }
 
     #[test]
+    fn comparison_returns_to_load_game_when_opened_from_the_title() {
+        let (mut app, _) = catalog_handoff_app(false);
+        app.insert_resource(crate::observer_opening::OpeningPresentation {
+            stage: crate::observer_opening::OpeningStage::Title,
+            menu_page: crate::observer_opening::MenuPage::SavedGames,
+            ..default()
+        });
+        {
+            let mut ui = app.world_mut().resource_mut::<ObserverUiState>();
+            ui.menu_open = false;
+            ui.comparison_open = true;
+        }
+        app.world_mut()
+            .write_message(CampaignBrowserCommand::CloseComparison);
+        app.update();
+        let ui = app.world().resource::<ObserverUiState>();
+        assert!(!ui.comparison_open);
+        assert!(ui.menu_open);
+        assert!(app
+            .world()
+            .resource::<crate::observer_opening::OpeningPresentation>()
+            .saved_games_visible());
+    }
+
+    #[test]
     fn launcher_handoff_catalog_without_pipe_preserves_preferences_and_window() {
         let environment = crate::test_support::EnvVarGuard::lock("XDG_STATE_HOME");
         let directory =
@@ -2527,6 +2621,67 @@ mod tests {
             .resource_mut::<CampaignBrowserState>()
             .context = Some(context);
         (app, selected)
+    }
+
+    #[test]
+    fn compare_after_open_keeps_the_title_visible_until_campaign_admission() {
+        AsyncComputeTaskPool::get_or_init(|| {
+            bevy::tasks::TaskPoolBuilder::new().num_threads(1).build()
+        });
+        let (mut app, _) = ready_catalog_handoff_app();
+        app.insert_resource(OpeningPresentation {
+            stage: crate::observer_opening::OpeningStage::Title,
+            menu_page: crate::observer_opening::MenuPage::SavedGames,
+            ..default()
+        })
+        .add_systems(PreUpdate, sync_focus_targets)
+        .add_systems(Update, paint_buttons.after(commands));
+        let compare = app
+            .world_mut()
+            .spawn((
+                BrowserButton(CampaignBrowserCommand::Compare),
+                ObserverFocusTarget::action(None),
+                Interaction::Hovered,
+                BackgroundColor(theme::PANEL),
+                BorderColor::all(theme::PAPER),
+            ))
+            .id();
+        app.update();
+        assert!(
+            app.world()
+                .get::<ObserverFocusTarget>(compare)
+                .unwrap()
+                .available
+        );
+
+        app.world_mut().write_message(CampaignBrowserCommand::Open);
+        app.world_mut()
+            .write_message(CampaignBrowserCommand::Compare);
+        app.update();
+
+        assert!(app
+            .world()
+            .resource::<ObserverSession>()
+            .lifecycle_pending());
+        let ui = app.world().resource::<ObserverUiState>();
+        assert!(ui.menu_open, "Compare dismissed the title during Open");
+        assert!(!ui.comparison_open);
+        assert!(app
+            .world()
+            .resource::<CampaignBrowserState>()
+            .comparison_task
+            .is_none());
+        app.update();
+        assert!(
+            !app.world()
+                .get::<ObserverFocusTarget>(compare)
+                .unwrap()
+                .available
+        );
+        assert_eq!(
+            *app.world().get::<BorderColor>(compare).unwrap(),
+            BorderColor::all(theme::GRAY)
+        );
     }
 
     #[test]

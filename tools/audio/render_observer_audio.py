@@ -43,6 +43,7 @@ CUES = tuple(
     Cue("sfx/ui/ui_back", "sfx"),
     Cue("sfx/state/tick_advance", "sfx"),
     Cue("sfx/state/state_fault", "sfx"),
+    Cue("sfx/stinger/production_fanfare", "sfx"),
 )
 
 

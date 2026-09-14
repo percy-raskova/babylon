@@ -5,7 +5,14 @@ use bevy::asset::{AssetServer, Handle};
 use bevy::prelude::{App, Font, Resource};
 use std::path::{Path, PathBuf};
 
-const EMBEDDED_FONTS: [(&str, &[u8]); 2] = [
+const EMBEDDED_FONTS: [(&str, &[u8]); 3] = [
+    (
+        "PinyonScript-Regular.ttf",
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../assets/fonts/PinyonScript-Regular.ttf"
+        )),
+    ),
     (
         "SourceSans3[wght].ttf",
         include_bytes!(concat!(
@@ -25,6 +32,8 @@ const EMBEDDED_FONTS: [(&str, &[u8]); 2] = [
 /// Font faces loaded through the same embedded asset server as the visual art.
 #[derive(Clone, Resource)]
 pub struct ObserverFonts {
+    /// Pinyon Script, the production signature face under SIL OFL 1.1.
+    pub script: Handle<Font>,
     /// Source Sans 3, with variable weights from 200 through 900.
     pub body: Handle<Font>,
     /// Barlow Condensed's static semibold face for short subject headings.
@@ -47,6 +56,7 @@ pub(super) fn install(app: &mut App) {
     }
     let server = app.world().resource::<AssetServer>();
     let fonts = ObserverFonts {
+        script: server.load("embedded://fonts/PinyonScript-Regular.ttf"),
         body: server.load("embedded://fonts/SourceSans3[wght].ttf"),
         display: server.load("embedded://fonts/BarlowCondensed-SemiBold.ttf"),
     };

@@ -225,6 +225,7 @@ def assemble(
         "rust/Cargo.lock",
         "assets/fonts/SourceSans3-OFL.txt",
         "assets/fonts/BarlowCondensed-OFL.txt",
+        "assets/fonts/PinyonScript-OFL.txt",
         "assets/fonts/manifest.toml",
         "assets/licenses/FluidR3-GM.txt",
         "assets/audio-renders.json",

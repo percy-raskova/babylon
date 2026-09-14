@@ -76,6 +76,7 @@ pub fn build_app(mode: AppMode) -> Result<App, String> {
                 .add_plugins(map::MapPlugin)
                 .add_plugins(ObserverFocusPlugin)
                 .add_plugins(ObserverShellPlugin)
+                .add_plugins(crate::observer_opening::OpeningPlugin)
                 .add_plugins(crate::observer_map3d::ObserverMap3dPlugin)
                 .add_plugins(ObserverIoPlugin)
                 .add_plugins(crate::production::ProductionPlugin)

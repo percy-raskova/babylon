@@ -21,6 +21,7 @@ use crate::observer_focus::{
     ObserverKeyboardClaim,
 };
 use crate::observer_layout::{ObserverLayout, ObserverRegion};
+use crate::observer_opening::{MenuPage, OpeningPresentation, OpeningStage};
 use crate::observer_theme as theme;
 use crate::ui::dossier_card::{ActiveCountyDossier, DossierFetchState, DossierRefresh};
 
@@ -258,6 +259,10 @@ struct CircuitGuide;
 
 #[derive(Component)]
 pub struct ObserverMenu;
+#[derive(Component)]
+struct MenuSection(MenuPage);
+#[derive(Component)]
+struct MenuHeading;
 /// The saved-campaign browser occupies its own bounded menu column.
 #[derive(Component)]
 pub struct ObserverCampaignCatalog;
@@ -271,6 +276,7 @@ pub struct ObserverUiCamera;
 pub(crate) enum ObserverFontRole {
     Body,
     Display,
+    Script,
     Exact,
 }
 
@@ -282,6 +288,7 @@ fn apply_fonts(
         font.font = match role {
             ObserverFontRole::Body => fonts.body.clone(),
             ObserverFontRole::Display => fonts.display.clone(),
+            ObserverFontRole::Script => fonts.script.clone(),
             // Bevy's bundled Fira Mono remains the deliberate exact-value face.
             ObserverFontRole::Exact => Handle::default(),
         };
@@ -791,19 +798,17 @@ fn spawn_menu(commands: &mut Commands) {
         .spawn((
             Node {
                 position_type: PositionType::Absolute,
-                left: percent(12),
-                right: percent(12),
-                top: px(112),
-                bottom: px(40),
-                padding: UiRect::all(px(20)),
-                row_gap: px(14),
+                left: percent(38),
+                right: percent(6),
+                top: percent(8),
+                bottom: percent(7),
+                padding: UiRect::all(px(26)),
+                row_gap: px(16),
                 flex_direction: FlexDirection::Column,
                 overflow: Overflow::clip(),
-                border: UiRect::all(px(2)),
                 ..default()
             },
-            BackgroundColor(theme::INK),
-            BorderColor::all(theme::YELLOW),
+            BackgroundColor(theme::INK.with_alpha(0.94)),
             ZIndex(20),
             Visibility::Hidden,
             ObserverMenu,
@@ -811,32 +816,42 @@ fn spawn_menu(commands: &mut Commands) {
             DeclaredSurface::new(SurfaceId::ObserverShell),
         ))
         .with_children(|panel| {
-            panel.spawn(block_label("C A M P A I G N", 23.0, theme::YELLOW));
+            crate::observer_title::spawn_back_button(panel);
+            panel.spawn((block_label("CAMPAIGNS", 32.0, theme::PAPER), MenuHeading));
             panel
-                .spawn(Node {
-                    flex_grow: 1.0,
-                    min_height: px(0),
-                    min_width: px(0),
-                    column_gap: px(24),
-                    ..default()
-                })
-                .with_children(|columns| {
-                    columns.spawn(menu_column()).with_children(menu_campaign);
-                    columns.spawn(menu_column()).with_children(menu_settings);
-                });
-            panel.spawn(row()).with_children(|bar| {
-                bar.spawn(label(
-                    "Committed periods are saved automatically.",
-                    12.0,
-                    theme::GRAY,
-                ));
-                bar.spawn(Node {
-                    flex_grow: 1.0,
-                    ..default()
-                });
-                scoped_button(bar, "Quit game [Q]", ObserverCommand::Quit, true);
-            });
+                .spawn((menu_column(), MenuSection(MenuPage::SavedGames)))
+                .with_children(menu_saved_games);
+            panel
+                .spawn((menu_column(), MenuSection(MenuPage::Campaigns)))
+                .with_children(menu_campaign);
+            panel
+                .spawn((menu_column(), MenuSection(MenuPage::Settings)))
+                .with_children(menu_settings);
+            panel.spawn(label(
+                "Completed periods are saved automatically.",
+                12.0,
+                theme::GRAY,
+            ));
         });
+}
+
+fn menu_saved_games(panel: &mut ChildSpawnerCommands) {
+    panel.spawn((
+        Node {
+            min_width: px(0),
+            flex_shrink: 0.0,
+            flex_direction: FlexDirection::Column,
+            row_gap: px(8),
+            ..default()
+        },
+        ObserverCampaignCatalog,
+    ));
+    scoped_button(
+        panel,
+        "Reopen current campaign [R]",
+        ObserverCommand::ReopenCampaign,
+        true,
+    );
 }
 
 fn menu_column() -> Node {
@@ -853,34 +868,6 @@ fn menu_column() -> Node {
 }
 
 fn menu_campaign(panel: &mut ChildSpawnerCommands) {
-    panel.spawn(block_label("Play an organization", 14.0, theme::YELLOW));
-    scoped_button(
-        panel,
-        "Organize in Wayne",
-        ObserverCommand::NewOrganizerCampaign,
-        true,
-    );
-
-    panel.spawn(row()).with_children(|bar| {
-        scoped_button(bar, "Continue [C]", ObserverCommand::Menu, true);
-        scoped_button(
-            bar,
-            "Reopen current [R]",
-            ObserverCommand::ReopenCampaign,
-            true,
-        );
-    });
-    panel.spawn((
-        Node {
-            min_width: px(0),
-            flex_shrink: 0.0,
-            flex_direction: FlexDirection::Column,
-            row_gap: px(8),
-            margin: UiRect::top(px(10)),
-            ..default()
-        },
-        ObserverCampaignCatalog,
-    ));
     panel.spawn(block_label("Statewide Michigan", 14.0, theme::YELLOW));
     preset_grid(
         panel,
@@ -964,7 +951,7 @@ fn preset_grid(panel: &mut ChildSpawnerCommands, presets: &[(&str, ObserverComma
 }
 
 fn menu_settings(panel: &mut ChildSpawnerCommands) {
-    panel.spawn(block_label("PRESENTATION / SOUND", 17.0, theme::YELLOW));
+    panel.spawn(block_label("Presentation and sound", 17.0, theme::YELLOW));
     panel.spawn(block_label(
         "Tab / Shift+Tab: select controls. Enter: activate. Page Up / Down: read. WORLD / CIRCUIT: return to navigation.",
         12.0,
@@ -976,7 +963,7 @@ fn menu_settings(panel: &mut ChildSpawnerCommands) {
         ("Reduced motion [M]", ObserverCommand::ReducedMotion),
         ("Music volume / mute [B]", ObserverCommand::MusicVolume),
         ("Sound effects / mute [F]", ObserverCommand::EffectsVolume),
-        ("Next track [J]", ObserverCommand::MusicTrack),
+        ("Next in-game track [J]", ObserverCommand::MusicTrack),
     ] {
         scoped_button(panel, title, command, true);
     }
@@ -1109,11 +1096,19 @@ fn pointer_buttons(
     ui: Res<ObserverUiState>,
     session: Res<ObserverSession>,
     view: Res<crate::production::PrimaryView>,
+    opening: Option<Res<OpeningPresentation>>,
     mut commands: MessageWriter<ObserverCommand>,
 ) {
     for (interaction, button) in &buttons {
         if *interaction == Interaction::Pressed {
-            dispatch_button(*button, &ui, &session, *view, &mut commands);
+            dispatch_button(
+                *button,
+                &ui,
+                &session,
+                *view,
+                opening.as_deref(),
+                &mut commands,
+            );
         }
     }
 }
@@ -1159,14 +1154,36 @@ fn button_visible(
     }
 }
 
+fn menu_scope_visible(button: ObserverButton, opening: Option<&OpeningPresentation>) -> bool {
+    if !button.in_menu {
+        return true;
+    }
+    let Some(opening) = opening else {
+        return true;
+    };
+    let page = match button.command {
+        ObserverCommand::Perspective
+        | ObserverCommand::UiScale
+        | ObserverCommand::ReducedMotion
+        | ObserverCommand::MusicVolume
+        | ObserverCommand::EffectsVolume
+        | ObserverCommand::MusicTrack
+        | ObserverCommand::Evidence => MenuPage::Settings,
+        ObserverCommand::ReopenCampaign => MenuPage::SavedGames,
+        _ => MenuPage::Campaigns,
+    };
+    opening.stage == OpeningStage::Title && opening.menu_page == page
+}
+
 fn dispatch_button(
     button: ObserverButton,
     ui: &ObserverUiState,
     session: &ObserverSession,
     view: crate::production::PrimaryView,
+    opening: Option<&OpeningPresentation>,
     commands: &mut MessageWriter<ObserverCommand>,
 ) {
-    if button_visible(button, ui, session, view) {
+    if button_visible(button, ui, session, view) && menu_scope_visible(button, opening) {
         // The canonical observer command handler still admits or refuses the request.
         commands.write(button.command);
     }
@@ -1178,22 +1195,33 @@ fn keyboard_button(
     ui: Res<ObserverUiState>,
     session: Res<ObserverSession>,
     view: Res<crate::production::PrimaryView>,
+    opening: Option<Res<OpeningPresentation>>,
     mut commands: MessageWriter<ObserverCommand>,
 ) {
     let Ok((button, target)) = buttons.get(event.entity) else {
         return;
     };
     if event.context == target.context {
-        dispatch_button(*button, &ui, &session, *view, &mut commands);
+        dispatch_button(
+            *button,
+            &ui,
+            &session,
+            *view,
+            opening.as_deref(),
+            &mut commands,
+        );
     }
 }
 
 #[derive(SystemParam)]
-struct ShellFocusState<'w> {
+struct ShellFocusState<'w, 's> {
     ui: Res<'w, ObserverUiState>,
     session: Res<'w, ObserverSession>,
     view: Res<'w, crate::production::PrimaryView>,
     frame: Res<'w, ObserverFrame>,
+    opening: Option<Res<'w, OpeningPresentation>>,
+    productions: Query<'w, 's, Entity, With<crate::observer_opening::ProductionRoot>>,
+    titles: Query<'w, 's, Entity, With<crate::observer_title::TitleMenuRoot>>,
 }
 
 fn sync_focus_policy(
@@ -1207,12 +1235,26 @@ fn sync_focus_policy(
 ) {
     policy.set_if_neq(ObserverFocusPolicy {
         context: Some(state.session.context()),
-        modal: if state.ui.splash_visible {
+        modal: if state
+            .opening
+            .as_deref()
+            .is_some_and(|opening| opening.stage == OpeningStage::Production)
+        {
+            state.productions.single().ok()
+        } else if state.ui.splash_visible {
             warnings.single().ok()
         } else if state.ui.comparison_open {
             comparisons.single().ok()
         } else if state.ui.menu_open && !state.ui.splash_visible {
-            menus.single().ok()
+            if state
+                .opening
+                .as_deref()
+                .is_some_and(|opening| opening.menu_page == MenuPage::Home)
+            {
+                state.titles.single().ok()
+            } else {
+                menus.single().ok()
+            }
         } else if *state.view == crate::production::PrimaryView::Organizer
             && organizer.as_ref().is_some_and(|client| {
                 client.inspector != crate::organizer::OrganizerInspector::Closed
@@ -1237,13 +1279,21 @@ fn sync_focus_targets(
         let mut next = target.clone();
         if let Some(button) = button {
             next.available = button_visible(*button, &state.ui, &state.session, *state.view)
+                && menu_scope_visible(*button, state.opening.as_deref())
                 && availability(button.command, &state.session) == ControlAvailability::Enabled;
         } else if let Some(reading) = reading {
             let scope_visible = !state.ui.splash_visible && !state.ui.comparison_open;
             next.available = scope_visible
                 && match reading {
                     ObserverText::Clock => !state.ui.menu_open,
-                    ObserverText::EvidenceDetails => state.ui.menu_open && state.ui.evidence_open,
+                    ObserverText::EvidenceDetails => {
+                        state.ui.menu_open
+                            && state.ui.evidence_open
+                            && state
+                                .opening
+                                .as_deref()
+                                .is_none_or(|opening| opening.menu_page == MenuPage::Settings)
+                    }
                     ObserverText::Production | ObserverText::Measures => {
                         inspector_visibility(&state.ui, *state.view) == Visibility::Visible
                             && (!matches!(reading, ObserverText::Measures)
@@ -1498,6 +1548,7 @@ fn expire_feedback(time: Res<Time>, mut feedback: ResMut<ObserverFeedback>) {
 fn menu_shortcuts(
     keys: &ButtonInput<KeyCode>,
     claimed: &ObserverKeyboardClaim,
+    opening: Option<&OpeningPresentation>,
     commands: &mut MessageWriter<ObserverCommand>,
 ) {
     for (key, command) in [
@@ -1515,7 +1566,17 @@ fn menu_shortcuts(
         (KeyCode::KeyE, ObserverCommand::StopOnDelivery),
         (KeyCode::KeyK, ObserverCommand::Perspective),
     ] {
-        if keys.just_pressed(key) && !claimed.claimed(key) {
+        if keys.just_pressed(key)
+            && !claimed.claimed(key)
+            && opening.is_none_or(|_| command != ObserverCommand::Menu)
+            && menu_scope_visible(
+                ObserverButton {
+                    command,
+                    in_menu: true,
+                },
+                opening,
+            )
+        {
             commands.write(command);
         }
     }
@@ -1570,6 +1631,7 @@ fn world_shortcuts(keys: &ButtonInput<KeyCode>, commands: &mut MessageWriter<Obs
 
 #[derive(SystemParam)]
 pub(crate) struct KeyboardContext<'w> {
+    opening: Option<Res<'w, OpeningPresentation>>,
     organizer: Option<Res<'w, crate::organizer::OrganizerClient>>,
     keys: Res<'w, ButtonInput<KeyCode>>,
     claimed: Res<'w, ObserverKeyboardClaim>,
@@ -1585,6 +1647,7 @@ pub(crate) fn keyboard(
     mut navigation: Commands,
 ) {
     let KeyboardContext {
+        opening,
         organizer,
         keys,
         claimed,
@@ -1612,7 +1675,7 @@ pub(crate) fn keyboard(
         return;
     }
     if ui.menu_open {
-        menu_shortcuts(&keys, &claimed, &mut commands);
+        menu_shortcuts(&keys, &claimed, opening.as_deref(), &mut commands);
         return;
     }
     if *view == crate::production::PrimaryView::Organizer {
@@ -1797,7 +1860,6 @@ fn archive_page_status(
 fn repaint(
     shell: ShellState,
     mut texts: Query<(&ObserverText, &mut Text)>,
-    mut menus: Query<&mut Visibility, With<ObserverMenu>>,
     mut inspectors: Query<&mut Visibility, (With<ObserverInspector>, Without<ObserverMenu>)>,
 ) {
     if !shell.needs_repaint() {
@@ -1864,7 +1926,7 @@ fn repaint(
             ObserverText::Hover if *view != crate::production::PrimaryView::Map => String::new(),
             ObserverText::Hover if matches!(ui.lens, MapLens::Relationships) => hovered.0.and_then(|index| atlas.county(index)).map_or_else(String::new, |county| county.name.to_owned()),
             ObserverText::Hover => hovered.0.and_then(|index| atlas.county(index)).filter(|county| county.fips.starts_with("26")).map_or_else(String::new, |county| format!("{}\n{}\n{}", county.name, lens.label, format_lens_reading(lens.county(county.fips), &lens.unit))),
-            ObserverText::Audio => format!("Soundtrack: {} ({}/{})\nMusic {:.0}% | effects {:.0}%\nReduced motion: {} | Stop on delivery: {}", audio.track_title(),audio.track+1,crate::observer_audio::ObserverAudioSettings::track_count(),audio.music_volume*100.0,audio.effects_volume*100.0,if ui.reduced_motion {"ON"}else{"OFF"},if ui.stop_on_delivery {"ON"}else{"OFF"}),
+            ObserverText::Audio => format!("Title theme: The Purge\nIn-game soundtrack: {} ({}/{})\nMusic {:.0}% | effects {:.0}%\nReduced motion: {} | Stop on delivery: {}", audio.track_title(),audio.track+1,crate::observer_audio::ObserverAudioSettings::track_count(),audio.music_volume*100.0,audio.effects_volume*100.0,if ui.reduced_motion {"ON"}else{"OFF"},if ui.stop_on_delivery {"ON"}else{"OFF"}),
             ObserverText::Evidence => format!("Viewing period {} / Archive processed through {}\n{}", state.viewed_tick, state.archive_verified_tick, archive_detail),
             ObserverText::EvidenceDetails => installed.map_or_else(String::new, |snapshot| {
                 let mut evidence = format!("CAMPAIGN\n{}\n\nCOMMITTED EVIDENCE / PERIOD {}\n{}\n\nWORLD IDENTITY\n{}", wrapped_identity(&snapshot.campaign_id), snapshot.resolve_tick, wrapped_identity(snapshot.tick_content_hash.as_deref().unwrap_or(&snapshot.foundation_digest)), snapshot.nominal_world_hash.as_deref().map_or_else(|| "Unavailable in this observation".to_owned(), wrapped_identity));
@@ -1888,15 +1950,48 @@ fn repaint(
         };
         text.set_if_neq(Text::new(value));
     }
-    for mut visibility in &mut menus {
-        visibility.set_if_neq(if ui.menu_open && !ui.comparison_open {
-            Visibility::Visible
-        } else {
-            Visibility::Hidden
-        });
-    }
     for mut visibility in &mut inspectors {
         visibility.set_if_neq(inspector_visibility(&ui, *view));
+    }
+}
+
+fn paint_menu_pages(
+    ui: Res<ObserverUiState>,
+    opening: Option<Res<OpeningPresentation>>,
+    mut menus: Query<&mut Visibility, With<ObserverMenu>>,
+    mut sections: Query<(&MenuSection, &mut Node)>,
+    mut heading: Query<&mut Text, With<MenuHeading>>,
+) {
+    let page = opening
+        .as_deref()
+        .map_or(MenuPage::Campaigns, |opening| opening.menu_page);
+    for mut visibility in &mut menus {
+        visibility.set_if_neq(
+            if ui.menu_open && !ui.splash_visible && !ui.comparison_open && page != MenuPage::Home {
+                Visibility::Visible
+            } else {
+                Visibility::Hidden
+            },
+        );
+    }
+    for (section, mut node) in &mut sections {
+        let display = if section.0 == page {
+            Display::Flex
+        } else {
+            Display::None
+        };
+        if node.display != display {
+            node.display = display;
+        }
+    }
+    let caption = match page {
+        MenuPage::Home => "",
+        MenuPage::SavedGames => "LOAD GAME",
+        MenuPage::Campaigns => "OBSERVER CAMPAIGNS",
+        MenuPage::Settings => "SETTINGS",
+    };
+    for mut text in &mut heading {
+        text.set_if_neq(Text::new(caption));
     }
 }
 
@@ -1989,6 +2084,7 @@ pub struct ObserverShellPlugin;
 impl Plugin for ObserverShellPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(crate::observer_warning::ObserverWarningPlugin)
+            .add_plugins(crate::observer_title::ObserverTitlePlugin)
             .init_resource::<ObserverFrame>()
             .init_resource::<ObserverUiState>()
             .init_resource::<ObserverViewport>()
@@ -2022,7 +2118,12 @@ impl Plugin for ObserverShellPlugin {
             )
             .add_systems(
                 Update,
-                (repaint, paint_buttons, paint_view_controls)
+                (
+                    repaint,
+                    paint_menu_pages,
+                    paint_buttons,
+                    paint_view_controls,
+                )
                     .in_set(crate::observer_io::ObserverSet::Paint),
             );
     }
@@ -2106,6 +2207,7 @@ mod tests {
         let fonts = crate::visual_assets::ObserverFonts {
             body: handles.reserve_handle(),
             display: handles.reserve_handle(),
+            script: handles.reserve_handle(),
         };
         let mut app = App::new();
         app.insert_resource(fonts.clone())
@@ -2536,11 +2638,18 @@ mod tests {
     #[test]
     fn shell_startup_waits_for_the_map_atlas_before_selecting_detroit() {
         let mut app = App::new();
-        app.add_plugins((MinimalPlugins, bevy::asset::AssetPlugin::default()))
-            .insert_resource(ObserverSession::new(
-                babylon_persistence::identity::CampaignId::from_uuid(uuid::Uuid::nil()),
-            ))
-            .add_plugins((crate::map::MapPlugin, ObserverShellPlugin));
+        app.add_plugins((
+            MinimalPlugins,
+            bevy::asset::AssetPlugin::default(),
+            ImagePlugin::default(),
+            bevy::text::TextPlugin,
+            bevy::render::texture::TexturePlugin,
+            crate::visual_assets::VisualAssetsPlugin,
+        ))
+        .insert_resource(ObserverSession::new(
+            babylon_persistence::identity::CampaignId::from_uuid(uuid::Uuid::nil()),
+        ))
+        .add_plugins((crate::map::MapPlugin, ObserverShellPlugin));
         app.finish();
         app.cleanup();
         app.world_mut().run_schedule(Startup);

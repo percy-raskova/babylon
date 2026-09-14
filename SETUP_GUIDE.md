@@ -107,7 +107,22 @@ in one simulation tick. The runtime can reopen a supported save from the same
 campaign content version. It reconciles the committed checkpoint before the
 next period.
 
-The campaign menu has controls to continue, start, open, or compare campaigns.
+Choose **Continue** on the opening warning, then watch or skip the production
+card. The Liberty start menu follows:
+
+- **Continue** enters the campaign the launcher prepared or reopened, once ready.
+- **New Game** starts the Wayne organizer campaign and preserves existing saves.
+- **Load Game** lists saved campaigns, with **Open** and **Compare** controls.
+- **Observer Campaigns** offers the regional, statewide, and Wayne maintenance presets.
+- **Settings** controls audio, interface size, and reduced motion.
+- **Quit** closes the game.
+
+The start menu loops **The Purge**. The production card has its own fanfare.
+Music volume cycles through mute, 25%, 50%, 75%, and 100%.
+In **Settings**, **Next in-game track** selects the recording to play when you
+enter the campaign. Soundtrack recordings play in sequence during a campaign.
+Press **Escape** during a campaign to return to the start menu.
+
 The supplied delayed-delivery parameters lengthen the `sheet-transfer` route.
 The map shows 83 Michigan county baselines. The production display shows five
 Designed county-industry cohorts, actual freight lots, and committed production.
@@ -115,8 +130,8 @@ The supplied horizon is 16 four-week periods (64 weeks). Comparing saved
 campaigns shows their own committed values; their parameters can differ.
 
 Observed QCEW jobs and wages are source records. Designed physical
-quantities and labor-hours use declared scenario values. Player interventions
-belong to Gate 5.
+quantities and labor-hours use declared scenario values. Observer campaigns
+have no player interventions. **New Game** opens the Wayne organizer campaign.
 
 For a new campaign that keeps saved worlds:
 
@@ -152,6 +167,17 @@ local host, port, database, user, and password before launch. Create that
 database first. The launcher refuses an unavailable custom target. It does
 not start a different database. It reuses a reachable target and leaves
 the shared container unchanged.
+
+To keep that choice for this checkout, put the connection in the `[env]`
+section of `.mise.local.toml`, then run `mise trust .mise.local.toml`:
+
+```toml
+[env]
+BABYLON_RUNTIME_DSN = "host=127.0.0.1 port=5433 dbname=babylon_play user=test password=test"
+```
+
+Replace the database and credentials with those of your dedicated database.
+The local file stays outside Git.
 
 ## 5. Run the repository check
 
@@ -191,6 +217,14 @@ If `mise` is not available after installation, open a new terminal. Then run
 
 If `mise` does not load the repository settings, run `mise trust` from the
 repository root.
+
+If `mise run play` reports `CurrentCensusMismatch`, the database does not match
+the current schema. Starting a new campaign with `--new` does not replace that
+schema. Preserve the database and create a separate database from `template1`
+with the current extension installation, then select it with
+`BABYLON_RUNTIME_DSN` as described above. The launcher initializes its game tables.
+Also check that you are running from the checkout containing the game changes
+you want to play.
 
 If dependency installation stops, run `mise run setup` again and keep the first error.
 Open an [issue](https://github.com/percy-raskova/babylon/issues) with the command,

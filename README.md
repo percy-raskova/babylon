@@ -1,12 +1,14 @@
 # Babylon: The Fall of America
 
+![Babylon: The Fall of America native start menu](docs/images/start-menu.png)
+
 Babylon is an entertainment-first emergent political-economy game. Babylon is
 not a forecast and not a scientific reproduction. Theory constrains the causal
 model but does not predetermine results.
 
 Determinism proves computational identity, not scientific truth. Historical
 cases test causal signatures and counterfactual behavior. The Bevy client
-observes the campaign. Player interventions belong to Gate 5.
+supports observer campaigns and a bounded Wayne organizer campaign.
 
 ## Download the native preview
 
@@ -142,9 +144,10 @@ The Wayne maintenance presets compare labor and spare-parts shortages, delayed
 production, and recovery through one service provider.
 
 The current source includes all 36 soundtrack recordings, about 92 minutes of
-music. Tracks advance automatically. Press **J** or choose **Next track** in
-the menu. The menu also controls music volume and mute. Campaign changes keep
-the current track playing.
+music. The Liberty start menu loops **The Purge**, and the production card has
+its own fanfare. The full soundtrack plays in sequence during a campaign. Open
+**Settings** and press **J**, or choose **Next in-game track**, to select the
+campaign recording. Settings also controls music volume, effects, and mute.
 
 The supplied parameters cover 16 four-week periods (64 weeks).
 Each campaign can select a shorter horizon.
@@ -209,9 +212,15 @@ mise run play
 ```
 
 The launcher builds the runtime and client, reuses a reachable local database,
-and starts at the campaign's durable period. New campaigns start at period zero.
-Use the in-game menu to start a new campaign, reopen a saved campaign, or
-compare two committed scenarios. Saved campaigns stay in the database.
+and prepares the campaign at its durable period. New campaigns start at period
+zero.
+
+Acknowledge the warning, then watch or skip the production card to reach the
+Liberty start menu. **Continue** enters the prepared or reopened campaign.
+**New Game** starts the Wayne organizer loop. **Load Game** opens or compares
+saves, **Observer Campaigns** offers alternative scenarios, and **Settings**
+controls audio and reduced motion. Saved campaigns stay in the database.
+
 See [`SETUP_GUIDE.md`](SETUP_GUIDE.md) for launch options and host requirements.
 
 ## Why Python tests continue

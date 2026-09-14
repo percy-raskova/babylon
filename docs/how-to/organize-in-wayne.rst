@@ -1,14 +1,19 @@
 Play the Wayne organizer loop
 =============================
 
-Open Babylon's campaign menu and choose **Organize in Wayne** under
-**Play an organization**. This creates a separate campaign and opens the
-organizer workspace. Use the saved campaign list to return to it later.
+Acknowledge Babylon's opening warning, then watch or skip the production card.
+Choose **New Game** on the Liberty start menu. This creates a separate Wayne
+organizer campaign and opens the organizer workspace. Choose **Load Game** to
+return to a saved campaign later. **Continue** enters the campaign already
+prepared or reopened by the launcher.
 
 The interface grows with the game window, reaching 125% at 1920×1080.
-For larger text and controls, press **U** in the menu to switch the interface
-size from **Automatic** to **Larger**.
+For larger text and controls, open **Settings** and press **U** to switch the
+interface size from **Automatic** to **Larger**.
 Resize the game window without changing your desktop resolution.
+
+Settings also controls audio and reduced motion. The start menu loops
+**The Purge**. **Next in-game track** selects the music for the campaign.
 
 You direct the fictional **Wayne Organizing Collective**. Its workplace
 committee and neighborhood contact group are independent partners. The scenario

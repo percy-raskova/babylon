@@ -8,6 +8,8 @@ pub(super) struct MusicTrack {
 
 // Start each viewer session with History Breathing, then visit every recording.
 pub(super) const DEFAULT_TRACK_INDEX: usize = 0;
+/// The opening title loops this authored recording without changing the game playlist.
+pub(super) const TITLE_TRACK_INDEX: usize = 19;
 
 macro_rules! soundtrack {
     ($(($title:literal, $path:literal)),+ $(,)?) => {

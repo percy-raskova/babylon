@@ -982,7 +982,7 @@ description = "Regenerate the 17-track soundtrack estate from tools/audio/music/
 run = "uv run python tools/audio/music/generate_music.py"
 
 [tasks."midi:render-observer"]
-description = "Render all 36 music tracks and six observer cues with pinned audio provenance"
+description = "Render all 36 music tracks and seven observer cues with pinned audio provenance"
 run = "uv run python tools/audio/render_observer_audio.py"
 
 [tasks."midi:soundfont-list"]

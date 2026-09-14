@@ -221,3 +221,17 @@ rows = 1
 sampler = "linear"
 sha256 = "fc7e5442580ad0bee6d6b856e9d1c0727628e6a915d45c5cdf32617c5bc6ce91"
 license = "AGPL-3.0-or-later"
+
+[[asset]]
+id = "hero-liberty"
+category = "illustration"
+source = "design/bevy-assets/prompts/hero-liberty.md"
+runtime = "assets/visual/hero-liberty.webp"
+format = "webp"
+width = 1672
+height = 941
+columns = 1
+rows = 1
+sampler = "linear"
+sha256 = "fd71508bf4f49e04f75a9386336291d23c64e422c373963321ba6a28fdacda99"
+license = "AGPL-3.0-or-later"

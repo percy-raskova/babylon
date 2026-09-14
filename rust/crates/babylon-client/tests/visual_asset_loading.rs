@@ -44,6 +44,7 @@ fn assert_loaded_asset_contract(app: &App) {
     }
 
     let linear_images = [
+        ("hero-liberty", &assets.hero_liberty),
         ("hero-red-apparatus", &assets.hero_red_apparatus),
         ("hero-empire-anatomized", &assets.hero_empire_anatomized),
         ("concept-bunker-oracle", &assets.concept_bunker_oracle),

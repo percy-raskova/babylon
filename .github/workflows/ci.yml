@@ -108,7 +108,7 @@ jobs:
             --component rustfmt --component clippy --no-self-update
 
       - name: Install Rust test reporter
-        uses: taiki-e/install-action@3f74d7c16a4242f1c95561e98edc25d36adb4375 # v2.87.12
+        uses: taiki-e/install-action@26e9283f268b880168bdbd2c545dfcd60ec2c6ab # v2.87.13
         with:
           tool: cargo-nextest@0.9.143,cargo-deny@0.20.2
           fallback: none

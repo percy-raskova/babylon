@@ -714,7 +714,7 @@ def write_report(result: dict[str, Any], output: Path) -> None:
         "",
         f"Coverage: {result['coverage']['series']} series, {result['coverage']['distinct_dates']} distinct dates; {result['coverage']['missing_observations']} missing observations.",
         "",
-        "| Series | Window | MAE | RMSE | Pearson | Direction agreement |",
+        "| Series | Window | MAE | RMSE | Pearson | Raw level-change agreement |",
         "|---|---|---:|---:|---:|---:|",
     ]
     for row in result["metrics"]:
@@ -726,6 +726,11 @@ def write_report(result: dict[str, Any], output: Path) -> None:
                 for k in ("mae", "rmse", "pearson", "direction_agreement")
             ]
             lines.append(f"| {row['series_id']} | {row['window']} | " + " | ".join(values) + " |")
+    if result["experiment"]["profile"] == "historical_freight":
+        lines += [
+            "",
+            "The leading table compares changes in raw monthly kilograms. Monthly freight totals vary with month length even at constant daily throughput; use the day-normalized first-rate evidence below to assess directional response.",
+        ]
     lines += _warning_summary(result)
     lines += _directional_summary(result)
     coverage = result["benchmark_coverage"]

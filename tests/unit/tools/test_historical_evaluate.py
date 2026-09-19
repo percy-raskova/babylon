@@ -624,6 +624,10 @@ def test_historical_reports_separate_coverage_omissions_and_tuning_readiness(
         assert label in text
     assert "alongside playable scenarios" in text
     assert "engineering integrity remains required" in text
+    assert "Raw level-change agreement" in text
+    if kind == "freight":
+        assert "Monthly freight totals vary with month length" in text
+        assert "day-normalized first-rate evidence below" in text
     assert "Verified captured wiring" in text
     assert "Provisional level warning bands" in text
     assert "Direction agreement alone" in text

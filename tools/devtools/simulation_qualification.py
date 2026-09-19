@@ -40,6 +40,7 @@ SETUP_FIELDS = {
     "checkpoint_restarts",
     "final_year_active_periods",
     "conserved_mass_grams",
+    "wiring",
 }
 PERIOD_FIELDS = {
     "period",
@@ -53,7 +54,39 @@ PERIOD_FIELDS = {
     "fired_rules",
     "production",
     "staffing",
+    "rule_execution",
+    "receipt_coverage",
 }
+MATERIAL_FAMILIES = {
+    "production",
+    "staffing",
+    "staged_freight",
+    "local_transfer",
+    "merchant_handling",
+    "final_demand",
+    "maintenance",
+}
+RECEIPT_FAMILIES = {
+    "material_cycles",
+    "staffing_events",
+    "staffing_writes",
+    "production",
+    "dispatches",
+    "losses",
+    "arrivals",
+    "deliveries",
+    "realizations",
+    "merchant_handling",
+    "local_fulfillments",
+    "local_transfers",
+    "maintenance",
+}
+STAFFING_EFFECTS = [
+    "event:EventType/WORKFORCE_STAFFING",
+    "node-field:social-class/employed-population",
+    "node-field:social-class/previous-unretained-labor-hours",
+    "node-field:social-class/reserve-population",
+]
 WORKFORCE_SUBJECTS = {
     f"workforce-{key}"
     for key in (
@@ -108,6 +141,145 @@ def _load(path: Path) -> Any:
         raise ValueError(f"nonfinite number in {path.name}: {value}")
 
     return json.loads(path.read_bytes(), object_pairs_hook=pairs, parse_constant=nonfinite)
+
+
+def _ordered_labels(value: object, label: str) -> list[str]:
+    rows = _list(value, label)
+    if any(not isinstance(row, str) or not row for row in rows):
+        raise ValueError(f"{label} must contain nonempty strings")
+    if rows != sorted(set(rows)):
+        raise ValueError(f"{label} must be sorted and unique")
+    return rows
+
+
+def _wiring(setup: dict[str, Any], periods: list[dict[str, Any]]) -> dict[str, Any]:
+    """Require captured selection and actual invocation/child receipts to agree."""
+    wiring = _object(
+        setup["wiring"],
+        {"rules", "native_compositions", "bsl_families", "material_families", "staffing_subjects"},
+        "captured wiring",
+    )
+    resolved = setup["resolved_inputs"]
+    freight = resolved["kind"] == "freight"
+    subjects = (
+        []
+        if freight
+        else sorted("workforce-" + row["process_key"] for row in resolved["processes"])
+    )
+    if _ordered_labels(wiring["staffing_subjects"], "wiring staffing subjects") != subjects:
+        raise ValueError("wiring workforce selection differs from captured initialization")
+    material_rule = {
+        "rule_id": "material/period",
+        "role": "mechanic",
+        "evidence": "designed",
+        "effects": ["material-cycle"],
+    }
+    # These admitted profiles select this closed invocation. Native staffing
+    # contributes child evidence, never fabricated BSL considered/fired counts.
+    if wiring["rules"] != [material_rule]:
+        raise ValueError("wiring lacks the admitted attributed material-cycle rule")
+    native = (
+        []
+        if not subjects
+        else [
+            {
+                "rule_id": "g4-workforce-staffing",
+                "role": "mechanic",
+                "evidence": "designed",
+                "effects": STAFFING_EFFECTS,
+            }
+        ]
+    )
+    if wiring["native_compositions"] != native:
+        raise ValueError("wiring native staffing attribution differs from captured pools")
+    families = _list(wiring["bsl_families"], "BSL family selection")
+    family_names = []
+    selected_rules = []
+    for value in families:
+        row = _object(value, {"family", "selected", "rule_ids"}, "BSL family")
+        name = row["family"]
+        if not isinstance(name, str) or not name:
+            raise ValueError("BSL family name is absent")
+        family_names.append(name)
+        ids = _ordered_labels(row["rule_ids"], "BSL family rule IDs")
+        if type(row["selected"]) is not bool or row["selected"] != bool(ids):
+            raise ValueError("BSL family selection differs from its captured rules")
+        if any(rule_id.split("/", 1)[0] != name for rule_id in ids):
+            raise ValueError("BSL rule is assigned to the wrong family")
+        selected_rules.extend(ids)
+    _ordered_labels(family_names, "BSL family names")
+    if selected_rules != [material_rule["rule_id"]]:
+        raise ValueError("BSL family inventory differs from captured invocation")
+    expected_counts = dict.fromkeys(MATERIAL_FAMILIES, 0)
+    expected_counts.update(
+        production=0 if freight else len(resolved["processes"]),
+        staffing=len(subjects),
+        staged_freight=1 if freight else len(resolved["routes"]),
+    )
+    counts = {}
+    names = []
+    for value in _list(wiring["material_families"], "material family selection"):
+        row = _object(value, {"family", "selected", "captured_rows"}, "material family")
+        name = row["family"]
+        if not isinstance(name, str) or name not in MATERIAL_FAMILIES:
+            raise ValueError("unknown material family")
+        names.append(name)
+        count = _integer(row["captured_rows"], "captured material rows")
+        if type(row["selected"]) is not bool or row["selected"] != (count > 0):
+            raise ValueError("material family selection differs from captured rows")
+        counts[name] = count
+    _ordered_labels(names, "material family names")
+    if counts != expected_counts:
+        raise ValueError("wiring material inventory differs from resolved initialization")
+    for period in periods:
+        execution = _list(period["rule_execution"], "period rule execution")
+        if execution != [
+            {"rule_id": "material/period", "considered": 1, "fired": 1, "audit_receipts": 1}
+        ]:
+            raise ValueError("material invocation lacks its attributed audit receipt")
+        for row in execution:
+            for key in ("considered", "fired", "audit_receipts"):
+                _integer(row[key], "rule execution." + key)
+        if (
+            sum(row["considered"] for row in execution) != period["considered_rules"]
+            or sum(row["fired"] for row in execution) != period["fired_rules"]
+        ):
+            raise ValueError("rule execution differs from reported totals")
+        coverage = _object(period["receipt_coverage"], RECEIPT_FAMILIES, "receipt coverage")
+        for name, count in coverage.items():
+            _integer(count, "receipt coverage." + name)
+        if (
+            coverage["material_cycles"] != 1
+            or coverage["staffing_events"] != len(subjects)
+            or coverage["staffing_writes"] != 3 * len(subjects)
+        ):
+            raise ValueError("material/staffing child evidence is incomplete")
+        if coverage["production"] != len(period["production"]):
+            raise ValueError("production receipt coverage differs from period evidence")
+        if sorted(row["subject"] for row in period["staffing"]) != subjects:
+            raise ValueError("staffing subjects differ from captured wiring")
+        required_selection = {
+            "production": "production",
+            "dispatches": "staged_freight",
+            "losses": "staged_freight",
+            "arrivals": "staged_freight",
+            "deliveries": "staged_freight",
+            "realizations": "staged_freight",
+            "merchant_handling": "merchant_handling",
+            "local_fulfillments": "final_demand",
+            "local_transfers": "local_transfer",
+            "maintenance": "maintenance",
+        }
+        for receipt, family in required_selection.items():
+            if coverage[receipt] > 0 and counts[family] == 0:
+                raise ValueError(f"unselected {family} produced {receipt} receipts")
+        for receipt, quantity in (
+            ("dispatches", "dispatched_units"),
+            ("arrivals", "arrived_units"),
+        ):
+            if period[quantity] > 0 and coverage[receipt] == 0:
+                raise ValueError(f"reported {quantity} lacks {receipt} evidence")
+    return wiring
 
 
 def _canonical_spec(value: object) -> dict[str, Any]:
@@ -382,6 +554,7 @@ def validate_run(output: Path, spec: dict[str, Any], *, persisted: bool) -> dict
     periods, process_batches = _periods(
         _load(output / "periods.json"), horizon, mass, _resolved_inputs(setup["resolved_inputs"])
     )
+    _wiring(setup, periods)
     trajectory = _object(
         _load(output / "trajectory.json"),
         {

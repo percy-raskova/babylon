@@ -36,6 +36,69 @@ def _refresh(output: Path) -> None:
     )
 
 
+def _wire_fixture(setup: dict, periods: list[dict]) -> None:
+    subjects = sorted(
+        "workforce-" + row["process_key"] for row in setup["resolved_inputs"]["processes"]
+    )
+    counts = {
+        "production": len(subjects),
+        "staffing": len(subjects),
+        "staged_freight": 1,
+        "local_transfer": 0,
+        "merchant_handling": 0,
+        "final_demand": 0,
+        "maintenance": 0,
+    }
+    setup["wiring"] = {
+        "rules": [
+            {
+                "rule_id": "material/period",
+                "role": "mechanic",
+                "evidence": "designed",
+                "effects": ["material-cycle"],
+            }
+        ],
+        "native_compositions": [
+            {
+                "rule_id": "g4-workforce-staffing",
+                "role": "mechanic",
+                "evidence": "designed",
+                "effects": [
+                    "event:EventType/WORKFORCE_STAFFING",
+                    "node-field:social-class/employed-population",
+                    "node-field:social-class/previous-unretained-labor-hours",
+                    "node-field:social-class/reserve-population",
+                ],
+            }
+        ],
+        "bsl_families": [{"family": "material", "selected": True, "rule_ids": ["material/period"]}],
+        "material_families": [
+            {"family": name, "selected": count > 0, "captured_rows": count}
+            for name, count in sorted(counts.items())
+        ],
+        "staffing_subjects": subjects,
+    }
+    for period in periods:
+        period["rule_execution"] = [
+            {"rule_id": "material/period", "considered": 1, "fired": 1, "audit_receipts": 1}
+        ]
+        period["receipt_coverage"] = {
+            "material_cycles": 1,
+            "staffing_events": len(subjects),
+            "staffing_writes": 3 * len(subjects),
+            "production": len(period["production"]),
+            "dispatches": int(period["dispatched_units"] > 0),
+            "arrivals": int(period["arrived_units"] > 0),
+            "losses": 0,
+            "deliveries": 0,
+            "realizations": 0,
+            "merchant_handling": 0,
+            "local_fulfillments": 0,
+            "local_transfers": 0,
+            "maintenance": 0,
+        }
+
+
 def _fixture(output: Path, profile: str = "sustained", *, persisted: bool = False) -> dict:
     horizon = 16 if profile == "delivery_stock" else 130
     spec = {
@@ -83,7 +146,18 @@ def _fixture(output: Path, profile: str = "sustained", *, persisted: bool = Fals
                 }
                 for subject in SUBJECTS
             ],
-            "routes": [],
+            "routes": [
+                {
+                    "route_key": "sheet",
+                    "supplier_site": "supplier",
+                    "buyer_site": "buyer",
+                    "good_key": "sheet",
+                    "unit": "kg",
+                    "ordered_quantity": 10000,
+                    "travel_periods": 1,
+                    "capacities": [],
+                }
+            ],
         },
         "experiment_input_sha256": hashlib.sha256(
             (output / "canonical_experiment.json").read_bytes()
@@ -140,6 +214,8 @@ def _fixture(output: Path, profile: str = "sustained", *, persisted: bool = Fals
                 ],
             }
         )
+    _wire_fixture(setup, rows)
+    _json(output / "captured_setup.json", setup)
     _json(output / "periods.json", rows)
     if persisted:
         _json(
@@ -157,6 +233,59 @@ def _fixture(output: Path, profile: str = "sustained", *, persisted: bool = Fals
         _json(output / "campaign.json", {"campaign_id": "00000000-0000-4000-8000-000000000001"})
     _refresh(output)
     return spec
+
+
+def test_required_wiring_evidence_cannot_be_omitted(tmp_path: Path) -> None:
+    output = tmp_path / "run"
+    spec = _fixture(output)
+    setup = json.loads((output / "captured_setup.json").read_bytes())
+    setup.pop("wiring", None)
+    _json(output / "captured_setup.json", setup)
+    _refresh(output)
+    with pytest.raises(ValueError, match="captured setup"):
+        validate_run(output, spec, persisted=False)
+
+
+@pytest.mark.parametrize(
+    "corruption",
+    [
+        "missing_audit",
+        "false_counter",
+        "unselected_receipt",
+        "native_as_bsl",
+        "wrong_subject",
+        "wrong_family_count",
+        "wrong_attribution",
+    ],
+)
+def test_wiring_and_actual_receipts_must_agree(tmp_path: Path, corruption: str) -> None:
+    output = tmp_path / "run"
+    spec = _fixture(output)
+    setup = json.loads((output / "captured_setup.json").read_bytes())
+    periods = json.loads((output / "periods.json").read_bytes())
+    if corruption == "missing_audit":
+        periods[0]["rule_execution"][0]["audit_receipts"] = 0
+    elif corruption == "false_counter":
+        periods[0]["receipt_coverage"]["material_cycles"] = True
+    elif corruption == "unselected_receipt":
+        periods[0]["receipt_coverage"]["merchant_handling"] = 1
+    elif corruption == "native_as_bsl":
+        periods[0]["rule_execution"].append(
+            {"rule_id": "g4-workforce-staffing", "considered": 1, "fired": 1, "audit_receipts": 1}
+        )
+    elif corruption == "wrong_subject":
+        setup["wiring"]["staffing_subjects"].pop()
+    elif corruption == "wrong_family_count":
+        next(row for row in setup["wiring"]["material_families"] if row["family"] == "production")[
+            "captured_rows"
+        ] = 4
+    else:
+        setup["wiring"]["rules"][0]["evidence"] = "observed"
+    _json(output / "captured_setup.json", setup)
+    _json(output / "periods.json", periods)
+    _refresh(output)
+    with pytest.raises(ValueError):
+        validate_run(output, spec, persisted=False)
 
 
 def test_rust_canonical_intervention_order_compares_by_meaning(tmp_path: Path) -> None:

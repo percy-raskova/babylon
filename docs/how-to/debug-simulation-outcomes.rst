@@ -693,13 +693,60 @@ RMSE, and coverage. Reports include no-change and seasonal-persistence
 comparators. Missing or suppressed values,
 constant correlations, and zero denominators remain explicit.
 
-Read ``summary.md`` with aligned observations, raw trajectories, metric tables,
-charts, captured inputs, checksums, and replay evidence. Qualification requires
-complete execution, conserved accounts, provenance, and artifact integrity.
-Empirical fit is advisory. High correlation can coexist with large errors
-in levels. Missing growth,
-demand, or pandemic mechanisms remain model limitations. These comparisons use
-revised historical data and make no claim about forecasts available at the time.
+Use historically dated profiles as development benchmarks alongside playable
+scenarios. Read ``summary.md`` with aligned observations, raw trajectories,
+metric tables, charts, captured inputs, checksums, and replay evidence.
+Qualification requires complete execution, conserved accounts, provenance,
+and artifact integrity. Empirical fit remains advisory. High correlation or
+matching directions can coexist with large errors in amounts.
+
+The provisional warning policy approved on 2026-09-19 uses each series'
+frozen observed development mean. It warns when MAE exceeds 10 percent of
+that mean or absolute signed bias exceeds 5 percent. The targets carry the
+``Designed`` evidence class. They are not confidence intervals. Held-out
+outcomes cannot set the bands.
+
+A warning preserves valid engineering results. It cannot excuse failed
+execution or missing evidence.
+
+Read first- and second-order differences as descriptive estimates, with
+direction agreement and errors in amounts shown separately. Employment uses
+jobs at the observation dates. Freight uses kilograms per calendar day at
+each month's midpoint, so different month lengths do not create false
+changes in throughput. First differences divide by elapsed days and belong
+to interval midpoints. Second differences divide changes in those rates by
+the distance between their midpoints. Their units are jobs/day and jobs/day
+squared, or kg/day squared and kg/day cubed for freight throughput.
+
+Each development or evaluation window starts its own differences. Missing
+values break the chain. The report lists exact zeros separately. The evaluator
+applies no smoothing, noise threshold, timing shift, or acceleration tolerance.
+It does not qualify jerk. These estimates supply neither a causal explanation
+nor measured instantaneous derivatives.
+
+Review system coverage and BSL wiring before tuning. The captured
+``material/period`` rule invokes the native material close. Its position
+after metabolism does not activate the separate metabolism rule pack.
+
+Regional profiles omit the existing merchant, final-demand, and maintenance
+composition used by other scenarios. Older production rules describe
+different graph economics. Extra rule includes cannot make them serve as
+physical production. ADR261 records that boundary.
+
+Separate starting observations from simplifying assumptions and accounting
+constraints. The current closed workforce pools can redistribute employed
+and reserve slots but cannot grow beyond their admitted size. Broader labor
+flows need explicit sources and destinations. Removing the cap alone adds
+none of those flows.
+
+Production plans currently respond to physical availability,
+not sales or unsold stock. Preserve these bounded controls while connecting
+richer scenarios through BSL, authoritative state, and observable effects.
+Do not adjust parameters to compensate for missing connections or systems.
+
+These comparisons use revised historical data and make no claim about
+forecasts available at the time. Known profile omissions do not explain
+the cause of a particular historical mismatch.
 
 The small delivery/stock report runs inside affected PRs' Rust Validation.
 It compares actual candidate behavior with its committed baseline and shows

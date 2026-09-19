@@ -236,7 +236,10 @@ def run_profiles(
             setup = validate_capture(
                 destination, trajectory, spec, require_postgres=dsn is not None
             )
-            write_report(evaluate(trajectory, manifest, employment, freight), destination)
+            write_report(
+                evaluate(trajectory, manifest, employment, freight, verified_setup=setup),
+                destination,
+            )
             summary_path = destination / "summary.md"
             summary_path.write_text(summary_path.read_text() + "\n" + initialization_summary(setup))
             summaries += [

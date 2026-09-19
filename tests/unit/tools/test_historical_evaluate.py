@@ -59,6 +59,69 @@ def test_frozen_windows_do_not_change_for_observed_outcomes() -> None:
     assert observation_window("freight", date(2020, 1, 1)) == "evaluation"
 
 
+def _verified_setup(trajectory):
+    """Synthetic captured wiring for pure evaluator tests; runtime validation is separate."""
+    subjects = (
+        sorted(
+            "workforce-" + key
+            for key in (
+                "sheet-rolling",
+                "panel-forming",
+                "subassembly-making",
+                "meal-milling",
+                "meal-packaging",
+            )
+        )
+        if trajectory.employment
+        else []
+    )
+    counts = {
+        "production": len(subjects),
+        "staffing": len(subjects),
+        "staged_freight": 0 if subjects else 1,
+        "local_transfer": 0,
+        "merchant_handling": 0,
+        "final_demand": 0,
+        "maintenance": 0,
+    }
+    return {
+        "wiring": {
+            "rules": [
+                {
+                    "rule_id": "material/period",
+                    "role": "mechanic",
+                    "evidence": "designed",
+                    "effects": ["material-cycle"],
+                }
+            ],
+            "native_compositions": [
+                {
+                    "rule_id": "g4-workforce-staffing",
+                    "role": "mechanic",
+                    "evidence": "designed",
+                    "effects": [
+                        "event:EventType/WORKFORCE_STAFFING",
+                        "node-field:social-class/employed-population",
+                        "node-field:social-class/previous-unretained-labor-hours",
+                        "node-field:social-class/reserve-population",
+                    ],
+                }
+            ]
+            if subjects
+            else [],
+            "bsl_families": [
+                {"family": "material", "selected": True, "rule_ids": ["material/period"]},
+                {"family": "metabolism", "selected": False, "rule_ids": []},
+            ],
+            "material_families": [
+                {"family": name, "selected": count > 0, "captured_rows": count}
+                for name, count in sorted(counts.items())
+            ],
+            "staffing_subjects": subjects,
+        }
+    }
+
+
 def _trajectory(kind: str = "employment") -> tuple[object, dict, list, list]:
     from datetime import timedelta
 
@@ -117,15 +180,17 @@ def test_complete_reports_keep_coverage_missing_flags_and_calendar_offsets(tmp_p
     from tools.devtools.historical_evaluate import evaluate, write_report
 
     trajectory, manifest, employment, freight = _trajectory()
-    employment[5]["status_employment_begin"] = 5
-    result = evaluate(trajectory, manifest, employment, freight)
+    employment[25]["status_employment_begin"] = 5
+    result = evaluate(
+        trajectory, manifest, employment, freight, verified_setup=_verified_setup(trajectory)
+    )
     assert result["coverage"] == {
         "series": 5,
         "distinct_dates": 40,
         "rows": 200,
         "missing_observations": 1,
     }
-    assert result["aligned"][1]["observed"] is None
+    assert result["aligned"][21]["observed"] is None
     assert result["aligned"][1]["sample_date"] == "2010-03-26"
     assert result["aligned"][1]["offset_days"] == 6
     assert len(result["annual"]) == 50
@@ -140,11 +205,15 @@ def test_heldout_observations_change_scores_without_changing_trajectory() -> Non
 
     trajectory, manifest, employment, freight = _trajectory()
     before_bytes = trajectory.model_dump_json()
-    before = evaluate(trajectory, manifest, employment, freight)
+    before = evaluate(
+        trajectory, manifest, employment, freight, verified_setup=_verified_setup(trajectory)
+    )
     for row in employment:
         if row["year"] >= 2015:
             row["employment_begin"] *= 2
-    after = evaluate(trajectory, manifest, employment, freight)
+    after = evaluate(
+        trajectory, manifest, employment, freight, verified_setup=_verified_setup(trajectory)
+    )
     assert before["metrics"] != after["metrics"]
     assert [r for r in before["metrics"] if r["window"] == "development"] == [
         r for r in after["metrics"] if r["window"] == "development"
@@ -156,7 +225,9 @@ def test_freight_report_uses_source_partitions_and_exact_calendar_fractions() ->
     from tools.devtools.historical_evaluate import evaluate
 
     trajectory, manifest, employment, freight = _trajectory("freight")
-    result = evaluate(trajectory, manifest, employment, freight)
+    result = evaluate(
+        trajectory, manifest, employment, freight, verified_setup=_verified_setup(trajectory)
+    )
     assert result["coverage"] == {
         "series": 1,
         "distinct_dates": 71,
@@ -296,6 +367,7 @@ def _capture(tmp_path, *, postgres: bool = False, kind: str = "employment"):
         "initialization_evidence": "Observed starting snapshots; Designed remaining inputs",
         "final_year_active_periods": 0,
     }
+    setup.update(_verified_setup(trajectory))
     (tmp_path / "captured_setup.json").write_bytes(canonical_bytes(setup))
     rows = []
     for period in range(1, spec["horizon"] + 1):
@@ -318,6 +390,24 @@ def _capture(tmp_path, *, postgres: bool = False, kind: str = "employment"):
                 "arrived_units": 1000 if kind == "freight" else 0,
                 "considered_rules": 1,
                 "fired_rules": 1,
+                "rule_execution": [
+                    {"rule_id": "material/period", "considered": 1, "fired": 1, "audit_receipts": 1}
+                ],
+                "receipt_coverage": {
+                    "material_cycles": 1,
+                    "staffing_events": len(staffing),
+                    "staffing_writes": 3 * len(staffing),
+                    "production": 0,
+                    "dispatches": 0,
+                    "arrivals": int(kind == "freight"),
+                    "losses": 0,
+                    "deliveries": 0,
+                    "realizations": 0,
+                    "merchant_handling": 0,
+                    "local_fulfillments": 0,
+                    "local_transfers": 0,
+                    "maintenance": 0,
+                },
                 "production": [],
                 "staffing": staffing,
             }
@@ -485,3 +575,127 @@ def test_historical_freight_binds_arrivals_and_admitted_border_codes(tmp_path) -
     _capture_manifest(tmp_path)
     with pytest.raises(ValueError, match="arrival receipts"):
         validate_capture(tmp_path, trajectory, spec, require_postgres=True)
+
+
+@pytest.mark.parametrize("kind", ["employment", "freight"])
+def test_historical_reports_separate_coverage_omissions_and_tuning_readiness(
+    tmp_path, kind
+) -> None:
+    from tools.devtools.historical_evaluate import evaluate, write_report
+
+    trajectory, manifest, employment, freight = _trajectory(kind)
+    result = evaluate(
+        trajectory, manifest, employment, freight, verified_setup=_verified_setup(trajectory)
+    )
+    coverage = result["benchmark_coverage"]
+    assert coverage["profile"] == "historical_" + kind
+    assert coverage["admitted_controls"] == ["transport_capacity_permille: 250–2000"]
+    assert coverage["tuning_status"] == "historical_response_not_yet_qualified"
+    assert {"merchant handling", "final-demand fulfillment", "maintenance"} <= set(
+        coverage["existing_engine_not_connected"]
+    )
+    assert "engine-wide" in coverage["known_omissions"]
+    assert "existing parameters" in coverage["known_omissions"]
+    assert "causal attribution" in coverage["unexplained_mismatches"]
+    assert "material/period BSL" in coverage["bsl_execution"]
+    assert "normal tick execution" in coverage["bsl_execution"]
+    if kind == "employment":
+        assert "production" in coverage["modeled_relationships"]
+        assert "staffing" in coverage["modeled_relationships"]
+        assert "workforce entry" in coverage["known_omissions"]
+        assert coverage["trajectory_evidence"]["employment_series_with_changes"] == 0
+    else:
+        assert "transit" in coverage["modeled_relationships"]
+        assert "No production or employment" in coverage["known_omissions"]
+        assert "monthly demand" in coverage["known_omissions"]
+        assert coverage["captured_wiring"]["native_compositions"] == []
+        assert coverage["trajectory_evidence"]["arrival_active_periods"] == 78
+    assert result["fit_status"] == "advisory"
+    assert result["evidence_status"] == "complete"
+    write_report(result, tmp_path)
+    text = (tmp_path / "summary.md").read_text()
+    for label in (
+        "Modeled relationships",
+        "Known omissions",
+        "Admitted controls",
+        "Tuning readiness",
+        "Unexplained mismatches",
+    ):
+        assert label in text
+    assert "alongside playable scenarios" in text
+    assert "engineering integrity remains required" in text
+    assert "Verified captured wiring" in text
+    assert "Provisional level warning bands" in text
+    assert "Direction agreement alone" in text
+    assert "no derivative warning bands or jerk qualification" in text
+    assert "seasonal_persistence" in text
+    assert (tmp_path / "warning_assessments.csv").is_file()
+    assert (tmp_path / "directional_metrics.csv").is_file()
+
+
+def test_approved_warning_policy_is_visible_without_changing_fit_or_integrity_status() -> None:
+    from tools.devtools.historical_evaluate import evaluate
+
+    trajectory, manifest, employment, freight = _trajectory()
+    result = evaluate(
+        trajectory, manifest, employment, freight, verified_setup=_verified_setup(trajectory)
+    )
+    assert result["warning_policy"]["status"] == "provisional"
+    assert result["warning_policy"]["approved_on"] == "2026-09-19"
+    assert result["warning_policy"]["evidence_class"] == "Designed"
+    assert any(row["status"] == "warning" for row in result["warning_assessments"])
+    assert result["fit_status"] == "advisory"
+    assert result["evidence_status"] == "complete"
+
+
+def test_discrete_directional_metrics_keep_levels_and_windows_distinct() -> None:
+    from tools.devtools.historical_evaluate import evaluate
+
+    trajectory, manifest, employment, freight = _trajectory()
+    result = evaluate(
+        trajectory, manifest, employment, freight, verified_setup=_verified_setup(trajectory)
+    )
+    assert {row["order"] for row in result["directional_metrics"]} == {1, 2}
+    assert {row["estimator"] for row in result["directional_metrics"]} == {
+        "predicted",
+        "no_change",
+        "seasonal_persistence",
+    }
+    assert {row["units"] for row in result["directional_metrics"]} == {"jobs/day", "jobs/day^2"}
+    assert all(
+        row["paired_count"] <= (19 if row["order"] == 1 else 18)
+        for row in result["directional_metrics"]
+    )
+
+
+def test_missing_wiring_cannot_claim_complete_coverage() -> None:
+    from tools.devtools.historical_evaluate import evaluate
+
+    trajectory, manifest, employment, freight = _trajectory()
+    with pytest.raises(KeyError, match="wiring"):
+        evaluate(trajectory, manifest, employment, freight, verified_setup={})
+
+
+def test_failure_evidence_cannot_be_downgraded_to_an_advisory_warning(
+    tmp_path, monkeypatch
+) -> None:
+    from tools.devtools.historical_evaluate import main
+
+    source = tmp_path / "capture"
+    source.mkdir()
+    _capture(source)
+    (source / "failure.json").write_text("{}")
+    output = tmp_path / "report"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "historical_evaluate",
+            "--trajectory",
+            str(source / "trajectory.json"),
+            "--output",
+            str(output),
+        ],
+    )
+    assert main() == 2
+    assert not (output / "evaluation.json").exists()
+    assert "Required evidence failed" in (output / "summary.md").read_text()

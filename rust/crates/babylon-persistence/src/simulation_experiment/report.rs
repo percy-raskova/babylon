@@ -15,6 +15,9 @@ use babylon_tick::{
 use serde::Serialize;
 use std::collections::BTreeMap;
 
+mod wiring;
+pub use wiring::{ReceiptCoverage, RuleExecution, WiringManifest};
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ExperimentMetadata {
     pub profile: String,
@@ -61,6 +64,8 @@ pub struct PeriodEvidence {
     pub conserved_mass_grams: u64,
     pub considered_rules: u64,
     pub fired_rules: u64,
+    pub rule_execution: Vec<RuleExecution>,
+    pub receipt_coverage: ReceiptCoverage,
     pub production: Vec<ProductionEvidence>,
     pub staffing: Vec<StaffingEvidence>,
 }
@@ -78,6 +83,7 @@ pub struct StaffingEvidence {
 }
 #[derive(Debug, Serialize)]
 pub struct CapturedSetup {
+    pub wiring: WiringManifest,
     pub resolved_inputs: super::setup::ResolvedInputs,
     pub canonical_spec: SimulationExperimentV1,
     pub experiment_input_sha256: String,
@@ -293,6 +299,7 @@ fn initial_report(
 ) -> Result<(CapturedSetup, ExperimentTrajectory)> {
     let graph = foundation.graph_foundation();
     let setup = CapturedSetup {
+        wiring: wiring::capture(foundation)?,
         resolved_inputs: super::setup::capture(spec, graph)?,
         canonical_spec: spec.clone(),
         experiment_input_sha256: hex(&spec.sha256()?),
@@ -345,21 +352,20 @@ fn period_evidence(
     candidate: &PreparedMaterialTick<HypergraphStore>,
     initial_mass: u64,
     process_keys: &BTreeMap<ProcessId, String>,
-    profile: ExperimentProfile,
+    wiring: &WiringManifest,
 ) -> Result<PeriodEvidence> {
     let receipts = decode_material_receipts(candidate.material().receipt_bytes())
         .map_err(|_| ExperimentError::Observation)?;
+    if receipts.resolve_tick != candidate.identity().resolve_tick() {
+        return Err(ExperimentError::Observation);
+    }
     let conserved = mass(candidate.material().register().state())?;
     if conserved != initial_mass {
         return Err(ExperimentError::Conservation);
     }
     let report = candidate.graph_report().report();
-    if report.considered != 1
-        || report.fired != 1
-        || report.per_rule_fired != [("material/period".to_owned(), 1)]
-    {
-        return Err(ExperimentError::Incomplete);
-    }
+    let staffing = staffing(candidate)?;
+    let (receipt_coverage, rule_execution) = wiring::verify(wiring, report, &receipts, &staffing)?;
     let evidence = PeriodEvidence {
         period: candidate.identity().resolve_tick(),
         world_hash: hex(&candidate.identity().result_world_hash()),
@@ -371,6 +377,8 @@ fn period_evidence(
         considered_rules: u64::try_from(report.considered)
             .map_err(|_| ExperimentError::Arithmetic)?,
         fired_rules: u64::try_from(report.fired).map_err(|_| ExperimentError::Arithmetic)?,
+        rule_execution,
+        receipt_coverage,
         production: receipts
             .production
             .iter()
@@ -385,16 +393,8 @@ fn period_evidence(
                 })
             })
             .collect::<Result<Vec<_>>>()?,
-        staffing: staffing(candidate)?,
+        staffing,
     };
-    let expected_pools = if profile == ExperimentProfile::HistoricalFreight {
-        0
-    } else {
-        5
-    };
-    if evidence.staffing.len() != expected_pools {
-        return Err(ExperimentError::Observation);
-    }
     Ok(evidence)
 }
 
@@ -461,7 +461,7 @@ pub fn run(spec: &SimulationExperimentV1) -> Result<ExperimentRun> {
         {
             return Err(ExperimentError::Foundation);
         }
-        let evidence = period_evidence(&candidate, initial_mass, &process_keys, spec.profile)?;
+        let evidence = period_evidence(&candidate, initial_mass, &process_keys, &setup.wiring)?;
         let report = candidate.graph_report().report();
         trajectory.observed_choice_count = sum(
             trajectory.observed_choice_count,

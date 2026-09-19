@@ -18,6 +18,7 @@ from tools.devtools.simulation_qualification import (
     _object,
     _periods,
     _resolved_inputs,
+    _wiring,
 )
 
 MAX_EVIDENCE_BYTES = 4 * 1024 * 1024
@@ -61,7 +62,14 @@ def _freight_periods(value: object, horizon: int, mass: int) -> list[dict[str, A
         raise ValueError("freight evidence does not cover the complete trajectory")
     for expected, value in enumerate(rows, 1):
         row = _object(value, PERIOD_FIELDS, "freight period")
-        for key in PERIOD_FIELDS - {"world_hash", "tick_content_sha256", "production", "staffing"}:
+        for key in PERIOD_FIELDS - {
+            "world_hash",
+            "tick_content_sha256",
+            "production",
+            "staffing",
+            "rule_execution",
+            "receipt_coverage",
+        }:
             _integer(row[key], "freight period." + key)
         if row["period"] != expected or row["conserved_mass_grams"] != mass:
             raise ValueError("freight period sequence or conserved mass differs")
@@ -191,6 +199,7 @@ def validate_capture(
         arrivals = {row.period: row.arrived_kg for row in trajectory.freight}
         if any(row["arrived_units"] != arrivals[row["period"]] for row in periods):
             raise ValueError("freight trajectory differs from authoritative arrival receipts")
+    _wiring(setup, periods)
     states = trajectory.employment or trajectory.freight
     world_hashes = {row.period: row.world_hash for row in states}
     if any(row["world_hash"] != world_hashes[row["period"]] for row in periods):

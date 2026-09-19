@@ -1,7 +1,7 @@
 use super::*;
 use crate::sector_bundle::{michigan_sector_bundles, SectorBundle};
 
-fn spec(profile: ExperimentProfile) -> SimulationExperimentV1 {
+pub(super) fn spec(profile: ExperimentProfile) -> SimulationExperimentV1 {
     let (epoch, starting_snapshot) = match profile {
         ExperimentProfile::HistoricalEmployment => (
             Some("2010-01-01".to_owned()),

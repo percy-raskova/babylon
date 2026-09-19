@@ -21,6 +21,7 @@ from statistics import mean
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from tools.devtools.historical_direction import directional_metrics
 from tools.devtools.historical_extract import (
     COHORTS,
     DEFAULT_FIXTURES,
@@ -29,6 +30,7 @@ from tools.devtools.historical_extract import (
     load_fixtures,
     starting_specs,
 )
+from tools.devtools.historical_warning_bands import load_warning_policy, warning_assessments
 
 Digest = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 NonnegativeInt = Annotated[int, Field(ge=0, strict=True)]
@@ -334,11 +336,120 @@ def _changes(values: Sequence[float | int | None]) -> list[float | int | None]:
     ]
 
 
+def _benchmark_coverage(
+    trajectory: HistoricalTrajectory, verified_setup: dict[str, Any]
+) -> dict[str, Any]:
+    """Describe these admitted profiles, without assigning causes to empirical errors.
+
+    Scope follows simulation_experiment::{regional,freight} and the closed
+    intervention validator. Merchant/final-demand and maintenance execution
+    exists in material-circuit; these profiles do not connect those mechanisms.
+    """
+    wiring = verified_setup["wiring"]
+    employment = trajectory.experiment.profile == "historical_employment"
+    unconnected = [
+        "merchant handling",
+        "final-demand fulfillment",
+        "maintenance",
+    ]
+    evidence = {"governed_choice_receipts": trajectory.observed_choice_count}
+    if employment:
+        relationships = (
+            "Five regional recipes connect production plans, input inventories, finite supplier "
+            "orders, capacity-limited freight, transit arrivals and staffing. Observed beginning "
+            "jobs initialize employed slots; the closed workforce pools redistribute employed "
+            "and reserve slots."
+        )
+        omissions = (
+            "Not represented in this profile: workforce entry, firm entry/exit, investment, "
+            "productivity growth or a changing historical demand process. Each county/industry "
+            "group is represented by one recipe and starts with zero reserve. The engine-wide "
+            "status of these broader systems is not established by this report."
+        )
+        evidence["employment_series_with_changes"] = sum(
+            len({row.jobs for row in trajectory.employment if row.series_id == series}) > 1
+            for series in COHORTS
+        )
+        trajectory_note = (
+            f"{evidence['employment_series_with_changes']} of {len(COHORTS)} employment series "
+            "change during this captured trajectory. This describes outcomes, not their causes."
+        )
+    else:
+        relationships = (
+            "A finite Canadian HS72 inventory and import order connect a capacity-limited truck "
+            "route, one-period transit and arrivals at Detroit port entry; mass includes transit. "
+            "January 2019 fixes the opening scale. Calendar-month allocation is a reporting "
+            "assumption, not a seasonal demand mechanism."
+        )
+        omissions = (
+            "No production or employment is connected to this profile. A changing monthly demand "
+            "process, order replenishment, pandemic or trade-policy events are not represented "
+            "here. HS72 is one portwide aggregate, without county destinations or bridge attribution. "
+            "The engine-wide status of broader historical drivers is not established by this report."
+        )
+        unconnected = ["production recipes", "staffing", *unconnected]
+        evidence["arrival_active_periods"] = sum(row.arrived_kg > 0 for row in trajectory.freight)
+        trajectory_note = (
+            f"{evidence['arrival_active_periods']} of {trajectory.completed_periods} modeled "
+            "periods record arrivals at the declared border endpoint."
+        )
+    return {
+        "profile": trajectory.experiment.profile,
+        "captured_wiring": wiring,
+        "modeled_relationships": relationships,
+        "bsl_execution": (
+            "The captured material/period BSL rule declares a Designed mechanic and invokes "
+            "native material-cycle through normal tick execution. Rust owns the material "
+            "transition and subsequent staffing/planning. Its after-metabolism anchor is a "
+            "schedule position; it does not execute the separate metabolism BSL pack. "
+            "The ported production, metabolism and lifecycle packs are not selected here. "
+            "They are not drop-in material mechanisms: ADR261 explicitly preserves this "
+            "composition instead of bulk-loading unrelated historical graph economics. "
+            + (
+                "This profile uses production staffing."
+                if employment
+                else "This inventory-only profile selects no staffing composition and refuses production, merchant and maintenance labor."
+            )
+        ),
+        "existing_engine_not_connected": unconnected,
+        "current_planning_boundary": (
+            "Production plans use physical inputs, capacity and labor, without a sales or "
+            "unsold-stock response. Closed workforce pools cannot exceed their initial total. "
+            "Connecting final demand alone would not supply those missing causal links."
+            if employment
+            else "Finite orders and fixed transport capacity do not implement changing demand."
+        ),
+        "known_omissions": omissions
+        + " Do not stretch existing parameters to substitute for missing integration or systems.",
+        "admitted_controls": ["transport_capacity_permille: 250–2000"],
+        "tuning_status": "historical_response_not_yet_qualified",
+        "tuning_readiness": (
+            "Admitted does not yet mean tunable for historical fit. Transport capacity is the "
+            "only admitted numeric intervention for this profile; delivery and opening-stock "
+            "interventions are unavailable. Starting observations remain fixed evidence. "
+            "A controlled historical sensitivity run must show a reproducible response in the "
+            "scored series before calling this input demonstrably tunable. The separate "
+            "16-period delivery/stock comparison does not establish that response here. Review "
+            "system coverage and interactions before optimization; use development outcomes only."
+        ),
+        "unexplained_mismatches": (
+            "Remaining level, change and direction errors are unexplained until supported by "
+            "receipt traces and controlled comparisons. Known omissions are not a causal "
+            "attribution for a particular series' residuals."
+        ),
+        "trajectory_evidence": evidence,
+        "trajectory_note": trajectory_note
+        + f" Captured governed choice receipts: {trajectory.observed_choice_count}; a seed alone does not justify sampled ensembles.",
+    }
+
+
 def evaluate(
     trajectory: HistoricalTrajectory,
     manifest: dict[str, Any],
     employment: list[dict[str, Any]],
     freight: list[dict[str, Any]],
+    *,
+    verified_setup: dict[str, Any],
 ) -> dict[str, Any]:
     kind = "employment" if trajectory.experiment.profile == "historical_employment" else "freight"
     if (
@@ -353,6 +464,9 @@ def evaluate(
         if kind == "employment"
         else _freight_alignment(trajectory, freight)
     )
+    warning_policy = load_warning_policy()
+    warnings = warning_assessments(aligned, kind, warning_policy)
+    rates = directional_metrics(aligned, kind)
     metrics, annual = [], []
     for series in sorted({r["series_id"] for r in aligned}):
         series_rows = [r for r in aligned if r["series_id"] == series]
@@ -417,6 +531,7 @@ def evaluate(
         "observation_snapshot_sha256": manifest["snapshot_sha256"],
         "completed_periods": trajectory.completed_periods,
         "observed_choice_count": trajectory.observed_choice_count,
+        "benchmark_coverage": _benchmark_coverage(trajectory, verified_setup),
         "lag": 0,
         "coverage": {
             "series": len({r["series_id"] for r in aligned}),
@@ -431,10 +546,13 @@ def evaluate(
             "No-change holds the initial observed value; seasonal persistence uses only the same period one year earlier (rolling origin).",
             "Levels and changes are distinct comparisons; repeated ticks are not independent experiments.",
             "Future outcomes are evaluator-only. Designed productivity, reserves, inventories and transport are not observed facts.",
-            "Missing growth, demand and pandemic mechanisms may produce poor fit; no outcome is injected to improve it.",
+            "Profile coverage gaps and unexplained mismatches are reported separately; no outcome is injected to improve fit.",
         ],
         "aligned": aligned,
         "metrics": metrics,
+        "warning_policy": warning_policy.model_dump(mode="json", by_alias=True),
+        "warning_assessments": warnings,
+        "directional_metrics": rates,
         "annual": annual,
     }
 
@@ -487,10 +605,104 @@ def _chart(path: Path, series: str, rows: list[dict[str, Any]]) -> None:
     path.write_text("\n".join(lines) + "\n")
 
 
+def _number(value: float | None) -> str:
+    return "unavailable" if value is None else f"{value:.6g}"
+
+
+def _warning_summary(result: dict[str, Any]) -> list[str]:
+    policy = result["warning_policy"]
+    warnings = result["warning_assessments"]
+    candidate = [row for row in warnings if row["estimator"] == "predicted"]
+    lines = [
+        "",
+        "## Provisional level warning bands",
+        "",
+        f"**{sum(row['status'] == 'warning' for row in candidate)} of {len(candidate)} simulation series/window comparisons warn.** Designed policy v{policy['version']}, approved by the Director on {policy['approved_on']}. Warnings are advisory and do not relax execution or evidence checks.",
+        "",
+        "MAE warns only above 10%, and absolute signed bias only above 5%, of each series' frozen observed development mean. Equality does not warn. These are Designed diagnostic targets, not empirical confidence intervals or accepted fit. Missing, suppressed, zero or changed development bases require explicit review; held-out outcomes never reset these bands.",
+        "",
+        "| Series | Window | Estimator | Unit | Frozen mean | MAE ceiling | Current MAE | Absolute bias ceiling | Current signed bias | Status / breaches |",
+        "|---|---|---|---|---:|---:|---:|---:|---:|---|",
+    ]
+    for row in warnings:
+        values = [
+            _number(row[key])
+            for key in (
+                "development_scale",
+                "mae_warning_above",
+                "mae",
+                "absolute_bias_warning_above",
+                "bias",
+            )
+        ]
+        status = row["status"] + (": " + ", ".join(row["breaches"]) if row["breaches"] else "")
+        if row["missing_count"]:
+            status += f"; {row['missing_count']} missing pairs"
+        lines.append(
+            f"| {row['series_id']} | {row['window']} | {row['estimator']} | {row['units']} | "
+            + " | ".join(values)
+            + f" | {status} |"
+        )
+    return lines
+
+
+def _directional_summary(result: dict[str, Any]) -> list[str]:
+    lines = [
+        "",
+        "## Discrete first and second rates",
+        "",
+        "Employment uses jobs at observed civil dates. Freight uses monthly kilograms divided by actual days in that month, placed at the calendar-month midpoint. Baselines retain their reported monthly masses before this day normalization. First rates divide adjacent differences by elapsed days and sit at interval midpoints; second rates divide adjacent first-rate differences by their midpoint distance. Each development/evaluation window stands alone: no boundary or missing-value bridging, smoothing, fitting, lag selection, or deadband. Exact rational zeros are reported separately. These are descriptive discrete estimates, with no derivative warning bands or jerk qualification. Direction agreement alone cannot establish magnitude accuracy.",
+    ]
+    for order, label in ((1, "First rate"), (2, "Second rate")):
+        lines += [
+            "",
+            f"### {label}",
+            "",
+            "| Series | Window | Estimator | Units | Pairs / missing | Sign agreement | Nonzero agreement / pairs | Zeros observed / predicted / both | MAE | RMSE |",
+            "|---|---|---|---|---:|---:|---:|---:|---:|---:|",
+        ]
+        for row in result["directional_metrics"]:
+            if row["order"] == order:
+                lines.append(
+                    f"| {row['series_id']} | {row['window']} | {row['estimator']} | {row['units']} | {row['paired_count']} / {row['missing_count']} | {_number(row['sign_agreement'])} | {_number(row['nonzero_sign_agreement'])} / {row['nonzero_pairs']} | {row['observed_zero_count']} / {row['predicted_zero_count']} / {row['both_zero_count']} | {_number(row['mae'])} | {_number(row['rmse'])} |"
+                )
+    return lines
+
+
+def _wiring_summary(wiring: dict[str, Any]) -> list[str]:
+    lines = [
+        "",
+        "### Verified captured wiring",
+        "",
+        "Selection comes from the captured rule and material inventories. The BSL family roster describes governed selection, not a claim that every family is fully implemented. Native compositions are not additional BSL invocations.",
+        "",
+        "| Captured rule / native composition | Kind | Role | Evidence | Effects |",
+        "|---|---|---|---|---|",
+    ]
+    for key, kind in (("rules", "BSL rule"), ("native_compositions", "native composition")):
+        for rule in wiring[key]:
+            lines.append(
+                f"| {rule['rule_id']} | {kind} | {rule['role']} | {rule['evidence']} | {', '.join(rule['effects'])} |"
+            )
+    lines += ["", "| Material family | Selected | Captured rows |", "|---|---|---:|"]
+    for family in wiring["material_families"]:
+        lines.append(f"| {family['family']} | {family['selected']} | {family['captured_rows']} |")
+    lines += ["", "| BSL family | Selected | Captured rule IDs |", "|---|---|---|"]
+    for family in wiring["bsl_families"]:
+        lines.append(
+            f"| {family['family']} | {family['selected']} | {', '.join(family['rule_ids']) or 'none'} |"
+        )
+    lines += [
+        "",
+        "Captured staffing subjects: " + (", ".join(wiring["staffing_subjects"]) or "none") + ".",
+    ]
+    return lines
+
+
 def write_report(result: dict[str, Any], output: Path) -> None:
     output.mkdir(parents=True, exist_ok=True)
     (output / "evaluation.json").write_bytes(canonical_bytes(result))
-    for key in ("aligned", "metrics", "annual"):
+    for key in ("aligned", "metrics", "annual", "warning_assessments", "directional_metrics"):
         _csv(output / f"{key}.csv", result[key])
     lines = [
         f"# Historical comparison: {result['experiment']['profile']}",
@@ -514,6 +726,28 @@ def write_report(result: dict[str, Any], output: Path) -> None:
                 for k in ("mae", "rmse", "pearson", "direction_agreement")
             ]
             lines.append(f"| {row['series_id']} | {row['window']} | " + " | ".join(values) + " |")
+    lines += _warning_summary(result)
+    lines += _directional_summary(result)
+    coverage = result["benchmark_coverage"]
+    lines += [
+        "",
+        "## Benchmark coverage and tuning readiness",
+        "",
+        "Historically dated profiles are development benchmarks alongside playable scenarios. Review system coverage and interactions before optimization. Empirical misses remain advisory; engineering integrity remains required.",
+        "",
+        f"- **Modeled relationships:** {coverage['modeled_relationships']}",
+        f"- **BSL execution:** {coverage['bsl_execution']}",
+        "- **Existing engine mechanisms not connected here:** "
+        + ", ".join(coverage["existing_engine_not_connected"])
+        + ". These bounded profiles omit them; their presence elsewhere does not establish a connection here.",
+        f"- **Current planning boundary:** {coverage['current_planning_boundary']}",
+        f"- **Known omissions:** {coverage['known_omissions']}",
+        "- **Admitted controls:** " + "; ".join(coverage["admitted_controls"]) + ".",
+        f"- **Tuning readiness:** {coverage['tuning_readiness']}",
+        f"- **Unexplained mismatches:** {coverage['unexplained_mismatches']}",
+        f"- **Observed trajectory:** {coverage['trajectory_note']}",
+    ]
+    lines += _wiring_summary(coverage["captured_wiring"])
     lines += ["", "## Interpretation", ""] + [f"- {text}" for text in result["assumptions"]]
     lines += [
         "",
@@ -545,13 +779,15 @@ def main() -> int:
             "employment" if trajectory.experiment.profile == "historical_employment" else "freight"
         )
         spec = starting_specs(employment, freight, manifest["initialization_snapshot_sha256"])[kind]
-        validate_capture(
+        setup = validate_capture(
             args.trajectory.parent,
             trajectory,
             spec,
             require_postgres=(args.trajectory.parent / "parity.json").exists(),
         )
-        write_report(evaluate(trajectory, manifest, employment, freight), args.output)
+        write_report(
+            evaluate(trajectory, manifest, employment, freight, verified_setup=setup), args.output
+        )
     except (ValueError, OSError, KeyError) as error:
         (args.output / "summary.md").write_text(
             f"# Historical comparison failed\n\nRequired evidence failed: {error}\n"

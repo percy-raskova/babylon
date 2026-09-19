@@ -727,19 +727,20 @@ fn collect_observable_transitions(
         return Err("tick report observable scenarios are misaligned".to_owned());
     }
     if after.scenario_scope() == babylon_persistence::michigan_cohorts::MICHIGAN_COHORT_SCENARIO {
-        let mut observables = Vec::new();
-        for (entity, field, after_bits) in after.rows().node_f64() {
-            let before_bits = before
-                .rows()
-                .node_f64()
-                .iter()
-                .find(|(candidate, candidate_field, _)| {
-                    candidate == entity && candidate_field == field
-                })
-                .map(|(_, _, bits)| *bits)
-                .ok_or_else(|| {
-                    format!("captured observable {entity}::{field} missing before tick")
-                })?;
+        let before_rows = before.rows().node_f64();
+        let after_rows = after.rows().node_f64();
+        if before_rows.len() != after_rows.len() {
+            return Err("tick report observable inventory changed during the tick".to_owned());
+        }
+        let mut observables = Vec::with_capacity(after_rows.len());
+        for ((before_entity, before_field, before_bits), (entity, field, after_bits)) in
+            before_rows.iter().zip(after_rows)
+        {
+            if before_entity != entity || before_field != field {
+                return Err(format!(
+                    "captured observable {entity}::{field} differs from its pre-tick identity"
+                ));
+            }
             observables.push(ObservableTickReport {
                 name: format!("{}::{entity}::{field}", after.scenario_scope()),
                 entity: entity.clone(),
@@ -751,7 +752,7 @@ fn collect_observable_transitions(
                 } else {
                     "dynamic"
                 },
-                before_value_bits: before_bits,
+                before_value_bits: *before_bits,
                 after_value_bits: *after_bits,
             });
         }
@@ -1479,6 +1480,45 @@ mod tests {
             std::process::id(),
             REPORT_PATH_SEQUENCE.fetch_add(1, Ordering::Relaxed),
         ))
+    }
+
+    #[test]
+    fn cohort_report_refuses_removed_or_replaced_observable_identities() {
+        use babylon_graph::stable_state::{
+            compose_stable_graph_state_from_rows, StableGraphStateRowsInput,
+        };
+
+        let session = super::material_diagnostic_foundation()
+            .unwrap()
+            .into_session()
+            .unwrap();
+        let before = session.graph_session().stable_graph_state().unwrap();
+        let rows = before.rows();
+        for remove in [true, false] {
+            let mut node_f64 = rows.node_f64().to_vec();
+            if remove {
+                node_f64.remove(0);
+            } else {
+                node_f64[0].1 = "territory/replacement-observation".to_owned();
+            }
+            let after = compose_stable_graph_state_from_rows(
+                before.scenario_scope(),
+                StableGraphStateRowsInput {
+                    nodes: rows.nodes().to_vec(),
+                    node_f64,
+                    edges: rows.edges().to_vec(),
+                    hyperedges: rows.hyperedges().to_vec(),
+                    edge_f64: rows.edge_f64().to_vec(),
+                    node_currency: rows.node_currency().to_vec(),
+                    hyperedge_f64: rows.hyperedge_f64().to_vec(),
+                },
+            )
+            .unwrap();
+            assert!(
+                collect_observable_transitions(&before, &after).is_err(),
+                "captured observable identities must survive the tick (remove={remove})"
+            );
+        }
     }
 
     fn report_fixture() -> SimulationTickReport {

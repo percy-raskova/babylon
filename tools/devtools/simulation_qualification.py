@@ -605,7 +605,10 @@ def run(runtime: Path, output: Path, *, dsn: str | None, sensitivity: bool) -> i
             ]
             if persisted:
                 argv += ["--dsn", str(dsn)]
-            outcome = _bounded_process_run(argv, environment=os.environ, timeout_seconds=900.0)
+            timeout_seconds = 60.0 if spec["profile"] == "delivery_stock" else 900.0
+            outcome = _bounded_process_run(
+                argv, environment=os.environ, timeout_seconds=timeout_seconds
+            )
             (destination / "stdout.log").write_bytes(outcome.stdout)
             (destination / "stderr.log").write_bytes(outcome.stderr)
             (destination / "execution.json").write_text(
@@ -616,6 +619,7 @@ def run(runtime: Path, output: Path, *, dsn: str | None, sensitivity: bool) -> i
                         "input_sha256": hashlib.sha256(input_path.read_bytes()).hexdigest(),
                         "wall_time_ns": outcome.wall_time_ns,
                         "max_rss_bytes": outcome.max_rss_bytes,
+                        "timeout_seconds": timeout_seconds,
                         "returncode": outcome.returncode,
                         "wrapper_status": outcome.wrapper_status,
                     },

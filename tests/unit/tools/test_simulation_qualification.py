@@ -361,8 +361,17 @@ def test_runtime_failure_retains_both_long_profiles_and_six_sensitivity_inputs(
     runtime = tmp_path / "runtime"
     runtime.write_text('#!/bin/sh\nprintf "deliberate failure" >&2\nexit 3\n')
     runtime.chmod(0o755)
+    runner = module._bounded_process_run
+    budgets: list[float] = []
+
+    def capture_budget(argv, *, environment, timeout_seconds):
+        budgets.append(timeout_seconds)
+        return runner(argv, environment=environment, timeout_seconds=timeout_seconds)
+
+    monkeypatch.setattr(module, "_bounded_process_run", capture_budget)
     output = tmp_path / "run"
     assert module.run(runtime, output, dsn=None, sensitivity=True) == 2
+    assert budgets == [900.0, 900.0, *([60.0] * 6)]
     results = json.loads((output / "comparison.json").read_text())
     assert len(results["failures"]) == 8
     assert len(list(output.glob("*/input.json"))) == 8
@@ -372,6 +381,9 @@ def test_runtime_failure_retains_both_long_profiles_and_six_sensitivity_inputs(
     for path in receipts:
         receipt = json.loads(path.read_text())
         assert receipt["returncode"] == 3
+        assert receipt["timeout_seconds"] == (
+            900.0 if path.parent.name in {"sustained", "depletion"} else 60.0
+        )
         assert receipt["runtime_sha256"] == hashlib.sha256(runtime.read_bytes()).hexdigest()
         assert (
             receipt["input_sha256"]

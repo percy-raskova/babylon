@@ -619,8 +619,10 @@ execution checks uninterrupted versus checkpoint-restarted replay. The weekly
 and on-demand workflow also compares every long and historical period with
 ``PostgreSQL`` execution, with reconstruction at annual boundaries and the
 final period.
-Each profile has a 900-second execution bound after compilation and a 4 MiB
-artifact bound. Keep incomplete output as failure evidence.
+Long and historical profiles have a 900-second execution bound after
+compilation. Each 16-period sensitivity case has a 60-second bound. All
+profiles have a 4 MiB artifact bound. Keep incomplete output as failure
+evidence.
 
 ``diagnostic-sustained.json`` covers 130 four-week periods with finite stocks
 and orders that support activity in the final modeled year.

@@ -18,7 +18,10 @@ jobs:
   sim-artifacts:
     name: Long and Historical Simulation Validation
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # Four 15-minute persisted profiles, six 1-minute sensitivity cases,
+    # diagnostics, and wrapper margins fit below the report-step caps.
+    # Reserve 35 minutes beyond those caps for setup, artifacts, and cleanup.
+    timeout-minutes: 120
     env:
       BABYLON_RUNTIME_DSN: "dbname=babylon_test host=127.0.0.1 port=5433 user=test password=test"
     steps:
@@ -38,15 +41,18 @@ jobs:
         run: cd rust && cargo build -p babylon-persistence --example simulation_experiment --locked
       - name: Generate bounded persistence diagnostics
         if: ${{ !cancelled() }}
+        timeout-minutes: 10
         run: mise run sim:report 16 300 exclusive
       - name: Qualify long profiles and deterministic sensitivity
         if: ${{ !cancelled() && steps.experiment-build.outcome == 'success' }}
+        timeout-minutes: 40
         run: >-
           mise exec -- uv run --frozen python -m tools.devtools.simulation_qualification
           --runtime rust/target/debug/examples/simulation_experiment
           --output reports/sim-runs/long --dsn-env BABYLON_RUNTIME_DSN --sensitivity
       - name: Compare historical employment and border freight
         if: ${{ !cancelled() && steps.experiment-build.outcome == 'success' }}
+        timeout-minutes: 35
         run: >-
           mise exec -- uv run --frozen python -m tools.devtools.historical_report
           --runtime rust/target/debug/examples/simulation_experiment

@@ -24,6 +24,7 @@ ANALYSIS_TASKS_CONFIG = REPO_ROOT / ".mise" / "tasks" / "analysis.toml"
 WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
 ACTIONS_DIR = REPO_ROOT / ".github" / "actions"
 HOSTED_RUNTIME_DSN = "dbname=babylon_test host=127.0.0.1 port=5433 user=test password=test"
+REVIEWED_RUST_INSTALL_ACTION = "taiki-e/install-action@3f74d7c16a4242f1c95561e98edc25d36adb4375"
 
 
 def _write_executable(path: Path, content: str) -> None:
@@ -364,7 +365,7 @@ def test_rust_ci_installs_and_retains_pinned_agent_reports() -> None:
     install = next(step for step in steps if step.get("name") == "Install Rust test reporter")
     upload = next(step for step in steps if step.get("name") == "Upload Rust test reports")
 
-    assert install["uses"] == ("taiki-e/install-action@7b8d4719ee4aaa279bdf55df38dacb9ebfe12a6c")
+    assert install["uses"] == REVIEWED_RUST_INSTALL_ACTION
     assert install["with"] == {
         "tool": "cargo-nextest@0.9.143,cargo-deny@0.20.2",
         "fallback": "none",
@@ -402,7 +403,7 @@ def test_weekly_rust_coverage_is_advisory_and_single_run() -> None:
 
     assert checkout["with"]["ref"] == "dev"
     assert checkout["with"]["fetch-depth"] == 0
-    assert install["uses"] == ("taiki-e/install-action@7b8d4719ee4aaa279bdf55df38dacb9ebfe12a6c")
+    assert install["uses"] == REVIEWED_RUST_INSTALL_ACTION
     assert install["with"] == {
         "tool": "cargo-nextest@0.9.143,cargo-llvm-cov@0.9.0",
         "fallback": "none",

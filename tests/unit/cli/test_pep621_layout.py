@@ -32,20 +32,9 @@ def test_no_legacy_poetry_table() -> None:
     assert "poetry" not in DATA.get("tool", {}), "legacy [tool.poetry] table remains"
 
 
-def test_ops_extra_contains_only_operator_tooling() -> None:
-    ops = _names(DATA["project"]["optional-dependencies"]["ops"])
-    assert ops == {
-        "ansible-dev-tools",
-        "rstcheck",
-        "doc8",
-        "boto3",
-    }
-
-
 def test_retired_web_dependencies_are_absent_from_every_dependency_set() -> None:
     requirements = [
         *DATA["project"]["dependencies"],
-        *DATA["project"]["optional-dependencies"]["ops"],
         *DATA["dependency-groups"]["dev"],
         *DATA["dependency-groups"]["docs"],
     ]

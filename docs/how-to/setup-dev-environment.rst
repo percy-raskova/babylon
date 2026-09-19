@@ -113,7 +113,7 @@ Step 4: Clone and Set Up the Project
    cd babylon
 
    # Install locked dependencies (creates virtual environment automatically)
-   uv sync --extra ops --frozen
+   uv sync --frozen
 
    # Install pre-commit, commit-msg, and pre-push hooks
    uv run --frozen pre-commit install
@@ -246,7 +246,7 @@ side. This ensures proper file permissions and much better performance.
    cd babylon
 
    # Install locked dependencies
-   uv sync --extra ops --frozen
+   uv sync --frozen
 
    # Install pre-commit, commit-msg, and pre-push hooks
    uv run --frozen pre-commit install

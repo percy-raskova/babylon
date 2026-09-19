@@ -12,7 +12,7 @@ from babylon.intelligence.providers import (
     ProviderError,
     _config_dir,
     load_settings,
-    resolve_provider,
+    resolve_provider_probe,
 )
 from babylon.intelligence.provision import default_models_dir, provision_models
 
@@ -65,17 +65,19 @@ def doctor(
         f"  credentials: {'present' if credentials.exists() else 'absent (mute/local only)'}"
     )
 
+    config_ok = True
     try:
         settings = load_settings()
         console.print(f"[bold]intelligence mode:[/bold] {settings.mode}")
     except ProviderError as exc:
+        config_ok = False
         console.print(f"[bold red]config error:[/bold red] {exc}")
-
-    provider = resolve_provider()
-    health = provider.health()
-    lane = provider.endpoint.kind.value
-    mark = "ok" if health.ok else "degraded"
-    console.print(f"[bold]provider lane:[/bold] {lane} ({mark}: {health.detail})")
+    else:
+        probe = resolve_provider_probe(settings)
+        health = probe.health()
+        lane = probe.endpoint.kind.value
+        mark = "ok" if health.ok else "degraded"
+        console.print(f"[bold]provider lane:[/bold] {lane} ({mark}: {health.detail})")
 
     db_ok, db_detail = check_database(os.environ.get("BABYLON_RUNTIME_DSN"))
     console.print(f"[bold]database:[/bold] {'ok' if db_ok else 'unavailable'} — {db_detail}")
@@ -91,4 +93,4 @@ def doctor(
             style = "yellow" if result.status == "gated" else "green"
             console.print(f"  [{style}]{result.name}: {result.status}[/{style}] — {result.detail}")
 
-    raise typer.Exit(code=0)
+    raise typer.Exit(code=0 if config_ok else 1)

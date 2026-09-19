@@ -84,7 +84,7 @@ description = "Install all dependencies (from the committed lock — see deps:lo
 # Edit pyproject.toml, then regenerate uv.lock with the pinned uv toolchain.
 # Amendment AF (ADR186) deleted the babylon-tui wheel from the default
 # dependency set — this sync no longer needs cargo/rustc on PATH.
-run = "uv sync --extra ops --frozen"
+run = "uv sync --frozen"
 
 [tasks.setup]
 description = "One-shot bootstrap for a fresh clone: toolchain + deps + hooks + tuned PostgreSQL 17 + canonical schema (spec-087 FR-008)"
@@ -92,7 +92,7 @@ run = """
 set -e
 mise install --locked
 rustup toolchain install 1.91.1 --profile minimal --component rustfmt --component clippy
-uv sync --extra ops --frozen
+uv sync --frozen
 uv run --frozen python tools/install_git_hooks.py
 mise run db:up
 (cd rust && CARGO_BUILD_JOBS=4 cargo build -p babylon-persistence --bin babylon-runtime --locked)

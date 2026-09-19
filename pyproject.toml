@@ -31,7 +31,7 @@ dependencies = [
   "referencing>=0.37.0,<0.38.0",
   "openpyxl>=3.1.5,<4.0.0",
   "openai>=3.14.1,<4.0.0",
-  "pydantic-ai-slim[openai]>=2.43.0,<3.0.0",
+  "httpx2>=2.12.0,<3.0.0",
   "typer>=0.27.2",
   "rich>=13.9.4",
   "h3>=4.2.0,<5.0.0",
@@ -43,29 +43,13 @@ dependencies = [
   "scipy>=1.18.1",
   "psycopg>=3.3.5,<4.0.0",
   "pyarrow==25.0.0",
-  "tqdm>=4.70.1,<5.0.0",
-  "markdown-it-py>=4.2.0,<5.0.0",
-  "pillow>=12.3.0",
   "osmium>=4.1,<5",
-]
-
-[project.optional-dependencies]
-# Operator-only automation and prose tooling. The retired Django server stack
-# was removed by PER-258; this extra preserves the unrelated Ansible/RST/Boto
-# tools used by repository automation.
-ops = [
-  "ansible-dev-tools>=26.8.0,<27.0.0",
-  "rstcheck>=6.3.0,<7.0.0",
-  "doc8>=2.0.0,<3.0.0",
-  "boto3>=1.43.95,<2.0.0",
 ]
 
 [dependency-groups]
 dev = [
   "pytest>=9.0.3,<10.0.0",
   "pytest-xdist>=3.8.0,<4.0.0",
-  "pytest-mock>=3.14.0,<4.0.0",
-  "pytest-asyncio>=1.0.0,<2.0.0",
   "pytest-cov>=7.0.0,<8.0.0",
   "mypy>=1.13.0,<3.0.0",
   "ruff>=0.16.8,<0.17.0",
@@ -77,22 +61,20 @@ dev = [
   "markdownify>=1.2.2,<2.0.0",
   "yamllint>=1.37.1,<2.0.0",
   "mido>=1.3.3,<2.0.0",
-  "linkify-it-py>=2.1.1,<3.0.0",
+  "pillow>=12.3.0",
   "pip-audit>=2.7.3,<3.0.0",
   "pytest-randomly>=5.0.0,<6.0.0",
-  "deptry>=0.25.1,<0.26.0",
   "types-docutils>=0.23.0.20260911,<0.24.0",
-  "types-tqdm>=4.70.0.20260906,<5.0.0",
   "hypothesis>=6.168.0,<7.0.0",
   "pytest-json-report>=1.5.0,<2.0.0",
   "pytest-html>=4.1.0,<5.0.0",
-  "pytest-timeout>=2.4.0,<3.0.0",
 ]
 docs = [
   "sphinx>=9,<10",
   "sphinx-rtd-theme>=3.0.2,<4.0.0",
   "sphinx-autodoc-typehints<3.14",
   "myst-parser>=5.0.0,<6.0.0",
+  "linkify-it-py>=2.1.1,<3.0.0",
   "sphinx-autobuild>=2025.8,<2026.0.0",
   "sphinxcontrib-mermaid>=2.1.1,<3.0.0",
 ]
@@ -127,8 +109,6 @@ babylon = "babylon.cli:app"
 pythonpath = ["src"]
 testpaths = ["tests"]
 norecursedirs = ["mutants", ".mutmut-cache", "html", ".hypothesis"]
-asyncio_mode = "strict"
-asyncio_default_fixture_loop_scope = "function"
 doctest_optionflags = ["NORMALIZE_WHITESPACE", "ELLIPSIS"]
 markers = [
   "unit: Fast unit tests for isolated components (no I/O, no AI)",

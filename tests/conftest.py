@@ -31,9 +31,6 @@ from collections.abc import Generator
 
 import pytest
 from hypothesis import HealthCheck, settings
-from pydantic_ai import models as _pydantic_ai_models
-
-_pydantic_ai_models.ALLOW_MODEL_REQUESTS = False
 
 settings.register_profile(
     "default",

@@ -4,6 +4,7 @@ import hashlib
 import json
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 from tools.devtools.causal_report import CASES, qualify, validate_artifacts
@@ -63,13 +64,21 @@ def _evidence(path: Path, head: str) -> None:
             }
         )
     inputs = {"schema": "SimulationExperimentMatrixV1", "periods": 16, "cases": cases}
-    summary = {
+    summary: dict[str, Any] = {
         "schema": "MichiganDeliveryStockSummaryV1",
         "food_control_equal": True,
         "cases": [
             {
                 "case": case,
-                "foundation": {"hash": "a" * 64},
+                "foundation": {
+                    "foundation_sha256": hashlib.sha256(case.encode()).hexdigest(),
+                    "material_content_sha256": "b" * 64,
+                    "graph_defines_sha256": hashlib.sha256(f"{case}/bundle".encode()).hexdigest(),
+                    "rules_sha256": "c" * 64,
+                    "reference_sha256": "d" * 64,
+                    "seed": 319,
+                    "opening_world_has_completed_receipt": False,
+                },
                 "period_evidence_sha256": "b" * 64,
                 "final_subassemblies": 30,
             }
@@ -89,7 +98,14 @@ def _evidence(path: Path, head: str) -> None:
             "schema": "MichiganDeliveryStockPeriodV1",
             "case": case,
             "period": period,
-            "world_sha256": "a" * 64,
+            "tick_content_sha256": "a" * 64,
+            "graph_tick_content_sha256": "b" * 64,
+            "graph_state_sha256": "c" * 64,
+            "graph_world_sha256": "d" * 64,
+            "prior_world_sha256": hashlib.sha256(f"{case}/{period - 1}".encode()).hexdigest(),
+            "world_sha256": hashlib.sha256(f"{case}/{period}".encode()).hexdigest(),
+            "material_receipts_sha256": "e" * 64,
+            "graph_event_section_sha256": "f" * 64,
             "processes": [
                 {"process": name, "staffing": staffing}
                 for name in [
@@ -109,6 +125,10 @@ def _evidence(path: Path, head: str) -> None:
         for case in CASES
         for period in range(1, 17)
     ]
+    for case_summary in summary["cases"]:
+        case_summary["period_evidence_sha256"] = _digest_rows(
+            [row for row in rows if row["case"] == case_summary["case"]]
+        )
     (path / "inputs.json").write_bytes(canonical_bytes(inputs))
     (path / "summary.json").write_bytes(canonical_bytes(summary))
     (path / "periods.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
@@ -124,8 +144,29 @@ def _evidence(path: Path, head: str) -> None:
             for name in ["inputs.json", "summary.json", "periods.jsonl"]
         },
         "provenance": {"source_sha": head, "source_tree_clean": True},
+        "seed": 319,
+        "case_foundations": [
+            {"case": case["case"], "identity": case["foundation"]} for case in summary["cases"]
+        ],
     }
     (path / "manifest.json").write_bytes(canonical_bytes(manifest))
+
+
+def _digest_rows(rows: object) -> str:
+    return hashlib.sha256(
+        json.dumps(rows, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
+    ).hexdigest()
+
+
+def _refresh_case_digests(path: Path) -> None:
+    rows = [json.loads(line) for line in (path / "periods.jsonl").read_text().splitlines()]
+    summary = json.loads((path / "summary.json").read_text())
+    for case in summary["cases"]:
+        case["period_evidence_sha256"] = _digest_rows(
+            [row for row in rows if row["case"] == case["case"]]
+        )
+    (path / "summary.json").write_bytes(canonical_bytes(summary))
+    _refresh(path, "summary.json")
 
 
 def _refresh(path: Path, name: str) -> None:
@@ -180,8 +221,10 @@ def test_implementation_hash_change_preserves_semantic_baseline(tmp_path: Path) 
     rows = [json.loads(line) for line in (evidence / "periods.jsonl").read_text().splitlines()]
     for row in rows:
         row["world_sha256"] = "c" * 64
+        row["prior_world_sha256"] = "c" * 64
     (evidence / "periods.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
     _refresh(evidence, "periods.jsonl")
+    _refresh_case_digests(evidence)
     result = qualify(evidence, repo, head)
     assert result["accepted"] is True
     assert result["classification"] == "unchanged"
@@ -359,5 +402,118 @@ def test_unconsumed_source_text_does_not_change_semantic_baseline(tmp_path: Path
     ).hexdigest()
     (evidence / "manifest.json").write_bytes(canonical_bytes(manifest))
     _refresh(evidence, "inputs.json")
+    summary = json.loads((evidence / "summary.json").read_text())
+    for case, identity in zip(summary["cases"], manifest["case_foundations"], strict=True):
+        case["foundation"]["graph_defines_sha256"] = hashlib.sha256(
+            f"{case['case']}/new-bundle".encode()
+        ).hexdigest()
+        identity["identity"] = case["foundation"]
+    (evidence / "summary.json").write_bytes(canonical_bytes(summary))
+    (evidence / "manifest.json").write_bytes(canonical_bytes(manifest))
+    _refresh(evidence, "inputs.json")
+    _refresh(evidence, "summary.json")
     _, after = validate_artifacts(evidence)
     assert before == after
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "tick_content_sha256",
+        "graph_tick_content_sha256",
+        "graph_state_sha256",
+        "graph_world_sha256",
+        "prior_world_sha256",
+        "world_sha256",
+        "material_receipts_sha256",
+        "graph_event_section_sha256",
+    ],
+)
+def test_missing_period_identity_fails_with_fresh_file_and_case_checksums(
+    tmp_path: Path, field: str
+) -> None:
+    evidence = tmp_path / "evidence"
+    _evidence(evidence, "a" * 40)
+    rows = [json.loads(line) for line in (evidence / "periods.jsonl").read_text().splitlines()]
+    del rows[0][field]
+    (evidence / "periods.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
+    _refresh(evidence, "periods.jsonl")
+    _refresh_case_digests(evidence)
+    with pytest.raises(ValueError, match="period.*identity"):
+        validate_artifacts(evidence)
+
+
+def test_world_chain_fails_even_when_all_artifact_and_case_digests_are_fresh(
+    tmp_path: Path,
+) -> None:
+    evidence = tmp_path / "evidence"
+    _evidence(evidence, "a" * 40)
+    rows = [json.loads(line) for line in (evidence / "periods.jsonl").read_text().splitlines()]
+    rows[1]["prior_world_sha256"] = "f" * 64
+    (evidence / "periods.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
+    _refresh(evidence, "periods.jsonl")
+    _refresh_case_digests(evidence)
+    with pytest.raises(ValueError, match="world.*chain"):
+        validate_artifacts(evidence)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "manifest_foundations_missing",
+        "manifest_foundations_reordered",
+        "summary_foundation_missing",
+        "summary_digest_missing",
+        "summary_digest_stale",
+        "foundation_digest_missing",
+        "foundation_digest_invalid",
+        "foundation_disagreement",
+        "summary_foundation_seed_type",
+        "summary_foundation_opening_receipt_type",
+        "foundation_seed_disagreement",
+        "manifest_seed_disagreement",
+        "opening_receipt_disagreement",
+    ],
+)
+def test_foundation_and_summary_identities_are_required_and_bound(
+    tmp_path: Path, mutation: str
+) -> None:
+    evidence = tmp_path / "evidence"
+    _evidence(evidence, "a" * 40)
+    manifest = json.loads((evidence / "manifest.json").read_text())
+    summary = json.loads((evidence / "summary.json").read_text())
+    case = summary["cases"][0]
+    if mutation == "manifest_foundations_missing":
+        del manifest["case_foundations"]
+    elif mutation == "manifest_foundations_reordered":
+        manifest["case_foundations"].reverse()
+    elif mutation == "summary_foundation_missing":
+        del case["foundation"]
+    elif mutation == "summary_digest_missing":
+        del case["period_evidence_sha256"]
+    elif mutation == "summary_digest_stale":
+        case["period_evidence_sha256"] = "f" * 64
+    elif mutation == "foundation_disagreement":
+        manifest["case_foundations"][0]["identity"]["foundation_sha256"] = "f" * 64
+    elif mutation == "summary_foundation_seed_type":
+        case["foundation"]["seed"] = 319.0
+    elif mutation == "summary_foundation_opening_receipt_type":
+        case["foundation"]["opening_world_has_completed_receipt"] = 0
+    elif mutation == "manifest_seed_disagreement":
+        manifest["seed"] = 320
+    else:
+        foundation = case["foundation"]
+        if mutation == "foundation_digest_missing":
+            del foundation["material_content_sha256"]
+        elif mutation == "foundation_digest_invalid":
+            foundation["reference_sha256"] = "invalid"
+        elif mutation == "foundation_seed_disagreement":
+            foundation["seed"] = 320
+        else:
+            foundation["opening_world_has_completed_receipt"] = True
+        manifest["case_foundations"][0]["identity"] = foundation
+    (evidence / "summary.json").write_bytes(canonical_bytes(summary))
+    (evidence / "manifest.json").write_bytes(canonical_bytes(manifest))
+    _refresh(evidence, "summary.json")
+    with pytest.raises(ValueError):
+        validate_artifacts(evidence)

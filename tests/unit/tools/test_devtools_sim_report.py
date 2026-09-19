@@ -1156,6 +1156,20 @@ def test_tick_one_stable_and_observable_movement_is_not_reported_flat() -> None:
     assert observable["name"] not in flat_subjects
 
 
+def test_dynamic_staffing_movement_does_not_claim_observed_baseline_drift() -> None:
+    row = _valid_row(1)
+    _set_observable(row, 2, before_value=4.0, after_value=0.0)
+    row["observables"][2]["role"] = "dynamic"
+
+    diagnostics = sim_report._diagnostics([row])
+
+    assert diagnostics["observables"][2]["change_count"] == 1
+    assert not any(
+        notice["code"] == "observable.observed_baseline_changed"
+        for notice in diagnostics["notices"]
+    )
+
+
 def test_observed_baseline_movement_remains_visible_after_a_long_unchanged_run() -> None:
     rows = [_valid_row(tick) for tick in range(1, 105)]
     _set_observable(rows[0], 2, before_value=0.0, after_value=0.25)

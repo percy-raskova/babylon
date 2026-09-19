@@ -28,6 +28,23 @@ PROCESSES = {
     "meal-packaging",
 }
 ROUTES = {"sheet-transfer", "panel-transfer", "food-transfer"}
+PERIOD_IDENTITIES = {
+    "tick_content_sha256",
+    "graph_tick_content_sha256",
+    "graph_state_sha256",
+    "graph_world_sha256",
+    "prior_world_sha256",
+    "world_sha256",
+    "material_receipts_sha256",
+    "graph_event_section_sha256",
+}
+FOUNDATION_DIGESTS = {
+    "foundation_sha256",
+    "material_content_sha256",
+    "graph_defines_sha256",
+    "rules_sha256",
+    "reference_sha256",
+}
 MAX_BYTES = 4 * 1024 * 1024
 HEX_SHA = re.compile(r"^[0-9a-f]{40}$")
 HEX_DIGEST = re.compile(r"^[0-9a-f]{64}$")
@@ -124,6 +141,68 @@ def _nonnegative(value: object, field: str) -> int:
     return value
 
 
+def _identity_digest(value: object, label: str) -> str:
+    if not isinstance(value, str) or not HEX_DIGEST.fullmatch(value):
+        raise ValueError(f"{label} must be a SHA-256 identity digest")
+    return value
+
+
+def _validate_case_identities(
+    manifest: dict[str, Any],
+    inputs: dict[str, Any],
+    summary: dict[str, Any],
+    rows: list[dict[str, Any]],
+) -> None:
+    foundations = manifest.get("case_foundations")
+    if (
+        not isinstance(foundations, list)
+        or not all(
+            isinstance(row, dict) and set(row) == {"case", "identity"} for row in foundations
+        )
+        or [row["case"] for row in foundations] != list(CASES)
+    ):
+        raise ValueError("manifest must include ordered identities for all four case foundations")
+    seed = manifest.get("seed")
+    if type(seed) is not int or seed != 319:
+        raise ValueError("manifest seed differs from the admitted case foundation seed")
+    for declared, captured, report in zip(
+        foundations, inputs["cases"], summary["cases"], strict=True
+    ):
+        foundation = declared["identity"]
+        if (
+            not isinstance(foundation, dict)
+            or set(foundation)
+            != FOUNDATION_DIGESTS | {"seed", "opening_world_has_completed_receipt"}
+            or canonical_bytes(foundation) != canonical_bytes(report.get("foundation"))
+        ):
+            raise ValueError(
+                "manifest and summary must contain identical complete foundation identities"
+            )
+        # Graph defines identify the binary SectorBundle envelope, whereas the
+        # input's defines digest identifies its catalog JSON. They are distinct
+        # identities; catalog bytes are checked by _validate_case above.
+        for field in FOUNDATION_DIGESTS:
+            _identity_digest(foundation[field], "foundation." + field)
+        if (
+            type(foundation["seed"]) is not int
+            or foundation["seed"] != seed
+            or foundation["seed"] != captured["experiment"]["seed"]
+            or foundation["opening_world_has_completed_receipt"] is not False
+        ):
+            raise ValueError(
+                "foundation identity differs from its captured seed or opening receipt"
+            )
+        case_rows = [row for row in rows if row["case"] == declared["case"]]
+        # Rust hashes Vec<PeriodRow> in its serialized field order. Preserve the
+        # captured object order here; sorting keys changes that evidence digest.
+        encoded = json.dumps(
+            case_rows, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+        ).encode()
+        digest = _identity_digest(report.get("period_evidence_sha256"), "case period evidence")
+        if hashlib.sha256(encoded).hexdigest() != digest:
+            raise ValueError("summary period evidence digest differs from the captured case rows")
+
+
 def validate_artifacts(directory: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     required = ("manifest.json", "inputs.json", "summary.json", "periods.jsonl")
     if (directory / "failure.json").exists():
@@ -169,14 +248,18 @@ def validate_artifacts(directory: Path) -> tuple[dict[str, Any], dict[str, Any]]
         raise ValueError("required evidence must contain four complete ordered 16-period cases")
     controls: dict[int, dict[str, Any]] = {}
     totals: dict[str, tuple[int, int]] = {}
+    worlds: dict[str, str] = {}
     for row in rows:
         if row["schema"] != "MichiganDeliveryStockPeriodV1":
             raise ValueError("unexpected period evidence schema")
+        if not PERIOD_IDENTITIES <= row.keys():
+            raise ValueError("period is missing a required identity digest")
         for key, value in row.items():
-            if key.endswith("_sha256") and (
-                not isinstance(value, str) or not HEX_DIGEST.fullmatch(value)
-            ):
-                raise ValueError("invalid period provenance digest")
+            if key.endswith("_sha256"):
+                _identity_digest(value, "period." + key)
+        if row["case"] in worlds and row["prior_world_sha256"] != worlds[row["case"]]:
+            raise ValueError("period prior-world identity breaks the committed world hash chain")
+        worlds[row["case"]] = row["world_sha256"]
         if {p["process"] for p in row["processes"]} != PROCESSES or len(row["processes"]) != 5:
             raise ValueError("period evidence must contain each authoritative process")
         if {route["route"] for route in row["routes"]} != ROUTES or len(row["routes"]) != 3:
@@ -216,6 +299,7 @@ def validate_artifacts(directory: Path) -> tuple[dict[str, Any], dict[str, Any]]
         if row["period"] in controls and controls[row["period"]] != food:
             raise ValueError("food control evidence differs across causal cases")
         controls[row["period"]] = food
+    _validate_case_identities(manifest, inputs, summary, rows)
     projected_inputs = [
         {
             # Only the resolved regional mechanics enter the behavioral baseline.

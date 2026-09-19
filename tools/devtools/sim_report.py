@@ -1493,7 +1493,7 @@ def _diagnostics(rows: Sequence[Mapping[str, object]]) -> dict[str, object]:
             }
         )
         name = cast("str", first_observable["name"])
-        if observable_change_ticks:
+        if role == "observed_baseline" and observable_change_ticks:
             notices.append({"code": "observable.observed_baseline_changed", "subject": name})
 
     return {

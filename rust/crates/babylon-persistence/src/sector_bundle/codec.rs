@@ -4,7 +4,7 @@ use super::{
     decode_material_circuit_state, encode_material_circuit_state, ProcessId, SectorBundle,
     SectorBundleError, SectorBundleGood, SectorBundleOwner, SectorBundleProcess,
     SectorBundleSources, StableElementKey, UnitId, BUNDLE_DOMAIN, BUNDLE_VERSION, MAX_BUNDLE_BYTES,
-    MAX_BUNDLE_GOODS, MAX_BUNDLE_PROCESSES, MAX_BUNDLE_TEXT_BYTES, MICHIGAN_MAX_HORIZON_PERIODS,
+    MAX_BUNDLE_GOODS, MAX_BUNDLE_PROCESSES, MAX_BUNDLE_TEXT_BYTES,
 };
 use babylon_material_circuit::{GoodId, SiteId};
 
@@ -26,7 +26,7 @@ pub(super) fn encode(bundle: &SectorBundle) -> Result<Vec<u8>, SectorBundleError
     ] {
         text(&mut bytes, value)?;
     }
-    bytes.extend_from_slice(&MICHIGAN_MAX_HORIZON_PERIODS.to_be_bytes());
+    bytes.extend_from_slice(&bundle.horizon_ticks.to_be_bytes());
     text(&mut bytes, &bundle.sources.county_source_file)?;
     for digest in [
         bundle.sources.county_source_sha256,
@@ -96,9 +96,7 @@ pub(super) fn decode(bytes: &[u8]) -> Result<SectorBundle, SectorBundleError> {
         county_geoid: cursor.text()?,
         sector_code: cursor.text()?,
     };
-    if u64::from_be_bytes(cursor.array()?) != MICHIGAN_MAX_HORIZON_PERIODS {
-        return Err(SectorBundleError::Resource);
-    }
+    let horizon_ticks = u64::from_be_bytes(cursor.array()?);
     let sources = SectorBundleSources {
         county_source_file: cursor.text()?,
         county_source_sha256: cursor.array()?,
@@ -135,6 +133,7 @@ pub(super) fn decode(bytes: &[u8]) -> Result<SectorBundle, SectorBundleError> {
     }
     let result = SectorBundle::from_parts(
         owner,
+        horizon_ticks,
         sources,
         goods,
         processes,

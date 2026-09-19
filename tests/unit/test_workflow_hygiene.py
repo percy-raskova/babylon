@@ -866,6 +866,8 @@ printf '%s\\n' "$1" >> "$SLEEP_CALLS"
                 "update-types": ["version-update:semver-major"],
             }
         ]
+        cargo = _dependabot_update(config, "cargo")
+        assert cargo["ignore"] == [{"dependency-name": "rodio", "versions": [">=0.21"]}]
 
     def test_config_does_not_request_nonexistent_rust_label(self) -> None:
         """Cargo PR creation must not fail because the removed label is absent."""

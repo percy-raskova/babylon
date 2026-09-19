@@ -181,6 +181,7 @@ fn bundle_and_row_permutations_preserve_identity_and_changed_authority_refuses()
         goods.reverse();
         let rebuilt = SectorBundle::from_parts(
             b.owner.clone(),
+            b.horizon_ticks(),
             b.sources.clone(),
             goods,
             b.processes.clone(),

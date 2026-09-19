@@ -169,3 +169,8 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    # The client audio tests use Bevy 0.18's rodio 0.20 API. A second
+    # incompatible rodio cannot verify that audio path; upgrade with Bevy.
+    ignore:
+      - dependency-name: "rodio"
+        versions: [">=0.21"]

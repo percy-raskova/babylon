@@ -344,6 +344,7 @@ def test_dev_selection_keeps_light_contracts_and_current_heavy_seams() -> None:
         "decision_surface_contract",
         "dynamic_linking_fence",
         "postgres_catalog_contract",
+        "archive_page_vectors",
         "spatial_reference_installer_contract",
     } <= set(names)
     assert {"heavy_matrix", "external_test", "babylon_rtd"}.isdisjoint(names)

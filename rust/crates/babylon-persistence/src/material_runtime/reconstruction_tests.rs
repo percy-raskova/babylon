@@ -121,6 +121,13 @@ fn alternate_foundation() -> MaterialRuntimeFoundation {
     let original = crate::michigan_content::MichiganContentPreset::FourWeekStandard
         .create_foundation(&crate::test_support::catalog())
         .unwrap();
+    recapture_with_seed(&original, 9821).unwrap()
+}
+
+fn recapture_with_seed(
+    original: &MaterialRuntimeFoundation,
+    seed: i64,
+) -> Result<MaterialRuntimeFoundation, MaterialRuntimeError> {
     let bundle = original.graph_foundation.content_bundle();
     let source = std::str::from_utf8(bundle.scenario_source_bytes()).unwrap();
     let rules = std::str::from_utf8(bundle.rule_source_bytes()).unwrap();
@@ -130,7 +137,7 @@ fn alternate_foundation() -> MaterialRuntimeFoundation {
         rules,
         HypergraphStore::new(),
         ReplaySessionId::try_from("fixture/stored-content-v2").unwrap(),
-        ReplaySeed::new(9821),
+        ReplaySeed::new(seed),
         bundle.content_digest().clone(),
         bundle.reference_digest(),
         MaterialState::try_new(crate::michigan_dynamic_hex_foundation().unwrap()).unwrap(),
@@ -150,7 +157,20 @@ fn alternate_foundation() -> MaterialRuntimeFoundation {
         original.register.state().clone(),
         original.spec.clone(),
     )
-    .unwrap()
+}
+
+#[test]
+fn typed_experiment_refuses_a_graph_seed_different_from_its_captured_input() {
+    let experiment = crate::simulation_experiment::SimulationExperimentV1::parse(include_bytes!(
+        "../../../../../content/scenarios/michigan/diagnostic-sustained.json"
+    ))
+    .unwrap();
+    let original = experiment.create_foundation().unwrap();
+    assert!(recapture_with_seed(&original, experiment.seed).is_ok());
+    assert!(matches!(
+        recapture_with_seed(&original, 9821),
+        Err(MaterialRuntimeError::FoundationMismatch)
+    ));
 }
 
 #[test]

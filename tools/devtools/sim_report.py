@@ -27,7 +27,7 @@ from typing import BinaryIO, Final, cast
 from urllib.parse import parse_qsl, unquote, urlsplit
 from uuid import uuid4
 
-TICK_REPORT_SCHEMA: Final = "babylon.simulation.tick-report.v2"
+TICK_REPORT_SCHEMA: Final = "babylon.simulation.tick-report.v3"
 SUMMARY_SCHEMA: Final = "babylon.simulation.run-summary.v2"
 DIAGNOSTICS_SCHEMA: Final = "babylon.simulation.diagnostics.v1"
 RESOURCES_SCHEMA: Final = "babylon.simulation.resource-observation.v1"
@@ -94,29 +94,12 @@ LIBPQ_ENV_BY_DSN_KEY: Final = {
 
 EXPECTED_SCOPE: Final = {
     "slice_id": "michigan-persistence-slice",
-    "scenario": "production/michigan-observer-v1",
-    "fixed_replay_seed": 319,
     "tick_duration_days": TICK_DURATION_DAYS,
     "parameter_overrides": False,
     "stochastic_draws": False,
     "dynamic_h3_updates": False,
 }
-# The native Michigan observer emits four QCEW facts for each of its 83
-# counties, ordered by GEOID then by the governed economics field inventory.
-OBSERVABLE_SPECS: Final = tuple(
-    (f"county-26{county:03}", f"territory/{field}")
-    for county in range(1, 166, 2)
-    for field in (
-        "qcew-establishments",
-        "qcew-employment",
-        "qcew-total-annual-wages",
-        "qcew-average-weekly-wage",
-    )
-)
-OBSERVABLE_CSV_PREFIXES: Final = tuple(
-    f"{entity}_{field.removeprefix('territory/')}".replace("-", "_")
-    for entity, field in OBSERVABLE_SPECS
-)
+OBSERVABLE_IDENTITY_FIELDS: Final = frozenset({"name", "entity", "field", "role", "kind"})
 
 COMMIT_DISPOSITIONS: Final = frozenset({"committed", "reconciled_after_ambiguous_commit"})
 TOP_LEVEL_FIELDS: Final = frozenset(
@@ -142,7 +125,11 @@ TOP_LEVEL_FIELDS: Final = frozenset(
 HASH_PAIR_FIELDS: Final = frozenset({"before_sha256", "after_sha256"})
 RULES_FIELDS: Final = frozenset({"considered", "fired", "per_rule"})
 PER_RULE_FIELDS: Final = frozenset({"rule_id", "considered", "fired"})
-SCOPE_FIELDS: Final = frozenset(EXPECTED_SCOPE)
+SCOPE_FIELDS: Final = frozenset(EXPECTED_SCOPE) | {
+    "scenario",
+    "fixed_replay_seed",
+    "horizon_periods",
+}
 EVENT_FIELDS: Final = frozenset({"count", "digest_sha256", "per_type"})
 EVENT_TYPE_FIELDS: Final = frozenset({"event_type", "count"})
 OBSERVABLE_FIELDS: Final = frozenset(
@@ -197,11 +184,6 @@ CSV_COLUMNS: Final = (
     "rules_fired",
     "event_count",
     "event_digest_sha256",
-    *(
-        f"{prefix}_{suffix}"
-        for prefix in OBSERVABLE_CSV_PREFIXES
-        for suffix in ("before_value", "before_bits_hex", "after_value", "after_bits_hex")
-    ),
     "audit_receipt_count",
     "choice_receipt_count",
     "choice_receipt_digest_sha256",
@@ -623,6 +605,76 @@ def _validate_scope(value: object, *, line_number: int) -> None:
                 f"line {line_number} scope.{field_name} must be {expected!r}, got {actual!r}"
             )
 
+    if not isinstance(scope["scenario"], str) or not scope["scenario"]:
+        raise JsonlValidationError("scope.scenario must be a nonempty captured identity")
+    seed = scope["fixed_replay_seed"]
+    if type(seed) is not int or not -(2**63) <= seed < 2**63:
+        raise JsonlValidationError("scope.fixed_replay_seed must be an i64")
+    _require_positive_integer(
+        scope["horizon_periods"], line_number=line_number, location="scope.horizon_periods"
+    )
+
+
+def _observable_inventory(value: object, *, scenario: str) -> list[dict[str, object]]:
+    if not isinstance(value, list) or not value:
+        raise JsonlValidationError("captured observables must be a nonempty list")
+    identities: list[dict[str, object]] = []
+    names: set[str] = set()
+    for candidate in value:
+        if not isinstance(candidate, dict):
+            raise JsonlValidationError("observable must be an object")
+        identity = {key: candidate.get(key) for key in OBSERVABLE_IDENTITY_FIELDS}
+        for key in ("entity", "field", "name"):
+            if not isinstance(identity[key], str) or not identity[key]:
+                raise JsonlValidationError(f"observable {key} must be a nonempty string")
+        name = f"{scenario}::{identity['entity']}::{identity['field']}"
+        if identity["name"] != name or name in names:
+            raise JsonlValidationError("observable name is inconsistent or duplicated")
+        if identity["kind"] != "f64" or identity["role"] not in {"dynamic", "observed_baseline"}:
+            raise JsonlValidationError("observable kind or role is unsupported")
+        names.add(name)
+        identities.append(identity)
+    return identities
+
+
+def validate_content_descriptor(candidate: object, *, ticks: int) -> dict[str, object]:
+    """Bind diagnostics to the executable's captured content before database work."""
+    value = _require_fields(
+        candidate,
+        frozenset({"schema", "scope", "foundation", "observables"}),
+        line_number=0,
+        location="content",
+    )
+    if value["schema"] != "babylon.simulation.content.v1":
+        raise ReportError("unsupported captured-content descriptor")
+    _validate_scope(value["scope"], line_number=0)
+    _validate_foundation(value["foundation"], line_number=0)
+    scope = cast("dict[str, object]", value["scope"])
+    horizon = cast("int", scope["horizon_periods"])
+    if ticks > horizon:
+        raise ReportError(f"requested {ticks} periods exceeds authored horizon {horizon}")
+    inventory = _observable_inventory(value["observables"], scenario=cast("str", scope["scenario"]))
+    if value["observables"] != inventory:
+        raise ReportError("content observable inventory has unknown fields")
+    return value
+
+
+def _read_content_descriptor(
+    runtime: Path, environment: Mapping[str, str], ticks: int
+) -> dict[str, object]:
+    outcome = _bounded_process_run(
+        [str(runtime), "describe"], environment=environment, timeout_seconds=30.0
+    )
+    if outcome.returncode != 0 or outcome.wrapper_status:
+        raise ReportError(
+            f"content preflight failed: {outcome.wrapper_status or outcome.returncode}"
+        )
+    try:
+        value = json.loads(outcome.stdout, object_pairs_hook=_duplicate_rejecting_object)
+    except (ValueError, UnicodeError) as error:
+        raise ReportError("content preflight did not return valid JSON") from error
+    return validate_content_descriptor(value, ticks=ticks)
+
 
 def _validate_events(value: object, *, line_number: int) -> None:
     events = _require_fields(
@@ -676,33 +728,13 @@ def _validate_events(value: object, *, line_number: int) -> None:
         )
 
 
-def _validate_observables(value: object, *, line_number: int) -> None:
-    if not isinstance(value, list) or len(value) != len(OBSERVABLE_SPECS):
-        raise JsonlValidationError(
-            f"line {line_number} must contain exactly {len(OBSERVABLE_SPECS)} observables"
-        )
-    scenario = cast("str", EXPECTED_SCOPE["scenario"])
-    for index, (candidate, specification) in enumerate(zip(value, OBSERVABLE_SPECS, strict=True)):
+def _validate_observables(value: object, *, line_number: int, scenario: str) -> None:
+    _observable_inventory(value, scenario=scenario)
+    for index, candidate in enumerate(cast("list[object]", value)):
         location = f"observable {index}"
         observable = _require_fields(
-            candidate,
-            OBSERVABLE_FIELDS,
-            line_number=line_number,
-            location=location,
+            candidate, OBSERVABLE_FIELDS, line_number=line_number, location=location
         )
-        expected_entity, expected_field = specification
-        exact_values = {
-            "field": expected_field,
-            "role": "observed_baseline",
-            "entity": expected_entity,
-            "kind": "f64",
-            "name": f"{scenario}::{expected_entity}::{expected_field}",
-        }
-        for field_name, expected in exact_values.items():
-            if observable[field_name] != expected:
-                raise JsonlValidationError(
-                    f"line {line_number} {location} {field_name} must be {expected!r}"
-                )
         for state_name in ("before", "after"):
             value_field = f"{state_name}_value"
             bits_field = f"{state_name}_bits_hex"
@@ -891,7 +923,11 @@ def _validate_tick_row(
     _validate_rules(row["rules"], line_number=line_number)
 
     _validate_events(row["events"], line_number=line_number)
-    _validate_observables(row["observables"], line_number=line_number)
+    _validate_observables(
+        row["observables"],
+        line_number=line_number,
+        scenario=cast("str", _nested_mapping(row, "scope")["scenario"]),
+    )
 
     receipts = _require_fields(
         row["audit_receipts"],
@@ -1021,6 +1057,7 @@ def _validate_jsonl(
     maximum_rows: int | None = None,
     first_resolve_tick: int | None = None,
     complete_success: bool = False,
+    expected_content: Mapping[str, object] | None = None,
 ) -> list[dict[str, object]]:
     try:
         size = path.stat().st_size
@@ -1082,6 +1119,35 @@ def _validate_jsonl(
                     line_number=line_number,
                     previous_tick=previous_tick,
                 )
+                if expected_content is not None:
+                    for key in ("scope", "foundation"):
+                        if row[key] != expected_content[key]:
+                            raise JsonlValidationError(
+                                f"line {line_number} {key} differs from captured content"
+                            )
+                    if (
+                        _observable_inventory(
+                            row["observables"],
+                            scenario=cast("str", _nested_mapping(row, "scope")["scenario"]),
+                        )
+                        != expected_content["observables"]
+                    ):
+                        raise JsonlValidationError(
+                            f"line {line_number} observable inventory differs from captured content"
+                        )
+                if previous_row is not None:
+                    if row["scope"] != previous_row["scope"]:
+                        raise JsonlValidationError(f"line {line_number} scope differs from line 1")
+                    if _observable_inventory(
+                        row["observables"],
+                        scenario=cast("str", _nested_mapping(row, "scope")["scenario"]),
+                    ) != _observable_inventory(
+                        previous_row["observables"],
+                        scenario=cast("str", _nested_mapping(previous_row, "scope")["scenario"]),
+                    ):
+                        raise JsonlValidationError(
+                            f"line {line_number} observable inventory differs from line 1"
+                        )
                 rules = cast("Mapping[str, object]", row["rules"])
                 per_rule = cast("Sequence[Mapping[str, object]]", rules["per_rule"])
                 rule_ids = tuple(cast("str", rule["rule_id"]) for rule in per_rule)
@@ -1427,7 +1493,7 @@ def _diagnostics(rows: Sequence[Mapping[str, object]]) -> dict[str, object]:
             }
         )
         name = cast("str", first_observable["name"])
-        if observable_change_ticks:
+        if role == "observed_baseline" and observable_change_ticks:
             notices.append({"code": "observable.observed_baseline_changed", "subject": name})
 
     return {
@@ -1691,7 +1757,12 @@ def _csv_row(row: Mapping[str, object]) -> dict[str, object]:
         "tick_content_hash": row["tick_content_hash"],
     }
     observables = cast("Sequence[Mapping[str, object]]", row["observables"])
-    for prefix, observable in zip(OBSERVABLE_CSV_PREFIXES, observables, strict=True):
+    for observable in observables:
+        prefix = (
+            f"{observable['entity']}_{str(observable['field']).removeprefix('territory/')}".replace(
+                "-", "_"
+            )
+        )
         for field_name in (
             "before_value",
             "before_bits_hex",
@@ -1709,7 +1780,7 @@ def _write_csv(
     with (artifact_dir / "ticks.csv").open("x", encoding="utf-8", newline="") as output:
         writer = csv.DictWriter(
             output,
-            fieldnames=CSV_COLUMNS,
+            fieldnames=list(_csv_row(rows[0])),
             lineterminator="\n",
         )
         writer.writeheader()
@@ -2388,6 +2459,23 @@ def run_report(
     child_environment, campaign_id = _child_environment()
     artifact_dir = _create_artifact_dir(output_root)
     filesystem_free_before = shutil.disk_usage(artifact_dir).free
+    try:
+        content = _read_content_descriptor(runtime_path, child_environment, ticks)
+    except (OSError, ReportError) as error:
+        message = f"preflight: {error}"
+        summary = _failure_summary(
+            status="preflight_failed",
+            campaign_id=campaign_id,
+            ticks_requested=ticks,
+            runtime_exit_code=None,
+            error=message,
+            provenance=provenance,
+        )
+        _write_summary(artifact_dir, summary)
+        return RunResult(artifact_dir, summary, VALIDATION_EXIT_CODE, message)
+    (artifact_dir / "content.json").write_text(
+        json.dumps(content, sort_keys=True) + "\n", encoding="utf-8"
+    )
     before_probe = _probe_postgres_snapshot(child_environment)
     report_path = artifact_dir / "ticks.jsonl"
     argv = [
@@ -2499,6 +2587,7 @@ def run_report(
             expected_rows=ticks,
             first_resolve_tick=1,
             complete_success=True,
+            expected_content=content,
         )
     except JsonlValidationError as error:
         message = f"report validation failed: {error}"

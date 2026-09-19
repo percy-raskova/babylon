@@ -21,8 +21,9 @@ CAMPAIGN_ID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
 
 SCOPE = {
     "slice_id": "michigan-persistence-slice",
-    "scenario": "production/michigan-observer-v1",
+    "scenario": "production/michigan-observer-v2",
     "fixed_replay_seed": 319,
+    "horizon_periods": 16,
     "tick_duration_days": 28,
     "parameter_overrides": False,
     "stochastic_draws": False,
@@ -55,6 +56,27 @@ def _digest(value: int) -> str:
     return f"{value:064x}"
 
 
+def test_diagnostic_preflight_refuses_unsupported_horizon_before_run() -> None:
+    descriptor = {
+        "schema": "babylon.simulation.content.v1",
+        "scope": {**SCOPE, "scenario": "production/michigan-observer-v2", "horizon_periods": 16},
+        "foundation": FOUNDATION,
+        "observables": _inventory(),
+    }
+    with pytest.raises(sim_report.ReportError, match="authored horizon 16"):
+        sim_report.validate_content_descriptor(descriptor, ticks=130)
+
+
+def test_diagnostic_preflight_admits_current_captured_content() -> None:
+    descriptor = {
+        "schema": "babylon.simulation.content.v1",
+        "scope": {**SCOPE, "scenario": "production/michigan-observer-v2", "horizon_periods": 16},
+        "foundation": FOUNDATION,
+        "observables": _inventory(),
+    }
+    assert sim_report.validate_content_descriptor(descriptor, ticks=16) == descriptor
+
+
 def _bits_hex(value: float) -> str:
     return struct.pack(">d", value).hex()
 
@@ -85,7 +107,7 @@ def _valid_row(
 ) -> dict[str, object]:
     reopened = resolve_tick % 13 == 0 if reopened_after_commit is None else reopened_after_commit
     return {
-        "schema": "babylon.simulation.tick-report.v2",
+        "schema": "babylon.simulation.tick-report.v3",
         "resolve_tick": resolve_tick,
         "commit_disposition": "committed",
         "scope": copy.deepcopy(SCOPE),
@@ -149,6 +171,22 @@ def _write_runtime(path: Path, body: str) -> Path:
     return path
 
 
+def _inventory() -> list[dict[str, object]]:
+    return [
+        {key: value[key] for key in sim_report.OBSERVABLE_IDENTITY_FIELDS}
+        for value in _valid_row(1)["observables"]
+    ]
+
+
+def _descriptor() -> dict[str, object]:
+    return {
+        "schema": "babylon.simulation.content.v1",
+        "scope": SCOPE,
+        "foundation": FOUNDATION,
+        "observables": _inventory(),
+    }
+
+
 def _configured_runtime(
     path: Path,
     *,
@@ -164,6 +202,7 @@ def _configured_runtime(
     marker_path: Path | None = None,
 ) -> Path:
     config = {
+        "content": _descriptor(),
         "rows": rows,
         "exit_code": exit_code,
         "stdout": stdout,
@@ -184,6 +223,10 @@ import pathlib
 import sys
 import time
 
+config = json.loads(pathlib.Path(sys.argv[0] + ".config.json").read_text(encoding="utf-8"))
+if sys.argv[1] == "describe":
+    print(json.dumps(config["content"]))
+    raise SystemExit(0)
 assert sys.argv[1] == "run"
 assert sys.argv[2] == "--ticks"
 assert sys.argv[4:6] == ["--restart-every", "13"]
@@ -396,10 +439,9 @@ def test_success_creates_unique_secret_safe_artifacts_summary_and_csv(
     assert first_console.err == ""
 
     csv_lines = (first_artifact / "ticks.csv").read_text(encoding="utf-8").splitlines()
-    assert csv_lines[0].split(",") == list(sim_report.CSV_COLUMNS)
+    assert csv_lines[0].split(",") == list(sim_report._csv_row(_valid_row(1)))
     assert len(csv_lines) == 3
     assert csv_lines[1].startswith("1,committed,")
-    assert csv_lines[2].endswith("," + _digest(402))
     assert "graph_before_sha256" not in sim_report.CSV_COLUMNS
     assert "administrative_graph_before_sha256" in sim_report.CSV_COLUMNS
     assert "stable_graph_before_sha256" in sim_report.CSV_COLUMNS
@@ -407,13 +449,14 @@ def test_success_creates_unique_secret_safe_artifacts_summary_and_csv(
         csv_rows = list(csv.DictReader(csv_file))
     assert csv_rows[0]["reopened_after_commit"] == "False"
     assert csv_rows[1]["reopened_after_commit"] == "True"
+    assert csv_rows[1]["tick_content_hash"] == _digest(402)
     assert csv_rows[0]["choice_receipt_count"] == "1"
     assert csv_rows[0]["choice_receipt_digest_sha256"] == _digest(601)
     for county in range(1, 166, 2):
         for field, value in OBSERVABLE_FIELDS:
             prefix = f"county_26{county:03}_{field.removeprefix('territory/').replace('-', '_')}"
             for suffix in ("before_value", "before_bits_hex", "after_value", "after_bits_hex"):
-                assert f"{prefix}_{suffix}" in sim_report.CSV_COLUMNS
+                assert f"{prefix}_{suffix}" in csv_lines[0].split(",")
             assert float(csv_rows[0][f"{prefix}_after_value"]) == value
 
     persisted = "".join(
@@ -795,16 +838,16 @@ def _invalid_row(case: str) -> dict[str, object]:  # noqa: C901 - table-driven m
         ("persistence_nonboolean", "persistence.reopened_after_commit"),
         ("bool_count", "events.count"),
         ("scope_extra", "scope fields"),
-        ("scope_seed", "scope.fixed_replay_seed"),
+        ("scope_seed", "scope differs from captured content"),
         ("scope_capability", "scope.stochastic_draws"),
         ("scope_weekly_duration", "scope.tick_duration_days"),
         ("scope_duration_float", "scope.tick_duration_days"),
         ("scope_duration_missing", "scope fields"),
         ("event_types_unsorted", "events.per_type must be sorted"),
         ("event_type_sum", "per-type event count sum"),
-        ("observable_missing", "exactly 332 observables"),
-        ("observable_order", "observable 0 field"),
-        ("observable_role", "observable 0 role"),
+        ("observable_missing", "observable inventory differs"),
+        ("observable_order", "observable inventory differs"),
+        ("observable_role", "observable inventory differs"),
         ("observable_nonfinite", "observable 2 after_value must be finite"),
         ("observable_bits", "observable 2 after_bits_hex does not match after_value"),
         ("top_fired_gt_considered", "rules.considered must be >= rules.fired"),
@@ -813,7 +856,7 @@ def _invalid_row(case: str) -> dict[str, object]:  # noqa: C901 - table-driven m
         ("per_rule_sum_mismatch", "per-rule considered sum"),
     ],
 )
-def test_strict_v2_row_validation_rejects_wrong_shapes_and_values(
+def test_strict_v3_row_validation_rejects_wrong_shapes_and_values(
     tmp_path: Path,
     case: str,
     message: str,
@@ -822,7 +865,7 @@ def test_strict_v2_row_validation_rejects_wrong_shapes_and_values(
     _write_jsonl(report, [_invalid_row(case)])
 
     with pytest.raises(sim_report.JsonlValidationError, match=message):
-        sim_report._validate_jsonl(report, expected_rows=1)
+        sim_report._validate_jsonl(report, expected_rows=1, expected_content=_descriptor())
 
 
 def test_partial_rows_must_be_contiguous_but_may_start_after_one(
@@ -850,7 +893,7 @@ def test_durable_rows_accept_continuous_graph_and_world_hash_chains(
     assert [row["resolve_tick"] for row in rows] == [1, 2, 3]
 
 
-def test_v2_scope_and_ordered_rule_inventory_cannot_drift_between_ticks(
+def test_v3_scope_and_ordered_rule_inventory_cannot_drift_between_ticks(
     tmp_path: Path,
 ) -> None:
     rows = [_valid_row(1), _valid_row(2)]
@@ -894,7 +937,7 @@ def test_restart_schedule_requires_intervals_and_only_complete_final_readback(
     report = tmp_path / "ticks.jsonl"
     _write_jsonl(report, [_valid_row(13, reopened_after_commit=False)])
     with pytest.raises(sim_report.JsonlValidationError, match="resolve_tick 13 must be reopened"):
-        sim_report._validate_jsonl(report, expected_rows=1)
+        sim_report._validate_jsonl(report, expected_rows=1, expected_content=_descriptor())
 
     _write_jsonl(
         report,
@@ -933,12 +976,17 @@ def test_zero_events_requires_an_empty_per_type_breakdown(tmp_path: Path) -> Non
     report = tmp_path / "ticks.jsonl"
     _write_jsonl(report, [row])
 
-    assert sim_report._validate_jsonl(report, expected_rows=1)[0]["events"] == events
+    assert (
+        sim_report._validate_jsonl(report, expected_rows=1, expected_content=_descriptor())[0][
+            "events"
+        ]
+        == events
+    )
 
     events["per_type"] = [{"event_type": "EventType/ALPHA", "count": 0}]
     _write_jsonl(report, [row])
     with pytest.raises(sim_report.JsonlValidationError, match="positive integer"):
-        sim_report._validate_jsonl(report, expected_rows=1)
+        sim_report._validate_jsonl(report, expected_rows=1, expected_content=_descriptor())
 
 
 def test_diagnostics_exposes_plateaus_rule_event_material_and_observable_trends() -> None:
@@ -1106,6 +1154,20 @@ def test_tick_one_stable_and_observable_movement_is_not_reported_flat() -> None:
         if notice["code"] == "stable_graph.flat"
     }
     assert observable["name"] not in flat_subjects
+
+
+def test_dynamic_staffing_movement_does_not_claim_observed_baseline_drift() -> None:
+    row = _valid_row(1)
+    _set_observable(row, 2, before_value=4.0, after_value=0.0)
+    row["observables"][2]["role"] = "dynamic"
+
+    diagnostics = sim_report._diagnostics([row])
+
+    assert diagnostics["observables"][2]["change_count"] == 1
+    assert not any(
+        notice["code"] == "observable.observed_baseline_changed"
+        for notice in diagnostics["notices"]
+    )
 
 
 def test_observed_baseline_movement_remains_visible_after_a_long_unchanged_run() -> None:
@@ -1321,6 +1383,7 @@ def test_noisy_runtime_is_killed_at_bounded_capture_without_secret_leak(
 ) -> None:
     marker = tmp_path / "survived.txt"
     secret = "postgresql://user:noisy-secret@example.invalid/babylon"
+    monkeypatch.setattr(sim_report, "_read_content_descriptor", lambda *_args: _descriptor())
     monkeypatch.setattr(sim_report, "MAX_STDOUT_BYTES", 128)
     monkeypatch.setenv("DATABASE_URL", secret)
     runtime = _configured_runtime(
@@ -1503,4 +1566,36 @@ def test_report_rejects_retired_or_incomplete_observer_inventory(
     path = tmp_path / "ticks.jsonl"
     path.write_text(json.dumps(row) + "\n")
     with pytest.raises(sim_report.JsonlValidationError):
-        sim_report._validate_jsonl(path)
+        sim_report._validate_jsonl(path, expected_content=_descriptor())
+
+
+def test_preflight_horizon_failure_never_probes_or_executes_database(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = _configured_runtime(tmp_path / "babylon-runtime", rows=None)
+
+    def unexpected_probe(_environment: object) -> None:
+        pytest.fail("database probed before content preflight")
+
+    monkeypatch.setattr(sim_report, "_probe_postgres_snapshot", unexpected_probe)
+    result = sim_report.run_report(runtime=runtime, ticks=130, output_root=tmp_path / "out")
+    assert result.summary["status"] == "preflight_failed"
+    assert "authored horizon 16" in (result.artifact_dir / "summary.txt").read_text()
+    assert result.summary["ticks_reported"] == 0
+
+
+def test_report_uses_captured_seed_and_observations_without_fixed_inventory(tmp_path: Path) -> None:
+    row = _valid_row(1)
+    row["scope"]["fixed_replay_seed"] = 777
+    row["observables"] = row["observables"][:2]
+    content = {
+        **_descriptor(),
+        "scope": row["scope"],
+        "observables": [
+            {key: value[key] for key in sim_report.OBSERVABLE_IDENTITY_FIELDS}
+            for value in row["observables"]
+        ],
+    }
+    path = tmp_path / "ticks.jsonl"
+    _write_jsonl(path, [row])
+    assert sim_report._validate_jsonl(path, expected_content=content) == [row]

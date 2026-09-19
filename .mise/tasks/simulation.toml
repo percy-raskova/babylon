@@ -9,7 +9,7 @@ export BABYLON_RUNTIME_DSN="${BABYLON_RUNTIME_DSN:-host=127.0.0.1 port=5433 dbna
 sim_campaign_id="$(python3 tools/devtools/worktree_campaign.py --purpose michigan-e2e --fresh)" || exit
 export BABYLON_CAMPAIGN_ID="$sim_campaign_id"
 export PATH="$PWD/rust/target/debug:$PATH"
-babylon-runtime run --ticks 130
+babylon-runtime run --ticks 16
 """
 
 ["sim:e2e-bg"]
@@ -24,7 +24,7 @@ sim_campaign_id="$(python3 tools/devtools/worktree_campaign.py --purpose michiga
 export BABYLON_CAMPAIGN_ID="$sim_campaign_id"
 export PATH="$PWD/rust/target/debug:$PATH"
 printf '%s\n' "$sim_campaign_id" > .sim-pids/e2e.campaign-id
-nohup babylon-runtime run --ticks 130 > .sim-pids/e2e.log 2>&1 &
+nohup babylon-runtime run --ticks 16 > .sim-pids/e2e.log 2>&1 &
 echo $! > .sim-pids/e2e.pid
 echo "started PID $(cat .sim-pids/e2e.pid) — log .sim-pids/e2e.log"
 '''
@@ -156,10 +156,28 @@ arg "[database_scope]" help="Database attribution scope: shared or exclusive" de
 '''
 run = """
 export BABYLON_RUNTIME_DSN="${BABYLON_RUNTIME_DSN:-host=127.0.0.1 port=5433 dbname=babylon_test user=test password=test}"
-(cd rust && CARGO_BUILD_JOBS=4 cargo build -p babylon-persistence --bin babylon-runtime --locked)
+(cd rust && cargo build -p babylon-persistence --bin babylon-runtime --locked)
 python3 tools/devtools/sim_report.py \
   --runtime rust/target/debug/babylon-runtime \
   --ticks ${usage_ticks} --timeout-seconds ${usage_timeout_seconds} \
   --database-scope ${usage_database_scope} \
   --output-root reports/sim-runs
+"""
+
+["sim:qualify"]
+description = "Run the long profiles, deterministic sensitivity, and both historical comparisons"
+usage = '''
+arg "output" help="New task-owned output directory"
+'''
+run = """
+set -e
+(cd rust && cargo build -p babylon-persistence --example simulation_experiment --locked)
+result=0
+uv run --frozen python -m tools.devtools.simulation_qualification \
+  --runtime rust/target/debug/examples/simulation_experiment \
+  --output "${usage_output}/long" --sensitivity || result=$?
+uv run --frozen python -m tools.devtools.historical_report \
+  --runtime rust/target/debug/examples/simulation_experiment \
+  --output "${usage_output}/historical" || result=$?
+exit "$result"
 """

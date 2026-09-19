@@ -184,6 +184,9 @@ impl MichiganContentPreset {
         self,
         catalog: &MichiganMaterialCatalog,
     ) -> Result<MaterialRuntimeFoundation, MichiganContentError> {
+        if catalog.experiment().is_some() {
+            return Err(MichiganContentError::Foundation);
+        }
         crate::sector_bundle::foundation::create_bundle_foundation(
             self.id(),
             self.delivery(),

@@ -16,24 +16,64 @@ concurrency:
 
 jobs:
   sim-artifacts:
-    name: Rust Michigan 130-Period Diagnostics
+    name: Long and Historical Simulation Validation
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # Four 15-minute persisted profiles, six 1-minute sensitivity cases,
+    # diagnostics, and wrapper margins fit below the report-step caps.
+    # Reserve 35 minutes beyond those caps for setup, artifacts, and cleanup.
+    timeout-minutes: 120
     env:
       BABYLON_RUNTIME_DSN: "dbname=babylon_test host=127.0.0.1 port=5433 user=test password=test"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: dev
+          ref: ${{ github.event_name == 'schedule' && 'dev' || github.sha }}
       - uses: ./.github/actions/bootstrap-persistence
         id: persistence-cache
         with:
           cache-key: sim_report
+      - uses: ./.github/actions/bootstrap-python
       - uses: ./.github/actions/postgres-up
       - name: Bootstrap Rust-owned schema
         run: mise run db:bootstrap
-      - name: Generate Rust Michigan diagnostic report
-        run: mise run sim:report 130 3000 exclusive
+      - name: Build typed simulation runner
+        id: experiment-build
+        run: cd rust && cargo build -p babylon-persistence --example simulation_experiment --locked
+      - name: Generate bounded persistence diagnostics
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        run: mise run sim:report 16 300 exclusive
+      - name: Qualify long profiles and deterministic sensitivity
+        if: ${{ !cancelled() && steps.experiment-build.outcome == 'success' }}
+        timeout-minutes: 40
+        run: >-
+          mise exec -- uv run --frozen python -m tools.devtools.simulation_qualification
+          --runtime rust/target/debug/examples/simulation_experiment
+          --output reports/sim-runs/long --dsn-env BABYLON_RUNTIME_DSN --sensitivity
+      - name: Compare historical employment and border freight
+        if: ${{ !cancelled() && steps.experiment-build.outcome == 'success' }}
+        timeout-minutes: 35
+        run: >-
+          mise exec -- uv run --frozen python -m tools.devtools.historical_report
+          --runtime rust/target/debug/examples/simulation_experiment
+          --output reports/sim-runs/historical --dsn-env BABYLON_RUNTIME_DSN
+      - name: Publish diagnostic and historical summaries
+        if: always()
+        run: |
+          python3 - <<'PYTHON'
+          import os
+          import re
+          from pathlib import Path
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a") as output:
+              for path in sorted(Path("reports/sim-runs").glob("*/summary.*")):
+                  if path.suffix in {".md", ".txt"}:
+                      summary = re.sub(
+                          r"!\[([^\]]*)\]\(([^)]+)\)",
+                          r"Chart: \1 (\2 in the uploaded artifact)",
+                          path.read_text(),
+                      )
+                      output.write(summary + "\n")
+          PYTHON
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

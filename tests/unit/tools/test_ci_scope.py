@@ -100,10 +100,11 @@ def test_weekly_database_matrix_includes_organizer_and_admits_focused_dispatch()
     workflow = yaml.safe_load((root / ".github/workflows/weekly-pg-integration.yml").read_text())
     dispatch = workflow[True]["workflow_dispatch"]["inputs"]["focus"]
     assert dispatch["default"] == "all"
-    assert dispatch["options"] == ["all", "statewide_qualified", "organizer"]
+    assert dispatch["options"] == ["all", "reader", "statewide_qualified", "organizer"]
     matrix = " ".join(workflow["jobs"]["runtime-contracts"]["strategy"]["matrix"].split())
     focused_branches = re.findall(r"inputs.focus == '([^']+)' && '([^']+)'", matrix)
     assert {focus: json.loads(value) for focus, value in focused_branches} == {
+        "reader": {"focus": ["reader"]},
         "statewide_qualified": {"focus": ["statewide_qualified"]},
         "organizer": {"focus": ["organizer"]},
     }

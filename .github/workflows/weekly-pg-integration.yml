@@ -11,11 +11,12 @@ on:
   workflow_dispatch:
     inputs:
       focus:
-        description: Run every database contract or focus on statewide or organizer campaigns
+        description: Run every database contract or focus on readers, statewide or organizer campaigns
         type: choice
         default: all
         options:
           - all
+          - reader
           - statewide_qualified
           - organizer
 
@@ -37,6 +38,7 @@ jobs:
       matrix: >-
         ${{ fromJSON(inputs.focus == 'statewide_qualified' &&
           '{"focus":["statewide_qualified"]}' ||
+          inputs.focus == 'reader' && '{"focus":["reader"]}' ||
           inputs.focus == 'organizer' && '{"focus":["organizer"]}' ||
           '{"focus":["runtime_smoke","reference_integrity","runtime","archive",
           "reader","client","statewide_qualified","organizer"]}') }}
@@ -55,6 +57,7 @@ jobs:
         env:
           BABYLON_POSTGRES_LIVE_FOCUS: ${{ matrix.focus }}
           BABYLON_POSTGRES_IMAGE_ID: ${{ steps.postgres-image.outputs.image-id }}
+          BABYLON_TIMINGS: "1"
         run: tools/run_rust_postgres.sh
 
       - name: Save successful persistence cache

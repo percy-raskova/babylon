@@ -7,7 +7,6 @@ use crate::michigan_cohorts::michigan_business_subject_for_owner;
 use crate::michigan_material::{
     MichiganDeliveryPreset, MichiganMaterialCatalog, MichiganMaterialCorridor,
     MichiganMaterialPath, MichiganMaterialRoute, MichiganMaterialSite, MichiganSiteRole,
-    MICHIGAN_MAX_HORIZON_PERIODS,
 };
 use babylon_material_circuit::{
     decode_material_circuit_state, encode_material_circuit_state, BacklogRow, CapacityRow,
@@ -160,7 +159,7 @@ pub fn compile_sector_bundles(
         .iter()
         .filter(|c| active.contains(&c.id()))
     {
-        for period in 1..=MICHIGAN_MAX_HORIZON_PERIODS {
+        for period in 1..=catalog.horizon_ticks() {
             state.corridor_capacities.push(CorridorCapacity {
                 corridor_id: c.id(),
                 period,
@@ -404,7 +403,7 @@ impl OwnerRows {
                 unit_id: self.labor_unit,
                 quantity_per_batch: process.labor_hours_per_batch,
             });
-            for period in 1..=MICHIGAN_MAX_HORIZON_PERIODS {
+            for period in 1..=catalog.horizon_ticks() {
                 self.rows.capacities.push(CapacityRow {
                     process_id: process.id(),
                     site_id: site.id(),
@@ -494,6 +493,7 @@ impl OwnerRows {
         }
         SectorBundle::from_parts(
             owner,
+            catalog.horizon_ticks(),
             evidence,
             self.goods.into_iter().collect(),
             self.processes,

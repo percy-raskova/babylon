@@ -47,6 +47,7 @@ pub const STAFFING_FIELDS: [&str; 3] = [
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MaterialStaffingError {
     EmptyBindings,
+    InventoryHasLabor,
     NodeBinding,
     NodeOwner,
     DuplicateNode,
@@ -169,6 +170,29 @@ impl StaffingComposition {
             }
         }
         Ok(Self { bindings })
+    }
+    /// Admit an inventory/transport boundary with no labor-consuming activity.
+    /// # Errors
+    /// Refuses any production, merchant, maintenance or scheduled labor authority.
+    pub fn inventory_only(
+        state: &babylon_material_circuit::MaterialCircuitState,
+    ) -> Result<Self, MaterialStaffingError> {
+        if !state.process_outputs.is_empty()
+            || !state.input_coefficients.is_empty()
+            || !state.labor_coefficients.is_empty()
+            || !state.capacities.is_empty()
+            || !state.production_commitments.is_empty()
+            || !state.labor.is_empty()
+            || !state.merchants.is_empty()
+            || !state.handling_coefficients.is_empty()
+            || state.maintenance_binding.is_some()
+            || state.maintenance_service.is_some()
+        {
+            return Err(MaterialStaffingError::InventoryHasLabor);
+        }
+        Ok(Self {
+            bindings: Vec::new(),
+        })
     }
     #[must_use]
     pub fn bindings(&self) -> &[StaffingNodeBinding] {

@@ -109,10 +109,12 @@ pub(super) fn publish(
         *receipt.tick_content_hash(),
     )?;
     validate_receipt(client, &scope)?;
-    // Keep campaign deletion ordered after this publication and its final claim.
+    // Keep campaign deletion ordered after this publication and its final claim,
+    // while allowing the runtime to advance the campaign's non-key tick fields.
+    // Receipt ordering is already held by the separate Archive campaign lock.
     client
         .query_one(
-            "SELECT campaign_id FROM babylon_meta.campaign WHERE campaign_id=$1 FOR UPDATE",
+            "SELECT campaign_id FROM babylon_meta.campaign WHERE campaign_id=$1 FOR KEY SHARE",
             &[campaign.as_uuid()],
         )
         .map_err(|error| database("hold Archive campaign during publication", &error))?;

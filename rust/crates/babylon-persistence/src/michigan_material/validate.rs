@@ -82,7 +82,7 @@ pub(super) fn content(c: &MichiganNormalizedContent) -> Result<(), MichiganMater
     if c.schema != "MichiganNormalizedContentV3"
         || c.evidence_class != "Designed"
         || c.tick_duration_days != babylon_kernel::clock::DAYS_PER_TICK
-        || !(1..=16).contains(&c.horizon_ticks)
+        || !(1..=crate::simulation_experiment::MAX_EXPERIMENT_HORIZON).contains(&c.horizon_ticks)
         || c.sites.is_empty()
         || c.sites.len() > 1024
         || c.goods.is_empty()

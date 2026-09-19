@@ -14,18 +14,24 @@ runtime, creates a fresh campaign, and records post-commit evidence:
 .. code-block:: bash
 
    mise run sim:report
-   mise run sim:report 130 3000 shared
+   mise run sim:report 16 300 shared
 
 The default run covers 15 four-week periods (60 weeks), crossing the annual
-boundary at period 13. The second command covers ten modeled years: 130
-periods, with a 3,000-second runtime timeout. A modeled year is 13 periods,
-or 364 days. Use ``exclusive`` as the final argument only for a database whose
-resource use belongs to this run; a campaign UUID alone does not isolate a
-shared PostgreSQL service.
+boundary at period 13. The second command covers the full 16-period player
+content horizon with a 300-second timeout. The runtime describes its captured
+scenario, seed, horizon, and observation inventory before the wrapper touches
+``PostgreSQL``. The wrapper refuses a longer run and keeps an error summary.
+Use the named long diagnostic profiles below for 130-period qualification.
+A modeled year is 13 periods, or 364 days.
+
+Use ``exclusive`` only for a database whose resource use belongs to this run.
+A campaign UUID alone does not isolate a shared ``PostgreSQL`` service.
 
 The report lives in a unique directory under ``reports/sim-runs``. It includes
 ``ticks.jsonl``, ``ticks.csv``, ``summary.json``, ``summary.txt``,
-``diagnostics.json``, runtime stdout and stderr, and ``resources.json``.
+``diagnostics.json``, ``content.json``, runtime ``stdout`` and ``stderr``, and
+``resources.json``. A preflight refusal retains its error and requested count
+in the summary without starting a campaign.
 The JSON rows disclose ``scope.tick_duration_days`` and the summary carries
 that value from validated runtime evidence. The wrapper requires contiguous
 commits, exact source and foundation identities, a restart every 13 periods,
@@ -435,7 +441,9 @@ Compare delivery time and opening stock
 Run ``michigan_experiment`` for the PER-309 comparison.
 It runs the admitted material replay path in memory. It reads production,
 logistics, and staffing receipts. It needs no ``PostgreSQL`` service. Keep the
-accepted baseline file unchanged. The example embeds it at compilation.
+governed baseline under ``tests/baselines/michigan_causal.json`` unchanged
+unless the behavioral change is intentional and recorded by the existing
+baseline ceremony. The baseline captures observed mechanical outcomes.
 
 The four cases select Standard or Delayed delivery.
 They set only ``process.panel_forming.OPENING_INPUT_UNITS`` to zero or 320 kg
@@ -479,11 +487,12 @@ Read the four output files together:
 The period records connect delivery, available work, production,
 ``unretained hours``, and the next period's staffing.
 
-The example pins the accepted canonical numeric baseline. TOML formatting is
-not part of that numeric identity. A changed baseline needs a new reviewed
-experiment. The execution record includes a binary digest and checks embedded
-harness sources against the clean checkout. It does not claim complete build
-attestation.
+Each case now uses ``SimulationExperimentV1`` with admitted typed delivery
+and stock interventions. The report checks food controls, causal timing,
+staffing movements, finite orders, and conserved mass before completion.
+TOML formatting is not part of the numeric identity. The execution record
+includes a binary digest and checks embedded harness sources against the
+clean checkout. It does not claim complete build attestation.
 
 ``failure.json`` identifies the failed case and last recorded
 completed period. Accept a comparison only with exit code zero, a complete
@@ -593,3 +602,159 @@ measurements, and report failures or unavailable measurements explicitly.
 
 See :doc:`/concepts/architecture` for authority boundaries and
 :doc:`/reference/ci-workflow` for development and release validation.
+
+
+Qualify long and historically initialized simulations
+-----------------------------------------------------
+
+Run the sustained and depletion profiles, a small deterministic sensitivity
+matrix, and both historical comparisons:
+
+.. code-block:: bash
+
+   mise run sim:qualify /absolute/new-report-directory
+
+This command builds the Rust runner once and runs each profile serially. Local
+execution checks uninterrupted versus checkpoint-restarted replay. The weekly
+and on-demand workflow also compares every long and historical period with
+``PostgreSQL`` execution, with reconstruction at annual boundaries and the
+final period.
+Long and historical profiles have a 900-second execution bound after
+compilation. Each 16-period sensitivity case has a 60-second bound. All
+profiles have a 4 MiB artifact bound. Keep incomplete output as failure
+evidence.
+
+``diagnostic-sustained.json`` covers 130 four-week periods with finite stocks
+and orders that support activity in the final modeled year.
+``diagnostic-depletion.json`` extends the current finite endowment to the same
+horizon so exhaustion stays visible. Player profiles still refuse more than
+16 periods. These are ten modeled years, not ten civil years.
+
+The typed input contains a named profile, horizon, seed, optional civil epoch
+and source snapshot identity, starting observations, and admitted interventions.
+Unknown fields, units, duplicate interventions, invalid horizons, and inadmissible
+combinations fail before execution. Resolved inputs and their digest belong to
+the campaign identity. Current profiles consume no governed randomness. The
+capacity and stock comparison measures deterministic sensitivity. It supplies
+no sampled ensemble or estimate of sampling uncertainty.
+
+The historical report contains two separate dated profiles:
+
+Employment begins on 2010-01-01 and runs 131 periods. Five private county and
+industry groups use 2010 beginning QWI employment as initial employed slots.
+QWI counts jobs. The mapping does not assert unique people. Weekly capacity
+uses ``floor(initial jobs * 40 / labor hours per batch)``.
+
+Working hours, labor recipes, zero reserves, opening stocks, commitments, and
+order bounds remain explicit Designed inputs. One period of downstream inputs
+and finite horizon-covering upstream stocks separate initialization
+from outcomes.
+
+Freight begins on 2019-02-01 and runs 78 periods. January 2019 observed mass
+initializes transport scale. The explicit Canadian inventory boundary sends
+finite HS72 iron-and-steel orders to Detroit port entry, measured in kilograms.
+The evaluator scores arrival mass at that endpoint. This comparison covers
+truck imports from Canada across the whole port. It supplies no county
+destination or particular bridge attribution.
+
+CI reads two small Parquet fixtures under ``tests/fixtures/historical/michigan``.
+The manifest records SQL, source hashes, release/vintage, schema, units, quality
+flags, row counts, and checksums. Re-extract only from the read-only reference
+SQLite database with ``python -m tools.devtools.historical_extract --help``.
+The 220 QWI rows cover 2009-2019. The 82 BTS source rows retain container
+partitions before aggregation into 72 months in 2019-2024. Exports, air, Mexico,
+other chapters, and domestic transfers are excluded. Land-export zero weights
+are unavailable measurements, not observations of zero mass.
+
+Future observations enter only the Python evaluator. The engine captures only
+starting observations and Designed assumptions. The fixed 2024 QCEW display
+fields enter neither historical initialization nor scoring. Changing a held-out
+observation can change scores, but cannot change captured inputs or trajectories.
+
+Employment uses QWI beginning-of-quarter stocks dated January, April, July,
+and October 1. It samples the latest committed state on or before that date
+and records the offset. The last observed stock is October 1, 2019. Execution
+continues through the end of 2019.
+
+The evaluator allocates freight totals
+across calendar months by exact day overlap. It assumes uniform arrivals
+within each 28-day period for reporting. This Derived assumption preserves
+mass without adding mechanics within a period. Gregorian boundaries and
+leap days remain civil dates.
+
+Employment development and evaluation windows are 2010-2014 and 2015-2019.
+Freight windows are February-December 2019 and 2020-2024. Evaluation uses zero lag.
+Held-out outcomes cannot select parameters or lags.
+
+Reports show trajectories,
+annual summaries, levels and changes, and employment base-100 indices. Metrics
+include direction agreement, Pearson and Spearman correlations, bias, MAE,
+RMSE, and coverage. Reports include no-change and seasonal-persistence
+comparators. Missing or suppressed values,
+constant correlations, and zero denominators remain explicit.
+
+Use historically dated profiles as development benchmarks alongside playable
+scenarios. Read ``summary.md`` with aligned observations, raw trajectories,
+metric tables, charts, captured inputs, checksums, and replay evidence.
+Qualification requires complete execution, conserved accounts, provenance,
+and artifact integrity. Empirical fit remains advisory. High correlation or
+matching directions can coexist with large errors in amounts.
+
+The provisional warning policy approved on 2026-09-19 uses each series'
+frozen observed development mean. It warns when MAE exceeds 10 percent of
+that mean or absolute signed bias exceeds 5 percent. The targets carry the
+``Designed`` evidence class. They are not confidence intervals. Held-out
+outcomes cannot set the bands.
+
+A warning preserves valid engineering results. It cannot excuse failed
+execution or missing evidence.
+
+Read first- and second-order differences as descriptive estimates, with
+direction agreement and errors in amounts shown separately. Employment uses
+jobs at the observation dates. Freight uses kilograms per calendar day at
+each month's midpoint, so different month lengths do not create false
+changes in throughput. First differences divide by elapsed days and belong
+to interval midpoints. Second differences divide changes in those rates by
+the distance between their midpoints. Their units are jobs/day and jobs/day
+squared, or kg/day squared and kg/day cubed for freight throughput.
+
+Each development or evaluation window starts its own differences. Missing
+values break the chain. The report lists exact zeros separately. The evaluator
+applies no smoothing, noise threshold, timing shift, or acceleration tolerance.
+It does not qualify jerk. These estimates supply neither a causal explanation
+nor measured instantaneous derivatives.
+
+Review system coverage and BSL wiring before tuning. The captured
+``material/period`` rule invokes the native material close. Its position
+after metabolism does not activate the separate metabolism rule pack.
+
+Regional profiles omit the existing merchant, final-demand, and maintenance
+composition used by other scenarios. Older production rules describe
+different graph economics. Extra rule includes cannot make them serve as
+physical production. ADR261 records that boundary.
+
+Separate starting observations from simplifying assumptions and accounting
+constraints. The current closed workforce pools can redistribute employed
+and reserve slots but cannot grow beyond their admitted size. Broader labor
+flows need explicit sources and destinations. Removing the cap alone adds
+none of those flows.
+
+Production plans currently respond to physical availability,
+not sales or unsold stock. Preserve these bounded controls while connecting
+richer scenarios through BSL, authoritative state, and observable effects.
+Do not adjust parameters to compensate for missing connections or systems.
+
+These comparisons use revised historical data and make no claim about
+forecasts available at the time. Known profile omissions do not explain
+the cause of a particular historical mismatch.
+
+The small delivery/stock report runs inside affected PRs' Rust Validation.
+It compares actual candidate behavior with its committed baseline and shows
+changes against the exact base revision's baseline. Reports distinguish
+unchanged, intentionally changed, unexplained, and not comparable. Unexplained
+drift fails.
+
+Intentional changes need the existing baseline ceremony. Reports
+label initial baseline creation as not comparable to an absent predecessor. The
+report records the evaluated checkout SHA separately from PR head and base,
+because PR CI normally evaluates a synthetic merge revision.

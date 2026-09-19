@@ -50,6 +50,7 @@ DEV_INTEGRATION_TARGETS: Final = {
         "reader_role_contract",
         "archive_semantic_contract",
         "archive_worker_contract",
+        "archive_page_vectors",
         "michigan_material",
         "statewide_material",
         "spatial_reference_installer_contract",

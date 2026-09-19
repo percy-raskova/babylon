@@ -1,0 +1,421 @@
+{
+  "database_access": "read-only transaction",
+  "datasets": {
+    "employment": {
+      "evidence_class": "Observed",
+      "filename": "employment.parquet",
+      "quality": "QWI companion status flags retained; only status 1 is scored",
+      "query": "SELECT c.fips AS county_fips, i.naics_code, o.own_code,\n t.year, t.quarter, s.source_code, f.employment_begin, f.employment_end,\n f.employment_stable, f.hires_all, f.hires_new, f.separations,\n f.turnover_stable, f.firm_job_gains, f.firm_job_losses, f.firm_job_change,\n f.avg_monthly_earnings_stable_usd, f.payroll_usd,\n f.status_employment_begin, f.status_employment_end, f.status_employment_stable,\n f.status_hires_all, f.status_hires_new, f.status_separations,\n f.status_turnover_stable, f.status_firm_job_gains, f.status_firm_job_losses,\n f.status_firm_job_change, f.status_avg_monthly_earnings_stable, f.status_payroll\nFROM fact_qwi_county_flow AS f\nJOIN dim_county AS c USING (county_id)\nJOIN dim_industry AS i USING (industry_id)\nJOIN dim_ownership AS o USING (ownership_id)\nJOIN dim_time AS t USING (time_id)\nJOIN dim_data_source AS s USING (source_id)\nWHERE o.own_code = '5' AND t.year BETWEEN 2009 AND 2019\n AND ((c.fips = '26163' AND i.naics_code IN ('331', '3363'))\n OR (c.fips = '26099' AND i.naics_code = '332')\n OR (c.fips IN ('26161', '26125') AND i.naics_code = '311'))\nORDER BY c.fips, i.naics_code, t.year, t.quarter",
+      "row_count": 220,
+      "schema": "county_fips: string\nnaics_code: string\nown_code: string\nyear: int64\nquarter: int64\nsource_code: string\nemployment_begin: int64\nemployment_end: int64\nemployment_stable: int64\nhires_all: int64\nhires_new: int64\nseparations: int64\nturnover_stable: double\nfirm_job_gains: int64\nfirm_job_losses: int64\nfirm_job_change: int64\navg_monthly_earnings_stable_usd: int64\npayroll_usd: int64\nstatus_employment_begin: int64\nstatus_employment_end: int64\nstatus_employment_stable: int64\nstatus_hires_all: int64\nstatus_hires_new: int64\nstatus_separations: int64\nstatus_turnover_stable: int64\nstatus_firm_job_gains: int64\nstatus_firm_job_losses: int64\nstatus_firm_job_change: int64\nstatus_avg_monthly_earnings_stable: int64\nstatus_payroll: int64",
+      "sha256": "cace1bcb6ff625320d0d45f8fd318932234917598bbfa2970a214956a09459ec",
+      "units": "jobs (not unique people)",
+      "vintage": "QWI R2026Q3, retrieved 2026-09-05"
+    },
+    "freight": {
+      "evidence_class": "Observed",
+      "filename": "freight.parquet",
+      "quality": "source domestic_foreign and container_code partitions retained; land exports excluded; monthly sums formed only by evaluator",
+      "query": "SELECT f.port_code, h.hs2_code, f.mode_code, f.trade_type,\n f.domestic_foreign, f.container_code, f.country, t.year, t.month,\n s.source_code, f.value_usd, f.shipwt_kg, f.freight_charges_usd\nFROM fact_transborder_port_commodity AS f\nJOIN dim_hs2_commodity AS h USING (hs2_id)\nJOIN dim_time AS t USING (time_id)\nJOIN dim_data_source AS s USING (source_id)\nWHERE f.port_code = '3801' AND h.hs2_code = '72' AND f.country = '1220'\n AND f.mode_code = 5 AND f.trade_type = 2 AND t.year BETWEEN 2019 AND 2024\nORDER BY t.year, t.month, f.domestic_foreign, f.container_code",
+      "row_count": 82,
+      "schema": "port_code: string\nhs2_code: string\nmode_code: int64\ntrade_type: int64\ndomestic_foreign: string\ncontainer_code: string\ncountry: string\nyear: int64\nmonth: int64\nsource_code: string\nvalue_usd: int64\nshipwt_kg: int64\nfreight_charges_usd: int64",
+      "sha256": "4d684a273a340b14dfe51da653501b9952bc1c92065df922ff45855d7994cf78",
+      "units": "kilograms",
+      "vintage": "BTS 2019-2024 monthly releases, retrieved 2026-09-05"
+    }
+  },
+  "initialization_snapshot_sha256": {
+    "employment": "3a157f7ce819e7169fc602989b7e0bb04157198436d6ec6c148a2eef82b73c64",
+    "freight": "2eb8f1d7d1e7f19d57de2ac2c6ee950c85d9f42507c457a419fcc90f7c738683"
+  },
+  "pyarrow_version": "25.0.0",
+  "schema": "babylon.historical-observations.v1",
+  "snapshot_sha256": "110d59e6ab2a0a3dc6d2111b8d0a044df0e1067c3306bbabbfac22752ed15f9a",
+  "source_manifests": [
+    {
+      "files": [
+        {
+          "bytes": 178755799,
+          "filename": "qwi_mi_rh_f_gc_n3_op_u.csv.gz",
+          "integrity_check": "gzip -t OK; header row + record structure verified by direct inspection",
+          "label": "QWI Michigan, race x ethnicity detail, all firm ages, county, NAICS 3-digit, private ownership, not seasonally adjusted",
+          "reporting_years": "2000Q3 through 2021Q4 (verified from file content 2026-09-05: min 2000Q3, max 2021Q4 \u2014 Michigan's LEHD partnership coverage ends 2021)",
+          "retrieved_at": "2026-09-05T11:18:00Z",
+          "sha256": "fcad9cd2c5f1439b75c543ba687d3be61662066e6c2cc5e2ba71e2b88299442a",
+          "source_url": "https://lehd.ces.census.gov/data/qwi/R2026Q3/mi/qwi_mi_rh_f_gc_n3_op_u.csv.gz"
+        },
+        {
+          "bytes": 334287416,
+          "filename": "qwi_mi_rh_f_gc_n4_op_u.csv.gz",
+          "integrity_check": "gzip -t OK; header row + record structure verified by direct inspection",
+          "label": "QWI Michigan, race x ethnicity detail, all firm ages, county, NAICS 4-digit, private ownership, not seasonally adjusted",
+          "reporting_years": "2000Q3 through 2021Q4 (verified from file content 2026-09-05: min 2000Q3, max 2021Q4 \u2014 Michigan's LEHD partnership coverage ends 2021)",
+          "retrieved_at": "2026-09-05T11:20:00Z",
+          "sha256": "3c03562dfa2af6577a50e56c0a91355793cd7e156ef59da37a78dfc03a9ba4dd",
+          "source_url": "https://lehd.ces.census.gov/data/qwi/R2026Q3/mi/qwi_mi_rh_f_gc_n4_op_u.csv.gz"
+        }
+      ],
+      "manifest_filename": "lehd_qwi/MANIFEST.yaml",
+      "manifest_sha256": "99c15f311e8f1f3f1362696fde27aac014c405221955b5e0c4a06142fc80e238",
+      "retrieved_at": "2026-09-05T11:20:00Z",
+      "source_page": "https://lehd.ces.census.gov/data/qwi/R2026Q3/mi/"
+    },
+    {
+      "files": [
+        {
+          "bytes": 6314757,
+          "filename": "April2019TransBorderRawData.zip",
+          "sha256": "86b9cc75147f34deefbc7fbd1ee384d3a1bb03a5264f014f692833ce6b9d040c"
+        },
+        {
+          "bytes": 5967061,
+          "filename": "April2020TransBorderRawData.zip",
+          "sha256": "56aae2002c3c9e15345a4502a32498f49bcafa91cb98d30fed41c7ff96569b7d"
+        },
+        {
+          "bytes": 6218572,
+          "filename": "April2021TransBorderRawData.zip",
+          "sha256": "8d184f9cfe41d757aabe8e9595ab57b9ad7cc9253e79a6392b19225e7233ad9b"
+        },
+        {
+          "bytes": 6541603,
+          "filename": "April2022.zip",
+          "sha256": "22a7f597df64dc18d95fc38705616dba6c9be24418aa2c3bec6bd1278381b8a8"
+        },
+        {
+          "bytes": 6531559,
+          "filename": "April2023.zip",
+          "sha256": "a2ed146a9e618e3867ee671096bf72288d6a6206091e84b1f143fdda809ae18e"
+        },
+        {
+          "bytes": 1352073,
+          "filename": "April2024.zip",
+          "sha256": "55ef2395488a92723269b1a0974666ab204a5e6c68e9e1a6eba3e656f7cfd17d"
+        },
+        {
+          "bytes": 11860299,
+          "filename": "Aug2023.zip",
+          "sha256": "f61bc2319bffa09ef71596c9685f6f63d2261e3d12067fd751ea6d3aee82d27e"
+        },
+        {
+          "bytes": 11442393,
+          "filename": "August2019TransBorderRawData.zip",
+          "sha256": "d29901bf2e8602d8c77e590dcb73e915009d5fbc6c7b48951bc2b382228044b2"
+        },
+        {
+          "bytes": 10784344,
+          "filename": "August2020TransBorderRawData.zip",
+          "sha256": "359385b6f7ba434e7bc91fd1d234eb43e18d8082fbd4e899f66a4f8dbffe9f23"
+        },
+        {
+          "bytes": 11829259,
+          "filename": "August2022.zip",
+          "sha256": "95301869395de9098469ab167a8efe4c66511543cb450fd027b7425912aaeee9"
+        },
+        {
+          "bytes": 1279120,
+          "filename": "August2024.zip",
+          "sha256": "eface6e2ee321f7e06ee0f1dc60d7df447efe1b632f79330fdeb8030c16568f3"
+        },
+        {
+          "bytes": 18999051,
+          "filename": "December2019TransBorderRawData.zip",
+          "sha256": "b56076637798acf56433fc41772bcbde0ca06a414837410592315981eb20a940"
+        },
+        {
+          "bytes": 1179867,
+          "filename": "December2020TransBorderRawData.zip",
+          "sha256": "0c27d4d9561ad0adb158112189df8f19c28a01fe87bd72435609ecf2a88636ba"
+        },
+        {
+          "bytes": 19655537,
+          "filename": "December2022.zip",
+          "sha256": "df42e10300ce0b4c972773ed2e64d3ca7e42935a601f8ab1bd14349547689c3c"
+        },
+        {
+          "bytes": 1272300,
+          "filename": "December2023.zip",
+          "sha256": "eb2683560fc04a484df0a366a0a0ab5f2ebffffee02c2639ff87272ce295c166"
+        },
+        {
+          "bytes": 18906471,
+          "filename": "December2024.zip",
+          "sha256": "ad84cd8a78e2453c215ab5b4bff4d33e21df2d0c58a0782eedfde40da81bc267"
+        },
+        {
+          "bytes": 3799105,
+          "filename": "Feb-2022.zip",
+          "sha256": "3980fa7ec31903d86e4d80ab37b06000b56d84e6df2bffb9d413408fee138017"
+        },
+        {
+          "bytes": 3838706,
+          "filename": "Feb2023.zip",
+          "sha256": "1d845d21099cfcf085a03387788467591a374e1feecab088981511209befeb84"
+        },
+        {
+          "bytes": 1308420,
+          "filename": "Feb2024.zip",
+          "sha256": "0d213df2dc1b3fd1d845c74081300c81568087c3bd0d713814906e1ad92a7839"
+        },
+        {
+          "bytes": 3699302,
+          "filename": "February2019TransBorderRawData.zip",
+          "sha256": "7fb8f2f5cc4dd54445c7140d85acf4563a617f341b059be563e47aeb4c0a18c0"
+        },
+        {
+          "bytes": 3693894,
+          "filename": "February2020TransBorderRawData.zip",
+          "sha256": "5f568c89e9b3edad96aa2ede8ca5cc04f27fb5606fdcee8e7d9e6f1d26be2a1b"
+        },
+        {
+          "bytes": 3451507,
+          "filename": "February2021TransBorderRawData.zip",
+          "sha256": "3c4c9eb6cf18e5fb22a5c2608d94f2f45f88a8f00bcdf5ea1fb40dc168eac5cd"
+        },
+        {
+          "bytes": 2474418,
+          "filename": "Jan-2022.zip",
+          "sha256": "a8914bf46794a2a10994cfdad79942d12c989a002f2f147dea77b8c30af3ae94"
+        },
+        {
+          "bytes": 2569100,
+          "filename": "Jan2023.zip",
+          "sha256": "a209efe9b3e1e86fe22c8740c36ea5ff82cce74b4567c7c0fb3eb6b87645322b"
+        },
+        {
+          "bytes": 1280811,
+          "filename": "Jan2024.zip",
+          "sha256": "f719684b334d6d3224ffebe166705e7454fd2298b79fd8dce268a075c3ff8240"
+        },
+        {
+          "bytes": 2412016,
+          "filename": "January2019TransBorderRawData.zip",
+          "sha256": "84a4b83ed26f20cd7513c806464d3e3944b0f6adfd5c9e0f63a3c0bb11022a37"
+        },
+        {
+          "bytes": 2464796,
+          "filename": "January2020TransBorderRawData.zip",
+          "sha256": "8f551f7b1f9de197b670b7985fa149461552d196807637ba105ff2a2ab470f15"
+        },
+        {
+          "bytes": 2434860,
+          "filename": "January2021TransBorderRawData.zip",
+          "sha256": "4abffcc0a9eeb80d4363ab99ab733f8a735e2a05eaa21873207ba62dde8e23d4"
+        },
+        {
+          "bytes": 82303723,
+          "filename": "July-to-Dec-2021.zip",
+          "sha256": "bdf19bd09b4b572da9135520d4b4f2e5db8185f9ba3f438a3a810005b7c55377"
+        },
+        {
+          "bytes": 10159976,
+          "filename": "July2019TransBorderRawData.zip",
+          "sha256": "16d3e69d544a809edbf7be950344742d72e05fca7a4b5f73d90010e03a0f452c"
+        },
+        {
+          "bytes": 9442169,
+          "filename": "July2020TransBorderRawData.zip",
+          "sha256": "9ac10c4d08b4c434962351230a1bb8fc58f5aea2baccdfa9d1d6eb1b23d0e8cf"
+        },
+        {
+          "bytes": 10069663,
+          "filename": "July2021TransBorderRawData.zip",
+          "sha256": "4c4a193f79ce1fcd5a50f27ba36de75427d8243f4aeb546d3987212fbb13ce87"
+        },
+        {
+          "bytes": 10408722,
+          "filename": "July2022.zip",
+          "sha256": "3f1796ab81ca77d33be7ff77c12609022724ae623a7ae4a69d36ed0b0f106522"
+        },
+        {
+          "bytes": 10509123,
+          "filename": "July2023.zip",
+          "sha256": "8ac27044a9085bd92e837e25102c10ead0542e18f6866426d517c1c17ba5a533"
+        },
+        {
+          "bytes": 1330596,
+          "filename": "July2024.zip",
+          "sha256": "ea7e4cd1fdacf505f6d0e7352329fe340412dc2b944c86dfe8552fc77ee1174f"
+        },
+        {
+          "bytes": 8866303,
+          "filename": "June2019TransBorderRawData.zip",
+          "sha256": "a11567eb281226906a7105297df831c21dd1308cfb93a829cdfd3e81d3a9a59f"
+        },
+        {
+          "bytes": 8115835,
+          "filename": "June2020TransBorderRawData.zip",
+          "sha256": "672af82a525f7075f85d21d3615a1909ba663f18f7135cbe3c4f1e478a7aff9a"
+        },
+        {
+          "bytes": 8801154,
+          "filename": "June2021TransBorderRawData.zip",
+          "sha256": "7a11a23990514ee26c268ef48fb667a3ea152c0f71aaae2f44911817252bf29f"
+        },
+        {
+          "bytes": 9205210,
+          "filename": "June2022.zip",
+          "sha256": "3be60ec100264c8a8a937ce13dce340662183faa3cad71d6e0d0e7696d92bdd5"
+        },
+        {
+          "bytes": 9233876,
+          "filename": "June2023.zip",
+          "sha256": "ff69da1e5be282f25646d66f27a1fc5c581fd58208652a0a57cf4e9c20fbfda6"
+        },
+        {
+          "bytes": 1321255,
+          "filename": "June2024.zip",
+          "sha256": "b931bd618f87b778d51a174ff060bf6dc53ce258cf4a5504c68b8656af97e4b7"
+        },
+        {
+          "bytes": 5232843,
+          "filename": "March-2022.zip",
+          "sha256": "9b5d7ef1f00d83413e0da7c3b0a6d47463ed2786bd025480b2136111e0f164df"
+        },
+        {
+          "bytes": 5031507,
+          "filename": "March2019TransBorderRawData.zip",
+          "sha256": "d5c50d4b125376ced1103d3570dd16978073099c08b3b01233da2ec4f57a3344"
+        },
+        {
+          "bytes": 4996429,
+          "filename": "March2020TransBorderRawData.zip",
+          "sha256": "04465968db877914dec031011eca941ca0939c3b04790aae21b57d9d5454d0ef"
+        },
+        {
+          "bytes": 4956734,
+          "filename": "March2021TransBorderRawData.zip",
+          "sha256": "caad0a6c387d9dacf09c89bcfe16fa1a327ac52c5db442bf0e54cdacf4cd91e0"
+        },
+        {
+          "bytes": 5266969,
+          "filename": "March2023.zip",
+          "sha256": "ca39bf5ae9b3145fff77d77ffb2c8ce6cd5d614eb826e76ed7725e7654ae5480"
+        },
+        {
+          "bytes": 1279469,
+          "filename": "March2024.zip",
+          "sha256": "38b587b9b0e574ea12e80f07f4524c3ca7d81022bce95186860d419b35a30a09"
+        },
+        {
+          "bytes": 7616437,
+          "filename": "May2019TransBorderRawData.zip",
+          "sha256": "8a46f55910a3f3fad54483176de74dac3c5c5404bb9eb87ade22a889d36f94f7"
+        },
+        {
+          "bytes": 7083549,
+          "filename": "May2020TransBorderRawData.zip",
+          "sha256": "71b68a0db75e292d7885c0cad5a295b37e08af4d9c478f5ff7017ca5940b52fb"
+        },
+        {
+          "bytes": 7496383,
+          "filename": "May2021TransBorderRawData.zip",
+          "sha256": "177d71b9f73f51e36851a951fadb41ef45f88ea40de85ef49f81a1a5af11d3e1"
+        },
+        {
+          "bytes": 7874692,
+          "filename": "May2022.zip",
+          "sha256": "74124eb80167f315680b2430fe416fd3c1e00e509c20675dde1a9e5199bca6ae"
+        },
+        {
+          "bytes": 7903402,
+          "filename": "May2023.zip",
+          "sha256": "1658859fae067a008bd3db5902d6524f2f1422c003371f7e63bb229d1b5283f2"
+        },
+        {
+          "bytes": 1350000,
+          "filename": "May2024.zip",
+          "sha256": "b9636be4fdb54811c5faa62ca719f45a444e1cd8ae1ab450a3e8a5951432cf87"
+        },
+        {
+          "bytes": 1311251,
+          "filename": "Nov2023.zip",
+          "sha256": "5536c1887fef75e92341d73d5649f2c53e5f330fd6b53d406c659f657893f622"
+        },
+        {
+          "bytes": 15223131,
+          "filename": "November2019TransBorderRawData.zip",
+          "sha256": "c0ba3aae6e0ca0238ef6607ef8d44de501fac8d0c1d929f73176cb9c8faaa8da"
+        },
+        {
+          "bytes": 1186629,
+          "filename": "November2020TransBorderRawData.zip",
+          "sha256": "22b72ff929055b3d9c4a365d70996b2de11c8475dd790efa2854646b1f86e165"
+        },
+        {
+          "bytes": 15728867,
+          "filename": "November2022.zip",
+          "sha256": "43e066b5f2e4144546d1685652a8f5f1116815a7992843d38ccd6c8bf7c673d9"
+        },
+        {
+          "bytes": 1220201,
+          "filename": "November2024.zip",
+          "sha256": "c8ef86f94e4a87fbccccf90df6a01daf498e6510e0fd41bbf409ebad9551efcd"
+        },
+        {
+          "bytes": 1329881,
+          "filename": "Oct2023.zip",
+          "sha256": "29e46b0735f5d8bba38ba4b7325b4dcd0ee380a1b00e1afdc8f383828eea20fd"
+        },
+        {
+          "bytes": 14015860,
+          "filename": "October2019TransBorderRawData.zip",
+          "sha256": "088a32fc50797e064ae41f7d29c12aad0fdfdfd875d87366306ef472492000e5"
+        },
+        {
+          "bytes": 1208766,
+          "filename": "October2020TransBorderRawData.zip",
+          "sha256": "45baee9d37c726217998c724879f09107da0fc066cf213259daabb2f74878132"
+        },
+        {
+          "bytes": 14455810,
+          "filename": "October2022.zip",
+          "sha256": "f7ffa6bd0f07282a7b5ee596adc4741f47a6ac3d9723859bdc42cf72e5b589e5"
+        },
+        {
+          "bytes": 1242309,
+          "filename": "October2024.zip",
+          "sha256": "244d991196b54f56f60191e6cab574be6b53c05307fc3e74daf00e8d5024a5e5"
+        },
+        {
+          "bytes": 12683060,
+          "filename": "September2019TransBorderRawData.zip",
+          "sha256": "a5c0be2936b2bb78519d8c249defb0e79f7bd4046ace24e1390d4345184355fb"
+        },
+        {
+          "bytes": 12036806,
+          "filename": "September2020TransBorderRawData.zip",
+          "sha256": "138ccb1ac94cf6dc0c41b48ffedc814918f998a47e3e118a28ccd9a9bc630eab"
+        },
+        {
+          "bytes": 13121944,
+          "filename": "September2022.zip",
+          "sha256": "f44f1513f8602bd9692078780db1e6c5edf8af18490bdb3706632eb7e92e9226"
+        },
+        {
+          "bytes": 434336,
+          "filename": "codes-north-american-transborder-freight-raw-data.pdf",
+          "notes": "official code dictionary for the raw files (TRDTYPE/DISAGMOT/DEPE/DF/CONTCODE/SCTG semantics)",
+          "sha256": "028f76f9784d7c0618e86fe5221bd62caaea2a2b49506bdbe2c8245123b12aa0"
+        },
+        {
+          "bytes": 1312438,
+          "filename": "sept2023.zip",
+          "sha256": "2c203426a5fcebc115fcc86259258594cab9036b5d757b700d9a8a27aff1330b"
+        },
+        {
+          "bytes": 1256141,
+          "filename": "september2024.zip",
+          "sha256": "9d376e1e20686e2cb15f744c1a640a663687c0e85cd72948bc611e33fcd6b435"
+        }
+      ],
+      "manifest_filename": "bts_transborder/MANIFEST.yaml",
+      "manifest_sha256": "a7689dbcde70be864b3636efda446c31434ab22420a10f97b25d23efba855383",
+      "retrieved_at": "2026-09-05T15:45:00Z",
+      "source_page": "https://www.bts.gov/topics/transborder-raw-data"
+    }
+  ],
+  "sqlite_source": "marxist-data-3NF.sqlite",
+  "sqlite_source_bytes": 5170819072,
+  "sqlite_source_sha256": "7806de4a74b690c01f4e02498bedfff5b3df213e1fc3e5605fc3b7e0aeba8643"
+}

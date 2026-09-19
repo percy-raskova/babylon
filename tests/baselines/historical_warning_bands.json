@@ -1,0 +1,74 @@
+{
+  "absolute_bias_fraction": "1/20",
+  "approved_by": "Director",
+  "approved_on": "2026-09-19",
+  "comparison": "strictly_greater_than",
+  "evidence_class": "Designed",
+  "mae_fraction": "1/10",
+  "schema": "HistoricalWarningBandsV1",
+  "series": [
+    {
+      "development_end": "2014-10-01",
+      "development_rows_sha256": "92eb8ac583f193004843f1d493a3ae021167af8d6d1fd63c347cc057de63984a",
+      "development_start": "2010-01-01",
+      "observation_count": 20,
+      "observed_sum": 198588,
+      "profile": "employment",
+      "series_id": "26099/332",
+      "units": "jobs"
+    },
+    {
+      "development_end": "2014-10-01",
+      "development_rows_sha256": "9df57dd7076ce62d259b30192a7890e15da3bf97a45bf45b3c84aa414a91aab8",
+      "development_start": "2010-01-01",
+      "observation_count": 20,
+      "observed_sum": 27677,
+      "profile": "employment",
+      "series_id": "26125/311",
+      "units": "jobs"
+    },
+    {
+      "development_end": "2014-10-01",
+      "development_rows_sha256": "58f30ae91e94e179c020ce6a02c3d63d4af4cf4dc49fdf38498819619942ed8f",
+      "development_start": "2010-01-01",
+      "observation_count": 20,
+      "observed_sum": 13107,
+      "profile": "employment",
+      "series_id": "26161/311",
+      "units": "jobs"
+    },
+    {
+      "development_end": "2014-10-01",
+      "development_rows_sha256": "d6addd0ff12260d044f56d61627dab1e9e8cd22490596a810add213ed4b97bb9",
+      "development_start": "2010-01-01",
+      "observation_count": 20,
+      "observed_sum": 91331,
+      "profile": "employment",
+      "series_id": "26163/331",
+      "units": "jobs"
+    },
+    {
+      "development_end": "2014-10-01",
+      "development_rows_sha256": "82fa12916b4aa60da74790c791a4bdf82372dfbfb3661b3da0622ce99f68c350",
+      "development_start": "2010-01-01",
+      "observation_count": 20,
+      "observed_sum": 438358,
+      "profile": "employment",
+      "series_id": "26163/3363",
+      "units": "jobs"
+    },
+    {
+      "development_end": "2019-12-01",
+      "development_rows_sha256": "ed8c371e3c2b849badf9754309c475f5f799f369aabfe71d1396b4306f36b5b5",
+      "development_start": "2019-02-01",
+      "observation_count": 11,
+      "observed_sum": 1354974964,
+      "profile": "freight",
+      "series_id": "detroit_canada_truck_import_hs72",
+      "units": "kilograms"
+    }
+  ],
+  "source_observation_snapshot_sha256": "110d59e6ab2a0a3dc6d2111b8d0a044df0e1067c3306bbabbfac22752ed15f9a",
+  "status": "provisional",
+  "version": 1
+}

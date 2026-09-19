@@ -202,6 +202,20 @@ impl MichiganDefines {
         self.staffing.work_hours_per_person_week * WEEKS_PER_TICK
     }
     fn validate(&self) -> Result<(), MichiganDefinesError> {
+        self.validate_with_horizon_bound(super::michigan_material::MICHIGAN_MAX_HORIZON_PERIODS)
+    }
+    pub(crate) fn validate_experiment(&self, horizon: u64) -> Result<(), MichiganDefinesError> {
+        if self.horizon_periods != horizon {
+            return Err(MichiganDefinesError::Value(
+                "captured experiment horizon mismatch",
+            ));
+        }
+        self.validate_with_horizon_bound(crate::simulation_experiment::MAX_EXPERIMENT_HORIZON)
+    }
+    fn validate_with_horizon_bound(
+        &self,
+        maximum_horizon: u64,
+    ) -> Result<(), MichiganDefinesError> {
         use MichiganDefinesError::Value;
         if self.schema_version != 5 {
             return Err(Value("SCHEMA_VERSION must equal 5"));
@@ -211,10 +225,8 @@ impl MichiganDefines {
                 "TICK_DURATION_DAYS must equal the supported 28-day period",
             ));
         }
-        if !(1..=super::michigan_material::MICHIGAN_MAX_HORIZON_PERIODS)
-            .contains(&self.horizon_periods)
-        {
-            return Err(Value("HORIZON_PERIODS must be 1..=16"));
+        if !(1..=maximum_horizon).contains(&self.horizon_periods) {
+            return Err(Value("HORIZON_PERIODS exceeds the admitted profile bound"));
         }
         if !(1..=168).contains(&self.staffing.work_hours_per_person_week) {
             return Err(Value("WORK_HOURS_PER_PERSON_WEEK must be 1..=168"));

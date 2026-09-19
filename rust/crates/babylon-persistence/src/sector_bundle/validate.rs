@@ -1,11 +1,14 @@
 //! Structural owner and resource checks; captured catalog equality supplies authority.
 use super::{
-    SectorBundle, SectorBundleError, MAX_BUNDLE_GOODS, MAX_BUNDLE_PROCESSES,
-    MICHIGAN_MAX_HORIZON_PERIODS,
+    SectorBundle, SectorBundleError, MAX_BUNDLE_GOODS, MAX_BUNDLE_HORIZON_PERIODS,
+    MAX_BUNDLE_PROCESSES,
 };
 use crate::michigan_cohorts::michigan_business_subject_for_owner;
 use std::collections::{BTreeMap, BTreeSet};
 pub(super) fn bundle(value: &SectorBundle) -> Result<(), SectorBundleError> {
+    if !(1..=MAX_BUNDLE_HORIZON_PERIODS).contains(&value.horizon_ticks) {
+        return Err(SectorBundleError::Bound);
+    }
     let expected =
         michigan_business_subject_for_owner(&value.owner.county_geoid, &value.owner.sector_code);
     if value.owner.subject != expected
@@ -149,7 +152,7 @@ fn ownership_and_resources(value: &SectorBundle) -> Result<(), SectorBundleError
         if labor.len() != 1 || labor[0].unit_id != value.labor_unit {
             return Err(SectorBundleError::Resource);
         }
-        for period in 1..=MICHIGAN_MAX_HORIZON_PERIODS {
+        for period in 1..=value.horizon_ticks {
             expected_capacity.insert((output.process_id, output.site_id, period));
         }
     }

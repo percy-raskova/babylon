@@ -108,7 +108,7 @@ jobs:
             --component rustfmt --component clippy --no-self-update
 
       - name: Install Rust test reporter
-        uses: taiki-e/install-action@7b8d4719ee4aaa279bdf55df38dacb9ebfe12a6c # v2.87.6
+        uses: taiki-e/install-action@3f74d7c16a4242f1c95561e98edc25d36adb4375 # v2.87.12
         with:
           tool: cargo-nextest@0.9.143,cargo-deny@0.20.2
           fallback: none
@@ -160,6 +160,39 @@ jobs:
           else
             mise run rust:check-no-docs -- --dev
           fi
+
+      - name: Qualify delivery and opening-stock behavior
+        env:
+          EXPERIMENT_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
+          EXPERIMENT_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          (cd rust && cargo build -p babylon-persistence --example michigan_experiment --locked)
+          mkdir -p reports/test-results/causal
+          rust/target/debug/examples/michigan_experiment --output "$PWD/reports/test-results/causal/observed"
+          args=()
+          if [ -n "$EXPERIMENT_PR_HEAD_SHA" ]; then args+=(--pr-head-revision "$EXPERIMENT_PR_HEAD_SHA"); fi
+          python3 -m tools.devtools.causal_report \
+            --artifacts reports/test-results/causal/observed --repo "$PWD" \
+            --base-revision "$EXPERIMENT_BASE_SHA" "${args[@]}" \
+            --output reports/test-results/causal/comparison
+
+      - name: Publish causal comparison summary
+        if: always()
+        run: |
+          if [ -f reports/test-results/causal/comparison/summary.md ]; then
+            cat reports/test-results/causal/comparison/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Causal qualification did not complete. Inspect its retained evidence.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload causal comparison evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: causal-comparison-${{ github.sha }}
+          path: reports/test-results/causal/
+          retention-days: 14
+          if-no-files-found: warn
 
       - name: Upload Rust test reports
         if: always()

@@ -461,7 +461,22 @@ def test_weekly_reports_use_bounded_player_and_distinct_diagnostic_profiles() ->
         step for step in steps if str(step.get("uses", "")).startswith("actions/upload-artifact@")
     )
 
-    assert job["timeout-minutes"] == 60
+    long_report = next(
+        step for step in steps if "tools.devtools.simulation_qualification" in step.get("run", "")
+    )
+    historical_report = next(
+        step for step in steps if "tools.devtools.historical_report" in step.get("run", "")
+    )
+    # Step watchdogs must leave time after their inner runners exhaust every
+    # admitted case. The job must still publish failures and remove Postgres.
+    assert 5 < report["timeout-minutes"] <= 10
+    assert 36 < long_report["timeout-minutes"] <= 40
+    assert 30 < historical_report["timeout-minutes"] <= 35
+    report_minutes = sum(
+        step["timeout-minutes"] for step in (report, long_report, historical_report)
+    )
+    assert job["timeout-minutes"] - report_minutes >= 30
+    assert job["timeout-minutes"] <= 120
     checkout = next(
         step for step in steps if str(step.get("uses", "")).startswith("actions/checkout@")
     )

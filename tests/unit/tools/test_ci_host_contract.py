@@ -24,7 +24,7 @@ ANALYSIS_TASKS_CONFIG = REPO_ROOT / ".mise" / "tasks" / "analysis.toml"
 WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
 ACTIONS_DIR = REPO_ROOT / ".github" / "actions"
 HOSTED_RUNTIME_DSN = "dbname=babylon_test host=127.0.0.1 port=5433 user=test password=test"
-REVIEWED_RUST_INSTALL_ACTION = "taiki-e/install-action@3f74d7c16a4242f1c95561e98edc25d36adb4375"
+REVIEWED_RUST_INSTALL_ACTION = "taiki-e/install-action@26e9283f268b880168bdbd2c545dfcd60ec2c6ab"
 
 
 def _write_executable(path: Path, content: str) -> None:

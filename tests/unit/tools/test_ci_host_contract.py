@@ -24,6 +24,7 @@ ANALYSIS_TASKS_CONFIG = REPO_ROOT / ".mise" / "tasks" / "analysis.toml"
 WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
 ACTIONS_DIR = REPO_ROOT / ".github" / "actions"
 HOSTED_RUNTIME_DSN = "dbname=babylon_test host=127.0.0.1 port=5433 user=test password=test"
+REVIEWED_RUST_INSTALL_ACTION = "taiki-e/install-action@3f74d7c16a4242f1c95561e98edc25d36adb4375"
 
 
 def _write_executable(path: Path, content: str) -> None:
@@ -364,7 +365,7 @@ def test_rust_ci_installs_and_retains_pinned_agent_reports() -> None:
     install = next(step for step in steps if step.get("name") == "Install Rust test reporter")
     upload = next(step for step in steps if step.get("name") == "Upload Rust test reports")
 
-    assert install["uses"] == ("taiki-e/install-action@7b8d4719ee4aaa279bdf55df38dacb9ebfe12a6c")
+    assert install["uses"] == REVIEWED_RUST_INSTALL_ACTION
     assert install["with"] == {
         "tool": "cargo-nextest@0.9.143,cargo-deny@0.20.2",
         "fallback": "none",
@@ -400,9 +401,11 @@ def test_weekly_rust_coverage_is_advisory_and_single_run() -> None:
     run = next(step for step in steps if step.get("name") == "Generate Rust coverage receipts")
     upload = next(step for step in steps if step.get("name") == "Upload Rust coverage receipts")
 
-    assert checkout["with"]["ref"] == "dev"
+    assert (
+        checkout["with"]["ref"] == "${{ github.event_name == 'schedule' && 'dev' || github.sha }}"
+    )
     assert checkout["with"]["fetch-depth"] == 0
-    assert install["uses"] == ("taiki-e/install-action@7b8d4719ee4aaa279bdf55df38dacb9ebfe12a6c")
+    assert install["uses"] == REVIEWED_RUST_INSTALL_ACTION
     assert install["with"] == {
         "tool": "cargo-nextest@0.9.143,cargo-llvm-cov@0.9.0",
         "fallback": "none",
@@ -446,13 +449,13 @@ def test_rust_persistence_workflow_dsns_use_a_literal_loopback() -> None:
         assert dsn == HOSTED_RUNTIME_DSN, path
 
 
-def test_weekly_rust_report_is_scoped_to_the_michigan_persistence_slice() -> None:
-    """The scheduled artifact diagnoses the committed embedded Rust slice."""
+def test_weekly_reports_use_bounded_player_and_distinct_diagnostic_profiles() -> None:
+    """Long qualification must not request more than ordinary content admits."""
     weekly_sim = yaml.safe_load((WORKFLOWS_DIR / "weekly-sim-artifacts.yml").read_text())
     job = weekly_sim["jobs"]["sim-artifacts"]
     steps = job["steps"]
     report = next(
-        step for step in steps if step.get("name") == "Generate Rust Michigan diagnostic report"
+        step for step in steps if step.get("name") == "Generate bounded persistence diagnostics"
     )
     upload = next(
         step for step in steps if str(step.get("uses", "")).startswith("actions/upload-artifact@")
@@ -462,8 +465,18 @@ def test_weekly_rust_report_is_scoped_to_the_michigan_persistence_slice() -> Non
     checkout = next(
         step for step in steps if str(step.get("uses", "")).startswith("actions/checkout@")
     )
-    assert checkout["with"]["ref"] == "dev"
-    assert report["run"] == "mise run sim:report 130 3000 exclusive"
+    assert (
+        checkout["with"]["ref"] == "${{ github.event_name == 'schedule' && 'dev' || github.sha }}"
+    )
+    assert report["run"] == "mise run sim:report 16 300 exclusive"
+    commands = "\n".join(step.get("run", "") for step in steps)
+    assert "tools.devtools.simulation_qualification" in commands
+    assert "tools.devtools.historical_report" in commands
+    assert "--dsn-env BABYLON_RUNTIME_DSN" in commands
+    summary = next(
+        step for step in steps if step.get("name") == "Publish diagnostic and historical summaries"
+    )
+    assert summary["if"] == "always()"
     assert any(step.get("uses") == "./.github/actions/bootstrap-persistence" for step in steps)
     assert any(step.get("uses") == "./.github/actions/postgres-up" for step in steps)
     assert any(step.get("run") == "mise run db:bootstrap" for step in steps)

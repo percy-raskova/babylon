@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_kernel::content_digest::sha256_of;
-use babylon_persistence::michigan_content::MichiganContentPreset;
 use babylon_persistence::michigan_material::{MichiganDeliveryPreset, MichiganMaterialCatalog};
+use babylon_persistence::simulation_experiment::SimulationExperimentV1;
 use babylon_practice_contract::OrderedPracticeActionBatch;
 use babylon_tick::material_replay::MaterialReplaySession;
 use babylon_tick::replay_session::ReplayCommitDisposition;
@@ -16,12 +16,6 @@ use super::observe::{self, PeriodRow};
 
 pub const BASELINE: &str = include_str!("../../../../../content/scenarios/michigan/defines.toml");
 pub const PERIODS: u64 = 16;
-// Current typed regional parameters, independent of comments and statewide tables.
-// ADR260 adds explicit gram coefficients while preserving regional native throughput.
-// The baseline ceremony records the schema-V3 regional parameter digest.
-const ACCEPTED_REGIONAL_PARAMETERS_SHA256: &str =
-    "325afb96f28932e24916e2bcfc3a19a1fdf03b331422eaf6a8adeb2ca8a935e8";
-
 #[derive(Clone, Copy)]
 pub struct CaseSpec {
     pub id: &'static str,
@@ -55,6 +49,7 @@ pub const SPECS: [CaseSpec; 4] = [
 pub struct Case {
     pub spec: CaseSpec,
     pub catalog: MichiganMaterialCatalog,
+    pub experiment: SimulationExperimentV1,
 }
 
 pub fn hex(bytes: &[u8]) -> String {
@@ -103,8 +98,7 @@ pub fn cases() -> Result<Vec<Case>> {
     let original = MichiganMaterialCatalog::from_defines_toml(BASELINE)
         .map_err(|error| contract(format!("baseline validation: {error}")))?;
     let baseline = regional_parameters(&original)?;
-    if digest_json(&baseline)? != ACCEPTED_REGIONAL_PARAMETERS_SHA256
-        || baseline["HORIZON_PERIODS"] != PERIODS
+    if baseline["HORIZON_PERIODS"] != PERIODS
         || baseline["process"]["panel_forming"]["OPENING_INPUT_UNITS"] != 0
         || baseline["process"]["panel_forming"]["OPENING_PLANNED_BATCHES"] != 0
         || original.processes().len() != 5
@@ -117,29 +111,28 @@ pub fn cases() -> Result<Vec<Case>> {
     SPECS
         .iter()
         .map(|&spec| {
-            let mut authored: toml::Value = toml::from_str(BASELINE)
-                .map_err(|error| contract(format!("baseline TOML: {error}")))?;
-            let stock = authored
-                .get_mut("process")
-                .and_then(|value| value.get_mut("panel_forming"))
-                .and_then(|value| value.get_mut("OPENING_INPUT_UNITS"))
-                .ok_or_else(|| contract("missing exact stock field"))?;
-            *stock = toml::Value::Integer(
-                i64::try_from(spec.opening_sheet_kg)
-                    .map_err(|_| contract("opening stock exceeds native integer domain"))?,
-            );
-            let text = toml::to_string(&authored)
-                .map_err(|error| contract(format!("case TOML: {error}")))?;
-            let catalog = MichiganMaterialCatalog::from_defines_toml(&text)
+            let experiment = SimulationExperimentV1::parse(&serde_json::to_vec(&json!({
+                "schema": "SimulationExperimentV1", "profile": "delivery_stock",
+                "epoch": null, "horizon": PERIODS, "seed": 319,
+                "source_snapshot_sha256": null, "starting_snapshot": null,
+                "interventions": [
+                    {"kind": "regional_delivery", "delivery": match spec.delivery {
+                        MichiganDeliveryPreset::Standard => "standard",
+                        MichiganDeliveryPreset::Delayed => "delayed",
+                        _ => return Err(contract("unadmitted causal delivery profile")),
+                    }},
+                    {"kind": "opening_sheet_stock", "kilograms": spec.opening_sheet_kg}
+                ]
+            }))?)
+            .map_err(|error| contract(format!("case inputs: {error}")))?;
+            let catalog = experiment
+                .regional_catalog()
                 .map_err(|error| contract(format!("{} validation: {error}", spec.id)))?;
-            let mut resolved = regional_parameters(&catalog)?;
-            resolved["process"]["panel_forming"]["OPENING_INPUT_UNITS"] = json!(0);
-            if resolved != baseline {
-                return Err(contract(
-                    "experiment changed a field outside the stock intervention",
-                ));
-            }
-            Ok(Case { spec, catalog })
+            Ok(Case {
+                spec,
+                catalog,
+                experiment,
+            })
         })
         .collect()
 }
@@ -152,6 +145,7 @@ pub fn experiment_identity(cases: &[Case]) -> Result<Value> {
                 "case": case.spec.id,
                 "preset": case.spec.delivery.id(),
                 "opening_sheet_kg": case.spec.opening_sheet_kg,
+                "experiment": case.experiment,
                 "resolved_defines": serde_json::from_slice::<Value>(case.catalog.defines_bytes())?,
                 "canonical_defines_utf8": std::str::from_utf8(case.catalog.defines_bytes())
                     .map_err(|_| contract("canonical defines are not UTF-8"))?,
@@ -159,7 +153,7 @@ pub fn experiment_identity(cases: &[Case]) -> Result<Value> {
             }))
         })
         .collect::<Result<Vec<_>>>()?;
-    Ok(json!({"schema": "MichiganDeliveryStockExperimentV1", "periods": PERIODS, "cases": rows}))
+    Ok(json!({"schema": "SimulationExperimentMatrixV1", "periods": PERIODS, "cases": rows}))
 }
 
 #[derive(Serialize)]
@@ -170,8 +164,9 @@ pub struct CaseResult {
 }
 
 fn foundation(case: &Case) -> Result<(Value, MaterialReplaySession<HypergraphStore>)> {
-    let foundation = MichiganContentPreset::new_campaign(case.spec.delivery)
-        .create_foundation(&case.catalog)
+    let foundation = case
+        .experiment
+        .create_foundation()
         .map_err(|error| contract(format!("{} foundation: {error:?}", case.spec.id)))?;
     let graph = foundation.graph_foundation();
     let seed = i64::from_be_bytes(graph.rng_seed().to_be_bytes());
@@ -208,9 +203,14 @@ pub fn run_case(case: &Case, mut emit: impl FnMut(&PeriodRow) -> Result<()>) -> 
             .prepare_advance(&actions)
             .map_err(|error| contract(format!("{} period {period}: {error:?}", case.spec.id)))?;
         let report = candidate.graph_report().report();
-        if !report.choice_receipts.is_empty() || report.considered != 0 || report.fired != 0 {
+        if !report.choice_receipts.is_empty()
+            || report.per_rule_considered != [("material/period".to_owned(), 1)]
+            || report.per_rule_fired != [("material/period".to_owned(), 1)]
+            || report.considered != 1
+            || report.fired != 1
+        {
             return Err(contract(
-                "unexpected BSL consumer in fixed deterministic Michigan content",
+                "expected exactly one deterministic material/period invocation",
             ));
         }
         let row = observe::period(case, session.material().state(), &candidate)?;
@@ -373,4 +373,65 @@ pub fn summarize(results: &[CaseResult]) -> Result<Value> {
             comparison(results, 0, 2, "stock_with_standard_delivery"), comparison(results, 1, 3, "stock_with_delayed_delivery")],
         "cases": cases}),
     )
+}
+
+/// Qualify the bounded causal comparison before a report can declare completion.
+pub fn qualify(results: &[CaseResult], summary: &Value) -> Result<()> {
+    for (index, (first, complete, metal, panels)) in [
+        (5, 6, 600, 0),
+        (7, 8, 600, 0),
+        (4, 5, 920, 32),
+        (4, 7, 920, 32),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let value = &summary["cases"][index];
+        if value["first_panel_output_period"] != [3, 5, 2, 2][index]
+            || value["first_subassembly_output_period"] != first
+            || value["reaches_30_subassemblies_period"] != complete
+            || value["final_subassemblies"] != 30
+            || value["final_packaged_meal_kg"] != 200
+            || value["final_unsold_panels"] != panels
+            || results[index]
+                .rows
+                .iter()
+                .any(|row| row.metal_input_equivalent_kg != metal || row.food_kg != 200)
+            || results[index].rows[15].routes.iter().any(|row| {
+                !row.in_transit.is_empty()
+                    || row.cumulative_delivered != row.ordered
+                    || row.cumulative_lost != 0
+            })
+        {
+            return Err(contract(format!(
+                "causal qualification failed for {}",
+                results[index].case
+            )));
+        }
+    }
+    let process = |case: usize, period: usize, key: &str| {
+        results[case].rows[period - 1]
+            .processes
+            .iter()
+            .find(|p| p.process == key)
+            .ok_or_else(|| contract("qualification process missing"))
+    };
+    let arriving = process(0, 2, "panel-forming")?;
+    if arriving.completed_receipt.is_some()
+        || arriving.closing_input != 320
+        || arriving
+            .next_opening
+            .as_ref()
+            .map(|row| row.planned_batches)
+            != Some(32)
+        || process(2, 1, "panel-forming")?.completed_receipt.is_some()
+        || process(1, 2, "panel-forming")?.staffing.separations != 4
+        || process(3, 3, "panel-forming")?.staffing.separations != 4
+        || process(3, 3, "subassembly-making")?.staffing.hires != 4
+        || process(3, 5, "subassembly-making")?.staffing.separations != 4
+        || process(3, 6, "subassembly-making")?.staffing.hires != 4
+    {
+        return Err(contract("causal timing or staffing qualification failed"));
+    }
+    Ok(())
 }

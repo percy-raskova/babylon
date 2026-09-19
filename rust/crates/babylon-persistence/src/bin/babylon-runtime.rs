@@ -42,7 +42,7 @@ const CAMPAIGN_ENV: &str = "BABYLON_CAMPAIGN_ID";
 const DEFAULT_CAMPAIGN_UUID: u128 = 0x2810_0000_0000_0000_0000_0000_0000_0001;
 const MICHIGAN_SMOKE_TICKS: u64 = 15;
 const MICHIGAN_SMOKE_RESTART_TICKS: &[u64] = &[1, 12, 13, 15];
-const TICK_REPORT_SCHEMA: &str = "babylon.simulation.tick-report.v2";
+const TICK_REPORT_SCHEMA: &str = "babylon.simulation.tick-report.v3";
 const CHOICE_RECEIPT_REPORT_SCHEMA: &str = "babylon.simulation.choice-receipts.v1";
 const TICK_REPORT_SLICE_ID: &str = "michigan-persistence-slice";
 #[cfg(test)]
@@ -159,6 +159,7 @@ const RULE: &str = r#"
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum Command {
+    Describe,
     Bootstrap,
     Preflight,
     Run {
@@ -183,10 +184,22 @@ enum Command {
 fn main() -> ExitCode {
     let Ok(command) = parse_command(std::env::args_os().skip(1)) else {
         eprintln!(
-            "babylon-runtime: expected bootstrap, preflight, run --ticks N [--report-jsonl PATH] [--choice-receipts-jsonl PATH] [--restart-every N], probe, archive, archive-worker --once, michigan-smoke [--report-jsonl PATH] [--choice-receipts-jsonl PATH], provision-readers, or session --stdio --defines PATH"
+            "babylon-runtime: expected describe, bootstrap, preflight, run --ticks N [--report-jsonl PATH] [--choice-receipts-jsonl PATH] [--restart-every N], probe, archive, archive-worker --once, michigan-smoke [--report-jsonl PATH] [--choice-receipts-jsonl PATH], provision-readers, or session --stdio --defines PATH"
         );
         return ExitCode::from(2);
     };
+    if command == Command::Describe {
+        return match content_descriptor() {
+            Ok(value) => {
+                println!("{value}");
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("babylon-runtime: {error}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     let Some(raw_dsn) = std::env::var_os(DSN_ENV) else {
         eprintln!("babylon-runtime: {DSN_ENV} is required");
         return ExitCode::from(2);
@@ -215,6 +228,7 @@ fn main() -> ExitCode {
 
 fn execute(command: Command, config: &Config) -> Result<(), String> {
     match command {
+        Command::Describe => return Err("content description requires no database".to_owned()),
         Command::Preflight => {
             preflight_current_schema(config).map_err(|error| error.to_string())?;
             println!("Rust schema target and owner preflight complete.");
@@ -329,7 +343,10 @@ fn run_to_tick(
             foundation.spec().horizon_ticks
         ));
     }
-    let foundation_identity = foundation_identity(foundation.graph_foundation());
+    let foundation_identity = foundation_identity(
+        foundation.graph_foundation(),
+        foundation.spec().horizon_ticks,
+    );
     let expected_digest = foundation.digest();
     let mut runtime = open_or_create_runtime(config, campaign, foundation)?;
     let mut completed = runtime.session().completed_tick();
@@ -447,6 +464,8 @@ struct ObservableTickReport {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct FoundationIdentityTickReport {
+    replay_seed: i64,
+    horizon_periods: u64,
     foundation: [u8; 32],
     defines: [u8; 32],
     rules: [u8; 32],
@@ -582,7 +601,8 @@ impl SimulationTickReport {
                 "slice_id": TICK_REPORT_SLICE_ID,
                 "tick_duration_days": babylon_kernel::clock::DAYS_PER_TICK,
                 "scenario": self.scenario.as_str(),
-                "fixed_replay_seed": if self.scenario == babylon_persistence::michigan_economy::MICHIGAN_OBSERVER_SCENARIO { 319 } else { 281 },
+                "fixed_replay_seed": self.foundation.replay_seed,
+                "horizon_periods": self.foundation.horizon_periods,
                 "parameter_overrides": false,
                 "stochastic_draws": false,
                 "dynamic_h3_updates": false,
@@ -706,37 +726,34 @@ fn collect_observable_transitions(
     if before.scenario_scope() != after.scenario_scope() {
         return Err("tick report observable scenarios are misaligned".to_owned());
     }
-    if after.scenario_scope() == babylon_persistence::michigan_economy::MICHIGAN_OBSERVER_SCENARIO {
-        let mut observables = Vec::with_capacity(83 * 4);
-        for county in babylon_persistence::michigan_economy::michigan_economy()
-            .map_err(|error| error.to_string())?
-            .counties()
-        {
-            let entity = format!("county-{}", county.county_geoid);
-            for key in babylon_persistence::michigan_economy::QCEW_ECONOMICS_FIELD_KEYS {
-                let field = format!("territory/{key}");
-                let find = |state: &StableGraphState| -> Result<u64, String> {
-                    state
-                        .rows()
-                        .node_f64()
-                        .iter()
-                        .find(|(candidate, candidate_field, _)| {
-                            candidate == &entity && candidate_field == &field
-                        })
-                        .map(|(_, _, bits)| *bits)
-                        .ok_or_else(|| {
-                            format!("committed QCEW observable {entity}::{field} missing")
-                        })
-                };
-                observables.push(ObservableTickReport {
-                    name: format!("{}::{entity}::{field}", after.scenario_scope()),
-                    entity: entity.clone(),
-                    field: field.clone(),
-                    role: "observed_baseline",
-                    before_value_bits: find(before)?,
-                    after_value_bits: find(after)?,
-                });
-            }
+    if after.scenario_scope() == babylon_persistence::michigan_cohorts::MICHIGAN_COHORT_SCENARIO {
+        let mut observables = Vec::new();
+        for (entity, field, after_bits) in after.rows().node_f64() {
+            let before_bits = before
+                .rows()
+                .node_f64()
+                .iter()
+                .find(|(candidate, candidate_field, _)| {
+                    candidate == entity && candidate_field == field
+                })
+                .map(|(_, _, bits)| *bits)
+                .ok_or_else(|| {
+                    format!("captured observable {entity}::{field} missing before tick")
+                })?;
+            observables.push(ObservableTickReport {
+                name: format!("{}::{entity}::{field}", after.scenario_scope()),
+                entity: entity.clone(),
+                field: field.clone(),
+                role: if field.starts_with("territory/qcew-")
+                    || field.starts_with("organization/qcew-")
+                {
+                    "observed_baseline"
+                } else {
+                    "dynamic"
+                },
+                before_value_bits: before_bits,
+                after_value_bits: *after_bits,
+            });
         }
         return Ok(observables);
     }
@@ -797,8 +814,13 @@ fn observable_bits<'a>(
     Ok((entity.as_str(), *value_bits))
 }
 
-fn foundation_identity(foundation: &CampaignFoundation) -> FoundationIdentityTickReport {
+fn foundation_identity(
+    foundation: &CampaignFoundation,
+    horizon_periods: u64,
+) -> FoundationIdentityTickReport {
     FoundationIdentityTickReport {
+        replay_seed: i64::from_be_bytes(foundation.rng_seed().to_be_bytes()),
+        horizon_periods,
         foundation: sha256_of(foundation.canonical_bytes()),
         defines: foundation.content_digest().defines_hash,
         rules: foundation.content_digest().rules_hash,
@@ -976,6 +998,50 @@ fn choice_receipt_json_value(
         "choice_receipt_count": choices.len(),
         "choice_receipt_digest_sha256": hex_digest(&choice_receipt_digest),
         "receipts": receipts,
+    }))
+}
+
+fn content_descriptor() -> Result<serde_json::Value, String> {
+    let foundation = material_diagnostic_foundation()?;
+    let identity = foundation_identity(
+        foundation.graph_foundation(),
+        foundation.spec().horizon_ticks,
+    );
+    let session = foundation
+        .into_session()
+        .map_err(|error| error.to_string())?;
+    let state = session
+        .graph_session()
+        .stable_graph_state()
+        .map_err(|error| error.to_string())?;
+    let observables = collect_observable_transitions(&state, &state)?;
+    let inventory = observables
+        .iter()
+        .map(|value| {
+            serde_json::json!({
+                "name": value.name, "entity": value.entity, "field": value.field,
+                "role": value.role, "kind": "f64"
+            })
+        })
+        .collect::<Vec<_>>();
+    Ok(serde_json::json!({
+        "schema": "babylon.simulation.content.v1",
+        "scope": {
+            "slice_id": TICK_REPORT_SLICE_ID,
+            "scenario": state.scenario_scope(),
+            "fixed_replay_seed": identity.replay_seed,
+            "horizon_periods": identity.horizon_periods,
+            "tick_duration_days": babylon_kernel::clock::DAYS_PER_TICK,
+            "parameter_overrides": false, "stochastic_draws": false,
+            "dynamic_h3_updates": false
+        },
+        "foundation": {
+            "foundation_sha256": hex_digest(&identity.foundation),
+            "defines_sha256": hex_digest(&identity.defines),
+            "rules_sha256": hex_digest(&identity.rules),
+            "reference_sha256": hex_digest(&identity.reference)
+        },
+        "observables": inventory
     }))
 }
 
@@ -1222,6 +1288,7 @@ fn parse_command(mut args: impl Iterator<Item = OsString>) -> Result<Command, ()
         return Err(());
     };
     match command.as_os_str() {
+        value if value == OsStr::new("describe") && args.next().is_none() => Ok(Command::Describe),
         value if value == OsStr::new("bootstrap") && args.next().is_none() => {
             Ok(Command::Bootstrap)
         }
@@ -1370,6 +1437,42 @@ mod tests {
 
     static REPORT_PATH_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
+    #[test]
+    fn content_preflight_describes_the_captured_foundation_without_a_database() {
+        assert_eq!(
+            parse_command(["describe".into()].into_iter()),
+            Ok(Command::Describe)
+        );
+        let descriptor = super::content_descriptor().expect("captured content description");
+        let foundation = super::material_diagnostic_foundation().unwrap();
+        assert_eq!(
+            descriptor["scope"]["horizon_periods"],
+            foundation.spec().horizon_ticks
+        );
+        assert_eq!(descriptor["scope"]["horizon_periods"], 16);
+        assert_eq!(
+            descriptor["scope"]["fixed_replay_seed"],
+            i64::from_be_bytes(foundation.graph_foundation().rng_seed().to_be_bytes())
+        );
+        let session = foundation.into_session().unwrap();
+        let state = session.graph_session().stable_graph_state().unwrap();
+        assert_eq!(descriptor["scope"]["scenario"], state.scenario_scope());
+        let inventory = descriptor["observables"].as_array().unwrap();
+        assert!(!inventory.is_empty());
+        assert_eq!(inventory.len(), state.rows().node_f64().len());
+        assert!(inventory
+            .iter()
+            .all(|row| row.as_object().unwrap().len() == 5));
+        for namespace in ["territory/qcew-", "organization/qcew-"] {
+            let fixed: Vec<_> = inventory
+                .iter()
+                .filter(|row| row["field"].as_str().unwrap().starts_with(namespace))
+                .collect();
+            assert!(!fixed.is_empty());
+            assert!(fixed.iter().all(|row| row["role"] == "observed_baseline"));
+        }
+    }
+
     fn report_path(label: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
             "babylon-runtime-{label}-{}-{}.jsonl",
@@ -1459,6 +1562,8 @@ mod tests {
             ],
             persistence_reopened_after_commit: true,
             foundation: FoundationIdentityTickReport {
+                replay_seed: super::FIXED_REPLAY_SEED,
+                horizon_periods: 16,
                 foundation: [0x25; 32],
                 defines: [0x26; 32],
                 rules: [0x27; 32],
@@ -1764,7 +1869,7 @@ mod tests {
         let foundation = babylon_persistence::CampaignFoundation::capture(&session, bundle)
             .expect("tick-zero foundation captures");
 
-        let identity = foundation_identity(&foundation);
+        let identity = foundation_identity(&foundation, 16);
 
         assert_eq!(
             identity.foundation,
@@ -1776,7 +1881,7 @@ mod tests {
             identity.reference,
             *foundation.reference_digest().as_bytes()
         );
-        assert_eq!(identity, foundation_identity(&foundation));
+        assert_eq!(identity, foundation_identity(&foundation, 16));
     }
 
     #[test]

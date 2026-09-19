@@ -129,7 +129,7 @@ class TestMiseTaskDiscoverability:
         task = mise_tasks["sim:e2e-michigan"]
         assert Path(str(task["source"])).resolve() == SIMULATION_TASKS_TOML
         assert len(str(task["description"]).split()) >= 4
-        assert "babylon-runtime run --ticks 130" in _task_run(task)
+        assert "babylon-runtime run --ticks 16" in _task_run(task)
 
     def test_foreground_e2e_is_fresh_while_background_and_probe_share_stable_purpose(
         self, mise_tasks: dict[str, dict[str, object]]
@@ -216,15 +216,20 @@ class TestMiseTaskDiscoverability:
             "sim:e2e-bg",
             "sim:e2e-michigan",
             "sim:probe",
+            "sim:qualify",
             "sim:report",
             "sim:status",
             "sim:watch",
         }
         for task in sim_tasks.values():
             run = _task_run(task)
-            assert "uv run" not in run
             assert "-m babylon" not in run
             assert "babylon.engine" not in run
+        qualification = _task_run(sim_tasks["sim:qualify"])
+        assert "--example simulation_experiment --locked" in qualification
+        assert "--runtime rust/target/debug/examples/simulation_experiment" in qualification
+        assert "-m tools.devtools.simulation_qualification" in qualification
+        assert "-m tools.devtools.historical_report" in qualification
 
     def test_sim_report_builds_only_runtime_and_uses_stdlib_reporter(
         self, mise_tasks: dict[str, dict[str, object]]
@@ -241,9 +246,7 @@ class TestMiseTaskDiscoverability:
             'arg "[database_scope]" help="Database attribution scope: shared or exclusive" '
             'default="shared"'
         ) in str(task["usage"])
-        assert (
-            "CARGO_BUILD_JOBS=4 cargo build -p babylon-persistence --bin babylon-runtime --locked"
-        ) in run
+        assert ("cargo build -p babylon-persistence --bin babylon-runtime --locked") in run
         assert "cargo build --workspace" not in run
         assert (
             "python3 tools/devtools/sim_report.py "

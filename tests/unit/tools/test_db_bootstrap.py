@@ -396,3 +396,18 @@ def test_disposable_pg_runner_keeps_bounded_logs_phase_timings_and_runtime_ident
     assert '[ "$RUNTIME_MAJOR" = "17" ]' in runner
     assert "elapsed_seconds=%s status=%s" in runner
     assert "cleanup_checked" in runner
+
+
+def test_weekly_postgres_can_qualify_the_complete_reader_focus() -> None:
+    workflow = yaml.safe_load((ROOT / ".github/workflows/weekly-pg-integration.yml").read_text())
+    triggers = workflow.get("on", workflow.get(True))
+    assert "reader" in triggers["workflow_dispatch"]["inputs"]["focus"]["options"]
+    matrix = workflow["jobs"]["runtime-contracts"]["strategy"]["matrix"]
+    assert "inputs.focus == 'reader'" in matrix
+    assert '\'{"focus":["reader"]}\'' in matrix
+    step = next(
+        step
+        for step in workflow["jobs"]["runtime-contracts"]["steps"]
+        if step.get("run") == "tools/run_rust_postgres.sh"
+    )
+    assert step["env"]["BABYLON_TIMINGS"] == "1"

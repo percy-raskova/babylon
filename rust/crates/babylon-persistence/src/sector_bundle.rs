@@ -25,7 +25,7 @@ const MAX_BUNDLE_BYTES: usize = 1_048_576;
 const MAX_BUNDLE_TEXT_BYTES: usize = 4_096;
 const MAX_BUNDLE_GOODS: usize = 64;
 const MAX_BUNDLE_PROCESSES: usize = 64;
-use crate::michigan_material::MICHIGAN_MAX_HORIZON_PERIODS;
+const MAX_BUNDLE_HORIZON_PERIODS: u64 = 131;
 
 /// Closed content refusals; an absent productive bundle never means zero output.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -149,6 +149,7 @@ impl SectorBundleProcess {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SectorBundle {
     owner: SectorBundleOwner,
+    horizon_ticks: u64,
     sources: SectorBundleSources,
     goods: Vec<SectorBundleGood>,
     processes: Vec<SectorBundleProcess>,
@@ -159,8 +160,10 @@ pub struct SectorBundle {
     digest: [u8; 32],
 }
 impl SectorBundle {
+    #[allow(clippy::too_many_arguments)] // One argument per independently encoded bundle field.
     fn from_parts(
         owner: SectorBundleOwner,
+        horizon_ticks: u64,
         sources: SectorBundleSources,
         mut goods: Vec<SectorBundleGood>,
         mut processes: Vec<SectorBundleProcess>,
@@ -173,6 +176,7 @@ impl SectorBundle {
         let rows = decode_material_circuit_state(&encode_material_circuit_state(rows)?)?;
         let mut bundle = Self {
             owner,
+            horizon_ticks,
             sources,
             goods,
             processes,
@@ -218,7 +222,7 @@ impl SectorBundle {
     }
     #[must_use]
     pub const fn horizon_ticks(&self) -> u64 {
-        MICHIGAN_MAX_HORIZON_PERIODS
+        self.horizon_ticks
     }
     #[must_use]
     pub fn goods(&self) -> &[SectorBundleGood] {

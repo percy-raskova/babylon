@@ -1,0 +1,15 @@
+{
+  "epoch": "2019-02-01",
+  "horizon": 78,
+  "interventions": [],
+  "profile": "historical_freight",
+  "schema": "SimulationExperimentV1",
+  "seed": 319,
+  "source_snapshot_sha256": "fc88ac497b313d0743f5bc7aca38f44835ac78f2cb6edfd5bc39bb6768f694ca",
+  "starting_snapshot": {
+    "arrived_kg": 121292613,
+    "date": "2019-01-01",
+    "kind": "freight",
+    "series_id": "detroit_canada_truck_import_hs72"
+  }
+}

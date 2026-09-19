@@ -15,16 +15,58 @@ fn matrix_changes_only_stock_and_selected_delivery() {
         .collect();
     assert_eq!(
         hashes.len(),
-        2,
-        "preset selection does not alter numeric definitions"
+        4,
+        "captured identity binds both admitted interventions"
     );
+    let normalized: Vec<serde_json::Value> = cases
+        .iter()
+        .map(|case| {
+            let captured: serde_json::Value =
+                serde_json::from_slice(case.catalog.defines_bytes()).unwrap();
+            let mut content = captured["normalized"].clone();
+            let panel = content["processes"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|process| process["key"] == "panel-forming")
+                .unwrap();
+            let sheet = panel["inputs"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|input| input["good_key"] == "sheet")
+                .unwrap();
+            assert_eq!(sheet["opening_quantity"], case.spec.opening_sheet_kg);
+            sheet["opening_quantity"] = 0.into();
+            let route = content["routes"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|route| route["key"] == "sheet-transfer")
+                .unwrap();
+            let travel = if case.spec.id.starts_with("delayed") {
+                3
+            } else {
+                1
+            };
+            assert_eq!(route["path"]["travel_periods"], travel);
+            route["path"]["travel_periods"] = 1.into();
+            content
+        })
+        .collect();
+    assert!(normalized.windows(2).all(|pair| pair[0] == pair[1]));
     let reformatted = format!("# irrelevant comment\n{}\n", run::BASELINE);
     let catalog =
         babylon_persistence::michigan_material::MichiganMaterialCatalog::from_defines_toml(
             &reformatted,
         )
         .unwrap();
-    assert_eq!(catalog.defines_bytes(), cases[0].catalog.defines_bytes());
+    let original =
+        babylon_persistence::michigan_material::MichiganMaterialCatalog::from_defines_toml(
+            run::BASELINE,
+        )
+        .unwrap();
+    assert_eq!(catalog.defines_bytes(), original.defines_bytes());
     let first = run::experiment_identity(&cases).unwrap();
     assert_eq!(
         run::digest_json(&first).unwrap(),
@@ -48,6 +90,7 @@ fn delivery_stock_comparison_preserves_controls_and_exposes_staffing_interruptio
         .map(|case| run::run_case(&case, |_| Ok(())).unwrap())
         .collect();
     let summary = run::summarize(&results).unwrap();
+    run::qualify(&results, &summary).unwrap();
     for (index, (first, complete, metal, panels)) in [
         (5, 6, 600, 0),
         (7, 8, 600, 0),

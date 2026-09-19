@@ -1,0 +1,35 @@
+{
+  "epoch": "2010-01-01",
+  "horizon": 131,
+  "interventions": [],
+  "profile": "historical_employment",
+  "schema": "SimulationExperimentV1",
+  "seed": 319,
+  "source_snapshot_sha256": "fc88ac497b313d0743f5bc7aca38f44835ac78f2cb6edfd5bc39bb6768f694ca",
+  "starting_snapshot": {
+    "date": "2010-01-01",
+    "kind": "employment",
+    "series": [
+      {
+        "jobs": 8143,
+        "series_id": "26099/332"
+      },
+      {
+        "jobs": 2911,
+        "series_id": "26125/311"
+      },
+      {
+        "jobs": 615,
+        "series_id": "26161/311"
+      },
+      {
+        "jobs": 4464,
+        "series_id": "26163/331"
+      },
+      {
+        "jobs": 17378,
+        "series_id": "26163/3363"
+      }
+    ]
+  }
+}

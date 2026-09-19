@@ -1,0 +1,16 @@
+{
+  "schema": "DiagnosticFreightBoundaryV1",
+  "source_site": "canadian-inventory-boundary",
+  "destination_site": "detroit-port-3801-entry",
+  "commodity": "hs72-iron-and-steel-aggregate",
+  "unit": "kg",
+  "port_code": "3801",
+  "partner_code": "1220",
+  "mode_code": "5",
+  "trade_type_code": "2",
+  "hs_chapter": "72",
+  "geographic_scope": "portwide-without-county-or-bridge-attribution",
+  "inventory_evidence": "Designed",
+  "order_evidence": "Designed",
+  "capacity_evidence": "Derived"
+}

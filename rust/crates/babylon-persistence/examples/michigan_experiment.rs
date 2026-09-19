@@ -57,6 +57,7 @@ fn execute(output: &mut Output, progress: &Mutex<Progress>) -> Result<()> {
         results.push(result);
     }
     let summary = run::summarize(&results)?;
+    run::qualify(&results, &summary)?;
     output.write_json("summary.json", &summary)?;
     let checksums = output.checksums()?;
     output.write_json("manifest.json", &json!({

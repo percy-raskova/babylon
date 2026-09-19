@@ -1,6 +1,8 @@
 //! Captured, normalized Designed physical content with separate observed evidence.
 //! Both regional and statewide authoring feed the same material compiler.
 
+#[cfg(test)]
+mod experiment_tests;
 mod maintenance;
 mod model;
 #[cfg(test)]
@@ -142,6 +144,8 @@ fn identity(kind: &str, key: &str) -> [u8; 32] {
 #[serde(deny_unknown_fields)]
 struct MichiganCapturedContent {
     schema: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    experiment: Option<crate::simulation_experiment::SimulationExperimentV1>,
     organizer: Option<babylon_practice_contract::OrganizerConfig>,
     graph_scenario_source: String,
     rule_source: String,
@@ -246,6 +250,33 @@ impl MichiganMaterialCatalog {
         )?);
         Self::capture(capture)
     }
+    pub(crate) fn with_experiment(
+        &self,
+        spec: &crate::simulation_experiment::SimulationExperimentV1,
+    ) -> Result<Self, MichiganDefinesError> {
+        let mut capture = self.capture.clone();
+        crate::simulation_experiment::regional::configure(
+            &mut capture.normalized,
+            spec,
+            &capture.defines,
+        )
+        .map_err(|_| MichiganDefinesError::Canonical)?;
+        capture.experiment = Some(spec.clone());
+        capture.defines.horizon_periods = spec.horizon;
+        capture.interventions.clear();
+        capture.graph_scenario_source =
+            crate::simulation_experiment::regional::scenario(&capture.normalized);
+        // Only the typed starting observations and snapshot identity enter diagnostics.
+        capture.observed_defines = spec
+            .canonical_bytes()
+            .map_err(|_| MichiganDefinesError::Canonical)?;
+        Self::capture(capture)
+    }
+    pub(crate) fn experiment(
+        &self,
+    ) -> Option<&crate::simulation_experiment::SimulationExperimentV1> {
+        self.capture.experiment.as_ref()
+    }
     pub(crate) fn organizer_config(&self) -> Option<&babylon_practice_contract::OrganizerConfig> {
         self.capture.organizer.as_ref()
     }
@@ -256,7 +287,11 @@ impl MichiganMaterialCatalog {
         let capture: MichiganCapturedContent =
             serde_json::from_slice(bytes).map_err(|_| MichiganDefinesError::Canonical)?;
         // Numeric constraints remain separately bounded and checked; no source file is reopened.
-        MichiganDefines::decode(&capture.defines.encode()?)?;
+        if let Some(spec) = &capture.experiment {
+            capture.defines.validate_experiment(spec.horizon)?;
+        } else {
+            MichiganDefines::decode(&capture.defines.encode()?)?;
+        }
         let result = Self::capture(capture)?;
         if result.defines_bytes != bytes {
             return Err(MichiganDefinesError::Canonical);
@@ -292,6 +327,7 @@ impl MichiganMaterialCatalog {
         Self::capture(MichiganCapturedContent {
             schema: "MichiganCapturedContentV5".to_owned(),
             organizer: None,
+            experiment: None,
             graph_scenario_source,
             rule_source: include_str!("../../../../content/scenarios/michigan/material-cycle.bsl")
                 .to_owned(),
@@ -315,6 +351,33 @@ impl MichiganMaterialCatalog {
             return Err(Material(MichiganMaterialError::Bound));
         }
         if capture.schema != "MichiganCapturedContentV5" {
+            return Err(MichiganDefinesError::Canonical);
+        }
+        if let Some(spec) = &capture.experiment {
+            spec.validate()
+                .map_err(|_| MichiganDefinesError::Canonical)?;
+            capture.defines.validate_experiment(spec.horizon)?;
+            crate::simulation_experiment::regional::validate_captured(
+                &capture.normalized,
+                &capture.defines,
+                spec,
+            )
+            .map_err(|_| MichiganDefinesError::Canonical)?;
+            if capture.normalized.horizon_ticks != spec.horizon
+                || capture.base_preset != MichiganDeliveryPreset::Standard
+                || capture.selected_preset != MichiganDeliveryPreset::Standard
+                || !capture.interventions.is_empty()
+                || capture.organizer.is_some()
+                || capture.graph_scenario_source
+                    != crate::simulation_experiment::regional::scenario(&capture.normalized)
+                || capture.observed_defines
+                    != spec
+                        .canonical_bytes()
+                        .map_err(|_| MichiganDefinesError::Canonical)?
+            {
+                return Err(MichiganDefinesError::Canonical);
+            }
+        } else if capture.normalized.horizon_ticks > MICHIGAN_MAX_HORIZON_PERIODS {
             return Err(MichiganDefinesError::Canonical);
         }
         validate::canonicalize(&mut capture.normalized, &mut capture.interventions);

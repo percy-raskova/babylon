@@ -2,12 +2,12 @@
 use super::staffing::StoredStaffing;
 use super::{
     codec::Cursor, compile_sector_bundles, michigan_sector_bundles, sha256_of, SectorBundle,
-    SectorBundleError, MAX_BUNDLE_BYTES, MICHIGAN_MAX_HORIZON_PERIODS,
+    SectorBundleError, MAX_BUNDLE_BYTES,
 };
 use crate::{
     material_runtime::{MaterialFoundationSpec, MaterialRuntimeFoundation},
     michigan_cohorts::MICHIGAN_COHORT_SESSION,
-    michigan_economy::foundation_from_sources,
+    michigan_economy::foundation_from_sources_with_seed,
     michigan_material::{
         MichiganDeliveryPreset, MichiganMaterialCatalog, MAX_MICHIGAN_CAPTURED_CONTENT_BYTES,
     },
@@ -146,16 +146,23 @@ pub(crate) fn validate_stored_material_authority(
     register: &babylon_tick::material_world::MaterialWorldRegister,
     spec: &MaterialFoundationSpec,
 ) -> Result<StaffingComposition, SectorBundleError> {
-    let delivery =
-        MichiganDeliveryPreset::from_id(&spec.preset_id).ok_or(SectorBundleError::Preset)?;
-    if !(1..=MICHIGAN_MAX_HORIZON_PERIODS).contains(&spec.horizon_ticks) {
-        return Err(SectorBundleError::Preset);
-    }
+    let experimental =
+        crate::simulation_experiment::ExperimentProfile::from_foundation_id(&spec.preset_id);
+    let delivery = if experimental.is_some() {
+        MichiganDeliveryPreset::Standard
+    } else {
+        MichiganDeliveryPreset::from_id(&spec.preset_id).ok_or(SectorBundleError::Preset)?
+    };
     let decoded = decode_stored_bundle_defines(
         graph.content_bundle().defines_bytes(),
         graph.content_digest().defines_hash,
     )?;
-    if spec.horizon_ticks != decoded.catalog().horizon_ticks()
+    let experiment = decoded.catalog().experiment();
+    if experimental != experiment.map(|s| s.profile)
+        || experimental.is_some_and(|p| p.horizon() != spec.horizon_ticks)
+        || graph.rng_seed()
+            != babylon_kernel::replay::ReplaySeed::new(experiment.map_or(319, |s| s.seed))
+        || spec.horizon_ticks != decoded.catalog().horizon_ticks()
         || decoded.catalog().preset() != delivery
         || decoded.scenario().as_bytes() != graph.content_bundle().scenario_source_bytes()
         || decoded.catalog().rule_source().as_bytes() != graph.content_bundle().rule_source_bytes()
@@ -181,7 +188,11 @@ pub(crate) fn create_bundle_foundation(
     delivery: MichiganDeliveryPreset,
     catalog: &MichiganMaterialCatalog,
 ) -> Result<MaterialRuntimeFoundation, SectorBundleError> {
-    if preset_id != delivery.id() {
+    if preset_id
+        != catalog
+            .experiment()
+            .map_or(delivery.id(), |s| s.profile.foundation_id())
+    {
         return Err(SectorBundleError::Preset);
     }
     let catalog = catalog
@@ -195,11 +206,12 @@ pub(crate) fn create_bundle_foundation(
     let decoded = decode_stored_bundle_defines(&defines, sha256_of(&defines))?;
     let state = compile_sector_bundles(decoded.bundles(), delivery, decoded.catalog())?;
     let scenario = decoded.scenario();
-    let (graph, bundle) = foundation_from_sources(
+    let (graph, bundle) = foundation_from_sources_with_seed(
         scenario,
         decoded.catalog().rule_source(),
         MICHIGAN_COHORT_SESSION,
         &defines,
+        catalog.experiment().map_or(319, |s| s.seed),
     )
     .map_err(|_| SectorBundleError::Foundation)?;
     let mut identity = CONTENT_DOMAIN.to_vec();

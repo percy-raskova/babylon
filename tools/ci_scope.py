@@ -28,6 +28,9 @@ def scope(paths: list[str], *, full: bool) -> dict[str, bool]:
             ("docker/", "contracts/", "content/", "src/babylon/data/")
         ) or path.startswith("docker-compose"):
             selected = dict.fromkeys(selected, True)
+        elif path in {"tools/devtools/causal_report.py", "tests/unit/tools/test_causal_report.py"}:
+            selected["rust"] = True
+            selected["python"] = True
         elif path.endswith(".py") or path in {"pyproject.toml", "uv.lock", ".python-version"}:
             selected["python"] = True
             if path.startswith("tools/"):

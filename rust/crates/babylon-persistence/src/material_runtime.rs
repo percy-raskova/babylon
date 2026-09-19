@@ -45,9 +45,11 @@ const WRITER_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const WRITER_TCP_USER_TIMEOUT: Duration = Duration::from_secs(30);
 // Tick computation is detached before these transactions begin. Individual
 // writer statements get a larger budget than the observer's read queries.
+// Match the catalog reader's JIT setting: every fresh writer connection checks
+// the same census, whose compilation cost is not amortized across ticks.
 const WRITER_STARTUP_OPTIONS: &str = "-c search_path=pg_catalog -c quote_all_identifiers=off \
     -c statement_timeout=120000ms -c lock_timeout=5000ms \
-    -c idle_in_transaction_session_timeout=120000ms";
+    -c idle_in_transaction_session_timeout=120000ms -c jit=off";
 
 pub(crate) fn bounded_material_writer_config(
     config: &Config,
@@ -206,12 +208,23 @@ impl MaterialRuntimeFoundation {
         graph
             .validate_material_cycle()
             .map_err(|error| MaterialRuntimeError::Replay(MaterialReplayError::Graph(error)))?;
-        let labor = crate::sector_bundle::foundation::validate_stored_material_authority(
-            &graph_foundation,
-            &register,
-            &spec,
-        )
-        .map_err(|_| MaterialRuntimeError::FoundationMismatch)?;
+        let labor = if spec.preset_id
+            == crate::simulation_experiment::ExperimentProfile::HistoricalFreight.foundation_id()
+        {
+            crate::simulation_experiment::validate_freight_authority(
+                &graph_foundation,
+                &register,
+                &spec,
+            )
+            .map_err(|_| MaterialRuntimeError::FoundationMismatch)?
+        } else {
+            crate::sector_bundle::foundation::validate_stored_material_authority(
+                &graph_foundation,
+                &register,
+                &spec,
+            )
+            .map_err(|_| MaterialRuntimeError::FoundationMismatch)?
+        };
         let length = FOUNDATION_DOMAIN
             .len()
             .checked_add(4 + 8 + 32 + 3 * 8)
@@ -255,6 +268,51 @@ impl MaterialRuntimeFoundation {
             digest,
             labor,
         })
+    }
+    /// Reconstruct from the exact captured components, through the same path as
+    /// a durable open, without reading current authored experiment inputs.
+    /// # Errors
+    /// Refuses any component, source, register or aggregate identity mismatch.
+    pub fn reconstruct_captured(&self) -> Result<Self, MaterialRuntimeError> {
+        let original = &self.graph_foundation;
+        let bundle = original.content_bundle();
+        let text = |bytes: &[u8]| {
+            std::str::from_utf8(bytes)
+                .map(str::to_owned)
+                .map_err(|_| MaterialRuntimeError::FoundationMismatch)
+        };
+        let scenario = text(bundle.scenario_source_bytes())?;
+        let prelude = bundle.prelude_source_bytes().map(text).transpose()?;
+        let rules = text(bundle.rule_source_bytes())?;
+        let session = text(original.replay_session_identity().as_bytes())?;
+        let graph = CampaignFoundation::from_persisted(
+            original.stable_graph_bytes().to_vec(),
+            original.world_register_bytes().to_vec(),
+            original.resolver_manifest_bytes().to_vec(),
+            original.prepared_environment_bytes().to_vec(),
+            &session,
+            i64::from_be_bytes(original.rng_seed().to_be_bytes()),
+            original.content_digest().defines_hash,
+            original.content_digest().rules_hash,
+            *original.reference_digest().as_bytes(),
+            &scenario,
+            prelude.as_deref(),
+            &rules,
+            bundle.defines_bytes(),
+            bundle.reference_bundle_manifest_bytes(),
+            sha256_of(original.canonical_bytes()),
+        )?;
+        reconstruct_material_foundation(
+            StoredMaterialFoundation {
+                spec: self.spec.clone(),
+                initial_register_bytes: self.register.canonical_bytes().to_vec(),
+                foundation_bytes: self.bytes.clone(),
+                foundation_digest: self.digest,
+                graph_foundation_digest: sha256_of(original.canonical_bytes()),
+            },
+            graph,
+            self.digest,
+        )
     }
     #[must_use]
     pub const fn digest(&self) -> [u8; 32] {
@@ -581,8 +639,8 @@ impl DurableMaterialRuntime {
             candidate.material().receipt_bytes(),
         )?;
         let prepared = Instant::now();
-        let timing = [started, adjudicated, prepared];
         let mut client = self.config.connect(NoTls)?;
+        let connected = Instant::now();
         let mut tx = client.transaction()?;
         tx.batch_execute(
             "SET LOCAL search_path TO pg_catalog; SET LOCAL synchronous_commit TO on",
@@ -591,7 +649,17 @@ impl DurableMaterialRuntime {
         if locked.is_none() {
             return Err(MaterialRuntimeError::MissingCampaign);
         }
+        let schema_started = Instant::now();
         verify_runtime_schema_client(&mut tx)?;
+        let schema_verified = Instant::now();
+        let timing = [
+            started,
+            adjudicated,
+            prepared,
+            connected,
+            schema_started,
+            schema_verified,
+        ];
         let durable = read_tail_tick(&mut tx, self.campaign)?;
         if durable == identity.resolve_tick() {
             let stored = read_stored_material_tick(&mut tx, self.campaign, durable, &self.session)?;
@@ -795,12 +863,19 @@ thread_local! {
 
 // Operator diagnostics only: clocks never enter state, hashes, receipts or the
 // protocol. Emit one bounded record after successful durable publication.
-fn record_advance_timing(period: u64, [started, adjudicated, prepared]: [Instant; 3]) {
+fn record_advance_timing(
+    period: u64,
+    [started, adjudicated, prepared, connected, schema_started, schema_verified]: [Instant; 6],
+) {
     if std::env::var("BABYLON_TIMINGS").as_deref() == Ok("1") {
         eprintln!(
-            "babylon-timing period={period} simulation_us={} preparation_us={} durable_write_publish_us={} total_us={}",
+            "babylon-timing period={period} simulation_us={} preparation_us={} writer_connect_us={} writer_lock_us={} schema_verify_us={} write_publish_us={} durable_write_publish_us={} total_us={}",
             adjudicated.duration_since(started).as_micros(),
             prepared.duration_since(adjudicated).as_micros(),
+            connected.duration_since(prepared).as_micros(),
+            schema_started.duration_since(connected).as_micros(),
+            schema_verified.duration_since(schema_started).as_micros(),
+            schema_verified.elapsed().as_micros(),
             prepared.elapsed().as_micros(),
             started.elapsed().as_micros(),
         );
@@ -1234,6 +1309,7 @@ mod writer_bounds_tests {
         assert_eq!(caller.get_options(), None);
         crate::postgres_catalog::validate_connection_target(&caller).unwrap();
         assert!(!WRITER_STARTUP_OPTIONS.contains("default_transaction_read_only=on"));
+        assert!(WRITER_STARTUP_OPTIONS.contains("-c jit=off"));
     }
 
     #[test]
@@ -1292,11 +1368,12 @@ mod writer_bounds_tests {
                 "SELECT current_setting('statement_timeout')::interval = interval '120 seconds', \
                  current_setting('lock_timeout')::interval = interval '5 seconds', \
                  current_setting('idle_in_transaction_session_timeout')::interval = interval '120 seconds', \
-                 current_setting('transaction_read_only') = 'on'",
+                 current_setting('transaction_read_only') = 'on', \
+                 current_setting('jit') = 'off'",
                 &[],
             )
             .expect("read bounded connection settings");
-        for index in 0..4 {
+        for index in 0..5 {
             assert!(settings.get::<_, bool>(index), "connection setting {index}");
         }
         transaction.rollback().expect("end read-only probe");

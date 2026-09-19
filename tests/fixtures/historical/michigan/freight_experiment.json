@@ -5,7 +5,7 @@
   "profile": "historical_freight",
   "schema": "SimulationExperimentV1",
   "seed": 319,
-  "source_snapshot_sha256": "fc88ac497b313d0743f5bc7aca38f44835ac78f2cb6edfd5bc39bb6768f694ca",
+  "source_snapshot_sha256": "2eb8f1d7d1e7f19d57de2ac2c6ee950c85d9f42507c457a419fcc90f7c738683",
   "starting_snapshot": {
     "arrived_kg": 121292613,
     "date": "2019-01-01",

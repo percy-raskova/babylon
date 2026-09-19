@@ -340,9 +340,14 @@ def evaluate(
     employment: list[dict[str, Any]],
     freight: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    if trajectory.experiment.source_snapshot_sha256 != manifest["initialization_snapshot_sha256"]:
-        raise ValueError("trajectory source snapshot differs from pinned observations")
     kind = "employment" if trajectory.experiment.profile == "historical_employment" else "freight"
+    if (
+        trajectory.experiment.source_snapshot_sha256
+        != manifest["initialization_snapshot_sha256"][kind]
+    ):
+        raise ValueError(
+            "trajectory source snapshot differs from its profile's pinned observations"
+        )
     aligned = (
         _employment_alignment(trajectory, employment)
         if kind == "employment"

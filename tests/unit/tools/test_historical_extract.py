@@ -85,7 +85,7 @@ def test_corrupt_parquet_fails_before_scoring(tmp_path: Path) -> None:
 
 def test_regenerated_target_checksums_never_change_initial_spec_bytes(tmp_path: Path) -> None:
     """Re-extraction changes evaluator identity but not any engine input byte."""
-    import pyarrow.parquet as pq
+    import pyarrow.parquet as pq  # type: ignore[import-untyped]
     from tools.devtools.historical_extract import (
         _table,
         canonical_bytes,
@@ -148,7 +148,7 @@ def test_database_lineage_hashes_exact_bytes_and_refuses_wal(tmp_path: Path) -> 
 
 
 def test_database_mutation_during_fingerprint_refuses_extraction(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     import tools.devtools.historical_extract as module
 
@@ -164,3 +164,31 @@ def test_database_mutation_during_fingerprint_refuses_extraction(
     monkeypatch.setattr(module, "digest_file", mutate)
     with pytest.raises(ValueError, match="changed during extraction"):
         module._database_fingerprint(database, database.stat())
+
+
+@pytest.mark.parametrize("changed_profile", ["employment", "freight"])
+def test_initialization_identity_contains_only_its_own_profile_observations(
+    changed_profile: str,
+) -> None:
+    from tools.devtools.historical_extract import canonical_bytes, initialization_snapshot_digest
+
+    _, jobs, freight = load_fixtures(DEFAULT_FIXTURES)
+    before = starting_specs(jobs, freight, initialization_snapshot_digest(jobs, freight))
+    if changed_profile == "employment":
+        for row in jobs:
+            if (row["year"], row["quarter"]) == (2010, 1):
+                row["employment_begin"] += 1
+    else:
+        for row in freight:
+            if (row["year"], row["month"]) == (2019, 1):
+                row["shipwt_kg"] += 1
+    after = starting_specs(jobs, freight, initialization_snapshot_digest(jobs, freight))
+    other_profile = "freight" if changed_profile == "employment" else "employment"
+    assert canonical_bytes(after[other_profile]) == canonical_bytes(before[other_profile])
+    assert (
+        after[changed_profile]["starting_snapshot"] != before[changed_profile]["starting_snapshot"]
+    )
+    assert (
+        after[changed_profile]["source_snapshot_sha256"]
+        != before[changed_profile]["source_snapshot_sha256"]
+    )

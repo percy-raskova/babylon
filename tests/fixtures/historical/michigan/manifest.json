@@ -24,10 +24,13 @@
       "vintage": "BTS 2019-2024 monthly releases, retrieved 2026-09-05"
     }
   },
-  "initialization_snapshot_sha256": "fc88ac497b313d0743f5bc7aca38f44835ac78f2cb6edfd5bc39bb6768f694ca",
+  "initialization_snapshot_sha256": {
+    "employment": "3a157f7ce819e7169fc602989b7e0bb04157198436d6ec6c148a2eef82b73c64",
+    "freight": "2eb8f1d7d1e7f19d57de2ac2c6ee950c85d9f42507c457a419fcc90f7c738683"
+  },
   "pyarrow_version": "25.0.0",
   "schema": "babylon.historical-observations.v1",
-  "snapshot_sha256": "69f12fa901eb7cb03c3d5fdfd46969b5ae7a3b8459cb0a7e62836969610f6b4b",
+  "snapshot_sha256": "110d59e6ab2a0a3dc6d2111b8d0a044df0e1067c3306bbabbfac22752ed15f9a",
   "source_manifests": [
     {
       "files": [

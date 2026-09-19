@@ -109,7 +109,7 @@ def validate_rows(employment: list[dict[str, Any]], freight: list[dict[str, Any]
 
 
 def starting_specs(
-    employment: list[dict[str, Any]], freight: list[dict[str, Any]], snapshot: str
+    employment: list[dict[str, Any]], freight: list[dict[str, Any]], snapshots: dict[str, str]
 ) -> dict[str, dict[str, Any]]:
     series = []
     for row in employment:
@@ -129,13 +129,13 @@ def starting_specs(
     base: dict[str, Any] = {
         "schema": "SimulationExperimentV1",
         "seed": 319,
-        "source_snapshot_sha256": snapshot,
         "interventions": [],
     }
     return {
         "employment": {
             **base,
             "profile": "historical_employment",
+            "source_snapshot_sha256": snapshots["employment"],
             "epoch": "2010-01-01",
             "horizon": 131,
             "starting_snapshot": {"kind": "employment", "date": "2010-01-01", "series": series},
@@ -143,6 +143,7 @@ def starting_specs(
         "freight": {
             **base,
             "profile": "historical_freight",
+            "source_snapshot_sha256": snapshots["freight"],
             "epoch": "2019-02-01",
             "horizon": 78,
             "starting_snapshot": {
@@ -159,19 +160,22 @@ def starting_specs(
 
 def initialization_snapshot_digest(
     employment: list[dict[str, Any]], freight: list[dict[str, Any]]
-) -> str:
-    """Only initial observations and their definitions may bind engine identity.
+) -> dict[str, str]:
+    """Bind each engine profile only to its own initial observations and definitions.
 
-    Whole source-file and target-fixture hashes belong to evaluator lineage;
-    including them here would let held-out outcomes change captured engine inputs.
+    Whole source-file and target-fixture hashes belong to evaluator lineage.
+    Another profile's initialization is also excluded: January 2019 freight is
+    a future observation for the employment experiment starting in 2010.
     """
-    specs = starting_specs(employment, freight, "")
-    identity = {
-        "schema": "babylon.historical-initialization.v1",
+    specs = starting_specs(employment, freight, {"employment": "", "freight": ""})
+    identities = {
         "employment": {
             "product": "LEHD_QWI",
             "release": "R2026Q3",
             "definition": "2010Q1 beginning employment; ownership 5; status 1; five disjoint county/NAICS cohorts",
+            "query": EMPLOYMENT_SQL.replace(
+                "t.year BETWEEN 2009 AND 2019", "t.year = 2010 AND t.quarter = 1"
+            ),
             "cohorts": COHORTS,
             "snapshot": specs["employment"]["starting_snapshot"],
         },
@@ -179,10 +183,24 @@ def initialization_snapshot_digest(
             "product": "BTS_TRANSBORDER",
             "release": "January2019TransBorderRawData; retrieved 2026-09-05",
             "definition": "2019-01 sum shipwt_kg across container/domestic_foreign partitions; port3801; country1220; mode5; trade2; HS72",
+            "query": FREIGHT_SQL.replace(
+                "t.year BETWEEN 2019 AND 2024", "t.year = 2019 AND t.month = 1"
+            ),
             "snapshot": specs["freight"]["starting_snapshot"],
         },
     }
-    return hashlib.sha256(canonical_bytes(identity)).hexdigest()
+    return {
+        name: hashlib.sha256(
+            canonical_bytes(
+                {
+                    "schema": "babylon.historical-initialization.v1",
+                    "profile": specs[name]["profile"],
+                    **identity,
+                }
+            )
+        ).hexdigest()
+        for name, identity in identities.items()
+    }
 
 
 def _source_manifest(path: Path) -> dict[str, Any]:

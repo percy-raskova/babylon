@@ -160,8 +160,8 @@ pub(crate) fn validate_stored_material_authority(
     let experiment = decoded.catalog().experiment();
     if experimental != experiment.map(|s| s.profile)
         || experimental.is_some_and(|p| p.horizon() != spec.horizon_ticks)
-        || graph.rng_seed()
-            != babylon_kernel::replay::ReplaySeed::new(experiment.map_or(319, |s| s.seed))
+        || experiment
+            .is_some_and(|s| graph.rng_seed() != babylon_kernel::replay::ReplaySeed::new(s.seed))
         || spec.horizon_ticks != decoded.catalog().horizon_ticks()
         || decoded.catalog().preset() != delivery
         || decoded.scenario().as_bytes() != graph.content_bundle().scenario_source_bytes()

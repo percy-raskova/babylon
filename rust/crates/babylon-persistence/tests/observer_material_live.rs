@@ -26,12 +26,16 @@ use babylon_practice_contract::OrderedPracticeActionBatch;
 use babylon_tick::material_world::MaterialWorldRegister;
 use postgres::{Config, NoTls};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::sync::{Mutex, Once};
 use uuid::Uuid;
 
 const ACK: &str = "I_UNDERSTAND_THIS_DISPOSABLE_RUNTIME_DROPS_ITS_SCRATCH_DATABASES_AND_ROLES";
 
 static NEXT_DISPOSABLE_TARGET: AtomicU64 = AtomicU64::new(0);
+// Role existence is cluster-wide, but the production installers' schema locks
+// are database-local. Initialize the groups before any parallel clone or child
+// session can install its own grants. The owned harness runs this binary alone.
+static OBSERVER_GROUP_ROLES: Once = Once::new();
 // PostgreSQL parameter ACLs are cluster-wide even when test databases differ.
 // The owned harness runs this test binary alone; only these short shared-row
 // mutations serialize, while each clone's material/Archive proof runs freely.
@@ -487,13 +491,18 @@ impl DisposableTarget {
             .unwrap();
         let mut writer = admin.clone();
         writer.dbname(&database);
-        Self {
+        let target = Self {
             sequence,
             admin,
             writer,
             database,
             roles: Vec::new(),
-        }
+        };
+        OBSERVER_GROUP_ROLES.call_once(|| {
+            install_reader_role(&target.writer).expect("initialize shared reader group");
+            provision_observer_role(&target.writer).expect("initialize shared observer group");
+        });
+        target
     }
 
     fn login(&mut self, group: &str, suffix: &str) -> Config {
@@ -982,9 +991,11 @@ fn assert_session_admits_stored_revision(
     );
     assert!(
         matches!(&responses[2], RuntimeSessionResponse::Ready { foundation_digest, tail, .. }
-        if foundation_digest == &current.foundation_digest && tail.resolve_tick == 3)
+        if foundation_digest == &current.foundation_digest && tail.resolve_tick == 3),
+        "stored revision did not become ready: {responses:#?}"
     );
-    assert!(responses.iter().any(|response| matches!(response, RuntimeSessionResponse::Committed { tail, .. } if tail.resolve_tick == 4)));
+    assert!(responses.iter().any(|response| matches!(response, RuntimeSessionResponse::Committed { request_id: 2, tail, .. } if tail.resolve_tick == 4)),
+        "stored revision advance did not commit: {responses:#?}");
     assert_eq!(
         observer.snapshot(campaign, 4).unwrap().foundation_digest,
         current.foundation_digest

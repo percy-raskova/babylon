@@ -3,6 +3,9 @@ use super::*;
 use crate::archive_revision::{ArchiveDossierPending, ArchiveSearchState};
 use crate::ArchiveMaterializeMode;
 
+#[path = "publication_lock.rs"]
+mod publication_lock;
+
 fn stable_input(receipt: &PendingArchiveReceipt, question: &str) -> ArchivePageInput {
     let original = stub_page_input(
         &PendingArchiveReceipt::try_new(1, *receipt.tick_content_hash()).expect("stub identity"),

@@ -63,6 +63,26 @@ impl SessionBackend for DurableBackend {
 }
 
 fn advance_error(error: &MaterialRuntimeError) -> RuntimeSessionErrorCode {
+    // Operator diagnostics only: retain the safe database cause before the
+    // protocol maps it to a deliberately bounded refusal code.
+    if std::env::var("BABYLON_TIMINGS").as_deref() == Ok("1") {
+        match error {
+            MaterialRuntimeError::Graph(crate::RustPersistenceRuntimeError::Database {
+                operation,
+                diagnostic,
+            }) => eprintln!(
+                "babylon-session advance_refused operation={operation:?} sqlstate={:?}",
+                diagnostic.as_ref().and_then(crate::PostgresDiagnostic::sqlstate)
+            ),
+            MaterialRuntimeError::Database(error)
+            | MaterialRuntimeError::DatabaseLockRefused(error)
+            | MaterialRuntimeError::DatabaseStatementCanceled(error) => eprintln!(
+                "babylon-session advance_refused operation=\"material runtime advance\" sqlstate={:?}",
+                crate::PostgresDiagnostic::capture(error).sqlstate()
+            ),
+            _ => {}
+        }
+    }
     match error {
         MaterialRuntimeError::Replay(
             babylon_tick::material_replay::MaterialReplayError::Horizon,

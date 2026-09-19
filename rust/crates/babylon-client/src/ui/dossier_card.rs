@@ -197,6 +197,16 @@ struct DossierPresentation {
     details_open: bool,
 }
 
+/// The decision that opened this reading remains reachable while navigating its pages.
+#[derive(Resource, Default)]
+struct OrganizerArchiveOrigin(Option<CampaignId>);
+
+#[derive(Component)]
+struct OrganizerArchiveReturn;
+
+#[derive(Component)]
+struct DossierSection(DossierZone);
+
 fn fetch_dossier(
     scope: DossierRequestScope,
     cursor: Option<ArchiveChangeCursor>,
@@ -322,6 +332,7 @@ fn spawn_dossier_card(mut commands: Commands) {
             TabGroup::new(20),
         ))
         .with_children(|card| {
+            spawn_organizer_return(card);
             card.spawn((
                 Text::new(""),
                 TextColor(palette::BONE),
@@ -357,29 +368,68 @@ fn spawn_dossier_card(mut commands: Commands) {
                 ObserverFontRole::Exact,
                 zone(DossierZone::Signals),
             ));
-            card.spawn(gold_rule());
-            card.spawn(section_header("P L A C E S"));
-            card.spawn((
-                Node {
-                    flex_direction: FlexDirection::Row,
-                    flex_wrap: FlexWrap::Wrap,
-                    column_gap: px(6),
-                    row_gap: px(6),
-                    ..default()
-                },
-                zone(DossierZone::Places),
-            ));
-            card.spawn(gold_rule());
-            card.spawn(section_header("C H R O N I C L E"));
-            card.spawn((
-                Text::new(""),
-                TextFont::default(),
-                ObserverFontRole::Exact,
-                zone(DossierZone::Chronicle),
-            ));
+            spawn_optional_sections(card);
             card.spawn(gold_rule());
             spawn_sealed_actions(card);
         });
+}
+
+fn spawn_optional_sections(card: &mut ChildSpawnerCommands) {
+    let zone = |kind: DossierZone| (kind, DeclaredSurface::new(CARD_SURFACE));
+    for kind in [DossierZone::Places, DossierZone::Chronicle] {
+        card.spawn((
+            Node {
+                display: Display::None,
+                flex_direction: FlexDirection::Column,
+                row_gap: px(12),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            DossierSection(kind),
+        ))
+        .with_children(|section| {
+            section.spawn(gold_rule());
+            if kind == DossierZone::Places {
+                section.spawn(section_header("P L A C E S"));
+                section.spawn((
+                    Node {
+                        flex_direction: FlexDirection::Row,
+                        flex_wrap: FlexWrap::Wrap,
+                        column_gap: px(6),
+                        row_gap: px(6),
+                        ..default()
+                    },
+                    zone(kind),
+                ));
+            } else {
+                section.spawn(section_header("C H R O N I C L E"));
+                section.spawn((
+                    Text::new(""),
+                    TextFont::default(),
+                    ObserverFontRole::Exact,
+                    zone(kind),
+                ));
+            }
+        });
+    }
+}
+
+fn spawn_organizer_return(card: &mut ChildSpawnerCommands) {
+    card.spawn((
+        Node {
+            display: Display::None,
+            flex_shrink: 0.0,
+            ..default()
+        },
+        OrganizerArchiveReturn,
+    ))
+    .with_children(|navigation| {
+        crate::organizer::ui::button(
+            navigation,
+            "Back to this decision",
+            crate::organizer::ui::OrganizerAction::Open,
+        );
+    });
 }
 
 fn spawn_sealed_actions(card: &mut ChildSpawnerCommands) {
@@ -1079,6 +1129,7 @@ fn open_organizer_archive(
     organizer: Res<crate::organizer::OrganizerClient>,
     identity: DossierReadIdentity,
     mut outputs: DossierWriteState,
+    mut origin: ResMut<OrganizerArchiveOrigin>,
 ) {
     let Some(view) = &organizer.view else {
         return;
@@ -1089,6 +1140,7 @@ fn open_organizer_archive(
     if !session.organizer_enabled || session.campaign != identity.campaign.0 {
         return;
     }
+    origin.0 = Some(session.campaign);
     let Some(mut scope) = identity.scope(&DossierPageView::Card) else {
         return;
     };
@@ -1123,6 +1175,40 @@ fn open_organizer_archive(
     *outputs.presentation = DossierPresentation::default();
     outputs.projection.0 = None;
     *outputs.fetch = DossierFetchState::Idle;
+}
+
+fn sync_organizer_return(
+    mut origin: ResMut<OrganizerArchiveOrigin>,
+    session: Option<Res<ObserverSession>>,
+    ui: Option<Res<ObserverUiState>>,
+    mut requests: MessageReader<crate::observer_ui::ObserverCommand>,
+    mut navigation: Query<&mut Node, With<OrganizerArchiveReturn>>,
+) {
+    let mut generic_archive = false;
+    for request in requests.read() {
+        generic_archive |= matches!(request, crate::observer_ui::ObserverCommand::Archive);
+    }
+    let retains_origin = session
+        .as_ref()
+        .is_some_and(|session| session.organizer_enabled && origin.0 == Some(session.campaign))
+        && ui.as_ref().is_some_and(|ui| ui.archive_open);
+    if generic_archive || !retains_origin {
+        origin.0 = None;
+    }
+    let visible = origin.0.is_some()
+        && ui
+            .as_ref()
+            .is_some_and(|ui| !ui.menu_open && !ui.splash_visible && !ui.comparison_open);
+    for mut node in &mut navigation {
+        let display = if visible {
+            Display::Flex
+        } else {
+            Display::None
+        };
+        if node.display != display {
+            node.display = display;
+        }
+    }
 }
 
 fn apply_page_requests(
@@ -1194,6 +1280,7 @@ fn repaint_dossier_card(
     presentation: Res<DossierPresentation>,
     zones: Query<(Entity, &DossierZone)>,
     mut roots: DossierRoots,
+    mut sections: Query<(&DossierSection, &mut Node), Without<DossierCardRoot>>,
 ) {
     let Ok((root, mut visibility, mut node, mut background, mut border, mut shadow)) =
         roots.single_mut()
@@ -1242,6 +1329,26 @@ fn repaint_dossier_card(
         return;
     }
     paint_zones(&mut commands, &context, &view, &presentation, &zones);
+    let read = context
+        .projection
+        .0
+        .as_ref()
+        .filter(|installed| identity.admits(installed, &view))
+        .map(|installed| &installed.read);
+    for (section, mut node) in &mut sections {
+        let populated = match section.0 {
+            DossierZone::Places => read
+                .and_then(retained_page)
+                .is_some_and(|page| !page.links.is_empty()),
+            DossierZone::Chronicle => presentation.details_open && read.is_some(),
+            _ => false,
+        };
+        node.display = if populated {
+            Display::Flex
+        } else {
+            Display::None
+        };
+    }
 }
 
 fn paint_zones(
@@ -1398,7 +1505,10 @@ fn status_segments(
             "Viewing period {} · durable period {}\n{}",
             read.scope.tick(),
             read.durable_tick,
-            availability_label(read)
+            verified.map_or_else(
+                || availability_label(read).to_owned(),
+                |tick| format!("Archive verified through {tick}"),
+            )
         ),
         tone: if verified.is_some() {
             DossierTone::Gold
@@ -1406,13 +1516,8 @@ fn status_segments(
             DossierTone::Crimson
         },
     }];
-    if let Some(tick) = verified {
-        segments.push(DossierSegment {
-            text: format!(" · verified through {tick}"),
-            tone: DossierTone::Gold,
-        });
-    }
-    if let Some(page) = retained_page(read) {
+    if let Some(page) = retained_page(read).filter(|page| page.effective_tick != read.scope.tick())
+    {
         segments.push(DossierSegment {
             text: format!("\nContent last published at period {}", page.effective_tick),
             tone: DossierTone::Dim,
@@ -1564,7 +1669,9 @@ impl Plugin for DossierCardPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<SubjectPageRequest>()
             .add_message::<DossierControl>()
+            .add_message::<crate::observer_ui::ObserverCommand>()
             .init_resource::<DossierPresentation>()
+            .init_resource::<OrganizerArchiveOrigin>()
             .init_resource::<DossierCampaignId>()
             .add_observer(open_organizer_archive)
             .init_resource::<ActiveCountyDossier>()
@@ -1583,6 +1690,7 @@ impl Plugin for DossierCardPlugin {
                     drive_dossier_fetch,
                     collect_dossier_fetch,
                     apply_page_requests,
+                    sync_organizer_return,
                     repaint_dossier_card,
                     polish_observer_card
                         .run_if(resource_exists::<crate::observer_ui::ObserverUiState>),
@@ -1869,6 +1977,108 @@ mod tests {
         );
         assert_eq!(app.world().resource::<ObserverSession>().viewed_tick, 1);
         assert!(app.world().resource::<ActiveCountyDossier>().0.is_none());
+    }
+
+    #[test]
+    fn decision_return_survives_failed_and_historical_reads_but_not_a_different_origin() {
+        use bevy::ecs::system::RunSystemOnce;
+        let (mut app, _, _) = chip_app();
+        let campaign = app.world().resource::<ObserverSession>().campaign;
+        app.world_mut()
+            .resource_mut::<ObserverSession>()
+            .organizer_enabled = true;
+        app.insert_resource(OrganizerArchiveOrigin(Some(campaign)))
+            .add_message::<crate::observer_ui::ObserverCommand>()
+            .add_systems(Update, sync_organizer_return);
+        app.world_mut().run_system_once(spawn_dossier_card).unwrap();
+        let navigation = app
+            .world_mut()
+            .query_filtered::<Entity, With<OrganizerArchiveReturn>>()
+            .single(app.world())
+            .unwrap();
+        *app.world_mut().resource_mut::<DossierFetchState>() =
+            DossierFetchState::Failed(DossierFetchError::ReadFailed("offline".into()));
+        app.world_mut()
+            .resource_mut::<ObserverSession>()
+            .inspect_tick(0);
+        app.update();
+        assert_eq!(
+            app.world().get::<Node>(navigation).unwrap().display,
+            Display::Flex
+        );
+        assert_eq!(app.world().resource::<ObserverSession>().viewed_tick, 0);
+        assert_eq!(app.world().resource::<ObserverSession>().durable_tick, 1);
+        assert_eq!(
+            *app.world().resource::<DossierPageView>(),
+            DossierPageView::Card
+        );
+
+        app.world_mut()
+            .write_message(crate::observer_ui::ObserverCommand::Archive);
+        app.update();
+        assert_eq!(
+            app.world().get::<Node>(navigation).unwrap().display,
+            Display::None
+        );
+        assert!(app.world().resource::<OrganizerArchiveOrigin>().0.is_none());
+
+        app.world_mut().resource_mut::<OrganizerArchiveOrigin>().0 = Some(campaign);
+        app.world_mut().resource_mut::<ObserverSession>().campaign =
+            CampaignId::from_uuid(uuid::Uuid::from_u128(2));
+        app.update();
+        assert!(app.world().resource::<OrganizerArchiveOrigin>().0.is_none());
+        assert_eq!(
+            app.world().get::<Node>(navigation).unwrap().display,
+            Display::None
+        );
+    }
+
+    #[test]
+    fn empty_sections_disappear_and_evidence_disclosure_keeps_original_records() {
+        use bevy::ecs::system::RunSystemOnce;
+        let (mut app, _, _) = chip_app();
+        page_mut(
+            app.world_mut()
+                .resource_mut::<ActiveCountyDossier>()
+                .0
+                .as_mut()
+                .unwrap(),
+        )
+        .links
+        .clear();
+        app.world_mut().run_system_once(spawn_dossier_card).unwrap();
+        app.add_systems(Update, repaint_dossier_card.after(apply_page_requests));
+        app.update();
+        for (_, node) in app
+            .world_mut()
+            .query::<(&DossierSection, &Node)>()
+            .iter(app.world())
+        {
+            assert_eq!(node.display, Display::None);
+        }
+        app.world_mut()
+            .resource_mut::<DossierPresentation>()
+            .details_open = true;
+        app.update();
+        for (section, node) in app
+            .world_mut()
+            .query::<(&DossierSection, &Node)>()
+            .iter(app.world())
+        {
+            assert_eq!(
+                node.display,
+                if section.0 == DossierZone::Chronicle {
+                    Display::Flex
+                } else {
+                    Display::None
+                }
+            );
+        }
+        assert!(app
+            .world_mut()
+            .query::<&TextSpan>()
+            .iter(app.world())
+            .any(|span| span.0.contains("Exact retained narrative")));
     }
 
     #[test]

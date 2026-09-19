@@ -22,6 +22,7 @@ enum RenderMode {
     OrganizerRelationships,
     OrganizerDirection,
     OrganizerReceipts,
+    OrganizerNotes,
 }
 
 impl RenderMode {
@@ -35,6 +36,7 @@ impl RenderMode {
             Self::OrganizerRelationships => "organizer-relationships",
             Self::OrganizerDirection => "organizer-direction",
             Self::OrganizerReceipts => "organizer-receipts",
+            Self::OrganizerNotes => "organizer-notes",
         }
     }
 }
@@ -192,6 +194,7 @@ fn sample_frames(
                         RenderMode::OrganizerDirection
                     }
                     crate::organizer::OrganizerInspector::Receipts => RenderMode::OrganizerReceipts,
+                    crate::organizer::OrganizerInspector::Notes => RenderMode::OrganizerNotes,
                 },
                 (PrimaryView::Map, _) => RenderMode::Map3d,
                 (PrimaryView::Production, false) => RenderMode::Production3d,

@@ -15,7 +15,7 @@ use crate::observer::ObserverSession;
 use crate::observer_focus::{ObserverFocusSystems, ObserverFocusTarget, ObserverKeyboardActivate};
 use crate::observer_io::ObserverSet;
 use crate::observer_theme as theme;
-use crate::observer_ui::{ObserverFontRole, ObserverUiState};
+use crate::observer_ui::{ObserverCommand, ObserverFontRole, ObserverUiState};
 use crate::production::PrimaryView;
 
 use super::{presentation, OrganizerClient, OrganizerInspector, RequestKind};
@@ -26,6 +26,7 @@ pub(crate) enum OrganizerAction {
     Choose(OrganizerChoice),
     Review,
     Confirm,
+    Advance,
     Refresh,
     Inspect(OrganizerInspector),
     OpenReferences,
@@ -61,14 +62,20 @@ struct ActionButton(OrganizerAction);
 #[derive(Component)]
 struct NotesField;
 #[derive(Component)]
-struct EvidenceControls;
+struct DetailControls(OrganizerInspector);
+#[derive(Component)]
+struct ScrollHint(Entity);
 
 #[derive(Component, Clone, Copy)]
 enum TextPart {
     Title,
     Situation,
     Means,
-    Approaches,
+    Context,
+    Aftermath,
+    ChoiceHeading,
+    Approach(OrganizerChoice),
+    ChoiceMarker(OrganizerChoice),
     Review,
     Message,
     Notes,
@@ -158,54 +165,287 @@ fn spawn(mut commands: Commands) {
 }
 
 fn spawn_workspace(commands: &mut Commands) {
-    commands.spawn((
-        Node { position_type: PositionType::Absolute, left: px(16), right: px(16), top: px(88), bottom: px(60), padding: UiRect::all(px(20)), column_gap: px(24), display: Display::None, ..default() },
-        BackgroundColor(theme::INK), ZIndex(7), OrganizerRoot, TabGroup::new(8), DeclaredSurface::new(SurfaceId::OrganizerWorkspace),
-    )).with_children(|root| {
-        root.spawn(Node { flex_grow: 1.7, flex_basis: px(0), overflow: Overflow::scroll_y(), ..column() }).with_children(|main| {
-            main.spawn((text("ORGANIZE IN WAYNE", 27.0, theme::YELLOW), TextPart::Title)).insert(ObserverFontRole::Display);
-            main.spawn((text("Opening the organization…", 19.0, theme::PAPER), TextPart::Situation, ObserverFocusTarget::reading(None)));
-            main.spawn(row()).with_children(|buttons| {
-                button(buttons, "Workplace evidence", OrganizerAction::Inspect(OrganizerInspector::Evidence));
-                button(buttons, "Relationships", OrganizerAction::Inspect(OrganizerInspector::Relationships));
-                button(buttons, "Direction / disagreements", OrganizerAction::Inspect(OrganizerInspector::Direction));
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: px(24),
+                right: px(24),
+                top: px(88),
+                bottom: px(60),
+                row_gap: px(14),
+                display: Display::None,
+                ..column()
+            },
+            BackgroundColor(theme::INK),
+            ZIndex(7),
+            OrganizerRoot,
+            TabGroup::new(8),
+            DeclaredSurface::new(SurfaceId::OrganizerWorkspace),
+        ))
+        .with_children(|root| {
+            spawn_identity(root);
+            root.spawn(Node {
+                flex_grow: 1.0,
+                min_height: px(0),
+                column_gap: px(18),
+                ..default()
+            })
+            .with_children(|body| {
+                spawn_briefing(body);
+                spawn_approaches(body);
             });
-            main.spawn(text("CHOOSE OUR RESPONSE", 16.0, theme::YELLOW));
-            main.spawn((text("", 15.0, theme::GRAY), TextPart::Approaches));
-            main.spawn(row()).with_children(|buttons| {
-                button(buttons, "Inquiry: work / output", OrganizerAction::Choose(OrganizerChoice::Inquiry(OrganizerInquiry::WorkLost)));
-                button(buttons, "Inquiry: maintenance", OrganizerAction::Choose(OrganizerChoice::Inquiry(OrganizerInquiry::MaintenanceReceived)));
-                button(buttons, "Reinforce contact", OrganizerAction::Choose(OrganizerChoice::Reinforce));
-                button(buttons, "Hold current course", OrganizerAction::Choose(OrganizerChoice::Hold));
-            });
-            main.spawn((text("", 13.0, theme::GRAY), TextPart::DraftStatus));
-            main.spawn((
-                Button, NotesField, ObserverFocusTarget::text_input(None),
-                Node { min_height: px(82), padding: UiRect::all(px(12)), border: UiRect::all(px(1)), width: percent(100), flex_shrink: 0.0, ..default() },
-                BackgroundColor(theme::PANEL), BorderColor::all(theme::GRAY), DeclaredSurface::new(SurfaceId::OrganizerWorkspace),
-            )).with_child((text("Click or Tab here to write notes.", 16.0, theme::PAPER), TextPart::Notes));
-            main.spawn(text("Type notes · Ctrl+A selects all · arrows edit · Tab leaves the field. Notes never advance time or select a ruling.", 12.0, theme::GRAY));
-            main.spawn((text("", 13.0, theme::GRAY), TextPart::ReferenceSummary));
-            button(main, "Open saved references", OrganizerAction::OpenReferences);
-            main.spawn((text("", 16.0, theme::PAPER), TextPart::Review, ObserverFocusTarget::reading(None)));
-            main.spawn(row()).with_children(|buttons| {
-                button(buttons, "Review selected approach", OrganizerAction::Review);
-                button(buttons, "Confirm organizational ruling", OrganizerAction::Confirm);
-            });
-            main.spawn((text("", 14.0, theme::YELLOW), TextPart::Message));
+            spawn_decision_footer(root);
         });
-        root.spawn(Node { flex_grow: 1.0, flex_basis: px(0), padding: UiRect::all(px(18)), overflow: Overflow::scroll_y(), ..column() })
-            .insert(BackgroundColor(theme::PANEL)).with_children(|aside| {
-                aside.spawn(text("OUR ORGANIZATION", 19.0, theme::YELLOW));
-                aside.spawn((text("", 16.0, theme::PAPER), TextPart::Means, ObserverFocusTarget::reading(None)));
-                aside.spawn(row()).with_children(|buttons| {
-                    button(buttons, "Authorize / resume routine", OrganizerAction::Choose(OrganizerChoice::ResumeStanding));
-                    button(buttons, "Pause routine", OrganizerAction::Choose(OrganizerChoice::PauseStanding));
+}
+
+fn spawn_identity(root: &mut ChildSpawnerCommands) {
+    root.spawn(Node {
+        justify_content: JustifyContent::SpaceBetween,
+        align_items: AlignItems::Center,
+        column_gap: px(24),
+        flex_shrink: 0.0,
+        ..default()
+    })
+    .with_children(|header| {
+        header
+            .spawn(Node {
+                row_gap: px(2),
+                ..column()
+            })
+            .with_children(|identity| {
+                identity.spawn(text("YOU DIRECT", 11.0, theme::GRAY));
+                identity
+                    .spawn((
+                        text("Wayne Organizing Collective", 27.0, theme::PAPER),
+                        TextPart::Title,
+                    ))
+                    .insert(ObserverFontRole::Display);
+            });
+        header.spawn((
+            text("Opening the organization…", 16.0, theme::YELLOW),
+            TextPart::Means,
+            ObserverFocusTarget::reading(None),
+        ));
+    });
+}
+
+fn spawn_briefing(body: &mut ChildSpawnerCommands) {
+    body.spawn((
+        Node {
+            flex_grow: 1.0,
+            flex_basis: px(0),
+            min_height: px(0),
+            padding: UiRect::all(px(16)),
+            row_gap: px(4),
+            ..column()
+        },
+        BackgroundColor(theme::PANEL),
+    ))
+    .with_children(|briefing| spawn_scrolling_reading(briefing, spawn_briefing_content));
+}
+
+fn spawn_briefing_content(briefing: &mut ChildSpawnerCommands) {
+    briefing.spawn(text("OUR SITUATION", 13.0, theme::YELLOW));
+    briefing.spawn((
+        text("", 15.0, theme::PAPER),
+        TextPart::Context,
+        ObserverFocusTarget::reading(None),
+    ));
+    briefing.spawn(text("WORKPLACE REPORT", 12.0, theme::YELLOW));
+    briefing.spawn((
+        text("Opening the latest report…", 15.0, theme::PAPER),
+        TextPart::Situation,
+        ObserverFocusTarget::reading(None),
+    ));
+    briefing.spawn(text("LAST PERIOD", 12.0, theme::YELLOW));
+    briefing.spawn((
+        text("", 14.0, theme::PAPER),
+        TextPart::Aftermath,
+        ObserverFocusTarget::reading(None),
+    ));
+    briefing.spawn(row()).with_children(|links| {
+        button(
+            links,
+            "Workplace evidence",
+            OrganizerAction::Inspect(OrganizerInspector::Evidence),
+        );
+        button(
+            links,
+            "Relationships",
+            OrganizerAction::Inspect(OrganizerInspector::Relationships),
+        );
+        button(
+            links,
+            "Direction / routine",
+            OrganizerAction::Inspect(OrganizerInspector::Direction),
+        );
+        button(
+            links,
+            "Practice history",
+            OrganizerAction::Inspect(OrganizerInspector::Receipts),
+        );
+        button(
+            links,
+            "Personal notes",
+            OrganizerAction::Inspect(OrganizerInspector::Notes),
+        );
+    });
+}
+
+fn spawn_approaches(body: &mut ChildSpawnerCommands) {
+    body.spawn(Node {
+        flex_grow: 2.0,
+        flex_basis: px(0),
+        min_height: px(0),
+        row_gap: px(4),
+        ..column()
+    })
+    .with_children(|choices| spawn_scrolling_reading(choices, spawn_approach_grid));
+}
+
+fn spawn_approach_grid(choices: &mut ChildSpawnerCommands) {
+    choices.spawn((text("", 13.0, theme::YELLOW), TextPart::ChoiceHeading));
+    for pair in [
+        [
+            OrganizerChoice::Inquiry(OrganizerInquiry::WorkLost),
+            OrganizerChoice::Inquiry(OrganizerInquiry::MaintenanceReceived),
+        ],
+        [OrganizerChoice::Reinforce, OrganizerChoice::Hold],
+    ] {
+        choices
+            .spawn(Node {
+                column_gap: px(10),
+                min_width: px(0),
+                ..default()
+            })
+            .with_children(|cards| {
+                for choice in pair {
+                    spawn_approach(cards, choice);
+                }
+            });
+    }
+}
+
+fn spawn_scrolling_reading(
+    parent: &mut ChildSpawnerCommands,
+    contents: impl FnOnce(&mut ChildSpawnerCommands),
+) {
+    let reading = parent
+        .spawn(Node {
+            flex_grow: 1.0,
+            min_height: px(0),
+            row_gap: px(10),
+            overflow: Overflow::scroll_y(),
+            ..column()
+        })
+        .with_children(contents)
+        .id();
+    parent
+        .spawn((text("", 12.0, theme::GRAY), ScrollHint(reading)))
+        .insert(Node {
+            height: px(16),
+            min_height: px(16),
+            flex_shrink: 0.0,
+            ..default()
+        });
+}
+
+fn scroll_hint(computed: &ComputedNode) -> &'static str {
+    let Some(maximum) = crate::observer_focus::scroll_max(computed) else {
+        return "";
+    };
+    if maximum.y <= 1.0 {
+        return "";
+    }
+    let position = computed.scroll_position.y * computed.inverse_scale_factor;
+    match (position > 1.0, maximum.y - position > 1.0) {
+        (true, true) => "More above and below · scroll this panel",
+        (true, false) => "More above · scroll this panel",
+        (false, true) => "More below · scroll this panel",
+        (false, false) => "",
+    }
+}
+
+fn paint_scroll_hints(regions: Query<&ComputedNode>, mut hints: Query<(&ScrollHint, &mut Text)>) {
+    for (hint, mut text) in &mut hints {
+        let label = regions.get(hint.0).map_or("", scroll_hint);
+        if text.0 != label {
+            text.0 = label.into();
+        }
+    }
+}
+
+fn spawn_approach(cards: &mut ChildSpawnerCommands, choice: OrganizerChoice) {
+    cards
+        .spawn((
+            Button,
+            ActionButton(OrganizerAction::Choose(choice)),
+            ObserverFocusTarget::action(None),
+            Node {
+                flex_grow: 1.0,
+                flex_basis: px(0),
+                padding: UiRect::all(px(14)),
+                border: UiRect::left(px(3)),
+                row_gap: px(6),
+                ..column()
+            },
+            BackgroundColor(theme::PANEL),
+            BorderColor::all(theme::GRAY),
+            DeclaredSurface::new(SurfaceId::OrganizerWorkspace),
+        ))
+        .with_children(|card| {
+            card.spawn((
+                text("SELECT", 11.0, theme::YELLOW),
+                TextPart::ChoiceMarker(choice),
+            ));
+            card.spawn(text(presentation::choice(choice), 18.0, theme::PAPER));
+            card.spawn((text("", 14.0, theme::GRAY), TextPart::Approach(choice)));
+        });
+}
+
+fn spawn_decision_footer(root: &mut ChildSpawnerCommands) {
+    root.spawn((
+        Node {
+            padding: UiRect::all(px(14)),
+            column_gap: px(20),
+            flex_shrink: 0.0,
+            border: UiRect::top(px(2)),
+            ..default()
+        },
+        BackgroundColor(theme::PANEL),
+        BorderColor::all(theme::YELLOW),
+    ))
+    .with_children(|footer| {
+        footer
+            .spawn(Node {
+                flex_grow: 1.0,
+                flex_basis: px(0),
+                row_gap: px(6),
+                ..column()
+            })
+            .with_children(|summary| {
+                summary.spawn((
+                    text("", 15.0, theme::PAPER),
+                    TextPart::Review,
+                    ObserverFocusTarget::reading(None),
+                ));
+                summary.spawn((text("", 13.0, theme::YELLOW), TextPart::Message));
+                summary.spawn((text("", 11.0, theme::GRAY), TextPart::DraftStatus));
+            });
+        footer
+            .spawn(Node {
+                width: px(338),
+                flex_shrink: 0.0,
+                row_gap: px(8),
+                ..column()
+            })
+            .with_children(|controls| {
+                controls.spawn(row()).with_children(|buttons| {
+                    button(buttons, "Review choice", OrganizerAction::Review);
+                    button(buttons, "Confirm ruling", OrganizerAction::Confirm);
                 });
-                aside.spawn(text("AFTER THE PERIOD", 17.0, theme::YELLOW));
-                aside.spawn(text("Compare the practice receipt, independent partner response, and revised workplace evidence. Factory recovery is a separate material result.", 15.0, theme::GRAY));
-                button(aside, "Practice receipts / history", OrganizerAction::Inspect(OrganizerInspector::Receipts));
-                button(aside, "Refresh committed situation", OrganizerAction::Refresh);
+                button(controls, "Advance one period", OrganizerAction::Advance);
             });
     });
 }
@@ -254,8 +494,9 @@ fn spawn_inspector(commands: &mut Commands) {
                 );
             });
             panel.spawn((text("", 12.0, theme::GRAY), TextPart::DraftStatus));
+            panel.spawn((text("", 13.0, theme::YELLOW), TextPart::Message));
             panel
-                .spawn((column(), EvidenceControls))
+                .spawn((column(), DetailControls(OrganizerInspector::Evidence)))
                 .with_children(|controls| {
                     controls.spawn(row()).with_children(|buttons| {
                         button(
@@ -275,22 +516,51 @@ fn spawn_inspector(commands: &mut Commands) {
                             OrganizerAction::RemoveReference,
                         );
                     });
-                    controls.spawn((text("", 13.0, theme::YELLOW), TextPart::Message));
                 });
             panel
-                .spawn(Node {
-                    flex_grow: 1.0,
-                    min_height: px(0),
-                    overflow: Overflow::scroll_y(),
-                    ..column()
-                })
-                .with_children(|body| {
-                    body.spawn((
-                        text("", 17.0, theme::PAPER),
-                        TextPart::InspectorBody,
-                        ObserverFocusTarget::reading(None),
-                    ));
+                .spawn((row(), DetailControls(OrganizerInspector::Direction)))
+                .with_children(|controls| {
+                    button(
+                        controls,
+                        "Pause routine",
+                        OrganizerAction::Choose(OrganizerChoice::PauseStanding),
+                    );
+                    button(
+                        controls,
+                        "Authorize / resume routine",
+                        OrganizerAction::Choose(OrganizerChoice::ResumeStanding),
+                    );
+                    button(
+                        controls,
+                        "Refresh committed situation",
+                        OrganizerAction::Refresh,
+                    );
                 });
+            spawn_scrolling_reading(panel, |body| {
+                spawn_notes(body);
+                body.spawn((
+                    text("", 17.0, theme::PAPER),
+                    TextPart::InspectorBody,
+                    ObserverFocusTarget::reading(None),
+                ));
+            });
+        });
+}
+
+fn spawn_notes(body: &mut ChildSpawnerCommands) {
+    body.spawn((column(), DetailControls(OrganizerInspector::Notes)))
+        .with_children(|notes| {
+            notes.spawn(text("Your notes and references stay with this draft. Editing them spends no time and submits no ruling.", 15.0, theme::GRAY));
+            notes.spawn((
+                Button, NotesField, ObserverFocusTarget::text_input(None),
+                Node { min_height: px(160), padding: UiRect::all(px(12)),
+                    border: UiRect::all(px(1)), width: percent(100), flex_shrink: 0.0, ..default() },
+                BackgroundColor(theme::PANEL), BorderColor::all(theme::GRAY),
+                DeclaredSurface::new(SurfaceId::OrganizerWorkspace),
+            )).with_child((text("Click or Tab here to write notes.", 16.0, theme::PAPER), TextPart::Notes));
+            notes.spawn(text("Ctrl+A selects all · arrows edit · Tab leaves the field", 12.0, theme::GRAY));
+            notes.spawn((text("", 13.0, theme::GRAY), TextPart::ReferenceSummary));
+            button(notes, "Open saved references", OrganizerAction::OpenReferences);
         });
 }
 
@@ -306,6 +576,18 @@ fn visible(
     }
     if matches!(action, OrganizerAction::Open) {
         return client.inspector == OrganizerInspector::Closed;
+    }
+    if matches!(action, OrganizerAction::OpenReferences) {
+        return view == PrimaryView::Organizer && client.inspector == OrganizerInspector::Notes;
+    }
+    if matches!(
+        action,
+        OrganizerAction::Refresh
+            | OrganizerAction::Choose(
+                OrganizerChoice::PauseStanding | OrganizerChoice::ResumeStanding
+            )
+    ) {
+        return view == PrimaryView::Organizer && client.inspector == OrganizerInspector::Direction;
     }
     if matches!(action, OrganizerAction::ArchiveWorkplace) {
         return view == PrimaryView::Organizer || client.inspector != OrganizerInspector::Closed;
@@ -331,6 +613,10 @@ fn visible(
 fn enabled(action: OrganizerAction, client: &OrganizerClient, session: &ObserverSession) -> bool {
     match action {
         OrganizerAction::Choose(_) | OrganizerAction::Review => client.available(session),
+        OrganizerAction::Advance => {
+            crate::observer_controls::availability(ObserverCommand::Step, session)
+                == crate::observer_controls::ControlAvailability::Enabled
+        }
         OrganizerAction::Confirm => {
             client.available(session)
                 && client.review_context.as_ref() == Some(&session.context())
@@ -447,8 +733,14 @@ fn sync_targets(scope: Scope, mut targets: FocusTargets) {
                 && !scope.ui.menu_open
                 && !scope.ui.splash_visible
                 && !scope.ui.comparison_open
-                && if inspector {
-                    scope.client.inspector != OrganizerInspector::Closed
+                && if notes.is_some() {
+                    *scope.view == PrimaryView::Organizer
+                        && scope.client.inspector == OrganizerInspector::Notes
+                } else if inspector {
+                    !matches!(
+                        scope.client.inspector,
+                        OrganizerInspector::Closed | OrganizerInspector::Notes
+                    )
                 } else {
                     *scope.view == PrimaryView::Organizer
                         && scope.client.inspector == OrganizerInspector::Closed
@@ -474,6 +766,7 @@ fn actions(
     mut events: MessageReader<OrganizerAction>,
     mut state: ActionState,
     mut commands: Commands,
+    mut observer_commands: MessageWriter<ObserverCommand>,
 ) {
     for action in events.read().copied() {
         if !visible(
@@ -510,18 +803,13 @@ fn actions(
                 }
             }
             OrganizerAction::Choose(choice) => {
-                if let Some(draft) = &mut client.draft {
-                    draft.choice = choice;
-                }
-                client.clear_review();
-                client.dirty(time.elapsed_secs_f64());
-                client.message = format!(
-                    "Selected {}. Review before committing.",
-                    presentation::choice(choice)
-                );
+                choose_approach(client, focus, time.elapsed_secs_f64(), choice);
             }
             OrganizerAction::Review => review_approach(client, session),
             OrganizerAction::Confirm => confirm_approach(client, session),
+            OrganizerAction::Advance => {
+                observer_commands.write(ObserverCommand::Step);
+            }
             OrganizerAction::Refresh => {
                 client.status_due = true;
             }
@@ -533,7 +821,9 @@ fn actions(
                 }
             }
             OrganizerAction::OpenReferences => {
-                client.return_focus = focus.get();
+                if client.inspector == OrganizerInspector::Closed {
+                    client.return_focus = focus.get();
+                }
                 client.inspector = OrganizerInspector::Evidence;
                 client.open_saved_references();
             }
@@ -562,6 +852,26 @@ fn actions(
                     focus.set(entity);
                 }
             }
+        }
+    }
+}
+
+fn choose_approach(
+    client: &mut OrganizerClient,
+    focus: &mut InputFocus,
+    now: f64,
+    choice: OrganizerChoice,
+) {
+    if let Some(draft) = &mut client.draft {
+        draft.choice = choice;
+    }
+    client.clear_review();
+    client.dirty(now);
+    client.message.clear();
+    if client.inspector == OrganizerInspector::Direction {
+        client.inspector = OrganizerInspector::Closed;
+        if let Some(entity) = client.return_focus.take() {
+            focus.set(entity);
         }
     }
 }
@@ -612,6 +922,13 @@ fn unavailable_message(
     session: &ObserverSession,
 ) -> &'static str {
     match action {
+        OrganizerAction::Advance => {
+            if let crate::observer_controls::ControlAvailability::Disabled(reason) =
+                crate::observer_controls::availability(ObserverCommand::Step, session)
+            {
+                return reason;
+            }
+        }
         OrganizerAction::KeepEvidence => {
             return client
                 .can_keep_evidence(session)
@@ -779,12 +1096,11 @@ type InspectorShields<'w, 's> = Query<
         Without<ActionButton>,
     ),
 >;
-type EvidencePanels<'w, 's> = Query<
+type DetailPanels<'w, 's> = Query<
     'w,
     's,
-    &'static mut Node,
+    (&'static DetailControls, &'static mut Node),
     (
-        With<EvidenceControls>,
         Without<OrganizerRoot>,
         Without<OrganizerInspectorRoot>,
         Without<ActionButton>,
@@ -800,7 +1116,7 @@ struct Paint<'w, 's> {
     buttons: PaintedButtons<'w, 's>,
     shields: InspectorShields<'w, 's>,
     notes: Query<'w, 's, Entity, With<NotesField>>,
-    evidence_controls: EvidencePanels<'w, 's>,
+    detail_controls: DetailPanels<'w, 's>,
 }
 
 fn paint(scope: Scope, focus: Res<InputFocus>, mut paint: Paint) {
@@ -821,8 +1137,8 @@ fn paint(scope: Scope, focus: Res<InputFocus>, mut paint: Paint) {
 }
 
 fn paint_layout(scope: &Scope, primary: bool, paint: &mut Paint) {
-    for mut node in &mut paint.evidence_controls {
-        let display = if primary && scope.client.inspector == OrganizerInspector::Evidence {
+    for (details, mut node) in &mut paint.detail_controls {
+        let display = if primary && scope.client.inspector == details.0 {
             Display::Flex
         } else {
             Display::None
@@ -873,6 +1189,7 @@ fn paint_layout(scope: &Scope, primary: bool, paint: &mut Paint) {
 
 fn paint_text(scope: &Scope, focus: &InputFocus, paint: &mut Paint) {
     let historical = scope.session.viewed_tick != scope.session.durable_tick;
+    let complete = scope.session.phase == crate::observer::SessionPhase::Complete;
     let (inspector_title, inspector_body) =
         presentation::inspector(&scope.client, scope.session.viewed_tick);
     let note_focused = focus
@@ -880,13 +1197,26 @@ fn paint_text(scope: &Scope, focus: &InputFocus, paint: &mut Paint) {
         .is_some_and(|entity| paint.notes.contains(entity));
     for (part, mut text) in &mut paint.texts {
         let value = match part {
-            TextPart::Title => scope.client.view.as_ref().map_or_else(|| "ORGANIZE IN WAYNE".into(), |view| view.workplace_label.clone()),
+            TextPart::Title => scope.client.view.as_ref().map_or_else(|| "Wayne Organizing Collective".into(), |view| view.organization_label.clone()),
             TextPart::Situation => scope.client.view.as_ref().map_or_else(|| "Awaiting the committed organizer situation…".into(), |view| presentation::situation(view, scope.session.viewed_tick)),
-            TextPart::Means => scope.client.view.as_ref().map_or_else(String::new, presentation::means),
-            TextPart::Approaches => scope.client.view.as_ref().map_or_else(String::new, |view| format!("Inquiry: {} hours for a specific report. Reinforce: {} hours sustaining workplace contact. Hold continues the neighborhood routine if authorized.\n\nSELECTED · {}", view.inquiry_hours, view.contact_hours, presentation::choice(scope.client.choice()))),
-            TextPart::Review => presentation::review(&scope.client, historical, scope.session.phase == crate::observer::SessionPhase::Complete, scope.session.phase == crate::observer::SessionPhase::Advancing),
+            TextPart::Means => scope.client.view.as_ref().map_or_else(String::new, |view| {
+                let horizon = scope.session.horizon_tick.map_or_else(|| "—".into(), |value| value.to_string());
+                if historical { format!("HISTORY · period {} / {horizon}\nCurrent period {} · {} organizer-hours", scope.session.viewed_tick, view.period, view.available_hours) }
+                else { format!("PERIOD {} / {horizon} · 4 weeks\n{} organizer-hours available", view.period, view.available_hours) }
+            }),
+            TextPart::Context => scope.client.view.as_ref().map_or_else(String::new, presentation::context),
+            TextPart::Aftermath => scope.client.view.as_ref().map_or_else(String::new, |view| presentation::aftermath(view, scope.session.viewed_tick)),
+            TextPart::ChoiceHeading => if complete { "CAMPAIGN COMPLETE".into() } else if historical { "CURRENT CHOICES · RETURN LIVE TO DECIDE".into() } else { "CHOOSE OUR WORK FOR THE NEXT PERIOD".into() },
+            TextPart::Approach(choice) => if complete { "No further period remains. Inspect our practice history and retained reports.".into() } else { scope.client.view.as_ref().map_or_else(String::new, |view| presentation::approach(view, *choice)) },
+            TextPart::ChoiceMarker(choice) => {
+                if complete { "CLOSED".into() }
+                else if scope.client.commitment.as_ref().is_some_and(|value| value.command.choice == *choice) { "ACCEPTED".into() }
+                else if scope.client.choice() == *choice { "SELECTED DRAFT".into() }
+                else { "SELECT".into() }
+            },
+            TextPart::Review => presentation::review(&scope.client, historical, complete, scope.session.phase == crate::observer::SessionPhase::Advancing),
             TextPart::ReferenceSummary => format!("{} report reference(s) in this personal draft. References help you review evidence; they never execute a practice.", scope.client.draft.as_ref().map_or(0, |draft| draft.references.len())),
-            TextPart::DraftStatus => if !scope.client.draft_writable { "PERSONAL DRAFT · saving unavailable; any original file remains retained".into() } else if scope.client.draft_dirty { "PERSONAL DRAFT · changes awaiting save; never executed".into() } else { "PERSONAL DRAFT · presentation only; never executed".into() },
+            TextPart::DraftStatus => if !scope.client.draft_writable { "Draft saving unavailable · original file retained".into() } else if scope.client.draft_dirty { "Draft changes awaiting save".into() } else { "Personal draft saved".into() },
             TextPart::Message => scope.client.message.clone(),
             TextPart::Notes => scope.client.draft.as_ref().map_or_else(String::new, |draft| {
                 if draft.notes.text.is_empty() && !note_focused { "Click or Tab here to write personal notes.".into() }
@@ -921,17 +1251,24 @@ fn paint_buttons(scope: &Scope, buttons: &mut PaintedButtons) {
         ) && enabled(button.0, &scope.client, &scope.session);
         let selected =
             matches!(button.0, OrganizerAction::Choose(choice) if choice == scope.client.choice());
+        let next_action = available
+            && match button.0 {
+                OrganizerAction::Review => scope.client.preview.is_none(),
+                OrganizerAction::Confirm => scope.client.preview.is_some(),
+                OrganizerAction::Advance => scope.client.commitment.is_some(),
+                _ => false,
+            };
         let color = if !available {
             theme::INK
         } else if *interaction == Interaction::Pressed {
             theme::RED.with_alpha(0.4)
-        } else if *interaction == Interaction::Hovered || selected {
+        } else if *interaction == Interaction::Hovered || selected || next_action {
             theme::YELLOW.with_alpha(0.2)
         } else {
             theme::PANEL
         };
         background.set_if_neq(BackgroundColor(color));
-        border.set_if_neq(BorderColor::all(if selected {
+        border.set_if_neq(BorderColor::all(if selected || next_action {
             theme::YELLOW
         } else if available {
             theme::GRAY
@@ -955,6 +1292,10 @@ pub(super) fn install(app: &mut App) {
                 .in_set(ObserverSet::Input),
         )
         .add_systems(Update, paint.in_set(ObserverSet::Paint))
+        .add_systems(
+            PostUpdate,
+            paint_scroll_hints.after(bevy::ui::UiSystems::Layout),
+        )
         .add_observer(requested)
         .add_observer(keyboard_button)
         .add_observer(notes_input)
@@ -974,6 +1315,63 @@ mod tests {
 
     #[derive(Resource, Default)]
     struct ArchiveRequests(Vec<bool>);
+
+    #[test]
+    fn scroll_cues_follow_resolved_geometry_without_layout_change_notifications() {
+        for scale in [1.0, 1.25] {
+            let mut app = App::new();
+            app.add_systems(Update, paint_scroll_hints);
+            let reading = app
+                .world_mut()
+                .spawn(ComputedNode {
+                    size: Vec2::new(400.0, 100.0) * scale,
+                    content_size: Vec2::new(400.0, 300.0) * scale,
+                    inverse_scale_factor: scale.recip(),
+                    ..default()
+                })
+                .id();
+            let hint = app
+                .world_mut()
+                .spawn((ScrollHint(reading), Text::default()))
+                .id();
+            app.update();
+            assert_eq!(
+                app.world().get::<Text>(hint).unwrap().0,
+                "More below · scroll this panel"
+            );
+            // Bevy resolves physical scroll offsets without marking this
+            // component changed. The hint must still update at larger UI scales.
+            app.world_mut()
+                .get_mut::<ComputedNode>(reading)
+                .unwrap()
+                .bypass_change_detection()
+                .scroll_position
+                .y = 190.0 * scale;
+            app.update();
+            assert_eq!(
+                app.world().get::<Text>(hint).unwrap().0,
+                "More above and below · scroll this panel"
+            );
+            app.world_mut()
+                .get_mut::<ComputedNode>(reading)
+                .unwrap()
+                .bypass_change_detection()
+                .scroll_position
+                .y = 200.0 * scale;
+            app.update();
+            assert_eq!(
+                app.world().get::<Text>(hint).unwrap().0,
+                "More above · scroll this panel"
+            );
+            app.world_mut()
+                .get_mut::<ComputedNode>(reading)
+                .unwrap()
+                .bypass_change_detection()
+                .content_size = Vec2::new(400.0, 100.0) * scale;
+            app.update();
+            assert!(app.world().get::<Text>(hint).unwrap().0.is_empty());
+        }
+    }
 
     fn organizer_navigation() -> (App, Entity, OrganizerDraft) {
         let mut session = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::from_u128(927)));
@@ -1223,17 +1621,23 @@ mod tests {
         (app, draft)
     }
 
-    fn panel_has_draft_warning(app: &mut App, inspector: bool) -> bool {
+    fn panel_has_visible_text(app: &mut App, inspector: bool, expected: &str) -> bool {
         let world = app.world_mut();
         world
             .query::<(Entity, &Text)>()
             .iter(world)
             .any(|(entity, text)| {
-                if !text.0.contains("saving unavailable") {
+                if !text.0.contains(expected) {
                     return false;
                 }
                 let mut ancestor = Some(entity);
                 while let Some(entity) = ancestor {
+                    if world
+                        .get::<Node>(entity)
+                        .is_some_and(|node| node.display == Display::None)
+                    {
+                        return false;
+                    }
                     if (inspector && world.get::<OrganizerInspectorRoot>(entity).is_some())
                         || (!inspector && world.get::<OrganizerRoot>(entity).is_some())
                     {
@@ -1252,11 +1656,138 @@ mod tests {
             .resource_mut::<OrganizerClient>()
             .draft_writable = false;
         press_named(&mut app, "Return to decision [Esc]");
-        press_named(&mut app, "Reinforce contact");
-        assert!(panel_has_draft_warning(&mut app, false));
-        press_named(&mut app, "Direction / disagreements");
-        assert!(panel_has_draft_warning(&mut app, true));
+        press_named(&mut app, "Reinforce workplace contact");
+        assert!(panel_has_visible_text(
+            &mut app,
+            false,
+            "saving unavailable"
+        ));
+        press_named(&mut app, "Direction / routine");
+        assert!(panel_has_visible_text(&mut app, true, "saving unavailable"));
         assert!(!app.world().resource::<OrganizerClient>().draft_writable);
+    }
+
+    #[test]
+    fn personal_notes_show_save_recovery_without_erasing_command_errors() {
+        let (mut app, _, draft) = organizer_navigation();
+        press_named(&mut app, "Personal notes");
+        let failure = "Cannot save the personal draft; notes remain in this window.";
+        {
+            let mut client = app.world_mut().resource_mut::<OrganizerClient>();
+            client.draft_dirty = true;
+            client.draft_writable = true;
+            client.draft_saved(Err(failure.into()));
+        }
+        app.update();
+        assert!(panel_has_visible_text(&mut app, true, failure),
+            "the Notes view must expose save failures, not a hidden sibling or covered decision footer");
+        let client = app.world().resource::<OrganizerClient>();
+        assert!(client.draft_dirty);
+        assert_eq!(client.draft.as_ref(), Some(&draft));
+        assert!(client.outbox.is_none());
+
+        app.world_mut()
+            .resource_mut::<OrganizerClient>()
+            .draft_saved(Ok(()));
+        app.update();
+        assert!(
+            !panel_has_visible_text(&mut app, true, failure),
+            "a successful retry must remove the old save failure"
+        );
+        assert!(panel_has_visible_text(
+            &mut app,
+            true,
+            "Personal draft saved"
+        ));
+
+        let command_error = "The campaign changed. Refresh and review this ruling again.";
+        {
+            let mut client = app.world_mut().resource_mut::<OrganizerClient>();
+            client.draft_dirty = true;
+            client.draft_saved(Err(failure.into()));
+            client.message = command_error.into();
+            client.draft_saved(Ok(()));
+        }
+        app.update();
+        assert!(
+            panel_has_visible_text(&mut app, true, command_error),
+            "saving notes cannot dismiss an unrelated command error"
+        );
+        let client = app.world().resource::<OrganizerClient>();
+        assert!(!client.draft_dirty);
+        assert_eq!(client.draft.as_ref(), Some(&draft));
+        assert!(client.outbox.is_none());
+    }
+
+    #[test]
+    fn personal_notes_open_separately_without_replacing_the_decision_or_submitting_it() {
+        let (mut app, focus, draft) = organizer_navigation();
+        let notes = app
+            .world_mut()
+            .query_filtered::<Entity, With<NotesField>>()
+            .single(app.world())
+            .unwrap();
+        app.update();
+        assert!(
+            !app.world()
+                .get::<ObserverFocusTarget>(notes)
+                .unwrap()
+                .available,
+            "notes must not capture decision-screen typing before they are opened"
+        );
+        press_named(&mut app, "Personal notes");
+        app.update();
+        assert!(
+            app.world()
+                .get::<ObserverFocusTarget>(notes)
+                .unwrap()
+                .available
+        );
+        assert_eq!(
+            app.world().resource::<OrganizerClient>().draft.as_ref(),
+            Some(&draft)
+        );
+        assert!(app.world().resource::<OrganizerClient>().outbox.is_none());
+        press_named(&mut app, "Return to decision [Esc]");
+        app.update();
+        assert!(
+            !app.world()
+                .get::<ObserverFocusTarget>(notes)
+                .unwrap()
+                .available
+        );
+        assert_eq!(app.world().resource::<InputFocus>().get(), Some(focus));
+        assert_eq!(
+            app.world().resource::<OrganizerClient>().draft.as_ref(),
+            Some(&draft)
+        );
+    }
+
+    #[test]
+    fn decision_footer_advances_through_the_existing_transport_and_refuses_held_history() {
+        let (mut app, _) = reviewed_period_three();
+        press_named(&mut app, "Advance one period");
+        let commands: Vec<_> = app
+            .world_mut()
+            .resource_mut::<Messages<ObserverCommand>>()
+            .drain()
+            .collect();
+        assert_eq!(commands, [ObserverCommand::Step]);
+        assert!(
+            app.world().resource::<OrganizerClient>().outbox.is_none(),
+            "Advance cannot submit the selected draft as a ruling"
+        );
+        inspect_period(&mut app, 2);
+        press_named(&mut app, "Advance one period");
+        assert!(app
+            .world()
+            .resource::<Messages<ObserverCommand>>()
+            .is_empty());
+        assert!(app
+            .world()
+            .resource::<OrganizerClient>()
+            .message
+            .contains("Return Live"));
     }
 
     #[test]
@@ -1285,6 +1816,7 @@ mod tests {
             .any(|text| text.0.contains("changes awaiting save")));
         press_named(&mut app, "Return to decision [Esc]");
         inspect_period(&mut app, 2);
+        press_named(&mut app, "Personal notes");
         press_named(&mut app, "Open saved references");
         let held = painted_text(&mut app, true);
         assert!(held.contains("unavailable in this inspected view"));
@@ -1323,6 +1855,7 @@ mod tests {
                     }
                 }
             }
+            press_named(&mut app, "Personal notes");
             press_named(&mut app, "Open saved references");
             let text = painted_text(&mut app, true);
             assert!(text.contains("unavailable in this inspected view"));
@@ -1519,21 +2052,26 @@ mod tests {
     }
 
     fn focused_organizer(notes: bool) -> (App, Entity, Entity, OrganizerDraft) {
-        use crate::observer_focus::{ObserverFocusPlugin, ObserverFocusPolicy};
+        use crate::observer_focus::ObserverFocusPlugin;
         use bevy::input::InputPlugin;
         use bevy::window::PrimaryWindow;
 
         let (mut app, _, draft) = organizer_navigation();
         app.add_plugins((InputPlugin, ObserverFocusPlugin));
-        // The real shell binds focus admission to the installed campaign/period too.
-        let context = app.world().resource::<ObserverSession>().context();
-        app.world_mut()
-            .resource_mut::<ObserverFocusPolicy>()
-            .context = Some(context);
+        // Use the shell's actual campaign and modal admission, including Notes.
+        crate::observer_ui::install_shell_focus_policy(&mut app);
         let window = app
             .world_mut()
             .spawn((Window::default(), PrimaryWindow))
             .id();
+        if notes {
+            app.world_mut()
+                .write_message(OrganizerAction::Inspect(OrganizerInspector::Notes));
+            app.update();
+            // The next PreUpdate admits the new modal and chooses its initial
+            // focus before a later pointer/Tab gesture enters the notes field.
+            app.update();
+        }
         let focus = if notes {
             app.world_mut()
                 .query_filtered::<Entity, With<NotesField>>()
@@ -1623,7 +2161,7 @@ mod tests {
         typing_key(&mut app, window, KeyCode::KeyP, "p");
         typing_key(&mut app, window, KeyCode::KeyI, "i");
         let client = app.world().resource::<OrganizerClient>();
-        assert_eq!(client.inspector, OrganizerInspector::Closed);
+        assert_eq!(client.inspector, OrganizerInspector::Notes);
         assert_eq!(
             *app.world().resource::<PrimaryView>(),
             PrimaryView::Organizer

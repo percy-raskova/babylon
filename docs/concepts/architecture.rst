@@ -89,7 +89,10 @@ remain subject to that qualification.
 
 Ordinary BSL rules derive and write world data through governed causal
 operations. External shocks must not write downstream results directly.
-AI can parse, retrieve, and narrate. AI does not judge a game rule.
+AI may parse, retrieve, and narrate; it must not judge a game rule. The retained
+Python provider interface serves operator health checks only. It probes an
+already running endpoint and has no generation, embedding, or server-start API.
+Model provisioning and credential login remain separate operator commands.
 
 Live Rust Path
 --------------

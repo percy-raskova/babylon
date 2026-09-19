@@ -11,7 +11,7 @@ from typer.testing import CliRunner
 
 import babylon.cli.doctor as doctor_mod
 from babylon.cli import app
-from babylon.intelligence.providers import MuteProvider
+from babylon.intelligence.providers import MuteProbe
 from babylon.intelligence.provision import ProvisionResult
 
 runner = CliRunner()
@@ -19,7 +19,7 @@ runner = CliRunner()
 
 def test_doctor_reports_config_dir_and_lane(monkeypatch, tmp_path) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("BABYLON_CONFIG_DIR", str(tmp_path))
-    monkeypatch.setattr(doctor_mod, "resolve_provider", lambda: MuteProvider())
+    monkeypatch.setattr(doctor_mod, "resolve_provider_probe", lambda _settings: MuteProbe())
     monkeypatch.setattr(doctor_mod, "check_database", lambda _dsn: (False, "no DSN configured"))
     result = runner.invoke(app, ["doctor"])
     assert result.exit_code == 0
@@ -36,7 +36,7 @@ def test_check_database_handles_missing_dsn() -> None:
 
 def test_doctor_probes_the_current_runtime_dsn(monkeypatch, tmp_path) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("BABYLON_CONFIG_DIR", str(tmp_path))
-    monkeypatch.setattr(doctor_mod, "resolve_provider", lambda: MuteProvider())
+    monkeypatch.setattr(doctor_mod, "resolve_provider_probe", lambda _settings: MuteProbe())
     monkeypatch.delenv("BABYLON_RUNTIME_DSN", raising=False)
     for name in ("BABYLON_DSN", "BABYLON_DATABASE_URL", "BABYLON_PG_DSN", "BABYLON_TEST_PG_DSN"):
         monkeypatch.setenv(name, "postgresql://retired/db")
@@ -59,7 +59,7 @@ def test_doctor_probes_the_current_runtime_dsn(monkeypatch, tmp_path) -> None:  
 
 def test_doctor_provision_reports_gated_result(monkeypatch, tmp_path) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("BABYLON_CONFIG_DIR", str(tmp_path))
-    monkeypatch.setattr(doctor_mod, "resolve_provider", lambda: MuteProvider())
+    monkeypatch.setattr(doctor_mod, "resolve_provider_probe", lambda _settings: MuteProbe())
     monkeypatch.setattr(doctor_mod, "check_database", lambda _dsn: (False, "no DSN configured"))
     monkeypatch.setattr(doctor_mod, "load_bundled_manifest", lambda: object())
     monkeypatch.setattr(doctor_mod, "default_models_dir", lambda: tmp_path)
@@ -78,7 +78,7 @@ def test_doctor_provision_reports_gated_result(monkeypatch, tmp_path) -> None:  
 
 def test_doctor_provision_error_exits_nonzero(monkeypatch, tmp_path) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("BABYLON_CONFIG_DIR", str(tmp_path))
-    monkeypatch.setattr(doctor_mod, "resolve_provider", lambda: MuteProvider())
+    monkeypatch.setattr(doctor_mod, "resolve_provider_probe", lambda _settings: MuteProbe())
     monkeypatch.setattr(doctor_mod, "check_database", lambda _dsn: (False, "no DSN configured"))
     monkeypatch.setattr(doctor_mod, "load_bundled_manifest", lambda: object())
     monkeypatch.setattr(doctor_mod, "default_models_dir", lambda: tmp_path)
@@ -90,3 +90,19 @@ def test_doctor_provision_error_exits_nonzero(monkeypatch, tmp_path) -> None:  #
     result = runner.invoke(app, ["doctor", "--provision"])
     assert result.exit_code == 1
     assert "provisioning error" in result.stdout
+
+
+def test_doctor_reports_invalid_config_without_probing(monkeypatch, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BABYLON_CONFIG_DIR", str(tmp_path))
+    (tmp_path / "config.toml").write_text("[intelligence]\ntimeout_s = -1\n")
+
+    def unexpected_probe(_settings: object) -> None:
+        raise AssertionError("invalid configuration must not start a network probe")
+
+    monkeypatch.setattr(doctor_mod, "resolve_provider_probe", unexpected_probe)
+    monkeypatch.setattr(doctor_mod, "check_database", lambda _dsn: (False, "no DSN configured"))
+    result = runner.invoke(app, ["doctor"])
+    assert result.exit_code == 1
+    assert "config error" in result.stdout
+    assert "timeout" in result.stdout
+    assert "database:" in result.stdout

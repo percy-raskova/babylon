@@ -10,10 +10,6 @@ inputs:
     description: Install the docs dependency group
     required: false
     default: "false"
-  ops:
-    description: Install the operator-only Ansible/RST/Boto dependency extra
-    required: false
-    default: "false"
 
 runs:
   using: composite
@@ -35,14 +31,12 @@ runs:
       with:
         path: .venv
         key: >-
-          venv-${{ runner.os }}-py3.12-uv-v4-${{ inputs.docs }}-${{ inputs.ops }}-${{
+          venv-${{ runner.os }}-py3.12-uv-v5-${{ inputs.docs }}-${{
           hashFiles('uv.lock', '.mise.toml', 'mise.lock') }}
 
     - name: Sync dependencies (uv)
       shell: bash
       run: |
-        EXTRA=""
         GROUP=""
-        if [ "${{ inputs.ops }}" = "true" ]; then EXTRA="--extra ops"; fi
         if [ "${{ inputs.docs }}" = "true" ]; then GROUP="--group docs"; fi
-        uv sync --frozen $EXTRA $GROUP
+        uv sync --frozen $GROUP

@@ -123,19 +123,15 @@ def test_pages_write_permissions_exist_only_on_the_deploy_job() -> None:
     }
 
 
-def test_pip_audit_jobs_install_the_operator_dependency_set() -> None:
-    violations: list[str] = []
+def test_pip_audit_jobs_install_the_project_and_run_the_audit_policy() -> None:
     for name in ("ci.yml", "weekly-security.yml"):
-        security = _workflow(name)["jobs"]["security"]
+        steps = _workflow(name)["jobs"]["security"]["steps"]
         bootstrap = next(
-            step
-            for step in security["steps"]
-            if step.get("uses") == "./.github/actions/bootstrap-python"
+            step for step in steps if step.get("uses") == "./.github/actions/bootstrap-python"
         )
-        if bootstrap.get("with") != {"ops": "true"}:
-            violations.append(name)
-
-    assert violations == []
+        audit = next(step for step in steps if step.get("run") == "mise run security:pip-audit")
+        assert bootstrap.get("with", {}) == {}, name
+        assert steps.index(bootstrap) < steps.index(audit), name
 
 
 def test_source_release_has_no_distribution_secrets_or_inline_secret_shell_expansion() -> None:

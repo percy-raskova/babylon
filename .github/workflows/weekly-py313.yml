@@ -45,7 +45,7 @@ jobs:
           version: 2026.9.1
           install_args: uv
       - name: Install dependencies on 3.13
-        run: uv sync --frozen --extra ops --python 3.13
+        run: uv sync --frozen --python 3.13
       # Max verbosity by owner ruling (2026-07-11): CI logs are agent-read.
       - name: Full suite on 3.13
         run: >-

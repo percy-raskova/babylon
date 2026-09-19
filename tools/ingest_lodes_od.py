@@ -19,7 +19,7 @@ import sys
 import time
 from pathlib import Path
 
-import httpx
+import httpx2
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -101,7 +101,7 @@ def _build_url(state_abbrev: str, year: int) -> str:
 
 
 def _download_file(
-    client: httpx.Client,
+    client: httpx2.Client,
     url: str,
     dest: Path,
 ) -> bool:
@@ -126,11 +126,11 @@ def _download_file(
                 print(f"    downloaded {size_mb:.1f} MB")
                 return True
 
-        except httpx.HTTPStatusError as exc:
+        except httpx2.HTTPStatusError as exc:
             if exc.response.status_code == 404:
                 return False
             print(f"    HTTP {exc.response.status_code} (attempt {attempt}/{MAX_RETRIES})")
-        except (httpx.TimeoutException, httpx.ConnectError) as exc:
+        except (httpx2.TimeoutException, httpx2.ConnectError) as exc:
             print(f"    {type(exc).__name__} (attempt {attempt}/{MAX_RETRIES})")
 
         if attempt < MAX_RETRIES:
@@ -164,7 +164,7 @@ def download_all(
     print(f"Target directory: {od_dir}")
     print(f"{'=' * 60}\n")
 
-    with httpx.Client(
+    with httpx2.Client(
         timeout=REQUEST_TIMEOUT_SECONDS,
         follow_redirects=True,
     ) as client:

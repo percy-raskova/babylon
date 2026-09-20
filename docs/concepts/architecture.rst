@@ -114,7 +114,7 @@ The shipping engine path is:
 
 ``babylon-material-circuit``
    Physical production, routed freight, local transfers, merchant handling,
-   finite final fulfillment, and conserved staffing transitions.
+   finite final fulfillment, conserved staffing, and funded monetary accounts.
 
 ``babylon-persistence``
    Rust-owned PostgreSQL activation, campaign foundation, checkpoint restart,
@@ -152,6 +152,21 @@ through the common checked inventory operations. Staffing binds production or
 merchant work to a conserved pool. ``ProductionEvidenceDigest`` binds the
 complete authorized projection, sorting unordered rows while preserving event,
 geometry, and physical path order.
+
+The material state explicitly selects a physical accounting control or monetary
+accounts. Both use the same allocator. Monetary orders must name funded escrow.
+Dispatch holds that money until actual arrival or local handoff.
+Physical loss refunds the buyer.
+
+Employers fund attendance before work. Wage
+obligations and payment remain separate receipts, while later labor receipts
+distinguish used, paid idle, and unfunded hours. The detached close checks cash
+plus reserves before it can publish. Canonical state captures pending orders
+and earned unpaid wages for restart.
+
+The current Michigan content still selects the physical control. Household
+consumption, recurrent orders, price policies, and the national campaign still
+need connected content and behavior before they can support playable claims.
 
 Practice has one typed contract for actors, stable targets, authority, intents,
 resource quotes, resolved batches, and ordered actions. The evidence driver

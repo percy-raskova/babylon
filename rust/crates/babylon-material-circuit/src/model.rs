@@ -382,6 +382,7 @@ pub struct MaintenanceReceipt {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaterialCircuitState {
     pub period: u64,
+    pub accounting: crate::CircuitAccounting,
     pub site_logistics_nodes: Vec<SiteLogisticsNode>,
     pub process_outputs: Vec<ProcessOutput>,
     pub input_coefficients: Vec<InputOutputCoefficient>,
@@ -431,6 +432,9 @@ pub enum MaterialCircuitError {
     MerchantInvariant = 20,
     FinalDemandInvariant = 21,
     MaintenanceInvariant = 22,
+    MonetaryInvariant = 23,
+    PayrollInvariant = 24,
+    PurchaseInvariant = 25,
 }
 
 /// Unknown language-neutral routed-material refusal code.
@@ -464,6 +468,9 @@ impl TryFrom<u16> for MaterialCircuitError {
             20 => Ok(Self::MerchantInvariant),
             21 => Ok(Self::FinalDemandInvariant),
             22 => Ok(Self::MaintenanceInvariant),
+            23 => Ok(Self::MonetaryInvariant),
+            24 => Ok(Self::PayrollInvariant),
+            25 => Ok(Self::PurchaseInvariant),
             _ => Err(UnknownMaterialCircuitErrorCode(value)),
         }
     }
@@ -488,6 +495,9 @@ pub struct FreightLossReceipt {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaterialCircuitTransition {
     pub state: MaterialCircuitState,
+    pub money_transfers: Vec<crate::MoneyTransferReceipt>,
+    pub wage_accruals: Vec<crate::WageAccrualReceipt>,
+    pub labor_use: Vec<crate::LaborUseReceipt>,
     pub production: Vec<ProductionReceipt>,
     pub dispatches: Vec<RoutedDispatchReceipt>,
     pub losses: Vec<FreightLossReceipt>,

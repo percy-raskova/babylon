@@ -37,6 +37,7 @@ fn allocation_state(available: u64, first: u64, second: u64) -> MaterialCircuitS
         handling_coefficients: vec![],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
+        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
         maintenance_binding: None,
         maintenance_service: None,
         site_logistics_nodes: vec![
@@ -151,6 +152,7 @@ fn production_state(input: u64, labor: u64, capacity: u64) -> MaterialCircuitSta
         handling_coefficients: vec![],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
+        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
         maintenance_binding: None,
         maintenance_service: None,
         site_logistics_nodes: vec![],

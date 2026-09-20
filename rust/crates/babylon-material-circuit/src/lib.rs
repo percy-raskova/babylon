@@ -10,6 +10,7 @@ mod accounts;
 mod inventory;
 mod maintenance;
 mod model;
+mod payments;
 mod production;
 mod staffing;
 mod transition;
@@ -22,6 +23,10 @@ pub use accounts::{
     ShiftState, WageAccrualReceipt,
 };
 pub use model::*;
+pub use payments::{
+    admit_material_purchase, CircuitAccounting, EmploymentTerms, LaborUseReceipt, MaterialPurchase,
+    MonetaryCircuit, MAX_MONEY_TRANSFERS_PER_PERIOD,
+};
 pub use staffing::{
     advance_staffing, StaffingError, StaffingPolicy, StaffingPoolBinding, StaffingPoolId,
     StaffingPoolState, StaffingReceipt, StaffingState, StaffingTransition, StaffingWorkRequest,

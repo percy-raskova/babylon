@@ -698,6 +698,7 @@ mod tests {
             handling_coefficients: Vec::new(),
             final_demand_principals: Vec::new(),
             final_demand_orders: Vec::new(),
+            accounting: crate::CircuitAccounting::PhysicalControl,
             maintenance_binding: None,
             maintenance_service: None,
         }

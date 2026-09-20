@@ -169,8 +169,9 @@ admission:
     organization and public namespaces are distinct
   - monetary employment terms exactly cover the material site-unit labor principals with positive captured wage rates
   - every purchase reserve matches its physical order identity, parties, quantity, delivered quantity, and lost quantity
+  - a monetary commodity sale has realized quantity equal to its accepted delivered quantity
   - a final-demand purchase reserve matches fulfilled quantity and has no refunded quantity in this close
-  - committed shift rows contain only accrued unpaid obligations earned before the opening period
+  - committed shift rows contain only accrued unpaid obligations earned in a positive period before the opening period
   - all monetary row families have strictly increasing canonical keys before book reconstruction
 
 allocation:

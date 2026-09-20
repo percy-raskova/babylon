@@ -64,6 +64,7 @@ fn check_row_limits(state: &MaterialCircuitState) -> Result<(), MaterialCircuitE
 }
 
 fn canonicalize_rows(state: &mut MaterialCircuitState) {
+    crate::payments::canonicalize(&mut state.accounting);
     state.merchants.sort();
     state.handling_coefficients.sort();
     state.final_demand_principals.sort();
@@ -423,6 +424,7 @@ pub(crate) fn canonical_state(
     crate::production::validate_processes(&canonical)?;
     crate::production::validate_periods(&canonical)?;
     crate::maintenance::validate(&canonical)?;
+    crate::payments::validate(&canonical)?;
     if canonical.period == 0
         || canonical
             .corridor_capacities
@@ -794,6 +796,8 @@ pub fn close_material_period(
     let mut deliveries = Vec::new();
     let mut realizations = Vec::new();
     let mut dispatches = Vec::new();
+    let mut money_transfers = Vec::new();
+    let mut wage_accruals = Vec::new();
     process_due_freight(
         &mut state,
         &mut inventory,
@@ -803,12 +807,18 @@ pub fn close_material_period(
         &mut realizations,
     )?;
     publish_inventory(&mut state, inventory);
+    crate::payments::settle_deliveries(&mut state, &mut money_transfers)?;
+    let mut labor_use =
+        crate::payments::fund_attendance(&mut state, &mut money_transfers, &mut wage_accruals)?;
     let production = execute_shared_production(&mut state)?;
     let maintenance = crate::maintenance::execute(opening, &mut state, &production)?;
     let mut inventory = take_inventory(&mut state);
     let outbound = outbound::dispatch_orders(&mut state, &mut inventory, &mut dispatches)?;
     rebuild_backlog(&mut state);
     publish_inventory(&mut state, inventory);
+    crate::payments::settle_deliveries(&mut state, &mut money_transfers)?;
+    crate::payments::record_labor_use(&state, &mut labor_use)?;
+    crate::payments::conserved(opening, &state)?;
     let next_period = state
         .period
         .checked_add(1)
@@ -817,6 +827,9 @@ pub fn close_material_period(
         next_period,
         transition: MaterialCircuitTransition {
             state,
+            money_transfers,
+            wage_accruals,
+            labor_use,
             production,
             dispatches,
             losses,

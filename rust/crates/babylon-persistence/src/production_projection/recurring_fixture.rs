@@ -41,7 +41,7 @@ fn inventory(owner: u8, commodity: u8, quantity: u64) -> InventoryRow {
     }
 }
 
-pub(super) fn opening() -> MaterialCircuitState {
+fn recurring_policies() -> RecurringEconomy {
     let offers = [(1, 1, 1), (2, 2, 3), (3, 2, 4)]
         .into_iter()
         .map(|(owner, commodity, price)| SellerOffer {
@@ -52,7 +52,7 @@ pub(super) fn opening() -> MaterialCircuitState {
             pricing: PricePolicy::Fixed,
         })
         .collect();
-    let recurring = RecurringEconomy {
+    RecurringEconomy {
         households: vec![HouseholdCohort {
             principal_id: household(),
             households: 2,
@@ -112,40 +112,111 @@ pub(super) fn opening() -> MaterialCircuitState {
             .collect(),
         last_household_admission_period: 0,
         last_household_consumption_period: 0,
-    };
+    }
+}
+
+fn accounting() -> CircuitAccounting {
+    CircuitAccounting::Monetary(MonetaryCircuit {
+        recurring: Some(Box::new(recurring_policies())),
+        book: MonetaryBook::open(vec![
+            CashAccount {
+                id: AccountId::Site(site(1)),
+                cash: money(4),
+            },
+            CashAccount {
+                id: AccountId::Site(site(2)),
+                cash: money(12),
+            },
+            CashAccount {
+                id: AccountId::Site(site(3)),
+                cash: money(8),
+            },
+            CashAccount {
+                id: AccountId::Household(household()),
+                cash: money(0),
+            },
+        ])
+        .unwrap(),
+        employment: [1, 2, 3]
+            .into_iter()
+            .map(|owner| EmploymentTerms {
+                site_id: site(owner),
+                unit_id: hours(),
+                payee: household(),
+                hourly_rate: money(1),
+            })
+            .collect(),
+    })
+}
+
+fn supplier_routes() -> Vec<SupplierRoute> {
+    [(1, 2, 1), (2, 3, 2)]
+        .into_iter()
+        .map(|(supplier, buyer, commodity)| SupplierRoute {
+            buyer_site_id: site(buyer),
+            supplier_site_id: site(supplier),
+            good_id: good(commodity),
+            unit_id: units(),
+            route_id: route(supplier),
+            transport_kind: SupplierTransport::Staged,
+        })
+        .collect()
+}
+
+fn route_stages() -> Vec<RouteStage> {
+    [(1, 2), (2, 3)]
+        .into_iter()
+        .map(|(source, destination)| RouteStage {
+            route_id: route(source),
+            stage_index: 0,
+            from_node_id: node(source),
+            to_node_id: node(destination),
+            travel_periods: 1,
+            loss_ppm: 0,
+        })
+        .collect()
+}
+
+fn process_outputs() -> Vec<ProcessOutput> {
+    [1, 2]
+        .into_iter()
+        .map(|owner| ProcessOutput {
+            process_id: process(owner),
+            site_id: site(owner),
+            good_id: good(owner),
+            unit_id: units(),
+            quantity_per_batch: 1,
+        })
+        .collect()
+}
+
+fn input_coefficients() -> Vec<InputOutputCoefficient> {
+    [1, 2]
+        .into_iter()
+        .map(|owner| InputOutputCoefficient {
+            process_id: process(owner),
+            good_id: good(owner - 1),
+            unit_id: units(),
+            quantity_per_batch: 1,
+        })
+        .collect()
+}
+
+fn labor_coefficients() -> Vec<LaborCoefficient> {
+    [(1, 1), (2, 2)]
+        .into_iter()
+        .map(|(owner, quantity_per_batch)| LaborCoefficient {
+            process_id: process(owner),
+            unit_id: hours(),
+            quantity_per_batch,
+        })
+        .collect()
+}
+
+pub(super) fn opening() -> MaterialCircuitState {
     MaterialCircuitState {
         period: 1,
-        accounting: CircuitAccounting::Monetary(MonetaryCircuit {
-            recurring: Some(Box::new(recurring)),
-            book: MonetaryBook::open(vec![
-                CashAccount {
-                    id: AccountId::Site(site(1)),
-                    cash: money(4),
-                },
-                CashAccount {
-                    id: AccountId::Site(site(2)),
-                    cash: money(12),
-                },
-                CashAccount {
-                    id: AccountId::Site(site(3)),
-                    cash: money(8),
-                },
-                CashAccount {
-                    id: AccountId::Household(household()),
-                    cash: money(0),
-                },
-            ])
-            .unwrap(),
-            employment: [1, 2, 3]
-                .into_iter()
-                .map(|owner| EmploymentTerms {
-                    site_id: site(owner),
-                    unit_id: hours(),
-                    payee: household(),
-                    hourly_rate: money(1),
-                })
-                .collect(),
-        }),
+        accounting: accounting(),
         site_logistics_nodes: [1, 2, 3]
             .into_iter()
             .map(|owner| SiteLogisticsNode {
@@ -153,33 +224,9 @@ pub(super) fn opening() -> MaterialCircuitState {
                 node_id: node(owner),
             })
             .collect(),
-        process_outputs: [1, 2]
-            .into_iter()
-            .map(|owner| ProcessOutput {
-                process_id: process(owner),
-                site_id: site(owner),
-                good_id: good(owner),
-                unit_id: units(),
-                quantity_per_batch: 1,
-            })
-            .collect(),
-        input_coefficients: [1, 2]
-            .into_iter()
-            .map(|owner| InputOutputCoefficient {
-                process_id: process(owner),
-                good_id: good(owner - 1),
-                unit_id: units(),
-                quantity_per_batch: 1,
-            })
-            .collect(),
-        labor_coefficients: [(1, 1), (2, 2)]
-            .into_iter()
-            .map(|(owner, quantity_per_batch)| LaborCoefficient {
-                process_id: process(owner),
-                unit_id: hours(),
-                quantity_per_batch,
-            })
-            .collect(),
+        process_outputs: process_outputs(),
+        input_coefficients: input_coefficients(),
+        labor_coefficients: labor_coefficients(),
         freight_mass_coefficients: [0, 1, 2]
             .into_iter()
             .map(|commodity| FreightMassCoefficient {
@@ -188,28 +235,8 @@ pub(super) fn opening() -> MaterialCircuitState {
                 grams_per_unit: 1,
             })
             .collect(),
-        supplier_routes: [(1, 2, 1), (2, 3, 2)]
-            .into_iter()
-            .map(|(supplier, buyer, commodity)| SupplierRoute {
-                buyer_site_id: site(buyer),
-                supplier_site_id: site(supplier),
-                good_id: good(commodity),
-                unit_id: units(),
-                route_id: route(supplier),
-                transport_kind: SupplierTransport::Staged,
-            })
-            .collect(),
-        route_stages: [(1, 2), (2, 3)]
-            .into_iter()
-            .map(|(source, destination)| RouteStage {
-                route_id: route(source),
-                stage_index: 0,
-                from_node_id: node(source),
-                to_node_id: node(destination),
-                travel_periods: 1,
-                loss_ppm: 0,
-            })
-            .collect(),
+        supplier_routes: supplier_routes(),
+        route_stages: route_stages(),
         route_stage_capacities: [1, 2]
             .into_iter()
             .map(|id| RouteStageCapacity {

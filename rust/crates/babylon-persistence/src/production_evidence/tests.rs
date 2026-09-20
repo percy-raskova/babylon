@@ -160,42 +160,12 @@ fn full_disclosure() -> ObserverEconomySnapshot {
         CompletedProductionFinalDemand, CompletedProductionMerchantHandling,
         ProductionFinalDemandAccount, ProductionFinalDemandOrder, ProductionHandlingCoefficient,
         ProductionMerchantHandlingAccount, ProductionMerchantHandlingOrder, ProductionOutboundKind,
-        ProductionPhysicalEdge, ProductionRoadSource,
     };
     let mut observation = committed();
     let production = observation.production.as_mut().unwrap();
     let site = production.sites[0].id.clone();
     let stock = production.sites[0].inventory[0].clone();
-    production.physical_edges = vec![
-        ProductionPhysicalEdge {
-            id: "edge-a".to_owned(),
-            shape_e7: vec![[-830_000_000, 420_000_000], [-830_001_000, 420_001_000]],
-            distance_mm: 17_000,
-        },
-        ProductionPhysicalEdge {
-            id: "edge-b".to_owned(),
-            shape_e7: vec![[-830_001_000, 420_001_000], [-830_003_000, 420_003_000]],
-            distance_mm: 33_000,
-        },
-    ];
-    production.routes[0].physical_edge_ids = vec![
-        "edge-a".to_owned(),
-        "edge-b".to_owned(),
-        "edge-a".to_owned(),
-    ];
-    production.routes[0].distance_mm = Some(67_000);
-    production.road_source = Some(ProductionRoadSource {
-        pbf_sha256: "pbf-sha".to_owned(),
-        pbf_bytes: 100,
-        pbf_url: "https://example.org/roads.pbf".to_owned(),
-        replication_timestamp: "2026-09-09T00:00:00Z".to_owned(),
-        footprint_sha256: "footprint-sha".to_owned(),
-        buffer_degrees_e7: 200_000,
-        extraction_version: "extract-v1".to_owned(),
-        distance_version: "integer-v1".to_owned(),
-        routing_profile_version: "michigan-freight-routing-v1".to_owned(),
-        graph_sha256: "graph-sha".to_owned(),
-    });
+    road_disclosure(production);
     production
         .merchant_handling_accounts
         .push(ProductionMerchantHandlingAccount {
@@ -258,6 +228,45 @@ fn full_disclosure() -> ObserverEconomySnapshot {
                 closing_fulfilled: 3,
             }),
         });
+    household_disclosure(production);
+    observation
+}
+
+fn road_disclosure(production: &mut crate::ProductionSnapshot) {
+    use crate::production_observation::{ProductionPhysicalEdge, ProductionRoadSource};
+    production.physical_edges = vec![
+        ProductionPhysicalEdge {
+            id: "edge-a".to_owned(),
+            shape_e7: vec![[-830_000_000, 420_000_000], [-830_001_000, 420_001_000]],
+            distance_mm: 17_000,
+        },
+        ProductionPhysicalEdge {
+            id: "edge-b".to_owned(),
+            shape_e7: vec![[-830_001_000, 420_001_000], [-830_003_000, 420_003_000]],
+            distance_mm: 33_000,
+        },
+    ];
+    production.routes[0].physical_edge_ids = vec![
+        "edge-a".to_owned(),
+        "edge-b".to_owned(),
+        "edge-a".to_owned(),
+    ];
+    production.routes[0].distance_mm = Some(67_000);
+    production.road_source = Some(ProductionRoadSource {
+        pbf_sha256: "pbf-sha".to_owned(),
+        pbf_bytes: 100,
+        pbf_url: "https://example.org/roads.pbf".to_owned(),
+        replication_timestamp: "2026-09-09T00:00:00Z".to_owned(),
+        footprint_sha256: "footprint-sha".to_owned(),
+        buffer_degrees_e7: 200_000,
+        extraction_version: "extract-v1".to_owned(),
+        distance_version: "integer-v1".to_owned(),
+        routing_profile_version: "michigan-freight-routing-v1".to_owned(),
+        graph_sha256: "graph-sha".to_owned(),
+    });
+}
+
+fn household_disclosure(production: &mut crate::ProductionSnapshot) {
     let final_account = &production.final_demand_accounts[0];
     production
         .household_accounts
@@ -288,7 +297,6 @@ fn full_disclosure() -> ObserverEconomySnapshot {
                 expired: 1,
             }),
         });
-    observation
 }
 
 #[test]

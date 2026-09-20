@@ -232,4 +232,41 @@ actual Rust boundary and the distinctions above; old ADRs and reports remain
 historical evidence. No new reserved theory or mathematical primitive is adopted
 by this source study.
 
+## Follow-up reading for transaction costs, 20 September 2026
+
+The initial reading receipt above remains the scope of the source-study delivery.
+Before implementing the historical-cost accounts, the complete **Capital III,
+chapter 1, Cost-Price and Profit**, including its eight notes, was also read from
+the same local PRC. This extends the initial coverage; it does not claim chapter
+2 or the remainder of the volume. The local `ebook-convert` text extraction has
+SHA-256 `37ff25dfad61b4ab645adf02d732061aa9dd4b72fecdf80c14abb618c7cf2969`;
+chapter 1 and its notes occupy lines 524–653. The source PRC hash is unchanged
+from the container receipt above. A corresponding primary transcription is
+[MIA, Capital III chapter 1](https://www.marxists.org/archive/marx/works/1894-c3/ch01.htm).
+
+The chapter distinguishes the capitalist's cost-price from commodity value,
+and capital advanced from the capital consumed in a particular product. A sale
+above cost-price does not establish that exchange created the difference.
+These distinctions reinforce the separation of cash, inventory carrying cost,
+recognized sales, consumed inputs, paid work and profit. They do not prescribe
+our stock-lot algorithm or identify every observed monetary margin with
+surplus-value.
+
+**Designed implementation:** record actual settled acquisition costs; carry
+consumed inputs and performed production work into produced stock; recognize
+the carried cost when the stock is sold, lost or consumed. Paid idle work is a
+period expense. A proportional partial withdrawal rounds down in exact currency
+units and leaves the remainder with the remaining stock; a complete withdrawal
+takes the complete remaining cost. Price changes do not retroactively change
+that transaction-cost account. This convention is a game accounting decision,
+not an adoption of TSSI, a universal money expression of labor time, or a proof
+that monetary profit measures surplus-value.
+
+The same distinction constrains service design. Performed service and unused
+capacity are different events; an advance payment does not prove performance.
+Native service units, service ordering and expiry are Designed operational
+choices. The earlier transport/storage reading does not justify classifying
+every service as unproductive labor, nor deriving class from a technical
+commodity kind.
+
 <!-- vale on -->

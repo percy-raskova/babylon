@@ -1,378 +1,135 @@
-The Economics Pipeline: From Value to Class Struggle
-=====================================================
+Economic circuit and theoretical interpretation
+===============================================
 
-Five features (012–016) form a computational pipeline that
-transforms raw economic data into the dynamics of class struggle.
-This document explains the theoretical chain: how capital
-accumulates, how labor-time becomes visible or invisible, how
-counties are positioned in the imperial division of labor, and
-how all of this drives the formation and dissolution of class
-positions.
+.. vale Vale.Spelling = NO
 
-.. contents:: On this page
-   :local:
-   :depth: 2
+.. Preserve source titles, author names and exact economic terms.
 
-The Pipeline as Causal Chain
-----------------------------
+Babylon's current Rust material circuit produces and moves goods through
+finite inputs, labor, capacity, inventory and orders. The national economy
+work connects those accounts to recurring household reproduction, actual
+payments, responsive markets and ownership. Those additions remain implementation
+work. The existing physical circuit does not already execute them.
 
-The economics pipeline implements a specific theoretical claim:
-**class positions are determined by material conditions, and
-material conditions are determined by the dynamics of capital
-accumulation.** Each feature in the chain adds one link:
+The :doc:`architecture` page describes the current executable boundary.
+The Director-approved design and its mechanism map are in
+`the national economy record <../../reports/national-economy-design-2026-09-20.md>`_.
+The `source-study receipt <../superpowers/research/2026-09-20-economic-circuit-source-study.md>`_
+records actual reading coverage and qualifications. Linear owns delivery scope
+and status.
 
-1. **Capital stock** (012): How past investment becomes present
-   productive capacity
-2. **MELT** (013): How to measure labor-time in a monetary
-   economy
-3. **Throughput** (014): Where each county sits in the imperial
-   division of labor
-4. **Visibility** (015): How much labor is invisible to the
-   price system
-5. **Class dynamics** (016): How all of the above drives class
-   formation and dissolution
+This page replaces descriptions of historical Python pipeline features as
+current mechanics. Their old formulas and reports remain recoverable in Git.
+They are not evidence that paid wages, investment or class transitions run in
+the present campaign.
 
-This is not an arbitrary ordering. Each feature depends on
-the one before it, and the whole chain depends on the
-ValueTensor4x3 (Feature 011) as its foundation. The pipeline
-makes it possible to start from BLS wage data and arrive at
-a simulated class distribution that can be compared against
-Census wealth data.
+Production and reproduction
+---------------------------
 
-Capital Stock and the Falling Rate of Profit
----------------------------------------------
+In the Grundrisse Introduction, production, distribution, exchange and
+consumption are distinct moments of a connected social process. Capital II's
+reproduction discussion asks how production replaces both material inputs and
+conditions of consumption. Means of production and means of consumption
+classify uses of output. They do not supply a two-industry classification of
+firms or counties.
 
-Marx's most controversial claim in *Capital Volume III* is that
-the rate of profit tends to fall over time as capital accumulates.
-The mechanism is straightforward: as firms invest in machinery
-(constant capital *c*), the organic composition of capital
-(*c/v*) rises. Since only living labor (*v*) creates new value,
-and surplus value (*s*) comes from living labor, the profit rate
-*r = s/(c+v)* tends to decline as *c* grows relative to *v*.
+For the game, this requires identifiable producers, households, inventories,
+orders and consumption. A completed end-buyer order is not already household
+consumption. New orders need a buyer with needs and means of payment. New
+workers need accounted people, not a conversion of observed workplace jobs
+into population.
 
-Feature 012 makes this computable by tracking accumulated capital
-stock *K* through the **perpetual inventory method**:
+Fixed-price, fixed-population and closed-economy scenarios are useful controls.
+A balanced control demonstrates accounting under its stated assumptions.
+It does not prove that all goods must sell, that production must grow, or that
+the national economy can ignore foreign relations.
 
-.. math::
+Money, cost and value
+---------------------
 
-   K_{t+1} = K_t \cdot (1 - \delta) + c_t
+Physical stocks, labor time, money, obligations and ownership are different
+accounts. Wages due differ from wages paid. Either differs from output or sales.
+A matched payment changes its payer's and recipient's balances. It does not
+create another flow when a report later describes its class or international
+significance.
 
-Each year, capital depreciates by rate δ (default 7%) and is
-replenished by new investment (total constant capital consumed,
-*c_t*, from the tensor). The **stock-based profit rate**
-*r = s/(K+v)* captures the TRPF dynamic: as *K* accumulates
-over time, the denominator grows while *s* (limited by living
-labor) cannot keep pace.
+Capital advanced differs from capital consumed this period. Equipment payment
+differs from delivery, installation, available capacity and depreciation.
+Retained cash permits a commitment. It cannot make equipment or labor appear.
+Acquisition cost, consumption-date valuation and replacement cost must carry
+their own dates and definitions.
 
-The distinction between stock-based and flow-based profit rates
-matters because the TSSI (Temporal Single-System Interpretation)
-values capital at historical cost, not replacement cost.
-Accumulated *K* reflects *what was actually invested*, including
-investments made when technology was more expensive. This is why
-the profit rate falls even when individual firms appear
-profitable: the accumulated weight of past investment drags
-down the average return.
+Marxist interpretations of money and value differ. The source receipt compares
+Foley's value-of-money argument with Freeman/Kliman's temporal account.
+A transaction-cost ledger alone establishes neither interpretation.
+Temporal valuation does not mean acquisition historical cost. A ratio of total
+money to total labor is not an individual's wage or enough to classify that
+person's class.
 
-The initial condition *K₀ = c₀/δ* assumes steady state — the
-economy has been operating long enough for capital stock to
-reach its equilibrium level. This is a simplifying assumption
-that works well for the 2010+ period but would need adjustment
-for modeling structural breaks.
+A profit report must identify its numerator, denominator, valuation convention
+and period. Higher physical output, higher profit mass and a higher profit rate
+are different possible results. The engine must not guarantee a falling rate
+or schedule a crisis to reproduce a theoretical label. Responsive selling
+prices need an explicit causal policy with a declared evidence class.
 
-The Monetary Expression of Labor Time
---------------------------------------
+Circulation and the world market
+--------------------------------
 
-The MELT (τ) solves a fundamental measurement problem: how do
-you measure labor-time in an economy that denominates everything
-in dollars?
+Transport can continue production through real work and material consumption.
+Commercial ownership transfer does not thereby create new value. Normal stocks
+needed to sustain production also differ from unsold accumulation caused by
+failed realization. Location, custody, ownership and sale recognition must
+remain distinguishable.
 
-Marx's labor theory of value asserts that the value of a commodity
-is determined by the socially necessary labor time required to
-produce it. But wages, prices, and GDP are all reported in
-monetary units. The MELT provides the conversion factor:
+Lenin, MIM, Amin and Cope ask how international production, ownership,
+appropriation and class differentiation connect. These arguments need more
+than a closed domestic production diagram. They do not justify an unlimited
+foreign buyer or a free supply of imports.
 
-.. math::
+The approved game uses twelve compressed external markets with finite
+production, domestic needs, inventories, labor and purchasing power. This is
+a Designed resolution. It does not make each market one government or class,
+and it does not assign political interests from geography. Domestic and
+international sales share physical allocation, transit and settlement.
 
-   \tau = \frac{\text{GDP}}{\text{total labor-hours}}
-   = \frac{\text{GDP}}{\text{employment} \times 2080}
+Profit remittances, investment purchases, worker remittances and trade payments
+must identify their actual counterparties. Reports cannot add theoretical
+estimates of unequal exchange to those payments as a second income flow. Cope's
+discussion of possible double counting is one reason to preserve that boundary.
 
-τ tells you how many dollars one hour of labor-time is
-*expressed as* in the current monetary system. For the US in
-recent years, τ ≈ $60–70/hour — meaning each hour of socially
-necessary labor time is expressed as roughly $65 in GDP.
-
-This is not a wage. It is a structural property of the entire
-economy. Individual wages can be above or below τ. A worker
-earning $90/hour (above τ) is *commanding more labor-time than
-they perform* — they are a net extractor, benefiting from
-imperial rent. A worker earning $40/hour (below τ) is *donating
-labor-time* — they are net exploited.
-
-The Basket Visibility Problem
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The MELT would be straightforward if all commodities were
-produced domestically. But the US imports roughly 25% of its
-consumption from countries where labor is systematically
-undervalued — where the same physical commodity embodies more
-labor-time but costs fewer dollars.
-
-The **basket visibility** coefficient γ_basket corrects for this:
-
-.. math::
-
-   \gamma_{\text{basket}} = \frac{1}
-   {\frac{\alpha}{\gamma_{\text{import}}} + (1 - \alpha)}
-
-Where α is the import share of consumption and γ_import measures
-how much labor-time is made invisible by the exchange rate
-deviation. When γ_basket < 1, the consumption basket contains
-more labor-time than its price suggests — the difference is
-imperial rent extracted from the periphery.
-
-The **effective MELT** (τ_eff = τ × γ_basket) is the threshold
-that determines class position: a worker earning above τ_eff is
-a net beneficiary of the imperial system; below τ_eff is a net
-contributor.
-
-Imperial Rent Per Hour
-~~~~~~~~~~~~~~~~~~~~~~
-
-The most politically significant metric in the pipeline:
-
-.. math::
-
-   \Phi_{\text{hour}} = \frac{W}{\tau \cdot \gamma_{\text{basket}}} - 1
-
-Φ_hour > 0 means this worker commands more labor-time per hour
-than they perform. Φ_hour < 0 means they donate labor-time to
-capital. Φ_hour = 0 is break-even.
-
-A critical theoretical distinction: **Φ_hour is a flow metric,
-not a class position.** A proletarian worker (bottom 50% wealth)
-can have Φ_hour > 0 if their wages are above τ_eff, while
-remaining proletarian because their accumulated wealth is below
-the threshold. Class position is determined by wealth stock, not
-income flow. This separation prevents the common error of
-equating high wages with bourgeois class position.
-
-Throughput: The Geography of Value
+Reproduction and political practice
 -----------------------------------
 
-Feature 014 answers the question: how much value does each
-county produce per labor-hour, and how does that compare to
-the national average?
+Household needs continue during unemployment. Paid and unpaid work draw on
+finite people and time. Provisioning can relieve a material constraint, but
+receiving goods cannot create extra worker-hours, membership, political
+agreement or consciousness.
 
-The **throughput intensity** τ_through is the county-level
-analogue of the national MELT. The **throughput position**
-π = τ_through/τ_national tells you whether a county is above or
-below the national average in value production per labor-hour.
+The planned aid/solidarity interaction follows delivered support
+through recipient consumption and an available finite contribution to an
+independently authorized practice. Inquiry, contact and consent remain distinct.
+A partner can refuse, have conflicting commitments, or be unable to contribute.
 
-This is not just a productivity metric. It captures the county's
-position in the **imperial division of labor**:
+MIM and Cope's discussions of unpaid reproduction do not agree on every
+theoretical question. The source receipt distinguishes those positions.
+The initial game must declare its household/time simplifications without
+assigning class or unpaid work automatically from sex or nationality.
 
-- **π > 1** (Oakland County): More value produced per hour than
-  national average. Finance, professional services, corporate
-  headquarters — the command nodes of capital.
+Evidence and play
+-----------------
 
-- **π < 1** (Wayne County): Less value per hour than average.
-  Manufacturing, logistics, service work — the production nodes
-  where surplus is extracted.
+Engineering tests check conservation, atomic publication and replay.
+Economic counterfactuals ask whether a claimed dependency causes the expected
+difference when we hold another constraint constant or remove it. Historical
+comparisons supply separate advisory evidence. A plausible curve of totals
+cannot substitute for a missing causal connection.
 
-The **supply chain depth** metric (0–5 scale) adds a structural
-dimension: extraction industries (depth 0) produce raw inputs,
-manufacturing (depth 1.5) transforms them, and finance (depth
-5.0) appropriates value without producing physical commodities.
-Counties with high depth and high π are the command-and-control
-centers of American capitalism. Counties with low depth and low
-π are the sites of direct exploitation.
+Mao's investigation and contradiction arguments motivate attention to
+particular processes and relationships. A technical bottleneck is not by
+itself a social contradiction, and a scalar pressure does not explain
+political change.
 
-The **commuter-adjusted** variant uses LODES data to distinguish
-between where people *work* and where they *live*. A county like
-Wayne (net job exporter — more people commute in than out) has
-higher workplace throughput than residence throughput. This
-matters because value is produced at the workplace but consumed
-at the residence, and the two may be in different counties with
-different class compositions.
-
-The Three Invisibilities
--------------------------
-
-Feature 015 computes three visibility coefficients that measure
-how much labor is hidden from the price system. Each represents
-a distinct mechanism of exploitation:
-
-Reproductive Labor Invisibility (γ_III)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Leopoldina Fortunati's insight: capitalism depends on unpaid
-reproductive labor (childcare, cooking, cleaning, eldercare)
-that reproduces the working class but is not recognized as
-productive labor. The ratio of paid to total care work:
-
-.. math::
-
-   \gamma_{\text{III}} = \frac{L_{\text{paid}}}{L_{\text{paid}}
-   + L_{\text{unpaid}}}
-
-US estimate: γ_III ≈ 0.30 — only 30% of care work is monetized.
-The remaining 70% is performed overwhelmingly by women, without
-compensation, and appropriated by capital as a free subsidy to
-the reproduction of labor power.
-
-The **shadow subsidy** Φ_III quantifies this: the dollar value
-of unpaid care work, computed as the labor-hours times the MELT.
-This is what it would cost capital if all care work had to be
-purchased at market rates — the hidden foundation of profitability
-that feminist political economy reveals.
-
-Import Invisibility (γ_import)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Arghiri Emmanuel's **unequal exchange** thesis: when peripheral
-countries trade with core countries, exchange rates systematically
-undervalue peripheral labor. The Exchange Rate Deviation Index
-(ERDI) measures this: ERDI = GDP_PPP / GDP_MER. India's ERDI of
-2.80 means Indian labor is valued at roughly 1/2.8 of its true
-labor-time equivalent in dollar terms.
-
-When the US imports commodities from India, it receives 2.8 hours
-of Indian labor-time for every 1 hour's worth of dollars it pays.
-The γ_import coefficient captures this across all import partners:
-
-.. math::
-
-   \gamma_{\text{import}} = \sum_i
-   \frac{s_i}{\text{ERDI}_i}
-
-A low γ_import (more imports from high-ERDI periphery) means more
-invisible labor in the consumption basket — more imperial rent
-extracted from the global working class.
-
-Composite Basket Invisibility (γ_basket)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The combined effect of import invisibility and domestic
-consumption share:
-
-.. math::
-
-   \gamma_{\text{basket}} = \frac{1}
-   {\frac{\alpha}{\gamma_{\text{import}}} + (1 - \alpha)}
-
-This is the harmonic mean that weights import invisibility by
-the import share. It is always ≥ γ_import (mathematically
-guaranteed), capturing the fact that domestic production at
-ERDI=1 dilutes the import invisibility.
-
-Class Dynamics: The Engine of History
---------------------------------------
-
-Feature 016 closes the pipeline by simulating how all the
-upstream metrics drive the formation and dissolution of class
-positions over time. The class distribution evolves through four
-transition flows operating each tick:
-
-The Four Flows
-~~~~~~~~~~~~~~~
-
-**Dispossession** (LA → Proletariat): Foreclosure, bankruptcy,
-and eviction strip accumulated wealth from labor aristocracy
-households, pushing them below the wealth threshold into
-proletarian status. The rate is a weighted composite of
-foreclosure (60%), bankruptcy (30%), and eviction (10%) rates —
-reflecting that housing wealth loss (foreclosure) is the primary
-mechanism of downward class mobility in the US.
-
-**Accumulation** (Proletariat → LA): Workers save from wages
-(including the imperial rent bonus Φ_hour, capped at 5% uplift)
-and gradually accumulate wealth above the threshold. The savings
-rate is class-differentiated (proletariat: 3%, LA: 12%), reflecting
-the empirical finding from the Fed Survey of Consumer Finances
-that savings rates rise sharply with wealth.
-
-**Precaritization** (Proletariat → Lumpen): Unemployment and
-eviction push proletarian workers into the lumpenproletariat —
-the surplus population excluded from stable employment. This
-rate combines unemployment and eviction rates, reflecting the
-two primary pathways to permanent exclusion.
-
-**Stabilization** (Lumpen → Proletariat): Some lumpenproletariat
-workers are reabsorbed into stable employment, especially during
-economic expansions. The rate is proportional to (1 - unemployment)
-— when unemployment is low, more marginal workers find jobs.
-
-Crisis Amplification
-~~~~~~~~~~~~~~~~~~~~~
-
-During economic crises, all flows accelerate: dispossession and
-precaritization rates multiply (up to 3.5× in deep crisis) while
-accumulation and stabilization rates collapse (down to 0.1× and
-0.2×). This captures the empirical reality of crisis dynamics:
-the 2008 crisis simultaneously accelerated foreclosures,
-eliminated savings capacity, and froze hiring — pushing the class
-distribution rapidly toward polarization.
-
-The phased crisis model (NORMAL → ONSET → EARLY → DEEP →
-RECOVERY) allows the simulation to capture the temporality of
-crisis: the slow onset, the accelerating collapse, the depth of
-trough, and the partial recovery — each phase with its own
-characteristic amplification pattern.
-
-Detroit Through the Pipeline
------------------------------
-
-The full pipeline produces a concrete analysis of the Detroit
-metropolitan area:
-
-1. **Tensor** (011): Wayne County has high total_c (manufacturing
-   capital), moderate total_v (declining wages), and rising
-   exploitation rate as wages fall faster than output.
-
-2. **Capital stock** (012): Wayne's accumulated K is high but
-   depreciating (factory closures). Oakland's K is growing
-   (new commercial/financial investment). The stock-based profit
-   rate falls in Wayne, rises in Oakland.
-
-3. **MELT** (013): National τ ≈ $65/hour. Wayne workers earning
-   $45K/year ($21.6/hr) have Φ_hour < 0 — they are net exploited.
-   Oakland workers at $62K ($29.8/hr) may have Φ_hour > 0 — net
-   extractors, depending on γ_basket.
-
-4. **Throughput** (014): Wayne has π < 1 (below-average value per
-   labor-hour, manufacturing/logistics). Oakland has π > 1
-   (above-average, finance/professional services). The supply
-   chain depth gradient captures the structural asymmetry.
-
-5. **Visibility** (015): γ_III ≈ 0.30 nationally. The shadow
-   subsidy falls disproportionately on Wayne County's larger
-   working-class population, where unpaid care work substitutes
-   for services that Oakland residents can afford to purchase.
-
-6. **Class dynamics** (016): The 2008 crisis amplifies
-   dispossession in Wayne (high foreclosure rates → LA → Prol
-   flow), collapses accumulation (savings wiped out), and
-   accelerates precaritization (unemployment spike). The class
-   distribution polarizes: Wayne's labor aristocracy shrinks,
-   proletariat and lumpenproletariat grow. Oakland, with lower
-   dispossession rates and higher accumulation capacity, is
-   relatively insulated — its class distribution shifts slowly.
-
-This is the pipeline's theoretical payoff: a computable,
-empirically grounded account of how the same crisis produces
-different class dynamics in adjacent counties, determined not by
-culture or politics but by the material structure of capital
-accumulation and imperial rent.
-
-See Also
---------
-
-- :doc:`/reference/economics-pipeline` — Data types, formulas,
-  and parameters
-- :doc:`/concepts/tensor-theory` — ValueTensor4x3 foundations
-- :doc:`/concepts/imperial-rent` — Imperial rent theory
-- :doc:`/concepts/volume-i-theory` — Volume I production dynamics
-- :doc:`/concepts/reproductive-labor` — Reproductive labor and
-  Department III
-- :doc:`/concepts/unified-class-system` — Community filtration,
-  dual-criteria validation, and class-pair solidarity
+Play qualification asks whether people can recognize a pressure, choose
+between meaningful alternatives, understand the forgone opportunity and
+identify a later consequence. Technical correctness and theoretical citations
+cannot prove that the game is enjoyable.

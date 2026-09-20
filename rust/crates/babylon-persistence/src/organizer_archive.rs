@@ -43,7 +43,10 @@ fn observation_citation(
             observation.observed_period,
             observation.acquired_period,
             hex(&observation.observation_id),
-            observation.receipt_id.as_ref().map_or_else(|| "automatic-report".into(), hex),
+            observation
+                .receipt_id
+                .as_ref()
+                .map_or_else(|| "automatic-report".into(), hex),
         ),
     )
 }
@@ -275,9 +278,29 @@ fn insert_subjects(
 
 fn report_text(observation: &OrganizerObservation) -> String {
     let detail = match &observation.report {
-        OrganizerReport::ReducedWork {previous_labor_hours,performed_labor_hours} => format!("Performed modeled work decreased from {previous_labor_hours} to {performed_labor_hours} labor-hours. Actual shift schedules and wages are not modeled."),
-        OrganizerReport::Work {performed_labor_hours,output_kg,previous_labor_hours,previous_output_kg} => format!("{performed_labor_hours} performed labor-hours; {output_kg} kg output. Previous report: {} labor-hours, {} kg.",previous_labor_hours.map_or_else(||"unknown".into(),|value|value.to_string()),previous_output_kg.map_or_else(||"unknown".into(),|value|value.to_string())),
-        OrganizerReport::Maintenance {enabled_batches,consumed_batches,expired_batches} => format!("Workplace maintenance availability: {enabled_batches} enabled batches; {consumed_batches} consumed; {expired_batches} expired. Provider-private accounts remain withheld."),
+        OrganizerReport::ReducedWork {
+            previous_labor_hours,
+            performed_labor_hours,
+        } => format!(
+            "Performed modeled work decreased from {previous_labor_hours} to {performed_labor_hours} labor-hours. Actual shift schedules and wages are not modeled."
+        ),
+        OrganizerReport::Work {
+            performed_labor_hours,
+            output_kg,
+            previous_labor_hours,
+            previous_output_kg,
+        } => format!(
+            "{performed_labor_hours} performed labor-hours; {output_kg} kg output. Previous report: {} labor-hours, {} kg.",
+            previous_labor_hours.map_or_else(|| "unknown".into(), |value| value.to_string()),
+            previous_output_kg.map_or_else(|| "unknown".into(), |value| value.to_string())
+        ),
+        OrganizerReport::Maintenance {
+            enabled_batches,
+            consumed_batches,
+            expired_batches,
+        } => format!(
+            "Workplace maintenance availability: {enabled_batches} enabled batches; {consumed_batches} consumed; {expired_batches} expired. Provider-private accounts remain withheld."
+        ),
     };
     format!(
         "Observed period {}; acquired period {}. {detail}",
@@ -286,24 +309,22 @@ fn report_text(observation: &OrganizerObservation) -> String {
 }
 fn receipt_text(receipt: &OrganizerReceipt) -> String {
     let practice = match receipt.choice {
-        OrganizerChoice::Inquiry(OrganizerInquiry::WorkLost) => "Inquiry: what work was lost",
-        OrganizerChoice::Inquiry(OrganizerInquiry::MaintenanceReceived) => {
-            "Inquiry: what maintenance service was received"
-        }
-        OrganizerChoice::Reinforce => "Reinforce the workplace contact",
-        OrganizerChoice::Hold => "Hold the current course",
-        OrganizerChoice::PauseStanding => "Pause standing work",
-        OrganizerChoice::ResumeStanding => "Resume standing work",
+        OrganizerChoice::Inquiry(OrganizerInquiry::WorkLost) => "Ask about work and output",
+        OrganizerChoice::Inquiry(OrganizerInquiry::MaintenanceReceived) => "Ask about maintenance",
+        OrganizerChoice::Reinforce => "Reinforce workplace contact",
+        OrganizerChoice::Hold => "Keep current routine",
+        OrganizerChoice::PauseStanding => "Pause neighborhood work",
+        OrganizerChoice::ResumeStanding => "Resume neighborhood work",
     };
     let outcome = match receipt.outcome {
-        OrganizerOutcome::EvidenceObtained => "bounded evidence obtained",
-        OrganizerOutcome::EvidenceWithheld => "requested evidence withheld",
-        OrganizerOutcome::ContactCompleted => "contact work completed",
-        OrganizerOutcome::ContactUncompleted => "contact work not completed",
-        OrganizerOutcome::InsufficientTime => "insufficient committed time",
-        OrganizerOutcome::StandingPaused => "standing work paused",
-        OrganizerOutcome::StandingResumed => "standing work resumed",
-        OrganizerOutcome::NoAuthorizedPractice => "no practice authorized",
+        OrganizerOutcome::EvidenceObtained => "Evidence obtained",
+        OrganizerOutcome::EvidenceWithheld => "No report obtained",
+        OrganizerOutcome::ContactCompleted => "Mutual contact completed",
+        OrganizerOutcome::ContactUncompleted => "Contact attempt uncompleted",
+        OrganizerOutcome::InsufficientTime => "Insufficient committed time",
+        OrganizerOutcome::StandingPaused => "Standing work paused",
+        OrganizerOutcome::StandingResumed => "Standing work resumed",
+        OrganizerOutcome::NoAuthorizedPractice => "No authorized practice",
     };
     let response = match receipt.partner_response {
         OrganizerPartnerResponse::Participated => "participated",
@@ -312,7 +333,19 @@ fn receipt_text(receipt: &OrganizerReceipt) -> String {
         OrganizerPartnerResponse::UnableToParticipate => "unable to participate",
         OrganizerPartnerResponse::NotRequested => "participation not requested",
     };
-    format!("Period {}: {practice}; {outcome}; {} organizer-hours spent; independent partner: {response}. Factory recovery is determined by the material economy.", receipt.period, receipt.hours_spent)
+    let source = if receipt.commitment_id.is_some() {
+        if receipt.standing_work {
+            "specific ruling · saved routine"
+        } else {
+            "specific ruling"
+        }
+    } else {
+        "saved routine"
+    };
+    format!(
+        "Period {}: {practice}\nSource: {source}\nResult: {outcome}\nTime spent: {} organizer-hours\nIndependent partner: {response}\nFactory recovery is a separate material result.",
+        receipt.period, receipt.hours_spent
+    )
 }
 
 /// Existing Archive-worker producer for committed, period-specific organizer evidence.
@@ -328,6 +361,33 @@ impl OrganizerDossierProducer {
         }
     }
 }
+
+pub(crate) fn archive_register_error(error: MaterialRuntimeError) -> SemanticArchiveError {
+    match error {
+        MaterialRuntimeError::Database(error)
+        | MaterialRuntimeError::DatabaseLockRefused(error)
+        | MaterialRuntimeError::DatabaseStatementCanceled(error) => {
+            database("read organizer Archive register", &error)
+        }
+        MaterialRuntimeError::Graph(
+            crate::RustPersistenceRuntimeError::Database {
+                operation,
+                diagnostic: Some(diagnostic),
+            }
+            | crate::RustPersistenceRuntimeError::TerritoryCountyMap(
+                crate::territory_county_map::TerritoryCountyMapError::Database {
+                    operation,
+                    diagnostic: Some(diagnostic),
+                },
+            ),
+        ) => SemanticArchiveError::Database {
+            operation,
+            diagnostic,
+        },
+        _ => SemanticArchiveError::StoredPageMismatch,
+    }
+}
+
 impl ArchiveDossierProducer for OrganizerDossierProducer {
     fn produce(
         &self,
@@ -351,7 +411,7 @@ impl ArchiveDossierProducer for OrganizerDossierProducer {
             CampaignId::from_uuid(campaign),
             receipt,
         )
-        .map_err(|_| SemanticArchiveError::StoredPageMismatch)?;
+        .map_err(archive_register_error)?;
         let Some(state) = register
             .as_ref()
             .and_then(MaterialWorldRegister::organizer_state)
@@ -506,6 +566,68 @@ mod projection_tests {
                 previous_output_kg: Some(960),
             },
         }
+    }
+
+    #[test]
+    fn missing_report_does_not_attribute_withholding_to_a_participating_partner() {
+        let mut receipt = OrganizerReceipt {
+            receipt_id: [2; 32],
+            commitment_id: Some([3; 32]),
+            actor_id: 101,
+            period: 1,
+            choice: OrganizerChoice::Inquiry(OrganizerInquiry::WorkLost),
+            standing_work: false,
+            outcome: OrganizerOutcome::EvidenceWithheld,
+            hours_spent: 12,
+            partner_actor_id: Some(102),
+            partner_response: OrganizerPartnerResponse::Participated,
+            observation_ids: vec![],
+            contact_product_id: None,
+            time_use: vec![],
+        };
+        let signal = practice_signal(&receipt).unwrap();
+        let text = signal.value();
+        assert!(text.contains("Period 1: Ask about work and output"));
+        assert!(text.contains("Result: No report obtained"));
+        assert!(text.contains("Independent partner: participated"));
+        assert!(text.contains("Time spent: 12 organizer-hours"));
+        assert!(text.contains("Source: specific ruling"));
+        assert!(!text.contains("withheld"));
+        receipt.standing_work = true;
+        receipt.commitment_id = None;
+        receipt.choice = OrganizerChoice::Hold;
+        receipt.outcome = OrganizerOutcome::ContactCompleted;
+        receipt.hours_spent = 8;
+        let signal = practice_signal(&receipt).unwrap();
+        let text = signal.value();
+        assert!(text.contains("Period 1: Keep current routine"));
+        assert!(text.contains("Result: Mutual contact completed"));
+        assert!(text.contains("Source: saved routine"));
+
+        receipt.commitment_id = Some([3; 32]);
+        receipt.standing_work = false;
+        receipt.choice = OrganizerChoice::PauseStanding;
+        receipt.outcome = OrganizerOutcome::StandingPaused;
+        receipt.hours_spent = 0;
+        receipt.partner_response = OrganizerPartnerResponse::NotRequested;
+        let signal = practice_signal(&receipt).unwrap();
+        let text = signal.value();
+        assert!(text.contains("Period 1: Pause neighborhood work"));
+        assert!(text.contains("Result: Standing work paused"));
+        assert!(text.contains("Independent partner: participation not requested"));
+
+        receipt.standing_work = true;
+        receipt.choice = OrganizerChoice::ResumeStanding;
+        receipt.outcome = OrganizerOutcome::ContactUncompleted;
+        receipt.hours_spent = 8;
+        receipt.partner_response = OrganizerPartnerResponse::Refused;
+        let signal = practice_signal(&receipt).unwrap();
+        let text = signal.value();
+        assert!(text.contains("Period 1: Resume neighborhood work"));
+        assert!(text.contains("Source: specific ruling · saved routine"));
+        assert!(text.contains("Result: Contact attempt uncompleted"));
+        assert!(text.contains("Independent partner: refused"));
+        assert!(!text.contains("Result: Standing work resumed"));
     }
 
     #[test]

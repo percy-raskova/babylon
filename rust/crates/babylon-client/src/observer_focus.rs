@@ -138,7 +138,7 @@ impl ObserverKeyboardClaim {
             || (self.blocks_world && matches!(key, KeyCode::Enter | KeyCode::Space))
     }
 
-    fn claim(&mut self, key: KeyCode) {
+    pub(crate) fn claim(&mut self, key: KeyCode) {
         if !self.keys.contains(&key) {
             self.keys.push(key);
         }
@@ -673,7 +673,7 @@ fn reading_position(
 }
 
 /// Bevy's own layout limit includes the space reserved for scrollbars.
-fn scroll_max(computed: &ComputedNode) -> Option<Vec2> {
+pub(crate) fn scroll_max(computed: &ComputedNode) -> Option<Vec2> {
     let scale = computed.inverse_scale_factor;
     let maximum =
         (computed.content_size - computed.size + computed.scrollbar_size).max(Vec2::ZERO) * scale;

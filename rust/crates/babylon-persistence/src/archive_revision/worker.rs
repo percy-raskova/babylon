@@ -55,12 +55,19 @@ fn sweep_locked(
             *receipt.tick_content_hash(),
         )?;
         let known = tick_knowledge::pin(&mut tx, &scope)?;
+        // Producers authenticate and render on separate connections while this
+        // serializable transaction retains the receipt and knowledge snapshot.
+        // Bound that client-side work without relaxing catalog, SQL or lock limits.
+        tx.batch_execute("SET LOCAL idle_in_transaction_session_timeout = '30s'")
+            .map_err(|error| database("bound Archive producer work", &error))?;
         let outcome = producer.produce(
             *campaign.as_uuid(),
             &receipt,
             &known,
             crate::ArchiveDirtyBatch::MAX_PAGES,
         )?;
+        tx.batch_execute("SET LOCAL idle_in_transaction_session_timeout TO DEFAULT")
+            .map_err(|error| database("restore Archive publication idle limit", &error))?;
         let mode = if outcome.remaining() == 0 {
             ArchiveMaterializeMode::Consume
         } else {

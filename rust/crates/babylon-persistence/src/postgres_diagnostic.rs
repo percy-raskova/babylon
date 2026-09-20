@@ -17,7 +17,7 @@ const SENSITIVE_FIELD_NAMES: [&str; 10] = [
 pub enum PostgresFailureClass {
     /// The server rejected authentication or authorization establishment.
     Authentication,
-    /// No server response was available because the endpoint could not be reached.
+    /// The database connection could not be established or has closed.
     Reachability,
     /// A bounded client or server operation timed out.
     Timeout,
@@ -45,7 +45,7 @@ impl PostgresDiagnostic {
     #[must_use]
     pub fn capture(error: &postgres::Error) -> Self {
         if let Some(server) = error.as_db_error() {
-            let classification = classify_server(server);
+            let classification = classify_server(server.code(), server.message());
             let message = match classification {
                 PostgresFailureClass::Authentication => "authentication rejected".into(),
                 PostgresFailureClass::UnsupportedStartupSetting => {
@@ -68,13 +68,14 @@ impl PostgresDiagnostic {
 
         let classification = if error_chain_has_timeout(error) {
             PostgresFailureClass::Timeout
-        } else if error_chain_has_io(error) {
+        } else if error.is_closed() || error_chain_has_io(error) {
             PostgresFailureClass::Reachability
         } else {
             PostgresFailureClass::Client
         };
         let message = match classification {
             PostgresFailureClass::Timeout => "database operation timed out",
+            PostgresFailureClass::Reachability if error.is_closed() => "database connection closed",
             PostgresFailureClass::Reachability => "database endpoint unreachable",
             PostgresFailureClass::Client => "database client rejected operation",
             PostgresFailureClass::Authentication
@@ -120,16 +121,14 @@ impl std::fmt::Debug for PostgresDiagnostic {
     }
 }
 
-fn classify_server(error: &postgres::error::DbError) -> PostgresFailureClass {
-    if error
-        .message()
-        .starts_with("unrecognized configuration parameter")
-    {
+fn classify_server(code: &SqlState, message: &str) -> PostgresFailureClass {
+    if message.starts_with("unrecognized configuration parameter") {
         PostgresFailureClass::UnsupportedStartupSetting
-    } else if error.code().code().starts_with("28") {
+    } else if code.code().starts_with("28") {
         PostgresFailureClass::Authentication
-    } else if error.code() == &SqlState::QUERY_CANCELED
-        || error.code() == &SqlState::LOCK_NOT_AVAILABLE
+    } else if code == &SqlState::QUERY_CANCELED
+        || code == &SqlState::LOCK_NOT_AVAILABLE
+        || code == &SqlState::IDLE_IN_TRANSACTION_SESSION_TIMEOUT
     {
         PostgresFailureClass::Timeout
     } else {
@@ -308,7 +307,28 @@ fn truncate_utf8(value: &mut String, max_bytes: usize) {
 
 #[cfg(test)]
 mod tests {
-    use super::{sanitize_server_message, MAX_POSTGRES_DIAGNOSTIC_MESSAGE_BYTES};
+    use super::{
+        classify_server, sanitize_server_message, PostgresFailureClass, SqlState,
+        MAX_POSTGRES_DIAGNOSTIC_MESSAGE_BYTES,
+    };
+
+    #[test]
+    fn idle_timeout_is_a_timeout_but_other_transaction_refusals_are_not() {
+        assert_eq!(
+            classify_server(
+                &SqlState::from_code("25P03"),
+                "terminating connection due to idle-in-transaction timeout",
+            ),
+            PostgresFailureClass::Timeout
+        );
+        assert_eq!(
+            classify_server(
+                &SqlState::from_code("25P02"),
+                "current transaction is aborted",
+            ),
+            PostgresFailureClass::ServerRejected
+        );
+    }
 
     #[test]
     fn server_message_redacts_quoted_values_sensitive_assignments_and_uri_userinfo() {

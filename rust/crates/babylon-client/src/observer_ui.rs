@@ -231,6 +231,9 @@ struct VerificationDetails;
 #[derive(Component)]
 struct ControlHint;
 
+#[derive(Component)]
+struct CircuitNavigation;
+
 #[derive(Component, Clone, Copy)]
 enum ObserverText {
     Clock,
@@ -452,11 +455,12 @@ fn spawn_hud(commands: &mut Commands) {
                     width: px(12),
                     ..default()
                 });
-                crate::production::button(
+                let circuit = crate::production::button(
                     bar,
                     "Circuit [P]",
                     crate::production::ProductionCommand::Open,
                 );
+                bar.commands().entity(circuit).insert(CircuitNavigation);
                 crate::production::button(
                     bar,
                     "World [M]",
@@ -819,6 +823,9 @@ fn spawn_menu(commands: &mut Commands) {
             crate::observer_title::spawn_back_button(panel);
             panel.spawn((block_label("CAMPAIGNS", 32.0, theme::PAPER), MenuHeading));
             panel
+                .spawn((menu_column(), MenuSection(MenuPage::InGame)))
+                .with_children(crate::observer_title::spawn_game_menu);
+            panel
                 .spawn((menu_column(), MenuSection(MenuPage::SavedGames)))
                 .with_children(menu_saved_games);
             panel
@@ -953,7 +960,7 @@ fn preset_grid(panel: &mut ChildSpawnerCommands, presets: &[(&str, ObserverComma
 fn menu_settings(panel: &mut ChildSpawnerCommands) {
     panel.spawn(block_label("Presentation and sound", 17.0, theme::YELLOW));
     panel.spawn(block_label(
-        "Tab / Shift+Tab: select controls. Enter: activate. Page Up / Down: read. WORLD / CIRCUIT: return to navigation.",
+        "Tab / Shift+Tab: select controls. Enter: activate. Page Up / Down: read. Escape: back.",
         12.0,
         theme::GRAY,
     ));
@@ -979,11 +986,6 @@ fn menu_settings(panel: &mut ChildSpawnerCommands) {
         ObserverText::EvidenceDetails,
         VerificationDetails,
         ObserverFocusTarget::reading(None),
-    ));
-    panel.spawn(block_label(
-        "OBSERVE / TRACE / COMPARE\nPlayer interventions are unavailable in observer mode.",
-        12.0,
-        theme::GRAY,
     ));
 }
 
@@ -1172,7 +1174,9 @@ fn menu_scope_visible(button: ObserverButton, opening: Option<&OpeningPresentati
         ObserverCommand::ReopenCampaign => MenuPage::SavedGames,
         _ => MenuPage::Campaigns,
     };
-    opening.stage == OpeningStage::Title && opening.menu_page == page
+    (opening.stage == OpeningStage::Title
+        || (opening.stage == OpeningStage::Game && page == MenuPage::Settings))
+        && opening.menu_page == page
 }
 
 fn dispatch_button(
@@ -1246,11 +1250,9 @@ fn sync_focus_policy(
         } else if state.ui.comparison_open {
             comparisons.single().ok()
         } else if state.ui.menu_open && !state.ui.splash_visible {
-            if state
-                .opening
-                .as_deref()
-                .is_some_and(|opening| opening.menu_page == MenuPage::Home)
-            {
+            if state.opening.as_deref().is_some_and(|opening| {
+                opening.stage == OpeningStage::Title && opening.menu_page == MenuPage::Home
+            }) {
                 state.titles.single().ok()
             } else {
                 menus.single().ok()
@@ -1265,6 +1267,14 @@ fn sync_focus_policy(
             None
         },
     });
+}
+
+#[cfg(test)]
+pub(crate) fn install_shell_focus_policy(app: &mut App) {
+    app.init_resource::<ObserverFrame>().add_systems(
+        PreUpdate,
+        sync_focus_policy.in_set(ObserverFocusSystems::Eligibility),
+    );
 }
 
 fn sync_focus_targets(
@@ -1986,12 +1996,32 @@ fn paint_menu_pages(
     }
     let caption = match page {
         MenuPage::Home => "",
+        MenuPage::InGame => "CAMPAIGN MENU",
         MenuPage::SavedGames => "LOAD GAME",
         MenuPage::Campaigns => "OBSERVER CAMPAIGNS",
         MenuPage::Settings => "SETTINGS",
     };
     for mut text in &mut heading {
         text.set_if_neq(Text::new(caption));
+    }
+}
+
+fn paint_circuit_navigation(
+    session: Res<ObserverSession>,
+    controls: Query<&Children, With<CircuitNavigation>>,
+    mut labels: Query<&mut Text>,
+) {
+    let caption = if session.organizer_enabled {
+        "Evidence [P]"
+    } else {
+        "Circuit [P]"
+    };
+    for children in &controls {
+        for child in children {
+            if let Ok(mut text) = labels.get_mut(*child) {
+                text.set_if_neq(Text::new(caption));
+            }
+        }
     }
 }
 
@@ -2123,6 +2153,7 @@ impl Plugin for ObserverShellPlugin {
                     paint_menu_pages,
                     paint_buttons,
                     paint_view_controls,
+                    paint_circuit_navigation,
                 )
                     .in_set(crate::observer_io::ObserverSet::Paint),
             );
@@ -2133,6 +2164,34 @@ impl Plugin for ObserverShellPlugin {
 mod tests {
     use super::*;
     use crate::observer_focus::ObserverFocusPlugin;
+
+    #[test]
+    fn circuit_navigation_names_the_actual_organizer_destination() {
+        let campaign = babylon_persistence::identity::CampaignId::from_uuid(uuid::Uuid::nil());
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .insert_resource(ObserverSession::new(campaign))
+            .add_systems(Startup, |mut commands: Commands| spawn_hud(&mut commands))
+            .add_systems(Update, paint_circuit_navigation);
+        app.update();
+        assert!(app
+            .world_mut()
+            .query::<&Text>()
+            .iter(app.world())
+            .any(|text| text.0 == "Circuit [P]"));
+        app.world_mut()
+            .resource_mut::<ObserverSession>()
+            .organizer_enabled = true;
+        app.update();
+        let world = app.world_mut();
+        let labels: Vec<_> = world
+            .query::<&Text>()
+            .iter(world)
+            .filter(|text| text.0 == "Circuit [P]" || text.0 == "Evidence [P]")
+            .map(|text| text.0.clone())
+            .collect();
+        assert_eq!(labels, ["Evidence [P]"]);
+    }
     use bevy::input::keyboard::{Key, KeyboardInput, NativeKey};
     use bevy::input::{ButtonState, InputPlugin};
     use bevy::input_focus::InputFocus;

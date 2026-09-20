@@ -25,6 +25,7 @@ pub(crate) enum OrganizerInspector {
     Relationships,
     Direction,
     Receipts,
+    Notes,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -58,6 +59,7 @@ pub(crate) struct OrganizerClient {
     draft_dirty: bool,
     draft_changed_at: f64,
     draft_writable: bool,
+    draft_save_error: Option<String>,
     return_focus: Option<Entity>,
     evidence: evidence::EvidenceInspection,
 }
@@ -104,11 +106,24 @@ impl OrganizerClient {
             return;
         }
         if let (Some(campaign), Some(draft)) = (self.campaign, &self.draft) {
-            if let Err(error) = draft::save(campaign, draft) {
-                self.message = error;
-                return;
-            }
+            let result = draft::save(campaign, draft);
+            self.draft_saved(result);
+        }
+    }
+
+    fn draft_saved(&mut self, result: Result<(), String>) {
+        if let Err(error) = result {
+            self.draft_save_error = Some(error.clone());
+            self.message = error;
+        } else {
             self.draft_dirty = false;
+            if self
+                .draft_save_error
+                .take()
+                .is_some_and(|error| self.message == error)
+            {
+                self.message.clear();
+            }
         }
     }
 
@@ -293,13 +308,9 @@ impl OrganizerClient {
         self.status_due = false;
         session.set_organizer_control_pending(false);
         if self.draft_writable {
-            self.message = if session.durable_tick == snapshot.horizon_tick {
-                "This bounded campaign is complete. Its reports and practice history remain available.".into()
-            } else if self.commitment.is_some() {
-                "Your ruling is accepted for the next period. Advance when ready.".into()
-            } else {
-                "Choose the organization's response. Notes remain a personal draft.".into()
-            };
+            // The fixed decision footer renders the acknowledged state. Keep
+            // the message line for pending operations and actionable failures.
+            self.message.clear();
         }
         Ok(())
     }
@@ -328,13 +339,7 @@ impl OrganizerClient {
             return Ok(());
         }
         self.reviewed_command = Some(command);
-        self.message = preview.refusal.map_or_else(
-            || {
-                "Review the commitment, displaced routine, and limits; then confirm your ruling."
-                    .into()
-            },
-            |reason| presentation::refusal(reason).into(),
-        );
+        self.message.clear();
         self.preview = Some(preview);
         session.set_organizer_control_pending(false);
         Ok(())
@@ -354,8 +359,7 @@ impl OrganizerClient {
         }
         self.commitment = Some(commitment);
         self.clear_review();
-        self.message =
-            "Accepted for the next period. No result is credited before its commit.".into();
+        self.message.clear();
         session.set_organizer_control_pending(false);
         Ok(())
     }

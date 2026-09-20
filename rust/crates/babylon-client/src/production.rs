@@ -276,10 +276,15 @@ fn button_node(command: ProductionCommand) -> impl Bundle {
     )
 }
 
-pub(crate) fn button(parent: &mut ChildSpawnerCommands, value: &str, command: ProductionCommand) {
+pub(crate) fn button(
+    parent: &mut ChildSpawnerCommands,
+    value: &str,
+    command: ProductionCommand,
+) -> Entity {
     parent
         .spawn(button_node(command))
-        .with_child(text(value, 15.0, theme::PAPER));
+        .with_child(text(value, 15.0, theme::PAPER))
+        .id()
 }
 
 fn setup(mut commands: Commands) {

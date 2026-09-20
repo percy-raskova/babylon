@@ -167,17 +167,23 @@ and earned unpaid wages for restart.
 Captured recurring policies connect household stocks and needs, affordable
 purchases, consumption and unmet needs to that same material close. Funded
 orders keep their accepted price. Handoffs credit resident stocks before
-consumption; unfilled recurring retail requests expire and refund their reserve.
+consumption. Unfilled recurring retail requests expire and refund their reserve.
 Resolved orders retire together with their escrow. Receipts preserve their
 admission, fulfillment and expiry for later inspection.
 
 Procurement accounts for inventory and outstanding inbound orders, including
-goods in transit once. Subsequent production and attendance plans respond to
+goods in transit once. Later production and attendance plans respond to
 sales, funded unfilled requests and closing stock. Offers can change their next
 quote through a captured bounded inventory policy. A second outbound pass
-dispatches newly funded firm orders through the remaining shared resources;
-local firm credits occur after both passes, so they cannot feed another dispatch
+dispatches newly funded firm orders through the remaining shared resources.
+Local firm credits occur after both passes, so they cannot feed another dispatch
 in the same close. The eight-period fixed-price control exercises this loop.
+
+The observer authenticates admissions, settlement and retirement between
+adjacent material states. It reports household stocks, consumption and unmet
+needs separately from retail handoffs. Order drill-down keeps active and
+latest-period rows with explicit cumulative totals. Campaign comparisons use
+stable resident and retailer identities as generated order identities change.
 
 The current Michigan campaign still selects the physical control. National
 content, rolling budgets, investment and the playable household and solidarity

@@ -311,7 +311,7 @@ fn session(rules: &str) -> Session {
     try_session(rules, staffed_labor()).unwrap()
 }
 
-fn paid_session() -> Session {
+fn paid_material() -> MaterialCircuitState {
     use babylon_kernel::currency::Currency;
     use babylon_material_circuit::{
         AccountId, CashAccount, CircuitAccounting, EmploymentTerms, FinalDemandPrincipal,
@@ -361,8 +361,15 @@ fn paid_session() -> Session {
             hourly_rate: Currency::from_micro_units(1),
         }],
     });
-    try_session_with_material(MATERIAL_CYCLE, staffed_labor(), material).unwrap()
+    material
 }
+
+fn paid_session() -> Session {
+    try_session_with_material(MATERIAL_CYCLE, staffed_labor(), paid_material()).unwrap()
+}
+
+#[path = "staffed_material_replay/recurring.rs"]
+mod recurring;
 
 fn try_session(
     additional_rules: &str,

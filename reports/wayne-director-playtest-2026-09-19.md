@@ -36,8 +36,17 @@ the preserved campaign. The repeat session reached committed period 2. The
 Director then reported that Escape opened the start menu instead of the
 in-game menu. The session log confirms the period-2 commit and later music
 volume changes to 0.75. These records do not show which input device
-submitted the ruling or how the Director interpreted its result. The
-facilitator asked for that interpretation and has not recorded a response.
+submitted the ruling or how the Director interpreted its result.
+
+The Director praised the revised appearance. They described a prospective
+strategy: repeat investigations to maximize information, expecting details
+about production or social power mapping. This is an intended
+strategy, not an account of the period-2 result. The present inquiries supply
+named work/output or maintenance reports. They do not discover a social power
+map. PER-292 records that expectation for its bounded topology work.
+
+Positive
+appearance feedback does not prove comprehension or enjoyment of the loop.
 
 ## Research and mechanical audit
 
@@ -198,6 +207,98 @@ Pointer Resume and explicit Main menu,
 followed by Continue, also retained the decision. Both isolated personal draft
 files retained the same bytes, and Quit returned 0. No period advanced.
 
+## Expanded native route and Archive repair
+
+Agent-operated checks on `9eb989ee60ab83c73eda0ec31d7a246002163578`
+continued the separate campaign from period 2. They covered workplace contact,
+explicit Hold, automatic neighborhood work, Pause, a normal close and reopen
+with Pause preserved, and Hold while paused. Hold did not silently resume work.
+
+At period 8, the material commit succeeded but the runtime refused Archive
+publication. The displayed Archive remained at period 6. One normal Reopen
+failed with the same refusal. A read-only audit found matching tick,
+world, receipt and organizer projection identities through period 8.
+
+The agent then ran the existing campaign-scoped Archive worker once. It consumed
+the two pending receipts and verified period 8 without advancing the game.
+The original route requires a recovery workaround and is not a clean native run.
+
+After recovery, the route verified both expired agreements, workplace contact
+and its later renewal, and a work/output inquiry. Resume restored automatic
+neighborhood work. A native Reopen at period 12 and a maintenance inquiry passed.
+Report navigation retained separate observed and acquired dates. The campaign
+completed period 16.
+
+Its closed choice cards and disabled ordinary advance
+controls admitted no period 17. History remained readable. Stored markers were
+exactly periods 1–16, with 10 consumed commands, 16 receipts and 5 observations.
+The native application logged normal closure. The detached launch did not record
+its exit status, so this report does not claim one.
+
+The Archive investigation found a five-second idle transaction limit around
+page production that uses separate connections. A live regression delayed the
+producer for six seconds and reproduced transaction loss and a misclassified
+closed-connection error. The repair gives that production step a bounded
+30-second idle allowance and restores the normal limit before publication.
+
+The original runtime discarded its inner error. The database log records an
+idle timeout in the failure window. Linking that timeout to the period-8
+refusal remains an inference.
+
+It retains the `SERIALIZABLE` receipt/knowledge snapshot, existing SQL and lock
+limits, schema checks and atomic publication. Closed connections and server
+idle timeouts keep diagnostics that allow retries. Organizer hydration also
+preserves database diagnostics through graph and territory-map errors.
+Structural mismatches remain fatal. This changes Archive recovery, not game mechanics.
+
+The delayed-production regression passed after repair and confirmed that a
+retry did not duplicate the page. The existing live driver test also passed
+startup catch-up, reconnection and shutdown with a full progress channel. The disposable
+database harness verified cleanup. The local evidence preserves the original
+native refusal, the manual recovery, failing regressions and passing checks as
+distinct records in `reports/test-results/per336-native/expanded-native/`.
+
+The complete affected Archive group passed all six live tests in 281.54 seconds.
+Including compilation, its phase took 311 seconds within the unchanged
+600-second limit. These checks cover cancellation rollback, notification/commit
+atomicity and nested database diagnostics as well as delayed publication and
+driver recovery. The harness verified removal of its container and volume.
+Independent review found no remaining actionable issue.
+
+A fresh corrected-runtime campaign,
+`b75a6e85-0384-4110-886f-3cd09156b03b`, completed three inquiries,
+workplace contact, Pause, Resume and two automatic periods. Native Reopen at
+period 4 preserved the contact result and draft. The player advanced as soon
+as the interface exposed durable completion. Archive lagged during that burst
+and then verified period 8 without a manual worker or a refusal.
+
+The final read-only snapshot matched markers 1–8, six consumed commands,
+eight receipts and three observations. The routine remained authorized.
+Measured advance times ranged from 9.29 to 11.53 seconds on this host.
+Reopen took 21.73 seconds. The first card explicitly verified at period 8
+arrived 13.25 seconds after the game became Ready there. These are local
+measurements, not general performance guarantees.
+
+Normal Quit logged closure without failure. Waiting supervisors recorded exit
+status 0 for the launcher and the isolated display. The source hashes match
+the reviewed repair. The replay record, timing ledger, captures and manifest
+are in `reports/test-results/per336-native/corrected-native/`.
+
+Both executables then rebuilt together against the repaired persistence library.
+The final pair reopened that same campaign at period 8 and verified Archive
+there. Its organization page displayed Inquiry, Reinforce, Pause and Resume
+receipts with separate source, outcome and partner attribution. No ruling or
+advance occurred. Native Menu and Quit worked, and both waiting supervisors
+recorded exit status 0. The final-pair record keeps its own binary hashes,
+captures and launch log beside the earlier witness.
+
+During the same session, the Director's launcher ended unexpectedly and its
+window disappeared while the agent inspected the completed launcher session.
+The agent sent no Quit or advance command. The agent restored the same saved
+period-2 campaign and the 75% music setting. The cause remains unproven. The
+record does not treat process-launch lifetime as campaign persistence.
+The restored campaign later logged a normal Quit at period 2.
+
 ## Exit and next witness
 
 The original session found a comprehension blocker. Engineering verification of
@@ -207,8 +308,10 @@ identify the controlled organization, explain two alternatives and predict
 their cost, displacement and timing. After advancing, ask what happened
 and what the result makes possible next.
 
-Then cover Inquiry, Reinforce, Hold, persistent Pause/Resume, agreement expiry
-and renewal, and reopening within the 16-period limit. Record hesitation,
+Engineering checks covered Inquiry, Reinforce, Hold, persistent Pause/Resume,
+agreement expiry and renewal, and reopening within the 16-period limit.
+The Archive failure and recovery boundary remain explicit above. Human
+observation still needs to show understandable consequences. Record hesitation,
 unexpected results, repeated clicks, decisions and enjoyment in the Director's
 own terms. Separate acceptance, resolution, acquired knowledge and continuing
 permission. A successful replay is engineering evidence, not proof of fun.

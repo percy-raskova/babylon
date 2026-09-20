@@ -198,6 +198,138 @@ fn wait_progress(receiver: &Receiver<ArchiveDriverEvent>, tick: u64, request: Op
         }
     }
 }
+
+struct DelayedPageProducer;
+
+impl ArchiveDossierProducer for DelayedPageProducer {
+    fn produce(
+        &self,
+        campaign: Uuid,
+        receipt: &PendingArchiveReceipt,
+        knowledge: &crate::ArchiveKnowledge,
+        page_budget: usize,
+    ) -> Result<ArchiveProducerOutcome, SemanticArchiveError> {
+        // Real producers authenticate and render on separate connections while
+        // the publication transaction retains the receipt and knowledge pin.
+        std::thread::sleep(Duration::from_secs(6));
+        StubPageProducer.produce(campaign, receipt, knowledge, page_budget)
+    }
+}
+
+#[test]
+#[ignore = "requires the task-owned disposable PostgreSQL runtime"]
+fn live_worker_publishes_delayed_production_without_losing_the_receipt() {
+    let target = LiveWorkerTarget::create(
+        "wakeupdelayedproducer",
+        0x2200_0000_0000_0000_0000_0000_0000_00f8,
+        1,
+    );
+    let report = ArchiveWorker::new(&target.config)
+        .sweep_once(target.campaign_id, &DelayedPageProducer)
+        .expect("bounded producer work preserves the publication transaction");
+    assert_eq!(report.verified_tick(), 1);
+    assert_eq!(
+        receipt_consumption_count(&target.config, target.campaign_id),
+        1
+    );
+    assert_eq!(archive_page_count(&target.config, target.campaign_id), 1);
+    let replay = ArchiveWorker::new(&target.config)
+        .sweep_once(target.campaign_id, &StubPageProducer)
+        .expect("retry observes the same consumed receipt");
+    assert_eq!(replay.verified_tick(), 1);
+    assert_eq!(replay.applied_count(), 0);
+    assert_eq!(archive_page_count(&target.config, target.campaign_id), 1);
+    target.finish();
+}
+
+#[test]
+#[ignore = "requires the task-owned disposable PostgreSQL runtime"]
+fn live_organizer_timeout_diagnostics_survive_direct_and_graph_reads() {
+    let config = validated_base_config();
+    for variant in 0..3 {
+        let mut client = config.connect(NoTls).expect("owned timeout probe");
+        client
+            .batch_execute(
+                "BEGIN READ ONLY; SET LOCAL idle_in_transaction_session_timeout = '100ms'",
+            )
+            .expect("bound only this probe transaction");
+        std::thread::sleep(Duration::from_millis(250));
+        let error = client
+            .query_one("SELECT 1", &[])
+            .expect_err("server closes the idle probe connection");
+        let diagnostic = crate::PostgresDiagnostic::capture(&error);
+        assert!(matches!(
+            diagnostic.classification(),
+            crate::PostgresFailureClass::Timeout | crate::PostgresFailureClass::Reachability
+        ));
+        let nested = crate::RustPersistenceRuntimeError::postgres(
+            "read graph for organizer Archive",
+            &error,
+        );
+        assert_eq!(
+            crate::organizer_archive::archive_register_error(MaterialRuntimeError::Graph(nested)),
+            SemanticArchiveError::Database {
+                operation: "read graph for organizer Archive",
+                diagnostic: diagnostic.clone(),
+            }
+        );
+        let territory = crate::RustPersistenceRuntimeError::TerritoryCountyMap(
+            crate::territory_county_map::TerritoryCountyMapError::from(error),
+        );
+        assert_eq!(
+            crate::organizer_archive::archive_register_error(MaterialRuntimeError::Graph(
+                territory
+            )),
+            SemanticArchiveError::Database {
+                operation: "territory county map operation",
+                diagnostic: diagnostic.clone(),
+            }
+        );
+        let error = client
+            .query_one("SELECT 1", &[])
+            .expect_err("idle probe connection remains closed");
+        let diagnostic = crate::PostgresDiagnostic::capture(&error);
+        let direct = match variant {
+            0 => MaterialRuntimeError::Database(error),
+            1 => MaterialRuntimeError::DatabaseLockRefused(error),
+            _ => MaterialRuntimeError::DatabaseStatementCanceled(error),
+        };
+        assert_eq!(
+            crate::organizer_archive::archive_register_error(direct),
+            SemanticArchiveError::Database {
+                operation: "read organizer Archive register",
+                diagnostic,
+            }
+        );
+    }
+    assert_eq!(
+        crate::organizer_archive::archive_register_error(MaterialRuntimeError::FoundationMismatch),
+        SemanticArchiveError::StoredPageMismatch
+    );
+    for nested in [
+        crate::RustPersistenceRuntimeError::Database {
+            operation: "untyped graph failure",
+            diagnostic: None,
+        },
+        crate::RustPersistenceRuntimeError::TerritoryCountyMap(
+            crate::territory_county_map::TerritoryCountyMapError::Database {
+                operation: "untyped territory failure",
+                diagnostic: None,
+            },
+        ),
+        crate::RustPersistenceRuntimeError::TerritoryCountyMap(
+            crate::territory_county_map::TerritoryCountyMapError::StoredMappingDiverged {
+                stored_rows: 0,
+                declared_rows: 1,
+            },
+        ),
+    ] {
+        assert_eq!(
+            crate::organizer_archive::archive_register_error(MaterialRuntimeError::Graph(nested)),
+            SemanticArchiveError::StoredPageMismatch
+        );
+    }
+}
 fn stop(driver: &mut ArchiveDriver) {
     driver.request_stop();
     let deadline = Instant::now() + Duration::from_secs(15);

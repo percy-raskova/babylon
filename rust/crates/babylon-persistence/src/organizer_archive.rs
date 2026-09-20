@@ -361,6 +361,31 @@ impl OrganizerDossierProducer {
         }
     }
 }
+
+pub(crate) fn archive_register_error(error: MaterialRuntimeError) -> SemanticArchiveError {
+    match error {
+        MaterialRuntimeError::Database(error)
+        | MaterialRuntimeError::DatabaseLockRefused(error)
+        | MaterialRuntimeError::DatabaseStatementCanceled(error) => {
+            database("read organizer Archive register", &error)
+        }
+        MaterialRuntimeError::Graph(crate::RustPersistenceRuntimeError::Database {
+            operation,
+            diagnostic: Some(diagnostic),
+        })
+        | MaterialRuntimeError::Graph(crate::RustPersistenceRuntimeError::TerritoryCountyMap(
+            crate::territory_county_map::TerritoryCountyMapError::Database {
+                operation,
+                diagnostic: Some(diagnostic),
+            },
+        )) => SemanticArchiveError::Database {
+            operation,
+            diagnostic,
+        },
+        _ => SemanticArchiveError::StoredPageMismatch,
+    }
+}
+
 impl ArchiveDossierProducer for OrganizerDossierProducer {
     fn produce(
         &self,
@@ -384,7 +409,7 @@ impl ArchiveDossierProducer for OrganizerDossierProducer {
             CampaignId::from_uuid(campaign),
             receipt,
         )
-        .map_err(|_| SemanticArchiveError::StoredPageMismatch)?;
+        .map_err(archive_register_error)?;
         let Some(state) = register
             .as_ref()
             .and_then(MaterialWorldRegister::organizer_state)

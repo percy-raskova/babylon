@@ -894,8 +894,14 @@ fn finite_fulfillment_and_quiet_successor_reconcile_handling_work_stock_and_mass
     let catalog = crate::test_support::catalog();
     let mut state = retail_state();
     state.final_demand_orders[0].ordered = 3;
-    let foundation =
-        super::super::merchants::project_merchants(&catalog, &state, None, None).unwrap();
+    let foundation = super::super::merchants::project_merchants(
+        &catalog,
+        &state,
+        None,
+        None,
+        &super::super::history::OrderHistory::final_from_state(&state),
+    )
+    .unwrap();
     assert!(foundation.0[0].completed.is_none());
     assert!(foundation.1[0].completed.is_none());
     let completed = pair(state);
@@ -906,6 +912,7 @@ fn finite_fulfillment_and_quiet_successor_reconcile_handling_work_stock_and_mass
         &completed.1,
         Some(&completed.0),
         Some(&completed.2),
+        &super::super::history::OrderHistory::final_from_state(&completed.1),
     )
     .unwrap();
     let work = handling[0].completed.as_ref().unwrap();
@@ -962,6 +969,7 @@ fn finite_fulfillment_and_quiet_successor_reconcile_handling_work_stock_and_mass
         &quiet.1,
         Some(&quiet.0),
         Some(&quiet.2),
+        &super::super::history::OrderHistory::final_from_state(&quiet.1),
     )
     .unwrap();
     assert_eq!(handling[0].completed.as_ref().unwrap().used_hours, 0);
@@ -1025,15 +1033,15 @@ fn completed_local_fulfillment_and_handling_require_exact_receipt_identity() {
                 &catalog,
                 &changed.1,
                 Some(&changed.0),
-                Some(&changed.2)
+                Some(&changed.2),
+                &super::super::history::OrderHistory::final_from_state(&changed.1),
             ),
             Err(ProductionProjectionError::State)
         ));
     }
 }
 
-#[test]
-fn maintenance_spare_parts_close_as_their_own_exact_stock_debit() {
+fn maintenance_opening() -> MaterialCircuitState {
     let mut state = production_state(&[(4, 1, 2, 2)], 10);
     state.input_coefficients[0].good_id = GoodId::from_bytes([21; 32]);
     state.inventory[0].good_id = GoodId::from_bytes([21; 32]);
@@ -1070,6 +1078,13 @@ fn maintenance_spare_parts_close_as_their_own_exact_stock_debit() {
         capacity.period = 2;
     }
     state.capacities.extend(future);
+    state
+}
+
+#[test]
+fn maintenance_spare_parts_close_as_their_own_exact_stock_debit() {
+    let state = maintenance_opening();
+    let provider = SiteId::from_bytes([20; 32]);
     let pair = pair(state);
     let balance = complete(&pair);
     let row = balance
@@ -1083,4 +1098,256 @@ fn maintenance_spare_parts_close_as_their_own_exact_stock_debit() {
     let mut damaged = pair.clone();
     damaged.2.maintenance.as_mut().unwrap().consumed_spare_parts += 1;
     assert!(project(&damaged).is_err());
+}
+
+#[test]
+fn recurring_eight_period_control_preserves_balances_after_order_retirement() {
+    use babylon_material_circuit::CircuitAccounting;
+    let mut state = super::super::recurring_fixture::opening();
+    for period in 1..=8 {
+        let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
+            panic!("monetary")
+        };
+        economy.recurring.as_mut().unwrap().household_purchases[0].enabled =
+            ![3, 4].contains(&period);
+        let pair = pair(state);
+        let balance = complete(&pair);
+        conserved(&balance);
+        assert_eq!(balance.period, period);
+        assert!(pair.1.final_demand_orders.is_empty());
+        state = pair.1;
+    }
+}
+
+#[test]
+fn recurring_principals_refuse_missing_duplicate_or_unfunded_admission_claims() {
+    let valid = pair(super::super::recurring_fixture::opening());
+    for change in [
+        |pair: &mut Pair| {
+            pair.2.household_demand.clear();
+        },
+        |pair: &mut Pair| {
+            pair.2
+                .household_demand
+                .push(pair.2.household_demand[0].clone());
+        },
+        |pair: &mut Pair| {
+            pair.2.household_demand[0].order_id = OrderId::from_bytes([99; 32]);
+        },
+        |pair: &mut Pair| {
+            pair.2.household_demand[0].expired_quantity += 1;
+        },
+        |pair: &mut Pair| {
+            pair.2.procurement.clear();
+        },
+        |pair: &mut Pair| {
+            pair.2.procurement[0].supplier_site_id = SiteId::from_bytes([99; 32]);
+        },
+        |pair: &mut Pair| {
+            pair.2.money_transfers.retain(|row| {
+                !matches!(
+                    row.purpose,
+                    babylon_material_circuit::MoneyTransferPurpose::PurchaseReservation(_)
+                )
+            });
+        },
+        |pair: &mut Pair| {
+            pair.1.orders.remove(0);
+        },
+    ] {
+        let mut damaged = valid.clone();
+        change(&mut damaged);
+        assert!(project(&damaged).is_err());
+    }
+}
+
+#[test]
+fn retired_monetary_arrivals_require_delivery_and_realization_receipts() {
+    let first = pair(super::super::recurring_fixture::opening());
+    let valid = pair(first.1);
+    complete(&valid);
+    let mut damaged = valid.clone();
+    assert!(!damaged.2.realizations.is_empty());
+    damaged.2.realizations.clear();
+    assert!(super::super::lifecycle::validate_period(&damaged.0, &damaged.1, &damaged.2).is_err());
+    damaged = valid.clone();
+    damaged.2.deliveries.clear();
+    assert!(project(&damaged).is_err());
+    let mut fake_cash = valid.clone();
+    let babylon_material_circuit::CircuitAccounting::Monetary(economy) =
+        &mut fake_cash.1.accounting
+    else {
+        panic!("monetary")
+    };
+    let mut snapshot = economy.book.snapshot();
+    snapshot.accounts[0].cash = babylon_kernel::currency::Currency::from_micro_units(
+        snapshot.accounts[0].cash.micro_units() + 1,
+    );
+    economy.book = babylon_material_circuit::MonetaryBook::from_snapshot(snapshot).unwrap();
+    assert!(
+        super::super::lifecycle::validate_period(&fake_cash.0, &fake_cash.1, &fake_cash.2).is_err()
+    );
+}
+
+#[test]
+fn household_stock_conservation_distinguishes_delivery_consumption_and_expiry() {
+    let valid = pair(super::super::recurring_fixture::opening());
+    let project_household = |pair: &Pair| {
+        super::super::households::project_with_labels(
+            &pair.1,
+            Some(&pair.0),
+            Some(&pair.2),
+            |good, unit| Some((digest_hex(&good.as_bytes()), digest_hex(&unit.as_bytes()))),
+        )
+    };
+    let rows = project_household(&valid).unwrap();
+    assert_eq!((rows[0].household_count, rows[0].person_count), (2, 4));
+    let done = rows[0].completed.as_ref().unwrap();
+    assert_eq!(
+        (
+            done.opening_stock,
+            done.received,
+            done.consumed,
+            done.closing_stock
+        ),
+        (8, 4, 4, 8)
+    );
+    let mut scarce = super::super::recurring_fixture::opening();
+    scarce
+        .inventory
+        .iter_mut()
+        .find(|row| {
+            row.site_id == SiteId::from_bytes([3; 32]) && row.good_id == GoodId::from_bytes([2; 32])
+        })
+        .unwrap()
+        .quantity = 2;
+    let scarce = pair(scarce);
+    complete(&scarce);
+    let rows = project_household(&scarce).unwrap();
+    let partial = rows[0].completed.as_ref().unwrap();
+    assert_eq!(
+        (
+            partial.admitted,
+            partial.fulfilled,
+            partial.expired,
+            partial.received,
+            partial.consumed,
+            partial.closing_stock
+        ),
+        (4, 2, 2, 2, 4, 6)
+    );
+    let mut damaged = valid.clone();
+    damaged.2.household_consumption[0].consumed_quantity -= 1;
+    assert!(project_household(&damaged).is_err());
+    assert!(super::super::lifecycle::validate_period(&damaged.0, &damaged.1, &damaged.2).is_err());
+    damaged = valid.clone();
+    damaged.2.household_consumption.clear();
+    assert!(project_household(&damaged).is_err());
+    assert!(super::super::lifecycle::validate_period(&damaged.0, &damaged.1, &damaged.2).is_err());
+    damaged = valid.clone();
+    damaged
+        .2
+        .household_consumption
+        .push(damaged.2.household_consumption[0].clone());
+    assert!(project_household(&damaged).is_err());
+    assert!(super::super::lifecycle::validate_period(&damaged.0, &damaged.1, &damaged.2).is_err());
+}
+
+#[test]
+fn underfunded_maintenance_uses_paid_hours_instead_of_all_available_people_time() {
+    use babylon_kernel::currency::Currency;
+    use babylon_material_circuit::{
+        AccountId, CashAccount, CircuitAccounting, EmploymentTerms, FinalDemandPrincipal,
+        FinalDemandPrincipalId, MonetaryBook, MonetaryCircuit,
+    };
+    let mut state = maintenance_opening();
+    state.site_logistics_nodes.push(SiteLogisticsNode {
+        site_id: SiteId::from_bytes([1; 32]),
+        node_id: LogisticsNodeId::from_bytes([1; 32]),
+    });
+    let payee = FinalDemandPrincipalId::from_bytes([50; 32]);
+    state.final_demand_principals.push(FinalDemandPrincipal {
+        id: payee,
+        county_geoid: *b"26163",
+    });
+    let mut accounts: Vec<_> = state
+        .site_logistics_nodes
+        .iter()
+        .map(|row| CashAccount {
+            id: AccountId::Site(row.site_id),
+            cash: Currency::from_micro_units(0),
+        })
+        .collect();
+    accounts.push(CashAccount {
+        id: AccountId::Household(payee),
+        cash: Currency::from_micro_units(0),
+    });
+    let keys: BTreeSet<_> = state
+        .labor
+        .iter()
+        .map(|row| (row.site_id, row.unit_id))
+        .collect();
+    let employment = keys
+        .into_iter()
+        .map(|(site_id, unit_id)| EmploymentTerms {
+            site_id,
+            unit_id,
+            payee,
+            hourly_rate: Currency::from_micro_units(1),
+        })
+        .collect();
+    state.accounting = CircuitAccounting::Monetary(MonetaryCircuit {
+        recurring: None,
+        book: MonetaryBook::open(accounts).unwrap(),
+        employment,
+    });
+    let valid = pair(state);
+    assert_eq!(
+        valid.2.maintenance.as_ref().unwrap().available_labor_hours,
+        0
+    );
+    complete(&valid);
+    let mut damaged = valid.clone();
+    damaged.2.labor_use.clear();
+    assert!(project(&damaged).is_err());
+}
+
+#[test]
+fn recurring_cumulative_totals_do_not_require_lifetime_order_rows() {
+    use babylon_material_circuit::CircuitAccounting;
+    let mut state = super::super::recurring_fixture::opening();
+    let mut history = super::super::history::OrderHistory::default();
+    let mut last = Vec::new();
+    for period in 1..=8 {
+        let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
+            panic!("monetary")
+        };
+        economy.recurring.as_mut().unwrap().household_purchases[0].enabled =
+            ![3, 4].contains(&period);
+        let valid = pair(state);
+        history.admit(&valid.0, &valid.2).unwrap();
+        history.movements(&valid.2).unwrap();
+        let facts = super::super::outbound::completed_facts(&valid.0, &valid.1, &valid.2).unwrap();
+        last = super::super::merchants::project_final_with_labels(
+            &valid.1,
+            Some((&valid.0, &facts)),
+            &history,
+            |good, unit| Some((digest_hex(&good.as_bytes()), digest_hex(&unit.as_bytes()))),
+        )
+        .unwrap();
+        assert_eq!(last.len(), 1);
+        assert!(last[0].orders.len() <= 1);
+        state = valid.1;
+    }
+    assert_eq!(
+        (
+            last[0].total_order_count,
+            last[0].ordered,
+            last[0].fulfilled,
+            last[0].expired,
+            last[0].outstanding
+        ),
+        (6, 24, 20, 4, 0)
+    );
+    assert_eq!(last[0].orders.len(), 1);
 }

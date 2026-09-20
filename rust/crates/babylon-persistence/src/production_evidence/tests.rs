@@ -230,6 +230,8 @@ fn full_disclosure() -> ObserverEconomySnapshot {
     production
         .final_demand_accounts
         .push(ProductionFinalDemandAccount {
+            total_order_count: 1,
+            expired: 0,
             demand_principal_id: "county-demand".to_owned(),
             county_geoid: "26163".to_owned(),
             good_id: stock.good_id.clone(),
@@ -242,6 +244,7 @@ fn full_disclosure() -> ObserverEconomySnapshot {
             retail_stock_on_hand: 7,
             retailer_site_ids: vec![site.clone()],
             orders: vec![ProductionFinalDemandOrder {
+                expired: 0,
                 order_id: "final-order".to_owned(),
                 retailer_site_id: site,
                 ordered: 10,
@@ -253,6 +256,36 @@ fn full_disclosure() -> ObserverEconomySnapshot {
                 opening_fulfilled: 0,
                 newly_fulfilled: 3,
                 closing_fulfilled: 3,
+            }),
+        });
+    let final_account = &production.final_demand_accounts[0];
+    production
+        .household_accounts
+        .push(crate::ProductionHouseholdAccount {
+            demand_principal_id: final_account.demand_principal_id.clone(),
+            county_geoid: final_account.county_geoid.clone(),
+            good_id: final_account.good_id.clone(),
+            unit_id: final_account.unit_id.clone(),
+            good: final_account.good.clone(),
+            unit: final_account.unit.clone(),
+            household_count: 2,
+            person_count: 4,
+            retailer_site_id: final_account.retailer_site_ids[0].clone(),
+            stock_on_hand: 7,
+            required_per_period: 4,
+            completed: Some(crate::CompletedHouseholdBalance {
+                period: 1,
+                opening_stock: 8,
+                received: 3,
+                required: 4,
+                consumed: 4,
+                unmet: 0,
+                closing_stock: 7,
+                desired: 4,
+                requested: 4,
+                admitted: 4,
+                fulfilled: 3,
+                expired: 1,
             }),
         });
     observation

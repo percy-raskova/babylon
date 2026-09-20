@@ -59,8 +59,9 @@ pub(super) fn completed_facts(
     {
         return Err(ProductionProjectionError::State);
     }
-    let mut facts = delivery_facts(prior, current, receipt)?;
-    facts.extend(final_facts(prior, current, receipt)?);
+    let orders = super::lifecycle::join(prior, current, receipt)?;
+    let mut facts = delivery_facts(prior, &orders, receipt)?;
+    facts.extend(final_facts(prior, &orders, receipt)?);
     Ok(facts)
 }
 
@@ -74,11 +75,15 @@ pub(super) fn same_rows<T: Clone + Ord>(before: &[T], after: &[T]) -> bool {
 
 fn delivery_facts(
     prior: &MaterialCircuitState,
-    current: &MaterialCircuitState,
+    orders: &super::lifecycle::PeriodOrders,
     receipt: &MaterialTickReceipts,
 ) -> Result<Vec<OutboundFact>> {
     let mut next = BTreeMap::new();
-    for row in &current.orders {
+    for (_, row) in orders.deliveries.values().filter(|(row, _)| {
+        !orders
+            .early_retired
+            .contains(&OutboundOrderId::Delivery(row.order_id))
+    }) {
         if next.insert(row.order_id, row).is_some() {
             return Err(ProductionProjectionError::State);
         }
@@ -96,7 +101,11 @@ fn delivery_facts(
         }
     }
     let mut facts = Vec::new();
-    for order in &prior.orders {
+    for (order, _) in orders.deliveries.values().filter(|(row, _)| {
+        !orders
+            .early_retired
+            .contains(&OutboundOrderId::Delivery(row.order_id))
+    }) {
         let closing = next
             .remove(&order.order_id)
             .ok_or(ProductionProjectionError::State)?;
@@ -170,11 +179,15 @@ fn delivery_facts(
 
 fn final_facts(
     prior: &MaterialCircuitState,
-    current: &MaterialCircuitState,
+    orders: &super::lifecycle::PeriodOrders,
     receipt: &MaterialTickReceipts,
 ) -> Result<Vec<OutboundFact>> {
     let mut next = BTreeMap::new();
-    for row in &current.final_demand_orders {
+    for (_, row) in orders.final_orders.values().filter(|(row, _)| {
+        !orders
+            .early_retired
+            .contains(&OutboundOrderId::LocalFinalDemand(row.order_id))
+    }) {
         if next.insert(row.order_id, row).is_some() {
             return Err(ProductionProjectionError::State);
         }
@@ -186,7 +199,11 @@ fn final_facts(
         }
     }
     let mut facts = Vec::new();
-    for order in &prior.final_demand_orders {
+    for (order, _) in orders.final_orders.values().filter(|(row, _)| {
+        !orders
+            .early_retired
+            .contains(&OutboundOrderId::LocalFinalDemand(row.order_id))
+    }) {
         let closing = next
             .remove(&order.order_id)
             .ok_or(ProductionProjectionError::State)?;

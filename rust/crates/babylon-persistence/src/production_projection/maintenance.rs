@@ -203,12 +203,61 @@ fn check_inputs(
     if production.len() > 1
         || done.opening_spare_parts != stocks.first().map_or(0, |row| row.quantity)
         || done.arrived_spare_parts != arrived
-        || done.available_labor_hours != labor.first().map_or(0, |row| row.available)
+        || done.available_labor_hours
+            != maintenance_hours(
+                prior,
+                receipt,
+                binding,
+                labor.first().map_or(0, |row| row.available),
+            )?
         || done.consumed_service_batches != production.first().map_or(0, |row| row.produced_batches)
     {
         return Err(ProductionProjectionError::State);
     }
     Ok(())
+}
+
+fn maintenance_hours(
+    prior: &MaterialCircuitState,
+    receipt: &MaterialTickReceipts,
+    binding: &MaintenanceBinding,
+    available: u64,
+) -> Result<u64> {
+    if matches!(
+        prior.accounting,
+        babylon_material_circuit::CircuitAccounting::PhysicalControl
+    ) {
+        return Ok(available);
+    }
+    let mut rows = receipt.labor_use.iter().filter(|row| {
+        row.site_id == binding.provider_site_id && row.unit_id == binding.labor_unit_id
+    });
+    let row = rows.next().ok_or(ProductionProjectionError::State)?;
+    if rows.next().is_some() || row.available_hours != available || row.funded_hours > available {
+        return Err(ProductionProjectionError::State);
+    }
+    let mut productive = 0_u64;
+    for work in receipt
+        .production
+        .iter()
+        .filter(|work| work.site_id == binding.provider_site_id)
+    {
+        let coefficient = prior
+            .labor_coefficients
+            .iter()
+            .find(|row| row.process_id == work.process_id)
+            .ok_or(ProductionProjectionError::State)?;
+        if coefficient.unit_id == binding.labor_unit_id {
+            productive = work
+                .produced_batches
+                .checked_mul(coefficient.quantity_per_batch)
+                .and_then(|hours| productive.checked_add(hours))
+                .ok_or(ProductionProjectionError::Arithmetic)?;
+        }
+    }
+    row.funded_hours
+        .checked_sub(productive)
+        .ok_or(ProductionProjectionError::State)
 }
 
 fn check_quantities(binding: &MaintenanceBinding, done: &MaintenanceReceipt) -> Result<()> {

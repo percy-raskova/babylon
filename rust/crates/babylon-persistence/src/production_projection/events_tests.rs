@@ -3,6 +3,11 @@ use babylon_material_circuit::{ArrivalReceipt, DeliveryReceipt, RealizationRecei
 
 fn delivery_receipts(order_id: OrderId) -> MaterialTickReceipts {
     MaterialTickReceipts {
+        household_demand: Vec::new(),
+        household_consumption: Vec::new(),
+        procurement: Vec::new(),
+        production_plans: Vec::new(),
+        prices: Vec::new(),
         money_transfers: Vec::new(),
         wage_accruals: Vec::new(),
         labor_use: Vec::new(),
@@ -38,9 +43,23 @@ fn typed_delivery_preserves_original_rows_identifiers_sequence_and_descriptions(
     let good = catalog.good(&route.good_key).unwrap();
     let mut receipts = delivery_receipts(route.order_id());
     let mut events = Vec::new();
-    project_events(&catalog, &receipts, [1; 32], &mut events).unwrap();
+    project_events(
+        &catalog,
+        &history::OrderHistory::from_catalog(&catalog).unwrap(),
+        &receipts,
+        [1; 32],
+        &mut events,
+    )
+    .unwrap();
     receipts.resolve_tick = 3;
-    project_events(&catalog, &receipts, [2; 32], &mut events).unwrap();
+    project_events(
+        &catalog,
+        &history::OrderHistory::from_catalog(&catalog).unwrap(),
+        &receipts,
+        [2; 32],
+        &mut events,
+    )
+    .unwrap();
     assert_eq!(events.len(), 8);
     let expected = [
         ("arrival", ProductionDeliveryStage::Arrival, 3),
@@ -96,10 +115,44 @@ fn undisclosed_orders_refuse_typed_delivery_projection() {
     assert_eq!(
         project_events(
             &catalog,
+            &history::OrderHistory::from_catalog(&catalog).unwrap(),
             &delivery_receipts(missing),
             [1; 32],
             &mut Vec::new()
         ),
         Err(ProductionProjectionError::State)
     );
+}
+
+#[test]
+fn recurring_delivery_keeps_dated_order_identity_on_the_stable_supplier_route() {
+    let catalog = crate::test_support::catalog();
+    let route = &catalog.routes()[0];
+    let mut history = history::OrderHistory::from_catalog(&catalog).unwrap();
+    let known = history.deliveries[&route.order_id()].clone();
+    let generated = babylon_material_circuit::recurring_procurement_order_id(
+        1,
+        known.buyer,
+        known.supplier,
+        known.good,
+        known.unit,
+    );
+    assert_ne!(generated, route.order_id());
+    history.deliveries.insert(generated, known);
+    let mut events = Vec::new();
+    project_events(
+        &catalog,
+        &history,
+        &delivery_receipts(generated),
+        [3; 32],
+        &mut events,
+    )
+    .unwrap();
+    assert_eq!(events.len(), 4);
+    for event in events {
+        assert_eq!(event.period, 2);
+        let evidence = event.delivery_evidence.unwrap();
+        assert_eq!(evidence.order_id, digest_hex(&generated.as_bytes()));
+        assert_eq!(evidence.route_id, digest_hex(&route.id().as_bytes()));
+    }
 }

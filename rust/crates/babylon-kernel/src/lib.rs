@@ -8,6 +8,7 @@ pub mod clock;
 pub mod content_digest;
 pub mod currency;
 pub mod event_bus;
+pub mod geography;
 pub mod grid;
 mod h3_cell_id;
 pub mod replay;

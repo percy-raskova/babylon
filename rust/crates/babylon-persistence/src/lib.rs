@@ -28,6 +28,7 @@ pub mod material_runtime;
 mod metadata;
 mod michigan_dynamic_hex_foundation;
 pub mod michigan_economy;
+pub mod national_counties;
 pub(crate) mod observer_material;
 pub mod observer_reader;
 mod observer_tick_components;

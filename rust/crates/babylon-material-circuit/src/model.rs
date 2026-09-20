@@ -380,9 +380,50 @@ pub struct MaintenanceReceipt {
     pub next_service: MaintenanceService,
 }
 
+/// Physical capacity supply is explicit and independent of accounting or prices.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CapacitySupply {
+    /// Existing dated residual tables are finite; missing periods supply zero.
+    FiniteSchedule,
+    /// Existing equipment supplies a new period, net of advance freight bookings.
+    Rolling(Box<RollingCapacitySupply>),
+}
+
+/// Installed equipment nameplate; cash or an equipment order does not create it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstalledProcessCapacity {
+    pub process_id: ProcessId,
+    pub site_id: SiteId,
+    pub batches_per_period: u64,
+}
+
+/// Physical shared throughput, including separately bound merchant handling.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SharedCapacitySupply {
+    pub corridor_id: CorridorId,
+    pub grams_per_period: u64,
+}
+
+/// Original dispatch grams remain booked even if the associated freight is lost.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FutureCapacityReservation {
+    pub departure_period: u64,
+    pub corridor_id: CorridorId,
+    pub reserved_grams: u64,
+}
+
+/// Current residuals live only in the state's dated current-period budgets.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RollingCapacitySupply {
+    pub installed_processes: Vec<InstalledProcessCapacity>,
+    pub shared: Vec<SharedCapacitySupply>,
+    pub future_reservations: Vec<FutureCapacityReservation>,
+}
+
 /// Complete opening state; stock and recipe quantities retain their native units.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaterialCircuitState {
+    pub capacity_supply: CapacitySupply,
     pub period: u64,
     pub accounting: crate::CircuitAccounting,
     pub site_logistics_nodes: Vec<SiteLogisticsNode>,

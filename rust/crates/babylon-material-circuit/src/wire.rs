@@ -1,6 +1,7 @@
 //! Canonical current routed-material state bytes for restart and replay.
 
 mod accounting;
+mod capacity;
 mod recurring;
 
 use crate::SupplierTransport;
@@ -24,10 +25,11 @@ use crate::{
 pub const MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES: &[u8] = b"babylon.material-circuit-state.v3";
 /// SHA-256 of the current language-neutral material circuit contract source.
 pub const MATERIAL_CIRCUIT_SOURCE_SHA256: [u8; 32] = [
-    97, 201, 192, 99, 108, 158, 180, 126, 40, 178, 199, 60, 90, 155, 114, 85, 125, 217, 239, 22,
-    120, 225, 30, 179, 84, 39, 52, 167, 225, 62, 214, 131,
+    58, 115, 132, 232, 130, 224, 175, 135, 169, 164, 225, 137, 31, 139, 86, 122, 153, 178, 7, 41,
+    51, 0, 113, 241, 94, 96, 82, 8, 18, 166, 177, 98,
 ];
-const SCHEMA_VERSION: u16 = 6;
+
+const SCHEMA_VERSION: u16 = 7;
 
 impl From<CursorError> for MaterialCircuitError {
     fn from(value: CursorError) -> Self {
@@ -677,6 +679,7 @@ pub fn encode_material_circuit_state(
     append_final_demand_orders(&mut output, &canonical.final_demand_orders)?;
     append_maintenance(&mut output, &canonical);
     accounting::append(&mut output, &canonical.accounting)?;
+    capacity::append(&mut output, &canonical.capacity_supply)?;
 
     Ok(output)
 }
@@ -723,6 +726,7 @@ pub fn decode_material_circuit_state(
         maintenance_binding: decode_maintenance_binding(&mut cursor)?,
         maintenance_service: decode_maintenance_service(&mut cursor)?,
         accounting: accounting::decode(&mut cursor)?,
+        capacity_supply: capacity::decode(&mut cursor)?,
     };
     cursor.finish()?;
     let canonical = canonical_state(&state)?;

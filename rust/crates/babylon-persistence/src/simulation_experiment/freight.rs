@@ -144,6 +144,7 @@ impl CapturedFreight {
         let from = LogisticsNodeId::from_bytes(id("canadian-inventory-terminal"));
         let to = LogisticsNodeId::from_bytes(id("detroit-port-entry-terminal"));
         let state = MaterialCircuitState {
+            capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
             period: 1,
             site_logistics_nodes: vec![
                 SiteLogisticsNode {

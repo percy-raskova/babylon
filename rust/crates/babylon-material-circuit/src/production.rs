@@ -184,13 +184,7 @@ fn process_capacity(
     site: SiteId,
     period: u64,
 ) -> u64 {
-    state
-        .capacities
-        .binary_search_by_key(&(period, site, process), |row| {
-            (row.period, row.site_id, row.process_id)
-        })
-        .ok()
-        .map_or(0, |index| state.capacities[index].available_batches)
+    crate::capacity::process_available(state, process, site, period)
 }
 
 fn labor_capacity_index(
@@ -728,6 +722,7 @@ mod tests {
 
     fn empty_state() -> MaterialCircuitState {
         MaterialCircuitState {
+            capacity_supply: crate::CapacitySupply::FiniteSchedule,
             period: 1,
             site_logistics_nodes: Vec::new(),
             process_outputs: Vec::new(),

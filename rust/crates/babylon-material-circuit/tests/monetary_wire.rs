@@ -81,6 +81,7 @@ fn paid_state() -> MaterialCircuitState {
         book.accrue_shift(shift).unwrap();
     }
     MaterialCircuitState {
+        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
         period: 3,
         accounting: CircuitAccounting::Monetary(MonetaryCircuit {
             recurring: None,
@@ -167,7 +168,7 @@ fn paid_state() -> MaterialCircuitState {
 fn accounting_offset(state: &MaterialCircuitState) -> usize {
     let mut control = state.clone();
     control.accounting = CircuitAccounting::PhysicalControl;
-    encode_material_circuit_state(&control).unwrap().len() - 1
+    encode_material_circuit_state(&control).unwrap().len() - 2
 }
 
 // Language-neutral schema-5 row widths, independent of Rust struct layout.

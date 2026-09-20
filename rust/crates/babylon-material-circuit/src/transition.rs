@@ -27,6 +27,7 @@ type SupplyPath = (RouteId, crate::SupplierTransport);
 type CapacityKey = (u64, CorridorId);
 
 fn check_row_limits(state: &MaterialCircuitState) -> Result<(), MaterialCircuitError> {
+    crate::capacity::row_limits(state)?;
     let lengths = [
         state.site_logistics_nodes.len(),
         state.process_outputs.len(),
@@ -64,6 +65,7 @@ fn check_row_limits(state: &MaterialCircuitState) -> Result<(), MaterialCircuitE
 }
 
 fn canonicalize_rows(state: &mut MaterialCircuitState) {
+    crate::capacity::canonicalize(&mut state.capacity_supply);
     crate::payments::canonicalize(&mut state.accounting);
     state.merchants.sort();
     state.handling_coefficients.sort();
@@ -425,6 +427,7 @@ pub(crate) fn canonical_state(
     crate::production::validate_periods(&canonical)?;
     crate::maintenance::validate(&canonical)?;
     crate::payments::validate(&canonical)?;
+    crate::capacity::validate(&canonical)?;
     if canonical.period == 0
         || canonical
             .corridor_capacities
@@ -532,13 +535,6 @@ fn process_due_freight(
     Ok(())
 }
 
-fn capacity_index(state: &MaterialCircuitState, key: CapacityKey) -> Option<usize> {
-    state
-        .corridor_capacities
-        .binary_search_by_key(&key, |row| (row.period, row.corridor_id))
-        .ok()
-}
-
 fn freight_lot_id(order: OrderId, period: u64) -> FreightLotId {
     let mut bytes = b"babylon.freight-lot.v2\0".to_vec();
     bytes.extend_from_slice(&order.as_bytes());
@@ -555,14 +551,6 @@ fn rebuild_backlog(state: &mut MaterialCircuitState) {
             order_id: order.order_id,
             quantity: order.ordered - order.shipped,
         })
-        .collect();
-}
-
-fn prune_corridor_capacity(state: &mut MaterialCircuitState, next_period: u64) {
-    state.corridor_capacities = std::mem::take(&mut state.corridor_capacities)
-        .into_iter()
-        .take(MAX_MATERIAL_CIRCUIT_ROWS + 1)
-        .filter(|row| row.period >= next_period)
         .collect();
 }
 
@@ -728,7 +716,7 @@ impl ClosedMaterialPeriod {
     fn finish(mut self) -> Result<MaterialCircuitTransition, MaterialCircuitError> {
         let state = &mut self.transition.state;
         derive_shared_production(state, self.next_period)?;
-        prune_corridor_capacity(state, self.next_period);
+        crate::capacity::roll_forward(state, self.next_period)?;
         state.period = self.next_period;
         *state = canonical_state(state)?;
         Ok(self.transition)

@@ -138,6 +138,7 @@ fn labor(period: u64, available: u64) -> LaborCapacityRow {
 
 fn opening() -> MaterialCircuitState {
     let mut state = MaterialCircuitState {
+        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
         period: 1,
         site_logistics_nodes: [1, 2]
             .map(|id| SiteLogisticsNode {

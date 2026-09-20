@@ -9,6 +9,7 @@ use babylon_material_circuit::{
 
 fn competition() -> MaterialCircuitState {
     let mut state = MaterialCircuitState {
+        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
         merchants: vec![],
         handling_coefficients: vec![],
         final_demand_principals: vec![],

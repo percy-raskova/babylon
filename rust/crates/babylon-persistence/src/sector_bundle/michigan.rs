@@ -237,6 +237,7 @@ fn append_route(
 }
 fn empty_state() -> MaterialCircuitState {
     MaterialCircuitState {
+        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
         period: 1,
         site_logistics_nodes: Vec::new(),
         process_outputs: Vec::new(),

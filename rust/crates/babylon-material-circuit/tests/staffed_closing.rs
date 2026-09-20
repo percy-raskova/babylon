@@ -53,6 +53,7 @@ fn binding(processes: &[u8]) -> StaffingPoolBinding {
 
 fn opening() -> MaterialCircuitState {
     MaterialCircuitState {
+        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
         merchants: vec![],
         handling_coefficients: vec![],
         final_demand_principals: vec![],

@@ -68,6 +68,7 @@ fn labor_rows() -> Vec<LaborCapacityRow> {
 
 fn base_state() -> MaterialCircuitState {
     MaterialCircuitState {
+        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
         period: 1,
         merchants: vec![],
         handling_coefficients: vec![],
@@ -304,6 +305,7 @@ fn production_debits_all_inputs_before_crediting_any_output() {
     let goods_unit = unit(6);
     let labor_unit = unit(7);
     let state = MaterialCircuitState {
+        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
         period: 1,
         merchants: vec![],
         handling_coefficients: vec![],
@@ -428,6 +430,7 @@ fn production_state_for_numeric_boundary() -> MaterialCircuitState {
     let labor_unit = unit(5);
     let process_id = process(6);
     MaterialCircuitState {
+        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
         period: 1,
         merchants: vec![],
         handling_coefficients: vec![],
@@ -514,6 +517,7 @@ fn zero_production_does_not_create_an_empty_inventory_row() {
         })
         .collect();
     let state = MaterialCircuitState {
+        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
         period: 1,
         merchants: vec![],
         handling_coefficients: vec![],

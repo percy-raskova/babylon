@@ -32,6 +32,7 @@ fn allocation_state(available: u64, first: u64, second: u64) -> MaterialCircuitS
         })
         .collect::<Vec<_>>();
     MaterialCircuitState {
+        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
         period: 1,
         merchants: vec![],
         handling_coefficients: vec![],
@@ -147,6 +148,7 @@ fn production_state(input: u64, labor: u64, capacity: u64) -> MaterialCircuitSta
     let labor_unit = UnitId::from_bytes(id::<5>());
     let process = ProcessId::from_bytes(id::<6>());
     MaterialCircuitState {
+        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
         period: 1,
         merchants: vec![],
         handling_coefficients: vec![],

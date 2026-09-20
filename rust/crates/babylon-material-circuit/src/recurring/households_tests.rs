@@ -71,6 +71,7 @@ fn recurring(stock: u64) -> RecurringEconomy {
 
 fn opening(household_cash: i128, stock: u64) -> MaterialCircuitState {
     MaterialCircuitState {
+        capacity_supply: crate::CapacitySupply::FiniteSchedule,
         period: 1,
         accounting: CircuitAccounting::Monetary(MonetaryCircuit {
             book: MonetaryBook::open(vec![

@@ -114,6 +114,7 @@ fn opening() -> MaterialCircuitState {
         last_household_consumption_period: 0,
     };
     MaterialCircuitState {
+        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
         period: 1,
         accounting: CircuitAccounting::Monetary(MonetaryCircuit {
             recurring: Some(Box::new(recurring)),
@@ -516,7 +517,7 @@ fn captured_household_policies_refuse_old_bytes_bad_cursors_and_noncanonical_row
         unreachable!()
     };
     economy.recurring = None;
-    let offset = encode_material_circuit_state(&finite).unwrap().len() - 1;
+    let offset = encode_material_circuit_state(&finite).unwrap().len() - 2;
     assert_eq!(bytes[offset], 1);
     let mut old = bytes.clone();
     let version = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
@@ -800,3 +801,6 @@ fn a_household_purchase_without_a_recipient_stock_is_refused_before_reserving_ca
     );
     assert_eq!(state, original);
 }
+
+#[path = "support/rolling_capacity.rs"]
+mod rolling_capacity;

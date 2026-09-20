@@ -18,6 +18,7 @@ fn merchant() -> MaterialCircuitState {
     let source_node = LogisticsNodeId::from_bytes([1; 32]);
     let buyer_node = LogisticsNodeId::from_bytes([2; 32]);
     MaterialCircuitState {
+        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
         merchants: vec![MerchantHandling {
             site_id: source,
             county_geoid: *b"26163",
@@ -595,8 +596,8 @@ fn merchant_role_encoding_rejects_unknown_tags() {
         state.accounting,
         babylon_material_circuit::CircuitAccounting::PhysicalControl
     );
-    assert_eq!(&bytes[bytes.len() - 3..], &[0, 0, 0]);
-    let role_offset = bytes.len() - (4 * 4 + 102 + 104 + 37 + 176 + 3) + 4 + 32 + 5;
+    assert_eq!(&bytes[bytes.len() - 4..], &[0, 0, 0, 0]);
+    let role_offset = bytes.len() - (4 * 4 + 102 + 104 + 37 + 176 + 4) + 4 + 32 + 5;
     assert_eq!(bytes[role_offset], 2);
     bytes[role_offset] = 3;
     assert_eq!(

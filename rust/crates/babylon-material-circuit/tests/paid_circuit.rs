@@ -29,6 +29,7 @@ fn opening() -> MaterialCircuitState {
     let corridor = CorridorId::from_bytes([8; 32]);
     let handling = CorridorId::from_bytes([9; 32]);
     MaterialCircuitState {
+        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
         period: 1,
         accounting: CircuitAccounting::Monetary(MonetaryCircuit {
             recurring: None,

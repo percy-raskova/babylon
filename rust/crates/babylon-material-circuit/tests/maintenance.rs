@@ -15,6 +15,7 @@ fn process() -> ProcessId {
 }
 fn opening(parts: u64, provider_hours: u64) -> MaterialCircuitState {
     MaterialCircuitState {
+        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
         period: 1,
         site_logistics_nodes: (1..=3)
             .map(|id| SiteLogisticsNode {

@@ -1,12 +1,13 @@
 //! Exact conserved production, inventory, order, and realization transitions.
 //!
 //! One transition closes one four-week period. Period ordinals advance by one;
-//! content supplies capacities and labor schedules for the entire interval.
+//! explicit finite schedules or installed capacity supply each interval; staffing owns labor.
 //! Inventories, people, order principals and per-batch recipes retain their units.
 #![forbid(unsafe_code)]
 #![warn(clippy::pedantic)]
 
 mod accounts;
+mod capacity;
 mod inventory;
 mod maintenance;
 mod model;

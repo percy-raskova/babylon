@@ -2,10 +2,10 @@
 
 use super::merchant_admission::{hours_per_unit, merchant};
 use super::{
-    capacity_index, credit_inventory, debit_inventory, freight_lot_id, grams_per_unit,
-    route_stages, stage_capacities, supplier_routes, BTreeMap, CapacityKey, InventoryKey,
-    InventoryLedger, MaterialCircuitError, MaterialCircuitState, RouteId, RoutedDispatchReceipt,
-    RoutedFreightLot, SiteId, SupplierKey, SupplyPath, UnitId, MAX_MATERIAL_CIRCUIT_ROWS,
+    credit_inventory, debit_inventory, freight_lot_id, grams_per_unit, route_stages,
+    stage_capacities, supplier_routes, BTreeMap, CapacityKey, InventoryKey, InventoryLedger,
+    MaterialCircuitError, MaterialCircuitState, RouteId, RoutedDispatchReceipt, RoutedFreightLot,
+    SiteId, SupplierKey, SupplyPath, UnitId, MAX_MATERIAL_CIRCUIT_ROWS,
 };
 use crate::production::proportional_floor;
 use crate::{
@@ -192,15 +192,16 @@ fn resource_available(
     state: &MaterialCircuitState,
     inventory: &InventoryLedger,
     key: FreightResourceKey,
-) -> u64 {
+) -> Result<u64, MaterialCircuitError> {
     match key {
         FreightResourceKey::Inventory(inventory_key) => {
-            inventory.get(&inventory_key).copied().unwrap_or(0)
+            Ok(inventory.get(&inventory_key).copied().unwrap_or(0))
         }
-        FreightResourceKey::Corridor(capacity_key) => capacity_index(state, capacity_key)
-            .map_or(0, |index| state.corridor_capacities[index].available_grams),
+        FreightResourceKey::Corridor((period, corridor)) => {
+            crate::capacity::shared_available(state, period, corridor)
+        }
         FreightResourceKey::Labor(site, unit) => {
-            labor_index(state, site, unit).map_or(0, |index| state.labor[index].available)
+            Ok(labor_index(state, site, unit).map_or(0, |index| state.labor[index].available))
         }
     }
 }
@@ -237,7 +238,7 @@ fn limit_allocations(
             sum.checked_add(requested)
                 .ok_or(MaterialCircuitError::Arithmetic)
         })?;
-        let available = resource_available(state, inventory, *key);
+        let available = resource_available(state, inventory, *key)?;
         for request in requests {
             let resource_request =
                 u128::from(request.requested) * u128::from(request.resource_per_unit);
@@ -261,12 +262,7 @@ fn reserve_route_capacity(
     for stage in route_stages(state, route).to_vec() {
         let capacities = stage_capacities(state, route, stage.stage_index).to_vec();
         for capacity in capacities {
-            let index = capacity_index(state, (departure_period, capacity.corridor_id))
-                .ok_or(MaterialCircuitError::CapacityInvariant)?;
-            state.corridor_capacities[index].available_grams = state.corridor_capacities[index]
-                .available_grams
-                .checked_sub(grams)
-                .ok_or(MaterialCircuitError::Arithmetic)?;
+            crate::capacity::reserve(state, departure_period, capacity.corridor_id, grams)?;
         }
         departure_period = departure_period
             .checked_add(u64::from(stage.travel_periods))
@@ -442,13 +438,7 @@ fn apply_handling(
             let grams = handled_quantity
                 .checked_mul(grams_per_unit(state, order.stock.1, order.stock.2)?)
                 .ok_or(MaterialCircuitError::Arithmetic)?;
-            let capacity = capacity_index(state, (state.period, merchant.capacity_id))
-                .ok_or(MaterialCircuitError::CapacityInvariant)?;
-            state.corridor_capacities[capacity].available_grams = state.corridor_capacities
-                [capacity]
-                .available_grams
-                .checked_sub(grams)
-                .ok_or(MaterialCircuitError::Arithmetic)?;
+            crate::capacity::reserve(state, state.period, merchant.capacity_id, grams)?;
         }
         receipts.push(MerchantHandlingReceipt {
             site_id: merchant.site_id,

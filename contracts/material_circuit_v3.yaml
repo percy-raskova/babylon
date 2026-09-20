@@ -1,6 +1,6 @@
 meta:
   contract: MaterialCircuitV3
-  schema_version: 6
+  schema_version: 7
   evidence_class: Designed
   rust_owner: babylon-material-circuit
 
@@ -79,6 +79,7 @@ state_field_order:
   - maintenance_binding
   - maintenance_service
   - accounting
+  - capacity_supply
 
 accounting_field_order:
   physical_control: [accounting_mode_u8]
@@ -197,7 +198,7 @@ admission:
   - every capacity budget references a principal in stage memberships or merchant handling
   - every order and supplier good-unit principal has one positive mass coefficient
   - extra mass coefficients and unused route topology may remain
-  - missing period capacity means zero availability, not a malformed register
+  - finite-schedule missing period capacity means zero availability, not a malformed register
   - every merchant owns a unique handling capacity disjoint from route capacities
   - production and merchant work at one site share its inventory and exact site-unit labor budget
   - every merchant site has a logistics node, valid county GEOID, and one labor-unit principal
@@ -280,7 +281,8 @@ period_close:
   - audit total cash plus live purchase and payroll reserves without counting wage claims as extra money
   - rebuild unshipped backlog
   - derive next-period staffing and production through their existing exact rules
-  - prune expired capacity and validate the successor
+  - prune finite scheduled capacity or install rolling next-period budgets net of due advance reservations
+  - validate the successor without generating additional capacity
 
 transit:
   lot_identity: SHA256(freight_lot_domain + terminator + order_id + dispatch_period_u64)
@@ -422,3 +424,48 @@ maintenance:
   receipt_fields: [binding, period, opening_service_batches, consumed_service_batches, expired_service_batches,
                    prospective_batches, requested_jobs, opening_spare_parts, arrived_spare_parts, available_spare_parts,
                    available_labor_hours, completed_jobs, consumed_spare_parts, consumed_labor_hours, next_service]
+
+capacity_supply:
+  evidence_class: Designed
+  mode_u8: {finite_schedule: 0, rolling: 1}
+  finite_schedule: dated capacities and corridor_capacities are sole residual owners; absent periods supply zero
+  rolling_field_order: [mode_u8, installed_processes, shared, future_reservations]
+  finite_field_order: [mode_u8]
+  row_fields:
+    installed_processes: [process_id, site_id, batches_per_period]
+    shared: [corridor_id, grams_per_period]
+    future_reservations: [departure_period, corridor_id, reserved_grams]
+  row_width_bytes: {installed_processes: 72, shared: 40, future_reservations: 48}
+  canonical_keys:
+    installed_processes: [site_id, process_id]
+    shared: [corridor_id]
+    future_reservations: [departure_period, corridor_id]
+  maximum_rows_per_family: 65536
+  installed_equipment: existing usable process nameplate; money or equipment orders do not increase capacity
+  labor: next-period staffing remains independent; rolling capacity does not generate workers or hours
+  accounting: capacity mode is explicit and independent of physical or monetary accounting and price policy
+  rolling_invariants:
+    - installed rows cover every process once with its actual site; zero nameplate is explicit
+    - shared supply covers exactly the union of route capacity and merchant handling principals
+    - current process and shared budgets contain only the opening period and cover their supply rows exactly
+    - current process batches equal installed nameplate; remaining shared grams cannot exceed gross throughput
+    - future reservations are positive, unique and strictly later than the opening period
+    - every future reservation references a route capacity with sufficient remaining departure lookahead
+    - future reserved grams cannot exceed the corresponding gross shared supply
+    - row, date and quantity arithmetic overflow refuses the complete detached close
+  availability:
+    current: existing residual budget
+    future_process: installed batches per period for planning only
+    future_shared: gross grams per period minus already reserved grams
+  reservation:
+    current: debit the remaining current budget
+    future: add original dispatch grams to the unique departure-period and corridor reservation
+    losses: never release advance reservations, including when a lot disappears before its booked departure
+    capacity_reduction: refuse captured supply below existing bookings; no silent cancellation or clipping
+  rollover:
+    - require exactly one successor period
+    - install current process budgets from installed nameplate
+    - install current shared budgets as gross throughput minus reservations due in the successor period
+    - discard consumed earlier budgets and promoted reservations; retain all later reservations
+    - perform rollover only in successful transition finalization, never in validation or decoding
+  persistence: encode mode, installed supply, current residual budgets and future bookings; refuse earlier schemas

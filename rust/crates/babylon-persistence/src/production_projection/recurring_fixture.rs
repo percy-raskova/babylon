@@ -217,6 +217,7 @@ pub(super) fn opening() -> MaterialCircuitState {
     MaterialCircuitState {
         period: 1,
         accounting: accounting(),
+        capacity_supply: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: [1, 2, 3]
             .into_iter()
             .map(|owner| SiteLogisticsNode {

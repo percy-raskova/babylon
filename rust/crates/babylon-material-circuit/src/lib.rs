@@ -16,6 +16,7 @@ mod production;
 mod recurring;
 mod staffing;
 mod transition;
+mod valuation;
 mod wire;
 
 pub use accounts::{
@@ -34,6 +35,10 @@ pub use staffing::{
     advance_staffing, StaffingError, StaffingPolicy, StaffingPoolBinding, StaffingPoolId,
     StaffingPoolState, StaffingReceipt, StaffingState, StaffingTransition, StaffingWorkRequest,
     StaffingWorkSource,
+};
+pub use valuation::{
+    CapitalAccount, FreightCarryingValue, HistoricalCostBook, HistoricalCostSnapshot,
+    IncomeReceipt, IncomeStatement, StockCarryingValue, MAX_CARRYING_STOCKS,
 };
 
 pub use transition::{advance_material_circuit, close_material_period, ClosedMaterialPeriod};

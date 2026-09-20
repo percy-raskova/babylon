@@ -3,6 +3,7 @@
 mod merchant_admission;
 mod outbound;
 
+use crate::valuation::CostClose;
 use std::collections::{BTreeMap, BTreeSet};
 
 use babylon_kernel::content_digest::sha256_of;
@@ -428,6 +429,7 @@ pub(crate) fn canonical_state(
     crate::maintenance::validate(&canonical)?;
     crate::payments::validate(&canonical)?;
     crate::capacity::validate(&canonical)?;
+    crate::valuation::validate(&canonical)?;
     if canonical.period == 0
         || canonical
             .corridor_capacities
@@ -455,6 +457,7 @@ fn process_due_freight(
     arrivals: &mut Vec<ArrivalReceipt>,
     deliveries: &mut Vec<DeliveryReceipt>,
     realizations: &mut Vec<RealizationReceipt>,
+    costs: &mut CostClose,
 ) -> Result<(), MaterialCircuitError> {
     let opening = std::mem::take(&mut state.freight);
     let mut remaining = Vec::with_capacity(opening.len());
@@ -473,6 +476,7 @@ fn process_due_freight(
             (leg.stage_index, leg.loss_ppm, next_leg)
         };
         let lost = loss_quantity(lot.quantity, loss_ppm)?;
+        costs.freight(state, &lot, lost, next_leg.is_none())?;
         let retained = lot
             .quantity
             .checked_sub(lost)
@@ -826,6 +830,7 @@ fn dispatch_and_replenish(
     dispatches: &mut Vec<RoutedDispatchReceipt>,
     household_demand: &mut [crate::HouseholdDemandReceipt],
     money_transfers: &mut Vec<crate::MoneyTransferReceipt>,
+    costs: &mut CostClose,
 ) -> Result<(outbound::OutboundReceipts, Vec<crate::ProcurementReceipt>), MaterialCircuitError> {
     let mut inventory = take_inventory(state);
     let mut outbound = outbound::dispatch_orders(
@@ -833,6 +838,7 @@ fn dispatch_and_replenish(
         &mut inventory,
         dispatches,
         &outbound::OutboundSelection::All,
+        costs,
     )?;
     publish_inventory(state, inventory);
     crate::recurring::complete_household_orders(
@@ -851,6 +857,7 @@ fn dispatch_and_replenish(
             &mut inventory,
             dispatches,
             &outbound::OutboundSelection::NewDeliveries(&new_orders),
+            costs,
         )?;
         outbound.handling.extend(replenishment.handling);
         outbound
@@ -858,9 +865,49 @@ fn dispatch_and_replenish(
             .extend(replenishment.local_transfers);
     }
     outbound::credit_local_transfers(&mut inventory, &outbound.local_transfers)?;
+    for receipt in &outbound.local_transfers {
+        costs.receive_local(state, receipt)?;
+    }
     publish_inventory(state, inventory);
     crate::payments::settle_deliveries(state, money_transfers)?;
     Ok((outbound, procurement))
+}
+
+struct NextPlans {
+    production: Vec<crate::ProductionPlanReceipt>,
+    prices: Vec<crate::PriceReceipt>,
+}
+
+fn next_plans(
+    state: &mut MaterialCircuitState,
+    dispatches: &[RoutedDispatchReceipt],
+    outbound: &outbound::OutboundReceipts,
+    household_demand: &[crate::HouseholdDemandReceipt],
+    maintenance: Option<&crate::MaintenanceReceipt>,
+    next_period: u64,
+) -> Result<NextPlans, MaterialCircuitError> {
+    let production_plans = crate::recurring::firms::plan_production(
+        state,
+        dispatches,
+        &outbound.local_transfers,
+        &outbound.local_fulfillments,
+        household_demand,
+        next_period,
+    )?;
+    crate::recurring::firms::plan_attendance(
+        state,
+        household_demand,
+        dispatches,
+        &outbound.local_transfers,
+        &outbound.local_fulfillments,
+        maintenance,
+        next_period,
+    )?;
+    let prices = crate::recurring::firms::update_prices(state, household_demand)?;
+    Ok(NextPlans {
+        production: production_plans,
+        prices,
+    })
 }
 
 /// Execute due freight, prior production commitments and dispatch exactly once.
@@ -875,6 +922,7 @@ pub fn close_material_period(
     opening: &MaterialCircuitState,
 ) -> Result<ClosedMaterialPeriod, MaterialCircuitError> {
     let mut state = canonical_state(opening)?;
+    let mut costs = CostClose::new(&state);
     let mut inventory = take_inventory(&mut state);
     let mut losses = Vec::new();
     let mut arrivals = Vec::new();
@@ -890,6 +938,7 @@ pub fn close_material_period(
         &mut arrivals,
         &mut deliveries,
         &mut realizations,
+        &mut costs,
     )?;
     publish_inventory(&mut state, inventory);
     crate::payments::settle_deliveries(&mut state, &mut money_transfers)?;
@@ -899,38 +948,36 @@ pub fn close_material_period(
         crate::payments::fund_attendance(&mut state, &mut money_transfers, &mut wage_accruals)?;
     let mut household_demand =
         crate::recurring::admit_household_orders(&mut state, &mut money_transfers)?;
-    let production = execute_shared_production(&mut state)?;
+    let production = execute_shared_production(&mut state, &mut costs)?;
     let maintenance = crate::maintenance::execute(opening, &mut state, &production)?;
+    if let Some(receipt) = &maintenance {
+        costs.maintenance(&state, receipt)?;
+    }
     let (mut outbound, procurement) = dispatch_and_replenish(
         &mut state,
         &mut dispatches,
         &mut household_demand,
         &mut money_transfers,
+        &mut costs,
     )?;
     let household_consumption = crate::recurring::consume_household_needs(&mut state)?;
+    for receipt in &household_consumption {
+        costs.consume(receipt)?;
+    }
     crate::payments::record_labor_use(&state, &mut labor_use)?;
+    costs.payroll(&state, &labor_use, &wage_accruals)?;
     let next_period = state
         .period
         .checked_add(1)
         .ok_or(MaterialCircuitError::Arithmetic)?;
-    let production_plans = crate::recurring::firms::plan_production(
+    let plans = next_plans(
         &mut state,
         &dispatches,
-        &outbound.local_transfers,
-        &outbound.local_fulfillments,
+        &outbound,
         &household_demand,
-        next_period,
-    )?;
-    crate::recurring::firms::plan_attendance(
-        &mut state,
-        &household_demand,
-        &dispatches,
-        &outbound.local_transfers,
-        &outbound.local_fulfillments,
         maintenance.as_ref(),
         next_period,
     )?;
-    let prices = crate::recurring::firms::update_prices(&mut state, &household_demand)?;
     crate::recurring::firms::retire_resolved_purchases(&mut state)?;
     rebuild_backlog(&mut state);
     outbound
@@ -939,15 +986,17 @@ pub fn close_material_period(
     outbound.local_transfers.sort_by_key(|row| row.order_id);
     dispatches.sort_by_key(|row| row.order_id);
     crate::payments::conserved(opening, &state)?;
+    let income = costs.finish(&mut state)?;
     Ok(ClosedMaterialPeriod {
         next_period,
         transition: MaterialCircuitTransition {
+            income,
             state,
             household_demand,
             household_consumption,
             procurement,
-            production_plans,
-            prices,
+            production_plans: plans.production,
+            prices: plans.prices,
             money_transfers,
             wage_accruals,
             labor_use,

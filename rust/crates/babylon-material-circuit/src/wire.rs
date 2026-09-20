@@ -3,6 +3,7 @@
 mod accounting;
 mod capacity;
 mod recurring;
+mod valuation;
 
 use crate::SupplierTransport;
 use crate::{
@@ -25,11 +26,11 @@ use crate::{
 pub const MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES: &[u8] = b"babylon.material-circuit-state.v3";
 /// SHA-256 of the current language-neutral material circuit contract source.
 pub const MATERIAL_CIRCUIT_SOURCE_SHA256: [u8; 32] = [
-    58, 115, 132, 232, 130, 224, 175, 135, 169, 164, 225, 137, 31, 139, 86, 122, 153, 178, 7, 41,
-    51, 0, 113, 241, 94, 96, 82, 8, 18, 166, 177, 98,
+    227, 71, 1, 99, 240, 111, 40, 21, 111, 11, 213, 35, 50, 124, 60, 141, 38, 232, 194, 141, 231,
+    254, 129, 82, 75, 67, 211, 105, 27, 71, 232, 231,
 ];
 
-const SCHEMA_VERSION: u16 = 7;
+const SCHEMA_VERSION: u16 = 8;
 
 impl From<CursorError> for MaterialCircuitError {
     fn from(value: CursorError) -> Self {

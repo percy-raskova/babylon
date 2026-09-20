@@ -29,7 +29,7 @@ pub(super) fn validate_order(
     Ok(())
 }
 
-fn account_parts(account: AccountId) -> (u8, [u8; 32]) {
+pub(super) fn account_parts(account: AccountId) -> (u8, [u8; 32]) {
     match account {
         AccountId::Site(id) => (1, id.as_bytes()),
         AccountId::Household(id) => (2, id.as_bytes()),
@@ -38,7 +38,7 @@ fn account_parts(account: AccountId) -> (u8, [u8; 32]) {
     }
 }
 
-fn account(tag: u8, id: [u8; 32]) -> Result<AccountId, MaterialWorldError> {
+pub(super) fn account(tag: u8, id: [u8; 32]) -> Result<AccountId, MaterialWorldError> {
     match tag {
         1 => Ok(AccountId::Site(SiteId::from_bytes(id))),
         2 => Ok(AccountId::Household(FinalDemandPrincipalId::from_bytes(id))),

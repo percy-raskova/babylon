@@ -73,8 +73,8 @@ fn opening(household_cash: i128, stock: u64) -> MaterialCircuitState {
     MaterialCircuitState {
         capacity_supply: crate::CapacitySupply::FiniteSchedule,
         period: 1,
-        accounting: CircuitAccounting::Monetary(MonetaryCircuit {
-            book: MonetaryBook::open(vec![
+        accounting: CircuitAccounting::Monetary({
+            let book = MonetaryBook::open(vec![
                 CashAccount {
                     id: AccountId::Site(s()),
                     cash: cash(16),
@@ -84,14 +84,31 @@ fn opening(household_cash: i128, stock: u64) -> MaterialCircuitState {
                     cash: cash(household_cash),
                 },
             ])
-            .unwrap(),
-            employment: vec![EmploymentTerms {
-                site_id: s(),
-                unit_id: hours(),
-                payee: h(),
-                hourly_rate: cash(4),
-            }],
-            recurring: Some(Box::new(recurring(stock))),
+            .unwrap();
+            MonetaryCircuit {
+                costs: HistoricalCostBook::open(
+                    &book,
+                    [AccountId::Site(s()), AccountId::Household(h())]
+                        .into_iter()
+                        .map(|owner| StockCarryingValue {
+                            owner,
+                            good_id: g(),
+                            unit_id: u(),
+                            amount: cash(0),
+                        })
+                        .collect(),
+                    vec![],
+                )
+                .unwrap(),
+                book,
+                employment: vec![EmploymentTerms {
+                    site_id: s(),
+                    unit_id: hours(),
+                    payee: h(),
+                    hourly_rate: cash(4),
+                }],
+                recurring: Some(Box::new(recurring(stock))),
+            }
         }),
         site_logistics_nodes: vec![SiteLogisticsNode {
             site_id: s(),

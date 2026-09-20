@@ -17,18 +17,18 @@ envelope:
     - {tag: 5, name: graph_full_checkpoint, codec: existing_nine_checkpoint_sections_v1}
     - {tag: 6, name: archive_dirty_receipt, count: 1, hash: combined_material_tick_content_v3}
     - {tag: 7, name: complete_material_register, count: 1, key: empty, payload: exact_material_world_register_v4_bytes}
-    - {tag: 8, name: material_receipts, count: 1, key: empty, payload: exact_material_tick_receipts_v7_bytes}
+    - {tag: 8, name: material_receipts, count: 1, key: empty, payload: exact_material_tick_receipts_v8_bytes}
   family_frame: u8_tag_then_u64_big_endian_count
   row_frame: u32_big_endian_key_length_then_key_then_u32_big_endian_payload_length_then_payload
   ordering: Existing six families preserve strict canonical key order; singular added families cannot reorder.
   digest: sha256_exact_complete_envelope_bytes
   maximum_complete_bytes: 67108864
 receipts:
-  version: 7
-  domain: "babylon.material-tick-receipts.v7\0"
-  header: u32_big_endian_version_7_then_u64_big_endian_positive_resolve_tick
+  version: 8
+  domain: "babylon.material-tick-receipts.v8\0"
+  header: u32_big_endian_version_8_then_u64_big_endian_positive_resolve_tick
   family_frame: u8_tag_then_u64_big_endian_count
-  family_count: 18
+  family_count: 19
   identities: exact_32_bytes
   quantities_periods_and_hours: u64_big_endian
   stage_index: u16_big_endian_less_than_16
@@ -209,8 +209,15 @@ receipts:
         - price_decision_tag
       width: 153
       meaning: next_offer_quote_and_observed_decision_inputs
+    - tag: 19
+      fields: [account, period, opening_capital, opening_retained_earnings, sales, wage_income, cost_of_goods_sold,
+               productive_labor_capitalized, idle_labor_expense, handling_expense, maintenance_labor_expense,
+               maintenance_material_expense, freight_loss_expense, consumption_expense, final_demand_outlay,
+               net_income, closing_retained_earnings]
+      width: 281
+      meaning: historical_transaction_cost_income_and_retained_earnings
   ordering:
-    families: Tags 1 through 18 appear exactly once in declared order, including empty families.
+    families: Tags 1 through 19 appear exactly once in declared order, including empty families.
     original_families: Preserve deterministic encounter order from babylon_material_circuit::advance_material_circuit.
     handling: Strict increasing unique site_id_and_tagged_outbound_order.
     local_fulfillment: Strict increasing unique order_id.
@@ -223,6 +230,8 @@ receipts:
     procurement: Strict increasing unique buyer_supplier_good_unit; quoted order identities are unique.
     production_plans: Strict increasing unique process_id.
     prices: Strict increasing unique site_good_unit.
+    income: Strict increasing unique account.
+
   validation:
     - Reject wrong domain, version, family tag, truncation or trailing bytes.
     - Produced batches cannot exceed planned batches.
@@ -265,6 +274,10 @@ receipts:
     - Unserved-demand decisions require unserved quantity and cannot reduce price; ceilings can retain it.
     - Excess-stock decisions require zero unserved quantity and positive stock and cannot raise price.
     - Unknown price reasons and duplicate or noncanonical recurring keys are refused.
+    - Income rows have unique canonical account order and period equal to resolve_tick.
+    - Income flows are nonnegative; net income and retained earnings are signed exact micro-currency.
+    - Net income equals sales plus wage income less COGS and all named expenses; capitalization is not an expense.
+    - Closing retained earnings equal opening retained earnings plus net income with checked arithmetic.
   interpretation:
     native_quantity: Identified good-unit quantity; gram reservations use the captured mass coefficient.
     handling_need: Resource-feasible work before opening labor limits actual outbound movement.
@@ -283,6 +296,9 @@ receipts:
       Procurement, production caps and next prices explain decisions without promising execution.
       Receipt validation alone cannot authenticate policy targets, prices, recipe coefficients,
       opening cash or inventory against an absent state.
+    income: >-
+      Historical transaction-cost bookkeeping, not a measurement of surplus value or social labor.
+      Standalone rows prove their equations; account net assets and physical carrying keys require the complete state.
     authentication: Register and receipt identity, coefficient and account joins are verified before disclosure.
   maximum_rows_per_family: 65536
   maximum_handling_rows: 131072

@@ -116,9 +116,8 @@ fn opening() -> MaterialCircuitState {
     MaterialCircuitState {
         capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
         period: 1,
-        accounting: CircuitAccounting::Monetary(MonetaryCircuit {
-            recurring: Some(Box::new(recurring)),
-            book: MonetaryBook::open(vec![
+        accounting: CircuitAccounting::Monetary({
+            let book = MonetaryBook::open(vec![
                 CashAccount {
                     id: AccountId::Site(site(1)),
                     cash: money(4),
@@ -136,16 +135,39 @@ fn opening() -> MaterialCircuitState {
                     cash: money(0),
                 },
             ])
-            .unwrap(),
-            employment: [1, 2, 3]
-                .into_iter()
-                .map(|owner| EmploymentTerms {
-                    site_id: site(owner),
-                    unit_id: hours(),
-                    payee: household(),
-                    hourly_rate: money(1),
-                })
-                .collect(),
+            .unwrap();
+            MonetaryCircuit {
+                costs: HistoricalCostBook::open(
+                    &book,
+                    [
+                        (AccountId::Site(site(1)), good(0), 0),
+                        (AccountId::Site(site(2)), good(1), 4),
+                        (AccountId::Site(site(3)), good(2), 12),
+                        (AccountId::Household(household()), good(2), 32),
+                    ]
+                    .into_iter()
+                    .map(|(owner, good_id, value)| StockCarryingValue {
+                        owner,
+                        good_id,
+                        unit_id: units(),
+                        amount: money(value),
+                    })
+                    .collect(),
+                    vec![],
+                )
+                .unwrap(),
+                book,
+                recurring: Some(Box::new(recurring)),
+                employment: [1, 2, 3]
+                    .into_iter()
+                    .map(|owner| EmploymentTerms {
+                        site_id: site(owner),
+                        unit_id: hours(),
+                        payee: household(),
+                        hourly_rate: money(1),
+                    })
+                    .collect(),
+            }
         }),
         site_logistics_nodes: [1, 2, 3]
             .into_iter()
@@ -466,6 +488,19 @@ fn responsive_next_quote_does_not_reprice_existing_reserves() {
         .find(|row| row.site_id == site(3))
         .unwrap()
         .quantity = 0;
+    let CircuitAccounting::Monetary(accounts) = &mut state.accounting else {
+        unreachable!()
+    };
+    let mut captured = accounts.costs.snapshot();
+    captured
+        .stocks
+        .iter_mut()
+        .find(|row| row.owner == AccountId::Site(site(3)))
+        .unwrap()
+        .amount = money(0);
+    // This scenario starts without the retailer's stock or its opening asset.
+    accounts.costs =
+        HistoricalCostBook::open(&accounts.book, captured.stocks, captured.freight).unwrap();
     let offer = recurring_mut(&mut state)
         .offers
         .iter_mut()
@@ -517,7 +552,18 @@ fn captured_household_policies_refuse_old_bytes_bad_cursors_and_noncanonical_row
         unreachable!()
     };
     economy.recurring = None;
-    let offset = encode_material_circuit_state(&finite).unwrap().len() - 2;
+    let mut captured = economy.costs.snapshot();
+    captured
+        .stocks
+        .retain(|row| matches!(row.owner, AccountId::Site(_)));
+    economy.costs =
+        HistoricalCostBook::open(&economy.book, captured.stocks, captured.freight).unwrap();
+    let captured = economy.costs.snapshot();
+    let cost_bytes = 12
+        + 65 * captured.accounts.len()
+        + 113 * captured.stocks.len()
+        + 80 * captured.freight.len();
+    let offset = encode_material_circuit_state(&finite).unwrap().len() - cost_bytes - 2;
     assert_eq!(bytes[offset], 1);
     let mut old = bytes.clone();
     let version = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
@@ -578,6 +624,10 @@ fn retained_finite_purchase_restores_attendance_when_recurring_purchases_are_dis
             CashTransferPurpose::HouseholdTransfer,
         )
         .unwrap();
+    let captured = accounts.costs.snapshot();
+    // This control opens after its deliberate endowment transfer.
+    accounts.costs =
+        HistoricalCostBook::open(&accounts.book, captured.stocks, captured.freight).unwrap();
     let id = OrderId::from_bytes([90; 32]);
     let (state, _) = admit_material_purchase(
         &state,
@@ -664,6 +714,17 @@ fn producer_retail_opening() -> MaterialCircuitState {
         maximum_purchase: 1,
         enabled: true,
     });
+    let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
+        unreachable!()
+    };
+    let mut captured = economy.costs.snapshot();
+    captured.stocks.push(StockCarryingValue {
+        owner: AccountId::Household(household()),
+        good_id: good(1),
+        unit_id: units(),
+        amount: money(0),
+    });
+    economy.costs = HistoricalCostBook::from_snapshot(captured).unwrap();
     state
 }
 
@@ -782,6 +843,13 @@ fn a_household_purchase_without_a_recipient_stock_is_refused_before_reserving_ca
             CashTransferPurpose::HouseholdTransfer,
         )
         .unwrap();
+    let mut captured = accounts.costs.snapshot();
+    captured
+        .stocks
+        .retain(|row| row.owner != AccountId::Household(household()) || row.good_id != good(1));
+    // Capture this fixture's changed opening endowments and absent stock explicitly.
+    accounts.costs =
+        HistoricalCostBook::open(&accounts.book, captured.stocks, captured.freight).unwrap();
     let original = state.clone();
     assert_eq!(
         admit_material_purchase(
@@ -804,3 +872,9 @@ fn a_household_purchase_without_a_recipient_stock_is_refused_before_reserving_ca
 
 #[path = "support/rolling_capacity.rs"]
 mod rolling_capacity;
+
+#[path = "support/cost_income.rs"]
+mod cost_income;
+
+#[path = "support/local_cost.rs"]
+mod local_cost;

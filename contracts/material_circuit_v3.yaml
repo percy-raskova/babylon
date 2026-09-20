@@ -1,6 +1,6 @@
 meta:
   contract: MaterialCircuitV3
-  schema_version: 7
+  schema_version: 8
   evidence_class: Designed
   rust_owner: babylon-material-circuit
 
@@ -83,7 +83,7 @@ state_field_order:
 
 accounting_field_order:
   physical_control: [accounting_mode_u8]
-  monetary: [accounting_mode_u8, accounts, purchases, shifts, employment, optional_recurring]
+  monetary: [accounting_mode_u8, accounts, purchases, shifts, employment, optional_recurring, historical_cost_book]
 
 monetary_row_field_order:
   accounts: [account_identity, cash_i128]
@@ -354,6 +354,7 @@ error_codes:
   monetary_invariant: 23
   payroll_invariant: 24
   purchase_invariant: 25
+  valuation_invariant: 26
 
 monetary_accounting:
   opening: capture explicit cash endowments and employment terms; no default accounts, credit, or hidden issuance
@@ -469,3 +470,50 @@ capacity_supply:
     - discard consumed earlier budgets and promoted reservations; retain all later reservations
     - perform rollover only in successful transition finalization, never in validation or decoding
   persistence: encode mode, installed supply, current residual budgets and future bookings; refuse earlier schemas
+
+
+historical_cost_book:
+  evidence_class: Designed
+  purpose: Historical transaction-cost bookkeeping; no surplus-value, SNLT or universal valuation claim
+  field_order: [capital_accounts, stock_carrying_values, freight_carrying_values]
+  row_fields:
+    capital_accounts: [account, opening_capital, retained_earnings]
+    stock_carrying_values: [owner_account, good_id, unit_id, amount]
+    freight_carrying_values: [lot_id, seller_site_id, amount]
+  row_width_bytes: {capital_accounts: 65, stock_carrying_values: 113, freight_carrying_values: 80}
+  canonical_keys:
+    capital_accounts: [account]
+    stock_carrying_values: [owner_account, good_id, unit_id]
+    freight_carrying_values: [lot_id]
+  bounds: {capital_accounts: 65536, stock_carrying_values: 131072, freight_carrying_values: 65536}
+  stock_bound: Two physical families of at most N each, site inventories and resident household stocks
+  opening:
+    - require explicit carrying rows for every physical site stock, household stock and freight lot, including zero
+    - derive opening capital once from cash, reserves, carrying values and wage claims less liabilities
+    - initial retained earnings are zero; restart restores captured capital and accumulated earnings exactly
+    - installed equipment without a captured carrying amount is outside this book-capital measure
+  quantities: Physical rows alone own quantities; carrying rows never manufacture or duplicate units
+  withdrawal: floor(carrying_amount * withdrawn_quantity / available_quantity), using quotient/remainder arithmetic
+  rounding: Partial withdrawals retain every rounding remainder; whole depletion transfers the full remaining amount
+  flow_rules:
+    - production consumes input carrying values and capitalizes actual productive paid labor into output
+    - dispatch transfers seller stock cost to seller-owned freight without revenue or buyer inventory
+    - staged loss expenses the seller's withdrawn carrying amount; its cash refund remains the money book's authority
+    - final arrival recognizes seller sales and COGS; buyer inventory receives the fixed settled acquisition amount
+    - local seller withdrawal and sale precede delayed buyer stock and carrying-value credits after both outbound passes
+    - household handoff capitalizes pantry purchases; actual household consumption withdraws carrying value as expense
+    - finite final-demand sinks recognize a distinct outlay at fulfillment without adding a pantry or consumption need
+    - wages earned are household income; productive wages capitalized are not a second current expense
+    - unused funded attendance, handling, maintenance labor and materials, and freight losses are separate expenses
+    - changed quotes do not reprice existing stock, transit or purchase reserves
+  reconciliation:
+    - carrying amounts are nonnegative; zero physical quantity requires zero carrying value
+    - every transit carrying row has the physical lot's seller as title owner
+    - capital accounts exactly match monetary accounts; stock and freight carrying keys exactly match physical keys
+    - each account's net assets equal captured opening capital plus accumulated retained earnings
+    - each period income equals sales plus wage income less COGS and named period expenses
+    - closing retained earnings equal opening retained earnings plus period income
+    - productive labor, handling, maintenance labor and idle wage costs partition current earned wages exactly
+    - cost operations cannot mutate spendable cash, reserves, purchase prices or wage obligations
+    - all refusals discard the detached close, including late planning, arithmetic and net-asset mismatches
+  excluded: Public and ownership flows, equity changes, equipment depreciation and installation remain separate work

@@ -8,6 +8,20 @@ use babylon_material_circuit::{
     MerchantRole, PricePolicy, ProductionDemandPolicy, RecurringEconomy, SellerOffer,
 };
 
+fn capture_empty_pantry_cost(economy: &mut babylon_material_circuit::MonetaryCircuit) {
+    let pantry = &economy.recurring.as_ref().unwrap().household_stocks[0];
+    let mut costs = economy.costs.snapshot();
+    costs
+        .stocks
+        .push(babylon_material_circuit::StockCarryingValue {
+            owner: AccountId::Household(pantry.principal_id),
+            good_id: pantry.good_id,
+            unit_id: pantry.unit_id,
+            amount: Currency::from_micro_units(0),
+        });
+    economy.costs = babylon_material_circuit::HistoricalCostBook::from_snapshot(costs).unwrap();
+}
+
 fn opening() -> MaterialCircuitState {
     let mut material = paid_material();
     let household = material.final_demand_principals[0].id;
@@ -87,6 +101,7 @@ fn opening() -> MaterialCircuitState {
         last_household_admission_period: 0,
         last_household_consumption_period: 0,
     }));
+    capture_empty_pantry_cost(economy);
     material
 }
 

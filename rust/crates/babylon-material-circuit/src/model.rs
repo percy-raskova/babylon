@@ -478,6 +478,7 @@ pub enum MaterialCircuitError {
     MonetaryInvariant = 23,
     PayrollInvariant = 24,
     PurchaseInvariant = 25,
+    ValuationInvariant = 26,
 }
 
 /// Unknown language-neutral routed-material refusal code.
@@ -514,6 +515,7 @@ impl TryFrom<u16> for MaterialCircuitError {
             23 => Ok(Self::MonetaryInvariant),
             24 => Ok(Self::PayrollInvariant),
             25 => Ok(Self::PurchaseInvariant),
+            26 => Ok(Self::ValuationInvariant),
             _ => Err(UnknownMaterialCircuitErrorCode(value)),
         }
     }
@@ -537,6 +539,7 @@ pub struct FreightLossReceipt {
 /// Atomic successor with native quantity receipts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaterialCircuitTransition {
+    pub income: Vec<crate::IncomeReceipt>,
     pub state: MaterialCircuitState,
     pub household_demand: Vec<crate::HouseholdDemandReceipt>,
     pub household_consumption: Vec<crate::HouseholdConsumptionReceipt>,

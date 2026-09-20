@@ -116,9 +116,8 @@ fn recurring_policies() -> RecurringEconomy {
 }
 
 fn accounting() -> CircuitAccounting {
-    CircuitAccounting::Monetary(MonetaryCircuit {
-        recurring: Some(Box::new(recurring_policies())),
-        book: MonetaryBook::open(vec![
+    CircuitAccounting::Monetary({
+        let book = MonetaryBook::open(vec![
             CashAccount {
                 id: AccountId::Site(site(1)),
                 cash: money(4),
@@ -136,16 +135,39 @@ fn accounting() -> CircuitAccounting {
                 cash: money(0),
             },
         ])
-        .unwrap(),
-        employment: [1, 2, 3]
-            .into_iter()
-            .map(|owner| EmploymentTerms {
-                site_id: site(owner),
-                unit_id: hours(),
-                payee: household(),
-                hourly_rate: money(1),
-            })
-            .collect(),
+        .unwrap();
+        MonetaryCircuit {
+            costs: babylon_material_circuit::HistoricalCostBook::open(
+                &book,
+                [
+                    (AccountId::Site(site(1)), good(0), 0),
+                    (AccountId::Site(site(2)), good(1), 4),
+                    (AccountId::Site(site(3)), good(2), 12),
+                    (AccountId::Household(household()), good(2), 32),
+                ]
+                .into_iter()
+                .map(|(owner, good_id, value)| StockCarryingValue {
+                    owner,
+                    good_id,
+                    unit_id: units(),
+                    amount: money(value),
+                })
+                .collect(),
+                vec![],
+            )
+            .unwrap(),
+            book,
+            recurring: Some(Box::new(recurring_policies())),
+            employment: [1, 2, 3]
+                .into_iter()
+                .map(|owner| EmploymentTerms {
+                    site_id: site(owner),
+                    unit_id: hours(),
+                    payee: household(),
+                    hourly_rate: money(1),
+                })
+                .collect(),
+        }
     })
 }
 

@@ -765,3 +765,108 @@ fn spare_parts_independently_limit_positive_whole_jobs() {
     assert_eq!(receipt.next_service.available_batches, 2);
     assert_eq!(result.state.production_commitments[0].planned_batches, 2);
 }
+
+fn paid_maintenance_opening() -> MaterialCircuitState {
+    use babylon_kernel::currency::Currency;
+    let money = Currency::from_micro_units;
+    let mut state = opening(2, 20);
+    let payee = FinalDemandPrincipalId::from_bytes([7; 32]);
+    state.final_demand_principals.push(FinalDemandPrincipal {
+        id: payee,
+        county_geoid: *b"26163",
+    });
+    let book = MonetaryBook::open(vec![
+        CashAccount {
+            id: AccountId::Site(site(1)),
+            cash: money(1280),
+        },
+        CashAccount {
+            id: AccountId::Site(site(2)),
+            cash: money(20),
+        },
+        CashAccount {
+            id: AccountId::Site(site(3)),
+            cash: money(0),
+        },
+        CashAccount {
+            id: AccountId::Household(payee),
+            cash: money(0),
+        },
+    ])
+    .unwrap();
+    let costs = HistoricalCostBook::open(
+        &book,
+        vec![
+            StockCarryingValue {
+                owner: AccountId::Site(site(1)),
+                good_id: good(1),
+                unit_id: unit(1),
+                amount: money(2560),
+            },
+            StockCarryingValue {
+                owner: AccountId::Site(site(2)),
+                good_id: good(2),
+                unit_id: unit(1),
+                amount: money(6),
+            },
+        ],
+        vec![],
+    )
+    .unwrap();
+    state.accounting = CircuitAccounting::Monetary(MonetaryCircuit {
+        book,
+        costs,
+        employment: [1, 2]
+            .into_iter()
+            .map(|id| EmploymentTerms {
+                site_id: site(id),
+                unit_id: unit(2),
+                payee,
+                hourly_rate: money(1),
+            })
+            .collect(),
+        recurring: None,
+    });
+    state
+}
+
+#[test]
+fn historical_cost_maintenance_and_idle_work_are_expenses_not_output_assets() {
+    use babylon_kernel::currency::Currency;
+    let money = Currency::from_micro_units;
+    let state = paid_maintenance_opening();
+    let closed = advance_material_circuit(&state).unwrap();
+    let producer = &closed
+        .income
+        .iter()
+        .find(|row| row.account == AccountId::Site(site(1)))
+        .unwrap()
+        .statement;
+    assert_eq!(producer.productive_labor_capitalized, money(960));
+    assert_eq!(producer.idle_labor_expense, money(320));
+    assert_eq!(producer.net_income().unwrap(), money(-320));
+    let provider = &closed
+        .income
+        .iter()
+        .find(|row| row.account == AccountId::Site(site(2)))
+        .unwrap()
+        .statement;
+    assert_eq!(provider.maintenance_material_expense, money(6));
+    assert_eq!(provider.maintenance_labor_expense, money(20));
+    assert_eq!(provider.net_income().unwrap(), money(-26));
+    let CircuitAccounting::Monetary(economy) = &closed.state.accounting else {
+        unreachable!()
+    };
+    assert_eq!(
+        economy
+            .costs
+            .snapshot()
+            .stocks
+            .iter()
+            .find(|row| row.owner == AccountId::Site(site(1)) && row.good_id == good(2))
+            .unwrap()
+            .amount,
+        money(2240)
+    );
+    assert_eq!(economy.book.total_cash_and_reserves().unwrap(), money(1300));
+}

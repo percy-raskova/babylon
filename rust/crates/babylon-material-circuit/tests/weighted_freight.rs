@@ -393,7 +393,7 @@ fn overflowing_mass_request_sum_and_period_refuse_without_mutating_opening() {
 
 #[test]
 fn successor_refusal_registry_includes_accounting_and_rejects_unknown_codes() {
-    for value in 1_u16..=25 {
+    for value in 1_u16..=26 {
         assert_eq!(
             u16::from(MaterialCircuitError::try_from(value).unwrap()),
             value
@@ -416,5 +416,9 @@ fn successor_refusal_registry_includes_accounting_and_rejects_unknown_codes() {
         MaterialCircuitError::try_from(25),
         Ok(MaterialCircuitError::PurchaseInvariant)
     );
-    assert!(MaterialCircuitError::try_from(26).is_err());
+    assert_eq!(
+        MaterialCircuitError::try_from(26),
+        Ok(MaterialCircuitError::ValuationInvariant)
+    );
+    assert!(MaterialCircuitError::try_from(27).is_err());
 }

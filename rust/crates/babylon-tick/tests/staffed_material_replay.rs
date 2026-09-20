@@ -352,15 +352,33 @@ fn paid_material() -> MaterialCircuitState {
         )
         .unwrap();
     }
-    material.accounting = CircuitAccounting::Monetary(MonetaryCircuit {
-        recurring: None,
-        book,
-        employment: vec![EmploymentTerms {
-            site_id: site(1),
-            unit_id: unit(1),
-            payee: household,
-            hourly_rate: Currency::from_micro_units(1),
-        }],
+    material.accounting = CircuitAccounting::Monetary({
+        let book = book;
+        MonetaryCircuit {
+            costs: babylon_material_circuit::HistoricalCostBook::open(
+                &book,
+                material
+                    .inventory
+                    .iter()
+                    .map(|row| babylon_material_circuit::StockCarryingValue {
+                        owner: AccountId::Site(row.site_id),
+                        good_id: row.good_id,
+                        unit_id: row.unit_id,
+                        amount: Currency::from_micro_units(0),
+                    })
+                    .collect(),
+                vec![],
+            )
+            .unwrap(),
+            book,
+            recurring: None,
+            employment: vec![EmploymentTerms {
+                site_id: site(1),
+                unit_id: unit(1),
+                payee: household,
+                hourly_rate: Currency::from_micro_units(1),
+            }],
+        }
     });
     material
 }
@@ -727,6 +745,26 @@ fn wage_and_dispatch_candidate_is_atomic_and_restarts_through_paid_arrival() {
         Currency::from_micro_units(160)
     );
     assert_eq!(receipts.labor_use[0].paid_idle_hours, 160);
+    let employer = receipts
+        .income
+        .iter()
+        .find(|row| row.account == AccountId::Site(site(1)))
+        .unwrap();
+    assert_eq!(
+        employer.statement.idle_labor_expense,
+        Currency::from_micro_units(160)
+    );
+    assert_eq!(employer.net_income, Currency::from_micro_units(-160));
+    let household = receipts
+        .income
+        .iter()
+        .find(|row| matches!(row.account, AccountId::Household(_)))
+        .unwrap();
+    assert_eq!(
+        household.statement.wage_income,
+        Currency::from_micro_units(160)
+    );
+    assert_eq!(household.net_income, Currency::from_micro_units(160));
     assert_eq!(receipts.money_transfers.len(), 2);
     let expected = *candidate.identity();
     let refused = session.commit_prepared_and_publish(&mut sink, candidate, |_| {

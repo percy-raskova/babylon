@@ -1,5 +1,7 @@
 //! The single private production reducer shared by current material transitions.
 
+use crate::valuation::CostClose;
+use babylon_kernel::currency::Currency;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::inventory::{
@@ -392,6 +394,7 @@ fn execute_production(
     state: &mut MaterialCircuitState,
     inventory: &mut InventoryLedger,
     receipts: &mut Vec<ProductionReceipt>,
+    costs: &mut CostClose,
 ) -> Result<(), MaterialCircuitError> {
     let commitments = std::mem::take(&mut state.production_commitments);
     let allocations = allocate_production_batches(
@@ -401,16 +404,25 @@ fn execute_production(
         state.period,
         ProductionResources::InputsAndLabor,
     )?;
-    debit_production_allocations(state, inventory, &commitments, &allocations)?;
-    credit_production_allocations(state, inventory, commitments, &allocations, receipts)
+    let inputs = debit_production_allocations(state, inventory, &commitments, &allocations, costs)?;
+    credit_production_allocations(
+        state,
+        inventory,
+        commitments,
+        &allocations,
+        &inputs,
+        receipts,
+        costs,
+    )
 }
 
 pub(crate) fn execute_shared_production(
     state: &mut MaterialCircuitState,
+    costs: &mut CostClose,
 ) -> Result<Vec<ProductionReceipt>, MaterialCircuitError> {
     let mut inventory = take_inventory(state);
     let mut receipts = Vec::new();
-    execute_production(state, &mut inventory, &mut receipts)?;
+    execute_production(state, &mut inventory, &mut receipts, costs)?;
     publish_inventory(state, inventory);
     Ok(receipts)
 }
@@ -420,21 +432,24 @@ fn debit_production_allocations(
     inventory: &mut InventoryLedger,
     commitments: &[crate::ProductionCommitment],
     allocations: &[u64],
-) -> Result<(), MaterialCircuitError> {
+    costs: &mut CostClose,
+) -> Result<Vec<Currency>, MaterialCircuitError> {
+    let mut inputs = Vec::with_capacity(commitments.len());
     for (index, commitment) in commitments
         .iter()
         .enumerate()
         .take(MAX_MATERIAL_CIRCUIT_ROWS + 1)
     {
-        consume_production_inputs(
+        inputs.push(consume_production_inputs(
             state,
             inventory,
             commitment.process_id,
             commitment.site_id,
             allocations[index],
-        )?;
+            costs,
+        )?);
     }
-    Ok(())
+    Ok(inputs)
 }
 
 fn credit_production_allocations(
@@ -442,7 +457,9 @@ fn credit_production_allocations(
     inventory: &mut InventoryLedger,
     commitments: Vec<crate::ProductionCommitment>,
     allocations: &[u64],
+    inputs: &[Currency],
     receipts: &mut Vec<ProductionReceipt>,
+    costs: &mut CostClose,
 ) -> Result<(), MaterialCircuitError> {
     for (index, commitment) in commitments
         .into_iter()
@@ -457,6 +474,7 @@ fn credit_production_allocations(
             .quantity_per_batch
             .checked_mul(batches)
             .ok_or(MaterialCircuitError::Arithmetic)?;
+        costs.output(state, &output, batches, inputs[index])?;
         credit_inventory(
             inventory,
             (output.site_id, output.good_id, output.unit_id),
@@ -478,9 +496,11 @@ fn consume_production_inputs(
     process: ProcessId,
     site: SiteId,
     batches: u64,
-) -> Result<(), MaterialCircuitError> {
+    costs: &mut CostClose,
+) -> Result<Currency, MaterialCircuitError> {
+    let mut input_cost = Currency::from_micro_units(0);
     if batches == 0 {
-        return Ok(());
+        return Ok(input_cost);
     }
     let inputs: Vec<_> = input_coefficients(state, process)
         .iter()
@@ -491,6 +511,15 @@ fn consume_production_inputs(
         let quantity = quantity_per_batch
             .checked_mul(batches)
             .ok_or(MaterialCircuitError::Arithmetic)?;
+        let available = inventory.get(&(site, good, unit)).copied().unwrap_or(0);
+        let withdrawn = costs.input(
+            (crate::AccountId::Site(site), good, unit),
+            available,
+            quantity,
+        )?;
+        input_cost = input_cost
+            .checked_add(withdrawn)
+            .map_err(|_| MaterialCircuitError::Arithmetic)?;
         debit_inventory(
             inventory,
             (site, good, unit),
@@ -511,7 +540,7 @@ fn consume_production_inputs(
         .available
         .checked_sub(labor_used)
         .ok_or(MaterialCircuitError::Arithmetic)?;
-    Ok(())
+    Ok(input_cost)
 }
 
 fn recurring_demand_cap(state: &MaterialCircuitState, process: ProcessId) -> u64 {

@@ -1297,10 +1297,28 @@ fn underfunded_maintenance_uses_paid_hours_instead_of_all_available_people_time(
             hourly_rate: Currency::from_micro_units(1),
         })
         .collect();
-    state.accounting = CircuitAccounting::Monetary(MonetaryCircuit {
-        recurring: None,
-        book: MonetaryBook::open(accounts).unwrap(),
-        employment,
+    state.accounting = CircuitAccounting::Monetary({
+        let book = MonetaryBook::open(accounts).unwrap();
+        MonetaryCircuit {
+            costs: babylon_material_circuit::HistoricalCostBook::open(
+                &book,
+                state
+                    .inventory
+                    .iter()
+                    .map(|row| babylon_material_circuit::StockCarryingValue {
+                        owner: AccountId::Site(row.site_id),
+                        good_id: row.good_id,
+                        unit_id: row.unit_id,
+                        amount: Currency::from_micro_units(0),
+                    })
+                    .collect(),
+                vec![],
+            )
+            .unwrap(),
+            book,
+            recurring: None,
+            employment,
+        }
     });
     let valid = pair(state);
     assert_eq!(

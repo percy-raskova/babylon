@@ -10,7 +10,7 @@ use crate::{
     ShiftState, SiteId, UnitId,
 };
 
-fn append_account(output: &mut Vec<u8>, account: AccountId) {
+pub(super) fn append_account(output: &mut Vec<u8>, account: AccountId) {
     let (tag, identity) = match account {
         AccountId::Site(id) => (1, id.as_bytes()),
         AccountId::Household(id) => (2, id.as_bytes()),
@@ -21,7 +21,7 @@ fn append_account(output: &mut Vec<u8>, account: AccountId) {
     output.extend_from_slice(&identity);
 }
 
-fn decode_account(cursor: &mut Cursor<'_>) -> Result<AccountId, MaterialCircuitError> {
+pub(super) fn decode_account(cursor: &mut Cursor<'_>) -> Result<AccountId, MaterialCircuitError> {
     match cursor.u8()? {
         1 => Ok(AccountId::Site(SiteId::from_bytes(cursor.array()?))),
         2 => Ok(AccountId::Household(FinalDemandPrincipalId::from_bytes(
@@ -58,7 +58,7 @@ fn decode_order(cursor: &mut Cursor<'_>) -> Result<OutboundOrderId, MaterialCirc
     }
 }
 
-fn decode_currency(cursor: &mut Cursor<'_>) -> Result<Currency, MaterialCircuitError> {
+pub(super) fn decode_currency(cursor: &mut Cursor<'_>) -> Result<Currency, MaterialCircuitError> {
     Ok(Currency::from_micro_units(i128::from_be_bytes(
         cursor.array()?,
     )))
@@ -108,10 +108,14 @@ pub(super) fn append(
         bytes.extend_from_slice(&row.hourly_rate.micro_units().to_be_bytes());
     })?;
     super::recurring::append(output, economy.recurring.as_deref())?;
+    super::valuation::append(output, &economy.costs)?;
     Ok(())
 }
 
-fn ordered_rows<T, K: Ord>(rows: &[T], key: impl Fn(&T) -> K) -> Result<(), MaterialCircuitError> {
+pub(super) fn ordered_rows<T, K: Ord>(
+    rows: &[T],
+    key: impl Fn(&T) -> K,
+) -> Result<(), MaterialCircuitError> {
     if rows.windows(2).any(|pair| key(&pair[0]) >= key(&pair[1])) {
         return Err(MaterialCircuitError::WireNoncanonical);
     }
@@ -180,5 +184,6 @@ pub(super) fn decode(cursor: &mut Cursor<'_>) -> Result<CircuitAccounting, Mater
         })?,
         employment,
         recurring: super::recurring::decode(cursor)?,
+        costs: super::valuation::decode(cursor)?,
     }))
 }

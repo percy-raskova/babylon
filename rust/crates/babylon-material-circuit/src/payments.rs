@@ -26,6 +26,7 @@ pub enum CircuitAccounting {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MonetaryCircuit {
+    pub costs: crate::HistoricalCostBook,
     pub recurring: Option<Box<crate::RecurringEconomy>>,
     pub book: MonetaryBook,
     pub employment: Vec<EmploymentTerms>,

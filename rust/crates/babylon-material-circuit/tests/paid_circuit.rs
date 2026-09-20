@@ -31,9 +31,8 @@ fn opening() -> MaterialCircuitState {
     MaterialCircuitState {
         capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
         period: 1,
-        accounting: CircuitAccounting::Monetary(MonetaryCircuit {
-            recurring: None,
-            book: MonetaryBook::open(vec![
+        accounting: CircuitAccounting::Monetary({
+            let book = MonetaryBook::open(vec![
                 CashAccount {
                     id: AccountId::Site(source()),
                     cash: money(0),
@@ -47,13 +46,31 @@ fn opening() -> MaterialCircuitState {
                     cash: money(16),
                 },
             ])
-            .unwrap(),
-            employment: vec![EmploymentTerms {
-                site_id: store(),
-                unit_id: hours(),
-                payee: household(),
-                hourly_rate: money(1),
-            }],
+            .unwrap();
+            MonetaryCircuit {
+                costs: HistoricalCostBook::open(
+                    &book,
+                    [source(), store()]
+                        .into_iter()
+                        .map(|owner| StockCarryingValue {
+                            owner: AccountId::Site(owner),
+                            good_id: good(),
+                            unit_id: unit(),
+                            amount: money(0),
+                        })
+                        .collect(),
+                    vec![],
+                )
+                .unwrap(),
+                book,
+                recurring: None,
+                employment: vec![EmploymentTerms {
+                    site_id: store(),
+                    unit_id: hours(),
+                    payee: household(),
+                    hourly_rate: money(1),
+                }],
+            }
         }),
         site_logistics_nodes: vec![
             SiteLogisticsNode {
@@ -239,6 +256,23 @@ fn actual_local_handoff_pays_seller_and_reports_paid_idle_separately() {
     )
     .unwrap();
     let closed = advance_material_circuit(&state).unwrap();
+    let buyer = closed
+        .income
+        .iter()
+        .find(|row| row.account == AccountId::Household(household()))
+        .unwrap();
+    assert_eq!(buyer.statement.final_demand_outlay, money(8));
+    assert_eq!(buyer.statement.consumption_expense, money(0));
+    assert_eq!(buyer.net_income, money(-4));
+    let retailer = closed
+        .income
+        .iter()
+        .find(|row| row.account == AccountId::Site(store()))
+        .unwrap();
+    assert_eq!(retailer.statement.sales, money(8));
+    assert_eq!(retailer.statement.handling_expense, money(2));
+    assert_eq!(retailer.statement.idle_labor_expense, money(2));
+    assert_eq!(retailer.net_income, money(4));
     assert_eq!(closed.local_fulfillments[0].quantity, 2);
     assert_eq!(closed.wage_accruals[0].obligated_hours, 4);
     assert_eq!(closed.wage_accruals[0].amount, money(4));
@@ -367,6 +401,10 @@ fn previously_earned_wages_survive_restart_and_payment_does_not_accrue_them_agai
         )
         .unwrap();
     economy.book.accrue_shift(previous_shift).unwrap();
+    let captured = economy.costs.snapshot();
+    // Capture this continuation's existing wage claim and liability once.
+    economy.costs =
+        HistoricalCostBook::open(&economy.book, captured.stocks, captured.freight).unwrap();
     assert_eq!(
         economy
             .book
@@ -479,4 +517,60 @@ fn paid_delivery_cannot_reopen_as_an_unrealized_physical_quantity() {
         encode_material_circuit_state(&arrived),
         Err(MaterialCircuitError::PurchaseInvariant)
     );
+}
+
+#[test]
+fn historical_cost_partial_dispatch_and_loss_leave_exact_remainders_without_cash_creation() {
+    let mut state = opening();
+    let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
+        panic!("paid control");
+    };
+    economy.costs = HistoricalCostBook::open(
+        &economy.book,
+        [(source(), 7), (store(), 0)]
+            .into_iter()
+            .map(|(site, amount)| StockCarryingValue {
+                owner: AccountId::Site(site),
+                good_id: good(),
+                unit_id: unit(),
+                amount: money(amount),
+            })
+            .collect(),
+        vec![],
+    )
+    .unwrap();
+    state.corridor_capacities[0].available_grams = 3;
+    state.route_stages[0].loss_ppm = 333_334;
+    let (state, _) =
+        admit_material_purchase(&state, MaterialPurchase::Delivery(delivery()), money(2)).unwrap();
+    let first = advance_material_circuit(&state).unwrap();
+    let CircuitAccounting::Monetary(book) = &first.state.accounting else {
+        panic!("paid control");
+    };
+    let costs = book.costs.snapshot();
+    assert_eq!(costs.freight[0].amount, money(5));
+    assert_eq!(
+        costs
+            .stocks
+            .iter()
+            .find(|r| r.owner == AccountId::Site(source()))
+            .unwrap()
+            .amount,
+        money(2)
+    );
+    let second = advance_material_circuit(&first.state).unwrap();
+    let row = second
+        .income
+        .iter()
+        .find(|r| r.account == AccountId::Site(source()))
+        .unwrap();
+    assert_eq!(row.statement.sales, money(4));
+    assert_eq!(row.statement.cost_of_goods_sold, money(4));
+    assert_eq!(row.statement.freight_loss_expense, money(1));
+    assert_eq!(row.net_income, money(-1));
+    let CircuitAccounting::Monetary(book) = &second.state.accounting else {
+        panic!("paid control");
+    };
+    assert_eq!(book.book.total_cash_and_reserves().unwrap(), money(24));
+    assert!(book.costs.snapshot().freight.is_empty());
 }

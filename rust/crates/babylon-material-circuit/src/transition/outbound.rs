@@ -8,6 +8,7 @@ use super::{
     SiteId, SupplierKey, SupplyPath, UnitId, MAX_MATERIAL_CIRCUIT_ROWS,
 };
 use crate::production::proportional_floor;
+use crate::valuation::CostClose;
 use crate::{
     LocalRetailFulfillmentReceipt, LocalTransferReceipt, MerchantHandlingReceipt, OutboundOrderId,
     SupplierTransport, MAX_FREIGHT_RESOURCE_REQUESTS,
@@ -271,12 +272,49 @@ fn reserve_route_capacity(
     Ok(departure_period)
 }
 
+fn apply_local_transfer(
+    state: &mut MaterialCircuitState,
+    inventory: &mut InventoryLedger,
+    index: usize,
+    order: &crate::OrderRow,
+    quantity: u64,
+) -> Result<LocalTransferReceipt, MaterialCircuitError> {
+    debit_inventory(
+        inventory,
+        (order.supplier_site_id, order.good_id, order.unit_id),
+        quantity,
+        MaterialCircuitError::FreightInvariant,
+    )?;
+    let updated = &mut state.orders[index];
+    updated.shipped = updated
+        .shipped
+        .checked_add(quantity)
+        .ok_or(MaterialCircuitError::Arithmetic)?;
+    updated.delivered = updated
+        .delivered
+        .checked_add(quantity)
+        .ok_or(MaterialCircuitError::Arithmetic)?;
+    updated.realized = updated
+        .realized
+        .checked_add(quantity)
+        .ok_or(MaterialCircuitError::Arithmetic)?;
+    Ok(LocalTransferReceipt {
+        order_id: order.order_id,
+        supplier_site_id: order.supplier_site_id,
+        buyer_site_id: order.buyer_site_id,
+        good_id: order.good_id,
+        unit_id: order.unit_id,
+        quantity,
+    })
+}
+
 fn apply_dispatches(
     state: &mut MaterialCircuitState,
     inventory: &mut InventoryLedger,
     routes: &BTreeMap<SupplierKey, SupplyPath>,
     allocations: &[u64],
     receipts: &mut Vec<RoutedDispatchReceipt>,
+    costs: &mut CostClose,
 ) -> Result<Vec<LocalTransferReceipt>, MaterialCircuitError> {
     let mut local_transfers = Vec::new();
     for (index, quantity) in allocations
@@ -297,36 +335,22 @@ fn apply_dispatches(
         );
         let (route, mode) = routes[&supplier_key];
         let local = mode == SupplierTransport::Local;
+        let key = (order.supplier_site_id, order.good_id, order.unit_id);
+        let available = inventory.get(&key).copied().unwrap_or(0);
         if local {
-            debit_inventory(
-                inventory,
-                (order.supplier_site_id, order.good_id, order.unit_id),
-                quantity,
-                MaterialCircuitError::FreightInvariant,
-            )?;
-            let updated = &mut state.orders[index];
-            updated.shipped = updated
-                .shipped
-                .checked_add(quantity)
-                .ok_or(MaterialCircuitError::Arithmetic)?;
-            updated.delivered = updated
-                .delivered
-                .checked_add(quantity)
-                .ok_or(MaterialCircuitError::Arithmetic)?;
-            updated.realized = updated
-                .realized
-                .checked_add(quantity)
-                .ok_or(MaterialCircuitError::Arithmetic)?;
-            local_transfers.push(LocalTransferReceipt {
-                order_id: order.order_id,
-                supplier_site_id: order.supplier_site_id,
-                buyer_site_id: order.buyer_site_id,
-                good_id: order.good_id,
-                unit_id: order.unit_id,
-                quantity,
-            });
+            costs.local_sale(state, &order, available, quantity)?;
+            local_transfers.push(apply_local_transfer(
+                state, inventory, index, &order, quantity,
+            )?);
             continue;
         }
+        let lot_id = freight_lot_id(order.order_id, state.period);
+        costs.dispatch(
+            (crate::AccountId::Site(key.0), key.1, key.2),
+            available,
+            quantity,
+            lot_id,
+        )?;
         let legs = route_stages(state, route);
         let first_arrival_period = state
             .period
@@ -346,7 +370,6 @@ fn apply_dispatches(
             .shipped
             .checked_add(quantity)
             .ok_or(MaterialCircuitError::Arithmetic)?;
-        let lot_id = freight_lot_id(order.order_id, state.period);
         state.freight.push(RoutedFreightLot {
             lot_id,
             order_id: order.order_id,
@@ -412,6 +435,7 @@ fn apply_handling(
     orders: &[OutboundOrder],
     feasible: &[u64],
     actual: &[u64],
+    costs: &mut CostClose,
 ) -> Result<Vec<MerchantHandlingReceipt>, MaterialCircuitError> {
     let mut receipts = Vec::new();
     for ((order, feasible_quantity), handled_quantity) in orders.iter().zip(feasible).zip(actual) {
@@ -428,6 +452,7 @@ fn apply_handling(
         let used_hours = handled_quantity
             .checked_mul(hours)
             .ok_or(MaterialCircuitError::Arithmetic)?;
+        costs.handling(state, merchant.site_id, merchant.labor_unit_id, used_hours)?;
         if *handled_quantity > 0 {
             let labor = labor_index(state, merchant.site_id, merchant.labor_unit_id)
                 .ok_or(MaterialCircuitError::CapacityInvariant)?;
@@ -457,19 +482,26 @@ fn apply_local_fulfillments(
     state: &mut MaterialCircuitState,
     inventory: &mut InventoryLedger,
     allocations: &[u64],
+    costs: &mut CostClose,
 ) -> Result<Vec<LocalRetailFulfillmentReceipt>, MaterialCircuitError> {
     let mut receipts = Vec::new();
-    for (row, quantity) in state.final_demand_orders.iter_mut().zip(allocations) {
+    for (index, quantity) in allocations.iter().enumerate() {
+        let row = state.final_demand_orders[index].clone();
         if *quantity == 0 {
             continue;
         }
+        let available = inventory
+            .get(&(row.retailer_site_id, row.good_id, row.unit_id))
+            .copied()
+            .unwrap_or(0);
+        costs.retail(state, &row, available, *quantity)?;
         debit_inventory(
             inventory,
             (row.retailer_site_id, row.good_id, row.unit_id),
             *quantity,
             MaterialCircuitError::FreightInvariant,
         )?;
-        row.fulfilled = row
+        state.final_demand_orders[index].fulfilled = row
             .fulfilled
             .checked_add(*quantity)
             .ok_or(MaterialCircuitError::Arithmetic)?;
@@ -496,6 +528,7 @@ pub(super) fn dispatch_orders(
     inventory: &mut InventoryLedger,
     receipts: &mut Vec<RoutedDispatchReceipt>,
     selection: &OutboundSelection<'_>,
+    costs: &mut CostClose,
 ) -> Result<OutboundReceipts, MaterialCircuitError> {
     let routes = supplier_routes(state);
     let orders = outbound_orders(state, &routes, selection);
@@ -509,7 +542,7 @@ pub(super) fn dispatch_orders(
     })?;
     let labor = labor_groups(state, &orders, &feasible, request_count)?;
     limit_allocations(state, inventory, &labor, &mut allocations)?;
-    let handling = apply_handling(state, &orders, &feasible, &allocations)?;
+    let handling = apply_handling(state, &orders, &feasible, &allocations, costs)?;
     let routed_count = state.orders.len();
     let local_transfers = apply_dispatches(
         state,
@@ -517,8 +550,9 @@ pub(super) fn dispatch_orders(
         &routes,
         &allocations[..routed_count],
         receipts,
+        costs,
     )?;
-    let local = apply_local_fulfillments(state, inventory, &allocations[routed_count..])?;
+    let local = apply_local_fulfillments(state, inventory, &allocations[routed_count..], costs)?;
     Ok(OutboundReceipts {
         handling,
         local_fulfillments: local,

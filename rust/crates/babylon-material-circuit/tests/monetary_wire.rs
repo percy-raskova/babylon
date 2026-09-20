@@ -83,18 +83,32 @@ fn paid_state() -> MaterialCircuitState {
     MaterialCircuitState {
         capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
         period: 3,
-        accounting: CircuitAccounting::Monetary(MonetaryCircuit {
-            recurring: None,
-            book,
-            employment: [seller, buyer]
-                .into_iter()
-                .map(|site_id| EmploymentTerms {
-                    site_id,
-                    unit_id: hours,
-                    payee: household,
-                    hourly_rate: money((1_i128 << 65) + 7),
-                })
-                .collect(),
+        accounting: CircuitAccounting::Monetary({
+            let book = book;
+            MonetaryCircuit {
+                costs: HistoricalCostBook::open(
+                    &book,
+                    vec![StockCarryingValue {
+                        owner: AccountId::Site(seller),
+                        good_id: good,
+                        unit_id: unit,
+                        amount: money(0),
+                    }],
+                    vec![],
+                )
+                .unwrap(),
+                book,
+                recurring: None,
+                employment: [seller, buyer]
+                    .into_iter()
+                    .map(|site_id| EmploymentTerms {
+                        site_id,
+                        unit_id: hours,
+                        payee: household,
+                        hourly_rate: money((1_i128 << 65) + 7),
+                    })
+                    .collect(),
+            }
         }),
         site_logistics_nodes: [seller, buyer]
             .into_iter()
@@ -343,4 +357,27 @@ fn physical_binding_and_employment_remain_required_after_decoding() {
         decode_material_circuit_state(&zero_wage),
         Err(MaterialCircuitError::PayrollInvariant)
     );
+}
+
+#[test]
+fn historical_cost_opening_accrued_wages_are_assets_and_liabilities_without_repeat_income() {
+    let state = paid_state();
+    let bytes = encode_material_circuit_state(&state).unwrap();
+    let restored = decode_material_circuit_state(&bytes).unwrap();
+    let result = advance_material_circuit(&restored).unwrap();
+    let household = AccountId::Household(FinalDemandPrincipalId::from_bytes([3; 32]));
+    let row = result
+        .income
+        .iter()
+        .find(|r| r.account == household)
+        .unwrap();
+    let owed = 2 * 4 * ((1_i128 << 65) + 7);
+    assert_eq!(row.opening_capital, money((1_i128 << 90) + 3 + owed));
+    assert_eq!(row.statement.wage_income, money(0));
+    assert_eq!(row.net_income, money(0));
+    let CircuitAccounting::Monetary(economy) = &result.state.accounting else {
+        panic!("paid control");
+    };
+    assert!(economy.book.snapshot().shifts.is_empty());
+    assert_eq!(economy.book.cash(household).unwrap(), row.opening_capital);
 }

@@ -63,7 +63,7 @@ class TestManifest:
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
             assert digest == entry["sha256"], f"{entry['name']} drifted from its manifest hash"
             checked += 1
-        assert checked == 32
+        assert checked == 33
         # the four registered canonical CSVs (R1 pair post-demotion, ricci,
         # county->CZ) plus the 13 Vol II Unit U2 hand-registered LODES
         # entries (1 tri-county crosswalk + 12 OD-matrix years, generator
@@ -95,7 +95,8 @@ class TestManifest:
         # and the PER-40 national county foundation and disjoint QCEW function basis
         # (test_national_county_reference.py, test_national_qcew_function_basis.py),
         # and the PER-31 international counterpart source capture
-        # (test_international_counterpart_reference.py).
+        # (test_international_counterpart_reference.py), and the source-qualified
+        # world population capture (test_world_population_reference.py).
 
     def test_manifest_carries_all_registered_artifacts(self) -> None:
         # Post-cutover the manifest is FULL-COVERAGE: the registered

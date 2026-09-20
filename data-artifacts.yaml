@@ -1543,3 +1543,22 @@ artifacts:
       membership, edge decisions, source pins and reconciliation accompany
       this artifact. No population allocation, production, purchasing power,
       inventory, infinite supply or runtime hydration is established.
+  - name: world_population_reference_2024
+    format: csv.gz
+    source_table: null
+    generator: tools/make_world_population_reference.py
+    mode: register
+    rows: 252
+    sha256: 6ec6309e87b61d39038519df7881b3a9dc58afa030468f33d4ff25bf6dc2dc8d
+    home: src/babylon/data/reference/economy/world_population_reference_2024.csv.gz
+    material_relation: >-
+      Part of PER-31: 237 UN WPP2024 country/area medium-variant population
+      projections join the 252 pinned world reporting identities. Source
+      units, exact numeric tokens, date, row and scope notes remain explicit.
+      Included territories do not create a second population; the separate
+      Designed Finland-to-Aland allocation preserves the total while using
+      a separately dated official year-end observation. Missing independent
+      observations remain absent. Gaza/West Bank are trade-only children.
+      Preserve the four-person rounded-leaf versus world-control residual.
+      Domestic play still uses the ACS county capture. This context does
+      not create workers, households, production, needs, cash or capacity.

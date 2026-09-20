@@ -1,6 +1,7 @@
 //! Canonical current routed-material state bytes for restart and replay.
 
 mod accounting;
+mod recurring;
 
 use crate::SupplierTransport;
 use crate::{
@@ -23,10 +24,10 @@ use crate::{
 pub const MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES: &[u8] = b"babylon.material-circuit-state.v3";
 /// SHA-256 of the current language-neutral material circuit contract source.
 pub const MATERIAL_CIRCUIT_SOURCE_SHA256: [u8; 32] = [
-    170, 94, 76, 177, 237, 135, 31, 87, 124, 30, 112, 18, 76, 41, 154, 101, 159, 249, 151, 153, 66,
-    117, 208, 231, 30, 122, 50, 86, 37, 12, 46, 224,
+    97, 201, 192, 99, 108, 158, 180, 126, 40, 178, 199, 60, 90, 155, 114, 85, 125, 217, 239, 22,
+    120, 225, 30, 179, 84, 39, 52, 167, 225, 62, 214, 131,
 ];
-const SCHEMA_VERSION: u16 = 5;
+const SCHEMA_VERSION: u16 = 6;
 
 impl From<CursorError> for MaterialCircuitError {
     fn from(value: CursorError) -> Self {

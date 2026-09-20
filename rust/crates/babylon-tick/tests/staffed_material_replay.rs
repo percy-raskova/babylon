@@ -352,6 +352,7 @@ fn paid_session() -> Session {
         .unwrap();
     }
     material.accounting = CircuitAccounting::Monetary(MonetaryCircuit {
+        recurring: None,
         book,
         employment: vec![EmploymentTerms {
             site_id: site(1),

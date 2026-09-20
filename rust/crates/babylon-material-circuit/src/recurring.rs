@@ -1,16 +1,22 @@
 //! Recurring household needs and purchases share the authoritative material close.
 
+pub(crate) mod firms;
 mod households;
 mod model;
 
+pub use firms::{
+    recurring_procurement_order_id, PriceDecision, PriceReceipt, ProcurementReceipt,
+    ProductionPlanReceipt,
+};
+pub use households::recurring_household_order_id;
 pub(crate) use households::{
     admit_household_orders, complete_household_orders, consume_household_needs,
 };
 pub use model::*;
 
 use crate::{
-    AccountId, CircuitAccounting, MAX_MATERIAL_CIRCUIT_ROWS, MaterialCircuitError,
-    MaterialCircuitState, MerchantRole,
+    AccountId, CircuitAccounting, MaterialCircuitError, MaterialCircuitState, MerchantRole,
+    MAX_MATERIAL_CIRCUIT_ROWS,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -94,6 +100,12 @@ fn validate_households(state: &MaterialCircuitState, rows: &RecurringEconomy) ->
         || purchase_keys != need_keys
         || need_keys.iter().map(|key| key.0).collect::<BTreeSet<_>>() != household_ids
     {
+        return Err(MaterialCircuitError::FinalDemandInvariant);
+    }
+    if state.final_demand_orders.iter().any(|order| {
+        household_ids.contains(&order.demand_principal_id)
+            && !stock_keys.contains(&(order.demand_principal_id, order.good_id, order.unit_id))
+    }) {
         return Err(MaterialCircuitError::FinalDemandInvariant);
     }
     for need in &rows.household_needs {

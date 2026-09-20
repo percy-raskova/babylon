@@ -2,6 +2,8 @@
 
 /// Designed serialization and validation ceiling, not material abundance.
 pub const MAX_MATERIAL_CIRCUIT_ROWS: usize = 65_536;
+/// Derived ceiling: retail retirement permits a second bounded handling pass.
+pub const MAX_HANDLING_RECEIPTS_PER_PERIOD: usize = 2 * MAX_MATERIAL_CIRCUIT_ROWS;
 /// Derived transition ceiling for disjoint input and labor resource groups.
 pub const MAX_PRODUCTION_RESOURCE_GROUPS: usize = MAX_MATERIAL_CIRCUIT_ROWS * 2;
 
@@ -495,6 +497,11 @@ pub struct FreightLossReceipt {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaterialCircuitTransition {
     pub state: MaterialCircuitState,
+    pub household_demand: Vec<crate::HouseholdDemandReceipt>,
+    pub household_consumption: Vec<crate::HouseholdConsumptionReceipt>,
+    pub procurement: Vec<crate::ProcurementReceipt>,
+    pub production_plans: Vec<crate::ProductionPlanReceipt>,
+    pub prices: Vec<crate::PriceReceipt>,
     pub money_transfers: Vec<crate::MoneyTransferReceipt>,
     pub wage_accruals: Vec<crate::WageAccrualReceipt>,
     pub labor_use: Vec<crate::LaborUseReceipt>,

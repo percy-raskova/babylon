@@ -90,7 +90,7 @@ fn opening(household_cash: i128, stock: u64) -> MaterialCircuitState {
                 payee: h(),
                 hourly_rate: cash(4),
             }],
-            recurring: Some(recurring(stock)),
+            recurring: Some(Box::new(recurring(stock))),
         }),
         site_logistics_nodes: vec![SiteLogisticsNode {
             site_id: s(),
@@ -321,15 +321,13 @@ fn malformed_or_repeated_handoffs_cannot_credit_stock_or_move_money() {
     wrong.quantity = 3;
     assert!(complete_household_orders(&mut state, &mut demands, &[wrong], &mut transfers).is_err());
     assert_eq!((state.clone(), demands.clone(), transfers.clone()), before);
-    assert!(
-        complete_household_orders(
-            &mut state,
-            &mut demands,
-            &[receipt.clone(), receipt.clone()],
-            &mut transfers
-        )
-        .is_err()
-    );
+    assert!(complete_household_orders(
+        &mut state,
+        &mut demands,
+        &[receipt.clone(), receipt.clone()],
+        &mut transfers
+    )
+    .is_err());
     assert_eq!((state.clone(), demands.clone(), transfers.clone()), before);
     complete_household_orders(
         &mut state,

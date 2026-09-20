@@ -1,6 +1,6 @@
 version: 3
 name: committed_material_tick_v3
-authority: [ADR251, ADR260]
+authority: [ADR251, ADR260, ADR263]
 purpose: One marker-last transaction binds graph, H3, material, receipts and full restart state.
 envelope:
   domain: "babylon.committed-material-tick.v3\0"

@@ -160,13 +160,29 @@ Physical loss refunds the buyer.
 
 Employers fund attendance before work. Wage
 obligations and payment remain separate receipts, while later labor receipts
-distinguish used, paid idle, and unfunded hours. The detached close checks cash
+distinguish used, paid idle, unfunded, and unplanned hours. The detached close checks cash
 plus reserves before it can publish. Canonical state captures pending orders
 and earned unpaid wages for restart.
 
-The current Michigan content still selects the physical control. Household
-consumption, recurrent orders, price policies, and the national campaign still
-need connected content and behavior before they can support playable claims.
+Captured recurring policies connect household stocks and needs, affordable
+purchases, consumption and unmet needs to that same material close. Funded
+orders keep their accepted price. Handoffs credit resident stocks before
+consumption; unfilled recurring retail requests expire and refund their reserve.
+Resolved orders retire together with their escrow. Receipts preserve their
+admission, fulfillment and expiry for later inspection.
+
+Procurement accounts for inventory and outstanding inbound orders, including
+goods in transit once. Subsequent production and attendance plans respond to
+sales, funded unfilled requests and closing stock. Offers can change their next
+quote through a captured bounded inventory policy. A second outbound pass
+dispatches newly funded firm orders through the remaining shared resources;
+local firm credits occur after both passes, so they cannot feed another dispatch
+in the same close. The eight-period fixed-price control exercises this loop.
+
+The current Michigan campaign still selects the physical control. National
+content, rolling budgets, investment and the playable household and solidarity
+connections remain separate acceptance work. ADR263 records the approved
+direction and distinguishes its requirements from verified implementation.
 
 Practice has one typed contract for actors, stable targets, authority, intents,
 resource quotes, resolved batches, and ordered actions. The evidence driver

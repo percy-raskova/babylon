@@ -3,16 +3,21 @@
 use super::{HouseholdConsumptionReceipt, HouseholdDemandReceipt, RecurringEconomy, Result};
 use crate::{
     AccountId, CircuitAccounting, FinalDemandOrder, FinalDemandPrincipalId, GoodId,
-    LocalRetailFulfillmentReceipt, MAX_MATERIAL_CIRCUIT_ROWS, MaterialCircuitError,
-    MaterialCircuitState, MonetaryBook, MoneyTransferReceipt, OrderId, OutboundOrderId,
-    PurchaseEscrow, UnitId,
+    LocalRetailFulfillmentReceipt, MaterialCircuitError, MaterialCircuitState, MonetaryBook,
+    MoneyTransferReceipt, OrderId, OutboundOrderId, PurchaseEscrow, UnitId,
+    MAX_MATERIAL_CIRCUIT_ROWS,
 };
 use babylon_kernel::content_digest::sha256_of;
 use std::collections::{BTreeMap, BTreeSet};
 
 type HouseholdKey = (FinalDemandPrincipalId, GoodId, UnitId);
 
-fn order_id(period: u64, key: HouseholdKey) -> OrderId {
+/// Stable per-period household intent key used by admission and evidence joins.
+#[must_use]
+pub fn recurring_household_order_id(
+    period: u64,
+    key: (FinalDemandPrincipalId, GoodId, UnitId),
+) -> OrderId {
     let mut bytes = b"babylon.recurring-household-order.v1\0".to_vec();
     bytes.extend_from_slice(&period.to_be_bytes());
     bytes.extend_from_slice(&key.0.as_bytes());
@@ -90,7 +95,7 @@ pub(crate) fn admit_household_orders(
     let mut receipts = vec![];
     for policy in policies {
         let key = (policy.principal_id, policy.good_id, policy.unit_id);
-        let id = order_id(state.period, key);
+        let id = recurring_household_order_id(state.period, key);
         if existing.contains(&id) {
             return Err(MaterialCircuitError::DuplicateRow);
         }
@@ -246,7 +251,7 @@ fn validate_demand_receipts(
         }
         if !seen.insert(key)
             || demand.period != period
-            || demand.order_id != order_id(period, key)
+            || demand.order_id != recurring_household_order_id(period, key)
             || demand.retailer_site_id != policy.retailer_site_id
             || demand.unit_price.micro_units() <= 0
             || demand.admitted_quantity > demand.requested_quantity
@@ -431,7 +436,7 @@ pub(crate) fn consume_household_needs(
         .map(|r| r.order_id)
         .collect();
     for policy in &rows.household_purchases {
-        let id = order_id(
+        let id = recurring_household_order_id(
             state.period,
             (policy.principal_id, policy.good_id, policy.unit_id),
         );

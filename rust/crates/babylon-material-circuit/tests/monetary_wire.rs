@@ -83,6 +83,7 @@ fn paid_state() -> MaterialCircuitState {
     MaterialCircuitState {
         period: 3,
         accounting: CircuitAccounting::Monetary(MonetaryCircuit {
+            recurring: None,
             book,
             employment: [seller, buyer]
                 .into_iter()

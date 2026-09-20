@@ -614,7 +614,14 @@ impl ClosedMaterialPeriod {
         let owners = staffing_work_owners(bindings)?;
         let production = derive_shared_labor_requests(state, self.next_period)?;
         let mut requests = Vec::new();
+        let mut nonmerchant = BTreeMap::<(SiteId, UnitId), u64>::new();
         for request in production {
+            let total = nonmerchant
+                .entry((request.site_id, request.unit_id))
+                .or_default();
+            *total = total
+                .checked_add(request.hours)
+                .ok_or(MaterialCircuitError::Arithmetic)?;
             requests.push((
                 crate::StaffingWorkSource::Production(request.process_id),
                 request.site_id,
@@ -622,6 +629,28 @@ impl ClosedMaterialPeriod {
                 request.hours,
             ));
         }
+        let maintenance_request = self
+            .transition
+            .maintenance
+            .as_ref()
+            .map(
+                |receipt| -> Result<(SiteId, UnitId, u64), MaterialCircuitError> {
+                    let hours = receipt
+                        .requested_jobs
+                        .checked_mul(receipt.binding.labor_units_per_job)
+                        .ok_or(MaterialCircuitError::Arithmetic)?;
+                    let key = (
+                        receipt.binding.provider_site_id,
+                        receipt.binding.labor_unit_id,
+                    );
+                    let total = nonmerchant.entry(key).or_default();
+                    *total = total
+                        .checked_add(hours)
+                        .ok_or(MaterialCircuitError::Arithmetic)?;
+                    Ok((key.0, key.1, hours))
+                },
+            )
+            .transpose()?;
         let mut needed = BTreeMap::<SiteId, u64>::new();
         for receipt in &self.transition.handling {
             let hours = needed.entry(receipt.site_id).or_default();
@@ -630,22 +659,26 @@ impl ClosedMaterialPeriod {
                 .ok_or(MaterialCircuitError::Arithmetic)?;
         }
         for merchant in &state.merchants {
+            let key = (merchant.site_id, merchant.labor_unit_id);
+            let hours = recurring_merchant_hours(
+                state,
+                key,
+                needed.get(&merchant.site_id).copied().unwrap_or(0),
+                nonmerchant.get(&key).copied().unwrap_or(0),
+            )?;
             requests.push((
                 crate::StaffingWorkSource::MerchantHandling(merchant.site_id),
                 merchant.site_id,
                 merchant.labor_unit_id,
-                needed.get(&merchant.site_id).copied().unwrap_or(0),
+                hours,
             ));
         }
-        if let Some(receipt) = &self.transition.maintenance {
+        if let Some((site, unit, hours)) = maintenance_request {
             requests.push((
-                crate::StaffingWorkSource::Maintenance(receipt.binding.provider_site_id),
-                receipt.binding.provider_site_id,
-                receipt.binding.labor_unit_id,
-                receipt
-                    .requested_jobs
-                    .checked_mul(receipt.binding.labor_units_per_job)
-                    .ok_or(MaterialCircuitError::Arithmetic)?,
+                crate::StaffingWorkSource::Maintenance(site),
+                site,
+                unit,
+                hours,
             ));
         }
         if owners.len() != requests.len() {
@@ -700,6 +733,28 @@ impl ClosedMaterialPeriod {
         *state = canonical_state(state)?;
         Ok(self.transition)
     }
+}
+
+fn recurring_merchant_hours(
+    state: &MaterialCircuitState,
+    key: (SiteId, UnitId),
+    physical_need: u64,
+    other_work: u64,
+) -> Result<u64, MaterialCircuitError> {
+    let crate::CircuitAccounting::Monetary(economy) = &state.accounting else {
+        return Ok(physical_need);
+    };
+    let Some(recurring) = &economy.recurring else {
+        return Ok(physical_need);
+    };
+    let index = recurring
+        .attendance
+        .binary_search_by_key(&key, |row| (row.site_id, row.unit_id))
+        .map_err(|_| MaterialCircuitError::PayrollInvariant)?;
+    recurring.attendance[index]
+        .planned_hours
+        .checked_sub(other_work)
+        .ok_or(MaterialCircuitError::PayrollInvariant)
 }
 
 fn staffing_work_owners(
@@ -778,6 +833,48 @@ pub fn advance_material_circuit(
     close_material_period(opening)?.finish()
 }
 
+fn dispatch_and_replenish(
+    state: &mut MaterialCircuitState,
+    dispatches: &mut Vec<RoutedDispatchReceipt>,
+    household_demand: &mut [crate::HouseholdDemandReceipt],
+    money_transfers: &mut Vec<crate::MoneyTransferReceipt>,
+) -> Result<(outbound::OutboundReceipts, Vec<crate::ProcurementReceipt>), MaterialCircuitError> {
+    let mut inventory = take_inventory(state);
+    let mut outbound = outbound::dispatch_orders(
+        state,
+        &mut inventory,
+        dispatches,
+        &outbound::OutboundSelection::All,
+    )?;
+    publish_inventory(state, inventory);
+    crate::recurring::complete_household_orders(
+        state,
+        household_demand,
+        &outbound.local_fulfillments,
+        money_transfers,
+    )?;
+    crate::payments::settle_deliveries(state, money_transfers)?;
+    let (new_orders, procurement) =
+        crate::recurring::firms::replenish(state, &outbound.local_transfers, money_transfers)?;
+    let mut inventory = take_inventory(state);
+    if !new_orders.is_empty() {
+        let replenishment = outbound::dispatch_orders(
+            state,
+            &mut inventory,
+            dispatches,
+            &outbound::OutboundSelection::NewDeliveries(&new_orders),
+        )?;
+        outbound.handling.extend(replenishment.handling);
+        outbound
+            .local_transfers
+            .extend(replenishment.local_transfers);
+    }
+    outbound::credit_local_transfers(&mut inventory, &outbound.local_transfers)?;
+    publish_inventory(state, inventory);
+    crate::payments::settle_deliveries(state, money_transfers)?;
+    Ok((outbound, procurement))
+}
+
 /// Execute due freight, prior production commitments and dispatch exactly once.
 ///
 /// The result borrows no mutable opening state and cannot become a world
@@ -808,25 +905,61 @@ pub fn close_material_period(
     )?;
     publish_inventory(&mut state, inventory);
     crate::payments::settle_deliveries(&mut state, &mut money_transfers)?;
+    crate::recurring::firms::retire_resolved_purchases(&mut state)?;
+    rebuild_backlog(&mut state);
     let mut labor_use =
         crate::payments::fund_attendance(&mut state, &mut money_transfers, &mut wage_accruals)?;
+    let mut household_demand =
+        crate::recurring::admit_household_orders(&mut state, &mut money_transfers)?;
     let production = execute_shared_production(&mut state)?;
     let maintenance = crate::maintenance::execute(opening, &mut state, &production)?;
-    let mut inventory = take_inventory(&mut state);
-    let outbound = outbound::dispatch_orders(&mut state, &mut inventory, &mut dispatches)?;
-    rebuild_backlog(&mut state);
-    publish_inventory(&mut state, inventory);
-    crate::payments::settle_deliveries(&mut state, &mut money_transfers)?;
+    let (mut outbound, procurement) = dispatch_and_replenish(
+        &mut state,
+        &mut dispatches,
+        &mut household_demand,
+        &mut money_transfers,
+    )?;
+    let household_consumption = crate::recurring::consume_household_needs(&mut state)?;
     crate::payments::record_labor_use(&state, &mut labor_use)?;
-    crate::payments::conserved(opening, &state)?;
     let next_period = state
         .period
         .checked_add(1)
         .ok_or(MaterialCircuitError::Arithmetic)?;
+    let production_plans = crate::recurring::firms::plan_production(
+        &mut state,
+        &dispatches,
+        &outbound.local_transfers,
+        &outbound.local_fulfillments,
+        &household_demand,
+        next_period,
+    )?;
+    crate::recurring::firms::plan_attendance(
+        &mut state,
+        &household_demand,
+        &dispatches,
+        &outbound.local_transfers,
+        &outbound.local_fulfillments,
+        maintenance.as_ref(),
+        next_period,
+    )?;
+    let prices = crate::recurring::firms::update_prices(&mut state, &household_demand)?;
+    crate::recurring::firms::retire_resolved_purchases(&mut state)?;
+    rebuild_backlog(&mut state);
+    outbound
+        .handling
+        .sort_by_key(|row| (row.site_id, row.order));
+    outbound.local_transfers.sort_by_key(|row| row.order_id);
+    dispatches.sort_by_key(|row| row.order_id);
+    crate::payments::conserved(opening, &state)?;
     Ok(ClosedMaterialPeriod {
         next_period,
         transition: MaterialCircuitTransition {
             state,
+            household_demand,
+            household_consumption,
+            procurement,
+            production_plans,
+            prices,
             money_transfers,
             wage_accruals,
             labor_use,

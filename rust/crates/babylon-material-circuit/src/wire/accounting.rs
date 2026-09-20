@@ -107,6 +107,7 @@ pub(super) fn append(
         bytes.extend_from_slice(&row.payee.as_bytes());
         bytes.extend_from_slice(&row.hourly_rate.micro_units().to_be_bytes());
     })?;
+    super::recurring::append(output, economy.recurring.as_deref())?;
     Ok(())
 }
 
@@ -178,5 +179,6 @@ pub(super) fn decode(cursor: &mut Cursor<'_>) -> Result<CircuitAccounting, Mater
             shifts,
         })?,
         employment,
+        recurring: super::recurring::decode(cursor)?,
     }))
 }

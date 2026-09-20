@@ -31,6 +31,7 @@ fn opening() -> MaterialCircuitState {
     MaterialCircuitState {
         period: 1,
         accounting: CircuitAccounting::Monetary(MonetaryCircuit {
+            recurring: None,
             book: MonetaryBook::open(vec![
                 CashAccount {
                     id: AccountId::Site(source()),

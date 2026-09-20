@@ -1,6 +1,6 @@
 meta:
   contract: MaterialCircuitV3
-  schema_version: 5
+  schema_version: 6
   evidence_class: Designed
   rust_owner: babylon-material-circuit
 
@@ -15,11 +15,15 @@ scope:
   - one bounded maintenance provider consumes parts and labor to enable next-period batches
   - explicit physical controls or captured monetary accounts, purchase reserves, and attendance wages
   - exact funded settlement follows actual arrival or local handoff; departure is not a sale
-  - no routing, household behavior, consumption, price discovery, credit, or tax policy decisions occur here
+  - optional recurring resident needs, funded purchases, stocks, consumption, procurement, and subsequent plans
+  - fixed-price controls and captured bounded responsive offers use the same physical allocator
+  - no route search, credit creation, exchange-rate policy, or tax policy decisions occur here
 
 domains:
   state: babylon.material-circuit-state.v3
   freight_lot_identity: babylon.freight-lot.v2
+  household_order_identity: babylon.recurring-household-order.v1
+  procurement_identity: babylon.recurring-procurement.v1
   terminator_hex: "00"
 
 encoding:
@@ -41,6 +45,8 @@ encoding:
   outbound_order_u8: {delivery: 1, local_final_demand: 2}
   outbound_order_identity: outbound_order_u8 followed by raw-32-byte order ID
   shift_state_u8: {reserved: 1, accrued: 2, paid: 3, cancelled: 4}
+  boolean_u8: {disabled: 0, enabled: 1}
+  price_policy_u8: {fixed: 1, responsive: 2}
   currency: signed i128 exact micro-units; 1000000 micro-units per currency unit; no float conversion
   maintenance_options: independent presence tags followed by fields; both present or both absent
   unsupported_schema: refuse; no legacy decoding or migration
@@ -76,7 +82,7 @@ state_field_order:
 
 accounting_field_order:
   physical_control: [accounting_mode_u8]
-  monetary: [accounting_mode_u8, accounts, purchases, shifts, employment]
+  monetary: [accounting_mode_u8, accounts, purchases, shifts, employment, optional_recurring]
 
 monetary_row_field_order:
   accounts: [account_identity, cash_i128]
@@ -91,6 +97,43 @@ monetary_canonical_keys:
   purchases: [outbound_order_u8, order_id]
   shifts: [id]
   employment: [site_id, unit_id]
+
+
+recurring_field_order:
+  - optional_presence_u8
+  - last_household_admission_period
+  - last_household_consumption_period
+  - households
+  - household_stocks
+  - household_needs
+  - household_purchases
+  - offers
+  - replenishment
+  - production
+  - attendance
+
+recurring_row_field_order:
+  households: [principal_id, households, persons]
+  household_stocks: [principal_id, good_id, unit_id, quantity]
+  household_needs: [principal_id, good_id, unit_id, units_per_person]
+  household_purchases: [principal_id, retailer_site_id, good_id, unit_id, target_closing_stock,
+                        maximum_purchase, enabled_u8]
+  offers: [site_id, good_id, unit_id, unit_price_i128, price_policy_u8, conditional_price_policy_fields]
+  responsive_price_policy: [minimum_i128, maximum_i128, step_i128, target_stock]
+  replenishment: [buyer_site_id, supplier_site_id, good_id, unit_id, target_stock, maximum_purchase,
+                  cash_floor_i128]
+  production: [process_id, site_id, output_buffer, planned_batches]
+  attendance: [site_id, unit_id, period, planned_hours]
+
+recurring_canonical_keys:
+  households: [principal_id]
+  household_stocks: [principal_id, good_id, unit_id]
+  household_needs: [principal_id, good_id, unit_id]
+  household_purchases: [principal_id, good_id, unit_id]
+  offers: [site_id, good_id, unit_id]
+  replenishment: [buyer_site_id, supplier_site_id, good_id, unit_id]
+  production: [process_id]
+  attendance: [site_id, unit_id]
 
 row_field_order:
   site_logistics_nodes: [site_id, node_id]
@@ -155,7 +198,8 @@ admission:
   - every order and supplier good-unit principal has one positive mass coefficient
   - extra mass coefficients and unused route topology may remain
   - missing period capacity means zero availability, not a malformed register
-  - every merchant owns a unique site and handling capacity, disjoint from production sites and route capacities
+  - every merchant owns a unique handling capacity disjoint from route capacities
+  - production and merchant work at one site share its inventory and exact site-unit labor budget
   - every merchant site has a logistics node, valid county GEOID, and one labor-unit principal
   - each merchant outbound good-unit has positive exact handling hours and mass per native unit
   - each final-demand principal owns one unique county account
@@ -173,6 +217,13 @@ admission:
   - a final-demand purchase reserve matches fulfilled quantity and has no refunded quantity in this close
   - committed shift rows contain only accrued unpaid obligations earned in a positive period before the opening period
   - all monetary row families have strictly increasing canonical keys before book reconstruction
+  - recurring households are explicit resident cohorts, never inferred from workplace jobs
+  - each configured household need has an explicit stock row and purchase policy, including zeros
+  - every finite order of a configured household names a captured recipient stock before admission
+  - recurring production has one policy per process and at most one process per site-output-good-unit
+  - recurring attendance exactly covers employment principals at the opening period
+  - both recurring household phase cursors equal the preceding period at a canonical opening
+  - responsive quotes remain inside positive captured bounds; admitted escrows retain their own prices
 
 allocation:
   order_request: full remaining native quantity
@@ -197,9 +248,11 @@ period_close:
   - complete due stages and attribute stage-specific native-unit loss
   - credit retained final arrival to destination inventory once
   - settle accepted arrived quantities and refund newly lost quantities from their existing purchase reserves
+  - retire already settled prior purchase principals before new admissions need their bounded slots
   - pay outstanding earned wages from their existing payroll reserves
-  - fund opening attendance in canonical site-unit order, bounded by exact spendable cash and available whole hours
+  - fund planned attendance in canonical site-unit order, bounded by spendable cash and available whole hours
   - accrue and pay each funded attendance commitment before work; productive utilization is recorded separately
+  - admit recurring household orders after payroll, sharing actual cash in canonical household-good-unit order
   - execute existing prior production commitments bounded by opening enabled maintenance batches
   - expire unused opening service and perform whole maintenance jobs from inputs before outbound local credits
   - allocate routed and local outbound requests against shared stock, route mass and merchant handling mass
@@ -211,10 +264,19 @@ period_close:
   - debit merchant handling mass and labor exactly once per actual outbound
   - debit retail stock and credit positive local order fulfillment exactly once without a freight lot
   - record handling receipts including explicit zero feasible and actual work
-  - credit local internal buyers only after all outbound grants and debits are fixed
+  - credit actual household handoffs to stock and settle them; expire unfilled recurring requests with refunds
+  - replenish firm inventory positions, counting undelivered order quantities once including their transit
+  - allocate only newly admitted deliveries in a second pass through the same remaining resource budgets
+  - credit local internal buyers only after both outbound passes fix all grants and debits
   - local credits cannot feed another outbound order until a following close
   - settle actual local supplier transfers and retail handoffs from their admitted purchase reserves
-  - record actual used hours and paid idle hours after production, maintenance, and handling
+  - consume recurring household needs from actual stocks, retaining unmet consumption as dated evidence
+  - record used, paid idle, planned unfunded, and available unplanned hours separately
+  - derive subsequent production from dispatched and unfulfilled demand, output stock, and captured buffers
+  - forecast already funded freight due before subsequent production without crediting current usable inventory
+  - derive subsequent attendance from distinct production, merchant, and maintenance work requests
+  - update next quotes from captured fixed or bounded stock-and-unserved-demand policies
+  - retire terminal physical and financial purchase principals together after their evidence is recorded
   - audit total cash plus live purchase and payroll reserves without counting wage claims as extra money
   - rebuild unshipped backlog
   - derive next-period staffing and production through their existing exact rules
@@ -241,19 +303,27 @@ conservation:
     maintenance spare consumption plus staged dispatch plus local transfer outflow plus final fulfillment plus
     closing stock
   - local fulfilled cumulative quantity increments only by positive local fulfillment receipts
-  - final-demand account totals are derived from finite order rows and do not assert actual consumption
+  - finite final-demand fulfillment remains distinct from household consumption
+  - household opening stock plus actual handoffs equals consumption plus closing stock
+  - required household consumption equals consumed plus unmet quantity, independently of employment
+  - generated household admitted quantity equals fulfilled plus expired refunded quantity
   - total spendable cash plus purchase reserves plus payroll reserves is unchanged by the close
   - purchase reserve equals fixed unit price multiplied by (quantity - delivered - refunded)
   - each money transfer has equal opposite signed postings with named cash or reserve locations
   - attendance accrual creates one employer payable and matching worker receivable without a cash movement
   - wage payment consumes its payroll reserve and extinguishes the matching obligation
-  - funded hours equal used hours plus paid idle hours; available hours equal funded plus unfunded hours
+  - funded hours equal used hours plus paid idle hours
+  - planned available hours equal funded plus unfunded hours
+  - available hours equal planned available plus unplanned hours
 
 limits:
   rows_per_family: 65536
   combined_routed_and_local_orders: 65536
   stages_per_route: 16
   total_freight_resource_requests: 1114112
+  handling_receipts_per_period: 131072
+  money_transfers_per_period: 655360
+  receipt_bounds: Derived from at most two outbound passes and the bounded payroll and purchase phases
   classification: Designed bounds on execution and serialization, not material abundance
 
 error_codes:

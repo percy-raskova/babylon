@@ -11,10 +11,10 @@ use crate::{
     WageAccrualReceipt, MAX_MATERIAL_CIRCUIT_ROWS,
 };
 
-/// Derived close ceiling: one prior wage payment, two current payroll movements,
-/// and at most two purchase movements per bounded principal family. The complete
-/// receipt envelope still has its independent byte ceiling.
-pub const MAX_MONEY_TRANSFERS_PER_PERIOD: usize = 5 * MAX_MATERIAL_CIRCUIT_ROWS;
+/// Derived close ceiling: 3N payroll, 2N old purchase movements, 3N household
+/// admission/settlement/refund and 2N new firm admission/settlement movements.
+/// The complete receipt envelope retains its independent byte ceiling.
+pub const MAX_MONEY_TRANSFERS_PER_PERIOD: usize = 10 * MAX_MATERIAL_CIRCUIT_ROWS;
 
 /// Controls declare that they omit money; monetary campaigns never infer this
 /// from missing accounts or prices. Both use the same physical allocator.
@@ -26,6 +26,7 @@ pub enum CircuitAccounting {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MonetaryCircuit {
+    pub recurring: Option<Box<crate::RecurringEconomy>>,
     pub book: MonetaryBook,
     pub employment: Vec<EmploymentTerms>,
 }
@@ -48,6 +49,8 @@ pub struct LaborUseReceipt {
     pub payee: FinalDemandPrincipalId,
     pub period: u64,
     pub available_hours: u64,
+    pub planned_hours: u64,
+    pub unplanned_hours: u64,
     pub funded_hours: u64,
     pub unfunded_hours: u64,
     pub used_hours: u64,
@@ -74,6 +77,9 @@ impl From<MonetaryError> for MaterialCircuitError {
 
 pub(crate) fn canonicalize(accounting: &mut CircuitAccounting) {
     if let CircuitAccounting::Monetary(economy) = accounting {
+        if let Some(recurring) = &mut economy.recurring {
+            crate::recurring::canonicalize(recurring);
+        }
         economy
             .employment
             .sort_by_key(|row| (row.site_id, row.unit_id));
@@ -198,6 +204,7 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<(), MaterialCircu
         )?;
     }
     economy.book.total_cash_and_reserves()?;
+    crate::recurring::validate(state)?;
     Ok(())
 }
 
@@ -347,8 +354,23 @@ pub(crate) fn fund_attendance(
             .book
             .cash(AccountId::Site(terms.site_id))?
             .micro_units();
+        let planned = if let Some(recurring) = &economy.recurring {
+            let index = recurring
+                .attendance
+                .binary_search_by_key(&(labor.site_id, labor.unit_id), |row| {
+                    (row.site_id, row.unit_id)
+                })
+                .map_err(|_| MaterialCircuitError::PayrollInvariant)?;
+            let plan = &recurring.attendance[index];
+            if plan.period != state.period {
+                return Err(MaterialCircuitError::PeriodInvariant);
+            }
+            plan.planned_hours.min(labor.available)
+        } else {
+            labor.available
+        };
         let affordable = cash / terms.hourly_rate.micro_units();
-        let funded = u64::try_from(affordable.min(i128::from(labor.available)))
+        let funded = u64::try_from(affordable.min(i128::from(planned)))
             .map_err(|_| MaterialCircuitError::Arithmetic)?;
         receipts.push(LaborUseReceipt {
             site_id: labor.site_id,
@@ -356,8 +378,10 @@ pub(crate) fn fund_attendance(
             payee: terms.payee,
             period: state.period,
             available_hours: labor.available,
+            planned_hours: planned,
+            unplanned_hours: labor.available - planned,
             funded_hours: funded,
-            unfunded_hours: labor.available - funded,
+            unfunded_hours: planned - funded,
             used_hours: 0,
             paid_idle_hours: funded,
         });

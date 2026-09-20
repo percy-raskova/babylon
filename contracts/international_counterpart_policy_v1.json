@@ -1,0 +1,42 @@
+{
+  "contract": "InternationalCounterpartPolicyV1",
+  "counterparts": [
+    "canada",
+    "mexico",
+    "china",
+    "russia",
+    "india",
+    "japan",
+    "european_union",
+    "remaining_europe",
+    "latin_america_caribbean",
+    "west_asia_north_africa",
+    "sub_saharan_africa",
+    "remaining_asia_pacific"
+  ],
+  "edge_decisions": {
+    "antarctica": "UN area 010 is nonmarket; no Census code or zero trade is invented.",
+    "china_statistical_scope": "China counterpart means mainland statistical scope; Taiwan, Hong Kong and Macao are separate reporting identities in remaining Asia-Pacific.",
+    "eu27": "Fixed EU27 override includes Cyprus despite UN Western Asia classification; no automatic overseas dependency inclusion.",
+    "freely_associated": "Marshall Islands, Micronesia and Palau are freely associated states, not US dependencies.",
+    "iran": "Iran assigned West Asia/North Africa despite UN Southern Asia classification.",
+    "kosovo": "UN statistical extension 412 from methodology FAQ; Census reporter KV is not an ISO assignment. Remaining Europe.",
+    "palestine": "Keep UN parent 275 for population; Census 5082/5083 are disjoint trade-only leaves assigned West Asia/North Africa, not population units.",
+    "remaining_northern_america": "Greenland, Bermuda and Saint Pierre and Miquelon assigned remaining Europe as approved governance/market approximation."
+  },
+  "evidence_class": "Designed",
+  "issue": "PER-31",
+  "semantics": {
+    "controls": "All fifteen 000x/00xx aggregate, product and FTA controls are non-additive diagnostics. World nonseasonally adjusted control reconciliation is reported, not forced. Never add controls to leaves.",
+    "dependencies": "Six explicit US dependency reporting identities are excluded from external counterpart totals and remain missing in the supplied trade workbook. US domestic row is also missing. Freely associated Marshall Islands, Micronesia and Palau remain counterpart members.",
+    "directions": "us_imports is goods from counterpart to US; us_exports is goods from US to counterpart. Directions never netted or collapsed.",
+    "identity": "Census Schedule C codes identify reporting areas; its reporter-code column is not universally ISO (KV, GZ, WE). M49 references and Taiwan/Kosovo statistical extensions do not infer sovereignty.",
+    "membership": "Explicit pinned assignment to twelve Designed game counterparts. UN geographic regions are a starting classification, not a theory of class position, imperialism, ownership, sovereignty or markets. EU27 is a Designed fixed membership list; overseas areas remain separate source reporting units and follow their own assigned geography.",
+    "missingness": "Blank annual cell is missing_cell; absent workbook row is not_published. Neither becomes an observed zero. Directional published_sum is a subtotal of known leaf observations; complete_sum only means no missing annual cell among selected published leaves, never completeness of all geographic areas or trade activity.",
+    "population_aggregation": "Use population_identity_id and population_aggregation. Geographic/statistical identities may receive independent scoped statistics later. Census Gaza/West Bank are trade-only children of m49:275 and excluded from independent population/production aggregation. Their parent has no fabricated trade row. China statistics must have explicit mainland scope before combining them with Taiwan/Hong Kong/Macao; the roster alone supplies no population.",
+    "precision": "Annual and monthly XML numeric tokens retained literally. Exact decimal derived sums and annual-minus-monthly differences expose source spreadsheet tails; they do not increase measurement precision or authorize monetary ledger amounts.",
+    "scope": "Source component only. No runtime hydration, inventory, purchasing power, ownership, productive capacity, labor supply, world quantities or infinite import/export supply is established. No missing-data imputation is authorized by this artifact.",
+    "source_unit": "millions of nominal US dollars; goods trade, not services; not seasonally adjusted leaf observations",
+    "vintages": "2024 trade rows from supplied workbook; 2026-09-20 UN/Census/DOI roster snapshot. This is not a historical 2024 jurisdiction roster or a claim of current trade values."
+  }
+}

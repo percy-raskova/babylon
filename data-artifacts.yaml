@@ -1521,3 +1521,25 @@ artifacts:
       Source pins reuse tools/national_county_reference_2024_sources.json.
       This source foundation grants no worker/site allocation, production
       recipes, capacities, invented employers or runtime hydration.
+  - name: international_counterpart_reference_2024
+    format: csv.gz
+    source_table: null
+    generator: tools/make_international_counterpart_reference.py
+    mode: register
+    rows: 252
+    sha256: 658fa904c1c4255edb64e2151d9a22bcd96ad74a4cf37dc63b6cb05fcc135b53
+    home: src/babylon/data/reference/economy/international_counterpart_reference_2024.csv.gz
+    material_relation: >-
+      Part of PER-31: 252 explicit geographic/statistical and trade-reporting
+      identities, with 233 observed 2024 Census goods-trade leaves assigned
+      disjointly to twelve Designed counterparts. Fifteen aggregate, product
+      and FTA controls remain non-additive diagnostics. Imports and exports
+      retain separate annual/monthly source decimal tokens and missingness.
+      Six US dependencies remain separate, with no invented trade values;
+      freely associated states stay external counterparts. Gaza/West Bank
+      are trade-only leaves linked to the Palestine population identity.
+      The pinned UN/Census/DOI roster snapshot is from September 2026 and
+      does not claim historical 2024 jurisdiction coverage. Explicit
+      membership, edge decisions, source pins and reconciliation accompany
+      this artifact. No population allocation, production, purchasing power,
+      inventory, infinite supply or runtime hydration is established.

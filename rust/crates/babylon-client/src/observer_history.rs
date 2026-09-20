@@ -789,7 +789,7 @@ fn paint_log(
             }
         }
         if snapshot.events.is_empty() {
-            panel.spawn(label("No developments are recorded through this point in the campaign. Advance a period from the live edge to follow production and deliveries.", 14.0, theme::PAPER));
+            panel.spawn(label("No developments are recorded for the selected period. Choose another period to inspect its committed evidence.", 14.0, theme::PAPER));
             return;
         }
         spawn_log_entries(panel, snapshot, &context, &history);
@@ -810,7 +810,7 @@ fn spawn_log_entries(
         }
     };
     panel.spawn(label(format!(
-        "Latest {} of {} developments / {} original evidence entries. Expand a delivery to inspect its committed evidence.",
+        "Selected period: {} of {} developments / {} original evidence entries. Choose another period for earlier evidence; expand a delivery for its receipt.",
         log.entries.len(), log.total_entries, log.evidence_entries
     ), 11.0, theme::GRAY));
     let mut previous_period = None;
@@ -1025,7 +1025,7 @@ mod tests {
                 labor_accounts: Vec::new(),
                 staffing_accounts: Vec::new(),
                 scenario_label: "Designed test campaign".into(),
-                horizon_period: 16,
+                duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
                 sites: vec![],
                 routes: vec![],
                 freight: vec![],

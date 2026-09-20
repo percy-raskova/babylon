@@ -301,7 +301,7 @@ fn try_session(
         graph,
         material,
         sha256_of(b"organizer-replay-fixture-foundation"),
-        8,
+        babylon_kernel::clock::CampaignDuration::Finite { final_period: 8 },
         staffing(),
     )
 }

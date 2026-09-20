@@ -22,7 +22,6 @@ use std::path::Path;
 
 pub const MICHIGAN_INDUSTRY_BASELINE_SHA256: &str =
     "eb486d7e11b8b63fc58c53ab918eff84b341b293a66faf422ddb9304fb2b553e";
-pub const MICHIGAN_MAX_HORIZON_PERIODS: u64 = 16;
 pub const MAX_MICHIGAN_CAPTURED_CONTENT_BYTES: usize = 64 * 1024 * 1024;
 const SOURCE_URL: &str = "https://data.bls.gov/cew/data/files/2024/csv/2024_annual_by_area.zip";
 const ID_DOMAIN: &str = "babylon.michigan-material.v1";
@@ -262,7 +261,9 @@ impl MichiganMaterialCatalog {
         )
         .map_err(|_| MichiganDefinesError::Canonical)?;
         capture.experiment = Some(spec.clone());
-        capture.defines.horizon_periods = spec.horizon;
+        capture.defines.duration = babylon_kernel::clock::CampaignDuration::Finite {
+            final_period: spec.horizon,
+        };
         capture.interventions.clear();
         capture.graph_scenario_source =
             crate::simulation_experiment::regional::scenario(&capture.normalized);
@@ -325,7 +326,7 @@ impl MichiganMaterialCatalog {
             };
         }
         Self::capture(MichiganCapturedContent {
-            schema: "MichiganCapturedContentV5".to_owned(),
+            schema: "MichiganCapturedContentV6".to_owned(),
             organizer: None,
             experiment: None,
             graph_scenario_source,
@@ -350,7 +351,7 @@ impl MichiganMaterialCatalog {
         {
             return Err(Material(MichiganMaterialError::Bound));
         }
-        if capture.schema != "MichiganCapturedContentV5" {
+        if capture.schema != "MichiganCapturedContentV6" {
             return Err(MichiganDefinesError::Canonical);
         }
         if let Some(spec) = &capture.experiment {
@@ -363,7 +364,7 @@ impl MichiganMaterialCatalog {
                 spec,
             )
             .map_err(|_| MichiganDefinesError::Canonical)?;
-            if capture.normalized.horizon_ticks != spec.horizon
+            if capture.normalized.duration.final_period() != Some(spec.horizon)
                 || capture.base_preset != MichiganDeliveryPreset::Standard
                 || capture.selected_preset != MichiganDeliveryPreset::Standard
                 || !capture.interventions.is_empty()
@@ -377,7 +378,7 @@ impl MichiganMaterialCatalog {
             {
                 return Err(MichiganDefinesError::Canonical);
             }
-        } else if capture.normalized.horizon_ticks > MICHIGAN_MAX_HORIZON_PERIODS {
+        } else if capture.normalized.duration != capture.defines.duration {
             return Err(MichiganDefinesError::Canonical);
         }
         validate::canonicalize(&mut capture.normalized, &mut capture.interventions);
@@ -454,8 +455,8 @@ impl MichiganMaterialCatalog {
         self.defines_digest
     }
     #[must_use]
-    pub const fn horizon_ticks(&self) -> u64 {
-        self.scenario.horizon_ticks
+    pub const fn duration(&self) -> babylon_kernel::clock::CampaignDuration {
+        self.scenario.duration
     }
     #[must_use]
     pub fn staffing(&self) -> &MichiganStaffingDesign {

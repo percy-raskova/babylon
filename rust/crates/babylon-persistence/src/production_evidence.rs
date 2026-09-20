@@ -1,10 +1,11 @@
-//! V8 identity of an already-authorized production presentation.
+//! V9 identity of an already-authorized production presentation.
 //!
 //! Scope and the complete typed DTO are serialized as canonical JSON after the
 //! fixed domain/version. True multisets sort; events, geometry vertices and each
 //! route's physical edge sequence retain their semantic order. Serialization
-//! streams into the hash with an explicit byte ceiling. V8 includes household
-//! stocks and consumption, expiry, and bounded order lists with lifetime totals.
+//! streams into the hash with an explicit byte ceiling. V9 binds the explicit
+//! duration and selected-period events alongside household stocks, consumption,
+//! expiry, and bounded order lists with cumulative totals.
 
 use crate::{
     observer_reader::ObserverEconomySnapshot, observer_reader::ObserverVisibility,
@@ -17,7 +18,7 @@ use std::{
     io::{self, Write},
 };
 
-const DOMAIN: &[u8] = b"babylon.production-observation-evidence.v8\0";
+const DOMAIN: &[u8] = b"babylon.production-observation-evidence.v9\0";
 const MAX_ROWS: usize = 65_536;
 const MAX_PHYSICAL_ROWS: usize = 1_114_112;
 const MAX_EVIDENCE_BYTES: usize = 128 * 1024 * 1024;
@@ -97,7 +98,7 @@ impl ObserverEconomySnapshot {
             bound: false,
         };
         output.hash.update(DOMAIN);
-        output.hash.update(8_u32.to_be_bytes());
+        output.hash.update(9_u32.to_be_bytes());
         if serde_json::to_writer(&mut output, &scope).is_err() {
             return Err(if output.bound {
                 ProductionEvidenceError::Bound

@@ -266,7 +266,10 @@ fn qualify_contact_and_pause(runtime: &mut DurableMaterialRuntime) {
     );
 }
 
-fn qualify_resume_and_horizon(runtime: &mut DurableMaterialRuntime, inquiry: &OrganizerCommand) {
+fn qualify_resume_and_continuation(
+    runtime: &mut DurableMaterialRuntime,
+    inquiry: &OrganizerCommand,
+) {
     let resume = command(runtime, OrganizerChoice::ResumeStanding, 7);
     runtime.submit_organizer_command(&resume).unwrap();
     advance_material_period(runtime);
@@ -278,18 +281,17 @@ fn qualify_resume_and_horizon(runtime: &mut DurableMaterialRuntime, inquiry: &Or
             .standing
             .authorized
     );
-    while runtime.session().completed_tick() < runtime.session().horizon() {
+    assert_eq!(
+        runtime.session().duration(),
+        babylon_kernel::clock::CampaignDuration::Continuous
+    );
+    while runtime.session().completed_tick() < 17 {
         advance_material_period(runtime);
     }
     let final_command = command(runtime, OrganizerChoice::Hold, 17);
-    assert_eq!(
-        runtime.preview_organizer_command(&final_command),
-        Err(RuntimeSessionErrorCode::HorizonComplete)
-    );
-    assert_eq!(
-        runtime.submit_organizer_command(&final_command),
-        Err(RuntimeSessionErrorCode::HorizonComplete)
-    );
+    assert!(runtime.preview_organizer_command(&final_command).is_ok());
+    let admitted = runtime.submit_organizer_command(&final_command).unwrap();
+    assert_eq!(admitted.resolves_period, 18);
     assert_eq!(
         runtime
             .submit_organizer_command(inquiry)
@@ -297,7 +299,10 @@ fn qualify_resume_and_horizon(runtime: &mut DurableMaterialRuntime, inquiry: &Or
             .resolves_period,
         3
     );
-    assert!(runtime.organizer_snapshot().unwrap().pending.is_none());
+    assert_eq!(
+        runtime.organizer_snapshot().unwrap().pending,
+        Some(admitted)
+    );
 }
 
 fn assert_projection_metadata_refused(
@@ -511,5 +516,5 @@ fn organizer_durable_ruling_failure_retry_earned_history_and_contact_recovery() 
     drop(runtime);
     runtime = DurableMaterialRuntime::open(&target.writer, campaign, digest).unwrap();
     assert_eq!(runtime.session().material().canonical_bytes(), saved);
-    qualify_resume_and_horizon(&mut runtime, &inquiry);
+    qualify_resume_and_continuation(&mut runtime, &inquiry);
 }

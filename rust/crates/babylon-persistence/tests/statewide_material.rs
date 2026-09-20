@@ -15,7 +15,7 @@ use babylon_persistence::{
 };
 use babylon_practice_contract::OrderedPracticeActionBatch;
 use babylon_tick::{
-    material_replay::{MaterialReplayError, MaterialReplaySession, PreparedMaterialTick},
+    material_replay::{MaterialReplaySession, PreparedMaterialTick},
     material_world::{
         decode_material_receipts, MaterialTickReceipts, MaterialWorldRegister,
         MAX_MATERIAL_WORLD_REGISTER_BYTES,
@@ -332,10 +332,7 @@ fn synthetic_statewide_roster_completes_sixteen_authenticated_periods_with_nativ
     let actions =
         OrderedPracticeActionBatch::empty(session.graph_session().session_identity().clone(), 17)
             .unwrap();
-    assert!(matches!(
-        session.prepare_advance(&actions),
-        Err(MaterialReplayError::Horizon)
-    ));
+    assert!(session.prepare_advance(&actions).is_ok());
     assert_eq!(before, session.current_world_hash().unwrap());
     assert_eq!(session.completed_tick(), 16);
     eprintln!(
@@ -385,7 +382,7 @@ fn captured_session(catalog: &MichiganMaterialCatalog) -> (Session, usize) {
     assert_eq!(state.labor.len(), 397);
     let admitted = admit_michigan_content(
         preset.id(),
-        16,
+        foundation.spec().duration,
         &foundation.spec().content_digest,
         &foundation.digest(),
         0,
@@ -397,7 +394,7 @@ fn captured_session(catalog: &MichiganMaterialCatalog) -> (Session, usize) {
     *corrupted.last_mut().unwrap() ^= 1;
     assert!(admit_michigan_content(
         preset.id(),
-        16,
+        foundation.spec().duration,
         &foundation.spec().content_digest,
         &foundation.digest(),
         0,
@@ -482,7 +479,7 @@ fn new_reads_pinned_siblings_and_saved_open_survives_changed_or_missing_source_f
     assert!(MichiganMaterialCatalog::load_for_preset(&defines_path, delivery).is_err());
     let opened = admit_michigan_content(
         preset.id(),
-        16,
+        foundation.spec().duration,
         &foundation.spec().content_digest,
         &foundation.digest(),
         0,

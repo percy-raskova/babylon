@@ -1,5 +1,7 @@
 //! Shared gram capacity from authenticated opening budgets and committed movements.
 
+mod rolling;
+
 use super::{
     outbound::{completed_facts, identity, same_rows, OutboundFact},
     ProductionProjectionError,
@@ -240,7 +242,6 @@ fn completed_reservations(
     for id in principals.keys() {
         reservations.entry((*id, prior.period)).or_default();
     }
-    let prior_budgets = budgets(prior)?;
     for fact in facts {
         let order = capacity_order(&fact)?;
         if fact.transport == Some(SupplierTransport::Staged) {
@@ -274,12 +275,22 @@ fn completed_reservations(
                 .push(order);
         }
     }
-    reconcile_reservation_budgets(
-        &prior_budgets,
-        current_budgets,
-        current.period,
-        reservations,
-    )
+    match (&prior.capacity_supply, &current.capacity_supply) {
+        (
+            babylon_material_circuit::CapacitySupply::FiniteSchedule,
+            babylon_material_circuit::CapacitySupply::FiniteSchedule,
+        ) => reconcile_reservation_budgets(
+            &budgets(prior)?,
+            current_budgets,
+            current.period,
+            reservations,
+        ),
+        (
+            babylon_material_circuit::CapacitySupply::Rolling(before),
+            babylon_material_circuit::CapacitySupply::Rolling(after),
+        ) => rolling::reconcile(prior, current, before, after, reservations),
+        _ => Err(ProductionProjectionError::State),
+    }
 }
 
 fn reconcile_reservation_budgets(
@@ -288,6 +299,18 @@ fn reconcile_reservation_budgets(
     next_period: u64,
     reservations: Reservations,
 ) -> Result<BTreeMap<CapacityKey, ProductionFreightReservation>> {
+    let (mut expected, result) = reservation_receipts(prior, reservations)?;
+    expected.retain(|(_, period), _| *period >= next_period);
+    if expected != *current {
+        return Err(ProductionProjectionError::State);
+    }
+    Ok(result)
+}
+
+fn reservation_receipts(
+    prior: &Budgets,
+    reservations: Reservations,
+) -> Result<(Budgets, BTreeMap<CapacityKey, ProductionFreightReservation>)> {
     let mut expected = prior.clone();
     let mut result = BTreeMap::new();
     for (key, mut orders) in reservations {
@@ -314,11 +337,7 @@ fn reconcile_reservation_budgets(
             },
         );
     }
-    expected.retain(|(_, period), _| *period >= next_period);
-    if expected != *current {
-        return Err(ProductionProjectionError::State);
-    }
-    Ok(result)
+    Ok((expected, result))
 }
 
 #[cfg(test)]

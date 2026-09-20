@@ -77,9 +77,9 @@ fn catalog(inputs: &Inputs, candidate: &Candidate) -> Result<(MichiganMaterialCa
             "shortage opening stock must be strictly below baseline; zero is allowed",
         ));
     }
-    if base.horizon_ticks() != PERIODS {
+    if !base.duration().contains(PERIODS) {
         return Err(refused(
-            "candidate must have the current sixteen-period horizon",
+            "candidate must admit the explicit sixteen-period observation window",
         ));
     }
     let catalog = MichiganMaterialCatalog::from_statewide_qualification(

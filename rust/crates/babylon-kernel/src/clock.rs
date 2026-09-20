@@ -53,3 +53,6 @@ mod tests {
         assert_eq!(SessionId::new(""), Err(EmptySessionId));
     }
 }
+
+mod duration;
+pub use duration::{CampaignDuration, InvalidCampaignDuration};

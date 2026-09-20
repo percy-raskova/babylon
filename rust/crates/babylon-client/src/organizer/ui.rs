@@ -1212,9 +1212,9 @@ fn paint_text(scope: &Scope, focus: &InputFocus, paint: &mut Paint) {
             TextPart::Title => scope.client.view.as_ref().map_or_else(|| "Wayne Organizing Collective".into(), |view| view.organization_label.clone()),
             TextPart::Situation => scope.client.view.as_ref().map_or_else(|| "Awaiting the committed organizer situation…".into(), |view| presentation::situation(view, scope.session.viewed_tick)),
             TextPart::Means => scope.client.view.as_ref().map_or_else(String::new, |view| {
-                let horizon = scope.session.horizon_tick.map_or_else(|| "—".into(), |value| value.to_string());
-                if historical { format!("HISTORY · period {} / {horizon}\nCurrent period {} · {} organizer-hours", scope.session.viewed_tick, view.period, view.available_hours) }
-                else { format!("PERIOD {} / {horizon} · 4 weeks\n{} organizer-hours available", view.period, view.available_hours) }
+                let endpoint = scope.session.duration.and_then(babylon_kernel::clock::CampaignDuration::final_period).map_or_else(String::new, |value| format!(" / {value}"));
+                if historical { format!("HISTORY · period {}{endpoint}\nCurrent period {} · {} organizer-hours", scope.session.viewed_tick, view.period, view.available_hours) }
+                else { format!("PERIOD {}{endpoint} · 4 weeks\n{} organizer-hours available", view.period, view.available_hours) }
             }),
             TextPart::Context => scope.client.view.as_ref().map_or_else(String::new, presentation::context),
             TextPart::Aftermath => scope.client.view.as_ref().map_or_else(String::new, |view| presentation::aftermath(view, scope.session.viewed_tick)),

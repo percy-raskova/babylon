@@ -19,7 +19,7 @@ use crate::{
 pub struct OrganizerSnapshot {
     pub view: OrganizerView,
     pub pending: Option<OrganizerCommitment>,
-    pub horizon_tick: u64,
+    pub duration: babylon_kernel::clock::CampaignDuration,
 }
 
 pub(crate) fn decode_commitment(bytes: &[u8]) -> Result<OrganizerCommitment, MaterialRuntimeError> {
@@ -135,7 +135,7 @@ impl DurableMaterialRuntime {
         Ok(OrganizerSnapshot {
             view,
             pending,
-            horizon_tick: self.session().horizon(),
+            duration: self.session().duration(),
         })
     }
     /// Preview a ruling from the current actor-safe knowledge and commitments.
@@ -160,7 +160,7 @@ impl DurableMaterialRuntime {
             .map_err(|error| classify(&error))?;
         self.require_organizer_tail(&mut client)
             .map_err(|error| classify(&error))?;
-        if state.period >= self.session().horizon() {
+        if !self.session().duration().can_advance(state.period) {
             return Err(RuntimeSessionErrorCode::HorizonComplete);
         }
         preview_organizer(config, state, command)
@@ -198,14 +198,14 @@ impl DurableMaterialRuntime {
         tx.batch_execute("SET LOCAL search_path TO pg_catalog; SET LOCAL synchronous_commit TO on")
             .map_err(MaterialRuntimeError::from)
             .map_err(|error| classify(&error))?;
-        tx.query_one("SELECT campaign_id FROM babylon_state.material_campaign_foundation_v2 WHERE campaign_id=$1 FOR UPDATE", &[self.campaign_id().as_uuid()]).map_err(MaterialRuntimeError::from).map_err(|error| classify(&error))?;
+        tx.query_one("SELECT campaign_id FROM babylon_state.material_campaign_foundation_v3 WHERE campaign_id=$1 FOR UPDATE", &[self.campaign_id().as_uuid()]).map_err(MaterialRuntimeError::from).map_err(|error| classify(&error))?;
         if let Some(row) = tx.query_opt("SELECT commitment_bytes,command_bytes,nonce,resolves_period,commitment_sha256 FROM babylon_state.organizer_command_v1 WHERE campaign_id=$1 AND nonce=$2", &[self.campaign_id().as_uuid(), &&command.nonce[..]]).map_err(MaterialRuntimeError::from).map_err(|error| classify(&error))? {
             if row.get::<_,Vec<u8>>("command_bytes") != command_bytes { return Err(RuntimeSessionErrorCode::OrganizerNonceConflict); }
             return stored_commitment(&row, self.campaign_id()).map_err(|error| classify(&error));
         }
         self.require_organizer_tail(&mut tx)
             .map_err(|error| classify(&error))?;
-        if state.period >= self.session().horizon() {
+        if !self.session().duration().can_advance(state.period) {
             return Err(RuntimeSessionErrorCode::HorizonComplete);
         }
         let accepted = admit_organizer(config, state, command)

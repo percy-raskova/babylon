@@ -308,3 +308,117 @@ fn reservations_for_later_legs_debit_the_future_period_without_claiming_arrival(
         Err(ProductionProjectionError::State)
     );
 }
+
+#[test]
+fn rolling_capacity_reconciles_future_bookings_and_refuses_unexplained_budget_changes() {
+    let catalog = crate::test_support::catalog();
+    let (opening, next, receipt) = committed_pair(rolling_two_stage_opening());
+    let project = |current: &MaterialCircuitState| {
+        project_freight_capacity_accounts(&catalog, current, Some(&opening), Some(&receipt))
+    };
+    let accounts = project(&next).unwrap();
+    let shared = accounts
+        .iter()
+        .find(|row| row.route_ids.len() == 2)
+        .unwrap();
+    assert_eq!(shared.next_opening_available_grams, 160_000);
+    assert_eq!(
+        shared
+            .completed
+            .as_ref()
+            .unwrap()
+            .reservations
+            .iter()
+            .map(|row| (row.reservation_period, row.newly_reserved_grams))
+            .collect::<Vec<_>>(),
+        vec![(1, 160_000), (3, 120_000)]
+    );
+    let babylon_material_circuit::CapacitySupply::Rolling(supply) = &next.capacity_supply else {
+        panic!("rolling supply must survive the close");
+    };
+    assert_eq!(supply.future_reservations.len(), 1);
+    assert_eq!(supply.future_reservations[0].departure_period, 3);
+    assert_eq!(supply.future_reservations[0].reserved_grams, 120_000);
+    let mut changed = next.clone();
+    let babylon_material_circuit::CapacitySupply::Rolling(supply) = &mut changed.capacity_supply
+    else {
+        unreachable!()
+    };
+    supply.future_reservations[0].reserved_grams -= 1;
+    assert_eq!(project(&changed), Err(ProductionProjectionError::State));
+    let mut changed = next.clone();
+    changed.corridor_capacities[0].available_grams -= 1;
+    assert_eq!(project(&changed), Err(ProductionProjectionError::State));
+    let mut changed = next.clone();
+    let babylon_material_circuit::CapacitySupply::Rolling(supply) = &mut changed.capacity_supply
+    else {
+        unreachable!()
+    };
+    supply.shared[0].grams_per_period += 1;
+    assert_eq!(project(&changed), Err(ProductionProjectionError::State));
+}
+
+fn rolling_two_stage_opening() -> MaterialCircuitState {
+    use babylon_material_circuit::{
+        CapacitySupply, InstalledProcessCapacity, RollingCapacitySupply, SharedCapacitySupply,
+    };
+    let mut state = shared_opening(200, 160);
+    let catalog = crate::test_support::catalog();
+    let route = catalog
+        .routes()
+        .iter()
+        .find(|row| row.good_key == "sheet")
+        .unwrap()
+        .id();
+    let first = state
+        .route_stages
+        .iter_mut()
+        .find(|row| row.route_id == route)
+        .unwrap();
+    let destination = first.to_node_id;
+    first.to_node_id = LogisticsNodeId::from_bytes([73; 32]);
+    first.travel_periods = 2;
+    let second = RouteStage {
+        route_id: route,
+        stage_index: 1,
+        from_node_id: first.to_node_id,
+        to_node_id: destination,
+        travel_periods: 1,
+        loss_ppm: 0,
+    };
+    state.route_stages.push(second);
+    let shared = state
+        .route_stage_capacities
+        .iter()
+        .find(|row| row.route_id == route)
+        .unwrap()
+        .corridor_id;
+    state.route_stage_capacities.push(RouteStageCapacity {
+        route_id: route,
+        stage_index: 1,
+        corridor_id: shared,
+    });
+    state.capacities.retain(|row| row.period == 1);
+    state.corridor_capacities.retain(|row| row.period == 1);
+    state.capacity_supply = CapacitySupply::Rolling(Box::new(RollingCapacitySupply {
+        installed_processes: state
+            .capacities
+            .iter()
+            .map(|row| InstalledProcessCapacity {
+                process_id: row.process_id,
+                site_id: row.site_id,
+                batches_per_period: row.available_batches,
+            })
+            .collect(),
+        shared: state
+            .corridor_capacities
+            .iter()
+            .map(|row| SharedCapacitySupply {
+                corridor_id: row.corridor_id,
+                grams_per_period: row.available_grams,
+            })
+            .collect(),
+        future_reservations: Vec::new(),
+    }));
+    state
+}

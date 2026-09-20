@@ -1,8 +1,8 @@
 # Designed Michigan material parameters. Existing campaigns retain their stored values.
 # One simulation period is four weeks; weekly rates are multiplied once when a campaign starts.
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 TICK_DURATION_DAYS = 28 # Fixed supported interval.
-HORIZON_PERIODS = 16 # Campaign stop bound: 1..=16 four-week periods.
+DURATION = { kind = "continuous" } # No designed final period; opening resources remain finite.
 
 # Designed participant time commitments, independent of industrial labor and ActionBudget.
 [organizer]

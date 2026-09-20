@@ -153,7 +153,7 @@ fn production_observation() -> babylon_persistence::production_observation::Prod
         labor_accounts: Vec::new(),
         staffing_accounts: Vec::new(),
         scenario_label: "Read-only surface fixture".into(),
-        horizon_period: 16,
+        duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
         sites: vec![site("source"), site("destination")],
         routes: vec![ProductionRoute {
             physical_edge_ids: Vec::new(),

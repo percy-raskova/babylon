@@ -73,9 +73,9 @@ CROSS JOIN LATERAL (
         AND grant_row.grant_key = 'qcew-average-weekly-wage') AS weekly_wage
 ) AS permission;
 
-CREATE VIEW public.v_material_campaign_identity_v1 AS
-SELECT campaign_id, preset_id, horizon_ticks, content_sha256, foundation_sha256
-FROM babylon_state.material_campaign_foundation_v2;
+CREATE VIEW public.v_material_campaign_identity_v2 AS
+SELECT campaign_id, preset_id, duration_kind, final_period, content_sha256, foundation_sha256
+FROM babylon_state.material_campaign_foundation_v3;
 
 -- Only the observer group receives complete material bytes. Known preview has
 -- no grant on this view or the underlying tables; projection cannot undo that.
@@ -83,7 +83,7 @@ CREATE VIEW public.v_observer_material_state_v1 AS
 SELECT campaign_id, 0::bigint AS resolve_tick, initial_register_bytes AS register_bytes,
        NULL::bytea AS receipt_bytes, NULL::bytea AS identity_bytes,
        NULL::bytea AS tick_content_hash, foundation_bytes
-FROM babylon_state.material_campaign_foundation_v2
+FROM babylon_state.material_campaign_foundation_v3
 UNION ALL
 SELECT state.campaign_id, state.resolve_tick, state.register_bytes,
        state.receipt_bytes, state.identity_bytes, marker.tick_content_hash,
@@ -93,7 +93,7 @@ JOIN babylon_state.tick_commit AS marker
   ON marker.campaign_id = state.campaign_id AND marker.resolve_tick = state.resolve_tick
 WHERE marker.envelope_layout_version = 3;
 
-REVOKE ALL ON public.v_material_campaign_identity_v1,
+REVOKE ALL ON public.v_material_campaign_identity_v2,
               public.v_observer_material_state_v1 FROM PUBLIC;
 
 -- Complete persisted components for authenticated material-tick reconstruction.

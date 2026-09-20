@@ -146,6 +146,7 @@ pub enum MaterialReplayError {
     Material(MaterialWorldError),
     FoundationTick,
     Horizon,
+    ClockExhausted,
     StaleCandidate,
     Identity,
 }
@@ -310,7 +311,7 @@ pub struct MaterialReplaySession<G> {
     graph: ReplayTickSession<G>,
     material: MaterialWorldRegister,
     foundation_digest: [u8; 32],
-    horizon: u64,
+    duration: babylon_kernel::clock::CampaignDuration,
     labor: StaffingComposition,
 }
 /// Fully prepared candidate; dropping it publishes nothing.
@@ -349,13 +350,13 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
         graph: ReplayTickSession<G>,
         material: MaterialWorldRegister,
         foundation_digest: [u8; 32],
-        horizon: u64,
+        duration: babylon_kernel::clock::CampaignDuration,
         labor: StaffingComposition,
     ) -> Result<Self, MaterialReplayError> {
         if graph.completed_tick() != 0 || material.completed_tick() != 0 {
             return Err(MaterialReplayError::FoundationTick);
         }
-        if horizon == 0 || horizon > i64::MAX as u64 {
+        if duration.validate().is_err() {
             return Err(MaterialReplayError::Horizon);
         }
         graph.validate_material_cycle()?;
@@ -365,7 +366,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
             graph,
             material,
             foundation_digest,
-            horizon,
+            duration,
             labor,
         })
     }
@@ -386,8 +387,8 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
         self.foundation_digest
     }
     #[must_use]
-    pub const fn horizon(&self) -> u64 {
-        self.horizon
+    pub const fn duration(&self) -> babylon_kernel::clock::CampaignDuration {
+        self.duration
     }
 
     /// Hash the currently held graph and material world under the successor domain.
@@ -425,8 +426,11 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
         actions: &OrderedPracticeActionBatch,
         commitment: Option<&OrganizerCommitment>,
     ) -> Result<PreparedMaterialTick<G>, MaterialReplayError> {
-        if self.completed_tick() >= self.horizon {
+        if self.duration.complete(self.completed_tick()) {
             return Err(MaterialReplayError::Horizon);
+        }
+        if !self.duration.can_advance(self.completed_tick()) {
+            return Err(MaterialReplayError::ClockExhausted);
         }
         let (graph, material) = self.graph.prepare_material_advance(
             actions,
@@ -495,7 +499,7 @@ impl MaterialReplaySession<babylon_graph::hypergraph_store::HypergraphStore> {
     ) -> Result<(), MaterialReplayError> {
         let material = MaterialWorldRegister::decode(material_bytes)?;
         let tick = material.completed_tick();
-        if tick == 0 || tick > self.horizon {
+        if tick == 0 || !self.duration.contains(tick) {
             return Err(MaterialReplayError::Horizon);
         }
         let tick = i64::try_from(tick).map_err(|_| MaterialReplayError::Identity)?;

@@ -27,7 +27,9 @@ pub(crate) fn configure(
     if spec.profile == ExperimentProfile::HistoricalFreight {
         return Err(ExperimentError::Profile);
     }
-    c.horizon_ticks = spec.horizon;
+    c.duration = babylon_kernel::clock::CampaignDuration::Finite {
+        final_period: spec.horizon,
+    };
     // Historical observations seed employment slots only. Designed hours and
     // recipe labor requirements remain unchanged and are captured separately.
     if let Some(StartingSnapshot::Employment { series, .. }) = &spec.starting_snapshot {

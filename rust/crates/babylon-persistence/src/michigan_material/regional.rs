@@ -78,9 +78,9 @@ struct Corridor {
 
 pub(super) fn blank(defines: &MichiganDefines) -> MichiganNormalizedContent {
     MichiganNormalizedContent {
-        schema: "MichiganNormalizedContentV3".to_owned(),
+        schema: "MichiganNormalizedContentV4".to_owned(),
         evidence_class: "Designed".to_owned(),
-        horizon_ticks: defines.horizon_periods,
+        duration: defines.duration,
         tick_duration_days: defines.tick_duration_days,
         geographic_scale: "county_industry_aggregate".to_owned(),
         terminal_output_disposition: "on_hand_unsold".to_owned(),

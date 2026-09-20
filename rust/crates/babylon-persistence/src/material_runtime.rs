@@ -39,7 +39,7 @@ use babylon_tick::{
 use postgres::{Config, GenericClient, NoTls};
 use std::time::{Duration, Instant};
 
-const FOUNDATION_DOMAIN: &[u8] = b"babylon.material-campaign-foundation.v2\0";
+const FOUNDATION_DOMAIN: &[u8] = b"babylon.material-campaign-foundation.v3\0";
 
 const WRITER_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const WRITER_TCP_USER_TIMEOUT: Duration = Duration::from_secs(30);
@@ -73,7 +73,7 @@ pub(crate) fn bounded_material_writer_config(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaterialFoundationSpec {
     pub preset_id: String,
-    pub horizon_ticks: u64,
+    pub duration: babylon_kernel::clock::CampaignDuration,
     pub content_digest: [u8; 32],
 }
 /// Fresh tick-zero owners and their exact combined foundation.
@@ -148,6 +148,42 @@ impl From<postgres::Error> for MaterialRuntimeError {
     }
 }
 
+/// Exact SQL representation; null means continuous only with its explicit tag.
+pub(crate) fn duration_columns(
+    duration: babylon_kernel::clock::CampaignDuration,
+) -> Result<(&'static str, Option<i64>), MaterialRuntimeError> {
+    use babylon_kernel::clock::CampaignDuration;
+    duration
+        .validate()
+        .map_err(|_| MaterialRuntimeError::Bounds)?;
+    match duration {
+        CampaignDuration::Continuous => Ok(("continuous", None)),
+        CampaignDuration::Finite { final_period } => Ok((
+            "finite",
+            Some(i64::try_from(final_period).map_err(|_| MaterialRuntimeError::Bounds)?),
+        )),
+    }
+}
+pub(crate) fn read_duration(
+    row: &postgres::Row,
+) -> Result<babylon_kernel::clock::CampaignDuration, MaterialRuntimeError> {
+    use babylon_kernel::clock::CampaignDuration;
+    let kind: String = row.try_get("duration_kind")?;
+    let final_period: Option<i64> = row.try_get("final_period")?;
+    let value = match (kind.as_str(), final_period) {
+        ("continuous", None) => CampaignDuration::Continuous,
+        ("finite", Some(period)) => CampaignDuration::Finite {
+            final_period: u64::try_from(period)
+                .map_err(|_| MaterialRuntimeError::FoundationMismatch)?,
+        },
+        _ => return Err(MaterialRuntimeError::FoundationMismatch),
+    };
+    value
+        .validate()
+        .map_err(|_| MaterialRuntimeError::FoundationMismatch)?;
+    Ok(value)
+}
+
 fn validate_foundation_spec(spec: &MaterialFoundationSpec) -> Result<(), MaterialRuntimeError> {
     if spec.preset_id.is_empty()
         || spec.preset_id.len() > 128
@@ -155,8 +191,7 @@ fn validate_foundation_spec(spec: &MaterialFoundationSpec) -> Result<(), Materia
             .preset_id
             .bytes()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-        || spec.horizon_ticks == 0
-        || spec.horizon_ticks > i64::MAX as u64
+        || spec.duration.validate().is_err()
     {
         return Err(MaterialRuntimeError::Bounds);
     }
@@ -227,7 +262,7 @@ impl MaterialRuntimeFoundation {
         };
         let length = FOUNDATION_DOMAIN
             .len()
-            .checked_add(4 + 8 + 32 + 3 * 8)
+            .checked_add(4 + 9 + 32 + 3 * 8)
             .and_then(|n| n.checked_add(spec.preset_id.len()))
             .and_then(|n| n.checked_add(graph_foundation.canonical_bytes().len()))
             .and_then(|n| n.checked_add(register.canonical_bytes().len()))
@@ -240,8 +275,13 @@ impl MaterialRuntimeFoundation {
             .try_reserve_exact(length)
             .map_err(|_| MaterialRuntimeError::Bounds)?;
         bytes.extend_from_slice(FOUNDATION_DOMAIN);
-        bytes.extend_from_slice(&2_u32.to_be_bytes());
-        bytes.extend_from_slice(&spec.horizon_ticks.to_be_bytes());
+        bytes.extend_from_slice(&3_u32.to_be_bytes());
+        bytes.extend_from_slice(
+            &spec
+                .duration
+                .canonical_bytes()
+                .map_err(|_| MaterialRuntimeError::Bounds)?,
+        );
         bytes.extend_from_slice(&spec.content_digest);
         for part in [
             spec.preset_id.as_bytes(),
@@ -349,7 +389,7 @@ impl MaterialRuntimeFoundation {
             self.graph,
             self.register,
             self.digest,
-            self.spec.horizon_ticks,
+            self.spec.duration,
             self.labor,
         )?)
     }
@@ -421,9 +461,8 @@ impl DurableMaterialRuntime {
             }
         } else {
             insert_campaign_foundation_rows(&mut tx, campaign, &foundation.graph_foundation)?;
-            let horizon = i64::try_from(foundation.spec.horizon_ticks)
-                .map_err(|_| MaterialRuntimeError::Bounds)?;
-            tx.execute("INSERT INTO babylon_state.material_campaign_foundation_v2 (campaign_id,preset_id,horizon_ticks,content_sha256,initial_register_bytes,foundation_bytes,foundation_sha256) VALUES ($1::uuid,$2,$3,$4,$5,$6,$7)",&[campaign.as_uuid(),&foundation.spec.preset_id,&horizon,&&foundation.spec.content_digest[..],&foundation.register.canonical_bytes(),&foundation.canonical_bytes(),&&foundation.digest[..]])?;
+            let (duration_kind, final_period) = duration_columns(foundation.spec.duration)?;
+            tx.execute("INSERT INTO babylon_state.material_campaign_foundation_v3 (campaign_id,preset_id,duration_kind,final_period,content_sha256,initial_register_bytes,foundation_bytes,foundation_sha256) VALUES ($1::uuid,$2,$3,$4,$5,$6,$7,$8)",&[campaign.as_uuid(),&foundation.spec.preset_id,&duration_kind,&final_period,&&foundation.spec.content_digest[..],&foundation.register.canonical_bytes(),&foundation.canonical_bytes(),&&foundation.digest[..]])?;
         }
         // Staffed rule ownership is fallible: refuse before any founding rows
         // become durable, so dropping this transaction also removes enrollment.
@@ -645,7 +684,7 @@ impl DurableMaterialRuntime {
         tx.batch_execute(
             "SET LOCAL search_path TO pg_catalog; SET LOCAL synchronous_commit TO on",
         )?;
-        let locked=tx.query_opt("SELECT campaign_id FROM babylon_state.material_campaign_foundation_v2 WHERE campaign_id=$1::uuid FOR UPDATE",&[self.campaign.as_uuid()])?;
+        let locked=tx.query_opt("SELECT campaign_id FROM babylon_state.material_campaign_foundation_v3 WHERE campaign_id=$1::uuid FOR UPDATE",&[self.campaign.as_uuid()])?;
         if locked.is_none() {
             return Err(MaterialRuntimeError::MissingCampaign);
         }
@@ -899,22 +938,21 @@ struct StoredMaterialFoundation {
 
 impl StoredMaterialFoundation {
     fn from_row(row: &postgres::Row) -> Result<Self, MaterialRuntimeError> {
-        let digest = |column: usize| -> Result<[u8; 32], MaterialRuntimeError> {
+        let digest = |column: &str| -> Result<[u8; 32], MaterialRuntimeError> {
             row.try_get::<_, Vec<u8>>(column)?
                 .try_into()
                 .map_err(|_| MaterialRuntimeError::FoundationMismatch)
         };
         Ok(Self {
             spec: MaterialFoundationSpec {
-                preset_id: row.try_get(0)?,
-                horizon_ticks: u64::try_from(row.try_get::<_, i64>(1)?)
-                    .map_err(|_| MaterialRuntimeError::FoundationMismatch)?,
-                content_digest: digest(2)?,
+                preset_id: row.try_get("preset_id")?,
+                duration: read_duration(row)?,
+                content_digest: digest("content_sha256")?,
             },
-            initial_register_bytes: row.try_get(3)?,
-            foundation_bytes: row.try_get(4)?,
-            foundation_digest: digest(5)?,
-            graph_foundation_digest: digest(6)?,
+            initial_register_bytes: row.try_get("initial_register_bytes")?,
+            foundation_bytes: row.try_get("foundation_bytes")?,
+            foundation_digest: digest("foundation_sha256")?,
+            graph_foundation_digest: digest("graph_foundation_sha256")?,
         })
     }
 }
@@ -924,7 +962,7 @@ fn hydrate_material_foundation(
     campaign: CampaignId,
     expected_foundation_digest: [u8; 32],
 ) -> Result<MaterialRuntimeFoundation, MaterialRuntimeError> {
-    let row=client.query_opt("SELECT f.preset_id,f.horizon_ticks,f.content_sha256,f.initial_register_bytes,f.foundation_bytes,f.foundation_sha256,g.foundation_sha256 FROM babylon_state.material_campaign_foundation_v2 f JOIN babylon_state.campaign_foundation g USING(campaign_id) WHERE campaign_id=$1::uuid",&[campaign.as_uuid()])?;
+    let row=client.query_opt("SELECT f.preset_id,f.duration_kind,f.final_period,f.content_sha256,f.initial_register_bytes,f.foundation_bytes,f.foundation_sha256,g.foundation_sha256 AS graph_foundation_sha256 FROM babylon_state.material_campaign_foundation_v3 f JOIN babylon_state.campaign_foundation g USING(campaign_id) WHERE campaign_id=$1::uuid",&[campaign.as_uuid()])?;
     let Some(row) = row else {
         let exists = client
             .query_opt(
@@ -1066,7 +1104,7 @@ pub(crate) fn read_archive_organizer_register(
     receipt: &crate::PendingArchiveReceipt,
 ) -> Result<Option<MaterialWorldRegister>, MaterialRuntimeError> {
     let Some(row) = client.query_opt(
-        "SELECT foundation_sha256 FROM babylon_state.material_campaign_foundation_v2 WHERE campaign_id=$1",
+        "SELECT foundation_sha256 FROM babylon_state.material_campaign_foundation_v3 WHERE campaign_id=$1",
         &[campaign.as_uuid()],
     )? else {
         return Ok(None);

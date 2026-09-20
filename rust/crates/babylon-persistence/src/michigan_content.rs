@@ -207,7 +207,7 @@ impl MichiganContentPreset {
         let graph_digest = sha256_of(graph.canonical_bytes());
         let scenario_digest = sha256_of(graph.content_bundle().scenario_source_bytes());
         let staffing = foundation.labor().clone();
-        let horizon_ticks = foundation.spec().horizon_ticks;
+        let duration = foundation.spec().duration;
         let content_digest = foundation.spec().content_digest;
         let digest = foundation.digest();
         let canonical_bytes = foundation.canonical_bytes().to_vec();
@@ -221,7 +221,7 @@ impl MichiganContentPreset {
         Ok(MichiganContentAdmission {
             preset: self,
             catalog: catalog.clone(),
-            horizon_ticks,
+            duration,
             content_digest,
             digest,
             graph_digest,
@@ -240,7 +240,7 @@ impl MichiganContentPreset {
 pub struct MichiganContentAdmission {
     pub(crate) preset: MichiganContentPreset,
     pub(crate) catalog: MichiganMaterialCatalog,
-    pub(crate) horizon_ticks: u64,
+    pub(crate) duration: babylon_kernel::clock::CampaignDuration,
     pub(crate) content_digest: [u8; 32],
     pub(crate) digest: [u8; 32],
     pub(crate) graph_digest: [u8; 32],
@@ -266,13 +266,13 @@ impl MichiganContentAdmission {
     /// Refuses mixed revisions, different clocks, or changed content identities.
     pub fn validate_header(
         &self,
-        horizon: i64,
+        duration: babylon_kernel::clock::CampaignDuration,
         content: &[u8],
         foundation: &[u8],
         tick: u64,
     ) -> Result<(), MichiganContentError> {
-        if u64::try_from(horizon).ok() != Some(self.horizon_ticks)
-            || tick > self.horizon_ticks
+        if duration != self.duration
+            || !self.duration.contains(tick)
             || content != self.content_digest
             || foundation != self.digest
         {
@@ -299,19 +299,19 @@ impl MichiganContentAdmission {
 /// Refuses unknown presets, source failure or mismatched stored metadata.
 pub fn admit_michigan_content(
     preset_id: &str,
-    horizon: i64,
+    duration: babylon_kernel::clock::CampaignDuration,
     content: &[u8],
     foundation: &[u8],
     tick: u64,
     foundation_bytes: &[u8],
 ) -> Result<MichiganContentAdmission, MichiganContentError> {
-    let preset = validate_michigan_header(preset_id, horizon, content, foundation, tick)?;
+    let preset = validate_michigan_header(preset_id, duration, content, foundation, tick)?;
     let wrapped = stored_defines_from_material_foundation(foundation_bytes)?;
     let decoded =
         crate::sector_bundle::foundation::decode_stored_bundle_defines(wrapped, sha256_of(wrapped))
             .map_err(|_| MichiganContentError::MaterialSource)?;
     let expected = preset.admitted(decoded.catalog())?;
-    expected.validate_header(horizon, content, foundation, tick)?;
+    expected.validate_header(duration, content, foundation, tick)?;
     if expected.canonical_bytes != foundation_bytes {
         return Err(MichiganContentError::IdentityMismatch);
     }
@@ -322,16 +322,14 @@ pub fn admit_michigan_content(
 /// `KnownPreview` reads grants and observed fields without material-read capability.
 pub(crate) fn validate_michigan_header(
     preset_id: &str,
-    horizon: i64,
+    duration: babylon_kernel::clock::CampaignDuration,
     content: &[u8],
     foundation: &[u8],
     tick: u64,
 ) -> Result<MichiganContentPreset, MichiganContentError> {
     let preset =
         MichiganContentPreset::from_id(preset_id).ok_or(MichiganContentError::UnknownPreset)?;
-    if !(1..=crate::michigan_material::MICHIGAN_MAX_HORIZON_PERIODS)
-        .contains(&u64::try_from(horizon).unwrap_or(0))
-        || tick > u64::try_from(horizon).unwrap_or(0)
+    if !duration.contains(tick)
         || content.len() != 32
         || foundation.len() != 32
         || content.iter().all(|b| *b == 0)
@@ -364,11 +362,11 @@ fn stored_defines_from_material_foundation(bytes: &[u8]) -> Result<&[u8], Michig
         return Err(Foundation);
     }
     let mut input = bytes;
-    let domain = b"babylon.material-campaign-foundation.v2\0";
-    if take(&mut input, domain.len())? != domain || take(&mut input, 4)? != 2_u32.to_be_bytes() {
+    let domain = b"babylon.material-campaign-foundation.v3\0";
+    if take(&mut input, domain.len())? != domain || take(&mut input, 4)? != 3_u32.to_be_bytes() {
         return Err(Foundation);
     }
-    take(&mut input, 8 + 32)?;
+    take(&mut input, 9 + 32)?;
     field64(&mut input)?; // Preset identity is compared against the reconstructed bytes.
     let mut graph = field64(&mut input)?;
     field64(&mut input)?;

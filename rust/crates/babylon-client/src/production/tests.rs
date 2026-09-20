@@ -61,7 +61,7 @@ fn snapshot() -> ProductionSnapshot {
         observed_contexts: Vec::new(),
         process_attributions: Vec::new(),
         scenario_label: "Navigation fixture".into(),
-        horizon_period: 8,
+        duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 8 },
         sites: vec![
             site("a", &[]),
             site("b", &["a", "withheld"]),

@@ -1344,6 +1344,7 @@ fn recurring_cumulative_totals_do_not_require_lifetime_order_rows() {
         economy.recurring.as_mut().unwrap().household_purchases[0].enabled =
             ![3, 4].contains(&period);
         let valid = pair(state);
+        history.retire(&valid.0).unwrap();
         history.admit(&valid.0, &valid.2).unwrap();
         history.movements(&valid.2).unwrap();
         let facts = super::super::outbound::completed_facts(&valid.0, &valid.1, &valid.2).unwrap();
@@ -1355,6 +1356,10 @@ fn recurring_cumulative_totals_do_not_require_lifetime_order_rows() {
         )
         .unwrap();
         assert_eq!(last.len(), 1);
+        assert!(history.final_orders.len() <= 1);
+        assert!(history.retired_final.len() <= 1);
+        assert!(history.retired_deliveries.len() <= 2);
+        assert!(history.deliveries.len() <= 4);
         assert!(last[0].orders.len() <= 1);
         state = valid.1;
     }

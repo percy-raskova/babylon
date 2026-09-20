@@ -159,10 +159,10 @@ pub(crate) fn validate_stored_material_authority(
     )?;
     let experiment = decoded.catalog().experiment();
     if experimental != experiment.map(|s| s.profile)
-        || experimental.is_some_and(|p| p.horizon() != spec.horizon_ticks)
+        || experimental.is_some_and(|p| Some(p.horizon()) != spec.duration.final_period())
         || experiment
             .is_some_and(|s| graph.rng_seed() != babylon_kernel::replay::ReplaySeed::new(s.seed))
-        || spec.horizon_ticks != decoded.catalog().horizon_ticks()
+        || spec.duration != decoded.catalog().duration()
         || decoded.catalog().preset() != delivery
         || decoded.scenario().as_bytes() != graph.content_bundle().scenario_source_bytes()
         || decoded.catalog().rule_source().as_bytes() != graph.content_bundle().rule_source_bytes()
@@ -237,7 +237,7 @@ pub(crate) fn create_bundle_foundation(
         register,
         MaterialFoundationSpec {
             preset_id: preset_id.to_owned(),
-            horizon_ticks: catalog.horizon_ticks(),
+            duration: catalog.duration(),
             content_digest: sha256_of(&identity),
         },
     )

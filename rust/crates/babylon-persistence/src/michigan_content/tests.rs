@@ -1,4 +1,8 @@
 use super::*;
+use babylon_kernel::clock::CampaignDuration;
+fn finite(final_period: u64) -> CampaignDuration {
+    CampaignDuration::Finite { final_period }
+}
 
 const REGIONAL_PRESETS: [MichiganContentPreset; 4] = [
     MichiganContentPreset::FourWeekStandard,
@@ -16,7 +20,7 @@ fn current_staffed_foundation_keeps_observed_cohorts_separate_from_five_designed
         let expected = preset.admitted(&crate::test_support::catalog()).unwrap();
         assert_eq!(foundation.canonical_bytes(), expected.canonical_bytes);
         assert_eq!(foundation.initial_register(), &expected.register);
-        assert_eq!(expected.horizon_ticks, 16);
+        assert_eq!(expected.duration, finite(16));
         assert_eq!(
             expected.physical_projection,
             MichiganPhysicalProjection::Normalized
@@ -65,7 +69,7 @@ fn unsupported_michigan_saves_are_refused_without_a_predecessor_factory() {
             let id = format!("michigan-material-{delivery}-v{version}");
             assert_eq!(MichiganContentPreset::from_id(&id), None);
             assert!(matches!(
-                admit_michigan_content(&id, 16, &[0; 32], &[0; 32], 0, &[]),
+                admit_michigan_content(&id, finite(16), &[0; 32], &[0; 32], 0, &[]),
                 Err(MichiganContentError::UnknownPreset)
             ));
         }
@@ -78,7 +82,7 @@ fn admission_refuses_mixed_headers_graphs_and_unadmitted_versions() {
         let expected = preset.admitted(&crate::test_support::catalog()).unwrap();
         let reopened = admit_michigan_content(
             preset.id(),
-            16,
+            finite(16),
             &expected.content_digest,
             &expected.digest,
             16,
@@ -88,17 +92,22 @@ fn admission_refuses_mixed_headers_graphs_and_unadmitted_versions() {
         assert_eq!(reopened.canonical_bytes, expected.canonical_bytes);
         for tick in [0, 16] {
             assert!(expected
-                .validate_header(16, &expected.content_digest, &expected.digest, tick)
+                .validate_header(finite(16), &expected.content_digest, &expected.digest, tick)
                 .is_ok());
         }
-        for horizon in [-1, 0, 15, 17] {
+        for horizon in [0, 15, 17, u64::MAX] {
             assert_eq!(
-                expected.validate_header(horizon, &expected.content_digest, &expected.digest, 0),
+                expected.validate_header(
+                    finite(horizon),
+                    &expected.content_digest,
+                    &expected.digest,
+                    0
+                ),
                 Err(MichiganContentError::IdentityMismatch)
             );
         }
         assert_eq!(
-            expected.validate_header(16, &expected.content_digest, &expected.digest, 17),
+            expected.validate_header(finite(16), &expected.content_digest, &expected.digest, 17),
             Err(MichiganContentError::IdentityMismatch)
         );
         for other in REGIONAL_PRESETS {
@@ -108,7 +117,7 @@ fn admission_refuses_mixed_headers_graphs_and_unadmitted_versions() {
             let mixed = other.admitted(&crate::test_support::catalog()).unwrap();
             assert!(admit_michigan_content(
                 preset.id(),
-                16,
+                finite(16),
                 &mixed.content_digest,
                 &mixed.digest,
                 0,
@@ -128,7 +137,7 @@ fn admission_refuses_mixed_headers_graphs_and_unadmitted_versions() {
         }
         assert!(admit_michigan_content(
             "michigan-material-standard-v8",
-            16,
+            finite(16),
             &expected.content_digest,
             &expected.digest,
             0,
@@ -137,7 +146,7 @@ fn admission_refuses_mixed_headers_graphs_and_unadmitted_versions() {
         .is_err());
         assert!(admit_michigan_content(
             preset.id(),
-            16,
+            finite(16),
             &expected.content_digest[..31],
             &expected.digest,
             0,
@@ -146,7 +155,7 @@ fn admission_refuses_mixed_headers_graphs_and_unadmitted_versions() {
         .is_err());
         assert!(admit_michigan_content(
             preset.id(),
-            16,
+            finite(16),
             &expected.content_digest,
             &expected.digest[..31],
             0,
@@ -172,17 +181,20 @@ fn edited_parameters_change_new_foundations_but_stored_campaign_keeps_its_own_va
                 "WORK_HOURS_PER_PERSON_WEEK = 45",
             )
             .replace("OPENING_INPUT_UNITS = 600", "OPENING_INPUT_UNITS = 700")
-            .replace("HORIZON_PERIODS = 16", "HORIZON_PERIODS = 8"),
+            .replace(
+                "DURATION = { kind = \"continuous\" }",
+                "DURATION = { kind = \"finite\", final_period = 8 }",
+            ),
     )
     .unwrap();
     let next = preset.admitted(&edited).unwrap();
     assert_ne!(original.digest, next.digest);
-    assert_eq!(next.horizon_ticks, 8);
+    assert_eq!(next.duration, finite(8));
     assert!(next
-        .validate_header(8, &next.content_digest, &next.digest, 8)
+        .validate_header(finite(8), &next.content_digest, &next.digest, 8)
         .is_ok());
     assert!(next
-        .validate_header(8, &next.content_digest, &next.digest, 9)
+        .validate_header(finite(8), &next.content_digest, &next.digest, 9)
         .is_err());
     assert_eq!(edited.staffing().hours_per_worker_period, 180);
     assert_eq!(
@@ -205,7 +217,7 @@ fn edited_parameters_change_new_foundations_but_stored_campaign_keeps_its_own_va
     );
     let reopened = admit_michigan_content(
         preset.id(),
-        16,
+        finite(16),
         &original.content_digest,
         &original.digest,
         0,
@@ -217,7 +229,7 @@ fn edited_parameters_change_new_foundations_but_stored_campaign_keeps_its_own_va
     assert_eq!(reopened.register, original.register);
     assert!(admit_michigan_content(
         preset.id(),
-        16,
+        finite(16),
         &next.content_digest,
         &next.digest,
         0,
@@ -229,7 +241,7 @@ fn edited_parameters_change_new_foundations_but_stored_campaign_keeps_its_own_va
     corrupted[end] ^= 1;
     assert!(admit_michigan_content(
         preset.id(),
-        16,
+        finite(16),
         &original.content_digest,
         &original.digest,
         0,
@@ -239,7 +251,7 @@ fn edited_parameters_change_new_foundations_but_stored_campaign_keeps_its_own_va
     for length in [0, 32, original.canonical_bytes.len() - 1] {
         assert!(admit_michigan_content(
             preset.id(),
-            16,
+            finite(16),
             &original.content_digest,
             &original.digest,
             0,
@@ -258,6 +270,10 @@ fn stored_shared_freight_capacities_reconstruct_without_current_default_substitu
     let defaults = crate::test_support::catalog();
     let authored = MichiganMaterialCatalog::from_defines_toml(
         &source
+            .replace(
+                "DURATION = { kind = \"continuous\" }",
+                "DURATION = { kind = \"finite\", final_period = 16 }",
+            )
             .replace("AMPLE_UNITS_PER_WEEK = 200", "AMPLE_UNITS_PER_WEEK = 201")
             .replace(
                 "CONSTRAINED_UNITS_PER_WEEK = 40",
@@ -274,7 +290,7 @@ fn stored_shared_freight_capacities_reconstruct_without_current_default_substitu
         assert_ne!(original.digest, default_campaign.digest);
         let reopened = admit_michigan_content(
             preset.id(),
-            16,
+            finite(16),
             &original.content_digest,
             &original.digest,
             0,
@@ -323,7 +339,7 @@ fn stored_shared_freight_capacities_reconstruct_without_current_default_substitu
             .all(|row| row.available_grams == capacity * 1000));
         assert!(admit_michigan_content(
             preset.id(),
-            16,
+            finite(16),
             &default_campaign.content_digest,
             &default_campaign.digest,
             0,
@@ -343,4 +359,39 @@ fn statewide_presets_refuse_an_unqualified_regional_catalog() {
         assert!(preset.create_foundation(&catalog).is_err());
         assert!(preset.admitted(&catalog).is_err());
     }
+}
+
+#[test]
+fn continuous_campaign_admits_explicit_duration_without_a_numeric_stop() {
+    let source = include_str!("../../../../../content/scenarios/michigan/defines.toml");
+    let catalog = MichiganMaterialCatalog::from_defines_toml(source)
+        .expect("explicit continuous duration must be admitted independently of a finite experiment horizon");
+    assert_eq!(catalog.duration(), CampaignDuration::Continuous);
+    let foundation = MichiganContentPreset::FourWeekStandard
+        .create_foundation(&catalog)
+        .unwrap();
+    assert!(matches!(
+        foundation.initial_register().state().capacity_supply,
+        babylon_material_circuit::CapacitySupply::Rolling(_)
+    ));
+    assert!(foundation
+        .initial_register()
+        .state()
+        .capacities
+        .iter()
+        .all(|row| row.period == 1));
+    let expected = MichiganContentPreset::FourWeekStandard
+        .admitted(&catalog)
+        .unwrap();
+    assert!(expected
+        .validate_header(
+            CampaignDuration::Continuous,
+            &expected.content_digest,
+            &expected.digest,
+            80
+        )
+        .is_ok());
+    assert!(expected
+        .validate_header(finite(16), &expected.content_digest, &expected.digest, 0)
+        .is_err());
 }

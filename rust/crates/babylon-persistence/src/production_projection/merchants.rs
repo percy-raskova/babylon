@@ -222,6 +222,9 @@ pub(super) fn project_final_with_labels(
             .or_default()
             .push(row);
     }
+    for key in history.retired_final.keys() {
+        groups.entry(*key).or_default();
+    }
     let mut configured = BTreeMap::<DemandKey, BTreeSet<SiteId>>::new();
     if let Some(rows) = super::lifecycle::recurring(current) {
         for policy in &rows.household_purchases {
@@ -234,14 +237,6 @@ pub(super) fn project_final_with_labels(
         }
     }
     let actual = active_final_orders(current, history)?;
-    let latest: BTreeSet<_> = completed
-        .into_iter()
-        .flat_map(|(_, facts)| facts.iter())
-        .filter_map(|fact| match fact.id {
-            OutboundOrderId::LocalFinalDemand(id) => Some(id),
-            OutboundOrderId::Delivery(_) => None,
-        })
-        .collect();
     let principals: BTreeMap<_, _> = current
         .final_demand_principals
         .iter()
@@ -260,6 +255,7 @@ pub(super) fn project_final_with_labels(
             OutboundOrderId::Delivery(_) => None,
         })
         .collect();
+    let latest: BTreeSet<_> = quantities.keys().copied().collect();
     groups
         .into_iter()
         .map(|(key @ (principal, good, unit), orders)| {
@@ -268,11 +264,17 @@ pub(super) fn project_final_with_labels(
                 .ok_or(ProductionProjectionError::State)?;
             let (good_label, unit_label) =
                 labels(good, unit).ok_or(ProductionProjectionError::Content)?;
+            let retired = history.retired_final.get(&key).cloned().unwrap_or_default();
             let mut retailers = configured.remove(&key).unwrap_or_default();
+            retailers.extend(retired.retailers);
             retailers.extend(orders.iter().map(|row| row.order.retailer_site_id));
-            let ordered = sum(orders.iter().map(|row| row.order.ordered))?;
-            let fulfilled = sum(orders.iter().map(|row| row.order.fulfilled))?;
-            let expired = sum(orders.iter().map(|row| row.expired))?;
+            let ordered =
+                sum(std::iter::once(retired.ordered)
+                    .chain(orders.iter().map(|row| row.order.ordered)))?;
+            let fulfilled = sum(std::iter::once(retired.fulfilled)
+                .chain(orders.iter().map(|row| row.order.fulfilled)))?;
+            let expired =
+                sum(std::iter::once(retired.expired).chain(orders.iter().map(|row| row.expired)))?;
             let outstanding = ordered
                 .checked_sub(fulfilled)
                 .and_then(|value| value.checked_sub(expired))
@@ -301,7 +303,9 @@ pub(super) fn project_final_with_labels(
                     .map(|id| digest_hex(&id.as_bytes()))
                     .collect(),
                 total_order_count: u64::try_from(orders.len())
-                    .map_err(|_| ProductionProjectionError::Arithmetic)?,
+                    .ok()
+                    .and_then(|count| count.checked_add(retired.count))
+                    .ok_or(ProductionProjectionError::Arithmetic)?,
                 orders: listed_orders(&orders, &actual, &latest)?,
                 completed,
             })

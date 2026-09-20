@@ -1257,7 +1257,7 @@ fn assert_material_lock_refusal(
         let mut transaction = connection.transaction().unwrap();
         transaction
             .query_one(
-                "SELECT campaign_id FROM babylon_state.material_campaign_foundation_v2 \
+                "SELECT campaign_id FROM babylon_state.material_campaign_foundation_v3 \
              WHERE campaign_id=$1::uuid FOR UPDATE",
                 &[campaign.as_uuid()],
             )
@@ -1478,7 +1478,7 @@ fn assert_material_stdio_advance(
         .map(|line| serde_json::from_slice(line).unwrap())
         .collect();
     assert!(
-        matches!(&responses[0],RuntimeSessionResponse::Hello{protocol_version: 4,scope,..} if scope.epoch==0 && scope.campaign_id.is_none())
+        matches!(&responses[0],RuntimeSessionResponse::Hello{protocol_version: 5,scope,..} if scope.epoch==0 && scope.campaign_id.is_none())
     );
     assert!(matches!(&responses[2],RuntimeSessionResponse::Ready{tail,..} if tail.resolve_tick==2));
     assert!(responses.iter().any(|response| matches!(

@@ -159,7 +159,7 @@ pub fn compile_sector_bundles(
         .iter()
         .filter(|c| active.contains(&c.id()))
     {
-        for period in 1..=catalog.horizon_ticks() {
+        for period in 1..=catalog.duration().final_period().unwrap_or(1) {
             state.corridor_capacities.push(CorridorCapacity {
                 corridor_id: c.id(),
                 period,
@@ -167,8 +167,37 @@ pub fn compile_sector_bundles(
             });
         }
     }
+    if catalog.duration() == babylon_kernel::clock::CampaignDuration::Continuous {
+        capture_continuous_capacity(&mut state);
+    }
     decode_material_circuit_state(&encode_material_circuit_state(&state)?).map_err(Into::into)
 }
+fn capture_continuous_capacity(state: &mut MaterialCircuitState) {
+    use babylon_material_circuit::{
+        CapacitySupply, InstalledProcessCapacity, RollingCapacitySupply, SharedCapacitySupply,
+    };
+    state.capacity_supply = CapacitySupply::Rolling(Box::new(RollingCapacitySupply {
+        installed_processes: state
+            .capacities
+            .iter()
+            .map(|row| InstalledProcessCapacity {
+                process_id: row.process_id,
+                site_id: row.site_id,
+                batches_per_period: row.available_batches,
+            })
+            .collect(),
+        shared: state
+            .corridor_capacities
+            .iter()
+            .map(|row| SharedCapacitySupply {
+                corridor_id: row.corridor_id,
+                grams_per_period: row.available_grams,
+            })
+            .collect(),
+        future_reservations: Vec::new(),
+    }));
+}
+
 fn append_route(
     state: &mut MaterialCircuitState,
     catalog: &MichiganMaterialCatalog,
@@ -405,7 +434,7 @@ impl OwnerRows {
                 unit_id: self.labor_unit,
                 quantity_per_batch: process.labor_hours_per_batch,
             });
-            for period in 1..=catalog.horizon_ticks() {
+            for period in 1..=catalog.duration().final_period().unwrap_or(1) {
                 self.rows.capacities.push(CapacityRow {
                     process_id: process.id(),
                     site_id: site.id(),
@@ -495,7 +524,7 @@ impl OwnerRows {
         }
         SectorBundle::from_parts(
             owner,
-            catalog.horizon_ticks(),
+            catalog.duration(),
             evidence,
             self.goods.into_iter().collect(),
             self.processes,

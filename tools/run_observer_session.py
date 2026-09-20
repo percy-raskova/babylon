@@ -533,7 +533,7 @@ def _check_session(
         assert child.stdin is not None
         row = {
             "type": kind,
-            "protocol_version": 4,
+            "protocol_version": 5,
             "request_id": request_id,
             "scope": scope,
             **fields,
@@ -543,8 +543,8 @@ def _check_session(
 
     try:
         hello = receive("hello")
-        if hello.get("protocol_version") != 4:
-            raise ObserverLaunchError("installation check requires runtime session protocol 4")
+        if hello.get("protocol_version") != 5:
+            raise ObserverLaunchError("installation check requires runtime session protocol 5")
         new = isinstance(target, NewCampaignTarget)
         requested = {"type": "new" if new else "open", "campaign_id": str(target.campaign)}
         if isinstance(target, NewCampaignTarget):

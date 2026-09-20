@@ -74,6 +74,9 @@ struct Backend {
 }
 
 impl SessionBackend for Backend {
+    fn duration(&self) -> babylon_kernel::clock::CampaignDuration {
+        babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 }
+    }
     fn tail(&self) -> RuntimeSessionTail {
         RuntimeSessionTail {
             resolve_tick: self.tick,
@@ -135,7 +138,7 @@ fn advance() -> RuntimeSessionRequest {
 
 fn advance_numbered(request_id: u64) -> RuntimeSessionRequest {
     RuntimeSessionRequest::Advance {
-        protocol_version: 4,
+        protocol_version: 5,
         scope: scope(1, A),
         request_id,
         expected_tail: RuntimeSessionTail {
@@ -147,7 +150,7 @@ fn advance_numbered(request_id: u64) -> RuntimeSessionRequest {
 
 fn stop() -> RuntimeSessionRequest {
     RuntimeSessionRequest::Stop {
-        protocol_version: 4,
+        protocol_version: 5,
         scope: scope(1, A),
         request_id: 8,
     }
@@ -155,7 +158,7 @@ fn stop() -> RuntimeSessionRequest {
 
 fn refresh() -> RuntimeSessionRequest {
     RuntimeSessionRequest::RefreshArchive {
-        protocol_version: 4,
+        protocol_version: 5,
         scope: scope(1, A),
         request_id: 3,
     }
@@ -192,7 +195,7 @@ fn switching(
     request_id: u64,
 ) -> RuntimeSessionRequest {
     RuntimeSessionRequest::Switch {
-        protocol_version: 4,
+        protocol_version: 5,
         request_id,
         scope: previous,
         target: RuntimeSessionTarget::Open {
@@ -212,6 +215,9 @@ fn responses(output: &[u8]) -> Vec<RuntimeSessionResponse> {
         .collect()
 }
 impl SessionBackend for &mut Backend {
+    fn duration(&self) -> babylon_kernel::clock::CampaignDuration {
+        babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 }
+    }
     fn tail(&self) -> RuntimeSessionTail {
         (**self).tail()
     }
@@ -396,8 +402,9 @@ fn malformed_actions_versions_campaigns_and_overlong_frames_cannot_advance() {
         (1, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
         (2, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
         (3, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
-        (5, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
-        (4, "other", RuntimeSessionErrorCode::SessionMismatch),
+        (4, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
+        (6, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
+        (5, "other", RuntimeSessionErrorCode::SessionMismatch),
     ] {
         let mut request = advance();
         if let RuntimeSessionRequest::Advance {

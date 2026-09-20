@@ -2,6 +2,7 @@
 
 mod history;
 
+pub use crate::observer_material::ObserverMaterialCursor;
 pub use history::{ProductionHistoryTarget, ProductionOutputPoint};
 
 use babylon_kernel::content_digest::sha256_of;
@@ -165,6 +166,25 @@ impl ObserverEconomyReader {
         campaign: CampaignId,
         expected_tick: u64,
     ) -> Result<ObserverEconomySnapshot, ObserverEconomyError> {
+        self.snapshot_with_cursor(campaign, expected_tick, &mut None)
+    }
+
+    /// Read with a bounded cache whose contents were authenticated by this reader.
+    /// The cache is replaced only after the complete read transaction succeeds.
+    /// Cold or historical reads authenticate the prefix in bounded pages.
+    /// # Errors
+    /// Refuses the same authority, clock and evidence failures as `snapshot`.
+    pub fn snapshot_with_cursor(
+        &self,
+        campaign: CampaignId,
+        expected_tick: u64,
+        cursor: &mut Option<ObserverMaterialCursor>,
+    ) -> Result<ObserverEconomySnapshot, ObserverEconomyError> {
+        let mut candidate = if self.visibility == ObserverVisibility::FullObserver {
+            cursor.clone()
+        } else {
+            None
+        };
         let tick = i64::try_from(expected_tick).map_err(|_| ObserverEconomyError::TickAbsent)?;
         let mut config = self.config.clone();
         config
@@ -189,8 +209,13 @@ impl ObserverEconomyReader {
                 .batch_execute("SET LOCAL idle_in_transaction_session_timeout = '120s'")
                 .map_err(|_| ObserverEconomyError::Database)?;
         }
-        let (foundation_hash, material_header) =
-            read_foundation(&mut transaction, campaign, expected_tick, self.visibility)?;
+        let (foundation_hash, material_header) = read_foundation(
+            &mut transaction,
+            campaign,
+            expected_tick,
+            self.visibility,
+            candidate.as_ref(),
+        )?;
         let economy = michigan_economy().map_err(|_| ObserverEconomyError::Reference)?;
         let admission = material_header
             .as_ref()
@@ -211,6 +236,7 @@ impl ObserverEconomyReader {
                 expected_tick,
                 self.visibility,
                 admission,
+                &mut candidate,
             )?
         } else {
             // Baseline conformance has no material family. Restricted preview
@@ -230,6 +256,7 @@ impl ObserverEconomyReader {
         transaction
             .commit()
             .map_err(|_| ObserverEconomyError::Database)?;
+        *cursor = candidate;
         Ok(ObserverEconomySnapshot {
             campaign_id: campaign.as_uuid().to_string(),
             resolve_tick: expected_tick,
@@ -249,6 +276,7 @@ fn read_foundation(
     campaign: CampaignId,
     tick: u64,
     visibility: ObserverVisibility,
+    cached: Option<&ObserverMaterialCursor>,
 ) -> Result<(Vec<u8>, Option<crate::observer_material::MaterialHeader>), ObserverEconomyError> {
     let foundation = transaction.query_opt("SELECT campaign_id, foundation_sha256, scenario_sha256 FROM public.v_observer_economy_foundation_v1 WHERE campaign_id = $1", &[campaign.as_uuid()]).map_err(|_| ObserverEconomyError::Database)?.ok_or(ObserverEconomyError::CampaignAbsent)?;
     let found_campaign: uuid::Uuid = foundation
@@ -263,8 +291,13 @@ fn read_foundation(
     let scenario_hash: Vec<u8> = foundation
         .try_get(2)
         .map_err(|_| ObserverEconomyError::InvalidProjection)?;
-    let material_header =
-        crate::observer_material::read_material_header(transaction, campaign, tick, visibility)?;
+    let material_header = crate::observer_material::read_material_header(
+        transaction,
+        campaign,
+        tick,
+        visibility,
+        cached,
+    )?;
     let admission = material_header
         .as_ref()
         .and_then(|header| header.admission.as_ref());
@@ -277,7 +310,11 @@ fn read_foundation(
             return Err(ObserverEconomyError::ScenarioMismatch);
         }
     } else {
-        validate_observer_graph(admission, &foundation_hash, &scenario_hash)?;
+        validate_observer_graph(
+            admission.map(AsRef::as_ref),
+            &foundation_hash,
+            &scenario_hash,
+        )?;
     }
     Ok((foundation_hash, material_header))
 }
@@ -309,20 +346,20 @@ fn read_commit_identity(
 
 // Catalog rows expose only safe identities. Dynamic material configuration is
 // opaque here; full observation independently reconstructs its stored content.
-const CAMPAIGN_CATALOG_SQL: &str = "SELECT header.campaign_id,header.preset_id,header.horizon_ticks,header.content_sha256,
+const CAMPAIGN_CATALOG_SQL: &str = "SELECT header.campaign_id,header.preset_id,header.duration_kind,header.final_period,header.content_sha256,
  header.foundation_sha256,COALESCE(max(marker.resolve_tick),0)::bigint AS durable_tick
-FROM public.v_material_campaign_identity_v1 AS header
+FROM public.v_material_campaign_identity_v2 AS header
 JOIN public.v_observer_economy_foundation_v1 AS graph USING(campaign_id)
 LEFT JOIN public.v_committed_tick_status_v1 AS marker ON marker.campaign_id=header.campaign_id
 WHERE header.preset_id=ANY($1::text[])
  AND header.campaign_id <> '00000000-0000-0000-0000-000000000000'::uuid
- AND header.horizon_ticks BETWEEN 1 AND 16
+ AND ((header.duration_kind='continuous' AND header.final_period IS NULL) OR (header.duration_kind='finite' AND header.final_period>0))
  AND octet_length(header.content_sha256)=32 AND header.content_sha256<>decode(repeat('00',32),'hex')
  AND octet_length(header.foundation_sha256)=32 AND header.foundation_sha256<>decode(repeat('00',32),'hex')
  AND octet_length(graph.foundation_sha256)=32 AND graph.foundation_sha256<>decode(repeat('00',32),'hex')
  AND octet_length(graph.scenario_sha256)=32 AND graph.scenario_sha256<>decode(repeat('00',32),'hex')
-GROUP BY header.campaign_id,header.preset_id,header.horizon_ticks,header.content_sha256,header.foundation_sha256
-HAVING COALESCE(max(marker.resolve_tick),0) BETWEEN 0 AND header.horizon_ticks
+GROUP BY header.campaign_id,header.preset_id,header.duration_kind,header.final_period,header.content_sha256,header.foundation_sha256
+HAVING COALESCE(max(marker.resolve_tick),0)>=0 AND (header.duration_kind='continuous' OR COALESCE(max(marker.resolve_tick),0)<=header.final_period)
  AND bool_and(marker.envelope_layout_version IS NULL OR marker.envelope_layout_version=3)
 ORDER BY header.campaign_id LIMIT 64";
 
@@ -333,21 +370,20 @@ fn campaign_summary(row: &postgres::Row) -> Result<CampaignSummary, ObserverEcon
     let preset_id: String = row
         .try_get(1)
         .map_err(|_| ObserverEconomyError::InvalidProjection)?;
-    let horizon: i64 = row
-        .try_get(2)
+    let duration = crate::material_runtime::read_duration(row)
         .map_err(|_| ObserverEconomyError::InvalidProjection)?;
     let content: Vec<u8> = row
-        .try_get(3)
+        .try_get("content_sha256")
         .map_err(|_| ObserverEconomyError::InvalidProjection)?;
     let foundation: Vec<u8> = row
-        .try_get(4)
+        .try_get("foundation_sha256")
         .map_err(|_| ObserverEconomyError::InvalidProjection)?;
     let tick = u64::try_from(
-        row.try_get::<_, i64>(5)
+        row.try_get::<_, i64>("durable_tick")
             .map_err(|_| ObserverEconomyError::InvalidProjection)?,
     )
     .map_err(|_| ObserverEconomyError::InvalidProjection)?;
-    let entry = validate_michigan_header(&preset_id, horizon, &content, &foundation, tick)
+    let entry = validate_michigan_header(&preset_id, duration, &content, &foundation, tick)
         .map_err(|_| ObserverEconomyError::ScenarioMismatch)?;
     if campaign.is_nil() {
         return Err(ObserverEconomyError::InvalidProjection);
@@ -495,7 +531,7 @@ fn project_county(
 }
 
 const AUTHORITY_SQL: &str = "SELECT role.rolsuper, role.rolcreatedb, role.rolcreaterole, role.rolreplication, role.rolbypassrls, pg_catalog.pg_has_role(current_user, $1, 'MEMBER'), pg_catalog.pg_has_role(current_user, 'babylon_observer', 'MEMBER') FROM pg_catalog.pg_roles role WHERE role.rolname = current_user";
-const HELD_SQL: &str = "WITH RECURSIVE role_closure(oid) AS (SELECT 0::oid UNION SELECT oid FROM pg_catalog.pg_roles WHERE rolname = current_user UNION SELECT membership.roleid FROM pg_catalog.pg_auth_members membership JOIN role_closure ON role_closure.oid = membership.member), restricted AS (SELECT relation.*, namespace.nspname FROM pg_catalog.pg_class relation JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace WHERE relation.relkind IN ('r','p','v','m','f') AND (namespace.nspname IN ('babylon_state','babylon_meta') OR (namespace.nspname = 'public' AND relation.relname IN ('v_committed_tick_status_v1','v_archive_page_known_v1','v_archive_atom_visible','v_county_card_atoms','v_archive_subject_atoms','v_archive_verification_v1','v_observer_economy_foundation_v1','v_observer_county_economy_v1','v_known_county_economy_v1','v_material_campaign_identity_v1','v_observer_material_state_v1','v_archive_revision_known_v2','v_archive_revision_atom_v2','v_archive_revision_grant_v2','v_archive_retention_v2','v_archive_subject_grant_v2','v_archive_revision_index_v2','v_archive_tick_knowledge_v2','v_archive_revision_scope_v2','v_observer_graph_node_v1','v_observer_graph_node_f64_v1','v_observer_graph_edge_v1','v_observer_graph_hyperedge_v1','v_observer_graph_hyperedge_member_v1','v_observer_graph_edge_f64_v1','v_observer_graph_node_currency_v1','v_observer_graph_hyperedge_f64_v1','v_observer_world_register_v1','v_observer_hex_state_delta_v1','v_observer_territory_state_v1','v_observer_territory_state_field_v1','v_observer_organization_state_v1','v_observer_organization_state_field_v1','v_observer_organization_territory_v1','v_observer_tick_event_v2','v_observer_tick_event_field_v2','v_observer_tick_choice_receipt_v1','v_observer_tick_choice_receipt_branch_v1','v_observer_tick_choice_receipt_carrier_element_v1','v_observer_checkpoint_manifest','v_observer_checkpoint_section_v1','v_observer_archive_dirty_receipt_v1','v_observer_tick_action_batch_v1')))) SELECT DISTINCT restricted.nspname || '.' || restricted.relname AS relation_name, acl.privilege_type, acl.is_grantable FROM restricted CROSS JOIN LATERAL pg_catalog.aclexplode(restricted.relacl) acl JOIN role_closure ON role_closure.oid = acl.grantee UNION SELECT restricted.nspname || '.' || restricted.relname, 'OWNERSHIP', false FROM restricted JOIN role_closure ON role_closure.oid = restricted.relowner UNION SELECT restricted.nspname || '.' || restricted.relname, acl.privilege_type, acl.is_grantable FROM restricted JOIN pg_catalog.pg_attribute attribute ON attribute.attrelid = restricted.oid AND attribute.attnum > 0 AND NOT attribute.attisdropped CROSS JOIN LATERAL pg_catalog.aclexplode(attribute.attacl) acl JOIN role_closure ON role_closure.oid = acl.grantee";
+const HELD_SQL: &str = "WITH RECURSIVE role_closure(oid) AS (SELECT 0::oid UNION SELECT oid FROM pg_catalog.pg_roles WHERE rolname = current_user UNION SELECT membership.roleid FROM pg_catalog.pg_auth_members membership JOIN role_closure ON role_closure.oid = membership.member), restricted AS (SELECT relation.*, namespace.nspname FROM pg_catalog.pg_class relation JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace WHERE relation.relkind IN ('r','p','v','m','f') AND (namespace.nspname IN ('babylon_state','babylon_meta') OR (namespace.nspname = 'public' AND relation.relname IN ('v_committed_tick_status_v1','v_archive_page_known_v1','v_archive_atom_visible','v_county_card_atoms','v_archive_subject_atoms','v_archive_verification_v1','v_observer_economy_foundation_v1','v_observer_county_economy_v1','v_known_county_economy_v1','v_material_campaign_identity_v2','v_observer_material_state_v1','v_archive_revision_known_v2','v_archive_revision_atom_v2','v_archive_revision_grant_v2','v_archive_retention_v2','v_archive_subject_grant_v2','v_archive_revision_index_v2','v_archive_tick_knowledge_v2','v_archive_revision_scope_v2','v_observer_graph_node_v1','v_observer_graph_node_f64_v1','v_observer_graph_edge_v1','v_observer_graph_hyperedge_v1','v_observer_graph_hyperedge_member_v1','v_observer_graph_edge_f64_v1','v_observer_graph_node_currency_v1','v_observer_graph_hyperedge_f64_v1','v_observer_world_register_v1','v_observer_hex_state_delta_v1','v_observer_territory_state_v1','v_observer_territory_state_field_v1','v_observer_organization_state_v1','v_observer_organization_state_field_v1','v_observer_organization_territory_v1','v_observer_tick_event_v2','v_observer_tick_event_field_v2','v_observer_tick_choice_receipt_v1','v_observer_tick_choice_receipt_branch_v1','v_observer_tick_choice_receipt_carrier_element_v1','v_observer_checkpoint_manifest','v_observer_checkpoint_section_v1','v_observer_archive_dirty_receipt_v1','v_observer_tick_action_batch_v1')))) SELECT DISTINCT restricted.nspname || '.' || restricted.relname AS relation_name, acl.privilege_type, acl.is_grantable FROM restricted CROSS JOIN LATERAL pg_catalog.aclexplode(restricted.relacl) acl JOIN role_closure ON role_closure.oid = acl.grantee UNION SELECT restricted.nspname || '.' || restricted.relname, 'OWNERSHIP', false FROM restricted JOIN role_closure ON role_closure.oid = restricted.relowner UNION SELECT restricted.nspname || '.' || restricted.relname, acl.privilege_type, acl.is_grantable FROM restricted JOIN pg_catalog.pg_attribute attribute ON attribute.attrelid = restricted.oid AND attribute.attnum > 0 AND NOT attribute.attisdropped CROSS JOIN LATERAL pg_catalog.aclexplode(attribute.attacl) acl JOIN role_closure ON role_closure.oid = acl.grantee";
 fn confine_authority(
     client: &mut postgres::Client,
     visibility: ObserverVisibility,
@@ -545,7 +581,7 @@ fn confine_authority(
                     relation.as_str(),
                     "public.v_observer_economy_foundation_v1"
                         | "public.v_observer_county_economy_v1"
-                        | "public.v_material_campaign_identity_v1"
+                        | "public.v_material_campaign_identity_v2"
                         | "public.v_observer_material_state_v1"
                         | "public.v_committed_tick_status_v1"
                 ) || crate::observer_tick_components::OBSERVER_TICK_COMPONENT_VIEWS
@@ -555,7 +591,7 @@ fn confine_authority(
                 relation.as_str(),
                 "public.v_observer_economy_foundation_v1"
                     | "public.v_known_county_economy_v1"
-                    | "public.v_material_campaign_identity_v1"
+                    | "public.v_material_campaign_identity_v2"
                     | "public.v_committed_tick_status_v1"
                     | "public.v_archive_page_known_v1"
                     | "public.v_archive_atom_visible"
@@ -584,7 +620,7 @@ fn confine_authority(
     if [
         "public.v_observer_economy_foundation_v1",
         "public.v_committed_tick_status_v1",
-        "public.v_material_campaign_identity_v1",
+        "public.v_material_campaign_identity_v2",
         economy_view,
     ]
     .iter()
@@ -668,7 +704,7 @@ fn observer_role_views() -> Vec<&'static str> {
         "public.v_observer_economy_foundation_v1",
         "public.v_observer_county_economy_v1",
         "public.v_committed_tick_status_v1",
-        "public.v_material_campaign_identity_v1",
+        "public.v_material_campaign_identity_v2",
         "public.v_observer_material_state_v1",
     ];
     views.extend(crate::observer_tick_components::OBSERVER_TICK_COMPONENT_VIEWS);

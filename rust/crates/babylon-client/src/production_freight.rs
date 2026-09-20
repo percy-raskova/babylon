@@ -584,7 +584,7 @@ pub(crate) mod tests {
             merchant_handling_accounts: Vec::new(),
             final_demand_accounts: Vec::new(),
             scenario_label: "Shared freight — constrained".into(),
-            horizon_period: 16,
+            duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
             sites,
             routes,
             freight: Vec::new(),

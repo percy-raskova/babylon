@@ -753,7 +753,7 @@ def _smoke_transcript_children(
             new = not calls
             calls.append(args)
             self.stdin = (tmp_path / f"requests-{len(calls)}.jsonl").open("wb")
-            rows: list[dict[str, Any]] = [{"type": "hello", "protocol_version": 4, "scope": scope}]
+            rows: list[dict[str, Any]] = [{"type": "hello", "protocol_version": 5, "scope": scope}]
             if refused:
                 rows.append({"type": "error", "request_id": 1, "code": "invalid_defines"})
             else:

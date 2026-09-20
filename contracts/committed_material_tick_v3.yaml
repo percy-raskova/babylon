@@ -323,4 +323,4 @@ related_contracts:
   - contracts/material_circuit_v3.yaml
   - contracts/material_world_register_v4.yaml
   - contracts/nominal_material_world_v3.yaml
-  - contracts/material_campaign_foundation_v2.yaml
+  - contracts/material_campaign_foundation_v3.yaml

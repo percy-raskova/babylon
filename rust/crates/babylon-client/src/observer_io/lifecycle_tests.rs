@@ -66,6 +66,7 @@ fn switching(app: &mut App, responses: &Replies, switch: &Switch) {
 fn admitted(app: &mut App, responses: &Replies, switch: &Switch, period: u64) {
     responses
         .send(Ok(RuntimeSessionResponse::Ready {
+            duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
             organizer: false,
             request_id: switch.request_id,
             scope: switch.scope.clone(),
@@ -320,6 +321,7 @@ fn return_to_a_rejects_stale_results(failed_b: bool) {
     assert!(current.generation > old_context.generation);
     for stale in [
         RuntimeSessionResponse::Ready {
+            duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
             organizer: false,
             request_id: 0,
             scope: old_scope.clone(),

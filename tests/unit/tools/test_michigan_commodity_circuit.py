@@ -34,9 +34,9 @@ def catalogue() -> dict[str, Any]:
         "machinery": {"metal_parts": 2},
     }
     return {
-        "SCHEMA_VERSION": 5,
+        "SCHEMA_VERSION": 6,
         "TICK_DURATION_DAYS": 28,
-        "HORIZON_PERIODS": 16,
+        "DURATION": {"kind": "finite", "final_period": 16},
         "statewide": {"EVIDENCE_CLASS": "Designed", "FINITE_ORDER_PERIODS": 4},
         "commodity": goods,
         "template": {
@@ -61,7 +61,7 @@ def test_current_authored_defines_remain_available_to_the_qualifier() -> None:
     assert authored.recipes
 
 
-@pytest.mark.parametrize("version", [4, 6, True, 5.0])
+@pytest.mark.parametrize("version", [4, 5, True, 6.0])
 def test_unsupported_or_untyped_defines_versions_refuse(version: object) -> None:
     document = catalogue()
     document["SCHEMA_VERSION"] = version
@@ -357,4 +357,20 @@ def test_fractional_authored_recipe_values_refuse(field: str) -> None:
     document = copy.deepcopy(catalogue())
     document["template"]["metal_stock"][field] = 1.5
     with pytest.raises(circuit.QualificationError, match="unsigned_quantity"):
+        circuit.parse_defines(document)
+
+
+@pytest.mark.parametrize(
+    "duration",
+    [
+        {"kind": "continuous", "final_period": 16},
+        {"kind": "finite"},
+        {"kind": "finite", "final_period": 0},
+        {"kind": "unknown"},
+    ],
+)
+def test_invalid_duration_cannot_silently_become_continuous(duration: dict[str, object]) -> None:
+    document = catalogue()
+    document["DURATION"] = duration
+    with pytest.raises(circuit.QualificationError):
         circuit.parse_defines(document)

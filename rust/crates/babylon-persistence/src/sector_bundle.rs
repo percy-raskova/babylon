@@ -19,8 +19,8 @@ use babylon_material_circuit::{
 
 pub use michigan::{compile_sector_bundles, michigan_sector_bundles};
 
-const BUNDLE_DOMAIN: &[u8] = b"babylon.sector-bundle.v3\0";
-const BUNDLE_VERSION: u16 = 3;
+const BUNDLE_DOMAIN: &[u8] = b"babylon.sector-bundle.v4\0";
+const BUNDLE_VERSION: u16 = 4;
 const MAX_BUNDLE_BYTES: usize = 1_048_576;
 const MAX_BUNDLE_TEXT_BYTES: usize = 4_096;
 const MAX_BUNDLE_GOODS: usize = 64;
@@ -149,7 +149,7 @@ impl SectorBundleProcess {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SectorBundle {
     owner: SectorBundleOwner,
-    horizon_ticks: u64,
+    duration: babylon_kernel::clock::CampaignDuration,
     sources: SectorBundleSources,
     goods: Vec<SectorBundleGood>,
     processes: Vec<SectorBundleProcess>,
@@ -163,7 +163,7 @@ impl SectorBundle {
     #[allow(clippy::too_many_arguments)] // One argument per independently encoded bundle field.
     fn from_parts(
         owner: SectorBundleOwner,
-        horizon_ticks: u64,
+        duration: babylon_kernel::clock::CampaignDuration,
         sources: SectorBundleSources,
         mut goods: Vec<SectorBundleGood>,
         mut processes: Vec<SectorBundleProcess>,
@@ -176,7 +176,7 @@ impl SectorBundle {
         let rows = decode_material_circuit_state(&encode_material_circuit_state(rows)?)?;
         let mut bundle = Self {
             owner,
-            horizon_ticks,
+            duration,
             sources,
             goods,
             processes,
@@ -221,8 +221,8 @@ impl SectorBundle {
         &self.sources
     }
     #[must_use]
-    pub const fn horizon_ticks(&self) -> u64 {
-        self.horizon_ticks
+    pub const fn duration(&self) -> babylon_kernel::clock::CampaignDuration {
+        self.duration
     }
     #[must_use]
     pub fn goods(&self) -> &[SectorBundleGood] {

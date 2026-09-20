@@ -80,27 +80,27 @@ fn closed_inputs_refuse_unknown_fields_dates_horizons_and_cross_profile_interven
     assert_eq!(bad.validate(), Err(ExperimentError::Intervention));
 }
 #[test]
-fn player_horizon_stays_bounded_and_diagnostic_bundle_codec_captures_its_horizon() {
+fn continuous_player_duration_is_distinct_from_finite_diagnostic_bundles() {
     let source = include_str!("../../../../../content/scenarios/michigan/defines.toml");
-    assert!(
-        crate::michigan_material::MichiganMaterialCatalog::from_defines_toml(
-            &source.replace("HORIZON_PERIODS = 16", "HORIZON_PERIODS = 130")
-        )
-        .is_err()
+    let live =
+        crate::michigan_material::MichiganMaterialCatalog::from_defines_toml(source).unwrap();
+    assert_eq!(
+        live.duration(),
+        babylon_kernel::clock::CampaignDuration::Continuous
     );
     let catalog = spec(ExperimentProfile::Sustained)
         .regional_catalog()
         .unwrap();
-    assert_eq!(catalog.horizon_ticks(), 130);
+    assert_eq!(catalog.duration().final_period(), Some(130));
     let captured: serde_json::Value = serde_json::from_slice(catalog.defines_bytes()).unwrap();
-    assert_eq!(captured["defines"]["HORIZON_PERIODS"], 130);
+    assert_eq!(captured["defines"]["DURATION"]["final_period"], 130);
     assert!(
         crate::michigan_content::MichiganContentPreset::FourWeekStandard
             .create_foundation(&catalog)
             .is_err()
     );
     for bundle in michigan_sector_bundles(&catalog).unwrap() {
-        assert_eq!(bundle.horizon_ticks(), 130);
+        assert_eq!(bundle.duration().final_period(), Some(130));
         assert_eq!(
             SectorBundle::decode(bundle.canonical_bytes(), bundle.sha256()).unwrap(),
             bundle

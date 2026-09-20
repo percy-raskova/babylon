@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 #[serde(deny_unknown_fields)]
 pub struct ProductionSnapshot {
     pub scenario_label: String,
-    pub horizon_period: u64,
+    pub duration: babylon_kernel::clock::CampaignDuration,
     pub content_authority_sha256: String,
     pub physical_edges: Vec<ProductionPhysicalEdge>,
     pub road_source: Option<ProductionRoadSource>,
@@ -21,6 +21,7 @@ pub struct ProductionSnapshot {
     pub freight: Vec<ProductionFreight>,
     /// Each mass-capacity principal is disclosed once, with distinct reservation periods.
     pub freight_capacity_accounts: Vec<ProductionFreightCapacityAccount>,
+    /// Events for this selected period; historical observations provide earlier receipts.
     pub events: Vec<ProductionEvent>,
     pub merchant_handling_accounts: Vec<ProductionMerchantHandlingAccount>,
     pub final_demand_accounts: Vec<ProductionFinalDemandAccount>,

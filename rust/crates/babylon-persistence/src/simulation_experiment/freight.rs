@@ -270,7 +270,9 @@ pub(super) fn foundation(spec: &SimulationExperimentV1) -> Result<MaterialRuntim
         state,
         MaterialFoundationSpec {
             preset_id: spec.profile.foundation_id().to_owned(),
-            horizon_ticks: spec.horizon,
+            duration: babylon_kernel::clock::CampaignDuration::Finite {
+                final_period: spec.horizon,
+            },
             content_digest: sha256_of(&defines),
         },
     )
@@ -290,7 +292,7 @@ pub(super) fn validate_authority(
     captured.validate()?;
     if captured.bytes() != Ok(bytes.to_vec())
         || spec.preset_id != captured.experiment.profile.foundation_id()
-        || spec.horizon_ticks != captured.experiment.horizon
+        || spec.duration.final_period() != Some(captured.experiment.horizon)
         || spec.content_digest != sha256_of(bytes)
         || graph.rng_seed() != babylon_kernel::replay::ReplaySeed::new(captured.experiment.seed)
         || graph.content_bundle().scenario_source_bytes() != scenario().as_bytes()

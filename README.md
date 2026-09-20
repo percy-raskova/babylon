@@ -149,8 +149,8 @@ its own fanfare. The full soundtrack plays in sequence during a campaign. Open
 **Settings** and press **J**, or choose **Next in-game track**, to select the
 campaign recording. Settings also controls music volume, effects, and mute.
 
-The supplied parameters cover 16 four-week periods (64 weeks).
-Each campaign can select a shorter horizon.
+The supplied campaigns continue in four-week periods without a designed final period.
+Finite experiments keep explicit stopping periods. Opening resources stay finite.
 The comparison shows the same committed period in two saved campaigns.
 Each campaign retains its own authored parameters and captured sources.
 

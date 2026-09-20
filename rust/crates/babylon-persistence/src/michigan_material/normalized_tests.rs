@@ -5,7 +5,7 @@ fn captured_authority_contains_normalized_content_instead_of_only_numeric_define
     let source = include_str!("../../../../../content/scenarios/michigan/defines.toml");
     let catalog = MichiganMaterialCatalog::from_defines_toml(source).unwrap();
     let stored: serde_json::Value = serde_json::from_slice(catalog.defines_bytes()).unwrap();
-    assert_eq!(stored["schema"], "MichiganCapturedContentV5");
+    assert_eq!(stored["schema"], "MichiganCapturedContentV6");
     assert_eq!(stored["rule_source"], catalog.rule_source());
     assert_eq!(stored["normalized"]["sites"].as_array().unwrap().len(), 5);
     assert_eq!(
@@ -61,7 +61,7 @@ fn captured_rule_source_survives_restart_without_reopening_current_authored_rule
     );
     assert!(admit_michigan_content(
         preset.id(),
-        16,
+        restored_foundation.spec().duration,
         &restored_foundation.spec().content_digest,
         &restored_foundation.digest(),
         0,

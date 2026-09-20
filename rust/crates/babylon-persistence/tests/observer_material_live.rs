@@ -553,13 +553,18 @@ impl Drop for DisposableTarget {
 fn live_material_observer_preserves_history_and_denies_preview_blob_authority() {
     let mut target = DisposableTarget::create();
     let preset = MichiganDeliveryPreset::Standard;
+    let catalog =
+        babylon_persistence::michigan_material::MichiganMaterialCatalog::from_defines_toml(
+            include_str!("../../../../content/scenarios/michigan/defines.toml"),
+        )
+        .unwrap();
     let campaign =
         CampaignId::from_uuid(Uuid::from_u128(0x0044_0000_0000_0000_0000_0000_0000_0001));
     let mut runtime = DurableMaterialRuntime::create(
         &target.writer,
         campaign,
         MichiganContentPreset::new_campaign(preset)
-            .create_foundation(&crate::test_support::catalog())
+            .create_foundation(&catalog)
             .unwrap(),
     )
     .unwrap();
@@ -573,25 +578,24 @@ fn live_material_observer_preserves_history_and_denies_preview_blob_authority() 
     let known =
         ObserverEconomyReader::connect(&known_config, ObserverVisibility::KnownPreview).unwrap();
     let archive = SemanticArchiveReader::new(&known_config).unwrap();
-    let zero = observer.snapshot(campaign, 0).unwrap();
+    let mut cursor = None;
+    let zero = observer
+        .snapshot_with_cursor(campaign, 0, &mut cursor)
+        .unwrap();
     assert_eq!(zero.counties.len(), 83);
     assert_eq!(zero.production.as_ref().unwrap().sites.len(), 5);
     assert_material_accounts(&zero);
     assert_known_material_absence(&known.snapshot(campaign, 0).unwrap());
-    assert!(known_config
-        .connect(NoTls)
-        .unwrap()
-        .query(
-            "SELECT register_bytes FROM public.v_observer_material_state_v1",
-            &[]
-        )
-        .is_err());
+    assert_preview_blob_denied(&known_config);
     assert_eq!(observer.campaigns().unwrap(), known.campaigns().unwrap());
     assert_eq!(observer.campaigns().unwrap()[0].durable_tick, 0);
     let mut history_at_two = None;
-    for tick in 1..=6 {
+    for tick in 1..=18 {
         advance_material_period(&mut runtime);
-        let snapshot = observer.snapshot(campaign, tick).unwrap();
+        let snapshot = observer
+            .snapshot_with_cursor(campaign, tick, &mut cursor)
+            .unwrap();
+        assert_eq!(cursor.as_ref().unwrap().completed_tick(), tick);
         assert_eq!(snapshot.foundation_digest, zero.foundation_digest);
         assert_eq!(snapshot.resolve_tick, tick);
         assert_eq!(snapshot.counties.len(), 83);
@@ -606,7 +610,7 @@ fn live_material_observer_preserves_history_and_denies_preview_blob_authority() 
                 &target.writer,
                 campaign,
                 MichiganContentPreset::new_campaign(preset)
-                    .create_foundation(&crate::test_support::catalog())
+                    .create_foundation(&catalog)
                     .unwrap()
                     .digest(),
             )
@@ -623,17 +627,20 @@ fn live_material_observer_preserves_history_and_denies_preview_blob_authority() 
         }
     }
     assert_eq!(
-        observer.snapshot(campaign, 2).unwrap(),
+        observer
+            .snapshot_with_cursor(campaign, 2, &mut cursor)
+            .unwrap(),
         history_at_two.unwrap()
     );
-    assert_eq!(observer.campaigns().unwrap()[0].durable_tick, 6);
+    assert_eq!(cursor.as_ref().unwrap().completed_tick(), 18);
+    assert_eq!(observer.campaigns().unwrap()[0].durable_tick, 18);
     assert_eq!(
-        observer.snapshot(campaign, 7),
+        observer.snapshot(campaign, 19),
         Err(ObserverEconomyError::TickAbsent)
     );
 
     let mut connection = target.writer.connect(NoTls).unwrap();
-    assert_corrupted_register_is_rejected(&mut connection, &observer, campaign);
+    assert_corrupted_register_is_rejected(&mut connection, &observer, campaign, &mut cursor);
 
     let known_role = known_config.get_user().unwrap();
     connection
@@ -642,9 +649,20 @@ fn live_material_observer_preserves_history_and_denies_preview_blob_authority() 
         ))
         .unwrap();
     assert_eq!(
-        known.snapshot(campaign, 6),
+        known.snapshot(campaign, 18),
         Err(ObserverEconomyError::Authority)
     );
+}
+
+fn assert_preview_blob_denied(known_config: &Config) {
+    assert!(known_config
+        .connect(NoTls)
+        .unwrap()
+        .query(
+            "SELECT register_bytes FROM public.v_observer_material_state_v1",
+            &[]
+        )
+        .is_err());
 }
 
 fn identity_hex(bytes: [u8; 32]) -> String {
@@ -760,19 +778,22 @@ fn assert_corrupted_register_is_rejected(
     connection: &mut postgres::Client,
     observer: &ObserverEconomyReader,
     campaign: CampaignId,
+    cursor: &mut Option<babylon_persistence::observer_reader::ObserverMaterialCursor>,
 ) {
     // A syntactically valid stored register mutation cannot retain its committed identity.
-    let original: Vec<u8> = connection.query_one("SELECT register_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1 AND resolve_tick=6", &[campaign.as_uuid()]).unwrap().get(0);
+    let original: Vec<u8> = connection.query_one("SELECT register_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1 AND resolve_tick=18", &[campaign.as_uuid()]).unwrap().get(0);
     let register = MaterialWorldRegister::decode(&original).unwrap();
     let mut state = register.state().clone();
     state.inventory[0].quantity += 1;
-    let corrupt = MaterialWorldRegister::try_new(6, state).unwrap();
-    connection.execute("UPDATE babylon_state.material_tick_v3 SET register_bytes=$2 WHERE campaign_id=$1 AND resolve_tick=6", &[campaign.as_uuid(), &corrupt.canonical_bytes()]).unwrap();
+    let corrupt = MaterialWorldRegister::try_new(18, state).unwrap();
+    connection.execute("UPDATE babylon_state.material_tick_v3 SET register_bytes=$2 WHERE campaign_id=$1 AND resolve_tick=18", &[campaign.as_uuid(), &corrupt.canonical_bytes()]).unwrap();
     assert_eq!(
-        observer.snapshot(campaign, 6),
+        observer.snapshot_with_cursor(campaign, 18, cursor),
         Err(ObserverEconomyError::InvalidProjection)
     );
-    connection.execute("UPDATE babylon_state.material_tick_v3 SET register_bytes=$2 WHERE campaign_id=$1 AND resolve_tick=6", &[campaign.as_uuid(), &original]).unwrap();
+    assert_eq!(cursor.as_ref().unwrap().completed_tick(), 18);
+    connection.execute("UPDATE babylon_state.material_tick_v3 SET register_bytes=$2 WHERE campaign_id=$1 AND resolve_tick=18", &[campaign.as_uuid(), &original]).unwrap();
+    assert_material_accounts(&observer.snapshot_with_cursor(campaign, 18, cursor).unwrap());
 }
 
 #[test]
@@ -986,7 +1007,7 @@ fn assert_session_admits_stored_revision(
         .map(|line| serde_json::from_str::<RuntimeSessionResponse>(line).unwrap())
         .collect::<Vec<_>>();
     assert!(
-        matches!(&responses[0], RuntimeSessionResponse::Hello { protocol_version: 4, scope }
+        matches!(&responses[0], RuntimeSessionResponse::Hello { protocol_version: 5, scope }
         if scope.epoch == 0 && scope.campaign_id.is_none())
     );
     assert!(
@@ -1033,7 +1054,7 @@ fn insert_unadmitted_catalog_rows(config: &Config, source: CampaignId) -> Vec<Ca
         } else {
             "unadmitted-fixture-v1"
         };
-        tx.execute("INSERT INTO babylon_state.material_campaign_foundation_v2 (campaign_id,preset_id,horizon_ticks,content_sha256,initial_register_bytes,foundation_bytes,foundation_sha256) SELECT $1,$3,horizon_ticks,content_sha256,initial_register_bytes,foundation_bytes,pg_catalog.set_byte(foundation_sha256,0,(pg_catalog.get_byte(foundation_sha256,0)+1)%256) FROM babylon_state.material_campaign_foundation_v2 WHERE campaign_id=$2", &[campaign.as_uuid(), source.as_uuid(), &preset]).unwrap();
+        tx.execute("INSERT INTO babylon_state.material_campaign_foundation_v3 (campaign_id,preset_id,duration_kind,final_period,content_sha256,initial_register_bytes,foundation_bytes,foundation_sha256) SELECT $1,$3,duration_kind,final_period,content_sha256,initial_register_bytes,foundation_bytes,pg_catalog.set_byte(foundation_sha256,0,(pg_catalog.get_byte(foundation_sha256,0)+1)%256) FROM babylon_state.material_campaign_foundation_v3 WHERE campaign_id=$2", &[campaign.as_uuid(), source.as_uuid(), &preset]).unwrap();
         ids.push(campaign);
     }
     tx.commit().unwrap();

@@ -17,7 +17,7 @@ tick_identity:
   fields:
     - u32_big_endian_version_3
     - u64_big_endian_resolve_tick
-    - exact_32_byte_material_campaign_foundation_v2_digest
+    - exact_32_byte_material_campaign_foundation_v3_digest
     - exact_32_byte_graph_component_tick_content_v1_hash
     - exact_32_byte_graph_nominal_world_before_hash
     - exact_32_byte_graph_nominal_world_after_hash
@@ -28,7 +28,7 @@ tick_identity:
   database_campaign_uuid: Excluded from mechanics identity; included in the durable envelope.
 related_contracts:
   - contracts/material_world_register_v4.yaml
-  - contracts/material_campaign_foundation_v2.yaml
+  - contracts/material_campaign_foundation_v3.yaml
   - contracts/committed_material_tick_v3.yaml
 history:
   predecessor: https://github.com/percy-raskova/babylon/blob/8c71be68bdc2c292b9b58ad98b2023213edb6b98/contracts/nominal_material_world_v2.yaml

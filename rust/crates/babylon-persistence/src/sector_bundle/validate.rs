@@ -6,7 +6,12 @@ use super::{
 use crate::michigan_cohorts::michigan_business_subject_for_owner;
 use std::collections::{BTreeMap, BTreeSet};
 pub(super) fn bundle(value: &SectorBundle) -> Result<(), SectorBundleError> {
-    if !(1..=MAX_BUNDLE_HORIZON_PERIODS).contains(&value.horizon_ticks) {
+    if value.duration.validate().is_err()
+        || value
+            .duration
+            .final_period()
+            .is_some_and(|p| p > MAX_BUNDLE_HORIZON_PERIODS)
+    {
         return Err(SectorBundleError::Bound);
     }
     let expected =
@@ -153,7 +158,7 @@ fn ownership_and_resources(value: &SectorBundle) -> Result<(), SectorBundleError
         if labor.len() != 1 || labor[0].unit_id != value.labor_unit {
             return Err(SectorBundleError::Resource);
         }
-        for period in 1..=value.horizon_ticks {
+        for period in 1..=value.duration.final_period().unwrap_or(1) {
             expected_capacity.insert((output.process_id, output.site_id, period));
         }
     }

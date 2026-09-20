@@ -26,7 +26,12 @@ pub(super) fn encode(bundle: &SectorBundle) -> Result<Vec<u8>, SectorBundleError
     ] {
         text(&mut bytes, value)?;
     }
-    bytes.extend_from_slice(&bundle.horizon_ticks.to_be_bytes());
+    bytes.extend_from_slice(
+        &bundle
+            .duration
+            .canonical_bytes()
+            .map_err(|_| SectorBundleError::Bound)?,
+    );
     text(&mut bytes, &bundle.sources.county_source_file)?;
     for digest in [
         bundle.sources.county_source_sha256,
@@ -96,7 +101,8 @@ pub(super) fn decode(bytes: &[u8]) -> Result<SectorBundle, SectorBundleError> {
         county_geoid: cursor.text()?,
         sector_code: cursor.text()?,
     };
-    let horizon_ticks = u64::from_be_bytes(cursor.array()?);
+    let duration = babylon_kernel::clock::CampaignDuration::decode(cursor.array()?)
+        .map_err(|_| SectorBundleError::Bound)?;
     let sources = SectorBundleSources {
         county_source_file: cursor.text()?,
         county_source_sha256: cursor.array()?,
@@ -133,7 +139,7 @@ pub(super) fn decode(bytes: &[u8]) -> Result<SectorBundle, SectorBundleError> {
     }
     let result = SectorBundle::from_parts(
         owner,
-        horizon_ticks,
+        duration,
         sources,
         goods,
         processes,

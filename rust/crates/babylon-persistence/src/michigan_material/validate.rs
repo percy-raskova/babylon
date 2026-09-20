@@ -79,10 +79,13 @@ fn path(path: &mut MichiganMaterialPath) {
 }
 pub(super) fn content(c: &MichiganNormalizedContent) -> Result<(), MichiganMaterialError> {
     use MichiganMaterialError::{ArtifactShape, ContentReference, ContentValue};
-    if c.schema != "MichiganNormalizedContentV3"
+    if c.schema != "MichiganNormalizedContentV4"
         || c.evidence_class != "Designed"
         || c.tick_duration_days != babylon_kernel::clock::DAYS_PER_TICK
-        || !(1..=crate::simulation_experiment::MAX_EXPERIMENT_HORIZON).contains(&c.horizon_ticks)
+        || c.duration.validate().is_err()
+        || c.duration
+            .final_period()
+            .is_some_and(|p| p > crate::simulation_experiment::MAX_EXPERIMENT_HORIZON)
         || c.sites.is_empty()
         || c.sites.len() > 1024
         || c.goods.is_empty()
@@ -511,7 +514,7 @@ fn production_ceilings<'a>(
             .checked_add(
                 p.output_quantity_per_batch
                     .checked_mul(p.capacity_batches_per_period)
-                    .and_then(|n| n.checked_mul(c.horizon_ticks))
+                    .and_then(|n| n.checked_mul(c.duration.final_period().unwrap_or(1)))
                     .ok_or(ContentValue)?,
             )
             .ok_or(ContentValue)?;

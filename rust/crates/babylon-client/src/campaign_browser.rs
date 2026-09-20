@@ -1374,7 +1374,7 @@ mod tests {
                 final_demand_accounts: Vec::new(),
                 freight_capacity_accounts: Vec::new(),
                 scenario_label: "Staffing comparison fixture".into(),
-                horizon_period: 520,
+                duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 520 },
                 sites: vec![ProductionSite {
                     id: site_id.clone(),
                     county_geoid: "26163".into(),

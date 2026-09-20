@@ -12,7 +12,7 @@ pub use babylon_practice_contract::{
     OrganizerStandingWork, OrganizerView,
 };
 
-pub const RUNTIME_SESSION_PROTOCOL_VERSION: u16 = 4;
+pub const RUNTIME_SESSION_PROTOCOL_VERSION: u16 = 5;
 pub const RUNTIME_SESSION_MAX_LINE_BYTES: usize = 131_072;
 
 /// A lifecycle incarnation, distinct even when the same campaign is reopened.
@@ -226,6 +226,7 @@ pub enum RuntimeSessionResponse {
         request_id: u64,
         scope: RuntimeSessionScope,
         foundation_digest: String,
+        duration: babylon_kernel::clock::CampaignDuration,
         organizer: bool,
         tail: RuntimeSessionTail,
     },

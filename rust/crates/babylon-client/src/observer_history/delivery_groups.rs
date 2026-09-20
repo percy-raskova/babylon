@@ -388,7 +388,7 @@ mod tests {
             final_demand_accounts: Vec::new(),
             freight_capacity_accounts: Vec::new(),
             scenario_label: "Designed delivery evidence fixture".into(),
-            horizon_period: 16,
+            duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
             sites: vec![
                 site("supplier", "Wayne metal"),
                 site("buyer", "Macomb parts"),

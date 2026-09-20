@@ -634,7 +634,7 @@ mod tests {
                 labor_accounts: Vec::new(),
                 staffing_accounts: Vec::new(),
                 scenario_label: "Designed telemetry fixture".into(),
-                horizon_period: 16,
+                duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
                 sites: vec![ProductionSite {
                     id: HIDDEN_SITE.into(),
                     name: HIDDEN_LABEL.into(),

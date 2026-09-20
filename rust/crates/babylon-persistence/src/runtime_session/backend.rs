@@ -18,6 +18,9 @@ pub(super) struct DurableBackend {
     tail: RuntimeSessionTail,
 }
 impl SessionBackend for DurableBackend {
+    fn duration(&self) -> babylon_kernel::clock::CampaignDuration {
+        self.runtime.session().duration()
+    }
     fn has_organizer(&self) -> bool {
         self.runtime.has_organizer()
     }
@@ -222,7 +225,7 @@ fn runtime_content(
     client: &mut impl postgres::GenericClient,
     campaign: CampaignId,
 ) -> Result<crate::michigan_content::MichiganContentAdmission, RuntimeSessionErrorCode> {
-    let row = client.query_opt("SELECT f.preset_id,f.horizon_ticks,f.content_sha256,f.foundation_sha256,g.foundation_sha256,pg_catalog.sha256(pg_catalog.convert_to(g.scenario_source,'UTF8')),f.foundation_bytes FROM babylon_state.material_campaign_foundation_v2 f JOIN babylon_state.campaign_foundation g USING(campaign_id) WHERE campaign_id=$1::uuid", &[campaign.as_uuid()])
+    let row = client.query_opt("SELECT f.preset_id,f.duration_kind,f.final_period,f.content_sha256,f.foundation_sha256,g.foundation_sha256 AS graph_sha256,pg_catalog.sha256(pg_catalog.convert_to(g.scenario_source,'UTF8')) AS scenario_sha256,f.foundation_bytes FROM babylon_state.material_campaign_foundation_v3 f JOIN babylon_state.campaign_foundation g USING(campaign_id) WHERE campaign_id=$1::uuid", &[campaign.as_uuid()])
         .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
     let Some(row) = row else {
         return Err(RuntimeSessionErrorCode::CampaignAbsent);
@@ -230,25 +233,24 @@ fn runtime_content(
     let id: String = row
         .try_get(0)
         .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
-    let horizon: i64 = row
-        .try_get(1)
-        .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
+    let duration = crate::material_runtime::read_duration(&row)
+        .map_err(|_| RuntimeSessionErrorCode::ScenarioMismatch)?;
     let content: Vec<u8> = row
-        .try_get(2)
+        .try_get("content_sha256")
         .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
     let foundation: Vec<u8> = row
-        .try_get(3)
+        .try_get("foundation_sha256")
         .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
     let graph: Vec<u8> = row
-        .try_get(4)
+        .try_get("graph_sha256")
         .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
     let scenario: Vec<u8> = row
-        .try_get(5)
+        .try_get("scenario_sha256")
         .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
     let bytes: Vec<u8> = row
-        .try_get(6)
+        .try_get("foundation_bytes")
         .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
-    let admitted = admit_michigan_content(&id, horizon, &content, &foundation, 0, &bytes)
+    let admitted = admit_michigan_content(&id, duration, &content, &foundation, 0, &bytes)
         .map_err(|_| RuntimeSessionErrorCode::ScenarioMismatch)?;
     admitted
         .validate_graph(&graph, &scenario)

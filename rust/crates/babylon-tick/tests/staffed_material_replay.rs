@@ -303,7 +303,7 @@ fn try_session_with_material(
         graph,
         MaterialWorldRegister::try_new(0, material).unwrap(),
         sha256_of(b"staffed-replay-fixture-foundation"),
-        7,
+        babylon_kernel::clock::CampaignDuration::Finite { final_period: 7 },
         labor,
     )
 }

@@ -79,12 +79,35 @@ impl RuntimePipe {
 }
 
 #[derive(Resource, Default)]
-struct PendingObservation(
-    Option<(
-        ObservationContext,
-        Task<Result<ObserverEconomySnapshot, String>>,
-    )>,
-);
+struct PendingObservation(Option<(ObservationContext, Task<ObservationRead>)>);
+
+struct ObservationRead {
+    result: Result<ObserverEconomySnapshot, String>,
+    cursor: Option<babylon_persistence::observer_reader::ObserverMaterialCursor>,
+}
+#[derive(Clone, PartialEq, Eq)]
+struct ObservationCacheKey {
+    campaign: babylon_persistence::identity::CampaignId,
+    epoch: Option<u64>,
+    perspective: Perspective,
+    foundation: Option<String>,
+}
+impl ObservationCacheKey {
+    fn from_session(session: &ObserverSession) -> Self {
+        Self {
+            campaign: session.campaign,
+            epoch: session.runtime_scope().map(|scope| scope.epoch),
+            perspective: session.perspective,
+            foundation: session.foundation_digest.clone(),
+        }
+    }
+}
+/// Owns the authenticated read cursor between asynchronous requests.
+#[derive(Resource, Default)]
+struct ObservationCache {
+    key: Option<ObservationCacheKey>,
+    cursor: Option<babylon_persistence::observer_reader::ObserverMaterialCursor>,
+}
 
 #[derive(Resource, Default)]
 struct PlaybackClock {
@@ -349,16 +372,32 @@ fn admits_response_scope(
     Ok(true)
 }
 
-fn admit_campaign(
-    state: &mut ObserverSession,
-    refresh: &mut DossierRefresh,
-    reset: &mut CampaignReset,
+struct CampaignAdmission {
     request_id: u64,
     foundation_digest: String,
     tail: RuntimeSessionTail,
     organizer: bool,
+    duration: babylon_kernel::clock::CampaignDuration,
+}
+
+fn admit_campaign(
+    state: &mut ObserverSession,
+    refresh: &mut DossierRefresh,
+    reset: &mut CampaignReset,
+    admission: CampaignAdmission,
 ) -> Result<(), String> {
+    let CampaignAdmission {
+        request_id,
+        foundation_digest,
+        tail,
+        organizer,
+        duration,
+    } = admission;
+    if !duration.contains(tail.resolve_tick) {
+        return Err("Runtime supplied an invalid campaign duration".into());
+    }
     state.admitted(request_id, foundation_digest, tail)?;
+    state.duration = Some(duration);
     state.organizer_enabled = organizer;
     state.set_organizer_control_pending(organizer);
     if organizer {
@@ -399,6 +438,9 @@ fn refuse_runtime_request(
 ) -> Result<(), String> {
     let complete = code
         == babylon_persistence::runtime_session::RuntimeSessionErrorCode::HorizonComplete
+        && state
+            .duration
+            .is_some_and(|duration| duration.complete(state.durable_tick))
         && tail.is_some_and(|tail| {
             tail.resolve_tick == state.durable_tick && tail.tick_content_hash == state.content_hash
         });
@@ -473,6 +515,7 @@ fn apply_response(
             request_id,
             foundation_digest,
             tail,
+            duration,
             organizer,
             ..
         } => {
@@ -480,10 +523,13 @@ fn apply_response(
                 state,
                 refresh,
                 reset,
-                request_id,
-                foundation_digest,
-                tail,
-                organizer,
+                CampaignAdmission {
+                    request_id,
+                    foundation_digest,
+                    tail,
+                    organizer,
+                    duration,
+                },
             )?;
         }
         RuntimeSessionResponse::Committed {
@@ -825,10 +871,17 @@ fn apply_presentation_command(command: ObserverCommand, context: &mut CommandCon
 fn start_observation(
     state: Res<ObserverSession>,
     mut pending: ResMut<PendingObservation>,
+    mut cache: ResMut<ObservationCache>,
     mut frame: ResMut<ObserverFrame>,
 ) {
+    let key = ObservationCacheKey::from_session(&state);
+    if cache.key.as_ref() != Some(&key) {
+        cache.key = Some(key);
+        cache.cursor = None;
+    }
     if state.quit_requested {
         pending.0 = None;
+        cache.cursor = None;
         return;
     }
     if let Some((context, _)) = &pending.0 {
@@ -843,18 +896,25 @@ fn start_observation(
     frame.0 = None;
     let context = state.context();
     let requested = context.clone();
+    let mut cursor = cache.cursor.take();
     let task = AsyncComputeTaskPool::get().spawn(async move {
         let started = std::time::Instant::now();
-        let reader = match requested.perspective {
-            Perspective::FullObserver => ObserverEconomyReader::from_observer_env(),
-            Perspective::PlayerKnowledge => ObserverEconomyReader::from_known_env(),
-        }
-        .map_err(|error| error.to_string())?;
-        let result = reader
-            .snapshot(requested.campaign, requested.tick)
-            .map_err(|error| error.to_string());
+        let resumed_after = cursor
+            .as_ref()
+            .map(babylon_persistence::observer_reader::ObserverMaterialCursor::completed_tick);
+        let result = (|| {
+            let reader = match requested.perspective {
+                Perspective::FullObserver => ObserverEconomyReader::from_observer_env(),
+                Perspective::PlayerKnowledge => ObserverEconomyReader::from_known_env(),
+            }
+            .map_err(|error| error.to_string())?;
+            reader
+                .snapshot_with_cursor(requested.campaign, requested.tick, &mut cursor)
+                .map_err(|error| error.to_string())
+        })();
         bevy::log::info!(target: "babylon_client::timing",
             stage = "authenticated_observer_read",
+            resumed_after = ?resumed_after,
             campaign = %requested.campaign.as_uuid(),
             tick = requested.tick,
             generation = requested.generation,
@@ -862,7 +922,7 @@ fn start_observation(
             elapsed_us = started.elapsed().as_micros(),
             success = result.is_ok(),
             "observer read completed");
-        result
+        ObservationRead { result, cursor }
     });
     pending.0 = Some((context, task));
 }
@@ -870,6 +930,7 @@ fn start_observation(
 fn collect_observation(
     mut state: ResMut<ObserverSession>,
     mut pending: ResMut<PendingObservation>,
+    mut cache: ResMut<ObservationCache>,
     mut frame: ResMut<ObserverFrame>,
     ui: Res<ObserverUiState>,
 ) {
@@ -884,15 +945,24 @@ fn collect_observation(
     if !state.accepts(&context) {
         return;
     }
-    match result {
-        Ok(snapshot) => install_observation(
-            &mut state,
-            &context,
-            snapshot,
-            &mut frame,
-            ui.stop_on_delivery,
-        ),
-        Err(error) => state.fail(error),
+    match result.result {
+        Ok(snapshot) => {
+            install_observation(
+                &mut state,
+                &context,
+                snapshot,
+                &mut frame,
+                ui.stop_on_delivery,
+            );
+            if state.phase != SessionPhase::Failed {
+                cache.cursor = result.cursor;
+            }
+        }
+        Err(error) => {
+            // Reader failures leave the previously authenticated cursor intact.
+            cache.cursor = result.cursor;
+            state.fail(error);
+        }
     }
 }
 
@@ -922,7 +992,15 @@ fn install_observation(
         return;
     }
     if let Some(production) = &snapshot.production {
-        state.horizon_tick = Some(production.horizon_period);
+        if !production.duration.contains(snapshot.resolve_tick)
+            || state
+                .duration
+                .is_some_and(|duration| duration != production.duration)
+        {
+            state.fail("Observation duration differs from the admitted campaign.".into());
+            return;
+        }
+        state.duration = Some(production.duration);
     }
     if state.installed(context) {
         // Only newly installed, disclosed events from this committed period can
@@ -1044,6 +1122,7 @@ pub struct ObserverIoPlugin;
 impl Plugin for ObserverIoPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<PendingObservation>()
+            .init_resource::<ObservationCache>()
             .init_resource::<PlaybackClock>()
             .init_resource::<ShutdownProgress>()
             .configure_sets(
@@ -1538,6 +1617,7 @@ pub(crate) mod tests {
     fn idle_pipe_and_observation_polling_do_not_invalidate_the_session_each_frame() {
         let (mut app, _requests, responses) = quit_app();
         app.init_resource::<PendingObservation>()
+            .init_resource::<ObservationCache>()
             .init_resource::<SessionChanges>()
             .add_systems(
                 Update,
@@ -1592,12 +1672,16 @@ pub(crate) mod tests {
             let (mut app, requests, responses) = quit_app();
             {
                 let mut state = app.world_mut().resource_mut::<ObserverSession>();
-                state.horizon_tick = Some(16);
+                state.duration =
+                    Some(babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 });
                 state.ready(tick, None);
                 let context = state.context();
                 assert!(state.installed(&context));
                 state.archive_verified_tick = tick;
-                if Some(tick) == state.horizon_tick {
+                if state
+                    .duration
+                    .is_some_and(|duration| duration.complete(tick))
+                {
                     state.complete();
                 }
             }
@@ -1827,9 +1911,8 @@ pub(crate) mod tests {
         app.world_mut()
             .resource_mut::<Time>()
             .advance_by(std::time::Duration::from_secs(1));
-        app.world_mut()
-            .resource_mut::<ObserverSession>()
-            .horizon_tick = Some(5);
+        app.world_mut().resource_mut::<ObserverSession>().duration =
+            Some(babylon_kernel::clock::CampaignDuration::Finite { final_period: 5 });
         dispatch(&mut app, &[ObserverCommand::TogglePlay]);
         for expected_period in [4, 5] {
             let RuntimeSessionRequest::Advance {
@@ -1899,7 +1982,7 @@ pub(crate) mod tests {
                     labor_accounts: Vec::new(),
                     staffing_accounts: Vec::new(),
                     scenario_label: "bounded observer fixture".into(),
-                    horizon_period: 16,
+                    duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
                     sites: Vec::new(),
                     routes: Vec::new(),
                     freight: Vec::new(),

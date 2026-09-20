@@ -430,7 +430,7 @@ mod tests {
             labor_accounts: Vec::new(),
             staffing_accounts: Vec::new(),
             scenario_label: "Designed test chain".into(),
-            horizon_period: 16,
+            duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
             sites: vec![site("a", &[]), site("b", &["a"]), site("c", &["b"])],
             routes: Vec::new(),
             freight: Vec::new(),

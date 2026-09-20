@@ -266,7 +266,7 @@ impl OrganizerClient {
     ) -> Result<(), String> {
         self.take_response(request_id, RequestKind::Status)?;
         if snapshot.view.period != session.durable_tick
-            || snapshot.view.period > snapshot.horizon_tick
+            || !snapshot.duration.contains(snapshot.view.period)
             || self.campaign != Some(*session.campaign.as_uuid())
         {
             return Err(
@@ -281,7 +281,7 @@ impl OrganizerClient {
                 || pending.command.resource_digest != snapshot.view.resource_digest
                 || pending.command.expected_period != snapshot.view.period
                 || snapshot.view.period.checked_add(1) != Some(pending.resolves_period)
-                || pending.resolves_period > snapshot.horizon_tick
+                || !snapshot.duration.contains(pending.resolves_period)
         }) {
             return Err("Pending organizer ruling does not match the opened campaign's authority and period.".into());
         }
@@ -299,8 +299,8 @@ impl OrganizerClient {
             }
         }
         self.clear_review();
-        session.horizon_tick = Some(snapshot.horizon_tick);
-        if session.phase == SessionPhase::Ready && session.viewed_tick == snapshot.horizon_tick {
+        session.duration = Some(snapshot.duration);
+        if session.phase == SessionPhase::Ready && snapshot.duration.complete(session.viewed_tick) {
             session.complete();
         }
         self.view = Some(snapshot.view);
@@ -593,7 +593,7 @@ mod tests {
                 OrganizerSnapshot {
                     view: client.view.clone().unwrap(),
                     pending: Some(accepted.clone()),
-                    horizon_tick: 16,
+                    duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
                 },
                 &mut session,
             )
@@ -667,12 +667,17 @@ mod tests {
                     OrganizerSnapshot {
                         view: client.view.clone().unwrap(),
                         pending: None,
-                        horizon_tick: 3,
+                        duration: babylon_kernel::clock::CampaignDuration::Finite {
+                            final_period: 3,
+                        },
                     },
                     &mut session,
                 )
                 .unwrap();
-            assert_eq!(session.horizon_tick, Some(3));
+            assert_eq!(
+                session.duration,
+                Some(babylon_kernel::clock::CampaignDuration::Finite { final_period: 3 })
+            );
             if !already_loaded {
                 assert_eq!(session.phase, SessionPhase::Loading);
                 assert!(session.installed(&session.context()));

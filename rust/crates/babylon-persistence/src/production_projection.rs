@@ -2,7 +2,7 @@
 
 pub(crate) mod context;
 mod freight;
-mod history;
+pub(crate) mod history;
 pub(crate) mod households;
 mod labor;
 pub(crate) mod lifecycle;
@@ -41,6 +41,7 @@ pub(crate) enum ProductionProjectionError {
     Arithmetic,
 }
 
+#[cfg(test)]
 pub(crate) fn project_material_observation(
     catalog: &MichiganMaterialCatalog,
     preset: MichiganDeliveryPreset,
@@ -49,7 +50,7 @@ pub(crate) fn project_material_observation(
     history: &[(MaterialTickReceipts, [u8; 32])],
 ) -> Result<ProductionSnapshot, ProductionProjectionError> {
     let tick = register.completed_tick();
-    if tick > catalog.horizon_ticks() || u64::try_from(history.len()).ok() != Some(tick) {
+    if !catalog.duration().contains(tick) || u64::try_from(history.len()).ok() != Some(tick) {
         return Err(ProductionProjectionError::History);
     }
     for (index, (receipt, _)) in history.iter().enumerate() {
@@ -59,50 +60,72 @@ pub(crate) fn project_material_observation(
     }
     let state = register.state();
     let mut order_history = history::OrderHistory::from_catalog(catalog)?;
-    let mut events = Vec::new();
-    for (receipt, digest) in history {
+    for (receipt, _) in history {
         order_history.admit(state, receipt)?;
-        project_events(catalog, &order_history, receipt, *digest, &mut events)?;
         order_history.movements(receipt)?;
+    }
+    project_material_current(
+        catalog,
+        preset,
+        register,
+        opening,
+        history.last(),
+        &order_history,
+    )
+}
+
+/// Project one already-authenticated period using bounded accumulated relation totals.
+pub(crate) fn project_material_current(
+    catalog: &MichiganMaterialCatalog,
+    preset: MichiganDeliveryPreset,
+    register: &MaterialWorldRegister,
+    opening: Option<&MaterialWorldRegister>,
+    receipt: Option<&(MaterialTickReceipts, [u8; 32])>,
+    order_history: &history::OrderHistory,
+) -> Result<ProductionSnapshot, ProductionProjectionError> {
+    let state = register.state();
+    let mut events = Vec::new();
+    if let Some((receipt, digest)) = receipt {
+        project_events(catalog, order_history, receipt, *digest, &mut events)?;
     }
     let maintenance_account = maintenance::project_maintenance(
         catalog,
         state,
         opening.map(MaterialWorldRegister::state),
-        history.last().map(|(receipt, _)| receipt),
+        receipt.map(|(receipt, _)| receipt),
     )?;
     let labor_accounts = labor::project_labor_accounts(
         state,
         opening.map(MaterialWorldRegister::state),
-        history.last().map(|(receipt, _)| receipt),
+        receipt.map(|(receipt, _)| receipt),
     )?;
     let household_accounts = households::project_households(
         catalog,
         state,
         opening.map(MaterialWorldRegister::state),
-        history.last().map(|(receipt, _)| receipt),
+        receipt.map(|(receipt, _)| receipt),
     )?;
     let material_balance = material_balance::project_material_balance(
         catalog,
         state,
         opening.map(MaterialWorldRegister::state),
-        history.last().map(|(receipt, _)| receipt),
+        receipt.map(|(receipt, _)| receipt),
     )?;
     let freight_capacity_accounts = freight::project_freight_capacity_accounts(
         catalog,
         state,
         opening.map(MaterialWorldRegister::state),
-        history.last().map(|(receipt, _)| receipt),
+        receipt.map(|(receipt, _)| receipt),
     )?;
     let (merchant_handling_accounts, final_demand_accounts) = merchants::project_merchants(
         catalog,
         state,
         opening.map(MaterialWorldRegister::state),
-        history.last().map(|(receipt, _)| receipt),
-        &order_history,
+        receipt.map(|(receipt, _)| receipt),
+        order_history,
     )?;
-    let sites = project_sites(catalog, state, history.last().map(|(receipt, _)| receipt))?;
-    let routes = project_routes(catalog, state, &order_history)?;
+    let sites = project_sites(catalog, state, receipt.map(|(receipt, _)| receipt))?;
+    let routes = project_routes(catalog, state, order_history)?;
     let freight = project_in_transit_freight(catalog, state, &routes)?;
     let physical_edges = catalog.physical_network().map_or_else(Vec::new, |network| {
         network
@@ -132,14 +155,15 @@ pub(crate) fn project_material_observation(
     });
     Ok(ProductionSnapshot {
         scenario_label: scenario_label(preset).to_owned(),
-        horizon_period: catalog.horizon_ticks(), content_authority_sha256: digest_hex(&catalog.defines_hash()),
+        duration: catalog.duration(), content_authority_sha256: digest_hex(&catalog.defines_hash()),
         sites, routes, freight, events, labor_accounts, material_balance, freight_capacity_accounts,
         merchant_handling_accounts, final_demand_accounts, household_accounts, maintenance_account, physical_edges, road_source,
         staffing_accounts: Vec::new(), observed_contexts: Vec::new(), process_attributions: Vec::new(),
         provenance: vec![
-            format!("Designed {}-period physical circuit at {} resolution.", catalog.horizon_ticks(), catalog.geographic_scale()),
+            format!("Designed {} physical circuit at {} resolution.", catalog.duration(), catalog.geographic_scale()),
             "Recipes, opening stock, purchase policies, workforce schedules and capacity quantities are Designed.".to_owned(),
             "Observed QCEW annual-average jobs are separate from current modeled employed and reserve people.".to_owned(),
+            "Events disclose this selected period. Earlier committed receipts remain available through historical observations.".to_owned(),
             catalog.terminal_output_disposition().to_owned(),
             "Capacity reservations precede physical arrivals. Local transfer and end-buyer fulfillment are distinct stock movements. Household stock and consumption use separate committed receipts; delivery alone does not prove payment or consumption.".to_owned(),
             format!("Captured content authority sha256:{}", digest_hex(&catalog.defines_hash())),
@@ -431,6 +455,7 @@ fn project_routes(
             let orders: Vec<_> = history
                 .deliveries
                 .values()
+                .chain(history.retired_deliveries.values())
                 .filter(|row| row.route == route.id())
                 .collect();
             let total = |field: fn(&history::Delivery) -> u64| {
@@ -779,7 +804,7 @@ mod tests {
             &[],
         )
         .unwrap();
-        assert!(initial.provenance[0].starts_with("Designed 16-period physical circuit"));
+        assert!(initial.provenance[0].starts_with("Designed finite 16-period physical circuit"));
         assert!(initial.freight.is_empty());
         assert!(initial.events.is_empty());
         assert!(initial.material_balance.is_none());
@@ -867,9 +892,10 @@ mod tests {
             env!("CARGO_MANIFEST_DIR"),
             "/../../../content/scenarios/michigan/defines.toml"
         ));
-        let catalog = MichiganMaterialCatalog::from_defines_toml(
-            &source.replace("HORIZON_PERIODS = 16", "HORIZON_PERIODS = 8"),
-        )
+        let catalog = MichiganMaterialCatalog::from_defines_toml(&source.replace(
+            "DURATION = { kind = \"continuous\" }",
+            "DURATION = { kind = \"finite\", final_period = 8 }",
+        ))
         .unwrap();
         let foundation = MichiganContentPreset::FourWeekStandard
             .create_foundation(&catalog)
@@ -890,8 +916,11 @@ mod tests {
             &[],
         )
         .unwrap();
-        assert_eq!(snapshot.horizon_period, 8);
-        assert!(snapshot.provenance[0].starts_with("Designed 8-period physical circuit"));
+        assert_eq!(
+            snapshot.duration,
+            babylon_kernel::clock::CampaignDuration::Finite { final_period: 8 }
+        );
+        assert!(snapshot.provenance[0].starts_with("Designed finite 8-period physical circuit"));
     }
 
     fn period_three(preset: MichiganDeliveryPreset) -> ProductionSnapshot {

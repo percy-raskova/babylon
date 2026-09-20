@@ -225,7 +225,10 @@ fn reconstruction_refuses_component_changes_and_an_unadmitted_expected_identity(
         match mutation {
             0 => stored.spec.content_digest[0] ^= 1,
             1 => stored.spec.preset_id.push_str("-changed"),
-            2 => stored.spec.horizon_ticks += 1,
+            2 => {
+                stored.spec.duration =
+                    babylon_kernel::clock::CampaignDuration::Finite { final_period: 17 }
+            }
             3 => stored.foundation_bytes[0] ^= 1,
             4 => stored.foundation_digest[0] ^= 1,
             5 => stored.graph_foundation_digest[0] ^= 1,
@@ -624,9 +627,14 @@ fn material_transition_failure_abandons_prepared_graph_and_identity() {
             });
     }
     let register = MaterialWorldRegister::try_new(0, initial).unwrap();
-    let session =
-        MaterialReplaySession::new(foundation.graph, register, [7; 32], 16, foundation.labor)
-            .unwrap();
+    let session = MaterialReplaySession::new(
+        foundation.graph,
+        register,
+        [7; 32],
+        babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
+        foundation.labor,
+    )
+    .unwrap();
     let bytes = session.material().canonical_bytes().to_vec();
     let hash = session.current_world_hash().unwrap();
     let actions =

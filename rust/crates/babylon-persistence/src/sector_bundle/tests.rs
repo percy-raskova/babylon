@@ -181,7 +181,7 @@ fn bundle_and_row_permutations_preserve_identity_and_changed_authority_refuses()
         goods.reverse();
         let rebuilt = SectorBundle::from_parts(
             b.owner.clone(),
-            b.horizon_ticks(),
+            b.duration(),
             b.sources.clone(),
             goods,
             b.processes.clone(),
@@ -211,7 +211,7 @@ fn current_bundle_codec_refuses_version_digest_truncation_and_extra_bytes() {
     let original = b.canonical_bytes();
     assert_eq!(
         &original[..BUNDLE_DOMAIN.len()],
-        b"babylon.sector-bundle.v3\0"
+        b"babylon.sector-bundle.v4\0"
     );
     assert_eq!(
         SectorBundle::decode(original, [0; 32]),

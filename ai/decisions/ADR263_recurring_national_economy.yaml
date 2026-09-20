@@ -68,6 +68,15 @@ ADR263_recurring_national_economy:
     orders instead of assuming a fixed roster. Nominal balances and physical
     accounts stay exact; theoretical interpretation requires separate evidence.
     National performance must be measured without dropping county coverage.
+  duration_and_observation: |
+    CampaignDuration captures either continuous play or an explicit finite
+    control. Continuous play has no designed final period and uses standing
+    capacity supplies with current budgets. The observer authenticates new
+    receipt periods against its retained current and prior state, keeping
+    cumulative totals by stable relation instead of retired order tombstones.
+    The cursor publishes only after validation and the read transaction succeed.
+    Cold reads page through persisted history with bounded memory; this does not
+    establish a constant-time restart or the national performance target.
   verification:
     - reports/national-economy-design-2026-09-20.md
     - docs/superpowers/research/2026-09-20-economic-circuit-source-study.md

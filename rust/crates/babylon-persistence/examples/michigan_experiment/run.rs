@@ -74,7 +74,7 @@ fn regional_parameters(catalog: &MichiganMaterialCatalog) -> Result<Value> {
     let parameters = [
         "SCHEMA_VERSION",
         "TICK_DURATION_DAYS",
-        "HORIZON_PERIODS",
+        "DURATION",
         "staffing",
         "process",
         "corridor",
@@ -95,10 +95,13 @@ fn regional_parameters(catalog: &MichiganMaterialCatalog) -> Result<Value> {
 }
 
 pub fn cases() -> Result<Vec<Case>> {
-    let original = MichiganMaterialCatalog::from_defines_toml(BASELINE)
-        .map_err(|error| contract(format!("baseline validation: {error}")))?;
+    let original = MichiganMaterialCatalog::from_defines_toml(&BASELINE.replace(
+        "DURATION = { kind = \"continuous\" }",
+        "DURATION = { kind = \"finite\", final_period = 16 }",
+    ))
+    .map_err(|error| contract(format!("baseline validation: {error}")))?;
     let baseline = regional_parameters(&original)?;
-    if baseline["HORIZON_PERIODS"] != PERIODS
+    if baseline["DURATION"]["final_period"] != PERIODS
         || baseline["process"]["panel_forming"]["OPENING_INPUT_UNITS"] != 0
         || baseline["process"]["panel_forming"]["OPENING_PLANNED_BATCHES"] != 0
         || original.processes().len() != 5
@@ -170,7 +173,7 @@ fn foundation(case: &Case) -> Result<(Value, MaterialReplaySession<HypergraphSto
         .map_err(|error| contract(format!("{} foundation: {error:?}", case.spec.id)))?;
     let graph = foundation.graph_foundation();
     let seed = i64::from_be_bytes(graph.rng_seed().to_be_bytes());
-    if seed != 319 || foundation.spec().horizon_ticks != PERIODS {
+    if seed != 319 || foundation.spec().duration.final_period() != Some(PERIODS) {
         return Err(contract("selected composition changed its seed or horizon"));
     }
     let identity = json!({

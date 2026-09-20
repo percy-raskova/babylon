@@ -25,10 +25,13 @@ One tick judges one fixed 28-day interval and produces one durable commit.
 There are 13 periods in a modeled year; this is a 364-day simulation calendar,
 not variable-length Gregorian months. Current Michigan campaigns bind the interval
 in their canonical content. Their authored TOML defines the work schedule,
-recipes, workforce, stocks, orders, throughput, route durations, and a stop
-horizon of 1 through 16 periods. The supplied values yield 160 Designed labor
-hours per person per period and 16 periods (64 weeks). Definitions
-normalize regional and statewide authoring into one current content model.
+recipes, workforce, stocks, orders, throughput, route durations, and
+an explicit campaign duration. The supplied campaign continues without a designed final
+period; finite experiments retain explicit stopping periods. Opening resources
+and commitments remain finite. The supplied work schedule yields 160 Designed
+labor hours per person per period. Continuous campaigns capture standing
+capacity supplies and current budgets instead of lifetime schedules.
+Definitions normalize regional and statewide authoring into one current content model.
 New captures that model, the generated graph scenario, observed source cells,
 and observed definitions. Statewide capture also retains resolved physical
 paths, selected edge geometry, terminal attachments, and network authority.

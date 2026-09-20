@@ -674,7 +674,7 @@ mod tests {
                 labor_accounts: Vec::new(),
                 staffing_accounts: Vec::new(),
                 scenario_label: "Designed lens fixture".into(),
-                horizon_period: 16,
+                duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
                 sites: vec![
                     site("source", "26163", 'a', 0),
                     site("other", "26163", 'b', 500),

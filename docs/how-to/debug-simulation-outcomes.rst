@@ -17,9 +17,10 @@ runtime, creates a fresh campaign, and records post-commit evidence:
    mise run sim:report 16 300 shared
 
 The default run covers 15 four-week periods (60 weeks), crossing the annual
-boundary at period 13. The second command covers the full 16-period player
-content horizon with a 300-second timeout. The runtime describes its captured
-scenario, seed, horizon, and observation inventory before the wrapper touches
+boundary at period 13. The second command requests a finite 16-period reporting
+window with a 300-second timeout. This window is not a campaign lifetime.
+The runtime describes its captured scenario, seed, horizon, and observation
+inventory before the wrapper touches
 ``PostgreSQL``. The wrapper refuses a longer run and keeps an error summary.
 Use the named long diagnostic profiles below for 130-period qualification.
 A modeled year is 13 periods, or 364 days.
@@ -627,8 +628,9 @@ evidence.
 ``diagnostic-sustained.json`` covers 130 four-week periods with finite stocks
 and orders that support activity in the final modeled year.
 ``diagnostic-depletion.json`` extends the current finite endowment to the same
-horizon so exhaustion stays visible. Player profiles still refuse more than
-16 periods. These are ten modeled years, not ten civil years.
+horizon so exhaustion stays visible. Playable campaigns use continuous
+duration; these diagnostic profiles keep explicit finite horizons. These are ten modeled
+years, not ten civil years.
 
 The typed input contains a named profile, horizon, seed, optional civil epoch
 and source snapshot identity, starting observations, and admitted interventions.

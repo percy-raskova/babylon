@@ -56,8 +56,8 @@ fn advance_availability(state: &ObserverSession) -> ControlAvailability {
     }
     if state.phase == SessionPhase::Complete
         || state
-            .horizon_tick
-            .is_some_and(|horizon| state.durable_tick >= horizon)
+            .duration
+            .is_some_and(|duration| duration.complete(state.durable_tick))
     {
         return ControlAvailability::Disabled(
             "Scenario complete; committed history remains available",
@@ -68,7 +68,7 @@ fn advance_availability(state: &ObserverSession) -> ControlAvailability {
             "This is the final period; further play is unavailable",
         );
     }
-    if state.durable_tick.checked_add(1).is_none() {
+    if state.durable_tick >= i64::MAX as u64 {
         return ControlAvailability::Disabled(
             "The campaign has reached its supported period limit",
         );
@@ -77,11 +77,11 @@ fn advance_availability(state: &ObserverSession) -> ControlAvailability {
 }
 
 fn pending_finishes_scenario(state: &ObserverSession) -> bool {
-    state.horizon_tick.is_some_and(|horizon| {
+    state.duration.is_some_and(|duration| {
         state
             .durable_tick
             .checked_add(1)
-            .is_some_and(|next| next >= horizon)
+            .is_some_and(|next| duration.complete(next))
     })
 }
 
@@ -350,7 +350,7 @@ mod tests {
             "PERIOD 14\n4 weeks / 28 days"
         );
         assert!(period_advance_help().contains("13 periods make a 52-week model year"));
-        state.horizon_tick = Some(1);
+        state.duration = Some(babylon_kernel::clock::CampaignDuration::Finite { final_period: 1 });
         state.complete();
         assert!(turn_presentation(&state)
             .status
@@ -581,7 +581,7 @@ mod tests {
     #[test]
     fn final_pending_period_can_pause_but_cannot_promise_further_play() {
         let mut state = ready(15);
-        state.horizon_tick = Some(16);
+        state.duration = Some(babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 });
         state.begin_advance().unwrap();
         assert_eq!(
             turn_presentation(&state).period,

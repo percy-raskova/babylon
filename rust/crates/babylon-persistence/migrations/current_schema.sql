@@ -1103,17 +1103,22 @@ REVOKE ALL ON FUNCTION babylon_state.verify_tick_choice_receipt_v1_continuity() 
 
 REVOKE ALL ON FUNCTION babylon_state.verify_tick_event_v2_continuity() FROM PUBLIC;
 
-CREATE TABLE babylon_state.material_campaign_foundation_v2 (
+CREATE TABLE babylon_state.material_campaign_foundation_v3 (
     campaign_id uuid PRIMARY KEY REFERENCES babylon_state.campaign(campaign_id),
     preset_id text NOT NULL CHECK (octet_length(preset_id) BETWEEN 1 AND 128),
-    horizon_ticks bigint NOT NULL CHECK (horizon_ticks > 0),
+    duration_kind text NOT NULL,
+    final_period bigint,
+    CONSTRAINT material_campaign_duration CHECK (
+        (duration_kind = 'continuous' AND final_period IS NULL)
+        OR (duration_kind = 'finite' AND final_period IS NOT NULL AND final_period > 0)
+    ),
     content_sha256 bytea NOT NULL CHECK (octet_length(content_sha256) = 32),
     initial_register_bytes bytea NOT NULL CHECK (octet_length(initial_register_bytes) <= 67108864),
     foundation_bytes bytea NOT NULL CHECK (octet_length(foundation_bytes) <= 67108864),
     foundation_sha256 bytea NOT NULL CHECK (octet_length(foundation_sha256) = 32)
 );
 CREATE TABLE babylon_state.material_tick_v3 (
-    campaign_id uuid NOT NULL REFERENCES babylon_state.material_campaign_foundation_v2(campaign_id),
+    campaign_id uuid NOT NULL REFERENCES babylon_state.material_campaign_foundation_v3(campaign_id),
     resolve_tick bigint NOT NULL CHECK (resolve_tick > 0),
     identity_bytes bytea NOT NULL CHECK (octet_length(identity_bytes) <= 1024),
     register_bytes bytea NOT NULL CHECK (octet_length(register_bytes) <= 67108864),
@@ -1133,7 +1138,7 @@ BEGIN
 END $$;
 CREATE TRIGGER material_tick_marker_v3 BEFORE INSERT ON babylon_state.tick_commit FOR EACH ROW EXECUTE FUNCTION babylon_state.require_material_tick_v3();
 REVOKE ALL ON FUNCTION babylon_state.require_material_tick_v3() FROM PUBLIC;
-REVOKE ALL ON babylon_state.material_campaign_foundation_v2, babylon_state.material_tick_v3 FROM PUBLIC;
+REVOKE ALL ON babylon_state.material_campaign_foundation_v3, babylon_state.material_tick_v3 FROM PUBLIC;
 
 CREATE TABLE babylon_meta.territory_county_map_v1 (
     campaign_id UUID NOT NULL,

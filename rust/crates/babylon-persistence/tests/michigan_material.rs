@@ -425,7 +425,11 @@ fn delivery_delay_changes_following_period_output_with_food_causally_disconnecte
     let mut delayed = session(MichiganDeliveryPreset::Delayed);
     let mut first_standard_output = None;
     let mut first_delayed_output = None;
-    for period in 1..=crate::test_support::catalog().horizon_ticks() {
+    for period in 1..=crate::test_support::catalog()
+        .duration()
+        .final_period()
+        .expect("finite control")
+    {
         let a = advance(&mut standard);
         let b = advance(&mut delayed);
         let standard = standard.material().state();
@@ -469,7 +473,11 @@ fn every_dispatch_transit_arrival_restart_reproduces_exact_continuation() {
     ] {
         let mut uninterrupted = session(preset);
         let mut next = Some(prepare(&uninterrupted));
-        for period in 1..=crate::test_support::catalog().horizon_ticks() {
+        for period in 1..=crate::test_support::catalog()
+            .duration()
+            .final_period()
+            .expect("finite control")
+        {
             // The previous restart comparison already prepared this exact
             // continuation. Retain it while still rebuilding every restored
             // session from a fresh foundation below.
@@ -500,7 +508,12 @@ fn every_dispatch_transit_arrival_restart_reproduces_exact_continuation() {
                 uninterrupted.current_world_hash().unwrap()
             );
             assert_eq!(restored.material(), uninterrupted.material());
-            if period < crate::test_support::catalog().horizon_ticks() {
+            if period
+                < crate::test_support::catalog()
+                    .duration()
+                    .final_period()
+                    .expect("finite control")
+            {
                 let expected = prepare(&uninterrupted);
                 let actual = prepare(&restored);
                 assert_eq!(actual.identity(), expected.identity());

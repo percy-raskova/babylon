@@ -350,7 +350,7 @@ pub struct MichiganMaintenance {
 pub struct MichiganNormalizedContent {
     pub schema: String,
     pub evidence_class: String,
-    pub horizon_ticks: u64,
+    pub duration: babylon_kernel::clock::CampaignDuration,
     pub tick_duration_days: u64,
     pub geographic_scale: String,
     pub terminal_output_disposition: String,

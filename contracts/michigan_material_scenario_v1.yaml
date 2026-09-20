@@ -2,7 +2,7 @@ meta:
   contract: MichiganMaterialScenarioV1
   version: 1
   issue: PER-10
-  scope: Current V5 bounded observer material demonstration; ADR258 parameters
+  scope: Regional physical observer controls with explicit duration; ADR258 parameters
 
 artifacts:
   - path: contracts/fixtures/michigan_industry_baseline_v1.json
@@ -33,8 +33,9 @@ id_domain: babylon.michigan-material.v1
 id_encoding: SHA-256 of UTF-8 domain, NUL, kind, NUL, stable key
 
 invariants:
-  - Each tick is one four-week simulation period. The finite horizon and
-    supported interval are validated from authored parameters.
+  - Each tick is one four-week simulation period. Explicit continuous or finite
+    duration and the supported interval are captured from authored parameters.
+    Opening resources stay finite; continuous duration does not generate demand.
   - All initial quantities, recipes, throughput, labor hours, workforce seeds,
     orders and route durations come from one required numeric TOML document.
     The foundation stores its canonical values and derived bundles together.

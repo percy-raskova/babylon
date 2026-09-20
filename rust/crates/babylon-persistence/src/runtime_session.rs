@@ -44,6 +44,7 @@ impl std::fmt::Display for RuntimeSessionErrorCode {
 impl std::error::Error for RuntimeSessionErrorCode {}
 
 trait SessionBackend {
+    fn duration(&self) -> babylon_kernel::clock::CampaignDuration;
     fn tail(&self) -> RuntimeSessionTail;
     fn has_organizer(&self) -> bool {
         false

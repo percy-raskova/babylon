@@ -3,6 +3,9 @@ use babylon_material_circuit::{ArrivalReceipt, DeliveryReceipt, RealizationRecei
 
 fn delivery_receipts(order_id: OrderId) -> MaterialTickReceipts {
     MaterialTickReceipts {
+        money_transfers: Vec::new(),
+        wage_accruals: Vec::new(),
+        labor_use: Vec::new(),
         maintenance: None,
         resolve_tick: 2,
         production: Vec::new(),

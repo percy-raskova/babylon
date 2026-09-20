@@ -15,10 +15,11 @@ use babylon_practice_contract::{
 };
 
 mod maintenance_receipt;
+mod monetary_receipt;
 
 const REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v4\0";
 const NOMINAL_DOMAIN: &[u8] = b"babylon.nominal-material-world.v3\0";
-const RECEIPT_DOMAIN: &[u8] = b"babylon.material-tick-receipts.v5\0";
+const RECEIPT_DOMAIN: &[u8] = b"babylon.material-tick-receipts.v6\0";
 /// Shared identity ceiling inherited by the aggregate replay envelope.
 pub const MAX_MATERIAL_WORLD_REGISTER_BYTES: usize = 67_108_864;
 
@@ -393,10 +394,21 @@ fn bounded_bytes(length: usize) -> Result<Vec<u8>, MaterialWorldError> {
         .map_err(|_| MaterialWorldError::Allocation)?;
     Ok(bytes)
 }
+fn receipt_row_limit(index: usize) -> usize {
+    if index == 10 {
+        babylon_material_circuit::MAX_MONEY_TRANSFERS_PER_PERIOD
+    } else {
+        babylon_material_circuit::MAX_MATERIAL_CIRCUIT_ROWS
+    }
+}
+
 fn encode_material_receipts(
     tick: u64,
     transition: &MaterialCircuitTransition,
 ) -> Result<Vec<u8>, MaterialWorldError> {
+    if tick == 0 {
+        return Err(MaterialWorldError::Wire);
+    }
     let families = [
         (transition.production.len(), 80_usize),
         (transition.dispatches.len(), 112),
@@ -411,9 +423,26 @@ fn encode_material_receipts(
             usize::from(transition.maintenance.is_some()),
             maintenance_receipt::ROW_BYTES,
         ),
+        (
+            transition.money_transfers.len(),
+            monetary_receipt::TRANSFER_BYTES,
+        ),
+        (
+            transition.wage_accruals.len(),
+            monetary_receipt::ACCRUAL_BYTES,
+        ),
+        (transition.labor_use.len(), monetary_receipt::LABOR_BYTES),
     ];
+    if families
+        .iter()
+        .enumerate()
+        .any(|(index, (count, _))| *count > receipt_row_limit(index))
+    {
+        return Err(MaterialWorldError::ByteLimit);
+    }
+    monetary_receipt::validate_order(&transition.wage_accruals, &transition.labor_use)?;
     let length = families.iter().try_fold(
-        RECEIPT_DOMAIN.len() + 12 + 10 * 9,
+        RECEIPT_DOMAIN.len() + 12 + families.len() * 9,
         |total, (count, width)| {
             total
                 .checked_add(
@@ -426,7 +455,7 @@ fn encode_material_receipts(
     )?;
     let mut bytes = bounded_bytes(length)?;
     bytes.extend_from_slice(RECEIPT_DOMAIN);
-    bytes.extend_from_slice(&5_u32.to_be_bytes());
+    bytes.extend_from_slice(&6_u32.to_be_bytes());
     bytes.extend_from_slice(&tick.to_be_bytes());
     for (tag, (count, _)) in families.iter().enumerate() {
         bytes.push(u8::try_from(tag + 1).map_err(|_| MaterialWorldError::Arithmetic)?);
@@ -525,17 +554,35 @@ fn encode_material_receipts(
                     maintenance_receipt::encode(row, tick, &mut bytes)?;
                 }
             }
-            _ => unreachable!("the ten material receipt families are closed"),
+            10 => {
+                for row in &transition.money_transfers {
+                    monetary_receipt::encode_transfer(row, &mut bytes)?;
+                }
+            }
+            11 => {
+                for row in &transition.wage_accruals {
+                    monetary_receipt::encode_accrual(row, tick, &mut bytes)?;
+                }
+            }
+            12 => {
+                for row in &transition.labor_use {
+                    monetary_receipt::encode_labor(row, tick, &mut bytes)?;
+                }
+            }
+            _ => unreachable!("the thirteen material receipt families are closed"),
         }
     }
     debug_assert_eq!(bytes.len(), length);
     Ok(bytes)
 }
 
-/// Typed material evidence decoded only from an exact committed V5 receipt family.
+/// Typed material evidence decoded only from an exact committed V6 receipt family.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaterialTickReceipts {
     pub resolve_tick: u64,
+    pub money_transfers: Vec<babylon_material_circuit::MoneyTransferReceipt>,
+    pub wage_accruals: Vec<babylon_material_circuit::WageAccrualReceipt>,
+    pub labor_use: Vec<babylon_material_circuit::LaborUseReceipt>,
     pub production: Vec<babylon_material_circuit::ProductionReceipt>,
     pub dispatches: Vec<babylon_material_circuit::RoutedDispatchReceipt>,
     pub losses: Vec<babylon_material_circuit::FreightLossReceipt>,
@@ -559,7 +606,7 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
         bytes,
         position: RECEIPT_DOMAIN.len(),
     };
-    if cursor.take::<4>()? != 5_u32.to_be_bytes() {
+    if cursor.take::<4>()? != 6_u32.to_be_bytes() {
         return Err(MaterialWorldError::Wire);
     }
     let resolve_tick = cursor.u64()?;
@@ -568,6 +615,9 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
     }
     let mut result = MaterialTickReceipts {
         resolve_tick,
+        money_transfers: Vec::new(),
+        wage_accruals: Vec::new(),
+        labor_use: Vec::new(),
         production: Vec::new(),
         dispatches: Vec::new(),
         losses: Vec::new(),
@@ -579,12 +629,12 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
         local_transfers: Vec::new(),
         maintenance: None,
     };
-    for tag in 1..=10 {
+    for tag in 1..=13 {
         if cursor.take::<1>()? != [tag] {
             return Err(MaterialWorldError::Wire);
         }
         let count = usize::try_from(cursor.u64()?).map_err(|_| MaterialWorldError::ByteLimit)?;
-        if count > MAX_MATERIAL_CIRCUIT_ROWS {
+        if count > receipt_row_limit(usize::from(tag - 1)) {
             return Err(MaterialWorldError::ByteLimit);
         }
         if tag == 10 && count > 1 {
@@ -601,6 +651,9 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
             168,
             168,
             maintenance_receipt::ROW_BYTES,
+            monetary_receipt::TRANSFER_BYTES,
+            monetary_receipt::ACCRUAL_BYTES,
+            monetary_receipt::LABOR_BYTES,
         ][usize::from(tag - 1)];
         if count
             .checked_mul(width)
@@ -619,6 +672,9 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
             8 => result.local_fulfillments.try_reserve_exact(count),
             9 => result.local_transfers.try_reserve_exact(count),
             10 => Ok(()),
+            11 => result.money_transfers.try_reserve_exact(count),
+            12 => result.wage_accruals.try_reserve_exact(count),
+            13 => result.labor_use.try_reserve_exact(count),
             _ => return Err(MaterialWorldError::Wire),
         }
         .map_err(|_| MaterialWorldError::Allocation)?;
@@ -761,6 +817,15 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
                     result.maintenance =
                         Some(maintenance_receipt::decode(&mut cursor, resolve_tick)?);
                 }
+                11 => result
+                    .money_transfers
+                    .push(monetary_receipt::decode_transfer(&mut cursor)?),
+                12 => result
+                    .wage_accruals
+                    .push(monetary_receipt::decode_accrual(&mut cursor, resolve_tick)?),
+                13 => result
+                    .labor_use
+                    .push(monetary_receipt::decode_labor(&mut cursor, resolve_tick)?),
                 _ => return Err(MaterialWorldError::Wire),
             }
         }
@@ -768,6 +833,7 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
     if cursor.position != bytes.len() {
         return Err(MaterialWorldError::Wire);
     }
+    monetary_receipt::validate_order(&result.wage_accruals, &result.labor_use)?;
     Ok(result)
 }
 struct ReceiptCursor<'a> {

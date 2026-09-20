@@ -17,22 +17,50 @@ envelope:
     - {tag: 5, name: graph_full_checkpoint, codec: existing_nine_checkpoint_sections_v1}
     - {tag: 6, name: archive_dirty_receipt, count: 1, hash: combined_material_tick_content_v3}
     - {tag: 7, name: complete_material_register, count: 1, key: empty, payload: exact_material_world_register_v4_bytes}
-    - {tag: 8, name: material_receipts, count: 1, key: empty, payload: exact_material_tick_receipts_v5_bytes}
+    - {tag: 8, name: material_receipts, count: 1, key: empty, payload: exact_material_tick_receipts_v6_bytes}
   family_frame: u8_tag_then_u64_big_endian_count
   row_frame: u32_big_endian_key_length_then_key_then_u32_big_endian_payload_length_then_payload
   ordering: Existing six families preserve strict canonical key order; singular added families cannot reorder.
   digest: sha256_exact_complete_envelope_bytes
   maximum_complete_bytes: 67108864
 receipts:
-  version: 5
-  domain: "babylon.material-tick-receipts.v5\0"
-  header: u32_big_endian_version_5_then_u64_big_endian_positive_resolve_tick
+  version: 6
+  domain: "babylon.material-tick-receipts.v6\0"
+  header: u32_big_endian_version_6_then_u64_big_endian_positive_resolve_tick
   family_frame: u8_tag_then_u64_big_endian_count
-  family_count: 10
+  family_count: 13
   identities: exact_32_bytes
   quantities_periods_and_hours: u64_big_endian
   stage_index: u16_big_endian_less_than_16
   outbound_order_tag: {delivery: 1, local_final_demand: 2}
+  money: signed_i128_big_endian_micro_currency
+  account: {width: 33, fields: [account_tag, identity], tags: {site: 1, household: 2, organization: 3, public: 4}}
+  money_location:
+    width: 34
+    fields: [location_tag, subtype_tag, identity]
+    tags: {cash: 1, purchase_reserve: 2, payroll_reserve: 3}
+    subtype: Cash uses account_tag; purchase uses outbound_order_tag; payroll uses zero.
+  money_purpose:
+    width: 34
+    fields: [purpose_tag, subtype_tag, identity]
+    tags:
+      purchase_reservation: 1
+      delivery_settlement: 2
+      purchase_refund: 3
+      shift_reservation: 4
+      wage_payment: 5
+      shift_cancellation: 6
+      cash: 7
+    subtype: Purchases use outbound_order_tag; shifts use zero; cash uses cash_purpose_tag.
+    cash_purpose_tag:
+      tax: 1
+      public_transfer: 2
+      household_transfer: 3
+      ownership_distribution: 4
+      capital_contribution: 5
+      transport_service: 6
+      mutual_aid: 7
+    unused_identity: Cash purposes require exactly 32 zero bytes.
   rows:
     - {tag: 1, fields: [process_id, site_id, planned_batches, produced_batches], width: 80}
     - tag: 2
@@ -84,12 +112,36 @@ receipts:
         - next_service_available_batches
       width: 312
       meaning: bounded_maintenance_completion_and_expiring_service
+    - tag: 11
+      fields: [money_purpose, debit_location, debit_delta, credit_location, credit_delta]
+      width: 134
+      meaning: exact_cash_or_reserve_movement
+    - tag: 12
+      fields: [shift_id, employer_account, payee_account, period, obligated_hours, amount]
+      width: 130
+      meaning: earned_wage_payable_and_matching_receivable_without_cash_movement
+    - tag: 13
+      fields:
+        - site_id
+        - unit_id
+        - payee_id
+        - period
+        - available_hours
+        - funded_hours
+        - unfunded_hours
+        - used_hours
+        - paid_idle_hours
+      width: 144
+      meaning: finite_funded_attendance_and_actual_utilization
   ordering:
-    families: Tags 1 through 10 appear exactly once in declared order, including empty families.
+    families: Tags 1 through 13 appear exactly once in declared order, including empty families.
     original_families: Preserve deterministic encounter order from babylon_material_circuit::advance_material_circuit.
     handling: Strict increasing unique site_id_and_tagged_outbound_order.
     local_fulfillment: Strict increasing unique order_id.
     local_transfer: Strict increasing unique order_id.
+    money_transfers: Preserve deterministic chronological execution order; do not sort by principal or purpose.
+    wage_accruals: Preserve attendance execution order with unique shift identities; hashed shift IDs are not sorted.
+    labor_use: Strict increasing unique site_id_and_unit_id.
   validation:
     - Reject wrong domain, version, family tag, truncation or trailing bytes.
     - Produced batches cannot exceed planned batches.
@@ -109,14 +161,31 @@ receipts:
     - Completed jobs equal the minimum request, job ceiling, parts quotient and labor quotient.
     - Checked products prove exact spare and labor debits and the following service grant.
     - A maintenance request whose labor product overflows is refused even if parts or labor are absent.
+    - Every money debit is negative and credit positive; checked signed addition must equal zero.
+    - Every purpose requires the corresponding cash/reserve endpoint shapes and matching order or shift identities.
+    - Cash transfers use distinct account identities; tagged owner namespaces remain distinct.
+    - Unknown tags and nonzero unused subtype or identity padding are refused.
+    - Wage accrual has distinct parties, positive hours and amount, and period equal to resolve_tick.
+    - Labor use belongs to resolve_tick; checked available equals funded plus unfunded
+      and funded equals used plus paid idle.
+    - Duplicate wage shift IDs and duplicate or unsorted labor site-unit identities are refused.
   interpretation:
     native_quantity: Identified good-unit quantity; gram reservations use the captured mass coefficient.
     handling_need: Resource-feasible work before opening labor limits actual outbound movement.
     final_fulfillment: A finite demand-account credit, without a freight lot or claim of actual consumption.
     local_transfer: One supplier debit and buyer credit, without physical arrival or staged-dispatch receipts.
     maintenance: Next-period service is neither a commodity shipment nor bankable inventory.
+    money_transfers: >-
+      A reserve is the single money principal; reservation is not sales revenue and arrival authorizes settlement.
+    wage_accruals: >-
+      The obligation is separate from payment and actual production; paying a prior unpaid shift creates no new accrual.
+    labor_use: Used and paid idle hours partition funded attendance; unfunded hours were not hired.
     authentication: Register and receipt identity, coefficient and account joins are verified before disclosure.
   maximum_rows_per_family: 65536
+  maximum_money_transfer_rows: 327680
+  money_transfer_bound: >-
+    At most N prior wage payments plus 2N current shift reservation/payments plus 2N purchase refund/settlements;
+    N is the state-family limit.
   maximum_complete_bytes: 67108864
 persistence:
   material_rows: babylon_state.material_tick_v3

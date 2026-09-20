@@ -16,6 +16,7 @@ use crate::{
     michigan_content::MichiganContentPreset,
     michigan_economy::digest_hex,
     michigan_material::MichiganDeliveryPreset,
+    production_observation::ProductionSnapshot,
     production_projection::{project_material_observation, staffing::project_staffing_accounts},
     runtime::prepare_committed_tick,
 };
@@ -232,7 +233,7 @@ fn full_disclosure() -> ObserverEconomySnapshot {
     observation
 }
 
-fn road_disclosure(production: &mut crate::ProductionSnapshot) {
+fn road_disclosure(production: &mut ProductionSnapshot) {
     use crate::production_observation::{ProductionPhysicalEdge, ProductionRoadSource};
     production.physical_edges = vec![
         ProductionPhysicalEdge {
@@ -266,7 +267,7 @@ fn road_disclosure(production: &mut crate::ProductionSnapshot) {
     });
 }
 
-fn household_disclosure(production: &mut crate::ProductionSnapshot) {
+fn household_disclosure(production: &mut ProductionSnapshot) {
     let final_account = &production.final_demand_accounts[0];
     production
         .household_accounts

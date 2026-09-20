@@ -205,6 +205,7 @@ METADATA: Final = {
         "acs_moe": "90 percent margin of error; controlled-estimate sentinel retained with null numeric MOE, not silently replaced with zero",
         "acs_missing": "missing estimate stays null regardless of other observations; missing county source row is an error",
         "qcew_population": "workplace covered jobs, not distinct resident persons or a workforce",
+        "qcew_coverage": "County-only aggregation excludes domestic unallocated xx999 records and is not a complete national jobs total.",
         "qcew_establishments": "annual-average statistical establishments, not identified employers or production sites",
         "qcew_missing": "not_published means absent selected source row, not observed zero or proven suppression",
         "qcew_suppression": "N keeps establishments; jobs, payroll and wage have null usable values with raw source tokens retained",
@@ -523,6 +524,23 @@ def read_acs_definitions(path: Path) -> dict[str, dict[str, str]]:
     return definitions
 
 
+def provenance_path(path: Path) -> str:
+    """Identify the actual file, including caller-selected output destinations."""
+    resolved = path.resolve()
+    root = ROOT.resolve()
+    return str(resolved.relative_to(root)) if resolved.is_relative_to(root) else str(resolved)
+
+
+def ensure_output_paths(outputs: tuple[Path, ...], inputs: tuple[Path, ...]) -> None:
+    """Refuse ordinary, symbolic-link and hard-link aliases before source parsing."""
+    for index, output in enumerate(outputs):
+        for other in (*outputs[index + 1 :], *inputs):
+            if output.resolve() == other.resolve() or (
+                output.exists() and other.exists() and output.samefile(other)
+            ):
+                raise ReferenceBuildError(f"output_overlap: {output} aliases {other}")
+
+
 def build(
     *,
     source_root: Path,
@@ -531,6 +549,7 @@ def build(
     source_manifest: Path = SOURCE_MANIFEST,
 ) -> dict[str, Any]:
     sources = verify_sources(source_root, source_manifest)
+    ensure_output_paths((artifact_out, metadata_out), (*sources.values(), source_manifest))
     definitions = read_acs_definitions(sources["acs_table_shells"])
     counties = read_counties(sources["tiger"])
     ids = {county.county_geoid for county in counties}
@@ -559,13 +578,11 @@ def build(
         "acs_source_definitions": definitions,
         "regeneration": "UV_PROJECT_ENVIRONMENT=.venv mise exec -- uv run --frozen python tools/make_national_county_reference.py --source-root /media/user/data/babylon-data",
         "source_manifest": {
-            "path": str(source_manifest.relative_to(ROOT))
-            if source_manifest.is_relative_to(ROOT)
-            else source_manifest.name,
+            "path": provenance_path(source_manifest),
             "sha256": sha256(source_manifest),
         },
         "artifact": {
-            "path": str(ARTIFACT_OUT.relative_to(ROOT)),
+            "path": provenance_path(artifact_out),
             "format": "csv.gz",
             "compression": "gzip-mtime-0",
             "columns": COLUMNS,

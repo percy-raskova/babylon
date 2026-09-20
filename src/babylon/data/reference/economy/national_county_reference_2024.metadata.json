@@ -454,6 +454,7 @@
     "acs_raw_fields": "literal bulk E/M tokens; no API annotation fields are inferred",
     "geography_points": "TIGER internal points as published; not centroids or boundaries",
     "numeric_conversion": "exact nonnegative signed-64-bit integers; no imputation, jobs-to-persons conversion, allocation or rounding",
+    "qcew_coverage": "County-only aggregation excludes domestic unallocated xx999 records and is not a complete national jobs total.",
     "qcew_establishments": "annual-average statistical establishments, not identified employers or production sites",
     "qcew_missing": "not_published means absent selected source row, not observed zero or proven suppression",
     "qcew_population": "workplace covered jobs, not distinct resident persons or a workforce",

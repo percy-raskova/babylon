@@ -213,3 +213,83 @@ def test_qcew_duplicate_county_refused(tmp_path: Path) -> None:
         writer.writerows([row, row])
     with pytest.raises(builder.ReferenceBuildError, match="duplicate_qcew_county"):
         builder.read_qcew(path, {"09110"})
+
+
+@pytest.fixture
+def build_sources(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, dict[str, Path]]:
+    """Tiny IO boundary fixture; full-source determinism is checked offline."""
+    manifest = tmp_path / "sources.json"
+    manifest.write_text("{}\n")
+    source = tmp_path / "observations.dat"
+    source.write_text("source bytes must survive\n")
+    sources = dict.fromkeys(
+        ["tiger", "qcew", "B01003", "B11001", "B23025", "acs_table_shells"], source
+    )
+    monkeypatch.setattr(builder, "verify_sources", lambda *_: sources)
+    monkeypatch.setattr(builder, "read_acs_definitions", lambda _: {})
+    monkeypatch.setattr(builder, "read_counties", lambda _: (county("09110"),))
+    monkeypatch.setattr(
+        builder,
+        "read_acs_table",
+        lambda _path, table, _ids: {
+            "09110": {
+                series.name: (builder.Cell(0, "0", "published"), builder.Cell(0, "0", "published"))
+                for series in builder.ACS_SERIES
+                if series.table == table
+            }
+        },
+    )
+    monkeypatch.setattr(builder, "read_qcew", lambda *_: ({}, []))
+    return manifest, sources
+
+
+def test_build_records_actual_override_paths(
+    tmp_path: Path, build_sources: tuple[Path, dict[str, Path]]
+) -> None:
+    manifest, _ = build_sources
+    artifact = tmp_path / "custom.csv.gz"
+    metadata = builder.build(
+        source_root=tmp_path,
+        source_manifest=manifest,
+        artifact_out=artifact,
+        metadata_out=tmp_path / "custom.json",
+    )
+    assert metadata["artifact"]["path"] == str(artifact.resolve())
+    assert metadata["source_manifest"]["path"] == str(manifest.resolve())
+
+
+@pytest.mark.parametrize("alias", ["same_output", "source", "manifest", "symlink", "hardlink"])
+def test_build_refuses_output_aliases_before_parsing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    build_sources: tuple[Path, dict[str, Path]],
+    alias: str,
+) -> None:
+    manifest, sources = build_sources
+    source = sources["qcew"]
+    original = source.read_bytes()
+    artifact, metadata = tmp_path / "output.csv.gz", tmp_path / "output.json"
+    if alias == "same_output":
+        metadata = artifact
+    elif alias == "source":
+        artifact = source
+    elif alias == "manifest":
+        metadata = manifest
+    elif alias == "symlink":
+        artifact.symlink_to(source)
+    else:
+        artifact.hardlink_to(source)
+    monkeypatch.setattr(
+        builder,
+        "read_acs_definitions",
+        lambda _: pytest.fail("output conflict must fail before source parsing"),
+    )
+    with pytest.raises(builder.ReferenceBuildError, match="output_overlap"):
+        builder.build(
+            source_root=tmp_path,
+            source_manifest=manifest,
+            artifact_out=artifact,
+            metadata_out=metadata,
+        )
+    assert source.read_bytes() == original
+    assert manifest.read_text() == "{}\n"

@@ -8,6 +8,7 @@ pub mod clock;
 pub mod content_digest;
 pub mod currency;
 pub mod economic_identity;
+pub mod economic_location;
 pub mod event_bus;
 pub mod geography;
 pub mod grid;

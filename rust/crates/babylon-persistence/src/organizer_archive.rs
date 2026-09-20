@@ -309,24 +309,22 @@ fn report_text(observation: &OrganizerObservation) -> String {
 }
 fn receipt_text(receipt: &OrganizerReceipt) -> String {
     let practice = match receipt.choice {
-        OrganizerChoice::Inquiry(OrganizerInquiry::WorkLost) => "Inquiry: what work was lost",
-        OrganizerChoice::Inquiry(OrganizerInquiry::MaintenanceReceived) => {
-            "Inquiry: what maintenance service was received"
-        }
-        OrganizerChoice::Reinforce => "Reinforce the workplace contact",
-        OrganizerChoice::Hold => "Hold the current course",
-        OrganizerChoice::PauseStanding => "Pause standing work",
-        OrganizerChoice::ResumeStanding => "Resume standing work",
+        OrganizerChoice::Inquiry(OrganizerInquiry::WorkLost) => "Ask about work and output",
+        OrganizerChoice::Inquiry(OrganizerInquiry::MaintenanceReceived) => "Ask about maintenance",
+        OrganizerChoice::Reinforce => "Reinforce workplace contact",
+        OrganizerChoice::Hold => "Keep current routine",
+        OrganizerChoice::PauseStanding => "Pause neighborhood work",
+        OrganizerChoice::ResumeStanding => "Resume neighborhood work",
     };
     let outcome = match receipt.outcome {
-        OrganizerOutcome::EvidenceObtained => "Report obtained",
+        OrganizerOutcome::EvidenceObtained => "Evidence obtained",
         OrganizerOutcome::EvidenceWithheld => "No report obtained",
-        OrganizerOutcome::ContactCompleted => "contact work completed",
-        OrganizerOutcome::ContactUncompleted => "contact work not completed",
-        OrganizerOutcome::InsufficientTime => "insufficient committed time",
-        OrganizerOutcome::StandingPaused => "standing work paused",
-        OrganizerOutcome::StandingResumed => "standing work resumed",
-        OrganizerOutcome::NoAuthorizedPractice => "no practice authorized",
+        OrganizerOutcome::ContactCompleted => "Mutual contact completed",
+        OrganizerOutcome::ContactUncompleted => "Contact attempt uncompleted",
+        OrganizerOutcome::InsufficientTime => "Insufficient committed time",
+        OrganizerOutcome::StandingPaused => "Standing work paused",
+        OrganizerOutcome::StandingResumed => "Standing work resumed",
+        OrganizerOutcome::NoAuthorizedPractice => "No authorized practice",
     };
     let response = match receipt.partner_response {
         OrganizerPartnerResponse::Participated => "participated",
@@ -562,6 +560,7 @@ mod projection_tests {
         };
         let signal = practice_signal(&receipt).unwrap();
         let text = signal.value();
+        assert!(text.contains("Period 1: Ask about work and output"));
         assert!(text.contains("Result: No report obtained"));
         assert!(text.contains("Independent partner: participated"));
         assert!(text.contains("Time spent: 12 organizer-hours"));
@@ -572,10 +571,36 @@ mod projection_tests {
         receipt.choice = OrganizerChoice::Hold;
         receipt.outcome = OrganizerOutcome::ContactCompleted;
         receipt.hours_spent = 8;
-        assert!(practice_signal(&receipt)
-            .unwrap()
-            .value()
-            .contains("Source: saved routine"));
+        let signal = practice_signal(&receipt).unwrap();
+        let text = signal.value();
+        assert!(text.contains("Period 1: Keep current routine"));
+        assert!(text.contains("Result: Mutual contact completed"));
+        assert!(text.contains("Source: saved routine"));
+
+        receipt.commitment_id = Some([3; 32]);
+        receipt.standing_work = false;
+        receipt.choice = OrganizerChoice::PauseStanding;
+        receipt.outcome = OrganizerOutcome::StandingPaused;
+        receipt.hours_spent = 0;
+        receipt.partner_response = OrganizerPartnerResponse::NotRequested;
+        let signal = practice_signal(&receipt).unwrap();
+        let text = signal.value();
+        assert!(text.contains("Period 1: Pause neighborhood work"));
+        assert!(text.contains("Result: Standing work paused"));
+        assert!(text.contains("Independent partner: participation not requested"));
+
+        receipt.standing_work = true;
+        receipt.choice = OrganizerChoice::ResumeStanding;
+        receipt.outcome = OrganizerOutcome::ContactUncompleted;
+        receipt.hours_spent = 8;
+        receipt.partner_response = OrganizerPartnerResponse::Refused;
+        let signal = practice_signal(&receipt).unwrap();
+        let text = signal.value();
+        assert!(text.contains("Period 1: Resume neighborhood work"));
+        assert!(text.contains("Source: specific ruling · saved routine"));
+        assert!(text.contains("Result: Contact attempt uncompleted"));
+        assert!(text.contains("Independent partner: refused"));
+        assert!(!text.contains("Result: Standing work resumed"));
     }
 
     #[test]

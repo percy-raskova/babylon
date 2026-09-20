@@ -31,6 +31,7 @@ pub(crate) enum OpeningStage {
 pub(crate) enum MenuPage {
     #[default]
     Home,
+    InGame,
     SavedGames,
     Campaigns,
     Settings,
@@ -318,9 +319,7 @@ fn advance(
         }
         OpeningStage::Title if !ui.menu_open && !ui.comparison_open => {
             opening.stage = OpeningStage::Game;
-        }
-        OpeningStage::Game if ui.menu_open => {
-            opening.show_title(&mut ui);
+            opening.menu_page = MenuPage::InGame;
         }
         _ => {}
     }
@@ -556,7 +555,7 @@ mod tests {
     }
 
     #[test]
-    fn opening_does_not_enter_game_until_menu_is_explicitly_closed() {
+    fn escape_menu_keeps_game_stage_after_explicit_entry() {
         let mut world = World::new();
         world.insert_resource(Time::<()>::default());
         world.insert_resource(OpeningPresentation {
@@ -583,7 +582,12 @@ mod tests {
         world.run_system_once(advance).unwrap();
         assert_eq!(
             world.resource::<OpeningPresentation>().stage,
-            OpeningStage::Title
+            OpeningStage::Game,
+            "opening the campaign menu must not return to the title screen"
+        );
+        assert_eq!(
+            world.resource::<OpeningPresentation>().menu_page,
+            MenuPage::InGame
         );
     }
 }

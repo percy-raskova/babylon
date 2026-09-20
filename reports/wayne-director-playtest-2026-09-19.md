@@ -31,6 +31,14 @@ Empty sections and repeated freshness text further competed with the reading.
 The guided witness paused at period 1 after this comprehension failure. No
 numerical enjoyment score or claim about enjoyment is available.
 
+The revised build at `a3cdc161273be54a1679662833a2ca48e2b19dc0` reopened
+the preserved campaign. The repeat session reached committed period 2. The
+Director then reported that Escape opened the start menu instead of the
+in-game menu. The session log confirms the period-2 commit and later music
+volume changes to 0.75. These records do not show which input device
+submitted the ruling or how the Director interpreted its result. The
+facilitator asked for that interpretation and has not recorded a response.
+
 ## Research and mechanical audit
 
 The local collection is `~/Downloads/babylon_books/ux`. The agent read selected
@@ -115,11 +123,19 @@ A persistent footer distinguishes draft, review, accepted ruling and resolution.
 Notes and detailed records remain available through separate views. Archive
 inspection gains an explicit return to the decision.
 
+The repeat session exposed a separate navigation defect. Opening-screen logic
+sent an open game menu back to the title screen. The repair gives the campaign
+its own menu with Resume, Settings, Main menu and Quit. Escape closes Settings
+or inspector before another navigation action can occur. An explicit Main menu
+choice retains access to the existing Load and Reopen controls. A failed
+advance displays its failure before any pending-operation message.
+
 The opening Inquiry limitation appears before confirmation. The interface
 describes report absence neutrally and separately from partner response. New
 Archive receipts use that wording. Historical pages keep
 their original bytes. No admission rule, BSL mechanic, captured input format or
 persistence schema changes for this presentation repair.
+New Archive practice labels also match the action labels in the decision view.
 
 Regression tests first reproduced the missing opening warning, an unavailable
 Notes focus target and a hidden save error. The repairs passed 416 client
@@ -128,6 +144,13 @@ The persistence suite explicitly skipped 32 live database tests. Three contract
 tests that regenerate vectors also stayed disabled. The earlier organizer
 delivery retains its full mechanical qualification. This repair does not claim
 to repeat that entire witness.
+
+The Escape repair first reproduced the unwanted title transition and a single
+key press reaching two navigation handlers. Its client suite passed 418 tests.
+Review then found the missing recovery route and hidden failure message. Both
+received failing regressions before repair. All five focused menu tests passed.
+The three Archive projection tests passed with matching practice labels while
+retaining source attribution, actual outcomes and separate partner responses.
 
 Native checks used a separate campaign,
 `1c7691e6-132c-4c69-a30a-5d6aff626972`, with isolated settings and personal drafts.
@@ -165,6 +188,15 @@ then proved the new producer's stored and displayed result. Binary hashes,
 source hashes, logs and captures are in the local evidence directory
 `reports/test-results/per336-native/`. These local artifacts are not committed
 with this report.
+
+The repeat native check reopened the same separate campaign at period 2 and
+1366 × 692. Escape opened the campaign menu. Settings returned to that menu,
+then a second Escape resumed the decision. One Escape closed the Evidence
+inspector without opening the menu.
+
+Pointer Resume and explicit Main menu,
+followed by Continue, also retained the decision. Both isolated personal draft
+files retained the same bytes, and Quit returned 0. No period advanced.
 
 ## Exit and next witness
 

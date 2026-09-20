@@ -12,7 +12,9 @@ use bevy::prelude::*;
 
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::observer::ObserverSession;
-use crate::observer_focus::{ObserverFocusSystems, ObserverFocusTarget, ObserverKeyboardActivate};
+use crate::observer_focus::{
+    ObserverFocusSystems, ObserverFocusTarget, ObserverKeyboardActivate, ObserverKeyboardClaim,
+};
 use crate::observer_io::ObserverSet;
 use crate::observer_theme as theme;
 use crate::observer_ui::{ObserverCommand, ObserverFontRole, ObserverUiState};
@@ -985,9 +987,19 @@ fn open_evidence(
 fn escape(
     keys: Res<ButtonInput<KeyCode>>,
     client: Res<OrganizerClient>,
+    ui: Res<ObserverUiState>,
+    view: Res<PrimaryView>,
+    mut claimed: ResMut<ObserverKeyboardClaim>,
     mut actions: MessageWriter<OrganizerAction>,
 ) {
-    if client.inspector != OrganizerInspector::Closed && keys.just_pressed(KeyCode::Escape) {
+    if !ui.menu_open
+        && !ui.splash_visible
+        && !ui.comparison_open
+        && *view == PrimaryView::Organizer
+        && client.inspector != OrganizerInspector::Closed
+        && keys.just_pressed(KeyCode::Escape)
+    {
+        claimed.claim(KeyCode::Escape);
         actions.write(OrganizerAction::CloseInspector);
     }
 }
@@ -1760,6 +1772,33 @@ mod tests {
         assert_eq!(
             app.world().resource::<OrganizerClient>().draft.as_ref(),
             Some(&draft)
+        );
+    }
+
+    #[test]
+    fn escape_closes_only_inspector_before_shell_shortcuts() {
+        use bevy::ecs::system::RunSystemOnce;
+
+        let (mut app, focus, draft) = organizer_navigation();
+        press_named(&mut app, "Personal notes");
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Escape);
+        app.update();
+        // Exercise a shell consumer that runs after the inspector closes in this frame.
+        app.world_mut()
+            .run_system_once(crate::observer_ui::keyboard)
+            .unwrap();
+        let client = app.world().resource::<OrganizerClient>();
+        assert_eq!(client.inspector, OrganizerInspector::Closed);
+        assert_eq!(client.draft.as_ref(), Some(&draft));
+        assert!(client.outbox.is_none());
+        assert_eq!(app.world().resource::<InputFocus>().get(), Some(focus));
+        assert!(
+            app.world()
+                .resource::<Messages<ObserverCommand>>()
+                .is_empty(),
+            "the Escape that closes Notes cannot also open the campaign menu"
         );
     }
 

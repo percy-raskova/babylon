@@ -823,6 +823,9 @@ fn spawn_menu(commands: &mut Commands) {
             crate::observer_title::spawn_back_button(panel);
             panel.spawn((block_label("CAMPAIGNS", 32.0, theme::PAPER), MenuHeading));
             panel
+                .spawn((menu_column(), MenuSection(MenuPage::InGame)))
+                .with_children(crate::observer_title::spawn_game_menu);
+            panel
                 .spawn((menu_column(), MenuSection(MenuPage::SavedGames)))
                 .with_children(menu_saved_games);
             panel
@@ -957,7 +960,7 @@ fn preset_grid(panel: &mut ChildSpawnerCommands, presets: &[(&str, ObserverComma
 fn menu_settings(panel: &mut ChildSpawnerCommands) {
     panel.spawn(block_label("Presentation and sound", 17.0, theme::YELLOW));
     panel.spawn(block_label(
-        "Tab / Shift+Tab: select controls. Enter: activate. Page Up / Down: read. WORLD / CIRCUIT: return to navigation.",
+        "Tab / Shift+Tab: select controls. Enter: activate. Page Up / Down: read. Escape: back.",
         12.0,
         theme::GRAY,
     ));
@@ -983,11 +986,6 @@ fn menu_settings(panel: &mut ChildSpawnerCommands) {
         ObserverText::EvidenceDetails,
         VerificationDetails,
         ObserverFocusTarget::reading(None),
-    ));
-    panel.spawn(block_label(
-        "OBSERVE / TRACE / COMPARE\nPlayer interventions are unavailable in observer mode.",
-        12.0,
-        theme::GRAY,
     ));
 }
 
@@ -1176,7 +1174,9 @@ fn menu_scope_visible(button: ObserverButton, opening: Option<&OpeningPresentati
         ObserverCommand::ReopenCampaign => MenuPage::SavedGames,
         _ => MenuPage::Campaigns,
     };
-    opening.stage == OpeningStage::Title && opening.menu_page == page
+    (opening.stage == OpeningStage::Title
+        || (opening.stage == OpeningStage::Game && page == MenuPage::Settings))
+        && opening.menu_page == page
 }
 
 fn dispatch_button(
@@ -1250,11 +1250,9 @@ fn sync_focus_policy(
         } else if state.ui.comparison_open {
             comparisons.single().ok()
         } else if state.ui.menu_open && !state.ui.splash_visible {
-            if state
-                .opening
-                .as_deref()
-                .is_some_and(|opening| opening.menu_page == MenuPage::Home)
-            {
+            if state.opening.as_deref().is_some_and(|opening| {
+                opening.stage == OpeningStage::Title && opening.menu_page == MenuPage::Home
+            }) {
                 state.titles.single().ok()
             } else {
                 menus.single().ok()
@@ -1998,6 +1996,7 @@ fn paint_menu_pages(
     }
     let caption = match page {
         MenuPage::Home => "",
+        MenuPage::InGame => "CAMPAIGN MENU",
         MenuPage::SavedGames => "LOAD GAME",
         MenuPage::Campaigns => "OBSERVER CAMPAIGNS",
         MenuPage::Settings => "SETTINGS",

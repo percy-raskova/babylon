@@ -7,6 +7,14 @@ organizer campaign and opens the organizer workspace. Choose **Load Game** to
 return to a saved campaign later. **Continue** enters the campaign already
 prepared or reopened by the launcher.
 
+During play, choose **Menu** or press Escape to open the campaign menu.
+Choose **Resume campaign** or press Escape to return to the same view.
+
+**Settings** opens the presentation and sound controls. Escape returns from
+Settings to the campaign menu. Choose **Main menu** to reach **Load Game**
+or **New Game**. **Quit game** closes the game.
+Babylon saves completed periods automatically.
+
 The interface grows with the game window, reaching 125% at 1920×1080.
 For larger text and controls, open **Settings** and press **U** to switch the
 interface size from **Automatic** to **Larger**.

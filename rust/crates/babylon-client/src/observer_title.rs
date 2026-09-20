@@ -39,6 +39,10 @@ enum TitleAction {
     Settings,
     Quit,
     Home,
+    Resume,
+    GameSettings,
+    MainMenu,
+    GameQuit,
 }
 
 fn label(value: &str, size: f32, role: ObserverFontRole) -> impl Bundle {
@@ -82,6 +86,18 @@ fn action_button(parent: &mut ChildSpawnerCommands, action: TitleAction, caption
 
 pub(crate) fn spawn_back_button(parent: &mut ChildSpawnerCommands) {
     action_button(parent, TitleAction::Home, "‹  Back");
+}
+
+pub(crate) fn spawn_game_menu(parent: &mut ChildSpawnerCommands) {
+    for (action, caption) in [
+        (TitleAction::Resume, "Resume campaign [Esc]"),
+        (TitleAction::GameSettings, "Settings"),
+        (TitleAction::MainMenu, "Main menu"),
+        (TitleAction::GameQuit, "Quit game"),
+    ] {
+        action_button(parent, action, caption);
+    }
+    parent.spawn((label("", 14.0, ObserverFontRole::Body), TitleStatus));
 }
 
 fn spawn_title(mut commands: Commands, assets: Res<VisualAssets>) {
@@ -237,7 +253,9 @@ fn action_enabled(
         return false;
     }
     match action {
-        TitleAction::Continue => !opening.launch_pending && can_continue(session),
+        TitleAction::Continue | TitleAction::Resume => {
+            !opening.launch_pending && can_continue(session)
+        }
         TitleAction::NewGame => {
             !opening.launch_pending
                 && !session.lifecycle_pending()
@@ -253,15 +271,23 @@ fn action_visible(
     opening: &OpeningPresentation,
     ui: &ObserverUiState,
 ) -> bool {
-    opening.stage == OpeningStage::Title
-        && ui.menu_open
-        && !ui.splash_visible
-        && !ui.comparison_open
-        && if action == TitleAction::Home {
-            opening.menu_page != MenuPage::Home
-        } else {
-            opening.menu_page == MenuPage::Home
+    if !ui.menu_open || ui.splash_visible || ui.comparison_open {
+        return false;
+    }
+    match action {
+        TitleAction::Home => match opening.stage {
+            OpeningStage::Title => opening.menu_page != MenuPage::Home,
+            OpeningStage::Game => opening.menu_page == MenuPage::Settings,
+            _ => false,
+        },
+        TitleAction::Resume
+        | TitleAction::GameSettings
+        | TitleAction::MainMenu
+        | TitleAction::GameQuit => {
+            opening.stage == OpeningStage::Game && opening.menu_page == MenuPage::InGame
         }
+        _ => opening.stage == OpeningStage::Title && opening.menu_page == MenuPage::Home,
+    }
 }
 
 #[derive(SystemParam)]
@@ -279,7 +305,7 @@ impl TitleInput<'_> {
             return;
         }
         match action {
-            TitleAction::Continue => {
+            TitleAction::Continue | TitleAction::Resume => {
                 self.commands.write(ObserverCommand::Menu);
             }
             TitleAction::NewGame => {
@@ -287,11 +313,23 @@ impl TitleInput<'_> {
             }
             TitleAction::LoadGame => self.opening.menu_page = MenuPage::SavedGames,
             TitleAction::Campaigns => self.opening.menu_page = MenuPage::Campaigns,
-            TitleAction::Settings => self.opening.menu_page = MenuPage::Settings,
-            TitleAction::Quit => {
+            TitleAction::Settings | TitleAction::GameSettings => {
+                self.opening.menu_page = MenuPage::Settings;
+            }
+            TitleAction::MainMenu => {
+                self.opening.stage = OpeningStage::Title;
+                self.opening.menu_page = MenuPage::Home;
+            }
+            TitleAction::Quit | TitleAction::GameQuit => {
                 self.commands.write(ObserverCommand::Quit);
             }
-            TitleAction::Home => self.opening.menu_page = MenuPage::Home,
+            TitleAction::Home => {
+                self.opening.menu_page = if self.opening.stage == OpeningStage::Game {
+                    MenuPage::InGame
+                } else {
+                    MenuPage::Home
+                };
+            }
         }
     }
 }
@@ -318,17 +356,31 @@ fn keyboard(
     claimed: Res<ObserverKeyboardClaim>,
     mut input: TitleInput,
 ) {
-    if input.opening.stage != OpeningStage::Title || input.ui.comparison_open {
+    if !input.ui.menu_open || input.ui.comparison_open {
         return;
     }
     if keys.just_pressed(KeyCode::Escape) && !claimed.claimed(KeyCode::Escape) {
-        input.activate(TitleAction::Home);
+        if input.opening.stage == OpeningStage::Game && input.opening.menu_page == MenuPage::InGame
+        {
+            input.activate(TitleAction::Resume);
+        } else {
+            input.activate(TitleAction::Home);
+        }
     }
     if input.opening.menu_page == MenuPage::Home {
         for (key, action) in [
             (KeyCode::KeyC, TitleAction::Continue),
             (KeyCode::KeyN, TitleAction::NewGame),
             (KeyCode::KeyQ, TitleAction::Quit),
+        ] {
+            if keys.just_pressed(key) && !claimed.claimed(key) {
+                input.activate(action);
+            }
+        }
+    } else if input.opening.menu_page == MenuPage::InGame {
+        for (key, action) in [
+            (KeyCode::KeyC, TitleAction::Resume),
+            (KeyCode::KeyQ, TitleAction::GameQuit),
         ] {
             if keys.just_pressed(key) && !claimed.claimed(key) {
                 input.activate(action);
@@ -365,6 +417,7 @@ fn paint(
         &mut BackgroundColor,
         &mut BorderColor,
         &Children,
+        &mut Node,
     )>,
     mut captions: Query<&mut TextColor, With<TitleActionCaption>>,
     mut status: Query<&mut Text, With<TitleStatus>>,
@@ -379,7 +432,12 @@ fn paint(
             },
         );
     }
-    for (interaction, action, mut background, mut border, children) in &mut actions {
+    for (interaction, action, mut background, mut border, children, mut node) in &mut actions {
+        node.display = if action_visible(*action, &opening, &ui) {
+            Display::Flex
+        } else {
+            Display::None
+        };
         let enabled = action_enabled(*action, &opening, &session);
         let hovered = enabled && *interaction != Interaction::None;
         background.set_if_neq(BackgroundColor(if hovered {
@@ -413,6 +471,8 @@ fn paint(
             .error
             .as_deref()
             .unwrap_or("Campaign unavailable. Load a saved game or start a new one.")
+    } else if session.advance_pending() {
+        "Finishing the current period…"
     } else if session.lifecycle_pending()
         || matches!(
             session.phase,
@@ -533,6 +593,182 @@ mod tests {
             !app.world().resource::<OpeningPresentation>().launch_pending,
             "only an accepted runtime queue may mark a launch pending"
         );
+    }
+
+    fn game_menu_app() -> App {
+        let mut session = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::from_u128(1)));
+        session.connected_fixture();
+        session.ready(2, None);
+        session.foundation_digest = Some("admitted".into());
+        assert!(session.installed(&session.context()));
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .insert_resource(session)
+            .insert_resource(OpeningPresentation {
+                stage: OpeningStage::Game,
+                menu_page: MenuPage::InGame,
+                ..default()
+            })
+            .insert_resource(ObserverUiState {
+                splash_visible: false,
+                ..default()
+            })
+            .init_resource::<ButtonInput<KeyCode>>()
+            .init_resource::<ObserverKeyboardClaim>()
+            .add_message::<ObserverCommand>()
+            .add_observer(focused_action)
+            .add_systems(Update, (keyboard, eligibility, paint).chain())
+            .add_systems(Startup, |mut commands: Commands| {
+                spawn_home(&mut commands);
+                commands.spawn(Node::default()).with_children(|parent| {
+                    spawn_game_menu(parent);
+                    spawn_back_button(parent);
+                });
+            });
+        app.update();
+        app
+    }
+
+    fn activate(app: &mut App, action: TitleAction) {
+        let entity = app
+            .world_mut()
+            .query::<(Entity, &TitleAction)>()
+            .iter(app.world())
+            .find_map(|(entity, candidate)| (*candidate == action).then_some(entity))
+            .unwrap();
+        app.world_mut().trigger(ObserverKeyboardActivate {
+            entity,
+            context: None,
+        });
+    }
+
+    #[test]
+    fn escape_menu_routes_settings_back_and_resume_without_enabling_title_actions() {
+        let mut app = game_menu_app();
+        let context = app.world().resource::<ObserverSession>().context();
+        for (action, target) in app
+            .world_mut()
+            .query::<(&TitleAction, &ObserverFocusTarget)>()
+            .iter(app.world())
+        {
+            if matches!(
+                action,
+                TitleAction::Continue | TitleAction::NewGame | TitleAction::Settings
+            ) {
+                assert!(
+                    !target.available,
+                    "hidden title controls must remain unavailable"
+                );
+            }
+        }
+        activate(&mut app, TitleAction::Settings);
+        assert_eq!(
+            app.world().resource::<OpeningPresentation>().menu_page,
+            MenuPage::InGame
+        );
+        activate(&mut app, TitleAction::GameSettings);
+        assert_eq!(
+            app.world().resource::<OpeningPresentation>().menu_page,
+            MenuPage::Settings
+        );
+        for expected_commands in [vec![], vec![ObserverCommand::Menu]] {
+            app.world_mut()
+                .resource_mut::<ButtonInput<KeyCode>>()
+                .press(KeyCode::Escape);
+            app.update();
+            assert_eq!(
+                app.world().resource::<OpeningPresentation>().menu_page,
+                MenuPage::InGame
+            );
+            let commands: Vec<_> = app
+                .world_mut()
+                .resource_mut::<Messages<ObserverCommand>>()
+                .drain()
+                .collect();
+            assert_eq!(commands, expected_commands);
+            app.world_mut()
+                .resource_mut::<ButtonInput<KeyCode>>()
+                .reset_all();
+        }
+        assert_eq!(app.world().resource::<ObserverSession>().context(), context);
+        assert_eq!(
+            app.world().resource::<OpeningPresentation>().stage,
+            OpeningStage::Game
+        );
+    }
+
+    fn failed_game_menu() -> App {
+        let mut app = game_menu_app();
+        let mut session = app.world_mut().resource_mut::<ObserverSession>();
+        assert!(session.begin_advance().is_some());
+        session.fail("Period acknowledgment was lost. Reopen the campaign.".into());
+        app.update();
+        app
+    }
+
+    #[test]
+    fn game_menu_recovery_retains_failure_explanation_while_advance_is_pending() {
+        let mut app = failed_game_menu();
+        assert!(app.world().resource::<ObserverSession>().advance_pending());
+        for text in app
+            .world_mut()
+            .query_filtered::<&Text, With<TitleStatus>>()
+            .iter(app.world())
+        {
+            assert_eq!(
+                text.0,
+                "Period acknowledgment was lost. Reopen the campaign."
+            );
+        }
+    }
+
+    #[test]
+    fn game_menu_recovery_can_reach_existing_load_and_reopen() {
+        let mut app = failed_game_menu();
+        let context = app.world().resource::<ObserverSession>().context();
+        activate(&mut app, TitleAction::Resume);
+        assert!(app
+            .world()
+            .resource::<Messages<ObserverCommand>>()
+            .is_empty());
+        let main_menu = app
+            .world_mut()
+            .query::<(&Text, &ChildOf)>()
+            .iter(app.world())
+            .find_map(|(text, parent)| (text.0 == "Main menu").then_some(parent.parent()))
+            .expect("a failed campaign needs an explicit path to the existing recovery menu");
+        assert!(
+            app.world()
+                .get::<ObserverFocusTarget>(main_menu)
+                .unwrap()
+                .available
+        );
+        app.world_mut().trigger(ObserverKeyboardActivate {
+            entity: main_menu,
+            context: None,
+        });
+        assert_eq!(
+            app.world().resource::<OpeningPresentation>().stage,
+            OpeningStage::Title
+        );
+        activate(&mut app, TitleAction::LoadGame);
+        assert!(app
+            .world()
+            .resource::<OpeningPresentation>()
+            .saved_games_visible());
+        assert_eq!(
+            availability(
+                ObserverCommand::ReopenCampaign,
+                app.world().resource::<ObserverSession>()
+            ),
+            ControlAvailability::Enabled
+        );
+        assert!(app
+            .world()
+            .resource::<Messages<ObserverCommand>>()
+            .is_empty());
+        assert_eq!(app.world().resource::<ObserverSession>().context(), context);
+        assert!(app.world().resource::<ObserverSession>().advance_pending());
     }
 
     #[test]

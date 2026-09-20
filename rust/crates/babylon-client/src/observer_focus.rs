@@ -138,7 +138,7 @@ impl ObserverKeyboardClaim {
             || (self.blocks_world && matches!(key, KeyCode::Enter | KeyCode::Space))
     }
 
-    fn claim(&mut self, key: KeyCode) {
+    pub(crate) fn claim(&mut self, key: KeyCode) {
         if !self.keys.contains(&key) {
             self.keys.push(key);
         }

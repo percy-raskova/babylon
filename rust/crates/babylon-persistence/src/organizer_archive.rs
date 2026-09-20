@@ -369,16 +369,18 @@ pub(crate) fn archive_register_error(error: MaterialRuntimeError) -> SemanticArc
         | MaterialRuntimeError::DatabaseStatementCanceled(error) => {
             database("read organizer Archive register", &error)
         }
-        MaterialRuntimeError::Graph(crate::RustPersistenceRuntimeError::Database {
-            operation,
-            diagnostic: Some(diagnostic),
-        })
-        | MaterialRuntimeError::Graph(crate::RustPersistenceRuntimeError::TerritoryCountyMap(
-            crate::territory_county_map::TerritoryCountyMapError::Database {
+        MaterialRuntimeError::Graph(
+            crate::RustPersistenceRuntimeError::Database {
                 operation,
                 diagnostic: Some(diagnostic),
-            },
-        )) => SemanticArchiveError::Database {
+            }
+            | crate::RustPersistenceRuntimeError::TerritoryCountyMap(
+                crate::territory_county_map::TerritoryCountyMapError::Database {
+                    operation,
+                    diagnostic: Some(diagnostic),
+                },
+            ),
+        ) => SemanticArchiveError::Database {
             operation,
             diagnostic,
         },

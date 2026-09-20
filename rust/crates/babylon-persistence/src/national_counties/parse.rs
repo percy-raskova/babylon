@@ -97,45 +97,8 @@ pub(super) fn parse_csv(text: &str) -> Result<NationalCountyReference, Error> {
     })
 }
 
-// This single-line source contract, like michigan_sectors, permits quoted commas
-// and doubled quotes but forbids control characters or embedded line breaks.
 fn csv_record(line: &str) -> Result<Vec<String>, Error> {
-    let mut input = line.chars().peekable();
-    let mut fields = Vec::with_capacity(COLUMN_COUNT);
-    loop {
-        if fields.len() == COLUMN_COUNT {
-            return Err(Error::CsvShape);
-        }
-        let mut field = String::new();
-        if input.peek() == Some(&'"') {
-            input.next();
-            loop {
-                match input.next() {
-                    Some('"') if input.peek() == Some(&'"') => {
-                        input.next();
-                        field.push('"');
-                    }
-                    Some('"') => break,
-                    Some(value) if !value.is_control() => field.push(value),
-                    _ => return Err(Error::CsvShape),
-                }
-            }
-        } else {
-            while input.peek().is_some_and(|value| *value != ',') {
-                let value = input.next().ok_or(Error::CsvShape)?;
-                if value == '"' || value.is_control() {
-                    return Err(Error::CsvShape);
-                }
-                field.push(value);
-            }
-        }
-        fields.push(field);
-        match input.next() {
-            Some(',') => {}
-            None if fields.len() == COLUMN_COUNT => return Ok(fields),
-            _ => return Err(Error::CsvShape),
-        }
-    }
+    crate::reference_csv::record(line, COLUMN_COUNT).map_err(|_| Error::CsvShape)
 }
 
 fn integer(raw: &str) -> Result<u64, Error> {

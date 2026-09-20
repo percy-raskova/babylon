@@ -34,6 +34,8 @@ pub(crate) mod observer_material;
 pub mod observer_reader;
 mod observer_tick_components;
 mod organizer_archive;
+mod reference_csv;
+pub mod world_reference;
 pub use organizer_archive::OrganizerDossierProducer;
 mod organizer_content;
 pub mod organizer_runtime;

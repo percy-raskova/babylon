@@ -1,6 +1,6 @@
 meta:
   contract: MaterialCircuitV3
-  schema_version: 4
+  schema_version: 5
   evidence_class: Designed
   rust_owner: babylon-material-circuit
 
@@ -13,7 +13,9 @@ scope:
   - staffed wholesale and retail outbound handling without changing goods
   - finite county-local retail handoff orders with no road journey
   - one bounded maintenance provider consumes parts and labor to enable next-period batches
-  - no routing, household behavior, consumption, money, or payment decisions occur in this transition
+  - explicit physical controls or captured monetary accounts, purchase reserves, and attendance wages
+  - exact funded settlement follows actual arrival or local handoff; departure is not a sale
+  - no routing, household behavior, consumption, price discovery, credit, or tax policy decisions occur here
 
 domains:
   state: babylon.material-circuit-state.v3
@@ -33,6 +35,13 @@ encoding:
   merchant_role_u8: {wholesale: 1, retail: 2}
   supplier_transport_u8: {local: 1, staged: 2}
   optional_presence_u8: {absent: 0, present: 1}
+  accounting_mode_u8: {physical_control: 0, monetary: 1}
+  account_owner_u8: {site: 1, household: 2, organization: 3, public: 4}
+  account_identity: account_owner_u8 followed by raw-32-byte identity in its distinct owner namespace
+  outbound_order_u8: {delivery: 1, local_final_demand: 2}
+  outbound_order_identity: outbound_order_u8 followed by raw-32-byte order ID
+  shift_state_u8: {reserved: 1, accrued: 2, paid: 3, cancelled: 4}
+  currency: signed i128 exact micro-units; 1000000 micro-units per currency unit; no float conversion
   maintenance_options: independent presence tags followed by fields; both present or both absent
   unsupported_schema: refuse; no legacy decoding or migration
   row_count: u32
@@ -63,6 +72,25 @@ state_field_order:
   - final_demand_orders
   - maintenance_binding
   - maintenance_service
+  - accounting
+
+accounting_field_order:
+  physical_control: [accounting_mode_u8]
+  monetary: [accounting_mode_u8, accounts, purchases, shifts, employment]
+
+monetary_row_field_order:
+  accounts: [account_identity, cash_i128]
+  purchases: [outbound_order_identity, buyer_account_identity, seller_account_identity, quantity,
+              unit_price_i128, delivered, refunded]
+  shifts: [id, employer_account_identity, payee_account_identity, period, committed_hours,
+           hourly_rate_i128, shift_state_u8]
+  employment: [site_id, unit_id, payee_household_id, hourly_rate_i128]
+
+monetary_canonical_keys:
+  accounts: [account_owner_u8, owner_id]
+  purchases: [outbound_order_u8, order_id]
+  shifts: [id]
+  employment: [site_id, unit_id]
 
 row_field_order:
   site_logistics_nodes: [site_id, node_id]
@@ -135,6 +163,15 @@ admission:
   - local order quantities satisfy zero <= fulfilled <= ordered with ordered positive
   - routed and local order identity domains are disjoint even if their raw order IDs match
   - all ordinary material and production invariants remain enforced
+  - accounting mode is explicit; absent monetary data never selects a physical control
+  - monetary accounts are nonnegative and unique; all material sites and household principals have cash rows
+  - site and household account identities reference known material owners;
+    organization and public namespaces are distinct
+  - monetary employment terms exactly cover the material site-unit labor principals with positive captured wage rates
+  - every purchase reserve matches its physical order identity, parties, quantity, delivered quantity, and lost quantity
+  - a final-demand purchase reserve matches fulfilled quantity and has no refunded quantity in this close
+  - committed shift rows contain only accrued unpaid obligations earned before the opening period
+  - all monetary row families have strictly increasing canonical keys before book reconstruction
 
 allocation:
   order_request: full remaining native quantity
@@ -158,6 +195,10 @@ allocation:
 period_close:
   - complete due stages and attribute stage-specific native-unit loss
   - credit retained final arrival to destination inventory once
+  - settle accepted arrived quantities and refund newly lost quantities from their existing purchase reserves
+  - pay outstanding earned wages from their existing payroll reserves
+  - fund opening attendance in canonical site-unit order, bounded by exact spendable cash and available whole hours
+  - accrue and pay each funded attendance commitment before work; productive utilization is recorded separately
   - execute existing prior production commitments bounded by opening enabled maintenance batches
   - expire unused opening service and perform whole maintenance jobs from inputs before outbound local credits
   - allocate routed and local outbound requests against shared stock, route mass and merchant handling mass
@@ -171,6 +212,9 @@ period_close:
   - record handling receipts including explicit zero feasible and actual work
   - credit local internal buyers only after all outbound grants and debits are fixed
   - local credits cannot feed another outbound order until a following close
+  - settle actual local supplier transfers and retail handoffs from their admitted purchase reserves
+  - record actual used hours and paid idle hours after production, maintenance, and handling
+  - audit total cash plus live purchase and payroll reserves without counting wage claims as extra money
   - rebuild unshipped backlog
   - derive next-period staffing and production through their existing exact rules
   - prune expired capacity and validate the successor
@@ -197,6 +241,12 @@ conservation:
     closing stock
   - local fulfilled cumulative quantity increments only by positive local fulfillment receipts
   - final-demand account totals are derived from finite order rows and do not assert actual consumption
+  - total spendable cash plus purchase reserves plus payroll reserves is unchanged by the close
+  - purchase reserve equals fixed unit price multiplied by (quantity - delivered - refunded)
+  - each money transfer has equal opposite signed postings with named cash or reserve locations
+  - attendance accrual creates one employer payable and matching worker receivable without a cash movement
+  - wage payment consumes its payroll reserve and extinguishes the matching obligation
+  - funded hours equal used hours plus paid idle hours; available hours equal funded plus unfunded hours
 
 limits:
   rows_per_family: 65536
@@ -228,6 +278,24 @@ error_codes:
   merchant_invariant: 20
   final_demand_invariant: 21
   maintenance_invariant: 22
+  monetary_invariant: 23
+  payroll_invariant: 24
+  purchase_invariant: 25
+
+monetary_accounting:
+  opening: capture explicit cash endowments and employment terms; no default accounts, credit, or hidden issuance
+  unit_price: positive exact currency per native order unit, fixed for the accepted principal
+  admission: reserve the entire new purchase principal and admit its physical order as one detached operation
+  departure: seller retains title while goods are in transit; buyer holds reserved money and no delivered goods
+  settlement: cumulative actual arrival or local handoff pays only its newly delivered quantity
+  loss: cumulative physically lost quantity refunds only its newly lost portion to the buyer
+  duplicate_settlement: repeated or decreasing cumulative quantities are refused
+  payroll: reserve all wages for the admitted attendance before accrual or payment
+  attendance: all committed hours earn wages even when later productive use is zero
+  utilization: record used and paid idle hours after actual work; neither changes the earned wage
+  price_valuation: money costs, sale receipts, and wage obligations are not a claim about labor value or surplus value
+  snapshot: spendable cash excludes reserves; decoding never reserves the same principal a second time
+  failure: checked overflow or any refusal publishes no successor state, payment, obligation, or physical receipt
 
 merchant_receipts:
   handling_fields: [site_id, outbound_order, feasible_quantity, handled_quantity, needed_hours, used_hours]

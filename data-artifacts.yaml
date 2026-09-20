@@ -1480,3 +1480,23 @@ artifacts:
       Designed. This is source evidence only, with no HPMS replacement, freight capacity, border delay,
       loss rate, H3 allocation, factory placement, Canadian actor, runtime hydration, campaign mutation,
       or gate completion authority.'
+  - name: national_county_reference_2024
+    format: csv.gz
+    source_table: null
+    generator: tools/make_national_county_reference.py
+    mode: register
+    rows: 3144
+    sha256: 28ad84a461f00c12489b11e0d770ad71bc3f09190dbc35774d725fc2333fec8e
+    home: src/babylon/data/reference/economy/national_county_reference_2024.csv.gz
+    material_relation: >-
+      Part of PER-40: observed foundation for exactly 3144 TIGER2024 counties
+      and county equivalents in 50 states and DC. ACS 2020-2024 five-year
+      estimates retain residents, households and labor-force persons with
+      literal estimate/MOE tokens and explicit uncertainty statuses. QCEW
+      2024 annual totals retain workplace jobs, establishments and wage
+      observations independently; Kalawao's absent QCEW row stays missing.
+      Source byte hashes and official acquisition URLs are pinned in
+      tools/national_county_reference_2024_sources.json; definitions, units,
+      coverage and digests accompany the artifact in its metadata JSON.
+      No imputation, jobs-to-persons conversion, employer/site allocation,
+      game-state initializer, runtime consumer or Michigan cutover is granted.

@@ -1,0 +1,59 @@
+{
+  "aggregation_evidence_class": "Derived",
+  "artifact": {
+    "bytes": 1756290,
+    "decoded_bytes": 5667820,
+    "path": "src/babylon/data/reference/economy/national_cohort_reference_2024.csv.gz",
+    "rows": 59058,
+    "sha256": "1c963f6b709c31f798253e41662619a32ad31d4532022931392cf2fbd78eb497"
+  },
+  "contract": "NationalCohortReference2024V1",
+  "coverage": {
+    "admitted_groups": 57238,
+    "counties_with_observations": 3143,
+    "counties_without_observations": [
+      "15005"
+    ],
+    "known_totals": {
+      "establishments": 10836174,
+      "jobs": 140452919,
+      "payroll": 10475977086096
+    },
+    "mapped_groups": 57347,
+    "source_members": 144881,
+    "unclassified_groups": 1711
+  },
+  "issue": "PER-40",
+  "membership_and_admission_evidence_class": "Designed",
+  "native_readers": [
+    "babylon-persistence::national_cohorts"
+  ],
+  "runtime_consumers": [],
+  "semantics": {
+    "admission": "A mapped group with any positive known establishments, workplace jobs or annual payroll is eligible for a later compiler; admission creates no worksite or person. Every other group remains source context.",
+    "completeness": "Each measure independently retains its checked known subtotal and published member count. Complete total exists only when all source members publish that measure; unknown members are never observed zeros.",
+    "context": "Code 99 has no function and is never admitted. All 3,144 counties remain in the independent county roster; Kalawao's residents do not imply an observed workplace.",
+    "limits": "No jobs-to-persons conversion, household allocation, physical recipe, operating capacity, opening stock, current wage payment or game-state hydration follows from this capture.",
+    "members": "Exact disjoint source NAICS members once each, sorted lexically; tuple naics~P/N~establishments~jobs~payroll~mean_weekly_wage separated by semicolons. Blank quantity is unknown, not zero. Source basis preserves source aggregation-level identity.",
+    "suppression": "N preserves published establishments while jobs, payroll and mean weekly wage remain unknown. P means published source row; absent county/group remains absent.",
+    "wages": "Published mean weekly wage is retained only per source member; means are never added or averaged into cohort wages."
+  },
+  "source_values_evidence_class": "Observed",
+  "sources": {
+    "county_roster": {
+      "metadata_sha256": "2ecb40c38767f5a97e508a2568568e184b9c1023f8ea26290cb9904cd5e82fa7",
+      "path": "src/babylon/data/reference/economy/national_county_reference_2024.csv.gz",
+      "sha256": "28ad84a461f00c12489b11e0d770ad71bc3f09190dbc35774d725fc2333fec8e"
+    },
+    "function_mapping": {
+      "path": "contracts/national_qcew_function_mapping_v1.json",
+      "sha256": "7185d0bedb1bf4a830ff5199d4af9fbd53aa88b66ca4e34c167404422c22c07d"
+    },
+    "leaf_basis": {
+      "metadata_sha256": "03bcacbd278eccc69a3387191f6c482b0a90f613a265aa7f5e57f115c7d9b56c",
+      "path": "src/babylon/data/reference/economy/national_qcew_function_basis_2024.parquet",
+      "sha256": "df7b6937540a0e6afab334de146c8229fac4865829347f8fca37c86c9a056d7c"
+    }
+  },
+  "year": 2024
+}

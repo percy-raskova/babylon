@@ -1562,3 +1562,24 @@ artifacts:
       Preserve the four-person rounded-leaf versus world-control residual.
       Domestic play still uses the ACS county capture. This context does
       not create workers, households, production, needs, cash or capacity.
+  - name: national_cohort_reference_2024
+    format: csv.gz
+    source_table: null
+    generator: tools/make_national_cohort_reference.py
+    mode: register
+    rows: 59058
+    sha256: 1c963f6b709c31f798253e41662619a32ad31d4532022931392cf2fbd78eb497
+    home: src/babylon/data/reference/economy/national_cohort_reference_2024.csv.gz
+    material_relation: >-
+      Part of PER-40: compact native capture of all 144881 disjoint QCEW
+      source members in 59058 county/function/ownership observation groups.
+      The 57347 mapped groups remain distinct from 1711 unclassified context
+      groups; exactly 57238 have positive known establishments, jobs or
+      payroll and qualify for later executable admission. Each measure keeps
+      its known subtotal and published member count; suppressed jobs and
+      payroll remain unknown while establishments stay published. Mean
+      weekly wages remain per-member observations and are never added.
+      The bounded Rust reader joins exact identities to the separate 3144
+      county roster. Kalawao has residents but no invented workplace group.
+      This capture allocates no persons, households, firms, physical recipes,
+      capacities, operating inventories or money and initializes no campaign.

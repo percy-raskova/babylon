@@ -101,6 +101,7 @@ class TestSyntheticViolations:
             "assets/music/babylon_theme_phi.ogg",
             "assets/music/babylon_theme_panopticon.ogg",
             "content/scenarios/michigan/statewide-physical.json.gz",
+            "src/babylon/data/reference/economy/national_cohort_reference_2024.csv.gz",
         ],
     )
     def test_named_runtime_assets_have_an_exact_two_mib_budget(self, path: str) -> None:
@@ -119,6 +120,8 @@ class TestSyntheticViolations:
             "content/scenarios/michigan/statewide-physical.json.gz.bak",
             "content/scenarios/michigan/other-network.json.gz",
             "other/content/scenarios/michigan/statewide-physical.json.gz",
+            "src/babylon/data/reference/economy/national_cohort_reference_2024.csv.gz.bak",
+            "src/babylon/data/reference/economy/other_cohort_reference_2024.csv.gz",
         ]
         size = 1_048_577
         assert check_large_non_lfs_blobs(

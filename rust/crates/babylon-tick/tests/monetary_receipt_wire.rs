@@ -1,7 +1,7 @@
 //! Independent vectors for exact monetary postings and finite attendance evidence.
 use babylon_tick::material_world::{decode_material_receipts, MaterialWorldError};
 
-const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v6\0";
+const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v7\0";
 
 fn tagged(tag: u8, subtag: u8, id: u8) -> Vec<u8> {
     let mut bytes = vec![tag, subtag];
@@ -30,7 +30,7 @@ fn accrual() -> Vec<u8> {
     bytes
 }
 
-fn labor(values: [u64; 6]) -> Vec<u8> {
+fn labor(values: [u64; 8]) -> Vec<u8> {
     let mut bytes = Vec::new();
     for id in [1, 5, 2] {
         bytes.extend_from_slice(&[id; 32]);
@@ -43,9 +43,9 @@ fn labor(values: [u64; 6]) -> Vec<u8> {
 
 fn envelope(transfers: &[Vec<u8>], wages: &[Vec<u8>], labor: &[Vec<u8>]) -> Vec<u8> {
     let mut bytes = DOMAIN.to_vec();
-    bytes.extend_from_slice(&6_u32.to_be_bytes());
+    bytes.extend_from_slice(&7_u32.to_be_bytes());
     bytes.extend_from_slice(&7_u64.to_be_bytes());
-    for tag in 1..=13 {
+    for tag in 1..=18 {
         let rows = match tag {
             11 => transfers,
             12 => wages,
@@ -66,7 +66,7 @@ fn current_receipts_admit_exact_postings_accrual_and_paid_idle_hours() {
     let bytes = envelope(
         &[transfer(-30, 30)],
         &[accrual()],
-        &[labor([7, 6, 4, 2, 1, 3])],
+        &[labor([7, 8, 6, 2, 4, 2, 1, 3])],
     );
     let decoded = decode_material_receipts(&bytes).unwrap();
     assert_eq!(decoded.resolve_tick, 7);
@@ -75,6 +75,8 @@ fn current_receipts_admit_exact_postings_accrual_and_paid_idle_hours() {
     assert_eq!(decoded.money_transfers[0].credit.delta.micro_units(), 30);
     assert_eq!(decoded.wage_accruals[0].obligated_hours, 4);
     assert_eq!(decoded.wage_accruals[0].amount.micro_units(), 12);
+    assert_eq!(decoded.labor_use[0].planned_hours, 6);
+    assert_eq!(decoded.labor_use[0].unplanned_hours, 2);
     assert_eq!(decoded.labor_use[0].funded_hours, 4);
     assert_eq!(decoded.labor_use[0].used_hours, 1);
     assert_eq!(decoded.labor_use[0].paid_idle_hours, 3);
@@ -82,7 +84,11 @@ fn current_receipts_admit_exact_postings_accrual_and_paid_idle_hours() {
 
 #[test]
 fn current_receipts_admit_unfunded_and_fully_idle_attendance() {
-    for hours in [[7, 6, 0, 6, 0, 0], [7, 6, 6, 0, 0, 6]] {
+    for hours in [
+        [7, 8, 6, 2, 0, 6, 0, 0],
+        [7, 8, 6, 2, 6, 0, 0, 6],
+        [7, 8, 0, 8, 0, 0, 0, 0],
+    ] {
         assert!(decode_material_receipts(&envelope(&[], &[], &[labor(hours)])).is_ok());
     }
 }
@@ -126,11 +132,13 @@ fn wage_and_labor_receipts_refuse_false_periods_amounts_and_partitions() {
         );
     }
     for hours in [
-        [8, 6, 4, 2, 1, 3],
-        [7, 5, 4, 2, 1, 3],
-        [7, 6, 4, 2, 2, 3],
-        [7, u64::MAX, u64::MAX, 1, 0, u64::MAX],
-        [7, u64::MAX, u64::MAX, 0, u64::MAX, 1],
+        [8, 8, 6, 2, 4, 2, 1, 3],
+        [7, 7, 6, 2, 4, 2, 1, 3],
+        [7, 8, 5, 3, 4, 2, 1, 3],
+        [7, 8, 6, 2, 4, 2, 2, 3],
+        [7, u64::MAX, u64::MAX, 1, u64::MAX, 0, 0, u64::MAX],
+        [7, u64::MAX, u64::MAX, 0, u64::MAX, 1, 0, u64::MAX],
+        [7, u64::MAX, u64::MAX, 0, u64::MAX, 0, u64::MAX, 1],
     ] {
         assert_eq!(
             decode_material_receipts(&envelope(&[], &[], &[labor(hours)])),
@@ -143,7 +151,7 @@ fn wage_and_labor_receipts_refuse_false_periods_amounts_and_partitions() {
 fn monetary_receipts_refuse_duplicate_attendance_truncation_and_old_schema() {
     let wages = accrual();
     assert!(decode_material_receipts(&envelope(&[], &[wages.clone(), wages], &[])).is_err());
-    let hours = labor([7, 6, 4, 2, 1, 3]);
+    let hours = labor([7, 8, 6, 2, 4, 2, 1, 3]);
     assert!(decode_material_receipts(&envelope(&[], &[], &[hours.clone(), hours])).is_err());
     let bytes = envelope(&[transfer(-30, 30)], &[accrual()], &[]);
     assert!(decode_material_receipts(&bytes[..bytes.len() - 1]).is_err());

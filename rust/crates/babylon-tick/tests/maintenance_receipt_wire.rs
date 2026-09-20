@@ -3,7 +3,7 @@
 
 use babylon_tick::material_world::decode_material_receipts;
 
-const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v6\0";
+const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v7\0";
 const ROW_START: usize = DOMAIN.len() + 12 + 10 * 9;
 const QUANTITIES: usize = ROW_START + 5 * 32 + 4 * 8;
 
@@ -13,7 +13,7 @@ fn receipt(values: [u64; 15]) -> Vec<u8> {
 
 fn receipt_with_coefficients(coefficients: [u64; 4], values: [u64; 15]) -> Vec<u8> {
     let mut bytes = DOMAIN.to_vec();
-    bytes.extend_from_slice(&6_u32.to_be_bytes());
+    bytes.extend_from_slice(&7_u32.to_be_bytes());
     bytes.extend_from_slice(&1_u64.to_be_bytes());
     for tag in 1..=10_u8 {
         bytes.push(tag);
@@ -28,12 +28,12 @@ fn receipt_with_coefficients(coefficients: [u64; 4], values: [u64; 15]) -> Vec<u
     for value in values {
         bytes.extend_from_slice(&value.to_be_bytes());
     }
-    append_monetary_families(&mut bytes);
+    append_remaining_families(&mut bytes);
     bytes
 }
 
-fn append_monetary_families(bytes: &mut Vec<u8>) {
-    for tag in 11..=13 {
+fn append_remaining_families(bytes: &mut Vec<u8>) {
+    for tag in 11..=18 {
         bytes.push(tag);
         bytes.extend_from_slice(&0_u64.to_be_bytes());
     }
@@ -178,7 +178,7 @@ fn absent_maintenance_is_distinct_from_a_bound_completed_zero_close() {
     let mut absent = baseline();
     absent.truncate(ROW_START);
     replace_u64(&mut absent, ROW_START - 8, 0);
-    append_monetary_families(&mut absent);
+    append_remaining_families(&mut absent);
     assert!(decode_material_receipts(&absent)
         .unwrap()
         .maintenance

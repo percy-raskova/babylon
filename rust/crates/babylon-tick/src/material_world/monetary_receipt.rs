@@ -12,7 +12,7 @@ use super::{MaterialWorldError, ReceiptCursor};
 
 pub(super) const TRANSFER_BYTES: usize = 134;
 pub(super) const ACCRUAL_BYTES: usize = 130;
-pub(super) const LABOR_BYTES: usize = 144;
+pub(super) const LABOR_BYTES: usize = 160;
 
 pub(super) fn validate_order(
     wages: &[WageAccrualReceipt],
@@ -264,7 +264,8 @@ pub(super) fn decode_accrual(
 
 fn validate_labor(row: &LaborUseReceipt, period: u64) -> Result<(), MaterialWorldError> {
     if row.period != period
-        || row.funded_hours.checked_add(row.unfunded_hours) != Some(row.available_hours)
+        || row.planned_hours.checked_add(row.unplanned_hours) != Some(row.available_hours)
+        || row.funded_hours.checked_add(row.unfunded_hours) != Some(row.planned_hours)
         || row.used_hours.checked_add(row.paid_idle_hours) != Some(row.funded_hours)
     {
         return Err(MaterialWorldError::Wire);
@@ -288,6 +289,8 @@ pub(super) fn encode_labor(
     for value in [
         row.period,
         row.available_hours,
+        row.planned_hours,
+        row.unplanned_hours,
         row.funded_hours,
         row.unfunded_hours,
         row.used_hours,
@@ -308,6 +311,8 @@ pub(super) fn decode_labor(
         payee: FinalDemandPrincipalId::from_bytes(cursor.take()?),
         period: cursor.u64()?,
         available_hours: cursor.u64()?,
+        planned_hours: cursor.u64()?,
+        unplanned_hours: cursor.u64()?,
         funded_hours: cursor.u64()?,
         unfunded_hours: cursor.u64()?,
         used_hours: cursor.u64()?,

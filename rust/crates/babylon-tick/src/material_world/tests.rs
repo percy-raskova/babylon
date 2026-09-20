@@ -3,10 +3,10 @@ use super::*;
 // A merchant's two physical handoffs share the same explicit handling account.
 // These bytes exercise the committed receipt boundary independently of its encoder.
 fn local_handoff_receipts() -> Vec<u8> {
-    let mut bytes = b"babylon.material-tick-receipts.v6\0".to_vec();
-    bytes.extend_from_slice(&6_u32.to_be_bytes());
+    let mut bytes = b"babylon.material-tick-receipts.v7\0".to_vec();
+    bytes.extend_from_slice(&7_u32.to_be_bytes());
     bytes.extend_from_slice(&1_u64.to_be_bytes());
-    for tag in 1..=13_u8 {
+    for tag in 1..=18_u8 {
         bytes.push(tag);
         bytes.extend_from_slice(&u64::from(matches!(tag, 7 | 8)).to_be_bytes());
         if tag == 7 {
@@ -76,8 +76,9 @@ fn receipt_version_and_local_delivery_quantity_are_strict() {
         Err(MaterialWorldError::Wire)
     );
     let mut zero_delivery = canonical;
-    let end = zero_delivery.len() - 45; // Empty transfer, maintenance and monetary families follow.
-    zero_delivery[end - 8..end].copy_from_slice(&0_u64.to_be_bytes());
+    // Eight family headers, the preceding handling row, then five identities.
+    let quantity = RECEIPT_DOMAIN.len() + 12 + 8 * 9 + 97 + 160;
+    zero_delivery[quantity..quantity + 8].copy_from_slice(&0_u64.to_be_bytes());
     assert_eq!(
         decode_material_receipts(&zero_delivery),
         Err(MaterialWorldError::Wire)
@@ -88,7 +89,7 @@ fn receipt_version_and_local_delivery_quantity_are_strict() {
 fn local_transfer_receipts_preserve_both_owners_without_freight() {
     use babylon_material_circuit::SiteId;
     let mut bytes = local_handoff_receipts();
-    let tail = bytes.split_off(bytes.len() - 36);
+    let tail = bytes.split_off(bytes.len() - 81);
     let count = bytes.len() - 8;
     bytes[count..].copy_from_slice(&1_u64.to_be_bytes());
     let row_start = bytes.len();
@@ -112,7 +113,7 @@ fn local_transfer_receipts_preserve_both_owners_without_freight() {
         decode_material_receipts(&self_transfer),
         Err(MaterialWorldError::Wire)
     );
-    let end = bytes.len() - 36;
+    let end = bytes.len() - 81;
     bytes[end - 8..end].fill(0);
     assert_eq!(
         decode_material_receipts(&bytes),
@@ -143,9 +144,9 @@ fn monetary_receipt_encoding_preserves_exact_cash_and_execution_order() {
         })
         .into();
     let mut bytes = RECEIPT_DOMAIN.to_vec();
-    bytes.extend_from_slice(&6_u32.to_be_bytes());
+    bytes.extend_from_slice(&7_u32.to_be_bytes());
     bytes.extend_from_slice(&7_u64.to_be_bytes());
-    for tag in 1..=13 {
+    for tag in 1..=18 {
         bytes.push(tag);
         bytes.extend_from_slice(&if tag == 11 { 3_u64 } else { 0 }.to_be_bytes());
         if tag == 11 {
@@ -191,6 +192,8 @@ fn attendance_receipt_encoding_roundtrips_without_sorting_hashed_shift_ids() {
             payee,
             period: 7,
             available_hours: 6,
+            planned_hours: 6,
+            unplanned_hours: 0,
             funded_hours: 4,
             unfunded_hours: 2,
             used_hours: 1,
@@ -199,11 +202,11 @@ fn attendance_receipt_encoding_roundtrips_without_sorting_hashed_shift_ids() {
         .into();
     monetary_receipt::validate_order(&wages, &labor).unwrap();
     let mut bytes = RECEIPT_DOMAIN.to_vec();
-    bytes.extend_from_slice(&6_u32.to_be_bytes());
+    bytes.extend_from_slice(&7_u32.to_be_bytes());
     bytes.extend_from_slice(&7_u64.to_be_bytes());
-    for tag in 1..=13 {
+    for tag in 1..=18 {
         bytes.push(tag);
-        bytes.extend_from_slice(&if tag >= 12 { 2_u64 } else { 0 }.to_be_bytes());
+        bytes.extend_from_slice(&if matches!(tag, 12 | 13) { 2_u64 } else { 0 }.to_be_bytes());
         if tag == 12 {
             for row in &wages {
                 monetary_receipt::encode_accrual(row, 7, &mut bytes).unwrap();

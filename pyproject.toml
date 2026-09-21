@@ -41,7 +41,7 @@ dependencies = [
   "pyyaml>=6.0.2",
   "python-dotenv>=1.2.3",
   "scipy>=1.18.1",
-  "psycopg>=3.3.5,<4.0.0",
+  "psycopg>=3.3.6,<4.0.0",
   "pyarrow==25.0.0",
   "osmium>=4.1,<5",
 ]

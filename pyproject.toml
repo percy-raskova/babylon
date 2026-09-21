@@ -319,7 +319,7 @@ asyncio = "WARNING"
 # hatchling replaced poetry-core 2026-07-22 — the last Poetry artifact in
 # the toolchain (tasks/lock/CI went uv in ADR095's train). Chosen over
 # uv_build for explicit src-layout packages= control.
-requires = ["hatchling>=1.32.0"]
+requires = ["hatchling>=1.32.3"]
 build-backend = "hatchling.build"
 
 [tool.pyright]

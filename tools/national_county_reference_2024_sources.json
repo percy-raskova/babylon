@@ -1,0 +1,54 @@
+{
+  "contract": "NationalCountyReference2024SourcesV1",
+  "vintage": 2024,
+  "sources": [
+    {
+      "id": "tiger",
+      "path": "tiger/county/tl_2024_us_county.dbf",
+      "url": "https://www2.census.gov/geo/tiger/TIGER2024/COUNTY/tl_2024_us_county.zip",
+      "bytes": 993755,
+      "sha256": "f310846d5f8160fc63e2e4930af756b966f31a86e7b019a251ffc51789d28919",
+      "note": "DBF member tl_2024_us_county.dbf; supplied local bytes"
+    },
+    {
+      "id": "qcew",
+      "path": "qcew/2024.annual.singlefile.csv",
+      "url": "https://data.bls.gov/cew/data/files/2024/csv/2024_annual_singlefile.zip",
+      "bytes": 520327616,
+      "sha256": "e54de6fd8b12470afb18c30f02014039501faa0bf2a053be2faf1fa9e358db52",
+      "note": "CSV member 2024.annual.singlefile.csv; supplied local bytes"
+    },
+    {
+      "id": "B01003",
+      "path": "national_reference_2024/acsdt5y2024-b01003.dat",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-b01003.dat",
+      "bytes": 18313708,
+      "sha256": "38d1a992bb058d184009b10b9b34987279aee575e4323165cfb5706c69b6ca90",
+      "note": "Official table-based five-year bulk file; downloaded 2026-09-20"
+    },
+    {
+      "id": "B11001",
+      "path": "national_reference_2024/acsdt5y2024-b11001.dat",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-b11001.dat",
+      "bytes": 45827971,
+      "sha256": "77200c3d9c0d99773bc7f78208bc96f25170e5d4d175a5de320620b478ceaff5",
+      "note": "Official table-based five-year bulk file; downloaded 2026-09-20"
+    },
+    {
+      "id": "B23025",
+      "path": "national_reference_2024/acsdt5y2024-b23025.dat",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-b23025.dat",
+      "bytes": 39968046,
+      "sha256": "264a5bd9367c5f58d9773fa4966fa94fe1e02f9c7106bc2ab39168d6de7c3e4a",
+      "note": "Official table-based five-year bulk file; downloaded 2026-09-20"
+    },
+    {
+      "id": "acs_table_shells",
+      "path": "national_reference_2024/ACS20245YR_Table_Shells.txt",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/documentation/ACS20245YR_Table_Shells.txt",
+      "bytes": 5622840,
+      "sha256": "5b46f4af873744a415c4974204010db976e2a61ff916674732f81c496a6b517d",
+      "note": "Official variable labels and universes; downloaded 2026-09-20"
+    }
+  ]
+}

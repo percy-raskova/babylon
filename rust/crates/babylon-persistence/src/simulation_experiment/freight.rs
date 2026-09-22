@@ -165,6 +165,7 @@ impl CapturedFreight {
             handling_coefficients: vec![],
             final_demand_principals: vec![],
             final_demand_orders: vec![],
+            accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
             maintenance_binding: None,
             maintenance_service: None,
             freight_mass_coefficients: vec![FreightMassCoefficient {

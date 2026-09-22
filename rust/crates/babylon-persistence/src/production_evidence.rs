@@ -1,10 +1,10 @@
-//! V7 identity of an already-authorized production presentation.
+//! V8 identity of an already-authorized production presentation.
 //!
 //! Scope and the complete typed DTO are serialized as canonical JSON after the
 //! fixed domain/version. True multisets sort; events, geometry vertices and each
 //! route's physical edge sequence retain their semantic order. Serialization
-//! streams into the hash with an explicit byte ceiling. V7 includes the maintenance
-//! service account and separate maintenance stock and labor debits.
+//! streams into the hash with an explicit byte ceiling. V8 includes household
+//! stocks and consumption, expiry, and bounded order lists with lifetime totals.
 
 use crate::{
     observer_reader::ObserverEconomySnapshot, observer_reader::ObserverVisibility,
@@ -17,7 +17,7 @@ use std::{
     io::{self, Write},
 };
 
-const DOMAIN: &[u8] = b"babylon.production-observation-evidence.v7\0";
+const DOMAIN: &[u8] = b"babylon.production-observation-evidence.v8\0";
 const MAX_ROWS: usize = 65_536;
 const MAX_PHYSICAL_ROWS: usize = 1_114_112;
 const MAX_EVIDENCE_BYTES: usize = 128 * 1024 * 1024;
@@ -79,6 +79,7 @@ impl ObserverEconomySnapshot {
         }
         validate_identities(source)?;
         validate_maintenance(source, self.resolve_tick)?;
+        validate_households(source, self.resolve_tick)?;
         let production = canonical_production(source);
         let scope = EvidenceScope {
             campaign_id: &self.campaign_id,
@@ -96,7 +97,7 @@ impl ObserverEconomySnapshot {
             bound: false,
         };
         output.hash.update(DOMAIN);
-        output.hash.update(7_u32.to_be_bytes());
+        output.hash.update(8_u32.to_be_bytes());
         if serde_json::to_writer(&mut output, &scope).is_err() {
             return Err(if output.bound {
                 ProductionEvidenceError::Bound
@@ -153,6 +154,7 @@ fn validate_identities(rows: &ProductionSnapshot) -> Result<()> {
         rows.freight_capacity_accounts.len(),
         rows.merchant_handling_accounts.len(),
         rows.final_demand_accounts.len(),
+        rows.household_accounts.len(),
         rows.observed_contexts.len(),
         rows.process_attributions.len(),
     ] {
@@ -196,6 +198,11 @@ fn validate_identities(rows: &ProductionSnapshot) -> Result<()> {
     )?;
     unique(
         rows.final_demand_accounts
+            .iter()
+            .map(|row| (&row.demand_principal_id, &row.good_id, &row.unit_id)),
+    )?;
+    unique(
+        rows.household_accounts
             .iter()
             .map(|row| (&row.demand_principal_id, &row.good_id, &row.unit_id)),
     )?;
@@ -267,6 +274,34 @@ fn validate_account_rows(rows: &ProductionSnapshot) -> Result<()> {
                 .iter()
                 .map(|row| (&row.site_id, &row.good_id, &row.unit_id)),
         )?;
+    }
+    Ok(())
+}
+
+fn validate_households(rows: &ProductionSnapshot, period: u64) -> Result<()> {
+    for row in &rows.household_accounts {
+        if row.household_count == 0
+            || row.person_count < row.household_count
+            || row.required_per_period == 0
+        {
+            return Err(ProductionEvidenceError::InvalidIdentity);
+        }
+        match (&row.completed, period) {
+            (None, 0) => {}
+            (Some(done), period)
+                if period > 0
+                    && done.period == period
+                    && done.required == row.required_per_period
+                    && done.closing_stock == row.stock_on_hand
+                    && u128::from(done.opening_stock) + u128::from(done.received)
+                        == u128::from(done.consumed) + u128::from(done.closing_stock)
+                    && done.consumed.checked_add(done.unmet) == Some(done.required)
+                    && done.fulfilled.checked_add(done.expired) == Some(done.admitted)
+                    && done.fulfilled <= done.received
+                    && done.admitted <= done.requested
+                    && done.requested <= done.desired => {}
+            _ => return Err(ProductionEvidenceError::InvalidIdentity),
+        }
     }
     Ok(())
 }
@@ -422,6 +457,7 @@ fn canonical_production(source: &ProductionSnapshot) -> ProductionSnapshot {
         account.retailer_site_ids.sort_unstable();
     }
     rows.final_demand_accounts.sort_unstable();
+    rows.household_accounts.sort_unstable();
     rows.freight.sort_unstable();
     for event in &mut rows.events {
         event.subject_site_ids.sort_unstable();

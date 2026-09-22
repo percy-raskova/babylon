@@ -13,6 +13,7 @@ fn competition() -> MaterialCircuitState {
         handling_coefficients: vec![],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
+        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
         maintenance_binding: None,
         maintenance_service: None,
         period: 1,
@@ -390,8 +391,8 @@ fn overflowing_mass_request_sum_and_period_refuse_without_mutating_opening() {
 }
 
 #[test]
-fn successor_refusal_registry_includes_maintenance_and_rejects_unknown_codes() {
-    for value in 1_u16..=22 {
+fn successor_refusal_registry_includes_accounting_and_rejects_unknown_codes() {
+    for value in 1_u16..=25 {
         assert_eq!(
             u16::from(MaterialCircuitError::try_from(value).unwrap()),
             value
@@ -402,5 +403,17 @@ fn successor_refusal_registry_includes_maintenance_and_rejects_unknown_codes() {
         MaterialCircuitError::try_from(22),
         Ok(MaterialCircuitError::MaintenanceInvariant)
     );
-    assert!(MaterialCircuitError::try_from(23).is_err());
+    assert_eq!(
+        MaterialCircuitError::try_from(23),
+        Ok(MaterialCircuitError::MonetaryInvariant)
+    );
+    assert_eq!(
+        MaterialCircuitError::try_from(24),
+        Ok(MaterialCircuitError::PayrollInvariant)
+    );
+    assert_eq!(
+        MaterialCircuitError::try_from(25),
+        Ok(MaterialCircuitError::PurchaseInvariant)
+    );
+    assert!(MaterialCircuitError::try_from(26).is_err());
 }

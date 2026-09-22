@@ -23,7 +23,7 @@ tick_identity:
     - exact_32_byte_graph_nominal_world_after_hash
     - exact_32_byte_prior_nominal_material_world_v3_hash
     - exact_32_byte_result_nominal_material_world_v3_hash
-    - exact_32_byte_material_tick_receipts_v4_digest
+    - exact_32_byte_material_tick_receipts_v6_digest
   digest: sha256_exact_bytes
   database_campaign_uuid: Excluded from mechanics identity; included in the durable envelope.
 related_contracts:

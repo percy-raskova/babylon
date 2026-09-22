@@ -54,11 +54,30 @@ struct OutboundOrder {
     requested: u64,
     route: Option<RouteId>,
     eligible: bool,
+    included: bool,
+}
+
+/// A replenishment pass may consume only its newly admitted deliveries. Existing
+/// orders already competed in the first pass and cannot obtain a second grant.
+pub(super) enum OutboundSelection<'a> {
+    All,
+    NewDeliveries(&'a std::collections::BTreeSet<crate::OrderId>),
+}
+
+impl OutboundSelection<'_> {
+    fn includes(&self, order: OutboundOrderId) -> bool {
+        match (self, order) {
+            (Self::All, _) => true,
+            (Self::NewDeliveries(ids), OutboundOrderId::Delivery(id)) => ids.contains(&id),
+            (Self::NewDeliveries(_), OutboundOrderId::LocalFinalDemand(_)) => false,
+        }
+    }
 }
 
 fn outbound_orders(
     state: &MaterialCircuitState,
     routes: &BTreeMap<SupplierKey, SupplyPath>,
+    selection: &OutboundSelection<'_>,
 ) -> Vec<OutboundOrder> {
     let shipments = state.orders.iter().map(|row| {
         let route = routes
@@ -74,6 +93,7 @@ fn outbound_orders(
             stock: (row.supplier_site_id, row.good_id, row.unit_id),
             requested: row.ordered - row.shipped,
             eligible: route.is_some(),
+            included: selection.includes(OutboundOrderId::Delivery(row.order_id)),
             route,
         }
     });
@@ -83,6 +103,7 @@ fn outbound_orders(
         requested: row.ordered - row.fulfilled,
         route: None,
         eligible: true,
+        included: selection.includes(OutboundOrderId::LocalFinalDemand(row.order_id)),
     });
     shipments.chain(local).collect()
 }
@@ -120,7 +141,7 @@ fn resource_groups(
     let mut groups = BTreeMap::new();
     let mut count = 0;
     for (index, order) in orders.iter().enumerate() {
-        if !order.eligible || order.requested == 0 {
+        if !order.included || !order.eligible || order.requested == 0 {
             continue;
         }
         add_request(
@@ -372,6 +393,9 @@ fn labor_groups(
     let mut groups = BTreeMap::new();
     let mut count = existing_requests;
     for (index, (order, quantity)) in orders.iter().zip(feasible).enumerate() {
+        if !order.included {
+            continue;
+        }
         if let Some(merchant) = merchant(state, order.stock.0) {
             let hours = hours_per_unit(state, order.stock.0, order.stock.1, order.stock.2)?;
             add_request(
@@ -395,6 +419,9 @@ fn apply_handling(
 ) -> Result<Vec<MerchantHandlingReceipt>, MaterialCircuitError> {
     let mut receipts = Vec::new();
     for ((order, feasible_quantity), handled_quantity) in orders.iter().zip(feasible).zip(actual) {
+        if !order.included {
+            continue;
+        }
         let Some(merchant) = merchant(state, order.stock.0).cloned() else {
             continue;
         };
@@ -478,9 +505,10 @@ pub(super) fn dispatch_orders(
     state: &mut MaterialCircuitState,
     inventory: &mut InventoryLedger,
     receipts: &mut Vec<RoutedDispatchReceipt>,
+    selection: &OutboundSelection<'_>,
 ) -> Result<OutboundReceipts, MaterialCircuitError> {
     let routes = supplier_routes(state);
-    let orders = outbound_orders(state, &routes);
+    let orders = outbound_orders(state, &routes, selection);
     let groups = resource_groups(state, &orders)?;
     let feasible = order_allocations(state, inventory, &groups, orders.len())?;
     let mut allocations = feasible.clone();
@@ -501,18 +529,25 @@ pub(super) fn dispatch_orders(
         receipts,
     )?;
     let local = apply_local_fulfillments(state, inventory, &allocations[routed_count..])?;
-    // All outbound debits and grants were fixed before any local buyer credit.
-    // A transfer cannot recursively supply another order within this close.
-    for transfer in &local_transfers {
+    Ok(OutboundReceipts {
+        handling,
+        local_fulfillments: local,
+        local_transfers,
+    })
+}
+
+/// Credit local firm buyers only after every outbound pass has consumed its
+/// grants. This preserves the no recursive same-close supply boundary.
+pub(super) fn credit_local_transfers(
+    inventory: &mut InventoryLedger,
+    transfers: &[LocalTransferReceipt],
+) -> Result<(), MaterialCircuitError> {
+    for transfer in transfers {
         credit_inventory(
             inventory,
             (transfer.buyer_site_id, transfer.good_id, transfer.unit_id),
             transfer.quantity,
         )?;
     }
-    Ok(OutboundReceipts {
-        handling,
-        local_fulfillments: local,
-        local_transfers,
-    })
+    Ok(())
 }

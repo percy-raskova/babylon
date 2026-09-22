@@ -102,6 +102,7 @@ fn opening(parts: u64, provider_hours: u64) -> MaterialCircuitState {
         handling_coefficients: vec![],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
+        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
         maintenance_binding: Some(MaintenanceBinding {
             provider_site_id: site(2),
             consumer_process_id: process(),

@@ -1,0 +1,77 @@
+ADR263_recurring_national_economy:
+  status: accepted
+  date: '2026-09-20'
+  issue: PER-337
+  title: Recurring national and foreign economies share one material and monetary circuit
+  evidence_class: Designed
+  authority:
+    - Director-approved playable national economy implementation plan of 2026-09-20
+    - Director authorization to fetch missing sources or disclose Designed approximations
+  partially_supersedes:
+    - ADR260 R1 Michigan-only campaign scope and R6 finite campaign boundary
+    - ADR260 R3 retail handoff without resident stock for monetary recurring campaigns
+  context: |
+    Finite orders and opening stocks establish physical accounting controls.
+    Continuing economic activity also needs buyers, budgets, consumption,
+    procurement, replacement and decisions that respond to previous periods.
+    Employment, revenue and physical fulfillment alone do not establish these
+    connections. Technical replay identity does not establish economic validity
+    or enjoyment.
+  decision: |
+    Keep one Rust material allocator invoked by the authored BSL material-cycle.
+    A captured accounting mode explicitly distinguishes a physical control from
+    funded monetary accounts. Recurring policies are captured with the latter;
+    absence means a finite control, never an implicit source of money or goods.
+
+    Separate resident persons and households from workplace jobs and hours.
+    Household need persists without employment or purchases. A purchase reserves
+    existing cash at its accepted quote. Handoff credits an explicit household
+    stock; consumption debits that stock. Unfilled recurring retail requests
+    expire with a refund and a receipt. Retire resolved order principals with
+    their escrow; reconstruct presentation history from committed receipts.
+
+    Employers fund planned attendance before work. Earned wages, paid idle
+    time, used hours and uncommitted hours remain distinct. Procurement considers
+    stock and outstanding inbound quantity without counting freight twice.
+    Sales and funded unfilled requests influence subsequent production and
+    attendance plans. Prices respond through inspectable bounded policies;
+    existing reserves retain their accepted prices. No policy forces equilibrium.
+
+    Use a single detached close. Due arrivals precede production. First resolve
+    existing commitments and household requests, then admit funded procurement
+    using the remaining resources. Defer every local firm inventory credit until
+    both outbound passes finish. A purchase cannot recursively supply another
+    dispatch during that close. Both passes share remaining labor and freight
+    capacity. State, receipts, graph and completed time publish together or not
+    at all. Refuse incompatible saved formats without modifying their data.
+
+    Compile all 3,144 domestic counties and twelve disjoint foreign counterparts
+    into the same accounts, with dependencies identified separately. Foreign
+    production, needs, purchasing power and gateways remain finite. Michigan is
+    a scenario, not a separate implementation. Replace lifetime capacity tables
+    with current budgets and explicit future reservations; real equipment must
+    arrive and be installed before it adds usable capacity.
+
+    National compilation, rolling budgets, ownership, investment, foreign
+    economies and aid/solidarity are delivery requirements. This decision does
+    not certify that these later connections already run. Keep local and closed
+    fixed-price controls alongside the eventual playable campaign.
+  alternatives_rejected:
+    - Job totals creating resident people or new workforce members.
+    - Treating sales as consumption, cash as profit, or revenue as surplus value.
+    - Infinite foreign sinks or sources and opening stocks sized to campaign duration.
+    - Separate national, Michigan or observer economic implementations.
+    - Aid automatically creating agreement, political consciousness or labor time.
+  consequences: |
+    Receipt identity includes order admission, expiry, consumption and subsequent
+    decisions. Observation consumers must authenticate introduced and retired
+    orders instead of assuming a fixed roster. Nominal balances and physical
+    accounts stay exact; theoretical interpretation requires separate evidence.
+    National performance must be measured without dropping county coverage.
+  verification:
+    - reports/national-economy-design-2026-09-20.md
+    - docs/superpowers/research/2026-09-20-economic-circuit-source-study.md
+    - contracts/material_circuit_v3.yaml
+    - contracts/committed_material_tick_v3.yaml
+    - Eight-period control, causal interventions, conservation, restart and atomic refusal.
+    - Separate 52-period national, PostgreSQL, native play and performance qualification.

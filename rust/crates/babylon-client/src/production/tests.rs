@@ -47,6 +47,7 @@ fn site(id: &str, suppliers: &[&str]) -> ProductionSite {
 
 fn snapshot() -> ProductionSnapshot {
     ProductionSnapshot {
+        household_accounts: Vec::new(),
         maintenance_account: None,
         content_authority_sha256: "a".repeat(64),
         road_source: None,

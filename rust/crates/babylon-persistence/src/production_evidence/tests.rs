@@ -16,6 +16,7 @@ use crate::{
     michigan_content::MichiganContentPreset,
     michigan_economy::digest_hex,
     michigan_material::MichiganDeliveryPreset,
+    production_observation::ProductionSnapshot,
     production_projection::{project_material_observation, staffing::project_staffing_accounts},
     runtime::prepare_committed_tick,
 };
@@ -160,42 +161,12 @@ fn full_disclosure() -> ObserverEconomySnapshot {
         CompletedProductionFinalDemand, CompletedProductionMerchantHandling,
         ProductionFinalDemandAccount, ProductionFinalDemandOrder, ProductionHandlingCoefficient,
         ProductionMerchantHandlingAccount, ProductionMerchantHandlingOrder, ProductionOutboundKind,
-        ProductionPhysicalEdge, ProductionRoadSource,
     };
     let mut observation = committed();
     let production = observation.production.as_mut().unwrap();
     let site = production.sites[0].id.clone();
     let stock = production.sites[0].inventory[0].clone();
-    production.physical_edges = vec![
-        ProductionPhysicalEdge {
-            id: "edge-a".to_owned(),
-            shape_e7: vec![[-830_000_000, 420_000_000], [-830_001_000, 420_001_000]],
-            distance_mm: 17_000,
-        },
-        ProductionPhysicalEdge {
-            id: "edge-b".to_owned(),
-            shape_e7: vec![[-830_001_000, 420_001_000], [-830_003_000, 420_003_000]],
-            distance_mm: 33_000,
-        },
-    ];
-    production.routes[0].physical_edge_ids = vec![
-        "edge-a".to_owned(),
-        "edge-b".to_owned(),
-        "edge-a".to_owned(),
-    ];
-    production.routes[0].distance_mm = Some(67_000);
-    production.road_source = Some(ProductionRoadSource {
-        pbf_sha256: "pbf-sha".to_owned(),
-        pbf_bytes: 100,
-        pbf_url: "https://example.org/roads.pbf".to_owned(),
-        replication_timestamp: "2026-09-09T00:00:00Z".to_owned(),
-        footprint_sha256: "footprint-sha".to_owned(),
-        buffer_degrees_e7: 200_000,
-        extraction_version: "extract-v1".to_owned(),
-        distance_version: "integer-v1".to_owned(),
-        routing_profile_version: "michigan-freight-routing-v1".to_owned(),
-        graph_sha256: "graph-sha".to_owned(),
-    });
+    road_disclosure(production);
     production
         .merchant_handling_accounts
         .push(ProductionMerchantHandlingAccount {
@@ -230,6 +201,8 @@ fn full_disclosure() -> ObserverEconomySnapshot {
     production
         .final_demand_accounts
         .push(ProductionFinalDemandAccount {
+            total_order_count: 1,
+            expired: 0,
             demand_principal_id: "county-demand".to_owned(),
             county_geoid: "26163".to_owned(),
             good_id: stock.good_id.clone(),
@@ -242,6 +215,7 @@ fn full_disclosure() -> ObserverEconomySnapshot {
             retail_stock_on_hand: 7,
             retailer_site_ids: vec![site.clone()],
             orders: vec![ProductionFinalDemandOrder {
+                expired: 0,
                 order_id: "final-order".to_owned(),
                 retailer_site_id: site,
                 ordered: 10,
@@ -255,7 +229,75 @@ fn full_disclosure() -> ObserverEconomySnapshot {
                 closing_fulfilled: 3,
             }),
         });
+    household_disclosure(production);
     observation
+}
+
+fn road_disclosure(production: &mut ProductionSnapshot) {
+    use crate::production_observation::{ProductionPhysicalEdge, ProductionRoadSource};
+    production.physical_edges = vec![
+        ProductionPhysicalEdge {
+            id: "edge-a".to_owned(),
+            shape_e7: vec![[-830_000_000, 420_000_000], [-830_001_000, 420_001_000]],
+            distance_mm: 17_000,
+        },
+        ProductionPhysicalEdge {
+            id: "edge-b".to_owned(),
+            shape_e7: vec![[-830_001_000, 420_001_000], [-830_003_000, 420_003_000]],
+            distance_mm: 33_000,
+        },
+    ];
+    production.routes[0].physical_edge_ids = vec![
+        "edge-a".to_owned(),
+        "edge-b".to_owned(),
+        "edge-a".to_owned(),
+    ];
+    production.routes[0].distance_mm = Some(67_000);
+    production.road_source = Some(ProductionRoadSource {
+        pbf_sha256: "pbf-sha".to_owned(),
+        pbf_bytes: 100,
+        pbf_url: "https://example.org/roads.pbf".to_owned(),
+        replication_timestamp: "2026-09-09T00:00:00Z".to_owned(),
+        footprint_sha256: "footprint-sha".to_owned(),
+        buffer_degrees_e7: 200_000,
+        extraction_version: "extract-v1".to_owned(),
+        distance_version: "integer-v1".to_owned(),
+        routing_profile_version: "michigan-freight-routing-v1".to_owned(),
+        graph_sha256: "graph-sha".to_owned(),
+    });
+}
+
+fn household_disclosure(production: &mut ProductionSnapshot) {
+    let final_account = &production.final_demand_accounts[0];
+    production
+        .household_accounts
+        .push(crate::ProductionHouseholdAccount {
+            demand_principal_id: final_account.demand_principal_id.clone(),
+            county_geoid: final_account.county_geoid.clone(),
+            good_id: final_account.good_id.clone(),
+            unit_id: final_account.unit_id.clone(),
+            good: final_account.good.clone(),
+            unit: final_account.unit.clone(),
+            household_count: 2,
+            person_count: 4,
+            retailer_site_id: final_account.retailer_site_ids[0].clone(),
+            stock_on_hand: 7,
+            required_per_period: 4,
+            completed: Some(crate::CompletedHouseholdBalance {
+                period: 1,
+                opening_stock: 8,
+                received: 3,
+                required: 4,
+                consumed: 4,
+                unmet: 0,
+                closing_stock: 7,
+                desired: 4,
+                requested: 4,
+                admitted: 4,
+                fulfilled: 3,
+                expired: 1,
+            }),
+        });
 }
 
 #[test]

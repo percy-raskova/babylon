@@ -168,3 +168,7 @@ pub mod michigan_sectors;
 mod test_support;
 
 pub mod simulation_experiment;
+
+pub use production_projection::households::{
+    CompletedHouseholdBalance, ProductionHouseholdAccount,
+};

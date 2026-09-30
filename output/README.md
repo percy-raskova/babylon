@@ -27,9 +27,10 @@ output/
 - **Name for content**, not date (git already has the date).
 - **Curate, don't dump** — keep the artifacts that demonstrate something; delete
   superseded ones. This is a showcase, not a log.
-- **Scaling:** keep each artifact within the repo-hygiene 1 MiB budget. The
-  repository does not use Git LFS; publish heavier artifacts as sha256-pinned
-  `ci-data` release assets or keep them on the babylon-data drive.
+- **Scaling:** keep each artifact at or below the 1 MiB repo-hygiene budget.
+- **Large artifacts:** put them in sha256-pinned `ci-data` release assets or
+  keep them on the babylon-data drive.
+- **No Git LFS:** CI checkouts do not include LFS content.
 
 ## Current contents
 

@@ -122,7 +122,7 @@ Ensure the file exists at:
 
 - ``data/census/cbsa_delineation_2023.xlsx``
 
-Git does not track the workbook. Copy it from the babylon-data drive:
+The workbook is not in the repository. Copy it from the babylon-data drive:
 
 .. code-block:: bash
 

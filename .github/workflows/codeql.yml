@@ -6,8 +6,11 @@ name: "CodeQL Security Scan"
 #   remaining executable repository tooling.
 # - Main pull requests require CodeQL before merge. Protected-branch pushes,
 #   weekly scans and manual runs refresh security findings asynchronously.
-# - `paths-ignore` excludes non-executable design material and two intentionally
-#   malformed nested Rust-workspace fixtures that cannot be extracted.
+# - `paths-ignore` excludes non-executable design material and Rust test-only
+#   files (`tests/` trees and `tests.rs` modules), which never ship (PER-339).
+#   The test-tree rule also covers two intentionally malformed nested
+#   Rust-workspace fixtures that cannot be extracted. Inline `#[cfg(test)]`
+#   modules stay in scope.
 
 on:
   pull_request:
@@ -64,8 +67,8 @@ jobs:
             paths-ignore:
               - .design-sync
               - design
-              - rust/crates/bsl-lint/tests/fixtures/sfs_non_authorability/reserved-rust/rust
-              - rust/crates/bsl-lint/tests/fixtures/sfs_non_authorability/reserved-two-hop-helper/rust
+              - rust/**/tests/**
+              - rust/**/tests.rs
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0

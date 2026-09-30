@@ -1,13 +1,13 @@
 """Behavioral contract for the repo-hygiene gate (Program 14, Phase 0.5).
 
-The gate (``tools/check_repo_hygiene.py``) enforces three invariants, loudly
+The gate (``tools/check_repo_hygiene.py``) enforces four invariants, loudly
 (Constitution III.11):
 
 a. every *tracked* top-level entry is on the fixed allowlist;
 b. no tracked file matches the ignore rules (``.gitkeep`` convention exempt);
-c. no tracked blob at HEAD exceeds 1 MiB unless it is an LFS pointer
-   (pointers are ~130 bytes, so blob size alone distinguishes them) or a
-   named exemption.
+c. no tracked blob at HEAD exceeds 1 MiB unless it has a named budget or
+   exemption;
+d. no tracked ``.gitattributes`` routes files through Git LFS (PER-339).
 
 The synthetic-input tests are the red-phase/mutation proof that each check
 actually detects its violation class; the integration test pins the repo's
@@ -32,7 +32,9 @@ sys.path.insert(0, str(TOOLS_DIR))
 
 from check_repo_hygiene import (  # type: ignore[import-not-found]  # noqa: E402
     ALLOWED_TOP_LEVEL_DIRS,
-    check_large_non_lfs_blobs,
+    MAX_BLOB_BYTES,
+    check_large_blobs,
+    check_no_lfs_rules,
     check_top_level_allowlist,
     check_tracked_but_ignored,
     main,
@@ -92,7 +94,7 @@ class TestSyntheticViolations:
         lines = [
             "100644 blob abc123                2097152\ttests/fat_fixture.json",
         ]
-        violations = check_large_non_lfs_blobs(lines)
+        violations = check_large_blobs(lines)
         assert violations == ["tests/fat_fixture.json (2097152 bytes)"]
 
     @pytest.mark.parametrize(
@@ -105,8 +107,8 @@ class TestSyntheticViolations:
     )
     def test_named_runtime_assets_have_an_exact_two_mib_budget(self, path: str) -> None:
         boundary = 2_097_152
-        assert check_large_non_lfs_blobs([f"100644 blob abc123 {boundary}\t{path}"]) == []
-        assert check_large_non_lfs_blobs([f"100644 blob abc123 {boundary + 1}\t{path}"]) == [
+        assert check_large_blobs([f"100644 blob abc123 {boundary}\t{path}"]) == []
+        assert check_large_blobs([f"100644 blob abc123 {boundary + 1}\t{path}"]) == [
             f"{path} ({boundary + 1} bytes)"
         ]
 
@@ -121,20 +123,51 @@ class TestSyntheticViolations:
             "other/content/scenarios/michigan/statewide-physical.json.gz",
         ]
         size = 1_048_577
-        assert check_large_non_lfs_blobs(
+        assert check_large_blobs(
             [f"100644 blob abc123 {size}\t{path}" for path in paths]
         ) == sorted(f"{path} ({size} bytes)" for path in paths)
 
-    def test_lfs_pointer_passes(self) -> None:
-        lines = [
-            "100644 blob def456                    133\tsources/Capital-Volume-I.pdf",
+    def test_blob_at_the_default_budget_passes(self) -> None:
+        path = "docs/images/start-menu.png"
+        assert check_large_blobs([f"100644 blob def456 {MAX_BLOB_BYTES}\t{path}"]) == []
+        assert check_large_blobs([f"100644 blob def456 {MAX_BLOB_BYTES + 1}\t{path}"]) == [
+            f"{path} ({MAX_BLOB_BYTES + 1} bytes)"
         ]
-        assert check_large_non_lfs_blobs(lines) == []
 
     def test_symlink_entries_are_skipped(self) -> None:
         # symlinks are mode 120000 with the target path as tiny blob content
         lines = ["120000 blob 0ddba11                    33\tdata/sqlite"]
-        assert check_large_non_lfs_blobs(lines) == []
+        assert check_large_blobs(lines) == []
+
+    def test_lfs_filter_rule_detected(self) -> None:
+        attributes = {".gitattributes": "*.csv filter=lfs diff=lfs merge=lfs -text\n"}
+        assert check_no_lfs_rules(attributes) == [
+            ".gitattributes: *.csv filter=lfs diff=lfs merge=lfs -text"
+        ]
+
+    def test_nested_gitattributes_is_checked(self) -> None:
+        attributes = {
+            ".gitattributes": "*.sh text eol=lf\n",
+            "assets/music/.gitattributes": "*.ogg filter=lfs -text\n",
+        }
+        assert check_no_lfs_rules(attributes) == [
+            "assets/music/.gitattributes: *.ogg filter=lfs -text"
+        ]
+
+    def test_lfs_macro_definition_detected(self) -> None:
+        attributes = {".gitattributes": "[attr]heavy filter=lfs -text\n*.bin heavy\n"}
+        assert check_no_lfs_rules(attributes) == [".gitattributes: [attr]heavy filter=lfs -text"]
+
+    def test_comments_and_other_attributes_pass(self) -> None:
+        attributes = {
+            ".gitattributes": (
+                "# Never add filter=lfs here; see tools/check_repo_hygiene.py.\n"
+                "*.sh text eol=lf\n"
+                "*.png -filter binary\n"
+                "*.ipynb filter=nbstripout\n"
+            )
+        }
+        assert check_no_lfs_rules(attributes) == []
 
 
 @pytest.mark.unit

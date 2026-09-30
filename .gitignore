@@ -185,6 +185,9 @@ node_modules
 # Superpowers plugin working state (was local-only in .git/info/exclude; shared
 # here so the repo-hygiene gate sees the same ignore set locally and in CI)
 .superpowers/
+# Understand-Anything plugin output (regenerate with /understand; a stale copy was
+# tracked through Git LFS until PER-339). Its .understandignore config stays tracked.
+/.understand-anything/*.json
 
 # One-off tool dumps (regenerable; were briefly tracked pre-Program-14)
 pytest_out.txt

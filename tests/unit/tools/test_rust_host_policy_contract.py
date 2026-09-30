@@ -240,9 +240,6 @@ def test_codex_environment_is_tracked_policy_not_ignored_local_state() -> None:
         'export PATH="$codex_rust_dispatcher_bin:$codex_rust_cargo_home/bin:$PATH"',
     ):
         assert required in source, f"Codex environment lost {required}"
-    assert source.index("git config extensions.worktreeConfig true") < source.index(
-        'git config --worktree lfs.storage "$lfs_cache"'
-    )
     dispatcher_path = 'export PATH="$codex_rust_dispatcher_bin:$codex_rust_cargo_home/bin:$PATH"'
     installer = (
         'CODEX_RUST_CACHE_ROOT="$codex_cache_root" "$CODEX_WORKTREE_PATH/.codex/host/install.sh"'

@@ -15,7 +15,6 @@ behavioral drift.
 | `fascist_bifurcation.json` | Legacy in-memory engine                                                | `mise run qa:regression-generate`       |
 | `single_county.json`       | ADR090: Wayne County (FIPS 26163) scenario, real MarxianHydrator-extracted fixture — the smallest graph where the Vol III financial layer fires | `mise run qa:regression-generate`       |
 | `mutation_baseline.json`   | Mutation-testing baseline (mutmut)                                     | `mise run qa:mutation-baseline`         |
-| **`michigan-e2e.json`**    | **Spec-064: headless Postgres runner**                                 | See below                               |
 | **`dense/<scenario>.csv`** | **Program 13 item 2 / ADR090 E3: dense per-tick traces for the 6 scenarios above** | `mise run qa:regression-generate-dense` |
 | **`dense/detroit_tri_county.csv`** | **ADR090 E2: the qa:e2e-regression bundle's dense trace — schema DIFFERS from the harness dense CSVs above** (29 bundle-native columns: `county_<fips>_*` × 3 counties + 4 `financial_*`; no entity/edge columns) | Copy `dense_trace.csv` from one canonical strict run — see below. **NEVER** `qa:regression-generate-dense` (wrong schema). |
 
@@ -53,28 +52,3 @@ cp "$ARTIFACT_DIR/dense_trace.csv" tests/baselines/dense/detroit_tri_county.csv
 Run it twice independently and diff the two `dense_trace.csv` outputs before
 committing (ADR090's ceremony did this — both matched md5
 `a293f41f31299dca44cfa662b4b0eee2`) to prove determinism before minting.
-
-## Regenerating michigan-e2e.json (spec-064)
-
-This baseline is the `summary.json` produced by the canonical headless
-runner invocation. The MVP baseline uses the Detroit tri-county scope
-(faster than full Michigan; same artifact contract).
-
-```bash
-# 1. Run the headless runner with the canonical small scope
-BABYLON_TEST_PG_DSN='...' uv run python -m babylon.engine.headless_runner \
-  --scope detroit-tri-county --ticks 5 \
-  --output-dir /tmp/spec064-baseline
-
-# 2. Replace the committed baseline
-cp /tmp/spec064-baseline/summary.json tests/baselines/michigan-e2e.json
-
-# 3. Commit the regeneration in the same change as the engine math edit
-git add tests/baselines/michigan-e2e.json
-git commit -m "test(baseline): regenerate michigan-e2e after <intentional change>"
-```
-
-A future spec will scale this baseline up to the full
-`michigan-canada` scope once the engine math is wired into the
-headless tick loop and the wallclock budget is validated at the
-83-county scale.

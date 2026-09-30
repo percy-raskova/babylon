@@ -40,8 +40,8 @@ def test_repo_hygiene_bounds_only_the_named_authored_soundtrack() -> None:
     } == MUSIC
     for path in sorted(MUSIC):
         limit = 2_097_152 if path in THEMES else 12_582_912
-        assert hygiene.check_large_non_lfs_blobs([f"100644 blob abc123 {limit}\t{path}"]) == []
-        assert hygiene.check_large_non_lfs_blobs([f"100644 blob abc123 {limit + 1}\t{path}"]) == [
+        assert hygiene.check_large_blobs([f"100644 blob abc123 {limit}\t{path}"]) == []
+        assert hygiene.check_large_blobs([f"100644 blob abc123 {limit + 1}\t{path}"]) == [
             f"{path} ({limit + 1} bytes)"
         ]
     for path in [
@@ -51,7 +51,7 @@ def test_repo_hygiene_bounds_only_the_named_authored_soundtrack() -> None:
         *(f"other/{path}" for path in MUSIC),
     ]:
         size = hygiene.MAX_BLOB_BYTES + 1
-        assert hygiene.check_large_non_lfs_blobs([f"100644 blob abc123 {size}\t{path}"]) == [
+        assert hygiene.check_large_blobs([f"100644 blob abc123 {size}\t{path}"]) == [
             f"{path} ({size} bytes)"
         ]
 

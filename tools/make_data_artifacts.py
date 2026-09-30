@@ -7,8 +7,8 @@ the catalog DB-probe reds phantom rows, so catalog->manifest is an atomic
 handoff, ADR076 decision 4).
 
 Two artifact tiers (decision 1): in-repo CSV under
-``src/babylon/data/reference/`` for tiny tables (plain-text diffs, riding the
-.gitattributes LFS exemption), release-shipped parquet under
+``src/babylon/data/reference/`` for tiny tables (plain-text diffs),
+release-shipped parquet under
 ``dist/data-artifacts/`` for large ones (uploaded to the ci-data release
 channel, sha256-pinned here).
 

@@ -279,10 +279,6 @@ CI job (if any) is the **authoritative** re-run of each local hook, per
      - **none found**
      - Local-only; no workflow lints workflows, shell scripts, or the
        Dockerfile in CI today.
-   * - ``lfs-pointer-check``
-     - pre-push
-     - **none found**
-     - Local-only.
    * - trailing-whitespace / end-of-file-fixer / check-yaml / check-json /
        check-toml / check-added-large-files / check-merge-conflict /
        check-case-conflict / forbid-new-submodules / no-commit-to-branch

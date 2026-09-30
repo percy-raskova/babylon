@@ -122,11 +122,12 @@ Ensure the file exists at:
 
 - ``data/census/cbsa_delineation_2023.xlsx``
 
-If it is a Git LFS pointer, run:
+Git does not track the workbook. Copy it from the babylon-data drive:
 
 .. code-block:: bash
 
-   git lfs pull --include "data/census/cbsa_delineation_2023.xlsx"
+   mkdir -p data/census
+   cp /media/user/data/babylon-data/census/cbsa_delineation_2023.xlsx data/census/
 
 Missing FCC downloads
 ---------------------

@@ -204,9 +204,6 @@ repos:
       - id: check-yaml
         args: [--unsafe]  # Allow custom tags in GitHub Actions
       - id: check-json
-        # These paths are tracked Git LFS pointers in an ordinary checkout, not
-        # materialized JSON. lfs-pointer-check owns their integrity pre-push.
-        exclude: ^\.understand-anything/(fingerprints|knowledge-graph)\.json$
       - id: check-toml
       - id: check-added-large-files
         args: ['--maxkb=1024']
@@ -329,16 +326,3 @@ repos:
         files: 'Dockerfile'
         # Same threshold as CI's hadolint job: warnings visible, errors block.
         args: [--failure-threshold, error]
-
-  # ==========================================================================
-  # GIT LFS - Pointer integrity (pre-push; catches accidentally-materialized
-  # LFS-tracked blobs before they hit the remote)
-  # ==========================================================================
-  - repo: local
-    hooks:
-      - id: lfs-pointer-check
-        name: git-lfs pointer integrity
-        entry: git lfs fsck --pointers
-        language: system
-        pass_filenames: false
-        stages: [pre-push]

@@ -132,7 +132,7 @@ SIMPLIFY_TOLERANCE_DEG = 0.001
 #: Quantization must never cost more than the simplification it rides on.
 MAX_QUANTIZATION_ERROR_M = 111.0
 
-#: Refuse to commit an artifact big enough to want Git LFS.
+#: Refuse an artifact too large to keep in git as plain committed bytes.
 MAX_ARTIFACT_BYTES = 3 * 1024 * 1024
 
 #: Grid units are u16, so the composite bounding box maps onto [0, 65535].
